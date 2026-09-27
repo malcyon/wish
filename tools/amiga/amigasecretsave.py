@@ -370,17 +370,19 @@ def _read_reload(title: AmigaTitle, manifest: dict, result: dict[str, Any],
 
 
 def expect_verdict(manifest_path: pathlib.Path, attempt: str,
-                   expect: tuple[str, int, int, int], tolerance_minutes: int = 0) -> str:
+                   expect: tuple[str, int, int, int], tolerance_minutes: int = 0
+                   ) -> tuple[bool, str]:
     """Read Silver Blades' camp-save slot off the run's fetched boot disk and check `expect` against it.
 
     Re-opens `<manifest_path.parent>/<attempt>/fetched-df0.adf`, which
     `run_recon` writes for every attempt that reached the fetch step, and
     reads `CAMP_SAVE_LETTER` -- the slot the accept route's camp save writes.
+    Returns `(accepted, verdict line)`.
     """
     fetched = manifest_path.parent / attempt / "fetched-df0.adf"
     if not fetched.is_file():
         name, eid, minutes, _data = expect
-        return f"expect {name} id {eid} at {minutes} minutes: refutes (no fetched boot disk)"
+        return False, f"expect {name} id {eid} at {minutes} minutes: refutes (no fetched boot disk)"
     reading = _slot_reading(_verified_disk(fetched), CAMP_SAVE_LETTER)
     return check_expect(reading, expect, tolerance_minutes=tolerance_minutes)
 
@@ -1133,10 +1135,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(line)
             success = result["success"]
             if expect is not None:
-                line = expect_verdict(args.manifest, args.attempt, expect,
-                                      args.expect_tolerance_minutes)
+                accepted, line = expect_verdict(args.manifest, args.attempt, expect,
+                                                args.expect_tolerance_minutes)
                 print(line)
-                success = success and line.endswith(": accepts")
+                success = success and accepted
             return 0 if success else 1
         raise RouteError(f"{args.command} is unavailable until the measured route is reviewed")
     except (RouteError, OSError, ValueError) as exc:

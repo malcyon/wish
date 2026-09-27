@@ -40,26 +40,28 @@ def parse_expect(text: str) -> tuple[str, int, int, int]:
 
 
 def check_expect(reading: Mapping[str, Any], expect: tuple[str, int, int, int], *,
-                 tolerance_minutes: int = 0) -> str:
-    """Whether a slot's `effects` reading holds `expect`'s node, as one verdict line.
+                 tolerance_minutes: int = 0) -> tuple[bool, str]:
+    """Whether a slot's `effects` reading holds `expect`'s node: `(accepted, verdict line)`.
 
     `reading` is a `read_slot` result: `effects` maps a character's name to its
     `[id, minutes, data, flag]` rows. A node's minutes may differ from the
     asked-for count by up to `tolerance_minutes`, for the game's own elapsed
-    clock between the row's origin and this read.
+    clock between the row's origin and this read. The boolean is the caller's
+    pass/fail signal; the line is only for printing, and must never be
+    string-matched to recover it.
     """
     name, eid, minutes, data = expect
     label = f"expect {name} id {eid} at {minutes} minutes"
     effects = reading.get("effects") if reading else None
     if not effects:
-        return f"{label}: refutes (the slot holds no effects reading)"
+        return False, f"{label}: refutes (the slot holds no effects reading)"
     nodes = effects.get(name)
     if nodes is None:
-        return f"{label}: refutes ({name} is absent from the slot)"
+        return False, f"{label}: refutes ({name} is absent from the slot)"
     if any(n[0] == eid and n[2] == data and abs(n[1] - minutes) <= tolerance_minutes
           for n in nodes):
-        return f"{label}: accepts"
-    return f"{label}: refutes (holds {nodes})"
+        return True, f"{label}: accepts"
+    return False, f"{label}: refutes (holds {nodes})"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

@@ -196,6 +196,8 @@ def _slot_reading(fetched: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
         saved = amiga_savegame.read_slot(fetched, letter, TITLE)
         state = amiga_savegame.state_from_savegame(saved)
         inventory = _inventory(saved, require_joined=False)
+        effects = {member.name: [list(effect_fields(node)) for node in member.effects]
+                  for member in saved.characters}
     except BaseException as exc:
         reading["decode_error"] = f"{type(exc).__name__}: {exc}"
         return reading
@@ -203,8 +205,7 @@ def _slot_reading(fetched: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
                         "facing": state.facing}
     reading["names"] = [member["name"] for member in inventory["members"]]
     reading["inventory"] = inventory
-    reading["effects"] = {member.name: [list(effect_fields(node)) for node in member.effects]
-                          for member in saved.characters}
+    reading["effects"] = effects
     return reading
 
 

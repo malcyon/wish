@@ -39,16 +39,17 @@ def _pool_read_slot(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
     try:
         party, save = amiga_savegame.read_por_slot(disk, letter, drawer="")
         state = amiga_savegame.por_state_from_amiga(save)
-        reading["names"] = [_pool_name(member.name) for member in party]
-        reading["place"] = {"area": state.area, "x": state.x, "y": state.y,
-                            "facing": state.facing}
+        names = [_pool_name(member.name) for member in party]
+        place = {"area": state.area, "x": state.x, "y": state.y, "facing": state.facing}
         characters = amiga_savegame.read_por_characters(disk, letter, drawer="")
-        reading["effects"] = {_pool_name(char.name): [list(effect_fields(node))
-                                                       for node in char.effects]
-                              for char in characters}
+        effects = {_pool_name(char.name): [list(effect_fields(node)) for node in char.effects]
+                  for char in characters}
     except Exception as exc:  # noqa: BLE001 - every reader failure is the verdict's `decode_error`
-        reading.pop("names", None)
         reading["decode_error"] = f"{type(exc).__name__}: {exc}"
+        return reading
+    reading["names"] = names
+    reading["place"] = place
+    reading["effects"] = effects
     return reading
 
 

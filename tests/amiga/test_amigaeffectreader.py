@@ -17,7 +17,13 @@ from support.amigarecords import sample, synthetic_savegame
 
 from goldbox import amiga_savegame, areas, c64_save, dos_codec, world_state
 from tests.amiga.test_savegamelosses import _bare_silver_blades_state
-from tools.amiga import amigafoundation, amigasecretsave, route_curse, route_pool
+from tools.amiga import (
+    amigafoundation,
+    amigasecretsave,
+    route_curse,
+    route_pool,
+    route_silver_blades,
+)
 from tools.amiga.route import check_expect, effect_fields, parse_expect
 from tools.amiga.route_silver_blades import _slot_reading as _ssb_slot_reading
 
@@ -72,6 +78,38 @@ def test_silver_blades_read_slot_gives_the_chain_at_record_offset_0x096():
     assert reading["effects"] == {"GUY DE VALOIS": CHAIN}
 
 
+def _raise_on_effect(node):
+    raise ValueError("malformed effect node")
+
+
+def test_ssb_slot_reading_gives_a_clean_decode_error_for_a_malformed_effect_node(monkeypatch):
+    """A bad effect node must not escape `_slot_reading` uncaught (#661 review, finding 1)."""
+    _built, disk = _later_disk(amiga_savegame.SILVER_BLADES, _bare_silver_blades_state(),
+                               "GUY DE VALOIS")
+    monkeypatch.setattr(route_silver_blades, "effect_fields", _raise_on_effect)
+
+    reading = route_silver_blades._slot_reading(disk, "B")
+
+    assert reading["decode_error"] == "ValueError: malformed effect node"
+    assert "place" not in reading
+    assert "names" not in reading
+    assert "effects" not in reading
+
+
+def test_curse_read_slot_leaves_no_stale_place_when_effects_fail(monkeypatch):
+    """A failure reading effects, after names/place would have succeeded, must not leave a
+    stale `place` beside `decode_error` (#661 review, finding 2)."""
+    _built, disk = _later_disk(amiga_savegame.CURSE, _bare_curse_state(), "PHILIPPE")
+    monkeypatch.setattr(route_curse, "effect_fields", _raise_on_effect)
+
+    reading = route_curse._curse_read_slot(disk, "B")
+
+    assert reading["decode_error"] == "ValueError: malformed effect node"
+    assert "place" not in reading
+    assert "names" not in reading
+    assert "effects" not in reading
+
+
 def test_pool_read_slot_gives_the_chain_off_the_sibling_spc_file():
     party = [sample(name="BRUTUS", running_effects=[RUNNING], granted_effects=[GRANTED])]
     disk = amiga_savegame.make_por_save_disk("A", party, synthetic_savegame("A"))
@@ -101,32 +139,37 @@ def test_parse_expect_refuses_a_malformed_string():
 
 def test_check_expect_accepts_a_matching_node():
     reading = {"effects": {"PHILIPPE": CHAIN}}
-    line = check_expect(reading, ("PHILIPPE", 1, 47, 5))
+    accepted, line = check_expect(reading, ("PHILIPPE", 1, 47, 5))
+    assert accepted is True
     assert line == "expect PHILIPPE id 1 at 47 minutes: accepts"
 
 
 def test_check_expect_refutes_a_different_minute_count_outside_tolerance():
     reading = {"effects": {"PHILIPPE": CHAIN}}
-    line = check_expect(reading, ("PHILIPPE", 1, 45, 5))
+    accepted, line = check_expect(reading, ("PHILIPPE", 1, 45, 5))
+    assert accepted is False
     assert line.startswith("expect PHILIPPE id 1 at 45 minutes: refutes")
     assert "holds" in line
 
 
 def test_check_expect_accepts_within_its_stated_tolerance():
     reading = {"effects": {"PHILIPPE": CHAIN}}
-    line = check_expect(reading, ("PHILIPPE", 1, 45, 5), tolerance_minutes=2)
+    accepted, line = check_expect(reading, ("PHILIPPE", 1, 45, 5), tolerance_minutes=2)
+    assert accepted is True
     assert line.endswith(": accepts")
 
 
 def test_check_expect_refutes_a_character_absent_from_the_slot():
     reading = {"effects": {"PHILIPPE": CHAIN}}
-    line = check_expect(reading, ("BRYTWYN", 1, 47, 5))
+    accepted, line = check_expect(reading, ("BRYTWYN", 1, 47, 5))
+    assert accepted is False
     assert line == "expect BRYTWYN id 1 at 47 minutes: refutes (BRYTWYN is absent from the slot)"
 
 
 def test_check_expect_refutes_a_slot_with_no_effects_reading():
-    assert check_expect({}, ("PHILIPPE", 1, 47, 5)).endswith(
-        "refutes (the slot holds no effects reading)")
+    accepted, line = check_expect({}, ("PHILIPPE", 1, 47, 5))
+    assert accepted is False
+    assert line.endswith("refutes (the slot holds no effects reading)")
 
 
 # --- amigafoundation.expect_verdict: read the fetched save disk back ---------
@@ -140,19 +183,22 @@ def test_amigafoundation_expect_verdict_reads_the_fetched_curse_disk(tmp_path):
     attempt.mkdir(parents=True)
     disk.save(attempt / "fetched-save.adf")
 
-    accepts = amigafoundation.expect_verdict(
+    accepted, accepts = amigafoundation.expect_verdict(
         title, run / "prepare.json", "accept1", ("PHILIPPE", 1, 47, 5))
+    assert accepted is True
     assert accepts == "expect PHILIPPE id 1 at 47 minutes: accepts"
 
-    refutes = amigafoundation.expect_verdict(
+    refused, refutes = amigafoundation.expect_verdict(
         title, run / "prepare.json", "accept1", ("PHILIPPE", 1, 40, 5))
+    assert refused is False
     assert refutes.startswith("expect PHILIPPE id 1 at 40 minutes: refutes")
 
 
 def test_amigafoundation_expect_verdict_names_a_missing_fetched_disk(tmp_path):
     title = amigafoundation.CURSE
-    line = amigafoundation.expect_verdict(
+    accepted, line = amigafoundation.expect_verdict(
         title, tmp_path / "prepare.json", "accept1", ("PHILIPPE", 1, 47, 5))
+    assert accepted is False
     assert line == "expect PHILIPPE id 1 at 47 minutes: refutes (no fetched save disk)"
 
 
@@ -166,12 +212,14 @@ def test_amigasecretsave_expect_verdict_reads_the_fetched_boot_disk(tmp_path):
     attempt.mkdir(parents=True)
     disk.save(attempt / "fetched-df0.adf")
 
-    accepts = amigasecretsave.expect_verdict(
+    accepted, accepts = amigasecretsave.expect_verdict(
         run / "prepare.json", "accept1", ("GUY DE VALOIS", 1, 47, 5))
+    assert accepted is True
     assert accepts == "expect GUY DE VALOIS id 1 at 47 minutes: accepts"
 
 
 def test_amigasecretsave_expect_verdict_names_a_missing_fetched_disk(tmp_path):
-    line = amigasecretsave.expect_verdict(
+    accepted, line = amigasecretsave.expect_verdict(
         tmp_path / "prepare.json", "accept1", ("GUY DE VALOIS", 1, 47, 5))
+    assert accepted is False
     assert line == "expect GUY DE VALOIS id 1 at 47 minutes: refutes (no fetched boot disk)"

@@ -89,19 +89,20 @@ def _summary(result: dict[str, Any], manifest: pathlib.Path, attempt: str) -> st
 
 
 def expect_verdict(title: AmigaTitle, manifest: pathlib.Path, attempt: str,
-                   expect: tuple[str, int, int, int], tolerance_minutes: int = 0) -> str:
+                   expect: tuple[str, int, int, int], tolerance_minutes: int = 0
+                   ) -> tuple[bool, str]:
     """Read the route's later slot off the run's fetched save disk and check `expect` against it.
 
     Re-opens `<manifest.parent>/<attempt>/fetched-<save_disk>.adf`, which
     `run_recon` writes for every attempt that reached the fetch step, and
     reads `title.after_letter` -- the camp-save slot the accept route writes
     after its walk. Refutes, naming why, when that file is missing or the
-    slot holds no matching node.
+    slot holds no matching node. Returns `(accepted, verdict line)`.
     """
     fetched = manifest.parent / attempt / f"fetched-{title.save_disk}.adf"
     if not fetched.is_file():
         name, eid, minutes, _data = expect
-        return f"expect {name} id {eid} at {minutes} minutes: refutes (no fetched save disk)"
+        return False, f"expect {name} id {eid} at {minutes} minutes: refutes (no fetched save disk)"
     reading = title.read_slot(_verified_disk(fetched), title.after_letter)
     return check_expect(reading, expect, tolerance_minutes=tolerance_minutes)
 
@@ -173,10 +174,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(line)
             success = result["success"]
             if args.command == "accept" and expect is not None:
-                line = expect_verdict(title, args.manifest, args.attempt, expect,
-                                      args.expect_tolerance_minutes)
+                accepted, line = expect_verdict(title, args.manifest, args.attempt, expect,
+                                                args.expect_tolerance_minutes)
                 print(line)
-                success = success and line.endswith(": accepts")
+                success = success and accepted
             return 0 if success else 1
     except (RouteError, OSError, ValueError) as exc:
         print(f"amigafoundation: {exc}", file=sys.stderr)

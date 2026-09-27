@@ -34,14 +34,16 @@ def _curse_read_slot(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
     try:
         saved = amiga_savegame.read_slot(disk, letter, CURSE_KEY)
         state = amiga_savegame.state_from_savegame(saved)
-        reading["names"] = [member.name for member in saved.characters]
-        reading["place"] = {"area": state.area, "x": state.x, "y": state.y,
-                            "facing": state.facing}
-        reading["effects"] = {member.name: [list(effect_fields(node)) for node in member.effects]
-                              for member in saved.characters}
+        names = [member.name for member in saved.characters]
+        place = {"area": state.area, "x": state.x, "y": state.y, "facing": state.facing}
+        effects = {member.name: [list(effect_fields(node)) for node in member.effects]
+                  for member in saved.characters}
     except Exception as exc:  # noqa: BLE001 - every reader failure is the verdict's `decode_error`
-        reading.pop("names", None)
         reading["decode_error"] = f"{type(exc).__name__}: {exc}"
+        return reading
+    reading["names"] = names
+    reading["place"] = place
+    reading["effects"] = effects
     return reading
 
 
