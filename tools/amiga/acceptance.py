@@ -1064,8 +1064,7 @@ def _summary(result: dict[str, Any], manifest: pathlib.Path, attempt: str) -> st
 
 
 def expect_verdict(title: AmigaTitle, manifest: pathlib.Path, attempt: str,
-                   expect: tuple[str, int, int, int], tolerance_minutes: int = 0
-                   ) -> tuple[bool, str]:
+                   expect: tuple[str, int, int, int]) -> tuple[bool, str]:
     """Read the route's later slot off the run's fetched save disk and check `expect` against it.
 
     Re-opens `<manifest.parent>/<attempt>/fetched-<save_disk>.adf`, which
@@ -1079,7 +1078,7 @@ def expect_verdict(title: AmigaTitle, manifest: pathlib.Path, attempt: str,
         name, eid, minutes, _data = expect
         return False, f"expect {name} id {eid} at {minutes} minutes: refutes (no fetched save disk)"
     reading = title.read_slot(_verified_disk(fetched), title.after_letter)
-    return check_expect(reading, expect, tolerance_minutes=tolerance_minutes)
+    return check_expect(reading, expect)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1119,8 +1118,6 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--identity", required=True, type=pathlib.Path)
     a.add_argument("--expect", default=None,
                    help="NAME:ID:MINUTES:DATA, checked against the route's later slot")
-    a.add_argument("--expect-tolerance-minutes", type=int, default=0,
-                   help="minutes of slack --expect allows for elapsed game time")
     r = sub.add_parser("reload", help="guarded load of a game-written slot and a check of the place "
                                       "on screen; writes nothing")
     common(r)
@@ -1157,8 +1154,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(line)
             success = result["success"]
             if args.command == "accept" and expect is not None:
-                accepted, line = expect_verdict(title, args.manifest, args.attempt, expect,
-                                                args.expect_tolerance_minutes)
+                accepted, line = expect_verdict(title, args.manifest, args.attempt, expect)
                 print(line)
                 success = success and accepted
             return 0 if success else 1

@@ -53,8 +53,7 @@ def parse_write_keys(text: str) -> tuple[str, ...]:
 
 
 def expect_verdict(manifest_path: pathlib.Path, attempt: str,
-                   expect: tuple[str, int, int, int], tolerance_minutes: int = 0
-                   ) -> tuple[bool, str]:
+                   expect: tuple[str, int, int, int]) -> tuple[bool, str]:
     """Read Silver Blades' camp-save slot off the run's fetched boot disk and check `expect` against it.
 
     Re-opens `<manifest_path.parent>/<attempt>/fetched-df0.adf`, which
@@ -67,7 +66,7 @@ def expect_verdict(manifest_path: pathlib.Path, attempt: str,
         name, eid, minutes, _data = expect
         return False, f"expect {name} id {eid} at {minutes} minutes: refutes (no fetched boot disk)"
     reading = _slot_reading(_verified_disk(fetched), CAMP_SAVE_LETTER)
-    return check_expect(reading, expect, tolerance_minutes=tolerance_minutes)
+    return check_expect(reading, expect)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -114,8 +113,6 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--deadline", type=float, default=1800)
     a.add_argument("--expect", default=None,
                    help="NAME:ID:MINUTES:DATA, checked against the camp-save slot")
-    a.add_argument("--expect-tolerance-minutes", type=int, default=0,
-                   help="minutes of slack --expect allows for elapsed game time")
     sub.add_parser("spindisk-control", help="unavailable until the exact-output failure is measured")
     args = parser.parse_args(argv)
     try:
@@ -183,8 +180,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(line)
             success = result["success"]
             if expect is not None:
-                accepted, line = expect_verdict(args.manifest, args.attempt, expect,
-                                                args.expect_tolerance_minutes)
+                accepted, line = expect_verdict(args.manifest, args.attempt, expect)
                 print(line)
                 success = success and accepted
             return 0 if success else 1

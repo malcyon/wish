@@ -144,7 +144,10 @@ def test_check_expect_accepts_a_matching_node():
     assert line == "expect PHILIPPE id 1 at 47 minutes: accepts"
 
 
-def test_check_expect_refutes_a_different_minute_count_outside_tolerance():
+def test_check_expect_refutes_a_different_minute_count():
+    """A near miss refutes -- #661: a tolerance here masked whether the Amiga
+    engine counts a spell down at all, since 47 minutes stored against an
+    expectation of 45 passed unnoticed."""
     reading = {"effects": {"PHILIPPE": CHAIN}}
     accepted, line = check_expect(reading, ("PHILIPPE", 1, 45, 5))
     assert accepted is False
@@ -152,11 +155,14 @@ def test_check_expect_refutes_a_different_minute_count_outside_tolerance():
     assert "holds" in line
 
 
-def test_check_expect_accepts_within_its_stated_tolerance():
-    reading = {"effects": {"PHILIPPE": CHAIN}}
-    accepted, line = check_expect(reading, ("PHILIPPE", 1, 45, 5), tolerance_minutes=2)
-    assert accepted is True
-    assert line.endswith(": accepts")
+def test_check_expect_takes_no_tolerance_argument():
+    """#661: a tolerance masked the false accept -- the 47-minute Amiga read
+    was closed as matching a 45-minute expectation. `check_expect` no longer
+    takes a tolerance at all, so a near miss like that one cannot be waved
+    through."""
+    with pytest.raises(TypeError):
+        check_expect({"effects": {"PHILIPPE": CHAIN}}, ("PHILIPPE", 1, 45, 5),
+                     tolerance_minutes=2)
 
 
 def test_check_expect_refutes_a_character_absent_from_the_slot():

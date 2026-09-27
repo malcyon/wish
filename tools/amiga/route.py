@@ -39,16 +39,15 @@ def parse_expect(text: str) -> tuple[str, int, int, int]:
     return m["name"], int(m["id"]), int(m["minutes"]), int(m["data"])
 
 
-def check_expect(reading: Mapping[str, Any], expect: tuple[str, int, int, int], *,
-                 tolerance_minutes: int = 0) -> tuple[bool, str]:
-    """Whether a slot's `effects` reading holds `expect`'s node: `(accepted, verdict line)`.
+def check_expect(reading: Mapping[str, Any], expect: tuple[str, int, int, int]) -> tuple[bool, str]:
+    """Whether a slot's `effects` reading holds `expect`'s node exactly: `(accepted, verdict line)`.
 
     `reading` is a `read_slot` result: `effects` maps a character's name to its
-    `[id, minutes, data, flag]` rows. A node's minutes may differ from the
-    asked-for count by up to `tolerance_minutes`, for the game's own elapsed
-    clock between the row's origin and this read. The boolean is the caller's
-    pass/fail signal; the line is only for printing, and must never be
-    string-matched to recover it.
+    `[id, minutes, data, flag]` rows. The minutes field must match exactly, the
+    same way DOS's own `tools.dos.acceptance.judge` requires an exact match --
+    a tolerance here would mask whether the Amiga engine counts a spell down at
+    all (#661). The boolean is the caller's pass/fail signal; the line is only
+    for printing, and must never be string-matched to recover it.
     """
     name, eid, minutes, data = expect
     label = f"expect {name} id {eid} at {minutes} minutes"
@@ -58,8 +57,7 @@ def check_expect(reading: Mapping[str, Any], expect: tuple[str, int, int, int], 
     nodes = effects.get(name)
     if nodes is None:
         return False, f"{label}: refutes ({name} is absent from the slot)"
-    if any(n[0] == eid and n[2] == data and abs(n[1] - minutes) <= tolerance_minutes
-          for n in nodes):
+    if any(n[0] == eid and n[2] == data and n[1] == minutes for n in nodes):
         return True, f"{label}: accepts"
     return False, f"{label}: refutes (holds {nodes})"
 
