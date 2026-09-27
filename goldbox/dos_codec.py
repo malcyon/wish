@@ -1936,6 +1936,17 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("experience_per_hit_point", "experience_per_hit_point"),
 )
 
+# The Pool Animate Dead path and record adapters establish these two bytes.
+# Later titles keep their existing layouts and need their own measurements.
+POOL_DIRECT: tuple[tuple[str, str], ...] = (
+    ("creature_type", "creature_type"),
+    ("turn_class", "turn_class"),
+)
+POOL_FIELDS_UNMEASURED: tuple[tuple[str, str], ...] = (
+    ("creature_type", "this title's creature-type byte has not been mapped"),
+    ("turn_class", "this title's undead turning row has not been measured"),
+)
+
 #: The straight copies only the later titles have, split off :data:`DIRECT`
 #: the way :data:`LATER_TITLE_DROPPED` is split off :data:`DROPPED`: Pool of
 #: Radiance declares no such field, and `field_disposition` for it is built
@@ -1971,17 +1982,6 @@ DROPPED: tuple[tuple[str, str], ...] = (
     # judgement back, so it is shown until he rules on it himself.
     ("icon_dimension", "the C64 has one size byte where DOS has two fields; "
                        "the C64's carries the other one"),
-    # #297: this byte is the **target's** turning row, not the caster's
-    # strength, so a player character reads 0 and there is nothing for the
-    # C64's own `turn_class` at 0x0A3 to gain from it. The C64 writer sets
-    # that byte to zero for the same reason.  Shown, not silenced, on the
-    # same terms as `icon_dimension` above.
-    ("turn_class", "the row of the turning matrix an undead creature "
-                   "answers to. The DOS engine reads it off the creature "
-                   "being turned rather than off the cleric turning it, so "
-                   "every player character in either port holds zero and the "
-                   "C64 writes zero into its own turning row whatever it is "
-                   "given"),
 )
 
 #: What a player reads for each name in :data:`DROPPED` -- a subject a
@@ -2122,6 +2122,8 @@ LATER_TITLE_TRANSFORMED: tuple[tuple[str, str], ...] = (
 )
 
 LATER_TITLE_DROPPED: tuple[tuple[str, str], ...] = (
+    ("turn_class", "the target's turning row is known for Pool of Radiance; "
+                   "this title's mapping has not been measured"),
     ("highest_class_levels",
      "Pools of Darkness' third level array, the level to restore a drained "
      "character to. It has no neutral home, so a conversion out of this "
@@ -2244,10 +2246,12 @@ def field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     # is what keeps the row honest in the source, and is not part of what a
     # report says (#324).
     return neutral.disposition(
-        only(DIRECT + LATER_TITLE_DIRECT),
+        only(DIRECT + LATER_TITLE_DIRECT +
+             (POOL_DIRECT if deltas is POOL_OF_RADIANCE else ())),
         only(TRANSFORMED + LATER_TITLE_TRANSFORMED)
         + tuple((n, _PAIRED_ABILITY) for n in ABILITY_ORDER if n in paired),
-        only(DROPPED + LATER_TITLE_DROPPED),
+        only(DROPPED + (LATER_TITLE_DROPPED if deltas is not
+                        POOL_OF_RADIANCE else ())),
         "the C64's",
         derived=only(tuple((n, w) for n, w, _run in DERIVED)),
         constants=only(CONSTANTS + LATER_TITLE_CONSTANTS))
@@ -2458,7 +2462,8 @@ def to_neutral(dos: DosCharacter,
     # `dos.fields`, not the module-level table: the offset quoted in a
     # provenance line is this title's, and only Pool of Radiance's is the
     # module's.
-    for dos_name, _ in DIRECT + LATER_TITLE_DIRECT:
+    for dos_name, _ in (DIRECT + LATER_TITLE_DIRECT +
+                        (POOL_DIRECT if dos.deltas is POOL_OF_RADIANCE else ())):
         if dos_name in ABILITY_ORDER:
             continue                      # a pair in three of the four titles
         if dos_name not in dos.fields:
@@ -2605,13 +2610,8 @@ def to_neutral(dos: DosCharacter,
     out.set("size_small", max(0, dos.get("size") - 1),
             "DOS size @0x0C0, less one", FIELDS_BY_NAME["size"].confidence)
 
-    # **The turning byte is not read into the neutral record at all** (#297).
-    # It is the row of the turning matrix the *target* answers to
-    # (`GAME.OVR:0x13A2A`), it is 0 for every player character, and the DOS
-    # engine works a caster's own strength out from `class_levels[0]` when
-    # the command is pressed. `goldbox.c64_codec.write` computes the C64's
-    # `turn_power` from the levels for the same reason (#288), so there is
-    # nothing here for either side to take. It is named in `DROPPED`.
+    # Pool's target-side turning row crossed in POOL_DIRECT, separately from
+    # the caster's turn_power, which DOS computes from the class levels.
 
     # -- the identity draw: no longer a drop, now that it has a C64 home -----
     # `to_c64_record` writes this into the C64's identity_pair at 0x0E6, with
@@ -3228,6 +3228,8 @@ WRITE_DIRECT: tuple[tuple[str, str], ...] = (
     ("experience_per_hit_point", "experience_per_hit_point"),
 )
 
+POOL_WRITE_DIRECT = POOL_DIRECT
+
 #: Neutral fields the DOS writer takes by a rule rather than by a copy.
 WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("class_bits", "folded back into DOS's own order, where the paladin and "
@@ -3379,6 +3381,8 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
                              "effect id on either port, so there is nowhere "
                              "to write a timer for it."),
 )
+
+WRITE_POOL_FIELDS_UNMEASURED = POOL_FIELDS_UNMEASURED
 
 #: Why a neutral field is not written when the destination title's record has
 #: no such field **at all** -- `goldbox/dos_port.py` gives it a width of
@@ -3575,14 +3579,6 @@ WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
 #: the one value all 24 specimens hold.
 WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
     ("icon_dimension", b"\x01", "1 in all 24 DOS specimens"),
-    ("turn_class", b"\x00",
-     "no player character is undead. The byte is the row of the turning "
-     "matrix a creature answers to -- eleven of the 103 distinct DOS Pool of "
-     "Radiance monster records carry a non-zero one and every one of them is "
-     "undead, at the published AD&D rows -- and every player character in "
-     "either port reads 0. `goldbox.c64_codec.write` writes zero into the "
-     "C64's own turn_class at 0x0A3 for the same reason (#297, "
-     "docs/178-turning-undead.md)"),
     ("field_83_87", b"\x00\x00\x01\x00\x00",
      "a player character who takes one share of treasure. **Not one value "
      "every record holds**: the third byte is 1 in every record of the "
@@ -4543,7 +4539,8 @@ WRITE_DERIVED_LATER: tuple[tuple[str, str], ...] = (
 #: Radiance's own field names at the end, the way :func:`write_targets` cuts
 #: it to whichever title it was asked about (#194).
 WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
-    {dos_name: f"from neutral {n}" for n, dos_name in WRITE_DIRECT}
+    {dos_name: f"from neutral {n}" for n, dos_name in
+     WRITE_DIRECT + POOL_WRITE_DIRECT}
     | {"name_length": "from neutral name, the count byte",
        "name_text": "from neutral name, fifteen ASCII",
        "class_bits": "from neutral class_bits, with the ranger's bit 7 "
@@ -4676,6 +4673,8 @@ def write_targets(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
                          "none",
     }
     out |= {name: f"zero: {why}" for name, why in WRITE_UNSOURCED_LATER}
+    if deltas is not POOL_OF_RADIANCE:
+        out["turn_class"] = "zero: this title's mapping has not been measured"
     return {n: w for n, w in out.items() if n in declared}
 
 
@@ -4829,6 +4828,8 @@ def write(char: NeutralCharacter,
     dropped = (WRITE_DROPPED if deltas is POOL_OF_RADIANCE else
                tuple((n, w) for n, w in WRITE_DROPPED if n not in later))
     dropped += write_absent(deltas)
+    if deltas is not POOL_OF_RADIANCE:
+        dropped += WRITE_POOL_FIELDS_UNMEASURED
     w = neutral.Writer(char, rep, into=into, dropped=dropped)
     use, emit = w.use, w.emit
 
@@ -4897,7 +4898,9 @@ def write(char: NeutralCharacter,
     # each crossed both ways (#401, docs/204-the-dos-ability-pair.md).
     second = use("abilities_second")
     seconds = dict(second.value) if second is not None else {}
-    for neutral_name, dos_name in WRITE_DIRECT:
+    for neutral_name, dos_name in (WRITE_DIRECT +
+                                   (POOL_WRITE_DIRECT if deltas is
+                                    POOL_OF_RADIANCE else ())):
         # A field this title's record does not have at all -- Pools of
         # Darkness' four lighter coins, its drained-level pair and its
         # missing experience rate (#194).  Left untaken on purpose, so
@@ -4942,6 +4945,19 @@ def write(char: NeutralCharacter,
                 value=bytes((byte0 & 0xFF, byte1 & 0xFF)))
         else:
             put(v, dos_name)
+    if deltas is POOL_OF_RADIANCE:
+        for _neutral_name, dos_name in POOL_WRITE_DIRECT:
+            f = table[dos_name]
+            if f.offset not in rep.sources:
+                rep.note(f.offset, f.size,
+                         f"{dos_name}: zero -- the neutral source has no value")
+    else:
+        # The later layouts retain this byte, but its title-specific meaning
+        # has not been measured. The source value is reported as dropped.
+        f = table["turn_class"]
+        rep.note(f.offset, f.size,
+                 "turn_class: zero -- this title's mapping has not been "
+                 "measured")
     if second is not None and not any(table[n].size == 2
                                       for n in ABILITY_ORDER):
         rep.dropped.append(
@@ -6211,12 +6227,14 @@ def write_field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     direct = tuple((n, d) for n, d in WRITE_DIRECT if n not in gone)
     if deltas is POOL_OF_RADIANCE:
         return neutral.disposition(
-            direct, WRITE_TRANSFORMED, WRITE_DROPPED + absent,
+            direct + POOL_WRITE_DIRECT, WRITE_TRANSFORMED,
+            WRITE_DROPPED + absent,
             "the DOS record's", derived=_WRITE_FIELD_DISPOSITION_DERIVED)
     later = {n for n, _ in WRITE_TRANSFORMED_LATER}
     return neutral.disposition(
         direct, WRITE_TRANSFORMED + WRITE_TRANSFORMED_LATER,
-        tuple((n, w) for n, w in WRITE_DROPPED if n not in later) + absent,
+        tuple((n, w) for n, w in WRITE_DROPPED if n not in later)
+        + absent + WRITE_POOL_FIELDS_UNMEASURED,
         "the DOS record's", derived=_WRITE_FIELD_DISPOSITION_DERIVED)
 
 

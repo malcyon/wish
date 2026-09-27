@@ -437,11 +437,11 @@ _DECLARED: Sequence[Field] = (
        "published AD&D rows: skeleton 1, zombie 2, ghoul 3, wight 5, wraith "
        "7, giant skeleton 8, mummy 8, juju zombie 9, spectre 9, vampire 10, "
        "and FERRAN MARTINEZ 9. `tools/records/turnsweep.py --dos` re-runs it.\n"
-       "* Every player character in either port reads 0, including ROLAND, "
-       "a cleric 3, whose C64 counterpart's `turn_power` would read 1.\n"
-       "So a converter writes **zero** here for a player character and takes "
-       "nothing from the caster's strength, which the DOS engine works out "
-       "for itself. docs/178-turning-undead.md, #297"),
+       "* Ordinary player characters read 0, including ROLAND, while the "
+       "game-written C64 Pool Animate Dead save gives BRUTUS 2 in his own "
+       "turn_class. A converter preserves this target-side row, separate "
+       "from the caster's strength, which DOS works out for itself. "
+       "docs/178-turning-undead.md, #297"),
     _f(0x077, 1, _I8, "thief_pick_pockets", "Pick pockets", _MAYBE,
        "eight percentages, 0x077-0x07E, in the C64's order. Nonzero for the "
        "thief, for the fighter/mage/thief, and for SILAS -- a fighter 4 who "
@@ -502,6 +502,10 @@ _DECLARED: Sequence[Field] = (
        "1 for ARGORA, ASTRID, RHIANNON, DARKSTAR and FLORENTZ and 0 for the "
        "other nineteen, which is female = 1 on the C64's encoding too. "
        "PROBABLE because no specimen names its own sex on screen here"),
+    _f(0x09F, 1, _U8, "creature_type", "Creature type", _OK,
+       "Pool of Radiance's Animate Dead writes 4 and its removal clears "
+       "the byte. The C64 equivalent is 0x0D7; the Amiga Pool adapter "
+       "places this byte at 0x0A1. No later-title mapping is inferred"),
     _f(0x0A0, 1, _U8, "alignment", "Alignment", _MAYBE,
        "0-based on the C64's own table: LAWFUL GOOD 0, LAWFUL NEUTRAL 1, "
        "LAWFUL EVIL 2, NEUTRAL GOOD 3, TRUE NEUTRAL 4, NEUTRAL EVIL 5, "
@@ -1202,7 +1206,8 @@ CURSE_OF_THE_AZURE_BONDS = DosDeltas(
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
            "spells_memorised": 84, "spellbook": 100,
-           "spells_castable_cleric": 5, "spells_castable_magic_user": 5},
+           "spells_castable_cleric": 5, "spells_castable_magic_user": 5,
+           "creature_type": 0},
     inserts={"level": (_x(1, "former_level", "Level left the old class at",
                           _OK, _FORMER_LEVEL_NOTE, kind=Kind.U8),),
              "class_levels": (_x(8, "former_class_levels",
@@ -1210,7 +1215,7 @@ CURSE_OF_THE_AZURE_BONDS = DosDeltas(
              "spells_castable_cleric": (
                  _x(5, "spells_castable_druid", "Druid spell slots", _MAYBE,
                     _DRUID_SLOT_NOTE),),
-             "icon_colours": 1,
+             "icon_colours": 1, "creature_type": 1,
              "heap_104": (_paladin_cures(), 3)})
 
 #: Secret of the Silver Blades, 439 bytes.  Curse's record plus a spellbook
@@ -1246,7 +1251,7 @@ SECRET_OF_THE_SILVER_BLADES = DosDeltas(
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
            "spells_memorised": 75, "spellbook": 117,
-           "field_83_87": 4, "class_levels": 7, "gap_09f": 0,
+           "field_83_87": 4, "class_levels": 7, "creature_type": 0,
            "spells_castable_cleric": 7, "spells_castable_magic_user": 7},
     inserts={"char_class": (_paladin_cures(),),
              "level": (_x(1, "former_level", "Level left the old class at",
@@ -1305,7 +1310,7 @@ POOLS_OF_DARKNESS = DosDeltas(
            "attack_level": 0,
            "levels_drained": 0, "hp_lost_to_drain": 0, "field_83_87": 4,
            "copper": 0, "silver": 0, "electrum": 0, "gold": 0,
-           "class_levels": 7, "gap_09f": 0, "strength_bonus": 0,
+           "class_levels": 7, "creature_type": 0, "strength_bonus": 0,
            "gap_101": 0,
            "spells_castable_cleric": 9, "spells_castable_magic_user": 9,
            "experience_per_hit_point": 0, "portrait_head": 0,

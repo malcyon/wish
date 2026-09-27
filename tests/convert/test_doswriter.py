@@ -163,7 +163,8 @@ def test_every_neutral_field_has_a_write_disposition():
                     if n not in {tn for tn, _ in dos_codec.WRITE_TRANSFORMED}) \
         + dos_codec.WRITE_NO_SUCH_FIELD
     assert dos_codec.write_field_disposition() == neutral.disposition(
-        dos_codec.WRITE_DIRECT, dos_codec.WRITE_TRANSFORMED, dos_codec.WRITE_DROPPED,
+        dos_codec.WRITE_DIRECT + dos_codec.POOL_WRITE_DIRECT,
+        dos_codec.WRITE_TRANSFORMED, dos_codec.WRITE_DROPPED,
         "the DOS record's", derived=derived)
 
 
@@ -173,15 +174,11 @@ def test_the_writer_and_reader_direct_tables_are_mirrors():
     on the C64 side, not this one."""
     read_neutral = {n for n, _ in dos_codec.DIRECT}
     write_neutral = {n for n, _ in dos_codec.WRITE_DIRECT}
-    # The reader's DIRECT names DOS fields, and its neutral names are the
-    # same strings.  The two tables were mirrors but for `turn_power`, which
-    # the writer copied into DOS 0x076 and the reader took back out of it --
-    # and #297 established that 0x076 is the *target's* turning row and not
-    # the caster's strength, so neither side names it now.  The DOS field is
-    # `turn_class`, written zero as a constant and dropped on the way in.
+    # The Pool-only pair preserves the target's turning row and creature
+    # type; neither is the caster's turn_power.
     assert write_neutral == read_neutral
     assert "turn_power" not in write_neutral
-    assert "turn_class" in {n for n, _ in dos_codec.DROPPED}
+    assert dos_codec.POOL_WRITE_DIRECT == dos_codec.POOL_DIRECT
 
 
 def test_a_converted_cleric_does_not_claim_an_undead_s_turning_row():
@@ -208,13 +205,34 @@ def test_a_converted_cleric_does_not_claim_an_undead_s_turning_row():
     rec, _, _, _ = dos_codec.write(char)
     assert rec[f.offset] == 0
     # And the field is not silently unaccounted for at either end.
-    assert dos_codec.write_targets()["turn_class"].startswith("constant:")
+    assert dos_codec.write_targets()["turn_class"].startswith("from neutral")
     assert "turn_power" in dos_codec.write_field_disposition()
     # Not a loss any more (#483, The Convert flag could come off while two
     # fields are still lost, because a silencing list keeps them out of the
     # count that decides it): both engines derive it, so the accounting says
     # `derived:` rather than `dropped:`.
     assert dos_codec.write_field_disposition()["turn_power"].startswith("derived:")
+
+
+@pytest.mark.parametrize("deltas", (
+    dos_port.CURSE_OF_THE_AZURE_BONDS,
+    dos_port.SECRET_OF_THE_SILVER_BLADES,
+    dos_port.POOLS_OF_DARKNESS,
+), ids=lambda deltas: deltas.key)
+def test_later_turn_class_zero_has_provenance_while_the_value_is_dropped(deltas):
+    """An unmeasured native byte stays zero and the write report explains it.
+
+    A nonzero source value cannot silently become that zero; it remains a
+    reported loss until this title's mapping has been measured.
+    """
+    char = neutral.NeutralCharacter("C64", "synthetic", game=deltas.key)
+    char.set("turn_class", 2, "synthetic undead turning row")
+    record, _, _, report = dos_codec.write(char, deltas=deltas)
+    offset = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["turn_class"].offset
+    assert record[offset] == 0
+    assert offset not in report.unaccounted
+    assert "mapping has not been measured" in report.sources[offset]
+    assert any(line.startswith("turn_class:") for line in report.dropped)
 
 
 # --- the item projection, both ways ------------------------------------------
@@ -2873,8 +2891,8 @@ def test_a_field_both_engines_work_out_for_themselves_is_not_reported():
     #297 (A cleric converted from the C64 to DOS is given an undead's turning
     row, because the DOS writer puts turn_power in the undead's byte) and the
     only record byte it reads belongs to the creature being turned
-    (`docs/178-turning-undead.md`). The reader has silenced its counterpart,
-    `turn_class`, since 2026-08-27; until #307 the writer had no way to.
+    (`docs/178-turning-undead.md`). The target's `turn_class` now crosses
+    directly in Pool of Radiance, separate from the caster's strength.
     """
     char = _filled()
     char.set("turn_power", 6, "made up: a cleric 5's turning strength")

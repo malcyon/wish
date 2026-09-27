@@ -691,7 +691,17 @@ def rewrite_amiga_later(original: "amiga_later.AmigaCharacter",
 #: test_rewrite.py`'s drift test re-measures it and fails if a writer change
 #: moves the set.
 _ALWAYS_UNWRITABLE = frozenset({
-    "char_class", "infravision", "turn_class", "item_effects",
+    "char_class", "infravision", "item_effects",
+})
+
+#: Pool of Radiance has measured native bytes for both fields. The later
+#: titles' mappings are unmeasured, so their native writers cannot carry an
+#: edit to either field through the shared character sheet.
+_LATER_SPECIAL_UNWRITABLE_FOR = frozenset({
+    ("dos", "curse-of-the-azure-bonds"),
+    ("dos", "secret-of-the-silver-blades"),
+    ("amiga", "curse-of-the-azure-bonds"),
+    ("amiga", "secret-of-the-silver-blades"),
 })
 
 #: The eight thief-skill fields, unwritable only on the port and title pairs
@@ -748,7 +758,8 @@ _TAIL_UNWRITABLE_FOR = frozenset({
 def unwritable_fields(port: str, title_key: str) -> frozenset[str]:
     """Fields the sheet must grey because this port's writer cannot take an
     edit to them back -- either the field has nowhere to go
-    (`infravision`, `turn_class`), the writer rebuilds it from other fields
+    (`infravision`, and `turn_class`/`creature_type` on later titles), the
+    writer rebuilds it from other fields
     regardless of what is asked (`char_class`, the eight thief skills on a
     thief of these three port and title pairs, and the five saving throws on
     a DOS Curse or Silver Blades save), or the file is returned exactly as
@@ -758,6 +769,8 @@ def unwritable_fields(port: str, title_key: str) -> frozenset[str]:
     if port not in ("dos", "amiga"):
         return frozenset()
     fields = _ALWAYS_UNWRITABLE
+    if (port, title_key) in _LATER_SPECIAL_UNWRITABLE_FOR:
+        fields = fields | {"turn_class", "creature_type"}
     if (port, title_key) in _THIEF_UNWRITABLE_FOR:
         fields = fields | _THIEF_FIELDS
     if (port, title_key) in _SAVES_UNWRITABLE_FOR:

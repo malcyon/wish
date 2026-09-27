@@ -738,11 +738,11 @@ _DECLARED: Sequence[Field] = (
            "(MON13), an NPC carrying 9, the spectre row. **This offset was "
            "challenged and it survived.** "
            "docs/116 read the neighbouring 0x0A4 as the turning field because "
-           "0x0A3 is zero in every *player* specimen of either game -- which it "
-           "is, because no player character is undead. Across the monster "
-           "records the two are disjoint: 0x0A3 is non-zero only on undead and "
-           "0x0A4 only on clerics, and no record sets both. They are two "
-           "fields, one per side of the same rule"),
+           "ordinary player specimens held zero; the Pool of Radiance "
+           "camp-cast Animate Dead save gives BRUTUS 2 here while 0x0A4 "
+           "remains the caster's separate turning strength. The MON* "
+           "records independently put non-zero 0x0A3 only on undead. "
+           "They are two fields, one per side of the same rule"),
     _field(0x0A4, 1, _U8, "turn_power", "Turn undead (caster side)", _OK,
            "the caster's half of turning, sitting beside the undead's half at "
            "0x0A3. Non-zero in eight of the eleven records carrying the cleric "
@@ -904,6 +904,13 @@ _DECLARED: Sequence[Field] = (
     _field(0x0D6, 1, _U8, "sex", "Sex", _OK,
            "0 = male, 1 = female. LADY KATHERINE is 1 and confirmed female by "
            "Donald; LARA SPELLSWORD and ZARRADA are also 1"),
+    _field(0x0D7, 1, _U8, "creature_type", "Creature type", _OK,
+           "Pool of Radiance's camp-cast Animate Dead writes 4 here and "
+           "the registered game-written BRUTUS save holds 4, against 0 in "
+           "its no-cast control. SPELLE04 clears the byte when undoing "
+           "animation. DOS keeps the corresponding byte at 0x09F and "
+           "Amiga at 0x0A1. This name is established for Pool of Radiance; "
+           "other C64 titles have not been measured here"),
     _field(0x0D8, 1, _U8, "alignment", "Alignment", _OK,
            "0-based index into the game's own table at $32B3: LAWFUL GOOD=0 "
            "LAWFUL NEUTRAL=1 LAWFUL EVIL=2 NEUTRAL GOOD=3 TRUE NEUTRAL=4 "

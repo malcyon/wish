@@ -4,6 +4,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 
 | file | purpose |
 |---|---|
+| `test_animatedparty.py` | Checks that Pool of Radiance's creature type and turning class cross C64, DOS and Amiga records while the unresolved Animate Dead node remains blocked. |
 | `test_amigalatericonconvert.py` | Checks that an Amiga Curse or Silver Blades combat figure is reported as converted and composes a legal C64 figure, on the player's specimens. |
 | `test_amigaporiconconvert.py` | Checks that `write_por` writes a given combat figure and that a C64 or DOS party converted to Amiga Pool of Radiance arrives with its own. |
 | `test_amigaporcharacters.py` | Checks that `read_por_characters` reads an Amiga Pool of Radiance slot's character files in order, stops at the first missing one and refuses a bad slot letter. |

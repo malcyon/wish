@@ -158,6 +158,17 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("experience_per_hit_point", "experience_per_hit_point"),
 )
 
+# Pool's Animate Dead and turning routines establish these two byte meanings.
+# Their locations and use in the other C64 titles remain unmeasured.
+POOL_DIRECT: tuple[tuple[str, str], ...] = (
+    ("creature_type", "creature_type"),
+    ("turn_class", "turn_class"),
+)
+POOL_FIELDS_UNMEASURED: tuple[tuple[str, str], ...] = (
+    ("creature_type", "this title's creature-type byte has not been mapped"),
+    ("turn_class", "this title's undead turning row has not been measured"),
+)
+
 #: The five saving-throw columns, neutral name to C64 name, in the order
 #: `goldbox.levels.Level.saves` stores them -- paralysis, petrification,
 #: wands, breath, spell.  `DIRECT` above copies these like anything else;
@@ -736,7 +747,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     rep = Report()
     port = char.port
     deltas = deltas_for(char.game)
-    w = neutral.Writer(char, rep, into="C64", dropped=DROPPED, derived=DERIVED)
+    w = neutral.Writer(
+        char, rep, into="C64",
+        dropped=DROPPED + (POOL_FIELDS_UNMEASURED
+                           if deltas.key != "pool-of-radiance" else ()),
+        derived=DERIVED)
     use, emit = w.use, w.emit
 
     # -- the name: 18 NUL-padded bytes ---------------------------------------
@@ -755,7 +770,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     granted = use("granted_effects")
     former = use("former_levels")
 
-    for field, c64_name in DIRECT:
+    for field, c64_name in DIRECT + (POOL_DIRECT if deltas.key ==
+                                     "pool-of-radiance" else ()):
         # Recomputed below rather than copied (#366, #405): `DIRECT` still
         # carries both pairs because `read` shares this table and the raw
         # stored byte is exactly what a reader should hand back.
@@ -1423,7 +1439,6 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # engine-written C64 player records on this machine hold exactly what the
     # levels give, the 23 that do not being ones this converter wrote.
     # `tools/records/turnsweep.py` is that sweep.
-    rep.note(0x0A3, 1, "turn_class: zero -- no player character is undead")
     use("turn_power")           # consumed here, by rule rather than by copy
     turning = derive.turn_power(char.game, w.get("levels") or {})
     rec.set("turn_power", turning)
@@ -2044,7 +2059,7 @@ DERIVED: tuple[tuple[str, str], ...] = (
 )
 
 
-def field_disposition() -> dict[str, str]:
+def field_disposition(game=None) -> dict[str, str]:
     """Every neutral field and what :func:`write` does with it.
 
     The neutral-vocabulary twin of `goldbox.dos_codec.field_disposition`, which asks the
@@ -2053,7 +2068,10 @@ def field_disposition() -> dict[str, str]:
     never been taught, which is the failure that rots silently -- a field
     added to `goldbox/neutral.py`'s `FIELDS` and never wired up here.
     """
-    return neutral.disposition(DIRECT, TRANSFORMED, DROPPED,
+    pool = deltas_for(game).key == "pool-of-radiance"
+    return neutral.disposition(DIRECT + (POOL_DIRECT if pool else ()),
+                               TRANSFORMED,
+                               DROPPED + (() if pool else POOL_FIELDS_UNMEASURED),
                                "the C64 record's", derived=DERIVED)
 
 
@@ -2148,15 +2166,6 @@ READ_DERIVED: tuple[tuple[str, str, str], ...] = (
      "the sibling DOS-side entry in goldbox.dos_codec.DERIVED, closed as #277 "
      "(A DOS character converted to the C64 loses the strength bonus to "
      "hit and damage, because 0x0E3 is written zero)"),
-    ("turn_class", "zero for every player character -- the undead's row, not "
-                   "the caster's",
-     "the turning routine read end to end, and a converted paladin's own "
-     "turn_power put TURN on his combat bar at his own level -- #297 (A "
-     "cleric converted from the C64 to DOS is given an undead's turning "
-     "row, because the DOS writer puts turn_power in the undead's byte) "
-     "and #288 (A converted cleric or paladin arrives on the C64 unable to "
-     "turn undead, because DOS keeps no turning byte and nothing computes "
-     "one), both closed; docs/178-turning-undead.md"),
     ("strength_index", "derived from strength and the percentile; a writer "
                        "that wants it recomputes it",
      "`goldbox.c64_codec.strength_index` computing it at write time, and "
@@ -2191,6 +2200,8 @@ READ_DERIVED: tuple[tuple[str, str, str], ...] = (
 #: checks it against `goldbox/layout.py`'s named fields.
 READ_TARGETS: dict[str, str] = (
     {c64_name: f"read as neutral {n}" for n, c64_name in DIRECT}
+    | {c64_name: f"read as neutral {n} for Pool of Radiance"
+       for n, c64_name in POOL_DIRECT}
     | {"name": "read as neutral name",
        "paladin_cures": "read as neutral paladin_cures, directly rather "
                         "than through DIRECT (#626) -- see read's own note "
@@ -2429,7 +2440,8 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 if heal_minutes else ""),
             grade("lay_on_hands_uses"))
 
-    for neutral_name, c64_name in DIRECT:
+    for neutral_name, c64_name in DIRECT + (POOL_DIRECT if deltas.key ==
+                                           "pool-of-radiance" else ()):
         # A companion's drain pair holds his template's 0xFF fill, on both
         # ports; both games' energy drain, Restoration and level gain read
         # the byte the same way, so a destination must hold what is stored.

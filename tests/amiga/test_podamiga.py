@@ -1029,15 +1029,13 @@ def test_the_reader_has_nothing_left_to_say_to_a_player():
     place of the thing it describes is what `.claude/rules/conversions.md`
     forbids in the first place.
 
-    What it reports instead is twelve names on `pod_read_dropped()`, which
-    goes to `wish/debuglog.py`: nine fields this title has on neither port,
-    `innate_effects` -- a label rather than a byte, since everything that
-    never expires is converted as a grant -- `attack_level`, which this
-    title's engine works out from the class level and keeps nowhere, and
-    `scroll_bundles`, since a scroll case is converted as its scrolls.
+    What it reports instead is fourteen names on `pod_read_dropped()`, which
+    goes to `wish/debuglog.py`. Creature type and turning class are counted
+    as unmapped until this title's bytes have been measured.
     """
     dropped = dict(amiga_pod.pod_read_dropped())
-    assert len(dropped) == 12, sorted(dropped)
+    assert len(dropped) == 14, sorted(dropped)
+    assert {"creature_type", "turn_class"} <= set(dropped)
     assert "inventory" not in dropped
     assert "granted_effects" not in dropped
     assert {"innate_effects", "attack_level"} <= set(dropped)

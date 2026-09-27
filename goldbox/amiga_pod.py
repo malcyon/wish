@@ -2024,6 +2024,10 @@ POD_WRITE_WHEN_PRESENT: tuple[tuple[str, str], ...] = (
 #: same value in every record anybody has read is in
 #: :data:`POD_WRITE_CONSTANTS`.
 POD_WRITE_DROPPED: tuple[tuple[str, str], ...] = (
+    ("creature_type", "the Pools of Darkness creature-type mapping has not "
+                      "been measured on this port"),
+    ("turn_class", "the Pools of Darkness undead turning row has not been "
+                   "measured on this port"),
     ("copper", "Pools of Darkness keeps platinum, gems and jewelry and no "
                "other coin, on both of its ports, so a source of this title "
                "has none to give"),
@@ -2302,6 +2306,10 @@ POD_READ_TRANSFORMED: tuple[tuple[str, str], ...] = (
 #:   of built-in effect ids has never been read, so everything that never
 #:   expires is converted as a grant and nothing is lost but the label.
 POD_READ_DROPPED: tuple[tuple[str, str], ...] = (
+    ("creature_type", "the Pools of Darkness creature-type mapping has not "
+                      "been measured on this port"),
+    ("turn_class", "the Pools of Darkness undead turning row has not been "
+                   "measured on this port"),
     ("copper", "Pools of Darkness keeps platinum, gems and jewelry and no "
                "other coin, on both of its ports, so no character of this "
                "title has any of the lighter coins to convert"),
@@ -2371,10 +2379,11 @@ def pod_field_disposition() -> dict[str, str]:
     and the test that keeps this half honest: a field `goldbox/neutral.py` declares
     and this names nowhere would be one dropped in silence.
 
-    This reader fills 68 of the 83 neutral fields, and 69 for a character
-    with something at duration zero in his chain.  The twelve names
+    This reader fills 68 of the 85 neutral fields, and 69 for a character
+    with something at duration zero in his chain.  The fourteen names
     :func:`pod_read_dropped` gives: **nine** are fields this *title* stores
-    on neither port, **one** is `attack_level`, which its engine works out
+    on neither port, **two** have unmeasured creature-type and turning-row
+    mappings, **one** is `attack_level`, which its engine works out
     from the class level rather than keeping anywhere, **one** is
     `innate_effects`, a label rather than a byte, since every effect that
     never expires is converted as a grant, and **one** is `scroll_bundles`,

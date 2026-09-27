@@ -210,6 +210,8 @@ FIELDS: dict[str, str] = {
     "infravision": "infravision range in feet; a property of the race, which "
                    "some ports store and others derive",
     "turn_power": "the cleric's turning strength",
+    "turn_class": "the undead creature's row in the turning table",
+    "creature_type": "the creature type code used by combat and spell rules",
     "size_small": "0 small, 1 large",
     # -- saving throws ------------------------------------------------------
     "save_paralysis": "save vs paralysis, poison and death magic",

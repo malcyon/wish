@@ -87,7 +87,8 @@ def test_the_two_ports_share_one_report_type():
     assert issubclass(amiga_pod.Report, neutral.Report)
     # And one builder makes both disposition tables.
     assert dos_codec.field_disposition() == neutral.disposition(
-        dos_codec.DIRECT, dos_codec.TRANSFORMED, dos_codec.DROPPED, "the C64's",
+        dos_codec.DIRECT + dos_codec.POOL_DIRECT,
+        dos_codec.TRANSFORMED, dos_codec.DROPPED, "the C64's",
         derived=tuple((n, w) for n, w, _run in dos_codec.DERIVED),
         constants=dos_codec.CONSTANTS)
     # Spelled `POD_WRITE_*` since #470's stage 10 split the Amiga codec by
