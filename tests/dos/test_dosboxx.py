@@ -515,7 +515,7 @@ def test_the_three_pools_bands_never_overlap():
 
     **And no band may contain `:0` or `:7`** (`#233 (The test suite takes
     the emulator displays agents need, and eight slots is no longer
-    enough)`): `:0` is Donald's own desktop and `:7` is `porlaunch.sh`'s
+    enough)`): `:0` is Donald's own desktop and `:7` is `launch.sh`'s
     `RESERVED_DISPLAY` default, so a future re-space that quietly widened a
     band across either would put a pooled instance on his screen or on top
     of a session he started by hand. Pinned here so that re-space cannot

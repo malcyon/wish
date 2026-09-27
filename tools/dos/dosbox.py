@@ -75,7 +75,7 @@ from tools.registry import scratch  # noqa: E402
 WORK = scratch.scratch_dir("dosbox")
 INST = WORK / "inst"
 
-# The pool never takes a display anything else here uses: `tools/c64/porlaunch.sh`
+# The pool never takes a display anything else here uses: `tools/c64/launch.sh`
 # defaults to :7 and `docs/123-parallel-sessions.md` allocates :10-:25 to VICE.
 #
 # #233 (The test suite takes the emulator displays agents need, and eight

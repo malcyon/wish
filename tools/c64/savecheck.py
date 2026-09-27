@@ -51,18 +51,7 @@ sys.path.insert(0, str(ROOT))
 from automap import combat as C  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
-
-# `Log`, `Terminated`, `catch_signals` and `keep_old_log` are re-exported from
-# `runlog` for the savecheck tests that use `savecheck.Log`
-# (`test_savecheck_walk_routing.py`, `test_savecheck_move_subbar.py`) and any
-# caller that imports them from here; they go once those callers import
-# `runlog` themselves.
-from tools.c64.runlog import (  # noqa: E402,F401
-    Log,
-    Terminated,
-    catch_signals,
-    keep_old_log,
-)
+from tools.c64.runlog import Log, catch_signals  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.

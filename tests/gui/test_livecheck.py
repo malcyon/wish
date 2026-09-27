@@ -6,7 +6,7 @@ each of them cost something real:
 * **Where it puts the run's own notes.** The first version redirected
   `$XDG_DATA_HOME` to keep a validation run's explored squares out of the
   player's map notes. A Flatpak *user* installation lives under
-  `$XDG_DATA_HOME/flatpak`, so `porlaunch.sh`'s `flatpak run net.sf.VICE`
+  `$XDG_DATA_HOME/flatpak`, so `launch.sh`'s `flatpak run net.sf.VICE`
   stopped finding the installed emulator, fell back to the system
   installation, defaulted to the `master` branch and wrote
   `app/net.sf.VICE/x86_64/master not installed` into the slot's `vice.log`.

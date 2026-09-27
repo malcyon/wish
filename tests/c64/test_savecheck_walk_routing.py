@@ -18,7 +18,7 @@ from conftest import load_tools_module
 
 savecheck = load_tools_module("savecheck")
 walk_step_routed = savecheck.walk_step_routed
-Log = savecheck.Log
+from tools.c64.runlog import Log  # noqa: E402
 
 
 class FakeScreen:

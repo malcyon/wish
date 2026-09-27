@@ -81,10 +81,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
 from automap import gamedisks  # noqa: E402
-from tools.curse_of_the_azure_bonds.curseload import (  # noqa: E402
-    highlighted,  # noqa: F401  (re-exported for callers of this module)
-    walk_menu,
-)
+from tools.curse_of_the_azure_bonds.curseload import walk_menu  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: Where each C64 title's refusal lives, read out of its own `GEN`.

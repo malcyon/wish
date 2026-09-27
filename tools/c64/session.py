@@ -862,7 +862,7 @@ class Session:
             # No slot claimed: the legacy path, reachable by anyone -- agent
             # or human -- who runs this file's own CLI without `--pool`, on
             # the reserved display (`RESERVED_DISPLAY` in `tools/registry/instance.py`).
-            # `porlaunch.sh`'s own default when `POR_HEADLESS` is entirely
+            # `launch.sh`'s own default when `POR_HEADLESS` is entirely
             # unset is the *visible* branch, which is what `#266 (An orphaned
             # Xephyr, launched outside the pool, left a visible window on
             # Donald's screen)` found: this path is reachable outside the

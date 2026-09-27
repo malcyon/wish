@@ -6,7 +6,7 @@ Tests for the C64 side: the driven-session code under `tools/c64/`, the memory m
 |---|---|
 | `test_arrivalscene.py` | Checks that `Session.begin_adventuring` plays through an arrival scene to the world bar, on a fake session driven by a script of bars. |
 | `test_bamsweep.py` | Checks the byte-range comparison of `tools/c64/bamsweep.py` on buffers built here, and that its fixed table matches the documented layout. |
-| `test_c64acceptance.py` | Checks that `tools/c64/acceptance.py`, and the old-name entry point `tools/c64/c64acceptance.py`, stage exactly the bytes asked for, the same bytes `effectdrive.py` and `traitdrive.py` write, refuses a step list or title it cannot run before claiming a slot, and reads the camp list, the whom menu and the item list's Detect Magic mark off screens composed from the game's own. |
+| `test_c64acceptance.py` | Checks that `tools/c64/acceptance.py` stages exactly the bytes asked for, the same bytes `effectdrive.py` and `traitdrive.py` write, refuses a step list or title it cannot run before claiming a slot, and reads the camp list, the whom menu and the item list's Detect Magic mark off screens composed from the game's own. |
 | `test_c64addprobe.py` | Checks that `tools/c64/c64addprobe.py` refuses a run with no save or no disks before it claims an emulator slot. |
 | `test_c64nametable.py` | Checks the six places `GEN` touches the `+$C00` name table of a C64 save, the filename prefix it uses, and that Pool of Radiance has no such table. |
 | `test_c64outdoor.py` | Checks that `outdoor_request` in `tools/c64/c64outdoor.py` builds a buffer that reads as a party set out on the requested travel window. |
@@ -22,7 +22,7 @@ Tests for the C64 side: the driven-session code under `tools/c64/`, the memory m
 | `test_inventorycheck.py` | Checks the item-list reader and the edit, add and remove steps of `tools/c64/inventorycheck.py` on Curse and Silver Blades. |
 | `test_laterbattle.py` | Checks that the `--goto` tour of `ssb_fight` charges a leg the steps it really took against its budget. |
 | `test_laterthac0.py` | Checks that `tools/c64/laterthac0.py` locates the THAC0 tables of the later DOS titles and that every record reproduces from them. |
-| `test_launch.py` | Checks, with stub `Xvfb`, `xdotool` and `flatpak` programs, that `launch.sh` and the old-name `porlaunch.sh` exec the same emulator command under the caller's PID, die together with their process group, and refuse a missing disk alike. |
+| `test_launch.py` | Checks, with stub `Xvfb`, `Xephyr`, `xdotool` and `flatpak` programs, that `launch.sh` execs the whole emulator command under the caller's PID, dies with its process group and refuses a missing disk. |
 | `test_memory.py` | Checks that the C64 memory map has sane, uniquely named regions that agree with the constants the decoders use and the save-file ranges. |
 | `test_outdoor_boat.py` | Checks that the driver names a boat landing's question instead of pressing at it as if it were a wall. |
 | `test_outdoordrive.py` | Checks that the session driver reads the travel grid's status line and walks a party there, on a fake session that records its keys. |

@@ -23,7 +23,8 @@ savecheck = load_tools_module("savecheck")
 session = load_tools_module("session")
 
 answer_bars = savecheck.answer_bars
-Log = savecheck.Log
+from tools.c64.runlog import Log  # noqa: E402
+
 Session = session.Session
 MOVE_SUBBAR = session.MOVE_SUBBAR
 

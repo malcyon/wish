@@ -1,4 +1,4 @@
-"""The half of `tools/c64/c64acceptance.py` a machine with no emulator can check.
+"""The half of `tools/c64/acceptance.py` a machine with no emulator can check.
 
 The driver stages effect rows, trait slots and item bytes into a copy of a C64
 save, boots it and reads the camp list of spells in effect and a character's
@@ -2918,14 +2918,13 @@ def test_to_world_bar_sends_no_return_in_the_gap_and_wait_bar_still_does_later(
     assert 0x0D in sess.kernal
 
 
-# --- the old name's entry point -------------------------------------------------------
+# --- the command line -----------------------------------------------------------------
 
 def _entry_points():
     import sys
     repo = pathlib.Path(A.__file__).resolve().parents[2]
-    return [[sys.executable, str(repo / "tools" / "c64" / "c64acceptance.py")],
-            [sys.executable, str(repo / "tools" / "c64" / "acceptance.py")],
-            [sys.executable, "-m", "tools.c64.c64acceptance"]], repo
+    return [[sys.executable, str(repo / "tools" / "c64" / "acceptance.py")],
+            [sys.executable, "-m", "tools.c64.acceptance"]], repo
 
 
 def _run_entry(cmd, repo, *args):
@@ -2934,25 +2933,14 @@ def _run_entry(cmd, repo, *args):
                           timeout=120)
 
 
-def test_the_old_name_is_only_an_entry_point_to_the_implementation():
-    import ast
-    import os
-
-    from tools.c64 import c64acceptance as old
-
-    assert old.main is A.main
-    defined = {n for n in vars(old) if not n.startswith("__")}
-    assert defined <= {"main", "pathlib", "sys", "annotations"}
-    path = pathlib.Path(old.__file__)
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    assert not [n for n in ast.walk(tree)
-                if isinstance(n, (ast.FunctionDef, ast.ClassDef))]
-    assert "subprocess" not in path.read_text(encoding="utf-8")
-    if os.name != "nt":
-        assert os.access(path, os.X_OK)
+def test_the_command_line_answers_help():
+    cmds, repo = _entry_points()
+    for cmd in cmds:
+        got = _run_entry(cmd, repo, "--help")
+        assert got.returncode == 0 and "--stage-only" in got.stdout
 
 
-def test_every_entry_point_stages_the_same_evidence(tmp_path):
+def test_the_command_line_stages_the_same_evidence_either_way(tmp_path):
     cmds, repo = _entry_points()
     seen = []
     for i, cmd in enumerate(cmds):
@@ -2965,11 +2953,11 @@ def test_every_entry_point_stages_the_same_evidence(tmp_path):
         staged = {k: v for k, v in summary["staged"].items()
                   if k not in ("source", "staged")}
         seen.append((sorted(summary), staged))
-    assert seen[0] == seen[1] == seen[2]
+    assert seen[0] == seen[1]
     assert seen[0][1]["effects"] == [[63, 5, 0xFF, 0x0A, 0x03]]
 
 
-def test_every_entry_point_refuses_a_bad_step_list_with_2(tmp_path):
+def test_the_command_line_refuses_a_bad_step_list_with_2(tmp_path):
     cmds, repo = _entry_points()
     for i, cmd in enumerate(cmds):
         got = _run_entry(cmd, repo, "--title", "pool", "--save",
@@ -2978,12 +2966,12 @@ def test_every_entry_point_refuses_a_bad_step_list_with_2(tmp_path):
         assert got.returncode == 2, got.stderr
 
 
-def test_every_entry_point_compares_two_runs_alike(tmp_path):
+def test_the_command_line_compares_two_runs(tmp_path):
     cmds, repo = _entry_points()
     runs = []
     for name in ("a", "b"):
         out = tmp_path / name
-        got = _run_entry(cmds[1], repo, "--title", "pool", "--save",
+        got = _run_entry(cmds[0], repo, "--title", "pool", "--save",
                          str(_fixture_disk(tmp_path)), "--stage-only",
                          "--steps", "load", "--out", str(out))
         assert got.returncode == 0, got.stderr
@@ -2993,7 +2981,7 @@ def test_every_entry_point_compares_two_runs_alike(tmp_path):
         got = _run_entry(cmd, repo, "--compare", *runs)
         assert got.returncode == 0, got.stderr
         outputs.append(got.stdout)
-    assert outputs[0] == outputs[1] == outputs[2]
+    assert outputs[0] == outputs[1]
 
 
 def test_a_terminating_signal_mid_step_is_lost_and_releases_the_slot(tmp_path, monkeypatch):

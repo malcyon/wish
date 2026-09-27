@@ -5,7 +5,7 @@
 reason this module exists.
 
 **Nothing here ever kills a process by name.**  `tools/c64/session.py` and
-`tools/c64/porlaunch.sh` used to `pkill -x x64sc` on every launch and every close,
+`tools/c64/launch.sh` used to `pkill -x x64sc` on every launch and every close,
 which under a pool is not a bug but a massacre: one agent starting a run killed
 every other agent's emulator and Donald's own game with it.  Teardown is
 `os.killpg` on the process group *this slot* started, and reclaiming somebody
@@ -204,7 +204,7 @@ class Slot:
     # -- what an instance is made of --------------------------------------
 
     def monflags(self) -> str:
-        """The launch flags `porlaunch.sh` passes through as `$MONFLAGS`."""
+        """The launch flags `launch.sh` passes through as `$MONFLAGS`."""
         return (
             f"-binarymonitor -binarymonitoraddress 127.0.0.1:{self.port} "
             f"-remotemonitor -remotemonitoraddress 127.0.0.1:{self.text_port}"
@@ -221,7 +221,7 @@ class Slot:
         over whatever `os.environ` already held -- an unconditional `"1"`
         here would silently overrule a human who exported `POR_HEADLESS=0` to
         watch a run. Reading it from `os.environ` first, and only defaulting
-        when it is absent, is what lets that override reach `porlaunch.sh`.
+        when it is absent, is what lets that override reach `launch.sh`.
         """
         return {
             "POR_SLOT": str(self.n),
@@ -429,7 +429,7 @@ def _reap_held(slot: Slot, timeout: float = 8.0) -> str:
     is nobody's.  So a recorded pgid is killed whichever row it is on.
 
     That is a correction to `docs/123` §3.4, which killed only on the two rows
-    where the port answers.  `porlaunch.sh` passes `--die-with-parent`, so a
+    where the port answers.  `launch.sh` passes `--die-with-parent`, so a
     crashed holder's *VICE* goes with it and the port falls silent -- but the
     Xvfb or Xephyr it started has no such link and survives, and under the old
     reading nothing ever collected it.

@@ -720,7 +720,7 @@ def test_two_slots_held_by_one_process_are_flagged_shared(pool):
 @posix
 def test_a_slot_held_by_a_different_process_is_not_flagged_shared(pool):
     """A subprocess started with its own session (`start_new_session=True`,
-    the same flag `porlaunch.sh` runs under) gets its own process group --
+    the same flag `launch.sh` runs under) gets its own process group --
     without it, a plain child shares the parent's, which would make every
     such fork look shared and defeat the point of the check."""
     a = instance.claim()
@@ -1022,7 +1022,7 @@ def _listen_and_pid_file(sock_path: Path, pid_file: Path) -> str:
 
 @posix
 def test_stray_displays_ignores_a_socket_whose_owner_still_has_a_live_parent(tmp_path):
-    """An ordinary launch in progress -- porlaunch.sh's own Xephyr while
+    """An ordinary launch in progress -- launch.sh's own Xephyr while
     `Session.launch()` is still its parent -- must not be reported.  Only
     #266's actual shape, the launcher already gone, is."""
     x11_dir = tmp_path / "X11-unix"
@@ -1106,7 +1106,7 @@ def test_stray_displays_ignores_everything_inside_a_pools_own_band(tmp_path, mon
 def test_session_no_slot_launch_is_headless_by_default(monkeypatch, tmp_path):
     """`tools/c64/session.py`'s legacy path -- reachable by anyone who runs the
     CLI without claiming a pool slot -- used to fall through to
-    `porlaunch.sh`'s own visible default whenever nothing set `POR_HEADLESS`.
+    `launch.sh`'s own visible default whenever nothing set `POR_HEADLESS`.
     Donald ruled, 2026-09-07, that it goes headless unless something asks
     otherwise."""
     monkeypatch.setattr(session, "HERE", str(tmp_path))
@@ -1127,7 +1127,7 @@ def test_session_no_slot_launch_is_headless_by_default(monkeypatch, tmp_path):
 def test_session_no_slot_launch_still_honours_an_explicit_por_headless(monkeypatch, tmp_path):
     """The same rule `Slot.env()` already uses (#147): an explicit
     `POR_HEADLESS=0` a human exported to watch a run still reaches
-    `porlaunch.sh` -- the change is only to the default when nothing is
+    `launch.sh` -- the change is only to the default when nothing is
     set."""
     monkeypatch.setattr(session, "HERE", str(tmp_path))
     monkeypatch.setenv("POR_HEADLESS", "0")
@@ -1258,7 +1258,7 @@ def test_disks_are_copied_into_the_slot(pool):
 
 
 @posix
-def test_the_slot_env_is_what_porlaunch_reads(pool):
+def test_the_slot_env_is_what_launch_reads(pool):
     with instance.claim() as slot:
         env = slot.env()
         assert env["POR_DISPLAY"] == slot.display
@@ -1280,7 +1280,7 @@ def test_a_claimed_slot_is_headless_by_default(pool, monkeypatch):
 @posix
 def test_a_human_watching_a_run_still_overrides_headless(pool, monkeypatch):
     """A human who exports `POR_HEADLESS=0` to watch a run must still reach
-    `porlaunch.sh` with that value: every caller builds the launch environment
+    `launch.sh` with that value: every caller builds the launch environment
     through `instance.launch_env()`, which merges `slot.env()` in last, so
     `slot.env()`'s own value is what wins, and it must not silently overrule
     an explicit `0` sitting in `os.environ`."""
@@ -1359,7 +1359,7 @@ def _code_lines(path: Path) -> list[str]:
             if ln.strip() and not ln.lstrip().startswith("#")]
 
 
-def test_porlaunch_disables_sound_in_the_headless_branch_only():
+def test_launch_disables_sound_in_the_headless_branch_only():
     """#147: Donald can hear a headless emulator through his speakers even
     though it draws no window. `+sound` (VICE's own flag, from `-help`) must
     sit in the `POR_HEADLESS=1` (`Xvfb`) branch, and must not reach the
@@ -1372,7 +1372,7 @@ def test_porlaunch_disables_sound_in_the_headless_branch_only():
     assert "+sound" not in visible_part
 
 
-def test_porlaunch_kills_nothing():
+def test_launch_kills_nothing():
     """The single most important change in `docs/123-parallel-sessions.md`.
 
     The word survives in the comment that explains why the calls are gone;

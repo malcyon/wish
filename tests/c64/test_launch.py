@@ -1,11 +1,10 @@
-"""Checks `tools/c64/launch.sh` and the old-name `tools/c64/porlaunch.sh` against stub programs on PATH."""
+"""Checks `tools/c64/launch.sh` against stub programs on PATH."""
 from __future__ import annotations
 
 import os
 import pathlib
 import signal
 import subprocess
-import sys
 import time
 
 import pytest
@@ -13,7 +12,7 @@ import pytest
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="POSIX launcher")
 
 C64 = pathlib.Path(__file__).resolve().parents[2] / "tools" / "c64"
-ENTRY_POINTS = ["launch.sh", "porlaunch.sh"]
+SCRIPT = "launch.sh"
 
 FLATPAK = """#!/bin/sh
 {
@@ -28,6 +27,10 @@ FLATPAK = """#!/bin/sh
 exec sleep 60
 """
 XVFB = "#!/bin/sh\nexec sleep 60\n"
+XEPHYR = """#!/bin/sh
+for a in "$@"; do echo "arg=$a"; done > "$STUB_XEPHYR"
+exec sleep 60
+"""
 XDOTOOL = "#!/bin/sh\nexit 0\n"
 
 
@@ -35,13 +38,15 @@ XDOTOOL = "#!/bin/sh\nexit 0\n"
 def stubs(tmp_path):
     bindir = tmp_path / "bin"
     bindir.mkdir()
-    for name, body in (("flatpak", FLATPAK), ("Xvfb", XVFB), ("xdotool", XDOTOOL)):
+    for name, body in (("flatpak", FLATPAK), ("Xvfb", XVFB), ("Xephyr", XEPHYR),
+                       ("xdotool", XDOTOOL)):
         path = bindir / name
         path.write_text(body, encoding="utf-8")
         path.chmod(0o755)
     record = tmp_path / "record.txt"
     env = {**os.environ, "PATH": f"{bindir}{os.pathsep}{os.environ['PATH']}",
-           "STUB_RECORD": str(record), "POR_HEADLESS": "1", "POR_DISPLAY": ":97",
+           "STUB_RECORD": str(record),
+           "STUB_XEPHYR": str(tmp_path / "xephyr.txt"), "POR_HEADLESS": "1", "POR_DISPLAY": ":97",
            "POR_SLOT": "3", "POR_VICERC": str(tmp_path / "vicerc"),
            "MONFLAGS": "-binarymonitor -binarymonitoraddress 127.0.0.1:6599",
            "PORFLAGS": "-extra"}
@@ -86,39 +91,49 @@ def _group_members(pgid):
     return out.stdout.split()
 
 
-@pytest.mark.parametrize("script", ENTRY_POINTS)
-def test_the_emulator_runs_under_the_callers_pid_with_the_slots_environment(stubs, script):
+def _vice_command(env, sound):
+    return (["run", "--die-with-parent", "--share=network", "--env=DISPLAY=:97",
+             "--command=x64sc", "net.sf.VICE", "-config", env["POR_VICERC"],
+             "-speed", "100", "-VICIIshowstatusbar", "-VICIIfilter", "0",
+             "-VICIIaspectmode", "2", "-VICIIglfilter", "1",
+             "-binarymonitor", "-binarymonitoraddress", "127.0.0.1:6599"]
+            + (["+sound"] if sound else []) + ["-extra", "-autostart", "DISK.D64"])
+
+
+def test_the_emulator_runs_under_the_callers_pid_with_the_slots_environment(stubs):
     env, record = stubs
-    proc = _launch(script, env)
+    proc = _launch(SCRIPT, env)
     try:
         fields, args = _recorded(record)
         assert int(fields["pid"]) == proc.pid
         assert fields["display"] == ":97" and fields["por_slot"] == "3"
-        assert args[:2] == ["run", "--die-with-parent"]
-        assert "-config" in args and "+sound" in args and "-extra" in args
-        assert "-binarymonitoraddress" in args and "127.0.0.1:6599" in args
-        assert args[-2:] == ["-autostart", "DISK.D64"]
+        assert args == _vice_command(env, sound=True)
     finally:
         _stop(proc)
 
 
-def test_both_names_pass_the_same_arguments(stubs, tmp_path):
+def test_a_visible_launch_opens_a_titled_resizeable_display_and_stays_silent(
+        stubs, tmp_path):
     env, record = stubs
-    seen = []
-    for script in ENTRY_POINTS:
-        record.unlink(missing_ok=True)
-        proc = _launch(script, env)
-        try:
-            seen.append(_recorded(record)[1])
-        finally:
-            _stop(proc)
-    assert seen[0] == seen[1]
+    env = {**env, "POR_HEADLESS": "0"}
+    proc = _launch(SCRIPT, env)
+    try:
+        _, args = _recorded(record)
+        assert args == _vice_command(env, sound=False)
+        xephyr = tmp_path / "xephyr.txt"
+        end = time.time() + 10
+        while time.time() < end and not xephyr.exists():
+            time.sleep(0.05)
+        assert xephyr.read_text().splitlines() == [
+            "arg=:97", "arg=-screen", "arg=1400x1050", "arg=-resizeable",
+            "arg=-title", "arg=PoR (slot 3)"]
+    finally:
+        _stop(proc)
 
 
-@pytest.mark.parametrize("script", ENTRY_POINTS)
-def test_a_group_terminate_ends_the_launch_and_its_display(stubs, script):
+def test_a_group_terminate_ends_the_launch_and_its_display(stubs):
     env, record = stubs
-    proc = _launch(script, env)
+    proc = _launch(SCRIPT, env)
     _recorded(record)
     assert len(_group_members(proc.pid)) >= 2          # the emulator and the display
     os.killpg(proc.pid, signal.SIGTERM)
@@ -129,19 +144,10 @@ def test_a_group_terminate_ends_the_launch_and_its_display(stubs, script):
     assert _group_members(proc.pid) == []
 
 
-def test_a_missing_disk_is_refused_alike_and_starts_nothing(stubs):
+def test_a_missing_disk_is_refused_and_starts_nothing(stubs):
     env, record = stubs
-    codes = []
-    for script in ENTRY_POINTS:
-        proc = _launch(script, env, disk=None)
-        codes.append(proc.wait(timeout=15))
-        assert not record.exists()
-    assert codes[0] != 0 and codes[0] == codes[1]
+    proc = _launch(SCRIPT, env, disk=None)
+    assert proc.wait(timeout=15) != 0
+    assert not record.exists()
 
 
-def test_the_old_name_is_only_an_exec_of_the_new_one():
-    lines = [ln for ln in (C64 / "porlaunch.sh").read_text().splitlines()
-             if ln.strip() and not ln.startswith("#")]
-    assert lines == ['exec "$(dirname -- "${BASH_SOURCE[0]}")/launch.sh" "$@"']
-    if sys.platform != "win32":
-        assert os.access(C64 / "porlaunch.sh", os.X_OK)

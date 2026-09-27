@@ -74,7 +74,7 @@ from tools.registry import scratch  # noqa: E402
 #: **Not `$XDG_DATA_HOME`, and that is the whole point of the note.** The first
 #: version of this file assigned that variable, which is what `automap.paths.
 #: data_dir` reads -- and every VICE this tool launches then failed to start
-#: at all: `porlaunch.sh` runs the emulator under Flatpak, a Flatpak *user*
+#: at all: `launch.sh` runs the emulator under Flatpak, a Flatpak *user*
 #: installation lives under `$XDG_DATA_HOME/flatpak`, and with the variable
 #: moved `flatpak run net.sf.VICE` could not see the installed application. It
 #: fell back to the system installation, defaulted to the `master` branch and

@@ -176,10 +176,10 @@ def test_handle_prompt_builds_the_side_path_with_os_path_join(
     assert attached == [os.path.join(str(tmp_path), "SIDE3.D64")]
 
 
-# -- launch(): the porlaunch.sh and vice.log paths ----------------------------
+# -- launch(): the launch.sh and vice.log paths ----------------------------
 
 
-def test_launch_builds_the_porlaunch_and_log_paths_with_os_path_join(
+def test_launch_builds_the_launch_and_log_paths_with_os_path_join(
         tmp_path, monkeypatch):
     spy = JoinSpy()
     monkeypatch.setattr(session.os.path, "join", spy)

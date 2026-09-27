@@ -326,10 +326,3 @@ def test_the_record_going_does_not_raise_out_of_the_failure_handler(
     log.emit = dead                        # the record has gone too
     log.say("the line nobody hears")       # must not raise
     assert log.talking is False
-
-
-@pytest.mark.parametrize("name", ["Log", "catch_signals", "Terminated",
-                                  "keep_old_log"])
-def test_savecheck_re_exports_the_runlog_names_unchanged(name):
-    """Callers that still import these from `savecheck` get the one object."""
-    assert getattr(savecheck, name) is getattr(runlog, name)

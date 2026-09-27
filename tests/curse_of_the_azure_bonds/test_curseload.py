@@ -338,12 +338,6 @@ def test_walk_menu_answers_a_prompt_when_the_label_is_absent(monkeypatch):
     assert menu.kernal == [] and menu.xtest == []
 
 
-def test_the_dual_class_tool_shares_the_walker():
-    from tools.c64 import dualclassagain
-    assert dualclassagain.walk_menu is curseload.walk_menu
-    assert dualclassagain.highlighted is curseload.highlighted
-
-
 def test_walk_menu_counts_the_arrows_from_the_nearest_highlighted_row():
     """Border rows are white too, so the walk trusts the highlight nearest the label."""
     menu = Menu({10: "     GO"}, hot=2, also_hot=(11,))

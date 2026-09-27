@@ -79,7 +79,7 @@ def main() -> int:
 
     # `Slot.env()` now defaults `POR_HEADLESS` to `"1"` itself (#147), and
     # this tool always claims a slot before building a `Session` -- there is
-    # no path here that reaches `porlaunch.sh` without one -- so the
+    # no path here that reaches `launch.sh` without one -- so the
     # `os.environ.setdefault("POR_HEADLESS", "1")` that used to live here is
     # redundant and has been removed. An explicit `POR_HEADLESS=0`, for
     # someone deliberately watching a run, still reaches the launcher: it is
