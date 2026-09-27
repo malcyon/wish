@@ -271,6 +271,7 @@ def _darkness_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, by
 # letter and Return into the journal question that follows Begin Adventuring, then walks to the
 # camp save picker, before any save letter. The accept route answers the same question the same
 # way, with explicit keys and no answerer, between the control save and the walk.
+# The game answers the camp save with its quit question, which the accept route answers `N`.
 # The key that answers `INSERT DISK 2 AND PRESS A KEY` is a guess for the measuring boot to confirm.
 DISK2_INSERT = ((0, "disk2", "SPACE"), "loaded_menu", "insert")
 
@@ -289,7 +290,7 @@ DARKNESS = AmigaTitle(
         ("S", "save_picker", "key"), ("F", "loaded_menu", "write"),
         ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", "world", "key"),
         ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
-        ("G", "camp", "write"),
+        ("G", "exit_game", "write"), ("N", "camp", "key"),
     ),
     # Ends at the camp save picker and writes nothing.
     measure_route=(
@@ -310,14 +311,16 @@ DARKNESS = AmigaTitle(
     plain_keys=(("E", "loaded_menu"), ("E", "camp")),
     strict=frozenset({"party_menu", "load_from", "load_picker", "disk2_prompt", "loaded_menu",
                       "sheet", "save_picker", "journal", "journal_answer", "world",
-                      "camp", "camp_save_picker"}),
+                      "camp", "camp_save_picker", "exit_game"}),
     disk_prompts=frozenset({"disk2_prompt"}),
     # The `disk2_prompt` wait of 10 s is a guess until the measuring boot times the prompt.
     min_waits={"party_menu": 20.0, "load_from": 20.0, "load_picker": 10.0,
                "disk2_prompt": 10.0, "loaded_menu": 20.0,
                "sheet": 5.0, "save_picker": 10.0, "journal": 45.0, "journal_answer": 3.0,
                "world": 45.0, "world_after_move": 5.0,
-               "camp": 10.0, "camp_save_picker": 10.0},
+               "camp": 10.0, "camp_save_picker": 10.0,
+               # Copied from Curse, which meets the same quit question after its camp save.
+               "exit_game": 20.0},
     interstitials=(
         ("yes_no", ("keys", "N"), frozenset({"world"}), 1),
         ("continue", ("keys", "RET"), frozenset({"world"}), 3),

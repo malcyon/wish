@@ -391,11 +391,11 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
 DARK_START = {"area": 2, "x": 1, "y": 2, "facing": geo.EAST}
 DARK_LATER = dict(DARK_START, x=2)
 DARK_STATES = ("title", "journal", "journal_answer", "party_menu", "load_from", "load_picker", "disk2_prompt",
-               "loaded_menu", "sheet", "save_picker", "world", "camp", "camp_save_picker")
+               "loaded_menu", "sheet", "save_picker", "world", "camp", "camp_save_picker", "exit_game")
 MEASURE_STATES = tuple(s for s in DARK_STATES if s != "title")  # boot crops are not named "title"
 DARK_FIRST_SCREEN = {}  # the title crop is recognised by its own name, and nothing precedes it
-DARK_KEYS = ["P", "L", "P", "B", "SPACE", "V", "E", "S", "F", "B", "X", "RET", "NP8", "E", "S", "G"]
-DARK_ACCEPT_STATES = ("journal", "journal_answer", "world", "camp")
+DARK_KEYS = ["P", "L", "P", "B", "SPACE", "V", "E", "S", "F", "B", "X", "RET", "NP8", "E", "S", "G", "N"]
+DARK_ACCEPT_STATES = ("journal", "journal_answer", "world", "camp", "exit_game")
 
 
 class DarkGuest(TitleGuest):
@@ -479,7 +479,7 @@ def test_darkness_accept_order_puts_the_control_save_before_the_walk_and_the_aft
     guest, result = _dark_run(tmp_path, clock)
     order = [c[2] if c[0] == "press" else "insert" for c in guest.calls
              if c[0] in ("press", "insert")]
-    assert order == "P L P B insert SPACE V E S F B X RET NP8 E S G".split()
+    assert order == "P L P B insert SPACE V E S F B X RET NP8 E S G N".split()
     assert result["events"] and not any("answer" in e or "interstitial" in e
                                         for e in result["events"])
 
@@ -497,8 +497,10 @@ def test_darkness_accept_route_answers_the_journal_with_explicit_steps_and_asks_
     assert darkness.route[8:] == (
         ("F", "loaded_menu", "write"), ("B", "journal", "key"),
         ("X", "journal_answer", "key"), ("RET", "world", "key"), ("NP8", "world", "move"),
-        ("E", "camp", "key"), ("S", "camp_save_picker", "key"), ("G", "camp", "write"))
-    assert {"journal", "journal_answer", "world", "camp"} <= darkness.strict
+        ("E", "camp", "key"), ("S", "camp_save_picker", "key"), ("G", "exit_game", "write"),
+        ("N", "camp", "key"))
+    assert {"journal", "journal_answer", "world", "camp", "exit_game"} <= darkness.strict
+    assert darkness.min_waits["exit_game"] == 20.0
     assert [row[0] for row in darkness.interstitials] == ["yes_no", "continue"]
     assert darkness.interstitials == (
         ("yes_no", ("keys", "N"), frozenset({"world"}), 1),
@@ -527,7 +529,7 @@ def test_darkness_route_and_measure_route_are_pinned_and_write_only_f_and_g():
         ("S", "save_picker", "key"), ("F", "loaded_menu", "write"), ("B", "journal", "key"),
         ("X", "journal_answer", "key"), ("RET", "world", "key"),
         ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
-        ("G", "camp", "write"))
+        ("G", "exit_game", "write"), ("N", "camp", "key"))
     assert darkness.measure_route == head + (
         ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", "world", "key"),
         ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"))
