@@ -21,6 +21,7 @@ from goldbox import (
     amiga_pod,
     amiga_por,
     amiga_port,
+    amiga_savegame,
     c64_codec,
     c64_port,
     dos_codec,
@@ -491,6 +492,112 @@ def test_save_as_dos_keeps_a_blessed_c64_character_blessed(tmp_path):
     effects.write_effect(payload, 62, 13, 0, 0x02, 0x01)
     with pytest.raises(saveplan.DroppedFields) as err:
         _dos_plan(tmp_path, payload, save1)
+    assert "effect 13" in str(err.value)
+
+
+# --- Save As Amiga keeps a running C64 spell ------------------------------------
+
+#: title, C64 game constant, the first character's name, and the C64
+#: magnitude byte staged for that title (Pool's committed fixture BRUTUS,
+#: Curse's and Silver Blades' engine-resave specimens' PHILIPPE and
+#: MORGAINE), measured on #661's own comment of 2026-09-27T09:43:18Z.
+_AMIGA_BLESS_CASES = [
+    pytest.param("pool", c64_port.POOL_OF_RADIANCE, "BRUTUS", 0x01, id="pool"),
+    pytest.param("curse", c64_port.CURSE_OF_THE_AZURE_BONDS, "PHILIPPE", 0x05,
+                 id="curse"),
+    pytest.param("ssb", c64_port.SECRET_OF_THE_SILVER_BLADES, "MORGAINE", 0x05,
+                 id="ssb"),
+]
+
+
+def _amiga_bless_disk(tmp_path, title, magnitude, refuse=False):
+    """A C64 party with a 47-minute Bless staged on slot 0, as a `.d64`
+    `roster.Party` can open. `refuse=True` also stages an id-13 row, no rule
+    converts, the way `test_save_as_dos_keeps_a_blessed_c64_character_blessed`
+    does. Pool uses the committed fixture; the later titles use the
+    engine-resave specimen `tools/dos/acceptance.py` stages for the same run.
+    `None` when the later title's specimen is not on this machine.
+    """
+    rows = [(0x3F, 1, 0, 0x2F, magnitude)]
+    if refuse:
+        rows.append((0x3E, 13, 0, 0x2F, magnitude))
+    disk = tmp_path / f"{title}-{'refused' if refuse else 'source'}.d64"
+    if title == "pool":
+        payload, save1 = _fixture_payload()
+        for row in rows:
+            effects.write_effect(payload, *row)
+        disk.write_bytes(dos_codec.save_disk(bytes(payload), save1,
+                                             POOL_OF_RADIANCE).to_bytes())
+        return disk
+    from tools.dos import acceptance as dosacceptance
+    base = dosacceptance.c64_base(title)
+    if base is None or not base.is_file():
+        return None
+    data, _staged = dosacceptance.staged_disk(base, title, rows)
+    disk.write_bytes(data)
+    return disk
+
+
+def _amiga_bless_character(data: bytes, title, game, name):
+    """The named character, read back off a written Amiga `.adf`, as
+    `read_slot`/`read_por_characters` give it -- the object
+    `amiga_later.to_neutral_later`/`amiga_por.to_neutral` reads."""
+    from goldbox.amiga_adf import AmigaDisk
+
+    written = AmigaDisk(bytearray(data))
+    if title == "pool":
+        drawer = amiga_savegame.por_save_drawer(written)
+        chars = amiga_savegame.read_por_characters(written, "A", drawer)
+    else:
+        chars = amiga_savegame.read_slot(written, "A", game.key).characters
+    return next(c for c in chars if c.name == name)
+
+
+@pytest.mark.parametrize("title, game, name, magnitude", _AMIGA_BLESS_CASES)
+def test_save_as_amiga_keeps_a_blessed_c64_character_blessed(
+        tmp_path, title, game, name, magnitude):
+    """The Amiga half of `test_save_as_dos_keeps_a_blessed_c64_character_
+    blessed`: a C64 party under a running Bless converts to the Amiga with
+    nothing dropped, and the written save's node holds the same minutes and
+    magnitude; an id-13 row makes Save As refuse instead."""
+    from editor import convert, roster, saveplan
+    from tools.convert import convertdrops
+
+    disk = _amiga_bless_disk(tmp_path, title, magnitude)
+    if disk is None:
+        pytest.skip(f"needs the {title} C64 specimen")
+    party = roster.Party(str(disk))
+    amiga = convertdrops.amiga_game_disks(tmp_path).get(game.key)
+    if amiga is None:
+        pytest.skip(f"needs {game.key}'s own Amiga game disk")
+    source = party.source or convert.Source.detect(party.path)
+    try:
+        assets = saveplan.resolve_assets(source, "amiga",
+                                         game_files=convertdrops.game_files,
+                                         amiga_disk=amiga)
+    except saveplan.MissingAssets:
+        pytest.skip(f"needs {game.key}'s own C64 disks")
+
+    plan = saveplan.prepare_save_as(party, "amiga", tmp_path / "out.adf", assets)
+    assert plan.report.dropped == [] and saveplan.losses(plan.report) == []
+    (image,) = plan.files
+    char = _amiga_bless_character(plan.files[image], title, game, name)
+    node = bytes(char.effects[0])
+    assert (node[0], node[1], node[2:4], node[4]) == (1, 0, b"\x00\x2f", magnitude)
+    if title == "pool":
+        running = amiga_por.to_neutral(char).get("running_effects")
+    else:
+        running = amiga_later.to_neutral_later(char).get("running_effects")
+    assert [bytes(r)[:5] for r in running] == [
+        bytes((1, 0x2F, 0x00, magnitude, 0x00))]
+
+    refused = _amiga_bless_disk(tmp_path, title, magnitude, refuse=True)
+    if refused is None:
+        pytest.skip(f"needs the {title} C64 specimen")
+    party = roster.Party(str(refused))
+    source = party.source or convert.Source.detect(party.path)
+    with pytest.raises(saveplan.DroppedFields) as err:
+        saveplan.prepare_save_as(party, "amiga", tmp_path / "out2.adf", assets)
     assert "effect 13" in str(err.value)
 
 

@@ -1178,13 +1178,15 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
               and e[0] != LAY_ON_HANDS_AMIGA_ID]
     if running:
         # Every node on the Amiga Curse and Silver Blades disks is at
-        # duration zero (29 of 29), so the byte order of the big-endian word
-        # is PROBABLE and has never been read against a value here.
+        # duration zero (29 of 29), but the big-endian order is CONFIRMED
+        # from the expiry routine's own subtract instruction (#661,
+        # `docs/231-where-lay-on-hands-lives.md`,
+        # `docs/202-the-amiga-effect-node-pad.md`), not from a specimen.
         out.set("running_effects", running,
                 "the Amiga effect nodes with a duration left, each re-cut to "
                 "the nine bytes the DOS .SPC record holds, the big-endian "
                 "word read as game-clock minutes",
-                Confidence.PROBABLE)
+                Confidence.CONFIRMED)
     if granted:
         out.set("granted_effects", granted,
                 "the Amiga effect nodes that never expire, each re-cut to "
