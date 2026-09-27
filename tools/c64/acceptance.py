@@ -35,7 +35,7 @@ bytes with what it replaced.
 | `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for SECONDS (120) |
 | `cast CASTER:SPELL>TARGET` | Curse only: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
-| `ready WHO>LABEL` | Pool only: `VIEW WHO > ITEMS`, toggle the item named LABEL (`tools/c64/traitask.py`'s `toggle_item`), and read every party record and the effect array before and after |
+| `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, toggle the item named LABEL (`tools/c64/traitask.py`'s `toggle_item`), and read every party record and the effect array before and after |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`); Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
@@ -847,17 +847,19 @@ class PoolRun:
         """`ready WHO>LABEL`: toggle one item and read every party record and
         the effect array before and after, Pool of Radiance only.
 
+        Reaches the item list through camp, not the world's `VIEW`: a
+        magical item's READY toggle (`LIBRARY $4630`) is refused with `NOT
+        HERE` unless `$6DE4` is set, which only camp sets (#694).
         `tools/c64/traitask.py`'s `SLOT_BASE`, `SLOT_STRIDE` and `EFFECTS`
         are Pool's own layout, the same one `traitask.stage_items` and
         `traitask.toggle_item` already drive; `main` refuses this step for
         Curse and Silver Blades.
         """
         who, label = parse_ready(arg)
-        self.open_sheet(who)
-        if not self.choose_bar("ITEMS", timeout=15) or self.wait_rows(
-                lambda r: ITEM_BAR in r[24] and S.SHEET_BAR not in r[24], 20) is None:
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        if not traitask.open_items(self.sess, self.log, who, label, "ready"):
             raise self.fail("items", "ITEMS never put up the item list")
-        self.sess.settle(1)
         with self.sess.mon(8) as m:
             before_records = [bytes(traitask.live_record(m, slot))
                               for slot in range(PARTY_SLOTS)]
@@ -877,6 +879,7 @@ class PoolRun:
             for slot in range(PARTY_SLOTS)}
         effects_diff = traitask.diff_bytes(before_effects, after_effects,
                                            traitask.EFFECTS[0])
+        traitask.leave_items(self.sess, self.log)
         self.to_world()
         return {"who": who, "label": label, "flipped": flipped,
                 "record_diff": record_diff, "effects_diff": effects_diff}

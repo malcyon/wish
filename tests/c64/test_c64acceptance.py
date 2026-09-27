@@ -1284,19 +1284,15 @@ class _ReadyMonitor:
         pass
 
 
-def test_ready_step_toggles_once_and_reads_records_and_effects_around_it(
+def test_ready_step_reaches_the_list_through_camp_toggles_once_and_reads_around_it(
         tmp_path, monkeypatch):
-    screens = {
-        "world": _window({}, WORLD_BAR),
-        "sheet": _window({1: "BAKSHI"}, "VIEW:ITEMS SPELLS TRADE DROP EXIT"),
-        "items": _window({1: "BAKSHI", 6: " YES GAUNTLETS OF OGRE POWER"},
-                         "READY TRADE DROP EXIT"),
-    }
-    moves = {
-        ("world", ("party", 4)): "world", ("world", ("bar", "VIEW")): "sheet",
-        ("sheet", ("bar", "ITEMS")): "items", ("items", ("bar", "EXIT")): "sheet",
-        ("sheet", ("leave",)): "world",
-    }
+    """A magical item's READY toggle is refused with `NOT HERE` unless camp
+    has set `$6DE4`; the world's own `VIEW` never sets it (#694). `ready`
+    must reach the item list through `traitask.open_items` (which goes
+    `ENCAMP > VIEW > ITEMS`) and leave through `traitask.leave_items`, never
+    through the world's `VIEW` directly."""
+    screens = {"world": _window({}, WORLD_BAR)}
+    moves = {}
     sess = FakeSession(screens, moves, "world")
 
     slot_before = bytes(A.traitask.SLOT_STRIDE)
@@ -1314,17 +1310,28 @@ def test_ready_step_toggles_once_and_reads_records_and_effects_around_it(
 
     calls = []
 
-    def fake_toggle(s, log, label, tag):
-        calls.append((label, tag))
+    def fake_open_items(s, log, name, label, tag):
+        calls.append(("open_items", name, label, tag))
         return True
 
+    def fake_toggle(s, log, label, tag):
+        calls.append(("toggle_item", label, tag))
+        return True
+
+    def fake_leave_items(s, log):
+        calls.append(("leave_items",))
+
+    monkeypatch.setattr(A.traitask, "open_items", fake_open_items)
     monkeypatch.setattr(A.traitask, "toggle_item", fake_toggle)
+    monkeypatch.setattr(A.traitask, "leave_items", fake_leave_items)
     run, log = _pool_run(tmp_path, sess)
-    run.panel_index = lambda who: 4
     got = run.ready("BAKSHI>GAUNTLETS OF OGRE POWER")
     log.close()
 
-    assert calls == [("GAUNTLETS OF OGRE POWER", "ready")]
+    assert calls == [
+        ("open_items", "BAKSHI", "GAUNTLETS OF OGRE POWER", "ready"),
+        ("toggle_item", "GAUNTLETS OF OGRE POWER", "ready"),
+        ("leave_items",)]
     assert (got["who"], got["label"], got["flipped"]) == (
         "BAKSHI", "GAUNTLETS OF OGRE POWER", True)
     assert got["record_diff"][4] == A.traitask.diff_bytes(
@@ -1334,8 +1341,6 @@ def test_ready_step_toggles_once_and_reads_records_and_effects_around_it(
     assert got["effects_diff"] == A.traitask.diff_bytes(
         fx_before, fx_after, A.traitask.EFFECTS[0])
     assert sess.state == "world"
-    assert sess.sent == [("party", 4), ("bar", "VIEW"), ("bar", "ITEMS"),
-                         ("bar", "EXIT"), ("leave",)]
 
 
 def test_camp_list_reads_each_named_member(tmp_path):
