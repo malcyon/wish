@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import dataclasses
 import hashlib
 import json
@@ -162,6 +163,8 @@ def test_published_prepare_preserves_exact_reported_disk_one_and_rejects_tamperi
 
     guest = ClaimReached()
     monkeypatch.setattr(foundation, "_mute_proof", lambda _path: True)
+    monkeypatch.setattr(specimens, "add",
+                        lambda *_args, **_kw: pytest.fail("measure registered a specimen"))
     result = foundation.run_recon(
         manifest_path, guest=guest, holder="wish677-test",
         audio_proof=tmp_path / "mute.json", title=title, measure=True,
@@ -210,8 +213,9 @@ def test_published_prepare_preserves_exact_reported_disk_one_and_rejects_tamperi
     ("04:20", "04:19", False),
     ("23:59", "00:01", True),
 ])
+@pytest.mark.parametrize("registry_problem", ["none", "add", "check", "release"])
 def test_published_silver_uses_journal_preflight_and_answerer_with_working_df0(
-        tmp_path, monkeypatch, clock, clock_a, clock_f, success):
+        tmp_path, monkeypatch, clock, clock_a, clock_f, success, registry_problem):
     def read_slot(disk, letter):
         return {**_read_slot(disk, letter),
                 "clock": clock_f if letter == "F" else clock_a}
@@ -251,10 +255,36 @@ def test_published_silver_uses_journal_preflight_and_answerer_with_working_df0(
             if key == "F":
                 self._write("F", self.place)
 
+        def release(self, *args, **kwargs):
+            receipt = super().release(*args, **kwargs)
+            if registry_problem == "release":
+                raise OSError("lane release refused")
+            return receipt
+
     guest = SilverGuest(clock, save_key="df0")
     guest.uploads = {}
     guest.place = dict(START)
     seen = []
+
+    def add_specimen(*args, **kwargs):
+        encoded = base64.b32encode(tmp_path.name.encode()).decode().rstrip("=").lower()
+        assert args[:2] == ("amiga", f"wish-677-ssb-{encoded}-ojswg33oge")
+        assert guest.calls[-1][0] == "get"
+        assert not any(call[0] == "release" for call in guest.calls)
+        seen.append("add")
+        if registry_problem == "add":
+            raise OSError("specimen tree is unavailable")
+        specimen = tmp_path / "specimens" / "fetched-df0.adf"
+        specimen.parent.mkdir()
+        specimen.write_bytes(args[2][0].read_bytes())
+        return specimen.parent
+
+    def check_specimens(*_args, **_kwargs):
+        seen.append("check")
+        return ["recorded hash differs"] if registry_problem == "check" else []
+
+    monkeypatch.setattr(foundation.specimens, "add", add_specimen)
+    monkeypatch.setattr(foundation.specimens, "check_specimens", check_specimens)
 
     def preflight(_python):
         assert guest.calls == []
@@ -269,12 +299,35 @@ def test_published_silver_uses_journal_preflight_and_answerer_with_working_df0(
         audio_proof=_audio_proof(tmp_path), title=title,
         guard=MapGuard(), identity=_IdentityMap(), accept=True,
         published_disk_one=True, published_name="ssb",
-        journal_python="/usr/bin/python3", preflight=preflight, answer=answer)
+        journal_python="/usr/bin/python3", preflight=preflight, answer=answer,
+        preserve_specimen=True)
     assert result["error"] == ""
-    assert result["success"] is success
+    assert result["success"] is (success and registry_problem == "none"), result.get(
+        "specimen_error")
     assert result["after_clock_advanced"] is success
     assert result["published_files_preserved"] is True
-    assert seen == ["preflight", ("answer", tmp_path / "df0.adf")]
+    assert seen == (["preflight", ("answer", tmp_path / "df0.adf"), "add",
+                     *([] if registry_problem == "add" else ["check"])]
+                    if success else ["preflight", ("answer", tmp_path / "df0.adf")])
+    assert ("specimen" in result) is (success and registry_problem != "add")
+    if success and registry_problem == "check":
+        assert "recorded hash differs" in result["specimen_error"]
+        assert "recorded hash differs" in json.loads(foundation._summary(
+            result, manifest_path, "recon1"))["error"]
+        assert pathlib.Path(result["specimen"]["path"]).is_file()
+        assert result["specimen"]["sha256"] == staging.sha256(
+            tmp_path / "recon1" / "fetched-df0.adf")
+    if success and registry_problem == "add":
+        assert "specimen tree is unavailable" in result["specimen_error"]
+        assert "specimen tree is unavailable" in json.loads(foundation._summary(
+            result, manifest_path, "recon1"))["error"]
+    if success and registry_problem == "release":
+        assert "lane release refused" in result["release_error"]
+        assert "lane release refused" in json.loads(foundation._summary(
+            result, manifest_path, "recon1"))["error"]
+        assert "specimen" in result
+    assert any(call[0] == "release" for call in guest.calls)
+    assert (tmp_path / "recon1" / "fetched-df0.adf").is_file()
     assert "X" not in _keys(guest) and "RET" not in _keys(guest)
     assert [key for key in _keys(guest) if key in ("C", "F")] == ["C", "F"]
     assert guest.uploads[guest.starts[0][0][0]] == (tmp_path / "published.adf").read_bytes()
@@ -284,6 +337,64 @@ def test_published_silver_uses_journal_preflight_and_answerer_with_working_df0(
     assert _letters(fetched) == ["A", "C", "F"]
     assert fetched.read_file("/SAVE/savgamA.sav") == AmigaDisk.open(
         tmp_path / "published.adf").read_file("/SAVE/savgamA.sav")
+
+    if clock_a == "04:20" and clock_f == "04:21" and registry_problem == "none":
+        measured = TitleGuest(clock, save_key="df0")
+        measured.place = dict(START)
+        before = list(seen)
+        measure_result = foundation.run_recon(
+            manifest_path, guest=measured, holder="wish677-measure",
+            audio_proof=_audio_proof(tmp_path), title=title, measure=True,
+            published_disk_one=True, published_name="ssb", attempt="measure1")
+        assert measure_result["success"] is True, measure_result.get("error")
+        assert seen == before
+        assert "specimen" not in measure_result
+        assert not any(call[0] == "press" and call[2] in ("C", "F")
+                       for call in measured.calls)
+
+
+def test_published_specimen_name_is_idempotent_and_refuses_changed_source(tmp_path, monkeypatch):
+    root = tmp_path / "specimens"
+    monkeypatch.setattr(specimens, "tree_root", lambda: root)
+    run = tmp_path / "run"
+    fetched = run / "accept1" / "fetched-df0.adf"
+    fetched.parent.mkdir(parents=True)
+    fetched.write_bytes(b"game-written DF0")
+    manifest = run / "prepare.json"
+    first = foundation._preserve_published(manifest, "accept1", "ssb", fetched)
+    assert first == foundation._preserve_published(manifest, "accept1", "ssb", fetched)
+    assert specimens.check_specimens(root) == []
+    assert first["sha256"] == staging.sha256(fetched)
+    assert pathlib.Path(first["path"]).read_bytes() == fetched.read_bytes()
+    assert pathlib.Path(first["provenance"]).is_file()
+    fetched.write_bytes(b"another run at same name")
+    with pytest.raises(winuaesession.RouteError, match="specimen name collision"):
+        foundation._preserve_published(manifest, "accept1", "ssb", fetched)
+    assert pathlib.Path(first["path"]).read_bytes() == b"game-written DF0"
+
+
+def test_published_specimen_dotted_run_ids_have_distinct_valid_names(tmp_path, monkeypatch):
+    root = tmp_path / "specimens"
+    monkeypatch.setattr(specimens, "tree_root", lambda: root)
+    outputs = []
+    for run_id in ("ssb.c64", "ssb-c64"):
+        manifest = tmp_path / run_id / "prepare.json"
+        fetched = manifest.parent / "accept.1" / "fetched-df0.adf"
+        fetched.parent.mkdir(parents=True)
+        fetched.write_bytes(run_id.encode())
+        saved = foundation._preserve_published(manifest, "accept.1", "ssb", fetched)
+        outputs.append(saved)
+        assert run_id in pathlib.Path(saved["provenance"]).read_text()
+    assert outputs[0]["path"] != outputs[1]["path"]
+    assert specimens.check_specimens(root) == []
+
+
+def test_summary_keeps_route_error_ahead_of_preservation_error(tmp_path):
+    summary = foundation._summary(
+        {"success": False, "error": "RouteError: screen failed",
+         "specimen_error": "OSError: registry failed", "unguarded": []},
+        tmp_path / "prepare.json", "accept1")
+    assert json.loads(summary)["error"] == "RouteError: screen failed"
 
 
 def test_accept_presses_exactly_the_plans_keys_in_order_and_never_y(tmp_path, clock):

@@ -4,7 +4,7 @@ Scripts for the Amiga ports: reading their disk images and executables, disassem
 
 | file | purpose |
 |---|---|
-| `acceptance.py` | Prepares, measures and accepts Pool of Radiance, Curse of the Azure Bonds, Pools of Darkness and Silver Blades under WinUAE, including exact published disk-one runs for Curse and Silver Blades, and reloads a Pools of Darkness save; owns the shared runner, command dispatch, evidence and verdicts. |
+| `acceptance.py` | Prepares, measures and accepts Pool of Radiance, Curse of the Azure Bonds, Pools of Darkness and Silver Blades under WinUAE, including exact published disk-one runs for Curse and Silver Blades with optional checked specimen preservation during accept, and reloads a Pools of Darkness save; owns the shared runner, command dispatch, evidence and verdicts. |
 | `amiga68k.py` | Reads a Gold Box Amiga executable: lists its hunks, finds who references a file offset, and disassembles a range with SAS/Lattice `jsr d16(a4)` jump-table calls and `RELOC32` operands resolved and C strings quoted. Needs `capstone`. See `docs/165-amiga-savegame.md`. |
 | `amigabackstab.py` | Reads each Amiga title's backstab multiplier, gate, record bytes, clamp and damage byte out of its own executable (needs `capstone`); `docs/225-the-dos-backstab-multiplier.md`. |
 | `amigabladesjournal.py` | Answers Amiga *Secret of the Silver Blades*'s journal prompt so a session can be driven past the party menu, printing only `answered` or `no challenge on screen`; reads the answer tables from the separate code-wheel repository named by `$WISH_CODEWHEEL` or the `codewheel` entry in `gamedisks.yaml`, and types through `amigadrive.py`. |
