@@ -267,8 +267,9 @@ def _darkness_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, by
 # prompt. A, C, D and E stay unchanged; E is also the game's own exit key on the sheet and at
 # camp, which `plain_keys` names.
 # The control and after saves go to F and G, letters the game's own save picker (A to H) offers
-# and no saved game on disk 3 uses; B is the loaded slot. The measure route ends at the camp save
-# picker, before any save letter.
+# and no saved game on disk 3 uses; B is the loaded slot. The measure route types one throwaway
+# letter and Return into the journal question that follows Begin Adventuring, then walks to the
+# camp save picker, before any save letter.
 # The key that answers `INSERT DISK 2 AND PRESS A KEY` is a guess for the measuring boot to confirm.
 DISK2_INSERT = ((0, "disk2", "SPACE"), "loaded_menu", "insert")
 
@@ -293,8 +294,8 @@ DARKNESS = AmigaTitle(
         ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
         ("B", "disk2_prompt", "key"), DISK2_INSERT,
         ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
-        ("B", "world", "key"), ("NP8", "world", "move"), ("E", "camp", "key"),
-        ("S", "camp_save_picker", "key"),
+        ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", "world", "key"),
+        ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
     ),
     # In the measured boot the settled captures ended at 27, 99, 153 (loading screens), 247 (the
     # first showing the title), 271, 297 (the same title) and 331 s (the demo) after the claim,
@@ -311,7 +312,8 @@ DARKNESS = AmigaTitle(
     # The `disk2_prompt` wait of 10 s is a guess until the measuring boot times the prompt.
     min_waits={"party_menu": 20.0, "load_from": 20.0, "load_picker": 10.0,
                "disk2_prompt": 10.0, "loaded_menu": 20.0,
-               "sheet": 5.0, "save_picker": 10.0, "world": 45.0, "world_after_move": 5.0,
+               "sheet": 5.0, "save_picker": 10.0, "journal": 45.0, "journal_answer": 3.0,
+               "world": 45.0, "world_after_move": 5.0,
                "camp": 10.0, "camp_save_picker": 10.0},
     interstitials=(
         ("journal", ("answer",), None, 1),

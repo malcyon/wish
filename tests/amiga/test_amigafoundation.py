@@ -390,7 +390,7 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
 # and G the after save (both offered by the game's save picker, which lists A to H), and E is the game's exit key though slot E is a kept slot.
 DARK_START = {"area": 2, "x": 1, "y": 2, "facing": geo.EAST}
 DARK_LATER = dict(DARK_START, x=2)
-DARK_STATES = ("title", "journal", "party_menu", "load_from", "load_picker", "disk2_prompt",
+DARK_STATES = ("title", "journal", "journal_answer", "party_menu", "load_from", "load_picker", "disk2_prompt",
                "loaded_menu", "sheet", "save_picker", "world", "camp", "camp_save_picker")
 MEASURE_STATES = tuple(s for s in DARK_STATES if s != "title")  # boot crops are not named "title"
 DARK_FIRST_SCREEN = {}  # the title crop is recognised by its own name, and nothing precedes it
@@ -484,12 +484,12 @@ def test_darkness_answers_the_journal_at_most_three_times(tmp_path, clock):
 def test_darkness_measure_ends_at_the_camp_save_picker_and_writes_nothing(tmp_path, clock):
     guest, result = _dark_run(tmp_path, clock, guard=MapGuard(states=MEASURE_STATES),
                               accept=False, measure=True)
-    assert _keys(guest) == "P L P B SPACE V E B NP8 E S".split()
+    assert _keys(guest) == "P L P B SPACE V E B X RET NP8 E S".split()
     assert [d for d, _ in guest.inserted] == [0] and result["success"] is True
     assert result["control_sha256"] is None
     order = [c[2] if c[0] == "press" else "insert" for c in guest.calls
              if c[0] in ("press", "insert")]
-    assert order == "P L P B insert SPACE V E B NP8 E S".split()
+    assert order == "P L P B insert SPACE V E B X RET NP8 E S".split()
     assert not {"F", "G", "I", "J", "Y"} & set(_keys(guest))
 
 
@@ -503,8 +503,10 @@ def test_darkness_route_and_measure_route_are_pinned_and_write_only_f_and_g():
         ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
         ("G", "camp", "write"))
     assert darkness.measure_route == head + (
-        ("B", "world", "key"), ("NP8", "world", "move"), ("E", "camp", "key"),
-        ("S", "camp_save_picker", "key"))
+        ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", "world", "key"),
+        ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"))
+    assert darkness.min_waits["journal"] == 45.0
+    assert darkness.min_waits["journal_answer"] == 3.0
     assert (darkness.control_letter, darkness.after_letter) == ("F", "G")
     assert not {"F", "G"} & set(darkness.kept_letters)
     assert {step[0] for step in darkness.route if step[2] == "write"} == {"F", "G"}
