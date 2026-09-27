@@ -199,7 +199,7 @@ def test_published_prepare_preserves_exact_reported_disk_one_and_rejects_tamperi
     manifest["disks"]["df0"]["sha256"] = image_sha
     manifest_path.write_text(json.dumps(manifest))
     cache_image = pathlib.Path(manifest["registered"]["published"]["path"])
-    cache_image.unlink()
+    cache_image.chmod(0o600)
     cache_image.write_bytes(b"changed cached image")
     with pytest.raises(winuaesession.RouteError, match="published is missing or changed"):
         foundation._published_manifest(manifest_path, name)
