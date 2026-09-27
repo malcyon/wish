@@ -1115,11 +1115,11 @@ class _Pool:
 
 
 def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=None,
-           pool=_Pool, title="pool"):
+           pool=_Pool, title="pool", catch=lambda: None, stage_only=False):
     import types
     slot = slot or _Slot(tmp_path)
     _Pool.clock = [0.0]
-    monkeypatch.setattr(A.runlog, "catch_signals", lambda: None)
+    monkeypatch.setattr(A.runlog, "catch_signals", catch)
     monkeypatch.setattr(A.S, "claim_slot", claim or (lambda *a, **k: slot))
     monkeypatch.setattr(A.S, "stage_disks", lambda *a, **k: "first")
     monkeypatch.setattr(A.S, "stage_writable",
@@ -1128,7 +1128,7 @@ def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=Non
     monkeypatch.setattr(A, "PoolRun", pool)
     args = types.SimpleNamespace(
         title=title, stage_row=[], stage_trait=[], stage_item=[],
-        stage_only=False, checkpoint=[], pool=None, issue="i", run="r",
+        stage_only=stage_only, checkpoint=[], pool=None, issue="i", run="r",
         disks=None, walk="I", walk_steps=1, max_seconds=max_seconds)
     out = tmp_path / "out"
     rc = A.run(args, A.parse_steps(steps), out, _fixture_disk(tmp_path),
@@ -3006,3 +3006,62 @@ def test_a_terminating_signal_mid_step_is_lost_and_releases_the_slot(tmp_path, m
     assert rc == 1 and not summary["completed"]
     assert "Terminated" in summary["lost"]
     assert slot.torn
+
+
+def test_a_run_installs_the_signal_handler_once_after_staging_and_before_its_steps(
+        tmp_path, monkeypatch):
+    events = []
+    real_stage = A.stage
+
+    def stage(*a, **k):
+        events.append("stage")
+        return real_stage(*a, **k)
+
+    class _Ordered(_Pool):
+        def load(self):
+            events.append("load")
+            return {}
+
+    monkeypatch.setattr(A, "stage", stage)
+    slot = _Slot(tmp_path)
+    claim = lambda *a, **k: (events.append("claim"), slot)[1]   # noqa: E731
+    rc, _, _ = _drive(tmp_path, monkeypatch, ["load"], 1e9, pool=_Ordered, claim=claim,
+                      catch=lambda: events.append("catch"))
+    assert rc == 0
+    assert events == ["stage", "catch", "claim", "load"]
+
+
+def test_no_signal_handler_is_installed_when_nothing_is_run(tmp_path, monkeypatch):
+    calls = []
+
+    def refuse(*a, **k):
+        raise ValueError("no such row")
+
+    monkeypatch.setattr(A, "stage", refuse)
+    rc, _, _ = _drive(tmp_path, monkeypatch, ["load"], 1e9,
+                      catch=lambda: calls.append(1))
+    assert rc == 1 and calls == []
+    monkeypatch.undo()
+    (tmp_path / "b").mkdir()
+    rc, _, _ = _drive(tmp_path / "b", monkeypatch, ["load"], 1e9,
+                      catch=lambda: calls.append(1), stage_only=True)
+    assert rc == 0 and calls == []
+
+
+def test_the_silver_session_class_is_built_fresh_on_every_call():
+    from tools.secret_of_the_silver_blades import ssbsession
+
+    assert ssbsession.silver_session_class() is not ssbsession.silver_session_class()
+
+
+def test_the_silver_session_borrows_from_the_curse_session_as_patched_at_call_time(
+        monkeypatch):
+    from tools.curse_of_the_azure_bonds import curserun
+    from tools.secret_of_the_silver_blades import ssbsession
+
+    class Patched(curserun.CurseSession):
+        def live_triple(self):
+            return "patched"
+
+    monkeypatch.setattr(curserun, "CurseSession", Patched)
+    assert ssbsession.silver_session_class().live_triple is Patched.live_triple
