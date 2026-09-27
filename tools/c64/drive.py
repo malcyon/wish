@@ -118,12 +118,22 @@ class Keyboard:
             )
             self.key(name, hold, gap)
 
-    def screenshot(self, path: str) -> bool:
-        r = subprocess.run(
-            ["import", "-window", "root", path],
-            env={"DISPLAY": self.display, "PATH": "/usr/bin:/bin"},
-            capture_output=True,
-        )
+    def screenshot(self, path: str, *, timeout: float | None = None) -> bool:
+        options = {"env": {"DISPLAY": self.display, "PATH": "/usr/bin:/bin"},
+                   "capture_output": True}
+        if timeout is not None:
+            options["timeout"] = timeout
+        try:
+            r = subprocess.run(
+                ["import", "-window", "root", path],
+                **options,
+            )
+        except subprocess.TimeoutExpired:
+            return False
+        except OSError:
+            if timeout is None:
+                raise
+            return False
         return r.returncode == 0
 
 

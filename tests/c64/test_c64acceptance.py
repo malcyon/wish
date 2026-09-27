@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import subprocess
 
 import gamedata
 import pytest
@@ -30,6 +31,7 @@ from goldbox.d64 import D64, split_load_address
 from goldbox.items import ITEM_SIZE
 from goldbox.savegame import SaveGame0, SaveGame1
 from tools.c64 import acceptance as A
+from tools.c64 import drive
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[1] / "fixtures"
 
@@ -1419,6 +1421,177 @@ def test_ready_step_reaches_the_list_through_camp_toggles_once_and_reads_around_
     assert got["effects_diff"] == A.traitask.diff_bytes(
         fx_before, fx_after, A.traitask.EFFECTS[0])
     assert sess.state == "world"
+
+
+def test_ready_sample_keeps_screen_colour_png_and_live_ram_in_one_pause(
+        tmp_path, monkeypatch):
+    events = []
+
+    class Monitor:
+        def __enter__(self):
+            events.append("pause")
+            return self
+
+        def __exit__(self, *exc):
+            events.append("close")
+
+        def read(self, address, length):
+            events.append(("read", address, length))
+            return bytes([address >> 8]) * length
+
+        def resume(self):
+            events.append("resume")
+
+    class Keyboard:
+        def screenshot(self, path, *, timeout=None):
+            events.append(("png", timeout))
+            pathlib.Path(path).write_bytes(b"PNG")
+            return True
+
+    class Session:
+        kbd = Keyboard()
+
+        def mon(self, timeout):
+            return Monitor()
+
+    screen = Screen(bytes(1000), bytes([5]) * 1000, 0xCC00)
+    monkeypatch.setattr(A.S, "is_bitmap", lambda m: events.append("bitmap") or False)
+    monkeypatch.setattr(A.S, "read_screen", lambda m: events.append("screen") or screen)
+    run, log = _pool_run(tmp_path, Session())
+    try:
+        got = run.sample_ready("before", lambda s: s is screen)
+    finally:
+        log.close()
+
+    assert got is screen
+    assert events == [
+        "pause", "bitmap", "screen",
+        ("read", 0x4900, 0x300),
+        ("read", 0x5100, 0x100),
+        ("read", 0x5D00, 0x100),
+        ("png", 10.0), "resume", "close",
+    ]
+    captures = list(tmp_path.glob("*-ready-before.json"))
+    assert len(captures) == 1
+    payload = json.loads(captures[0].read_text(encoding="utf-8"))
+    assert payload["screen_address"] == "$CC00"
+    assert payload["colours"] == (bytes([5]) * 1000).hex()
+    assert payload["effects"] == (bytes([0x49]) * 0x300).hex()
+    assert payload["record"] == (bytes([0x51]) * 0x100).hex()
+    assert payload["items"] == (bytes([0x5D]) * 0x100).hex()
+    stem = captures[0].stem
+    assert (tmp_path / f"{stem}.txt").exists()
+    assert (tmp_path / f"{stem}.png").read_bytes() == b"PNG"
+
+
+def test_ready_sample_screenshot_timeout_is_recorded_and_resumes_vice(
+        tmp_path, monkeypatch):
+    events = []
+
+    class Monitor:
+        def __enter__(self):
+            events.append("pause")
+            return self
+
+        def __exit__(self, *exc):
+            events.append("close")
+
+        def read(self, address, length):
+            events.append(("read", address, length))
+            return bytes(length)
+
+        def resume(self):
+            events.append("resume")
+            raise A.S.MonitorError("resume failed")
+
+    class Session:
+        kbd = drive.Keyboard(":99")
+
+        def mon(self, timeout):
+            return Monitor()
+
+    def hung_import(args, **kwargs):
+        events.append(("import", kwargs["timeout"]))
+        raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+
+    screen = Screen(bytes(1000), bytes(1000), 0xCC00)
+    monkeypatch.setattr(drive.subprocess, "run", hung_import)
+    monkeypatch.setattr(A.S, "is_bitmap", lambda m: events.append("bitmap") or False)
+    monkeypatch.setattr(A.S, "read_screen", lambda m: events.append("screen") or screen)
+    run, log = _pool_run(tmp_path, Session())
+    try:
+        with pytest.raises(A.StepFailed, match="READY before PNG capture failed"):
+            run.sample_ready("before", lambda s: True)
+    finally:
+        log.close()
+
+    assert events == [
+        "pause", "bitmap", "screen",
+        ("read", 0x4900, 0x300),
+        ("read", 0x5100, 0x100),
+        ("read", 0x5D00, 0x100),
+        ("import", 10.0), "resume", "close",
+    ]
+    captures = list(tmp_path.glob("*-ready-before.json"))
+    assert len(captures) == 1
+    assert json.loads(captures[0].read_text(encoding="utf-8"))[
+        "png_captured"] is False
+
+
+def test_keyboard_screenshot_preserves_default_oserror_and_bounds_capture(
+        monkeypatch):
+    calls = []
+
+    def missing_import(args, **kwargs):
+        calls.append(kwargs)
+        raise FileNotFoundError("import is missing")
+
+    monkeypatch.setattr(drive.subprocess, "run", missing_import)
+    keyboard = drive.Keyboard(":99")
+
+    with pytest.raises(FileNotFoundError, match="import is missing"):
+        keyboard.screenshot("/tmp/default.png")
+    assert "timeout" not in calls[0]
+    assert keyboard.screenshot("/tmp/ready.png", timeout=10.0) is False
+    assert calls[1]["timeout"] == 10.0
+
+
+def test_ready_sample_records_a_monitor_read_failure_and_keeps_polling(
+        tmp_path, monkeypatch):
+    events = []
+
+    class Monitor:
+        def __enter__(self):
+            events.append("pause")
+            return self
+
+        def __exit__(self, *exc):
+            events.append("close")
+
+        def resume(self):
+            events.append("resume")
+
+    class Session:
+        def mon(self, timeout):
+            return Monitor()
+
+    def failed_screen(_):
+        raise A.S.MonitorError("screen read failed")
+
+    monkeypatch.setattr(A.S, "is_bitmap", failed_screen)
+    run, log = _pool_run(tmp_path, Session())
+    try:
+        assert run.sample_ready("change", lambda s: True) is None
+    finally:
+        log.close()
+
+    assert events == ["pause", "resume", "close"]
+    assert len(run.ready_sample_errors) == 1
+    assert run.ready_sample_errors[0]["stage"] == "change"
+    assert run.ready_sample_errors[0]["error"] == (
+        "MonitorError('screen read failed')")
+    assert isinstance(run.ready_sample_errors[0]["monotonic"], float)
+    assert not list(tmp_path.glob("*-ready-change.json"))
 
 
 def test_camp_list_reads_each_named_member(tmp_path):

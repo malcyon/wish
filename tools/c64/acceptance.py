@@ -39,7 +39,7 @@ bytes with what it replaced.
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
-| `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, toggle the item named LABEL (`tools/c64/traitask.py`'s `toggle_item`), and read every party record and the effect array before and after |
+| `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, toggle the item named LABEL (`tools/c64/traitask.py`'s `toggle_item`), and read every party record and the effect array before and after; `--capture-ready` saves three bounded in-list checkpoints for BAKSHI |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`); Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
@@ -122,6 +122,7 @@ TITLES = {"pool": "pool-of-radiance", "curse": "curse-of-the-azure-bonds",
 TRAIT_SLOTS = 10
 PARTY_SLOTS = 8
 CREATURE_TYPE_OFFSET = 0x0D7
+READY_PNG_TIMEOUT = 10.0
 
 #: The camp's own bar, `ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT` (Pool
 #: `CAMP $0899`), and the MAGIC bar, `CAST MEMORIZE SCRIBE DISPLAY REST EXIT`
@@ -682,6 +683,7 @@ class PoolRun:
 
     #: Cast-list key probes and waits; Curse may enable joystick fire.
     joy = False
+    capture_ready = False
     pick_wait = 15
     whom_wait = 120
 
@@ -700,6 +702,8 @@ class PoolRun:
         self.points = points
         self.armed: dict[str, int] = {}
         self.shots = 0
+        self.ready_captures: list[dict] = []
+        self.ready_sample_errors: list[dict] = []
 
     # -- the screen ------------------------------------------------------------
     def rows(self) -> list[str]:
@@ -724,6 +728,81 @@ class PoolRun:
         self.log.emit("screen", tag=tag, stem=stem,
                       rows=[r.rstrip() for r in rows if r.strip()])
         return rows
+
+    def sample_ready(self, stage: str | None, predicate) -> object | None:
+        """Read a READY screen, and retain a selected screen and live RAM
+        while one binary-monitor connection keeps the CPU stopped.
+
+        The PNG comes from the X window during that same pause. Its displayed
+        frame may lag the RAM screen by a video refresh; it is not an atomic
+        read of the VIC and CPU memories.
+        """
+        self.budget(READY_PNG_TIMEOUT, "READY screenshot")
+        try:
+            with self.sess.mon(8) as m:
+                try:
+                    screen = None if S.is_bitmap(m) else S.read_screen(m)
+                    if stage is not None and predicate(screen):
+                        self.shots += 1
+                        stem = f"{self.shots:02d}-ready-{stage}"
+                        rows = [] if screen is None else screen.rows()
+                        try:
+                            (self.out / f"{stem}.txt").write_text(
+                                "\n".join(row.rstrip() for row in rows) + "\n"
+                                if rows else "(bitmap)\n", encoding="utf-8")
+                        except OSError as exc:
+                            raise StepFailed(
+                                f"READY {stage} text capture failed: {exc}") from exc
+                        snapshot = {
+                            "stage": stage,
+                            "monotonic": self.clock(),
+                            "screen_address": None if screen is None else
+                                              f"${screen.address:04X}",
+                            "screen_codes": None if screen is None else
+                                            screen.codes.hex(),
+                            "colours": None if screen is None else
+                                       screen.colours.hex(),
+                            "effects": bytes(m.read(0x4900, 0x300)).hex(),
+                            "record": bytes(m.read(0x5100, 0x100)).hex(),
+                            "items": bytes(m.read(0x5D00, 0x100)).hex(),
+                        }
+                        timeout = READY_PNG_TIMEOUT
+                        if self.deadline is not None:
+                            timeout = max(0.1, min(timeout,
+                                                   self.deadline - self.clock()))
+                        snapshot["png_captured"] = self.sess.kbd.screenshot(
+                            str(self.out / f"{stem}.png"), timeout=timeout)
+                        try:
+                            (self.out / f"{stem}.json").write_text(
+                                json.dumps(snapshot, indent=2) + "\n",
+                                encoding="utf-8")
+                        except OSError as exc:
+                            raise StepFailed(
+                                f"READY {stage} JSON capture failed: {exc}") from exc
+                        capture = {"stage": stage, "stem": stem,
+                                   "monotonic": snapshot["monotonic"]}
+                        self.ready_captures.append(capture)
+                        try:
+                            self.log.emit("ready_capture", **capture,
+                                          png_captured=snapshot["png_captured"])
+                        except OSError as exc:
+                            raise StepFailed(
+                                f"READY {stage} log capture failed: {exc}") from exc
+                        if not snapshot["png_captured"]:
+                            raise StepFailed(f"READY {stage} PNG capture failed")
+                except (StepFailed, OSError, S.MonitorError):
+                    with contextlib.suppress(OSError, S.MonitorError):
+                        m.resume()
+                    raise
+                else:
+                    m.resume()
+        except (OSError, S.MonitorError) as exc:
+            error = {"stage": stage, "error": repr(exc),
+                     "monotonic": self.clock()}
+            self.ready_sample_errors.append(error)
+            self.log.emit("ready_sample_error", **error)
+            return None
+        return screen
 
     def spent(self) -> bool:
         return self.deadline is not None and self.clock() >= self.deadline
@@ -1082,7 +1161,13 @@ class PoolRun:
                               for slot in range(PARTY_SLOTS)]
             before_effects = bytes(traitask.live_effects(m))
             m.resume()
-        flipped = traitask.toggle_item(self.sess, self.log, label, "ready")
+        if self.capture_ready:
+            self.ready_captures = []
+            self.ready_sample_errors = []
+            flipped = traitask.toggle_item(
+                self.sess, self.log, label, "ready", sample=self.sample_ready)
+        else:
+            flipped = traitask.toggle_item(self.sess, self.log, label, "ready")
         self.sess.settle(1)
         with self.sess.mon(8) as m:
             after_records = [bytes(traitask.live_record(m, slot))
@@ -1098,8 +1183,12 @@ class PoolRun:
                                            traitask.EFFECTS[0])
         traitask.leave_items(self.sess, self.log)
         self.to_world()
-        return {"who": who, "label": label, "flipped": flipped,
-                "record_diff": record_diff, "effects_diff": effects_diff}
+        result = {"who": who, "label": label, "flipped": flipped,
+                  "record_diff": record_diff, "effects_diff": effects_diff}
+        if self.capture_ready:
+            result["ready_captures"] = self.ready_captures
+            result["ready_sample_errors"] = self.ready_sample_errors
+        return result
 
     def rest(self, arg: str) -> dict:
         minutes, hours = parse_rest(arg)
@@ -2352,6 +2441,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 if args.title == "ssb"
                 else PoolRun(sess, log, out, game, points))
         pool.deadline, pool.clock = deadline, clock
+        if args.title == "pool":
+            pool.capture_ready = getattr(args, "capture_ready", False)
         if args.title == "curse":
             pool.probe_step = getattr(args, "probe_step", False)
             pool.joy = getattr(args, "joy", False)
@@ -2469,6 +2560,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--joy", action="store_true",
                     help="give VICE a numpad joystick in port 2 (KP_0 fires), "
                          "as one more key for `cast` to try")
+    ap.add_argument("--capture-ready", action="store_true",
+                    help="for Pool BAKSHI READY, save paused screen, colour, "
+                         "PNG and live $4900/$5100/$5D00 ranges before fire, "
+                         "at first row change, and at stable return or timeout")
     ap.add_argument("--probe-step", action="store_true",
                     help="take one empty-square step after the first command bar")
     ap.add_argument("--walk-steps", type=int, default=40,
@@ -2503,6 +2598,11 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(str(e))
     if any(x.verb == "fight" for x in steps) and args.title == "ssb":
         ap.error("the fight step needs --title pool or curse")
+    if args.capture_ready and (args.title != "pool" or not any(
+            x.verb == "ready" for x in steps) or any(
+            x.verb == "ready" and parse_ready(x.arg)[0] != "BAKSHI"
+            for x in steps)):
+        ap.error("--capture-ready requires Pool ready BAKSHI>LABEL")
     if args.attack_by and args.title != "curse":
         ap.error("--attack-by requires --title curse")
     if any(x.verb == "cure" for x in steps) and args.title != "curse":

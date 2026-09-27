@@ -135,3 +135,87 @@ def test_open_items_fails_cleanly_when_the_camp_bar_never_appears():
     assert "ENCAMP" in sess.select_bar_calls
     assert "VIEW" not in sess.select_bar_calls
     assert any("camp bar never appeared" in s for s in log.said)
+
+
+def test_ready_capture_keeps_the_first_blank_row_and_the_returned_list(monkeypatch):
+    """One fire can blank the target row before the unchanged list returns."""
+    monkeypatch.setattr(traitask.time, "sleep", lambda _: None)
+
+    class ItemScreen:
+        def __init__(self, target):
+            self.target = target
+            self.colours = bytearray([5] * 1000)
+            self.colours[6 * 40 + traitask.ITEM_NAME_COLUMN] = 1
+
+        def row(self, n):
+            return {5: " NO CLOAK", 6: self.target, 7: " NO BOOTS",
+                    24: "READY TRADE DROP EXIT"}.get(n, "")
+
+        def rows(self):
+            return [self.row(n) for n in range(25)]
+
+    listed = ItemScreen("YES GAUNTLETS OF OGRE POWER")
+    blank = ItemScreen("")
+
+    class Session:
+        def __init__(self):
+            self.keys = []
+            self.kbd = self
+            self.screens = iter((listed, None, blank, listed, listed))
+
+        def screen(self):
+            return listed
+
+        def key(self, name, *timing):
+            self.keys.append(name)
+
+    sess = Session()
+    checkpoints = []
+
+    def sample(stage, predicate):
+        screen = next(sess.screens)
+        if stage is not None and predicate(screen):
+            checkpoints.append((stage, screen.row(6), tuple(sess.keys)))
+        return screen
+
+    flipped = traitask.toggle_item(
+        sess, FakeLog(), "GAUNTLETS", "ready", sample=sample)
+
+    assert flipped is True  # Existing screen-change report; no state claim.
+    assert sess.keys == ["KP_0"]
+    assert [(stage, row) for stage, row, _ in checkpoints] == [
+        ("before", "YES GAUNTLETS OF OGRE POWER"),
+        ("change", ""),
+        ("stable", "YES GAUNTLETS OF OGRE POWER"),
+    ]
+    assert checkpoints[0][2] == ()
+    assert all(keys == ("KP_0",) for _, _, keys in checkpoints[1:])
+
+    stuck = Session()
+    stuck.screens = iter([listed, *([blank] * 20), blank])
+    stuck_stages = []
+
+    def stuck_sample(stage, predicate):
+        screen = next(stuck.screens)
+        if stage is not None and predicate(screen):
+            stuck_stages.append(stage)
+        return screen
+
+    assert traitask.toggle_item(
+        stuck, FakeLog(), "GAUNTLETS", "ready", sample=stuck_sample) is True
+    assert stuck.keys == ["KP_0"]
+    assert stuck_stages == ["before", "change", "timeout"]
+
+    changed = ItemScreen(" NO GAUNTLETS OF OGRE POWER")
+
+    class NormalSession(Session):
+        def __init__(self):
+            super().__init__()
+            self.screens = iter((listed, listed, changed))
+
+        def screen(self):
+            return next(self.screens, changed)
+
+    normal = NormalSession()
+    assert traitask.toggle_item(normal, FakeLog(), "GAUNTLETS", "ready") is True
+    assert normal.keys == ["KP_0"]

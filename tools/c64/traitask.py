@@ -516,7 +516,8 @@ def item_highlight(s, rows: list[int]) -> int | None:
     return odd[0] if len(odd) == 1 else None
 
 
-def toggle_item(sess: S.Session, log: Log, label: str, tag: str) -> bool:
+def toggle_item(sess: S.Session, log: Log, label: str, tag: str,
+                sample=None) -> bool:
     """On the item list, put the highlight on `label` and press Return.
 
     The list's bar is `READY TRADE DROP EXIT`, and the verb comes **first**:
@@ -524,6 +525,11 @@ def toggle_item(sess: S.Session, log: Log, label: str, tag: str) -> bool:
     05 05 ...` on every item row), the bar holds the highlight, and Return on
     READY is what puts a cursor on the list. Then the row, then Return, and
     one READY readies an un-readied item and un-readies a readied one.
+
+    An optional diagnostic sampler reads the screen and saves selected
+    checkpoints before the fire, at its first changed target row, and when
+    the item list returns or the bounded poll ends. It does not judge whether
+    the game's item state changed.
     """
     s = sess.screen()
     if s is None or item_highlight(s, item_rows(s)) is None:
@@ -553,22 +559,65 @@ def toggle_item(sess: S.Session, log: Log, label: str, tag: str) -> bool:
             time.sleep(0.3)
             continue
         if at == want:
+            if sample is not None:
+                s = sample("before", lambda seen: (
+                    seen is not None
+                    and label in seen.row(want)
+                    and item_highlight(seen, item_rows(seen)) == want))
+                if s is None or label not in s.row(want):
+                    continue
+                if item_highlight(s, item_rows(s)) != want:
+                    continue
             was = s.row(want)
             press_select(sess)
             flipped = False
+            stable_candidate = None
+            settled = False
+            after_screen = None
             for _ in range(20):
                 time.sleep(0.3)
-                s2 = sess.screen()
+                if sample is None:
+                    s2 = sess.screen()
+                elif not flipped:
+                    s2 = sample("change", lambda seen: (
+                        seen is not None and seen.row(want) != was))
+                else:
+                    s2 = sample("stable", lambda seen: (
+                        stable_candidate is not None
+                        and ready_list_signature(seen, label) == stable_candidate))
+                after_screen = s2
                 if s2 is not None and s2.row(want) != was:
                     flipped = True
-                    break
-            log.emit("screen", tag=f"{tag}-after", rows=sheet_rows(sess),
+                    if sample is None:
+                        break
+                if sample is not None and flipped:
+                    signature = ready_list_signature(s2, label)
+                    if signature is not None and signature == stable_candidate:
+                        settled = True
+                        break
+                    stable_candidate = signature
+            if sample is not None and not settled:
+                after_screen = sample("timeout", lambda _: True)
+            after_rows = (sheet_rows(sess) if sample is None else
+                          [] if after_screen is None else
+                          [row.rstrip() for row in after_screen.rows()])
+            log.emit("screen", tag=f"{tag}-after", rows=after_rows,
                      flipped=flipped)
             return flipped
         sess.kbd.key("Down" if at < want else "Up", 0.15, 0.30)
     log.say(f"  could not put the highlight on {label}")
     log.emit("screen", tag=f"{tag}-stuck", rows=sheet_rows(sess))
     return False
+
+
+def ready_list_signature(s, label: str):
+    """The item rows and their name colours when the named list is up."""
+    if s is None or "READY" not in s.row(24) or "EXIT" not in s.row(24):
+        return None
+    if not any(label in s.row(r) for r in item_rows(s)):
+        return None
+    return (tuple((s.row(r), s.colours[r * 40 + ITEM_NAME_COLUMN])
+                  for r in ITEM_ROWS), s.row(24))
 
 
 #: What selects a row on a list with a cursor on it. `LIBRARY $2E4E`, the
