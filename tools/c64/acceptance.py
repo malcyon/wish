@@ -35,6 +35,7 @@ bytes with what it replaced.
 | `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for SECONDS (120) |
 | `cast CASTER:SPELL>TARGET` | Curse only: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
+| `ready WHO>LABEL` | Pool only: `VIEW WHO > ITEMS`, toggle the item named LABEL (`tools/c64/traitask.py`'s `toggle_item`), and read every party record and the effect array before and after |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`); Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
@@ -103,6 +104,7 @@ from tools.c64 import (  # noqa: E402
     effectdrive,
     inventorycheck,
     runlog,  # noqa: E402
+    traitask,
     traitdrive,
 )
 from tools.c64 import session as S  # noqa: E402
@@ -228,7 +230,7 @@ class Step:
 #: Each step and whether it takes an argument: never, optionally, always.
 VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "rest": "must", "fight": "may", "peek": "must", "save": "never",
-         "cast": "must", "cure": "must", "walk": "must"}
+         "cast": "must", "cure": "must", "walk": "must", "ready": "must"}
 
 #: How long a walk keeps watching for a disk prompt after a move (seconds).
 LOOK_SECONDS = 2.0
@@ -289,6 +291,14 @@ def parse_cure(arg: str) -> tuple[str, str]:
     return m.group(1).strip(), m.group(2).strip()
 
 
+def parse_ready(arg: str) -> tuple[str, str]:
+    """`WHO>LABEL`, the same shape `cure` parses -- a name can hold a space."""
+    m = re.fullmatch(r"([^:>]+)>([^:>]+)", arg.strip())
+    if m is None:
+        raise ValueError(f"ready {arg!r}: say ready WHO>LABEL")
+    return m.group(1).strip(), m.group(2).strip()
+
+
 def parse_steps(texts) -> list[Step]:
     """The step list, checked whole before anything is staged or booted."""
     steps = []
@@ -313,6 +323,8 @@ def parse_steps(texts) -> list[Step]:
             parse_cast(arg)
         elif verb == "cure":
             parse_cure(arg)
+        elif verb == "ready":
+            parse_ready(arg)
         elif verb == "fight" and arg and not (arg.isdigit() and int(arg) > 0):
             raise ValueError(f"fight {arg!r}: seconds, more than zero")
         steps.append(Step(verb, arg))
@@ -825,6 +837,44 @@ class PoolRun:
         return {"who": who, "sheet": [r.rstrip() for r in sheet if r.strip()],
                 "entries": entries,
                 "marked": [e["row"] for e in entries if e["marked"]]}
+
+    def ready(self, arg: str) -> dict:
+        """`ready WHO>LABEL`: toggle one item and read every party record and
+        the effect array before and after, Pool of Radiance only.
+
+        `tools/c64/traitask.py`'s `SLOT_BASE`, `SLOT_STRIDE` and `EFFECTS`
+        are Pool's own layout, the same one `traitask.stage_items` and
+        `traitask.toggle_item` already drive; `main` refuses this step for
+        Curse and Silver Blades.
+        """
+        who, label = parse_ready(arg)
+        self.open_sheet(who)
+        if not self.choose_bar("ITEMS", timeout=15) or self.wait_rows(
+                lambda r: ITEM_BAR in r[24] and S.SHEET_BAR not in r[24], 20) is None:
+            raise self.fail("items", "ITEMS never put up the item list")
+        self.sess.settle(1)
+        with self.sess.mon(8) as m:
+            before_records = [bytes(traitask.live_record(m, slot))
+                              for slot in range(PARTY_SLOTS)]
+            before_effects = bytes(traitask.live_effects(m))
+            m.resume()
+        flipped = traitask.toggle_item(self.sess, self.log, label, "ready")
+        self.sess.settle(1)
+        with self.sess.mon(8) as m:
+            after_records = [bytes(traitask.live_record(m, slot))
+                             for slot in range(PARTY_SLOTS)]
+            after_effects = bytes(traitask.live_effects(m))
+            m.resume()
+        record_diff = {
+            slot: traitask.diff_bytes(
+                before_records[slot], after_records[slot],
+                traitask.SLOT_BASE + slot * traitask.SLOT_STRIDE)
+            for slot in range(PARTY_SLOTS)}
+        effects_diff = traitask.diff_bytes(before_effects, after_effects,
+                                           traitask.EFFECTS[0])
+        self.to_world()
+        return {"who": who, "label": label, "flipped": flipped,
+                "record_diff": record_diff, "effects_diff": effects_diff}
 
     def rest(self, arg: str) -> dict:
         minutes, hours = parse_rest(arg)
@@ -2175,6 +2225,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.cast(step.arg)
             elif step.verb == "cure":
                 got = pool.cure(step.arg)
+            elif step.verb == "ready":
+                got = pool.ready(step.arg)
             else:
                 got = pool.save(staged)
             got = {"step": step.text, "verb": step.verb, **got,
@@ -2241,7 +2293,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--steps", nargs="*", default=[],
                     help="load, camp-list [WHO], 'items WHO', 'view WHO', "
                          "'rest 8h', 'walk I', 'fight [SECONDS]', 'peek ADDR N', "
-                         "'cast CASTER:SPELL>TARGET', 'cure PALADIN>TARGET', save")
+                         "'cast CASTER:SPELL>TARGET', 'cure PALADIN>TARGET', "
+                         "'ready WHO>LABEL' (Pool only), save")
     ap.add_argument("--checkpoint", action="append", default=[],
                     metavar="ADDR[=NAME]",
                     help="hex; a non-stopping exec checkpoint armed after the "
@@ -2290,6 +2343,8 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--attack-by requires --title curse")
     if any(x.verb in ("cast", "cure") for x in steps) and args.title != "curse":
         ap.error("the cast and cure steps require --title curse")
+    if any(x.verb == "ready" for x in steps) and args.title != "pool":
+        ap.error("the ready step requires --title pool")
     if args.quit_nonattacking and not args.attack_by:
         ap.error("--quit-nonattacking requires --attack-by")
     if args.probe_step and not args.attack_by:

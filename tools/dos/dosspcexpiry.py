@@ -41,7 +41,9 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
+from automap import gamedisks  # noqa: E402
 from goldbox import dos_codec as pordos  # noqa: E402
+from goldbox import items as c64_items  # noqa: E402
 from tools.dos import dosbox, dosboxx  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -261,6 +263,37 @@ def walk(por: dosbox.PoolOfRadiance, steps: int) -> int:
     return done
 
 
+def staged_item(template: bytes, item_size: int = pordos.ITEM_SIZE) -> bytes:
+    """The DOS item record `dos_codec.item_from_c64` builds from a C64 item
+    template, not yet readied.
+
+    The mirror of the hand-set `--effect`/`--power` path: instead of poking
+    the readied-effect bytes directly, this projects every field the two
+    ports share off the game's own C64 item record (`#694 (A DOS Pool of
+    Radiance character wearing Gauntlets of Ogre Power loses his real
+    strength for good once converted to C64 and un-readied)`'s live-proof
+    plan). Byte `0x34` is zeroed either way, so the item still has to be
+    readied in the running game.
+    """
+    record = bytearray(pordos.item_from_c64(template, item_size))
+    record[0x34] = 0
+    return bytes(record)
+
+
+def load_template(name: str) -> bytes:
+    """The C64 item record the game itself prints as `name`, off the
+    registry's Pool of Radiance disks (`goldbox.items.load_item_templates`,
+    the same source `tools/c64/traitask.py`'s `stage_items` uses)."""
+    found = gamedisks.find("pool-of-radiance")
+    if found is None:
+        raise SystemExit("dosspcexpiry.py: no Pool of Radiance disks")
+    game_disk = str(pathlib.Path(found) / "POOL1.D64")
+    templates = c64_items.load_item_templates(game_disk)
+    if name not in templates:
+        raise SystemExit(f"no item template called {name!r}")
+    return templates[name]
+
+
 def cmd_chain(args: argparse.Namespace) -> int:
     game = dosbox.find_game("POOLRAD")
     out = pathlib.Path(args.out)
@@ -330,9 +363,14 @@ def cmd_ready(args: argparse.Namespace) -> int:
             data = bytearray(itm.read_bytes())
             base = (args.item - 1) * pordos.ITEM_SIZE
             before = bytes(data[base:base + pordos.ITEM_SIZE])
-            data[base + 0x3D] = args.effect
-            data[base + 0x3E] = args.power
-            data[base + 0x34] = 0          # not readied yet
+            if args.template:
+                data[base:base + pordos.ITEM_SIZE] = staged_item(
+                    load_template(args.template))
+                result["template"] = args.template
+            else:
+                data[base + 0x3D] = args.effect
+                data[base + 0x3E] = args.power
+                data[base + 0x34] = 0          # not readied yet
             itm.write_bytes(bytes(data))
             result["item_before"] = before.hex(" ")
             result["item_after"] = bytes(data[base:base + pordos.ITEM_SIZE]).hex(" ")
@@ -412,6 +450,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--power", type=lambda v: int(v, 0), default=0x80,
                    help="byte 0x3E; bit 7 marks the item magical, which is what "
                         "gates the effect grant, and the low bits must be zero")
+    r.add_argument("--template", default=None,
+                   help="a C64 item's printed name; stages the game's own "
+                        "record for it (dos_codec.item_from_c64) instead of "
+                        "--effect/--power")
     r.add_argument("--keys", nargs="*", default=[], help="keys to press after loading")
     r.add_argument("--leave", nargs="*", default=["Escape", "Escape"],
                    help="keys that get back to the map before saving")

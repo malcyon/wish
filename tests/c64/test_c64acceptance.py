@@ -1180,6 +1180,15 @@ def test_cast_and_cure_steps_parse_and_bad_ones_are_refused(step):
         A.parse_steps(["load", step])
 
 
+@pytest.mark.parametrize("step", [
+    "ready BAKSHI",                       # no label
+    "ready >GAUNTLETS OF OGRE POWER",     # nobody
+])
+def test_ready_step_parses_and_bad_ones_are_refused(step):
+    with pytest.raises(ValueError):
+        A.parse_steps(["load", step])
+
+
 def test_cast_and_cure_steps_keep_their_names_and_the_pool_refuses_them(tmp_path):
     steps = A.parse_steps(["load", "camp-list PHILIPPE,LEDERA",
                            "cast SHARA:cure blindness>PHILIPPE", "cure MARK>LEDERA"])
@@ -1190,6 +1199,91 @@ def test_cast_and_cure_steps_keep_their_names_and_the_pool_refuses_them(tmp_path
                 "--stage-only", "--steps", "load", "cure MARK>LEDERA",
                 "--out", str(tmp_path / "out")])
     assert info.value.code == 2
+
+
+def test_ready_step_keeps_its_name_and_curse_refuses_it(tmp_path):
+    steps = A.parse_steps(["load", "ready BAKSHI>GAUNTLETS OF OGRE POWER"])
+    assert A.parse_ready(steps[1].arg) == ("BAKSHI", "GAUNTLETS OF OGRE POWER")
+    with pytest.raises(SystemExit) as info:
+        A.main(["--title", "curse", "--save", str(_fixture_disk(tmp_path)),
+                "--stage-only", "--steps", "load",
+                "ready BAKSHI>GAUNTLETS OF OGRE POWER",
+                "--out", str(tmp_path / "out")])
+    assert info.value.code == 2
+
+
+class _ReadyMonitor:
+    """A fake debugger monitor: each `(address, length)` gives one queued
+    reading, popped in the order `ready()` reads it -- before, then after."""
+
+    def __init__(self, script):
+        self.script = script
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        pass
+
+    def read(self, address, length):
+        return self.script[(address, length)].pop(0)
+
+    def resume(self):
+        pass
+
+
+def test_ready_step_toggles_once_and_reads_records_and_effects_around_it(
+        tmp_path, monkeypatch):
+    screens = {
+        "world": _window({}, WORLD_BAR),
+        "sheet": _window({1: "BAKSHI"}, "VIEW:ITEMS SPELLS TRADE DROP EXIT"),
+        "items": _window({1: "BAKSHI", 6: " YES GAUNTLETS OF OGRE POWER"},
+                         "READY TRADE DROP EXIT"),
+    }
+    moves = {
+        ("world", ("party", 4)): "world", ("world", ("bar", "VIEW")): "sheet",
+        ("sheet", ("bar", "ITEMS")): "items", ("items", ("bar", "EXIT")): "sheet",
+        ("sheet", ("leave",)): "world",
+    }
+    sess = FakeSession(screens, moves, "world")
+
+    slot_before = bytes(A.traitask.SLOT_STRIDE)
+    slot_after = bytes([0x26]) + bytes(A.traitask.SLOT_STRIDE - 1)
+    fx_before = bytes(A.traitask.EFFECTS[1])
+    fx_after = bytes([0x26]) + bytes(A.traitask.EFFECTS[1] - 1)
+
+    script = {}
+    for slot in range(8):
+        key = (A.traitask.SLOT_BASE + slot * A.traitask.SLOT_STRIDE,
+              A.traitask.SLOT_STRIDE)
+        script[key] = [slot_before, slot_after if slot == 4 else slot_before]
+    script[A.traitask.EFFECTS] = [fx_before, fx_after]
+    sess.mon = lambda timeout: _ReadyMonitor(script)
+
+    calls = []
+
+    def fake_toggle(s, log, label, tag):
+        calls.append((label, tag))
+        return True
+
+    monkeypatch.setattr(A.traitask, "toggle_item", fake_toggle)
+    run, log = _pool_run(tmp_path, sess)
+    run.panel_index = lambda who: 4
+    got = run.ready("BAKSHI>GAUNTLETS OF OGRE POWER")
+    log.close()
+
+    assert calls == [("GAUNTLETS OF OGRE POWER", "ready")]
+    assert (got["who"], got["label"], got["flipped"]) == (
+        "BAKSHI", "GAUNTLETS OF OGRE POWER", True)
+    assert got["record_diff"][4] == A.traitask.diff_bytes(
+        slot_before, slot_after,
+        A.traitask.SLOT_BASE + 4 * A.traitask.SLOT_STRIDE)
+    assert all(got["record_diff"][s] == [] for s in range(8) if s != 4)
+    assert got["effects_diff"] == A.traitask.diff_bytes(
+        fx_before, fx_after, A.traitask.EFFECTS[0])
+    assert sess.state == "world"
+    assert sess.sent == [("party", 4), ("bar", "VIEW"), ("bar", "ITEMS"),
+                         ("bar", "EXIT"), ("leave",)]
 
 
 def test_camp_list_reads_each_named_member(tmp_path):
