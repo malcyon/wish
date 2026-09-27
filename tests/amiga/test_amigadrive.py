@@ -84,3 +84,10 @@ def test_the_machine_emulates_the_audio_interrupts():
     lines = CONFIG.read_text().splitlines()
     assert "sound_output=interrupts" in lines
     assert "sound_output=none" not in lines
+
+
+def test_the_machine_requests_the_named_directdraw_renderer():
+    """WinUAE 6.0.3 rejects numeric `gfx_api` values before selecting a renderer."""
+    settings = [line for line in CONFIG.read_text().splitlines()
+                if line.startswith("gfx_api=")]
+    assert settings == ["gfx_api=directdraw"]

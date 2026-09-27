@@ -583,8 +583,8 @@ unattended boot possible at all. Curse runs straight from its title art to
 QUIT menu; an original disk would stop for a code-wheel question with nobody
 there to answer it.
 
-**`-log` used to cost the run, and the cause was the renderer rather than the
-log.** The console it opens filled with `Denise queue without lock! id=1` --
+**A `-log` run once stalled amid renderer warnings.**
+The console filled with `Denise queue without lock! id=1` --
 thousands of lines, the same flood §5's `use_debugger` paragraph describes,
 with no `use_debugger` anywhere. Measured on 2026-09-07: with `-log` the
 emulator was still a blank white window three and a half minutes in; the same
@@ -595,22 +595,28 @@ said to pass `-log` only when `send` was going to read the debugger back, and
 it is superseded**, because a run that wants both the debugger and the screen
 -- which is every driven measurement -- had no way to have them.
 
-**`gfx_api=0` is the fix, and `tools/amiga/goldbox-a500.uae` now carries it.** This VM
-has no accelerated renderer and WinUAE's default one cannot keep its display
-buffer locked, which is what the message is; DirectDraw can. Measured on Curse
-of the Azure Bonds, 2026-09-08, the same command line with `-log` either way:
+**The measured `gfx_api=0` setting did not select DirectDraw.** WinUAE 6.0.3
+rejects `0` with `Unknown value ('0') for option 'gfx_api'` before assigning a
+renderer. Its parser accepts the names `directdraw`, `direct3d`, and
+`direct3d11`; `tools/amiga/goldbox-a500.uae` now requests
+`gfx_api=directdraw`. The earlier Curse of the Azure Bonds comparison, made on
+2026-09-08 with `-log` in both runs, remains an observation of the screens and
+console, but it did not measure the effective renderer:
 
-| | default renderer | `gfx_api=0` |
+| | no `gfx_api` line | rejected `gfx_api=0` line |
 |---|---|---|
 | the emulator window | white for the whole run | the game, drawn |
 | FPS / CPU | 14.6 / 342% | **49.9 / 0%** |
 | the console | `Denise queue without lock! id=1` as fast as it prints | the drive's own `nnn%` line |
 | `tools/amiga/winvmsettle.py` | never settled in 180 s | 62, 7, 12, 16, 50, 56, 83 s |
 
-With it, `#37 (Automap the Amiga version, not just the C64)`'s run drove Silver Blades from its title screen to a party
+With the rejected setting present, `#37 (Automap the Amiga version, not just the C64)`'s run drove Silver Blades from its title screen to a party
 standing in the world, photographing every screen, with the debugger reading
-memory throughout. A menu drive still needs no console, so `-log` off is still
-right for one that reads nothing.
+memory throughout. That success does not establish DirectDraw as the effective
+renderer. A later Silver Blades acceptance boot with the same invalid setting
+stayed white; the rejected setting's role in that failure remains unproved.
+A menu drive still needs no console, so `-log` off is still right for one that
+reads nothing.
 
 **`C:\Users\Public\Documents\Amiga Files\WinUAE\winuaebootlog.txt` is the
 first place to look when a run misbehaves.** It records which config loaded,
