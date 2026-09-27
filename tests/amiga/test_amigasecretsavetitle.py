@@ -995,3 +995,37 @@ def test_a_df0_prompt_outside_strict_is_refused_on_the_real_darkness_description
     with pytest.raises(drive.RouteError, match="disk prompt 'disk2_prompt', which is not a strict"):
         dataclasses.replace(foundation.DARKNESS,
                             strict=foundation.DARKNESS.strict - {"disk2_prompt"})
+
+
+PLAIN_ROUTE = (("P", "party_menu", "key"), ("A", "disk_ask", "key"), ("L", "loaded_menu", "key"))
+DF1_ROUTE = (("P", "party_menu", "key"), ("A", "loaded_menu", "key"),
+             ((1, "disk3", "SPACE"), "disk_wait", "insert"))
+
+
+def _measure_without_guard(tmp_path, clock, title):
+    guest = TitleGuest(clock)
+    drive.run_recon(manifest_for(tmp_path), guest=guest, guard=None, holder="wish679-test",
+                    audio_proof=_audio_proof(tmp_path), title=title, accept=False,
+                    measure=True)
+    return guest
+
+
+def test_measure_still_starts_for_a_df1_insert_after_an_unguarded_state(tmp_path, clock):
+    title = _df0_title(DF1_ROUTE, measure_route=DF1_ROUTE)
+    guest = _measure_without_guard(tmp_path, clock, title)
+    assert guest.starts and guest.inserted[0][0] == 1
+
+
+def test_measure_refuses_a_measure_only_df0_insert_after_an_unguarded_state(tmp_path, clock):
+    title = _df0_title(PLAIN_ROUTE, measure_route=DF0_ROUTE)
+    guest = TitleGuest(clock)
+    with pytest.raises(drive.RouteError, match="a DF0 insert needs a guard"):
+        drive.run_recon(manifest_for(tmp_path), guest=guest, guard=None, holder="wish679-test",
+                        audio_proof=_audio_proof(tmp_path), title=title, accept=False,
+                        measure=True)
+    assert guest.calls == []
+
+
+def test_measure_ignores_a_route_only_df0_insert(tmp_path, clock):
+    title = _df0_title(DF0_ROUTE, measure_route=PLAIN_ROUTE)
+    assert _measure_without_guard(tmp_path, clock, title).starts

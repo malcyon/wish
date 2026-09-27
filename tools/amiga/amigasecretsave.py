@@ -1087,8 +1087,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         missing = [s for s in dict.fromkeys(needed) if not _guards(guard, s)]
         if missing:
             raise RouteError(f"screen guard map lacks {missing}")
-    if title is not None:
-        steps = title.measure_route if measure else title.route
+    if title is not None and measure:
+        # Measure mode settles a state with no guard rule and goes on, so a DF0 insert would
+        # swap the disk on an unrecognised screen.
+        steps = title.measure_route
         for (key, _, kind), (_, before, _) in zip(steps[1:], steps):
             if kind == "insert" and key[0] == 0 and not _guards(guard, before):
                 raise RouteError(f"screen guard map lacks {before!r}: a DF0 insert needs a "
