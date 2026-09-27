@@ -19,7 +19,7 @@ import threading
 import pytest
 
 from tools.dos import acceptance as da
-from tools.dos import dosbox, dospod
+from tools.dos import dosbox, dospod, staging
 
 # Sending SIGTERM to the test process ends it on Windows, which has no POSIX signals.
 posix_signals = pytest.mark.skipif(
@@ -568,7 +568,7 @@ def test_install_keeps_only_the_one_slot_under_its_own_letter(tmp_path):
     for name in ("savgama.dat", "CHRDATA1.SAV", "chrdata1.spc", "NOTES.TXT"):
         (save / name).write_bytes(name.encode())
     (dest / "SAVGAMJ.DAT").write_bytes(b"someone else's")
-    took = da.install(save, dest, "a")
+    took = staging.install(save, dest, "a")
     assert sorted(p.name for p in dest.iterdir()) == [
         "CHRDATA1.SAV", "CHRDATA1.SPC", "SAVGAMA.DAT"]
     assert (dest / "CHRDATA1.SPC").read_bytes() == b"chrdata1.spc"
@@ -1270,22 +1270,22 @@ def test_silver_blades_is_installed_under_its_own_letter(tmp_path):
     for name in ("SAVGAMA.DAT", "CHRDATA1.SAV"):
         (save / name).write_bytes(b"x")
     with pytest.raises(ValueError, match="install A as A"):
-        da.install(save, dest, "D")
+        staging.install(save, dest, "D")
     assert list(dest.iterdir()) == []
-    assert da.install(save, dest, "a")["as_slot"] == "A"
+    assert staging.install(save, dest, "a")["as_slot"] == "A"
 
 
 def test_a_folder_of_two_slots_needs_the_one_named(tmp_path):
     for name in ("SAVGAMA.DAT", "savgamb.dat", "CHRDATA1.SAV", "CHRDATB1.SAV"):
         (tmp_path / name).write_bytes(name.encode())
     with pytest.raises(FileNotFoundError, match="--from-slot"):
-        da.source_slot(tmp_path)
-    assert da.source_slot(tmp_path, "b") == "B"
+        staging.source_slot(tmp_path)
+    assert staging.source_slot(tmp_path, "b") == "B"
     with pytest.raises(FileNotFoundError, match="holds no SAVGAMC"):
-        da.source_slot(tmp_path, "C")
+        staging.source_slot(tmp_path, "C")
     dest = tmp_path / "play"
     dest.mkdir()
-    took = da.install(tmp_path, dest, "B", "B")
+    took = staging.install(tmp_path, dest, "B", "B")
     assert sorted(p.name for p in dest.iterdir()) == ["CHRDATB1.SAV", "SAVGAMB.DAT"]
     assert (dest / "CHRDATB1.SAV").read_bytes() == b"CHRDATB1.SAV"
     assert took["from_slot"] == "B"
@@ -1301,7 +1301,7 @@ def test_install_refuses_a_letter_the_container_does_not_name(tmp_path):
         (save / name).write_bytes(b"x")
     (dest / "KEEP.ME").write_bytes(b"untouched")
     with pytest.raises(ValueError, match="install J as J"):
-        da.install(save, dest, "A")
+        staging.install(save, dest, "A")
     assert [p.name for p in dest.iterdir()] == ["KEEP.ME"]
 
 
@@ -1337,14 +1337,14 @@ def test_the_stages_write_what_they_log(tmp_path):
     (tmp_path / "SAVGAMJ.DAT").write_bytes(bytes(0xE00))
     (tmp_path / "CHRDATJ1.SAV").write_bytes(_curse_record())
     (tmp_path / "CHRDATJ1.FX").write_bytes(bytes.fromhex("080000ff00") + bytes(4))
-    hall = da.stage_hall(tmp_path, "j")
+    hall = staging.stage_hall(tmp_path, "j")
     assert (tmp_path / "SAVGAMJ.DAT").read_bytes()[0xD51:0xD53] == b"\xff\x00"
     assert (hall["before"], hall["after"]) == ("0000", "ff00")
-    xp = da.stage_xp(tmp_path, "J", 1, 5000)
+    xp = staging.stage_xp(tmp_path, "J", 1, 5000)
     assert dos_codec.read_character(tmp_path / "CHRDATJ1.SAV").get("experience") == 5000
     assert xp["name"] == "MATHEW"
     line, node = da.parse_node("1=141:10080:1:1")
-    got = da.stage_node(tmp_path, "J", line, node)
+    got = staging.stage_node(tmp_path, "J", line, node)
     fx = (tmp_path / "CHRDATJ1.FX").read_bytes()
     assert len(fx) == 18 and fx[9:14] == bytes((141, 0x60, 0x27, 1, 1))
     assert got["file"] == "CHRDATJ1.FX" and got["node"]["minutes"] == 10080
@@ -1705,7 +1705,7 @@ def test_hall_is_refused_for_a_title_whose_hall_word_is_not_documented(capsys):
 def test_hall_refuses_a_save_too_short_to_hold_the_word(tmp_path):
     (tmp_path / "SAVGAMA.DAT").write_bytes(bytes(0x100))
     with pytest.raises(ValueError, match="too short"):
-        da.stage_hall(tmp_path, "A")
+        staging.stage_hall(tmp_path, "A")
     assert (tmp_path / "SAVGAMA.DAT").stat().st_size == 0x100
 
 
@@ -1921,11 +1921,11 @@ def test_a_pools_of_darkness_slot_installs_its_container_vault_and_records(
     dest = tmp_path / "play"
     dest.mkdir()
     (dest / "SAVGAMB.PTY").write_bytes(b"the archives' own")
-    took = da.install(out / "source", dest, "A")
+    took = staging.install(out / "source", dest, "A")
     assert sorted(took["files"]) == sorted(p.name for p in dest.iterdir()) == [
         "CHRDATA1.SAV", "CHRDATA1.THG", "CHRDATA2.SAV", "SAVGAMA.PTY", "VAULTA.DAT"]
     with pytest.raises(ValueError, match="install A as A"):
-        da.install(out / "source", dest, "D")
+        staging.install(out / "source", dest, "D")
 
 
 def test_the_read_step_sets_each_members_skills_and_items_side_by_side(
