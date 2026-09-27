@@ -226,7 +226,7 @@ def test_winguest_insert_hands_the_windows_path_holder_and_hash_to_the_pipe(monk
 
     monkeypatch.setattr(amiga, "WinuaePipe", Pipe)
     guest = winuaesession.WinGuest()
-    monkeypatch.setattr(drive.subprocess, "Popen", _CopyingPopen)
+    monkeypatch.setattr(winuaesession.subprocess, "Popen", _CopyingPopen)
     guest.put(pathlib.Path("disk3.adf"), "C:/Amiga/Disks/wish679-h-disk3.adf", 30)
     receipt = guest.insert("h", 1, "C:/Amiga/Disks/wish679-h-disk3.adf", 30, "ab" * 32)
     assert seen["staged"] == {"C:\\Amiga\\Disks\\wish679-h-disk3.adf"}

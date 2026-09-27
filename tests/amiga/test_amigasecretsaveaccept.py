@@ -15,7 +15,7 @@ from tests.amiga import test_amigasecretsavemeasure as measure
 from tests.amiga.test_amigasecretsave import _audio_proof, _sha
 from tests.amiga.test_amigasecretsavemeasure import ScreenGuest, _keys, _menu_manifest
 from tools.amiga import amigasecretsave as drive
-from tools.amiga import winuaesession
+from tools.amiga import route_silver_blades, winuaesession
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
 BEFORE = {"area": 16, "x": 3, "y": 5, "facing": 2}
@@ -150,7 +150,7 @@ class _IdentityMap:
 
 
 def test_the_route_table_is_the_plan_s_seventeen_steps():
-    assert [(k, s, kind) for k, s, kind in drive.ACCEPT_ROUTE] == [
+    assert [(k, s, kind) for k, s, kind in route_silver_blades.ACCEPT_ROUTE] == [
         ("P", "party_menu", "key"), ("L", "load_picker", "key"),
         ("C", "loaded_menu", "key"), ("V", "sheet", "key"), ("I", "items", "key"),
         ("E", "sheet", "key"), ("E", "loaded_menu", "key"), ("S", "save_picker", "key"),
@@ -158,7 +158,8 @@ def test_the_route_table_is_the_plan_s_seventeen_steps():
         (None, "world", "answer"), ("NP8", "world", "move"), ("NP8", "world", "move"),
         ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
         ("D", "exit_game", "write"), ("N", "camp", "key")]
-    assert drive.MENU_SAVE_LETTER == "B" and drive.CAMP_SAVE_LETTER == "D"
+    assert (route_silver_blades.MENU_SAVE_LETTER == "B"
+            and route_silver_blades.CAMP_SAVE_LETTER == "D")
 
 
 def test_accept_presses_the_route_and_answers_the_journal_once(
@@ -266,7 +267,8 @@ def test_accept_refuses_before_the_claim_without_a_journal_interpreter(tmp_path,
     guest = AcceptGuest(clock)
     with pytest.raises(winuaesession.RouteError, match="journal interpreter"):
         _accept(tmp_path, clock, guest=guest,
-                journal_python=str(tmp_path / "no-such-python"), preflight=drive.journal_preflight)
+                journal_python=str(tmp_path / "no-such-python"),
+                preflight=route_silver_blades.journal_preflight)
     assert guest.calls == []
 
 
@@ -286,20 +288,20 @@ def test_the_preflight_wants_the_imports_and_the_private_tables(tmp_path, monkey
 
     def run(argv, **kw):
         ran.append(argv)
-        reader = argv[2] == drive.JOURNAL_READER_CHECK
+        reader = argv[2] == route_silver_blades.JOURNAL_READER_CHECK
         return subprocess.CompletedProcess(argv, 0, b"ok\n" if reader else b"", b"")
 
-    monkeypatch.setattr(drive.subprocess, "run", run)
-    monkeypatch.setattr(drive.amigabladesjournal, "wheel_repo", lambda: tmp_path)
+    monkeypatch.setattr(route_silver_blades.subprocess, "run", run)
+    monkeypatch.setattr(route_silver_blades.amigabladesjournal, "wheel_repo", lambda: tmp_path)
     with pytest.raises(winuaesession.RouteError, match="not a directory"):
-        drive.journal_preflight("py")
+        route_silver_blades.journal_preflight("py")
     (tmp_path / "ssb" / "analysis").mkdir(parents=True)
-    drive.journal_preflight("py")
+    route_silver_blades.journal_preflight("py")
     assert ran[-1] == ["py", "-c", "import numpy, PIL"]
-    monkeypatch.setattr(drive.subprocess, "run",
+    monkeypatch.setattr(route_silver_blades.subprocess, "run",
                         lambda argv, **kw: subprocess.CompletedProcess(argv, 1, b"", b""))
     with pytest.raises(winuaesession.RouteError, match="cannot import numpy"):
-        drive.journal_preflight("py")
+        route_silver_blades.journal_preflight("py")
 
 
 def test_a_save_letter_that_is_a_prepared_slot_is_refused(tmp_path, clock, monkeypatch):
@@ -443,7 +445,8 @@ def test_a_move_key_is_pressed_once_even_when_the_screen_did_not_change(
 
 def test_each_state_waits_its_minimum_before_the_first_look(tmp_path, clock, readings):
     guest, _ = _accept(tmp_path, clock,
-                       min_waits={**drive.default_min_waits(), **drive.ACCEPT_MIN_WAITS})
+                       min_waits={**route_silver_blades.default_min_waits(),
+                                  **route_silver_blades.ACCEPT_MIN_WAITS})
     first = {}
     for name, at in guest.at:
         first.setdefault(name, at)
@@ -537,7 +540,7 @@ def test_the_answerer_runs_in_its_own_interpreter_and_only_its_last_line_is_kept
         "import sys, pathlib\n"
         f"pathlib.Path({str(tmp_path / 'argv.txt')!r}).write_text(' '.join(sys.argv[1:]))\n"
         "print('noise')\nprint('answered')\n")
-    code, line = drive.run_journal_answer(
+    code, line = route_silver_blades.run_journal_answer(
         sys.executable, "wish672-x", tmp_path / "side-a.adf", 60, script=script)
     assert (code, line) == (0, "answered")
     assert (tmp_path / "argv.txt").read_text() == (
@@ -547,11 +550,12 @@ def test_the_answerer_runs_in_its_own_interpreter_and_only_its_last_line_is_kept
 def test_the_answerer_exit_code_and_a_timeout_are_reported(tmp_path):
     script = tmp_path / "fake_answerer.py"
     script.write_text("print('no challenge on screen')\nraise SystemExit(1)\n")
-    assert drive.run_journal_answer(sys.executable, "h", tmp_path / "a", 60, script=script) == (
+    assert route_silver_blades.run_journal_answer(
+        sys.executable, "h", tmp_path / "a", 60, script=script) == (
         1, "no challenge on screen")
     script.write_text("import time\ntime.sleep(60)\n")
     with pytest.raises(winuaesession.RouteError, match="exceeded"):
-        drive.run_journal_answer(sys.executable, "h", tmp_path / "a", 1, script=script)
+        route_silver_blades.run_journal_answer(sys.executable, "h", tmp_path / "a", 1, script=script)
 
 
 def _after(n, name):
