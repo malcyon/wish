@@ -4,6 +4,7 @@ Scripts that say where things are and who holds them: the game disks, the specim
 
 | file | purpose |
 |---|---|
+| `evidence.py` | Says which commit an acceptance run ran on and where its evidence goes: `git_state(repo)` gives the HEAD sha and the tracked files that differ from it, `default_out(issue, run, sha)` gives `<cache>/acceptance/<issue>/<sha10>-<run>`; both the DOS and the C64 driver import it. |
 | `instance.py` | The VICE instance pool: six resources per slot (two monitor ports, a command port, an X display, a work directory, a private `vicerc`) held by an `fcntl.flock` lease, so a crashed run's slot frees itself; `status` reports idle and leaking slots, `claim -- <command>` tears down its own process group on `SIGTERM`, and nothing here kills a process by name. |
 | `scratch.py` | Says where a tool writes what it produces: `scratch_dir("dosbox", "shots")` is `<tmp>/wish/dosbox/shots` and `cache_dir("testrun")` is `~/.cache/wish/testrun`, which is also where the emulator pool lives because the flatpak VICE cannot read the temp directory; neither creates anything, `ensure(path)` does it just before the first write; import it with `from tools.registry import scratch`. |
 | `specimenbackup.py` | Counts the copies of the specimen tree and makes one more: `audit` hashes files under a directory or archive (SHA-256, never by name), `archive` writes the whole tree to one new file outside the repository, `verify` reads an archive back against the live `provenance.toml` files. |

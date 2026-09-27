@@ -608,7 +608,7 @@ def test_judge_accepts_only_the_named_node_at_the_named_minutes():
 
 
 def test_the_evidence_goes_under_the_acceptance_cache():
-    out = da.default_out("661", "bless", "0123456789abcdef")
+    out = da.evidence.default_out("661", "bless", "0123456789abcdef")
     assert out.parts[-4:] == ("wish", "acceptance", "661", "0123456789-bless")
 
 
@@ -667,7 +667,7 @@ def _run_args(tmp_path, steps):
 def _fake_run(monkeypatch, tmp_path, *, find_game=None, session_fail=None,
               menu_error=None):
     log: list[str] = []
-    monkeypatch.setattr(da, "git_state", lambda: {"sha": "0" * 40, "dirty": False})
+    monkeypatch.setattr(da.evidence, "git_state", lambda repo: {"sha": "0" * 40, "dirty": False})
     monkeypatch.setattr(da, "install", lambda *a: {})
 
     def find(stem):

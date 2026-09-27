@@ -87,7 +87,6 @@ import dataclasses
 import json
 import pathlib
 import re
-import subprocess
 import sys
 import time
 
@@ -108,7 +107,7 @@ from tools.c64 import (  # noqa: E402
 )
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.traitquery import TRAIT_SLOT  # noqa: E402
-from tools.registry import scratch  # noqa: E402
+from tools.registry import evidence, scratch  # noqa: E402
 
 TITLES = {"pool": "pool-of-radiance", "curse": "curse-of-the-azure-bonds",
           "ssb": "secret-of-the-silver-blades"}
@@ -1806,17 +1805,8 @@ class SilverRun(CurseRun):
 
 # --- the run ---------------------------------------------------------------------
 
-def git_state() -> dict:
-    def git(*args: str) -> str:
-        r = subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True)
-        return r.stdout.strip() if r.returncode == 0 else ""
-    dirty = [line[3:] for line in git("status", "--porcelain",
-                                      "--untracked-files=no").splitlines()]
-    return {"sha": git("rev-parse", "HEAD") or "unknown", "dirty": dirty}
 
 
-def default_out(issue: str, run: str, sha: str) -> pathlib.Path:
-    return scratch.cache_dir("acceptance", issue, f"{sha[:10]}-{run}")
 
 
 def validate_curse_attack(results: list[dict], attack: dict | None,
@@ -2059,7 +2049,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
     deadline = clock() + args.max_seconds
     scratch.ensure(out)
     log = Log(out)
-    git = git_state()
+    git = evidence.git_state(REPO)
     title_key = TITLES[args.title]
     summary: dict = {"title": title_key, "source": str(source),
                      "steps": [s.text for s in steps], **git,
@@ -2291,7 +2281,8 @@ def main(argv: list[str] | None = None) -> int:
     if not args.stage_only and args.disks is None:
         ap.error("no game disks found; set $POR_DISKS or pass --disks")
     out = (pathlib.Path(args.out) if args.out
-           else default_out(args.issue, args.run, git_state()["sha"]))
+           else evidence.default_out(args.issue, args.run,
+                                     evidence.git_state(REPO)["sha"]))
     if out.exists() and any(out.iterdir()):
         ap.error(f"{out} already holds a run; name a new --run")
     return run(args, steps, out, source)

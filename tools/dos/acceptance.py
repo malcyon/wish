@@ -174,7 +174,6 @@ import pathlib
 import re
 import shutil
 import signal
-import subprocess
 import sys
 import time
 import traceback
@@ -207,7 +206,7 @@ from tools.dos.staging import (  # noqa: E402
     stage_node,
     stage_xp,
 )
-from tools.registry import scratch  # noqa: E402
+from tools.registry import evidence, scratch  # noqa: E402
 
 # The camp bar is `Save View Magic Rest Alter Exit` in Pool of Radiance and
 # `Save View Magic Rest Alter Fix Exit` in the other two (`START.EXE`).
@@ -995,17 +994,8 @@ def judge(expect: Expect, after: dict) -> dict:
                                for n in nodes)}
 
 
-def default_out(issue: str, run: str, sha: str) -> pathlib.Path:
-    return scratch.cache_dir("acceptance", issue, f"{sha[:10]}-{run}")
 
 
-def git_state() -> dict:
-    def git(*args: str) -> str:
-        r = subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True)
-        return r.stdout.strip() if r.returncode == 0 else ""
-    dirty = [line[3:] for line in git("status", "--porcelain",
-                                      "--untracked-files=no").splitlines()]
-    return {"sha": git("rev-parse", "HEAD") or "unknown", "dirty": dirty}
 
 
 # --------------------------------------------------------------------------
@@ -2625,10 +2615,10 @@ def run(args, clock=time.monotonic) -> int:
 
 def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
     deadline = Deadline(clock, getattr(args, "deadline", None) or DEADLINE_SECONDS)
-    git = git_state()
+    git = evidence.git_state(REPO)
     title = TITLES[args.title]
-    out = pathlib.Path(args.out) if args.out else default_out(args.issue, args.run,
-                                                              git["sha"])
+    out = (pathlib.Path(args.out) if args.out
+           else evidence.default_out(args.issue, args.run, git["sha"]))
     scratch.ensure(out)
     log = outer.enter_context((out / "run.jsonl").open("a"))
 
