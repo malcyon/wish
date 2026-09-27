@@ -563,6 +563,31 @@ def test_silver_blades_measure_forwards_route_waits_and_default_attempt(
     assert set(json.loads(capsys.readouterr().out.splitlines()[0])) == {"success", "error", "summary"}
 
 
+def test_silver_blades_measure_forwards_custom_route_and_write_keys(
+        tmp_path, monkeypatch):
+    seen, _guest = _record_cli(monkeypatch)
+    argv = ["measure", "--title", "ssb", "--manifest", str(tmp_path / "prepare.json"),
+            "--audio-proof", "mute.json", "--route", "esc:party_menu, L:load_picker",
+            "--write-keys", "b, w"]
+    assert acceptance.main(argv) == 0
+    kw = seen[0][1]
+    route = (("ESC", "party_menu"), ("L", "load_picker"))
+    assert kw["route"] == route
+    assert kw["write_keys"] == ("B", "W")
+    assert kw["min_waits"] == route_silver_blades.default_min_waits(route)
+
+
+def test_silver_blades_measure_rejects_invalid_custom_route_and_keys(
+        monkeypatch, capsys):
+    monkeypatch.setattr(acceptance, "WinGuest", lambda: pytest.fail("guest created"))
+    argv = ["measure", "--title", "ssb", "--manifest", "m.json",
+            "--audio-proof", "mute.json"]
+    assert acceptance.main([*argv, "--route", "ESC"]) == 2
+    assert "route step" in capsys.readouterr().err
+    assert acceptance.main([*argv, "--write-keys", "B,"]) == 2
+    assert "empty entry" in capsys.readouterr().err
+
+
 def test_silver_blades_accept_forwards_identity_journal_and_waits(
         tmp_path, monkeypatch, capsys):
     seen, guest = _record_cli(monkeypatch)

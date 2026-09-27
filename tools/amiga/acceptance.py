@@ -1081,6 +1081,25 @@ def expect_verdict(title: AmigaTitle, manifest: pathlib.Path, attempt: str,
     return check_expect(reading, expect)
 
 
+def parse_route(text: str) -> tuple[tuple[str, str], ...]:
+    """Read `KEY:state,KEY:state` into a route."""
+    steps = []
+    for part in text.split(","):
+        key, sep, state = part.strip().partition(":")
+        if not sep or not key or not state:
+            raise RouteError(f"route step {part!r} is not KEY:state")
+        steps.append((key.upper(), state))
+    return tuple(steps)
+
+
+def parse_write_keys(text: str) -> tuple[str, ...]:
+    """Read `KEY,KEY` into upper-case write keys; an empty entry is an error."""
+    keys = tuple(k.strip().upper() for k in text.split(","))
+    if not all(keys):
+        raise RouteError(f"write keys {text!r} contain an empty entry")
+    return keys
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1115,6 +1134,8 @@ def main(argv: list[str] | None = None) -> int:
     common(m)
     m.add_argument("--guards", type=pathlib.Path, default=None,
                    help="screen guard JSON; a route state it holds must match, and the boot waits for its title")
+    m.add_argument("--route", help="Silver Blades only: KEY:state,KEY:state; default is the built-in route")
+    m.add_argument("--write-keys", help="Silver Blades only: comma-separated keys that write; default B")
     a = sub.add_parser("accept", help="guarded load, sheet, two saves around a walk and the read-back")
     common(a)
     a.add_argument("--guards", required=True, type=pathlib.Path)
@@ -1144,6 +1165,9 @@ def main(argv: list[str] | None = None) -> int:
                 raise RouteError("--source, --staged-from and --issue require --title ssb")
         elif not silver_blades and args.attempt is None:
             raise RouteError("--attempt is required for this title")
+        if (args.command == "measure" and not silver_blades
+                and (args.route is not None or args.write_keys is not None)):
+            raise RouteError("--route and --write-keys require --title ssb")
         if args.command == "accept":
             if silver_blades and args.journal_python is None:
                 raise RouteError("Silver Blades accept requires --journal-python")
@@ -1167,14 +1191,17 @@ def main(argv: list[str] | None = None) -> int:
             attempt = args.attempt or ("recon1" if args.command == "measure" else "accept1")
             holder = args.holder or f"wish{'672' if silver_blades else ISSUE}-{uuid.uuid4().hex[:12]}"
             if args.command == "measure":
+                route = (parse_route(args.route) if args.route else route_silver_blades.ROUTE)
+                write_keys = parse_write_keys(
+                    args.write_keys if args.write_keys is not None else "B") if silver_blades else None
                 result = run_recon(
                     args.manifest, guest=WinGuest(), holder=holder,
                     audio_proof=args.audio_proof, attempt=attempt,
                     guard=PixelGuards(args.guards) if args.guards else None,
                     deadline_seconds=args.deadline, measure=True, title=title,
-                    **({"route": route_silver_blades.ROUTE,
-                        "write_keys": ("B",),
-                        "min_waits": route_silver_blades.default_min_waits()}
+                    **({"route": route,
+                        "write_keys": write_keys,
+                        "min_waits": route_silver_blades.default_min_waits(route)}
                        if silver_blades else {}))
             else:
                 result = run_recon(
