@@ -56,7 +56,18 @@ pool-of-radiance 6BAD 6BB6`) finds every writer:
 | `SPELLE04 $AA22` (scan at `$AA16`) | **camp-cast Animate Dead** (`ECL65` row 36, `$A9C2`): for each party member at status `$83`, up to the caster's level, writes 32 into the first free slot scanning 9 down to 0, next to status `$03` and creature type 4. The combat route (`SPELLE00 $AB29`) writes no slot |
 | `ECL64 $9ACD` / `$9AFA` | the same pair for combat |
 | `SQRPACI64 $063A`, `$065A` | clear the slot the predicate just matched, on a cure -- 31 and 55 |
-| `SQRPACI64 $04FB` -> `$059A` | the temple's Raise Dead, not a cure: on a survived roll it zeroes slot 32 and undoes every field camp-cast Animate Dead changed |
+| `SQRPACI64 $04FB` -> `$059A` | the temple's Raise Dead, not a cure: on a survived roll it asks for id 32 through the array-first predicate, then zeros `$6BAD,X`; the same path restores creature type, movement, fighter level, turning power and PC control, but does not explicitly clear the effect-array id, side or turning class |
+
+The earlier claim that this path always clears trait 32 and undoes every
+Animate Dead field was too broad. The registered game-written
+`WISH-SPEC-por-700-animate-dead-c64.D64` has BRUTUS's trait 32 in slot 9
+and an owned id-32 array row at index 63. On that input, the predicate returns
+the array index, so the temple's `STA $6BAD,X` targets `$6BEC`, not the trait
+slot at `$6BB6`; it does not clear the array id. This is an instruction-path
+finding for `#700 (Converting a Pool of Radiance C64 party holding a camp-cast
+Animate Dead zombie needs more than fixing the refusal that blocks it)`.
+A successful temple Raise Dead and its game-written resave have not been
+observed, so the resulting player state remains unconfirmed.
 
 The grant writes the id and nothing else. **CONFIRMED in the running game:**
 `cited/252/ask11`, MALCYON with a CLOAK OF DISPLACEMENT staged readied
@@ -723,11 +734,14 @@ reason that is now wrong on both clauses:
 * **The world's copy of `$DA63`-`$DC62` is not the tables**: the region holds
   something else until `COMBAT` loads. Read them in a fight.
 * **`SQRPACI64 $059A`, `$063A` and `$065A` zero `$6BAD,X` with whatever X the
-  predicate left**, and on an array match X is the array index, 0-63. If 32,
-  31 or 55 ever sits in the array rather than a slot, the clear writes a zero
-  up to 54 bytes past the block. Not a reader's error -- the three
-  instructions are quoted above -- but no character in any specimen has one
-  of the three in the array, so what a player sees is UNKNOWN.
+  predicate left**, and on an array match X is the array index, 0-63. An
+  array match can therefore direct the clear up to 54 bytes past the trait
+  block. The registered game-written BRUTUS specimen above has id 32 in row
+  63: `$059A` would clear `$6BEC` rather than trait slot 9 at `$6BB6`, while
+  the array id remains set. BRUTUS's saved byte corresponding to `$6BEC` is
+  already zero, and the successful temple branch has not been driven on this
+  specimen; what a player sees remains UNKNOWN. No specimen establishes the
+  outcome for ids 31 or 55.
 * **`CAMP $12EA`**, the "if he has it, dispatch it" entry, is named by no
   file. Its neighbour `$12F8` is the live one.
 * **The character sheet does not list a trait**, so the "boot, `VIEW`, confirm
