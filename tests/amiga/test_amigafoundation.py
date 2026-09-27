@@ -35,7 +35,8 @@ from tools.amiga import (
     winuaesession,
 )
 from tools.amiga import amigasecretsave as drive
-from tools.registry import specimens
+from tools.amiga import route as amiga_route
+from tools.registry import scratch, specimens
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
 START = {"area": 0, "x": 9, "y": 13, "facing": geo.NORTH}
@@ -395,6 +396,37 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
              for label, data in amigasaves.images()}
     assert after == before and staging.sha256(specimen) == specimen_before
     assert drive._title_inputs(manifest, foundation.CURSE)[2] == "B"
+
+
+def test_curse_prepare_threads_a_substitute_slot_through_to_the_manifest(
+        tmp_path, monkeypatch):
+    """`prepare(..., substitute=...)` for a `_SUBSTITUTABLE` title reaches
+    `staging._prepare_from` and its substitution shows up in the manifest."""
+    from tests.amiga.test_amigastagingsubstitute import _curse_disk
+
+    _curse_registered()
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    substitute = _curse_disk(tmp_path, "substitute.adf", {"Z": ("REPLACEMENT",)})
+    manifest = json.loads(foundation.prepare(
+        foundation.CURSE, "substitute-run", substitute=substitute,
+        substitute_letter="Z").read_text())
+    assert manifest["names_a"] == ["REPLACEMENT"]
+    assert manifest["substitute"] == {
+        "path": str(substitute), "sha256": staging.sha256(substitute), "letter": "Z"}
+
+
+@pytest.mark.parametrize("title", [foundation.POOL, foundation.DARKNESS])
+def test_prepare_refuses_a_substitute_on_a_title_that_is_not_substitutable(
+        tmp_path, title):
+    """`substitute` is only wired through `_SUBSTITUTABLE`; every other title
+    refuses it before a run folder is ever created."""
+    run_root = scratch.cache_dir("acceptance", amiga_route.ISSUE)
+    before = set(run_root.iterdir()) if run_root.exists() else set()
+    with pytest.raises(winuaesession.RouteError, match="takes no substitute slot"):
+        foundation.prepare(title, "no-substitute-run", substitute=tmp_path / "x.adf")
+    after = set(run_root.iterdir()) if run_root.exists() else set()
+    assert after == before
 
 
 # Pools of Darkness: disk 3 goes into DF1 when the boot asks for it, then SPACE; F is the control save

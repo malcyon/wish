@@ -465,8 +465,9 @@ def _prepare_from(src: _Sources, run: pathlib.Path, specimen: pathlib.Path | Non
         if not substitute.is_file():
             raise RouteError(f"the substitute {substitute} is missing")
         source_disk = amiga_adf.AmigaDisk.open(substitute)
-        if source_disk.verify():
-            raise RouteError(f"{substitute} fails ADF verification")
+        source_problems = source_disk.verify()
+        if source_problems:
+            raise RouteError(f"{substitute} fails ADF verification: {source_problems}")
         working_disk = adf.AmigaDisk(bytearray(working.read_bytes()))
         try:
             amigalaterslot.import_slot(working_disk, src.loaded, source_disk, substitute_letter)

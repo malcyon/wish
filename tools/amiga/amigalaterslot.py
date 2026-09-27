@@ -83,9 +83,12 @@ def import_slot(dest: AmigaDisk, dest_letter: str, source: AmigaDisk, source_let
     save = amiga_savegame.parse(source.read_file(path), source=path)
     data = amiga_savegame.rebuild(save, list(save.characters))
     out = amiga_savegame.parse(data, save.container, source="rebuilt")
-    bad = [claim for claim, ok, detail in amigasavecheck.check(out) if not ok]
+    bad = [(claim, detail) for claim, ok, detail in amigasavecheck.check(out) if not ok]
     if bad:
         raise AmigaDiskError(f"the source slot fails its checks: {bad}")
+    # The suffix follows the source path's own convention rather than the
+    # destination's, which is safe only because a caller never substitutes
+    # across titles -- `amigafoundation._SUBSTITUTABLE` gates that today.
     target = f"/{SAVE_DRAWER}/savgam{dest_letter}{path[-4:]}"
     try:
         dest.lookup(target)

@@ -97,9 +97,29 @@ def test_a_substitute_with_no_such_letter_is_refused(tmp_path, sources):
                               substitute=substitute, substitute_letter="Z")
 
 
-def test_a_substitute_that_fails_adf_verification_is_refused(tmp_path, sources):
+def test_an_unreadable_substitute_is_refused_at_adf_open(tmp_path, sources):
     src, specimen = sources
     substitute = tmp_path / "broken.adf"
     substitute.write_bytes(b"not an ADF image" * 100)
-    with pytest.raises((RouteError, AmigaDiskError)):
+    with pytest.raises(AmigaDiskError):
+        staging._prepare_from(src, tmp_path / "run", specimen, substitute=substitute)
+
+
+def test_a_substitute_that_fails_adf_verification_is_refused(tmp_path, sources):
+    """A structurally valid ADF -- `AmigaDisk.open` succeeds -- whose root block
+    checksum is wrong, so only `_prepare_from`'s own `source_disk.verify()`
+    call, not `AmigaDisk.open`, rejects it."""
+    src, specimen = sources
+    disk = AmigaDisk.blank("CurseA")
+    raw = bytearray(disk.to_bytes())
+    # Flip a byte inside the root block's unused comment field (0x148-0x1A3),
+    # clear of the hash table (0x18-0x137), type, name and sec-type fields --
+    # so the block still opens and every hash chain still walks, but no
+    # longer sums to zero.
+    raw[disk.root * 512 + 0x150] ^= 0xFF
+    substitute = tmp_path / "broken.adf"
+    substitute.write_bytes(bytes(raw))
+    # The corrupted disk does open (root found by its type/sec-type fields).
+    AmigaDisk.open(substitute)
+    with pytest.raises(RouteError, match=f"{substitute} fails ADF verification: "):
         staging._prepare_from(src, tmp_path / "run", specimen, substitute=substitute)
