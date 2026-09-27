@@ -237,9 +237,13 @@ POOL_DISPLAY_BAR = "98286ceaa33edc12"
 POOL_MAP_BARS: dict[str, str] = {"town": "809e2e1cc9504b5b",
                                  "overland": "f379c606cadd4484"}
 #: The sheet's bar itself, measured the same two ways (`town` on the runs
-#: above, `outdoor` on #634's `bce4a7c742-140c8082-dos-pool-rebuild-outdoor`).
+#: above, `outdoor` on #634's `bce4a7c742-140c8082-dos-pool-rebuild-outdoor`),
+#: plus a third for a caster: a cleric's sheet adds `SPELLS` to the bar
+#: (`VIEW ITEMS SPELLS TRADE DROP EXIT`), measured on #634's
+#: `ea7f848a84-ea7f848a-dos-pool-rebuild-outdoor`, ROLAND's sheet.
 POOL_SHEET_BARS: dict[str, str] = {"town": "33ad531ed78cfa70",
-                                   "outdoor": "95afa0d95cd09ab7"}
+                                   "outdoor": "95afa0d95cd09ab7",
+                                   "caster": "49958cda77bfdd82"}
 POOL_ROSTER_NEXT = "End"
 # Names start at x=8; effect lines are indented to x=17. Count the left
 # character cell across the page, allowing row spacing to change by effect.

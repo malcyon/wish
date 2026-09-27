@@ -374,13 +374,14 @@ def test_pool_display_captures_every_member_and_returns_to_camp_before_save(
     assert game.save_file("D").is_file()
 
 
-@pytest.mark.parametrize("failure", ("", "wrong_member", "repeated_page",
+@pytest.mark.parametrize("failure", ("", "caster", "wrong_member", "repeated_page",
                                      "unknown_return", "moved_highlight",
                                      "unmeasured", "unmeasured_sheet"))
 def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
         tmp_path, monkeypatch, failure):
     class SheetPool(FakePool):
-        BARS = {**FakePool.BARS, "sheet": b"\x15\x48\x7b", "wrong": b"\x16\x49\x7c"}
+        BARS = {**FakePool.BARS, "sheet": b"\x15\x48\x7b", "wrong": b"\x16\x49\x7c",
+                "caster": b"\x17\x4a\x7d"}
 
         def __init__(self, *a, **k):
             super().__init__(*a, **k)
@@ -403,14 +404,16 @@ def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
                 return _with_roster(frame, "camp", 6, self.line)
             if self.mode == "sheet":
                 who = 1 if failure == "wrong_member" else self.line
-                return _with_roster(frame, "camp", 6, 0, sheet=who)
+                bar = "caster" if failure == "caster" else "sheet"
+                return _with_roster(_screen(self.BARS[bar], b""), "camp", 6, 0, sheet=who)
             return frame
 
     monkeypatch.setattr(da, "POOL_MAP_BARS", {} if failure == "unmeasured" else
                         {"town": screens.bar_signature(_screen(SheetPool.BARS["map"], b""))})
     monkeypatch.setattr(da, "POOL_SHEET_BARS", {"town": screens.bar_signature(
         _screen(SheetPool.BARS["wrong"], b""))} if failure == "unmeasured_sheet" else
-                        {"town": screens.bar_signature(_screen(SheetPool.BARS["sheet"], b""))})
+                        {"town": screens.bar_signature(_screen(SheetPool.BARS["sheet"], b"")),
+                         "caster": screens.bar_signature(_screen(SheetPool.BARS["caster"], b""))})
     game = SheetPool(tmp_path)
     d = da.Driver(game, lambda **k: None, "A")
     d.where = "map"
@@ -432,7 +435,7 @@ def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
             d.sheet(3)
         assert not game.save_file("D").exists()
         return
-    if failure:
+    if failure and failure != "caster":
         # Each names the guard it claims to reach, so a StepFailed from the
         # darkness path or another guard cannot pass for it.
         why = {"wrong_member": "name is not roster line",
@@ -445,6 +448,8 @@ def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
         if failure == "moved_highlight":
             assert game.keys[-1] == "Escape"     # stopped there, no SAVE
         return
+    # "" is the town/outdoor bar; "caster" is the third, cleric-sheet bar --
+    # both open and both return to the map the same way.
     got = d.sheet(3)
     assert game.keys == ["End", "End", "v", "Escape"]
     assert got["line"] == 3 and game.mode == "map"
