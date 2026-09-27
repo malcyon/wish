@@ -182,10 +182,10 @@ def sample(m) -> dict:
     mag = m.read(SAVE0_LOAD + effects.EFFECT_MAGNITUDE_OFFSET, 0x40)
     rec = m.read(STAGING_PAGE, 0x40)
     return {
-        "id": list(head[0x00:0x10]),
-        "owner": list(head[0x40:0x50]),
-        "duration": list(head[0x80:0x90]),
-        "magnitude": list(mag[0x00:0x10]),
+        "id": list(head[0x00:0x40]),
+        "owner": list(head[0x40:0x80]),
+        "duration": list(head[0x80:0xC0]),
+        "magnitude": list(mag[0x00:0x40]),
         "clock": list(head[CLOCK - SAVE0_LOAD:CLOCK - SAVE0_LOAD + 6]),
         "staging_str": [rec[REC_STR], rec[REC_STR_PCT], rec[REC_CHA]],
     }
