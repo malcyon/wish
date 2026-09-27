@@ -220,7 +220,7 @@ def test_launch_builds_the_porlaunch_and_log_paths_with_os_path_join(
 
     sess.launch()
 
-    assert (session.TOOLS, "c64", "porlaunch.sh") in spy.calls
+    assert (session.TOOLS, "c64", "launch.sh") in spy.calls
     assert (str(tmp_path), "vice.log") in spy.calls
     args, kw = popen_calls[0]
-    assert args[0] == os.path.join(session.TOOLS, "c64", "porlaunch.sh")
+    assert args[0] == os.path.join(session.TOOLS, "c64", "launch.sh")

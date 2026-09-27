@@ -22,6 +22,7 @@ Tests for the C64 side: the driven-session code under `tools/c64/`, the memory m
 | `test_inventorycheck.py` | Checks the item-list reader and the edit, add and remove steps of `tools/c64/inventorycheck.py` on Curse and Silver Blades. |
 | `test_laterbattle.py` | Checks that the `--goto` tour of `ssb_fight` charges a leg the steps it really took against its budget. |
 | `test_laterthac0.py` | Checks that `tools/c64/laterthac0.py` locates the THAC0 tables of the later DOS titles and that every record reproduces from them. |
+| `test_launch.py` | Checks, with stub `Xvfb`, `xdotool` and `flatpak` programs, that `launch.sh` and the old-name `porlaunch.sh` exec the same emulator command under the caller's PID, die together with their process group, and refuse a missing disk alike. |
 | `test_memory.py` | Checks that the C64 memory map has sane, uniquely named regions that agree with the constants the decoders use and the save-file ranges. |
 | `test_outdoor_boat.py` | Checks that the driver names a boat landing's question instead of pressing at it as if it were a wall. |
 | `test_outdoordrive.py` | Checks that the session driver reads the travel grid's status line and walks a party there, on a fake session that records its keys. |

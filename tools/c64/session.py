@@ -875,7 +875,7 @@ class Session:
         env = instance.launch_env(extra)
         os.makedirs(self.here, exist_ok=True)
         proc = subprocess.Popen(
-            [os.path.join(TOOLS, "c64", "porlaunch.sh"), self.disk],
+            [os.path.join(TOOLS, "c64", "launch.sh"), self.disk],
             env=env,
             stdout=open(os.path.join(self.here, "vice.log"), "wb"),
             stderr=subprocess.STDOUT,

@@ -1364,7 +1364,7 @@ def test_porlaunch_disables_sound_in_the_headless_branch_only():
     though it draws no window. `+sound` (VICE's own flag, from `-help`) must
     sit in the `POR_HEADLESS=1` (`Xvfb`) branch, and must not reach the
     `Xephyr` branch a human watching a run still gets sound from."""
-    text = (TOOLS / "c64" / "porlaunch.sh").read_text()
+    text = (TOOLS / "c64" / "launch.sh").read_text()
     before_else, _, after_else = text.partition("else\n")
     headless_part = before_else.rpartition("if ")[2]
     visible_part = after_else.partition("\nfi\n")[0]
@@ -1378,8 +1378,8 @@ def test_porlaunch_kills_nothing():
     The word survives in the comment that explains why the calls are gone;
     what must not survive is a line that runs it.
     """
-    assert not [ln for ln in _code_lines(TOOLS / "c64" / "porlaunch.sh") if "pkill" in ln]
-    text = (TOOLS / "c64" / "porlaunch.sh").read_text()
+    assert not [ln for ln in _code_lines(TOOLS / "c64" / "launch.sh") if "pkill" in ln]
+    text = (TOOLS / "c64" / "launch.sh").read_text()
     assert "--die-with-parent" in text
     assert "-config" in text
 
