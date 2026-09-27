@@ -19,7 +19,7 @@ import threading
 import pytest
 
 from tools.dos import acceptance as da
-from tools.dos import dosbox, dospod, screens, staging
+from tools.dos import dosbox, dospod, route_silver_blades, screens, staging
 
 # Sending SIGTERM to the test process ends it on Windows, which has no POSIX signals.
 posix_signals = pytest.mark.skipif(
@@ -1605,7 +1605,7 @@ def _ssb_view_driver(tmp_path):
 def test_silver_blades_view_selects_at_pick_character(tmp_path):
     game, d, asked = _ssb_view_driver(tmp_path)
     got = d.view(2)
-    assert asked == [da.ssbimport.MENU_AFTER["view"], "pick_character"]
+    assert asked == [route_silver_blades.MENU_AFTER["view"], "pick_character"]
     assert game.keys == ["Down", "s", "e"]
     assert got["name"] == screens.roster_name(game.capture(), "party", 2)
     assert got["pages"] == [] and d.where == "party" and game.mode == "party"
@@ -1631,10 +1631,10 @@ def test_ssb_intro_leaves_move_mode_with_e_not_escape(monkeypatch):
 
     move_glyphs = _screen(b"\x01", b"").glyphs(dosbox.BAR)
     map_glyphs = _screen(b"\x02", b"").glyphs(dosbox.BAR)
-    ssb = da.ssbimport.Driver(Session(), lambda **k: None)
+    ssb = route_silver_blades.Route(Session(), lambda **k: None)
     ssb.shot = lambda label: label
-    monkeypatch.setitem(da.ssbimport.BARS, move_glyphs, "move_mode")
-    monkeypatch.setitem(da.ssbimport.BARS, map_glyphs, "map")
+    monkeypatch.setitem(route_silver_blades.BARS, move_glyphs, "move_mode")
+    monkeypatch.setitem(route_silver_blades.BARS, map_glyphs, "map")
     ssb.intro()
     assert keys == ["e"]
 
@@ -3940,7 +3940,7 @@ def test_no_numeric_timeout_literal_in_the_driver_outruns_the_margin():
     function is routed only if it takes a `deadline` and uses it."""
     longest = max(
         [*_unrouted_waits(pathlib.Path(da.__file__).read_text())]
-        + [w for m in (da.ssbimport, da.dospod)
+        + [w for m in (route_silver_blades, da.dospod)
            for w in _unrouted_waits(pathlib.Path(m.__file__).read_text(),
                                     _borrowed_roots(m), _borrowed_bare(m))])
     assert longest <= da.LONGEST_UNBOUNDED_WAIT
@@ -3948,9 +3948,9 @@ def test_no_numeric_timeout_literal_in_the_driver_outruns_the_margin():
 
 
 def test_the_guard_sees_an_unused_deadline_parameter_and_a_helper_behind_a_helper():
-    source = pathlib.Path(da.ssbimport.__file__).read_text()
-    roots = _borrowed_roots(da.ssbimport)
-    bare = _borrowed_bare(da.ssbimport)
+    source = pathlib.Path(route_silver_blades.__file__).read_text()
+    roots = _borrowed_roots(route_silver_blades)
+    bare = _borrowed_bare(route_silver_blades)
     assert max(_unrouted_waits(source, roots, bare),
                default=0) <= da.LONGEST_UNBOUNDED_WAIT
     behind = source.replace(
@@ -4017,11 +4017,11 @@ class _Unmoving:
 
 
 def _ssb_waiting(monkeypatch, error=None):
-    monkeypatch.setattr(da.ssbimport.time, "sleep", lambda s: None)
+    monkeypatch.setattr(route_silver_blades.time, "sleep", lambda s: None)
     monkeypatch.setattr(da.dospod.time, "sleep", lambda s: None)
     clock = _Clock()
     session = _WaitingSession(clock, error)
-    ssb = da.ssbimport.Driver(session, lambda **k: None)
+    ssb = route_silver_blades.Route(session, lambda **k: None)
     ssb.shot = lambda label: label
     return session, ssb, da.Deadline(clock, 900.0, 120.0)
 
@@ -4037,7 +4037,7 @@ def test_a_silver_blades_title_that_never_shows_ends_at_the_deadline(monkeypatch
 def test_a_silver_blades_intro_that_never_reaches_the_map_ends_at_the_deadline(
         monkeypatch):
     session, ssb, deadline = _ssb_waiting(monkeypatch)
-    monkeypatch.setitem(da.ssbimport.BARS, _Unmoving(0).glyphs(None), "continue")
+    monkeypatch.setitem(route_silver_blades.BARS, _Unmoving(0).glyphs(None), "continue")
     with pytest.raises(da.DeadlineReached, match="intro"):
         ssb.intro(deadline=deadline)
     assert deadline.left() < da.ACTION_SECONDS
@@ -4076,7 +4076,7 @@ def _ssb_on_the_real_clock(monkeypatch, left):
     """The waiting fake with `time.time` on the deadline's own clock and
     `left` seconds of the route window remaining."""
     session, ssb, deadline = _ssb_waiting(monkeypatch)
-    monkeypatch.setattr(da.ssbimport.time, "time", session.clock)
+    monkeypatch.setattr(route_silver_blades.time, "time", session.clock)
     session.clock.t = deadline.route_end - left
     return session, ssb, deadline
 
@@ -4089,7 +4089,7 @@ def test_a_bar_wait_that_runs_out_the_route_window_names_the_deadline(monkeypatc
 
 def test_a_bar_wait_without_a_deadline_still_reports_the_missing_bar(monkeypatch):
     session, ssb, _ = _ssb_on_the_real_clock(monkeypatch, 12.0)
-    with pytest.raises(da.ssbimport.RouteLost, match="expected the party_menu bar"):
+    with pytest.raises(route_silver_blades.RouteLost, match="expected the party_menu bar"):
         ssb.wait_bar("party_menu", timeout=10.0)
 
 
@@ -4125,7 +4125,7 @@ def test_reading_the_bar_cuts_its_settle_to_the_route_time_left(monkeypatch):
 
 def test_the_press_after_the_title_is_cut_to_the_route_time_left(monkeypatch):
     session, ssb, deadline = _ssb_waiting(monkeypatch)
-    monkeypatch.setitem(da.ssbimport.BARS, _Unmoving(0).glyphs(None), "title")
+    monkeypatch.setitem(route_silver_blades.BARS, _Unmoving(0).glyphs(None), "title")
     deadline.clock.t = deadline.route_end - 40.0
     with pytest.raises(da.DeadlineReached):
         ssb.to_party_menu(deadline=deadline)
@@ -4138,7 +4138,7 @@ def test_the_driver_gives_its_deadline_to_the_borrowed_route_calls(monkeypatch):
     seen = {}
     d = da.Driver.__new__(da.Driver)
     d.deadline = object()
-    ssb = da.ssbimport.Driver(None, lambda **k: None)
+    ssb = route_silver_blades.Route(None, lambda **k: None)
     d._ssb = ssb
 
     def stop(name):

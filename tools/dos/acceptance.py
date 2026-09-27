@@ -61,7 +61,7 @@ conversion logged.
 capture.**  Its party menu holds Silver Blades' thirteen entries in the same
 order (`GAME.EXE` 0xAB4E-0xAC90 against Silver Blades' `START.EXE`
 0xE207-0xE349), so it is driven as Silver Blades' highlight list at
-`ssbimport`'s rows; the map bar is `Move Area Cast View Encamp Search Look`
+`route_silver_blades`'s rows; the map bar is `Move Area Cast View Encamp Search Look`
 (0xBC79), the camp bar `Save View Magic Rest Alter Fix Exit` (0xBEBE), the
 rest menu Curse's (0xBB26), the sheet's bar `Items Spells Trade Deposit Drop
 Lay Cure Exit` (0xBB4F).  Each is PROBABLE until a run has reached it; a
@@ -183,7 +183,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec, world_state  # noqa: E402
-from tools.dos import dosbox, dospod, ssbimport  # noqa: E402
+from tools.dos import dosbox, dospod, route_silver_blades  # noqa: E402
 from tools.dos.screens import (  # noqa: E402
     BLANK_NAME,
     STATUS_COLUMNS,
@@ -274,9 +274,9 @@ ROSTER_NEXT = "End"
 #: `<NAME>'S SPELLS TO CHOOSE FROM`, then whatever message is left.
 AFTER_TRAIN = ("l", "l", "Return", "Escape")
 
-#: Silver Blades' party menu is a highlight list (`ssbimport.MENU_RECT`).
+#: Silver Blades' party menu is a highlight list (`route_silver_blades.MENU_RECT`).
 #: With no party it is `Create New Character`, `Add Character to Party`,
-#: `Load Saved Game`, ...; `ssbimport.MENU_BEFORE` measured `Add` at row 1,
+#: `Load Saved Game`, ...; `route_silver_blades.MENU_BEFORE` measured `Add` at row 1,
 #: and `Load Saved Game` comes after it in `START.EXE`'s list, so row 2 is
 #: PROBABLE and unread on a capture.
 SSB_LOAD_ROW = 2
@@ -284,9 +284,9 @@ SSB_LOAD_ROW = 2
 #: Pools of Darkness' party menu, driven as Silver Blades' highlight list
 #: because `GAME.EXE` holds the same entries in the same order.  The rows are
 #: Silver Blades' and PROBABLE here until a capture of this title reads them.
-POD_MENU_RECT = ssbimport.MENU_RECT
+POD_MENU_RECT = route_silver_blades.MENU_RECT
 POD_LOAD_ROW = SSB_LOAD_ROW
-POD_MENU_AFTER = ssbimport.MENU_AFTER
+POD_MENU_AFTER = route_silver_blades.MENU_AFTER
 #: `POOLS` at `LOAD FROM WHERE? POOLS SECRET EXIT` (`GAME.EXE` data 0x2E1B,
 #: asked at `GAME.OVR` 0x12901): this title's own `SAVGAM<L>.PTY`.  `S` would
 #: read a Silver Blades save instead.
@@ -388,7 +388,7 @@ MOVE_KEYS = {"darkness": (POD_MOVE, POD_MOVE_EXIT), "ssb": ("m", "e")}
 CURSE_PARTY_BAR = "31286bfc4a3695fc"
 #: Silver Blades' `bar_signature` after `PICK CHARACTER`'s select key is the
 #: sheet's own bar, and it depends on the member (`SPELLS EXIT` on a ranger,
-#: PAINE, `ae25da8be0427b42`; `ssbimport.BARS` lists the `HEAL` sheets), so a
+#: PAINE, `ae25da8be0427b42`; `route_silver_blades.BARS` lists the `HEAL` sheets), so a
 #: Silver Blades sheet is judged by its name and never by a bar.  Unmeasured:
 #: the bar of any other member's sheet.
 #: `Select`, the only word of the `PICK CHARACTER` prompt (`GAME.EXE` data
@@ -1239,7 +1239,7 @@ class Driver:
     later classifier row is written from.  The party menu, the map and the
     camp bar are learnt off the screen when they are reached, not compared
     with digests measured elsewhere, except for Silver Blades, whose screens
-    `ssbimport.BARS` already classifies.
+    `route_silver_blades.BARS` already classifies.
     """
 
     def __init__(self, session, note, slot: str, title: str = "pool",
@@ -1317,10 +1317,10 @@ class Driver:
     # -- helpers -----------------------------------------------------------
 
     @property
-    def ssb(self) -> ssbimport.Driver:
-        """`ssbimport`'s Silver Blades route, numbering its shots with ours."""
+    def ssb(self) -> route_silver_blades.Route:
+        """`route_silver_blades`'s Silver Blades route, numbering its shots with ours."""
         if self._ssb is None:
-            self._ssb = ssbimport.Driver(self.s, self.note)
+            self._ssb = route_silver_blades.Route(self.s, self.note)
             self._ssb.shot = self.shot
         return self._ssb
 
@@ -1684,7 +1684,7 @@ class Driver:
         if self.where != "party":
             raise StepFailed("begin needs the party menu")
         if self.title.key == "ssb":
-            self.ssb.menu(ssbimport.MENU_AFTER["begin"], "begin")
+            self.ssb.menu(route_silver_blades.MENU_AFTER["begin"], "begin")
             self.ssb.intro(deadline=self.deadline)
         elif self.title.key == "darkness":
             self.pod_menu(self.pod_rows["begin"], "begin")
@@ -2197,9 +2197,9 @@ class Driver:
     def _view_ssb(self, line: int) -> dict:
         """Row 3 `VIEW CHARACTER`, `PICK CHARACTER` (`Down` moves its highlight,
         PROBABLE), then `s` (PROBABLE; `Return` also opens the sheet).  The
-        sheet is judged by its name: its bar is not in `ssbimport.BARS`, so
+        sheet is judged by its name: its bar is not in `route_silver_blades.BARS`, so
         nothing here waits for a sheet bar."""
-        self.ssb.menu(ssbimport.MENU_AFTER["view"], f"view-{line}")
+        self.ssb.menu(route_silver_blades.MENU_AFTER["view"], f"view-{line}")
         self.ssb.wait_bar("pick_character", 20.0)
         pick = self.shot(f"pick-{line}")
         moved = self.pick_line(line, "party", f"pick-{line}-select", POD_ROSTER_NEXT)
@@ -2517,7 +2517,7 @@ class Driver:
         path = self.save_path(letter)
         was = path.read_bytes() if path.is_file() else None
         if self.title.key == "ssb":
-            self.ssb.menu(ssbimport.MENU_AFTER["save"], "save")
+            self.ssb.menu(route_silver_blades.MENU_AFTER["save"], "save")
             self.ssb.wait_bar("save_which")
         elif self.title.key == "darkness":
             self.pod_menu(self.pod_rows["save"], "save")
@@ -2793,7 +2793,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                 note(event="lost", why=unproved)
             else:
                 summary["completed"] = True
-        except (StepFailed, ssbimport.RouteLost) as e:
+        except (StepFailed, route_silver_blades.RouteLost) as e:
             summary["lost"] = str(e)
             note(event="lost", why=str(e))
         except (KeyboardInterrupt, SystemExit) as e:

@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 
 from tests import gamedata
+from tools.dos import route_silver_blades
 from tools.dos import ssbimport as si
 
 
@@ -211,7 +212,7 @@ def _lost_run(tmp_path, monkeypatch):
     monkeypatch.setattr(si.dosbox, "find_game", lambda stem: tmp_path)
 
     def lost(self, timeout=120.0):
-        raise si.RouteLost("never reached the PLAY DEMO screen")
+        raise route_silver_blades.RouteLost("never reached the PLAY DEMO screen")
 
     monkeypatch.setattr(si.Driver, "to_party_menu", lost)
     guy = tmp_path / "MATHEW.GUY"
