@@ -67,7 +67,7 @@ after `gh issue view N --json state`.
 | C64 | VICE through `tools/registry/instance.py` (`claim`, displays `:10`-`:25`) | `Session.select_bar`, `select_row`, KERNAL buffer | **text**, `Session.screen_text()` and `screen()` row by row | binary monitor: peeks, non-stopping exec checkpoints (`tools/c64/effectdrive.py checkpoint_hits`), watchpoints (`livewatch.py`) | the save disk, copied out closed (`por.copy_closed_disk`) or repaired (`curseload.close_splat`) | Pool `Session` (load, walk, fight, `save_game`); Curse `curserun.CurseSession` + `curseload`, `cursecheck.py`, `laterbattle.py`; Silver Blades `ssbwarp.SSBSession`, `ssbresavewalk.py`, `laterbattle.py`; all three run under `tools/c64/acceptance.py` |
 | DOS | DOSBox 0.74 through `tools/dos/dosbox.py` (`claim`, displays `:50`-`:65`) | `xdotool` keysyms | **pixels only**: 320x200 PNG, `Screen.digest`/`ink`/`glyphs` for equality, `highlight_row`; no text; the status line's `x,y` token, read cell by cell from x 136 (`screens.status_square`) | none | `SAVE/` after `ENCAMP > SAVE`: records, `.ITM`/`.STF`, `.SPC`/`.FX`/`.SFX`, `SAVGAM<slot>.DAT` (Pools of Darkness `SAVGAM<slot>.PTY` with `VAULT<slot>.DAT`) | Pool `PoolOfRadiance` (menu, load, move, camp save, fight); Curse `dossheetread.py` (load, sheets, walk, engine save), `Camp.memorize`, `curseregain.py` (train, camp save); Silver Blades `route_silver_blades.py Route` (party menu, intro) and `ssbimport.py Driver` (encamp, rest by days, camp save, sheet), `dossheetread.py --move-mode`; Pools of Darkness `dospod.py` (its journal answer and party-menu knowledge); all four run under `tools/dos/acceptance.py` |
 | DOS, debugger | DOSBox-X debug build through `tools/dos/dosboxx.py` (`claim`, displays `:90`-`:105`); `dosboxx.unavailable()` is `None` on this machine | the same | the same, halved from 640x400 | `read`/`write` any linear address, `watch` (one byte, on change), `brk` (fires silently, `wait_halt` probes), `regs` through `EV`; `dosspcexpiry.read_party` reads Pool's effect chains node by node off the heap | the same | `PoolOfRadiance` runs unchanged on `XSession`; the later titles' chain heads (Curse record `0x0F2`, Silver Blades `0x0FB`) are read but no tool reads their nodes yet |
-| Amiga | WinUAE in the Windows VM, one lane (`winuae.ps1 claim -Holder`), reachable from this VM (`winvm status`) | `tools/amiga/amigadrive.py keys`; the foundation drivers press a key once the previous screen has matched its guard, and `winvmsettle.py` waits between keys by hand | **pixels**: `winvm shot` cropped to the emulator window by `amigashots.py`; a state is one static pixel box (`PixelGuards`) and a sheet's or menu's identity is a name box | `winuaepipe.py` / `automap.amiga.WinuaePipe`: `m` and `S`-to-file reads while the machine runs; `automap/amiga.py` locates the data hunk and the party | the `.adf`, copied back with `winvm get` and read by `amiga_savegame` (`read_por_slot`, `read_slot`, `pod_read_slot`) | Pool `amigafoundation.py --title pool` (by hand: `docs/182` §7, twenty keys); Curse `--title curse` (by hand: `docs/203` "Reproducing it"); Silver Blades `amigasecretsave.py accept`, its journal answered by `amigabladesjournal.py` under `/usr/bin/python3`; Pools of Darkness `--title darkness`, not yet proven (section 5); `amigacampsave.py` (repeated camp saves, Silver Blades) |
+| Amiga | WinUAE in the Windows VM, one lane (`winuae.ps1 claim -Holder`), reachable from this VM (`winvm status`) | `tools/amiga/amigadrive.py keys`; the foundation drivers press a key once the previous screen has matched its guard, and `winvmsettle.py` waits between keys by hand | **pixels**: `winvm shot` cropped to the emulator window by `amigashots.py`; a state is one static pixel box (`PixelGuards`) and a sheet's or menu's identity is a name box | `winuaepipe.py` / `automap.amiga.WinuaePipe`: `m` and `S`-to-file reads while the machine runs; `automap/amiga.py` locates the data hunk and the party | the `.adf`, copied back with `winvm get` and read by `amiga_savegame` (`read_por_slot`, `read_slot`, `pod_read_slot`) | Pool `amigafoundation.py --title pool` (by hand: `docs/182` §7, twenty keys); Curse `--title curse` (by hand: `docs/203` "Reproducing it"); Silver Blades `amigasecretsave.py accept`, its journal answered by `amigabladesjournal.py` under `/usr/bin/python3`; Pools of Darkness `--title darkness` and its reload `--title darkness-reload` (section 5); `amigacampsave.py` (repeated camp saves, Silver Blades) |
 | Amiga, FS-UAE | stock `fs-uae` in a VICE-pool slot (`instance.py claim --game amiga-por`), `tools/amiga/fsuaepor.py serve` | `fsuaepor.py keys` | pixels, `fsuaepor.py shot` | none; the GDB build `installfsuae.py` fetches is not installed here | the staged `.adf` in the run directory, `fsuaepor.py names` | Pool of Radiance and Pools of Darkness only. Under it Pools of Darkness reached the party panel and `ADD CHARACTER > POOLS` (`docs/124` §2.4) and never loaded a saved game, and a disk changes at runtime only through its F12 menu, by hand. Curse stops at the code wheel and Silver Blades has never been driven |
 
 Each Amiga run mounts its own disks, and the game reads its saves from only
@@ -125,8 +125,8 @@ Consequences for the plan:
 * **The C64 reads everything**, and its gap is coverage by title:
   `acceptance.py` runs on Pool, Curse and Silver Blades, but `fight` is not
   driven in Silver Blades and `cast` and `cure` are Curse's alone.
-* **The Amiga's driver of record is WinUAE**, because it runs three titles end
-  to end (Pools of Darkness has not passed), leaves Curse's code wheel with
+* **The Amiga's driver of record is WinUAE**, because it runs four titles end
+  to end, leaves Curse's code wheel with
   `ESC`, answers Silver Blades' journal question through a private helper, and
   reads memory through the pipe. FS-UAE is a second seat for Pool of Radiance,
   and for Pools of Darkness up to its party panel. Four things no Amiga tool does yet: reach a second party member's sheet
@@ -263,7 +263,7 @@ is under five minutes old.
 | title | driver | what its `prepare` does |
 |---|---|---|
 | Silver Blades | `amigasecretsave.py prepare`, `recon --measure`, `recon`, `accept` | Publishes the pinned C64 JOIN party through Save As Amiga, stages DF0 as a copy of disk 1 carrying that slot and DF1 as a copy of disk B, and writes `prepare.json` with every input's SHA-256. `accept` needs `--guards`, `--identity` and `--journal-python /usr/bin/python3`, and its preflight loads the private reader's digit templates before the lane is claimed |
-| Pool, Curse, Pools of Darkness | `amigafoundation.py prepare\|measure\|accept --title pool\|curse\|darkness` | Copies the title's registered disks and specimen into a run folder, refusing on any hash difference or a save letter the run writes that already exists (Pools of Darkness has no specimen: disk 3 is the save disk) |
+| Pool, Curse, Pools of Darkness | `amigafoundation.py prepare\|measure\|accept --title pool\|curse\|darkness`, and `reload --title darkness-reload` | Copies the title's registered disks and specimen into a run folder, refusing on any hash difference or a save letter the run writes that already exists (Pools of Darkness has no specimen beforehand: disk 3 is the save disk). `prepare --title darkness-reload` takes `--disk3`, `--disk3-sha256` and `--accept-summary`: the game-written disk 3 an accept run fetched, its SHA-256 and that run's summary; `reload` loads slot G from it, checks the place on screen and writes nothing |
 
 The file `tools/amiga/staging.py` is a DF0 staging helper (`stage_boot_disk` hides
 a boot disk's `SAVE` drawer; `stage_embedded_boot_disk` writes a slot into it),
@@ -390,7 +390,7 @@ platform, so conversion tickets reuse it).
 | 17 | Silver Blades, Amiga to C64 | `AmigaToC64`; Save As C64 | C64 Silver Blades | `WISH-SPEC-ssb-amiga-moved` |
 | 18 | Silver Blades, Amiga to DOS | `AmigaToDos`; Save As DOS | DOS Silver Blades | `WISH-SPEC-ssb-amiga-moved` |
 | 19 | Pools of Darkness, Amiga to DOS | `PodAmigaToDos` behind `WISH_EXPERIMENTAL_POD_CONVERT`: File > Convert, or `acceptance.py --amiga-slot` | DOS Pools of Darkness | `SavGamB.pty` on the registry's `(SSI)(Disk 3 of 3)[a].adf`, a played save found on a disk image, so an input and not a measurement |
-| 20 | Pools of Darkness, DOS to Amiga | None: the `.pc` writer (`amiga_pod.write_pod`) exists, and the saved-game writer, its detection and the direction do not | Amiga Pools of Darkness, not yet proven | `WISH-SPEC-p175-diff1` once a route exists |
+| 20 | Pools of Darkness, DOS to Amiga | None: the `.pc` writer (`amiga_pod.write_pod`) exists, and the saved-game writer, its detection and the direction do not | Amiga Pools of Darkness, foundation proven (section 5) | `WISH-SPEC-p175-diff1` once a route exists |
 
 Routes 8, 10, 14 and 16 (Curse and Silver Blades to the Amiga) wait behind
 #677 (Save As to the Amiga puts a Curse or Silver Blades party on a separate
@@ -404,8 +404,9 @@ on a pair whose foundation run has passed with its control, and `docs/236`
 ("Foundation gate") lists what the platform needs before conversion work
 depends on it. The foundation runs load a party, open a sheet, move it, save
 through the game's own controls and read the game-written save back; they do
-not reload that save or connect the live automapper, which the gate also
-requires, so "proven" below means those five steps with a control. D0 is
+not connect the live automapper, which the gate also requires, and only Amiga
+Pools of Darkness reloads the game-written save (its reload boots, below), so
+"proven" below means those five steps with a control. D0 is
 built, and the developer tools publish through Save As
 (`tools/convert/saveasdrive.py`).
 
@@ -426,8 +427,8 @@ the same SHA, and the two passing boots must still be consecutive.
 ### The eleven pairs
 
 Evidence is under `~/.cache/wish/acceptance/679/` (Amiga Silver Blades'
-under `672/`), each run named `<sha>-<run>`. Ten pairs are proven, each at a
-SHA whose lint and test jobs passed; the eleventh is not.
+under `672/`), each run named `<sha>-<run>`. All eleven pairs are proven, each at a
+SHA whose lint and test jobs passed.
 
 | pair | status | SHA | runs | specimen registered from the game's save |
 |---|---|---|---|---|
@@ -441,7 +442,7 @@ SHA whose lint and test jobs passed; the eleventh is not.
 | Amiga Pool of Radiance | Proven | `5fcbfccc65` | `amiga-pool-accept2b`, `-accept3b` | `WISH-SPEC-amiga-pool-foundation-walked` |
 | Amiga Curse of the Azure Bonds | Proven | `400d2381cd` | `amiga-curse-accept2`, `-accept3` | `WISH-SPEC-amiga-curse-foundation-walked` |
 | Amiga Secret of the Silver Blades | Proven | `400d2381cd` | `amiga-accept2`, `-accept3` | `WISH-SPEC-amiga-ssb-foundation-walked` |
-| Amiga Pools of Darkness | **Not yet proven** | `f92e8c2963` (last boot) | `amiga-darkness-measure4` | None |
+| Amiga Pools of Darkness | Proven | accept `6b17ee420c`, reload `d2a23aa478` | `amiga-darkness-accept-A`, `-B` (accept), `amiga-darkness-reload-A`, `-B` | `WISH-SPEC-amiga-pod-foundation-walked` |
 
 The commands and what they printed, the same in both boots of each pair:
 
@@ -498,17 +499,37 @@ overlap. Each run passes `--audio-proof`, the JSON `winuaemute.ps1` prints
 after muting the guest's default playback endpoint and reading the mute back,
 and the driver refuses a readback older than five minutes.
 
-**Amiga Pools of Darkness is not yet proven.** Its route mounts disk 1 in DF0
-and disk 3 in DF1 from the first frame, and after `B` inserts disk 2 into DF0
-and presses `SPACE`. Measuring boot 4 stopped at the load prompt, because the
-slot letter pressed there changed nothing; the route now presses `P` at that
-prompt first. One boot of the current route (measuring boot 7, evidence in
-`~/.cache/wish/acceptance/679/bf9b00fb99-amiga-darkness-measure7/`) reached the
-loaded party menu with six members, the sheet (SAINT ERIC, paladin level 27)
-and the save picker, with no write and all three disks unchanged. The guards
-for six screens were built from it (`~/.cache/wish/acceptance/679/amiga-darkness-guards-7/`,
-tables in its `guards.md`). The world, camp and camp save picker are not yet
-seen, and no `accept` boot has run.
+**Amiga Pools of Darkness is proven, by two accept boots and two reload boots.**
+The route mounts disk 1 in DF0 and disk 3 in DF1 from the first frame and presses
+`P L P B`; at the game's `INSERT DISK 2` prompt the driver inserts disk 2 into
+DF0 and presses `SPACE`, then `SPACE V E` loads the party, opens the sheet and
+returns to the party menu. Save letter `F` is the control, saved there. `B`
+begins the adventure; the journal question screen is answered with one
+throwaway letter `X` and `RET`; `NP8` steps once; `E` opens camp and `S` and
+letter `G` save. `N` answers the game's `QUIT GAME?` question. The letters are
+`F` and `G` because the picker offers `A` to `H` and `A`, `C`, `D` and `E` are
+the specimen's slots (`tools/amiga/amigafoundation.py`, `DARKNESS`).
+
+The accept boots ran at `6b17ee420c95dbf57e08ffdd1d6b1ef1bab7f2d7`
+(`~/.cache/wish/acceptance/679/6b17ee420c-amiga-darkness-accept-A/acceptA/` and
+`-accept-B/acceptB/`, with `guards.json` in `amiga-darkness-guards-11/` and the
+identity map in `amiga-darkness-guards-7/`). Both succeeded with identical
+reads, control digest and after digest: the control reads `slot F: did not move`,
+the after save `slot G: moved 1 square from 1,2 to 2,2`, slots A, C, D and E and
+disks 1 and 2 are unchanged. Slots F and G are byte-equal across the two boots
+and registered as `WISH-SPEC-amiga-pod-foundation-walked`.
+
+The reload boots ran at `d2a23aa478cb608b3b66635889cfbc077d9afb81`
+(`~/.cache/wish/acceptance/679/d2a23aa478-amiga-darkness-reload-A/reloadA/` and
+`-reload-B/reloadB/`; guards in `amiga-darkness-guards-12/`, identity in
+`amiga-darkness-guards-11/`). Each loads slot G from the disk 3 that one accept
+boot fetched, through `amigafoundation.py reload --title darkness-reload`, which
+writes nothing. Both succeeded with identical verdicts: `slot G: reloaded at
+area 2 2,2 facing 1` and `slot F: area 2 1,2 facing 1 is not on the screen`;
+disks 1 to 3 and every kept slot are unchanged.
+
+This entry once read "not yet proven" while the world, camp and camp save picker
+had not been seen; the accept and reload boots above saw them.
 
 A DF0 insert is proven possible. At
 `6e377388d6b230e6c8c585d3a93fa1fac5cf1cea`, `tools/amiga/amigadrivecheck.py` on
@@ -522,7 +543,7 @@ command contract is `docs/143-winuae-debugger.md` section 4.2.
 
 The foundation gate stays in front of every conversion ticket's boot on a
 platform: a run in section 4 boots only on a pair whose row above says Proven,
-and a run on Amiga Pools of Darkness waits for its pair.
+and every pair now says Proven.
 
 ## 6. Slots and evidence
 
