@@ -498,3 +498,26 @@ def test_the_later_title_command_prints_the_derived_ids(later_ids, capsys):
                        "--dos-dir", str(folder)]) == 0
     want = f"CONFIRMED Later caster-level ids: {cross.later_caster_level_ids(title, ecl65, engine)}"
     assert want in capsys.readouterr().out.splitlines()
+
+
+@pytest.mark.parametrize("title, camp, combat, distinct, stripped, literal_ids, "
+                         "generic, unresolved, no_rule", [
+    ("pool-of-radiance", (67, 46), (67, 45), 42, 11, (5,), 20, 71, 14),
+    ("curse-of-the-azure-bonds", (56, 38), (100, 61), 54, 8,
+     (5, 13, 27, 45, 58, 137, 144), 24, 75, 26),
+    ("secret-of-the-silver-blades", (56, 39), (117, 64), 51, 0,
+     (5, 12, 27, 45, 107), 27, 76, 24),
+])
+def test_c64_row_census_counts_table_candidates_and_literal_writers(
+        title, camp, combat, distinct, stripped, literal_ids,
+        generic, unresolved, no_rule):
+    census = cross.c64_row_census(title, _root(title))
+    assert (len(census.camp_rows), sum(row.effect_id != 0 for row in census.camp_rows)) == camp
+    assert (len(census.combat_rows), sum(row.effect_id != 0 for row in census.combat_rows)) == combat
+    assert len(census.table_ids) == distinct
+    assert len(census.post_combat_strip_ids) == stripped
+    assert tuple(sorted(row.effect_id for row in census.literal_rows)) == literal_ids
+    assert sum(row.effect_id != 0 and row.generic_writer for row in census.camp_rows) == generic
+    assert len(census.unresolved_pointer_rows) == unresolved
+    assert len(census.candidate_no_dos_rule_ids) == no_rule
+    assert 13 in census.candidate_no_dos_rule_ids

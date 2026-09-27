@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap.paths import tool_disks  # noqa: E402
-from goldbox import c64_port  # noqa: E402
+from goldbox import c64_port, effects, spells  # noqa: E402
 from goldbox.effects import (  # noqa: E402
     EFFECT_SLOTS,
     ENLARGE_STRENGTHS,
@@ -1107,6 +1107,235 @@ def prayer_allegiance(dos_data: int, *, title: str = "pool-of-radiance") -> int:
         raise ValueError(f"Prayer is not mapped for {title}")
     side = (dos_data >> 4) & 1
     return (side ^ (title == "pool-of-radiance")) << 6
+
+
+@dataclasses.dataclass(frozen=True)
+class C64EffectTableRow:
+    """A spell-table candidate, before its handler has proved a row write."""
+
+    route: str
+    spell: int
+    address: int
+    effect_id: int
+    handler: int
+    fixed_duration: int
+    per_level_duration: int
+    generic_writer: bool
+
+
+@dataclasses.dataclass(frozen=True)
+class C64LiteralRow:
+    """An id whose literal or two-entry table reaches an array writer."""
+
+    effect_id: int
+    file: str
+    address: int
+    magnitude: str
+    duration: str
+    owner: str
+
+
+@dataclasses.dataclass(frozen=True)
+class C64RowCensus:
+    """Measured tables, literal writers and the post-combat id strip."""
+
+    title: str
+    camp_rows: tuple[C64EffectTableRow, ...]
+    combat_rows: tuple[C64EffectTableRow, ...]
+    literal_rows: tuple[C64LiteralRow, ...]
+    post_combat_strip_ids: frozenset[int]
+
+    @property
+    def table_ids(self) -> frozenset[int]:
+        return frozenset(row.effect_id for row in self.camp_rows + self.combat_rows
+                         if row.effect_id)
+
+    @property
+    def unresolved_pointer_rows(self) -> tuple[C64EffectTableRow, ...]:
+        """Nonzero table entries whose handler-to-writer path is unproved."""
+        return tuple(row for row in self.camp_rows + self.combat_rows
+                     if row.effect_id and not row.generic_writer)
+
+    @property
+    def candidate_no_dos_rule_ids(self) -> frozenset[int]:
+        """An upper bound: table entries may never call their row writer."""
+        candidate_ids = (self.table_ids | {row.effect_id for row in self.literal_rows})
+        candidate_ids -= self.post_combat_strip_ids
+        out = set()
+        for effect_id in candidate_ids:
+            sample = effects.Effect(0, effect_id, 0, 1, 1)
+            answer = effects.dos_record(self.title, sample, 0)
+            if isinstance(answer, effects.Unconverted) and "no rule yet" in answer.reason:
+                out.add(effect_id)
+        return frozenset(out)
+
+
+_COMBAT_TABLE = {
+    "pool-of-radiance": ("SPELLE65", 0xD60A, 0xD81B, 67, 5, 7),
+    "curse-of-the-azure-bonds": ("COMBAT2", 0xE000, 0xEAAC, 100, 0, 2),
+    "secret-of-the-silver-blades": ("COMBAT2", 0xE000, 0xEB79, 117, 0, 2),
+}
+_CAMP_TABLE = {
+    "pool-of-radiance": (0x9900, 0x9900, 67),
+    "curse-of-the-azure-bonds": (0x8000, 0x97CB, 56),
+    "secret-of-the-silver-blades": (0x8000, 0x9307, 56),
+}
+_POST_STRIP = {
+    "pool-of-radiance": (0x2131, 0x2133, 0x2152),
+    "curse-of-the-azure-bonds": (0x2145, 0x2147, 0x2166),
+}
+
+
+def _census_rows(title: str, camp: bytes, combat: bytes
+                 ) -> tuple[tuple[C64EffectTableRow, ...],
+                            tuple[C64EffectTableRow, ...]]:
+    base, start, count = _CAMP_TABLE[title]
+    if start - base + count * 7 > len(camp):
+        raise ValueError("Truncated C64 camp spell table")
+    ordinary = (0xA858, 0xA85E) if title == "pool-of-radiance" else LATER_CAST_HANDLERS
+    camp_rows = []
+    for index in range(count):
+        address = start + index * 7
+        row = camp[address - base:address - base + 7]
+        handler = int.from_bytes(row[5:7], "little")
+        camp_rows.append(C64EffectTableRow(
+            "camp", index + 1, address, row[3] & 0x7F, handler,
+            row[0], row[1], handler in ordinary))
+
+    name, base, start, count, effect_at, handler_at = _COMBAT_TABLE[title]
+    if start - base + count * 9 > len(combat):
+        raise ValueError(f"Truncated C64 {name} combat spell table")
+    combat_rows = []
+    for index in range(count):
+        address = start + index * 9
+        row = combat[address - base:address - base + 9]
+        combat_rows.append(C64EffectTableRow(
+            "combat", index + 1, address, row[effect_at] &
+            (0x7F if title == "pool-of-radiance" else 0xFF),
+            int.from_bytes(row[handler_at:handler_at + 2], "little"),
+            row[0 if title == "pool-of-radiance" else 4],
+            row[1 if title == "pool-of-radiance" else 5], False))
+    return tuple(camp_rows), tuple(combat_rows)
+
+
+def _literal_rows(title: str, read) -> tuple[C64LiteralRow, ...]:
+    post = read("POST.COM")
+    post_id = {"pool-of-radiance": 0x18EB,
+               "curse-of-the-azure-bonds": 0x18B4,
+               "secret-of-the-silver-blades": 0x1937}[title]
+    if operand(post, 0x0800, post_id, 0xA9) != 5:
+        raise ValueError("Different POST.COM constant-id writer")
+    rows = [C64LiteralRow(5, "POST.COM", post_id,
+                          "unchanged slot byte", "caller A", "$FF")]
+    if title == "pool-of-radiance":
+        return tuple(rows)
+
+    prep = read("COM.PREP")
+    prep_id = 0x18AF if title.startswith("curse") else 0x18B3
+    if operand(prep, 0x0800, prep_id, 0xA9) != 45:
+        raise ValueError("Different COM.PREP constant-id writer")
+    rows.append(C64LiteralRow(45, "COM.PREP", prep_id, "$FF", "0",
+                              "combatant index $7EB4"))
+    combat = read("COMBAT")
+    if title.startswith("curse"):
+        for address, effect_id in ((0x1F40, 13), (0x1F53, 58), (0x25D2, 144)):
+            if operand(combat, 0x0800, address, 0xA9) != effect_id:
+                raise ValueError(f"Different COMBAT constant at ${address:04X}")
+        if combat[0x2197 - 0x0800:0x2199 - 0x0800] != bytes((27, 137)):
+            raise ValueError("Different COMBAT two-entry id table")
+        rows.extend((
+            C64LiteralRow(13, "COMBAT", 0x1F40, "roll | $80",
+                          "combat scratch", "target combatant"),
+            C64LiteralRow(58, "COMBAT", 0x1F53, "0", "0",
+                          "target combatant"),
+            C64LiteralRow(144, "COMBAT", 0x25D2, "handler value | $80",
+                          "combat scratch", "caster combatant"),
+            *(C64LiteralRow(effect_id, "COMBAT", 0x2197 + index,
+                            "handler value", "1", "target combatant")
+              for index, effect_id in enumerate((27, 137))),
+        ))
+    else:
+        dungeon = read("DUNGEON")
+        if (operand(dungeon, 0x0800, 0x1618, 0xA9),
+                operand(dungeon, 0x0800, 0x161D, 0xA9),
+                operand(dungeon, 0x0800, 0x1628, 0xA9)) != (12, 0x81, 1):
+            raise ValueError("Different DUNGEON id-12 writer")
+        rows.append(C64LiteralRow(12, "DUNGEON", 0x1618, "$81", "1",
+                                  "selected character $7EB4"))
+        if combat[0x26E8 - 0x0800:0x26EA - 0x0800] != bytes((27, 107)):
+            raise ValueError("Different COMBAT two-entry id table")
+        rows.extend(C64LiteralRow(effect_id, "COMBAT", 0x26E8 + index,
+                                  "handler value", "1", "target combatant")
+                    for index, effect_id in enumerate((27, 107)))
+    return tuple(rows)
+
+
+def c64_row_census(title: str, root: str | None = None) -> C64RowCensus:
+    """Inventory effect table candidates and proven literal writers from disks.
+
+    An effect id in a table is not proof its handler writes a row. The
+    `unresolved_pointer_rows` list keeps those handler paths explicit.
+    """
+    if title not in SITES:
+        raise ValueError(f"No C64 effect census for {title}")
+    game = c64_port.by_key(title)
+    if root is None:
+        found = tool_disks(game)
+        if found is None:
+            raise FileNotFoundError(f"No C64 disks found for {title}")
+        root = str(found)
+    files: dict[str, bytes] = {}
+
+    def read(name: str) -> bytes:
+        if name not in files:
+            files[name] = coldread.overlay(game, name.encode(), root)
+        return files[name]
+
+    camp, combat = _census_rows(title, read("ECL65"),
+                                read(_COMBAT_TABLE[title][0]))
+    arrays = (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
+              effects.EFFECT_DURATION_OFFSET, effects.EFFECT_MAGNITUDE_OFFSET)
+    cast = read(SITES[title].file)
+    for address, offset in zip(SITES[title].stores, arrays):
+        if operand(cast, SITES[title].base, address, 0x9D) != (
+                game.save_load_address + offset):
+            raise ValueError("Different C64 camp effect array writer")
+    if title == "pool-of-radiance":
+        if (operand(cast, 0xA700, 0xA85B, 0x4C),
+                operand(cast, 0xA700, 0xA86B, 0x20)) != (0xA79F, 0xA79F):
+            raise ValueError("Different Pool generic camp handler")
+        writer, writer_base, sites = read("ECL64"), 0x9900, (
+            0x9A34, 0x9A3A, 0x9A40, 0x9A46)
+    else:
+        if (operand(cast, 0x8000, 0x819F, 0x4C),
+                operand(cast, 0x8000, 0x81AF, 0x20)) != (0x80EE, 0x80EE):
+            raise ValueError("Different later generic camp handler")
+        writer, writer_base, sites = read("COMBAT"), 0x0800, (
+            (0x11BE, 0x11C4, 0x11CA, 0x11D0)
+            if title.startswith("curse") else
+            (0x11B3, 0x11B9, 0x11BF, 0x11C5))
+    for address, offset in zip(sites, arrays):
+        if operand(writer, writer_base, address, 0x9D) != (
+                game.save_load_address + offset):
+            raise ValueError("Different C64 combat effect array writer")
+    post = read("POST.COM")
+    if title in _POST_STRIP:
+        count_at, compare_at, table_at = _POST_STRIP[title]
+        count = operand(post, 0x0800, count_at, 0xA0) + 1
+        if operand(post, 0x0800, compare_at, 0xD9) != table_at:
+            raise ValueError("Different POST.COM effect strip table")
+        strip = frozenset(post[table_at - 0x0800:table_at - 0x0800 + count])
+        if len(strip) != count:
+            raise ValueError("Truncated or repeated POST.COM effect strip table")
+    else:
+        if (operand(post, 0x0800, 0x21CA, 0xBD),
+                operand(post, 0x0800, 0x21D5, 0x9D)) != (0x4B40, 0x4B00):
+            raise ValueError("Different Silver Blades post-combat owner sweep")
+        strip = frozenset()
+    if len(combat) != spells.for_game(title).last_spell + (
+            11 if title == "pool-of-radiance" else 0):
+        raise ValueError("Combat spell table no longer matches the title's spell list")
+    return C64RowCensus(title, camp, combat, _literal_rows(title, read), strip)
 
 
 def load_c64(title: str, root: str | None = None) -> tuple[bytes, bytes]:

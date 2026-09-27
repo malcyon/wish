@@ -700,3 +700,71 @@ finds each title's C64 disks through the registry/path helper and its DOS
 engine through the archives registry. It reports missing files; the tests
 skip without the player's disks. Mutation checks reject changed owner tests,
 Strength branches, Prayer polarity, Haste markers and Mirror Image shifts.
+
+## C64 effect-row census
+
+A party can save after a spell cast in camp or combat with a row Wish has no
+DOS rule for. **CONFIRMED table inventory, not a claim that every handler
+writes:** `c64_row_census(title)` reads each title's spell records and checks
+the four array-store operands of its generic camp and combat writers.
+
+| Title | Camp records / nonzero | Combat records / nonzero | Distinct ids | Proven generic camp rows | Unresolved nonzero handler pointers |
+|---|---:|---:|---:|---:|---:|
+| Pool of Radiance | 67 / 46 | 67 / 45 | 42 | 20 | 71 |
+| Curse of the Azure Bonds | 56 / 38 | 100 / 61 | 54 | 24 | 75 |
+| Secret of the Silver Blades | 56 / 39 | 117 / 64 | 51 | 27 | 76 |
+
+**CONFIRMED generic camp formula:** Pool handlers `$A858/$A85E` reach
+`SPELLE04 $A79F`; the later handlers `$819C/$81A2` reach `ECL65 $80EE`.
+The count is `(row fixed & $3F) + row per-level × caster level`, promoted
+at 64 through the duration units above. The magnitude is a nonzero override
+(`$2879`, `$2BFC`, `$2A6F` by title) or the caster level (`$2878`, `$2BFB`,
+`$2A6E`). The single-target handler uses the selected owner, including
+`$FF` for a party-wide target, and the other visits occupied party slots.
+`unresolved_pointer_rows` gives the spell number, row address, id and handler
+for every remaining nonzero table entry. No value or owner formula is
+assigned to those handlers.
+
+**CONFIRMED additional writers:** All three `POST.COM` files create id 5,
+owner `$FF`, with the caller's duration and the free slot's unchanged
+magnitude (Pool `$18E3`, Curse `$18AC`, Silver Blades `$192F`). Both later
+`COM.PREP` files create id 45 with duration 0, magnitude `$FF` and owner
+`$7EB4`. Silver Blades `DUNGEON $1618` creates id 12 with magnitude `$81`,
+duration 1 and owner `$7EB4`. Curse `COMBAT $1F40`, `$1F53` and `$25D2`
+select ids 13, 58 and 144 for its writer. The two-entry id tables at Curse
+`COMBAT $2197` and Silver Blades `$26E8` select 27/137 and 27/107 for
+their generic writers, with duration 1. Their gameplay triggers and whether
+combatant-index owners can be party members remain unestablished.
+
+**CONFIRMED post-combat cleanup:** Pool `POST.COM $212E` strips ids 21, 29,
+30, 51–54, 58–60 and 95. Curse `$2142` strips 21, 29–31, 51–53 and 58.
+Silver Blades' `$21C1` sweep has no id strip. All three also clear rows with
+a nonnegative combatant owner of 8 or more. The disk-backed test pins the
+record counts, literal ids and strip-list sizes; it names each missing title
+when it skips.
+
+**CONFIRMED set difference as an upper bound:** The following ids occur in an
+unstripped table record or literal path, but `dos_record` says “no rule yet”
+for a sample row. An unresolved handler may write nothing, a combat owner
+may be a monster, and party-wide ids 35 and 49 have a separate converter.
+
+| Title | Candidate ids with no `dos_record` rule |
+|---|---|
+| Pool of Radiance | 2, 4, 11, 13, 22, 23, 32–35, 49, 71, 77, 108 |
+| Curse of the Azure Bonds | 2–4, 7, 11, 13, 15, 18, 22, 23, 27, 33–35, 49, 55, 68, 71, 73, 109, 136, 137, 142–144, 146 |
+| Secret of the Silver Blades | 2–4, 11, 13, 22, 23, 27, 30, 33–35, 49, 51–53, 55, 68, 71, 73, 106, 107, 111, 112 |
+
+| Refusal | Census evidence and limit |
+|---|---|
+| Silver Blades id 13 | **CONFIRMED static writer:** camp row 26 at `ECL65 $93B6` goes to `$819C`, with the generic level magnitude and count `4 + level`; `POST.COM` does not strip it. A game-written save after Barkskin must establish the player state. |
+| Curse id 13 | **CONFIRMED combat path:** `COMBAT $1F40` sets id 13 and `$1F50` calls the row writer with a roll and bit 7. Cleanup does not strip 13. Survival of its target to save is unmeasured. |
+| Later 12, 14, 38 without bit 7; Mirror Image above 4 | **UNRESOLVED:** the combat handler pointers and their values remain to be followed. |
+| Pool Mirror Image with bit 7 | **UNRESOLVED:** its combat handler pointer remains to be followed. |
+| Pool's stale `$2879` | **CONFIRMED writer mechanism:** a nonzero override reaches the generic camp row. A two-cast game run must establish whether one cast leaves it for the next. |
+| Haste outside `$01`–`$1F`, Slowed outside level 1–15 or 63 minutes, Silver Blades id 113 other than `$BC` | **UNRESOLVED across all writers:** the table inventory alone cannot prove these guards unreachable. |
+
+The proposed later combat row starts `$EAA7/$EB74` were five bytes early:
+**CONFIRMED** nine-byte rows start at `COMBAT2 $EAAC/$EB79`. Curse
+`COMBAT $11C4` stores the owner inside the writer at `$11AE`; Pool
+`COMBAT $29F7` starts combat setup, while the combat row stores are at
+`ECL64 $9A34`–`$9A46`. These corrections replace the proposed anchors.
