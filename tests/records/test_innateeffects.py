@@ -863,6 +863,32 @@ def test_a_silver_blades_readied_girdle_reaches_the_amiga_too():
     assert _innate_drops(rep) == []
 
 
+def test_a_silver_blades_camp_only_grant_is_still_reported_dropped_on_the_amiga():
+    """`goldbox.amiga_later._later_effect_nodes` used to discard
+    `c64_trait_nodes`'s own drop list outright.  `dos_codec.write`'s call
+    inside the same `write_later` normally reports the same lines, so the
+    gap only shows where the two calls actually diverge: an
+    `innate_effects` field held below the writer's confidence floor.
+    `neutral.Writer.use` refuses it and reports one generic line with no id
+    in it, while `_later_effect_nodes` reads the field straight off `char`
+    with no floor and still classifies 56 as the same unread `item_unread`
+    case `test_a_silver_blades_camp_only_grant_with_no_dos_form_is_still_refused`
+    pins on the DOS side -- and that classification used to reach no
+    accounting at all (found by the review of `8b6888a7`, `#621`).  Red
+    before the fix: no line in `rep.dropped` named 56."""
+    from goldbox import amiga_later
+    from goldbox.layout import Confidence
+
+    item = _c64_item(effect=56, power=0x82, readied=True)
+    char = _c64_neutral(SSB.key, name="TESTER", inventory=[item])
+    char.set("innate_effects", [56], "made up for the test",
+             confidence=Confidence.UNKNOWN)
+    built, rep = amiga_later.write_later(char)
+    assert built.effects == ()
+    drops = _innate_drops(rep)
+    assert any("56" in d for d in drops)
+
+
 # --- #624: the Amiga side of the same classification -----------------------
 
 @pytest.mark.parametrize("key", [CURSE.key, SSB.key])

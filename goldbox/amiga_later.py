@@ -1629,9 +1629,11 @@ LATER_EFFECTS_FROM_NEUTRAL = (
     "none is derived from the character's race")
 
 
-def _later_effect_nodes(char: NeutralCharacter,
-                         dos_deltas: "dos_port.DosDeltas") -> list[bytes]:
-    """The Amiga effect chain for this character, one 10-byte node each.
+def _later_effect_nodes(
+        char: NeutralCharacter,
+        dos_deltas: "dos_port.DosDeltas") -> tuple[list[bytes], list[str]]:
+    """The Amiga effect chain for this character, one 10-byte node each, and
+    the drop lines `goldbox.dos_codec.c64_trait_nodes` reports for it.
 
     :data:`LATER_EFFECTS_FROM_NEUTRAL` says why this reads the neutral
     record instead of `goldbox.dos_codec.write`'s `.SPC` payload.  `dos_deltas`
@@ -1644,9 +1646,16 @@ def _later_effect_nodes(char: NeutralCharacter,
     (`_from_c64_class_traits`), and `goldbox.dos_codec.c64_trait_nodes` is then
     what decides each remaining id's payload, so a paladin's 45 becomes 8
     here exactly as it does in the `.SPC` file rather than crossing
-    untranslated.  Its drop list is discarded: `write_later` already copies
-    `dosrep.dropped`, which carries the same lines from the DOS half's own
-    call.
+    untranslated.  Its drop list is returned rather than discarded: in the
+    common case it repeats what `dosrep.dropped` already carries from the DOS
+    half's own call, but that call takes `innate_effects` through
+    `neutral.Writer.use`, which refuses a field held below the writer's
+    confidence floor and reports one generic line with no id in it, where
+    this function reads the field straight off `char` with no floor and can
+    still classify an id as its own refusal.  A refusal here must still
+    reach the log the way any other drop does (found by the review of
+    `8b6888a7`, 2026-09-27, on `#621`).  `write_later` merges the two rather
+    than trusting either alone.
 
     **The id check below is a guard against an invariant held elsewhere, and
     it has never fired.**  Every reader in the tree fills these two lists as
@@ -1687,12 +1696,13 @@ def _later_effect_nodes(char: NeutralCharacter,
         seen.add(LAY_ON_HANDS_AMIGA_ID)
         nodes.append(amiga_por_effect_from_dos(record))
     innate = [int(e) for e in (char.get("innate_effects", ()) or ())]
+    dropped: list[str] = []
     if char.port == "C64":
         ids = _dos._from_c64_class_traits(
             dos_deltas.key, int(char.get("class_bits", 0) or 0), innate)
         race = int(char.get("race", 0) or 0)
         inventory = [bytes(i) for i in (char.get("inventory") or ())]
-        records, _dropped = _dos.c64_trait_nodes(
+        records, dropped = _dos.c64_trait_nodes(
             dos_deltas, race, ids, inventory)
         for record, _rule in records:
             if record[0] in seen:
@@ -1706,7 +1716,7 @@ def _later_effect_nodes(char: NeutralCharacter,
             seen.add(e)
             nodes.append(amiga_por_effect_from_dos(
                 bytes((e,)) + _dos.INNATE_PAYLOAD + bytes(4)))
-    return nodes
+    return nodes, dropped
 
 
 def write_later(char: NeutralCharacter,
@@ -1776,7 +1786,7 @@ def write_later(char: NeutralCharacter,
                                                         deltas), deltas)
          for sub in it.subnodes])
         for it in _dos.item_nodes(itm, stride)]
-    effects = _later_effect_nodes(char, deltas.dos)
+    effects, effects_dropped = _later_effect_nodes(char, deltas.dos)
     built = AmigaCharacter.from_bytes(out, deltas, char.source or "converted",
                                       items, effects)
     # Read the patched block back, so the object this returns holds the same
@@ -1794,6 +1804,7 @@ def write_later(char: NeutralCharacter,
 
     rep = LaterWriteReport()
     rep.dropped = list(dosrep.dropped)
+    rep.dropped.extend(d for d in effects_dropped if d not in rep.dropped)
     rep.warnings = list(dosrep.warnings)
     # The DOS writer's own narrowing lines only: they arrive from the code
     # that cut a value, never from `warnings` wholesale.
