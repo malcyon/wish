@@ -13,7 +13,7 @@ from tests.amiga.test_amigasecretsave import (
     _audio_proof,
     _prepared,
 )
-from tools.amiga import amigasecretsave, winuaesession
+from tools.amiga import amigasecretsave, screens, winuaesession
 
 
 @pytest.fixture
@@ -643,7 +643,7 @@ def _image(path, colour, patch=None):
 
 def _full_map(tmp_path, drop=()):
     shot = _image(tmp_path / "shot.png", (0, 51, 102))
-    rule = amigasecretsave.guard_rule(shot, (0, 0, 8, 8))
+    rule = screens.guard_rule(shot, (0, 0, 8, 8))
     states = {"title", *(s for _, s in amigasecretsave.ROUTE)} - set(drop)
     path = tmp_path / "guards.json"
     path.write_text(json.dumps({s: rule for s in states}))
@@ -651,13 +651,13 @@ def _full_map(tmp_path, drop=()):
 
 
 def test_a_guard_map_for_the_measured_route_loads(tmp_path):
-    guards = amigasecretsave.PixelGuards(_full_map(tmp_path))
+    guards = screens.PixelGuards(_full_map(tmp_path))
     assert "title" in guards and "party_menu" in guards
     assert "version" not in guards
 
 
 def test_guarded_mode_refuses_a_guard_map_missing_a_route_state(tmp_path):
-    guards = amigasecretsave.PixelGuards(_full_map(tmp_path, drop=("items",)))
+    guards = screens.PixelGuards(_full_map(tmp_path, drop=("items",)))
     guest = FailedPostWriteGuest()
     with pytest.raises(winuaesession.RouteError, match="lacks.*items"):
         amigasecretsave.run_recon(
@@ -672,10 +672,10 @@ def test_a_guard_rule_matches_its_own_box_and_not_a_neighbour(tmp_path):
     story = _image(tmp_path / "story.png", (0, 51, 102))
     moved = _image(tmp_path / "moved.png", (0, 51, 102),
                    ((60, 401, 300, 431), (238, 238, 238)))
-    rule = amigasecretsave.guard_rule(title, (60, 400, 300, 430))
+    rule = screens.guard_rule(title, (60, 400, 300, 430))
     path = tmp_path / "guards.json"
     path.write_text(json.dumps({"title": rule}))
-    guards = amigasecretsave.PixelGuards(path)
+    guards = screens.PixelGuards(path)
     assert guards("title", title)
     assert not guards("title", story) and not guards("title", moved)
     assert not guards("credits", title)
@@ -695,7 +695,7 @@ def test_the_guard_command_refuses_a_box_that_matches_a_neighbour(tmp_path, caps
         common + ["--box", "50,400,300,430", "--unlike", str(story)]) == 0
     written = json.loads(out.read_text())
     assert written["title"]["box"] == [50, 400, 300, 430]
-    assert amigasecretsave.PixelGuards(out)("title", title)
+    assert screens.PixelGuards(out)("title", title)
 
 
 def test_a_custom_route_with_b_never_presses_it_in_measure_mode(tmp_path, clock):
@@ -726,7 +726,7 @@ def _rules(tmp_path, rule):
 ])
 def test_a_malformed_guard_rule_is_refused_on_load(tmp_path, rule):
     with pytest.raises(winuaesession.RouteError, match="title"):
-        amigasecretsave.PixelGuards(_rules(tmp_path, rule))
+        screens.PixelGuards(_rules(tmp_path, rule))
 
 
 @pytest.mark.parametrize("box", [[0, 0, 8], [0, 0, 8, 8, 9], [0, 0, 721, 8],
@@ -735,7 +735,7 @@ def test_a_guard_box_with_the_wrong_numbers_or_outside_the_image_is_refused(
         tmp_path, box):
     shot = _image(tmp_path / "shot.png", (0, 51, 102))
     with pytest.raises(winuaesession.RouteError, match="invalid crop box"):
-        amigasecretsave.guard_rule(shot, box)
+        screens.guard_rule(shot, box)
 
 
 def _guard_args(tmp_path, *extra, box="50,400,300,430"):

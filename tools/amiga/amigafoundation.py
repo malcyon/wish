@@ -21,9 +21,9 @@ from goldbox import amiga_adf, amiga_savegame  # noqa: E402
 from tools.amiga import amigasaves  # noqa: E402
 from tools.amiga.amigasecretsave import (  # noqa: E402
     AmigaTitle,
-    PixelGuards,
     run_recon,
 )
+from tools.amiga.screens import PixelGuards  # noqa: E402
 from tools.amiga.staging import sha256  # noqa: E402
 from tools.amiga.winuaesession import (  # noqa: E402
     HOLDER,

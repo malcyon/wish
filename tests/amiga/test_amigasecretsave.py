@@ -559,3 +559,14 @@ def test_the_lane_session_imports_without_the_silver_blades_runner():
     done = subprocess.run([sys.executable, "-c", program],
                           cwd=pathlib.Path(__file__).resolve().parents[2])
     assert done.returncode == 0
+
+
+def test_the_screen_guards_import_without_the_runners():
+    program = (
+        "import sys; import tools.amiga.screens; "
+        "sys.exit(int(any(name in sys.modules for name in ("
+        "'tools.amiga.amigasecretsave', 'tools.amiga.amigafoundation', "
+        "'tools.amiga.staging'))))")
+    done = subprocess.run([sys.executable, "-c", program],
+                          cwd=pathlib.Path(__file__).resolve().parents[2])
+    assert done.returncode == 0
