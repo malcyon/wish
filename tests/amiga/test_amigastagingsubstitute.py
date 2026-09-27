@@ -11,6 +11,7 @@ game data anywhere.
 from __future__ import annotations
 
 import pathlib
+import re
 import sys
 
 import pytest
@@ -121,5 +122,5 @@ def test_a_substitute_that_fails_adf_verification_is_refused(tmp_path, sources):
     substitute.write_bytes(bytes(raw))
     # The corrupted disk does open (root found by its type/sec-type fields).
     AmigaDisk.open(substitute)
-    with pytest.raises(RouteError, match=f"{substitute} fails ADF verification: "):
+    with pytest.raises(RouteError, match=f"{re.escape(str(substitute))} fails ADF verification: "):
         staging._prepare_from(src, tmp_path / "run", specimen, substitute=substitute)
