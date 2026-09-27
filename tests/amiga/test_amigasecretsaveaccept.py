@@ -15,6 +15,7 @@ from tests.amiga import test_amigasecretsavemeasure as measure
 from tests.amiga.test_amigasecretsave import _audio_proof, _sha
 from tests.amiga.test_amigasecretsavemeasure import ScreenGuest, _keys, _menu_manifest
 from tools.amiga import amigasecretsave as drive
+from tools.amiga import winuaesession
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
 BEFORE = {"area": 16, "x": 3, "y": 5, "facing": 2}
@@ -245,7 +246,7 @@ def test_accept_fails_on_a_save_slot_it_did_not_name(tmp_path, clock, readings):
 
 def test_accept_refuses_before_the_claim_without_the_recon_guards(tmp_path, clock):
     guest = AcceptGuest(clock)
-    with pytest.raises(drive.RouteError, match="lacks .*sheet"):
+    with pytest.raises(winuaesession.RouteError, match="lacks .*sheet"):
         _accept(tmp_path, clock, guest=guest,
                 guard=MapGuard(set(MapGuard.ALL) - {"sheet"}))
     assert guest.calls == []
@@ -253,7 +254,7 @@ def test_accept_refuses_before_the_claim_without_the_recon_guards(tmp_path, cloc
 
 def test_accept_refuses_before_the_claim_without_identity(tmp_path, clock):
     guest = AcceptGuest(clock)
-    with pytest.raises(drive.RouteError, match="identity map lacks"):
+    with pytest.raises(winuaesession.RouteError, match="identity map lacks"):
         drive.run_recon(_manifest(tmp_path), guest=guest, guard=MapGuard(),
                         holder="wish672-test", audio_proof=_audio_proof(tmp_path),
                         accept=True, answer=lambda *a: (0, "answered"),
@@ -263,7 +264,7 @@ def test_accept_refuses_before_the_claim_without_identity(tmp_path, clock):
 
 def test_accept_refuses_before_the_claim_without_a_journal_interpreter(tmp_path, clock):
     guest = AcceptGuest(clock)
-    with pytest.raises(drive.RouteError, match="journal interpreter"):
+    with pytest.raises(winuaesession.RouteError, match="journal interpreter"):
         _accept(tmp_path, clock, guest=guest,
                 journal_python=str(tmp_path / "no-such-python"), preflight=drive.journal_preflight)
     assert guest.calls == []
@@ -275,7 +276,7 @@ def test_accept_refuses_a_manifest_without_the_boot_disk_for_the_answerer(tmp_pa
     del data["boot_source"]
     manifest.write_text(json.dumps(data))
     guest = AcceptGuest(clock)
-    with pytest.raises(drive.RouteError, match="boot_source"):
+    with pytest.raises(winuaesession.RouteError, match="boot_source"):
         _accept(tmp_path, clock, guest=guest, manifest=manifest)
     assert guest.calls == []
 
@@ -290,21 +291,21 @@ def test_the_preflight_wants_the_imports_and_the_private_tables(tmp_path, monkey
 
     monkeypatch.setattr(drive.subprocess, "run", run)
     monkeypatch.setattr(drive.amigabladesjournal, "wheel_repo", lambda: tmp_path)
-    with pytest.raises(drive.RouteError, match="not a directory"):
+    with pytest.raises(winuaesession.RouteError, match="not a directory"):
         drive.journal_preflight("py")
     (tmp_path / "ssb" / "analysis").mkdir(parents=True)
     drive.journal_preflight("py")
     assert ran[-1] == ["py", "-c", "import numpy, PIL"]
     monkeypatch.setattr(drive.subprocess, "run",
                         lambda argv, **kw: subprocess.CompletedProcess(argv, 1, b"", b""))
-    with pytest.raises(drive.RouteError, match="cannot import numpy"):
+    with pytest.raises(winuaesession.RouteError, match="cannot import numpy"):
         drive.journal_preflight("py")
 
 
 def test_a_save_letter_that_is_a_prepared_slot_is_refused(tmp_path, clock, monkeypatch):
     monkeypatch.setattr(drive, "MENU_SAVE_LETTER", drive.SLOT_LETTER)
     guest = AcceptGuest(clock)
-    with pytest.raises(drive.RouteError, match="would overwrite"):
+    with pytest.raises(winuaesession.RouteError, match="would overwrite"):
         _accept(tmp_path, clock, guest=guest)
     assert guest.calls == []
 
@@ -472,7 +473,7 @@ def test_run_jsonl_has_one_event_per_line_with_event_and_t(tmp_path, clock, read
 
 
 def test_a_terminated_run_still_stops_fetches_and_releases(tmp_path, clock, readings):
-    guest = AcceptGuest(clock, raises=(3, drive.Terminated("signal 15")))
+    guest = AcceptGuest(clock, raises=(3, winuaesession.Terminated("signal 15")))
     guest, result = _accept(tmp_path, clock, guest=guest)
     assert [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")] == [
         "stop", "get", "get", "release"]
@@ -491,12 +492,12 @@ needs_posix_signals = pytest.mark.skipif(
 @needs_posix_signals
 def test_the_installed_handler_raises_terminated_and_is_restored():
     old = signal.getsignal(signal.SIGTERM)
-    with drive.terminating():
+    with winuaesession.terminating():
         handler = signal.getsignal(signal.SIGTERM)
         assert handler is not old
-        with pytest.raises(drive.Terminated):
+        with pytest.raises(winuaesession.Terminated):
             handler(signal.SIGTERM, None)
-        with pytest.raises(drive.Terminated):
+        with pytest.raises(winuaesession.Terminated):
             os.kill(os.getpid(), signal.SIGTERM)
     assert signal.getsignal(signal.SIGTERM) is old
 
@@ -549,7 +550,7 @@ def test_the_answerer_exit_code_and_a_timeout_are_reported(tmp_path):
     assert drive.run_journal_answer(sys.executable, "h", tmp_path / "a", 60, script=script) == (
         1, "no challenge on screen")
     script.write_text("import time\ntime.sleep(60)\n")
-    with pytest.raises(drive.RouteError, match="exceeded"):
+    with pytest.raises(winuaesession.RouteError, match="exceeded"):
         drive.run_journal_answer(sys.executable, "h", tmp_path / "a", 1, script=script)
 
 

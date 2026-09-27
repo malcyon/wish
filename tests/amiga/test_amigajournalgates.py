@@ -15,7 +15,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from tools.amiga import amigabladesjournal as journal  # noqa: E402
 from tools.amiga import amigasecretsave as drive  # noqa: E402
-from tools.amiga import amigashots  # noqa: E402
+from tools.amiga import amigashots, winuaesession  # noqa: E402
 
 AT = (137, 43)
 TOPS = (48, 80, 112)
@@ -55,7 +55,7 @@ def test_a_reader_that_loads_its_template_passes_silently(tmp_path, monkeypatch,
 def test_a_reader_that_cannot_load_its_template_is_refused_by_name(
         tmp_path, monkeypatch, raises, name, text):
     _reader(tmp_path, monkeypatch, f"def load_digits():\n    raise {raises}\n")
-    with pytest.raises(drive.RouteError) as error:
+    with pytest.raises(winuaesession.RouteError) as error:
         drive.journal_preflight(sys.executable)
     assert name in str(error.value) and text in str(error.value)
     assert len(str(error.value)) < 200 + drive.STDERR_LINES * (drive.STDERR_LINE_CHARS + 3)
@@ -63,7 +63,7 @@ def test_a_reader_that_cannot_load_its_template_is_refused_by_name(
 
 def test_a_long_failure_is_bounded(tmp_path, monkeypatch):
     _reader(tmp_path, monkeypatch, "def load_digits():\n    raise ValueError('x' * 5000)\n")
-    with pytest.raises(drive.RouteError) as error:
+    with pytest.raises(winuaesession.RouteError) as error:
         drive.journal_preflight(sys.executable)
     assert len(str(error.value)) < 200 + drive.STDERR_LINES * (drive.STDERR_LINE_CHARS + 3)
 
@@ -73,7 +73,7 @@ def test_the_reader_check_is_not_reached_without_the_directory(tmp_path, monkeyp
     ran = []
     monkeypatch.setattr(drive.subprocess, "run",
                         lambda argv, **kw: ran.append(argv) or subprocess.CompletedProcess(argv, 0, b"", b""))
-    with pytest.raises(drive.RouteError, match="not a directory"):
+    with pytest.raises(winuaesession.RouteError, match="not a directory"):
         drive.journal_preflight("py")
     assert ran == [["py", "-c", "import numpy, PIL"]]
 
@@ -174,7 +174,7 @@ def _fake_reader_stdout(monkeypatch, tmp_path, stdout):
 
 def test_exit_zero_with_an_error_and_no_ok_is_refused(tmp_path, monkeypatch):
     _fake_reader_stdout(monkeypatch, tmp_path, "template missing\n")
-    with pytest.raises(drive.RouteError, match="no ok line"):
+    with pytest.raises(winuaesession.RouteError, match="no ok line"):
         drive.journal_preflight("py")
 
 
@@ -185,5 +185,5 @@ def test_noise_before_the_last_ok_line_passes(tmp_path, monkeypatch):
 
 def test_ok_that_is_not_the_last_line_is_refused(tmp_path, monkeypatch):
     _fake_reader_stdout(monkeypatch, tmp_path, "ok\nerror\n")
-    with pytest.raises(drive.RouteError, match="no ok line"):
+    with pytest.raises(winuaesession.RouteError, match="no ok line"):
         drive.journal_preflight("py")

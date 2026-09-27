@@ -30,7 +30,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigaporspacewarning.py` | Checks that `write_por` warns a player when a character's name will lose its space on the Amiga's first save. |
 | `test_amigasavedisk.py` | Checks a `POOLSAVE` save disk formatted from nothing and the filename the game builds on it. |
 | `test_amigasavegame.py` | Checks the Amiga saved-game map in `goldbox.amiga_savegame`, on synthetic saves and on the player's own. |
-| `test_amigasecretsave.py` | Checks that a failed WinUAE save probe leaves the published disk unchanged, keeps both fetched ADFs and its last screen, and settles a capture on the emulator's crop. |
+| `test_amigasecretsave.py` | Checks that a failed WinUAE save probe leaves the published disk unchanged, keeps both fetched ADFs and its last screen, settles a capture on the emulator's crop, and that the lane session imports without the runner. |
 | `test_amigasecretsaveaccept.py` | Checks the WinUAE probe's accept route, guards, interstitials, verdicts and evidence, and that SIGTERM still stops, fetches and releases. |
 | `test_amigasecretsavemeasure.py` | Checks the WinUAE probe's capture-only mode, per-state minimum waits, guard polling and configurable route with a fake clock and guest. |
 | `test_amigasecretsavetitle.py` | Checks that the WinUAE probe runs a title description on synthetic ADFs and a fake guest, and refuses a description that could press a save key, swap DF0 or write after an unguarded screen. |

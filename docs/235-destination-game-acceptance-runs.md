@@ -267,8 +267,7 @@ is under five minutes old.
 
 The file `tools/amiga/staging.py` is a DF0 staging helper (`stage_boot_disk` hides
 a boot disk's `SAVE` drawer; `stage_embedded_boot_disk` writes a slot into it),
-not a driver. `amigaacceptance.py` remains only as a temporary import shim for
-`amigasecretsave.py`. Section 4's Amiga steps (`display`, `fight 1`, `items`, `mem`) name
+not a driver. Section 4's Amiga steps (`display`, `fight 1`, `items`, `mem`) name
 what a run must read; neither Amiga driver has them, and each needs its screen
 read first (section 7).
 

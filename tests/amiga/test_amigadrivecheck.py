@@ -16,7 +16,8 @@ import pytest
 
 from automap import amiga
 from tools.amiga import amigadrivecheck as check
-from tools.amiga.amigasecretsave import RouteError, sha256
+from tools.amiga.staging import sha256
+from tools.amiga.winuaesession import RouteError
 
 HOLDER = "wish679-0123456789ab"
 
@@ -448,7 +449,7 @@ def test_the_command_line_refuses_a_stale_proof_with_a_capitalised_line(tmp_path
 # -- WinGuest.insert, which the driver's insert steps go through -----------------
 
 def test_winguest_insert_keeps_the_raw_replies_of_a_refused_change(monkeypatch):
-    from tools.amiga import amigasecretsave as drive
+    from tools.amiga import winuaesession
 
     class Pipe:
         def __init__(self, timeout=None, **kw):
@@ -458,18 +459,18 @@ def test_winguest_insert_keeps_the_raw_replies_of_a_refused_change(monkeypatch):
             raise amiga.FloppyError("DF0 never took it", {"replies": ["x"]})
 
     monkeypatch.setattr(amiga, "WinuaePipe", Pipe)
-    guest = drive.WinGuest()
+    guest = winuaesession.WinGuest()
     guest.staged.add("C:\\Amiga\\Disks\\wish679-h-disk2.adf")
-    with pytest.raises(drive.RouteError, match="never took it") as caught:
+    with pytest.raises(winuaesession.RouteError, match="never took it") as caught:
         guest.insert("h", 0, "C:/Amiga/Disks/wish679-h-disk2.adf", 30, "ab" * 32)
     assert caught.value.receipt == {"replies": ["x"]}
 
 
 def test_winguest_insert_refuses_a_disk_it_did_not_stage_before_anything_is_sent():
-    from tools.amiga import amigasecretsave as drive
+    from tools.amiga import winuaesession
 
     ran = []
-    guest = drive.WinGuest()
+    guest = winuaesession.WinGuest()
     guest._run = lambda *a, **k: ran.append(a)
     with pytest.raises(ValueError, match="is not a disk this run staged for h"):
         guest.insert("h", 0, "C:/Amiga/Disks/wish679-h-disk2.adf", 30, "ab" * 32)

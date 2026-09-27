@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import dataclasses
 import functools
 import hashlib
@@ -13,14 +12,12 @@ import os
 import pathlib
 import re
 import shutil
-import signal
 import stat
 import subprocess
 import sys
 import time
 import uuid
 from collections.abc import Callable, Mapping
-from datetime import datetime, timedelta, timezone
 from typing import Any
 
 if __package__ in (None, ""):
@@ -29,11 +26,18 @@ if __package__ in (None, ""):
 from automap import gamedisks  # noqa: E402
 from goldbox import amiga_adf, amiga_savegame, geo  # noqa: E402
 from tools.amiga import (  # noqa: E402
-    amigaacceptance,
     amigabladesjournal,
     amigadrive,
-    amigashots,
-    winvmsettle,
+    staging,
+)
+from tools.amiga.staging import _entry, _verified_disk, sha256  # noqa: E402
+from tools.amiga.winuaesession import (  # noqa: E402
+    HOLDER,
+    SHOT_SECONDS,
+    RouteError,
+    WinGuest,
+    _mute_proof,
+    terminating,
 )
 from tools.registry import evidence, scratch  # noqa: E402
 
@@ -44,39 +48,6 @@ DISK_B_SHA256 = "d7caf68c3333b44a4ca2951b8d51f388e4bfd7a8bafa4fd8a7fca37aa639b46
 SLOT_LETTER = "C"
 JOIN_SHA256 = "38c11440e578227c1a240b740f362b1b69943d9897f42dc35ac39b17508872dc"
 TITLE = "secret-of-the-silver-blades"
-BOOT_CONFIG = r"C:\Amiga\configs\goldbox-a500.uae"
-WINUAE_PS = r"powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae.ps1"
-# One `winvm shot` measured 5.6-7.8 s round trip; the capture script caps itself at 20 s.
-SHOT_SECONDS = 20.0
-HOLDER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
-
-
-class RouteError(RuntimeError):
-    """A source, screen, lane action or fetched image failed its guard."""
-
-
-class Terminated(BaseException):
-    """The wrapper's `timeout` sent SIGTERM; a `BaseException` so a `finally` still runs."""
-
-
-def sha256(path: pathlib.Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def _entry(path: pathlib.Path) -> dict[str, str]:
-    return {"path": str(path), "sha256": sha256(path)}
-
-
-def _verified_disk(path: pathlib.Path) -> amiga_adf.AmigaDisk:
-    disk = amiga_adf.AmigaDisk.open(path)
-    problems = disk.verify()
-    if problems:
-        raise RouteError(f"{path} fails ADF verification: {problems}")
-    return disk
 
 
 def _inventory(save: amiga_savegame.AmigaSavegame, *, require_joined: bool = True
@@ -125,7 +96,7 @@ def prepare(source: pathlib.Path, run_id: str) -> pathlib.Path:
     if sha256(source) != JOIN_SHA256:
         raise RouteError(f"JOIN source SHA-256 differs: {sha256(source)}")
     boot_source = amigabladesjournal.find_disk()
-    if sha256(boot_source) != amigaacceptance.SOURCE_SHA256:
+    if sha256(boot_source) != staging.SOURCE_SHA256:
         raise RouteError("registered Silver Blades side A differs from the measured build")
     run = scratch.cache_dir("acceptance", "672", run_id)
     df0 = scratch.cache_dir("amigaacceptance", run_id, "boot-with-slot.adf")
@@ -163,13 +134,13 @@ def prepare(source: pathlib.Path, run_id: str) -> pathlib.Path:
     inventory = _inventory(save)
     state = amiga_savegame.state_from_savegame(save)
     slot = disk.read_file("/SAVE/savgamA.sav")
-    stage = amigaacceptance.stage_embedded_boot_disk(boot_source, slot, SLOT_LETTER, df0)
+    stage = staging.stage_embedded_boot_disk(boot_source, slot, SLOT_LETTER, df0)
     df1 = run / "disk-b-working.adf"
     with disk_b_source.open("rb") as reader, df1.open("xb") as writer:
         shutil.copyfileobj(reader, writer)
     if sha256(source) != JOIN_SHA256:
         raise RouteError("JOIN source changed during preparation")
-    if sha256(boot_source) != amigaacceptance.SOURCE_SHA256:
+    if sha256(boot_source) != staging.SOURCE_SHA256:
         raise RouteError("registered boot disk changed during preparation")
     if sha256(df1) != DISK_B_SHA256 or sha256(disk_b_source) != DISK_B_SHA256:
         raise RouteError("working DF1 differs from the pinned disk B")
@@ -187,149 +158,6 @@ def prepare(source: pathlib.Path, run_id: str) -> pathlib.Path:
     manifest_path = run / "prepare.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return manifest_path
-
-
-class WinGuest:
-    """One holder's WinUAE commands through the agent guest's `winvm`."""
-
-    def __init__(self) -> None:
-        #: The Windows paths this instance copied to the guest; a floppy change may name only these.
-        self.staged: set[str] = set()
-
-    @staticmethod
-    def _run(*args: str, timeout: float) -> str:
-        proc = subprocess.Popen(
-            ["winvm", *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, start_new_session=True,
-            env=dict(os.environ, SSH_ASKPASS_REQUIRE="never"))
-        try:
-            stdout, stderr = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired as exc:
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            proc.communicate()
-            raise RouteError(f"winvm {args[0]} exceeded its {timeout:.1f}s limit") from exc
-        output = (stdout + stderr).strip()
-        if proc.returncode:
-            raise RouteError(f"winvm {args[0]} failed: {output}")
-        return output
-
-    def _lane(self, holder: str, command: str, timeout: float) -> str:
-        output = self._run("ssh", f"{WINUAE_PS} {command} -Holder {holder}",
-                           timeout=timeout)
-        if not output.startswith("ok"):
-            raise RouteError(f"winuae.ps1 {command} returned {output!r}")
-        return output
-
-    def claim(self, holder: str, timeout: float) -> str:
-        return self._lane(holder, "claim", timeout)
-
-    def put(self, local: pathlib.Path, remote: str, timeout: float) -> str:
-        receipt = self._run("put", str(local), remote, timeout=timeout)
-        self.staged.add(remote.replace("/", "\\"))
-        return receipt
-
-    def start(self, holder: str, *drives: str | None, timeout: float,
-              options: tuple[str, ...] = ()) -> str:
-        """Start WinUAE with `drives` in DF0 upward; None ejects a drive the template fills."""
-        settings = [f"-s floppy{n}=" + ("" if path is None else path.replace("/", "\\"))
-                    for n, path in enumerate(drives)]
-        settings += [f"-s {option}" for option in options]
-        settings += ["-s joyport1=none", "-s sound_output=interrupts"]
-        return self._lane(holder, f"start -f {BOOT_CONFIG} {' '.join(settings)}", timeout)
-
-    def insert(self, holder: str, drive: int, remote: str, timeout: float,
-               sha256: str) -> dict[str, Any]:
-        """Put the staged disk at `remote` in DF0 or DF1 of the running game and prove it went in.
-
-        The pipe's guest verb checks this holder's claim and emulator before it sends, and
-        `sha256` is the staged file's hash from the manifest. A refusal or an unproved
-        change raises `RouteError` carrying the raw replies as `.receipt`; the caller sends
-        no key after one.
-        """
-        from automap.amiga import FloppyError, WinuaePipe  # noqa: PLC0415
-
-        try:
-            return WinuaePipe(timeout=timeout).insert_floppy(
-                drive, remote.replace("/", "\\"), holder, sha256,
-                staged=self.staged).as_dict()
-        except FloppyError as exc:
-            error = RouteError(str(exc))
-            error.receipt = exc.receipt
-            raise error from exc
-
-    def capture(self, state: str, raw: pathlib.Path, cropped: pathlib.Path,
-                timeout: float) -> None:
-        """Grab until two consecutive crops of the Amiga screen are identical."""
-        started, previous, made, shots = time.monotonic(), None, False, 0
-        try:
-            while True:
-                left = timeout - (time.monotonic() - started)
-                # A short shot risks a timeout, so only the first one is allowed to be
-                # short: a failure capture with little time left must still leave a frame.
-                if left <= 0 or (left < SHOT_SECONDS and shots):
-                    raise RouteError(f"{state} did not settle inside {timeout:.0f}s")
-                allowed = min(SHOT_SECONDS, left)
-                made = False
-                shots += 1
-                self._run("shot", str(raw), "--timeout", str(max(1, int(allowed))),
-                          timeout=allowed)
-                try:
-                    amigashots.crop(raw, cropped)
-                except LookupError:
-                    # The WinUAE window is not up yet; the desktop is not a screen.
-                    previous = None
-                else:
-                    made = True
-                    frame = cropped.read_bytes()
-                    if previous == frame:
-                        return
-                    previous = frame
-                left = timeout - (time.monotonic() - started)
-                if left > 0:
-                    time.sleep(min(winvmsettle.INTERVAL, left))
-        finally:
-            if not made and raw.exists() and sys.exc_info()[0] is not None:
-                try:
-                    amigashots.crop(raw, cropped)
-                except Exception:
-                    pass
-
-    def grab(self, state: str, raw: pathlib.Path, cropped: pathlib.Path,
-             timeout: float) -> bool:
-        """One grab, cropped to the Amiga screen; False when WinUAE's window is not up.
-
-        A guard reads a static box, so an animated screen needs no settling.
-        """
-        if timeout <= 0:
-            raise RouteError(f"no time left to grab {state}")
-        allowed = min(SHOT_SECONDS, timeout)
-        self._run("shot", str(raw), "--timeout", str(max(1, int(allowed))),
-                  timeout=allowed)
-        try:
-            amigashots.crop(raw, cropped)
-        except LookupError:
-            return False
-        return True
-
-    def press(self, holder: str, key: str, timeout: float) -> str:
-        name = key.upper()
-        code = amigadrive.KEYS.get(name)
-        if code is None:
-            raise RouteError(f"{name} has no WinUAE key code")
-        extended = " -Extended" if name in amigadrive.EXTENDED else ""
-        return self._lane(holder, f"key {code:02X}{extended}", timeout)
-
-    def stop(self, holder: str, timeout: float) -> str:
-        return self._lane(holder, "stop", timeout)
-
-    def get(self, remote: str, local: pathlib.Path, timeout: float) -> str:
-        return self._run("get", remote, str(local), timeout=timeout)
-
-    def release(self, holder: str, timeout: float) -> str:
-        return self._lane(holder, "release", timeout)
 
 
 def _box_pixels(image_path: pathlib.Path, box, state: str) -> bytes:
@@ -696,20 +524,6 @@ def _stderr_tail(stderr: str) -> str:
 def _has_rule(guard: Any, state: str) -> bool:
     """Whether a guard *map* holds `state`; a bare callable holds none, so no interstitial fires."""
     return hasattr(guard, "__contains__") and state in guard
-
-
-def _terminate(signum, frame):
-    raise Terminated(f"signal {signum}")
-
-
-@contextlib.contextmanager
-def terminating():
-    """SIGTERM raises `Terminated`, so a wrapper's `timeout` still reaches `run_recon`'s `finally`."""
-    previous = signal.signal(signal.SIGTERM, _terminate)
-    try:
-        yield
-    finally:
-        signal.signal(signal.SIGTERM, previous)
 
 
 # (screen, action, waiting_for, limit): on a known screen that is not the wanted one,
@@ -1716,23 +1530,6 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                                                      sort_keys=True) + "\n")
         runlog.close()
     return result
-
-
-def _mute_proof(path: pathlib.Path) -> bool:
-    """Require a recent UTC readback of the Windows VM's muted endpoint."""
-    try:
-        proof = json.loads(path.read_text())
-        observed = datetime.fromisoformat(proof["observed_utc"].replace("Z", "+00:00"))
-        age = datetime.now(timezone.utc) - observed
-    except (AttributeError, KeyError, OSError, TypeError, ValueError):
-        return False
-    return (proof.get("vm") == "WIN11-DEV" and proof.get("muted") is True
-            and proof.get("readback") is True
-            and proof.get("method") == "Windows Core Audio endpoint mute readback"
-            and isinstance(proof.get("endpoint_id"), str)
-            and bool(proof["endpoint_id"].strip())
-            and observed.utcoffset() == timedelta(0)
-            and timedelta() <= age <= timedelta(minutes=5))
 
 
 def main(argv: list[str] | None = None) -> int:

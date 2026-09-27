@@ -14,7 +14,9 @@ import pathlib
 import string
 import struct
 
+from goldbox import amiga_adf
 from goldbox import amiga_adf as adf
+from tools.amiga.winuaesession import RouteError
 from tools.registry import scratch
 
 SOURCE_SHA256 = "2f9ae86494561231dd1d70b350ae07b959c9f62642b64e9d4b57ffd23686ace4"
@@ -22,6 +24,27 @@ SECRET_SHA256 = "ba6c8b5ed94b9003d61f727968e040d55a37d79ba109d46fb013163a698a158
 SAVE_DIR_BLOCK = 919
 OLD_NAME = "SAVE"
 HIDDEN_NAME = "SAVE_OFF_40"
+
+
+def sha256(path: pathlib.Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _entry(path: pathlib.Path) -> dict[str, str]:
+    return {"path": str(path), "sha256": sha256(path)}
+
+
+def _verified_disk(path: pathlib.Path) -> amiga_adf.AmigaDisk:
+    disk = amiga_adf.AmigaDisk.open(path)
+    problems = disk.verify()
+    if problems:
+        raise RouteError(f"{path} fails ADF verification: {problems}")
+    return disk
+
 
 
 class StageError(ValueError):

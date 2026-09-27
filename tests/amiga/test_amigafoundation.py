@@ -25,6 +25,7 @@ from tests.amiga.test_amigasecretsavetitle import (
 )
 from tools.amiga import amigafoundation as foundation
 from tools.amiga import amigasecretsave as drive
+from tools.amiga import staging, winuaesession
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
 START = {"area": 0, "x": 9, "y": 13, "facing": geo.NORTH}
@@ -133,18 +134,18 @@ def test_prepare_refuses_a_specimen_whose_sha256_differs(tmp_path, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     other = tmp_path / "other.adf"
     other.write_bytes(b"not the specimen")
-    with pytest.raises(drive.RouteError, match="specimen SHA-256 differs"):
+    with pytest.raises(winuaesession.RouteError, match="specimen SHA-256 differs"):
         foundation.prepare(foundation.POOL, "refused", specimen=other)
     assert not (tmp_path / ".cache").exists()
 
 
 def test_prepare_refuses_a_title_that_is_not_registered_here(tmp_path):
-    with pytest.raises(drive.RouteError, match="not one of this module's titles"):
+    with pytest.raises(winuaesession.RouteError, match="not one of this module's titles"):
         foundation.prepare(_title(), "x")
 
 
 def test_prepare_refuses_a_run_id_that_is_not_lane_safe():
-    with pytest.raises(drive.RouteError, match="run id"):
+    with pytest.raises(winuaesession.RouteError, match="run id"):
         foundation.prepare(foundation.POOL, "a b")
 
 
@@ -187,7 +188,7 @@ def _registered():
             pytest.skip("the Pool specimen is not in the registry")
         foundation._find_images({"disk1": foundation.POOL_DISK1_SHA256,
                                  "disk2": foundation.POOL_DISK2_SHA256})
-    except drive.RouteError:
+    except winuaesession.RouteError:
         pytest.skip("the registered Pool disks are not here")
     return specimen
 
@@ -210,7 +211,7 @@ def test_prepare_writes_the_places_and_leaves_every_registered_image_unchanged(
     specimen = _registered()
     before = {label: hashlib.sha256(data).hexdigest()
               for label, data in foundation.amigasaves.images()}
-    specimen_before = drive.sha256(specimen)
+    specimen_before = staging.sha256(specimen)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     path = foundation.prepare(foundation.POOL, "registry-run")
@@ -220,13 +221,13 @@ def test_prepare_writes_the_places_and_leaves_every_registered_image_unchanged(
     assert manifest["loaded_letter"] == "A" and manifest["names_a"][0] == "BRUTUS"
     assert set(manifest["disks"]) == {"disk1", "disk2", "save"}
     for key, entry in manifest["disks"].items():
-        assert drive.sha256(pathlib.Path(entry["path"])) == entry["sha256"]
+        assert staging.sha256(pathlib.Path(entry["path"])) == entry["sha256"]
         assert pathlib.Path(entry["path"]).is_relative_to(tmp_path)
     assert manifest["disks"]["disk1"]["sha256"] == foundation.POOL_DISK1_SHA256
     assert manifest["disks"]["save"]["sha256"] == foundation.POOL_SPECIMEN_SHA256
     after = {label: hashlib.sha256(data).hexdigest()
              for label, data in foundation.amigasaves.images()}
-    assert after == before and drive.sha256(specimen) == specimen_before
+    assert after == before and staging.sha256(specimen) == specimen_before
     # The manifest is one the driver accepts, before any lane is claimed.
     assert drive._title_inputs(manifest, foundation.POOL)[2] == "A"
 
@@ -326,7 +327,7 @@ def test_the_curse_after_letter_is_not_the_exit_key_and_no_plain_step_presses_a_
 
 
 def test_an_after_letter_of_e_is_refused_at_construction():
-    with pytest.raises(drive.RouteError, match="presses a save or kept slot letter"):
+    with pytest.raises(winuaesession.RouteError, match="presses a save or kept slot letter"):
         dataclasses.replace(foundation.CURSE, after_letter="E")
 
 
@@ -340,7 +341,7 @@ def test_prepare_refuses_a_curse_specimen_whose_sha256_differs(tmp_path, monkeyp
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     other = tmp_path / "other.adf"
     other.write_bytes(b"not the specimen")
-    with pytest.raises(drive.RouteError, match="specimen SHA-256 differs"):
+    with pytest.raises(winuaesession.RouteError, match="specimen SHA-256 differs"):
         foundation.prepare(foundation.CURSE, "refused", specimen=other)
     assert not (tmp_path / ".cache").exists()
 
@@ -351,7 +352,7 @@ def _curse_registered():
         pytest.skip("the Curse specimen is not in the registry")
     try:
         foundation._find_images({"diskb": foundation.CURSE_DISK_B_SHA256})
-    except drive.RouteError:
+    except winuaesession.RouteError:
         pytest.skip("the registered Curse disk B is not here")
     return specimen
 
@@ -371,7 +372,7 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
     specimen = _curse_registered()
     before = {label: hashlib.sha256(data).hexdigest()
               for label, data in foundation.amigasaves.images()}
-    specimen_before = drive.sha256(specimen)
+    specimen_before = staging.sha256(specimen)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     manifest = json.loads(foundation.prepare(foundation.CURSE, "registry-run").read_text())
@@ -382,7 +383,7 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
     assert manifest["disks"]["save"]["sha256"] == foundation.CURSE_SPECIMEN_SHA256
     after = {label: hashlib.sha256(data).hexdigest()
              for label, data in foundation.amigasaves.images()}
-    assert after == before and drive.sha256(specimen) == specimen_before
+    assert after == before and staging.sha256(specimen) == specimen_before
     assert drive._title_inputs(manifest, foundation.CURSE)[2] == "B"
 
 
@@ -488,7 +489,7 @@ def test_darkness_accept_order_puts_the_control_save_before_the_walk_and_the_aft
 def test_darkness_accept_refuses_to_start_when_the_guard_map_lacks_a_new_state(
         tmp_path, clock, state):
     guard = MapGuard(states=tuple(s for s in DARK_STATES if s != state), on=DARK_FIRST_SCREEN)
-    with pytest.raises(drive.RouteError, match="screen guard map lacks"):
+    with pytest.raises(winuaesession.RouteError, match="screen guard map lacks"):
         _dark_run(tmp_path, clock, guard=guard)
 
 
@@ -544,14 +545,14 @@ def test_darkness_route_and_measure_route_are_pinned_and_write_only_f_and_g():
 def test_darkness_refuses_a_write_step_that_is_not_the_control_or_after_letter(letter):
     route = tuple((letter, state, kind) if kind == "write" and key == "F" else (key, state, kind)
                   for key, state, kind in foundation.DARKNESS.route)
-    with pytest.raises(drive.RouteError):
+    with pytest.raises(winuaesession.RouteError):
         dataclasses.replace(foundation.DARKNESS, route=route)
 
 
 def test_the_real_darkness_readers_show_f_g_and_h_free_on_disk_3():
     try:
         images = foundation._find_images({"disk3": foundation.DARKNESS_DISK3_SHA256})
-    except drive.RouteError:
+    except winuaesession.RouteError:
         pytest.skip("the registered Pools of Darkness disk 3 is not here")
     disk = AmigaDisk(images["disk3"][1])
     assert foundation.DARKNESS.slot_letters(disk) == list("ABCDE")
@@ -566,7 +567,7 @@ def test_darkness_names_where_e_is_the_exit_key_and_nowhere_else():
     assert darkness.title_limit == 420.0 and darkness.boot_span == 225.0
     assert [s[0][0] for s in darkness.route if s[2] == "insert"] == [0]
     assert all(row[1][0] != "insert" or row[1][1] == 1 for row in darkness.interstitials)
-    with pytest.raises(drive.RouteError, match="presses a save or kept slot letter"):
+    with pytest.raises(winuaesession.RouteError, match="presses a save or kept slot letter"):
         dataclasses.replace(darkness, plain_keys=(("E", "camp"),))
 
 
@@ -575,7 +576,7 @@ def test_prepare_refuses_a_darkness_disk_whose_sha256_differs(tmp_path, monkeypa
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     other = tmp_path / "other.adf"
     other.write_bytes(b"not disk 3")
-    with pytest.raises(drive.RouteError, match="specimen SHA-256 differs"):
+    with pytest.raises(winuaesession.RouteError, match="specimen SHA-256 differs"):
         foundation.prepare(foundation.DARKNESS, "refused", specimen=other)
     assert not (tmp_path / ".cache").exists()
 
@@ -585,7 +586,7 @@ def _darkness_registered():
         return foundation._find_images({"disk1": foundation.DARKNESS_DISK1_SHA256,
                                         "disk2": foundation.DARKNESS_DISK2_SHA256,
                                         "disk3": foundation.DARKNESS_DISK3_SHA256})
-    except drive.RouteError:
+    except winuaesession.RouteError:
         pytest.skip("the registered Pools of Darkness disks are not here")
 
 
@@ -889,7 +890,7 @@ def test_darkness_measure_refuses_a_df0_insert_without_a_guard_on_the_prompt(
     if guard:
         guard = MapGuard(states=tuple(s for s in MEASURE_STATES if s != "disk2_prompt"), on={})
     guest = DarkGuest(clock, save_key="disk3")
-    with pytest.raises(drive.RouteError, match="disk2_prompt.*DF0 insert needs a guard"):
+    with pytest.raises(winuaesession.RouteError, match="disk2_prompt.*DF0 insert needs a guard"):
         _dark_run(tmp_path, clock, guest=guest, guard=guard, accept=False, measure=True)
     assert guest.calls == []
 
@@ -1029,7 +1030,7 @@ def test_reload_refuses_before_the_claim_when_a_guard_or_identity_rule_is_missin
     for missing in (G_KEY, F_KEY):
         guest = ReloadGuest(clock)
         states = tuple(s for s in RELOAD_STATES if s != missing)
-        with pytest.raises(drive.RouteError, match="screen guard map lacks"):
+        with pytest.raises(winuaesession.RouteError, match="screen guard map lacks"):
             _reload_run(tmp_path, clock, guest=guest, guard=_reload_guard(guest, states=states))
         assert guest.calls == []
 
@@ -1042,7 +1043,7 @@ def test_reload_refuses_before_the_claim_when_a_guard_or_identity_rule_is_missin
 
     for identity in (None, SheetOnly()):
         guest = ReloadGuest(clock)
-        with pytest.raises(drive.RouteError, match="identity map lacks"):
+        with pytest.raises(winuaesession.RouteError, match="identity map lacks"):
             _reload_run(tmp_path, clock, guest=guest, identity=identity)
         assert guest.calls == []
 
@@ -1054,7 +1055,7 @@ def test_reload_refuses_before_the_claim_when_a_guard_or_identity_rule_is_missin
 def test_a_title_with_no_save_letters_runs_only_as_a_reload(tmp_path, clock, title, mode):
     guest = ReloadGuest(clock)
     chosen = _reload_title() if title == "reload" else _dark_title()
-    with pytest.raises(drive.RouteError, match="reload"):
+    with pytest.raises(winuaesession.RouteError, match="reload"):
         _reload_run(tmp_path, clock, guest=guest, title=chosen, **{"reload": False, **mode})
     assert guest.calls == []
 
@@ -1169,17 +1170,17 @@ def test_reload_prepare_refuses(tmp_path, monkeypatch, what, match):
     summary_args = {"failed": {"success": False}, "not accept": {"accept": False},
                     "other hash": {"fetched": "0" * 64}}.get(what, {})
     summary = _accept_summary(tmp_path, sha, **summary_args)
-    with pytest.raises(drive.RouteError, match=match):
+    with pytest.raises(winuaesession.RouteError, match=match):
         _prepare_reload(tmp_path, disk, "1" * 64 if what == "hash" else sha, summary)
     assert not (tmp_path / ".cache" / "wish" / "acceptance" / "679" / "reload-run").exists()
 
 
 def test_prepare_requires_the_reload_inputs_only_for_the_reload_title(tmp_path):
-    with pytest.raises(drive.RouteError, match="needs the disk 3"):
+    with pytest.raises(winuaesession.RouteError, match="needs the disk 3"):
         foundation.prepare(foundation.TITLES["darkness-reload"], "x", specimen=tmp_path / "a")
-    with pytest.raises(drive.RouteError, match="takes no disk 3 hash"):
+    with pytest.raises(winuaesession.RouteError, match="takes no disk 3 hash"):
         foundation.prepare(foundation.DARKNESS, "x", specimen_sha256="0" * 64)
-    with pytest.raises(drive.RouteError, match="takes no disk 3 hash"):
+    with pytest.raises(winuaesession.RouteError, match="takes no disk 3 hash"):
         foundation.prepare(foundation.POOL, "x", accept_summary=tmp_path / "s.json")
 
 
@@ -1218,7 +1219,7 @@ def test_reload_refuses_a_manifest_that_cannot_be_compared_before_the_claim(
         tmp_path, clock, edit, match):
     guest = ReloadGuest(clock)
     path = _reload_manifest_without(tmp_path, edit)
-    with pytest.raises(drive.RouteError, match=match):
+    with pytest.raises(winuaesession.RouteError, match=match):
         drive.run_recon(path, guest=guest, guard=_reload_guard(guest), identity=_IdentityMap(),
                         holder="wish679-test", audio_proof=_audio_proof(tmp_path),
                         title=_reload_title(), reload=True)

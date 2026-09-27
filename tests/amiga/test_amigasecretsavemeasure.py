@@ -13,7 +13,7 @@ from tests.amiga.test_amigasecretsave import (
     _audio_proof,
     _prepared,
 )
-from tools.amiga import amigasecretsave
+from tools.amiga import amigasecretsave, winuaesession
 
 
 @pytest.fixture
@@ -120,7 +120,7 @@ def test_measure_refuses_without_a_fresh_mute_proof(tmp_path, clock):
     guest = ScreenGuest(clock)
     stale = tmp_path / "stale.json"
     stale.write_text("{}")
-    with pytest.raises(amigasecretsave.RouteError, match="audio mute"):
+    with pytest.raises(winuaesession.RouteError, match="audio mute"):
         amigasecretsave.run_recon(
             _prepared(tmp_path), guest=guest, holder="wish672-test",
             audio_proof=stale, measure=True)
@@ -150,7 +150,7 @@ def test_the_route_and_write_keys_are_arguments(tmp_path, clock):
 def test_parse_route():
     assert amigasecretsave.parse_route("esc:party_menu, L:load_picker") == (
         ("ESC", "party_menu"), ("L", "load_picker"))
-    with pytest.raises(amigasecretsave.RouteError):
+    with pytest.raises(winuaesession.RouteError):
         amigasecretsave.parse_route("ESC")
 
 
@@ -225,7 +225,7 @@ def test_the_title_is_polled_until_its_guard_matches(tmp_path, clock):
 
 
 def test_guarded_mode_without_a_guard_is_refused(tmp_path):
-    with pytest.raises(amigasecretsave.RouteError, match="guard"):
+    with pytest.raises(winuaesession.RouteError, match="guard"):
         amigasecretsave.run_recon(
             _prepared(tmp_path), guest=FailedPostWriteGuest(),
             holder="wish672-test", audio_proof=_audio_proof(tmp_path))
@@ -262,7 +262,7 @@ def test_measure_never_presses_b_even_when_write_keys_replace_it(tmp_path, clock
         try:
             _measure(tmp_path / str(len(keys[0])), guest,
                      route=(("RET", "version"), ("B", "sheet")), write_keys=keys)
-        except amigasecretsave.RouteError:
+        except winuaesession.RouteError:
             pass  # an empty entry is refused before anything is pressed
         assert "B" not in _keys(guest)
 
@@ -270,13 +270,13 @@ def test_measure_never_presses_b_even_when_write_keys_replace_it(tmp_path, clock
 def test_write_keys_reject_an_empty_entry():
     assert amigasecretsave.parse_write_keys("b, w") == ("B", "W")
     for text in ("", "B,", ",B"):
-        with pytest.raises(amigasecretsave.RouteError, match="empty"):
+        with pytest.raises(winuaesession.RouteError, match="empty"):
             amigasecretsave.parse_write_keys(text)
 
 
 def test_measure_with_an_empty_route_is_refused(tmp_path, clock):
     guest = ScreenGuest(clock)
-    with pytest.raises(amigasecretsave.RouteError, match="route step"):
+    with pytest.raises(winuaesession.RouteError, match="route step"):
         _measure(tmp_path, guest, route=())
     assert guest.calls == []
 
@@ -312,7 +312,7 @@ def test_a_keyboard_interrupt_still_cleans_up(tmp_path, clock):
 
 def test_parse_route_rejects_a_trailing_comma_and_an_empty_state():
     for text in ("ESC:party_menu,", "ESC:", ":party_menu", ""):
-        with pytest.raises(amigasecretsave.RouteError):
+        with pytest.raises(winuaesession.RouteError):
             amigasecretsave.parse_route(text)
 
 
@@ -593,7 +593,7 @@ def test_a_grab_is_bounded_by_one_shot_and_the_deadline(tmp_path, clock):
         _prepared(tmp_path), guest=guest, guard=lambda s, p: True,
         holder="wish672-test", audio_proof=_audio_proof(tmp_path))
     assert guest.timeouts
-    assert all(0 < t <= amigasecretsave.SHOT_SECONDS for t in guest.timeouts)
+    assert all(0 < t <= winuaesession.SHOT_SECONDS for t in guest.timeouts)
 
 
 def test_measure_waits_for_the_title_guard_before_the_first_key(tmp_path, clock):
@@ -659,7 +659,7 @@ def test_a_guard_map_for_the_measured_route_loads(tmp_path):
 def test_guarded_mode_refuses_a_guard_map_missing_a_route_state(tmp_path):
     guards = amigasecretsave.PixelGuards(_full_map(tmp_path, drop=("items",)))
     guest = FailedPostWriteGuest()
-    with pytest.raises(amigasecretsave.RouteError, match="lacks.*items"):
+    with pytest.raises(winuaesession.RouteError, match="lacks.*items"):
         amigasecretsave.run_recon(
             _prepared(tmp_path), guest=guest, guard=guards,
             holder="wish672-test", audio_proof=_audio_proof(tmp_path))
@@ -725,7 +725,7 @@ def _rules(tmp_path, rule):
     ["box"],
 ])
 def test_a_malformed_guard_rule_is_refused_on_load(tmp_path, rule):
-    with pytest.raises(amigasecretsave.RouteError, match="title"):
+    with pytest.raises(winuaesession.RouteError, match="title"):
         amigasecretsave.PixelGuards(_rules(tmp_path, rule))
 
 
@@ -734,7 +734,7 @@ def test_a_malformed_guard_rule_is_refused_on_load(tmp_path, rule):
 def test_a_guard_box_with_the_wrong_numbers_or_outside_the_image_is_refused(
         tmp_path, box):
     shot = _image(tmp_path / "shot.png", (0, 51, 102))
-    with pytest.raises(amigasecretsave.RouteError, match="invalid crop box"):
+    with pytest.raises(winuaesession.RouteError, match="invalid crop box"):
         amigasecretsave.guard_rule(shot, box)
 
 

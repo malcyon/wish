@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import pathlib
+import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from goldbox.amiga_adf import AmigaDisk
-from tools.amiga import amigasecretsave
+from tools.amiga import amigasecretsave, winuaesession
 
 
 def _sha(path):
@@ -149,7 +152,7 @@ def test_exact_df1_is_preserved_and_failed_save_is_fetched(tmp_path):
 def test_unverified_mute_refuses_before_claim_or_boot(tmp_path):
     guest = FailedPostWriteGuest()
 
-    with pytest.raises(amigasecretsave.RouteError, match="audio mute"):
+    with pytest.raises(winuaesession.RouteError, match="audio mute"):
         amigasecretsave.run_recon(
             tmp_path / "missing-manifest.json", guest=guest,
             guard=lambda state, shot: True, holder="wish672-test",
@@ -188,20 +191,20 @@ def test_stale_or_unmeasured_audio_mute_proof_is_refused(tmp_path):
         "observed_utc": (now - timedelta(hours=1)).isoformat(),
     }
     proof.write_text(json.dumps(measured))
-    assert not amigasecretsave._mute_proof(proof)
+    assert not winuaesession._mute_proof(proof)
 
     measured["observed_utc"] = "yesterday"
     proof.write_text(json.dumps(measured))
-    assert not amigasecretsave._mute_proof(proof)
+    assert not winuaesession._mute_proof(proof)
 
     measured["observed_utc"] = now.isoformat()
     measured["readback"] = False
     proof.write_text(json.dumps(measured))
-    assert not amigasecretsave._mute_proof(proof)
+    assert not winuaesession._mute_proof(proof)
 
     measured["readback"] = True
     proof.write_text(json.dumps(measured))
-    assert amigasecretsave._mute_proof(proof)
+    assert winuaesession._mute_proof(proof)
 
 
 def test_mute_proof_expiring_during_transfer_refuses_before_start(
@@ -225,7 +228,7 @@ def test_mute_proof_expiring_during_transfer_refuses_before_start(
         "observed_utc": (ClockedDateTime.now_utc
                          - timedelta(minutes=4, seconds=59)).isoformat(),
     }))
-    monkeypatch.setattr(amigasecretsave, "datetime", ClockedDateTime)
+    monkeypatch.setattr(winuaesession, "datetime", ClockedDateTime)
 
     class TransferOutlivesProof(FailedPostWriteGuest):
         def put(self, local, remote, timeout=None):
@@ -346,14 +349,14 @@ class _Desktop:
         self.colours = list(client_colours)
         self.windowless = windowless
         self.timeouts, self.shots = [], 0
-        monkeypatch.setattr(amigasecretsave.WinGuest, "_run",
+        monkeypatch.setattr(winuaesession.WinGuest, "_run",
                             staticmethod(self._run))
 
     def _run(self, *args, timeout):
         assert args[0] == "shot"
         self.timeouts.append(timeout)
         if timeout < self.seconds:
-            raise amigasecretsave.RouteError(
+            raise winuaesession.RouteError(
                 f"winvm shot exceeded its {timeout:.1f}s limit")
         from PIL import Image
         self.shots += 1
@@ -375,12 +378,12 @@ def desktop_clock(monkeypatch):
         now = 500.0
 
     clock = Clock()
-    monkeypatch.setattr(amigasecretsave.time, "monotonic", lambda: clock.now)
+    monkeypatch.setattr(winuaesession.time, "monotonic", lambda: clock.now)
 
     def sleep(seconds):
         clock.now += seconds
 
-    monkeypatch.setattr(amigasecretsave.time, "sleep", sleep)
+    monkeypatch.setattr(winuaesession.time, "sleep", sleep)
     return clock
 
 
@@ -391,7 +394,7 @@ def test_capture_settles_on_the_emulator_screen_while_the_desktop_changes(
     desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)])
     raw, cropped = tmp_path / "s.raw.png", tmp_path / "s.png"
 
-    amigasecretsave.WinGuest().capture("boot", raw, cropped, timeout=60)
+    winuaesession.WinGuest().capture("boot", raw, cropped, timeout=60)
 
     assert desktop.shots == 2
     assert Image.open(cropped).size == (720, 568)
@@ -403,12 +406,12 @@ def test_capture_that_never_settles_says_so_without_a_cut_short_shot(
     desktop = _Desktop(monkeypatch, desktop_clock,
                        client_colours=[(n, 9, 9) for n in range(1, 40)])
 
-    with pytest.raises(amigasecretsave.RouteError, match="did not settle inside 60s"):
-        amigasecretsave.WinGuest().capture(
+    with pytest.raises(winuaesession.RouteError, match="did not settle inside 60s"):
+        winuaesession.WinGuest().capture(
             "boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=60)
 
     assert desktop.shots >= 2
-    assert min(desktop.timeouts) >= amigasecretsave.SHOT_SECONDS
+    assert min(desktop.timeouts) >= winuaesession.SHOT_SECONDS
     assert (tmp_path / "s.png").exists()
 
 
@@ -416,7 +419,7 @@ def test_capture_waits_for_the_emulator_window(tmp_path, monkeypatch, desktop_cl
     desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)],
                        windowless=1)
 
-    amigasecretsave.WinGuest().capture(
+    winuaesession.WinGuest().capture(
         "boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=60)
 
     assert desktop.shots == 3
@@ -426,8 +429,8 @@ def test_capture_with_little_time_left_still_takes_one_shot(
         tmp_path, monkeypatch, desktop_clock):
     desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)])
 
-    with pytest.raises(amigasecretsave.RouteError, match="did not settle inside 10s"):
-        amigasecretsave.WinGuest().capture(
+    with pytest.raises(winuaesession.RouteError, match="did not settle inside 10s"):
+        winuaesession.WinGuest().capture(
             "boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=10)
 
     assert desktop.shots == 1
@@ -438,8 +441,8 @@ def test_capture_with_little_time_left_still_takes_one_shot(
 def test_capture_with_no_time_left_takes_no_shot(tmp_path, monkeypatch, desktop_clock):
     desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)])
 
-    with pytest.raises(amigasecretsave.RouteError, match="did not settle"):
-        amigasecretsave.WinGuest().capture(
+    with pytest.raises(winuaesession.RouteError, match="did not settle"):
+        winuaesession.WinGuest().capture(
             "boot", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=0)
 
     assert desktop.shots == 0
@@ -453,12 +456,12 @@ def test_grab_takes_one_shot_of_a_screen_that_never_holds_still(
     desktop = _Desktop(monkeypatch, desktop_clock,
                        client_colours=[(n, 9, 9) for n in range(1, 40)])
 
-    made = amigasecretsave.WinGuest().grab(
+    made = winuaesession.WinGuest().grab(
         "title", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=120)
 
     assert made is True
     assert desktop.shots == 1
-    assert desktop.timeouts == [amigasecretsave.SHOT_SECONDS]
+    assert desktop.timeouts == [winuaesession.SHOT_SECONDS]
     assert Image.open(tmp_path / "s.png").getpixel((5, 5)) == (1, 9, 9)
 
 
@@ -467,7 +470,7 @@ def test_grab_without_the_emulator_window_makes_no_crop(
     desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)],
                        windowless=1)
 
-    made = amigasecretsave.WinGuest().grab(
+    made = winuaesession.WinGuest().grab(
         "title", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=120)
 
     assert made is False
@@ -478,8 +481,8 @@ def test_grab_without_the_emulator_window_makes_no_crop(
 def test_grab_with_no_time_left_takes_no_shot(tmp_path, monkeypatch, desktop_clock):
     desktop = _Desktop(monkeypatch, desktop_clock, client_colours=[(9, 9, 9)])
 
-    with pytest.raises(amigasecretsave.RouteError, match="no time left"):
-        amigasecretsave.WinGuest().grab(
+    with pytest.raises(winuaesession.RouteError, match="no time left"):
+        winuaesession.WinGuest().grab(
             "title", tmp_path / "s.raw.png", tmp_path / "s.png", timeout=0)
 
     assert desktop.shots == 0
@@ -496,7 +499,7 @@ def _manifest_with(tmp_path, mutate):
 def _refused(tmp_path, mutate, match):
     path = _manifest_with(tmp_path, mutate)
     guest = FailedPostWriteGuest()
-    with pytest.raises(amigasecretsave.RouteError, match=match):
+    with pytest.raises(winuaesession.RouteError, match=match):
         amigasecretsave.run_recon(
             path, guest=guest, guard=lambda s, p: True, holder="wish672-test",
             audio_proof=_audio_proof(tmp_path))
@@ -538,7 +541,7 @@ def test_recon_refuses_a_working_df1_that_differs_from_the_registered_disk_b(tmp
 
 def test_start_opens_no_log_console(monkeypatch):
     sent = []
-    guest = amigasecretsave.WinGuest()
+    guest = winuaesession.WinGuest()
     monkeypatch.setattr(guest, "_lane", lambda holder, command, timeout:
                         sent.append(command) or "ok")
 
@@ -546,3 +549,13 @@ def test_start_opens_no_log_console(monkeypatch):
 
     assert "-log" not in sent[0].split()
     assert "floppy0=C:\\A\\df0.adf" in sent[0] and "floppy1=C:\\A\\df1.adf" in sent[0]
+
+
+def test_the_lane_session_imports_without_the_silver_blades_runner():
+    program = (
+        "import sys; import tools.amiga.winuaesession; "
+        "sys.exit(int(any(name in sys.modules for name in ("
+        "'tools.amiga.amigasecretsave', 'tools.amiga.staging'))))")
+    done = subprocess.run([sys.executable, "-c", program],
+                          cwd=pathlib.Path(__file__).resolve().parents[2])
+    assert done.returncode == 0

@@ -8,6 +8,7 @@ import pytest
 
 from tests.amiga import test_amigasecretsaveaccept as accept
 from tools.amiga import amigasecretsave as drive
+from tools.amiga import winuaesession
 
 clock = accept.clock
 readings = accept.readings
@@ -20,7 +21,7 @@ def _run(tmp_path, body):
 
 
 def _failure(tmp_path, body) -> str:
-    with pytest.raises(drive.RouteError) as info:
+    with pytest.raises(winuaesession.RouteError) as info:
         _run(tmp_path, body)
     return str(info.value)
 

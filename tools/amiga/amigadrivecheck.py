@@ -23,12 +23,12 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from automap import amiga  # noqa: E402
-from tools.amiga.amigasecretsave import (  # noqa: E402
+from tools.amiga.staging import sha256  # noqa: E402
+from tools.amiga.winuaesession import (  # noqa: E402
     RouteError,
     Terminated,
     WinGuest,
     _mute_proof,
-    sha256,
     terminating,
 )
 from tools.registry import scratch  # noqa: E402

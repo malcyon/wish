@@ -21,6 +21,7 @@ from tests.amiga.test_amigasecretsaveaccept import (
 )
 from tests.amiga.test_amigasecretsavemeasure import ScreenGuest
 from tools.amiga import amigasecretsave as drive
+from tools.amiga import winuaesession
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
 START = {"area": 2, "x": 9, "y": 13, "facing": geo.NORTH}
@@ -162,7 +163,7 @@ def _keys(guest):
 
 def test_a_title_mounts_every_drive_and_its_options_in_order(monkeypatch):
     sent = []
-    guest = drive.WinGuest()
+    guest = winuaesession.WinGuest()
     monkeypatch.setattr(guest, "_lane", lambda holder, command, timeout:
                         sent.append(command) or "ok")
     guest.start("h", "C:/A/d0.adf", None, "C:/A/d2.adf", timeout=60,
@@ -175,7 +176,7 @@ def test_a_title_mounts_every_drive_and_its_options_in_order(monkeypatch):
 
 def test_an_empty_drive_is_ejected_rather_than_left_to_the_template(monkeypatch):
     sent = []
-    guest = drive.WinGuest()
+    guest = winuaesession.WinGuest()
     monkeypatch.setattr(guest, "_lane", lambda holder, command, timeout:
                         sent.append(command) or "ok")
     guest.start("h", "C:/A/d0.adf", None, timeout=60)
@@ -184,12 +185,12 @@ def test_an_empty_drive_is_ejected_rather_than_left_to_the_template(monkeypatch)
 
 def test_two_drives_and_no_options_give_todays_start_line(monkeypatch):
     sent = []
-    guest = drive.WinGuest()
+    guest = winuaesession.WinGuest()
     monkeypatch.setattr(guest, "_lane", lambda holder, command, timeout:
                         sent.append(command) or "ok")
     guest.start("h", "C:/A/df0.adf", "C:/A/df1.adf", timeout=60)
     assert sent[0] == (
-        f"start -f {drive.BOOT_CONFIG} -s floppy0=C:\\A\\df0.adf -s floppy1=C:\\A\\df1.adf "
+        f"start -f {winuaesession.BOOT_CONFIG} -s floppy0=C:\\A\\df0.adf -s floppy1=C:\\A\\df1.adf "
         f"-s joyport1=none -s sound_output=interrupts")
 
 
@@ -224,7 +225,7 @@ def test_winguest_insert_hands_the_windows_path_holder_and_hash_to_the_pipe(monk
             return Receipt()
 
     monkeypatch.setattr(amiga, "WinuaePipe", Pipe)
-    guest = drive.WinGuest()
+    guest = winuaesession.WinGuest()
     monkeypatch.setattr(drive.subprocess, "Popen", _CopyingPopen)
     guest.put(pathlib.Path("disk3.adf"), "C:/Amiga/Disks/wish679-h-disk3.adf", 30)
     receipt = guest.insert("h", 1, "C:/Amiga/Disks/wish679-h-disk3.adf", 30, "ab" * 32)
@@ -418,7 +419,7 @@ def test_measure_boot_uses_the_titles_span(tmp_path, clock):
     {"interstitials": (("x", ("insert", 1, "nowhere", "SPACE"), None, 1),)},
 ])
 def test_an_inconsistent_description_is_refused(bad):
-    with pytest.raises(drive.RouteError, match="title description"):
+    with pytest.raises(winuaesession.RouteError, match="title description"):
         make_title(**bad)
 
 
@@ -429,7 +430,7 @@ def test_a_description_that_does_not_fit_the_manifest_is_refused_before_a_lane_i
     del data["disks"]["spare"]
     manifest.write_text(json.dumps(data))
     guest = TitleGuest(clock)
-    with pytest.raises(drive.RouteError, match="lacks 'spare'"):
+    with pytest.raises(winuaesession.RouteError, match="lacks 'spare'"):
         _run(tmp_path, clock, guest=guest, manifest=manifest)
     assert guest.calls == []
 
@@ -442,7 +443,7 @@ def test_a_description_that_does_not_fit_the_manifest_is_refused_before_a_lane_i
 def test_a_manifest_that_endangers_a_save_letter_is_refused_before_a_lane_is_claimed(
         tmp_path, clock, kwargs, match):
     guest = TitleGuest(clock)
-    with pytest.raises(drive.RouteError, match=match):
+    with pytest.raises(winuaesession.RouteError, match=match):
         _run(tmp_path, clock, guest=guest, manifest=manifest_for(tmp_path, **kwargs))
     assert guest.calls == []
 
@@ -450,14 +451,14 @@ def test_a_manifest_that_endangers_a_save_letter_is_refused_before_a_lane_is_cla
 @pytest.mark.parametrize("modes", [{"accept": False}, {"accept": True, "measure": True}])
 def test_a_title_run_is_accept_or_measure(tmp_path, clock, modes):
     guest = TitleGuest(clock)
-    with pytest.raises(drive.RouteError, match="either accept or measure"):
+    with pytest.raises(winuaesession.RouteError, match="either accept or measure"):
         _run(tmp_path, clock, guest=guest, **modes)
     assert guest.calls == []
 
 
 def test_a_missing_title_guard_is_refused_before_a_lane_is_claimed(tmp_path, clock):
     guest = TitleGuest(clock)
-    with pytest.raises(drive.RouteError, match="loaded_menu"):
+    with pytest.raises(winuaesession.RouteError, match="loaded_menu"):
         _run(tmp_path, clock, guest=guest, guard=MapGuard(states=("title", "party_menu",
                                                                   "load_picker")))
     assert guest.calls == []
@@ -485,16 +486,16 @@ KEYED = ROUTE[INSERT_AT + 1]  # the control save: `C` at loaded_menu
 @pytest.mark.parametrize("drive_number", [0, 2, 3, True])
 def test_an_insert_step_may_change_only_drive_1(drive_number):
     route = _swap(ROUTE, INSERT_AT, ((drive_number, "disk3", "SPACE"), "disk_wait", "insert"))
-    with pytest.raises(drive.RouteError, match="only DF1"):
+    with pytest.raises(winuaesession.RouteError, match="only DF1"):
         make_title(route=route, measure_route=ROUTE)
-    with pytest.raises(drive.RouteError, match="only DF1"):
+    with pytest.raises(winuaesession.RouteError, match="only DF1"):
         make_title(route=ROUTE, measure_route=route)
 
 
 @pytest.mark.parametrize("drive_number", [0, 2, 3])
 def test_an_interstitial_insert_may_change_only_drive_1(drive_number):
     rows = (("disk_request", ("insert", drive_number, "disk3", "SPACE"), None, 1),)
-    with pytest.raises(drive.RouteError, match="only DF1"):
+    with pytest.raises(winuaesession.RouteError, match="only DF1"):
         make_title(interstitials=rows)
     make_title(interstitials=(("disk_request", ("insert", 1, "disk3", "SPACE"), None, 1),))
 
@@ -503,10 +504,10 @@ def test_an_interstitial_insert_may_change_only_drive_1(drive_number):
 @pytest.mark.parametrize("kind", ["key", "move", "turn"])
 def test_a_step_that_is_not_a_write_may_not_press_a_save_or_kept_letter(letter, kind):
     route = _swap(ROUTE, 0, (letter, "party_menu", kind))
-    with pytest.raises(drive.RouteError, match="slot letter"):
+    with pytest.raises(winuaesession.RouteError, match="slot letter"):
         make_title(route=route, measure_route=ROUTE)
     # A measure run reaches the same key, so its route is checked as well.
-    with pytest.raises(drive.RouteError, match="slot letter"):
+    with pytest.raises(winuaesession.RouteError, match="slot letter"):
         make_title(route=ROUTE, measure_route=route)
 
 
@@ -514,7 +515,7 @@ def test_a_step_that_is_not_a_write_may_not_press_a_save_or_kept_letter(letter, 
     ("keys", "C"), ("keys", ("ESC", "D")), ("keys", "b"), ("insert", 1, "disk3", "C"),
 ])
 def test_an_interstitial_may_not_press_a_save_or_kept_letter(action):
-    with pytest.raises(drive.RouteError, match="slot letter"):
+    with pytest.raises(winuaesession.RouteError, match="slot letter"):
         make_title(interstitials=(("disk_request", action, None, 1),))
 
 
@@ -528,12 +529,12 @@ STRICT = frozenset({"party_menu", "load_picker", "loaded_menu", "disk_wait", "ca
 
 @pytest.mark.parametrize("missing", ["loaded_menu", "disk_wait", "camp_picker"])
 def test_a_write_or_insert_after_a_state_that_is_not_strict_is_refused(missing):
-    with pytest.raises(drive.RouteError, match="not a strict state"):
+    with pytest.raises(winuaesession.RouteError, match="not a strict state"):
         make_title(strict=STRICT - {missing})
 
 
 def test_a_title_with_no_strict_states_is_refused():
-    with pytest.raises(drive.RouteError, match="not a strict state"):
+    with pytest.raises(winuaesession.RouteError, match="not a strict state"):
         make_title(strict=frozenset())
 
 
@@ -662,7 +663,7 @@ def test_a_measure_run_fails_when_a_disk_changed(tmp_path, clock):
 ])
 def test_a_title_run_refuses_a_route_or_write_keys_of_its_own(tmp_path, clock, kwargs):
     guest = TitleGuest(clock)
-    with pytest.raises(drive.RouteError, match="brings its own route and write keys"):
+    with pytest.raises(winuaesession.RouteError, match="brings its own route and write keys"):
         _run(tmp_path, clock, guest=guest, **kwargs)
     assert guest.calls == []
 
@@ -698,7 +699,7 @@ def test_the_titles_minimum_waits_are_used_and_the_callers_win(tmp_path, clock):
 
 def test_an_issue_that_is_not_all_digits_is_refused():
     for issue in ("", "67x", "../679", "6 9"):
-        with pytest.raises(drive.RouteError, match="is not a number"):
+        with pytest.raises(winuaesession.RouteError, match="is not a number"):
             make_title(issue=issue)
 
 
@@ -707,7 +708,7 @@ def test_an_issue_that_is_not_all_digits_is_refused():
     {"spares": ("boot",)},
 ])
 def test_a_disk_key_must_be_distinct_and_lane_safe(bad):
-    with pytest.raises(drive.RouteError, match="lane-safe"):
+    with pytest.raises(winuaesession.RouteError, match="lane-safe"):
         make_title(**bad)
 
 
@@ -730,7 +731,7 @@ def test_the_identity_map_is_needed_only_when_the_route_uses_an_identity_state(
     # The same run, whose route does reach `loaded_menu`, still needs the map.
     other = tmp_path / "needed"
     other.mkdir()
-    with pytest.raises(drive.RouteError, match="identity map lacks"):
+    with pytest.raises(winuaesession.RouteError, match="identity map lacks"):
         drive.run_recon(
             manifest_for(other), guest=TitleGuest(clock), guard=MapGuard(
                 states=("title", *STATES)), identity=None, title=make_title(),
@@ -754,7 +755,7 @@ def test_a_terminated_title_run_still_stops_fetches_and_releases(tmp_path, clock
         os.kill(os.getpid(), signal.SIGTERM)
 
     guest = Hooked(clock, {"E": term})
-    with drive.terminating():
+    with winuaesession.terminating():
         guest, result = _run(tmp_path, clock, guest=guest)
     assert result["lost"].startswith("Terminated") and result["completed"] is False
     assert result["success"] is False
@@ -769,7 +770,7 @@ PLAIN = (("E", "camp"),)
 
 
 def test_a_kept_letter_key_step_without_a_plain_keys_entry_is_refused():
-    with pytest.raises(drive.RouteError, match="presses a save or kept slot letter"):
+    with pytest.raises(winuaesession.RouteError, match="presses a save or kept slot letter"):
         make_title(kept_letters=("B", "E"))
 
 
@@ -779,33 +780,33 @@ def test_a_kept_letter_key_step_with_its_plain_keys_entry_is_accepted():
 
 
 def test_a_plain_keys_entry_for_another_state_does_not_let_the_step_through():
-    with pytest.raises(drive.RouteError, match="presses a save or kept slot letter"):
+    with pytest.raises(winuaesession.RouteError, match="presses a save or kept slot letter"):
         make_title(kept_letters=("B", "E"), plain_keys=(("E", "world"),))
 
 
 @pytest.mark.parametrize("letter,state", [("C", "loaded_menu"), ("D", "camp")])
 def test_the_control_and_after_letters_are_refused_even_when_listed(letter, state):
-    with pytest.raises(drive.RouteError, match="not a kept letter"):
+    with pytest.raises(winuaesession.RouteError, match="not a kept letter"):
         make_title(plain_keys=((letter, state),))
     # A step pressing one of them as a plain key stays refused with the entry present.
     route = _swap(ROUTE, 7, (letter, "camp", "key"))
-    with pytest.raises(drive.RouteError, match="presses a save or kept slot letter"):
+    with pytest.raises(winuaesession.RouteError, match="presses a save or kept slot letter"):
         make_title(route=route, measure_route=route, kept_letters=("B", "E"),
                    plain_keys=PLAIN)
 
 
 def test_a_plain_keys_entry_whose_key_is_not_a_kept_letter_is_refused():
-    with pytest.raises(drive.RouteError, match="not a kept letter"):
+    with pytest.raises(winuaesession.RouteError, match="not a kept letter"):
         make_title(plain_keys=(("S", "camp_picker"),))
 
 
 def test_a_plain_keys_entry_no_step_uses_is_refused():
-    with pytest.raises(drive.RouteError, match="pressed by no step in that state"):
+    with pytest.raises(winuaesession.RouteError, match="pressed by no step in that state"):
         make_title(kept_letters=("B", "E"), plain_keys=(*PLAIN, ("E", "world")))
 
 
 def test_a_repeated_plain_keys_entry_is_refused():
-    with pytest.raises(drive.RouteError, match="repeat an entry"):
+    with pytest.raises(winuaesession.RouteError, match="repeat an entry"):
         make_title(kept_letters=("B", "E"), plain_keys=(*PLAIN, *PLAIN))
 
 
@@ -835,20 +836,20 @@ def _with_kept_e(route, **over):
 
 def test_a_kept_letter_pressed_on_a_save_picker_is_refused_even_as_a_plain_key():
     route = ROUTE[:-1] + (("B", "camp", "key"),) + ROUTE[-1:]  # B right after camp_picker
-    with pytest.raises(drive.RouteError, match="kept letter B as a plain key on 'camp_picker'"):
+    with pytest.raises(winuaesession.RouteError, match="kept letter B as a plain key on 'camp_picker'"):
         _with_kept_e(route, plain_keys=(("E", "camp"), ("B", "camp")))
 
 
 def test_a_plain_key_on_a_picker_is_refused_even_when_no_write_step_presses_there():
     route = _swap(ROUTE, 2, ("E", "loaded_menu", "key"))  # pressed on load_picker
-    with pytest.raises(drive.RouteError, match="on 'load_picker', where a picker screen"):
+    with pytest.raises(winuaesession.RouteError, match="on 'load_picker', where a picker screen"):
         _with_kept_e(route, plain_keys=(("E", "loaded_menu"), ("E", "camp")))
 
 
 def test_a_plain_key_on_the_screen_a_write_step_presses_on_is_refused():
     # C is pressed on `world` once the insert's screen is followed by a world step.
     route = _swap(ROUTE, INSERT_AT, ((1, "disk3", "SPACE"), "world", "insert"))
-    with pytest.raises(drive.RouteError, match="on 'world', where a route step presses a save"):
+    with pytest.raises(winuaesession.RouteError, match="on 'world', where a route step presses a save"):
         make_title(route=route, measure_route=route, kept_letters=("B", "E"),
                    strict=frozenset({*make_title().strict, "world"}), plain_keys=PLAIN)
 
@@ -861,7 +862,7 @@ def test_the_same_plain_key_on_an_ordinary_screen_is_accepted_in_either_case():
 
 @pytest.mark.parametrize("entry", [("E",), ("E", 1), "E camp", ["E", "camp"]])
 def test_a_plain_keys_entry_that_is_not_a_pair_of_strings_is_refused(entry):
-    with pytest.raises(drive.RouteError, match=r"must be \(key, state\) pairs"):
+    with pytest.raises(winuaesession.RouteError, match=r"must be \(key, state\) pairs"):
         make_title(kept_letters=("B", "E"), plain_keys=(entry,))
 
 
@@ -869,7 +870,7 @@ def test_a_first_step_plain_key_is_judged_on_the_title_screen():
     writes_on_title = (("C", "loaded_menu", "write"), ("S", "camp_picker", "key"),
                        ("D", "camp", "write"))
     first = (("E", "camp", "key"), ("N", "world", "key"))
-    with pytest.raises(drive.RouteError, match="on 'title', where a route step presses a save"):
+    with pytest.raises(winuaesession.RouteError, match="on 'title', where a route step presses a save"):
         make_title(route=writes_on_title, measure_route=first, kept_letters=("B", "E"),
                    plain_keys=PLAIN)
     # Nothing writes on the title screen, and the last step's picker state is not where E goes out.
@@ -880,7 +881,7 @@ def test_a_first_step_plain_key_is_judged_on_the_title_screen():
 
 def test_a_picker_screen_is_recognised_whatever_its_capitals():
     route = (("P", "party_menu", "key"), ("S", "Camp_Picker", "key"), ("E", "camp", "key"))
-    with pytest.raises(drive.RouteError, match="on 'Camp_Picker', where a picker screen"):
+    with pytest.raises(winuaesession.RouteError, match="on 'Camp_Picker', where a picker screen"):
         make_title(route=route, measure_route=route, kept_letters=("B", "E"), plain_keys=PLAIN)
 
 
@@ -934,38 +935,38 @@ def test_a_df0_insert_after_a_strict_disk_prompt_is_accepted():
 
 def test_a_df0_insert_is_refused_as_the_first_step():
     route = (((0, "spare", "SPACE"), "loaded_menu", "insert"), *DF0_ROUTE[3:])
-    with pytest.raises(drive.RouteError, match="DF0 insert.*first"):
+    with pytest.raises(winuaesession.RouteError, match="DF0 insert.*first"):
         _df0_title(route)
 
 
 def test_a_df0_insert_after_a_state_that_is_not_a_disk_prompt_is_refused():
-    with pytest.raises(drive.RouteError, match="DF0 insert.*disk prompt"):
+    with pytest.raises(winuaesession.RouteError, match="DF0 insert.*disk prompt"):
         _df0_title(disk_prompts=frozenset())
-    with pytest.raises(drive.RouteError, match="DF0 insert.*disk prompt"):
+    with pytest.raises(winuaesession.RouteError, match="DF0 insert.*disk prompt"):
         _df0_title(disk_prompts=frozenset({"party_menu"}))
 
 
 def test_a_df0_disk_prompt_must_be_strict():
-    with pytest.raises(drive.RouteError, match="strict"):
+    with pytest.raises(winuaesession.RouteError, match="strict"):
         _df0_title(strict=DF0_STRICT - {"disk_ask"})
 
 
 def test_a_df0_insert_of_the_disk_already_in_df0_is_refused():
     route = _swap(DF0_ROUTE, 2, ((0, "boot", "SPACE"), "loaded_menu", "insert"))
-    with pytest.raises(drive.RouteError, match="already in DF0"):
+    with pytest.raises(winuaesession.RouteError, match="already in DF0"):
         _df0_title(route)
 
 
 @pytest.mark.parametrize("drive_number", [True, 2])
 def test_a_df0_prompt_does_not_widen_the_other_drives(drive_number):
     route = _swap(DF0_ROUTE, 2, ((drive_number, "spare", "SPACE"), "loaded_menu", "insert"))
-    with pytest.raises(drive.RouteError, match="only DF1"):
+    with pytest.raises(winuaesession.RouteError, match="only DF1"):
         _df0_title(route)
 
 
 def test_an_interstitial_insert_into_df0_is_refused_even_with_disk_prompts():
     rows = (("disk_request", ("insert", 0, "spare", "SPACE"), None, 1),)
-    with pytest.raises(drive.RouteError, match="only DF1"):
+    with pytest.raises(winuaesession.RouteError, match="only DF1"):
         _df0_title(interstitials=rows)
 
 
@@ -992,7 +993,7 @@ def test_a_df0_prompt_outside_strict_is_refused_on_the_real_darkness_description
     import dataclasses
 
     from tools.amiga import amigafoundation as foundation
-    with pytest.raises(drive.RouteError, match="disk prompt 'disk2_prompt', which is not a strict"):
+    with pytest.raises(winuaesession.RouteError, match="disk prompt 'disk2_prompt', which is not a strict"):
         dataclasses.replace(foundation.DARKNESS,
                             strict=foundation.DARKNESS.strict - {"disk2_prompt"})
 
@@ -1019,7 +1020,7 @@ def test_measure_still_starts_for_a_df1_insert_after_an_unguarded_state(tmp_path
 def test_measure_refuses_a_measure_only_df0_insert_after_an_unguarded_state(tmp_path, clock):
     title = _df0_title(PLAIN_ROUTE, measure_route=DF0_ROUTE)
     guest = TitleGuest(clock)
-    with pytest.raises(drive.RouteError, match="a DF0 insert needs a guard"):
+    with pytest.raises(winuaesession.RouteError, match="a DF0 insert needs a guard"):
         drive.run_recon(manifest_for(tmp_path), guest=guest, guard=None, holder="wish679-test",
                         audio_proof=_audio_proof(tmp_path), title=title, accept=False,
                         measure=True)
@@ -1037,7 +1038,7 @@ def test_measure_ignores_a_route_only_df0_insert(tmp_path, clock):
     {"control_letter": None, "after_letter": None},  # no letters, and the route still writes
 ])
 def test_a_title_with_one_save_letter_or_a_write_step_and_no_letters_is_refused(bad):
-    with pytest.raises(drive.RouteError, match="title description"):
+    with pytest.raises(winuaesession.RouteError, match="title description"):
         make_title(**bad)
 
 
