@@ -322,6 +322,14 @@ POD_CONTINUE_BAR = "7a286012361f96ae"
 POD_CONTINUE = "Return"
 #: Continue screens answered one after another before the run gives up.
 POD_CONTINUE_ROUNDS = 5
+
+#: Curse's `PRESS <ENTER>/<RETURN> TO CONTINUE` bar (`Screen.glyphs(dosbox.BAR)`), the
+#: one `route_silver_blades.BARS` measured; a party saved before BEGIN ADVENTURING
+#: meets it on the world view.
+CURSE_CONTINUE_BAR = next(k for k, v in route_silver_blades.BARS.items() if v == "continue")
+
+#: How many of those screens `begin` answers before it gives up.
+CURSE_CONTINUE_ROUNDS = 3
 #: Journal, `YES NO` and continue screens `begin` answers in all, counted one
 #: screen at a time, before it gives up, so that no mix of them can loop.
 POD_INTERSTITIALS = 12
@@ -1580,6 +1588,23 @@ class Driver:
             answered += 1
         return answered
 
+    def curse_continue(self, screen):
+        """Return past Curse's continue screens after BEGIN, one at a time.
+
+        Nothing is pressed when the bar is not showing, so a party that has
+        already set out is untouched.  Returns the settled screen.
+        """
+        for _ in range(CURSE_CONTINUE_ROUNDS):
+            if screen.glyphs(dosbox.BAR) != CURSE_CONTINUE_BAR:
+                return screen
+            self.shot("continue-begin")
+            self.s.key(POD_CONTINUE)
+            screen = self.s.settle(quiet=1.0, timeout=60.0)
+        if screen.glyphs(dosbox.BAR) == CURSE_CONTINUE_BAR:
+            raise self.fail("begin-continue", "a continue screen is still showing "
+                            f"after {CURSE_CONTINUE_ROUNDS} were answered")
+        return screen
+
     def record_world(self, screen) -> None:
         self.game.record_map(screen)
         self.world_sig = bar_signature(screen)
@@ -1684,6 +1709,8 @@ class Driver:
         elif not self.press_screen_changes(PARTY_BEGIN, tries=1, wait=30.0):
             raise self.fail("begin", "BEGIN ADVENTURING did not leave the party menu")
         screen = self.s.settle(quiet=1.0, timeout=60.0)
+        if self.title.key == "curse":
+            screen = self.curse_continue(screen)
         # Pools of Darkness asks its journal question between the party menu
         # and the map, every time the party begins, and its arrival may ask a
         # YES NO question after that.

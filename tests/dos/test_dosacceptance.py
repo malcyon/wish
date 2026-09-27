@@ -1681,6 +1681,59 @@ def test_a_later_title_party_converts_with_its_bless_and_reads_back(
     assert slot["place"]["set_out"] is True
 
 
+class _FakeCurseContinue(FakeCurseMenu):
+    """Curse whose BEGIN lands on `screens` continue screens before the map."""
+
+    BARS = {**FakeCurseMenu.BARS, "cont": b"\x12\x13"}
+
+    def __init__(self, tmp, screens=1):
+        super().__init__(tmp)
+        self.screens = screens
+
+    def key(self, k, gap=0.0):
+        if self.mode == "party" and k == "b":
+            self.keys.append(k)
+            self.mode = "cont"
+        elif self.mode == "cont":
+            self.keys.append(k)
+            if k == "Return":
+                self.screens -= 1
+                self.mode = "cont" if self.screens > 0 else "map"
+        else:
+            super().key(k, gap)
+
+
+def _curse_continue_driver(tmp_path, monkeypatch, screens_up):
+    game = _FakeCurseContinue(tmp_path, screens_up)
+    monkeypatch.setattr(da, "CURSE_CONTINUE_BAR",
+                        _screen(game.BARS["cont"], b"").glyphs(dosbox.BAR))
+    d = da.Driver(game, lambda **k: None, "J", "curse", party_size=game.size)
+    d.game.to_main_menu = lambda timeout=120.0: None
+    d.load()
+    return game, d
+
+
+def test_curse_begin_returns_past_a_continue_screen_then_camps(tmp_path, monkeypatch):
+    game, d = _curse_continue_driver(tmp_path, monkeypatch, 1)
+    d.begin()
+    assert game.keys.count("Return") == 1 and d.where == "map"
+    d.camp()
+    assert game.mode == "camp"
+
+
+def test_curse_begin_stops_when_the_continue_screen_never_clears(tmp_path, monkeypatch):
+    game, d = _curse_continue_driver(tmp_path, monkeypatch, 99)
+    with pytest.raises(da.StepFailed, match="continue screen is still showing"):
+        d.begin()
+    assert game.keys.count("Return") == da.CURSE_CONTINUE_ROUNDS
+
+
+def test_curse_begin_presses_nothing_when_no_continue_screen_shows(tmp_path):
+    game, d = _curse_loaded(tmp_path)
+    d.begin()
+    assert "Return" not in game.keys
+
+
 def test_encamp_is_never_pressed_at_the_party_menu(tmp_path):
     # `E` is exit to DOS at Curse's party menu: a BEGIN that did not take
     # leaves the run stopped there, not pressing on into camp.
