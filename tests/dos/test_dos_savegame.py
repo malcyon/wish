@@ -991,11 +991,16 @@ def _played():
 def _assert_a_played_party(path, data) -> None:
     """The party size agrees everywhere it is carried, and the name table
     names exactly that many files in the container's own slot and nothing
-    after them -- what the engine's own writer always does."""
+    after them -- what the engine's own writer always does. The previous-mode
+    byte, in a different region of the file, agrees with the in-dungeon
+    variable -- the same invariant
+    tests/amiga/test_podsavegame.py::test_the_previous_mode_tracks_the_in_dungeon_variable
+    asserts on the Amiga side."""
     size = sg.party_size(data)
     assert 1 <= size <= sg.PARTY_ENTRIES, (path, size)
     assert sg.pod_var(data, sg.POD_PARTY_COUNT) == size, path
-    assert sg.pod_in_dungeon(data), path
+    want = sg.POD_MODE_DUNGEON if sg.pod_in_dungeon(data) else sg.POD_MODE_WILDERNESS
+    assert data[sg.POD_PREVIOUS_MODE] == want, path
     slot = path.stem[-1]
     assert sg.character_files(data) == [
         f"CHRDAT{slot}{n}" for n in range(1, size + 1)], (
@@ -1004,16 +1009,20 @@ def _assert_a_played_party(path, data) -> None:
               "to _WISH_WRITTEN")
 
 
-def test_every_played_container_names_exactly_its_own_party_in_a_dungeon():
+def test_every_played_container_names_exactly_its_own_party():
     """The party size agrees in both places it is carried -- variable 32 and
     the count byte the writer emits after the loop -- and the name table
     names exactly that many files in the container's own slot and nothing
     after them, which is what says the twelve-byte block ends where this
-    module puts it."""
+    module puts it. Both an overland and a dungeon save appear in the sweep,
+    so neither side of the previous-mode check goes untested."""
     played = _played()
+    seen = set()
     for path, data in played:
         _assert_a_played_party(path, data)
+        seen.add(sg.pod_in_dungeon(data))
     assert len(played) >= 1
+    assert True in seen and False in seen, "both modes have to appear to mean this"
 
 
 def test_a_table_that_disagrees_with_its_count_is_refused():
@@ -1037,6 +1046,24 @@ def test_a_table_that_disagrees_with_its_count_is_refused():
     sg.put_character_files(all_eight, slot)
     with pytest.raises(AssertionError):
         _assert_a_played_party(path, bytes(all_eight))
+
+
+def test_a_previous_mode_that_disagrees_with_the_in_dungeon_variable_is_refused():
+    """A container whose previous-mode byte disagrees with its own in-dungeon
+    variable is not what the engine writes -- the same pairing
+    tests/amiga/test_podsavegame.py::test_the_previous_mode_tracks_the_in_dungeon_variable
+    checks on the Amiga side."""
+    played = _played()
+    path, data = next(
+        ((path, data) for path, data in played if sg.pod_in_dungeon(data)),
+        (None, None))
+    if path is None:
+        pytest.skip("needs a dungeon Pools of Darkness specimen; see _played()")
+
+    broken = bytearray(data)
+    sg.put_pod_var(broken, sg.POD_IN_DUNGEON, 0)
+    with pytest.raises(AssertionError):
+        _assert_a_played_party(path, bytes(broken))
 
 
 def test_a_played_square_is_on_the_grid_and_the_facing_is_doubled():
