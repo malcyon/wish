@@ -2442,7 +2442,13 @@ class Session:
         if not self.select_bar("SAVE GAME"):  # `SAVE GAME  EXIT`
             return False
         self.settle(14)  # the write, then `INSERT YOUR GAME DISK #3`
-        if not self.select_bar("EXIT"):
+        # The default 30s timeout is not enough for the write itself to
+        # finish on a stock-kernal, no-JiffyDOS instance -- the same
+        # slowness `docs/131-fastloader.md` and the camp-bar-wait fix
+        # (`30281429`) measured for loading.  Without this, `select_bar`
+        # gave up while the disk was still writing and the caller's
+        # `copy_closed_disk` failed on a directory entry still open (`#621`).
+        if not self.select_bar("EXIT", timeout=90.0):
             self.log("  save_game: camp was not left (EXIT never selected)")
         return True
 

@@ -202,6 +202,39 @@ def test_save_game_still_selects_encamp_from_the_world_bar():
     assert sess.select_bar_calls[0] == "ENCAMP"
 
 
+# -- `Session.save_game`'s EXIT wait after the write (#621) -----------------
+
+
+class FakeSaveGameTimeoutSession(Session):
+    """Records the `timeout` passed to every `select_bar` call, so the wait
+    for the camp bar to return after the write can be checked without
+    actually waiting: the write on a stock-kernal, no-JiffyDOS instance was
+    found not to finish inside the default 30s timeout, which made
+    `select_bar("EXIT")` give up and the caller's `copy_closed_disk` fail on
+    a directory entry still open."""
+
+    def __init__(self):
+        self.save_disk = "/tmp/does-not-matter.d64"
+        self.select_bar_calls: list[tuple[str, float]] = []
+
+    def screen(self):
+        return FakeScreen(WORLD_BAR)
+
+    def select_bar(self, label, row=24, timeout=30.0):
+        self.select_bar_calls.append((label, timeout))
+        return True
+
+    def settle(self, seconds: float) -> None:
+        pass
+
+
+def test_save_game_waits_ninety_seconds_for_exit_after_the_write():
+    sess = FakeSaveGameTimeoutSession()
+    assert sess.save_game() is True
+    exit_calls = [t for (label, t) in sess.select_bar_calls if label == "EXIT"]
+    assert exit_calls == [90.0]
+
+
 # -- `Session.save_game` re-reads the screen after `leave_move` -----------
 
 
