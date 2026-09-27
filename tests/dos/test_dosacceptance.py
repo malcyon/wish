@@ -376,7 +376,7 @@ def test_pool_display_captures_every_member_and_returns_to_camp_before_save(
 
 @pytest.mark.parametrize("failure", ("", "wrong_member", "repeated_page",
                                      "unknown_return", "moved_highlight",
-                                     "unmeasured"))
+                                     "unmeasured", "unmeasured_sheet"))
 def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
         tmp_path, monkeypatch, failure):
     class SheetPool(FakePool):
@@ -408,8 +408,9 @@ def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
 
     monkeypatch.setattr(da, "POOL_MAP_BARS", {} if failure == "unmeasured" else
                         {"town": screens.bar_signature(_screen(SheetPool.BARS["map"], b""))})
-    monkeypatch.setattr(da, "POOL_SHEET_BAR", screens.bar_signature(
-        _screen(SheetPool.BARS["sheet"], b"")))
+    monkeypatch.setattr(da, "POOL_SHEET_BARS", {"town": screens.bar_signature(
+        _screen(SheetPool.BARS["wrong"], b""))} if failure == "unmeasured_sheet" else
+                        {"town": screens.bar_signature(_screen(SheetPool.BARS["sheet"], b""))})
     game = SheetPool(tmp_path)
     d = da.Driver(game, lambda **k: None, "A")
     d.where = "map"
@@ -436,7 +437,8 @@ def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
         # darkness path or another guard cannot pass for it.
         why = {"wrong_member": "name is not roster line",
                "unknown_return": "map bar did not return",
-               "moved_highlight": "highlight is not on the member"}[failure]
+               "moved_highlight": "highlight is not on the member",
+               "unmeasured_sheet": "VIEW did not open the sheet bar"}[failure]
         with pytest.raises(da.StepFailed, match=why):
             d.sheet(3)
         assert not game.save_file("D").exists()

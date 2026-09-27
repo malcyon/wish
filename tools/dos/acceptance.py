@@ -236,7 +236,10 @@ POOL_DISPLAY_BAR = "98286ceaa33edc12"
 #: returns to the map with the highlight where it was.
 POOL_MAP_BARS: dict[str, str] = {"town": "809e2e1cc9504b5b",
                                  "overland": "f379c606cadd4484"}
-POOL_SHEET_BAR = "33ad531ed78cfa70"
+#: The sheet's bar itself, measured the same two ways (`town` on the runs
+#: above, `outdoor` on #634's `bce4a7c742-140c8082-dos-pool-rebuild-outdoor`).
+POOL_SHEET_BARS: dict[str, str] = {"town": "33ad531ed78cfa70",
+                                   "outdoor": "95afa0d95cd09ab7"}
 POOL_ROSTER_NEXT = "End"
 # Names start at x=8; effect lines are indented to x=17. Count the left
 # character cell across the page, allowing row spacing to change by effect.
@@ -2456,7 +2459,7 @@ class Driver:
         moved = self.pick_line(line, "camp", f"sheet-{line}-select", POOL_ROSTER_NEXT)
         want = roster_name(self.s.capture(), "camp", line)
         self.s.key(VIEW)
-        if not self.s.wait_for(lambda sc: bar_signature(sc) == POOL_SHEET_BAR, 15.0):
+        if not self.s.wait_for(lambda sc: bar_signature(sc) in POOL_SHEET_BARS.values(), 15.0):
             raise self.fail(f"sheet-{line}-open", "VIEW did not open the sheet bar")
         screen = self.s.settle(quiet=0.8, timeout=30.0)
         checked = self.check_sheet(screen, line, want, f"sheet-{line}-name")
