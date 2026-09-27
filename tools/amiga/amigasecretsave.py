@@ -740,9 +740,9 @@ class AmigaTitle:
     Every entry must be a kept letter that some non-write step presses in that state. An `insert`
     may name drive 1, or drive 0 when the step before it is in `disk_prompts` (states where the
     game itself asks for a disk) and `strict`, naming a disk other than the one in DF0; an
-    interstitial insert names drive 1 only. A `write` or `insert` step follows a `strict` state. `strict` names
-    the states whose guard must match or the run stops; any other state falls back to a
-    settled capture and marks the run as measuring.
+    interstitial insert names drive 1 only. The step before a `write` or `insert` step must be in
+    `strict`. `strict` names the states whose guard must match or the run stops; any other
+    state falls back to a settled capture and marks the run as measuring.
     """
 
     issue: str
@@ -864,10 +864,10 @@ class AmigaTitle:
                     refuse(f"{name} DF0 insert step {step!r} is the first step; only DF1 may "
                            f"change unless a disk prompt precedes it")
                 if before not in self.disk_prompts:
-                    refuse(f"{name} DF0 insert step {step!r} follows {before!r}, which is not "
+                    refuse(f"{name} DF0 insert step {step!r} comes after {before!r}, which is not "
                            f"a disk prompt; only DF1 may change there")
                 if before not in self.strict:
-                    refuse(f"{name} DF0 insert step {step!r} follows disk prompt {before!r}, "
+                    refuse(f"{name} DF0 insert step {step!r} comes after disk prompt {before!r}, "
                            f"which is not a strict state")
                 if key[1] == self.mounted[0]:
                     refuse(f"{name} DF0 insert step {step!r} names the disk already in DF0")
@@ -1087,6 +1087,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         missing = [s for s in dict.fromkeys(needed) if not _guards(guard, s)]
         if missing:
             raise RouteError(f"screen guard map lacks {missing}")
+    if title is not None:
+        steps = title.measure_route if measure else title.route
+        for (key, _, kind), (_, before, _) in zip(steps[1:], steps):
+            if kind == "insert" and key[0] == 0 and not _guards(guard, before):
+                raise RouteError(f"screen guard map lacks {before!r}: a DF0 insert needs a "
+                                 f"guard on the prompt before it")
     if accept and journal_python is not None and title is None:
         (preflight or journal_preflight)(journal_python)
     min_waits = {**(title.min_waits if title else {}), **(min_waits or {})}

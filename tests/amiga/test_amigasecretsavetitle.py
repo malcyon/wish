@@ -986,3 +986,12 @@ def test_a_df0_insert_run_stops_before_its_key_when_the_insert_fails(tmp_path, c
     event = next(e for e in result["events"] if "insert" in e)
     assert event["drive"] == 0 and event["insert"] == "spare"
     assert "did not read it back" in event["error"] and event["receipt"] == {"status": "refused"}
+
+
+def test_a_df0_prompt_outside_strict_is_refused_on_the_real_darkness_description():
+    import dataclasses
+
+    from tools.amiga import amigafoundation as foundation
+    with pytest.raises(drive.RouteError, match="disk prompt 'disk2_prompt', which is not a strict"):
+        dataclasses.replace(foundation.DARKNESS,
+                            strict=foundation.DARKNESS.strict - {"disk2_prompt"})

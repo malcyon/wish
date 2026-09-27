@@ -390,8 +390,9 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
 # and J the after save, and E is the game's exit key though slot E is a kept slot.
 DARK_START = {"area": 2, "x": 1, "y": 2, "facing": geo.EAST}
 DARK_LATER = dict(DARK_START, x=2)
-DARK_STATES = ("title", "journal", "party_menu", "load_from", "load_picker",
-               "disk2_prompt", "loaded_menu", "sheet", "save_picker", "world", "camp", "camp_save_picker")
+DARK_STATES = ("title", "journal", "party_menu", "load_from", "load_picker", "disk2_prompt",
+               "loaded_menu", "sheet", "save_picker", "world", "camp", "camp_save_picker")
+MEASURE_STATES = tuple(s for s in DARK_STATES if s != "title")  # boot crops are not named "title"
 DARK_FIRST_SCREEN = {}  # the title crop is recognised by its own name, and nothing precedes it
 DARK_KEYS = ["P", "L", "P", "B", "SPACE", "V", "E", "S", "I", "B", "NP8", "E", "S", "J"]
 
@@ -481,7 +482,8 @@ def test_darkness_answers_the_journal_at_most_three_times(tmp_path, clock):
 
 
 def test_darkness_measure_stops_before_the_first_save(tmp_path, clock):
-    guest, result = _dark_run(tmp_path, clock, accept=False, measure=True)
+    guest, result = _dark_run(tmp_path, clock, guard=MapGuard(states=MEASURE_STATES),
+                              accept=False, measure=True)
     assert _keys(guest) == "P L P B SPACE V E S".split()
     assert [d for d, _ in guest.inserted] == [0] and result["success"] is True
     assert result["control_sha256"] is None
@@ -813,11 +815,18 @@ def test_darkness_insert_carries_the_disk_2_hash(tmp_path, clock):
     assert seen == [(0, "disk2.adf", sha)]
 
 
-def test_darkness_measure_without_a_guard_captures_the_prompt_before_the_insert_and_goes_on(
-        tmp_path, clock):
-    guest, result = _dark_run(tmp_path, clock, accept=False, measure=True)
-    events = result["events"]
-    prompt = next(i for i, e in enumerate(events) if "04-disk2_prompt" in str(e))
-    inserted = next(i for i, e in enumerate(events) if "insert" in e)
-    assert prompt < inserted and result["success"] is True
-    assert _keys(guest)[-3:] == ["V", "E", "S"]
+@pytest.mark.parametrize("guard", [None, "lacking"])
+def test_darkness_measure_refuses_a_df0_insert_without_a_guard_on_the_prompt(
+        tmp_path, clock, guard):
+    if guard:
+        guard = MapGuard(states=tuple(s for s in MEASURE_STATES if s != "disk2_prompt"), on={})
+    guest = DarkGuest(clock, save_key="disk3")
+    with pytest.raises(drive.RouteError, match="disk2_prompt.*DF0 insert needs a guard"):
+        _dark_run(tmp_path, clock, guest=guest, guard=guard, accept=False, measure=True)
+    assert guest.calls == []
+
+
+def test_darkness_measure_starts_when_the_guard_map_has_the_prompt(tmp_path, clock):
+    guard = MapGuard(states=MEASURE_STATES)
+    guest, result = _dark_run(tmp_path, clock, guard=guard, accept=False, measure=True)
+    assert guest.starts and [d for d, _ in guest.inserted] == [0]
