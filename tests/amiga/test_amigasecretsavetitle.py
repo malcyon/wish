@@ -21,7 +21,7 @@ from tests.amiga.test_amigasecretsaveaccept import (
 )
 from tests.amiga.test_amigasecretsavemeasure import ScreenGuest
 from tools.amiga import amigasecretsave as drive
-from tools.amiga import winuaesession
+from tools.amiga import route, winuaesession
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
 START = {"area": 2, "x": 9, "y": 13, "facing": geo.NORTH}
@@ -73,7 +73,7 @@ def make_title(**over):
                           "camp_picker"}),
         min_waits={"world": 5.0})
     fields.update(over)
-    return drive.AmigaTitle(**fields)
+    return route.AmigaTitle(**fields)
 
 
 def _adf(path, volume, slots=()):

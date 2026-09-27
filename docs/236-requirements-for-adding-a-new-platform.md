@@ -98,7 +98,7 @@ The rules:
 | `_silver_session_class` in `tools/c64/curedrive.py` | `silver_session_class` in `tools/secret_of_the_silver_blades/ssbsession.py` |
 | The run's pool-lease owner label `c64acceptance/<issue>/<run>` | Unchanged. |
 
-The Amiga renames are partly done. `amigaacceptance.py` became `tools/amiga/staging.py`, the WinUAE lane session now lives in `tools/amiga/winuaesession.py`, and the pixel guards now live in `tools/amiga/screens.py`. The other Amiga names are planned and have not been renamed: `route.py`, the `route_*.py` files and `acceptance.py`.
+The Amiga renames are partly done. `amigaacceptance.py` became `tools/amiga/staging.py`, the WinUAE lane session now lives in `tools/amiga/winuaesession.py`, the pixel guards now live in `tools/amiga/screens.py`, and the title description `AmigaTitle` now lives in `tools/amiga/route.py`. The other Amiga names are planned and have not been renamed: the `route_*.py` files and `acceptance.py`.
 
 What stayed: `status_column` and the measured digests and key constants in `tools/dos/acceptance.py`, and the import and CURE experiment in `tools/dos/ssbimport.py`.
 
