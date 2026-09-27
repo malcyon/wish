@@ -71,6 +71,8 @@ Each platform's harness lives in `tools/<platform>/` under lowercase names that 
 | `route_pool.py`, `route_curse.py`, `route_silver_blades.py`, `route_darkness.py` | Title-specific route descriptions and actions, where separating them removes a mixed responsibility. |
 | `runlog.py` | The shared run log and signal handling (C64: `tools/c64/runlog.py`). |
 
+The Amiga session module is `winuaesession.py`, not `session.py`: `tests/conftest.py:_tool_path` finds a tool by file name under `tools/` and refuses a name found in more than one place, so a second `session.py` would break every test that loads `session` by name.
+
 The rules:
 
 * A canonical implementation lives under its responsibility name.

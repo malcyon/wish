@@ -66,8 +66,8 @@ order (`GAME.EXE` 0xAB4E-0xAC90 against Silver Blades' `START.EXE`
 rest menu Curse's (0xBB26), the sheet's bar `Items Spells Trade Deposit Drop
 Lay Cure Exit` (0xBB4F).  The party menu, map bar, camp bar and sheet have
 answered their keys in three complete foundation boots (load, view, begin,
-walk, camp save, items); the rest menu has not been reached and stays
-PROBABLE.  A screen that does not answer its key stops the run with a
+walk or turn, camp save, items); the rest menu has not been reached and
+stays PROBABLE.  A screen that does not answer its key stops the run with a
 `lost-*.png`.
 
 **The load route is read from the code.**  `LOAD SAVED GAME` (`GAME.OVR`
@@ -280,7 +280,9 @@ AFTER_TRAIN = ("l", "l", "Return", "Escape")
 #: With no party it is `Create New Character`, `Add Character to Party`,
 #: `Load Saved Game`, ...; `route_silver_blades.MENU_BEFORE` measured `Add` at row 1,
 #: and `Load Saved Game` comes after it in `START.EXE`'s list, so row 2; the
-#: foundation boots load a save through it.
+#: Silver Blades foundation boots (`found-ssb-a`, `-b`, `-control`) and, as
+#: `POD_LOAD_ROW`, the Pools of Darkness ones (`found-pod-a`, `-b2`,
+#: `-control`) load a save through it.
 SSB_LOAD_ROW = 2
 
 #: Pools of Darkness' party menu, driven as Silver Blades' highlight list
@@ -381,7 +383,8 @@ POD_MOVE_EXIT = "Escape"
 #: The keys that enter and leave move mode, by title key.  Silver Blades'
 #: `m` is CONFIRMED (bar `EXIT` alone, ink `e61c9acccfc048ae`, three runs); its
 #: `e` leaves it: runs with `--move-exit e` and the foundation boots came back
-#: to the map bar, and `Escape` does not, since it leaves the move bar showing.  Curse has no move mode: `Up` steps at the map bar.
+#: to the map bar, and `Escape` does not, since it leaves the move bar showing.
+#: Curse has no move mode: `Up` steps at the map bar.
 #: Pools of Darkness keeps `m` and `Escape`.
 MOVE_KEYS = {"darkness": (POD_MOVE, POD_MOVE_EXIT), "ssb": ("m", "e")}
 #: Curse's party-menu `bar_signature`, the loaded menu and the empty one alike:
@@ -2187,9 +2190,8 @@ class Driver:
     def _view_ssb(self, line: int) -> dict:
         """Row 3 `VIEW CHARACTER`, `PICK CHARACTER` (`Down` moves its highlight),
         then `s`, both answered in three foundation boots; `Return` also opens
-        the sheet, unmeasured.  The
-        sheet is judged by its name: its bar is not in `route_silver_blades.BARS`, so
-        nothing here waits for a sheet bar."""
+        the sheet, unmeasured.  The sheet is judged by its name: its bar is not
+        in `route_silver_blades.BARS`, so nothing here waits for a sheet bar."""
         self.ssb.menu(route_silver_blades.MENU_AFTER["view"], f"view-{line}")
         self.ssb.wait_bar("pick_character", 20.0)
         pick = self.shot(f"pick-{line}")
