@@ -670,6 +670,22 @@ path)` and `#34 (Validate the live automapper tab per title)` at once. And
 on load)` was a contradiction in the knowledge base that took a paragraph to fix
 and had already cost somebody a session.
 
+**A "weigh it" guideline let the same mistake happen twice in one day.**
+`#695 (The instance pool answers VICE's fastloader prompt Y by default, though
+docs/131 measured N as faster with no JiffyDOS installed)` was filed guessing
+Low because no player is affected, then corrected to Medium once it had
+actually stalled a live boot -- the correction held. `#696 (menucheck.py's SAVE
+GAME check can pass even when the game's own save write never finished)` and
+`#697 (A substituted Curse accept boot's fixed two-square walk can hit a wall
+the pinned specimen never faced)` reasoned their way to the identical Low guess
+hours later, each self-corrected to Medium, and each was then moved back to
+Low to match its own stated reasoning before anyone caught it. `#680 (The
+DOS-to-C64 experience clamp test fails intermittently when run in parallel
+with other tests)` never even got that far: guessed Low, and left there.
+Donald set all four to Medium by hand. "No player is affected" was true of
+every one of them and was the wrong test to apply to a driver or harness bug,
+so the rule stopped asking an agent to weigh it and now states it outright.
+
 ### What the rule files said before they dropped their history
 
 The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.

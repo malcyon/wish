@@ -361,6 +361,10 @@ What moves an issue up:
   the blocker is in the way of.
 * **A contradiction in the knowledge base.** Two documents disagreeing costs
   somebody a session, and the fix is usually an hour.
+* **A bug in the test harness, an emulator driver, or acceptance and
+  conversion tooling is never `Priority: Low`.** It has no player, but it
+  slows or blocks the live-proof and validation work every conversion issue
+  depends on.
 
 What moves it down:
 
