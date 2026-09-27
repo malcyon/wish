@@ -457,6 +457,7 @@ The commands and what they printed, the same in both boots of each pair:
 | C64 Silver Blades | `--title ssb --steps load 'view 2' 'walk JI' 'view 2' save` on `WISH-SPEC-ssb-d-engine-resave-walked.D64` | 3,5 facing 2 to 3,5 facing 1, then 4,5; `place_changed` true | `'walk J'`: 3,5 facing 1, `place_changed` false |
 | Amiga Pool | `amigafoundation.py accept --title pool --manifest … --guards … --identity … --audio-proof … --attempt …` | Slot D moved 1 square from area 0 9,13 facing 0 to 9,14 facing 2, and matches the game's own save after the same walk | Slot C: did not move |
 | Amiga Curse | `amigafoundation.py accept --title curse`, the same arguments | Slot F moved 2 squares from 4,4 to 4,2, and matches the game's own save after the same walk | Slot D: did not move |
+| Amiga Pools of Darkness | `amigafoundation.py accept --title darkness --manifest … --guards … --identity … --audio-proof … --attempt acceptA` (and `acceptB`) | Slot G moved 1 square from 1,2 to 2,2, map 2 facing 1 | Slot F: did not move |
 | Amiga Silver Blades | `amigasecretsave.py accept --manifest … --guards … --identity … --journal-python /usr/bin/python3 --audio-proof …` | Slot D moved 2 squares from 3,5 to 3,7, facing 2 | Slot B: did not move |
 
 The sources: DOS Pool boots the committed C64 fixture party converted by Save
@@ -467,7 +468,8 @@ converted through the Convert window's route, a played save found on a disk
 image, so an input and not a measurement. The C64 titles boot registered C64
 saves. The Amiga runs boot the registered specimen (Pool
 `WISH-SPEC-por-52-c64toamiga-walk-resave`, Curse
-`WISH-SPEC-curse-c64toamiga-slotb-walked-saved-c`) or, for Silver Blades, the
+`WISH-SPEC-curse-c64toamiga-slotb-walked-saved-c`), for Pools of Darkness the
+registered disk 3 (the save disk, no specimen) with disk 1 in DF0, or, for Silver Blades, the
 pinned C64 JOIN party `WISH-SPEC-ssb-joined-arrow-c64-672` published through
 Save As Amiga. All of it is read-only, and each run's disks are hash-checked
 before and after.
@@ -507,8 +509,9 @@ returns to the party menu. Save letter `F` is the control, saved there. `B`
 begins the adventure; the journal question screen is answered with one
 throwaway letter `X` and `RET`; `NP8` steps once; `E` opens camp and `S` and
 letter `G` save. `N` answers the game's `QUIT GAME?` question. The letters are
-`F` and `G` because the picker offers `A` to `H` and `A`, `C`, `D` and `E` are
-the specimen's slots (`tools/amiga/amigafoundation.py`, `DARKNESS`).
+`F` and `G` because the picker offers `A` to `H` and `A` to `E` are the save
+disk's own slots: the route loads `B` and keeps `A`, `C`, `D` and `E` unchanged
+(`tools/amiga/amigafoundation.py`, `DARKNESS`).
 
 The accept boots ran at `6b17ee420c95dbf57e08ffdd1d6b1ef1bab7f2d7`
 (`~/.cache/wish/acceptance/679/6b17ee420c-amiga-darkness-accept-A/acceptA/` and
@@ -526,10 +529,8 @@ The reload boots ran at `d2a23aa478cb608b3b66635889cfbc077d9afb81`
 boot fetched, through `amigafoundation.py reload --title darkness-reload`, which
 writes nothing. Both succeeded with identical verdicts: `slot G: reloaded at
 area 2 2,2 facing 1` and `slot F: area 2 1,2 facing 1 is not on the screen`;
-disks 1 to 3 and every kept slot are unchanged.
-
-This entry once read "not yet proven" while the world, camp and camp save picker
-had not been seen; the accept and reload boots above saw them.
+disks 1 to 3 and every kept slot are unchanged. The reload command is
+`amigafoundation.py reload --title darkness-reload --manifest … --guards … --identity … --audio-proof … --attempt reloadA` (and `reloadB`). The accept boots used `amiga-darkness-guards-11/guards.json` with the identity map from `amiga-darkness-guards-7/`, the reload boots `amiga-darkness-guards-12/guards.json` with that of `amiga-darkness-guards-11/`; the run summaries do not record these paths, so they come from the launch commands the runner was given, and the identity file is byte-identical in guards 7, 11 and 12.
 
 A DF0 insert is proven possible. At
 `6e377388d6b230e6c8c585d3a93fa1fac5cf1cea`, `tools/amiga/amigadrivecheck.py` on
