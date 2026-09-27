@@ -153,6 +153,56 @@ def test_enter_world_escapes_once_the_pc_is_genuinely_idle(monkeypatch):
     assert "Escape" in sent
 
 
+class PressContinueSess:
+    """Curse's own opening page -- `PRESS BUTTON OR RETURN TO CONTINUE.` on
+    row 24 -- with the world already reachable behind it. A Return dismisses
+    it; anything else leaves it sitting there until `enter_world`'s STUCK
+    branch or the timeout takes over."""
+
+    def __init__(self):
+        self.logged: list[str] = []
+        self.kbd_sent: list[str] = []
+        self.dismissed = False
+
+        outer = self
+
+        class Kbd:
+            def key(self, name):
+                outer.kbd_sent.append(name)
+
+        self.kbd = Kbd()
+
+    def screen(self):
+        if self.dismissed:
+            return FakeScreen("ENCAMP", bar="ENCAMP")
+        return FakeScreen("SOME SCENE\nPRESS BUTTON OR RETURN TO CONTINUE.",
+                          bar="PRESS BUTTON OR RETURN TO CONTINUE.")
+
+    def handle_prompt(self, s=None):
+        return False
+
+    def press_kernal(self, code):
+        self.dismissed = True
+
+    def log(self, *a):
+        self.logged.append(" ".join(str(x) for x in a))
+
+
+def test_enter_world_dismisses_curses_own_press_continue_screen(monkeypatch):
+    """Red without the fix: the PRESS screen falls through to the STUCK
+    branch, which only escapes when the PC is confirmed idle -- and here it
+    never is, since `idle_in_key_window` is not exercised at all without the
+    new branch pressing Return first. Without the fix `enter_world` never
+    reaches ENCAMP within the timeout."""
+    clock = FakeClock()
+    monkeypatch.setattr(CURSE.time, "time", clock.time)
+    monkeypatch.setattr(CURSE.time, "sleep", clock.sleep)
+    sess = PressContinueSess()
+    ok = CURSE.enter_world(sess, Addr(), timeout=40.0)
+    assert ok is True
+    assert "Escape" not in sess.kbd_sent
+
+
 def test_enter_world_without_addr_keeps_the_old_unconditional_escape(
         monkeypatch):
     """The three callers that do not pass `addr` -- `tools/gui/livecheck.py`,

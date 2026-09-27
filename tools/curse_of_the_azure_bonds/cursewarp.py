@@ -316,6 +316,15 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
         if state == "BEGIN":
             sess.select_row("BEGIN ADVENTURING")
             sess.press_kernal(0x0D)
+        elif any(w in state for w in ("CONTINUE", "MORE", "PRESS")):
+            # Curse's own opening page -- row 24 reads "PRESS BUTTON OR
+            # RETURN TO CONTINUE." -- is a one-option menu behind which the
+            # world has already loaded, the same kind of screen
+            # `ssbwarp.enter_world` dismisses for Silver Blades' own
+            # prologue. Left unhandled this falls through to the STUCK
+            # branch below and burns the whole timeout in silence.
+            sess.press_kernal(0x0D)
+            since = time.time()
         elif state != "(blank)" and time.time() - since > STUCK:
             idle = idle_in_key_window(sess, addr) if addr is not None else True
             if idle is not None:
