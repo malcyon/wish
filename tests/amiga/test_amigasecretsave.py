@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from goldbox.amiga_adf import AmigaDisk
-from tools.amiga import amigasecretsave, winuaesession
+from tools.amiga import acceptance, amigasecretsave, winuaesession
 
 
 def _sha(path):
@@ -121,7 +121,7 @@ def test_exact_df1_is_preserved_and_failed_save_is_fetched(tmp_path):
     original_published = _sha(published)
     guest = FailedPostWriteGuest()
 
-    result = amigasecretsave.run_recon(
+    result = acceptance.run_recon(
         manifest, guest=guest, guard=lambda state, shot: True,
         holder="wish672-test", audio_proof=_audio_proof(tmp_path),
     )
@@ -153,7 +153,7 @@ def test_unverified_mute_refuses_before_claim_or_boot(tmp_path):
     guest = FailedPostWriteGuest()
 
     with pytest.raises(winuaesession.RouteError, match="audio mute"):
-        amigasecretsave.run_recon(
+        acceptance.run_recon(
             tmp_path / "missing-manifest.json", guest=guest,
             guard=lambda state, shot: True, holder="wish672-test",
             audio_proof=tmp_path / "missing-mute.json",
@@ -170,7 +170,7 @@ def test_existing_same_holder_claim_never_touches_the_prior_lane(tmp_path):
             return f"ok claimed by {holder} (already yours since 09:14)"
 
     guest = ExistingClaimGuest()
-    result = amigasecretsave.run_recon(
+    result = acceptance.run_recon(
         _prepared(tmp_path), guest=guest, guard=lambda state, shot: True,
         holder="wish672-test", audio_proof=_audio_proof(tmp_path),
     )
@@ -264,7 +264,7 @@ def test_deadline_stops_before_boot_when_transfer_exhausts_route_time(
             return self.now
 
     clock = Clock()
-    monkeypatch.setattr(amigasecretsave.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(acceptance.time, "monotonic", clock.monotonic)
 
     class SlowTransfer(FailedPostWriteGuest):
         def put(self, local, remote, timeout=None):
@@ -272,7 +272,7 @@ def test_deadline_stops_before_boot_when_transfer_exhausts_route_time(
             clock.now += 50
 
     guest = SlowTransfer()
-    result = amigasecretsave.run_recon(
+    result = acceptance.run_recon(
         _prepared(tmp_path), guest=guest, guard=lambda state, shot: True,
         holder="wish672-test", audio_proof=_audio_proof(tmp_path),
         deadline_seconds=60,
@@ -291,7 +291,7 @@ def test_deadline_bounds_capture_and_cleanup_calls(tmp_path, monkeypatch):
             return self.now
 
     clock = Clock()
-    monkeypatch.setattr(amigasecretsave.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(acceptance.time, "monotonic", clock.monotonic)
 
     class TimedGuest(FailedPostWriteGuest):
         def __init__(self):
@@ -319,7 +319,7 @@ def test_deadline_bounds_capture_and_cleanup_calls(tmp_path, monkeypatch):
             clock.now += 1
 
     guest = TimedGuest()
-    result = amigasecretsave.run_recon(
+    result = acceptance.run_recon(
         _prepared(tmp_path), guest=guest, guard=lambda state, shot: True,
         holder="wish672-test", audio_proof=_audio_proof(tmp_path),
         deadline_seconds=300,
@@ -500,7 +500,7 @@ def _refused(tmp_path, mutate, match):
     path = _manifest_with(tmp_path, mutate)
     guest = FailedPostWriteGuest()
     with pytest.raises(winuaesession.RouteError, match=match):
-        amigasecretsave.run_recon(
+        acceptance.run_recon(
             path, guest=guest, guard=lambda s, p: True, holder="wish672-test",
             audio_proof=_audio_proof(tmp_path))
     assert guest.calls == []
@@ -565,7 +565,7 @@ def test_the_screen_guards_import_without_the_runners():
     program = (
         "import sys; import tools.amiga.screens; "
         "sys.exit(int(any(name in sys.modules for name in ("
-        "'tools.amiga.amigasecretsave', 'tools.amiga.amigafoundation', "
+        "'tools.amiga.amigasecretsave', 'tools.amiga.acceptance', "
         "'tools.amiga.staging'))))")
     done = subprocess.run([sys.executable, "-c", program],
                           cwd=pathlib.Path(__file__).resolve().parents[2])
@@ -576,7 +576,7 @@ def test_the_title_description_imports_without_the_runners():
     program = (
         "import sys; import tools.amiga.route; "
         "sys.exit(int(any(name in sys.modules for name in ("
-        "'tools.amiga.amigasecretsave', 'tools.amiga.amigafoundation', "
+        "'tools.amiga.amigasecretsave', 'tools.amiga.acceptance', "
         "'tools.amiga.staging', 'tools.amiga.screens'))))")
     done = subprocess.run([sys.executable, "-c", program],
                           cwd=pathlib.Path(__file__).resolve().parents[2])

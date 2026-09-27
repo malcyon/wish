@@ -88,7 +88,7 @@ def import_slot(dest: AmigaDisk, dest_letter: str, source: AmigaDisk, source_let
         raise AmigaDiskError(f"the source slot fails its checks: {bad}")
     # The suffix follows the source path's own convention rather than the
     # destination's, which is safe only because a caller never substitutes
-    # across titles -- `amigafoundation._SUBSTITUTABLE` gates that today.
+    # across titles -- `acceptance._SUBSTITUTABLE` gates that today.
     target = f"/{SAVE_DRAWER}/savgam{dest_letter}{path[-4:]}"
     try:
         dest.lookup(target)

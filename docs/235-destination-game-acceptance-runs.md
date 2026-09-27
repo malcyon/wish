@@ -240,7 +240,7 @@ world bar, which can come back before the write ends, so the guard is
 and fails closed unless every non-empty directory entry is closed. The three
 Pool foundation boots each produced a saved disk that this check accepted.
 
-### D3. `tools/amiga/amigasecretsave.py` and `tools/amiga/amigafoundation.py`: WinUAE, from prepared disks to the game's two saves
+### D3. `tools/amiga/amigasecretsave.py` and `tools/amiga/acceptance.py`: WinUAE, from prepared disks to the game's two saves
 
 The design is a route with pixel guards and a manifest. A title is described
 once as an `AmigaTitle` (`amigasecretsave.py`): the disks per drive, the keys
@@ -510,7 +510,7 @@ throwaway letter `X` and `RET`; `NP8` steps once; `E` opens camp and `S` and
 letter `G` save. `N` answers the game's `QUIT GAME?` question. The letters are
 `F` and `G` because the picker offers `A` to `H` and `A` to `E` are the save
 disk's own slots: the route loads `B` and keeps `A`, `C`, `D` and `E` unchanged
-(`tools/amiga/amigafoundation.py`, `DARKNESS`).
+(`tools/amiga/route_darkness.py`, `DARKNESS`).
 
 The accept boots ran at `6b17ee420c95dbf57e08ffdd1d6b1ef1bab7f2d7`
 (`~/.cache/wish/acceptance/679/6b17ee420c-amiga-darkness-accept-A/acceptA/` and

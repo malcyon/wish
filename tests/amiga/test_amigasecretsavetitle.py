@@ -20,8 +20,7 @@ from tests.amiga.test_amigasecretsaveaccept import (
     needs_posix_signals,
 )
 from tests.amiga.test_amigasecretsavemeasure import ScreenGuest
-from tools.amiga import amigasecretsave as drive
-from tools.amiga import route, winuaesession
+from tools.amiga import acceptance, route, winuaesession
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
 START = {"area": 2, "x": 9, "y": 13, "facing": geo.NORTH}
@@ -149,7 +148,7 @@ def _run(tmp_path, clock, *, title=None, guest=None, guard=None, manifest=None,
          identity=None, **kw):
     guest = guest or TitleGuest(clock)
     kw.setdefault("accept", True)
-    result = drive.run_recon(
+    result = acceptance.run_recon(
         manifest or manifest_for(tmp_path), guest=guest,
         guard=guard or MapGuard(states=("title", *STATES)),
         identity=identity or _IdentityMap(), holder="wish679-test",
@@ -313,29 +312,29 @@ def test_an_interstitial_for_another_state_stays_silent(tmp_path, clock):
 def test_the_about_face_walk():
     at = lambda x, y, facing: {"place": {"area": 2, "x": x, "y": y, "facing": facing}}  # noqa: E731
     control = at(9, 13, geo.NORTH)
-    ok = drive.walk_verdict(START, control, at(9, 14, geo.SOUTH), 1, turn="about")
+    ok = acceptance.walk_verdict(START, control, at(9, 14, geo.SOUTH), 1, turn="about")
     assert ok["b_ok"] and ok["d_ok"] and ok["squares_moved"] == 1
-    stood = drive.walk_verdict(START, control, at(9, 13, geo.SOUTH), 1, turn="about")
+    stood = acceptance.walk_verdict(START, control, at(9, 13, geo.SOUTH), 1, turn="about")
     assert not stood["d_ok"] and stood["verdicts"][1] == "slot D: did not move"
-    ahead = drive.walk_verdict(START, control, at(9, 14, geo.NORTH), 1, turn="about")
+    ahead = acceptance.walk_verdict(START, control, at(9, 14, geo.NORTH), 1, turn="about")
     assert not ahead["d_ok"] and "expected 9,14" in ahead["verdicts"][1]
     # Without the turn the same save is a wrong facing, as it always was.
-    plain = drive.walk_verdict(START, control, at(9, 14, geo.SOUTH), 1)
+    plain = acceptance.walk_verdict(START, control, at(9, 14, geo.SOUTH), 1)
     assert not plain["d_ok"]
 
 
 def test_the_verdict_lines_name_the_titles_letters():
     at = lambda x, y, facing: {"place": {"area": 2, "x": x, "y": y, "facing": facing}}  # noqa: E731
-    walk = drive.walk_verdict(START, at(9, 13, geo.NORTH), at(9, 14, geo.SOUTH), 1,
+    walk = acceptance.walk_verdict(START, at(9, 13, geo.NORTH), at(9, 14, geo.SOUTH), 1,
                               control="I", after="J", turn="about")
     assert [v[:8] for v in walk["verdicts"]] == ["slot I: ", "slot J: "]
-    stood = drive.walk_verdict(START, at(9, 13, geo.NORTH), at(9, 13, geo.NORTH), 1,
+    stood = acceptance.walk_verdict(START, at(9, 13, geo.NORTH), at(9, 13, geo.NORTH), 1,
                                control="I", after="J")
     assert stood["verdicts"] == ["slot I: did not move", "slot J: did not move"]
-    off = drive.walk_verdict(START, at(9, 12, geo.NORTH), at(9, 12, geo.NORTH), 1,
+    off = acceptance.walk_verdict(START, at(9, 12, geo.NORTH), at(9, 12, geo.NORTH), 1,
                              control="I", after="J")
     assert off["verdicts"][0] == "slot I: moved from 9,13 to 9,12, expected the prepared place"
-    assert drive.walk_verdict(START, {"missing": True}, {"missing": True}, 1, control="I",
+    assert acceptance.walk_verdict(START, {"missing": True}, {"missing": True}, 1, control="I",
                               after="J")["verdicts"] == ["slot I: was not written",
                                                          "slot J: was not written"]
 
@@ -465,13 +464,13 @@ def test_a_missing_title_guard_is_refused_before_a_lane_is_claimed(tmp_path, clo
 
 
 def test_the_silver_blades_defaults_are_the_ones_a_title_run_leaves_alone(tmp_path, clock):
-    before = (drive.ACCEPT_ROUTE, drive.SILVER_BLADES_INTERSTITIALS, drive.ROUTE,
-              drive.MENU_SAVE_LETTER, drive.CAMP_SAVE_LETTER, drive.MEASURE_TITLE_SPAN)
+    before = (acceptance.ACCEPT_ROUTE, acceptance.SILVER_BLADES_INTERSTITIALS, acceptance.ROUTE,
+              acceptance.MENU_SAVE_LETTER, acceptance.CAMP_SAVE_LETTER, acceptance.MEASURE_TITLE_SPAN)
     _run(tmp_path, clock)
-    assert before == (drive.ACCEPT_ROUTE, drive.SILVER_BLADES_INTERSTITIALS, drive.ROUTE,
-                      drive.MENU_SAVE_LETTER, drive.CAMP_SAVE_LETTER,
-                      drive.MEASURE_TITLE_SPAN)
-    assert [row[0] for row in drive.SILVER_BLADES_INTERSTITIALS] == [
+    assert before == (acceptance.ACCEPT_ROUTE, acceptance.SILVER_BLADES_INTERSTITIALS, acceptance.ROUTE,
+                      acceptance.MENU_SAVE_LETTER, acceptance.CAMP_SAVE_LETTER,
+                      acceptance.MEASURE_TITLE_SPAN)
+    assert [row[0] for row in acceptance.SILVER_BLADES_INTERSTITIALS] == [
         "credits", "continue", "journal"]
 
 
@@ -724,7 +723,7 @@ def test_the_identity_map_is_needed_only_when_the_route_uses_an_identity_state(
     guard = MapGuard(states=("title", *STATES, "menu_two"),
                      on={"menu_two": lambda path: True})
     guest = TitleGuest(clock)
-    result = drive.run_recon(
+    result = acceptance.run_recon(
         manifest_for(tmp_path), guest=guest, guard=guard, identity=None, title=title,
         holder="wish679-test", audio_proof=_audio_proof(tmp_path), accept=True)
     assert result["error"] == "" and guest.calls
@@ -732,7 +731,7 @@ def test_the_identity_map_is_needed_only_when_the_route_uses_an_identity_state(
     other = tmp_path / "needed"
     other.mkdir()
     with pytest.raises(winuaesession.RouteError, match="identity map lacks"):
-        drive.run_recon(
+        acceptance.run_recon(
             manifest_for(other), guest=TitleGuest(clock), guard=MapGuard(
                 states=("title", *STATES)), identity=None, title=make_title(),
             holder="wish679-test", audio_proof=_audio_proof(other), accept=True)
@@ -907,7 +906,7 @@ def test_a_world_screen_showing_another_party_stops_the_run_with_a_readable_erro
 
 
 def test_the_named_identity_messages_are_unchanged(tmp_path, clock):
-    assert drive.IDENTITY_MESSAGES == {"sheet": "sheet shows another member",
+    assert acceptance.IDENTITY_MESSAGES == {"sheet": "sheet shows another member",
                                        "loaded_menu": "loaded_menu shows another party"}
     _, result = _run(tmp_path, clock, identity=_IdentityMap(fail={"loaded_menu"}))
     assert result["error"] == "RouteError: loaded_menu shows another party"
@@ -1005,7 +1004,7 @@ DF1_ROUTE = (("P", "party_menu", "key"), ("A", "loaded_menu", "key"),
 
 def _measure_without_guard(tmp_path, clock, title):
     guest = TitleGuest(clock)
-    drive.run_recon(manifest_for(tmp_path), guest=guest, guard=None, holder="wish679-test",
+    acceptance.run_recon(manifest_for(tmp_path), guest=guest, guard=None, holder="wish679-test",
                     audio_proof=_audio_proof(tmp_path), title=title, accept=False,
                     measure=True)
     return guest
@@ -1021,7 +1020,7 @@ def test_measure_refuses_a_measure_only_df0_insert_after_an_unguarded_state(tmp_
     title = _df0_title(PLAIN_ROUTE, measure_route=DF0_ROUTE)
     guest = TitleGuest(clock)
     with pytest.raises(winuaesession.RouteError, match="a DF0 insert needs a guard"):
-        drive.run_recon(manifest_for(tmp_path), guest=guest, guard=None, holder="wish679-test",
+        acceptance.run_recon(manifest_for(tmp_path), guest=guest, guard=None, holder="wish679-test",
                         audio_proof=_audio_proof(tmp_path), title=title, accept=False,
                         measure=True)
     assert guest.calls == []

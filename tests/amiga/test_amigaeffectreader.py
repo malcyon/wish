@@ -18,7 +18,7 @@ from support.amigarecords import sample, synthetic_savegame
 from goldbox import amiga_savegame, areas, c64_save, dos_codec, world_state
 from tests.amiga.test_savegamelosses import _bare_silver_blades_state
 from tools.amiga import (
-    amigafoundation,
+    acceptance,
     amigasecretsave,
     route_curse,
     route_pool,
@@ -172,10 +172,10 @@ def test_check_expect_refutes_a_slot_with_no_effects_reading():
     assert line.endswith("refutes (the slot holds no effects reading)")
 
 
-# --- amigafoundation.expect_verdict: read the fetched save disk back ---------
+# --- acceptance.expect_verdict: read the fetched save disk back -------------
 
-def test_amigafoundation_expect_verdict_reads_the_fetched_curse_disk(tmp_path):
-    title = amigafoundation.CURSE
+def test_acceptance_expect_verdict_reads_the_fetched_curse_disk(tmp_path):
+    title = acceptance.CURSE
     _built, disk = _later_disk(amiga_savegame.CURSE, _bare_curse_state(), "PHILIPPE",
                                title.after_letter)
     run = tmp_path / "run"
@@ -183,20 +183,20 @@ def test_amigafoundation_expect_verdict_reads_the_fetched_curse_disk(tmp_path):
     attempt.mkdir(parents=True)
     disk.save(attempt / "fetched-save.adf")
 
-    accepted, accepts = amigafoundation.expect_verdict(
+    accepted, accepts = acceptance.expect_verdict(
         title, run / "prepare.json", "accept1", ("PHILIPPE", 1, 47, 5))
     assert accepted is True
     assert accepts == "expect PHILIPPE id 1 at 47 minutes: accepts"
 
-    refused, refutes = amigafoundation.expect_verdict(
+    refused, refutes = acceptance.expect_verdict(
         title, run / "prepare.json", "accept1", ("PHILIPPE", 1, 40, 5))
     assert refused is False
     assert refutes.startswith("expect PHILIPPE id 1 at 40 minutes: refutes")
 
 
-def test_amigafoundation_expect_verdict_names_a_missing_fetched_disk(tmp_path):
-    title = amigafoundation.CURSE
-    accepted, line = amigafoundation.expect_verdict(
+def test_acceptance_expect_verdict_names_a_missing_fetched_disk(tmp_path):
+    title = acceptance.CURSE
+    accepted, line = acceptance.expect_verdict(
         title, tmp_path / "prepare.json", "accept1", ("PHILIPPE", 1, 47, 5))
     assert accepted is False
     assert line == "expect PHILIPPE id 1 at 47 minutes: refutes (no fetched save disk)"

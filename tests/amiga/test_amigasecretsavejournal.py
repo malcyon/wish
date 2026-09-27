@@ -100,7 +100,7 @@ def test_the_silver_blades_route_imports_without_the_generic_runners():
     program = (
         "import sys; import tools.amiga.route_silver_blades; "
         "sys.exit(int(any(name in sys.modules for name in ("
-        "'tools.amiga.amigasecretsave', 'tools.amiga.amigafoundation', "
+        "'tools.amiga.amigasecretsave', 'tools.amiga.acceptance', "
         "'tools.amiga.screens'))))")
     done = subprocess.run([sys.executable, "-c", program],
                           cwd=pathlib.Path(__file__).resolve().parents[2])

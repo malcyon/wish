@@ -13,7 +13,13 @@ from tests.amiga.test_amigasecretsave import (
     _audio_proof,
     _prepared,
 )
-from tools.amiga import amigasecretsave, screens, winuaesession
+from tools.amiga import (
+    acceptance,
+    amigasecretsave,
+    route_silver_blades,
+    screens,
+    winuaesession,
+)
 
 
 @pytest.fixture
@@ -32,8 +38,8 @@ def clock(monkeypatch):
 
     c = Clock()
     c.sleeps = []
-    monkeypatch.setattr(amigasecretsave.time, "monotonic", c.monotonic)
-    monkeypatch.setattr(amigasecretsave.time, "sleep", c.sleep)
+    monkeypatch.setattr(acceptance.time, "monotonic", c.monotonic)
+    monkeypatch.setattr(acceptance.time, "sleep", c.sleep)
     return c
 
 
@@ -76,7 +82,7 @@ def _keys(guest):
 
 
 def _measure(tmp_path, guest, **kw):
-    return amigasecretsave.run_recon(
+    return acceptance.run_recon(
         _prepared(tmp_path), guest=guest, holder="wish672-test",
         audio_proof=_audio_proof(tmp_path), measure=True, **kw)
 
@@ -121,7 +127,7 @@ def test_measure_refuses_without_a_fresh_mute_proof(tmp_path, clock):
     stale = tmp_path / "stale.json"
     stale.write_text("{}")
     with pytest.raises(winuaesession.RouteError, match="audio mute"):
-        amigasecretsave.run_recon(
+        acceptance.run_recon(
             _prepared(tmp_path), guest=guest, holder="wish672-test",
             audio_proof=stale, measure=True)
     assert guest.calls == []
@@ -140,7 +146,7 @@ def test_measure_keeps_only_distinct_boot_frames(tmp_path, clock):
 def test_the_route_and_write_keys_are_arguments(tmp_path, clock):
     guest = ScreenGuest(clock)
     route = (("ESC", "party_menu"), ("L", "load_picker"))
-    amigasecretsave.run_recon(
+    acceptance.run_recon(
         _prepared(tmp_path), guest=guest, guard=lambda s, p: True,
         holder="wish672-test", audio_proof=_audio_proof(tmp_path),
         route=route, write_keys=("Y",))
@@ -157,7 +163,7 @@ def test_parse_route():
 def test_the_minimum_wait_is_spent_before_each_capture(tmp_path, clock):
     guest = ScreenGuest(clock)
     route = (("RET", "version"), ("P", "party_menu"))
-    amigasecretsave.run_recon(
+    acceptance.run_recon(
         _prepared(tmp_path), guest=guest, guard=lambda s, p: True,
         holder="wish672-test", audio_proof=_audio_proof(tmp_path), route=route,
         min_waits={"version": 50, "party_menu": 15})
@@ -187,24 +193,24 @@ def test_a_guard_that_matches_late_is_polled_for(tmp_path, clock):
             return seen["n"] >= 4
         return True
 
-    amigasecretsave.run_recon(
+    acceptance.run_recon(
         _prepared(tmp_path), guest=guest, guard=guard, holder="wish672-test",
         audio_proof=_audio_proof(tmp_path), route=(("RET", "version"),))
     assert seen["n"] == 4
     assert guest.calls.count(("grab", "01-version")) == 4
-    assert clock.sleeps.count(amigasecretsave.GUARD_POLL) == 3
+    assert clock.sleeps.count(acceptance.GUARD_POLL) == 3
 
 
 def test_a_guard_that_never_matches_raises_after_its_limit(tmp_path, clock):
     guest = ScreenGuest(clock)
-    result = amigasecretsave.run_recon(
+    result = acceptance.run_recon(
         _prepared(tmp_path), guest=guest,
         guard=lambda s, p: s == "title", holder="wish672-test",
         audio_proof=_audio_proof(tmp_path), route=(("RET", "version"),),
         deadline_seconds=1800)
     assert "not recognized" in result["error"]
     assert "B" not in _keys(guest)
-    assert sum(clock.sleeps) >= amigasecretsave.GUARD_LIMIT - amigasecretsave.GUARD_POLL
+    assert sum(clock.sleeps) >= acceptance.GUARD_LIMIT - acceptance.GUARD_POLL
 
 
 def test_the_title_is_polled_until_its_guard_matches(tmp_path, clock):
@@ -217,16 +223,16 @@ def test_the_title_is_polled_until_its_guard_matches(tmp_path, clock):
             return seen["n"] >= 3
         return True
 
-    amigasecretsave.run_recon(
+    acceptance.run_recon(
         _prepared(tmp_path), guest=guest, guard=guard, holder="wish672-test",
         audio_proof=_audio_proof(tmp_path), route=())
     assert seen["n"] == 3
-    assert clock.sleeps.count(amigasecretsave.TITLE_POLL) == 2
+    assert clock.sleeps.count(acceptance.TITLE_POLL) == 2
 
 
 def test_guarded_mode_without_a_guard_is_refused(tmp_path):
     with pytest.raises(winuaesession.RouteError, match="guard"):
-        amigasecretsave.run_recon(
+        acceptance.run_recon(
             _prepared(tmp_path), guest=FailedPostWriteGuest(),
             holder="wish672-test", audio_proof=_audio_proof(tmp_path))
 
@@ -369,14 +375,14 @@ def test_the_route_leaves_the_play_bar_by_its_letter():
     keys = [key for key, _ in amigasecretsave.ROUTE]
     assert amigasecretsave.ROUTE[:3] == (
         ("P", "party_menu"), ("L", "load_picker"),
-        (amigasecretsave.SLOT_LETTER, "loaded_menu"))
+        (route_silver_blades.SLOT_LETTER, "loaded_menu"))
     assert "RET" not in keys and "B" not in keys
 
 
 def test_guarded_route_states_are_grabbed_and_only_the_last_shot_is_settled(
         tmp_path, clock):
     guest = ScreenGuest(clock)
-    amigasecretsave.run_recon(
+    acceptance.run_recon(
         _prepared(tmp_path), guest=guest, guard=lambda s, p: True,
         holder="wish672-test", audio_proof=_audio_proof(tmp_path))
     states = ["title"] + [f"{n:02d}-{s}" for n, (_, s) in
@@ -388,7 +394,7 @@ def test_guarded_route_states_are_grabbed_and_only_the_last_shot_is_settled(
 
 def test_a_post_write_screen_that_is_not_the_loaded_menu_is_reported(tmp_path, clock):
     guest = ScreenGuest(clock)
-    result = amigasecretsave.run_recon(
+    result = acceptance.run_recon(
         _prepared(tmp_path), guest=guest,
         guard=lambda s, p: s != "loaded_menu" or "post_write" not in p.name,
         holder="wish672-test", audio_proof=_audio_proof(tmp_path))
@@ -438,9 +444,9 @@ class WritingGuest(ScreenGuest):
 
 def _menu_run(tmp_path, clock, monkeypatch, *, reading=GOOD_READING, guest=None,
               guard=lambda s, p: True):
-    monkeypatch.setattr(amigasecretsave, "_slot_reading", lambda fetched, letter: reading)
+    monkeypatch.setattr(acceptance, "_slot_reading", lambda fetched, letter: reading)
     guest = guest or WritingGuest(clock)
-    return amigasecretsave.run_recon(
+    return acceptance.run_recon(
         _menu_manifest(tmp_path), guest=guest, guard=guard,
         holder="wish672-test", audio_proof=_audio_proof(tmp_path))
 
@@ -568,7 +574,7 @@ def test_a_grab_with_no_window_is_polled_again_and_never_reaches_the_guard(
         return True
 
     guest = WindowLate(clock)
-    result = amigasecretsave.run_recon(
+    result = acceptance.run_recon(
         _prepared(tmp_path), guest=guest, guard=guard, holder="wish672-test",
         audio_proof=_audio_proof(tmp_path), route=(("RET", "version"),))
     assert guest.calls.count(("grab", "title")) == 4
@@ -589,7 +595,7 @@ def test_a_grab_is_bounded_by_one_shot_and_the_deadline(tmp_path, clock):
 
     guest = Timed(clock)
     guest.timeouts = []
-    amigasecretsave.run_recon(
+    acceptance.run_recon(
         _prepared(tmp_path), guest=guest, guard=lambda s, p: True,
         holder="wish672-test", audio_proof=_audio_proof(tmp_path))
     assert guest.timeouts
@@ -603,7 +609,7 @@ def test_measure_waits_for_the_title_guard_before_the_first_key(tmp_path, clock)
     first = next(i for i, c in enumerate(guest.calls) if c[0] == "press")
     assert [c for c in guest.calls[:first] if c[0] in ("grab", "capture")] == [
         ("grab", "00-boot-00"), ("grab", "00-boot-01"), ("grab", "00-boot-01")]
-    assert clock.sleeps[:2] == [amigasecretsave.TITLE_POLL] * 2
+    assert clock.sleeps[:2] == [acceptance.TITLE_POLL] * 2
     recognized = [e for e in result["events"] if e.get("recognized") == "title"]
     assert len(recognized) == 1
     assert (tmp_path / "recon1" / "shots" / "00-boot-01.png").exists()
@@ -660,7 +666,7 @@ def test_guarded_mode_refuses_a_guard_map_missing_a_route_state(tmp_path):
     guards = screens.PixelGuards(_full_map(tmp_path, drop=("items",)))
     guest = FailedPostWriteGuest()
     with pytest.raises(winuaesession.RouteError, match="lacks.*items"):
-        amigasecretsave.run_recon(
+        acceptance.run_recon(
             _prepared(tmp_path), guest=guest, guard=guards,
             holder="wish672-test", audio_proof=_audio_proof(tmp_path))
     assert guest.calls == []

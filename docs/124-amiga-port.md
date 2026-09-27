@@ -851,7 +851,7 @@ a second RETURN falls into the attract-mode combat demo, which looks exactly
 like a wedge; then the challenge, one character and RETURN. **The challenge can
 also be backed out of**: on the measured disk one ESC at the cracker's intro
 reaches the copy-protection screen and a second reaches the empty party menu,
-with nothing typed, which is how `tools/amiga/amigafoundation.py` starts every
+with nothing typed, which is how `tools/amiga/route_curse.py` starts every
 Curse run (two consecutive boots). The party menu picks by first letter
 throughout, and `LOAD WHICH GAME:` wants the letter with no path prompt.
 **Movement is the numeric keypad**: this section first found none, because

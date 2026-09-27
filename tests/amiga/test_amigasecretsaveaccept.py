@@ -14,8 +14,8 @@ from goldbox.amiga_adf import AmigaDisk
 from tests.amiga import test_amigasecretsavemeasure as measure
 from tests.amiga.test_amigasecretsave import _audio_proof, _sha
 from tests.amiga.test_amigasecretsavemeasure import ScreenGuest, _keys, _menu_manifest
+from tools.amiga import acceptance, route_silver_blades, winuaesession
 from tools.amiga import amigasecretsave as drive
-from tools.amiga import route_silver_blades, winuaesession
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
 BEFORE = {"area": 16, "x": 3, "y": 5, "facing": 2}
@@ -113,7 +113,7 @@ def _manifest(tmp_path):
 @pytest.fixture
 def readings(monkeypatch):
     by_letter = {"B": _reading(), "D": _reading(y=7)}
-    monkeypatch.setattr(drive, "_slot_reading", lambda fetched, letter: by_letter[letter])
+    monkeypatch.setattr(acceptance, "_slot_reading", lambda fetched, letter: by_letter[letter])
     return by_letter
 
 
@@ -123,7 +123,7 @@ def _accept(tmp_path, clock, *, guest=None, guard=None, identity=None, answer=No
     guest.answer = answer or Answer(guest)
     kw.setdefault("preflight", lambda python: None)
     kw.setdefault("journal_python", "python-with-numpy")
-    result = drive.run_recon(
+    result = acceptance.run_recon(
         manifest or _manifest(tmp_path), guest=guest,
         guard=guard or MapGuard(),
         identity=identity or _IdentityMap(), holder="wish672-test",
@@ -212,13 +212,13 @@ def test_accept_fails_when_b_is_not_the_prepared_place(tmp_path, clock, readings
 
 def test_the_step_wraps_at_the_map_edge():
     before = dict(BEFORE, y=15)
-    verdict = drive.walk_verdict(before, _reading(y=15), _reading(y=1), 2)
+    verdict = acceptance.walk_verdict(before, _reading(y=15), _reading(y=1), 2)
     assert verdict["d_ok"] is True and verdict["squares_moved"] == 2
     assert verdict["verdicts"][1] == "slot D: moved 2 squares from 3,15 to 3,1"
 
 
 def test_a_missing_or_undecodable_slot_is_named():
-    verdict = drive.walk_verdict(BEFORE, {"missing": True, "sha256": None},
+    verdict = acceptance.walk_verdict(BEFORE, {"missing": True, "sha256": None},
                                  {"sha256": "0" * 64, "decode_error": "X: y"}, 2)
     assert verdict["verdicts"] == ["slot B: was not written", "slot D: does not decode"]
     assert not verdict["b_ok"] and not verdict["d_ok"]
@@ -256,7 +256,7 @@ def test_accept_refuses_before_the_claim_without_the_recon_guards(tmp_path, cloc
 def test_accept_refuses_before_the_claim_without_identity(tmp_path, clock):
     guest = AcceptGuest(clock)
     with pytest.raises(winuaesession.RouteError, match="identity map lacks"):
-        drive.run_recon(_manifest(tmp_path), guest=guest, guard=MapGuard(),
+        acceptance.run_recon(_manifest(tmp_path), guest=guest, guard=MapGuard(),
                         holder="wish672-test", audio_proof=_audio_proof(tmp_path),
                         accept=True, answer=lambda *a: (0, "answered"),
                         identity=None)
@@ -305,7 +305,7 @@ def test_the_preflight_wants_the_imports_and_the_private_tables(tmp_path, monkey
 
 
 def test_a_save_letter_that_is_a_prepared_slot_is_refused(tmp_path, clock, monkeypatch):
-    monkeypatch.setattr(drive, "MENU_SAVE_LETTER", drive.SLOT_LETTER)
+    monkeypatch.setattr(acceptance, "MENU_SAVE_LETTER", route_silver_blades.SLOT_LETTER)
     guest = AcceptGuest(clock)
     with pytest.raises(winuaesession.RouteError, match="would overwrite"):
         _accept(tmp_path, clock, guest=guest)
@@ -370,7 +370,7 @@ def test_a_party_menu_after_the_credits_skips_p_in_accept_and_in_recon(
     recon_guest = AcceptGuest(clock)
     other = tmp_path / "recon"
     other.mkdir()
-    drive.run_recon(_manifest(other), guest=recon_guest, guard=guard_for(recon_guest),
+    acceptance.run_recon(_manifest(other), guest=recon_guest, guard=guard_for(recon_guest),
                     holder="wish672-test", audio_proof=_audio_proof(other))
     assert _keys(recon_guest)[:3] == ["ESC", "L", "C"] and "P" not in _keys(recon_guest)
 
@@ -424,7 +424,7 @@ def test_a_challenge_that_appears_late_is_answered_on_a_later_try(tmp_path, cloc
     _, result = _accept(tmp_path, clock, guest=guest, answer=answer)
     assert len(answer.calls) == 4 and result["success"] is True
     gaps = [b[1] - a[1] for a, b in zip(answer.calls, answer.calls[1:])]
-    assert gaps == [drive.GUARD_POLL] * 3
+    assert gaps == [acceptance.GUARD_POLL] * 3
 
 
 def test_any_other_answer_stops_the_run(tmp_path, clock, readings):
@@ -510,8 +510,8 @@ def _main(tmp_path, clock, monkeypatch, guest, capsys):
     guest.answer = Answer(guest)
     monkeypatch.setattr(drive, "WinGuest", lambda: guest)
     monkeypatch.setattr(drive, "PixelGuards", lambda path: MapGuard())
-    monkeypatch.setattr(drive, "journal_preflight", lambda python: None)
-    monkeypatch.setattr(drive, "run_journal_answer",
+    monkeypatch.setattr(acceptance, "journal_preflight", lambda python: None)
+    monkeypatch.setattr(acceptance, "run_journal_answer",
                         lambda python, holder, adf, timeout: guest.answer(holder, adf, timeout))
     argv = ["accept", "--manifest", str(manifest), "--guards", "g.json",
             "--identity", "i.json", "--journal-python", "py",
@@ -620,21 +620,21 @@ def test_an_unguarded_state_acts_once_per_screen_whatever_the_guards_keep_saying
 
 @pytest.mark.parametrize("facing", [0, 1, 2, 3])
 def test_two_squares_are_judged_along_every_facing(facing):
-    dx, dy = drive.geo.STEP[facing]
+    dx, dy = acceptance.geo.STEP[facing]
     base = dict(BEFORE, x=5, y=5, facing=facing)
 
     def at(squares, **over):
         return _reading(x=(5 + dx * squares) % 16, y=(5 + dy * squares) % 16,
                         facing=facing) | over
 
-    ok = drive.walk_verdict(base, at(0), at(2), 2)
+    ok = acceptance.walk_verdict(base, at(0), at(2), 2)
     assert ok["d_ok"] is True and ok["squares_moved"] == 2
     for squares in (1, 3):
-        assert drive.walk_verdict(base, at(0), at(squares), 2)["d_ok"] is False
-    blocked = drive.walk_verdict(base, at(0), at(0), 2)
+        assert acceptance.walk_verdict(base, at(0), at(squares), 2)["d_ok"] is False
+    blocked = acceptance.walk_verdict(base, at(0), at(0), 2)
     assert blocked["d_ok"] is False and blocked["verdicts"][1] == "slot D: did not move"
     edge = dict(base, x=15 if dx else 5, y=15 if dy else 5)
-    wrapped = drive.walk_verdict(
+    wrapped = acceptance.walk_verdict(
         edge, _reading(x=edge["x"], y=edge["y"], facing=facing),
         _reading(x=(edge["x"] + dx * 2) % 16, y=(edge["y"] + dy * 2) % 16, facing=facing), 2)
     assert wrapped["d_ok"] is True

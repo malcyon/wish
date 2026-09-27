@@ -112,7 +112,7 @@ slot or VM lane nobody is using.
    ending the turn is the failure itself, not an escape from it. Wait with an
    `until <condition>; do sleep 5; done` loop with `timeout: 600000`. A WinUAE
    run's own waits (a boot's 45 to 55 seconds, a load) belong to its driver,
-   `tools/amiga/amigafoundation.py` or `tools/amiga/amigasecretsave.py`, which
+   `tools/amiga/acceptance.py` or `tools/amiga/amigasecretsave.py`, which
    waits for each state on the emulator's own crop, so no wait of yours goes
    between its keys.
 

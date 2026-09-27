@@ -25,7 +25,7 @@ from tests.amiga.test_amigasecretsavetitle import (
     _read_slot,
     _slot,
 )
-from tools.amiga import amigafoundation as foundation
+from tools.amiga import acceptance as foundation
 from tools.amiga import (
     amigasaves,
     route_curse,
@@ -34,7 +34,6 @@ from tools.amiga import (
     staging,
     winuaesession,
 )
-from tools.amiga import amigasecretsave as drive
 from tools.amiga import route as amiga_route
 from tools.registry import scratch, specimens
 
@@ -77,7 +76,7 @@ def _run(tmp_path, clock, *, guest=None, **kw):
     else:
         kw.setdefault("guard", MapGuard(states=STATES, on=FIRST_SCREEN))
         kw.setdefault("identity", _IdentityMap())
-    result = drive.run_recon(
+    result = foundation.run_recon(
         _manifest(tmp_path), guest=guest, holder="wish679-test",
         audio_proof=_audio_proof(tmp_path), title=_title(), **kw)
     return guest, result
@@ -240,7 +239,7 @@ def test_prepare_writes_the_places_and_leaves_every_registered_image_unchanged(
              for label, data in amigasaves.images()}
     assert after == before and staging.sha256(specimen) == specimen_before
     # The manifest is one the driver accepts, before any lane is claimed.
-    assert drive._title_inputs(manifest, foundation.POOL)[2] == "A"
+    assert foundation._title_inputs(manifest, foundation.POOL)[2] == "A"
 
 
 # Curse of the Azure Bonds: the control save is D, the after save F, and the game's own exit key E
@@ -295,7 +294,7 @@ def _curse_run(tmp_path, clock, *, guest=None, **kw):
     if kw["accept"]:
         kw.setdefault("guard", MapGuard(states=CURSE_STATES, on=CURSE_FIRST_SCREEN))
         kw.setdefault("identity", _IdentityMap())
-    result = drive.run_recon(
+    result = foundation.run_recon(
         _curse_manifest(tmp_path), guest=guest, holder="wish679-test",
         audio_proof=_audio_proof(tmp_path), title=_curse_title(), **kw)
     return guest, result
@@ -395,7 +394,7 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
     after = {label: hashlib.sha256(data).hexdigest()
              for label, data in amigasaves.images()}
     assert after == before and staging.sha256(specimen) == specimen_before
-    assert drive._title_inputs(manifest, foundation.CURSE)[2] == "B"
+    assert foundation._title_inputs(manifest, foundation.CURSE)[2] == "B"
 
 
 def test_curse_prepare_threads_a_substitute_slot_through_to_the_manifest(
@@ -483,7 +482,7 @@ def _dark_run(tmp_path, clock, *, guest=None, guard=None, **kw):
     if kw["accept"]:
         kw.setdefault("identity", _IdentityMap())
         guard = guard or MapGuard(states=DARK_STATES, on=DARK_FIRST_SCREEN)
-    result = drive.run_recon(
+    result = foundation.run_recon(
         _dark_manifest(tmp_path), guest=guest, guard=guard, holder="wish679-test",
         audio_proof=_audio_proof(tmp_path), title=_dark_title(), **kw)
     return guest, result
@@ -659,7 +658,7 @@ def test_darkness_prepare_writes_the_place_and_leaves_every_registered_image_unc
     after = {label: hashlib.sha256(data).hexdigest()
              for label, data in amigasaves.images()}
     assert after == before
-    assert drive._title_inputs(manifest, foundation.DARKNESS)[2] == "B"
+    assert foundation._title_inputs(manifest, foundation.DARKNESS)[2] == "B"
 
 
 # What each title's interstitials do and where: a screen guard that matches only the crop of one
@@ -869,7 +868,7 @@ def test_measure_refuses_an_unreadable_guards_file_before_any_run_starts(tmp_pat
     monkeypatch.setattr(foundation, "WinGuest", lambda: object())
     missing = tmp_path / "missing.json"
     assert foundation.main(_measure_args(tmp_path, "--guards", str(missing))) == 2
-    assert called.calls == [] and "amigafoundation:" in capsys.readouterr().err
+    assert called.calls == [] and "acceptance:" in capsys.readouterr().err
     unreadable = tmp_path / "bad.json"
     unreadable.write_text("not json")
     assert foundation.main(_measure_args(tmp_path, "--guards", str(unreadable))) == 2
@@ -949,7 +948,7 @@ def test_darkness_measure_starts_when_the_guard_map_has_the_prompt(tmp_path, clo
 RELOAD_KEYS = "P L P G SPACE V E B X RET".split()
 G_PLACE = DARK_LATER
 F_PLACE = DARK_START
-G_KEY, F_KEY = drive.place_state(G_PLACE), drive.place_state(F_PLACE)
+G_KEY, F_KEY = foundation.place_state(G_PLACE), foundation.place_state(F_PLACE)
 RELOAD_STATES = (*DARK_STATES, G_KEY, F_KEY)
 G_LINE = f"slot G: reloaded at area 2 2,2 facing {G_PLACE['facing']}"
 F_LINE = f"slot F: area 2 1,2 facing {F_PLACE['facing']} is not on the screen"
@@ -1006,7 +1005,7 @@ def _reload_run(tmp_path, clock, *, guest=None, guard=None, title=None, **kw):
     guest = guest or ReloadGuest(clock)
     kw.setdefault("reload", True)
     kw.setdefault("identity", _IdentityMap())
-    result = drive.run_recon(
+    result = foundation.run_recon(
         _reload_manifest(tmp_path), guest=guest, guard=guard or _reload_guard(guest),
         holder="wish679-test", audio_proof=_audio_proof(tmp_path),
         title=title or _reload_title(), **kw)
@@ -1119,7 +1118,7 @@ def test_the_reload_description_is_pinned():
     assert reload.plain_keys == (("E", "loaded_menu"), ("B", "journal"))
     assert reload.strict == {step[1] for step in reload.route}
     assert not any(kind in ("write", "move") for _, _, kind in reload.route)
-    assert drive.place_state(dict(area=2, x=2, y=2, facing=geo.EAST)) == "place_x2_y2_f1"
+    assert foundation.place_state(dict(area=2, x=2, y=2, facing=geo.EAST)) == "place_x2_y2_f1"
     assert foundation.DARKNESS.control_letter == "F"
 
 
@@ -1185,7 +1184,7 @@ def test_reload_prepare_writes_the_manifest_from_slots_g_and_f(tmp_path, monkeyp
     assert manifest["disks"]["disk3"]["path"] != str(disk)
     assert set(manifest["slot_sha256"]) == {"F", "G"}
     assert manifest["accept_summary"]["sha256"] == hashlib.sha256(summary.read_bytes()).hexdigest()
-    assert drive._title_inputs(manifest, _reload_title())[2] == "G"
+    assert foundation._title_inputs(manifest, _reload_title())[2] == "G"
 
 
 @pytest.mark.parametrize("what,match", [
@@ -1264,7 +1263,7 @@ def test_reload_refuses_a_manifest_that_cannot_be_compared_before_the_claim(
     guest = ReloadGuest(clock)
     path = _reload_manifest_without(tmp_path, edit)
     with pytest.raises(winuaesession.RouteError, match=match):
-        drive.run_recon(path, guest=guest, guard=_reload_guard(guest), identity=_IdentityMap(),
+        foundation.run_recon(path, guest=guest, guard=_reload_guard(guest), identity=_IdentityMap(),
                         holder="wish679-test", audio_proof=_audio_proof(tmp_path),
                         title=_reload_title(), reload=True)
     assert guest.calls == []
@@ -1287,8 +1286,8 @@ RECORDED = {"sha": "0123456789abcdef", "dirty": ["notes.txt"]}
 
 
 def _record_state(monkeypatch):
-    monkeypatch.setattr(drive.evidence, "git_state", lambda repo: dict(RECORDED))
-    monkeypatch.setattr(drive.sys, "argv", ["amigasecretsave.py", "--issue", "679", "--run", "x"])
+    monkeypatch.setattr(foundation.evidence, "git_state", lambda repo: dict(RECORDED))
+    monkeypatch.setattr(foundation.sys, "argv", ["amigasecretsave.py", "--issue", "679", "--run", "x"])
 
 
 def _summary(tmp_path):
@@ -1343,8 +1342,81 @@ def test_a_title_route_module_imports_without_the_runners(module):
     program = (
         f"import sys; import tools.amiga.{module}; "
         "sys.exit(int(any(name in sys.modules for name in ("
-        "'tools.amiga.amigasecretsave', 'tools.amiga.amigafoundation', "
+        "'tools.amiga.amigasecretsave', 'tools.amiga.acceptance', "
         "'tools.amiga.screens'))))")
     done = subprocess.run([sys.executable, "-c", program],
                           cwd=pathlib.Path(__file__).resolve().parents[2])
     assert done.returncode == 0
+
+
+def test_importing_acceptance_alone_leaves_amigasecretsave_unimported():
+    program = ("import sys; import tools.amiga.acceptance; "
+              "sys.exit(int('tools.amiga.amigasecretsave' in sys.modules))")
+    done = subprocess.run([sys.executable, "-c", program],
+                          cwd=pathlib.Path(__file__).resolve().parents[2])
+    assert done.returncode == 0
+
+
+def test_the_command_line_help_exits_0_both_ways_and_no_subcommand_exits_2():
+    repo = pathlib.Path(__file__).resolve().parents[2]
+    for argv in (["tools/amiga/acceptance.py", "--help"],
+                ["-m", "tools.amiga.acceptance", "--help"]):
+        done = subprocess.run([sys.executable, *argv], cwd=repo, capture_output=True)
+        assert done.returncode == 0
+    with pytest.raises(SystemExit) as exc:
+        foundation.main([])
+    assert exc.value.code == 2
+
+
+def test_prepare_refuses_a_run_id_with_a_space_before_touching_anything(capsys):
+    assert foundation.main(["prepare", "--title", "pool", "--run-id", "a b"]) == 2
+    assert capsys.readouterr().err == (
+        "acceptance: run id must use letters, digits, dot, underscore or hyphen\n")
+
+
+def test_prepare_refuses_an_unknown_title_through_argparse():
+    with pytest.raises(SystemExit) as exc:
+        foundation.main(["prepare", "--title", "ssb", "--run-id", "x"])
+    assert exc.value.code == 2
+
+
+class _RecordingGuest:
+    """A `WinGuest` stand-in that records every call it is given, and makes none itself."""
+
+    def __init__(self):
+        self.calls = []
+
+    def __getattr__(self, name):
+        def record(*args, **kwargs):
+            self.calls.append((name, args, kwargs))
+        return record
+
+
+def test_measure_refuses_a_missing_disk2_prompt_guard_through_main_before_any_guest_call(
+        tmp_path, monkeypatch, capsys):
+    guest = _RecordingGuest()
+    monkeypatch.setattr(foundation, "WinGuest", lambda: guest)
+    guards = tmp_path / "guards.json"
+    guards.write_text("{}")
+    argv = ["measure", "--title", "darkness", "--manifest", str(tmp_path / "prepare.json"),
+           "--audio-proof", str(tmp_path / "mute.json"), "--attempt", "measure1",
+           "--guards", str(guards)]
+    assert foundation.main(argv) == 2
+    assert "acceptance: " in capsys.readouterr().err
+    assert guest.calls == []
+
+
+def test_accept_refuses_an_identity_map_missing_sheet_through_main_before_any_guest_call(
+        tmp_path, monkeypatch, capsys):
+    guest = _RecordingGuest()
+    monkeypatch.setattr(foundation, "WinGuest", lambda: guest)
+    guards = tmp_path / "guards.json"
+    guards.write_text("{}")
+    identity = tmp_path / "identity.json"
+    identity.write_text("{}")
+    argv = ["accept", "--title", "pool", "--manifest", str(tmp_path / "prepare.json"),
+           "--audio-proof", str(tmp_path / "mute.json"), "--attempt", "accept1",
+           "--guards", str(guards), "--identity", str(identity)]
+    assert foundation.main(argv) == 2
+    assert "acceptance: " in capsys.readouterr().err
+    assert guest.calls == []
