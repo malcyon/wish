@@ -151,3 +151,52 @@ def test_save_game_does_not_call_leave_move_when_the_world_bar_is_already_up():
     sess = FakeSaveGameSession(subbar_up=False)
     assert sess.save_game() is True
     assert sess.leave_move_calls == 0
+
+
+# -- `Session.save_game` from the camp bar (#621) --------------------------
+
+CAMP_BAR_ROW = "ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT"
+
+
+class FakeCampBarSaveGameSession(Session):
+    """A caller that already left its own screen back to the camp bar,
+    rather than the world bar.  `ENCAMP` is not a selectable item there --
+    it is the bar's own header text -- so `select_bar('ENCAMP')` must never
+    be reached; it would fail (or, before the fix, silently return `False`)
+    on every one of these fakes."""
+
+    def __init__(self, camp_bar_up: bool = True):
+        self.save_disk = "/tmp/does-not-matter.d64"
+        self.camp_bar_up = camp_bar_up
+        self.select_bar_calls: list[str] = []
+
+    def screen(self):
+        return FakeScreen(CAMP_BAR_ROW if self.camp_bar_up else WORLD_BAR)
+
+    def leave_move(self, tries: int = 8) -> bool:
+        raise AssertionError("leave_move must not run from the camp bar")
+
+    def select_bar(self, label, row=24, timeout=30.0):
+        self.select_bar_calls.append(label)
+        if label == "ENCAMP" and self.camp_bar_up:
+            raise AssertionError(
+                "select_bar('ENCAMP') must never be pointed at the camp "
+                "bar; ENCAMP is not a selectable item there (#621)")
+        return True
+
+    def settle(self, seconds: float) -> None:
+        pass
+
+
+def test_save_game_skips_encamp_when_the_camp_bar_is_already_up():
+    sess = FakeCampBarSaveGameSession(camp_bar_up=True)
+    assert sess.save_game() is True
+    assert sess.select_bar_calls[0] == "SAVE"
+    assert "ENCAMP" not in sess.select_bar_calls
+
+
+def test_save_game_still_selects_encamp_from_the_world_bar():
+    """The guard: an ordinary world-bar start must not skip ENCAMP."""
+    sess = FakeCampBarSaveGameSession(camp_bar_up=False)
+    assert sess.save_game() is True
+    assert sess.select_bar_calls[0] == "ENCAMP"

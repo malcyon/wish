@@ -448,7 +448,7 @@ def open_items(sess: S.Session, log: Log, name: str, label: str,
     if sess.wait_text(label, 20)[0] is None:
         log.say(f"  {label} never appeared on the item list")
         log.emit("screen", tag=f"{tag}-items-missing", rows=sheet_rows(sess))
-        leave_items(sess)
+        leave_items(sess, log)
         return False
     time.sleep(0.5)
     log.emit("screen", tag=f"{tag}-items", rows=sheet_rows(sess))
@@ -603,7 +603,7 @@ def probe_keys(sess: S.Session, log: Log, label: str) -> str | None:
     return None
 
 
-def leave_items(sess: S.Session) -> None:
+def leave_items(sess: S.Session, log: Log) -> None:
     """Off the item list and off the sheet, by name each time.
 
     With a cursor on the list the way out is its own `EXIT` row, below the
@@ -629,7 +629,11 @@ def leave_items(sess: S.Session) -> None:
     time.sleep(0.8)
     sess.leave_sheet()
     time.sleep(0.8)
-    sess.select_bar("EXIT", timeout=10)      # and out of camp
+    if not sess.select_bar("EXIT", timeout=10):      # and out of camp
+        # A caller that expects to be back on the world bar after this --
+        # `save_game`, for one -- has nothing to go on when this doesn't
+        # land; the failure used to vanish here (#621).
+        log.say("  leave_items: EXIT out of camp never selected")
 
 
 # -- what the fight does to hit points --------------------------------------
@@ -970,7 +974,7 @@ def main(argv=None) -> int:
                 log.say(f"READY #{n}: pressed={ok} record diff {rd} "
                         f"effects diff {ed} block {blocks[args.ready]}")
             tracer.phase = "ready-leave"
-            leave_items(sess)
+            leave_items(sess, log)
             sess.settle(1)
 
         if args.fight:

@@ -194,6 +194,16 @@ PARTY_ROWS = range(0, 12)
 #: find a word that was never going to be there (`#275`).
 MOVE_SUBBAR = "I,J,K,M"
 
+#: The camp's own bar, `ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT`.  A caller
+#: that has already left its own screen back to camp -- rather than the
+#: world bar -- lands here with `ENCAMP` no longer a selectable item, only
+#: the bar's own header text, so `select_bar("ENCAMP")` in `save_game`
+#: fails on it (`#621`).  `"REST ALTER"` is the same detection string
+#: `tools/c64/traitask.py` and `tools/c64/acceptance.py` already use as
+#: `CAMP_BAR`, because it appears only on Pool's/Curse's/Silver Blades'
+#: camp bar and not on the world bar.
+CAMP_BAR = "REST ALTER"
+
 #: The bar the character sheet puts on row 24.  It carries no `NEXT`.
 #:
 #: **Not one fixed string.**  A character carrying something gets
@@ -2414,10 +2424,18 @@ class Session:
             # otherwise burn its whole 30s timeout hunting `ENCAMP` on a row
             # that will never show it (`#545`).
             self.leave_move()
-        if not self.select_bar("ENCAMP"):
+        # A caller that already left its own screen back to the camp bar,
+        # rather than the world bar, has nothing for `ENCAMP` to select
+        # there -- it is the bar's own header text, not a menu item -- and
+        # `select_bar` would burn its whole timeout hunting for it (`#621`).
+        # Go straight to `SAVE` in that case.
+        already_on_camp_bar = s is not None and s.contains(CAMP_BAR)
+        if not already_on_camp_bar and not self.select_bar("ENCAMP"):
+            self.log("  save_game: could not select ENCAMP")
             return False
         self.settle(2)
         if not self.select_bar("SAVE"):  # `ENCAMP:SAVE VIEW MAGIC ...`
+            self.log("  save_game: could not select SAVE")
             return False
         self.settle(6)  # `INSERT YOUR SAVE GAME DISK` -> attach, press a key
         if not self.select_bar("SAVE GAME"):  # `SAVE GAME  EXIT`
