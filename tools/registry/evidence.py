@@ -24,7 +24,8 @@ def git_state(repo: pathlib.Path) -> dict:
     by its old path, which is skipped so the new path is the one reported.
     """
     def git(*args: str) -> str:
-        r = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True)
+        r = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
         return r.stdout if r.returncode == 0 else ""
     entries = git("status", "--porcelain", "-z", "--untracked-files=no").split("\0")
     dirty = []

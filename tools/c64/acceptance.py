@@ -1806,9 +1806,6 @@ class SilverRun(CurseRun):
 # --- the run ---------------------------------------------------------------------
 
 
-
-
-
 def validate_curse_attack(results: list[dict], attack: dict | None,
                           who: str) -> None:
     """Require the screen and engine save to corroborate the named blow."""
