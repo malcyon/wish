@@ -1307,6 +1307,51 @@ def test_curse_cast_reads_row_after_only_once_the_spell_list_is_exited(tmp_path)
     assert sess.state == "magic"
 
 
+def test_curse_cast_polls_briefly_when_the_row_clears_a_reading_behind_the_bar(
+        tmp_path, monkeypatch):
+    """The live effect row can still carry the cured id for a reading or two
+    after the bar already shows the spell list left -- the step waits
+    briefly for it to clear rather than reporting that stale reading."""
+    monkeypatch.setattr(A.time, "sleep", lambda s: None)
+    blind, disease = [62, 33, 0, 0, 5], [61, 34, 2, 0, 0x85]
+    run, sess = _cast(tmp_path, {("picking", ("key", "Return")): "whom"})
+    calls: list[int] = []
+
+    def reading():
+        calls.append(1)
+        return {"effects": [blind, disease] if len(calls) < 3 else [disease]}
+
+    run.reading = reading
+    try:
+        got = run.cast("SHARA:CURE BLINDNESS>PHILIPPE")
+    finally:
+        run.log.close()
+    assert got["row_after"] is None
+    assert len(calls) == 3  # the row-before read, one stale row-after, one retry
+
+
+def test_curse_cast_reports_the_row_as_stale_once_the_poll_bound_is_spent(
+        tmp_path, monkeypatch):
+    """A row that never clears is a real failure, not a stale read, so the
+    poll gives up after a bounded number of tries and reports what it saw."""
+    monkeypatch.setattr(A.time, "sleep", lambda s: None)
+    blind, disease = [62, 33, 0, 0, 5], [61, 34, 2, 0, 0x85]
+    run, sess = _cast(tmp_path, {("picking", ("key", "Return")): "whom"})
+    calls: list[int] = []
+
+    def reading():
+        calls.append(1)
+        return {"effects": [blind, disease]}
+
+    run.reading = reading
+    try:
+        got = run.cast("SHARA:CURE BLINDNESS>PHILIPPE")
+    finally:
+        run.log.close()
+    assert got["row_after"] == blind
+    assert len(calls) == 6  # the row-before read, then a bounded five tries
+
+
 def test_curse_cast_recognises_a_one_spell_list_and_selects_cast(tmp_path):
     one = "CAST EXIT"
     screens = {**CAST_SCREENS,

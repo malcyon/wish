@@ -1438,9 +1438,25 @@ class CurseRun(PoolRun):
         # exit -- otherwise `row_after` still shows the condition as active.
         if self._list_bar(self.bar()):
             self.choose_bar("EXIT", timeout=15)
-        last = self.reading()
+        last = self._settle_row(cure_id, self.owner_of(target), self.reading())
         return self._outcome("caster", caster, target, cure_id, word, first, last,
                              spell=spell, messages=messages, key=key)
+
+    def _settle_row(self, cure_id: int, owner: int, reading: dict,
+                     tries: int = 5, pause: float = 0.3) -> dict:
+        """The live effect row can still carry a cured id for a reading or
+        two after the screen has already left the spell list, so poll
+        briefly for it to clear rather than trust the first reading -- a row
+        still present once the bound is spent is a real failure, not a
+        stale read."""
+        for _ in range(tries - 1):
+            if not any(r[1] == cure_id and r[2] == owner for r in reading["effects"]):
+                return reading
+            if self.spent():
+                break
+            time.sleep(pause)
+            reading = self.reading()
+        return reading
 
     def cure(self, arg: str) -> dict:
         paladin, target = parse_cure(arg)
