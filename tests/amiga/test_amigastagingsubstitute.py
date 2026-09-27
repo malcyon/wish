@@ -51,8 +51,23 @@ def test_with_no_substitute_the_manifest_reflects_the_pinned_specimen(tmp_path, 
     manifest = staging._prepare_from(src, tmp_path / "run", specimen)
     assert manifest["names_a"] == ["ALPHA", "BETA"]
     assert "substitute" not in manifest
+    assert manifest["expected_after"] is not None
     assert AmigaDisk.open(manifest["disks"]["save"]["path"]).read_file(
         "/SAVE/savgamA.dat") == synthetic_curse(("ALPHA", "BETA"))
+
+
+def test_a_substitute_has_no_expected_after_since_it_never_walked_the_route(tmp_path, sources):
+    """A substituted party did not walk the pinned specimen's route, so its
+
+    'later' checkpoint describes an unrelated party's position and must not
+    be asserted against the substitute's actual post-walk place.
+    """
+    src, specimen = sources
+    substitute = _curse_disk(tmp_path, "substitute.adf", {"A": ("GAMMA", "DELTA")})
+
+    manifest = staging._prepare_from(src, tmp_path / "run", specimen, substitute=substitute)
+
+    assert manifest["expected_after"] is None
 
 
 def test_a_substitute_slot_replaces_the_loaded_letter_and_nothing_else(tmp_path, sources):

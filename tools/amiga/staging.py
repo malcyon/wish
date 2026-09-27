@@ -495,7 +495,9 @@ def _prepare_from(src: _Sources, run: pathlib.Path, specimen: pathlib.Path | Non
                     for key, (label, _data) in images.items()},
         "loaded_letter": src.loaded,
         "state_a": loaded["place"], "names_a": loaded["names"],
-        "expected_after": later["place"],
+        # A substituted party never walked the pinned specimen's route, so its
+        # "later" checkpoint describes an unrelated party's position.
+        "expected_after": None if substitute is not None else later["place"],
     }
     if substituted is not None:
         manifest["substitute"] = substituted
