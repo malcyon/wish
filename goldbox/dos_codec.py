@@ -1788,14 +1788,42 @@ def slots_available(folder: str | pathlib.Path) -> list[str]:
     return sorted(p.name[6] for p in folder.glob("SAVGAM?.DAT"))
 
 
+def party_numbers(folder: str | pathlib.Path, slot: str) -> list[int]:
+    """The `CHRDAT<slot><n>.SAV` numbers that make up the party, bounded by
+    the slot's own `SAVGAM<slot>` party-size byte (#689).
+
+    None of the four engines' save routines deletes a `CHRDAT<slot><n>` file
+    left over from a party that has since shrunk (#689's confirmed reading of
+    all four `GAME.OVR` save routines), so a stale file above the current
+    count must not be read as a member.  With no `SAVGAM<slot>.DAT` or
+    `.PTY`, one of the wrong size for any title, or a party size of 0, the
+    limit is `PARTY_ENTRIES` -- today's behaviour, kept for an export folder
+    or a container this project cannot yet read.
+
+    A numbered file that the count expects but that is missing is skipped,
+    not refused: two engine-written specimens (`por-item-granted`,
+    `por-item-twenty`) count 6 and keep only file 1, and both open today.
+    """
+    folder = pathlib.Path(folder)
+    limit = dos_savegame.PARTY_ENTRIES
+    for container in dos_savegame.CONTAINERS:
+        path = folder / f"SAVGAM{slot}{container.suffix}"
+        if path.is_file():
+            data = path.read_bytes()
+            if len(data) in dos_savegame.CONTAINERS_BY_SIZE:
+                count = dos_savegame.party_size(data)
+                if count:
+                    limit = min(count, dos_savegame.PARTY_ENTRIES)
+            break
+    return [n for n in range(1, limit + 1)
+            if (folder / f"CHRDAT{slot}{n}.SAV").exists()]
+
+
 def read_party(folder: str | pathlib.Path, slot: str) -> list[DosCharacter]:
     """The characters present in one save slot, in file order."""
     folder = pathlib.Path(folder)
-    out = []
-    for n in range(1, dos_savegame.PARTY_ENTRIES + 1):
-        path = folder / f"CHRDAT{slot}{n}.SAV"
-        if path.exists():
-            out.append(read_character(path))
+    out = [read_character(folder / f"CHRDAT{slot}{n}.SAV")
+           for n in party_numbers(folder, slot)]
     if not out:
         raise DosRecordError(f"no CHRDAT{slot}?.SAV in {folder}")
     return out

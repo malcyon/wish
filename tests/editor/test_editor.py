@@ -4979,6 +4979,76 @@ def test_a_dos_party_of_seven_opens_all_seven_in_file_order(tmp_path):
     assert [m.name for m in party.members] == [f"HERO{n}" for n in range(1, 8)]
 
 
+def test_a_dos_party_of_seven_files_is_bounded_by_a_party_size_of_six(tmp_path):
+    """#689: the engine's save routine leaves a stale `CHRDAT<slot><n>.SAV`
+    above a party that has since shrunk, so a `SAVGAM<slot>` counting fewer
+    members than there are files must bound what is read. Watch this fail
+    first: both return seven today."""
+    from goldbox import dos_codec, dos_port, dos_savegame
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE,
+                          numbers=tuple(range(1, 8)))
+    save = bytearray(dos_savegame.SAVE_POOL_OF_RADIANCE.size)
+    save[dos_savegame.SAVE_POOL_OF_RADIANCE.party_size_byte] = 6
+    (tmp_path / "SAVGAMA.DAT").write_bytes(bytes(save))
+
+    party = Party(str(tmp_path / "SAVGAMA.DAT"))
+    assert [m.index for m in party.members] == [1, 2, 3, 4, 5, 6]
+
+    characters = dos_codec.read_party(tmp_path, "A")
+    assert [c.name for c in characters] == [f"HERO{n}" for n in range(1, 7)]
+
+
+def test_a_dos_party_bounds_by_a_pty_container_when_there_is_no_dat(tmp_path):
+    """Pins the suffix lookup: with no `SAVGAMA.DAT`, a `SAVGAMA.PTY` (Pools
+    of Darkness' container shape) is read instead. Fails today, same as
+    above."""
+    from goldbox import dos_codec, dos_port, dos_savegame
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE,
+                          numbers=tuple(range(1, 8)))
+    (tmp_path / "SAVGAMA.DAT").unlink()
+    save = bytearray(dos_savegame.SAVE_POOLS_OF_DARKNESS.size)
+    save[dos_savegame.SAVE_POOLS_OF_DARKNESS.party_size_byte] = 6
+    (tmp_path / "SAVGAMA.PTY").write_bytes(bytes(save))
+
+    characters = dos_codec.read_party(tmp_path, "A")
+    assert len(characters) == 6
+
+
+def test_a_dos_party_of_seven_with_a_count_of_seven_stays_seven(tmp_path):
+    """Control: a party size matching every file present still opens all
+    seven, so #641 (a C64 Pool of Radiance party with a companion as its
+    seventh member) keeps converting to DOS. Green before and after."""
+    from goldbox import dos_codec, dos_port, dos_savegame
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE,
+                          numbers=tuple(range(1, 8)))
+    save = bytearray(dos_savegame.SAVE_POOL_OF_RADIANCE.size)
+    save[dos_savegame.SAVE_POOL_OF_RADIANCE.party_size_byte] = 7
+    (tmp_path / "SAVGAMA.DAT").write_bytes(bytes(save))
+
+    party = Party(str(tmp_path / "SAVGAMA.DAT"))
+    assert [m.index for m in party.members] == [1, 2, 3, 4, 5, 6, 7]
+
+    characters = dos_codec.read_party(tmp_path, "A")
+    assert len(characters) == 7
+
+
+def test_a_dos_party_of_one_file_under_a_higher_count_is_not_refused(tmp_path):
+    """A counted file that is missing is skipped, not refused: two
+    engine-written specimens (`por-item-granted`, `por-item-twenty`) count 6
+    and keep only file 1. Green before and after."""
+    from goldbox import dos_codec, dos_port, dos_savegame
+    _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE, numbers=(1,))
+    save = bytearray(dos_savegame.SAVE_POOL_OF_RADIANCE.size)
+    save[dos_savegame.SAVE_POOL_OF_RADIANCE.party_size_byte] = 6
+    (tmp_path / "SAVGAMA.DAT").write_bytes(bytes(save))
+
+    party = Party(str(tmp_path / "SAVGAMA.DAT"))
+    assert [m.index for m in party.members] == [1]
+
+    characters = dos_codec.read_party(tmp_path, "A")
+    assert [c.name for c in characters] == ["HERO1"]
+
+
 def test_a_dos_party_can_be_opened_from_a_source(tmp_path):
     from editor.convert import Source
     from goldbox import dos_port

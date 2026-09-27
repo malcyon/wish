@@ -34,7 +34,6 @@ from goldbox import (
     c64_port,
     dos_codec,
     dos_port,
-    dos_savegame,
     rewrite,
 )
 from goldbox.c64_port import C64Container
@@ -348,10 +347,8 @@ class Party:
         (`dos_codec.marching_slot`). `Member.index` is the file number, so a
         gap in the numbered files `CHRDAT<slot>1` upward leaves the others where they are."""
         folder = pathlib.Path(self.source.path)
-        for number in range(1, dos_savegame.PARTY_ENTRIES + 1):
+        for number in dos_codec.party_numbers(folder, self.source.slot):
             path = folder / f"CHRDAT{self.source.slot}{number}.SAV"
-            if not path.exists():
-                continue
             char = dos_codec.read_character(path)
             record, _report = dos_codec.to_c64_record(char, icon=None)
             self._append_converted(number, record, char)
