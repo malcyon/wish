@@ -1136,7 +1136,7 @@ class C64LiteralRow:
 
 
 @dataclasses.dataclass(frozen=True)
-class C64RowCensus:
+class C64RowSweep:
     """Measured tables, literal writers and the post-combat id strip."""
 
     title: str
@@ -1186,7 +1186,7 @@ _POST_STRIP = {
 }
 
 
-def _census_rows(title: str, camp: bytes, combat: bytes
+def _sweep_rows(title: str, camp: bytes, combat: bytes
                  ) -> tuple[tuple[C64EffectTableRow, ...],
                             tuple[C64EffectTableRow, ...]]:
     base, start, count = _CAMP_TABLE[title]
@@ -1270,14 +1270,14 @@ def _literal_rows(title: str, read) -> tuple[C64LiteralRow, ...]:
     return tuple(rows)
 
 
-def c64_row_census(title: str, root: str | None = None) -> C64RowCensus:
+def c64_row_sweep(title: str, root: str | None = None) -> C64RowSweep:
     """Inventory effect table candidates and proven literal writers from disks.
 
     An effect id in a table is not proof its handler writes a row. The
     `unresolved_pointer_rows` list keeps those handler paths explicit.
     """
     if title not in SITES:
-        raise ValueError(f"No C64 effect census for {title}")
+        raise ValueError(f"No C64 effect sweep for {title}")
     game = c64_port.by_key(title)
     if root is None:
         found = tool_disks(game)
@@ -1291,7 +1291,7 @@ def c64_row_census(title: str, root: str | None = None) -> C64RowCensus:
             files[name] = coldread.overlay(game, name.encode(), root)
         return files[name]
 
-    camp, combat = _census_rows(title, read("ECL65"),
+    camp, combat = _sweep_rows(title, read("ECL65"),
                                 read(_COMBAT_TABLE[title][0]))
     arrays = (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
               effects.EFFECT_DURATION_OFFSET, effects.EFFECT_MAGNITUDE_OFFSET)
@@ -1335,7 +1335,7 @@ def c64_row_census(title: str, root: str | None = None) -> C64RowCensus:
     if len(combat) != spells.for_game(title).last_spell + (
             11 if title == "pool-of-radiance" else 0):
         raise ValueError("Combat spell table no longer matches the title's spell list")
-    return C64RowCensus(title, camp, combat, _literal_rows(title, read), strip)
+    return C64RowSweep(title, camp, combat, _literal_rows(title, read), strip)
 
 
 def load_c64(title: str, root: str | None = None) -> tuple[bytes, bytes]:

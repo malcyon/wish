@@ -701,11 +701,11 @@ engine through the archives registry. It reports missing files; the tests
 skip without the player's disks. Mutation checks reject changed owner tests,
 Strength branches, Prayer polarity, Haste markers and Mirror Image shifts.
 
-## C64 effect-row census
+## C64 effect-row sweep
 
 A party can save after a spell cast in camp or combat with a row Wish has no
 DOS rule for. **CONFIRMED table inventory, not a claim that every handler
-writes:** `c64_row_census(title)` reads each title's spell records and checks
+writes:** `c64_row_sweep(title)` reads each title's spell records and checks
 the four array-store operands of its generic camp and combat writers.
 
 | Title | Camp records / nonzero | Combat records / nonzero | Distinct ids | Proven generic camp rows | Unresolved nonzero handler pointers |
@@ -754,7 +754,7 @@ may be a monster, and party-wide ids 35 and 49 have a separate converter.
 | Curse of the Azure Bonds | 2–4, 7, 11, 13, 15, 18, 22, 23, 27, 33–35, 49, 55, 68, 71, 73, 109, 136, 137, 142–144, 146 |
 | Secret of the Silver Blades | 2–4, 11, 13, 22, 23, 27, 30, 33–35, 49, 51–53, 55, 68, 71, 73, 106, 107, 111, 112 |
 
-| Refusal | Census evidence and limit |
+| Refusal | Sweep evidence and limit |
 |---|---|
 | Silver Blades id 13 | **CONFIRMED static writer:** camp row 26 at `ECL65 $93B6` goes to `$819C`, with the generic level magnitude and count `4 + level`; `POST.COM` does not strip it. A game-written save after Barkskin must establish the player state. |
 | Curse id 13 | **CONFIRMED combat path:** `COMBAT $1F40` sets id 13 and `$1F50` calls the row writer with a roll and bit 7. Cleanup does not strip 13. Survival of its target to save is unmeasured. |

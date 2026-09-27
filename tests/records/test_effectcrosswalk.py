@@ -508,16 +508,16 @@ def test_the_later_title_command_prints_the_derived_ids(later_ids, capsys):
     ("secret-of-the-silver-blades", (56, 39), (117, 64), 51, 0,
      (5, 12, 27, 45, 107), 27, 76, 24),
 ])
-def test_c64_row_census_counts_table_candidates_and_literal_writers(
+def test_c64_row_sweep_counts_table_candidates_and_literal_writers(
         title, camp, combat, distinct, stripped, literal_ids,
         generic, unresolved, no_rule):
-    census = cross.c64_row_census(title, _root(title))
-    assert (len(census.camp_rows), sum(row.effect_id != 0 for row in census.camp_rows)) == camp
-    assert (len(census.combat_rows), sum(row.effect_id != 0 for row in census.combat_rows)) == combat
-    assert len(census.table_ids) == distinct
-    assert len(census.post_combat_strip_ids) == stripped
-    assert tuple(sorted(row.effect_id for row in census.literal_rows)) == literal_ids
-    assert sum(row.effect_id != 0 and row.generic_writer for row in census.camp_rows) == generic
-    assert len(census.unresolved_pointer_rows) == unresolved
-    assert len(census.candidate_no_dos_rule_ids) == no_rule
-    assert 13 in census.candidate_no_dos_rule_ids
+    sweep = cross.c64_row_sweep(title, _root(title))
+    assert (len(sweep.camp_rows), sum(row.effect_id != 0 for row in sweep.camp_rows)) == camp
+    assert (len(sweep.combat_rows), sum(row.effect_id != 0 for row in sweep.combat_rows)) == combat
+    assert len(sweep.table_ids) == distinct
+    assert len(sweep.post_combat_strip_ids) == stripped
+    assert tuple(sorted(row.effect_id for row in sweep.literal_rows)) == literal_ids
+    assert sum(row.effect_id != 0 and row.generic_writer for row in sweep.camp_rows) == generic
+    assert len(sweep.unresolved_pointer_rows) == unresolved
+    assert len(sweep.candidate_no_dos_rule_ids) == no_rule
+    assert 13 in sweep.candidate_no_dos_rule_ids
