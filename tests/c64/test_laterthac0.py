@@ -68,8 +68,12 @@ DISAGREE = {
 #: verify run reliable on each destination platform, so conversion tickets
 #: reuse it)`) adds two more still, in its `CHRDATB2.SAV` and `CHRDATD2.SAV`:
 #: the same cleric 6, stored=16 against table=18, the same regained-class fold
-#: as the 632 specimen's MARK.
-RECORDS = {POOL: (202, 0), CURSE: (116, 18), SSB: (72, 2)}
+#: as the 632 specimen's MARK.  `WISH-SPEC-curse-597-experience-ceiling`'s
+#: `CHRDATE6.SAV` adds one more still: the default party's BRYTWYN
+#: (magic-user 5) resaved by the engine for `#597 (Can a DOS Curse or Silver
+#: Blades character hold more experience than the C64's three bytes?)`, the
+#: same record as the archives' `CHRDATB6.SAV` and the same flat-40 miss.
+RECORDS = {POOL: (202, 0), CURSE: (121, 19), SSB: (72, 2)}
 
 
 def _located(title: str):
