@@ -232,6 +232,66 @@ def test_pod_vault_to_amiga_refuses_a_dos_type_105_record():
         amiga_savegame.pod_vault_to_amiga(v)
 
 
+def test_pod_vault_to_amiga_accepts_exactly_two_hundred_items():
+    v = dos_codec.PodVault(0, 0, 0, tuple(_dos_item_record() for _ in range(200)))
+    raw = amiga_savegame.pod_vault_to_amiga(v)
+    assert len(raw) == amiga_savegame.POD_VAULT_SIZE
+
+
+def test_pod_vault_from_amiga_accepts_exactly_two_hundred_nodes():
+    head = _amiga_node(type_index=1, weight=1, quantity=1)
+    data = _amiga_vault((0, 0, 0), 200, head * 200)
+    data += bytes(amiga_savegame.POD_VAULT_SIZE - len(data))
+    vault = amiga_savegame.pod_vault_from_amiga(data)
+    assert len(vault.items) == 200
+
+
+# ---------------------------------------------------------------------------
+# `pod_read_vault`: a missing file is empty, a corrupt one is a refusal (#651)
+# ---------------------------------------------------------------------------
+
+class _CorruptOnRead:
+    """A real `AmigaDisk`, wrapped so one named path's `read_file` raises,
+    while `lookup`/`entries` still show it in the drawer listing -- a
+    corrupt file, not an absent one."""
+
+    def __init__(self, disk: AmigaDisk, corrupt_path: str):
+        self._disk = disk
+        self._corrupt_path = corrupt_path.upper()
+
+    def lookup(self, path):
+        return self._disk.lookup(path)
+
+    def entries(self, header=None):
+        return self._disk.entries(header)
+
+    def read_file(self, path):
+        if path.upper() == self._corrupt_path:
+            raise AmigaDiskError("simulated corruption")
+        return self._disk.read_file(path)
+
+
+def test_pod_read_vault_is_empty_with_no_save_drawer():
+    disk = AmigaDisk.blank()
+    assert amiga_savegame.pod_read_vault(disk, "A") == dos_codec.EMPTY_POD_VAULT
+
+
+def test_pod_read_vault_is_empty_with_no_vault_file():
+    disk = AmigaDisk.blank()
+    disk.make_dir("/SAVE")
+    assert amiga_savegame.pod_read_vault(disk, "A") == dos_codec.EMPTY_POD_VAULT
+
+
+def test_pod_read_vault_raises_on_a_vault_file_that_exists_but_is_corrupt():
+    disk = AmigaDisk.blank()
+    disk.make_dir("/SAVE")
+    path = amiga_savegame.pod_vault_path("A")
+    disk.write_file(path, bytes(amiga_savegame.POD_VAULT_SIZE))
+    wrapped = _CorruptOnRead(disk, path)
+    with pytest.raises(amiga_savegame.AmigaSaveError):
+        amiga_savegame.pod_read_vault(wrapped, "A")
+
+
 # ---------------------------------------------------------------------------
 # Every DOS Pools of Darkness specimen, rebuilt byte for byte
 # ---------------------------------------------------------------------------

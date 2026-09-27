@@ -2067,13 +2067,25 @@ def pod_read_vault(disk: AmigaDisk, slot: str) -> dos_codec.PodVault:
     """One slot's item vault, or `dos_codec.EMPTY_POD_VAULT` with no file.
 
     A slot with no vault file holds no stored items, so an empty DOS vault
-    loses nothing.
+    loses nothing.  Absence is decided from the `SAVE` drawer's own listing,
+    never by catching the read failure -- a vault file that exists but fails
+    to read (a bad block-chain length, a data block overrunning its payload)
+    is damaged, not absent, and raises `AmigaSaveError` instead of silently
+    becoming an empty vault.
     """
+    filename = f"Vault{slot_letter(slot)}.DAT"
+    try:
+        save_drawer = disk.lookup(f"/{SAVE_DRAWER}")
+    except AmigaDiskError:
+        return dos_codec.EMPTY_POD_VAULT
+    if not any(entry.name.upper() == filename.upper()
+               for entry in disk.entries(save_drawer.block)):
+        return dos_codec.EMPTY_POD_VAULT
     path = pod_vault_path(slot)
     try:
         data = disk.read_file(path)
-    except AmigaDiskError:
-        return dos_codec.EMPTY_POD_VAULT
+    except AmigaDiskError as e:
+        raise AmigaSaveError(f"{path}: {e}") from e
     return pod_vault_from_amiga(data)
 
 
