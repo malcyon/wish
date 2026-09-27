@@ -17,6 +17,8 @@ converter)`'s end-to-end proof went on it.
 
 from conftest import load_tools_module
 
+from goldbox import c64_port as games
+
 session = load_tools_module("session")
 COMBAT = session.COMBAT
 COMPASS = session.COMPASS
@@ -216,6 +218,26 @@ def test_the_reading_says_outdoors_in_words():
 def test_status_reads_the_travel_grid_line_off_the_screen():
     sess = FakeSession()
     assert sess.status() == Status(None, 22 * 60 + 2, 7, 28)
+
+
+def test_position_uses_the_live_facing_when_no_square_is_drawn(monkeypatch):
+    monkeypatch.setattr(session.time, "sleep", lambda _: None)
+    for game in (games.CURSE_OF_THE_AZURE_BONDS,
+                 games.SECRET_OF_THE_SILVER_BLADES):
+        sess = FakeSession(line="LOAD SAVED GAME")
+        sess.game = game
+        sess.put(sess.machine.live_position, (3, 12))
+        sess.memory[sess.machine.live_position + 2] = 2
+        sess.memory[DUNGEON_XY + 2] = 1
+        assert sess.position() == (3, 12, 2)
+
+
+def test_position_keeps_pools_dungeon_facing_without_a_status_line(monkeypatch):
+    monkeypatch.setattr(session.time, "sleep", lambda _: None)
+    sess = FakeSession(line="LOAD SAVED GAME", indoors=True, square=(5, 2))
+    sess.game = games.POOL_OF_RADIANCE
+    sess.memory[DUNGEON_XY + 2] = 3
+    assert sess.position() == (5, 2, 3)
 
 
 # -- which of the two worlds -----------------------------------------------
