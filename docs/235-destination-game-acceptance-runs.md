@@ -35,10 +35,10 @@ acceptance evidence.
    `editor.saveplan.prepare_save_as` and `publish` (Save As), which
    `tools/convert/saveasdrive.py` calls for the developer tools:
    `tools/convert/convertrun.py` (`--no-play` writes the conversion and stops
-   before the emulator) and `dosacceptance.py --fixture-row` both go through
+   before the emulator) and `acceptance.py --fixture-row` both go through
    it. File > Convert exists only behind `WISH_EXPERIMENTAL_POD_CONVERT` and is
    the route of the Pools of Darkness Amiga-to-DOS conversion alone
-   (`dosacceptance.py --amiga-slot`). The output bytes, the SHA, and the
+   (`acceptance.py --amiga-slot`). The output bytes, the SHA, and the
    conversion's `dropped` and `losses` lists (both empty) go in the log. A run
    made from output that was not produced this way tests the writer, not the
    program.
@@ -65,7 +65,7 @@ after `gh issue view N --json state`.
 | platform | emulator and pool | keys | screen | memory | files the engine writes | title protocols in the tree |
 |---|---|---|---|---|---|---|
 | C64 | VICE through `tools/registry/instance.py` (`claim`, displays `:10`-`:25`) | `Session.select_bar`, `select_row`, KERNAL buffer | **text**, `Session.screen_text()` and `screen()` row by row | binary monitor: peeks, non-stopping exec checkpoints (`tools/c64/effectdrive.py checkpoint_hits`), watchpoints (`livewatch.py`) | the save disk, copied out closed (`por.copy_closed_disk`) or repaired (`curseload.close_splat`) | Pool `Session` (load, walk, fight, `save_game`); Curse `curserun.CurseSession` + `curseload`, `cursecheck.py`, `laterbattle.py`; Silver Blades `ssbwarp.SSBSession`, `ssbresavewalk.py`, `laterbattle.py`; all three run under `tools/c64/acceptance.py` |
-| DOS | DOSBox 0.74 through `tools/dos/dosbox.py` (`claim`, displays `:50`-`:65`) | `xdotool` keysyms | **pixels only**: 320x200 PNG, `Screen.digest`/`ink`/`glyphs` for equality, `highlight_row`; no text; the status line's `x,y` token, read cell by cell from x 136 (`dosacceptance.status_square`) | none | `SAVE/` after `ENCAMP > SAVE`: records, `.ITM`/`.STF`, `.SPC`/`.FX`/`.SFX`, `SAVGAM<slot>.DAT` (Pools of Darkness `SAVGAM<slot>.PTY` with `VAULT<slot>.DAT`) | Pool `PoolOfRadiance` (menu, load, move, camp save, fight); Curse `dossheetread.py` (load, sheets, walk, engine save), `Camp.memorize`, `curseregain.py` (train, camp save); Silver Blades `ssbimport.py Driver` (party menu, intro, encamp, rest by days, camp save, sheet), `dossheetread.py --move-mode`; Pools of Darkness `dospod.py` (its journal answer and party-menu knowledge); all four run under `tools/dos/dosacceptance.py` |
+| DOS | DOSBox 0.74 through `tools/dos/dosbox.py` (`claim`, displays `:50`-`:65`) | `xdotool` keysyms | **pixels only**: 320x200 PNG, `Screen.digest`/`ink`/`glyphs` for equality, `highlight_row`; no text; the status line's `x,y` token, read cell by cell from x 136 (`dosacceptance.status_square`) | none | `SAVE/` after `ENCAMP > SAVE`: records, `.ITM`/`.STF`, `.SPC`/`.FX`/`.SFX`, `SAVGAM<slot>.DAT` (Pools of Darkness `SAVGAM<slot>.PTY` with `VAULT<slot>.DAT`) | Pool `PoolOfRadiance` (menu, load, move, camp save, fight); Curse `dossheetread.py` (load, sheets, walk, engine save), `Camp.memorize`, `curseregain.py` (train, camp save); Silver Blades `ssbimport.py Driver` (party menu, intro, encamp, rest by days, camp save, sheet), `dossheetread.py --move-mode`; Pools of Darkness `dospod.py` (its journal answer and party-menu knowledge); all four run under `tools/dos/acceptance.py` |
 | DOS, debugger | DOSBox-X debug build through `tools/dos/dosboxx.py` (`claim`, displays `:90`-`:105`); `dosboxx.unavailable()` is `None` on this machine | the same | the same, halved from 640x400 | `read`/`write` any linear address, `watch` (one byte, on change), `brk` (fires silently, `wait_halt` probes), `regs` through `EV`; `dosspcexpiry.read_party` reads Pool's effect chains node by node off the heap | the same | `PoolOfRadiance` runs unchanged on `XSession`; the later titles' chain heads (Curse record `0x0F2`, Silver Blades `0x0FB`) are read but no tool reads their nodes yet |
 | Amiga | WinUAE in the Windows VM, one lane (`winuae.ps1 claim -Holder`), reachable from this VM (`winvm status`) | `tools/amiga/amigadrive.py keys`; the foundation drivers press a key once the previous screen has matched its guard, and `winvmsettle.py` waits between keys by hand | **pixels**: `winvm shot` cropped to the emulator window by `amigashots.py`; a state is one static pixel box (`PixelGuards`) and a sheet's or menu's identity is a name box | `winuaepipe.py` / `automap.amiga.WinuaePipe`: `m` and `S`-to-file reads while the machine runs; `automap/amiga.py` locates the data hunk and the party | the `.adf`, copied back with `winvm get` and read by `amiga_savegame` (`read_por_slot`, `read_slot`, `pod_read_slot`) | Pool `amigafoundation.py --title pool` (by hand: `docs/182` §7, twenty keys); Curse `--title curse` (by hand: `docs/203` "Reproducing it"); Silver Blades `amigasecretsave.py accept`, its journal answered by `amigabladesjournal.py` under `/usr/bin/python3`; Pools of Darkness `--title darkness`, not yet proven (section 5); `amigacampsave.py` (repeated camp saves, Silver Blades) |
 | Amiga, FS-UAE | stock `fs-uae` in a VICE-pool slot (`instance.py claim --game amiga-por`), `tools/amiga/fsuaepor.py serve` | `fsuaepor.py keys` | pixels, `fsuaepor.py shot` | none; the GDB build `installfsuae.py` fetches is not installed here | the staged `.adf` in the run directory, `fsuaepor.py names` | Pool of Radiance and Pools of Darkness only. Under it Pools of Darkness reached the party panel and `ADD CHARACTER > POOLS` (`docs/124` §2.4) and never loaded a saved game, and a disk changes at runtime only through its F12 menu, by hand. Curse stops at the code wheel and Silver Blades has never been driven |
@@ -159,12 +159,14 @@ forgoes the starting equipment and money a player would take; the run compares
 experience, which the treasure does not touch, and both the game's own save and
 Wish's get the same treatment.
 
-### D1. `tools/dos/dosacceptance.py`: load a Wish-written DOS save and read it back
+### D1. `tools/dos/acceptance.py`: load a Wish-written DOS save and read it back
+
+The driver was named `dosacceptance.py` before it moved to `acceptance.py`; the mapping is in [docs/236](236-requirements-for-adding-a-new-platform.md#old-to-new), so older evidence can be found by either name.
 
 One entry point over `tools/dos/dosbox.py` for four titles, Pools of Darkness
 included (its journal question and party-menu knowledge are `dospod.py`'s):
 
-    dosacceptance.py --title curse --save DIR --from-slot B --slot B \
+    acceptance.py --title curse --save DIR --from-slot B --slot B \
         --steps load 'view 2' begin 'walk MI' camp 'save D' read \
         --issue N --run NAME
 
@@ -378,7 +380,7 @@ platform, so conversion tickets reuse it).
 | 16 | Silver Blades, DOS to Amiga | `DosToAmiga`; Save As Amiga | Amiga Silver Blades | `WISH-SPEC-ssb-joined-arrow-dos-672` slot D |
 | 17 | Silver Blades, Amiga to C64 | `AmigaToC64`; Save As C64 | C64 Silver Blades | `WISH-SPEC-ssb-amiga-moved` |
 | 18 | Silver Blades, Amiga to DOS | `AmigaToDos`; Save As DOS | DOS Silver Blades | `WISH-SPEC-ssb-amiga-moved` |
-| 19 | Pools of Darkness, Amiga to DOS | `PodAmigaToDos` behind `WISH_EXPERIMENTAL_POD_CONVERT`: File > Convert, or `dosacceptance.py --amiga-slot` | DOS Pools of Darkness | `SavGamB.pty` on the registry's `(SSI)(Disk 3 of 3)[a].adf`, a played save found on a disk image, so an input and not a measurement |
+| 19 | Pools of Darkness, Amiga to DOS | `PodAmigaToDos` behind `WISH_EXPERIMENTAL_POD_CONVERT`: File > Convert, or `acceptance.py --amiga-slot` | DOS Pools of Darkness | `SavGamB.pty` on the registry's `(SSI)(Disk 3 of 3)[a].adf`, a played save found on a disk image, so an input and not a measurement |
 | 20 | Pools of Darkness, DOS to Amiga | None: the `.pc` writer (`amiga_pod.write_pod`) exists, and the saved-game writer, its detection and the direction do not | Amiga Pools of Darkness, not yet proven | `WISH-SPEC-p175-diff1` once a route exists |
 
 Routes 8, 10, 14 and 16 (Curse and Silver Blades to the Amiga) wait behind
@@ -436,11 +438,11 @@ The commands and what they printed, the same in both boots of each pair:
 
 | pair | command | verdict lines | control |
 |---|---|---|---|
-| DOS Pool | `dosacceptance.py --title pool --fixture-row 3F=01:00:2F:01 --slot A --steps load 'sheet 1' 'walk MI' camp 'save D' read --issue 679 --deadline 420` | Moved from 0,4 to 1,4, area 0 facing 1; the effect on BRUTUS 47 to 46 minutes | `'turn 2'`: did not move, area 0 at 0,4 |
+| DOS Pool | `acceptance.py --title pool --fixture-row 3F=01:00:2F:01 --slot A --steps load 'sheet 1' 'walk MI' camp 'save D' read --issue 679 --deadline 420` | Moved from 0,4 to 1,4, area 0 facing 1; the effect on BRUTUS 47 to 46 minutes | `'turn 2'`: did not move, area 0 at 0,4 |
 | DOS Curse | `--title curse --save WISH-SPEC-curse-632-wish-converted-resave --from-slot B --slot B --steps load 'view 2' begin 'walk MI' camp 'save D' read` | Moved from 5,13 to 6,13, area 1 facing 1; six characters, no node lost | `'turn 2'`: did not move, area 1 at 5,13 |
 | DOS Silver Blades | `--title ssb --save WISH-SPEC-ssb-299-whole-engine-resave --from-slot D --slot D --steps load 'view 2' begin 'walk 1' camp 'save E' read` | Moved from 3,3 to 3,4, area 16 facing 2 | `'turn 4'`: did not move, area 16 at 3,3 |
 | DOS Pools of Darkness | `--title darkness --amiga-disk '(SSI)(Disk 3 of 3)[a].adf' --amiga-slot SavGamB.pty --steps load 'view 4' begin 'walk 1' camp 'save D' 'items 4' read --deadline 360` | Moved from 1,2 to 2,2, map 2 facing 1; the sheet names DONALD DUCK | `'turn 4'`: did not move, map 2 at 1,2 |
-| C64 Pool | `c64acceptance.py --title pool --save WISH-SPEC-por-52-dialog-converted-resave.D64 --steps load 'view 1' 'walk KI' 'view 1' save --max-seconds 1500` | Facing 3 to 0, then 0,4 to 0,3; `place_changed` true | `'walk K'`: 0,4 facing 0, `place_changed` false |
+| C64 Pool | `acceptance.py --title pool --save WISH-SPEC-por-52-dialog-converted-resave.D64 --steps load 'view 1' 'walk KI' 'view 1' save --max-seconds 1500` | Facing 3 to 0, then 0,4 to 0,3; `place_changed` true | `'walk K'`: 0,4 facing 0, `place_changed` false |
 | C64 Curse | `--title curse --steps load 'view 1' 'walk JI' 'view 1' save` on `WISH-SPEC-curse-party-with-items.D64` | 4,4 facing 0 to 4,4 facing 3, then 3,4; `place_changed` true | `'walk J'`: 4,4 facing 3, `place_changed` false |
 | C64 Silver Blades | `--title ssb --steps load 'view 2' 'walk JI' 'view 2' save` on `WISH-SPEC-ssb-d-engine-resave-walked.D64` | 3,5 facing 2 to 3,5 facing 1, then 4,5; `place_changed` true | `'walk J'`: 3,5 facing 1, `place_changed` false |
 | Amiga Pool | `amigafoundation.py accept --title pool --manifest … --guards … --identity … --audio-proof … --attempt …` | Slot D moved 1 square from area 0 9,13 facing 0 to 9,14 facing 2, and matches the game's own save after the same walk | Slot C: did not move |
