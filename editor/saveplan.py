@@ -746,6 +746,7 @@ def losses(report: Any) -> list[str]:
 #: is **every known field of the layout**, and
 #: `test_every_known_field_is_compared_or_named_as_not_compared` fails if a
 #: new one joins neither list.
+#: `_compared_fields` omits the Pool-only names on later-title destinations.
 KEPT_FIELDS = (
     "name", "sex", "race", "char_class", "class_bits", "alignment", "age",
     "strength", "exceptional_strength", "intelligence", "wisdom", "dexterity",
@@ -762,6 +763,9 @@ KEPT_FIELDS = (
     "abilities_second", "size_small", "armour_class_base", "attack_forms",
     "strength_bonus_flag", "turn_power", "flags_0b8", "experience_award",
     "experience_per_hit_point", "treasure_share",
+    # Measured across Pool of Radiance's three ports. `_compared_fields`
+    # omits these for later titles, whose mappings have not been measured.
+    "creature_type", "turn_class",
     # `paladin_cures` is the C64's 0x012, freed from the old 20-byte name
     # field (#626): `c64_codec.read` copies it into the neutral field the
     # DOS and Amiga ports already name, and `c64_codec.write` copies it
@@ -820,8 +824,6 @@ KEPT_FIELDS = (
 #:   adjustment until the next fight rewrites it;
 #: * `infravision` -- the C64 computes its own from the race
 #:   (`goldbox.c64_codec.DROPPED`);
-#: * `turn_class` -- the undead's own row rather than the caster's, and zero
-#:   for every player character (#297, #288);
 #: * `lay_on_hands_uses` -- the C64's 0x013, freed from the old 20-byte name
 #:   field beside `paladin_cures` (#626). The neutral vocabulary now has a
 #:   field for the timer this byte tracks, `lay_on_hands_minutes` (#628), and
@@ -848,7 +850,7 @@ _NOT_COMPARED = ("identity_pair", "party_order", "item_effects", "thac0",
                  "armour_class", "hp_current", "combat_side", "roster_in_use",
                  "roster_tail", "roster_movement", "inventory",
                  "thac0_base", "attack_level", "strength_index",
-                 "missile_attack_adjustment", "infravision", "turn_class",
+                 "missile_attack_adjustment", "infravision",
                  "spells_castable", "save_paralysis", "save_petrification",
                  "save_wands", "save_breath", "save_spell",
                  "thief_pick_pockets", "thief_open_locks", "thief_find_traps",
@@ -860,6 +862,24 @@ _NOT_COMPARED = ("identity_pair", "party_order", "item_effects", "thac0",
 def kept(record: CharacterRecord) -> "dict[str, Any]":
     """`KEPT_FIELDS` off one record, by name."""
     return {name: record.get(name) for name in KEPT_FIELDS}
+
+
+_POOL_ONLY_KEPT = frozenset(("creature_type", "turn_class"))
+
+
+def _compared_fields(destination: "Destination | None") -> tuple[str, ...]:
+    """The measured fields for this title's read-back comparison.
+
+    A comparison without a destination uses Pool of Radiance's full layout.
+    Later titles have no measured mapping for these two bytes, so a
+    matching raw C64 offset would not establish that the native field held.
+    """
+    if destination is None:
+        return KEPT_FIELDS
+    title_key = getattr(destination.title, "key", destination.title)
+    if title_key == "pool-of-radiance":
+        return KEPT_FIELDS
+    return tuple(name for name in KEPT_FIELDS if name not in _POOL_ONLY_KEPT)
 
 
 def c64_slot_records(at: pathlib.Path) -> "list[CharacterRecord]":
@@ -1048,8 +1068,9 @@ def _expected_dual_class(destination: "Destination") -> "int | None":
 
 def _signature(record: CharacterRecord,
                destination: "Destination | None" = None,
-               name: "str | None" = None) -> tuple[str, ...]:
-    """One character as the comparison sees him: every kept field, in order.
+               name: "str | None" = None,
+               fields: "Sequence[str]" = KEPT_FIELDS) -> tuple[str, ...]:
+    """One character as the comparison sees him: selected fields, in order.
 
     `destination` makes `char_class`, `turn_power` and `strength_bonus_flag`
     destination-aware -- see `_expected_char_class`, `_expected_turn_power`
@@ -1059,10 +1080,11 @@ def _signature(record: CharacterRecord,
 
     `name`, when given, replaces the `name` field's value outright -- the
     name as `stored_name` reads it, rather than the sheet's own C64-folded
-    `record.get("name")` (#638).
+    `record.get("name")` (#638). `fields` is the same title-filtered list on
+    both sides of a comparison.
     """
     values = []
-    for field in KEPT_FIELDS:
+    for field in fields:
         value = record.get(field)
         if field == "name" and name is not None:
             value = name
@@ -1106,7 +1128,8 @@ def compare(expected: "list[CharacterRecord]",
     `destination`, when given, makes the *expected* side's `char_class`
     (#636), `turn_power` and `strength_bonus_flag` (#637) destination-aware:
     the written side is always compared literally, so a converter that
-    genuinely gets one of these values wrong still shows.
+    genuinely gets one of these values wrong still shows. Its title also
+    limits the two Pool-only creature fields to measured Pool conversions.
 
     `expected_names` and `written_name_list`, when both given, replace each
     record's `name` field with its own list's entry, paired by index --
@@ -1120,21 +1143,23 @@ def compare(expected: "list[CharacterRecord]",
     if len(expected) != len(written):
         return [f"{len(expected)} character(s) went in and {len(written)} "
                 f"came back out"]
+    fields = _compared_fields(destination)
     if expected_names is not None:
-        want = sorted(_signature(record, destination, name)
+        want = sorted(_signature(record, destination, name, fields)
                       for record, name in zip(expected, expected_names))
     else:
-        want = sorted(_signature(record, destination) for record in expected)
+        want = sorted(_signature(record, destination, fields=fields)
+                      for record in expected)
     if written_name_list is not None:
-        got = sorted(_signature(record, name=name)
+        got = sorted(_signature(record, name=name, fields=fields)
                     for record, name in zip(written, written_name_list))
     else:
-        got = sorted(_signature(record) for record in written)
+        got = sorted(_signature(record, fields=fields) for record in written)
     if want == got:
         return []
     out: list[str] = []
     for mine, theirs in zip(want, got):
-        for name, was, now in zip(KEPT_FIELDS, mine, theirs):
+        for name, was, now in zip(fields, mine, theirs):
             line = f"{name}: {was} arrived as {now}"
             if was != now and line not in out:
                 out.append(line)

@@ -634,6 +634,31 @@ def test_every_kept_field_is_a_refusal_when_it_changes(field):
     assert [line for line in lost if line.startswith(f"{field}:")], lost
 
 
+@pytest.mark.parametrize("field,value", (("creature_type", 4),
+                                          ("turn_class", 2)))
+def test_undead_fields_are_compared_only_for_the_measured_pool_title(
+        tmp_path, field, value):
+    """A changed Pool zombie byte is refused; later-title meanings are unknown."""
+    from goldbox import c64_port
+
+    before = CharacterRecord.from_bytes(bytes(RECORD_SIZE))
+    before.set("name", "BRUTUS")
+    after = CharacterRecord.from_bytes(before.to_bytes())
+    after.set(field, value)
+    for title, measured in (
+        (c64_port.POOL_OF_RADIANCE, True),
+        ("curse-of-the-azure-bonds", False),
+        ("secret-of-the-silver-blades", False),
+        ("pools-of-darkness", False),
+    ):
+        destination = saveplan.Destination(
+            port="dos", path=tmp_path / "out", slot="A", title=title,
+            native=True)
+        lost = saveplan.compare([before], [after], destination)
+        assert any(line.startswith(f"{field}:") for line in lost) is measured, \
+            (title, field, lost)
+
+
 def test_every_known_field_is_compared_or_named_as_not_compared():
     """The two lists are a partition of the layout's known fields.
 

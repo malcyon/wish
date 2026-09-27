@@ -170,18 +170,36 @@ def test_a_bare_write_reports_the_combat_icon_fields_by_name():
 
 # --- B: every field the writer takes has a boundary -------------------------
 
-def _copied_or_transformed():
-    d = c64_codec.field_disposition()
+def _copied_or_transformed(game):
+    d = c64_codec.field_disposition(game)
     return {n for n, why in d.items()
             if not why.startswith(("dropped:", "derived:", "constant:"))}
 
 
-def test_b_every_field_the_c64_writer_takes_has_a_boundary():
+@pytest.mark.parametrize("game", GAMES)
+def test_b_every_field_the_c64_writer_takes_has_a_boundary(game):
     """The hook into `field_disposition()`: a field added to the writer with no
     scalar range and no row in `boundarywidths.STRUCTURED` fails here."""
-    covered = {s.neutral for s in boundarywidths.scalars()} \
+    covered = {s.neutral for s in boundarywidths.scalars(game)} \
         | set(boundarywidths.STRUCTURED)
-    assert _copied_or_transformed() - covered == set()
+    assert _copied_or_transformed(game) - covered == set()
+
+
+def test_b_a_later_title_copy_without_a_boundary_is_caught(monkeypatch):
+    """A new Curse-only copy cannot borrow Pool's scalar coverage."""
+    curse = "curse-of-the-azure-bonds"
+    original = c64_codec.field_disposition
+
+    def with_unmeasured_copy(game=None):
+        disposition = original(game)
+        if game == curse:
+            disposition["creature_type"] = "copied to a newly mapped byte"
+        return disposition
+
+    monkeypatch.setattr(c64_codec, "field_disposition", with_unmeasured_copy)
+    with pytest.raises(AssertionError) as caught:
+        test_b_every_field_the_c64_writer_takes_has_a_boundary(curse)
+    assert "creature_type" in str(caught.value)
 
 
 def test_b_a_joined_scroll_is_written_as_separate_scrolls_in_separate_slots():
@@ -236,7 +254,7 @@ def test_c_every_scalar_at_its_extreme_round_trips(game, high, caplog):
 
     skipped = boundarywidths.recomputed_on_write(game, char.get("levels"))
     checked = 0
-    for s in boundarywidths.scalars():
+    for s in boundarywidths.scalars(game):
         if s.neutral in skipped:
             continue
         want = s.high if high else s.low
@@ -246,31 +264,35 @@ def test_c_every_scalar_at_its_extreme_round_trips(game, high, caplog):
     top = 255 if high else 0
     assert back.get("levels") == {n: top for n in c64_codec.LEVEL_FIELDS}
     # A sweep that skipped most of the scalars would pass by not looking.
-    assert checked == len(boundarywidths.scalars()) - len(
-        skipped.keys() & {s.neutral for s in boundarywidths.scalars()})
-    assert checked > len(boundarywidths.scalars()) // 2
+    assert checked == len(boundarywidths.scalars(game)) - len(
+        skipped.keys() & {s.neutral for s in boundarywidths.scalars(game)})
+    assert checked > len(boundarywidths.scalars(game)) // 2
 
 
 # --- D: one past a scalar is refused ----------------------------------------
 
-@pytest.mark.parametrize("scalar", boundarywidths.scalars(),
-                         ids=lambda s: s.neutral)
-def test_d_one_past_a_scalar_is_refused_not_wrapped(scalar):
+_SCALAR_CASES = [(game, scalar) for game in GAMES
+                 for scalar in boundarywidths.scalars(game)]
+
+
+@pytest.mark.parametrize("game,scalar", _SCALAR_CASES,
+                         ids=[f"{game}-{scalar.neutral}"
+                              for game, scalar in _SCALAR_CASES])
+def test_d_one_past_a_scalar_is_refused_not_wrapped(game, scalar):
     """A value one past the field's own width has to raise, naming the field,
     in every title -- a `& 0xFF` here would write a different number.  Bar
     experience above its width, which is clamped instead."""
-    for game in GAMES:
-        if scalar.neutral in boundarywidths.recomputed_on_write(game):
+    if scalar.neutral in boundarywidths.recomputed_on_write(game):
+        return
+    for past in (scalar.high + 1, scalar.low - 1):
+        if scalar.neutral == "experience" and past > scalar.high:
+            # Clamped, not refused: `test_xpceiling.py` has the clamp.
+            # Below zero is still refused, and stays in this loop.
             continue
-        for past in (scalar.high + 1, scalar.low - 1):
-            if scalar.neutral == "experience" and past > scalar.high:
-                # Clamped, not refused: `test_xpceiling.py` has the clamp.
-                # Below zero is still refused, and stays in this loop.
-                continue
-            char = boundarywidths.base(game)
-            char.set(scalar.neutral, past, "boundary: one past")
-            with pytest.raises(ValueError, match=scalar.c64):
-                c64_codec.write(char)
+        char = boundarywidths.base(game)
+        char.set(scalar.neutral, past, "boundary: one past")
+        with pytest.raises(ValueError, match=scalar.c64):
+            c64_codec.write(char)
 
 
 def test_d_one_past_a_class_level_is_refused():
@@ -500,12 +522,12 @@ def test_g_only_experience_is_wider_in_dos_than_in_the_c64():
     range inside the C64's, bar the exceptions named above (the Amiga's record
     is the DOS record re-cut, so it adds none) -- and this fails the day one
     more appears or one goes."""
-    dos_names = dict(dos_codec.DIRECT)
+    dos_names = dict(dos_codec.DIRECT + dos_codec.POOL_DIRECT)
     compared = 0
     wider = set()
     for game in GAMES:
         table = dos_port.FIELDS_BY_NAME_FOR[game]
-        for s in boundarywidths.scalars():
+        for s in boundarywidths.scalars(game):
             dos_field = table.get(dos_names.get(s.neutral))
             if dos_field is None:
                 continue

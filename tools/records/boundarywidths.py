@@ -41,6 +41,7 @@ from tools.records import boundarychars
 
 #: The three titles `goldbox.c64_codec` has a measured record for.
 GAMES = tuple(c64_codec.DELTAS_BY_KEY)
+POOL = "pool-of-radiance"
 
 #: What a name field holds.  The writer's `petscii.encode_record_name` folds
 #: to capitals and refuses anything that is not printable ASCII, so this
@@ -68,14 +69,16 @@ def value_range(kind: Kind, size: int) -> tuple[int, int] | None:
     return None
 
 
-def scalars() -> list[Scalar]:
-    """Every `c64_codec.DIRECT` pair, with the range of the field it lands in.
+def scalars(game: str | None = None) -> list[Scalar]:
+    """Every direct numeric copy measured for `game`, at its C64 width.
 
     Read from the layout rather than typed, so a field whose width the layout
-    changes moves here with it.
+    changes moves here with it.  With no title, return only the shared pairs;
+    the two Pool-only bytes must not become a claim about later titles.
     """
     out = []
-    for neutral, c64 in c64_codec.DIRECT:
+    direct = c64_codec.DIRECT + (c64_codec.POOL_DIRECT if game == POOL else ())
+    for neutral, c64 in direct:
         f = layout.FIELDS_BY_NAME[c64]
         span = value_range(f.kind, f.size)
         if span is None:
@@ -148,7 +151,7 @@ def at_extreme(game: str, high: bool) -> NeutralCharacter:
     which is the point of setting them.
     """
     char = base(game)
-    for s in scalars():
+    for s in scalars(game):
         char.set(s.neutral, s.high if high else s.low, "boundary")
     top = 255 if high else 0
     char.set("levels", {name: top for name in c64_codec.LEVEL_FIELDS},
@@ -246,7 +249,7 @@ def main(argv=None) -> int:
         print(f"{game}: memorised {c.memorised}, spellbook ids 1-{c.spellbook}, "
               f"items {c.items}, trait slots {c.traits}, name {NAME_WIDTH}")
         skipped = recomputed_on_write(game)
-        for s in scalars():
+        for s in scalars(game):
             note = f"  (recomputed: {skipped[s.neutral]})" \
                 if s.neutral in skipped else ""
             print(f"  {s.neutral:26} {s.low:>7} .. {s.high:<9}{note}")

@@ -294,7 +294,7 @@ def test_e_the_sweep_covers_the_scalars_it_says_it_does():
     the numeric targets `write_targets` names less the ones with their own
     sentence."""
     counts = {g: len(doswidths.scalars(g)) for g in doswidths.GAMES}
-    assert counts == {POOL: 48, CURSE: 41, SILVER: 41, POOLS_OF_DARKNESS: 34}
+    assert counts == {POOL: 50, CURSE: 41, SILVER: 41, POOLS_OF_DARKNESS: 34}
 
 
 @pytest.mark.parametrize("game", doswidths.GAMES)

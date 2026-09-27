@@ -151,6 +151,11 @@ def _base(game: str = GAME) -> NeutralCharacter:
     # each other and with what the DOS engine actually stores.
     for n, (field, _) in enumerate(c64_codec.DIRECT):
         char.set(field, n + 1, f"base: value {n + 1}")
+    if game == GAME:
+        # The game-written Pool no-cast control holds zero at both bytes;
+        # the animated BRUTUS specimen's (4, 2) is tested separately.
+        char.set("creature_type", 0, "base: Pool no-cast control byte")
+        char.set("turn_class", 0, "base: Pool no-cast turning row")
     char.set("race", human_code(game), "base: human, so no racial ceiling "
              "narrows a case that has not overridden it")
     char.set("levels", {"fighter": 1}, "base")
