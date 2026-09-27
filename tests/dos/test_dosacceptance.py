@@ -4259,7 +4259,7 @@ import os, pathlib, runpy, sys, time
 sys.path.insert(0, sys.argv[1])
 work = pathlib.Path(sys.argv[2])
 shim = sys.argv[3]
-from tools.dos import acceptance as a, dosbox
+from tools.dos import dosbox, dospod
 
 class Slot:
     def release(self):
@@ -4280,7 +4280,10 @@ class Session:
     def close(self):
         pass
 
-a.Title.find_game = lambda self: work
+# `run_path` executes the script afresh, so its own `Title` is not `a.Title`:
+# the archive lookup is faked where both classes reach it, in the modules.
+dosbox.find_game = lambda stem: work
+dospod.find_game = lambda stem: work
 dosbox.claim = lambda note: Slot()
 dosbox.Session = Session
 sys.argv = [shim, "--save", str(work / "save"), "--out", str(work / "out"),
