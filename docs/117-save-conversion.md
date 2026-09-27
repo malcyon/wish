@@ -382,7 +382,7 @@ rubbish.
 | spell-slot arrays × levels | 2 × 3 | 3 × 5 | 4 × 7 | 3 × 9 |
 | per-class level arrays | 1 × 8 | 2 × 8 | 2 × 7 | 3 × 7 |
 | coin slots | 7 | 7 | 7 | **3** |
-| saved game | `SAVGAM?.DAT` 13137 | `SAVGAM?.DAT` 13149 | `SAVGAM?.DAT` 5469 | `SAVGAM?.PTY` 1364 + `VAULT?.DAT` 12 |
+| saved game | `SAVGAM?.DAT` 13137 | `SAVGAM?.DAT` 13149 | `SAVGAM?.DAT` 5469 | `SAVGAM?.PTY` 1364 + `VAULT?.DAT` 12 + 63n |
 
 The spellbook widths are not guesses: 100 and 117 are `goldbox/spells.py`'s own
 Curse and Silver Blades id spaces, measured on the **C64** long before any DOS
@@ -498,7 +498,7 @@ differ only in front of that**.
 
 | | Pool of Radiance | Curse | Silver Blades | Pools of Darkness |
 |---|---|---|---|---|
-| file | `SAVGAM?.DAT` 13137 | `SAVGAM?.DAT` 13149 | `SAVGAM?.DAT` 5469 | `SAVGAM?.PTY` 1364 + `VAULT?.DAT` 12 |
+| file | `SAVGAM?.DAT` 13137 | `SAVGAM?.DAT` 13149 | `SAVGAM?.DAT` 5469 | `SAVGAM?.PTY` 1364 + `VAULT?.DAT` 12 + 63n |
 | undecoded head | — | — | — | **1024** |
 | container-number byte | 1 | 1 | 1 | — |
 | ECL variables, `u16le`, one per C64 byte | 2560 | 2560 | 2560 | — |
@@ -549,9 +549,10 @@ Five nonzero bytes in the whole region, because the shipped container is a
 party that has never been played.
 
 **The size names the shape, not the game.** Treasures of the Savage Frontier
-writes the same 1364-byte `SAVGAM<slot>.PTY` and 12-byte `VAULT<slot>.DAT`
-that Pools of Darkness does, with the same 336-byte tail; only the directory
-says which game a file came from.
+writes the same 1364-byte `SAVGAM<slot>.PTY` and empty 12-byte `VAULT<slot>.DAT`
+that Pools of Darkness does (12 + 63 bytes per stored item once it holds
+items), with the same 336-byte tail; only the directory says which game a
+file came from.
 
 ### What the other three titles cost to *convert*, which is not the same thing
 
@@ -2180,6 +2181,7 @@ graph LR
   amiga_savegame --> amiga_adf
   amiga_savegame -.->|deferred| amiga_dax
   amiga_savegame --> amiga_later
+  amiga_savegame --> amiga_pod
   amiga_savegame -.->|deferred| amiga_por
   amiga_savegame --> amiga_port
   amiga_savegame --> areas

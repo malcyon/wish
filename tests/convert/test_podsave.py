@@ -119,6 +119,120 @@ def test_pod_savgam_refuses_a_count_disagreeing_with_variable_32():
 
 
 # ---------------------------------------------------------------------------
+# The vault: `PodVault`, its DOS codec and its Amiga codec (#651)
+# ---------------------------------------------------------------------------
+
+def _amiga_node(**fields) -> bytes:
+    """One twenty-byte Amiga item node, big-endian, from `amiga_pod`'s own map."""
+    raw = bytearray(amiga_pod.ITEM_FILE_SIZE)
+    for name, value in fields.items():
+        f, at = amiga_pod.ITEM_FIELDS[name], amiga_pod.ITEM_FIELD_AT[name]
+        raw[at:at + f.size] = value.to_bytes(f.size, "big")
+    return bytes(raw)
+
+
+def _dos_item_record(type_index: int = 5) -> bytes:
+    """A 63-byte DOS item record with `next` and `readied` already zero, so
+    it round-trips through `pod_vault_to_dos` unchanged."""
+    raw = bytearray(range(dos_port.ITEM_SIZE))
+    for name in ("next", "readied"):
+        f = dos_port.ITEM_FIELDS_BY_NAME[name]
+        raw[f.offset:f.end] = bytes(f.size)
+    raw[dos_port.ITEM_FIELDS_BY_NAME["type_index"].offset] = type_index
+    return bytes(raw)
+
+
+def _amiga_vault(header: tuple[int, int, int], count: int, body: bytes,
+                 marker: int = amiga_savegame.POD_VAULT_MARKER) -> bytes:
+    return (struct.pack(">III", *header) + struct.pack(">HH", marker, count)
+            + body)
+
+
+def test_amiga_to_dos_decode_splits_the_case_and_swaps_the_long_sword_type():
+    sword = _amiga_node(type_index=1, weight=60, quantity=1)
+    case = _amiga_node(type_index=0x49, quantity=2, weight=2)
+    mage = _amiga_node(type_index=39, charges=5, effect=6, power=7,
+                       weight=1, quantity=1)
+    cleric = _amiga_node(type_index=40, charges=8, effect=9, power=10,
+                         weight=1, quantity=1)
+    longsword = _amiga_node(type_index=105, weight=80, quantity=1)
+    data = _amiga_vault((1, 2, 3), 3, sword + case + mage + cleric + longsword)
+    data += bytes(amiga_savegame.POD_VAULT_SIZE - len(data))
+
+    vault = amiga_savegame.pod_vault_from_amiga(data)
+    assert (vault.platinum, vault.gems, vault.jewelry) == (1, 2, 3)
+    assert len(vault.items) == 4
+    got = [dos_codec.DosItem(r) for r in vault.items]
+    assert [(i.get("type_index"), i.get("weight")) for i in got] == [
+        (1, 60), (39, 2), (40, 2), (73, 80)]
+    assert [(i.get("charges"), i.get("effect"), i.get("power"))
+           for i in got[1:3]] == [(5, 6, 7), (8, 9, 10)]
+    for record in vault.items:
+        f = dos_port.ITEM_FIELDS_BY_NAME["next"]
+        assert record[f.offset:f.end] == bytes(f.size)
+        assert record[dos_port.ITEM_FIELDS_BY_NAME["readied"].offset] == 0
+
+
+def test_pod_vault_round_trips_through_dos_bytes():
+    v = dos_codec.PodVault(1, 2, 3, (_dos_item_record(5), _dos_item_record(9)))
+    assert dos_codec.pod_vault_from_dos(dos_codec.pod_vault_to_dos(v)) == v
+    assert dos_codec.pod_vault_to_dos(dos_codec.EMPTY_POD_VAULT) == bytes(12)
+    assert dos_codec.pod_vault_from_dos(bytes(12)) == dos_codec.EMPTY_POD_VAULT
+
+
+def test_pod_vault_round_trips_two_hundred_case_free_items():
+    items = tuple(_dos_item_record(n % 128) for n in range(200))
+    v = dos_codec.PodVault(0, 0, 0, items)
+    raw = dos_codec.pod_vault_to_dos(v)
+    assert len(raw) == 12 + 63 * 200
+    assert dos_codec.pod_vault_from_dos(raw) == v
+
+
+def test_pod_vault_from_dos_refuses_a_partial_trailing_record():
+    with pytest.raises(dos_codec.DosRecordError):
+        dos_codec.pod_vault_from_dos(bytes(12 + 63 + 5))
+
+
+def test_pod_vault_from_amiga_refuses_a_wrong_marker():
+    data = _amiga_vault((0, 0, 0), 0, b"", marker=0x1234)
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="marker"):
+        amiga_savegame.pod_vault_from_amiga(data)
+
+
+def test_pod_vault_from_amiga_refuses_a_case_walking_past_two_hundred_nodes():
+    case = _amiga_node(type_index=0x49, quantity=201)
+    scroll = _amiga_node(type_index=39, quantity=0)
+    data = _amiga_vault((0, 0, 0), 1, case + scroll * 201)
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="200"):
+        amiga_savegame.pod_vault_from_amiga(data)
+
+
+def test_pod_vault_to_amiga_round_trips_case_free_items():
+    one = amiga_pod.PodItem.from_bytes(
+        _amiga_node(type_index=1, weight=10, quantity=1)).to_dos_bytes()
+    two = amiga_pod.PodItem.from_bytes(
+        _amiga_node(type_index=2, weight=20, quantity=3)).to_dos_bytes()
+    v = dos_codec.PodVault(10, 20, 30, (one, two))
+    raw = amiga_savegame.pod_vault_to_amiga(v)
+    assert len(raw) == amiga_savegame.POD_VAULT_SIZE
+    assert raw[16 + 2 * amiga_savegame.POD_ITEM_BYTES:] == bytes(
+        amiga_savegame.POD_VAULT_SIZE - 16 - 2 * amiga_savegame.POD_ITEM_BYTES)
+    assert amiga_savegame.pod_vault_from_amiga(raw) == v
+
+
+def test_pod_vault_to_amiga_refuses_more_than_two_hundred_items():
+    v = dos_codec.PodVault(0, 0, 0, tuple(_dos_item_record() for _ in range(201)))
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="200"):
+        amiga_savegame.pod_vault_to_amiga(v)
+
+
+def test_pod_vault_to_amiga_refuses_a_dos_type_105_record():
+    v = dos_codec.PodVault(0, 0, 0, (_dos_item_record(105),))
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="105"):
+        amiga_savegame.pod_vault_to_amiga(v)
+
+
+# ---------------------------------------------------------------------------
 # Every DOS Pools of Darkness specimen, rebuilt byte for byte
 # ---------------------------------------------------------------------------
 
@@ -170,20 +284,54 @@ def _pod_amiga_slots():
             for i, (_label, blob) in enumerate(copies)]
 
 
+def _pod_amiga_disks_with_vaults():
+    """Each disk-and-slot holding a Pools of Darkness saved game, alongside
+    its already-open `AmigaDisk`, so the vault beside the same slot can be
+    read too. Skips cleanly with no disks, as `_pod_amiga_slots` does."""
+    from tools.amiga import amigasaves
+
+    found = []
+    for label, data in amigasaves.images():
+        try:
+            disk = AmigaDisk(data)
+        except (AmigaDiskError, ValueError):
+            continue
+        try:
+            slots = amiga_savegame.pod_slots_present(disk)
+        except amiga_savegame.AmigaSaveError:
+            continue
+        for letter in slots:
+            found.append((f"{label}:{letter}", disk, letter))
+    if not found:
+        pytest.skip("no Amiga Pools of Darkness saved game; set $AMIGA_DISKS")
+    return found
+
+
 def test_new_pod_save_from_writes_every_played_amiga_slot(tmp_path):
+    """Also proves the vault converts rather than being written empty: the
+    2026-09-23 comment measured this loses 40 to 99 items on five of six
+    distinct played vaults. The distinct record counts, once cases are
+    split, are the ones the 2026-09-27 plan measured: 0, 64, 97, 88, 99, 40."""
     seen = 0
-    for name, blob in _pod_amiga_slots():
+    distinct_counts = set()
+    for name, disk, letter in _pod_amiga_disks_with_vaults():
         seen += 1
+        blob = amiga_savegame.pod_read_slot(disk, letter)
         state = amiga_savegame.pod_from_amiga(blob, source=name)
         characters = [amiga_pod.pod_to_neutral(block)
                      for block in amiga_savegame.pod_parse(blob).blocks]
+        vault = amiga_savegame.pod_read_vault(disk, letter)
         out = tmp_path / f"slot{seen}"
-        report = dos_codec.new_pod_save_from(state, characters, out, "A")
+        report = dos_codec.new_pod_save_from(
+            state, characters, out, "A", vault=vault)
 
         raw = (out / "SAVGAMA.PTY").read_bytes()
         assert (dataclasses.replace(world_state.pod_from_dos(raw), source="")
                == dataclasses.replace(state, source="")), name
-        assert (out / "VAULTA.DAT").read_bytes() == bytes(12), name
+        got_vault = dos_codec.pod_vault_from_dos(
+            (out / "VAULTA.DAT").read_bytes())
+        assert got_vault == vault, name
+        distinct_counts.add(len(vault.items))
         assert sorted(p.name for p in out.glob("CHRDATA*.SAV")) == [
             f"CHRDATA{n}.SAV" for n in range(1, len(characters) + 1)], name
 
@@ -194,6 +342,7 @@ def test_new_pod_save_from_writes_every_played_amiga_slot(tmp_path):
         assert report.dropped == [], name
         assert report.losses == [], name
     assert seen >= 8
+    assert distinct_counts == {0, 64, 97, 88, 99, 40}
 
 
 def test_a_converted_slot_weighs_what_the_amiga_computed(tmp_path):
@@ -209,7 +358,8 @@ def test_a_converted_slot_weighs_what_the_amiga_computed(tmp_path):
             stored.append(amiga_pod.PodCharacter.from_bytes(block).encumbrance)
         state = amiga_savegame.pod_from_amiga(blob, source=name)
         out = tmp_path / f"slot{seen}"
-        dos_codec.new_pod_save_from(state, characters, out, "A")
+        dos_codec.new_pod_save_from(state, characters, out, "A",
+                                    vault=dos_codec.EMPTY_POD_VAULT)
         got = [c.expected_encumbrance()
                for c in dos_codec.read_party(out, "A")]
         assert got == stored, name

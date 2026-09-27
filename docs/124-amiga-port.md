@@ -2507,9 +2507,12 @@ CONFIRMED from both callbacks.
 
 #### `Vault<L>.DAT` is the item vault, and a slot loads without one
 
-4016 bytes: twelve of header, the marker `$FFFF`, a `u16be` item count, then a
-fixed two hundred twenty-byte item nodes with the unused ones padded from the
-same item table (`0x3DA86`). 12 + 4 + 200 × 20 = 4016, which is what all
+4016 bytes: twelve of header, the marker `$FFFF`, a `u16be` count of top-level
+items, then a fixed two hundred twenty-byte item nodes with the unused ones
+padded from the same item table (`0x3DA86`). A scroll case (type `0x49`) is
+followed inline by its own `quantity` chained nodes, so the count is not the
+node count -- reading `count × 20` bytes as items loses the tail and reads
+scrolls as ordinary items. 12 + 4 + 200 × 20 = 4016, which is what all
 seventeen on these disks measure, all with the marker and counts of 0 to 97.
 **The saved-game loader never opens it** — it is read when the player enters
 the vault and written when they leave (`0x3DD66`, `0x3DF1E`), and the save

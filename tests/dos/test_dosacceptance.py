@@ -1878,10 +1878,13 @@ INA_THIEF = (135, 90, 80, 70, 60, 50, 40, 30)
 TRIPEL_THIEF = (120, 1, 2, 3, 4, 5, 6, 7)
 
 
-def _pod_disk(tmp_path: pathlib.Path, slot: str = "C") -> pathlib.Path:
+def _pod_disk(tmp_path: pathlib.Path, slot: str = "C",
+             vault: bytes | None = None) -> pathlib.Path:
     """A blank Amiga save disk holding one Pools of Darkness saved game,
     built from the documented format: INA with a readied scroll case of two
-    scrolls and a sword, and TRIPEL with nothing.  No game file is read."""
+    scrolls and a sword, and TRIPEL with nothing.  No game file is read.
+
+    `vault`, if given, is written as `Vault<slot>.DAT` beside the save."""
     import struct
 
     from goldbox import amiga_savegame, dos_savegame
@@ -1903,9 +1906,53 @@ def _pod_disk(tmp_path: pathlib.Path, slot: str = "C") -> pathlib.Path:
     disk = AmigaDisk.blank("PDARKSAVE")
     disk.make_dir(f"/{amiga_savegame.SAVE_DRAWER}")
     disk.write_file(amiga_savegame.pod_slot_path(slot), bytes(data))
+    if vault is not None:
+        disk.write_file(amiga_savegame.pod_vault_path(slot), vault)
     path = tmp_path / "pod-save.adf"
     path.write_bytes(disk.to_bytes())
     return path
+
+
+def test_an_amiga_vault_reaches_the_dos_folder_with_each_case_split(tmp_path):
+    """The vault beside the converted slot: coins, a sword, a scroll case
+    split into its two scrolls, and an Amiga type-105 item that becomes DOS
+    type 73 (#678). Before the fix `VAULTA.DAT` was 12 zero bytes; a red run
+    that only raises `AttributeError` on a missing name does not count."""
+    import struct
+
+    from goldbox import amiga_pod
+
+    sword = _pod_node(type_index=1, weight=60, quantity=1)
+    case = _pod_node(type_index=0x49, quantity=2, weight=2)
+    mage = _pod_node(type_index=39, charges=5, effect=6, power=7,
+                     weight=1, quantity=1)
+    cleric = _pod_node(type_index=40, charges=8, effect=9, power=10,
+                       weight=1, quantity=1)
+    longsword = _pod_node(type_index=105, weight=80, quantity=1)
+    body = sword + case + mage + cleric + longsword
+    vault = (struct.pack(">III", 1, 2, 3) + struct.pack(">HH", 0xFFFF, 3)
+             + body)
+    vault += bytes(4016 - len(vault))
+
+    out = tmp_path / "out"
+    out.mkdir()
+    disk_path = _pod_disk(tmp_path, slot="A", vault=vault)
+    built = da.build_amiga_source(str(disk_path), "SavGamA.pty", out)
+    assert "refused" not in built, built.get("refused")
+
+    heads = [amiga_pod.PodItem.from_bytes(sword),
+             amiga_pod.PodItem.from_bytes(case),
+             amiga_pod.PodItem.from_bytes(longsword)]
+    expected_items = amiga_pod.unbundle(heads, [mage, cleric])
+    expected = (struct.pack("<III", 1, 2, 3)
+               + b"".join(it.to_dos_bytes() for it in expected_items))
+
+    got = (out / "source" / "VAULTA.DAT").read_bytes()
+    assert got == expected
+    assert [(i["type_index"], i["spells"], i["weight"])
+           for i in built["read"]["A"]["vault"]["items"]] == [
+        (1, [0, 0, 0], 60), (39, [5, 6, 7], 2), (40, [8, 9, 10], 2),
+        (73, [0, 0, 0], 80)]
 
 
 @pytest.fixture

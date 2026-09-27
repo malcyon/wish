@@ -227,7 +227,10 @@ disagreed with itself); Silver Blades' variable array was called "far
 smaller", and it is not smaller at all — what is missing is the script buffer;
 and Pools of Darkness was given a `SAVGAM<slot>.DAT` "plus a separate
 `SAVGAM<slot>.PTY`", where it writes the `.PTY` **instead** and keeps a
-12-byte `VAULT<slot>.DAT` beside it.
+`VAULT<slot>.DAT` beside it -- 12 bytes of coin header plus a 63-byte item
+record per stored item, empty at 12 bytes. See the 2026-09-27 comment on
+#651 (Convert a Pools of Darkness party's item vault between DOS and the
+Amiga along with its saved game).
 
 `goldbox/dos_savegame.py`'s `SAVE_SHAPES` is the machine-readable form: one
 row per title, region widths rather than offsets, and the widths must add up
@@ -291,7 +294,7 @@ specimen `#113 (Play DOS Curse far enough to save a party with items)` is
 about. **Pools of Darkness is no longer in that list**: see the next section.
 
 **The size names the shape, not the game.** Treasures of the Savage Frontier
-writes the same 1364-byte `SAVGAM<slot>.PTY` and 12-byte `VAULT<slot>.DAT`
+writes the same 1364-byte `SAVGAM<slot>.PTY` and empty 12-byte `VAULT<slot>.DAT`
 that Pools of Darkness does, with the same 336-byte tail, and its two
 containers read cleanly through the Pools of Darkness row. Only the directory
 a file came from says which game wrote it.

@@ -80,11 +80,13 @@ def _u16(data: bytes, at: int) -> int:
 #: `Vault<L>.DAT`: twelve bytes of header, the marker `$FFFF`, a `u16be` item
 #: count, then a fixed two hundred twenty-byte item nodes, the unused ones
 #: padded from the same item template table (`0x3DA86`).  12 + 4 + 200 * 20 =
-#: 4016, which is what every one of them measures.
-VAULT_HEADER = 12
-VAULT_MARKER = 0xFFFF
-VAULT_ITEMS = 0xC8
-VAULT_SIZE = VAULT_HEADER + 4 + VAULT_ITEMS * ITEM_BYTES
+#: 4016, which is what every one of them measures.  The map lives in
+#: `goldbox.amiga_savegame` under `POD_VAULT_*`; these aliases keep this
+#: module's and its tests' own spelling.
+VAULT_HEADER = amiga_savegame.POD_VAULT_HEADER
+VAULT_MARKER = amiga_savegame.POD_VAULT_MARKER
+VAULT_ITEMS = amiga_savegame.POD_VAULT_NODES
+VAULT_SIZE = amiga_savegame.POD_VAULT_SIZE
 
 #: The executable, on disk 1.
 EXECUTABLE = "Pools of Darkness"

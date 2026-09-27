@@ -23,6 +23,7 @@ from dataclasses import field as dataclass_field
 
 from . import (
     amiga_later,
+    amiga_pod,
     amiga_port,
     areas,
     c64_port,
@@ -1771,6 +1772,15 @@ POD_EFFECT_HEAD_AT = 0x04
 POD_EFFECT_NEXT_AT = 0x06
 POD_NAME_AT, POD_NAME_BYTES = 0x60, 16
 
+#: `Vault<L>.DAT`: twelve bytes of header, the marker `$FFFF`, a `u16be` item
+#: count, then two hundred twenty-byte item nodes, the unused ones padded
+#: from the game's own item template table (`docs/124-amiga-port.md`).
+#: `tools/amiga/podsavegame.py`'s `VAULT_*` names alias these.
+POD_VAULT_HEADER = 12
+POD_VAULT_MARKER = 0xFFFF
+POD_VAULT_NODES = 200
+POD_VAULT_SIZE = POD_VAULT_HEADER + 4 + POD_VAULT_NODES * POD_ITEM_BYTES
+
 
 class PodSaveError(ValueError):
     """A buffer that is not an Amiga Pools of Darkness saved game."""
@@ -1991,3 +2001,112 @@ def pod_read_slot(disk: AmigaDisk, slot: str) -> bytes:
             f"{path} is {len(data)} bytes; a Pools of Darkness saved game is "
             f"{POD_SAVEGAME_SIZE}")
     return data
+
+
+def pod_vault_path(slot: str) -> str:
+    """Where an Amiga Pools of Darkness slot's item vault lives."""
+    return f"/{SAVE_DRAWER}/Vault{slot_letter(slot)}.DAT"
+
+
+def pod_vault_from_amiga(data: bytes) -> dos_codec.PodVault:
+    """`Vault<L>.DAT` as coins and DOS item records.
+
+    Twelve bytes of header, the marker `$FFFF`, a `u16be` count of top-level
+    items, then each item's twenty bytes; a scroll case (`is_scroll`) is
+    followed inline by its own `quantity` chained twenty-byte nodes.  The
+    walk stops at the count, never at the padding: `count` is the number of
+    top-level items, not the node count, and taking `count * 20` bytes would
+    read scrolls as ordinary items (2026-09-27 comment on #651).
+    """
+    if len(data) < POD_VAULT_HEADER + 4:
+        raise AmigaSaveError(
+            f"a Pools of Darkness vault is at least "
+            f"{POD_VAULT_HEADER + 4} bytes; got {len(data)}")
+    platinum, gems, jewelry = struct.unpack_from(">III", data, 0)
+    marker = struct.unpack_from(">H", data, POD_VAULT_HEADER)[0]
+    if marker != POD_VAULT_MARKER:
+        raise AmigaSaveError(
+            f"a Pools of Darkness vault starts its item list with marker "
+            f"{POD_VAULT_MARKER:#06x}; got {marker:#06x}")
+    count = struct.unpack_from(">H", data, POD_VAULT_HEADER + 2)[0]
+    heads: list[amiga_pod.PodItem] = []
+    chained: list[bytes] = []
+    at = POD_VAULT_HEADER + 4
+    nodes = 0
+    while len(heads) < count:
+        if at + POD_ITEM_BYTES > len(data):
+            raise AmigaSaveError(
+                f"the vault's item list runs off the end at byte {at}")
+        nodes += 1
+        if nodes > POD_VAULT_NODES:
+            raise AmigaSaveError(
+                f"the vault's item list holds more than {POD_VAULT_NODES} "
+                f"nodes, which the game's own deposit refuses to write")
+        item = amiga_pod.PodItem.from_bytes(data[at:at + POD_ITEM_BYTES])
+        at += POD_ITEM_BYTES
+        heads.append(item)
+        if item.is_scroll:
+            for _ in range(item.quantity):
+                if at + POD_ITEM_BYTES > len(data):
+                    raise AmigaSaveError(
+                        f"a scroll case's chained nodes run off the end at "
+                        f"byte {at}")
+                nodes += 1
+                if nodes > POD_VAULT_NODES:
+                    raise AmigaSaveError(
+                        f"the vault's item list holds more than "
+                        f"{POD_VAULT_NODES} nodes, which the game's own "
+                        f"deposit refuses to write")
+                chained.append(data[at:at + POD_ITEM_BYTES])
+                at += POD_ITEM_BYTES
+    items = tuple(it.to_dos_bytes() for it in amiga_pod.unbundle(heads, chained))
+    return dos_codec.PodVault(platinum, gems, jewelry, items)
+
+
+def pod_read_vault(disk: AmigaDisk, slot: str) -> dos_codec.PodVault:
+    """One slot's item vault, or `dos_codec.EMPTY_POD_VAULT` with no file.
+
+    A slot with no vault file holds no stored items, so an empty DOS vault
+    loses nothing.
+    """
+    path = pod_vault_path(slot)
+    try:
+        data = disk.read_file(path)
+    except AmigaDiskError:
+        return dos_codec.EMPTY_POD_VAULT
+    return pod_vault_from_amiga(data)
+
+
+def pod_vault_to_amiga(vault: dos_codec.PodVault) -> bytes:
+    """`vault` as the bytes `Vault<L>.DAT` holds.
+
+    For the DOS to Amiga direction (#194, commit 2): a DOS vault has no case,
+    so every record becomes an ordinary head item -- a DOS type 105 record
+    would ask the reader to chain-walk nodes that are not there, and is
+    refused as damaged.  Padding past the written heads, up to
+    `POD_VAULT_SIZE`, is left zero -- whether the game accepts that in place
+    of its own item-template padding is #651's still-open padding question,
+    settled by a WinUAE run rather than by this function.
+    """
+    if len(vault.items) > POD_VAULT_NODES:
+        raise AmigaSaveError(
+            f"a Pools of Darkness vault of {len(vault.items)} items has no "
+            f"Amiga counterpart the game itself could write, which caps a "
+            f"vault at {POD_VAULT_NODES} nodes; write a "
+            f"{POD_VAULT_HEADER + 4 + (POD_VAULT_NODES + 1) * POD_ITEM_BYTES}"
+            f"-byte VaultA.DAT, load it in WinUAE and enter the vault to "
+            f"settle whether the Amiga actually enforces this")
+    heads = [amiga_pod.PodItem.from_dos_bytes(r) for r in vault.items]
+    for head in heads:
+        if head.is_scroll:
+            raise AmigaSaveError(
+                "a DOS vault item of type 105 has no Amiga scroll-case "
+                "counterpart -- DOS `ITEMS` row 105 is empty, so such a "
+                "record is damaged")
+    out = bytearray(struct.pack(">III", vault.platinum, vault.gems,
+                                vault.jewelry))
+    out += struct.pack(">HH", POD_VAULT_MARKER, len(heads))
+    for head in heads:
+        out += head.raw
+    out += bytes(POD_VAULT_SIZE - len(out))
+    return bytes(out)

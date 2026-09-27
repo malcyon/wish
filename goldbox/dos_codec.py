@@ -198,6 +198,10 @@ __all__ = [
     "new_dos_save_from",
     "new_dos_save",
     "pod_savgam",
+    "PodVault",
+    "EMPTY_POD_VAULT",
+    "pod_vault_from_dos",
+    "pod_vault_to_dos",
     "new_pod_save_from",
 ]
 
@@ -9409,9 +9413,80 @@ def pod_savgam(state: "world_state.PodWorldState", slot: str, count: int
     return out, report
 
 
+@dataclasses.dataclass(frozen=True)
+class PodVault:
+    """A Pools of Darkness slot's stored coins and items, `VAULT<L>.DAT`.
+
+    A vault belongs to the slot, not a character, and this is the pivot both
+    ports share: `items` is a tuple of 63-byte DOS records, the same layout
+    `dos_port.ITEM_LAYOUT` gives a character's own items.
+    """
+
+    platinum: int
+    gems: int
+    jewelry: int
+    items: tuple[bytes, ...]
+
+
+#: A slot with no vault file, or no items stored -- the 12-byte, all-zero
+#: stub every DOS save on this machine holds before the vault is used.
+EMPTY_POD_VAULT = PodVault(0, 0, 0, ())
+
+#: Where `next` and `readied` sit in a 63-byte item record, by name rather
+#: than as literals -- `dos_port.ITEM_LAYOUT`'s own offsets.
+_VAULT_NEXT = ITEM_FIELDS_BY_NAME["next"]
+_VAULT_READIED = ITEM_FIELDS_BY_NAME["readied"]
+
+
+def pod_vault_from_dos(data: bytes) -> PodVault:
+    """`VAULT<L>.DAT` as its coins and item records.
+
+    12 bytes of header -- platinum, gems, jewelry, each `u32le` -- then one
+    63-byte item record per stored item, with no count and no marker
+    (2026-09-27 comment on #651, read from `GAME.OVR`'s writer at `0x13B5D`
+    and loader at `0x138FA`). The loader silently drops a partial trailing
+    record; the writer never makes one, so a partial one here is damage.
+    """
+    if len(data) < 12 or (len(data) - 12) % ITEM_SIZE != 0:
+        raise DosRecordError(
+            f"a Pools of Darkness vault is 12 bytes plus a whole number of "
+            f"{ITEM_SIZE}-byte item records; got {len(data)}")
+    platinum, gems, jewelry = struct.unpack_from("<III", data, 0)
+    n = (len(data) - 12) // ITEM_SIZE
+    items = tuple(
+        data[12 + i * ITEM_SIZE:12 + (i + 1) * ITEM_SIZE]
+        for i in range(n))
+    return PodVault(platinum, gems, jewelry, items)
+
+
+def pod_vault_to_dos(vault: PodVault) -> bytes:
+    """`vault` as the bytes `VAULT<L>.DAT` holds.
+
+    Each record's `next` (`0x2A`-`0x2D`) is zeroed: the loader overwrites it
+    only when it appends a following node, so a non-zero value on the last
+    record on disk would send the writer and the vault screen walking into
+    arbitrary memory. `readied` is zeroed too: neither route into the DOS
+    vault -- the item menu's drop or the party routine -- leaves an item
+    readied there.
+    """
+    out = bytearray(struct.pack("<III", vault.platinum, vault.gems,
+                                vault.jewelry))
+    for item in vault.items:
+        if len(item) != ITEM_SIZE:
+            raise DosRecordError(
+                f"a Pools of Darkness vault item is {ITEM_SIZE} "
+                f"bytes; got {len(item)}")
+        record = bytearray(item)
+        record[_VAULT_NEXT.offset:_VAULT_NEXT.end] = bytes(_VAULT_NEXT.size)
+        record[_VAULT_READIED.offset] = 0
+        out += record
+    return bytes(out)
+
+
 def new_pod_save_from(state: "world_state.PodWorldState",
                       characters: "Sequence[NeutralCharacter]",
-                      out: str | pathlib.Path, slot: str) -> "SaveReport":
+                      out: str | pathlib.Path, slot: str, *,
+                      vault: PodVault) -> "SaveReport":
     """A whole Pools of Darkness DOS save from a place and a party.
 
     Not built on `new_dos_save_from`: that goes through `_c64_game_of`,
@@ -9442,10 +9517,10 @@ def new_pod_save_from(state: "world_state.PodWorldState",
         _put_character_files(staging, slot, built, record_shape, report)
 
         (staging / f"SAVGAM{slot}{shape.suffix}").write_bytes(bytes(savgam))
-        (staging / f"VAULT{slot}.DAT").write_bytes(bytes(12))
+        (staging / f"VAULT{slot}.DAT").write_bytes(pod_vault_to_dos(vault))
         report.converted.append(
-            f"VAULT{slot}.DAT: 12 zero bytes, which is what every Pools of "
-            f"Darkness VAULT<slot>.DAT on this machine holds")
+            f"VAULT{slot}.DAT: {vault.platinum} platinum, {vault.gems} gems, "
+            f"{vault.jewelry} jewelry, {len(vault.items)} item record(s)")
 
         if report.unwritten:
             raise DosRecordError(

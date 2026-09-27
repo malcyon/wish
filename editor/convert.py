@@ -820,6 +820,18 @@ class AmigaDosRehearsal(Rehearsal):
     game_dir: pathlib.Path | None
 
 
+@dataclasses.dataclass
+class PodAmigaDosRehearsal(AmigaDosRehearsal):
+    """`AmigaDosRehearsal` plus the slot's item vault.
+
+    Its own subclass rather than a field on the shared one: `AmigaToDos`
+    builds `AmigaDosRehearsal` positionally, for titles that have no vault,
+    and this one field belongs only to Pools of Darkness.
+    """
+
+    vault: Any
+
+
 class AmigaToDos(C64ToDos):
     """An Amiga `.adf` becomes a DOS save folder, for any title in
     `goldbox.amiga_shared.CONVERTS` (#354).
@@ -931,7 +943,7 @@ class PodAmigaToDos(Direction):
     def rehearse(self, source: Source, slot: str, options: Any,
                 names: "Mapping[str, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None
-                ) -> AmigaDosRehearsal:
+                ) -> "PodAmigaDosRehearsal":
         if leave:
             # Only a C64 record has a slot count a pack can overflow; a
             # choice of what to leave behind means nothing to this port.
@@ -951,20 +963,22 @@ class PodAmigaToDos(Direction):
                      for block in amiga_savegame.pod_parse(data).blocks]
         characters = saveplan.fit_names(
             characters, self.destination_port, self.shape.key, names)
+        vault = amiga_savegame.pod_read_vault(disk, source.slot)
         with tempfile.TemporaryDirectory(prefix="wish-convert-") as scratch:
             scratch_path = pathlib.Path(scratch)
             report = dos_codec.new_pod_save_from(
-                state, characters, scratch_path, slot)
+                state, characters, scratch_path, slot, vault=vault)
             files = {p.name: p.read_bytes()
                     for p in sorted(scratch_path.iterdir())}
-        return AmigaDosRehearsal(report, files, state, characters, [],
-                                 slot, None)
+        return PodAmigaDosRehearsal(report, files, state, characters, [],
+                                    slot, None, vault)
 
-    def write(self, rehearsal: AmigaDosRehearsal,
+    def write(self, rehearsal: "PodAmigaDosRehearsal",
              folder: str | pathlib.Path) -> list[pathlib.Path]:
         folder = pathlib.Path(folder)
         dos_codec.new_pod_save_from(rehearsal.state, rehearsal.characters,
-                                    folder, rehearsal.slot)
+                                    folder, rehearsal.slot,
+                                    vault=rehearsal.vault)
         return sorted(folder / name for name in rehearsal.files)
 
 

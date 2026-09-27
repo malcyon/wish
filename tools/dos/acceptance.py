@@ -883,6 +883,13 @@ def read_pod_slot(folder: pathlib.Path, letter: str) -> dict:
            "vault_bytes": ((folder / f"VAULT{letter}.DAT").stat().st_size
                            if (folder / f"VAULT{letter}.DAT").is_file() else None),
            "characters": []}
+    vault_path = folder / f"VAULT{letter}.DAT"
+    if vault_path.is_file():
+        v = dos_codec.pod_vault_from_dos(vault_path.read_bytes())
+        out["vault"] = {"platinum": v.platinum, "gems": v.gems,
+                        "jewelry": v.jewelry,
+                        "items": [item_dict(dos_codec.DosItem(r))
+                                 for r in v.items]}
     for c in dos_codec.read_party(folder, letter):
         out["characters"].append({
             "name": c.name, "file": pathlib.Path(c.source).name,
