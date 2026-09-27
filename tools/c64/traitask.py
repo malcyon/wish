@@ -610,6 +610,8 @@ def leave_items(sess: S.Session, log: Log) -> None:
     items; with the highlight on the bar it is the bar's EXIT. The list
     re-arms itself: its EXIT returns to the sheet bar and a bare Return
     there drops straight back in (`docs/70-driving-the-game.md`).
+
+    `log` records when the final camp-exit `select_bar("EXIT")` fails.
     """
     for _ in range(12):
         s = sess.screen()

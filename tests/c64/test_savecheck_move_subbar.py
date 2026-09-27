@@ -200,3 +200,51 @@ def test_save_game_still_selects_encamp_from_the_world_bar():
     sess = FakeCampBarSaveGameSession(camp_bar_up=False)
     assert sess.save_game() is True
     assert sess.select_bar_calls[0] == "ENCAMP"
+
+
+# -- `Session.save_game` re-reads the screen after `leave_move` -----------
+
+
+class FakeSubbarThenCampBarSession(Session):
+    """A screen that shows the move sub-bar first, then -- once
+    `leave_move` has run -- the camp bar rather than the world bar. Nothing
+    in `#621` says this sequence occurs in the real game (the two strings
+    are mutually exclusive, so no live screen can show both), but the check
+    must read whatever `screen()` answers *after* `leave_move`, not
+    whatever it answered before, and this is the fake that would catch a
+    reintroduced stale read.
+    """
+
+    def __init__(self):
+        self.save_disk = "/tmp/does-not-matter.d64"
+        self.after_leave_move = False
+        self.screen_calls = 0
+        self.select_bar_calls: list[str] = []
+
+    def screen(self):
+        self.screen_calls += 1
+        return FakeScreen(CAMP_BAR_ROW if self.after_leave_move
+                           else SUBBAR_ROW)
+
+    def leave_move(self, tries: int = 8) -> bool:
+        self.after_leave_move = True
+        return True
+
+    def select_bar(self, label, row=24, timeout=30.0):
+        self.select_bar_calls.append(label)
+        return True
+
+    def settle(self, seconds: float) -> None:
+        pass
+
+
+def test_save_game_re_reads_the_screen_after_leaving_the_move_subbar():
+    sess = FakeSubbarThenCampBarSession()
+    assert sess.save_game() is True
+    # Read once for the initial MOVE_SUBBAR check, and again after
+    # `leave_move` -- the second read is what `already_on_camp_bar` must
+    # test, so ENCAMP is skipped just as it is when the camp bar was up
+    # from the start.
+    assert sess.screen_calls >= 2
+    assert "ENCAMP" not in sess.select_bar_calls
+    assert sess.select_bar_calls[0] == "SAVE"

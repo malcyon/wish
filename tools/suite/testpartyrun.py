@@ -283,7 +283,7 @@ def item_toggle_pair(sess, log: Log, out: pathlib.Path, name: str,
         diffs.append(rec)
         log.emit("toggle", **rec)
         log.say(f"  {name} {step_label} toggle {n}: pressed={ok} diff={diff}")
-    leave_items(sess)
+    leave_items(sess, log)
     sess.settle(1)
     return diffs
 

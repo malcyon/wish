@@ -2424,6 +2424,7 @@ class Session:
             # otherwise burn its whole 30s timeout hunting `ENCAMP` on a row
             # that will never show it (`#545`).
             self.leave_move()
+            s = self.screen()
         # A caller that already left its own screen back to the camp bar,
         # rather than the world bar, has nothing for `ENCAMP` to select
         # there -- it is the bar's own header text, not a menu item -- and
