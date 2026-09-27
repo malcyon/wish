@@ -19,6 +19,7 @@ one. Two tests read the player's `PORSAVE13.D64` and skip without it.
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 
 import gamedata
@@ -1098,7 +1099,7 @@ def test_open_sheet_answers_a_portrait_disk_prompt_with_side_3_not_the_side_it_n
     run, log = _pool_run(tmp_path, sess)
     got = run.open_sheet("1")
     log.close()
-    assert sess.attaches == ["/slot/SIDE3.D64"]
+    assert sess.attaches == [os.path.join(sess.here, "SIDE3.D64")]
     assert sess.prompts_handled == 0
     assert any("BAKSHI" in r for r in got)
 
