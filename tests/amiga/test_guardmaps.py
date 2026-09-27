@@ -155,6 +155,26 @@ def test_add_refusals_leave_map_unchanged(tmp_path, capsys):
     assert path.read_bytes() == original
 
 
+def test_failed_replace_keeps_map_and_removes_temp_file(tmp_path, monkeypatch):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    crop = _run(root, '1', 'pool-run', 'pool', 'title')
+    argv = ['--root', str(root), '--maps', str(maps), 'add', '--title', 'pool',
+            '--map', 'guards', '--state', 'title', '--crop', str(crop),
+            '--box', '10,10,20,20']
+    assert guardmaps.main(argv) == 0
+    path = maps / 'guards_pool.json'
+    original = path.read_bytes()
+
+    def fail_replace(source, target):
+        raise OSError('disk gone')
+
+    monkeypatch.setattr(guardmaps.os, 'replace', fail_replace)
+    assert guardmaps.main([*argv, '--replace']) == 2
+    assert path.read_bytes() == original
+    assert not path.with_name(path.name + '.tmp').exists()
+
+
 def test_screens_digest_boxes_and_checked_rule(tmp_path):
     import pytest
 

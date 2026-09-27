@@ -11,11 +11,10 @@ import sys
 import pytest
 
 from goldbox.amiga_adf import AmigaDisk
-from tests.amiga import test_amigasecretsavemeasure as measure
-from tests.amiga.test_amigasecretsave import _audio_proof, _sha
-from tests.amiga.test_amigasecretsavemeasure import ScreenGuest, _keys, _menu_manifest
+from tests.amiga import test_amigaacceptance_measure as measure
+from tests.amiga.test_amigaacceptance import _audio_proof, _sha
+from tests.amiga.test_amigaacceptance_measure import ScreenGuest, _keys, _menu_manifest
 from tools.amiga import acceptance, route_silver_blades, winuaesession
-from tools.amiga import amigasecretsave as drive
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
 BEFORE = {"area": 16, "x": 3, "y": 5, "facing": 2}
@@ -508,15 +507,15 @@ def test_the_installed_handler_raises_terminated_and_is_restored():
 def _main(tmp_path, clock, monkeypatch, guest, capsys):
     manifest = _manifest(tmp_path)
     guest.answer = Answer(guest)
-    monkeypatch.setattr(drive, "WinGuest", lambda: guest)
-    monkeypatch.setattr(drive, "PixelGuards", lambda path: MapGuard())
+    monkeypatch.setattr(acceptance, "WinGuest", lambda: guest)
+    monkeypatch.setattr(acceptance, "PixelGuards", lambda path: MapGuard())
     monkeypatch.setattr(acceptance, "journal_preflight", lambda python: None)
     monkeypatch.setattr(acceptance, "run_journal_answer",
                         lambda python, holder, adf, timeout: guest.answer(holder, adf, timeout))
     argv = ["accept", "--manifest", str(manifest), "--guards", "g.json",
             "--identity", "i.json", "--journal-python", "py",
             "--audio-proof", str(_audio_proof(tmp_path))]
-    code = drive.main(argv)
+    code = acceptance.main(["accept", "--title", "ssb", *argv[1:]])
     return code, capsys.readouterr().out
 
 
@@ -532,6 +531,95 @@ def test_main_exits_one_when_d_is_at_the_prepared_place(
     readings["D"] = _reading(y=5)
     code, out = _main(tmp_path, clock, monkeypatch, AcceptGuest(clock), capsys)
     assert code == 1 and "slot D: did not move" in out
+
+
+def _record_cli(monkeypatch):
+    seen = []
+    guest = object()
+    monkeypatch.setattr(acceptance, "WinGuest", lambda: guest)
+    monkeypatch.setattr(acceptance, "PixelGuards", lambda path: ("guards", path))
+
+    def run(*args, **kwargs):
+        seen.append((args, kwargs))
+        return {"success": True, "error": None, "unguarded": [],
+                "read": {"verdicts": ["slot B: did not move"]}}
+
+    monkeypatch.setattr(acceptance, "run_recon", run)
+    return seen, guest
+
+
+def test_silver_blades_measure_forwards_route_waits_and_default_attempt(
+        tmp_path, monkeypatch, capsys):
+    seen, guest = _record_cli(monkeypatch)
+    manifest = tmp_path / "prepare.json"
+    assert acceptance.main(["measure", "--title", "ssb", "--manifest", str(manifest),
+                            "--audio-proof", "mute.json", "--holder", "fixed"]) == 0
+    args, kw = seen[0]
+    assert args == (manifest,) and kw["guest"] is guest
+    assert kw["route"] == route_silver_blades.ROUTE
+    assert kw["write_keys"] == ("B",) and kw["measure"] is True
+    assert kw["min_waits"] == route_silver_blades.default_min_waits()
+    assert kw["holder"] == "fixed" and kw["attempt"] == "recon1"
+    assert set(json.loads(capsys.readouterr().out.splitlines()[0])) == {"success", "error", "summary"}
+
+
+def test_silver_blades_accept_forwards_identity_journal_and_waits(
+        tmp_path, monkeypatch, capsys):
+    seen, guest = _record_cli(monkeypatch)
+    manifest = tmp_path / "prepare.json"
+    assert acceptance.main(["accept", "--title", "ssb", "--manifest", str(manifest),
+                            "--guards", "guards.json", "--identity", "identity.json",
+                            "--journal-python", "python", "--audio-proof", "mute.json"]) == 0
+    args, kw = seen[0]
+    assert args == (manifest,) and kw["guest"] is guest
+    assert kw["guard"] == ("guards", acceptance.pathlib.Path("guards.json"))
+    assert kw["identity"] == ("guards", acceptance.pathlib.Path("identity.json"))
+    assert kw["journal_python"] == "python" and kw["accept"] is True
+    assert kw["attempt"] == "accept1" and kw["holder"].startswith("wish672-")
+    assert kw["min_waits"] == {**route_silver_blades.default_min_waits(),
+                               **route_silver_blades.ACCEPT_MIN_WAITS}
+    assert set(json.loads(capsys.readouterr().out.splitlines()[0])) == {
+        "success", "error", "unguarded", "summary"}
+
+
+def test_silver_blades_accept_expect_accepts_and_refutes(tmp_path, monkeypatch, capsys):
+    _record_cli(monkeypatch)
+    verdicts = iter(((True, "expect Guy id 1 at 47 minutes: accepts"),
+                     (False, "expect Guy id 1 at 47 minutes: refutes")))
+    monkeypatch.setattr(route_silver_blades, "expect_verdict",
+                        lambda *args: next(verdicts))
+    argv = ["accept", "--title", "ssb", "--manifest", str(tmp_path / "prepare.json"),
+            "--guards", "guards.json", "--identity", "identity.json",
+            "--journal-python", "python", "--audio-proof", "mute.json",
+            "--expect", "Guy:1:47:5"]
+    assert acceptance.main(argv) == 0
+    assert capsys.readouterr().out.endswith("expect Guy id 1 at 47 minutes: accepts\n")
+    assert acceptance.main(argv) == 1
+    assert capsys.readouterr().out.endswith("expect Guy id 1 at 47 minutes: refutes\n")
+
+
+def test_silver_blades_accept_requires_journal_before_guest_use(monkeypatch):
+    monkeypatch.setattr(acceptance, "WinGuest", lambda: pytest.fail("guest created"))
+    assert acceptance.main(["accept", "--title", "ssb", "--manifest", "m.json",
+                            "--guards", "g.json", "--identity", "i.json",
+                            "--audio-proof", "mute.json"]) == 2
+
+
+def test_other_titles_refuse_silver_blades_only_options(monkeypatch):
+    monkeypatch.setattr(acceptance, "WinGuest", lambda: pytest.fail("guest created"))
+    assert acceptance.main(["prepare", "--title", "pool", "--run-id", "run",
+                            "--source", "source.d64"]) == 2
+    assert acceptance.main(["accept", "--title", "pool", "--manifest", "m.json",
+                            "--guards", "g.json", "--identity", "i.json",
+                            "--audio-proof", "mute.json", "--attempt", "a",
+                            "--journal-python", "python"]) == 2
+
+
+def test_silver_blades_reload_refuses_before_guest_use(monkeypatch):
+    monkeypatch.setattr(acceptance, "WinGuest", lambda: pytest.fail("guest created"))
+    assert acceptance.main(["reload", "--title", "ssb", "--manifest", "m.json",
+                            "--guards", "g.json", "--identity", "i.json",
+                            "--audio-proof", "mute.json"]) == 2
 
 
 def test_the_answerer_runs_in_its_own_interpreter_and_only_its_last_line_is_kept(tmp_path):

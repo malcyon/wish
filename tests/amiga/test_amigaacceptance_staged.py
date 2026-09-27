@@ -9,7 +9,7 @@ import pytest
 
 from goldbox import d64, effects
 from goldbox.amiga_adf import AmigaDisk
-from tools.amiga import amigasecretsave
+from tools.amiga import acceptance
 from tools.amiga import route_silver_blades as route
 from tools.amiga.winuaesession import RouteError
 
@@ -138,10 +138,23 @@ def test_normal_prepare_still_requires_join(tmp_path, monkeypatch):
 
 def test_prepare_cli_passes_staged_source_and_issue(tmp_path, monkeypatch, capsys):
     seen = []
-    monkeypatch.setattr(amigasecretsave, "prepare", lambda *args, **kwargs:
+    monkeypatch.setattr(route, "prepare", lambda *args, **kwargs:
                         seen.append((args, kwargs)) or tmp_path / "prepare.json")
-    assert amigasecretsave.main(["prepare", "--source", "source.d64", "--run-id", "run",
+    assert acceptance.main(["prepare", "--title", "ssb", "--source", "source.d64", "--run-id", "run",
                                   "--staged-from", "join.d64", "--issue", "661"]) == 0
     assert seen == [((tmp_path.__class__("source.d64"), "run"),
                      {"staged_from": tmp_path.__class__("join.d64"), "issue": "661"})]
     assert capsys.readouterr().out.strip() == str(tmp_path / "prepare.json")
+
+
+def test_prepare_silver_blades_requires_a_source_before_preparation(monkeypatch):
+    monkeypatch.setattr(route, "prepare", lambda *args, **kwargs:
+                        pytest.fail("prepare was called"))
+    assert acceptance.main(["prepare", "--title", "ssb", "--run-id", "run"]) == 2
+
+
+def test_silver_blades_prepare_refuses_other_titles_options_before_preparation(monkeypatch):
+    monkeypatch.setattr(route, "prepare", lambda *args, **kwargs:
+                        pytest.fail("prepare was called"))
+    assert acceptance.main(["prepare", "--title", "ssb", "--source", "source.d64",
+                            "--run-id", "run", "--disk3", "disk3.adf"]) == 2

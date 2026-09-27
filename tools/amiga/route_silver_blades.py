@@ -14,7 +14,7 @@ from typing import Any
 from automap import gamedisks
 from goldbox import amiga_adf, amiga_savegame, d64, effects
 from tools.amiga import amigabladesjournal, staging
-from tools.amiga.route import effect_fields
+from tools.amiga.route import check_expect, effect_fields
 from tools.amiga.staging import _entry, _verified_disk, sha256
 from tools.amiga.winuaesession import HOLDER, RouteError
 from tools.registry import scratch
@@ -24,6 +24,23 @@ DISK_B_SHA256 = "d7caf68c3333b44a4ca2951b8d51f388e4bfd7a8bafa4fd8a7fca37aa639b46
 SLOT_LETTER = "C"
 JOIN_SHA256 = "38c11440e578227c1a240b740f362b1b69943d9897f42dc35ac39b17508872dc"
 TITLE = "secret-of-the-silver-blades"
+
+
+def expect_verdict(manifest_path: pathlib.Path, attempt: str,
+                   expect: tuple[str, int, int, int]) -> tuple[bool, str]:
+    """Read Silver Blades' camp-save slot off the run's fetched boot disk and check `expect` against it.
+
+    Re-opens `<manifest_path.parent>/<attempt>/fetched-df0.adf`, which
+    `run_recon` writes for every attempt that reached the fetch step, and
+    reads `CAMP_SAVE_LETTER` -- the slot the accept route's camp save writes.
+    Returns `(accepted, verdict line)`.
+    """
+    fetched = manifest_path.parent / attempt / "fetched-df0.adf"
+    if not fetched.is_file():
+        name, eid, minutes, _data = expect
+        return False, f"expect {name} id {eid} at {minutes} minutes: refutes (no fetched boot disk)"
+    reading = _slot_reading(_verified_disk(fetched), CAMP_SAVE_LETTER)
+    return check_expect(reading, expect)
 
 
 def _inventory(save: amiga_savegame.AmigaSavegame, *, require_joined: bool = True

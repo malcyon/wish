@@ -12,14 +12,14 @@ import pytest
 
 from goldbox import geo
 from goldbox.amiga_adf import AmigaDisk
-from tests.amiga import test_amigasecretsavemeasure as measure
-from tests.amiga.test_amigasecretsave import _audio_proof
-from tests.amiga.test_amigasecretsaveaccept import (
+from tests.amiga import test_amigaacceptance_measure as measure
+from tests.amiga.test_amigaacceptance import _audio_proof
+from tests.amiga.test_amigaacceptance_accept import (
     MapGuard,
     _IdentityMap,
     needs_posix_signals,
 )
-from tests.amiga.test_amigasecretsavemeasure import ScreenGuest
+from tests.amiga.test_amigaacceptance_measure import ScreenGuest
 from tools.amiga import acceptance, route, winuaesession
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep

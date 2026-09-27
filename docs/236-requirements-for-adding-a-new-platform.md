@@ -86,6 +86,10 @@ The rules:
 
 | Old | New |
 |---|---|
+| `amigaacceptance.py` in `tools/amiga/` | `tools/amiga/staging.py` |
+| `amigafoundation.py` in `tools/amiga/` | `tools/amiga/acceptance.py` |
+| `amigasecretsave.py prepare`, `recon --measure`, `accept` | `tools/amiga/acceptance.py prepare\|measure\|accept --title ssb` |
+| `amigasecretsave.py guard` | `tools/amiga/guardmaps.py add` |
 | `c64acceptance.py` in `tools/c64/` | `tools/c64/acceptance.py` |
 | `porlaunch.sh` in `tools/c64/` | `tools/c64/launch.sh` |
 | `Log`, `Terminated`, `catch_signals`, `keep_old_log` in `tools/c64/savecheck.py` | `tools/c64/runlog.py` |
@@ -98,7 +102,7 @@ The rules:
 | `_silver_session_class` in `tools/c64/curedrive.py` | `silver_session_class` in `tools/secret_of_the_silver_blades/ssbsession.py` |
 | The run's pool-lease owner label `c64acceptance/<issue>/<run>` | Unchanged. |
 
-The Amiga renames are partly done. `amigaacceptance.py` became `tools/amiga/staging.py`, the WinUAE lane session now lives in `tools/amiga/winuaesession.py`, the pixel guards now live in `tools/amiga/screens.py`, the title description `AmigaTitle` now lives in `tools/amiga/route.py`, and Pool of Radiance, Curse of the Azure Bonds and Pools of Darkness now have their own `tools/amiga/route_pool.py`, `route_curse.py` and `route_darkness.py`. The other Amiga names are planned and have not been renamed: `route_silver_blades.py` and `acceptance.py`.
+The Amiga homes are complete. `amigaacceptance.py` became `tools/amiga/staging.py`; `amigafoundation.py` became `tools/amiga/acceptance.py`; and the Silver Blades `amigasecretsave.py` command joined `acceptance.py` as `prepare|measure|accept --title ssb`. Its `guard` command was retired in favour of `tools/amiga/guardmaps.py add`. The WinUAE lane session lives in `winuaesession.py`, screen guards in `screens.py`, `AmigaTitle` in `route.py`, and title routes in `route_pool.py`, `route_curse.py`, `route_darkness.py` and `route_silver_blades.py`. Historical evidence retains its old commands.
 
 What stayed: `status_column` and the measured digests and key constants in `tools/dos/acceptance.py`, and the import and CURE experiment in `tools/dos/ssbimport.py`.
 

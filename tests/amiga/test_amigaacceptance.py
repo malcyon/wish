@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from goldbox.amiga_adf import AmigaDisk
-from tools.amiga import acceptance, amigasecretsave, winuaesession
+from tools.amiga import acceptance, winuaesession
 
 
 def _sha(path):
@@ -237,16 +237,20 @@ def test_mute_proof_expiring_during_transfer_refuses_before_start(
                 ClockedDateTime.now_utc += timedelta(seconds=2)
 
     guest = TransferOutlivesProof()
-    monkeypatch.setattr(amigasecretsave, "WinGuest", lambda: guest)
-    monkeypatch.setattr(amigasecretsave, "PixelGuards", lambda path: lambda state, shot: True)
-    manifest = _prepared(tmp_path)
+    from tests.amiga.test_amigaacceptance_accept import MapGuard, _manifest
 
-    assert amigasecretsave.main([
-        "recon", "--manifest", str(manifest), "--guards", str(tmp_path / "guards.json"),
+    monkeypatch.setattr(acceptance, "WinGuest", lambda: guest)
+    monkeypatch.setattr(acceptance, "PixelGuards", lambda path: MapGuard())
+    monkeypatch.setattr(acceptance, "journal_preflight", lambda python: None)
+    manifest = _manifest(tmp_path)
+
+    assert acceptance.main([
+        "accept", "--title", "ssb", "--manifest", str(manifest), "--guards", str(tmp_path / "guards.json"),
+        "--identity", str(tmp_path / "identity.json"), "--journal-python", "py",
         "--audio-proof", str(proof), "--holder", "wish672-test",
     ]) == 1
 
-    summary = json.loads((tmp_path / "recon1" / "summary.json").read_text())
+    summary = json.loads((tmp_path / "accept1" / "summary.json").read_text())
     assert summary["success"] is False
     assert "audio mute proof expired" in summary["error"]
     assert [call[0] for call in guest.calls] == [
@@ -334,10 +338,6 @@ def test_deadline_bounds_capture_and_cleanup_calls(tmp_path, monkeypatch):
                and 0 < limit <= 300 - (at - 100)
                for _, limit, at in guest.timeouts)
     assert result["elapsed_seconds"] <= 300
-
-
-def test_the_dependency_control_stays_unavailable():
-    assert amigasecretsave.main(["spindisk-control"]) == 2
 
 
 class _Desktop:
@@ -555,7 +555,7 @@ def test_the_lane_session_imports_without_the_silver_blades_runner():
     program = (
         "import sys; import tools.amiga.winuaesession; "
         "sys.exit(int(any(name in sys.modules for name in ("
-        "'tools.amiga.amigasecretsave', 'tools.amiga.staging'))))")
+        "'tools.amiga.staging'))))")
     done = subprocess.run([sys.executable, "-c", program],
                           cwd=pathlib.Path(__file__).resolve().parents[2])
     assert done.returncode == 0
@@ -565,7 +565,7 @@ def test_the_screen_guards_import_without_the_runners():
     program = (
         "import sys; import tools.amiga.screens; "
         "sys.exit(int(any(name in sys.modules for name in ("
-        "'tools.amiga.amigasecretsave', 'tools.amiga.acceptance', "
+        "'tools.amiga.acceptance', "
         "'tools.amiga.staging'))))")
     done = subprocess.run([sys.executable, "-c", program],
                           cwd=pathlib.Path(__file__).resolve().parents[2])
@@ -576,7 +576,7 @@ def test_the_title_description_imports_without_the_runners():
     program = (
         "import sys; import tools.amiga.route; "
         "sys.exit(int(any(name in sys.modules for name in ("
-        "'tools.amiga.amigasecretsave', 'tools.amiga.acceptance', "
+        "'tools.amiga.acceptance', "
         "'tools.amiga.staging', 'tools.amiga.screens'))))")
     done = subprocess.run([sys.executable, "-c", program],
                           cwd=pathlib.Path(__file__).resolve().parents[2])

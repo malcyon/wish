@@ -19,7 +19,6 @@ from goldbox import amiga_savegame, areas, c64_save, dos_codec, world_state
 from tests.amiga.test_savegamelosses import _bare_silver_blades_state
 from tools.amiga import (
     acceptance,
-    amigasecretsave,
     route_curse,
     route_pool,
     route_silver_blades,
@@ -208,24 +207,24 @@ def test_acceptance_expect_verdict_names_a_missing_fetched_disk(tmp_path):
     assert line == "expect PHILIPPE id 1 at 47 minutes: refutes (no fetched save disk)"
 
 
-# --- amigasecretsave.expect_verdict: Silver Blades' own camp-save slot -------
+# --- route_silver_blades.expect_verdict: Silver Blades' own camp-save slot -------
 
-def test_amigasecretsave_expect_verdict_reads_the_fetched_boot_disk(tmp_path):
+def test_amigaacceptance_expect_verdict_reads_the_fetched_boot_disk(tmp_path):
     _built, disk = _later_disk(amiga_savegame.SILVER_BLADES, _bare_silver_blades_state(),
-                               "GUY DE VALOIS", amigasecretsave.CAMP_SAVE_LETTER)
+                               "GUY DE VALOIS", route_silver_blades.CAMP_SAVE_LETTER)
     run = tmp_path / "run"
     attempt = run / "accept1"
     attempt.mkdir(parents=True)
     disk.save(attempt / "fetched-df0.adf")
 
-    accepted, accepts = amigasecretsave.expect_verdict(
+    accepted, accepts = route_silver_blades.expect_verdict(
         run / "prepare.json", "accept1", ("GUY DE VALOIS", 1, 47, 5))
     assert accepted is True
     assert accepts == "expect GUY DE VALOIS id 1 at 47 minutes: accepts"
 
 
-def test_amigasecretsave_expect_verdict_names_a_missing_fetched_disk(tmp_path):
-    accepted, line = amigasecretsave.expect_verdict(
+def test_amigaacceptance_expect_verdict_names_a_missing_fetched_disk(tmp_path):
+    accepted, line = route_silver_blades.expect_verdict(
         tmp_path / "prepare.json", "accept1", ("GUY DE VALOIS", 1, 47, 5))
     assert accepted is False
     assert line == "expect GUY DE VALOIS id 1 at 47 minutes: refutes (no fetched boot disk)"

@@ -17,6 +17,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox import geo  # noqa: E402
+from tools.amiga import route_silver_blades  # noqa: E402
 from tools.amiga.route import (  # noqa: E402
     ISSUE,
     TITLE_LIMIT,
@@ -1083,19 +1084,22 @@ def expect_verdict(title: AmigaTitle, manifest: pathlib.Path, attempt: str,
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    choices = sorted(TITLES)
+    choices = sorted((*TITLES, "ssb"))
 
     def common(p: argparse.ArgumentParser) -> None:
         p.add_argument("--title", required=True, choices=choices)
         p.add_argument("--manifest", required=True, type=pathlib.Path)
         p.add_argument("--audio-proof", required=True, type=pathlib.Path)
-        p.add_argument("--attempt", required=True)
+        p.add_argument("--attempt")
         p.add_argument("--holder", default=None)
         p.add_argument("--deadline", type=float, default=1800)
 
     p = sub.add_parser("prepare", help="copy the registered images and the specimen into a run folder")
     p.add_argument("--title", required=True, choices=choices)
     p.add_argument("--run-id", required=True)
+    p.add_argument("--source", type=pathlib.Path)
+    p.add_argument("--staged-from", type=pathlib.Path)
+    p.add_argument("--issue")
     p.add_argument("--disk3", type=pathlib.Path, default=None,
                    help="darkness-reload only: the game-written disk 3 an accept run fetched")
     p.add_argument("--disk3-sha256", default=None, help="darkness-reload only: that disk's SHA-256")
@@ -1117,6 +1121,7 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--identity", required=True, type=pathlib.Path)
     a.add_argument("--expect", default=None,
                    help="NAME:ID:MINUTES:DATA, checked against the route's later slot")
+    a.add_argument("--journal-python")
     r = sub.add_parser("reload", help="guarded load of a game-written slot and a check of the place "
                                       "on screen; writes nothing")
     common(r)
@@ -1124,36 +1129,79 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--identity", required=True, type=pathlib.Path)
     args = parser.parse_args(argv)
     try:
+        silver_blades = args.title == "ssb"
+        if args.command == "reload" and silver_blades:
+            raise RouteError("Silver Blades has no reload route")
+        if args.command == "prepare":
+            if silver_blades:
+                if args.source is None:
+                    raise RouteError("Silver Blades prepare requires --source")
+                if (args.disk3 is not None or args.disk3_sha256 is not None
+                        or args.accept_summary is not None or args.substitute is not None
+                        or args.substitute_letter != "A"):
+                    raise RouteError("Silver Blades prepare takes no title-only options")
+            elif args.source is not None or args.staged_from is not None or args.issue is not None:
+                raise RouteError("--source, --staged-from and --issue require --title ssb")
+        elif not silver_blades and args.attempt is None:
+            raise RouteError("--attempt is required for this title")
+        if args.command == "accept":
+            if silver_blades and args.journal_python is None:
+                raise RouteError("Silver Blades accept requires --journal-python")
+            if not silver_blades and args.journal_python is not None:
+                raise RouteError("--journal-python requires --title ssb")
         expect = parse_expect(args.expect) if getattr(args, "expect", None) else None
         with terminating():
             if args.command == "prepare":
+                if silver_blades:
+                    print(route_silver_blades.prepare(
+                        args.source, args.run_id, staged_from=args.staged_from,
+                        issue=args.issue or "672"))
+                    return 0
                 print(prepare(TITLES[args.title], args.run_id, specimen=args.disk3,
                               specimen_sha256=args.disk3_sha256,
                               accept_summary=args.accept_summary,
                               substitute=args.substitute,
                               substitute_letter=args.substitute_letter))
                 return 0
-            title = TITLES[args.title]
-            holder = args.holder or f"wish{ISSUE}-{uuid.uuid4().hex[:12]}"
+            title = None if silver_blades else TITLES[args.title]
+            attempt = args.attempt or ("recon1" if args.command == "measure" else "accept1")
+            holder = args.holder or f"wish{'672' if silver_blades else ISSUE}-{uuid.uuid4().hex[:12]}"
             if args.command == "measure":
                 result = run_recon(
                     args.manifest, guest=WinGuest(), holder=holder,
-                    audio_proof=args.audio_proof, attempt=args.attempt,
+                    audio_proof=args.audio_proof, attempt=attempt,
                     guard=PixelGuards(args.guards) if args.guards else None,
-                    deadline_seconds=args.deadline, measure=True, title=title)
+                    deadline_seconds=args.deadline, measure=True, title=title,
+                    **({"route": route_silver_blades.ROUTE,
+                        "write_keys": ("B",),
+                        "min_waits": route_silver_blades.default_min_waits()}
+                       if silver_blades else {}))
             else:
                 result = run_recon(
                     args.manifest, guest=WinGuest(), guard=PixelGuards(args.guards),
                     identity=PixelGuards(args.identity), holder=holder,
-                    audio_proof=args.audio_proof, attempt=args.attempt,
+                    audio_proof=args.audio_proof, attempt=attempt,
                     deadline_seconds=args.deadline, title=title,
-                    **{"reload" if args.command == "reload" else "accept": True})
-            print(_summary(result, args.manifest, args.attempt))
+                    **({"accept": True, "journal_python": args.journal_python,
+                        "min_waits": {**route_silver_blades.default_min_waits(),
+                                      **route_silver_blades.ACCEPT_MIN_WAITS}}
+                       if silver_blades else
+                       {"reload" if args.command == "reload" else "accept": True}))
+            if silver_blades and args.command == "measure":
+                print(json.dumps({"success": result["success"], "error": result["error"],
+                                  "summary": str(args.manifest.parent / attempt / "summary.json")},
+                                 sort_keys=True))
+            else:
+                print(_summary(result, args.manifest, attempt))
             for line in result.get("read", {}).get("verdicts", []):
                 print(line)
             success = result["success"]
             if args.command == "accept" and expect is not None:
-                accepted, line = expect_verdict(title, args.manifest, args.attempt, expect)
+                if silver_blades:
+                    accepted, line = route_silver_blades.expect_verdict(
+                        args.manifest, attempt, expect)
+                else:
+                    accepted, line = expect_verdict(title, args.manifest, attempt, expect)
                 print(line)
                 success = success and accepted
             return 0 if success else 1

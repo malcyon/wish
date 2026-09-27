@@ -13,10 +13,10 @@ import pytest
 
 from goldbox import geo
 from goldbox.amiga_adf import AmigaDisk
-from tests.amiga import test_amigasecretsavemeasure as measure
-from tests.amiga.test_amigasecretsave import _audio_proof
-from tests.amiga.test_amigasecretsaveaccept import MapGuard, _IdentityMap
-from tests.amiga.test_amigasecretsavetitle import (
+from tests.amiga import test_amigaacceptance_measure as measure
+from tests.amiga.test_amigaacceptance import _audio_proof
+from tests.amiga.test_amigaacceptance_accept import MapGuard, _IdentityMap
+from tests.amiga.test_amigaacceptance_title import (
     NAMES,
     TitleGuest,
     _adf,
@@ -1289,7 +1289,7 @@ RECORDED = {"sha": "0123456789abcdef", "dirty": ["notes.txt"]}
 
 def _record_state(monkeypatch):
     monkeypatch.setattr(foundation.evidence, "git_state", lambda repo: dict(RECORDED))
-    monkeypatch.setattr(foundation.sys, "argv", ["amigasecretsave.py", "--issue", "679", "--run", "x"])
+    monkeypatch.setattr(foundation.sys, "argv", ["acceptance.py", "--issue", "679", "--run", "x"])
 
 
 def _summary(tmp_path):
@@ -1344,16 +1344,16 @@ def test_a_title_route_module_imports_without_the_runners(module):
     program = (
         f"import sys; import tools.amiga.{module}; "
         "sys.exit(int(any(name in sys.modules for name in ("
-        "'tools.amiga.amigasecretsave', 'tools.amiga.acceptance', "
+        "'tools.amiga.acceptance', "
         "'tools.amiga.screens'))))")
     done = subprocess.run([sys.executable, "-c", program],
                           cwd=pathlib.Path(__file__).resolve().parents[2])
     assert done.returncode == 0
 
 
-def test_importing_acceptance_alone_leaves_amigasecretsave_unimported():
+def test_importing_acceptance_alone_leaves_guardmaps_unimported():
     program = ("import sys; import tools.amiga.acceptance; "
-              "sys.exit(int('tools.amiga.amigasecretsave' in sys.modules))")
+              "sys.exit(int('tools.amiga.guardmaps' in sys.modules))")
     done = subprocess.run([sys.executable, "-c", program],
                           cwd=pathlib.Path(__file__).resolve().parents[2])
     assert done.returncode == 0
@@ -1378,7 +1378,7 @@ def test_prepare_refuses_a_run_id_with_a_space_before_touching_anything(capsys):
 
 def test_prepare_refuses_an_unknown_title_through_argparse():
     with pytest.raises(SystemExit) as exc:
-        foundation.main(["prepare", "--title", "ssb", "--run-id", "x"])
+        foundation.main(["prepare", "--title", "unknown", "--run-id", "x"])
     assert exc.value.code == 2
 
 
