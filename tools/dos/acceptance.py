@@ -40,7 +40,7 @@ conversion logged.
 
 | step | what it does |
 |---|---|
-| `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P` |
+| `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P`.  Pool presses Return past a `PRESS <ENTER>/<RETURN> TO CONTINUE` bar first, when the loaded save is on an event square, so that screen is never recorded as the map (#701) |
 | `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars and Pools of Darkness' journal question and `YES NO` bars (below), to the map; Pools of Darkness' map only by its measured bar |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
 | `sheet N`, `items N` | Pools of Darkness, in camp: roster line N (from 1) highlighted with `Down`, `VIEW`, the sheet's name checked against line N's, and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
@@ -236,13 +236,18 @@ POOL_DISPLAY_BAR = "98286ceaa33edc12"
 #: returns to the map with the highlight where it was.
 POOL_MAP_BARS: dict[str, str] = {"town": "809e2e1cc9504b5b",
                                  "overland": "f379c606cadd4484"}
-#: The sheet's bar itself, measured the same two ways (`town` on the runs
-#: above, `outdoor` on #634's `bce4a7c742-140c8082-dos-pool-rebuild-outdoor`),
+#: The sheet's bar itself, measured the same two ways (`no_items` on the runs
+#: above, `items` on #634's `bce4a7c742-140c8082-dos-pool-rebuild-outdoor`),
 #: plus a third for a caster: a cleric's sheet adds `SPELLS` to the bar
 #: (`VIEW ITEMS SPELLS TRADE DROP EXIT`), measured on #634's
-#: `ea7f848a84-ea7f848a-dos-pool-rebuild-outdoor`, ROLAND's sheet.
-POOL_SHEET_BARS: dict[str, str] = {"town": "33ad531ed78cfa70",
-                                   "outdoor": "95afa0d95cd09ab7",
+#: `ea7f848a84-ea7f848a-dos-pool-rebuild-outdoor`, ROLAND's sheet.  What
+#: distinguishes `no_items` from `items` is whether the sheet offers ITEMS,
+#: not where the party stands: `VIEW:TRADE DROP EXIT` (no_items) against
+#: `VIEW:ITEMS TRADE DROP EXIT` (items).  A caster carrying nothing
+#: (`VIEW:SPELLS TRADE DROP EXIT`, presumably) is not measured and would
+#: still stop a `sheet` step.
+POOL_SHEET_BARS: dict[str, str] = {"no_items": "33ad531ed78cfa70",
+                                   "items": "95afa0d95cd09ab7",
                                    "caster": "49958cda77bfdd82"}
 POOL_ROSTER_NEXT = "End"
 # Names start at x=8; effect lines are indented to x=17. Count the left
@@ -344,8 +349,15 @@ POD_CONTINUE_ROUNDS = 5
 #: meets it on the world view.
 CURSE_CONTINUE_BAR = next(k for k, v in route_silver_blades.BARS.items() if v == "continue")
 
-#: How many of those screens `begin` answers before it gives up.
-CURSE_CONTINUE_ROUNDS = 3
+#: Pool's `PRESS <ENTER>/<RETURN> TO CONTINUE` bar, the `press_return` row of
+#: `dosbox.PoolOfRadiance.COMBAT_BARS`; a party saved on an event square meets
+#: it on load, before the map is showing (#701).
+POOL_CONTINUE_BAR = next(digest for width, digest, label in dosbox.PoolOfRadiance.COMBAT_BARS
+                         if label == "press_return")
+
+#: How many continue screens `press_continue_screens` answers, for either
+#: title, before it gives up.
+CONTINUE_ROUNDS = 3
 #: Journal, `YES NO` and continue screens `begin` answers in all, counted one
 #: screen at a time, before it gives up, so that no mix of them can loop.
 POD_INTERSTITIALS = 12
@@ -1757,21 +1769,27 @@ class Driver:
             answered += 1
         return answered
 
-    def curse_continue(self, screen):
-        """Return past Curse's continue screens after BEGIN, one at a time.
+    def press_continue_screens(self, screen, bar, label):
+        """Return past `bar`'s `PRESS <ENTER>/<RETURN> TO CONTINUE` screens, one
+        at a time, shared by Curse's BEGIN and Pool's load.
 
-        Nothing is pressed when the bar is not showing, so a party that has
-        already set out is untouched.  Returns the settled screen.
+        Nothing is pressed when `bar` is not showing, so a screen that has
+        already advanced is untouched.  Each Return pressed is recorded in
+        `events` as `press_continue`.  Returns the settled screen.
         """
-        for _ in range(CURSE_CONTINUE_ROUNDS):
-            if screen.glyphs(dosbox.BAR) != CURSE_CONTINUE_BAR:
+        for _ in range(CONTINUE_ROUNDS):
+            if screen.glyphs(dosbox.BAR) != bar:
                 return screen
-            self.shot("continue-begin")
+            shot = self.shot(f"continue-{label}")
             self.s.key(POD_CONTINUE)
             screen = self.s.settle(quiet=1.0, timeout=60.0)
-        if screen.glyphs(dosbox.BAR) == CURSE_CONTINUE_BAR:
-            raise self.fail("begin-continue", "a continue screen is still showing "
-                            f"after {CURSE_CONTINUE_ROUNDS} were answered")
+            event = {"kind": "press_continue", "step": label, "shot": f"{shot}.png",
+                     "bar": bar, "answered": POD_CONTINUE}
+            self.events.append(event)
+            self.note(event="question", **event)
+        if screen.glyphs(dosbox.BAR) == bar:
+            raise self.fail(f"{label}-continue", "a continue screen is still showing "
+                            f"after {CONTINUE_ROUNDS} were answered")
         return screen
 
     def record_world(self, screen) -> None:
@@ -1793,7 +1811,8 @@ class Driver:
                 self.game.load_game(self.slot)
             except TimeoutError as e:
                 raise self.fail("load", str(e)) from None
-            self.record_world(self.s.capture())
+            screen = self.press_continue_screens(self.s.capture(), POOL_CONTINUE_BAR, "load")
+            self.record_world(screen)
             self.shot("loaded")
             self.where = "map"
             return {"slot": self.slot, "status": self.game.status(),
@@ -1879,7 +1898,7 @@ class Driver:
             raise self.fail("begin", "BEGIN ADVENTURING did not leave the party menu")
         screen = self.s.settle(quiet=1.0, timeout=60.0)
         if self.title.key == "curse":
-            screen = self.curse_continue(screen)
+            screen = self.press_continue_screens(screen, CURSE_CONTINUE_BAR, "begin")
         # Pools of Darkness asks its journal question between the party menu
         # and the map, every time the party begins, and its arrival may ask a
         # YES NO question after that.

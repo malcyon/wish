@@ -1839,9 +1839,58 @@ def test_curse_begin_stops_when_the_continue_screen_never_clears(tmp_path, monke
                        match=r"continue screen is still showing after 3 were "
                              r"answered; see \d+-lost-begin-continue\.png"):
         d.begin()
-    assert da.CURSE_CONTINUE_ROUNDS == 3
+    assert da.CONTINUE_ROUNDS == 3
     assert game.keys.count("Return") == 3
     assert shots[-1].endswith("lost-begin-continue")
+
+
+class _FakePoolContinue(FakePool):
+    """Pool whose load lands on `screens` continue screens before the map."""
+
+    BARS = {**FakePool.BARS, "cont": b"\x14\x15"}
+
+    def __init__(self, tmp, screens=1):
+        super().__init__(tmp)
+        self.mode = "cont" if screens else "map"
+        self.screens = screens
+
+    def key(self, k, gap=0.0):
+        if self.mode == "cont":
+            self.keys.append(k)
+            if k == "Return":
+                self.screens -= 1
+                self.mode = "cont" if self.screens > 0 else "map"
+        else:
+            super().key(k, gap)
+
+
+def _pool_continue_driver(tmp_path, monkeypatch, screens_up):
+    game = _FakePoolContinue(tmp_path, screens_up)
+    monkeypatch.setattr(da, "POOL_CONTINUE_BAR",
+                        _screen(game.BARS["cont"], b"").glyphs(dosbox.BAR))
+    d = da.Driver(game, lambda **k: None, "A", "pool")
+    d.game.to_main_menu = lambda timeout=120.0: None
+    d.game.load_game = lambda letter, timeout=90.0: None
+    return game, d
+
+
+def test_pool_load_presses_return_past_a_continue_screen_then_camps(tmp_path, monkeypatch):
+    game, d = _pool_continue_driver(tmp_path, monkeypatch, 1)
+    d.load()
+    assert game.keys.count("Return") == 1 and d.where == "map"
+    assert [e["kind"] for e in d.events] == ["press_continue"]
+    assert d.events[0]["step"] == "load"
+    d.camp()
+    assert game.mode == "camp"
+
+
+def test_pool_load_stops_when_the_continue_screen_never_clears(tmp_path, monkeypatch):
+    game, d = _pool_continue_driver(tmp_path, monkeypatch, 99)
+    with pytest.raises(da.StepFailed,
+                       match=r"continue screen is still showing after 3 were "
+                             r"answered; see \d+-lost-load-continue\.png"):
+        d.load()
+    assert game.keys.count("Return") == 3
 
 
 def test_curse_begin_presses_nothing_when_no_continue_screen_shows(tmp_path):
