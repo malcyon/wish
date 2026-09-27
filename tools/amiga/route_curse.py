@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import pathlib
 import re
@@ -43,6 +44,7 @@ def _curse_read_slot(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
         return reading
     reading["names"] = names
     reading["place"] = place
+    reading["clock"] = saved.clock
     reading["effects"] = effects
     return reading
 
@@ -113,3 +115,22 @@ def _prepare_curse(run: pathlib.Path, specimen: pathlib.Path | None, *,
                    ) -> dict[str, Any]:
     return _prepare_from(CURSE_SOURCES, run, specimen,
                          substitute=substitute, substitute_letter=substitute_letter)
+
+
+def published_title(letter: str) -> AmigaTitle:
+    """The two-drive route for a published disk-one image and its source slot."""
+    if letter not in ("A", "D"):
+        raise ValueError(f"published Curse slot {letter!r} is neither A nor D")
+    route = list(CURSE.route)
+    route[1] = (letter, "loaded_menu", "key")
+    route[5] = ("C", "loaded_menu", "write")
+    if letter == "D":
+        route.insert(7, ("NP2", "world", "turn"))
+    measure = list(CURSE.measure_route)
+    measure[3] = (letter, "loaded_menu", "key")
+    return dataclasses.replace(
+        CURSE, issue="677", mounted=("df0", "df1"), save_disk="df0",
+        route=tuple(route), measure_route=tuple(measure),
+        control_letter="C", after_letter="F",
+        kept_letters=() if letter == "A" else ("A",),
+        turn="about" if letter == "D" else None)

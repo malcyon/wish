@@ -45,7 +45,12 @@ def test_staged_source_records_rows_in_prepare_manifest(tmp_path, monkeypatch):
     source = _stage(tmp_path, original, _effect)
     boot = tmp_path / "boot.adf"
     disk_b = tmp_path / "disk-b.adf"
-    boot.write_bytes(b"boot")
+    original_disk = AmigaDisk.blank("Secret 1")
+    original_disk.write_file("/Secret", b"synthetic executable")
+    original_disk.make_dir("/SAVE")
+    original_disk.write_file("/SAVE/spindisk", b"synthetic spindisk")
+    original_disk.write_file("/SAVE/savgamA.sav", b"bundled slot")
+    original_disk.save(boot)
     disk_b.write_bytes(b"disk b")
     monkeypatch.setattr(route.amigabladesjournal, "find_disk", lambda: boot)
     monkeypatch.setattr(route.staging, "SOURCE_SHA256", route.sha256(boot))
@@ -59,14 +64,17 @@ def test_staged_source_records_rows_in_prepare_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(roster, "Party", lambda path: object())
     monkeypatch.setattr(saveplan, "prepare", lambda party: object())
     monkeypatch.setattr(Source, "of_snapshot", lambda snapshot: object())
-    monkeypatch.setattr(saveplan, "resolve_assets", lambda *args, **kwargs: object())
+    def resolve_assets(*args, **kwargs):
+        assert kwargs["amiga_disk_one"] == boot
+        return object()
+
+    monkeypatch.setattr(saveplan, "resolve_assets", resolve_assets)
     plan = SimpleNamespace(destination=SimpleNamespace(slot="A"),
                            report=SimpleNamespace(dropped=[], losses=[]))
     monkeypatch.setattr(saveplan, "prepare_save_as", lambda *args: plan)
 
     def publish(plan, party):
-        disk = AmigaDisk.blank("SECRETSAVE")
-        disk.make_dir("/SAVE")
+        disk = AmigaDisk(original_disk.to_bytes())
         disk.write_file("/SAVE/savgamA.sav", b"slot")
         disk.save(tmp_path / "acceptance" / "661" / "run" / "SECRETSAVE-published.adf")
 

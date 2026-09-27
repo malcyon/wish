@@ -25,6 +25,7 @@ from tests.amiga.test_amigaacceptance_title import (
     _read_slot,
     _slot,
 )
+from tests.support import amigasavegame as synthetic_amiga
 from tools.amiga import acceptance as foundation
 from tools.amiga import (
     amigasaves,
@@ -84,6 +85,171 @@ def _run(tmp_path, clock, *, guest=None, **kw):
 
 def _keys(guest):
     return [c[2] for c in guest.calls if c[0] == "press"]
+
+
+@pytest.mark.parametrize("letter", ["A", "D"])
+def test_published_routes_load_source_letter_and_write_c_then_f(letter):
+    for factory in (route_curse.published_title,
+                    foundation.route_silver_blades.published_title):
+        title = factory(letter)
+        assert title.issue == "677"
+        assert title.mounted == ("df0", "df1")
+        assert title.save_disk == "df0"
+        assert title.control_letter == "C" and title.after_letter == "F"
+        assert title.kept_letters == (() if letter == "A" else ("A",))
+        assert [key for key, _, kind in title.route if kind == "write"] == ["C", "F"]
+        assert (letter, "loaded_menu", "key") in title.route
+        assert title.turn == ("about" if letter == "D" else None)
+        assert sum(kind == "move" for _, _, kind in title.route) == 2
+
+
+@pytest.mark.parametrize("name,key,exe,ext,make", [
+    ("curse", route_curse.CURSE_KEY, "/Curse", "dat", synthetic_amiga.synthetic_curse),
+    ("ssb", foundation.route_silver_blades.TITLE, "/Secret", "sav",
+     synthetic_amiga.synthetic_silver_blades),
+])
+@pytest.mark.parametrize("port,letter", [("c64", "A"), ("dos", "D")])
+def test_published_prepare_preserves_exact_reported_disk_one_and_rejects_tampering(
+        tmp_path, monkeypatch, port, letter, name, key, exe, ext, make):
+    source = tmp_path / ("party.D64" if port == "c64" else "SAVGAMD.DAT")
+    source.write_bytes(b"synthetic source")
+    disk1 = tmp_path / "disk1.adf"
+    one = synthetic_amiga.synthetic_disk_one(key)
+    disk1.write_bytes(one.to_bytes())
+    disk2 = tmp_path / "disk2.adf"
+    disk2.write_bytes(AmigaDisk.blank("Disk2").to_bytes())
+    published = tmp_path / "POOLSAVE.ADF"
+    converted = AmigaDisk(one.to_bytes())
+    converted.write_file(f"/SAVE/savgam{letter}.{ext}",
+                         make(("GUY DE VALOIS",)) if name == "ssb" else make(("CONVERTED",)))
+    published.write_bytes(converted.to_bytes())
+    source_sha = staging.sha256(source)
+    image_sha = staging.sha256(published)
+    monkeypatch.setitem(foundation.PUBLISHED_SOURCES, (name, port), source_sha)
+    monkeypatch.setitem(foundation.PUBLISHED_DISKS, name, (
+        staging.sha256(disk1), staging.sha256(disk2), exe, "Disk1"))
+    monkeypatch.setattr(foundation.scratch, "cache_dir",
+                        lambda *parts: tmp_path.joinpath("cache", *map(str, parts)))
+    report = {
+        "specimen": str(source), "specimen_sha256": source_sha,
+        "amiga_disk1": str(disk1), "amiga_disk2": str(disk2),
+        "c64_disks_dir": str(tmp_path) if port == "c64" else None,
+        "save_as": {"source": str(source), "to": "amiga", "slot": letter,
+                    "destination": str(published), "written": [str(published)],
+                    "losses": [], "dropped": []},
+        "written": [str(published)], "written_sha256": {"POOLSAVE.ADF": image_sha},
+    }
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(report))
+    manifest_path = foundation.prepare_published(name, f"test-{port}", report_path)
+    manifest, title = foundation._published_manifest(manifest_path, name)
+    assert manifest["loaded_letter"] == letter
+    assert (letter, "loaded_menu", "key") in title.route
+    assert pathlib.Path(manifest["disks"]["df0"]["path"]).read_bytes() == published.read_bytes()
+    assert pathlib.Path(manifest["disks"]["df1"]["path"]).read_bytes() == disk2.read_bytes()
+    assert pathlib.Path(manifest["registered"]["published"]["path"]).read_bytes() == published.read_bytes()
+
+    report["save_as"]["slot"] = "D" if letter == "A" else "A"
+    report_path.write_text(json.dumps(report))
+    with pytest.raises(winuaesession.RouteError, match="wrong source slot"):
+        foundation.prepare_published(name, f"bad-{port}", report_path)
+
+    manifest["disks"]["df0"]["sha256"] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(winuaesession.RouteError, match="exact published image"):
+        foundation._published_manifest(manifest_path, name)
+
+    class Unclaimed:
+        def claim(self, *_args, **_kwargs):
+            raise AssertionError("the guest was claimed before disk verification")
+
+    monkeypatch.setattr(foundation, "_mute_proof", lambda _path: True)
+    with pytest.raises(winuaesession.RouteError, match="exact published image"):
+        foundation.run_recon(
+            manifest_path, guest=Unclaimed(), holder="wish677-test",
+            audio_proof=tmp_path / "mute.json", title=title, measure=True,
+            published_disk_one=True, published_name=name)
+
+
+@pytest.mark.parametrize("clock_a,clock_f,success", [
+    ("04:20", "04:21", True),
+    ("04:20", "04:19", False),
+    ("23:59", "00:01", True),
+])
+def test_published_silver_uses_journal_preflight_and_answerer_with_working_df0(
+        tmp_path, monkeypatch, clock, clock_a, clock_f, success):
+    def read_slot(disk, letter):
+        return {**_read_slot(disk, letter),
+                "clock": clock_f if letter == "F" else clock_a}
+
+    title = dataclasses.replace(
+        foundation.route_silver_blades.published_title("A"),
+        read_slot=read_slot, slot_letters=_letters, slot_files=_files)
+    slots = [("A", _slot(START))]
+    disks = {"df0": _adf(tmp_path / "df0.adf", "ONE", slots),
+             "df1": _adf(tmp_path / "df1.adf", "TWO")}
+    registered = {
+        "source": _adf(tmp_path / "source.adf", "SOURCE"),
+        "report": _adf(tmp_path / "report.adf", "REPORT"),
+        "published": _adf(tmp_path / "published.adf", "ONE", slots),
+        "disk_one": _adf(tmp_path / "disk-one.adf", "ONE", slots),
+        "disk_two": _adf(tmp_path / "disk-two.adf", "TWO"),
+    }
+    (tmp_path / "published.adf").write_bytes((tmp_path / "df0.adf").read_bytes())
+    registered["published"]["sha256"] = disks["df0"]["sha256"]
+    (tmp_path / "disk-two.adf").write_bytes((tmp_path / "df1.adf").read_bytes())
+    registered["disk_two"]["sha256"] = disks["df1"]["sha256"]
+    manifest = {"mode": "published_disk_one", "issue": "677", "title": "ssb",
+                "source_port": "c64", "loaded_letter": "A", "state_a": START,
+                "names_a": NAMES, "clock_a": clock_a, "disks": disks,
+                "registered": registered, "expected_after": None}
+    manifest_path = tmp_path / "prepare.json"
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(foundation, "_published_manifest", lambda *_: (manifest, title))
+
+    class SilverGuest(TitleGuest):
+        def put(self, local, remote, timeout=None):
+            self.uploads[remote] = pathlib.Path(local).read_bytes()
+            return super().put(local, remote, timeout=timeout)
+
+        def press(self, holder, key, timeout=None):
+            super().press(holder, key, timeout=timeout)
+            if key == "F":
+                self._write("F", self.place)
+
+    guest = SilverGuest(clock, save_key="df0")
+    guest.uploads = {}
+    guest.place = dict(START)
+    seen = []
+
+    def preflight(_python):
+        assert guest.calls == []
+        seen.append("preflight")
+
+    def answer(_holder, adf, _timeout):
+        seen.append(("answer", adf))
+        return 0, "answered"
+
+    result = foundation.run_recon(
+        manifest_path, guest=guest, holder="wish677-test",
+        audio_proof=_audio_proof(tmp_path), title=title,
+        guard=MapGuard(), identity=_IdentityMap(), accept=True,
+        published_disk_one=True, published_name="ssb",
+        journal_python="/usr/bin/python3", preflight=preflight, answer=answer)
+    assert result["error"] == ""
+    assert result["success"] is success
+    assert result["after_clock_advanced"] is success
+    assert result["published_files_preserved"] is True
+    assert seen == ["preflight", ("answer", tmp_path / "df0.adf")]
+    assert "X" not in _keys(guest) and "RET" not in _keys(guest)
+    assert [key for key in _keys(guest) if key in ("C", "F")] == ["C", "F"]
+    assert guest.uploads[guest.starts[0][0][0]] == (tmp_path / "published.adf").read_bytes()
+    assert guest.uploads[guest.starts[0][0][1]] == (tmp_path / "disk-two.adf").read_bytes()
+    assert guest.remote[guest.starts[0][0][1]] == (tmp_path / "df1.adf").read_bytes()
+    fetched = AmigaDisk.open(tmp_path / "recon1" / "fetched-df0.adf")
+    assert _letters(fetched) == ["A", "C", "F"]
+    assert fetched.read_file("/SAVE/savgamA.sav") == AmigaDisk.open(
+        tmp_path / "published.adf").read_file("/SAVE/savgamA.sav")
 
 
 def test_accept_presses_exactly_the_plans_keys_in_order_and_never_y(tmp_path, clock):

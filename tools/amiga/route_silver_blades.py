@@ -14,7 +14,7 @@ from typing import Any
 from automap import gamedisks
 from goldbox import amiga_adf, amiga_savegame, d64, effects
 from tools.amiga import amigabladesjournal, staging
-from tools.amiga.route import check_expect, effect_fields
+from tools.amiga.route import AmigaTitle, check_expect, effect_fields
 from tools.amiga.staging import _entry, _verified_disk, sha256
 from tools.amiga.winuaesession import HOLDER, RouteError
 from tools.registry import scratch
@@ -144,7 +144,8 @@ def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | No
     if snapshot is None:
         raise RouteError("the JOIN disk has no saved party")
     assets = saveplan.resolve_assets(Source.of_snapshot(snapshot), "amiga",
-                                     game_files=convertdrops.game_files)
+                                     game_files=convertdrops.game_files,
+                                     amiga_disk_one=boot_source)
     published = run / "SECRETSAVE-published.adf"
     plan = saveplan.prepare_save_as(party, "amiga", published, assets)
     if plan.destination.slot != "A":
@@ -155,11 +156,20 @@ def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | No
     scratch.ensure(run)
     saveplan.publish(plan, party)
     disk = _verified_disk(published)
-    if disk.volume_name != "SECRETSAVE":
-        raise RouteError(f"published volume is {disk.volume_name!r}, not SECRETSAVE")
-    files = [path for path, _ in disk.walk()]
-    if files != ["/SAVE/savgamA.sav"]:
-        raise RouteError(f"published save disk has unexpected files: {files}")
+    source_disk = _verified_disk(boot_source)
+    if disk.volume_name != source_disk.volume_name:
+        raise RouteError("published volume differs from the registered disk 1")
+    old_files = {path.lower(): source_disk.read_file(path)
+                 for path, _ in source_disk.walk()}
+    files = {path.lower(): disk.read_file(path) for path, _ in disk.walk()}
+    slot_path = "/save/savgama.sav"
+    if (set(files) != set(old_files) or
+            any(files[path] != contents for path, contents in old_files.items()
+                if path != slot_path) or
+            files.get(slot_path) == old_files.get(slot_path) or
+            "/secret" not in files or "/save/spindisk" not in files or
+            disk.to_bytes()[:1024] != source_disk.to_bytes()[:1024]):
+        raise RouteError("published disk 1 differs outside the converted A slot")
     save = amiga_savegame.read_slot(disk, "A", TITLE)
     inventory = _inventory(save)
     state = amiga_savegame.state_from_savegame(save)
@@ -263,9 +273,42 @@ def _slot_reading(fetched: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
     reading["place"] = {"area": state.area, "x": state.x, "y": state.y,
                         "facing": state.facing}
     reading["names"] = [member["name"] for member in inventory["members"]]
+    reading["clock"] = saved.clock
     reading["inventory"] = inventory
     reading["effects"] = effects
     return reading
+
+
+def _slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, bytes]:
+    return {name: disk.read_file(f"/SAVE/{name}")
+            for name in (f"savgam{letter}.sav", "spindisk")}
+
+
+def published_title(letter: str) -> AmigaTitle:
+    """The two-drive route for an exact Save As image in DF0."""
+    if letter not in ("A", "D"):
+        raise ValueError(f"published Silver Blades slot {letter!r} is neither A nor D")
+    route = list(ACCEPT_ROUTE)
+    route[2] = (letter, "loaded_menu", "key")
+    route[len(ROUTE)] = ("C", "loaded_menu", "write")
+    route[-2] = ("F", "exit_game", "write")
+    move_at = next(i for i, step in enumerate(route) if step[2] == "move")
+    if letter == "D":
+        route.insert(move_at, ("NP2", "world", "turn"))
+    measured = tuple((key, state, "key") for key, state in
+                     (*ROUTE[:2], (letter, "loaded_menu"), *ROUTE[3:]))
+    return AmigaTitle(
+        issue="677", mounted=("df0", "df1"), save_disk="df0",
+        read_slot=_slot_reading,
+        slot_letters=lambda disk: amiga_savegame.slots_present(disk, TITLE),
+        slot_files=_slot_files, route=tuple(route), measure_route=measured,
+        boot_span=120.0, control_letter="C", after_letter="F",
+        kept_letters=() if letter == "A" else ("A",),
+        strict=frozenset({"load_picker", "loaded_menu", "sheet", "save_picker",
+                          "camp_save_picker"}),
+        min_waits={**default_min_waits(), **ACCEPT_MIN_WAITS},
+        title_limit=300.0, interstitials=SILVER_BLADES_INTERSTITIALS,
+        turn="about" if letter == "D" else None)
 
 
 def _silver_blades_problems(reading: dict[str, Any], slot: str) -> list[str]:

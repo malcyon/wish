@@ -8,6 +8,8 @@ import functools
 import hashlib
 import json
 import pathlib
+import shutil
+import stat
 import sys
 import time
 import uuid
@@ -16,7 +18,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from goldbox import geo  # noqa: E402
+from goldbox import amiga_adf, geo  # noqa: E402
 from tools.amiga import route_silver_blades  # noqa: E402
 from tools.amiga.route import (  # noqa: E402
     ISSUE,
@@ -25,7 +27,12 @@ from tools.amiga.route import (  # noqa: E402
     check_expect,
     parse_expect,
 )
-from tools.amiga.route_curse import CURSE, CURSE_SOURCES, _prepare_curse  # noqa: E402
+from tools.amiga.route_curse import (  # noqa: E402
+    CURSE,
+    CURSE_DISK_B_SHA256,
+    CURSE_SOURCES,
+    _prepare_curse,
+)
 from tools.amiga.route_darkness import (  # noqa: E402
     DARKNESS,
     DARKNESS_RELOAD,
@@ -58,6 +65,19 @@ from tools.amiga.winuaesession import (  # noqa: E402
 from tools.registry import evidence, scratch  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
+PUBLISHED_ISSUE = "677"
+PUBLISHED_SOURCES = {
+    ("ssb", "c64"): "38c11440e578227c1a240b740f362b1b69943d9897f42dc35ac39b17508872dc",
+    ("ssb", "dos"): "b3515793dada24b6a85061f5c2fdc5555a45df40381ee0009e9fd54ba381fb72",
+    ("curse", "c64"): "fdf74e5ff41fe0f90f8f9b150d966df276c4dc4e5ecd6829efee2fee9019acc1",
+    ("curse", "dos"): "4e911c12a449a4ff1694aab6d918f120c176df66483e32428cb50454db8b03df",
+}
+PUBLISHED_DISKS = {
+    "ssb": ("2f9ae86494561231dd1d70b350ae07b959c9f62642b64e9d4b57ffd23686ace4",
+            route_silver_blades.DISK_B_SHA256, "/Secret", "Secret 1"),
+    "curse": ("4bfb64d1ebcf53867b941412ce04eb248b43dadebe34769f73ffa1aa609002ed",
+              CURSE_DISK_B_SHA256, "/Curse", "CurseA"),
+}
 
 # Single grabs every ~8-10 s in all against a bar that held still for at least 24 s.
 TITLE_POLL = 2.0
@@ -222,6 +242,20 @@ def menu_save_verdict(result: dict[str, Any], originals: tuple[str, ...]) -> boo
         and result.get("df0_unchanged") is False)
 
 
+def _clock_advanced(before: str, after: str) -> bool:
+    """Accept a short forward interval, including a midnight rollover."""
+    try:
+        start_h, start_m = (int(part) for part in before.split(":"))
+        end_h, end_m = (int(part) for part in after.split(":"))
+    except (AttributeError, TypeError, ValueError):
+        return False
+    if not all(0 <= h < 24 and 0 <= m < 60 for h, m in ((start_h, start_m),
+                                                      (end_h, end_m))):
+        return False
+    elapsed = ((end_h * 60 + end_m) - (start_h * 60 + start_m)) % (24 * 60)
+    return 0 < elapsed <= 120
+
+
 def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                 out: pathlib.Path, disks: dict[str, pathlib.Path],
                 registered: dict[str, pathlib.Path], kept_before: dict[str, dict],
@@ -279,6 +313,20 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                     for c, before in kept_before.items()}
                 allowed = {*kept_before, title.control_letter, title.after_letter}
                 result["extra_saves"] = sorted(set(title.slot_letters(fetched)) - allowed)
+                if manifest.get("mode") == "published_disk_one":
+                    published = _verified_disk(pathlib.Path(
+                        manifest["registered"]["published"]["path"]))
+                    before_files, after_files = _disk_files(published), _disk_files(fetched)
+                    extension = "dat" if manifest["title"] == "curse" else "sav"
+                    writable = {f"/save/savgam{c}.{extension}".lower()
+                                for c in (title.control_letter, title.after_letter)}
+                    result["published_files_preserved"] = (
+                        set(after_files) == set(before_files) | writable and
+                        all(after_files.get(path) == data for path, data in before_files.items()
+                            if path not in writable))
+                    result["control_clock_matches"] = control.get("clock") == manifest["clock_a"]
+                    result["after_clock_advanced"] = _clock_advanced(
+                        manifest["clock_a"], after.get("clock"))
         except BaseException as exc:
             result["fetched_save_error"] = f"{type(exc).__name__}: {exc}"
     every_disk_fetched = set(result["fetched"]) == set(title.disk_keys)
@@ -308,6 +356,10 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
         and bool(result.get("kept_unchanged")) == bool(kept_before)
         and all(result.get("kept_unchanged", {}).values())
         and result.get("extra_saves") == [])
+    if manifest.get("mode") == "published_disk_one":
+        rest = bool(rest and result.get("published_files_preserved")
+                    and result.get("control_clock_matches")
+                    and result.get("after_clock_advanced"))
     d_ok = bool(result.get("walk", {}).get("d_ok"))
     result["success"] = rest and d_ok
     result["substitute_walk_blocked"] = bool(
@@ -371,7 +423,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               measure: bool = False, accept: bool = False,
               identity: Any = None, journal_python: str | None = None,
               answer: Any = None, preflight: Any = None,
-              title: AmigaTitle | None = None, reload: bool = False) -> dict[str, Any]:
+              title: AmigaTitle | None = None, reload: bool = False,
+              published_disk_one: bool = False, published_name: str | None = None) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -446,7 +499,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             if kind == "insert" and key[0] == 0 and not _guards(guard, before):
                 raise RouteError(f"screen guard map lacks {before!r}: a DF0 insert needs a "
                                  f"guard on the prompt before it")
-    if accept and journal_python is not None and title is None:
+    if accept and journal_python is not None and (title is None or published_disk_one):
         (preflight or journal_preflight)(journal_python)
     min_waits = {**(title.min_waits if title else {}), **(min_waits or {})}
     write_keys = tuple(k.upper() for k in write_keys)
@@ -466,6 +519,17 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         raise RouteError("the Windows VM audio mute has not been verified")
     manifest_path = pathlib.Path(manifest_path)
     manifest = json.loads(manifest_path.read_text())
+    if published_disk_one:
+        if published_name is None:
+            raise RouteError("published disk-one mode needs its CLI title")
+        manifest, expected_title = _published_manifest(manifest_path, published_name)
+        if (title is None or title.issue != expected_title.issue or
+                title.route != expected_title.route or
+                title.mounted != expected_title.mounted or
+                title.save_disk != expected_title.save_disk):
+            raise RouteError("the selected title route differs from the published manifest")
+    elif manifest.get("mode") == "published_disk_one":
+        raise RouteError("a published disk-one manifest needs --published-disk-one")
     if title is not None:
         disks, registered, letter = _title_inputs(manifest, title)
         originals: dict[str, pathlib.Path] = {}
@@ -491,6 +555,11 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 raise RouteError(f"screen guard map lacks {missing}")
         kept_before = {c: title.slot_files(save_before, c)
                        for c in (*title.kept_letters, letter)}
+        if published_disk_one:
+            if sha256(disks["df0"]) != manifest["registered"]["published"]["sha256"]:
+                raise RouteError("working DF0 differs from the exact published image")
+            if sha256(disks["df1"]) != manifest["registered"]["disk_two"]["sha256"]:
+                raise RouteError("working DF1 differs from registered disk 2")
     else:
         originals = {name: _input(manifest, name)
                      for name in ("source", "boot_source", "disk_b_source")
@@ -547,7 +616,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     title_limit = title.title_limit if title else TITLE_LIMIT
     boot_span = title.boot_span if title else MEASURE_TITLE_SPAN
     landed: dict[str, Any] = {"state": None}
-    if accept and answer is None:
+    if accept and answer is None and journal_python is not None:
         answer = functools.partial(run_journal_answer, journal_python)
     claimed = start_attempted = copied = stopped = False
     begun = time.monotonic()
@@ -627,10 +696,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
 
     def run_answer() -> None:
         """Run the journal answerer, again while it sees no challenge, until GUARD_LIMIT."""
-        if title is not None:
+        if title is not None and answer is None:
             return run_title_answer()
         started = time.monotonic()
-        adf = originals["boot_source"]
+        adf = (disks["df0"] if published_disk_one else originals["boot_source"])
         while True:
             try:
                 code, line = answer(holder, adf, route_limit(180))
@@ -1056,6 +1125,174 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     return path
 
 
+def _disk_files(disk: amiga_adf.AmigaDisk) -> dict[str, bytes]:
+    return {path.lower(): disk.read_file(path) for path, _ in disk.walk()}
+
+
+def _published_title(name: str, letter: str) -> AmigaTitle:
+    if name == "curse":
+        from tools.amiga.route_curse import published_title  # noqa: PLC0415
+    elif name == "ssb":
+        published_title = route_silver_blades.published_title
+    else:
+        raise RouteError("published disk one is only for Curse and Silver Blades")
+    return published_title(letter)
+
+
+def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle]:
+    manifest = json.loads(path.read_text())
+    if manifest.get("mode") != "published_disk_one" or manifest.get("issue") != PUBLISHED_ISSUE:
+        raise RouteError("the manifest is not a published disk-one run")
+    if manifest.get("title") != name:
+        raise RouteError("the CLI title differs from the published manifest")
+    port, letter = manifest["source_port"], manifest["loaded_letter"]
+    if port not in ("c64", "dos") or letter != ("A" if port == "c64" else "D"):
+        raise RouteError("the published source port and slot letter disagree")
+    if manifest.get("source_sha256") != PUBLISHED_SOURCES[(name, port)]:
+        raise RouteError("the manifest source differs from the pinned specimen")
+    title = _published_title(name, letter)
+    for key in ("source", "report", "published", "disk_one", "disk_two"):
+        _input(manifest["registered"], key)
+    disk1_pin, disk2_pin, executable, volume = PUBLISHED_DISKS[name]
+    if (manifest["registered"]["disk_one"]["sha256"] != disk1_pin or
+            manifest["registered"]["disk_two"]["sha256"] != disk2_pin):
+        raise RouteError("the registered disks differ from the title's pins")
+    if manifest["disks"]["df0"]["sha256"] != manifest["registered"]["published"]["sha256"]:
+        raise RouteError("working DF0 is not the exact published image")
+    if manifest["disks"]["df1"]["sha256"] != disk2_pin:
+        raise RouteError("working DF1 differs from the pinned disk 2")
+    report = json.loads(_input(manifest["registered"], "report").read_text())
+    if (report.get("specimen_sha256") != manifest["source_sha256"] or
+            pathlib.Path(report.get("specimen", "")) !=
+            pathlib.Path(manifest["registered"]["source"]["path"]) or
+            pathlib.Path(report.get("amiga_disk1", "")) !=
+            pathlib.Path(manifest["registered"]["disk_one"]["path"]) or
+            pathlib.Path(report.get("amiga_disk2", "")) !=
+            pathlib.Path(manifest["registered"]["disk_two"]["path"]) or
+            report.get("written") != report.get("save_as", {}).get("written") or
+            len(report.get("written", [])) != 1 or
+            sha256(pathlib.Path(report["written"][0])) !=
+            manifest["registered"]["published"]["sha256"] or
+            report.get("save_as", {}).get("slot") != letter or
+            report.get("save_as", {}).get("to") != "amiga" or
+            report.get("save_as", {}).get("refused") or
+            report.get("save_as", {}).get("losses") or
+            report.get("save_as", {}).get("dropped") or
+            report.get("written_sha256") != {"POOLSAVE.ADF": manifest["registered"]["published"]["sha256"]}):
+        raise RouteError("the Save As report differs from the published manifest")
+    published = _verified_disk(_input(manifest["registered"], "published"))
+    original = _verified_disk(_input(manifest["registered"], "disk_one"))
+    if published.volume_name != volume or original.volume_name != volume:
+        raise RouteError("the published image is not the title's disk 1")
+    slot_path = f"/SAVE/savgam{letter}.{'dat' if name == 'curse' else 'sav'}".lower()
+    old, new = _disk_files(original), _disk_files(published)
+    if (set(new) != set(old) | {slot_path} or
+            any(new.get(key) != value for key, value in old.items() if key != slot_path) or
+            set(path.lower() for path, _ in published.walk_dirs()) !=
+            set(path.lower() for path, _ in original.walk_dirs()) or
+            published.to_bytes()[:1024] != original.to_bytes()[:1024] or
+            executable.lower() not in new or "/save/spindisk" not in new):
+        raise RouteError("the published image differs from disk 1 outside the converted slot")
+    if new[slot_path] == old.get(slot_path):
+        raise RouteError("the published slot was not converted")
+    reading = title.read_slot(published, letter)
+    if (reading.get("place") != manifest["state_a"] or
+            reading.get("names") != manifest["names_a"] or
+            reading.get("clock") != manifest["clock_a"]):
+        raise RouteError("the published slot differs from the prepared party")
+    return manifest, title
+
+
+def prepare_published(name: str, run_id: str, report_path: pathlib.Path) -> pathlib.Path:
+    """Preserve and check the exact Save As disk one before any guest run."""
+    if not HOLDER.fullmatch(run_id):
+        raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
+    if name not in PUBLISHED_DISKS:
+        raise RouteError("published disk one is only for Curse and Silver Blades")
+    report_path = pathlib.Path(report_path)
+    report_bytes = report_path.read_bytes()
+    report = json.loads(report_bytes)
+    outcome = report.get("save_as", {})
+    if (outcome.get("refused") or outcome.get("losses") or outcome.get("dropped") or
+            report.get("written") != outcome.get("written") or
+            len(report.get("written", [])) != 1 or
+            outcome.get("to") != "amiga"):
+        raise RouteError("Save As did not publish one lossless Amiga image")
+    port = "c64" if report.get("c64_disks_dir") else "dos"
+    letter = "A" if port == "c64" else "D"
+    if outcome.get("slot") != letter:
+        raise RouteError("Save As reported the wrong source slot letter")
+    source = pathlib.Path(report["specimen"])
+    image = pathlib.Path(report["written"][0])
+    disk1 = pathlib.Path(report["amiga_disk1"])
+    disk2 = pathlib.Path(report["amiga_disk2"])
+    source_pin = PUBLISHED_SOURCES[(name, port)]
+    disk1_pin, disk2_pin, _executable, _volume = PUBLISHED_DISKS[name]
+    if (source != pathlib.Path(outcome.get("source", "")) or
+            report.get("specimen_sha256") != source_pin or sha256(source) != source_pin):
+        raise RouteError("the Save As source differs from the pinned specimen")
+    if sha256(disk1) != disk1_pin or sha256(disk2) != disk2_pin:
+        raise RouteError("the Save As game disks differ from the registered pins")
+    image_sha = sha256(image)
+    if (report.get("written_sha256") != {image.name: image_sha} or
+            image.name != "POOLSAVE.ADF" or
+            pathlib.Path(outcome.get("destination", "")) != image):
+        raise RouteError("the Save As image differs from its report")
+    title = _published_title(name, letter)
+    disk = _verified_disk(image)
+    reading = title.read_slot(disk, letter)
+    if "place" not in reading or "clock" not in reading:
+        raise RouteError(f"published slot {letter} does not decode: {reading}")
+    original = _verified_disk(disk1)
+    slot_path = f"/SAVE/savgam{letter}.{'dat' if name == 'curse' else 'sav'}".lower()
+    old, new = _disk_files(original), _disk_files(disk)
+    executable, volume = PUBLISHED_DISKS[name][2:]
+    if (disk.volume_name != volume or original.volume_name != volume or
+            set(new) != set(old) | {slot_path} or
+            any(new.get(key) != value for key, value in old.items() if key != slot_path) or
+            set(path.lower() for path, _ in disk.walk_dirs()) !=
+            set(path.lower() for path, _ in original.walk_dirs()) or
+            disk.to_bytes()[:1024] != original.to_bytes()[:1024] or
+            executable.lower() not in new or "/save/spindisk" not in new or
+            new[slot_path] == old.get(slot_path)):
+        raise RouteError("the published image differs from disk 1 outside the converted slot")
+    present = title.slot_letters(disk)
+    if letter not in present or any(c in present for c in ("C", "F")):
+        raise RouteError("the published image lacks its slot or already holds a save target")
+    run = scratch.cache_dir("acceptance", PUBLISHED_ISSUE, run_id)
+    if run.exists():
+        raise RouteError(f"run folder already exists: {run}")
+    scratch.ensure(run)
+    published = run / "published.adf"
+    df0 = run / "df0.adf"
+    df1 = run / "df1.adf"
+    report_copy = run / "saveas-report.json"
+    for src, dst in ((image, published), (image, df0), (disk2, df1)):
+        with src.open("rb") as reader, dst.open("xb") as writer:
+            shutil.copyfileobj(reader, writer)
+    report_copy.write_bytes(report_bytes)
+    published.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+    report_copy.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+    if (sha256(published) != image_sha or sha256(df0) != image_sha or
+            sha256(df1) != disk2_pin):
+        raise RouteError("a copied acceptance disk differs from its input")
+    manifest = {
+        "mode": "published_disk_one", "issue": PUBLISHED_ISSUE,
+        "title": name, "source_port": port, "source_sha256": source_pin,
+        "loaded_letter": letter, "names_a": reading["names"],
+        "state_a": reading["place"], "clock_a": reading["clock"],
+        "expected_after": None,
+        "disks": {"df0": _entry(df0), "df1": _entry(df1)},
+        "registered": {"source": _entry(source), "report": _entry(report_copy),
+                       "published": _entry(published), "disk_one": _entry(disk1),
+                       "disk_two": _entry(disk2)},
+    }
+    path = run / "prepare.json"
+    path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    _published_manifest(path, name)
+    return path
+
+
 def _summary(result: dict[str, Any], manifest: pathlib.Path, attempt: str) -> str:
     return json.dumps({"success": result["success"], "error": result["error"],
                        "unguarded": result["unguarded"],
@@ -1112,10 +1349,13 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--attempt")
         p.add_argument("--holder", default=None)
         p.add_argument("--deadline", type=float, default=1800)
+        p.add_argument("--published-disk-one", action="store_true")
 
     p = sub.add_parser("prepare", help="copy the registered images and the specimen into a run folder")
     p.add_argument("--title", required=True, choices=choices)
     p.add_argument("--run-id", required=True)
+    p.add_argument("--published-disk-one", action="store_true")
+    p.add_argument("--saveas-report", type=pathlib.Path)
     p.add_argument("--source", type=pathlib.Path)
     p.add_argument("--staged-from", type=pathlib.Path)
     p.add_argument("--issue")
@@ -1151,6 +1391,23 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         silver_blades = args.title == "ssb"
+        if args.published_disk_one:
+            if args.command == "reload":
+                raise RouteError("published disk one has no reload route")
+            if args.command == "prepare":
+                if args.saveas_report is None:
+                    raise RouteError("published disk one needs --saveas-report")
+                if any((args.source, args.staged_from, args.issue, args.disk3,
+                        args.disk3_sha256, args.accept_summary, args.substitute)):
+                    raise RouteError("published disk one takes only a Save As report")
+                print(prepare_published(args.title, args.run_id, args.saveas_report))
+                return 0
+            if args.title not in PUBLISHED_DISKS:
+                raise RouteError("published disk one is only for Curse and Silver Blades")
+            if args.command == "measure" and (args.route or args.write_keys):
+                raise RouteError("published disk one uses its source-specific route")
+        elif args.command == "prepare" and args.saveas_report is not None:
+            raise RouteError("--saveas-report requires --published-disk-one")
         if args.command == "reload" and silver_blades:
             raise RouteError("Silver Blades has no reload route")
         if args.command == "prepare":
@@ -1187,9 +1444,15 @@ def main(argv: list[str] | None = None) -> int:
                               substitute=args.substitute,
                               substitute_letter=args.substitute_letter))
                 return 0
-            title = None if silver_blades else TITLES[args.title]
+            if args.published_disk_one:
+                manifest, _ = _published_manifest(args.manifest, args.title)
+                title = _published_title(args.title, manifest["loaded_letter"])
+            else:
+                title = None if silver_blades else TITLES[args.title]
             attempt = args.attempt or ("recon1" if args.command == "measure" else "accept1")
-            holder = args.holder or f"wish{'672' if silver_blades else ISSUE}-{uuid.uuid4().hex[:12]}"
+            holder_issue = PUBLISHED_ISSUE if args.published_disk_one else (
+                "672" if silver_blades else ISSUE)
+            holder = args.holder or f"wish{holder_issue}-{uuid.uuid4().hex[:12]}"
             if args.command == "measure":
                 route = (parse_route(args.route) if args.route else route_silver_blades.ROUTE)
                 write_keys = parse_write_keys(
@@ -1199,20 +1462,25 @@ def main(argv: list[str] | None = None) -> int:
                     audio_proof=args.audio_proof, attempt=attempt,
                     guard=PixelGuards(args.guards) if args.guards else None,
                     deadline_seconds=args.deadline, measure=True, title=title,
+                    published_disk_one=args.published_disk_one,
+                    published_name=args.title if args.published_disk_one else None,
                     **({"route": route,
                         "write_keys": write_keys,
                         "min_waits": route_silver_blades.default_min_waits(route)}
-                       if silver_blades else {}))
+                       if silver_blades and not args.published_disk_one else {}))
             else:
                 result = run_recon(
                     args.manifest, guest=WinGuest(), guard=PixelGuards(args.guards),
                     identity=PixelGuards(args.identity), holder=holder,
                     audio_proof=args.audio_proof, attempt=attempt,
                     deadline_seconds=args.deadline, title=title,
-                    **({"accept": True, "journal_python": args.journal_python,
+                    published_disk_one=args.published_disk_one,
+                    published_name=args.title if args.published_disk_one else None,
+                    journal_python=getattr(args, "journal_python", None),
+                    **({"accept": True,
                         "min_waits": {**route_silver_blades.default_min_waits(),
                                       **route_silver_blades.ACCEPT_MIN_WAITS}}
-                       if silver_blades else
+                       if silver_blades and not args.published_disk_one else
                        {"reload" if args.command == "reload" else "accept": True}))
             if silver_blades and args.command == "measure":
                 print(json.dumps({"success": result["success"], "error": result["error"],
@@ -1224,7 +1492,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(line)
             success = result["success"]
             if args.command == "accept" and expect is not None:
-                if silver_blades:
+                if silver_blades and not args.published_disk_one:
                     accepted, line = route_silver_blades.expect_verdict(
                         args.manifest, attempt, expect)
                 else:
