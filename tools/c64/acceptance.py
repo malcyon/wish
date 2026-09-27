@@ -1433,9 +1433,12 @@ class CurseRun(PoolRun):
         if not self.pick(target, CAST_WHOM):
             raise self.fail("cast-whom", f"{target} could not be chosen")
         messages = self._acknowledge()
-        last = self.reading()
+        # The game's own effect row for a cured condition does not clear
+        # until the spell list is exited, so the row is read only after that
+        # exit -- otherwise `row_after` still shows the condition as active.
         if self._list_bar(self.bar()):
             self.choose_bar("EXIT", timeout=15)
+        last = self.reading()
         return self._outcome("caster", caster, target, cure_id, word, first, last,
                              spell=spell, messages=messages, key=key)
 

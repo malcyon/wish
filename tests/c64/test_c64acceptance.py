@@ -1286,6 +1286,27 @@ def test_curse_cast_records_the_targets_row_transition(tmp_path):
                          ("key", "Return"), ("key", 0x0D)]
 
 
+def test_curse_cast_reads_row_after_only_once_the_spell_list_is_exited(tmp_path):
+    """When the acknowledged cure leaves the spell list still up, the game's
+    row for the cured id clears only once EXIT is chosen -- reading it any
+    earlier still shows the cured condition as active."""
+    blind, disease = [62, 33, 0, 0, 5], [61, 34, 2, 0, 0x85]
+    moves = _cast_moves({("picking", ("key", "Return")): "whom"})
+    moves[("msg", ("key", 0x0D))] = "list"
+    moves[("list", ("bar", "EXIT"))] = "magic"
+    sess = _CurseFake(CAST_SCREENS, moves, "camp")
+    run = _curse_run(tmp_path, sess, [[blind, disease]])
+    run.reading = lambda: {"effects": [disease] if sess.state == "magic"
+                           else [blind, disease]}
+    try:
+        got = run.cast("SHARA:CURE BLINDNESS>PHILIPPE")
+    finally:
+        run.log.close()
+    assert got["row_before"] == [62, 33, 0, 0, 5]
+    assert got["row_after"] is None
+    assert sess.state == "magic"
+
+
 def test_curse_cast_recognises_a_one_spell_list_and_selects_cast(tmp_path):
     one = "CAST EXIT"
     screens = {**CAST_SCREENS,
