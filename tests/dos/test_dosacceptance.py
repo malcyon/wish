@@ -375,7 +375,8 @@ def test_pool_display_captures_every_member_and_returns_to_camp_before_save(
 
 
 @pytest.mark.parametrize("failure", ("", "wrong_member", "repeated_page",
-                                     "unknown_return", "moved_highlight"))
+                                     "unknown_return", "moved_highlight",
+                                     "unmeasured"))
 def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
         tmp_path, monkeypatch, failure):
     class SheetPool(FakePool):
@@ -405,13 +406,19 @@ def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
                 return _with_roster(frame, "camp", 6, 0, sheet=who)
             return frame
 
-    monkeypatch.setattr(da, "POOL_MAP_BAR", screens.bar_signature(
-        _screen(SheetPool.BARS["map"], b"")))
+    monkeypatch.setattr(da, "POOL_MAP_BARS", {} if failure == "unmeasured" else
+                        {"town": screens.bar_signature(_screen(SheetPool.BARS["map"], b""))})
     monkeypatch.setattr(da, "POOL_SHEET_BAR", screens.bar_signature(
         _screen(SheetPool.BARS["sheet"], b"")))
     game = SheetPool(tmp_path)
     d = da.Driver(game, lambda **k: None, "A")
     d.where = "map"
+    if failure == "unmeasured":
+        with pytest.raises(da.StepFailed, match="map bar is not showing"):
+            d.sheet(3)
+        assert game.keys == []
+        assert not game.save_file("D").exists()
+        return
     if failure == "repeated_page":
         # The name check passes and the frame is the same one both times.
         monkeypatch.setattr(da, "sheet_name", lambda screen: screens.roster_name(
@@ -2687,12 +2694,13 @@ def test_the_name_signature_is_blind_to_the_highlight_colour():
     assert len({screens.roster_name(white, "camp", n) for n in range(1, 7)}) == 6
 
 
-def _capture(run: str, name: str, issue: str = "650") -> dosbox.Screen:
+def _capture(run: str, name: str, issue: str = "650",
+             sub: tuple[str, ...] = ()) -> dosbox.Screen:
     import shutil
     import subprocess
 
     from tools.registry.scratch import cache_dir
-    shot = cache_dir("acceptance", issue, run, "shots", f"{name}.png")
+    shot = cache_dir("acceptance", issue, run, *sub, "shots", f"{name}.png")
     if not shot.exists() or shutil.which("convert") is None:
         pytest.skip(f"the captured screen {run}/{name} is not on this machine")
     ppm = subprocess.run(["convert", str(shot), "-depth", "8", "ppm:-"],
@@ -3593,6 +3601,24 @@ def test_the_measured_overland_bar_matches_the_captured_screen(monkeypatch):
     ppm = subprocess.run(["convert", str(shot), "-depth", "8", "ppm:-"],
                          check=True, capture_output=True).stdout
     assert screens.bar_signature(dosbox.Screen.from_ppm(ppm)) == da.POD_MAP_BARS["overland"]
+
+
+def test_pool_map_bars_distinguish_the_measured_screens(monkeypatch):
+    """The overland and town captures each match their own `POOL_MAP_BARS`
+    entry and nothing else, and the #620 continue prompt matches neither --
+    it is a story screen, not a map, and this is why the guard stays a
+    measured set rather than widening to any bar."""
+    monkeypatch.undo()
+    overland = _capture("ca4bbff4fa-dos-pool-rebuild", "003-party_before_view",
+                        issue="634", sub=("boot",))
+    town = _capture("ca4bbff4fa-dos-pool-sheet-live", "002-loaded", issue="666")
+    continue_prompt = _capture("02a339fe5c-trainer-flag-b", "003-lost-sheet-1-map",
+                               issue="620")
+
+    assert screens.bar_signature(overland) == da.POOL_MAP_BARS["overland"]
+    assert screens.roster_line(overland, "camp", 6) == 1
+    assert screens.bar_signature(town) == da.POOL_MAP_BARS["town"]
+    assert screens.bar_signature(continue_prompt) not in da.POOL_MAP_BARS.values()
 
 
 # -- the town services screen ---------------------------------------------------

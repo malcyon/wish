@@ -46,7 +46,7 @@ conversion logged.
 | `sheet N`, `items N` | Pools of Darkness, in camp: roster line N (from 1) highlighted with `Down`, `VIEW`, the sheet's name checked against line N's, and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
 | `halve N I`, `join N I` | Pools of Darkness, in camp: member N's `ITEMS`, the highlight moved to row I (from 1, at most 18) with `Down`, `h` or `j` pressed once, and the rows counted before and after; `halve` must add a row and keep the highlight or the run stops before any save, `join` only records; back to camp |
 | `view N` | At the party menu, before `begin`.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar), `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
-| `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs the map bar back |
+| `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below) |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
@@ -221,12 +221,15 @@ QUIT_NO = "n"
 # Pool's measured camp Magic and Display bars.
 POOL_MAGIC_BAR = "062aa229ea7afd11"
 POOL_DISPLAY_BAR = "98286ceaa33edc12"
-#: Pool's map command bar and its character sheet's bar `VIEW: TRADE DROP
-#: EXIT`, by `bar_signature`, measured on Pool DOS.  On the map `End` moves
-#: the roster highlight a member on and wraps; `v` opens the sheet, and
-#: `Escape` (never `d`, which the sheet's bar offers as DROP) returns to the
-#: map with the highlight where it was.
-POOL_MAP_BAR = "809e2e1cc9504b5b"
+#: Pool's map command bars and its character sheet's bar `VIEW: TRADE DROP
+#: EXIT`, by `bar_signature`, each measured off a real screen: `town` on the
+#: runs that already used the map (#666's `ca4bbff4fa-dos-pool-sheet-live`,
+#: for example), `overland` on #634's `ca4bbff4fa-dos-pool-rebuild`.  On the
+#: map `End` moves the roster highlight a member on and wraps; `v` opens the
+#: sheet, and `Escape` (never `d`, which the sheet's bar offers as DROP)
+#: returns to the map with the highlight where it was.
+POOL_MAP_BARS: dict[str, str] = {"town": "809e2e1cc9504b5b",
+                                 "overland": "f379c606cadd4484"}
 POOL_SHEET_BAR = "33ad531ed78cfa70"
 POOL_ROSTER_NEXT = "End"
 # Names start at x=8; effect lines are indented to x=17. Count the left
@@ -2287,8 +2290,10 @@ class Driver:
         is read on the map alone, where `roster_line` is right."""
         if self.title.key != "pool" or self.where != "map":
             raise StepFailed("sheet needs Pool's loaded map")
-        if bar_signature(self.s.capture()) != POOL_MAP_BAR:
+        start = bar_signature(self.s.capture())
+        if start not in POOL_MAP_BARS.values():
             raise self.fail(f"sheet-{line}-map", "the map bar is not showing")
+        map_kind = next(k for k, bar in POOL_MAP_BARS.items() if bar == start)
         moved = self.pick_line(line, "camp", f"sheet-{line}-select", POOL_ROSTER_NEXT)
         want = roster_name(self.s.capture(), "camp", line)
         self.s.key(VIEW)
@@ -2298,7 +2303,7 @@ class Driver:
         checked = self.check_sheet(screen, line, want, f"sheet-{line}-name")
         sheet = self.shot(f"sheet-{line}")
         self.s.key("Escape")
-        if not self.s.wait_for(lambda sc: bar_signature(sc) == POOL_MAP_BAR, 15.0):
+        if not self.s.wait_for(lambda sc: bar_signature(sc) == start, 15.0):
             raise self.fail(f"sheet-{line}-back", "the map bar did not return "
                             "after Escape")
         back = self.s.capture()
@@ -2306,7 +2311,7 @@ class Driver:
             raise self.fail(f"sheet-{line}-back", "the highlight is not on the "
                             "member the sheet showed")
         self.shot(f"sheet-{line}-back")
-        return {"line": line, **moved, "sheet": sheet, **checked}
+        return {"line": line, "map_kind": map_kind, **moved, "sheet": sheet, **checked}
 
     def sheet(self, line: int) -> dict:
         """Roster line `line`'s sheet from camp, shot, and back to camp."""
