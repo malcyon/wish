@@ -795,6 +795,11 @@ def never_expiring_strength_record(title_key: str,
     low seven bits and bit 7 set (`SPELLE04 $A8CC`, `#621`). `_value_node`'s
     strength rule is the same encoder DOS's own `0x2BFCE` uses, so this is
     `never_expiring_spell_record`'s sibling for that one id.
+
+    A trait-slot id (`#621`'s excluded case) never reaches this guard: trait
+    slots come from `rec.get_raw("item_effects")`, a different byte region
+    from the `active_effects`/`rows` list this function is called against,
+    so the two cannot collide.
     """
     if not (title_key == "pool-of-radiance" and row.id == 38
             and row.duration == 0 and row.magnitude & 0x80):

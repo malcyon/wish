@@ -1335,6 +1335,21 @@ def test_a_second_strength_source_still_refuses_rather_than_double_convert():
     assert len(lines) == 1 and "more than one strength row" in lines[0]
 
 
+def test_two_duration_0_strength_rows_are_both_refused_and_logged():
+    """Two readied-gauntlets-style rows (id 38, duration 0) on one owner: the
+    duration-0 fallthrough must refuse and log like the duration != 0 branch
+    does (`test_a_second_strength_source_still_refuses_rather_than_double_convert`),
+    not fall silently into `innate_effects` with nothing said."""
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 38, 2, 0, ROLAND_STRENGTH_MAGNITUDE)
+    effects.write_effect(p, 62, 38, 2, 0, ROLAND_STRENGTH_MAGNITUDE)
+    got = _read(p, 2)
+    assert got.get("granted_effects") is None
+    assert (got.get("innate_effects") or []).count(38) == 2
+    lines = [d for d in got.dropped if "more than one strength row" in d]
+    assert len(lines) == 2
+
+
 # --- Haste, invisible, the combat spells, id 113 and id 13 ----------------------
 
 # (game, DOS node, the C64 row it becomes for party slot 2)

@@ -2354,7 +2354,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 running.append(effects.RunningEffect(
                     cure_id, minutes, 0, 1).to_record())
         # C64 Pool restores one old strength per character, so a second
-        # strength row cannot come back as one node.
+        # strength row cannot come back as one node. A duration-0 row
+        # counts too when it carries an old strength score (readied
+        # gauntlets, #621), not only a running (duration != 0) row.
         strength_rows = sum(
             1 for r in rows if r.owner == party_slot
             and r.id in effects.STRENGTH_IDS
@@ -2380,6 +2382,16 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 elif strength_record is not None:
                     granted.append(strength_record)
                 else:
+                    if (strength_rows > 1 and spell_record is None
+                            and row.id in effects.STRENGTH_IDS):
+                        # Same refusal as the duration != 0 strength row
+                        # below, logged here too so a second duration-0
+                        # strength source (none exists yet) would not
+                        # fall through silently.
+                        out.drop(
+                            f"item {row.id} strength grant: more than one "
+                            "strength row on one character, and DOS Pool "
+                            "holds one strength score")
                     permanent.append(row.id)
                 continue
             if strength_rows > 1 and row.id in effects.STRENGTH_IDS:
