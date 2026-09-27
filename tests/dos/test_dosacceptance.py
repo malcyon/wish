@@ -1723,9 +1723,16 @@ def test_curse_begin_returns_past_a_continue_screen_then_camps(tmp_path, monkeyp
 
 def test_curse_begin_stops_when_the_continue_screen_never_clears(tmp_path, monkeypatch):
     game, d = _curse_continue_driver(tmp_path, monkeypatch, 99)
-    with pytest.raises(da.StepFailed, match="continue screen is still showing"):
+    shots = []
+    real = game.shot
+    game.shot = lambda name, allow_blank=False: (shots.append(name), real(name))[1]
+    with pytest.raises(da.StepFailed,
+                       match=r"continue screen is still showing after 3 were "
+                             r"answered; see \d+-lost-begin-continue\.png"):
         d.begin()
-    assert game.keys.count("Return") == da.CURSE_CONTINUE_ROUNDS
+    assert da.CURSE_CONTINUE_ROUNDS == 3
+    assert game.keys.count("Return") == 3
+    assert shots[-1].endswith("lost-begin-continue")
 
 
 def test_curse_begin_presses_nothing_when_no_continue_screen_shows(tmp_path):
