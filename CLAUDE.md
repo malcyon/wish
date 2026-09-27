@@ -48,6 +48,7 @@ link there. In a `docs/` write-up, say why a claim changed; nowhere else.
 | **plain**, the whole word -- "plainly", "say plainly", "in plain terms", "in plain English" | **simple**, wherever an adjective is wanted. Where it is a preamble rather than an adjective, delete it: "say plainly" and "put simply" both promise the next sentence will be clear, which is not the same as writing one. Just say the thing |
 | **floor**, for anything but a story of a building -- "a floor under the window", "a green suite is the floor" | say the thing: "the window never gets narrower than this", "passing it proves nothing broke" |
 | **carried**, of anything a conversion does not convert -- "not carried", "carries it across", "nowhere to carry it" | **converted**, and then say what a player loses: "the ring does not resist fire on the other side yet". The word is how an agent gives up and makes it sound like a finding. |
+| **census**, for anything but a government counting a country's people house by house -- "the census found", "a census of the saves", "run a census" | say what was counted: "a count of", "a sweep of", "a survey of", "the list of every X", "a measurement across the saves we have". A file named `turncensus.py` keeps its spelling, like `DosShape` -- the ban is on prose |
 
 **A row's examples are examples; the word is banned however it is phrased**,
 and the table is not the whole rule -- the habit behind it is reaching for
