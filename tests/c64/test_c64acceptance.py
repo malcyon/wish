@@ -1223,7 +1223,7 @@ CAST_LIST = "CAST MEMORIZE SCRIBE NEXT PREV EXIT"
 CAST_SCREENS = {
     "camp": _window({}, CAMP), "magic": _window({}, MAGIC),
     "list": _window({3: "CURE BLINDNESS"}, CAST_LIST),
-    "picking": _window({1: "PICK A SPELL", 3: "CURE BLINDNESS"}, CAST_LIST),
+    "picking": _window({3: "CURE BLINDNESS"}, "PICK A SPELL TO CAST"),
     "whom": [*_whom_screen(("PHILIPPE", "SHARA", "LEDERA"))[:24],
              "CAST SPELL ON WHOM?".ljust(40)],
     "on": _whom_screen(("PHILIPPE",)),
@@ -1291,7 +1291,7 @@ def test_curse_cast_recognises_a_one_spell_list_and_selects_cast(tmp_path):
     screens = {**CAST_SCREENS,
                "list": _window({1: "SHARA'S MEMORIZED SPELLS", 3: "3RD LEVEL",
                                 4: "  CURE BLINDNESS"}, one),
-               "picking": _window({1: "PICK A SPELL", 3: "CURE BLINDNESS"}, one)}
+               "picking": _window({3: "CURE BLINDNESS"}, "PICK A SPELL TO CAST")}
     blind, disease = [62, 33, 0, 0, 5], [61, 34, 2, 0, 0x85]
     sess = _CurseFake(screens, _cast_moves({("picking", ("key", "Return")): "whom"}),
                       "camp")
@@ -1337,14 +1337,49 @@ def test_curse_cast_sends_fire_only_with_the_joystick(tmp_path):
     assert sess.sent[4:7] == [("key", "Return"), ("key", 0x0D), ("key", "KP_0")]
 
 
-def test_curse_cast_stops_at_once_when_a_key_changes_the_screen_to_something_else(
-        tmp_path):
-    run, sess = _cast(tmp_path, {("picking", ("key", "Return")): "unknown"}, joy=True)
-    with pytest.raises(A.StepFailed, match="not the target question"):
+class _RedrawFake(_CurseFake):
+    """Serves the `redraw` screen for two reads, then moves on to `whom`."""
+
+    reads = 0
+
+    def screen(self):
+        if self.state == "redraw":
+            self.reads += 1
+            if self.reads > 2:
+                self.state = "whom"
+        return super().screen()
+
+
+# The camp picture with an empty right panel, the old prompt still on row 24.
+_REDRAW = _window({}, "PICK A SPELL TO CAST")
+
+
+def test_curse_cast_waits_through_the_redraw_after_a_pick(tmp_path):
+    screens = {**CAST_SCREENS, "redraw": _REDRAW}
+    sess = _RedrawFake(screens, _cast_moves({("picking", ("key", "Return")): "redraw"}),
+                       "camp")
+    run = _curse_run(tmp_path, sess, [[[62, 33, 0, 0, 5]], []])
+    run.whom_wait = 1.5
+    try:
+        got = run.cast("SHARA:CURE BLINDNESS>PHILIPPE")
+    finally:
+        run.log.close()
+    assert got["key"] == "xtest-return"
+    assert [k for k in sess.sent if k[0] == "key" and k[1] != 0x0D].count(
+        ("key", "Return")) == 2  # one pick, one target Return
+    assert sess.sent[4:6] == [("key", "Return"), ("party", 0)]
+
+
+def test_curse_cast_fails_when_a_changed_screen_never_asks_the_question(tmp_path):
+    screens = {**CAST_SCREENS, "redraw": _REDRAW}
+    sess = _CurseFake(screens, _cast_moves({("picking", ("key", "Return")): "unknown"}),
+                      "camp")
+    run = _curse_run(tmp_path, sess, [], joy=True)
+    with pytest.raises(A.StepFailed, match="never came up"):
         run.cast("SHARA:CURE BLINDNESS>PHILIPPE")
     run.log.close()
-    assert sess.sent[-1] == ("key", "Return") and sess.state == "unknown"
-    assert list(tmp_path.glob("*lost-pick-changed.txt"))
+    assert sess.sent[4:] == [("key", "Return")] and sess.state == "unknown"
+    assert list(tmp_path.glob("*lost-pick-no-whom.txt"))
 
 
 def test_curse_cure_names_its_target_and_leaves_the_sheet(tmp_path):

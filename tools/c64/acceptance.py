@@ -126,7 +126,7 @@ MAGIC_BAR = "SCRIBE"
 #: same text in the later titles.
 WHOM = "DISPLAY SPELLS ON WHOM"
 CAST_WHOM = "CAST SPELL ON WHOM"
-PICK_SPELL = "PICK A SPELL"
+PICK_SPELL = "PICK A SPELL TO CAST"
 AFFECTED = "IS AFFECTED BY:"
 WHOLE_PARTY = "THE WHOLE PARTY"
 CONTINUE = "PRESS ANY KEY TO CONTINUE"
@@ -1349,8 +1349,9 @@ class CurseRun(PoolRun):
 
         Nothing is known of which key `LIBRARY $4A9A` takes off a list with a
         cursor: Return is what the target menu takes, and fire is what picked
-        a combat spell in Pool.  A screen that changes to anything but the
-        target question ends the step, so no further key is pressed at it.
+        a combat spell in Pool.  Once the screen changes the key was taken, so
+        no further key is sent; the game redraws the camp before it asks
+        the target question, and that redraw is waited through.
         """
         keys = ["xtest-return", "kernal-return"] + (["joystick-fire"] if self.joy else [])
         for key in keys:
@@ -1359,11 +1360,12 @@ class CurseRun(PoolRun):
                 lambda r: CAST_WHOM in r[24] or r != listed, self.pick_wait)
             if rows is None:
                 continue
-            if CAST_WHOM in rows[24]:
-                return key
-            raise self.fail("pick-changed",
-                            f"{key} changed the spell list into something that is "
-                            f"not the target question: {rows[24].strip()!r}")
+            if CAST_WHOM not in rows[24]:
+                rows = self.wait_rows(lambda r: CAST_WHOM in r[24], self.whom_wait)
+            if rows is None:
+                raise self.fail("pick-no-whom",
+                                f"{key} changed the spell list but {CAST_WHOM} never came up")
+            return key
         raise self.fail("pick", f"none of {', '.join(keys)} picked the spell")
 
     def _acknowledge(self, limit: int = 4) -> list[list[str]]:
@@ -1421,9 +1423,11 @@ class CurseRun(PoolRun):
         self.capture("cast-list")
         if not self.choose_bar("CAST", timeout=20):
             raise self.fail("cast-again", "CAST could not be chosen on the spell list")
-        listed = self.wait_rows(lambda r: _has(r, PICK_SPELL), 10)
-        if listed is None:
+        if self.wait_rows(lambda r: PICK_SPELL in r[24], 10) is None:
             raise self.fail("pick-prompt", f"{PICK_SPELL} never came up")
+        # A key sent before the game polls its input routine is thrown away.
+        self.sess.settle(1)
+        listed = self.capture("pick-list")
         key = self._pick_spell(listed)
         first = self.reading()
         if not self.pick(target, CAST_WHOM):
