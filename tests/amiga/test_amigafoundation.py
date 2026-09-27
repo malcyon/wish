@@ -394,7 +394,8 @@ DARK_STATES = ("title", "journal", "journal_answer", "party_menu", "load_from", 
                "loaded_menu", "sheet", "save_picker", "world", "camp", "camp_save_picker")
 MEASURE_STATES = tuple(s for s in DARK_STATES if s != "title")  # boot crops are not named "title"
 DARK_FIRST_SCREEN = {}  # the title crop is recognised by its own name, and nothing precedes it
-DARK_KEYS = ["P", "L", "P", "B", "SPACE", "V", "E", "S", "F", "B", "NP8", "E", "S", "G"]
+DARK_KEYS = ["P", "L", "P", "B", "SPACE", "V", "E", "S", "F", "B", "X", "RET", "NP8", "E", "S", "G"]
+DARK_ACCEPT_STATES = ("journal", "world", "camp")
 
 
 class DarkGuest(TitleGuest):
@@ -472,13 +473,36 @@ def test_darkness_fails_when_g_stays_or_is_on_another_map_or_two_squares_on(
     assert result["success"] is False and result["walk"]["d_ok"] is False
 
 
-def test_darkness_answers_the_journal_at_most_three_times(tmp_path, clock):
-    guard = MapGuard(states=DARK_STATES, on={"title": lambda p: False,
-                                             "journal": lambda p: True})
-    guest, result = _dark_run(tmp_path, clock, guard=guard)
-    keys = _keys(guest)
-    assert keys.count("X") == 3 and keys.count("RET") == 3
-    assert "still on screen after three answers" in result["error"]
+def test_darkness_accept_order_puts_the_control_save_before_the_walk_and_the_after_save_after(
+        tmp_path, clock):
+    guest, result = _dark_run(tmp_path, clock)
+    order = [c[2] if c[0] == "press" else "insert" for c in guest.calls
+             if c[0] in ("press", "insert")]
+    assert order == "P L P B insert SPACE V E S F B X RET NP8 E S G".split()
+    assert result["events"] and not any("answer" in e or "interstitial" in e
+                                        for e in result["events"])
+
+
+@pytest.mark.parametrize("state", DARK_ACCEPT_STATES)
+def test_darkness_accept_refuses_to_start_when_the_guard_map_lacks_a_new_state(
+        tmp_path, clock, state):
+    guard = MapGuard(states=tuple(s for s in DARK_STATES if s != state), on=DARK_FIRST_SCREEN)
+    with pytest.raises(drive.RouteError, match="screen guard map lacks"):
+        _dark_run(tmp_path, clock, guard=guard)
+
+
+def test_darkness_accept_route_answers_the_journal_with_explicit_steps_and_asks_no_answerer():
+    darkness = foundation.DARKNESS
+    assert darkness.route[8:] == (
+        ("F", "loaded_menu", "write"), ("B", "journal", "key"),
+        ("X", "journal_answer", "key"), ("RET", "world", "key"), ("NP8", "world", "move"),
+        ("E", "camp", "key"), ("S", "camp_save_picker", "key"), ("G", "camp", "write"))
+    assert {"journal", "world", "camp"} <= darkness.strict
+    assert [row[0] for row in darkness.interstitials] == ["yes_no", "continue"]
+    assert darkness.interstitials == (
+        ("yes_no", ("keys", "N"), frozenset({"world"}), 1),
+        ("continue", ("keys", "RET"), frozenset({"world"}), 3))
+    assert not any(kind == "answer" for _, _, kind in darkness.route)
 
 
 def test_darkness_measure_ends_at_the_camp_save_picker_and_writes_nothing(tmp_path, clock):
@@ -499,8 +523,8 @@ def test_darkness_route_and_measure_route_are_pinned_and_write_only_f_and_g():
             ("B", "disk2_prompt", "key"), foundation.DISK2_INSERT,
             ("V", "sheet", "key"), ("E", "loaded_menu", "key"))
     assert darkness.route == head + (
-        ("S", "save_picker", "key"), ("F", "loaded_menu", "write"), ("B", "world", "key"),
-        ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
+        ("S", "save_picker", "key"), ("F", "loaded_menu", "write"), ("B", "journal", "key"),
+        ("X", "journal_answer", "key"), ("RET", "world", "key"), ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
         ("G", "camp", "write"))
     assert darkness.measure_route == head + (
         ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", "world", "key"),
@@ -606,7 +630,7 @@ def _dark_guard(screen, when, **closed):
 
 def test_darkness_answers_yes_no_with_n_once_and_only_while_waiting_for_the_world(
         tmp_path, clock):
-    guest, _ = _dark_run(tmp_path, clock, guard=_dark_guard("yes_no", ["10-world"], world=1))
+    guest, _ = _dark_run(tmp_path, clock, guard=_dark_guard("yes_no", ["12-world"], world=1))
     assert _keys(guest).count("N") == 1 and "Y" not in _keys(guest)
     other = tmp_path / "other"
     other.mkdir()
@@ -616,8 +640,8 @@ def test_darkness_answers_yes_no_with_n_once_and_only_while_waiting_for_the_worl
 
 def test_darkness_presses_return_at_a_continue_page_three_times_at_most_and_only_for_the_world(
         tmp_path, clock):
-    guest, _ = _dark_run(tmp_path, clock, guard=_dark_guard("continue", ["10-world"], world=1))
-    assert _keys(guest).count("RET") == 3
+    guest, _ = _dark_run(tmp_path, clock, guard=_dark_guard("continue", ["12-world"], world=1))
+    assert _keys(guest).count("RET") == 4  # the route's own, then three page turns
     other = tmp_path / "other"
     other.mkdir()
     guest, _ = _dark_run(other, clock, guard=_dark_guard("continue", ["01-party_menu"], party_menu=1))
@@ -688,7 +712,7 @@ def test_pool_answers_the_path_prompt_once_at_the_camp_save_picker_and_nowhere_e
 
 
 @pytest.mark.parametrize("title,key,prefix,at_least", [
-    ("darkness", "B", "10-world", 45.0),   # BEGIN loads the dungeon, so the wait is long
+    ("darkness", "B", "10-journal", 45.0),   # BEGIN loads the journal question, so the wait is long
     ("curse", "B", "07-world", 20.0),
     ("pool", "A", "04-world", 20.0),
 ])
@@ -737,8 +761,7 @@ def test_darkness_inserts_disk_2_into_df0_at_the_prompt_after_the_slot_letter():
 def test_darkness_has_no_disk_prompt_interstitial_and_pins_its_boot_span_as_a_guess():
     # With disk 3 mounted no prompt appeared. The 225 s span puts the first key near the title in
     # the one measured boot; that timing is a guess until a title guard recognises the screen.
-    assert [row[0] for row in foundation.DARKNESS.interstitials] == ["journal", "yes_no",
-                                                                     "continue"]
+    assert [row[0] for row in foundation.DARKNESS.interstitials] == ["yes_no", "continue"]
     assert foundation.DARKNESS.boot_span == 225.0
     first_four = (("P", "party_menu", "key"), ("L", "load_from", "key"),
                   ("P", "load_picker", "key"), ("B", "disk2_prompt", "key"))

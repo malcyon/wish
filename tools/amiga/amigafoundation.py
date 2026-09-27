@@ -269,7 +269,8 @@ def _darkness_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, by
 # The control and after saves go to F and G, letters the game's own save picker (A to H) offers
 # and no saved game on disk 3 uses; B is the loaded slot. The measure route types one throwaway
 # letter and Return into the journal question that follows Begin Adventuring, then walks to the
-# camp save picker, before any save letter.
+# camp save picker, before any save letter. The accept route answers the same question the same
+# way, with explicit keys and no answerer, between the control save and the walk.
 # The key that answers `INSERT DISK 2 AND PRESS A KEY` is a guess for the measuring boot to confirm.
 DISK2_INSERT = ((0, "disk2", "SPACE"), "loaded_menu", "insert")
 
@@ -285,7 +286,8 @@ DARKNESS = AmigaTitle(
         ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
         ("B", "disk2_prompt", "key"), DISK2_INSERT,
         ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
-        ("S", "save_picker", "key"), ("F", "loaded_menu", "write"), ("B", "world", "key"),
+        ("S", "save_picker", "key"), ("F", "loaded_menu", "write"),
+        ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", "world", "key"),
         ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
         ("G", "camp", "write"),
     ),
@@ -307,7 +309,8 @@ DARKNESS = AmigaTitle(
     control_letter="F", after_letter="G", kept_letters=("A", "C", "D", "E"),
     plain_keys=(("E", "loaded_menu"), ("E", "camp")),
     strict=frozenset({"party_menu", "load_from", "load_picker", "disk2_prompt", "loaded_menu",
-                      "sheet", "save_picker", "camp_save_picker"}),
+                      "sheet", "save_picker", "journal", "world", "camp",
+                      "camp_save_picker"}),
     disk_prompts=frozenset({"disk2_prompt"}),
     # The `disk2_prompt` wait of 10 s is a guess until the measuring boot times the prompt.
     min_waits={"party_menu": 20.0, "load_from": 20.0, "load_picker": 10.0,
@@ -316,7 +319,6 @@ DARKNESS = AmigaTitle(
                "world": 45.0, "world_after_move": 5.0,
                "camp": 10.0, "camp_save_picker": 10.0},
     interstitials=(
-        ("journal", ("answer",), None, 1),
         ("yes_no", ("keys", "N"), frozenset({"world"}), 1),
         ("continue", ("keys", "RET"), frozenset({"world"}), 3),
     ),
