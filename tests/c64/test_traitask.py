@@ -30,12 +30,17 @@ class FakeScreen:
     def row(self, r: int) -> str:
         if r == 0:
             return " " * S.PARTY_COLUMN + CHARACTER
+        if r == 1:
+            return CHARACTER
         if r == 24:
             return self.row24
         return ""
 
     def rows(self):
         return [self.row(r) for r in range(25)]
+
+    def text(self) -> str:
+        return "\n".join(self.rows())
 
     def contains(self, needle: str) -> bool:
         return needle in self.row24
@@ -75,6 +80,11 @@ class FakeSession:
 
     def select_bar(self, label: str, timeout: float = 20.0) -> bool:
         self.select_bar_calls.append(label)
+        if label == "VIEW":
+            # `wait_sheet_bar` reads the screen directly rather than through
+            # `wait_text`, so the fake screen has to show the sheet's own bar
+            # once VIEW is chosen, the way the real game would.
+            self.current_bar = S.SHEET_BAR + "ITEMS SPELLS TRADE DROP EXIT"
         return True
 
     def wait_text(self, needle, timeout: float = 180.0):

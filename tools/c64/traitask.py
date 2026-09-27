@@ -385,6 +385,43 @@ def sheet_rows(sess) -> list[str]:
     return [] if s is None else [r.rstrip() for r in s.rows()]
 
 
+#: Which side carries every portrait a Pool of Radiance sheet can ask for --
+#: all fourteen heads and twelve bodies `goldbox.portraits.POOL_OF_RADIANCE_
+#: MENU` offers -- so answering the sheet's own disk prompt with this side
+#: always has the file, whatever the file is (#694).
+PORTRAIT_SIDE = 3
+
+
+def wait_sheet_bar(sess: S.Session, timeout: float) -> bool:
+    """Wait for a character sheet's bar, answering its own portrait disk
+    prompt with `PORTRAIT_SIDE` rather than the side it names.
+
+    Opening a sheet makes the game fetch the character's portrait, which can
+    live on a side other than the one in the drive; the loader's prompt
+    (`LIBRARY $4378`) always names the *current area's* side, never the side
+    the missing `HEAD`/`BODY` file is actually on. Ordinary `handle_prompt`
+    answers with the side named, which is the side already in the drive, so
+    the load fails and the prompt comes straight back -- forever (#694). This
+    answers that one prompt differently, at most once every 2 s, and leaves
+    every other prompt to `handle_prompt`.
+    """
+    deadline = time.time() + timeout
+    swapped = 0.0
+    while time.time() < deadline:
+        s = sess.screen()
+        if s is not None:
+            if S.SHEET_BAR in s.row(24) and s.row(1).strip():
+                return True
+            if time.time() - swapped > 2.0 and S.RE_GAME_SIDE.search(s.text()):
+                swapped = time.time()
+                sess.attach(os.path.join(sess.here, f"SIDE{PORTRAIT_SIDE}.D64"))
+                sess.kbd.key("space")
+                continue
+            sess.handle_prompt(s)
+        time.sleep(0.35)
+    return False
+
+
 def panel_index(sess: S.Session, name: str) -> int | None:
     """Which row of the world panel names this character, 0 first.
 
@@ -436,7 +473,7 @@ def open_items(sess: S.Session, log: Log, name: str, label: str,
     if not sess.select_bar("VIEW", timeout=20):
         log.say("  VIEW could not be selected in camp")
         return False
-    if sess.wait_text(S.SHEET_BAR, 30)[0] is None:
+    if not wait_sheet_bar(sess, 90):
         log.say("  no character sheet")
         return False
     time.sleep(0.8)

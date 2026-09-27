@@ -336,6 +336,9 @@ class FakeScreen:
     def row(self, r):
         return self._rows[r]
 
+    def text(self):
+        return "\n".join(self._rows)
+
 
 class FakeKeyboard:
     def __init__(self, session):
@@ -358,6 +361,13 @@ class FakeSession:
         self.screens, self.moves, self.state = screens, moves, start
         self.kbd = FakeKeyboard(self)
         self.sent = []
+        self.here = "/slot"
+        self.attaches = []
+        self.prompts_handled = 0
+
+    def attach(self, path, unit=8, **kw):
+        self.attaches.append(path)
+        return True
 
     def _go(self, what):
         self.sent.append(what)
@@ -370,6 +380,7 @@ class FakeSession:
         return FakeScreen(self.screens[self.state])
 
     def handle_prompt(self, s=None):
+        self.prompts_handled += 1
         return False
 
     def settle(self, seconds=0):
@@ -1066,6 +1077,46 @@ def test_items_reads_the_list_of_the_member_asked_for_and_leaves_it(tmp_path):
     assert [e["row"] for e in got["entries"]] == ["YES CLOAK", "YES 13 *DART",
                                                   "NO  DAGGER"]
     assert sess.state == "world"
+
+
+def test_open_sheet_answers_a_portrait_disk_prompt_with_side_3_not_the_side_it_names(
+        tmp_path):
+    """The sheet's own portrait load asks for the *area's* side (`#694`),
+    which is the side already in the drive when the character's art is not
+    on it -- so answering as asked loops forever. `open_sheet` must attach
+    `SIDE3.D64` instead, and must not call `handle_prompt` for that prompt."""
+    screens = {
+        "world": _window({}, WORLD_BAR),
+        "prompt": _window({}, "INSERT SIDE # 2, AND PRESS ANY KEY."),
+        "sheet": _window({1: "BAKSHI"}, "VIEW:ITEMS SPELLS TRADE DROP EXIT"),
+    }
+    moves = {
+        ("world", ("party", 0)): "world", ("world", ("bar", "VIEW")): "prompt",
+        ("prompt", ("key", "space")): "sheet",
+    }
+    sess = FakeSession(screens, moves, "world")
+    run, log = _pool_run(tmp_path, sess)
+    got = run.open_sheet("1")
+    log.close()
+    assert sess.attaches == ["/slot/SIDE3.D64"]
+    assert sess.prompts_handled == 0
+    assert any("BAKSHI" in r for r in got)
+
+
+def test_side_3_carries_every_portrait_the_creation_menu_can_choose():
+    """Answering a sheet's portrait prompt with side 3 is a complete fix and
+    not a special case for BAKSHI's `HEAD35`/`BODY07`: `POOL3.D64` carries a
+    `HEAD<xx>`/`BODY<xx>` file for every one of the fourteen heads and twelve
+    bodies the creation menu offers (`#694`)."""
+    from goldbox.portraits import POOL_OF_RADIANCE_MENU
+
+    path = gamedata.game_disk("POOL3")
+    image = D64(path.read_bytes())
+    names = {entry.name.decode("latin1") for entry in image.directory()}
+    for head in POOL_OF_RADIANCE_MENU.heads:
+        assert f"HEAD{head:02X}" in names
+    for body in POOL_OF_RADIANCE_MENU.bodies:
+        assert f"BODY{body:02X}" in names
 
 
 # --- the run's deadline and clean-up -------------------------------------------

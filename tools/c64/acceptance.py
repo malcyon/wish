@@ -815,8 +815,13 @@ class PoolRun:
             raise self.fail("panel", f"the panel highlight would not go onto {who}")
         if not self.choose_bar("VIEW", timeout=20):
             raise self.fail("view", "VIEW could not be chosen")
-        rows = self.wait_rows(lambda r: S.SHEET_BAR in r[24] and r[1].strip(), 30)
-        if rows is None:
+        # `wait_rows` calls `handle_prompt`, which answers a sheet's own
+        # portrait disk prompt with the side it names -- the side already in
+        # the drive when the character's art is not on it, so the load fails
+        # and the prompt loops forever (#694). `traitask.wait_sheet_bar`
+        # answers that one prompt with `PORTRAIT_SIDE` instead.
+        if not traitask.wait_sheet_bar(
+                self.sess, self.budget(90, "a character sheet")):
             raise self.fail("view", "no character sheet came up")
         self.sess.settle(0.8)
         return self.capture(f"sheet-{who}")
