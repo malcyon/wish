@@ -40,6 +40,7 @@ import argparse
 import os
 import pathlib
 import sys
+import tempfile
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -51,6 +52,26 @@ from tools.c64 import session as S  # noqa: E402
 #: What CAST's list leads to and VIEW's does not. The one string that tells
 #: the two identical-looking character lists apart.
 CAST_PROMPT = "PICK A SPELL"
+
+
+def save_confirmed(sess) -> tuple[bool, str]:
+    """Read the save disk's own directory back, rather than trusting
+    `save_game()`'s return value alone.
+
+    `Session.save_game()` can return `True` even when its own final wait for
+    the camp bar to return after the write times out -- it only logs a
+    warning in that case (`#696`). Most callers catch that through
+    `copy_closed_disk`, whose directory-closed check raises loudly on a
+    write still in flight; this check does the same read here, since nothing
+    else in this file follows `save_game()` with one.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            S.copy_closed_disk(pathlib.Path(sess.save_disk),
+                                pathlib.Path(tmp) / "verify.D64")
+        except RuntimeError as exc:
+            return False, str(exc)
+    return True, ""
 
 
 def show(sess, tag: str):
@@ -148,7 +169,12 @@ def main(argv: list[str] | None = None) -> int:
         print("row24 after escaping |%s|" % sess.screen().row(24), flush=True)
         saved = sess.save_game()
         sess.settle(4)
-        check("SAVE GAME", saved, f"back in the world at {sess.position()}")
+        why = f"back in the world at {sess.position()}"
+        if saved:
+            saved, why = save_confirmed(sess)
+            if saved:
+                why = f"back in the world at {sess.position()}"
+        check("SAVE GAME", saved, why)
         if shots:
             sess.kbd.screenshot(str(shots / "after-save.png"))
     except Exception as exc:                                # noqa: BLE001
