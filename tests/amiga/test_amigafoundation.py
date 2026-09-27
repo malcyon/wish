@@ -386,19 +386,19 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
     assert drive._title_inputs(manifest, foundation.CURSE)[2] == "B"
 
 
-# Pools of Darkness: disk 3 goes into DF1 when the boot asks for it, then SPACE; I is the control save
-# and J the after save, and E is the game's exit key though slot E is a kept slot.
+# Pools of Darkness: disk 3 goes into DF1 when the boot asks for it, then SPACE; F is the control save
+# and G the after save (both offered by the game's save picker, which lists A to H), and E is the game's exit key though slot E is a kept slot.
 DARK_START = {"area": 2, "x": 1, "y": 2, "facing": geo.EAST}
 DARK_LATER = dict(DARK_START, x=2)
 DARK_STATES = ("title", "journal", "party_menu", "load_from", "load_picker", "disk2_prompt",
                "loaded_menu", "sheet", "save_picker", "world", "camp", "camp_save_picker")
 MEASURE_STATES = tuple(s for s in DARK_STATES if s != "title")  # boot crops are not named "title"
 DARK_FIRST_SCREEN = {}  # the title crop is recognised by its own name, and nothing precedes it
-DARK_KEYS = ["P", "L", "P", "B", "SPACE", "V", "E", "S", "I", "B", "NP8", "E", "S", "J"]
+DARK_KEYS = ["P", "L", "P", "B", "SPACE", "V", "E", "S", "F", "B", "NP8", "E", "S", "G"]
 
 
 class DarkGuest(TitleGuest):
-    """The game writes slot I at its `I` and slot J at its `J`, with the party where the keys took it."""
+    """The game writes slot F at its `F` and slot G at its `G`, with the party where the keys took it."""
 
     def press(self, holder, key, timeout=None):
         super(TitleGuest, self).press(holder, key, timeout)
@@ -406,10 +406,10 @@ class DarkGuest(TitleGuest):
             dx, dy = geo.STEP[self.place["facing"]]
             self.place["x"] += dx
             self.place["y"] += dy
-        elif key == "I":
-            self._write("I", self.place)
-        elif key == "J":
-            self._write("J", self.land or self.place)
+        elif key == "F":
+            self._write("F", self.place)
+        elif key == "G":
+            self._write("G", self.land or self.place)
 
 
 def _dark_title():
@@ -459,13 +459,13 @@ def test_darkness_accept_presses_the_plans_keys_with_disk_3_mounted_in_df1_and_n
     assert order[3:6] == ["B", "insert", "SPACE"] and order[6] == "V"
     # E leaves the sheet once and never twice in a row at the party menu.
     assert keys[keys.index("L"):keys.index("S")].count("E") == 1
-    assert result["read"]["verdicts"][0] == "slot I: did not move"
-    assert result["read"]["verdicts"][1].startswith("slot J: moved 1 square")
+    assert result["read"]["verdicts"][0] == "slot F: did not move"
+    assert result["read"]["verdicts"][1].startswith("slot G: moved 1 square")
 
 
 @pytest.mark.parametrize("land", [dict(DARK_START), dict(DARK_START, x=2, area=1),
                                   dict(DARK_START, x=3)])
-def test_darkness_fails_when_j_stays_or_is_on_another_map_or_two_squares_on(
+def test_darkness_fails_when_g_stays_or_is_on_another_map_or_two_squares_on(
         tmp_path, clock, land):
     guest = DarkGuest(clock, save_key="disk3", land=land)
     _, result = _dark_run(tmp_path, clock, guest=guest)
@@ -481,13 +481,52 @@ def test_darkness_answers_the_journal_at_most_three_times(tmp_path, clock):
     assert "still on screen after three answers" in result["error"]
 
 
-def test_darkness_measure_stops_before_the_first_save(tmp_path, clock):
+def test_darkness_measure_ends_at_the_camp_save_picker_and_writes_nothing(tmp_path, clock):
     guest, result = _dark_run(tmp_path, clock, guard=MapGuard(states=MEASURE_STATES),
                               accept=False, measure=True)
-    assert _keys(guest) == "P L P B SPACE V E S".split()
+    assert _keys(guest) == "P L P B SPACE V E B NP8 E S".split()
     assert [d for d, _ in guest.inserted] == [0] and result["success"] is True
     assert result["control_sha256"] is None
-    assert not {"I", "J", "Y"} & set(_keys(guest))
+    order = [c[2] if c[0] == "press" else "insert" for c in guest.calls
+             if c[0] in ("press", "insert")]
+    assert order == "P L P B insert SPACE V E B NP8 E S".split()
+    assert not {"F", "G", "I", "J", "Y"} & set(_keys(guest))
+
+
+def test_darkness_route_and_measure_route_are_pinned_and_write_only_f_and_g():
+    darkness = foundation.DARKNESS
+    head = (("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
+            ("B", "disk2_prompt", "key"), foundation.DISK2_INSERT,
+            ("V", "sheet", "key"), ("E", "loaded_menu", "key"))
+    assert darkness.route == head + (
+        ("S", "save_picker", "key"), ("F", "loaded_menu", "write"), ("B", "world", "key"),
+        ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
+        ("G", "camp", "write"))
+    assert darkness.measure_route == head + (
+        ("B", "world", "key"), ("NP8", "world", "move"), ("E", "camp", "key"),
+        ("S", "camp_save_picker", "key"))
+    assert (darkness.control_letter, darkness.after_letter) == ("F", "G")
+    assert not {"F", "G"} & set(darkness.kept_letters)
+    assert {step[0] for step in darkness.route if step[2] == "write"} == {"F", "G"}
+
+
+@pytest.mark.parametrize("letter", ["A", "H", "I", "J"])
+def test_darkness_refuses_a_write_step_that_is_not_the_control_or_after_letter(letter):
+    route = tuple((letter, state, kind) if kind == "write" and key == "F" else (key, state, kind)
+                  for key, state, kind in foundation.DARKNESS.route)
+    with pytest.raises(drive.RouteError):
+        dataclasses.replace(foundation.DARKNESS, route=route)
+
+
+def test_the_real_darkness_readers_show_f_g_and_h_free_on_disk_3():
+    try:
+        images = foundation._find_images({"disk3": foundation.DARKNESS_DISK3_SHA256})
+    except drive.RouteError:
+        pytest.skip("the registered Pools of Darkness disk 3 is not here")
+    disk = AmigaDisk(images["disk3"][1])
+    assert foundation.DARKNESS.slot_letters(disk) == list("ABCDE")
+    for letter in "FGH":
+        assert foundation.DARKNESS.read_slot(disk, letter) == {"missing": True, "sha256": None}
 
 
 def test_darkness_names_where_e_is_the_exit_key_and_nowhere_else():
@@ -690,7 +729,7 @@ def test_darkness_inserts_disk_2_into_df0_at_the_prompt_after_the_slot_letter():
             ("B", "disk2_prompt", "key"), insert)
     tail = (("V", "sheet", "key"), ("E", "loaded_menu", "key"), ("S", "save_picker", "key"))
     assert foundation.DARKNESS.route[:8] == head + tail
-    assert foundation.DARKNESS.measure_route == head + tail
+    assert foundation.DARKNESS.measure_route[:5] == head
 
 
 def test_darkness_has_no_disk_prompt_interstitial_and_pins_its_boot_span_as_a_guess():

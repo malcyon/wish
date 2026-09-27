@@ -266,6 +266,9 @@ def _darkness_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, by
 # accepts it only in DF0, so disk 2 is staged as a spare and the route inserts it there at that
 # prompt. A, C, D and E stay unchanged; E is also the game's own exit key on the sheet and at
 # camp, which `plain_keys` names.
+# The control and after saves go to F and G, letters the game's own save picker (A to H) offers
+# and no saved game on disk 3 uses; B is the loaded slot. The measure route ends at the camp save
+# picker, before any save letter.
 # The key that answers `INSERT DISK 2 AND PRESS A KEY` is a guess for the measuring boot to confirm.
 DISK2_INSERT = ((0, "disk2", "SPACE"), "loaded_menu", "insert")
 
@@ -281,16 +284,17 @@ DARKNESS = AmigaTitle(
         ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
         ("B", "disk2_prompt", "key"), DISK2_INSERT,
         ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
-        ("S", "save_picker", "key"), ("I", "loaded_menu", "write"), ("B", "world", "key"),
+        ("S", "save_picker", "key"), ("F", "loaded_menu", "write"), ("B", "world", "key"),
         ("NP8", "world", "move"), ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
-        ("J", "camp", "write"),
+        ("G", "camp", "write"),
     ),
-    # Stops before I.
+    # Ends at the camp save picker and writes nothing.
     measure_route=(
         ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
         ("B", "disk2_prompt", "key"), DISK2_INSERT,
         ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
-        ("S", "save_picker", "key"),
+        ("B", "world", "key"), ("NP8", "world", "move"), ("E", "camp", "key"),
+        ("S", "camp_save_picker", "key"),
     ),
     # In the measured boot the settled captures ended at 27, 99, 153 (loading screens), 247 (the
     # first showing the title), 271, 297 (the same title) and 331 s (the demo) after the claim,
@@ -299,7 +303,7 @@ DARKNESS = AmigaTitle(
     # after `boot_span` seconds from the start, so 225 puts it near 255 s, on the title; a title
     # 30 s slower would put it on a loading screen. Without a title guard this is a guess.
     boot_span=225.0, title_limit=420.0,
-    control_letter="I", after_letter="J", kept_letters=("A", "C", "D", "E"),
+    control_letter="F", after_letter="G", kept_letters=("A", "C", "D", "E"),
     plain_keys=(("E", "loaded_menu"), ("E", "camp")),
     strict=frozenset({"party_menu", "load_from", "load_picker", "disk2_prompt", "loaded_menu",
                       "sheet", "save_picker", "camp_save_picker"}),
