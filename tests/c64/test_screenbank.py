@@ -262,6 +262,36 @@ def test_the_reader_refuses_rather_than_answering_a_screen_it_cannot_locate():
     assert D.read_screen(ok).address == 0xCC00
 
 
+def test_a_transport_failure_asking_for_the_banks_is_not_remembered():
+    """`#699`: `tools/c64/drive.py` used to keep its own copy of `bank_ids`
+    that cached `{}` after any failed `CMD_BANKS_AVAILABLE` query, including a
+    transport failure that says nothing about the VICE build.  `#421` fixed
+    this in `automap/vice.py` -- a transport failure is not cached -- but
+    `drive.py` carried its own, unfixed copy until this issue's
+    deduplication.  Once poisoned, every later screen read on that connection
+    fell back to the no-named-banks path and stayed there for the rest of the
+    run, however many later reads would have answered fine.
+    """
+    class FlakyOnceMonitor(FakeMonitor):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self.failed_once = False
+
+        def command(self, cmd: int, body: bytes = b"") -> bytes:
+            if cmd == D.CMD_BANKS_AVAILABLE and not self.failed_once:
+                self.failed_once = True
+                raise TimeoutError("no response")
+            return super().command(cmd, body)
+
+    mon = FlakyOnceMonitor(port1=CHIPS_OUT, chips=registers(0x35, 0x90))
+    with pytest.raises(D.ScreenUnreadable):
+        D.read_screen(mon)
+    # A real, distinct read afterwards must not still be poisoned by the one
+    # failed query.
+    assert D.read_screen(mon).address == 0xCC00
+    assert D._BANKS[(mon.host, mon.port)] == BANKS
+
+
 def test_the_bank_ids_are_asked_for_once_per_monitor():
     """One round trip per process, not one per screen read: the ids are a
     property of the VICE build rather than of the running machine."""

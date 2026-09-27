@@ -1407,7 +1407,10 @@ class Session:
         the end of the line -- text as well as count, because a row can be
         present with its AC or HP not yet drawn.  Returns as soon as two
         consecutive reads agree on both; past `timeout` it gives up and
-        returns the last read, settled or not.
+        returns the last read, settled or not.  An unreadable screen never
+        counts as agreement with anything, including another unreadable
+        screen, or a stuck screen-bank cache would make two failed reads look
+        like a settled, empty panel (`#699`).
         """
         if settle is None:
             settle = self.PANEL_SETTLE
@@ -1416,12 +1419,15 @@ class Session:
         prev_text: list[str] | None = None
         while True:
             s = self.screen()
-            rows = self.party_rows(s) if s is not None else []
-            text = [s.row(r)[PARTY_COLUMN:] for r in rows] if s is not None \
-                else []
-            if rows == prev_rows and text == prev_text:
-                return rows
-            prev_rows, prev_text = rows, text
+            if s is None:
+                rows: list[int] = []
+                prev_rows, prev_text = None, None
+            else:
+                rows = self.party_rows(s)
+                text = [s.row(r)[PARTY_COLUMN:] for r in rows]
+                if rows == prev_rows and text == prev_text:
+                    return rows
+                prev_rows, prev_text = rows, text
             if time.time() >= deadline:
                 return rows
             time.sleep(settle)

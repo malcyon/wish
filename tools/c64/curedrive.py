@@ -437,16 +437,26 @@ class Run:
 
     def sheet(self) -> dict:
         bar = self.open_sheet()
+        if not bar:
+            name = self.shot("sheet-not-opened")
+            self.log(event="sheet-not-opened", row24=self.row24(), shot=name)
+            self.close_sheet()
+            raise RuntimeError(f"{self.who}'s sheet never opened")
         name = self.shot("sheet")
-        self.log(event="sheet", bar=bar, cure_offered=bool(
-            bar and "CURE" in bar.split()), shot=name)
+        self.log(event="sheet", bar=bar, cure_offered="CURE" in bar.split(),
+                  shot=name)
         self.close_sheet()
         return {"bar": bar}
 
     def cure(self) -> dict:
         """`CURE` on the paladin's camp sheet, on the first name offered."""
         bar = self.open_sheet()
-        if not bar or "CURE" not in bar.split():
+        if not bar:
+            name = self.shot("sheet-not-opened")
+            self.log(event="sheet-not-opened", row24=self.row24(), shot=name)
+            self.close_sheet()
+            raise RuntimeError(f"{self.who}'s sheet never opened")
+        if "CURE" not in bar.split():
             self.log(event="cure-not-offered", bar=bar, shot=self.shot(
                 "cure-not-offered"))
             self.close_sheet()
@@ -616,7 +626,8 @@ def summarise(run_dir: pathlib.Path) -> list[str]:
             out.append(f"{e['tag']:<22} day {c['day']} {c['hour']:02d}:"
                        f"{c['minute']:02d}  0x012={e['slot']['cures']}  "
                        f"rows {rows or '-'}  {e['counts']}")
-        elif e["event"] in ("sheet", "cure", "cure-not-offered", "saved",
+        elif e["event"] in ("sheet", "sheet-not-opened", "cure",
+                            "cure-not-offered", "saved",
                             "rest-interrupted", "failed"):
             keep = {k: v for k, v in e.items() if k not in ("t", "event")}
             out.append(f"{e['event']:<22} {keep}")

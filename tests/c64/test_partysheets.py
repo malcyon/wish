@@ -430,3 +430,34 @@ def test_a_partially_drawn_last_row_is_not_a_reading():
     # what made this take all three reads rather than settling on the first
     # two.
     assert sess.calls == 3
+
+
+def test_two_unreadable_screens_never_settle_as_an_empty_panel():
+    """`#699`: `tools/c64/drive.py` used to keep its own copy of `bank_ids`
+    that cached an empty answer after one failed screen query (`#421` fixed
+    this only in `automap/vice.py`), so every later `screen()` on that
+    connection came back `None`.  Two `None` reads used to compare equal and
+    make `stable_party_rows` settle on `[]` in well under its 3s timeout, as
+    if an empty panel were a genuine, agreed-upon reading.  An unreadable
+    screen must never count as agreement with anything, including another
+    unreadable screen.
+    """
+    class ReadSequenceSession(Session):
+        PANEL_SETTLE = 0.0
+
+        def __init__(self, frames):
+            self.frames = list(frames)
+            self.calls = 0
+
+        def screen(self):
+            i = min(self.calls, len(self.frames) - 1)
+            self.calls += 1
+            return self.frames[i]
+
+    panel = FakeScreen()
+    panel.put(2, S.PARTY_COLUMN, "NAME            AC HP", 1)
+    panel.put(4, S.PARTY_COLUMN, f"{'MARK':<16}7 33", CYAN)
+
+    sess = ReadSequenceSession([None, None, panel, panel])
+    rows = sess.stable_party_rows()
+    assert rows == [4]
