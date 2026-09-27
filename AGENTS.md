@@ -109,7 +109,12 @@ Read the player's gitignored disks at run time through `gamedisks.yaml` and
 `git clean` against a repository file.** The shared tree may hold another
 agent's uncommitted work. **Subagents do not `git add` or commit.** Do not edit
 a file assigned to an agent; if necessary, message it and make only a targeted
-edit.
+edit. To prove a change is what makes a test go red-then-green, save the
+change as a patch first (`git diff > /tmp/mine.patch`), then reverse-apply and
+reapply only that patch (`git apply -R /tmp/mine.patch` and later `git apply
+/tmp/mine.patch`) rather than stashing -- a patch touches only the lines it
+names, where a stash touches the whole index and can catch another agent's
+unrelated uncommitted work in the same tree.
 
 ## Running Qt and emulators
 
