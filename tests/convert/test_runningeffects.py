@@ -1263,6 +1263,78 @@ def test_save_as_dos_converts_a_pool_strength_row(tmp_path):
     assert plan.files["CHRDATA1.SPC"].count(bytes.fromhex("260A007301")) == 1
 
 
+# --- #621: readied Gauntlets of Ogre Power, a duration-0 array row ------------
+#
+# `SPELLE04 $AE2D` (readying) and `$A8CC` (the magnitude) write id 38 into the
+# active-effect array at duration 0, magnitude `0x80 | old strength`, never
+# into a trait slot.  `c64_codec.read` used to hand every duration-0 row to
+# `innate_effects`, and `dos_codec.write`/`amiga_later.write_later` then
+# refused it as an unread item grant.  It now converts to DOS's own strength
+# node, `26 00 00 vv 01` (`docs/230-who-reads-a-dos-effect-node.md` (c)).
+
+ROLAND_STRENGTH_MAGNITUDE = 0xF3  # 15/0, "SPELLE04 $A8CC": (15 + 100) | 0x80.
+ROLAND_STRENGTH_NODE = bytes((38, 0, 0, 0x73, 1)) + NULL
+
+
+def test_a_readied_gauntlets_row_converts_to_a_dos_strength_node_not_innate():
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 38, 2, 0, ROLAND_STRENGTH_MAGNITUDE)
+    got = _read(p, 2)
+    assert not (got.get("innate_effects") or [])
+    assert [bytes(r) for r in got.get("granted_effects")] \
+        == [bytes((38, 0, 0, 0x73, 1)) + NULL]
+    assert not _lines(got)
+
+
+def test_an_18_76_strength_row_encodes_as_4d():
+    """18/76 is `0x80 | 0x4C`; `_value_node`'s strength rule gives DOS's own
+    encoding for a percentile score, `p + 1`."""
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 38, 2, 0, 0xCC)
+    got = _read(p, 2)
+    assert [bytes(r) for r in got.get("granted_effects")] \
+        == [bytes((38, 0, 0, 0x4D, 1)) + NULL]
+
+
+def test_save_as_dos_converts_a_readied_gauntlets_row(tmp_path):
+    from editor import saveplan
+
+    payload, save1 = _fixture_payload()
+    effects.write_effect(payload, 63, 38, 0, 0, ROLAND_STRENGTH_MAGNITUDE)
+    plan = _dos_plan(tmp_path, payload, save1)
+    assert isinstance(plan, saveplan.SavePlan)
+    assert plan.files["CHRDATA1.SPC"].count(ROLAND_STRENGTH_NODE) == 1
+
+
+def test_save_as_amiga_converts_a_readied_gauntlets_row():
+    from goldbox import amiga_por
+
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 38, 2, 0, ROLAND_STRENGTH_MAGNITUDE)
+    char = _read(p, 2)
+    char.set("name", "ROLAND", "built here")
+    _rec, _itm, spc, rep = amiga_por.write_por(char)
+    amiga_node = amiga_por.amiga_por_effect_from_dos(ROLAND_STRENGTH_NODE)
+    assert spc.count(amiga_node) == 1
+    assert not _lines(rep)
+
+
+def test_a_second_strength_source_still_refuses_rather_than_double_convert():
+    """A running Enlarge (id 12, a strength-setting id) on the same character
+    as the gauntlets' duration-0 row: DOS Pool holds one strength score, so
+    both are refused rather than one silently overwriting the other -- the
+    same guard `test_two_pool_strength_nodes_on_one_character_write_no_row_and_say_so`
+    proves for the DOS -> C64 direction."""
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 38, 2, 0, ROLAND_STRENGTH_MAGNITUDE)
+    effects.write_effect(p, 62, 12, 2, 0x0A, 0x63)
+    got = _read(p, 2)
+    assert got.get("granted_effects") is None
+    assert 38 in (got.get("innate_effects") or [])
+    lines = _lines(got)
+    assert len(lines) == 1 and "more than one strength row" in lines[0]
+
+
 # --- Haste, invisible, the combat spells, id 113 and id 13 ----------------------
 
 # (game, DOS node, the C64 row it becomes for party slot 2)

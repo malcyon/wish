@@ -2356,9 +2356,12 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         # C64 Pool restores one old strength per character, so a second
         # strength row cannot come back as one node.
         strength_rows = sum(
-            1 for r in rows if r.owner == party_slot and r.duration != 0
+            1 for r in rows if r.owner == party_slot
             and r.id in effects.STRENGTH_IDS
-            and title_key == "pool-of-radiance")
+            and title_key == "pool-of-radiance"
+            and (r.duration != 0
+                 or effects.never_expiring_strength_record(title_key, r)
+                 is not None))
         granted: list[bytes] = []
         # Highest slot first, the order the writer allocates in, so a round
         # trip keeps each character's node order.
@@ -2368,8 +2371,14 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             if row.duration == 0:
                 spell_record = effects.never_expiring_spell_record(
                     title_key or "", row)
+                strength_record = None
+                if spell_record is None and strength_rows <= 1:
+                    strength_record = effects.never_expiring_strength_record(
+                        title_key or "", row)
                 if spell_record is not None:
                     granted.append(spell_record)
+                elif strength_record is not None:
+                    granted.append(strength_record)
                 else:
                     permanent.append(row.id)
                 continue

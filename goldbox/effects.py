@@ -786,6 +786,26 @@ def never_expiring_spell_record(title_key: str, row: "Effect") -> bytes | None:
     return None
 
 
+def never_expiring_strength_record(title_key: str,
+                                   row: "Effect") -> bytes | None:
+    """The DOS granted record for a duration-0 Pool strength row, or `None`.
+
+    Readying GAUNTLETS OF OGRE POWER writes id 38 into the active-effect
+    array at duration 0 with the old strength encoded in the magnitude's
+    low seven bits and bit 7 set (`SPELLE04 $A8CC`, `#621`). `_value_node`'s
+    strength rule is the same encoder DOS's own `0x2BFCE` uses, so this is
+    `never_expiring_spell_record`'s sibling for that one id.
+    """
+    if not (title_key == "pool-of-radiance" and row.id == 38
+            and row.duration == 0 and row.magnitude & 0x80):
+        return None
+    made = _value_node(title_key, row.id, row.magnitude)
+    if isinstance(made, Unconverted):
+        return None
+    vv, flag = made
+    return bytes((row.id, 0, 0, vv, flag)) + _RUNNING_EFFECT_NEXT
+
+
 def c64_party_row(title_key: str,
                   node: RunningEffect) -> tuple[int, int] | Unconverted:
     """The C64 id and magnitude for a DOS node that becomes a party-wide row.
