@@ -2980,11 +2980,307 @@ def test_read_reports_the_current_movement_of_each_character(pod_source):
 
 def test_compare_members_lists_movement_current_when_it_differs():
     base = {"name": "CLERIC", "thief": {}, "item_count": 21, "encumbrance": 1478,
-            "movement": 12, "movement_current": 9, "items": []}
+            "movement": 12, "movement_current": 9, "book_0x130": 0, "items": []}
     before = {"characters": [base]}
     after = {"characters": [{**base, "movement_current": 6}]}
     assert da.compare_members(before, after)[0]["changed"] == ["movement_current"]
     assert da.compare_members(before, before)[0]["changed"] == []
+
+
+def test_read_reports_the_record_byte_that_holds_spell_126(pod_source):
+    """`book_0x130` is the byte itself, read off each resaved record, and a
+    change to it is listed and printed.  INA's byte is set here after the
+    conversion, as a DOS mage who learnt the spell has it."""
+    import shutil
+    out, _ = pod_source
+    shutil.copytree(out / "source", out / "installed")
+    record = out / "source" / "CHRDATA1.SAV"
+    raw = bytearray(record.read_bytes())
+    assert raw[da.POD_BOOK_126] == 0
+    raw[da.POD_BOOK_126] = 1
+    record.write_bytes(bytes(raw))
+    result = da.read_step(out / "source", out, "A", ["A"], [], [])
+    who = {c["name"]: c for c in result["slots"]["A"]["characters"]}
+    assert (who["INA"]["book_0x130"], who["TRIPEL"]["book_0x130"]) == (1, 0)
+    rows = {r["name"]: r for r in result["slots"]["A"]["members"]}
+    assert rows["INA"]["changed"] == ["book_0x130"] and rows["TRIPEL"]["changed"] == []
+    assert rows["INA"]["book_0x130"] == {"before": 0, "after": 1}
+    assert any(line.startswith("  INA: ") and "byte 0x130 1; changed: book_0x130"
+               in line for line in da.describe(result))
+
+
+# -- MAGIC > MEMORIZE: the grimoire ---------------------------------------------
+
+
+#: The synthetic bars: the Magic bar, and the grimoire's 21-cell head with
+#: each page's words after it.
+_MAGIC_BAR = b"\x03\x05\x06"
+_HEAD = bytes((0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40)) * 3
+_GRIMOIRE_BARS = {"first": _HEAD + b"\x11", "middle": _HEAD + b"\x11\x22",
+                  "last": _HEAD + b"\x22", "only": _HEAD}
+#: The `'S` after the name in the title, and what follows it.
+_POSSESSIVE = b"\x09\x12"
+
+
+def _row(n: int) -> bytes:
+    """A synthetic list row: nineteen cells, different for every `n`."""
+    return bytes((n % 7 + 1, n // 7 % 7 + 1 << 3, 0x05)) + b"\x11" * 16
+
+
+_NINTH, _S124, _S125, _S126 = _row(90), _row(91), _row(92), _row(93)
+
+
+def _book(rows: int, with_126: bool = True) -> list[bytes]:
+    """`rows` rows of lower levels, then the ninth level's header and 124,
+    125 and, when `with_126`, 126."""
+    return [_row(k) for k in range(rows)] + [_NINTH, _S124, _S125] + (
+        [_S126] if with_126 else [])
+
+
+def _row_signature(row: bytes) -> str:
+    frame = bytearray(W * H * 3)
+    _draw_name(frame, *da.GRIMOIRE_ROWS_AT, row, b"\x55\xff\x55")
+    return da.grimoire_rows(dosbox.Screen(W, H, bytes(frame)))[0]
+
+
+@pytest.fixture
+def grimoire_measured(monkeypatch):
+    """The fake's bars and rows stand in for the measured values, which the
+    capture tests below check against the #509 runs."""
+    sig = screens.bar_signature
+    monkeypatch.setattr(da, "POD_MAGIC_BAR", sig(_screen(_MAGIC_BAR, b"")))
+    monkeypatch.setattr(da, "POD_GRIMOIRE_HEAD", sig(
+        _screen(_GRIMOIRE_BARS["first"], b""), da.POD_GRIMOIRE_HEAD_CELLS))
+    monkeypatch.setattr(da, "POD_GRIMOIRE_NEXT_BARS", frozenset(
+        sig(_screen(_GRIMOIRE_BARS[k], b"")) for k in ("first", "middle")))
+    import hashlib
+    frame = bytearray(W * H * 3)
+    _draw_name(frame, 0, 0, _POSSESSIVE, _WHITE)
+    cells = da._cells(dosbox.Screen(W, H, bytes(frame)), 0, 0, 2)
+    monkeypatch.setattr(da, "GRIMOIRE_POSSESSIVE",
+                        hashlib.sha1("".join(cells).encode()).hexdigest()[:16])
+    monkeypatch.setattr(da, "NINTH_LEVEL_ROW", _row_signature(_NINTH))
+    spells = {_row_signature(r): i for r, i in ((_S124, 124), (_S125, 125),
+                                                 (_S126, 126))}
+    monkeypatch.setattr(da, "GRIMOIRE_SPELLS", spells)
+    monkeypatch.setattr(da, "SPELL_126_ROW", _row_signature(_S126))
+
+
+class FakeMagic(FakePod):
+    """Camp's `MAGIC` and `MEMORIZE`, as the #509 runs showed them: `M` on
+    the camp bar opens the Magic bar over the camp; `M` there opens the
+    current member's grimoire, titled with the name and `'S`, eleven rows a
+    page, the last page ending with the list's last row; `N` turns a page
+    while the bar offers `NEXT` and does nothing on the last; `E` goes back
+    a screen; `M` on the grimoire memorizes the highlighted spell."""
+
+    def __init__(self, tmp, books, title_of=None, swallow_next=False,
+                 dead_next=False, **kw):
+        super().__init__(tmp, question=False, size=7, **kw)
+        #: Each member's grimoire rows; a member without one opens nothing.
+        self.books = books
+        #: The grimoire titled with this member's name whoever is current.
+        self.title_of = title_of
+        self.swallow_next, self.dead_next = swallow_next, dead_next
+        self.page = 0
+        self.memorized: list[int] = []
+        self.into_camp: list[str] = []
+
+    def pages_of(self) -> int:
+        return max(1, -(-len(self.books[self.line]) // da.GRIMOIRE_ROW_COUNT))
+
+    def key(self, k, gap=0.0):
+        m = self.mode
+        if m == "camp" and k == da.POD_MAGIC:
+            self.keys.append(k)
+            self.mode = "magic"
+        elif m == "camp" and k == da.LEAVE:
+            self.keys.append(k)
+            self.into_camp.append(k)
+        elif m == "magic":
+            self.keys.append(k)
+            if k == da.POD_MEMORIZE and self.line in self.books:
+                self.mode, self.page = "grimoire", 0
+            elif k == da.LEAVE:
+                self.mode = "camp"
+        elif m == "grimoire":
+            self.keys.append(k)
+            if k == "n" and self.swallow_next:
+                self.swallow_next = False
+            elif k == "n" and not self.dead_next:
+                self.page = min(self.page + 1, self.pages_of() - 1)
+            elif k == da.LEAVE:
+                self.mode = "magic"
+            elif k == da.POD_MEMORIZE:
+                self.memorized.append(self.line)
+        else:
+            super().key(k, gap)
+
+    def capture(self):
+        if self.mode == "magic":
+            return _with_roster(_screen(_MAGIC_BAR, b""), "camp", self.size, self.line)
+        if self.mode != "grimoire":
+            return super().capture()
+        book, pages = self.books[self.line], self.pages_of()
+        kind = ("only" if pages == 1 else "first" if self.page == 0
+                else "last" if self.page == pages - 1 else "middle")
+        start = (max(0, len(book) - da.GRIMOIRE_ROW_COUNT) if kind == "last"
+                 else self.page * da.GRIMOIRE_ROW_COUNT)
+        px = bytearray(_screen(_GRIMOIRE_BARS[kind], b"").px)
+        owner = self.title_of or self.line
+        _draw_name(px, *da.GRIMOIRE_TITLE, _pod_name(owner)[:14] + _POSSESSIVE, _WHITE)
+        x, y = da.GRIMOIRE_ROWS_AT
+        for k, row in enumerate(book[start:start + da.GRIMOIRE_ROW_COUNT]):
+            _draw_name(px, x, y + screens.CELL * k, row, b"\x55\xff\x55")
+        return dosbox.Screen(W, H, bytes(px))
+
+
+def _magic_driver(tmp_path, **kw):
+    books = kw.pop("books", {5: _book(26), 1: _book(19, with_126=False)})
+    game = FakeMagic(tmp_path, books, **kw)
+    d = da.Driver(game, lambda **k: None, "A", "darkness", party_size=game.size)
+    d.load()
+    d.begin()
+    d.camp()
+    game.keys.clear()
+    return game, d
+
+
+def test_memorize_parses_and_a_bad_line_is_refused():
+    got = da.parse_step("memorize 5")
+    assert (got.kind, got.line) == ("memorize", 5)
+    for bad in ("memorize", "memorize 0", "memorize 9", "memorize x", "memorize 1 2"):
+        with pytest.raises(ValueError):
+            da.parse_step(bad)
+
+
+def test_memorize_is_allowed_in_camp_before_and_after_a_save():
+    da.validate_steps(_steps("load", "begin", "camp", "memorize 5", "memorize 1",
+                             "save D", "memorize 5", "read"), "darkness")
+
+
+@pytest.mark.parametrize("title,steps,why", [
+    ("darkness", ("load", "begin", "memorize 5"), "memorize needs camp first"),
+    ("darkness", ("load", "memorize 5"), "memorize needs camp first"),
+    ("curse", ("load", "begin", "camp", "memorize 1"), "darkness only"),
+    ("pool", ("load", "camp", "memorize 1"), "darkness only"),
+])
+def test_memorize_is_refused_where_the_driver_cannot_reach_it(title, steps, why):
+    with pytest.raises(ValueError, match=why):
+        da.validate_steps(_steps(*steps), title)
+
+
+def test_memorize_shoots_every_page_and_sees_spell_126(tmp_path, grimoire_measured):
+    """HILDE's run in the fake: 30 rows are three pages, the last one ending
+    with 126; the keys are the roster moves, `M` twice, `N` until the bar
+    stops offering it, and `E` twice, and nothing is memorized."""
+    game, d = _magic_driver(tmp_path)
+    got = d.memorize(5)
+    assert game.keys == ["Down"] * 4 + ["m", "m", "n", "n", "e", "e"]
+    assert game.mode == "camp" and game.memorized == [] and game.into_camp == []
+    assert len(got["pages"]) == 3 and got["lists_126"] is True
+    assert got["ninth_level"] == [124, 125, 126]
+    assert got["pages"][-1]["rows"][-1] == da.SPELL_126_ROW
+
+
+def test_a_book_without_126_is_read_as_one(tmp_path, grimoire_measured):
+    """The control: the same book with byte 0x130 clear, as the zeroed run of
+    #509 drew it."""
+    game, d = _magic_driver(tmp_path, books={5: _book(26, with_126=False)})
+    got = d.memorize(5)
+    assert got["lists_126"] is False and got["ninth_level"] == [124, 125]
+    assert game.mode == "camp" and game.memorized == []
+
+
+def test_a_one_page_grimoire_presses_no_next(tmp_path, grimoire_measured):
+    game, d = _magic_driver(tmp_path, books={5: _book(3)})
+    got = d.memorize(5)
+    assert "n" not in game.keys and len(got["pages"]) == 1 and got["lists_126"]
+
+
+def test_a_swallowed_next_is_pressed_again_and_no_page_is_missed(tmp_path,
+                                                                 grimoire_measured):
+    """A swallowed `N` read as the end would hide the ninth level."""
+    game, d = _magic_driver(tmp_path, swallow_next=True)
+    got = d.memorize(5)
+    assert game.keys.count("n") == 3 and len(got["pages"]) == 3
+    assert got["lists_126"] is True
+
+
+def test_a_dead_next_on_a_bar_that_offers_it_stops_the_run(tmp_path,
+                                                          grimoire_measured):
+    game, d = _magic_driver(tmp_path, dead_next=True)
+    with pytest.raises(da.StepFailed, match="NEXT changed nothing.*lost-memorize-5"):
+        d.memorize(5)
+    assert game.keys.count("n") == 2 and game.memorized == []
+
+
+def test_a_grimoire_of_another_character_stops_the_run(tmp_path, grimoire_measured):
+    game, d = _magic_driver(tmp_path, title_of=1)
+    with pytest.raises(da.StepFailed, match="not roster line 5's name"):
+        d.memorize(5)
+    assert "n" not in game.keys and game.memorized == []
+
+
+def test_memorize_is_pressed_once_when_no_grimoire_opens(tmp_path, grimoire_measured):
+    """A second `M` on a grimoire that opened late would memorize a spell."""
+    game, d = _magic_driver(tmp_path)
+    with pytest.raises(da.StepFailed, match="did not open a grimoire"):
+        d.memorize(3)
+    assert game.keys == ["Down"] * 2 + ["m", "m"] and game.memorized == []
+
+
+def test_memorize_twice_counts_from_where_the_first_left_the_highlight(
+        tmp_path, grimoire_measured):
+    game, d = _magic_driver(tmp_path)
+    assert d.memorize(5)["lists_126"]
+    game.keys.clear()
+    got = d.memorize(1)
+    assert game.keys[:3] == ["Down"] * 3 and got["lists_126"] is False
+    assert game.mode == "camp"
+
+
+#: The #509 runs, this player's own and not committed: SavGamB of `Pools of
+#: Darkness3.adf` converted to DOS, HILDE on line 5 with byte 0x130 = 1, and
+#: the same folder with that byte zeroed before the boot.
+_HILDE = "0c78037a28-memorize-hilde"
+_ZEROED = "0c78037a28-memorize-hilde-0x130-zeroed"
+
+
+@pytest.mark.parametrize("run,shot,kind", [
+    (_HILDE, "009-memorize-5-magic", "magic"),
+    (_HILDE, "019-memorize-1-magic", "magic"),
+    (_HILDE, "010-memorize-5-page-1", "next"),
+    (_HILDE, "013-memorize-5-page-4", "next"),
+    (_HILDE, "016-memorize-5-page-7", "last"),
+    (_HILDE, "020-memorize-1-page-1", "next"),
+    (_HILDE, "023-memorize-1-page-4", "last"),
+    (_ZEROED, "016-memorize-5-page-7", "last"),
+])
+def test_the_captured_magic_and_grimoire_bars_read_as_measured(run, shot, kind):
+    screen = _capture(run, shot, issue="509")
+    assert (screens.bar_signature(screen) == da.POD_MAGIC_BAR) == (kind == "magic")
+    assert da.on_grimoire(screen) == (kind != "magic")
+    assert (screens.bar_signature(screen) in da.POD_GRIMOIRE_NEXT_BARS) == (
+        kind == "next")
+
+
+@pytest.mark.parametrize("run,camp,line,page,ninth", [
+    (_HILDE, "008-memorize-5-line", 5, "016-memorize-5-page-7", [124, 125, 126]),
+    (_HILDE, "018-memorize-1-line", 1, "023-memorize-1-page-4", []),
+    (_ZEROED, "008-memorize-5-line", 5, "016-memorize-5-page-7", [124, 125]),
+])
+def test_the_captured_last_pages_read_as_the_screen_shows_them(run, camp, line, page,
+                                                               ninth):
+    """HILDE's ninth level is METEOR SWARM, POWER WORD KILL and MONSTER
+    SUMMONING with the byte set and the first two without it; TROND AAGE L
+    has no ninth level.  Each title is its own line's and no other's."""
+    roster = _capture(run, camp, issue="509")
+    last = _capture(run, page, issue="509")
+    assert da.ninth_level(da.grimoire_rows(last)) == ninth
+    assert (da.SPELL_126_ROW in da.grimoire_rows(last)) == (126 in ninth)
+    assert [n for n in range(1, 8)
+            if da.grimoire_is_for(last, da.roster_cells(roster, n))] == [line]
 
 
 class FakeDungeon(FakePod):

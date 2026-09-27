@@ -45,6 +45,7 @@ conversion logged.
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
 | `sheet N`, `items N` | Pools of Darkness, in camp: roster line N (from 1) highlighted with `Down`, `VIEW`, the sheet's name checked against line N's, and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
 | `halve N I`, `join N I` | Pools of Darkness, in camp: member N's `ITEMS`, the highlight moved to row I (from 1, at most 18) with `Down`, `h` or `j` pressed once, and the rows counted before and after; `halve` must add a row and keep the highlight or the run stops before any save, `join` only records; back to camp |
+| `memorize N` | Pools of Darkness, in camp: roster line N highlighted with `Down`, `MAGIC`, `MEMORIZE`; the grimoire's title checked against line N's name; every page shot and its eleven rows read, turning with `NEXT` until the bar stops offering it; `lists_126` says whether a page draws `MONSTER SUMMONING`, spell id 126; `EXIT` to the Magic bar and to camp.  Nothing is memorized |
 | `view N` | At the party menu, before `begin`.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar), `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
@@ -55,7 +56,7 @@ conversion logged.
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
 | `walk MI`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
-| `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement and items |
+| `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement, record byte 0x130 (spell id 126's book byte, `book_0x130`) and items |
 
 **Pools of Darkness' screens are read off its `GAME.EXE` strings, not off a
 capture.**  Its party menu holds Silver Blades' thirteen entries in the same
@@ -188,6 +189,10 @@ from goldbox import dos_codec, world_state  # noqa: E402
 from tools.dos import dosbox, dospod, route_silver_blades  # noqa: E402
 from tools.dos.screens import (  # noqa: E402
     BLANK_NAME,
+    CELL,
+    POD_NAME_CELLS,
+    POD_NAME_ROWS,
+    POD_ROSTER,
     STATUS_COLUMNS,
     bar_signature,
     item_highlight,
@@ -414,6 +419,57 @@ POD_PICK = "s"
 #: Roster-highlight moves tried per member before `pick_line` gives up.
 POD_PICK_ROUNDS = 2
 
+#: `Magic` on the camp bar, and `Memorize` on the Magic bar `CAST MEMORIZE
+#: SCRIBE DISPLAY EXIT` it opens (`GAME.EXE` data 0xD13E lists a `Rest` the
+#: screen does not draw).  The Magic bar by `bar_signature`, measured on 5
+#: shots of the #509 probe boot `probe-memorize-live` (lines 1 and 5).
+POD_MAGIC = "m"
+POD_MEMORIZE = "m"
+POD_MAGIC_BAR = "24a79a5ab06c2164"
+#: The grimoire `<NAME>'S SPELLS IN GRIMOIRE` that `Memorize` opens for the
+#: highlighted character.  Its bar is `CHOOSE SPELL:MEMORIZE` and then the
+#: list words, `NEXT EXIT` on the first page, `NEXT PREV EXIT` between and
+#: `PREV EXIT` on the last (`GAME.EXE` data 0xC64F and 0xCA79).  The head,
+#: its first 21 cells, is the same on every page (6 shots, 2 characters); a
+#: list of one page, `MEMORIZE EXIT`, is unmeasured, and the head is what
+#: knows it.
+POD_GRIMOIRE_HEAD = "524989d1c25436a9"
+POD_GRIMOIRE_HEAD_CELLS = 21
+#: The two whole-bar signatures that offer `NEXT`, first page and between;
+#: the last page's is `47a21ea1ca2723b9`.  `Next` on the last page changes
+#: nothing (7 presses over 2 characters) and the list does not wrap.
+POD_GRIMOIRE_NEXT_BARS = frozenset({"37d28076a433f661", "41b0de522281a00d"})
+POD_GRIMOIRE_NEXT = dosbox.LIST_PAGE_DOWN
+#: Pages shot before the run gives up on reaching the last; HILDE's
+#: magic-user book from level 1 to 9 is 7.
+GRIMOIRE_PAGES = 16
+#: The title's first cell, and the signature of the `'S` after the name in
+#: it: the roster name's cells, then these two (HILDE and TROND AAGE L, 3
+#: shots).
+GRIMOIRE_TITLE = (8, 8)
+GRIMOIRE_POSSESSIVE = "4ed3290842b823f9"
+#: The list: eleven 8-pixel rows from y = 40.  A row is read from x = 8 over
+#: 19 cells, which holds a level header and a spell name of 17 characters
+#: after its two-cell indent; the game's mouse arrow sits at x 161-174 over
+#: rows 7 to 9 and is left out.  A longer name is read by its first 17.
+GRIMOIRE_ROWS_AT = (8, 40)
+GRIMOIRE_ROW_COUNT = 11
+GRIMOIRE_ROW_CELLS = 19
+#: Rows by the signature `grimoire_rows` reads, measured on HILDE's last page
+#: with the highlight on each of the four bottom rows in turn (the reading
+#: is the same whichever row is lit).  The names are the last three entries
+#: of `GAME.EXE`'s spell-name table (0x23 bytes each, `Bless` first, 126
+#: entries), so `Monster Summoning` is id 126 and appears nowhere else.
+NINTH_LEVEL_ROW = "5bb57d1d629bc1df"
+GRIMOIRE_SPELLS = {"46508bd7a6ec4097": 124,     # METEOR SWARM
+                   "e1ad523ef877d882": 125,     # POWER WORD KILL
+                   "42b47c6c0a74f78d": 126}     # MONSTER SUMMONING
+SPELL_126_ROW = next(k for k, v in GRIMOIRE_SPELLS.items() if v == 126)
+#: The record byte that holds spell id 126: the last of the 126-byte book at
+#: 0x0B3 (`goldbox/dos_port.py`'s Pools of Darkness `spellbook`).  The list
+#: builder (`GAME.OVR` 0x2A80B) lists 126 when it is not zero.
+POD_BOOK_126 = 0x130
+
 
 
 
@@ -426,6 +482,56 @@ def status_column(title: str) -> int:
             f"{title}'s status-line column is unmeasured (no DOS capture of it "
             "has been read), so its square cannot be read; the measuring boot "
             "of #679 package 7 supplies it") from None
+
+
+def _cells(screen: dosbox.Screen, x: int, y: int, count: int,
+           height: int = POD_NAME_ROWS) -> list[str]:
+    """`count` character cells from `(x, y)`, each `Screen.glyphs` against its
+    own paper, so a highlighted cell reads as the same letter unlit."""
+    return [screen.glyphs((x + CELL * i, y, CELL, height)) for i in range(count)]
+
+
+_BLANK_CELL = dosbox.Screen(CELL, POD_NAME_ROWS, bytes(CELL * POD_NAME_ROWS * 3)).glyphs()
+
+
+def roster_cells(screen: dosbox.Screen, line: int) -> list[str]:
+    """Camp roster line `line`'s name, cell by cell, without trailing blanks."""
+    x, y = POD_ROSTER["camp"]
+    cells = _cells(screen, x, y + CELL * (line - 1), POD_NAME_CELLS)
+    while cells and cells[-1] == _BLANK_CELL:
+        cells.pop()
+    return cells
+
+
+def grimoire_is_for(screen: dosbox.Screen, name: list[str]) -> bool:
+    """Whether the grimoire's title opens with `name` and then `'S`."""
+    if not name:
+        return False
+    title = _cells(screen, *GRIMOIRE_TITLE, len(name) + 2)
+    return (title[:len(name)] == name and hashlib.sha1(
+        "".join(title[len(name):]).encode()).hexdigest()[:16] == GRIMOIRE_POSSESSIVE)
+
+
+def on_grimoire(screen: dosbox.Screen) -> bool:
+    return bar_signature(screen, POD_GRIMOIRE_HEAD_CELLS) == POD_GRIMOIRE_HEAD
+
+
+def grimoire_rows(screen: dosbox.Screen) -> list[str]:
+    """Each of the list's eleven rows as one signature of its cells, blind to
+    the highlight, comparable with `NINTH_LEVEL_ROW` and `GRIMOIRE_SPELLS`."""
+    x, y = GRIMOIRE_ROWS_AT
+    return [hashlib.sha1("".join(_cells(screen, x, y + CELL * k, GRIMOIRE_ROW_CELLS,
+                                        CELL)).encode()).hexdigest()[:16]
+            for k in range(GRIMOIRE_ROW_COUNT)]
+
+
+def ninth_level(rows: list[str]) -> list[int | str]:
+    """The rows after the `9TH LEVEL` header, as spell ids where the row is
+    one of `GRIMOIRE_SPELLS` and as its signature where it is not."""
+    if NINTH_LEVEL_ROW not in rows:
+        return []
+    after = rows[rows.index(NINTH_LEVEL_ROW) + 1:]
+    return [GRIMOIRE_SPELLS.get(r, r) for r in after]
 
 
 
@@ -644,7 +750,7 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
 
 STEP_HELP = ("load, begin, 'walk MI', 'walk 1', 'turn 4', camp, display, 'rest 5m', 'save D', "
              "'train 1', 'sheet 1', 'items 1', 'halve 1 1', 'join 4 15', 'view 1', "
-             "'shot NAME', 'press KEY', read")
+             "'memorize 5', 'shot NAME', 'press KEY', read")
 
 
 def parse_step(text: str) -> Step:
@@ -660,8 +766,8 @@ def parse_step(text: str) -> Step:
         return Step(kind, text, minutes=minutes)
     if kind == "save" and len(words) == 2 and re.fullmatch(r"[A-Ja-j]", words[1]):
         return Step(kind, text, letter=words[1].upper())
-    if kind in ("train", "sheet", "items", "view") and len(words) == 2 and re.fullmatch(
-            r"[1-8]", words[1]):
+    if kind in ("train", "sheet", "items", "view", "memorize") and len(
+            words) == 2 and re.fullmatch(r"[1-8]", words[1]):
         return Step(kind, text, line=int(words[1]))
     if kind in ("halve", "join") and len(words) == 3 and re.fullmatch(
             r"[1-8]", words[1]) and re.fullmatch(r"\d+", words[2]):
@@ -741,7 +847,7 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "sheet" and title == "pool":
             if where != "map":
                 raise ValueError(f"sheet needs the loaded map: {step.text!r}")
-        elif k in ("sheet", "items", "halve", "join"):
+        elif k in ("sheet", "items", "halve", "join", "memorize"):
             if title != "darkness":
                 raise ValueError(f"{k} is driven in darkness only, not {title}")
             if where != "camp":
@@ -871,8 +977,9 @@ def item_dict(item) -> dict:
 
 def read_pod_slot(folder: pathlib.Path, letter: str) -> dict:
     """A Pools of Darkness slot: the clock, the square, and every character's
-    nodes, experience, thief skills, item count, encumbrance, movement and
-    items, read through `world_state.pod_from_dos` and `dos_codec.read_party`."""
+    nodes, experience, thief skills, item count, encumbrance, movement, items
+    and record byte `POD_BOOK_126` (spell id 126's book byte), read through
+    `world_state.pod_from_dos` and `dos_codec.read_party`."""
     savgam = (folder / f"SAVGAM{letter}.PTY").read_bytes()
     state = world_state.pod_from_dos(savgam, source=str(folder))
     out = {"slot": letter, "clock": list(state.clock),
@@ -900,6 +1007,7 @@ def read_pod_slot(folder: pathlib.Path, letter: str) -> dict:
             "encumbrance": c.get("encumbrance"),
             "movement": c.get("movement"),
             "movement_current": c.get("movement_current"),
+            "book_0x130": c.to_bytes()[POD_BOOK_126],
             "items": [item_dict(i) for i in c.items]})
     return out
 
@@ -976,7 +1084,7 @@ def compare_experience(before: dict, after: dict) -> list[dict]:
 
 #: What `compare_members` sets side by side for each Pools of Darkness character.
 MEMBER_FIELDS = ("thief", "item_count", "encumbrance", "movement",
-                 "movement_current", "items")
+                 "movement_current", "book_0x130", "items")
 
 
 def compare_members(before: dict, after: dict) -> list[dict]:
@@ -2429,6 +2537,101 @@ class Driver:
         """
         return self._item_command(line, row, ITEM_JOIN, "join", grow=0)
 
+    def memorize(self, line: int) -> dict:
+        """Roster line `line`'s grimoire from camp, every page shot and read,
+        and back to camp with nothing memorized.
+
+        `Magic` is pressed a second time only while the camp bar is still
+        showing, and `Memorize` once: a second one on the grimoire would
+        memorize the highlighted spell.  `lists_126` is whether any page draws
+        the `MONSTER SUMMONING` row, id 126, which the game lists only when
+        record byte `POD_BOOK_126` is set.
+        """
+        if self.title.key != "darkness" or self.camp_sig is None:
+            raise StepFailed("memorize needs Pools of Darkness' camp first")
+        self.ensure_camp()
+        label = f"memorize-{line}"
+        moved = self.pick_line(line, "camp", f"{label}-select")
+        name = roster_cells(self.s.capture(), line)
+        self.shot(f"{label}-line")
+        for _ in range(2):
+            self.s.key(POD_MAGIC)
+            if self.s.wait_for(lambda sc: bar_signature(sc) == POD_MAGIC_BAR, 15.0):
+                break
+            if not self.in_camp():
+                raise self.fail(f"{label}-magic", "MAGIC opened a screen that is not "
+                                "the Magic bar")
+        else:
+            raise self.fail(f"{label}-magic", "the camp bar is still showing after "
+                            "MAGIC")
+        magic = self.shot(f"{label}-magic")
+        self.s.key(POD_MEMORIZE)
+        if not self.s.wait_for(on_grimoire, 20.0):
+            raise self.fail(f"{label}-open", "MEMORIZE did not open a grimoire (a "
+                            "character with no spell to memorize, or a screen this "
+                            "driver does not know)")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        if not grimoire_is_for(screen, name):
+            raise self.fail(f"{label}-name", f"the grimoire's title is not roster "
+                            f"line {line}'s name")
+        pages = self.grimoire_pages(label, screen)
+        self.back_from_magic(f"{label}-back")
+        back = self.shot(f"{label}-back")
+        rows = [r for p in pages for r in p["rows"]]
+        return {"line": line, **moved, "magic": magic, "pages": pages, "back": back,
+                "lists_126": SPELL_126_ROW in rows,
+                "ninth_level": ninth_level(pages[-1]["rows"])}
+
+    def grimoire_pages(self, label: str, screen) -> list[dict]:
+        """Every page of the open grimoire, turned with `Next` until the bar
+        stops offering it.
+
+        A `Next` that changes nothing on a bar that offers `NEXT` is pressed
+        once more, since a swallowed key would otherwise end the list early
+        and hide the rows after it; a second one that changes nothing, a page
+        that is not the grimoire, or `GRIMOIRE_PAGES` pages, stop the run.
+        """
+        pages: list[dict] = []
+        while True:
+            pages.append({"shot": self.shot(f"{label}-page-{len(pages) + 1}"),
+                          "bar": bar_signature(screen), "digest": screen.digest(),
+                          "rows": grimoire_rows(screen)})
+            offers_next = bar_signature(screen) in POD_GRIMOIRE_NEXT_BARS
+            if not offers_next:
+                return pages
+            if len(pages) >= GRIMOIRE_PAGES:
+                raise self.fail(f"{label}-pages", f"{GRIMOIRE_PAGES} pages and the "
+                                "bar still offers NEXT")
+            before = screen.digest()
+            for _ in range(2):
+                self.s.key(POD_GRIMOIRE_NEXT)
+                if self.s.wait_for(lambda sc: sc.digest() != before, 5.0):
+                    break
+            else:
+                raise self.fail(f"{label}-next", "NEXT changed nothing on a page "
+                                "whose bar offers it")
+            screen = self.s.settle(quiet=0.8, timeout=30.0)
+            if not on_grimoire(screen):
+                raise self.fail(f"{label}-next", "NEXT left the grimoire")
+
+    def back_from_magic(self, label: str, tries: int = 4) -> None:
+        """`Exit` from the grimoire to the Magic bar and from there to camp,
+        looking before every press: it is never pressed on the camp bar, which
+        it would break, nor on any screen other than those two."""
+        for _ in range(tries):
+            screen = self.s.capture()
+            if self.in_camp(screen):
+                return
+            bar = bar_signature(screen)
+            if not (on_grimoire(screen) or bar == POD_MAGIC_BAR):
+                raise self.fail(label, "a screen that is neither the grimoire, the "
+                                "Magic bar nor camp")
+            self.s.key(LEAVE)
+            self.s.wait_for(lambda sc: bar_signature(sc) != bar, 10.0)
+        if not self.wait_camp(timeout=15.0):
+            raise self.fail(label, f"the camp bar never came back after {tries} "
+                            "presses of Exit")
+
     def zero_rest_time(self, limit: int = 120) -> int:
         """Select days and press subtract until three presses change nothing.
 
@@ -2808,6 +3011,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.join(step.line, step.row)
                 elif step.kind == "view":
                     r = d.view(step.line)
+                elif step.kind == "memorize":
+                    r = d.memorize(step.line)
                 elif step.kind == "shot":
                     r = {"shot": d.shot(step.name)}
                 elif step.kind == "press":
@@ -2992,7 +3197,8 @@ def describe(result: dict) -> list[str]:
                 f", {row['item_count']['after']} items ({len(row['items']['after'])} "
                 f"read), encumbrance {row['encumbrance']['after']}, movement "
                 f"{row['movement']['after']}, moving "
-                f"{row['movement_current']['after']}; "
+                f"{row['movement_current']['after']}, byte 0x130 "
+                f"{row['book_0x130']['after']}; "
                 + ("unchanged" if not row["changed"] else
                    "changed: " + ", ".join(row["changed"])))
         for row in s["compare"]:
