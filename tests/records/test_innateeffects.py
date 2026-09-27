@@ -848,3 +848,67 @@ def test_a_dos_paladin_crossing_to_the_c64_and_back_keeps_his_effect():
     _rec, _itm, spc, rep = dos_codec.write(paladin)
     assert spc == bytes.fromhex("080000ff0000000000")
     assert _innate_drops(rep) == []
+
+
+# --- #690: an Amiga dwarf or gnome's racial ids, written to DOS only once --
+#
+# `goldbox.amiga_later.to_neutral_later` cannot yet tell an innate racial
+# effect from an item's grant, so every zero-duration Amiga node lands in
+# `granted_effects` rather than `innate_effects`
+# (`LATER_EFFECT_SPLIT_UNKNOWN`).  `dos_codec.write`'s `derived` list used to
+# be filtered only against `innate_effects`, which is empty for an Amiga
+# source, so a dwarf or gnome's race-derived ids were written twice: once as
+# `derived`, once again as the `granted_effects` records the Amiga reader
+# already produced for them.
+
+def _amiga_dos_effect_node_count(char) -> int:
+    """`char` (an `amiga_later.AmigaCharacter`) through `to_neutral_later`
+    and `dos_codec.write`, counted by `.SPC` node rather than by byte."""
+    from goldbox import amiga_later
+
+    neutral_char = amiga_later.to_neutral_later(char)
+    _rec, _itm, spc, _rep = dos_codec.write(neutral_char)
+    assert len(spc) % dos_port.EFFECT_SIZE == 0, len(spc)
+    return len(spc) // dos_port.EFFECT_SIZE
+
+
+def test_an_amiga_curse_dwarf_or_gnomes_racial_ids_are_written_once():
+    """The three doubled Curse specimens `#690 (A dwarf or gnome converted
+    from an Amiga Curse or Silver Blades save to DOS gets each racial
+    effect twice)` names, each appearing twice on the disk -- once among the
+    eleven pregens, once inside the four-character played party -- for six
+    doubled records in total.  Before the fix each of these wrote 6, 6 and 8
+    nodes (double the numbers below); with it, 3, 3 and 4."""
+    from support.amigarecords import curse_characters
+
+    want = {"HOLLAND": 3, "BJORN DARKSTONE": 3, "SUNDRA": 4}
+    seen = {name: 0 for name in want}
+    for char in curse_characters():
+        if char.name not in want:
+            continue
+        seen[char.name] += 1
+        assert _amiga_dos_effect_node_count(char) == want[char.name], char.name
+    assert seen == {"HOLLAND": 2, "BJORN DARKSTONE": 1, "SUNDRA": 2}
+
+
+def test_an_amiga_silver_blades_dwarfs_racial_ids_are_written_once():
+    """MALACHITE, Silver Blades' own doubled specimen: 6 nodes before the
+    fix, 3 with it -- the number the DOS archives' own control party's
+    MALACHITE carries (#690's live proof)."""
+    from support.amigarecords import silver_blades_characters
+
+    (malachite,) = [c for c in silver_blades_characters()
+                    if c.name == "MALACHITE"]
+    assert _amiga_dos_effect_node_count(malachite) == 3
+
+
+def test_a_c64_dwarf_or_gnomes_racial_ids_still_reach_the_spc_file():
+    """A C64 source never sets `granted_effects`, so the new exclusion in
+    `dos_codec.write`'s `derived` computation must not touch it: a C64
+    dwarf's race-derived ids (47, 26, 97 in Silver Blades) are still written
+    in full, as they were before #690's fix."""
+    char = _c64_neutral(SSB.key, name="TESTER", race=3, innate_effects=[])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == _innate_node(47) + _innate_node(26) + _innate_node(97)
+    assert _innate_drops(rep) == []
+    assert _innate_drops(rep) == []

@@ -5564,8 +5564,6 @@ def write(char: NeutralCharacter,
                   in C64_CLASS_TRAITS.get(deltas.key, ())
                   if into in converted and c64 in before}
     race = int(w.get("race", 0) or 0)
-    derived = [e for e in _race_combat_effects(char.game, race, deltas)
-               if e not in converted]
     # A C64 trait slot has no provenance byte, so every id the reader could
     # not classify itself landed in `innate_effects`, and a filter that only
     # recognises this title's own innate set throws the rest away
@@ -5607,6 +5605,21 @@ def write(char: NeutralCharacter,
     counting = use("running_effects")
     running = [bytes(g)[:5] + EFFECT_NEXT_NULL
                for g in (counting.value if counting is not None else ())]
+    # An Amiga source has not yet learned to tell an innate racial effect
+    # from an item grant, so `to_neutral_later` puts every zero-duration
+    # Amiga node into `granted_effects` rather than `innate_effects`
+    # (`LATER_EFFECT_SPLIT_UNKNOWN`), and a race-derived id already sitting
+    # there would otherwise be written a second time (#690, A dwarf or gnome
+    # converted from an Amiga Curse or Silver Blades save to DOS gets each
+    # racial effect twice).  A C64 source never populates `granted_effects`,
+    # so its derived ids are unaffected, and a DOS source has already split
+    # its own effects into `innate_effects`, so this exclusion never fires
+    # for a DOS-to-DOS write.
+    already_written = set(converted)
+    already_written.update(g[0] for g in grants)
+    already_written.update(g[0] for g in running)
+    derived = [e for e in _race_combat_effects(char.game, race, deltas)
+               if e not in already_written]
     # The paladin's lay-on-hands timer, one more `.SPC` node by the same
     # rule as a running effect, except that its id is this title's own heal
     # id rather than whatever id the source recorded -- Silver Blades and
