@@ -1171,8 +1171,16 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
             pathlib.Path(manifest["registered"]["disk_two"]["path"]) or
             report.get("written") != report.get("save_as", {}).get("written") or
             len(report.get("written", [])) != 1 or
-            sha256(pathlib.Path(report["written"][0])) !=
-            manifest["registered"]["published"]["sha256"] or
+            pathlib.Path(report["written"][0]).name != "POOLSAVE.ADF" or
+            pathlib.Path(report.get("save_as", {}).get("destination", "")) !=
+            pathlib.Path(report["written"][0]) or
+            manifest.get("published_source", {
+                "path": report["written"][0],
+                "sha256": manifest["registered"]["published"]["sha256"],
+            }) != {
+                "path": report["written"][0],
+                "sha256": manifest["registered"]["published"]["sha256"],
+            } or
             report.get("save_as", {}).get("slot") != letter or
             report.get("save_as", {}).get("to") != "amiga" or
             report.get("save_as", {}).get("refused") or
@@ -1282,6 +1290,7 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path) -> path
         "loaded_letter": letter, "names_a": reading["names"],
         "state_a": reading["place"], "clock_a": reading["clock"],
         "expected_after": None,
+        "published_source": {"path": str(image), "sha256": image_sha},
         "disks": {"df0": _entry(df0), "df1": _entry(df1)},
         "registered": {"source": _entry(source), "report": _entry(report_copy),
                        "published": _entry(published), "disk_one": _entry(disk1),

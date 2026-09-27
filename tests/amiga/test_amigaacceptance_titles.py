@@ -144,10 +144,37 @@ def test_published_prepare_preserves_exact_reported_disk_one_and_rejects_tamperi
     manifest_path = foundation.prepare_published(name, f"test-{port}", report_path)
     manifest, title = foundation._published_manifest(manifest_path, name)
     assert manifest["loaded_letter"] == letter
+    assert manifest["published_source"] == {"path": str(published), "sha256": image_sha}
     assert (letter, "loaded_menu", "key") in title.route
     assert pathlib.Path(manifest["disks"]["df0"]["path"]).read_bytes() == published.read_bytes()
     assert pathlib.Path(manifest["disks"]["df1"]["path"]).read_bytes() == disk2.read_bytes()
     assert pathlib.Path(manifest["registered"]["published"]["path"]).read_bytes() == published.read_bytes()
+
+    published.rename(tmp_path / "evicted-original.adf")
+    foundation._published_manifest(manifest_path, name)
+
+    class ClaimReached:
+        calls = 0
+
+        def claim(self, *_args, **_kwargs):
+            self.calls += 1
+            raise winuaesession.RouteError("claim boundary reached")
+
+    guest = ClaimReached()
+    monkeypatch.setattr(foundation, "_mute_proof", lambda _path: True)
+    result = foundation.run_recon(
+        manifest_path, guest=guest, holder="wish677-test",
+        audio_proof=tmp_path / "mute.json", title=title, measure=True,
+        published_disk_one=True, published_name=name)
+    assert guest.calls == 1
+    assert result["error"] == "RouteError: claim boundary reached"
+
+    manifest["published_source"]["sha256"] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(winuaesession.RouteError, match="Save As report differs"):
+        foundation._published_manifest(manifest_path, name)
+    manifest["published_source"]["sha256"] = image_sha
+    manifest_path.write_text(json.dumps(manifest))
 
     report["save_as"]["slot"] = "D" if letter == "A" else "A"
     report_path.write_text(json.dumps(report))
@@ -163,12 +190,19 @@ def test_published_prepare_preserves_exact_reported_disk_one_and_rejects_tamperi
         def claim(self, *_args, **_kwargs):
             raise AssertionError("the guest was claimed before disk verification")
 
-    monkeypatch.setattr(foundation, "_mute_proof", lambda _path: True)
     with pytest.raises(winuaesession.RouteError, match="exact published image"):
         foundation.run_recon(
             manifest_path, guest=Unclaimed(), holder="wish677-test",
             audio_proof=tmp_path / "mute.json", title=title, measure=True,
             published_disk_one=True, published_name=name)
+
+    manifest["disks"]["df0"]["sha256"] = image_sha
+    manifest_path.write_text(json.dumps(manifest))
+    cache_image = pathlib.Path(manifest["registered"]["published"]["path"])
+    cache_image.unlink()
+    cache_image.write_bytes(b"changed cached image")
+    with pytest.raises(winuaesession.RouteError, match="published is missing or changed"):
+        foundation._published_manifest(manifest_path, name)
 
 
 @pytest.mark.parametrize("clock_a,clock_f,success", [
