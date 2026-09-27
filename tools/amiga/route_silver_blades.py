@@ -14,6 +14,7 @@ from typing import Any
 from automap import gamedisks
 from goldbox import amiga_adf, amiga_savegame
 from tools.amiga import amigabladesjournal, staging
+from tools.amiga.route import effect_fields
 from tools.amiga.staging import _entry, _verified_disk, sha256
 from tools.amiga.winuaesession import HOLDER, RouteError
 from tools.registry import scratch
@@ -202,6 +203,8 @@ def _slot_reading(fetched: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
                         "facing": state.facing}
     reading["names"] = [member["name"] for member in inventory["members"]]
     reading["inventory"] = inventory
+    reading["effects"] = {member.name: [list(effect_fields(node)) for node in member.effects]
+                          for member in saved.characters}
     return reading
 
 

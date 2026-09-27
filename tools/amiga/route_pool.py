@@ -8,7 +8,7 @@ import re
 from typing import Any
 
 from goldbox import amiga_adf, amiga_savegame
-from tools.amiga.route import ISSUE, AmigaTitle
+from tools.amiga.route import ISSUE, AmigaTitle, effect_fields
 from tools.amiga.staging import _prepare_from, _Sources
 
 POOL_DISK1_SHA256 = "6ad445f5715d021d560ddcf003e78153003315af016a19dbc4b56d55d3019d4c"
@@ -42,6 +42,10 @@ def _pool_read_slot(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
         reading["names"] = [_pool_name(member.name) for member in party]
         reading["place"] = {"area": state.area, "x": state.x, "y": state.y,
                             "facing": state.facing}
+        characters = amiga_savegame.read_por_characters(disk, letter, drawer="")
+        reading["effects"] = {_pool_name(char.name): [list(effect_fields(node))
+                                                       for node in char.effects]
+                              for char in characters}
     except Exception as exc:  # noqa: BLE001 - every reader failure is the verdict's `decode_error`
         reading.pop("names", None)
         reading["decode_error"] = f"{type(exc).__name__}: {exc}"

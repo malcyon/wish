@@ -7,7 +7,7 @@ import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from goldbox import amiga_adf
+from goldbox import amiga_adf, amiga_por
 from tools.amiga import amigadrive
 from tools.amiga.winuaesession import HOLDER, RouteError
 
@@ -16,6 +16,50 @@ TITLE_LIMIT = 180.0
 _STEP_KINDS = frozenset({"key", "write", "move", "turn", "answer", "insert"})
 _LETTER = re.compile(r"[A-Z]")
 _OPTION = re.compile(r"[A-Za-z0-9_]+=[A-Za-z0-9_.]*")
+_EXPECT = re.compile(r"(?P<name>[^:]+):(?P<id>-?[0-9]+):(?P<minutes>-?[0-9]+):(?P<data>-?[0-9]+)")
+
+
+def effect_fields(node: bytes) -> tuple[int, int, int, int]:
+    """One 10-byte Amiga effect node's `(id, minutes, data, flag)`, through DOS's byte order.
+
+    `goldbox.amiga_por.amiga_por_effect_to_dos` already does the byte-order
+    work (the swap from the Amiga's big-endian `u16` at offset 2 to DOS's
+    little-endian one at offset 1); this only re-reads the result as integers,
+    for a title-agnostic route reader (#661).
+    """
+    dos = amiga_por.amiga_por_effect_to_dos(node)
+    return dos[0], dos[1] | (dos[2] << 8), dos[3], dos[4]
+
+
+def parse_expect(text: str) -> tuple[str, int, int, int]:
+    """Read `NAME:ID:MINUTES:DATA` into its four fields."""
+    m = _EXPECT.fullmatch(text)
+    if not m:
+        raise RouteError(f"--expect {text!r} is not NAME:ID:MINUTES:DATA")
+    return m["name"], int(m["id"]), int(m["minutes"]), int(m["data"])
+
+
+def check_expect(reading: Mapping[str, Any], expect: tuple[str, int, int, int], *,
+                 tolerance_minutes: int = 0) -> str:
+    """Whether a slot's `effects` reading holds `expect`'s node, as one verdict line.
+
+    `reading` is a `read_slot` result: `effects` maps a character's name to its
+    `[id, minutes, data, flag]` rows. A node's minutes may differ from the
+    asked-for count by up to `tolerance_minutes`, for the game's own elapsed
+    clock between the row's origin and this read.
+    """
+    name, eid, minutes, data = expect
+    label = f"expect {name} id {eid} at {minutes} minutes"
+    effects = reading.get("effects") if reading else None
+    if not effects:
+        return f"{label}: refutes (the slot holds no effects reading)"
+    nodes = effects.get(name)
+    if nodes is None:
+        return f"{label}: refutes ({name} is absent from the slot)"
+    if any(n[0] == eid and n[2] == data and abs(n[1] - minutes) <= tolerance_minutes
+          for n in nodes):
+        return f"{label}: accepts"
+    return f"{label}: refutes (holds {nodes})"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

@@ -14,7 +14,12 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from tools.amiga.amigasecretsave import run_recon  # noqa: E402
-from tools.amiga.route import ISSUE, AmigaTitle  # noqa: E402
+from tools.amiga.route import (  # noqa: E402
+    ISSUE,
+    AmigaTitle,
+    check_expect,
+    parse_expect,
+)
 from tools.amiga.route_curse import CURSE, _prepare_curse  # noqa: E402
 from tools.amiga.route_darkness import (  # noqa: E402
     DARKNESS,
@@ -24,6 +29,7 @@ from tools.amiga.route_darkness import (  # noqa: E402
 )
 from tools.amiga.route_pool import POOL, _prepare_pool  # noqa: E402
 from tools.amiga.screens import PixelGuards  # noqa: E402
+from tools.amiga.staging import _verified_disk  # noqa: E402
 from tools.amiga.winuaesession import (  # noqa: E402
     HOLDER,
     RouteError,
@@ -82,6 +88,24 @@ def _summary(result: dict[str, Any], manifest: pathlib.Path, attempt: str) -> st
                       sort_keys=True)
 
 
+def expect_verdict(title: AmigaTitle, manifest: pathlib.Path, attempt: str,
+                   expect: tuple[str, int, int, int], tolerance_minutes: int = 0) -> str:
+    """Read the route's later slot off the run's fetched save disk and check `expect` against it.
+
+    Re-opens `<manifest.parent>/<attempt>/fetched-<save_disk>.adf`, which
+    `run_recon` writes for every attempt that reached the fetch step, and
+    reads `title.after_letter` -- the camp-save slot the accept route writes
+    after its walk. Refutes, naming why, when that file is missing or the
+    slot holds no matching node.
+    """
+    fetched = manifest.parent / attempt / f"fetched-{title.save_disk}.adf"
+    if not fetched.is_file():
+        name, eid, minutes, _data = expect
+        return f"expect {name} id {eid} at {minutes} minutes: refutes (no fetched save disk)"
+    reading = title.read_slot(_verified_disk(fetched), title.after_letter)
+    return check_expect(reading, expect, tolerance_minutes=tolerance_minutes)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -111,6 +135,10 @@ def main(argv: list[str] | None = None) -> int:
     common(a)
     a.add_argument("--guards", required=True, type=pathlib.Path)
     a.add_argument("--identity", required=True, type=pathlib.Path)
+    a.add_argument("--expect", default=None,
+                   help="NAME:ID:MINUTES:DATA, checked against the route's later slot")
+    a.add_argument("--expect-tolerance-minutes", type=int, default=0,
+                   help="minutes of slack --expect allows for elapsed game time")
     r = sub.add_parser("reload", help="guarded load of a game-written slot and a check of the place "
                                       "on screen; writes nothing")
     common(r)
@@ -118,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--identity", required=True, type=pathlib.Path)
     args = parser.parse_args(argv)
     try:
+        expect = parse_expect(args.expect) if getattr(args, "expect", None) else None
         with terminating():
             if args.command == "prepare":
                 print(prepare(TITLES[args.title], args.run_id, specimen=args.disk3,
@@ -142,7 +171,13 @@ def main(argv: list[str] | None = None) -> int:
             print(_summary(result, args.manifest, args.attempt))
             for line in result.get("read", {}).get("verdicts", []):
                 print(line)
-            return 0 if result["success"] else 1
+            success = result["success"]
+            if args.command == "accept" and expect is not None:
+                line = expect_verdict(title, args.manifest, args.attempt, expect,
+                                      args.expect_tolerance_minutes)
+                print(line)
+                success = success and line.endswith(": accepts")
+            return 0 if success else 1
     except (RouteError, OSError, ValueError) as exc:
         print(f"amigafoundation: {exc}", file=sys.stderr)
         return 2

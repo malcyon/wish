@@ -8,7 +8,7 @@ import re
 from typing import Any
 
 from goldbox import amiga_adf, amiga_savegame
-from tools.amiga.route import ISSUE, AmigaTitle
+from tools.amiga.route import ISSUE, AmigaTitle, effect_fields
 from tools.amiga.staging import _prepare_from, _Sources
 
 CURSE_DISK_B_SHA256 = "a6f94bb42664ab94b673bf0c7390420d94bec257ae09fea488a53504b6e1fca3"
@@ -37,6 +37,8 @@ def _curse_read_slot(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
         reading["names"] = [member.name for member in saved.characters]
         reading["place"] = {"area": state.area, "x": state.x, "y": state.y,
                             "facing": state.facing}
+        reading["effects"] = {member.name: [list(effect_fields(node)) for node in member.effects]
+                              for member in saved.characters}
     except Exception as exc:  # noqa: BLE001 - every reader failure is the verdict's `decode_error`
         reading.pop("names", None)
         reading["decode_error"] = f"{type(exc).__name__}: {exc}"

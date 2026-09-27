@@ -18,7 +18,12 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox import geo  # noqa: E402
-from tools.amiga.route import TITLE_LIMIT, AmigaTitle  # noqa: E402
+from tools.amiga.route import (  # noqa: E402
+    TITLE_LIMIT,
+    AmigaTitle,
+    check_expect,
+    parse_expect,
+)
 from tools.amiga.route_silver_blades import (  # noqa: E402
     ACCEPT_MIN_WAITS,
     ACCEPT_ROUTE,
@@ -362,6 +367,22 @@ def _read_reload(title: AmigaTitle, manifest: dict, result: dict[str, Any],
         and bool(result.get("kept_unchanged")) and all(result["kept_unchanged"].values())
         and result.get("extra_saves") == []
         and seen.get("shown") is True and seen.get("other_shown") is False)
+
+
+def expect_verdict(manifest_path: pathlib.Path, attempt: str,
+                   expect: tuple[str, int, int, int], tolerance_minutes: int = 0) -> str:
+    """Read Silver Blades' camp-save slot off the run's fetched boot disk and check `expect` against it.
+
+    Re-opens `<manifest_path.parent>/<attempt>/fetched-df0.adf`, which
+    `run_recon` writes for every attempt that reached the fetch step, and
+    reads `CAMP_SAVE_LETTER` -- the slot the accept route's camp save writes.
+    """
+    fetched = manifest_path.parent / attempt / "fetched-df0.adf"
+    if not fetched.is_file():
+        name, eid, minutes, _data = expect
+        return f"expect {name} id {eid} at {minutes} minutes: refutes (no fetched boot disk)"
+    reading = _slot_reading(_verified_disk(fetched), CAMP_SAVE_LETTER)
+    return check_expect(reading, expect, tolerance_minutes=tolerance_minutes)
 
 
 def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
@@ -1041,6 +1062,10 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--attempt", default="accept1")
     a.add_argument("--holder", default=None)
     a.add_argument("--deadline", type=float, default=1800)
+    a.add_argument("--expect", default=None,
+                   help="NAME:ID:MINUTES:DATA, checked against the camp-save slot")
+    a.add_argument("--expect-tolerance-minutes", type=int, default=0,
+                   help="minutes of slack --expect allows for elapsed game time")
     sub.add_parser("spindisk-control", help="unavailable until the exact-output failure is measured")
     args = parser.parse_args(argv)
     try:
@@ -1090,6 +1115,7 @@ def main(argv: list[str] | None = None) -> int:
                                              / "summary.json")}, sort_keys=True))
             return 0 if result["success"] else 1
         if args.command == "accept":
+            expect = parse_expect(args.expect) if args.expect else None
             holder = args.holder or f"wish672-{uuid.uuid4().hex[:12]}"
             with terminating():
                 result = run_recon(
@@ -1105,7 +1131,13 @@ def main(argv: list[str] | None = None) -> int:
                                              / "summary.json")}, sort_keys=True))
             for line in result["read"]["verdicts"]:
                 print(line)
-            return 0 if result["success"] else 1
+            success = result["success"]
+            if expect is not None:
+                line = expect_verdict(args.manifest, args.attempt, expect,
+                                      args.expect_tolerance_minutes)
+                print(line)
+                success = success and line.endswith(": accepts")
+            return 0 if success else 1
         raise RouteError(f"{args.command} is unavailable until the measured route is reviewed")
     except (RouteError, OSError, ValueError) as exc:
         print(f"amigasecretsave: {exc}", file=sys.stderr)
