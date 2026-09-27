@@ -28,8 +28,8 @@ from tools.records import thac0census  # noqa: E402
 TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",
           "secret-of-the-silver-blades")
 
-#: The three records on this machine that the engine's own rule does not
-#: account for, and why each is not a counter-example.
+#: The records on this machine that the engine's own rule does not account
+#: for, and why each is not a counter-example.
 CURSE_EXCEPTIONS = {
     # `former_class_levels`, folded in by the regained-class loop without
     # clearing -- `docs/209-the-regained-dual-class-on-dos.md`.
@@ -46,6 +46,11 @@ CURSE_EXCEPTIONS = {
     # Wish's own conversion of MARK, before DOS Curse's first save folds his
     # former paladin level in above -- `#632`.
     "WISH-SPEC-curse-632-wish-converted-resave/CHRDATA2.SAV": 16,
+    # DOS Curse's own resave of the 632 specimen's slot B to slots B and D
+    # (`#679`): byte-identical to `WISH-SPEC-curse-632-wish-converted-resave/
+    # CHRDATB2.SAV` above, so MARK's former paladin level folds the same way.
+    "WISH-SPEC-dos-curse-foundation-walked/CHRDATB2.SAV": 16,
+    "WISH-SPEC-dos-curse-foundation-walked/CHRDATD2.SAV": 16,
 }
 
 
@@ -128,8 +133,9 @@ def test_every_dos_record_on_this_machine_reproduces_from_the_engine_rule(
     """The sweep, with each exception named rather than counted away.
 
     A record whose stored byte the rule does not give is a failure unless it
-    is one of the three above; a listed exception that has started agreeing is
-    a failure too, because the table it documents would have moved.
+    is one of the records listed above; a listed exception that has started
+    agreeing is a failure too, because the table it documents would have
+    moved.
     """
     rows = _rows(title)
     records = _records(title)

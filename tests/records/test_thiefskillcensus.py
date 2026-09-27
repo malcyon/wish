@@ -152,10 +152,15 @@ def test_every_dos_pool_of_radiance_record_reproduces():
 #: hold two *different* answers for the same character, which is the writer
 #: having changed between them rather than the game disagreeing with itself.
 #: `WISH-SPEC-por-c64-hall-resave`'s own provenance says it in those words:
-#: "NOT EVIDENCE ABOUT THE GAME's arithmetic".
+#: "NOT EVIDENCE ABOUT THE GAME's arithmetic".  `WISH-SPEC-por-679-c64-walked-
+#: resave` is the C64 engine's own resave of `WISH-SPEC-por-52-dialog-
+#: converted-resave` (`#679`); the engine only rewrites thief skills when a
+#: character trains, so its WISHTHI and WISHDWF still hold the bytes the
+#: 2026-09-05 writer copied from DOS.
 CONVERTED = frozenset(x.upper() for x in (
     "PORSAVEA.D64", "PORSAVEB.D64",
     "WISH-SPEC-por-52-dialog-converted-resave.D64",
+    "WISH-SPEC-por-679-c64-walked-resave.D64",
     "WISH-SPEC-por-amiga-newphlan-c64-resave.D64",
     "WISH-SPEC-por-amiga-outdoor-c64-resave-walked.D64",
     "WISH-SPEC-por-amiga-slums-c64-resave.D64",
