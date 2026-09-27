@@ -6,6 +6,8 @@ import dataclasses
 import hashlib
 import json
 import pathlib
+import subprocess
+import sys
 
 import pytest
 
@@ -24,8 +26,16 @@ from tests.amiga.test_amigasecretsavetitle import (
     _slot,
 )
 from tools.amiga import amigafoundation as foundation
+from tools.amiga import (
+    amigasaves,
+    route_curse,
+    route_darkness,
+    route_pool,
+    staging,
+    winuaesession,
+)
 from tools.amiga import amigasecretsave as drive
-from tools.amiga import staging, winuaesession
+from tools.registry import specimens
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
 START = {"area": 0, "x": 9, "y": 13, "facing": geo.NORTH}
@@ -183,11 +193,11 @@ def test_main_exits_two_when_the_run_is_refused(tmp_path, capsys):
 # What needs the player's own disks and the specimen tree; CI has neither.
 def _registered():
     try:
-        specimen = foundation.specimens.tree_root().joinpath(*foundation.POOL_SPECIMEN)
+        specimen = specimens.tree_root().joinpath(*route_pool.POOL_SPECIMEN)
         if not specimen.is_file():
             pytest.skip("the Pool specimen is not in the registry")
-        foundation._find_images({"disk1": foundation.POOL_DISK1_SHA256,
-                                 "disk2": foundation.POOL_DISK2_SHA256})
+        staging._find_images({"disk1": route_pool.POOL_DISK1_SHA256,
+                                 "disk2": route_pool.POOL_DISK2_SHA256})
     except winuaesession.RouteError:
         pytest.skip("the registered Pool disks are not here")
     return specimen
@@ -210,7 +220,7 @@ def test_prepare_writes_the_places_and_leaves_every_registered_image_unchanged(
         tmp_path, monkeypatch):
     specimen = _registered()
     before = {label: hashlib.sha256(data).hexdigest()
-              for label, data in foundation.amigasaves.images()}
+              for label, data in amigasaves.images()}
     specimen_before = staging.sha256(specimen)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
@@ -223,10 +233,10 @@ def test_prepare_writes_the_places_and_leaves_every_registered_image_unchanged(
     for key, entry in manifest["disks"].items():
         assert staging.sha256(pathlib.Path(entry["path"])) == entry["sha256"]
         assert pathlib.Path(entry["path"]).is_relative_to(tmp_path)
-    assert manifest["disks"]["disk1"]["sha256"] == foundation.POOL_DISK1_SHA256
-    assert manifest["disks"]["save"]["sha256"] == foundation.POOL_SPECIMEN_SHA256
+    assert manifest["disks"]["disk1"]["sha256"] == route_pool.POOL_DISK1_SHA256
+    assert manifest["disks"]["save"]["sha256"] == route_pool.POOL_SPECIMEN_SHA256
     after = {label: hashlib.sha256(data).hexdigest()
-             for label, data in foundation.amigasaves.images()}
+             for label, data in amigasaves.images()}
     assert after == before and staging.sha256(specimen) == specimen_before
     # The manifest is one the driver accepts, before any lane is claimed.
     assert drive._title_inputs(manifest, foundation.POOL)[2] == "A"
@@ -347,11 +357,11 @@ def test_prepare_refuses_a_curse_specimen_whose_sha256_differs(tmp_path, monkeyp
 
 
 def _curse_registered():
-    specimen = foundation.specimens.tree_root().joinpath(*foundation.CURSE_SPECIMEN)
+    specimen = specimens.tree_root().joinpath(*route_curse.CURSE_SPECIMEN)
     if not specimen.is_file():
         pytest.skip("the Curse specimen is not in the registry")
     try:
-        foundation._find_images({"diskb": foundation.CURSE_DISK_B_SHA256})
+        staging._find_images({"diskb": route_curse.CURSE_DISK_B_SHA256})
     except winuaesession.RouteError:
         pytest.skip("the registered Curse disk B is not here")
     return specimen
@@ -371,7 +381,7 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
         tmp_path, monkeypatch):
     specimen = _curse_registered()
     before = {label: hashlib.sha256(data).hexdigest()
-              for label, data in foundation.amigasaves.images()}
+              for label, data in amigasaves.images()}
     specimen_before = staging.sha256(specimen)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
@@ -379,10 +389,10 @@ def test_curse_prepare_writes_the_places_and_leaves_every_registered_image_uncha
     assert manifest["title"] == "curse"
     assert manifest["state_a"] == CURSE_START and manifest["expected_after"] == CURSE_LATER
     assert manifest["loaded_letter"] == "B" and set(manifest["disks"]) == {"diskb", "save"}
-    assert manifest["disks"]["diskb"]["sha256"] == foundation.CURSE_DISK_B_SHA256
-    assert manifest["disks"]["save"]["sha256"] == foundation.CURSE_SPECIMEN_SHA256
+    assert manifest["disks"]["diskb"]["sha256"] == route_curse.CURSE_DISK_B_SHA256
+    assert manifest["disks"]["save"]["sha256"] == route_curse.CURSE_SPECIMEN_SHA256
     after = {label: hashlib.sha256(data).hexdigest()
-             for label, data in foundation.amigasaves.images()}
+             for label, data in amigasaves.images()}
     assert after == before and staging.sha256(specimen) == specimen_before
     assert drive._title_inputs(manifest, foundation.CURSE)[2] == "B"
 
@@ -524,7 +534,7 @@ def test_darkness_measure_ends_at_the_camp_save_picker_and_writes_nothing(tmp_pa
 def test_darkness_route_and_measure_route_are_pinned_and_write_only_f_and_g():
     darkness = foundation.DARKNESS
     head = (("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
-            ("B", "disk2_prompt", "key"), foundation.DISK2_INSERT,
+            ("B", "disk2_prompt", "key"), route_darkness.DISK2_INSERT,
             ("V", "sheet", "key"), ("E", "loaded_menu", "key"))
     assert darkness.route == head + (
         ("S", "save_picker", "key"), ("F", "loaded_menu", "write"), ("B", "journal", "key"),
@@ -551,7 +561,7 @@ def test_darkness_refuses_a_write_step_that_is_not_the_control_or_after_letter(l
 
 def test_the_real_darkness_readers_show_f_g_and_h_free_on_disk_3():
     try:
-        images = foundation._find_images({"disk3": foundation.DARKNESS_DISK3_SHA256})
+        images = staging._find_images({"disk3": route_darkness.DARKNESS_DISK3_SHA256})
     except winuaesession.RouteError:
         pytest.skip("the registered Pools of Darkness disk 3 is not here")
     disk = AmigaDisk(images["disk3"][1])
@@ -583,9 +593,9 @@ def test_prepare_refuses_a_darkness_disk_whose_sha256_differs(tmp_path, monkeypa
 
 def _darkness_registered():
     try:
-        return foundation._find_images({"disk1": foundation.DARKNESS_DISK1_SHA256,
-                                        "disk2": foundation.DARKNESS_DISK2_SHA256,
-                                        "disk3": foundation.DARKNESS_DISK3_SHA256})
+        return staging._find_images({"disk1": route_darkness.DARKNESS_DISK1_SHA256,
+                                        "disk2": route_darkness.DARKNESS_DISK2_SHA256,
+                                        "disk3": route_darkness.DARKNESS_DISK3_SHA256})
     except winuaesession.RouteError:
         pytest.skip("the registered Pools of Darkness disks are not here")
 
@@ -603,7 +613,7 @@ def test_darkness_prepare_writes_the_place_and_leaves_every_registered_image_unc
         tmp_path, monkeypatch):
     _darkness_registered()
     before = {label: hashlib.sha256(data).hexdigest()
-              for label, data in foundation.amigasaves.images()}
+              for label, data in amigasaves.images()}
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     manifest = json.loads(foundation.prepare(foundation.DARKNESS, "registry-run").read_text())
@@ -611,9 +621,9 @@ def test_darkness_prepare_writes_the_place_and_leaves_every_registered_image_unc
     assert manifest["state_a"] == DARK_START and manifest["loaded_letter"] == "B"
     assert "expected_after" not in manifest
     assert set(manifest["disks"]) == {"disk1", "disk2", "disk3"}
-    assert manifest["disks"]["disk3"]["sha256"] == foundation.DARKNESS_DISK3_SHA256
+    assert manifest["disks"]["disk3"]["sha256"] == route_darkness.DARKNESS_DISK3_SHA256
     after = {label: hashlib.sha256(data).hexdigest()
-             for label, data in foundation.amigasaves.images()}
+             for label, data in amigasaves.images()}
     assert after == before
     assert drive._title_inputs(manifest, foundation.DARKNESS)[2] == "B"
 
@@ -851,9 +861,9 @@ def test_darkness_prepare_copies_disk_2_as_a_working_copy_never_the_registered_i
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     manifest = json.loads(foundation.prepare(foundation.DARKNESS, "disk2-run").read_text())
     entry = manifest["disks"]["disk2"]
-    assert entry["sha256"] == foundation.DARKNESS_DISK2_SHA256
+    assert entry["sha256"] == route_darkness.DARKNESS_DISK2_SHA256
     assert pathlib.Path(entry["path"]).is_relative_to(tmp_path)
-    assert manifest["sources"]["disk2"]["sha256"] == foundation.DARKNESS_DISK2_SHA256
+    assert manifest["sources"]["disk2"]["sha256"] == route_darkness.DARKNESS_DISK2_SHA256
 
 
 def test_darkness_never_presses_the_continuation_key_when_the_df0_insert_fails(tmp_path, clock):
@@ -1063,13 +1073,13 @@ def test_a_title_with_no_save_letters_runs_only_as_a_reload(tmp_path, clock, tit
 def test_the_reload_description_is_pinned():
     reload = foundation.DARKNESS_RELOAD
     assert foundation.TITLES["darkness-reload"] is reload
-    assert foundation.DARKNESS_RELOAD_LOADED == "G"
+    assert route_darkness.DARKNESS_RELOAD_LOADED == "G"
     assert reload.route == reload.measure_route == (
         ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
-        ("G", "disk2_prompt", "key"), foundation.DISK2_INSERT,
+        ("G", "disk2_prompt", "key"), route_darkness.DISK2_INSERT,
         ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
         ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", "world", "key"))
-    assert reload.route[3][0] == foundation.DARKNESS_RELOAD_LOADED
+    assert reload.route[3][0] == route_darkness.DARKNESS_RELOAD_LOADED
     assert reload.control_letter is None and reload.after_letter is None
     assert reload.kept_letters == ("A", "B", "C", "D", "E", "F")
     assert reload.plain_keys == (("E", "loaded_menu"), ("B", "journal"))
@@ -1087,10 +1097,10 @@ def _reload_registered(tmp_path, monkeypatch):
              "disk3": _adf(tmp_path / "r3.adf", "POD 3", slots)}
     images = {key: pathlib.Path(entry["path"]).read_bytes() for key, entry in files.items()}
     for key, entry in files.items():
-        monkeypatch.setattr(foundation, f"DARKNESS_{key.upper()}_SHA256", entry["sha256"])
-    monkeypatch.setattr(foundation, "_find_images",
+        monkeypatch.setattr(route_darkness, f"DARKNESS_{key.upper()}_SHA256", entry["sha256"])
+    monkeypatch.setattr(route_darkness, "_find_images",
                         lambda wanted: {key: ("registered", images[key]) for key in wanted})
-    monkeypatch.setattr(foundation, "DARKNESS_RELOAD", _reload_title())
+    monkeypatch.setattr(route_darkness, "DARKNESS_RELOAD", _reload_title())
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     return images
@@ -1292,3 +1302,15 @@ def test_a_run_that_stops_early_still_records_the_repository_state_and_arguments
     _, result = _run(tmp_path, clock, guest=Stops(clock, save_key="save"))
     assert result["error"] and result["completed"] is False and result["success"] is False
     _assert_recorded(tmp_path, result)
+
+
+@pytest.mark.parametrize("module", ["route_pool", "route_curse", "route_darkness"])
+def test_a_title_route_module_imports_without_the_runners(module):
+    program = (
+        f"import sys; import tools.amiga.{module}; "
+        "sys.exit(int(any(name in sys.modules for name in ("
+        "'tools.amiga.amigasecretsave', 'tools.amiga.amigafoundation', "
+        "'tools.amiga.screens'))))")
+    done = subprocess.run([sys.executable, "-c", program],
+                          cwd=pathlib.Path(__file__).resolve().parents[2])
+    assert done.returncode == 0

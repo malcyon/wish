@@ -992,10 +992,10 @@ def test_a_df0_insert_run_stops_before_its_key_when_the_insert_fails(tmp_path, c
 def test_a_df0_prompt_outside_strict_is_refused_on_the_real_darkness_description():
     import dataclasses
 
-    from tools.amiga import amigafoundation as foundation
+    from tools.amiga import route_darkness
     with pytest.raises(winuaesession.RouteError, match="disk prompt 'disk2_prompt', which is not a strict"):
-        dataclasses.replace(foundation.DARKNESS,
-                            strict=foundation.DARKNESS.strict - {"disk2_prompt"})
+        dataclasses.replace(route_darkness.DARKNESS,
+                            strict=route_darkness.DARKNESS.strict - {"disk2_prompt"})
 
 
 PLAIN_ROUTE = (("P", "party_menu", "key"), ("A", "disk_ask", "key"), ("L", "loaded_menu", "key"))

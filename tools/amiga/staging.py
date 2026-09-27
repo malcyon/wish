@@ -7,17 +7,22 @@ header makes a standalone save disk reachable without deleting game data.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import os
 import pathlib
+import shutil
 import string
 import struct
+from typing import Any
 
 from goldbox import amiga_adf
 from goldbox import amiga_adf as adf
+from tools.amiga import amigasaves
+from tools.amiga.route import AmigaTitle
 from tools.amiga.winuaesession import RouteError
-from tools.registry import scratch
+from tools.registry import scratch, specimens
 
 SOURCE_SHA256 = "2f9ae86494561231dd1d70b350ae07b959c9f62642b64e9d4b57ffd23686ace4"
 SECRET_SHA256 = "ba6c8b5ed94b9003d61f727968e040d55a37d79ba109d46fb013163a698a158d"
@@ -380,6 +385,87 @@ def stage_embedded_boot_disk(
         "slot_sha256": _sha(slot),
         "files_checked": len(original_files),
     }
+
+
+def _find_images(wanted: dict[str, str]) -> dict[str, tuple[str, bytes]]:
+    """Each wanted key's registered image, found by its SHA-256 inside the zips too: `{key: (label, bytes)}`."""
+    found: dict[str, tuple[str, bytes]] = {}
+    for label, data in amigasaves.images():
+        digest = hashlib.sha256(data).hexdigest()
+        for key, pinned in wanted.items():
+            if digest == pinned and key not in found:
+                found[key] = (label, data)
+    missing = [key for key in wanted if key not in found]
+    if missing:
+        raise RouteError(f"registered image {missing} was not found by its SHA-256")
+    return found
+
+
+@dataclasses.dataclass(frozen=True)
+class _Sources:
+    """The registered specimen and disks a title's run starts from."""
+
+    name: str
+    title: AmigaTitle
+    specimen: tuple[str, ...]
+    specimen_sha256: str
+    volume: str
+    loaded: str
+    later: str
+    images: dict[str, str]
+
+
+def _prepare_from(src: _Sources, run: pathlib.Path, specimen: pathlib.Path | None
+                  ) -> dict[str, Any]:
+    title = src.title
+    specimen = (pathlib.Path(specimen) if specimen
+                else specimens.tree_root().joinpath(*src.specimen))
+    if not specimen.is_file():
+        raise RouteError(f"the specimen {specimen} is missing")
+    if sha256(specimen) != src.specimen_sha256:
+        raise RouteError(f"the specimen SHA-256 differs: {sha256(specimen)}")
+    save = amiga_adf.AmigaDisk.open(specimen)
+    if save.verify() or save.volume_name != src.volume:
+        raise RouteError(f"{specimen} is not a verified {src.volume} disk")
+    present = title.slot_letters(save)
+    for taken in (title.control_letter, title.after_letter):
+        if taken in present:
+            raise RouteError(f"slot {taken} already exists on the specimen")
+    loaded, later = title.read_slot(save, src.loaded), title.read_slot(save, src.later)
+    for letter, reading in ((src.loaded, loaded), (src.later, later)):
+        if "place" not in reading:
+            raise RouteError(f"specimen slot {letter} does not decode: {reading}")
+    images = _find_images(src.images)
+    scratch.ensure(run)
+    disks: dict[str, dict[str, str]] = {}
+    for key, (_label, data) in images.items():
+        path = run / f"{key}.adf"
+        path.write_bytes(data)
+        disks[key] = {"path": str(path), "sha256": sha256(path)}
+    working = run / "save.adf"
+    shutil.copyfile(specimen, working)
+    disks["save"] = {"path": str(working), "sha256": sha256(working)}
+    if any(disks[key]["sha256"] != pinned for key, pinned in src.images.items()):
+        raise RouteError("a working copy differs from the pinned disk")
+    if disks["save"]["sha256"] != src.specimen_sha256:
+        raise RouteError("the working save disk differs from the specimen")
+    # A registered image inside a zip has no file of its own, so `registered` holds the
+    # specimen and `sources` names each image by where it was found.
+    manifest = {
+        "title": src.name, "disks": disks,
+        "registered": {"specimen": {"path": str(specimen), "sha256": sha256(specimen)}},
+        "sources": {key: {"label": label, "sha256": src.images[key]}
+                    for key, (label, _data) in images.items()},
+        "loaded_letter": src.loaded,
+        "state_a": loaded["place"], "names_a": loaded["names"],
+        "expected_after": later["place"],
+    }
+    after = _find_images(src.images)
+    if (sha256(specimen) != src.specimen_sha256
+            or any(hashlib.sha256(after[key][1]).hexdigest() != pinned
+                   for key, pinned in src.images.items())):
+        raise RouteError("a registered image changed during preparation")
+    return manifest
 
 
 def main() -> None:

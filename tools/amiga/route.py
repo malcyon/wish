@@ -11,6 +11,7 @@ from goldbox import amiga_adf
 from tools.amiga import amigadrive
 from tools.amiga.winuaesession import HOLDER, RouteError
 
+ISSUE = "679"
 TITLE_LIMIT = 180.0
 _STEP_KINDS = frozenset({"key", "write", "move", "turn", "answer", "insert"})
 _LETTER = re.compile(r"[A-Z]")
