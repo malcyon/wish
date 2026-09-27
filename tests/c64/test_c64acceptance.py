@@ -245,6 +245,35 @@ def test_stage_only_accepts_the_pool_zombie_inputs_and_decodes_all_slots(
     assert [item["saved"] for item in saved["record_bytes"]] == [5, 36, 4]
 
 
+def test_pool_checkpoints_name_brutus_and_keep_a_cleared_rows_other_bytes():
+    record = bytearray(0x100)
+    record[:6] = b"BRUTUS"
+    for offset, value in {0x9F: 6, 0xA3: 2, 0xA4: 0, 0xB6: 32,
+                          0xB8: 0xFE, 0xCC: 3, 0xD7: 4, 0xEC: 0xFF}.items():
+        record[offset] = value
+    roster = bytearray(8 * 0x20)
+    roster[5 * 0x20] = 0x03
+    roster[5 * 0x20 + 0x0C] = 0x01
+    party = A._party_reading([bytes(0x100)] * 5 + [record] +
+                             [bytes(0x100)] * 2, roster, 0x20)
+    member = party[5]
+    assert member["name"] == "BRUTUS"
+    assert (member["status"], member["side"]) == (0x03, 0x01)
+    assert (member["movement"], member["fighter_level"]) == (6, 3)
+    assert member["record_bytes"] == {
+        "0xA3": 2, "0xA4": 0, "0xB6": 32, "0xB8": 0xFE,
+        "0xD7": 4, "0xEC": 0xFF}
+    assert member["traits"] == [0] * 9 + [32]
+
+    payload = bytearray(0x300)
+    payload[effects.EFFECT_OWNER_OFFSET + 63] = 5
+    payload[effects.EFFECT_MAGNITUDE_OFFSET + 63] = 5
+    rows = A._effect_rows(payload)
+    assert len(rows) == 64
+    assert rows[63] == [63, 0, 5, 0, 5]
+    assert A._effect_list(payload) == []
+
+
 def test_an_evidence_directory_is_never_reused(tmp_path):
     out = tmp_path / "evidence"
     out.mkdir()
@@ -1225,7 +1254,8 @@ class _Pool:
 
 
 def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=None,
-           pool=_Pool, title="pool", catch=lambda: None, stage_only=False):
+           pool=_Pool, title="pool", catch=lambda: None, stage_only=False,
+           capture_ready=False):
     import types
     slot = slot or _Slot(tmp_path)
     _Pool.clock = [0.0]
@@ -1238,8 +1268,10 @@ def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=Non
     monkeypatch.setattr(A, "PoolRun", pool)
     args = types.SimpleNamespace(
         title=title, stage_row=[], stage_trait=[], stage_item=[],
-        stage_only=stage_only, checkpoint=[], pool=None, issue="i", run="r",
-        disks=None, walk="I", walk_steps=1, max_seconds=max_seconds)
+        stage_only=stage_only, checkpoint=[], pool=None,
+        issue="703" if capture_ready else "i", run="r", disks=None,
+        walk="I", walk_steps=1, max_seconds=max_seconds,
+        capture_ready=capture_ready)
     out = tmp_path / "out"
     rc = A.run(args, A.parse_steps(steps), out, _fixture_disk(tmp_path),
                clock=lambda: _Pool.clock[0])
@@ -1273,6 +1305,120 @@ def test_a_failing_claim_closes_the_log(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="no slot"):
         _drive(tmp_path, monkeypatch, ["load"], claim=boom)
     assert closed
+
+
+def test_capture_ready_registers_and_checks_the_game_written_disk_before_teardown(
+        tmp_path, monkeypatch):
+    from tools.registry import specimens
+
+    events = []
+
+    class Slot(_Slot):
+        def teardown(self):
+            events.append("teardown")
+            super().teardown()
+
+    class Run(_Pool):
+        def ready(self, arg):
+            return {"who": "BAKSHI"}
+
+        def save(self, staged):
+            (tmp_path / "out" / "saved.D64").write_bytes(b"saved")
+            return {"kept": str(tmp_path / "out" / "saved.D64")}
+
+    def add(platform, name, sources, **kw):
+        events.append("add")
+        assert platform == "c64" and name.startswith("por-703-")
+        assert sources == [tmp_path / "out" / "saved.D64"]
+        assert kw["title"] == "Pool of Radiance" and "#703 (" in kw["issue"]
+        return tmp_path / "registered.D64"
+
+    def check():
+        events.append("check")
+        return []
+
+    monkeypatch.setattr(specimens, "add", add)
+    monkeypatch.setattr(specimens, "check_specimens", check)
+    slot = Slot(tmp_path)
+    rc, _, out = _drive(tmp_path, monkeypatch,
+                         ["load", "ready BAKSHI>LABEL", "save",
+                          "ready BAKSHI>LABEL"], pool=Run,
+                         slot=slot, capture_ready=True)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 0 and slot.torn
+    assert events == ["add", "check", "teardown"]
+    assert summary["registered_specimen"] == str(tmp_path / "registered.D64")
+
+
+def test_capture_ready_registration_failure_is_recorded_and_still_tears_down(
+        tmp_path, monkeypatch):
+    from tools.registry import specimens
+
+    class Run(_Pool):
+        def ready(self, arg):
+            return {"who": "BAKSHI"}
+
+        def save(self, staged):
+            (tmp_path / "out" / "saved.D64").write_bytes(b"saved")
+            return {"kept": str(tmp_path / "out" / "saved.D64")}
+
+    monkeypatch.setattr(specimens, "add", lambda *a, **k: tmp_path / "registered.D64")
+    monkeypatch.setattr(specimens, "check_specimens", lambda: ["hash mismatch"])
+    rc, slot, out = _drive(tmp_path, monkeypatch,
+                           ["load", "ready BAKSHI>LABEL", "save"], pool=Run,
+                           capture_ready=True)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 1 and slot.torn
+    assert "hash mismatch" in summary["lost"]
+    assert summary["registered_specimen"] == str(tmp_path / "registered.D64")
+
+
+def test_ordinary_save_does_not_register_a_diagnostic_specimen(tmp_path, monkeypatch):
+    from tools.registry import specimens
+
+    class Run(_Pool):
+        def save(self, staged):
+            (tmp_path / "out" / "saved.D64").write_bytes(b"saved")
+            return {"kept": str(tmp_path / "out" / "saved.D64")}
+
+    monkeypatch.setattr(specimens, "add", lambda *a, **k: pytest.fail("registered"))
+    rc, slot, out = _drive(tmp_path, monkeypatch, ["load", "save"], pool=Run)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 0 and slot.torn and summary["completed"]
+    assert "registered_specimen" not in summary
+
+
+def test_capture_ready_rejects_save_before_first_ready_even_if_ready_follows(
+        tmp_path, monkeypatch):
+    from tools.registry import specimens
+
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed a slot"))
+    with pytest.raises(SystemExit) as exc:
+        A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                "--issue", "703", "--capture-ready", "--steps", "load", "save",
+                "ready BAKSHI>LABEL", "--out", str(tmp_path / "reversed")])
+    assert exc.value.code == 2
+    assert not (tmp_path / "reversed").exists()
+    assert A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                   "--issue", "703", "--capture-ready", "--stage-only",
+                   "--steps", "load", "ready BAKSHI>LABEL", "save",
+                   "ready BAKSHI>LABEL", "--out", str(tmp_path / "allowed")]) == 0
+
+    class Run(_Pool):
+        def ready(self, arg):
+            return {"who": "BAKSHI"}
+
+        def save(self, staged):
+            (tmp_path / "out" / "saved.D64").write_bytes(b"saved")
+            return {"kept": str(tmp_path / "out" / "saved.D64")}
+
+    monkeypatch.setattr(specimens, "add", lambda *a, **k: pytest.fail("registered"))
+    rc, slot, out = _drive(tmp_path, monkeypatch,
+                           ["load", "save", "ready BAKSHI>LABEL"], pool=Run,
+                           capture_ready=True)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 1 and slot.torn
+    assert "READY" in summary["lost"] and "registered_specimen" not in summary
 
 
 # --- the camp cures (Curse: CURE BLINDNESS and the paladin's CURE) ---------------
@@ -1314,14 +1460,35 @@ def test_cast_and_cure_steps_keep_their_names_and_the_pool_refuses_them(tmp_path
 def test_pool_cast_accepts_animate_dead_without_a_target_and_refuses_other_forms(
         tmp_path):
     assert A.parse_cast("BRUTUS:animate dead") == ("BRUTUS", "ANIMATE DEAD", None)
+    assert A.parse_cast("ROLAND:dispel magic>BRUTUS") == (
+        "ROLAND", "DISPEL MAGIC", "BRUTUS")
     steps = A.parse_steps(["load", "cast BRUTUS:ANIMATE DEAD", "save"])
     assert steps[1].arg == "BRUTUS:ANIMATE DEAD"
-    for bad in ("BRUTUS:ANIMATE DEAD>BAKSHI", "BRUTUS:CURE BLINDNESS"):
+    for bad in ("BRUTUS:ANIMATE DEAD>BAKSHI", "BRUTUS:CURE BLINDNESS",
+                "ROLAND:DISPEL MAGIC"):
         with pytest.raises(ValueError):
             A.parse_cast(bad)
     assert A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
                    "--stage-only", "--steps", "load", "cast BRUTUS:ANIMATE DEAD",
                    "save", "--out", str(tmp_path / "cast")]) == 0
+    assert A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                   "--stage-only", "--steps", "load",
+                   "cast ROLAND:DISPEL MAGIC>BRUTUS", "save",
+                   "--out", str(tmp_path / "dispel")]) == 0
+
+
+@pytest.mark.parametrize("cast", ["2:DISPEL MAGIC>BRUTUS",
+                                        "ROLAND:DISPEL MAGIC>5"])
+def test_pool_dispel_numeric_selectors_are_rejected_before_claim(tmp_path,
+                                                                 monkeypatch, cast):
+    with pytest.raises(ValueError, match="named caster and target"):
+        A.parse_cast(cast)
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed a slot"))
+    with pytest.raises(SystemExit) as exc:
+        A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                "--steps", "load", f"cast {cast}", "save",
+                "--out", str(tmp_path / "numeric")])
+    assert exc.value.code == 2
 
 
 def test_bad_cast_form_is_rejected_before_claiming_a_slot(tmp_path, monkeypatch):
@@ -1723,6 +1890,112 @@ def test_pool_cast_reads_party_before_and_after_without_waiting_for_a_target(
     assert sess.sent == [("party", 1), ("bar", "MAGIC"), ("bar", "CAST"),
                          ("bar", "CAST"), ("key", "Return"), ("key", 0x0D)]
     assert list(tmp_path.glob("*cast-result.txt"))
+
+
+def _dispel_readings():
+    party = _animate_party(0x01)
+    party[1].update(name="ROLAND", memorised=[41], cleric_level=5)
+    party[5].update(name="BRUTUS", status=0x03, creature_type=4)
+    party[5]["traits"][9] = 32
+    rows = [[slot, 0, 0, 0, 0] for slot in range(64)]
+    rows[63] = [63, 32, 5, 0, 5]
+    before = {"party": party, "effects": [rows[63]], "effect_rows": rows}
+    after_party = [member.copy() for member in party]
+    after_party[1]["memorised"] = []
+    after_rows = [row.copy() for row in rows]
+    after_rows[63][1] = 0
+    after = {"party": after_party, "effects": [], "effect_rows": after_rows}
+    return before, after
+
+
+def _dispel_run(tmp_path, before, after):
+    screens = {**CAST_SCREENS,
+               "list": _window({3: "DISPEL MAGIC"}, CAST_LIST),
+               "picking": _window({3: "DISPEL MAGIC", 4: "EXIT"}, A.PICK_SPELL),
+               "whom": [*_whom_screen(("BRUTUS", "ROLAND"))[:24],
+                        "CAST SPELL ON WHOM?".ljust(40)],
+               "msg": _window({2: "THE MAGIC IS DISPELLED"}, A.CONTINUE)}
+    moves = _cast_moves({("picking", ("key", "Return")): "whom"})
+    sess = _CurseFake(screens, moves, "camp")
+    run, log = _pool_run(tmp_path, sess)
+    run.panel_index = lambda who: {"ROLAND": 1}[who]
+    run.reading = lambda: after if sess.state == "magic" else before
+    return run, log, sess
+
+
+def test_pool_dispel_picks_the_named_target_and_keeps_raw_row_checkpoints(tmp_path):
+    before, after = _dispel_readings()
+    run, log, sess = _dispel_run(tmp_path, before, after)
+    try:
+        got = run.cast("ROLAND:DISPEL MAGIC>BRUTUS")
+    finally:
+        log.close()
+    assert (got["spell_id"], got["target"], got["slot"]) == (41, "BRUTUS", 5)
+    assert got["row_before"] == [63, 32, 5, 0, 5]
+    assert got["row_after"] == [63, 0, 5, 0, 5]
+    assert got["effect_rows_before"] == before["effect_rows"]
+    assert got["effect_rows_after"] == after["effect_rows"]
+    assert got["party_before"] == before["party"]
+    assert got["party_after"] == after["party"]
+    assert got["messages"] == [["THE MAGIC IS DISPELLED"]]
+    assert sess.sent == [("party", 1), ("bar", "MAGIC"), ("bar", "CAST"),
+                         ("bar", "CAST"), ("key", "Return"), ("party", 0),
+                         ("key", "Return"), ("key", 0x0D)]
+
+
+def test_pool_dispel_refuses_wrong_member_before_input_and_wrong_spell_before_pick(
+        tmp_path):
+    before, after = _dispel_readings()
+    before["party"][5]["name"] = "SILAS"
+    run, log, sess = _dispel_run(tmp_path, before, after)
+    try:
+        with pytest.raises(A.StepFailed, match="BRUTUS"):
+            run.cast("ROLAND:DISPEL MAGIC>BRUTUS")
+    finally:
+        log.close()
+    assert sess.sent == []
+
+    before, after = _dispel_readings()
+    run, log, sess = _dispel_run(tmp_path, before, after)
+    sess.screens["picking"] = _window({3: "ANIMATE DEAD", 4: "EXIT"}, A.PICK_SPELL)
+    try:
+        with pytest.raises(A.StepFailed, match="DISPEL MAGIC"):
+            run.cast("ROLAND:DISPEL MAGIC>BRUTUS")
+    finally:
+        log.close()
+    assert ("key", "Return") not in sess.sent
+
+
+def test_pool_dispel_refuses_a_resistant_row_before_game_input(tmp_path):
+    before, after = _dispel_readings()
+    before["effect_rows"][63][4] = 6
+    run, log, sess = _dispel_run(tmp_path, before, after)
+    try:
+        with pytest.raises(A.StepFailed, match="not eligible"):
+            run.cast("ROLAND:DISPEL MAGIC>BRUTUS")
+    finally:
+        log.close()
+    assert sess.sent == []
+
+
+def test_pool_dispel_saved_checkpoint_requires_the_cleared_row_and_member():
+    _, after = _dispel_readings()
+    act = {"verb": "cast", "spell": "DISPEL MAGIC", "target": "BRUTUS", "slot": 5,
+           "row_after": after["effect_rows"][63],
+           "effect_rows_after": after["effect_rows"], "party_after": after["party"]}
+    saved = {"verb": "save", "effect_rows": after["effect_rows"],
+             "party": after["party"]}
+    A.validate_pool_dispel([act, saved])
+    with pytest.raises(A.StepFailed, match="save followed"):
+        A.validate_pool_dispel([act])
+    changed = json.loads(json.dumps(saved))
+    changed["effect_rows"][63][1] = 32
+    with pytest.raises(A.StepFailed, match="Dispel Magic row"):
+        A.validate_pool_dispel([act, changed])
+    changed = json.loads(json.dumps(saved))
+    changed["party"][5]["status"] = 1
+    with pytest.raises(A.StepFailed, match="BRUTUS"):
+        A.validate_pool_dispel([act, changed])
 
 
 def test_curse_cast_reads_row_after_only_once_the_spell_list_is_exited(tmp_path):
@@ -2142,6 +2415,30 @@ def test_pool_cast_run_checks_the_saved_zombie_without_an_emulator(tmp_path, mon
     assert checked == [["load", "cast", "save"]]
     summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
     assert summary["completed"] is True
+
+
+def test_pool_dispel_run_checks_the_saved_cleared_row_without_an_emulator(
+        tmp_path, monkeypatch):
+    _, after = _dispel_readings()
+
+    class Run(_Pool):
+        def cast(self, arg):
+            return {"spell": "DISPEL MAGIC", "target": "BRUTUS", "slot": 5,
+                    "row_after": after["effect_rows"][63],
+                    "effect_rows_after": after["effect_rows"],
+                    "party_after": after["party"]}
+
+        def save(self, staged):
+            rows = json.loads(json.dumps(after["effect_rows"]))
+            rows[63][1] = 32
+            return {"kept": "saved.D64", "effect_rows": rows,
+                    "party": after["party"]}
+
+    rc, slot, out = _drive(tmp_path, monkeypatch,
+                           ["load", "cast ROLAND:DISPEL MAGIC>BRUTUS", "save"], pool=Run)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 1 and slot.torn
+    assert "Dispel Magic row" in summary["lost"]
 
 
 def test_saved_characters_reads_each_name_slot_and_memorised_list(tmp_path):

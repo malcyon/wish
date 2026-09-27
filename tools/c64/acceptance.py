@@ -38,13 +38,14 @@ bytes with what it replaced.
 | `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for SECONDS (120) |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
+| `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
-| `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, toggle the item named LABEL (`tools/c64/traitask.py`'s `toggle_item`), and read every party record and the effect array before and after; `--capture-ready` saves three bounded in-list checkpoints for BAKSHI |
+| `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, toggle the item named LABEL (`tools/c64/traitask.py`'s `toggle_item`), and read every party record and the effect array before and after; `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`); Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
 WHO is a name as the party panel draws it, or a number counting from 1 at
-the top of the panel.  After every step the live effect rows, the clock and
+the top of the panel.  After every step all live effect rows, the clock and
 each checkpoint's hit count are logged.
 
 **What the screens say, and where it was read.**  The camp list is
@@ -92,6 +93,7 @@ import dataclasses
 import json
 import pathlib
 import re
+import shlex
 import sys
 import time
 
@@ -100,10 +102,12 @@ REPO = TOOLS.parent
 sys.path.insert(0, str(REPO))
 
 from automap.paths import tool_disks  # noqa: E402
-from goldbox import c64_port, c64_save, effects, world_state  # noqa: E402
+from goldbox import c64_codec, c64_port, c64_save, effects, world_state  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.geo import STEP  # noqa: E402
 from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER  # noqa: E402
+from goldbox.record import RECORD_SIZE, CharacterRecord  # noqa: E402
+from goldbox.savegame import ROSTER_COMBAT_SIDE, ROSTER_HP_CURRENT  # noqa: E402
 from tools.c64 import (  # noqa: E402
     effectdrive,
     inventorycheck,
@@ -113,7 +117,7 @@ from tools.c64 import (  # noqa: E402
 )
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.traitquery import TRAIT_SLOT  # noqa: E402
-from tools.registry import evidence, scratch  # noqa: E402
+from tools.registry import evidence, scratch, specimens  # noqa: E402
 
 TITLES = {"pool": "pool-of-radiance", "curse": "curse-of-the-azure-bonds",
           "ssb": "secret-of-the-silver-blades"}
@@ -123,6 +127,10 @@ TRAIT_SLOTS = 10
 PARTY_SLOTS = 8
 CREATURE_TYPE_OFFSET = 0x0D7
 READY_PNG_TIMEOUT = 10.0
+READY_SPECIMEN_ISSUE = (
+    "#703 (A C64 acceptance driver's read step can report a garbled diff "
+    "after a save step, because it reads from a disk-transfer staging address "
+    "a preceding save's disk swaps leave stale)")
 
 #: The camp's own bar, `ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT` (Pool
 #: `CAMP $0899`), and the MAGIC bar, `CAST MEMORIZE SCRIBE DISPLAY REST EXIT`
@@ -145,6 +153,9 @@ CONTINUE = "PRESS ANY KEY TO CONTINUE"
 CAMP_CURES = {"CURE BLINDNESS": (33, "BLIND")}
 CAMP_SPELL_IDS = {"CURE BLINDNESS": 37}
 CAMP_PARTY_SPELLS = {"ANIMATE DEAD": 36}
+#: `ECL65 $9A18` holds cleric spell 41 with target flag $02 and camp handler
+#: `$AA5B`; magic-user id 46 has the same handler but is not driven here.
+POOL_TARGET_SPELLS = {"DISPEL MAGIC": 41}
 DISEASE_CURE = (34, "DISEASE")
 
 #: The paladin's cure timer that a `cure` starts, as the effect id of its row.
@@ -312,7 +323,7 @@ def parse_walk(arg: str) -> str:
 
 
 def parse_cast(arg: str) -> tuple[str, str, str | None]:
-    """A named target for a cure; no target for a whole-party spell."""
+    """A target for a cure, names for Pool dispel, or no party-spell target."""
     m = re.fullmatch(r"([^:>]+):([^:>]+)(?:>([^:>]+))?", arg.strip())
     if m is None:
         raise ValueError(f"cast {arg!r}: say cast CASTER:SPELL[>TARGET]")
@@ -323,8 +334,10 @@ def parse_cast(arg: str) -> tuple[str, str, str | None]:
         raise ValueError(f"cast {arg!r}: say cast CASTER:SPELL[>TARGET]")
     if target is None and spell not in CAMP_PARTY_SPELLS:
         raise ValueError(f"cast {arg!r}: {spell} needs a target")
-    if target is not None and spell not in CAMP_CURES:
+    if target is not None and spell not in CAMP_CURES | POOL_TARGET_SPELLS:
         raise ValueError(f"cast {arg!r}: {spell} has no target prompt")
+    if spell in POOL_TARGET_SPELLS and (caster.isdigit() or target.isdigit()):
+        raise ValueError(f"cast {arg!r}: Dispel Magic needs a named caster and target")
     return caster, spell, target
 
 
@@ -380,6 +393,17 @@ def parse_steps(texts) -> list[Step]:
     return steps
 
 
+def ready_capture_order(steps: list[Step]) -> bool:
+    """One BAKSHI READY must finish before the sole saved diagnostic disk."""
+    saves = [n for n, step in enumerate(steps) if step.verb == "save"]
+    if len(saves) != 1:
+        return False
+    ready = [(n, parse_ready(step.arg)[0]) for n, step in enumerate(steps)
+             if step.verb == "ready"]
+    return bool(ready) and all(who == "BAKSHI" for _, who in ready) and any(
+        n < saves[0] for n, _ in ready)
+
+
 def parse_checkpoints(texts) -> dict[str, int]:
     """`ADDR[=NAME]`, hex; the name defaults to the address."""
     out = {}
@@ -418,6 +442,14 @@ def magic_items(payload: bytes, box) -> dict[str, list[int]]:
 def _effect_list(payload: bytes) -> list[list[int]]:
     return [[e.slot, e.id, e.owner, e.duration, e.magnitude]
             for e in effects.active_effects(payload)]
+
+
+def _effect_rows(payload: bytes) -> list[list[int]]:
+    """Keep inactive rows too: clearing an id need not clear its other bytes."""
+    arrays = (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
+              effects.EFFECT_DURATION_OFFSET, effects.EFFECT_MAGNITUDE_OFFSET)
+    return [[slot, *(payload[offset + slot] for offset in arrays)]
+            for slot in range(effects.EFFECT_SLOTS)]
 
 
 def stage(src: pathlib.Path, dest: pathlib.Path, title_key: str,
@@ -490,11 +522,27 @@ def stage(src: pathlib.Path, dest: pathlib.Path, title_key: str,
 
 
 def _party_reading(records: list[bytes], roster: bytes, stride: int) -> list[dict]:
-    """The four bytes of evidence needed for a Pool zombie, for all eight slots."""
-    return [{"slot": slot, "status": roster[slot * stride],
-             "traits": list(record[TRAIT_SLOT:TRAIT_SLOT + TRAIT_SLOTS]),
-             "creature_type": record[CREATURE_TYPE_OFFSET]}
-            for slot, record in enumerate(records)]
+    """Name and raw fields for every Pool member, from live RAM or a save."""
+    party = []
+    for slot, record in enumerate(records):
+        rec = CharacterRecord(bytes(record).ljust(RECORD_SIZE, b"\0"),
+                              stored_size=len(record))
+        roster_at = slot * stride
+        raw = (0xA3, 0xA4, 0xB6, 0xB8, 0xD7, 0xEC)
+        party.append({
+            "slot": slot, "name": rec.name,
+            "status": roster[roster_at],
+            "side": roster[roster_at + ROSTER_COMBAT_SIDE],
+            "hp_current": roster[roster_at + ROSTER_HP_CURRENT],
+            "memorised": [n for n in c64_codec.get_memorised(
+                rec, c64_port.POOL_OF_RADIANCE) if n],
+            "cleric_level": record[0xCA], "fighter_level": record[0xCC],
+            "movement": record[0x9F],
+            "traits": list(record[TRAIT_SLOT:TRAIT_SLOT + TRAIT_SLOTS]),
+            "creature_type": record[CREATURE_TYPE_OFFSET],
+            "record_bytes": {f"0x{offset:02X}": record[offset] for offset in raw},
+        })
+    return party
 
 
 def place_of(payload: bytes, game) -> dict:
@@ -534,6 +582,7 @@ def decode_save(path: pathlib.Path, staged: dict) -> dict:
     clock = list(payload[box.clock:box.clock + 6])
     out = {
         "effects": _effect_list(payload),
+        "effect_rows": _effect_rows(payload),
         "clock": clock,
         **place_verdict(staged.get("place"), place_of(payload, game)),
         "magic_items": magic_items(payload, box),
@@ -902,7 +951,8 @@ class PoolRun:
                 roster = bytes(m.read(self.box.roster_base,
                                       self.box.roster_stride * PARTY_SLOTS))
             m.resume()
-        out = {"effects": _effect_list(head), "clock": clock, "counts": counts}
+        out = {"effects": _effect_list(head), "effect_rows": _effect_rows(head),
+               "clock": clock, "counts": counts}
         if self.game.key == "pool-of-radiance":
             out["party"] = _party_reading(records, roster, self.box.roster_stride)
         return out
@@ -989,9 +1039,55 @@ class PoolRun:
             raise self.fail("message", f"more than {limit} pages after the cure")
         return messages
 
+    def _dispel_guard(self, before: dict, caster: str, target: str) -> int:
+        """Refuse a cast unless its live members and row are the intended ones."""
+        party = before.get("party", [])
+        def named(name: str) -> list[dict]:
+            return [p for p in party if p.get("name", "").upper() == name.upper()]
+
+        casters, targets = named(caster), named(target)
+        if len(casters) != 1 or casters[0]["status"] != 1:
+            raise self.fail("dispel-caster", f"{caster} is not one living party member")
+        if casters[0]["cleric_level"] < 5 or casters[0]["memorised"] != [41]:
+            raise self.fail("dispel-caster", f"{caster} needs cleric level 5 and only "
+                            "Dispel Magic id 41 memorised")
+        if len(targets) != 1:
+            raise self.fail("dispel-target", f"{target} is not one named party member")
+        victim = targets[0]
+        if (victim["status"] != 3 or 32 not in victim["traits"]
+                or victim["creature_type"] != 4):
+            raise self.fail("dispel-target", f"{target} is not the animated member")
+        slot = victim["slot"]
+        rows = before.get("effect_rows", [])
+        if len(rows) != effects.EFFECT_SLOTS or rows[63][:3] != [63, 32, slot]:
+            raise self.fail("dispel-row", f"{target} has no id-32 row at index 63")
+        if rows[63][4] == 0xFF or rows[63][4] & 0x0F > casters[0]["cleric_level"]:
+            raise self.fail("dispel-resistance", f"{target}'s row is not eligible "
+                            "for this Dispel Magic cast")
+        return slot
+
+    def _dispel_result(self, before: dict, after: dict, slot: int) -> None:
+        """Check the game cleared only the expected array id for this cast."""
+        earlier, later = before["effect_rows"], after.get("effect_rows", [])
+        expected = [row.copy() for row in earlier]
+        expected[63][1] = 0
+        if later != expected:
+            raise self.fail("dispel-row", "Dispel Magic did not clear only "
+                            "row 63's id")
+        old = next(p for p in before["party"] if p["slot"] == slot)
+        new = next((p for p in after.get("party", []) if p["slot"] == slot), None)
+        if new != old:
+            raise self.fail("dispel-member", "Dispel Magic changed the named "
+                            "member's zombie fields")
+
     def cast(self, arg: str) -> dict:
         caster, spell, target = parse_cast(arg)
-        if target is not None:
+        dispel = spell in POOL_TARGET_SPELLS
+        if dispel:
+            before = self.reading()
+            self.log.emit("dispel-before", reading=before)
+            slot = self._dispel_guard(before, caster, target)
+        elif target is not None:
             cure_id, word = CAMP_CURES[spell]
             self.owner_of(target)
         if not self.to_camp():
@@ -1014,7 +1110,10 @@ class PoolRun:
         # A key sent before the game polls its input routine is thrown away.
         self.sess.settle(1)
         listed = self.capture("pick-list")
-        before = self.reading() if target is None else None
+        if dispel and sum(spell in _inner(row) for row in listed[3:24]) != 1:
+            raise self.fail("dispel-spell", f"{spell} was not the single shown spell")
+        if target is None:
+            before = self.reading()
         key = self._pick_spell(listed, needs_target=target is not None)
         if target is None:
             self.capture("cast-result")
@@ -1029,13 +1128,29 @@ class PoolRun:
                     "effects_after": after["effects"],
                     "messages": messages, "key": key}
 
-        first = self.reading()
+        first = self.reading() if not dispel else before
         if not self.pick(target, CAST_WHOM):
             raise self.fail("cast-whom", f"{target} could not be chosen")
-        messages = self._acknowledge()
+        if dispel:
+            self.capture("dispel-result")
+        messages = self._acknowledge(label="dispel" if dispel else "cure")
         # The cured row clears only after the spell list is exited.
         if self._list_bar(self.bar()):
             self.choose_bar("EXIT", timeout=15)
+        if dispel:
+            after = self.reading()
+            self.log.emit("dispel-after", reading=after)
+            self._dispel_result(before, after, slot)
+            return {"caster": caster, "spell": spell, "spell_id": 41,
+                    "target": target, "slot": slot,
+                    "row_before": before["effect_rows"][63],
+                    "row_after": after["effect_rows"][63],
+                    "party_before": before["party"], "party_after": after["party"],
+                    "effects_before": before["effects"],
+                    "effects_after": after["effects"],
+                    "effect_rows_before": before["effect_rows"],
+                    "effect_rows_after": after["effect_rows"],
+                    "messages": messages, "key": key}
         last = self._settle_row(cure_id, self.owner_of(target), self.reading())
         return self._outcome("caster", caster, target, cure_id, word, first, last,
                              spell=spell, messages=messages, key=key)
@@ -2283,6 +2398,28 @@ def validate_pool_party_spells(results: list[dict]) -> None:
         require_zombie(saved.get("party", []), slot, "game-written save")
 
 
+def validate_pool_dispel(results: list[dict]) -> None:
+    """Require the live Dispel result to survive a later game-written save."""
+    for at, act in enumerate(results):
+        if act["verb"] != "cast" or act.get("spell") not in POOL_TARGET_SPELLS:
+            continue
+        saved = next((r for r in results[at + 1:] if r["verb"] == "save"), None)
+        if saved is None:
+            raise StepFailed("no game-written save followed Dispel Magic")
+        slot = act["slot"]
+        rows = saved.get("effect_rows", [])
+        if (len(rows) != effects.EFFECT_SLOTS
+                or rows[63] != act["row_after"]
+                or any(row[1:3] == [32, slot] for row in rows)):
+            raise StepFailed("game-written save changed the Dispel Magic row "
+                             "or restored an owned id-32 row")
+        live = next(p for p in act["party_after"] if p["slot"] == slot)
+        held = next((p for p in saved.get("party", []) if p["slot"] == slot), None)
+        if held != live:
+            raise StepFailed(f"game-written save changed {act['target']}'s "
+                             "post-dispel fields")
+
+
 def validate_walks(results: list[dict]) -> None:
     """Require the game-written save to agree with the walks asked.
 
@@ -2496,7 +2633,9 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 validate_curse_attack(summary["results"], attack, args.attack_by)
         validate_walks(summary["results"])
         if args.title == "pool" and any(s.verb == "cast" for s in steps):
-            validate_pool_party_spells(summary["results"])
+            if any(r.get("spell") in CAMP_PARTY_SPELLS for r in summary["results"]):
+                validate_pool_party_spells(summary["results"])
+            validate_pool_dispel(summary["results"])
         if args.title == "curse" and any(s.verb in ("cast", "cure") for s in steps):
             kept = next((r["kept"] for r in reversed(summary["results"])
                          if r["verb"] == "save"), None)
@@ -2514,6 +2653,42 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             with contextlib.suppress(Exception):
                 pool.capture("lost-error")
     finally:
+        if getattr(args, "capture_ready", False):
+            kept = out / "saved.D64"
+            if not ready_capture_order(steps):
+                summary["completed"] = False
+                earlier = summary.get("lost")
+                reason = "BAKSHI READY did not precede the sole save"
+                summary["lost"] = f"{earlier}; {reason}" if earlier else reason
+                summary["specimen_registration"] = "skipped: " + reason
+            elif kept.is_file():
+                try:
+                    name = f"por-703-{git['sha'][:10]}-{args.run}".lower()
+                    registered = specimens.add(
+                        "c64", name, [kept], title="Pool of Radiance",
+                        issue=READY_SPECIMEN_ISSUE,
+                        made_by="tools/c64/acceptance.py through pooled VICE",
+                        what=f"Game-written save after BAKSHI READY diagnostic "
+                             f"{args.run}; evidence {out}",
+                        command=shlex.join([sys.executable, *sys.argv]))
+                    summary["registered_specimen"] = str(registered)
+                    log.emit("specimen-added", path=str(registered))
+                    problems = specimens.check_specimens()
+                    if problems:
+                        raise StepFailed("specimen check failed: "
+                                         + "; ".join(problems[:3]))
+                    log.emit("specimen-checked", path=str(registered))
+                except Exception as e:  # noqa: BLE001
+                    summary["completed"] = False
+                    earlier = summary.get("lost")
+                    summary["lost"] = (f"{earlier}; specimen registration: {e}"
+                                       if earlier else f"specimen registration: {e}")
+                    log.emit("specimen-failed", why=str(e))
+            else:
+                summary["specimen_registration"] = "no saved.D64 was produced"
+                if summary["completed"]:
+                    summary["completed"] = False
+                    summary["lost"] = "capture-ready produced no saved.D64 to register"
         write_summary()
         try:
             stack.close()
@@ -2598,11 +2773,10 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(str(e))
     if any(x.verb == "fight" for x in steps) and args.title == "ssb":
         ap.error("the fight step needs --title pool or curse")
-    if args.capture_ready and (args.title != "pool" or not any(
-            x.verb == "ready" for x in steps) or any(
-            x.verb == "ready" and parse_ready(x.arg)[0] != "BAKSHI"
-            for x in steps)):
-        ap.error("--capture-ready requires Pool ready BAKSHI>LABEL")
+    if args.capture_ready and (args.issue != "703" or args.title != "pool"
+                               or not ready_capture_order(steps)):
+        ap.error("--capture-ready requires --issue 703, Pool ready "
+                 "BAKSHI>LABEL before the sole save step")
     if args.attack_by and args.title != "curse":
         ap.error("--attack-by requires --title curse")
     if any(x.verb == "cure" for x in steps) and args.title != "curse":
@@ -2612,10 +2786,13 @@ def main(argv: list[str] | None = None) -> int:
             _, spell, target = parse_cast(step.arg)
         except ValueError as e:
             ap.error(str(e))
-        if args.title == "pool" and (target is not None or spell not in CAMP_PARTY_SPELLS):
-            ap.error("Pool cast supports only CASTER:ANIMATE DEAD")
-        if args.title == "curse" and target is None:
-            ap.error("Curse cast requires CASTER:SPELL>TARGET")
+        if args.title == "pool" and not (
+                (target is None and spell in CAMP_PARTY_SPELLS)
+                or (target is not None and spell in POOL_TARGET_SPELLS)):
+            ap.error("Pool cast supports CASTER:ANIMATE DEAD or "
+                     "CASTER:DISPEL MAGIC>TARGET")
+        if args.title == "curse" and (target is None or spell not in CAMP_CURES):
+            ap.error("Curse cast requires CASTER:CURE BLINDNESS>TARGET")
         if args.title == "ssb":
             ap.error("the cast step requires --title pool or curse")
     if any(x.verb == "ready" for x in steps) and args.title != "pool":
