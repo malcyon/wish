@@ -1072,9 +1072,13 @@ ITEM_GRANT_PAYLOAD = bytes((0x00, 0x00, 0x0C, 0x00))
 #: grant, read out of `GAME.OVR`'s own power-byte dispatch (`#621`'s plan,
 #: Stage 2b, `docs/230-who-reads-a-dos-effect-node.md` (b)): the power byte
 #: *is* the handler id, and eight of the twelve item-power handlers share
-#: this one.  `0x83` writes the strength node instead, whose value byte is
-#: not read yet, so `c64_trait_nodes`' drop rule keeps it refused; `0x84`,
-#: `0x87` and `0x89` write no node at all.
+#: this one.  `0x83` writes the strength node instead: readying the item
+#: puts it in the active-effect array rather than a trait slot, and
+#: `effects.never_expiring_strength_record` converts that row before this
+#: function ever sees it (`#694`).  38 held in a trait slot is a different
+#: case -- Wish's own DOS-to-C64 output, not the game's -- and stays refused
+#: under `c64_trait_nodes`' rule 4, since 38 is on Pool's `VALUE_READ` list.
+#: `0x84`, `0x87` and `0x89` write no node at all.
 #: `tests/dos/test_dosaffectreads.py::test_a_readied_item_in_pool_of_radiance`
 #: pins the read this set is copied from.
 POOL_ITEM_GRANT_POWERS = frozenset({0x80, 0x81, 0x82, 0x85, 0x86, 0x88, 0x8A, 0x8B})
@@ -1092,6 +1096,22 @@ POOL_ITEM_GRANT_POWERS = frozenset({0x80, 0x81, 0x82, 0x85, 0x86, 0x88, 0x8A, 0x
 #: the same readied-item rule as Pool's, only for power `0x80` and only on
 #: these two titles.
 LATER_ITEM_GRANT_PAYLOAD = bytes((0x00, 0x00, 0xFF, 0x01))
+
+#: Secret of the Silver Blades' power bytes that write a readied item's own
+#: `+14` into a trait slot in camp but have no DOS grant form -- read off the
+#: engine's own camp and combat dispatch tables (`#621`'s plan, Stage 3b,
+#: `docs/230-who-reads-a-dos-effect-node.md` (b)): `0x82` and `0x84` reach a
+#: filler handler, and `0x86`-`0x88` index past the combat table, so on DOS
+#: none of the five writes any node.  Curse has no such power: only `0x80`
+#: ever reaches its grant, which `LATER_ITEM_GRANT_PAYLOAD` already covers,
+#: so it has no entry here.  Pool of Radiance's own unread powers (`0x83`,
+#: `0x84`, `0x87`, `0x89`) are not id grants at all -- `0x83` is the strength
+#: node `c64_trait_nodes` now converts before this table is consulted, and
+#: the other three write no node on either engine -- so Pool has no entry
+#: either.
+C64_ITEM_GRANTS_WITHOUT_DOS_FORM: dict[str, frozenset[int]] = {
+    SECRET_OF_THE_SILVER_BLADES.key: frozenset({0x82, 0x84, 0x86, 0x87, 0x88}),
+}
 
 #: Ids whose DOS `.SPC` node is complete as `id + INNATE_PAYLOAD`, because
 #: nothing on this title reads the node past its duration -- `set(range(1,
@@ -1141,13 +1161,17 @@ def c64_trait_nodes(deltas: "DosDeltas", race: int, ids: Iterable[int],
        Blades, a readied item granting this id with `item[15] == 0x80` --
        `id + LATER_ITEM_GRANT_PAYLOAD`;
     2.5. an id that equals `item[14]` of a readied item (`item[6] & 0x80`)
-       whose `item[15]` has bit 7 set, and that rule 2 did not take -- a drop
-       line by name rather than silently falling through to rule 3's
-       `INNATE_PAYLOAD`, which would lose the remove path byte 4 selects.
-       This is Pool's `0x83`/`0x84`/`0x87`/`0x89` and every Curse or Silver
-       Blades item grant whose power is not `0x80` -- the C64 item bytes for
-       those powers have not been read on either later title (`#621`'s plan,
-       Stage 3a and Stage 3b);
+       whose `item[15]` is in :data:`C64_ITEM_GRANTS_WITHOUT_DOS_FORM` for
+       this title, and that rule 2 did not take -- a drop line by name
+       rather than silently falling through to rule 3's `INNATE_PAYLOAD`,
+       which would lose the remove path byte 4 selects.  Only Secret of the
+       Silver Blades has an entry: its camp-only powers `0x82`, `0x84`,
+       `0x86`-`0x88` write a slot in camp with no DOS grant.  Any other
+       readied item -- Pool's or Curse's, or Silver Blades' own powers that
+       rule 2 or the engine's own dispatch never routes to a slot at all --
+       does not stop the id reaching rule 3 or rule 4 on its own terms
+       (`#621`'s plan, Stage 3a, 3b and the residual-2 comment of
+       2026-09-27);
     3. in :data:`C64_TRAIT_PERMANENT_IDS` for this title -- `id + INNATE_PAYLOAD`.
        On Secret of the Silver Blades, writing 92 this way also logs one
        warning line: DOS Silver Blades' 92 cancels only Fear (111), where the
@@ -1173,9 +1197,10 @@ def c64_trait_nodes(deltas: "DosDeltas", race: int, ids: Iterable[int],
     granting_later = {
         int(item[14]) for item in inventory
         if later and item[6] & 0x80 and item[15] == 0x80}
+    unread_powers = C64_ITEM_GRANTS_WITHOUT_DOS_FORM.get(deltas.key, frozenset())
     item_unread = {
         int(item[14]) for item in inventory
-        if item[6] & 0x80 and item[15] & 0x80
+        if item[6] & 0x80 and item[15] in unread_powers
         and int(item[14]) not in granting_pool
         and int(item[14]) not in granting_later}
     permanent = C64_TRAIT_PERMANENT_IDS.get(deltas.key, frozenset())

@@ -771,20 +771,96 @@ def test_a_pool_readied_item_with_an_unread_power_byte_is_still_refused():
     assert "38" in drops[0]
 
 
-def test_a_curse_readied_items_grant_with_an_unread_power_byte_is_still_refused():
-    """The new rule between 2 and 3: Curse's own item-power dispatch reaches
-    the `LATER_ITEM_GRANT_PAYLOAD` grant only for power `0x80` (`#621`'s
-    Stage 3b, `docs/230` (b)), so a readied item granting a permanent id with
-    any other power is refused by name rather than falling through to rule
-    3's `INNATE_PAYLOAD`, which would lose the remove path byte 4 selects."""
+def test_a_curse_readied_items_own_power_byte_no_longer_stops_its_permanent_id():
+    """`item_unread` used to catch any readied item whose power byte had bit
+    7 set, refusing an id that equalled its `+14` even when that power was
+    never the title's own grant.  Curse's own item-power dispatch reaches a
+    slot only for power `0x80` (`#621`'s Stage 3b, `docs/230` (b)) -- `0x81`
+    goes to `ECL65 $8686` and writes nothing -- so 56 beside this item is
+    just the slot the C64 honours whether or not the item is worn, the same
+    case `test_the_same_item_unreadied_now_converts_by_its_own_permanent_id`
+    converts.  `C64_ITEM_GRANTS_WITHOUT_DOS_FORM` has no entry for Curse, so
+    rule 2.5 never takes this id and it reaches rule 3.  Red before the
+    narrowing: 56 used to be refused by name."""
     item = _c64_item(effect=56, power=0x81, readied=True)
     char = _c64_neutral(CURSE.key, name="TESTER", innate_effects=[56],
+                        inventory=[item])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == _innate_node(56)
+    assert _innate_drops(rep) == []
+
+
+def test_a_curse_readied_ioun_stone_no_longer_stops_detect_magic():
+    """The reachable case from `#621`'s residual-2 comment: IOUN STONE PINK
+    AND GREEN (`0x88`) readied beside 5 in a trait slot.  `0x88` is not in
+    `C64_ITEM_GRANTS_WITHOUT_DOS_FORM` for Curse (empty -- Curse's own grant
+    is `0x80` alone), so it no longer matches rule 2.5, and 5 reaches rule 3
+    as any other Curse trait id would.  Red before the narrowing: the item's
+    bit-7 power byte alone used to refuse 5 by name."""
+    item = _c64_item(effect=5, power=0x88, readied=True)
+    char = _c64_neutral(CURSE.key, name="TESTER", innate_effects=[5],
+                        inventory=[item])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == _innate_node(5)
+    assert _innate_drops(rep) == []
+
+
+def test_a_silver_blades_readied_girdle_no_longer_stops_the_same_id():
+    """The same residual-2 case on Silver Blades: GIRDLE OF GIANT STRENGTH
+    (`0x85`) readied beside 5 in a trait slot.  `0x85` is not in
+    `C64_ITEM_GRANTS_WITHOUT_DOS_FORM[SSB.key]`, so 5 reaches rule 3.  Red
+    before the narrowing."""
+    item = _c64_item(effect=5, power=0x85, readied=True)
+    char = _c64_neutral(SSB.key, name="TESTER", innate_effects=[5],
+                        inventory=[item])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == _innate_node(5)
+    assert _innate_drops(rep) == []
+
+
+def test_a_pool_readied_item_with_power_0x84_no_longer_stops_its_own_id():
+    """Pool's `0x84` writes no node on either engine (`docs/230` (b)), and it
+    is not in `POOL_ITEM_GRANT_POWERS` nor in
+    `C64_ITEM_GRANTS_WITHOUT_DOS_FORM` (Pool has no entry there), so a
+    trait id equal to such an item's `+14` reaches rule 3 like any other
+    unrelated trait id.  Red before the narrowing: the item's bit-7 power
+    byte alone used to refuse 82 by name."""
+    item = _c64_item(effect=82, power=0x84, readied=True)
+    char = _c64_neutral(POOL.key, name="TESTER", innate_effects=[82],
+                        inventory=[item])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == _innate_node(82)
+    assert _innate_drops(rep) == []
+
+
+def test_a_silver_blades_camp_only_grant_with_no_dos_form_is_still_refused():
+    """The real case `item_unread` exists for: Silver Blades' `0x82` writes
+    a trait slot in camp (Stage 3b) and DOS Silver Blades has no grant for
+    it and no shipped item carries it in combat, so 56 beside such an item
+    stays refused by name.  Green before and after the narrowing."""
+    item = _c64_item(effect=56, power=0x82, readied=True)
+    char = _c64_neutral(SSB.key, name="TESTER", innate_effects=[56],
                         inventory=[item])
     _rec, _itm, spc, rep = dos_codec.write(char)
     assert spc == b""
     drops = _innate_drops(rep)
     assert len(drops) == 1
     assert "56" in drops[0]
+
+
+def test_a_silver_blades_readied_girdle_reaches_the_amiga_too():
+    """The Amiga route calls the same `c64_trait_nodes` (`amiga_later.py`'s
+    `_later_effect_nodes`), so the same narrowing applies there: 5 beside a
+    readied `0x85` item converts instead of being refused."""
+    from goldbox import amiga_later, amiga_por
+
+    item = _c64_item(effect=5, power=0x85, readied=True)
+    char = _c64_neutral(SSB.key, name="TESTER", innate_effects=[5],
+                        inventory=[item])
+    built, rep = amiga_later.write_later(char)
+    assert built.effects == (amiga_por.amiga_por_effect_from_dos(
+        _innate_node(5)),)
+    assert _innate_drops(rep) == []
 
 
 # --- #624: the Amiga side of the same classification -----------------------
