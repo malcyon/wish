@@ -83,6 +83,12 @@ from tools.c64.traitdrive import (  # noqa: E402
 from tools.c64.traitquery import TRAIT_SLOT  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
+#: The camp's own bar, `ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT` (Pool `CAMP
+#: $0899`), matched the same way `tools/c64/acceptance.py`'s `to_camp()` does.
+#: `VIEW` alone is on the world bar too, so waiting for this pair is what
+#: tells the two apart (#621).
+CAMP_BAR = "REST ALTER"
+
 #: `SAVEDGAME0` loads at `$4900`; the item area is `$5900 + slot * $100`.
 SAVE0_LOAD = 0x4900
 #: `SAVEDGAME1` loads at `$8300`; the roster is eight 32-byte blocks with the
@@ -417,7 +423,15 @@ def open_items(sess: S.Session, log: Log, name: str, label: str,
     if not sess.select_bar("ENCAMP", timeout=20):
         log.say("  ENCAMP could not be selected")
         return False
-    sess.settle(2)
+    # Wait for the camp bar itself, not a fixed settle: `VIEW` is on the
+    # world bar as well as the camp bar, so a short settle can leave the
+    # world bar still up and send `select_bar("VIEW")` after the wrong
+    # menu. 90 s because a slot with no JiffyDOS can take that long to
+    # load CAMP off a stock KERNAL (#621).
+    if sess.wait_text(CAMP_BAR, 90)[0] is None:
+        log.say("  camp bar never appeared")
+        log.emit("screen", tag=f"{tag}-camp-missing", rows=sheet_rows(sess))
+        return False
     log.emit("screen", tag=f"{tag}-camp", rows=sheet_rows(sess))
     if not sess.select_bar("VIEW", timeout=20):
         log.say("  VIEW could not be selected in camp")
