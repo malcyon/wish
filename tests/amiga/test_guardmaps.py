@@ -191,3 +191,36 @@ def test_grabs_copy_crop_and_diff(tmp_path, capsys):
     assert Image.open(out / 'desktop.png').size == (720, 568)
     assert guardmaps.main(['diff', str(out / 'desktop.png'), str(out / 'desktop.png')]) == 0
     assert 'identical' in capsys.readouterr().out
+
+
+def test_add_refuses_a_crop_owned_by_another_title(tmp_path, capsys):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    curse = _run(root, '1', 'misleading-pool-name', 'curse', 'title')
+    assert guardmaps.main(['--root', str(root), '--maps', str(maps), 'add',
+                           '--title', 'pool', '--map', 'guards', '--state', 'title',
+                           '--crop', str(curse), '--box', '10,10,20,20']) == 2
+    assert 'guardmaps:' in capsys.readouterr().err
+    assert not (maps / 'guards_pool.json').exists()
+
+
+def test_diff_rejects_rows_outside_image_without_traceback(tmp_path):
+    import subprocess
+    import sys
+
+    crop = tmp_path / 'crop.png'
+    _crop(crop)
+    result = subprocess.run([sys.executable, guardmaps.__file__, 'diff',
+                             str(crop), str(crop), '--rows', '0,569'],
+                            capture_output=True, text=True, check=False)
+    assert result.returncode == 2
+    assert result.stderr.startswith('guardmaps: ')
+    assert 'Traceback' not in result.stderr
+
+
+def test_non_string_manifest_titles_leave_crops_unowned(tmp_path):
+    root = tmp_path / 'root'
+    for name, value in (('list', []), ('map', {})):
+        shot = _run(root, '1', name, 'pool', 'title')
+        (shot.parents[2] / 'prepare.json').write_text(json.dumps({'title': value}))
+    assert {crop.title for crop in guardmaps.scan_crops(root)} == {None}

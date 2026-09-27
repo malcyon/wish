@@ -43,7 +43,7 @@ def _title(run: pathlib.Path) -> str | None:
         title = 'darkness'
     if title is None and 'published_df1' in manifest:
         title = 'ssb'
-    return title if title in FILES else None
+    return title if isinstance(title, str) and title in FILES else None
 
 
 def _states(path: pathlib.Path) -> tuple[str, ...]:
@@ -171,6 +171,8 @@ def _add(args, crops: list[Crop]) -> int:
     selected = next((c for c in crops if c.path.resolve() == crop), None)
     if selected is None:
         raise ValueError(f'{crop} is outside the scanned crops')
+    if not _owned(selected, args.title, spec):
+        raise ValueError(f'{crop} does not belong to {args.title}')
     box = [int(n) for n in args.box.split(',')]
     if args.state in spec[args.map] and not args.replace:
         raise ValueError(f'{args.state} already exists; pass --replace')
@@ -232,6 +234,8 @@ def _diff(args) -> int:
             y0, y1 = (int(n) for n in args.rows.split(','))
         else:
             y0, y1 = 0, a.height
+        if not 0 <= y0 <= y1 <= a.height:
+            raise ValueError(f'rows must be inside 0,{a.height}')
         pa, pb = a.convert('RGB').load(), b.convert('RGB').load()
         points = [(x, y) for y in range(y0, y1) for x in range(a.width) if pa[x, y] != pb[x, y]]
         if points:
