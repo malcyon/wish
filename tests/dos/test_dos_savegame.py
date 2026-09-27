@@ -932,6 +932,20 @@ def test_a_shipped_container_reads_as_a_party_of_six_in_a_dungeon():
 # the byte tables these assertions were read off so they can be re-taken.
 
 
+#: Containers Wish itself wrote rather than the engine, keyed by (specimen
+#: directory name, file name), excluded from `_played()` before the corpus is
+#: built.  `_played()`'s job is "only the containers the engine wrote", and a
+#: `*.PTY` glob cannot tell a staged save from a played one -- this is the one
+#: place that fact can be recorded, since the specimen tree itself cannot be
+#: annotated (`tools/registry/specimens.py add` refuses to overwrite).
+_WISH_WRITTEN = {
+    ("WISH-SPEC-pod-678-amiga-converted-walked-dos", "SAVGAMA.PTY"):
+        "the save Wish's Amiga-to-DOS conversion staged for #678, "
+        "byte-identical to the acceptance run's own installed/SAVGAMA.PTY; "
+        "the game then loaded it and saved slot D",
+}
+
+
 def _played():
     """Every distinct engine-written Pools of Darkness container in the
     specimen tree.
@@ -941,6 +955,8 @@ def _played():
     snapshot byte-identical to a shipped one was left out when they were
     added, because counting it would put the new-game initialiser's own output
     in a corpus of played saves. Eight distinct containers across the five.
+    A container Wish staged for an acceptance run, rather than one the game
+    wrote, is excluded by name through `_WISH_WRITTEN`.
 
     Each file is hashed against its own `provenance.toml` before it is read,
     so a container somebody has edited fails here rather than being measured.
@@ -960,6 +976,8 @@ def _played():
         recorded = specimens.read_provenance(
             specimen_dir / "provenance.toml").get("sha256", {})
         for path in sorted(specimen_dir.glob("*.PTY")):
+            if (specimen_dir.name, path.name) in _WISH_WRITTEN:
+                continue
             if specimens.sha256_file(path) != recorded.get(path.name):
                 pytest.fail(f"{path} no longer hashes to what its "
                             f"provenance.toml recorded, so it is not evidence; "
@@ -970,18 +988,55 @@ def _played():
     return [(path, data) for data, path in out.items()]
 
 
-def test_every_played_container_reads_as_a_six_strong_party_in_a_dungeon():
-    """Eight distinct containers on this machine when #175 was written. The
-    party size agrees in both places it is carried -- variable 32 and the
-    count byte the writer emits after the loop -- which is what says the
-    twelve-byte block ends where this module puts it."""
+def _assert_a_played_party(path, data) -> None:
+    """The party size agrees everywhere it is carried, and the name table
+    names exactly that many files in the container's own slot and nothing
+    after them -- what the engine's own writer always does."""
+    size = sg.party_size(data)
+    assert 1 <= size <= sg.PARTY_ENTRIES, (path, size)
+    assert sg.pod_var(data, sg.POD_PARTY_COUNT) == size, path
+    assert sg.pod_in_dungeon(data), path
+    slot = path.stem[-1]
+    assert sg.character_files(data) == [
+        f"CHRDAT{slot}{n}" for n in range(1, size + 1)], (
+        path, "a table naming more files than the party is what Wish's "
+              "writer leaves; if this container was staged by Wish, add it "
+              "to _WISH_WRITTEN")
+
+
+def test_every_played_container_names_exactly_its_own_party_in_a_dungeon():
+    """The party size agrees in both places it is carried -- variable 32 and
+    the count byte the writer emits after the loop -- and the name table
+    names exactly that many files in the container's own slot and nothing
+    after them, which is what says the twelve-byte block ends where this
+    module puts it."""
     played = _played()
     for path, data in played:
-        assert sg.pod_var(data, sg.POD_PARTY_COUNT) == 6, path
-        assert sg.party_size(data) == 6, path
-        assert sg.pod_in_dungeon(data), path
-        assert len(sg.character_files(data)) == 6, path
+        _assert_a_played_party(path, data)
     assert len(played) >= 1
+
+
+def test_a_table_that_disagrees_with_its_count_is_refused():
+    """A container whose count byte disagrees with its own name table is not
+    what the engine writes, in either direction: this issue's count-byte-
+    lowered case, and the eight-name table #678's staged save showed."""
+    played = _played()
+    if not played:
+        pytest.skip("needs the Pools of Darkness specimens; see _played()")
+    path, data = played[0]
+    size = sg.party_size(data)
+
+    lowered = bytearray(data)
+    lowered[sg.SAVE_POOLS_OF_DARKNESS.party_size_byte] = size - 1
+    sg.put_pod_var(lowered, sg.POD_PARTY_COUNT, size - 1)
+    with pytest.raises(AssertionError):
+        _assert_a_played_party(path, bytes(lowered))
+
+    slot = path.stem[-1]
+    all_eight = bytearray(data)
+    sg.put_character_files(all_eight, slot)
+    with pytest.raises(AssertionError):
+        _assert_a_played_party(path, bytes(all_eight))
 
 
 def test_a_played_square_is_on_the_grid_and_the_facing_is_doubled():
