@@ -1,4 +1,4 @@
-"""`tools/dos/dosacceptance.py`: the step list, the rest keys and the reading.
+"""`tools/dos/acceptance.py`: the step list, the rest keys and the reading.
 
 The driven half needs DOSBox and the player's archives and is proven by a
 run.  What is pinned here: that the rest-menu keys reach the asked time from
@@ -18,7 +18,7 @@ import threading
 
 import pytest
 
-from tools.dos import dosacceptance as da
+from tools.dos import acceptance as da
 from tools.dos import dosbox, dospod
 
 # Sending SIGTERM to the test process ends it on Windows, which has no POSIX signals.
@@ -4189,3 +4189,136 @@ def test_the_measured_curse_and_silver_blades_screens_read_as_recorded():
     assert da.status_square(ssb, da.status_column("ssb")) == "ee4e8a47d7175485"
     sheet = _capture("b0a2c904ad-ssb-measure-sheet", "008-press-s", issue="679")
     assert da.sheet_name(sheet) == "55a6494e457686aa"
+
+
+# -- the command line -----------------------------------------------------------
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+IMPLEMENTATION = ROOT / "tools" / "dos" / "acceptance.py"
+
+
+def _cli(*args, cwd=ROOT):
+    import subprocess
+    import sys
+    return subprocess.run([sys.executable, *map(str, args)], cwd=cwd,
+                          capture_output=True, text=True, timeout=120)
+
+
+ENTRY_POINTS = [
+    pytest.param([IMPLEMENTATION], id="script"),
+    pytest.param(["-m", "tools.dos.acceptance"], id="module"),
+]
+
+
+@pytest.mark.parametrize("command", ENTRY_POINTS)
+def test_the_command_prints_help(command):
+    done = _cli(*command, "--help")
+    assert done.returncode == 0, done.stderr
+    assert "--slot" in done.stdout
+
+
+@pytest.mark.parametrize("command", ENTRY_POINTS)
+def test_the_command_refuses_a_slot_that_is_not_a_letter(command, tmp_path):
+    done = _cli(*command, "--save", tmp_path, "--slot", "K")
+    assert done.returncode == 2
+    assert "--slot is one letter, A to J" in done.stderr
+
+
+@pytest.mark.parametrize("command", ENTRY_POINTS)
+def test_the_command_with_no_steps_writes_only_a_summary(command, tmp_path):
+    import json
+    out = tmp_path / "out"
+    done = _cli(*command, "--save", tmp_path, "--out", out)
+    assert done.returncode == 0, done.stderr
+    summary = json.loads((out / "summary.json").read_text())
+    assert set(summary) == {"title", "slot", "steps", "sha", "dirty",
+                            "completed", "elapsed_seconds"}
+    assert summary["completed"] is True
+
+
+@pytest.mark.parametrize("command", ENTRY_POINTS)
+def test_the_command_with_steps_on_an_empty_save_stops_before_any_summary(
+        command, tmp_path):
+    """Measured: the missing slot raises `FileNotFoundError` out of `main`, so
+    the process exits 1 having logged only `start`."""
+    import json
+    save = tmp_path / "save"
+    save.mkdir()
+    out = tmp_path / "out"
+    done = _cli(*command, "--save", save, "--out", out, "--steps", "load")
+    assert done.returncode == 1
+    assert "FileNotFoundError" in done.stderr
+    assert not (out / "summary.json").exists()
+    events = [json.loads(line)["event"]
+              for line in (out / "run.jsonl").read_text().splitlines()]
+    assert events == ["start"]
+
+
+_SIGTERM_CHILD = r'''
+import os, pathlib, runpy, sys, time
+sys.path.insert(0, sys.argv[1])
+work = pathlib.Path(sys.argv[2])
+shim = sys.argv[3]
+from tools.dos import acceptance as a, dosbox
+
+class Slot:
+    def release(self):
+        (work / "released").write_text("yes")
+
+class Session:
+    def __init__(self, slot, game, exe=None):
+        self.dir = work / "session"
+        self.save_dir = self.dir / "SAVE"
+        self.dir.mkdir(exist_ok=True)
+    def stage(self, fresh=False):
+        (work / "staging").write_text("yes")
+        # Short sleeps, as the real waits are: the kernel may hand the signal
+        # to a thread other than the main one, and Python then runs its handler
+        # only when the main thread next returns to the interpreter.
+        while True:
+            time.sleep(0.05)
+    def close(self):
+        pass
+
+a.Title.find_game = lambda self: work
+dosbox.claim = lambda note: Slot()
+dosbox.Session = Session
+sys.argv = [shim, "--save", str(work / "save"), "--out", str(work / "out"),
+            "--steps", "load"]
+runpy.run_path(shim, run_name="__main__")
+'''
+
+
+@posix_signals
+def test_a_termination_signal_ends_the_command_with_lost_and_the_slot_released(
+        tmp_path):
+    import json
+    import subprocess
+    import sys
+    import time
+    save = tmp_path / "save"
+    save.mkdir()
+    (save / "SAVGAMA.DAT").write_bytes(bytes(1024))
+    child = subprocess.Popen(
+        [sys.executable, "-c", _SIGTERM_CHILD, str(ROOT), str(tmp_path), str(IMPLEMENTATION)],
+        cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        deadline = time.monotonic() + 60
+        while not (tmp_path / "staging").exists():
+            assert child.poll() is None, child.communicate()
+            assert time.monotonic() < deadline, "the run never reached stage"
+            time.sleep(0.05)
+        child.terminate()
+        try:
+            _, err = child.communicate(timeout=20)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            _, err = child.communicate()
+            pytest.fail(f"the run ignored SIGTERM: {err}")
+    finally:
+        if child.poll() is None:
+            child.kill()
+    assert child.returncode == 1, err
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
+    assert summary["lost"] == "Terminated('signal 15')"
+    assert (tmp_path / "released").read_text() == "yes"

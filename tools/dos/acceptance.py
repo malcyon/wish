@@ -7,11 +7,11 @@ and Pools of Darkness.  It stages a whole save this project wrote the way
 `dossheetread.install_whole` does, boots DOSBox headless and silent on a
 pooled slot, runs a step list, and decodes what the engine wrote back:
 
-    tools/dos/dosacceptance.py --title pool --save DIR --slot A \\
+    tools/dos/acceptance.py --title pool --save DIR --slot A \\
         --steps load camp 'rest 5m' 'save D' read \\
         --expect BRUTUS:1:42:1 --issue 661 --run bless
 
-    tools/dos/dosacceptance.py --title curse --fixture-row 3F=01:00:2F:05 \\
+    tools/dos/acceptance.py --title curse --fixture-row 3F=01:00:2F:05 \\
         --steps load begin camp 'rest 5m' 'save D' read \\
         --expect PHILIPPE:1:42:5 --issue 661 --run curse-bless
 
@@ -24,7 +24,7 @@ Pool of Radiance and the title's engine-written specimen under
 `$WISH_SPECIMENS/por-c64/` for the other two (`C64_BASES`), or `--c64-save`.
 With no `--steps` only that conversion runs.
 
-    tools/dos/dosacceptance.py --title darkness \\
+    tools/dos/acceptance.py --title darkness \\
         --amiga-disk 'Pools Of Darkness.zip!Pools of Darkness3.adf' \\
         --amiga-slot SavGamA.pty \\
         --steps load begin camp 'sheet 4' 'items 4' 'save D' read \\
