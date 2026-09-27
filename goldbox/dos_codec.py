@@ -5612,9 +5612,14 @@ def write(char: NeutralCharacter,
     # there would otherwise be written a second time (#690, A dwarf or gnome
     # converted from an Amiga Curse or Silver Blades save to DOS gets each
     # racial effect twice).  A C64 source never populates `granted_effects`,
-    # so its derived ids are unaffected, and a DOS source has already split
-    # its own effects into `innate_effects`, so this exclusion never fires
-    # for a DOS-to-DOS write.
+    # so its derived ids are unaffected.  Most DOS sources have already
+    # split their own race's ids into `innate_effects`, so this exclusion is
+    # a no-op for DOS-to-DOS -- but a Silver Blades elf or gnome is not one
+    # of them: `INNATE_EFFECTS_SILVER_BLADES` does not carry ids 95 or 7, so
+    # `read()` puts them in `granted_effects` instead, and this same
+    # exclusion also correctly deduplicates that case (#691, A DOS-sourced
+    # Secret of the Silver Blades elf or gnome carries his own racial effect
+    # twice), whose incompleteness fix belongs in that set, not here.
     already_written = set(converted)
     already_written.update(g[0] for g in grants)
     already_written.update(g[0] for g in running)

@@ -911,4 +911,21 @@ def test_a_c64_dwarf_or_gnomes_racial_ids_still_reach_the_spc_file():
     _rec, _itm, spc, rep = dos_codec.write(char)
     assert spc == _innate_node(47) + _innate_node(26) + _innate_node(97)
     assert _innate_drops(rep) == []
+
+
+def test_a_dos_silver_blades_elfs_racial_effect_is_written_once():
+    """`INNATE_EFFECTS_SILVER_BLADES` does not carry 95, the elf's own id in
+    `RACE_COMBAT_EFFECTS_SILVER_BLADES`, so a DOS-sourced elf's own effect
+    record reads into `granted_effects` rather than `innate_effects`
+    (`to_neutral`, mirrored by `test_pool_of_radiance_still_reads_the_
+    paladins_id_as_granted` above for the paladin's id in Pool of Radiance).
+    That is the same shape #690's exclusion was written to catch for an
+    Amiga source, and it also deduplicates this DOS-sourced case: without
+    it, `derived` would add 95 again beside the `granted_effects` record
+    already carrying it (#691, A DOS-sourced Secret of the Silver Blades elf
+    or gnome carries his own racial effect twice)."""
+    char = _neutral(SSB.key, name="TESTER", race=1,
+                    granted_effects=[_innate_node(95)])
+    _rec, _itm, spc, rep = dos_codec.write(char)
+    assert spc == _innate_node(95)
     assert _innate_drops(rep) == []
