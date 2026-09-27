@@ -79,9 +79,16 @@ def _staged_rows(source: pathlib.Path, staged_from: pathlib.Path) -> list[list[i
         before = original.read_file(name)
         after = staged.read_file(name)
         if name == b"SAVEDGAME0":
-            start = 2 + effects.EFFECT_ID_OFFSET
-            end = 2 + effects.EFFECT_MAGNITUDE_OFFSET + effects.EFFECT_SLOTS
-            if len(before) != len(after) or before[:start] != after[:start] or before[end:] != after[end:]:
+            offsets = (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
+                       effects.EFFECT_DURATION_OFFSET, effects.EFFECT_MAGNITUDE_OFFSET)
+            cursor = 0
+            outside_changed = len(before) != len(after)
+            for offset in offsets:
+                start = 2 + offset
+                outside_changed |= before[cursor:start] != after[cursor:start]
+                cursor = start + effects.EFFECT_SLOTS
+            outside_changed |= before[cursor:] != after[cursor:]
+            if outside_changed:
                 raise RouteError("staged source differs outside effect arrays in SAVEDGAME0")
         elif before != after:
             raise RouteError(f"staged source file differs: {name.decode('ascii', errors='replace')}")

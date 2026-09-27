@@ -105,6 +105,21 @@ def test_staged_source_refuses_other_file_changes(tmp_path, monkeypatch, target)
         route.prepare(source, "run", staged_from=join)
 
 
+@pytest.mark.parametrize("offset", [0x0C0, 0x27F])
+def test_staged_source_refuses_changes_between_effect_arrays(tmp_path, monkeypatch, offset):
+    original, join = _sources(tmp_path, monkeypatch)
+
+    def change(staged):
+        address, payload = d64.split_load_address(staged.read_file("SAVEDGAME0"))
+        body = bytearray(payload)
+        body[offset] ^= 1
+        staged.write_file_inplace("SAVEDGAME0", d64.attach_load_address(address, body))
+
+    source = _stage(tmp_path, original, change)
+    with pytest.raises(RouteError, match="outside effect arrays in SAVEDGAME0"):
+        route._staged_rows(source, join)
+
+
 def test_staged_from_must_be_join(tmp_path, monkeypatch):
     original, join = _sources(tmp_path, monkeypatch)
     source = _stage(tmp_path, original, _effect)

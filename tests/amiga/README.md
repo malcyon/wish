@@ -33,6 +33,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigasecretsave.py` | Checks that a failed WinUAE save probe leaves the published disk unchanged, keeps both fetched ADFs and its last screen, settles a capture on the emulator's crop, and that the lane session, the screen guards and the title description import without the runner. |
 | `test_amigasecretsaveaccept.py` | Checks the WinUAE probe's accept route, guards, interstitials, verdicts and evidence, and that SIGTERM still stops, fetches and releases. |
 | `test_amigasecretsavemeasure.py` | Checks the WinUAE probe's capture-only mode, per-state minimum waits, guard polling and configurable route with a fake clock and guest. |
+| `test_amigasecretsavestaged.py` | Checks that the Silver Blades route accepts staged changes only in the four effect arrays of its pinned JOIN save and records active rows in the preparation manifest. |
 | `test_amigasecretsavetitle.py` | Checks that the WinUAE probe runs a title description on synthetic ADFs and a fake guest, and refuses a description that could press a save key, swap DF0 or write after an unguarded screen. |
 | `test_amigasecretsavejournal.py` | Checks that a failing journal answerer subprocess puts its exit code and the last lines of its stderr, bounded, in the driver's `RouteError`. |
 | `test_amigashots.py` | Checks that `tools/amiga/amigashots.py` finds the emulator's screen inside a grab of the whole guest desktop, on desktops built here. |
