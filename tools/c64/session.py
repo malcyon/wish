@@ -2020,8 +2020,11 @@ class Session:
                     return at.x, at.y, at.facing
             time.sleep(0.3)
         if not self.machine.title.travel_grid:
-            with self.mon(5) as mon:
-                x, y, facing = mon.read(self.machine.live_position, 3)
+            try:
+                with self.mon(5) as mon:
+                    x, y, facing = mon.read(self.machine.live_position, 3)
+            except (OSError, MonitorError):
+                return 0, 0, None
             return x, y, facing
         here = self.square_and_world()   # fallback: the lagging memory copy
         if here is None:

@@ -232,6 +232,22 @@ def test_position_uses_the_live_facing_when_no_square_is_drawn(monkeypatch):
         assert sess.position() == (3, 12, 2)
 
 
+def test_position_returns_unknown_when_the_live_triple_cannot_be_read(monkeypatch):
+    class FailedMonitor(FakeMonitor):
+        def __init__(self, error):
+            self.error = error
+
+        def read(self, addr, length):
+            raise self.error
+
+    monkeypatch.setattr(session.time, "sleep", lambda _: None)
+    for error in (OSError("disconnected"), session.MonitorError("unavailable")):
+        sess = FakeSession(line="LOAD SAVED GAME")
+        sess.game = games.CURSE_OF_THE_AZURE_BONDS
+        sess.mon = lambda timeout: FailedMonitor(error)
+        assert sess.position() == (0, 0, None)
+
+
 def test_position_keeps_pools_dungeon_facing_without_a_status_line(monkeypatch):
     monkeypatch.setattr(session.time, "sleep", lambda _: None)
     sess = FakeSession(line="LOAD SAVED GAME", indoors=True, square=(5, 2))
