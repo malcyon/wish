@@ -179,13 +179,15 @@ monster record is not something the converter converts.
 
 ## Still open
 
-**The C64-to-DOS direction writes the wrong field.** `goldbox/dos_codec.py` copies
-neutral `turn_power` straight into DOS `0x076`, which the section above shows
-is the undead's row. Converting Curse's shipped CLERIC to DOS therefore gives
-him a 6 there, the wight and wraith row. That predates this work -- the C64
-reader has always put `0x0A4` into the neutral field -- and it is
-`#297 (A cleric converted from the C64 to DOS is given an undead's turning
-row, because the DOS writer puts turn_power in the undead's byte)`.
+**The C64-to-DOS direction no longer writes `turn_power` into DOS
+`turn_class`.** `goldbox/dos_codec.py` drops `turn_power` and writes
+`turn_class` as a constant zero, so converting a cleric to DOS no longer gives
+him an undead's row. `turn_class`'s offset differs by title -- `0x076` for
+Pool of Radiance, `0x0E9` for Curse, and `0x0F2` for Silver Blades and `0x13A`
+for Pools of Darkness, the latter two PROBABLE rather than CONFIRMED --
+`goldbox/dos_port.py`'s `layout_for` carries each. Every C64 cleric and
+paladin on this machine converts to 0 at their title's offset, and so does
+every game-written save this has been checked against.
 
 **Nobody has watched a converted cleric turn actual undead.** The bar is the
 gate and the bar is measured; the roll that follows is not. `GAME.OVR:0x13A38`

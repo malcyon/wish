@@ -16,14 +16,17 @@ the byte stored at `0x0A4`, and `goldbox.levels.turning_level`'s answer. The
 exit status is non-zero when any record disagrees, so the census is a check as
 much as a listing.
 
-`--dos` does the DOS half, which asks a different question. DOS record `0x076`
+`--dos` does the DOS half, which asks a different question. DOS `turn_class`
 is the *undead's* row rather than the caster's strength -- `GAME.OVR:0x139CD`
 reads it off the **target** and multiplies it by ten as the row of the turning
 matrix -- so what a DOS census establishes is that no player character carries
-anything there, and that the eleven undead monster records do.
+anything there, and that the undead monster records do. The byte sits at a
+different offset per title (`goldbox.dos_port.FIELDS_BY_NAME_FOR[key]
+["turn_class"].offset`), so the census reads each title at its own offset
+rather than Pool of Radiance's.
 
     tools/records/turncensus.py                 every C64 record, stored vs derived
-    tools/records/turncensus.py --dos           DOS records and monsters at 0x076
+    tools/records/turncensus.py --dos           DOS records and monsters at turn_class
 """
 
 from __future__ import annotations
@@ -35,7 +38,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap import gamedisks  # noqa: E402
-from goldbox import levels  # noqa: E402
+from goldbox import dos_port, levels  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 
@@ -46,8 +49,15 @@ C64_DISKS = (
     ("secret-of-the-silver-blades", "*.[dD]64"),
 )
 
-#: Where a monster's own turning row lives in each port's record.
-DOS_TURN_CLASS = 0x076
+#: The `MON*CHA.DAX` stem for each title, keyed by the `dos_port` deltas key
+#: that gives `turn_class` its offset -- `0x076` for Pool of Radiance, `0x0E9`
+#: for Curse, `0x0F2` for Silver Blades; see `docs/178-turning-undead.md`.
+DOS_STEMS = (
+    ("POOLRAD", "pool-of-radiance"),
+    ("CURSE", "curse-of-the-azure-bonds"),
+    ("SECRET", "secret-of-the-silver-blades"),
+)
+
 C64_TURN_CLASS = 0x0A3
 
 
@@ -130,7 +140,7 @@ def census_c64(verbose: bool = True) -> int:
 
 
 def census_dos(verbose: bool = True) -> int:
-    """DOS records and monsters at 0x076, which is the undead's row."""
+    """DOS records and monsters at each title's own turn_class offset."""
     from goldbox.dos_savegame import dax_blocks
 
     root = gamedisks.find("dos-archives")
@@ -139,13 +149,14 @@ def census_dos(verbose: bool = True) -> int:
         return 0
     games_dir = pathlib.Path(root)
     hits = 0
-    for stem in ("POOLRAD", "CURSE", "SECRET"):
+    for stem, key in DOS_STEMS:
+        offset = dos_port.FIELDS_BY_NAME_FOR[key]["turn_class"].offset
         for game_dir in sorted(games_dir.glob(f"*/games/{stem}/GAME/{stem}")):
             for path in sorted(game_dir.glob("MON*CHA.DAX")):
                 for index, block in dax_blocks(path.read_bytes(), path.name):
-                    if len(block) <= DOS_TURN_CLASS:
+                    if len(block) <= offset:
                         continue
-                    value = block[DOS_TURN_CLASS]
+                    value = block[offset]
                     if not value:
                         continue
                     length = block[0]
@@ -153,8 +164,8 @@ def census_dos(verbose: bool = True) -> int:
                     hits += 1
                     if verbose:
                         print(f"{stem:8} {path.name}:{index:<4} {name[:20]:20} "
-                              f"0x076 = {value}")
-    print(f"{hits} monster record(s) with a non-zero 0x076")
+                              f"0x{offset:03x} = {value}")
+    print(f"{hits} monster record(s) with a non-zero turn_class")
     return 0
 
 
