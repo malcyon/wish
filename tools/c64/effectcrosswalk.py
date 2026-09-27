@@ -1159,8 +1159,12 @@ class C64RowSweep:
     @property
     def candidate_no_dos_rule_ids(self) -> frozenset[int]:
         """An upper bound: table entries may never call their row writer."""
-        candidate_ids = (self.table_ids | {row.effect_id for row in self.literal_rows})
-        candidate_ids -= self.post_combat_strip_ids
+        candidate_ids = (
+            {row.effect_id for row in self.camp_rows if row.effect_id}
+            | {row.effect_id for row in self.combat_rows
+               if row.effect_id and row.effect_id not in self.post_combat_strip_ids}
+            | {row.effect_id for row in self.literal_rows}
+        )
         out = set()
         for effect_id in candidate_ids:
             sample = effects.Effect(0, effect_id, 0, 1, 1)

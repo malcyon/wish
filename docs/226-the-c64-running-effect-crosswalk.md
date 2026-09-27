@@ -743,15 +743,18 @@ a nonnegative combatant owner of 8 or more. The disk-backed test pins the
 record counts, literal ids and strip-list sizes; it names each missing title
 when it skips.
 
-**CONFIRMED set difference as an upper bound:** The following ids occur in an
-unstripped table record or literal path, but `dos_record` says “no rule yet”
-for a sample row. An unresolved handler may write nothing, a combat owner
+**CONFIRMED set difference as an upper bound:** The following ids occur in a
+camp table record, a combat table record not stripped by `POST.COM`, or a
+literal path, but `dos_record` says “no rule yet” for a sample row. The
+post-combat strip applies only to combat-table candidates: a camp cast can
+be saved before combat, and a literal writer has its own path. An unresolved
+handler may write nothing, a combat owner
 may be a monster, and party-wide ids 35 and 49 have a separate converter.
 
 | Title | Candidate ids with no `dos_record` rule |
 |---|---|
-| Pool of Radiance | 2, 4, 11, 13, 22, 23, 32–35, 49, 71, 77, 108 |
-| Curse of the Azure Bonds | 2–4, 7, 11, 13, 15, 18, 22, 23, 27, 33–35, 49, 55, 68, 71, 73, 109, 136, 137, 142–144, 146 |
+| Pool of Radiance | 2, 4, 11, 13, 22, 23, 30, 32–35, 49, 51–53, 71, 77, 108 |
+| Curse of the Azure Bonds | 2–4, 7, 11, 13, 15, 18, 22, 23, 27, 33–35, 49, 55, 58, 68, 71, 73, 109, 136, 137, 142–144, 146 |
 | Secret of the Silver Blades | 2–4, 11, 13, 22, 23, 27, 30, 33–35, 49, 51–53, 55, 68, 71, 73, 106, 107, 111, 112 |
 
 | Refusal | Sweep evidence and limit |
