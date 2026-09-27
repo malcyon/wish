@@ -130,7 +130,7 @@ judge them on. They read as complete figures; whether they are the right ones
 is Donald's, and the code uses whatever `tools/icons/iconproposal.yaml` says.
 
 **No Pool of Radiance party on this machine wears one, so one had to be
-staged.** `tools/icons/dosmixedicon.py --census` read every `.SAV` and `.CHA` under
+staged.** `tools/icons/dosmixedicon.py --sweep` read every `.SAV` and `.CHA` under
 the `SAVE/` folder of the `por-dos-play` registry entry, `$WISH_SPECIMENS`' `por-dos` folder and the `dos-archives` entry:
 **2 of 372 records** are small characters already on a large-only row, and both
 are the same *Pools of Darkness* character, ABAGAIL, in two copies of one
@@ -178,7 +178,7 @@ most characters.** The shipped set `91 A2 B3 C4 E6 F7` pairs blue with light
 blue, green with light green, cyan with light cyan, red with light red, brown
 with yellow and light grey with white -- and the table sends both halves of
 every one of those six pairs to the same C64 colour. Over the 296 records
-censused, 222 have no pair whose two nibbles land on different C64 colours.
+swept, 222 have no pair whose two nibbles land on different C64 colours.
 
 **For the other 74 the low nibble is the minority colour on two parts, and that
 is a decision rather than a defect.** Counting every pixel of every option
@@ -392,7 +392,7 @@ POR_HEADLESS=1 tools/c64/savecheck.py --disk $TMPDIR/PLAYJ.D64 \
 The nine mixed rows, which no Pool of Radiance party here wears:
 
 ```sh
-tools/icons/dosmixedicon.py --census
+tools/icons/dosmixedicon.py --sweep
 tools/icons/dosmixedicon.py --stage $TMPDIR/mixedparty \
     --from "$SAVE" --slot J
 tools/icons/dosfigures.py --folder $TMPDIR/mixedparty --slot J \

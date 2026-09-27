@@ -13,7 +13,7 @@ changes is what happens when the player presses Save on a DOS or Amiga party.
 character twice -- once from the record as it was read, once from the record as
 the sheet left it -- and only the field spans where the two renderings disagree
 are copied onto the bytes the engine wrote. `goldbox/rewrite.py` is that, and
-`tools/convert/rewritecensus.py` is what measured it.
+`tools/convert/rewritesweep.py` is what measured it.
 
 Two things follow. A save with no edit in it is byte-identical **by
 construction**, because a span the two renderings agree about is never copied.
@@ -37,7 +37,7 @@ Amiga `.adf` images and 14 loose Amiga Curse and Silver Blades saved games.
 | Amiga | Secret of the Silver Blades | 92 |
 
 Nothing was skipped: the tool reports what it could not read and reported
-nothing. **Pools of Darkness is out of the census** for two independent
+nothing. **Pools of Darkness is out of the sweep** for two independent
 reasons -- the five `pod-dos` specimens hold no `CHRDAT??.SAV` at all, and the
 title has no C64 port, so `c64_port.by_key` refuses it and the editor will not
 open one.
@@ -46,7 +46,7 @@ Two measurements were taken of each character.
 
 **The no-op rewrite.** Rewrite it with nothing edited and compare with the
 bytes it came from. **664 of 664 came back byte for byte** -- record, item
-file and effect file, all three, `tools/convert/rewritecensus.py --no-op`.
+file and effect file, all three, `tools/convert/rewritesweep.py --no-op`.
 CONFIRMED. The effect file is compared because it was not before: the sweep
 returned it unread, so "byte for byte" covered two of the three things a save
 is made of.
@@ -57,7 +57,7 @@ compare field by field with the record the engine wrote. A field that differs
 here is one an edit to which would replace the engine's answer with the
 writer's.
 
-The second measurement is the census, and two further columns make it usable.
+The second measurement is the sweep, and two further columns make it usable.
 **Rendered** says whether the writer produced more than one value for that span
 across every character of that title: a span it rendered *one* value for over
 all 216 DOS Pool of Radiance characters is one the two renderings a rewrite
@@ -65,7 +65,7 @@ compares can never disagree about, so no edit can move it, however far it is
 from the engine's byte. **Writer says** is the writer's own account of where it
 takes the field from, `goldbox.dos_codec.write_targets`.
 
-## The census
+## The sweep
 
 ### DOS Pool of Radiance -- 216 characters
 
@@ -304,7 +304,7 @@ been happy with.
 The table above is about fields whose *engine* bytes a rewrite would replace.
 This one is the other question, and it is the one the editor needs: **which
 fields of the C64 record can a player type into and lose?** It is measured
-rather than inferred -- `tools/convert/rewritecensus.py --read-only` adds one
+rather than inferred -- `tools/convert/rewritesweep.py --read-only` adds one
 to each field of the record in turn, at its first byte and at its last,
 rewrites, and reports whether a byte of the save moved. 12 characters of each
 port and title, 72 in all.
@@ -338,7 +338,7 @@ so its `flags_0b8` entry is the old measurement and the new code path is the
 same one the other five rows measured.
 
 **The sheet portrait is read-only on five of the six**, and writable only on
-Amiga Pool of Radiance. That is the same fact as the census's `portrait_head`
+Amiga Pool of Radiance. That is the same fact as the sweep's `portrait_head`
 and `portrait_body` rows read from the other end: the rewrite passes no
 portrait tables, so the writer renders zero for both whatever the sheet says.
 
@@ -376,7 +376,7 @@ at all.
   can edit them yet; that is the plan's Stage 5.
 * **The Amiga Curse item node has no measured size on some titles.**
   `AmigaDeltas.item_size` is `None` where no specimen carries an item, and
-  the rewrite then has no item spans to compare. No specimen in the census hit
+  the rewrite then has no item spans to compare. No specimen in the sweep hit
   that, so it is untested rather than broken.
 * **A character carrying more than sixteen items** keeps the ones past the
   sixteenth exactly as read, because the C64 record has sixteen slots and the
@@ -393,7 +393,7 @@ at all.
   loads a save is unconfirmed**: the line is known to go stale in saves the
   engine itself wrote, which is why no reader here trusts it, but nobody has
   watched a running game redraw one.
-* **`.CHA` exports were not swept.** The census reads save slots, which is what
+* **`.CHA` exports were not swept.** The sweep reads save slots, which is what
   the editor will open.
 
 ## What the sheet greys

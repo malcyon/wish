@@ -235,7 +235,7 @@ class EffectsModel(QAbstractTableModel):
     shrank to the used ones would hide that.
     """
 
-    # No code column. The number is what the census is indexed by and what a
+    # No code column. The number is what the sweep is indexed by and what a
     # tooltip falls back to for a code nobody has named; on the sheet it is a
     # second spelling of the name beside it.
     HEADERS = ("Slot", "Trait")
@@ -316,7 +316,7 @@ class EffectsModel(QAbstractTableModel):
             why = self.warning_at(row)
             named = self.names.get(code)
             if named is None:
-                said = f"code {code}; the trait census does not name it"
+                said = f"code {code}; the trait sweep does not name it"
             else:
                 said = f"{named[0]} ({named[1]})"
             return f"{said}\n{why}" if why else said

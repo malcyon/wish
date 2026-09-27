@@ -21,7 +21,7 @@ having nowhere to go)`.
 The control byte is **C64 `0x0B8`** as well, in the same encoding, and the two
 ports read against each other are what settled its low seven bits: they are a
 morale percentage stored halved. That is the second half of this page and
-`tools/records/controlbyte.py` is its census.
+`tools/records/controlbyte.py` is its sweep.
 
 ## The method: what constants the engine puts in a byte
 
@@ -71,7 +71,7 @@ slot stays with the character and the file order does not. And no record byte
 holds the marching order in any of these engines: `ENCAMP > ALTER > ORDER`
 moves list nodes (`MoveCurrentPlayerUp`, `sub_4558D`) and writes nothing.
 
-The census over every DOS record on this machine reaches 7, twice: Treasures of
+The sweep over every DOS record on this machine reaches 7, twice: Treasures of
 the Savage Frontier's shipped save has eight records, and its seventh and
 eighth hold 6 and 7. Eight is the number of combat-icon slots and the number of
 combatants a party can have -- six player characters plus two companions.
@@ -201,7 +201,7 @@ companion's control byte holds -- and it needed no companion and no emulator.
 The C64 port answers it, because **C64 `0x0B8` is the same field as DOS
 `0x084`, with the same encoding**, and the two engines can be read against each
 other. `tools/c64/recordsweep.py --game pool --offset 0xB8 --context` is the C64
-census and `tools/dos/dosdis16.py` the DOS listing.
+sweep and `tools/dos/dosdis16.py` the DOS listing.
 
 | what happens | Pool of Radiance, C64 | Pool of Radiance, DOS |
 |---|---|---|
@@ -245,7 +245,7 @@ DOS has nothing to preserve. Both ports write `0xB2` for a berserk companion.
 ### What the records hold, both ports
 
 `tools/records/controlbyte.py`, 2026-09-07. The C64 half is new; the DOS half
-reproduces the counts above through `tools/dos/dostailcensus.py`'s finder.
+reproduces the counts above through `tools/dos/dostailsweep.py`'s finder.
 
 | port | records | `$00` | `$01` | engine-driven |
 |---|---|---|---|---|
@@ -336,7 +336,7 @@ C64's ability-altered flag on the read-back check alone, so a Save As from
 either of these two titles refused a character actually holding a share.
 
 What every record on this machine holds in the share byte,
-`tools/dos/dostailcensus.py --field field_83_87 --per-title` and a sweep of
+`tools/dos/dostailsweep.py --field field_83_87 --per-title` and a sweep of
 the registry's `PORSAVE*.D64` through `editor.saveplan.c64_slot_records`:
 
 | port and title | records | `0` | `1` | above 1 |

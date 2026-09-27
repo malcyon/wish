@@ -32,15 +32,15 @@ Two commands, neither of which needs an emulator:
 * **`code`** finds the derive in each of the six DOS Gold Box overlays on this
   machine and prints whether it consults the former array.  Pool of Radiance
   is the control: it has no former array and its one clear site does not.
-* **`census`** predicts `class_bits` for every DOS record it can find from the
+* **`sweep`** predicts `class_bits` for every DOS record it can find from the
   rule above and compares it with the byte the record stores.  A record that
   disagrees is either a record somebody edited or a defect in this reading,
   and either way it is named.
 
     tools/dos/dualclassregain.py code
     tools/dos/dualclassregain.py code --title curse-of-the-azure-bonds --window 90
-    tools/dos/dualclassregain.py census
-    tools/dos/dualclassregain.py census --dual-only ~/wish-specimens
+    tools/dos/dualclassregain.py sweep
+    tools/dos/dualclassregain.py sweep --dual-only ~/wish-specimens
 
 The archives are the player's and are read only, found the way
 `tools/dos/dosbox.py` finds them.  With no archives `code` prints nothing and
@@ -170,7 +170,7 @@ def code(args: argparse.Namespace) -> int:
     return 0
 
 
-def census(args: argparse.Namespace) -> int:
+def sweep(args: argparse.Namespace) -> int:
     records = read_records(args.paths, not args.no_archives)
     if not records:
         print("no DOS character records under those roots; set $FR_ARCHIVES")
@@ -213,13 +213,13 @@ def main(argv: list[str] | None = None) -> int:
                    help="bytes of listing past the clear; 0 for none")
     c.set_defaults(func=code)
 
-    d = sub.add_parser("census", help="the rule against every stored byte")
+    d = sub.add_parser("sweep", help="the rule against every stored byte")
     d.add_argument("paths", nargs="*", help="extra directories to sweep")
     d.add_argument("--dual-only", action="store_true",
                    help="print only records whose former array is set")
     d.add_argument("--no-archives", action="store_true",
                    help="sweep only the paths given, so a count has a scope")
-    d.set_defaults(func=census)
+    d.set_defaults(func=sweep)
 
     args = ap.parse_args(argv)
     return args.func(args)

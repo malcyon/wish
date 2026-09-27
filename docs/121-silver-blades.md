@@ -323,7 +323,7 @@ than a number.
 
 **The reassignment reaches past the racial codes**, which is why that table is
 this title's own rather than Pool of Radiance's with six entries changed. A
-census of the 69 `MON*` records on these six sides against the 108 on the eight
+sweep of the 69 `MON*` records on these six sides against the 108 on the eight
 Pool of Radiance sides: PHASE SPIDER carries 37 and 139 there and 37 and **86**
 here, the same creature with one code moved and 86 being Pool of Radiance's
 two-level drain; FROST GIANT carries 98, its "regenerates 3 hit points a

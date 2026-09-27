@@ -125,7 +125,7 @@ register marked until something overwrites it, so a displacement it does
 | offset 4 | read 4 | read 4 |
 | offset 6 | read 21, written 5 | read 25, written 6 |
 
-Three things the census does not cover, chased by hand:
+Three things the sweep does not cover, chased by hand:
 
 * **A routine handed a node as an argument.** The removal routine
   (`/Secret 0x11E46`) reads offsets 0, 5 and 6 and nothing else.

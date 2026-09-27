@@ -2,7 +2,7 @@
 """Every effect id the C64 engine asks a character about, logged from the running game.
 
 `#252 (Does a C64 trait slot apply an item-granted effect id, or only the ones
-its own READY routine wrote?)`. `tools/c64/traitquery.py` censuses the call sites
+its own READY routine wrote?)`. `tools/c64/traitquery.py` sweeps the call sites
 that name their id with a literal, and `tools/c64/traitdrive.py` counts how often
 the trait scan matches. Neither can see an id that arrives in a register from
 a table, and the combat engine keeps exactly such tables: `SQRPACI01 $072E`
@@ -10,7 +10,7 @@ walks a zero-terminated list of ids under the I/O area at `$DB7A` and asks
 `COMBAT $28A4` -- array, **then the ten trait slots** -- about each one,
 dispatching the handler at `$DA63`/`$DAEE` (low, high, indexed by id) when
 the answer is yes. That is `coab`'s `calc_affect_effect` per check type, and
-the literal census is blind to all of it.
+the literal sweep is blind to all of it.
 
 So this logs the asks themselves. VICE's text monitor has `trace`, a
 checkpoint that prints the registers on every hit and lets the machine run,

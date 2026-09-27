@@ -9,9 +9,9 @@ term rather than guessed at.  Point it at a directory of saves per step of a
 driven run and one purchase's effect on the stored number is a diff of two
 lines.
 
-`--census` sweeps every `.SAV` and `.CHA` the machine has -- the specimen
+`--sweep` sweeps every `.SAV` and `.CHA` the machine has -- the specimen
 tree, the DOS archives and the played DOS game directory, all three by
-`tools/dos/dostailcensus.py`'s own root list -- deduplicates on the record bytes
+`tools/dos/dostailsweep.py`'s own root list -- deduplicates on the record bytes
 together with its items', and reports how the discrepancy is distributed.
 That is what makes a claim about the identity a count rather than an anecdote.
 On 2026-09-18, over 331 distinct records: **272 balance exactly**, 48 of the
@@ -92,18 +92,18 @@ def report(name: str, char: dos_codec.DosCharacter, verbose: bool = True) -> Non
               f"{it.display_line!r}")
 
 
-def census_roots() -> list[pathlib.Path]:
+def sweep_roots() -> list[pathlib.Path]:
     """Every directory the project knows of that may hold DOS records.
 
-    `tools/dos/dostailcensus.py`'s list, so this sweep and every other DOS census
+    `tools/dos/dostailsweep.py`'s list, so this sweep and every other DOS sweep
     on this machine cover the same corpus (#575): the specimen tree, the
     archives and the played DOS game directory.
     """
-    from tools.dos import dostailcensus
-    return dostailcensus.dos_record_roots()
+    from tools.dos import dostailsweep
+    return dostailsweep.dos_record_roots()
 
 
-def census(roots: list[pathlib.Path]) -> None:
+def sweep(roots: list[pathlib.Path]) -> None:
     """Delta distribution over every DOS character record found.
 
     Deduplicated on the record bytes together with its items', because the
@@ -151,17 +151,17 @@ def main(argv: list[str] | None = None) -> int:
                     help="only characters whose name starts with this")
     ap.add_argument("--nonzero", action="store_true",
                     help="only characters whose delta is not zero")
-    ap.add_argument("--census", action="store_true",
+    ap.add_argument("--sweep", action="store_true",
                     help="sweep every DOS record on this machine instead")
     args = ap.parse_args(argv)
 
-    if args.census:
-        roots = census_roots() + [p for p in args.paths if p.is_dir()]
+    if args.sweep:
+        roots = sweep_roots() + [p for p in args.paths if p.is_dir()]
         if not roots:
-            from tools.dos import dostailcensus
-            print(dostailcensus.NO_RECORDS, file=sys.stderr)
+            from tools.dos import dostailsweep
+            print(dostailsweep.NO_RECORDS, file=sys.stderr)
             return 1
-        census(roots)
+        sweep(roots)
         return 0
     for path in args.paths:
         pairs = ([(path.name, dos_codec.read_character(path))] if path.is_file()

@@ -232,13 +232,13 @@ def test_every_specimen_names_art_that_is_on_the_disks():
     """
     _disks()
     lines: list[str] = []
-    # **A census with no specimens returns a refusal, not zero.** `_disks()`
+    # **A sweep with no specimens returns a refusal, not zero.** `_disks()`
     # covers the game's own disks; the 21 records come from the specimen tree,
     # which a CI runner has none of, so this asserted 1 == 0 there rather than
     # skipping. Found on the run that turned `main` red, 2026-09-07.
-    outcome = amigaicons.report_census(lines.append)
+    outcome = amigaicons.report_sweep(lines.append)
     if outcome != 0 or not lines:
-        pytest.skip("no Amiga Curse or Silver Blades specimens to census")
+        pytest.skip("no Amiga Curse or Silver Blades specimens to sweep")
     assert outcome == 0
     assert lines[-1].endswith("records")
     assert int(lines[-1].split()[0]) == 21

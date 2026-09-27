@@ -10,7 +10,7 @@ there are, how long the labels come out, the eight longest, the names with a
 hyphen, apostrophe or full stop in them, and every label that two or more
 different names share.
 
-    tools/c64/c64monsterlabelcensus.py [--pool DIR] [--curse DIR] [--ssb DIR]
+    tools/c64/c64monsterlabelsweep.py [--pool DIR] [--curse DIR] [--ssb DIR]
 
 Each directory defaults to the title's entry in `automap/gamedisks.py` (so
 `$POR_DISKS`, `$COAB_DISKS` and `$SSB_DISKS` win). For Pool of Radiance the

@@ -121,7 +121,7 @@ def dos_geo_blocks(all_titles: bool = False):
     Every block of every `GEO<n>.DAX`, whatever shape it turns out to be, so a
     caller can count what it rejected instead of discovering a title is missing
     by its absence from a report. One walk, so `dos_maps` and the `blocks`
-    census cannot disagree about what is there.
+    sweep cannot disagree about what is there.
     """
     from goldbox import dos_savegame as dos
     root = gamedisks.find("dos-archives")
@@ -254,7 +254,7 @@ def per_plane(left: bytes, right: bytes) -> dict[str, int]:
 def report_blocks(out: io.TextIOBase, all_titles: bool = True) -> int:
     """Every DOS `GEO<n>.DAX` block in the archives, and what it looks like.
 
-    The census that says whether the reader is dropping anything. One row a
+    The sweep that says whether the reader is dropping anything. One row a
     block: which file it came out of, the two bytes in front that the engine
     never reads, and the four quantities `automap.area.looks_like_a_map`
     measures -- printed rather than filtered on, because eight blocks the game

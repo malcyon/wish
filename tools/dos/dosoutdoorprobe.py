@@ -18,7 +18,7 @@ both whether the game loads and what its own `ENCAMP > SAVE` writes back.
 
 **What are `$507A`-`$507C`?**  They are the only words in the whole variable
 array that are nonzero in an engine-written overland save and zero in all
-eleven engine-written indoor ones (`tools/dos/dossavcensus.py`), so they are
+eleven engine-written indoor ones (`tools/dos/dossavsweep.py`), so they are
 overland state -- but one specimen cannot say which of them tracks the square.
 `--route` walks a scripted path and saves at every waypoint, so a run produces
 three or four squares' worth of the same words.

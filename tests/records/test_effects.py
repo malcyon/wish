@@ -276,7 +276,7 @@ def test_a_running_bless_of_two_minutes_converts_exactly_at_every_clock():
 def test_every_duration_up_to_63_minutes_is_exact_and_most_above_it_are_not():
     """At one time of day the four units reach 213 to 216 of the 65,535 values
     a DOS duration word can hold. Counted here over every byte the engine
-    writes, independently of `tools/c64/effectcrosswalk.py`'s own census, and
+    writes, independently of `tools/c64/effectcrosswalk.py`'s own sweep, and
     it agrees with it phase for phase. The ceiling is the DOS word: a count of
     47 days or more outlives anything a DOS record can ask for.
     """

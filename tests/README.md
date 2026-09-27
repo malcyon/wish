@@ -20,7 +20,7 @@ The test suite, one directory per game or job the way `tools/` is, with the shar
 | [hooks](hooks/README.md) | Tests for the scripts under `.claude/hooks/`: what each one refuses and what it lets through. |
 | [icons](icons/README.md) | Tests for combat icons and portraits: the option tables that compose a figure, the tables that convert one between ports, and the tools that draw and measure them. |
 | [pool_of_radiance](pool_of_radiance/README.md) | Tests for Pool of Radiance: its fight driver, the messages and icons it draws, and the tools under `tools/pool_of_radiance/`. |
-| [records](records/README.md) | Tests for the character record and the tables and rules around it: field layouts, derived values, level tables, per-title tables and the census tools. |
+| [records](records/README.md) | Tests for the character record and the tables and rules around it: field layouts, derived values, level tables, per-title tables and the sweep tools. |
 | [registry](registry/README.md) | Tests for the machine-local registries: the game-disk registry, the emulator instance pool, scratch directories and the specimen store. |
 | [saves](saves/README.md) | Tests for the save containers and their readers: the D64 disk image, the C64 container, the saved-game and world-state models, and the YAML form of a save. |
 | [secret_of_the_silver_blades](secret_of_the_silver_blades/README.md) | Tests for Secret of the Silver Blades: its C64 disks, saves, tables and level-up rules, and the tools under `tools/secret_of_the_silver_blades/`. |

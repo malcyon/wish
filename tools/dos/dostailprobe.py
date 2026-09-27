@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Does the DOS engine keep, show or recompute `0x10C`-`0x10F`?
 
-`tools/dos/dostailcensus.py` established that Pool of Radiance's `0x10C`-`0x10F`
+`tools/dos/dostailsweep.py` established that Pool of Radiance's `0x10C`-`0x10F`
 is not the constant `goldbox/dos_codec.py` writes back: the engine's own resave
 after a fight holds `00 01 00 01`, and a character at zero hit points holds
-`04 00 00 00`.  What a census cannot say is what happens on the way **in** --
+`04 00 00 00`.  What a sweep cannot say is what happens on the way **in** --
 whether a value staged into a save survives a load, whether the game shows it,
 and whether the engine rewrites it from something else.  That decides whether
 `#235 (Two unattributed DOS byte ranges in the combat tail are dropped
@@ -60,7 +60,7 @@ OUT = scratch.scratch_dir("dostailprobe")
 #: control: if slot 0 comes back changed, the engine rewrites the field for
 #: everybody and none of the other five readings mean anything.
 #:
-#: The four values chosen are the ones the census and the third-party
+#: The four values chosen are the ones the sweep and the third-party
 #: workbooks put in play -- `Status` 4 Unconscious and 6 Dead,
 #: `IsQuickFight` 1, and `IsActive` 0 on its own, which no specimen holds
 #: apart from the unconscious character and which separates the two.

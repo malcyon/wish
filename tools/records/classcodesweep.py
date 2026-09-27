@@ -10,9 +10,9 @@ they disagree draws the wrong word on the sheet after a conversion.
 This counts the disagreements, per port and per title, over every save and
 record it is pointed at.
 
-    tools/records/classcodecensus.py                       # the specimen tree
-    tools/records/classcodecensus.py --archives            # and the shipped archives
-    tools/records/classcodecensus.py --c64 ~/wish-specimens/por-c64
+    tools/records/classcodesweep.py                       # the specimen tree
+    tools/records/classcodesweep.py --archives            # and the shipped archives
+    tools/records/classcodesweep.py --c64 ~/wish-specimens/por-c64
 
 The bits-to-code table is **the game's own**, read out of Curse of the Azure
 Bonds' `GEN` at `$1951`: a 17-entry run indexed by the class code, holding the
@@ -40,7 +40,7 @@ from automap import gamedisks  # noqa: E402
 from goldbox import c64_codec, dos_codec, dos_port, items  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools.dos import dostailcensus  # noqa: E402
+from tools.dos import dostailsweep  # noqa: E402
 from tools.registry import specimens  # noqa: E402
 
 #: Curse of the Azure Bonds' own class table, `GEN $1951`, indexed by the
@@ -76,7 +76,7 @@ def bits_from_levels(levels: dict) -> int:
     new class passes the level he left it at while the level array keeps that
     slot at zero, and for SILAS -- the shipped Pool of Radiance fighter -- the
     level array carries a thief 1 the mask has never heard of.  Reading the
-    levels catches **both** kinds of disagreement, which is what a census
+    levels catches **both** kinds of disagreement, which is what a sweep
     wants; `goldbox.dos_codec.write` takes the mask, which is what a *writer* wants,
     and `docs/187-the-class-code-byte.md` says why.
     """
@@ -117,18 +117,18 @@ def dos_records(root: pathlib.Path):
     against the C64's table made every DOS ranger in the corpus look like a
     disagreement, which was this tool's fault and not the game's.
 
-    A record under a `dostailcensus.FOREIGN_TITLES` directory is the same
+    A record under a `dostailsweep.FOREIGN_TITLES` directory is the same
     size as a title read here and is skipped rather than read through that
-    title's table -- `#400 (The DOS record census counts Gateway and
+    title's table -- `#400 (The DOS record sweep counts Gateway and
     Treasures characters as Curse and Pools of Darkness ones, because it
     identifies a title by record size)`, which this walk had independently of
-    `dostailcensus.py`'s own finder.
+    `dostailsweep.py`'s own finder.
     """
     paths = sorted(root.rglob("*")) if root.is_dir() else [root]
     for path in paths:
         if not path.is_file() or path.stat().st_size not in dos_port.DELTAS_BY_SIZE:
             continue
-        other = dostailcensus.foreign_title(path)
+        other = dostailsweep.foreign_title(path)
         if other:
             print(f"  skipped {path.parent.name}/{path.name}: under "
                   f"{other}, the same record size and not the same id space")

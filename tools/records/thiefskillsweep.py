@@ -7,12 +7,12 @@ game's rather than ours.  It reads each port's tables out of the player's own
 files and then sweeps every character record it can reach, saying for each
 thief whether the eight stored bytes are what that port's own tables give.
 
-    tools/records/thiefskillcensus.py tables     both ports' tables, side by side
-    tools/records/thiefskillcensus.py rows       the racial rows aligned, and the
+    tools/records/thiefskillsweep.py tables     both ports' tables, side by side
+    tools/records/thiefskillsweep.py rows       the racial rows aligned, and the
                                          byte-stream diff between the ports
-    tools/records/thiefskillcensus.py c64        every C64 record, against `GEN`
-    tools/records/thiefskillcensus.py dos        every DOS record, against `START.EXE`
-    tools/records/thiefskillcensus.py dos --title curse-of-the-azure-bonds
+    tools/records/thiefskillsweep.py c64        every C64 record, against `GEN`
+    tools/records/thiefskillsweep.py dos        every DOS record, against `START.EXE`
+    tools/records/thiefskillsweep.py dos --title curse-of-the-azure-bonds
 
 **Neither side is hardcoded.**  The C64's tables come off whichever disk of
 the title carries `GEN`, at the addresses `goldbox/levels.py` names -- which

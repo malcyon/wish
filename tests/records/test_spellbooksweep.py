@@ -1,9 +1,9 @@
-"""What `tools/records/spellbookcensus.py` asked, and the answer read off the disks.
+"""What `tools/records/spellbooksweep.py` asked, and the answer read off the disks.
 
 `#411 (Nobody knows whether a converted cleric loses Restoration, because the
 spellbook field is one bit short of the game's own spell list)` asks whether a
 character can carry Pool of Radiance's spell id 56, which the DOS record has a
-byte for and the C64 record has no bit for.  The census answers it over 840
+byte for and the C64 record has no bit for.  The sweep answers it over 840
 records; these are the parts of that answer a change to this repository could
 break, plus the reading of the engine that says the id is unreachable.
 
@@ -20,7 +20,7 @@ import pytest
 
 from goldbox import dos_port as dl
 from goldbox import spells
-from tools.records import spellbookcensus as census
+from tools.records import spellbooksweep as sweep
 
 
 def test_the_dos_array_can_say_something_the_c64_mask_cannot():
@@ -28,7 +28,7 @@ def test_the_dos_array_can_say_something_the_c64_mask_cannot():
 
     DOS spends 56 bytes at `0x033` for ids 1..56; the C64 spends 7 bytes at
     `0x078` for a mask whose top usable bit is id 55.  If either width ever
-    changes, the question the census answers stops being the question.
+    changes, the question the sweep answers stops being the question.
     """
     book = dl.FIELDS_BY_NAME_FOR["pool-of-radiance"]["spellbook"]
     assert (book.offset, book.size) == (0x033, 56)
@@ -42,7 +42,7 @@ def test_the_dos_array_can_say_something_the_c64_mask_cannot():
 def test_the_mask_reader_agrees_with_the_module_the_rest_of_the_code_uses():
     """`_ids_from_mask` must index bits the way `spells.spells_known` does.
 
-    A census that read the mask its own way could report a whole port's worth
+    A sweep that read the mask its own way could report a whole port's worth
     of spells at the wrong ids and look entirely plausible doing it.
     """
     record = bytearray(0x100)
@@ -50,19 +50,19 @@ def test_the_mask_reader_agrees_with_the_module_the_rest_of_the_code_uses():
     for i in wanted:
         record[0x078 + (i >> 3)] |= 1 << (i & 7)
     assert spells.spells_known(bytes(record)) == list(wanted)
-    book = bytes(record[0x078:0x078 + census.C64_BOOK_BYTES])
-    assert census._ids_from_mask(book, first_id=1) == wanted
+    book = bytes(record[0x078:0x078 + sweep.C64_BOOK_BYTES])
+    assert sweep._ids_from_mask(book, first_id=1) == wanted
 
 
 def test_a_record_is_graded_by_where_it_was_found():
     """The played DOS directory is the one whose records were all edited."""
-    assert census._grade("/home/x/dos_por_play/SAVE/CHRDATA1.SAV") == "edited"
-    assert census._grade("/home/x/wish-specimens/por-dos/a.sav") == "spec"
-    assert census._grade("/x/fr-archives/games/POOLRAD/a.sav") == "found"
+    assert sweep._grade("/home/x/dos_por_play/SAVE/CHRDATA1.SAV") == "edited"
+    assert sweep._grade("/home/x/wish-specimens/por-dos/a.sav") == "spec"
+    assert sweep._grade("/x/fr-archives/games/POOLRAD/a.sav") == "found"
 
 
 def test_the_row_reports_only_ids_past_the_titles_own_mask():
-    row = census.Row(port="dos", title="pool-of-radiance", where="x", who="y",
+    row = sweep.Row(port="dos", title="pool-of-radiance", where="x", who="y",
                      klass="cleric", known=(1, 44, 56), reach=55, last_spell=56)
     assert row.beyond == (56,)
     assert row.is_cleric
@@ -78,7 +78,7 @@ def test_a_title_with_no_spell_table_is_not_measured_against_pool_of_radiance():
     """
     assert "death-knights-of-krynn" not in spells.BY_KEY
     assert spells.for_game("death-knights-of-krynn") is spells.POOL_OF_RADIANCE
-    row = census.Row(port="c64", title="death-knights-of-krynn", where="x",
+    row = sweep.Row(port="c64", title="death-knights-of-krynn", where="x",
                      who="y", klass="cleric", known=(70,), reach=55,
                      last_spell=56, has_table=False)
     assert row.beyond == ()
@@ -87,11 +87,11 @@ def test_a_title_with_no_spell_table_is_not_measured_against_pool_of_radiance():
 def test_a_deduplicated_record_is_graded_over_every_path_it_was_found_at():
     """The specimen tree decides, whichever path the finder happened to sort
     first -- `tools/records/carryceiling.py` mis-graded THRENDER GRONE this way."""
-    assert census._grade_over(["/x/fr-archives/games/POOLRAD/a.sav",
+    assert sweep._grade_over(["/x/fr-archives/games/POOLRAD/a.sav",
                                "/home/x/wish-specimens/por-dos/a.sav"]) == "spec"
-    assert census._grade_over(["/x/fr-archives/games/POOLRAD/a.sav",
+    assert sweep._grade_over(["/x/fr-archives/games/POOLRAD/a.sav",
                                "/home/x/dos_por_play/SAVE/a.sav"]) == "edited"
-    assert census._grade_over(["/x/fr-archives/games/POOLRAD/a.sav"]) == "found"
+    assert sweep._grade_over(["/x/fr-archives/games/POOLRAD/a.sav"]) == "found"
 
 
 @gamedata.needs_disks
@@ -156,13 +156,13 @@ def test_the_learn_menu_refuses_every_id_from_56_up():
 
 @gamedata.needs_disks
 def test_no_pool_of_radiance_record_on_the_c64_disks_sets_the_missing_id():
-    """The census's own answer, over whatever C64 saves this machine holds.
+    """The sweep's own answer, over whatever C64 saves this machine holds.
 
     Asserted as "none", not as a count: the count is the issue's business and
     a new save disk would move it, while a single record setting id 56 is the
     finding that would reopen the ticket.
     """
-    rows = [r for r in census.c64_rows() if r.title == "pool-of-radiance"]
+    rows = [r for r in sweep.c64_rows() if r.title == "pool-of-radiance"]
     # The finder takes the parent of each registered disk directory as well,
     # so the three C64 titles with no `gamedisks.yaml` entry are read too;
     # `has_table` keeps their books from being measured against Pool of

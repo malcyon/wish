@@ -106,7 +106,7 @@ class Row:
         return all(s <= w for s, w in zip(self.stored, self.wanted))
 
 
-def census(root: str, game) -> list[Row]:
+def sweep(root: str, game) -> list[Row]:
     rows: list[Row] = []
     for path in disks(root, game):
         try:
@@ -151,7 +151,7 @@ def main(argv=None) -> int:
         if not root or not os.path.isdir(root):
             print(f"no such directory: {root}", file=sys.stderr)
             continue
-        rows += census(root, game)
+        rows += sweep(root, game)
 
     if not rows:
         print("no Pool of Radiance C64 saves found")

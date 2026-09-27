@@ -81,7 +81,7 @@ reads BLACK DRAGON 4250 and 16, STORM GIANT 5850 and 20, PURPLE WORM 4900 and
 
 ### Zero in every player, which is why nobody could place it
 
-`tools/dos/dosxpaward.py census` swept **474 DOS character records** — 238 Pool of
+`tools/dos/dosxpaward.py sweep` swept **474 DOS character records** — 238 Pool of
 Radiance, 110 of the Curse and Gateway shape, 74 Silver Blades, 52 of the
 Pools of Darkness and Treasures shape — across the specimen tree and the
 player's archives. **Two paths carry a non-zero award and they are one
@@ -162,7 +162,7 @@ each port converts what it reads. `tools/dos/dosscrollbundle.py`'s `walk()` is
 the same loop and `slice_naively()` is the other one.
 
 **Nothing anybody holds is misread today.**
-`tools/dos/dosscrollbundle.py census` walked **140 item files** across the
+`tools/dos/dosscrollbundle.py sweep` walked **140 item files** across the
 specimen tree and the archives: **0 scroll bundles**, 0 files whose record
 count disagrees with `item_count`, and 18 with an `item_count` of zero, which
 is an export beside a stale item file and is what `goldbox.dos_codec` documents. The

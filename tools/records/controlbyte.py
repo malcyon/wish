@@ -22,7 +22,7 @@ flag that the conversion reports as having nowhere to go)`.
 **Provenance is the whole caution and it is printed on every run.**  A save
 found on a disk was not necessarily written by the game; `tests/gamedata.py`
 and `.claude/rules/testing.md` say why.  The DOS half reuses
-`tools/dos/dostailcensus.py`'s finder and its roots -- the specimen tree, the
+`tools/dos/dostailsweep.py`'s finder and its roots -- the specimen tree, the
 archives and the played DOS game directory, every record in the last of which
 has been through Gold Box Companion's editor -- so it inherits that tool's
 exclusions as well: records this project wrote, and an emulator instance's
@@ -44,11 +44,11 @@ from automap import gamedisks  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools.dos import dostailcensus  # noqa: E402
+from tools.dos import dostailsweep  # noqa: E402
 
 #: The C64 control byte, at the same record offset in every C64 title
 #: (`#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the
-#: dual-class slot)` censused it: 42 references in Pool of Radiance, 19 in
+#: dual-class slot)` swept it: 42 references in Pool of Radiance, 19 in
 #: Curse, 23 in Silver Blades).
 C64_CONTROL = 0x0B8
 
@@ -139,7 +139,7 @@ def _specimen_root():
     return pathlib.Path(root) if root and pathlib.Path(root).is_dir() else None
 
 
-def census_c64(disks: list[pathlib.Path]) -> int:
+def sweep_c64(disks: list[pathlib.Path]) -> int:
     """Partition the C64 control byte; returns how many records were read."""
     rows = []
     for key, path, game, index, record in c64_records(disks):
@@ -164,13 +164,13 @@ def census_c64(disks: list[pathlib.Path]) -> int:
     return len(rows)
 
 
-def census_dos(want_built: bool) -> int:
+def sweep_dos(want_built: bool) -> int:
     """Partition the DOS control and share bytes per title."""
-    roots = dostailcensus.dos_record_roots()
+    roots = dostailsweep.dos_record_roots()
     if not roots:
-        print("\n" + dostailcensus.NO_RECORDS)
+        print("\n" + dostailsweep.NO_RECORDS)
         return 0
-    specs, skipped = dostailcensus.collect(roots, want_built)
+    specs, skipped = dostailsweep.collect(roots, want_built)
     print(f"\nDOS: {len(specs)} distinct records under "
           + ", ".join(str(r) for r in roots))
     for other, n in sorted(skipped.items()):
@@ -211,9 +211,9 @@ def main(argv=None) -> int:
     print("A record is evidence about the game only if we know who wrote it "
           "(.claude/rules/testing.md).")
     if both or args.c64:
-        census_c64([pathlib.Path(d).expanduser() for d in args.disk])
+        sweep_c64([pathlib.Path(d).expanduser() for d in args.disk])
     if both or args.dos:
-        census_dos(args.built)
+        sweep_dos(args.built)
     return 0
 
 

@@ -444,7 +444,7 @@ picker)`. A fourth per-title difference.
   | 7, the wilderness | 4 | 101 | 7 |
   | all three | 19 | **108** | -- |
 
-  The ten saved games of the 2026-09-05 census, all in New Phlan, gave 92.
+  The ten saved games of the 2026-09-05 sweep, all in New Phlan, gave 92.
   Two more areas found sixteen more live words, so **read "zero in every Amiga
   saved game here" as "in three areas of 29"**.
 

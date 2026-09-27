@@ -514,7 +514,7 @@ def tables_from_amiga_disks(disks: str | pathlib.Path) -> PortraitTables:
 #: of the Azure Bonds' and Secret of the Silver Blades' `LIBRARY` never call
 #: the loader at all, and no file on any of their twelve sides calls either
 #: of those two `ANIMATE` entries -- 558 and 571 files searched
-#: (`tools/icons/portraitdraw.py`, which prints the census).
+#: (`tools/icons/portraitdraw.py`, which prints the sweep).
 #:
 #: Watched as well as read: a Curse sheet and a Silver Blades sheet with
 #: `$41` -- art that exists on `CURSE_B` -- written into both record bytes

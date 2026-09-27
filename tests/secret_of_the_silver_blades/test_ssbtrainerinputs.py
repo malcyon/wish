@@ -281,7 +281,7 @@ def test_counting_the_loop_out_gives_curses_answers(wis):
     Silver Blades' own table has to give it the same answers at every score.
 
     **No record can ever corroborate it.** The bonus lands in `$2A1E` and
-    nothing copies it back: `#89`'s census of `0x0EE`-`0x0F3` found 0 code
+    nothing copies it back: `#89`'s sweep of `0x0EE`-`0x0F3` found 0 code
     references in 347 Silver Blades files, so there is no byte on any disk
     that could agree or disagree.
     """

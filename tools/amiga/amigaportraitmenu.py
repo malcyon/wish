@@ -10,7 +10,7 @@ re-derived:
 
     tools/amiga/amigaportraitmenu.py             # print the Amiga menu and the diff
     tools/amiga/amigaportraitmenu.py --check     # exit 1 if the disks disagree
-    tools/amiga/amigaportraitmenu.py --art       # the art census behind the diff
+    tools/amiga/amigaportraitmenu.py --art       # the art sweep behind the diff
     tools/amiga/amigaportraitmenu.py --palette   # the screen colours it draws in
     tools/amiga/amigaportraitmenu.py --montage MENU.png
 
@@ -127,7 +127,7 @@ def literal(tables: portraits.PortraitTables) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The art census: distinct pictures behind the ids
+# The art sweep: distinct pictures behind the ids
 # ---------------------------------------------------------------------------
 def repeats(blocks: dict[int, bytes]) -> list[list[int]]:
     """The groups of ids that hold the same bytes, largest group first."""
@@ -409,7 +409,7 @@ def main(argv: list[str] | None = None) -> int:
     game = dos_game(args.dos)
     if args.art:
         if game is None:
-            out("no DOS game directory found, so the census is the Amiga's "
+            out("no DOS game directory found, so the sweep is the Amiga's "
                 "alone; set FR_ARCHIVES or pass --dos")
         report_art(out, files, game)
     if args.montage:

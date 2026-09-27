@@ -10,7 +10,7 @@ JOIN command, whose `quantity` sub-scrolls hang off it, each node carrying
 three more spell ids in its own `charges`, `effect` and `power`.
 
     tools/dos/dosscrollbundle.py sites --game SECRET
-    tools/dos/dosscrollbundle.py census
+    tools/dos/dosscrollbundle.py sweep
     tools/dos/dosscrollbundle.py read ~/wish-specimens/por-dos/WISH-SPEC-.../CHRDATD1.SAV
 
 **The chain is on disk, not only in the heap.**  The `.STF` writer
@@ -23,7 +23,7 @@ routine that recomputes it (`0x3A2C7`) walks `next` at `0x02A` and never
 record's `item_count`**, and a reader that takes the first `item_count` of
 them reads a bundle's spell nodes as items and loses that many real ones off
 the end.  `walk` below is the engine's own shape; `slice_naively` is the other
-one, and `census` reports where they disagree.
+one, and `sweep` reports where they disagree.
 
 `sites` prints the code this rests on, with the five 63-byte titles as
 controls: their items end at `0x03E`, so an `es:[di+0x3f]` there cannot be an
@@ -71,7 +71,7 @@ SCROLL_TYPES = {0x27: "mage scroll", 0x28: "cleric scroll",
 CHAIN = 0x03F
 CHAIN_SIZE = 4
 
-#: Displacements to census, and what each one is in a 67-byte item.
+#: Displacements to sweep, and what each one is in a 67-byte item.
 DISPLACEMENTS = {0x02A: "next item, the main chain",
                  0x03F: "the scroll-bundle chain (Silver Blades only)",
                  0x041: "its segment half"}
@@ -223,7 +223,7 @@ def cmd_read(args) -> int:
     return 0
 
 
-def cmd_census(args) -> int:
+def cmd_sweep(args) -> int:
     roots = [pathlib.Path(p) for p in args.roots] or default_roots()
     files = bundles = mismatched = exports = 0
     for root in roots:
@@ -261,13 +261,13 @@ def cmd_census(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("cmd", choices=("sites", "census", "read"))
+    ap.add_argument("cmd", choices=("sites", "sweep", "read"))
     ap.add_argument("roots", nargs="*",
-                    help="census: directories to sweep; read: record files")
+                    help="sweep: directories to sweep; read: record files")
     ap.add_argument("--game", default=None,
                     help="sites: one game directory stem instead of all six")
     args = ap.parse_args(argv)
-    return {"sites": cmd_sites, "census": cmd_census,
+    return {"sites": cmd_sites, "sweep": cmd_sweep,
             "read": cmd_read}[args.cmd](args)
 
 

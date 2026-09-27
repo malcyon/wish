@@ -4,7 +4,7 @@ The Commodore 64 rest loop lives in the `CAMP` overlay and checks for an
 interruption exactly the way the DOS one does — `docs/163-dos-vm-address-map.md`
 read the DOS routine at `GAME.OVR:0x24A66` for
 `#218 (Three live regions of the DOS saved game are named but not understood)`,
-and this is its C64 twin, plus the census of which areas can interrupt a rest
+and this is its C64 twin, plus the sweep of which areas can interrupt a rest
 at all, plus the measurement in the running game that settles
 `#250 (Does a C64 party resting in the Slums ever get interrupted without the
 murder flag?)`.

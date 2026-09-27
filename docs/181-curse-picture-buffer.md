@@ -246,4 +246,4 @@ map, for whoever owns those files:
 |---|---|
 | `tools/curse_of_the_azure_bonds/cursepic.py` | `frames PIC [--png DIR]` decodes a picture and renders each frame; `match SAVE [PIC]` says which frame a save's region holds and exits 0 only on a byte-for-byte match |
 | `tools/curse_of_the_azure_bonds/cursepicrun.py` | the driven session above, with its counting checkpoints and the one-shot stop on the first store |
-| `tools/c64/absrefsweep.py` | the census that showed no overlay names the window |
+| `tools/c64/absrefsweep.py` | the sweep that showed no overlay names the window |

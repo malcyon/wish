@@ -6,7 +6,7 @@ Three claims, none of which needs the player's disks:
   came out of, and refuses rather than guesses.  A record is grouped by its
   *size*, which only ever names four titles, and six exist on this machine --
   OUGO is a Treasures of the Savage Frontier record read as Pools of Darkness,
-  and before this the census printed him under the wrong title in as many
+  and before this the sweep printed him under the wrong title in as many
   words.
 * `tools/dos/dosdis16.py`'s `listing` puts an instruction boundary **on** the
   offset asked for.  A listing that starts mid-instruction decodes to

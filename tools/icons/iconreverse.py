@@ -18,7 +18,7 @@ edited by hand.
 
     tools/icons/iconreverse.py                       the table, as text
     tools/icons/iconreverse.py --coverage            how many rows are forced, and by what
-    tools/icons/iconreverse.py --census              every icon on the player's own disks,
+    tools/icons/iconreverse.py --sweep              every icon on the player's own disks,
                                                read back into menu choices
     tools/icons/iconreverse.py --markdown proposal.md
     tools/icons/iconreverse.py --png reverse-weapons.png
@@ -101,7 +101,7 @@ def _img(name: str, width: int = DOC_WIDTH) -> str:
             f'style="width:{width}px;max-width:none">')
 
 
-#: Which save file each title's disks carry, for `--census`.
+#: Which save file each title's disks carry, for `--sweep`.
 SAVE_FILES = {"pool-of-radiance": b"SAVEDGAME0",
               "curse-of-the-azure-bonds": b"SAVEAZURE",
               "secret-of-the-silver-blades": b"SAVEDBASH"}
@@ -210,7 +210,7 @@ def print_coverage(tables: dict) -> None:
 
 # -- reading the player's own icons back -------------------------------------
 
-def census(parts: IconParts, folders: dict[str, pathlib.Path]) -> list[dict]:
+def sweep(parts: IconParts, folders: dict[str, pathlib.Path]) -> list[dict]:
     """Every icon on the disks in `folders`, read back into menu choices.
 
     One row per distinct shape, with how many slots carry it and where the
@@ -251,7 +251,7 @@ def census(parts: IconParts, folders: dict[str, pathlib.Path]) -> list[dict]:
     return rows
 
 
-def print_census(rows: list[dict]) -> None:
+def print_sweep(rows: list[dict]) -> None:
     unread = ambiguous = 0
     for row in rows:
         title, disk, slot = row["where"]
@@ -508,7 +508,7 @@ def c64_disk(title: str, given: str | None) -> pathlib.Path | None:
 
 
 def save_folders() -> dict[str, pathlib.Path | None]:
-    """Each title's own C64 disk folder, for `--census`."""
+    """Each title's own C64 disk folder, for `--sweep`."""
     return {title: gamedisks.find(title) for title in SAVE_FILES}
 
 
@@ -535,7 +535,7 @@ def main(argv: list[str] | None = None) -> int:
                          "in screen pixels; default 300")
     ap.add_argument("--coverage", action="store_true",
                     help="how many rows are forced by the forward table")
-    ap.add_argument("--census", action="store_true",
+    ap.add_argument("--sweep", action="store_true",
                     help="read every icon on the player's own disks back "
                          "into menu choices")
     ap.add_argument("--png", metavar="PATH", help="draw one list, outside the repository")
@@ -551,12 +551,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.coverage:
         print_coverage(tables)
         return 0
-    if args.census:
+    if args.sweep:
         disk = c64_disk(args.title, args.disk)
         if disk is None:
             raise SystemExit(f"no {c64_port.by_key(args.title).title} C64 disk "
                              f"carrying the icon files; pass --disk")
-        print_census(census(IconParts.load(str(disk)), save_folders()))
+        print_sweep(sweep(IconParts.load(str(disk)), save_folders()))
         return 0
     if args.png or args.markdown:
         disk = c64_disk(args.title, args.disk)

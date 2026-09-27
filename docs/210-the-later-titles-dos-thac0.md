@@ -34,11 +34,11 @@ the EXEPACK-packed `START.EXE`, in `DGROUP`.
 | Curse of the Azure Bonds | 8 | 13 | `0x3E3A` | `0xEA1A` | `0xABE` |
 | Secret of the Silver Blades | **7** | 19 | `0x4C0C` | `0x12A2C` | `0xDE2` |
 
-**`tools/records/thac0census.py` cannot read either later title**, which is why this
+**`tools/records/thac0sweep.py` cannot read either later title**, which is why this
 sat: it anchors on the eight class bits that follow Pool of Radiance's table,
 `02 20 08 40 80 01 04 10`, and the later titles carry a different permutation,
 `02 10 08 40 40 01 04 20` -- paladin and ranger share bit `0x40`, and druid
-and monk swap. That run occurs nowhere in either image, so the census exits
+and monk swap. That run occurs nowhere in either image, so the sweep exits
 with "the class-bit anchor occurs 0 times".
 
 `tools/c64/laterthac0.py` locates it without knowing a THAC0 number at all, and
@@ -152,7 +152,7 @@ the party has loaded since, that is the unguarded rebuild.
 
 ## What the corpus says
 
-`tools/records/thac0census.py dos --title <key>` sweeps every DOS record in the
+`tools/records/thac0sweep.py dos --title <key>` sweeps every DOS record in the
 specimen tree and the player's archives against the title's own table, by each
 of the two rules: the engine's own, entry 0 and all, and the best of the
 classes the character has.

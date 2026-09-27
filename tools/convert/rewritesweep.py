@@ -12,7 +12,7 @@ counts them.
 
 Two modes:
 
-* the default **census** reads every DOS save slot, every Amiga Pool of
+* the default **sweep** reads every DOS save slot, every Amiga Pool of
   Radiance slot and every Amiga Curse or Silver Blades saved game it can
   find, converts each character to the C64 record the sheet edits, renders it
   straight back through the port's own writer, and reports per port and title
@@ -39,9 +39,9 @@ Inputs come from `$WISH_SPECIMENS` (default `~/wish-specimens`,
 `automap/gamedisks.py` finds under the `dos-archives` key.  Nothing is
 written and no specimen is opened for writing.
 
-    tools/convert/rewritecensus.py
-    tools/convert/rewritecensus.py --unreachable
-    tools/convert/rewritecensus.py --per-specimen
+    tools/convert/rewritesweep.py
+    tools/convert/rewritesweep.py --unreachable
+    tools/convert/rewritesweep.py --per-specimen
 """
 
 from __future__ import annotations
@@ -119,7 +119,7 @@ def _row(port, title, deltas, specimen, name, original, rendered,
          spans, unplaced) -> tuple[Row, dict[str, bytes]]:
     """One comparison, and what the writer put in each span.
 
-    The second value is what :func:`census` accumulates into the evidence
+    The second value is what :func:`sweep` accumulates into the evidence
     that a span is input-independent: a span whose rendered bytes are the
     same for every character of a title, however different those characters
     are, is one no edit on the sheet can move.
@@ -166,7 +166,7 @@ def _amiga_later_row(char, game, specimen: str
 # ---------------------------------------------------------------------------
 # The sweep
 # ---------------------------------------------------------------------------
-def census() -> tuple[list[Row], list[str], dict]:
+def sweep() -> tuple[list[Row], list[str], dict]:
     """Every character this machine can reach, the notes for what it could
     not, and how many distinct values each span was rendered as."""
     rows: list[Row] = []
@@ -576,7 +576,7 @@ def unreachable() -> dict[str, list[tuple[str, str]]]:
 # ---------------------------------------------------------------------------
 # Printing
 # ---------------------------------------------------------------------------
-def _print_census(rows: list[Row], notes: list[str], seen: dict,
+def _print_sweep(rows: list[Row], notes: list[str], seen: dict,
                   per_specimen: bool) -> None:
     by_title: dict[tuple[str, str], list[Row]] = collections.defaultdict(list)
     for row in rows:
@@ -696,8 +696,8 @@ def main(argv: "list[str] | None" = None) -> int:
             print()
         return 0
 
-    rows, notes, seen = census()
-    _print_census(rows, notes, seen, args.per_specimen)
+    rows, notes, seen = sweep()
+    _print_sweep(rows, notes, seen, args.per_specimen)
     return 0
 
 

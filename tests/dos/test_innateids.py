@@ -126,7 +126,7 @@ def test_add_affect_is_the_call_the_race_switch_makes():
 def test_a_call_whose_arguments_are_computed_is_not_read_as_a_constant():
     """`add_affect` is also called with an id taken from a spell or an item.
     Those sites have to come back as *not* constant rather than as a guess,
-    or the census of "where does 134 come from" would invent an answer."""
+    or the sweep of "where does 134 come from" would invent an answer."""
     computed = (b"\xff\x76\xfe\xff\x76\xfc"
                 + b"\x8a\x46\xf0\x50"            # mov al, [bp - 0x10]; push ax
                 + _push(0) + _push(0xFF) + _push(0)

@@ -593,7 +593,7 @@ def test_silver_blades_names_only_codes_its_own_game_data_establishes():
     # Radiance's table would still be wrong; the guard is that the two
     # descriptions disagree, not that the code is absent.
     assert traits.describe(107, SSB) != ELF_RESISTANCE
-    # 60 was the code positional agreement offered and the monster census
+    # 60 was the code positional agreement offered and the monster sweep
     # refused, before the handler was read: an IRON GOLEM carries it, and the
     # handler settled it as the golem's own +3-weapon immunity rather than
     # Pool of Radiance's guide-only "unused".

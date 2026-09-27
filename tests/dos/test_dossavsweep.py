@@ -1,4 +1,4 @@
-"""The census `tools/dos/dossavcensus.py` takes of the DOS saved games present.
+"""The sweep `tools/dos/dossavsweep.py` takes of the DOS saved games present.
 
 Every grade in `docs/141-dos-savegame.md` is a **count**, and a count is only
 worth its exclusions: `#59 (Map the DOS saved game, not just the character
@@ -11,7 +11,7 @@ So the test that matters here is `hand_built`. A file we assembled is not
 evidence about what the engine writes, and if a `SEED-` or a `built/`
 directory ever slips back into the corpus the counts quietly inflate and
 nothing goes red. The rest of the module -- `find_saves`, `describe`,
-`census`, `_label` -- is pure over bytes and paths and is covered alongside.
+`sweep`, `_label` -- is pure over bytes and paths and is covered alongside.
 
 **No game bytes are committed here.** The synthetic buffers below are zeroes
 with a handful of words set by address, which is a size and a layout rather
@@ -31,7 +31,7 @@ from support.dossave import _save_dir, needs_dos_saves
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox import dos_savegame as sg  # noqa: E402
-from tools.dos import dossavcensus as census  # noqa: E402
+from tools.dos import dossavsweep as sweep  # noqa: E402
 
 
 def _blank(shape: sg.DosContainer = sg.SAVE_POOL_OF_RADIANCE, **words) -> bytes:
@@ -59,7 +59,7 @@ def _write(where: pathlib.Path, name: str, data: bytes) -> pathlib.Path:
 @pytest.mark.parametrize("name", ["BUILT-SAVGAMA.DAT", "SEED-SAVGAMB.DAT"])
 def test_a_prefixed_file_is_hand_built(tmp_path, name):
     """`BUILT-` and `SEED-` are ours, whatever directory they sit in."""
-    assert census.hand_built(tmp_path / name)
+    assert sweep.hand_built(tmp_path / name)
 
 
 def test_a_file_in_a_built_directory_is_hand_built(tmp_path):
@@ -69,7 +69,7 @@ def test_a_file_in_a_built_directory_is_hand_built(tmp_path):
     nothing, so the directory is the second test and dropping it is how that
     file got counted as engine-written the first time.
     """
-    assert census.hand_built(tmp_path / "built" / "SAVGAMA.DAT")
+    assert sweep.hand_built(tmp_path / "built" / "SAVGAMA.DAT")
 
 
 @pytest.mark.parametrize("name", ["SAVGAMA.DAT", "RESAVE-SAVGAMD.DAT",
@@ -80,14 +80,14 @@ def test_an_engine_written_file_is_not_hand_built(tmp_path, name):
     The prefix names where the file came from in our runs, not who wrote it:
     excluding it would throw away seven of the corpus's specimens.
     """
-    assert not census.hand_built(tmp_path / "run2" / name)
+    assert not sweep.hand_built(tmp_path / "run2" / name)
 
 
 def test_the_counts_exclude_hand_built_and_never_adventured(tmp_path):
     """End to end: three files in, one counted.
 
     A seed, a never-adventured save and an engine-written one. Only the last
-    has anything to say about what the engine writes, and `census` is handed
+    has anything to say about what the engine writes, and `sweep` is handed
     only that one.
     """
     # `$49C9` is the hour: the never-adventured test is "zero script buffer
@@ -101,16 +101,16 @@ def test_the_counts_exclude_hand_built_and_never_adventured(tmp_path):
     _write(tmp_path, "SEED-SAVGAMB.DAT", seed)
     _write(tmp_path, "SAVGAMC.DAT", never_adventured)
 
-    found = [p for p in census.find_saves([tmp_path])
+    found = [p for p in sweep.find_saves([tmp_path])
              if tmp_path in p.parents or p.parent == tmp_path]
-    kept = [census.describe(p) for p in found]
+    kept = [sweep.describe(p) for p in found]
     counted = [s for s in kept
                if not s["hand_built"] and not s["never_adventured"]]
     assert [s["label"].split(":")[-1] for s in counted] == ["A"]
 
 
 def test_never_adventured_is_named_for_what_it_is_not_for_shipping(tmp_path):
-    """#327 (dossavcensus calls a party saved before it set out a shipped
+    """#327 (dossavsweep calls a party saved before it set out a shipped
     stub, and drops thirteen engine-written containers from every count):
     an engine-written save this project drove itself -- the shape of
     `cited/304/probe/created/SAVGAMC.DAT` -- carries the same zero
@@ -122,7 +122,7 @@ def test_never_adventured_is_named_for_what_it_is_not_for_shipping(tmp_path):
     """
     driven = _blank()                     # zero clock, zero script buffer
     path = _write(tmp_path, "SAVGAMD.DAT", driven)
-    got = census.describe(path)
+    got = sweep.describe(path)
     assert got["never_adventured"] is True
     assert got["hand_built"] is False
     assert "stub" not in got
@@ -135,19 +135,19 @@ def test_the_exclusion_is_a_stated_choice_not_a_side_effect_of_the_name(
     is what brings a never-adventured save back into the counts, replacing
     `--include-stubs`.
     """
-    monkeypatch.setattr(census, "_roots", lambda: [])
+    monkeypatch.setattr(sweep, "_roots", lambda: [])
     never = _blank()                      # zero clock, zero script buffer
     played = _blank(a49E6=1, a49C9=10, a5012=2, a4900=7)
     _write(tmp_path, "SAVGAMA.DAT", never)
     _write(tmp_path, "SAVGAMB.DAT", played)
 
-    assert census.main([str(tmp_path)]) == 0
+    assert sweep.main([str(tmp_path)]) == 0
     out = capsys.readouterr().out
     assert "1 counted" in out
     assert "1 excluded as never-adventured or hand-built" in out
     assert "stub" not in out.lower()
 
-    assert census.main([str(tmp_path), "--include-never-adventured"]) == 0
+    assert sweep.main([str(tmp_path), "--include-never-adventured"]) == 0
     out2 = capsys.readouterr().out
     assert "2 counted" in out2
     assert "0 excluded as never-adventured or hand-built" in out2
@@ -161,7 +161,7 @@ def test_find_saves_filters_on_the_container_size(tmp_path):
     curse = _write(tmp_path, "SAVGAMB.DAT",
                    bytes(sg.SAVE_CURSE_OF_THE_AZURE_BONDS.size))
     junk = _write(tmp_path, "SAVGAMC.DAT", b"not a saved game")
-    found = census.find_saves([tmp_path])
+    found = sweep.find_saves([tmp_path])
     assert ours in found
     assert curse not in found and junk not in found
 
@@ -171,7 +171,7 @@ def test_find_saves_picks_the_asked_for_title(tmp_path):
     ours = _write(tmp_path, "SAVGAMA.DAT", _blank())
     curse = _write(tmp_path, "SAVGAMB.DAT",
                    bytes(sg.SAVE_CURSE_OF_THE_AZURE_BONDS.size))
-    found = census.find_saves([tmp_path],
+    found = sweep.find_saves([tmp_path],
                               sg.SAVE_CURSE_OF_THE_AZURE_BONDS)
     assert curse in found and ours not in found
 
@@ -185,7 +185,7 @@ def test_find_saves_deduplicates_on_the_bytes(tmp_path):
     same = _blank(a49E6=1, a49C6=3)
     a = _write(tmp_path / "one", "SAVGAMA.DAT", same)
     b = _write(tmp_path / "two", "SAVGAMA.DAT", same)
-    found = census.find_saves([tmp_path])
+    found = sweep.find_saves([tmp_path])
     assert (a in found) != (b in found)
 
 
@@ -199,13 +199,13 @@ def test_a_seed_never_wins_the_name_of_an_identical_engine_save(tmp_path):
     same = _blank(a49E6=1, a49C6=3)
     engine = _write(tmp_path, "SAVGAMA.DAT", same)
     _write(tmp_path, "SEED-SAVGAMA.DAT", same)
-    found = census.find_saves([tmp_path])
+    found = sweep.find_saves([tmp_path])
     assert engine in found
-    assert not any(census.hand_built(p) and p.parent == tmp_path
+    assert not any(sweep.hand_built(p) and p.parent == tmp_path
                    for p in found)
 
 
-# -- describe and census -------------------------------------------------
+# -- describe and sweep -------------------------------------------------
 
 def test_describe_refuses_to_invent_a_pools_of_darkness_reading(tmp_path):
     """Pools of Darkness has no container byte and no variable array.
@@ -216,7 +216,7 @@ def test_describe_refuses_to_invent_a_pools_of_darkness_reading(tmp_path):
     """
     path = _write(tmp_path, "SAVGAMA.PTY",
                   bytes(sg.SAVE_POOLS_OF_DARKNESS.size))
-    got = census.describe(path, sg.SAVE_POOLS_OF_DARKNESS)
+    got = sweep.describe(path, sg.SAVE_POOLS_OF_DARKNESS)
     for field in ("area", "clock", "flags", "wallset", "dax_byte", "indoors"):
         assert got[field] is None, field
     assert got["party_size"] == 0          # the tail is still readable
@@ -228,20 +228,20 @@ def test_describe_refuses_to_invent_a_pools_of_darkness_reading(tmp_path):
     assert len(got["tail"]) == sg.SAVE_POOLS_OF_DARKNESS.square_bytes == 12
 
 
-def test_census_counts_the_words_that_are_zero_everywhere(tmp_path):
+def test_sweep_counts_the_words_that_are_zero_everywhere(tmp_path):
     """Two containers in, and only the words one of them sets are live."""
     a = _blank(a49C6=1, a5012=2)
     b = _blank(a49C6=3, a503E=6)
-    report = census.census([{"label": "a"}, {"label": "b"}], [a, b],
+    report = sweep.sweep([{"label": "a"}, {"label": "b"}], [a, b],
                            sg.SAVE_POOL_OF_RADIANCE)
     assert sorted(report["live"]) == ["$49C6", "$5012", "$503E"]
     assert report["zero_everywhere"] == sg.VAR_WORDS - 3
     assert report["live"]["$49C6"] == [1, 3]
 
 
-def test_census_of_a_title_with_no_variable_array_counts_nothing():
+def test_sweep_of_a_title_with_no_variable_array_counts_nothing():
     """Rather than counting 2560 zeroes it does not have."""
-    report = census.census([{"label": "a"}],
+    report = sweep.sweep([{"label": "a"}],
                            [bytes(sg.SAVE_POOLS_OF_DARKNESS.size)],
                            sg.SAVE_POOLS_OF_DARKNESS)
     assert report["words_total"] == 0 and report["live"] == {}
@@ -251,9 +251,9 @@ def test_census_of_a_title_with_no_variable_array_counts_nothing():
 
 def test_the_label_keeps_the_provenance_prefix(tmp_path):
     """A reader has to be able to see which specimens we assembled."""
-    assert census._label(tmp_path / "run2" / "SEED-SAVGAMB.DAT") == "run2:sB"
-    assert census._label(tmp_path / "run2" / "RESAVE-SAVGAMD.DAT") == "run2:rD"
-    assert census._label(tmp_path / "run2" / "SAVGAMA.DAT") == "run2:A"
+    assert sweep._label(tmp_path / "run2" / "SEED-SAVGAMB.DAT") == "run2:sB"
+    assert sweep._label(tmp_path / "run2" / "RESAVE-SAVGAMD.DAT") == "run2:rD"
+    assert sweep._label(tmp_path / "run2" / "SAVGAMA.DAT") == "run2:A"
 
 
 def test_two_titles_of_one_size_get_different_labels(tmp_path):
@@ -267,8 +267,8 @@ def test_two_titles_of_one_size_get_different_labels(tmp_path):
     tsf = root / "Treasures of the Savage Frontier" / "GAME" / "X" / "SAVE"
     pod.mkdir(parents=True)
     tsf.mkdir(parents=True)
-    assert census._label(pod / "SAVGAMA.PTY") != \
-        census._label(tsf / "SAVGAMA.PTY")
+    assert sweep._label(pod / "SAVGAMA.PTY") != \
+        sweep._label(tsf / "SAVGAMA.PTY")
 
 
 # -- against the player's own containers ---------------------------------
@@ -281,13 +281,13 @@ def test_the_players_own_saves_are_found_and_read():
             if p.stat().st_size == sg.SAVGAM_SIZE}
     if not mine:
         pytest.skip("no Pool of Radiance container in the player's save dir")
-    found = census.find_saves()
+    found = sweep.find_saves()
     # Matched on bytes rather than on path: the archives ship the same
     # containers under `GAME/POOLRAD/SAVE` as well, and deduplication keeps
     # whichever of the two identical files it met first.
     assert mine <= {p.read_bytes() for p in found}
     for path in found:
-        got = census.describe(path)
+        got = sweep.describe(path)
         assert got["party_size"] == 6
         assert not got["hand_built"]
         assert len(got["tail"]) == 8

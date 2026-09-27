@@ -1415,7 +1415,7 @@ LATER_ITEM_WRITE_UNSOURCED: tuple[tuple[int, int, str], ...] = (
 #: titles keep effect nodes in a fixed-size pool `AllocMem`'d with no
 #: `MEMF_CLEAR` and never cleared afterwards, the ten-byte constructor both
 #: binaries share takes five arguments and ends in five stores that skip
-#: offset 1, and a census of every load of a node's chain-head field --
+#: offset 1, and a sweep of every load of a node's chain-head field --
 #: 42 sites in `/Curse`, 39 in `/Secret`, plus the removal routine, the 97
 #: per-effect expiry handlers, the 24 callees reached with a node live, and
 #: every indexed access in both binaries -- finds **zero** that reach it.

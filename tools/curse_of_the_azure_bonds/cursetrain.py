@@ -121,7 +121,7 @@ from goldbox.d64 import D64  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: Where the working character record sits while `GEN` runs.  `#18`'s own
-#: census fixed it: `GEN $151D CMP $7CC9,X` is the per-class level array at
+#: sweep fixed it: `GEN $151D CMP $7CC9,X` is the per-class level array at
 #: record `0x0C9`, and `$2041 LDA $7D00` is `roster_in_use` at `0x100`.
 RECORD = 0x7C00
 #: How much of it to read.  The 580-byte export runs past `$7E44`, which

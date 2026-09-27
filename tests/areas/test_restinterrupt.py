@@ -61,7 +61,7 @@ def test_encamp_zeroes_the_pair_before_it_runs_the_area_script():
 def test_no_overlay_ever_stores_a_non_zero_interval():
     """Every absolute write to `$6DD2` in the whole game stores zero.
 
-    If one did not, a script's word would not be final and the census below
+    If one did not, a script's word would not be final and the sweep below
     would mean nothing. Swept over every distinct file of the eight sides.
     """
     from goldbox import c64_port

@@ -1211,7 +1211,7 @@ def test_a_c64_party_of_six_different_icons_gets_six_different_dos_figures(
 
 def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant():
     """#235 (Two unattributed DOS byte ranges in the combat tail are dropped
-    converting to C64, and nobody knows what they hold): the census found the
+    converting to C64, and nobody knows what they hold): the sweep found the
     engine writing `00 01 00 01` after a fight and `04 00 00 00` for a
     character at zero hit points, so `00 01 00 00` is not "the one value all
     specimens hold" that `WRITE_CONSTANTS`' own docstring promises -- it is
@@ -1344,7 +1344,7 @@ def test_field_83_87_is_a_constant_the_writer_chooses_and_says_so():
     assert "field_83_87" in consts
     data, why = consts["field_83_87"]
     assert data == b"\x00\x00\x01\x00\x00"
-    assert "101 of 101" not in why, "the stale census sentence is back"
+    assert "101 of 101" not in why, "the stale sweep sentence is back"
     assert "45 of the 54" in why and "archives" in why
     assert "field_83_87" not in {n for n, _, _, _ in dos_codec.WRITE_DEFAULTS}
 
@@ -1827,7 +1827,7 @@ def test_a_record_round_trips_through_the_neutral_middle():
     identity balanced (22 of 24 -- GILES and ASTRID, whose quantity byte
     alone reads a round 50 while their drawn line and their stored total
     agree, which is what an editor leaves.  `docs/125-bug-notes.md` N19 has
-    the census: the engine keeps the quantity byte and the stored total in
+    the sweep: the engine keeps the quantity byte and the stored total in
     step and lets only the drawn line go stale, so a miss here is a claim
     about the record rather than about our arithmetic).
 

@@ -23,7 +23,7 @@ and lets a C64 to DOS conversion give the byte back instead of inventing one.
 | grade | claim | evidence |
 |---|---|---|
 | CONFIRMED | `0x0E6`-`0x0E7` are written by exactly one site, two raw calls to the generator | `GEN $0C01`-`$0C0A`; the boot disk's `POOLRE` is a copy of the same code |
-| CONFIRMED | nothing reads them | census of 589 files: 0 reads absolute, 0 indirect (`LDY #$E6` then `(zp),Y`), 0 against any of the twelve party slots; in three boots the load watchpoint on `$6BE6`-`$6BE7` never moved except in step with the unreferenced `$6BE4`-`$6BE5` beside it (block copies), while the experience control moved alone |
+| CONFIRMED | nothing reads them | sweep of 589 files: 0 reads absolute, 0 indirect (`LDY #$E6` then `(zp),Y`), 0 against any of the twelve party slots; in three boots the load watchpoint on `$6BE6`-`$6BE7` never moved except in step with the unreferenced `$6BE4`-`$6BE5` beside it (block copies), while the experience control moved alone |
 | CONFIRMED | the add screen tests the name and nothing else | `GEN $1897`, read in full below; in the running game a different character under a party member's name was starred and refused, and a party member's own record under a new name was let in |
 | CONFIRMED | the pair is Pool of Radiance's alone | Curse's and Silver Blades' GEN never write it and nothing in either title reads it (412 and 349 files); SSI's own Curse party reads `00 00` in 6 of 6 and a Silver Blades party in 4 of 4 |
 | PROBABLE | one save disk holds one character of a name | the save routine at `GEN $19B4` hands the drive `S0:\x01NAME` -- the scratch command -- before the write at `$3039`; `$3039` itself was not read |
@@ -52,7 +52,7 @@ what a value drawn once and never rewritten looks like.
 
 `tools/c64/recordsweep.py`, record at `$6B00`, every PRG on every side:
 
-| census | files | references to `+0x0E6`/`+0x0E7` |
+| sweep | files | references to `+0x0E6`/`+0x0E7` |
 |---|---|---|
 | absolute mode | 589 | 2, the GEN stores above (and the `POOLRE` copy) |
 | `LDY/LDX #$E6`/`#$E7` then an indirect-indexed opcode within ten bytes | 589 | 1, inside `PIC02`: picture data |

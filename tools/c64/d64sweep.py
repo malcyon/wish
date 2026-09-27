@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Census a tree of D64 images: the disk header, and the character files on it.
+"""Sweep a tree of D64 images: the disk header, and the character files on it.
 
 Written for `#553 (A Curse or Silver Blades character disk is read with Pool of
 Radiance's tables, so a paladin's class shows as 64 and a dual-classed
@@ -16,8 +16,8 @@ loop answers and nothing else does:
   Blades -- `docs/216-the-c64-name-table.md`), its PRG load address, and which
   title's save file shares the disk with it.
 
-    tools/c64/d64census.py header /mnt/media/roms/c64 ~/wish-specimens
-    tools/c64/d64census.py files  /mnt/media/roms/c64 work
+    tools/c64/d64sweep.py header /mnt/media/roms/c64 ~/wish-specimens
+    tools/c64/d64sweep.py files  /mnt/media/roms/c64 work
 
 With no roots it sweeps what `automap/gamedisks.py` knows about.
 """

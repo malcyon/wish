@@ -14,7 +14,7 @@ effect array in the save header. Two routines sit over them:
   `JSR $3FE4 / BCC / RTS` and then `LDX #$09 / LDA $6BAD,X / CMP <wanted>`.
   A caller that goes here treats a trait slot exactly like a running spell.
 
-So the answer to "does a trait slot apply an id put there" is a **census of
+So the answer to "does a trait slot apply an id put there" is a **sweep of
 which ids reach which predicate**, and there are two halves to it.
 
 The **literal** half is the call sites that name the id with a `LDA #imm`,
@@ -234,7 +234,7 @@ def call_sites(root: str, game: c64_port.C64Container, target: int):
             yield name, i, kind, immediate_before(body, i)
 
 
-# -- the other half: the check lists a literal census cannot see -------------
+# -- the other half: the check lists a literal sweep cannot see -------------
 #
 # The combat engine never names an id in an instruction. It walks
 # zero-terminated lists of ids and asks about each one, so `call_sites` above
@@ -307,7 +307,7 @@ def find_wrapper(body_map: dict[str, bytes], entry: int):
     """`LDX <current character> / JMP <entry>` -- how the tables ask.
 
     The id arrives in A from a list, so the sites that matter name no id at
-    all and a literal census sees nothing. Pool of Radiance keeps this in
+    all and a literal sweep sees nothing. Pool of Radiance keeps this in
     `COMBAT`, Curse and Silver Blades in `ECL64`.
     """
     want = bytes((0x4C, entry & 0xFF, entry >> 8))
@@ -584,12 +584,12 @@ def find_dispatch(root: str, game: c64_port.C64Container, entry: int,
 
 def report_lists(root: str, game: c64_port.C64Container, entry: int,
                  literal: set[int], show: bool = True):
-    """Print the check lists, and the ids they add to the literal census.
+    """Print the check lists, and the ids they add to the literal sweep.
 
     Returns `(status, lists, honoured)` so `--compare` can take the same
     measurement without printing it: `lists` is the decoded block, one list of
     ids per check, and `honoured` is every id a trait slot can do anything
-    with -- the lists plus the literal census. `show=False` silences the
+    with -- the lists plus the literal sweep. `show=False` silences the
     whole of it and nothing else changes.
     """
     say = print if show else (lambda *a, **k: None)
@@ -640,7 +640,7 @@ def report_lists(root: str, game: c64_port.C64Container, entry: int,
 
     extra = sorted(literal - ids)
     both = ids | literal
-    say(f"  the literal census adds {len(extra)}: "
+    say(f"  the literal sweep adds {len(extra)}: "
         + ", ".join(str(v) for v in extra))
     say(f"  {len(both)} ids reach the trait slots in all")
     table = traits.for_game(game.key)
@@ -703,7 +703,7 @@ def literal_ids(root: str, game: c64_port.C64Container,
                 predicate: Predicate) -> set[int]:
     """Every id an instruction names at the array-then-traits entry.
 
-    The same census `main` prints, with 0 and the fill byte dropped, so a
+    The same sweep `main` prints, with 0 and the fill byte dropped, so a
     caller that only wants the numbers does not have to print the rows.
     """
     out: set[int] = set()

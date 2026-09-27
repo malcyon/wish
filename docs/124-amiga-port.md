@@ -2525,7 +2525,7 @@ then does, which nobody has watched.
 #### Which variables mean the same on both ports
 
 `tools/dos/dosptrfields.py` finds displacements 0-58 and 195-197 off DOS's
-block pointer, which are variables 1-59 and 196-198. The same census on the
+block pointer, which are variables 1-59 and 196-198. The same sweep on the
 Amiga — every displacement after a `movea.l -$2852(a4), aN` — finds **48
 variables in 1-59, 198, and 418**, over 246 sites.
 
@@ -2540,7 +2540,7 @@ which is DOS's `(10, 10, 6, 24, 30, 12, 100)` big-endian, and the seven digits
 at variables 5-11 are legal against it in 14 of 14.
 
 **The one disagreement is variable 418**, read at `0x57D6` into `g5f2a` and
-used as an index at `0x506A`. DOS's census does not name it. That is a
+used as an index at `0x506A`. DOS's sweep does not name it. That is a
 variable this port's engine owns and the other's does not appear to, and it is
 the counterexample to "all 1024 mean the same". Everything outside 1-59 is
 written by the title's own `ECL` scripts, which are the same content on both

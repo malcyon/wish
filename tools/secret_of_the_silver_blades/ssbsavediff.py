@@ -45,10 +45,10 @@ from goldbox.d64 import load_payload  # noqa: E402
 #: attributed.  A run that lands in an `ours` region is what the exit status
 #: reports.
 #:
-#: The header rows come from an absolute-operand census over `$4B00`-`$4EFF`
+#: The header rows come from an absolute-operand sweep over `$4B00`-`$4EFF`
 #: across this title's 347 files (`tools/c64/absrefsweep.py`) and from an address
-#: census over all twenty-two of its `ECL` scripts on both ports
-#: (`tools/areas/eclcensus.py`); the container rows from `goldbox/c64_save.py`.
+#: sweep over all twenty-two of its `ECL` scripts on both ports
+#: (`tools/areas/eclsweep.py`); the container rows from `goldbox/c64_save.py`.
 #:
 #: **Where this differs from Curse's table, and why.**  `+$E7`-`+$E9` and
 #: `+$FD`-`+$FE` are `ours` here rather than the engine's, because the

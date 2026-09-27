@@ -22,7 +22,7 @@ and the pick-lock roll that compares a d100 against record `0x078`.
 `traps` finds the party aggregate over record `0x079` and the script
 address the ECL VM asks for to get it.
 
-`classbits` censuses every instruction that reads or writes record `0x0B0`.
+`classbits` sweeps every instruction that reads or writes record `0x0B0`.
 
 Prints file offsets, short instruction windows and counts; the game's bytes
 stay in the player's own directory.  Pool of Radiance's record layout

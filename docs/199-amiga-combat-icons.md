@@ -11,7 +11,7 @@ the DOS record wants.
 Every offset below is a file offset into `/Curse` on Curse of the Azure Bonds
 disk 1 or `/Secret` on Secret of the Silver Blades disk 1, read with
 `tools/amiga/amiga68k.py`. `tools/icons/amigaicons.py` re-takes all three measurements --
-`--tables`, `--art`, `--census` -- and `tests/amiga/test_amigaicons.py` pins them.
+`--tables`, `--art`, `--sweep` -- and `tests/amiga/test_amigaicons.py` pins them.
 Every site named below was found with `tools/amiga/amigarecordrefs.py`, which is
 what asks "who reads this record byte" on a port where a field is `d16(An)`
 off a pointer rather than a global `tools/amiga/amigaglobal.py` could find.
@@ -182,7 +182,7 @@ the later two titles are the same case.
 ## The specimens
 
 All 21 Amiga Curse and Silver Blades records, read with
-`tools/icons/amigaicons.py --census`: `icon_head` 0-9, `icon_body` 0-31,
+`tools/icons/amigaicons.py --sweep`: `icon_head` 0-9, `icon_body` 0-31,
 `icon_dimension` 1 in 21 of 21, `size` 1 or 2, and **every `(head, body,
 size)` triple names four blocks the libraries actually hold**. Twelve of the
 21 carry `91 A2 B3 C4 E6 F7`, `goldbox.dos_codec`'s own DOS default -- the eleven

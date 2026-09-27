@@ -22,7 +22,7 @@ draws afterwards and the bytes the engine writes back, never the value read
 out of what we wrote.
 
 `refs` is the static half -- how many absolute operands in the title's own
-overlays name each array, and in which files.  It is a census of bytes rather
+overlays name each array, and in which files.  It is a sweep of bytes rather
 than a proof they are instructions, so read it as a shape: the lopsidedness is
 the finding, not any single count.
 
@@ -218,7 +218,7 @@ def stage(args) -> int:
     return 0
 
 
-def census(root: str, game, lo: int, hi: int):
+def sweep(root: str, game, lo: int, hi: int):
     """`(total, per-file counts, per-address counts)` for one window."""
     _, hits = absrefsweep.sweep(root, game, lo, hi)
     code = [h for h in hits if not absrefsweep.is_art(h.file)
@@ -241,7 +241,7 @@ def refs(args) -> int:
     print(f"{game.title}: the record stages at ${where:04X}")
     for label, off in (("current @0x014", CURRENT), ("base    @0x065", BASE)):
         lo = where + off
-        total, per_file, per_addr = census(root, game, lo, lo + 6)
+        total, per_file, per_addr = sweep(root, game, lo, lo + 6)
         print(f"  {label}  ${lo:04X}-${lo + 6:04X}  {total} references in "
               f"code files")
         print("      by file:    " + ", ".join(
@@ -269,7 +269,7 @@ def main(argv=None) -> int:
                          "writing, as tools/curse_of_the_azure_bonds/cursetrain.py stage does")
     st.set_defaults(func=stage)
 
-    rf = sub.add_parser("refs", help="census both arrays across a title")
+    rf = sub.add_parser("refs", help="sweep both arrays across a title")
     rf.add_argument("title")
     rf.add_argument("--disks", help="where that title's sides are")
     rf.add_argument("--at", type=lambda s: int(s, 16), default=0x7C00,

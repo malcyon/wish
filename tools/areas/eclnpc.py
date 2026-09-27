@@ -7,11 +7,11 @@ reach most cheaply, so that a *completed* join can be watched in the running
 game. The answer had been assumed to be Dirten, whose `ADDNPC` sits behind the
 Bishop of Tyr's commission and therefore behind clearing Sokal Keep. It is not.
 
-    eclnpc.py census          every reachable ADDNPC, with the MON record's name
+    eclnpc.py sweep          every reachable ADDNPC, with the MON record's name
     eclnpc.py gate ECL0B 9FEB every block that reaches one, walking backward
-    eclnpc.py gaps            the completeness check on the census
+    eclnpc.py gaps            the completeness check on the sweep
 
-## What `census` does
+## What `sweep` does
 
 `tools/areas/eclwalk.py` walks each script from its five entry `GOTO`s, following
 both arms of every condition, so a statement it reaches is a statement the
@@ -32,9 +32,9 @@ engine can reach. Every `ADDNPC` (opcode `$36`) it reached is listed with:
 
 The walk reaches about 98% of all thirty scripts' bytes, the rest being the
 data tables opcode `$2A` indexes, so "the walk found no more" is not by itself
-a census. `gaps` scans every byte the walk never reached for one that decodes
+a sweep. `gaps` scans every byte the walk never reached for one that decodes
 as an `ADDNPC`, and prints how many it found. As of 2026-09-15 that is **0 of
-3,481 unreached bytes**, which is what makes the census complete rather than
+3,481 unreached bytes**, which is what makes the sweep complete rather than
 merely thorough.
 """
 from __future__ import annotations
@@ -104,7 +104,7 @@ def _sites(machine, name, side, body):
         yield statement, _table(body, *table), None
 
 
-def cmd_census(_args):
+def cmd_sweep(_args):
     machine = eclwalk.Machine()
     names = _mon_names()
     total = 0
@@ -213,7 +213,7 @@ def cmd_gate(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("census").set_defaults(run=cmd_census)
+    sub.add_parser("sweep").set_defaults(run=cmd_sweep)
     sub.add_parser("gaps").set_defaults(run=cmd_gaps)
     gate = sub.add_parser("gate")
     gate.add_argument("script")

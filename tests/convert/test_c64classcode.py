@@ -9,7 +9,7 @@ This file is the other one: `goldbox.c64_codec.read` makes the same repair,
 so the neutral record itself carries the right code, and so does anything
 that reads it -- `goldbox/yaml_io.py`'s export, a C64-to-C64 round trip, and
 any future writer that is not `goldbox.dos_codec.write`. `docs/187-the-class-code-
-byte.md` has the reading and the census; `goldbox/classcode.py` is the shared
+byte.md` has the reading and the sweep; `goldbox/classcode.py` is the shared
 rule both readers and the DOS writer now call.
 """
 
@@ -80,7 +80,7 @@ def test_a_pool_of_radiance_records_disagreement_is_left_alone():
     `0x08` (fighter) and `char_class` 0 (cleric) came back **2**, a
     fabricated code nobody wrote, because nothing distinguished Curse's
     stale byte from a title that never stops maintaining its own. Pool of
-    Radiance's own census is 24 of 24 clean (`#310`), so there is no defect
+    Radiance's own sweep is 24 of 24 clean (`#310`), so there is no defect
     of this title's own to repair, and the record must survive untouched."""
     rec = _c64_record(class_bits=0x08, char_class=0, level_fighter=4)
     out = c64_codec.read(rec, game=POOL)
@@ -90,7 +90,7 @@ def test_a_pool_of_radiance_records_disagreement_is_left_alone():
 
 def test_a_silver_blades_records_disagreement_is_also_left_alone():
     """Silver Blades' own `GEN` never stores to `char_class` at all
-    (`#310`'s census), so what its own creation code leaves there is
+    (`#310`'s sweep), so what its own creation code leaves there is
     UNMEASURED -- repairing a disagreement here would invent a value
     rather than restore one, the same reason Pool of Radiance's is left
     alone above."""
@@ -116,7 +116,7 @@ def test_a_dual_classed_records_code_takes_the_levels():
     assert "recomputed from levels" in out.value("char_class").origin
 
 
-# --- the census, through the neutral record rather than the raw byte -------
+# --- the sweep, through the neutral record rather than the raw byte -------
 
 def _clean_c64_disks(prefix: str):
     """Every specimen C64 disk under `por-c64` whose name starts `prefix`,
@@ -171,7 +171,7 @@ def test_an_unedited_export_of_a_trained_curse_party_imports_with_no_changes(
         tmp_path):
     """`WISH-SPEC-curse-trained-party`: five characters trained at Curse's
     own hall, four of them left with a stale `char_class`
-    (`docs/187-the-class-code-byte.md`'s census). Exporting the party and
+    (`docs/187-the-class-code-byte.md`'s sweep). Exporting the party and
     importing the document straight back, with nothing edited, must change
     nothing.
 
@@ -190,13 +190,13 @@ def test_an_unedited_export_of_a_trained_curse_party_imports_with_no_changes(
 
 
 def test_pool_of_radiance_and_silver_blades_c64_specimens_are_never_repaired():
-    """`docs/187-the-class-code-byte.md`'s census: 24 of 24 Pool of Radiance
+    """`docs/187-the-class-code-byte.md`'s sweep: 24 of 24 Pool of Radiance
     and 24 of 24 Silver Blades C64 records agree with their own classes, so
     the repair this reader makes must never fire on either title -- if it
     did, a clean record would arrive at the DOS sheet with an invented
     class. Read through `c64_codec.read`, which is the neutral record every
     other reader of `char_class` now sees, not the raw byte the older
-    `tools/records/classcodecensus.py` compares."""
+    `tools/records/classcodesweep.py` compares."""
     checked = 0
     for prefix, game in (("por", POOL), ("ssb", SSB)):
         for path in _clean_c64_disks(prefix):
@@ -209,4 +209,4 @@ def test_pool_of_radiance_and_silver_blades_c64_specimens_are_never_repaired():
                     f"{path.name}#{slot.index} {slot.record.name}: the class "
                     f"code was repaired, so it disagreed with its own classes")
                 checked += 1
-    assert checked > 0, "the census walked no records"
+    assert checked > 0, "the sweep walked no records"

@@ -488,7 +488,7 @@ def _plant_c64(tree, name, source, title="Curse of the Azure Bonds"):
 def test_the_tree_reports_a_specimen_the_drive_left_open(tree, tmp_path):
     """#298: five specimens in the real tree carry an entry the drive never
     closed, and nothing said so until somebody tried to boot one. `add`'s
-    check guards the door; this is the census of what is already inside."""
+    check guards the door; this is the sweep of what is already inside."""
     _plant_c64(tree, "curse-left-open", _unclosed_curse_disk(tmp_path))
     rows = specimens.unloadable_specimens(tree)
     assert [r["name"] for r in rows] == ["curse-left-open"]

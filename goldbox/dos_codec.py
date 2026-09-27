@@ -1301,7 +1301,7 @@ def c64_trait_nodes(deltas: "DosDeltas", race: int, ids: Iterable[int],
 #: `CHRDAT<slot><n>.SPC` after the party was saved.  No 90, which is what the
 #: names alone had predicted: 90 is the dwarf's and the halfling's only, 97 is
 #: all three sturdy races'.  Five same-boot controls reproduce the archives'
-#: census exactly -- dwarf 90/97/26/47, elf 107, half-elf 124, halfling 90/97,
+#: sweep exactly -- dwarf 90/97/26/47, elf 107, half-elf 124, halfling 90/97,
 #: human no `.SPC` file at all -- so this is one measurement and not a new
 #: kind of one.  CONFIRMED over three gnomes and six engine-written files.
 #:
@@ -6343,11 +6343,11 @@ def quest_flags(save: bytes,
     stops at `$4AF8` because `$4AFA` and `$4AFD` are its wallset and wallmap
     triples (`goldbox/dos_savegame.py`).  Secret of the Silver Blades keeps
     its wall triples in the twelve unnamed bytes of the square block instead
-    (#253), and an address census over all twenty-two of its `ECL` scripts,
+    (#253), and an address sweep over all twenty-two of its `ECL` scripts,
     on both ports, finds the scripts reading and writing right up to the end
     of the page: `$4CFD` -- the same word index as Pool of Radiance's
     wallmap -- is named by seventeen of the twenty-two, 33 reads and 63
-    writes (`tools/areas/eclcensus.py secret-of-the-silver-blades --range 4CE0
+    writes (`tools/areas/eclsweep.py secret-of-the-silver-blades --range 4CE0
     4CFF`).  So five more bytes of a Silver Blades party's flags live past
     where Pool of Radiance's page ends, and the window that stops at `$4AF8`
     loses them.
@@ -6663,7 +6663,7 @@ SLOT_TOTAL = 12
 #: check -- the same six names, the same status line, the same arrival screen
 #: but for the blinking command-bar cursor, the same squares walked.
 #:
-#: Corroborated by a census of **99 distinct C64 save payloads**: 48 of the
+#: Corroborated by a sweep of **99 distinct C64 save payloads**: 48 of the
 #: 56 that were unattributed before that run are zero in all 99, and all 56
 #: are zero in every one of Donald's own 13 `PORSAVE` disks.  The 137 in
 #: `$49FD`-`$49FE` and `$4AF9`-`$4B7F` were already graded "the engine
@@ -6768,7 +6768,7 @@ PORTRAIT_SWITCH_WHY = (
 #: disks of each pair, and 13 screenshot pairs differ in **0 pixels** of the
 #: emulated screen (#118, `p118-outdoor/`, scratch, deleted).
 #:
-#: That run also corrected what the census below looked like it said: the
+#: That run also corrected what the sweep below looked like it said: the
 #: `15,1,3` is New Phlan's arrival square, written by the boat on all four
 #: disks, so it is a stale *indoor* square left behind rather than anything an
 #: outdoor save means by it.  Zero and 15,1,3 are the same kind of value --
@@ -6778,7 +6778,7 @@ PORTRAIT_SWITCH_WHY = (
 #: through `W7.D64` (scratch, deleted) are four travel-grid saves the game itself wrote through
 #: its own ENCAMP > SAVE (`p3/wsave.py`, also deleted) and all four read 0,0,0.  Over
 #: every C64 save payload on this machine -- 115 distinct, 30 of them
-#: outdoors -- 6 of the 30 read 0,0,0 (`p118-outdoor/census.py`, also deleted).
+#: outdoors -- 6 of the 30 read 0,0,0 (`p118-outdoor/sweep.py`, also deleted).
 DUNGEON_SQUARE: tuple[int, int] = (0x49C0, 3)
 
 #: `SAVEDGAME1`'s tail past `ANIMATE00`: the bitmap buffer, `$8754`-`$8AFF`.
@@ -7930,7 +7930,7 @@ ENCOUNTER_STATE = ("the pending-encounter record: it changes together with "
 #: 2407 of the 2560 words -- so this list is only what a specimen has ever
 #: been seen to hold.
 #:
-#: **What settles them is the running game, not the census.**  A save built
+#: **What settles them is the running game, not the sweep.**  A save built
 #: with every one of these zero loads, walks, fights and changes area under
 #: DOSBox: `docs/117-save-conversion.md`, "A DOS save from nothing".  That is
 #: the same bar #118 held the C64 direction's 192 header bytes to.
@@ -8013,7 +8013,7 @@ SAVGAM_MEASURED: tuple[tuple[int, int, str], ...] = (
 # Blades (#299).  Every address below is the file's word index named Pool of
 # Radiance's way -- `$49FC` is word `$FC`, which the later titles' scripts
 # call `$4BFC` -- because that is how `dos_savegame.word_offset` and every
-# census on this machine name them.  The VM's own address for a word above
+# sweep on this machine name them.  The VM's own address for a word above
 # `$4CFF` is in `docs/163-dos-vm-address-map.md`: `$503F` is `$6E3F`.
 # ---------------------------------------------------------------------------
 #: Where the three engines' save routines mirror two engine globals into
@@ -8110,7 +8110,7 @@ PRE_ADVENTURE_ZERO = frozenset({LATER_BEGUN_WORD, 0x506D, 0x50F6})
 #: reason each is nobody's -- the later-title `SAVGAM_UNSOURCED`.  The
 #: evidence is per title: the six Curse containers (two played, four
 #: stubs) and six Silver Blades ones (four played, two stubs) in
-#: `~/wish-specimens/por-dos` and the archives, `tools/dos/dossavcensus.py`.
+#: `~/wish-specimens/por-dos` and the archives, `tools/dos/dossavsweep.py`.
 #: Everything else in the array reads zero in every one of them and is
 #: swept by `savgam_zeroes`.
 LATER_SCRIPT_REFILLED = ("the arriving area's own script writes it from its "
@@ -8144,7 +8144,7 @@ SAVGAM_UNSOURCED_LATER: tuple[tuple[int, int, str], ...] = (
                 "divide arm storing the remainder into VM word $6E3F, the "
                 "one site in either overlay that writes it; nothing in "
                 "either overlay reads it and no script of either title "
-                "names it (tools/dos/dosptrfields.py, tools/areas/eclcensus.py). 4 "
+                "names it (tools/dos/dosptrfields.py, tools/areas/eclsweep.py). 4 "
                 "in both played Curse containers, 0 everywhere else"),
     (0x5079, 3, f"the VM's own working registers $6E79-$6E7B, {ENGINE_REBUILT}"
                 f"; no site in either overlay reaches them by "
@@ -8664,7 +8664,7 @@ def savgam_zeroes(savgam: bytearray, report: "SaveReport",
     if dos_savegame.UI_SCRATCH:
         report.note(container.size - dos_savegame.UI_SCRATCH,
                     dos_savegame.UI_SCRATCH, PARTY_TABLE_SCRATCH)
-    # The sweep, and the one claim here that rests on a census rather than on
+    # The sweep, and the one claim here that rests on a sweep rather than on
     # a run: these words read zero in all four engine-written containers on
     # this machine, which is 2407 of the 2560 and the same count #59 got from
     # its eleven **indoor** specimens.  Over all twenty-one, ten of them
@@ -8674,13 +8674,13 @@ def savgam_zeroes(savgam: bytearray, report: "SaveReport",
     # covered by the same sweep and there is no sixth word (#59, #190).
     # An earlier note here said six, on three overland specimens that lived
     # in scratch and are gone; the sixth belonged to a specimen nobody can
-    # re-read.  `tools/dos/dossavcensus.py` re-takes the count in a second, and
+    # re-read.  `tools/dos/dossavsweep.py` re-takes the count in a second, and
     # what catches a word this line is wrong about is
     # `test_every_nonzero_word_a_real_saved_game_holds_is_written_or_declared`,
     # which reads the player's own saves.
     # The later titles' sweep rests on the same kind of count over their own
     # containers: 2516 of 2560 words are zero in every Curse and Silver
-    # Blades container on this machine (`tools/dos/dossavcensus.py --title`),
+    # Blades container on this machine (`tools/dos/dossavsweep.py --title`),
     # and every one of the live words is written or declared above (#299).
     rest = [i for i in range(container.var_offset,
                              container.var_offset + 2 * container.var_words)

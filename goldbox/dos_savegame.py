@@ -247,7 +247,7 @@ class DosContainer:
     #: the Silver Blades, whose whole save image is relocated by `$200`.
     #:
     #: CONFIRMED from the bytecode, both ports (`#192` step 0a): an address
-    #: census over all 25 of Curse's `ECL` scripts finds 219 references into
+    #: sweep over all 25 of Curse's `ECL` scripts finds 219 references into
     #: `$4B00`, 2053 into `$4C00`, 2 into `$4D00` and **none at all** into
     #: `$4900` or `$4A00`, and the C64 and DOS reference sets are identical
     #: because 21 of the 25 scripts are the same bytes on both ports.  The

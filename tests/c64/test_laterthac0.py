@@ -5,14 +5,14 @@
 left open for Curse and Silver Blades, because the tool that reads Pool of
 Radiance's table cannot read theirs: it anchors on the eight class bits that
 follow it, `02 20 08 40 80 01 04 10`, and the later titles carry a different
-permutation, `02 10 08 40 40 01 04 20`.  So the census exits with "the
+permutation, `02 10 08 40 40 01 04 20`.  So the sweep exits with "the
 class-bit anchor occurs 0 times" and no table.
 
 Everything here reads the player's own files and skips without them.  The
 control is Pool of Radiance: the locator finds it by a completely different
 route -- the one block of plausible THAC0 bytes whose length is
 `class_levels` wide times the stride the engine multiplies by -- and has to
-land on the byte `tools/records/thac0census.py` finds by the class-bit anchor.
+land on the byte `tools/records/thac0sweep.py` finds by the class-bit anchor.
 
 The rows themselves are not asserted here.  What is asserted is what the
 issue turns on: **where the two ports disagree**, per title, against
@@ -25,7 +25,7 @@ from __future__ import annotations
 import pytest
 
 from tools.c64 import laterthac0
-from tools.records import thac0census
+from tools.records import thac0sweep
 
 CURSE = "curse-of-the-azure-bonds"
 SSB = "secret-of-the-silver-blades"
@@ -86,12 +86,12 @@ def _located(title: str):
 def test_the_locator_lands_where_the_class_bit_anchor_does():
     """Pool of Radiance is the control, because both routes reach it.
 
-    `tools/records/thac0census.py` anchors on the class-bit run; this anchors on the
+    `tools/records/thac0sweep.py` anchors on the class-bit run; this anchors on the
     block's length and the paragraph boundary.  Two routes, one address.
     """
     found = _located(POOL)
-    image = thac0census.dos_image(POOL)
-    anchor = image.find(thac0census.DOS_CLASS_BITS)
+    image = thac0sweep.dos_image(POOL)
+    anchor = image.find(thac0sweep.DOS_CLASS_BITS)
 
     assert anchor > 0
     assert found.base == anchor - found.rows * found.stride
@@ -164,7 +164,7 @@ def test_every_record_reproduces_except_the_ones_the_loop_never_ran_over(
                           (SSB, [0, 0, 40])])
 def test_nothing_clamps_the_field_and_creation_writes_a_flat_40(
         title, constants):
-    """The whole mechanism, in one census of `GAME.OVR`.
+    """The whole mechanism, in one sweep of `GAME.OVR`.
 
     Every constant any engine stores into `thac0_base` is here: the zero a
     rebuild loop starts from, and a single flat 40 at character creation --

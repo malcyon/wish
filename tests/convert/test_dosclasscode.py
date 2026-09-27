@@ -6,7 +6,7 @@ the Azure Bonds' own C64 engine stops maintaining that byte the moment a
 character is trained: `GEN $1939` computes the code, holds it in `X` and
 stores `A`, which is zero on the matching path and the level he left his old
 class at for a dual-classed one.  `docs/187-the-class-code-byte.md` has the
-reading and the census.
+reading and the sweep.
 
 So `goldbox.dos_codec.write` checks the code against the record's own classes and
 repairs it when the two contradict each other.  What these tests hold is the

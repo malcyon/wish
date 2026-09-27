@@ -71,7 +71,7 @@ to read that array and compare it with `level`.
 | Gateway to the Savage Frontier | 3 | `0x42D42` |
 | Treasures of the Savage Frontier | 4 | `0x42A6A` |
 
-`tools/dos/dualclassregain.py census` predicts the mask from the rule and compares
+`tools/dos/dualclassregain.py sweep` predicts the mask from the rule and compares
 it with the stored byte: **62 of 62** records in the archives that have a
 former array agree, and **11 of 11** of the dual-classed ones across the
 archives and the specimen tree.
@@ -208,7 +208,7 @@ above constitution 18.
 
 | file | what |
 |---|---|
-| `tools/dos/dualclassregain.py` | the family scan of the derive, and the mask census against every record |
+| `tools/dos/dualclassregain.py` | the family scan of the derive, and the mask sweep against every record |
 | `tools/curse_of_the_azure_bonds/curseregain.py` | the driven run that made the specimen |
 | `docs/209-the-regained-dual-class-on-dos.md` | this page |
 | `WISH-SPEC-curse-408-regained-paladin` | the first DOS record past the threshold anybody here watched being written |
@@ -216,6 +216,6 @@ above constitution 18.
 ## What would refute this
 
 A DOS record whose `class_bits` disagrees with `tools/dos/dualclassregain.py
-census`'s prediction, or a dual-classed DOS record with a non-zero entry in
+sweep`'s prediction, or a dual-classed DOS record with a non-zero entry in
 `class_levels` at the slot its former array names. Neither exists in the 62
 records on this machine that could hold one.

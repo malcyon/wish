@@ -308,7 +308,7 @@ def test_a_class_the_c64_has_no_level_slot_for_is_silent():
     left off the sheet -- but not named, since #399 (A conversion that runs
     out of item or trait slots tells the player nothing, because the pane
     never shows a warning) drafted a sentence for this and Donald ruled it
-    unneeded after a 950-character census found nobody reaching any of that
+    unneeded after a 950-character sweep found nobody reaching any of that
     ticket's ceilings: "I agree that we do not need the sentences." """
     char = _filled()
     char.set("levels", {"fighter": 7, "druid": 4}, "made up")
@@ -333,7 +333,7 @@ def test_a_spell_the_target_has_no_bit_for_is_silent():
 
 
 def test_more_items_than_slots_is_silent():
-    """Truncated to sixteen and not named -- #399's own census found this
+    """Truncated to sixteen and not named -- #399's own sweep found this
     ceiling touched only by a specimen the project manufactured to reach
     it, never by a real character.  Donald, 2026-09-07: "I agree that we do
     not need the sentences."."""
@@ -370,7 +370,7 @@ def test_zero_type_stale_slot_is_not_converted():
 def test_more_innate_effects_than_slots_is_silent():
     """#236 (A character converted to the C64 with more than ten innate
     effects loses the extra ones with no report) drafted a sentence for
-    this; #399's own census found no real character reaching the ten trait
+    this; #399's own sweep found no real character reaching the ten trait
     slots (widest anywhere: 5, engine-written), and Donald ruled the
     sentence unneeded -- so eleven ids still fill only the first ten slots,
     silently."""

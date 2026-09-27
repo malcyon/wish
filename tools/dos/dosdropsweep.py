@@ -9,17 +9,17 @@ fields any record on this machine actually uses. A field nothing sets still
 has to be converted; the difference is whether there is a specimen to test the
 conversion against, or whether one has to be made.
 
-    dosdropcensus.py curse-of-the-azure-bonds
-    dosdropcensus.py secret-of-the-silver-blades --records
+    dosdropsweep.py curse-of-the-azure-bonds
+    dosdropsweep.py secret-of-the-silver-blades --records
 
 Each column is a **question with an answer per record**, not a byte partition:
 "is the second byte of an ability pair different from the first", "how many
 spell ids are in the memorised list", "is the druid slot array non-zero". A
 partition of an 84-byte field says nothing a reader can act on;
-`tools/dos/dostailcensus.py --field` is the tool for that and this one calls its
-finder so the two censuses are over the same corpus.
+`tools/dos/dostailsweep.py --field` is the tool for that and this one calls its
+finder so the two sweeps are over the same corpus.
 
-**Provenance caps every grade this produces.** `tools/dos/dostailcensus.py` marks
+**Provenance caps every grade this produces.** `tools/dos/dostailsweep.py` marks
 what this project wrote and excludes it, which is necessary and not sufficient:
 `.claude/rules/testing.md` says a specimen is evidence only if we watched it
 being written, and `tools/registry/specimens.py list` holds no Curse record at all. So a
@@ -39,7 +39,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import dos_port as dl  # noqa: E402
-from tools.dos import dostailcensus  # noqa: E402
+from tools.dos import dostailsweep  # noqa: E402
 
 #: The seven (base, current) ability pairs, in record order.
 ABILITIES = ("strength", "intelligence", "wisdom", "dexterity",
@@ -103,15 +103,15 @@ def main(argv=None) -> int:
     parser.add_argument("title", help="a goldbox.dos_port shape key")
     parser.add_argument("roots", nargs="*", type=pathlib.Path,
                         help="directories to sweep; the default is "
-                             "tools/dos/dostailcensus.py's")
+                             "tools/dos/dostailsweep.py's")
     parser.add_argument("--records", action="store_true",
                         help="one row per record as well as the summary")
     parser.add_argument("--built", action="store_true",
                         help="include records this project wrote")
     args = parser.parse_args(argv)
 
-    roots = list(args.roots) or dostailcensus.dos_record_roots()
-    all_specs, skipped = dostailcensus.collect(roots, args.built)
+    roots = list(args.roots) or dostailsweep.dos_record_roots()
+    all_specs, skipped = dostailsweep.collect(roots, args.built)
     specs = [s for s in all_specs if s.shape.key == args.title]
     if not specs:
         raise SystemExit(f"No {args.title} records under {roots}.")

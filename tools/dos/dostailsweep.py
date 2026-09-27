@@ -33,7 +33,7 @@ What it does, and it reads only:
    archives are a download and every record under the played game directory
    has been through Gold Box Companion's editor, so both are an *input* rather
    than evidence (`.claude/rules/testing.md`).  Only the specimen tree says
-   who wrote each file, and `tools/dos/innateids.py` and `tools/records/enccensus.py`
+   who wrote each file, and `tools/dos/innateids.py` and `tools/records/encsweep.py`
    print that finer grade.
 3. **Deduplicates on the record bytes**, per title, because the archives ship
    every save directory twice and carry a second copy of the played game
@@ -96,7 +96,7 @@ SCRATCH_DIRS = (_DOSBOX_SCRATCH + "/inst/", _DOSBOX_SCRATCH + "/x/inst/")
 #: which is Curse of the Azure Bonds' size, and Treasures of the Savage
 #: Frontier's record is 510, which is Pools of Darkness' -- so a finder that
 #: trusts size alone reads one title's characters through another's table and
-#: counts them as its own.  `#400 (The DOS record census counts Gateway and
+#: counts them as its own.  `#400 (The DOS record sweep counts Gateway and
 #: Treasures characters as Curse and Pools of Darkness ones, because it
 #: identifies a title by record size)` is that bug, caught when a Gateway
 #: pregen's `.GUY` was about to be quoted as Curse evidence for `#395`.  They
@@ -108,7 +108,7 @@ FOREIGN_TITLES = ("gateway to the savage frontier",
 
 
 #: What to tell somebody whose machine holds no DOS records at all.  Naming
-#: the registry entry and its variable is the whole point: a census that
+#: the registry entry and its variable is the whole point: a sweep that
 #: prints a row of zeros and no advice looks like a finding (#575).
 NO_RECORDS = ("No DOS records on this machine: set $FR_ARCHIVES to the "
               "Forgotten Realms archives, or add a dos-archives path to "
@@ -146,7 +146,7 @@ def played_game_dir() -> pathlib.Path | None:
     """Donald's own played DOS game directory, `por-dos-play`, or None.
 
     **Every character record under it has been edited with Gold Box
-    Companion**, so it is an input to a census of what a container will hold
+    Companion**, so it is an input to a sweep of what a container will hold
     and never evidence about what the engine writes -- `.claude/rules/
     testing.md`, "A specimen is only evidence if we know who wrote it".  It is
     swept because the question these tools ask is what values exist, and

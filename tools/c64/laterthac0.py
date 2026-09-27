@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The later DOS titles' THAC0 tables, and everything that writes the byte.
 
-`tools/records/thac0census.py` reads Pool of Radiance's DOS table by anchoring on the
+`tools/records/thac0sweep.py` reads Pool of Radiance's DOS table by anchoring on the
 eight class bits that sit immediately after it -- `02 20 08 40 80 01 04 10`.
 **Curse and Silver Blades do not carry that run at all**, so that tool cannot
 read either of them: it exits with "the class-bit anchor occurs 0 times".
@@ -13,7 +13,7 @@ things the engine and our own record layout already say:
 
 * the **stride and the DS offset** come from the engine, out of
   `mov dx, <stride> / mul dx / mov di, ax / add di, cx / mov al, [di + <off>]`
-  in `GAME.OVR`, which `tools/records/thac0census.py --code` prints;
+  in `GAME.OVR`, which `tools/records/thac0sweep.py --code` prints;
 * the **row count** is the width of `class_levels` in
   `goldbox/dos_port.py`, because the loop walks that array once a class --
   and it is 7 rather than 8 for Silver Blades, which drops the monk;
@@ -61,7 +61,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
 from goldbox import dos_port, levels  # noqa: E402
-from tools.records import thac0census  # noqa: E402
+from tools.records import thac0sweep  # noqa: E402
 
 #: The DOS class numbers, in the order `class_levels` stores them and the
 #: order the THAC0 table's rows are in.  Silver Blades stops at the thief.
@@ -70,7 +70,7 @@ CLASS_ORDER = ("cleric", "druid", "fighter", "paladin", "ranger",
 
 #: Title key -> the game directory stem `tools/dos/dosbox.py` finds it by.  Pools
 #: of Darkness is not here: it keeps its root in `GAME.EXE` rather than
-#: `START.EXE`, so neither this nor `tools/records/thac0census.py` reaches its data
+#: `START.EXE`, so neither this nor `tools/records/thac0sweep.py` reaches its data
 #: segment, and it has no C64 port for its table to disagree with.
 STEMS = {"pool-of-radiance": "POOLRAD",
          "curse-of-the-azure-bonds": "CURSE",
@@ -124,7 +124,7 @@ class Located:
 
 def locate(title: str) -> Located:
     """Find `title`'s DOS THAC0 table, or say which check failed."""
-    image = thac0census.dos_image(title)
+    image = thac0sweep.dos_image(title)
     rows = _field(title, "class_levels").size
     candidates = _lookup_sites(title, rows)
     if not candidates:
@@ -152,10 +152,10 @@ def _lookup_sites(title: str, rows: int) -> list[tuple[int, int]]:
     The engine reaches several strided tables through the same idiom, so this
     keeps the ones whose row width times `rows` matches a run in the image.
     """
-    image = thac0census.dos_image(title)
+    image = thac0sweep.dos_image(title)
     lengths = {length for _, length in _runs(image)}
     seen, out = set(), []
-    for _, stride, ds_offset in thac0census.dos_table_code(title):
+    for _, stride, ds_offset in thac0sweep.dos_table_code(title):
         if (stride, ds_offset) in seen or rows * stride not in lengths:
             continue
         seen.add((stride, ds_offset))
@@ -265,7 +265,7 @@ def records(title: str):
     """`(source, name, class levels, stored THAC0)` for every DOS record.
 
     The specimen tree and the player's archives, the same two places
-    `tools/records/thac0census.py` sweeps.  That tool's own reader cannot be used for
+    `tools/records/thac0sweep.py` sweeps.  That tool's own reader cannot be used for
     Silver Blades: `goldbox.dos_codec.DosCharacter.class_levels` walks all eight
     `CLASS_LEVEL_SLOTS` and that title's array is **seven** wide, so it raises
     `IndexError` on every record -- `#423 (Reading a Silver Blades or Pools of

@@ -2,9 +2,9 @@
 """Read a DOS Gold Box title's spell-slot block out of its own engine.
 
     tools/dos/dosspellslots.py --game SECRET sites
-    tools/dos/dosspellslots.py --game SECRET census
+    tools/dos/dosspellslots.py --game SECRET sweep
     tools/dos/dosspellslots.py --game SECRET refs
-    tools/dos/dosspellslots.py --path ".../Pools of Darkness/GAME/DARKNESS" --record 510 census
+    tools/dos/dosspellslots.py --path ".../Pools of Darkness/GAME/DARKNESS" --record 510 sweep
 
 The instrument behind `#222 (Silver Blades' fourth spell-slot array is zero
 in every state anybody can create)`.  The character record's spell-slot
@@ -17,7 +17,7 @@ is, and what zeroes it are all in the code, and this reads them:
   Pascal `FillChar(record.slots, n, 0)` starts, with the `n` pushed after it.
   Three per title so far: the slot builder, character creation and
   dual-classing.
-* `census` -- the class and level byte of every spell-table entry, and a
+* `sweep` -- the class and level byte of every spell-table entry, and a
   count per class.  The table's data-segment offset is read off the slot
   builder itself (the `shl di, cl / add di, <table>` that walks it after the
   fill), and the data segment off the System unit's `mov dx, seg / mov ds,
@@ -387,7 +387,7 @@ def cmd_sites(a, ovr, image, block, width):
             print(f"    walks a 16-byte table at DS:{t:04X}")
 
 
-def cmd_census(a, ovr, image, block, width):
+def cmd_sweep(a, ovr, image, block, width):
     ds = data_segment(image)
     table = a.table
     if table is None:
@@ -429,7 +429,7 @@ def cmd_refs(a, ovr, image, block, width):
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    ap.add_argument("cmd", choices=("sites", "census", "refs", "tables"))
+    ap.add_argument("cmd", choices=("sites", "sweep", "refs", "tables"))
     ap.add_argument("--game", default="SECRET", help="game directory stem")
     ap.add_argument("--path", default=None,
                     help="the game directory itself, for a title whose executable "
@@ -438,10 +438,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--record", type=int, default=None,
                     help="record size, when the stem is not in RECORD_SIZE")
     ap.add_argument("--table", type=lambda s: int(s, 0), default=None,
-                    help="census: the spell table's DS offset, if not derived")
+                    help="sweep: the spell table's DS offset, if not derived")
     ap.add_argument("--spells", type=int, default=None,
-                    help="census: how many spell ids to read (default: the spellbook width)")
-    ap.add_argument("--verbose", action="store_true", help="census: one line per spell")
+                    help="sweep: how many spell ids to read (default: the spellbook width)")
+    ap.add_argument("--verbose", action="store_true", help="sweep: one line per spell")
     ap.add_argument("--ceiling", type=int, default=12,
                     help="tables: how many class levels to accumulate (default 12)")
     a = ap.parse_args(argv)
@@ -453,7 +453,7 @@ def main(argv: list[str] | None = None) -> int:
     ovr = (game / "GAME.OVR").read_bytes()
     image = image_of(game, a.exe)
     block, width = block_of(size)
-    return {"sites": cmd_sites, "census": cmd_census, "refs": cmd_refs,
+    return {"sites": cmd_sites, "sweep": cmd_sweep, "refs": cmd_refs,
             "tables": cmd_tables}[a.cmd](a, ovr, image, block, width) or 0
 
 

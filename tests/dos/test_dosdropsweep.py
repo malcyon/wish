@@ -1,8 +1,8 @@
-"""`tools/dos/dosdropcensus.py`'s `0x0E6` column (#284).
+"""`tools/dos/dosdropsweep.py`'s `0x0E6` column (#284).
 
 `goldbox/dos_port.py` renamed that byte from `gap_0e6` to `former_level` as
 part of `#256 (The neutral record has nowhere to put a dual-classed
-character's former levels)`, and `tools/dos/dosdropcensus.py` kept the old name in
+character's former levels)`, and `tools/dos/dosdropsweep.py` kept the old name in
 its lookup, so the column silently degraded to `-` for every record.
 """
 
@@ -11,7 +11,7 @@ from __future__ import annotations
 import pathlib
 
 from goldbox import dos_port
-from tools.dos import dosdropcensus, dostailcensus
+from tools.dos import dosdropsweep, dostailsweep
 
 CURSE = dos_port.CURSE_OF_THE_AZURE_BONDS
 POR = dos_port.POOL_OF_RADIANCE
@@ -30,18 +30,18 @@ def record(shape, **values) -> bytes:
     return bytes(rec)
 
 
-def specimen(shape, **values) -> dostailcensus.Specimen:
+def specimen(shape, **values) -> dostailsweep.Specimen:
     data = record(shape, **values)
-    return dostailcensus.Specimen(pathlib.Path("synthetic-record"), data)
+    return dostailsweep.Specimen(pathlib.Path("synthetic-record"), data)
 
 
 def test_the_0x0e6_column_reports_a_non_zero_former_level():
     spec = specimen(CURSE, former_level=7)
-    assert dosdropcensus.columns(spec)["0x0E6"] == "07"
+    assert dosdropsweep.columns(spec)["0x0E6"] == "07"
 
 
 def test_the_0x0e6_column_reports_a_dash_when_the_layout_has_no_such_field():
     """Pool of Radiance has no `former_level` field at all."""
     assert "former_level" not in dos_port.FIELDS_BY_NAME_FOR[POR.key]
     spec = specimen(POR)
-    assert dosdropcensus.columns(spec)["0x0E6"] == "-"
+    assert dosdropsweep.columns(spec)["0x0E6"] == "-"

@@ -308,7 +308,7 @@ def test_a_fighter_1_arrives_with_the_zero_his_own_engine_leaves():
 
     Both values are one attack in play, since `COMBAT $1550`'s compare is
     unsigned and never takes the branch at 0.  What the choice buys is a
-    converted record a census cannot tell from a played one.
+    converted record a sweep cannot tell from a played one.
 
     **The ladder has no fighter 1 -- its first rung is already a fighter 2**
     -- so the records here are the party the rungs were climbed from:
@@ -355,7 +355,7 @@ def test_a_fighter_1_arrives_with_the_zero_his_own_engine_leaves():
 ])
 def test_each_titles_dos_engine_keeps_its_own_fighting_level(
         key, levels_map, expected):
-    """The per-title rule, stated as the census found it.
+    """The per-title rule, stated as the sweep found it.
 
     `goldbox.dos_port.DosDeltas.attack_level_classes` is the whole of the
     difference between the four titles, and the numbers behind each row are
@@ -1203,7 +1203,7 @@ def test_a_character_with_more_items_than_the_c64_holds_truncates_silently():
     an editor widened to twenty items before the engine loaded and re-saved
     all of them intact (`provenance.toml`) -- this project's own manufactured
     specimen, the only record anywhere on the machine over sixteen items in
-    #399's own 950-character census.  Donald ruled the sentence unneeded
+    #399's own 950-character sweep.  Donald ruled the sentence unneeded
     after seeing that: "I agree that we do not need the sentences." So
     converting him to the C64 still truncates to sixteen; nothing says so.
     """

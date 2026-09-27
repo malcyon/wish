@@ -28,11 +28,11 @@ the rule file rests on, and asks it of the whole machine:
 
 Three modes:
 
-    tools/records/enccensus.py                    the census, every port
-    tools/records/enccensus.py --stacks           every item stack whose cached
+    tools/records/encsweep.py                    the sweep, every port
+    tools/records/encsweep.py --stacks           every item stack whose cached
                                           display line disagrees with its
                                           quantity byte
-    tools/records/enccensus.py --pair A B         two save directories, per character:
+    tools/records/encsweep.py --pair A B         two save directories, per character:
                                           money, stored encumbrance and the
                                           delta on each side
 
@@ -63,7 +63,7 @@ from tools.amiga import (  # noqa: E402
     amigasaves,
 )
 from tools.dos import (  # noqa: E402
-    dostailcensus,
+    dostailsweep,
 )
 
 #: How a record is graded, by where it was found, strongest claim first.  A
@@ -149,17 +149,17 @@ def _carried(items) -> int:
 def dos_roots() -> list[pathlib.Path]:
     """The specimen tree, the archives and the played DOS game directory.
 
-    `tools/dos/dostailcensus.py`'s own list, so every DOS census on this machine
+    `tools/dos/dostailsweep.py`'s own list, so every DOS sweep on this machine
     covers the same corpus (#575).  `tools/dos/dosencrecompute.py` calls this.
     """
-    return dostailcensus.dos_record_roots()
+    return dostailsweep.dos_record_roots()
 
 
 def dos_rows(roots=None, want_built: bool = True):
     """Every distinct DOS record, read **with its item file**.
 
-    `tools/dos/dostailcensus.py`'s finder deduplicates on the record bytes alone,
-    which is right for a field census and wrong here: the identity's other
+    `tools/dos/dostailsweep.py`'s finder deduplicates on the record bytes alone,
+    which is right for a field sweep and wrong here: the identity's other
     term is a sibling file, so two records with the same bytes and different
     `.ITM` files are two specimens.  So this walks the same roots with the
     same exclusions -- the scratch trees an emulator instance stages into, the
@@ -174,20 +174,20 @@ def dos_rows(roots=None, want_built: bool = True):
         walk = sorted(root.rglob("*")) if root.is_dir() else [root]
         for path in walk:
             if (not path.is_file()
-                    or path.suffix.lower() not in dostailcensus.RECORD_SUFFIXES):
+                    or path.suffix.lower() not in dostailsweep.RECORD_SUFFIXES):
                 continue
-            if any(d in path.as_posix() for d in dostailcensus.SCRATCH_DIRS):
+            if any(d in path.as_posix() for d in dostailsweep.SCRATCH_DIRS):
                 continue
             try:
                 if path.stat().st_size not in dl.DELTAS_BY_SIZE:
                     continue
             except OSError:                              # pragma: no cover
                 continue
-            other = dostailcensus.foreign_title(path)
+            other = dostailsweep.foreign_title(path)
             if other:
                 skipped[other] += 1
                 continue
-            built = dostailcensus.is_built(path)
+            built = dostailsweep.is_built(path)
             if built and not want_built:
                 continue
             try:
@@ -270,7 +270,7 @@ def _amiga_later_characters(data: bytes, what: str, label: str):
     each shape in turn: the signature `party_in_savegame` scans for sits at
     the same offsets in both titles, so a Silver Blades save handed the Curse
     shape yields six characters read through the wrong table -- plausible
-    rubbish rather than an error.  Copied from `tools/records/spellbookcensus.py`.
+    rubbish rather than an error.  Copied from `tools/records/spellbooksweep.py`.
     """
     if what == "record":
         shape = amiga_port.AMIGA_DELTAS_BY_SIZE.get(len(data))
@@ -450,7 +450,7 @@ def report_pair(left: pathlib.Path, right: pathlib.Path) -> None:
     def read(folder):
         out = {}
         for path in sorted(folder.glob("*")):
-            if path.suffix.lower() not in dostailcensus.RECORD_SUFFIXES:
+            if path.suffix.lower() not in dostailsweep.RECORD_SUFFIXES:
                 continue
             try:
                 char = gdos.read_character(path)
@@ -501,7 +501,7 @@ def main(argv: list[str] | None = None) -> int:
     rows: list[Row] = []
     if not args.amiga_only:
         if not dos_roots():
-            print(dostailcensus.NO_RECORDS)
+            print(dostailsweep.NO_RECORDS)
         dos, skipped = dos_rows()
         rows += dos
         for other, n in sorted(skipped.items()):

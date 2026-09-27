@@ -7,10 +7,10 @@ each port's THAC0 table out of the player's own files and then sweeps every
 character record it can reach, saying for each one whether the stored byte is
 what that port's table gives.
 
-    tools/records/thac0census.py tables      both ports' tables, side by side
-    tools/records/thac0census.py c64         every C64 record, against `GEN $1F1F`
-    tools/records/thac0census.py dos         every DOS record, against `START.EXE`
-    tools/records/thac0census.py dos --title curse-of-the-azure-bonds
+    tools/records/thac0sweep.py tables      both ports' tables, side by side
+    tools/records/thac0sweep.py c64         every C64 record, against `GEN $1F1F`
+    tools/records/thac0sweep.py dos         every DOS record, against `START.EXE`
+    tools/records/thac0sweep.py dos --title curse-of-the-azure-bonds
 
 **Neither table is hardcoded here.** The C64's comes off whichever `POOL*.D64`
 carries `GEN`. The DOS one comes out of `START.EXE`, which is EXEPACK-packed

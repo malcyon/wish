@@ -7,7 +7,7 @@ party is not in a fight while it is standing on the combat floor)` is the
 ticket that wanted it. A driven run photographed a line of dialogue and the
 question was which `ECL` arm produced it -- and that is the difference between
 "the square trigger never fired" and "the square trigger fired and the driver
-declined the fight". `tools/areas/eclcensus.py` deliberately prints a string operand
+declined the fight". `tools/areas/eclsweep.py` deliberately prints a string operand
 as its byte length, so it cannot answer that.
 
     ecltext.py secret-of-the-silver-blades ECL10           lengths only
@@ -37,7 +37,7 @@ whole of this is that `ECL10 +$07B4`, unpacked that way, is character for
 character the line in `cited/334/ssb8/04-after-watch.txt`.
 
 Nothing is assumed from Pool of Radiance: the opcode tables and the operand
-counts come out of the title's own `DUNGEON` through `tools/areas/eclcensus.py`,
+counts come out of the title's own `DUNGEON` through `tools/areas/eclsweep.py`,
 which gets them from the VM's self-modifying dispatch.
 """
 
@@ -56,7 +56,7 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import disk_globs  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools.areas import eclcensus  # noqa: E402
+from tools.areas import eclsweep  # noqa: E402
 
 #: The operand kind byte that introduces a packed string.
 STRING_KIND = 0x80
@@ -90,11 +90,11 @@ def strings(machine, body: bytes, base: int):
     """`(offset, opcode, operand, length, text)` for every reachable string.
 
     Only statements the control-flow walk reaches, for the same reason
-    `tools/areas/eclcensus.py` walks rather than sweeps: a linear scan reads the
+    `tools/areas/eclsweep.py` walks rather than sweeps: a linear scan reads the
     data tables `GETTABLE` indexes as instructions and invents strings.
     """
     out = []
-    found = eclcensus.walk(machine, body, base)
+    found = eclsweep.walk(machine, body, base)
     for at in sorted(found):
         statement = found[at]
         i = at + 1
@@ -170,22 +170,22 @@ def cmd(argv=None) -> int:
     args = parser.parse_args(argv)
 
     game = game_for(args.title)
-    root = args.disks or eclcensus.registry(game.key)
+    root = args.disks or eclsweep.registry(game.key)
     if not root or not os.path.isdir(root):
         raise SystemExit(f"No disks for {game.title}; pass --disks.")
 
     dungeon = read_file(root, game, "DUNGEON")
     if dungeon is None:
         raise SystemExit(f"No DUNGEON on any {game.title} side under {root}.")
-    machine = eclcensus.Machine(dungeon, game.key)
+    machine = eclsweep.Machine(dungeon, game.key)
 
     bodies = scripts(root, game)
     walkable = {}
     for name, body in bodies.items():
-        opening = eclcensus.decode(machine, body, 0)
+        opening = eclsweep.decode(machine, body, 0)
         if opening is not None and opening.op == 1:
             walkable[name] = body
-    base = eclcensus.script_base(machine, walkable)
+    base = eclsweep.script_base(machine, walkable)
     if args.script:
         if args.script not in walkable:
             raise SystemExit(f"No walkable {args.script} on any side.")
@@ -198,7 +198,7 @@ def cmd(argv=None) -> int:
             if needle and needle not in text.upper():
                 continue
             head = (f"  {name}+${at:04X} "
-                    f"{eclcensus.OPCODE_NAMES.get(op, f'OP${op:02X}')} "
+                    f"{eclsweep.OPCODE_NAMES.get(op, f'OP${op:02X}')} "
                     f"operand {n}, {length} bytes, {len(text)} characters")
             print(head + (f": {text}" if args.text or needle else ""))
     return 0

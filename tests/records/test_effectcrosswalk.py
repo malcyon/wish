@@ -386,12 +386,12 @@ def test_mirror_image_is_not_mapped_outside_the_titles_read():
 
 
 @pytest.mark.parametrize("phase, exact", [(0, 216), (17, 215), (1439, 214)])
-def test_duration_census_counts_exact_minutes_and_bounds_floor_policy_loss(phase, exact):
-    assert cross.duration_census(phase) == (exact, 1439)
+def test_duration_sweep_counts_exact_minutes_and_bounds_floor_policy_loss(phase, exact):
+    assert cross.duration_sweep(phase) == (exact, 1439)
 
 
 def test_all_camp_clock_phases_have_the_reported_duration_coverage():
-    results = [cross.duration_census(phase) for phase in range(1440)]
+    results = [cross.duration_sweep(phase) for phase in range(1440)]
     assert Counter(exact for exact, _loss in results) == {
         213: 21, 214: 276, 215: 702, 216: 441}
     assert {loss for _exact, loss in results} == {1439}

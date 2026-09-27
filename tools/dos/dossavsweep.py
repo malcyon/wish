@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Census the DOS saved game's variable array across every specimen present.
+"""Sweep the DOS saved game's variable array across every specimen present.
 
 `#59 (Map the DOS saved game, not just the character record)` grades most of
 `docs/141-dos-savegame.md` on counts -- "2401 of 2560 words are zero in all
@@ -22,16 +22,16 @@ What it does, and it reads only -- it never writes a saved game:
    whose clock is 00:00 is one made before the party set out -- the same
    state `goldbox.dos_codec.never_adventured` and `tools/dos/neveradventured.py` name,
    whoever wrote it -- and is excluded from the counts by default, on the
-   reasoning that a census of world state has nothing to say about a party
+   reasoning that a sweep of world state has nothing to say about a party
    that has none yet: `--include-never-adventured` keeps it in.  Nothing here
    claims such a save is *shipped*; a shipped stub (`Default files/Saves`'s
    `SAVGAMB.DAT` on each title) is one example of it, and
    `cited/304/probe/created/SAVGAMC.DAT` -- a save this project drove
    under DOSBox on `#304 (field_83_87 is written as a constant that the
    characters we rolled ourselves do not hold)` -- is another
-   (`#327 (dossavcensus calls a party saved before it set out a shipped
+   (`#327 (dossavsweep calls a party saved before it set out a shipped
    stub, and drops thirteen engine-written containers from every count)`).
-3. **Censuses all 2560 `u16le` variables**: how many are zero in every
+3. **Sweeps all 2560 `u16le` variables**: how many are zero in every
    specimen, which are not, and what value each takes per specimen.  The
    *partition* -- which specimens agree with which -- is what names a field,
    so it prints that rather than only the values.
@@ -88,7 +88,7 @@ def find_saves(extra: list[pathlib.Path] | None = None,
     needing a path rule, and asking for Curse picks its containers up wherever
     they are. Curse and Silver Blades put the variable array at Pool of
     Radiance's offset with the same ECL addresses (`docs/141-dos-savegame.md`),
-    so the whole census is meaningful for them; Pools of Darkness has no
+    so the whole sweep is meaningful for them; Pools of Darkness has no
     variable array at all and only the specimen table is worth reading.
     """
     shape = shape or sg.SAVE_POOL_OF_RADIANCE
@@ -229,7 +229,7 @@ def describe(path: pathlib.Path,
         # initialiser writes and is not evidence about a party in the world,
         # so it is excluded from the counts below by default -- a stated
         # choice, not a side effect of what it is called
-        # (`#327 (dossavcensus calls a party saved before it set out a
+        # (`#327 (dossavsweep calls a party saved before it set out a
         # shipped stub, and drops thirteen engine-written containers from
         # every count)`).
         never_adventured=_buffer_zero(save, shape) and not any(sg.clock(save)),
@@ -242,7 +242,7 @@ def words(save: bytes, shape: sg.DosContainer) -> list[int]:
             for i in range(shape.var_words)]
 
 
-def census(specimens: list[dict], saves: list[bytes],
+def sweep(specimens: list[dict], saves: list[bytes],
            shape: sg.DosContainer) -> dict:
     """Per-word values across the corpus, and the zero-everywhere count.
 
@@ -302,15 +302,15 @@ def main(argv: list[str] | None = None) -> int:
         if s["hand_built"] and not args.include_built:
             return False
         # Excluded by default: a party saved before it set out carries the
-        # initialiser's world state rather than a played one, so a census of
+        # initialiser's world state rather than a played one, so a sweep of
         # world state has nothing to count in it. This is a stated choice
-        # about what this census is *for*, not a consequence of the name --
+        # about what this sweep is *for*, not a consequence of the name --
         # `tools/dos/neveradventured.py` takes the same reading and counts it.
         return bool(args.include_never_adventured) or not s["never_adventured"]
 
     kept = [(s, p) for s, p in zip(specimens, paths) if counted(s)]
     saves = [p.read_bytes() for _, p in kept]
-    report = census([s for s, _ in kept], saves, shape)
+    report = sweep([s for s, _ in kept], saves, shape)
     report["title"] = shape.title
     report["all_specimens"] = specimens
 

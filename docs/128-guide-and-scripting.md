@@ -450,12 +450,12 @@ $4035  BEQ $403C      found here
 `$3FE4` alone -- `$3FE1` is a `LDX $6DB4` wrapper for the current character --
 is the array-only predicate, and **a caller that goes there never sees a trait
 slot.** So whether an id in a trait slot does anything is a question about the
-*call site*, not about the slot. `tools/c64/traitquery.py` censuses the call sites
+*call site*, not about the slot. `tools/c64/traitquery.py` sweeps the call sites
 that name their id with a literal, and finds the predicate in any of the three
 measured titles without being told where the overlay runs. **It is not the
-whole census**: the combat engine asks about most of the namespace from twenty
+whole sweep**: the combat engine asks about most of the namespace from twenty
 per-check id lists under the I/O area, through `COMBAT $28A4` and so through
-the trait slots, and a literal census never sees those -- which is how 61 came
+the trait slots, and a literal sweep never sees those -- which is how 61 came
 to be reported as asked about nowhere when it is on two lists.
 `docs/171-c64-trait-slots.md` has the lists and the correction; the table
 below counts literal sites only:
@@ -467,7 +467,7 @@ below counts literal sites only:
 | Secret of the Silver Blades | `$3854` | `$387D` | 24 |
 
 **The trait block has exactly one reader that consults its contents**, and it
-is that scan: a census of all 564 Pool of Radiance files finds 17 absolute
+is that scan: a sweep of all 564 Pool of Radiance files finds 17 absolute
 references to `$6BAD`, and every other one is the racial seed (`GEN $0BF3`),
 the grant (`SPELLE04 $ADD4`, `ECL64 $9AD3`), the revoke (`SPELLE04 $AE13`,
 `ECL64 $9AFA`) or a clear by the index the predicate just returned. **Nothing

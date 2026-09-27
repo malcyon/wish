@@ -14,9 +14,9 @@ questions this answers off the corpus, with no emulator:
    magic-user's alone?
 2. does any record **anywhere** set id 56?
 
-    tools/records/spellbookcensus.py                  all three ports
-    tools/records/spellbookcensus.py --c64 --verbose  one port, one line per record
-    tools/records/spellbookcensus.py --ids 56 57      ask about other ids as well
+    tools/records/spellbooksweep.py                  all three ports
+    tools/records/spellbooksweep.py --c64 --verbose  one port, one line per record
+    tools/records/spellbooksweep.py --ids 56 57      ask about other ids as well
 
 Each row is graded by where it came from -- `built`, `spec`, `edited` or
 `found`, and `GRADE_MARKERS` below has the paths -- because `.claude/rules/testing.md` is clear that a record nobody watched
@@ -24,7 +24,7 @@ being written is not evidence about the game.  A `found` record with a bit set
 would say the bit is *storable*; only a record the engine wrote says the engine
 sets it.
 
-The DOS half reuses `tools/dos/dostailcensus.py`'s finder, its roots -- the
+The DOS half reuses `tools/dos/dostailsweep.py`'s finder, its roots -- the
 specimen tree, the archives and the played DOS directory -- and its exclusions
 (an emulator instance's staged tree, and records we wrote).  The C64 half
 reads every save disk `automap/gamedisks.py` finds plus the specimen tree; the
@@ -68,7 +68,7 @@ from tools.amiga import (  # noqa: E402
     amigasaves,
 )
 from tools.dos import (  # noqa: E402
-    dostailcensus,
+    dostailsweep,
 )
 
 #: The C64 record's spellbook, both declared halves: seven bytes Pool of
@@ -100,7 +100,7 @@ C64_MEMORISED = {"pool-of-radiance": (0x020, 81),
 #: exclusion: a record we wrote can still show that a value *fits*, and it can
 #: never show that the engine writes it.
 #:
-#: * `built` -- one of this project's writers made it (`dostailcensus.is_built`)
+#: * `built` -- one of this project's writers made it (`dostailsweep.is_built`)
 #: * `spec`  -- the specimen tree, which records who made each save and how
 #: * `edited` -- the played DOS directory, every record in which has been
 #:   through Gold Box Companion's editor (`.claude/rules/testing.md`)
@@ -167,7 +167,7 @@ def _grade(path: str) -> str:
 def _grade_over(paths) -> str:
     """The grade for one record that turned up at several paths.
 
-    `tools/dos/dostailcensus.py` deduplicates on the record's bytes and keeps every
+    `tools/dos/dostailsweep.py` deduplicates on the record's bytes and keeps every
     path it saw, and its roots are searched in a fixed order -- so a record
     that is both a scratch copy and the specimen it was copied into gets
     whichever sorted first.  The specimen tree decides when any path is in it,
@@ -300,15 +300,15 @@ def _specimen_root():
 def dos_roots() -> list[pathlib.Path]:
     """The specimen tree, the archives and the played DOS game directory.
 
-    `tools/dos/dostailcensus.py`'s own list, so every DOS census on this machine
+    `tools/dos/dostailsweep.py`'s own list, so every DOS sweep on this machine
     covers the same corpus (#575).
     """
-    return dostailcensus.dos_record_roots()
+    return dostailsweep.dos_record_roots()
 
 
 def dos_rows(want_built: bool = True):
     """Every distinct DOS record, deduplicated on its bytes by the finder."""
-    specs, skipped = dostailcensus.collect(dos_roots(), want_built)
+    specs, skipped = dostailsweep.collect(dos_roots(), want_built)
     for spec in specs:
         f = dl.FIELDS_BY_NAME_FOR[spec.shape.key].get("spellbook")
         if f is None:                                    # pragma: no cover
@@ -422,12 +422,12 @@ def _amiga_later_characters(data: bytes, what: str, label: str):
 def control_sweep(roots=None) -> tuple[int, list[tuple[pathlib.Path, str]]]:
     """Every DOS record file on the machine, raw: no dedup, no exclusions.
 
-    The census above deduplicates, skips an emulator instance's staged tree
+    The sweep above deduplicates, skips an emulator instance's staged tree
     and skips titles it has no layout for, and each of those is a way for a
     counterexample to be excluded rather than absent.  This reads every file
     whose size is one of the four record sizes and asks one question of it --
     is the byte for spell id 56 set? -- so a "nothing anywhere has it" claim
-    does not rest on the census's own filters.  `tools/records/carryceiling.py` is
+    does not rest on the sweep's own filters.  `tools/records/carryceiling.py` is
     where the practice comes from.
 
     Returns a count of files read per title and every hit as `(path, title)`.
@@ -439,7 +439,7 @@ def control_sweep(roots=None) -> tuple[int, list[tuple[pathlib.Path, str]]]:
             continue
         for path in sorted(root.rglob("*")):
             if (not path.is_file()
-                    or path.suffix.lower() not in dostailcensus.RECORD_SUFFIXES):
+                    or path.suffix.lower() not in dostailsweep.RECORD_SUFFIXES):
                 continue
             try:
                 size = path.stat().st_size
@@ -540,7 +540,7 @@ def main(argv=None) -> int:
         rows += list(c64_rows(args.disk))
     if want[1]:
         if not dos_roots():
-            print(dostailcensus.NO_RECORDS)
+            print(dostailsweep.NO_RECORDS)
         rows += list(dos_rows(not args.no_built))
     if want[2]:
         rows += list(amiga_rows())

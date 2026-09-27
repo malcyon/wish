@@ -255,7 +255,7 @@ def test_one_routine_compares_against_the_pair_0x10_and_0x1d(stem):
 
 
 def test_the_higher_byte_is_the_one_the_curse_overlay_mostly_touches():
-    """The census's shape, which is the C64's the other way round.
+    """The sweep's shape, which is the C64's the other way round.
 
     `#367` counted 129 references to the C64's current array against 38 to its
     base; here the six higher bytes outnumber the six lower ones by more than

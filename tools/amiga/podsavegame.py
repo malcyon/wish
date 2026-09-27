@@ -166,7 +166,7 @@ def variable_sites(data: bytes) -> dict[int, list[int]]:
     Every access opens `movea.l -$2852(a4), aN`, so the displacements that
     follow one of those -- before the register is loaded again -- are the
     variables the engine owns.  This is the Amiga counterpart of
-    `tools/dos/dosptrfields.py`, which read the same census off `GAME.OVR`,
+    `tools/dos/dosptrfields.py`, which read the same sweep off `GAME.OVR`,
     and a displacement is variable *d*: the DOS pointer is one byte lower.
 
     A linear sweep through a hunk that also holds strings will occasionally
@@ -199,7 +199,7 @@ def variable_sites(data: bytes) -> dict[int, list[int]]:
     return {index: sorted(set(where)) for index, where in sorted(sites.items())}
 
 
-#: What DOS's own census of the same array found: file offsets 0-58 and
+#: What DOS's own sweep of the same array found: file offsets 0-58 and
 #: 195-197 off `[DS:0x87F8]`, which are variables 1-59 and 196-198.  Recorded
 #: as a range rather than the exact set because the two ports are being
 #: compared on which *region* the engine owns.

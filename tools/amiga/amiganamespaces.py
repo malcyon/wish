@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Where each Amiga Gold Box title strips characters out of a name, read from its executable.
 
-    tools/amiga/amiganamespaces.py                 # every title, then the census
+    tools/amiga/amiganamespaces.py                 # every title, then the sweep
     tools/amiga/amiganamespaces.py --title pool-of-radiance
     tools/amiga/amiganamespaces.py --model "MARY SUE FOX" --model "J. R"
-    tools/amiga/amiganamespaces.py --census-only
+    tools/amiga/amiganamespaces.py --sweep-only
     tools/amiga/amiganamespaces.py --watched       # the running game's saves
 
 Every title has one routine that removes a fixed set of characters from a
@@ -26,7 +26,7 @@ game -- a `$FF`, a double space and `J. R` through three saves and a cold
 boot, and a name typed into Create New Character -- and checks each save
 against the model.
 
-The census reads every character record on the player's Amiga disks and in
+The sweep reads every character record on the player's Amiga disks and in
 the specimen tree (`$WISH_SPECIMENS`, then `~/wish-specimens`) and counts the
 names holding a space, `$FF`, a character from either set, lower case, or
 bytes left behind the terminator. The disks and specimens are opened
@@ -476,7 +476,7 @@ def created() -> dict[str, bytes] | None:
             if not entry.is_dir and path.lower().endswith((".cha", ".sav"))}
 
 
-# --- The census ----------------------------------------------------------
+# --- The sweep ----------------------------------------------------------
 
 @dataclasses.dataclass(frozen=True)
 class Name:
@@ -583,7 +583,7 @@ def everything() -> list[Name]:
     return out
 
 
-def census(names: list[Name] | None = None) -> list[Name]:
+def sweep(names: list[Name] | None = None) -> list[Name]:
     """Every distinct `(title, name field)` on the disks and in the specimens."""
     seen: dict[tuple[str, bytes], Name] = {}
     for name in everything() if names is None else names:
@@ -654,17 +654,17 @@ def main(argv: list[str] | None = None) -> int:
                         action="append")
     parser.add_argument("--model", action="append", default=[],
                         help="a name to run through Pool of Radiance's save")
-    parser.add_argument("--census-only", action="store_true")
+    parser.add_argument("--sweep-only", action="store_true")
     parser.add_argument("--watched", action="store_true",
                         help="the names the running game saved, against the model")
-    parser.add_argument("--no-census", action="store_true")
+    parser.add_argument("--no-sweep", action="store_true")
     args = parser.parse_args(argv)
 
     for text in args.model:
         raw = text.encode("latin1")
         print(f"{text!r}: saved {por_saved(raw)!r}, saved again "
               f"{por_saved(por_saved(raw))!r}, created {por_created(raw)!r}")
-    if args.model and not args.title and not args.census_only:
+    if args.model and not args.title and not args.sweep_only:
         return 0
     if args.watched:
         seen = watched()
@@ -683,7 +683,7 @@ def main(argv: list[str] | None = None) -> int:
         return status
 
     status = 0
-    if not args.census_only:
+    if not args.sweep_only:
         for key in args.title or sorted(amigabackstab.TITLES):
             raw = amigabackstab.executable(amigabackstab.TITLES[key])
             if raw is None:
@@ -692,16 +692,16 @@ def main(argv: list[str] | None = None) -> int:
                 status = 2
                 continue
             print("\n".join(_report(inspect(raw, key))))
-    if not args.no_census:
+    if not args.no_sweep:
         every = everything()
-        names = census(every)
+        names = sweep(every)
         counts: dict[str, collections.Counter] = collections.defaultdict(
             collections.Counter)
         for name in names:
             counts[name.title]["names"] += 1
             for flag, on in classify(name).items():
                 counts[name.title][flag] += on
-        print("== census: distinct name fields")
+        print("== sweep: distinct name fields")
         for title, row in sorted(counts.items()):
             print(f"  {title}: " + ", ".join(f"{k} {v}" for k, v in row.items()))
         for name in names:

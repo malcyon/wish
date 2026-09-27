@@ -239,9 +239,9 @@ def _menu(library: bytes) -> tuple[str, ...]:
 def _writes(files: dict[str, bytes]) -> tuple[tuple[str, int, str, int], ...]:
     """Every absolute write to `$7C12` or `$7C13` in the four overlays read.
 
-    The byte census over every file on the sides also turns up art files
+    The byte sweep over every file on the sides also turns up art files
     (`PIC`, `WALLDEF`, `COMPIC`) whose bytes happen to spell the operand, and
-    `GEN`'s trait-seed table, which is data; those are not code, so the census
+    `GEN`'s trait-seed table, which is data; those are not code, so the sweep
     that is kept is over the overlays whose routines this reads.
     """
     out = []

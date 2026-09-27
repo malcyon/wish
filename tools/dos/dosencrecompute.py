@@ -4,7 +4,7 @@
 `money + sum(item weight x quantity)` is the identity this project checks a DOS
 record with, and `#323 (The encumbrance identity does not survive the training
 fee, so failing it is not evidence of an edited record)` asked *when* the engine
-makes that true.  `tools/records/enccensus.py` answers it from records and
+makes that true.  `tools/records/encsweep.py` answers it from records and
 `tools/dos/dosencsave.py` from a driven boot; this answers it from the shipped
 binaries, which no edited save can poison.
 
@@ -429,8 +429,8 @@ def helper_callers(found: dict, helper: int) -> dict[int, dict]:
 def bag_rows() -> tuple[list[dict], dict[str, int]]:
     """Records holding an item named `HOLDING`, and the sample it came from.
 
-    Walks the same roots `tools/records/enccensus.py` walks, with the same exclusions,
-    so "no record has one" is a statement about the corpus that census
+    Walks the same roots `tools/records/encsweep.py` walks, with the same exclusions,
+    so "no record has one" is a statement about the corpus that sweep
     reports on rather than about some other set of files.  **It does not
     deduplicate**: a nil result wants the widest sample, and a record found
     three times is three chances to have missed it.
@@ -609,24 +609,24 @@ def stock_rows(word: str = "HOLDING") -> tuple[list[dict], list[dict]]:
 
 
 def _dos_characters():
-    """`(path, character)` for every DOS record `enccensus` would count."""
+    """`(path, character)` for every DOS record `encsweep` would count."""
     from goldbox import dos_codec as gdos  # noqa: PLC0415
-    from tools.dos import dostailcensus  # noqa: PLC0415
-    from tools.records import enccensus  # noqa: PLC0415
-    for root in enccensus.dos_roots():
+    from tools.dos import dostailsweep  # noqa: PLC0415
+    from tools.records import encsweep  # noqa: PLC0415
+    for root in encsweep.dos_roots():
         if not root.exists():
             continue
         walk = sorted(root.rglob("*")) if root.is_dir() else [root]
         for path in walk:
             if (not path.is_file()
-                    or path.suffix.lower() not in dostailcensus.RECORD_SUFFIXES
+                    or path.suffix.lower() not in dostailsweep.RECORD_SUFFIXES
                     or any(d in path.as_posix()
-                           for d in dostailcensus.SCRATCH_DIRS)):
+                           for d in dostailsweep.SCRATCH_DIRS)):
                 continue
             try:
                 if path.stat().st_size not in dl.DELTAS_BY_SIZE:
                     continue
-                if dostailcensus.foreign_title(path):
+                if dostailsweep.foreign_title(path):
                     continue
                 yield path, gdos.read_character(path)
             except (OSError, ValueError, gdos.DosRecordError):

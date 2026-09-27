@@ -23,13 +23,13 @@ Three questions, three modes.
     printed as `(dos value, amiga colour)` with a count, because the one that
     exists is 42 pixels wide and would vanish in a percentage.
 
-``--census``
+``--sweep``
     Every Amiga specimen's four icon fields, and whether the pair names art
     that is actually in the libraries.
 
     tools/icons/amigaicons.py --tables
     tools/icons/amigaicons.py --art
-    tools/icons/amigaicons.py --census
+    tools/icons/amigaicons.py --sweep
 
 The `.TLB` container is `GLIB`, not the `.dax` `goldbox/amiga_dax.py` reads:
 magic, a `u32` total size, a `u16` block count, a `u16`, a four-byte tag, then
@@ -352,7 +352,7 @@ def _compare(out, key, volume, name, amiga, dos, colour) -> int:
     return len(missing_ids) + len(extra_ids) + wrong_size
 
 
-def report_census(out) -> int:
+def report_sweep(out) -> int:
     """Every specimen's icon fields, against the art that is on the disks."""
     from goldbox import amiga_later, amiga_port
     from tools.amiga import amigarecords
@@ -421,11 +421,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="the three tables the icon routine reads")
     parser.add_argument("--art", action="store_true",
                         help="the Amiga tiles against the DOS blocks")
-    parser.add_argument("--census", action="store_true",
+    parser.add_argument("--sweep", action="store_true",
                         help="every specimen's four icon fields")
     args = parser.parse_args(argv)
-    if not (args.tables or args.art or args.census):
-        parser.error("say which measurement: --tables, --art or --census")
+    if not (args.tables or args.art or args.sweep):
+        parser.error("say which measurement: --tables, --art or --sweep")
 
     def out(line: str) -> None:
         print(line)
@@ -435,8 +435,8 @@ def main(argv: list[str] | None = None) -> int:
         problems += report_tables(out)
     if args.art:
         problems += report_art(out)
-    if args.census:
-        problems += report_census(out)
+    if args.sweep:
+        problems += report_sweep(out)
     return 1 if problems else 0
 
 

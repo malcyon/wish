@@ -127,7 +127,7 @@ duration zero. Every exact case is preserved and the others are wrong by at most
 3,780 (`$BF`); copying the cast-time promotion instead gives 60 and 2,880. `goldbox.effects.closest_duration` is the choice.
 `goldbox.effects.longest_duration_within`, the greatest time left that does not
 outlast the source, is kept as the measurement of the never-lengthen
-alternative, which was not adopted; `duration_census()` reports that
+alternative, which was not adopted; `duration_sweep()` reports that
 alternative's bound of 1,439 minutes. This concerns camp-clock expiry;
 combat and deferred walking expiry still need their own live checks.
 
@@ -415,7 +415,7 @@ order. All 32 `SAVEDGAME0` images on this machine's registered C64 disks carry
 a zero id in all 64 slots, so the rule rests on the code alone. Casting one
 spell in a driven session and reading which slot it lands in would corroborate
 it; the existing `tools/c64/effectdrive.py` stages slots rather than casting.
-`tests/records/test_effects.py` re-takes that census on whatever disks the
+`tests/records/test_effects.py` re-takes that sweep on whatever disks the
 machine running it has, rather than trusting the count.
 
 ## Pool expires one slot at a time, for that slot's own owner
@@ -693,9 +693,9 @@ id-12 node and writes no id-13 node in any title (read 3c).
 Reproduce the static readings with `.venv/bin/python
 tools/c64/effectcrosswalk.py`; a later title's run prints its caster-level ids.
 Two of that derivation's four conditions, the DOS override of zero and the
-`$4D80` read census, are read by hand and recorded above rather than re-read by
+`$4D80` read sweep, are read by hand and recorded above rather than re-read by
 the tool. Select either later title with `--title`.
-Use `--clock-minutes` for the duration census at a particular phase. The tool
+Use `--clock-minutes` for the duration sweep at a particular phase. The tool
 finds each title's C64 disks through the registry/path helper and its DOS
 engine through the archives registry. It reports missing files; the tests
 skip without the player's disks. Mutation checks reject changed owner tests,

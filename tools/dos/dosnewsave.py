@@ -11,10 +11,10 @@ boots the result under DOSBox and reads the party off the game's own screens.
     tools/dos/dosnewsave.py --c64 PORSAVE13.D64 --slot A --steps 2
 
 Why the run and not the bytes: every byte of the file now has a declared
-source, and 4070 of them are declared *zero* on the strength of a census of
+source, and 4070 of them are declared *zero* on the strength of a sweep of
 the engine-written specimens -- nine indoor ones, since eight of the twelve
 lived in scratch and are gone, which is why that grade is PROBABLE rather
-than CONFIRMED.  A census says what a saved party held; only
+than CONFIRMED.  A sweep says what a saved party held; only
 the running game says what the load path reads.  This is the same bar #118
 held the C64 direction's 193 zeroed header bytes to.
 

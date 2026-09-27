@@ -3,7 +3,7 @@
 
     .venv/bin/python tools/areas/ecl6derefs.py
 
-Four passes over the C64 scripts `tools/areas/eclcensus.py` loads, so the control-flow
+Four passes over the C64 scripts `tools/areas/eclsweep.py` loads, so the control-flow
 walk's 2% blind spot cannot hide a write: (1) every walked statement with an
 operand in $6DE0-$6DEF, marked WRITE or read; (2) a raw byte scan for the
 little-endian address bytes, marking each hit as inside a walked statement or
@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap.paths import tool_disks  # noqa: E402
 from goldbox import c64_port  # noqa: E402
-from tools.areas import eclcensus as E  # noqa: E402
+from tools.areas import eclsweep as E  # noqa: E402
 
 LO, HI = 0x6DE0, 0x6DEF
 

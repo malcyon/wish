@@ -406,7 +406,7 @@ def test_every_icon_on_the_players_disks_reads_back_into_menu_choices(parts):
     folders = iconreverse.save_folders()
     if not any(folders.values()):
         pytest.skip("needs the C64 disks; set $POR_DISKS")
-    rows = iconreverse.census(parts, folders)
+    rows = iconreverse.sweep(parts, folders)
     if not rows:
         pytest.skip("no C64 saved games on the disks that are here")
     unread = [r for r in rows if "error" in r]

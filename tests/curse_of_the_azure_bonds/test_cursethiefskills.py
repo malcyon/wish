@@ -35,7 +35,7 @@ from support.neutralrecords import _filled  # noqa: E402
 from goldbox import c64_codec, dos_codec, dos_port  # noqa: E402
 from goldbox import levels as level_tables  # noqa: E402
 from tools.curse_of_the_azure_bonds import cursethiefskills as cts  # noqa: E402
-from tools.records import thiefskillcensus as census  # noqa: E402
+from tools.records import thiefskillsweep as sweep  # noqa: E402
 
 CURSE = "curse-of-the-azure-bonds"
 POOL = "pool-of-radiance"
@@ -125,10 +125,10 @@ def test_the_c64_trainer_writes_the_row_its_own_tables_give():
     if not (before.is_file() and after.is_file()):
         pytest.skip("needs WISH-SPEC-curse-train-input and -trained-party")
     try:
-        tables = census.c64_tables(CURSE)
+        tables = sweep.c64_tables(CURSE)
     except SystemExit as why:
         pytest.skip(str(why))
-    records = list(census.c64_records(CURSE))
+    records = list(sweep.c64_records(CURSE))
 
     def travis(disk):
         for source, name, race, level, dexterity, stored in records:
@@ -137,11 +137,11 @@ def test_the_c64_trainer_writes_the_row_its_own_tables_give():
         pytest.skip(f"no TRAVIS on {disk.name}")
 
     race, level, dexterity, stored = travis(before)
-    want = census.expected(tables, level, race, dexterity, True)
+    want = sweep.expected(tables, level, race, dexterity, True)
     assert [a - b for a, b in zip(stored, want)] == [7] * 8
 
     race, level, dexterity, stored = travis(after)
-    want = census.expected(tables, level, race, dexterity, True)
+    want = sweep.expected(tables, level, race, dexterity, True)
     assert stored == want, "the C64 trainer did not write its own tables' row"
 
 

@@ -14,7 +14,7 @@ jump-table entries.  Curse's and Silver Blades' `LIBRARY` never calls the
 loader at all, and no file on any of their twelve sides calls either of those
 two `ANIMATE` entries.
 
-This is the census that says so, re-runnable against the player's own disks:
+This is the sweep that says so, re-runnable against the player's own disks:
 
     tools/icons/portraitdraw.py                        all three C64 titles
     tools/icons/portraitdraw.py --title curse          one of them

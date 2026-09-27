@@ -21,7 +21,7 @@ What is tested, hardest evidence first.
 * **The strides discriminate.** DOS's own widths -- a five-byte square struct,
   a one-byte count -- are tried against the same files and fail, so the checks
   above are not true of any reading.
-* **The engine's own variable census**, read out of the executable, against
+* **The engine's own variable sweep**, read out of the executable, against
   the range `tools/dos/dosptrfields.py` found in `GAME.OVR`.
 
 **The specimens are the `Save/SavGam*.pty` files on the player's own Amiga
@@ -330,7 +330,7 @@ def test_every_vault_is_the_size_its_own_writer_makes_it():
 
 
 # ---------------------------------------------------------------------------
-# The executable's own census
+# The executable's own sweep
 # ---------------------------------------------------------------------------
 def test_the_engine_names_the_same_variable_range_as_the_dos_build():
     pytest.importorskip("capstone")

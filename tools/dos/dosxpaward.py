@@ -11,7 +11,7 @@ Treasures of the Savage Frontier keep the base alone.
 
     tools/dos/dosxpaward.py sites --game CURSE
     tools/dos/dosxpaward.py monsters --game SECRET
-    tools/dos/dosxpaward.py census
+    tools/dos/dosxpaward.py sweep
 
 `sites` is the engine's own evidence and there are two kinds of it.
 
@@ -33,7 +33,7 @@ two numbers, which is the measurement: DOS Pool of Radiance's GOBLIN GUARD is
 10 and 1, HOBGOBLIN 20 and 2, OGRE 90 and 5 -- the C64's numbers and the
 published table's.
 
-`census` sweeps every DOS character record it can find -- the specimen tree
+`sweep` sweeps every DOS character record it can find -- the specimen tree
 and the player's archives -- and counts how many carry a non-zero award, which
 is how "this is a monster field and reads zero in a player" is stated as a
 number rather than as an impression.
@@ -252,7 +252,7 @@ def cmd_monsters(args) -> int:
     return 0
 
 
-def cmd_census(args) -> int:
+def cmd_sweep(args) -> int:
     roots = [pathlib.Path(p) for p in args.roots] or default_roots()
     total = nonzero = 0
     for root in roots:
@@ -286,8 +286,8 @@ def default_roots() -> list[pathlib.Path]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("cmd", choices=("sites", "monsters", "census"))
-    ap.add_argument("roots", nargs="*", help="census: directories to sweep")
+    ap.add_argument("cmd", choices=("sites", "monsters", "sweep"))
+    ap.add_argument("roots", nargs="*", help="sweep: directories to sweep")
     ap.add_argument("--game", default="CURSE", choices=sorted(GAMES),
                     help="game directory stem")
     ap.add_argument("--path", default=None, help="the game directory itself")
@@ -296,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     try:
         return {"sites": cmd_sites, "monsters": cmd_monsters,
-                "census": cmd_census}[args.cmd](args)
+                "sweep": cmd_sweep}[args.cmd](args)
     except FileNotFoundError as exc:
         print(exc)
         return 0

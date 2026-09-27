@@ -822,7 +822,7 @@ class Start:
 #: suggestive before this: all five played containers on this machine stood
 #: there, but that is a square parties had reached during play, not the one
 #: `BEGIN ADVENTURING` itself lands on -- which is `3,3`, not the `15,8`
-#: earlier guessed from the census.  Evidence at `cited/535/`.
+#: earlier guessed from the sweep.  Evidence at `cited/535/`.
 STARTS: Mapping[str, Start] = MappingProxyType({
     POOL_OF_RADIANCE: Start(0, Arrival(15, 1, 3), Confidence.CONFIRMED),
     CURSE_OF_THE_AZURE_BONDS: Start(0x01, Arrival(7, 13, 1),

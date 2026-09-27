@@ -26,7 +26,7 @@ beside `goldbox.dos_savegame.dax_index`, and this page does not repeat it.
 Every block's length is exactly `17 + rows * 12`, which is the test
 `tools/dos/daxls.py` uses to call a block an image.
 
-**A pixel's value is a part number, not a colour.** The census of every
+**A pixel's value is a part number, not a colour.** The sweep of every
 nibble in both files, and what the engine does with each:
 
 | value | in | part |

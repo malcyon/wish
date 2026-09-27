@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""`tools/records/thac0census.py`, and the floor the DOS engine puts under `thac0_base`.
+"""`tools/records/thac0sweep.py`, and the floor the DOS engine puts under `thac0_base`.
 
 Everything here reads the player's own files -- the EXEPACK-expanded
 `START.EXE` of each DOS title and every character record in the specimen tree
@@ -23,7 +23,7 @@ import gamedata  # noqa: E402
 
 from goldbox import levels  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
-from tools.records import thac0census  # noqa: E402
+from tools.records import thac0sweep  # noqa: E402
 
 TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",
           "secret-of-the-silver-blades")
@@ -58,7 +58,7 @@ def _rows(title: str) -> dict[str, list[int]]:
     if not dosbox.ARCHIVES.is_dir():
         pytest.skip("no DOS archives on this machine; set $FR_ARCHIVES")
     try:
-        return thac0census.dos_rows(title)
+        return thac0sweep.dos_rows(title)
     except (SystemExit, KeyError, OSError) as why:
         pytest.skip(f"no readable {title} DOS table here: {why}")
 
@@ -66,7 +66,7 @@ def _rows(title: str) -> dict[str, list[int]]:
 def _records(title: str) -> list[tuple]:
     if gamedata.specimen_root() is None and not dosbox.ARCHIVES.is_dir():
         pytest.skip("needs the specimen tree or the DOS archives")
-    return list(thac0census.dos_records(title))
+    return list(thac0sweep.dos_records(title))
 
 
 @pytest.mark.parametrize("title", TITLES)
@@ -95,9 +95,9 @@ def test_the_engine_never_writes_a_thac0_worse_than_twenty(title):
     names = sorted(rows)
     for name in names:
         for level in range(1, len(rows[name])):
-            got = thac0census.dos_engine_thac0(rows, {name: level})
+            got = thac0sweep.dos_engine_thac0(rows, {name: level})
             assert got <= 20, (name, level, got)
-    assert thac0census.dos_engine_thac0(rows, {}) == 20
+    assert thac0sweep.dos_engine_thac0(rows, {}) == 20
 
 
 def test_a_curse_magic_user_of_level_five_comes_out_one_better_than_the_row():
@@ -111,10 +111,10 @@ def test_a_curse_magic_user_of_level_five_comes_out_one_better_than_the_row():
         rows = _rows(title)
         assert rows["magic-user"][1:6] == [21] * 5
         for level in range(1, 6):
-            assert thac0census.dos_engine_thac0(
+            assert thac0sweep.dos_engine_thac0(
                 rows, {"magic-user": level}) == 20
             assert levels.dos_base_thac0({"magic-user": level}, title) == 21
-        assert thac0census.dos_engine_thac0(rows, {"magic-user": 6}) == 19
+        assert thac0sweep.dos_engine_thac0(rows, {"magic-user": 6}) == 19
 
 
 def test_pool_of_radiance_is_untouched_by_the_floor():
@@ -143,7 +143,7 @@ def test_every_dos_record_on_this_machine_reproduces_from_the_engine_rule(
         pytest.skip(f"no {title} DOS records on this machine")
     missed = {}
     for source, _name, held, stored in records:
-        want = thac0census.dos_engine_thac0(rows, held)
+        want = thac0sweep.dos_engine_thac0(rows, held)
         if want != stored:
             missed[source] = stored
     assert missed == exceptions
@@ -162,8 +162,8 @@ def test_the_table_alone_misses_what_the_engine_rule_reaches():
     records = _records("curse-of-the-azure-bonds")
     if not records:
         pytest.skip("no Curse DOS records on this machine")
-    engine = sum(thac0census.dos_engine_thac0(rows, held) == stored
+    engine = sum(thac0sweep.dos_engine_thac0(rows, held) == stored
                  for _s, _n, held, stored in records)
-    alone = sum(thac0census._best(table, held) == stored
+    alone = sum(thac0sweep._best(table, held) == stored
                 for _s, _n, held, stored in records)
     assert engine > alone

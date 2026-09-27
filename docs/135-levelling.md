@@ -68,7 +68,7 @@ byte for byte the C64's. The other two are not:
 CONFIRMED: 190 of 190 DOS Pool of Radiance records on this machine reproduce
 from the DOS table with no exceptions, including the nine training-ladder
 specimens the trainer was watched writing one level at a time; every low-level
-magic-user or thief the C64 engine wrote holds 21. `tools/records/thac0census.py` is
+magic-user or thief the C64 engine wrote holds 21. `tools/records/thac0sweep.py` is
 the sweep and `goldbox/levels.py`'s `dos_thac0` carries the rows.
 
 **Curse and Silver Blades are settled**, and differently:
@@ -326,10 +326,10 @@ not Pool of Radiance's, what the rule is instead.
 
 **How they were found, which is the transferable part.** Not one Pool of
 Radiance address survives, so the way in was the record rather than the code:
-Curse keeps the working character at `$7C00`, so a census of every absolute
+Curse keeps the working character at `$7C00`, so a sweep of every absolute
 instruction in the overlay whose operand lands in `$7C00`-`$7DFF`, printed
 against `goldbox/layout.py`'s field names, puts every routine within two
-instructions of the table it reads. `tools/c64/trainerscan.py` is that census, and
+instructions of the table it reads. `tools/c64/trainerscan.py` is that sweep, and
 `--callers` walks back up from a routine to the sequence that calls it. None of
 this needed the emulator.
 

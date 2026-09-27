@@ -82,14 +82,14 @@ holds 39 at levels 1-5 anyway, so the floor never shows there.
 
 A character can hold at most three classes, so at least one row whose entry 0
 is 40 is always read, and `max(40, best of the classes)` is what the DOS
-engine stores. CONFIRMED: `tools/records/thac0census.py` implements exactly
-that as `dos_engine_thac0`, and `tests/records/test_thac0census.py` walks every
+engine stores. CONFIRMED: `tools/records/thac0sweep.py` implements exactly
+that as `dos_engine_thac0`, and `tests/records/test_thac0sweep.py` walks every
 class at every level of all three titles asserting the result is never above
 20.
 
 ## What the records say
 
-`tools/records/thac0census.py dos --title <key>` now covers all three titles --
+`tools/records/thac0sweep.py dos --title <key>` now covers all three titles --
 it could not read Curse or Silver Blades before, because their class-bit array
 is a different permutation from Pool of Radiance's and the anchor found
 nothing; it locates their tables through `tools/c64/laterthac0.py` instead. It
@@ -239,5 +239,5 @@ Not established, and each with the experiment that would settle it:
   separates them: 39 means the guarded loop wrote it and the next load will
   raise it to 40, 40 means the constant store at `0x0207BA` got there first.
 * **Pools of Darkness.** Its root is in `GAME.EXE` rather than `START.EXE`, so
-  neither census tool reaches its data segment and its table has never been
+  neither sweep tool reaches its data segment and its table has never been
   read.

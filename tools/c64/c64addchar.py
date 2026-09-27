@@ -6,7 +6,7 @@ issue behind it)`.  DOS keeps a random identity byte at `0x0AB` and reads it in
 one place: ADD CHARACTER TO PARTY, as the tiebreak between two characters of
 the same name.  The C64 writes two random bytes at `0x0E6`-`0x0E7` when GEN
 creates a character (`GEN $0C01`-`$0C0A`, two calls to the generator at
-`LIBRARY $2D88`) and, by a census of every file on the eight sides, never
+`LIBRARY $2D88`) and, by a sweep of every file on the eight sides, never
 reads them.  This is the running-game half of that reading.
 
 Two things are measured on one boot, off a **copy** of a save disk staged into
@@ -19,7 +19,7 @@ a pool slot:
   three windows alike, so the first two counts agree while every read is a
   copy, and the third runs ahead of them whenever a field is read on its own.
   A count on the middle window that exceeds the first is a field read of the
-  pair, which the census says does not exist.
+  pair, which the sweep says does not exist.
 
 * **What the add screen tests.**  The staged disk carries two edited exports
   beside the game's own: `\\x01MALCYON` rewritten to hold BRUTUS's record under

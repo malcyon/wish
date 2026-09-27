@@ -87,7 +87,7 @@ OWNER_MONSTER = "Unknown"
 #: character who left the party while something was still running on them.
 OWNER_ABSENT = "Unknown"
 
-#: An effect id the trait census does not name. The number is kept because it
+#: An effect id the trait sweep does not name. The number is kept because it
 #: is what somebody takes away to look it up, and because two unnamed effects
 #: still have to be told apart -- `goldbox.traits.describe` makes the same
 #: choice for an unnamed trait code.

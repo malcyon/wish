@@ -950,7 +950,7 @@ def test_silver_blades_items_are_67_bytes_in_a_stf_file(tmp_path):
 # `ITEMS > JOIN` hangs a bundle's sub-scrolls off a far pointer at item offset
 # 0x03F and writes them into the .STF inline; item_count counts head items
 # only (#432). Composed from the documented format -- no save on this machine
-# carries one, per `tools/dos/dosscrollbundle.py census`.
+# carries one, per `tools/dos/dosscrollbundle.py sweep`.
 
 def _synthetic_joined_scroll_bundle() -> bytearray:
     """A bundle of two, then a Plate Mail the naive slice would lose.

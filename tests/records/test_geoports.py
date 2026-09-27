@@ -384,7 +384,7 @@ def test_the_empty_slot_in_pools_of_darkness_is_one_plane_of_a_single_byte():
     assert set(raw[BARRIERS:BARRIERS + 256]) == {0}
 
 
-def test_the_blocks_census_reports_every_library_and_filters_none_of_it():
+def test_the_blocks_sweep_reports_every_library_and_filters_none_of_it():
     dos_blocks()
     out = io.StringIO()
     assert geoports.report_blocks(out) == 0

@@ -10,7 +10,7 @@ Every record this project can reach holds the two bytes of a pair equal, so no
 saved game can separate them and the answer has to come out of the engine.
 
     tools/dos/dosabilitypair.py sites --game CURSE
-    tools/dos/dosabilitypair.py census --game SECRET
+    tools/dos/dosabilitypair.py sweep --game SECRET
     tools/dos/dosabilitypair.py read ~/wish-specimens/coab-dos/WISH-SPEC-...
     tools/dos/dosabilitypair.py stage --save in/ --out DIR \\
         --set PHILIPPE:str=18/9 --set SHARA:str=9/17
@@ -18,7 +18,7 @@ saved game can separate them and the answer has to come out of the engine.
 `sites` is the answer: six instruction signatures, each read out of the
 shipped `GAME.OVR` rather than out of anybody's notes, and each one saying
 which byte of the pair a routine treats as the character's own permanent
-score.  `census` is the shape around them -- how many byte accesses in the
+score.  `sweep` is the shape around them -- how many byte accesses in the
 overlay name each displacement -- and it is a linear scan of an undifferentiated
 byte stream, so read it as a shape and never as a count of instructions
 (`tools/dos/dosfieldrefs.py` has the same caveat at length).
@@ -156,7 +156,7 @@ def sites(args) -> int:
     return 0
 
 
-def census(args) -> int:
+def sweep(args) -> int:
     """How many byte accesses in the overlay name each pair displacement."""
     path = overlay(args.game, args.file)
     data = path.read_bytes()
@@ -238,7 +238,7 @@ def main(argv=None) -> int:
 
     for name, fn, helptext in (
             ("sites", sites, "the instruction signatures, in one overlay"),
-            ("census", census, "how often each displacement is named")):
+            ("sweep", sweep, "how often each displacement is named")):
         p = sub.add_parser(name, help=helptext)
         p.add_argument("--game", default="CURSE", help="game directory stem")
         p.add_argument("--file", default="GAME.OVR", help="the overlay file")

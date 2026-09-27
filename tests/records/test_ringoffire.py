@@ -57,7 +57,7 @@ def _every_record():
 
 @needs_disks
 def test_the_disks_carry_two_rings_and_one_of_them_is_dead():
-    """The census the issue rests on, taken again from the bytes."""
+    """The sweep the issue rests on, taken again from the bytes."""
     found = {where: raw for where, raw in _every_record()
              if tuple(raw[:4]) == RING_OF_FIRE_RESISTANCE_ID}
     assert len(found) == 2, found

@@ -37,7 +37,7 @@ LEVEL_THIEF = CLASS_LEVELS + THIEF_SLOT
 CLASS_BITS = 0x0EB
 CLASS_MASKS = bytes((0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80))
 
-#: Absolute-addressing opcodes named in the census of the multiplier byte.
+#: Absolute-addressing opcodes named in the sweep of the multiplier byte.
 OPCODES = {0xAD: "LDA", 0xAE: "LDX", 0xAC: "LDY", 0x8D: "STA", 0x8E: "STX",
            0x8C: "STY", 0xCD: "CMP", 0xEE: "INC", 0xCE: "DEC", 0x0D: "ORA",
            0x2D: "AND"}

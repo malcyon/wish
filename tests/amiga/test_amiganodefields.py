@@ -15,7 +15,7 @@ Three kinds of test, and the middle one is the finding:
   code involved -- including that a displacement nothing reaches is
   **reported as unreached**, which is the assertion the whole finding rests
   on and would be worthless if it could not fail;
-* the census against the player's own `/Curse` and `/Secret`, which skips
+* the sweep against the player's own `/Curse` and `/Secret`, which skips
   when there are no Amiga disks;
 * the shape of the byte in every Amiga Curse and Silver Blades saved game on
   this machine: non-zero only in nodes sitting in the first three slots of
@@ -67,7 +67,7 @@ def chain_walk_program() -> bytes:
     `move.b (a2), d0` is offset 0, `move.w $2(a2), d1` the duration, `move.b
     $5(a2), d2` the flag and `movea.l $6(a2), a2` the walk -- and nothing
     names offset 1, offset 3, offset 4 or offsets 7 to 9.  The decoy at the
-    end reads `$1(a3)` through a register that never held a node, so a census
+    end reads `$1(a3)` through a register that never held a node, so a sweep
     that reported it would be reporting any `$1(aN)` in the binary rather
     than a node's.
     """
@@ -89,7 +89,7 @@ def chain_walk_program() -> bytes:
     ])
 
 
-def census(exe: Executable, chain: int = CHAIN) -> dict[int, list]:
+def sweep(exe: Executable, chain: int = CHAIN) -> dict[int, list]:
     """`{offset: [(width, writes, count)]}` from the tool's own report."""
     heads = amiganodefields.sites(
         exe, __import__("re").compile(rf"(?<!-)\${chain:x}\(a[0-7]\)"))
@@ -107,7 +107,7 @@ def census(exe: Executable, chain: int = CHAIN) -> dict[int, list]:
 
 def test_every_node_byte_the_program_names_is_reported_at_its_width():
     exe = Executable.parse(chain_walk_program())
-    found = census(exe)
+    found = sweep(exe)
     assert sorted(found) == [0, 2, 5, 6]
     assert [w for w, _, _ in found[0]] == [1]
     assert [w for w, _, _ in found[2]] == [2]
@@ -117,11 +117,11 @@ def test_every_node_byte_the_program_names_is_reported_at_its_width():
 def test_a_node_byte_nothing_names_is_reported_as_unreached():
     """The assertion the whole finding rests on, made to fail on purpose.
 
-    The program above touches offset 5 and not offset 1.  A census that
+    The program above touches offset 5 and not offset 1.  A sweep that
     could not tell those apart would answer `#387` by construction.
     """
     exe = Executable.parse(chain_walk_program())
-    found = census(exe)
+    found = sweep(exe)
     assert PAD not in found
     assert 5 in found
 
@@ -150,7 +150,7 @@ def test_the_walk_reaches_a_node_the_second_time_round_a_loop():
 
     The reads sit *above* the `movea.l $6(a2), a2` that makes the next node,
     so a single forward pass sees them only for the head.  The fixed point
-    is what makes the census a statement about every node in the chain.
+    is what makes the sweep a statement about every node in the chain.
     """
     exe = Executable.parse(chain_walk_program())
     at = exe.by_number(0).file_offset
@@ -173,7 +173,7 @@ def test_a_write_is_told_from_a_read():
 
 
 # ---------------------------------------------------------------------------
-# The census against the player's own executables
+# The sweep against the player's own executables
 # ---------------------------------------------------------------------------
 
 def _executable(name: str) -> Executable:
@@ -207,7 +207,7 @@ def test_no_instruction_in_either_title_reaches_the_effect_node_pad(name):
     `next` pointer.
     """
     exe = _executable(name)
-    found = census(exe, TITLES[name]["chain"])
+    found = sweep(exe, TITLES[name]["chain"])
     assert PAD not in found, f"{name} reaches the pad at offset {PAD}"
     assert {0, 2, 4, 6} <= set(found), found
 
@@ -265,7 +265,7 @@ def test_the_node_constructor_writes_every_byte_but_the_pad(name):
 
 #: Saved games the engine wrote of a party **this project converted**.  They
 #: are evidence about what the engine does with our bytes and not about what
-#: it puts in a node of its own, so the census below leaves them out and
+#: it puts in a node of its own, so the sweep below leaves them out and
 #: `test_the_engine_keeps_the_zero_a_converted_party_arrives_with` uses them
 #: on their own.  `#384 (Write an Amiga Curse or Silver Blades character, so
 #: a C64 or DOS party has an Amiga to arrive on)` made them.

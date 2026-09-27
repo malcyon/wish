@@ -14,7 +14,7 @@ Tests for the DOS port: the DOS saved game and character record, the DOS record 
 | `test_dosbox_walked.py` | Checks `judge_step` and `run_walked` in `tools/dos/dosbox.py` tell a walk from a wall from a driver that pressed nothing, from recorded readings. |
 | `test_dosboxx.py` | Checks `tools/dos/dosboxx.py`'s segmented addressing, chunked memory reads, debugger commands and config against a stubbed DOSBox-X. |
 | `test_dosdisk.py` | Checks that the `.d64` disk built from a DOS party reads back through `goldbox.savegame` and `goldbox.c64_codec` as the DOS party's own. |
-| `test_dosdropcensus.py` | Checks that the `0x0E6` column of `tools/dos/dosdropcensus.py` reports a former level from the layout's own field name. |
+| `test_dosdropsweep.py` | Checks that the `0x0E6` column of `tools/dos/dosdropsweep.py` reports a former level from the layout's own field name. |
 | `test_dosencrecompute.py` | Checks the encumbrance recompute `tools/dos/dosencrecompute.py` reads out of the shipped binaries, on the player's own copy of the archives. |
 | `test_dosencsave.py` | Checks which screens make DOS Pool of Radiance rewrite a stored encumbrance, on the saves `tools/dos/dosencsave.py` staged. |
 | `test_dosfight.py` | Checks the record offsets and fight verdicts of `tools/dos/dosfightrun.py`, and that its driver answers each bar it recognises. |
@@ -30,13 +30,13 @@ Tests for the DOS port: the DOS saved game and character record, the DOS record 
 | `test_dosraces.py` | Checks that each DOS title's race table is the one its game holds and that every shipped record is a race its class may be. |
 | `test_dosracialseed.py` | Checks that `tools/dos/dosracialseed.py` reads what the engine seeds by race and how effect 97 adds the constitution band. |
 | `test_dosrecordloops.py` | Checks that `tools/dos/dosrecordloops.py` counts a word-stride loop by its entries and not by the bytes it spans. |
-| `test_dossavcensus.py` | Checks which saved games `tools/dos/dossavcensus.py` counts and which it excludes as hand-built or never adventured. |
+| `test_dossavsweep.py` | Checks which saved games `tools/dos/dossavsweep.py` counts and which it excludes as hand-built or never adventured. |
 | `test_dossave.py` | Checks the 285-byte DOS Pool of Radiance character record and its item, effect and spellbook files, on synthetic records and the player's specimens. |
 | `test_dossavewritemap.py` | Checks that `tools/dos/dossavewritemap.py` reads a title's save map off its writer and that it agrees with the title's `DosContainer`. |
 | `test_dosscrollbundle.py` | Checks the item chain a Silver Blades scroll bundle hangs from its 67-byte item, and how `tools/dos/dosscrollbundle.py` walks it. |
 | `test_dosshop.py` | Checks the New Phlan shop squares and scripts `tools/dos/dosshop.py` uses, and the record the engine wrote after a purchase. |
 | `test_dosslotwatch.py` | Checks that `tools/dos/dosslotwatch.py` stages writable copies of a read-only `--save` and survives a second run into the same directory. |
-| `test_dostailcensus.py` | Checks that `tools/dos/dostailcensus.py` does not count a Gateway or Treasures record as a Curse or Pools of Darkness one. |
+| `test_dostailsweep.py` | Checks that `tools/dos/dostailsweep.py` does not count a Gateway or Treasures record as a Curse or Pools of Darkness one. |
 | `test_dosvmwatch.py` | Checks the translation `tools/dos/dosvmwatch.py` makes from a saved-game word to its VM address, and its writable staging of a save. |
 | `test_dosxpaward.py` | Checks the experience-award bytes before a DOS record's portrait against three routes read out of the shipped engines. |
 | `test_dualclassdos.py` | Checks how `tools/dos/dualclassdos.py` names the game tree a record came from, and its boundary listing and string search. |

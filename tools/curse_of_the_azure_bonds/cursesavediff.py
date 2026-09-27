@@ -40,7 +40,7 @@ from goldbox.d64 import load_payload  # noqa: E402
 #: attributed.  A run that lands in an `ours` region is what the exit status
 #: reports.
 #:
-#: The header rows come from `#192` step 0e's census of every absolute operand
+#: The header rows come from `#192` step 0e's sweep of every absolute operand
 #: into `$4B00`-`$4EFF` over 411 files, and the container rows from
 #: `goldbox/c64_save.py`.
 REGIONS: tuple[tuple[int, int, str, str], ...] = (

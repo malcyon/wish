@@ -121,7 +121,7 @@ one thing. The paladin is the disagreement both titles share.
 
 ## 2. The Curse corpus, character by character
 
-`tools/dos/innateids.py census --title curse --by-id` over the specimen tree, the
+`tools/dos/innateids.py sweep --title curse --by-id` over the specimen tree, the
 archives and the old scratch directory: 69 distinct 422-byte records, 42 with an effect file.
 Every carrier of each class or race id:
 
@@ -134,7 +134,7 @@ Every carrier of each class or race id:
 
 The two dual-classed paladins are not exceptions to anything: the engine keeps
 an effect a character already has when his class changes, which the same
-census shows from both ends — the record says so, and `WISH-SPEC-curse-234-engine-resave`
+sweep shows from both ends — the record says so, and `WISH-SPEC-curse-234-engine-resave`
 is the engine writing one of them back.
 
 **Every Curse record on this machine carrying 134 belongs to one six-character
@@ -142,7 +142,7 @@ party** — the archives' `games/CURSE/Default files/Saves` slot B, and the
 engine's re-save of it that is `WISH-SPEC-curse-234-party-dualclassed`. That
 party has two rangers who carry 134 and one cleric who also does.
 
-**A trap the census hit first, recorded so nobody re-treads it.** Gateway to
+**A trap the sweep hit first, recorded so nobody re-treads it.** Gateway to
 the Savage Frontier's `.GUY` exports are 422 bytes, which is Curse's record
 size, so `dos_port.deltas_for` reads them through Curse's table. The first
 sweep counted TARLREN, a Gateway human ranger carrying 134, as a Curse

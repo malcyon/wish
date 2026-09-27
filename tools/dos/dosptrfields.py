@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Census the structure offsets reached through a global far pointer.
+"""Sweep the structure offsets reached through a global far pointer.
 
 Gold Box's DOS builds keep most engine state in heap blocks reached through a
 far pointer in the global data segment.  Turbo Pascal compiles
@@ -25,7 +25,7 @@ every ``es:[di+N]`` after a ``les di, [0x87F8]`` names byte N of the file.
    is a filter, not a proof.
 2. A field can be reached without a displacement -- a pointer walked with
    ``inc di``, a ``rep movsb`` over the whole block, an index added in.  So an
-   offset missing from the census is **not** evidence that nothing reads it.
+   offset missing from the sweep is **not** evidence that nothing reads it.
 3. A displacement is only a file offset for the region the save routine
    actually writes.  Check the writer first.
 

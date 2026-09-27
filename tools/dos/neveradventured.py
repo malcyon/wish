@@ -32,7 +32,7 @@ unavailable still has the other:
   other, on all three titles -- `--by word`.  Curse's `GAME.OVR:0x832F`
   stores `$FF` into it (`goldbox.dos_codec.LATER_BEGUN_WORD`); what Pool of
   Radiance's 255, 16 and 8 mean there is unread, so for that title this is
-  a census result and not a reading of the engine.
+  a sweep result and not a reading of the engine.
 
 `--by rule` is what the import itself applies -- `goldbox.dos_codec.never_adventured`,
 the buffer where the shape has one and the word where it does not -- so a
@@ -60,7 +60,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import areas, dos_codec  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
-from tools.dos import dossavcensus, dostailcensus  # noqa: E402
+from tools.dos import dossavsweep, dostailsweep  # noqa: E402
 
 #: The three titles whose container holds a `u16le` variable array at Pool of
 #: Radiance's offsets.  Pools of Darkness' 1364-byte container has a byte-wide
@@ -72,7 +72,7 @@ SHAPES = (sg.SAVE_POOL_OF_RADIANCE,
           sg.SAVE_SECRET_OF_THE_SILVER_BLADES)
 
 #: The words a never-adventured container holds at zero and a played one does
-#: not, by the census this tool takes.  `$49F2` and `$49C5` are in the list
+#: not, by the sweep this tool takes.  `$49F2` and `$49C5` are in the list
 #: because they are what the import reads, not because they discriminate --
 #: Pool of Radiance holds 0 in both while standing in New Phlan.
 WORDS = (("$49C5 map", 0x49C5), ("$49E6 indoors", 0x49E6),
@@ -91,12 +91,12 @@ NEVER_ADVENTURED_WORD = 0x4FE1
 
 
 def roots(extra: list[str] | None = None) -> list[pathlib.Path]:
-    """The directories to sweep beyond `dossavcensus`' own archive roots.
+    """The directories to sweep beyond `dossavsweep`' own archive roots.
 
     The specimen tree that outlives an emulator slot
     (`.claude/rules/testing.md`), and the played DOS game directory, every
     character record in which has been through Gold Box Companion's editor --
-    an input to a census of what a container holds, never evidence about what
+    an input to a sweep of what a container holds, never evidence about what
     the engine writes.
 
     **The scratch directory is not one of them** (#575).  A run's output there
@@ -108,7 +108,7 @@ def roots(extra: list[str] | None = None) -> list[pathlib.Path]:
         repo = pathlib.Path(__file__).resolve().parent.parent.parent
         where = [pathlib.Path(p).expanduser() for p in extra]
         return [p if p.is_absolute() else repo / p for p in where]
-    out = [dostailcensus.specimen_tree(), dostailcensus.played_game_dir()]
+    out = [dostailsweep.specimen_tree(), dostailsweep.played_game_dir()]
     return [p for p in out if p is not None]
 
 
@@ -133,7 +133,7 @@ def describe(path: pathlib.Path, shape: sg.DosContainer, by: str) -> dict:
     save = path.read_bytes()
     span = shape.script_buffer
     return {
-        "label": dossavcensus._label(path),
+        "label": dossavsweep._label(path),
         "path": str(path),
         "title": shape.title,
         "never_adventured": never_adventured(save, shape, by),
@@ -143,13 +143,13 @@ def describe(path: pathlib.Path, shape: sg.DosContainer, by: str) -> dict:
         "clock": list(sg.clock(save)),
         "party_size": sg.party_size(save, shape),
         "words": {name: sg.word(save, addr, shape) for name, addr in WORDS},
-        "hand_built": dossavcensus.hand_built(path),
+        "hand_built": dossavsweep.hand_built(path),
     }
 
 
 def sweep(shape: sg.DosContainer, extra: list[str] | None = None,
           by: str = "buffer") -> list[dict]:
-    paths = dossavcensus.find_saves([p for p in roots(extra) if p.exists()],
+    paths = dossavsweep.find_saves([p for p in roots(extra) if p.exists()],
                                     shape=shape)
     return [describe(p, shape, by) for p in paths]
 
@@ -212,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.json:
             report(shape, rows, args.list)
     if not args.json and not any(out.values()):
-        print(dostailcensus.NO_RECORDS)
+        print(dostailsweep.NO_RECORDS)
     if args.json:
         json.dump(out, sys.stdout, indent=2)
         print()

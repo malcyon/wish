@@ -11,7 +11,7 @@ engine code each rule here is read from.
 the JOIN routine (`SECRET GAME.OVR` `0x29391`) makes -- the head's type,
 names, weight, quantity and value, and a live far pointer in each node's
 chain field -- so nothing is sliced out of anybody's save.  No save on this
-machine holds a joined scroll (`tools/dos/dosscrollbundle.py census`).  The
+machine holds a joined scroll (`tools/dos/dosscrollbundle.py sweep`).  The
 two tests at the end that need the archives' shipped Silver Blades party
 skip without them.
 """

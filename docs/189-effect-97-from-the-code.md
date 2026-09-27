@@ -58,7 +58,7 @@ Between the race read at `0x1A12A` and the last `lcall 0xB0:0x52` at
 `docs/162-spc-permanence.md` lists all 38 `add_affect` callers and the
 racial ids are pushed here and nowhere else. This is `#84 (Roll a gnome in
 DOS and read the two innate effect ids nobody has seen)`'s eight-character
-census, reproduced from the code. CONFIRMED.
+sweep, reproduced from the code. CONFIRMED.
 
 **2. The saving throw, `0x2BC4D`** (arguments: a bonus, the save type, the
 player). `1d20` into `[0x6816]`; a 1 fails and a 20 succeeds outright;

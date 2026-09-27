@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """One named record field, over every character record on this machine.
 
-`tools/records/thac0census.py` asks this of `thac0_base` and knows that field's table;
+`tools/records/thac0sweep.py` asks this of `thac0_base` and knows that field's table;
 this asks it of **any** field by name, and knows nothing about what the answer
 should be.  It is the thing that gets rewritten every time a byte's meaning is
 in question: print the stored value beside the class levels, group it, and see
 whether a rule fits.
 
-    tools/records/fieldcensus.py c64 attack_level
-    tools/records/fieldcensus.py dos attack_level --all-titles
-    tools/records/fieldcensus.py monsters level --title pool-of-radiance
+    tools/records/fieldsweep.py c64 attack_level
+    tools/records/fieldsweep.py dos attack_level --all-titles
+    tools/records/fieldsweep.py monsters level --title pool-of-radiance
 
 It settled `#527 (A DOS import combines saving throws from classes the
 character does not have)`'s last open byte.  `attack_level` at C64 `0x098` is
@@ -21,7 +21,7 @@ maintain it, which is why the sweep has to be per title and could not be read
 off one corpus.
 
 **Say which corpus a count is over.**  The C64 and DOS sweeps see different
-records, and an earlier census of this same field was C64-only and concluded
+records, and an earlier sweep of this same field was C64-only and concluded
 that no engine ever writes 1.  The header line names the corpus for that
 reason.
 
@@ -50,7 +50,7 @@ from goldbox import dos_codec  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import SaveGame0  # noqa: E402
-from tools.records.thac0census import C64_LEVEL_FIELDS  # noqa: E402
+from tools.records.thac0sweep import C64_LEVEL_FIELDS  # noqa: E402
 
 #: Save disks carry a party; every other `.d64` on the pile is a game side.
 SAVE_DISK_PREFIXES = ("PORSAVE", "NEWSAVE", "TEST_DOS")
@@ -58,7 +58,7 @@ SAVE_DISK_PREFIXES = ("PORSAVE", "NEWSAVE", "TEST_DOS")
 #: The specimen tree keeps every C64 title's disks in `por-c64/`, so the
 #: directory is not the title and the **filename prefix** is.  Globbing
 #: `WISH-SPEC-*` there silently mixes six Curse and six Silver Blades disks
-#: into a Pool of Radiance count, which is how a census grows by six records
+#: into a Pool of Radiance count, which is how a sweep grows by six records
 #: that answer for another game's record layout.
 C64_SPECIMEN_PREFIX = {"pool-of-radiance": "WISH-SPEC-por",
                        "curse-of-the-azure-bonds": "WISH-SPEC-curse",
@@ -160,7 +160,7 @@ def monster_rows(field: str, title: str = "pool-of-radiance"):
 
     # The field name is checked before the disks are looked for, so a typo is
     # refused on a machine that has no game files rather than answering with
-    # an empty census.
+    # an empty sweep.
     declared = layout.FIELDS_BY_NAME.get(field)
     if declared is None:
         raise SystemExit(f"no C64 field called {field}")

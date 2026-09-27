@@ -119,7 +119,7 @@ def test_eleven_ids_fill_every_slot_and_the_eleventh_is_dropped_silently():
     """Ten is the machine's number, not ours (`.claude/rules/conversions.md`),
     so the eleventh cannot be written.  #236 (A character converted to the
     C64 with more than ten innate effects loses the extra ones with no
-    report) drafted a sentence for this; #399's own 950-character census
+    report) drafted a sentence for this; #399's own 950-character sweep
     found nobody reaching the ceiling for real (widest anywhere: 5), and
     Donald ruled the sentence unneeded -- "I agree that we do not need the
     sentences." -- so the eleventh is still cut off, just not named."""
@@ -158,7 +158,7 @@ def _has_c64_port(char: dos_codec.DosCharacter) -> bool:
 
 
 def test_the_scan_skips_a_title_with_no_c64_port_and_keeps_the_others():
-    """A Pools of Darkness record is outside the census, and the three titles
+    """A Pools of Darkness record is outside the sweep, and the three titles
     the C64 has are all still inside it, so the scan cannot go blind."""
     pod = _dos_record(dos_port.POOLS_OF_DARKNESS, [])
     assert not _has_c64_port(pod)
@@ -170,7 +170,7 @@ def test_the_scan_skips_a_title_with_no_c64_port_and_keeps_the_others():
 
 @needs_specimens
 def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
-    """The census #394 asks for, over every DOS save we watched being
+    """The sweep #394 asks for, over every DOS save we watched being
     written: 326 records, 182 of them carrying at least one permanent effect,
     and no id that should have crossed missing from the ten bytes.
 
@@ -200,7 +200,7 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
         # Hashed here rather than through `gamedata.specimen`, which resolves
         # a name under `por-*` only: the DOS records of the later titles sit
         # in `coab-dos` and `ssb-dos` as well, and a specimen whose bytes have
-        # moved must fail rather than quietly leave the census short.
+        # moved must fail rather than quietly leave the sweep short.
         prov = folder / "provenance.toml"
         assert prov.is_file(), f"{folder}: no provenance.toml -- not a specimen"
         for filename, expected in \
@@ -241,7 +241,7 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
         f"{len(ff_in_name)} DOS Pool of Radiance records hold $FF in their "
         f"name: {ff_in_name}.  `DosCharacter.name` (goldbox/dos_codec.py) "
         f"reads $FF as a space for every Pool of Radiance record, DOS and "
-        f"Amiga alike, on the strength of this census -- no DOS-sourced "
+        f"Amiga alike, on the strength of this sweep -- no DOS-sourced "
         f"record has ever been observed to hold $FF in its name, only "
         f"Amiga-sourced ones do (#631, A Pool of Radiance character created "
         f"in the Amiga game with a space in his name converts as MARY?SUE, "

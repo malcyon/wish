@@ -51,7 +51,7 @@ BY_SPELL = {
     136: "ENTANGLE", 142: "FEAR", 143: "FIRE SHIELD",
 }
 
-#: The ten codes the monster census could only refuse -- a Pool of Radiance
+#: The ten codes the monster sweep could only refuse -- a Pool of Radiance
 #: name landing on a Curse creature that cannot have it -- and the creature
 #: that carries each. Named from their handlers on `#567`.
 REFUSED = (57, 81, 82, 84, 85, 86, 87, 90, 96, 103)
@@ -61,7 +61,7 @@ REFUSED = (57, 81, 82, 84, 85, 86, 87, 90, 96, 103)
 CURSE_ONLY = (128, 129, 130, 131, 132, 133, 135, 138)
 
 #: Every code `NAMES_CURSE` names from its handler rather than from the
-#: spell table or the census.
+#: spell table or the sweep.
 FROM_HANDLERS = REFUSED + CURSE_ONLY + (73,)
 
 #: The eight codes that carried a Pool of Radiance name Curse's own handler

@@ -13,7 +13,7 @@ address while the overlay runs.
     $0EEE  9D 9A 7C   STA $7C9A,X           table it reads is two lines up
 
 `--refs` prints every absolute-mode instruction in the overlay whose operand
-lands in the record, against `goldbox/layout.py`'s field names. That census is
+lands in the record, against `goldbox/layout.py`'s field names. That sweep is
 what located Curse's saving throws (`$0E5E`), thief skills (`$0FAD`), turning
 level (`$113F`), constitution hit points (`$126D`) and hit-die roll (`$15E1`),
 none of which shares an address with Pool of Radiance's. `--callers` then walks
@@ -26,7 +26,7 @@ the working character at `$6B00` and Curse and Silver Blades at `$7C00`;
 character read at that address, and Pool of Radiance's falls out of its own
 thief-skill routine, `$1FEC LDX $6BCB / ... / STA $6BA5,Y` -- `level_thief` at
 `0x0CB` and the eight skills at `0x0A5`. Pass `--record` for a title nobody has
-fixed one for, and a wrong guess shows up immediately as a census with no
+fixed one for, and a wrong guess shows up immediately as a sweep with no
 `level`, no `experience` and no `class_bits` in it.
 
 **A hit is a claim about bytes, not proof they are code.** `tools/c64/d6502.py`
@@ -158,7 +158,7 @@ def main(argv=None) -> int:
     ap.add_argument("--base", help="where it runs, hex; default per title")
     ap.add_argument("--record", help="the record's address, hex")
     ap.add_argument("--refs", action="store_true",
-                    help="census of record references (the default)")
+                    help="sweep of record references (the default)")
     ap.add_argument("--callers", help="who JSRs or JMPs to this address, hex")
     ap.add_argument("--field", help="only this record field")
     args = ap.parse_args(argv)

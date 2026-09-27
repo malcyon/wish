@@ -250,7 +250,7 @@ def test_a_neutral_character_written_to_c64_is_not_told_about_infravision():
 
 def test_the_c64_writers_infravision_row_moved_from_dropped_to_derived():
     """The tripwire the encumbrance move got, in
-    `tests/records/test_enccensus.py::test_the_c64_record_has_no_
+    `tests/records/test_encsweep.py::test_the_c64_record_has_no_
     encumbrance_to_check`, for the same reason: `write` has always
     recomputed the byte from race (`_infravision`), and until `#617` the
     report called that a loss anyway."""

@@ -31,13 +31,13 @@ numbers into pixels:
   `SHARED` below carries them, measured on the machine.
 
 The attribute's **high nibble** is not the C64's business: colour RAM is four
-bits wide and the chip never sees it.  `census` counts it; what the engine
+bits wide and the chip never sees it.  `sweep` counts it; what the engine
 does with it is not settled here.
 
     tools/pool_of_radiance/worldtiles.py sheet --window all
     tools/pool_of_radiance/worldtiles.py view 5 7 29 --scale 4
     tools/pool_of_radiance/worldtiles.py codes 5 7 29
-    tools/pool_of_radiance/worldtiles.py census
+    tools/pool_of_radiance/worldtiles.py sweep
     tools/pool_of_radiance/worldtiles.py sample
 
 `sample` alone needs PyQt6, for the automapper's colours and party marker.
@@ -380,7 +380,7 @@ def cmd_sample(args) -> int:
     return 0
 
 
-def cmd_census(args) -> int:
+def cmd_sweep(args) -> int:
     """The numbers `docs/217`'s table rests on, re-takeable."""
     for index, window, glyphs in _windows(args):
         counts = used_counts(window)
@@ -429,8 +429,8 @@ def main(argv: list[str] | None = None) -> int:
         one.add_argument("--scale", type=int, default=3)
         one.set_defaults(func=func)
 
-    census = sub.add_parser("census", help="the tile and attribute counts")
-    census.set_defaults(func=cmd_census)
+    sweep = sub.add_parser("sweep", help="the tile and attribute counts")
+    sweep.set_defaults(func=cmd_sweep)
 
     sample = sub.add_parser(
         "sample", help="the whole wilderness and a 16 x 16 piece, each at "

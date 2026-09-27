@@ -1892,7 +1892,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     # was approved: the sentences themselves are gone.** All six of #399's
     # own per-character ceiling sentences (memorised spells, the spellbook,
     # the class array, both trait-slot lines and the inventory line) are
-    # deleted, not reworded: Donald ruled, on the 950-character census #399's
+    # deleted, not reworded: Donald ruled, on the 950-character sweep #399's
     # own closing comment carries, that no real conversion reaches any of
     # these ceilings -- "I agree that we do not need the sentences." A short
     # comment citing #399 sits where each one was. The one line left was the

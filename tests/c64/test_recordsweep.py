@@ -8,14 +8,14 @@ skips.
 dual-class slot)`: a record offset reached through `(pointer),Y` or
 `(pointer,X)` rather than an absolute operand, which `hits()` cannot see.
 That scan was run once by a script nobody kept -- `#230 (The indirect half of
-a record-offset census cannot be rerun, because its script was never kept)`.
+a record-offset sweep cannot be rerun, because its script was never kept)`.
 """
 
 from tools.c64.d6502 import M_IZX, M_IZY
 from tools.c64.recordsweep import hits, indirect_hits
 
 # --------------------------------------------------------------------------
-# hits() -- absolute-mode census, previously untested
+# hits() -- absolute-mode sweep, previously untested
 # --------------------------------------------------------------------------
 
 def test_hits_finds_an_absolute_mode_reference():
@@ -89,10 +89,10 @@ def test_indirect_hits_ignores_a_match_with_no_operand_byte():
     """A `(zp),Y` opcode as a file's last byte is a truncated instruction.
 
     `main` prints the pointer byte after the opcode, so reporting a match
-    with nothing after it raised `IndexError` and aborted the whole census
+    with nothing after it raised `IndexError` and aborted the whole sweep
     partway through -- a traceback instead of a result, on any offset or
     title where a file happened to end that way. Found by review on
-    `#230 (The indirect half of a record-offset census cannot be rerun,
+    `#230 (The indirect half of a record-offset sweep cannot be rerun,
     because its script was never kept)`; the two real hits land three and
     four bytes past their load, nowhere near a tail, so no reported figure
     ever depended on it.

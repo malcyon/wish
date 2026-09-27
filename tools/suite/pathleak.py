@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Census: which `tools/` scripts leave `tools/` on `sys.path` after import.
+"""Sweep: which `tools/` scripts leave `tools/` on `sys.path` after import.
 
     tools/suite/pathleak.py              # the leaking scripts, one per line
     tools/suite/pathleak.py --all        # every script, with what it did

@@ -310,7 +310,7 @@ def test_a_real_conversion_that_truncates_items_shows_nothing_in_the_pane():
     the combat icon nor `ANIMATE00` change whether the inventory truncates.
 
     `#399` drafted a sentence for this specimen reaching the pane; a
-    950-character census across every C64 disk, DOS archive, played save
+    950-character sweep across every C64 disk, DOS archive, played save
     and specimen on the machine found this manufactured character is the
     only one anywhere over sixteen items, and Donald ruled the sentence
     unneeded: "I agree that we do not need the sentences."  So the sixteenth

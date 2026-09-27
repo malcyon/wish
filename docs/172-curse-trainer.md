@@ -39,7 +39,7 @@ drew nine and `TRAIN CHARACTER` was not among them. Poked to `$7F` and the menu
 rebuilt, it drew ten with `TRAIN CHARACTER` between MODIFY and VIEW; poked back
 to 0 later in the same session, the line went away again.
 
-**The area scripts write the same value.** `tools/areas/eclcensus.py
+**The area scripts write the same value.** `tools/areas/eclsweep.py
 curse-of-the-azure-bonds --sites 7EA8` finds six statements in the whole
 corpus, four of them `SAVE 127, =[$7EA8]` in `ECL01`, `ECL03`, `ECL50` and
 `ECL51`; `ECL01+$01EF` writes 0 and `ECL01+$0228` compares against 124. `GEN
@@ -195,7 +195,7 @@ SHARA is a cleric with wisdom 17 taken from 5 to 6, the level at which a Pool of
 Radiance trainer writes a new capacity byte. `0x0EE`-`0x0F6` read nine zeroes
 before and nine zeroes after. That is a third reading behind
 `levels.stores_spell_capacity=False`, after `#192 (Convert a Curse of the Azure Bonds DOS save into a
-C64 one, which the importer refuses today)`'s code census and its
+C64 one, which the importer refuses today)`'s code sweep and its
 memorise-screen demonstration. CONFIRMED.
 
 Five of five trained characters came out with `char_class` at `0x073` = 0 where

@@ -18,12 +18,12 @@ committed and none of them ours:
    real source save, so the catch-all count is the writer's own rather than a
    number quoted from a document.
 2. **The game's own scripts**, `ecl.dax` off Amiga disk 2, every block walked
-   from its five entry `GOTO`s through `tools/areas/eclcensus.py`'s decoder -- so a
+   from its five entry `GOTO`s through `tools/areas/eclsweep.py`'s decoder -- so a
    word is "named by a script" because a reachable statement names it, not
    because two bytes of a data table happen to spell it.
 3. **The VM's address classes.**  A script names the second and third heap
    blocks `$6B00`-`$6EFF` and `$9700`-`$98FF`; the file names them `$4D00`-
-   `$50FF` and `$5100`-`$52FF` (`docs/163-dos-vm-address-map.md`).  Censusing
+   `$50FF` and `$5100`-`$52FF` (`docs/163-dos-vm-address-map.md`).  Sweeping
    under the file's contiguous name is what hid every one of those references
    the last time somebody looked, which is why the mapping is here and not
    assumed away.
@@ -38,7 +38,7 @@ committed and none of them ours:
 7. **`/program` off Amiga disk 1**, under `--engine`: every site that loads
    one of the three block pointers and then uses a constant displacement off
    it, which is the only way the engine reaches an array word without going
-   through the VM.  A word neither this nor the script census names is one
+   through the VM.  A word neither this nor the script sweep names is one
    nothing in the game touches at a statically known address.
 
     tools/amiga/amigazerowords.py                       the report
@@ -67,7 +67,7 @@ from automap import gamedisks  # noqa: E402
 from goldbox import amiga_dax, amiga_savegame, c64_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from tools.amiga import amigasaves  # noqa: E402
-from tools.areas import eclcensus  # noqa: E402
+from tools.areas import eclsweep  # noqa: E402
 
 #: The head of the sweep sentence `por_savegame_zeroes` gives every word no
 #: earlier writer claimed.  Matched rather than reproduced, so a reword of
@@ -219,9 +219,9 @@ def scripts(ecl: bytes) -> "dict[int, bytes]":
     return out
 
 
-# -- the census --------------------------------------------------------------
+# -- the sweep --------------------------------------------------------------
 
-class Census:
+class Sweep:
     """Which areas' scripts name each word of the variable array."""
 
     def __init__(self, bodies: "dict[int, bytes]"):
@@ -230,12 +230,12 @@ class Census:
         if root is None:
             raise SystemExit("No Pool of Radiance disks; see automap/gamedisks.py")
         # The opcode tables and operand counts come out of the C64 DUNGEON,
-        # exactly as tools/areas/eclcensus.py reads the DOS blocks with them.
-        machine, _base, _c64, _sides, _dos = eclcensus.load_port(
+        # exactly as tools/areas/eclsweep.py reads the DOS blocks with them.
+        machine, _base, _c64, _sides, _dos = eclsweep.load_port(
             str(root), game, None)
         keyed = {f"{area:02d}": body for area, body in bodies.items()}
-        self.base = eclcensus.script_base(machine, keyed)
-        hits, reach = eclcensus.census(machine, keyed, self.base)
+        self.base = eclsweep.script_base(machine, keyed)
+        hits, reach = eclsweep.sweep(machine, keyed, self.base)
         self.coverage = (sum(a for a, _b in reach.values()),
                          sum(b for _a, b in reach.values()))
         self.writes: dict = collections.defaultdict(set)
@@ -276,17 +276,17 @@ POINTERS = {0x98: 0x4900, 0x9C: 0x6B00, 0xA0: 0x9700}
 POINTER_WINDOW = 120
 
 
-class EngineCensus:
+class EngineSweep:
     """Which array words `/program` itself touches at a constant offset.
 
     The engine reaches the array two ways.  Almost all of it goes through the
     ECL VM's address classifier, so a script's `$6DD2` is an address in the
-    bytecode and not in the executable; those are `Census` above.  The rest is
+    bytecode and not in the executable; those are `Sweep` above.  The rest is
     the engine's own code loading a block pointer and using a fixed
     displacement -- `movea.l h32+0x98, a0; move.w $1FE(a0), d0` is the loader
     reading `$49FF`.  This finds every one of those.
 
-    A word neither census names is one nothing in the game reads or writes at
+    A word neither sweep names is one nothing in the game reads or writes at
     a statically known address.  It can still be reached by an *indexed*
     access, so the count of those is reported rather than assumed to be zero.
     """
@@ -389,7 +389,7 @@ def main(argv=None) -> int:
                         help="directories or files holding DOS containers")
     parser.add_argument("--json", help="write the per-word table here")
     parser.add_argument("--engine", action="store_true",
-                        help="also census the engine's own constant-offset "
+                        help="also sweep the engine's own constant-offset "
                              "accesses, reading /program off the player's "
                              "disk 1")
     parser.add_argument("--program", metavar="PATH",
@@ -398,10 +398,10 @@ def main(argv=None) -> int:
 
     ecl = ecl_dax()
     bodies = scripts(ecl)
-    census = Census(bodies)
+    sweep = Sweep(bodies)
     engine = None
     if args.engine or args.program:
-        engine = EngineCensus(pathlib.Path(args.program).read_bytes()
+        engine = EngineSweep(pathlib.Path(args.program).read_bytes()
                               if args.program else amiga_program())
     saves = amiga_corpus()
     if not saves:
@@ -418,9 +418,9 @@ def main(argv=None) -> int:
     catch, classes = catch_all_words(data, label, ecl)
 
     print(f"the game's own scripts: {len(bodies)} blocks of ecl.dax, "
-          f"base ${census.base:04X}, walk reaches "
-          f"{100 * census.coverage[0] / census.coverage[1]:.1f}% of "
-          f"{census.coverage[1]} bytes")
+          f"base ${sweep.base:04X}, walk reaches "
+          f"{100 * sweep.coverage[0] / sweep.coverage[1]:.1f}% of "
+          f"{sweep.coverage[1]} bytes")
     print(f"the Amiga corpus: {len(saves)} saved games, areas "
           f"{sorted(CORPUS_AREAS)}, {len(amiga_live)} of 2560 words non-zero "
           f"in at least one")
@@ -446,16 +446,16 @@ def main(argv=None) -> int:
     for start, words in BLOCKS:
         here = [w for w in catch
                 if start <= vm_address(w) < start + words]
-        written = [w for w in here if census.writes.get(w)]
-        read = [w for w in here if census.reads.get(w)
-                and not census.writes.get(w)]
-        named = [w for w in here if not census.writes.get(w)
-                 and not census.reads.get(w)]
-        raw = [w for w in named if not census.raw.get(w)]
+        written = [w for w in here if sweep.writes.get(w)]
+        read = [w for w in here if sweep.reads.get(w)
+                and not sweep.writes.get(w)]
+        named = [w for w in here if not sweep.writes.get(w)
+                 and not sweep.reads.get(w)]
+        raw = [w for w in named if not sweep.raw.get(w)]
         print(f"  ${start:04X}-${start + words - 1:04X}  "
               f"{len(written):7d}  {len(read):9d}  {len(named):13d}  "
               f"{len(raw):22d}")
-    written_all = [w for w in catch if census.writes.get(w)]
+    written_all = [w for w in catch if sweep.writes.get(w)]
     print(f"  total          {len(written_all):7d}")
     print()
 
@@ -507,7 +507,7 @@ def main(argv=None) -> int:
         print()
 
     visited = set(CORPUS_AREAS)
-    at_risk = [w for w in written_all if not (census.writes[w] & visited)]
+    at_risk = [w for w in written_all if not (sweep.writes[w] & visited)]
     print(f"{len(written_all)} of the {len(catch)} catch-all words are "
           f"written by some area's script.")
     print(f"  {len(written_all) - len(at_risk)} of those are written by a "
@@ -526,10 +526,10 @@ def main(argv=None) -> int:
     print("  area  words it writes that no visited area's script writes")
     per_area: dict = collections.Counter()
     for word in at_risk:
-        for area in census.writes[word]:
+        for area in sweep.writes[word]:
             per_area[area] += 1
     for area, n in sorted(per_area.items(), key=lambda kv: (-kv[1], kv[0])):
-        words = sorted(w for w in at_risk if area in census.writes[w])
+        words = sorted(w for w in at_risk if area in sweep.writes[w])
         names = " ".join(f"${vm_address(w):04X}" for w in words)
         print(f"  {area:4d}  {n:3d}  {names}")
     print()
@@ -538,8 +538,8 @@ def main(argv=None) -> int:
     print("  VM      file    written by                read by")
     for word in at_risk:
         print(f"  ${vm_address(word):04X}  ${file_address(word):04X}  "
-              f"{sorted(census.writes[word])!s:24.24}  "
-              f"{sorted(census.reads.get(word, ()))!s:24.24}"
+              f"{sorted(sweep.writes[word])!s:24.24}  "
+              f"{sorted(sweep.reads.get(word, ()))!s:24.24}"
               + ("  DOS-live" if word in dos_live else ""))
     print()
 
@@ -556,9 +556,9 @@ def main(argv=None) -> int:
             rw = ("w" if engine.writes.get(word) else "") + \
                  ("r" if engine.reads.get(word) else "")
             print(f"  ${vm_address(word):04X}  ${file_address(word):04X}  "
-                  f"{rw:10.10}  {sorted(census.writes.get(word, ()))!s:30.30}")
+                  f"{rw:10.10}  {sorted(sweep.writes.get(word, ()))!s:30.30}")
         nothing = [w for w in catch if not engine.touches(w)
-                   and not census.writes.get(w) and not census.reads.get(w)]
+                   and not sweep.writes.get(w) and not sweep.reads.get(w)]
         print(f"  {len(nothing)} catch-all words ({2 * len(nothing)} bytes) "
               f"are named by no script and by no constant displacement in "
               f"/program.")
@@ -572,9 +572,9 @@ def main(argv=None) -> int:
                 "vm": f"${vm_address(word):04X}",
                 "file": f"${file_address(word):04X}",
                 "block": block_name(word),
-                "writes": sorted(census.writes.get(word, ())),
-                "reads": sorted(census.reads.get(word, ())),
-                "named_raw": sorted(census.raw.get(word, ())),
+                "writes": sorted(sweep.writes.get(word, ())),
+                "reads": sorted(sweep.reads.get(word, ())),
+                "named_raw": sorted(sweep.raw.get(word, ())),
                 "dos_live": word in dos_live,
                 "engine_reads": (bool(engine.reads.get(word))
                                  if engine else None),

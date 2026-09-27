@@ -396,7 +396,7 @@ def with_effect(machine, code: int, *owners: int) -> MemoryTarget:
 
 def test_the_helpless_code_is_the_one_the_trait_table_names():
     """The tooltip's word and the id are two halves of one claim. If the
-    census ever renames 31 this fails, and the label gets looked at again."""
+    sweep ever renames 31 this fails, and the label gets looked at again."""
     from goldbox.traits import NAMES
     assert NAMES[combat.HELPLESS] == ("helpless", "PROBABLE")
 

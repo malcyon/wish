@@ -6,7 +6,7 @@ the class he trained out of)` asked whether the DOS record has a home for the
 C64's `dual_class_slot`/`dual_class_level` pair.  It has two, and this is what
 was used to find them:
 
-* **`census`** reads every DOS character record under the roots it is given --
+* **`sweep`** reads every DOS character record under the roots it is given --
   285, 422, 439 and 510 bytes, `.SAV`, `.CHA` and `.GUY` alike -- deduplicates
   on the bytes, and prints `class_levels`, `former_class_levels` and the
   unnamed byte immediately after `level` for each.  It **names the roots it
@@ -23,14 +23,14 @@ was used to find them:
   readers -- the printed "sites" figure counts the write as well; Pool of
   Radiance has no such array at all, which is the DOS half of
   `#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the
-  dual-class slot)`'s C64 census.
+  dual-class slot)`'s C64 sweep.
 
 The reference scan is `tools/dos/dosfieldrefs.py`'s, and its three limits apply
 here too -- a displacement match is not proof the pointer is a character
 record, an offset can be reached without a matching displacement, and nothing
 checks that a match is an instruction.  What makes the answer sound is that
 `code` disassembles the site it found and the routine reads as one: the
-displacement census only says where to look.
+displacement sweep only says where to look.
 
 **And the listing does not show how the slot is indexed.**  The backward
 search for an instruction boundary reaches two bytes of lead-in before Curse's
@@ -38,9 +38,9 @@ write site and no further, so the listing opens on the store itself and never
 shows `di` and `al` being loaded.  That the slot is the class *number* rests
 on the specimens landing in different slots, not on anything printed here.
 
-    tools/dos/dualclassdos.py census
-    tools/dos/dualclassdos.py census --dual-only DIR
-    tools/dos/dualclassdos.py census --no-archives DIR
+    tools/dos/dualclassdos.py sweep
+    tools/dos/dualclassdos.py sweep --dual-only DIR
+    tools/dos/dualclassdos.py sweep --no-archives DIR
     tools/dos/dualclassdos.py code
     tools/dos/dualclassdos.py code --title curse-of-the-azure-bonds --window 60
 
@@ -78,7 +78,7 @@ CLASS_NAMES = dos_port.CLASS_NUMBERS
 
 #: The directory stem each title's game tree carries, and its name.  A record
 #: is grouped by the *size* it is, and that only ever names four titles; six
-#: exist here, so `census` says separately which game's tree a file came out of
+#: exist here, so `sweep` says separately which game's tree a file came out of
 #: and a Gateway `.GUY` stops reading as a Curse record by silence.
 TITLE_BY_STEM = {
     "POOLRAD": "Pool of Radiance",
@@ -177,7 +177,7 @@ def old_level_byte(char) -> int | None:
     return raw[at] if at < len(raw) else None
 
 
-def census(args: argparse.Namespace) -> int:
+def sweep(args: argparse.Namespace) -> int:
     roots = ([str(dosbox.ARCHIVES)] if not args.no_archives else []) + args.paths
     print(f"swept: {', '.join(roots) or '(nothing)'}")
     records = read_records(args.paths, not args.no_archives)
@@ -326,13 +326,13 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="command", required=True)
 
-    c = sub.add_parser("census", help="every DOS record's two level arrays")
+    c = sub.add_parser("sweep", help="every DOS record's two level arrays")
     c.add_argument("paths", nargs="*", help="extra directories to sweep")
     c.add_argument("--dual-only", action="store_true",
                    help="print only records whose former array is set")
     c.add_argument("--no-archives", action="store_true",
                    help="sweep only the paths given, so a count has a scope")
-    c.set_defaults(func=census)
+    c.set_defaults(func=sweep)
 
     d = sub.add_parser("code", help="who writes the former array, per title")
     d.add_argument("--title", default=None, help="one shape key only")

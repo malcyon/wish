@@ -17,10 +17,10 @@ Scripts that may drive a live emulator, an X server or the player's own disks, o
 | [gui](gui/README.md) | Scripts that draw or measure Wish's own windows, and the Windows guest scripts that run them. |
 | [icons](icons/README.md) | Scripts for combat icons and portraits: the correspondence tables between the DOS and C64 art, and the tools that build, check and draw them. |
 | [pool_of_radiance](pool_of_radiance/README.md) | Scripts for Pool of Radiance: driving fights and outdoor walks, and replaying a load failure. |
-| [records](records/README.md) | Censuses and cross-checks over character records that span titles and ports, such as class combinations, fields and encumbrance. |
+| [records](records/README.md) | Sweeps and cross-checks over character records that span titles and ports, such as class combinations, fields and encumbrance. |
 | [registry](registry/README.md) | Scripts that say where things are and who holds them: the game disks, the specimen tree and its backups, the emulator instance pool and the scratch directories. |
 | [secret_of_the_silver_blades](secret_of_the_silver_blades/README.md) | Scripts for Secret of the Silver Blades: staging, loading, training and comparing its saves. |
-| [suite](suite/README.md) | Scripts that run and check the test suite: the on-request whole-suite diagnostic run, the generated test party, the rules check, the sys.path census and the diagnostic pytest plugins, loaded on demand with `-p` rather than wired into `pyproject.toml` or `tests/conftest.py`, that measure and reproduce the race behind a flaky conftest guard test. |
+| [suite](suite/README.md) | Scripts that run and check the test suite: the on-request whole-suite diagnostic run, the generated test party, the rules check, the sys.path sweep and the diagnostic pytest plugins, loaded on demand with `-p` rather than wired into `pyproject.toml` or `tests/conftest.py`, that measure and reproduce the race behind a flaky conftest guard test. |
 
 ## Top level
 

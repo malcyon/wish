@@ -228,7 +228,7 @@ class C64Deltas:
     #: from the record's own classes rather than trust the stored byte?
     #: **Curse of the Azure Bonds alone.** `GEN $1939` stores the wrong CPU
     #: register there (#310, A trained C64 Curse character arrives in DOS
-    #: with the wrong class on his sheet), and its own census is
+    #: with the wrong class on his sheet), and its own sweep is
     #: title-specific: Pool of Radiance agrees 24 of 24 measured, and Secret
     #: of the Silver Blades never writes the byte at all, so what its own
     #: creation code leaves there is UNMEASURED and repairing it would
@@ -311,7 +311,7 @@ CURSE_RECORD = C64Deltas(
 #: `0x014`-`0x01A` -- so those five bytes are free and the spell list has
 #: them.  CONFIRMED; `tools/c64/memorisedwidth.py` reads it again off the disks.
 #:
-#: **All three flags are this title's own, by a reference census of its 347
+#: **All three flags are this title's own, by a reference sweep of its 347
 #: files** -- the same question `#192` asked of Curse's 411, counting the
 #: little-endian address of each byte of the region wherever it appears.
 #:
@@ -905,7 +905,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
              f"which is the neutral order)")
         # No sentence for running past `mem_size` (#399, A conversion that
         # runs out of item or trait slots tells the player nothing, because
-        # the pane never shows a warning): a 950-character census across
+        # the pane never shows a warning): a 950-character sweep across
         # every C64 disk, DOS archive, played save and specimen on the
         # machine found nobody reaching either of #399's own ceilings, and
         # #477's follow-up measured this one directly -- over 442 DOS
@@ -953,7 +953,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # No sentence for a spell id above `ceiling` (#399, A conversion that
     # runs out of item or trait slots tells the player nothing, because the
     # pane never shows a warning; Donald, 2026-09-07: "I agree that we do
-    # not need the sentences.").  This ceiling is not #399's own census --
+    # not need the sentences.").  This ceiling is not #399's own sweep --
     # it is a title's spellbook mask being narrower than the shared DOS spell
     # id range, tracked on its own at #411 (Nobody knows whether a converted
     # cleric loses Restoration, because the spellbook field is one bit short
@@ -1422,7 +1422,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # A source that does keep it agrees with the derivation anyway: 187 of 187
     # engine-written C64 player records on this machine hold exactly what the
     # levels give, the 23 that do not being ones this converter wrote.
-    # `tools/records/turncensus.py` is that census.
+    # `tools/records/turnsweep.py` is that sweep.
     rep.note(0x0A3, 1, "turn_class: zero -- no player character is undead")
     use("turn_power")           # consumed here, by rule rather than by copy
     turning = derive.turn_power(char.game, w.get("levels") or {})
@@ -1590,7 +1590,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                  "its handler holds the magnitude")
         # No sentence for either ceiling (#399, A conversion that runs out
         # of item or trait slots tells the player nothing, because the pane
-        # never shows a warning).  #399's own census swept 950 characters --
+        # never shows a warning).  #399's own sweep swept 950 characters --
         # every C64 disk, DOS archive, played save directory, specimen and
         # Amiga disk image on the machine -- and found the widest trait list
         # anywhere is 5 of the 10 slots, engine-written (THRENDER GRONE, a
@@ -2181,7 +2181,7 @@ READ_DERIVED: tuple[tuple[str, str, str], ...] = (
      "established meaning, and a C64 party converted to DOS is told so "
      "with no way to check it), a driven fight whose sampled roster shows "
      "the counters going from 0 to the recomputed value the instant it "
-     "begins, and a 174-block census in which no stored counter ever "
+     "begins, and a 174-block sweep in which no stored counter ever "
      "exceeds its own recompute"),
 )
 
@@ -2736,7 +2736,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # with a fabricated code nobody wrote. Silver Blades never writes the
     # byte at all, so what its own creation code leaves there is
     # UNMEASURED and repairing it would be inventing a value rather than
-    # restoring one (#310's own census: Pool of Radiance agrees 24 of 24,
+    # restoring one (#310's own sweep: Pool of Radiance agrees 24 of 24,
     # Curse disagrees 8 of 30, all after a training or a class change).
     #
     # Repairing it here, rather than only in `goldbox.dos_codec.write`, is what

@@ -68,10 +68,10 @@ def test_two_codes_the_spell_audit_names_from_this_titles_own_spells():
         "MINOR GLOBE OF INVULNERABLITY"}
 
 
-# --- the monster census ------------------------------------------------------
+# --- the monster sweep ------------------------------------------------------
 
 
-def test_the_monster_census_reports_70_templates_52_codes():
+def test_the_monster_sweep_reports_70_templates_52_codes():
     """The tool's own headline count off `monster_blocks`: 70 `MON*`
     templates ship on Curse's sides and carry 52 distinct codes between
     them."""
@@ -81,9 +81,9 @@ def test_the_monster_census_reports_70_templates_52_codes():
     assert len(carriers) == 52
 
 
-def test_a_curse_only_code_the_monster_census_carries():
+def test_a_curse_only_code_the_monster_sweep_carries():
     """128 is above Pool of Radiance's namespace and unnamed in `NAMES`; the
-    census still reports a creature carrying it, which is what let
+    sweep still reports a creature carrying it, which is what let
     `NAMES_CURSE` leave it out rather than mis-naming it."""
     carriers = traitnames.carriers_of(CURSE.key, _root())
     assert 128 in carriers
@@ -95,7 +95,7 @@ def test_a_curse_only_code_the_monster_census_carries():
 
 def test_monster_blocks_reports_a_disk_it_cannot_read(tmp_path, capsys):
     """`monster_blocks` used to swallow a bad `.d64` or a bad directory
-    entry with a bare `except Exception: continue` -- a census tool whose
+    entry with a bare `except Exception: continue` -- a sweep tool whose
     whole point is a complete count over every `MON*` template must say what
     it skipped, matching `tools/c64/traitcross.py`'s pattern."""
     bad = tmp_path / "BAD.D64"

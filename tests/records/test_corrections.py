@@ -195,7 +195,7 @@ def test_a_name_is_promoted_by_a_carrier_or_by_the_engines_own_code():
     named by the spell that produced them, `docs/90-specimens.md`. A live Sleep
     cast on a slums orc ambush took it to 67, naming 53 on five sleeping orcs.
 
-    **This test used to be called `test_the_census_is_the_only_thing_that_
+    **This test used to be called `test_the_sweep_is_the_only_thing_that_
     promotes_a_name`, and that was wrong.** `#247 (Nobody knows whether innate
     effect 97 is racial or the constitution bonus)` promoted 90 and 97 on
     2026-09-07 without a carrier at all, by reading the shipped `GAME.OVR` end
@@ -203,7 +203,7 @@ def test_a_name_is_promoted_by_a_carrier_or_by_the_engines_own_code():
     and `0x112E5`, written up in `docs/189-effect-97-from-the-code.md`.
 
     A code read is the **stronger** of the two routes, not a loophole in this
-    one: a census says a value was seen, while the engine's own code says what
+    one: a sweep says a value was seen, while the engine's own code says what
     the value is for, and no edited save can have poisoned it. So the count
     below moves when either route lands, and what cannot move it is more
     looking at records that never carry the code."""

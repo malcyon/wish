@@ -2104,7 +2104,7 @@ POD_WRITE_CONSTANTS: tuple[tuple[str, str], ...] = (
     ("portrait_head", "Pools of Darkness draws no sheet face on either port "
                       "(#194), but the byte itself is a constant of the "
                       "format rather than a field it has none of: "
-                      "`pod_to_neutral` reads it at 0x0B9, the census across "
+                      "`pod_to_neutral` reads it at 0x0B9, the sweep across "
                       "all nineteen `.pc` files on disk 3 is zero in 19 of "
                       "19, and this writer emits the same zero. `#451` "
                       "(the Amiga Pools of Darkness notes call the combat "

@@ -31,7 +31,7 @@ first read of the local.
 `tools/c64/d6502.py` and `tools/dos/dosdis16.py` both carry.  What makes this one
 sound is that the three matches sit inside three routines of identical shape,
 each reading three tables at displacements 0x60 and 0x73 apart -- the same
-geometry `tools/records/thiefskillcensus.py` reads the tables at -- and each storing
+geometry `tools/records/thiefskillsweep.py` reads the tables at -- and each storing
 eight bytes into the record offset this project has already attributed.
 `tools/dos/dosdis16.py --game CURSE --file GAME.OVR --at 0x3b74a` prints the
 routine itself.
@@ -50,7 +50,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox import dos_codec  # noqa: E402
-from tools.records import thiefskillcensus as census  # noqa: E402
+from tools.records import thiefskillsweep as sweep  # noqa: E402
 
 #: `push bp / mov bp, sp / sub sp, imm8` -- a Borland C far function's prologue.
 PROLOGUE = re.compile(rb"\x55\x89\xe5\x83\xec.", re.S)
@@ -175,10 +175,10 @@ def _print_routine() -> None:
 
 def residuals(title: str = "curse-of-the-azure-bonds"):
     """`(source, name, stored, wanted, residual)` for every DOS record."""
-    tables = census.dos_tables(title)
-    for row in census.dos_records(title):
+    tables = sweep.dos_tables(title)
+    for row in sweep.dos_records(title):
         source, name, race, level, dexterity, stored = row
-        want = census.expected(tables, level, race, dexterity, True)
+        want = sweep.expected(tables, level, race, dexterity, True)
         if want is None:
             continue
         yield source, name, stored, want, [a - b for a, b in zip(stored, want)]
@@ -199,10 +199,10 @@ def _print_records(title: str) -> None:
     print("  flat residual, by value: "
           + ", ".join(f"{k}: {v} record(s)" for k, v in sorted(seen.items())))
     print(f"=== {title}: C64 records against the C64 tables")
-    tables = census.c64_tables(title)
-    for row in census.c64_records(title):
+    tables = sweep.c64_tables(title)
+    for row in sweep.c64_records(title):
         source, name, race, level, dexterity, stored = row
-        want = census.expected(tables, level, race, dexterity, True)
+        want = sweep.expected(tables, level, race, dexterity, True)
         if want is None:
             continue
         print(f"  {source:<56} {name:<14} residual "
@@ -259,7 +259,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("what", choices=("routine", "records", "labels"))
     ap.add_argument("--title", default="curse-of-the-azure-bonds",
-                    choices=sorted(census.C64_TABLES))
+                    choices=sorted(sweep.C64_TABLES))
     args = ap.parse_args(argv)
     if args.what == "routine":
         _print_routine()

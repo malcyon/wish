@@ -25,7 +25,7 @@ result against the player's disks. `tools/c64/recordsweep.py --indirect`
 finds no `LDY #$B8` / `(zp),Y` access in Pool of Radiance, Curse or Silver
 Blades (0 in 589, 412 and 349 files). Grades are `docs/50-experiments.md`'s.
 
-## The census
+## The sweep
 
 Files are counted once per distinct content. A site is given as the file and
 its payload offset. Where the run-time address is known, it is given as well.
@@ -164,7 +164,7 @@ What the saves on this machine hold agrees: 85 of 85 Curse and 66 of 66
 Silver Blades C64 records read `$00`, and Pool of Radiance's 16 `$01` records
 are BRUTUS on the `PORSAVE*` disks and their specimen copies
 (`tools/records/controlbyte.py`). Those saves have no chain of custody, so the
-code is the evidence and the census corroborates.
+code is the evidence and the sweep corroborates.
 
 **The other ports, from `docs/195` and a re-run of
 `tools/dos/dosbyteimm.py`.** DOS keeps the flag in the share byte, not the

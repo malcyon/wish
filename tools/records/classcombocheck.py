@@ -56,7 +56,7 @@ from goldbox.savegame import load_save  # noqa: E402
 
 #: Class name -> its bit, in the neutral order every port's mask uses once
 #: `goldbox.dos_codec.neutral_class_bits` has folded DOS's paladin and ranger back.
-#: The same table `tools/records/classcodecensus.py` carries, for the same reason: the
+#: The same table `tools/records/classcodesweep.py` carries, for the same reason: the
 #: bitmask a level array implies is not a field any record stores.
 BIT_FOR_CLASS = {"magic-user": 0x01, "cleric": 0x02, "thief": 0x04,
                  "fighter": 0x08, "knight": 0x10, "paladin": 0x40,

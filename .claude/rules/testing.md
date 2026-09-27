@@ -162,7 +162,7 @@ jewel**, which decrements the count and rebuilds the total on its way out.
 a third route: two leaf routines, `encumbrance ±= arg`, that adjust it by
 exactly what moved.** Pool, share, give and take call those; the trainer, the
 shop and the temple call neither them nor the recompute, which is where the
-drift comes from. `tools/dos/dosencrecompute.py helpers` re-takes the census.
+drift comes from. `tools/dos/dosencrecompute.py helpers` re-takes the sweep.
 
 **A miss below the sum is the engine's work too, and the sign of a miss
 therefore says nothing about provenance.** A purchase writes the total from
@@ -218,7 +218,7 @@ point the test at a set of records where the answer is exact.
 **And the C64 cannot be checked this way at all.** Its record has no such
 field: all three titles sum into a scratch word past the end of the record
 (`$6DF6` in Pool of Radiance, `$7EF6` in the other two) every time `LIBRARY`
-draws the sheet. `tests/records/test_enccensus.py::test_the_c64_record_has_no_
+draws the sheet. `tests/records/test_encsweep.py::test_the_c64_record_has_no_
 encumbrance_to_check` goes red if one is ever located.
 
 The rule underneath all of this: a save found on a disk has no chain of
@@ -278,7 +278,7 @@ written up, give how many records and what they are.
 
 **A sweep must also exclude what this project wrote.** An emulator instance's
 staged tree holds the sweeping tool's own tampered probe records, and they read
-back as the engine's. `tools/dos/dostailcensus.py` excludes them by name; copy
+back as the engine's. `tools/dos/dostailsweep.py` excludes them by name; copy
 that exclusion rather than reinventing it.
 
 **The way out, when no specimen can be trusted, is to read the code instead.**

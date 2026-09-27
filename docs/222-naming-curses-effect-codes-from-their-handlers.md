@@ -39,7 +39,7 @@ why it is not a lookup.
 | `$152B` | the same, only when the effect being applied is A | the five bytes in front of `$1530`; 108 immune to sleep and charm is two calls to it, with 53 and 11 |
 | `$A903` | the saving-throw d20 | `$0FD3` rolls it, and Resist Fire's `INC $A903` is the +1 |
 | `$A93B` | the save byte: bits 2-4 the column, bits 5-7 the modifier, bits 0-1 what a made save does | `$0FD3` indexes `$7C9A` -- record `0x09A`, `save_paralysis` -- with bits 2-4; 83 petrifying gaze sets column 1, and 121's acid and 131's fire breath set column 3 |
-| `$A905`, `$A913` | the rolled damage and the number of dice | `$1407` is Nd6 and `$140B` Nd4: 80 is `LDA #$01 / JSR $140B`, "1d4", and 121 is `LDA #$08`, "8d4" -- both names the census had already |
+| `$A905`, `$A913` | the rolled damage and the number of dice | `$1407` is Nd6 and `$140B` Nd4: 80 is `LDA #$01 / JSR $140B`, "1d4", and 121 is `LDA #$08`, "8d4" -- both names the sweep had already |
 | `$1539` | a d100 under A, carry clear | 107 elf loads 90, 124 half-elf loads 30, and both names were already CONFIRMED |
 | `$138F` | print combat message A, which is name-table entry `101 + n` | 83's `LDX #$14` is `GAZES...` and 121's `LDX #$24` is `SPITS ACID` |
 | `$1383` | print name-table entry X directly | the pair of `LDA $E884,X / LDY $E7DA,X` behind both, and `goldbox/spells.py`'s own base for Curse |
@@ -58,7 +58,7 @@ why it is not a lookup.
 ## The nineteen
 
 Every reading is CONFIRMED from the code. The creature column is the 70
-`MON*` templates the census of `#561 (A Curse of the Azure Bonds character's
+`MON*` templates the sweep of `#561 (A Curse of the Azure Bonds character's
 traits are named from Pool of Radiance's table, which disagrees with Curse's
 own data about eight codes)` read, and in each case it is what the *Monster
 Manual* would have predicted; the list column is Curse's own check lists,

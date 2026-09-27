@@ -107,7 +107,7 @@ def _carriers(monsters) -> dict[int, set[str]]:
 
 # --- P55: the effect table --------------------------------------------------
 # The guide enumerates 127 effect ids for the DOS build. The ids are shared
-# between the ports, so the C64 census is what promotes them one at a time.
+# between the ports, so the C64 sweep is what promotes them one at a time.
 
 def test_every_documented_effect_id_is_named():
     """1 to 127 with no holes. A gap would read as "there is nothing there"."""

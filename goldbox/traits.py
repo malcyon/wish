@@ -3,13 +3,13 @@
 This is where racial abilities, spell effects and monster specials live. It is
 one namespace, 1-139 on the C64, shared with the DOS port: Stephen S. Lee's
 Pool of Radiance guide (section 12.2.3) enumerates ids 1-127 for the DOS build
-and every id our own census of the player's disks turned up lands on the
+and every id our own sweep of the player's disks turned up lands on the
 creature that id's meaning demands. `docs/128-guide-and-scripting.md` is the
 write-up.
 
 **The names below are transcribed from a third-party document and then checked
 against the player's own disks.** 67 are CONFIRMED that way. Most were settled
-by the census: a `MON*` record or an item template carries the code on exactly
+by the sweep: a `MON*` record or an item template carries the code on exactly
 the creature or item the meaning requires -- the anhkheg carries 121 "anhkheg
 acid squirt", the troll carries 100 and 101, the ghoul carries the paralysis
 that spares elves, the wight carries "silver or magic" and the wraith the
@@ -19,8 +19,8 @@ with 26 spells running, and each one named the code it had just written -- 1
 Bless, 25 invisible, 39 hasted and the rest, `docs/90-specimens.md`. **One more
 was settled by a live fight**: 53 sleeping, five Sleep-struck orcs in one slums
 ambush all naming it. **Two more, 90 and 97, were settled by reading
-`GAME.OVR` itself rather than by any census** -- reading the shipped overlay
-is stronger evidence than a census of saves, since it names the instruction
+`GAME.OVR` itself rather than by any sweep** -- reading the shipped overlay
+is stronger evidence than a sweep of saves, since it names the instruction
 that decides the question instead of a population that happens to agree with
 it; `#247 (Nobody knows whether innate effect 97 is racial or the constitution
 bonus)` and `docs/189-effect-97-from-the-code.md` have the chain. 59 are
@@ -28,7 +28,7 @@ PROBABLE: the guide names them, nothing on the C64 exercises them and no
 overlay code has been read for them, and a third-party document on its own is
 never CONFIRMED.
 
-The census is 108 `MON*` records across the eight `POOL` disks and the 163
+The sweep is 108 `MON*` records across the eight `POOL` disks and the 163
 item templates in the `ITEMFILE*` lists. **52 of the 129 codes are carried by
 something**; the other 77 have no C64 carrier at all and cannot be promoted by
 any amount of looking. Only four item templates carry a passive power, and all
@@ -37,7 +37,7 @@ four were already confirmed -- the item side of this table is exhausted.
 **Four were promoted on the vampire's block** (P55): 103 gaseous form, 114 and
 118 the half damage from electricity and cold, 126 the avoidable gaze. The
 vampire is the only creature on the disks carrying any of them, and together
-with the four the census had already confirmed on it the block reads as the
+with the four the sweep had already confirmed on it the block reads as the
 *Monster Manual*'s vampire entry line for line.
 
 **Two that look promotable are not.** 117 lands on all nine undead and nothing
@@ -95,7 +95,7 @@ FIRST = 0x0AD
 # the carrier is what the name demands -- checked against the AD&D 1st
 # edition Monster Manual, which is the external rule this project promotes
 # on, with the carriers named in the trailing comments and coming from a
-# census of 116 `MON*` records across the eight POOL disks plus the save
+# sweep of 116 `MON*` records across the eight POOL disks plus the save
 # fixtures -- or the DOS overlay's own code was read and settles it without
 # any specimen, as for 90 and 97 (#247, docs/189-effect-97-from-the-code.md).
 #
@@ -177,7 +177,7 @@ NAMES: dict[int, tuple[str, str]] = {
     62: ("regeneration from constitution 20 or better", "PROBABLE"),
     63: ("unimplemented -- no handler exists", "PROBABLE"),
     # 64-66 and 67-70 are two graded families: poison and paralysis, each
-    # spread over its saving-throw modifier. The C64 census exercises one of
+    # spread over its saving-throw modifier. The C64 sweep exercises one of
     # each grade and the carriers are the poisoners and the paralysers.
     64: ("melee poison, no save modifier", "CONFIRMED"),   # SNAKE, SCORPION...
     65: ("melee poison, +4 to save", "CONFIRMED"),         # POISONOUS FROG
@@ -241,7 +241,7 @@ NAMES: dict[int, tuple[str, str]] = {
     102: ("troll: getting back up", "PROBABLE"),
     # 103, 114, 118 and 126 are the vampire's, and the vampire is the only
     # creature on the disks that carries any of them. Read together with the
-    # six the census had already confirmed on it -- 86, 98, 119, 125 -- the
+    # six the sweep had already confirmed on it -- 86, 98, 119, 125 -- the
     # block is the Monster Manual's vampire entry line for line: two levels
     # drained, 3 hit points a round regenerated, hit only by magic, immune to
     # sleep/charm/paralysis/poison, **half damage from cold and electrical
@@ -254,7 +254,7 @@ NAMES: dict[int, tuple[str, str]] = {
     106: ("85% magic resistance", "PROBABLE"),             # TYRANITHRAXUS
     107: ("elf: 90% resistance to sleep and charm", "CONFIRMED"),
     108: ("immune to sleep and charm", "CONFIRMED"),
-    # 109 and 111 are carried by exactly the same four undead, so the census
+    # 109 and 111 are carried by exactly the same four undead, so the sweep
     # cannot tell them apart; both names are the guide's alone.
     109: ("immune to paralysis, from Hold Person and wands only", "PROBABLE"),
     110: ("immune to cold", "CONFIRMED"),                  # all eight undead
@@ -339,7 +339,7 @@ EMPTY = "—"
 #
 # **The reassignment is not confined to the racial codes**, which is why this
 # title gets a table of its own rather than Pool of Radiance's with a few
-# entries changed. A census of the 69 `MON*` records on the six Silver Blades
+# entries changed. A sweep of the 69 `MON*` records on the six Silver Blades
 # sides against the 108 on the eight Pool of Radiance sides:
 #
 # * PHASE SPIDER carries 37 and 139 in Pool of Radiance and 37 and **86** in
@@ -536,7 +536,7 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
     # handlers read the *other* combatant's creature-type bytes, record
     # `$D4`/`$D5`: 26 is `INC $A915` (+1 on the attack d20) when the target
     # has `$D4` bit 7; 47 and 48 add 4 to the target's working AC when the
-    # attacker has `$D4` bit 2 (every giant and the OGRE in the census) or
+    # attacker has `$D4` bit 2 (every giant and the OGRE in the sweep) or
     # bit 5 (those plus the BUGBEAR).
     26: (NAMES[26][0], "CONFIRMED"),                   # list 10, $25E4
     # $27D4 sets the lose-your-actions flag and clears movement and attacks,
@@ -682,7 +682,7 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
     # MIRROR and the SILVER SHIELD +5 carry it at +14.
     72: ("carrying a mirror (reflects gaze attacks)", "CONFIRMED"),   # 58's
     # The gnome's second seed. $2469 is `INC $A915` when the target has
-    # `$D5` bit 2, which in the census only the BUGBEAR has -- this title's
+    # `$D5` bit 2, which in the sweep only the BUGBEAR has -- this title's
     # stand-in for the kobolds and goblins the ability is named for.
     7: (NAMES[18][0], "CONFIRMED"),                                # $2469
     # DISPEL EVIL's own routine at $1F96 writes 32 to the caster beside 4.
@@ -749,7 +749,7 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
 #: including numbers Pool of Radiance was already using, and `NAMES` never
 #: gave those a table of its own. `#561 (A Curse of the Azure Bonds
 #: character's traits are named from Pool of Radiance's table, which
-#: disagrees with Curse's own data about eight codes)` is where the census
+#: disagrees with Curse's own data about eight codes)` is where the sweep
 #: -- `tools/records/traitnames.py curse-of-the-azure-bonds` and its `--monsters` and
 #: `--records` flags -- read Curse's own `COMBAT2 +2732` spell table (100
 #: nine-byte records, byte 0 the effect code) and its 70 `MON*` templates
@@ -764,7 +764,7 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
 #:
 #: **Twenty-seven more are named from the routine each one dispatches**, read
 #: one at a time out of Curse's own `COMBAT` through the handler tables at
-#: `$EE2A`/`$EEBC` -- the ten the monster census could only refuse (57, 81,
+#: `$EE2A`/`$EEBC` -- the ten the monster sweep could only refuse (57, 81,
 #: 82, 84, 85, 86, 87, 90, 96, 103), the eight above `NAMES`'s reach that a
 #: Curse creature carries (128, 129, 130, 131, 132, 133, 135, 138), 73, and
 #: the eight whose inherited name Curse's own handler contradicts (50, 54,
@@ -935,7 +935,7 @@ class Trait:
         """`petrifying gaze` for a code we know, `trait 91` for one we do not.
 
         The number is what makes a new code visible rather than silently
-        dropped, which is how the census grew in the first place.
+        dropped, which is how the sweep grew in the first place.
         """
         return (describe(self.code, self.game) if self.named
                 else f"trait {self.code}")
@@ -944,7 +944,7 @@ class Trait:
     def detail(self) -> str:
         where = f"0x{FIRST + self.slot:03X}"
         if not self.named:
-            return f"{where} holds {self.code}, which the census does not name"
+            return f"{where} holds {self.code}, which the sweep does not name"
         return (f"{where}: {describe(self.code, self.game)} "
                 f"({confidence(self.code, self.game)})")
 

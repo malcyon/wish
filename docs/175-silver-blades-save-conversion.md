@@ -39,8 +39,8 @@ disk hint is `+$EE`. CONFIRMED, and both are confirmed a second time by the
 game booting a disk built that way.
 
 **`+$E7`-`+$E9` and `+$FD`-`+$FE` are per-area constants an arriving script
-sets and no script reads.** An address census over all twenty-two `ECL`
-scripts, on both ports (`tools/areas/eclcensus.py`), gives `$4BE7` and `$4BE8` 18
+sets and no script reads.** An address sweep over all twenty-two `ECL`
+scripts, on both ports (`tools/areas/eclsweep.py`), gives `$4BE7` and `$4BE8` 18
 writes and no reads across seventeen scripts, `$4BE9` 10 writes across seven,
 `$4BFD` 8 and `$4BFE` 16. The party's own value is in the DOS save at the same
 ECL address, so the conversion copies it rather than writing a zero nobody has
@@ -64,7 +64,7 @@ window the conversion wrote zero at `+$1FD` and the C64 engine's own
 containers hold 255 at that word and the shipped one holds 0.
 
 **Curse of the Azure Bonds has the same gap and it is not fixed here.** Its
-own census names `$4CFE` (16 reads, 8 writes) and `$4CFF` (4 writes), so a
+own sweep names `$4CFE` (16 reads, 8 writes) and `$4CFF` (4 writes), so a
 converted Curse party loses those two bytes. Filed separately rather than
 changed under this ticket, because Curse's conversion was proven in the game
 with the narrow window and re-proving it is that ticket's work.
@@ -168,7 +168,7 @@ Radiance's.
 caster may still memorise. Silver Blades does not use it, on two independent
 readings:
 
-* a reference census over its 347 files finds `$7CEE`-`$7CF3` named twenty
+* a reference sweep over its 347 files finds `$7CEE`-`$7CF3` named twenty
   times and **not once in a code file** -- every hit is a `PIC`, `COMPIC`,
   `SPRITE` or `WALLSET`, which is what a 16-bit value looks like in bitmap
   data. Pool of Radiance has 24 in `GEN` and `POOLRB` alone;

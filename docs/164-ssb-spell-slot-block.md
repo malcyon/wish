@@ -133,7 +133,7 @@ CONFIRMED.
 
 ## The same block in the other titles on this machine
 
-`tools/dos/dosspellslots.py sites` and `census` on each:
+`tools/dos/dosspellslots.py sites` and `sweep` on each:
 
 | title | record | block | `FillChar` | classes in the spell table | magic-user is |
 |---|---|---|---|---|---|
@@ -183,7 +183,7 @@ under `issue222/run1/` (scratch, deleted) and `run2/`.
   whole-record `Move` carries what the fill left.
 * **UNKNOWN** -- what class 2 was. The numbering looks like a class inserted
   between druid and magic-user in the engine Silver Blades was built on.
-  The DOS Champions of Krynn is not on this machine; the same census on its
+  The DOS Champions of Krynn is not on this machine; the same sweep on its
   spell table would name it. A stride-16 scan of the C64 Krynn disks
   (`~/c64/Champions of Krynn (SSI)[dom]/`) found no table laid out the DOS
   way, so the C64 side is not a shortcut.

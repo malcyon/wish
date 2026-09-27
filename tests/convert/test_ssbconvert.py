@@ -591,7 +591,7 @@ needs_engine_save = pytest.mark.skipif(
 def test_the_engine_leaves_the_spell_slot_array_zero():
     """The second leg of `spell_slots=False` for this title.
 
-    A reference census over its 347 files finds `$7CEE`-`$7CF3` named twenty
+    A reference sweep over its 347 files finds `$7CEE`-`$7CF3` named twenty
     times and not once in a code file; this is the other reading -- six
     records the C64 engine itself wrote back, including a cleric 8 and a
     magic-user 9 who have memorised nothing and would have every slot free.

@@ -177,11 +177,11 @@ _MACHINE_PATH = ("/mnt/", "~/downloads", "~/dos_por_play", "fr-archives")
 _NOT_A_LOOKUP = {
     # Fake paths handed to a parser that only reads their names.
     ("tests/records/test_carryceiling.py", "/mnt/roms/c64/PORSAVE.D64"):
-        "a fake save path the census parses",
-    ("tests/records/test_enccensus.py", "/home/x/Downloads/fr-archives"):
-        "a fake path the census classifies by its name",
-    ("tests/records/test_spellbookcensus.py", "/x/fr-archives"):
-        "a fake path the census classifies by its name",
+        "a fake save path the sweep parses",
+    ("tests/records/test_encsweep.py", "/home/x/Downloads/fr-archives"):
+        "a fake path the sweep classifies by its name",
+    ("tests/records/test_spellbooksweep.py", "/x/fr-archives"):
+        "a fake path the sweep classifies by its name",
     # A `[Version]` config file inside a string, which contains `/mnt/`.
     ("tests/registry/test_instance.py", "    [Version]"): "VICE config text",
     # The text of a dialog a screenshot shows, not a path it opens.

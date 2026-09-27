@@ -11,7 +11,7 @@ from goldbox import amiga_later, amiga_port
 #: Saved games in the specimen tree **this project wrote**, not the engine.
 #: Each is named in its own `provenance.toml`, and each is excluded from any
 #: claim about what the game holds -- the same exclusion
-#: `tools/dos/dostailcensus.py` makes by name, for the same reason: our bytes read
+#: `tools/dos/dostailsweep.py` makes by name, for the same reason: our bytes read
 #: back as the engine's is how a measurement quietly becomes circular.
 OURS = {
     # `--strip-items 2`: IILANDA's item chain emptied, and her stored

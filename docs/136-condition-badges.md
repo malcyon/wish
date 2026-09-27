@@ -137,7 +137,7 @@ carried by SNAKE, POISONOUS FROG, THRI-KREEN and GHOUL; 73–88 are attack forms
 monster defences — regeneration, immunities, half damage from a damage type. A
 handler for one of these reads fields a `MON*` record carries and a player
 record does not: `attack_forms` at `0x0D9` is `02 00 01 00 02 00 00 00` in every
-player character we hold. CONFIRMED, from the carrier census in `goldbox/traits.py`.
+player character we hold. CONFIRMED, from the carrier sweep in `goldbox/traits.py`.
 
 **One exception, and it is a real one: 89, displaced.** TYRANITHRAXUS carries it
 *and so does the player's own CLOAK OF DISPLACEMENT*, as a passive item power

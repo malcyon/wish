@@ -3,7 +3,7 @@
 
 The last open byte of `#235 (Two unattributed DOS byte ranges in the combat
 tail are dropped converting to C64, and nobody knows what they hold)`.
-`tools/dos/dostailcensus.py` found `0x10F` reading 1 in every character the engine
+`tools/dos/dostailsweep.py` found `0x10F` reading 1 in every character the engine
 resaved after a fight and 0 everywhere else, and the third-party DOS format
 workbooks call it `IsQuickFight`.  That correlation cannot separate "QUICK was
 pressed" from "a fight happened", because **every** fight in the corpus was

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Census one byte of the C64 roster block across every save disk to hand.
+"""Sweep one byte of the C64 roster block across every save disk to hand.
 
 `SAVEDGAME1` keeps a 32-byte block per roster slot, and `goldbox/savegame.py`
 names its offsets -- `ROSTER_IN_USE` at +0x00, `ROSTER_COMBAT_SIDE` at +0x0C,
@@ -19,9 +19,9 @@ against `NEWSAVE*` and `TEST_DOS_IMPORT*`, which is how the 90 of 90 on
 and never delivered from a real C64 save)` was separated from the 54 that came
 out of our own conversions.
 
-    tools/c64/rosterbytecensus.py 0x0D
-    tools/c64/rosterbytecensus.py 0x0D --equals-slot
-    tools/c64/rosterbytecensus.py 0x03 --disks /path/to/some/disks
+    tools/c64/rosterbytesweep.py 0x0D
+    tools/c64/rosterbytesweep.py 0x0D --equals-slot
+    tools/c64/rosterbytesweep.py 0x03 --disks /path/to/some/disks
 
 `--equals-slot` asks the one question a slot-index candidate needs answering:
 in how many occupied slots does the byte equal the index of the slot it sits
@@ -52,7 +52,7 @@ def disks_root(given: str | None) -> pathlib.Path | None:
     return tool_disks()
 
 
-def census(root: pathlib.Path, offset: int):
+def sweep(root: pathlib.Path, offset: int):
     """`(rows, skipped)`: one row per occupied slot, and the images that had
     no readable save on them."""
     rows = []
@@ -93,7 +93,7 @@ def main(argv=None) -> int:
     root = disks_root(args.disks)
     if root is None:
         raise SystemExit("No game disks found. Set $POR_DISKS.")
-    rows, skipped = census(root, offset)
+    rows, skipped = sweep(root, offset)
     print(f"{root}: {len(rows)} occupied roster slots, "
           f"{len(skipped)} image(s) with no save to read")
 

@@ -69,7 +69,7 @@ So the gate is shared by damage, the attack adjustment and the printed
 `-Backstabs-` action. `class_bits` (`0x12B` in Curse, `0x130` in Silver Blades)
 does not occur in either bounded predicate routine. CONFIRMED from the direct
 ES-relative operands between each predicate's prologue and the next routine;
-this is not a census of the three caller routines or of every use of
+this is not a sweep of the three caller routines or of every use of
 `class_bits` in either overlay.
 
 ## DOS Pools of Darkness reaches the same answer another way

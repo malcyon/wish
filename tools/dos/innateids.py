@@ -22,12 +22,12 @@ nine-byte `.SPC`/`.FX` record the engine then writes.
     tools/dos/innateids.py seed --game CURSE
     tools/dos/innateids.py seed --game-dir DIR  # a directory holding GAME.OVR
 
-**`census` enumerates the corpus**: every DOS Gold Box character record it can
+**`sweep` enumerates the corpus**: every DOS Gold Box character record it can
 find, its sibling effect file (`.SPC`/`.FX`/`.SFX`/`.EFX`, per title), and who
 carries what.
 
-    tools/dos/innateids.py census --title curse            # one row per record
-    tools/dos/innateids.py census --title curse --by-id    # one block per id
+    tools/dos/innateids.py sweep --title curse            # one row per record
+    tools/dos/innateids.py sweep --title curse --by-id    # one block per id
 
 `--by-id` is the view that answers the question: for each id, every distinct
 record carrying it with its race, class and class levels, so "all rangers and
@@ -38,14 +38,14 @@ specimen is only evidence if we know who wrote it.  Each row carries a grade:
 
 * `spec`  -- inside `$WISH_SPECIMENS`, with the specimen name;
 * `ours`  -- written by one of this project's own writers, by the filename
-  prefixes `tools/dos/dostailcensus.py` already lists, or by a `provenance.toml`
+  prefixes `tools/dos/dostailsweep.py` already lists, or by a `provenance.toml`
   whose `made_by` names our writer.  Never evidence about the game;
 * `found` -- anywhere else: the archives, a game disk, the played DOS game
   directory, or any root named on the command line.  No chain of custody.
 
 Records this project wrote are **excluded by default** and included, marked,
 by `--ours`; an emulator instance's staged game tree is skipped outright, the
-exclusion `tools/dos/dostailcensus.py` records as the trap that cost a re-take.
+exclusion `tools/dos/dostailsweep.py` records as the trap that cost a re-take.
 
 Nothing is written anywhere; every file is opened read-only, and only
 addresses and small tables of numbers are printed -- never the game's bytes.
@@ -69,7 +69,7 @@ sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec as gdos  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
-from tools.dos import dostailcensus  # noqa: E402
+from tools.dos import dostailsweep  # noqa: E402
 from tools.registry import specimens  # noqa: E402
 
 #: The four titles' effect-file suffixes, from each shape.  Named here so the
@@ -122,7 +122,7 @@ class Record:
         self.digest = hashlib.sha256(data + spc).hexdigest()[:12]
         self.specimen, prov = _provenance_for(path)
         made = str(prov.get("made_by", "")).lower()
-        self.ours = (dostailcensus.is_built(path)
+        self.ours = (dostailsweep.is_built(path)
                      or any(p in made for p in OURS_IN_MADE_BY))
         self.grade = ("ours" if self.ours
                       else "spec" if self.specimen else "found")
@@ -184,13 +184,13 @@ class Record:
 
 #: Directory names of Gold Box titles on the same engine whose record this
 #: module has **no layout for**, and `foreign_title()`, which names the one a
-#: path is inside.  Moved to `tools/dos/dostailcensus.py` by
-#: `#400 (The DOS record census counts Gateway and Treasures characters as
+#: path is inside.  Moved to `tools/dos/dostailsweep.py` by
+#: `#400 (The DOS record sweep counts Gateway and Treasures characters as
 #: Curse and Pools of Darkness ones, because it identifies a title by record
 #: size)`, so every caller of its finder gets the same exclusion this module
 #: worked out first -- kept as names here so nothing importing them breaks.
-FOREIGN_TITLES = dostailcensus.FOREIGN_TITLES
-foreign_title = dostailcensus.foreign_title
+FOREIGN_TITLES = dostailsweep.FOREIGN_TITLES
+foreign_title = dostailsweep.foreign_title
 
 
 def collect(roots, want_ours: bool, title: str | None,
@@ -209,9 +209,9 @@ def collect(roots, want_ours: bool, title: str | None,
         walk = sorted(root.rglob("*")) if root.is_dir() else [root]
         for path in walk:
             if (not path.is_file()
-                    or path.suffix.lower() not in dostailcensus.RECORD_SUFFIXES):
+                    or path.suffix.lower() not in dostailsweep.RECORD_SUFFIXES):
                 continue
-            if any(d in path.as_posix() for d in dostailcensus.SCRATCH_DIRS):
+            if any(d in path.as_posix() for d in dostailsweep.SCRATCH_DIRS):
                 continue
             try:
                 size = path.stat().st_size
@@ -479,10 +479,10 @@ def _game_dir(args) -> pathlib.Path:
     return dosbox.find_game(args.game) if args.game else dosbox.find_game()
 
 
-def census(args) -> int:
-    roots = list(args.roots) or dostailcensus.dos_record_roots()
+def sweep(args) -> int:
+    roots = list(args.roots) or dostailsweep.dos_record_roots()
     if not roots:
-        print(dostailcensus.NO_RECORDS, file=sys.stderr)
+        print(dostailsweep.NO_RECORDS, file=sys.stderr)
         return 1
 
     records, skipped = collect(roots, args.ours, args.title, args.foreign)
@@ -507,7 +507,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="command", required=True)
 
-    c = sub.add_parser("census", help="who carries which id, across the corpus")
+    c = sub.add_parser("sweep", help="who carries which id, across the corpus")
     c.add_argument("roots", nargs="*", type=pathlib.Path,
                    help="directories to sweep; default the specimen tree, "
                         "the archives and the played DOS game directory")
@@ -528,8 +528,8 @@ def main(argv=None) -> int:
                    help="comma-separated ids to locate every call site of")
 
     args = ap.parse_args(argv)
-    if args.command == "census":
-        return census(args)
+    if args.command == "sweep":
+        return sweep(args)
     ids = [int(x, 0) for x in args.ids.split(",") if x.strip()]
     return seed(_game_dir(args), ids)
 

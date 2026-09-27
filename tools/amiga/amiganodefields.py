@@ -202,7 +202,7 @@ def walk(exe: Executable, start_at: int, chain: int, node_next: int,
 
 def report_fields(exe: Executable, chain: int, node_next: int, size: int,
                   span: int) -> list[str]:
-    """The whole census: every chain-head load, every node byte touched."""
+    """The whole sweep: every chain-head load, every node byte touched."""
     heads = sites(exe, re.compile(rf"(?<!-)\${chain:x}\(a[0-7]\)"))
     lines = [f"{len(heads)} instructions name the chain head at "
              f"${chain:x}(aN)"]

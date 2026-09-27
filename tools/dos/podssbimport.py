@@ -4,7 +4,7 @@ Pools of Darkness imports a character, read from the importer's own `Move`
 calls in `GAME.OVR`.
 
     tools/dos/podssbimport.py            # the copies, and every misaligned byte
-    tools/dos/podssbimport.py --census   # plus same-named records on this machine
+    tools/dos/podssbimport.py --sweep   # plus same-named records on this machine
 
 The importer reads a 439-byte (`0x1B7`) Silver Blades record into a heap
 buffer with `BlockRead`, then copies it into the Pools of Darkness record with
@@ -99,7 +99,7 @@ def records(root: pathlib.Path, folder: str, size: int) -> dict[str, bytes]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--census", action="store_true",
+    ap.add_argument("--sweep", action="store_true",
                     help="compare same-named Silver Blades and Pools records")
     args = ap.parse_args(argv)
     ovr = (dospod.find_game() / "GAME.OVR").read_bytes()
@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     print("\nbytes copied into a differently named field:")
     for s_off, s, si, d_off, d, di in rows:
         print(f"  ssb 0x{s_off:03X} {s}[{si}]  ->  pod 0x{d_off:03X} {d}[{di}]")
-    if args.census:
+    if args.sweep:
         ssb = records(dosbox.ARCHIVES, "SECRET", SSB_RECORD)
         pod = records(dosbox.ARCHIVES, "Pools of Darkness", POD_RECORD)
         print("\nsame-named records (read only; no chain of custody):")

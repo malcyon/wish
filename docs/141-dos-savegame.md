@@ -11,13 +11,13 @@ saved game" and "The DOS saved game outdoors".
 ## The corpus, and how to re-take a count
 
 **Every count on this page is a count of engine-written saves, and
-`tools/dos/dossavcensus.py` re-takes it rather than quoting it.** That matters
+`tools/dos/dossavsweep.py` re-takes it rather than quoting it.** That matters
 because the corpus keeps changing: eight of the twelve specimens the original
 pass counted lived in scratch and are gone, and later work has made ones
 it never had.
 
 ```sh
-.venv/bin/python tools/dos/dossavcensus.py cited/p26 cited/p50-outdoor cited/p59-wallset
+.venv/bin/python tools/dos/dossavsweep.py cited/p26 cited/p50-outdoor cited/p59-wallset
 ```
 
 What it found on this machine as of 2026-09-04 is **21 genuine
@@ -53,7 +53,7 @@ in different places and Pools of Darkness writes a `SAVGAM<slot>.PTY` instead.
 | offset | size | what | grade |
 |---|---|---|---|
 | 0 | 1 | the current area's `.DAX` container number, 1-8 — numerically the C64 `POOL` disk side that carries the same area (A/B/J = 3/4/2 = the C64 disks for New Phlan, Sokol Keep, the Slums) | CONFIRMED |
-| 1-5120 | 5120 | 2560 `u16le` **VM variables**, indexed by ECL address: `offset = 1 + 2*(addr − $4900)`. Sparse: **2407 of 2560 words are zero in all 11 engine-written indoor specimens, and 2402 across all 21**. The five words in the difference are exactly `$49C3`, `$49C4`, `$507A`, `$507B` and `$507C` — the travel square and the three overland-only words below, nothing else. Re-take it with `tools/dos/dossavcensus.py` | CONFIRMED |
+| 1-5120 | 5120 | 2560 `u16le` **VM variables**, indexed by ECL address: `offset = 1 + 2*(addr − $4900)`. Sparse: **2407 of 2560 words are zero in all 11 engine-written indoor specimens, and 2402 across all 21**. The five words in the difference are exactly `$49C3`, `$49C4`, `$507A`, `$507B` and `$507C` — the travel square and the three overland-only words below, nothing else. Re-take it with `tools/dos/dossavsweep.py` | CONFIRMED |
 | 5121-12800 | 7680 | the **ECL text buffer**: the current area's script, byte-identical to its `ECL<n>.DAX` block from byte 2 on — every block opens `88 13`, `u16le` 5000, and the save carries everything after it. Bytes past the script's end are **all zeros** in every specimen held (6 of 6 checked, remnants of 209/1972/3/1113 bytes; an earlier claim of stale remnants was wrong). **Live on load**: a save built for a new area that still carries the old area's script dies in `Load3DMap` however many other variables it writes, so writing the target area's own script is one of the writes of the recipe below | CONFIRMED — #60 (Put a converted party where it actually stood, not where the template stood), `p60/run2` (scratch, deleted) variant X1; zero-fill measured in #59 (Map the DOS saved game, not just the character record)'s outdoor pass |
 | 12801-12808 | 8 | the square and the party size — see below | CONFIRMED |
 | 12809-13136 | 328 | **Eight** 41-byte `CHRDAT<letter><n>` slots; the party-size byte bounds how many names the loader uses. The DOS writer emits all eight, and the loader and writer both support a seven-member Pool of Radiance party (#641 (A C64 Pool of Radiance party with a companion as its seventh member cannot be converted to DOS)). **The filenames are live**: the engine loads the party from the files named here, not from the slot letter chosen at the LOAD menu — slot J's file staged as slot C loaded J's characters — and its own resave rewrites the letters. Earlier six-member saves left stack text in the last two rows, including `lter Exit` and `Camp: ` at the 41-byte stride; those bytes are slots, not UI scratch | CONFIRMED for Pool of Radiance, Pools of Darkness and Silver Blades; PROBABLE for Curse — see the settling experiment below |
@@ -263,7 +263,7 @@ is why it reads `Camp: ` and `Choose a FUNCTION`. Its *loader* reads the same
 328 bytes out of a **Silver Blades** container after seeking to 5140 — which
 is that shape's own count byte exactly — so the eight-slot reading is the
 engine's for that title too. **Settled for Pool of Radiance, Curse and Silver
-Blades as well** by the same `BlockWrite` census, below: each writes one
+Blades as well** by the same `BlockWrite` sweep, below: each writes one
 `0x148` = 328-byte block, from a stack buffer, immediately after the party
 size (#253 (A Curse or Silver Blades party's square is read twelve bytes past where the engine writes it, since #220 moved the offset the wrong way)).
 
@@ -397,7 +397,7 @@ rather than at an ECL address. `goldbox.dos_savegame.pod_var` reads it and
 
 Read out of `GAME.OVR` rather than out of a save, so the played-save blocker
 this ticket carried from the day it was filed never had to be lifted.
-`tools/dos/dosptrfields.py` is what censuses the structure, and
+`tools/dos/dosptrfields.py` is what sweeps the structure, and
 `tools/dos/dospod.py` is the drive that produced the containers the readings are
 checked against.
 
@@ -459,7 +459,7 @@ script puts there.
 | 34 | 33 | **dungeon (nonzero) or wilderness (zero)**. Two sites switch the interface mode on this byte alone — `0x1522` and `0x6E1B` write mode 4 when it is set and 3 when it is not — and `GetVar` index 17 halves the facing only when it is set | CONFIRMED as the selector, from two call sites; **never observed zero** — all ten containers are in a dungeon |
 | 37, 38 | 36, 37 | the wilderness square | PROBABLE (code only); zero in all ten |
 | 58 | 57 | the wilderness region, indexed into a table at `DS:0x7D08` (`0x12FE7`) | PROBABLE (code only); zero in all ten |
-| 18, 27, 39, 43, 44, 52, 57, 83, 85, 151, 192, 193 | | live and unnamed — see the census below | UNKNOWN |
+| 18, 27, 39, 43, 44, 52, 57, 83, 85, 151, 192, 193 | | live and unnamed — see the sweep below | UNKNOWN |
 | 751–764 | 750–763 | a **script string buffer**: one container holds `PASSENGER DOCK` in ASCII here, and its screen reads `THIS DOOR READS 'PASSENGER DOCK'` | PROBABLE — one specimen |
 
 **A second, independent source says the same thing.** The community's recipe
@@ -538,7 +538,7 @@ all five.
 **Eight engine-written containers exist**, from `tools/dos/dospod.py` drives under
 `p175` (scratch, deleted) (`clock1`, `diff1`, `diff2`, `run16`, `run17`), all in a dungeon
 at 00:04–00:07 with a six-strong party.
-`tools/dos/dossavcensus.py --title pools-of-darkness p175` (scratch, deleted) re-takes every
+`tools/dos/dossavsweep.py --title pools-of-darkness p175` (scratch, deleted) re-takes every
 count on this page and marks the two shipped stubs; 36 of the 1024 variables
 are live in at least one of them and 988 are zero in all twelve.
 
@@ -561,8 +561,8 @@ single-byte:
   (7, 13) the initialiser leaves. Curse and Silver Blades' twelve "unnamed"
   bytes **also open `07 0d 00 00 00`**, which is byte for byte what Pools of
   Darkness writes from `DS:0xA9F3`–`0xA9F7`. This bullet asked for the same
-  `BlockWrite` census on their `GAME.OVR`s before anyone called those twelve
-  unattributable, and it was right: the census (#253 (A Curse or Silver Blades party's square is read twelve bytes past where the engine writes it, since #220 moved the offset the wrong way), below) found those five
+  `BlockWrite` sweep on their `GAME.OVR`s before anyone called those twelve
+  unattributable, and it was right: the sweep (#253 (A Curse or Silver Blades party's square is read twelve bytes past where the engine writes it, since #220 moved the offset the wrong way), below) found those five
   bytes are the square block's own head in both titles, and the twelve are
   something else and elsewhere.
 * **The eight-slot name table is not a Pools of Darkness peculiarity.** Its
@@ -675,8 +675,8 @@ writes that a real save has ever been seen to hold something at.
 **The party in a save built that way loads, walks and changes area**, and the
 engine's own `ENCAMP > SAVE` writes it back --
 [`117-save-conversion.md`](117-save-conversion.md), "A DOS save from
-nothing", and `tools/dos/dosnewsave.py` is the run. That is what turns a census
-into a measurement: a census says what a saved party held, and only the
+nothing", and `tools/dos/dosnewsave.py` is the run. That is what turns a sweep
+into a measurement: a sweep says what a saved party held, and only the
 running game says what the load path reads.
 
 | group | bytes | how it is written |
@@ -741,11 +741,11 @@ itself, with heap pointers and the words `Save View M` and `Camp: `.
 whole -- 217 words from `$5227` -- because it is one buffer, not 217
 findings; only 65 of those words have been seen holding anything.
 
-**The census behind the last row of the table above has been re-taken and is
+**The sweep behind the last row of the table above has been re-taken and is
 no longer PROBABLE.** It used to read against **four** surviving containers,
 noting that #59 (Map the DOS saved game, not just the character record)'s twelve gave 2401 words zero and its nine indoor ones 2407,
 and that the six words in the difference could not be named because the three
-overland specimens were gone. `tools/dos/dossavcensus.py` over the 21 that exist
+overland specimens were gone. `tools/dos/dossavsweep.py` over the 21 that exist
 now gives **2407 zero across the 11 indoor** — the same figure again, on
 eleven specimens rather than nine — and **2402 across all 21**. The words in
 the difference are **five, not six**, and all five are named: `$49C3` and
@@ -791,7 +791,7 @@ their own shapes — Curse `0x195`, Silver Blades `0x1A6`, Pools of Darkness
 Nothing has been driven in those three titles, so the *names* above are Pool
 of Radiance's; the value is what carries across.
 
-`tools/dos/dostailcensus.py` re-takes the counts, `tools/dos/dostailprobe.py` re-runs
+`tools/dos/dostailsweep.py` re-takes the counts, `tools/dos/dostailprobe.py` re-runs
 the load-side probe and `tools/dos/dosquickprobe.py` the quickfight pair.
 
 ### `0x083`-`0x087`: a constant, and what that rests on
@@ -857,7 +857,7 @@ importer, not fitted to make the widths add up.
   script's loop registers, reproduced row for row on the same page.
 * **Whether a played overland save differs from a seeded one** beyond
   `$4DC3` -- the one word measured to differ. Experiment: sail out by boat
-  once and census the result against `cited/p59-wallset`.
+  once and sweep the result against `cited/p59-wallset`.
 * Moving an outdoor save to a new area (the #60 (Put a converted party where it actually stood, not where the template stood) recipe with `$49E6` = 0 and
   `$49C3`/`$49C4` in place of the square bytes) has not been driven;
   `#190 (A C64 party standing on the travel grid cannot be written into a

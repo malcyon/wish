@@ -218,7 +218,7 @@ def test_a_regained_former_thief_reenters_the_same_level_array(key):
 
 @pytest.mark.parametrize("key", sorted(EXPECTED))
 def test_the_multiplier_byte_is_read_by_the_to_hit_and_damage_sites(key):
-    """The census of the byte includes both places the finding names."""
+    """The sweep of the byte includes both places the finding names."""
     finding = _finding(key)
     addresses = {address for _, address, _ in finding["references"]}
     assert finding["damage_application"] in addresses

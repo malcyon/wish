@@ -44,7 +44,7 @@ counted `$403C` -- the `SEC` only a trait match reaches -- going from 0 to 1.
 
 ## Who writes a slot
 
-An absolute-operand census over all 564 files (`tools/c64/absrefsweep.py
+An absolute-operand sweep over all 564 files (`tools/c64/absrefsweep.py
 pool-of-radiance 6BAD 6BB6`) finds every writer:
 
 | writer | what |
@@ -89,7 +89,7 @@ OF DISPLACEMENT staged readied and nothing in his slots loads with nothing
 in his slots -- `[107, 0, 0, 0, 0, 0, 0, 0, 0, 0]` read off `$4DAD` after
 `BEGIN ADVENTURING`, four boots. CONFIRMED.
 
-## Who reads a slot: the check lists the literal census could not see
+## Who reads a slot: the check lists the literal sweep could not see
 
 `tools/c64/traitquery.py` finds the eleven call sites that reach `$4027` with a
 literal id and reported 61 asked about nowhere. That was wrong, and the
@@ -149,7 +149,7 @@ names it, or where an instruction names it**, and nowhere else.
 first of the three was missed until 2026-09-10, and the reason is a shape
 this page had not looked for: `SPELLE01 +0x09ec` is `LDA #$18 / JSR $28A4`
 and `+0x0e13` is `LDA #$62 / JSR $28A4`, so they ask about 24 and 98 through
-the wrapper rather than reaching `$4027` directly, and a census of calls to
+the wrapper rather than reaching `$4027` directly, and a sweep of calls to
 `$4027` cannot see either. 98 is on list 19 already; 24 is not on any list.
 32's instruction is `SQRPACI64 $059A`, `LDA #$20 / JSR $4027` inside the
 temple's Raise Dead. **So the count of ids a trait slot can do anything with
@@ -285,7 +285,7 @@ performs makes sense of it. 31 "helpless" on list 7 beside hold, sleep and
 snake charm does; 50 "mummy rot, blocking healing" on the two saving-throw
 lists does not.
 
-### The monster census refused four that agreement offered
+### The monster sweep refused four that agreement offered
 
 The route Pool of Radiance's own table was built on, over the 71 `MON*`
 records on the six Silver Blades sides. It named three -- 64 lands on this

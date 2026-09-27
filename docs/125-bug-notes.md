@@ -691,9 +691,9 @@ printed.
 And the C64 engine reads only two of the eight. `DUNGEON $100E` passes the
 address of **open locks** to the party skill check at `$1CB2` in `X`/`Y`, which
 is the `PICK LOCK` menu item; `DUNGEON $1D88 CMP $6BA8` rolls against **move
-silently** in the surprise check. Neither an absolute-mode census of all 589
+silently** in the surprise check. Neither an absolute-mode sweep of all 589
 distinct Pool of Radiance files (`tools/c64/recordsweep.py --game pool --offset
-A5..AC`), nor the same census `--indirect`, nor a search for the `LDX #lo /
+A5..AC`), nor the same sweep `--indirect`, nor a search for the `LDX #lo /
 LDY #$6B` convention finds a reader for the other six. A pointer built some
 other way would not show up, so read that as "none found" rather than "none".
 
@@ -708,7 +708,7 @@ races: DAX, a halfling thief 1, holds `35 30 30 30 15 -5 80 -5`, the displaced
 row exactly including both negatives stored as `$FB`, and NYX, a gnome thief 1,
 holds the displaced gnome row. 27 of 27 engine-written C64 records on this
 machine reproduce as level row plus racial row. CONFIRMED from the table's
-bytes and the routine that adds them; `tools/records/thiefskillcensus.py`.
+bytes and the routine that adds them; `tools/records/thiefskillsweep.py`.
 
 **Where it would have cost something, and no longer does.** Converting a save
 between the two ports used to carry one port's stored percentages across to

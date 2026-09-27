@@ -97,11 +97,11 @@ def test_trait_demand_is_the_slots_on_the_c64_and_the_two_halves_elsewhere():
 def test_a_specimens_provenance_beats_a_copy_left_in_a_run_directory():
     """The same record in a run directory and in the specimen tree is a specimen.
 
-    `tools/dos/dostailcensus.py` deduplicates on the record's bytes and keeps
+    `tools/dos/dostailsweep.py` deduplicates on the record's bytes and keeps
     every path it saw.  Grading the first of them called THRENDER GRONE --
     the one record on this machine wanting five trait slots -- `ours`, purely
     because a run directory sorted before the tree, which would have thrown
-    away the only engine-written measurement in the census.
+    away the only engine-written measurement in the sweep.
     """
     spec = "/home/x/wish-specimens/por-dos/WISH-SPEC-a/CHRDATD1.SAV"
     grades = {spec: "engine"}
@@ -175,7 +175,7 @@ def test_the_c64_sweep_reaches_a_title_with_no_registry_entry(tmp_path,
     Champions of Krynn, Death Knights of Krynn and Gateway to the Savage
     Frontier sit beside the three that do, so the sweep takes each registered
     directory's parent as well.  Without that, half the titles are missing
-    from a census that reports itself as covering the machine.
+    from a sweep that reports itself as covering the machine.
     """
     registered = tmp_path / "Pool of Radiance Disks"
     registered.mkdir()
@@ -201,7 +201,7 @@ def test_an_extra_disk_named_on_the_command_line_is_swept(tmp_path,
     assert loose in cc.c64_disks([loose])
 
 
-# -- the census itself, off the player's own disks --------------------------
+# -- the sweep itself, off the player's own disks --------------------------
 
 def test_no_character_on_this_machine_needs_more_than_ten_trait_slots():
     """The finding, re-taken.  Skips on a machine with no game files.
@@ -211,7 +211,7 @@ def test_no_character_on_this_machine_needs_more_than_ten_trait_slots():
     fails the day one turns up, which is the day the sentence is needed.
     """
     problems: list[str] = []
-    rows = cc.census(problems)
+    rows = cc.sweep(problems)
     if not rows:
         pytest.skip("no game disks, archives or specimens on this machine")
     worst = max(rows, key=lambda r: r.trait_demand)

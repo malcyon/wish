@@ -139,7 +139,7 @@ def exact_durations(minutes: int, clock_minutes: int) -> tuple[int, ...]:
                  and remaining_minutes(byte, clock_minutes) == minutes)
 
 
-def duration_census(clock_minutes: int) -> tuple[int, int]:
+def duration_sweep(clock_minutes: int) -> tuple[int, int]:
     """Exact DOS minute values and worst early expiry under a floor policy.
 
     Enumerates the measured camp-clock model, not a conversion policy chosen
@@ -1357,7 +1357,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dos-dir", type=pathlib.Path,
                         help="DOS directory containing START.EXE and GAME.OVR")
     parser.add_argument("--clock-minutes", type=int, default=0,
-                        help="Destination camp-clock minutes for the duration census")
+                        help="Destination camp-clock minutes for the duration sweep")
     args = parser.parse_args(argv)
     if args.clock_minutes < 0:
         parser.error("Clock minutes must be zero or greater (--clock-minutes)")
@@ -1378,7 +1378,7 @@ def main(argv: list[str] | None = None) -> int:
           f"unit bits {packing.units}")
     print("Arrays: " + ", ".join(f"${a:04X}" for a in packing.arrays))
     print(f"CONFIRMED Library quotient return at ${packing.divide:04X}; truncates")
-    exact, loss = duration_census(args.clock_minutes)
+    exact, loss = duration_sweep(args.clock_minutes)
     print(f"CONFIRMED Camp-clock arithmetic at {args.clock_minutes} minutes: "
           f"{exact}/65535 exact durations; floor-policy loss at most {loss} minutes")
 

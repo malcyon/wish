@@ -640,7 +640,7 @@ _DECLARED: Sequence[Field] = (
            "two bytes GEN draws from the random generator at character "
            "creation and never rewrites: $0C01 JSR $2D88 / STA $6BE6, "
            "$0C07 JSR $2D88 / STA $6BE7. CONFIRMED that nothing on the C64 "
-           "reads them back: a census of 589 files finds no reference "
+           "reads them back: a sweep of 589 files finds no reference "
            "beside those two stores (plus a copy of the same code in the "
            "boot disk's POOLRE), and three load watchpoints on "
            "$6BE6-$6BE7 in the running game never moved except in step "

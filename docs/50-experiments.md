@@ -1982,7 +1982,7 @@ One known change — a fight started — and the delta is in exactly the two byt
 whose stored value disagreed with the recompute, landing on the recomputed
 value. The save the engine wrote at the end of that fight carries `1 1 3`.
 
-**Result 5. A census, and the one number that carries it.**
+**Result 5. A sweep, and the one number that carries it.**
 `tools/c64/rosterspellcount.py` compares stored against recomputed for every
 occupied roster block it can find.
 
@@ -1995,7 +1995,7 @@ occupied roster block it can find.
 cache rebuilt at a fight and only decremented afterwards can be behind the list
 and cannot be ahead of it, and that is the shape the whole corpus has. The
 player's disks are untrusted, which is why the claim rests on the code and the
-driven fight; the census is corroboration, and a single counter above its list
+driven fight; the sweep is corroboration, and a single counter above its list
 would have refuted the reading outright.
 
 **A defect found on the way.** `DUNGEON $0F99` is `DEC $6C03,X` where the other
@@ -6498,7 +6498,7 @@ eight-byte NPC marker; `#18 (Measure Curse's trainer so Level Up works there)`
 called the same two bytes a dual-classed character's old class slot and old
 level. One of the two readings is wrong, or they are about different things.
 
-**Method.** Two censuses and one specimen count, no emulator.
+**Method.** Two sweeps and one specimen count, no emulator.
 
 1. `tools/c64/recordsweep.py` — every absolute-mode instruction in every file on a
    title's own disks whose operand lands on a chosen record byte. The record
@@ -6507,7 +6507,7 @@ level. One of the two readings is wrong, or they are about different things.
    whatever the file's load address is. Run for `+0x0B9`/`+0x0BA` on all six
    C64 titles, with the neighbouring flags byte `+0x0B8` as the control.
 2. The producer routine in Curse's `GEN`, found by walking up from the two
-   stores the census turned up.
+   stores the sweep turned up.
 3. The five shipped `MON*` records the five NPCs of `npc_party.d64` are copies
    of, byte-counted for `$FF`, against 76 distinct player-character record
    images off the Pool of Radiance disks.
@@ -6528,10 +6528,10 @@ the three titles whose code never mentions the bytes. That is the whole of the
 apparent contradiction: they read `$00` in twenty player characters for the
 least interesting possible reason.
 
-**The hole in an absolute-mode census, tested and closed.** A record reached
+**The hole in an absolute-mode sweep, tested and closed.** A record reached
 through `(pointer),Y` would not show up. The first run of this check was a
 script that was not kept, so `#230 (The indirect half of a record-offset
-census cannot be rerun, because its script was never kept)` gave
+sweep cannot be rerun, because its script was never kept)` gave
 `tools/c64/recordsweep.py` a `--indirect` flag beside its absolute-mode one and
 reran it:
 
@@ -7069,7 +7069,7 @@ Two independent anchors put the table at image `0x1043C`:
   is read four instructions after the THAC0 lookup, which pins its own base the
   same way.
 
-`tools/records/thac0census.py` anchors on the class-bit run rather than on any THAC0
+`tools/records/thac0sweep.py` anchors on the class-bit run rather than on any THAC0
 number, so the read cannot agree with `goldbox/levels.py` by construction.
 
 ### The difference, in full

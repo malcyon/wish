@@ -11,7 +11,7 @@ about.  Two things follow and this file holds both:
   machine and on synthetic records that need none;
 * **an edited field lands, and nothing else moves** -- including a field the
   writer renders differently from the engine's own bytes, which keeps the
-  engine's.  `docs/223-the-differential-rewrite.md` is the census of where
+  engine's.  `docs/223-the-differential-rewrite.md` is the sweep of where
   those are.
 
 The synthetic half needs no game data at all: a neutral character goes
@@ -344,7 +344,7 @@ def test_an_edited_field_reaches_an_amiga_later_record_and_nothing_else(
 def test_the_engines_own_bytes_survive_a_field_the_writer_disagrees_with(
         deltas):
     """The whole point of the differential.  `save_breath` is a field the
-    census finds the writer renders differently from the engine's byte on
+    sweep finds the writer renders differently from the engine's byte on
     real saves; here the original's byte is set to something the writer
     would never produce, an unrelated field is edited, and the engine's byte
     is still there afterwards."""
@@ -875,7 +875,7 @@ def test_the_fields_a_native_save_cannot_take_an_edit_to_match_the_hand_written_
     """`editor.roster.Party.unwritable` greys exactly the fields whose edit
     the port's own writer discards -- measured here by fuzzing every field
     the sheet leaves editable and finding which one never moves a byte, the
-    same sampler `tools/convert/rewritecensus.py` uses.  This is the test
+    same sampler `tools/convert/rewritesweep.py` uses.  This is the test
     that goes red when a writer change moves a field the hand-written table
     in `goldbox/rewrite.py` still calls unwritable, or leaves one unwritable
     that the table no longer names.

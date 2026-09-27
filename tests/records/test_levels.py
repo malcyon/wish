@@ -316,14 +316,14 @@ def test_the_dos_thief_skill_tables_are_the_games_own():
     """`START.EXE`'s own racial and dexterity blocks (#431).
 
     Located by the C64's own 72 bytes of level table, the way
-    `tools/records/thiefskillcensus.py` does it, so this cannot agree with
+    `tools/records/thiefskillsweep.py` does it, so this cannot agree with
     `goldbox/levels.py` by construction.
     """
     import sys as _sys
     _sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
-    from tools.records import thiefskillcensus
+    from tools.records import thiefskillsweep
     try:
-        tables = thiefskillcensus.dos_tables("pool-of-radiance")
+        tables = thiefskillsweep.dos_tables("pool-of-radiance")
     except (FileNotFoundError, SystemExit) as exc:
         pytest.skip(f"needs the DOS Pool of Radiance archives: {exc}")
     for race, row in enumerate(levels.POOL_OF_RADIANCE.dos_thief_skill_race,
@@ -539,19 +539,19 @@ def test_pool_of_radiance_and_curses_trainers_are_measured():
 # `START.EXE` and vote every DOS record on this machine on it, the same way the
 # `GEN` tests above do for the C64.
 #
-# The anchor is deliberately not a THAC0 number: `tools/records/thac0census.py` locates
+# The anchor is deliberately not a THAC0 number: `tools/records/thac0sweep.py` locates
 # the table by the **class-bit run** that sits immediately after it, so the read
 # cannot agree with `goldbox/levels.py` by construction.
 
-def _thac0census():
-    return pytest.importorskip("tools.records.thac0census")
+def _thac0sweep():
+    return pytest.importorskip("tools.records.thac0sweep")
 
 
 def _dos_tables():
     """The DOS table, or a skip when the player's archives are not here."""
-    census = _thac0census()
+    sweep = _thac0sweep()
     try:
-        return census.dos_table("pool-of-radiance")
+        return sweep.dos_table("pool-of-radiance")
     except FileNotFoundError as e:
         pytest.skip(f"needs the DOS archives: {e}")
 
@@ -562,7 +562,7 @@ def test_the_dos_thac0_rows_are_the_games_own():
     The geometry is the engine's, not a guess: `GAME.OVR:0x01A68D` reaches the
     table with `mov dx, 0xB / mul dx / mov di, ax / add di, cx /
     mov al, [di+0x3C7C]`, so the rows are 11 wide and indexed by level with
-    entry 0 unused. `tools/records/thac0census.py code` prints every site of that shape
+    entry 0 unused. `tools/records/thac0sweep.py code` prints every site of that shape
     and all four Pool of Radiance ones carry the same stride and offset.
     """
     table = _dos_tables()
@@ -594,11 +594,11 @@ def test_every_dos_record_reproduces_from_the_dos_table():
     including the nine `WISH-SPEC-por-party-ladder-rung*` specimens the trainer
     was watched writing one level at a time.
     """
-    census = _thac0census()
+    sweep = _thac0sweep()
     table = _dos_tables()
     total = 0
-    for source, name, held, stored in census.dos_records("pool-of-radiance"):
-        want = census._best(table, held)
+    for source, name, held, stored in sweep.dos_records("pool-of-radiance"):
+        want = sweep._best(table, held)
         if want is None:
             continue
         total += 1

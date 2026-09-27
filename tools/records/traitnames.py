@@ -7,7 +7,7 @@ seeds and wrong wherever a later title spent a free code number on a spell
 Pool of Radiance has not got. `#561` is Curse of the Azure Bonds' case;
 `#497` was Secret of the Silver Blades'.
 
-Two of the routes `docs/171-c64-trait-slots.md` grades are censuses of shipped
+Two of the routes `docs/171-c64-trait-slots.md` grades are sweeps of shipped
 data rather than reads of code, and this puts each one beside the table:
 
     tools/records/traitnames.py curse-of-the-azure-bonds              # the spell table
@@ -32,7 +32,7 @@ row's own message fits the name and the row is in a spell group.** The
 `group` column is what a reader applies it with, and `--all-rows` shows the
 ungrouped rows rather than folding them away.
 
-**The monster census** reads the ten bytes at record `0x0AD` out of every
+**The monster sweep** reads the ten bytes at record `0x0AD` out of every
 `MON<hex>` template on the title's sides and reports which codes are carried
 and by what. A code landing on exactly the creature its name demands is the
 route most of `NAMES` was built on; a code landing on a creature the name
@@ -150,7 +150,7 @@ def monster_blocks(title: str, given: str | None = None):
     """`{file: (name, the ten trait bytes)}` for every `MON<hex>` template.
 
     A `MON*` file is a PRG whose body is a character record at offset 0
-    (`tools/records/fieldcensus.py`'s `monsters` corpus reads the same files), so the
+    (`tools/records/fieldsweep.py`'s `monsters` corpus reads the same files), so the
     trait block is at `TRAIT_SLOTS` in the body with the load address off.
     The first copy of a name wins, since the same template ships on several
     sides.
@@ -253,7 +253,7 @@ def main(argv=None) -> int:
     parser.add_argument("title")
     parser.add_argument("--disks", help="where that title's sides are")
     parser.add_argument("--monsters", action="store_true",
-                        help="census the MON* templates instead of the spells")
+                        help="sweep the MON* templates instead of the spells")
     parser.add_argument("--records", action="store_true",
                         help="with --monsters, one row per template")
     parser.add_argument("--all-rows", action="store_true",

@@ -12,7 +12,7 @@ loads a party from.  Two kinds of test:
   which skip without either.  No record or container bytes are pasted here.
 
 Sample sizes, so the claims are countable: two C64 disks (one per title),
-six Curse and six Silver Blades DOS containers censused for the "every live
+six Curse and six Silver Blades DOS containers swept for the "every live
 word is written or declared" gate.
 """
 from __future__ import annotations
@@ -401,7 +401,7 @@ def test_a_later_title_needs_the_game_directory(tmp_path):
     assert not (tmp_path / "SAVGAMD.DAT").exists()
 
 
-# --- the census gate: every live word of every engine container -------------
+# --- the sweep gate: every live word of every engine container -------------
 
 @pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
 def test_every_nonzero_word_a_later_titles_container_holds_is_written_or_declared(

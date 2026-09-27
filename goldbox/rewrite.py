@@ -6,7 +6,7 @@ whole character back on save would hand every *unedited* field the writer's
 rendering of it rather than the engine's own bytes, and the two differ in
 places -- the live heap pointers, the sheet-portrait pair, a saving throw a
 recompute disagrees with.  `docs/223-the-differential-rewrite.md` is the
-census of where.
+sweep of where.
 
 So nothing here converts a character back.  The port's own writer renders the
 character **twice**, once from the record as it was read and once from the

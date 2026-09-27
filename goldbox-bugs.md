@@ -612,7 +612,7 @@ in the same square and the flag at 255, the die was rolled on every rest, 13 of
 
 **Version.** Pool of Radiance, Commodore 64. The Amiga's `ecl.dax` unpacks to
 the same scripts as the C64's, so it is very likely there too and nobody has
-looked. `docs/207-c64-rest-interruption.md` has the addresses, the census of
+looked. `docs/207-c64-rest-interruption.md` has the addresses, the sweep of
 which of the thirty areas can interrupt a rest at all, and the measurement.
 
 ---
@@ -679,7 +679,7 @@ writing the same row after five trainings.
 
 The DOS build of the same game ships **the same five racial rows in the same
 order**, 40 bytes for 40, read out of its own `START.EXE` on 2026-09-08 with
-`tools/records/thiefskillcensus.py rows --title secret-of-the-silver-blades`. So the
+`tools/records/thiefskillsweep.py rows --title secret-of-the-silver-blades`. So the
 data is not what differs between the ports, and whether the DOS engine
 subtracts the one before indexing has not been read; a DOS thief record of a
 known race would settle it in one sweep.

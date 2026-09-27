@@ -72,7 +72,7 @@ without adventuring. Slot I holds area 1, map 1, 5,13 facing W, 20:32. So the
 and `GAME.OVR:0xF95E`, already named in `dos_savegame.position`'s docstring as
 the source of the shipped containers' (7, 13, 0), is where it comes from.
 
-## The census: all three titles, and the words that tell the two states apart
+## The sweep: all three titles, and the words that tell the two states apart
 
 114 distinct DOS containers on this machine, deduplicated on sha256, out of
 the archives, scratch (since deleted), `~/wish-specimens/` and `/home/donald/dos_por_play/`,
@@ -109,7 +109,7 @@ which matters because Silver Blades' 5469-byte container stages no script;
 Curse's `GAME.OVR:0x832F` stores `$FF` into it and three sites compare
 against `$FF` (`goldbox.dos_codec.LATER_BEGUN_WORD`), while what Pool of
 Radiance's 255, 16 and 8 mean is unread, so for that title the word is a
-census result rather than a reading of the engine. `goldbox.dos_codec.never_adventured`
+sweep result rather than a reading of the engine. `goldbox.dos_codec.never_adventured`
 takes the buffer where the shape has one and the word where it does not, and
 `tools/dos/neveradventured.py --by rule` sweeps with exactly that.
 
@@ -286,7 +286,7 @@ refuses. The C64 runs began the game's own party-menu saves, so the C64 does
 play its own opening from one.
 
 **`dos_savegame.SAVGAM_CONSTANTS` still calls `$4FE1` "255 in every
-specimen".** The census reads 255 in 57 played containers, 16 in 41 and 8 in
+specimen".** The sweep reads 255 in 57 played containers, 16 in 41 and 8 in
 3, so the constant is what a conversion writes rather than what every save
 holds; the part the discriminator rests on -- never 0 once the party has been
 in the world -- is unaffected.
@@ -295,7 +295,7 @@ in the world -- is unaffected.
 
 | tool | what it does |
 |---|---|
-| `tools/dos/neveradventured.py` | the census above: every distinct container on the machine, per title, split by the staged script (`--by buffer`), by `$4FE1` (`--by word`) or by the rule the import applies (`--by rule`) |
+| `tools/dos/neveradventured.py` | the sweep above: every distinct container on the machine, per title, split by the staged script (`--by buffer`), by `$4FE1` (`--by word`) or by the rule the import applies (`--by rule`) |
 | `tools/curse_of_the_azure_bonds/curseareazero.py` | boots C64 Curse to the party menu and reads `$4B00`-`$4DDF`; `--save`/`--begin` load a disk and press `BEGIN ADVENTURING`; `--doctor` stamps the never-adventured header into a copy of a save disk, one field at a time with `--zero` |
 | `tools/curse_of_the_azure_bonds/doscurse.py console` | the DOSBox session the DOS half was driven in |
 | `tools/dos/daxls.py` | the `ECL`/`GEO` container indexes the "no block 0" row rests on |

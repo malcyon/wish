@@ -10,7 +10,7 @@ alone and never watched on a running machine:
     the attack block (12 B)    $9458-$9463
         +0  the number needed  (`ACTOR` +4, `TARGET` +5, `ATTEMPTS` +9,
                                  `LANDINGS` +A, hit flag +B: PROBABLE by
-                                 census, not by reading the write)
+                                 sweep, not by reading the write)
 
 This drives the same Tilverton `PUNCH BARKEEP` fight `#334 (The session
 driver cannot fight in Curse or Silver Blades, and says the party is not in a
@@ -43,12 +43,12 @@ from tools.registry import scratch  # noqa: E402
 
 #: Read live off the machine in `ECL64` (resident at `$8000`), per
 #: `#39`'s 2026-09-09 comment. Both CONFIRMED from the binary alone before
-#: this run; the attack block's inner five offsets are PROBABLE by census.
+#: this run; the attack block's inner five offsets are PROBABLE by sweep.
 D20 = 0xA915
 ATTACK_BLOCK = 0x9458
 ATTACK_LEN = 12
 #: Offsets into the 12-byte block this run watches for, named from the
-#: issue's census table.
+#: issue's sweep table.
 OFFSETS = {"number_needed": 0, "ACTOR": 4, "TARGET": 5, "ATTEMPTS": 9,
            "LANDINGS": 0xA, "hit_flag": 0xB}
 

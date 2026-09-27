@@ -63,7 +63,7 @@ So file word `k`, at offset `1 + 2k`:
 | 1024-2047 | `$4D00`-`$50FF` | `$6B00`-`$6EFF` | the resident character record `$6B00`-`$6D43` (`41-memory-regions.md`), then engine variables and the script registers `150-departing-prologues.md` lists |
 | 2048-2559 | `$5100`-`$52FF` | `$9700`-`$98FF` | the workspace where monster-group names are composed (`50-experiments.md`) |
 
-`goldbox.dos_savegame.word(save, address)` and `tools/dos/dossavcensus.py` still
+`goldbox.dos_savegame.word(save, address)` and `tools/dos/dossavsweep.py` still
 take the contiguous name; `tools/dos/dosvmwatch.py`'s `vm_address()` translates
 it. The renaming that matters:
 

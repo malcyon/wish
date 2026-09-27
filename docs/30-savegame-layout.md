@@ -559,7 +559,7 @@ staying at `3`, and the three non-casters staying at `0`. That is the recompute
 from each of their memorised lists exactly, and the save the engine then wrote
 carries it.
 
-**Census.** `tools/c64/rosterspellcount.py` compares the stored counters against the
+**Sweep.** `tools/c64/rosterspellcount.py` compares the stored counters against the
 recompute for every occupied roster block it can find. Over 24 of the player's
 own save disks, 144 blocks: 89 have nothing memorised, and of the 55 that have
 something to count, 10 agree exactly, 40 hold all zeroes and 5 are partly

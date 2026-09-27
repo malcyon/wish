@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Which files of a title touch one byte of the character record, and where.
 
-`tools/c64/trainerscan.py --refs` censuses one overlay against every record field.
+`tools/c64/trainerscan.py --refs` sweeps one overlay against every record field.
 This asks the opposite question: given a record offset whose meaning is in
 dispute, which of the title's files reference it at all? That is what settles
 an attribution taken from a single overlay -- a byte the trainer writes as the
@@ -23,7 +23,7 @@ bitmap decodes exactly like a real instruction; a real routine's hits cluster
 two or three instructions apart. `--context` disassembles either side of each
 hit so the difference can be seen rather than assumed.
 
-`--indirect` censuses the other way a record offset can be reached: `LDY
+`--indirect` sweeps the other way a record offset can be reached: `LDY
 #$<low>`/`LDX #$<low>` followed within a short window by the matching
 indirect-indexed opcode -- `($nn),Y` after `LDY`, `($nn,X)` after `LDX`. The
 absolute-mode scan above finds nothing that goes through a pointer to the
@@ -31,7 +31,7 @@ record; this is what tests for one rather than assuming none was used. **It
 tests for that one shape and no other**: an index computed at run time, or
 folded into the pointer's own low byte, leaves no trace here, so no hits
 means the shape is absent rather than that no pointer exists. It is a
-separate mode, beside the absolute census rather than in place of it -- `#230 (The indirect half of a record-offset census cannot
+separate mode, beside the absolute sweep rather than in place of it -- `#230 (The indirect half of a record-offset sweep cannot
 be rerun, because its script was never kept)`:
 
     tools/c64/recordsweep.py --game pool --offset 0xB9 --offset 0xBA --indirect
@@ -55,7 +55,7 @@ CONTEXT = 12
 
 #: How far past an `LDY #$ll`/`LDX #$ll` `--indirect` looks for the matching
 #: indirect-indexed opcode. Ten bytes is what the script `#230 (The indirect
-#: half of a record-offset census cannot be rerun, because its script was
+#: half of a record-offset sweep cannot be rerun, because its script was
 #: never kept)` describes as having been used, and covers several
 #: instructions of setup between the load and the access.
 INDIRECT_WINDOW = 10
@@ -132,7 +132,7 @@ def indirect_hits(data: bytes, want: set[int], window: int = INDIRECT_WINDOW):
         if low not in want:
             continue
         # `len(data) - 1`, not `len(data)`: a match on the very last byte has
-        # no operand byte after it, and `main` prints one.  A census that
+        # no operand byte after it, and `main` prints one.  A sweep that
         # aborts with a traceback partway through is worse than one that
         # misses a truncated instruction at a file's tail (#230).
         end = min(len(data) - 1, i + 2 + window)
@@ -156,7 +156,7 @@ def main(argv=None) -> int:
     ap.add_argument("--context", action="store_true",
                     help="disassemble either side of each hit")
     ap.add_argument("--indirect", action="store_true",
-                    help="census LDY/LDX #$ll followed by the matching "
+                    help="sweep LDY/LDX #$ll followed by the matching "
                          "indirect-indexed opcode, instead of absolute-mode "
                          "references")
     ap.add_argument("--dir", help="a directory of disk images, for a title "

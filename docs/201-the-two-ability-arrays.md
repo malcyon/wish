@@ -32,7 +32,7 @@ So it *is* a `(current, base)` pair, and the order is **`0x014` first**.
 | CONFIRMED | the training hall's racial level cap comes from `0x065` | `GEN $156B`: `LDY $1599,X / BMI skip / LDA $7C65,Y / CMP #$12 / BCS skip / INC $B0 / CMP #$11 / BCS skip / INC $B0`, then `LDA $15A9,X / SEC / SBC $B0` |
 | CONFIRMED | Silver Blades' sheet **marks** an ability whose two halves disagree | `LIBRARY $30F8`: `LDA $7C14,X / CMP $7C65,X / BNE`, and for strength `LDA $7C1A / CMP $7C6B / BEQ`, falling into `LDA #$2B / LDY #$0C / STY $03CC / JSR $3C18` -- a `+` in colour 12 |
 | CONFIRMED | the training hall does **not** resynchronise the pair | two trainings in the running game left both arrays exactly as staged, and the engine's own `SAVE CURRENT GAME` wrote all six records back still disagreeing |
-| PROBABLE | Silver Blades works the same way throughout | its census has the same shape (94 references to `$7C14`-`$7C1A` against 44 to `$7C65`-`$7C6B`, 19 of the 26 at `$7C65` in `GEN`), the recompute dispatcher and strength handler are the same instructions, and `GEN $1F0A` is Curse's copy loop with `LDX #$06` -- but no Silver Blades party has been driven with the arrays crossed |
+| PROBABLE | Silver Blades works the same way throughout | its sweep has the same shape (94 references to `$7C14`-`$7C1A` against 44 to `$7C65`-`$7C6B`, 19 of the 26 at `$7C65` in `GEN`), the recompute dispatcher and strength handler are the same instructions, and `GEN $1F0A` is Curse's copy loop with `LDX #$06` -- but no Silver Blades party has been driven with the arrays crossed |
 
 ## Where the record is, so the addresses mean something
 
@@ -42,10 +42,10 @@ Both later titles stage the working record at **`$7C00`**, so `0x014` is
 `0x0EB`. The party's roster copies are at `$4F00 + slot * $100` in Curse,
 which is where `SAVEAZURE` loads plus its `0x400` slot offset.
 
-`tools/c64/abilitypair.py` is the tool: `refs` for the census, `stage` to write
+`tools/c64/abilitypair.py` is the tool: `refs` for the sweep, `stage` to write
 the two arrays apart, `read` to say what a disk holds.
 
-## The census, which is what makes the answer visible at a glance
+## The sweep, which is what makes the answer visible at a glance
 
 `tools/c64/absrefsweep.py` over 412 distinct Curse files, counting absolute
 operands that name each byte:

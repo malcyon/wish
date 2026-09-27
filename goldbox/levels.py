@@ -60,7 +60,7 @@ selecting Curse's trainer.
 **Curse's column of that table is now filled in, and the four gaps it used to
 leave at `--` are what `tests/curse_of_the_azure_bonds/test_cursetrainer.py` reads off the disk**
 (`#18`). Finding them needed no emulator and no address from this file: Curse's
-working character sits at `$7C00`, so a census of every absolute instruction
+working character sits at `$7C00`, so a sweep of every absolute instruction
 whose operand lands in the record puts each routine within two instructions of
 the table it reads, which is what `tools/c64/trainerscan.py` prints. **Locating
 them is not the same as being able to write a Curse record**, and four of the
@@ -311,7 +311,7 @@ TABLES = {
 #: CONFIRMED: 178 of 178 DOS Pool of Radiance records this machine can reach
 #: reproduce from these rows by best-of-classes, with no exceptions -- the nine
 #: `WISH-SPEC-por-party-ladder-rung*` specimens the trainer was watched writing,
-#: the play saves, and the archives. `tools/records/thac0census.py` is the sweep and
+#: the play saves, and the archives. `tools/records/thac0sweep.py` is the sweep and
 #: `tests/records/test_levels.py` re-reads the rows out of the player's own `START.EXE`.
 #:
 #: **Curse and Silver Blades are filled in too, from the same read, in
@@ -319,7 +319,7 @@ TABLES = {
 #: `DS:0x3E3A` (Curse, 8 rows of 13) and `DS:0x4C0C` (Silver Blades, 7 rows of
 #: 19, dropping the monk) -- located by `tools/c64/laterthac0.py` without
 #: anchoring on a THAC0 number at all, because their class-bit array is a
-#: different permutation from Pool of Radiance's and `tools/records/thac0census.py`
+#: different permutation from Pool of Radiance's and `tools/records/thac0sweep.py`
 #: cannot find either. `docs/210-the-later-titles-dos-thac0.md` has the whole
 #: of it.
 #:
@@ -350,7 +350,7 @@ TABLES = {
 #: Silver Blades records reproduce from these rows by the engine's own rule,
 #: against 250, 92 and 84 by best-of-classes; the three Curse records left
 #: over are one regained dual-class record and the two magic-users our own
-#: writer produced. `tools/records/thac0census.py dos --title <key>` is the
+#: writer produced. `tools/records/thac0sweep.py dos --title <key>` is the
 #: sweep and `docs/224-the-dos-thac0-floor.md` the reasoning.
 _DOS_THAC0_POOL = (
     ("magic-user", (20, 20, 20, 20, 20, 19, 19, 19, 19, 19)),
@@ -365,7 +365,7 @@ _DOS_THAC0_POOL = (
 #: `0x03C1B1` walks every class slot without testing the level, so a slot
 #: holding zero indexes the row's entry 0, and `dos_engine_thac0` keeps the best
 #: of all of them. Class-number order, the classes each title's table has:
-#: `tools/records/thac0census.py`'s `dos_rows` reads the same column out of the
+#: `tools/records/thac0sweep.py`'s `dos_rows` reads the same column out of the
 #: player's own `START.EXE`, and `tests/convert/test_dosthac0floor.py` compares.
 #: Every entry is 20 but the fighter's and the magic-user's in the later two
 #: titles, which is 21 -- so no character is ever worse than THAC0 20, and only
@@ -634,7 +634,7 @@ _THIEF_SKILLS_POOL = (
 #: **This is the C64's own table, and DOS does not ship the same one**
 #: (`#431`, A converted halfling thief keeps the other port's skill
 #: percentages, because the two ports ship different halfling rows).
-#: `tools/records/thiefskillcensus.py tables` reads both off the player's own files:
+#: `tools/records/thiefskillsweep.py tables` reads both off the player's own files:
 #: the two agree for 21 bytes and from there the C64's stream is the DOS
 #: stream one byte short, so the gnome's hear-noise and climb-walls columns
 #: collapse to a single `-5` and every race after the gnome reads the row
@@ -652,7 +652,7 @@ _THIEF_SKILL_RACE_POOL = (
 )
 
 #: DOS Pool of Radiance's own racial row, `START.EXE` at the offset
-#: `tools/records/thiefskillcensus.py tables --title pool-of-radiance` prints,
+#: `tools/records/thiefskillsweep.py tables --title pool-of-radiance` prints,
 #: located by the C64's own 72 bytes of level table so the read cannot agree
 #: with this module by construction. Seven rows -- DOS has no eighth
 #: (monster) row, and `thief_skill_row`'s bounds check leaves an index past
@@ -1286,7 +1286,7 @@ class LevelTables:
 
         **Not the same rule as** :meth:`thief_skill_row`: DOS clamps every
         column at zero, where the C64 stores the negative byte (`#431`,
-        `tools/records/thiefskillcensus.py --rule`). Returns `None` when this title
+        `tools/records/thiefskillsweep.py --rule`). Returns `None` when this title
         has no `dos_thief_skill_race` -- either because both ports agree, or
         because nobody has measured that yet, and a caller must not read
         `thief_skill_row`'s answer as DOS's in that case.
@@ -1358,7 +1358,7 @@ class LevelTables:
         None where the title's DOS table is unread or the character has no
         class with a level, so a caller can keep the source's own byte.
         `docs/224-the-dos-thac0-floor.md` has the listing;
-        `tools/records/thac0census.py`'s `dos_engine_thac0` is the rule written
+        `tools/records/thac0sweep.py`'s `dos_engine_thac0` is the rule written
         out over the player's own tables and `tests/convert/test_dosthac0floor.py`
         compares the two.
         """
@@ -1812,7 +1812,7 @@ SECRET_OF_THE_SILVER_BLADES = LevelTables(
     #: walks class slots 7 down to 0 in one press, Curse's `$14F8` shape;
     #: `$13EB STY $7CD9` stores outright, Curse's `$1909` shape; and
     #: `tools/c64/absrefsweep.py secret-of-the-silver-blades 7CEE 7CF3` over 347
-    #: files finds no reference to `spells_castable`, Curse's own census result.
+    #: files finds no reference to `spells_castable`, Curse's own sweep result.
     #: So Silver Blades takes Curse's values on all seven, not Pool of
     #: Radiance's defaults.
     hit_die_rolls=2,
@@ -2255,7 +2255,7 @@ RACIAL_SAVE_BONUS_MEASURED: frozenset[str] = frozenset(
 #:
 #: **Pool of Radiance alone.** Its C64 racial row (`GEN $1076`) is the DOS
 #: row one byte short from the gnome's hear-noise column on, CONFIRMED by
-#: `tools/records/thiefskillcensus.py rows`, and the C64 build never applies a
+#: `tools/records/thiefskillsweep.py rows`, and the C64 build never applies a
 #: dexterity adjustment DOS does. Curse ships the same 56 racial bytes on
 #: both ports -- a copy is already right for it, and its own reason to
 #: recompute is `THIEF_SKILL_DOS_STORAGE_INFLATED` below, a different defect

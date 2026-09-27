@@ -14,11 +14,11 @@ player's disks (HOGARTH's).
 Whether such a figure *reads* as a whole figure on the screen is a look, and
 a look needs a specimen.  This finds one or makes one.
 
-    tools/icons/dosmixedicon.py --census
+    tools/icons/dosmixedicon.py --sweep
     tools/icons/dosmixedicon.py --stage DIR --slot J \\
         --from "$POR_DOS_GAME/SAVE"
 
-`--census` reads every `.SAV` and `.CHA` under the DOS corpora and reports
+`--sweep` reads every `.SAV` and `.CHA` under the DOS corpora and reports
 every record whose `size` is 1 and whose row lands past a small list -- the
 question "does one exist already?", asked of the whole machine rather than
 of one party.
@@ -77,7 +77,7 @@ def corpora() -> list[pathlib.Path]:
 
 #: The C64's small lists, which are what a row has to clear to be composable
 #: at a small character's own size.  Read off `SPELLE64` by
-#: `goldbox.iconparts.IconParts.count`; repeated here only so `--census` can
+#: `goldbox.iconparts.IconParts.count`; repeated here only so `--sweep` can
 #: run with no game disks attached, and checked against the file by
 #: `tests/icons/test_iconpackaging.py`.
 SMALL_WEAPONS = 28
@@ -91,7 +91,7 @@ def mixed_rows(tables=None) -> tuple[list[int], list[int]]:
             [h for h, c in sorted(tables.heads.items()) if c >= SMALL_HEADS])
 
 
-def census(roots=None, tables=None) -> tuple[int, list[dict]]:
+def sweep(roots=None, tables=None) -> tuple[int, list[dict]]:
     """Every small record already wearing a large-only option, and how many read."""
     tables = tables or dos_icon_tables()
     read, hits = 0, []
@@ -153,7 +153,7 @@ def stage(source: pathlib.Path, slot: str, into: pathlib.Path,
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--census", action="store_true",
+    p.add_argument("--sweep", action="store_true",
                    help="report every small record already on a large-only row")
     p.add_argument("--stage", default=None,
                    help="the directory to copy the party into and edit")
@@ -172,8 +172,8 @@ def main(argv=None) -> int:
           + ", ".join(f"DOS head {h} -> C64 head {tables.heads[h]}"
                       for h in heads))
 
-    if args.census:
-        read, hits = census(tables=tables)
+    if args.sweep:
+        read, hits = sweep(tables=tables)
         if not read:
             print("No DOS records found; set POR_DOS_GAME (por-dos-play), "
                   "FR_ARCHIVES (dos-archives) or WISH_SPECIMENS, or add the "

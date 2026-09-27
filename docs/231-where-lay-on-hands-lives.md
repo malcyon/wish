@@ -257,7 +257,7 @@ happen.
 ## Negative results
 
 * No save on this machine holds a paladin with a lay-on-hands node or row.
-  #600 (The neutral record has no field for an effect's remaining duration or a paladin's cure-disease uses, so a converted character loses both)'s census found none on the C64 or DOS. The Amiga readers' own census
+  #600 (The neutral record has no field for an effect's remaining duration or a paladin's cure-disease uses, so a converted character loses both)'s sweep found none on the C64 or DOS. The Amiga readers' own sweep
   (`docs/124-amiga-port.md`) found 11 of 11 nodes with duration 0. So this
   reading has not been checked against a save the game wrote after a HEAL.
   A DOS Silver Blades save made with `tools/dos/ssbimport.py` before and

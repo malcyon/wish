@@ -92,16 +92,16 @@ Pool of Radiance C64 records agree with their own level array. What a Silver
 Blades C64 record holds is whatever put it there at creation, and that is
 UNMEASURED.
 
-## The census -- CONFIRMED
+## The sweep -- CONFIRMED
 
-`tools/records/classcodecensus.py` compares the code with the classes the character
+`tools/records/classcodesweep.py` compares the code with the classes the character
 holds **levels** in, which is the reading that catches both kinds of
 disagreement -- a code that is stale and a level array that names a class the
 code does not. One thing it had to get right first, and it was this project's
 mistake before it was a finding: **DOS numbers the paladin's and the ranger's
 bits differently from the C64**, so reading a stored DOS `class_bits` against
 the C64's table makes every DOS ranger in the corpus look like a
-disagreement. `goldbox.dos_codec.neutral_class_bits` folds it, and the census calls
+disagreement. `goldbox.dos_codec.neutral_class_bits` folds it, and the sweep calls
 it.
 
 | corpus | records | disagree |
@@ -124,7 +124,7 @@ stale -- his level array carries a class his mask does not, which is the
 opposite fault and the reason the fix below reads the mask rather than the
 levels. The two Pools of Darkness ones are dual-classed characters in a
 downloaded save with no chain of custody. Two more matches in the Curse sweep
-are `DISK3/GAME.GLB`, which is not a character record at all: the census
+are `DISK3/GAME.GLB`, which is not a character record at all: the sweep
 recognises a record by its size, and a 422-byte slice of a game data file
 matches.
 
@@ -227,12 +227,12 @@ as `tests/convert/test_dosclasscode.py`: a trained record reads with the repaire
 code and `Provenance.COMPUTED`; SILAS's shape reads unchanged and
 `Provenance.COPIED`; a dual-classed record takes the level array; the
 specimen tree's Pool of Radiance and Silver Blades C64 disks read through the
-neutral record with the same zero disagreements the raw census finds; and an
+neutral record with the same zero disagreements the raw sweep finds; and an
 unedited export of `WISH-SPEC-curse-trained-party` imports with no changes.
 
 ## Where the numbers came from
 
-* `tools/records/classcodecensus.py` -- the census above, and it prints the mask it
+* `tools/records/classcodesweep.py` -- the sweep above, and it prints the mask it
   derived beside the mask the record stores.
 * `tools/c64/d6502.py cited/18/GEN.bin 0800 1930 25` -- the routine.
 * `tools/dos/dosfieldrefs.py <Curse GAME.OVR> --offset 0x075` -- 51 sites in the

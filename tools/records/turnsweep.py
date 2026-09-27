@@ -13,20 +13,20 @@ So this walks every C64 save and exported character it can find -- the player's
 own disks through `automap/gamedisks.py`, and the specimen tree -- and prints one
 row per record: the title, where it came from, the cleric and paladin levels,
 the byte stored at `0x0A4`, and `goldbox.levels.turning_level`'s answer. The
-exit status is non-zero when any record disagrees, so the census is a check as
+exit status is non-zero when any record disagrees, so the sweep is a check as
 much as a listing.
 
 `--dos` does the DOS half, which asks a different question. DOS `turn_class`
 is the *undead's* row rather than the caster's strength -- `GAME.OVR:0x139CD`
 reads it off the **target** and multiplies it by ten as the row of the turning
-matrix -- so what a DOS census establishes is that no player character carries
+matrix -- so what a DOS sweep establishes is that no player character carries
 anything there, and that the undead monster records do. The byte sits at a
 different offset per title (`goldbox.dos_port.FIELDS_BY_NAME_FOR[key]
-["turn_class"].offset`), so the census reads each title at its own offset
+["turn_class"].offset`), so the sweep reads each title at its own offset
 rather than Pool of Radiance's.
 
-    tools/records/turncensus.py                 every C64 record, stored vs derived
-    tools/records/turncensus.py --dos           DOS records and monsters at turn_class
+    tools/records/turnsweep.py                 every C64 record, stored vs derived
+    tools/records/turnsweep.py --dos           DOS records and monsters at turn_class
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ def _specimen_root():
     return pathlib.Path(root) if root and pathlib.Path(root).is_dir() else None
 
 
-def census_c64(verbose: bool = True) -> int:
+def sweep_c64(verbose: bool = True) -> int:
     """One row per C64 record; returns how many disagree with the derivation."""
     bad = 0
     seen = 0
@@ -139,7 +139,7 @@ def census_c64(verbose: bool = True) -> int:
     return bad
 
 
-def census_dos(verbose: bool = True) -> int:
+def sweep_dos(verbose: bool = True) -> int:
     """DOS records and monsters at each title's own turn_class offset."""
     from goldbox.dos_savegame import dax_blocks
 
@@ -172,13 +172,13 @@ def census_dos(verbose: bool = True) -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dos", action="store_true",
-                        help="census DOS records at 0x076 instead")
+                        help="sweep DOS records at 0x076 instead")
     parser.add_argument("--quiet", action="store_true",
                         help="print only the totals")
     args = parser.parse_args(argv)
     if args.dos:
-        return census_dos(not args.quiet)
-    return 1 if census_c64(not args.quiet) else 0
+        return sweep_dos(not args.quiet)
+    return 1 if sweep_c64(not args.quiet) else 0
 
 
 if __name__ == "__main__":

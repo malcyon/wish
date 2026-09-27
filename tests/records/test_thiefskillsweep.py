@@ -15,7 +15,7 @@ from gamedata import disk_dir
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from tools.records import thiefskillcensus as census  # noqa: E402
+from tools.records import thiefskillsweep as sweep  # noqa: E402
 
 POOL = "pool-of-radiance"
 CURSE = "curse-of-the-azure-bonds"
@@ -31,7 +31,7 @@ def _c64(title=POOL):
     if disk_dir() is None and title == POOL:
         pytest.skip("needs the Pool of Radiance disks; set $POR_DISKS")
     try:
-        return census.c64_tables(title)
+        return sweep.c64_tables(title)
     except SystemExit as e:
         pytest.skip(str(e))
 
@@ -42,7 +42,7 @@ def _dos(title=POOL):
     if not dosbox.ARCHIVES.is_dir():
         pytest.skip("needs the DOS archives; set FR_ARCHIVES")
     try:
-        return census.dos_tables(title)
+        return sweep.dos_tables(title)
     except (SystemExit, FileNotFoundError, KeyError) as e:
         pytest.skip(str(e))
 
@@ -54,7 +54,7 @@ def test_the_dos_blocks_are_where_the_geometry_says_they_are():
     racial block was not found where this thinks it was.
     """
     tables = _dos()
-    assert census.check_dos_geometry(tables, POOL) == []
+    assert sweep.check_dos_geometry(tables, POOL) == []
     assert len(tables["level"]) == 9      # Pool of Radiance's thief ceiling
 
 
@@ -121,7 +121,7 @@ def test_pool_of_radiance_on_the_c64_never_reads_dexterity():
     assert _c64()["dex"] is None
     dostab = _dos()["dex"]
     assert len(dostab) == 11 and len(dostab[0]) == 5
-    assert dostab[12 - census.DEX_FROM] == [0, 0, 0, -5, 0]
+    assert dostab[12 - sweep.DEX_FROM] == [0, 0, 0, -5, 0]
 
 
 def test_every_dos_pool_of_radiance_record_reproduces():
@@ -135,8 +135,8 @@ def test_every_dos_pool_of_radiance_record_reproduces():
     """
     tables = _dos()
     seen = misses = 0
-    for _s, _n, race, level, dex, stored in census.dos_records(POOL):
-        want = census.expected(tables, level, race, dex, True, clamp=True)
+    for _s, _n, race, level, dex, stored in sweep.dos_records(POOL):
+        want = sweep.expected(tables, level, race, dex, True, clamp=True)
         if want is None:
             continue
         seen += 1
@@ -179,10 +179,10 @@ def test_every_engine_written_c64_record_reproduces():
     """
     tables = _c64()
     seen, misses = 0, []
-    for source, name, race, level, dex, stored in census.c64_records(POOL):
+    for source, name, race, level, dex, stored in sweep.c64_records(POOL):
         if source.split(":")[0].upper() in CONVERTED:
             continue
-        want = census.expected(tables, level, race, dex, False)
+        want = sweep.expected(tables, level, race, dex, False)
         if want is None:
             continue
         seen += 1
@@ -203,11 +203,11 @@ def test_a_c64_halfling_thief_holds_the_displaced_row():
     """
     tables = _c64()
     found = []
-    for source, name, race, level, dex, stored in census.c64_records(POOL):
+    for source, name, race, level, dex, stored in sweep.c64_records(POOL):
         if source.split(":")[0].upper() in CONVERTED or race != 5:
             continue
         found.append((source, name, stored,
-                      census.expected(tables, level, race, dex, False)))
+                      sweep.expected(tables, level, race, dex, False)))
     if not found:
         pytest.skip("no C64 halfling thief on this machine")
     for source, name, stored, want in found:
@@ -224,10 +224,10 @@ def test_the_dos_dexterity_block_holds_two_bytes_the_c64_does_not():
     """
     c64 = _c64(CURSE)["dex"]
     dostab = _dos(CURSE)["dex"]
-    assert dostab[10 - census.DEX_FROM][0] == -19
-    assert c64[10 - census.DEX_FROM][0] == -10
-    assert dostab[16 - census.DEX_FROM][1] == -5
-    assert c64[16 - census.DEX_FROM][1] == 5
+    assert dostab[10 - sweep.DEX_FROM][0] == -19
+    assert c64[10 - sweep.DEX_FROM][0] == -10
+    assert dostab[16 - sweep.DEX_FROM][1] == -5
+    assert c64[16 - sweep.DEX_FROM][1] == 5
     differ = [9 + i for i in range(len(dostab))
-              if c64[i][:census.DEX_COLUMNS] != dostab[i]]
+              if c64[i][:sweep.DEX_COLUMNS] != dostab[i]]
     assert differ == [10, 16]

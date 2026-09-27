@@ -4,7 +4,7 @@ of its `COMBAT` statements a given saved game can actually reach.
 
 `#334 (The session driver cannot fight in Curse or Silver Blades, and says the
 party is not in a fight while it is standing on the combat floor)` is the
-ticket, and the gap is the reason for the file. `tools/areas/eclcensus.py` answers
+ticket, and the gap is the reason for the file. `tools/areas/eclsweep.py` answers
 "which addresses does this title's scripts name" and `--sites` prints the
 statements naming one; neither prints a **run of statements from an offset**,
 which is what every reading on that ticket wanted, and four of them were done
@@ -36,7 +36,7 @@ menu answer, an engine variable). It prints the arms that can reach a
 square in this area fights *this* party" answered from the file.
 
 It prints no string of the game's as text: a string operand prints as
-`str(<length>)`, the way `eclcensus.py` does.
+`str(<length>)`, the way `eclsweep.py` does.
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ from automap import gamedisks  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools.areas import newecl  # noqa: E402
-from tools.areas.eclcensus import (  # noqa: E402
+from tools.areas.eclsweep import (  # noqa: E402
     CONDITIONS,
     DESTINATIONS,
     DUNGEON_BASE,
@@ -134,7 +134,7 @@ def text(statement, base: int) -> str:
 
 def walk_all(machine: Machine, body: bytes, base: int) -> dict:
     """Every statement reachable from the five entry `GOTO`s."""
-    from tools.areas.eclcensus import walk
+    from tools.areas.eclsweep import walk
     return walk(machine, body, base)
 
 

@@ -1,7 +1,7 @@
-"""`tools/records/enccensus.py` counts an encumbrance failure only where there is one.
+"""`tools/records/encsweep.py` counts an encumbrance failure only where there is one.
 
 `#323 (The encumbrance identity does not survive the training fee, so failing
-it is not evidence of an edited record)`.  Two ways the census lied before
+it is not evidence of an edited record)`.  Two ways the sweep lied before
 these tests existed, both of which would have made the ticket's headline
 number wrong:
 
@@ -28,8 +28,8 @@ import pytest
 
 from goldbox import c64_codec, layout
 from goldbox import dos_port as dl
-from tools.dos import dostailcensus
-from tools.records import enccensus
+from tools.dos import dostailsweep
+from tools.records import encsweep
 
 ENCUMBRANCE = dl.FIELDS_BY_NAME["encumbrance"].offset
 ITEM_COUNT = dl.FIELDS_BY_NAME["item_count"].offset
@@ -52,10 +52,10 @@ def _record(path: pathlib.Path, *, gold: int = 0, encumbrance: int = 0,
 def test_leading_number_reads_the_count_off_a_cached_inventory_line():
     """`37 Darts` against a quantity byte of 50 is the disagreement the
     stacks mode exists to find; a line with no count must not read as one."""
-    assert enccensus.leading_number("37 Darts ") == 37
-    assert enccensus.leading_number(" No   Quarter Staff ") is None
-    assert enccensus.leading_number(" Yes  * Bracers AC 6 ") is None
-    assert enccensus.leading_number("") is None
+    assert encsweep.leading_number("37 Darts ") == 37
+    assert encsweep.leading_number(" No   Quarter Staff ") is None
+    assert encsweep.leading_number(" Yes  * Bracers AC 6 ") is None
+    assert encsweep.leading_number("") is None
 
 
 def test_a_record_in_the_played_directory_and_the_archives_grades_edited():
@@ -65,9 +65,9 @@ def test_a_record_in_the_played_directory_and_the_archives_grades_edited():
     both = ["/home/x/Downloads/fr-archives/games/POOLRAD/GAME/POOLRAD/SAVE/"
             "CHRDATA4.SAV",
             "/home/x/dos_por_play/SAVE/CHRDATA4.SAV"]
-    assert enccensus._grade(both) == "edited"
-    assert enccensus._grade(both[:1]) == "found"
-    assert enccensus._grade(["/home/x/wish-specimens/por-dos/W/CHRDATA1.SAV"]) \
+    assert encsweep._grade(both) == "edited"
+    assert encsweep._grade(both[:1]) == "found"
+    assert encsweep._grade(["/home/x/wish-specimens/por-dos/W/CHRDATA1.SAV"]) \
         == "spec"
 
 
@@ -77,7 +77,7 @@ def test_a_record_whose_item_file_is_missing_is_not_called_a_failure(tmp_path):
     `#323`'s first headline number."""
     _record(tmp_path / "EXPORT.CHA", gold=100, encumbrance=900, items=3)
 
-    rows, _skipped = enccensus.dos_rows([tmp_path])
+    rows, _skipped = encsweep.dos_rows([tmp_path])
 
     assert len(rows) == 1
     assert rows[0].declared == 3 and rows[0].items == 0
@@ -90,7 +90,7 @@ def test_a_record_with_no_items_is_judged_on_its_money_alone(tmp_path):
     above the purse.  This one is a real failure and must be counted."""
     _record(tmp_path / "CHRDATA1.SAV", gold=19000, encumbrance=20000)
 
-    rows, _skipped = enccensus.dos_rows([tmp_path])
+    rows, _skipped = encsweep.dos_rows([tmp_path])
 
     assert len(rows) == 1 and rows[0].readable
     assert rows[0].delta == 1000
@@ -99,12 +99,12 @@ def test_a_record_with_no_items_is_judged_on_its_money_alone(tmp_path):
 def test_a_balancing_record_is_not_a_miss(tmp_path):
     _record(tmp_path / "CHRDATA2.SAV", gold=537, encumbrance=537)
 
-    rows, _skipped = enccensus.dos_rows([tmp_path])
+    rows, _skipped = encsweep.dos_rows([tmp_path])
 
     assert rows[0].readable and rows[0].delta == 0
 
 
-def test_the_finder_keeps_the_same_exclusions_as_the_field_census(tmp_path):
+def test_the_finder_keeps_the_same_exclusions_as_the_field_sweep(tmp_path):
     """A Gateway `.GUY` is Curse's record size and must not be read through
     Curse's table -- `#400`'s bug, and this finder is a second copy of that
     walk, so it has to keep the exclusion."""
@@ -113,7 +113,7 @@ def test_the_finder_keeps_the_same_exclusions_as_the_field_census(tmp_path):
     (gateway / "TARLREN.GUY").write_bytes(
         bytes(dl.CURSE_OF_THE_AZURE_BONDS.record_size))
 
-    rows, skipped = enccensus.dos_rows([tmp_path])
+    rows, skipped = encsweep.dos_rows([tmp_path])
 
     assert rows == []
     assert skipped["gateway to the savage frontier"] == 1
@@ -122,7 +122,7 @@ def test_the_finder_keeps_the_same_exclusions_as_the_field_census(tmp_path):
 def test_the_c64_record_has_no_encumbrance_to_check():
     """No C64 save can fail this identity, so no C64 save can be judged by
     it.  If the field is ever located on the C64 this test goes red and the
-    census gains a third port.
+    sweep gains a third port.
 
     The layout assertion is the tripwire and always was.  The other one
     followed `encumbrance` from `c64_codec.DROPPED` to `c64_codec.DERIVED`
@@ -140,7 +140,7 @@ def test_the_c64_record_has_no_encumbrance_to_check():
 # --- the corpus, off the player's own files ----------------------------------
 
 def _archive_saves():
-    root = dostailcensus.archives()
+    root = dostailsweep.archives()
     if root is None:
         pytest.skip("no Forgotten Realms archives on this machine")
     found = sorted(p for p in root.rglob("Saves")
@@ -156,7 +156,7 @@ def test_every_record_the_archives_ship_balances_exactly():
     Treasures of the Savage Frontier's fourteen are skipped, having no layout
     here.  A reader change that makes a shipped record miss turns this red.
     """
-    rows, _skipped = enccensus.dos_rows(_archive_saves())
+    rows, _skipped = encsweep.dos_rows(_archive_saves())
 
     assert rows, "the archives are here but no record was read"
     misses = [r for r in rows if r.readable and r.delta]

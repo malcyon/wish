@@ -18,7 +18,7 @@ engine's own `ENCAMP > SAVE` wrote it back unchanged.
 
 | evidence | what it shows |
 |---|---|
-| `MON1CHA.DAX`-`MON8CHA.DAX`, 172 records | `0x10E` = 1 in 171, 0 in one (EFREETI, `MON4CHA.DAX` block 70); 0 in every player record of the census |
+| `MON1CHA.DAX`-`MON8CHA.DAX`, 172 records | `0x10E` = 1 in 171, 0 in one (EFREETI, `MON4CHA.DAX` block 70); 0 in every player record of the sweep |
 | resident `0x2F7B` | zeroes `ds:0x6814`, `ds:0x6815`; for every active combatant (`0x10D` != 0) `inc [0x6814 + 0x10E]` -- a two-entry per-side count, so the value is 0 or 1 |
 | resident `0x2E9A` | `dec [0x6814 + 0x10E]` when damage takes a combatant out |
 | `GAME.OVR:0x98A2`, `0xA163`, `0xA178` | the fight ends when either count is 0; victory is `[0x6814] > 0 and [0x6815] == 0`, which is what makes 0 the party's side |

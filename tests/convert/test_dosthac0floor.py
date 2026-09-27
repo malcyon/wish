@@ -9,7 +9,7 @@ from it by one point for a Curse or Silver Blades magic-user of level 1-5.
 
 The first block reads only the code and always runs.  The second compares the
 level-0 column and the function against the player's own DOS tables through
-`tools/records/thac0census.py` and skips without them.  The last converts the
+`tools/records/thac0sweep.py` and skips without them.  The last converts the
 C64 party a specimen DOS save was made from and skips without the specimen tree.
 """
 
@@ -91,12 +91,12 @@ def test_nothing_is_written_for_a_character_with_no_class_level(title):
 # --- against the player's own DOS tables ------------------------------------
 def _rows(title):
     from tools.dos import dosbox
-    from tools.records import thac0census
+    from tools.records import thac0sweep
 
     if not dosbox.ARCHIVES.is_dir():
         pytest.skip("no DOS archives on this machine; set $FR_ARCHIVES")
     try:
-        return thac0census, thac0census.dos_rows(title)
+        return thac0sweep, thac0sweep.dos_rows(title)
     except (SystemExit, KeyError, OSError) as why:
         pytest.skip(f"no readable {title} DOS table here: {why}")
 
@@ -110,23 +110,23 @@ def test_the_level_zero_column_is_what_the_games_own_tables_hold(title):
 
 
 @pytest.mark.parametrize("title", TITLES)
-def test_the_function_reproduces_the_census_rule_for_every_class_and_level(
+def test_the_function_reproduces_the_sweep_rule_for_every_class_and_level(
         title):
-    census, rows = _rows(title)
+    sweep, rows = _rows(title)
     tables = level_tables.for_game(title)
     names = [name for name, _row in tables.dos_thac0]
     checked = 0
     for name in names:
         for level in range(1, len(rows[name])):
             held = {name: level}
-            assert tables.dos_engine_thac0(held) == census.dos_engine_thac0(
+            assert tables.dos_engine_thac0(held) == sweep.dos_engine_thac0(
                 rows, held), (title, held)
             checked += 1
     for held in ({"fighter": 4, "thief": 5}, {"magic-user": 5, "cleric": 3},
                  {"magic-user": 3, "thief": 5, "cleric": 4},
                  {"magic-user": 1, "thief": 1}, {"fighter": 2, "thief": 2}):
         held = {n: v for n, v in held.items() if n in names}
-        assert tables.dos_engine_thac0(held) == census.dos_engine_thac0(
+        assert tables.dos_engine_thac0(held) == sweep.dos_engine_thac0(
             rows, held), (title, held)
     assert checked > 30
 

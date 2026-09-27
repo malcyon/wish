@@ -266,7 +266,7 @@ level below (`$AC10` and its three twins), and the routine compares it with
 the random routine's result for `Y = $63`. **No
 instruction in the four routines, their chance routines or their removals
 names the trait block** (`$6BAD` in Pool of Radiance, `$7CAD` in the later
-two). In Pool of Radiance the census of the block's 17 absolute references
+two). In Pool of Radiance the sweep of the block's 17 absolute references
 finds only the predicate, the racial seed, the item grant and revoke, the
 slot `SPELLE04 $AA18` writes 32 into and the cures; the later titles' 20 and
 21 were not each attributed, and none of them lies in a dispel routine.

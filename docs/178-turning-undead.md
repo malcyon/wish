@@ -103,7 +103,7 @@ files, and the answer is the other one:
 That is the same population, value for value, that the C64 keeps at `0x0A3`
 and `goldbox/layout.py` calls `turn_class`. **CONFIRMED**: DOS `0x076` is the
 C64's `0x0A3`, and DOS has no counterpart to `0x0A4` at all.
-`tools/records/turncensus.py --dos` re-runs the monster half.
+`tools/records/turnsweep.py --dos` re-runs the monster half.
 
 ## The tables
 
@@ -144,9 +144,9 @@ cleric 8, holding 9, and GUY DE VALOIS, a paladin 8, holding 7; and Curse's
 own training hall wrote 7 for SHARA at cleric 6 and 5 for MATHEW at paladin 6
 during `#18 (Measure Curse's trainer so Level Up works there)`.
 
-## The census
+## The sweep
 
-`tools/records/turncensus.py` compares every C64 record on this machine against the
+`tools/records/turnsweep.py` compares every C64 record on this machine against the
 derivation.
 
 | | records | agree | disagree |
@@ -203,6 +203,6 @@ and photograph what the game prints.
 | the derivation | `goldbox/derive.py:turn_power` |
 | the tables | `goldbox/levels.py`, `_TURN_POWER_POOL`, `_TURN_POWER_CURSE`, `_TURN_POWER_SILVER` |
 | the writer | `goldbox/c64_codec.py`, the turning block of `write` |
-| the census | `tools/records/turncensus.py` |
+| the sweep | `tools/records/turnsweep.py` |
 | the running-game run | `tools/c64/turndrive.py` |
 | the tests | `tests/records/test_turning.py` |

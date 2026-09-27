@@ -23,17 +23,17 @@ Two ceilings, both in the C64 character record:
   read the two innate effect ids nobody has seen)`), so overflowing needs a
   dwarf or a gnome carrying seven or more effect-granting items readied.
 
-    tools/records/carryceiling.py                 the whole census
-    tools/records/carryceiling.py --items         the item census only
+    tools/records/carryceiling.py                 the whole sweep
+    tools/records/carryceiling.py --items         the item sweep only
     tools/records/carryceiling.py --grants        the effect-granting templates only
-    tools/records/carryceiling.py --census        the per-port census only
+    tools/records/carryceiling.py --sweep        the per-port sweep only
     tools/records/carryceiling.py --json FILE     one JSON row per character found
 
 **What it counts and what it does not.**  It counts what is on the disks:
 item entries and trait bytes in a C64 saved game, `item_count` and `.SPC`
 records beside a DOS one, item nodes and effect nodes in an Amiga one.  It
 does not watch the running game refuse a pickup -- an engine's own ceiling is
-a comparison in an overlay -- so where a census reaches a ceiling it says the
+a comparison in an overlay -- so where a sweep reaches a ceiling it says the
 population reached it and not that the engine allows it.
 
 **Provenance is part of every count.**  `.claude/rules/testing.md`: a save
@@ -137,7 +137,7 @@ def all_templates(disks: pathlib.Path, game) -> int:
 
 
 # ---------------------------------------------------------------------------
-# The census: how much any real character actually carries
+# The sweep: how much any real character actually carries
 # ---------------------------------------------------------------------------
 
 @dataclasses.dataclass(frozen=True)
@@ -230,7 +230,7 @@ def _grade(path, specimen_grades: dict[str, str]) -> str:
 def _grade_over(paths, specimen_grades: dict[str, str]) -> str:
     """The grade for one record that turned up at several paths.
 
-    `tools/dos/dostailcensus.py` deduplicates on the record's bytes, so the same
+    `tools/dos/dostailsweep.py` deduplicates on the record's bytes, so the same
     record is routinely a copy in a run directory **and** the specimen it was copied
     into.  Grading the first path found would call an engine-written specimen
     `ours`, purely because a run directory sorted first -- which is how
@@ -311,7 +311,7 @@ def c64_rows(specimen_grades: dict[str, str], problems: list[str],
             # of any of them has been decoded, so this project does not know
             # where their item pages are.  Counted and named rather than
             # dropped: an uncovered title is the answer to a different
-            # question, and a census that hides it looks complete.
+            # question, and a sweep that hides it looks complete.
             problems.append(
                 f"{path.name}: {len(sg0.characters)} {game.title} "
                 f"character(s) not counted -- goldbox/c64_save.py has no "
@@ -360,26 +360,26 @@ def _specimen_root():
 def _dos_roots() -> list[pathlib.Path]:
     """The specimen tree, the archives and the played DOS game directory.
 
-    `tools/dos/dostailcensus.py`'s own list, so every DOS census on this machine
+    `tools/dos/dostailsweep.py`'s own list, so every DOS sweep on this machine
     covers the same corpus (#575).
     """
-    from tools.dos import dostailcensus
-    return dostailcensus.dos_record_roots()
+    from tools.dos import dostailsweep
+    return dostailsweep.dos_record_roots()
 
 
 def dos_rows(specimen_grades: dict[str, str], problems: list[str]):
     """Every distinct DOS record, with its sibling effect file counted.
 
-    `tools/dos/dostailcensus.py` finds and deduplicates them, and its exclusions
+    `tools/dos/dostailsweep.py` finds and deduplicates them, and its exclusions
     come with it: an emulator instance's staged tree, records whose names say
     this project built them, and the three titles whose record is the same
     size as one we have a layout for.
     """
-    from tools.dos import dostailcensus
+    from tools.dos import dostailsweep
     roots = _dos_roots()
     if not roots:
-        problems.append(dostailcensus.NO_RECORDS)
-    specs, skipped = dostailcensus.collect(roots, want_built=True)
+        problems.append(dostailsweep.NO_RECORDS)
+    specs, skipped = dostailsweep.collect(roots, want_built=True)
     for other, n in sorted(skipped.items()):
         problems.append(f"{n} DOS record(s) skipped under {other}: the same "
                         f"record size as a title read here, and not the same "
@@ -629,7 +629,7 @@ def report(rows: list[Carried], problems: list[str]) -> None:
             print(f"  {line}")
 
 
-def census(problems: list[str], extra_disks=()) -> list[Carried]:
+def sweep(problems: list[str], extra_disks=()) -> list[Carried]:
     """Every character this machine can reach, on all three ports."""
     grades = _specimen_grades()
     rows: list[Carried] = []
@@ -645,14 +645,14 @@ def main(argv=None) -> int:
                     help="the DOS item_count histogram only")
     ap.add_argument("--grants", action="store_true",
                     help="the effect-granting item templates only")
-    ap.add_argument("--census", action="store_true",
-                    help="the per-port carried census only")
+    ap.add_argument("--sweep", action="store_true",
+                    help="the per-port carried sweep only")
     ap.add_argument("--json", metavar="FILE",
                     help="write one JSON row per character found")
     ap.add_argument("--disk", action="append", default=[], metavar="D64",
                     help="another C64 disk image to read; repeatable")
     args = ap.parse_args(argv)
-    both = not (args.items or args.grants or args.census)
+    both = not (args.items or args.grants or args.sweep)
 
     if both or args.grants:
         print("Effect-granting item templates: byte +15 bit 7, which is the "
@@ -672,10 +672,10 @@ def main(argv=None) -> int:
               "on a human and 7 or more on a dwarf or a gnome")
         print()
 
-    if both or args.census or args.items or args.json:
+    if both or args.sweep or args.items or args.json:
         problems: list[str] = []
-        rows = census(problems, args.disk)
-        if both or args.census:
+        rows = sweep(problems, args.disk)
+        if both or args.sweep:
             report(rows, problems)
         if args.items:
             hist = collections.Counter(

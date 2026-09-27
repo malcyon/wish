@@ -2,7 +2,7 @@
 
 `tools/records/controlbyte.py` derives the offset from each title's own shape rather
 than tabulating it, so the derivation is the thing that can silently go wrong:
-if `field_83_87` ever moves or changes width, the census would keep printing
+if `field_83_87` ever moves or changes width, the sweep would keep printing
 partitions of whatever byte happened to land there.  These pin it against the
 four offsets `tools/dos/dosbyteimm.py` finds the engines' own compares at --
 `0x084`, `0x0F7`, `0x0FF`, `0x147`, one per title's `GAME.OVR`

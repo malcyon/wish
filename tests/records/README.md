@@ -1,6 +1,6 @@
 # records
 
-Tests for the character record and the tables and rules around it: field layouts, derived values, level tables, per-title tables and the census tools under `tools/records/`.
+Tests for the character record and the tables and rules around it: field layouts, derived values, level tables, per-title tables and the sweep tools under `tools/records/`.
 
 | file | purpose |
 |---|---|
@@ -25,8 +25,8 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_dualclassregain.py` | Checks the rule a DOS engine uses to decide a dual-classed human has got his old class back, and what the record holds when he has. |
 | `test_effects.py` | Checks `goldbox/effects.py`: the effect-array offsets, writing and clearing an effect, the ECL65 spell-effect table, and how much time a duration byte has left at a time of day, and which byte the closest-duration rule picks, against the three engines' own camp ageing routines, and the neutral `RunningEffect` record's reading, writing and refusals. |
 | `test_effectcrosswalk.py` | Re-reads C64 duration packing and Pool's DOS/C64 effect-value rules from the player's engine files, checks clock-dependent representability, and rejects unproven strength encodings. |
-| `test_enccensus.py` | Checks that `tools/records/enccensus.py` counts an encumbrance failure only where a record's items are known, and that the C64 record has no encumbrance field. |
-| `test_fieldcensus.py` | Checks that `tools/records/fieldcensus.py` picks a title's specimen disks by title rather than by directory and tallies every value it reads. |
+| `test_encsweep.py` | Checks that `tools/records/encsweep.py` counts an encumbrance failure only where a record's items are known, and that the C64 record has no encumbrance field. |
+| `test_fieldsweep.py` | Checks that `tools/records/fieldsweep.py` picks a title's specimen disks by title rather than by directory and tallies every value it reads. |
 | `test_fieldnames.py` | Checks corrections to field names against the player's disks: the effect-id table, the roster block's readied-weapon die and the armour-protection encoding. |
 | `test_flags0b8.py` | Checks, against the six C64 titles' disks, that only Pool of Radiance writes the trainer flag into record byte `0x0B8`, that every title doubles the morale and the later five clamp it at 100, and that no title but Pool of Radiance hands control back; skips per title with no disks. |
 | `test_gametables.py` | Checks the per-title race, class-bit and item-name tables on each `Game` descriptor, and how a title's disks are found through the registry. |
@@ -46,10 +46,10 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_ringoffire.py` | Checks the two Ring of Fire Resistance records the C64 ships and which one Wish hands out. |
 | `test_second_game.py` | Checks that Curse of the Azure Bonds reads through Pool of Radiance's decoders, over both games' records, roster block, maps and item tables. |
 | `test_silverslots.py` | Checks that Secret of the Silver Blades' spell-slot rows in `goldbox/spells.py` match the game's own `ECL65` and reach a converted caster's DOS and Amiga records. |
-| `test_spellbookcensus.py` | Checks the geometry and the three engine sites behind `tools/records/spellbookcensus.py`'s answer on whether a character can hold Pool of Radiance's spell id 56. |
+| `test_spellbooksweep.py` | Checks the geometry and the three engine sites behind `tools/records/spellbooksweep.py`'s answer on whether a character can hold Pool of Radiance's spell id 56. |
 | `test_strength.py` | Checks that `goldbox/strength.py` sums party strength term by term the way `DUNGEON $1BE8` does. |
-| `test_thac0census.py` | Checks that each DOS title's THAC0 rows start with a real THAC0 rather than a zero sentinel, that the recompute's own rule therefore floors every stored byte at 20, and that every DOS record on this machine reproduces from that rule with each exception named. |
-| `test_thiefskillcensus.py` | Checks the relationship between the C64's and DOS's thief-skill tables, read off the player's own files. |
+| `test_thac0sweep.py` | Checks that each DOS title's THAC0 rows start with a real THAC0 rather than a zero sentinel, that the recompute's own rule therefore floors every stored byte at 20, and that every DOS record on this machine reproduces from that rule with each exception named. |
+| `test_thiefskillsweep.py` | Checks the relationship between the C64's and DOS's thief-skill tables, read off the player's own files. |
 | `test_titles.py` | Checks `goldbox/titles.py`: that Pools of Darkness is a `Title` with no C64 `Game`, and that the DOS and C64 race tables agree except where a measured exception says otherwise. |
 | `test_titletables.py` | Checks the tables a title keeps outside the character record: level ceilings, experience thresholds, racial class limits, spell names and item names. |
 | `test_traitnames.py` | Checks that `tools/records/traitnames.py`'s headline numbers are what its own counting produces off Curse of the Azure Bonds' disks. |

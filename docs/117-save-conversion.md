@@ -516,9 +516,9 @@ the same file offset -- so every measurement taken through
 indoors flag `$49E6` when the scripts that read it name `$4BE6`. It is settled
 from the bytecode: 21 of Curse's 25 area scripts are **byte-identical** to the
 DOS `ECL<n>.DAX` blocks of the same id, so the two ports name one address set,
-and a census of every address operand in all 25 finds 219 references to the
+and a sweep of every address operand in all 25 finds 219 references to the
 `$4B00` page, 2053 to `$4C00` and **none at all** to `$4900` or `$4A00`
-(`tools/areas/eclcensus.py`). Silver Blades' 22 scripts read the same way. The
+(`tools/areas/eclsweep.py`). Silver Blades' 22 scripts read the same way. The
 relocation is exactly `$200` and `DUNGEON` shows it directly: the clock tick is
 the same routine at Pool of Radiance `$0DEC` on `$49C6`/`$4900`/`$4980` and at
 Curse `$0D4F` on `$4BC6`/`$4B00`/`$4B80`.
@@ -786,7 +786,7 @@ is on the order of six thousand maximum-value kills.
 **No real record comes close.** The largest experience in the 317 distinct
 DOS records on this machine is 1,500,001 (Pools of Darkness), then 300,000,
 202,750 and 50,000 for the other three titles — an order of magnitude under
-the C64's ceiling (`tools/dos/dostailcensus.py --field experience`).
+the C64's ceiling (`tools/dos/dostailsweep.py --field experience`).
 
 **Pool of Radiance's experience is four bytes, the same long as the later
 titles'.** Its engine's accumulate writes `0x0AE` and `0x0AF`
@@ -1012,7 +1012,7 @@ slot number, and moving the pair off `READ_DROPPED` -- are a separate change.
 ### Counts, and which directories they cover
 
 Deduplicated on bytes, over `~/Downloads/fr-archives` **only** — the number to
-quote, because it is stable and it is what `tools/dos/dualclassdos.py census
+quote, because it is stable and it is what `tools/dos/dualclassdos.py sweep
 --no-archives` can be pointed away from:
 
 | read as | distinct records | which game trees they came out of | dual-classed |
@@ -2484,7 +2484,7 @@ was left alone, still has his. So the effects were being dropped, and the file
 has to be written.
 
 The record is nine bytes and only the first was known. The other eight came
-out of the same instrument plus a census of every `.SPC` in the archives:
+out of the same instrument plus a sweep of every `.SPC` in the archives:
 
 | bytes | what | grade |
 |---|---|---|
@@ -2546,7 +2546,7 @@ end of creation and as `CHRDAT<slot><n>.SPC` after the party was saved, and
 the six files agree in the five meaningful bytes of every record. **No 90**,
 which is what this paragraph predicted from the names: 90 is the dwarf's and
 the halfling's, 97 is all three sturdy races'. Five controls rolled in the
-same boot reproduce the archives' census exactly -- dwarf 90/97/26/47, elf
+same boot reproduce the archives' sweep exactly -- dwarf 90/97/26/47, elf
 107, half-elf 124, halfling 90/97, human no `.SPC` file at all -- so the gnome
 reading is the same measurement rather than a new one. CONFIRMED.
 
@@ -2931,7 +2931,7 @@ rather than handing back a file whose zeroes nobody stands behind -- the same
 refusal `new_save` makes in the other direction (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64)). Where each byte comes
 from is ["What a conversion inherits: nothing"](141-dos-savegame.md) in
 `141-dos-savegame.md`; what follows is the run that made the zeroes evidence
-rather than a census.
+rather than a sweep.
 
 ### The four runs, and what each settled
 
@@ -3034,7 +3034,7 @@ finding in the useful direction: they cannot be got wrong.
   player's twenty C64 save disks stands outdoors, every one reading `$49E6` =
   1, so `tools/c64/c64outdoor.py` had to make the specimen the branch could be
   driven against.
-* **And the census is re-taken rather than PROBABLE.** `tools/dos/dossavcensus.py`
+* **And the sweep is re-taken rather than PROBABLE.** `tools/dos/dossavsweep.py`
   over the 21 containers that exist now gives 2407 zero across the 11 indoor
   ones -- the same figure the nine gave -- and 2402 across all 21. The words
   in the difference are **five**, not the six the older count claimed, and all

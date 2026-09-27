@@ -169,7 +169,7 @@ mode and the party count are byte for byte identical**, in both runs.
 `AmigaDisk.verify()` is clean before and after each run and the slot list reads
 `' BC       '` and `'   DE     '`.
 
-### Two bytes the runs settled that no census could
+### Two bytes the runs settled that no sweep could
 
 12803 (the wall in front) and 12804 (the square property) are `fn(x, y,
 facing)` and `fn(x, y)` **indoors**, and nothing offline can compute them, so

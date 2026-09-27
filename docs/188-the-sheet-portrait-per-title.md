@@ -98,7 +98,7 @@ looks like an empty portrait frame; MALACHITE's identical panel reads
 sheet portrait, because the creation menu is read only off a POOL<n>.D64)`.
 
 (All of these are lost, with the scratch directory they lived in; `tools/icons/portraitdraw.py` and
-the run recipe below rebuild the census, and the sheets need the emulator.)
+the run recipe below rebuild the sweep, and the sheets need the emulator.)
 
 ## What Pool of Radiance does
 

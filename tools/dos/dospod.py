@@ -39,7 +39,7 @@ new-game initialiser writes, so only a save the engine wrote after a step can
 separate one field from another.  Eight engine-written containers came out of
 this tool and they are what turned the code reading of the square, the facing
 and the clock into a measurement --
-`tools/dos/dossavcensus.py --title pools-of-darkness DIR` reads them back
+`tools/dos/dossavsweep.py --title pools-of-darkness DIR` reads them back
 and `docs/141-dos-savegame.md` has what they said.
 
 **Never point this at the archives.** `Session.stage` copies the game tree

@@ -11,7 +11,7 @@ somebody else's payload bytes and look like effect numbers.
 The reading is then corroborated against the eight characters #84 rolled --
 one per race, created keystroke by keystroke in the game's own screens and
 kept in the specimen tree.  **They replaced the archives here on 2026-09-04**:
-the census used to be read off `Default files/Saves`, which is a download with
+the sweep used to be read off `Default files/Saves`, which is a download with
 no chain of custody and cannot be told from a party somebody edited, and
 `#246 (Nothing tells an engine-written DOS record from one edited with Gold
 Box Companion, and conclusions already rest on edited ones)` is why that is no
@@ -38,7 +38,7 @@ from tools.dos import dosgnome  # noqa: E402
 #: `human7` is in the table with an empty list because the engine writes a
 #: human **no `.SPC` file at all**, which is the case a reader that treats a
 #: missing file as an empty one would never notice going wrong.
-CENSUS = {
+SWEEP = {
     "dwarfc4": ("halfelf-DWARFC4.SPC", [90, 97, 26, 47]),
     "halfl5": ("party-HALFL5.SPC", [90, 97]),
     "elf6": ("party-ELF6.SPC", [107]),
@@ -61,7 +61,7 @@ CONTROL = {
 }
 
 
-# The archives' `Default files/Saves` used to be found here and the census read
+# The archives' `Default files/Saves` used to be found here and the sweep read
 # off it.  It is gone rather than left unused: a helper that resolves an
 # untrusted directory is one import away from being the corpus again.
 
@@ -140,7 +140,7 @@ def test_describe_names_the_id_and_the_four_payload_bytes(tmp_path):
 @needs_specimens
 @pytest.mark.parametrize("name,filename,ids",
                          [(name, f, ids) for name, (f, ids) in sorted(
-                             CENSUS.items())])
+                             SWEEP.items())])
 def test_the_reader_reproduces_the_racial_effect_sets(name, filename, ids):
     """Six races, read off characters this project watched being rolled.
 
@@ -179,7 +179,7 @@ def test_every_innate_record_we_watched_being_written_carries_the_same_payload()
     """
     from goldbox import dos_codec
     seen = 0
-    for name in tuple(CENSUS) + (CONTROL_PARTY,):
+    for name in tuple(SWEEP) + (CONTROL_PARTY,):
         for path in sorted(specimen(name).glob("*.SPC")):
             for rec in dosgnome.records(path.read_bytes()):
                 if rec[0] in dos_codec.INNATE_EFFECTS:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Where a title's area scripts keep their variables, censused on both ports.
+"""Where a title's area scripts keep their variables, swept on both ports.
 
 `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the
 importer refuses today)` step 0a is the ticket. A conversion writes the
@@ -9,10 +9,10 @@ trusted at a new base, somebody has to say **which addresses the scripts
 actually name**, and say it for the C64 and for DOS separately, because the two
 ports load the save at different addresses.
 
-    eclcensus.py curse-of-the-azure-bonds              the page histogram
-    eclcensus.py curse-of-the-azure-bonds --range 4B00 4EFF   one row per address
-    eclcensus.py curse-of-the-azure-bonds --compare    C64 bytes against DOS's
-    eclcensus.py pool-of-radiance                      the control
+    eclsweep.py curse-of-the-azure-bonds              the page histogram
+    eclsweep.py curse-of-the-azure-bonds --range 4B00 4EFF   one row per address
+    eclsweep.py curse-of-the-azure-bonds --compare    C64 bytes against DOS's
+    eclsweep.py pool-of-radiance                      the control
 
 `tools/areas/eclflags.py` asks this of Pool of Radiance's thirty scripts and knows
 what each address means; it goes through `tools/areas/eclwalk.py`, which hard-codes
@@ -30,7 +30,7 @@ not enter.
 
 The C64 keeps each script in its own file, `ECL<id>`; DOS packs them into
 `ECL<n>.DAX` as numbered blocks. `--dos DIR` points at the DOS game directory
-(`.../games/CURSE/GAME/CURSE`); with no `--dos` the census is the C64's alone.
+(`.../games/CURSE/GAME/CURSE`); with no `--dos` the sweep is the C64's alone.
 The DOS block id is the number the C64 spells in hex, so DOS block 21 is
 `ECL15` -- checked and reported rather than assumed, since one Curse script
 breaks it.
@@ -260,8 +260,8 @@ def walk(machine: Machine, body: bytes, base: int) -> dict[int, Statement]:
     """Every statement reachable from the five entry `GOTO`s.
 
     A linear sweep runs into the data tables opcode `$2A` indexes and reads
-    them as instructions, which is how a census of a data table's bytes turns
-    into a census of addresses nothing ever names.
+    them as instructions, which is how a sweep of a data table's bytes turns
+    into a sweep of addresses nothing ever names.
     """
     found: dict[int, Statement] = {}
     work = [n * 4 for n in range(5)]
@@ -318,7 +318,7 @@ def script_base(machine: Machine, bodies: dict[str, bytes]) -> int:
     return pages[0]
 
 
-# -- the census --------------------------------------------------------------
+# -- the sweep --------------------------------------------------------------
 
 class Hit:
     __slots__ = ("script", "at", "op", "operand", "address", "write")
@@ -328,7 +328,7 @@ class Hit:
         self.operand, self.address, self.write = operand, address, write
 
 
-def census(machine: Machine, scripts: dict[str, bytes], base: int
+def sweep(machine: Machine, scripts: dict[str, bytes], base: int
            ) -> tuple[list[Hit], dict[str, tuple[int, int]]]:
     """Every address operand in every reachable statement, and the reach."""
     hits: list[Hit] = []
@@ -494,7 +494,7 @@ def cmd(argv=None) -> int:
         print(f"    {same} identical, {differ} differ, {missing} with no "
               f"DOS block")
 
-    hits, reach = census(machine, bodies, base)
+    hits, reach = sweep(machine, bodies, base)
     got = sum(r for r, _ in reach.values())
     total = sum(t for _, t in reach.values())
     print(f"\n  C64: {len(hits)} address operands over {100.0 * got / total:.1f}% "
@@ -509,7 +509,7 @@ def cmd(argv=None) -> int:
 
     if dos_bodies:
         plain = {f"ECL{k}": v[1] for k, v in dos_bodies.items()}
-        dhits, dreach = census(machine, plain, base)
+        dhits, dreach = sweep(machine, plain, base)
         dgot = sum(r for r, _ in dreach.values())
         dtotal = sum(t for _, t in dreach.values())
         print(f"\n  DOS: {len(dhits)} address operands over "
