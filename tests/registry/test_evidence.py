@@ -84,7 +84,7 @@ def test_a_rename_is_listed_by_its_new_path(repo):
     assert evidence.git_state(repo)["dirty"] == ["z.txt"]
 
 
-def test_a_directory_that_is_not_a_repository_has_an_unknown_sha(tmp_path):
+def test_a_directory_that_is_not_a_repository_has_an_unknown_sha_and_no_dirty_files(tmp_path):
     assert evidence.git_state(tmp_path) == {"sha": "unknown", "dirty": []}
 
 
@@ -139,3 +139,23 @@ def test_the_evidence_directory_is_issue_then_ten_character_sha_and_run():
 
 def test_a_short_sha_is_used_whole():
     assert evidence.default_out("1", "r", "abc").name == "abc-r"
+
+
+def test_git_output_is_decoded_as_utf_8_with_replacement(monkeypatch):
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(kw)
+        return types.SimpleNamespace(returncode=0, stdout="")
+    monkeypatch.setattr(evidence.subprocess, "run", run)
+    evidence.git_state(".")
+    assert calls
+    for kw in calls:
+        assert kw["text"] is True
+        assert kw["encoding"] == "utf-8"
+        assert kw["errors"] == "replace"
+
+
+def test_a_replacement_character_in_a_path_is_reported_unchanged(monkeypatch):
+    _fake_git(monkeypatch, " M caf�.txt\0")
+    assert evidence.git_state(".")["dirty"] == ["caf�.txt"]
