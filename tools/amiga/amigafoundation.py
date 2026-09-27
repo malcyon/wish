@@ -273,7 +273,7 @@ def _darkness_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, by
 # way, with explicit keys and no answerer, between the control save and the walk.
 # The game answers the camp save with its quit question, which the accept route answers `N`.
 # `SPACE` answers `INSERT DISK 2 AND PRESS A KEY` after the DF0 insert: both accept boots then
-# recognised the loaded menu about 24 s later.
+# recognised the loaded menu 24 to 25 s after the key.
 DISK2_INSERT = ((0, "disk2", "SPACE"), "loaded_menu", "insert")
 
 DARKNESS = AmigaTitle(
@@ -307,7 +307,8 @@ DARKNESS = AmigaTitle(
     # least 50 s later. The first key goes out about 8 s after the first capture that ends at or
     # after `boot_span` seconds from the start, so 225 puts it near 255 s, on the title; a title
     # 30 s slower would put it on a loading screen. A measure run has no title guard, so the span
-    # is unchecked on a boot that slow; the accept boots recognised the title 228 and 232 s in.
+    # is unchecked on a boot that slow; the accept boots recognised the title 237 and 238 s after
+    # the claim.
     boot_span=225.0, title_limit=420.0,
     control_letter="F", after_letter="G", kept_letters=("A", "C", "D", "E"),
     plain_keys=(("E", "loaded_menu"), ("E", "camp")),

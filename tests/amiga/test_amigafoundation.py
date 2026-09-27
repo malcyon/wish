@@ -1238,7 +1238,7 @@ def test_reload_fails_when_the_game_changes_disk_1_or_2(tmp_path, clock, disk):
     assert result["disks_unchanged"][disk] is False and result["success"] is False
 
 
-RECORDED = {"sha": "0123456789abcdef", "dirty": ["tools/amiga/example.py"]}
+RECORDED = {"sha": "0123456789abcdef", "dirty": ["notes.txt"]}
 
 
 def _record_state(monkeypatch):
