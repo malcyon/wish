@@ -1352,6 +1352,51 @@ def test_curse_cast_reports_the_row_as_stale_once_the_poll_bound_is_spent(
     assert len(calls) == 6  # the row-before read, then a bounded five tries
 
 
+def test_curse_cast_settle_row_sleeps_for_its_pause_constant(tmp_path, monkeypatch):
+    """Each retry waits for `_settle_row`'s own `pause` default -- recording
+    the real durations passed to `time.sleep` rather than stubbing it away,
+    so a changed pause value would show up here."""
+    slept: list[float] = []
+    monkeypatch.setattr(A.time, "sleep", lambda s: slept.append(s))
+    blind, disease = [62, 33, 0, 0, 5], [61, 34, 2, 0, 0x85]
+    run, sess = _cast(tmp_path, {("picking", ("key", "Return")): "whom"})
+    run.reading = lambda: {"effects": [blind, disease]}
+    try:
+        run.cast("SHARA:CURE BLINDNESS>PHILIPPE")
+    finally:
+        run.log.close()
+    # `_settle_row`'s own `pause: float = 0.3` default.
+    assert slept == [0.3, 0.3, 0.3, 0.3]
+
+
+def test_curse_cast_stops_polling_the_row_once_the_runs_deadline_is_spent(
+        tmp_path, monkeypatch):
+    """A row poll that never clears must still give up once the run's own
+    deadline is spent, rather than running its full bound of tries."""
+    slept: list[float] = []
+    monkeypatch.setattr(A.time, "sleep", lambda s: slept.append(s))
+    blind, disease = [62, 33, 0, 0, 5], [61, 34, 2, 0, 0x85]
+    run, sess = _cast(tmp_path, {("picking", ("key", "Return")): "whom"})
+    calls: list[int] = []
+
+    def reading():
+        calls.append(1)
+        return {"effects": [blind, disease]}
+
+    run.reading = reading
+    # The deadline check only matters once the poll starts, after the
+    # row-before read and the reading passed into `_settle_row` -- before
+    # that, treating the run as spent would fail an earlier step outright.
+    run.spent = lambda: len(calls) >= 2
+    try:
+        got = run.cast("SHARA:CURE BLINDNESS>PHILIPPE")
+    finally:
+        run.log.close()
+    assert got["row_after"] == blind
+    assert len(calls) == 2
+    assert slept == []
+
+
 def test_curse_cast_recognises_a_one_spell_list_and_selects_cast(tmp_path):
     one = "CAST EXIT"
     screens = {**CAST_SCREENS,
