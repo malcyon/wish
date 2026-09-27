@@ -9,10 +9,10 @@ import pytest
 
 from automap import gamedisks
 from goldbox.amiga_adf import BLOCK_SIZE, AmigaDisk, AmigaDiskError
-from tools.amiga import amigaacceptance
+from tools.amiga import staging
 
 POSIX_STAGING = pytest.mark.skipif(
-    not amigaacceptance._POSIX_OUTPUT_SUPPORTED,
+    not staging._POSIX_OUTPUT_SUPPORTED,
     reason="staging requires POSIX no-follow directory operations",
 )
 
@@ -24,17 +24,17 @@ def _isolated_acceptance_roots(tmp_path, monkeypatch):
     temp_base.mkdir()
     home_base.mkdir()
     monkeypatch.setattr(
-        amigaacceptance.scratch, "scratch_dir",
+        staging.scratch, "scratch_dir",
         lambda tool: temp_base / "wish" / tool,
     )
     monkeypatch.setattr(
-        amigaacceptance.scratch, "cache_dir",
+        staging.scratch, "cache_dir",
         lambda tool: home_base / ".cache" / "wish" / tool,
     )
 
 
 def _out(name="boot-no-save.adf"):
-    return amigaacceptance.scratch.scratch_dir("amigaacceptance") / name
+    return staging.scratch.scratch_dir("amigaacceptance") / name
 
 
 def _disk(tmp_path, *, blocks: int = 920, drawer: str = "SAVE"):
@@ -51,7 +51,7 @@ def _disk(tmp_path, *, blocks: int = 920, drawer: str = "SAVE"):
 
 
 def _stage(source, out):
-    return amigaacceptance.stage_boot_disk(
+    return staging.stage_boot_disk(
         source, out,
         expected_source_sha256=sha256(source.read_bytes()).hexdigest(),
         expected_secret_sha256=sha256(b"synthetic executable").hexdigest(),
@@ -61,10 +61,10 @@ def _stage(source, out):
 def test_unsupported_platform_refuses_before_read_or_write(tmp_path, monkeypatch):
     source = tmp_path / "missing-source.adf"
     out = _out()
-    monkeypatch.setattr(amigaacceptance, "_POSIX_OUTPUT_SUPPORTED", False)
+    monkeypatch.setattr(staging, "_POSIX_OUTPUT_SUPPORTED", False)
 
-    with pytest.raises(amigaacceptance.StageError, match="requires POSIX"):
-        amigaacceptance.stage_boot_disk(source, out)
+    with pytest.raises(staging.StageError, match="requires POSIX"):
+        staging.stage_boot_disk(source, out)
 
     assert not out.exists()
     assert not out.parent.exists()
@@ -104,7 +104,7 @@ def test_stage_refuses_a_different_save_drawer_block_without_writing(tmp_path):
     before = source.read_bytes()
     out = _out("must-not-exist.adf")
 
-    with pytest.raises(amigaacceptance.StageError, match="block 919"):
+    with pytest.raises(staging.StageError, match="block 919"):
         _stage(source, out)
 
     assert source.read_bytes() == before
@@ -116,7 +116,7 @@ def test_stage_refuses_a_missing_or_renamed_save_drawer(tmp_path):
     source = _disk(tmp_path, drawer="SAUR")
     out = _out("must-not-exist.adf")
 
-    with pytest.raises(amigaacceptance.StageError, match="/SAVE"):
+    with pytest.raises(staging.StageError, match="/SAVE"):
         _stage(source, out)
 
     assert not out.exists()
@@ -126,9 +126,9 @@ def test_stage_refuses_a_missing_or_renamed_save_drawer(tmp_path):
 def test_stage_refuses_a_name_with_the_wrong_hash_bucket(tmp_path, monkeypatch):
     source = _disk(tmp_path)
     out = _out("must-not-exist.adf")
-    monkeypatch.setattr(amigaacceptance, "HIDDEN_NAME", "SAVE_OFF_41")
+    monkeypatch.setattr(staging, "HIDDEN_NAME", "SAVE_OFF_41")
 
-    with pytest.raises(amigaacceptance.StageError, match="hash bucket"):
+    with pytest.raises(staging.StageError, match="hash bucket"):
         _stage(source, out)
 
     assert not out.exists()
@@ -140,8 +140,8 @@ def test_stage_refuses_a_source_hash_mismatch(tmp_path):
     before = source.read_bytes()
     out = _out("must-not-exist.adf")
 
-    with pytest.raises(amigaacceptance.StageError, match="source SHA-256 differs"):
-        amigaacceptance.stage_boot_disk(
+    with pytest.raises(staging.StageError, match="source SHA-256 differs"):
+        staging.stage_boot_disk(
             source, out,
             expected_source_sha256="0" * 64,
             expected_secret_sha256=sha256(b"synthetic executable").hexdigest(),
@@ -157,8 +157,8 @@ def test_stage_refuses_a_secret_hash_mismatch(tmp_path):
     before = source.read_bytes()
     out = _out("must-not-exist.adf")
 
-    with pytest.raises(amigaacceptance.StageError, match="/Secret SHA-256 differs"):
-        amigaacceptance.stage_boot_disk(
+    with pytest.raises(staging.StageError, match="/Secret SHA-256 differs"):
+        staging.stage_boot_disk(
             source, out,
             expected_source_sha256=sha256(before).hexdigest(),
             expected_secret_sha256="0" * 64,
@@ -175,7 +175,7 @@ def test_stage_refuses_to_replace_an_existing_output(tmp_path):
     out.parent.mkdir(parents=True)
     out.write_bytes(b"keep this file")
 
-    with pytest.raises(amigaacceptance.StageError, match="output already exists"):
+    with pytest.raises(staging.StageError, match="output already exists"):
         _stage(source, out)
 
     assert out.read_bytes() == b"keep this file"
@@ -186,7 +186,7 @@ def test_stage_refuses_an_output_outside_acceptance_roots(tmp_path):
     source = _disk(tmp_path)
     out = tmp_path / "players-disks" / "must-not-exist.adf"
 
-    with pytest.raises(amigaacceptance.StageError, match="scratch or cache"):
+    with pytest.raises(staging.StageError, match="scratch or cache"):
         _stage(source, out)
 
     assert not out.exists()
@@ -196,7 +196,7 @@ def test_stage_refuses_an_output_outside_acceptance_roots(tmp_path):
 @POSIX_STAGING
 def test_stage_accepts_the_dedicated_acceptance_cache(tmp_path):
     source = _disk(tmp_path)
-    out = amigaacceptance.scratch.cache_dir("amigaacceptance") / "boot.adf"
+    out = staging.scratch.cache_dir("amigaacceptance") / "boot.adf"
 
     manifest = _stage(source, out)
 
@@ -209,12 +209,12 @@ def test_stage_refuses_a_symlink_into_an_outside_directory(tmp_path):
     source = _disk(tmp_path)
     player_dir = tmp_path / "players-disks"
     player_dir.mkdir()
-    root = amigaacceptance.scratch.scratch_dir("amigaacceptance")
+    root = staging.scratch.scratch_dir("amigaacceptance")
     root.mkdir(parents=True)
     (root / "linked").symlink_to(player_dir, target_is_directory=True)
     out = root / "linked" / "must-not-exist.adf"
 
-    with pytest.raises(amigaacceptance.StageError, match="scratch or cache"):
+    with pytest.raises(staging.StageError, match="scratch or cache"):
         _stage(source, out)
 
     assert not out.exists()
@@ -240,8 +240,8 @@ def test_stage_refuses_a_parent_replaced_by_a_symlink_during_write(
             return None
         return original_mkdir(path, mode, dir_fd=dir_fd)
 
-    monkeypatch.setattr(amigaacceptance.os, "mkdir", competing_mkdir)
-    with pytest.raises(amigaacceptance.StageError, match="symlink"):
+    monkeypatch.setattr(staging.os, "mkdir", competing_mkdir)
+    with pytest.raises(staging.StageError, match="symlink"):
         _stage(source, out)
 
     assert replaced
@@ -272,8 +272,8 @@ def test_stage_does_not_replace_an_output_created_during_staging(
                 os.close(competitor)
         return original_open(path, flags, mode, dir_fd=dir_fd)
 
-    monkeypatch.setattr(amigaacceptance.os, "open", competing_open)
-    with pytest.raises(amigaacceptance.StageError, match="output already exists"):
+    monkeypatch.setattr(staging.os, "open", competing_open)
+    with pytest.raises(staging.StageError, match="output already exists"):
         _stage(source, out)
 
     assert created
@@ -291,7 +291,7 @@ def test_registered_side_a_stage_keeps_the_original_read_only(tmp_path):
     before = source.read_bytes()
     out = _out()
 
-    manifest = amigaacceptance.stage_boot_disk(source, out)
+    manifest = staging.stage_boot_disk(source, out)
 
     staged = AmigaDisk.open(out)
     assert source.read_bytes() == before
@@ -302,7 +302,7 @@ def test_registered_side_a_stage_keeps_the_original_read_only(tmp_path):
 
 
 def _stage_embedded(source, slot, letter, out):
-    return amigaacceptance.stage_embedded_boot_disk(
+    return staging.stage_embedded_boot_disk(
         source, slot, letter, out,
         expected_source_sha256=sha256(source.read_bytes()).hexdigest(),
         expected_secret_sha256=sha256(b"synthetic executable").hexdigest(),
@@ -334,7 +334,7 @@ def test_embedded_stage_refuses_an_occupied_letter_without_writing(tmp_path):
     source = _disk(tmp_path)
     out = _out("must-not-exist.adf")
 
-    with pytest.raises(amigaacceptance.StageError, match="savgamA.sav"):
+    with pytest.raises(staging.StageError, match="savgamA.sav"):
         _stage_embedded(source, b"wish slot bytes", "A", out)
 
     assert not out.exists()
@@ -346,7 +346,7 @@ def test_embedded_stage_refuses_a_letter_the_game_cannot_build(tmp_path):
     out = _out("must-not-exist.adf")
 
     for letter in ("\u00e9", "AB", ""):
-        with pytest.raises(amigaacceptance.StageError, match="one letter"):
+        with pytest.raises(staging.StageError, match="one letter"):
             _stage_embedded(source, b"wish slot bytes", letter, out)
 
     assert not out.exists()
@@ -363,7 +363,7 @@ def test_registered_side_a_embedded_stage_keeps_the_original_read_only(tmp_path)
     before = source.read_bytes()
     out = _out("registered-embedded.adf")
 
-    amigaacceptance.stage_embedded_boot_disk(source, b"composed slot", "C", out)
+    staging.stage_embedded_boot_disk(source, b"composed slot", "C", out)
 
     staged = AmigaDisk.open(out)
     assert source.read_bytes() == before
