@@ -50,10 +50,13 @@ pool-of-radiance 6BAD 6BB6`) finds every writer:
 | writer | what |
 |---|---|
 | `GEN $0BF3` | the racial seed at creation -- 107 for an elf, 124 for a half-elf |
+| `POOLRE $0BF9` | the same bytes as `GEN`'s racial seed, at the same offset; whether this file is ever loaded is unknown |
 | `SPELLE04 $ADD4` | **the grant**, when a passive item is readied: item byte `+14` goes into the first free slot scanning 9 down to 0; an equal byte already there means stop; no free slot means `$ADEF`, which writes it into the array instead |
 | `SPELLE04 $AE13` | **the revoke**, when it is un-readied: find the id in the ten slots and zero it, else look in the array |
+| `SPELLE04 $AA22` (scan at `$AA16`) | **camp-cast Animate Dead** (`ECL65` row 36, `$A9C2`): for each party member at status `$83`, up to the caster's level, writes 32 into the first free slot scanning 9 down to 0, next to status `$03` and creature type 4. The combat route (`SPELLE00 $AB29`) writes no slot |
 | `ECL64 $9ACD` / `$9AFA` | the same pair for combat |
-| `SQRPACI64 $05A5`, `$063A`, `$065A` | clear the slot the predicate just matched -- 32, 31 and 55 on a cure |
+| `SQRPACI64 $063A`, `$065A` | clear the slot the predicate just matched, on a cure -- 31 and 55 |
+| `SQRPACI64 $04FB` -> `$059A` | the temple's Raise Dead, not a cure: on a survived roll it zeroes slot 32 and undoes every field camp-cast Animate Dead changed |
 
 The grant writes the id and nothing else. **CONFIRMED in the running game:**
 `cited/252/ask11`, MALCYON with a CLOAK OF DISPLACEMENT staged readied
@@ -148,8 +151,9 @@ this page had not looked for: `SPELLE01 +0x09ec` is `LDA #$18 / JSR $28A4`
 and `+0x0e13` is `LDA #$62 / JSR $28A4`, so they ask about 24 and 98 through
 the wrapper rather than reaching `$4027` directly, and a census of calls to
 `$4027` cannot see either. 98 is on list 19 already; 24 is not on any list.
-**So the count of ids a trait slot can do anything with in Pool of Radiance
-is 95** -- 92 from the lists, plus 24, 32 and 55.
+32's instruction is `SQRPACI64 $059A`, `LDA #$20 / JSR $4027` inside the
+temple's Raise Dead. **So the count of ids a trait slot can do anything with
+in Pool of Radiance is 95** -- 92 from the lists, plus 24, 32 and 55.
 
 ## The same three tables in the other two titles
 
@@ -713,12 +717,14 @@ reason that is now wrong on both clauses:
 
 * **`LIBRARY $402D` is the only reader of the block's contents**, absolute
   and indirect: `tools/c64/recordsweep.py --indirect` for `0xAD`-`0xB6` finds
-  four hits, all in picture and wall files.
+  four hits, all in picture and wall files. `POOLRB $3927` holds the same
+  predicate bytes again; whether `POOLRB` or `POOLRE` is ever loaded is
+  unknown.
 * **The world's copy of `$DA63`-`$DC62` is not the tables**: the region holds
   something else until `COMBAT` loads. Read them in a fight.
-* **`SQRPACI64 $05A5`, `$063A` and `$065A` zero `$6BAD,X` with whatever X the
+* **`SQRPACI64 $059A`, `$063A` and `$065A` zero `$6BAD,X` with whatever X the
   predicate left**, and on an array match X is the array index, 0-63. If 32,
-  31 or 55 ever sits in the array rather than a slot, the cure writes a zero
+  31 or 55 ever sits in the array rather than a slot, the clear writes a zero
   up to 54 bytes past the block. Not a reader's error -- the three
   instructions are quoted above -- but no character in any specimen has one
   of the three in the array, so what a player sees is UNKNOWN.
