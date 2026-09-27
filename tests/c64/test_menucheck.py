@@ -39,13 +39,20 @@ class FakeSession:
         self.save_disk = str(save_disk)
 
 
-def test_save_confirmed_fails_when_the_directory_entry_never_closed(tmp_path):
+def test_save_confirmed_fails_when_the_directory_entry_never_closed(
+        tmp_path, monkeypatch):
     """The scenario #696 names: `save_game()` would still return `True` here
     under the old code, because its final `select_bar('EXIT')` wait timing
-    out only logs a warning -- this is what has to catch it instead."""
+    out only logs a warning -- this is what has to catch it instead.
+
+    The disk never closes, so `copy_closed_disk` exhausts its 8 default
+    retries; monkeypatching its `time.sleep` keeps that real failure path
+    without paying its ~1.75s of real backoff.
+    """
     disk = tmp_path / "SIDE0.D64"
     _open_save(disk)
     sess = FakeSession(disk)
+    monkeypatch.setattr(menucheck.S.time, "sleep", lambda seconds: None)
 
     ok, why = menucheck.save_confirmed(sess)
 
@@ -53,10 +60,12 @@ def test_save_confirmed_fails_when_the_directory_entry_never_closed(tmp_path):
     assert "SAVEDGAME0" in why
 
 
-def test_save_confirmed_passes_when_the_directory_entry_closed(tmp_path):
+def test_save_confirmed_passes_when_the_directory_entry_closed(
+        tmp_path, monkeypatch):
     disk = tmp_path / "SIDE0.D64"
     _closed_save(disk)
     sess = FakeSession(disk)
+    monkeypatch.setattr(menucheck.S.time, "sleep", lambda seconds: None)
 
     ok, why = menucheck.save_confirmed(sess)
 
