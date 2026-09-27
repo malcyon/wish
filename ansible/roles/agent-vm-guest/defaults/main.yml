@@ -82,7 +82,7 @@ agent_guest_apt_packages:
   - libncurses-dev
 
 # --- VICE -------------------------------------------------------------------
-# From Flathub, as tools/c64/porlaunch.sh runs it (`flatpak run net.sf.VICE`).
+# From Flathub, as tools/c64/launch.sh runs it (`flatpak run net.sf.VICE`).
 # A user install, so it lands under the agent's home.
 agent_guest_vice_flatpak: net.sf.VICE
 agent_guest_flathub_url: https://dl.flathub.org/repo/flathub.flatpakrepo

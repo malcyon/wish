@@ -58,6 +58,39 @@ of Wish's published conversion output belongs to the next gate. The existing
 [destination-game acceptance plan](235-destination-game-acceptance-runs.md)
 describes the driver and retained-evidence approach.
 
+## Naming by responsibility
+
+Each platform's harness lives in `tools/<platform>/` under lowercase names that say what the file is responsible for:
+
+| File | Responsibility |
+|---|---|
+| `acceptance.py` | The supported acceptance command: dispatch and verdicts. |
+| `session.py` | The platform session lifecycle and the driving operations shared by every title; C64's existing module keeps its place, and the emulator transport stays where it is. |
+| `screens.py` | Screen recognition and guard helpers. |
+| `staging.py` | Validated copies and preparation of input media. |
+| `route_pool.py`, `route_curse.py`, `route_silver_blades.py`, `route_darkness.py` | Title-specific route descriptions and actions, where separating them removes a mixed responsibility. |
+| `runlog.py` | The shared run log and signal handling (C64: `tools/c64/runlog.py`). |
+
+The rules:
+
+* A canonical implementation lives under its responsibility name.
+* An old name is deleted after its maintained callers, tests and current documentation move. A compatibility wrapper exists only for a specifically identified consumer, and is recorded with a concrete removal condition.
+* An extracted shared helper keeps one implementation.
+* Evidence directories and recorded commands from earlier runs stay as history under the names they were run with.
+* No second `session.py` may exist under `tools/`: `tests/conftest.py:_tool_path` refuses a bare tool name with more than one match, and twenty tests load `session` by bare name.
+* Test files keep distinct base names across platforms, because the test directories have no `__init__.py`.
+
+### Old to new
+
+| Old | New |
+|---|---|
+| `c64acceptance.py` in `tools/c64/` | `tools/c64/acceptance.py` |
+| `porlaunch.sh` in `tools/c64/` | `tools/c64/launch.sh` |
+| `Log`, `Terminated`, `catch_signals`, `keep_old_log` in `tools/c64/savecheck.py` | `tools/c64/runlog.py` |
+| `highlighted`, `walk_menu` in `tools/c64/dualclassagain.py` | `tools/curse_of_the_azure_bonds/curseload.py` |
+| `_silver_session_class` in `tools/c64/curedrive.py` | `silver_session_class` in `tools/secret_of_the_silver_blades/ssbsession.py` |
+| The run's pool-lease owner label `c64acceptance/<issue>/<run>` | Unchanged. |
+
 ## Conversion gate
 
 | Check | Required result after the foundation gate |

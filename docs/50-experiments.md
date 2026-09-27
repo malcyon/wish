@@ -104,7 +104,7 @@ Two consequences beyond convenience:
 Feedback channel is unaffected: screenshots come through the MCP and memory
 through the binary monitor, neither of which depends on the display.
 
-Baked into `tools/c64/porlaunch.sh`, which the instance pool launches. It was
+Baked into `tools/c64/launch.sh` (then `porlaunch.sh`), which the instance pool launches. It was
 `rungame.sh`, also in `tools/`, until that script was deleted for killing every emulator
 on the machine by name (#143 (rungame.sh kills every emulator by name and takes Donald's own ports), title paraphrased because the original names the deleted path).
 
@@ -3515,7 +3515,7 @@ where is the bit the combat menu's QUICK sets.
 ### The setup
 
 `drive/SLUMS.D64` (scratch, deleted), six characters at (15,4) in the slums. VICE launched
-into its own Xephyr on `:8` — **not** `tools/c64/porlaunch.sh`, which `pkill`s
+into its own Xephyr on `:8` — **not** `tools/c64/launch.sh`, which `pkill`s
 unconditionally — and shut down through `CMD_QUIT` and the two process ids it
 started, so nothing else on the machine was touched.
 

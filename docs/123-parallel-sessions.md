@@ -54,7 +54,7 @@ reports it could not find the literal `-config` in the binary's option strings;
 `x64sc -help` prints `-config <filename>` and the flag is honoured, so that
 caveat can go.
 
-**Two instances coexist.** Slots 0 and 1, launched through `porlaunch.sh`, each
+**Two instances coexist.** Slots 0 and 1, launched through `porlaunch.sh` (now `tools/c64/launch.sh`), each
 answered its own greeting while the other ran, and a byte written at `$0340`
 through 6520 was absent through 6521 — two machines, not two views of one.
 Tearing down slot 0's process group left slot 1 answering.  Throughout, 6502
@@ -67,7 +67,7 @@ calls.
 Three things the plan had wrong, found by building it:
 
 1. **§3.4's reap table killed on the wrong condition.** It kills only on the two
-   rows where the port answers.  But `porlaunch.sh` now passes
+   rows where the port answers.  But `porlaunch.sh` (now `tools/c64/launch.sh`) now passes
    `--die-with-parent`, so a crashed holder's *VICE* dies with it and the port
    falls silent — while the `Xvfb` or `Xephyr` it started has no such link and
    survives.  Under the table as written nothing ever collected it.  The port
@@ -99,8 +99,8 @@ Checked 2026-08-21, in this tree.
 | The monitor client takes a host and a port | `automap/vice.py:64` — `Monitor(host=MON_HOST, port=MON_PORT)` | already parameterised |
 | `ViceTarget` passes them through | `automap/target.py:213` | already parameterised |
 | "Which backend, where" is data | `wish/backends.py` — `Backend(probe=…, connect=…)` | already data |
-| The launcher takes a display | `tools/c64/porlaunch.sh` — `POR_DISPLAY`, default `:7` | already parameterised |
-| The launcher takes monitor flags | `tools/c64/porlaunch.sh` — `$MONFLAGS` | already parameterised |
+| The launcher takes a display | `tools/c64/launch.sh` — `POR_DISPLAY`, default `:7` | already parameterised |
+| The launcher takes monitor flags | `tools/c64/launch.sh` — `$MONFLAGS` | already parameterised |
 | Everything is copied into scratch before booting | `Session.attach` in `tools/c64/session.py` asserts `path.startswith(self.here)` | already the practice |
 | An env var is the project's idiom for "where is the thing" | `wish/ultimate.py:55`, `automap/paths.py:71` | pattern to copy |
 
@@ -114,7 +114,7 @@ of them are the actual work:
    the probe tests one port and the connect uses another. Latent bug, two
    lines.
 2. **The harness is actively hostile to parallelism.** `tools/c64/session.py`
-   lines 69–70 and 105–106, and `tools/c64/porlaunch.sh` lines 8–9, run
+   lines 69–70 and 105–106, and `tools/c64/launch.sh` lines 8–9 (the file was then `porlaunch.sh`), run
    `pkill -x x64sc` and `pkill -x Xephyr` on **every launch and every close**.
    Under a pool that is not a bug, it is a massacre: one agent starting a run
    kills every other agent's emulator and Donald's game with it. This is the
@@ -143,7 +143,7 @@ of them are the actual work:
 | 6 | `vicerc` | rewritten on exit; instances would race it | `-config <file>` |
 
 `Slot.env()` is the whole interface: `POR_SLOT`, `POR_DISPLAY`, `POR_VICERC`,
-`POR_MONITOR`, `MONFLAGS` and `POR_HEADLESS`, which `porlaunch.sh` reads and
+`POR_MONITOR`, `MONFLAGS` and `POR_HEADLESS`, which `porlaunch.sh` (now `tools/c64/launch.sh`) reads and
 passes on. `Slot.env()` sets `POR_HEADLESS` to `"1"` itself (#147 (Claiming a pool slot does not stop an emulator opening a window on Donald's screen)) -- a slot
 is by definition something an agent claimed, so headless is the default an
 agent gets without asking for it; `os.environ`'s own value wins when a human
@@ -273,7 +273,7 @@ that already exists; for a one-shot `walkrun.py` it is the run itself.
 
 ### 3.3 Launching, and killing only your own
 
-`porlaunch.sh` loses its two `pkill` lines and gains `--die-with-parent`
+`porlaunch.sh` (now `tools/c64/launch.sh`) loses its two `pkill` lines and gains `--die-with-parent`
 (`flatpak run -p`, present in this flatpak). Combined with the
 `start_new_session=True` that `tools/c64/session.py:74` already passes, teardown
 becomes `os.killpg(pgid, SIGTERM)` on the group this slot started — Xephyr and
@@ -410,7 +410,7 @@ Small, as the premise claimed. Six existing files, one new one.
 | `wish/backends.py` | the `setup_hint` string interpolates the port | 1 line — **not done**, another agent's file |
 | `automap/__main__.py` | two message lines, same | 2 lines — **not done**, same |
 | `tools/c64/session.py` | `HERE`, `TEXT_PORT`, `CMD_PORT`, `display`, `MONFLAGS` become instance attributes taken from a slot; the four `pkill` calls become a process-group kill | ~35 lines changed |
-| `tools/c64/porlaunch.sh` | drop the two `pkill` lines; take `POR_SLOT`; pass `-config` and `--die-with-parent` | ~8 lines |
+| `tools/c64/launch.sh` (then `porlaunch.sh`) | drop the two `pkill` lines; take `POR_SLOT`; pass `-config` and `--die-with-parent` | ~8 lines |
 | `tools/registry/instance.py` | **new** — claim, release, reap, seed a `vicerc`, and a `main()` so a shell script can claim a slot too | ~150 lines |
 | `tests/registry/test_instance.py` | **new** — allocation, contention, reap's table, `vicerc` seeding. All of it is files and flocks, so none of it needs VICE | 26 tests |
 

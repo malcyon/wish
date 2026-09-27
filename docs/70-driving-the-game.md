@@ -16,13 +16,13 @@ desktop menu -- the name ends in `Server`, and VICE ignores a resource it does
 not recognise without a word. Nothing below this line applies.
 
 **Driving** a game — sending keys — needs everything below: the nested X server,
-the input timing, the whole apparatus. `tools/c64/porlaunch.sh` exists for that, not
+the input timing, the whole apparatus. `tools/c64/launch.sh` exists for that, not
 for the automapper.
 
 ## Run it in a nested X server
 
 Claim a slot from the instance pool (`tools/registry/instance.py`) and launch through
-`tools/c64/porlaunch.sh`, which starts VICE on that slot's own **Xephyr** display —
+`tools/c64/launch.sh`, which starts VICE on that slot's own **Xephyr** display —
 see [`123-parallel-sessions.md`](123-parallel-sessions.md) for how to claim
 one. Running nested is not cosmetic:
 

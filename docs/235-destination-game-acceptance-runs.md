@@ -64,7 +64,7 @@ after `gh issue view N --json state`.
 
 | platform | emulator and pool | keys | screen | memory | files the engine writes | title protocols in the tree |
 |---|---|---|---|---|---|---|
-| C64 | VICE through `tools/registry/instance.py` (`claim`, displays `:10`-`:25`) | `Session.select_bar`, `select_row`, KERNAL buffer | **text**, `Session.screen_text()` and `screen()` row by row | binary monitor: peeks, non-stopping exec checkpoints (`tools/c64/effectdrive.py checkpoint_hits`), watchpoints (`livewatch.py`) | the save disk, copied out closed (`por.copy_closed_disk`) or repaired (`curseload.close_splat`) | Pool `Session` (load, walk, fight, `save_game`); Curse `curserun.CurseSession` + `curseload`, `cursecheck.py`, `laterbattle.py`; Silver Blades `ssbwarp.SSBSession`, `ssbresavewalk.py`, `laterbattle.py`; all three run under `tools/c64/c64acceptance.py` |
+| C64 | VICE through `tools/registry/instance.py` (`claim`, displays `:10`-`:25`) | `Session.select_bar`, `select_row`, KERNAL buffer | **text**, `Session.screen_text()` and `screen()` row by row | binary monitor: peeks, non-stopping exec checkpoints (`tools/c64/effectdrive.py checkpoint_hits`), watchpoints (`livewatch.py`) | the save disk, copied out closed (`por.copy_closed_disk`) or repaired (`curseload.close_splat`) | Pool `Session` (load, walk, fight, `save_game`); Curse `curserun.CurseSession` + `curseload`, `cursecheck.py`, `laterbattle.py`; Silver Blades `ssbwarp.SSBSession`, `ssbresavewalk.py`, `laterbattle.py`; all three run under `tools/c64/acceptance.py` |
 | DOS | DOSBox 0.74 through `tools/dos/dosbox.py` (`claim`, displays `:50`-`:65`) | `xdotool` keysyms | **pixels only**: 320x200 PNG, `Screen.digest`/`ink`/`glyphs` for equality, `highlight_row`; no text; the status line's `x,y` token, read cell by cell from x 136 (`dosacceptance.status_square`) | none | `SAVE/` after `ENCAMP > SAVE`: records, `.ITM`/`.STF`, `.SPC`/`.FX`/`.SFX`, `SAVGAM<slot>.DAT` (Pools of Darkness `SAVGAM<slot>.PTY` with `VAULT<slot>.DAT`) | Pool `PoolOfRadiance` (menu, load, move, camp save, fight); Curse `dossheetread.py` (load, sheets, walk, engine save), `Camp.memorize`, `curseregain.py` (train, camp save); Silver Blades `ssbimport.py Driver` (party menu, intro, encamp, rest by days, camp save, sheet), `dossheetread.py --move-mode`; Pools of Darkness `dospod.py` (its journal answer and party-menu knowledge); all four run under `tools/dos/dosacceptance.py` |
 | DOS, debugger | DOSBox-X debug build through `tools/dos/dosboxx.py` (`claim`, displays `:90`-`:105`); `dosboxx.unavailable()` is `None` on this machine | the same | the same, halved from 640x400 | `read`/`write` any linear address, `watch` (one byte, on change), `brk` (fires silently, `wait_halt` probes), `regs` through `EV`; `dosspcexpiry.read_party` reads Pool's effect chains node by node off the heap | the same | `PoolOfRadiance` runs unchanged on `XSession`; the later titles' chain heads (Curse record `0x0F2`, Silver Blades `0x0FB`) are read but no tool reads their nodes yet |
 | Amiga | WinUAE in the Windows VM, one lane (`winuae.ps1 claim -Holder`), reachable from this VM (`winvm status`) | `tools/amiga/amigadrive.py keys`; the foundation drivers press a key once the previous screen has matched its guard, and `winvmsettle.py` waits between keys by hand | **pixels**: `winvm shot` cropped to the emulator window by `amigashots.py`; a state is one static pixel box (`PixelGuards`) and a sheet's or menu's identity is a name box | `winuaepipe.py` / `automap.amiga.WinuaePipe`: `m` and `S`-to-file reads while the machine runs; `automap/amiga.py` locates the data hunk and the party | the `.adf`, copied back with `winvm get` and read by `amiga_savegame` (`read_por_slot`, `read_slot`, `pod_read_slot`) | Pool `amigafoundation.py --title pool` (by hand: `docs/182` §7, twenty keys); Curse `--title curse` (by hand: `docs/203` "Reproducing it"); Silver Blades `amigasecretsave.py accept`, its journal answered by `amigabladesjournal.py` under `/usr/bin/python3`; Pools of Darkness `--title darkness`, not yet proven (section 5); `amigacampsave.py` (repeated camp saves, Silver Blades) |
@@ -123,7 +123,7 @@ Consequences for the plan:
   (`m` enters it, `e` leaves it in Silver Blades and `Escape` in Pools of
   Darkness); Pool and Curse step at the map bar and have none.
 * **The C64 reads everything**, and its gap is coverage by title:
-  `c64acceptance.py` runs on Pool, Curse and Silver Blades, but `fight` is not
+  `acceptance.py` runs on Pool, Curse and Silver Blades, but `fight` is not
   driven in Silver Blades and `cast` and `cure` are Curse's alone.
 * **The Amiga's driver of record is WinUAE**, because it runs three titles end
   to end (Pools of Darkness has not passed), leaves Curse's code wheel with
@@ -197,9 +197,9 @@ each is built for:
 `fight`. `docs/149-driving-a-dos-fight.md` is the method for the fight, and
 the Prayer runs' DOS runs 1 and 1b wait on `--debug`, `break` and `fight`.
 
-### D2. `tools/c64/c64acceptance.py`: stage, boot, read the screen and the machine
+### D2. `tools/c64/acceptance.py`: stage, boot, read the screen and the machine
 
-    c64acceptance.py --title pool|curse|ssb --save X.D64 \
+    acceptance.py --title pool|curse|ssb --save X.D64 \
         --stage-row 63=05:FF:0A:03 --stage-trait 0:9=38 \
         --steps load camp-list 'items 2' 'fight 1' 'save' --out DIR
 
@@ -524,7 +524,7 @@ and a run on Amiga Pools of Darkness waits for its pair.
 | WinUAE | `winuae.ps1 claim -Holder <issue-run>` through `winvm ssh`; released in `finally` | one lane for the whole project; no two Amiga runs at once |
 
 Every emulator is headless and silent, and the evidence differs by platform.
-VICE (`POR_HEADLESS=1`, `porlaunch.sh`'s `+sound`) and DOSBox (the pooled
+VICE (`POR_HEADLESS=1`, `launch.sh`'s `+sound`) and DOSBox (the pooled
 configuration disables the mixer, Sound Blaster and PC speaker) rest on the
 host's `virsh dumpxml agent-vm`: no sound device and an audio backend of `none`
 (`docs/233`), so a missing guest `pactl` blocks nothing. WinUAE's is the JSON

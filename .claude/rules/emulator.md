@@ -41,9 +41,10 @@ The music is `Vol UltiSid 1`/`2` in the same category and the drive noise is
 `Vol Drive 1`/`2`, if something quieter than silence is wanted.
 
 **Set `POR_HEADLESS=1`.** It keeps the window off Donald's desktop, and he works
-at that desktop while agents run. `tools/c64/porlaunch.sh` adds `+sound` in that
+at that desktop while agents run. `tools/c64/launch.sh` adds `+sound` in that
 branch too, because he can hear a headless emulator through his speakers even
 when it draws no window.
+Harness file names follow [Naming by responsibility](../../docs/236-requirements-for-adding-a-new-platform.md).
 
 **Every emulator an agent starts is silent.** A brief for an emulator run
 says "silent" as well as "offscreen". VICE's headless launcher disables

@@ -94,7 +94,7 @@ working" — was never run, because pre-flight #1 (Run the Windows half of the r
 
 | marker | detected by |
 |---|---|
-| **T0** | `porlaunch.sh` execs `x64sc` |
+| **T0** | `porlaunch.sh` (now `tools/c64/launch.sh`) execs `x64sc` |
 | **M1** | `DISABLE FASTLOADER (Y/N)?` on screen |
 | **M2** | the answer key delivered — **the timed window opens here** |
 | **M3** | the title picture: `$D011` bit 5 sets |

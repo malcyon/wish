@@ -2601,7 +2601,7 @@ Pool of Radiance's loader spends part of every load with `$01 = $30`, the I/O ch
 
 ###### Driving notes for livecheck.py (gui)
 
-`$XDG_DATA_HOME` must not be reassigned to redirect the run's map notes: a Flatpak VICE installation lives under it, and moving it makes `tools/c64/porlaunch.sh` fail with `app/net.sf.VICE/x86_64/master not installed`. Every session has to be told which title it is driving, because `SSBSession` does not know. The five actions run before the walk, because a walk starts fights and every action is refused in one. Three checks stage a byte first (a wound for Heal party, roster `+0x0C` bit 7 for Quickfight off, an item's hidden-name bits for Identify, a memorised spell id for Save/Restore spells) because no save holds the situation; without the staged byte those checks report "nothing to do" and would pass by not looking.
+`$XDG_DATA_HOME` must not be reassigned to redirect the run's map notes: a Flatpak VICE installation lives under it, and moving it makes `tools/c64/launch.sh` fail with `app/net.sf.VICE/x86_64/master not installed`. Every session has to be told which title it is driving, because `SSBSession` does not know. The five actions run before the walk, because a walk starts fights and every action is refused in one. Three checks stage a byte first (a wound for Heal party, roster `+0x0C` bit 7 for Quickfight off, an item's hidden-name bits for Identify, a memorised spell id for Save/Restore spells) because no save holds the situation; without the staged byte those checks report "nothing to do" and would pass by not looking.
 
 ###### Monster label draft rule (gui, monsterlabels.py)
 
