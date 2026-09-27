@@ -1443,14 +1443,16 @@ class CurseRun(PoolRun):
                              spell=spell, messages=messages, key=key)
 
     def _settle_row(self, cure_id: int, owner: int, reading: dict,
-                     tries: int = 5, pause: float = 0.3) -> dict:
-        """The live effect row can still carry a cured id for a reading or
-        two after the screen has already left the spell list, so poll
-        briefly for it to clear rather than trust the first reading -- a row
-        still present once the bound is spent is a real failure, not a
+                     tries: int = 5, pause: float = 0.3, present: bool = False) -> dict:
+        """The live effect row can lag the screen by a reading or two,
+        whether waiting for a cured id to clear (`present=False`) or for a
+        cure's own new row to show up (`present=True`) -- poll briefly for
+        the wanted state rather than trust the first reading; a reading that
+        still disagrees once the bound is spent is a real failure, not a
         stale read."""
         for _ in range(tries - 1):
-            if not any(r[1] == cure_id and r[2] == owner for r in reading["effects"]):
+            found = any(r[1] == cure_id and r[2] == owner for r in reading["effects"])
+            if found == present:
                 return reading
             if self.spent():
                 break
@@ -1478,7 +1480,10 @@ class CurseRun(PoolRun):
         if not self.pick(target, CAST_WHOM):
             raise self.fail("cure-target", f"{target} could not be chosen")
         messages = self._acknowledge()
-        last = self.reading()
+        # The cure's own new effect row can take a reading or two longer to
+        # show up in live memory than the message it just showed on screen.
+        last = self._settle_row(CURE_TIMER_ID, self.owner_of(paladin), self.reading(),
+                                present=True)
         for _ in range(3):
             if CAMP_BAR in self.bar():
                 break

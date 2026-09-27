@@ -1517,6 +1517,68 @@ def test_curse_cure_names_its_target_and_leaves_the_sheet(tmp_path):
     assert sess.state == "camp"
 
 
+def _cure_run(tmp_path, sess, rows=()):
+    dis = [61, 34, 2, 0, 0x85]
+    screens = {
+        "camp": _window({}, CAMP),
+        "sheet": _window({1: "MARK"}, "VIEW:ITEMS SPELLS TRADE DROP CURE EXIT"),
+        "whom": CAST_SCREENS["whom"], "on": CAST_SCREENS["on"],
+        "sheet2": _window({1: "MARK"}, "VIEW:ITEMS SPELLS TRADE DROP EXIT"),
+    }
+    moves = {
+        ("camp", ("party", 4)): "camp", ("camp", ("bar", "VIEW")): "sheet",
+        ("sheet", ("bar", "CURE")): "whom", ("whom", ("party", 2)): "on",
+        ("on", ("key", "Return")): "sheet2", ("sheet2", ("bar", "EXIT")): "camp",
+    }
+    sess = sess(screens, moves, "camp")
+    run = _curse_run(tmp_path, sess, rows)
+    return run, sess, dis
+
+
+def test_curse_cure_polls_briefly_when_the_new_row_lags_a_reading_behind_the_bar(
+        tmp_path, monkeypatch):
+    """The cure's own new effect row can still be missing for a reading or
+    two after the message it just showed on screen -- the step waits
+    briefly for it to appear rather than reporting a row-less reading."""
+    monkeypatch.setattr(A.time, "sleep", lambda s: None)
+    timer = [59, 141, 4, 199, 199]
+    run, sess, dis = _cure_run(tmp_path, _CurseFake)
+    calls: list[int] = []
+
+    def reading():
+        calls.append(1)
+        return {"effects": [dis] if len(calls) < 3 else [timer]}
+
+    run.reading = reading
+    try:
+        got = run.cure("MARK>LEDERA")
+    finally:
+        run.log.close()
+    assert got["effects_after"] == [timer]
+    assert len(calls) == 3  # the row-before read, one stale post-ack read, one retry
+
+
+def test_curse_cure_reports_no_new_row_once_the_poll_bound_is_spent(
+        tmp_path, monkeypatch):
+    """A new row that never shows up is a real failure, not a stale read, so
+    the poll gives up after a bounded number of tries and reports what it saw."""
+    monkeypatch.setattr(A.time, "sleep", lambda s: None)
+    run, sess, dis = _cure_run(tmp_path, _CurseFake)
+    calls: list[int] = []
+
+    def reading():
+        calls.append(1)
+        return {"effects": [dis]}
+
+    run.reading = reading
+    try:
+        got = run.cure("MARK>LEDERA")
+    finally:
+        run.log.close()
+    assert got["effects_after"] == [dis]
+    assert len(calls) == 6  # the row-before read, then a bounded five tries
+
+
 def test_curse_cure_fails_with_a_capture_when_the_sheet_offers_no_cure(tmp_path):
     screens = {"camp": _window({}, CAMP),
                "sheet": _window({}, "VIEW:ITEMS SPELLS TRADE DROP EXIT")}
