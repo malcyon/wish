@@ -425,8 +425,14 @@ class Run:
             s = self.sess.screen()
             if s is not None and "EXIT" in s.row(24) and \
                     self.who.upper() in s.row(1).upper():
+                confirmed = s.row(24).strip()
                 time.sleep(0.8)
-                return self.row24()
+                # `row24()` re-reads independently to catch the bar settling
+                # after the pause; a transient failure on that second,
+                # unrelated read must not undo what the first read already
+                # confirmed -- fall back to it rather than claim the sheet
+                # never opened.
+                return self.row24() or confirmed
             time.sleep(0.4)
         return None
 

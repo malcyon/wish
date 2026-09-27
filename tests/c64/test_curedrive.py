@@ -82,3 +82,78 @@ def test_cure_on_a_genuinely_opened_sheet_without_cure_still_logs_not_offered():
     events = _events(run)
     assert any(e["event"] == "cure-not-offered" for e in events)
     assert not any(e["event"] == "sheet-not-opened" for e in events)
+
+
+class _Screen:
+    def __init__(self, rows: dict[int, str]):
+        self._rows = rows
+
+    def row(self, n: int) -> str:
+        return self._rows.get(n, "")
+
+
+class _Session:
+    """Confirms the sheet once, then goes on to press `VIEW`."""
+
+    def __init__(self, confirmed: _Screen):
+        self._confirmed = confirmed
+
+    def press_bar(self, word: str) -> bool:
+        return True
+
+    def screen(self) -> _Screen:
+        return self._confirmed
+
+
+def test_open_sheet_survives_a_glitched_second_read_after_confirming_exit():
+    """The first read already confirmed EXIT and the paladin's name; a
+    transient failure on the follow-up read alone must not turn that into
+    a claim the sheet never opened (#699 code-review follow-up)."""
+    who = "MARK"
+    run = _bare_run(who)
+    confirmed = _Screen({1: who, 24: "VIEW:ITEMS EXIT"})
+    run.sess = _Session(confirmed)
+    run.camp = lambda: True
+    run.pick_paladin = lambda: True
+    # The independent follow-up read glitches and comes back empty, the
+    # way a transient screen-bank failure does.
+    run.row24 = lambda: ""
+
+    bar = run.open_sheet()
+
+    assert bar == "VIEW:ITEMS EXIT"
+
+
+def test_open_sheet_prefers_the_settled_second_read_when_it_succeeds():
+    who = "MARK"
+    run = _bare_run(who)
+    confirmed = _Screen({1: who, 24: "VIEW:ITEMS EXIT"})
+    run.sess = _Session(confirmed)
+    run.camp = lambda: True
+    run.pick_paladin = lambda: True
+    run.row24 = lambda: "VIEW:ITEMS CURE EXIT"
+
+    bar = run.open_sheet()
+
+    assert bar == "VIEW:ITEMS CURE EXIT"
+
+
+def test_open_sheet_returns_none_when_the_first_read_never_shows_exit(monkeypatch):
+    who = "MARK"
+    run = _bare_run(who)
+    run.sess = _Session(_Screen({1: who, 24: "some other menu"}))
+    run.camp = lambda: True
+    run.pick_paladin = lambda: True
+    run.row24 = lambda: "unreachable"
+    # `open_sheet` polls for 30s; fast-forward the clock instead of
+    # actually waiting.
+    clock = [0.0]
+
+    def fake_time():
+        clock[0] += 1
+        return clock[0]
+
+    monkeypatch.setattr(CD.time, "time", fake_time)
+    monkeypatch.setattr(CD.time, "sleep", lambda s: None)
+
+    assert run.open_sheet() is None
