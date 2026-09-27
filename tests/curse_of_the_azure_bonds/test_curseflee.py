@@ -55,6 +55,9 @@ class FakeSession:
     def battle(self):
         return None
 
+    def mode(self):
+        return 0
+
     def fight(self, budget, tactic=None, poll=1.0):
         self.fight_calls.append({"budget": budget, "tactic": tactic,
                                  "poll": poll})
@@ -91,6 +94,7 @@ def test_run_reaches_the_fight_through_curse_fight_not_a_fixed_walk(
     monkeypatch.setattr(laterbattle.Battle, "__init__",
                          lambda self, out, quiet: None)
     monkeypatch.setattr(laterbattle.Battle, "log", lambda self, *a, **k: None)
+    monkeypatch.setattr(laterbattle.Battle, "dump", lambda self, *a, **k: None)
     monkeypatch.setattr(laterbattle.Battle, "in_combat", lambda self: True)
     monkeypatch.setattr(S, "claim_slot", lambda *a, **k: FakeSlot())
 
@@ -113,6 +117,7 @@ def test_run_polls_fast_enough_to_catch_the_flee_line(tmp_path, monkeypatch):
     monkeypatch.setattr(laterbattle.Battle, "__init__",
                          lambda self, out, quiet: None)
     monkeypatch.setattr(laterbattle.Battle, "log", lambda self, *a, **k: None)
+    monkeypatch.setattr(laterbattle.Battle, "dump", lambda self, *a, **k: None)
     monkeypatch.setattr(laterbattle.Battle, "in_combat", lambda self: True)
     monkeypatch.setattr(S, "claim_slot", lambda *a, **k: FakeSlot())
 
@@ -121,3 +126,48 @@ def test_run_polls_fast_enough_to_catch_the_flee_line(tmp_path, monkeypatch):
     assert rc == 0
     assert len(sess.fight_calls) == 1
     assert sess.fight_calls[0]["poll"] == 0.12
+
+
+def test_run_logs_each_wait_iteration_and_dumps_the_combat_floor(
+        tmp_path, monkeypatch):
+    """`run()`'s combat-floor wait mirrors `laterbattle.main`'s own: a
+    `waiting-for-combat` line every iteration and a `combat-floor` dump once
+    the loop ends, so a run that fails here still says what row 24 and the
+    mode byte showed (review finding on `#648`)."""
+    sess = FakeSession()
+
+    def fake_curse_fight(battle, args, disks):
+        battle.sess = sess
+        return 0
+
+    calls = []
+    in_combat_after = 2
+    state = {"n": 0}
+
+    def fake_in_combat(self):
+        state["n"] += 1
+        return state["n"] > in_combat_after
+
+    monkeypatch.setattr(laterbattle, "curse_fight", fake_curse_fight)
+    monkeypatch.setattr(laterbattle.Battle, "__init__",
+                         lambda self, out, quiet: None)
+    monkeypatch.setattr(laterbattle.Battle, "log",
+                         lambda self, kind, **kw: calls.append((kind, kw)))
+    monkeypatch.setattr(laterbattle.Battle, "dump",
+                         lambda self, tag: calls.append(("dump", tag)))
+    monkeypatch.setattr(laterbattle.Battle, "in_combat", fake_in_combat)
+    monkeypatch.setattr(S, "claim_slot", lambda *a, **k: FakeSlot())
+
+    args = make_args(tmp_path)
+    args.wait = 5
+    rc = curseflee.run(args)
+
+    assert rc == 0
+    waits = [kw for kind, kw in calls if kind == "waiting-for-combat"]
+    assert len(waits) == in_combat_after
+    assert all("mode" in kw and "row24" in kw and "bar" in kw
+               and "readable" in kw for kw in waits)
+    assert ("dump", "combat-floor") in calls
+    # the dump comes after the waits, matching `laterbattle.main`'s order
+    assert calls.index(("dump", "combat-floor")) > calls.index(
+        ("waiting-for-combat", waits[-1]))

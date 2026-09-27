@@ -22,9 +22,10 @@ a `laterbattle.Battle`, hands it to `curse_fight`, then waits for the combat
 floor exactly as `laterbattle.main` does, and only then hands the fight to
 `Flight`.
 
-**The flee line is up for under half a second** (`Session.fight`'s own docs on
-`poll`), so this file's `--poll` defaults to `0.12` rather than `fight`'s own
-`1.0` -- a one-second poll is the reading `#648` says missed it.
+**The flee line is up for under half a second** (`tools/c64/session.py`'s own
+comment above `RAN_TEXT`), so this file's `--poll` defaults to `0.12` rather
+than `fight`'s own `1.0` -- a one-second poll is the reading `#648` says
+missed it.
 
     POR_HEADLESS=1 .venv/bin/python tools/curse_of_the_azure_bonds/curseflee.py --slot 6 \\
         --save path/to/CURSEI.D64 --out DIR
@@ -72,14 +73,18 @@ def run(args) -> int:
         # `laterbattle.main`'s own wait for the combat floor: `curse_fight`
         # only presses the script's word, and `YOU GET INTO A BRAWL.` draws
         # over a picture and waits on a keypress before the floor appears.
-        for _ in range(args.wait):
+        for n in range(args.wait):
             if battle.in_combat():
                 break
             s = sess.screen()
             state = sess.combat_state(s)
+            battle.log("waiting-for-combat", look=n, mode=sess.mode(),
+                       readable=s is not None, bar=state.kind,
+                       row24=state.text.strip())
             if state.kind == S.BAR_PRESS or s is None:
                 sess.press_kernal(0x0D)
             sess.settle(4.0)
+        battle.dump("combat-floor")
         if not battle.in_combat():
             raise RuntimeError("never reached the combat floor")
         log.say("on the combat floor")
@@ -148,7 +153,8 @@ def main(argv=None) -> int:
     p.add_argument("--budget", type=float, default=900.0)
     p.add_argument("--poll", type=float, default=0.12,
                    help="Session.fight's poll interval; the flee line is up "
-                        "for under half a second, which fight's own 1.0s "
+                        "for under half a second (tools/c64/session.py's "
+                        "comment above RAN_TEXT), which fight's own 1.0s "
                         "default misses")
     p.add_argument("--steps", type=int, default=60,
                    help="goto budget for the walk to the tavern")
