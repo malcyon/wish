@@ -441,10 +441,11 @@ def test_an_amiga_party_saved_before_begin_adventuring_converts_to_the_c64_s_own
     it is checked with two sources: the Amiga writer's own output from
     `SAVEAZURE` (byte-exact header) and, when the specimen is present, the
     engine's own party-menu save (#653). The specimen's header differs from
-    `SAVEAZURE` in 11 of 736 bytes -- measured to come with this specific
-    party rather than from a conversion bug, the same 11 bytes differing
-    when converting straight from its DOS source -- so only `set_out` and
-    place are asserted for it, not a byte-exact header."""
+    `SAVEAZURE` in 11 of 736 bytes, all inside `dos_codec.EFFECT_ARRAYS` --
+    the specimen party has running effects (ids 17 and 45) that the
+    synthetic `SAVEAZURE`-built party doesn't, the same 11 bytes differing
+    when converting straight from its DOS source -- so its header is checked
+    byte-exact with those active-effect-slot ranges masked out."""
     from goldbox import c64_port, c64_save, dos_codec, world_state
     from goldbox.iconparts import amiga_combat_icon
     game = c64_port.by_key(key)
@@ -477,6 +478,14 @@ def test_an_amiga_party_saved_before_begin_adventuring_converts_to_the_c64_s_own
         assert report.messages == [], label
         if byte_exact_header:
             assert save0[:cont.icon_table] == shipped_c64[:cont.icon_table], label
+        else:
+            def _mask_effect_arrays(buf: bytes) -> bytes:
+                masked = bytearray(buf[:cont.icon_table])
+                for base, size in dos_codec.EFFECT_ARRAYS:
+                    at = base - dos_codec.SAVE0_BASE
+                    masked[at:at + size] = bytes(size)
+                return bytes(masked)
+            assert _mask_effect_arrays(save0) == _mask_effect_arrays(shipped_c64), label
         result = world_state.from_c64(bytes(save0), game=game)
         assert result.set_out is False, label
         assert (result.area, result.x, result.y, result.facing) == (0, 0, 0, 0), label
