@@ -694,9 +694,9 @@ _ALWAYS_UNWRITABLE = frozenset({
     "char_class", "infravision", "item_effects",
 })
 
-#: Pool of Radiance has measured native bytes for both fields. The later
-#: titles' mappings are unmeasured, so their native writers cannot carry an
-#: edit to either field through the shared character sheet.
+#: Pool of Radiance has measured native bytes for `turn_class`. The later
+#: titles' mapping for it is unmeasured, so their native writers cannot carry
+#: an edit to that field through the shared character sheet.
 _LATER_SPECIAL_UNWRITABLE_FOR = frozenset({
     ("dos", "curse-of-the-azure-bonds"),
     ("dos", "secret-of-the-silver-blades"),

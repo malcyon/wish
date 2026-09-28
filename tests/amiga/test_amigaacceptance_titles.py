@@ -1021,6 +1021,23 @@ def test_a_run_records_the_interstitial_screens_its_guard_map_cannot_recognise(t
     assert result["interstitials_without_guard"] == ["yes_no"]
 
 
+def test_the_unguarded_interstitials_come_back_sorted_whatever_order_the_title_lists_them(
+        tmp_path, clock):
+    # Listed in reverse, and eight of them: a set of this many strings comes back in the sorted
+    # order only once in forty thousand hash seeds, so an unsorted list cannot pass by luck.
+    names = [f"screen_{c}" for c in "hgfedcba"]
+    title = _dark_title()
+    title = dataclasses.replace(title, interstitials=(
+        *title.interstitials, *((n, ("keys", "RET"), frozenset({"world"}), 1) for n in names)))
+    guest = DarkGuest(clock, save_key="disk3")
+    guest.place = dict(DARK_START)
+    result = foundation.run_recon(
+        _dark_manifest(tmp_path), guest=guest,
+        guard=MapGuard(states=DARK_STATES, on=DARK_FIRST_SCREEN), holder="wish679-test",
+        audio_proof=_audio_proof(tmp_path), title=title, accept=True, identity=_IdentityMap())
+    assert result["interstitials_without_guard"] == sorted([*names, "continue", "yes_no"])
+
+
 def test_a_strict_timeout_names_the_interstitial_screens_with_no_guard(tmp_path, clock):
     guard = MapGuard(states=DARK_STATES, on={"world": _never})
     _, result = _dark_run(tmp_path, clock, guard=guard)
