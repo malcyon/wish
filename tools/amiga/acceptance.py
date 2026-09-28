@@ -699,8 +699,8 @@ def _preserve_substituted(manifest_path: pathlib.Path, manifest: dict, attempt: 
         f"slot {manifest['loaded_letter']}, saved slot {title.control_letter}, walked and "
         f"saved slot {title.after_letter}. The game wrote slots {title.control_letter} and "
         f"{title.after_letter}. Slot {manifest['loaded_letter']} was written by Wish: it is "
-        f"slot {sub['letter']} of {sub['path']} (SHA-256 {sub['sha256']}), imported by "
-        f"`prepare --substitute` into a copy of the pinned specimen {pinned['path']} "
+        f"slot {sub['letter']} of {sub['path']} (SHA-256 {sub['sha256']} as recorded when "
+        f"`prepare --substitute` imported it; the run did not hash it again), imported into a copy of the pinned specimen {pinned['path']} "
         f"(SHA-256 {pinned['sha256']}). Slots {kept} are that specimen's own; the run found "
         f"them and slot {manifest['loaded_letter']} unchanged and no other save letter. "
         "Files outside the slots were not checked.")

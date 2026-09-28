@@ -1150,6 +1150,9 @@ def test_a_substituted_accept_registers_its_fetched_save_disk(tmp_path, clock, s
     assert "The game wrote slots C and D." in what
     assert "Slot A was written by Wish" in what
     assert SUBSTITUTE["sha256"] in what and SUBSTITUTE["path"] in what
+    assert "as recorded when `prepare --substitute` imported it" in what
+    assert "are that specimen's own; the run found" in what
+    assert "and no other save letter" in what
     pinned = json.loads((tmp_path / "prepare.json").read_text())["registered"]["specimen"]
     assert pinned["sha256"] in what and pinned["path"] in what
 
@@ -1183,6 +1186,36 @@ def test_a_pinned_accept_still_refuses_specimen_preservation(tmp_path, clock, sp
 def test_substituted_preservation_needs_a_cited_issue(tmp_path, clock, specimen_tree, issue):
     with pytest.raises(winuaesession.RouteError, match="--specimen-issue"):
         _preserving(tmp_path, clock, specimen_issue=issue)
+
+
+def _refuse_before_any_guest_call(tmp_path, clock, match, **kw):
+    guest = TitleGuest(clock)
+    with pytest.raises(winuaesession.RouteError, match=match):
+        _preserving(tmp_path, clock, guest=guest, **kw)
+    assert guest.calls == []
+
+
+def test_substituted_preservation_without_an_issue_refuses_before_any_guest_call(
+        tmp_path, clock, specimen_tree):
+    _refuse_before_any_guest_call(tmp_path, clock, "--specimen-issue", specimen_issue=None)
+
+
+def test_substituted_preservation_of_an_unlisted_title_refuses_before_any_guest_call(
+        tmp_path, clock, specimen_tree):
+    manifest = _substituted_manifest(tmp_path)
+    data = json.loads(manifest.read_text())
+    data["title"] = "darkness"
+    manifest.write_text(json.dumps(data))
+    _refuse_before_any_guest_call(tmp_path, clock, "--specimen-issue", manifest=manifest)
+
+
+def test_substituted_preservation_without_a_pinned_specimen_refuses_before_any_guest_call(
+        tmp_path, clock, specimen_tree):
+    manifest = _substituted_manifest(tmp_path)
+    data = json.loads(manifest.read_text())
+    del data["registered"]["specimen"]
+    manifest.write_text(json.dumps(data))
+    _refuse_before_any_guest_call(tmp_path, clock, "--specimen-issue", manifest=manifest)
 
 
 def test_preservation_is_refused_without_accept(tmp_path, clock, specimen_tree):
