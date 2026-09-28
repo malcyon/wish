@@ -42,11 +42,12 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import tool_disks  # noqa: E402
-from goldbox import savegame  # noqa: E402
+from goldbox import effects, savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.layout import FIELDS_BY_NAME  # noqa: E402
 from tools.c64 import runlog  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.c64.acceptance import parse_rows  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 DISKS: pathlib.Path | None = tool_disks()
@@ -77,12 +78,21 @@ def acting(sess) -> dict:
     return {"name": _name(head), "turn_power": byte[0]}
 
 
-def stage(path: pathlib.Path, wanted: dict[int, int]) -> list[tuple[str, int]]:
+def stage(path: pathlib.Path, wanted: dict[int, int],
+          rows: list[tuple[int, int, int, int, int]] = (),
+          sides: dict[int, int] = ()) -> list[tuple[str, int]]:
     """Put `slot: value` into record `0x0A4` of a copy of a save disk.
 
     Writing the byte rather than making the game write it is the point: what
     it proves is what the engine does when it **reads** one, which is the half
     a converted save exercises.
+
+    `rows` are `(slot, id, owner, duration, magnitude)` written into the
+    shared effect arrays through `effects.write_effect`.  `sides` puts a value
+    into `combat_side`: a save slot stores only the record's first `0x100`
+    bytes, so the roster block's copy (`+0x0C`, which `c64_codec.read`
+    prefers) is the only one on disk, and the game loads it into `0x10C` of
+    the working record.
     """
     disk = D64.open(str(path))
     game, sg0, sg1 = savegame.load_save(disk)
@@ -95,18 +105,33 @@ def stage(path: pathlib.Path, wanted: dict[int, int]) -> list[tuple[str, int]]:
         record.set("turn_power", value)
         sg0.write_record(index, record)
         written.append((str(record.name), value))
+    if rows:
+        payload = bytearray(sg0.to_bytes())
+        for slot, eid, owner, duration, magnitude in rows:
+            effects.write_effect(payload, slot, eid, owner, duration,
+                                 magnitude)
+        sg0 = savegame.SaveGame0(bytes(payload), game)
+    if sides:
+        if sg1 is None:
+            raise SystemExit("this save has no roster block to stage a "
+                             "combat side into")
+        roster = bytearray(sg1.to_bytes())
+        for index, value in sorted(dict(sides).items()):
+            roster[index * savegame.ROSTER_STRIDE
+                   + savegame.ROSTER_COMBAT_SIDE] = value
+        sg1 = savegame.SaveGame1(bytes(roster), game)
     savegame.store_save(disk, sg0, sg1, game)
     disk.save(str(path))
     return written
 
 
-def parse_stage(text: str) -> dict[int, int]:
-    """`2=0,4=9` -- which save slot gets which turning byte."""
+def parse_stage(text: str, option: str = "--stage") -> dict[int, int]:
+    """`2=0,4=9` -- which save slot gets which byte."""
     out: dict[int, int] = {}
     for item in text.split(","):
         slot, _, value = item.partition("=")
         if not value:
-            raise SystemExit("--stage wants slot=value pairs, e.g. 2=0")
+            raise SystemExit(f"{option} wants slot=value pairs, e.g. 2=0")
         out[int(slot, 0)] = int(value, 0)
     return out
 
@@ -135,6 +160,13 @@ def main(argv=None) -> int:
     p.add_argument("--stage", default=None, metavar="SLOT=VALUE,...",
                    help="write these turning bytes into a copy of the save "
                         "before booting")
+    p.add_argument("--stage-row", action="append", default=[],
+                   metavar="SLOT=ID:OWNER:DURATION:MAGNITUDE",
+                   help="write these effect rows (hex) into the shared "
+                        "effect arrays of the copy, as acceptance.py does")
+    p.add_argument("--stage-side", default=None, metavar="SLOT=VALUE,...",
+                   help="write these combat_side bytes (0x10C) into the "
+                        "copy's roster blocks")
     p.add_argument("--disks", default=DISKS,
                    help="where the player's disks are; read, never written")
     p.add_argument("--slot", type=int, default=None,
@@ -160,7 +192,7 @@ def main(argv=None) -> int:
     log = Log(out, args.quiet)
 
     save = args.save
-    if args.stage:
+    if args.stage or args.stage_row or args.stage_side:
         staging = out / "disks"
         staging.mkdir(parents=True, exist_ok=True)
         for i in range(1, 9):
@@ -169,10 +201,23 @@ def main(argv=None) -> int:
                 link.symlink_to(src.resolve())
         S.stage_writable(disks / args.save, staging / "STAGED.D64")
         save, disks = "STAGED.D64", staging
-        written = stage(staging / save, parse_stage(args.stage))
-        log.emit("staged", values=written)
-        log.say("staged 0x0A4: "
-                + ", ".join(f"{n} = {v}" for n, v in written))
+        rows = parse_rows(args.stage_row)
+        sides = (parse_stage(args.stage_side, "--stage-side")
+                 if args.stage_side else {})
+        written = stage(staging / save,
+                        parse_stage(args.stage) if args.stage else {},
+                        rows, sides)
+        log.emit("staged", values=written, rows=rows,
+                 sides=sorted(sides.items()))
+        if written:
+            log.say("staged 0x0A4: "
+                    + ", ".join(f"{n} = {v}" for n, v in written))
+        if rows:
+            log.say(f"staged {len(rows)} effect row(s)")
+        if sides:
+            log.say("staged combat_side: "
+                    + ", ".join(f"{i} = {v:#04x}"
+                                for i, v in sorted(sides.items())))
 
     slot = S.claim_slot(args.slot, f"turndrive/{save}")
     log.say(f"slot {slot.n} display {slot.display}  out {out}")
