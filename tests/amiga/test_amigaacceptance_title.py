@@ -1296,3 +1296,59 @@ def test_the_minimum_wait_message_names_the_route_time(tmp_path, clock):
     title = make_title(min_waits={"world": 60.0})
     _, result = _run(tmp_path, clock, title=title, deadline_seconds=100)
     assert "route time of 50s" in result["error"] and "100s deadline" in result["error"]
+
+
+class _ClampedThenFailingGuest(TitleGuest):
+    """A call the route time clamped returns in time; the next press fails at once."""
+
+    def __init__(self, clock, error):
+        super().__init__(clock)
+        self.error, self.clamped = error, False
+
+    def press(self, holder, key, timeout=None):
+        if self.clamped:
+            raise self.error
+        if timeout < 30:
+            self.clamped = True
+            self.clock.now += timeout - 0.5
+            return super().press(holder, key, timeout)
+        if key == "L":
+            self.clock.now += 100
+        return super().press(holder, key, timeout)
+
+
+@pytest.mark.parametrize("error", [
+    OSError("winvm ssh lost the connection"),
+    winuaesession.RouteError("winvm ssh refused the key"),
+])
+def test_a_genuine_error_after_a_clamped_call_that_returned_is_reported_as_itself(
+        tmp_path, clock, error):
+    _, result = _run(tmp_path, clock, guest=_ClampedThenFailingGuest(clock, error),
+                     deadline_seconds=240)
+    assert str(error) in result["error"] and "route time of" not in result["error"]
+    assert "error_cause" not in result
+
+
+class _SpentCaptureGuest(TitleGuest):
+    """The grab of the loaded menu returns after the route time has ended, unclamped."""
+
+    def grab(self, state, raw, cropped, timeout=None):
+        shown = super().grab(state, raw, cropped, timeout)
+        if "loaded_menu" in state:
+            self.clock.now += 5000
+        return shown
+
+
+def test_a_refusal_after_the_route_time_is_reported_as_itself(tmp_path, clock):
+    _, result = _run(tmp_path, clock, guest=_SpentCaptureGuest(clock),
+                     identity=_IdentityMap(fail={"loaded_menu"}), deadline_seconds=1800)
+    assert "loaded_menu shows another party" in result["error"] and "route time of" not in result["error"]
+    assert "error_cause" not in result
+
+
+def test_the_summary_carries_the_error_cause_when_there_is_one():
+    manifest = pathlib.Path("/x/manifest.json")
+    result = {"success": False, "error": "RouteError: route time", "error_cause": "OSError: ssh"}
+    assert json.loads(acceptance._summary(result, manifest, "a1"))["error_cause"] == "OSError: ssh"
+    del result["error_cause"]
+    assert "error_cause" not in json.loads(acceptance._summary(result, manifest, "a1"))

@@ -711,6 +711,40 @@ def _preserve_substituted(manifest_path: pathlib.Path, manifest: dict, attempt: 
         _FULL_TITLES[manifest["title"]], issue, what, fetched)
 
 
+class _LaneWatch:
+    """Wraps the lane so that an error can be tied to the call `route_limit` cut short."""
+
+    SLACK = 1.0
+
+    def __init__(self, guest: Any) -> None:
+        self._guest = guest
+        self.shortened: float | None = None
+        self._failed: tuple[BaseException, float, float] | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._guest, name)
+        if not callable(attr):
+            return attr
+
+        def call(*args: Any, **kwargs: Any) -> Any:
+            limit, self.shortened, self._failed = self.shortened, None, None
+            began = time.monotonic()
+            try:
+                return attr(*args, **kwargs)
+            except BaseException as exc:
+                if limit is not None and kwargs.get("timeout") == limit:
+                    self._failed = (exc, limit, time.monotonic() - began)
+                raise
+        return call
+
+    def timed_out(self, exc: BaseException) -> bool:
+        """True when `exc` came from the shortened call and it used the time it was given."""
+        if self._failed is None or self._failed[0] is not exc:
+            return False
+        _, limit, used = self._failed
+        return used >= limit - min(self.SLACK, limit / 2)
+
+
 def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               holder: str, audio_proof: pathlib.Path, attempt: str = "recon1",
               deadline_seconds: float = 1800,
@@ -952,7 +986,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     cleanup_scale = cleanup_window / 300.0
     route_note = (f"route time of {deadline_seconds - cleanup_window:.0f}s: the "
                   f"{deadline_seconds:.0f}s deadline less a {cleanup_window:.0f}s cleanup reserve")
-    shortened = {"last": False}
+    watch = _LaneWatch(guest)
+    guest = watch
 
     def log(event: str, **fields: Any) -> None:
         runlog.write(json.dumps({"event": event, "t": time.time(), **fields},
@@ -966,7 +1001,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         left = route_end - time.monotonic()
         if left <= 0:
             raise RouteError(f"the {route_note} ran out before the next route action")
-        shortened["last"] = left < cap
+        watch.shortened = min(cap, left) if left < cap else None
         return min(cap, left)
 
     def cleanup_limit(cap: float) -> float:
@@ -1319,8 +1354,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             result["completed"] = True
     except BaseException as exc:
         if (isinstance(exc, (RouteError, OSError)) and "route time" not in str(exc)
-                and time.monotonic() >= route_end - 1.0
-                and (shortened["last"] or time.monotonic() > route_end)):
+                and watch.timed_out(exc)):
             # A lane call cut short by the route time reports its own few seconds as a timeout.
             result["error_cause"] = f"{type(exc).__name__}: {exc}"
             timed_out = RouteError(f"the {route_note} ran out during a lane call")
@@ -1721,6 +1755,8 @@ def _summary(result: dict[str, Any], manifest: pathlib.Path, attempt: str) -> st
                "summary": path}
     if result.get("release_error"):
         summary["release_error"] = result["release_error"]
+    if result.get("error_cause"):
+        summary["error_cause"] = result["error_cause"]
     if result.get("diagnose"):
         summary["remote_config_dirty"] = result.get("remote_config_dirty", False)
         if result.get("remote_config_path"):
@@ -1944,9 +1980,11 @@ def main(argv: list[str] | None = None) -> int:
                        if silver_blades and not args.published_disk_one else
                        {"reload" if args.command == "reload" else "accept": True}))
             if silver_blades and args.command == "measure":
-                print(json.dumps({"success": result["success"], "error": result["error"],
-                                  "summary": str(args.manifest.parent / attempt / "summary.json")},
-                                 sort_keys=True))
+                measured = {"success": result["success"], "error": result["error"],
+                            "summary": str(args.manifest.parent / attempt / "summary.json")}
+                if result.get("error_cause"):
+                    measured["error_cause"] = result["error_cause"]
+                print(json.dumps(measured, sort_keys=True))
             else:
                 print(_summary(result, args.manifest, attempt))
             for line in result.get("read", {}).get("verdicts", []):
