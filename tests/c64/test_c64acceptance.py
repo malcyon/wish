@@ -271,12 +271,13 @@ class _TempleMonitor:
 
 
 class _TempleSession:
-    def __init__(self, out, *, unsafe=None):
+    def __init__(self, out, *, unsafe=None, after_side3="arrival-text"):
         self.place = (0x14, 15, 4, 3)
         self.phase = "move"
         self.moves = []
         self.keys = []
         self.unsafe = unsafe
+        self.after_side3 = after_side3
         self.party_index = 0
         self.bar_index = 0
         self.resident_slot = 4 if unsafe == "wrong-resident" else 5
@@ -296,6 +297,21 @@ class _TempleSession:
         self.crossing_quiet = 0
         self.quiet_reads = 2
         self.quiet_text = ""
+        # `temple-route-c` then read a further quiet screen after the side-3
+        # answer, followed by Pool typing the gateway square's arrival text a
+        # character at a time with row 24 blank; `typing` models that as a
+        # queue of message-window strings, one per `screen()` call, and
+        # `window_text` is what remains on row 17 once typing finishes, until
+        # the next `move_key` clears it.
+        self.post_answer_quiet = 0
+        self.typing = []
+        self.window_text = ""
+        self._typed_text = ""
+        self._question_answered_once = False
+        # Whether the temple greeting/HEAL screen keeps a status line: no
+        # capture of the C64 temple screen exists, so a run there might show
+        # none (fix 3's own gap).
+        self.temple_status = True
 
     def mon(self, _timeout):
         return _TempleMonitor(self)
@@ -307,6 +323,18 @@ class _TempleSession:
         elif self.crossing_quiet:
             place, phase = self._pre_crossing_place, "quiet"
             self.crossing_quiet -= 1
+        elif self.post_answer_quiet:
+            place = (self._pre_crossing_place
+                     if self._pre_crossing_place is not None else self.place)
+            phase = "quiet"
+            self.post_answer_quiet -= 1
+        elif self.typing:
+            place = (self._pre_crossing_place
+                     if self._pre_crossing_place is not None else self.place)
+            phase = "typing"
+            self._typed_text = self.typing.pop(0)
+            if not self.typing:
+                self.window_text = self._typed_text
         else:
             place, phase = self.place, self.phase
         rows = [""] * 25
@@ -314,6 +342,10 @@ class _TempleSession:
                     f"{place[1]},{place[2]}")
         if phase == "move":
             rows[24] = "I,J,K,M, RETURN OR BUTTON"
+            if self.window_text:
+                rows[17] = self.window_text
+        elif phase == "typing":
+            rows[17] = self._typed_text
         elif phase in ("side3", "side4"):
             rows[20] = ("INSERT SIDE # 3" if phase == "side3"
                         else "INSERT SIDE # 4")
@@ -323,6 +355,9 @@ class _TempleSession:
         elif phase == "continue":
             rows[24] = "PRESS BUTTON OR RETURN TO CONTINUE."
         elif phase == "yes-no":
+            rows[24] = "YES NO"
+        elif phase == "question":
+            rows[18] = "DO YOU SEEK HEALING?"
             rows[24] = "YES NO"
         elif phase == "unknown":
             rows[24] = "TRAIN CHARACTER"
@@ -343,8 +378,12 @@ class _TempleSession:
             if phase == "service":
                 rows[15] = "RAISE DEAD 5500"
                 rows[24] = "EXIT"
+            if not self.temple_status:
+                rows[14] = ""
         else:
             raise AssertionError(phase)
+        if phase == "question":
+            return _TempleScreen(rows, (0, 3))
         if phase == "temple":
             return _TempleScreen(rows, (0 if self.bar_index == 0 else 5,
                                         4), 4 + self.party_index)
@@ -363,6 +402,9 @@ class _TempleSession:
         expected = "KKIIJI"[len(self.moves) - 1]
         assert move == expected
         n = len(self.moves)
+        # A new key clears whatever text the previous square left typed on
+        # row 17, as `run5/02` shows.
+        self.window_text = ""
         if n == 1:
             self.place = (9 if self.unsafe == "wrong-area" else 0x14,
                           15, 4, 2 if self.unsafe == "wrong-facing" else 0)
@@ -383,11 +425,20 @@ class _TempleSession:
             self.phase = "side4" if self.unsafe == "other-side" else "side3"
         elif n == 4:
             self.place = (0, 1, 4, 1)
+            if self.unsafe == "early-question":
+                self.phase = "yes-no"
         elif n == 5:
             self.place = (0, 1, 4, 0)
         else:
             self.place = (0, 1, 3, 0)
-            self.phase = "temple"
+            if self.unsafe == "wrong-question":
+                self.phase = "yes-no"
+            else:
+                # `temple-route-c` also typed the priestess's greeting
+                # before the healing question; use invented text, not the
+                # game's own string.
+                self.typing = ["A PR", "A PRIESTESS GREETS YOU."]
+                self.phase = "question"
 
     def wanted_disk(self, screen):
         return "SIDE3.D64" if "INSERT SIDE # 3" in screen.text() else None
@@ -395,7 +446,19 @@ class _TempleSession:
     def handle_prompt(self, screen):
         assert list(self.out.glob("*boundary-side3-before-answer.png"))
         self.keys.append("side3")
-        self.phase = "side3" if self.unsafe == "duplicate-side" else "continue"
+        if self.unsafe == "duplicate-side":
+            self.phase = "side3"
+            return True
+        if self.after_side3 == "continue":
+            self.phase = "continue"
+            return True
+        # `temple-route-c`: after the side-3 answer, one further quiet
+        # screen, then Pool types the gateway square's arrival text a
+        # character at a time before the move bar redraws. Invented text,
+        # not the game's own string.
+        self.post_answer_quiet = 1
+        self.typing = ["A GATE B", "A GATE BY THE WALL."]
+        self.phase = "move"
         return True
 
     def press_kernal(self, code):
@@ -426,6 +489,18 @@ class _TempleSession:
             raise AssertionError(f"unapproved key {key}")
 
     def confirm_bar(self, row, was):
+        if self.phase == "question":
+            assert row == 24 and "YES" in was
+            self.keys.append("YES")
+            if self.unsafe == "question-twice" and not self._question_answered_once:
+                self._question_answered_once = True
+                # The question lingers: one more typed line, then the same
+                # question again, which the second answer must refuse.
+                self.typing = ["ANOTHER GROUP APPROACHES."]
+                self.phase = "question"
+            else:
+                self.phase = "temple"
+            return
         self.keys.append("HEAL")
         assert row == 24 and "HEAL" in was and self.bar_index == 1
         if self.unsafe != "stale-raise":
@@ -440,11 +515,12 @@ def _temple_reading():
             "effects": [[63, 32, 5, 0, 5]]}
 
 
-def _temple_fake_run(tmp_path, monkeypatch, *, unsafe=None):
+def _temple_fake_run(tmp_path, monkeypatch, *, unsafe=None,
+                     after_side3="arrival-text"):
     clock = SimpleNamespace(now=0.0)
     monkeypatch.setattr(A.time, "sleep", lambda seconds: setattr(
         clock, "now", clock.now + seconds))
-    session = _TempleSession(tmp_path, unsafe=unsafe)
+    session = _TempleSession(tmp_path, unsafe=unsafe, after_side3=after_side3)
     events = []
     log = SimpleNamespace(emit=lambda *args, **kwargs: events.append((args, kwargs)))
     run = A.PoolRun(session, log, tmp_path, A.c64_port.POOL_OF_RADIANCE, {})
@@ -468,31 +544,50 @@ def _temple_fake_run(tmp_path, monkeypatch, *, unsafe=None):
     return run, session, events
 
 
+@pytest.mark.parametrize("after_side3", ["arrival-text", "continue"])
 def test_temple_probe_reaches_service_list_and_sends_no_purchase_or_save(
-        tmp_path, monkeypatch):
-    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+        tmp_path, monkeypatch, after_side3):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            after_side3=after_side3)
     result = run.temple_probe("BRUTUS")
     assert result["resident"]["slot"] == 5
     assert result["resident"]["name"] == "BRUTUS"
     assert result["side3_prompts"] == 1
-    assert result["continuations"] == 1
+    assert result["questions"] == 1
     assert session.moves == list("KKIIJI")
     assert run.temple_checkpoints[-1]["state"]["save_copy"] == [15, 4, 3]
     assert run.temple_checkpoints[-1]["state"]["x"] == 1
-    assert session.keys == ["side3", "continue", *("Down" for _ in range(5)),
-                            "Right", "HEAL"]
     assert session.phase == "service"
-    assert [x["tag"] for x in run.temple_checkpoints] == [
-        "loaded-source", "move-1-settled", "move-2-settled",
-        "boundary-side3-before-answer", "continuation-before-answer",
-        "move-3-settled", "move-4-settled", "move-5-settled",
-        "temple-arrival", "brutus-highlight", "heal-services"]
+    if after_side3 == "arrival-text":
+        assert result["continuations"] == 0
+        assert session.keys == ["side3", "YES",
+                                *("Down" for _ in range(5)), "Right", "HEAL"]
+        assert [x["tag"] for x in run.temple_checkpoints] == [
+            "loaded-source", "move-1-settled", "move-2-settled",
+            "boundary-side3-before-answer", "move-3-settled",
+            "move-4-settled", "move-5-settled",
+            "temple-question-before-answer", "temple-arrival",
+            "brutus-highlight", "heal-services"]
+        assert [kwargs for args, kwargs in events
+                if args[0] == "temple-quiet-screen"] == [
+            {"move": 3, "place": (0, 0, 4, 1)}]
+        assert [kwargs for args, kwargs in events
+                if args[0] == "temple-text-screen"] == [
+            {"move": 3, "place": (0, 0, 4, 1)},
+            {"move": 6, "place": (0, 1, 3, 0)}]
+    else:
+        assert result["continuations"] == 1
+        assert session.keys == ["side3", "continue", "YES",
+                                *("Down" for _ in range(5)), "Right", "HEAL"]
+        assert [x["tag"] for x in run.temple_checkpoints] == [
+            "loaded-source", "move-1-settled", "move-2-settled",
+            "boundary-side3-before-answer", "continuation-before-answer",
+            "move-3-settled", "move-4-settled", "move-5-settled",
+            "temple-question-before-answer", "temple-arrival",
+            "brutus-highlight", "heal-services"]
     assert all((tmp_path / (x["stem"] + ext)).is_file()
                for x in run.temple_checkpoints for ext in (".txt", ".png", ".json"))
     assert any(args[0] == "temple-checkpoint" for args, _ in events)
-    assert [kwargs for args, kwargs in events
-            if args[0] == "temple-quiet-screen"] == [
-        {"move": 3, "place": (0, 0, 4, 1)}]
 
 
 @pytest.mark.parametrize("unsafe,maximum_moves", [
@@ -504,6 +599,7 @@ def test_temple_probe_reaches_service_list_and_sends_no_purchase_or_save(
     ("wrong-area", 1), ("pending-area", 1), ("unknown-event", 1),
     ("unknown-disk", 1), ("encounter", 1),
     ("stale-raise", 6),
+    ("early-question", 4), ("wrong-question", 6), ("question-twice", 6),
 ])
 def test_temple_probe_stops_at_unsafe_screen_or_state_before_more_input(
         tmp_path, monkeypatch, unsafe, maximum_moves):
@@ -514,6 +610,9 @@ def test_temple_probe_stops_at_unsafe_screen_or_state_before_more_input(
     if unsafe not in ("wrong-resident", "stale-raise"):
         assert "HEAL" not in session.keys
     assert session.keys.count("side3") <= 1
+    assert session.keys.count("YES") <= 1
+    if unsafe in ("early-question", "wrong-question"):
+        assert "YES" not in session.keys
     if unsafe != "wrong-resident":
         assert session.phase != "service"
 
@@ -565,22 +664,67 @@ def test_temple_quiet_screen_that_never_resolves_stops_at_the_transition_limit(
     assert "side3" not in session.keys
 
 
-def test_temple_blank_bar_with_message_text_is_not_quiet(tmp_path, monkeypatch):
-    """Text in the message window with row 24 blank is an event, not the
-    crossing's quiet frame, and still stops the route."""
+def test_temple_text_with_a_bar_never_drawn_stops_at_the_transition_limit(
+        tmp_path, monkeypatch):
+    """A frame with text and a blank bar gets a wait, not an unbounded one:
+    with the bar never drawn, the crossing stops at the 90-second transition
+    limit and sends nothing further."""
     run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
     session.quiet_text = "A GROUP OF KOBOLDS"
+    session.quiet_reads = 10 ** 6
+    with pytest.raises(A.StepFailed) as info:
+        run.temple_probe("BRUTUS")
+    assert "movement 3 did not settle within 90 seconds" in str(info.value)
+    assert session.moves == list("KKI")
+    assert "side3" not in session.keys
+
+
+def test_temple_arrival_settles_without_a_status_line(tmp_path, monkeypatch):
+    """No capture of the C64 temple screen exists: a menu or picture screen
+    can replace the status line there, and the settle must not wait forever
+    on one that never reappears."""
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    session.temple_status = False
+    result = run.temple_probe("BRUTUS")
+    assert result["resident"]["name"] == "BRUTUS"
+
+
+def test_temple_text_with_a_blank_bar_waits_then_stops_on_an_unapproved_bar(
+        tmp_path, monkeypatch):
+    """Text in the message window with row 24 blank gets a wait, the same as
+    a quiet screen: `temple-route-c` showed this is Pool typing an ordinary
+    square's arrival text (`YOU ARE B`, then `YOU ARE BY`). What still stops
+    the route is an unrecognised bar drawn once typing ends."""
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.quiet_text = "A GROUP OF KOBOLDS"
+    original_move_key = session.move_key
+
+    def move_key(move):
+        original_move_key(move)
+        if len(session.moves) == 3:
+            session.phase = "unknown"
+
+    session.move_key = move_key
     with pytest.raises(A.StepFailed) as info:
         run.temple_probe("BRUTUS")
     assert "unexpected screen after movement" in str(info.value)
     assert session.moves == list("KKI")
+    assert "side3" not in session.keys
+    assert [kwargs for args, kwargs in events
+            if args[0] == "temple-text-screen"] == [
+        {"move": 3, "place": (0, 0, 4, 1)}]
+    lost = next(c for c in run.temple_checkpoints if c["tag"] == "lost-event")
+    assert "TRAIN CHARACTER" in (tmp_path / (lost["stem"] + ".txt")).read_text()
 
 
+@pytest.mark.parametrize("quiet_text", ["", "SOME TEXT"])
 def test_temple_quiet_screen_at_an_unplanned_place_still_stops(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, quiet_text):
     """The wait covers only the place before the key and the one expected
-    after it; a quiet screen anywhere else stops at once."""
+    after it; a quiet or blank-bar-with-text screen anywhere else stops at
+    once."""
     run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    session.quiet_text = quiet_text
 
     def move_key(move):
         session.moves.append(move)

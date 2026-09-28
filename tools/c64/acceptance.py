@@ -1173,9 +1173,22 @@ class PoolRun:
         Pool draws this between the crossing key and `INSERT SIDE # 3`: the
         command bar is cleared while the drive reads track 18, and the prompt
         follows (`temple-route-b`, `05-temple-lost-event`). Nothing on it asks
-        for input, so the transition waits on it rather than stopping."""
+        for input, so the transition waits on it rather than stopping. A
+        quiet screen is the special case of a blank bar with an empty
+        window: see `_temple_bar_blank`."""
         return not any(re.search(r"[A-Z0-9]", screen.row(r).upper())
                        for r in range(17, 25))
+
+    @staticmethod
+    def _temple_bar_blank(screen) -> bool:
+        """Row 24 alone holds no letter or digit.
+
+        Pool types each square's arrival text into the message window one
+        character at a time and draws the command bar on row 24 only when
+        typing ends (`temple-route-c`, `YOU ARE B` with row 24 blank). Nothing
+        on a blank bar asks for input, so the transition waits on it rather
+        than stopping, whether or not the window above it holds text."""
+        return not re.search(r"[A-Z0-9]", screen.row(24).upper())
 
     @staticmethod
     def _temple_is_greeting(screen) -> bool:
@@ -1203,6 +1216,18 @@ class PoolRun:
                 and S.RE_GAME_SIDE.findall(text) == ["3"]
                 and S.SAVE_PROMPT not in text)
 
+    @staticmethod
+    def _temple_heal_question(screen) -> bool:
+        """The temple door's healing question, with YES and NO on row 24.
+
+        `ECL00 +$1113` is ` DO YOU SEEK HEALING?`; its `HORIZMENU` at
+        `+$155A` offers `YES` and `NO`."""
+        text = screen.text().upper()
+        bar = screen.row(24)
+        return ("SEEK HEALING" in text
+                and S.word_column(bar, "YES") >= 0
+                and S.word_column(bar, "NO") >= 0)
+
     def _temple_select_bar(self, word: str, kind: str) -> None:
         """Select one guarded word; never answer prompts inside a selector."""
         first = self.sess.screen()
@@ -1216,10 +1241,14 @@ class PoolRun:
             if (screen is None or screen.row(24) != bar
                     or self._temple_disk(screen)
                     or self._temple_continuation(screen)
-                    or re.search(r"\bYES\b.*\bNO\b", screen.text(), re.DOTALL)
+                    or (kind != "question"
+                        and re.search(r"\bYES\b.*\bNO\b", screen.text(),
+                                      re.DOTALL))
                     or re.search(r"\bPRESS\b", screen.text())
                     or (kind == "world" and not self._temple_is_world(screen))
-                    or (kind == "temple" and not self._temple_is_greeting(screen))):
+                    or (kind == "temple" and not self._temple_is_greeting(screen))
+                    or (kind == "question"
+                        and not self._temple_heal_question(screen))):
                 self._temple_stop("menu", f"{kind} bar changed before {word}",
                                   screen)
             span = S.span_in(screen, 24)
@@ -1285,7 +1314,8 @@ class PoolRun:
     def _temple_transition(self, n: int, before: tuple[int, ...],
                            expected: tuple[int, ...], counters: dict) -> dict:
         limit = min(self.clock() + 90, self.temple_input_deadline)
-        disk_visible = continuation_visible = quiet_seen = False
+        disk_visible = continuation_visible = question_visible = False
+        seen_kinds: set = set()
         settled = None
         while self.clock() < limit:
             screen = self.sess.screen()
@@ -1294,7 +1324,26 @@ class PoolRun:
                 continue
             text = screen.text().upper()
             if re.search(r"\bYES\b.*\bNO\b", text, re.DOTALL):
-                self._temple_stop("yes-no", "unapproved YES/NO prompt", screen)
+                if question_visible:
+                    time.sleep(0.3)
+                    continue
+                if not (n == TEMPLE_LAST_INDEX and counters["questions"] == 0
+                        and self._temple_heal_question(screen)):
+                    self._temple_stop("yes-no", "unapproved YES/NO prompt",
+                                      screen)
+                state = self.temple_state()
+                if (self._temple_place(state) != expected
+                        or state["mode"] != S.DUNGEON
+                        or state["area_pending"]):
+                    self._temple_stop("yes-no", "healing question at the "
+                                      "wrong place", screen)
+                self.temple_checkpoint("temple-question-before-answer", screen)
+                self._temple_input_budget("healing question")
+                self._temple_select_bar("YES", "question")
+                counters["questions"] += 1
+                question_visible = True
+                continue
+            question_visible = False
             if self._temple_disk(screen):
                 if disk_visible:
                     time.sleep(0.3)
@@ -1333,11 +1382,12 @@ class PoolRun:
             if state["mode"] == S.COMBAT:
                 self._temple_stop("encounter", "encounter after movement", screen)
             if (place in (before, expected)
-                    and self._temple_is_quiet(screen)):
-                if not quiet_seen:
-                    self.log.emit("temple-quiet-screen", move=n + 1,
-                                  place=place)
-                quiet_seen = True
+                    and self._temple_bar_blank(screen)):
+                kind = ("temple-quiet-screen" if self._temple_is_quiet(screen)
+                        else "temple-text-screen")
+                if kind not in seen_kinds:
+                    self.log.emit(kind, move=n + 1, place=place)
+                    seen_kinds.add(kind)
                 settled = None
                 time.sleep(0.3)
                 continue
@@ -1361,8 +1411,16 @@ class PoolRun:
                     self._temple_stop("event", "unexpected screen after movement",
                                       screen)
                 status = S.parse_status(screen.text())
-                if (status is None or
-                        (status.x, status.y, status.facing) != expected[1:]):
+                greeting = (n == TEMPLE_LAST_INDEX
+                            and self._temple_is_greeting(screen))
+                if status is None:
+                    # A menu or picture screen (the temple greeting) can
+                    # replace the status line; only settling there proceeds
+                    # with no status line to check.
+                    if not greeting:
+                        time.sleep(0.3)
+                        continue
+                elif (status.x, status.y, status.facing) != expected[1:]:
                     time.sleep(0.3)
                     continue
                 current = (place, screen.text())
@@ -1487,7 +1545,7 @@ class PoolRun:
                 or effect_rows[63] != [63, 32, 5, 0, 5]):
             self._temple_stop("source-identity", "loaded BRUTUS or row 63 "
                               "does not match the registered animated source")
-        counters = {"disk": 0, "continuations": 0}
+        counters = {"disk": 0, "continuations": 0, "questions": 0}
         for n, (move, before, expected) in enumerate(TEMPLE_ROUTE):
             if self._temple_place(self.temple_state()) != before:
                 self._temple_stop("place", f"wrong place before movement {n + 1}")
@@ -1531,6 +1589,7 @@ class PoolRun:
                 return {"route": "KKIIJI", "movement_keys": 6,
                         "side3_prompts": counters["disk"],
                         "continuations": counters["continuations"],
+                        "questions": counters["questions"],
                         "resident": resident, "service": checkpoint["stem"],
                         "checkpoints": len(self.temple_checkpoints)}
             if not self._temple_is_greeting(screen):
