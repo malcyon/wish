@@ -262,7 +262,7 @@ from camp -- confirmed in the running game and at `SILVER-1.D64` offset
 `0x2230F` on all six sides. The party-menu loader draws a second, different
 prompt for the same disk, `INSERT BLADES SAVE DISK. PRESS A KEY.` (offset
 `0x23A21`), which a driven run answers wherever it needs to reattach the save
-disk to reload a party. `tools/secret_of_the_silver_blades/ssbwarp.py`'s `SSBSession.handle_prompt` used
+disk to reload a party. `tools/secret_of_the_silver_blades/ssbsession.py`'s `SSBSession.handle_prompt` used
 to check for only one of the two -- its own `SAVE_PROMPT = "SAVE DISK"` is a
 substring of the loader wording but not of camp's -- so it recognised the
 loader prompt fine and only missed the camp one, and a driven `ENCAMP > SAVE`

@@ -5,7 +5,7 @@ Belongs to #334 (The session driver cannot fight in Curse or Silver Blades, and 
 `ssb14` showed `ECL10` landing at `$8000` and stopping at `$97CD` -- 6094 of
 its 7013 body bytes -- with slot 8's recorded KERNAL `LOAD` end address
 (`$2D9E`/`$2DB7`) left at 0 while every other slot loaded in that session
-recorded its file's exact length. `tools/secret_of_the_silver_blades/ssbwarp.py`'s `enter_world` presses
+recorded its file's exact length. `tools/secret_of_the_silver_blades/ssbsession.py`'s `enter_world` presses
 `Escape` when a screen has sat unchanged for fifteen seconds, and VICE's C64
 keymap puts `Escape` on RUN/STOP, which aborts a KERNAL `LOAD` in flight.
 

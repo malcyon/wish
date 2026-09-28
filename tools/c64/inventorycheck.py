@@ -44,7 +44,7 @@ Two subcommands:
 
 `run` reads the title off the save disk and drives it accordingly: Curse
 through `tools/curse_of_the_azure_bonds/curserun.py` and `tools/curse_of_the_azure_bonds/curseload.py`, Silver Blades through
-`tools/secret_of_the_silver_blades/ssbwarp.py`. **Both have to reach the world**, because the item list
+`tools/secret_of_the_silver_blades/ssbsession.py`. **Both have to reach the world**, because the item list
 hangs off the world's `VIEW` and off nothing else -- the party-formation
 menu's `VIEW CHARACTER` draws a sheet whose bar is `TRADE DROP EXIT` with no
 `ITEMS` on it (`cited/33/run1/03-sheet.txt`).

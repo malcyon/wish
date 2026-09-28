@@ -189,7 +189,7 @@ it had the answer within three seconds and nothing else did.
 **The Silver Blades driver would not press a movement key**, and said so:
 *"the driver pressed nothing: it read this party as being on the travel grid,
 where I is not a direction. That is a driver error and not a wall."*
-`tools/secret_of_the_silver_blades/ssbwarp.py`'s `SSBSession` never sets `Session.game`, so `indoors()`
+`tools/secret_of_the_silver_blades/ssbsession.py`'s `SSBSession` never sets `Session.game`, so `indoors()`
 reads Pool of Radiance's `$49E6` -- a byte of `LIBRARY` code in this title
 that happens to read zero. It is `#360 (The session driver will not walk a Curse or Silver Blades party in a dungeon, because it reads Pool of Radiance's indoors flag)`'s defect surviving in the one driver
 `#360 (The session driver will not walk a Curse or Silver Blades party in a dungeon, because it reads Pool of Radiance's indoors flag)` did not touch, and Curse, whose subclass does declare its title, walked

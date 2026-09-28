@@ -1475,9 +1475,9 @@ def test_stage_disks_is_unaffected_when_nothing_was_left_behind(pool):
         assert (Path(slot.dir) / "SIDE0.D64").read_bytes() == b"the save"
 
 
-# -- ssbwarp.stage: the same read-only-specimen bug as #430, a third place ---
+# -- ssbsession.stage: the same read-only-specimen bug as #430, a third place ---
 #
-# `tools/secret_of_the_silver_blades/ssbwarp.py`'s `stage()` never got the `_restage()` treatment #430
+# `tools/secret_of_the_silver_blades/ssbsession.py`'s `stage()` never got the `_restage()` treatment #430
 # gave `session.stage_disks`: it copies every side and the save with a bare
 # `shutil.copy`, which carries the source's mode onto the slot.  A specimen
 # out of `$WISH_SPECIMENS` is read-only by design (`tools/registry/specimens.py` makes
@@ -1486,7 +1486,7 @@ def test_stage_disks_is_unaffected_when_nothing_was_left_behind(pool):
 
 
 @posix
-def test_ssbwarp_stage_gives_the_game_a_writable_save_disk(pool):
+def test_ssbsession_stage_gives_the_game_a_writable_save_disk(pool):
     """#455: a read-only specimen must not stage into a read-only `SIDE0.D64`.
 
     Every write the game makes to a write-protected save disk is silently
@@ -1511,7 +1511,7 @@ def test_ssbwarp_stage_gives_the_game_a_writable_save_disk(pool):
 
 
 @posix
-def test_ssbwarp_stage_recovers_a_read_only_leftover_save(pool):
+def test_ssbsession_stage_recovers_a_read_only_leftover_save(pool):
     """#469: a second run in the same slot must not die on the first run's leftover.
 
     Staging from the same read-only specimen twice used to raise
@@ -1536,7 +1536,7 @@ def test_ssbwarp_stage_recovers_a_read_only_leftover_save(pool):
 
 
 @posix
-def test_ssbwarp_stage_replaces_a_read_only_side_left_in_the_slot(pool):
+def test_ssbsession_stage_replaces_a_read_only_side_left_in_the_slot(pool):
     """#455, #469: the six sides need the same unlink `SIDE0.D64` gets.
 
     `writable()` runs *after* `shutil.copy`, so it cannot help a destination
@@ -1567,7 +1567,7 @@ def test_ssbwarp_stage_replaces_a_read_only_side_left_in_the_slot(pool):
 
 # -- tools.c64.session.stage_writable: the shared helper (#472) ------------------
 #
-# `_restage` and `curserun.stage`/`ssbwarp.stage` each did their own version
+# `_restage` and `curserun.stage`/`ssbsession.stage` each did their own version
 # of "unlink, copy, restore the write bit" by hand, and two more places --
 # `session._restage`'s own write-bit restore, and eight single-shot tools
 # staging `args.disk` straight over `SIDE0.D64` -- turned out to be missing
@@ -1613,7 +1613,7 @@ def test_stage_writable_recovers_a_read_only_leftover(pool):
 def test_curserun_stage_gives_the_game_a_writable_save_disk(pool):
     """`curserun.stage` used to carry its own `writable()`; now `stage_writable`.
 
-    Same shape as `test_ssbwarp_stage_gives_the_game_a_writable_save_disk`,
+    Same shape as `test_ssbsession_stage_gives_the_game_a_writable_save_disk`,
     proving the move to the shared helper did not lose the behaviour.
     """
     curserun = load_tools_module("curserun")

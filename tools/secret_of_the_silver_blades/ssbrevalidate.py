@@ -2,7 +2,7 @@
 
 Belongs to #334 (The session driver cannot fight in Curse or Silver Blades, and says the party is not in a fight while it is standing on the combat floor).
 
-`tools/secret_of_the_silver_blades/ssbwarp.py`'s `enter_world` no longer sends an unconditional Escape at
+`tools/secret_of_the_silver_blades/ssbsession.py`'s `enter_world` no longer sends an unconditional Escape at
 a stuck screen (`#568 (cursewarp.py and ssbwarp.py can abort a mid-load ECL
 script by sending Escape to a screen that is merely slow, not stuck)`, committed on `main` as `f7f49c7`);
 the root cause comment on the issue traced every earlier no-fight result on

@@ -7,7 +7,7 @@ that is genuinely per-release.  Everything below the title screen -- the
 monitor, the keyboard, the screen reader, the menu walker, the disk-prompt
 answerer -- is `tools/c64/session.py`'s and is shared.
 
-**The boot and the prompts are `tools/secret_of_the_silver_blades/ssbwarp.py`'s already**, measured for
+**The boot and the prompts are `tools/secret_of_the_silver_blades/ssbsession.py`'s already**, measured for
 `#20 (Build an area table for Silver Blades)` over eight sessions, so this
 file imports `SSBSession`, `stage` and `load_party` rather than restating
 them.  What it adds is the one thing `#20` never needed: **a save disk this

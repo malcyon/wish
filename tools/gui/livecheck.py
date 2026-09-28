@@ -319,7 +319,7 @@ def _own_title(sess, game) -> None:
 
     `Session.game` is what `indoors()` and `square_and_world()` ask, and it
     defaults to Pool of Radiance. `tools/curse_of_the_azure_bonds/curserun.py`'s subclass sets it;
-    `tools/secret_of_the_silver_blades/ssbwarp.py`'s `SSBSession` does not, so a Silver Blades party
+    `tools/secret_of_the_silver_blades/ssbsession.py`'s `SSBSession` does not, so a Silver Blades party
     standing in a dungeon read as being on the travel grid and `walk_one`
     refused every key without pressing one -- `#360`'s defect, fixed for one
     of the two later titles. Setting it here makes this file right whichever
