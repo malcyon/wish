@@ -634,30 +634,29 @@ def _read_reload(title: AmigaTitle, manifest: dict, result: dict[str, Any],
         and seen.get("shown") is True and seen.get("other_shown") is False)
 
 
-def _preserve_published(manifest_path: pathlib.Path, attempt: str, name: str,
-                        fetched: pathlib.Path) -> dict[str, str]:
-    """Register a successful game's fetched DF0 before its lane is released."""
-    titles = {"curse": "Curse of the Azure Bonds", "ssb": "Secret of the Silver Blades"}
-    run_id = manifest_path.parent.name
-    # Base32 is reversible and uses only the specimen registry's lowercase slug alphabet.
-    def slug(value: str) -> str:
-        return base64.b32encode(value.encode()).decode().rstrip("=").lower()
+_FULL_TITLES = {"pool": "Pool of Radiance", "curse": "Curse of the Azure Bonds",
+                "ssb": "Secret of the Silver Blades"}
+SPECIMEN_ISSUE = re.compile(r"#(\d+) \(.+\)")
 
-    specimen_name = f"wish-677-{name}-{slug(run_id)}-{slug(attempt)}"
+
+def _slug(value: str) -> str:
+    # Base32 is reversible and uses only the specimen registry's lowercase slug alphabet.
+    return base64.b32encode(value.encode()).decode().rstrip("=").lower()
+
+
+def _register_fetched(specimen_name: str, full_title: str, issue: str, what: str,
+                      fetched: pathlib.Path) -> dict[str, str]:
+    """Add a fetched save disk to the specimen tree, or find the identical one already there."""
     root = specimens.tree_root()
     source_hash = sha256(fetched)
     source = str(fetched.resolve())
     existing = next((entry for entry in specimens.list_specimens(root)
                      if entry.get("name") == specimen_name and entry.get("platform") == "amiga"
-                     and entry.get("title") == titles[name]), None)
+                     and entry.get("title") == full_title), None)
     if existing is None:
         directory = specimens.add(
-            "amiga", specimen_name, [fetched], title=titles[name],
-            issue="#677 (Save As to the Amiga puts a Curse or Silver Blades party on a separate "
-                  "save disk that the game never reads while its own disk A is in DF0)",
-            made_by="WinUAE, driven by tools/amiga/acceptance.py",
-            what=f"Run {run_id!r}, attempt {attempt!r}: loaded the published disk-one "
-                 "party, walked and saved slots C and F in game",
+            "amiga", specimen_name, [fetched], title=full_title, issue=issue,
+            made_by="WinUAE, driven by tools/amiga/acceptance.py", what=what,
             command=" ".join(sys.argv), root=root)
     else:
         if (existing.get("source") != source or
@@ -671,6 +670,44 @@ def _preserve_published(manifest_path: pathlib.Path, attempt: str, name: str,
             "provenance": str(directory / specimens.PROVENANCE_NAME)}
 
 
+def _preserve_published(manifest_path: pathlib.Path, attempt: str, name: str,
+                        fetched: pathlib.Path) -> dict[str, str]:
+    """Register a successful game's fetched DF0 before its lane is released."""
+    run_id = manifest_path.parent.name
+    return _register_fetched(
+        f"wish-677-{name}-{_slug(run_id)}-{_slug(attempt)}", _FULL_TITLES[name],
+        "#677 (Save As to the Amiga puts a Curse or Silver Blades party on a separate "
+        "save disk that the game never reads while its own disk A is in DF0)",
+        f"Run {run_id!r}, attempt {attempt!r}: loaded the published disk-one "
+        "party, walked and saved slots C and F in game", fetched)
+
+
+def _preserve_substituted(manifest_path: pathlib.Path, manifest: dict, attempt: str,
+                          title: AmigaTitle, issue: str, fetched: pathlib.Path) -> dict[str, str]:
+    """Register the save disk of a successful substituted run.
+
+    The game wrote the control and after slots; Wish wrote the loaded slot by importing
+    the substitute's, so the provenance says so. Only claims the run's success test checks:
+    the kept slots and the loaded slot are unchanged and no other save letter appeared.
+    """
+    run_id = manifest_path.parent.name
+    number = SPECIMEN_ISSUE.fullmatch(issue).group(1)
+    sub, pinned = manifest["substitute"], manifest["registered"]["specimen"]
+    kept = ", ".join(title.kept_letters)
+    what = (
+        f"Run {run_id!r}, attempt {attempt!r}: the save disk fetched after the game loaded "
+        f"slot {manifest['loaded_letter']}, saved slot {title.control_letter}, walked and "
+        f"saved slot {title.after_letter}. The game wrote slots {title.control_letter} and "
+        f"{title.after_letter}. Slot {manifest['loaded_letter']} was written by Wish: it is "
+        f"slot {sub['letter']} of {sub['path']} (SHA-256 {sub['sha256']}), imported by "
+        f"`prepare --substitute` into a copy of the pinned specimen {pinned['path']} "
+        f"(SHA-256 {pinned['sha256']}). Slots {kept} are that specimen's own; the run found "
+        f"them and slot {manifest['loaded_letter']} unchanged and no other save letter. "
+        "Files outside the slots were not checked.")
+    return _register_fetched(
+        f"wish-{number}-{manifest['title']}-{_slug(run_id)}-{_slug(attempt)}",
+        _FULL_TITLES[manifest["title"]], issue, what, fetched)
+
 
 def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               holder: str, audio_proof: pathlib.Path, attempt: str = "recon1",
@@ -683,8 +720,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               answer: Any = None, preflight: Any = None,
               title: AmigaTitle | None = None, reload: bool = False,
               published_disk_one: bool = False, published_name: str | None = None,
-              preserve_specimen: bool = False, diagnose: bool = False,
-              boot_limit: float = 300) -> dict[str, Any]:
+              preserve_specimen: bool = False, specimen_issue: str | None = None,
+              diagnose: bool = False, boot_limit: float = 300) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -714,8 +751,11 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     """
     if guard is None and not measure:
         raise RouteError("a screen guard is required unless measuring")
-    if preserve_specimen and not (published_disk_one and accept):
-        raise RouteError("specimen preservation requires published disk-one accept")
+    preserve_message = "specimen preservation requires a published disk-one or substituted accept"
+    if preserve_specimen and not (accept and (published_disk_one or title is not None)):
+        raise RouteError(preserve_message)
+    if specimen_issue is not None and (not preserve_specimen or published_disk_one):
+        raise RouteError("--specimen-issue goes with a substituted --preserve-specimen only")
     if title is not None:
         if not isinstance(title, AmigaTitle):
             raise RouteError("title must be an AmigaTitle")
@@ -799,6 +839,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("the selected title route differs from the published manifest")
     elif manifest.get("mode") == "published_disk_one":
         raise RouteError("a published disk-one manifest needs --published-disk-one")
+    if preserve_specimen and not published_disk_one:
+        if ("substitute" not in manifest or manifest.get("title") not in _FULL_TITLES
+                or "specimen" not in manifest.get("registered", {})
+                or specimen_issue is None or not SPECIMEN_ISSUE.fullmatch(specimen_issue)):
+            raise RouteError(preserve_message + ", and a substituted one needs --specimen-issue "
+                             '"#N (title)" naming its issue')
     if title is not None:
         disks, registered, letter = _title_inputs(manifest, title)
         originals: dict[str, pathlib.Path] = {}
@@ -1277,8 +1323,11 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 if result["success"]:
                     if not stopped:
                         raise RouteError("guest did not stop before specimen preservation")
-                    result["specimen"] = _preserve_published(
-                        manifest_path, attempt, published_name, out / "fetched-df0.adf")
+                    fetched = out / f"fetched-{title.save_disk}.adf"
+                    result["specimen"] = (
+                        _preserve_published(manifest_path, attempt, published_name, fetched)
+                        if published_disk_one else _preserve_substituted(
+                            manifest_path, manifest, attempt, title, specimen_issue, fetched))
                     problems = specimens.check_specimens(specimens.tree_root())
                     if problems:
                         raise RouteError("specimen check failed: " + "; ".join(problems))
@@ -1727,7 +1776,11 @@ def main(argv: list[str] | None = None) -> int:
                    help="NAME:ID:MINUTES:DATA, checked against the route's later slot")
     a.add_argument("--journal-python")
     a.add_argument("--preserve-specimen", action="store_true",
-                   help="register and check a successful published game's fetched DF0 before release")
+                   help="register and check a successful published or substituted game's fetched "
+                        "save disk before release")
+    a.add_argument("--specimen-issue", default=None,
+                   help='a substituted --preserve-specimen: the issue the specimen is for, as '
+                        '"#N (title)"')
     r = sub.add_parser("reload", help="guarded load of a game-written slot and a check of the place "
                                       "on screen; writes nothing")
     common(r)
@@ -1840,6 +1893,7 @@ def main(argv: list[str] | None = None) -> int:
                     published_name=args.title if args.published_disk_one else None,
                     journal_python=getattr(args, "journal_python", None),
                     preserve_specimen=getattr(args, "preserve_specimen", False),
+                    specimen_issue=getattr(args, "specimen_issue", None),
                     **({"accept": True,
                         "min_waits": {**route_silver_blades.default_min_waits(),
                                       **route_silver_blades.ACCEPT_MIN_WAITS}}

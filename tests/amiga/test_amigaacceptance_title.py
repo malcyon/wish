@@ -21,6 +21,7 @@ from tests.amiga.test_amigaacceptance_accept import (
 )
 from tests.amiga.test_amigaacceptance_measure import ScreenGuest
 from tools.amiga import acceptance, route, winuaesession
+from tools.registry import specimens
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
 START = {"area": 2, "x": 9, "y": 13, "facing": geo.NORTH}
@@ -1091,3 +1092,99 @@ def test_a_title_with_no_save_letters_and_no_write_step_is_accepted():
     route = tuple(step for step in ROUTE if step[2] != "write")
     title = make_title(control_letter=None, after_letter=None, route=route, measure_route=route)
     assert title.control_letter is None and title.after_letter is None
+
+
+# --- preserving a substituted run's save disk ---------------------------------------------------
+
+ISSUE = "#631 (A Pool of Radiance character created in the Amiga game has a bad name)"
+SUBSTITUTE = {"path": "/scratch/saveas.adf", "sha256": "ab" * 32, "letter": "A"}
+
+
+def _substituted_manifest(tmp_path, *, substitute=SUBSTITUTE):
+    """A title manifest as `prepare --substitute` writes it: its title, the pinned specimen, the swap."""
+    path = manifest_for(tmp_path, substitute=substitute)
+    data = json.loads(path.read_text())
+    data["title"] = "pool"
+    data["registered"]["specimen"] = _adf(tmp_path / "specimen.adf", "SPEC")
+    path.write_text(json.dumps(data))
+    return path
+
+
+class _ReleaseWatcher(TitleGuest):
+    """Records the specimen directories that exist at the moment the lane is released."""
+
+    def __init__(self, clock, root):
+        super().__init__(clock)
+        self.root, self.at_release = root, None
+
+    def release(self, holder, timeout=None):
+        self.at_release = sorted(p.name for p in self.root.glob("*/WISH-SPEC-*"))
+        return super().release(holder, timeout=timeout)
+
+
+@pytest.fixture
+def specimen_tree(tmp_path, monkeypatch):
+    root = tmp_path / "specimens"
+    monkeypatch.setattr(specimens, "tree_root", lambda: root)
+    return root
+
+
+def _preserving(tmp_path, clock, **kw):
+    if "manifest" not in kw:
+        kw["manifest"] = _substituted_manifest(tmp_path)
+    kw.setdefault("specimen_issue", ISSUE)
+    return _run(tmp_path, clock, preserve_specimen=True, **kw)
+
+
+def test_a_substituted_accept_registers_its_fetched_save_disk(tmp_path, clock, specimen_tree):
+    guest = _ReleaseWatcher(clock, specimen_tree)
+    _, result = _preserving(tmp_path, clock, guest=guest)
+    assert result["success"] is True, result.get("specimen_error")
+    fetched = tmp_path / "recon1" / "fetched-boot.adf"
+    assert result["specimen"]["sha256"] == hashlib.sha256(fetched.read_bytes()).hexdigest()
+    assert specimens.check_specimens(specimen_tree) == []
+    assert len(guest.at_release) == 1
+    provenance = specimens.read_provenance(pathlib.Path(result["specimen"]["provenance"]))
+    assert provenance["platform"] == "amiga" and provenance["issue"] == ISSUE
+    what = provenance["what"]
+    assert "The game wrote slots C and D." in what
+    assert "Slot A was written by Wish" in what
+    assert SUBSTITUTE["sha256"] in what and SUBSTITUTE["path"] in what
+    pinned = json.loads((tmp_path / "prepare.json").read_text())["registered"]["specimen"]
+    assert pinned["sha256"] in what and pinned["path"] in what
+
+
+def test_a_substituted_specimen_is_named_for_its_issue(tmp_path, clock, specimen_tree):
+    _, result = _preserving(tmp_path, clock)
+    slug = acceptance._slug
+    assert pathlib.Path(result["specimen"]["path"]).parent == (
+        specimen_tree / "por-amiga" /
+        f"WISH-SPEC-wish-631-pool-{slug(tmp_path.name)}-{slug('recon1')}")
+
+
+def test_a_substituted_run_that_fails_registers_nothing(tmp_path, clock, specimen_tree):
+    guest = TitleGuest(clock, land=dict(START))
+    _, result = _preserving(tmp_path, clock, guest=guest)
+    assert result["passed_except_walk"] is True and result["success"] is False
+    assert "specimen" not in result and "specimen_error" not in result
+    assert not specimen_tree.exists() or list(specimen_tree.rglob("WISH-SPEC-*")) == []
+
+
+def test_a_pinned_accept_still_refuses_specimen_preservation(tmp_path, clock, specimen_tree):
+    manifest = _substituted_manifest(tmp_path)
+    data = json.loads(manifest.read_text())
+    del data["substitute"]
+    manifest.write_text(json.dumps(data))
+    with pytest.raises(winuaesession.RouteError, match="published disk-one or substituted"):
+        _preserving(tmp_path, clock, manifest=manifest)
+
+
+@pytest.mark.parametrize("issue", [None, "631", "#631", "#631 ()", "#x (title)"])
+def test_substituted_preservation_needs_a_cited_issue(tmp_path, clock, specimen_tree, issue):
+    with pytest.raises(winuaesession.RouteError, match="--specimen-issue"):
+        _preserving(tmp_path, clock, specimen_issue=issue)
+
+
+def test_preservation_is_refused_without_accept(tmp_path, clock, specimen_tree):
+    with pytest.raises(winuaesession.RouteError, match="published disk-one or substituted"):
+        _preserving(tmp_path, clock, accept=False, measure=True)

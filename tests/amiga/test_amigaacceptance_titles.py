@@ -2125,3 +2125,22 @@ def test_accept_refuses_an_identity_map_missing_sheet_through_main_before_any_gu
     assert foundation.main(argv) == 2
     assert "acceptance: " in capsys.readouterr().err
     assert guest.calls == []
+
+
+@pytest.mark.parametrize("title, extra", [
+    ("pool", []),
+    ("curse", ["--published-disk-one", "--preserve-specimen"]),
+])
+def test_main_refuses_specimen_issue_without_a_substituted_preservation(
+        tmp_path, capsys, monkeypatch, title, extra):
+    for name in ("g", "i"):
+        (tmp_path / name).write_text("{}")
+    monkeypatch.setattr(foundation, "_published_manifest",
+                        lambda path, name: ({"loaded_letter": "A"}, None))
+    monkeypatch.setattr(foundation, "_published_title", lambda name, letter: None)
+    argv = ["accept", "--title", title, "--manifest", str(tmp_path / "prepare.json"),
+            "--audio-proof", str(tmp_path / "audio"), "--guards", str(tmp_path / "g"),
+            "--identity", str(tmp_path / "i"), "--attempt", "a1",
+            "--specimen-issue", "#631 (a title)", *extra]
+    assert foundation.main(argv) == 2
+    assert "--specimen-issue" in capsys.readouterr().err
