@@ -1535,7 +1535,8 @@ CAPTURES = (pathlib.Path.home() / ".cache" / "wish" / "acceptance" / "722")
 
 def capture_screen(path):
     """A `Screen` from a `shots/*.txt` a boot wrote: numbered rows over a row of
-    colour digits, or the plain rows the driver's own `capture` writes."""
+    colour digits, or the plain rows the driver's own `capture` writes. A file
+    cut short or not text raises `ValueError`."""
     import re
     lines = path.read_text(encoding="utf-8").split("\n")
     rows, colours = [" " * COLS] * 25, [[5] * COLS for _ in range(25)]
@@ -1543,14 +1544,39 @@ def capture_screen(path):
         for i, line in enumerate(lines):
             m = re.match(r"\s*(\d+) \|(.{40})\|$", line)
             if m:
+                digits = (re.match(r"\s+\|(.{40})\|$", lines[i + 1])
+                          if i + 1 < len(lines) else None)
+                if digits is None:
+                    raise ValueError(f"{path.name}: row {m.group(1)} has no colour row")
                 rows[int(m.group(1))] = m.group(2)
-                digits = re.match(r"\s+\|(.{40})\|$", lines[i + 1])
                 colours[int(m.group(1))] = [int(c, 16) for c in digits.group(1)]
     else:
         rows = [r.ljust(COLS)[:COLS] for r in lines[:25]]
         rows += [" " * COLS] * (25 - len(rows))
     return Screen(bytes(_codes(ch) for r in rows for ch in r),
                   bytes(c for r in colours for c in r), 0x0400)
+
+
+def sweep_captures(shots):
+    """Problems found in the readable captures, and the names of those that
+    could not be read (a boot cut short leaves a partial file)."""
+    problems, unreadable = [], []
+    for path in shots:
+        try:
+            if path.read_text(encoding="utf-8").startswith("(bitmap)"):
+                continue
+            s = capture_screen(path)
+        except ValueError:
+            unreadable.append(path.name)
+            continue
+        kind = creation.recognise(FrozenSession(), s)
+        if kind == creation.ROLL and len(creation.scores(s)) != 6:
+            problems.append(f"{path.name}: roll with {creation.scores(s)}")
+        if kind in creation.EXACT_LISTS:
+            for label in creation.entries(s, kind):
+                if "$" in label or S.Session._exact_hit(s, label) is None:
+                    problems.append(f"{path.name}: {label!r} is not a whole row")
+    return problems, unreadable
 
 
 def test_every_captured_creation_screen_reads_as_the_state_it_shows():
@@ -1560,17 +1586,20 @@ def test_every_captured_creation_screen_reads_as_the_state_it_shows():
     shots = sorted(CAPTURES.glob("*/shots/*.txt"))
     if not shots:
         pytest.skip("the Stage 1 and Stage 3 captures are not on this machine")
-    problems = []
-    for path in shots:
-        text = path.read_text(encoding="utf-8")
-        if text.startswith("(bitmap)"):
-            continue
-        s = capture_screen(path)
-        kind = creation.recognise(FrozenSession(), s)
-        if kind == creation.ROLL and len(creation.scores(s)) != 6:
-            problems.append(f"{path.name}: roll with {creation.scores(s)}")
-        if kind in creation.EXACT_LISTS:
-            for label in creation.entries(s, kind):
-                if "$" in label or S.Session._exact_hit(s, label) is None:
-                    problems.append(f"{path.name}: {label!r} is not a whole row")
+    problems, _unreadable = sweep_captures(shots)
     assert not problems, problems[:10]
+
+
+def test_a_truncated_capture_is_reported_unreadable_not_raised(tmp_path):
+    """A boot cut short leaves a numbered row with no colour row, a file
+    without its digit rows, or bytes that are not text; the sweep names each
+    and goes on."""
+    row = "  1 |" + "A" * 40 + "|"
+    (tmp_path / "cut.txt").write_text("  0 |" + " " * 40 + "|\n" + " " * 5 + "|"
+                                      + "5" * 40 + "|\n" + row)
+    (tmp_path / "nodigits.txt").write_text("  0 |" + " " * 40 + "|\nnot a row\n"
+                                           + row + "\nx\n" + row)
+    (tmp_path / "binary.txt").write_bytes(b"\xff\xfe\x00\x80")
+    problems, unreadable = sweep_captures(sorted(tmp_path.glob("*.txt")))
+    assert problems == []
+    assert unreadable == ["binary.txt", "cut.txt", "nodigits.txt"]

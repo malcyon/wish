@@ -114,7 +114,7 @@ def alignments_offered(cls: str) -> tuple[str, ...]:
 ABILITIES = ("strength", "intelligence", "wisdom", "dexterity", "constitution",
              "charisma")
 #: Each row of the roll screen sits inside the game's window frame, so the
-#: text starts with a `$`.
+#: text starts with a `$`; the frame is optional, so an unframed row still reads.
 RE_SCORE = re.compile(r"^\$?\s*(STRENGTH|INTELLIGENCE|WISDOM|DEXTERITY|CONSTITUTION"
                       r"|CHARISMA)\s+(\d+)", re.M)
 
