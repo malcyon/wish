@@ -1723,7 +1723,7 @@ def test_a_slowed_node_is_written_as_a_row_and_not_dropped(game):
                          ids=lambda g: g.key)
 def test_a_dos_charm_node_is_a_loss_and_takes_no_trait_slot(game):
     char = _title_character(game)
-    char.set("granted_effects", [bytes((effects.CHARM_ID, 0, 0, 0x21, 1))],
+    char.set("granted_effects", [bytes((effects.CHARM_ID, 0, 0, 0x26, 1))],
              "built here")
     payload = bytearray(0x1C00)
     rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
@@ -1735,7 +1735,7 @@ def test_a_dos_charm_node_is_a_loss_and_takes_no_trait_slot(game):
 
 # --- Pool charm (11): the party cast's own row, and 0x10C left at $80 --------
 
-_CHARM = bytes((effects.CHARM_ID, 0, 0, 0x21, 1))
+_CHARM = bytes((effects.CHARM_ID, 0, 0, 0x26, 1))
 
 
 def _charmed_character(share, node=_CHARM, control=c64_codec.DOS_PC_TAKEN_OVER):
@@ -1935,9 +1935,9 @@ def test_a_charmed_pc_with_a_control_byte_below_0x80_comes_back_taken_over():
 
 
 @pytest.mark.parametrize("data, magnitude, side", [
-    (0xA1, 0x87, 0x80),   # a monster charmed him, and he was the party's
-    (0xE1, 0x87, 0x81),   # a monster charmed him, and he was already theirs
-    (0x61, 0x86, 0x81),   # the party's charm on a monster: own side is 1
+    (0xA7, 0x87, 0x80),   # a monster charmed him, and he was the party's
+    (0xE7, 0x87, 0x81),   # a monster charmed him, and he was already theirs
+    (0x66, 0x86, 0x81),   # the party's charm on a monster: own side is 1
 ])
 @pytest.mark.parametrize("build", ["pc", "companion", "pc-below-0x80"])
 def test_a_charm_node_with_a_side_bit_writes_the_rows_charmer_and_own_side(
@@ -1956,7 +1956,7 @@ def test_a_charm_node_with_a_side_bit_writes_the_rows_charmer_and_own_side(
     assert not rep.warnings or all("hostile" not in w for w in rep.warnings)
 
 
-@pytest.mark.parametrize("data", [0xA1, 0xE1, 0x61, 0x21])
+@pytest.mark.parametrize("data", [0xA7, 0xE7, 0x66, 0x26])
 @pytest.mark.parametrize("build", ["pc", "companion"])
 def test_a_charm_with_a_side_bit_makes_a_dos_c64_dos_round_trip(build, data):
     node = bytes((effects.CHARM_ID, 0, 0, data, 1))
@@ -1966,11 +1966,7 @@ def test_a_charm_with_a_side_bit_makes_a_dos_c64_dos_round_trip(build, data):
     rec, _rep, payload = _write_charmed(char)
     out = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=payload,
                          party_slot=2, clock_minutes=1, source="x")
-    # The count becomes the C64 charm's fixed level, 6 (7 with the charmer's
-    # side in bit 0); every other bit comes back.
-    count = 7 if data & 0x80 else 6
-    assert [bytes(n)[:5] for n in out.get("granted_effects")] == \
-        [bytes((effects.CHARM_ID, 0, 0, data & 0xE0 | count, 1))]
+    assert [bytes(n)[:5] for n in out.get("granted_effects")] == [node]
     assert out.get("hostile") is bool(data & 0x80)
     assert out.get("quickfight") is True
 
@@ -1988,8 +1984,8 @@ def test_a_charm_nodes_side_beats_a_disagreeing_hostile_flag():
 
 
 @pytest.mark.parametrize("node", [
-    bytes((effects.CHARM_ID, 0x0A, 0, 0x21, 1)),
-    bytes((effects.CHARM_ID, 0x34, 0x12, 0xA1, 1)),
+    bytes((effects.CHARM_ID, 0x0A, 0, 0x26, 1)),
+    bytes((effects.CHARM_ID, 0x34, 0x12, 0xA7, 1)),
 ], ids=["party", "monster"])
 @pytest.mark.parametrize("build", ["pc", "companion"])
 def test_a_running_charm_node_writes_the_charm_row_and_no_running_row(
@@ -2014,7 +2010,7 @@ def test_a_running_charm_node_writes_the_charm_row_and_no_running_row(
 
 
 def test_a_running_charm_node_with_no_payload_is_a_loss():
-    char = _pool_character(bytes((effects.CHARM_ID, 0x0A, 0, 0x21, 1)))
+    char = _pool_character(bytes((effects.CHARM_ID, 0x0A, 0, 0x26, 1)))
     char.set("npc", True, "built here")
     char.set("npc_control_byte", c64_codec.DOS_PC_TAKEN_OVER, "built here")
     _rec, rep = c64_codec.write(char)
@@ -2024,7 +2020,7 @@ def test_a_running_charm_node_with_no_payload_is_a_loss():
 def test_a_granted_and_a_running_charm_node_are_one_row():
     char = _charmed_character(0)
     char.set("running_effects",
-             [bytes((effects.CHARM_ID, 0x0A, 0, 0x21, 1)) + NULL],
+             [bytes((effects.CHARM_ID, 0x0A, 0, 0x26, 1)) + NULL],
              "built here")
     _rec, rep, payload = _write_charmed(char)
     rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
@@ -2145,7 +2141,7 @@ def test_an_animated_companion_with_a_charm_node_and_another_byte_is_a_loss():
 
 def test_a_companion_the_monsters_charmed_writes_the_row_and_keeps_his_byte():
     char = _charmed_character(
-        2, bytes((effects.CHARM_ID, 0, 0, 0xA1, 1)), control=0x93)
+        2, bytes((effects.CHARM_ID, 0, 0, 0xA7, 1)), control=0x93)
     char.set("hostile", True, "built here")
     rec, rep, payload = _write_charmed(char)
     rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
@@ -2165,3 +2161,85 @@ def test_a_second_charm_node_writes_the_row_when_the_first_was_refused():
     assert rows == [(effects.CHARM_ID, 2, 0, 0x86)]
     assert len([x for x in rep.losses
                 if f"effect {effects.CHARM_ID}:" in x]) == 1
+
+
+@pytest.mark.parametrize("count", range(16))
+@pytest.mark.parametrize("data_high", [0x20, 0x60, 0xA0, 0xE0])
+def test_a_charm_nodes_count_survives_a_dos_c64_dos_round_trip(
+        count, data_high):
+    node = bytes((effects.CHARM_ID, 0, 0, data_high | count, 1))
+    char = _charmed_character(0, node)
+    char.set("hostile", bool(data_high & 0x80), "built here")
+    rec, rep, payload = _write_charmed(char)
+    assert not rep.losses
+    out = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=payload,
+                         party_slot=2, clock_minutes=1, source="x")
+    assert [bytes(n)[:5] for n in out.get("granted_effects")] == [node]
+    assert not [d for d in out.dropped if "charm" in d.lower()]
+
+
+@pytest.mark.parametrize("magnitude, data", [(0x86, 0x26), (0x87, 0xA7)])
+def test_a_c64_charm_row_reads_to_dos_with_the_count_6_or_7(magnitude, data):
+    payload = bytearray(0x1C00)
+    effects.write_effect(payload, 0, effects.CHARM_ID, 2, 0, magnitude)
+    rec = CharacterRecord.blank()
+    rec.set("combat_side", 0x80)
+    out = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=payload,
+                         party_slot=2, clock_minutes=1, source="x")
+    assert [bytes(n)[:5] for n in out.get("granted_effects")] == \
+        [bytes((effects.CHARM_ID, 0, 0, data, 1))]
+
+
+@pytest.mark.parametrize("magnitude, data", [
+    (0x06, 0x26), (0x07, 0xA7), (0x86, 0x26), (0x87, 0xA7)])
+def test_a_c64_charm_row_without_bit_7_reads_like_the_one_with_it(
+        magnitude, data):
+    payload = bytearray(0x1C00)
+    effects.write_effect(payload, 0, effects.CHARM_ID, 2, 0, magnitude)
+    rec = CharacterRecord.blank()
+    rec.set("combat_side", 0xC0)
+    out = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=payload,
+                         party_slot=2, clock_minutes=1, source="x")
+    assert [bytes(n)[:5] for n in out.get("granted_effects")] == \
+        [bytes((effects.CHARM_ID, 0, 0, data, 1))]
+
+
+@pytest.mark.parametrize("own", [0, 1])
+@pytest.mark.parametrize("charmer", [0, 1])
+def test_a_charm_writes_0x10c_with_own_side_in_bit_0_and_bits_5_and_6_clear(
+        own, charmer):
+    node = bytes((effects.CHARM_ID, 0, 0, charmer << 7 | own << 6 | 0x26, 1))
+    char = _charmed_character(0, node)
+    char.set("hostile", bool(charmer), "built here")
+    rec, rep, _payload = _write_charmed(char)
+    assert not rep.losses
+    assert rec.get("combat_side") == 0x80 | own
+
+
+@pytest.mark.parametrize("own", [0, 1])
+def test_a_charm_row_beside_a_bit_6_record_keeps_the_own_side_from_bit_5(own):
+    # After the C64's handler ran, bit 6 is set, bit 5 is the own side and bit
+    # 0 holds the charmer ORed with whatever was there.
+    payload = bytearray(0x1C00)
+    effects.write_effect(payload, 0, effects.CHARM_ID, 2, 0, 0x87)
+    rec = CharacterRecord.blank()
+    rec.set("combat_side", 0xC1 | own << 5)
+    out = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=payload,
+                         party_slot=2, clock_minutes=1, source="x")
+    assert [bytes(n)[:5] for n in out.get("granted_effects")] == \
+        [bytes((effects.CHARM_ID, 0, 0, 0x80 | own << 6 | 0x27, 1))]
+    assert not [d for d in out.dropped if "bits 1-6" in d]
+
+
+def test_a_charm_with_own_side_1_and_a_fear_id_node_keeps_the_own_side():
+    # Pool has no Fear row, so a Curse fear id beside a charm does not set
+    # bit 6 and the own side stays in bit 0.
+    node = bytes((effects.CHARM_ID, 0, 0, 0x66, 1))
+    char = _charmed_character(0, node)
+    char.set("granted_effects", [node, bytes((142, 0x0A, 0, 0, 1))],
+             "built here")
+    rec, _rep, payload = _write_charmed(char)
+    assert rec.get("combat_side") == 0x81
+    out = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=payload,
+                         party_slot=2, clock_minutes=1, source="x")
+    assert bytes(out.get("granted_effects")[0])[:5] == node

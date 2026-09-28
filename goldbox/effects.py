@@ -386,12 +386,6 @@ LATER_INVISIBLE_ID = 25
 #: characters carry none to convert (`docs/226`).
 CHARM_ID = 11
 
-#: The magnitude the C64 Pool party cast of Charm writes (`SPELLE00 $A937`
-#: to `$A941`): bit 7 makes a removal run the expiry, bit 0 clear is the
-#: charmer's side, the party's, and the low nibble is the level C64 Dispel
-#: Magic tries the row at.
-POOL_CHARM_MAGNITUDE = 0x86
-
 #: Haste. Both ports keep the caster's level in the low nibble and the "has
 #: already aged" mark in bit 4, and nothing else: the C64 camp cast writes
 #: `level | $10`, its combat cast `level & $0F`, and DOS writes the level with
@@ -982,22 +976,50 @@ def never_expiring_spell_record(title_key: str, row: "Effect") -> bytes | None:
     return None
 
 
+def charm_magnitude(count: int, charmer: int) -> int:
+    """The C64 charm row's magnitude that keeps a DOS charm's count.
+
+    Bit 7 makes a removal run the expiry, bit 0 is the charmer's side, bits
+    1-3 are the level C64 Dispel Magic tries the row at, and bit 4, which no
+    C64 reader looks at, holds whatever makes the count's low bit recoverable.
+    PROBABLE until the live watchpoint run in `docs/226` confirms that
+    nothing reads `$4B80` beyond the readers found there. A wand or scroll
+    charm (count 6, party charmer) is `$86`, the C64's own form.
+    """
+    return 0x80 | (count & 0x0E) | charmer | ((count ^ charmer) & 1) << 4
+
+
+def charm_count(magnitude: int) -> int:
+    """The DOS count a C64 charm row's magnitude holds; see `charm_magnitude`."""
+    return (magnitude & 0x0F) ^ (magnitude >> 4 & 1)
+
+
+def is_pool_charm_magnitude(magnitude: int) -> bool:
+    """A magnitude a C64 Pool charm row can hold and DOS can take.
+
+    The count-preserving forms (bit 7 set, bits 5 and 6 clear, the two bits
+    the handler reads) and the vampire's gaze row, `$06` and `$07`, which is
+    the same charm without bit 7.
+    """
+    return magnitude & 0xE0 == 0x80 or magnitude in (0x06, 0x07)
+
+
 def pool_charm_row(title_key: str,
                    node: bytes) -> tuple[int, int] | Unconverted | None:
     """The C64 `(id, magnitude)` for a DOS Pool charm node.
 
-    `None` when the node is not a Pool charm. The row is the C64 cast's own
-    `POOL_CHARM_MAGNITUDE` with the charmer's side, data bit 7, in magnitude
-    bit 0. Whatever the node's duration, the row's is 0: the C64 never ages a
-    charm and ends it with the fight. A node whose data bit 5 is clear has
-    not been through DOS's charm handler, and a flag other than 1 is one no
-    DOS writer stores (spell 10 and id 84 both push 1), so both are
-    `Unconverted`.
+    `None` when the node is not a Pool charm. The magnitude is
+    `charm_magnitude` of the node's count, data bits 0-3, and the charmer's
+    side, data bit 7. Whatever the node's duration, the row's is 0: the C64
+    never ages a charm and ends it with the fight. A node whose data bit 5 is
+    clear has not been through DOS's charm handler, a flag other than 1 is
+    one no DOS writer stores (spell 10 and id 84 both push 1), and data bit 4
+    is a count bit the row cannot hold, so all three are `Unconverted`.
     """
     if title_key != "pool-of-radiance" or node[0] != CHARM_ID:
         return None
-    if node[3] & 0x20 and node[4] == 1:
-        return CHARM_ID, POOL_CHARM_MAGNITUDE | node[3] >> 7
+    if node[3] & 0x20 and not node[3] & 0x10 and node[4] == 1:
+        return CHARM_ID, charm_magnitude(node[3] & 0x0F, node[3] >> 7)
     return Unconverted("a charm node no DOS Pool route writes")
 
 
@@ -1011,12 +1033,6 @@ def pool_charm_sides(node: bytes) -> tuple[int, int]:
     return node[3] >> 7 & 1, node[3] >> 6 & 1
 
 
-#: The magnitudes a C64 Pool charm row holds: `$86` or `$87` from the party
-#: cast or a monster's, and `$06` or `$07` from the vampire's own gaze
-#: (DOS ability id 84), whose row has no bit 7. Bit 0 is the charmer's side.
-POOL_CHARM_MAGNITUDES = frozenset({0x06, 0x07, 0x86, 0x87})
-
-
 def pool_charm_record(title_key: str, row: "Effect",
                       combat_side: int | None) -> bytes | None:
     """The DOS charm node for a C64 Pool charm row, or `None`.
@@ -1024,17 +1040,19 @@ def pool_charm_record(title_key: str, row: "Effect",
     Record `0x10C` bit 0 is the character's own side until the C64's charm
     handler runs at his first event; after it, bit 6 is set, bit 5 holds his
     own side and bit 0 the charmer's. The node takes the charmer from the
-    row's magnitude bit 0, the own side from whichever bit holds it, and the
-    count from the magnitude's low nibble. Bit 5 with bit 6 clear is a state
-    the handler never leaves, so it refuses.
+    row's magnitude bit 0, never from `0x10C`, the own side from whichever bit
+    holds it, and the count from `charm_count`. Bit 5 with bit 6 clear is a
+    state the handler never leaves, so it refuses. A row without bit 7 (the
+    vampire's `$06` and `$07`) reads as the same charm with bit 7, because
+    DOS's node for that ability has flag 1.
     """
     if (title_key == "pool-of-radiance" and row.id == CHARM_ID
-            and row.duration == 0 and row.magnitude in POOL_CHARM_MAGNITUDES
+            and row.duration == 0 and is_pool_charm_magnitude(row.magnitude)
             and combat_side is not None
             and not (combat_side & 0x20 and not combat_side & 0x40)):
         own = combat_side >> 5 & 1 if combat_side & 0x40 else combat_side & 1
         data = ((row.magnitude & 1) << 7 | own << 6 | 0x20
-                | (row.magnitude & 0x0F))
+                | charm_count(row.magnitude))
         return bytes((CHARM_ID, 0, 0, data, 1)) + _RUNNING_EFFECT_NEXT
     return None
 

@@ -1974,6 +1974,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     hostile, quickfight = use("hostile"), use("quickfight")
     side_bits = 0
     side_where: list[str] = []
+    # Pool has no Fear row (`effects.FEAR_IDS`), so bit 6 never comes with a
+    # charm row here and the rule for the charm row alone applies: bits 5 and 6
+    # clear, bit 0 the own side, bit 7 quickfight.
     # A written charm row moves bit 0's meaning: until the C64's handler runs
     # at the character's first event it is his own side, where DOS's `hostile`
     # is the charmer's, and the handler takes the charmer's side from the

@@ -670,18 +670,23 @@ cloud would. The two duration-0 `(31, 0, FF, 0)` records from handlers 43 and
 
 ### Charm and Fear keep part of their state in the record
 
-**CONFIRMED from both ports' code.** Charm converts in one case, in both
-directions, and the conversion has not been run in the game. The C64 then playing him
-as a charmed party member is PROBABLE (fight-start placement below; `0x0B8` in
-`docs/232`). A DOS Pool of Radiance character the engine itself has
-charmed (an engine-driven record with the taken-over control byte, on the
-party's side, one accepted charm node and a free effect slot) writes the C64's
-shared effect row `(0x0B, slot, 0, 0x86)` and leaves the record's side byte
-`0x10C` at `$80` (`effects.pool_charm_row`, the `pool_charmed` predicate in
-`c64_codec.write`). A C64 party-side charm row reads back as the DOS node and
-control byte `0xB3` (`effects.pool_charm_record`). Any other charm node stays a
-loss, and `goldbox.effects` refuses it with a reason that says the row is only
-part of the state. **Fear converts**, in both directions: its record state is DOS's own
+**CONFIRMED from both ports' code.** Charm converts in both directions, and the
+conversion has not been run in the game. The C64 then playing him as a charmed
+party member is PROBABLE (fight-start placement below; `0x0B8` in `docs/232`).
+A DOS Pool of Radiance charm node, granted or running, whichever side charmed
+whom, on a player character or a companion, writes the C64's shared effect row
+`(0x0B, slot, 0, magnitude)` with bit 7 set and the charmer's side in bit 0.
+The record's `0x10C` is quickfight in bit 7 and the character's own side in bit
+0, bits 5 and 6 clear, so the C64's handler builds `$C0 | own << 5 | charmer`
+at his first event (`effects.pool_charm_row`, `c64_codec.write`). A second node
+is the same charm, because both engines replace one. Pool has no Fear row, so
+bit 6 never comes with a charm row there. A C64 charm row reads back as the DOS
+node: the charmer from the magnitude's bit 0, never from `0x10C`; the own side
+from `0x10C` bit 5 when bit 6 is set and from bit 0 otherwise; `$06` and `$07`
+(the vampire's gaze, no bit 7) as `$86` and `$87` with flag 1, as DOS's own node
+for that ability has (`effects.pool_charm_record`). A row with bit 5 of `0x10C`
+set and bit 6 clear, or a node with data bit 5 clear, data bit 4 set or a flag
+other than 1, is a state no game writes and stays a loss. **Fear converts**, in both directions: its record state is DOS's own
 "player character taken over" control byte (`0xB3`, `docs/195`) and C64 record
 `0x10C` bit 6, and `goldbox/c64_codec.py` converts the row and those bytes
 together (`FEAR_IDS`).
@@ -879,9 +884,19 @@ and returns 6 instead when `[0x6DBF]` is non-zero and the class is not 2 (that
 `[0x6DBF]` marks a cast from an item is PROBABLE: its writers were not read).
 The monster ability id 84 (`0x10BD8`-`0x10BEE`) always stores
 `(side << 7) + 12`, and sets the current spell to 10 first. The handler adds
-`0x20` and the own side `<< 6` and never touches bits 0-4. So a DOS to C64 to
-DOS round trip turns the caster's level into 6, which changes only DOS Dispel
-Magic's chance.
+`0x20` and the own side `<< 6` and never touches bits 0-4. Only Dispel Magic
+reads them, as the level (`data & 0x0F`), on both ports. The C64 row keeps the
+count in its magnitude, `$80 | (count & $0E) | charmer | ((count ^ charmer) &
+1) << 4`, and DOS gets it back as `(mag & $0F) ^ (mag >> 4 & 1)`: a wand or
+scroll charm is the C64's own `$86`, `$86` and `$87` (and `$06`, `$07`) read as
+6 and 7, and a DOS to C64 to DOS round trip returns the count exactly. PROBABLE
+until a run confirms that nothing reads the row's bit 4 or the count bits
+beyond the readers found (the settling run: stage `(0B, owner, 0, $92)` on a
+copy, set a read watchpoint on the row's magnitude, fight, camp and Dispel
+against a `$86` control); if another reader turns up the row falls back to
+`$86` and the count is open work again. The C64 dispels at the DOS level
+whenever the count's low bit equals the charmer bit, and one level easier
+otherwise, because bit 0 is the charmer's side.
 
 **Where the later titles keep a charm, and how it ends.** CONFIRMED from code;
 Curse and Silver Blades DOS addresses as in the table above.
@@ -1162,11 +1177,11 @@ data 0), Stinking Cloud (30, 31), Curse's 136 and Silver Blades' Power Word
 Stun (106) convert both ways by the rules in "Combat-cast ids and their
 rules". Fear (Curse 142, Silver Blades 111) converts both ways, its row and
 its record byte together (`effects.FEAR_IDS`, `c64_codec.DOS_PC_TAKEN_OVER`).
-Charm (11) converts for one case only, a DOS Pool character the engine has
-charmed, in both directions and not yet run in the game; every other charm node
-stays a loss (Curse and Silver Blades running nodes are the ones that share
-the record bytes with the row; `goldbox/effects.py` refuses a Pool node outside
-the accepted state as one no DOS Pool route writes). Only DOS
+Charm (11) converts both ways for every DOS Pool charm node, granted or
+running, on a player character or a companion, and not yet run in the game;
+the count is kept in the row's magnitude (PROBABLE, above). A node with data
+bit 5 clear, data bit 4 set or a flag other than 1 is one no DOS Pool route
+writes and stays a loss. Only DOS
 Pool's duration-0 node reaches a save (PROBABLE: nobody has read whether spell
 10's target picker offers an ally; the Charm and Fear section). Silver Blades'
 65 is never a running node. Slow Poison (22) waits on a save the DOS game
