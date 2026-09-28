@@ -405,6 +405,16 @@ def _is_step(indoors: bool, key: str) -> bool:
     return key == "I" or not indoors
 
 
+def where(sess, indoors: bool):
+    """The party's square for the walk to compare. Indoors that is the status
+    line, because `Session.square()` reads `$49C0`, which stays at the arrival
+    square after a Fast Travel; outdoors the memory pair `square()` reads is
+    live and the status line lags."""
+    if indoors:
+        return sess.position()[:2]
+    return sess.square()
+
+
 def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
     """A few steps in each direction, then the first character's sheet opened
     and closed -- the one action that is not a move. Returns every step's
@@ -446,12 +456,14 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
             row = settle_row(sess, timeout)
         if not recognised(row):
             steps.append({"move": move, "ok": False, "row": row,
-                          "before": sess.square(), "after": sess.square(),
+                          "before": where(sess, indoors),
+                          "after": where(sess, indoors),
                           "refused": f"row 24 is not the world bar, the move "
                                      f"sub-bar or the direction prompt: {row!r}"})
             print(f"  walk {move}: stopped on row 24 {row!r}", flush=True)
             return steps, False
-        before = sess.square()
+        before = where(sess, indoors)
+        shadow_before = sess.square()
         attempts: list[dict] = []
         facing = 0          # quarter turns away from the facing the step began with
         off_route = capped = False
@@ -469,10 +481,11 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
                     if sess.in_combat() or not recognised(row):
                         done = True   # the outer loop answers a fight; a prompt ends the walk
                         break
-                start = sess.square()
+                start = where(sess, indoors)
                 ok = bool(sess.walk_one(key))
                 attempts.append({"move": key, "ok": ok, "row": row,
-                                 "before": start, "after": sess.square()})
+                                 "before": start,
+                                 "after": where(sess, indoors)})
                 if gi:
                     retry_used += 1
                 refused = getattr(sess, "walk_refused", None)
@@ -493,7 +506,8 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
                 break
         last = attempts[-1]
         step = {"move": last["move"], "ok": last["ok"], "row": last["row"],
-                "before": before, "after": last["after"], "refused": refused}
+                "before": before, "after": last["after"], "refused": refused,
+                "shadow_before": shadow_before, "shadow_after": sess.square()}
         if len(attempts) > 1:
             # The last key may be a turn that worked, which must not read as a
             # step that moved the party.
@@ -639,7 +653,10 @@ def run(args) -> int:
         timing = {"second_hop_seconds": second_hop_seconds,
                   "total_seconds": total_seconds,
                   "first_hop_seconds": elapsed(marks["run_start"],
-                                               marks["run_returned"])}
+                                               marks["run_returned"]),
+                  # The machine's share of the click-to-area-byte-leaves span.
+                  "leave_seconds": elapsed(marks.get("run_returned"),
+                                           marks.get("through"))}
         print(f"second_hop_seconds={second_hop_seconds} "
               f"total_seconds={total_seconds}", flush=True)
         if hop is not None and not hop.ok:

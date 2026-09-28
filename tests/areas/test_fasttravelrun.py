@@ -334,6 +334,9 @@ class WalkSession(FakeSession):
     def square(self):
         return (self.x, 5)
 
+    def position(self):
+        return (self.x, 5, self.facing)
+
     def walk_one(self, move):
         self.pressed.append(move)
         if move == "M" and self._indoors:
@@ -363,7 +366,8 @@ def test_the_walk_goes_each_way_then_opens_the_sheet_and_records_each_step():
     assert sheet and sess.sheets == [0]
     assert steps[0] == {"move": "1", "ok": True, "before": (5, 5),
                         "after": (6, 5), "refused": None,
-                        "row": sess.row}
+                        "row": sess.row, "shadow_before": (5, 5),
+                        "shadow_after": (6, 5)}
     assert len(steps) == len(FT.WALK_OUTDOORS)
 
 
@@ -1130,3 +1134,86 @@ def test_a_non_empty_row_that_never_settles_is_refused_and_recorded(monkeypatch)
     assert sess.pressed == [] and not sheet
     assert steps[0]["row"] == "PRESS RETURN" and "refused" in steps[0]
     assert now[0] >= 5.0
+
+
+class ArrivalSquareSession(WalkSession):
+    """`$49C0` never leaves the arrival square after a Fast Travel, so
+    `square()` is stuck while the status line moves."""
+
+    def square(self):
+        return (15, 1)
+
+
+def test_an_indoor_walk_reads_the_status_line_when_square_is_stuck():
+    sess, m = make()
+    sess = ArrivalSquareSession(m, indoors=True)
+    steps, sheet = FT.walk_afterwards(sess)
+    assert FT.walk_verdict(steps, sheet)[0], FT.walk_verdict(steps, sheet)
+    assert steps[0]["shadow_before"] == steps[0]["shadow_after"] == (15, 1)
+    assert steps[0]["after"] != steps[0]["before"]
+
+
+def test_outdoors_where_uses_square_and_never_position():
+    sess, m = make()
+    sess = WalkSession(m, indoors=False)
+
+    def boom():
+        raise AssertionError("position() must not be read outdoors")
+
+    sess.position = boom
+    assert FT.where(sess, False) == (5, 5)
+    steps, _ = FT.walk_afterwards(sess)
+    assert steps[0]["before"] == (5, 5)
+
+
+def _run_with_marks(monkeypatch, tmp_path, marks_set):
+    import json
+
+    slot = types.SimpleNamespace(
+        n=1, display=":1", dir=str(tmp_path),
+        teardown=lambda: None, release=lambda: None)
+    sess = _RunSession()
+    monkeypatch.setattr(FT.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(FT.S, "stage_disks", lambda *a, **k: "boot")
+    monkeypatch.setattr(FT.S, "stage_writable", lambda *a, **k: None)
+    monkeypatch.setattr(FT.S, "Session", lambda *a, **k: sess)
+    monkeypatch.setattr(FT, "party", lambda s: [])
+    monkeypatch.setattr(FT, "area_of", lambda s: 13)
+    monkeypatch.setattr(FT, "shoot", lambda *a, **k: None)
+    monkeypatch.setattr(FT, "ViceTarget", lambda **k: types.SimpleNamespace(
+        close=lambda: None))
+    ticks = iter([100.0, 200.0, 210.0, 220.0, 230.0])
+    monkeypatch.setattr(FT.time, "monotonic", lambda: next(ticks))
+
+    class Trip:
+        pending = object()
+
+        def run(self, target, area):
+            return types.SimpleNamespace(ok=True, message="")
+
+    monkeypatch.setattr(FT, "A", types.SimpleNamespace(
+        FastTravel=Trip, area_by_id=lambda n: n))
+
+    def answer(sess, to_area, deadline_s, between, on_question, marks):
+        marks.update(marks_set)
+        return None
+
+    monkeypatch.setattr(FT, "answer_and_wait", answer)
+    args = types.SimpleNamespace(
+        out=str(tmp_path / "out"), slot=None, disks=str(tmp_path),
+        save=str(tmp_path / "save.d64"), from_area=13, to_area=27,
+        member="FATIMA", arrive=1.0, answer_timeout=1.0)
+    FT.run(args)
+    return json.loads((tmp_path / "out" / "result.json").read_text())
+
+
+def test_leave_seconds_runs_from_run_returned_to_through(monkeypatch, tmp_path):
+    # monotonic ticks: started=100, run_start=200, run_returned=210.
+    result = _run_with_marks(monkeypatch, tmp_path,
+                             {"through": 213.4, "landed": 220.0})
+    assert result["leave_seconds"] == 3.4
+
+
+def test_leave_seconds_is_none_without_through(monkeypatch, tmp_path):
+    result = _run_with_marks(monkeypatch, tmp_path, {"landed": 220.0})
+    assert result["leave_seconds"] is None
