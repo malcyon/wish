@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import shutil
 import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parent.parent
@@ -80,7 +81,8 @@ def acting(sess) -> dict:
 
 def stage(path: pathlib.Path, wanted: dict[int, int],
           rows: list[tuple[int, int, int, int, int]] = (),
-          sides: dict[int, int] = ()) -> list[tuple[str, int]]:
+          sides: dict[int, int] = (),
+          replaced: list | None = None) -> list[tuple[str, int]]:
     """Put `slot: value` into record `0x0A4` of a copy of a save disk.
 
     Writing the byte rather than making the game write it is the point: what
@@ -92,7 +94,10 @@ def stage(path: pathlib.Path, wanted: dict[int, int],
     into `combat_side`: a save slot stores only the record's first `0x100`
     bytes, so the roster block's copy (`+0x0C`, which `c64_codec.read`
     prefers) is the only one on disk, and the game loads it into `0x10C` of
-    the working record.
+    the working record.  A side is refused for a slot that holds no character,
+    since a byte in an empty block would make it look occupied.  When
+    `replaced` is a list, it gets one `{"slot", "was", "now"}` per row, with
+    the `[id, owner, duration, magnitude]` the slot held before.
     """
     disk = D64.open(str(path))
     game, sg0, sg1 = savegame.load_save(disk)
@@ -107,7 +112,14 @@ def stage(path: pathlib.Path, wanted: dict[int, int],
         written.append((str(record.name), value))
     if rows:
         payload = bytearray(sg0.to_bytes())
+        arrays = (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
+                  effects.EFFECT_DURATION_OFFSET,
+                  effects.EFFECT_MAGNITUDE_OFFSET)
         for slot, eid, owner, duration, magnitude in rows:
+            if replaced is not None:
+                replaced.append({"slot": slot,
+                                 "was": [payload[a + slot] for a in arrays],
+                                 "now": [eid, owner, duration, magnitude]})
             effects.write_effect(payload, slot, eid, owner, duration,
                                  magnitude)
         sg0 = savegame.SaveGame0(bytes(payload), game)
@@ -115,6 +127,14 @@ def stage(path: pathlib.Path, wanted: dict[int, int],
         if sg1 is None:
             raise SystemExit("this save has no roster block to stage a "
                              "combat side into")
+        for index, value in dict(sides).items():
+            if not 0 <= index < savegame.ROSTER_COUNT:
+                raise SystemExit(f"--stage-side slot {index} is not 0 to "
+                                 f"{savegame.ROSTER_COUNT - 1}")
+            if not 0 <= value <= 0xFF:
+                raise SystemExit(f"--stage-side value {value} is not a byte")
+            if not sg1.roster(index).occupied:
+                raise SystemExit(f"roster slot {index} is empty")
         roster = bytearray(sg1.to_bytes())
         for index, value in sorted(dict(sides).items()):
             roster[index * savegame.ROSTER_STRIDE
@@ -132,7 +152,16 @@ def parse_stage(text: str, option: str = "--stage") -> dict[int, int]:
         slot, _, value = item.partition("=")
         if not value:
             raise SystemExit(f"{option} wants slot=value pairs, e.g. 2=0")
-        out[int(slot, 0)] = int(value, 0)
+        try:
+            index, byte = int(slot, 0), int(value, 0)
+        except ValueError:
+            raise SystemExit(f"{option}: {item!r} is not integers") from None
+        if not 0 <= index < savegame.ROSTER_COUNT:
+            raise SystemExit(f"{option}: slot {index} is not 0 to "
+                             f"{savegame.ROSTER_COUNT - 1}")
+        if not 0 <= byte <= 0xFF:
+            raise SystemExit(f"{option}: value {byte} is not a byte")
+        out[index] = byte
     return out
 
 
@@ -184,6 +213,13 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     if args.disks is None:
         raise SystemExit("No game disks found. Set $POR_DISKS.")
+    try:
+        wanted = parse_stage(args.stage) if args.stage else {}
+        rows = parse_rows(args.stage_row)
+        sides = (parse_stage(args.stage_side, "--stage-side")
+                 if args.stage_side else {})
+    except ValueError as e:
+        raise SystemExit(f"--stage-row: {e}") from None
     runlog.catch_signals()
 
     disks = pathlib.Path(args.disks)
@@ -201,13 +237,13 @@ def main(argv=None) -> int:
                 link.symlink_to(src.resolve())
         S.stage_writable(disks / args.save, staging / "STAGED.D64")
         save, disks = "STAGED.D64", staging
-        rows = parse_rows(args.stage_row)
-        sides = (parse_stage(args.stage_side, "--stage-side")
-                 if args.stage_side else {})
-        written = stage(staging / save,
-                        parse_stage(args.stage) if args.stage else {},
-                        rows, sides)
-        log.emit("staged", values=written, rows=rows,
+        replaced: list = []
+        try:
+            written = stage(staging / save, wanted, rows, sides, replaced)
+        except SystemExit:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        log.emit("staged", values=written, rows=replaced,
                  sides=sorted(sides.items()))
         if written:
             log.say("staged 0x0A4: "
