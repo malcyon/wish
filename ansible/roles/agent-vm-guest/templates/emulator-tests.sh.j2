@@ -1,0 +1,58 @@
+#!/bin/bash
+# Managed by Ansible — roles/agent-vm-guest.
+#
+# Runs the targets given as arguments in the wish checkout, logs the full
+# output to a dated file, and keeps the newest {{ agent_guest_emulator_tests_keep }}. Run by the
+# weekly emulator-tests systemd user timer. -n0 overrides the guest's
+# PYTEST_ADDOPTS parallelism, which livetests/README.md says its fixed
+# display numbers cannot share; -rfEs keeps failures in the short summary
+# below (a bare -rs, as the README's by-hand command has it, replaces the
+# default and drops them) and adds why a test skipped, such as no C64
+# Ultimate answering. On a failure it files a wish issue with
+# `tools/wishagent.py create`, unless one with the same title is already open.
+set -u
+
+. /etc/profile.d/agent-vm.sh
+
+log_dir="{{ agent_guest_emulator_tests_log_dir }}"
+mkdir -p "$log_dir"
+log="$log_dir/$(date -u +%Y-%m-%dT%H%M%SZ).log"
+
+cd {{ agent_guest_wish_dir }}
+.venv/bin/python -m pytest -q -n0 -rfEs "$@" >"$log" 2>&1
+rc=$?
+
+ls -1t "$log_dir"/*.log 2>/dev/null | tail -n +$(({{ agent_guest_emulator_tests_keep }} + 1)) | xargs -r rm -f
+
+echo "log: $log"
+if [ "$rc" -eq 0 ]; then
+    exit 0
+fi
+
+title="{{ agent_guest_emulator_tests_issue_title }}"
+if gh issue list --repo {{ agent_guest_wish_slug }} --state open --search "$title" --json title \
+    | jq -e --arg t "$title" 'any(.[]; .title == $t)' >/dev/null 2>&1; then
+    echo "not filing: an open issue is already titled '$title'" >&2
+    exit "$rc"
+fi
+
+failures=$(grep -E '^(FAILED|ERROR) ' "$log" || true)
+final=$(tail -n1 "$log")
+body=$(mktemp)
+trap 'rm -f "$body"' EXIT
+{
+    echo "The weekly live test run failed."
+    echo
+    echo "$final"
+    if [ -n "$failures" ]; then
+        echo
+        echo '```'
+        echo "$failures"
+        echo '```'
+    fi
+    echo
+    echo "Full log: $log, on the guest."
+} >"$body"
+
+.venv/bin/python tools/wishagent.py create --title "$title" --body-file "$body" --label bug --label "Priority: Medium"
+exit "$rc"

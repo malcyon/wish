@@ -184,7 +184,7 @@
 # Without linger the agent's user manager exists only while somebody is logged
 # in, and a timer in it would never fire on an idle guest.
 - name: Let the agent's user timers run without a login
-  tags: [herdr, codex]
+  tags: [herdr, codex, emulator_tests]
   become: true
   block:
     - name: Enable linger
@@ -193,7 +193,7 @@
         creates: "/var/lib/systemd/linger/{{ ansible_user_id }}"
 
 - name: The user timer directory
-  tags: [herdr, codex]
+  tags: [herdr, codex, emulator_tests]
   block:
     - name: Wait for the agent's user manager
       ansible.builtin.wait_for:
@@ -865,31 +865,39 @@
         block: |
           [ -f /etc/profile.d/agent-vm.sh ] && . /etc/profile.d/agent-vm.sh
 
-# --- no scheduled live tests --------------------------------------------------
-# livetests/ is run by hand. A guest that an earlier play gave the weekly
-# runner has it taken off, so nothing on the machine files an issue from it.
-- name: No scheduled live tests
+# --- the weekly DOS emulator tests -----------------------------------------
+# The C64 Ultimate hardware test remains manual. The scheduled job runs the
+# three DOS emulator tests named in agent_guest_live_tests.
+- name: The weekly DOS emulator tests
+  tags: emulator_tests
   block:
-    - name: Stop and disable the emulator-tests timer
-      ansible.builtin.command: systemctl --user disable --now emulator-tests.timer
-      environment:
-        XDG_RUNTIME_DIR: "/run/user/{{ ansible_user_uid }}"
-      changed_when: false
-      failed_when: false
+    - name: Install the emulator test runner
+      ansible.builtin.template:
+        src: emulator-tests.sh.j2
+        dest: /usr/local/bin/emulator-tests
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
 
-    - name: Remove the emulator-tests units
-      ansible.builtin.file:
-        path: "{{ ansible_user_dir }}/.config/systemd/user/emulator-tests.{{ item }}"
-        state: absent
+    - name: Install the emulator-tests units
+      ansible.builtin.template:
+        src: "emulator-tests.{{ item }}.j2"
+        dest: "{{ ansible_user_dir }}/.config/systemd/user/emulator-tests.{{ item }}"
+        mode: "0644"
       loop:
         - service
         - timer
 
-    - name: Remove the emulator test runner
-      ansible.builtin.file:
-        path: /usr/local/bin/emulator-tests
-        state: absent
-      become: true
+    - name: Enable the weekly emulator tests
+      ansible.builtin.systemd:
+        name: emulator-tests.timer
+        scope: user
+        daemon_reload: true
+        enabled: true
+        state: started
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_user_uid }}"
 
 # --- a quiet login ---------------------------------------------------------
 
