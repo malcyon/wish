@@ -2379,16 +2379,14 @@ def _published_report(tmp_path, monkeypatch, *, name, issue, place=None):
     return path, source_sha
 
 
-TITLE_STATES = ("party_menu", "load_picker", "loaded_menu", "disk_wait", "world", "camp",
-                "camp_picker")
-CURSE_START = {"area": 1, "x": 7, "y": 13, "facing": 1}
+CURSE_START_640 = {"area": 1, "x": 7, "y": 13, "facing": 1}
 CURSE_WORLD = {"area": 3, "x": 4, "y": 4, "facing": geo.NORTH}
 
 
 def test_prepare_under_640_files_the_run_under_640_and_turns_a_party_at_the_start_about(
         tmp_path, monkeypatch):
     report, _ = _published_report(tmp_path, monkeypatch, name="curse", issue="640",
-                                  place=CURSE_START)
+                                  place=CURSE_START_640)
     from tools.amiga.acceptance import main  # noqa: PLC0415
     assert main(["prepare", "--title", "curse", "--run-id", "run640", "--published-disk-one",
                  "--issue", "640", "--saveas-report", str(report)]) == 0
@@ -2424,7 +2422,7 @@ def test_the_turn_comes_from_the_manifest_place_and_falls_back_to_the_letter():
 
 def _prepared(tmp_path, monkeypatch, name, issue):
     report, source_sha = _published_report(tmp_path, monkeypatch, name=name, issue=issue,
-                                           place=CURSE_START if name == "curse" else None)
+                                           place=CURSE_START_640 if name == "curse" else None)
     path = foundation.prepare_published(name, f"run{issue}", report, issue)
     return path, source_sha
 
