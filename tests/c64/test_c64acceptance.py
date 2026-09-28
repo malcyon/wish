@@ -845,6 +845,45 @@ def test_temple_renderer_cursor_on_two_samples_still_stops(
     assert lost["pc"] == "$10C2"
 
 
+def test_temple_move_clears_a_one_poll_cursor_glitch_before_sending_a_key(
+        tmp_path, monkeypatch):
+    """The two tests above only glitch the cursor after the crossing key's
+    side-3 answer, inside `_temple_transition`; `_temple_move`'s own poll,
+    taken before every movement key including the crossing itself, has no
+    coverage there. `_temple_steady`'s first sample is what `_temple_move`
+    calls right before `K` (#715): a one-poll glitch on it must not stop the
+    move, the same as a one-poll glitch after the crossing does not."""
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    session.cursor_reads = 1
+    run._temple_move("K", (0x14, 15, 4, 3))
+    assert session.moves == ["K"]
+
+
+def test_temple_move_stops_when_the_cursor_never_settles_before_a_key(
+        tmp_path, monkeypatch):
+    """A glitch that never returns the same triple twice never lets two
+    consecutive samples agree, so `_temple_steady` itself times out and
+    stops with its own "unsteady" failure (read from the function, not
+    invented) before `_temple_move` ever sends `K` (#715)."""
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    real_read = _TempleMonitor.read
+    calls = {"n": 0}
+
+    def jittering_read(self, address, count):
+        if address == 0xC04B:
+            calls["n"] += 1
+            return bytes((1, 4, calls["n"] % 4))
+        return real_read(self, address, count)
+
+    monkeypatch.setattr(_TempleMonitor, "read", jittering_read)
+    with pytest.raises(A.StepFailed) as info:
+        run._temple_move("K", (0x14, 15, 4, 3))
+    assert "place unsteady before K" in str(info.value)
+    assert session.moves == []
+    lost = next(c for c in run.temple_checkpoints if c["tag"] == "lost-unsteady")
+    assert lost["judged"] is True
+
+
 def test_temple_guards_read_the_screen_only_inside_a_monitor_pause(
         tmp_path, monkeypatch):
     """Every temple guard reads the screen through `temple_sample()`'s one
