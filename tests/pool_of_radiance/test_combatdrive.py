@@ -1391,6 +1391,12 @@ def test_an_exact_row_is_not_the_tail_of_a_longer_one():
     assert sess.taken == 11
 
 
+def test_an_exact_label_with_surrounding_blanks_still_matches():
+    sess = ClassList()
+    assert sess.select_row(" MAGIC-USER/THIEF ", timeout=5, exact=True) is True
+    assert sess.taken == 11
+
+
 def test_without_exact_the_first_row_containing_the_label_is_taken():
     sess = ClassList()
     assert sess.select_row("MAGIC-USER/THIEF", timeout=5) is True

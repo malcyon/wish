@@ -1209,8 +1209,12 @@ class Session:
 
     @staticmethod
     def _exact_hit(s, label: str) -> tuple[int, int] | None:
-        """Where a row that is *label* and nothing else is, as `Screen.find` answers."""
-        want = label.upper()
+        """Where a row that is *label* and nothing else is, as `Screen.find` answers.
+
+        A row carrying any other glyph (a star, a second column) never matches,
+        and `select_row` then spends its whole timeout finding nothing.
+        """
+        want = label.strip().upper()
         for r, line in enumerate(s.rows()):
             if line.strip() == want:
                 return r, line.find(want)

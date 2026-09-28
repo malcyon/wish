@@ -567,15 +567,16 @@ SHADOWED = [("ELF", "MAGIC-USER/THIEF", "FIGHTER/MAGIC-USER/THIEF"),
 
 
 @pytest.mark.parametrize("race, cls, earlier", SHADOWED)
-def test_a_label_that_would_select_the_row_above_it_is_refused_before_any_key(
+def test_a_class_that_is_the_tail_of_a_longer_row_is_accepted_and_selected(
         tmp_path, race, cls, earlier):
-    """`select_row` goes to the first row containing the label, so the class
-    would land on the longer one above it.  The refusal comes before the first
-    character is created, even when the shadowed spec is the second one."""
-    bad = spec("VICEBAD", race, "MALE", cls, "LAWFUL NEUTRAL")
-    code, sess, game, out, summary = drive(tmp_path, [PAIR[0], bad])
-    assert code == 1 and f"{cls} would select {earlier}" in summary["lost"]
-    assert sess.kbd.sent == [] and sess.kernal == [] and sess.attaches == []
+    """The class rows are bare labels and are matched whole, so the class is not
+    mistaken for the longer row above it."""
+    want = spec("VICEEXA", race, "MALE", cls, "LAWFUL NEUTRAL")
+    creation.check_specs([want])
+    code, sess, game, out, summary = drive(tmp_path, [want])
+    assert code == 0 and summary["lost"] is None
+    assert ("class", cls) in game.chosen
+    assert ("class", earlier) not in game.chosen
 
 
 def test_the_class_table_is_the_lists_the_screens_draw():
@@ -968,5 +969,6 @@ def test_lists_writes_every_races_classes_and_each_classs_alignments(tmp_path):
     assert lists["classes"]["ELF"] == CLASSES["ELF"]
     assert "LAWFUL GOOD" not in lists["alignments"]["THIEF"]
     assert len(lists["alignments"]["FIGHTER"]) == 9
-    assert "MAGIC-USER/THIEF" in lists["skipped"]
+    assert lists["skipped"] == {}
+    assert "LAWFUL GOOD" not in lists["alignments"]["MAGIC-USER/THIEF"]
     assert game.state == "party"

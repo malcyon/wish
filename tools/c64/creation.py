@@ -20,8 +20,8 @@ goes on through BEGIN ADVENTURING and a camp save to `intown.D64`.
 
 **A screen is text, so a spec names a menu entry by its label** and
 `Session.select_row` walks the highlight onto it; nothing counts presses from
-an assumed start.  A label missing from its list, an ambiguous one, a screen
-this driver does not recognise and a deadline all stop the run with a capture
+an assumed start.  A label missing from its list, a screen this driver does
+not recognise and a deadline all stop the run with a capture
 and a `lost` line, having pressed nothing further.
 
 **The C64 order is race, gender, roll, class, alignment, name, `SAVE?`,
@@ -76,8 +76,8 @@ GENDERS = {"MALE": 0, "FEMALE": 1}
 #: `CLASS_BIT_FOR_NAME` but no Pool race is offered them.
 CLASS_PARTS = ("cleric", "fighter", "magic-user", "thief")
 #: The class list each race is offered, in on-screen order.  `check_specs` reads
-#: it before the first key so a label `Session.select_row` would resolve to an
-#: earlier row (the first row containing the text wins) is refused up front.
+#: it before the first key so a class the race is never offered is refused up
+#: front.
 CLASSES_BY_RACE = {
     "DWARF": ("FIGHTER", "THIEF", "FIGHTER/THIEF"),
     "ELF": ("FIGHTER", "MAGIC-USER", "THIEF", "FIGHTER/MAGIC-USER",
@@ -226,9 +226,7 @@ def load_specs(path: pathlib.Path) -> list[Spec]:
 def check_specs(specs: list[Spec]) -> None:
     """Refuse, before any key is pressed, a party the driver cannot build.
 
-    A class label that an earlier row of the race's list contains would be
-    walked to that earlier row, so the run would create the wrong character.  A
-    class the race is never offered, or an alignment the class is never offered,
+    A class the race is never offered, or an alignment the class is never offered,
     stops the run here rather than after the characters before it are made.  A
     roll that trims an otherwise valid class list is only seen on the screen.
     """
@@ -253,10 +251,6 @@ def check_specs(specs: list[Spec]) -> None:
             raise LabelProblem(f"{spec.name}: {spec.cls} is never offered "
                                f"{spec.alignment}; its alignment list is "
                                f"{list(offered)}")
-        earlier = next(e for e in shown if spec.cls in e)
-        if earlier != spec.cls:
-            raise LabelProblem(f"{spec.name}: {spec.cls} would select {earlier}, "
-                               f"which comes first in a {spec.race}'s class list")
 
 
 # -- reading a screen ---------------------------------------------------------
@@ -318,6 +312,10 @@ LISTS = {PICK_RACE: ("PICK RACE", RACE_COLUMN),
          PICK_CLASS: ("PICK CLASS", CLASS_COLUMN),
          PICK_ALIGN: ("PICK ALIGNMENT", ALIGN_COLUMN),
          ADD_LIST: ("ADD CHARACTER TO PARTY", ADD_STAR_COLUMN)}
+
+#: The lists whose rows hold a label and nothing else.  The ADD list's rows
+#: carry a star, so it is matched by containment.
+EXACT_LISTS = (PICK_RACE, PICK_GENDER, PICK_CLASS, PICK_ALIGN)
 
 
 def entries(s, kind: str) -> list[str] | None:
@@ -467,10 +465,10 @@ class Driver:
                tag: str | None = None):
         """Select LABEL in the list on screen S, then wait for a THEN screen.
 
-        The label must be on screen and, in a list with known rows, its own row
-        must be the first that contains it: `Session.select_row` goes to the
-        first row containing the text, so `MAGIC-USER/THIEF` would land on
-        `FIGHTER/MAGIC-USER/THIEF` above it.
+        The label must be on screen.  A creation list's rows are bare labels,
+        so they are matched whole (`MAGIC-USER/THIEF` is not the tail of
+        `FIGHTER/MAGIC-USER/THIEF`); any other screen takes the first row
+        containing the text.
         """
         self.check(f"selecting {label}")
         shown = entries(s, kind)
@@ -478,11 +476,6 @@ class Driver:
             if label not in shown:
                 raise self.lost(f"{label} is not in the {kind} list {shown}",
                                 "label", LabelProblem)
-            earlier = next(e for e in shown if label in e)
-            if earlier != label:
-                raise self.lost(f"{label} would select {earlier}, which comes "
-                                f"first in the {kind} list {shown}",
-                                "ambiguous", LabelProblem)
         elif not s.contains(label):
             raise self.lost(f"{label} is not on the {kind} screen",
                             "label", LabelProblem)
@@ -490,7 +483,8 @@ class Driver:
 
         def act() -> bool:
             return self.sess.select_row(
-                label, timeout=self.left(self.select_timeout), column=column)
+                label, timeout=self.left(self.select_timeout), column=column,
+                exact=kind in EXACT_LISTS)
 
         before = digest(s)
         if not act():
