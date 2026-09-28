@@ -284,30 +284,41 @@ class _TempleSession:
         self.pending_area = False
         self.out = out
         self.kbd = self
+        # The live run crossing the area edge showed the memory triple
+        # ahead of the redrawn screen for one poll; `crossing_lag` makes
+        # one screen() call after the crossing key still render the
+        # pre-crossing place and move bar, as that run did.
+        self._pre_crossing_place = None
+        self.crossing_lag = 0
 
     def mon(self, _timeout):
         return _TempleMonitor(self)
 
     def screen(self):
+        if self.crossing_lag:
+            place, phase = self._pre_crossing_place, "move"
+            self.crossing_lag -= 1
+        else:
+            place, phase = self.place, self.phase
         rows = [""] * 25
-        rows[14] = (f"{'NESW'[self.place[3]]} 00:00 "
-                    f"{self.place[1]},{self.place[2]}")
-        if self.phase == "move":
+        rows[14] = (f"{'NESW'[place[3]]} 00:00 "
+                    f"{place[1]},{place[2]}")
+        if phase == "move":
             rows[24] = "I,J,K,M, RETURN OR BUTTON"
-        elif self.phase in ("side3", "side4"):
-            rows[20] = ("INSERT SIDE # 3" if self.phase == "side3"
+        elif phase in ("side3", "side4"):
+            rows[20] = ("INSERT SIDE # 3" if phase == "side3"
                         else "INSERT SIDE # 4")
             rows[24] = "AND PRESS ANY KEY."
-        elif self.phase == "continue":
+        elif phase == "continue":
             rows[24] = "PRESS BUTTON OR RETURN TO CONTINUE."
-        elif self.phase == "yes-no":
+        elif phase == "yes-no":
             rows[24] = "YES NO"
-        elif self.phase == "unknown":
+        elif phase == "unknown":
             rows[24] = "TRAIN CHARACTER"
-        elif self.phase == "unknown-disk":
+        elif phase == "unknown-disk":
             rows[20] = "INSERT DISK B"
             rows[24] = "I,J,K,M, RETURN OR BUTTON"
-        elif self.phase in ("temple", "service"):
+        elif phase in ("temple", "service"):
             rows[0] = "WELCOME TO THE TEMPLE,"
             if self.unsafe == "stale-raise":
                 rows[15] = "RAISE DEAD 5500"
@@ -318,15 +329,15 @@ class _TempleSession:
                 rows[4 + offset] = " " * A.S.PARTY_COLUMN + name
             rows[24] = ("EXIT HEAL" if self.unsafe != "wrong-menu"
                         else "EXIT GIVE")
-            if self.phase == "service":
+            if phase == "service":
                 rows[15] = "RAISE DEAD 5500"
                 rows[24] = "EXIT"
         else:
-            raise AssertionError(self.phase)
-        if self.phase == "temple":
+            raise AssertionError(phase)
+        if phase == "temple":
             return _TempleScreen(rows, (0 if self.bar_index == 0 else 5,
                                         4), 4 + self.party_index)
-        if self.phase == "service":
+        if phase == "service":
             return _TempleScreen(rows, (0, 4), 4 + self.party_index)
         return _TempleScreen(rows)
 
@@ -338,21 +349,29 @@ class _TempleSession:
         self.moves.append(move)
         if self.unsafe == "deadline":
             raise AssertionError("key after input deadline")
-        expected = "MIIJI"[len(self.moves) - 1]
+        expected = "KKIIJI"[len(self.moves) - 1]
         assert move == expected
-        if len(self.moves) == 1:
+        n = len(self.moves)
+        if n == 1:
             self.place = (9 if self.unsafe == "wrong-area" else 0x14,
-                          15, 4, 2 if self.unsafe == "wrong-facing" else 1)
+                          15, 4, 2 if self.unsafe == "wrong-facing" else 0)
             self.pending_area = self.unsafe == "pending-area"
             self.phase = ("yes-no" if self.unsafe == "yes-no" else
                           "unknown" if self.unsafe == "unknown-event" else "move")
             if self.unsafe == "unknown-disk":
                 self.phase = "unknown-disk"
-        elif len(self.moves) == 2:
+        elif n == 2:
+            self.place = (0x14, 15, 4, 1)
+        elif n == 3:
+            # The crossing key: the live run showed the position triple
+            # change at the key, one poll before the screen redraws.
+            self._pre_crossing_place = self.place
+            self.place = (0, 0, 4, 1)
+            self.crossing_lag = 1
             self.phase = "side4" if self.unsafe == "other-side" else "side3"
-        elif len(self.moves) == 3:
+        elif n == 4:
             self.place = (0, 1, 4, 1)
-        elif len(self.moves) == 4:
+        elif n == 5:
             self.place = (0, 1, 4, 0)
         else:
             self.place = (0, 1, 3, 0)
@@ -370,7 +389,8 @@ class _TempleSession:
     def press_kernal(self, code):
         self.keys.append("continue")
         assert code == 0x0D and self.phase == "continue"
-        self.place = (0, 0, 4, 1)
+        # The crossing key already moved the party; the continuation
+        # only clears the prompt.
         self.phase = "move"
 
     def party_rows(self, screen):
@@ -444,31 +464,31 @@ def test_temple_probe_reaches_service_list_and_sends_no_purchase_or_save(
     assert result["resident"]["name"] == "BRUTUS"
     assert result["side3_prompts"] == 1
     assert result["continuations"] == 1
-    assert session.moves == list("MIIJI")
+    assert session.moves == list("KKIIJI")
     assert run.temple_checkpoints[-1]["state"]["save_copy"] == [15, 4, 3]
     assert run.temple_checkpoints[-1]["state"]["x"] == 1
     assert session.keys == ["side3", "continue", *("Down" for _ in range(5)),
                             "Right", "HEAL"]
     assert session.phase == "service"
     assert [x["tag"] for x in run.temple_checkpoints] == [
-        "loaded-source", "move-1-settled", "boundary-side3-before-answer",
-        "continuation-before-answer", "move-2-settled", "move-3-settled",
-        "move-4-settled", "temple-arrival", "brutus-highlight",
-        "heal-services"]
+        "loaded-source", "move-1-settled", "move-2-settled",
+        "boundary-side3-before-answer", "continuation-before-answer",
+        "move-3-settled", "move-4-settled", "move-5-settled",
+        "temple-arrival", "brutus-highlight", "heal-services"]
     assert all((tmp_path / (x["stem"] + ext)).is_file()
                for x in run.temple_checkpoints for ext in (".txt", ".png", ".json"))
     assert any(args[0] == "temple-checkpoint" for args, _ in events)
 
 
 @pytest.mark.parametrize("unsafe,maximum_moves", [
-    ("yes-no", 1), ("other-side", 2), ("duplicate-side", 2),
-    ("missing-brutus", 5), ("wrong-facing", 1),
-    ("wrong-resident", 5), ("wrong-menu", 5),
+    ("yes-no", 1), ("other-side", 3), ("duplicate-side", 3),
+    ("missing-brutus", 6), ("wrong-facing", 1),
+    ("wrong-resident", 6), ("wrong-menu", 6),
     ("deadline", 0), ("late-after-first", 1),
     ("short-monitor", 0), ("bad-identity", 0),
     ("wrong-area", 1), ("pending-area", 1), ("unknown-event", 1),
     ("unknown-disk", 1), ("encounter", 1),
-    ("stale-raise", 5),
+    ("stale-raise", 6),
 ])
 def test_temple_probe_stops_at_unsafe_screen_or_state_before_more_input(
         tmp_path, monkeypatch, unsafe, maximum_moves):
@@ -481,6 +501,34 @@ def test_temple_probe_stops_at_unsafe_screen_or_state_before_more_input(
     assert session.keys.count("side3") <= 1
     if unsafe != "wrong-resident":
         assert session.phase != "service"
+
+
+def test_temple_probe_pins_the_lost_stop_the_live_m_route_hit(
+        tmp_path, monkeypatch):
+    """Pins the exact stop `temple-route-a` hit at `42b8d40a12`: the old
+    route's first key, `M`, was meant to turn the party in place, but in
+    Pool of Radiance `M` steps one square backward, crossing the area edge
+    immediately. The driver's own guard stopped rather than guessing."""
+    old_route = (
+        ("M", (0x14, 15, 4, 3), (0x14, 15, 4, 1)),
+        ("I", (0x14, 15, 4, 1), (0, 0, 4, 1)),
+        ("I", (0, 0, 4, 1), (0, 1, 4, 1)),
+        ("J", (0, 1, 4, 1), (0, 1, 4, 0)),
+        ("I", (0, 1, 4, 0), (0, 1, 3, 0)),
+    )
+    monkeypatch.setattr(A, "TEMPLE_ROUTE", old_route)
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+
+    def move_key(move):
+        session.moves.append(move)
+        assert move == "M"
+        session.place = (0, 0, 4, 1)  # what `M` actually did, live
+
+    session.move_key = move_key
+    with pytest.raises(A.StepFailed) as info:
+        run.temple_probe("BRUTUS")
+    assert ("movement 1 reached (0, 0, 4, 1), expected (20, 15, 4, 1)"
+            in str(info.value))
 
 
 @pytest.mark.parametrize("prompt", ["INSERT SIDE # 3", "YES NO",
@@ -501,7 +549,7 @@ def test_temple_move_rechecks_prompt_with_retained_move_bar_before_key(
 
     session.screen = next_screen
     with pytest.raises(A.StepFailed):
-        run._temple_move("M", (0x14, 15, 4, 3))
+        run._temple_move("K", (0x14, 15, 4, 3))
     assert session.moves == []
 
 

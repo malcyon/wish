@@ -143,12 +143,22 @@ POOL_SPECIMEN_ISSUE = (
 TEMPLE_SOURCE_SHA256 = (
     "7834be122f8a30c03f029d96b8ba39d0961545b998837e089e965e06a20edbe9")
 TEMPLE_ROUTE = (
-    ("M", (0x14, 15, 4, 3), (0x14, 15, 4, 1)),
+    ("K", (0x14, 15, 4, 3), (0x14, 15, 4, 0)),
+    ("K", (0x14, 15, 4, 0), (0x14, 15, 4, 1)),
     ("I", (0x14, 15, 4, 1), (0, 0, 4, 1)),
     ("I", (0, 0, 4, 1), (0, 1, 4, 1)),
     ("J", (0, 1, 4, 1), (0, 1, 4, 0)),
     ("I", (0, 1, 4, 0), (0, 1, 3, 0)),
 )
+
+#: The route entry whose expected area differs from its before area (the
+#: only move allowed a side-3 disk prompt), and the route's last entry
+#: (temple arrival), computed from `TEMPLE_ROUTE` so a route-length change
+#: cannot silently strand these guards on a stale index.
+TEMPLE_CROSSING_INDEX = next(
+    i for i, (_, before, expected) in enumerate(TEMPLE_ROUTE)
+    if before[0] != expected[0])
+TEMPLE_LAST_INDEX = len(TEMPLE_ROUTE) - 1
 
 #: The camp's own bar, `ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT` (Pool
 #: `CAMP $0899`), and the MAGIC bar, `CAST MEMORIZE SCRIBE DISPLAY REST EXIT`
@@ -1271,7 +1281,7 @@ class PoolRun:
                 if disk_visible:
                     time.sleep(0.3)
                     continue
-                if not (n == 1 and not counters["disk"]
+                if not (n == TEMPLE_CROSSING_INDEX and not counters["disk"]
                         and self._temple_side3(screen)):
                     self._temple_stop("disk", "unexpected or repeated disk prompt",
                                       screen)
@@ -1308,11 +1318,11 @@ class PoolRun:
                 if state["area_pending"] or state["mode"] != S.DUNGEON:
                     time.sleep(0.3)
                     continue
-                if n == 4 and self._temple_is_greeting(screen):
+                if n == TEMPLE_LAST_INDEX and self._temple_is_greeting(screen):
                     if S.word_column(screen.row(24), "HEAL") < 0:
                         self._temple_stop("menu", "HEAL absent from temple bar",
                                           screen)
-                elif n == 4:
+                elif n == TEMPLE_LAST_INDEX:
                     if not (self._temple_is_world(screen)
                             or self._temple_is_move(screen)):
                         self._temple_stop("event", "unexpected temple arrival",
@@ -1330,7 +1340,7 @@ class PoolRun:
                     continue
                 current = (place, screen.text())
                 if settled == current:
-                    tag = ("temple-arrival" if n == 4
+                    tag = ("temple-arrival" if n == TEMPLE_LAST_INDEX
                            else f"move-{n + 1}-settled")
                     return self.temple_checkpoint(tag, screen)
                 settled = current
@@ -1491,7 +1501,7 @@ class PoolRun:
                 if resident["slot"] != 5 or resident["name"] != "BRUTUS":
                     self._temple_stop("resident", f"HEAL resident is {resident}",
                                       screen)
-                return {"route": "MIIJI", "movement_keys": 5,
+                return {"route": "KKIIJI", "movement_keys": 6,
                         "side3_prompts": counters["disk"],
                         "continuations": counters["continuations"],
                         "resident": resident, "service": checkpoint["stem"],
