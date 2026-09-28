@@ -33,7 +33,7 @@ bytes with what it replaced.
 | `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint` |
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
-| `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/effectdrive.py`'s rest) |
+| `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest) |
 | `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (Pool's status line holds the clock; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk |
 | `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
@@ -116,10 +116,9 @@ from goldbox.items import (  # noqa: E402
 from goldbox.record import RECORD_SIZE, CharacterRecord  # noqa: E402
 from goldbox.savegame import ROSTER_COMBAT_SIDE, ROSTER_HP_CURRENT  # noqa: E402
 from tools.c64 import (  # noqa: E402
-    effectdrive,
     inventorycheck,
+    route_pool,
     runlog,  # noqa: E402
-    traitask,
     traitdrive,
 )
 from tools.c64 import session as S  # noqa: E402
@@ -342,7 +341,7 @@ TURNS = {"I": 0, "J": -1, "K": 1, "M": None}
 
 def parse_rest(arg: str) -> tuple[int, int]:
     """`8h`, `30m`, `1h30m` as `(minutes, hours)`, the two bytes of `CAMP`'s
-    rest-time field that `effectdrive.rest` writes."""
+    rest-time field that `route_pool.rest` writes."""
     m = re.fullmatch(r"(?:(\d+)h)?(?:(\d+)m)?", arg.strip())
     if not arg.strip() or m is None:
         raise ValueError(f"rest {arg!r}: say 5m, 8h or 1h30m")
@@ -1088,10 +1087,10 @@ class PoolRun:
             head = bytes(m.read(base, effects.EFFECT_MAGNITUDE_OFFSET
                                 + effects.EFFECT_SLOTS))
             clock = list(m.read(base + self.box.clock, 6))
-            counts = {k: effectdrive.checkpoint_hits(m, v)
+            counts = {k: route_pool.checkpoint_hits(m, v)
                       for k, v in self.armed.items()}
             if self.game.key == "pool-of-radiance":
-                records = [bytes(traitask.live_record(m, slot))
+                records = [bytes(route_pool.live_record(m, slot))
                            for slot in range(PARTY_SLOTS)]
                 roster = bytes(m.read(self.box.roster_base,
                                       self.box.roster_stride * PARTY_SLOTS))
@@ -1918,9 +1917,9 @@ class PoolRun:
         # `wait_rows` calls `handle_prompt`, which answers a sheet's own
         # portrait disk prompt with the side it names -- the side already in
         # the drive when the character's art is not on it, so the load fails
-        # and the prompt loops forever (#694). `traitask.wait_sheet_bar`
+        # and the prompt loops forever (#694). `route_pool.wait_sheet_bar`
         # answers that one prompt with `PORTRAIT_SIDE` instead.
-        if not traitask.wait_sheet_bar(
+        if not route_pool.wait_sheet_bar(
                 self.sess, self.budget(90, "a character sheet")):
             raise self.fail("view", "no character sheet came up")
         self.sess.settle(0.8)
@@ -1950,20 +1949,20 @@ class PoolRun:
         Reaches the item list through camp, not the world's `VIEW`: a
         magical item's READY toggle (`LIBRARY $4630`) is refused with `NOT
         HERE` unless `$6DE4` is set, which only camp sets (#694).
-        `tools/c64/traitask.py`'s `SLOT_BASE`, `SLOT_STRIDE` and `EFFECTS`
+        `tools/c64/route_pool.py`'s `SLOT_BASE`, `SLOT_STRIDE` and `EFFECTS`
         are Pool's own layout, the same one `traitask.stage_items` and
-        `traitask.toggle_item` already drive; `main` refuses this step for
+        `route_pool.toggle_item` already drive; `main` refuses this step for
         Curse and Silver Blades.
         """
         who, label = parse_ready(arg)
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
-        if not traitask.open_items(self.sess, self.log, who, label, "ready"):
+        if not route_pool.open_items(self.sess, self.log, who, label, "ready"):
             raise self.fail("items", "ITEMS never put up the item list")
         with self.sess.mon(8) as m:
-            before_records = [bytes(traitask.live_record(m, slot))
+            before_records = [bytes(route_pool.live_record(m, slot))
                               for slot in range(PARTY_SLOTS)]
-            before_effects = bytes(traitask.live_effects(m))
+            before_effects = bytes(route_pool.live_effects(m))
             before_items = [bytes(m.read(ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE,
                                          ITEM_BLOCK_STRIDE))
                             for slot in range(PARTY_SLOTS)]
@@ -1971,34 +1970,34 @@ class PoolRun:
         if self.capture_ready:
             self.ready_captures = []
             self.ready_sample_errors = []
-            screen_changed = traitask.toggle_item(
+            screen_changed = route_pool.toggle_item(
                 self.sess, self.log, label, "ready", sample=self.sample_ready)
         else:
-            screen_changed = traitask.toggle_item(self.sess, self.log, label, "ready")
+            screen_changed = route_pool.toggle_item(self.sess, self.log, label, "ready")
         self.sess.settle(1)
         with self.sess.mon(8) as m:
-            after_records = [bytes(traitask.live_record(m, slot))
+            after_records = [bytes(route_pool.live_record(m, slot))
                              for slot in range(PARTY_SLOTS)]
-            after_effects = bytes(traitask.live_effects(m))
+            after_effects = bytes(route_pool.live_effects(m))
             after_items = [bytes(m.read(ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE,
                                         ITEM_BLOCK_STRIDE))
                            for slot in range(PARTY_SLOTS)]
             m.resume()
         record_diff = {
-            slot: traitask.diff_bytes(
+            slot: route_pool.diff_bytes(
                 before_records[slot], after_records[slot],
-                traitask.SLOT_BASE + slot * traitask.SLOT_STRIDE)
+                route_pool.SLOT_BASE + slot * route_pool.SLOT_STRIDE)
             for slot in range(PARTY_SLOTS)}
-        effects_diff = traitask.diff_bytes(before_effects, after_effects,
-                                           traitask.EFFECTS[0])
+        effects_diff = route_pool.diff_bytes(before_effects, after_effects,
+                                             route_pool.EFFECTS[0])
         item_diff = {
-            slot: traitask.diff_bytes(
+            slot: route_pool.diff_bytes(
                 before_items[slot], after_items[slot],
                 ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE)
             for slot in range(PARTY_SLOTS)}
         memory_changed = (any(record_diff.values()) or bool(effects_diff)
                           or any(item_diff.values()))
-        traitask.leave_items(self.sess, self.log)
+        route_pool.leave_items(self.sess, self.log)
         self.to_world()
         result = {"who": who, "label": label,
                   "screen_changed": screen_changed, "flipped": screen_changed,
@@ -2014,7 +2013,7 @@ class PoolRun:
         minutes, hours = parse_rest(arg)
         if not self.to_camp():
             raise self.fail("camp", "ENCAMP never put up the camp bar")
-        got = effectdrive.rest(self.sess, self.log, minutes, hours, self.armed)
+        got = route_pool.rest(self.sess, self.log, minutes, hours, self.armed)
         self.capture(f"rested-{arg}")
         if "failed" in got:
             raise self.fail("rest", got["failed"])

@@ -35,9 +35,7 @@ import argparse
 import contextlib
 import os
 import pathlib
-import struct
 import sys
-import time
 
 TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
@@ -48,22 +46,23 @@ from goldbox import effects  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools.c64 import runlog  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.c64.route_pool import (  # noqa: E402
+    REC_CHA,
+    REC_STR,
+    REC_STR_PCT,
+    SAVE0_LOAD,
+    SLOT_BASE,
+    SLOT_STRIDE,
+    checkpoint_hits,
+    live_records,
+    rest,
+    sample,
+)
 from tools.registry import scratch  # noqa: E402
 
 DISKS: pathlib.Path | None = tool_disks()
 
-#: `SAVEDGAME0` loads at `$4900`; the twelve character slots start at `$4D00`.
-SAVE0_LOAD = 0x4900
-SLOT_BASE = 0x4D00
-SLOT_STRIDE = 0x100
-CLOCK = 0x49C6
 
-#: The page an overlay copies the working character into, and the two record
-#: bytes the strength handler writes: `0x014` STR and `0x01A` STR %.
-STAGING_PAGE = 0x6B00
-REC_STR = 0x014
-REC_STR_PCT = 0x01A
-REC_CHA = 0x019
 
 #: What the run watches, address by address.  A DUNGEON address and a CAMP
 #: address are both in the `$0800` overlay window and mean different code, so
@@ -73,9 +72,6 @@ WALK_POINTS = {"age": 0x0E0D, "store": 0x0E46, "floor": 0x0E39,
 CAMP_POINTS = {"expire": 0x131F, "dispatch": 0x12F8, "restore": 0xAD0B,
                "sweep": 0x1299}
 
-#: `CAMP`'s rest-time field: minutes, hours, days, counted down five minutes
-#: at a time -- `tools/c64/c64restinterrupt.py`.
-REST_TIME = 0x2898
 
 #: `ECL65` at `$9900`: the id list the expiry dispatch searches, and the two
 #: halves of its handler address table.
@@ -157,13 +153,6 @@ def abilities(path: pathlib.Path) -> dict[int, list[int]]:
     return out
 
 
-def checkpoint_hits(mon, number: int) -> int:
-    """How many times a checkpoint has been hit, machine still running.
-
-    VICE's `CHECKPOINT_RESPONSE` puts the hit count at byte 13.
-    """
-    body = mon.command(0x11, struct.pack("<I", number))
-    return struct.unpack("<I", body[13:17])[0]
 
 
 class Log(runlog.Log):
@@ -176,77 +165,10 @@ class Log(runlog.Log):
             super().say(*a)
 
 
-def sample(m) -> dict:
-    """The four arrays and the clock, read in one pass."""
-    head = m.read(SAVE0_LOAD, 0x300)
-    mag = m.read(SAVE0_LOAD + effects.EFFECT_MAGNITUDE_OFFSET, 0x40)
-    rec = m.read(STAGING_PAGE, 0x40)
-    return {
-        "id": list(head[0x00:0x40]),
-        "owner": list(head[0x40:0x80]),
-        "duration": list(head[0x80:0xC0]),
-        "magnitude": list(mag[0x00:0x40]),
-        "clock": list(head[CLOCK - SAVE0_LOAD:CLOCK - SAVE0_LOAD + 6]),
-        "staging_str": [rec[REC_STR], rec[REC_STR_PCT], rec[REC_CHA]],
-    }
 
 
-def live_records(m) -> dict[int, list[int]]:
-    block = m.read(SLOT_BASE, SLOT_STRIDE * 8)
-    out = {}
-    for slot in range(8):
-        rec = block[slot * SLOT_STRIDE:(slot + 1) * SLOT_STRIDE]
-        if any(rec):
-            out[slot] = [rec[REC_STR], rec[REC_STR_PCT], rec[REC_CHA]]
-    return out
 
 
-def rest(sess, log, minutes: int, hours: int, cp: dict) -> dict:
-    """`REST` for *minutes* minutes and *hours* hours, sampled either side.
-
-    The rest length is written into `CAMP`'s own rest-time field rather than
-    driven with `INCREASE`, the way `tools/c64/c64restinterrupt.py` does it:
-    the default is whatever the party has left to memorise, and `INCREASE`'s
-    step grows while the key is held.  The engine then counts the field down
-    five minutes at a time, and each five-minute pass is one call of the
-    expiry sweep.
-    """
-    if not sess.select_bar("REST"):
-        log.say("  REST was not on the camp bar")
-        return {"failed": "no REST on the camp bar"}
-    if sess.wait_text("INCREASE", timeout=30)[0] is None:
-        log.say("  the rest-time bar never appeared")
-        return {"failed": "no rest-time bar"}
-    with sess.mon(10) as m:
-        before = sample(m)
-        m.write(REST_TIME, bytes((minutes, hours, 0)))
-        staged = tuple(m.read(REST_TIME, 3))
-        m.resume()
-    if staged != (minutes, hours, 0):
-        return {"failed": f"rest time read back {staged}"}
-    if not sess.select_bar("REST"):
-        return {"failed": "no REST on the rest-time bar"}
-    # The rest is over when the clock stops moving.  No key is sent while it
-    # runs: `CAMP $1E44` reads the keyboard every pass and SPACE ends it.
-    deadline, still, last = time.time() + 300, 0, None
-    while time.time() < deadline and still < 10:
-        time.sleep(1.0)
-        with sess.mon(10) as m:
-            now = bytes(m.read(CLOCK, 6))
-            m.resume()
-        still = still + 1 if now == last else 0
-        last = now
-    with sess.mon(10) as m:
-        after = sample(m)
-        counts = {k: checkpoint_hits(m, v) for k, v in cp.items()}
-        records = live_records(m)
-        m.resume()
-    log.say(f"  rest {minutes}m {hours}h: clock {before['clock']} -> "
-            f"{after['clock']}")
-    log.say(f"    durations {before['duration'][:6]} -> "
-            f"{after['duration'][:6]}")
-    log.say(f"    ids {after['id'][:6]}  counts {counts}")
-    return {"before": before, "after": after, "records": records, **counts}
 
 
 def main(argv=None) -> int:

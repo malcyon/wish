@@ -21,6 +21,7 @@ import json
 import os
 import pathlib
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import gamedata
@@ -2727,18 +2728,18 @@ def test_ready_step_reaches_the_list_through_camp_toggles_once_and_reads_around_
     moves = {}
     sess = FakeSession(screens, moves, "world")
 
-    slot_before = bytes(A.traitask.SLOT_STRIDE)
-    slot_after = bytes([0x26]) + bytes(A.traitask.SLOT_STRIDE - 1)
-    fx_before = bytes(A.traitask.EFFECTS[1])
-    fx_after = bytes([0x26]) + bytes(A.traitask.EFFECTS[1] - 1)
+    slot_before = bytes(A.route_pool.SLOT_STRIDE)
+    slot_after = bytes([0x26]) + bytes(A.route_pool.SLOT_STRIDE - 1)
+    fx_before = bytes(A.route_pool.EFFECTS[1])
+    fx_after = bytes([0x26]) + bytes(A.route_pool.EFFECTS[1] - 1)
     item_block = bytes(ITEM_BLOCK_STRIDE)
 
     script = {}
     for slot in range(8):
-        key = (A.traitask.SLOT_BASE + slot * A.traitask.SLOT_STRIDE,
-              A.traitask.SLOT_STRIDE)
+        key = (A.route_pool.SLOT_BASE + slot * A.route_pool.SLOT_STRIDE,
+              A.route_pool.SLOT_STRIDE)
         script[key] = [slot_before, slot_after if slot == 4 else slot_before]
-    script[A.traitask.EFFECTS] = [fx_before, fx_after]
+    script[A.route_pool.EFFECTS] = [fx_before, fx_after]
     for slot in range(8):
         key = (ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE, ITEM_BLOCK_STRIDE)
         script[key] = [item_block, item_block]
@@ -2757,9 +2758,9 @@ def test_ready_step_reaches_the_list_through_camp_toggles_once_and_reads_around_
     def fake_leave_items(s, log):
         calls.append(("leave_items",))
 
-    monkeypatch.setattr(A.traitask, "open_items", fake_open_items)
-    monkeypatch.setattr(A.traitask, "toggle_item", fake_toggle)
-    monkeypatch.setattr(A.traitask, "leave_items", fake_leave_items)
+    monkeypatch.setattr(A.route_pool, "open_items", fake_open_items)
+    monkeypatch.setattr(A.route_pool, "toggle_item", fake_toggle)
+    monkeypatch.setattr(A.route_pool, "leave_items", fake_leave_items)
     run, log = _pool_run(tmp_path, sess)
     got = run.ready("BAKSHI>GAUNTLETS OF OGRE POWER")
     log.close()
@@ -2770,12 +2771,12 @@ def test_ready_step_reaches_the_list_through_camp_toggles_once_and_reads_around_
         ("leave_items",)]
     assert (got["who"], got["label"], got["screen_changed"], got["flipped"]) == (
         "BAKSHI", "GAUNTLETS OF OGRE POWER", True, True)
-    assert got["record_diff"][4] == A.traitask.diff_bytes(
+    assert got["record_diff"][4] == A.route_pool.diff_bytes(
         slot_before, slot_after,
-        A.traitask.SLOT_BASE + 4 * A.traitask.SLOT_STRIDE)
+        A.route_pool.SLOT_BASE + 4 * A.route_pool.SLOT_STRIDE)
     assert all(got["record_diff"][s] == [] for s in range(8) if s != 4)
-    assert got["effects_diff"] == A.traitask.diff_bytes(
-        fx_before, fx_after, A.traitask.EFFECTS[0])
+    assert got["effects_diff"] == A.route_pool.diff_bytes(
+        fx_before, fx_after, A.route_pool.EFFECTS[0])
     assert set(got["item_diff"]) == set(range(8))
     assert all(diff == [] for diff in got["item_diff"].values())
     assert got["memory_changed"] is True
@@ -2788,7 +2789,7 @@ def _ready_fake_reading(tmp_path, monkeypatch, *, screen_changed: bool,
     sess = FakeSession({"world": _window({}, WORLD_BAR)}, {}, "world")
     script = {}
     for slot in range(8):
-        record_before = bytearray(A.traitask.SLOT_STRIDE)
+        record_before = bytearray(A.route_pool.SLOT_STRIDE)
         record_after = record_before.copy()
         item_before = bytearray(ITEM_BLOCK_STRIDE)
         item_after = item_before.copy()
@@ -2799,19 +2800,19 @@ def _ready_fake_reading(tmp_path, monkeypatch, *, screen_changed: bool,
             item_after[6] = 0 if item_changed else 0x80
         if slot == 7 and second_item_changed:
             item_before[0x0A] = 0x80
-        script[(A.traitask.SLOT_BASE + slot * A.traitask.SLOT_STRIDE,
-                A.traitask.SLOT_STRIDE)] = [bytes(record_before), bytes(record_after)]
+        script[(A.route_pool.SLOT_BASE + slot * A.route_pool.SLOT_STRIDE,
+                A.route_pool.SLOT_STRIDE)] = [bytes(record_before), bytes(record_after)]
         script[(ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE,
                 ITEM_BLOCK_STRIDE)] = [bytes(item_before), bytes(item_after)]
-    effect_before = bytearray(A.traitask.EFFECTS[1])
+    effect_before = bytearray(A.route_pool.EFFECTS[1])
     effect_after = effect_before.copy()
     effect_before[0x3D] = 0x26
     effect_after[0x3D] = 0 if effect_changed else 0x26
-    script[A.traitask.EFFECTS] = [bytes(effect_before), bytes(effect_after)]
+    script[A.route_pool.EFFECTS] = [bytes(effect_before), bytes(effect_after)]
     sess.mon = lambda timeout: _ReadyMonitor(script)
-    monkeypatch.setattr(A.traitask, "open_items", lambda *a: True)
-    monkeypatch.setattr(A.traitask, "toggle_item", lambda *a: screen_changed)
-    monkeypatch.setattr(A.traitask, "leave_items", lambda *a: None)
+    monkeypatch.setattr(A.route_pool, "open_items", lambda *a: True)
+    monkeypatch.setattr(A.route_pool, "toggle_item", lambda *a: screen_changed)
+    monkeypatch.setattr(A.route_pool, "leave_items", lambda *a: None)
     run, log = _pool_run(tmp_path, sess)
     try:
         return run.ready("BAKSHI>GAUNTLETS OF OGRE POWER")
@@ -5868,3 +5869,39 @@ def test_a_lost_fight_before_save_loses_the_run_at_the_fight(tmp_path, monkeypat
     assert rc != 0 and not Fighter.saved
     assert "lost the fight after 7 turns" in summary["lost"]
     assert [r["verb"] for r in summary["results"]] == ["load"]
+
+
+BANNED_EXPERIMENT_IMPORTS = {"traitask", "effectdrive"}
+
+
+def test_acceptance_imports_no_experiment_module_that_route_pool_replaced():
+    """The Pool camp, sheet, item and rest actions live in `route_pool`, so
+    acceptance takes them from there and not from the experiments."""
+    import ast
+
+    tree = ast.parse(pathlib.Path(A.__file__).read_text())
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            parts = node.module.split(".")
+            if parts[:2] == ["tools", "c64"] and len(parts) > 2:
+                found.add(parts[2])
+            elif node.module == "tools.c64":
+                found.update(a.name for a in node.names)
+        elif isinstance(node, ast.Import):
+            found.update(a.name.split(".")[-1] for a in node.names)
+    assert found.isdisjoint(BANNED_EXPERIMENT_IMPORTS), \
+        found & BANNED_EXPERIMENT_IMPORTS
+
+
+def test_route_pool_imports_no_experiment_module():
+    """Importing `route_pool` must not pull in the experiments it was moved
+    out of."""
+    code = ("import sys; import tools.c64.route_pool; "
+            "bad = [m for m in ('tools.c64.traitask', 'tools.c64.traitdrive',"
+            " 'tools.c64.effectdrive') if m in sys.modules]; "
+            "sys.exit(1 if bad else 0)")
+    root = pathlib.Path(A.__file__).resolve().parents[2]
+    done = subprocess.run([sys.executable, "-c", code], cwd=root,
+                          capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
