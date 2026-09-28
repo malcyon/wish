@@ -9,7 +9,7 @@ and skip per title when the registry has none:
 * every title reads bit 7 as "the engine drives him" and the low seven bits
   as a morale that is doubled, clamped at 100 everywhere but Pool of Radiance;
 * no title hands a companion back to the player except Pool of Radiance's
-  berserk cure, which keeps bit 0 and nothing else.
+  Animate Dead cure, which keeps bit 0 and nothing else.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ LATER = [key for key in flags0b8.RECORD if key != POOL]
 TRAINER = "write, $01 (the trainer flag, whole byte)"
 CLAMPED = "read, morale: & $7F, doubled, clamped at 100"
 UNCLAMPED = "read, morale: & $7F, doubled, no clamp"
-BERSERK_ENDS = "write, & $01 when at or above $FE (berserk ends)"
+ANIMATE_DEAD_ENDS = "write, & $01 when at or above $FE (Animate Dead ends)"
 
 #: Writes that leave bit 7 set whatever the byte held, or that run only for a
 #: character whose bit 7 is already clear.
@@ -91,13 +91,13 @@ def test_the_later_titles_double_the_morale_and_clamp_it_at_100(key):
 
 
 def test_only_pool_of_radiance_hands_control_back_and_keeps_bit_0():
-    ends = [s for s in _sites(POOL) if s.kind == BERSERK_ENDS]
+    ends = [s for s in _sites(POOL) if s.kind == ANIMATE_DEAD_ENDS]
     assert [(s.file, s.mnemonic) for s in ends] == [("SQRPACI64", "STA")]
 
 
 @pytest.mark.parametrize("key", LATER)
 def test_no_later_title_clears_bit_7(key):
-    assert BERSERK_ENDS not in _kinds(key)
+    assert ANIMATE_DEAD_ENDS not in _kinds(key)
 
 
 @pytest.mark.parametrize("key", LATER)

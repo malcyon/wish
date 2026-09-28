@@ -1088,8 +1088,10 @@ _DECLARED: Sequence[Field] = (
            "his own party reads $C0; its expiry puts bit 5 back in bit 0, "
            "and POST.COM $14FB writes 0 when it deletes the charm row. Pool's "
            "COM.PREP groups combatants by the whole value & $7F, so bit 5 or "
-           "6 set at fight start places a party member apart from the party. "
-           "The rest is masked (`& 0xC1`) rather than asserted zero (#235 "
+           "6 set at fight start places a party member apart from the party "
+           "(PROBABLE, read from code and not run). The C64 reader takes "
+           "bits 0 and 7 and logs bits 1-6 it does not convert, rather than "
+           "masking them away or asserting them zero (#235 "
            "(Two unattributed DOS byte ranges in the combat tail are "
            "dropped converting to C64, and nobody knows what they hold))"),
     _field(0x0EC, 1, _I8, "missile_attack_adjustment",

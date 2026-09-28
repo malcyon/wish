@@ -125,9 +125,9 @@ def classify(data: bytes, i: int, mnemonic: str, target: int) -> str:
                 and data[i - 5] == 0x4E):
             return "write, script argument | $80, not halved (joins with a morale)"
         if _before(data, i, bytes([0x8A, 0x09, 0xFE])):
-            return "write, $B2 for a companion, old | $FE for a player (berserk)"
+            return "write, $B2 for a companion, old | $FE for a player (Animate Dead)"
         if (_before(data, i, bytes([0xC9, 0xFE, 0x90, 0x05, 0x29, 0x01]))):
-            return "write, & $01 when at or above $FE (berserk ends)"
+            return "write, & $01 when at or above $FE (Animate Dead ends)"
         if (_before(data, i, bytes([0xAE, lo, hi, 0x30, 0x03]))
                 and i >= 19 and data[i - 19:i - 17] == bytes([0xA9, 0x00])):
             return "write, $00 for a player character only (import reset)"
@@ -143,7 +143,7 @@ def classify(data: bytes, i: int, mnemonic: str, target: int) -> str:
             return "read, morale: & $7F, doubled, no clamp"
         return "read, bit 7 test"
     if after[:2] == bytes([0xC9, 0xFE]):
-        return "read, compared with $FE (berserk ends)"
+        return "read, compared with $FE (Animate Dead ends)"
     if mnemonic == "LDA" and after[:1] == b"\x8D" and _word(after, 1) != target:
         return "read, saved to a copy"
     return "read, other"

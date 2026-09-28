@@ -683,22 +683,32 @@ together (`FEAR_IDS`).
 | Charm, 11, Pool of Radiance | spell 10 writes `(11, 0, 0, charmer's side << 7 \| count, 1)`. The handler (`0xF05B`) sets data bit 5 on its first call and keeps the target's own side in bit 6, and sets the side byte `0x10E` to the charmer's side, the quickfight byte `0x10F` to 1 and the control byte `0x084` to `0xB3` (`0xF0EF`). Remove mode (`0xF064`-`0xF08F`) puts back the side from bit 6 and writes control 0 (`0xF089`), leaving quickfight at 1 | spell 10's combat row (`SPELLE65 $D86C`) sends the cast to `SPELLE00 $A934`, which sets the magnitude to `$80 \| $06 \| (caster's 0x10C & $0F)`, `$86` from a party caster, and hands it to the generic combat writer (`COMBAT $29F7`, `ECL64 $99D1`, stores `$9A31`-`$9A46`): id 11, owner the target's combatant index (`$A4F5`), duration 0. The cast does not touch `0x10C`. The handler (`SPELLE01 $A7DA`) does, whenever it is called with bit 7 of A clear: if bit 6 is clear it moves bit 0 to bit 5 and sets bit 6, then ORs in the magnitude, masks `$61` and sets bit 7. For an ally charmed by his own party that is `$C0`, and later calls keep it. Its expiry path writes `$80 \| (bit 5 → bit 0)` |
 | Fear, Curse 142, Silver Blades 111 | spell 84 writes `(id, level minutes, 0, 1)` and sets the quickfight byte (`0x198`, `0x1A9`) to 1 and the control byte (`0xF7`, `0xFF`) to `0xB3` (Curse `0x32B51`-`0x32B89`); Confusion's 1-10 does the same with `(id, 10, 0, 1)`. Remove mode clears both (`0x12819`, `0x144A0`) | the cast writes `level \| $80` and sets record `0x10C` bits 6 and 7 and the combat flee flag (`COMBAT $21C7`, Silver Blades `$2718`); the expiry handler clears bit 6 and the flee flag (`$2911`, `$297F`) |
 
+A DOS node is five bytes: the id, the duration in two bytes, the value and
+the flag. The Curse and Silver Blades entries above write it as the 4-tuple
+`(id, duration, value, flag)`, with the duration as one number; Pool's entry
+writes the same node as the 5-tuple `(id, 0, 0, value, flag)`, with the two
+duration bytes shown, both zero.
+
 In the later titles the node and the row map one to one for both (Charm: C64
 `$80 | (data & $0F)` and bit 7 for the flag; Fear: `data | $80`). Pool's
 charm row does not: its magnitude holds the charmer's side in bit 0 and a
 constant `$06`, where DOS holds a count, so C64 Dispel Magic tries it as a
 sixth- or seventh-level effect. What Charm's row alone does not carry is the
-record: the C64 reader masks `0x10C` to bits 0 and 7 and the writer sets only
-those, so a converted charmed character would lose the side the C64 puts back
-at expiry. `goldbox/layout.py` used to call `0x10C` bits 1-6 unused by every
+record: the C64 reader takes `0x10C` bit 0 as `hostile` and bit 7 as
+`quickfight` and logs bits 1-6 as not converted, and the writer sets only
+bits 0 and 7 (and bit 6 with a Fear row), so a converted charmed character
+would lose the side the C64 puts back at expiry. `goldbox/layout.py` used to call `0x10C` bits 1-6 unused by every
 writer seen; the later titles' Charm, Fear and Confusion writers above set
 bits 1, 2 and 6, and `COM.PREP`, `POST.COM $31A2` and `ECL64 $3DD6` read them
-as part of the side. Pool's charm handler uses bits 5 and 6 instead. Converting
+as part of the side. Pool's charm handler uses bits 5 and 6 instead;
+whether another Pool handler (Confusion's effect 107) also sets them is not
+known (SPECULATIVE, it needs a disassembly read). Converting
 Charm needs the record's side, quickfight and control bytes mapped together
 with the row, in both codecs.
 
 **C64 Pool of Radiance's charm, CONFIRMED from code except where graded.**
-Static reads; nothing was booted.
+Static reads; nothing was booted. `tools/c64/overlay.py` and
+`tools/dos/dosaffectreads.py` reproduce its addresses.
 
 * **Two writers, one row writer.** Spell 10 above, and the monster ability
   id 84, whose handler `SPELLE02 $A77F` writes the same row through the same
@@ -727,7 +737,12 @@ Static reads; nothing was booted.
   row not on a twenty-id exception list removed that way (`COMBAT $0DC7` →
   `$29C4`; 11 is not on the list; PROBABLE that every way of going down or
   fleeing reaches `$0DC7`). The monster's row, bit 7 clear, is removed
-  without the expiry path, so its target keeps `$C1`. The camp removal
+  without the expiry path, so its target keeps `$C1` (PROBABLE, because it
+  rests on the monster's row being written with bit 7 clear, itself PROBABLE
+  for this call). A party member charmed by that monster and then knocked out
+  would be taken for a slain enemy after a win, because `0x10C & $7F` is not
+  0 (`POST.COM $09AB`; another read of the same removal cites `$09EB`, and
+  which address is right is not settled). The camp removal
   `CAMP $131F`, which C64 Dispel Magic uses out of combat (`SPELLE04 $AA7A`),
   dispatches only the ids at `ECL65 $9AD5`; 11 is not one of them, so a camp
   dispel deletes the row and leaves `0x10C` as it was. `POST.COM $14FB`
@@ -820,9 +835,15 @@ player character must write as a player character (`0x0B8` = 0, whether or not
 its Fear row also converts) rather than as a companion the control byte would
 otherwise make it. `c64_codec.write` does this for Curse and Silver Blades
 through `DOS_PC_TAKEN_OVER`; Pool of Radiance's own control byte is a
-different value and belongs to #720 (A Pool of Radiance player character the
-engine has taken over converts between DOS and the C64 as a companion, because
-both readers take the control byte's bit 7 for a companion). Bit 6 of `0x10C`
+different value. #720 (A Pool of Radiance player character the engine has taken
+over converts between DOS and the C64 as a companion, because both readers take
+the control byte's bit 7 for a companion) has no build of its own: its work sits
+in #667 (A DOS party under Prayer, the strength and charisma spells, Mirror
+Image or an effect with no C64 spell row is still refused when saved as a C64
+save, because only the ordinary caster-level spells convert) Step C for Charm
+and in #700 (Converting a Pool of Radiance C64 party holding a camp-cast
+Animate Dead zombie needs more than fixing the refusal that blocks it) for
+Animate Dead. Bit 6 of `0x10C`
 goes with the row: written
 when a Fear row is written, and read back as `npc` true with control `0xB3`
 when a player character's row converted. Bits 1-5, and bit 6 with no Fear row,
@@ -1008,10 +1029,11 @@ data 0), Stinking Cloud (30, 31), Curse's 136 and Silver Blades' Power Word
 Stun (106) convert both ways by the rules in "Combat-cast ids and their
 rules". Fear (Curse 142, Silver Blades 111) converts both ways, its row and
 its record byte together (`effects.FEAR_IDS`, `c64_codec.DOS_PC_TAKEN_OVER`).
-Charm (11) still waits on the record bytes it shares with the row, and only
-DOS Pool's duration-0 node reaches a save (the Charm and Fear section), Silver
-Blades' 65 is never a running node, and Slow Poison (22) waits on a save the
-DOS game writes with it running.
+Charm (11) still waits on the record bytes it shares with the row. Only DOS
+Pool's duration-0 node reaches a save (PROBABLE: nobody has read whether spell
+10's target picker offers an ally; the Charm and Fear section). Silver Blades'
+65 is never a running node. Slow Poison (22) waits on a save the DOS game
+writes with it running.
 
 Reproduce the static readings with `.venv/bin/python
 tools/c64/effectcrosswalk.py`; a later title's run prints its caster-level ids.
