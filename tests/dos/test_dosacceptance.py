@@ -12,6 +12,7 @@ disks.
 
 from __future__ import annotations
 
+import json
 import pathlib
 import signal as _signal
 import threading
@@ -1788,6 +1789,81 @@ def test_a_later_title_party_converts_with_its_bless_and_reads_back(
     slot = built["read"]["A"]
     assert da.judge(da.Expect(name, 1, 47, 5), slot)["verdict"] == "accepts"
     assert slot["place"]["set_out"] is True
+
+
+# -- --convert: any C64 or Amiga save, through Save As DOS -------------------
+
+
+def test_main_calls_build_saveas_source_with_the_convert_path_slot_and_title(
+        tmp_path, monkeypatch):
+    """`--convert PATH` calls `build_saveas_source(PATH, "A", out, title)`,
+    and a refused result stops the run with `summary["lost"]` set."""
+    calls = []
+
+    def fake(path, slot, out, title):
+        calls.append((path, slot, out, title))
+        return {"refused": "not this title"}
+
+    monkeypatch.setattr(da, "build_saveas_source", fake)
+    rc = da.main(["--title", "curse", "--convert", "X", "--out", str(tmp_path / "out"),
+                 "--issue", "1", "--run", "t"])
+    assert rc == 1
+    assert calls == [("X", "A", tmp_path / "out", "curse")]
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
+    assert summary["lost"]
+
+
+def test_convert_and_save_are_mutually_exclusive():
+    with pytest.raises(SystemExit):
+        da.main(["--title", "curse", "--convert", "X", "--save", "."])
+
+
+def test_convert_refuses_darkness():
+    with pytest.raises(SystemExit):
+        da.main(["--title", "darkness", "--convert", "X"])
+
+
+def test_build_saveas_source_refuses_a_title_mismatch(tmp_path):
+    """A Pool of Radiance disk built the way `build_source`'s fallback builds
+    one, offered to `--convert` for curse, is refused rather than converted."""
+    from goldbox import dos_codec
+    from goldbox.c64_port import POOL_OF_RADIANCE
+    from goldbox.savegame import SaveGame0, SaveGame1
+
+    fixtures = da.REPO / "tests" / "fixtures"
+    payload = SaveGame0.from_prg((fixtures / "savedgame0.bin").read_bytes()).to_bytes()
+    save1 = SaveGame1.from_prg((fixtures / "savedgame1.bin").read_bytes()).to_bytes()
+    disk = tmp_path / "pool.d64"
+    disk.write_bytes(dos_codec.save_disk(payload, save1, POOL_OF_RADIANCE).to_bytes())
+
+    out = tmp_path / "out"
+    out.mkdir()
+    built = da.build_saveas_source(disk, "A", out, "curse")
+    assert "refused" in built
+
+
+def test_build_saveas_source_converts_a_c64_curse_or_ssb_specimen(tmp_path):
+    """`--convert` on `ssb-c64`'s Amiga-to-C64 walk-resave specimen: nothing
+    dropped or lost, and the read-back holds the six characters' shares,
+    matching what #639's and #529's plans record for this disk."""
+    from editor import saveplan
+    from tools.registry import specimens
+
+    disk = (specimens.tree_root() / "ssb-c64"
+            / "WISH-SPEC-ssb-512-amigatoc64-walk-resave.D64")
+    if not disk.is_file():
+        pytest.skip("needs $WISH_SPECIMENS/ssb-c64/"
+                     "WISH-SPEC-ssb-512-amigatoc64-walk-resave.D64")
+    try:
+        built = da.build_saveas_source(disk, "A", tmp_path, "ssb")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS archives ($FR_ARCHIVES)")
+    except saveplan.MissingAssets:
+        pytest.skip("needs Silver Blades' own C64 disks")
+    assert built["dropped"] == [] and built["losses"] == []
+    read = built["read"]["A"]
+    assert [c["control"] for c in read["characters"]] == [0, 0, 0, 0, 0, 0]
+    assert [c["treasure_share"] for c in read["characters"]] == [1, 1, 1, 0, 1, 1]
 
 
 class _FakeCurseContinue(FakeCurseMenu):

@@ -38,6 +38,17 @@ this process, into `<out>/source/` as DOS slot A, with the disk's label and
 SHA-256, the report's `dropped` and `losses` and every warning the
 conversion logged.
 
+`--convert PATH [--convert-slot L]` replaces `--save` for pool, curse and ssb:
+a C64 `.D64` or Amiga `.adf` at `PATH`, whatever title or port it is (a C64
+save, or an Amiga Curse, Silver Blades or Pool of Radiance one), is read at
+slot `L` (default `A`) through `editor.convert.Source.detect` and converted by
+Save As DOS the same way `--fixture-row` converts a staged C64 party, refusing
+a source whose title does not match `--title`:
+
+    tools/dos/acceptance.py --title ssb \\
+        --convert $WISH_SPECIMENS/ssb-c64/WISH-SPEC-ssb-512-amigatoc64-walk-resave.D64 \\
+        --steps load begin 'walk 1' camp 'save D' read --issue 639 --run ssb-share
+
 | step | what it does |
 |---|---|
 | `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P`.  Pool presses Return past a `PRESS <ENTER>/<RETURN> TO CONTINUE` bar first, when the loaded save is on an event square, so that screen is never recorded as the map (#701) |
@@ -1231,41 +1242,21 @@ def staged_disk(base: pathlib.Path, title: str,
         "minutes_left": [effects.remaining_minutes(r[3], minutes) for r in rows]}
 
 
-def build_source(rows: list[tuple[int, int, int, int, int]], out: pathlib.Path,
-                 title: str = "pool", base: str | None = None) -> dict:
-    """Stage `rows` into a C64 party and Save As DOS into `out/source`.
+def _save_as_dos(party, out: pathlib.Path, title: str, report: dict) -> dict:
+    """Save As DOS of `party` into `out/source`, filling in `report`.
 
     The route is the editor's own, `prepare_save_as` then `publish`, as
     `tests/convert/test_runningeffects.py`'s `_dos_plan` prepares it.
     `prepare_save_as` refuses a conversion that would drop a field, which is
-    reported as `refused` and ends the run before any boot.
+    reported as `refused` and ends the run before any boot.  Shared by
+    `build_source` (a staged C64 party) and `build_saveas_source` (any save
+    `editor.convert.Source.detect` accepts): both build `party` and a `report`
+    of their own and hand them here for the rest of the route.
     """
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from editor import roster, saveplan
+    from editor import saveplan
     from editor.convert import Source
-    from goldbox import effects
-    from goldbox.c64_port import POOL_OF_RADIANCE
-    from goldbox.savegame import SaveGame0, SaveGame1
     from tools.convert import convertdrops
 
-    disk = out / "source.d64"
-    report: dict = {"rows": [list(r) for r in rows], "disk": disk.name}
-    where = c64_base(title, base)
-    if where is None:
-        fixtures = REPO / "tests" / "fixtures"
-        payload = bytearray(SaveGame0.from_prg(
-            (fixtures / "savedgame0.bin").read_bytes()).to_bytes())
-        save1 = SaveGame1.from_prg((fixtures / "savedgame1.bin").read_bytes()).to_bytes()
-        for row in rows:
-            effects.write_effect(payload, *row)
-        disk.write_bytes(dos_codec.save_disk(bytes(payload), save1,
-                                             POOL_OF_RADIANCE).to_bytes())
-        report["base"] = "tests/fixtures/savedgame0.bin"
-    else:
-        data, staged = staged_disk(where, title, rows)
-        disk.write_bytes(data)
-        report.update(staged)
-    party = roster.Party(str(disk))
     source = Source.of_snapshot(saveplan.prepare(party))
     assets = saveplan.resolve_assets(source, "dos",
                                      game_files=convertdrops.game_files,
@@ -1287,6 +1278,74 @@ def build_source(rows: list[tuple[int, int, int, int, int]], out: pathlib.Path,
         if p.suffix.upper() in EFFECT_SUFFIXES and p.stat().st_size}
     report["read"] = {x: read_slot(dest, x) for x in slots_in(dest)}
     return report
+
+
+def build_source(rows: list[tuple[int, int, int, int, int]], out: pathlib.Path,
+                 title: str = "pool", base: str | None = None) -> dict:
+    """Stage `rows` into a C64 party and Save As DOS into `out/source`."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from editor import roster
+    from goldbox import effects
+    from goldbox.c64_port import POOL_OF_RADIANCE
+    from goldbox.savegame import SaveGame0, SaveGame1
+
+    disk = out / "source.d64"
+    report: dict = {"rows": [list(r) for r in rows], "disk": disk.name}
+    where = c64_base(title, base)
+    if where is None:
+        fixtures = REPO / "tests" / "fixtures"
+        payload = bytearray(SaveGame0.from_prg(
+            (fixtures / "savedgame0.bin").read_bytes()).to_bytes())
+        save1 = SaveGame1.from_prg((fixtures / "savedgame1.bin").read_bytes()).to_bytes()
+        for row in rows:
+            effects.write_effect(payload, *row)
+        disk.write_bytes(dos_codec.save_disk(bytes(payload), save1,
+                                             POOL_OF_RADIANCE).to_bytes())
+        report["base"] = "tests/fixtures/savedgame0.bin"
+    else:
+        data, staged = staged_disk(where, title, rows)
+        disk.write_bytes(data)
+        report.update(staged)
+    party = roster.Party(str(disk))
+    return _save_as_dos(party, out, title, report)
+
+
+#: `Source.key` for a party staged from a C64 disk, one of the three titles
+#: `--convert` accepts; the same map `staged_disk` uses for its own container.
+CONVERT_TITLE_KEYS = {"pool": "pool-of-radiance",
+                      "curse": "curse-of-the-azure-bonds",
+                      "ssb": "secret-of-the-silver-blades"}
+
+
+def build_saveas_source(path: str | pathlib.Path, slot: str, out: pathlib.Path,
+                        title: str) -> dict:
+    """Copy `path` into `out` and Save As DOS whatever save `Source.detect`
+    finds there at `slot`, refusing a source whose title is not `title`.
+
+    `path` is a C64 disk image or an Amiga `.adf` holding any save
+    `editor.convert.Source.detect` reads -- a Curse or Silver Blades save from
+    either port, or an Amiga Pool of Radiance one.  A Pools of Darkness source
+    is refused: `--amiga-slot` converts it through the Convert window's own
+    route.
+    """
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from editor import roster
+    from editor.convert import Source
+
+    src = pathlib.Path(path)
+    data = src.read_bytes()
+    copy = out / ("source" + src.suffix.lower())
+    copy.write_bytes(data)
+    report: dict = {"source_path": str(src),
+                    "source_sha256": hashlib.sha256(data).hexdigest(),
+                    "convert_slot": slot, "disk": copy.name}
+    key = CONVERT_TITLE_KEYS[title]
+    source = Source.detect(copy, slot=slot)
+    if source.key != key:
+        return {**report, "refused": f"{path} holds {source.key!r}, not "
+                f"{title}'s {key!r}"}
+    party = roster.Party(source)
+    return _save_as_dos(party, out, title, report)
 
 
 # --------------------------------------------------------------------------
@@ -2975,6 +3034,16 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             write_summary()
             return 1
         save = out / "source"
+    elif getattr(args, "convert", None):
+        shutil.rmtree(out / "source", ignore_errors=True)
+        built = build_saveas_source(args.convert, args.convert_slot.upper(), out, args.title)
+        summary["source"] = built
+        note(event="converted", **{k: v for k, v in built.items() if k != "read"})
+        if "refused" in built or built["dropped"] or built["losses"]:
+            summary["lost"] = "the conversion refused, dropped or lost something"
+            write_summary()
+            return 1
+        save = out / "source"
     if not steps:
         summary["completed"] = True
         write_summary()
@@ -3330,10 +3399,17 @@ def main(argv: list[str] | None = None) -> int:
     src.add_argument("--amiga-slot", default=None, metavar="SavGamA.pty",
                      help="darkness: convert this slot of --amiga-disk to DOS "
                           "through the Convert window's route first")
+    src.add_argument("--convert", default=None, metavar="PATH",
+                     help="a C64 .D64 or Amiga .adf holding a pool, curse or "
+                          "ssb save; convert it with Save As DOS first "
+                          "(not darkness: use --amiga-slot)")
     ap.add_argument("--amiga-disk", default=None,
                     help="with --amiga-slot: an .adf path, or the end of one "
                          "Amiga disk label ('Pools Of Darkness.zip!Pools of "
                          "Darkness3.adf')")
+    ap.add_argument("--convert-slot", default="A",
+                    help="with --convert: the source's own save slot letter "
+                         "(default A)")
     ap.add_argument("--c64-save", default=None,
                     help="with --fixture-row: the C64 disk to stage into, "
                          "instead of the title's own (C64_BASES)")
@@ -3394,6 +3470,13 @@ def main(argv: list[str] | None = None) -> int:
             if not args.amiga_disk:
                 raise ValueError("--amiga-slot needs --amiga-disk")
             parse_amiga_slot(args.amiga_slot)
+        if args.convert:
+            if args.title == "darkness":
+                raise ValueError("--convert converts a pool, curse or ssb save: "
+                                 "Pools of Darkness has none of those; use "
+                                 "--amiga-slot")
+            if not re.fullmatch(r"[A-Ja-j]", args.convert_slot):
+                raise ValueError("--convert-slot is one letter, A to J")
     except ValueError as e:
         ap.error(str(e))
     if not re.fullmatch(r"[A-Ja-j]", args.slot):
