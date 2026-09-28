@@ -2163,9 +2163,22 @@ class PoolRun:
             key_rows = screens[0] if screens else None
             text = (None if key_rows is None else
                     [r.strip() for r in key_rows[17:23]])
+            m_outcome = None
+            if move == "M" and before[2] is not None:
+                # Recorded so a door case can be told from a plain step back
+                # in the evidence files; `_walk` judges it below.
+                if after[:2] == before[:2]:
+                    m_outcome = "turned"
+                elif after[2] == before[2]:
+                    m_outcome = "back-kept"
+                elif after[2] == (before[2] + 2) % 4:
+                    m_outcome = "back-reversed"
+                else:
+                    m_outcome = "back-other"
+            extra = {} if m_outcome is None else {"m_outcome": m_outcome}
             self.log.emit("move", move=move, n=n, before=before, after=after,
                           resent=resent, row24=self.bar().strip(), text=text,
-                          keyed=True)
+                          keyed=True, **extra)
             if (move == "I" and after[:2] != before[:2]
                     and before[2] is not None):
                 dx, dy = STEP[before[2]]
