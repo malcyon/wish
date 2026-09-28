@@ -1245,6 +1245,14 @@ def test_silver_blades_gaze_confusion_converts_and_drops_only_its_inert_flag():
                       effects.Unconverted)
 
 
+def test_silver_blades_gaze_confusion_refuses_a_flag_above_1():
+    # DOS only ever writes flag 1 for the gaze's id-35 node
+    # (`GAME.OVR:0x130CF`); a flag no DOS engine writes is refused like every
+    # sibling branch's flag check.
+    node = effects.RunningEffect(35, 7, 1, 2)
+    assert isinstance(effects.c64_row(_BLADES, node), effects.Unconverted)
+
+
 @pytest.mark.parametrize("title", _LATER)
 def test_fumble_keeps_its_flag_in_bit_7(title):
     # Fumble writes (27, m, 0, 0), and its trailing generic cast (27, m,

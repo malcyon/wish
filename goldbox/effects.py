@@ -431,7 +431,9 @@ ZERO_LEVEL_IDS: dict[str, frozenset[int]] = {
 #: Silver Blades' id-70 gaze writes Confusion as `(35, minutes, the monster's
 #: side, 1)` (`GAME.OVR:0x130CF`). The id-35 handler returns at once in remove
 #: mode (`0x11AC4` to `0x11C7E`), so the flag does nothing, and C64 bit 7
-#: would run the Confusion roll again at expiry: the flag is not written.
+#: would run the Confusion roll again at expiry: the flag is not written. DOS
+#: writes flag 1 for this case and nothing else, so a flag above 1 is refused
+#: like every sibling branch's flag check.
 _INERT_FLAG = frozenset({(_BLADES, 35)})
 
 #: Fumble's "fumbling" (27) in the later titles. DOS spell 86 writes `(27,
@@ -651,7 +653,11 @@ def _own_rule_row(title_key: str,
         return Unconverted("no rule yet: this effect's state also lives in "
                            "record bytes the codecs do not convert")
     if node.id in ZERO_LEVEL_IDS.get(title_key, ()):
-        if node.flag != 0 and (title_key, node.id) not in _INERT_FLAG:
+        if (title_key, node.id) in _INERT_FLAG:
+            if node.flag not in (0, 1):
+                return Unconverted("a flag byte no DOS cast of this effect "
+                                   "writes")
+        elif node.flag != 0:
             return Unconverted("a flag byte no DOS cast of this effect writes")
         if node.data > 0x7F:
             return Unconverted("a data byte that is not a caster level")
