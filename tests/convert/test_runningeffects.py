@@ -1877,8 +1877,7 @@ def _hostile_character():
 @pytest.mark.parametrize("build", [
     _npc_false_character,
     _hostile_character,
-    lambda: _charmed_character(0, control=0x93),
-], ids=["npc-false", "hostile", "control-93"])
+], ids=["npc-false", "hostile"])
 def test_a_pool_charm_node_outside_the_charmed_player_state_is_a_loss(build):
     payload = bytearray(0x1C00)
     rec, rep = c64_codec.write(build(), payload=payload, party_slot=2,
@@ -1888,7 +1887,9 @@ def test_a_pool_charm_node_outside_the_charmed_player_state_is_a_loss(build):
     assert bytes(rec.get_raw("item_effects")) == bytes(10)
 
 
-def test_a_second_pool_charm_node_is_a_loss_and_writes_no_second_row():
+def test_two_pool_charm_nodes_write_one_row_and_no_loss():
+    # Both Pool engines replace a charm with the next one (DOS
+    # `GAME.OVR:0x2C540`, C64 `ECL64 $9A13`), so two nodes are one charm.
     char = _charmed_character(0)
     char.set("granted_effects", [_CHARM, _CHARM], "built here")
     payload = bytearray(0x1C00)
@@ -1896,5 +1897,62 @@ def test_a_second_pool_charm_node_is_a_loss_and_writes_no_second_row():
                                 clock_minutes=0)
     rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
     assert rows == [(effects.CHARM_ID, 2, 0, 0x86)]
-    assert len([x for x in rep.losses
-                if f"effect {effects.CHARM_ID}:" in x]) == 1
+    assert not [x for x in rep.losses if f"effect {effects.CHARM_ID}:" in x]
+
+
+@pytest.mark.parametrize("control", [0x8C, 0x93, 0xFF])
+def test_a_charmed_pool_companion_writes_the_charm_row_and_keeps_his_byte(
+        control):
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(_charmed_character(2, control=control),
+                               payload=payload, party_slot=2,
+                               clock_minutes=0)
+    rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
+    assert rows == [(effects.CHARM_ID, 2, 0, 0x86)]
+    assert rec.get("flags_0b8") == control
+    assert rec.get("combat_side") == 0x80
+    assert rec.get("treasure_share") == 2
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+    assert not rep.losses
+
+
+@pytest.mark.parametrize("side", [0x80, 0xC0])
+def test_a_c64_pool_charm_row_on_a_companion_reads_back_as_the_node(side):
+    payload = bytearray(0x1C00)
+    effects.write_effect(payload, 0, effects.CHARM_ID, 2, 0, 0x86)
+    rec = CharacterRecord.blank()
+    rec.set("flags_0b8", 0x8C)
+    rec.set("combat_side", side)
+    out = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=payload,
+                         party_slot=2, clock_minutes=1, source="x")
+    assert [bytes(n)[:5] for n in out.get("granted_effects")] == \
+        [bytes((effects.CHARM_ID, 0, 0, 0x26, 1))]
+    assert not out.get("innate_effects")
+    assert out.get("npc") is True
+    assert out.get("npc_control_byte") == 0x8C
+    assert out.get("quickfight") is True
+    assert out.get("hostile") is False
+    assert not [d for d in out.dropped if "bits 1-6" in d]
+    dos_rec, _i, _spc, _rep = dos_codec.write(out)
+    f83 = dos_port.FIELDS_BY_NAME_FOR[POOL_OF_RADIANCE.key]["field_83_87"]
+    control_offset = f83.offset + (1 if f83.size == 5 else 0)
+    assert dos_rec[control_offset] == 0x8C
+    quickfight_offset = (dos_port.FIELDS_BY_NAME_FOR[POOL_OF_RADIANCE.key]
+                         ["field_10c_10f"].offset + 3)
+    assert dos_rec[quickfight_offset] == 1
+
+
+def test_a_charmed_pool_companion_makes_a_dos_c64_dos_round_trip():
+    payload = bytearray(0x1C00)
+    rec, _rep = c64_codec.write(_charmed_character(2, control=0x93),
+                                payload=payload, party_slot=2,
+                                clock_minutes=0)
+    out = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=payload,
+                         party_slot=2, clock_minutes=1, source="x")
+    # The count becomes the C64 charm's fixed level, 6, not the caster's.
+    assert [bytes(n)[:5] for n in out.get("granted_effects")] == \
+        [bytes((effects.CHARM_ID, 0, 0, 0x26, 1))]
+    assert out.get("npc") is True
+    assert out.get("npc_control_byte") == 0x93
+    assert out.get("quickfight") is True
+    assert out.get("treasure_share") == 2

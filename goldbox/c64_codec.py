@@ -851,10 +851,26 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         and payload is not None
         and any(isinstance(effects.pool_charm_row(deltas.key, bytes(n)),
                            tuple) for n in granted.value))
+    # A companion charmed by his own party keeps his own control byte in DOS,
+    # whose handler sets the taken-over value only over a byte of 0x7F or
+    # less (Pool `GAME.OVR:0xF092`-`0xF10C`), and the C64's charm handler
+    # touches 0x10C alone (`SPELLE01 $A7DA`).  So he converts to the same
+    # charm row and 0x10C bits as a player character and stays a companion:
+    # his share byte, his 0x0B8 and his `npc` are his own.
+    status_value = w.get("status")
+    control_value = w.get("npc_control_byte")
+    pool_charmed_companion = bool(
+        deltas is POOL_OF_RADIANCE_RECORD and is_npc
+        and control_value is not None and int(control_value) & 0x80
+        and int(control_value) != DOS_PC_TAKEN_OVER
+        and status_value != "animated"
+        and not w.get("hostile") and granted is not None
+        and payload is not None
+        and any(isinstance(effects.pool_charm_row(deltas.key, bytes(n)),
+                           tuple) for n in granted.value))
     # DOS's Animate Dead zombie is a Pool player character too: the C64 stores
     # it as a dead record with 0x0B8 at $FE or $FF, and its share byte is the
     # same ability-altered flag as any player character's.
-    status_value = w.get("status")
     pool_zombie_pc = bool(
         deltas is POOL_OF_RADIANCE_RECORD and is_npc
         and status_value == "animated"
@@ -1582,12 +1598,18 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 charm = effects.pool_charm_row(title_key, bytes(node))
                 if isinstance(charm, effects.Unconverted):
                     rep.lost(f"effect {node[0]}: {charm.reason}")
-                elif charm is None or not pool_charmed:
+                elif charm is None or not (pool_charmed
+                                            or pool_charmed_companion):
                     rep.lost(f"effect {node[0]}: a charm, whose record "
                              "bytes the C64 writer does not convert yet")
                 elif charm_row_written:
-                    rep.lost(f"effect {node[0]}: a second charm, when a "
-                             "character holds one charm row")
+                    # Both Pool engines replace a charm with the next one
+                    # (DOS `GAME.OVR:0x2C540`, C64 `ECL64 $9A13`), so a second
+                    # node is the same charm and the character holds one row.
+                    rep.note(0x10C, 1,
+                             f"effect {node[0]}: a second charm node, which "
+                             "both Pool engines would have replaced with the "
+                             "first, so the character holds one charm row")
                 else:
                     row_slot = effects.free_slot(payload)
                     if row_slot is None:
@@ -1794,7 +1816,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                  "into a player character, so this is a player character")
         rep.dropped.extend(npc.dropped)
         rep.dropped.extend(control.dropped)
-    elif charm_row_written:
+    elif charm_row_written and pool_charmed:
         if modify_flag is None:
             rec.set("flags_0b8", 0x00)
             rep.note(0x0B8, 1, "flags_0b8: zero -- a player character, bit 7 "
@@ -2056,7 +2078,10 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "a row owned by the character's save slot, with "
                         "duration byte 0; a Pool of Radiance charm node, "
                         "id 11, becomes the C64's own charm row, magnitude "
-                        "$86. Not something the C64 reader can "
+                        "$86, for a player character or for a companion "
+                        "the party charmed, and a second charm node is the "
+                        "same row because both Pool engines replace a charm "
+                        "with the next one. Not something the C64 reader can "
                         "give back as this name, because a trait slot the "
                         "converter filled and one READY filled are the same "
                         "byte to the engine's own compare, except those "
@@ -2081,7 +2106,8 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
             "a charm node writes 0x0B8 as a player character's, and the "
             "charm goes to a row; in Pool of Radiance, DOS_PC_TAKEN_OVER "
             "with status animated writes 0x0B8 as $FE with the "
-            "ability-altered flag in bit 0"),
+            "ability-altered flag in bit 0; a companion with a charm node "
+            "stays npc true and keeps his own 0x0B8"),
     ("npc_control_byte", "written unchanged to 0x0B8 when npc is true -- "
                          "bit 7 plus the low seven bits of morale, stored "
                          "halved; nothing to write when npc is false (#303); "
@@ -2090,7 +2116,10 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                          "when a charm node converts, which writes 0x0B8 as "
                          "a player character's and the charm to a row; and "
                          "in Pool of Radiance with status animated it writes "
-                         "$FE or $FF, as Animate Dead stores a zombie"),
+                         "$FE or $FF, as Animate Dead stores a zombie; a "
+                         "companion's own byte is written unchanged even "
+                         "when a charm node converts, because DOS's charm "
+                         "handler leaves it alone"),
     ("treasure_share", "written unchanged to 0x0FA for a companion, whose "
                        "share the C64's own split reads there; a DOS or "
                        "Amiga raw value with bit 2 set refuses because C64 "
@@ -2392,7 +2421,9 @@ READ_TARGETS: dict[str, str] = (
                     "are given as though bit 7 were set, because neither "
                     "title ever turns a companion back into a player "
                     "character; the same for a Pool of Radiance player "
-                    "character whose party-side charm row converted; for a Pool "
+                    "character whose party-side charm row converted, while "
+                    "a companion holding one stays npc with his own byte; "
+                    "for a Pool "
                     "of Radiance zombie ($FE or $FF beside roster status $03) "
                     "npc and npc_control_byte (DOS_PC_TAKEN_OVER) are given "
                     "as though the byte were a player character's, and bit 0 "
@@ -2416,8 +2447,9 @@ READ_TARGETS: dict[str, str] = (
                         "is neither",
        "combat_side": "bit 0 read as neutral hostile and bit 7 as neutral "
                       "quickfight; bit 6 accounted for as part of a "
-                      "converted Fear row (effects.FEAR_IDS) or Pool charm row "
-                      "and otherwise, with bits 1-5, logged as not yet converted",
+                      "converted Fear row (effects.FEAR_IDS) or Pool charm row, "
+                      "a companion's included, and otherwise, with bits 1-5, "
+                      "logged as not yet converted",
        "roster_tail": "read as neutral roster_tail, from the roster block's "
                       "+0x10-+0x18 or the record",
        "inventory": "read as neutral inventory, from the save's item page "
@@ -2568,9 +2600,8 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             if row.owner != party_slot or row.slot in consumed:
                 continue
             if row.duration == 0:
-                charm_record = (effects.pool_charm_record(
+                charm_record = effects.pool_charm_record(
                     title_key or "", row, combat_side_raw)
-                    if not is_npc else None)
                 if charm_record is not None:
                     granted.append(charm_record)
                     charm_row_converted = True
