@@ -259,18 +259,19 @@ class _TempleMonitor:
         if address == 0x6E1B:
             return bytes([place[0] | (0x80 if s.pending_area else 0)])
         if address == 0x6E11:
-            return bytes([A.S.COMBAT if s.unsafe == "encounter" and s.moves
-                          else A.S.DUNGEON])
+            if s.unsafe == "encounter" and s.moves:
+                return bytes([A.S.COMBAT])
+            # `572b9ca0ee-temple-route-d` frame 10: the temple arrival
+            # screen reads `$6E11` = 5, not `S.DUNGEON`.
+            if s.phase == "temple":
+                return bytes([A.TEMPLE_ARRIVAL_MODE])
+            return bytes([A.S.DUNGEON])
         if address == 0x49E6:
             return b"\x01"
         if address == 0x49C0:
             return bytes((15, 4, 3))  # The game's save copy lags movement.
         if address == 0xC04B:
             return bytes(place[1:])
-        if address == 0x6EFC:
-            return bytes([s.resident_slot])
-        if address == 0x6B00:
-            return b"BRUTUS".ljust(0x100, b"\0")
         raise AssertionError(f"unexpected monitor read ${address:04X}")
 
 
@@ -282,9 +283,6 @@ class _TempleSession:
         self.keys = []
         self.unsafe = unsafe
         self.after_side3 = after_side3
-        self.party_index = 0
-        self.bar_index = 0
-        self.resident_slot = 4 if unsafe == "wrong-resident" else 5
         self.short_monitor = unsafe == "short-monitor"
         self.pending_area = False
         self.out = out
@@ -318,10 +316,6 @@ class _TempleSession:
         self.window_text = ""
         self._typed_text = ""
         self._question_answered_once = False
-        # Whether the temple greeting/HEAL screen keeps a status line: no
-        # capture of the C64 temple screen exists, so a run there might show
-        # none (fix 3's own gap).
-        self.temple_status = True
 
     def mon(self, _timeout):
         return _TempleMonitor(self)
@@ -374,36 +368,27 @@ class _TempleSession:
         elif phase == "unknown-disk":
             rows[20] = "INSERT DISK B"
             rows[24] = "I,J,K,M, RETURN OR BUTTON"
-        elif phase in ("temple", "service"):
-            rows[0] = "WELCOME TO THE TEMPLE,"
-            if self.unsafe == "stale-raise":
-                rows[15] = "RAISE DEAD 5500"
+        elif phase == "temple":
+            # Frame 10 of `572b9ca0ee-temple-route-d`: no greeting text and
+            # no status line, BRUTUS still in the roster; the arrival
+            # screen is identified only by its command bar, `HEAL VIEW
+            # POOL APPRAISE EXIT`.
+            rows[14] = ""
             rows[3] = " " * A.S.PARTY_COLUMN + "NAME        AC HP"
-            names = ["ROLAND", "BAKSHI", "SHARA", "MARK", "PHILIPPE",
-                     "BAKSHI" if self.unsafe == "missing-brutus" else "BRUTUS"]
+            names = ["ROLAND", "BAKSHI", "SHARA", "MARK", "PHILIPPE", "BRUTUS"]
             for offset, name in enumerate(names):
                 rows[4 + offset] = " " * A.S.PARTY_COLUMN + name
-            rows[24] = ("EXIT HEAL" if self.unsafe != "wrong-menu"
-                        else "EXIT GIVE")
-            if phase == "service":
-                rows[15] = "RAISE DEAD 5500"
-                rows[24] = "EXIT"
-            if not self.temple_status:
-                rows[14] = ""
-            elif self.unsafe == "stale-greeting-status":
+            rows[24] = ("HEAL VIEW POOL APPRAISE EXIT"
+                        if self.unsafe != "wrong-menu" else "EXIT GIVE")
+            if self.unsafe == "stale-greeting-status":
                 # A status line that is present but reads the wrong place:
-                # unlike a missing one (fix 3's own gap, tested above), the
-                # transition must never treat this as settled.
+                # no live capture has shown one here, but the transition
+                # must never treat this as settled if it appears.
                 rows[14] = "N 00:00 99,99"
         else:
             raise AssertionError(phase)
         if phase == "question":
             return _TempleScreen(rows, (0, 3))
-        if phase == "temple":
-            return _TempleScreen(rows, (0 if self.bar_index == 0 else 5,
-                                        4), 4 + self.party_index)
-        if phase == "service":
-            return _TempleScreen(rows, (0, 4), 4 + self.party_index)
         return _TempleScreen(rows)
 
     def screenshot(self, path, timeout=None):
@@ -494,43 +479,17 @@ class _TempleSession:
         # only clears the prompt.
         self.phase = "move"
 
-    def party_rows(self, screen):
-        return [4, 5, 6, 7, 8, 9]
-
-    def party_highlight(self, screen):
-        for index, row in enumerate(self.party_rows(screen)):
-            if screen.colours[row * 40 + A.S.PARTY_COLUMN] == 1:
-                return index
-        return None
-
-    def key(self, key):
-        self.keys.append(key)
-        if key == "Down":
-            self.party_index += 1
-        elif key == "Up":
-            self.party_index -= 1
-        elif key == "Right":
-            self.bar_index = 1
-        else:
-            raise AssertionError(f"unapproved key {key}")
-
     def confirm_bar(self, row, was):
-        if self.phase == "question":
-            assert row == 24 and "YES" in was
-            self.keys.append("YES")
-            if self.unsafe == "question-twice" and not self._question_answered_once:
-                self._question_answered_once = True
-                # The question lingers: one more typed line, then the same
-                # question again, which the second answer must refuse.
-                self.typing = ["ANOTHER GROUP APPROACHES."]
-                self.phase = "question"
-            else:
-                self.phase = "temple"
-            return
-        self.keys.append("HEAL")
-        assert row == 24 and "HEAL" in was and self.bar_index == 1
-        if self.unsafe != "stale-raise":
-            self.phase = "service"
+        assert self.phase == "question" and row == 24 and "YES" in was
+        self.keys.append("YES")
+        if self.unsafe == "question-twice" and not self._question_answered_once:
+            self._question_answered_once = True
+            # The question lingers: one more typed line, then the same
+            # question again, which the second answer must refuse.
+            self.typing = ["ANOTHER GROUP APPROACHES."]
+            self.phase = "question"
+        else:
+            self.phase = "temple"
 
 
 def _temple_reading():
@@ -571,29 +530,31 @@ def _temple_fake_run(tmp_path, monkeypatch, *, unsafe=None,
 
 
 @pytest.mark.parametrize("after_side3", ["arrival-text", "continue"])
-def test_temple_probe_reaches_service_list_and_sends_no_purchase_or_save(
+def test_temple_probe_reaches_and_captures_arrival_then_stops(
         tmp_path, monkeypatch, after_side3):
+    """The probe stops at the temple arrival screen and captures it; it
+    never navigates into the HEAL service list, which has never been seen
+    live (#700)."""
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             after_side3=after_side3)
     result = run.temple_probe("BRUTUS")
-    assert result["resident"]["slot"] == 5
-    assert result["resident"]["name"] == "BRUTUS"
+    assert result["arrival"] == run.temple_checkpoints[-1]["stem"]
     assert result["side3_prompts"] == 1
     assert result["questions"] == 1
     assert session.moves == list("KKIIJI")
     assert run.temple_checkpoints[-1]["state"]["save_copy"] == [15, 4, 3]
     assert run.temple_checkpoints[-1]["state"]["x"] == 1
-    assert session.phase == "service"
+    assert run.temple_checkpoints[-1]["tag"] == "temple-arrival"
+    assert session.phase == "temple"
+    assert "HEAL" not in session.keys
     if after_side3 == "arrival-text":
         assert result["continuations"] == 0
-        assert session.keys == ["side3", "YES",
-                                *("Down" for _ in range(5)), "Right", "HEAL"]
+        assert session.keys == ["side3", "YES"]
         assert [x["tag"] for x in run.temple_checkpoints] == [
             "loaded-source", "move-1-settled", "move-2-settled",
             "boundary-side3-before-answer", "move-3-settled",
             "move-4-settled", "move-5-settled",
-            "temple-question-before-answer", "temple-arrival",
-            "brutus-highlight", "heal-services"]
+            "temple-question-before-answer", "temple-arrival"]
         assert [kwargs for args, kwargs in events
                 if args[0] == "temple-quiet-screen"] == [
             {"move": 3, "place": (0, 0, 4, 1)}]
@@ -603,14 +564,12 @@ def test_temple_probe_reaches_service_list_and_sends_no_purchase_or_save(
             {"move": 6, "place": (0, 1, 3, 0)}]
     else:
         assert result["continuations"] == 1
-        assert session.keys == ["side3", "continue", "YES",
-                                *("Down" for _ in range(5)), "Right", "HEAL"]
+        assert session.keys == ["side3", "continue", "YES"]
         assert [x["tag"] for x in run.temple_checkpoints] == [
             "loaded-source", "move-1-settled", "move-2-settled",
             "boundary-side3-before-answer", "continuation-before-answer",
             "move-3-settled", "move-4-settled", "move-5-settled",
-            "temple-question-before-answer", "temple-arrival",
-            "brutus-highlight", "heal-services"]
+            "temple-question-before-answer", "temple-arrival"]
     assert all((tmp_path / (x["stem"] + ext)).is_file()
                for x in run.temple_checkpoints for ext in (".txt", ".png", ".json"))
     assert any(args[0] == "temple-checkpoint" for args, _ in events)
@@ -618,13 +577,11 @@ def test_temple_probe_reaches_service_list_and_sends_no_purchase_or_save(
 
 @pytest.mark.parametrize("unsafe,maximum_moves", [
     ("yes-no", 1), ("other-side", 3), ("duplicate-side", 3),
-    ("missing-brutus", 6), ("wrong-facing", 1),
-    ("wrong-resident", 6), ("wrong-menu", 6),
+    ("wrong-facing", 1), ("wrong-menu", 6),
     ("deadline", 0), ("late-after-first", 1),
     ("short-monitor", 0), ("bad-identity", 0),
     ("wrong-area", 1), ("pending-area", 1), ("unknown-event", 1),
     ("unknown-disk", 1), ("encounter", 1),
-    ("stale-raise", 6),
     ("early-question", 4), ("wrong-question", 6), ("question-twice", 6),
 ])
 def test_temple_probe_stops_at_unsafe_screen_or_state_before_more_input(
@@ -633,14 +590,14 @@ def test_temple_probe_stops_at_unsafe_screen_or_state_before_more_input(
     with pytest.raises(A.StepFailed):
         run.temple_probe("BRUTUS")
     assert len(session.moves) <= maximum_moves
-    if unsafe not in ("wrong-resident", "stale-raise"):
-        assert "HEAL" not in session.keys
+    assert "HEAL" not in session.keys
     assert session.keys.count("side3") <= 1
     assert session.keys.count("YES") <= 1
     if unsafe in ("early-question", "wrong-question"):
         assert "YES" not in session.keys
-    if unsafe != "wrong-resident":
-        assert session.phase != "service"
+    assert not any(x["tag"] == "temple-arrival" for x in run.temple_checkpoints)
+
+
 
 
 def test_temple_probe_pins_the_lost_stop_the_live_m_route_hit(
@@ -706,13 +663,14 @@ def test_temple_text_with_a_bar_never_drawn_stops_at_the_transition_limit(
 
 
 def test_temple_arrival_settles_without_a_status_line(tmp_path, monkeypatch):
-    """No capture of the C64 temple screen exists: a menu or picture screen
-    can replace the status line there, and the settle must not wait forever
-    on one that never reappears."""
+    """`572b9ca0ee-temple-route-d` frame 10 confirms the temple arrival
+    screen carries no status line: a menu or picture screen replaces it
+    there, and the settle must not wait forever on one that never
+    reappears. The rebuilt fake models this as the default arrival
+    screen, so this is the ordinary case rather than an opt-in one."""
     run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
-    session.temple_status = False
     result = run.temple_probe("BRUTUS")
-    assert result["resident"]["name"] == "BRUTUS"
+    assert result["arrival"] == "09-temple-temple-arrival"
 
 
 def test_temple_arrival_never_settles_on_a_stale_greeting_status_line(
@@ -736,7 +694,7 @@ def test_temple_question_at_a_lagging_place_waits_then_answers(
     run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
     session.unsafe = "question-lag"
     result = run.temple_probe("BRUTUS")
-    assert result["resident"]["name"] == "BRUTUS"
+    assert result["arrival"] == "09-temple-temple-arrival"
     assert session.moves == list("KKIIJI")
     assert session.keys.count("YES") == 1
 
@@ -830,15 +788,6 @@ def test_temple_move_rechecks_prompt_with_retained_move_bar_before_key(
     assert session.moves == []
 
 
-def test_temple_member_rechecks_fresh_panel_before_first_highlight_key(
-        tmp_path, monkeypatch):
-    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
-    session.phase = "temple"
-    stale = session.screen()
-    session.phase = "yes-no"
-    with pytest.raises(A.StepFailed):
-        run._temple_member(stale)
-    assert "Down" not in session.keys
 
 
 @pytest.mark.parametrize("steps", [

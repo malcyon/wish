@@ -167,6 +167,13 @@ assert len(_TEMPLE_CROSSINGS) == 1, (
 TEMPLE_CROSSING_INDEX = _TEMPLE_CROSSINGS[0]
 TEMPLE_LAST_INDEX = len(TEMPLE_ROUTE) - 1
 
+#: `$6E11` at the temple arrival screen, read live at `572b9ca0ee-temple-
+#: route-d` frame 10 (`docs/121-silver-blades.md`'s overlay name table calls
+#: 5 `POST.COM`, PROBABLE from one sample). The transition otherwise only
+#: accepts `S.DUNGEON`; this is the one screen where the game runs a
+#: different overlay while still standing at the expected place.
+TEMPLE_ARRIVAL_MODE = 5
+
 #: The camp's own bar, `ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT` (Pool
 #: `CAMP $0899`), and the MAGIC bar, `CAST MEMORIZE SCRIBE DISPLAY REST EXIT`
 #: (`CAMP $14BB`).  Each pair of words is on that bar and on no other.
@@ -1192,9 +1199,15 @@ class PoolRun:
 
     @staticmethod
     def _temple_is_greeting(screen) -> bool:
-        text = screen.text().upper()
-        return ("WELCOME TO THE TEMPLE," in text
-                or "HOW MAY WE HELP YOU" in text)
+        """The temple arrival screen.
+
+        Frame 10 of `572b9ca0ee-temple-route-d` shows no greeting text and
+        no status line (rows 17-23 empty); only its command bar -- `HEAL
+        VIEW POOL APPRAISE EXIT` -- identifies it. The DOS-script text this
+        used to look for never appears on the C64."""
+        bar = screen.row(24)
+        return (S.word_column(bar, "HEAL") >= 0
+                and S.word_column(bar, "APPRAISE") >= 0)
 
     @staticmethod
     def _temple_continuation(screen) -> bool:
@@ -1401,7 +1414,10 @@ class PoolRun:
                 time.sleep(0.3)
                 continue
             if place == expected:
-                if state["area_pending"] or state["mode"] != S.DUNGEON:
+                mode_ok = (state["mode"] == S.DUNGEON
+                           or (n == TEMPLE_LAST_INDEX
+                               and state["mode"] == TEMPLE_ARRIVAL_MODE))
+                if state["area_pending"] or not mode_ok:
                     time.sleep(0.3)
                     continue
                 if n == TEMPLE_LAST_INDEX and self._temple_is_greeting(screen):
@@ -1449,87 +1465,14 @@ class PoolRun:
         self._temple_stop("transition", f"movement {n + 1} did not settle "
                           "within 90 seconds")
 
-    def _temple_member(self, screen) -> None:
-        rows = self.sess.party_rows(screen)
-        if not rows:
-            self._temple_stop("party", "temple party panel is absent", screen)
-        header = next((r for r in S.PARTY_ROWS
-                       if S.PARTY_HEADER in screen.row(r)[S.PARTY_COLUMN:]), None)
-        if header is None:
-            self._temple_stop("party", "temple party heading is absent", screen)
-        width = screen.row(header)[S.PARTY_COLUMN:].index(S.PARTY_HEADER)
-        names = [screen.row(r)[S.PARTY_COLUMN:S.PARTY_COLUMN + width].strip()
-                 for r in rows]
-        bar = screen.row(24)
-        if names.count("BRUTUS") != 1:
-            self._temple_stop("party", f"BRUTUS occurs {names.count('BRUTUS')} "
-                              "times in temple panel", screen)
-        target = names.index("BRUTUS")
-        for presses in range(9):
-            screen = self.sess.screen()
-            if (screen is None or screen.row(24) != bar
-                    or not self._temple_is_greeting(screen)
-                    or self._temple_disk(screen)
-                    or self._temple_continuation(screen)
-                    or re.search(r"\bYES\b.*\bNO\b", screen.text(), re.DOTALL)
-                    or self.sess.party_rows(screen) != rows
-                    or [screen.row(r)[S.PARTY_COLUMN:
-                                      S.PARTY_COLUMN + width].strip()
-                        for r in rows] != names):
-                self._temple_stop("party", "temple panel changed before "
-                                  "highlight key", screen)
-            current = self.sess.party_highlight(screen)
-            if current is None or not 0 <= current < len(rows):
-                self._temple_stop("party", "party highlight unreadable", screen)
-            if current == target:
-                self.temple_checkpoint("brutus-highlight", screen)
-                return
-            if presses == 8:
-                break
-            self._temple_input_budget("BRUTUS highlight")
-            self.sess.kbd.key("Down" if current < target else "Up")
-            limit = min(self.clock() + 5, self.temple_input_deadline)
-            while self.clock() < limit:
-                screen = self.sess.screen()
-                if (screen is None or screen.row(24) != bar
-                        or not self._temple_is_greeting(screen)
-                        or S.word_column(screen.row(24), "HEAL") < 0
-                        or [screen.row(r)[S.PARTY_COLUMN:
-                                          S.PARTY_COLUMN + width].strip()
-                            for r in rows] != names):
-                    self._temple_stop("party", "temple menu changed while "
-                                      "highlighting BRUTUS", screen)
-                new_index = self.sess.party_highlight(screen)
-                if new_index is not None and new_index != current:
-                    if abs(new_index - current) != 1:
-                        self._temple_stop("party", "party highlight jumped",
-                                          screen)
-                    break
-                time.sleep(0.25)
-            else:
-                self._temple_stop("party", "party highlight did not move", screen)
-        self._temple_stop("party", "BRUTUS highlight needed more than eight keys",
-                          screen)
-
-    def _temple_resident(self) -> dict:
-        try:
-            with self.sess.mon(8) as m:
-                try:
-                    member = bytes(m.read(0x6EFC, 1))
-                    record = bytes(m.read(0x6B00, 0x100))
-                finally:
-                    m.resume()
-            if len(member) != 1 or len(record) != 0x100:
-                raise ValueError("short resident read")
-            name = CharacterRecord(record.ljust(RECORD_SIZE, b"\0"),
-                                   stored_size=len(record)).name
-            return {"slot": member[0], "name": name,
-                    "record_sha256": hashlib.sha256(record).hexdigest()}
-        except (OSError, S.MonitorError, ValueError, IndexError) as exc:
-            raise StepFailed(f"temple resident unreadable: {exc}") from exc
-
     def temple_probe(self, who: str) -> dict:
-        """Observe BRUTUS at HEAL's service list; buy nothing and never save."""
+        """Capture the temple arrival screen and stop; go no further.
+
+        The HEAL service list beyond arrival -- its text, its bar, whether
+        RAISE DEAD appears, and the resident byte there -- has never been
+        seen live (#700). Recognising it would be a guess, so the route
+        ends here: reaching and capturing the arrival screen is itself the
+        result this probe exists to produce."""
         if who != "BRUTUS" or self.game.key != "pool-of-radiance":
             raise StepFailed("temple probe requires Pool BRUTUS")
         initial = self.temple_checkpoint("loaded-source")
@@ -1555,57 +1498,18 @@ class PoolRun:
             self._temple_stop("source-identity", "loaded BRUTUS or row 63 "
                               "does not match the registered animated source")
         counters = {"disk": 0, "continuations": 0, "questions": 0}
+        arrival = None
         for n, (move, before, expected) in enumerate(TEMPLE_ROUTE):
             if self._temple_place(self.temple_state()) != before:
                 self._temple_stop("place", f"wrong place before movement {n + 1}")
             self._temple_move(move, before)
-            self._temple_transition(n, before, expected, counters)
-        screen = self.sess.screen()
-        if (screen is None or not self._temple_is_greeting(screen)
-                or S.word_column(screen.row(24), "HEAL") < 0):
-            self._temple_stop("temple", "temple greeting or HEAL bar disappeared",
-                              screen)
-        self._temple_member(screen)
-        screen = self.sess.screen()
-        if screen is None or not self._temple_is_greeting(screen):
-            self._temple_stop("temple", "temple screen unreadable before HEAL",
-                              screen)
-        temple_text = screen.text()
-        self._temple_select_bar("HEAL", "temple")
-        limit = min(self.clock() + 90, self.temple_input_deadline)
-        while self.clock() < limit:
-            screen = self.sess.screen()
-            if screen is None:
-                time.sleep(0.3)
-                continue
-            if self._temple_disk(screen) or self._temple_continuation(screen):
-                self._temple_stop("service", "prompt after HEAL selection", screen)
-            service_text = screen.text().upper()
-            if (re.search(r"\bYES\b.*\bNO\b", service_text, re.DOTALL)
-                    or re.search(r"\bPRESS\b", service_text)):
-                self._temple_stop("service", "unapproved prompt after HEAL", screen)
-            if "RAISE DEAD" in service_text and screen.text() != temple_text:
-                resident = self._temple_resident()
-                checkpoint = self.temple_checkpoint("heal-services", screen)
-                if (self._temple_place(checkpoint["state"]) != TEMPLE_ROUTE[-1][2]
-                        or checkpoint["state"]["mode"] != S.DUNGEON
-                        or checkpoint["state"]["area_pending"]):
-                    self._temple_stop("service", "place changed at HEAL service "
-                                      "list", screen)
-                if resident["slot"] != 5 or resident["name"] != "BRUTUS":
-                    self._temple_stop("resident", f"HEAL resident is {resident}",
-                                      screen)
-                return {"route": "KKIIJI", "movement_keys": 6,
-                        "side3_prompts": counters["disk"],
-                        "continuations": counters["continuations"],
-                        "questions": counters["questions"],
-                        "resident": resident, "service": checkpoint["stem"],
-                        "checkpoints": len(self.temple_checkpoints)}
-            if not self._temple_is_greeting(screen):
-                self._temple_stop("service", "unexpected screen after HEAL",
-                                  screen)
-            time.sleep(0.3)
-        self._temple_stop("service", "HEAL service list did not appear in 90 seconds")
+            arrival = self._temple_transition(n, before, expected, counters)
+        return {"route": "KKIIJI", "movement_keys": 6,
+                "side3_prompts": counters["disk"],
+                "continuations": counters["continuations"],
+                "questions": counters["questions"],
+                "arrival": arrival["stem"],
+                "checkpoints": len(self.temple_checkpoints)}
 
     @staticmethod
     def _list_bar(bar: str) -> bool:
