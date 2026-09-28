@@ -213,13 +213,13 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     if args.disks is None:
         raise SystemExit("No game disks found. Set $POR_DISKS.")
+    wanted = parse_stage(args.stage) if args.stage else {}
     try:
-        wanted = parse_stage(args.stage) if args.stage else {}
         rows = parse_rows(args.stage_row)
-        sides = (parse_stage(args.stage_side, "--stage-side")
-                 if args.stage_side else {})
     except ValueError as e:
         raise SystemExit(f"--stage-row: {e}") from None
+    sides = (parse_stage(args.stage_side, "--stage-side")
+             if args.stage_side else {})
     runlog.catch_signals()
 
     disks = pathlib.Path(args.disks)
@@ -230,18 +230,27 @@ def main(argv=None) -> int:
     save = args.save
     if args.stage or args.stage_row or args.stage_side:
         staging = out / "disks"
+        existed = staging.exists()
         staging.mkdir(parents=True, exist_ok=True)
+        made: list[pathlib.Path] = []
         for i in range(1, 9):
             src, link = disks / f"POOL{i}.D64", staging / f"POOL{i}.D64"
             if src.exists() and not link.exists():
                 link.symlink_to(src.resolve())
+                made.append(link)
         S.stage_writable(disks / args.save, staging / "STAGED.D64")
         save, disks = "STAGED.D64", staging
         replaced: list = []
         try:
             written = stage(staging / save, wanted, rows, sides, replaced)
         except SystemExit:
-            shutil.rmtree(staging, ignore_errors=True)
+            # A directory from an earlier run may hold evidence; remove only
+            # what this run wrote into it.
+            if existed:
+                for f in [*made, staging / save]:
+                    f.unlink(missing_ok=True)
+            else:
+                shutil.rmtree(staging, ignore_errors=True)
             raise
         log.emit("staged", values=written, rows=replaced,
                  sides=sorted(sides.items()))

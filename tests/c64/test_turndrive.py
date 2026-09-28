@@ -132,7 +132,7 @@ def test_a_side_into_an_empty_roster_block_is_refused(tmp_path):
 
 
 @pytest.mark.parametrize("option", [
-    ["--stage-side", "2=300"], ["--stage-side", "-1=0x80"],
+    ["--stage-side", "2=300"], ["--stage-side=-1=0x80"],
     ["--stage-side", "8=0x80"], ["--stage-side", "2"],
     ["--stage", "2=zz"], ["--stage", "9=0"],
     ["--stage-row", "64=0B:02:00:86"], ["--stage-row", "5=0B:02:00"],
@@ -159,3 +159,24 @@ def test_a_side_into_an_empty_slot_leaves_no_staging_directory(tmp_path, monkeyp
         turndrive.main(["--disks", str(tmp_path), "--out", str(out),
                         "--save", path.name, "--stage-side", f"{empty}=0x80"])
     assert not (out / "disks").exists()
+
+
+def test_a_refusal_leaves_an_earlier_runs_staging_directory_alone(tmp_path, monkeypatch):
+    path = _disk(tmp_path)
+    _, roster = _files(path)
+    empty = next(i for i in range(savegame.ROSTER_COUNT)
+                 if not any(roster[i * savegame.ROSTER_STRIDE:
+                                   (i + 1) * savegame.ROSTER_STRIDE]))
+    monkeypatch.setattr(turndrive.S, "stage_writable",
+                        lambda src, dest: shutil.copy(path, dest))
+    out = tmp_path / "run"
+    (out / "disks").mkdir(parents=True)
+    marker = out / "disks" / "evidence.txt"
+    marker.write_text("kept")
+    (tmp_path / "POOL1.D64").write_bytes(b"x")
+    with pytest.raises(SystemExit, match="empty"):
+        turndrive.main(["--disks", str(tmp_path), "--out", str(out),
+                        "--save", path.name, "--stage-side", f"{empty}=0x80"])
+    assert marker.read_text() == "kept"
+    assert not (out / "disks" / "STAGED.D64").exists()
+    assert not (out / "disks" / "POOL1.D64").exists()
