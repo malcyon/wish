@@ -101,6 +101,8 @@ def encode(ch):
         return 0
     if "A" <= ch <= "Z":
         return ord(ch) - 64
+    if ch in "[£]^_":
+        return 27 + "[£]^_".index(ch)
     return ord(ch)
 
 
@@ -209,11 +211,6 @@ class FakeGame:
                     for c in range(1, 39):
                         colours[(first + i) * COLS + c] = 1
             put(first + len(items) + 1, 2, prompt)
-            # The window's own frame: the game draws it in every list, and it
-            # shows in the text as a `$` in the first and last column.
-            for r in range(1, first + len(items) + 2):
-                put(r, 0, "$")
-                put(r, COLS - 1, "$")
 
         if s == "party":
             for i, label in enumerate(items):
@@ -223,9 +220,10 @@ class FakeGame:
         elif s == "gender":
             listing("PICK GENDER", 2)
         elif s == "roll":
-            put(5, 2, f"RACE {self.pick['race']}")
+            put(2, 1, f"RACE {self.pick['race']}")
+            put(3, 1, f"GENDER {self.pick['gender']}")
             for i, (k, v) in enumerate(self.roll.items()):
-                put(6 + i, 2, f"{k.upper()} {v}")
+                put(5 + i, 1, f"{k.upper():<14}{v}")
             for i, label in enumerate(items):
                 put(12 + i, 2, label, i == self.cursor)
         elif s == "class":
@@ -274,6 +272,14 @@ class FakeGame:
             put(2, self.tail[1], self.tail[2])
         if self.delayed and self.slow[self.delayed[1]][1]:
             put(22, 5, "LOADING")     # the screen changes, not to the next one
+        # The game's window frame is on every screen it draws: a `$` in the
+        # first and last column of rows 1 to 22 and a `@[[[` rule above and
+        # below.  A reader that starts at column 0 must cope with it.
+        for r in range(1, 23):
+            put(r, 0, "$")
+            put(r, COLS - 1, "$")
+        for r in (0, 23):
+            put(r, 0, "@" + "[" * (COLS - 2) + "@")
         return Screen(bytes(codes), bytes(colours), 0x0400)
 
     def bar_words(self):
@@ -1032,3 +1038,539 @@ def test_lists_writes_every_races_classes_and_each_classs_alignments(tmp_path):
     assert lists["skipped"] == {}
     assert "LAWFUL GOOD" not in lists["alignments"]["MAGIC-USER/THIEF"]
     assert game.state == "party"
+
+
+# -- the screens the game drew ---------------------------------------------------
+#
+# Each entry is a screen a real Stage 1 or Stage 3 boot captured: its name, the
+# state the driver must read it as, the text of every row that holds anything
+# but the window's frame, and the highlighted runs of each row (colour 1).  The
+# rest of a screen is blank inside the frame.  Every row of the window carries
+# the frame -- a `$` in the first and last column -- so a reader that starts at
+# column 0 or ends at column 39 is caught here and not on a boot.
+
+RECORDED = [
+    ('party menu, empty', 'party',
+     '001-00-partymenu.txt',
+     {
+         2: '$NAME                            AC HP $',
+         13: '$ CREATE NEW CHARACTER                 $',
+         14: '$ ADD CHARACTER TO PARTY               $',
+         15: '$ LOAD SAVED GAME                      $',
+     },
+     {2: [(1, 4), (33, 37)], 13: [(2, 21)]}),
+    ('race list', 'race',
+     '002-01-race-list.txt',
+     {
+         2: '$ DWARF                                $',
+         3: '$ ELF                                  $',
+         4: '$ GNOME                                $',
+         5: '$ HALF-ELF                             $',
+         6: '$ HALFLING                             $',
+         7: '$ HUMAN                                $',
+         8: '$ EXIT                                 $',
+         11: '$PICK RACE                             $',
+     },
+     {2: [(2, 6)]}),
+    ('gender list', 'gender',
+     '020-L-DWARF-male.txt',
+     {
+         2: '$ MALE                                 $',
+         3: '$ FEMALE                               $',
+         6: '$PICK GENDER                           $',
+     },
+     {2: [(2, 5)]}),
+    ('roll screen', 'roll',
+     '236-C-roll-down.txt',
+     {
+         2: '$RACE HUMAN                            $',
+         3: '$GENDER MALE                           $',
+         5: '$STRENGTH      17                      $',
+         6: '$INTELLIGENCE  16                      $',
+         7: '$WISDOM        15                      $',
+         8: '$DEXTERITY     14                      $',
+         9: '$CONSTITUTION  16                      $',
+         10: '$CHARISMA      13                      $',
+         12: '$ ROLL AGAIN                           $',
+         13: '$ KEEP                                 $',
+     },
+     {12: [(2, 11)]}),
+    ('class list, elf', 'class',
+     '075-L-ELF-class-back.txt',
+     {
+         2: '$FIGHTER                               $',
+         3: '$MAGIC-USER                            $',
+         4: '$THIEF                                 $',
+         5: '$FIGHTER/MAGIC-USER                    $',
+         6: '$FIGHTER/THIEF                         $',
+         7: '$FIGHTER/MAGIC-USER/THIEF              $',
+         8: '$MAGIC-USER/THIEF                      $',
+         10: '$PICK CLASS                            $',
+     },
+     {2: [(1, 38)]}),
+    ('alignment list', 'alignment',
+     '240-C-align-lg.txt',
+     {
+         2: '$ LAWFUL GOOD                          $',
+         3: '$ LAWFUL NEUTRAL                       $',
+         4: '$ LAWFUL EVIL                          $',
+         5: '$ NEUTRAL GOOD                         $',
+         6: '$ TRUE NEUTRAL                         $',
+         7: '$ NEUTRAL EVIL                         $',
+         8: '$ CHAOTIC GOOD                         $',
+         9: '$ CHAOTIC NEUTRAL                      $',
+         10: '$ CHAOTIC EVIL                         $',
+         13: '$PICK ALIGNMENT                        $',
+     },
+     {2: [(2, 12)]}),
+    ('name prompt', 'name',
+     '242-C-name-return.txt',
+     {
+         2: '$INPUT NAME OF CHARACTER               $',
+         3: '$ VICEFTR£                             $',
+     },
+     {}),
+    ('character sheet', 'sheet',
+     '243-C-save-prompt.txt',
+     {
+         1: '$VICEFTR                               $',
+         3: '$MALE HUMAN AGE 21                     $',
+         4: '$LAWFUL GOOD                           $',
+         5: '$FIGHTER                               $',
+         7: '$STR 17     GOLD     150               $',
+         8: '$INT 16                                $',
+         9: '$WIS 15                                $',
+         10: '$DEX 14                                $',
+         11: '$CON 16                                $',
+         12: '$CHR 13                                $',
+         13: '$                           SAVE?      $',
+         14: '$LEVEL 1    EXP 0                      $',
+         15: '$HITPOINTS 11               YES        $',
+         16: '$                           NO         $',
+         17: '$AC 9                                  $',
+         20: '$THACO 19  DAMAGE 1D2+1                $',
+         22: '$OK                                    $',
+     },
+     {3: [(1, 4), (6, 10), (12, 14), (16, 17)], 4: [(1, 11)], 5: [(1, 7)], 14: [(1, 5), (7, 7), (12, 14), (16, 16)], 15: [(1, 9), (28, 30)]}),
+    ('portrait bar', 'portrait',
+     '245-C-portrait-right1.txt',
+     {
+         24: 'CHANGE:HEAD BODY KEEP',
+     },
+     {24: [(7, 10)]}),
+    ('icon bar', 'icon',
+     '251-C-icon-exit.txt',
+     {
+         24: 'ICON:PARTS COLOR SIZE EXIT',
+     },
+     {24: [(22, 25)]}),
+    ('save disk prompt', 'disk',
+     '252-C-savedisk-prompt.txt',
+     {
+         24: 'INSERT YOUR SAVE GAME DISK',
+     },
+     {}),
+    ('add list', 'add',
+     '264-A-add-down.txt',
+     {
+         2: '$  *VICEFTR                            $',
+         3: '$   EXIT                               $',
+         5: '$ADD CHARACTER TO PARTY                $',
+     },
+     {2: [(3, 10)]}),
+    ('party menu, full', 'party',
+     '271-S-save-open.txt',
+     {
+         2: '$NAME                            AC HP $',
+         4: '$VICEFTR                          9 11 $',
+         13: '$ CREATE NEW CHARACTER                 $',
+         14: '$ DROP CHARACTER                       $',
+         15: '$ MODIFY CHARACTER                     $',
+         16: '$ VIEW CHARACTER                       $',
+         17: '$ ADD CHARACTER TO PARTY               $',
+         18: '$ REMOVE CHARACTER FROM PARTY          $',
+         19: '$ SAVE CURRENT GAME                    $',
+         20: '$ BEGIN ADVENTURING                    $',
+     },
+     {2: [(1, 4), (33, 37)], 19: [(2, 18)]}),
+    ('save bar', 'save-yn',
+     '272-S-save-yes.txt',
+     {
+         2: '$NAME                            AC HP $',
+         4: '$VICEFTR                          9 11 $',
+         13: '$ CREATE NEW CHARACTER                 $',
+         14: '$ DROP CHARACTER                       $',
+         15: '$ MODIFY CHARACTER                     $',
+         16: '$ VIEW CHARACTER                       $',
+         17: '$ ADD CHARACTER TO PARTY               $',
+         18: '$ REMOVE CHARACTER FROM PARTY          $',
+         19: '$ SAVE CURRENT GAME                    $',
+         20: '$ BEGIN ADVENTURING                    $',
+         24: 'SAVE GAME: YES NO',
+     },
+     {2: [(1, 4), (33, 37)], 24: [(11, 13)]}),
+    ('saving', 'saving',
+     '296-W-saving-stall.txt',
+     {
+         24: 'SAVING',
+     },
+     {}),
+    ('game disk 3 prompt', 'disk',
+     '297-W-gamedisk3-prompt.txt',
+     {
+         18: '$INSERT YOUR GAME DISK #3              $',
+         24: 'PRESS ANY KEY TO CONTINUE',
+     },
+     {}),
+    ('side 3 prompt', 'disk',
+     '276-B-side3-prompt.txt',
+     {
+         18: '$OUTWARD BOUND ...                     $',
+         24: 'INSERT SIDE # 3, AND PRESS ANY KEY.',
+     },
+     {}),
+    ('world', 'world',
+     '287-W-world.txt',
+     {
+         24: 'MOVE VIEW CAST AREA ENCAMP SEARCH LOOK',
+     },
+     {24: [(0, 3)]}),
+    ('camp menu', None,
+     '295-W-savegame.txt',
+     {
+         24: 'SAVE GAME  EXIT',
+     },
+     {24: [(0, 9)]}),
+    ('race list, boot', 'race',
+     '002-CREATE-NEW-CHARACTER-then.txt',
+     {
+         2: '$ DWARF                                $',
+         3: '$ ELF                                  $',
+         4: '$ GNOME                                $',
+         5: '$ HALF-ELF                             $',
+         6: '$ HALFLING                             $',
+         7: '$ HUMAN                                $',
+         8: '$ EXIT                                 $',
+         11: '$PICK RACE                             $',
+     },
+     {}),
+    ('gender list, boot', 'gender',
+     '003-VICEFTR-race.txt',
+     {
+         2: '$ MALE                                 $',
+         3: '$ FEMALE                               $',
+         6: '$PICK GENDER                           $',
+     },
+     {}),
+    ('lost roll, boot', 'roll',
+     '005-lost-roll.txt',
+     {
+         2: '$RACE HUMAN                            $',
+         3: '$GENDER MALE                           $',
+         5: '$STRENGTH      15                      $',
+         6: '$INTELLIGENCE  16                      $',
+         7: '$WISDOM        14                      $',
+         8: '$DEXTERITY     15                      $',
+         9: '$CONSTITUTION  17                      $',
+         10: '$CHARISMA      12                      $',
+         12: '$ ROLL AGAIN                           $',
+         13: '$ KEEP                                 $',
+     },
+     {}),
+]
+
+
+def _codes(ch):
+    return {"@": 0, "[": 27, "\u00a3": 28, "]": 29, "^": 30, "_": 31}.get(
+        ch, ord(ch) - 64 if "A" <= ch <= "Z" else ord(ch))
+
+
+def recorded_screen(rows, hot):
+    """The `Screen` a captured entry describes: the window frame's rules on
+    rows 0 and 23, the rows given, colour 5 except the highlighted runs."""
+    lines = {0: "@" + "[" * 38 + "@", 23: "@" + "[" * 38 + "@", **rows}
+    codes = bytearray(0x20 for _ in range(25 * COLS))
+    colours = bytearray(5 for _ in range(25 * COLS))
+    for r, text in lines.items():
+        assert len(text) <= COLS, (r, text)
+        for i, ch in enumerate(text):
+            codes[r * COLS + i] = _codes(ch)
+    for r, runs in hot.items():
+        for a, b in runs:
+            for c in range(a, b + 1):
+                colours[r * COLS + c] = 1
+    return Screen(bytes(codes), bytes(colours), 0x0400)
+
+
+SCREENS = {name: (kind, recorded_screen(rows, hot))
+           for name, kind, _source, rows, hot in RECORDED}
+
+
+def screen_of(name):
+    return SCREENS[name][1]
+
+
+class KeySent(Exception):
+    """A frozen game was sent a key; `.args[0]` is which."""
+
+
+class FrozenKeyboard:
+    def __init__(self, game):
+        self.game, self.sent = game, []
+
+    def key(self, name, hold=0.0, gap=0.0):
+        self.sent.append(name)
+        if self.game.stop:
+            raise KeySent(name)
+        self.game.index = min(self.game.index + 1, len(self.game.screens) - 1)
+
+    def text(self, s, hold=0.0, gap=0.0):
+        self.sent.append("text " + s)
+
+    def screenshot(self, path, **_kw):
+        return True
+
+
+class FrozenSession(S.Session):
+    """A `Session` showing recorded screens: one at a time, moving to the next
+    when a key is pressed, or stopping the test at the first key."""
+
+    def __init__(self, *names, stop=False):
+        self.screens = [screen_of(n) for n in names]
+        self.index, self.stop = 0, stop
+        self.kbd = FrozenKeyboard(self)
+        self.here = "/nowhere"
+        self.save_disk = "/nowhere/SIDE0.D64"
+
+    def screen(self):
+        return self.screens[self.index]
+
+    def confirm_bar(self, row=24, was=""):
+        self.kbd.key("Return")
+
+    def press_kernal(self, code):
+        self.kbd.key(f"kernal {code:#x}")
+
+    def handle_prompt(self, s=None):
+        return False
+
+
+def frozen_driver(tmp_path, *names, stop=False):
+    sess = FrozenSession(*names, stop=stop)
+    clock = Clock()
+    log = creation.runlog.Log(tmp_path / "run.jsonl")
+    drv = creation.Driver(sess, tmp_path, log, clock=clock, sleep=clock.sleep)
+    return drv, sess
+
+
+#: The state Stage 1 recorded each screen in, by the row it reads.
+def test_every_recorded_screen_is_the_state_stage_one_recorded():
+    wrong = {name: creation.recognise(FrozenSession(name), screen)
+             for name, (kind, screen) in SCREENS.items()
+             if creation.recognise(FrozenSession(name), screen) != kind}
+    assert not wrong
+
+
+ROLLS_SEEN = {
+    "roll screen": dict(strength=17, intelligence=16, wisdom=15, dexterity=14,
+                        constitution=16, charisma=13),
+    "lost roll, boot": dict(strength=15, intelligence=16, wisdom=14,
+                            dexterity=15, constitution=17, charisma=12),
+}
+
+
+@pytest.mark.parametrize("name", ROLLS_SEEN)
+def test_the_roll_screen_inside_its_frame_reads_six_scores(name):
+    assert creation.scores(screen_of(name)) == ROLLS_SEEN[name]
+
+
+@pytest.mark.parametrize("name", ROLLS_SEEN)
+def test_the_driver_keeps_the_roll_the_screen_shows(tmp_path, name):
+    drv, sess = frozen_driver(tmp_path, name, name)
+    assert drv.read_scores(screen_of(name)) == ROLLS_SEEN[name]
+
+
+LISTS_SEEN = {
+    "race list": ["DWARF", "ELF", "GNOME", "HALF-ELF", "HALFLING", "HUMAN",
+                  "EXIT"],
+    "race list, boot": ["DWARF", "ELF", "GNOME", "HALF-ELF", "HALFLING",
+                        "HUMAN", "EXIT"],
+    "gender list": ["MALE", "FEMALE"],
+    "gender list, boot": ["MALE", "FEMALE"],
+    "class list, elf": CLASSES["ELF"],
+    "alignment list": list(creation.ALIGNMENTS),
+    "add list": ["VICEFTR", "EXIT"],
+}
+
+
+@pytest.mark.parametrize("name", LISTS_SEEN)
+def test_a_framed_list_reads_its_labels_and_nothing_of_the_frame(name):
+    kind = SCREENS[name][0]
+    assert creation.entries(screen_of(name), kind) == LISTS_SEEN[name]
+
+
+@pytest.mark.parametrize("name", [n for n in LISTS_SEEN
+                                  if SCREENS[n][0] in creation.EXACT_LISTS])
+def test_every_label_of_a_framed_list_is_a_whole_row(name):
+    s = screen_of(name)
+    assert all(S.Session._exact_hit(s, label) is not None
+               for label in LISTS_SEEN[name])
+
+
+def label_row(s, label):
+    return S.Session._exact_hit(s, label)[0] if S.Session._exact_hit(
+        s, label) else s.find(label)[0]
+
+
+@pytest.mark.parametrize("name", [n for n in LISTS_SEEN if SCREENS[n][1]
+                                  .highlighted_rows(column=2)
+                                  or SCREENS[n][1].highlighted_rows(column=1)
+                                  or SCREENS[n][1].highlighted_rows(column=4)])
+def test_the_highlight_is_walked_by_the_recorded_screens_own_colours(
+        tmp_path, name):
+    """From the row the game highlighted, every label is reached: Return on
+    its own row, Down for a row below, and never a silent timeout."""
+    kind, s = SCREENS[name]
+    label_col = creation.LISTS[kind][1] if kind != creation.ADD_LIST \
+        else creation.ADD_COLUMN
+    drv, sess = frozen_driver(tmp_path, name, stop=True)
+    here = s.highlighted_rows(column=label_col)
+    assert len(here) == 1, here
+    for label in LISTS_SEEN[name]:
+        sess.kbd.sent.clear()
+        with pytest.raises(KeySent) as sent:
+            drv.choose(s, kind, label, creation.PARTY_MENU, column=label_col)
+        want = label_row(s, label)
+        assert sent.value.args[0] == (
+            "Return" if want == here[0] else "Down" if want > here[0] else "Up")
+
+
+def test_the_party_menu_is_walked_from_the_highlight_it_shows(tmp_path):
+    kind, s = SCREENS["party menu, empty"]
+    drv, sess = frozen_driver(tmp_path, "party menu, empty", stop=True)
+    with pytest.raises(KeySent) as sent:
+        drv.choose(s, creation.PARTY_MENU, "CREATE NEW CHARACTER",
+                   creation.PICK_RACE)
+    assert sent.value.args[0] == "Return"
+    with pytest.raises(KeySent) as sent:
+        drv.choose(s, creation.PARTY_MENU, "LOAD SAVED GAME", creation.PICK_RACE)
+    assert sent.value.args[0] == "Down"
+
+
+def test_the_roll_bar_is_walked_from_the_highlight_it_shows(tmp_path):
+    kind, s = SCREENS["roll screen"]
+    drv, sess = frozen_driver(tmp_path, "roll screen", stop=True)
+    with pytest.raises(KeySent) as sent:
+        drv.choose(s, creation.ROLL, "KEEP", creation.PICK_CLASS,
+                   column=creation.ROLL_COLUMN)
+    assert sent.value.args[0] == "Down"
+
+
+def test_the_sheet_answer_is_walked_from_the_highlight_it_shows(tmp_path):
+    kind, s = SCREENS["character sheet"]
+    drv, sess = frozen_driver(tmp_path, "character sheet", stop=True)
+    with pytest.raises(KeySent) as sent:
+        drv.choose(s, creation.SHEET, "YES", creation.PORTRAIT,
+                   column=creation.YES_COLUMN)
+    assert sent.value.args[0] == "Return"
+
+
+@pytest.mark.parametrize("name,label,key", [
+    ("portrait bar", "KEEP", "Right"),
+    ("icon bar", "EXIT", "Return"),
+    ("save bar", "YES", "Return"),
+    ("save bar", "NO", "Right"),
+])
+def test_a_bar_is_walked_from_the_highlight_it_shows(tmp_path, name, label, key):
+    kind, s = SCREENS[name]
+    drv, sess = frozen_driver(tmp_path, name, stop=True)
+    with pytest.raises(KeySent) as sent:
+        drv.choose_bar(s, kind, label, creation.PARTY_MENU)
+    assert sent.value.args[0] == key
+
+
+def test_a_typed_name_is_found_on_the_name_row(tmp_path):
+    drv, sess = frozen_driver(tmp_path, "name prompt", "character sheet")
+    s = drv.name_it(screen_of("name prompt"), "VICEFTR")
+    assert creation.recognise(sess, s) == creation.SHEET
+
+
+def test_a_starred_name_is_found_on_the_add_list(tmp_path):
+    drv, sess = frozen_driver(tmp_path, "add list")
+    assert drv.starred("VICEFTR") is screen_of("add list")
+
+
+def test_every_screen_the_driver_waits_for_has_a_recorded_one():
+    seen = {kind for kind, _ in SCREENS.values()}
+    waited = {creation.PARTY_MENU, creation.PICK_RACE, creation.PICK_GENDER,
+              creation.ROLL, creation.PICK_CLASS, creation.PICK_ALIGN,
+              creation.NAME, creation.SHEET, creation.PORTRAIT, creation.ICON,
+              creation.ADD_LIST, creation.SAVE_YN, creation.SAVING,
+              creation.WORLD, creation.DISK}
+    assert waited <= seen, waited - seen
+
+
+def test_a_screen_the_creation_driver_does_not_wait_for_is_not_recognised():
+    assert creation.recognise(FrozenSession("camp menu"),
+                              screen_of("camp menu")) is None
+
+
+def test_the_fake_game_draws_the_frame_on_every_screen(tmp_path):
+    """The fake's every screen, not only its lists, carries the window frame;
+    a reader that cannot cope with it fails the whole scripted suite."""
+    game = FakeGame(tmp_path)
+    for state in ("party", "race", "gender", "roll", "class", "align", "name",
+                  "sheet", "add", "saving", "junk"):
+        game.state = state
+        game.pick = {"race": "HUMAN", "gender": "MALE", "class": "FIGHTER"}
+        game.roll = dict(ROLLS[0])
+        screen = game.render()
+        assert all(screen.row(r)[0] == "$" == screen.row(r)[-1]
+                   for r in range(1, 23)), state
+        assert screen.row(0)[0] == "@" == screen.row(23)[0], state
+
+
+CAPTURES = (pathlib.Path.home() / ".cache" / "wish" / "acceptance" / "722")
+
+
+def capture_screen(path):
+    """A `Screen` from a `shots/*.txt` a boot wrote: numbered rows over a row of
+    colour digits, or the plain rows the driver's own `capture` writes."""
+    import re
+    lines = path.read_text(encoding="utf-8").split("\n")
+    rows, colours = [" " * COLS] * 25, [[5] * COLS for _ in range(25)]
+    if lines and re.match(r"\s*0 \|", lines[0]):
+        for i, line in enumerate(lines):
+            m = re.match(r"\s*(\d+) \|(.{40})\|$", line)
+            if m:
+                rows[int(m.group(1))] = m.group(2)
+                digits = re.match(r"\s+\|(.{40})\|$", lines[i + 1])
+                colours[int(m.group(1))] = [int(c, 16) for c in digits.group(1)]
+    else:
+        rows = [r.ljust(COLS)[:COLS] for r in lines[:25]]
+        rows += [" " * COLS] * (25 - len(rows))
+    return Screen(bytes(_codes(ch) for r in rows for ch in r),
+                  bytes(c for r in colours for c in r), 0x0400)
+
+
+def test_every_captured_creation_screen_reads_as_the_state_it_shows():
+    """The whole recorded set, when the captures are on this machine: a roll
+    screen has six scores, a list has whole-row labels, and no label carries
+    the frame."""
+    shots = sorted(CAPTURES.glob("*/shots/*.txt"))
+    if not shots:
+        pytest.skip("the Stage 1 and Stage 3 captures are not on this machine")
+    problems = []
+    for path in shots:
+        text = path.read_text(encoding="utf-8")
+        if text.startswith("(bitmap)"):
+            continue
+        s = capture_screen(path)
+        kind = creation.recognise(FrozenSession(), s)
+        if kind == creation.ROLL and len(creation.scores(s)) != 6:
+            problems.append(f"{path.name}: roll with {creation.scores(s)}")
+        if kind in creation.EXACT_LISTS:
+            for label in creation.entries(s, kind):
+                if "$" in label or S.Session._exact_hit(s, label) is None:
+                    problems.append(f"{path.name}: {label!r} is not a whole row")
+    assert not problems, problems[:10]

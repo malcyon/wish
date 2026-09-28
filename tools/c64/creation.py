@@ -113,7 +113,9 @@ def alignments_offered(cls: str) -> tuple[str, ...]:
 #: The six ability lines of the roll screen, in record order (`0x014`-`0x019`).
 ABILITIES = ("strength", "intelligence", "wisdom", "dexterity", "constitution",
              "charisma")
-RE_SCORE = re.compile(r"^\s*(STRENGTH|INTELLIGENCE|WISDOM|DEXTERITY|CONSTITUTION"
+#: Each row of the roll screen sits inside the game's window frame, so the
+#: text starts with a `$`.
+RE_SCORE = re.compile(r"^\$?\s*(STRENGTH|INTELLIGENCE|WISDOM|DEXTERITY|CONSTITUTION"
                       r"|CHARISMA)\s+(\d+)", re.M)
 
 #: The name routine rejects any byte at or above `$5B` and holds fifteen.
