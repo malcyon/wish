@@ -10,13 +10,14 @@ new class at level 1.  This makes one.
 
 **What is staged and what is measured.**  `.claude/rules/testing.md` draws the
 line: editing an *input* and watching the engine compute from it is a valid
-experiment; reading back a value we wrote is not.  So the run writes three
-numbers into the character record before the boot --
+experiment; reading back a value we wrote is not.  So the run writes numbers
+into the character record before the boot --
 
 | written by us | why |
 |---|---|
 | `class_levels[<his class>]` and `level` | so one training crosses the threshold instead of five |
 | `experience` | so the trainer will advance him at all |
+| `platinum` | Curse's trainer refuses anyone under 1000 gp before it looks at race or level (`GAME.OVR:0x24D2D`-`0x24D51`, `docs/209-the-regained-dual-class-on-dos.md`) |
 | `SAVGAM<slot>.DAT+0xD51` | the hall's class filter, so `TRAIN CHARACTER` works wherever the party stands (`docs/194-the-dos-training-ladder.md`) |
 
 -- and everything read afterwards is the engine's: `class_levels[old]`,
@@ -88,7 +89,7 @@ def describe(path: pathlib.Path) -> dict:
 
 
 def stage_record(path: pathlib.Path, set_level: int | None,
-                 xp: int | None) -> dict:
+                 xp: int | None, platinum: int | None = None) -> dict:
     """Write the run's inputs into one character record, in place.
 
     `set_level` goes into the slot of the class the record already holds --
@@ -114,8 +115,28 @@ def stage_record(path: pathlib.Path, set_level: int | None,
         f = c.fields["experience"]
         data[f.offset:f.offset + f.size] = int(xp).to_bytes(f.size, "little")
         changed["experience"] = xp
+    if platinum is not None:
+        f = c.fields["platinum"]
+        data[f.offset:f.offset + f.size] = int(platinum).to_bytes(f.size,
+                                                                    "little")
+        changed["platinum"] = platinum
     path.write_bytes(bytes(data))
     return changed
+
+
+def save_slot_key(letter: str) -> str:
+    """The key `SAVE WHICH GAME:` expects for a save slot letter.
+
+    Curse's slot list only offers A through J (`shots/06-save-01-s.png`,
+    `docs/209-the-regained-dual-class-on-dos.md`); a letter outside that
+    range would press a key the prompt does not show, so it is refused
+    rather than sent to the emulator.
+    """
+    key = letter.strip().lower()
+    if len(key) != 1 or not ("a" <= key <= "j"):
+        raise SystemExit(f"{letter!r}: save slot must be a single letter "
+                         "A-J, what Curse's SAVE WHICH GAME: offers")
+    return key
 
 
 def snapshot(save_dir: pathlib.Path, out: pathlib.Path, tag: str) -> list[dict]:
@@ -150,7 +171,8 @@ def run(args: argparse.Namespace) -> int:
         for line in who:
             rec = save_dir / f"CHRDAT{args.slot.upper()}{line}.SAV"
             note(event="staged", record=rec.name, line=line,
-                 changed=stage_record(rec, args.set_level, args.xp))
+                 changed=stage_record(rec, args.set_level, args.xp,
+                                       args.platinum))
 
     if args.dry_run:
         staged = out / "staged"
@@ -223,7 +245,10 @@ def run(args: argparse.Namespace) -> int:
             session.shot("05-adventuring")
             path = session.save_file(args.save_to)
             was = path.read_bytes() if path.is_file() else None
-            for n, press in enumerate(args.after):
+            slot_key = save_slot_key(args.save_to)
+            after = [slot_key if press == "{slot}" else press
+                     for press in args.after]
+            for n, press in enumerate(after):
                 if press.startswith("~"):
                     time.sleep(float(press[1:]))
                 else:
@@ -281,6 +306,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="the class level to stage before the boot")
     ap.add_argument("--xp", type=lambda s: int(s, 0), default=None,
                     help="the experience to stage before the boot")
+    ap.add_argument("--platinum", type=lambda s: int(s, 0), default=None,
+                    help="the platinum to stage before the boot")
     ap.add_argument("--steps", nargs="*",
                     default=["t", "y", "l", "l", "l"],
                     help="keys to press from the party menu; ~N sleeps")
@@ -288,8 +315,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="BEGIN ADVENTURING, then run --after and expect this "
                          "slot's SAVGAM to change")
     ap.add_argument("--after", nargs="*",
-                    default=["e", "s", "k", "Return", "Escape", "n"],
-                    help="keys pressed after BEGIN ADVENTURING; ~N sleeps")
+                    default=["e", "s", "{slot}", "Return", "Escape", "n"],
+                    help="keys pressed after BEGIN ADVENTURING; ~N sleeps; "
+                         "{slot} becomes --save-to's letter, A-J")
     ap.add_argument("--dry-run", action="store_true",
                     help="stage into --out/staged and stop, with no emulator")
     ap.add_argument("--out", default=str(scratch.scratch_dir("curseregain", "run")))
