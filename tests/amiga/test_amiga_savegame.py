@@ -183,6 +183,19 @@ def _verified_later_save(drawer: str, specimen: str, filename: str) -> pathlib.P
     return path
 
 
+def _curse_specimen_party_menu_before_begin_adventuring() -> amiga_savegame.AmigaSavegame:
+    """Slot C of `WISH-SPEC-curse-dostoamiga-partymenu-slotc`: the Amiga
+    engine's own SAVE CURRENT GAME at the party menu, made after loading a
+    Wish DOS-to-Amiga conversion of a party that had not set out (#653,
+    #677's accept1 run). Unlike the synthetic Curse source used elsewhere in
+    this file, this is engine-written."""
+    path = _verified_later_save(
+        "coab-amiga", "WISH-SPEC-curse-dostoamiga-partymenu-slotc",
+        "curseA-partymenu-slotc.adf")
+    disk = AmigaDisk(path.read_bytes())
+    return amiga_savegame.read_slot(disk, "C", amiga_savegame.CURSE)
+
+
 def _curse_ecl() -> bytes:
     for _label, image in amigasaves.images():
         try:
@@ -368,7 +381,9 @@ def test_an_amiga_party_saved_before_begin_adventuring_converts_to_the_dos_pre_a
         key, tmp_path):
     """The Amiga reader hands the writer the arrival square, and the DOS save
     is still the party menu's own: its bytes up to the party table equal the
-    archives' shipped pre-adventure save."""
+    archives' shipped pre-adventure save. Curse is checked against both the
+    synthetic Amiga source built from `SAVEAZURE` and, when the specimen is
+    present, the engine's own party-menu save (#653)."""
     from goldbox import amiga_later, c64_port, dos_codec, world_state
     from goldbox.iconparts import amiga_combat_icon
     from tools.dos import dosbox
@@ -380,38 +395,56 @@ def test_an_amiga_party_saved_before_begin_adventuring_converts_to_the_dos_pre_a
         pytest.skip(f"needs the DOS {stem} archives")
     container = dos_savegame.container_for(key)
     shape = amiga_savegame.container_for(key)
+    shipped = (folder / f"SAVGAMA{container.suffix}").read_bytes()
+
     if shape is amiga_savegame.CURSE:
         game = c64_port.by_key(key)
         save0 = _c64_pre_adventure(key)
         characters, _icons = dos_codec.c64_party(save0, None, game)
-        data, _report = amiga_savegame.new_savegame(
+        synthetic, _report = amiga_savegame.new_savegame(
             world_state.from_c64(save0, game=game), characters, "A")
+        sources = [
+            ("the C64-sourced synthetic Amiga save",
+             amiga_savegame.parse(synthetic, shape)),
+            ("the specimen's engine-written party-menu save",
+             _curse_specimen_party_menu_before_begin_adventuring()),
+        ]
     else:
-        data = _shipped_amiga_silver_blades()
-    save = amiga_savegame.parse(data, shape)
-    state = amiga_savegame.state_from_savegame(save)
-    party = list(save.characters)
-    neutral = [amiga_later.to_neutral_later(c) for c in party]
+        sources = [("the shipped savgamA.sav",
+                    amiga_savegame.parse(_shipped_amiga_silver_blades(), shape))]
 
-    report = dos_codec.new_dos_save_from(
-        state, neutral, tmp_path, "A", game_dir,
-        icons=[amiga_combat_icon(c) for c in party])
+    for label, save in sources:
+        state = amiga_savegame.state_from_savegame(save)
+        party = list(save.characters)
+        neutral = [amiga_later.to_neutral_later(c) for c in party]
+        out = tmp_path / label.replace(" ", "_")
+        out.mkdir()
 
-    shipped = (folder / f"SAVGAMA{container.suffix}").read_bytes()
-    written = (tmp_path / f"SAVGAMA{container.suffix}").read_bytes()
-    assert report.unwritten == []
-    assert written[:container.party_table] == shipped[:container.party_table]
-    assert len(dos_codec.read_party(tmp_path, "A")) == len(party) == 6
+        report = dos_codec.new_dos_save_from(
+            state, neutral, out, "A", game_dir,
+            icons=[amiga_combat_icon(c) for c in party])
+
+        written = (out / f"SAVGAMA{container.suffix}").read_bytes()
+        assert report.unwritten == [], label
+        assert written[:container.party_table] == shipped[:container.party_table], label
+        assert len(dos_codec.read_party(out, "A")) == len(party) == 6, label
 
 
 @pytest.mark.parametrize("key", sorted(PRE_ADVENTURE))
 def test_an_amiga_party_saved_before_begin_adventuring_converts_to_the_c64_s_own_form(key):
-    """An Amiga party that has not set out converts to a C64 save whose
-    header, every byte before the combat icons, equals the C64 game's own
-    pre-adventure save -- so `BEGIN ADVENTURING` plays the opening there,
-    where a party placed at the arrival square skips it.  Silver Blades'
-    source is the shipped `savgamA.sav`; Curse has no Amiga pre-adventure
-    save, so its source is the Amiga writer's output from `SAVEAZURE`."""
+    """An Amiga party that has not set out converts to a C64 save that is
+    pre-adventure: `set_out` false and the raw place a fresh save carries
+    (area 0, square 0,0, facing 0) -- so `BEGIN ADVENTURING` plays the
+    opening there, where a party placed at the arrival square skips it.
+    Silver Blades' source is the shipped `savgamA.sav`; Curse has no
+    engine-written Amiga pre-adventure save with a byte-identical header, so
+    it is checked with two sources: the Amiga writer's own output from
+    `SAVEAZURE` (byte-exact header) and, when the specimen is present, the
+    engine's own party-menu save (#653). The specimen's header differs from
+    `SAVEAZURE` in 11 of 736 bytes -- measured to come with this specific
+    party rather than from a conversion bug, the same 11 bytes differing
+    when converting straight from its DOS source -- so only `set_out` and
+    place are asserted for it, not a byte-exact header."""
     from goldbox import c64_port, c64_save, dos_codec, world_state
     from goldbox.iconparts import amiga_combat_icon
     game = c64_port.by_key(key)
@@ -419,23 +452,34 @@ def test_an_amiga_party_saved_before_begin_adventuring_converts_to_the_c64_s_own
     shape = amiga_savegame.container_for(key)
     if shape is amiga_savegame.CURSE:
         characters, _icons = dos_codec.c64_party(shipped_c64, None, game)
-        data, _report = amiga_savegame.new_savegame(
+        synthetic, _report = amiga_savegame.new_savegame(
             world_state.from_c64(shipped_c64, game=game), characters, "A")
+        sources = [
+            ("the Amiga writer's output from SAVEAZURE",
+             amiga_savegame.parse(synthetic, shape), True),
+            ("the specimen's engine-written party-menu save",
+             _curse_specimen_party_menu_before_begin_adventuring(), False),
+        ]
     else:
-        data = _shipped_amiga_silver_blades()
-    save = amiga_savegame.parse(data, shape)
-    state = amiga_savegame.state_from_savegame(save)
-    party = list(save.characters)
+        sources = [("the shipped savgamA.sav",
+                    amiga_savegame.parse(_shipped_amiga_silver_blades(), shape), True)]
 
-    save0, _save1, report = dos_codec.new_save_from_neutral(
-        state, [amiga_later.to_neutral_later(c) for c in party],
-        [amiga_combat_icon(c) for c in party], bytes(36), bytes(852),
-        game=game)
+    for label, save, byte_exact_header in sources:
+        state = amiga_savegame.state_from_savegame(save)
+        party = list(save.characters)
 
-    cont = c64_save.container_for(game)
-    assert report.messages == []
-    assert save0[:cont.icon_table] == shipped_c64[:cont.icon_table]
-    assert world_state.from_c64(bytes(save0), game=game).set_out is False
+        save0, _save1, report = dos_codec.new_save_from_neutral(
+            state, [amiga_later.to_neutral_later(c) for c in party],
+            [amiga_combat_icon(c) for c in party], bytes(36), bytes(852),
+            game=game)
+
+        cont = c64_save.container_for(game)
+        assert report.messages == [], label
+        if byte_exact_header:
+            assert save0[:cont.icon_table] == shipped_c64[:cont.icon_table], label
+        result = world_state.from_c64(bytes(save0), game=game)
+        assert result.set_out is False, label
+        assert (result.area, result.x, result.y, result.facing) == (0, 0, 0, 0), label
 
 
 # ---------------------------------------------------------------------------
