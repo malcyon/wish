@@ -21,6 +21,7 @@ import json
 import os
 import pathlib
 import subprocess
+from types import SimpleNamespace
 
 import gamedata
 import pytest
@@ -104,6 +105,415 @@ def test_the_steps_parse_and_keep_their_arguments():
     assert A.parse_rest("8h") == (0, 8)
     assert A.parse_rest("1h30m") == (30, 1)
     assert A.parse_peek("$4900 64") == (0x4900, 64)
+
+
+def test_temple_probe_step_names_only_brutus():
+    assert A.parse_steps(["load", "temple-probe BRUTUS"])[1] == (
+        A.Step("temple-probe", "BRUTUS"))
+    for bad in ("temple-probe", "temple-probe BAKSHI",
+                "temple-probe 6", "temple-probe BRUTUS>HEAL"):
+        with pytest.raises(ValueError):
+            A.parse_steps(["load", bad])
+
+
+@pytest.mark.parametrize("extra", [
+    ["--title", "curse"], ["--issue", "699"],
+    ["--stage-record", "2:0x20=41"], ["--stage-row", "63=20:05:00:05"],
+    ["--stage-trait", "5:9=32"], ["--stage-item", "5:0:4=1"],
+    ["--stage-status", "5=3"], ["--checkpoint", "408F"],
+    ["--stage-only"], ["--preserve-specimen"], ["--capture-ready"],
+    ["--probe-step"], ["--joy"], ["--pool", "0"],
+    ["--attack-by", "ROLAND"], ["--walk", "MIIJI"],
+    ["--max-seconds", "1600"],
+])
+def test_temple_probe_rejects_other_modes_before_guest_claim(
+        tmp_path, monkeypatch, extra):
+    source = _fixture_disk(tmp_path)
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    _refused_before_a_slot(tmp_path, monkeypatch, [
+        "--save", str(source), "--disks", str(tmp_path), "--issue", "700",
+        "--steps", "load", "temple-probe BRUTUS", *extra])
+
+
+def test_temple_probe_refuses_unregistered_or_changed_source_before_guest_claim(
+        tmp_path, monkeypatch):
+    source = _fixture_disk(tmp_path)
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed"))
+    with pytest.raises(SystemExit) as error:
+        A.main(["--title", "pool", "--save", str(source),
+                "--disks", str(tmp_path), "--issue", "700",
+                "--steps", "load", "temple-probe BRUTUS",
+                "--out", str(tmp_path / "out")])
+    assert error.value.code == 2
+    assert not (tmp_path / "out").exists()
+
+
+def test_temple_probe_accepts_only_the_bounded_command(tmp_path, monkeypatch):
+    source = _fixture_disk(tmp_path)
+    observed = []
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    monkeypatch.setattr(A, "run", lambda args, steps, out, selected: observed.append(
+        (args, steps, out, selected)) or 0)
+    assert A.main(["--title", "pool", "--save", str(source),
+                   "--disks", str(tmp_path), "--issue", "700",
+                   "--run", "temple-route-a", "--max-seconds", "1500",
+                   "--steps", "load", "temple-probe BRUTUS",
+                   "--out", str(tmp_path / "out")]) == 0
+    args, steps, out, selected = observed[0]
+    assert steps == [A.Step("load"), A.Step("temple-probe", "BRUTUS")]
+    assert args.max_seconds == 1500 and selected == source
+    assert out == tmp_path / "out"
+    assert "'temple-probe BRUTUS'" in args.command
+
+
+def test_temple_input_guard_stops_boot_and_prompt_keys_at_cleanup_reserve():
+    events = []
+    now = SimpleNamespace(value=1399)
+    keyboard = SimpleNamespace(
+        key=lambda key: events.append(("key", key)),
+        text=lambda text: events.append(("text", text)))
+    session = SimpleNamespace(
+        kbd=keyboard,
+        press_kernal=lambda code: events.append(("kernal", code)),
+        handle_prompt=lambda screen=None: events.append(("prompt", screen)))
+    original_press = session.press_kernal
+    original_prompt = session.handle_prompt
+    restore = A.guard_temple_input(session, lambda: now.value, 1400)
+    session.kbd.key("Return")
+    session.kbd.text("aaaaaa")
+    session.press_kernal(0x0D)
+    session.handle_prompt("side3")
+    assert len(events) == 4
+    now.value = 1400
+    for send in (lambda: session.kbd.key("Return"),
+                 lambda: session.kbd.text("aaaaaa"),
+                 lambda: session.press_kernal(0x0D),
+                 lambda: session.handle_prompt("side3")):
+        with pytest.raises(A.StepFailed, match="temple input deadline"):
+            send()
+    assert len(events) == 4
+    restore()
+    assert session.kbd is keyboard
+    assert session.press_kernal is original_press
+    assert session.handle_prompt is original_prompt
+
+
+def test_temple_source_guard_requires_registry_path_and_recorded_hash(
+        tmp_path, monkeypatch):
+    source = _fixture_disk(tmp_path)
+    digest = A.specimens.sha256_file(source)
+    monkeypatch.setattr(A, "TEMPLE_SOURCE_SHA256", digest)
+    entry = {"platform": "c64", "title": "Pool of Radiance",
+             "_files": [source], "sha256": {source.name: digest}}
+    monkeypatch.setattr(A.specimens, "list_specimens", lambda: [entry])
+    assert A.temple_source_guard(source) == digest
+    duplicate = tmp_path / "not-registered.D64"
+    duplicate.write_bytes(source.read_bytes())
+    with pytest.raises(ValueError, match="not a registered"):
+        A.temple_source_guard(duplicate)
+    source.write_bytes(source.read_bytes() + b"changed")
+    with pytest.raises(ValueError, match="SHA-256"):
+        A.temple_source_guard(source)
+
+
+class _TempleScreen:
+    def __init__(self, rows, bar_highlight=None, party_highlight=None):
+        self._rows = [row.ljust(40)[:40] for row in rows]
+        self.codes = bytes(ord(char) for row in self._rows for char in row)
+        colours = bytearray(1000)
+        if bar_highlight is not None:
+            start, width = bar_highlight
+            colours[24 * 40 + start:24 * 40 + start + width] = bytes([1]) * width
+        if party_highlight is not None:
+            colours[party_highlight * 40 + A.S.PARTY_COLUMN] = 1
+        self.colours = bytes(colours)
+
+    def row(self, n):
+        return self._rows[n]
+
+    def text(self):
+        return "\n".join(self._rows)
+
+
+class _TempleMonitor:
+    def __init__(self, session):
+        self.session = session
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        pass
+
+    def resume(self):
+        pass
+
+    def read(self, address, count):
+        s = self.session
+        if s.short_monitor:
+            return b""
+        if address == 0x6E1B:
+            return bytes([s.place[0] | (0x80 if s.pending_area else 0)])
+        if address == 0x6E11:
+            return bytes([A.S.COMBAT if s.unsafe == "encounter" and s.moves
+                          else A.S.DUNGEON])
+        if address == 0x49E6:
+            return b"\x01"
+        if address == 0x49C0:
+            return bytes((15, 4, 3))  # The game's save copy lags movement.
+        if address == 0xC04B:
+            return bytes(s.place[1:])
+        if address == 0x6EFC:
+            return bytes([s.resident_slot])
+        if address == 0x6B00:
+            return b"BRUTUS".ljust(0x100, b"\0")
+        raise AssertionError(f"unexpected monitor read ${address:04X}")
+
+
+class _TempleSession:
+    def __init__(self, out, *, unsafe=None):
+        self.place = (0x14, 15, 4, 3)
+        self.phase = "move"
+        self.moves = []
+        self.keys = []
+        self.unsafe = unsafe
+        self.party_index = 0
+        self.bar_index = 0
+        self.resident_slot = 4 if unsafe == "wrong-resident" else 5
+        self.short_monitor = unsafe == "short-monitor"
+        self.pending_area = False
+        self.out = out
+        self.kbd = self
+
+    def mon(self, _timeout):
+        return _TempleMonitor(self)
+
+    def screen(self):
+        rows = [""] * 25
+        rows[14] = (f"{'NESW'[self.place[3]]} 00:00 "
+                    f"{self.place[1]},{self.place[2]}")
+        if self.phase == "move":
+            rows[24] = "I,J,K,M, RETURN OR BUTTON"
+        elif self.phase in ("side3", "side4"):
+            rows[20] = ("INSERT SIDE # 3" if self.phase == "side3"
+                        else "INSERT SIDE # 4")
+            rows[24] = "AND PRESS ANY KEY."
+        elif self.phase == "continue":
+            rows[24] = "PRESS BUTTON OR RETURN TO CONTINUE."
+        elif self.phase == "yes-no":
+            rows[24] = "YES NO"
+        elif self.phase == "unknown":
+            rows[24] = "TRAIN CHARACTER"
+        elif self.phase == "unknown-disk":
+            rows[20] = "INSERT DISK B"
+            rows[24] = "I,J,K,M, RETURN OR BUTTON"
+        elif self.phase in ("temple", "service"):
+            rows[0] = "WELCOME TO THE TEMPLE,"
+            if self.unsafe == "stale-raise":
+                rows[15] = "RAISE DEAD 5500"
+            rows[3] = " " * A.S.PARTY_COLUMN + "NAME        AC HP"
+            names = ["ROLAND", "BAKSHI", "SHARA", "MARK", "PHILIPPE",
+                     "BAKSHI" if self.unsafe == "missing-brutus" else "BRUTUS"]
+            for offset, name in enumerate(names):
+                rows[4 + offset] = " " * A.S.PARTY_COLUMN + name
+            rows[24] = ("EXIT HEAL" if self.unsafe != "wrong-menu"
+                        else "EXIT GIVE")
+            if self.phase == "service":
+                rows[15] = "RAISE DEAD 5500"
+                rows[24] = "EXIT"
+        else:
+            raise AssertionError(self.phase)
+        if self.phase == "temple":
+            return _TempleScreen(rows, (0 if self.bar_index == 0 else 5,
+                                        4), 4 + self.party_index)
+        if self.phase == "service":
+            return _TempleScreen(rows, (0, 4), 4 + self.party_index)
+        return _TempleScreen(rows)
+
+    def screenshot(self, path, timeout=None):
+        pathlib.Path(path).write_bytes(b"fake-png")
+        return True
+
+    def move_key(self, move):
+        self.moves.append(move)
+        if self.unsafe == "deadline":
+            raise AssertionError("key after input deadline")
+        expected = "MIIJI"[len(self.moves) - 1]
+        assert move == expected
+        if len(self.moves) == 1:
+            self.place = (9 if self.unsafe == "wrong-area" else 0x14,
+                          15, 4, 2 if self.unsafe == "wrong-facing" else 1)
+            self.pending_area = self.unsafe == "pending-area"
+            self.phase = ("yes-no" if self.unsafe == "yes-no" else
+                          "unknown" if self.unsafe == "unknown-event" else "move")
+            if self.unsafe == "unknown-disk":
+                self.phase = "unknown-disk"
+        elif len(self.moves) == 2:
+            self.phase = "side4" if self.unsafe == "other-side" else "side3"
+        elif len(self.moves) == 3:
+            self.place = (0, 1, 4, 1)
+        elif len(self.moves) == 4:
+            self.place = (0, 1, 4, 0)
+        else:
+            self.place = (0, 1, 3, 0)
+            self.phase = "temple"
+
+    def wanted_disk(self, screen):
+        return "SIDE3.D64" if "INSERT SIDE # 3" in screen.text() else None
+
+    def handle_prompt(self, screen):
+        assert list(self.out.glob("*boundary-side3-before-answer.png"))
+        self.keys.append("side3")
+        self.phase = "side3" if self.unsafe == "duplicate-side" else "continue"
+        return True
+
+    def press_kernal(self, code):
+        self.keys.append("continue")
+        assert code == 0x0D and self.phase == "continue"
+        self.place = (0, 0, 4, 1)
+        self.phase = "move"
+
+    def party_rows(self, screen):
+        return [4, 5, 6, 7, 8, 9]
+
+    def party_highlight(self, screen):
+        for index, row in enumerate(self.party_rows(screen)):
+            if screen.colours[row * 40 + A.S.PARTY_COLUMN] == 1:
+                return index
+        return None
+
+    def key(self, key):
+        self.keys.append(key)
+        if key == "Down":
+            self.party_index += 1
+        elif key == "Up":
+            self.party_index -= 1
+        elif key == "Right":
+            self.bar_index = 1
+        else:
+            raise AssertionError(f"unapproved key {key}")
+
+    def confirm_bar(self, row, was):
+        self.keys.append("HEAL")
+        assert row == 24 and "HEAL" in was and self.bar_index == 1
+        if self.unsafe != "stale-raise":
+            self.phase = "service"
+
+
+def _temple_reading():
+    return {"party": [{"slot": 5, "name": "BRUTUS", "status": 3,
+                       "traits": [0] * 9 + [32], "creature_type": 4,
+                       "record_bytes": {"0xA3": 2}}],
+            "effect_rows": [None] * 63 + [[63, 32, 5, 0, 5]],
+            "effects": [[63, 32, 5, 0, 5]]}
+
+
+def _temple_fake_run(tmp_path, monkeypatch, *, unsafe=None):
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(A.time, "sleep", lambda seconds: setattr(
+        clock, "now", clock.now + seconds))
+    session = _TempleSession(tmp_path, unsafe=unsafe)
+    events = []
+    log = SimpleNamespace(emit=lambda *args, **kwargs: events.append((args, kwargs)))
+    run = A.PoolRun(session, log, tmp_path, A.c64_port.POOL_OF_RADIANCE, {})
+    run.clock = lambda: clock.now
+    run.deadline = 1500
+    run.temple_input_deadline = 0 if unsafe == "deadline" else 1400
+    if unsafe == "bad-identity":
+        wrong = _temple_reading()
+        wrong["effect_rows"][63] = [63, 0, 5, 0, 5]
+        run.reading = lambda: wrong
+    else:
+        run.reading = _temple_reading
+    if unsafe == "late-after-first":
+        original_move = session.move_key
+
+        def late_move(move):
+            original_move(move)
+            clock.now = 1400
+
+        session.move_key = late_move
+    return run, session, events
+
+
+def test_temple_probe_reaches_service_list_and_sends_no_purchase_or_save(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    result = run.temple_probe("BRUTUS")
+    assert result["resident"]["slot"] == 5
+    assert result["resident"]["name"] == "BRUTUS"
+    assert result["side3_prompts"] == 1
+    assert result["continuations"] == 1
+    assert session.moves == list("MIIJI")
+    assert run.temple_checkpoints[-1]["state"]["save_copy"] == [15, 4, 3]
+    assert run.temple_checkpoints[-1]["state"]["x"] == 1
+    assert session.keys == ["side3", "continue", *("Down" for _ in range(5)),
+                            "Right", "HEAL"]
+    assert session.phase == "service"
+    assert [x["tag"] for x in run.temple_checkpoints] == [
+        "loaded-source", "move-1-settled", "boundary-side3-before-answer",
+        "continuation-before-answer", "move-2-settled", "move-3-settled",
+        "move-4-settled", "temple-arrival", "brutus-highlight",
+        "heal-services"]
+    assert all((tmp_path / (x["stem"] + ext)).is_file()
+               for x in run.temple_checkpoints for ext in (".txt", ".png", ".json"))
+    assert any(args[0] == "temple-checkpoint" for args, _ in events)
+
+
+@pytest.mark.parametrize("unsafe,maximum_moves", [
+    ("yes-no", 1), ("other-side", 2), ("duplicate-side", 2),
+    ("missing-brutus", 5), ("wrong-facing", 1),
+    ("wrong-resident", 5), ("wrong-menu", 5),
+    ("deadline", 0), ("late-after-first", 1),
+    ("short-monitor", 0), ("bad-identity", 0),
+    ("wrong-area", 1), ("pending-area", 1), ("unknown-event", 1),
+    ("unknown-disk", 1), ("encounter", 1),
+    ("stale-raise", 5),
+])
+def test_temple_probe_stops_at_unsafe_screen_or_state_before_more_input(
+        tmp_path, monkeypatch, unsafe, maximum_moves):
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch, unsafe=unsafe)
+    with pytest.raises(A.StepFailed):
+        run.temple_probe("BRUTUS")
+    assert len(session.moves) <= maximum_moves
+    if unsafe not in ("wrong-resident", "stale-raise"):
+        assert "HEAL" not in session.keys
+    assert session.keys.count("side3") <= 1
+    if unsafe != "wrong-resident":
+        assert session.phase != "service"
+
+
+@pytest.mark.parametrize("prompt", ["INSERT SIDE # 3", "YES NO",
+                                    "PRESS ANY KEY TO CONTINUE"])
+def test_temple_move_rechecks_prompt_with_retained_move_bar_before_key(
+        tmp_path, monkeypatch, prompt):
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    clean = session.screen()
+    rows = [clean.row(n) for n in range(25)]
+    rows[20] = prompt
+    unsafe = _TempleScreen(rows)
+    calls = 0
+
+    def next_screen():
+        nonlocal calls
+        calls += 1
+        return clean if calls == 1 else unsafe
+
+    session.screen = next_screen
+    with pytest.raises(A.StepFailed):
+        run._temple_move("M", (0x14, 15, 4, 3))
+    assert session.moves == []
+
+
+def test_temple_member_rechecks_fresh_panel_before_first_highlight_key(
+        tmp_path, monkeypatch):
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    session.phase = "temple"
+    stale = session.screen()
+    session.phase = "yes-no"
+    with pytest.raises(A.StepFailed):
+        run._temple_member(stale)
+    assert "Down" not in session.keys
 
 
 @pytest.mark.parametrize("steps", [
@@ -1223,6 +1633,14 @@ class _Slot:
 class _Sess:
     def __init__(self, *a, **k):
         self.save_disk = "x"
+        self.kbd = SimpleNamespace(key=lambda *a, **k: None,
+                                   text=lambda *a, **k: None)
+
+    def press_kernal(self, code):
+        pass
+
+    def handle_prompt(self, screen=None):
+        return False
 
     def watching_dialogs(self):
         import contextlib
@@ -1277,6 +1695,72 @@ def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=Non
     rc = A.run(args, A.parse_steps(steps), out, _fixture_disk(tmp_path),
                clock=lambda: _Pool.clock[0])
     return rc, slot, out
+
+
+def test_temple_probe_run_records_hashes_checkpoints_and_cleanup(
+        tmp_path, monkeypatch):
+    class Probe(_Pool):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.temple_checkpoints = [{"tag": "heal-services"}]
+
+        def temple_probe(self, who):
+            assert who == "BRUTUS"
+            assert self.temple_input_deadline == 1400
+            return {"resident": {"slot": 5, "name": "BRUTUS"}}
+
+    monkeypatch.setattr(A, "temple_source_guard", lambda source: "checked")
+    rc, slot, out = _drive(tmp_path, monkeypatch,
+                           ["load", "temple-probe BRUTUS"],
+                           max_seconds=1500, pool=Probe)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 0 and slot.torn and summary["completed"]
+    assert summary["source_sha256"] == summary["staged_sha256"]
+    assert summary["temple_checkpoints"] == [{"tag": "heal-services"}]
+    assert summary["results"][-1]["resident"] == {"slot": 5, "name": "BRUTUS"}
+    assert summary["cleanup"] == {"watchers": "closed", "session": "terminated",
+                                  "slot": "released"}
+
+
+@pytest.mark.parametrize("broken", ["restore", "watchers"])
+def test_temple_cleanup_still_terminates_session_after_earlier_error(
+        tmp_path, monkeypatch, broken):
+    import contextlib
+
+    class Probe(_Pool):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.temple_checkpoints = []
+
+        def temple_probe(self, who):
+            return {}
+
+    terminated = []
+    monkeypatch.setattr(_Sess, "terminate", lambda self: terminated.append(True))
+    if broken == "restore":
+        def bad_guard(*args):
+            def restore():
+                raise RuntimeError("restore failed")
+            return restore
+        monkeypatch.setattr(A, "guard_temple_input", bad_guard)
+    else:
+        @contextlib.contextmanager
+        def bad_watcher(self):
+            yield
+            raise RuntimeError("watchers failed")
+        monkeypatch.setattr(_Sess, "watching_dialogs", bad_watcher)
+    monkeypatch.setattr(A, "temple_source_guard", lambda source: "checked")
+    slot = _Slot(tmp_path)
+    with pytest.raises(RuntimeError, match="restore failed|watchers failed"):
+        _drive(tmp_path, monkeypatch, ["load", "temple-probe BRUTUS"],
+               max_seconds=1500, pool=Probe, slot=slot)
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text(
+        encoding="utf-8"))
+    assert terminated == [True] and slot.torn
+    assert summary["cleanup"]["session"] == "terminated"
+    assert summary["cleanup"]["slot"] == "released"
+    assert ("restore_input_error" if broken == "restore"
+            else "watchers_error") in summary["cleanup"]
 
 
 def test_a_run_past_its_deadline_is_lost_and_releases_the_slot(tmp_path, monkeypatch):

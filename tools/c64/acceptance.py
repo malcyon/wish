@@ -140,6 +140,15 @@ READY_SPECIMEN_ISSUE = (
 POOL_SPECIMEN_ISSUE = (
     "#700 (Converting a Pool of Radiance C64 party holding a camp-cast "
     "Animate Dead zombie needs more than fixing the refusal that blocks it)")
+TEMPLE_SOURCE_SHA256 = (
+    "7834be122f8a30c03f029d96b8ba39d0961545b998837e089e965e06a20edbe9")
+TEMPLE_ROUTE = (
+    ("M", (0x14, 15, 4, 3), (0x14, 15, 4, 1)),
+    ("I", (0x14, 15, 4, 1), (0, 0, 4, 1)),
+    ("I", (0, 0, 4, 1), (0, 1, 4, 1)),
+    ("J", (0, 1, 4, 1), (0, 1, 4, 0)),
+    ("I", (0, 1, 4, 0), (0, 1, 3, 0)),
+)
 
 #: The camp's own bar, `ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT` (Pool
 #: `CAMP $0899`), and the MAGIC bar, `CAST MEMORIZE SCRIBE DISPLAY REST EXIT`
@@ -289,7 +298,8 @@ class Step:
 #: Each step and whether it takes an argument: never, optionally, always.
 VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "rest": "must", "fight": "may", "peek": "must", "save": "never",
-         "cast": "must", "cure": "must", "walk": "must", "ready": "must"}
+         "cast": "must", "cure": "must", "walk": "must", "ready": "must",
+         "temple-probe": "must"}
 
 #: How long a walk keeps watching for a disk prompt after a move (seconds).
 LOOK_SECONDS = 2.0
@@ -392,6 +402,8 @@ def parse_steps(texts) -> list[Step]:
             parse_cure(arg)
         elif verb == "ready":
             parse_ready(arg)
+        elif verb == "temple-probe" and arg != "BRUTUS":
+            raise ValueError("temple-probe requires BRUTUS")
         elif verb == "fight" and arg and not (arg.isdigit() and int(arg) > 0):
             raise ValueError(f"fight {arg!r}: seconds, more than zero")
         steps.append(Step(verb, arg))
@@ -400,6 +412,64 @@ def parse_steps(texts) -> list[Step]:
     if any(s.verb == "load" for s in steps[1:]):
         raise ValueError("one boot, one load")
     return steps
+
+
+def temple_source_guard(source: pathlib.Path) -> str:
+    """Require the exact registered, unchanged animated BRUTUS source."""
+    source = source.resolve()
+    digest = specimens.sha256_file(source)
+    if digest != TEMPLE_SOURCE_SHA256:
+        raise ValueError(f"temple source SHA-256 {digest} is not "
+                         f"{TEMPLE_SOURCE_SHA256}")
+    for entry in specimens.list_specimens():
+        if (entry.get("platform") == "c64"
+                and entry.get("title") == "Pool of Radiance"
+                and any(path.resolve() == source for path in entry.get("_files", []))
+                and entry.get("sha256", {}).get(source.name) == digest):
+            return digest
+    raise ValueError(f"{source} is not a registered Pool C64 specimen")
+
+
+def guard_temple_input(sess, clock, deadline):
+    """Stop boot, load and probe inputs with 100 seconds left for teardown."""
+    def check(what):
+        if clock() >= deadline:
+            raise StepFailed(f"temple input deadline before {what}")
+
+    keyboard = sess.kbd
+    press_kernal = sess.press_kernal
+    handle_prompt = sess.handle_prompt
+
+    class Keyboard:
+        def key(self, *args, **kwargs):
+            check("keyboard key")
+            return keyboard.key(*args, **kwargs)
+
+        def text(self, *args, **kwargs):
+            check("keyboard text")
+            return keyboard.text(*args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(keyboard, name)
+
+    def guarded_press(*args, **kwargs):
+        check("KERNAL key")
+        return press_kernal(*args, **kwargs)
+
+    def guarded_prompt(*args, **kwargs):
+        check("disk prompt")
+        return handle_prompt(*args, **kwargs)
+
+    sess.kbd = Keyboard()
+    sess.press_kernal = guarded_press
+    sess.handle_prompt = guarded_prompt
+
+    def restore():
+        sess.kbd = keyboard
+        sess.press_kernal = press_kernal
+        sess.handle_prompt = handle_prompt
+
+    return restore
 
 
 def ready_capture_order(steps: list[Step]) -> bool:
@@ -783,6 +853,8 @@ class PoolRun:
         self.shots = 0
         self.ready_captures: list[dict] = []
         self.ready_sample_errors: list[dict] = []
+        self.temple_checkpoints: list[dict] = []
+        self.temple_input_deadline: float | None = None
 
     # -- the screen ------------------------------------------------------------
     def rows(self) -> list[str]:
@@ -1004,6 +1076,431 @@ class PoolRun:
         self.capture("world")
         return {"position": self.position(),
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
+
+    # -- one bounded New Phlan temple observation ------------------------------
+    def temple_state(self) -> dict:
+        """Read the live dungeon triple and its lagging save copy together."""
+        try:
+            with self.sess.mon(8) as m:
+                try:
+                    area = bytes(m.read(0x6E1B, 1))
+                    mode = bytes(m.read(0x6E11, 1))
+                    inside = bytes(m.read(0x49E6, 1))
+                    saved_position = bytes(m.read(0x49C0, 3))
+                    position = bytes(m.read(0xC04B, 3))
+                finally:
+                    m.resume()
+            if (len(area) != 1 or len(mode) != 1 or len(inside) != 1
+                    or len(saved_position) != 3 or len(position) != 3):
+                raise ValueError("short monitor read")
+            if not inside[0] or position[2] > 3:
+                raise ValueError(f"outside or invalid facing: {inside.hex()} "
+                                 f"{position.hex()}")
+            return {"area": area[0] & 0x7F, "mode": mode[0],
+                    "area_pending": bool(area[0] & 0x80), "indoors": inside[0],
+                    "x": position[0], "y": position[1],
+                    "facing": position[2], "save_copy": list(saved_position)}
+        except (OSError, S.MonitorError, ValueError, IndexError) as exc:
+            raise StepFailed(f"temple state unreadable: {exc}") from exc
+
+    @staticmethod
+    def _temple_place(state: dict) -> tuple[int, int, int, int]:
+        return state["area"], state["x"], state["y"], state["facing"]
+
+    def temple_checkpoint(self, tag: str, screen=None) -> dict:
+        """Keep the whole screen, paused place and existing party/effect read."""
+        if screen is None:
+            screen = self.sess.screen()
+        if screen is None:
+            raise StepFailed(f"temple {tag}: text screen unreadable")
+        rows = [screen.row(r) for r in range(25)]
+        self.capture(f"temple-{tag}", rows)
+        stem = f"{self.shots:02d}-temple-{re.sub(r'[^A-Za-z0-9]+', '-', tag).strip('-')}"
+        if not (self.out / f"{stem}.png").is_file():
+            raise StepFailed(f"temple {tag}: PNG capture failed")
+        state = self.temple_state()
+        reading = self.reading()
+        checkpoint = {"tag": tag, "stem": stem, "state": state,
+                      "reading": reading, "monotonic": self.clock()}
+        (self.out / f"{stem}.json").write_text(
+            json.dumps(checkpoint, indent=2), encoding="utf-8")
+        self.temple_checkpoints.append(checkpoint)
+        self.log.emit("temple-checkpoint", **checkpoint)
+        return checkpoint
+
+    def _temple_stop(self, tag: str, why: str, screen=None):
+        with contextlib.suppress(Exception):
+            self.temple_checkpoint(f"lost-{tag}", screen)
+        raise StepFailed(why)
+
+    def _temple_input_budget(self, what: str) -> None:
+        if (self.temple_input_deadline is None
+                or self.clock() >= self.temple_input_deadline):
+            self._temple_stop("deadline", f"temple input deadline before {what}")
+
+    @staticmethod
+    def _temple_is_world(screen) -> bool:
+        bar = screen.row(24)
+        return (S.word_column(bar, "MOVE") >= 0
+                and S.word_column(bar, "ENCAMP") >= 0
+                and "ENCAMP:" not in bar)
+
+    @staticmethod
+    def _temple_is_move(screen) -> bool:
+        return S.MOVE_SUBBAR in screen.row(24)
+
+    @staticmethod
+    def _temple_is_greeting(screen) -> bool:
+        text = screen.text().upper()
+        return ("WELCOME TO THE TEMPLE," in text
+                or "HOW MAY WE HELP YOU" in text)
+
+    @staticmethod
+    def _temple_continuation(screen) -> bool:
+        bar = screen.row(24).upper().strip(" |.")
+        return bar in ("PRESS BUTTON OR RETURN TO CONTINUE",
+                       "PRESS ANY KEY TO CONTINUE")
+
+    @staticmethod
+    def _temple_disk(screen) -> bool:
+        text = screen.text().upper()
+        return bool(S.RE_GAME_SIDE.search(text) or S.SAVE_PROMPT in text
+                    or re.search(r"\bINSERT\b.*\b(?:DISK|SIDE)\b", text,
+                                 re.DOTALL))
+
+    @staticmethod
+    def _temple_side3(screen) -> bool:
+        text = screen.text().upper()
+        return ("INSERT SIDE # 3" in text
+                and S.RE_GAME_SIDE.findall(text) == ["3"]
+                and S.SAVE_PROMPT not in text)
+
+    def _temple_select_bar(self, word: str, kind: str) -> None:
+        """Select one guarded word; never answer prompts inside a selector."""
+        first = self.sess.screen()
+        if first is None:
+            self._temple_stop("menu", f"{kind} bar unreadable")
+        bar = first.row(24)
+        if S.word_column(bar, word) < 0:
+            self._temple_stop("menu", f"{word} absent from {kind} bar", first)
+        for _ in range(8):
+            screen = self.sess.screen()
+            if (screen is None or screen.row(24) != bar
+                    or self._temple_disk(screen)
+                    or self._temple_continuation(screen)
+                    or re.search(r"\bYES\b.*\bNO\b", screen.text(), re.DOTALL)
+                    or re.search(r"\bPRESS\b", screen.text())
+                    or (kind == "world" and not self._temple_is_world(screen))
+                    or (kind == "temple" and not self._temple_is_greeting(screen))):
+                self._temple_stop("menu", f"{kind} bar changed before {word}",
+                                  screen)
+            span = S.span_in(screen, 24)
+            col = S.word_column(bar, word)
+            if span is None or col < 0:
+                self._temple_stop("menu", f"{kind} highlight unreadable", screen)
+            self._temple_input_budget(f"selecting {word}")
+            if span[0] == col:
+                self.sess.confirm_bar(24, bar)
+                return
+            self.sess.kbd.key("Right" if span[0] < col else "Left")
+            limit = min(self.clock() + 5, self.temple_input_deadline)
+            while self.clock() < limit:
+                newer = self.sess.screen()
+                if newer is None or newer.row(24) != bar:
+                    self._temple_stop("menu", f"{kind} bar changed after arrow",
+                                      newer)
+                newer_span = S.span_in(newer, 24)
+                if newer_span is not None and newer_span[0] != span[0]:
+                    break
+                time.sleep(0.25)
+            else:
+                self._temple_stop("menu", f"{word} highlight did not move")
+        self._temple_stop("menu", f"{word} highlight never reached")
+
+    def _temple_move(self, move: str, before: tuple[int, ...]) -> None:
+        screen = self.sess.screen()
+        if screen is None:
+            self._temple_stop("move", f"screen unreadable before {move}")
+        state = self.temple_state()
+        if (state["area_pending"] or state["mode"] != S.DUNGEON
+                or self._temple_place(state) != before):
+            self._temple_stop("move", f"wrong place before {move}", screen)
+        if (self._temple_disk(screen) or self._temple_continuation(screen)
+                or re.search(r"\bYES\b.*\bNO\b", screen.text(), re.DOTALL)
+                or re.search(r"\bPRESS\b", screen.text())):
+            self._temple_stop("move", f"unsafe screen before {move}", screen)
+        if self._temple_is_world(screen):
+            self._temple_select_bar("MOVE", "world")
+            limit = min(self.clock() + 10, self.temple_input_deadline)
+            while self.clock() < limit:
+                screen = self.sess.screen()
+                if screen is not None and self._temple_is_move(screen):
+                    break
+                if screen is not None and self._temple_disk(screen):
+                    self._temple_stop("move", "disk prompt before movement", screen)
+                time.sleep(0.25)
+        screen = self.sess.screen()
+        if screen is None or not self._temple_is_move(screen):
+            self._temple_stop("move", f"no move bar before {move}", screen)
+        if (self._temple_disk(screen) or self._temple_continuation(screen)
+                or re.search(r"\bYES\b.*\bNO\b", screen.text(), re.DOTALL)
+                or re.search(r"\bPRESS\b", screen.text())):
+            self._temple_stop("move", f"unsafe screen before {move}", screen)
+        state = self.temple_state()
+        if (state["area_pending"] or state["mode"] != S.DUNGEON
+                or self._temple_place(state) != before):
+            self._temple_stop("move", f"place changed before {move}", screen)
+        self._temple_input_budget(f"movement {move}")
+        self.sess.move_key(move)
+        self.log.emit("temple-move", move=move, before=before)
+
+    def _temple_transition(self, n: int, before: tuple[int, ...],
+                           expected: tuple[int, ...], counters: dict) -> dict:
+        limit = min(self.clock() + 90, self.temple_input_deadline)
+        disk_visible = continuation_visible = False
+        settled = None
+        while self.clock() < limit:
+            screen = self.sess.screen()
+            if screen is None:
+                time.sleep(0.3)
+                continue
+            text = screen.text().upper()
+            if re.search(r"\bYES\b.*\bNO\b", text, re.DOTALL):
+                self._temple_stop("yes-no", "unapproved YES/NO prompt", screen)
+            if self._temple_disk(screen):
+                if disk_visible:
+                    time.sleep(0.3)
+                    continue
+                if not (n == 1 and not counters["disk"]
+                        and self._temple_side3(screen)):
+                    self._temple_stop("disk", "unexpected or repeated disk prompt",
+                                      screen)
+                self.temple_checkpoint("boundary-side3-before-answer", screen)
+                self._temple_input_budget("side 3 prompt")
+                if not self.sess.handle_prompt(screen):
+                    self._temple_stop("disk", "side 3 prompt was not answered",
+                                      screen)
+                counters["disk"] += 1
+                disk_visible = True
+                continue
+            disk_visible = False
+            if self._temple_continuation(screen):
+                if continuation_visible:
+                    time.sleep(0.3)
+                    continue
+                if counters["continuations"] >= 2:
+                    self._temple_stop("continuation", "third continuation",
+                                      screen)
+                self.temple_checkpoint("continuation-before-answer", screen)
+                self._temple_input_budget("continuation")
+                self.sess.press_kernal(0x0D)
+                counters["continuations"] += 1
+                continuation_visible = True
+                continue
+            continuation_visible = False
+            if re.search(r"\bPRESS\b", text):
+                self._temple_stop("prompt", "unapproved PRESS prompt", screen)
+            state = self.temple_state()
+            place = self._temple_place(state)
+            if state["mode"] == S.COMBAT:
+                self._temple_stop("encounter", "encounter after movement", screen)
+            if place == expected:
+                if state["area_pending"] or state["mode"] != S.DUNGEON:
+                    time.sleep(0.3)
+                    continue
+                if n == 4 and self._temple_is_greeting(screen):
+                    if S.word_column(screen.row(24), "HEAL") < 0:
+                        self._temple_stop("menu", "HEAL absent from temple bar",
+                                          screen)
+                elif n == 4:
+                    if not (self._temple_is_world(screen)
+                            or self._temple_is_move(screen)):
+                        self._temple_stop("event", "unexpected temple arrival",
+                                          screen)
+                    time.sleep(0.3)
+                    continue
+                elif not (self._temple_is_world(screen)
+                          or self._temple_is_move(screen)):
+                    self._temple_stop("event", "unexpected screen after movement",
+                                      screen)
+                status = S.parse_status(screen.text())
+                if (status is None or
+                        (status.x, status.y, status.facing) != expected[1:]):
+                    time.sleep(0.3)
+                    continue
+                current = (place, screen.text())
+                if settled == current:
+                    tag = ("temple-arrival" if n == 4
+                           else f"move-{n + 1}-settled")
+                    return self.temple_checkpoint(tag, screen)
+                settled = current
+            elif place != before:
+                self._temple_stop("place", f"movement {n + 1} reached {place}, "
+                                  f"expected {expected}", screen)
+            elif not (self._temple_is_world(screen)
+                      or self._temple_is_move(screen)):
+                self._temple_stop("event", "unexpected screen during movement",
+                                  screen)
+            time.sleep(0.4)
+        self._temple_stop("transition", f"movement {n + 1} did not settle "
+                          "within 90 seconds")
+
+    def _temple_member(self, screen) -> None:
+        rows = self.sess.party_rows(screen)
+        if not rows:
+            self._temple_stop("party", "temple party panel is absent", screen)
+        header = next((r for r in S.PARTY_ROWS
+                       if S.PARTY_HEADER in screen.row(r)[S.PARTY_COLUMN:]), None)
+        if header is None:
+            self._temple_stop("party", "temple party heading is absent", screen)
+        width = screen.row(header)[S.PARTY_COLUMN:].index(S.PARTY_HEADER)
+        names = [screen.row(r)[S.PARTY_COLUMN:S.PARTY_COLUMN + width].strip()
+                 for r in rows]
+        bar = screen.row(24)
+        if names.count("BRUTUS") != 1:
+            self._temple_stop("party", f"BRUTUS occurs {names.count('BRUTUS')} "
+                              "times in temple panel", screen)
+        target = names.index("BRUTUS")
+        for presses in range(9):
+            screen = self.sess.screen()
+            if (screen is None or screen.row(24) != bar
+                    or not self._temple_is_greeting(screen)
+                    or self._temple_disk(screen)
+                    or self._temple_continuation(screen)
+                    or re.search(r"\bYES\b.*\bNO\b", screen.text(), re.DOTALL)
+                    or self.sess.party_rows(screen) != rows
+                    or [screen.row(r)[S.PARTY_COLUMN:
+                                      S.PARTY_COLUMN + width].strip()
+                        for r in rows] != names):
+                self._temple_stop("party", "temple panel changed before "
+                                  "highlight key", screen)
+            current = self.sess.party_highlight(screen)
+            if current is None or not 0 <= current < len(rows):
+                self._temple_stop("party", "party highlight unreadable", screen)
+            if current == target:
+                self.temple_checkpoint("brutus-highlight", screen)
+                return
+            if presses == 8:
+                break
+            self._temple_input_budget("BRUTUS highlight")
+            self.sess.kbd.key("Down" if current < target else "Up")
+            limit = min(self.clock() + 5, self.temple_input_deadline)
+            while self.clock() < limit:
+                screen = self.sess.screen()
+                if (screen is None or screen.row(24) != bar
+                        or not self._temple_is_greeting(screen)
+                        or S.word_column(screen.row(24), "HEAL") < 0
+                        or [screen.row(r)[S.PARTY_COLUMN:
+                                          S.PARTY_COLUMN + width].strip()
+                            for r in rows] != names):
+                    self._temple_stop("party", "temple menu changed while "
+                                      "highlighting BRUTUS", screen)
+                new_index = self.sess.party_highlight(screen)
+                if new_index is not None and new_index != current:
+                    if abs(new_index - current) != 1:
+                        self._temple_stop("party", "party highlight jumped",
+                                          screen)
+                    break
+                time.sleep(0.25)
+            else:
+                self._temple_stop("party", "party highlight did not move", screen)
+        self._temple_stop("party", "BRUTUS highlight needed more than eight keys",
+                          screen)
+
+    def _temple_resident(self) -> dict:
+        try:
+            with self.sess.mon(8) as m:
+                try:
+                    member = bytes(m.read(0x6EFC, 1))
+                    record = bytes(m.read(0x6B00, 0x100))
+                finally:
+                    m.resume()
+            if len(member) != 1 or len(record) != 0x100:
+                raise ValueError("short resident read")
+            name = CharacterRecord(record.ljust(RECORD_SIZE, b"\0"),
+                                   stored_size=len(record)).name
+            return {"slot": member[0], "name": name,
+                    "record_sha256": hashlib.sha256(record).hexdigest()}
+        except (OSError, S.MonitorError, ValueError, IndexError) as exc:
+            raise StepFailed(f"temple resident unreadable: {exc}") from exc
+
+    def temple_probe(self, who: str) -> dict:
+        """Observe BRUTUS at HEAL's service list; buy nothing and never save."""
+        if who != "BRUTUS" or self.game.key != "pool-of-radiance":
+            raise StepFailed("temple probe requires Pool BRUTUS")
+        initial = self.temple_checkpoint("loaded-source")
+        place = self._temple_place(initial["state"])
+        if (place != TEMPLE_ROUTE[0][1]
+                or initial["state"]["mode"] != S.DUNGEON
+                or initial["state"]["area_pending"]):
+            self._temple_stop("source-place", f"loaded place {place} is not "
+                              f"{TEMPLE_ROUTE[0][1]}")
+        reading = initial["reading"]
+        party = reading.get("party", [])
+        named = [p for p in party if p.get("name") == "BRUTUS"]
+        member = named[0] if len(named) == 1 else None
+        traits = [] if member is None else member.get("traits", [])
+        effect_rows = reading.get("effect_rows", [])
+        if (member is None or member.get("slot") != 5
+                or member.get("status") != 0x03
+                or len(traits) != 10 or traits[9] != 32
+                or member.get("creature_type") != 4
+                or member.get("record_bytes", {}).get("0xA3") != 2
+                or len(effect_rows) != 64
+                or effect_rows[63] != [63, 32, 5, 0, 5]):
+            self._temple_stop("source-identity", "loaded BRUTUS or row 63 "
+                              "does not match the registered animated source")
+        counters = {"disk": 0, "continuations": 0}
+        for n, (move, before, expected) in enumerate(TEMPLE_ROUTE):
+            if self._temple_place(self.temple_state()) != before:
+                self._temple_stop("place", f"wrong place before movement {n + 1}")
+            self._temple_move(move, before)
+            self._temple_transition(n, before, expected, counters)
+        screen = self.sess.screen()
+        if (screen is None or not self._temple_is_greeting(screen)
+                or S.word_column(screen.row(24), "HEAL") < 0):
+            self._temple_stop("temple", "temple greeting or HEAL bar disappeared",
+                              screen)
+        self._temple_member(screen)
+        screen = self.sess.screen()
+        if screen is None or not self._temple_is_greeting(screen):
+            self._temple_stop("temple", "temple screen unreadable before HEAL",
+                              screen)
+        temple_text = screen.text()
+        self._temple_select_bar("HEAL", "temple")
+        limit = min(self.clock() + 90, self.temple_input_deadline)
+        while self.clock() < limit:
+            screen = self.sess.screen()
+            if screen is None:
+                time.sleep(0.3)
+                continue
+            if self._temple_disk(screen) or self._temple_continuation(screen):
+                self._temple_stop("service", "prompt after HEAL selection", screen)
+            service_text = screen.text().upper()
+            if (re.search(r"\bYES\b.*\bNO\b", service_text, re.DOTALL)
+                    or re.search(r"\bPRESS\b", service_text)):
+                self._temple_stop("service", "unapproved prompt after HEAL", screen)
+            if "RAISE DEAD" in service_text and screen.text() != temple_text:
+                resident = self._temple_resident()
+                checkpoint = self.temple_checkpoint("heal-services", screen)
+                if (self._temple_place(checkpoint["state"]) != TEMPLE_ROUTE[-1][2]
+                        or checkpoint["state"]["mode"] != S.DUNGEON
+                        or checkpoint["state"]["area_pending"]):
+                    self._temple_stop("service", "place changed at HEAL service "
+                                      "list", screen)
+                if resident["slot"] != 5 or resident["name"] != "BRUTUS":
+                    self._temple_stop("resident", f"HEAL resident is {resident}",
+                                      screen)
+                return {"route": "MIIJI", "movement_keys": 5,
+                        "side3_prompts": counters["disk"],
+                        "continuations": counters["continuations"],
+                        "resident": resident, "service": checkpoint["stem"],
+                        "checkpoints": len(self.temple_checkpoints)}
+            if not self._temple_is_greeting(screen):
+                self._temple_stop("service", "unexpected screen after HEAL",
+                                  screen)
+            time.sleep(0.3)
+        self._temple_stop("service", "HEAL service list did not appear in 90 seconds")
 
     @staticmethod
     def _list_bar(bar: str) -> bool:
@@ -2646,6 +3143,9 @@ def give_joystick(vicerc: pathlib.Path) -> None:
 def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         clock=time.monotonic) -> int:
     deadline = clock() + args.max_seconds
+    temple_mode = any(step.verb == "temple-probe" for step in steps)
+    if temple_mode:
+        temple_source_guard(source)
     scratch.ensure(out)
     log = Log(out)
     git = evidence.git_state(REPO)
@@ -2653,6 +3153,10 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
     summary: dict = {"title": title_key, "source": str(source),
                      "steps": [s.text for s in steps], **git,
                      "argv": sys.argv[1:], "completed": False, "results": []}
+    if temple_mode:
+        summary["command"] = getattr(args, "command", shlex.join(
+            [sys.executable, str(pathlib.Path(__file__).resolve()), *sys.argv[1:]]))
+        summary["source_sha256"] = specimens.sha256_file(source)
 
     def write_summary():
         (out / "summary.json").write_text(json.dumps(summary, indent=2, default=str),
@@ -2672,6 +3176,13 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         log.say(f"not staged: {e}")
         return 1
     summary["staged"] = staged
+    if temple_mode:
+        summary["staged_sha256"] = specimens.sha256_file(staged_disk)
+        if summary["staged_sha256"] != summary["source_sha256"]:
+            summary["lost"] = "temple staging changed the source bytes"
+            write_summary()
+            log.close()
+            return 1
     log.emit("staged", **staged)
     log.say(f"staged {staged_disk}: effects {staged['effects']}, "
             f"magic items {staged['magic_items']}")
@@ -2680,6 +3191,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         write_summary()
         log.close()
         return 0
+    if temple_mode and clock() >= deadline - 100:
+        summary["lost"] = "temple input deadline before emulator claim"
+        write_summary()
+        log.close()
+        return 1
 
     game = c64_port.by_key(title_key)
     points = parse_checkpoints(args.checkpoint)
@@ -2691,7 +3207,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         raise
     log.emit("slot", n=slot.n, display=slot.display, dir=str(slot.dir))
     log.say(f"pool slot {slot.n} display {slot.display}; evidence {out}")
-    sess = pool = None
+    sess = pool = restore_input = None
     stack = contextlib.ExitStack()
     try:
         if args.title == "curse":
@@ -2714,6 +3230,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             first = S.stage_disks(slot, args.disks)
             S.stage_writable(staged_disk, pathlib.Path(slot.dir) / "SIDE0.D64")
             sess = S.Session(first, slot=slot)
+        if temple_mode:
+            restore_input = guard_temple_input(sess, clock, deadline - 100)
         stack.enter_context(sess.watching_dialogs())
         pool = (CurseRun(sess, log, out, game, points, args.disks, staged_disk,
                          getattr(args, "attack_by", ""),
@@ -2722,6 +3240,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 if args.title == "ssb"
                 else PoolRun(sess, log, out, game, points))
         pool.deadline, pool.clock = deadline, clock
+        if temple_mode:
+            pool.temple_input_deadline = deadline - 100
         if args.title == "pool":
             pool.capture_ready = getattr(args, "capture_ready", False)
         if args.title == "curse":
@@ -2734,6 +3254,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             log.emit("step", step=step.text)
             log.say(f"-- {step.text}")
             if step.verb == "load":
+                if temple_mode and clock() >= deadline - 100:
+                    raise StepFailed("temple input deadline before boot")
                 got = pool.load()
             elif step.verb == "camp-list":
                 got = pool.camp_list(step.arg)
@@ -2755,6 +3277,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.cure(step.arg)
             elif step.verb == "ready":
                 got = pool.ready(step.arg)
+            elif step.verb == "temple-probe":
+                got = pool.temple_probe(step.arg)
             else:
                 got = pool.save(staged)
             got = {"step": step.text, "verb": step.verb, **got,
@@ -2800,6 +3324,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             with contextlib.suppress(Exception):
                 pool.capture("lost-error")
     finally:
+        if temple_mode and pool is not None:
+            summary["temple_checkpoints"] = pool.temple_checkpoints
         capture_ready = getattr(args, "capture_ready", False)
         preserve_specimen = getattr(args, "preserve_specimen", False)
         if capture_ready or preserve_specimen:
@@ -2874,15 +3400,36 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                     summary["completed"] = False
                     summary["lost"] = "preserved run produced no saved.D64 to register"
         write_summary()
-        try:
-            stack.close()
-            if sess is not None:
-                sess.terminate()
-        finally:
+        cleanup: dict = {}
+        cleanup_errors: list[BaseException] = []
+
+        def attempt_cleanup(name, action, success=None):
             try:
-                slot.teardown()
-            finally:
-                log.close()
+                action()
+            except BaseException as exc:
+                cleanup[f"{name}_error"] = repr(exc)
+                cleanup_errors.append(exc)
+            else:
+                if success is not None:
+                    cleanup[name] = success
+
+        if restore_input is not None:
+            attempt_cleanup("restore_input", restore_input)
+        attempt_cleanup("watchers", stack.close, "closed")
+        if sess is not None:
+            attempt_cleanup("session", sess.terminate, "terminated")
+        attempt_cleanup("slot", slot.teardown, "released")
+        attempt_cleanup("log", log.close)
+        if temple_mode or cleanup_errors:
+            summary["cleanup"] = cleanup
+            if cleanup_errors:
+                summary["completed"] = False
+                reason = "cleanup: " + "; ".join(repr(e) for e in cleanup_errors)
+                earlier = summary.get("lost")
+                summary["lost"] = f"{earlier}; {reason}" if earlier else reason
+            write_summary()
+        if cleanup_errors:
+            raise cleanup_errors[0]
     return 0 if summary["completed"] else 1
 
 
@@ -2906,7 +3453,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="load, camp-list [WHO], 'items WHO', 'view WHO', "
                          "'rest 8h', 'walk I', 'fight [SECONDS]', 'peek ADDR N', "
                          "'cast CASTER:SPELL[>TARGET]', 'cure PALADIN>TARGET', "
-                         "'ready WHO>LABEL' (Pool only), save")
+                         "'ready WHO>LABEL' (Pool only), "
+                         "'temple-probe BRUTUS' (bounded Pool observation), save")
     ap.add_argument("--checkpoint", action="append", default=[],
                     metavar="ADDR[=NAME]",
                     help="hex; a non-stopping exec checkpoint armed after the "
@@ -2960,6 +3508,21 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(str(e))
     if any(x.verb == "fight" for x in steps) and args.title == "ssb":
         ap.error("the fight step needs --title pool or curse")
+    temple_mode = any(step.verb == "temple-probe" for step in steps)
+    if temple_mode:
+        if (steps != [Step("load"), Step("temple-probe", "BRUTUS")]
+                or args.title != "pool" or args.issue != "700"
+                or any((args.stage_row, args.stage_trait, args.stage_item,
+                        args.stage_record, args.stage_status, args.checkpoint))
+                or args.stage_only or args.preserve_specimen or args.capture_ready
+                or args.probe_step or args.joy or args.pool is not None
+                or args.attack_by or args.quit_nonattacking
+                or args.walk != "I" or args.walk_steps != 40
+                or not 100 < args.max_seconds <= 1500):
+            ap.error("temple-probe requires exactly --title pool --issue 700 "
+                     "--steps load 'temple-probe BRUTUS', no staging, saving, "
+                     "checkpoint or other probe options, and a 1500-second "
+                     "maximum with 100 seconds reserved for cleanup")
     if args.capture_ready and args.preserve_specimen:
         ap.error("--capture-ready and --preserve-specimen are separate run modes")
     if args.capture_ready and (args.issue != "703" or args.title != "pool"
@@ -3004,6 +3567,11 @@ def main(argv: list[str] | None = None) -> int:
         source = pathlib.Path(args.disks) / args.save
     if not source.is_file():
         ap.error(f"no save disk at {source}")
+    if temple_mode:
+        try:
+            temple_source_guard(source)
+        except ValueError as exc:
+            ap.error(str(exc))
     if not args.stage_only and args.disks is None:
         ap.error("no game disks found; set $POR_DISKS or pass --disks")
     out = (pathlib.Path(args.out) if args.out
@@ -3011,6 +3579,8 @@ def main(argv: list[str] | None = None) -> int:
                                      evidence.git_state(REPO)["sha"]))
     if out.exists() and any(out.iterdir()):
         ap.error(f"{out} already holds a run; name a new --run")
+    args.command = shlex.join([sys.executable, str(pathlib.Path(__file__).resolve()),
+                               *(argv if argv is not None else sys.argv[1:])])
     return run(args, steps, out, source)
 
 
