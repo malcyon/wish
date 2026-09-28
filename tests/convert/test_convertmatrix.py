@@ -777,6 +777,8 @@ def test_mark_former_paladin_with_a_cure_timer_writes_zero_and_no_row():
     assert not [r for r in effects.active_effects(bytes(payload))
                 if r.id == cure_id]
     assert not [x for x in rep.losses + rep.dropped if "paladin_cures" in x]
+    assert not [x for x in rep.losses + rep.dropped
+                if "running_effects" in x or "cure" in x]
 
 
 @pytest.mark.parametrize("disk_name", ["TEST_DOS_IMPORT9.D64",

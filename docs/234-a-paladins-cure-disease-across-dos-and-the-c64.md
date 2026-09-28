@@ -268,7 +268,7 @@ paladin at and `d` the DOS uses byte:
 |---|---|---|---|
 | `d` below `full(F)`, no node (a paladin trained past 5 or 10 without curing, then changed class) | no CURE; at the regain `d`, and a cure starts a node | no CURE; at the regain `full(F)`, and a cure from full starts a row | none lost, and he gains uses: every DOS cure is open to him on the C64, and `full(F) - d` more in the first week. With `d` = 0 and no node DOS never refills him and he stays at 0 after his regain, where the C64 gives him `full(F)`; with `d` = 1 of 2 he comes back to DOS as 2 |
 | `d` = 0, node running | Curse: the game stops when the node ends before the regain (above). Silver Blades: 1 when it ends, then 1 at the regain. After an early regain, 0 until the node ends and then `full(F)` | no CURE; `full(F)` at the regain | none |
-| `d` above 0, node running (paladin 6 or more who cured from 2 or 3, then changed class inside the week) | the same before the regain. **After a regain inside the week, `d`, and `full(F)` again when the node ends** | `full(F)` at the regain, and full again seven midnights after his first cure | reported. If he regains before the node ends, DOS lets him cure `d` more times before seven days have passed since the C64 gave him `full(F)` |
+| `d` above 0, node running (paladin 6 or more who cured from 2 or 3, then changed class inside the week) | the same before the regain. **After a regain inside the week, `d`, and `full(F)` again when the node ends** | 0 and 0 with no row, recorded as converted: the C64 game's own class change clears his cure row and reseeds 0, so this is where it leaves him. `full(F)` at the regain | none. Donald ruled that the timer running at the change need not survive it, because the C64 game itself drops it (a comment on #649 (Converting a dual-classed DOS Curse of the Azure Bonds character to C64 loses his leftover paladin cure-disease use), https://github.com/malcyon/wish/issues/649#issuecomment-5878900132); an earlier version of this page reported it as a loss |
 | `d` above `full(F)` | `d` at the regain | `full(F)` | reported. SPECULATIVE whether play reaches it: only an energy drain after a refresh would |
 | `F` 16 or more | refills to 4 | refills to 3 | reported. The paladin's level ceiling is 11 in Curse and 15 in Silver Blades (`goldbox/levels.py`, read from the C64 `GEN`), so play does not reach it |
 
@@ -277,21 +277,17 @@ writes the full count for `0x0CF`, which is 1 for a character with no paladin
 level. A row that ended before the regain would put CURE on a magic-user's
 camp sheet, which no C64 play produces, since the change clears his rows.
 
-**The state still reported is reachable in principle, and nothing we hold
-measures how often.** It needs a paladin of level 6 or more who cures from 2
-or more uses, changes class inside the same seven days, and then gains at
-least `F` levels in his new class, training after each one, before that seven
-days is up. The change sets his experience to 0 (Curse `0x3BD11` zeroes
-`0x127`). The run that settles this: in DOS Curse and in Silver Blades, note
-the clock, TRAIN one level at a hall, and read the clock again. If one
-training takes at least 1680 minutes (10080 / 6), six of them cannot fit
-inside a node's week and the state cannot be reached. Until then the writer
-keeps the loss line, and `goldbox/c64_codec.py` has the case.
+**The cure-node state converts as 0 and 0 with no row, and the C64 game
+leaves a paladin there itself.** It was reported as a loss until Donald ruled
+that a timer running at the class change need not survive it, since the C64's
+own change clears the row. What he loses is DOS's refill of `full(F)` at the
+node's end if he regains inside the week; the C64 gives him `full(F)` at the
+regain instead.
 
 `tests/convert/test_convertmatrix.py` holds each row: the states that lose
-nothing write 0/0, no row and no loss line in both titles; the reported
-rows keep their line; and a paladin 6 who left with 1 of 2 comes back to DOS
-from the C64 with 2, which is the count the C64 regain would have given him.
+nothing, and the cure-node state, write 0/0, no row and no loss line in both
+titles; the other reported rows keep their line; and a paladin 6 who left with
+1 of 2 comes back to DOS from the C64 with 2, which is the count the C64 regain would have given him.
 
 A DOS character who was never a paladin holds 0 at `0x191`, and the C64 seed
 gives him 0 at a class change and at a regain. The two cases differ only at
@@ -330,11 +326,9 @@ days). Neither touches a record byte or an effect row.
 * Two former-paladin states still report a loss, and a reported loss makes
   Save As refuse the party (`editor/saveplan.py` raises `DroppedFields` when
   the writer's accounting is not empty). That is not completion. The states
-  are `d` above 0 with a cure node running, and `d` above `full(F)` or `F` of
-  16 or more. Two DOS measurements would settle them: train one level in DOS
-  Curse and in Silver Blades and read the clock before and after (a training
-  under 1680 minutes makes the first state reachable), and the eight-day rest
-  crash check in DOS Curse. #649 (Converting a dual-classed DOS Curse of the
+  are `d` above `full(F)` and `F` of 16 or more. The cure-node state is no
+  longer among them: it converts as 0 and 0 with no row (see the table above).
+  The eight-day rest crash check in DOS Curse is still unrun. #649 (Converting a dual-classed DOS Curse of the
   Azure Bonds character to C64 loses his leftover paladin cure-disease use)
   owns both.
 * Paladin level 16 and up: DOS counts 4, the C64 stops at 3, and
