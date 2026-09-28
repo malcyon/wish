@@ -476,8 +476,9 @@ STINKING_CLOUD_DOS = (0xFF, 0)
 #: bits 5 and 6. Pool's granted charm node converts through `pool_charm_row`;
 #: it converts for a player character and for a party companion alike, and
 #: two nodes make one row. Its running node stays refused, because no DOS
-#: engine leaves a running charm on a party member past a fight (`docs/226`). Fear (`FEAR_IDS`, below) has its own rule: `c64_codec`
-#: converts its record bytes alongside the row.
+#: engine leaves a running charm on a party member past a fight (`docs/226`).
+#: Fear (`FEAR_IDS`, below) has its own rule: `c64_codec` converts its record
+#: bytes alongside the row.
 _RECORD_STATE_IDS: dict[str, frozenset[int]] = {
     "pool-of-radiance": frozenset({11}),
     _CURSE: frozenset({11}),

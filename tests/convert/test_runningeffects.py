@@ -1956,3 +1956,65 @@ def test_a_charmed_pool_companion_makes_a_dos_c64_dos_round_trip():
     assert out.get("npc_control_byte") == 0x93
     assert out.get("quickfight") is True
     assert out.get("treasure_share") == 2
+
+
+def _write_charmed(char, payload=None):
+    payload = bytearray(0x1C00) if payload is None else payload
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                               clock_minutes=0)
+    return rec, rep, payload
+
+
+def test_two_charm_nodes_leave_the_merge_in_the_surviving_0x10c_source():
+    # The combat-side note is written to 0x10C after the charm loop and
+    # replaces any note the loop left there, so the merge is reported inside it.
+    char = _charmed_character(2, control=0x93)
+    char.set("granted_effects", [_CHARM, _CHARM], "built here")
+    _rec, rep, _payload = _write_charmed(char)
+    assert "second charm node" in rep.sources[0x10C]
+    assert rep.sources[0x10C].startswith("combat side $")
+
+
+def test_a_companion_charm_with_no_free_slot_is_a_loss_and_keeps_his_byte():
+    # Pins behaviour that held before the review too.
+    payload = bytearray(0x1C00)
+    for slot in range(effects.EFFECT_SLOTS):
+        effects.write_effect(payload, slot, 1, 5, 0x02, 1)
+    before = bytes(payload)
+    rec, rep, payload = _write_charmed(
+        _charmed_character(2, control=0x93), payload)
+    assert bytes(payload) == before
+    assert any(f"effect {effects.CHARM_ID}:" in line and "no free slot" in line
+               for line in rep.losses)
+    assert rec.get("flags_0b8") == 0x93
+
+
+def test_an_animated_companion_with_a_charm_node_and_another_byte_is_a_loss():
+    # Pins behaviour that held before the review too.
+    char = _charmed_character(2, control=0x93)
+    char.set("status", "animated", "built here")
+    _rec, rep, payload = _write_charmed(char)
+    assert set(_rows(payload).values()) == {(0, 0, 0, 0)}
+    assert any(f"effect {effects.CHARM_ID}:" in line for line in rep.losses)
+
+
+def test_a_hostile_companion_with_a_charm_node_is_a_loss_and_takes_no_row():
+    # Pins behaviour that held before the review too.
+    char = _charmed_character(2, control=0x93)
+    char.set("hostile", True, "built here")
+    rec, rep, payload = _write_charmed(char)
+    assert set(_rows(payload).values()) == {(0, 0, 0, 0)}
+    assert any(f"effect {effects.CHARM_ID}:" in line for line in rep.losses)
+    assert rec.get("flags_0b8") == 0x93
+
+
+def test_a_second_charm_node_writes_the_row_when_the_first_was_refused():
+    # Pins behaviour that held before the review too.
+    char = _charmed_character(0)
+    char.set("granted_effects",
+             [bytes((effects.CHARM_ID, 0, 0, 0x61, 1)), _CHARM], "built here")
+    _rec, rep, payload = _write_charmed(char)
+    rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
+    assert rows == [(effects.CHARM_ID, 2, 0, 0x86)]
+    assert len([x for x in rep.losses
+                if f"effect {effects.CHARM_ID}:" in x]) == 1

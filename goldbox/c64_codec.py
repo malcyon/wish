@@ -876,6 +876,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         and status_value == "animated"
         and w.get("npc_control_byte") == DOS_PC_TAKEN_OVER)
     charm_row_written = False
+    charm_nodes_merged: list[str] = []
     share = use("treasure_share")
     modify_flag = None
     if (share is not None
@@ -1606,10 +1607,12 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                     # Both Pool engines replace a charm with the next one
                     # (DOS `GAME.OVR:0x2C540`, C64 `ECL64 $9A13`), so a second
                     # node is the same charm and the character holds one row.
-                    rep.note(0x10C, 1,
-                             f"effect {node[0]}: a second charm node, which "
-                             "both Pool engines would have replaced with the "
-                             "first, so the character holds one charm row")
+                    # Reported with the combat-side note, which is the one
+                    # that survives in `rep.sources` for 0x10C.
+                    charm_nodes_merged.append(
+                        f"effect {node[0]}: a second charm node, which "
+                        "both Pool engines would have replaced with the "
+                        "first, so the character holds one charm row")
                 else:
                     row_slot = effects.free_slot(payload)
                     if row_slot is None:
@@ -1966,6 +1969,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     if fear_row_written:
         side_bits |= 0x40
         side_where.append("bit 6 set: a Fear row was written")
+    side_where.extend(charm_nodes_merged)
     rec.set("combat_side", side_bits)
     rep.note(0x10C, 1, f"combat side ${side_bits:02X}: " +
              (", ".join(side_where) if side_where else
