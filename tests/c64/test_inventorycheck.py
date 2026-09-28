@@ -40,7 +40,7 @@ import pytest
 from goldbox import c64_port, c64_save
 from goldbox.d64 import D64, split_load_address
 from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER
-from tools.c64 import inventorycheck
+from tools.c64 import inventorycheck, screens
 
 #: The two specimens, the character on each who carries anything, and the
 #: `automap/gamedisks.py` key that finds that title's sides.
@@ -153,8 +153,8 @@ def test_a_lower_case_letter_draws_as_the_glyph_forty_hex_below_it():
     was converted from DOS, which keeps mixed case, and a run looking for the
     name the record holds found nobody on the panel at all.
     """
-    assert inventorycheck.as_drawn("Guy de Valois") == "G59 $% V!,/)3"
-    assert inventorycheck.as_drawn("MALE ELF MAGE") == "MALE ELF MAGE"
+    assert screens.as_drawn("Guy de Valois") == "G59 $% V!,/)3"
+    assert screens.as_drawn("MALE ELF MAGE") == "MALE ELF MAGE"
 
 
 # --- reading the item screen -------------------------------------------------
@@ -173,7 +173,7 @@ def test_the_item_list_reader_drops_the_frame_and_the_empty_slots():
     rows[7] = "$ NO  9 SILVER MIRROR                  *"
     rows[8] = "$                                      <"
     rows[9] = "$                                      $"
-    assert inventorycheck.item_list(rows) == [
+    assert screens.item_list(rows) == [
         "NO  TWO-HANDED SWORD",
         "YES 1 FLASK OF OIL",
         "NO  9 SILVER MIRROR",
@@ -185,7 +185,7 @@ def test_the_item_list_stops_at_pool_of_radiances_exit_row():
     rows[5] = "$ NO  DAGGER                           $"
     rows[6] = "$ EXIT                                 $"
     rows[7] = "$ NO  NOT THIS ONE                     $"
-    assert inventorycheck.item_list(rows) == ["NO  DAGGER"]
+    assert screens.item_list(rows) == ["NO  DAGGER"]
 
 
 # --- the three edits, on each later title ------------------------------------

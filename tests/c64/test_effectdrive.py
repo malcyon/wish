@@ -1,4 +1,4 @@
-"""`effectdrive.sample` reads all 64 slots of each running-effect array.
+"""`route_pool.sample` reads all 64 slots of each running-effect array.
 
 A converted running effect can land in either of the last two slots (62/63),
 so a reader that only sees the first 16 bytes of a 64-byte array would report
@@ -8,7 +8,7 @@ an empty party even while an effect is running.
 from __future__ import annotations
 
 from goldbox import effects
-from tools.c64 import effectdrive as E
+from tools.c64 import route_pool as E
 
 
 class FakeMemory:
