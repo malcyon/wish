@@ -7,8 +7,12 @@ layout, a scroll's spells are bytes 13-15, and a joined scroll is a
 """
 from __future__ import annotations
 
-from goldbox import c64_port, dos_codec
+import pathlib
+
+from goldbox import c64_codec, c64_port, dos_codec, dos_port
+from goldbox.layout import Confidence
 from goldbox.neutral import NeutralCharacter, ScrollBundle
+from support.neutralrecords import _filled
 
 GAME = c64_port.SECRET_OF_THE_SILVER_BLADES
 SCROLL = dos_codec.SCROLL_TYPES[0]
@@ -59,3 +63,22 @@ def overflow(chars=None):
     """What `write_c64_save` reports for `chars` (the party above by
     default): one entry for each member who does not fit."""
     return dos_codec.pack_overflow(chars or party())
+
+
+def crowd_dos_member(folder, number: int, plain_items: int, *scrolls: bytes,
+                     name: str = "CROWDED", loose: int = 0) -> None:
+    """Replace `CHRDATA<number>` in a DOS Silver Blades save folder (slot A)
+    with a character holding `member`'s pack, so the party opened from it
+    overflows the C64's sixteen slots the same way."""
+    deltas = dos_port.SECRET_OF_THE_SILVER_BLADES
+    pack = member(name, plain_items, *scrolls, loose=loose)
+    char = _filled(GAME)
+    char.set("name", name, "made up", Confidence.CONFIRMED,
+             c64_codec.Provenance.RESHAPED)
+    char.set("inventory", pack.get("inventory"), "made up")
+    char.set("scroll_bundles", pack.get("scroll_bundles"), "made up")
+    record, itm, spc, _report = dos_codec.write(char, deltas=deltas)
+    folder = pathlib.Path(folder)
+    (folder / f"CHRDATA{number}.SAV").write_bytes(record)
+    (folder / f"CHRDATA{number}{deltas.item_suffix}").write_bytes(itm)
+    (folder / f"CHRDATA{number}{deltas.effect_suffix}").write_bytes(spc)

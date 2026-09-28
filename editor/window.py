@@ -873,6 +873,10 @@ class EditorBinding(QObject):
         #: `begin_save_as` and read by `confirm_save_as` and `cancel_save_as`.
         self._save_as_source = None
         self._save_as_port: str | None = None
+        #: What the player chose to leave behind for the Save As in progress,
+        #: and the packs it was chosen against -- `(leave, packs)`, see
+        #: `_packs_of`. Read only by a stale plan's re-preparation.
+        self._left_behind: "tuple[dict, dict] | None" = None
         self._build_open_menu()
         self._build_save_menu()
         self._wire_destination_section()
@@ -1871,7 +1875,9 @@ class EditorBinding(QObject):
                     dialog.pack_overflow, dialog.direction.destination_game,
                     convert_mod.BUTTON_CONVERT)
                 if choice is None:
-                    return "cancelled"
+                    # Back to the Convert window with its rows as they were,
+                    # the way Save As stays open.
+                    continue
                 try:
                     dialog.rehearse_leaving(choice)
                 except Exception:
@@ -1940,10 +1946,10 @@ class EditorBinding(QObject):
         disk = self._find_disk(lambda d: load_item_names(d, game),
                                game.disk_glob, game)
         if disk is not None:
-            for attr, read in ((item_names, load_item_names),
-                               (spell_names, load_spell_names)):
+            for names, read in ((item_names, load_item_names),
+                                (spell_names, load_spell_names)):
                 try:
-                    attr.update(read(disk, game))
+                    names.update(read(disk, game))
                 except Exception:
                     _log.exception("could not read names off %s", disk)
         dialog = LeaveBehindDialog(overflow, item_names, spell_names,
@@ -2639,6 +2645,7 @@ class EditorBinding(QObject):
                                      WRONG_EXTENSION[port])
                 return
         field.setText(str(path))
+        self._left_behind = None
         self._report_flush_failures(self._flush())
         assets = self._resolve_destination_assets()
         if assets is None:
@@ -2676,8 +2683,19 @@ class EditorBinding(QObject):
         box.exec()
         return box.clickedButton() is replace
 
+    @staticmethod
+    def _packs_of(overflow) -> "dict[int, tuple[bytes, ...]]":
+        """Each overflowing member's pack, as an index in a choice names it."""
+        return {entry.members[0]: entry.items[0] for entry in overflow}
+
     def _prepare_plan(self, source, port: str, path: pathlib.Path,
-                      assets, leave=None) -> "saveplan.SavePlan | None":
+                      assets, leave=None, remembered=None
+                      ) -> "saveplan.SavePlan | None":
+        """Prepare a Save As. `remembered` is an earlier choice of what to
+        leave behind, `(leave, packs)`: it is reused only when the packs that
+        overflow now are the ones it was chosen against, and otherwise the
+        player is asked again, because an index names whatever item is there
+        now."""
         try:
             # Only a real choice is handed on: `prepare_save_as` treats none
             # and an empty one alike.
@@ -2705,11 +2723,19 @@ class EditorBinding(QObject):
                 # this is a writer refusing what the player chose.
                 QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
                 return None
-            choice = self._choose_left_behind(
-                exc.overflow, saveplan.route(source, port).destination_game,
-                self._save_as_label())
-            if choice is None:
-                return None
+            packs = self._packs_of(exc.overflow)
+            if remembered is not None and remembered[1] == packs:
+                choice = remembered[0]
+            else:
+                choice = self._choose_left_behind(
+                    exc.overflow,
+                    saveplan.route(source, port).destination_game,
+                    self._save_as_label())
+                if choice is None:
+                    return None
+            self._left_behind = (
+                {member: frozenset(kept) for member, kept in choice.items()},
+                packs)
             return self._prepare_plan(source, port, path, assets, leave=choice)
         except (dos_codec.DosRecordError, amiga_port.AmigaRecordError,
                 amiga_pod.ConversionError) as exc:
@@ -2742,7 +2768,7 @@ class EditorBinding(QObject):
                 return
             fresh = self._prepare_plan(self._save_as_source, self._save_as_port,
                                        plan.destination.path, assets,
-                                       leave=plan.leave)
+                                       remembered=self._left_behind)
             if fresh is None:
                 return
             self._publish_plan(fresh, assets, _retried=True)

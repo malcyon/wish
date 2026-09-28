@@ -38,6 +38,7 @@ from types import SimpleNamespace
 import gamedata
 import pytest
 from gamedata import disk_dir
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QFileDialog
 from support.convertparty import _fixture_payloads, _six_icon_party
 from support.dossave import _save_dir, needs_dos_saves
@@ -3721,13 +3722,25 @@ def _convert_with(window, tmp_path, out):
                           folder=str(out))
 
 
-def _window_for_pack_overflow(monkeypatch):
+def _window_for_pack_overflow(monkeypatch, presses=None):
+    """An `EditorBinding` whose Convert window is pressed once for each entry
+    of `presses` (`True` presses Convert, `False` closes the window), and
+    always pressed when `presses` is `None`. `window.shown` records the dialog
+    and its folder row each time it is put up."""
     window = EditorBinding(_make_root())
     monkeypatch.setattr(window, "game_files_for", _some_disks)
     loaded = []
     monkeypatch.setattr(window, "load", loaded.append)
-    monkeypatch.setattr(convert.ConvertDialog, "exec",
-                        lambda self: QDialog.DialogCode.Accepted)
+    window.shown = []
+    remaining = None if presses is None else list(presses)
+
+    def exec_(dialog):
+        window.shown.append((dialog, dialog.folder))
+        pressed = True if remaining is None else remaining.pop(0)
+        return (QDialog.DialogCode.Accepted if pressed
+                else QDialog.DialogCode.Rejected)
+
+    monkeypatch.setattr(convert.ConvertDialog, "exec", exec_)
     return window, loaded
 
 
@@ -3763,7 +3776,8 @@ def test_cancelling_the_chooser_writes_nothing(tmp_path, monkeypatch):
     dialog, _overflow, seen, out = _pack_overflowing_dialog(tmp_path,
                                                             monkeypatch)
     dialog.close()
-    window, loaded = _window_for_pack_overflow(monkeypatch)
+    window, loaded = _window_for_pack_overflow(monkeypatch,
+                                               presses=[True, False])
     monkeypatch.setattr(window, "_choose_left_behind", lambda *a: None)
     try:
         outcome = _convert_with(window, tmp_path, out)
@@ -3774,6 +3788,46 @@ def test_cancelling_the_chooser_writes_nothing(tmp_path, monkeypatch):
     assert list(out.iterdir()) == []
     assert loaded == []
     assert all(not leave for leave in seen)
+
+
+def test_cancelling_the_chooser_returns_to_the_convert_window_with_its_rows_kept(
+        tmp_path, monkeypatch):
+    """Save As stays open when the chooser is cancelled; Convert does the
+    same, and pressing Convert again asks again and goes ahead."""
+    dialog, _overflow, seen, out = _pack_overflowing_dialog(tmp_path,
+                                                            monkeypatch)
+    dialog.close()
+    window, loaded = _window_for_pack_overflow(monkeypatch)
+    # The real `exec`, with Convert clicked as soon as the window is up.
+    real_exec = QDialog.exec
+
+    def pressed(dialog):
+        window.shown.append((dialog, dialog.folder))
+        QTimer.singleShot(0, dialog.buttons.button(
+            QDialogButtonBox.StandardButton.Ok).click)
+        return real_exec(dialog)
+
+    monkeypatch.setattr(convert.ConvertDialog, "exec", pressed)
+    answers = [None, {1: frozenset({16})}]
+    asked = []
+
+    def choose(overflow, game, accept_label):
+        asked.append(overflow)
+        return answers.pop(0)
+
+    monkeypatch.setattr(window, "_choose_left_behind", choose)
+    try:
+        outcome = _convert_with(window, tmp_path, out)
+    finally:
+        window.close()
+
+    (first, first_folder), (second, second_folder) = window.shown
+    assert first is second
+    assert first_folder == second_folder == str(out)
+    assert len(asked) == 2
+    assert seen[-1] == {1: frozenset({16})}
+    assert outcome.startswith("converted into ")
+    assert len(loaded) == 1
 
 
 def test_a_pack_that_fits_never_asks(tmp_path, monkeypatch):

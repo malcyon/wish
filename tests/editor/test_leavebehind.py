@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 from PyQt6.QtCore import Qt
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QDialog, QDialogButtonBox
 from support import packoverflow as packs
 
@@ -295,3 +296,72 @@ def test_rejecting_the_window_gives_no_choice_and_accepting_gives_the_ticks(
     assert binding._choose_left_behind(overflow, GAME, ACCEPT) == \
         {0: frozenset({3}), 2: frozenset({1, 2})}
     assert seen["label"] == ACCEPT
+
+
+# --- the keyboard --------------------------------------------------------------
+
+def _shown(dialog):
+    """Put the window up and active, so keys go where a player's would."""
+    dialog.show()
+    dialog.activateWindow()
+    QTest.qWaitForWindowActive(dialog)
+    return dialog
+
+
+def _cancel(dialog):
+    return dialog.buttons.button(QDialogButtonBox.StandardButton.Cancel)
+
+
+def test_tab_reaches_the_buttons_from_the_list(app):
+    """Tab leaves the tree and lands on the accept button when it is enabled
+    and on Cancel when it is not; a disabled button takes no focus."""
+    dialog = _shown(_dialog())
+    try:
+        dialog.tree.setFocus()
+        assert QApplication.focusWidget() is dialog.tree
+        assert not _accept(dialog).isEnabled()
+        QTest.keyClick(dialog, Qt.Key.Key_Tab)
+        assert QApplication.focusWidget() is _cancel(dialog)
+
+        _tick(dialog, 0, 3)
+        _tick(dialog, 2, 1, 2)
+        assert _accept(dialog).isEnabled()
+        dialog.tree.setFocus()
+        QTest.keyClick(dialog, Qt.Key.Key_Tab)
+        assert QApplication.focusWidget() is _accept(dialog)
+        QTest.keyClick(dialog, Qt.Key.Key_Tab)
+        assert QApplication.focusWidget() is _cancel(dialog)
+    finally:
+        dialog.close()
+
+
+def test_escape_cancels_the_window(app):
+    dialog = _shown(_dialog())
+    try:
+        QTest.keyClick(dialog, Qt.Key.Key_Escape)
+        assert dialog.result() == QDialog.DialogCode.Rejected
+        assert not dialog.isVisible()
+        assert dialog.chosen() == {}
+    finally:
+        dialog.close()
+
+
+def test_enter_accepts_only_when_every_pack_fits(app):
+    dialog = _shown(_dialog())
+    try:
+        dialog.tree.setFocus()
+        assert not _accept(dialog).isEnabled()
+        QTest.keyClick(dialog, Qt.Key.Key_Return)
+        QTest.keyClick(dialog, Qt.Key.Key_Enter)
+        assert dialog.isVisible()
+        assert dialog.result() != QDialog.DialogCode.Accepted
+
+        _tick(dialog, 0, 3)
+        _tick(dialog, 2, 1, 2)
+        assert _accept(dialog).isEnabled()
+        dialog.tree.setFocus()
+        QTest.keyClick(dialog, Qt.Key.Key_Return)
+        assert dialog.result() == QDialog.DialogCode.Accepted
+        assert dialog.chosen() == {0: frozenset({3}), 2: frozenset({1, 2})}
+    finally:
+        dialog.close()

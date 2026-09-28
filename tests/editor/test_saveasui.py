@@ -550,11 +550,16 @@ class _OverflowingSaveAs:
 
         from support import packoverflow
 
-        self.overflow = packoverflow.overflow()
+        self.overflow = self.overflow_before = packoverflow.overflow()
         self.prepared = []           # the `leave` each preparation was given
         self.asked = []              # what the chooser was opened with
         self.published = []
         self.answer = {1: frozenset({16})}
+        #: Answers to give before falling back to `answer`, one a question.
+        self.later_answers = []
+        #: The overflow the party has once a plan goes stale, or `None` for
+        #: an edit that leaves the packs alone.
+        self.changed = None
         self.said = []
         self.target = tmp_path / "out.d64"
         binding = _silver_blades_dos_binding(app, tmp_path)
@@ -569,21 +574,23 @@ class _OverflowingSaveAs:
 
         def prepare(party, port, path, assets, names=None, leave=None):
             self.prepared.append(leave)
-            if not leave:
+            if not leave and self.overflow:
                 raise ew.dos_codec.JoinedScrollsDoNotFit(self.overflow)
             return SimpleNamespace(destination=_StubDestination(path),
-                                   leave=dict(leave))
+                                   leave=dict(leave or {}))
 
         def publish(plan, party, **_kwargs):
             self.published.append(plan)
             if len(self.published) == 1 and self.stale_once:
+                if self.changed is not None:
+                    self.overflow = self.changed
                 raise saveplan.StalePlan("edited since")
             return SimpleNamespace(destination=plan.destination, backup=None,
                                    party=party)
 
         def choose(overflow, game, accept_label):
             self.asked.append((overflow, game.key, accept_label))
-            return self.answer
+            return self.later_answers.pop(0) if self.later_answers else self.answer
 
         self.stale_once = False
         monkeypatch.setattr(ew.saveplan, "prepare_save_as", prepare)
@@ -634,10 +641,49 @@ def test_a_stale_plan_is_reprepared_with_the_choice_and_the_player_is_not_asked_
     run.stale_once = True
     run.press()
 
+    # The retry asks the writer once with no choice, to read the packs as they
+    # are now, and reuses the choice because they are the ones it was made
+    # against.
     assert run.said == []
     assert len(run.asked) == 1
-    assert run.prepared == [None, {1: frozenset({16})}, {1: frozenset({16})}]
+    assert run.prepared == [None, {1: frozenset({16})}, None,
+                            {1: frozenset({16})}]
     assert len(run.published) == 2
+    assert run.published[1].leave == {1: frozenset({16})}
+
+
+def test_a_stale_plan_whose_pack_changed_asks_again_rather_than_reuse_the_indices(
+        app, tmp_path, monkeypatch):
+    """An index names whatever item is there now, so an old tick on a changed
+    pack would leave behind an item the player never chose."""
+    from support import packoverflow
+
+    run = _OverflowingSaveAs(app, tmp_path, monkeypatch)
+    run.stale_once = True
+    run.changed = packoverflow.overflow([
+        packoverflow.member("ALPHA", 14, packoverflow.scroll(5),
+                            packoverflow.scroll(6, 7), loose=1)])
+    first, second = {1: frozenset({16})}, {0: frozenset({3})}
+    run.later_answers = [first, second]
+    run.press()
+
+    assert run.said == []
+    assert [entry[0] for entry in run.asked] == [run.overflow_before, run.changed]
+    assert run.prepared == [None, first, None, second]
+    assert run.published[1].leave == second
+
+
+def test_a_stale_plan_whose_pack_now_fits_leaves_nothing_behind(
+        app, tmp_path, monkeypatch):
+    run = _OverflowingSaveAs(app, tmp_path, monkeypatch)
+    run.stale_once = True
+    run.changed = ()
+    run.press()
+
+    assert run.said == []
+    assert len(run.asked) == 1
+    assert run.prepared == [None, {1: frozenset({16})}, None]
+    assert run.published[1].leave == {}
 
 
 def test_a_choice_the_writer_still_refuses_shows_the_existing_sentence(
@@ -654,3 +700,68 @@ def test_a_choice_the_writer_still_refuses_shows_the_existing_sentence(
     assert run.prepared == [None, {1: frozenset({16})}]
     assert len(run.asked) == 1
     assert run.published == []
+
+
+def test_save_as_with_a_choice_reads_the_written_disk_back_without_a_false_mismatch(
+        app, tmp_path, monkeypatch):
+    """The real writer, `validate` and `compare`, with a member's pack cut to
+    fit: the items left behind are the player's choice, so reading the disk
+    back must not report them as lost."""
+    from support import packoverflow
+
+    from editor.dosimport import GameFiles
+
+    folder = dos_folder(tmp_path / "save")
+    packoverflow.crowd_dos_member(
+        folder, 1, 15, packoverflow.scroll(5), packoverflow.scroll(6, 7),
+        name="HERO1")
+    binding = EditorBinding(make_root(), str(folder))
+    binding.backups = tmp_path / "backups"
+    binding.begin_save_as("c64")
+    assets = saveplan.Assets(
+        game_files=GameFiles(icon=bytes(36), animate=bytes(852)))
+    monkeypatch.setattr(binding, "_resolve_destination_assets", lambda: assets)
+    binding._child("button_destination_save_as").setEnabled(True)
+    asked, adopted, said = [], [], []
+    choice = {0: frozenset({3})}
+
+    def choose(overflow, game, accept_label):
+        asked.append(overflow)
+        return choice
+
+    monkeypatch.setattr(binding, "_choose_left_behind", choose)
+    monkeypatch.setattr(binding, "_adopt",
+                        lambda party, path, **k: adopted.append((party, path)))
+    monkeypatch.setattr(
+        ew.QMessageBox, "critical",
+        lambda _parent, title, text: said.append((title, text)))
+    plans, compared = [], []
+    real_prepare, real_compare = saveplan.prepare_save_as, saveplan.compare
+
+    def prepare(*args, **kwargs):
+        plans.append(real_prepare(*args, **kwargs))
+        return plans[-1]
+
+    def compare(*args, **kwargs):
+        compared.append(real_compare(*args, **kwargs))
+        return compared[-1]
+
+    monkeypatch.setattr(saveplan, "prepare_save_as", prepare)
+    monkeypatch.setattr(saveplan, "compare", compare)
+    out = tmp_path / "out.d64"
+    binding._child("destination_path").setText(str(out))
+    binding._child("button_destination_save_as").click()
+
+    assert said == []
+    # The read-back ran on the written disk and found nothing missing.
+    assert compared == [[]]
+    plan, = plans
+    assert plan.leave == choice
+    assert len(plan.report.left_behind) == 1
+    overflow, = asked
+    assert [entry.members for entry in overflow] == [(0,)]
+    assert len(overflow[0].items[0]) == 17
+    assert out.is_file()
+    (party, path), = adopted
+    assert path == str(out)
+    assert len(saveplan.c64_slot_records(out)) == 2
