@@ -14,7 +14,7 @@ import pathlib
 import pytest
 from conftest import load_tools_module
 
-from automap.screen import Screen
+from automap.screen import _SCREEN_TO_ASCII, SCREEN_COLS, SCREEN_ROWS, Screen
 from goldbox import c64_port, savegame
 from goldbox.d64 import D64
 
@@ -1603,3 +1603,39 @@ def test_a_truncated_capture_is_reported_unreadable_not_raised(tmp_path):
     problems, unreadable = sweep_captures(sorted(tmp_path.glob("*.txt")))
     assert problems == []
     assert unreadable == ["binary.txt", "cut.txt", "nodigits.txt"]
+
+
+def _framed_screen(row_text, colours_by_col, framed=True):
+    """A screen whose row 5 is *row_text* between `$` frame cells (or not)."""
+    to_code = {v: k for k, v in reversed(list(_SCREEN_TO_ASCII.items()))}
+    codes = [0x20] * (SCREEN_COLS * SCREEN_ROWS)
+    colours = [5] * len(codes)
+    line = ("$" + row_text.ljust(SCREEN_COLS - 2) + "$") if framed else row_text
+    for c, ch in enumerate(line):
+        codes[5 * SCREEN_COLS + c] = to_code[ch]
+        colours[5 * SCREEN_COLS + c] = colours_by_col.get(c, 5)
+    return Screen(bytes(codes), bytes(colours), 0x0400)
+
+
+def test_a_framed_row_holding_only_a_highlighted_label_reads_as_highlighted():
+    s = _framed_screen(" NO", {2: 1, 3: 1}, framed=True)
+    assert s.row_colour(5) == 1
+    assert s.highlighted_rows() == [5]
+
+
+def test_an_unframed_row_still_counts_every_cell():
+    s = _framed_screen("NO", {0: 1, 1: 1}, framed=False)
+    assert s.row_colour(5) == 1
+
+
+def test_a_row_with_a_frame_on_one_side_only_counts_the_dollar():
+    # "$N": the two cells tie, and the first colour counted wins.  Skipping the
+    # lone `$` would answer 5.
+    s = _framed_screen("$N", {0: 1, 1: 5}, framed=False)
+    assert s.row_colour(5) == 1
+
+
+def test_the_with_column_path_ignores_the_frame_rule():
+    s = _framed_screen(" NO", {2: 1, 3: 1}, framed=True)
+    assert s.highlighted_rows(column=2) == [5]
+    assert s.highlighted_rows(column=10) == []

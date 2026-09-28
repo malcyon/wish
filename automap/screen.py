@@ -163,9 +163,19 @@ class Screen:
         return self.find(needle) is not None
 
     def row_colour(self, r: int) -> int:
-        """The dominant colour of the non-blank characters on a row."""
+        """The dominant colour of the non-blank characters on a row.
+
+        A window's frame, a `$` in the first and last column, is not counted:
+        on a row holding only a two-letter label its two cells would tie with
+        the label's and hide the highlight.  The frame is found in the decoded
+        text, so a reversed `$` counts too, as in `Session._exact_hit`.
+        """
+        first, last = 0, SCREEN_COLS
+        line = self.row(r)
+        if line[:1] == line[-1:] == "$":
+            first, last = 1, SCREEN_COLS - 1
         counts: dict[int, int] = {}
-        for i in range(r * SCREEN_COLS, (r + 1) * SCREEN_COLS):
+        for i in range(r * SCREEN_COLS + first, r * SCREEN_COLS + last):
             if self.codes[i] not in (0x20, 0x00):
                 counts[self.colours[i]] = counts.get(self.colours[i], 0) + 1
         if not counts:
