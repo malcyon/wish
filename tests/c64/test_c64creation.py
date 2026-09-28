@@ -132,12 +132,16 @@ class FakeGame:
                   "BEGIN ADVENTURING"]
 
     def __init__(self, tmp, rolls=ROLLS, add_closes=False, stall=None,
-                 start="party", lose_first=None, slow=None, trim=()):
+                 start="party", lose_first=None, slow=None, trim=(),
+                 roster=(), tail=None):
         """`stall`: a state whose keys do nothing.  `lose_first`: a state whose
         first Return is dropped.  `slow`: state -> (polls, redraws), a Return
         that is accepted but takes that many screen reads to show its result,
         the screen redrawn meanwhile or left as it was.  `trim`: class labels
-        the roll does not qualify for, left off the class list."""
+        the roll does not qualify for, left off the class list.  `roster`:
+        names already on the ADD list that no spec asked for.  `tail`:
+        `(state, column, text)` drawn on that screen's first row."""
+        self.roster, self.tail = tuple(roster), tail
         self.trim = tuple(trim)
         self.tmp, self.rolls = tmp, list(rolls)
         self.add_closes, self.stall = add_closes, stall
@@ -182,7 +186,7 @@ class FakeGame:
         if s == "sheet":
             return ["YES", "NO"]
         if s == "add":
-            return [c["name"] for c in self.created] + ["EXIT"]
+            return list(self.roster) + [c["name"] for c in self.created] + ["EXIT"]
         return []
 
     def render(self):
@@ -261,6 +265,8 @@ class FakeGame:
                 put(13 + i, 2, label)
         elif s == "junk":
             put(5, 5, "A SCREEN NOBODY DRAWS")
+        if self.tail and self.tail[0] == s:
+            put(2, self.tail[1], self.tail[2])
         if self.delayed and self.slow[self.delayed[1]][1]:
             put(22, 5, "LOADING")     # the screen changes, not to the next one
         return Screen(bytes(codes), bytes(colours), 0x0400)
@@ -577,6 +583,27 @@ def test_a_class_that_is_the_tail_of_a_longer_row_is_accepted_and_selected(
     assert code == 0 and summary["lost"] is None
     assert ("class", cls) in game.chosen
     assert ("class", earlier) not in game.chosen
+
+
+def test_a_roster_row_containing_the_name_is_refused_before_return(tmp_path):
+    """The ADD list is matched by containment, so a leftover VICEFTR above the
+    spec's VICE would be taken for it."""
+    game = FakeGame(tmp_path, roster=("VICEFTR",))
+    code, sess, game, out, summary = drive(
+        tmp_path, [spec("VICE")], game)
+    assert code == 1 and "VICE would select VICEFTR" in summary["lost"]
+    assert [k for st, k in sess.kbd.sent if st == "add"] == []
+
+
+def test_an_exact_label_present_only_as_a_non_bare_row_is_refused(tmp_path):
+    """The label sits in the 26-column slice `entries` reads, but the row also
+    holds text further right, so the whole-row match could never succeed."""
+    game = FakeGame(tmp_path, tail=("class", 30, "X"))
+    code, sess, game, out, summary = drive(
+        tmp_path, [spec("VICECLE", cls="CLERIC")], game)
+    assert code == 1 and "no whole row of the class list is CLERIC" \
+        in summary["lost"]
+    assert [k for st, k in sess.kbd.sent if st == "class"] == []
 
 
 def test_the_class_table_is_the_lists_the_screens_draw():

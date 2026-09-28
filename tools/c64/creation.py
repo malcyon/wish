@@ -313,8 +313,8 @@ LISTS = {PICK_RACE: ("PICK RACE", RACE_COLUMN),
          PICK_ALIGN: ("PICK ALIGNMENT", ALIGN_COLUMN),
          ADD_LIST: ("ADD CHARACTER TO PARTY", ADD_STAR_COLUMN)}
 
-#: The lists whose rows hold a label and nothing else.  The ADD list's rows
-#: carry a star, so it is matched by containment.
+#: The lists whose rows hold a label and nothing else.  The ADD list's rows may
+#: lead with a star (`entries` strips one), so it is matched by containment.
 EXACT_LISTS = (PICK_RACE, PICK_GENDER, PICK_CLASS, PICK_ALIGN)
 
 
@@ -468,7 +468,8 @@ class Driver:
         The label must be on screen.  A creation list's rows are bare labels,
         so they are matched whole (`MAGIC-USER/THIEF` is not the tail of
         `FIGHTER/MAGIC-USER/THIEF`); any other screen takes the first row
-        containing the text.
+        containing the text, so in such a list an earlier row containing the
+        label is refused before a key is pressed.
         """
         self.check(f"selecting {label}")
         shown = entries(s, kind)
@@ -476,6 +477,18 @@ class Driver:
             if label not in shown:
                 raise self.lost(f"{label} is not in the {kind} list {shown}",
                                 "label", LabelProblem)
+            if kind in EXACT_LISTS:
+                # `select_row(exact=True)` needs a whole row equal to the label;
+                # `entries` reads only a slice of each row.
+                if S.Session._exact_hit(s, label) is None:
+                    raise self.lost(f"no whole row of the {kind} list is "
+                                    f"{label}: {shown}", "label", LabelProblem)
+            else:
+                earlier = next(e for e in shown if label in e)
+                if earlier != label:
+                    raise self.lost(f"{label} would select {earlier}, which "
+                                    f"comes first in the {kind} list {shown}",
+                                    "ambiguous", LabelProblem)
         elif not s.contains(label):
             raise self.lost(f"{label} is not on the {kind} screen",
                             "label", LabelProblem)
