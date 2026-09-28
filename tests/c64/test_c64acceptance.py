@@ -3876,13 +3876,16 @@ class WalkSession(FakeSession):
         self.pressed.append(move)
         self.clock += 1
         if move in ("I", "M"):
-            # #708: `M` steps through the edge behind the original facing --
-            # this fake has no wall art, so it steps back keeping that
-            # facing, the no-art row of the engine's own rule.
+            # #708: `M` tries the edge behind the original facing -- this
+            # fake steps back keeping the facing when the edge is open, and
+            # reverses the facing in place when the edge is walled (wall
+            # art), the two genuine engine outcomes.
             facing = self.facing if move == "I" else (self.facing + 2) % 4
             dx, dy = ((0, -1), (1, 0), (0, 1), (-1, 0))[facing]
             if (self.x + dx, self.y + dy) not in self.walls:
                 self.x, self.y = self.x + dx, self.y + dy
+            elif move == "M":
+                self.facing = (self.facing + 2) % 4
         else:
             self.facing = (self.facing + {"J": -1, "K": 1}[move]) % 4
         self.facing = (self.facing + self.drift) % 4
@@ -3954,7 +3957,60 @@ def test_walk_m_that_leaves_a_facing_neither_kept_nor_reversed_is_lost(
     sess = WalkSession()
     sess.drift = 1
     run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
-    with pytest.raises(A.StepFailed, match="should leave the party facing 0 or 2"):
+    with pytest.raises(A.StepFailed, match="should keep facing 0, it faces 1"):
+        run.walk("M")
+    log.close()
+
+
+def test_walk_m_held_by_wall_art_reverses_the_facing(tmp_path, monkeypatch):
+    """#708: the wall-art row of the engine's own rule -- `M` stays on the
+    square and the facing reverses, the pairing's other genuine outcome."""
+    sess = WalkSession(walls={(5, 6)})
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    got = run.walk("M")
+    log.close()
+    assert got["position"] == [5, 5, 2] and got["squares_moved"] == 0
+    assert got["expected_facing"] == 2
+
+
+class BrokenMSession(WalkSession):
+    """Fakes each of the two impossible `M` outcomes #708 rules out: moving
+    back while also reversing the facing, and staying put while keeping the
+    facing unchanged."""
+
+    def __init__(self, break_mode, **kw):
+        super().__init__(**kw)
+        self.break_mode = break_mode
+
+    def walk_one(self, move, *a, **k):
+        self.pressed.append(move)
+        self.clock += 1
+        if move == "M":
+            if self.break_mode == "moved_and_reversed":
+                self.y += 1
+                self.facing = (self.facing + 2) % 4
+            elif self.break_mode == "held_and_kept":
+                pass
+        return True
+
+
+def test_walk_m_that_moves_back_and_also_reverses_the_facing_is_lost(
+        tmp_path, monkeypatch):
+    """#708: the two outcomes are paired -- a moved square must keep the
+    facing, never reverse it too."""
+    sess = BrokenMSession("moved_and_reversed")
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match="should keep facing 0, it faces 2"):
+        run.walk("M")
+    log.close()
+
+
+def test_walk_m_that_stays_put_and_keeps_the_facing_is_lost(tmp_path, monkeypatch):
+    """#708: the two outcomes are paired -- a held square must reverse the
+    facing, never keep it."""
+    sess = BrokenMSession("held_and_kept")
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match="should reverse facing to 2, it faces 0"):
         run.walk("M")
     log.close()
 

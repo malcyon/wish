@@ -1983,10 +1983,11 @@ class PoolRun:
         turn is right when the facing is the one it asks for and the square
         did not change, which is the control that a walk is not a turn.  `M`
         is not a turn: the engine turns about and tries the edge behind the
-        original facing (#708), so any square it lands on must be exactly
-        one step behind that facing -- the same exit-or-teleport check `I`
-        gets -- and the facing it ends on must be either the one it started
-        with or exactly reversed; nothing else the edge could do is possible.
+        original facing (#708), and the two outcomes are paired -- it either
+        steps back one square exactly behind that facing, the same
+        exit-or-teleport check `I` gets, with the facing kept, or it stays on
+        the square with the facing exactly reversed; no other combination of
+        movement and facing is possible.
 
         A disk prompt on the screen fails the walk and is never answered: a
         square's event asks for another disk, and answering would carry the
@@ -2090,28 +2091,33 @@ class PoolRun:
                         "walk", f"walk {route}: move {n} moved from {before} "
                                 f"to {after}, not one square ahead: an exit "
                                 f"or a teleport")
-            if (move == "M" and after[:2] != before[:2]
-                    and before[2] is not None):
+            if move == "M" and before[2] is not None:
                 # #708: `M` turns about and tries the edge behind the
-                # original facing, so a moved square is one step opposite
-                # that facing -- anything else is an exit or a teleport.
-                dx, dy = STEP[(before[2] + 2) % 4]
-                if after[:2] != [before[0] + dx, before[1] + dy]:
-                    raise self.fail(
-                        "walk", f"walk {route}: move {n} moved from {before} "
-                                f"to {after}, not one square behind: an exit "
-                                f"or a teleport")
-            if move == "M":
-                # #708: the engine's own rule leaves `M` facing either the
-                # square it started with (no wall art behind it) or exactly
-                # reversed (any wall art there); nothing else is possible.
-                if (facing is not None and after[2] is not None
-                        and after[2] not in (facing, (facing + 2) % 4)):
-                    raise self.fail(
-                        "walk", f"walk {route}: move {n} (M) should leave "
-                                f"the party facing {facing} or "
-                                f"{(facing + 2) % 4}, it faces {after[2]}")
-                if facing is not None and after[2] is not None:
+                # original facing.  It either steps back one square with
+                # facing kept (no wall art on the edge) or stays in place
+                # with facing reversed (wall art there) -- the two are
+                # paired, and no other combination is possible.
+                moved = after[:2] != before[:2]
+                reversed_facing = (before[2] + 2) % 4
+                if moved:
+                    dx, dy = STEP[reversed_facing]
+                    if after[:2] != [before[0] + dx, before[1] + dy]:
+                        raise self.fail(
+                            "walk", f"walk {route}: move {n} moved from {before} "
+                                    f"to {after}, not one square behind: an exit "
+                                    f"or a teleport")
+                    if after[2] is not None and after[2] != before[2]:
+                        raise self.fail(
+                            "walk", f"walk {route}: move {n} (M) stepped back "
+                                    f"from {before} to {after} so should keep "
+                                    f"facing {before[2]}, it faces {after[2]}")
+                else:
+                    if after[2] is not None and after[2] != reversed_facing:
+                        raise self.fail(
+                            "walk", f"walk {route}: move {n} (M) stayed at "
+                                    f"{before} so should reverse facing to "
+                                    f"{reversed_facing}, it faces {after[2]}")
+                if after[2] is not None:
                     facing = after[2]
             elif facing is not None:
                 facing = (facing + TURNS[move]) % 4
