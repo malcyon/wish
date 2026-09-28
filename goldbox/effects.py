@@ -386,6 +386,12 @@ LATER_INVISIBLE_ID = 25
 #: characters carry none to convert (`docs/226`).
 CHARM_ID = 11
 
+#: The magnitude the C64 Pool party cast of Charm writes (`SPELLE00 $A937`
+#: to `$A941`): bit 7 makes a removal run the expiry, bit 0 clear is the
+#: charmer's side, the party's, and the low nibble is the level C64 Dispel
+#: Magic tries the row at.
+POOL_CHARM_MAGNITUDE = 0x86
+
 #: Haste. Both ports keep the caster's level in the low nibble and the "has
 #: already aged" mark in bit 4, and nothing else: the C64 camp cast writes
 #: `level | $10`, its combat cast `level & $0F`, and DOS writes the level with
@@ -466,8 +472,10 @@ STINKING_CLOUD_DOS = (0xFF, 0)
 
 #: Ids whose state also lives in record bytes the codecs do not convert yet,
 #: so a row alone would not reproduce it. Charm (11) keeps the charmed
-#: character's own side in DOS data bit 6 and in C64 record `0x10C` bits 1-2
-#: (`docs/226`). Fear (`FEAR_IDS`, below) has its own rule: `c64_codec`
+#: character's own side in DOS data bit 6 and, in Pool, C64 record `0x10C`
+#: bits 5 and 6. Pool's granted charm node converts through `pool_charm_row`;
+#: its running node stays refused, because no DOS engine leaves a running
+#: charm on a party member past a fight (`docs/226`). Fear (`FEAR_IDS`, below) has its own rule: `c64_codec`
 #: converts its record bytes alongside the row.
 _RECORD_STATE_IDS: dict[str, frozenset[int]] = {
     "pool-of-radiance": frozenset({11}),
@@ -970,6 +978,39 @@ def never_expiring_spell_record(title_key: str, row: "Effect") -> bytes | None:
             == NEVER_EXPIRING_SPELL_FLAGS.get(row.id, 0)):
         return bytes((row.id, 0, 0, row.magnitude & 0x7F,
                       row.magnitude >> 7)) + _RUNNING_EFFECT_NEXT
+    return None
+
+
+def pool_charm_row(title_key: str,
+                   node: bytes) -> tuple[int, int] | Unconverted | None:
+    """The C64 `(id, magnitude)` for a DOS Pool charm granted node.
+
+    `None` when the node is not a Pool charm. A charm no DOS Pool route
+    writes (a duration, a clear or extra data bit, a count other than 1) is
+    `Unconverted`; the route that does write one is a party-side charm at
+    duration 0 with data bit 5 set and bits 6 and 7 clear.
+    """
+    if title_key != "pool-of-radiance" or node[0] != CHARM_ID:
+        return None
+    if (node[1] == 0 and node[2] == 0 and node[4] == 1
+            and node[3] & 0x20 and node[3] & 0xC0 == 0):
+        return CHARM_ID, POOL_CHARM_MAGNITUDE
+    return Unconverted("a charm node no DOS Pool route writes")
+
+
+def pool_charm_record(title_key: str, row: "Effect",
+                      combat_side: int | None) -> bytes | None:
+    """The DOS granted charm node for a C64 Pool party-side charm row, or `None`.
+
+    Bit 6 of `0x10C` may be either value, because `$C0` is the same charm one
+    round later; bit 0 (the enemy's side) or bit 5 refuses it. The count is
+    the C64 charm's fixed level, the row's magnitude low nibble.
+    """
+    if (title_key == "pool-of-radiance" and row.id == CHARM_ID
+            and row.duration == 0 and row.magnitude == POOL_CHARM_MAGNITUDE
+            and combat_side is not None and combat_side & 0x21 == 0):
+        return bytes((CHARM_ID, 0, 0, 0x20 | (row.magnitude & 0x0F),
+                      1)) + _RUNNING_EFFECT_NEXT
     return None
 
 

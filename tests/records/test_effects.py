@@ -1935,3 +1935,51 @@ def test_a_c64_slowed_row_of_64_minutes_or_more_becomes_a_dos_node(title):
     # minutes, so a longer row is passed through rather than refused.
     row = effects.Effect(63, 42, 0, 70, 3)
     assert isinstance(effects.dos_record(title, row, 0), effects.RunningEffect)
+
+
+_POOL = "pool-of-radiance"
+
+
+def test_a_dos_pool_charm_node_becomes_the_c64_party_cast_row():
+    assert effects.pool_charm_row(_POOL, bytes((11, 0, 0, 0x21, 1))) == \
+        (11, 0x86)
+
+
+@pytest.mark.parametrize("node", [
+    bytes((11, 0, 0, 0x01, 1)),   # data bit 5 clear
+    bytes((11, 0, 0, 0xA1, 1)),   # data bit 7
+    bytes((11, 0, 0, 0x61, 1)),   # data bit 6
+    bytes((11, 0, 0, 0x21, 0)),   # flag 0
+    bytes((11, 0x0A, 0, 0x21, 1)),  # a duration
+], ids=["no-bit-5", "bit-7", "bit-6", "flag-0", "duration"])
+def test_a_pool_charm_node_no_dos_route_writes_is_unconverted(node):
+    assert isinstance(effects.pool_charm_row(_POOL, node),
+                      effects.Unconverted)
+
+
+def test_pool_charm_row_leaves_other_titles_and_ids_alone():
+    node = bytes((11, 0, 0, 0x21, 1))
+    assert effects.pool_charm_row("curse-of-the-azure-bonds", node) is None
+    assert effects.pool_charm_row(_POOL, bytes((12, 0, 0, 0x21, 1))) is None
+
+
+@pytest.mark.parametrize("side", [0x80, 0xC0])
+def test_a_c64_party_charm_row_becomes_a_dos_node(side):
+    row = effects.Effect(63, 11, 2, 0, 0x86)
+    assert effects.pool_charm_record(_POOL, row, side) == \
+        bytes((11, 0, 0, 0x26, 1)) + bytes(4)
+
+
+@pytest.mark.parametrize("title, row, side", [
+    (_POOL, effects.Effect(63, 11, 2, 0, 0x87), 0x80),
+    (_POOL, effects.Effect(63, 11, 2, 0, 0x06), 0x80),
+    (_POOL, effects.Effect(63, 11, 2, 0, 0x86), 0x81),
+    (_POOL, effects.Effect(63, 11, 2, 0, 0x86), 0xA0),
+    (_POOL, effects.Effect(63, 11, 2, 0, 0x86), None),
+    (_POOL, effects.Effect(63, 11, 2, 5, 0x86), 0x80),
+    ("curse-of-the-azure-bonds", effects.Effect(63, 11, 2, 0, 0x86), 0x80),
+], ids=["monster-form", "no-bit-7", "enemy-side", "bit-5", "no-side",
+        "duration", "curse"])
+def test_a_c64_charm_row_that_is_not_the_party_cast_stays_unconverted(
+        title, row, side):
+    assert effects.pool_charm_record(title, row, side) is None

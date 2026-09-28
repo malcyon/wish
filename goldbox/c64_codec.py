@@ -836,9 +836,19 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # records.  So a player character's share in these two titles is always
     # the raw byte, whatever its value.
     is_npc = bool(w.get("npc"))
+    # A Pool player character the engine has taken over by its charm: he is a
+    # player character on the C64, so his share byte is the ability-altered
+    # flag like any other player character's.
+    pool_charmed = bool(
+        deltas is POOL_OF_RADIANCE_RECORD and is_npc
+        and w.get("npc_control_byte") == DOS_PC_TAKEN_OVER
+        and not w.get("hostile") and granted is not None
+        and any(isinstance(effects.pool_charm_row(deltas.key, bytes(n)),
+                           tuple) for n in granted.value))
     share = use("treasure_share")
     modify_flag = None
-    if (share is not None and not is_npc and int(share.value) in (0, 1)
+    if (share is not None and not (is_npc and not pool_charmed)
+            and int(share.value) in (0, 1)
             and deltas is POOL_OF_RADIANCE_RECORD):
         modify_flag = share
         rec.set("treasure_share", 0x00)
@@ -1551,11 +1561,27 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         granted_ids = []
         for node in (granted.value if granted is not None else ()):
             if int(node[0]) == effects.CHARM_ID:
-                # Its record bytes (side and control bits) have no C64 writer
-                # yet, so a bare id in a trait slot would leave the record
-                # half converted.
-                rep.lost(f"effect {node[0]}: a charm, whose record bytes "
-                         "the C64 writer does not convert yet")
+                # A charm is a row plus record bytes (side and control), so a
+                # bare id in a trait slot would leave it half converted.
+                charm = effects.pool_charm_row(title_key, bytes(node))
+                if isinstance(charm, effects.Unconverted):
+                    rep.lost(f"effect {node[0]}: {charm.reason}")
+                elif charm is None:
+                    rep.lost(f"effect {node[0]}: a charm, whose record "
+                             "bytes the C64 writer does not convert yet")
+                elif payload is None:
+                    rep.lost(f"effect {node[0]}: a charm, with no save "
+                             "payload to hold its row")
+                else:
+                    row_slot = effects.free_slot(payload)
+                    if row_slot is None:
+                        rep.lost(f"effect {node[0]}: a charm, with no free "
+                                 "slot in the save's shared effect arrays")
+                    else:
+                        effects.write_effect(
+                            payload, row_slot, charm[0],
+                            party_slot if party_slot is not None else 0,
+                            0, charm[1])
                 continue
             if (effects.is_party_granted_record(title_key, node)
                     and payload is not None):
@@ -1720,8 +1746,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # control byte, but neither C64 title ever turns a companion back into a
     # player character (`docs/232`), so such a character writes as a player
     # character, whether or not a fear row was also written -- both engines
-    # keep a player character's `0x0B8` at zero.  Pool of Radiance is not
-    # changed here (#720).
+    # keep a player character's `0x0B8` at zero.  In Pool of Radiance a
+    # `DOS_PC_TAKEN_OVER` with a charm node takes the charm arm below; any
+    # other Pool `DOS_PC_TAKEN_OVER` has no DOS writer but Animate Dead, so it
+    # is written as a companion.
     npc = use("npc")
     control = use("npc_control_byte")
     taken_over = (npc is not None and npc.value and control is not None
@@ -1733,6 +1761,22 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                  f"{DOS_PC_TAKEN_OVER:#04x}, DOS's own player character "
                  "taken over, and neither C64 title turns a companion back "
                  "into a player character, so this is a player character")
+        rep.dropped.extend(npc.dropped)
+        rep.dropped.extend(control.dropped)
+    elif pool_charmed:
+        if modify_flag is None:
+            rec.set("flags_0b8", 0x00)
+            rep.note(0x0B8, 1, "flags_0b8: zero -- a player character, bit 7 "
+                     "clear")
+        else:
+            rec.set("flags_0b8", int(modify_flag.value) & 0x01)
+            emit(modify_flag, "flags_0b8", 0x0B8, 1,
+                 " -- bit 0, the ability-altered flag, with bit 7 clear for "
+                 "a player character")
+        rep.note(0x0B8, 1, f"npc_control_byte {DOS_PC_TAKEN_OVER:#04x} with "
+                 "a converted charm row is DOS's charmed player character; "
+                 "the C64 keeps a charm in the row and 0x10C, never in "
+                 "0x0B8")
         rep.dropped.extend(npc.dropped)
         rep.dropped.extend(control.dropped)
     elif npc is not None and npc.value:
@@ -1979,7 +2023,9 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "the write itself. A record "
                         "effects.never_expiring_spell_row recognises becomes "
                         "a row owned by the character's save slot, with "
-                        "duration byte 0. Not something the C64 reader can "
+                        "duration byte 0; a Pool of Radiance charm node, "
+                        "id 11, becomes the C64's own charm row, magnitude "
+                        "$86. Not something the C64 reader can "
                         "give back as this name, because a trait slot the "
                         "converter filled and one READY filled are the same "
                         "byte to the engine's own compare, except those "
@@ -2000,12 +2046,16 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
             "there (#639); in Curse and Silver Blades, npc_control_byte "
             "DOS_PC_TAKEN_OVER takes the player-character branch whatever "
             "npc says, because neither title turns a companion back into a "
-            "player character"),
+            "player character; in Pool of Radiance, DOS_PC_TAKEN_OVER with "
+            "a charm node writes 0x0B8 as a player character's, and the "
+            "charm goes to a row"),
     ("npc_control_byte", "written unchanged to 0x0B8 when npc is true -- "
                          "bit 7 plus the low seven bits of morale, stored "
                          "halved; nothing to write when npc is false (#303); "
                          "DOS_PC_TAKEN_OVER writes 0x0B8 = 0 instead, in "
-                         "Curse and Silver Blades"),
+                         "Curse and Silver Blades, and in Pool of Radiance "
+                         "when a charm node converts, which writes 0x0B8 as "
+                         "a player character's and the charm to a row"),
     ("treasure_share", "written unchanged to 0x0FA for a companion, whose "
                        "share the C64's own split reads there; a DOS or "
                        "Amiga raw value with bit 2 set refuses because C64 "
@@ -2306,7 +2356,8 @@ READ_TARGETS: dict[str, str] = (
                     "converted, npc and npc_control_byte (DOS_PC_TAKEN_OVER) "
                     "are given as though bit 7 were set, because neither "
                     "title ever turns a companion back into a player "
-                    "character",
+                    "character; the same for a Pool of Radiance player "
+                    "character whose party-side charm row converted",
        "treasure_share": "read unchanged as neutral treasure_share for a "
                          "companion, and for a player character whose byte "
                          "is not zero; for the ordinary Pool of Radiance "
@@ -2326,8 +2377,8 @@ READ_TARGETS: dict[str, str] = (
                         "is neither",
        "combat_side": "bit 0 read as neutral hostile and bit 7 as neutral "
                       "quickfight; bit 6 accounted for as part of a "
-                      "converted Fear row (effects.FEAR_IDS) and otherwise, "
-                      "with bits 1-5, logged as not yet converted",
+                      "converted Fear row (effects.FEAR_IDS) or Pool charm row "
+                      "and otherwise, with bits 1-5, logged as not yet converted",
        "roster_tail": "read as neutral roster_tail, from the roster block's "
                       "+0x10-+0x18 or the record",
        "inventory": "read as neutral inventory, from the save's item page "
@@ -2427,6 +2478,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # Whether a row in `effects.FEAR_IDS` converted, which the npc override
     # and the 0x10C bit-6 accounting below both key off of.
     fear_row_converted = False
+    # Likewise a Pool party-side charm row, which the npc override and the
+    # bit-6 accounting also key off of.
+    charm_row_converted = False
     # The 0x10C byte, chosen once here (rather than separately below, where
     # it was read before) so the bit-6 accounting below and the hostile and
     # quickfight bits further down both read the same source.
@@ -2475,6 +2529,13 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             if row.owner != party_slot or row.slot in consumed:
                 continue
             if row.duration == 0:
+                charm_record = (effects.pool_charm_record(
+                    title_key or "", row, combat_side_raw)
+                    if not is_npc else None)
+                if charm_record is not None:
+                    granted.append(charm_record)
+                    charm_row_converted = True
+                    continue
                 spell_record = effects.never_expiring_spell_record(
                     title_key or "", row)
                 strength_record = None
@@ -2530,7 +2591,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # Fear section names their readers).
     if combat_side_raw is not None:
         stray = combat_side_raw & 0b0111_1110
-        if fear_row_converted:
+        if fear_row_converted or charm_row_converted:
             stray &= ~0x40
         if stray:
             out.drop(f"{combat_side_origin} bits 1-6, ${stray:02X}: "
@@ -2609,9 +2670,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         copy("portrait_head", "portrait_head")
         copy("portrait_body", "portrait_body")
 
-    if not is_npc and fear_row_converted:
+    if not is_npc and (fear_row_converted or charm_row_converted):
         # `0x0B8` bit 7 clear says a player character, but this character
-        # also holds a converted Fear row: neither C64 title turns a
+        # also holds a converted Fear or Pool charm row: neither C64 title turns a
         # companion back into a player character, so the C64's own Fear
         # never leaves this state behind -- it is only reachable by a DOS or
         # Amiga engine's own "player character taken over" byte
@@ -2619,14 +2680,15 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         # character in that same form, so `npc` and `npc_control_byte` are
         # given as though the record held it, even though `is_npc` (the C64's
         # own bit, used by the share logic below) stays clear.
+        converted_row = "Fear" if fear_row_converted else "charm"
         out.set("npc", True, "bit 7 of the C64's 0x0B8 is clear, but a "
-                "converted Fear row means DOS or Amiga must read this "
-                "character as one the engine has taken over",
+                f"converted {converted_row} row means DOS or Amiga must "
+                "read this character as one the engine has taken over",
                 grade("flags_0b8"))
         out.set("npc_control_byte", DOS_PC_TAKEN_OVER,
                 "DOS's own player-character-taken-over value, restored "
-                "because a Fear row converted and 0x0B8 is a player "
-                "character's", grade("flags_0b8"))
+                f"because a {converted_row} row converted and 0x0B8 is a "
+                "player character's", grade("flags_0b8"))
     else:
         out.set("npc", is_npc, "bit 7 of the C64's 0x0B8, the byte the game "
                 "itself counts player characters with", grade("flags_0b8"))

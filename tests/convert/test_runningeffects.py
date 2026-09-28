@@ -1718,8 +1718,7 @@ def test_a_slowed_node_is_written_as_a_row_and_not_dropped(game):
     assert 42 in [v[0] for v in _rows(payload).values()]
 
 
-@pytest.mark.parametrize("game", [c64_port.POOL_OF_RADIANCE,
-                                  c64_port.CURSE_OF_THE_AZURE_BONDS,
+@pytest.mark.parametrize("game", [c64_port.CURSE_OF_THE_AZURE_BONDS,
                                   c64_port.SECRET_OF_THE_SILVER_BLADES],
                          ids=lambda g: g.key)
 def test_a_dos_charm_node_is_a_loss_and_takes_no_trait_slot(game):
@@ -1732,3 +1731,115 @@ def test_a_dos_charm_node_is_a_loss_and_takes_no_trait_slot(game):
     assert bytes(rec.get_raw("item_effects")) == bytes(10)
     assert set(_rows(payload).values()) == {(0, 0, 0, 0)}
     assert any(f"effect {effects.CHARM_ID}:" in line for line in rep.losses)
+
+
+# --- Pool charm (11): the party cast's own row, and 0x10C left at $80 --------
+
+_CHARM = bytes((effects.CHARM_ID, 0, 0, 0x21, 1))
+
+
+def _charmed_character(share, node=_CHARM, control=c64_codec.DOS_PC_TAKEN_OVER):
+    char = _title_character(c64_port.POOL_OF_RADIANCE)
+    char.set("granted_effects", [node], "built here")
+    char.set("npc", True, "built here")
+    char.set("npc_control_byte", control, "built here")
+    char.set("quickfight", True, "built here")
+    char.set("hostile", False, "built here")
+    char.set("treasure_share", share, "built here")
+    return char
+
+
+@pytest.mark.parametrize("share", [0, 1])
+def test_a_dos_pool_charm_node_writes_the_c64_charm_row_and_leaves_side_80(
+        share):
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(_charmed_character(share), payload=payload,
+                               party_slot=2, clock_minutes=0)
+    rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
+    assert rows == [(effects.CHARM_ID, 2, 0, 0x86)]
+    assert rec.get("combat_side") == 0x80
+    assert rec.get("flags_0b8") == share
+    assert rec.get("treasure_share") == 0
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+    assert not rep.losses
+
+
+def test_a_pool_charm_node_with_no_payload_is_a_loss():
+    rec, rep = c64_codec.write(_charmed_character(0))
+    assert any(f"effect {effects.CHARM_ID}:" in line for line in rep.losses)
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+
+
+def test_a_pool_charm_node_no_dos_route_writes_is_a_loss_and_takes_no_row():
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(
+        _charmed_character(0, bytes((effects.CHARM_ID, 0, 0, 0x61, 1))),
+        payload=payload, party_slot=2, clock_minutes=0)
+    assert set(_rows(payload).values()) == {(0, 0, 0, 0)}
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+    assert any(f"effect {effects.CHARM_ID}:" in line for line in rep.losses)
+
+
+def test_a_pool_taken_over_byte_with_no_charm_node_is_still_a_companion():
+    # No Pool engine writes 0xB3 without a charm or Animate Dead node, so a
+    # bare one is written as it always was.
+    char = _title_character(c64_port.POOL_OF_RADIANCE)
+    char.set("npc", True, "built here")
+    char.set("npc_control_byte", c64_codec.DOS_PC_TAKEN_OVER, "built here")
+    char.set("status", "okay", "built here")
+    rec, _rep = c64_codec.write(char, payload=bytearray(0x1C00),
+                                party_slot=2, clock_minutes=0)
+    assert rec.get("flags_0b8") == c64_codec.DOS_PC_TAKEN_OVER
+
+
+@pytest.mark.parametrize("side", [0x80, 0xC0])
+def test_a_c64_pool_charm_row_reads_back_as_a_player_character_taken_over(
+        side):
+    payload = bytearray(0x1C00)
+    effects.write_effect(payload, 0, effects.CHARM_ID, 2, 0, 0x86)
+    rec = CharacterRecord.blank()
+    rec.set("combat_side", side)
+    out = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=payload,
+                         party_slot=2, clock_minutes=1, source="x")
+    assert [bytes(n)[:5] for n in out.get("granted_effects")] == \
+        [bytes((effects.CHARM_ID, 0, 0, 0x26, 1))]
+    assert out.get("npc") is True
+    assert out.get("npc_control_byte") == c64_codec.DOS_PC_TAKEN_OVER
+    assert out.get("quickfight") is True
+    assert out.get("hostile") is False
+    assert not [d for d in out.dropped if "bits 1-6" in d]
+    dos_rec, _i, _spc, _rep = dos_codec.write(out)
+    f83 = dos_port.FIELDS_BY_NAME_FOR[POOL_OF_RADIANCE.key]["field_83_87"]
+    control_offset = f83.offset + (1 if f83.size == 5 else 0)
+    assert dos_rec[control_offset] == c64_codec.DOS_PC_TAKEN_OVER
+    quickfight_offset = (dos_port.FIELDS_BY_NAME_FOR[POOL_OF_RADIANCE.key]
+                         ["field_10c_10f"].offset + 3)
+    assert dos_rec[quickfight_offset] == 1
+
+
+def test_a_c64_pool_monster_charm_row_stays_permanent_with_its_drop_line():
+    payload = bytearray(0x1C00)
+    effects.write_effect(payload, 0, effects.CHARM_ID, 2, 0, 0x87)
+    rec = CharacterRecord.blank()
+    rec.set("combat_side", 0xC1)
+    out = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=payload,
+                         party_slot=2, clock_minutes=1, source="x")
+    assert effects.CHARM_ID in out.get("innate_effects")
+    assert not out.get("granted_effects")
+    assert out.get("npc") is False
+    assert [d for d in out.dropped if "bits 1-6" in d]
+
+
+@pytest.mark.parametrize("share", [0, 1])
+def test_a_pool_charm_makes_a_dos_c64_dos_round_trip(share):
+    payload = bytearray(0x1C00)
+    rec, _rep = c64_codec.write(_charmed_character(share), payload=payload,
+                                party_slot=2, clock_minutes=0)
+    out = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=payload,
+                         party_slot=2, clock_minutes=1, source="x")
+    # The count becomes the C64 charm's fixed level, 6, not the caster's.
+    assert [bytes(n)[:5] for n in out.get("granted_effects")] == \
+        [bytes((effects.CHARM_ID, 0, 0, 0x26, 1))]
+    assert out.get("npc_control_byte") == c64_codec.DOS_PC_TAKEN_OVER
+    assert out.get("quickfight") is True
+    assert out.get("treasure_share") == share
