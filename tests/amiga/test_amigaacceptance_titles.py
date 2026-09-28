@@ -1631,6 +1631,34 @@ def test_the_unstarted_darkness_route_answers_a_disk_2_prompt_met_at_the_unguard
     assert any(e.get("state") == "09-yes_no-after-1" for e in result["events"])
 
 
+def test_the_unstarted_darkness_route_inserts_disk_2_once_however_often_the_prompt_shows(
+        tmp_path, clock):
+    guest = DarkGuest(clock, save_key="disk3")
+    shown = ("-journal", "-yes_no")
+    on = {"disk2_prompt": lambda p: p.stem.endswith(shown),
+          "journal": lambda p: p.stem.endswith("-journal") and bool(guest.inserted)}
+    guest, result = _unstarted_run(tmp_path, clock, guest, on)
+    assert result["error"] == "" and result["success"] is True
+    assert len(guest.inserted) == 1
+
+
+def test_a_disk_2_prompt_outside_the_rows_waiting_for_states_is_not_answered(tmp_path, clock):
+    guest = DarkGuest(clock, save_key="disk3")
+    states = tuple(s for s in UNSTARTED_STATES if s != "party_menu")
+    on = {"disk2_prompt": lambda p: p.stem == "01-party_menu"}
+    guest, result = _unstarted_run(tmp_path, clock, guest, on, states=states)
+    assert guest.inserted == []
+
+
+def test_a_measure_run_presses_no_key_for_an_interstitial_at_an_unguarded_state(tmp_path, clock):
+    guest = DarkGuest(clock, save_key="disk3")
+    states = (*(s for s in UNSTARTED_STATES if s != "world"), "continue")
+    on = {"continue": lambda p: p.stem.endswith(("-continue", "12-world"))}
+    guest, result = _unstarted_run(tmp_path, clock, guest, on, states=states)
+    assert _keys(guest) == UNSTARTED_KEYS
+    assert not any(e.get("interstitial") == "continue" for e in result["events"])
+
+
 def test_the_unstarted_darkness_measure_refuses_a_guard_map_with_no_disk_2_prompt(tmp_path, clock):
     guest = DarkGuest(clock, save_key="disk3")
     states = tuple(s for s in UNSTARTED_STATES if s != "disk2_prompt")

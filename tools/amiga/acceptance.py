@@ -1046,17 +1046,26 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 raise RouteError(f"no journal challenge on screen within {GUARD_LIMIT:.0f}s")
             wait(GUARD_POLL)
 
-    def interstitial(state: str, crop: pathlib.Path, done: dict[str, int]) -> bool:
-        """Act on a known screen that is not the wanted one, by the title's table."""
+    inserts_done: dict[str, int] = {}
+
+    def interstitial(state: str, crop: pathlib.Path, done: dict[str, int],
+                     inserts_only: bool = False) -> bool:
+        """Act on a known screen that is not the wanted one, by the title's table.
+
+        An `insert` row's limit counts across the whole run, since the disk stays in the drive.
+        `inserts_only` leaves the key and answer rows alone, for a measure run that writes nothing.
+        """
         for screen, action, waiting_for, limit in table:
             if (title is None and not accept and screen in _ACCEPT_ONLY) or (
-                    title is not None and measure and action[0] == "answer"):
+                    title is not None and measure and action[0] == "answer") or (
+                    inserts_only and action[0] != "insert"):
                 continue
-            if (done.get(screen, 0) >= limit or not _has_rule(guard, screen)
+            count = inserts_done if action[0] == "insert" else done
+            if (count.get(screen, 0) >= limit or not _has_rule(guard, screen)
                     or (waiting_for is not None and state not in waiting_for)
                     or not guard(screen, crop)):
                 continue
-            done[screen] = done.get(screen, 0) + 1
+            count[screen] = count.get(screen, 0) + 1
             if action[0] == "answer":
                 result["events"].append({"interstitial": screen})
                 log("interstitial", screen=screen, key=None)
@@ -1144,7 +1153,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         done: dict[str, int] = {}
         digest = settle_unguarded(state, name)
         for again in range(1, 4):
-            if not interstitial(state, shots / f"{name}.png", done):
+            if not interstitial(state, shots / f"{name}.png", done, inserts_only=measure):
                 break
             wait(first_wait)
             digest = settle_unguarded(state, f"{name}-after-{again}")

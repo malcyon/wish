@@ -541,7 +541,7 @@ def test_an_insert_step_may_change_only_drive_1(drive_number):
 @pytest.mark.parametrize("drive_number", [0, 2, 3])
 def test_an_interstitial_insert_may_change_only_drive_1(drive_number):
     rows = (("disk_request", ("insert", drive_number, "disk3", "SPACE"), None, 1),)
-    with pytest.raises(winuaesession.RouteError, match="only DF1"):
+    with pytest.raises(winuaesession.RouteError, match="DF1 may change, or DF0 from a spare"):
         make_title(interstitials=rows)
     make_title(interstitials=(("disk_request", ("insert", 1, "disk3", "SPACE"), None, 1),))
 
@@ -1012,7 +1012,7 @@ def test_a_df0_prompt_does_not_widen_the_other_drives(drive_number):
 
 def test_an_interstitial_insert_into_df0_is_refused_even_with_disk_prompts():
     rows = (("disk_request", ("insert", 0, "spare", "SPACE"), None, 1),)
-    with pytest.raises(winuaesession.RouteError, match="only DF1"):
+    with pytest.raises(winuaesession.RouteError, match="DF1 may change, or DF0 from a spare"):
         _df0_title(interstitials=rows)
 
 
@@ -1022,16 +1022,28 @@ def test_an_interstitial_insert_into_df0_is_accepted_on_a_strict_disk_prompt():
 
 def test_an_interstitial_insert_into_df0_of_the_disk_already_there_is_refused():
     rows = (("disk_ask", ("insert", 0, "boot", "SPACE"), None, 1),)
-    with pytest.raises(winuaesession.RouteError, match="only DF1"):
+    with pytest.raises(winuaesession.RouteError, match="DF1 may change, or DF0 from a spare"):
         _df0_title(interstitials=rows)
 
 
 def test_an_interstitial_insert_into_df0_is_refused_on_a_disk_prompt_that_is_not_strict():
     rows = (("disk_ask", ("insert", 0, "spare", "SPACE"), None, 1),)
     route = (("P", "party_menu", "key"), ("S", "camp_picker", "key"))
-    with pytest.raises(winuaesession.RouteError, match="only DF1"):
+    with pytest.raises(winuaesession.RouteError, match="DF1 may change, or DF0 from a spare"):
         _df0_title(route, strict=DF0_STRICT - {"disk_ask"}, measure_route=route,
                    interstitials=rows)
+
+
+def test_an_interstitial_insert_into_df0_of_the_save_disk_is_refused():
+    rows = (("disk_ask", ("insert", 0, "disk3", "SPACE"), None, 1),)
+    with pytest.raises(winuaesession.RouteError, match="spare"):
+        _df0_title(interstitials=rows)
+
+
+def test_a_df0_insert_step_of_a_disk_that_is_not_a_spare_is_refused():
+    route = _swap(DF0_ROUTE, 2, ((0, "disk3", "SPACE"), "loaded_menu", "insert"))
+    with pytest.raises(winuaesession.RouteError, match="not a spare"):
+        _df0_title(route)
 
 
 def test_a_df0_insert_run_stops_before_its_key_when_the_insert_fails(tmp_path, clock):

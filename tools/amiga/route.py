@@ -218,6 +218,9 @@ class AmigaTitle:
                            f"which is not a strict state")
                 if key[1] == self.mounted[0]:
                     refuse(f"{name} DF0 insert step {step!r} names the disk already in DF0")
+                if key[1] not in self.spares:
+                    refuse(f"{name} DF0 insert step {step!r} names a disk that is not a spare; "
+                           f"only a spare may go into DF0")
             key = key[2]
         if not isinstance(key, str) or key.upper() not in amigadrive.KEYS:
             refuse(f"{name} step {step!r} presses a key with no WinUAE code")
@@ -246,11 +249,12 @@ class AmigaTitle:
             # an interstitial acts only when that screen's guard matches.
             drive_ok = len(action) == 4 and type(action[1]) is int and (
                 action[1] == 1 or (action[1] == 0 and row[0] in self.disk_prompts
-                                   and row[0] in self.strict and action[2] != self.mounted[0]))
+                                   and row[0] in self.strict and action[2] in self.spares
+                                   and action[2] != self.mounted[0]))
             if not (drive_ok and action[2] in keys
                     and isinstance(action[3], str) and action[3].upper() in amigadrive.KEYS):
-                refuse(f"interstitial {row!r} needs (insert, drive 1, disk key, key): "
-                       f"only DF1 may change while the game runs")
+                refuse(f"interstitial {row!r} needs (insert, drive, disk key, key): "
+                       f"DF1 may change, or DF0 from a spare on a strict disk prompt")
             pressed = (action[3],)
         elif action == ("answer",):
             return
