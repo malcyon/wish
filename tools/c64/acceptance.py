@@ -2175,11 +2175,10 @@ class PoolRun:
                                 f"to {after}, not one square ahead: an exit "
                                 f"or a teleport")
             if move == "M" and before[2] is not None:
-                # #708: `M` turns about and tries the edge behind the
-                # original facing.  It either steps back one square with
-                # facing kept (no wall art on the edge) or stays in place
-                # with facing reversed (wall art there) -- the two are
-                # paired, and no other combination is possible.
+                # `M` turns about and tries the edge behind the original
+                # facing.  No wall art there: one square back, facing kept.
+                # An open door there: one square back, facing reversed.
+                # A solid wall there: no move, facing reversed.
                 moved = after[:2] != before[:2]
                 reversed_facing = (before[2] + 2) % 4
                 if moved:
@@ -2189,11 +2188,13 @@ class PoolRun:
                             "walk", f"walk {route}: move {n} moved from {before} "
                                     f"to {after}, not one square behind: an exit "
                                     f"or a teleport")
-                    if after[2] is not None and after[2] != before[2]:
+                    if after[2] is not None and after[2] not in (
+                            before[2], reversed_facing):
                         raise self.fail(
                             "walk", f"walk {route}: move {n} (M) stepped back "
-                                    f"from {before} to {after} so should keep "
-                                    f"facing {before[2]}, it faces {after[2]}")
+                                    f"from {before} to {after} so should face "
+                                    f"{before[2]} or {reversed_facing}, it "
+                                    f"faces {after[2]}")
                 else:
                     if after[2] is not None and after[2] != reversed_facing:
                         raise self.fail(

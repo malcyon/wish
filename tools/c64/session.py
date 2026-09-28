@@ -2096,7 +2096,8 @@ class Session:
         Indoors those are the game's own letters -- I forward, J left, K
         right, M turns about and tries the edge behind the original facing:
         one square back keeping that facing where the edge carries no wall
-        art, or held turned about where it does (#708).  On the travel grid
+        art, one square back turned about through an open door, and no move,
+        turned about, against a solid wall.  On the travel grid
         they are the compass digits `1` to `8`, because that is what the bar
         out there asks for; `walk_one` reads `$49E6` and works out which
         world it is in.

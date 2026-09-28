@@ -4070,7 +4070,7 @@ def test_walk_m_that_leaves_a_facing_neither_kept_nor_reversed_is_lost(
     sess = WalkSession()
     sess.drift = 1
     run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
-    with pytest.raises(A.StepFailed, match="should keep facing 0, it faces 1"):
+    with pytest.raises(A.StepFailed, match="should face 0 or 2, it faces 1"):
         run.walk("M")
     log.close()
 
@@ -4087,9 +4087,9 @@ def test_walk_m_held_by_wall_art_reverses_the_facing(tmp_path, monkeypatch):
 
 
 class BrokenMSession(WalkSession):
-    """Fakes each of the two impossible `M` outcomes #708 rules out: moving
-    back while also reversing the facing, and staying put while keeping the
-    facing unchanged."""
+    """Fakes `M` outcomes: the open-door step back that also reverses the
+    facing, the two the engine never produces (sideways, two squares back),
+    and staying put while keeping the facing."""
 
     def __init__(self, break_mode, **kw):
         super().__init__(**kw)
@@ -4102,18 +4102,39 @@ class BrokenMSession(WalkSession):
             if self.break_mode == "moved_and_reversed":
                 self.y += 1
                 self.facing = (self.facing + 2) % 4
+            elif self.break_mode == "sideways":
+                self.x += 1
+            elif self.break_mode == "two_back":
+                self.y += 2
             elif self.break_mode == "held_and_kept":
                 pass
         return True
 
 
-def test_walk_m_that_moves_back_and_also_reverses_the_facing_is_lost(
+def test_walk_m_through_an_open_door_steps_back_and_reverses_the_facing(
         tmp_path, monkeypatch):
-    """#708: the two outcomes are paired -- a moved square must keep the
-    facing, never reverse it too."""
+    """The open-door row of the engine's rule: `M` steps one square back and
+    the facing is reversed too, as the live door-N press showed."""
     sess = BrokenMSession("moved_and_reversed")
     run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
-    with pytest.raises(A.StepFailed, match="should keep facing 0, it faces 2"):
+    got = run.walk("M")
+    log.close()
+    assert got["position"] == [5, 6, 2] and got["squares_moved"] == 1
+    assert got["expected_facing"] == 2
+
+
+def test_walk_m_that_moves_sideways_is_lost(tmp_path, monkeypatch):
+    sess = BrokenMSession("sideways")
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match="not one square behind"):
+        run.walk("M")
+    log.close()
+
+
+def test_walk_m_that_moves_two_squares_is_lost(tmp_path, monkeypatch):
+    sess = BrokenMSession("two_back")
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match="not one square behind"):
         run.walk("M")
     log.close()
 
