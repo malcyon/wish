@@ -15,7 +15,8 @@ Curse, Silver Blades, Gateway and both Krynn titles have no instruction that
 writes the byte for a player character except one that zeroes it, and no
 instruction that reads bit 0. No title ever turns a companion back into a
 player character. The one route back is Pool of Radiance's temple cure for a
-berserk player character, and it keeps only bit 0.
+player character that Animate Dead has put under the engine's control, and it
+keeps only bit 0.
 
 The probe is [`tools/c64/flags0b8.py`](../tools/c64/flags0b8.py). It
 classifies every absolute-mode reference to the record's `0x0B8` into the
@@ -52,7 +53,8 @@ CONFIRMED in all six titles. Every read of the byte tests bit 7 with
 `BPL`/`BMI` except the four copies in Pool of Radiance's modify screen. The
 same test gates the party-money pool, the treasure split, the six-character
 limit and the ADD CHARACTER checks. `docs/195` has the DOS side, where
-`0xB3` (a berserk player character) is also above `0x80`.
+`0xB3` (a player character the engine has taken over, coab's `PC_Berzerk`) is
+also above `0x80`.
 
 ## The low seven bits of a companion: morale
 
@@ -116,8 +118,10 @@ clears effect `$20` from the character's effect slots and then runs `LDA 0x0B8 /
 That turns any byte of `$FE` or `$FF` into `$00` or `$01`, which makes a
 player character of whoever holds it. It is the counterpart of `SPELLE00 +0x0480`
 and `SPELLE04 +0x0304`, which set a player character's byte to `old | $FE`
-and a companion's to `$B2`. So in Pool of Radiance a companion stored at
-morale 252 or 254 is indistinguishable from a berserk player character, and
+and a companion's to `$B2`. Those two are Animate Dead, not a berserk spell,
+which Pool of Radiance does not have: the cure removes effect `$20`, which is
+32, Animate Dead. CONFIRMED from the code. So in Pool of Radiance a companion stored at
+morale 252 or 254 is indistinguishable from an Animate Dead player character, and
 the editor must not write `$FE` or `$FF` for one.
 
 ## Bit 0 of a player character: the trainer flag
@@ -184,12 +188,12 @@ other Amiga titles: no store site has been read.
 |---|---|---|---|
 | script "join with a morale" | all six | low bits replaced by the argument halved (Death Knights: not halved) | -- |
 | script "join, morale untouched" | all six | bit 7 set, low bits kept | -- |
-| berserk spell `SPELLE00`/`SPELLE04` | Pool of Radiance | `old \| $FE`, so bit 0 survives in bit 0 | a companion is set to `$B2`, morale 100, and it is never restored |
+| Animate Dead, `SPELLE00` (combat) and `SPELLE04` (camp) | Pool of Radiance | `old \| $FE`, so bit 0 survives in bit 0 | a companion is set to `$B2`, morale 100, and it is never restored |
 | temple cure `SQRPACI64` | Pool of Radiance | -- | `& $01`, only when the byte is `$FE` or `$FF` |
 | import reset `SPELLE20` | Curse, Gateway | -- | a player character's byte set to `$00`; a companion's untouched |
 | ADD / REMOVE CHARACTER | all six | no write; the later five refuse a companion ("CAN'T ADD NPCS") | no write |
 
-CONFIRMED for every row as code. The berserk and cure pair is the only
+CONFIRMED for every row as code. The Animate Dead and cure pair is the only
 reversible transition in any title. **No instruction in any of the six turns
 a companion into a player character.** The DOS engine's equality test at
 `GAME.OVR 0x0251B7` (`docs/195`) wants a player character's DOS control byte
@@ -205,7 +209,7 @@ to be exactly `0x00`.
   PROBABLY a monster file, not on a player character.
 * **Game-controlled → player:** write `$00`. That is what every
   player-character writer produces except the Pool of Radiance modify screen
-  and the berserk cure. A companion's bit 0 is the low bit of his morale, and
+  and the Animate Dead cure. A companion's bit 0 is the low bit of his morale, and
   keeping it would invent a trainer flag. DOS demands `0x00` for the same
   character.
 

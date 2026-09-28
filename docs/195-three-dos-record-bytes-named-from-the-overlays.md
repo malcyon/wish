@@ -131,8 +131,12 @@ coab never decompiled. `cmp ..., 7Fh` and `cmp ..., 80h` are the same "at or
 above `NPC_Base`" test written two ways.
 
 **`PC_Berzerk` is `0xB3`, which is itself above `NPC_Base`.** So the test is
-"the engine drives this character", true of a companion and of a berzerk player
-character alike, and bit 7 is not quite "this is an NPC".
+"the engine drives this character", true of a companion and of a player
+character the engine has taken over alike, and bit 7 is not quite "this is an
+NPC". Pool of Radiance has no berserk spell: `dosbyteimm.py --offset 0x084`
+finds exactly two immediate stores of `0xB3`, at `0xF0EF` (Charm) and `0x29195`
+(Animate Dead). CONFIRMED for immediate stores; the scan cannot see a register
+store.
 
 **The only record anywhere here with a non-zero control byte** is `CHRDATA7.SAV`
 of Treasures of the Savage Frontier's shipped save -- OUGO, level 8, control
@@ -208,7 +212,7 @@ sweep and `tools/dos/dosdis16.py` the DOS listing.
 | a script makes a character a companion with a morale | `DUNGEON $2753`: `JSR $1B87` (fetch the script argument) / `LSR A` / `ORA #$80` / `STA $6BB8` | `0x00390A`: a call returning the argument / `shr ax, 1` / `or al, 80h` / `mov es:[di+84h], al` |
 | a script makes a character a companion, morale untouched | `DUNGEON $1AF6`: `LDA #$80` / `ORA $6BB8` / `STA $6BB8` | `0x007FAB`: script command `0B8h`, the supplied value stored straight in |
 | the engine uses the morale | `COMBAT $211C`: `LDA $6BB8` / `BPL` out / `AND #$7F` / `ASL A` | `0x00BD09`, behind `cmp es:[di+84h], 7Fh` / `ja`: `and al, 7Fh` / `shl ax, 1` |
-| a spell drives a character berserk | `SPELLE00 $0C76`, `SPELLE04 $0AFA`: `LDA #$B2` / `LDX $6BB8` / `BMI` / `TXA` / `ORA #$FE` | `0x02917F`: `cmp es:[di+84h], 7Fh` / `jbe` / `mov` `0B2h` or `0B3h` |
+| Animate Dead takes over a character | `SPELLE00 $0C76`, `SPELLE04 $0AFA`: `LDA #$B2` / `LDX $6BB8` / `BMI` / `TXA` / `ORA #$FE` | `0x02917F`: `cmp es:[di+84h], 7Fh` / `jbe` / `mov` `0B2h` or `0B3h` |
 
 **So the low seven bits are a morale percentage stored halved**, and the scale
 is the clamp in Curse's own C64 code at `SECSET64 $0A14` -- Pool of Radiance's
@@ -236,11 +240,11 @@ why no immediate anywhere is a bare `80h`. A companion's byte is `0x80 | (his
 own morale / 2)`, supplied per companion by the area script, and every value
 from `0x80` to `0xFF` is legitimate.
 
-**The one place the two ports disagree is the berserk player character.** DOS
+**The one place the two ports disagree is a player character under Animate Dead.** DOS
 writes `0xB3` and reads it back with `cmp ..., 0B3h` / `mov ..., 0`; the C64
 writes `old | 0xFE` and reads it back with `SQRPACI64 $09B5`, `CMP #$FE` /
 `BCC` / `AND #$01` -- which preserves bit 0, the C64's own trainer flag, where
-DOS has nothing to preserve. Both ports write `0xB2` for a berserk companion.
+DOS has nothing to preserve. Both ports write `0xB2` for a companion under Animate Dead.
 
 ### What the records hold, both ports
 
