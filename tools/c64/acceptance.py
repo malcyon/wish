@@ -34,7 +34,7 @@ bytes with what it replaced.
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/effectdrive.py`'s rest) |
-| `walk MOVES` | I forward, J left, K right, M about, each judged by `position()` before and after (Pool's status line holds the clock; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, and a turn must leave the square and change the facing by its amount; a move that brings up a disk prompt, or lands anywhere but one square ahead, fails the walk |
+| `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (Pool's status line holds the clock; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk |
 | `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for SECONDS (120) |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
@@ -329,8 +329,14 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
 LOOK_SECONDS = 2.0
 
 #: The moves `walk` takes, the game's own letters: forward, left, right, about.
-#: Each turn's change to the facing, which the C64 counts N 0, E 1, S 2, W 3.
-TURNS = {"I": 0, "J": -1, "K": 1, "M": 2}
+#: `J` and `K`'s change to the facing, which the C64 counts N 0, E 1, S 2, W 3,
+#: is fixed; `I`'s is zero, it never turns. `M`'s own key set (`_walk` reads it
+#: from the square) is here only so `parse_walk` accepts the letter (#708: `M`
+#: turns about and tries the edge behind the original facing -- it lands one
+#: square back keeping that facing where there is no wall art there, or stays
+#: turned about, stepping through an open door or holding at a solid or locked
+#: one, where there is).
+TURNS = {"I": 0, "J": -1, "K": 1, "M": None}
 
 
 def parse_rest(arg: str) -> tuple[int, int]:
@@ -361,7 +367,7 @@ def parse_walk(arg: str) -> str:
     route = arg.strip().upper()
     if not route or any(c not in TURNS for c in route):
         raise ValueError(f"walk {arg!r}: the moves are I forward, J left, "
-                         f"K right, M about")
+                         f"K right, M about-turn")
     return route
 
 
@@ -1975,7 +1981,12 @@ class PoolRun:
         recorded and never believed: a bump advances the clock and the line
         still changes.  A forward move is blocked when x,y did not change; a
         turn is right when the facing is the one it asks for and the square
-        did not change, which is the control that a walk is not a turn.
+        did not change, which is the control that a walk is not a turn.  `M`
+        is not a turn: the engine turns about and tries the edge behind the
+        original facing (#708), so any square it lands on must be exactly
+        one step behind that facing -- the same exit-or-teleport check `I`
+        gets -- and the facing it ends on must be either the one it started
+        with or exactly reversed; nothing else the edge could do is possible.
 
         A disk prompt on the screen fails the walk and is never answered: a
         square's event asks for another disk, and answering would carry the
@@ -2079,7 +2090,30 @@ class PoolRun:
                         "walk", f"walk {route}: move {n} moved from {before} "
                                 f"to {after}, not one square ahead: an exit "
                                 f"or a teleport")
-            if facing is not None:
+            if (move == "M" and after[:2] != before[:2]
+                    and before[2] is not None):
+                # #708: `M` turns about and tries the edge behind the
+                # original facing, so a moved square is one step opposite
+                # that facing -- anything else is an exit or a teleport.
+                dx, dy = STEP[(before[2] + 2) % 4]
+                if after[:2] != [before[0] + dx, before[1] + dy]:
+                    raise self.fail(
+                        "walk", f"walk {route}: move {n} moved from {before} "
+                                f"to {after}, not one square behind: an exit "
+                                f"or a teleport")
+            if move == "M":
+                # #708: the engine's own rule leaves `M` facing either the
+                # square it started with (no wall art behind it) or exactly
+                # reversed (any wall art there); nothing else is possible.
+                if (facing is not None and after[2] is not None
+                        and after[2] not in (facing, (facing + 2) % 4)):
+                    raise self.fail(
+                        "walk", f"walk {route}: move {n} (M) should leave "
+                                f"the party facing {facing} or "
+                                f"{(facing + 2) % 4}, it faces {after[2]}")
+                if facing is not None and after[2] is not None:
+                    facing = after[2]
+            elif facing is not None:
                 facing = (facing + TURNS[move]) % 4
             moves.append({"move": move, "before": before, "after": after,
                           "blocked": move == "I" and before[:2] == after[:2],
@@ -2088,7 +2122,7 @@ class PoolRun:
         self.refuse_prompt(route, last, "ran the square's event")
         end = self.position()
         self.capture(f"walked-{route}")
-        if "I" not in route and end[:2] != start[:2]:
+        if not ("I" in route or "M" in route) and end[:2] != start[:2]:
             raise self.fail("walk", f"walk {route} has no forward move and the "
                                     f"square went from {start[:2]} to {end[:2]}")
         if facing is not None and end[2] is not None and end[2] != facing:

@@ -2039,16 +2039,19 @@ class Session:
         """One move per character of `moves`.
 
         Indoors those are the game's own letters -- I forward, J left, K
-        right, M about.  On the travel grid they are the compass digits `1`
-        to `8`, because that is what the bar out there asks for; `walk_one`
-        reads `$49E6` and works out which world it is in.
+        right, M turns about and tries the edge behind the original facing:
+        one square back keeping that facing where the edge carries no wall
+        art, or held turned about where it does (#708).  On the travel grid
+        they are the compass digits `1` to `8`, because that is what the bar
+        out there asks for; `walk_one` reads `$49E6` and works out which
+        world it is in.
         """
         for ch in moves.upper():
             self.walk_one(ch, hold, gap)
 
     def move_key(self, move: str, hold=0.15, gap=0.30) -> None:
         """Send one dungeon direction -- `I` forward, `J` left, `K` right, `M`
-        about -- by whatever route this title actually reads.
+        about-turn -- by whatever route this title actually reads.
 
         Pool of Radiance reads the emulated keyboard, so this is an XTEST
         press.  It is a method rather than a line inside `walk_one` because

@@ -3875,12 +3875,16 @@ class WalkSession(FakeSession):
     def walk_one(self, move, *a, **k):
         self.pressed.append(move)
         self.clock += 1
-        if move == "I":
-            dx, dy = ((0, -1), (1, 0), (0, 1), (-1, 0))[self.facing]
+        if move in ("I", "M"):
+            # #708: `M` steps through the edge behind the original facing --
+            # this fake has no wall art, so it steps back keeping that
+            # facing, the no-art row of the engine's own rule.
+            facing = self.facing if move == "I" else (self.facing + 2) % 4
+            dx, dy = ((0, -1), (1, 0), (0, 1), (-1, 0))[facing]
             if (self.x + dx, self.y + dy) not in self.walls:
                 self.x, self.y = self.x + dx, self.y + dy
         else:
-            self.facing = (self.facing + {"J": -1, "K": 1, "M": 2}[move]) % 4
+            self.facing = (self.facing + {"J": -1, "K": 1}[move]) % 4
         self.facing = (self.facing + self.drift) % 4
         return True
 
@@ -3926,6 +3930,32 @@ def test_a_turn_that_leaves_the_wrong_facing_is_lost(tmp_path, monkeypatch):
     run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
     with pytest.raises(A.StepFailed, match="should leave the party facing 1"):
         run.walk("K")
+    log.close()
+
+
+def test_walk_m_steps_backward_and_keeps_the_facing(tmp_path, monkeypatch):
+    """#708: `M` is not the about-turn `TURNS` once assumed -- with no wall
+    art behind the party it steps one square back and keeps the facing it
+    started with, as all four live Pool of Radiance readings on an open
+    square showed."""
+    sess = WalkSession()
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    got = run.walk("M")
+    log.close()
+    assert got["position"] == [5, 6, 0] and got["squares_moved"] == 1
+    assert got["asked_forward"] == 0 and got["expected_facing"] == 0
+
+
+def test_walk_m_that_leaves_a_facing_neither_kept_nor_reversed_is_lost(
+        tmp_path, monkeypatch):
+    """#708: the engine's own rule allows `M` to end facing only where it
+    started or exactly reversed; anything else is a glitch the walk must
+    catch rather than silently accept."""
+    sess = WalkSession()
+    sess.drift = 1
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    with pytest.raises(A.StepFailed, match="should leave the party facing 0 or 2"):
+        run.walk("M")
     log.close()
 
 
@@ -4854,12 +4884,15 @@ class LaterWalkSession(WalkSession):
             self.lose -= 1
             return False
         before = self.live_triple()
-        if move == "I":
-            dx, dy = ((0, -1), (1, 0), (0, 1), (-1, 0))[self.facing]
+        if move in ("I", "M"):
+            # #708: no wall art in this fake, so `M` steps back keeping
+            # the facing it started with.
+            facing = self.facing if move == "I" else (self.facing + 2) % 4
+            dx, dy = ((0, -1), (1, 0), (0, 1), (-1, 0))[facing]
             if (self.x + dx, self.y + dy) not in self.walls:
                 self.x, self.y = self.x + dx, self.y + dy
         else:
-            self.facing = (self.facing + {"J": -1, "K": 1, "M": 2}[move]) % 4
+            self.facing = (self.facing + {"J": -1, "K": 1}[move]) % 4
         self.lagged = before
         return self.live_triple() != before
 

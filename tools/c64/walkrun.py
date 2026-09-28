@@ -4,7 +4,10 @@
     walkrun.py --name inn-east --route IIIIIIKIIIIII
 
 Route letters are the game's own: `I` forward, `J` turn left, `K` turn right,
-`M` turn about.  Every step records the party position before and after, so a
+`M` turns about and tries the edge behind the original facing -- one square
+back keeping that facing where the edge carries no wall art, or held turned
+about where it does (#708).  Every step records the party position before and
+after, so a
 move that does not change the position is a **wall** -- which is the whole
 point of the corpus.  One save disk is written per step into
 the `walks` directory under `tools.c64.session.HERE`, with a manifest naming the intended route.
@@ -58,7 +61,9 @@ def pool_sides(disks: str) -> pathlib.Path:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", required=True)
-    ap.add_argument("--route", required=True, help="I forward, J left, K right, M about")
+    ap.add_argument("--route", required=True,
+                    help="I forward, J left, K right, M about-turn "
+                         "(one square back if the edge carries no wall art)")
     ap.add_argument("--save-every", type=int, default=1, help="0 to never save")
     ap.add_argument("--base", default=BASE_SAVE)
     ap.add_argument("--disks", default=str(_disks or ""),

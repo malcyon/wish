@@ -82,7 +82,13 @@ def keys_for(path, facing: int) -> list[str]:
         want = STEP.index((there[0] - here[0], there[1] - here[1]))
         turn = (want - facing) % 4
         out += {0: [], 1: ["k"], 2: ["m"], 3: ["j"]}[turn]
-        # `M` is about-turn *and step* in this engine, so a reversal is one key.
+        # #708: `M` turns about and tries the edge behind the original
+        # facing; the engine's own rule is that it lands one square back
+        # keeping the original facing where that edge carries no wall art,
+        # or stays turned about, stepping through an open door or holding at
+        # a solid or locked one, where it does. A reversal being one key is
+        # the open-door row only -- `is_passable` lets `route()` plan through
+        # a locked door too, which this has not been checked against.
         if turn != 2:
             out.append("i")
         facing = want
