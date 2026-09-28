@@ -297,7 +297,9 @@ FIELDS: dict[str, str] = {
               "polarities and each codec converts. True is the ordinary "
               "state",
     "npc": "true for a companion the party picked up rather than one the "
-           "player made",
+           "player made. Also true for a player character the engine has "
+           "taken over (control byte 0xB3, e.g. Fear); DOS and Amiga "
+           "readers deliver that character with npc true",
     "npc_control_byte": "the full control byte both the C64 and DOS keep "
                         "for a companion -- C64 record 0x0B8, DOS's "
                         "field_83_87 second byte in Pool of Radiance and "
@@ -306,7 +308,9 @@ FIELDS: dict[str, str] = {
                         "the low seven bits are morale, stored halved. "
                         "Neither port decodes it -- a converter copies it "
                         "unchanged -- and it is set only when npc is true; "
-                        "a player character has no morale to carry (#303)",
+                        "a player character has no morale to carry (#303). "
+                        "0xB3 is also the value for a player character the "
+                        "engine has taken over rather than a companion",
     "treasure_share": "the raw byte choosing this character's share of "
                       "party treasure. C64 keeps it at 0x0FA masked with 3; "
                       "DOS and Amiga keep it at field_83_87's byte after the "
