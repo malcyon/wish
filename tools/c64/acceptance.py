@@ -2036,6 +2036,9 @@ class PoolRun:
         result = self.sess.fight(budget=float(arg or 120),
                                  tactic=S.Session.melee_turn)
         self.capture("fight-end")
+        if result.outcome == S.BUDGET:
+            raise self.fail("fight", f"the fight ran out of its {arg or 120} "
+                                     f"second budget after {result.turns} turns")
         return {"walked": taken, "acted": result.acted,
                 **dataclasses.asdict(result)}
 
@@ -2919,6 +2922,9 @@ class CurseRun(PoolRun):
             result = self.sess.fight(budget=float(arg or 120),
                                      tactic=S.Session.melee_turn)
         self.capture("fight-end")
+        if result.outcome == S.BUDGET:
+            raise self.fail("fight", f"the fight ran out of its {arg or 120} "
+                                     f"second budget after {result.turns} turns")
         return {"walked": walked, "area": str(area), "acted": result.acted,
                 "named_attack": self.attack_evidence,
                 "named_quit": self.quit_evidence,

@@ -5647,3 +5647,70 @@ def test_the_silver_session_borrows_from_the_curse_session_as_patched_at_call_ti
 
     monkeypatch.setattr(curserun, "CurseSession", Patched)
     assert ssbsession.silver_session_class().live_triple is Patched.live_triple
+
+
+def test_pool_fight_that_runs_out_of_budget_fails_the_step_with_a_fight_capture(
+        tmp_path):
+    class Session:
+        def in_combat(self):
+            return True
+
+        def fight(self, *, budget, tactic):
+            return A.S.FightResult(A.S.BUDGET, 5, 60.0, [], [])
+
+    run = A.PoolRun.__new__(A.PoolRun)
+    run.sess = Session()
+    run.to_world = lambda: True
+    run.spent = lambda: False
+    captured = []
+    run.capture = captured.append
+    with pytest.raises(A.StepFailed, match="budget"):
+        run.fight("60", "I", 5)
+    assert captured == ["fight-start", "fight-end", "lost-fight"]
+
+
+def test_curse_fight_that_runs_out_of_budget_fails_the_step_with_a_fight_capture(
+        monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from tools.c64 import laterbattle
+    from tools.curse_of_the_azure_bonds import cursethac0
+
+    class Route:
+        last_goto_steps = 3
+
+        def __init__(self, out, quiet):
+            self.file = SimpleNamespace(close=lambda: None)
+
+        def goto(self, target, steps, geo):
+            return True
+
+    class Session:
+        def in_combat(self):
+            return True
+
+        def await_bar(self, kinds, timeout, interval):
+            return None
+
+        def fight(self, *, budget, tactic):
+            return A.S.FightResult(A.S.BUDGET, 5, 60.0, [], [])
+
+    monkeypatch.setattr(laterbattle, "Battle", Route)
+    monkeypatch.setattr(cursethac0, "area_geo", lambda *a: ("GEO01", object()))
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.attack_by = ""
+    run.attack_owner = None
+    run.attack_evidence = None
+    run.quit_evidence = None
+    run.sess = Session()
+    run.out = tmp_path
+    run.staged_disk = tmp_path / "staged.D64"
+    run.disks = "unused"
+    run.to_world = lambda: True
+    run.await_combat = lambda: True
+    run.spent = lambda: False
+    captured = []
+    run.capture = captured.append
+    with pytest.raises(A.StepFailed, match="budget"):
+        run.fight("60", "I", 5)
+    assert captured[-2:] == ["fight-end", "lost-fight"]
