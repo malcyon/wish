@@ -138,6 +138,115 @@ def test_open_sheet_prefers_the_settled_second_read_when_it_succeeds():
     assert bar == "VIEW:ITEMS CURE EXIT"
 
 
+def test_heal_on_a_sheet_that_never_opened_raises_and_logs_no_verdict():
+    run = _bare_run()
+    run.open_sheet = lambda: None
+    run.shot = lambda tag: tag
+    run.close_sheet = lambda: None
+    run.row24 = lambda: ""
+
+    try:
+        run.heal()
+        raised = False
+    except RuntimeError:
+        raised = True
+    assert raised
+
+    events = _events(run)
+    assert not any(e["event"] == "heal-not-offered" for e in events)
+    assert any(e["event"] == "sheet-not-opened" for e in events)
+
+
+def test_heal_on_a_genuinely_opened_sheet_without_heal_still_logs_not_offered():
+    run = _bare_run()
+    run.open_sheet = lambda: "VIEW:ITEMS CURE EXIT"
+    run.shot = lambda tag: tag
+    run.close_sheet = lambda: None
+    run.row24 = lambda: ""
+
+    result = run.heal()
+
+    assert result == {"healed": False, "bar": "VIEW:ITEMS CURE EXIT"}
+    events = _events(run)
+    assert any(e["event"] == "heal-not-offered" for e in events)
+    assert not any(e["event"] == "sheet-not-opened" for e in events)
+
+
+def test_sheet_logs_heal_offered_next_to_cure_offered():
+    run = _bare_run()
+    run.open_sheet = lambda: "VIEW:ITEMS CURE HEAL EXIT"
+    run.shot = lambda tag: tag
+    run.close_sheet = lambda: None
+    run.row24 = lambda: ""
+
+    run.sheet()
+
+    events = _events(run)
+    sheet_events = [e for e in events if e["event"] == "sheet"]
+    assert sheet_events and sheet_events[0]["cure_offered"] is True
+    assert sheet_events[0]["heal_offered"] is True
+
+
+def test_sheet_logs_heal_offered_false_when_only_cure_is_up():
+    run = _bare_run()
+    run.open_sheet = lambda: "VIEW:ITEMS CURE EXIT"
+    run.shot = lambda tag: tag
+    run.close_sheet = lambda: None
+    run.row24 = lambda: ""
+
+    run.sheet()
+
+    events = _events(run)
+    sheet_events = [e for e in events if e["event"] == "sheet"]
+    assert sheet_events and sheet_events[0]["cure_offered"] is True
+    assert sheet_events[0]["heal_offered"] is False
+
+
+def test_rest_to_expiry_defaults_to_the_cure_row():
+    run = _bare_run()
+    run.conf = CD.TITLES["curse-of-the-azure-bonds"]
+    run.read = lambda tag: {"rows": [
+        {"mine": True, "id": 141, "minutes_left": 100},
+        {"mine": True, "id": 140, "minutes_left": 40}]}
+    calls = []
+    run.rest = lambda d, h, m: calls.append((d, h, m))
+
+    run.rest_to_expiry()
+
+    events = _events(run)
+    plan = [e for e in events if e["event"] == "expiry-plan"][0]
+    assert plan["which"] == "cure"
+    assert plan["minutes_left"] == 100
+
+
+def test_rest_to_expiry_heal_selects_the_lay_on_hands_row():
+    run = _bare_run()
+    run.conf = CD.TITLES["curse-of-the-azure-bonds"]
+    run.read = lambda tag: {"rows": [
+        {"mine": True, "id": 141, "minutes_left": 100},
+        {"mine": True, "id": 140, "minutes_left": 40}]}
+    calls = []
+    run.rest = lambda d, h, m: calls.append((d, h, m))
+
+    run.rest_to_expiry("heal")
+
+    events = _events(run)
+    plan = [e for e in events if e["event"] == "expiry-plan"][0]
+    assert plan["which"] == "heal"
+    assert plan["minutes_left"] == 40
+
+
+def test_play_routes_the_heal_verb_and_expire_heal_argument():
+    run = _bare_run()
+    calls = []
+    run.heal = lambda: calls.append("heal")
+    run.rest_to_expiry = lambda which="cure": calls.append(("expire", which))
+
+    run.play("heal;expire heal;expire")
+
+    assert calls == ["heal", ("expire", "heal"), ("expire", "cure")]
+
+
 def test_open_sheet_returns_none_when_the_first_read_never_shows_exit(monkeypatch):
     who = "MARK"
     run = _bare_run(who)

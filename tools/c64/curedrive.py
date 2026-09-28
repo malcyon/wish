@@ -20,24 +20,31 @@ and plays a `;`-separated script, logging one JSON line per step under
 `--out` with a screenshot and the screen text:
 
 * `read` -- the paladin's `0x012`, `0x013` and `0x0CF` from his save slot
-  and from the `$7C00` staging page, every 140/141 row, and the clock;
+  and from the `$7C00` staging page, every 140/141/109/110 row, and the
+  clock;
 * `sheet` -- `VIEW` the paladin and record the command bar, which offers
-  `CURE` only while `0x012` is not 0 (`LIBRARY $46AB`);
+  `CURE` only while `0x012` is not 0 and `HEAL` only while `0x013` is not 0
+  (`LIBRARY $46AB`);
 * `cure` -- `VIEW`, `CURE`, pick the first character offered, answer any
   question with `Y`, and leave the sheet;
+* `heal` -- the same, on `HEAL` (lay on hands) instead;
 * `rest D:H:M` -- `ENCAMP`, `REST`, write the rest time into the camp's
   own field, rest until the clock stops, read, and `EXIT`;
-* `expire` -- rest to five minutes short of the paladin's cure row's
-  expiry, read, then rest fifteen minutes more and read;
+* `expire [cure|heal]` -- rest to five minutes short of the paladin's cure
+  or lay-on-hands row's expiry, read, then rest fifteen minutes more and
+  read; with no argument, the cure row, as before;
 * `save [NAME]` -- the game's own `ENCAMP > SAVE`, and the disk kept.
 
 Everything is done from the camp: the world's `VIEW` sheet offers `EXIT`
 alone whatever the paladin holds (`$7FF7` is `$41` there and `$FF` in camp),
-so only the camp's `VIEW` can show `CURE`.
+so only the camp's `VIEW` can show `CURE`/`HEAL`.
 
 Non-stopping exec checkpoints count `ECL65 $870C` (the cure's `JSR` that
-adds the timer), `$870F` (its `DEC $7C12`) and `$85BA` (the camp's reset of
-`0x012` when a 141 row expires); their counts are logged with every `read`.
+adds the timer), `$870F` (its `DEC $7C12`), `$85BA` (the camp's reset of
+`0x012` when a 141 row expires) and `$873D` (its `DEC $7C13`, the
+lay-on-hands row's own decrement, `lay_decrement` in
+`tests/records/test_curedisease.py`); their counts are logged with every
+`read`.
 
 Nothing writes to the player's disks; the staged save is a copy and the slot
 copies the six sides.  `summary DIR...` prints each run's readings.
@@ -82,11 +89,11 @@ TITLES = {
     "curse-of-the-azure-bonds": {
         "cure_id": 141, "heal_id": 140, "rest_field": 0x2C1B,
         "points": {"cure_timer_add": 0x870C, "cure_dec": 0x870F,
-                   "cure_reset": 0x85BA}},
+                   "cure_reset": 0x85BA, "lay_decrement": 0x873D}},
     "secret-of-the-silver-blades": {
         "cure_id": 110, "heal_id": 109, "rest_field": 0x2A8E,
         "points": {"cure_timer_add": 0x8748, "cure_dec": 0x874B,
-                   "cure_reset": 0x8657}},
+                   "cure_reset": 0x8657, "lay_decrement": 0x8779}},
 }
 
 #: The game clock: sub-minute, minute units, minute tens, hour, day, month
@@ -450,7 +457,7 @@ class Run:
             raise RuntimeError(f"{self.who}'s sheet never opened")
         name = self.shot("sheet")
         self.log(event="sheet", bar=bar, cure_offered="CURE" in bar.split(),
-                  shot=name)
+                  heal_offered="HEAL" in bar.split(), shot=name)
         self.close_sheet()
         return {"bar": bar}
 
@@ -492,6 +499,47 @@ class Run:
         self.close_sheet()
         return {"cured": True}
 
+    def heal(self) -> dict:
+        """`HEAL` on the paladin's camp sheet, on the first name offered.
+
+        The same shape as `cure`, on the lay-on-hands verb instead.
+        """
+        bar = self.open_sheet()
+        if not bar:
+            name = self.shot("sheet-not-opened")
+            self.log(event="sheet-not-opened", row24=self.row24(), shot=name)
+            self.close_sheet()
+            raise RuntimeError(f"{self.who}'s sheet never opened")
+        if "HEAL" not in bar.split():
+            self.log(event="heal-not-offered", bar=bar, shot=self.shot(
+                "heal-not-offered"))
+            self.close_sheet()
+            return {"healed": False, "bar": bar}
+        self.sess.press_bar("HEAL")
+        target = None
+        # Silver Blades takes about half a minute to put the prompt up.
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            if "WHOM" in self.row24():
+                target = self.row24()
+                break
+            time.sleep(0.4)
+        self.shot("heal-whom")
+        if target is None:
+            self.log(event="heal-no-prompt", row24=self.row24())
+            self.close_sheet()
+            return {"healed": False}
+        self.sess.kbd.key("Return", 0.15, 0.30)
+        deadline = time.time() + 20
+        while time.time() < deadline and "WHOM" in self.row24():
+            time.sleep(0.4)
+        time.sleep(1.5)
+        after = self.row24()
+        name = self.shot("healed")
+        self.log(event="heal", prompt=target, bar_after=after, shot=name)
+        self.close_sheet()
+        return {"healed": True}
+
     def rest(self, days: int, hours: int, minutes: int) -> dict:
         """`REST` for exactly the time given, written into `$2C1B`-`$2C1D`."""
         if not self.camp():
@@ -520,21 +568,24 @@ class Run:
         self.shot("rested")
         return {"before": before, "after": after}
 
-    def rest_to_expiry(self) -> None:
-        """Rest to five minutes short of the paladin's cure row, then past it.
+    def rest_to_expiry(self, which: str = "cure") -> None:
+        """Rest to five minutes short of the paladin's row, then past it.
 
-        The time left is the engine's own rule for a unit's digit wrap,
+        `which` is `"cure"` or `"heal"`, selecting the cure-disease or
+        lay-on-hands row by `self.conf["cure_id"]` / `"heal_id"`.  The time
+        left is the engine's own rule for a unit's digit wrap,
         `goldbox.effects.remaining_minutes`, read off the live clock.
         """
+        row_id = self.conf[f"{which}_id"]
         now = self.read("expiry-plan")
-        mine = [r for r in now["rows"]
-                if r["mine"] and r["id"] == self.conf["cure_id"]]
+        mine = [r for r in now["rows"] if r["mine"] and r["id"] == row_id]
         if not mine:
-            self.log(event="no-row-to-expire")
+            self.log(event="no-row-to-expire", which=which)
             return
         left = min(r["minutes_left"] for r in mine)
         short = max(0, (left - 1) // 5 * 5)
-        self.log(event="expiry-plan", minutes_left=left, short_rest=short)
+        self.log(event="expiry-plan", which=which, minutes_left=left,
+                 short_rest=short)
         if short:
             self.rest(short // 1440, short % 1440 // 60, short % 60)
         self.rest(0, 0, 15)
@@ -577,11 +628,13 @@ class Run:
                 self.sheet()
             elif verb == "cure":
                 self.cure()
+            elif verb == "heal":
+                self.heal()
             elif verb == "rest":
                 d, h, m = (int(x) for x in arg.split(":"))
                 self.rest(d, h, m)
             elif verb == "expire":
-                self.rest_to_expiry()
+                self.rest_to_expiry(arg or "cure")
             elif verb == "save":
                 self.save(self.out / (arg or "saved.D64"))
             else:
@@ -631,10 +684,11 @@ def summarise(run_dir: pathlib.Path) -> list[str]:
                     for r in e["rows"] if r["mine"]]
             out.append(f"{e['tag']:<22} day {c['day']} {c['hour']:02d}:"
                        f"{c['minute']:02d}  0x012={e['slot']['cures']}  "
+                       f"0x013={e['slot']['lay_on_hands']}  "
                        f"rows {rows or '-'}  {e['counts']}")
         elif e["event"] in ("sheet", "sheet-not-opened", "cure",
-                            "cure-not-offered", "saved",
-                            "rest-interrupted", "failed"):
+                            "cure-not-offered", "heal", "heal-not-offered",
+                            "saved", "rest-interrupted", "failed"):
             keep = {k: v for k, v in e.items() if k not in ("t", "event")}
             out.append(f"{e['event']:<22} {keep}")
     return out
