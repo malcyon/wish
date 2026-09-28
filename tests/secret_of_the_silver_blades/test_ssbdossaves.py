@@ -105,11 +105,28 @@ def test_curse_keeps_its_race_step_and_has_no_trailing_thief():
 
 # --- the specimen sweep ------------------------------------------------------
 #: Our own writer's output, not DOS Silver Blades' rebuild -- excluded. Every
-#: other Silver Blades directory is a slot the engine itself saved over.
+#: other record is one the engine itself saved.
 _OUR_OWN_OUTPUT = {
     "por-dos/WISH-SPEC-ssb-299-built-from-nothing",
     "por-dos/WISH-SPEC-ssb-299-converted-and-resaved",
 }
+
+#: Directories of which only some slots are ours, by slot letter. Slot A of
+#: this one is `tools/convert/convertrun.py`'s output, byte for byte, which the
+#: game never wrote: the game loaded it and saved to slot B, whose records are
+#: the engine's and stay in the sweep.
+_OUR_OWN_OUTPUT_SLOTS = {
+    "ssb-dos/WISH-SPEC-ssb-690-amigatodos-malachite-fixed": {"A"},
+}
+
+
+def _is_our_own_output(specimen_dir: str, file_name: str) -> bool:
+    """True for a record this project's writers made, by directory or by the
+    slot letter of `CHRDAT<slot><n>.SAV`."""
+    if specimen_dir in _OUR_OWN_OUTPUT:
+        return True
+    return file_name[len("CHRDAT")] in _OUR_OWN_OUTPUT_SLOTS.get(
+        specimen_dir, ())
 
 
 def _specimen_root() -> pathlib.Path | None:
@@ -127,7 +144,7 @@ def _ssb_dos_records():
     out = []
     for path in sorted(root.glob("*/*/CHRDAT*.SAV")):
         specimen_dir = f"{path.parent.parent.name}/{path.parent.name}"
-        if specimen_dir in _OUR_OWN_OUTPUT:
+        if _is_our_own_output(specimen_dir, path.name):
             continue
         try:
             char = dos_codec.read_character(path)
@@ -168,6 +185,18 @@ def test_the_rule_reproduces_every_engine_written_dos_silver_blades_record():
             mismatched.append((specimen_dir, name, char.class_levels, want, got))
     assert checked >= 45, checked
     assert mismatched == []
+
+
+def test_the_sweep_keeps_the_engines_slot_b_of_the_converted_specimen():
+    """Only slot A of the 690 specimen is converter output; its slot B is the
+    engine's own record of the same party and must stay checked."""
+    records = _ssb_dos_records()
+    if not records:
+        pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
+    kept = {(d, n) for d, n, _ in records}
+    specimen = "ssb-dos/WISH-SPEC-ssb-690-amigatodos-malachite-fixed"
+    assert (specimen, "CHRDATB4.SAV") in kept
+    assert not {n for d, n in kept if d == specimen and n[6] == "A"}
 
 
 # --- the table, re-read off the player's own START.EXE -----------------------
