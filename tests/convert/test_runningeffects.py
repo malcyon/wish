@@ -1716,3 +1716,16 @@ def test_a_slowed_node_is_written_as_a_row_and_not_dropped(game):
         party_slot=2, clock_minutes=0)
     assert not [d for d in rep.dropped if d.startswith("running_effects:")]
     assert 42 in [v[0] for v in _rows(payload).values()]
+
+
+@pytest.mark.parametrize("game", [c64_port.POOL_OF_RADIANCE,
+                                  c64_port.CURSE_OF_THE_AZURE_BONDS],
+                         ids=lambda g: g.key)
+def test_a_dos_charm_node_is_a_loss_and_takes_no_trait_slot(game):
+    char = _title_character(game)
+    char.set("granted_effects", [bytes((effects.CHARM_ID, 0, 0, 0x21, 1))],
+             "built here")
+    rec, rep = c64_codec.write(char, payload=bytearray(0x1C00), party_slot=2,
+                               clock_minutes=0)
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+    assert any(f"effect {effects.CHARM_ID}:" in line for line in rep.losses)

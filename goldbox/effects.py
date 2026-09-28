@@ -380,6 +380,12 @@ POOL_FF_CHAIN = (0xFF, 1)
 #: node and stays refused.
 LATER_INVISIBLE_ID = 25
 
+#: Charm. DOS Pool of Radiance writes it as a granted node at duration 0 that
+#: outlasts the fight, so only a DOS Pool source reaches it; the other two
+#: titles clear a charm at the end of the fight it was cast in, so their
+#: characters carry none to convert.
+CHARM_ID = 11
+
 #: Haste. Both ports keep the caster's level in the low nibble and the "has
 #: already aged" mark in bit 4, and nothing else: the C64 camp cast writes
 #: `level | $10`, its combat cast `level & $0F`, and DOS writes the level with

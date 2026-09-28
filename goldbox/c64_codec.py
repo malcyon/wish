@@ -1543,6 +1543,12 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             slots[i] = e
         granted_ids = []
         for node in (granted.value if granted is not None else ()):
+            if int(node[0]) == effects.CHARM_ID:
+                # Its record bytes have no C64 writer yet, and a trait slot
+                # holding the bare id would be read as a different effect.
+                rep.lost(f"effect {node[0]}: a charm, whose record bytes "
+                         "the C64 writer does not convert yet")
+                continue
             if (effects.is_party_granted_record(title_key, node)
                     and payload is not None):
                 # DOS's permanent Detect Magic is party-wide; the C64 asks
