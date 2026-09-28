@@ -1960,13 +1960,26 @@ def test_pool_load_presses_return_past_a_continue_screen_then_camps(tmp_path, mo
     assert game.mode == "camp"
 
 
+def test_pool_load_presses_through_rolfs_tour_to_the_map(tmp_path, monkeypatch):
+    # A party that has never taken Rolf's opening tour (clock zero at area 0,
+    # 15,1: any party freshly made in the Amiga or C64 game) loads into eight
+    # chained continue screens, "GREETINGS, COURAGEOUS ONES" through "YOUR
+    # TOUR IS ENDED", before the map (#631, run dce274bcca-tour-count-cap25).
+    game, d = _pool_continue_driver(tmp_path, monkeypatch, 8)
+    d.load()
+    assert game.keys.count("Return") == 8 and d.where == "map"
+    assert [e["kind"] for e in d.events] == ["press_continue"] * 8
+    assert da.CONTINUE_ROUNDS == 3
+
+
 def test_pool_load_stops_when_the_continue_screen_never_clears(tmp_path, monkeypatch):
     game, d = _pool_continue_driver(tmp_path, monkeypatch, 99)
     with pytest.raises(da.StepFailed,
-                       match=r"continue screen is still showing after 3 were "
+                       match=r"continue screen is still showing after 10 were "
                              r"answered; see \d+-lost-load-continue\.png"):
         d.load()
-    assert game.keys.count("Return") == 3
+    assert da.POOL_LOAD_CONTINUE_ROUNDS == 10
+    assert game.keys.count("Return") == 10
 
 
 def test_curse_begin_presses_nothing_when_no_continue_screen_shows(tmp_path):

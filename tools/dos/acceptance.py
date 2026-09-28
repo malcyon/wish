@@ -51,7 +51,7 @@ a source whose title does not match `--title`:
 
 | step | what it does |
 |---|---|
-| `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P`.  Pool presses Return past a `PRESS <ENTER>/<RETURN> TO CONTINUE` bar first, when the loaded save is on an event square, so that screen is never recorded as the map (#701) |
+| `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P`.  Pool presses Return past each `PRESS <ENTER>/<RETURN> TO CONTINUE` bar first, when the loaded save is on an event square, so that screen is never recorded as the map (#701); a party that has not taken Rolf's opening tour meets eight, and the run stops at `POOL_LOAD_CONTINUE_ROUNDS` (#631) |
 | `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars and Pools of Darkness' journal question and `YES NO` bars (below), to the map; Pools of Darkness' map only by its measured bar |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
 | `sheet N`, `items N` | Curse, Silver Blades and Pools of Darkness (`items` Pools of Darkness only), in camp: roster line N (from 1) highlighted (`End` in Curse, `Down` in the other two), `VIEW`, the sheet's name checked against line N's, the bar read for `heal_offered` and `cure_offered` (`sheet_offers`), and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
@@ -369,9 +369,16 @@ CURSE_CONTINUE_BAR = next(k for k, v in route_silver_blades.BARS.items() if v ==
 POOL_CONTINUE_BAR = next(digest for width, digest, label in dosbox.PoolOfRadiance.COMBAT_BARS
                          if label == "press_return")
 
-#: How many continue screens `press_continue_screens` answers, for either
-#: title, before it gives up.
+#: How many continue screens `press_continue_screens` answers for Curse's
+#: BEGIN and rest before it gives up.
 CONTINUE_ROUNDS = 3
+#: How many Pool's load answers before it gives up.  A party that has never
+#: taken Rolf's opening tour (clock zero at area 0, 15,1, as any party made in
+#: the Amiga or C64 game is) loads into the whole tour: eight chained screens,
+#: `GREETINGS, COURAGEOUS ONES` through `YOUR TOUR IS ENDED`, each a different
+#: frame, and then the map at 0,4 (#631, run `dce274bcca-tour-count-cap25`).
+#: Two more than the tour, so a stuck screen still stops the run.
+POOL_LOAD_CONTINUE_ROUNDS = 10
 #: Journal, `YES NO` and continue screens `begin` answers in all, counted one
 #: screen at a time, before it gives up, so that no mix of them can loop.
 POD_INTERSTITIALS = 12
@@ -2070,15 +2077,17 @@ class Driver:
             answered += 1
         return answered
 
-    def press_continue_screens(self, screen, bar, label):
+    def press_continue_screens(self, screen, bar, label, rounds=None):
         """Return past `bar`'s `PRESS <ENTER>/<RETURN> TO CONTINUE` screens, one
-        at a time, shared by Curse's BEGIN and Pool's load.
+        at a time, at most `rounds` (default `CONTINUE_ROUNDS`), shared by
+        Curse's BEGIN and Pool's load.
 
         Nothing is pressed when `bar` is not showing, so a screen that has
         already advanced is untouched.  Each Return pressed is recorded in
         `events` as `press_continue`.  Returns the settled screen.
         """
-        for _ in range(CONTINUE_ROUNDS):
+        rounds = CONTINUE_ROUNDS if rounds is None else rounds
+        for _ in range(rounds):
             if screen.glyphs(dosbox.BAR) != bar:
                 return screen
             shot = self.shot(f"continue-{label}")
@@ -2090,7 +2099,7 @@ class Driver:
             self.note(event="question", **event)
         if screen.glyphs(dosbox.BAR) == bar:
             raise self.fail(f"{label}-continue", "a continue screen is still showing "
-                            f"after {CONTINUE_ROUNDS} were answered")
+                            f"after {rounds} were answered")
         return screen
 
     def record_world(self, screen) -> None:
@@ -2112,7 +2121,8 @@ class Driver:
                 self.game.load_game(self.slot)
             except TimeoutError as e:
                 raise self.fail("load", str(e)) from None
-            screen = self.press_continue_screens(self.s.capture(), POOL_CONTINUE_BAR, "load")
+            screen = self.press_continue_screens(self.s.capture(), POOL_CONTINUE_BAR, "load",
+                                                 POOL_LOAD_CONTINUE_ROUNDS)
             self.record_world(screen)
             self.shot("loaded")
             self.where = "map"
