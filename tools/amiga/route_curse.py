@@ -117,20 +117,27 @@ def _prepare_curse(run: pathlib.Path, specimen: pathlib.Path | None, *,
                          substitute=substitute, substitute_letter=substitute_letter)
 
 
-def published_title(letter: str) -> AmigaTitle:
-    """The two-drive route for a published disk-one image and its source slot."""
+def published_title(letter: str, *, issue: str = "677",
+                    turn_about: bool | None = None) -> AmigaTitle:
+    """The two-drive route for a published disk-one image and its source slot.
+
+    `turn_about` says the party faces a wall and must turn before walking; None means
+    the DOS letter D does.
+    """
     if letter not in ("A", "D"):
         raise ValueError(f"published Curse slot {letter!r} is neither A nor D")
     route = list(CURSE.route)
     route[1] = (letter, "loaded_menu", "key")
     route[5] = ("C", "loaded_menu", "write")
-    if letter == "D":
+    if turn_about is None:
+        turn_about = letter == "D"
+    if turn_about:
         route.insert(7, ("NP2", "world", "turn"))
     measure = list(CURSE.measure_route)
     measure[3] = (letter, "loaded_menu", "key")
     return dataclasses.replace(
-        CURSE, issue="677", mounted=("df0", "df1"), save_disk="df0",
+        CURSE, issue=issue, mounted=("df0", "df1"), save_disk="df0",
         route=tuple(route), measure_route=tuple(measure),
         control_letter="C", after_letter="F",
         kept_letters=() if letter == "A" else ("A",),
-        turn="about" if letter == "D" else None)
+        turn="about" if turn_about else None)

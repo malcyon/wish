@@ -564,6 +564,8 @@ def test_prepare_writes_the_places_and_leaves_every_registered_image_unchanged(
 
 # Curse of the Azure Bonds: the control save is D, the after save F, and the game's own exit key E
 # is never a save letter.
+TITLE_STATES = ("party_menu", "load_picker", "loaded_menu", "disk_wait", "world", "camp",
+                "camp_picker")
 CURSE_START = {"area": 1, "x": 4, "y": 4, "facing": geo.NORTH}
 CURSE_LATER = dict(CURSE_START, y=2)
 CURSE_STATES = ("title", "front_end", "load_picker", "loaded_menu", "sheet", "save_picker",
@@ -2332,3 +2334,147 @@ def test_main_refuses_specimen_issue_without_a_substituted_preservation(
             "--specimen-issue", "#631 (a title)", *extra]
     assert foundation.main(argv) == 2
     assert "--specimen-issue" in capsys.readouterr().err
+
+
+def _published_report(tmp_path, monkeypatch, *, name, issue, place=None):
+    """A Save As report for a synthetic C64 source pinned under `issue`, and its inputs."""
+    key, exe, ext, make = {
+        "curse": (route_curse.CURSE_KEY, "/Curse", "dat", synthetic_amiga.synthetic_curse),
+        "ssb": (foundation.route_silver_blades.TITLE, "/Secret", "sav",
+                synthetic_amiga.synthetic_silver_blades),
+    }[name]
+    source = tmp_path / "party.D64"
+    source.write_bytes(b"synthetic source")
+    disk1 = tmp_path / "disk1.adf"
+    one = synthetic_amiga.synthetic_disk_one(key)
+    disk1.write_bytes(one.to_bytes())
+    disk2 = tmp_path / "disk2.adf"
+    disk2.write_bytes(AmigaDisk.blank("Disk2").to_bytes())
+    published = tmp_path / "POOLSAVE.ADF"
+    converted = AmigaDisk(one.to_bytes())
+    converted.write_file(f"/SAVE/savgamA.{ext}",
+                         make(("GUY DE VALOIS",)) if name == "ssb" else make(("CONVERTED",)))
+    published.write_bytes(converted.to_bytes())
+    source_sha = staging.sha256(source)
+    image_sha = staging.sha256(published)
+    monkeypatch.setitem(foundation.PUBLISHED_SOURCES_BY_ISSUE[issue], (name, "c64"), source_sha)
+    monkeypatch.setitem(foundation.PUBLISHED_DISKS, name, (
+        staging.sha256(disk1), staging.sha256(disk2), exe, "Disk1"))
+    monkeypatch.setattr(foundation.scratch, "cache_dir",
+                        lambda *parts: tmp_path.joinpath("cache", *map(str, parts)))
+    if place is not None:
+        monkeypatch.setattr(
+            route_curse.amiga_savegame, "state_from_savegame",
+            lambda _saved: type("State", (), place)())
+    report = {
+        "specimen": str(source), "specimen_sha256": source_sha,
+        "amiga_disk1": str(disk1), "amiga_disk2": str(disk2), "c64_disks_dir": str(tmp_path),
+        "save_as": {"source": str(source), "to": "amiga", "slot": "A",
+                    "destination": str(published), "written": [str(published)],
+                    "losses": [], "dropped": []},
+        "written": [str(published)], "written_sha256": {"POOLSAVE.ADF": image_sha},
+    }
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(report))
+    return path, source_sha
+
+
+TITLE_STATES = ("party_menu", "load_picker", "loaded_menu", "disk_wait", "world", "camp",
+                "camp_picker")
+CURSE_START = {"area": 1, "x": 7, "y": 13, "facing": 1}
+CURSE_WORLD = {"area": 3, "x": 4, "y": 4, "facing": geo.NORTH}
+
+
+def test_prepare_under_640_files_the_run_under_640_and_turns_a_party_at_the_start_about(
+        tmp_path, monkeypatch):
+    report, _ = _published_report(tmp_path, monkeypatch, name="curse", issue="640",
+                                  place=CURSE_START)
+    from tools.amiga.acceptance import main  # noqa: PLC0415
+    assert main(["prepare", "--title", "curse", "--run-id", "run640", "--published-disk-one",
+                 "--issue", "640", "--saveas-report", str(report)]) == 0
+    path = tmp_path / "cache" / "acceptance" / "640" / "run640" / "prepare.json"
+    manifest = json.loads(path.read_text())
+    assert manifest["issue"] == "640" and manifest["turn_about"] is True
+    _, title = foundation._published_manifest(path, "curse")
+    assert title.issue == "640" and title.turn == "about"
+
+
+def test_prepare_leaves_a_curse_party_standing_in_the_world_unturned(tmp_path, monkeypatch):
+    report, _ = _published_report(tmp_path, monkeypatch, name="curse", issue="640",
+                                  place=CURSE_WORLD)
+    path = foundation.prepare_published("curse", "runworld", report, "640")
+    assert json.loads(path.read_text())["turn_about"] is False
+
+
+def test_the_turn_comes_from_the_manifest_place_and_falls_back_to_the_letter():
+    turned = foundation._published_title("curse", "A", issue="640", turn_about=True)
+    keys = [key for key, _, _ in turned.route]
+    first_move = next(i for i, (_, _, kind) in enumerate(turned.route) if kind == "move")
+    assert ("NP2", "world", "turn") in turned.route[:first_move]
+    assert turned.turn == "about" and turned.issue == "640"
+    assert "NP2" not in [key for key, _, _ in
+                         foundation._published_title("curse", "A", issue="640",
+                                                     turn_about=False).route]
+    assert "NP2" in [key for key, _, _ in foundation._published_title("curse", "D").route]
+    assert "NP2" not in [key for key, _, _ in foundation._published_title("curse", "A").route]
+    assert keys.count("NP2") == 1
+    ssb = foundation._published_title("ssb", "A", issue="640", turn_about=True)
+    assert ssb.turn == "about" and ssb.issue == "640"
+
+
+def _prepared(tmp_path, monkeypatch, name, issue):
+    report, source_sha = _published_report(tmp_path, monkeypatch, name=name, issue=issue,
+                                           place=CURSE_START if name == "curse" else None)
+    path = foundation.prepare_published(name, f"run{issue}", report, issue)
+    return path, source_sha
+
+
+def test_a_published_manifest_is_checked_against_its_own_issues_pins(tmp_path, monkeypatch):
+    path, source_sha = _prepared(tmp_path, monkeypatch, "curse", "640")
+    foundation._published_manifest(path, "curse")
+    manifest = json.loads(path.read_text())
+    # The synthetic source is pinned under 640 only; filed as 677 it is an unknown source.
+    manifest["issue"] = "677"
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(winuaesession.RouteError, match="pinned specimen"):
+        foundation._published_manifest(path, "curse")
+    # And the real 677 pin does not pass under 640.
+    manifest["issue"] = "640"
+    manifest["source_sha256"] = foundation.PUBLISHED_SOURCES[("curse", "c64")]
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(winuaesession.RouteError, match="pinned specimen"):
+        foundation._published_manifest(path, "curse")
+    with pytest.raises(winuaesession.RouteError, match="no pinned sources"):
+        foundation.prepare_published("curse", "x", tmp_path / "report.json", "999")
+
+
+def test_the_silver_blades_continue_page_is_answered_up_to_three_times_in_one_wait(
+        tmp_path, clock):
+    rows = foundation.route_silver_blades.published_title("A").interstitials
+    looks = []
+
+    def picker(_path):
+        looks.append(1)
+        return len(looks) >= 6
+
+    guard = MapGuard(states=("title", *TITLE_STATES, "continue"), on={
+        "load_picker": picker, "continue": lambda _path: 0 < len(looks) < 6})
+    guest, _ = _title_run(tmp_path, clock, rows, guard)
+    assert _keys(guest).count("RET") == 3
+
+
+def _title_run(tmp_path, clock, rows, guard):
+    from tests.amiga import test_amigaacceptance_title as title_tests  # noqa: PLC0415
+    make_title, title_run = title_tests.make_title, title_tests._run
+    return title_run(tmp_path, clock, title=make_title(interstitials=rows), guard=guard)
+
+
+def test_a_640_manifest_registers_its_specimen_under_640(tmp_path, specimen_root):
+    manifest = tmp_path / "run" / "prepare.json"
+    fetched = manifest.parent / "accept1" / "fetched-df0.adf"
+    fetched.parent.mkdir(parents=True)
+    fetched.write_bytes(b"game-written DF0")
+    saved = foundation._preserve_published(manifest, "accept1", "curse", fetched, "640")
+    assert "wish-640-curse-" in saved["path"]
+    text = pathlib.Path(saved["provenance"]).read_text()
+    assert "#640 (A Curse or Silver Blades party saved before BEGIN ADVENTURING" in text

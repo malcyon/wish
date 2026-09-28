@@ -284,8 +284,12 @@ def _slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, bytes]:
             for name in (f"savgam{letter}.sav", "spindisk")}
 
 
-def published_title(letter: str) -> AmigaTitle:
-    """The two-drive route for an exact Save As image in DF0."""
+def published_title(letter: str, *, issue: str = "677",
+                    turn_about: bool | None = None) -> AmigaTitle:
+    """The two-drive route for an exact Save As image in DF0.
+
+    `turn_about` None means the DOS letter D turns about.
+    """
     if letter not in ("A", "D"):
         raise ValueError(f"published Silver Blades slot {letter!r} is neither A nor D")
     route = list(ACCEPT_ROUTE)
@@ -293,12 +297,14 @@ def published_title(letter: str) -> AmigaTitle:
     route[len(ROUTE)] = ("C", "loaded_menu", "write")
     route[-2] = ("F", "exit_game", "write")
     move_at = next(i for i, step in enumerate(route) if step[2] == "move")
-    if letter == "D":
+    if turn_about is None:
+        turn_about = letter == "D"
+    if turn_about:
         route.insert(move_at, ("NP2", "world", "turn"))
     measured = tuple((key, state, "key") for key, state in
                      (*ROUTE[:2], (letter, "loaded_menu"), *ROUTE[3:]))
     return AmigaTitle(
-        issue="677", mounted=("df0", "df1"), save_disk="df0",
+        issue=issue, mounted=("df0", "df1"), save_disk="df0",
         read_slot=_slot_reading,
         slot_letters=lambda disk: amiga_savegame.slots_present(disk, TITLE),
         slot_files=_slot_files, route=tuple(route), measure_route=measured,
@@ -307,8 +313,8 @@ def published_title(letter: str) -> AmigaTitle:
         strict=frozenset({"load_picker", "loaded_menu", "sheet", "save_picker",
                           "camp_save_picker"}),
         min_waits={**default_min_waits(), **ACCEPT_MIN_WAITS},
-        title_limit=300.0, interstitials=SILVER_BLADES_INTERSTITIALS,
-        turn="about" if letter == "D" else None)
+        title_limit=300.0, interstitials=PUBLISHED_INTERSTITIALS,
+        turn="about" if turn_about else None)
 
 
 def _silver_blades_problems(reading: dict[str, Any], slot: str) -> list[str]:
@@ -411,3 +417,9 @@ SILVER_BLADES_INTERSTITIALS = (
     ("continue", ("keys", "RET"), None, 1),
     ("journal", ("answer",), frozenset({"exit_game"}), 1),
 )
+
+#: The published route begins a party that has not set out, so its opening scene can show
+#: several pages inside one wait.
+PUBLISHED_INTERSTITIALS = tuple(
+    (name, action, waiting_for, 3 if name == "continue" else limit)
+    for name, action, waiting_for, limit in SILVER_BLADES_INTERSTITIALS)
