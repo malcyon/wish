@@ -550,6 +550,35 @@ The foundation gate stays in front of every conversion ticket's boot on a
 platform: a run in section 4 boots only on a pair whose row above says Proven,
 and every pair now says Proven.
 
+### The native C64 Pool run
+
+The C64 Pool pair above boots a save Wish converted. This row boots the six
+characters the game's own CREATE NEW CHARACTER screens wrote
+(`WISH-SPEC-por-c64-party-l1-intown`, `docs/90-specimens.md`), so the run loads
+a save we watched being written and it adds a reload.
+
+| pair | status | SHA | runs | specimen registered from the game's save |
+|---|---|---|---|---|
+| C64 Pool of Radiance, native party | Proven | `e47999730a` | `found-por-native-a`, `-b`, `-control`, and one reload | `WISH-SPEC-por-c64-foundation-walked` |
+
+| pair | command | verdict lines | control |
+|---|---|---|---|
+| C64 Pool, native party | `acceptance.py --title pool --save WISH-SPEC-por-c64-party-l1-intown.D64 --steps load 'view 1' 'walk KI' 'view 1' save --max-seconds 1500` | Facing 3 to 0, then 0,4 to 0,3; `place_changed` true | `'walk K'`: 0,4 facing 0, `place_changed` false |
+
+The party arrives at 0,4 facing west (3). `GEO00` at 0,4 has open ground to
+the north and east, a wall to the south and a door barrier to the west, so `K`
+is a right turn to face north and `I` steps to 0,3. Runs `a` and `b` read the
+same at every step and `acceptance.py --compare` reports no difference; their
+saved disks are byte-identical, with all six records unchanged, the clock at
+(0,3,0) and VICEHEL the member `view 1` shows before and after. The control
+turned to face north and did not move.
+
+The reload boots the registered walked specimen with `--steps load 'view 1'`
+and reads 0,3 facing north, the walked square and facing. The C64 driver
+prints no verdict lines, so the verdict is each step's position reading in
+`summary.json`. Evidence is under `~/.cache/wish/acceptance/722/`, each run
+named `e47999730a-found-por-native-<run>`.
+
 ## 6. Slots and evidence
 
 | pool | claim | one agent, one slot |

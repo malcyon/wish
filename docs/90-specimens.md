@@ -438,6 +438,131 @@ Two things this does *not* settle, each with the experiment that would:
   no single table explains. Roll a fighter/thief, give it 3,000, train the
   thief half, and read `experience` and both `class_levels` entries.
 
+## The C64 party we made ourselves
+
+**The first C64 records this project watched being written from creation
+onward, beside the DOS party above.** Six characters, rolled in Pool of
+Radiance's own CREATE NEW CHARACTER screens under VICE by
+`tools/c64/creation.py`, onto a disk formatted by `goldbox.d64.D64.blank` so
+the ADD CHARACTER TO PARTY list offered only that run's characters. First roll
+kept for every one, portrait and icon left at their defaults. Wish formatted the
+empty disk and sent keystrokes; the game wrote every record byte. All six
+records read back matching the menu choices, and the six ability scores match
+the roll screen (exceptional strength is not rolled on that screen, so it is
+left out of the comparison).
+
+| slot | name | race | gender | class | alignment | STR/INT/WIS/DEX/CON/CHA |
+|---|---|---|---|---|---|---|
+| 1 | VICEFTR | human | male | fighter | LAWFUL GOOD | 15/13/16/15/13/16 |
+| 2 | VICECLE | human | female | cleric | LAWFUL GOOD | 16/13/14/14/13/15 |
+| 3 | VICEMAG | elf | male | magic-user | LAWFUL GOOD | 16/14/15/12/14/15 |
+| 4 | VICETHI | halfling | male | thief | LAWFUL NEUTRAL | 16/13/16/15/18/13 |
+| 5 | VICEDWF | dwarf | male | fighter/thief | LAWFUL NEUTRAL | 18/12/12/13/17/16 |
+| 6 | VICEHEL | half-elf | male | cleric/fighter/magic-user | LAWFUL GOOD | 18/12/10/14/16/12 |
+
+The names spell the same six race and class combinations as the DOS party, so
+the two ports' first rolls can be compared. Each alignment is the first entry
+the game's list offered.
+
+| specimen | what it is |
+|---|---|
+| `WISH-SPEC-por-c64-party-l1-rolled` | the disk after creation and before any add to the party: six `\x01NAME` exports and no `SAVEDGAME0` |
+| `WISH-SPEC-por-c64-party-l1` | the six added to the party and written by the party menu's SAVE CURRENT GAME, before the party ever adventured |
+| `WISH-SPEC-por-c64-party-l1-intown` | the same six standing at (0,4) facing west in New Phlan with Rolf's opening tour finished, written by the game's own ENCAMP > SAVE |
+| `WISH-SPEC-por-c64-foundation-walked` | `-intown` after `tools/c64/acceptance.py` turned right and stepped once and saved from camp: clock (0,3,0), standing at (0,3) facing north, written by the game |
+
+The first three were made by `tools/c64/creation.py`; the fourth is the saved
+disk of the native C64 Pool foundation run in
+[docs/235](235-destination-game-acceptance-runs.md), section 5. None was edited
+afterwards. `tools/registry/specimens.py check` re-verifies them.
+
+**ADD CHARACTER TO PARTY does not delete the `\x01NAME` export**, unlike DOS's
+`.CHA`: the exports are still on the disk after the add and after two saves.
+The ADD list stays up after the only entry is starred and needs EXIT. CONFIRMED,
+one add.
+
+**The record lands in two places.** `\x01NAME` (a PRG of 582 bytes: the
+2-byte load address `$6B00` and the 580-byte record) is written at the end of
+creation. `SAVEDGAME0` (7,170 bytes) and `SAVEDGAME1` (2,050) appear only at
+SAVE CURRENT GAME. The party-menu save reads area 0, (0,0), facing 0; the camp
+save after BEGIN ADVENTURING reads area 0, (0,4), facing west. CONFIRMED.
+Pool accepts a blank formatted disk with no check and no error.
+
+### The creation screens, in the order the C64 shows them
+
+CONFIRMED by one measuring boot that captured the screen before every key, and
+by a static read of `GEN` (run at `$0800` off `POOL3.D64`), which agreed on
+every row. **The order differs from DOS: the roll comes before the class.**
+Every list is drawn inside a window frame whose edge glyph reads as `$` in the
+first and last column of each row. "Back" is the left-arrow key, PETSCII `$5F`,
+through the KERNAL buffer.
+
+| # | screen | entries | highlight on arrival | key that advanced it |
+|---|---|---|---|---|
+| 1 | party menu, empty roster | CREATE NEW CHARACTER, ADD CHARACTER TO PARTY, LOAD SAVED GAME | CREATE NEW CHARACTER | Return; the overlay loads in 3 to 12 s |
+| 2 | `PICK RACE` | DWARF, ELF, GNOME, HALF-ELF, HALFLING, HUMAN, EXIT | DWARF | Return on the race |
+| 3 | `PICK GENDER` | MALE, FEMALE (no EXIT) | MALE | Return |
+| 4 | the roll: race, gender, six ability lines | ROLL AGAIN, KEEP | ROLL AGAIN | Return on KEEP; ROLL AGAIN draws new scores |
+| 5 | `PICK CLASS` | per race, below; labels start in column 1 and the highlight fills the row | the first class | Return on the class |
+| 6 | `PICK ALIGNMENT` | per class, below | the first offered | Return |
+| 7 | `INPUT NAME OF CHARACTER`, a 15-character field | typed text | none | the name, then Return |
+| 8 | the character sheet with `SAVE?` | YES, NO (column 28) | YES | Return; about 11.5 s to the portrait |
+| 9 | portrait bar `CHANGE:` | HEAD, BODY, KEEP | HEAD | Return on KEEP (Right twice); about 16 s to the icon editor |
+| 10 | icon editor bar `ICON:` | PARTS, COLOR, SIZE, EXIT | PARTS | Return on EXIT (Right three times) |
+| 11 | `INSERT YOUR SAVE GAME DISK` | | | attach the save disk and press a key |
+| 12 | `PICK RACE` again, DWARF highlighted | as 2 | DWARF | EXIT returns to the party menu |
+
+A successful write returns to PICK RACE, not to the party menu. After the
+characters are made, ADD CHARACTER TO PARTY lists the exports, then the party
+menu adds DROP, MODIFY, VIEW, REMOVE, SAVE CURRENT GAME and BEGIN ADVENTURING
+in place of LOAD SAVED GAME, with the highlight on DROP CHARACTER. Never answer
+YES at the `FORMAT?` bar that follows a failed write: it wipes the save disk.
+
+**What goes back where** (CONFIRMED, 53 of 53 presses moved back exactly one
+screen): alignment to class with the same scores, class to a new roll, roll to
+gender, gender to race. An empty name with Return goes back to PICK ALIGNMENT.
+XTEST Escape did nothing at a list. XTEST typing works for the name: `viceftr`
+lowercased reached `$9700` unshifted, and a shifted letter (a byte of `$5B` or
+above) restarts the prompt.
+
+**Race list.** Position 0 to 6 is DWARF (race code 1), ELF (2), GNOME (3),
+HALF-ELF (4), HALFLING (5), HUMAN (7) and EXIT; HALF-ORC (6) is not offered.
+CONFIRMED.
+
+**Class lists.** One roll per race, each qualifying for every class, and
+identical to the static read. CONFIRMED. A roll below a class's ability minimum
+drops that entry from the list rather than greying it, and a roll that
+qualifies for none is rerolled without a prompt (CONFIRMED from `GEN`; no roll
+below a minimum was seen on screen).
+
+| race | classes on screen |
+|---|---|
+| DWARF, GNOME, HALFLING | FIGHTER, THIEF, FIGHTER/THIEF |
+| ELF | FIGHTER, MAGIC-USER, THIEF, FIGHTER/MAGIC-USER, FIGHTER/THIEF, FIGHTER/MAGIC-USER/THIEF, MAGIC-USER/THIEF |
+| HALF-ELF | CLERIC, FIGHTER, MAGIC-USER, THIEF, CLERIC/FIGHTER, CLERIC/FIGHTER/MAGIC-USER, CLERIC/MAGIC-USER, FIGHTER/MAGIC-USER, FIGHTER/THIEF, FIGHTER/MAGIC-USER/THIEF, MAGIC-USER/THIEF |
+| HUMAN | CLERIC, FIGHTER, MAGIC-USER, THIEF |
+
+**Alignment lists.** All 31 race and class pairs above were opened, and all
+31 match the static read. CONFIRMED.
+
+| class | alignments offered |
+|---|---|
+| any class containing CLERIC | eight: no TRUE NEUTRAL |
+| any class containing THIEF | seven: no LAWFUL GOOD and no CHAOTIC GOOD, LAWFUL NEUTRAL first |
+| FIGHTER, MAGIC-USER, FIGHTER/MAGIC-USER | all nine, LAWFUL GOOD first |
+
+No class with a thief in it is ever offered LAWFUL GOOD at creation. The
+static read also gives CLERIC/THIEF (half-orc only, so unreachable at creation)
+all but LAWFUL GOOD, TRUE NEUTRAL and CHAOTIC GOOD; the four classes no race is
+offered read as paladin LAWFUL GOOD only, monk the three lawful, ranger the
+three good and druid TRUE NEUTRAL only. That reading, which takes each alignment
+row in reverse, is PROBABLE: the classes are not reachable on screen.
+
+**Not established.** Whether a roll ever shortens a class list on screen; the
+`12 CHARACTERS PER DISK MAX` and `SAVE FAILED` screens and the game-disk prompt
+after a second character, none of which a one-character disk reached; and the
+icon editor's sub-screens.
+
 ## What this set still lacks
 
 Every specimen *of Donald's own* is *level 1*. All three of the gaps listed
