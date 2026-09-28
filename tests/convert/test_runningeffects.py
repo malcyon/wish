@@ -887,7 +887,7 @@ def test_prayer_is_written_as_one_row_owned_by_the_whole_party(game):
                                      else 0x43)
 
 
-def test_pool_camp_prayer_id_35_is_written_and_a_later_title_has_no_35():
+def test_pool_camp_prayer_id_35_is_written_and_curse_now_converts_it():
     payload = bytearray(0x1C00)
     _rec, rep = c64_codec.write(
         _title_character(c64_port.POOL_OF_RADIANCE,
@@ -900,8 +900,8 @@ def test_pool_camp_prayer_id_35_is_written_and_a_later_title_has_no_35():
                          bytes((35, 0x0A, 0, 3, 0))),
         payload=payload, party_slot=2, clock_minutes=0)
     lines = [d for d in rep.dropped if d.startswith("running_effects:")]
-    assert len(lines) == 1 and "no rule yet" in lines[0]
-    assert payload == bytearray(0x1C00)
+    assert not lines
+    assert _rows(payload)[63] == (35, 2, 0x0A, 0x03)
 
 
 @pytest.mark.parametrize("game", _PARTY_TITLES, ids=lambda g: g.key)

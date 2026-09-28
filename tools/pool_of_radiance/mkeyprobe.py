@@ -147,8 +147,9 @@ def run(args) -> int:
                 results["stopped"] = {"after": label, "row24": row}
                 break
         (out / "cases.json").write_text(json.dumps(results, indent=1))
-        return 0 if all(c["match"] for c in results["cases"]
-                        if not c["event"]) else 1
+        return 0 if (results["cases"] and "stopped" not in results
+                     and all(c["match"] for c in results["cases"]
+                             if not c["event"])) else 1
     finally:
         (out / "cases.json").write_text(json.dumps(results, indent=1))
         for what, fn in (("session", sess.terminate if sess else None),
