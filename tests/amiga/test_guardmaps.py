@@ -141,11 +141,7 @@ def _interstitial_screens(title):
     return {row[0] for table in tables for row in table}
 
 
-@pytest.mark.parametrize('title', [
-    'pool', 'curse', 'ssb',
-    pytest.param('darkness', marks=pytest.mark.xfail(
-        strict=True, reason='no Darkness capture of its continue or yes/no page exists yet')),
-])
+@pytest.mark.parametrize('title', ['pool', 'curse', 'ssb', 'darkness'])
 def test_committed_maps_guard_every_interstitial_screen(title):
     """A row whose screen has no guard never fires, so the run waits out the screen it names."""
     spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, title)

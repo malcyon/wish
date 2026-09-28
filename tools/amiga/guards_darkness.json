@@ -22,6 +22,17 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/15-camp_save_picker.png",
       "sha256": "efa81c223ca9a43ed344c4169b84bb2bc4491fdce3db31cb3ca58e697bad1670"
     },
+    "continue": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "679/718-b1/b2/shots/10-continue.png",
+      "sha256": "0a85ef3aaa4777b3a8e931bd19fca322507a56e9d58712133f4ff4e54cce6389"
+    },
     "disk2_prompt": {
       "also": [],
       "box": [
@@ -185,6 +196,17 @@
       ],
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/12-world.png",
       "sha256": "8d2d010f78539968312ab2b1fbe3cc5156be453a65bd6b71f668325efa385386"
+    },
+    "yes_no": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "679/718-b1/b2/shots/09-yes_no-after-1.png",
+      "sha256": "936dec2bd6b1425a3ff842db50c8f3592d685a381cb7b0628f28588a9bfa4908"
     }
   },
   "identity": {
@@ -223,6 +245,45 @@
     ],
     "679/6b17ee420c-amiga-darkness-accept-B/acceptB/shots/13-world.png": [
       "place_x2_y2_f1"
+    ],
+    "679/718-b1/b2/shots/01-party_menu.png": [
+      "party_menu"
+    ],
+    "679/718-b1/b2/shots/02-load_from.png": [
+      "load_from"
+    ],
+    "679/718-b1/b2/shots/03-load_picker.png": [
+      "load_picker"
+    ],
+    "679/718-b1/b2/shots/04-loaded_menu.png": [
+      "loaded_menu"
+    ],
+    "679/718-b1/b2/shots/05-sheet.png": [
+      "sheet"
+    ],
+    "679/718-b1/b2/shots/06-loaded_menu.png": [
+      "loaded_menu"
+    ],
+    "679/718-b1/b2/shots/07-journal.png": [
+      "journal"
+    ],
+    "679/718-b1/b2/shots/08-journal_answer.png": [
+      "journal_answer"
+    ],
+    "679/718-b1/b2/shots/09-yes_no-after-1.png": [
+      "yes_no"
+    ],
+    "679/718-b1/b2/shots/09-yes_no.png": [
+      "disk2_prompt"
+    ],
+    "679/718-b1/b2/shots/10-continue.png": [
+      "continue"
+    ],
+    "679/718-b1/b2/shots/11-continue.png": [
+      "continue"
+    ],
+    "679/718-b1/b2/shots/12-world.png": [
+      "world"
     ],
     "679/d2a23aa478-amiga-darkness-reload-A/reloadA/shots/10-world.png": [
       "place_x2_y2_f1"
