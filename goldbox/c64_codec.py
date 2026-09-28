@@ -839,12 +839,18 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # A Pool player character the engine has taken over by its charm: he is a
     # player character on the C64, so his share byte is the ability-altered
     # flag like any other player character's.
+    # The one predicate for the charm row, the 0x0B8 arm and the share byte:
+    # only a Pool character DOS itself charmed (an engine-driven record with
+    # the taken-over control byte, on the party's side) with an accepted node
+    # and somewhere to write the row converts; any other charm node is a loss.
     pool_charmed = bool(
         deltas is POOL_OF_RADIANCE_RECORD and is_npc
         and w.get("npc_control_byte") == DOS_PC_TAKEN_OVER
         and not w.get("hostile") and granted is not None
+        and payload is not None and effects.free_slot(payload) is not None
         and any(isinstance(effects.pool_charm_row(deltas.key, bytes(n)),
                            tuple) for n in granted.value))
+    charm_row_written = False
     share = use("treasure_share")
     modify_flag = None
     if (share is not None and not (is_npc and not pool_charmed)
@@ -1566,12 +1572,12 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 charm = effects.pool_charm_row(title_key, bytes(node))
                 if isinstance(charm, effects.Unconverted):
                     rep.lost(f"effect {node[0]}: {charm.reason}")
-                elif charm is None:
+                elif charm is None or not pool_charmed:
                     rep.lost(f"effect {node[0]}: a charm, whose record "
                              "bytes the C64 writer does not convert yet")
-                elif payload is None:
-                    rep.lost(f"effect {node[0]}: a charm, with no save "
-                             "payload to hold its row")
+                elif charm_row_written:
+                    rep.lost(f"effect {node[0]}: a second charm, when a "
+                             "character holds one charm row")
                 else:
                     row_slot = effects.free_slot(payload)
                     if row_slot is None:
@@ -1582,6 +1588,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                             payload, row_slot, charm[0],
                             party_slot if party_slot is not None else 0,
                             0, charm[1])
+                        charm_row_written = True
                 continue
             if (effects.is_party_granted_record(title_key, node)
                     and payload is not None):
@@ -1763,7 +1770,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                  "into a player character, so this is a player character")
         rep.dropped.extend(npc.dropped)
         rep.dropped.extend(control.dropped)
-    elif pool_charmed:
+    elif charm_row_written:
         if modify_flag is None:
             rec.set("flags_0b8", 0x00)
             rep.note(0x0B8, 1, "flags_0b8: zero -- a player character, bit 7 "

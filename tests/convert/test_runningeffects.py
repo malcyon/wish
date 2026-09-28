@@ -1768,6 +1768,9 @@ def test_a_pool_charm_node_with_no_payload_is_a_loss():
     rec, rep = c64_codec.write(_charmed_character(0))
     assert any(f"effect {effects.CHARM_ID}:" in line for line in rep.losses)
     assert bytes(rec.get_raw("item_effects")) == bytes(10)
+    # The character stays engine-driven: no row was written to explain a
+    # player-driven one.
+    assert rec.get("flags_0b8") == c64_codec.DOS_PC_TAKEN_OVER
 
 
 def test_a_pool_charm_node_no_dos_route_writes_is_a_loss_and_takes_no_row():
@@ -1843,3 +1846,41 @@ def test_a_pool_charm_makes_a_dos_c64_dos_round_trip(share):
     assert out.get("npc_control_byte") == c64_codec.DOS_PC_TAKEN_OVER
     assert out.get("quickfight") is True
     assert out.get("treasure_share") == share
+
+
+def _npc_false_character():
+    char = _charmed_character(0)
+    char.set("npc", False, "built here")
+    return char
+
+
+def _hostile_character():
+    char = _charmed_character(0)
+    char.set("hostile", True, "built here")
+    return char
+
+
+@pytest.mark.parametrize("build", [
+    _npc_false_character,
+    _hostile_character,
+    lambda: _charmed_character(0, control=0x93),
+], ids=["npc-false", "hostile", "control-93"])
+def test_a_pool_charm_node_outside_the_charmed_player_state_is_a_loss(build):
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(build(), payload=payload, party_slot=2,
+                               clock_minutes=0)
+    assert set(_rows(payload).values()) == {(0, 0, 0, 0)}
+    assert any(f"effect {effects.CHARM_ID}:" in line for line in rep.losses)
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+
+
+def test_a_second_pool_charm_node_is_a_loss_and_writes_no_second_row():
+    char = _charmed_character(0)
+    char.set("granted_effects", [_CHARM, _CHARM], "built here")
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                                clock_minutes=0)
+    rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
+    assert rows == [(effects.CHARM_ID, 2, 0, 0x86)]
+    assert len([x for x in rep.losses
+                if f"effect {effects.CHARM_ID}:" in x]) == 1
