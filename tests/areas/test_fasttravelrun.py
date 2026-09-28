@@ -288,11 +288,15 @@ class FakeKbd:
 
 
 class FakeScreen:
-    def __init__(self, row24):
+    def __init__(self, row24, status=""):
         self._row = row24
+        self._status = status
 
     def row(self, n):
         return self._row
+
+    def text(self):
+        return f"{self._row}\n{self._status}"
 
 
 class WalkSession(FakeSession):
@@ -315,7 +319,8 @@ class WalkSession(FakeSession):
         self.settled = True
 
     def screen(self):
-        return FakeScreen(self.row)
+        # The status line the way the game prints it indoors.
+        return FakeScreen(self.row, f"N 12:00 {self.x},5")
 
     def in_combat(self):
         return self.combat
@@ -1217,3 +1222,59 @@ def test_leave_seconds_runs_from_run_returned_to_through(monkeypatch, tmp_path):
 def test_leave_seconds_is_none_without_through(monkeypatch, tmp_path):
     result = _run_with_marks(monkeypatch, tmp_path, {"landed": 220.0})
     assert result["leave_seconds"] is None
+
+
+class UnparsableSession(WalkSession):
+    """The status line never parses, while `position()` would answer with a
+    real-looking square the way its memory fallback does."""
+
+    def __init__(self, monitor, **kw):
+        super().__init__(monitor, **kw)
+        self.position_calls = 0
+        self.readable = False
+
+    def screen(self):
+        return FakeScreen(self.row, "" if not self.readable else "N 12:00 5,5")
+
+    def position(self):
+        self.position_calls += 1
+        return (15, 1, 3)
+
+
+def test_an_unparsable_status_line_gives_none_and_never_asks_position(
+        monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = UnparsableSession(m, indoors=True)
+    assert FT.where(sess, True) is None
+    assert sess.position_calls == 0
+
+
+def test_a_status_line_that_fails_once_is_not_counted_as_a_move(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = UnparsableSession(m, indoors=True)
+    before = FT.where(sess, True)
+    sess.readable = True
+    after = FT.where(sess, True)
+    assert before is None and after == (5, 5)
+    ok, message = FT.walk_verdict(
+        [{"move": "I", "before": before, "after": after}], True)
+    assert not ok and "did not move" in message
+
+
+def test_a_walk_whose_first_read_fails_does_not_pass(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = UnparsableSession(m, indoors=True, blocked={"I"})
+    real_walk = sess.walk_one
+
+    def walk_one(key):
+        # The line is unreadable until the first key goes in, then steady.
+        sess.readable = True
+        return real_walk(key)
+
+    sess.walk_one = walk_one
+    steps, sheet = FT.walk_afterwards(sess)
+    assert steps[0]["before"] is None
+    assert not FT.walk_verdict(steps, sheet)[0]

@@ -67,6 +67,7 @@ from automap.actions import _read, mode, program_counter  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from automap.target import ViceTarget  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
+from tools.c64.session import parse_status  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 DISKS: pathlib.Path | None = tool_disks()
@@ -181,7 +182,9 @@ def walk_verdict(steps: list[dict], sheet_opened: bool) -> tuple[bool, str]:
     if refused:
         return False, f"the driver refused a step: {refused[0]['refused']}"
     walked = [s for s in steps if "move" in s]
-    moved = sum(1 for s in walked if s.get("after") != s.get("before"))
+    moved = sum(1 for s in walked
+                if s.get("before") is not None and s.get("after") is not None
+                and s["after"] != s["before"])
     if not moved:
         return False, (f"the party did not move: its square did not change on "
                        f"any of {len(walked)} steps")
@@ -409,10 +412,23 @@ def where(sess, indoors: bool):
     """The party's square for the walk to compare. Indoors that is the status
     line, because `Session.square()` reads `$49C0`, which stays at the arrival
     square after a Fast Travel; outdoors the memory pair `square()` reads is
-    live and the status line lags."""
-    if indoors:
-        return sess.position()[:2]
-    return sess.square()
+    live and the status line lags.
+
+    Indoors the line is read here rather than through `Session.position()`,
+    whose fallback when no line parses is a memory copy with a real-looking
+    facing, and that copy is the stale square this exists to avoid. None means
+    no line parsed in `position()`'s own twelve tries, and `walk_verdict` never
+    counts a None as a move."""
+    if not indoors:
+        return sess.square()
+    for _ in range(12):
+        screen = sess.screen()
+        if screen is not None:
+            at = parse_status(screen.text())
+            if at is not None:
+                return at.x, at.y
+        time.sleep(0.3)
+    return None
 
 
 def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
@@ -435,6 +451,9 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
     stops the walk with a refused step, because `walk_one` would press Return at it and pick a menu's first
     option.
 
+    Indoors, `before` and `after` come from the status line and
+    `shadow_before` and `shadow_after` from `square()`.
+
     Called before teardown, because the session is gone once `run` returns.
     """
     indoors = sess.indoors()
@@ -455,9 +474,9 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
                 return steps, False
             row = settle_row(sess, timeout)
         if not recognised(row):
+            here = where(sess, indoors)
             steps.append({"move": move, "ok": False, "row": row,
-                          "before": where(sess, indoors),
-                          "after": where(sess, indoors),
+                          "before": here, "after": here,
                           "refused": f"row 24 is not the world bar, the move "
                                      f"sub-bar or the direction prompt: {row!r}"})
             print(f"  walk {move}: stopped on row 24 {row!r}", flush=True)
