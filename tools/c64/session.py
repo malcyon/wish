@@ -1212,11 +1212,13 @@ class Session:
         """Where a row that is *label* and nothing else is, as `Screen.find` answers.
 
         A row carrying any other glyph (a star, a second column) never matches,
-        and `select_row` then spends its whole timeout finding nothing.
+        and `select_row` then spends its whole timeout finding nothing.  The
+        window's frame, a `$` in the first and last column, is not the row's.
         """
         want = label.strip().upper()
         for r, line in enumerate(s.rows()):
-            if line.strip() == want:
+            body = line[1:-1] if line[:1] == line[-1:] == "$" else line
+            if body.strip() == want:
                 return r, line.find(want)
         return None
 

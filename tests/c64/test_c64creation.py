@@ -209,6 +209,11 @@ class FakeGame:
                     for c in range(1, 39):
                         colours[(first + i) * COLS + c] = 1
             put(first + len(items) + 1, 2, prompt)
+            # The window's own frame: the game draws it in every list, and it
+            # shows in the text as a `$` in the first and last column.
+            for r in range(1, first + len(items) + 2):
+                put(r, 0, "$")
+                put(r, COLS - 1, "$")
 
         if s == "party":
             for i, label in enumerate(items):
@@ -604,6 +609,34 @@ def test_an_exact_label_present_only_as_a_non_bare_row_is_refused(tmp_path):
     assert code == 1 and "no whole row of the class list is CLERIC" \
         in summary["lost"]
     assert [k for st, k in sess.kbd.sent if st == "class"] == []
+
+
+RECORDED_RACE_LIST = [
+    "@" + "[" * 38 + "@",
+    "$" + " " * 38 + "$",
+    "$ DWARF".ljust(39) + "$",
+    "$ ELF".ljust(39) + "$",
+    "$ GNOME".ljust(39) + "$",
+    "$ HALF-ELF".ljust(39) + "$",
+    "$ HALFLING".ljust(39) + "$",
+    "$ HUMAN".ljust(39) + "$",
+    "$ EXIT".ljust(39) + "$",
+    "$" + " " * 38 + "$",
+    "$" + " " * 38 + "$",
+    "$PICK RACE".ljust(39) + "$",
+]
+
+
+def test_a_label_inside_the_windows_frame_is_a_whole_row():
+    """The race list as the game drew it (a recorded boot's screen): the
+    frame glyph in the first and last column is not text of the row."""
+    codes = bytearray(0x20 for _ in range(25 * COLS))
+    for r, line in enumerate(RECORDED_RACE_LIST):
+        for i, ch in enumerate(line):
+            codes[r * COLS + i] = encode(ch)
+    s = Screen(bytes(codes), bytes(5 for _ in codes), 0xCC00)
+    assert S.Session._exact_hit(s, "HUMAN") == (7, 2)
+    assert S.Session._exact_hit(s, "HUM") is None
 
 
 def test_the_class_table_is_the_lists_the_screens_draw():
