@@ -4,7 +4,7 @@
 `#334 (The session driver cannot fight in Curse or Silver Blades, and says the
 party is not in a fight while it is standing on the combat floor)`. Every
 combat address for the two later C64 titles was derived from their own
-binaries and is in `tools/c64/latercombat.py`; this is what reads them off a
+binaries and is in `automap/combat.py`; this is what reads them off a
 machine that is actually fighting, which is the difference between a routine
 read right and a byte anybody has seen.
 
@@ -44,10 +44,9 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from automap import gamedisks  # noqa: E402
+from automap import combat, gamedisks  # noqa: E402
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.savegame import ROSTER_HP_CURRENT, ROSTER_STRIDE  # noqa: E402
-from tools.c64 import latercombat  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds import cursethac0  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -135,7 +134,7 @@ class Battle(cursethac0.Run):
     # -- the probe ---------------------------------------------------------
 
     def probe(self, stage: str) -> dict:
-        """Every address `tools/c64/latercombat.py` claims, raw, at one moment.
+        """Every address `automap/combat.py` claims, raw, at one moment.
 
         **The world reading is the control and is taken first.** A page that
         holds plausible-looking combatants outside a fight is a page that
@@ -143,15 +142,15 @@ class Battle(cursethac0.Run):
         that trap for Pool of Radiance: outside combat `$8B00` is a graphics
         buffer, and an ungated reader stacks every combatant at (0,0).
         """
-        where = latercombat.memory_for(self.sess.game)
-        params = self.peek(latercombat.PARAMS, latercombat.PARAMS_LEN)
-        shape = latercombat.geometry_from_params(params)
+        where = combat.memory_for(self.sess.game)
+        params = self.peek(combat.PARAMS, combat.PARAMS_LEN)
+        shape = combat.geometry_from_params(params)
         out: dict = {
             "stage": stage,
             "mode_at": f"${where.mode:04X}",
             "mode": self.peek(where.mode, 1)[0],
             "params": params.hex(" "),
-            "camera": list(self.peek(latercombat.CAMERA, 2)),
+            "camera": list(self.peek(combat.CAMERA, 2)),
             "shape": None if shape is None else {
                 "map": f"${shape.map_base:04X}",
                 "positions": f"${shape.positions:04X}",

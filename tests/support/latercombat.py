@@ -1,13 +1,9 @@
 """Helpers `test_latercombat` shares with the test files that reuse them."""
 
-from conftest import load_tools_module
 from gamedata import COMBAT_MAP, synthetic_arena
 
 from automap import combat
 from goldbox import c64_port
-
-latercombat = load_tools_module("latercombat")
-
 
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 
@@ -33,8 +29,8 @@ def later_arena(fighters=((0, 25, 13), (8, 30, 13))) -> dict[int, bytes]:
     span = 64 * combat.ROSTER_STRIDE
     roster, positions = (roster_and_positions[:span],
                          roster_and_positions[span:])
-    where = latercombat.BY_KEY[CURSE.key]
-    params = bytearray(old[latercombat.PARAMS])
+    where = combat.BY_KEY[CURSE.key]
+    params = bytearray(old[combat.PARAMS])
     params[0x02], params[0x03] = 0x00, 0x6F           # the combat map
     params[0x04], params[0x05] = 0x00, 0xCB           # the position table
     # The save head has to be a whole `$1000` block: `read_battle` refuses a
@@ -45,8 +41,8 @@ def later_arena(fighters=((0, 25, 13), (8, 30, 13))) -> dict[int, bytes]:
     head[at:at + len(records)] = records
     return {
         where.mode: bytes([combat.COMBAT]),
-        latercombat.PARAMS: bytes(params),
-        latercombat.CAMERA: old[combat.CAMERA],
+        combat.PARAMS: bytes(params),
+        combat.CAMERA: old[combat.CAMERA],
         0x6F00: old[COMBAT_MAP],
         where.roster: roster,
         0xCB00: positions,

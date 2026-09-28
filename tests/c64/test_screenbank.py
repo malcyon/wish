@@ -29,7 +29,8 @@ from __future__ import annotations
 import pytest
 from conftest import load_tools_module
 
-D = load_tools_module("drive")
+from automap import vice
+
 S = load_tools_module("session")
 
 #: `MON_CMD_BANKS_AVAILABLE`'s answer on the VICE build here, read off pool
@@ -84,9 +85,9 @@ class FakeMonitor:
     # -- the wire ---------------------------------------------------------
 
     def command(self, cmd: int, body: bytes = b"") -> bytes:
-        if cmd == D.CMD_BANKS_AVAILABLE:
+        if cmd == vice.CMD_BANKS_AVAILABLE:
             if not self.banks:
-                raise D.MonitorError("unsupported")
+                raise vice.MonitorError("unsupported")
             return _encode_banks(self.banks)
         raise AssertionError(f"unexpected command {cmd:#04x}")
 
@@ -100,7 +101,7 @@ class FakeMonitor:
         elif bank == self.banks.get("ram"):
             chips = False
         else:                                   # default: what the CPU sees
-            chips = io_space and (self.port1 & 0x07) in D.IO_IN
+            chips = io_space and (self.port1 & 0x07) in vice.IO_IN
         return (self.chips if chips else self.ram).get(addr, 0)
 
     def read(self, start: int, length: int, bank: int = 0,
@@ -118,22 +119,12 @@ class FakeMonitor:
         return False
 
 
-#: Every loaded copy of `tools/c64/drive.py`.  `conftest.load_tools_module`
-#: imports it by path as top-level `drive`, and `tools/c64/session.py` imports the
-#: same file as `tools.c64.drive`, so there are two module objects with two bank
-#: caches -- and clearing one leaves the other holding this file's answers.
-_DRIVE_COPIES = [m for m in (D, __import__("sys").modules.get("tools.c64.drive"))
-                 if m is not None]
-
-
 @pytest.fixture(autouse=True)
 def _forget_banks():
     """The bank ids are cached per monitor; each test gets its own machine."""
-    for copy in _DRIVE_COPIES:
-        copy._BANKS.clear()
+    vice._BANKS.clear()
     yield
-    for copy in _DRIVE_COPIES:
-        copy._BANKS.clear()
+    vice._BANKS.clear()
 
 
 def registers(d018: int, dd00: int, d011: int = 0x1B) -> dict[int, int]:
@@ -165,14 +156,14 @@ def test_the_screen_address_is_computed_from_the_bank_and_the_offset(
         bank, offset):
     dd00 = 0x90 | (3 - bank)            # the high bits are somebody else's
     mon = FakeMonitor(chips=registers((offset << 4) | 0x05, dd00))
-    assert D.screen_address(mon) == bank * 0x4000 + offset * 0x400
+    assert vice.screen_address(mon) == bank * 0x4000 + offset * 0x400
 
 
 def test_the_registers_tonights_hardware_held_put_the_screen_at_cc00():
     """`$DD00 = $90`, `$D018 = $35`, read off the C64 Ultimate on 2026-09-07
     while `$0400` was being sampled and reported as a frozen screen."""
     mon = FakeMonitor(chips=registers(0x35, 0x90))
-    assert D.screen_address(mon) == 0xCC00
+    assert vice.screen_address(mon) == 0xCC00
 
 
 # -- the bug -----------------------------------------------------------------
@@ -190,7 +181,7 @@ def test_the_reader_finds_the_screen_while_the_chips_are_banked_out():
         ram={0xD018: 0x0C, 0xDD00: 0x70,             # what RAM happens to hold
              **{0xCC00 + k: v for k, v in _screen_codes(PROMPT).items()}},
     )
-    screen = D.read_screen(mon)
+    screen = vice.read_screen(mon)
     assert screen.address == 0xCC00
     assert screen.row(24).startswith(PROMPT)
     assert screen.contains("INSERT SIDE")
@@ -207,12 +198,12 @@ def test_whether_the_screen_is_a_bitmap_is_asked_of_the_chips():
     out = FakeMonitor(port1=CHIPS_OUT,
                       chips=registers(0x15, 0xC7, d011=0x0B),
                       ram={0xD011: 0x36})
-    assert D.is_bitmap(out) is False
+    assert vice.is_bitmap(out) is False
     inn = FakeMonitor(port1=CHIPS_IN, chips=registers(0x35, 0x90, d011=0x1B))
-    assert D.is_bitmap(inn) is False
+    assert vice.is_bitmap(inn) is False
     real = FakeMonitor(port1=CHIPS_OUT, chips=registers(0x79, 0xC4, d011=0x3B),
                        ram={0xD011: 0x1B})
-    assert D.is_bitmap(real) is True
+    assert vice.is_bitmap(real) is True
 
 
 def test_the_screen_matrix_is_read_as_ram_even_where_the_chips_are():
@@ -229,7 +220,7 @@ def test_the_screen_matrix_is_read_as_ram_even_where_the_chips_are():
                **registers(0x75, 0x90)},
         ram={0xDC00 + k: v for k, v in _screen_codes(PROMPT).items()},
     )
-    screen = D.read_screen(mon)
+    screen = vice.read_screen(mon)
     assert screen.address == 0xDC00
     assert screen.row(24).startswith(PROMPT)
 
@@ -241,8 +232,8 @@ def test_colour_ram_comes_out_of_the_chips():
                       chips={**registers(0x35, 0x90),
                              **{0xD800 + i: 1 for i in range(40)}},
                       ram={0xD800 + i: 5 for i in range(40)})
-    assert set(D.colour_ram(mon, 0)) == {1}
-    assert len(D.colour_ram(mon)) == 1000
+    assert set(vice.colour_ram(mon, 0)) == {1}
+    assert len(vice.colour_ram(mon)) == 1000
 
 
 def test_the_reader_refuses_rather_than_answering_a_screen_it_cannot_locate():
@@ -254,12 +245,12 @@ def test_the_reader_refuses_rather_than_answering_a_screen_it_cannot_locate():
     """
     mon = FakeMonitor(port1=CHIPS_OUT, banks={},
                       chips=registers(0x35, 0x90))
-    with pytest.raises(D.ScreenUnreadable):
-        D.read_screen(mon)
+    with pytest.raises(vice.ScreenUnreadable):
+        vice.read_screen(mon)
     # ...and it is still readable when the CPU can see the chips, so the
     # refusal is about the banking rather than about the missing command.
     ok = FakeMonitor(port1=CHIPS_IN, banks={}, chips=registers(0x35, 0x90))
-    assert D.read_screen(ok).address == 0xCC00
+    assert vice.read_screen(ok).address == 0xCC00
 
 
 def test_a_transport_failure_asking_for_the_banks_is_not_remembered():
@@ -278,18 +269,18 @@ def test_a_transport_failure_asking_for_the_banks_is_not_remembered():
             self.failed_once = False
 
         def command(self, cmd: int, body: bytes = b"") -> bytes:
-            if cmd == D.CMD_BANKS_AVAILABLE and not self.failed_once:
+            if cmd == vice.CMD_BANKS_AVAILABLE and not self.failed_once:
                 self.failed_once = True
                 raise TimeoutError("no response")
             return super().command(cmd, body)
 
     mon = FlakyOnceMonitor(port1=CHIPS_OUT, chips=registers(0x35, 0x90))
-    with pytest.raises(D.ScreenUnreadable):
-        D.read_screen(mon)
+    with pytest.raises(vice.ScreenUnreadable):
+        vice.read_screen(mon)
     # A real, distinct read afterwards must not still be poisoned by the one
     # failed query.
-    assert D.read_screen(mon).address == 0xCC00
-    assert D._BANKS[(mon.host, mon.port)] == BANKS
+    assert vice.read_screen(mon).address == 0xCC00
+    assert vice._BANKS[(mon.host, mon.port)] == BANKS
 
 
 def test_the_bank_ids_are_asked_for_once_per_monitor():
@@ -299,9 +290,9 @@ def test_the_bank_ids_are_asked_for_once_per_monitor():
     calls = []
     real = mon.command
     mon.command = lambda cmd, body=b"": (calls.append(cmd), real(cmd, body))[1]
-    D.read_screen(mon)
-    D.read_screen(mon)
-    assert calls.count(D.CMD_BANKS_AVAILABLE) == 1
+    vice.read_screen(mon)
+    vice.read_screen(mon)
+    assert calls.count(vice.CMD_BANKS_AVAILABLE) == 1
 
 
 # -- what the driver does with it --------------------------------------------

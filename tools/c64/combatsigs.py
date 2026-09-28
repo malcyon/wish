@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Where each C64 Gold Box title's COMBAT overlay keeps the message panel.
 
-`tools/c64/latercombat.py` holds the addresses the combat **view** needs -- the
+`automap/combat.py` holds the addresses the combat **view** needs -- the
 mode byte, the map, the position table, the roster, the initiative bytes. The
 combat **log** needs a different four, and this is what re-derives them from a
 title's own files rather than carrying Pool of Radiance's across:

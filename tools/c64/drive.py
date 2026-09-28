@@ -35,45 +35,14 @@ import subprocess
 import sys
 import time
 
-# The monitor client and screen reader moved into the shipping automap package;
-# they are re-exported here so this file and its callers keep working.
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent.parent))
 
-from automap.vice import (  # noqa: E402,F401
-    _BANKS,
-    CMD_BANKS_AVAILABLE,
-    CMD_CHECKPOINT_DELETE,
-    CMD_CHECKPOINT_GET,
-    CMD_CHECKPOINT_LIST,
-    CMD_CHECKPOINT_SET,
-    CMD_DUMP,
-    CMD_EXIT,
-    CMD_MEM_GET,
-    CMD_MEM_SET,
-    CMD_PING,
-    CMD_QUIT,
-    CMD_REGISTERS_GET,
-    CMD_REGISTERS_SET,
-    CMD_RESET,
-    CMD_UNDUMP,
-    COLOUR_RAM,
-    IO_IN,
-    MON_HOST,
-    MON_PORT,
-    RESP_CHECKPOINT,
-    SCREEN_COLS,
-    SCREEN_ROWS,
+from automap.vice import (  # noqa: E402
     Monitor,
     MonitorError,
-    Screen,
-    ScreenUnreadable,
-    bank_ids,
-    codes_to_text,
-    colour_ram,
     grab_screen,
     is_bitmap,
     read_screen,
-    screen_address,
 )
 
 MENU_HOLD, MENU_GAP = 0.10, 0.14

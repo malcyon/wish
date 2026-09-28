@@ -143,8 +143,7 @@ def staged(sess, log, where: str) -> dict:
     runs with it, and the reader is asked the same question the loader asks
     it.
 
-    `automap.vice.read_screen` is the reader as it was -- every read on the
-    default bank -- and `tools.c64.drive.read_screen` is the one under test.
+    `automap.vice.read_screen` is the reader under test.
     """
     with sess.mon(5) as m:
         out = staged_reads(m, where)
@@ -156,22 +155,20 @@ def staged(sess, log, where: str) -> dict:
 def staged_reads(m, where: str) -> dict:
     """The staging itself, over a monitor somebody else has already opened.
 
-    `automap.vice.read_screen` is the reader as it was -- every read on the
-    default bank -- and `tools.c64.drive.read_screen` is the one under test.
+    `automap.vice.read_screen` is the reader under test.
     """
     from automap import vice as V
-    from tools.c64 import drive as Dr
 
     out = {"where": where}
     was = m.read(0x01, 1)[0]
     out["p01_before"] = was
-    before = Dr.read_screen(m)
+    before = V.read_screen(m)
     out["before"] = {"addr": before.address, "row24": before.row(24)}
     m.write(0x01, bytes([0x30]))
     out["p01_staged"] = m.read(0x01, 1)[0]
     old = V.read_screen(m)
     out["old_reader"] = {"addr": old.address, "row24": old.row(24)}
-    new = Dr.read_screen(m)
+    new = V.read_screen(m)
     out["new_reader"] = {"addr": new.address, "row24": new.row(24)}
     m.write(0x01, bytes([was]))
     out["p01_after"] = m.read(0x01, 1)[0]

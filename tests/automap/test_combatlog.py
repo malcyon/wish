@@ -433,7 +433,7 @@ def warnings_in(window) -> list[str]:
 def curse_arena_with_screen(rows, delay: int = 2) -> MemoryTarget:
     """`arena_with_screen`, laid out the way a running Curse holds a fight.
 
-    `later_arena` (`tests/automap/test_latercombat.py`) supplies the combat view's
+    `later_arena` (`tests/support/latercombat.py`) supplies the combat view's
     half -- the mode byte, the map, the roster, the positions, the initiative
     table and the save head, all at Curse's addresses. The message panel's
     mode, delay and screen bytes are added here, the same way `arena_with_
@@ -807,7 +807,7 @@ def test_the_dice_come_from_the_attacker_and_not_the_target():
 
 # --- Curse and Silver Blades' own addresses (#39) ---------------------------
 #
-# `later_arena` in `tests/automap/test_latercombat.py` lays out a machine with Curse's addresses
+# `later_arena` in `tests/support/latercombat.py` lays out a machine with Curse's addresses
 # for the combat *view*; this is the same idea for the log. Before the
 # per-title table was wired in, `poll` read `$6E11` and `$49FC` -- and
 # `rolls.D20`/`rolls.ATTACK`/`rolls.ROSTER` at their Pool of Radiance addresses

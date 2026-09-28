@@ -18,10 +18,12 @@ read, and using the same content for both titles is what makes the addresses
 the only difference between the two cases.
 """
 
+import pathlib
+
 import pytest
 from conftest import load_tools_module
 from gamedata import synthetic_arena
-from support.latercombat import CURSE, later_arena, latercombat
+from support.latercombat import CURSE, later_arena
 
 from automap import combat
 from automap.target import MemoryTarget
@@ -39,13 +41,47 @@ PARTY_AT = (25, 13)
 MONSTER_AT = (30, 13)
 
 
+# -- the forwarding names that were retired ----------------------------------
+
+#: What `tools/c64/drive.py` used to re-export from `automap.vice` without
+#: calling. Its callers import them from `automap.vice` itself.
+RETIRED_DRIVE_NAMES = (
+    "_BANKS", "CMD_BANKS_AVAILABLE", "CMD_CHECKPOINT_DELETE",
+    "CMD_CHECKPOINT_GET", "CMD_CHECKPOINT_LIST", "CMD_CHECKPOINT_SET",
+    "CMD_DUMP", "CMD_EXIT", "CMD_MEM_GET", "CMD_MEM_SET", "CMD_PING",
+    "CMD_QUIT", "CMD_REGISTERS_GET", "CMD_REGISTERS_SET", "CMD_RESET",
+    "CMD_UNDUMP", "COLOUR_RAM", "IO_IN", "MON_HOST", "MON_PORT",
+    "RESP_CHECKPOINT", "SCREEN_COLS", "SCREEN_ROWS", "Screen",
+    "ScreenUnreadable", "bank_ids", "codes_to_text", "colour_ram",
+    "screen_address",
+)
+
+
+def test_tools_c64_latercombat_is_gone():
+    """`automap.combat` holds the table; nothing re-exports it from `tools/`."""
+    assert not (pathlib.Path(__file__).resolve().parents[2]
+                / "tools" / "c64" / "latercombat.py").exists()
+
+
+@pytest.mark.parametrize("name", RETIRED_DRIVE_NAMES)
+def test_drive_no_longer_forwards_the_vice_names(name):
+    assert not hasattr(load_tools_module("drive"), name)
+
+
+@pytest.mark.parametrize("name", ["MON_HOST", "MON_PORT", "SCREEN_ROWS",
+                                  "codes_to_text"])
+def test_vice_no_longer_holds_what_only_drive_re_exported(name):
+    from automap import vice
+    assert not hasattr(vice, name)
+
+
 # -- what a fight is read as ------------------------------------------------
 
 @pytest.mark.parametrize("game", [CURSE, SILVER])
 def test_a_later_titles_fight_is_read_at_its_own_addresses(game):
     """The party and the monster come back off `$CB00`, `$6700` and `$92E8`."""
     target = MemoryTarget(later_arena())
-    battle = latercombat.read_battle(target, game)
+    battle = combat.read_battle(target, game)
     assert battle is not None, "no fight was read at all"
     assert battle.shape.positions == 0xCB00
     assert battle.shape.map_base == 0x6F00
@@ -69,7 +105,7 @@ def test_pool_of_radiance_is_still_read_exactly_where_it_always_was():
     """The new reader must be the old one for the title it already worked on."""
     memory = synthetic_arena()
     was = combat.read_battle(MemoryTarget(memory))
-    now = latercombat.read_battle(MemoryTarget(memory), POOL)
+    now = combat.read_battle(MemoryTarget(memory), POOL)
     assert was is not None
     assert now is not None
     assert [(c.index, c.x, c.y, c.hp) for c in now.combatants] == \
@@ -85,23 +121,23 @@ def test_a_title_nobody_has_run_under_a_monitor_is_refused():
     plausible fight rather than as an error, which is the whole failure this
     ticket is about with the titles swapped round.
     """
-    assert latercombat.memory_for(c64_port.CHAMPIONS_OF_KRYNN) is None
+    assert combat.memory_for(c64_port.CHAMPIONS_OF_KRYNN) is None
     target = MemoryTarget(synthetic_arena())
-    assert latercombat.read_battle(target, c64_port.CHAMPIONS_OF_KRYNN) is None
+    assert combat.read_battle(target, c64_port.CHAMPIONS_OF_KRYNN) is None
     assert target.reads == [], "it read the machine before refusing"
 
 
 def test_the_ranges_read_are_this_titles_and_not_the_other_ones():
     """A read of `$8300` or `$A380` on a Curse machine is the old bug back."""
     target = MemoryTarget(later_arena())
-    latercombat.read_battle(target, CURSE)
+    combat.read_battle(target, CURSE)
     asked = {addr for addr, _length in target.reads}
     assert 0x7F11 in asked and 0x6E11 not in asked
     assert 0x6700 in asked and combat.ROSTER not in asked
     assert 0x92E8 in asked and combat.INITIATIVE not in asked
     assert 0xCB00 in asked and 0x8B00 not in asked
     # And the two that are the same address in every title.
-    assert latercombat.PARAMS in asked and latercombat.CAMERA in asked
+    assert combat.PARAMS in asked and combat.CAMERA in asked
 
 
 def test_the_two_later_titles_are_written_out_separately():
@@ -110,8 +146,8 @@ def test_the_two_later_titles_are_written_out_separately():
     They were derived from each title's own binary independently and came out
     the same. Sharing one row would make a future disagreement invisible.
     """
-    assert latercombat.BY_KEY[CURSE.key] == latercombat.BY_KEY[SILVER.key]
-    assert latercombat.BY_KEY[CURSE.key] is not latercombat.BY_KEY[SILVER.key]
+    assert combat.BY_KEY[CURSE.key] == combat.BY_KEY[SILVER.key]
+    assert combat.BY_KEY[CURSE.key] is not combat.BY_KEY[SILVER.key]
 
 
 # -- the driver's own mode byte ---------------------------------------------

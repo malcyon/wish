@@ -55,11 +55,6 @@ def monitor_address(value: str | None = None) -> tuple[str, int]:
 #: when the log is on and its level swallows them when it is off.
 _log = logging.getLogger("wish.automap.vice")
 
-# The import-time snapshot, kept because `tools/c64/drive.py` re-exports it. Code
-# that wants the *current* answer calls `monitor_address()`: a long-lived GUI
-# can be pointed at a pooled instance after it has already imported this.
-MON_HOST, MON_PORT = monitor_address()
-
 # Command types
 CMD_MEM_GET = 0x01
 CMD_MEM_SET = 0x02
@@ -320,10 +315,8 @@ from . import screen as _screen  # noqa: E402
 from .screen import (  # noqa: E402,F401
     COLOUR_RAM,
     SCREEN_COLS,
-    SCREEN_ROWS,
     Banks,
     Screen,
-    codes_to_text,
 )
 
 #: `CMD_BANKS_AVAILABLE`'s answer, per monitor. The ids are a property of the

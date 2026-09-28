@@ -50,17 +50,19 @@ sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
 from automap import c64 as machines  # noqa: E402
 from automap import gamedisks  # noqa: E402
 from automap.actions import CMD_REGISTERS_AVAILABLE, PC_REGISTER  # noqa: E402
-from automap.vice import CMD_REGISTERS_GET  # noqa: E402
-from goldbox import c64_port as G  # noqa: E402
-from goldbox.d64 import D64, D64Error  # noqa: E402
-from tools.c64.drive import (  # noqa: E402
-    Keyboard,
+from automap.vice import (  # noqa: E402
+    CMD_REGISTERS_GET,
     Monitor,
     MonitorError,
     ScreenUnreadable,
     colour_ram,
     is_bitmap,
     read_screen,
+)
+from goldbox import c64_port as G  # noqa: E402
+from goldbox.d64 import D64, D64Error  # noqa: E402
+from tools.c64.drive import (  # noqa: E402
+    Keyboard,
 )
 from tools.registry import instance, scratch  # noqa: E402
 
@@ -2581,14 +2583,14 @@ class Session:
         a stop/resume pair costs the emulation ~14.3 ms of extra time whatever
         it carries, so the number that matters is how many, not how many bytes.
 
-        `tools/c64/latercombat.py` holds the four addresses that move between the
-        titles and hands the reading itself straight back to `automap.combat`.
+        `automap/combat.py` holds the four addresses that move between the
+        titles and does the reading itself.
         Pool of Radiance's row there is the same six numbers `automap.combat`
         already used, so nothing about this title's answer changes; Curse and
         Silver Blades used to be read at those numbers and answered None on a
         combat floor (`#334`).
         """
-        from tools.c64.latercombat import read_battle
+        from automap.combat import read_battle
 
         class _Target:
             def __init__(self, m):
