@@ -721,6 +721,22 @@ def test_correct_what_round_trips_newlines_and_control_characters(tree, one_sour
     assert len(specimens.list_specimens(tree)) == 1
 
 
+def test_correct_what_replaces_a_read_only_file_as_windows_requires(
+        tree, one_source, monkeypatch):
+    prov = _add(tree, one_source) / "provenance.toml"
+    real_replace = specimens.os.replace
+
+    def windows_replace(src, dst):
+        if not pathlib.Path(dst).stat().st_mode & stat.S_IWUSR:
+            raise PermissionError(5, "Access is denied")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(specimens.os, "replace", windows_replace)
+    _correct(tree)
+    assert specimens.read_provenance(prov)["what"] == "a new text"
+    assert not prov.stat().st_mode & stat.S_IWUSR
+
+
 def test_correct_what_failed_write_leaves_the_original_read_only(
         tree, one_source, monkeypatch):
     d = _add(tree, one_source)

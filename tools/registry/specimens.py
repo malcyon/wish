@@ -697,6 +697,9 @@ def correct_what(name: str, *, what: str, reason: str,
                     or back.get("issue_note") != fields["issue_note"]:
                 raise ValueError(f"{name}: the rewritten provenance.toml does "
                                  f"not read back as written; left unchanged")
+            # Windows refuses to replace a file whose read-only attribute is
+            # set, whatever its directory allows.
+            prov_path.chmod(stat.S_IREAD | stat.S_IWRITE)
             os.replace(tmp, prov_path)
         finally:
             tmp.unlink(missing_ok=True)
