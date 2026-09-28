@@ -5765,3 +5765,106 @@ def test_a_budget_ended_fight_before_save_loses_the_run_at_the_fight(
     assert "budget" in summary["lost"]
     assert summary["lost_reading"]["after"] == {"counts": {"x": 2}}
     assert [r["verb"] for r in summary["results"]] == ["load"]
+
+
+def _pool_run_fighting(outcome):
+    class Session:
+        def in_combat(self):
+            return True
+
+        def fight(self, *, budget, tactic):
+            return A.S.FightResult(outcome, 7, 1.0, [], [])
+
+    run = A.PoolRun.__new__(A.PoolRun)
+    run.sess = Session()
+    run.to_world = lambda: True
+    run.spent = lambda: False
+    run.captured = []
+    run.capture = run.captured.append
+    run.reading = lambda: {"counts": {"x": 4}}
+    return run
+
+
+def test_pool_fight_the_party_loses_fails_the_step_and_keeps_the_reading():
+    run = _pool_run_fighting(A.S.LOST)
+    with pytest.raises(A.StepFailed) as err:
+        run.fight("60", "I", 5)
+    assert str(err.value) == "the party lost the fight after 7 turns"
+    assert run.captured == ["fight-start", "fight-end", "lost-fight"]
+    assert run.lost_reading == {"step": "fight", "after": {"counts": {"x": 4}}}
+
+
+def test_pool_fight_the_party_wins_passes_the_step():
+    run = _pool_run_fighting(A.S.WON)
+    assert run.fight("60", "I", 5)["outcome"] == A.S.WON
+    assert run.captured == ["fight-start", "fight-end"]
+
+
+def test_curse_fight_the_party_loses_fails_the_step_with_a_fight_capture(
+        monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from tools.c64 import laterbattle
+    from tools.curse_of_the_azure_bonds import cursethac0
+
+    class Route:
+        last_goto_steps = 3
+
+        def __init__(self, out, quiet):
+            self.file = SimpleNamespace(close=lambda: None)
+
+        def goto(self, target, steps, geo):
+            return True
+
+    class Session:
+        def in_combat(self):
+            return True
+
+        def await_bar(self, kinds, timeout, interval):
+            return None
+
+        def fight(self, *, budget, tactic):
+            return A.S.FightResult(A.S.LOST, 7, 1.0, [], [])
+
+    monkeypatch.setattr(laterbattle, "Battle", Route)
+    monkeypatch.setattr(cursethac0, "area_geo", lambda *a: ("GEO01", object()))
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.attack_by = ""
+    run.attack_owner = None
+    run.attack_evidence = None
+    run.quit_evidence = None
+    run.sess = Session()
+    run.out = tmp_path
+    run.staged_disk = tmp_path / "staged.D64"
+    run.disks = "unused"
+    run.to_world = lambda: True
+    run.await_combat = lambda: True
+    run.spent = lambda: False
+    captured = []
+    run.capture = captured.append
+    run.reading = lambda: {"counts": {"x": 4}}
+    with pytest.raises(A.StepFailed, match="lost the fight after 7 turns"):
+        run.fight("60", "I", 5)
+    assert captured[-2:] == ["fight-end", "lost-fight"]
+    assert run.lost_reading == {"step": "fight", "after": {"counts": {"x": 4}}}
+
+
+def test_a_lost_fight_before_save_loses_the_run_at_the_fight(tmp_path, monkeypatch):
+    lost = _pool_run_fighting(A.S.LOST)
+
+    class Fighter(_Pool):
+        saved = False
+
+        def fight(self, arg, walk, steps):
+            raise lost.fight_lost(A.S.FightResult(A.S.LOST, 7, 1.0, [], []))
+
+        def save(self, staged):
+            Fighter.saved = True
+            return {}
+
+    rc, slot, out = _drive(tmp_path, monkeypatch, ["load", "fight 60", "save"],
+                           pool=Fighter)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc != 0 and not Fighter.saved
+    assert "lost the fight after 7 turns" in summary["lost"]
+    assert [r["verb"] for r in summary["results"]] == ["load"]
