@@ -51,7 +51,7 @@ a source whose title does not match `--title`:
 
 | step | what it does |
 |---|---|
-| `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P`.  Pool presses Return past each `PRESS <ENTER>/<RETURN> TO CONTINUE` bar first, when the loaded save is on an event square, so that screen is never recorded as the map (#701); a party that has not taken Rolf's opening tour meets eight, and the run stops at `POOL_LOAD_CONTINUE_ROUNDS` (#631) |
+| `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P`.  Pool presses Return past each `PRESS <ENTER>/<RETURN> TO CONTINUE` bar first, when the loaded save is on an event square, so that screen is never recorded as the map (#701); a party that has not taken Rolf's opening tour meets eight (PROBABLE: one boot of one party), and the run stops at `POOL_LOAD_CONTINUE_ROUNDS` (#631) |
 | `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars and Pools of Darkness' journal question and `YES NO` bars (below), to the map; Pools of Darkness' map only by its measured bar |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
 | `sheet N`, `items N` | Curse, Silver Blades and Pools of Darkness (`items` Pools of Darkness only), in camp: roster line N (from 1) highlighted (`End` in Curse, `Down` in the other two), `VIEW`, the sheet's name checked against line N's, the bar read for `heal_offered` and `cure_offered` (`sheet_offers`), and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
@@ -377,6 +377,7 @@ CONTINUE_ROUNDS = 3
 #: the Amiga or C64 game is) loads into the whole tour: eight chained screens,
 #: `GREETINGS, COURAGEOUS ONES` through `YOUR TOUR IS ENDED`, each a different
 #: frame, and then the map at 0,4 (#631, run `dce274bcca-tour-count-cap25`).
+#: PROBABLE: measured on one boot of one party, taken as a general figure.
 #: Two more than the tour, so a stuck screen still stops the run.
 POOL_LOAD_CONTINUE_ROUNDS = 10
 #: Journal, `YES NO` and continue screens `begin` answers in all, counted one
