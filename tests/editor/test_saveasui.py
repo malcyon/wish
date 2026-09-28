@@ -530,3 +530,127 @@ def test_a_disk_one_without_spindisk_shows_the_generic_sentence(
 
     assert said == [(ew.CANNOT_SAVE_TITLE, ew.SAVE_AS_FAILED)]
     assert not (tmp_path / "fresh.adf").exists()
+
+
+# ---------------------------------------------------------------------------
+# A pack the C64 cannot hold (#432): Save As asks, and the choice is prepared
+# ---------------------------------------------------------------------------
+
+class _OverflowingSaveAs:
+    """A DOS Silver Blades Save As to the C64 whose `prepare_save_as` raises
+    `JoinedScrollsDoNotFit` until it is handed a `leave`, and whose chooser,
+    publication and adoption are doubles that record what reached them.
+
+    The writer is not run: `tests/convert/test_leavechoice.py` covers what
+    `leave` does there, and this covers what the window does around it.
+    """
+
+    def __init__(self, app, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+
+        from support import packoverflow
+
+        self.overflow = packoverflow.overflow()
+        self.prepared = []           # the `leave` each preparation was given
+        self.asked = []              # what the chooser was opened with
+        self.published = []
+        self.answer = {1: frozenset({16})}
+        self.said = []
+        self.target = tmp_path / "out.d64"
+        binding = _silver_blades_dos_binding(app, tmp_path)
+        self.binding = binding
+        binding.begin_save_as("c64")
+        monkeypatch.setattr(binding, "_resolve_destination_assets",
+                            lambda: saveplan.Assets())
+        monkeypatch.setattr(ew.saveplan, "refuse_alias", lambda *a: None)
+        # No C64 disks on this machine's preferences: the button is greyed
+        # until they are found, and finding them is not what this tests.
+        binding._child("button_destination_save_as").setEnabled(True)
+
+        def prepare(party, port, path, assets, names=None, leave=None):
+            self.prepared.append(leave)
+            if not leave:
+                raise ew.dos_codec.JoinedScrollsDoNotFit(self.overflow)
+            return SimpleNamespace(destination=_StubDestination(path),
+                                   leave=dict(leave))
+
+        def publish(plan, party, **_kwargs):
+            self.published.append(plan)
+            if len(self.published) == 1 and self.stale_once:
+                raise saveplan.StalePlan("edited since")
+            return SimpleNamespace(destination=plan.destination, backup=None,
+                                   party=party)
+
+        def choose(overflow, game, accept_label):
+            self.asked.append((overflow, game.key, accept_label))
+            return self.answer
+
+        self.stale_once = False
+        monkeypatch.setattr(ew.saveplan, "prepare_save_as", prepare)
+        monkeypatch.setattr(ew.saveplan, "publish", publish)
+        monkeypatch.setattr(binding, "_adopt", lambda *a, **k: None)
+        monkeypatch.setattr(binding, "_choose_left_behind", choose)
+        monkeypatch.setattr(
+            ew.QMessageBox, "critical",
+            lambda _parent, title, text: self.said.append((title, text)))
+
+    def press(self):
+        field = self.binding._child("destination_path")
+        field.setText(str(self.target))
+        self.binding._child("button_destination_save_as").click()
+
+
+def test_save_as_asks_what_to_leave_behind_and_prepares_with_the_choice(
+        app, tmp_path, monkeypatch):
+    run = _OverflowingSaveAs(app, tmp_path, monkeypatch)
+    run.press()
+
+    assert run.said == []
+    assert run.prepared == [None, {1: frozenset({16})}]
+    (overflow, key, label), = run.asked
+    assert overflow == run.overflow
+    assert key == SILVER_BLADES.key
+    assert label == run.binding._child("button_destination_save_as").text()
+    assert len(run.published) == 1
+    assert run.binding._child("destination_section").isHidden()
+
+
+def test_cancelling_the_chooser_leaves_save_as_open_with_its_path(
+        app, tmp_path, monkeypatch):
+    run = _OverflowingSaveAs(app, tmp_path, monkeypatch)
+    run.answer = None
+    run.press()
+
+    assert run.said == []
+    assert run.prepared == [None]
+    assert run.published == []
+    assert not run.binding._child("destination_section").isHidden()
+    assert run.binding._child("destination_path").text() == str(run.target)
+
+
+def test_a_stale_plan_is_reprepared_with_the_choice_and_the_player_is_not_asked_twice(
+        app, tmp_path, monkeypatch):
+    run = _OverflowingSaveAs(app, tmp_path, monkeypatch)
+    run.stale_once = True
+    run.press()
+
+    assert run.said == []
+    assert len(run.asked) == 1
+    assert run.prepared == [None, {1: frozenset({16})}, {1: frozenset({16})}]
+    assert len(run.published) == 2
+
+
+def test_a_choice_the_writer_still_refuses_shows_the_existing_sentence(
+        app, tmp_path, monkeypatch):
+    run = _OverflowingSaveAs(app, tmp_path, monkeypatch)
+    def still_too_many(*_args, leave=None, **_kwargs):
+        run.prepared.append(leave)
+        raise ew.dos_codec.JoinedScrollsDoNotFit(run.overflow)
+
+    monkeypatch.setattr(ew.saveplan, "prepare_save_as", still_too_many)
+    run.press()
+
+    assert run.said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_REFUSED)]
+    assert run.prepared == [None, {1: frozenset({16})}]
+    assert len(run.asked) == 1
+    assert run.published == []

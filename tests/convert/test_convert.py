@@ -3609,3 +3609,188 @@ def test_rehearse_por_savegame_copies_each_characters_own_losses():
     assert rehearsal.report.losses == [
         "ONE: Name is longer than the Amiga field; truncated",
         "TWO: Name is longer than the Amiga field; truncated"]
+
+
+# ---------------------------------------------------------------------------
+# A pack the C64 cannot hold (#432): held by the dialog, asked at Convert
+# ---------------------------------------------------------------------------
+
+def _pack_overflowing_dialog(tmp_path, monkeypatch, *, folder=True):
+    """A `ConvertDialog` over a DOS Silver Blades folder whose rehearsal
+    reports a pack that does not fit, and the fake `dosimport.rehearse` that
+    took the `leave` it was handed.
+
+    `dosimport.rehearse` raises `JoinedScrollsDoNotFit` until it is given a
+    choice, and then returns a rehearsal of no real disk: what is under test
+    is what the dialog and the window do with the overflow, not the writer,
+    which `tests/convert/test_leavechoice.py` covers.
+    """
+    from support import packoverflow
+
+    overflow = packoverflow.overflow()
+    seen = []
+
+    def rehearse(_folder, _slot, _files, leave=None):
+        seen.append(leave)
+        if not leave:
+            raise dos_codec.JoinedScrollsDoNotFit(overflow)
+        return SimpleNamespace(
+            report=convert.neutral.Report(),
+            disk=SimpleNamespace(to_bytes=lambda: b"a disk"))
+
+    monkeypatch.setattr(dosimport, "rehearse", rehearse)
+    source = _synthetic_dos_folder(tmp_path, dos_port.SECRET_OF_THE_SILVER_BLADES)
+    out = tmp_path / "out"
+    out.mkdir()
+    dialog = convert.ConvertDialog(
+        str(source / "SAVGAMA.DAT"), None, _some_disks, destination="c64",
+        folder=str(out) if folder else None)
+    return dialog, overflow, seen, out
+
+
+def test_a_pack_the_c64_cannot_hold_shows_nothing_and_leaves_convert_pressable(
+        tmp_path, monkeypatch, caplog):
+    """Until Convert is pressed the dialog neither refuses nor pops a modal:
+    it keeps the overflow, and Convert is enabled once a folder is named."""
+    import logging
+
+    shown = []
+    monkeypatch.setattr(convert.QMessageBox, "critical",
+                        lambda *a, **k: shown.append(a))
+    dialog, overflow, _seen, _out = _pack_overflowing_dialog(tmp_path,
+                                                             monkeypatch)
+    try:
+        with caplog.at_level(logging.INFO, logger="wish"):
+            dialog._interactive = True
+            dialog.replan()
+        assert dialog._blocked is None
+        assert shown == []
+        assert dialog.pack_overflow == overflow
+        assert dialog.rehearsal is None
+        assert dialog.ui.convert_destination_line.text()
+        assert dialog.buttons.button(
+            QDialogButtonBox.StandardButton.Ok).isEnabled()
+        assert any("does not fit the c64 destination" in r.getMessage()
+                   for r in caplog.records)
+    finally:
+        dialog.close()
+
+
+def test_a_pack_the_c64_cannot_hold_still_needs_a_folder_before_convert_goes(
+        tmp_path, monkeypatch):
+    dialog, overflow, _seen, _out = _pack_overflowing_dialog(
+        tmp_path, monkeypatch, folder=False)
+    try:
+        assert dialog.pack_overflow == overflow
+        assert dialog._blocked == (convert.DIALOG_TITLE, convert.NO_FOLDER)
+        assert not dialog.buttons.button(
+            QDialogButtonBox.StandardButton.Ok).isEnabled()
+    finally:
+        dialog.close()
+
+
+def test_changing_a_row_forgets_the_overflow_and_asks_again(
+        tmp_path, monkeypatch):
+    dialog, _overflow, seen, _out = _pack_overflowing_dialog(tmp_path,
+                                                             monkeypatch)
+    try:
+        assert dialog.pack_overflow
+        dialog._source_path = ""
+        dialog.replan()
+        assert dialog.pack_overflow == ()
+        assert dialog._assets is None
+    finally:
+        dialog.close()
+
+
+def test_rehearse_leaving_hands_the_choice_to_the_writer(tmp_path,
+                                                         monkeypatch):
+    dialog, _overflow, seen, _out = _pack_overflowing_dialog(tmp_path,
+                                                             monkeypatch)
+    try:
+        dialog.rehearse_leaving({1: frozenset({16})})
+        assert seen[-1] == {1: frozenset({16})}
+        assert dialog.rehearsal is not None
+    finally:
+        dialog.close()
+
+
+def _convert_with(window, tmp_path, out):
+    source = tmp_path / "dos" / "SAVGAMA.DAT"
+    return window.convert(source=str(source), destination="c64",
+                          folder=str(out))
+
+
+def _window_for_pack_overflow(monkeypatch):
+    window = EditorBinding(_make_root())
+    monkeypatch.setattr(window, "game_files_for", _some_disks)
+    loaded = []
+    monkeypatch.setattr(window, "load", loaded.append)
+    monkeypatch.setattr(convert.ConvertDialog, "exec",
+                        lambda self: QDialog.DialogCode.Accepted)
+    return window, loaded
+
+
+def test_pressing_convert_asks_and_the_choice_reaches_the_writer_as_leave(
+        tmp_path, monkeypatch):
+    dialog, _overflow, seen, out = _pack_overflowing_dialog(tmp_path,
+                                                            monkeypatch)
+    dialog.close()
+    window, loaded = _window_for_pack_overflow(monkeypatch)
+    asked = []
+
+    def choose(overflow, game, accept_label):
+        asked.append((overflow, game.key, accept_label))
+        return {1: frozenset({16})}
+
+    monkeypatch.setattr(window, "_choose_left_behind", choose)
+    try:
+        outcome = _convert_with(window, tmp_path, out)
+    finally:
+        window.close()
+
+    assert len(asked) == 1
+    assert asked[0][2] == convert.BUTTON_CONVERT
+    assert seen[-1] == {1: frozenset({16})}
+    today = datetime.date.today().isoformat()
+    written = out / f"wish-{today}"
+    assert [p.read_bytes() for p in written.iterdir()] == [b"a disk"]
+    assert loaded == [str(next(written.iterdir()))]
+    assert outcome == f"converted into {written}"
+
+
+def test_cancelling_the_chooser_writes_nothing(tmp_path, monkeypatch):
+    dialog, _overflow, seen, out = _pack_overflowing_dialog(tmp_path,
+                                                            monkeypatch)
+    dialog.close()
+    window, loaded = _window_for_pack_overflow(monkeypatch)
+    monkeypatch.setattr(window, "_choose_left_behind", lambda *a: None)
+    try:
+        outcome = _convert_with(window, tmp_path, out)
+    finally:
+        window.close()
+
+    assert outcome == "cancelled"
+    assert list(out.iterdir()) == []
+    assert loaded == []
+    assert all(not leave for leave in seen)
+
+
+def test_a_pack_that_fits_never_asks(tmp_path, monkeypatch):
+    """A rehearsal that succeeds outright has no overflow, so the chooser is
+    not opened."""
+    dialog, _overflow, seen, out = _pack_overflowing_dialog(tmp_path,
+                                                            monkeypatch)
+    dialog.close()
+    monkeypatch.setattr(
+        dosimport, "rehearse",
+        lambda *a, **k: SimpleNamespace(
+            report=convert.neutral.Report(),
+            disk=SimpleNamespace(to_bytes=lambda: b"a disk")))
+    window, _loaded = _window_for_pack_overflow(monkeypatch)
+    monkeypatch.setattr(window, "_choose_left_behind",
+                        lambda *a: pytest.fail("the chooser was opened"))
+    try:
+        assert _convert_with(window, tmp_path, out).startswith("converted")
+    finally:
+        window.close()

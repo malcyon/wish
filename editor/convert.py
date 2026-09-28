@@ -1888,6 +1888,12 @@ class ConvertDialog(QDialog):
         self.direction: Direction | None = None
         self.rehearsal: Rehearsal | None = None
         self.slot: str | None = None
+        #: Set when the destination cannot hold a pack as it stands
+        #: (`JoinedScrollsDoNotFit.overflow`): no rehearsal exists yet, and
+        #: `EditorBinding.convert` asks the player what to leave behind once
+        #: Convert is pressed. `_assets` is what that second rehearsal reads.
+        self.pack_overflow: tuple = ()
+        self._assets = None
 
         #: What stops Convert right now, `(title, text)` or `None`. Four of
         #: the reasons below (`_SILENT_BLOCKS`) mean only "a row is still
@@ -2040,6 +2046,8 @@ class ConvertDialog(QDialog):
         self.direction = None
         self.rehearsal = None
         self.slot = None
+        self.pack_overflow = ()
+        self._assets = None
         #: Cleared on every plan and set only by `_rehearse_and_report`'s
         #: own success tail below, so every early return here -- no source,
         #: an unreadable one, no registered destination -- leaves both
@@ -2180,10 +2188,20 @@ class ConvertDialog(QDialog):
         except saveplan.MissingAssets as exc:
             self._blocked = MISSING_ASSET_BLOCKS[exc.missing[0]]
             return
+        self._assets = assets
 
         try:
             self.rehearsal, self.slot = saveplan.rehearse(
                 direction, self.source, assets)
+        except dos_codec.JoinedScrollsDoNotFit as exc:
+            # Not a refusal: the player chooses what to leave behind once
+            # Convert is pressed (`EditorBinding.convert`), so nothing is
+            # shown now and Convert stays pressable.
+            _log.info("The pack does not fit the %s destination: %s",
+                      direction.destination_port, exc)
+            self.pack_overflow = exc.overflow
+            self._name_destination()
+            return
         except saveplan.NamesDoNotFit as exc:
             # No dialog to ask for a replacement yet (#619's Stage C), so
             # this stops the write the way a name too long for the C64's
@@ -2201,13 +2219,32 @@ class ConvertDialog(QDialog):
             self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
             return
 
+        if not self._name_destination():
+            return
+        self._finish_rehearsal()
+
+    def _name_destination(self) -> bool:
+        """Name where Convert would write, or set `NO_FOLDER` and say so."""
         if not self._folder_path:
             self._blocked = (DIALOG_TITLE, NO_FOLDER)
-            return
-
+            return False
         preview = fresh_folder(pathlib.Path(self._folder_path))
         self.ui.convert_destination_line.setText(_destination_text(preview))
+        return True
 
+    def rehearse_leaving(self, leave: "Mapping[int, Collection[int]]") -> None:
+        """Rehearse again with what the player chose to leave behind.
+
+        Raises what the writer raises, so a caller can refuse the write; a
+        rehearsal that comes out with a loss is left `None`, as `replan` does.
+        """
+        self.rehearsal, self.slot = saveplan.rehearse(
+            self.direction, self.source, self._assets, leave=leave)
+        self._finish_rehearsal()
+
+    def _finish_rehearsal(self) -> None:
+        """What follows a rehearsal that succeeded, on the first try or once
+        the player has chosen what to leave behind."""
         #: Still called for its own side effect -- `report.dropped`, to the
         #: debug log -- even though nothing shows its returned text any
         #: more. `DosImportDialog` stopped calling this too, 2026-09-14,
@@ -2232,12 +2269,11 @@ class ConvertDialog(QDialog):
         #: the existing `CANNOT_CONVERT`. The Pools of Darkness direction is
         #: the one exception, because its known losses belong to #650 and
         #: #651, which fix them behind its flag.
-        if (not isinstance(direction, PodAmigaToDos)
+        if (not isinstance(self.direction, PodAmigaToDos)
                 and saveplan.losses(self.rehearsal.report)):
             self.rehearsal = None
             self.ui.convert_destination_line.setText("")
             self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
-            return
 
     # -- what is shown, and when Convert is pressable -----------------
 
@@ -2338,4 +2374,5 @@ class ConvertDialog(QDialog):
         reason a ready rehearsal with no folder still shows `NO_FOLDER`
         rather than the writes list (`_rehearse_and_report` above)."""
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
-            self.rehearsal is not None and bool(self._folder_path))
+            (self.rehearsal is not None or bool(self.pack_overflow))
+            and bool(self._folder_path))

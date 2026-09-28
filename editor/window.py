@@ -1864,6 +1864,24 @@ class EditorBinding(QObject):
         while True:
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return "cancelled"
+            if dialog.rehearsal is None and dialog.pack_overflow:
+                # The destination cannot hold a pack as it stands: ask what
+                # stays behind, now that Convert has been pressed.
+                choice = self._choose_left_behind(
+                    dialog.pack_overflow, dialog.direction.destination_game,
+                    convert_mod.BUTTON_CONVERT)
+                if choice is None:
+                    return "cancelled"
+                try:
+                    dialog.rehearse_leaving(choice)
+                except Exception:
+                    _log.exception("could not convert with %s left behind",
+                                   choice)
+                    dialog.refuse(convert_mod.CANNOT_CONVERT)
+                    continue
+                if dialog.rehearsal is None:
+                    dialog.refuse(convert_mod.CANNOT_CONVERT)
+                    continue
             if dialog.rehearsal is None:
                 return "cancelled"
             destination_root = pathlib.Path(dialog.folder)
@@ -1906,6 +1924,33 @@ class EditorBinding(QObject):
                 self.root, convert_mod.DIALOG_TITLE,
                 convert_mod.CONVERT_SUCCESS.format(folder=fresh))
             return result
+
+    def _choose_left_behind(self, overflow, game, accept_label: str
+                            ) -> "dict[int, frozenset[int]] | None":
+        """Ask which items and scrolls stay behind: one window for every
+        character whose pack does not fit `game`'s record. `None` when the
+        player cancels.
+
+        Item and spell names come off `game`'s own disks, the destination's,
+        so an item reads as it will in that game.
+        """
+        from .leavebehind import LeaveBehindDialog
+
+        item_names, spell_names = {}, {}
+        disk = self._find_disk(lambda d: load_item_names(d, game),
+                               game.disk_glob, game)
+        if disk is not None:
+            for attr, read in ((item_names, load_item_names),
+                               (spell_names, load_spell_names)):
+                try:
+                    attr.update(read(disk, game))
+                except Exception:
+                    _log.exception("could not read names off %s", disk)
+        dialog = LeaveBehindDialog(overflow, item_names, spell_names,
+                                   spell_table(game), accept_label, self.root)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return dialog.chosen()
 
     def _size_roster(self) -> None:
         """Measure the roster: the height its rows need, and the width they
@@ -2632,9 +2677,13 @@ class EditorBinding(QObject):
         return box.clickedButton() is replace
 
     def _prepare_plan(self, source, port: str, path: pathlib.Path,
-                      assets) -> "saveplan.SavePlan | None":
+                      assets, leave=None) -> "saveplan.SavePlan | None":
         try:
-            return saveplan.prepare_save_as(self.party, port, path, assets)
+            # Only a real choice is handed on: `prepare_save_as` treats none
+            # and an empty one alike.
+            chosen = {"leave": leave} if leave else {}
+            return saveplan.prepare_save_as(self.party, port, path, assets,
+                                            **chosen)
         except saveplan.NamesDoNotFit as exc:
             # No dialog to ask for a replacement yet (#619's Stage C), so
             # this refuses the way `DroppedFields` already does.
@@ -2648,6 +2697,20 @@ class EditorBinding(QObject):
         except saveplan.SaveAsError as exc:
             _log.debug("Save As to %s refused: %s", path, exc)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
+        except dos_codec.JoinedScrollsDoNotFit as exc:
+            _log.info("The pack does not fit the %s destination: %s",
+                      port, exc)
+            if leave:
+                # The window lets nothing through that still does not fit, so
+                # this is a writer refusing what the player chose.
+                QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
+                return None
+            choice = self._choose_left_behind(
+                exc.overflow, saveplan.route(source, port).destination_game,
+                self._save_as_label())
+            if choice is None:
+                return None
+            return self._prepare_plan(source, port, path, assets, leave=choice)
         except (dos_codec.DosRecordError, amiga_port.AmigaRecordError,
                 amiga_pod.ConversionError) as exc:
             # A writer refusing this particular party. Uncaught, PyQt6 aborts
@@ -2659,6 +2722,12 @@ class EditorBinding(QObject):
             _log.exception("could not prepare a Save As to %s", path)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
         return None
+
+    def _save_as_label(self) -> str:
+        """The Save As button's own label, which the chooser's accept button
+        reuses."""
+        button = self._child("button_destination_save_as")
+        return button.text() if button is not None else ""
 
     def _publish_plan(self, plan, assets, _retried: bool = False) -> None:
         try:
@@ -2672,7 +2741,8 @@ class EditorBinding(QObject):
                 QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
                 return
             fresh = self._prepare_plan(self._save_as_source, self._save_as_port,
-                                       plan.destination.path, assets)
+                                       plan.destination.path, assets,
+                                       leave=plan.leave)
             if fresh is None:
                 return
             self._publish_plan(fresh, assets, _retried=True)

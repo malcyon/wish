@@ -17,6 +17,8 @@ The character editor's logic and dialogs, opened from `wish/window.py`; it impor
 | `iconwidget.py` | The combat-icon editor, promoted onto the form as class `IconEditor`: two stacked 3x3 poses of `CHARPIC00` glyphs in multicolour text mode, offering the sixteen C64 colours and no others. |
 | `inventory.py` | The sixteen item slots one character carries, with names spelled out; items live in `SAVEDGAME0`, not in the record, so a `.chr` export has none, and adding an item copies one of the real templates off the game disks rather than filling in fields, so the bytes we do not understand keep sane values. |
 | `inventory.ui` | The Qt Designer form for the "Add an item" dialog. Compiled to `ui_inventory.py` by `tools/generate/genui.py`. |
+| `leavebehind.py` | The window that asks which items and scrolls stay behind when a character's pack needs more C64 slots than the record has: one window for every character who does not fit. |
+| `leavebehind.ui` | The Qt Designer form for `LeaveBehindDialog`. Compiled to `ui_leavebehind.py` by `tools/generate/genui.py`. |
 | `palette.py` | The sixteen colours a C64 has, and no others. |
 | `partspicker.py` | Pick an icon the way the game's own ICON menu does — a weapon and a head — with each option rendered as the icon you would end up with, so you choose a result rather than a number. |
 | `partspicker.ui` | The Qt Designer form for the icon parts picker. Compiled to `ui_partspicker.py` by `tools/generate/genui.py`. |
@@ -29,6 +31,7 @@ The character editor's logic and dialogs, opened from `wish/window.py`; it impor
 | `traitpicker.ui` | The Qt Designer form for `TraitPicker`. Compiled to `ui_traitpicker.py` by `tools/generate/genui.py`. |
 | `ui_convert.py` | Generated from `convert.ui` by `tools/generate/genui.py`; never edit it. |
 | `ui_inventory.py` | Generated from `inventory.ui` by `tools/generate/genui.py`; never edit it. |
+| `ui_leavebehind.py` | Generated from `leavebehind.ui` by `tools/generate/genui.py`; never edit it. |
 | `ui_partspicker.py` | Generated from `partspicker.ui` by `tools/generate/genui.py`; never edit it. |
 | `ui_slotpicker.py` | Generated from `slotpicker.ui` by `tools/generate/genui.py`; never edit it. |
 | `ui_traitpicker.py` | Generated from `traitpicker.ui` by `tools/generate/genui.py`; never edit it. |
