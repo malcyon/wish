@@ -149,13 +149,14 @@ DARKNESS_RELOAD = dataclasses.replace(
 )
 
 # Loads disk 3's own slot A, a party that has not set out, and writes nothing, so the screens
-# between the journal and the world can be measured. B is a kept letter here and is also the
-# game's Begin key, which `plain_keys` names. The arrival screens are not in the guard map, so
-# `yes_no` and `continue` wait as long as `world` does after the journal, the area loading first.
+# between the journal and the world can be measured. Slot A's load showed no disk 2 prompt, so
+# the prompt is an optional row answered wherever it appears. B is a kept letter here and is also
+# the game's Begin key, which `plain_keys` names. The arrival screens are not in the guard map,
+# so `yes_no` and `continue` wait as long as `world` does after the journal, the area loading first.
 DARKNESS_UNSTARTED_LOADED = "A"
 _UNSTARTED_ROUTE = (
     ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
-    (DARKNESS_UNSTARTED_LOADED, "disk2_prompt", "key"), DISK2_INSERT,
+    (DARKNESS_UNSTARTED_LOADED, "loaded_menu", "key"),
     ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
     ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", "yes_no", "key"),
     ("N", "continue", "key"), ("RET", "continue", "key"), ("RET", "world", "key"),
@@ -164,9 +165,13 @@ DARKNESS_UNSTARTED = dataclasses.replace(
     DARKNESS, route=_UNSTARTED_ROUTE, measure_route=_UNSTARTED_ROUTE,
     kept_letters=("B", "C", "D", "E"),
     plain_keys=(("E", "loaded_menu"), ("B", "journal")),
-    # No `loaded_menu` guard is used on this boot, since its box covers menu items that differ
-    # per party; the accept boots recognised the menu 24 to 25 s after the key.
-    min_waits={**DARKNESS.min_waits, "yes_no": 45.0, "continue": 10.0, "loaded_menu": 40.0},
+    min_waits={**DARKNESS.min_waits, "yes_no": 45.0, "continue": 10.0},
+    interstitials=(
+        ("disk2_prompt", ("insert", 0, "disk2", "SPACE"),
+         frozenset({"loaded_menu", "sheet", "journal", "journal_answer", "yes_no", "continue",
+                    "world"}), 1),
+        *DARKNESS.interstitials,
+    ),
 )
 
 

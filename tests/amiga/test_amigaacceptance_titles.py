@@ -786,7 +786,12 @@ def _dark_manifest(tmp_path):
     return path
 
 
-def _dark_run(tmp_path, clock, *, guest=None, guard=None, **kw):
+def _dark_unstarted_title():
+    return dataclasses.replace(foundation.DARKNESS_UNSTARTED, read_slot=_read_slot,
+                               slot_letters=_letters, slot_files=_files)
+
+
+def _dark_run(tmp_path, clock, *, guest=None, guard=None, title=None, **kw):
     guest = guest or DarkGuest(clock, save_key="disk3")
     guest.place = dict(DARK_START)
     kw.setdefault("accept", True)
@@ -795,7 +800,7 @@ def _dark_run(tmp_path, clock, *, guest=None, guard=None, **kw):
         guard = guard or MapGuard(states=DARK_STATES, on=DARK_FIRST_SCREEN)
     result = foundation.run_recon(
         _dark_manifest(tmp_path), guest=guest, guard=guard, holder="wish679-test",
-        audio_proof=_audio_proof(tmp_path), title=_dark_title(), **kw)
+        audio_proof=_audio_proof(tmp_path), title=title or _dark_title(), **kw)
     return guest, result
 
 
@@ -1562,7 +1567,7 @@ def test_the_unstarted_darkness_description_is_pinned():
     assert route_darkness.DARKNESS_UNSTARTED_LOADED == "A"
     route = (
         ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
-        ("A", "disk2_prompt", "key"), route_darkness.DISK2_INSERT,
+        ("A", "loaded_menu", "key"),
         ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
         ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", "yes_no", "key"),
         ("N", "continue", "key"), ("RET", "continue", "key"), ("RET", "world", "key"))
@@ -1571,10 +1576,67 @@ def test_the_unstarted_darkness_description_is_pinned():
     assert unstarted.control_letter == "F" and unstarted.after_letter == "G"
     assert unstarted.plain_keys == (("E", "loaded_menu"), ("B", "journal"))
     assert unstarted.min_waits == {**foundation.DARKNESS.min_waits, "yes_no": 45.0,
-                                   "continue": 10.0, "loaded_menu": 40.0}
-    assert unstarted.interstitials == foundation.DARKNESS.interstitials
+                                   "continue": 10.0}
+    # Slot A's load shows no disk 2 prompt, so the route has no step for it; the game may ask
+    # later, and the optional row answers it wherever it does.
+    assert unstarted.interstitials == (
+        ("disk2_prompt", ("insert", 0, "disk2", "SPACE"),
+         frozenset({"loaded_menu", "sheet", "journal", "journal_answer", "yes_no", "continue",
+                    "world"}), 1),
+        *foundation.DARKNESS.interstitials)
     assert not any(kind in ("write", "move") for _, _, kind in unstarted.route)
     assert foundation.DARKNESS.route[3][0] == "B"
+
+
+UNSTARTED_KEYS = ["P", "L", "P", "A", "V", "E", "B", "X", "RET", "N", "RET", "RET"]
+UNSTARTED_STATES = tuple(s for s in MEASURE_STATES if s != "sheet")
+
+
+def _unstarted_run(tmp_path, clock, guest, on=None, states=UNSTARTED_STATES):
+    return _dark_run(tmp_path, clock, guest=guest, title=_dark_unstarted_title(),
+                     guard=MapGuard(states=states, on=on or {}), accept=False, measure=True)
+
+
+def test_the_unstarted_darkness_route_needs_no_disk_2_prompt(tmp_path, clock):
+    guest = DarkGuest(clock, save_key="disk3")
+    guest, result = _unstarted_run(tmp_path, clock, guest)
+    assert result["error"] == "" and result["success"] is True
+    assert _keys(guest) == UNSTARTED_KEYS and guest.inserted == []
+
+
+def test_the_unstarted_darkness_route_answers_a_disk_2_prompt_met_while_waiting_for_the_journal(
+        tmp_path, clock):
+    guest = DarkGuest(clock, save_key="disk3")
+    on = {"disk2_prompt": lambda p: p.stem.endswith("-journal") and not guest.inserted,
+          "journal": lambda p: p.stem.endswith("-journal") and bool(guest.inserted)}
+    guest, result = _unstarted_run(tmp_path, clock, guest, on)
+    assert result["error"] == "" and result["success"] is True
+    order = [c[2] if c[0] == "press" else "insert" for c in guest.calls
+             if c[0] in ("press", "insert")]
+    assert order[6:10] == ["B", "insert", "SPACE", "X"]
+    assert guest.inserted == [(0, "C:/Amiga/Disks/wish679-wish679-test-disk2.adf")]
+    assert {"interstitial": "disk2_prompt", "key": "SPACE"} in result["events"]
+
+
+def test_the_unstarted_darkness_route_answers_a_disk_2_prompt_met_at_the_unguarded_yes_no(
+        tmp_path, clock):
+    guest = DarkGuest(clock, save_key="disk3")
+    on = {"disk2_prompt": lambda p: p.stem == "09-yes_no" and not guest.inserted}
+    guest, result = _unstarted_run(tmp_path, clock, guest, on)
+    assert result["error"] == "" and result["success"] is True
+    order = [c[2] if c[0] == "press" else "insert" for c in guest.calls
+             if c[0] in ("press", "insert")]
+    assert order[8:12] == ["RET", "insert", "SPACE", "N"]
+    assert {"interstitial": "disk2_prompt", "key": "SPACE"} in result["events"]
+    assert any(e.get("state") == "09-yes_no-after-1" for e in result["events"])
+
+
+def test_the_unstarted_darkness_measure_refuses_a_guard_map_with_no_disk_2_prompt(tmp_path, clock):
+    guest = DarkGuest(clock, save_key="disk3")
+    states = tuple(s for s in UNSTARTED_STATES if s != "disk2_prompt")
+    with pytest.raises(winuaesession.RouteError, match="disk2_prompt.*DF0 insert needs a guard on the prompt$"):
+        _unstarted_run(tmp_path, clock, guest, states=states)
+    assert guest.calls == []
 
 
 @pytest.mark.parametrize("command", ["accept", "reload"])

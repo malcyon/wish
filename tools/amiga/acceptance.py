@@ -810,6 +810,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             if kind == "insert" and key[0] == 0 and not _guards(guard, before):
                 raise RouteError(f"screen guard map lacks {before!r}: a DF0 insert needs a "
                                  f"guard on the prompt before it")
+        for screen, action, _, _ in title.interstitials:
+            if action[0] == "insert" and action[1] == 0 and not _guards(guard, screen):
+                raise RouteError(f"screen guard map lacks {screen!r}: a DF0 insert needs a "
+                                 f"guard on the prompt")
     if accept and journal_python is not None and (title is None or published_disk_one):
         (preflight or journal_preflight)(journal_python)
     min_waits = {**(title.min_waits if title else {}), **(min_waits or {})}
@@ -1244,7 +1248,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                         break
                     perform(key, kind, state, n)
                 name = f"{n:02d}-{state}"
-                if _guards(guard, state):
+                if title is not None:
+                    digest = reach(state, name, min_waits.get(state, 0), strict=True)
+                elif _guards(guard, state):
                     digest = until_guard(state, name, min_waits.get(state, 0),
                                          GUARD_POLL, GUARD_LIMIT)
                 else:

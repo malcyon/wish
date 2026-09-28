@@ -78,7 +78,8 @@ class AmigaTitle:
     Every entry must be a kept letter that some non-write step presses in that state. An `insert`
     may name drive 1, or drive 0 when the step before it is in `disk_prompts` (states where the
     game itself asks for a disk) and `strict`, naming a disk other than the one in DF0; an
-    interstitial insert names drive 1 only. The step before a `write` or `insert` step must be in
+    interstitial insert names drive 1, or drive 0 when its screen is a strict disk prompt and the
+    disk differs from DF0's. The step before a `write` or `insert` step must be in
     `strict`. `strict` names the states whose guard must match or the run stops; any other
     state falls back to a settled capture and marks the run as measuring.
     """
@@ -241,8 +242,12 @@ class AmigaTitle:
                 refuse(f"interstitial {row!r} presses a key with no WinUAE code")
             pressed = names
         elif action[0] == "insert":
-            if not (len(action) == 4 and type(action[1]) is int and action[1] == 1
-                    and action[2] in keys
+            # DF0 is safe to change only on a screen where the game itself asked for a disk, and
+            # an interstitial acts only when that screen's guard matches.
+            drive_ok = len(action) == 4 and type(action[1]) is int and (
+                action[1] == 1 or (action[1] == 0 and row[0] in self.disk_prompts
+                                   and row[0] in self.strict and action[2] != self.mounted[0]))
+            if not (drive_ok and action[2] in keys
                     and isinstance(action[3], str) and action[3].upper() in amigadrive.KEYS):
                 refuse(f"interstitial {row!r} needs (insert, drive 1, disk key, key): "
                        f"only DF1 may change while the game runs")
