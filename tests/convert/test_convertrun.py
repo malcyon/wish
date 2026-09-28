@@ -7,17 +7,23 @@ without either.
 
 from __future__ import annotations
 
+import pathlib
+
 import pytest
 from conftest import load_tools_module
-from gamedata import disk_dir
-from support.dossave import _save_dir, needs_dos_saves
+from gamedata import curse_dir, disk_dir
+from support.dossave import _game_dirs, _save_dir, needs_dos_saves
 
 from editor import saveplan
+from editor.convert import Source
+from editor.roster import Party
 
 convertrun = load_tools_module("convertrun")
 
 needs_disks = pytest.mark.skipif(disk_dir() is None,
                                  reason="needs the game disks")
+needs_curse_disks = pytest.mark.skipif(curse_dir() is None,
+                                       reason="needs Curse's game disks")
 
 
 @needs_dos_saves
@@ -45,6 +51,31 @@ def test_a_c64_conversion_is_the_output_of_save_as(tmp_path, monkeypatch):
     (written,) = [p for p in report["written"] if p.endswith(".D64")]
     (data,) = prepared[0].files.values()
     assert open(written, "rb").read() == data
+
+
+@needs_curse_disks
+def test_a_non_default_source_slot_converts_that_slots_party(tmp_path):
+    """`--source-slot` reaches a multi-slot DOS source: the archives' Curse
+    `Default files/Saves` holds A and B, and the C64 disk written for B holds
+    B's party, not A's default."""
+    folder = _game_dirs().get("CURSE")
+    if folder is None:
+        pytest.skip("needs the archives' Curse Default files/Saves")
+    b_names = [m.name for m in Party(Source.detect(folder, slot="B")).members]
+    assert b_names  # slot B exists and is not slot A's party
+    a_names = [m.name for m in Party(Source.detect(folder, slot="A")).members]
+    assert b_names != a_names
+
+    out = tmp_path / "out"
+    out.mkdir()
+    report = convertrun.write_via_save_as(folder, "c64", out, None,
+                                          curse_dir(), source_slot="B")
+
+    assert "refused" not in report
+    (written,) = [p for p in report["written"] if p.endswith(".D64")]
+    landed = [m.name for m in
+              Party(Source.detect(pathlib.Path(written))).members]
+    assert landed == b_names
 
 
 @needs_dos_saves

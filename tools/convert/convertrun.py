@@ -43,6 +43,7 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -82,12 +83,16 @@ def disks_dir(named: str | None = None) -> pathlib.Path | None:
 
 def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
                       game: pathlib.Path | None,
-                      disks: pathlib.Path) -> dict:
+                      disks: pathlib.Path,
+                      source_slot: str | None = None) -> dict:
     """Save As the source to `to` and say what landed.
 
-    `to` is `"c64"` or `"dos"`, the destination port. The report is
-    `saveasdrive.save_as`'s: `written`, `slot`, `losses` and `dropped`, or
-    `refused` and `error` when Save As would not publish it.
+    `to` is `"c64"` or `"dos"`, the destination port. `source_slot` picks
+    which saved game a multi-slot DOS folder or Amiga disk holds, the same
+    letter `editor.convert.Source.detect` takes; `None` keeps its default,
+    the alphabetically first slot. The report is `saveasdrive.save_as`'s:
+    `written`, `slot`, `losses` and `dropped`, or `refused` and `error` when
+    Save As would not publish it.
     """
     from PyQt6.QtWidgets import QApplication, QWidget
 
@@ -103,7 +108,8 @@ def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
         report = saveasdrive.save_as(
             window, source, to, folder,
             c64_folder=disks if to == "c64" else None,
-            dos_folder=game if to == "dos" else None)
+            dos_folder=game if to == "dos" else None,
+            source_slot=source_slot)
     finally:
         window.close()
     return report
@@ -325,6 +331,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--source", required=True,
                    help="the save to convert: a DOS folder, a SAVGAM<slot>."
                         "DAT/.PTY, or a .d64")
+    p.add_argument("--source-slot", default=None, metavar="L",
+                   help="which saved game to read off a multi-slot DOS "
+                        "folder or Amiga disk (default: the alphabetically "
+                        "first slot it holds)")
     p.add_argument("--to", required=True, choices=("c64", "dos"),
                    help="the destination port")
     p.add_argument("--out", required=True,
@@ -346,6 +356,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-play", action="store_true",
                    help="write the conversion and stop before the emulator")
     args = p.parse_args(argv)
+    if args.source_slot is not None and not re.fullmatch(
+            r"[A-Ja-j]", args.source_slot):
+        p.error("--source-slot is one letter, A to J")
 
     # Both destinations read C64 disks: a C64 destination for its icon and
     # `ANIMATE00` tables, and a C64 source going to DOS for the source title's
@@ -360,7 +373,8 @@ def main(argv: list[str] | None = None) -> int:
 
     report = {"direction": f"{args.source} -> {args.to}"}
     report["write"] = write_via_save_as(
-        pathlib.Path(args.source).expanduser(), args.to, out, game, disks)
+        pathlib.Path(args.source).expanduser(), args.to, out, game, disks,
+        source_slot=args.source_slot.upper() if args.source_slot else None)
     written = [pathlib.Path(p) for p in report["write"].get("written", [])]
     if not written:
         print(json.dumps(report, indent=2))

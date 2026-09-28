@@ -38,13 +38,19 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
             c64_folder: "str | pathlib.Path | None" = None,
             dos_folder: "str | pathlib.Path | None" = None,
             amiga_disk: "str | pathlib.Path | None" = None,
-            amiga_disk_one: "str | pathlib.Path | None" = None) -> dict:
+            amiga_disk_one: "str | pathlib.Path | None" = None,
+            source_slot: "str | None" = None) -> dict:
     """Open `source`, Save As it to `port` under `folder`, and say what landed.
 
     `window` is an `EditorBinding`, whose `game_files_for` finds the game data
     a route needs. The report carries `written` (paths), `slot`, `losses` and
     `dropped` from the conversion's accounting, or `refused` -- the exception's
     class and text -- when Save As refused or failed.
+
+    `source_slot` names which of a DOS folder's or an Amiga disk's several
+    saved games to read, the same letter `editor.convert.Source.detect`
+    itself takes; `None` keeps its own default, the alphabetically first slot
+    the source holds.
     """
     from editor import saveplan
     from editor.convert import Source
@@ -54,7 +60,7 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
     path = destination_path(port, pathlib.Path(folder))
     report["destination"] = str(path)
     try:
-        detected = Source.detect(source)
+        detected = Source.detect(source, slot=source_slot)
         party = Party(detected)
         assets = saveplan.resolve_assets(
             Source.of_snapshot(saveplan.prepare(party)), port,
