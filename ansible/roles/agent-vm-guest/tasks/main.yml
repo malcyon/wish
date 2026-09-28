@@ -870,12 +870,20 @@
 - name: No scheduled live tests
   tags: emulator_tests
   block:
+    - name: Check for the emulator-tests timer
+      ansible.builtin.stat:
+        path: "{{ ansible_user_dir }}/.config/systemd/user/emulator-tests.timer"
+      register: emulator_tests_timer
+
     - name: Stop and disable the emulator-tests timer
-      ansible.builtin.command: systemctl --user disable --now emulator-tests.timer
+      ansible.builtin.systemd:
+        name: emulator-tests.timer
+        scope: user
+        enabled: false
+        state: stopped
+      when: emulator_tests_timer.stat.exists
       environment:
         XDG_RUNTIME_DIR: "/run/user/{{ ansible_user_uid }}"
-      changed_when: false
-      failed_when: false
 
     - name: Remove the emulator-tests units
       ansible.builtin.file:
