@@ -168,8 +168,25 @@ def sha256_file(path: pathlib.Path) -> str:
 
 
 def _toml_str(value: str) -> str:
-    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
+    """A TOML basic string: a raw newline or other control character is not
+    allowed inside one, so those are written as escapes."""
+    out = []
+    for c in value:
+        if c == "\\":
+            out.append("\\\\")
+        elif c == '"':
+            out.append('\\"')
+        elif c == "\n":
+            out.append("\\n")
+        elif c == "\r":
+            out.append("\\r")
+        elif c == "\t":
+            out.append("\\t")
+        elif ord(c) < 0x20 or ord(c) == 0x7F:
+            out.append(f"\\u{ord(c):04X}")
+        else:
+            out.append(c)
+    return '"' + "".join(out) + '"'
 
 
 def write_provenance(path: pathlib.Path, fields: dict, sha256: dict[str, str]) -> None:
@@ -626,12 +643,28 @@ def correct_what(name: str, *, what: str, reason: str,
     manifest is what is being carried over unchanged.
     """
     root = root or tree_root()
+    if not what.strip():
+        raise ValueError("--what is empty")
+    if not reason.strip():
+        raise ValueError("--reason is empty")
     entries = [e for e in list_specimens(root) if e.get("name") == name]
     if not entries:
         raise ValueError(f"no specimen named {name!r} under {root}")
+    if len(entries) > 1:
+        where = ", ".join(str(e.get("_provenance", e.get("_dir"))) for e in entries)
+        raise ValueError(f"{name!r} is registered {len(entries)} times ({where}) "
+                         f"-- correcting one of them is a guess")
     entry = entries[0]
     if entry.get("_no_provenance"):
         raise ValueError(f"{name}: has no provenance.toml")
+    if what == entry["what"]:
+        raise ValueError(f"{name}: --what is the text it already has")
+    known = set(REQUIRED_FIELDS) | {"command", "source", "issue_note", "sha256"}
+    unknown = sorted(k for k in entry if not k.startswith("_") and k not in known)
+    if unknown:
+        raise ValueError(f"{name}: provenance.toml has key(s) "
+                         f"{', '.join(unknown)} that the writer would drop "
+                         f"-- teach write_provenance about them first")
     manifest = dict(entry.get("sha256", {}))
     prov_path = pathlib.Path(entry["_provenance"])
     for fname, expected in manifest.items():
@@ -648,9 +681,28 @@ def correct_what(name: str, *, what: str, reason: str,
     old_note = fields.get("issue_note")
     fields["what"] = what
     fields["issue_note"] = f"{old_note}\n{record}" if old_note else record
-    prov_path.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
-    write_provenance(prov_path, fields, manifest)
-    make_read_only(prov_path)
+
+    # Written beside the original and swapped in only once it parses back to
+    # the same manifest, so a failure leaves the old file as it was.  Replacing
+    # a file needs its directory writable, which a specimen directory is not.
+    parent = prov_path.parent
+    parent_mode = stat.S_IMODE(parent.stat().st_mode)
+    tmp = parent / f".{prov_path.name}.new"
+    try:
+        parent.chmod(parent_mode | stat.S_IWUSR)
+        try:
+            write_provenance(tmp, fields, manifest)
+            back = read_provenance(tmp)
+            if back.get("sha256") != manifest or back.get("what") != what \
+                    or back.get("issue_note") != fields["issue_note"]:
+                raise ValueError(f"{name}: the rewritten provenance.toml does "
+                                 f"not read back as written; left unchanged")
+            os.replace(tmp, prov_path)
+        finally:
+            tmp.unlink(missing_ok=True)
+    finally:
+        make_read_only(prov_path)
+        parent.chmod(parent_mode)
     return {"name": name, "was": entry["what"], "now": what,
             "issue_note": fields["issue_note"]}
 

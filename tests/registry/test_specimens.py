@@ -678,3 +678,103 @@ def test_correct_what_refuses_a_specimen_that_no_longer_matches(tree, one_source
     (d / "GNOMF1.CHA").write_bytes(b"changed")
     with pytest.raises(ValueError, match="no longer matches"):
         specimens.correct_what("gnomf1", what="x", reason="y", root=tree)
+
+
+def _correct(tree, **kw):
+    kw.setdefault("what", "a new text")
+    kw.setdefault("reason", "the old one was wrong")
+    return specimens.correct_what("gnomf1", root=tree, today="2026-09-28", **kw)
+
+
+def test_correct_what_twice_keeps_every_earlier_note(tree, one_source):
+    prov = _add(tree, one_source) / "provenance.toml"
+    _correct(tree, what="second", reason="first reason")
+    _correct(tree, what="third", reason="second reason")
+    fields = specimens.read_provenance(prov)
+    assert fields["what"] == "third"
+    note = fields["issue_note"]
+    assert "rolled a gnome" in note and "first reason" in note
+    assert "second reason" in note and "'second'" in note
+    assert specimens.check_specimens(tree) == []
+
+
+def test_correct_what_extends_an_existing_issue_note(tree, one_source):
+    prov = _add(tree, one_source) / "provenance.toml"
+    prov.chmod(stat.S_IRWXU)
+    prov.write_text(prov.read_text().replace(
+        "[sha256]", 'issue_note = "earlier note"\n\n[sha256]'))
+    prov.chmod(stat.S_IRUSR)
+    _correct(tree)
+    note = specimens.read_provenance(prov)["issue_note"]
+    assert note.startswith("earlier note\n")
+    assert "the old one was wrong" in note
+
+
+def test_correct_what_round_trips_newlines_and_control_characters(tree, one_source):
+    prov = _add(tree, one_source) / "provenance.toml"
+    what = 'line one\nline "two"\r\n\ttabbed \\ \x01'
+    reason = "because\nof this"
+    _correct(tree, what=what, reason=reason)
+    fields = specimens.read_provenance(prov)
+    assert fields["what"] == what
+    assert reason in fields["issue_note"]
+    assert len(specimens.list_specimens(tree)) == 1
+
+
+def test_correct_what_failed_write_leaves_the_original_read_only(
+        tree, one_source, monkeypatch):
+    d = _add(tree, one_source)
+    prov = d / "provenance.toml"
+    before = prov.read_bytes()
+    dir_mode = stat.S_IMODE(d.stat().st_mode)
+
+    def boom(self, *a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(pathlib.Path, "write_text", boom)
+    with pytest.raises(OSError):
+        _correct(tree)
+    monkeypatch.undo()
+    assert prov.read_bytes() == before
+    assert not prov.stat().st_mode & stat.S_IWUSR
+    assert stat.S_IMODE(d.stat().st_mode) == dir_mode
+    assert sorted(p.name for p in d.iterdir()) == sorted(
+        ["GNOMF1.SPC", "GNOMF1.CHA", "provenance.toml"])
+
+
+def test_correct_what_refuses_a_name_registered_twice(tree, one_source):
+    _add(tree, one_source)
+    specimens.add("amiga", "gnomf1", one_source, title="Pool of Radiance",
+                  issue="#84 (x)", made_by="t", what="w", root=tree)
+    with pytest.raises(ValueError, match="registered 2 times"):
+        _correct(tree)
+
+
+@pytest.mark.parametrize("kw", [{"what": ""}, {"what": "  \n"},
+                                {"reason": ""}, {"reason": " \t"}])
+def test_correct_what_refuses_empty_input(tree, one_source, kw):
+    prov = _add(tree, one_source) / "provenance.toml"
+    before = prov.read_bytes()
+    with pytest.raises(ValueError, match="empty"):
+        _correct(tree, **kw)
+    assert prov.read_bytes() == before
+
+
+def test_correct_what_refuses_a_no_op(tree, one_source):
+    prov = _add(tree, one_source) / "provenance.toml"
+    before = prov.read_bytes()
+    with pytest.raises(ValueError, match="already has"):
+        _correct(tree, what="rolled a gnome in the game's own creation screens")
+    assert prov.read_bytes() == before
+
+
+def test_correct_what_refuses_rather_than_drop_an_unknown_key(tree, one_source):
+    prov = _add(tree, one_source) / "provenance.toml"
+    prov.chmod(stat.S_IRWXU)
+    prov.write_text(prov.read_text().replace(
+        "[sha256]", 'mystery = "keep me"\n\n[sha256]'))
+    prov.chmod(stat.S_IRUSR)
+    before = prov.read_bytes()
+    with pytest.raises(ValueError, match="mystery"):
+        _correct(tree)
+    assert prov.read_bytes() == before
