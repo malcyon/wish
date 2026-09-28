@@ -1167,6 +1167,17 @@ class PoolRun:
         return S.MOVE_SUBBAR in screen.row(24)
 
     @staticmethod
+    def _temple_is_quiet(screen) -> bool:
+        """Row 24 and the message window (rows 17-23) hold no letter or digit.
+
+        Pool draws this between the crossing key and `INSERT SIDE # 3`: the
+        command bar is cleared while the drive reads track 18, and the prompt
+        follows (`temple-route-b`, `05-temple-lost-event`). Nothing on it asks
+        for input, so the transition waits on it rather than stopping."""
+        return not any(re.search(r"[A-Z0-9]", screen.row(r).upper())
+                       for r in range(17, 25))
+
+    @staticmethod
     def _temple_is_greeting(screen) -> bool:
         text = screen.text().upper()
         return ("WELCOME TO THE TEMPLE," in text
@@ -1274,7 +1285,7 @@ class PoolRun:
     def _temple_transition(self, n: int, before: tuple[int, ...],
                            expected: tuple[int, ...], counters: dict) -> dict:
         limit = min(self.clock() + 90, self.temple_input_deadline)
-        disk_visible = continuation_visible = False
+        disk_visible = continuation_visible = quiet_seen = False
         settled = None
         while self.clock() < limit:
             screen = self.sess.screen()
@@ -1321,6 +1332,15 @@ class PoolRun:
             place = self._temple_place(state)
             if state["mode"] == S.COMBAT:
                 self._temple_stop("encounter", "encounter after movement", screen)
+            if (place in (before, expected)
+                    and self._temple_is_quiet(screen)):
+                if not quiet_seen:
+                    self.log.emit("temple-quiet-screen", move=n + 1,
+                                  place=place)
+                quiet_seen = True
+                settled = None
+                time.sleep(0.3)
+                continue
             if place == expected:
                 if state["area_pending"] or state["mode"] != S.DUNGEON:
                     time.sleep(0.3)

@@ -290,6 +290,12 @@ class _TempleSession:
         # pre-crossing place and move bar, as that run did.
         self._pre_crossing_place = None
         self.crossing_lag = 0
+        # `temple-route-b` then read the new place under a quiet screen: the
+        # old status line, row 24 and the message window blank, before
+        # `INSERT SIDE # 3` appeared. `crossing_quiet` counts those reads.
+        self.crossing_quiet = 0
+        self.quiet_reads = 2
+        self.quiet_text = ""
 
     def mon(self, _timeout):
         return _TempleMonitor(self)
@@ -298,6 +304,9 @@ class _TempleSession:
         if self.crossing_lag:
             place, phase = self._pre_crossing_place, "move"
             self.crossing_lag -= 1
+        elif self.crossing_quiet:
+            place, phase = self._pre_crossing_place, "quiet"
+            self.crossing_quiet -= 1
         else:
             place, phase = self.place, self.phase
         rows = [""] * 25
@@ -309,6 +318,8 @@ class _TempleSession:
             rows[20] = ("INSERT SIDE # 3" if phase == "side3"
                         else "INSERT SIDE # 4")
             rows[24] = "AND PRESS ANY KEY."
+        elif phase == "quiet":
+            rows[20] = self.quiet_text
         elif phase == "continue":
             rows[24] = "PRESS BUTTON OR RETURN TO CONTINUE."
         elif phase == "yes-no":
@@ -368,6 +379,7 @@ class _TempleSession:
             self._pre_crossing_place = self.place
             self.place = (0, 0, 4, 1)
             self.crossing_lag = 1
+            self.crossing_quiet = self.quiet_reads
             self.phase = "side4" if self.unsafe == "other-side" else "side3"
         elif n == 4:
             self.place = (0, 1, 4, 1)
@@ -478,6 +490,9 @@ def test_temple_probe_reaches_service_list_and_sends_no_purchase_or_save(
     assert all((tmp_path / (x["stem"] + ext)).is_file()
                for x in run.temple_checkpoints for ext in (".txt", ".png", ".json"))
     assert any(args[0] == "temple-checkpoint" for args, _ in events)
+    assert [kwargs for args, kwargs in events
+            if args[0] == "temple-quiet-screen"] == [
+        {"move": 3, "place": (0, 0, 4, 1)}]
 
 
 @pytest.mark.parametrize("unsafe,maximum_moves", [
@@ -534,6 +549,51 @@ def test_temple_probe_pins_the_lost_stop_the_live_m_route_hit(
         run.temple_probe("BRUTUS")
     assert ("movement 1 reached (0, 0, 4, 1), expected (20, 15, 4, 1)"
             in str(info.value))
+
+
+def test_temple_quiet_screen_that_never_resolves_stops_at_the_transition_limit(
+        tmp_path, monkeypatch):
+    """A quiet screen gets a wait, not an unbounded one: with the side-3
+    prompt never drawn, the crossing stops at the 90-second transition limit
+    and sends nothing further."""
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    session.quiet_reads = 10 ** 6
+    with pytest.raises(A.StepFailed) as info:
+        run.temple_probe("BRUTUS")
+    assert "movement 3 did not settle within 90 seconds" in str(info.value)
+    assert session.moves == list("KKI")
+    assert "side3" not in session.keys
+
+
+def test_temple_blank_bar_with_message_text_is_not_quiet(tmp_path, monkeypatch):
+    """Text in the message window with row 24 blank is an event, not the
+    crossing's quiet frame, and still stops the route."""
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    session.quiet_text = "A GROUP OF KOBOLDS"
+    with pytest.raises(A.StepFailed) as info:
+        run.temple_probe("BRUTUS")
+    assert "unexpected screen after movement" in str(info.value)
+    assert session.moves == list("KKI")
+
+
+def test_temple_quiet_screen_at_an_unplanned_place_still_stops(
+        tmp_path, monkeypatch):
+    """The wait covers only the place before the key and the one expected
+    after it; a quiet screen anywhere else stops at once."""
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+
+    def move_key(move):
+        session.moves.append(move)
+        session._pre_crossing_place = session.place
+        session.place = (0, 0, 4, 1)
+        session.crossing_quiet = 10 ** 6
+
+    session.move_key = move_key
+    with pytest.raises(A.StepFailed) as info:
+        run.temple_probe("BRUTUS")
+    assert ("movement 1 reached (0, 0, 4, 1), expected (20, 15, 4, 0)"
+            in str(info.value))
+    assert session.moves == ["K"]
 
 
 @pytest.mark.parametrize("prompt", ["INSERT SIDE # 3", "YES NO",
