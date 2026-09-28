@@ -269,13 +269,23 @@ SPICE carries audio, which is why it is used instead of VNC: WinUAE is not much 
 | thing | how |
 |---|---|
 | WinUAE | installed at first logon from the unattend ISO, so no download is needed in the guest, to `C:\Program Files\WinUAE`; excluded from Defender real-time scanning |
-| WinUAE harness | The role stages the reviewed `tools/amiga/winuae.ps1` and `tools/amiga/goldbox-a500.uae` in the unattend ISO; guest setup installs them at `C:\Amiga\winuae.ps1` and `C:\Amiga\configs\goldbox-a500.uae` and verifies both SHA-256 hashes. Re-run the playbook and `winvm guest-setup` to update an existing guest. |
+| WinUAE harness | The role stages `tools/amiga/winuae.ps1` and `tools/amiga/goldbox-a500.uae` in the unattend ISO; guest setup installs them at `C:\Amiga\winuae.ps1` and `C:\Amiga\configs\goldbox-a500.uae` and verifies both SHA-256 hashes. |
 | Kickstart ROMs | WinUAE ships none. `winvm_kickstart_src` is staged into the unattend ISO and copied to `C:\Amiga\Kickstarts`; raw dumps are recognised by CRC, and Cloanto/Amiga Forever ROMs (they begin `AMIROMTYPE1`) need `rom.key` in the same directory |
 | Defender exclusions | `winvm_defender_exclusions`, applied at first logon, so a change means a rebuild; add one to a running guest with `Add-MpPreference -ExclusionPath 'C:\Amiga'` in an elevated PowerShell |
 | VICE | unpacked, not installed, to `C:\VICE`, binary at `C:\VICE\bin\x64sc.exe`; `winvm_install_vice: false` skips it, and the log at `C:\Windows\Temp\guest-setup.log` has the result under `install VICE` |
 | VICE settings | `vice.ini.j2`, written to the guest's profile at first logon only if absent; the binary monitor is on at `127.0.0.1:6502` (`winvm_vice_binary_monitor`, `winvm_vice_binary_monitor_port`) |
 | JiffyDOS | `winvm_jiffydos_src` into `C:\C64\JiffyDOS`; empty skips it, and VICE uses the stock kernal |
 | QXL display driver | installed with `pnputil` from the virtio ISO (`winvm_install_qxl`); on a guest without the driver, run `pnputil /add-driver E:\qxldod\w10\amd64\qxldod.inf /install` from the attached virtio volume, then reboot |
+
+After the UNATTEND ISO has been ejected, update an idle WinUAE guest directly from the repository root. Set `winvm_guest` to `winvm_admin_user@winvm_ip` from the inventory, then compare the printed SHA-256 hashes before using the launcher:
+
+```bash
+winvm_guest='<winvm_admin_user>@<winvm_ip>'
+winvm scp tools/amiga/winuae.ps1 "${winvm_guest}:C:/Amiga/winuae.ps1"
+winvm scp tools/amiga/goldbox-a500.uae "${winvm_guest}:C:/Amiga/configs/goldbox-a500.uae"
+sha256sum tools/amiga/winuae.ps1 tools/amiga/goldbox-a500.uae
+winvm ssh 'Get-FileHash -Algorithm SHA256 C:\Amiga\winuae.ps1, C:\Amiga\configs\goldbox-a500.uae'
+```
 
 ### The `winvm` command
 
@@ -293,7 +303,7 @@ SPICE carries audio, which is why it is used instead of VNC: WinUAE is not much 
 | `winvm revert` | Throw away everything since golden, in about a second |
 | `winvm shot [file]` | Framebuffer screenshot; works regardless of session state |
 | `winvm ssh [cmd...]` | ssh into the guest as `winvm_admin_user` |
-| `winvm guest-setup` | Re-run the first-logon install script (WinUAE, VICE, QXL, ROMs) on a running guest, so a role change reaches it without a rebuild; the static IP and Defender exclusions are set in autounattend.xml and still need a rebuild |
+| `winvm guest-setup` | Re-run the first-logon install script (WinUAE, VICE, QXL, ROMs) on a running guest with the UNATTEND ISO attached; the static IP and Defender exclusions are set in autounattend.xml and still need a rebuild |
 | `winvm scp ...` | `scp` with the guest's options |
 
 ### Driving it from the Ubuntu guest
