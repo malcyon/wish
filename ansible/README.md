@@ -269,6 +269,7 @@ SPICE carries audio, which is why it is used instead of VNC: WinUAE is not much 
 | thing | how |
 |---|---|
 | WinUAE | installed at first logon from the unattend ISO, so no download is needed in the guest, to `C:\Program Files\WinUAE`; excluded from Defender real-time scanning |
+| WinUAE harness | The role stages the reviewed `tools/amiga/winuae.ps1` and `tools/amiga/goldbox-a500.uae` in the unattend ISO; guest setup installs them at `C:\Amiga\winuae.ps1` and `C:\Amiga\configs\goldbox-a500.uae` and verifies both SHA-256 hashes. Re-run the playbook and `winvm guest-setup` to update an existing guest. |
 | Kickstart ROMs | WinUAE ships none. `winvm_kickstart_src` is staged into the unattend ISO and copied to `C:\Amiga\Kickstarts`; raw dumps are recognised by CRC, and Cloanto/Amiga Forever ROMs (they begin `AMIROMTYPE1`) need `rom.key` in the same directory |
 | Defender exclusions | `winvm_defender_exclusions`, applied at first logon, so a change means a rebuild; add one to a running guest with `Add-MpPreference -ExclusionPath 'C:\Amiga'` in an elevated PowerShell |
 | VICE | unpacked, not installed, to `C:\VICE`, binary at `C:\VICE\bin\x64sc.exe`; `winvm_install_vice: false` skips it, and the log at `C:\Windows\Temp\guest-setup.log` has the result under `install VICE` |

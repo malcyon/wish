@@ -252,6 +252,31 @@ Step 'copy JiffyDOS ROMs' {
 }
 {% endif %}
 
+{% if winvm_install_winuae %}
+# --- WinUAE harness ---------------------------------------------------------
+# The launcher and machine settings are repository files staged on UNATTEND.
+# Re-running guest-setup updates the guest to the current reviewed copies.
+Step 'install WinUAE harness files' {
+    $u = Get-Volume | Where-Object { $_.FileSystemLabel -eq 'UNATTEND' } | Select-Object -First 1
+    if (-not $u) { throw 'UNATTEND volume not found' }
+    foreach ($file in @('winuae.ps1', 'goldbox-a500.uae')) {
+        $src = '{0}:\{1}' -f $u.DriveLetter, $file
+        if (-not (Test-Path -LiteralPath $src)) { throw "not found: $src" }
+        $dst = if ($file -eq 'winuae.ps1') {
+            'C:\Amiga\winuae.ps1'
+        } else {
+            'C:\Amiga\configs\goldbox-a500.uae'
+        }
+        New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
+        Copy-Item -LiteralPath $src -Destination $dst -Force
+        $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $src).Hash
+        $guestHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $dst).Hash
+        if ($sourceHash -ne $guestHash) { throw "copy verification failed: $dst" }
+        Log "wrote $dst SHA256 $guestHash"
+    }
+}
+{% endif %}
+
 # --- VICE settings ----------------------------------------------------------
 # VICE reads %APPDATA%\vice\vice.ini, which is per-user -- so this writes into
 # {{ winvm_admin_user }}'s profile explicitly rather than trusting $env:APPDATA,
