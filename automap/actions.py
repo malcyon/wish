@@ -10,7 +10,7 @@ the screen: `2` is COMBAT. An action that is illegal in combat refuses at
 `apply` time and not only in its tooltip, because a button's enabled state is
 one poll interval stale and a fight can start inside that interval.
 
-**Every address here is per title, and comes from `goldbox.c64_port.Game`** -- the
+**Every address here is per title, and comes from `goldbox.c64_save.C64Container`** -- the
 slot area, the item area and the roster page all follow `save_load_address`,
 so Curse and Silver Blades are written at `$4F00`, `$5B00` and `$6700` and not
 at Pool of Radiance's `$4D00`, `$5900` and `$8300` (#29).
@@ -811,7 +811,7 @@ class LevelUp(Action):
     (`tests/curse_of_the_azure_bonds/test_cursetrainer.py`).
 
     **Which title, though, is a question, and it is asked.** `game` is the
-    `goldbox.c64_port.Game` the session is, and every table and every derivation is
+    `goldbox.c64_save.C64Container` the session is, and every table and every derivation is
     taken from it. None means Pool of Radiance, because every caller written
     before there was a second title meant that one. A title whose trainer
     nobody has measured is refused by `level_up_blockers` before a byte is

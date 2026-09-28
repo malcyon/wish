@@ -55,7 +55,7 @@ from support.cursetables import (
     _swap_art_planes,
 )
 
-from goldbox import c64_port, geo
+from goldbox import c64_port, c64_save, geo, titles
 from goldbox import spells as por_spells
 from goldbox.d64 import D64, split_load_address
 from goldbox.savegame import SaveGameError, load_save
@@ -148,7 +148,7 @@ def test_every_title_has_its_own_save_file_name():
 
 
 def test_a_bad_key_names_the_ones_that_work():
-    with pytest.raises(c64_port.UnknownGameError) as exc:
+    with pytest.raises(titles.UnknownTitleError) as exc:
         c64_port.by_key("pool-of-radiance-2")
     assert "curse-of-the-azure-bonds" in str(exc.value)
 
@@ -638,7 +638,7 @@ def test_every_shipped_curse_icon_is_a_weapon_and_a_head():
             break
     if payload is None:              # side B's SAVEAZURE is a 2032-byte stub
         pytest.skip("no Curse side here carries a whole SAVEAZURE")
-    base = c64_port.ICON_TABLE_OFFSET
+    base = c64_save.ICON_TABLE_OFFSET
     unmade = [payload[base + i * ICON_SIZE:][:18].hex()
               for i in range(ICON_COUNT)
               if any(payload[base + i * ICON_SIZE:][:18])

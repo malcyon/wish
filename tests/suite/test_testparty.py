@@ -27,9 +27,9 @@ import gamedata
 import pytest
 
 from goldbox import c64_port, derive, levels, levelup, savegame
-from goldbox.c64_port import CLASS_BITS_CLASSIC
 from goldbox.d64 import D64
 from goldbox.record import CharacterRecord
+from goldbox.titles import CLASS_BITS_CLASSIC
 from tools.suite import testparty
 
 GAME = c64_port.by_key("pool-of-radiance")

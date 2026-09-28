@@ -12,8 +12,7 @@ shipped on)`'s stage 7.**  `goldbox.games.Game` held the disk geometry for six
 titles and `Container` held the payload map for three, so a reader asking
 *"where does this save load?"* and *"what is at `+$C7`?"* went to two
 different classes about one file, and the two kept their own copies of the
-same offsets.  They are one class now, with six rows; `goldbox.c64_port.Game`
-is this class under its old name until stage 9 deletes the alias.
+same offsets.  They are one class now, with six rows; `goldbox.c64_port` holds the six rows.
 
 **Three of the six rows have no measured payload map**, and that is the point
 of `measured` rather than an oversight.  Champions of Krynn, Death Knights of
@@ -73,7 +72,6 @@ from .titles import (
 
 __all__ = [
     "C64Container",
-    "Container",
     "Region",
     "HEADER_SIZE",
     "SLOT_STRIDE",
@@ -511,11 +509,6 @@ class C64Container:
     def slot_count(self) -> int:
         """`party_slots`, under the name `goldbox.games.Game` gave it."""
         return self.party_slots
-
-
-#: `#470`'s pre-stage-7 name for this class, kept until stage 9 moves the
-#: callers off it.  `goldbox.c64_port.Game` is the same object again.
-Container = C64Container
 
 
 #: What every entry of Pool of Radiance's zeroing list was measured by, said

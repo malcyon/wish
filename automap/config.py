@@ -27,7 +27,7 @@ _log = logging.getLogger("wish.automap.config")
 #: **A Pool of Radiance fact**, which is why it is keyed like one below.
 DEFAULT_FAST_TRAVEL_TARGETS: tuple[int, ...] = (0, 20, 21)
 
-#: `goldbox.c64_port.Game.key` for Pool of Radiance, the title an unkeyed choice
+#: `goldbox.c64_save.C64Container.key` for Pool of Radiance, the title an unkeyed choice
 #: belongs to and the only one with a default tick. Curse and Silver Blades have
 #: area tables too. Spelled out rather than imported: this module is the
 #: settings file and has no other business with the game descriptors.
@@ -45,7 +45,7 @@ DEFAULT_FAST_TRAVEL_BY_GAME: dict[str, tuple[int, ...]] = {
 def game_key(game=None) -> str:
     """The key to file a fast-travel choice under.
 
-    Takes a `goldbox.c64_port.Game`, a key string, or None -- and None is Pool of
+    Takes a `goldbox.c64_save.C64Container`, a key string, or None -- and None is Pool of
     Radiance, because every choice made before this setting was keyed at all
     was Pool of Radiance's. A `Game.title` is **not** accepted: the file is
     keyed by the stable identifier, never by display text.
@@ -164,7 +164,7 @@ class Settings:
     # search beside the open save. Empty means nobody has set one, and
     # `editor.files.open_start_dir` falls back to the automatic behaviour.
     saves_folder: str = ""
-    # Per-title disk folders, keyed by `Game.key` (#22). This is the whole of
+    # Per-title disk folders, keyed by `C64Container.key` (#22). This is the whole of
     # what `paths.resolve_disks` reads for a title now -- `disks` above is no
     # longer a fallback (`#357 (The automapper reads the shared Game disks
     # folder, so setting a title's own folder does not make it map that
@@ -231,7 +231,7 @@ class Settings:
     # heights means nobody has dragged anything.
     editor_rows: list[int] | None = None
     # Which areas the Fast Travel dropdown offers, by `goldbox/areas.py` id, and
-    # **keyed by `goldbox.c64_port.Game.key`** -- an area id means nothing without a
+    # **keyed by `goldbox.c64_save.C64Container.key`** -- an area id means nothing without a
     # title, and fasttraveling on Pool of Radiance's ids in another game's machine is
     # what issue #14 was.
     #

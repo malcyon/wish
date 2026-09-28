@@ -13,8 +13,8 @@ supports)`): `editor/convert.py`'s `ConvertDialog` was the only route once
 the flag came off, and two menu items reaching the same conversion was
 always the state the flag's own removal was meant to end, condition 7. The
 module **keeps its name**: `editor/convert.py` imports `GameFiles`,
-`rehearse`, `pane_text`, `log_unshown_losses`, `NO_DISKS`,
-`NO_DISKS_TITLE` and `DROPPED_HEADING` from it at module load, and so do
+`rehearse`, `pane_text`, `log_unshown_losses`, `NO_DISKS`
+and `NO_DISKS_TITLE` from it at module load, and so do
 several tools and test files, so renaming the file to match what it now is
 would touch every one of them for no behaviour change. What is gone is only
 `class DosImportDialog` and the strings only it used.
@@ -93,7 +93,7 @@ import pathlib
 from collections.abc import Collection, Mapping
 from typing import Any
 
-from goldbox import c64_port, dos_codec
+from goldbox import c64_port, dos_codec, titles
 from goldbox.iconparts import IconParts
 from goldbox.portraits import PortraitTables
 from goldbox.savegame import SaveGame0, SaveGame1
@@ -113,9 +113,6 @@ _log = logging.getLogger("wish.editor.dosimport")
 #: sat under `Conversion Info` with no heading of its own (2026-09-06); the
 #: now-deleted `DosImportDialog`'s own pane never drew it either, both
 #: before and after that date.
-#: It stays defined because `editor/convert.py` still imports the name at
-#: module load (`DROPPED_HEADING = dosimport.DROPPED_HEADING`); deleting it
-#: here would break that import.
 DROPPED_HEADING = "Wish cannot currently convert these fields:"
 
 #: The refusal when the player's game disks cannot be found, which is the one
@@ -209,12 +206,12 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     party = dos_codec.read_party(folder, slot)
     try:
         game = c64_port.by_key(party[0].deltas.key)
-    except c64_port.UnknownGameError:
+    except titles.UnknownTitleError:
         # Pools of Darkness is the one title this reads and `goldbox/c64_port.py`
         # does not list, because there is no C64 port to convert it to. Before
         # the title came from the save, that folder ran on into `to_neutral`
         # and got Donald's own sentence for exactly this case (#176). Without
-        # this, `UnknownGameError` is not a `DosRecordError`, so the dialog
+        # this, `UnknownTitleError` is not a `DosRecordError`, so the dialog
         # falls through to "This save cannot be converted." and the player is
         # told less than we know.
         raise dos_codec.WrongTitleError(

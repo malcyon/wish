@@ -40,7 +40,6 @@ __all__ = [
     "READ_TARGETS",
     "C64Deltas",
     "DELTAS_BY_KEY",
-    "RECORD_SHAPES",
     "deltas_for",
     "span_of",
     "memorised_span",
@@ -349,9 +348,6 @@ SILVER_BLADES_RECORD = C64Deltas(
 DELTAS_BY_KEY: dict[str, C64Deltas] = {
     s.key: s for s in (POOL_OF_RADIANCE_RECORD, CURSE_RECORD,
                        SILVER_BLADES_RECORD)}
-
-#: Pre-#470 name, kept until stage 9 moves the callers off it.
-RECORD_SHAPES = DELTAS_BY_KEY
 
 
 def deltas_for(game=None) -> C64Deltas:

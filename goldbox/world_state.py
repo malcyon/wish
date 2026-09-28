@@ -94,7 +94,7 @@ class WorldState:
     wallset: "tuple[int, int, int]"
     #: The quest flags, one value per address in order -- 217 addresses for
     #: Pool of Radiance and 224 for Curse of the Azure Bonds and Secret of
-    #: the Silver Blades (`c64_save.Container.quest_flags`).
+    #: the Silver Blades (`c64_save.C64Container.quest_flags`).
     flags: "tuple[int, ...]"
     #: The per-script scratch, by address.
     scratch: "dict[int, int]"
@@ -112,7 +112,7 @@ class WorldState:
     #: area: they ask `has_not_set_out`.
     set_out: bool
     #: The later titles' own copied header words, by address: `+$E7`-`+$E9`
-    #: and `+$FD`-`+$FE` off `$4900` (`c64_save.Container.copied`,
+    #: and `+$FD`-`+$FE` off `$4900` (`c64_save.C64Container.copied`,
     #: `dos_codec.LATER_HEADER_COPIED`).  Pool of Radiance copies none of them and
     #: they are read anyway, so one shape answers for every title.
     header: "dict[int, int]"
@@ -186,7 +186,7 @@ class PodWorldState:
 
 
 #: The later titles' own copied header words, both runs
-#: `c64_save.Container.copied` and `goldbox.dos_codec.LATER_HEADER_COPIED` name --
+#: `c64_save.C64Container.copied` and `goldbox.dos_codec.LATER_HEADER_COPIED` name --
 #: `+$E7`-`+$E9` and `+$FD`-`+$FE` off `$4900`.  Curse of the Azure Bonds
 #: copies `+$E7`-`+$E8`; Secret of the Silver Blades copies all five; Pool of
 #: Radiance copies none.  Read for every title regardless, so a
@@ -356,7 +356,7 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
 
     Pool of Radiance is the only Amiga container this project reads a party
     out of, so `title` is always its own and `header` is read but empty of
-    meaning -- Pool of Radiance's own `c64_save.Container.copied` is empty.
+    meaning -- Pool of Radiance's own `c64_save.C64Container.copied` is empty.
     Generalises `goldbox.amiga_por.por_state_from_amiga`, which is now a
     one-line wrapper that checks the file length and nothing else -- it
     refused an outdoor save until 2026-09-07, when the two bytes one holds

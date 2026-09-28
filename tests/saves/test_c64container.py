@@ -25,7 +25,8 @@ import dataclasses
 
 import pytest
 
-from goldbox import c64_port, c64_save, titles
+from editor import convert
+from goldbox import c64_codec, c64_port, c64_save, titles
 from goldbox.c64_save import C64Container
 
 MEASURED = ("pool-of-radiance", "curse-of-the-azure-bonds",
@@ -37,18 +38,41 @@ UNMEASURED = ("champions-of-krynn", "death-knights-of-krynn",
 # --- the registry -----------------------------------------------------------
 
 def test_the_six_rows_are_one_class_and_one_object_per_title():
-    """`goldbox.c64_port.Game` and `c64_save.Container` are the same class now.
+    """The registry holds six `C64Container` objects, one per title.
 
-    A caller holding either name holds the same six objects -- which is what
-    lets `container.game` answer `container`.
+    `container.game` answers `container` because there is one class.
     """
-    assert c64_port.Game is C64Container
-    assert c64_save.Container is C64Container
     assert len(c64_port.GAMES) == 6
     assert all(isinstance(g, C64Container) for g in c64_port.GAMES)
     assert c64_port.POOL_OF_RADIANCE is c64_save.POOL_OF_RADIANCE
     assert c64_port.GATEWAY_TO_THE_SAVAGE_FRONTIER is \
         c64_save.GATEWAY_TO_THE_SAVAGE_FRONTIER
+
+
+RETIRED_NAMES = (
+    (c64_port, "Game"),
+    (c64_port, "UnknownGameError"),
+    (c64_save, "Container"),
+    (c64_codec, "RECORD_SHAPES"),
+    (convert, "DROPPED_HEADING"),
+    *((c64_port, name) for name in (
+        "CLOCK_OFFSET", "HEADER_SIZE", "ICON_TABLE_OFFSET",
+        "INDOORS_FLAG_OFFSET", "ITEM_AREA_OFFSET",
+        "NAMES_LOAD_ADDRESS_LATER", "NAMES_LOAD_ADDRESS_POOL",
+        "POSITION_OFFSET", "ROSTER_PAGE", "SHOWN_CLOCK_OFFSET",
+        "SLOT_STRIDE", "TRAVEL_POSITION_OFFSET",
+        "CLASS_BITS_CLASSIC", "CLASS_BITS_KRYNN",
+        "CLASS_BITS_WITH_PALADIN_RANGER", "RACES_CURSE",
+        "RACES_FORGOTTEN_REALMS", "RACES_KRYNN", "RACES_SILVER_BLADES",
+        "class_table", "race_table")),
+)
+
+
+@pytest.mark.parametrize("module,name", RETIRED_NAMES,
+                         ids=lambda v: getattr(v, "__name__", v))
+def test_the_retired_names_are_gone(module, name):
+    """Callers use the canonical names; no module keeps an old spelling."""
+    assert not hasattr(module, name)
 
 
 def test_pool_of_radiance_and_curse_are_still_the_first_two():
@@ -183,7 +207,6 @@ def test_each_module_constant_is_the_field_default_it_names(constant, field):
     the same number in two places before the merge and still do.
     """
     assert getattr(c64_save, constant) == getattr(C64Container, field)
-    assert getattr(c64_port, constant) is getattr(c64_save, constant)
 
 
 @pytest.mark.parametrize("key", MEASURED)

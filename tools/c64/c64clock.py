@@ -25,7 +25,7 @@ Written for `#470 (Give the project a neutral title beside its neutral
 character record, with one port per platform a title shipped on)`, which
 could not tell whether `goldbox.c64_port.SHOWN_CLOCK_OFFSET = 0xC7` -- called
 `CLOCK_OFFSET` until that ticket's stage 6 renamed it -- or
-`goldbox.c64_save.Container.clock = 0xC6` was the wrong one.  Both are right
+`goldbox.c64_save.C64Container.clock = 0xC6` was the wrong one.  Both are right
 and they are two different fields; this is what says so.
 
 Usage:

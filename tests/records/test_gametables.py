@@ -23,7 +23,7 @@ import pytest
 from gamedata import require_registered
 
 from automap import gamedisks
-from goldbox import c64_port, items, yaml_io
+from goldbox import c64_port, c64_save, items, yaml_io
 from goldbox.d64 import D64, split_load_address
 
 KEYS = [g.key for g in c64_port.GAMES]
@@ -372,8 +372,8 @@ def _characters(key: str) -> list[bytes]:
         if len(payload) != game.save_size:
             continue
         for slot in range(game.slot_count):
-            base = c64_port.HEADER_SIZE + slot * c64_port.SLOT_STRIDE
-            record = payload[base:base + c64_port.SLOT_STRIDE]
+            base = c64_save.HEADER_SIZE + slot * c64_save.SLOT_STRIDE
+            record = payload[base:base + c64_save.SLOT_STRIDE]
             if record[0] and record[0] != 0xFF:
                 out.append(record)
     if not out:

@@ -40,11 +40,6 @@ def test_by_key_raises_for_an_unknown_key():
         titles.by_key("not-a-real-title")
 
 
-def test_games_unknown_game_error_is_the_titles_error():
-    """`games.UnknownGameError` is an alias, not a second class."""
-    assert c64_port.UnknownGameError is titles.UnknownTitleError
-
-
 # --- the six C64 titles: titles.py and games.py must agree ------------------
 
 C64_KEYS = (
@@ -57,8 +52,8 @@ C64_KEYS = (
 @pytest.mark.parametrize("key", C64_KEYS)
 def test_race_and_class_tables_agree_with_the_c64_port(key):
     game = c64_port.by_key(key)
-    assert titles.race_table(key) == c64_port.race_table(game)
-    assert titles.class_table(key) == c64_port.class_table(game)
+    assert titles.race_table(key) == titles.race_table(game)
+    assert titles.class_table(key) == titles.class_table(game)
 
 
 @pytest.mark.parametrize("game, title", [

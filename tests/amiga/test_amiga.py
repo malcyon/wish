@@ -502,7 +502,7 @@ def test_the_conversion_credits_every_non_zero_byte():
 
 
 def test_the_class_level_lands_in_the_slot_pods_own_code_names():
-    from goldbox.c64_port import class_table
+    from goldbox.titles import class_table
 
     for char in neutral_party():
         record, _ = amiga_pod.to_pc(char)

@@ -753,7 +753,7 @@ def test_a_character_with_twenty_memorised_spells_keeps_all_twenty(
     assert written.to_bytes()[at:at + size] == bytes(ids) + bytes(size - 20)
 
 
-@pytest.mark.parametrize("game", sorted(c64_codec.RECORD_SHAPES))
+@pytest.mark.parametrize("game", sorted(c64_codec.DELTAS_BY_KEY))
 def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     """Read a full record and write it back: every neutral name the writer's
     disposition says it takes is one the reader set.

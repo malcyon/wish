@@ -32,6 +32,7 @@ from goldbox import (
     dos_codec,
     dos_port,
     rewrite,
+    titles,
 )
 from goldbox.amiga_adf import AmigaDisk
 from goldbox.amiga_port import CURSE_DELTAS, SILVER_BLADES_DELTAS
@@ -718,7 +719,7 @@ def _dos_parties():
             party = dos_codec.read_party(folder, slot)
             try:
                 game = c64_port.by_key(party[0].deltas.key)
-            except c64_port.UnknownGameError:
+            except titles.UnknownTitleError:
                 continue                  # Pools of Darkness has no C64 port
             yield f"{folder.name}/{slot}", party, game
 

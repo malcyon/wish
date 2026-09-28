@@ -48,7 +48,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
 from automap import gamedisks  # noqa: E402
-from goldbox import c64_port, levels  # noqa: E402
+from goldbox import c64_port, levels, titles  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools.c64.trainerscan import overlay  # noqa: E402
@@ -295,13 +295,13 @@ def report(check: bool = False, rows_only: bool = False) -> int:
     print(f"    Curse's $10A4: {'the same 136 bytes' if th['dexterity'] == _rows(th['curse_dexterity'], 0, 0, 17, signed=True) else 'DIFFERENT'}")
 
     print("\n  racial rows -- GEN $12F5, read at race * 8 with no decrement")
-    order = dict(c64_port.RACES_SILVER_BLADES)
+    order = dict(titles.RACES_SILVER_BLADES)
     for n, row in enumerate(th["race_table"]):
         label = ("the dexterity table's first row" if n == 5
                  else f"laid out for {order.get(n + 1, '?')}")
         print(f"    row {n}  " + " ".join(f"{v:4d}" for v in row) + f"   {label}")
     print("  what each race code actually gets, which is the effective table:")
-    for race, name in c64_port.RACES_SILVER_BLADES:
+    for race, name in titles.RACES_SILVER_BLADES:
         row = th["effective"].get(race)
         print(f"    {race} {name:10s} " +
               (" ".join(f"{v:4d}" for v in row) if row else "no adjustment"))

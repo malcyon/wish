@@ -48,7 +48,7 @@ from support.cursetables import (
 )
 from support.silverblades import SSB, SSB_ENV, _party, _save_disk, ssb_dir, ssb_disks
 
-from goldbox import c64_port
+from goldbox import c64_port, c64_save
 from goldbox.d64 import D64, split_load_address
 from goldbox.savegame import load_save
 
@@ -198,7 +198,7 @@ def test_every_slot_round_trips_byte_identically():
     """The 256 bytes the save stores survive decode and re-encode unchanged."""
     sg0, _ = _party()
     for slot in sg0.characters:
-        assert slot.record.to_bytes()[:c64_port.SLOT_STRIDE] == slot.record_bytes
+        assert slot.record.to_bytes()[:c64_save.SLOT_STRIDE] == slot.record_bytes
     assert len(sg0.to_bytes()) == SSB.save_size
 
 
@@ -432,7 +432,7 @@ def test_every_shipped_icon_is_a_weapon_and_a_head_from_the_editors_lists():
                         (weapon_size, w, head_size, h))
 
     payload = D64.open(str(_save_disk())).read_file(SSB.save_file)[2:]
-    base = c64_port.ICON_TABLE_OFFSET
+    base = c64_save.ICON_TABLE_OFFSET
     shapes = [bytes(payload[base + i * ICON_SIZE:][:18]) for i in range(ICON_COUNT)]
     unmade = [s.hex() for s in shapes if any(s) and s not in reachable]
     assert not unmade, unmade

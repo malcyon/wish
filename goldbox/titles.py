@@ -172,7 +172,7 @@ class Title:
     #:
     #: It lives here rather than on the C64 container because it is a fact
     #: about the title's own rules; `#470`'s stage 6 moved the callers on to
-    #: it, and `goldbox.c64_port.Game.travel_grid` is a read-through that
+    #: it, and `goldbox.c64_save.C64Container.travel_grid` is a read-through that
     #: stage 9 deletes.
     travel_grid: bool = False
 

@@ -31,7 +31,7 @@ import pytest
 
 from automap import live
 from editor.enums import class_bit_names, race_names, tables_for
-from goldbox import c64_port
+from goldbox import c64_port, c64_save
 
 POOL = c64_port.POOL_OF_RADIANCE
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
@@ -40,7 +40,7 @@ KRYNN = c64_port.CHAMPIONS_OF_KRYNN
 
 #: A title whose race and class lists we do not have. `None` there means "we do
 #: not know", and the editor must show the raw number rather than invent one.
-UNTABLED = c64_port.Game(key="untabled", title="Untabled", save_file=b"SAVEX",
+UNTABLED = c64_save.C64Container(key="untabled", title="Untabled", save_file=b"SAVEX",
                       save_load_address=0x4B00, save_size=0x1D00)
 
 
@@ -423,7 +423,7 @@ def test_a_silver_blades_save_shows_its_own_races(app, tmp_path):
         assert _label(window._widgets["class_bits"], code)
 
 
-def _is_save(path: pathlib.Path, game: c64_port.Game) -> bool:
+def _is_save(path: pathlib.Path, game: c64_save.C64Container) -> bool:
     """Does this disk carry a whole save of that title?
 
     Curse's side B has a truncated `SAVEAZURE` demo party under the same name,

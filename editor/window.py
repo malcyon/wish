@@ -33,7 +33,15 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from goldbox import amiga_pod, amiga_port, backstab, c64_codec, classcode, dos_codec
+from goldbox import (
+    amiga_pod,
+    amiga_port,
+    backstab,
+    c64_codec,
+    classcode,
+    dos_codec,
+    titles,
+)
 from goldbox import c64_port as por_games
 from goldbox.encoding import combat_byte, combat_value
 from goldbox.iconparts import IconParts
@@ -378,7 +386,7 @@ def _char_class_shown(raw, record, game):
     # table has no code for this mask at all (`classcode.code_for` answers
     # `None`). Only the second means the byte cannot be trusted.
     if classcode.code_for(bits, game=game) is None:
-        names = por_games.classes_to_names(bits, game)
+        names = titles.classes_to_names(bits, game)
         label = "/".join(names) if names and all(
             isinstance(n, str) for n in names) else str(bits)
         return _NoClassCode(raw, label)

@@ -187,7 +187,7 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
     worth carrying to the memorise screen.
     """
     from goldbox import dos_savegame
-    from goldbox.c64_port import classes_to_names
+    from goldbox.titles import classes_to_names
 
     savgam = (folder / f"SAVGAM{slot}.DAT").read_bytes()
     where = dos_savegame.position(savgam)

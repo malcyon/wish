@@ -205,7 +205,7 @@ def _asks_for_slot_of(party: Any, slot: str | None,
 class Source:
     """One save, read off a path -- never off what a window happens to hold.
 
-    `title` is a `goldbox.c64_port.Game` for a C64 source or a
+    `title` is a `goldbox.c64_save.C64Container` for a C64 source or a
     `goldbox.dos_port.DosDeltas` for a DOS or an Amiga one; both carry
     `.key`, which is what `Direction.source_key` matches against.
     `save0`/`save1`/`disk` are set only for a C64 source -- a DOS source is a
@@ -543,7 +543,7 @@ class Rehearsal:
 class Direction:
     """One writable conversion, registered only when it needs no template.
 
-    `source_key` and `destination_game.key` are `goldbox.c64_port.Game.key` or
+    `source_key` and `destination_game.key` are `goldbox.c64_save.C64Container.key` or
     `goldbox.dos_port.DosDeltas.key`, whichever port they name -- the two
     key spaces share the string `"pool-of-radiance"`, which is what lets
     `destinations_for` match a `Source` against a `Direction` without caring
@@ -756,7 +756,7 @@ class C64ToDos(Direction):
         self.shape = deltas
         self.source_key = deltas.key
         self.destination_game = deltas
-        # Raises `c64_port.UnknownGameError` at import time (via `DIRECTIONS`
+        # Raises `titles.UnknownTitleError` at import time (via `DIRECTIONS`
         # below) if `WRITES` ever named a title with no C64 port -- the
         # loud failure `DOS_TO_C64_NAMES` gives the other direction, with no
         # table of its own needed: a C64 → DOS conversion writes the same
@@ -1347,7 +1347,7 @@ class DosToAmiga(Direction):
 #: per entry of `goldbox.amiga_shared.WRITES` -- Pool of Radiance, Curse of
 #: the Azure Bonds and Secret of the Silver Blades for every Amiga tuple.
 #: `UnnamedConversionError` fires here, at import time, if `CONVERTS` ever
-#: names a title `DOS_TO_C64_NAMES` does not; `c64_port.UnknownGameError` does
+#: names a title `DOS_TO_C64_NAMES` does not; `titles.UnknownTitleError` does
 #: the same for `WRITES` and a title with no C64 game at all.
 #: The DOS shapes with a C64 port on the other side.
 #:
@@ -1672,15 +1672,6 @@ MISSING_ASSET_BLOCKS: dict[str, tuple[str, str]] = {
     saveplan.DOS_GAME_FOLDER: (DIALOG_TITLE, NO_GAME_FOLDER),
     saveplan.AMIGA_GAME_DISK: (DIALOG_TITLE, NO_DISK),
 }
-#: Donald's own wording, `09027bb` (2026-09-05) -- shared with
-#: `editor/dosimport.py`'s and `editor/exports.py`'s `DROPPED_HEADING`, one
-#: conversion vocabulary whichever way it is going. **Not drawn by this
-#: dialog's own pane** -- `#416` first moved it onto `dosimport.pane_text`
-#: with no heading of its own, and 2026-09-08's ruling took the drop lines
-#: out of `pane_text` altogether (`.claude/rules/conversions.md`), so there
-#: is no longer a list here for a heading to sit over. Kept defined for
-#: whichever caller still names it.
-DROPPED_HEADING = dosimport.DROPPED_HEADING
 #: The destination line under `Write to`, replacing the `This writes:`
 #: heading that used to sit inside the report pane
 #: (`editor/exports.py`'s own `WRITES_HEADING`, approved 2026-08-25, was the

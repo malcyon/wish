@@ -39,7 +39,7 @@ from support.titletables import (
     silver_blades_disk,
 )
 
-from goldbox import c64_port, items, levels, spells
+from goldbox import c64_port, c64_save, items, levels, spells, titles
 from goldbox.d64 import D64
 
 POOL = c64_port.POOL_OF_RADIANCE
@@ -440,7 +440,7 @@ def test_the_later_titles_fold_the_race_labels_into_the_item_name_pool(game, whi
     title shipped on)` added it to the tuple and this loop had to learn that
     the arithmetic was only ever true of the run.
     """
-    folded = c64_port.NAMES_LOAD_ADDRESS_LATER + RACE_LABEL_POOL_INDEX
+    folded = c64_save.NAMES_LOAD_ADDRESS_LATER + RACE_LABEL_POOL_INDEX
     assert _library_reads(_library_of(which), folded)
     names = _item_names_of(which, game)
     for code, label in game.races:
@@ -451,7 +451,7 @@ def test_the_later_titles_fold_the_race_labels_into_the_item_name_pool(game, whi
 
 @pytest.mark.parametrize("which", ["pool", "curse"])
 def test_the_earlier_titles_keep_their_labels_in_library(which):
-    folded = c64_port.NAMES_LOAD_ADDRESS_LATER + RACE_LABEL_POOL_INDEX
+    folded = c64_save.NAMES_LOAD_ADDRESS_LATER + RACE_LABEL_POOL_INDEX
     assert not _library_reads(_library_of(which), folded)
 
 
@@ -461,7 +461,7 @@ def test_champions_race_table_is_death_knights_race_table():
     `RACES_KRYNN` has to split in two."""
     champions = _item_names_of("champions", COK)
     death = items.load_item_names(str(death_knights_disk()), DKK)
-    for code, label in c64_port.RACES_KRYNN:
+    for code, label in titles.RACES_KRYNN:
         index = RACE_LABEL_POOL_INDEX + code
         assert champions[index] == death[index] == label.upper(), code
 
@@ -542,4 +542,4 @@ def test_silver_blades_library_has_no_label_table_to_fit():
              if payload[i] == 0xBD and payload[i + 3] == 0x85
              and payload[i + 4] == 0x07]
     assert reads
-    assert all(address >= c64_port.NAMES_LOAD_ADDRESS_LATER for address in reads)
+    assert all(address >= c64_save.NAMES_LOAD_ADDRESS_LATER for address in reads)

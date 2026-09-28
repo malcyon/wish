@@ -136,7 +136,7 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
     holding is a number to carry to the memorise screen.
     """
     from goldbox import dos_savegame
-    from goldbox.c64_port import classes_to_names
+    from goldbox.titles import classes_to_names
 
     shape = dos_savegame.container_for(SSB.key)
     savgam = (folder / f"SAVGAM{slot}{shape.suffix}").read_bytes()

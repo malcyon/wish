@@ -35,6 +35,7 @@ from goldbox import (
     dos_codec,
     dos_port,
     rewrite,
+    titles,
 )
 from goldbox.c64_port import C64Container
 from goldbox.c64_save import ICON_TABLE_OFFSET
@@ -311,7 +312,7 @@ class Party:
         """
         try:
             return c64_port.by_key(source.title.key)
-        except c64_port.UnknownGameError:
+        except titles.UnknownTitleError:
             raise dos_codec.WrongTitleError(
                 f"{source.title.title} has no C64 port, so goldbox/c64_port.py "
                 f"has no container to edit its characters through",

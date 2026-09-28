@@ -29,7 +29,7 @@ Everything skips when the disks are absent. Nothing reads a committed fixture.
 import pytest
 from support.silverblades import _party, ssb_dir, ssb_disks
 
-from goldbox import c64_port
+from goldbox import c64_port, titles
 from goldbox.d64 import D64, split_load_address
 from goldbox.geo import EAST, GEO_SIZE, NORTH, SOUTH, WEST, Geo
 
@@ -143,7 +143,7 @@ def test_the_import_rewrites_the_race_byte_into_silver_blades_numbering():
     silently turn a Curse human into a Silver Blades halfling if either table
     were wrong.
     """
-    curse = dict(c64_port.RACES_CURSE)
+    curse = dict(titles.RACES_CURSE)
     ssb = {name: code for code, name in SSB.races}
     for before, after in ((7, 6), (4, 2), (2, 1)):
         assert curse[before] in ssb, f"Curse race {before} has no name here"

@@ -332,7 +332,7 @@ def test_each_later_title_copies_the_earlier_ones_icon_bytes_unchanged():
 # -- the per-title override section (#330, #335) -----------------------------
 #
 # `tools/icons/iconproposal.yaml` gained an `overrides:` section for a title whose
-# C64 art disagrees with Pool of Radiance's, keyed by `goldbox.c64_port.Game.key`.
+# C64 art disagrees with Pool of Radiance's, keyed by `goldbox.c64_save.C64Container.key`.
 # It is empty until Donald picks Silver Blades' two rows on
 # `#335 (Two combat-figure rows describe Pool of Radiance's art, and Silver
 # Blades draws those two options differently)`, and these pin that `dos_icon_

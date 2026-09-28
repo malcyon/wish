@@ -7040,7 +7040,7 @@ def _resident_geo(savgam: bytes, where: "areas.Area", title: str) -> int:
 
 
 def apply_file_cache(save0: bytearray, state: "world_state.WorldState",
-                     container: "c64_save.Container | None" = None) -> str:
+                     container: "c64_save.C64Container | None" = None) -> str:
     """Point a `SAVEDGAME0` payload at the area the DOS party is standing in.
 
     The cache is rewritten to `$FF` in all twenty-five slots with slot 2 =
@@ -7814,7 +7814,7 @@ ECL_DAX = "ECL{dax}.DAX"
 
 
 def c64_wall_triple(save0: bytes,
-                    container: "c64_save.Container | None" = None
+                    container: "c64_save.C64Container | None" = None
                     ) -> tuple[int, int, int]:
     """The wallset triple a DOS save wants, out of the C64 loaded-files cache.
 
@@ -8928,7 +8928,7 @@ def _add_party_node(char: "NeutralCharacter",
             old.confidence, old.how, old.dropped)
 
 
-def _c64_game_of(state: "world_state.WorldState") -> "c64_port.Game":
+def _c64_game_of(state: "world_state.WorldState") -> "c64_save.C64Container":
     """The title `state` belongs to, or a refusal.
 
     A title with no descriptor is not defaulted to Pool of Radiance: the

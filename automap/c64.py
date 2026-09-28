@@ -9,7 +9,7 @@ another title's numbers.
 this, right now, in a running game" -- the engine's live party square, the
 loader's dispatch byte, and the live address of each region the save image
 occupies while the game holds it in memory. It is not a save file: that is
-`goldbox.c64_save.Container`, which holds the same regions as *payload
+`goldbox.c64_save.C64Container`, which holds the same regions as *payload
 offsets*, and the machine is those offsets plus the address the payload loads
 at. It is not the title's rules either: those are `goldbox.titles.Title`, which
 every machine here carries by reference.
@@ -26,13 +26,13 @@ doing, which is a gate that is open rather than a gate that is missing.
 Built for `#470 (Give the project a neutral title beside its neutral character
 record, with one port per platform a title shipped on)`, stage 6.
 
-**Nothing here has an alias back on `goldbox.c64_port.Game`, and that is
+**Nothing here has an alias back on `goldbox.c64_save.C64Container`, and that is
 forced rather than chosen.** Every other rename in that ticket leaves the old
 name working; a read-through for `live_position` or `mode_flag` would import
 `automap` from inside `goldbox`, and
 `tests/wish/test_wish.py::test_goldbox_imports_no_transport` forbids that -- it is
 what keeps `editor/`'s promise that it never talks to an emulator. So the
-callers moved in the same commit instead. What `Game` does keep is
+callers moved in the same commit instead. What `C64Container` does keep is
 `travel_grid`, which reads through to `Title`, and the save-image `_base`
 properties, which `goldbox/savegame.py` needs and stage 7 folds into
 `C64Container`; `tests/automap/test_c64machine.py` pins that those agree with this
@@ -133,12 +133,12 @@ class C64Machine:
     """
 
     title: Title
-    container: c64_save.Container | None
+    container: c64_save.C64Container | None
 
     #: Where the payload loads. **Stage 7's**, not this stage's: it is disk
-    #: geometry, and it is here only because `Container` cannot supply it for
-    #: the three titles that have no `Container` row. When `C64Container`
-    #: absorbs what is left of `Game`, these three fields read through it.
+    #: geometry, and it is here only because `C64Container` cannot supply it for
+    #: the three titles that have no measured payload map. When `C64Container`
+    #: absorbs what is left of the old descriptor, these three fields read through it.
     save_load_address: int
     #: Pool of Radiance keeps its roster in a second file at `$8300`; every
     #: later title folds it into the payload's last page, so this is that
@@ -155,21 +155,21 @@ class C64Machine:
         """The first character slot."""
         c = self.container
         return self.save_load_address + (c.slot_area if c else
-                                         c64_port.HEADER_SIZE)
+                                         c64_save.HEADER_SIZE)
 
     @property
     def item_area_base(self) -> int:
         """The first character's item page."""
         c = self.container
         return self.save_load_address + (c.item_area if c else
-                                         c64_port.ITEM_AREA_OFFSET)
+                                         c64_save.ITEM_AREA_OFFSET)
 
     @property
     def icon_table_base(self) -> int:
         """The eight combat icons."""
         c = self.container
         return self.save_load_address + (c.icon_table if c else
-                                         c64_port.ICON_TABLE_OFFSET)
+                                         c64_save.ICON_TABLE_OFFSET)
 
     @property
     def save_position_base(self) -> int:
@@ -180,7 +180,7 @@ class C64Machine:
         """
         c = self.container
         return self.save_load_address + (c.position if c else
-                                         c64_port.POSITION_OFFSET)
+                                         c64_save.POSITION_OFFSET)
 
     @property
     def shown_clock_base(self) -> int:
@@ -195,7 +195,7 @@ class C64Machine:
         read in all three titles -- `tools/c64/c64clock.py`, and
         `docs/30-savegame-layout.md`.
         """
-        return self.save_load_address + c64_port.SHOWN_CLOCK_OFFSET
+        return self.save_load_address + c64_save.SHOWN_CLOCK_OFFSET
 
     @property
     def indoors_flag_base(self) -> int | None:
@@ -210,7 +210,7 @@ class C64Machine:
             return None
         c = self.container
         return self.save_load_address + (c.indoors if c else
-                                         c64_port.INDOORS_FLAG_OFFSET)
+                                         c64_save.INDOORS_FLAG_OFFSET)
 
     @property
     def travel_position_base(self) -> int | None:
@@ -223,7 +223,7 @@ class C64Machine:
             return None
         c = self.container
         return self.save_load_address + (c.travel_position if c else
-                                         c64_port.TRAVEL_POSITION_OFFSET)
+                                         c64_save.TRAVEL_POSITION_OFFSET)
 
     @property
     def resident_window_base(self) -> int | None:
@@ -249,14 +249,14 @@ class C64Machine:
         return self.roster_load_address + self.roster_offset
 
 
-def _machine(game: c64_port.Game, *, live_position: int | None = None,
+def _machine(game: c64_save.C64Container, *, live_position: int | None = None,
              mode_flag: int | None = None) -> C64Machine:
-    """One row, taking its disk geometry from the `Game` it belongs to.
+    """One row, taking its disk geometry from the `C64Container` it belongs to.
 
     Read rather than retyped, so this stage moves the two live addresses and
     copies no number that already exists somewhere else. A title `titles.py`
     does not know gets a `Title` of its own with no tables in it -- `None`
-    races mean "we do not know", which is what a `Game` built outside the
+    races mean "we do not know", which is what a `C64Container` built outside the
     registry already meant.
     """
     title = titles.BY_KEY.get(game.key) or Title(key=game.key,
@@ -303,13 +303,13 @@ DEFAULT = MACHINES[c64_port.DEFAULT.key]
 
 
 def machine_for(game=None) -> C64Machine:
-    """The machine for a title: a `Game`, a `Title`, a key, or None.
+    """The machine for a title: a `C64Container`, a `Title`, a key, or None.
 
     Takes the same shapes `goldbox.c64_save.container_for` does, so a caller
     holding any of them does not have to convert first. None is Pool of
     Radiance's, matching every caller's own `game or games.DEFAULT`.
 
-    **A `Game` outside the registry is built rather than refused**, because its
+    **A `C64Container` outside the registry is built rather than refused**, because its
     geometry is on the row and its live addresses are simply unmeasured -- so
     it answers the addresses it always did and None for the two that have to be
     measured. A bare key nobody knows raises, since that is a typo rather than
@@ -323,7 +323,7 @@ def machine_for(game=None) -> C64Machine:
     found = MACHINES.get(key)
     if found is not None:
         return found
-    if isinstance(game, c64_port.Game):
+    if isinstance(game, c64_save.C64Container):
         return _machine(game)
     raise KeyError(
         f"no C64 machine for {key!r}; "

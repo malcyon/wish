@@ -38,7 +38,7 @@ import os
 import pathlib
 from dataclasses import dataclass
 
-from goldbox import c64_port, levels, traits
+from goldbox import c64_port, levels, titles, traits
 from goldbox.effects import (  # noqa: F401 -- re-exported, see the note below
     DURATION_COUNT,
     DURATION_UNIT,
@@ -548,7 +548,7 @@ def _classes(record, game) -> tuple[ClassProgress, ...]:
     Silver Blades ranger a card reading `?  L8`, with no class name and no
     experience bar (#197).
 
-    `getattr` rather than `c64_port.class_table` because this is also called with
+    `getattr` rather than `titles.class_table` because this is also called with
     a `levels.LevelTables` (`tests/secret_of_the_silver_blades/test_ssblevels.py`), and because a title
     whose class list nobody has is better read as the classic four -- which is
     what it has always been read as -- than as no classes at all.
@@ -557,7 +557,7 @@ def _classes(record, game) -> tuple[ClassProgress, ...]:
     experience = record.get("experience")
     out = []
     for bit, name in (getattr(game, "class_bits", None)
-                      or c64_port.class_table(None)):
+                      or titles.class_table(None)):
         if not bits & bit:
             continue
         field = CLASS_LEVEL_FIELD.get(name)

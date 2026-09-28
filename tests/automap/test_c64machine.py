@@ -2,7 +2,7 @@
 
 Built for `#470 (Give the project a neutral title beside its neutral character
 record, with one port per platform a title shipped on)`'s stage 6, which took
-the two live addresses off `goldbox.c64_port.Game` and gave the C64 a machine
+the two live addresses off `goldbox.c64_save.C64Container` and gave the C64 a machine
 beside the Amiga's `AmigaMachine`.
 
 Two things here are the point and the rest is arithmetic:
@@ -117,7 +117,7 @@ def test_the_shown_clock_is_one_past_the_clock_the_container_names(key):
     """
     machine = c64.MACHINES[key]
     container = c64_save.CONTAINERS[key]
-    assert c64_port.SHOWN_CLOCK_OFFSET == container.clock + 1
+    assert c64_save.SHOWN_CLOCK_OFFSET == container.clock + 1
     assert (machine.shown_clock_base
             == machine.save_load_address + container.clock + 1)
 
@@ -158,9 +158,9 @@ def test_the_pre_470_spelling_still_answers_on_game():
     assert c64_port.CURSE_OF_THE_AZURE_BONDS.travel_grid is False
     # A `Game` whose key `goldbox/titles.py` does not know answers False,
     # which is what an unregistered row answered when this was a field.
-    made_up = c64_port.Game(key="untabled", title="Untabled",
-                            save_file=b"SAVEX", save_load_address=0x4B00,
-                            save_size=0x1D00)
+    made_up = c64_save.C64Container(key="untabled", title="Untabled",
+                                    save_file=b"SAVEX", save_load_address=0x4B00,
+                                    save_size=0x1D00)
     assert made_up.travel_grid is False
 
 
@@ -214,9 +214,9 @@ def test_a_game_outside_the_registry_keeps_its_own_geometry():
     properties have always answered for it. The machine does the same rather
     than refusing, so the two stay equal for every `Game` there is.
     """
-    made_up = c64_port.Game(key="untabled", title="Untabled",
-                            save_file=b"SAVEX", save_load_address=0x4B00,
-                            save_size=0x1D00)
+    made_up = c64_save.C64Container(key="untabled", title="Untabled",
+                                    save_file=b"SAVEX", save_load_address=0x4B00,
+                                    save_size=0x1D00)
     machine = c64.machine_for(made_up)
     assert machine.slot_area_base == made_up.slot_area_base
     assert machine.container is None

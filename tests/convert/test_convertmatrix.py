@@ -53,7 +53,7 @@ from PyQt6.QtWidgets import QApplication
 
 from automap import gamedisks
 from editor import convert, dosimport, roster, saveplan
-from goldbox import c64_port, dos_codec, dos_port
+from goldbox import c64_port, c64_save, dos_codec, dos_port
 from goldbox.d64 import D64, load_payload
 from goldbox.iconparts import IconParts, c64_icon_tables
 from goldbox.layout import NAME_SIZE
@@ -94,7 +94,7 @@ def _c64_specimen(name: str) -> pathlib.Path | None:
     return found[0] if found else None
 
 
-def _c64_game_files(game: "c64_port.Game") -> "dosimport.GameFiles | None":
+def _c64_game_files(game: "c64_save.C64Container") -> "dosimport.GameFiles | None":
     """The icon, `ANIMATE00` and the creation menu off `game`'s own C64
     disks, found through `automap/gamedisks.py` -- the project's own registry
     for a test or tool that needs the player's disks, never a path typed into

@@ -8,10 +8,9 @@ the first -- so the descriptor is a table, not a class hierarchy.
 **The table itself is `goldbox/c64_save.py`.** `#470 (Give the project a
 neutral title beside its neutral character record, with one port per platform
 a title shipped on)`'s stage 7 merged this module's `Game` into that module's
-`Container`, because a reader asking *"where does this save load?"* and
+`C64Container`, because a reader asking *"where does this save load?"* and
 *"what is at `+$C7`?"* was going to two different classes about one file and
-each kept its own copy of the same offsets. `Game` is `C64Container` under its
-old name, and stays one until stage 9 moves the callers off it.
+each kept its own copy of the same offsets.
 
 What is left here is the registry -- the six rows in order, the three lookup
 dictionaries, and `detect`, which is how a disk in a drive turns into a title.
@@ -21,59 +20,23 @@ of the Azure Bonds stay first.
 
 from __future__ import annotations
 
-# The save container's geometry, its payload map and the offsets they share
-# now live in `goldbox/c64_save.py`. Every name below is re-exported so that
-# nothing importing it from here has to change; the `goldbox/games.py` shim
-# that used to wildcard this module was deleted once every caller had moved.
-from .c64_save import (  # noqa: F401
+from .c64_save import (
     CHAMPIONS_OF_KRYNN,
-    CLOCK_OFFSET,
     CURSE_OF_THE_AZURE_BONDS,
     DEATH_KNIGHTS_OF_KRYNN,
     GATEWAY_TO_THE_SAVAGE_FRONTIER,
-    HEADER_SIZE,
-    ICON_TABLE_OFFSET,
-    INDOORS_FLAG_OFFSET,
-    ITEM_AREA_OFFSET,
-    NAMES_LOAD_ADDRESS_LATER,
-    NAMES_LOAD_ADDRESS_POOL,
     POOL_OF_RADIANCE,
-    POSITION_OFFSET,
-    ROSTER_PAGE,
     SECRET_OF_THE_SILVER_BLADES,
-    SHOWN_CLOCK_OFFSET,
-    SLOT_STRIDE,
-    TRAVEL_POSITION_OFFSET,
     C64Container,
 )
 
-# The races and class bits a title's own rules define live in
-# `goldbox/titles.py`, as `Title.races` and `Title.class_bits` -- a fact about
-# the title rather than about the C64 disk -- and are imported back here so
-# that nothing that reached them through this module has to change
-# (`#470`, stage 1).
-from .titles import (  # noqa: F401
-    CLASS_BITS_CLASSIC,
-    CLASS_BITS_KRYNN,
-    CLASS_BITS_WITH_PALADIN_RANGER,
-    RACES_CURSE,
-    RACES_FORGOTTEN_REALMS,
-    RACES_KRYNN,
-    RACES_SILVER_BLADES,
-    class_table,
-    classes_to_names,
-    race_table,
-)
+# Until tools/amiga/fromamigapor.py imports it from `goldbox.titles` (B9).
 from .titles import (
-    UnknownTitleError as UnknownGameError,
+    UnknownTitleError,
+    classes_to_names,  # noqa: F401
 )
 
-#: `goldbox.c64_save.C64Container` under the name it carried while the disk
-#: geometry and the payload map were two classes. Stage 9 deletes the alias.
-Game = C64Container
-
-
-GAMES: tuple[Game, ...] = (
+GAMES: tuple[C64Container, ...] = (
     POOL_OF_RADIANCE,
     CURSE_OF_THE_AZURE_BONDS,
     SECRET_OF_THE_SILVER_BLADES,
@@ -95,7 +58,7 @@ BY_TITLE = {g.title: g for g in GAMES}
 BY_ROSTER_PREFIX = {g.roster_prefix: g for g in GAMES if g.roster_prefix is not None}
 
 
-def by_title(title: str | None) -> Game | None:
+def by_title(title: str | None) -> C64Container | None:
     """The title a person named, or None. Never falls back to a default.
 
     The windows carry the game as a plain string -- see `AutomapState.title` --
@@ -106,16 +69,16 @@ def by_title(title: str | None) -> Game | None:
     return BY_TITLE.get(title) if title else None
 
 
-def by_key(key: str) -> Game:
+def by_key(key: str) -> C64Container:
     try:
         return BY_KEY[key]
     except KeyError:
-        raise UnknownGameError(
+        raise UnknownTitleError(
             f"{key!r} is not a title this tool knows. "
             f"Try one of: {', '.join(sorted(BY_KEY))}") from None
 
 
-def detect_from_names(names) -> Game | None:
+def detect_from_names(names) -> C64Container | None:
     """The title whose save file appears in a directory listing, or None.
 
     The save file's name is the discriminator: no two titles share one, and no
@@ -130,13 +93,13 @@ def detect_from_names(names) -> Game | None:
     return None
 
 
-def detect(disk, default: Game | None = None) -> Game | None:
+def detect(disk, default: C64Container | None = None) -> C64Container | None:
     """The title a D64 holds a save for, or `default`."""
     found = detect_from_names(e.name for e in disk.directory())
     return found if found is not None else default
 
 
-def title_of_roster_file(name) -> Game | None:
+def title_of_roster_file(name) -> C64Container | None:
     """The title whose prefix byte stands in front of this filename, or None.
 
     `name` is a parked character's own directory name -- byte 0 is the prefix
@@ -156,7 +119,7 @@ def title_of_roster_file(name) -> Game | None:
     return BY_ROSTER_PREFIX.get(key)
 
 
-def detect_from_roster(disk) -> Game | None:
+def detect_from_roster(disk) -> C64Container | None:
     """The one title every parked character file on this disk names.
 
     None when the disk carries none, and None when they disagree -- a

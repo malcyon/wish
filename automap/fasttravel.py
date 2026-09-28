@@ -75,10 +75,10 @@ class FastTravelAddresses:
     the ones a later title turned out not to have.
     """
 
-    #: `goldbox.c64_port.Game.key`, so a row cannot be matched to the wrong title
+    #: `goldbox.c64_save.C64Container.key`, so a row cannot be matched to the wrong title
     #: by a display string.
     key: str
-    #: `goldbox.c64_port.Game.title`, which is how `automap.actions.area_rows` and
+    #: `goldbox.c64_save.C64Container.title`, which is how `automap.actions.area_rows` and
     #: `goldbox/areas.py` spell a title. Kept here so the lookup takes either.
     title: str
 
@@ -279,7 +279,7 @@ SECRET_OF_THE_SILVER_BLADES = FastTravelAddresses(
     zeroed=(0x4BFB,),
 )
 
-#: Every title whose overlays have been read, by `Game.key`. Champions of
+#: Every title whose overlays have been read, by `C64Container.key`. Champions of
 #: Krynn, Death Knights of Krynn and Gateway to the Savage Frontier are absent
 #: rather than empty: nobody has looked, and an entry with Pool of Radiance's
 #: numbers in it would fast-travel a party by writing into whatever those
@@ -296,7 +296,7 @@ _BY_TITLE: Mapping[str, FastTravelAddresses] = MappingProxyType(
 def addresses_for(game=None) -> FastTravelAddresses | None:
     """This title's fast-travel addresses, or None if nobody has read it.
 
-    Takes whatever the caller is holding: a `goldbox.c64_port.Game`, a `Game.key`,
+    Takes whatever the caller is holding: a `goldbox.c64_save.C64Container`, a `C64Container.key`,
     a `Game.title` -- which is how `goldbox/areas.py` spells a title -- or
     None, which means Pool of Radiance the way it does everywhere else in the
     program.

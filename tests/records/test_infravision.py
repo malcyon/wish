@@ -28,7 +28,14 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 import gamedata  # noqa: E402
 
-from goldbox import c64_codec, c64_port, dos_codec, dos_port, savegame  # noqa: E402
+from goldbox import (  # noqa: E402
+    c64_codec,
+    c64_port,
+    dos_codec,
+    dos_port,
+    savegame,
+    titles,
+)
 from goldbox.d64 import D64  # noqa: E402
 from tools.records import infravision  # noqa: E402
 
@@ -130,8 +137,7 @@ def test_the_c64_writer_gives_every_race_the_number_the_generator_writes():
         table = infravision.race_table("pool-of-radiance")
     except SystemExit as e:
         pytest.skip(str(e))
-    from goldbox import c64_port
-    names = c64_port.race_table(c64_port.POOL_OF_RADIANCE)
+    names = titles.race_table(c64_port.POOL_OF_RADIANCE)
     wrong = {names[code]: (c64_codec.INFRAVISION[names[code]], table[code - 1])
              for code in range(1, 8)
              if code in names

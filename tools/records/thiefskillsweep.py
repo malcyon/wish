@@ -342,9 +342,9 @@ def _race_names(title: str) -> list[str]:
     an earlier draft of this tool did -- is how a reader ends up comparing
     two different races and calling it a difference between the ports.
     """
-    from goldbox import c64_port
+    from goldbox import c64_port, titles
 
-    table = c64_port.race_table(c64_port.by_key(title))
+    table = titles.race_table(c64_port.by_key(title))
     top = max(table) if table else 0
     return [table.get(i + 1, f"row {i}") for i in range(top)]
 
