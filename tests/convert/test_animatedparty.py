@@ -80,6 +80,70 @@ def test_the_pool_mapping_does_not_claim_a_later_title():
         assert amiga_pod.pod_field_disposition()[name].startswith("dropped:")
 
 
+def _pool_c64(control: int, status: int) -> CharacterRecord:
+    rec = CharacterRecord.blank()
+    rec.set("name", b"BRUTUS")
+    rec.set("flags_0b8", control)
+    rec.set("roster_in_use", status)
+    return rec
+
+
+def _pool_dos_character(status, npc, control, share=None):
+    char = neutral.NeutralCharacter("DOS", source="built here",
+                                    game=c64_port.POOL_OF_RADIANCE)
+    char.set("name", "BRUTUS", "built here")
+    if status is not None:
+        char.set("status", status, "built here")
+    char.set("npc", npc, "built here")
+    char.set("npc_control_byte", control, "built here")
+    if share is not None:
+        char.set("treasure_share", share, "built here")
+    return char
+
+
+@pytest.mark.parametrize("stored, flag", [(0xFE, 0), (0xFF, 1)])
+def test_a_c64_zombie_reads_as_a_taken_over_player_character(stored, flag):
+    char = c64_codec.read(_pool_c64(stored, 0x03),
+                          game=c64_port.POOL_OF_RADIANCE)
+    assert char.get("npc") is True
+    assert char.get("npc_control_byte") == c64_codec.DOS_PC_TAKEN_OVER
+    assert char.get("treasure_share") == flag
+
+    dos, _itm, _spc, _rep = dos_codec.write(char)
+    control, share = dos_port.FIELDS_BY_NAME["field_83_87"].offset + 1, \
+        dos_port.FIELDS_BY_NAME["field_83_87"].offset + 2
+    assert (dos[control], dos[share]) == (0xB3, flag)
+
+
+@pytest.mark.parametrize("flag, stored", [(0, 0xFE), (1, 0xFF)])
+def test_a_dos_zombie_writes_to_the_c64_as_the_engine_stores_it(flag, stored):
+    char = _pool_dos_character("animated", True, 0xB3, flag)
+    rec, rep = c64_codec.write(char)
+    assert rec.get("flags_0b8") == stored
+    assert rec.get("treasure_share") == 0
+    assert not [d for d in rep.dropped + rep.losses
+                if "treasure_share" in d or "npc" in d]
+
+
+@pytest.mark.parametrize("stored, status", [(0xFF, 0x01), (0xFE, 0x83)])
+def test_a_companion_byte_off_the_zombie_status_stays_a_companion(
+        stored, status):
+    char = c64_codec.read(_pool_c64(stored, status),
+                          game=c64_port.POOL_OF_RADIANCE)
+    assert char.get("npc_control_byte") == stored
+    rec, _rep = c64_codec.write(char)
+    assert rec.get("flags_0b8") == stored
+
+
+def test_a_companion_zombie_control_crosses_whole_both_ways():
+    char = c64_codec.read(_pool_c64(0xB2, 0x03),
+                          game=c64_port.POOL_OF_RADIANCE)
+    assert char.get("npc_control_byte") == 0xB2
+    assert c64_codec.write(char)[0].get("flags_0b8") == 0xB2
+    rec, _rep = c64_codec.write(_pool_dos_character("animated", True, 0xB2, 2))
+    assert rec.get("flags_0b8") == 0xB2
+
+
 def test_engine_written_zombie_fields_read_and_node32_stays_protected():
     from editor import convert
     from tools.registry import specimens
@@ -110,6 +174,8 @@ def test_engine_written_zombie_fields_read_and_node32_stays_protected():
     assert (plain_raw["BRUTUS"][0x0D7], plain_raw["BRUTUS"][0x0A3]) \
         == (0, 0)
     assert (zombie.get("creature_type"), zombie.get("turn_class")) == (4, 2)
+    assert (zombie.get("npc"), zombie.get("npc_control_byte"),
+            zombie.get("treasure_share")) == (True, 0xB3, 1)
     assert (control.get("creature_type"), control.get("turn_class")) == (0, 0)
 
     _record, _itm, _spc, dos_report = dos_codec.write(zombie)

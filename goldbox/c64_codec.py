@@ -851,10 +851,19 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         and payload is not None
         and any(isinstance(effects.pool_charm_row(deltas.key, bytes(n)),
                            tuple) for n in granted.value))
+    # DOS's Animate Dead zombie is a Pool player character too: the C64 stores
+    # it as a dead record with 0x0B8 at $FE or $FF, and its share byte is the
+    # same ability-altered flag as any player character's.
+    status_value = w.get("status")
+    pool_zombie_pc = bool(
+        deltas is POOL_OF_RADIANCE_RECORD and is_npc
+        and status_value == "animated"
+        and w.get("npc_control_byte") == DOS_PC_TAKEN_OVER)
     charm_row_written = False
     share = use("treasure_share")
     modify_flag = None
-    if (share is not None and not (is_npc and not pool_charmed)
+    if (share is not None
+            and not (is_npc and not (pool_charmed or pool_zombie_pc))
             and int(share.value) in (0, 1)
             and deltas is POOL_OF_RADIANCE_RECORD):
         modify_flag = share
@@ -1763,7 +1772,21 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     taken_over = (npc is not None and npc.value and control is not None
                   and int(control.value) == DOS_PC_TAKEN_OVER
                   and title_key in effects.FEAR_IDS)
-    if taken_over:
+    if pool_zombie_pc:
+        flag = int(modify_flag.value) & 0x01 if modify_flag is not None else 0
+        rec.set("flags_0b8", 0xFE | flag)
+        note = (" -- an animated Pool of Radiance character with "
+                f"npc_control_byte {DOS_PC_TAKEN_OVER:#04x} is what Animate "
+                "Dead makes of a dead player character, which the C64 "
+                "stores as $FE with the ability-altered flag in bit 0 "
+                "(SPELLE04 $AA04, SQRPACI64 $05B5)")
+        if modify_flag is not None:
+            emit(modify_flag, "flags_0b8", 0x0B8, 1, note)
+        else:
+            rep.note(0x0B8, 1, f"flags_0b8: ${0xFE | flag:02X}" + note)
+        rep.dropped.extend(npc.dropped)
+        rep.dropped.extend(control.dropped)
+    elif taken_over:
         rec.set("flags_0b8", 0x00)
         rep.note(0x0B8, 1, "flags_0b8: zero -- npc_control_byte is "
                  f"{DOS_PC_TAKEN_OVER:#04x}, DOS's own player character "
@@ -2056,14 +2079,18 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
             "npc says, because neither title turns a companion back into a "
             "player character; in Pool of Radiance, DOS_PC_TAKEN_OVER with "
             "a charm node writes 0x0B8 as a player character's, and the "
-            "charm goes to a row"),
+            "charm goes to a row; in Pool of Radiance, DOS_PC_TAKEN_OVER "
+            "with status animated writes 0x0B8 as $FE with the "
+            "ability-altered flag in bit 0"),
     ("npc_control_byte", "written unchanged to 0x0B8 when npc is true -- "
                          "bit 7 plus the low seven bits of morale, stored "
                          "halved; nothing to write when npc is false (#303); "
                          "DOS_PC_TAKEN_OVER writes 0x0B8 = 0 instead, in "
                          "Curse and Silver Blades, and in Pool of Radiance "
                          "when a charm node converts, which writes 0x0B8 as "
-                         "a player character's and the charm to a row"),
+                         "a player character's and the charm to a row; and "
+                         "in Pool of Radiance with status animated it writes "
+                         "$FE or $FF, as Animate Dead stores a zombie"),
     ("treasure_share", "written unchanged to 0x0FA for a companion, whose "
                        "share the C64's own split reads there; a DOS or "
                        "Amiga raw value with bit 2 set refuses because C64 "
@@ -2365,7 +2392,11 @@ READ_TARGETS: dict[str, str] = (
                     "are given as though bit 7 were set, because neither "
                     "title ever turns a companion back into a player "
                     "character; the same for a Pool of Radiance player "
-                    "character whose party-side charm row converted",
+                    "character whose party-side charm row converted; for a Pool "
+                    "of Radiance zombie ($FE or $FF beside roster status $03) "
+                    "npc and npc_control_byte (DOS_PC_TAKEN_OVER) are given "
+                    "as though the byte were a player character's, and bit 0 "
+                    "is read as treasure_share",
        "treasure_share": "read unchanged as neutral treasure_share for a "
                          "companion, and for a player character whose byte "
                          "is not zero; for the ordinary Pool of Radiance "
@@ -2678,7 +2709,34 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         copy("portrait_head", "portrait_head")
         copy("portrait_body", "portrait_body")
 
-    if not is_npc and (fear_row_converted or charm_row_converted):
+    # The roster status is read here, ahead of the npc block, because a Pool
+    # zombie is told from a companion by it.
+    if roster is not None:
+        raw, roster_in_use_origin = (roster.roster_in_use,
+                                      "the C64 roster block's roster_in_use")
+    elif rec.is_stored("roster_in_use"):
+        raw, roster_in_use_origin = (rec.get("roster_in_use"),
+                                      "C64 record 0x100")
+    else:
+        raw = None
+    # Animate Dead writes 0x0B8 $FE or above beside a status of exactly $03
+    # (SPELLE04 $AA04, SQRPACI64 $05B5).  130 of 135 Pool MON files hold $FF
+    # at $01, so the byte alone is a companion.
+    pool_zombie_pc = bool(
+        deltas is POOL_OF_RADIANCE_RECORD and is_npc
+        and rec.get("flags_0b8") >= 0xFE and raw == 0x03)
+
+    if pool_zombie_pc:
+        out.set("npc", True, "bit 7 of the C64's 0x0B8 is set, and the roster "
+                "status is $03 with 0x0B8 at $FE or above: Animate Dead's "
+                "zombie, which DOS and the Amiga hold as a player character "
+                "the engine has taken over", grade("flags_0b8"))
+        out.set("npc_control_byte", DOS_PC_TAKEN_OVER,
+                "DOS's own player-character-taken-over value, which is what "
+                "the C64's $FE or $FF at 0x0B8 is for a zombie "
+                "(SPELLE04 $AA04, SQRPACI64 $05B5)", grade("flags_0b8"),
+                Provenance.RESHAPED)
+    elif not is_npc and (fear_row_converted or charm_row_converted):
         # `0x0B8` bit 7 clear says a player character, but this character
         # also holds a converted Fear or Pool charm row: neither C64 title turns a
         # companion back into a player character, so the C64's own Fear
@@ -2743,11 +2801,12 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # -- that bit is a loss with nowhere to go, and it is reported rather
     # than silently dropped.
     own_share = int(rec.get("treasure_share"))
-    if is_npc or own_share != 0 or deltas is not POOL_OF_RADIANCE_RECORD:
+    if ((is_npc and not pool_zombie_pc) or own_share != 0
+            or deltas is not POOL_OF_RADIANCE_RECORD):
         out.set("treasure_share", own_share,
                 "the C64's raw treasure-share byte at 0x0FA",
                 grade("treasure_share"),
-                dropped=() if is_npc or not rec.get("flags_0b8") & 0x01 else (
+                dropped=() if (is_npc and not pool_zombie_pc) or not rec.get("flags_0b8") & 0x01 else (
                     ("flags_0b8 bit 0: a player character with an "
                      f"ability-altered flag and a raw share of "
                      f"{own_share:#04x} at 0x0FA, where the other ports have "
@@ -2775,14 +2834,6 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # the same byte was read instead (#281, A dead character on a C64 save
     # converts to DOS alive, because the reader never reads the four bytes
     # past 0x100).
-    if roster is not None:
-        raw, roster_in_use_origin = (roster.roster_in_use,
-                                      "the C64 roster block's roster_in_use")
-    elif rec.is_stored("roster_in_use"):
-        raw, roster_in_use_origin = (rec.get("roster_in_use"),
-                                      "C64 record 0x100")
-    else:
-        raw = None
     if raw is not None:
         name = STATUS_BY_BITS.get(raw & 0x07)
         if name is not None:
