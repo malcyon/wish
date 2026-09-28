@@ -670,25 +670,46 @@ cloud would. The two duration-0 `(31, 0, FF, 0)` records from handlers 43 and
 
 ### Charm and Fear keep part of their state in the record
 
-**CONFIRMED from both ports' code; not converted, because the row is only part
-of the state.** `goldbox.effects` refuses these with a reason that says so.
+**CONFIRMED from both ports' code.** Charm is not converted, because the row is
+only part of the state, and `goldbox.effects` refuses it with a reason that
+says so. **Fear converts**, in both directions: its record state is DOS's own
+"player character taken over" control byte (`0xB3`, `docs/195`) and C64 record
+`0x10C` bit 6, and `goldbox/c64_codec.py` converts the row and those bytes
+together (`FEAR_IDS`).
 
 | Effect | DOS | C64 |
 |---|---|---|
 | Charm, 11 | Silver Blades spells 10 and 96 write `(11, 60 + 60 a level, charmer's side << 7 \| level, 1)` (`0x2E75A`-`0x2E799`). The handler's first call adds `0x20` and the target's own side `<< 6`, sets the side byte `0x1A8` to bit 7, the quickfight byte `0x1A9` to 1 and the control byte `0xFF` to `0xB3`; remove mode puts back the side from bit 6 (`0x11183`-`0x1126B`). Pool and Curse write the node with duration 0 (spell 10's row, bytes 4-5 zero), so only Silver Blades holds a running one | the cast writes `$80 \| level` (`COMBAT $1A67`) and sets record `0x10C` to the charmer's side in bit 0, the target's own side in bit 1, and bits 2, 6 and 7 (`$1A87`-`$1A9E`, `ORA #$C4`; Curse `$171B`). The handler's expiry path puts bit 0 back from bit 1 when bit 2 is set (`$24B8`, Curse `$1EE4`) |
 | Fear, Curse 142, Silver Blades 111 | spell 84 writes `(id, level minutes, 0, 1)` and sets the quickfight byte (`0x198`, `0x1A9`) to 1 and the control byte (`0xF7`, `0xFF`) to `0xB3` (Curse `0x32B51`-`0x32B89`); Confusion's 1-10 does the same with `(id, 10, 0, 1)`. Remove mode clears both (`0x12819`, `0x144A0`) | the cast writes `level \| $80` and sets record `0x10C` bits 6 and 7 and the combat flee flag (`COMBAT $21C7`, Silver Blades `$2718`); the expiry handler clears bit 6 and the flee flag (`$2911`, `$297F`) |
 
-The node and the row map one to one (Charm: C64 `$80 | (data & $0F)` and bit
-7 for the flag; Fear: `data | $80`). What does not is the record. The C64
-reader masks `0x10C` to bits 0 and 7 and the writer sets only those, so a
-converted charmed character would lose the side the C64 puts back at expiry;
-and the DOS control byte `0xB3` reaches the C64's `0x0B8` unchanged, where the
-C64's own Fear never writes it and its end-of-Fear code keeps quickfight on
-while `0x0B8` bit 7 is set (`$241C`). `goldbox/layout.py` calls `0x10C` bits
-1-6 unused by every writer seen; the Charm, Fear and Confusion writers above
-set bits 1, 2 and 6, and `COM.PREP`, `POST.COM $31A2` and `ECL64 $3DD6` read
-them as part of the side. Converting these needs the record's side,
-quickfight and control bytes mapped together with the row, in both codecs.
+The node and the row map one to one for both (Charm: C64 `$80 | (data & $0F)`
+and bit 7 for the flag; Fear: `data | $80`). What Charm's row alone does not
+carry is the record: the C64 reader masks `0x10C` to bits 0 and 7 and the
+writer sets only those, so a converted charmed character would lose the side
+the C64 puts back at expiry. `goldbox/layout.py` used to call `0x10C` bits 1-6
+unused by every writer seen; the Charm, Fear and Confusion writers above set
+bits 1, 2 and 6, and `COM.PREP`, `POST.COM $31A2` and `ECL64 $3DD6` read them
+as part of the side. Converting Charm needs the record's side, quickfight and
+control bytes mapped together with the row, in both codecs.
+
+**Fear's record state is simpler, because it is one byte each way, and it is
+built.** DOS's control byte is not the side: it is `0xB3`, the engine's own
+value for a player character it has taken over (`docs/195`), and the same byte
+every DOS and Amiga reader delivers whenever `npc` reads true from `0x0B8` bit
+7 clear plus a stored control byte -- there is nothing Fear-specific about
+reading it. What is specific is the write: neither C64 title ever turns a
+companion back into a player character (`docs/232`), so a converted feared
+player character must write as a player character (`0x0B8` = 0, whether or not
+its Fear row also converts) rather than as a companion the control byte would
+otherwise make it. `c64_codec.write` does this for Curse and Silver Blades
+through `DOS_PC_TAKEN_OVER`; Pool of Radiance's own control byte is a
+different value and belongs to #720 (A Pool of Radiance player character the
+engine has taken over converts between DOS and the C64 as a companion, because
+both readers take the control byte's bit 7 for a companion). Bit 6 of `0x10C`
+goes with the row: written
+when a Fear row is written, and read back as `npc` true with control `0xB3`
+when a player character's row converted. Bits 1-5, and bit 6 with no Fear row,
+are still not converted anywhere and are logged rather than masked away.
 
 **Silver Blades' 65 is never a running node. CONFIRMED from a survey of
 every writer.** Spell 114's row names 65, but its routine (`GAME.OVR:0x32323`) rolls
@@ -868,9 +889,11 @@ id-12 node and writes no id-13 node in any title (read 3c). Dispel Evil (4
 and Curse's 145 or Silver Blades' 32), Confusion (35), Fumble (27, and 42 with
 data 0), Stinking Cloud (30, 31), Curse's 136 and Silver Blades' Power Word
 Stun (106) convert both ways by the rules in "Combat-cast ids and their
-rules". Charm (11) and Fear (Curse 142, Silver Blades 111) wait on the record
-bytes they share with the row, Silver Blades' 65 is never a running node, and
-Slow Poison (22) waits on a save the DOS game writes with it running.
+rules". Fear (Curse 142, Silver Blades 111) converts both ways, its row and
+its record byte together (`effects.FEAR_IDS`, `c64_codec.DOS_PC_TAKEN_OVER`).
+Charm (11) still waits on the record bytes it shares with the row, Silver
+Blades' 65 is never a running node, and Slow Poison (22) waits on a save the
+DOS game writes with it running.
 
 Reproduce the static readings with `.venv/bin/python
 tools/c64/effectcrosswalk.py`; a later title's run prints its caster-level ids.

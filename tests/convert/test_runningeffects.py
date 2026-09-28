@@ -1070,6 +1070,95 @@ def test_a_later_title_prayer_row_reaches_every_member(name, game):
         [(49, 0xFF, 0x0A, 0x03)]
 
 
+# --- Fear (Curse 142, Silver Blades 111): the row and the record together ---
+
+_FEAR_TITLES = [(c64_port.CURSE_OF_THE_AZURE_BONDS, 142),
+                (c64_port.SECRET_OF_THE_SILVER_BLADES, 111)]
+
+
+def _feared_character(game, eid, data=0):
+    char = _title_character(game, bytes((eid, 0x0A, 0, data, 1)))
+    char.set("npc", True, "built here")
+    char.set("npc_control_byte", c64_codec.DOS_PC_TAKEN_OVER, "built here")
+    char.set("quickfight", True, "built here")
+    return char
+
+
+@pytest.mark.parametrize("game, eid", _FEAR_TITLES, ids=lambda v: getattr(
+    v, "key", v))
+def test_a_feared_player_character_writes_as_one_not_a_companion(game, eid):
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(_feared_character(game, eid), payload=payload,
+                               party_slot=2, clock_minutes=0)
+    assert _rows(payload).pop(63) == (eid, 2, 0x0A, 0x80)
+    assert rec.get("flags_0b8") == 0x00
+    assert rec.get("combat_side") == 0xC0
+    assert not [d for d in rep.dropped + rep.losses + rep.warnings
+                if "running_effects" in d or "npc_control_byte" in d]
+
+
+def test_a_taken_over_player_character_with_no_fear_node_still_zeroes_0b8():
+    char = neutral.NeutralCharacter("DOS", source="built here",
+                                    game=c64_port.CURSE_OF_THE_AZURE_BONDS)
+    char.set("name", "X", "built here")
+    char.set("npc", True, "built here")
+    char.set("npc_control_byte", c64_codec.DOS_PC_TAKEN_OVER, "built here")
+    rec, _rep = c64_codec.write(char)
+    assert rec.get("flags_0b8") == 0x00
+    assert rec.get("combat_side") & 0x40 == 0
+
+
+@pytest.mark.parametrize("game, eid", _FEAR_TITLES, ids=lambda v: getattr(
+    v, "key", v))
+def test_a_fear_row_reads_back_as_a_player_character_taken_over(game, eid):
+    payload = bytearray(0x1C00)
+    effects.write_effect(payload, 0, eid, 2, 0x0A, 0x80)
+    rec = CharacterRecord.blank()
+    rec.set("combat_side", 0xC0)
+    out = c64_codec.read(rec, game=game, payload=payload, party_slot=2,
+                         clock_minutes=1, source="x")
+    assert bytes(out.get("running_effects")[0])[:5] == \
+        bytes((eid, 10, 0, 0, 1))
+    assert out.get("npc") is True
+    assert out.get("npc_control_byte") == c64_codec.DOS_PC_TAKEN_OVER
+    assert out.get("quickfight") is True
+    assert not [d for d in out.dropped if "0x10C" in d or "bits 1-6" in d]
+    _r, _i, spc, _rep = dos_codec.write(out)
+    f83 = dos_port.FIELDS_BY_NAME_FOR[game.key]["field_83_87"]
+    control_offset = f83.offset + (1 if f83.size == 5 else 0)
+    assert _r[control_offset] == c64_codec.DOS_PC_TAKEN_OVER
+    quickfight_offset = (dos_port.FIELDS_BY_NAME_FOR[game.key]
+                         ["field_10c_10f"].offset + 3)
+    assert _r[quickfight_offset] == 1
+
+
+@pytest.mark.parametrize("game", _PARTY_TITLES, ids=lambda g: g.key)
+def test_a_0x10c_bit_6_with_no_fear_row_gives_one_drop_line(game):
+    payload = bytearray(0x1C00)
+    rec = CharacterRecord.blank()
+    rec.set("combat_side", 0xC0)
+    out = c64_codec.read(rec, game=game, payload=payload, party_slot=2,
+                         clock_minutes=1, source="x")
+    lines = [d for d in out.dropped if "bits 1-6" in d]
+    assert len(lines) == 1
+
+
+@pytest.mark.parametrize("game, eid", _FEAR_TITLES, ids=lambda v: getattr(
+    v, "key", v))
+def test_a_fear_row_makes_a_dos_c64_dos_round_trip(game, eid):
+    payload = bytearray(0x1C00)
+    rec, _rep = c64_codec.write(_feared_character(game, eid, data=5),
+                                payload=payload, party_slot=2,
+                                clock_minutes=0)
+    out = c64_codec.read(rec, game=game, payload=payload, party_slot=2,
+                         clock_minutes=1, source="x")
+    assert bytes(out.get("running_effects")[0])[:5] == \
+        bytes((eid, 10, 0, 5, 1))
+    assert out.get("npc_control_byte") == c64_codec.DOS_PC_TAKEN_OVER
+    _r, _i, spc, _rep = dos_codec.write(out)
+    assert spc[:5] == bytes((eid, 10, 0, 5, 1))
+
+
 @pytest.mark.parametrize("record, party_row", [
     (bytes((5, 0, 0, 0x03, 0)), True),    # permanent Detect Magic, level 3
     (bytes((5, 0, 0, 0xFF, 1)), False),   # an item's grant, removed on un-ready

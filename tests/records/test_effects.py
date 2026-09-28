@@ -1316,13 +1316,48 @@ def test_a_dispel_evil_or_stun_id_of_another_title_stays_unconverted(
     ("pool-of-radiance", effects.RunningEffect(11, 60, 0x05, 1)),
     ("curse-of-the-azure-bonds", effects.RunningEffect(11, 60, 0x05, 1)),
     (_BLADES, effects.RunningEffect(11, 120, 0x85, 1)),
-    ("curse-of-the-azure-bonds", effects.RunningEffect(142, 10, 0, 1)),
-    (_BLADES, effects.RunningEffect(111, 10, 0, 1)),
 ])
 def test_charm_and_fear_wait_on_their_record_bytes(title, node):
     got = effects.c64_row(title, node)
     assert isinstance(got, effects.Unconverted)
     assert "record" in got.reason and "no rule yet" in got.reason
+
+
+@pytest.mark.parametrize("title, eid", [
+    ("curse-of-the-azure-bonds", 142), (_BLADES, 111),
+])
+def test_fear_converts_with_its_side_bit_folded_in(title, eid):
+    assert effects.c64_row(title, effects.RunningEffect(eid, 10, 0, 1)) \
+        == (eid, 0x80)
+    assert effects.c64_row(title, effects.RunningEffect(eid, 10, 5, 1)) \
+        == (eid, 0x85)
+
+
+@pytest.mark.parametrize("title, eid, node", [
+    ("curse-of-the-azure-bonds", 142, effects.RunningEffect(142, 10, 0, 0)),
+    ("curse-of-the-azure-bonds", 142, effects.RunningEffect(142, 10, 0, 2)),
+    ("curse-of-the-azure-bonds", 142,
+     effects.RunningEffect(142, 10, 0x80, 1)),
+    (_BLADES, 142, effects.RunningEffect(142, 10, 0, 1)),
+    ("curse-of-the-azure-bonds", 111, effects.RunningEffect(111, 10, 0, 1)),
+    ("pool-of-radiance", 142, effects.RunningEffect(142, 10, 0, 1)),
+])
+def test_a_fear_node_no_dos_engine_writes_or_of_another_title_stays_unconverted(
+        title, eid, node):
+    got = effects.c64_row(title, node)
+    assert isinstance(got, effects.Unconverted)
+
+
+@pytest.mark.parametrize("title, eid", [
+    ("curse-of-the-azure-bonds", 142), (_BLADES, 111),
+])
+def test_a_fear_row_reads_back_with_its_data_byte(title, eid):
+    assert effects.dos_record(title, effects.Effect(63, eid, 0, 10, 0x85), 0) \
+        == effects.RunningEffect(eid, 10, 5, 1)
+    assert effects.dos_record(title, effects.Effect(63, eid, 0, 10, 0x80), 0) \
+        == effects.RunningEffect(eid, 10, 0, 1)
+    got = effects.dos_record(title, effects.Effect(63, eid, 0, 10, 0x05), 0)
+    assert isinstance(got, effects.Unconverted)
 
 
 def test_silver_blades_65_is_never_written_as_a_running_node():

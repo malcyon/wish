@@ -1077,11 +1077,13 @@ _DECLARED: Sequence[Field] = (
            "occupied roster slots across 17 save images hold $00 in 99 and "
            "$80 in 5, never $81. The DOS engine's own script-field accessor "
            "(GAME.OVR:0x7DE9, 0x8074) reads and writes this exact byte over "
-           "DOS 0x10E/0x10F -- docs/169-dos-combat-side.md. Bits 1-6 are "
-           "unused by every writer seen; masked (`& 0x81`) rather than "
-           "asserted zero (#235 (Two unattributed DOS byte ranges in the "
-           "combat tail are dropped converting to C64, and nobody knows "
-           "what they hold))"),
+           "DOS 0x10E/0x10F -- docs/169-dos-combat-side.md. The C64's Charm, "
+           "Fear and Confusion writers set bits 1, 2 and 6 as part of the "
+           "side, and COM.PREP, POST.COM $31A2 and ECL64 $3DD6 read them "
+           "back (docs/226); bit 6 is Fear, converted alongside its row. "
+           "The rest is masked (`& 0xC1`) rather than asserted zero (#235 "
+           "(Two unattributed DOS byte ranges in the combat tail are "
+           "dropped converting to C64, and nobody knows what they hold))"),
     _field(0x0EC, 1, _I8, "missile_attack_adjustment",
            "Missile attack adjustment", _OK,
            "what dexterity is worth to hit with a ranged weapon, signed: $FF "

@@ -595,6 +595,13 @@ STATUS_BY_BITS: dict[int, str] = {v: k for k, v in STATUS_BITS.items()}
 #: three of three not, partitioning on bit 7 and on nothing else.
 OUT_OF_PLAY = 0x80
 
+#: DOS's own `PC_Berzerk`: a *player character* the engine has taken over
+#: (`docs/195`), stored in the title's control byte. Curse and Silver Blades
+#: never turn a companion back into a player character (`docs/232`), so a
+#: character read with this value converts as a player character, not a
+#: companion.
+DOS_PC_TAKEN_OVER = 0xB3
+
 #: What a player is told when the source's status has no C64 value.
 #:
 #: **PROPOSED, not yet approved.** `.claude/rules/gui-text.md` makes every
@@ -1054,6 +1061,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         1 for n in (granted.value if granted is not None else ())
         if bytes(n)[0] in effects.STRENGTH_IDS)
 
+    # Whether a Fear row (`effects.FEAR_IDS`) was actually written into the
+    # payload, which the control byte and the combat-side bit below both key
+    # off of.
+    fear_row_written = False
+
     for node in other_nodes:
         which = running_effect_label(node.id, node.minutes, char.game)
         if node.id in effects.party_row_ids(title_key):
@@ -1088,6 +1100,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                     payload, slot, c64_id,
                     party_slot if party_slot is not None else 0,
                     effects.closest_duration(node.minutes, clock), magnitude)
+                if c64_id in effects.FEAR_IDS.get(title_key, ()):
+                    fear_row_written = True
                 if effects.enlarge_capped(title_key, node):
                     rep.warnings.append(
                         f"{which}: strength 23 written as the C64's most, 22")
@@ -1685,9 +1699,29 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # gets bit 7 clear and bit 0 from `modify_flag` above, which is the
     # ability-altered flag the other ports keep in the byte after their
     # control byte (#303).
+    #
+    # `DOS_PC_TAKEN_OVER` is the one exception, in Curse and Silver Blades
+    # (`effects.FEAR_IDS`'s titles): every DOS and Amiga reader delivers a
+    # player character the engine has taken over with `npc` true and this
+    # control byte, but neither C64 title ever turns a companion back into a
+    # player character (`docs/232`), so such a character writes as a player
+    # character, whether or not a fear row was also written -- both engines
+    # keep a player character's `0x0B8` at zero.  Pool of Radiance is not
+    # changed here (#720).
     npc = use("npc")
     control = use("npc_control_byte")
-    if npc is not None and npc.value:
+    taken_over = (npc is not None and npc.value and control is not None
+                  and int(control.value) == DOS_PC_TAKEN_OVER
+                  and title_key in effects.FEAR_IDS)
+    if taken_over:
+        rec.set("flags_0b8", 0x00)
+        rep.note(0x0B8, 1, "flags_0b8: zero -- npc_control_byte is "
+                 f"{DOS_PC_TAKEN_OVER:#04x}, DOS's own player character "
+                 "taken over, and neither C64 title turns a companion back "
+                 "into a player character, so this is a player character")
+        rep.dropped.extend(npc.dropped)
+        rep.dropped.extend(control.dropped)
+    elif npc is not None and npc.value:
         if control is not None:
             _wrapped_byte(rep, "npc_control_byte", int(control.value))
             rec.set("flags_0b8", int(control.value) & 0xFF)
@@ -1814,6 +1848,13 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 f"{label} {'set' if value.value else 'clear'} <- "
                 f"{value.origin}")
             rep.dropped.extend(value.dropped)
+    # Bit 6 is the C64's own Fear bit, both titles' expiry handlers clear it
+    # (`docs/226`'s Charm and Fear section); it goes with the row rather than
+    # with `hostile`/`quickfight`, which is why it is not folded into the
+    # loop above.
+    if fear_row_written:
+        side_bits |= 0x40
+        side_where.append("bit 6 set: a Fear row was written")
     rec.set("combat_side", side_bits)
     rep.note(0x10C, 1, f"combat side ${side_bits:02X}: " +
              (", ".join(side_where) if side_where else
@@ -1942,10 +1983,15 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
             "clear and bit 0 from the share byte's own ability-altered flag "
             "(#303); a Curse or Silver Blades player character gets bit 7 "
             "clear and bit 0 zero, since neither title stores that flag "
-            "there (#639)"),
+            "there (#639); in Curse and Silver Blades, npc_control_byte "
+            "DOS_PC_TAKEN_OVER takes the player-character branch whatever "
+            "npc says, because neither title turns a companion back into a "
+            "player character"),
     ("npc_control_byte", "written unchanged to 0x0B8 when npc is true -- "
                          "bit 7 plus the low seven bits of morale, stored "
-                         "halved; nothing to write when npc is false (#303)"),
+                         "halved; nothing to write when npc is false (#303); "
+                         "DOS_PC_TAKEN_OVER writes 0x0B8 = 0 instead, in "
+                         "Curse and Silver Blades"),
     ("treasure_share", "written unchanged to 0x0FA for a companion, whose "
                        "share the C64's own split reads there; a DOS or "
                        "Amiga raw value with bit 2 set refuses because C64 "
@@ -1965,6 +2011,10 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                "play -- the opposite polarity to DOS's own flag"),
     ("hostile", "bit 0 of record 0x10C -- 0 the party's side, 1 the enemy's"),
     ("quickfight", "bit 7 of the same byte, set by QUICK and never cleared"),
+    # Bit 6 of the same byte is not a field of its own: it is written by the
+    # running-effects loop above, alongside a Fear row, so it has no `use()`
+    # call and no entry here to consume.
+
     # #57: the two ports share one 14-head, 12-body menu, byte for byte, in
     # both binaries -- so the neutral value is already the C64's own art id
     # and this is a copy, not a table lookup.  Kept out of `DIRECT` because a
@@ -2235,7 +2285,12 @@ READ_TARGETS: dict[str, str] = (
                     "treasure_share, which is the byte the other two ports "
                     "keep that same flag in (#303); for a Curse or Silver "
                     "Blades player character bit 0 has no such meaning and "
-                    "is reported as a loss if it is ever set (#639)",
+                    "is reported as a loss if it is ever set (#639); for a "
+                    "Curse or Silver Blades player character whose Fear row "
+                    "converted, npc and npc_control_byte (DOS_PC_TAKEN_OVER) "
+                    "are given as though bit 7 were set, because neither "
+                    "title ever turns a companion back into a player "
+                    "character",
        "treasure_share": "read unchanged as neutral treasure_share for a "
                          "companion, and for a player character whose byte "
                          "is not zero; for the ordinary Pool of Radiance "
@@ -2254,7 +2309,9 @@ READ_TARGETS: dict[str, str] = (
                         "as neutral active; zero is an empty roster slot and "
                         "is neither",
        "combat_side": "bit 0 read as neutral hostile and bit 7 as neutral "
-                      "quickfight",
+                      "quickfight; bit 6 accounted for as part of a "
+                      "converted Fear row (effects.FEAR_IDS) and otherwise, "
+                      "with bits 1-5, logged as not yet converted",
        "roster_tail": "read as neutral roster_tail, from the roster block's "
                       "+0x10-+0x18 or the record",
        "inventory": "read as neutral inventory, from the save's item page "
@@ -2351,6 +2408,20 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     clock = clock_minutes if clock_minutes is not None else 0
     running: list[bytes] = []
     permanent: list[int] = []
+    # Whether a row in `effects.FEAR_IDS` converted, which the npc override
+    # and the 0x10C bit-6 accounting below both key off of.
+    fear_row_converted = False
+    # The 0x10C byte, chosen once here (rather than separately below, where
+    # it was read before) so the bit-6 accounting below and the hostile and
+    # quickfight bits further down both read the same source.
+    if roster is not None:
+        combat_side_raw, combat_side_origin = (
+            roster.combat_side, "the C64 roster block's combat_side")
+    elif rec.is_stored("combat_side"):
+        combat_side_raw, combat_side_origin = (
+            rec.get("combat_side"), "C64 record 0x10C")
+    else:
+        combat_side_raw = None
     if payload is not None and party_slot is not None:
         rows = effects.active_effects(bytes(payload))
         consumed: set[int] = set()
@@ -2423,6 +2494,8 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                          f"{node.reason}")
             else:
                 running.append(node.to_record())
+                if row.id in effects.FEAR_IDS.get(title_key, ()):
+                    fear_row_converted = True
         if running:
             out.set("running_effects", running,
                     "the save's shared effect arrays: the rows this "
@@ -2434,6 +2507,18 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                     "rows at duration zero whose id is a spell DOS writes at "
                     "duration zero, as effects.never_expiring_spell_record",
                     grade("paladin_cures"))
+    # 0x10C bits 1-6: bit 6 is the C64's own Fear bit, accounted for above
+    # when a Fear row converted; bit 6 with no such row, and bits 1-5 in
+    # every case, are not converted anywhere yet, so they are logged rather
+    # than silently masked away as they were before (`docs/226`'s Charm and
+    # Fear section names their readers).
+    if combat_side_raw is not None:
+        stray = combat_side_raw & 0b0111_1110
+        if fear_row_converted:
+            stray &= ~0x40
+        if stray:
+            out.drop(f"{combat_side_origin} bits 1-6, ${stray:02X}: "
+                     "not yet converted")
     out.set("lay_on_hands_minutes", heal_minutes,
             origin("lay_on_hands_uses") + (
                 ", and a row in the save's shared effect arrays"
@@ -2508,18 +2593,38 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         copy("portrait_head", "portrait_head")
         copy("portrait_body", "portrait_body")
 
-    out.set("npc", is_npc, "bit 7 of the C64's 0x0B8, the byte the game "
-            "itself counts player characters with", grade("flags_0b8"))
-    if is_npc:
-        # The low seven bits are meaningless for a player character -- bit 0
-        # is the trainer flag `flags_0b8` also carries -- but for a character
-        # the engine drives they are his morale, stored halved, and DOS keeps
-        # the same byte in the same encoding at field_83_87's control byte
-        # (#303).  Copied unchanged rather than decoded, so a converted
-        # companion keeps his own value rather than a guess.
-        out.set("npc_control_byte", rec.get("flags_0b8"),
-                "the C64's own 0x0B8, unchanged: bit 7 plus the low seven "
-                "bits of morale, stored halved", grade("flags_0b8"))
+    if not is_npc and fear_row_converted:
+        # `0x0B8` bit 7 clear says a player character, but this character
+        # also holds a converted Fear row: neither C64 title turns a
+        # companion back into a player character, so the C64's own Fear
+        # never leaves this state behind -- it is only reachable by a DOS or
+        # Amiga engine's own "player character taken over" byte
+        # (`DOS_PC_TAKEN_OVER`).  A DOS or Amiga writer must deliver this
+        # character in that same form, so `npc` and `npc_control_byte` are
+        # given as though the record held it, even though `is_npc` (the C64's
+        # own bit, used by the share logic below) stays clear.
+        out.set("npc", True, "bit 7 of the C64's 0x0B8 is clear, but a "
+                "converted Fear row means DOS or Amiga must read this "
+                "character as one the engine has taken over",
+                grade("flags_0b8"))
+        out.set("npc_control_byte", DOS_PC_TAKEN_OVER,
+                "DOS's own player-character-taken-over value, restored "
+                "because a Fear row converted and 0x0B8 is a player "
+                "character's", grade("flags_0b8"))
+    else:
+        out.set("npc", is_npc, "bit 7 of the C64's 0x0B8, the byte the game "
+                "itself counts player characters with", grade("flags_0b8"))
+        if is_npc:
+            # The low seven bits are meaningless for a player character --
+            # bit 0 is the trainer flag `flags_0b8` also carries -- but for a
+            # character the engine drives they are his morale, stored
+            # halved, and DOS keeps the same byte in the same encoding at
+            # field_83_87's control byte (#303).  Copied unchanged rather
+            # than decoded, so a converted companion keeps his own value
+            # rather than a guess.
+            out.set("npc_control_byte", rec.get("flags_0b8"),
+                    "the C64's own 0x0B8, unchanged: bit 7 plus the low "
+                    "seven bits of morale, stored halved", grade("flags_0b8"))
 
     # -- the share byte, whose meaning depends on who the character is ------
     # For a character the engine drives it is the treasure share, and the
@@ -2611,21 +2716,15 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                      "of the states it can put into words")
 
     # -- the combat side and quickfight flag, unpacked from one byte ---------
-    # Same reason: 0x10C is past the 256 a slot stores, so this is the C64
-    # roster block's own copy when there is one (#281).
-    if roster is not None:
-        raw, combat_side_origin = (roster.combat_side,
-                                    "the C64 roster block's combat_side")
-    elif rec.is_stored("combat_side"):
-        raw, combat_side_origin = rec.get("combat_side"), "C64 record 0x10C"
-    else:
-        raw = None
-    if raw is not None:
-        out.set("hostile", bool(raw & 0x01),
-                f"bit 0 of {combat_side_origin}, ${raw:02X}",
+    # `combat_side_raw` and `combat_side_origin` are chosen once, above,
+    # before the effect rows are read, so the bit-6 accounting there and bits
+    # 0 and 7 here read the same 0x10C byte.
+    if combat_side_raw is not None:
+        out.set("hostile", bool(combat_side_raw & 0x01),
+                f"bit 0 of {combat_side_origin}, ${combat_side_raw:02X}",
                 grade("combat_side"), Provenance.RESHAPED)
-        out.set("quickfight", bool(raw & 0x80),
-                f"bit 7 of {combat_side_origin}, ${raw:02X}",
+        out.set("quickfight", bool(combat_side_raw & 0x80),
+                f"bit 7 of {combat_side_origin}, ${combat_side_raw:02X}",
                 grade("combat_side"), Provenance.RESHAPED)
 
     # -- which of the eight loaded combat pictures is this character's -------

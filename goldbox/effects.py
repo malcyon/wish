@@ -460,13 +460,24 @@ STINKING_CLOUD_DOS = (0xFF, 0)
 
 #: Ids whose state also lives in record bytes the codecs do not convert yet,
 #: so a row alone would not reproduce it. Charm (11) keeps the charmed
-#: character's own side in DOS data bit 6 and in C64 record `0x10C` bits 1-2;
-#: Fear (Curse 142, Silver Blades 111) sets DOS's control byte to `0xB3`
-#: where the C64 sets record `0x10C` bit 6 (`docs/226`).
+#: character's own side in DOS data bit 6 and in C64 record `0x10C` bits 1-2
+#: (`docs/226`). Fear (`FEAR_IDS`, below) has its own rule: `c64_codec`
+#: converts its record bytes alongside the row.
 _RECORD_STATE_IDS: dict[str, frozenset[int]] = {
     "pool-of-radiance": frozenset({11}),
-    _CURSE: frozenset({11, 142}),
-    _BLADES: frozenset({11, 111}),
+    _CURSE: frozenset({11}),
+    _BLADES: frozenset({11}),
+}
+
+#: Fear (Curse 142, Silver Blades 111). DOS writes `(id, minutes, level, 1)`
+#: and sets the character's control byte to `0xB3`, the engine's own
+#: "player character taken over" value (`docs/195`); the C64 combat cast
+#: writes `level | $80` and sets record `0x10C` bit 6 (`docs/226`'s Charm
+#: and Fear section). The row's rule is here; `goldbox/c64_codec.py`
+#: converts the control byte and the `0x10C` bit alongside it.
+FEAR_IDS: dict[str, frozenset[int]] = {
+    _CURSE: frozenset({142}),
+    _BLADES: frozenset({111}),
 }
 
 #: Silver Blades' 65: DOS spell 114 names it in its row but its routine
@@ -643,15 +654,19 @@ def _slowed_min(title_key: str) -> int:
 
 def _own_rule_row(title_key: str,
                   node: RunningEffect) -> tuple[int, int] | Unconverted | None:
-    """`c64_row` for id 13, Haste, Slowed, Silver Blades' id 113, the flagged
-    caster-level ids, Pool's disease chain, the zero-level ids, Fumble and
-    Stinking Cloud, or `None`."""
+    """`c64_row` for id 13, Haste, Slowed, Silver Blades' id 113, Fear, the
+    flagged caster-level ids, Pool's disease chain, the zero-level ids,
+    Fumble and Stinking Cloud, or `None`."""
     if node.id == _REDUCE_ID or node.id in _UNWRITTEN_IDS.get(title_key, ()):
         return Unconverted(f"no DOS engine writes a running id-{node.id} "
                            "node")
     if node.id in _RECORD_STATE_IDS.get(title_key, ()):
         return Unconverted("no rule yet: this effect's state also lives in "
                            "record bytes the codecs do not convert")
+    if node.id in FEAR_IDS.get(title_key, ()):
+        if node.flag != 1 or node.data > 0x7F:
+            return Unconverted("a Fear node no DOS engine writes")
+        return node.id, node.data | 0x80
     if node.id in ZERO_LEVEL_IDS.get(title_key, ()):
         if (title_key, node.id) in _INERT_FLAG:
             if node.flag not in (0, 1):
@@ -726,6 +741,10 @@ def _own_rule_node(title_key: str, effect_id: int,
             return Unconverted("a magnitude the C64 cast of this effect "
                                "does not write")
         return m, 0
+    if effect_id in FEAR_IDS.get(title_key, ()):
+        if not m & 0x80:
+            return Unconverted("a Fear magnitude no C64 cast writes")
+        return m & 0x7F, 1
     if effect_id in FLAG_BIT_IDS.get(title_key, ()):
         return m & 0x7F, m >> 7
     if effect_id in STINKING_CLOUD_IDS and _slowed_title(title_key):
