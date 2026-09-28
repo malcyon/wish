@@ -679,18 +679,135 @@ together (`FEAR_IDS`).
 
 | Effect | DOS | C64 |
 |---|---|---|
-| Charm, 11 | Silver Blades spells 10 and 96 write `(11, 60 + 60 a level, charmer's side << 7 \| level, 1)` (`0x2E75A`-`0x2E799`). The handler's first call adds `0x20` and the target's own side `<< 6`, sets the side byte `0x1A8` to bit 7, the quickfight byte `0x1A9` to 1 and the control byte `0xFF` to `0xB3`; remove mode puts back the side from bit 6 (`0x11183`-`0x1126B`). Pool and Curse write the node with duration 0 (spell 10's row, bytes 4-5 zero), so only Silver Blades holds a running one | the cast writes `$80 \| level` (`COMBAT $1A67`) and sets record `0x10C` to the charmer's side in bit 0, the target's own side in bit 1, and bits 2, 6 and 7 (`$1A87`-`$1A9E`, `ORA #$C4`; Curse `$171B`). The handler's expiry path puts bit 0 back from bit 1 when bit 2 is set (`$24B8`, Curse `$1EE4`) |
+| Charm, 11, Curse and Silver Blades | Silver Blades spells 10 and 96 write `(11, 60 + 60 a level, charmer's side << 7 \| level, 1)` (`0x2E75A`-`0x2E799`). The handler's first call adds `0x20` and the target's own side `<< 6`, sets the side byte `0x1A8` to bit 7, the quickfight byte `0x1A9` to 1 and the control byte `0xFF` to `0xB3`; remove mode puts back the side from bit 6 (`0x11183`-`0x1126B`). Curse writes the node with duration 0 (spell 10's row, bytes 4-5 zero), so only Silver Blades holds a running one | the cast writes `$80 \| level` (`COMBAT $1A67`) and sets record `0x10C` to the charmer's side in bit 0, the target's own side in bit 1, and bits 2, 6 and 7 (`$1A87`-`$1A9E`, `ORA #$C4`; Curse `$171B`). The handler's expiry path puts bit 0 back from bit 1 when bit 2 is set (`$24B8`, Curse `$1EE4`) |
+| Charm, 11, Pool of Radiance | spell 10 writes `(11, 0, 0, charmer's side << 7 \| count, 1)`. The handler (`0xF05B`) sets data bit 5 on its first call and keeps the target's own side in bit 6, and sets the side byte `0x10E` to the charmer's side, the quickfight byte `0x10F` to 1 and the control byte `0x084` to `0xB3` (`0xF0EF`). Remove mode (`0xF064`-`0xF08F`) puts back the side from bit 6 and writes control 0 (`0xF089`), leaving quickfight at 1 | spell 10's combat row (`SPELLE65 $D86C`) sends the cast to `SPELLE00 $A934`, which sets the magnitude to `$80 \| $06 \| (caster's 0x10C & $0F)`, `$86` from a party caster, and hands it to the generic combat writer (`COMBAT $29F7`, `ECL64 $99D1`, stores `$9A31`-`$9A46`): id 11, owner the target's combatant index (`$A4F5`), duration 0. The cast does not touch `0x10C`. The handler (`SPELLE01 $A7DA`) does, whenever it is called with bit 7 of A clear: if bit 6 is clear it moves bit 0 to bit 5 and sets bit 6, then ORs in the magnitude, masks `$61` and sets bit 7. For an ally charmed by his own party that is `$C0`, and later calls keep it. Its expiry path writes `$80 \| (bit 5 → bit 0)` |
 | Fear, Curse 142, Silver Blades 111 | spell 84 writes `(id, level minutes, 0, 1)` and sets the quickfight byte (`0x198`, `0x1A9`) to 1 and the control byte (`0xF7`, `0xFF`) to `0xB3` (Curse `0x32B51`-`0x32B89`); Confusion's 1-10 does the same with `(id, 10, 0, 1)`. Remove mode clears both (`0x12819`, `0x144A0`) | the cast writes `level \| $80` and sets record `0x10C` bits 6 and 7 and the combat flee flag (`COMBAT $21C7`, Silver Blades `$2718`); the expiry handler clears bit 6 and the flee flag (`$2911`, `$297F`) |
 
-The node and the row map one to one for both (Charm: C64 `$80 | (data & $0F)`
-and bit 7 for the flag; Fear: `data | $80`). What Charm's row alone does not
-carry is the record: the C64 reader masks `0x10C` to bits 0 and 7 and the
-writer sets only those, so a converted charmed character would lose the side
-the C64 puts back at expiry. `goldbox/layout.py` used to call `0x10C` bits 1-6
-unused by every writer seen; the Charm, Fear and Confusion writers above set
+In the later titles the node and the row map one to one for both (Charm: C64
+`$80 | (data & $0F)` and bit 7 for the flag; Fear: `data | $80`). Pool's
+charm row does not: its magnitude holds the charmer's side in bit 0 and a
+constant `$06`, where DOS holds a count, so C64 Dispel Magic tries it as a
+sixth- or seventh-level effect. What Charm's row alone does not carry is the
+record: the C64 reader masks `0x10C` to bits 0 and 7 and the writer sets only
+those, so a converted charmed character would lose the side the C64 puts back
+at expiry. `goldbox/layout.py` used to call `0x10C` bits 1-6 unused by every
+writer seen; the later titles' Charm, Fear and Confusion writers above set
 bits 1, 2 and 6, and `COM.PREP`, `POST.COM $31A2` and `ECL64 $3DD6` read them
-as part of the side. Converting Charm needs the record's side, quickfight and
-control bytes mapped together with the row, in both codecs.
+as part of the side. Pool's charm handler uses bits 5 and 6 instead. Converting
+Charm needs the record's side, quickfight and control bytes mapped together
+with the row, in both codecs.
+
+**C64 Pool of Radiance's charm, CONFIRMED from code except where graded.**
+Static reads; nothing was booted.
+
+* **Two writers, one row writer.** Spell 10 above, and the monster ability
+  id 84, whose handler `SPELLE02 $A77F` writes the same row through the same
+  writer with magnitude `$06 | $A4E2`. `$A4E2` is the acting combatant's
+  side (`COMBAT $0936`-`$0939`, PROBABLE for this call), so the monster's row
+  has bit 7 clear. Charm Person's camp row routes to `CAMP $1467`, the routine
+  Burning Hands' camp row names too, so it is not a camp spell (PROBABLE). No
+  other `COMBAT`, `SPELLE00`, `SPELLE01` or `SPELLE04` store names id 11.
+  `SPELLE01 $AB53`, which stores `$0B` into `$6C1C` and `$6C1E`, is id 76's
+  handler, not a charm writer: those are roster bytes `0x11C` and `0x11E` of
+  the loaded combatant, and it grants ids 75 and 58 through `ECL64 $9ACD`.
+* **When the handler runs.** The combat handler table (`SPELLE65`, loaded at
+  `$D60A`: address halves `$DA63`/`$DAEE`, overlay number `$DC13`) sends id 11
+  to `SPELLE01 $A7DA`. Nothing calls it at the cast. It runs from the event
+  lists at `$DB7A` that hold 11: event 15 at the start of the holder's own turn
+  (`COMBAT $0925`, `$09D6`), event 17 (`$2147`), and event 19, for every
+  combatant at the start of every round (`$0C34`, after the round's ageing).
+  So `0x10C` changes at the next round or at his own turn, not at the cast.
+* **Who commands him.** `COMBAT $093C`, right after event 15, gives the turn to
+  the player when `0x10C` bit 7 is clear and to the computer when it is set.
+  Bit 7 alone decides, but a charm row sets it again at every event 15 and 19,
+  so a charmed party member is never commanded while his row stands.
+* **What ends it.** A duration of 0 is never aged (`COMBAT $221E` skips it).
+  The combat removal `SQRPACI01 $07E4` runs the handler's expiry path when
+  magnitude bit 7 is set, and a combatant who goes out of the fight has every
+  row not on a twenty-id exception list removed that way (`COMBAT $0DC7` →
+  `$29C4`; 11 is not on the list; PROBABLE that every way of going down or
+  fleeing reaches `$0DC7`). The monster's row, bit 7 clear, is removed
+  without the expiry path, so its target keeps `$C1`. The camp removal
+  `CAMP $131F`, which C64 Dispel Magic uses out of combat (`SPELLE04 $AA7A`),
+  dispatches only the ids at `ECL65 $9AD5`; 11 is not one of them, so a camp
+  dispel deletes the row and leaves `0x10C` as it was. `POST.COM $14FB`
+  deletes each occupied roster slot's charm row and sets `0x10C` to 0 at the
+  end of a fight, without the handler; it does nothing to a slot with no row.
+  The later titles' copy of this loop runs on every outcome; that Pool's does
+  is PROBABLE.
+* **PROBABLE, fight start with a stored charm.** `COM.PREP` places combatants
+  in groups by `0x10C & $7F`. The first pass (`$0E78`-`$0EA7`, then `$0F0B`)
+  places every value-0 combatant at the party's edge. The second (`$0F54`-
+  `$0F89`) takes the first unplaced non-zero value in combatant order, places
+  that group at the opposite edge, and stops. A party member saved with `$C0`
+  (value `$40`) is not placed with the party; being combatant 0-7 he is found
+  before the monsters (value 1), so he is placed alone at the enemy's edge, and
+  these two passes place no monster. With `$80` (value 0) he is placed with
+  the party, and the handler's first event 19 then writes `$C0`. What would
+  settle it: in VICE, stage a copy of a C64 Pool save with a charm row
+  (`0B`, owner the slot, duration 0, magnitude `$86`) and `0x10C` = `$C0` on one
+  member, walk into a fight and screenshot the first command prompt; repeat
+  with `$80` as the control.
+
+**Which saves can hold a charm on a party member.** A player can save only
+between fights, so this is a question about what survives the end of one.
+
+| Title and port | Answer | Grade |
+|---|---|---|
+| DOS Silver Blades | No. The end-of-fight strip and the removal when the holder leaves combat both take 11 off | CONFIRMED from code; the demo skip below PROBABLE |
+| DOS Curse | No, for the same reasons | CONFIRMED from code; the same caveat |
+| DOS Pool | Yes, by one route: a party caster charms another party member, whose side stays the party's under computer control (quickfight 1, control `0xB3`), and the party wins. Nothing removes the duration-0 node until he leaves a later fight or is dispelled. A monster's charm cannot reach a save: while its target stands the other side is never empty (resident `0x2F7B`), knocking him out removes the node (`0x2BDF0`), and fleeing leaves him behind (`0x5C2B`-`0x5C68`) | PROBABLE: nobody has read whether spell 10's target picker offers an ally |
+| C64, all three | No. Curse and Silver Blades sweep every combatant at the end of combat, and Pool's `POST.COM $14FB` deletes the row of every occupied roster slot | CONFIRMED for the sweeps' content, PROBABLE that every way a fight ends reaches them |
+
+**DOS Pool outside combat.** Dispel Magic (`GAME.OVR:0x2939D`) walks every
+node of each target and passes over only a byte 3 of `0xFF`, so it tries the
+charm node at the level in its data's low nibble and, on success, takes it off
+through `remove_affect` (`0x2AF10`), which runs remove mode because byte 4 is
+1: the side comes back and control goes to 0. CONFIRMED from code. Castable in
+camp PROBABLE, from the C64 camp row of both Dispel Magic spells (41 and 46,
+`SPELLE04 $AA5B`). No temple service or other routine ends it: none of the 35
+`remove_affect` calls in `GAME.OVR` pushes a constant 11, the id lists they
+walk hold 11 only in the leaving-combat list, and the only constant writes of
+0 to the control byte are the remove modes of the charm handler and of id 32's
+(`0xF7F2`). PROBABLE rather than confirmed, because the nine callers of the
+id-parameter remover at `0x2C540`, the computed-id calls at `0x11B61` and
+`0x297F7`, and three routines that store a computed control byte (`0x38C4`,
+`0x7F47`, `0xD8B2`) were not attributed.
+
+**What removes a charm at the end of a DOS fight.** Two routines remove id 11,
+and both run the handler's remove mode:
+
+| Routine | Silver Blades | Curse | Pool |
+|---|---|---|---|
+| the holder leaves combat (knocked out, killed, fled), then the list | `0x370CD`, `0x371D1`: 14 ids at ds:`0xA9A` -- 03 0B 15 17 1B 1E 1F 33 34 35 5B 6A 6B 6F | `0x364C9`, `0x365CD`: 19 ids at ds:`0xA32` -- 07 0B 0D 15 17 1E 1F 20 33 34 35 3A 3B 5F 62 88 89 8B 90 | `0x2BDF0`, `0x2BEF4`: 16 ids at ds:`0xC14` -- 07 0B 1E 1F 20 33 34 35 36 3A 3B 5F 62 89 4A 4B |
+| end of every fight, every party member whatever his status | `0x6F90`, loop `0x711D`-`0x7147`: 11 ids at ds:`0x1B42` -- 03 0B 15 17 1B 23 28 1F 33 34 35 | `0x61D3`, loop `0x6369`-`0x6393`: 19 ids at ds:`0x2AA` -- 03 0B 0D 15 17 1B 23 28 33 34 35 3A 5B 88 89 8B 8E 90 1F | none: `0x5A47` calls no `remove_affect` |
+
+The end-of-fight routine runs before the experience award and before fled
+members are handled. It is skipped when `[0xA4BA]` and `[0x67E9]` are both
+non-zero in Silver Blades (`0x7079`-`0x7087`; Curse `0x62C5`-`0x62D3`), which
+the Curse reimplementation names the combat type and the demo flag; PROBABLE
+that both are never set in a game a player saves.
+
+**At the end of a C64 fight in the later titles**, the round scheduler's
+fight-over branch (Curse `COMBAT2 $F962`/`$F9D7`, Silver Blades `$F605`/
+`$F66C`, both at `$E000`) sweeps every combatant and removes a fixed list of
+combat-only ids, charm and fear among them, running each flagged row's expiry
+handler, before `POST.COM` loads. `POST.COM`'s own charm clear (Curse `$1533`,
+Silver Blades `$15BE`) then finds nothing.
+
+**Fear, corrected.** The Fear build's reachability assumed the C64 keeps its
+own fear past a fight, from `effectcrosswalk.c64_row_sweep`, which is a
+different list. It does not: both later-title sweeps list fear (Curse `0x8E`,
+Silver Blades `0x6F`), run its expiry handler, and clear `0x10C` bit 6, so no
+C64 save holds a fear row on a party member and the C64 → DOS direction has no
+game-written source. DOS Curse removes 142 at the end of every fight.
+DOS Silver Blades does not remove 111 then (only the leaving-combat list has
+it), so a Silver Blades party member still frightened when the fight ends keeps
+`(111, m, 0, 1)`, control `0xB3` and quickfight 1 into the save, and that is
+the only game-written source of either fear id. The conversion rule stands; a
+converted fear row is removed by the C64 at the end of its next fight.
+Confusion (`0x23`) and Fumble (`0x1B`) are on every end-of-fight list of both
+later titles on both ports, so no game-written save holds them either.
 
 **Fear's record state is simpler, because it is one byte each way, and it is
 built.** DOS's control byte is not the side: it is `0xB3`, the engine's own
@@ -891,7 +1008,8 @@ data 0), Stinking Cloud (30, 31), Curse's 136 and Silver Blades' Power Word
 Stun (106) convert both ways by the rules in "Combat-cast ids and their
 rules". Fear (Curse 142, Silver Blades 111) converts both ways, its row and
 its record byte together (`effects.FEAR_IDS`, `c64_codec.DOS_PC_TAKEN_OVER`).
-Charm (11) still waits on the record bytes it shares with the row, Silver
+Charm (11) still waits on the record bytes it shares with the row, and only
+DOS Pool's duration-0 node reaches a save (the Charm and Fear section), Silver
 Blades' 65 is never a running node, and Slow Poison (22) waits on a save the
 DOS game writes with it running.
 
