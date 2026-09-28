@@ -256,11 +256,15 @@ happen.
 
 ## Negative results
 
-* No save on this machine holds a paladin with a lay-on-hands node or row.
-  #600 (The neutral record has no field for an effect's remaining duration or a paladin's cure-disease uses, so a converted character loses both)'s sweep found none on the C64 or DOS. The Amiga readers' own sweep
-  (`docs/124-amiga-port.md`) found 11 of 11 nodes with duration 0. So this
-  reading has not been checked against a save the game wrote after a HEAL.
-  A DOS Silver Blades save made with `tools/dos/ssbimport.py` before and
-  after Guy de Valois uses HEAL would show node 109 with 1440 minutes.
+* No save on the C64 or the Amiga has been found holding a paladin with a
+  lay-on-hands node or row. The Amiga readers' own sweep
+  (`docs/124-amiga-port.md`) found 11 of 11 nodes with duration 0. DOS is
+  different: `WISH-SPEC-ssb-234-party-pair` (slots C and D) has Guy de
+  Valois, paladin 8, with a `.SFX` node `6D 97 05 00 00` -- id 109, 1431
+  minutes, value 0, flag 0, HEAL's own node (`GAME.OVR:0x2AFF5`). CONFIRMED
+  as game-written, from the specimen's own provenance: both slots were saved
+  under DOSBox, nothing in the bytes was written by us, and neither was
+  edited afterward. Where the HEAL press itself happened is not recorded in
+  that provenance: SPECULATIVE.
 * No record byte in DOS or on the Amiga moves when HEAL is used. The heal
   routines write nothing through the record pointer, and the gates only read.
