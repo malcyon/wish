@@ -206,3 +206,14 @@ def test_pool_of_radiance_still_reads_its_flag_and_still_refuses_a_letter():
     assert sess.walk_one("I") is False
     assert sess.kbd.sent == []
     assert "pressed nothing" in (sess.walk_refused or "")
+
+
+def test_steady_triple_logs_each_disagreeing_read_and_nothing_when_steady(
+        monkeypatch):
+    monkeypatch.setattr(S.time, "sleep", lambda _: None)
+    sess = StrayReadSession([(9, 9, 1), (3, 12, 2), (3, 12, 2)])
+    assert sess.steady_triple() == (3, 12, 2)
+    assert sess.messages == ["  square unsteady: (9, 9, 1) then (3, 12, 2)"]
+    calm = StrayReadSession([(3, 12, 2), (3, 12, 2)])
+    assert calm.steady_triple() == (3, 12, 2)
+    assert calm.messages == []

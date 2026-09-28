@@ -53,6 +53,7 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
+from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: The move keys, as PETSCII codes for the KERNAL buffer.  `I` is forward,
@@ -100,6 +101,26 @@ class Port:
             out += chunk
         s.close()
         return out.decode("latin1")
+
+
+def steady(send: Port, seconds: float = S.STEADY_SECONDS
+           ) -> tuple[int, int, int] | None:
+    """The triple once two consecutive non-None reads, one poll apart, agree.
+
+    A single read can land while the game uses the triple as a working
+    cursor; None when nothing agrees within SECONDS.
+    """
+    limit = time.time() + seconds
+    prior = None
+    while time.time() < limit:
+        now = triple(send)
+        if now is not None and now == prior:
+            return now
+        prior = now
+        if time.time() + S.STEADY_POLL >= limit:
+            break
+        time.sleep(S.STEADY_POLL)
+    return None
 
 
 def rows(dump: str) -> list[str]:
@@ -220,9 +241,9 @@ class Run:
 
     def step(self, key: str) -> dict:
         """One move key, judged by the triple rather than the status line."""
-        before = triple(self.send)
+        before = steady(self.send)
         self.send("kernal", f"{MOVE[key]:02X}")
-        after = triple(self.send)
+        after = steady(self.send)
         screen = self.screen()
         k = kind(screen[24])
         # **A turn is not a move.**  `J` and `K` change the third byte of the

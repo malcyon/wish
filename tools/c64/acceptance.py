@@ -2882,7 +2882,10 @@ class CurseRun(PoolRun):
         route = route_type(self.out, True)
         try:
             route.sess = self.sess
-            arrived = route.goto(laterbattle.TAVERN, steps, geo=geo)
+            try:
+                arrived = route.goto(laterbattle.TAVERN, steps, geo=geo)
+            except cursethac0.Unsettled:
+                raise self.fail("square", "the party's square did not settle")
             walked = route.last_goto_steps
         finally:
             route.file.close()

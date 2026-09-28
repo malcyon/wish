@@ -20,6 +20,7 @@ sys.path.insert(0, ".")
 import gamedata  # noqa: E402
 
 from goldbox.d64 import split_load_address  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 from tools.c64.recordsweep import hits  # noqa: E402
 from tools.curse_of_the_azure_bonds import cursethac0  # noqa: E402
 
@@ -335,3 +336,58 @@ def test_clear_bar_reaches_a_script_bar_on_a_session_with_no_press_bar():
     run.sess = NoPressBarSess()
     assert run.clear_bar() == "QUIT"
     assert run.sess.pressed == ["QUIT"]
+
+
+# -- the party's square is believed only when two reads agree ----------------
+
+
+class ScriptedSession(S.Session):
+    """`live_triple` answers the script in order, then repeats the last."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.messages = []
+
+    def live_triple(self):
+        return self.script.pop(0) if len(self.script) > 1 else self.script[0]
+
+    def log(self, *a):
+        self.messages.append(" ".join(str(x) for x in a))
+
+
+def scripted_run(script, tmp_path):
+    run = cursethac0.Run(tmp_path, True)
+    run.sess = ScriptedSession(script)
+    run.in_combat = lambda: False
+    run.clear_bar = lambda accept=False: None
+    run.turn_to = lambda want: want
+    run.press = lambda key: False
+    run.row24 = lambda: ""
+    return run
+
+
+def test_goto_does_not_arrive_on_one_displaced_read(monkeypatch, tmp_path):
+    monkeypatch.setattr(S.time, "sleep", lambda _: None)
+    run = scripted_run([(6, 10, 0), (1, 1, 0)], tmp_path)
+    assert run.goto((6, 10), budget=1) is False
+    run.file.close()
+
+
+def test_goto_believes_the_target_on_two_agreeing_reads(monkeypatch, tmp_path):
+    monkeypatch.setattr(S.time, "sleep", lambda _: None)
+    run = scripted_run([(6, 10, 0), (6, 10, 0)], tmp_path)
+    assert run.goto((6, 10), budget=1) is True
+    run.file.close()
+
+
+def test_triple_raises_unsettled_when_the_square_never_agrees(monkeypatch,
+                                                             tmp_path):
+    now = [0.0]
+    monkeypatch.setattr(S.time, "time", lambda: now[0])
+    monkeypatch.setattr(S.time, "sleep", lambda s: now.__setitem__(0, now[0] + s))
+    reads = iter(range(1000))
+    run = scripted_run([(0, 0, 0)], tmp_path)
+    run.sess.live_triple = lambda: (next(reads), 0, 0)
+    with pytest.raises(cursethac0.Unsettled):
+        run.triple()
+    run.file.close()

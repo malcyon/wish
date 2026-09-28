@@ -76,8 +76,8 @@ LIVE_XY = machines.machine_for(curserun.CurseSession.game).live_position
 def probe_square(sess) -> list[int]:
     """`$C04B`-`$C04D`, as a list, or an empty one if the read failed."""
     try:
-        with sess.mon(8) as m:
-            return list(m.read(LIVE_XY, 3))
+        got = sess.steady_triple()
+        return [] if got is None else list(got)
     except Exception:                                     # noqa: BLE001
         return []
 

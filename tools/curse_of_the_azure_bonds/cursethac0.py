@@ -127,6 +127,10 @@ STRENGTH_GATE = 0x394B
 #: The live x, y, facing triple, unrelocated in all three titles.
 POSITION = 0xC04B
 
+
+class Unsettled(RuntimeError):
+    """The party's square never gave two agreeing reads within the wait."""
+
 #: Move keys as PETSCII codes: Curse reads them from the KERNAL buffer only.
 MOVE = {"I": 0x49, "J": 0x4A, "K": 0x4B, "M": 0x4D}
 
@@ -366,7 +370,11 @@ class Run:
     # -- driving ----------------------------------------------------------
 
     def triple(self) -> tuple[int, int, int]:
-        return tuple(self.peek(POSITION, 3))          # type: ignore[return-value]
+        """The party's triple once two consecutive reads agree on it."""
+        got = self.sess.steady_triple()
+        if got is None:
+            raise Unsettled("the party's square did not settle")
+        return tuple(got)                              # type: ignore[return-value]
 
     def press(self, key: str) -> bool:
         """One move key, through the driver that knows Curse's move sub-bar.

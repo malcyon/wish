@@ -1474,6 +1474,40 @@ def test_curse_plain_fight_keeps_plain_route_and_tactic(monkeypatch, tmp_path):
     assert calls[-2] == ("fight", A.S.Session.melee_turn)
 
 
+def test_curse_fight_fails_through_capture_when_the_route_square_never_settles(
+        monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from tools.c64 import laterbattle
+    from tools.curse_of_the_azure_bonds import cursethac0
+
+    class Route:
+        last_goto_steps = 0
+
+        def __init__(self, out, quiet):
+            self.file = SimpleNamespace(close=lambda: None)
+
+        def goto(self, target, steps, geo):
+            raise cursethac0.Unsettled("the party's square did not settle")
+
+    monkeypatch.setattr(laterbattle, "Battle", Route)
+    monkeypatch.setattr(cursethac0, "area_geo", lambda *a: ("GEO01", object()))
+    captured = []
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.attack_by = ""
+    run.attack_owner = None
+    run.sess = SimpleNamespace()
+    run.out = tmp_path
+    run.staged_disk = tmp_path / "staged.D64"
+    run.disks = "unused"
+    run.to_world = lambda: True
+    run.spent = lambda: False
+    run.capture = captured.append
+    with pytest.raises(A.StepFailed, match="the party's square did not settle"):
+        run.fight("10", "I", 5)
+    assert captured == ["lost-square"]
+
+
 @pytest.mark.parametrize("advance", ["rejected", "actor", "combat-ended"])
 def test_curse_quit_requires_turn_advancement(advance):
     from types import SimpleNamespace

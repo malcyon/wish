@@ -2018,6 +2018,8 @@ class Session:
             now = self.live_triple()
             if now == prior:
                 return now
+            if prior is not None:
+                self.log(f"  square unsteady: {prior} then {now}")
             prior = now
             # A pause that would end past the limit could not be followed by
             # another read, so it is not taken.
