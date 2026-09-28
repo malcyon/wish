@@ -468,16 +468,19 @@ def test_save_as_prepares_what_convert_writes_amiga_directions(
 
 def _former_paladin_write(former_level, cures, node_minutes=None,
                           game=dos_port.CURSE_OF_THE_AZURE_BONDS,
-                          payload=None):
+                          payload=None, heal_minutes=None):
     """A blank DOS record made a magic-user 1 who left paladin at
-    `former_level` holding `cures` uses, and a cure node with `node_minutes`
-    left if given, written to a C64 record in save slot 0."""
+    `former_level` holding `cures` uses, a cure node with `node_minutes`
+    left if given, and `heal_minutes` of lay-on-hands timer if given, written
+    to a C64 record in save slot 0."""
     from goldbox import c64_codec, effects, paladin
     char = dos_codec.to_neutral(dos_codec.DosCharacter(
         bytes(game.record_size), deltas=game))
     char.set("levels", {"magic-user": 1}, "test")
     char.set("former_levels", {"paladin": former_level}, "test")
     char.set("paladin_cures", cures, "test")
+    if heal_minutes is not None:
+        char.set("lay_on_hands_minutes", heal_minutes, "test")
     if node_minutes is not None:
         (eid, _magnitude), = [v for k, v in paladin.CURE_TIMER.items()
                               if k == game.key]
@@ -563,6 +566,47 @@ def test_a_former_paladin_below_his_full_count_comes_back_to_dos_at_it(game):
     at = dos_port.FIELDS_BY_NAME_FOR[game.key]["paladin_cures"].offset
     assert back[at] == 2
     assert not [x for x in rep_back.dropped if "paladin_cures" in x]
+
+
+@pytest.mark.parametrize("game", _TITLES)
+@pytest.mark.parametrize("former_level, cures, heal_minutes", [
+    pytest.param(6, 1, 1000, id="paladin-6-one-of-two"),
+    pytest.param(5, 1, 1, id="paladin-5-one-minute-left"),
+    pytest.param(11, 0, 1440, id="paladin-11-none-left"),
+])
+def test_a_former_paladin_with_a_heal_timer_running_converts_with_no_loss(
+        game, former_level, cures, heal_minutes):
+    """A paladin who laid on hands and then changed class the same day.
+
+    Neither port lets a non-paladin HEAL, and the C64's own class change
+    leaves 0x012 and 0x013 at zero with no effect row, so the bytes written
+    are the ones the game would have left and nothing is lost.
+    """
+    from goldbox import effects, paladin
+    payload = bytearray(0x4000)
+    rec, rep = _former_paladin_write(former_level, cures, game=game,
+                                     payload=payload,
+                                     heal_minutes=heal_minutes)
+    assert rec.to_bytes()[0x012:0x014] == b"\x00\x00"
+    heal_id = paladin.LAY_ON_HANDS_C64[game.key][0]
+    assert not [r for r in effects.active_effects(bytes(payload))
+                if r.id == heal_id]
+    assert not [x for x in rep.losses + rep.dropped
+                if "lay_on_hands_minutes" in x]
+
+
+@pytest.mark.parametrize("game", _TITLES)
+def test_a_character_who_was_never_a_paladin_still_reports_a_heal_timer(game):
+    """Nothing in his history explains a lay-on-hands timer, so the C64's
+    zero is a real loss and is still reported."""
+    from goldbox import c64_codec
+    char = dos_codec.to_neutral(dos_codec.DosCharacter(
+        bytes(game.record_size), deltas=game))
+    char.set("levels", {"fighter": 1}, "test")
+    char.set("lay_on_hands_minutes", 1000, "test")
+    rec, rep = c64_codec.write(char, payload=bytearray(0x4000), party_slot=0)
+    assert rec.to_bytes()[0x012:0x014] == b"\x00\x00"
+    assert [x for x in rep.losses if "lay_on_hands_minutes" in x]
 
 
 @pytest.mark.parametrize("game", _TITLES)

@@ -1193,11 +1193,19 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                       "Pool of Radiance keeps no cure-disease byte" if
                       cure_entry is None else
                       "not a paladin here, and GEN writes zero for one")
-        if heal_value:
+        if heal_value and (cure_entry is None or not former_paladin):
             _row_lost("lay_on_hands_minutes",
                       "Pool of Radiance keeps no lay-on-hands byte" if
                       cure_entry is None else
                       "not a paladin here, and GEN writes zero for one")
+        elif heal_value:
+            # The C64's own class change zeroes 0x013 and clears his effect
+            # rows, so zero with no row is what the game leaves; the regain
+            # then gives him HEAL at once.
+            rep.note(heal_off, heal_size,
+                     f"lay_on_hands_minutes: 0 -- former paladin "
+                     f"{former_paladin} with a heal timer of {heal_value} "
+                     "minutes; the C64 regain gives him HEAL")
     else:
         rec.set("paladin_cures", cure_value & 0xFF)
         if cures is not None:
@@ -2075,7 +2083,9 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                              "0x013 left at 1 when `write` has no payload "
                              "or no free slot to put it in (#628). Zero for "
                              "a title with no paladin or a character with "
-                             "none"),
+                             "none, and for a former paladin's running "
+                             "heal timer, with no row: the C64 class change "
+                             "leaves the same zero"),
 )
 
 #: Neutral fields the C64 writer takes nothing from, and why.  Reported by
