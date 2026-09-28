@@ -95,6 +95,7 @@ import json
 import pathlib
 import re
 import shlex
+import struct
 import sys
 import time
 
@@ -857,6 +858,17 @@ class Log(runlog.Log):
         super().__init__(out / "run.jsonl")
 
 
+@dataclasses.dataclass(frozen=True)
+class TempleSample:
+    """One paused instant: the PC, the screen and the dungeon triple, read
+    together so a place is never judged from a screen and a memory read
+    taken across two separate monitor pauses (#715)."""
+    monotonic: float
+    pc: int | None
+    screen: object
+    state: dict
+
+
 class PoolRun:
     """One booted Pool of Radiance session and the steps run on it."""
 
@@ -885,6 +897,7 @@ class PoolRun:
         self.ready_sample_errors: list[dict] = []
         self.temple_checkpoints: list[dict] = []
         self.temple_input_deadline: float | None = None
+        self.temple_pc_id: int | None = None
 
     # -- the screen ------------------------------------------------------------
     def rows(self) -> list[str]:
@@ -1108,11 +1121,26 @@ class PoolRun:
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
 
     # -- one bounded New Phlan temple observation ------------------------------
-    def temple_state(self) -> dict:
-        """Read the live dungeon triple and its lagging save copy together."""
+    def temple_sample(self) -> TempleSample:
+        """Read the PC, the screen and the live dungeon triple in one paused
+        instant (#715): every temple guard reads through this, so a place is
+        never judged from a screen and a memory read taken across two
+        separate monitor pauses."""
         try:
             with self.sess.mon(8) as m:
                 try:
+                    if self.temple_pc_id is None:
+                        self.temple_pc_id = S._pc_id_of(m, 0)
+                    try:
+                        pc = S._pc_of(m, 0, self.temple_pc_id)
+                    except (S.MonitorError, IndexError, struct.error):
+                        pc = None
+                    try:
+                        screen = None if S.is_bitmap(m) else S.read_screen(m)
+                    except S.ScreenUnreadable as exc:
+                        self.log.emit("temple-screen-unreadable",
+                                      error=repr(exc))
+                        screen = None
                     area = bytes(m.read(0x6E1B, 1))
                     mode = bytes(m.read(0x6E11, 1))
                     inside = bytes(m.read(0x49E6, 1))
@@ -1120,16 +1148,19 @@ class PoolRun:
                     position = bytes(m.read(0xC04B, 3))
                 finally:
                     m.resume()
-            if (len(area) != 1 or len(mode) != 1 or len(inside) != 1
-                    or len(saved_position) != 3 or len(position) != 3):
-                raise ValueError("short monitor read")
-            if not inside[0] or position[2] > 3:
-                raise ValueError(f"outside or invalid facing: {inside.hex()} "
-                                 f"{position.hex()}")
-            return {"area": area[0] & 0x7F, "mode": mode[0],
-                    "area_pending": bool(area[0] & 0x80), "indoors": inside[0],
-                    "x": position[0], "y": position[1],
-                    "facing": position[2], "save_copy": list(saved_position)}
+                if (len(area) != 1 or len(mode) != 1 or len(inside) != 1
+                        or len(saved_position) != 3 or len(position) != 3):
+                    raise ValueError("short monitor read")
+                if not inside[0] or position[2] > 3:
+                    raise ValueError(f"outside or invalid facing: "
+                                     f"{inside.hex()} {position.hex()}")
+                state = {"area": area[0] & 0x7F, "mode": mode[0],
+                         "area_pending": bool(area[0] & 0x80),
+                         "indoors": inside[0], "x": position[0],
+                         "y": position[1], "facing": position[2],
+                         "save_copy": list(saved_position)}
+                return TempleSample(monotonic=self.clock(), pc=pc,
+                                    screen=screen, state=state)
         except (OSError, S.MonitorError, ValueError, IndexError) as exc:
             raise StepFailed(f"temple state unreadable: {exc}") from exc
 
@@ -1137,10 +1168,41 @@ class PoolRun:
     def _temple_place(state: dict) -> tuple[int, int, int, int]:
         return state["area"], state["x"], state["y"], state["facing"]
 
-    def temple_checkpoint(self, tag: str, screen=None) -> dict:
-        """Keep the whole screen, paused place and existing party/effect read."""
-        if screen is None:
-            screen = self.sess.screen()
+    @staticmethod
+    def _temple_agrees(a: TempleSample | None, b: TempleSample | None) -> bool:
+        """Two samples agree when their place, mode and area-pending flag
+        match; screen text is not part of it (#715)."""
+        if a is None or b is None:
+            return False
+        return (PoolRun._temple_place(a.state) == PoolRun._temple_place(b.state)
+                and a.state["mode"] == b.state["mode"]
+                and a.state["area_pending"] == b.state["area_pending"])
+
+    def _temple_steady(self, what: str, seconds: float = 5.0) -> TempleSample:
+        """Sample every 0.25 s until two consecutive samples agree, and
+        return the second; stop if none agree within SECONDS, capped at the
+        run's input deadline (#715)."""
+        limit = min(self.clock() + seconds, self.temple_input_deadline)
+        prior = None
+        while self.clock() < limit:
+            sample = self.temple_sample()
+            if self._temple_agrees(prior, sample):
+                return sample
+            prior = sample
+            time.sleep(0.25)
+        self._temple_stop("unsteady", f"place unsteady {what}", prior)
+
+    def temple_checkpoint(self, tag: str, sample: TempleSample | None = None
+                          ) -> dict:
+        """Keep the whole screen, paused place and existing party/effect
+        read, from the SAMPLE the caller judged rather than a fresh re-read
+        (#715). The reading and its PNG still come from after the judged
+        pause, not from it. With no SAMPLE, one is taken here and recorded
+        as unjudged."""
+        judged = sample is not None
+        if sample is None:
+            sample = self.temple_sample()
+        screen = sample.screen
         if screen is None:
             raise StepFailed(f"temple {tag}: text screen unreadable")
         rows = [screen.row(r) for r in range(25)]
@@ -1148,19 +1210,24 @@ class PoolRun:
         stem = f"{self.shots:02d}-temple-{re.sub(r'[^A-Za-z0-9]+', '-', tag).strip('-')}"
         if not (self.out / f"{stem}.png").is_file():
             raise StepFailed(f"temple {tag}: PNG capture failed")
-        state = self.temple_state()
         reading = self.reading()
-        checkpoint = {"tag": tag, "stem": stem, "state": state,
-                      "reading": reading, "monotonic": self.clock()}
+        reading_monotonic = self.clock()
+        checkpoint = {"tag": tag, "stem": stem, "state": sample.state,
+                      "reading": reading, "monotonic": self.clock(),
+                      "judged": judged,
+                      "pc": None if sample.pc is None else f"${sample.pc:04X}",
+                      "sampled": sample.monotonic,
+                      "reading_monotonic": reading_monotonic}
         (self.out / f"{stem}.json").write_text(
             json.dumps(checkpoint, indent=2), encoding="utf-8")
         self.temple_checkpoints.append(checkpoint)
         self.log.emit("temple-checkpoint", **checkpoint)
         return checkpoint
 
-    def _temple_stop(self, tag: str, why: str, screen=None):
+    def _temple_stop(self, tag: str, why: str,
+                     sample: TempleSample | None = None):
         with contextlib.suppress(Exception):
-            self.temple_checkpoint(f"lost-{tag}", screen)
+            self.temple_checkpoint(f"lost-{tag}", sample)
         raise StepFailed(why)
 
     def _temple_input_budget(self, what: str) -> None:
@@ -1249,14 +1316,16 @@ class PoolRun:
 
     def _temple_select_bar(self, word: str, kind: str) -> None:
         """Select one guarded word; never answer prompts inside a selector."""
-        first = self.sess.screen()
-        if first is None:
-            self._temple_stop("menu", f"{kind} bar unreadable")
-        bar = first.row(24)
+        first = self.temple_sample()
+        screen = first.screen
+        if screen is None:
+            self._temple_stop("menu", f"{kind} bar unreadable", first)
+        bar = screen.row(24)
         if S.word_column(bar, word) < 0:
             self._temple_stop("menu", f"{word} absent from {kind} bar", first)
         for _ in range(8):
-            screen = self.sess.screen()
+            sample = self.temple_sample()
+            screen = sample.screen
             if (screen is None or screen.row(24) != bar
                     or self._temple_disk(screen)
                     or self._temple_continuation(screen)
@@ -1269,11 +1338,11 @@ class PoolRun:
                     or (kind == "question"
                         and not self._temple_heal_question(screen))):
                 self._temple_stop("menu", f"{kind} bar changed before {word}",
-                                  screen)
+                                  sample)
             span = S.span_in(screen, 24)
             col = S.word_column(bar, word)
             if span is None or col < 0:
-                self._temple_stop("menu", f"{kind} highlight unreadable", screen)
+                self._temple_stop("menu", f"{kind} highlight unreadable", sample)
             self._temple_input_budget(f"selecting {word}")
             if span[0] == col:
                 self.sess.confirm_bar(24, bar)
@@ -1281,11 +1350,12 @@ class PoolRun:
             self.sess.kbd.key("Right" if span[0] < col else "Left")
             limit = min(self.clock() + 5, self.temple_input_deadline)
             while self.clock() < limit:
-                newer = self.sess.screen()
-                if newer is None or newer.row(24) != bar:
+                newer = self.temple_sample()
+                newer_screen = newer.screen
+                if newer_screen is None or newer_screen.row(24) != bar:
                     self._temple_stop("menu", f"{kind} bar changed after arrow",
                                       newer)
-                newer_span = S.span_in(newer, 24)
+                newer_span = S.span_in(newer_screen, 24)
                 if newer_span is not None and newer_span[0] != span[0]:
                     break
                 time.sleep(0.25)
@@ -1294,38 +1364,41 @@ class PoolRun:
         self._temple_stop("menu", f"{word} highlight never reached")
 
     def _temple_move(self, move: str, before: tuple[int, ...]) -> None:
-        screen = self.sess.screen()
+        sample = self._temple_steady(f"before {move}")
+        screen = sample.screen
         if screen is None:
-            self._temple_stop("move", f"screen unreadable before {move}")
-        state = self.temple_state()
-        if (state["area_pending"] or state["mode"] != S.DUNGEON
-                or self._temple_place(state) != before):
-            self._temple_stop("move", f"wrong place before {move}", screen)
+            self._temple_stop("move", f"screen unreadable before {move}",
+                              sample)
+        if (sample.state["area_pending"] or sample.state["mode"] != S.DUNGEON
+                or self._temple_place(sample.state) != before):
+            self._temple_stop("move", f"wrong place before {move}", sample)
         if (self._temple_disk(screen) or self._temple_continuation(screen)
                 or re.search(r"\bYES\b.*\bNO\b", screen.text(), re.DOTALL)
                 or re.search(r"\bPRESS\b", screen.text())):
-            self._temple_stop("move", f"unsafe screen before {move}", screen)
+            self._temple_stop("move", f"unsafe screen before {move}", sample)
         if self._temple_is_world(screen):
             self._temple_select_bar("MOVE", "world")
             limit = min(self.clock() + 10, self.temple_input_deadline)
             while self.clock() < limit:
-                screen = self.sess.screen()
+                polled = self.temple_sample()
+                screen = polled.screen
                 if screen is not None and self._temple_is_move(screen):
                     break
                 if screen is not None and self._temple_disk(screen):
-                    self._temple_stop("move", "disk prompt before movement", screen)
+                    self._temple_stop("move", "disk prompt before movement",
+                                      polled)
                 time.sleep(0.25)
-        screen = self.sess.screen()
+        sample = self._temple_steady(f"before {move}")
+        screen = sample.screen
         if screen is None or not self._temple_is_move(screen):
-            self._temple_stop("move", f"no move bar before {move}", screen)
+            self._temple_stop("move", f"no move bar before {move}", sample)
         if (self._temple_disk(screen) or self._temple_continuation(screen)
                 or re.search(r"\bYES\b.*\bNO\b", screen.text(), re.DOTALL)
                 or re.search(r"\bPRESS\b", screen.text())):
-            self._temple_stop("move", f"unsafe screen before {move}", screen)
-        state = self.temple_state()
-        if (state["area_pending"] or state["mode"] != S.DUNGEON
-                or self._temple_place(state) != before):
-            self._temple_stop("move", f"place changed before {move}", screen)
+            self._temple_stop("move", f"unsafe screen before {move}", sample)
+        if (sample.state["area_pending"] or sample.state["mode"] != S.DUNGEON
+                or self._temple_place(sample.state) != before):
+            self._temple_stop("move", f"place changed before {move}", sample)
         self._temple_input_budget(f"movement {move}")
         self.sess.move_key(move)
         self.log.emit("temple-move", move=move, before=before)
@@ -1334,10 +1407,13 @@ class PoolRun:
                            expected: tuple[int, ...], counters: dict) -> dict:
         limit = min(self.clock() + 90, self.temple_input_deadline)
         disk_visible = continuation_visible = question_visible = False
+        question_since = None
         seen_kinds: set = set()
-        settled = None
+        prior = last = None
         while self.clock() < limit:
-            screen = self.sess.screen()
+            sample = self.temple_sample()
+            prior, last = last, sample
+            screen = sample.screen
             if screen is None:
                 time.sleep(0.3)
                 continue
@@ -1349,29 +1425,32 @@ class PoolRun:
                 if not (n == TEMPLE_LAST_INDEX and counters["questions"] == 0
                         and self._temple_heal_question(screen)):
                     self._temple_stop("yes-no", "unapproved YES/NO prompt",
-                                      screen)
-                state = self.temple_state()
+                                      sample)
+                if question_since is None:
+                    question_since = self.clock()
                 # A live run can show the healing question on screen before
                 # the memory read of the arrival place catches up, the same
                 # one-poll lag `_temple_transition` already tolerates for a
-                # crossed area edge; reread rather than stop on the first
-                # mismatch.
-                wait_limit = min(self.clock() + 5, self.temple_input_deadline)
-                while (self._temple_place(state) != expected
-                       or state["mode"] != S.DUNGEON
-                       or state["area_pending"]):
-                    if self.clock() >= wait_limit:
+                # crossed area edge; wait for two agreeing samples rather
+                # than stop on the first mismatch.
+                if (self._temple_place(sample.state) != expected
+                        or sample.state["mode"] != S.DUNGEON
+                        or sample.state["area_pending"]
+                        or not self._temple_agrees(prior, sample)):
+                    if self.clock() - question_since >= 5:
                         self._temple_stop("yes-no", "healing question at the "
-                                          "wrong place", screen)
+                                          "wrong place", sample)
                     time.sleep(0.25)
-                    state = self.temple_state()
-                self.temple_checkpoint("temple-question-before-answer", screen)
+                    continue
+                question_since = None
+                self.temple_checkpoint("temple-question-before-answer", sample)
                 self._temple_input_budget("healing question")
                 self._temple_select_bar("YES", "question")
                 counters["questions"] += 1
                 question_visible = True
                 continue
             question_visible = False
+            question_since = None
             if self._temple_disk(screen):
                 if disk_visible:
                     time.sleep(0.3)
@@ -1379,12 +1458,12 @@ class PoolRun:
                 if not (n == TEMPLE_CROSSING_INDEX and not counters["disk"]
                         and self._temple_side3(screen)):
                     self._temple_stop("disk", "unexpected or repeated disk prompt",
-                                      screen)
-                self.temple_checkpoint("boundary-side3-before-answer", screen)
+                                      sample)
+                self.temple_checkpoint("boundary-side3-before-answer", sample)
                 self._temple_input_budget("side 3 prompt")
                 if not self.sess.handle_prompt(screen):
                     self._temple_stop("disk", "side 3 prompt was not answered",
-                                      screen)
+                                      sample)
                 counters["disk"] += 1
                 disk_visible = True
                 continue
@@ -1395,8 +1474,8 @@ class PoolRun:
                     continue
                 if counters["continuations"] >= 2:
                     self._temple_stop("continuation", "third continuation",
-                                      screen)
-                self.temple_checkpoint("continuation-before-answer", screen)
+                                      sample)
+                self.temple_checkpoint("continuation-before-answer", sample)
                 self._temple_input_budget("continuation")
                 self.sess.press_kernal(0x0D)
                 counters["continuations"] += 1
@@ -1404,11 +1483,10 @@ class PoolRun:
                 continue
             continuation_visible = False
             if re.search(r"\bPRESS\b", text):
-                self._temple_stop("prompt", "unapproved PRESS prompt", screen)
-            state = self.temple_state()
-            place = self._temple_place(state)
-            if state["mode"] == S.COMBAT:
-                self._temple_stop("encounter", "encounter after movement", screen)
+                self._temple_stop("prompt", "unapproved PRESS prompt", sample)
+            place = self._temple_place(sample.state)
+            if sample.state["mode"] == S.COMBAT:
+                self._temple_stop("encounter", "encounter after movement", sample)
             if (place in (before, expected)
                     and self._temple_bar_blank(screen)):
                 kind = ("temple-quiet-screen" if self._temple_is_quiet(screen)
@@ -1416,31 +1494,30 @@ class PoolRun:
                 if kind not in seen_kinds:
                     self.log.emit(kind, move=n + 1, place=place)
                     seen_kinds.add(kind)
-                settled = None
                 time.sleep(0.3)
                 continue
             if place == expected:
-                mode_ok = (state["mode"] == S.DUNGEON
+                mode_ok = (sample.state["mode"] == S.DUNGEON
                            or (n == TEMPLE_LAST_INDEX
-                               and state["mode"] == TEMPLE_ARRIVAL_MODE))
-                if state["area_pending"] or not mode_ok:
+                               and sample.state["mode"] == TEMPLE_ARRIVAL_MODE))
+                if sample.state["area_pending"] or not mode_ok:
                     time.sleep(0.3)
                     continue
                 if n == TEMPLE_LAST_INDEX and self._temple_is_greeting(screen):
                     if S.word_column(screen.row(24), "HEAL") < 0:
                         self._temple_stop("menu", "HEAL absent from temple bar",
-                                          screen)
+                                          sample)
                 elif n == TEMPLE_LAST_INDEX:
                     if not (self._temple_is_world(screen)
                             or self._temple_is_move(screen)):
                         self._temple_stop("event", "unexpected temple arrival",
-                                          screen)
+                                          sample)
                     time.sleep(0.3)
                     continue
                 elif not (self._temple_is_world(screen)
                           or self._temple_is_move(screen)):
                     self._temple_stop("event", "unexpected screen after movement",
-                                      screen)
+                                      sample)
                 status = S.parse_status(screen.text())
                 greeting = (n == TEMPLE_LAST_INDEX
                             and self._temple_is_greeting(screen))
@@ -1454,19 +1531,21 @@ class PoolRun:
                 elif (status.x, status.y, status.facing) != expected[1:]:
                     time.sleep(0.3)
                     continue
-                current = (place, screen.text())
-                if settled == current:
+                if (self._temple_agrees(prior, sample) and prior.screen is not None
+                        and prior.screen.text() == screen.text()):
                     tag = ("temple-arrival" if n == TEMPLE_LAST_INDEX
                            else f"move-{n + 1}-settled")
-                    return self.temple_checkpoint(tag, screen)
-                settled = current
+                    return self.temple_checkpoint(tag, sample)
             elif place != before:
-                self._temple_stop("place", f"movement {n + 1} reached {place}, "
-                                  f"expected {expected}", screen)
+                if self._temple_agrees(prior, sample):
+                    self._temple_stop("place", f"movement {n + 1} reached "
+                                      f"{place}, expected {expected}", sample)
+                time.sleep(0.3)
+                continue
             elif not (self._temple_is_world(screen)
                       or self._temple_is_move(screen)):
                 self._temple_stop("event", "unexpected screen during movement",
-                                  screen)
+                                  sample)
             time.sleep(0.4)
         self._temple_stop("transition", f"movement {n + 1} did not settle "
                           "within 90 seconds")
@@ -1481,7 +1560,8 @@ class PoolRun:
         result this probe exists to produce."""
         if who != "BRUTUS" or self.game.key != "pool-of-radiance":
             raise StepFailed("temple probe requires Pool BRUTUS")
-        initial = self.temple_checkpoint("loaded-source")
+        initial = self.temple_checkpoint(
+            "loaded-source", self._temple_steady("in the loaded source"))
         place = self._temple_place(initial["state"])
         if (place != TEMPLE_ROUTE[0][1]
                 or initial["state"]["mode"] != S.DUNGEON
@@ -1506,8 +1586,6 @@ class PoolRun:
         counters = {"disk": 0, "continuations": 0, "questions": 0}
         arrival = None
         for n, (move, before, expected) in enumerate(TEMPLE_ROUTE):
-            if self._temple_place(self.temple_state()) != before:
-                self._temple_stop("place", f"wrong place before movement {n + 1}")
             self._temple_move(move, before)
             arrival = self._temple_transition(n, before, expected, counters)
         return {"route": "KKIIJI", "movement_keys": 6,

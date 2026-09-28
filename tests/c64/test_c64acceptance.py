@@ -240,14 +240,17 @@ class _TempleMonitor:
         self.session = session
 
     def __enter__(self):
+        self.session.paused = True
         return self
 
     def __exit__(self, *_):
-        pass
+        self.session.paused = False
 
     def resume(self):
         if self.session.question_state_lag:
             self.session.question_state_lag -= 1
+        if self.session.cursor_reads:
+            self.session.cursor_reads -= 1
 
     def read(self, address, count):
         s = self.session
@@ -271,12 +274,15 @@ class _TempleMonitor:
         if address == 0x49C0:
             return bytes((15, 4, 3))  # The game's save copy lags movement.
         if address == 0xC04B:
+            if s.cursor_reads:
+                return bytes(s.cursor_triple)
             return bytes(place[1:])
         raise AssertionError(f"unexpected monitor read ${address:04X}")
 
 
 class _TempleSession:
-    def __init__(self, out, *, unsafe=None, after_side3="arrival-text"):
+    def __init__(self, out, *, unsafe=None, after_side3="arrival-text",
+                 cursor_after_side3=0):
         self.place = (0x14, 15, 4, 3)
         self.phase = "move"
         self.moves = []
@@ -287,6 +293,16 @@ class _TempleSession:
         self.pending_area = False
         self.out = out
         self.kbd = self
+        # A renderer cursor glitch (#715): Pool's 3D renderer moves
+        # `$C04B`-`$C04D` off the party's square while it draws, so one read
+        # taken mid-render can return a plausible but wrong triple.
+        # `cursor_after_side3` sets how many monitor pauses after the
+        # crossing key's answer the cursor returns `cursor_triple` instead
+        # of the true place.
+        self.cursor_after_side3 = cursor_after_side3
+        self.cursor_triple = (1, 4, 1)
+        self.cursor_reads = 0
+        self.paused = False
         # The live run crossing the area edge showed the memory triple
         # ahead of the redrawn screen for one poll; `crossing_lag` makes
         # one screen() call after the crossing key still render the
@@ -457,6 +473,7 @@ class _TempleSession:
     def handle_prompt(self, screen):
         assert list(self.out.glob("*boundary-side3-before-answer.png"))
         self.keys.append("side3")
+        self.cursor_reads = self.cursor_after_side3
         if self.unsafe == "duplicate-side":
             self.phase = "side3"
             return True
@@ -501,11 +518,20 @@ def _temple_reading():
 
 
 def _temple_fake_run(tmp_path, monkeypatch, *, unsafe=None,
-                     after_side3="arrival-text"):
+                     after_side3="arrival-text", cursor_after_side3=0):
     clock = SimpleNamespace(now=0.0)
     monkeypatch.setattr(A.time, "sleep", lambda seconds: setattr(
         clock, "now", clock.now + seconds))
-    session = _TempleSession(tmp_path, unsafe=unsafe, after_side3=after_side3)
+    # `temple_sample()` (#715) reads the screen and the PC through the
+    # monitor, alongside memory; route both through the fake session so a
+    # poll uses exactly one fake `screen()` call, as `crossing_lag`,
+    # `quiet_reads`, `post_answer_quiet` and `typing` assume.
+    monkeypatch.setattr(A.S, "is_bitmap", lambda m: False)
+    monkeypatch.setattr(A.S, "read_screen", lambda m: m.session.screen())
+    monkeypatch.setattr(A.S, "_pc_id_of", lambda *a, **k: 1)
+    monkeypatch.setattr(A.S, "_pc_of", lambda *a, **k: 0x10C2)
+    session = _TempleSession(tmp_path, unsafe=unsafe, after_side3=after_side3,
+                             cursor_after_side3=cursor_after_side3)
     events = []
     log = SimpleNamespace(emit=lambda *args, **kwargs: events.append((args, kwargs)))
     run = A.PoolRun(session, log, tmp_path, A.c64_port.POOL_OF_RADIANCE, {})
@@ -786,6 +812,54 @@ def test_temple_move_rechecks_prompt_with_retained_move_bar_before_key(
     with pytest.raises(A.StepFailed):
         run._temple_move("K", (0x14, 15, 4, 3))
     assert session.moves == []
+
+
+def test_temple_one_poll_renderer_cursor_after_the_crossing_does_not_stop(
+        tmp_path, monkeypatch):
+    """Pool's 3D renderer moves `$C04B`-`$C04D` off the party's square while
+    it draws (#715, `temple-route-e`'s cause): a single glitched read of the
+    triple right after the crossing must not stop the route, the way it did
+    live. `cursor_after_side3=1` reproduces that one-poll glitch exactly."""
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch,
+                                       cursor_after_side3=1)
+    result = run.temple_probe("BRUTUS")
+    assert result["arrival"] == run.temple_checkpoints[-1]["stem"]
+    assert session.moves == list("KKIIJI")
+
+
+def test_temple_renderer_cursor_on_two_samples_still_stops(
+        tmp_path, monkeypatch):
+    """A cursor glitch held for two consecutive samples is not a one-poll
+    render artefact and must still stop the route (#715); the retained
+    checkpoint is the judged sample itself, not a fresh re-read."""
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch,
+                                       cursor_after_side3=2)
+    with pytest.raises(A.StepFailed) as info:
+        run.temple_probe("BRUTUS")
+    assert ("movement 3 reached (0, 1, 4, 1), expected (0, 0, 4, 1)"
+            in str(info.value))
+    assert session.moves == list("KKI")
+    lost = next(c for c in run.temple_checkpoints if c["tag"] == "lost-place")
+    assert lost["judged"] is True
+    assert lost["state"]["x"] == 1
+    assert lost["pc"] == "$10C2"
+
+
+def test_temple_guards_read_the_screen_only_inside_a_monitor_pause(
+        tmp_path, monkeypatch):
+    """Every temple guard reads the screen through `temple_sample()`'s one
+    paused monitor pause (#715), never through a bare `Session.screen()`
+    call taken outside one."""
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    real_screen = session.screen
+
+    def guarded_screen():
+        assert session.paused, "screen read outside a monitor pause"
+        return real_screen()
+
+    session.screen = guarded_screen
+    result = run.temple_probe("BRUTUS")
+    assert result["arrival"] == run.temple_checkpoints[-1]["stem"]
 
 
 
