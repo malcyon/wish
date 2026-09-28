@@ -203,7 +203,10 @@ the Prayer runs' DOS runs 1 and 1b wait on `--debug`, `break` and `fight`.
 
     acceptance.py --title pool|curse|ssb --save X.D64 \
         --stage-row 63=05:FF:0A:03 --stage-trait 0:9=38 \
-        --steps load camp-list 'items 2' 'fight 1' 'save' --out DIR
+        --steps load camp-list 'items 2' 'fight 120' 'save' --out DIR
+
+`fight 120` is long enough for the fight to end, which `save` needs; a short
+`fight` before a `save` stops the run at the fight.
 
 Staging writes into a **copy** under the slot's own directory, through
 `goldbox.effects.write_effect` on the save payload (the four arrays sit at
@@ -221,7 +224,7 @@ bytes a test stages. The session is the title's own (`Session`,
 | `items WHO` | The sheet and the ITEMS list as text with each item's Detect Magic mark | Measured in Pool; Curse and Silver Blades inherit its routine |
 | `rest 5m` | `ENCAMP > REST` | Measured in Pool (`effectdrive.rest`); Curse and Silver Blades inherit its routine |
 | `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where it carries no wall art, one square back turned about through an open door, and no move, turned about, against a solid wall; each move judged by the square before and after, which is the status line in Pool and the live triple `$C04B`-`$C04D` in Curse and Silver Blades, whose status line lags a step. A run with a walk fails unless a `save` after it shows the asked result | Pool, Curse, Silver Blades |
-| `fight` | Walk into a fight and fight it for a number of seconds, with non-stopping checkpoints counted after every step | Pool, Curse |
+| `fight [SECONDS]` | Walk into a fight and fight it for at most SECONDS. A fight still going when they end fails the step, because a later step cannot run from an unfinished fight; the checkpoint counts read at that moment are kept as `lost_reading` in `summary.json`. Non-stopping checkpoints are counted after every step | Pool, Curse |
 | `cast`, `cure` | `ENCAMP > MAGIC > CAST` and `ENCAMP > VIEW > CURE`, the target's row before and after | Curse |
 | `peek ADDR N` | N bytes of memory | All three |
 | `save` | The game's own `ENCAMP > SAVE`, the disk copied out closed and decoded, and the place read through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`) | All three |
@@ -313,7 +316,7 @@ at the pushed SHA the closing comment will name. The C64 fixture party is
 |---|---|
 | run 1, DOS Pool | the fixture party with `(63, 35, $FF, $0A, $03)`; Save As DOS; D1 `--debug`: `load`, `camp`, `display`, `break 0xF861 id35`, `fight 1`. Accepts: every member's Display page shows Prayer, and the id-35 breakpoint never halts. Refutes: a member without Prayer, or a halt |
 | run 1b, DOS Pool | `(63, 49, $FF, $0A, $43)`; Save As DOS gives `31 0A 00 03 00`; D1 `--debug`: `break 0xFF30 bonus`, `break 0xFF48 penalty`, `fight 1`; at each halt the driver reads the asking combatant's side byte `0x10E` through the record pointer the handler holds (`0xFF28`-`0xFF2D`, the builder reads which register) and logs it. Accepts: every halt at `bonus` has side 0 and every halt at `penalty` side 1. Refutes: a party member at `penalty` |
-| run 2, C64 Curse | `WISH-SPEC-curse-234-party-dualclassed` with `31 0A 00 05 00` written into every member's `.SPC`; Save As C64 gives `(63, 49, $FF, $0A, $03)`; D2 Curse: `load`, `camp-list`, `fight 1 --checkpoint $225D` (the equal-side branch, `COMBAT $226D`-`$2272`). Accepts: PRAYER in every member's camp list and the checkpoint count rises on a party member's attack. Refutes: no PRAYER, or a count of zero through a round with a party attack |
+| run 2, C64 Curse | `WISH-SPEC-curse-234-party-dualclassed` with `31 0A 00 05 00` written into every member's `.SPC`; Save As C64 gives `(63, 49, $FF, $0A, $03)`; D2 Curse: `load`, `camp-list`, `fight 1 --checkpoint $225D` (the equal-side branch, `COMBAT $226D`-`$2272`); the one-second fight ends the run `lost` on its budget by design, and the evidence is the count recorded in `lost_reading`. Accepts: PRAYER in every member's camp list and the checkpoint count in `lost_reading` rises on a party member's attack. Refutes: no PRAYER, or a count of zero through a round with a party attack |
 | run 2b, C64 Pool | the same with `31 0A 00 05 00` on one member; the camp list is expected **not** to name it (Pool's `ECL65` has no row for 49); a list that does name it refutes the plan's reading and nothing else |
 | run 3, Amiga Pool | D3 with the same converted party: `display`, then `fight 1` reading nothing but the screen; accepts on Prayer under every member. This run waits on the Display keys read |
 

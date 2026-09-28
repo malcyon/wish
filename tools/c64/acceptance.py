@@ -35,7 +35,7 @@ bytes with what it replaced.
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/effectdrive.py`'s rest) |
 | `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (Pool's status line holds the clock; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk |
-| `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for SECONDS (120) |
+| `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
@@ -2022,6 +2022,17 @@ class PoolRun:
         return {"asked": [minutes, hours], "before_clock": got["before"]["clock"],
                 "after_clock": got["after"]["clock"]}
 
+    def fight_over_budget(self, arg: str, result) -> StepFailed:
+        """The failure for a fight that ran out of SECONDS.
+
+        A run cannot continue from an unfinished fight, so the step is lost;
+        the checkpoint counts are read first and kept as `lost_reading`, so
+        the evidence of a deliberately short skirmish is not lost with it."""
+        with contextlib.suppress(Exception):
+            self.lost_reading = {"step": "fight", "after": self.reading()}
+        return self.fail("fight", f"the fight ran out of its {arg or 120} "
+                                  f"second budget after {result.turns} turns")
+
     def fight(self, arg: str, walk: str, steps: int) -> dict:
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
@@ -2037,8 +2048,7 @@ class PoolRun:
                                  tactic=S.Session.melee_turn)
         self.capture("fight-end")
         if result.outcome == S.BUDGET:
-            raise self.fail("fight", f"the fight ran out of its {arg or 120} "
-                                     f"second budget after {result.turns} turns")
+            raise self.fight_over_budget(arg, result)
         return {"walked": taken, "acted": result.acted,
                 **dataclasses.asdict(result)}
 
@@ -2923,8 +2933,7 @@ class CurseRun(PoolRun):
                                      tactic=S.Session.melee_turn)
         self.capture("fight-end")
         if result.outcome == S.BUDGET:
-            raise self.fail("fight", f"the fight ran out of its {arg or 120} "
-                                     f"second budget after {result.turns} turns")
+            raise self.fight_over_budget(arg, result)
         return {"walked": walked, "area": str(area), "acted": result.acted,
                 "named_attack": self.attack_evidence,
                 "named_quit": self.quit_evidence,
@@ -3482,6 +3491,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         summary["completed"] = True
     except StepFailed as e:
         summary["lost"] = str(e)
+        if getattr(pool, "lost_reading", None):
+            summary["lost_reading"] = pool.lost_reading
         log.emit("lost", why=str(e))
         log.say(f"lost: {e}")
     except Exception as e:                          # noqa: BLE001

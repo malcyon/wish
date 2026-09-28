@@ -5714,3 +5714,54 @@ def test_curse_fight_that_runs_out_of_budget_fails_the_step_with_a_fight_capture
     with pytest.raises(A.StepFailed, match="budget"):
         run.fight("60", "I", 5)
     assert captured[-2:] == ["fight-end", "lost-fight"]
+
+
+def test_a_budget_ended_fight_keeps_the_checkpoint_reading(tmp_path):
+    class Session:
+        def in_combat(self):
+            return True
+
+        def fight(self, *, budget, tactic):
+            return A.S.FightResult(A.S.BUDGET, 5, 1.0, [], [])
+
+    run = A.PoolRun.__new__(A.PoolRun)
+    run.sess = Session()
+    run.to_world = lambda: True
+    run.spent = lambda: False
+    run.capture = lambda tag: None
+    run.reading = lambda: {"counts": {"x": 3}}
+    with pytest.raises(A.StepFailed):
+        run.fight("1", "I", 5)
+    assert run.lost_reading == {"step": "fight", "after": {"counts": {"x": 3}}}
+
+
+def test_the_budget_failure_message_names_seconds_and_turns(tmp_path):
+    run = A.PoolRun.__new__(A.PoolRun)
+    run.spent = lambda: False
+    run.capture = lambda tag: None
+    run.reading = lambda: {}
+    err = run.fight_over_budget("60", A.S.FightResult(A.S.BUDGET, 5, 60.0, [], []))
+    assert str(err) == "the fight ran out of its 60 second budget after 5 turns"
+
+
+def test_a_budget_ended_fight_before_save_loses_the_run_at_the_fight(
+        tmp_path, monkeypatch):
+    class Fighter(_Pool):
+        saved = False
+
+        def fight(self, arg, walk, steps):
+            self.lost_reading = {"step": "fight", "after": {"counts": {"x": 2}}}
+            raise A.StepFailed("the fight ran out of its 1 second budget "
+                               "after 5 turns")
+
+        def save(self, staged):
+            Fighter.saved = True
+            return {}
+
+    rc, slot, out = _drive(tmp_path, monkeypatch, ["load", "fight 1", "save"],
+                           pool=Fighter)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc != 0 and not Fighter.saved
+    assert "budget" in summary["lost"]
+    assert summary["lost_reading"]["after"] == {"counts": {"x": 2}}
+    assert [r["verb"] for r in summary["results"]] == ["load"]
