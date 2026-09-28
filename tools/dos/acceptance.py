@@ -325,7 +325,11 @@ SSB_LOAD_ROW = 2
 #: Pools of Darkness' party menu, driven as Silver Blades' highlight list
 #: because `GAME.EXE` holds the same entries in the same order.  The rows are
 #: Silver Blades'; the load, view, save and begin rows have answered in three
-#: complete foundation boots of this title.
+#: complete foundation boots of this title.  The eleven-row height is an
+#: unverified inference from Silver Blades' own measurement, not from this
+#: title's own data: all sixteen captures behind the y=184 frame cutoff were
+#: Silver Blades captures, and no Pools of Darkness capture has confirmed its
+#: own frame sits at the same y.
 POD_MENU_RECT = route_silver_blades.MENU_RECT
 POD_LOAD_ROW = SSB_LOAD_ROW
 POD_MENU_AFTER = route_silver_blades.MENU_AFTER
@@ -3645,9 +3649,10 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
 def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
     """Refuse a stage the installed save cannot take, before a slot is claimed.
 
-    `--hall` is a Pool and Curse field (`docs/194-the-dos-training-ladder.md`);
-    another title's `SAVGAM` is not known to hold the hall word at that
-    offset.  `--xp` and `--add-node` need the line's own `CHRDAT` file.
+    `--hall` is measured for the titles in `HALL_TITLES`
+    (`docs/194-the-dos-training-ladder.md`); another title's `SAVGAM` is not
+    known to hold the hall word at that offset.  `--xp` and `--add-node` need
+    the line's own `CHRDAT` file.
     """
     if getattr(args, "hall", False) and args.title not in HALL_TITLES:
         raise ValueError(f"--hall is measured for {', '.join(sorted(HALL_TITLES))} "

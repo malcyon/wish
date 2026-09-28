@@ -16,8 +16,9 @@ from goldbox import dos_codec
 #: (`tools/curse_of_the_azure_bonds/curseregain.py`, `EVERY_CLASS`).
 HALL_WORD = 0xD51
 HALL_OPEN = 0x00FF
-#: The titles whose training hall word is documented at `HALL_WORD`.
-HALL_TITLES = frozenset({"pool", "curse"})
+#: The titles whose training hall word is documented at `HALL_WORD`
+#: (`docs/194-the-dos-training-ladder.md`).
+HALL_TITLES = frozenset({"pool", "curse", "ssb"})
 
 
 def node_dict(node: bytes) -> dict:

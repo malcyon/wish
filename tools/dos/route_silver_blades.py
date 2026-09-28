@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 
 from tools.dos import dosbox
+from tools.dos.staging import HALL_WORD
 
 #: The party menu's highlight list: up to eleven 8-pixel rows from y=96, read
 #: between the left border and the mouse pointer the game parks at x=160.
@@ -17,14 +18,19 @@ from tools.dos import dosbox
 MENU_RECT = (64, 96, 90, 88)
 MENU_BEFORE = {"add": 1}
 #: The rows after a load when the menu has no `Train Character` or `Human
-#: Change Classes`: Create, Drop, Modify, View, Add, Remove, Save, Begin, Exit.
+#: Change Classes`: Create, Drop, Modify, View, Add, Remove, Save, Begin,
+#: Exit, PROBABLE -- enabled in the typed constant and read at `0x1D950` and
+#: `0x1DA8D` with nothing writing either by address, but a write through a
+#: computed pointer is not ruled out; the settling experiment is loading an
+#: eight-member party and counting the rows.
 MENU_AFTER = {"view": 3, "save": 6, "begin": 7}
 #: The save word whose non-zero value enables both `Train Character` and
 #: `Human Change Classes` (`GAME.OVR` 0x1D793 and 0x1D7B5, one test each:
 #: `cmp word es:[di+0x550], 0` on the buffer at DS 0x67CA, which the loader
 #: fills from file offset 0x801 of `SAVGAM<L>.DAT`): the training hall's word
-#: (`docs/194-the-dos-training-ladder.md`).
-TRAIN_WORD = 0xD51
+#: (`docs/194-the-dos-training-ladder.md`), the same field `tools.dos.staging`
+#: names `HALL_WORD`.
+TRAIN_WORD = HALL_WORD
 
 
 def menu_after(savgam: bytes | None) -> dict[str, int]:

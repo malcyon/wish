@@ -2005,7 +2005,7 @@ def test_encamp_is_never_pressed_at_the_party_menu(tmp_path):
 
 def test_hall_is_refused_for_a_title_whose_hall_word_is_not_documented(capsys):
     with pytest.raises(SystemExit):
-        da.main(["--title", "ssb", "--save", ".", "--hall", "--steps", "load"])
+        da.main(["--title", "darkness", "--save", ".", "--hall", "--steps", "load"])
     assert "--hall" in capsys.readouterr().err
 
 
@@ -2014,6 +2014,16 @@ def test_hall_refuses_a_save_too_short_to_hold_the_word(tmp_path):
     with pytest.raises(ValueError, match="too short"):
         staging.stage_hall(tmp_path, "A")
     assert (tmp_path / "SAVGAMA.DAT").stat().st_size == 0x100
+
+
+def test_hall_is_no_longer_refused_for_ssb(tmp_path):
+    """Silver Blades' hall word is now measured at the same offset as Pool's
+    and Curse's (`docs/194-the-dos-training-ladder.md`), so `--hall` staging
+    is no longer refused for it before a slot is claimed."""
+    import argparse
+    (tmp_path / "SAVGAMA.DAT").write_bytes(bytes(staging.HALL_WORD + 2))
+    args = argparse.Namespace(title="ssb", hall=True, xp=[], add_node=[], stage_control=[])
+    da.check_staging(args, tmp_path, "A")
 
 
 def _staged_run(monkeypatch, tmp_path, **extra):

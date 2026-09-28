@@ -126,9 +126,26 @@ Silver Blades' loaders. **The gate they found is untouched** -- the loader's
 test is `cmp word es:[di+0x550], 0`, which cannot tell a maximum level from a
 class mask, and poking the word non-zero still puts TRAIN CHARACTER in the
 party menu wherever the party stands. What the six Pool of Radiance saves
-settle is what the *engine writes* there. Curse and Silver Blades are not
-measured: that needs a party standing in one of their halls when the engine
-saves.
+settle is what the *engine writes* there. Curse is not measured: that needs a
+party standing in its hall when the engine saves.
+
+**Silver Blades' hall word is now measured too, at the same offset.**
+`GAME.OVR` reads the same buffer and runs the same test, `cmp word
+es:[di+0x550], 0`, at `0x1D793` and `0x1D7B5` to gate `Train Character` and
+`Human Change Classes` in the party menu -- CONFIRMED from the disassembly,
+which also confirms `[di+0x550]` is file offset `0xD51` of `SAVGAM<L>.DAT`,
+the same field Pool of Radiance's loader tests. A survey of the seventeen
+Silver Blades `SAVGAM?.DAT` files on this machine found the word non-zero
+(20, `0x0014`) only in the two specimens known to carry party-menu training
+rows, and zero in the rest, agreeing with the menu in both directions
+(`#628 (The neutral vocabulary has no field for a paladin's lay-on-hands
+uses, so a converted paladin loses them)`, comment of 2026-09-28). What is
+still not built for Silver Blades is Pool of Radiance's four-school table
+above: no Silver Blades save has been written by `SAVE CURRENT GAME` with the
+party standing in a named school, so which value each school writes is
+unmeasured -- only that the word is the same hall-word field, read the same
+way. `tools/dos/staging.py`'s `HALL_TITLES` includes `"ssb"` and `--hall`
+stages it the same way as Pool and Curse.
 
 ## The experience clamp, and why a rung is a boot
 
