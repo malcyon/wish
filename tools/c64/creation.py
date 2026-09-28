@@ -75,6 +75,22 @@ GENDERS = {"MALE": 0, "FEMALE": 1}
 #: The classes a creation list combines; paladin, ranger and the rest are in
 #: `CLASS_BIT_FOR_NAME` but no Pool race is offered them.
 CLASS_PARTS = ("cleric", "fighter", "magic-user", "thief")
+#: The class list each race is offered, in on-screen order.  `check_specs` reads
+#: it before the first key so a label `Session.select_row` would resolve to an
+#: earlier row (the first row containing the text wins) is refused up front.
+CLASSES_BY_RACE = {
+    "DWARF": ("FIGHTER", "THIEF", "FIGHTER/THIEF"),
+    "ELF": ("FIGHTER", "MAGIC-USER", "THIEF", "FIGHTER/MAGIC-USER",
+            "FIGHTER/THIEF", "FIGHTER/MAGIC-USER/THIEF", "MAGIC-USER/THIEF"),
+    "GNOME": ("FIGHTER", "THIEF", "FIGHTER/THIEF"),
+    "HALF-ELF": ("CLERIC", "FIGHTER", "MAGIC-USER", "THIEF", "CLERIC/FIGHTER",
+                 "CLERIC/FIGHTER/MAGIC-USER", "CLERIC/MAGIC-USER",
+                 "FIGHTER/MAGIC-USER", "FIGHTER/THIEF",
+                 "FIGHTER/MAGIC-USER/THIEF", "MAGIC-USER/THIEF"),
+    "HALFLING": ("FIGHTER", "THIEF", "FIGHTER/THIEF"),
+    "HUMAN": ("CLERIC", "FIGHTER", "MAGIC-USER", "THIEF"),
+}
+
 #: On-screen text, in the order of the code stored at `0x0D8`.
 ALIGNMENTS = tuple(a.upper() for a in ALIGNMENT_CODES)
 
@@ -86,6 +102,10 @@ RE_SCORE = re.compile(r"^\s*(STRENGTH|INTELLIGENCE|WISDOM|DEXTERITY|CONSTITUTION
 
 #: The name routine rejects any byte at or above `$5B` and holds fifteen.
 RE_NAME = re.compile(r"[A-Z0-9]{1,15}")
+#: Menu words a name must not contain: the ADD list and the `SAVE?` walk select
+#: rows by the first row holding the text, so a name holding one would be
+#: mistaken for that entry.
+RESERVED_IN_NAMES = ("YES", "EXIT")
 
 #: The screens this driver knows, recognised by `recognise`.
 PARTY_MENU, PICK_RACE, PICK_GENDER, ROLL = "party", "race", "gender", "roll"
@@ -150,6 +170,10 @@ class Spec:
         name = str(d["name"]).upper()
         if not RE_NAME.fullmatch(name):
             raise ValueError(f"{name!r}: a name is 1-15 letters or digits")
+        if any(word in name for word in RESERVED_IN_NAMES):
+            raise ValueError(f"{name}: a name must not contain "
+                             f"{' or '.join(RESERVED_IN_NAMES)}, which are menu "
+                             f"entries")
         race, gender = str(d["race"]).upper(), str(d["gender"]).upper()
         klass, alignment = str(d["class"]).upper(), str(d["alignment"]).upper()
         if race not in RACES:
@@ -181,6 +205,29 @@ class Spec:
 
 def load_specs(path: pathlib.Path) -> list[Spec]:
     return [Spec.from_json(d) for d in json.loads(pathlib.Path(path).read_text())]
+
+
+def check_specs(specs: list[Spec]) -> None:
+    """Refuse, before any key is pressed, a party the driver cannot build.
+
+    A class label that an earlier row of the race's list contains would be
+    walked to that earlier row, so the run would create the wrong character.
+    """
+    if not specs:
+        raise Lost("the spec names no characters")
+    names = [s.name for s in specs]
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    if dupes:
+        raise Lost(f"a name is used twice: {dupes}; the ADD list and the "
+                   f"exports are found by name")
+    for spec in specs:
+        shown = CLASSES_BY_RACE[spec.race]
+        if spec.cls not in shown:
+            continue    # the screen has the last word on a roll's class list
+        earlier = next(e for e in shown if spec.cls in e)
+        if earlier != spec.cls:
+            raise LabelProblem(f"{spec.name}: {spec.cls} would select {earlier}, "
+                               f"which comes first in a {spec.race}'s class list")
 
 
 # -- reading a screen ---------------------------------------------------------
@@ -291,6 +338,7 @@ class Driver:
         self.poll = POLL
         self.shots = 0
         self.rolls: dict[str, dict[str, int]] = {}
+        self.record_lines: list[str] = []
 
     # -- the clock ---------------------------------------------------------
 
@@ -456,7 +504,10 @@ class Driver:
     def to_pick_race(self):
         s = self.expect((PARTY_MENU, PICK_RACE), LOAD_WAIT, "start")
         if recognise(self.sess, s) == PARTY_MENU:
-            s = self.choose(s, PARTY_MENU, "CREATE NEW CHARACTER", PICK_RACE)
+            # The overlay behind this key takes 3.4-12 s to draw, longer than
+            # `RETRY_AFTER`, so a resend would land on PICK RACE.
+            s = self.choose(s, PARTY_MENU, "CREATE NEW CHARACTER", PICK_RACE,
+                            retry_after=None)
         return s
 
     def name_it(self, s, name: str):
@@ -480,7 +531,8 @@ class Driver:
         self.sess.kbd.key("Return")
         return self.expect(SHEET, WAIT, f"{name}-named")
 
-    def create(self, spec: Spec) -> None:
+    def create(self, spec: Spec):
+        """Create SPEC; return the PICK RACE screen the write ends on."""
         s = self.to_pick_race()
         s = self.choose(s, PICK_RACE, spec.race, PICK_GENDER,
                         column=RACE_COLUMN, tag=f"{spec.name}-race")
@@ -500,8 +552,8 @@ class Driver:
                         tag=f"{spec.name}-portrait")
         s = self.choose_bar(s, PORTRAIT, "KEEP", ICON, timeout=LOAD_WAIT,
                             tag=f"{spec.name}-portrait-kept")
-        s = self.choose_bar(s, ICON, "EXIT", PICK_RACE, timeout=LOAD_WAIT,
-                            tag=f"{spec.name}-written")
+        return self.choose_bar(s, ICON, "EXIT", PICK_RACE, timeout=LOAD_WAIT,
+                               tag=f"{spec.name}-written")
 
     # -- the party menu ------------------------------------------------------
 
@@ -574,8 +626,12 @@ class Driver:
     def enter_world(self, s, budget: float):
         """BEGIN ADVENTURING, the arrival, then a camp save.
 
-        `Session.begin_adventuring` is these two calls with a 240 s wait that
-        Stage 1 measured as too tight, so the wait is called with `budget`.
+        `Session.begin_adventuring` waits a fixed 240 s for the world bar, which
+        the arrival can outlast, so its two calls are made here with `budget`.
+        `Session.save_game` has fixed waits of about 200 s that the deadline
+        cannot bound, and returns True even when EXIT never selects, so the
+        save is confirmed from the disk: `intown.D64` must hold a `SAVEDGAME0`
+        that differs from the one on `party.D64`.
         """
         self.check("BEGIN ADVENTURING")
         if not self.sess.select_row("BEGIN ADVENTURING",
@@ -594,20 +650,41 @@ class Driver:
             S.copy_closed_disk(self.sess.save_disk, self.out / "intown.D64")
         except RuntimeError as e:
             raise self.lost(str(e), "copy") from e
+        before, after = (self._slot0(self.out / name)
+                         for name in ("party.D64", "intown.D64"))
+        if after is None or after == before:
+            raise self.lost("the camp save did not land: intown.D64 holds "
+                            + ("no SAVEDGAME0" if after is None
+                               else "the SAVEDGAME0 of party.D64"), "camp-save")
+
+    @staticmethod
+    def _slot0(path: pathlib.Path) -> bytes | None:
+        try:
+            return D64.open(str(path)).read_file(b"SAVEDGAME0")
+        except Exception:  # noqa: BLE001 -- a missing file and a bad chain both mean no save
+            return None
 
     # -- the two passes --------------------------------------------------------
 
     def build(self, specs: list[Spec], enter_world: bool = False,
               world_budget: float = WORLD_BUDGET) -> None:
+        check_specs(specs)
+        s = None
         for spec in specs:
-            self.create(spec)
+            s = self.create(spec)
             self.log.say(f"created {spec.name}")
-        s = self.sess.screen()
         self.copy_disk("rolled.D64")
         s = self.leave_pick_race(s)
         s = self.add_all(s, specs)
         s = self.save_party(s)
         self.copy_disk("party.D64")
+        self.record_lines = check_records(self.out / "rolled.D64",
+                                          self.out / "party.D64", specs,
+                                          self.rolls)
+        (self.out / "records.txt").write_text(
+            "\n".join(self.record_lines) + "\n", encoding="utf-8")
+        for line in self.record_lines:
+            self.log.say(line)
         if enter_world:
             self.enter_world(s, world_budget)
 
@@ -668,9 +745,9 @@ def _read(rec: CharacterRecord) -> dict:
 
 
 def _line(where: str, spec: Spec, rec: CharacterRecord | None,
-          roll: dict[str, int] | None) -> tuple[str, bool]:
+          roll: dict[str, int] | None, error: str = "") -> tuple[str, bool]:
     if rec is None:
-        return f"{spec.name} {where}: MISSING", False
+        return f"{spec.name} {where}: MISSING {error}".rstrip(), False
     got, want = _read(rec), _expected(spec, roll)
     bad = [f"{k} {got[k]!r} != {v!r}" for k, v in want.items() if got[k] != v]
     shown = "  ".join(f"{k}={v}" for k, v in got.items())
@@ -686,23 +763,32 @@ def check_records(rolled: pathlib.Path, party: pathlib.Path, specs: list[Spec],
     first 256 bytes, which is every field compared.  Exceptional strength
     (`0x01A`) is not compared: the roll screen never shows it.  The last line
     is `all records match the spec` only when every field of every character
-    agrees.
+    agrees, every character has a roll and no name is used twice.
     """
     lines: list[str] = []
     ok = True
+    names = [s.name for s in specs]
+    for dupe in sorted({n for n in names if names.count(n) > 1}):
+        lines.append(f"{dupe}: named twice in the spec   MISMATCH")
+        ok = False
     exports = D64.open(str(rolled))
     _game, sg0, _sg1 = savegame.load_save(D64.open(str(party)))
     slots = {s.record.name.upper(): s.record for s in sg0.characters}
     for spec in specs:
-        rec = None
-        with contextlib.suppress(Exception):
+        roll = rolls.get(spec.name)
+        if roll is None:
+            lines.append(f"{spec.name}: no roll was read   MISMATCH")
+            ok = False
+        rec, error = None, ""
+        try:
             rec = CharacterRecord.from_prg(
                 exports.read_file(b"\x01" + spec.name.encode("latin-1")))
-        line, good = _line("export", spec, rec, rolls.get(spec.name))
+        except Exception as e:  # noqa: BLE001 -- reported on the line
+            error = repr(e)
+        line, good = _line("export", spec, rec, roll, error)
         lines.append(line)
         ok = ok and good
-        line, good = _line("party", spec, slots.get(spec.name),
-                           rolls.get(spec.name))
+        line, good = _line("party", spec, slots.get(spec.name), roll)
         lines.append(line)
         ok = ok and good
     lines.append("all records match the spec" if ok else "SPEC MISMATCH")
@@ -712,22 +798,35 @@ def check_records(rolled: pathlib.Path, party: pathlib.Path, specs: list[Spec],
 # -- running ------------------------------------------------------------------------
 
 
+def new_summary(git: dict | None, argv: list[str] | None) -> dict:
+    return {**(git or {"sha": "unknown", "dirty": []}),
+            "argv": list(argv if argv is not None else sys.argv[1:]),
+            "completed": False, "lost": None}
+
+
+def write_summary(out: pathlib.Path, summary: dict) -> None:
+    scratch.ensure(out)
+    (out / "summary.json").write_text(json.dumps(summary, indent=2, default=str),
+                                      encoding="utf-8")
+
+
 def run(sess, out: pathlib.Path, *, lists: bool = False,
         specs: list[Spec] | None = None, enter_world: bool = False,
         world_budget: float = WORLD_BUDGET, max_seconds: float = 3600.0,
         argv: list[str] | None = None, git: dict | None = None,
         clock=time.monotonic, sleep=time.sleep,
-        deadline: float | None = None) -> int:
+        deadline: float | None = None, summary: dict | None = None) -> int:
     """One pass on a booted session; always writes `summary.json`.
+
+    `summary`, when given, is filled in place so the caller can write it too.
 
     `deadline` is on `clock`; it defaults to `max_seconds` from now, and
     `main` sets it before the boot so the boot counts against it.
     """
     scratch.ensure(out)
     log = runlog.Log(out / "run.jsonl")
-    summary = {**(git or {"sha": "unknown", "dirty": []}),
-               "argv": list(argv if argv is not None else sys.argv[1:]),
-               "completed": False, "lost": None}
+    if summary is None:
+        summary = new_summary(git, argv)
     drv = Driver(sess, out, log, clock=clock, sleep=sleep,
                  deadline=clock() + max_seconds if deadline is None else deadline)
     try:
@@ -736,12 +835,7 @@ def run(sess, out: pathlib.Path, *, lists: bool = False,
             summary["completed"] = True
         else:
             drv.build(specs or [], enter_world, world_budget)
-            lines = check_records(out / "rolled.D64", out / "party.D64",
-                                  specs or [], drv.rolls)
-            (out / "records.txt").write_text("\n".join(lines) + "\n",
-                                             encoding="utf-8")
-            for line in lines:
-                log.say(line)
+            lines = drv.record_lines
             summary["completed"] = lines[-1].startswith("all records")
             if not summary["completed"]:
                 summary["lost"] = "SPEC MISMATCH: see records.txt"
@@ -757,8 +851,7 @@ def run(sess, out: pathlib.Path, *, lists: bool = False,
             drv.capture("lost-error")
     finally:
         summary["rolls"] = drv.rolls
-        (out / "summary.json").write_text(
-            json.dumps(summary, indent=2, default=str), encoding="utf-8")
+        write_summary(out, summary)
         log.close()
     return 0 if summary["completed"] else 1
 
@@ -782,13 +875,15 @@ def main(argv: list[str] | None = None) -> int:
                     help="after the party save, BEGIN ADVENTURING and a camp "
                          "save")
     ap.add_argument("--world-budget", type=float, default=WORLD_BUDGET,
-                    help="seconds to wait for the world bar; unproven, "
-                         "measured only as more than 240")
+                    help="seconds to wait for the world bar after BEGIN "
+                         "ADVENTURING")
     args = ap.parse_args(argv)
 
     try:
         specs = load_specs(args.build) if args.build else None
-    except (ValueError, KeyError, OSError) as e:
+        if specs is not None:
+            check_specs(specs)
+    except (ValueError, KeyError, OSError, Lost) as e:
         raise SystemExit(f"spec: {e!r}")
     found = args.disks or gamedisks.find("pool-of-radiance")
     if not found:
@@ -798,6 +893,7 @@ def main(argv: list[str] | None = None) -> int:
 
     runlog.catch_signals()
     deadline = time.monotonic() + args.max_seconds
+    summary = new_summary(git, sys.argv[1:])
     slot = S.claim_slot(args.pool, f"{ISSUE_NOTE}/{args.issue}/{args.run}")
     sess = None
     try:
@@ -817,8 +913,17 @@ def main(argv: list[str] | None = None) -> int:
                        enter_world=args.enter_world,
                        world_budget=args.world_budget,
                        max_seconds=args.max_seconds, argv=sys.argv[1:], git=git,
-                       deadline=deadline)
+                       deadline=deadline, summary=summary)
+    except SystemExit as e:
+        summary["lost"] = summary["lost"] or str(e.code)
+        raise
+    except Exception as e:
+        summary["lost"] = summary["lost"] or repr(e)
+        raise
     finally:
+        # A stop before `run` (boot failed, no party menu, a staging error)
+        # still leaves the evidence directory a summary.
+        write_summary(out, summary)
         if sess is not None:
             with contextlib.suppress(Exception):
                 sess.terminate()
