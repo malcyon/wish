@@ -12,7 +12,7 @@ import sys
 
 import pytest
 
-from goldbox import geo
+from goldbox import areas, geo
 from goldbox.amiga_adf import AmigaDisk
 from tests.amiga import test_amigaacceptance_measure as measure
 from tests.amiga.test_amigaacceptance import _audio_proof
@@ -2381,6 +2381,49 @@ def _published_report(tmp_path, monkeypatch, *, name, issue, place=None):
 
 CURSE_START_640 = {"area": 1, "x": 7, "y": 13, "facing": 1}
 CURSE_WORLD = {"area": 3, "x": 4, "y": 4, "facing": geo.NORTH}
+
+
+def test_the_start_square_literal_is_the_one_the_driver_compares():
+    start = areas.start_of(areas.CURSE_OF_THE_AZURE_BONDS)
+    assert CURSE_START_640 == {"area": start.area, "x": start.arrival.x,
+                               "y": start.arrival.y, "facing": start.arrival.facing}
+
+
+def _manifest_with(tmp_path, monkeypatch, **changes):
+    path, _ = _prepared(tmp_path, monkeypatch, "curse", "640")
+    manifest = json.loads(path.read_text())
+    for key, value in changes.items():
+        if value is KeyError:
+            del manifest[key]
+        else:
+            manifest[key] = value
+    path.write_text(json.dumps(manifest))
+    return path
+
+
+@pytest.mark.parametrize("bad", ["false", "true", 0, 1, None])
+def test_a_manifest_turn_about_that_is_not_a_bool_is_refused(tmp_path, monkeypatch, bad):
+    path = _manifest_with(tmp_path, monkeypatch, turn_about=bad)
+    with pytest.raises(winuaesession.RouteError, match="not a boolean"):
+        foundation._published_manifest(path, "curse")
+
+
+def test_a_manifest_turn_about_that_disagrees_with_its_place_is_refused(tmp_path, monkeypatch):
+    path = _manifest_with(tmp_path, monkeypatch, turn_about=False)
+    with pytest.raises(winuaesession.RouteError, match="disagrees with its recorded place"):
+        foundation._published_manifest(path, "curse")
+
+
+def test_a_manifest_place_that_disagrees_with_its_turn_about_is_refused(tmp_path, monkeypatch):
+    path = _manifest_with(tmp_path, monkeypatch, state_a=CURSE_WORLD)
+    with pytest.raises(winuaesession.RouteError, match="disagrees with its recorded place"):
+        foundation._published_manifest(path, "curse")
+
+
+def test_a_manifest_without_turn_about_still_turns_only_for_letter_d(tmp_path, monkeypatch):
+    path = _manifest_with(tmp_path, monkeypatch, turn_about=KeyError)
+    _, title = foundation._published_manifest(path, "curse")
+    assert title.turn != "about"
 
 
 def test_prepare_under_640_files_the_run_under_640_and_turns_a_party_at_the_start_about(

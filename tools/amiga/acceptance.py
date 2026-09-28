@@ -1591,6 +1591,17 @@ def _published_title(name: str, letter: str, *, issue: str = PUBLISHED_ISSUE,
     return published_title(letter, issue=issue, turn_about=turn_about)
 
 
+def _turn_about(name: str, letter: str, place: dict | None) -> bool:
+    """Whether the route turns the party about before walking out of the start square."""
+    if letter == "D":
+        return True
+    if name != "curse":
+        return False
+    start = areas.start_of(areas.CURSE_OF_THE_AZURE_BONDS)
+    return place == {"area": start.area, "x": start.arrival.x, "y": start.arrival.y,
+                     "facing": start.arrival.facing}
+
+
 def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle]:
     manifest = json.loads(path.read_text())
     if manifest.get("mode") != "published_disk_one" or manifest.get("issue") not in PUBLISHED_SOURCES_BY_ISSUE:
@@ -1603,8 +1614,13 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
     if manifest.get("source_sha256") != PUBLISHED_SOURCES_BY_ISSUE[manifest["issue"]].get(
             (name, port)):
         raise RouteError("the manifest source differs from the pinned specimen")
-    title = _published_title(name, letter, issue=manifest["issue"],
-                             turn_about=manifest.get("turn_about", letter == "D"))
+    turn_about = manifest.get("turn_about", letter == "D")
+    if not isinstance(turn_about, bool):
+        raise RouteError("the manifest turn_about is not a boolean")
+    if "turn_about" in manifest and turn_about != _turn_about(name, letter,
+                                                              manifest.get("state_a")):
+        raise RouteError("the manifest turn_about disagrees with its recorded place")
+    title = _published_title(name, letter, issue=manifest["issue"], turn_about=turn_about)
     for key in ("source", "report", "published", "disk_one", "disk_two"):
         _input(manifest["registered"], key)
     disk1_pin, disk2_pin, executable, volume = PUBLISHED_DISKS[name]
@@ -1711,12 +1727,7 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
         raise RouteError(f"published slot {letter} does not decode: {reading}")
     # The way out of the start square depends on where the party stands, not on the port:
     # Curse's party-menu square faces a wall to the east.
-    turn_about = letter == "D"
-    if name == "curse":
-        start = areas.start_of(areas.CURSE_OF_THE_AZURE_BONDS)
-        turn_about = turn_about or reading["place"] == {
-            "area": start.area, "x": start.arrival.x, "y": start.arrival.y,
-            "facing": start.arrival.facing}
+    turn_about = _turn_about(name, letter, reading["place"])
     title = _published_title(name, letter, issue=issue, turn_about=turn_about)
     original = _verified_disk(disk1)
     slot_path = f"/SAVE/savgam{letter}.{'dat' if name == 'curse' else 'sav'}".lower()
