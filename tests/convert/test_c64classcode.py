@@ -18,7 +18,7 @@ from __future__ import annotations
 import gamedata
 import pytest
 
-from goldbox import c64_codec
+from goldbox import c64_codec, c64_port
 from goldbox.c64_port import (
     CURSE_OF_THE_AZURE_BONDS,
     POOL_OF_RADIANCE,
@@ -200,7 +200,13 @@ def test_pool_of_radiance_and_silver_blades_c64_specimens_are_never_repaired():
     checked = 0
     for prefix, game in (("por", POOL), ("ssb", SSB)):
         for path in _clean_c64_disks(prefix):
-            game_read, sg0, sg1 = load_save(D64.open(str(path)))
+            disk = D64.open(str(path))
+            if c64_port.detect(disk) is None:
+                # A disk holding only parked character exports (a party rolled
+                # but never added) has no SAVEDGAME0 and so no roster block
+                # to read; the sweep is of saved games.
+                continue
+            game_read, sg0, sg1 = load_save(disk)
             for slot in sg0.characters:
                 block = sg1.roster(slot.index) if sg1 is not None else None
                 out = c64_codec.read(slot.record, roster=block,
