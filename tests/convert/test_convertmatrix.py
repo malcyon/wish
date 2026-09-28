@@ -593,6 +593,8 @@ def test_a_former_paladin_with_a_heal_timer_running_converts_with_no_loss(
                 if r.id == heal_id]
     assert not [x for x in rep.losses + rep.dropped
                 if "lay_on_hands_minutes" in x]
+    assert rep.sources[0x013].startswith("lay_on_hands_uses: 0 -- former "
+                                         "paladin")
 
 
 @pytest.mark.parametrize("game", _TITLES)

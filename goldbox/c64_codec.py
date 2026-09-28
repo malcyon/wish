@@ -1200,12 +1200,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                       "not a paladin here, and GEN writes zero for one")
         elif heal_value:
             # The C64's own class change zeroes 0x013 and clears his effect
-            # rows, so zero with no row is what the game leaves; the regain
-            # then gives him HEAL at once.
+            # rows, so zero with no row is what the game leaves.
             rep.note(heal_off, heal_size,
-                     f"lay_on_hands_minutes: 0 -- former paladin "
+                     f"lay_on_hands_uses: 0 -- former paladin "
                      f"{former_paladin} with a heal timer of {heal_value} "
-                     "minutes; the C64 regain gives him HEAL")
+                     "minutes, which the class change clears")
     else:
         rec.set("paladin_cures", cure_value & 0xFF)
         if cures is not None:
