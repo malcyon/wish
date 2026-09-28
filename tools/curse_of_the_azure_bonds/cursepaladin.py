@@ -119,7 +119,16 @@ def describe(record: bytes) -> dict:
 
 
 def stage(args) -> int:
-    """Copy a save disk, writing ability and level inputs into named slots."""
+    """Copy a save disk, writing ability and level inputs into named slots.
+
+    `--repair` closes a `SAVEAZURE` the drive never finished (`#298`) by
+    flipping the directory entry's splat flag -- it does not check that the
+    data chain the entry now points at is the write the caller meant to keep.
+    Run against a disk left behind by a driven save that did not finish
+    (`#712`), it can report success while the record it "closed" is still the
+    pre-write one. It is **not** a substitute for `save_current_game()`
+    actually waiting for the save to complete before the disk is copied out.
+    """
     image = pathlib.Path(args.base).read_bytes()
     load, payload = payload_of(image)
     names = slot_names(payload)
@@ -299,7 +308,25 @@ def save_current_game(run: "Run") -> bool:
         run.shot("no-save-question")
         return False
     run.shot("save-answered")
-    sess.settle(12)
+    # **The write is not over when the question is answered.**  A fixed
+    # `settle(12)` here reliably let `copy_closed_disk()` run while the drive
+    # still held `SAVEAZURE` open for writing, and that guard's own
+    # 8-retry/0.25s backoff (`#298`) was not enough to outlast a real save,
+    # so the copy step failed every time (`#712`). `curedrive.py`'s own
+    # `save()` waits for `SAVING GAME` and then for its bar to come back
+    # before ever calling the copy helper; this does the same, waiting for
+    # `SAVE CURRENT GAME` to reappear, since it is itself one of the eleven
+    # items the party menu redraws (`docs/172-curse-trainer.md`).
+    if sess.wait_text("SAVING GAME", 30)[0] is None:
+        run.note(event="no-saving-text")
+        run.shot("no-saving-text")
+        return False
+    run.shot("saving")
+    if sess.wait_text("SAVE CURRENT GAME", 180)[0] is None:
+        run.note(event="no-party-menu-after-save")
+        run.shot("no-party-menu-after-save")
+        return False
+    sess.settle(4)
     run.shot("saved")
     return True
 

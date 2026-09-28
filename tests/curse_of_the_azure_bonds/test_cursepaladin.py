@@ -110,6 +110,92 @@ def test_the_live_class_is_the_one_non_zero_level_slot():
     assert cp.live_class({}) is None
 
 
+class _Screen:
+    def text(self):
+        return "screen"
+
+
+class _FakeSess:
+    """Enough of a `CurseSession` for `save_current_game`, with every wait
+    call recorded in order."""
+
+    def __init__(self, saving_hit=True, menu_hit=True):
+        self.saving_hit = saving_hit
+        self.menu_hit = menu_hit
+        self.calls: list[tuple] = []
+        self.kbd = self
+
+    def select_row(self, label):
+        self.calls.append(("select_row", label))
+        return True
+
+    def screen(self):
+        return _Screen()
+
+    def screenshot(self, path):
+        return True
+
+    def wait_text(self, needle, timeout=180.0):
+        self.calls.append(("wait_text", needle, timeout))
+        if needle == "SAVING GAME":
+            return (needle, self.screen()) if self.saving_hit else (None, None)
+        if needle == "SAVE CURRENT GAME":
+            return (needle, self.screen()) if self.menu_hit else (None, None)
+        raise AssertionError(f"unexpected wait_text({needle!r})")
+
+    def settle(self, seconds=6.0):
+        self.calls.append(("settle", seconds))
+
+
+def test_save_current_game_waits_for_the_save_to_finish_before_copying(
+        tmp_path, monkeypatch):
+    """Reproduces `#712`: a fixed `settle(12)` let the copy step run while
+    the drive still held `SAVEAZURE` open. This waits for `SAVING GAME` and
+    then for the party menu's own `SAVE CURRENT GAME` item to come back,
+    the same two-stage wait `curedrive.py`'s `save()` uses, before returning
+    control to the copy step."""
+    monkeypatch.setattr(
+        "tools.curse_of_the_azure_bonds.curseload.answer_yes",
+        lambda sess, word: True)
+    run = cp.Run(tmp_path / "out")
+    run.sess = _FakeSess()
+
+    assert cp.save_current_game(run) is True
+
+    waits = [c for c in run.sess.calls if c[0] == "wait_text"]
+    assert waits == [
+        ("wait_text", "SAVING GAME", 30),
+        ("wait_text", "SAVE CURRENT GAME", 180),
+    ], run.sess.calls
+
+
+def test_save_current_game_refuses_to_copy_if_saving_game_never_appears(
+        tmp_path, monkeypatch):
+    """A save that never even starts must not fall through to the copy step
+    just because a fixed settle ran out."""
+    monkeypatch.setattr(
+        "tools.curse_of_the_azure_bonds.curseload.answer_yes",
+        lambda sess, word: True)
+    run = cp.Run(tmp_path / "out")
+    run.sess = _FakeSess(saving_hit=False)
+
+    assert cp.save_current_game(run) is False
+    assert ("wait_text", "SAVE CURRENT GAME", 180) not in run.sess.calls
+
+
+def test_save_current_game_refuses_to_copy_if_the_party_menu_never_returns(
+        tmp_path, monkeypatch):
+    """The write can still be in progress after `SAVING GAME` is seen; this
+    must not report success until the party menu is back."""
+    monkeypatch.setattr(
+        "tools.curse_of_the_azure_bonds.curseload.answer_yes",
+        lambda sess, word: True)
+    run = cp.Run(tmp_path / "out")
+    run.sess = _FakeSess(menu_hit=False)
+
+    assert cp.save_current_game(run) is False
+
+
 def test_the_class_slots_match_the_bit_the_engine_ors_back():
     """`GEN $20A3` reads `$0B82,X` -- `01 02 04 08 10 20 40 80` -- with the
     same index it writes `class_levels[X]` with, so a paladin's slot 6 is the
