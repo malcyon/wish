@@ -1237,9 +1237,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # count for his old level when he regains the class, whatever it held;
     # the change also clears every effect row he owns. DOS cannot CURE before
     # the regain either, and gives him his stored count then. Where that is
-    # at most the full count and no running node would refill him, writing
-    # zero with no row lets him do on the C64 everything he could in DOS;
-    # the other states are reported below. See
+    # at most the full count, writing zero with no row follows the C64's own
+    # class change, even with a cure node running that DOS would refill him
+    # from; the other states are reported below. See
     # `docs/234-a-paladins-cure-disease-across-dos-and-the-c64.md`.
     former_paladin = ((former.value.get("paladin") or 0)
                       if former is not None else 0)
@@ -1261,21 +1261,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             former_lost = (f"{cure_value} uses is more than the {full_old} "
                            f"the C64 regain gives a former paladin "
                            f"{former_paladin}")
-        elif cure_node is not None and cure_value:
-            # DOS refills him when this node ends; if he regains first, the
-            # C64 has already refilled him at the regain and refills again
-            # only seven days after his next cure. A row cannot stand in for
-            # the node: one that ends before the regain writes 1 into 0x012
-            # and gives a non-paladin CURE.
-            former_lost = (f"{cure_value} uses with a cure timer running "
-                           f"({cure_node.minutes} minutes): no C64 state "
-                           "refills a former paladin when the timer ends")
         elif cure_value or cure_node is not None:
             # Not always lossless, and this is the gain side of it: a
             # character with none left and no node is never refilled by DOS
             # and stays at 0 after his regain, where the C64 gives him the
             # full count; one with 1 of 2 left comes back from the C64 as 2.
-            # Neither costs him a use, so nothing is reported.
+            # Neither costs him a use, so nothing is reported. A node still
+            # running with uses left is the same: DOS would refill him when it
+            # ends, which no C64 state reproduces, and the C64's own class
+            # change leaves him at 0/0 with no row, so this follows the game.
             rep.note(cure_off, cure_size,
                      f"paladin_cures: 0 -- former paladin {former_paladin} "
                      f"with {cure_value} uses"

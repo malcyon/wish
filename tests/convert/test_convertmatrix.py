@@ -523,11 +523,13 @@ def test_a_former_paladin_with_no_uses_and_no_timer_writes_zero_bytes(game):
     pytest.param(6, 0, None, id="paladin-6-none"),
     pytest.param(5, 0, 4000, id="paladin-5-spent-timer-running"),
     pytest.param(11, 0, 9000, id="paladin-11-spent-timer-running"),
+    pytest.param(6, 1, 4000, id="paladin-6-uses-and-a-timer"),
+    pytest.param(6, 2, 4000, id="paladin-6-full-and-a-timer"),
 ])
 def test_a_former_paladin_the_c64_regain_refills_converts_with_no_loss(
         game, former_level, cures, node_minutes):
-    """A former paladin below his old level's full count, or with none left
-    and a cure timer running, converts with no loss.
+    """A former paladin below his old level's full count, or with a cure
+    timer running, converts with no loss.
 
     Neither engine lets him CURE before he regains the class, and at the
     regain DOS gives him his stored count (at most the full count for the
@@ -613,16 +615,14 @@ def test_a_character_who_was_never_a_paladin_still_reports_a_heal_timer(game):
 
 @pytest.mark.parametrize("game", _TITLES)
 @pytest.mark.parametrize("former_level, cures, node_minutes, why", [
-    pytest.param(6, 1, 4000, "cure timer running", id="uses-and-a-timer"),
     pytest.param(10, 3, None, "more than the 2", id="above-the-full-count"),
     pytest.param(16, 1, None, "DOS refreshes to 4", id="level-16"),
 ])
 def test_a_former_paladin_the_c64_regain_cannot_reproduce_still_reports(
         game, former_level, cures, node_minutes, why):
     """The states the C64 regain does not cover keep their loss line:
-    uses left with a timer running (DOS refills him when it ends, even after
-    a regain, and the C64 does not), more uses than the regain gives, and a
-    level where the two engines' full counts differ."""
+    more uses than the regain gives, and a level where the two engines' full
+    counts differ."""
     from goldbox import effects, paladin
     payload = bytearray(0x4000)
     rec, rep = _former_paladin_write(former_level, cures, node_minutes,
@@ -756,6 +756,27 @@ def test_mathew_dual_classed_writes_zero_cure_bytes_and_no_loss():
     assert raw[0x012] == 0 and raw[0x013] == 0
     assert not [x for x in rep.losses if "paladin_cures" in x]
     assert not [x for x in rep.warnings if "paladin_cures" in x]
+
+
+def test_mark_former_paladin_with_a_cure_timer_writes_zero_and_no_row():
+    """`WISH-SPEC-curse-535-former-paladin-node-running`'s MARK (CHRDATE2.SAV,
+    fighter 1 over paladin 6, 1 use, cure node running): 0x012 and 0x013 zero,
+    no cure row of his, and no `paladin_cures` loss."""
+    from goldbox import c64_codec, effects, paladin
+    folder = _dos_specimen("curse-535-former-paladin-node-running")
+    if folder is None:
+        pytest.skip("needs ~/wish-specimens/*-dos/WISH-SPEC-"
+                    "curse-535-former-paladin-node-running")
+    char = dos_codec.to_neutral(dos_codec.read_character(
+        folder / "CHRDATE2.SAV"))
+    assert char.get("paladin_cures") == 1 and char.get("running_effects")
+    payload = bytearray(0x4000)
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=0)
+    assert rec.to_bytes()[0x012:0x014] == b"\x00\x00"
+    cure_id = paladin.CURE_TIMER[dos_port.CURSE_OF_THE_AZURE_BONDS.key][0]
+    assert not [r for r in effects.active_effects(bytes(payload))
+                if r.id == cure_id]
+    assert not [x for x in rep.losses + rep.dropped if "paladin_cures" in x]
 
 
 @pytest.mark.parametrize("disk_name", ["TEST_DOS_IMPORT9.D64",
