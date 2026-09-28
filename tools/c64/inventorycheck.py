@@ -70,15 +70,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox import c64_port, c64_save  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER  # noqa: E402
-
-#: The item screen's own columns, from a Pool of Radiance capture kept in
-#: `cited/252/probe4/screen.txt` and unchanged in Curse: a `YES`/`NO`
-#: readied column at 1, then an optional count, then the name.
-ITEM_ROWS = range(4, 23)
-ITEM_COLUMN = 1
-#: Column 39 is the window's own right-hand border.
-ITEM_BORDER = 39
-
+from tools.c64.screens import as_drawn, item_list  # noqa: E402
 
 # --- reading the save from outside the editor --------------------------------
 
@@ -245,24 +237,6 @@ class Run:
         return rows
 
 
-def item_list(rows: list[str]) -> list[str]:
-    """The item screen's own rows, frame and blanks dropped.
-
-    Column 39 is the window's right-hand border and is a graphic character
-    that changes down the frame, so a row read to the end of the line is
-    never blank and every empty slot on the list would come back as an item.
-    """
-    out = []
-    for r in rows[ITEM_ROWS.start:ITEM_ROWS.stop]:
-        text = r[ITEM_COLUMN:ITEM_BORDER].rstrip()
-        if not text.strip():
-            continue
-        if text.strip() == "EXIT":
-            break
-        out.append(text.strip())
-    return out
-
-
 #: Row 24 while the item list is up.  `LIBRARY $4600`'s sheet bar is
 #: `ITEMS SPELLS TRADE DROP CURE HEAL EXIT` and the list's own is
 #: `READY TRADE DROP EXIT`, so `READY` with no `ITEMS` beside it is the pair
@@ -297,20 +271,6 @@ def press_bar(sess, label: str, timeout: float = 25.0) -> bool:
         time.sleep(0.5)
     sess.press_kernal(0x0D)
     return True
-
-
-def as_drawn(name: str) -> str:
-    """What the C64 draws for a name that has lower case in it.
-
-    **This character set has no lower case**, and a lower-case letter is
-    drawn as the glyph at its code minus `$40`: `Guy de Valois` comes out of
-    the party panel as `G59 $% V!,/)3`, measured on
-    `WISH-SPEC-ssb-d-engine-resave` in `issue139-a13/ssb-run1` (scratch, deleted).  A save
-    converted from DOS keeps DOS's mixed-case name, so a run that looks for
-    the name it read out of the record finds nobody at all.
-    """
-    return "".join(chr(ord(c) - 0x40) if "a" <= c <= "z" else c
-                   for c in name)
 
 
 def sheet_up(s) -> bool:

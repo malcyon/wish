@@ -104,7 +104,14 @@ REPO = TOOLS.parent
 sys.path.insert(0, str(REPO))
 
 from automap.paths import tool_disks  # noqa: E402
-from goldbox import c64_codec, c64_port, c64_save, effects, world_state  # noqa: E402
+from goldbox import (  # noqa: E402
+    c64_codec,
+    c64_port,
+    c64_save,
+    effects,
+    traits,
+    world_state,
+)
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.geo import STEP  # noqa: E402
 from goldbox.items import (  # noqa: E402
@@ -116,20 +123,19 @@ from goldbox.items import (  # noqa: E402
 from goldbox.record import RECORD_SIZE, CharacterRecord  # noqa: E402
 from goldbox.savegame import ROSTER_COMBAT_SIDE, ROSTER_HP_CURRENT  # noqa: E402
 from tools.c64 import (  # noqa: E402
-    inventorycheck,
     route_pool,
     runlog,  # noqa: E402
-    traitdrive,
+    screens,
 )
 from tools.c64 import session as S  # noqa: E402
-from tools.c64.traitquery import TRAIT_SLOT  # noqa: E402
 from tools.registry import evidence, scratch, specimens  # noqa: E402
 
 TITLES = {"pool": "pool-of-radiance", "curse": "curse-of-the-azure-bonds",
           "ssb": "secret-of-the-silver-blades"}
 
-#: Ten trait slots per record; eight party slots in a save.
-TRAIT_SLOTS = 10
+#: Ten trait slots per record from `goldbox.traits`; eight party slots in a save.
+TRAIT_SLOT = traits.FIRST
+TRAIT_SLOTS = traits.SLOTS
 PARTY_SLOTS = 8
 CREATURE_TYPE_OFFSET = 0x0D7
 READY_PNG_TIMEOUT = 10.0
@@ -249,13 +255,18 @@ def parse_rows(texts) -> list[tuple[int, int, int, int, int]]:
 
 
 def parse_traits(texts) -> list[tuple[int, int, int]]:
-    """`SLOT:INDEX=ID`, as `tools/c64/traitdrive.py` takes it."""
+    """`SLOT:INDEX=ID`, comma separated or repeated."""
     out = []
     for text in texts:
-        for slot, index, code in traitdrive.parse_stage(text):
+        for item in text.split(","):
+            where, _, value = item.partition("=")
+            parts = where.split(":")
+            if len(parts) != 2 or not value:
+                raise ValueError(f"{item!r}: a trait is SLOT:INDEX=ID")
+            slot, index = (int(p, 0) for p in parts)
             if not 0 <= slot < PARTY_SLOTS or not 0 <= index < TRAIT_SLOTS:
-                raise ValueError(f"{text!r}: the slot is 0 to 7, the index 0 to 9")
-            out.append((slot, index, _byte(str(code), "an id")))
+                raise ValueError(f"{item!r}: the slot is 0 to 7, the index 0 to 9")
+            out.append((slot, index, _byte(value, "an id", 0)))
     return out
 
 
@@ -801,7 +812,7 @@ def item_entries(rows: list[str]) -> list[dict]:
     """The item list's rows: readied or not, the rest of the row, and whether
     Detect Magic marked it."""
     out = []
-    for text in inventorycheck.item_list(rows):
+    for text in screens.item_list(rows):
         m = re.match(r"(YES|NO)\s+(.*)", text)
         rest = m.group(2) if m else text
         out.append({"row": text, "readied": bool(m and m.group(1) == "YES"),
@@ -1074,7 +1085,7 @@ class PoolRun:
         s = self.sess.screen()
         names = [] if s is None else [
             s.row(r)[S.PARTY_COLUMN:].upper() for r in self.sess.stable_party_rows()]
-        wanted = (who.upper(), inventorycheck.as_drawn(who).upper())
+        wanted = (who.upper(), screens.as_drawn(who).upper())
         for i, text in enumerate(names):
             if any(text.startswith(w) for w in wanted):
                 return i
@@ -1877,7 +1888,7 @@ class PoolRun:
         if target.isdigit():
             at = int(target) - 1
         else:
-            wanted = (target.upper(), inventorycheck.as_drawn(target).upper())
+            wanted = (target.upper(), screens.as_drawn(target).upper())
             at = next((i for i, e in enumerate(entries) if e.upper() in wanted), None)
         if at is None or not 0 <= at < len(entries):
             self.log.say(f"  {target} is not on the whom menu: {entries}")
@@ -2431,7 +2442,7 @@ class CurseRun(PoolRun):
             raise self.fail("view", "VIEW could not be chosen")
         # `as_drawn` yields only glyphs (a lower-case letter becomes a symbol
         # below `@`), so it never needs upper-casing to match row 1.
-        name = (inventorycheck.as_drawn(self.panel[index])
+        name = (screens.as_drawn(self.panel[index])
                 if 0 <= index < len(self.panel) else "")
         rows = self.wait_rows(
             lambda r: "EXIT" in r[24] and CAMP_BAR not in r[24]

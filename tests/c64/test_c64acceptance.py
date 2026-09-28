@@ -83,6 +83,15 @@ def test_trait_and_item_stages():
             A.parse_items([bad])
 
 
+def test_a_malformed_trait_stage_is_a_value_error_and_exits_two(capsys):
+    with pytest.raises(ValueError):
+        A.parse_traits(["0:9"])
+    with pytest.raises(SystemExit) as e:
+        A.main(["--title", "pool", "--save", "x.D64", "--steps", "load",
+                "--stage-trait", "0:9"])
+    assert e.value.code == 2
+
+
 def test_record_and_status_stages_parse_one_byte_at_a_time():
     assert A.parse_record_bytes(["0:0xCA=5", "1:0x20=36"]) == [
         (0, 0xCA, 5), (1, 0x20, 36)]
@@ -5871,7 +5880,8 @@ def test_a_lost_fight_before_save_loses_the_run_at_the_fight(tmp_path, monkeypat
     assert [r["verb"] for r in summary["results"]] == ["load"]
 
 
-BANNED_EXPERIMENT_IMPORTS = {"traitask", "effectdrive"}
+BANNED_EXPERIMENT_IMPORTS = {"traitask", "effectdrive", "inventorycheck",
+                             "traitdrive", "traitquery"}
 
 
 def test_acceptance_imports_no_experiment_module_that_route_pool_replaced():

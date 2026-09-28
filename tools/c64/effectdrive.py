@@ -63,7 +63,6 @@ from tools.registry import scratch  # noqa: E402
 DISKS: pathlib.Path | None = tool_disks()
 
 
-
 #: What the run watches, address by address.  A DUNGEON address and a CAMP
 #: address are both in the `$0800` overlay window and mean different code, so
 #: the two sets are never armed at the same time.
@@ -153,8 +152,6 @@ def abilities(path: pathlib.Path) -> dict[int, list[int]]:
     return out
 
 
-
-
 class Log(runlog.Log):
     def __init__(self, out: pathlib.Path, quiet: bool = False):
         self.quiet = quiet
@@ -163,12 +160,6 @@ class Log(runlog.Log):
     def say(self, *a) -> None:
         if not self.quiet:
             super().say(*a)
-
-
-
-
-
-
 
 
 def main(argv=None) -> int:

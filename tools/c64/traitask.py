@@ -341,10 +341,6 @@ def live_blocks(m) -> dict[int, list[int]]:
                          i * SLOT_STRIDE + TRAIT_SLOT + 10]) for i in range(8)}
 
 
-
-
-
-
 def live_tables(m) -> bytes:
     """`$DA63`-`$DC62` out of RAM bank 1, which is the RAM under I/O."""
     return m.read(TABLES[0], TABLES[1], bank=1)
@@ -374,32 +370,7 @@ def decode_tables(raw: bytes) -> dict:
     return {"handlers": handlers, "lists": lists}
 
 
-
-
 # -- driving VIEW > ITEMS > READY -------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 #: Candidate select keys for a list with a cursor on it, tried in order by
@@ -453,8 +424,6 @@ def probe_keys(sess: S.Session, log: Log, label: str) -> str | None:
             return key
         sess.handle_prompt()
     return None
-
-
 
 
 # -- what the fight does to hit points --------------------------------------

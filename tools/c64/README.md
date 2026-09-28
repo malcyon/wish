@@ -73,6 +73,7 @@ Scripts for the Commodore 64 titles: the VICE session and the drivers built on i
 | `route_pool.py` | Drives Pool of Radiance's camp, character sheet, item list and rest on a running session and reads the live records and effect arrays; the C64 acceptance driver and the experiments share it. |
 | `runlog.py` | The `.jsonl` log and the SIGTERM/SIGINT handler that driven-run tools share, so a killed or failed run keeps its record and tears its slot down. |
 | `savecheck.py` | Boots a save disk in VICE and reads what the game shows: load result, status line, party panel, every character's sheet (`--view`), combat icons (`--icon`), area changes (`--route`), walks (`--walk`); `--resave` has the game write the party back. |
+| `screens.py` | Reads a captured C64 screen: the item list a character's inventory shows and a name as the character set draws it; `inventorycheck.py` and the acceptance driver share it. |
 | `session.py` | Drives a Pool of Radiance session under VICE in one long-lived process (boot, copy protection, disk swapping, indoor and travel-grid walking, fights), since VICE serves one text-monitor connection per run; `docs/70-driving-the-game.md`. |
 | `sheetexit.py` | Finds the one key (PETSCII `$5F`, the back arrow) that leaves a command bar in all three C64 titles: `keys` reads it out of the player's `LIBRARY`, `run` proves it by reading two characters' sheets in one boot. |
 | `show.py` | Prints everything currently readable from a save disk, each field marked CONFIRMED, PROBABLE or GUESS by how far it is trusted. |
