@@ -1705,6 +1705,201 @@ class _RecordingGuest:
         return record
 
 
+@pytest.mark.parametrize("reaches_title,stale_log,timing", [
+    (True, False, "normal"), (False, False, "normal"),
+    (True, True, "normal"), (False, False, "exhausted"),
+    (False, False, "probe_boundary"),
+])
+def test_diagnose_uses_private_config_and_cleans_up_without_game_input(
+        tmp_path, monkeypatch, clock, reaches_title, stale_log, timing):
+    title = dataclasses.replace(
+        foundation.route_silver_blades.published_title("A"),
+        read_slot=_read_slot, slot_letters=_letters, slot_files=_files)
+    disks = {"df0": _adf(tmp_path / "df0.adf", "ONE", [("A", _slot(START))]),
+             "df1": _adf(tmp_path / "df1.adf", "TWO")}
+    registered = {"published": _adf(tmp_path / "published.adf", "ONE",
+                                    [("A", _slot(START))]),
+                  "disk_two": _adf(tmp_path / "registered-disk2.adf", "TWO")}
+    for key, registered_key in (("df0", "published"), ("df1", "disk_two")):
+        pathlib.Path(registered[registered_key]["path"]).write_bytes(
+            pathlib.Path(disks[key]["path"]).read_bytes())
+        registered[registered_key]["sha256"] = disks[key]["sha256"]
+    manifest = {"mode": "published_disk_one", "issue": "677", "title": "ssb",
+                "source_port": "c64", "loaded_letter": "A", "state_a": START,
+                "names_a": NAMES, "disks": disks,
+                "registered": registered}
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(foundation, "_published_manifest", lambda *_: (manifest, title))
+    monkeypatch.setattr(foundation, "_white_screen", lambda p: p.read_bytes() == b"white",
+                        raising=False)
+
+    class Guest:
+        def __init__(self):
+            self.calls = []
+            self.remote = {}
+            self.started = False
+            self.probe_timeouts = []
+
+        def claim(self, holder, timeout):
+            self.calls.append("claim")
+            return f"ok claimed by {holder}"
+
+        def put(self, local, remote, timeout):
+            self.calls.append("put")
+            self.remote[remote] = pathlib.Path(local).read_bytes()
+
+        def stage_private_config(self, holder, timeout):
+            self.calls.append("config")
+            return {"path": f"C:\\Amiga\\configs\\wish705-{holder}.uae", "sha256": "abc"}
+
+        def start(self, holder, *drives, timeout, options, config):
+            self.calls.append("start")
+            self.started = True
+            assert config == f"C:\\Amiga\\configs\\wish705-{holder}.uae"
+            assert drives == tuple(self.remote_path(k) for k in ("df0", "df1"))
+            return "ok pid=123"
+
+        def remote_path(self, key):
+            return next(p for p in self.remote if p.endswith(f"-{key}.adf"))
+
+        def diagnose(self, holder, section, key, timeout, address=None):
+            self.calls.append("diagnose")
+            if section == "DBG":
+                self.probe_timeouts.append(timeout)
+            if section == "CFG":
+                value = ("directdraw" if key == "gfx_api" else
+                         self.remote_path("df0" if key == "floppy0" else "df1")
+                         .replace("/", "\\"))
+                return {"reply": f"200 \n{value}"}
+            value = (b"\0" * 4 + (0x1000).to_bytes(4, "big") + b"\0" * 8
+                     if address == 0 else
+                     b"\0" * 8 + b"\0\0\0\x01" + b"\0\0\0\x02")
+            # The memory parser needs the debugger's address and eight words.
+            return {"reply": f"{address:08x} " + " ".join(
+                value[i:i + 2].hex() for i in range(0, len(value), 2)) + " ........"}
+
+        def grab(self, state, raw, crop, timeout):
+            self.calls.append("grab")
+            if timing == "exhausted":
+                clock.now = 1700
+            elif timing == "probe_boundary":
+                clock.now = 1299
+            raw.write_bytes(b"raw")
+            crop.write_bytes(b"title" if reaches_title and clock.now >= 1130 else b"white")
+            return True
+
+        def status(self, timeout):
+            self.calls.append("status")
+            self.probe_timeouts.append(timeout)
+            return "pid=123 responding=True"
+
+        def stop(self, holder, timeout):
+            self.calls.append("stop")
+            self.stop_timeout = timeout
+            if timeout < 12:
+                raise OSError("stop timed out before the guest's 10-second wait")
+            return "ok stopped"
+
+        def get(self, remote, local, timeout):
+            self.calls.append("get")
+            if remote == foundation.BOOT_LOG:
+                if not self.started or stale_log:
+                    local.write_text("previous boot log")
+                else:
+                    invocation = (f"'-f C:\\Amiga\\configs\\wish705-wish705-test.uae "
+                                  f"-s floppy0={self.remote_path('df0').replace('/', chr(92))} "
+                                  f"-s floppy1={self.remote_path('df1').replace('/', chr(92))}'")
+                    local.write_text("new boot log " + invocation)
+            else:
+                local.write_bytes(self.remote[remote])
+
+        def remove_private_config(self, holder, timeout):
+            self.calls.append("config-remove")
+            return "ok private config removed"
+
+        def release(self, holder, timeout):
+            self.calls.append("release")
+            return "ok released"
+
+    guest = Guest()
+    class Guard:
+        rules = {"title": {}}
+
+        def __contains__(self, state):
+            return state == "title"
+
+        def __call__(self, state, crop):
+            return state == "title" and crop.read_bytes() == b"title"
+
+    result = foundation.run_recon(
+        path, guest=guest, holder="wish705-test", audio_proof=_audio_proof(tmp_path),
+        title=title, guard=Guard(), diagnose=True, published_disk_one=True,
+        published_name="ssb", deadline_seconds=600, boot_limit=300)
+    assert result["success"] is (reaches_title and not stale_log and timing == "normal"), (
+                                               result["error"], result.get("boot_log_error"),
+                                               result.get("stop_error"),
+                                               result.get("config_remove_error"),
+                                               result.get("white_probe"))
+    assert result["completed"] is (reaches_title and timing == "normal")
+    if timing == "normal":
+        assert result["white_probe"]["first"]["execbase"] == 0x1000
+        assert result["white_probe"]["status"].startswith("pid=123")
+    if stale_log:
+        assert result["boot_log_fresh"] is False
+        assert result["boot_log_error"] == "boot log is stale or names another launch"
+    if timing == "exhausted":
+        assert result["cleanup_after_deadline"] is True
+        assert guest.stop_timeout >= 20
+        assert result["stop"] == "ok stopped"
+        assert result["config_removed"] == "ok private config removed"
+        assert result["release"] == "ok released"
+    if timing == "probe_boundary":
+        assert result["white_probe"]["first"]["execbase"] == 0x1000
+        assert max(guest.probe_timeouts) <= 1
+        assert "boot deadline" in result["error"]
+    assert result["df0_fetched_unchanged"] and result["df1_fetched_unchanged"]
+    assert guest.calls.index("config") < guest.calls.index("start")
+    assert guest.calls.index("stop") < guest.calls.index("config-remove") < guest.calls.index("release")
+    assert guest.calls.index("get") < guest.calls.index("release")
+    assert "press" not in guest.calls and "insert" not in guest.calls
+    if timing == "normal":
+        assert result["elapsed_seconds"] <= 300
+
+
+def test_diagnose_cli_dispatches_only_published_silver_blades(tmp_path, monkeypatch):
+    manifest = tmp_path / "prepare.json"
+    manifest.write_text("{}")
+    guards = tmp_path / "guards.json"
+    guards.write_text("{}")
+    audio = _audio_proof(tmp_path)
+    observed = []
+    monkeypatch.setattr(foundation, "_published_manifest", lambda *_: (
+        {"loaded_letter": "A"}, foundation.route_silver_blades.published_title("A")))
+    monkeypatch.setattr(foundation, "WinGuest", lambda: object())
+    monkeypatch.setattr(foundation, "PixelGuards", lambda p: p)
+    monkeypatch.setattr(foundation, "_summary", lambda *a: "summary")
+
+    def run(*args, **kwargs):
+        observed.append(kwargs)
+        return {"success": True, "error": ""}
+
+    monkeypatch.setattr(foundation, "run_recon", run)
+    code = foundation.main(["diagnose", "--title", "ssb", "--published-disk-one",
+                            "--manifest", str(manifest), "--guards", str(guards),
+                            "--audio-proof", str(audio), "--attempt", "gfx705-test",
+                            "--boot-limit", "300", "--deadline", "600"])
+    assert code == 0
+    assert len(observed) == 1
+    assert observed[0]["diagnose"] is True and observed[0]["boot_limit"] == 300
+    assert observed[0]["title"].issue == "677"
+    observed.clear()
+    assert foundation.main(["diagnose", "--title", "curse", "--published-disk-one",
+                            "--manifest", str(manifest), "--guards", str(guards),
+                            "--audio-proof", str(audio)]) == 2
+    assert not observed
+
+
 def test_measure_refuses_a_missing_disk2_prompt_guard_through_main_before_any_guest_call(
         tmp_path, monkeypatch, capsys):
     guest = _RecordingGuest()

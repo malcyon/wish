@@ -10,6 +10,7 @@ desktop commands it refuses.  No ssh is run; the one test that goes through
 from __future__ import annotations
 
 import base64
+import hashlib
 import pathlib
 import re
 import sys
@@ -19,7 +20,8 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from tools.amiga import winvmguest as w  # noqa: E402
+from tools.amiga import winuaesession  # noqa: E402
+from tools.amiga import winvmguest as w
 
 CFG = "/etc/ssh/ssh_config.d/wish-winvm.conf"
 
@@ -256,6 +258,41 @@ def test_the_lane_script_accepts_the_two_new_verbs():
     valid = re.search(r"ValidateSet\(([^)]*)\)", WINUAE_PS1).group(1)
     assert "'drives'" in valid and "'insert'" in valid
     assert "'drives' {" in WINUAE_PS1 and "'insert' {" in WINUAE_PS1
+
+
+def test_diagnose_refuses_foreign_claim_receipt_and_pipe_before_any_message():
+    valid = re.search(r"ValidateSet\(([^)]*)\)", WINUAE_PS1).group(1)
+    assert "'diagnose'" in valid and "'diagnose' { Invoke-Diagnose }" in WINUAE_PS1
+    body = WINUAE_PS1[WINUAE_PS1.index("function Invoke-Diagnose"):
+                      WINUAE_PS1.index("function Invoke-PrivateConfig")]
+    lane = WINUAE_PS1[WINUAE_PS1.index("function Get-LaneEmulator"):
+                      WINUAE_PS1.index("function Send-Pipe")]
+    assert lane.index("Get-LaneDenial") < lane.index("Resolve-MyEmulator")
+    assert "Get-LaneDenial" in lane and "ExecutablePath" in lane
+    assert body.index("Get-LaneEmulator") < body.index("New-Object IO.Pipes.NamedPipeClientStream")
+    assert body.index("GetNamedPipeServerProcessId") < body.index("$server -ne $lane.proc.Id")
+    assert body.index("$server -ne $lane.proc.Id") < body.index("$again = Get-LaneEmulator")
+    assert body.index("$again = Get-LaneEmulator") < body.index("Send-Pipe $pipe $query")
+    assert 'Send-Pipe $pipe "CFG floppy' not in body
+    assert "'gfx_api','floppy0','floppy1'" in body
+    assert "DBG m $($Rest[2]) 1" in body
+    assert "'DBG c'" in body
+
+
+def test_private_config_hash_must_match_uploaded_template(monkeypatch):
+    guest = winuaesession.WinGuest()
+    calls = []
+    monkeypatch.setattr(guest, "put", lambda local, remote, timeout:
+                        calls.append((local, remote)))
+    want = hashlib.sha256(winuaesession.LOCAL_BOOT_CONFIG.read_bytes()).hexdigest()
+    monkeypatch.setattr(guest, "_lane", lambda holder, command, timeout: f"ok {want}")
+    staged = guest.stage_private_config("wish705-probe", timeout=20)
+    assert staged["path"] == r"C:\Amiga\configs\wish705-wish705-probe.uae"
+    assert staged["sha256"] == want
+    assert calls == [(winuaesession.LOCAL_BOOT_CONFIG, staged["path"])]
+    monkeypatch.setattr(guest, "_lane", lambda holder, command, timeout: "ok " + "0" * 64)
+    with pytest.raises(winuaesession.RouteError, match="SHA-256 mismatch"):
+        guest.stage_private_config("wish705-probe", timeout=20)
 
 
 SETTER = 'Send-Pipe $pipe "CFG floppy$drive $path"'

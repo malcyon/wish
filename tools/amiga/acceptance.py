@@ -9,12 +9,13 @@ import functools
 import hashlib
 import json
 import pathlib
+import re
 import shutil
 import stat
 import sys
 import time
 import uuid
-from typing import Any
+from typing import Any, Callable
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
@@ -89,6 +90,221 @@ GUARD_LIMIT = 120.0
 # A key pressed while the disk is being written is swallowed, so the screen
 # after the write gets the same long first wait as the load picker.
 POST_WRITE_WAIT = 20.0
+BOOT_LOG = r"C:\Users\Public\Documents\Amiga Files\WinUAE\winuaebootlog.txt"
+
+
+def _diagnose_bytes(guest: Any, holder: str, address: int, length: int,
+                    limit: Callable[[float], float]) -> tuple[bytes, list[dict[str, Any]]]:
+    from automap.amiga import parse_memory_dump  # noqa: PLC0415
+
+    reads = []
+    data: dict[int, int] = {}
+    for line_address in range(address & ~15, address + length, 16):
+        receipt = guest.diagnose(holder, "DBG", "m", address=line_address,
+                                 timeout=limit(20))
+        reads.append(receipt)
+        data.update(parse_memory_dump(receipt["reply"]))
+    try:
+        return bytes(data[n] for n in range(address, address + length)), reads
+    except KeyError as exc:
+        raise RouteError(f"Exec memory reply omitted {exc.args[0]:#x}") from exc
+
+
+def _exec_sample(guest: Any, holder: str,
+                 limit: Callable[[float], float]) -> dict[str, Any]:
+    ptr, ptr_reads = _diagnose_bytes(guest, holder, 4, 4, limit)
+    base = int.from_bytes(ptr, "big")
+    if not base or base > 0xFFFFFFFF - 0x120:
+        raise RouteError(f"ExecBase pointer is invalid: {base:#x}")
+    values, value_reads = _diagnose_bytes(guest, holder, base + 0x114, 12, limit)
+    return {"execbase": base, "this_task": int.from_bytes(values[:4], "big"),
+            "idle": int.from_bytes(values[4:8], "big"),
+            "disp": int.from_bytes(values[8:], "big"),
+            "replies": ptr_reads + value_reads}
+
+
+def _white_screen(path: pathlib.Path) -> bool:
+    from PIL import Image  # noqa: PLC0415
+
+    with Image.open(path) as image:
+        return all(low >= 245 for low, _ in image.convert("RGB").getextrema())
+
+
+def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle,
+                  disks: dict, guest: Any, guard: Any, holder: str,
+                  audio_proof: pathlib.Path, attempt: str, deadline: float,
+                  boot_limit: float) -> dict[str, Any]:
+    """Boot the published title without game input and preserve each read and cleanup receipt."""
+    out = manifest_path.parent / attempt
+    out.mkdir(parents=False, exist_ok=False)
+    shots = scratch.ensure(out / "shots")
+    remotes = {key: f"C:/Amiga/Disks/wish{title.issue}-{holder}-{key}.adf"
+               for key in title.disk_keys}
+    result: dict[str, Any] = {
+        **evidence.git_state(REPO), "argv": sys.argv[1:], "diagnose": True,
+        "accept": False, "measure": False, "success": False, "completed": False,
+        "holder": holder, "input": str(manifest_path), "remotes": remotes,
+        "events": [], "fetched": {}, "error": "", "deadline_seconds": deadline,
+        "boot_limit_seconds": boot_limit,
+    }
+    begun = time.monotonic()
+    end = begun + deadline
+    claimed = started = stopped = config_staged = False
+
+    def limit(seconds: float) -> float:
+        left = end - time.monotonic()
+        if left <= 0:
+            raise RouteError("diagnose total deadline reached")
+        return min(seconds, left)
+
+    def cleanup_limit(seconds: float, minimum: float = 5.0) -> float:
+        left = end - time.monotonic()
+        if left < minimum:
+            if left < 1:
+                result["cleanup_after_deadline"] = True
+            return min(seconds, minimum)
+        return min(seconds, left)
+
+    try:
+        receipt = guest.claim(holder, timeout=limit(30))
+        if receipt != f"ok claimed by {holder}":
+            raise RouteError(f"claim was not new: {receipt!r}")
+        claimed = True
+        result["claim"] = receipt
+        before_log = out / "winuaebootlog-before.txt"
+        guest.get(BOOT_LOG, before_log, timeout=limit(30))
+        result["boot_log_before"] = _entry(before_log)
+        for key, path in disks.items():
+            guest.put(path, remotes[key], timeout=limit(90))
+        config_staged = True
+        result["config"] = guest.stage_private_config(holder, timeout=limit(60))
+        if not _mute_proof(audio_proof):
+            raise RouteError("the Windows VM audio mute proof expired before WinUAE start")
+        started = True
+        result["start"] = guest.start(
+            holder, *(None if key is None else remotes[key] for key in title.mounted),
+            timeout=limit(60), options=title.options, config=result["config"]["path"])
+        boot_started = time.monotonic()
+        # Stop, two disk fetches, boot-log fetch, config removal and release each
+        # have their own bounded call; keep their full allowance after the boot.
+        boot_end = min(boot_started + boot_limit, end - 240)
+        if boot_end <= boot_started:
+            raise RouteError("diagnose has no time left for a boot and cleanup")
+
+        def boot_limit_for(seconds: float) -> float:
+            left = min(boot_end, end) - time.monotonic()
+            if left <= 0:
+                raise RouteError("diagnose boot deadline reached during a read")
+            return min(seconds, left)
+
+        result["readback"] = {
+            key: guest.diagnose(holder, "CFG", key, timeout=boot_limit_for(20))
+            for key in ("gfx_api", "floppy0", "floppy1")}
+        expected = {"gfx_api": "directdraw", "floppy0": remotes["df0"].replace("/", "\\"),
+                    "floppy1": remotes["df1"].replace("/", "\\")}
+        for key, wanted in expected.items():
+            if result["readback"][key]["reply"] != f"200 \n{wanted}":
+                raise RouteError(f"guest {key} readback differs from the private run")
+        n = 0
+        sampled = False
+        while time.monotonic() < boot_end:
+            name = f"00-boot-{n:02d}"
+            raw, crop = shots / f"{name}.raw.png", shots / f"{name}.png"
+            remaining = boot_end - time.monotonic()
+            if remaining <= 0:
+                break
+            shown = guest.grab(name, raw, crop, timeout=boot_limit_for(min(SHOT_SECONDS, remaining)))
+            event = {"state": name, "raw": str(raw), "raw_sha256": sha256(raw),
+                     "crop": str(crop) if shown else None}
+            if shown:
+                event["crop_sha256"] = sha256(crop)
+                if guard("title", crop):
+                    event["recognized"] = "title"
+                    result["events"].append(event)
+                    result["completed"] = True
+                    break
+                for other in getattr(guard, "rules", {}):
+                    if other != "title" and guard(other, crop):
+                        event["recognized"] = other
+                        result["events"].append(event)
+                        raise RouteError(f"recognized {other} before the title")
+            result["events"].append(event)
+            elapsed = time.monotonic() - boot_started
+            if shown and elapsed >= 120 and not sampled and _white_screen(crop):
+                sampled = True
+                result["white_probe"] = {"elapsed_seconds": elapsed,
+                                         "status": guest.status(timeout=boot_limit_for(20))}
+                first = _exec_sample(guest, holder, boot_limit_for)
+                result["white_probe"]["first"] = first
+                time.sleep(min(1, boot_limit_for(1)))
+                second = _exec_sample(guest, holder, boot_limit_for)
+                result["white_probe"]["second"] = second
+            n += 1
+            time.sleep(min(TITLE_POLL, max(0, boot_end - time.monotonic())))
+        if not result["completed"]:
+            raise RouteError(f"title screen was not recognized within {boot_limit:.0f}s")
+    except BaseException as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if started:
+            try:
+                result["stop"] = guest.stop(holder, timeout=cleanup_limit(30, minimum=20))
+                stopped = True
+            except BaseException as exc:
+                result["stop_error"] = f"{type(exc).__name__}: {exc}"
+        if claimed:
+            for key, remote in remotes.items():
+                local = out / f"fetched-{key}.adf"
+                try:
+                    guest.get(remote, local, timeout=cleanup_limit(60))
+                    result["fetched"][key] = _entry(local)
+                except BaseException as exc:
+                    result[f"fetch_{key}_error"] = f"{type(exc).__name__}: {exc}"
+            if started:
+                try:
+                    bootlog = out / "winuaebootlog.txt"
+                    guest.get(BOOT_LOG, bootlog, timeout=cleanup_limit(30))
+                    result["boot_log"] = _entry(bootlog)
+                    content = bootlog.read_text(errors="replace")
+                    result["boot_log_fresh"] = (result["boot_log"]["sha256"] !=
+                                                result["boot_log_before"]["sha256"])
+                    result["boot_log_matches_start"] = all(
+                        path in content for path in (
+                            result["config"]["path"],
+                            remotes["df0"].replace("/", "\\"),
+                            remotes["df1"].replace("/", "\\")))
+                    if not result["boot_log_fresh"] or not result["boot_log_matches_start"]:
+                        result["boot_log_error"] = "boot log is stale or names another launch"
+                    result["gfx_api_rejected"] = bool(re.search(
+                        r"Unknown value .* for option 'gfx_api'",
+                        content, re.IGNORECASE))
+                except BaseException as exc:
+                    result["boot_log_error"] = f"{type(exc).__name__}: {exc}"
+            if config_staged:
+                try:
+                    result["config_removed"] = guest.remove_private_config(holder,
+                                                                             timeout=cleanup_limit(30))
+                except BaseException as exc:
+                    result["config_remove_error"] = f"{type(exc).__name__}: {exc}"
+            if not started or stopped:
+                try:
+                    result["release"] = guest.release(holder, timeout=cleanup_limit(30))
+                except BaseException as exc:
+                    result["release_error"] = f"{type(exc).__name__}: {exc}"
+        for key, path in disks.items():
+            result[f"{key}_local_unchanged"] = sha256(path) == manifest["disks"][key]["sha256"]
+            if key in result["fetched"]:
+                result[f"{key}_fetched_unchanged"] = (
+                    result["fetched"][key]["sha256"] == manifest["disks"][key]["sha256"])
+        result["success"] = bool(result["completed"] and not result["error"] and stopped
+                                 and result.get("release") and result.get("config_removed")
+                                 and result.get("boot_log_fresh")
+                                 and result.get("boot_log_matches_start")
+                                 and not result.get("gfx_api_rejected")
+                                 and all(result.get(f"{key}_fetched_unchanged") for key in disks))
+        result["elapsed_seconds"] = time.monotonic() - begun
+        (out / "summary.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return result
 
 # A state the guard map has must match or the run stops; the rest are measured
 # by settling a capture and are marked unguarded.
@@ -463,7 +679,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               answer: Any = None, preflight: Any = None,
               title: AmigaTitle | None = None, reload: bool = False,
               published_disk_one: bool = False, published_name: str | None = None,
-              preserve_specimen: bool = False) -> dict[str, Any]:
+              preserve_specimen: bool = False, diagnose: bool = False,
+              boot_limit: float = 300) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -500,9 +717,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("title must be an AmigaTitle")
         if reload and (accept or measure):
             raise RouteError("reload is a mode of its own, apart from accept and measure")
-        if not reload and accept == measure:
+        if not reload and not diagnose and accept == measure:
             raise RouteError("a title run is either accept or measure")
-        if reload != (title.control_letter is None):
+        if not diagnose and reload != (title.control_letter is None):
             raise RouteError("only a title with no save letters is reloaded, and it runs only "
                              "as a reload")
         if route != ROUTE or write_keys != ("B",):
@@ -526,7 +743,14 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError(f"identity map lacks {sorted(identity_states)}")
         if accept and title is None and not journal_python and answer is None:
             raise RouteError("accept needs a journal interpreter")
-    if not measure:
+    if diagnose:
+        if (accept or measure or reload or not published_disk_one or published_name != "ssb"
+                or title is None or boot_limit <= 0 or boot_limit > 300
+                or deadline_seconds > 600 or deadline_seconds <= boot_limit):
+            raise RouteError("diagnose needs the published Silver Blades title and bounded limits")
+        if not _guards(guard, "title"):
+            raise RouteError("diagnose needs a title screen guard")
+    if not measure and not diagnose:
         needed = (("title", *(s for _, s in route)) if title is None
                   else ("title", *sorted(title.strict)))
         missing = [s for s in dict.fromkeys(needed) if not _guards(guard, s)]
@@ -601,6 +825,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 raise RouteError("working DF0 differs from the exact published image")
             if sha256(disks["df1"]) != manifest["registered"]["disk_two"]["sha256"]:
                 raise RouteError("working DF1 differs from registered disk 2")
+        if diagnose:
+            return _run_diagnose(manifest_path, manifest, title, disks, guest, guard,
+                                 holder, audio_proof, attempt, deadline_seconds, boot_limit)
     else:
         originals = {name: _input(manifest, name)
                      for name in ("source", "boot_source", "disk_b_source")
@@ -1464,9 +1691,17 @@ def main(argv: list[str] | None = None) -> int:
     common(r)
     r.add_argument("--guards", required=True, type=pathlib.Path)
     r.add_argument("--identity", required=True, type=pathlib.Path)
+    d = sub.add_parser("diagnose", help="guarded title-only boot of the published Silver Blades image")
+    common(d)
+    d.set_defaults(deadline=600)
+    d.add_argument("--guards", required=True, type=pathlib.Path)
+    d.add_argument("--boot-limit", type=float, default=300)
     args = parser.parse_args(argv)
     try:
         silver_blades = args.title == "ssb"
+        if args.command == "diagnose" and (not silver_blades or not args.published_disk_one
+                                           or args.deadline > 600 or args.boot_limit > 300):
+            raise RouteError("diagnose needs published Silver Blades and bounded limits")
         if args.published_disk_one:
             if args.command == "reload":
                 raise RouteError("published disk one has no reload route")
@@ -1525,11 +1760,20 @@ def main(argv: list[str] | None = None) -> int:
                 title = _published_title(args.title, manifest["loaded_letter"])
             else:
                 title = None if silver_blades else TITLES[args.title]
-            attempt = args.attempt or ("recon1" if args.command == "measure" else "accept1")
+            attempt = args.attempt or ("recon1" if args.command == "measure" else
+                                       "gfx705-directdraw1" if args.command == "diagnose" else
+                                       "accept1")
             holder_issue = PUBLISHED_ISSUE if args.published_disk_one else (
                 "672" if silver_blades else ISSUE)
             holder = args.holder or f"wish{holder_issue}-{uuid.uuid4().hex[:12]}"
-            if args.command == "measure":
+            if args.command == "diagnose":
+                result = run_recon(
+                    args.manifest, guest=WinGuest(), holder=holder,
+                    audio_proof=args.audio_proof, attempt=attempt,
+                    guard=PixelGuards(args.guards), deadline_seconds=args.deadline,
+                    boot_limit=args.boot_limit, diagnose=True, title=title,
+                    published_disk_one=True, published_name=args.title)
+            elif args.command == "measure":
                 route = (parse_route(args.route) if args.route else route_silver_blades.ROUTE)
                 write_keys = parse_write_keys(
                     args.write_keys if args.write_keys is not None else "B") if silver_blades else None

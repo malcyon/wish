@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import contextlib
+import hashlib
 import json
 import os
 import pathlib
@@ -17,6 +20,7 @@ from typing import Any
 from tools.amiga import amigadrive, amigashots, winvmsettle
 
 BOOT_CONFIG = r"C:\Amiga\configs\goldbox-a500.uae"
+LOCAL_BOOT_CONFIG = pathlib.Path(__file__).with_name("goldbox-a500.uae")
 WINUAE_PS = r"powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae.ps1"
 # One `winvm shot` measured 5.6-7.8 s round trip; the capture script caps itself at 20 s.
 SHOT_SECONDS = 20.0
@@ -72,13 +76,62 @@ class WinGuest:
         return receipt
 
     def start(self, holder: str, *drives: str | None, timeout: float,
-              options: tuple[str, ...] = ()) -> str:
+              options: tuple[str, ...] = (), config: str = BOOT_CONFIG) -> str:
         """Start WinUAE with `drives` in DF0 upward; None ejects a drive the template fills."""
         settings = [f"-s floppy{n}=" + ("" if path is None else path.replace("/", "\\"))
                     for n, path in enumerate(drives)]
         settings += [f"-s {option}" for option in options]
         settings += ["-s joyport1=none", "-s sound_output=interrupts"]
-        return self._lane(holder, f"start -f {BOOT_CONFIG} {' '.join(settings)}", timeout)
+        if config != BOOT_CONFIG and config != self.private_config_path(holder):
+            raise RouteError("start config is not this holder's private config")
+        return self._lane(holder, f"start -f {config} {' '.join(settings)}", timeout)
+
+    @staticmethod
+    def private_config_path(holder: str) -> str:
+        if not HOLDER.fullmatch(holder):
+            raise RouteError("private config needs a lane-safe holder")
+        return rf"C:\Amiga\configs\wish705-{holder}.uae"
+
+    def stage_private_config(self, holder: str, timeout: float) -> dict[str, str]:
+        remote = self.private_config_path(holder)
+        local_hash = hashlib.sha256(LOCAL_BOOT_CONFIG.read_bytes()).hexdigest()
+        self.put(LOCAL_BOOT_CONFIG, remote, timeout)
+        receipt = self._lane(holder, f"config-hash {remote}", timeout)
+        if receipt != f"ok {local_hash}":
+            raise RouteError(f"private config guest SHA-256 mismatch: {receipt!r}")
+        return {"path": remote, "sha256": local_hash, "receipt": receipt}
+
+    def remove_private_config(self, holder: str, timeout: float) -> str:
+        return self._lane(holder, f"config-remove {self.private_config_path(holder)}", timeout)
+
+    def diagnose(self, holder: str, section: str, key: str,
+                 timeout: float, address: int | None = None) -> dict[str, Any]:
+        if (section, key) not in {("CFG", "gfx_api"), ("CFG", "floppy0"),
+                                  ("CFG", "floppy1"), ("DBG", "c"), ("DBG", "m")}:
+            raise RouteError("diagnose refused an unapproved read")
+        if (section, key) == ("DBG", "m"):
+            if address is None or not 0 <= address <= 0xFFFFFFFF:
+                raise RouteError("diagnose memory address is outside 32 bits")
+            command = f"diagnose DBG m {address:x}"
+        elif address is None:
+            command = f"diagnose {section} {key}"
+        else:
+            raise RouteError("diagnose address belongs only to DBG m")
+        raw = self._lane(holder, command, timeout)
+        lines = raw.splitlines()
+        replies = [line.split(" ", 4)[4] for line in lines if line.startswith("<<r>> ")]
+        pids = [line.split(" ", 1)[1] for line in lines if line.startswith("<<pid>> ")]
+        servers = [line.split(" ", 1)[1] for line in lines if line.startswith("<<server_pid>> ")]
+        if len(replies) != 1 or len(pids) != 1 or servers != pids:
+            raise RouteError(f"diagnose returned incomplete ownership proof: {raw!r}")
+        try:
+            reply = base64.b64decode(replies[0], validate=True).rstrip(b"\0").decode("latin-1")
+        except (ValueError, UnicodeError, binascii.Error) as exc:
+            raise RouteError("diagnose returned an invalid pipe reply") from exc
+        return {"query": command, "pid": int(pids[0]), "reply": reply, "raw": raw}
+
+    def status(self, timeout: float) -> str:
+        return self._run("ssh", f"{WINUAE_PS} status", timeout=timeout)
 
     def insert(self, holder: str, drive: int, remote: str, timeout: float,
                sha256: str) -> dict[str, Any]:

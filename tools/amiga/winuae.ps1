@@ -66,7 +66,7 @@
 
 param(
   [Parameter(Mandatory=$true)]
-  [ValidateSet('start','stop','front','status','send','key','roms','clean','claim','release','drives','insert')][string]$Cmd,
+  [ValidateSet('start','stop','front','status','send','key','roms','clean','claim','release','drives','insert','diagnose','config-hash','config-remove')][string]$Cmd,
   [Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest
 )
 
@@ -541,6 +541,77 @@ function Read-Drives($Pipe, $Sw, [int]$Seq, $Tags, [long]$Until = 0) {
   $modes = @{}
   foreach ($m in [regex]::Matches($out['dbg'], $DriveLine)) { $modes[[int]$m.Groups[1].Value] = $m.Groups[2].Value }
   @{ q0 = $out['q0']; paths = $paths; modes = $modes }
+}
+
+function Invoke-Diagnose {
+  # A diagnostic read uses the same receipt and pipe ownership checks as a disk read.
+  if ($Rest.Count -lt 2 -or $Rest.Count -gt 3) { 'fail diagnose needs CFG <gfx_api|floppy0|floppy1> or DBG <c|m> [hex-address]'; exit 1 }
+  $query = $null
+  if ($Rest[0] -ceq 'CFG' -and $Rest.Count -eq 2 -and
+      $Rest[1] -cin @('gfx_api','floppy0','floppy1')) { $query = "CFG $($Rest[1])" }
+  if ($Rest[0] -ceq 'DBG' -and $Rest[1] -ceq 'c' -and $Rest.Count -eq 2) { $query = 'DBG c' }
+  if ($Rest[0] -ceq 'DBG' -and $Rest[1] -ceq 'm' -and $Rest.Count -eq 3 -and
+      $Rest[2] -cmatch '^[0-9A-Fa-f]{1,8}\z') { $query = "DBG m $($Rest[2]) 1" }
+  if (-not $query) { 'fail diagnose refused an unapproved read'; exit 1 }
+  $lane = Get-LaneEmulator
+  if ($lane.err) { $lane.err; exit 1 }
+  $tags = New-Object System.Collections.ArrayList
+  $pipe = $null; $open = $false; $verdict = $null
+  try {
+    Add-Type -Namespace Wish -Name PipeInfo -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(IntPtr Pipe, out uint ServerProcessId);'
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $pipe = New-Object IO.Pipes.NamedPipeClientStream '.', 'WinUAE', 'InOut'
+    $pipe.Connect(5000)
+    $pipe.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
+    $open = $true
+    $tags.Add("<<connect_ms>> $($sw.ElapsedMilliseconds)") | Out-Null
+    $tags.Add("<<pid>> $($lane.proc.Id)") | Out-Null
+    $tags.Add("<<started>> $($lane.proc.StartTime.ToString('o'))") | Out-Null
+    $tags.Add("<<exe>> $($lane.exe)") | Out-Null
+    [uint32]$server = 0
+    if (-not [Wish.PipeInfo]::GetNamedPipeServerProcessId($pipe.SafePipeHandle.DangerousGetHandle(), [ref]$server)) {
+      throw "GetNamedPipeServerProcessId failed, error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+    }
+    $tags.Add("<<server_pid>> $server") | Out-Null
+    if ($server -ne $lane.proc.Id) {
+      $verdict = "fail pipe server pid=$server differs from lane pid=$($lane.proc.Id)"
+    }
+    if (-not $verdict) {
+      $again = Get-LaneEmulator
+      if ($again.err) { $verdict = $again.err }
+      elseif ($again.proc.Id -ne $lane.proc.Id) { $verdict = 'fail lane PID changed before read' }
+    }
+    if (-not $verdict) {
+      $bytes = Send-Pipe $pipe $query 10000
+      $tags.Add("<<r>> 0 read $($sw.ElapsedMilliseconds) $([Convert]::ToBase64String($bytes))") | Out-Null
+      $verdict = "ok diagnose pid=$($lane.proc.Id)"
+    }
+  } catch {
+    $verdict = "fail $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+  } finally {
+    if ($pipe) { $pipe.Dispose() }
+  }
+  if (-not $open) { $verdict; exit 1 }
+  $verdict
+  $tags
+  '<<end>>'
+}
+
+function Invoke-PrivateConfig([string]$Verb) {
+  $deny = Claim-Denial
+  if ($deny) { $deny; exit 1 }
+  if ($Rest.Count -ne 1 -or $Rest[0] -cne "C:\Amiga\configs\wish705-$Holder.uae") {
+    'fail private config path does not name this holder'; exit 1
+  }
+  $path = $Rest[0]
+  if ($Verb -eq 'config-hash') {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { 'fail private config is missing'; exit 1 }
+    "ok $((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLower())"
+  } else {
+    Remove-Item -LiteralPath $path -ErrorAction Stop
+    if (Test-Path -LiteralPath $path) { 'fail private config survived removal'; exit 1 }
+    'ok private config removed'
+  }
 }
 
 function Invoke-Floppy([string]$Verb) {
@@ -1135,6 +1206,10 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # notes above Invoke-Floppy for the output.
     Invoke-Floppy 'drives'
   }
+
+  'diagnose' { Invoke-Diagnose }
+  'config-hash' { Invoke-PrivateConfig 'config-hash' }
+  'config-remove' { Invoke-PrivateConfig 'config-remove' }
 
   'insert' {
     # insert <drive 0|1> <path> <sha256>: the one mutation this script makes over
