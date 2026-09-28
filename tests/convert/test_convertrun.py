@@ -11,7 +11,7 @@ import pathlib
 
 import pytest
 from conftest import load_tools_module
-from gamedata import curse_dir, disk_dir
+from gamedata import curse_absent, curse_dir, disk_dir
 from support.dossave import _game_dirs, _save_dir, needs_dos_saves
 
 from editor import saveplan
@@ -22,7 +22,7 @@ convertrun = load_tools_module("convertrun")
 
 needs_disks = pytest.mark.skipif(disk_dir() is None,
                                  reason="needs the game disks")
-needs_curse_disks = pytest.mark.skipif(curse_dir() is None,
+needs_curse_disks = pytest.mark.skipif(curse_absent(),
                                        reason="needs Curse's game disks")
 
 
