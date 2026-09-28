@@ -839,42 +839,35 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # A Pool player character the engine has taken over by its charm is a
     # player character on the C64, so his share byte is the ability-altered
     # flag like any other player character's.  The one predicate for the charm
-    # row, the 0x0B8 arm and the share byte.  A charm node converts whatever
-    # side charmed whom and however long it has left, because the C64 keeps
-    # the sides in the row's magnitude and 0x10C and ends every charm with
-    # the fight; a free slot is not tested here, because an earlier row can
-    # take the last one before the charm row is written, so the write reports
-    # it.  A character DOS drives with the taken-over byte, and one whose
-    # control byte is below 0x80 (the reader gives no npc for it), are player
-    # characters: the C64's handler takes a player character over at his first
-    # event whatever 0x0B8 holds.
-    status_value = w.get("status")
-    control_value = w.get("npc_control_byte")
-    charm_nodes: list[bytes] = []
-    if deltas is POOL_OF_RADIANCE_RECORD:
-        charm_nodes = [bytes(n) for n in
-                       (granted.value if granted is not None else ())]
-        if running is not None and isinstance(running.value, (list, tuple)):
-            charm_nodes += [bytes(r) for r in running.value
-                            if len(bytes(r)) == effects.RUNNING_EFFECT_SIZE]
-    charm_accepted = bool(
-        payload is not None
-        and any(isinstance(effects.pool_charm_row(deltas.key, n), tuple)
-                for n in charm_nodes))
+    # row, the 0x0B8 arm and the share byte: only a Pool character DOS itself
+    # charmed (an engine-driven record with the taken-over control byte, on
+    # the party's side) with an accepted node converts; any other charm node
+    # is a loss.  A free slot is not tested here: an earlier row can take the
+    # last one before the charm row is written, so the write reports it.
     pool_charmed = bool(
-        charm_accepted
-        and (not is_npc or control_value == DOS_PC_TAKEN_OVER))
+        deltas is POOL_OF_RADIANCE_RECORD and is_npc
+        and w.get("npc_control_byte") == DOS_PC_TAKEN_OVER
+        and not w.get("hostile") and granted is not None
+        and payload is not None
+        and any(isinstance(effects.pool_charm_row(deltas.key, bytes(n)),
+                           tuple) for n in granted.value))
     # A companion charmed by his own party keeps his own control byte in DOS,
     # whose handler sets the taken-over value only over a byte of 0x7F or
     # less (Pool `GAME.OVR:0xF092`-`0xF10C`), and the C64's charm handler
     # touches 0x10C alone (`SPELLE01 $A7DA`).  So he converts to the same
     # charm row and 0x10C bits as a player character and stays a companion:
     # his share byte, his 0x0B8 and his `npc` are his own.
+    status_value = w.get("status")
+    control_value = w.get("npc_control_byte")
     pool_charmed_companion = bool(
-        charm_accepted and is_npc
+        deltas is POOL_OF_RADIANCE_RECORD and is_npc
         and control_value is not None and int(control_value) & 0x80
         and int(control_value) != DOS_PC_TAKEN_OVER
-        and status_value != "animated")
+        and status_value != "animated"
+        and not w.get("hostile") and granted is not None
+        and payload is not None
+        and any(isinstance(effects.pool_charm_row(deltas.key, bytes(n)),
+                           tuple) for n in granted.value))
     # DOS's Animate Dead zombie is a Pool player character too: the C64 stores
     # it as a dead record with 0x0B8 at $FE or $FF, and its share byte is the
     # same ability-altered flag as any player character's.
@@ -883,42 +876,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         and status_value == "animated"
         and w.get("npc_control_byte") == DOS_PC_TAKEN_OVER)
     charm_row_written = False
-    charm_own_side = 0
-    charm_charmer_side = 0
     charm_nodes_merged: list[str] = []
-
-    def convert_charm(node: bytes, label: str) -> None:
-        """One Pool charm node into the character's row, or a loss line."""
-        nonlocal charm_row_written, charm_own_side, charm_charmer_side
-        charm = effects.pool_charm_row(deltas.key, node)
-        if isinstance(charm, effects.Unconverted):
-            rep.lost(f"{label}: {charm.reason}")
-        elif charm is None or not (pool_charmed or pool_charmed_companion):
-            rep.lost(f"{label}: a charm, whose record bytes the C64 writer "
-                     "does not convert yet")
-        elif charm_row_written:
-            # Both Pool engines replace a charm with the next one (DOS
-            # `GAME.OVR:0x2C540`, C64 `ECL64 $9A13`), so a second node is the
-            # same charm and the character holds one row.  Reported with the
-            # combat-side note, which is the one that survives in
-            # `rep.sources` for 0x10C.
-            charm_nodes_merged.append(
-                f"{label}: a second charm node, which both Pool engines "
-                "would have replaced with the first, so the character holds "
-                "one charm row")
-        else:
-            row_slot = effects.free_slot(payload)
-            if row_slot is None:
-                rep.lost(f"{label}: a charm, with no free slot in the "
-                         "save's shared effect arrays")
-            else:
-                effects.write_effect(
-                    payload, row_slot, charm[0],
-                    party_slot if party_slot is not None else 0, 0, charm[1])
-                charm_row_written = True
-                charm_charmer_side, charm_own_side = \
-                    effects.pool_charm_sides(node)
-
     share = use("treasure_share")
     modify_flag = None
     if (share is not None
@@ -1153,9 +1111,6 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
 
     for node in other_nodes:
         which = running_effect_label(node.id, node.minutes, char.game)
-        if deltas.key == "pool-of-radiance" and node.id == effects.CHARM_ID:
-            convert_charm(node.to_record()[:5], which)
-            continue
         if node.id in effects.party_row_ids(title_key):
             party_row = effects.c64_party_row(title_key, node)
             if isinstance(party_row, effects.Unconverted):
@@ -1641,7 +1596,34 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             if int(node[0]) == effects.CHARM_ID:
                 # A charm is a row plus record bytes (side and control), so a
                 # bare id in a trait slot would leave it half converted.
-                convert_charm(bytes(node), f"effect {node[0]}")
+                charm = effects.pool_charm_row(title_key, bytes(node))
+                if isinstance(charm, effects.Unconverted):
+                    rep.lost(f"effect {node[0]}: {charm.reason}")
+                elif charm is None or not (pool_charmed
+                                            or pool_charmed_companion):
+                    rep.lost(f"effect {node[0]}: a charm, whose record "
+                             "bytes the C64 writer does not convert yet")
+                elif charm_row_written:
+                    # Both Pool engines replace a charm with the next one
+                    # (DOS `GAME.OVR:0x2C540`, C64 `ECL64 $9A13`), so a second
+                    # node is the same charm and the character holds one row.
+                    # Reported with the combat-side note, which is the one
+                    # that survives in `rep.sources` for 0x10C.
+                    charm_nodes_merged.append(
+                        f"effect {node[0]}: a second charm node, which "
+                        "both Pool engines would have replaced with the "
+                        "first, so the character holds one charm row")
+                else:
+                    row_slot = effects.free_slot(payload)
+                    if row_slot is None:
+                        rep.lost(f"effect {node[0]}: a charm, with no free "
+                                 "slot in the save's shared effect arrays")
+                    else:
+                        effects.write_effect(
+                            payload, row_slot, charm[0],
+                            party_slot if party_slot is not None else 0,
+                            0, charm[1])
+                        charm_row_written = True
                 continue
             if (effects.is_party_granted_record(title_key, node)
                     and payload is not None):
@@ -1847,15 +1829,12 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             emit(modify_flag, "flags_0b8", 0x0B8, 1,
                  " -- bit 0, the ability-altered flag, with bit 7 clear for "
                  "a player character")
-        rep.note(0x0B8, 1, "a converted charm row is DOS's charmed player "
-                 "character (npc_control_byte "
-                 f"{DOS_PC_TAKEN_OVER:#04x}, or a control byte below 0x80); "
+        rep.note(0x0B8, 1, f"npc_control_byte {DOS_PC_TAKEN_OVER:#04x} with "
+                 "a converted charm row is DOS's charmed player character; "
                  "the C64 keeps a charm in the row and 0x10C, never in "
                  "0x0B8")
-        if npc is not None:
-            rep.dropped.extend(npc.dropped)
-        if control is not None:
-            rep.dropped.extend(control.dropped)
+        rep.dropped.extend(npc.dropped)
+        rep.dropped.extend(control.dropped)
     elif npc is not None and npc.value:
         if control is not None:
             _wrapped_byte(rep, "npc_control_byte", int(control.value))
@@ -1974,28 +1953,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     hostile, quickfight = use("hostile"), use("quickfight")
     side_bits = 0
     side_where: list[str] = []
-    # A written charm row moves bit 0's meaning: until the C64's handler runs
-    # at the character's first event it is his own side, where DOS's `hostile`
-    # is the charmer's, and the handler takes the charmer's side from the
-    # row's magnitude.  So the node's own side, data bit 6, is what goes here.
     for value, bit, label in ((hostile, 0x01, "bit 0"),
                               (quickfight, 0x80, "bit 7")):
-        if bit == 0x01 and charm_row_written:
-            if charm_own_side:
-                side_bits |= bit
-            side_where.append(
-                f"bit 0 {'set' if charm_own_side else 'clear'} <- the charm "
-                "node's data bit 6, the character's own side, which the "
-                "C64's handler keeps in bit 5 once the row's magnitude "
-                "bit 0 has put the charmer's side here")
-            if value is not None:
-                if bool(value.value) != bool(charm_charmer_side):
-                    rep.warnings.append(
-                        f"hostile is {bool(value.value)}, but the charm "
-                        f"node's data bit 7 puts the charmer on side "
-                        f"{charm_charmer_side}; the row takes the node's")
-                rep.dropped.extend(value.dropped)
-        elif value is not None:
+        if value is not None:
             if value.value:
                 side_bits |= bit
             side_where.append(
@@ -2122,12 +2082,10 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "a row owned by the character's save slot, with "
                         "duration byte 0; a Pool of Radiance charm node, "
                         "id 11, becomes the C64's own charm row, magnitude "
-                        "$86 or $87 by the charmer's side (data bit 7), for "
-                        "a player character or for a companion, and whether "
-                        "the node is granted or running, because the C64 "
-                        "never ages a charm; a second charm node is the same "
-                        "row because both Pool engines replace a charm with "
-                        "the next one. Not something the C64 reader can "
+                        "$86, for a player character or for a companion "
+                        "the party charmed, and a second charm node is the "
+                        "same row because both Pool engines replace a charm "
+                        "with the next one. Not something the C64 reader can "
                         "give back as this name, because a trait slot the "
                         "converter filled and one READY filled are the same "
                         "byte to the engine's own compare, except those "
@@ -2148,9 +2106,8 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
             "there (#639); in Curse and Silver Blades, npc_control_byte "
             "DOS_PC_TAKEN_OVER takes the player-character branch whatever "
             "npc says, because neither title turns a companion back into a "
-            "player character; in Pool of Radiance, a player character "
-            "with a charm node, whether DOS_PC_TAKEN_OVER or a control byte "
-            "below 0x80, writes 0x0B8 as a player character's, and the "
+            "player character; in Pool of Radiance, DOS_PC_TAKEN_OVER with "
+            "a charm node writes 0x0B8 as a player character's, and the "
             "charm goes to a row; in Pool of Radiance, DOS_PC_TAKEN_OVER "
             "with status animated writes 0x0B8 as $FE with the "
             "ability-altered flag in bit 0; a companion with a charm node "
@@ -2184,11 +2141,7 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                "have is reported and the character arrives OK"),
     ("active", "bit 7 of that same byte, set when the character is out of "
                "play -- the opposite polarity to DOS's own flag"),
-    ("hostile", "bit 0 of record 0x10C -- 0 the party's side, 1 the enemy's; "
-                "with a charm row, bit 0 is the charmed character's own side "
-                "from the node's data bit 6, and hostile is the charmer's "
-                "side, which goes to the row's magnitude bit 0 from the "
-                "node's data bit 7"),
+    ("hostile", "bit 0 of record 0x10C -- 0 the party's side, 1 the enemy's"),
     ("quickfight", "bit 7 of the same byte, set by QUICK and never cleared"),
     # Bit 6 of the same byte is not a field of its own: it is written by the
     # running-effects loop above, alongside a Fear row, so it has no `use()`
@@ -2500,10 +2453,7 @@ READ_TARGETS: dict[str, str] = (
                       "quickfight; bit 6 accounted for as part of a "
                       "converted Fear row (effects.FEAR_IDS) or Pool charm row, "
                       "a companion's included, and otherwise, with bits 1-5, "
-                      "logged as not yet converted; under a converted Pool "
-                      "charm row hostile is the charmer's side from the "
-                      "row's magnitude bit 0, and bit 5 with bit 6 set is "
-                      "the character's own side, converted into the node",
+                      "logged as not yet converted",
        "roster_tail": "read as neutral roster_tail, from the roster block's "
                       "+0x10-+0x18 or the record",
        "inventory": "read as neutral inventory, from the save's item page "
@@ -2606,7 +2556,6 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # Likewise a Pool party-side charm row, which the npc override and the
     # bit-6 accounting also key off of.
     charm_row_converted = False
-    charm_charmer_side = 0
     # The 0x10C byte, chosen once here (rather than separately below, where
     # it was read before) so the bit-6 accounting below and the hostile and
     # quickfight bits further down both read the same source.
@@ -2660,7 +2609,6 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 if charm_record is not None:
                     granted.append(charm_record)
                     charm_row_converted = True
-                    charm_charmer_side = charm_record[3] >> 7
                     continue
                 spell_record = effects.never_expiring_spell_record(
                     title_key or "", row)
@@ -2719,10 +2667,6 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         stray = combat_side_raw & 0b0111_1110
         if fear_row_converted or charm_row_converted:
             stray &= ~0x40
-        if charm_row_converted and combat_side_raw & 0x40:
-            # With bit 6 set, bit 5 is the charmed character's own side, and
-            # it went into the node's data bit 6.
-            stray &= ~0x20
         if stray:
             out.drop(f"{combat_side_origin} bits 1-6, ${stray:02X}: "
                      "not yet converted")
@@ -2949,19 +2893,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # before the effect rows are read, so the bit-6 accounting there and bits
     # 0 and 7 here read the same 0x10C byte.
     if combat_side_raw is not None:
-        if charm_row_converted:
-            # DOS's side byte holds the charmer's side once its charm
-            # handler has run, and on the C64 that is the row's magnitude
-            # bit 0; 0x10C bit 0 is the character's own side until the C64's
-            # handler runs, which the charm node keeps in its data bit 6.
-            out.set("hostile", bool(charm_charmer_side),
-                    "bit 0 of the charm row's magnitude, the charmer's side, "
-                    "which is what DOS's side byte holds while the charm "
-                    "stands", grade("combat_side"), Provenance.RESHAPED)
-        else:
-            out.set("hostile", bool(combat_side_raw & 0x01),
-                    f"bit 0 of {combat_side_origin}, ${combat_side_raw:02X}",
-                    grade("combat_side"), Provenance.RESHAPED)
+        out.set("hostile", bool(combat_side_raw & 0x01),
+                f"bit 0 of {combat_side_origin}, ${combat_side_raw:02X}",
+                grade("combat_side"), Provenance.RESHAPED)
         out.set("quickfight", bool(combat_side_raw & 0x80),
                 f"bit 7 of {combat_side_origin}, ${combat_side_raw:02X}",
                 grade("combat_side"), Provenance.RESHAPED)
