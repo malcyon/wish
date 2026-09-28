@@ -198,13 +198,18 @@ def test_pool_of_radiance_and_silver_blades_c64_specimens_are_never_repaired():
     other reader of `char_class` now sees, not the raw byte the older
     `tools/records/classcodesweep.py` compares."""
     checked = 0
+    export_only = set()
     for prefix, game in (("por", POOL), ("ssb", SSB)):
         for path in _clean_c64_disks(prefix):
             disk = D64.open(str(path))
             if c64_port.detect(disk) is None:
-                # A disk holding only parked character exports (a party rolled
-                # but never added) has no SAVEDGAME0 and so no roster block
-                # to read; the sweep is of saved games.
+                # No SAVEDGAME0, so no roster block to read.  Only a disk whose
+                # parked character files name a title is let off; a disk with
+                # neither a save nor character exports fails here.
+                assert c64_port.detect_from_roster(disk) is not None, (
+                    f"{path.name} holds neither a saved game nor character "
+                    f"exports")
+                export_only.add(path.name)
                 continue
             game_read, sg0, sg1 = load_save(disk)
             for slot in sg0.characters:
@@ -216,3 +221,6 @@ def test_pool_of_radiance_and_silver_blades_c64_specimens_are_never_repaired():
                     f"code was repaired, so it disagreed with its own classes")
                 checked += 1
     assert checked > 0, "the sweep walked no records"
+    # Named, so a save specimen that loses its save turns this red instead of
+    # being skipped.
+    assert export_only == {"WISH-SPEC-por-c64-party-l1-rolled.D64"}, export_only
