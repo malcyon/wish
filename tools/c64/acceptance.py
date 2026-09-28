@@ -1332,11 +1332,20 @@ class PoolRun:
                     self._temple_stop("yes-no", "unapproved YES/NO prompt",
                                       screen)
                 state = self.temple_state()
-                if (self._temple_place(state) != expected
-                        or state["mode"] != S.DUNGEON
-                        or state["area_pending"]):
-                    self._temple_stop("yes-no", "healing question at the "
-                                      "wrong place", screen)
+                # A live run can show the healing question on screen before
+                # the memory read of the arrival place catches up, the same
+                # one-poll lag `_temple_transition` already tolerates for a
+                # crossed area edge; reread rather than stop on the first
+                # mismatch.
+                wait_limit = min(self.clock() + 5, self.temple_input_deadline)
+                while (self._temple_place(state) != expected
+                       or state["mode"] != S.DUNGEON
+                       or state["area_pending"]):
+                    if self.clock() >= wait_limit:
+                        self._temple_stop("yes-no", "healing question at the "
+                                          "wrong place", screen)
+                    time.sleep(0.25)
+                    state = self.temple_state()
                 self.temple_checkpoint("temple-question-before-answer", screen)
                 self._temple_input_budget("healing question")
                 self._temple_select_bar("YES", "question")

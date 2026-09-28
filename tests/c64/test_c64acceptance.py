@@ -246,14 +246,18 @@ class _TempleMonitor:
         pass
 
     def resume(self):
-        pass
+        if self.session.question_state_lag:
+            self.session.question_state_lag -= 1
 
     def read(self, address, count):
         s = self.session
         if s.short_monitor:
             return b""
+        place = (s._question_lag_place
+                 if s.question_state_lag and s._question_lag_place is not None
+                 else s.place)
         if address == 0x6E1B:
-            return bytes([s.place[0] | (0x80 if s.pending_area else 0)])
+            return bytes([place[0] | (0x80 if s.pending_area else 0)])
         if address == 0x6E11:
             return bytes([A.S.COMBAT if s.unsafe == "encounter" and s.moves
                           else A.S.DUNGEON])
@@ -262,7 +266,7 @@ class _TempleMonitor:
         if address == 0x49C0:
             return bytes((15, 4, 3))  # The game's save copy lags movement.
         if address == 0xC04B:
-            return bytes(s.place[1:])
+            return bytes(place[1:])
         if address == 0x6EFC:
             return bytes([s.resident_slot])
         if address == 0x6B00:
@@ -291,6 +295,12 @@ class _TempleSession:
         # pre-crossing place and move bar, as that run did.
         self._pre_crossing_place = None
         self.crossing_lag = 0
+        # `question-lag` models the same one-poll memory lag for the
+        # healing question: `_question_lag_place` is what the memory read
+        # returns for `question_state_lag` further polls after the question
+        # screen appears, before it catches up with `self.place`.
+        self._question_lag_place = None
+        self.question_state_lag = 0
         # `temple-route-b` then read the new place under a quiet screen: the
         # old status line, row 24 and the message window blank, before
         # `INSERT SIDE # 3` appeared. `crossing_quiet` counts those reads.
@@ -380,6 +390,11 @@ class _TempleSession:
                 rows[24] = "EXIT"
             if not self.temple_status:
                 rows[14] = ""
+            elif self.unsafe == "stale-greeting-status":
+                # A status line that is present but reads the wrong place:
+                # unlike a missing one (fix 3's own gap, tested above), the
+                # transition must never treat this as settled.
+                rows[14] = "N 00:00 99,99"
         else:
             raise AssertionError(phase)
         if phase == "question":
@@ -429,6 +444,17 @@ class _TempleSession:
                 self.phase = "yes-no"
         elif n == 5:
             self.place = (0, 1, 4, 0)
+        elif self.unsafe == "question-wrong-place":
+            # The question screen appears, but the memory place stays at
+            # the pre-move reading and never catches up.
+            self.phase = "question"
+        elif self.unsafe == "question-lag":
+            # The question screen appears with the memory place one poll
+            # behind, catching up on the reread the fix added.
+            self._question_lag_place = self.place
+            self.place = (0, 1, 3, 0)
+            self.question_state_lag = 1
+            self.phase = "question"
         else:
             self.place = (0, 1, 3, 0)
             if self.unsafe == "wrong-question":
@@ -687,6 +713,48 @@ def test_temple_arrival_settles_without_a_status_line(tmp_path, monkeypatch):
     session.temple_status = False
     result = run.temple_probe("BRUTUS")
     assert result["resident"]["name"] == "BRUTUS"
+
+
+def test_temple_arrival_never_settles_on_a_stale_greeting_status_line(
+        tmp_path, monkeypatch):
+    """A status line that is present but wrong is not the same gap as a
+    missing one: unlike `test_temple_arrival_settles_without_a_status_line`,
+    a wrong reading must keep the transition waiting rather than settling."""
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    session.unsafe = "stale-greeting-status"
+    with pytest.raises(A.StepFailed) as info:
+        run.temple_probe("BRUTUS")
+    assert "movement 6 did not settle within 90 seconds" in str(info.value)
+    assert session.moves == list("KKIIJI")
+
+
+def test_temple_question_at_a_lagging_place_waits_then_answers(
+        tmp_path, monkeypatch):
+    """A one-poll memory lag at the healing question, the same kind
+    `crossing_lag` models for an area crossing, must not stop the run: the
+    reread the fix added has to catch up with the screen."""
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    session.unsafe = "question-lag"
+    result = run.temple_probe("BRUTUS")
+    assert result["resident"]["name"] == "BRUTUS"
+    assert session.moves == list("KKIIJI")
+    assert session.keys.count("YES") == 1
+
+
+def test_temple_question_at_the_wrong_place_waits_then_stops(
+        tmp_path, monkeypatch):
+    """The healing question can appear before the memory read of the
+    arrival place catches up (the same one-poll lag `crossing_lag` models
+    for an area crossing); a mismatch that never resolves still stops,
+    with the same message an immediate stop gave before that wait was
+    added."""
+    run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
+    session.unsafe = "question-wrong-place"
+    with pytest.raises(A.StepFailed) as info:
+        run.temple_probe("BRUTUS")
+    assert "healing question at the wrong place" in str(info.value)
+    assert session.moves == list("KKIIJI")
+    assert "YES" not in session.keys
 
 
 def test_temple_text_with_a_blank_bar_waits_then_stops_on_an_unapproved_bar(
