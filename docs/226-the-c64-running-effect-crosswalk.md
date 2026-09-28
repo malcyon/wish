@@ -670,9 +670,17 @@ cloud would. The two duration-0 `(31, 0, FF, 0)` records from handlers 43 and
 
 ### Charm and Fear keep part of their state in the record
 
-**CONFIRMED from both ports' code.** Charm is not converted, because the row is
-only part of the state, and `goldbox.effects` refuses it with a reason that
-says so. **Fear converts**, in both directions: its record state is DOS's own
+**CONFIRMED from both ports' code.** Charm converts in one case, in both
+directions, and the conversion has not been run in the game (conversion-validation
+boots are paused). A DOS Pool of Radiance character the engine itself has
+charmed (an engine-driven record with the taken-over control byte, on the
+party's side, one accepted charm node and a free effect slot) writes the C64's
+shared effect row `(0x0B, slot, 0, 0x86)` and leaves the record's side byte
+`0x10C` at `$80` (`effects.pool_charm_row`, the `pool_charmed` predicate in
+`c64_codec.write`). A C64 party-side charm row reads back as the DOS node and
+control byte `0xB3` (`effects.pool_charm_record`). Any other charm node stays a
+loss, and `goldbox.effects` refuses it with a reason that says the row is only
+part of the state. **Fear converts**, in both directions: its record state is DOS's own
 "player character taken over" control byte (`0xB3`, `docs/195`) and C64 record
 `0x10C` bit 6, and `goldbox/c64_codec.py` converts the row and those bytes
 together (`FEAR_IDS`).
@@ -763,6 +771,16 @@ Static reads; nothing was booted. `tools/c64/overlay.py` and
   (`0B`, owner the slot, duration 0, magnitude `$86`) and `0x10C` = `$C0` on one
   member, walk into a fight and screenshot the first command prompt; repeat
   with `$80` as the control.
+
+**The id-84 hazard.** A party member charmed by the monster ability id 84 and
+then knocked out keeps `0x10C` = `$C1`, and `POST.COM` takes him for a slain
+enemy after a win (PROBABLE, above). That is the C64 game's own behaviour and
+Wish does not write it: the charm conversion writes only the party cast's
+`$86` form, whose removal runs the expiry. Wish's one exposure is a C64 save
+holding `$C1` on a party member with no charm row, which `read` would take for
+an enemy-side member and DOS would drop after his next fight. By the reads so
+far no save holds it: after a win he is removed, after a loss the party is
+dead, and the fled loop removes a member who is not running.
 
 **Which saves can hold a charm on a party member.** A player can save only
 between fights, so this is a question about what survives the end of one.
@@ -1029,7 +1047,9 @@ data 0), Stinking Cloud (30, 31), Curse's 136 and Silver Blades' Power Word
 Stun (106) convert both ways by the rules in "Combat-cast ids and their
 rules". Fear (Curse 142, Silver Blades 111) converts both ways, its row and
 its record byte together (`effects.FEAR_IDS`, `c64_codec.DOS_PC_TAKEN_OVER`).
-Charm (11) still waits on the record bytes it shares with the row. Only DOS
+Charm (11) converts for one case only, a DOS Pool character the engine has
+charmed, in both directions and not yet run in the game; every other charm node
+still waits on the record bytes it shares with the row. Only DOS
 Pool's duration-0 node reaches a save (PROBABLE: nobody has read whether spell
 10's target picker offers an ally; the Charm and Fear section). Silver Blades'
 65 is never a running node. Slow Poison (22) waits on a save the DOS game

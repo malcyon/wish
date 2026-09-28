@@ -118,17 +118,24 @@ clears effect `$20` from the character's effect slots and then runs `LDA 0x0B8 /
 That turns any byte of `$FE` or `$FF` into `$00` or `$01`, which makes a
 player character of whoever holds it. It is the counterpart of `SPELLE00 +0x0480`
 and `SPELLE04 +0x0304`, which set a player character's byte to `old | $FE`
-and a companion's to `$B2`. Those two are Animate Dead, not a berserk spell,
-which Pool of Radiance does not have: the cure removes effect `$20`, which is
-32, Animate Dead. So in Pool of Radiance a companion stored at
+and a companion's to `$B2`. Those two are Animate Dead: the cure removes
+effect `$20`, which is 32, Animate Dead, and Pool of Radiance has no other
+spell that writes them (the charm cast leaves the byte alone, below). An
+earlier reading of the two writers named a different spell, and the cure's
+effect id shows that name was wrong. So in Pool of Radiance a companion stored at
 morale 252 or 254 is indistinguishable from an Animate Dead player character, and
 the editor must not write `$FE` or `$FF` for one.
 
 **A charmed Pool of Radiance player character stays a player character in
-`0x0B8`, CONFIRMED from code.** The C64 charm leaves the byte alone and keeps
+`0x0B8`, PROBABLE.** The C64 charm leaves the byte alone and keeps
 its state in `0x10C` (`docs/226`, "Charm and Fear keep part of their state in
 the record"), and in combat `0x10C` bit 7 alone decides who commands him
 (`COMBAT $093C`). DOS writes `0xB3` for the same character (`docs/195`).
+The grade is PROBABLE because it rests on a static read of the handler, the
+game addresses a record through a pointer, and a static read cannot rule out an
+indirect store into `0x0B8`; nobody has watched the byte during a C64 charm
+cast. A watchpoint on `0x0B8` during that cast, or the live proof of the charm
+conversion, settles it.
 
 ## Bit 0 of a player character: the trainer flag
 

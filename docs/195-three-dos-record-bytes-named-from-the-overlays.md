@@ -137,9 +137,11 @@ NPC". Pool of Radiance has no spell that writes `0xB3` other than Charm and
 Animate Dead: `tools/dos/dosbyteimm.py <Pool GAME.OVR image> --offset 0x084
 --sites` finds exactly two immediate stores of `0xB3`, at `0xF0EF` (Charm) and
 `0x29195` (Animate Dead). CONFIRMED for immediate stores only; the scan cannot
-see a register store. Pool's effect 77, "IS BERSERKING"
+see a register store. Secret of the Silver Blades' effect 77, "IS BERSERKING"
 (`docs/171-c64-trait-slots.md`, `goldbox/traits.py`), is a separate effect that
-has nothing to do with the `0xB2`/`0xB3` byte.
+has nothing to do with the `0xB2`/`0xB3` byte. Pool's own effect 77 is a
+GIANT MANTIS's melee bite and hold; an earlier version of this row gave the
+Silver Blades name to Pool.
 
 **The only record anywhere here with a non-zero control byte** is `CHRDATA7.SAV`
 of Treasures of the Savage Frontier's shipped save -- OUGO, level 8, control
