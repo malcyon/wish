@@ -462,12 +462,6 @@ def test_the_class_level_permutation_covers_every_c64_slot():
     assert [n for n, _, f in dos_codec.CLASS_LEVEL_SLOTS if f is None] == [1, 7]
 
 
-def test_item_to_c64_is_the_harness_projection():
-    """One copy of the projection. `tools/dos/dosbox.py` re-exports this one."""
-    from tools.dos import dosbox
-    assert dosbox.item_to_c64 is dos_codec.item_to_c64
-
-
 # --- the record, against real files -----------------------------------------
 
 def _records():

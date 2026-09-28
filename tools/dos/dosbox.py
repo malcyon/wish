@@ -112,7 +112,6 @@ def _archives() -> Path:
 TOOLS = ("dosbox", "Xvfb", "xdotool", "import")
 
 
-from goldbox import dos_codec as _por_dos  # noqa: E402
 from goldbox import dos_savegame as _sav  # noqa: E402
 
 
@@ -1048,13 +1047,12 @@ MAP_WORD = (8, 192, 24, 7)
 #: harness held a second copy -- and `AREA_ID` had already drifted out of the
 #: map's units: it is the *word index* 395, which is `word_offset($49C5)`, so a
 #: reader who fixed `$49C5` on one side would never have found 395 on the
-#: other.  Re-exported, the way `item_to_c64` is, so the measurements in
-#: `tests/dos/test_dosbox.py` keep reading them from where they were written.
+#: other.  Re-exported so the measurements in `tests/dos/test_dosbox.py` keep
+#: reading them from where they were written.
 POS_X = _sav.POS_X
 POS_Y = _sav.POS_Y
 POS_FACING = _sav.POS_FACING
 AREA_ID = _sav.word_offset(_sav.AREA)
-AREA_FILE = _sav.DAX_NUMBER
 
 #: The facing byte as the *file* carries it: the C64's 0-3 doubled.
 #: `goldbox.dos_savegame.position` halves it and this harness does not, because
@@ -1168,15 +1166,8 @@ def run_walked(built: dict, resaved: dict) -> bool:
 # The `.DAX` container, and the 63-byte item record inside `.ITM`
 # --------------------------------------------------------------------------
 
-#: The container reader is `goldbox/dos_savegame.py`'s (#76): one index, one
-#: run-length decode, one set of refusals.  `goldbox/` may not import from
-#: `tools/`, so the shared copy lives there and this is the re-export.
-DAX_ENTRY = _sav.DAX_ENTRY
-DaxError = _sav.DaxError
-dax_index = _sav.dax_index
-dax_unpack = _sav.dax_unpack
-dax_blocks = _sav.dax_blocks
-dax_block = _sav.dax_block
+#: The container reader is `goldbox/dos_savegame.py`'s: one index, one
+#: run-length decode, one set of refusals.
 
 
 # One item, in a `.ITM` file or an `ITEM<n>.DAX` block.  The file is
@@ -1217,13 +1208,6 @@ ITEM_SPECIAL = 0x03C     # three bytes: charges, effect, power -- or, on a
 #                          scroll, up to three spell ids
 
 C64_ITEM_SIZE = 16
-
-
-#: The projection itself now lives in `goldbox/dos_codec.py`, because it is part of the
-#: converter rather than part of the harness that drives DOSBox.  Re-exported
-#: here so the measurements in `tests/dos/test_dosbox.py` keep reading it from the
-#: place they were written against, and so there is one copy of it.
-item_to_c64 = _por_dos.item_to_c64
 
 
 def items(data: bytes):

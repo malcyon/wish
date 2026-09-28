@@ -71,7 +71,7 @@ class claim_free:
     def __enter__(self) -> dosboxx.Slot:
         while True:
             slot = dosboxx.claim(self.note)
-            if not dosboxx.server_on(slot.display):
+            if not dosbox.server_on(slot.display):
                 self.slot = slot
                 for b in self.busy:
                     b.release()

@@ -438,7 +438,6 @@ def test_the_window_trap_is_one_mechanism_and_not_two():
     from tools.dos import dosbox
 
     assert dosboxx.BlankCapture is dosbox.BlankCapture
-    assert dosboxx.uniform_colour is dosbox.uniform_colour
     assert dosboxx.has_content is dosbox.has_content
     assert dosboxx.candidate_windows is dosbox.candidate_windows
     assert dosboxx.server_on is dosbox.server_on

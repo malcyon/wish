@@ -189,7 +189,6 @@ class Record:
 #: Curse and Pools of Darkness ones, because it identifies a title by record
 #: size)`, so every caller of its finder gets the same exclusion this module
 #: worked out first -- kept as names here so nothing importing them breaks.
-FOREIGN_TITLES = dostailsweep.FOREIGN_TITLES
 foreign_title = dostailsweep.foreign_title
 
 

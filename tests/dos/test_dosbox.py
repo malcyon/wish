@@ -30,6 +30,14 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from gamedata import needs_specimens  # noqa: E402
 
+from goldbox.dos_codec import item_to_c64  # noqa: E402
+from goldbox.dos_savegame import (  # noqa: E402
+    DAX_NUMBER,
+    DaxError,
+    dax_blocks,
+    dax_index,
+    dax_unpack,
+)
 from tools.dos import dosbox  # noqa: E402
 
 # Shares a group with tests/registry/test_instance.py -- see that file's own note.
@@ -123,7 +131,7 @@ def _dos_item_templates():
         path = game / f"ITEM{n}.DAX"
         if not path.is_file():
             continue
-        for _, block in dosbox.dax_blocks(path.read_bytes()):
+        for _, block in dax_blocks(path.read_bytes()):
             for record in dosbox.items(block):
                 seen.setdefault(record[dosbox.ITEM_NEXT:], record)
     return tuple(seen.values())
@@ -952,7 +960,7 @@ def test_the_header_byte_is_the_dax_file_that_holds_the_area():
         pytest.skip("needs the DOS game files; set FR_ARCHIVES to the archives")
     for name, data in saves.items():
         area = dosbox.geo_block(data)
-        assert files[area] == data[dosbox.AREA_FILE], (name, area)
+        assert files[area] == data[DAX_NUMBER], (name, area)
 
 
 def test_the_header_byte_names_more_than_one_area_so_it_is_not_the_map():
@@ -993,8 +1001,8 @@ def test_every_dax_block_of_every_archive_reaches_its_stated_size():
     blocks = 0
     for path in archives:
         data = path.read_bytes()
-        sizes = [(bid, raw) for bid, _, raw, _ in dosbox.dax_index(data)]
-        got = list(dosbox.dax_blocks(data, path.name))
+        sizes = [(bid, raw) for bid, _, raw, _ in dax_index(data)]
+        got = list(dax_blocks(data, path.name))
         assert [b for b, _ in got] == [b for b, _ in sizes], path.name
         for (bid, raw), (_, block) in zip(sizes, got):
             assert len(block) == raw, (path.name, bid)
@@ -1005,25 +1013,25 @@ def test_every_dax_block_of_every_archive_reaches_its_stated_size():
 def test_a_truncated_dax_block_is_refused_by_name():
     """A decoder must not raise `IndexError` on its own input (#65)."""
     # A repeat opcode as the last byte of the block: the operand is missing.
-    with pytest.raises(dosbox.DaxError) as exc:
-        dosbox.dax_unpack(b"\x00A\xff", 8, "ECL2.DAX block 9")
+    with pytest.raises(DaxError) as exc:
+        dax_unpack(b"\x00A\xff", 8, "ECL2.DAX block 9")
     assert "ECL2.DAX block 9" in str(exc.value)
     assert "operand is missing" in str(exc.value)
 
     # A copy run that claims more bytes than the block holds.
-    with pytest.raises(dosbox.DaxError) as exc:
-        dosbox.dax_unpack(b"\x07ABC", 8, "ECL2.DAX block 9")
+    with pytest.raises(DaxError) as exc:
+        dax_unpack(b"\x07ABC", 8, "ECL2.DAX block 9")
     assert "past the end" in str(exc.value)
 
     # A block that simply stops short of its stated size.
-    with pytest.raises(dosbox.DaxError) as exc:
-        dosbox.dax_unpack(b"\x00A", 8, "ECL2.DAX block 9")
+    with pytest.raises(DaxError) as exc:
+        dax_unpack(b"\x00A", 8, "ECL2.DAX block 9")
     assert "not the 8 the index states" in str(exc.value)
 
 
 def test_a_file_too_short_for_its_index_is_not_a_dax():
-    with pytest.raises(dosbox.DaxError) as exc:
-        dosbox.dax_index(struct.pack("<H", 900) + b"\x00" * 4, "T.DAX")
+    with pytest.raises(DaxError) as exc:
+        dax_index(struct.pack("<H", 900) + b"\x00" * 4, "T.DAX")
     assert "T.DAX: not a .DAX" in str(exc.value)
 
 
@@ -1031,9 +1039,9 @@ def test_a_dax_index_pointing_past_the_file_is_refused():
     """Truncate an archive and the block is named, not sliced short."""
     data = bytearray(struct.pack("<H", 9) + struct.pack("<BIHH", 9, 0, 2, 3))
     data += b"\x01AB"                       # copy two bytes: a whole block
-    assert list(dosbox.dax_blocks(bytes(data), "T.DAX")) == [(9, b"AB")]
-    with pytest.raises(dosbox.DaxError) as exc:
-        list(dosbox.dax_blocks(bytes(data[:-1]), "T.DAX"))
+    assert list(dax_blocks(bytes(data), "T.DAX")) == [(9, b"AB")]
+    with pytest.raises(DaxError) as exc:
+        list(dax_blocks(bytes(data[:-1]), "T.DAX"))
     assert "T.DAX block 9" in str(exc.value)
 
 
@@ -1050,8 +1058,8 @@ def test_the_item_dax_blocks_are_whole_items():
         if not path.is_file():
             continue
         data = path.read_bytes()
-        sizes = {bid: raw for bid, _, raw, _ in dosbox.dax_index(data)}
-        for bid, block in dosbox.dax_blocks(data):
+        sizes = {bid: raw for bid, _, raw, _ in dax_index(data)}
+        for bid, block in dax_blocks(data):
             assert len(block) == sizes[bid], (path.name, bid)
             assert len(block) % dosbox.ITEM_SIZE == 0, (path.name, bid)
             blocks += 1
@@ -1108,7 +1116,7 @@ def test_the_dos_item_type_table_is_the_c64_one():
 def test_the_dos_item_tail_projects_onto_the_c64_record():
     """159 of the C64's 163 distinct item records, byte for byte, from DOS.
 
-    Every offset in `tools.dos.dosbox.item_to_c64` rests on this: get the plus,
+    Every offset in `goldbox.dos_codec.item_to_c64` rests on this: get the plus,
     the saving-throw bonus, the readied bit, the hidden-name mask, the cursed
     bit, the weight, the quantity, the cost or the three special bytes wrong
     and the count collapses.
@@ -1125,7 +1133,7 @@ def test_the_dos_item_tail_projects_onto_the_c64_record():
     from goldbox.items import load_item_templates
 
     c64 = set(load_item_templates(str(game_disk("POOL1"))).values())
-    dos = {dosbox.item_to_c64(r) for r in _need_templates()}
+    dos = {item_to_c64(r) for r in _need_templates()}
     assert len(c64) == 163
     assert len(c64 & dos) == 159
 
@@ -1499,3 +1507,11 @@ def test_save_game_records_the_map_word_when_nothing_did_before_it(tmp_path):
     por = dosbox.PoolOfRadiance(sess)
     assert por.save_game("b", timeout=5) == b"saved"
     assert por.world_word == _MAP_WORD
+
+
+@pytest.mark.parametrize("name", [
+    "AREA_FILE", "DAX_ENTRY", "DaxError", "dax_index", "dax_unpack",
+    "dax_blocks", "dax_block", "item_to_c64", "_por_dos"])
+def test_the_dax_and_item_names_are_read_from_goldbox_not_the_harness(name):
+    """`goldbox.dos_savegame` and `goldbox.dos_codec` own these; the harness has no copy."""
+    assert not hasattr(dosbox, name)

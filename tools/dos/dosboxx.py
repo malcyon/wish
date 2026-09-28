@@ -139,7 +139,6 @@ class NotHalted(RuntimeError):
 #: defect in a new place.  Re-exported, because `tests/dos/test_dosboxx.py` is
 #: where they were measured and `docs/142` "The window trap" names them here.
 BlankCapture = dosbox.BlankCapture
-uniform_colour = dosbox.uniform_colour
 has_content = dosbox.has_content
 candidate_windows = dosbox.candidate_windows
 server_on = dosbox.server_on
