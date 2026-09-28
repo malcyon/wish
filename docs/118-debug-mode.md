@@ -32,7 +32,19 @@ NEWECL <area>
 ```
 
 `mapX`, `mapY`, `mapDir` are `$C04B`, `$C04C`, `$C04D` — the live party square
-inside `GDRIVE00`, of which `$49C0`-`$49C2` is a lagging copy.
+inside `GDRIVE00`, of which `$49C0`-`$49C2` is a lagging copy. **Only outside a
+renderer redraw.** The indoor 3D renderer (`GDRIVE01 $C183`) and four
+`DUNGEON` walks each save the party's square into these three bytes, move them
+across the cells they draw or test, then restore them, so a read taken
+mid-redraw can land on a real, in-range address the renderer is using as a
+scratch cursor rather than on the party's own square — CONFIRMED from the
+bytecode, `#715 (The C64 driver's screen capture and live-memory reads aren't
+atomic, and patching each surfaced race isn't converging)`. The `-e` stall
+on `#700 (Converting a Pool of Radiance C64 party holding a camp-cast Animate
+Dead zombie needs more than fixing the refusal that blocks it)` is the one
+observed instance; that it caught the indoor renderer specifically, rather
+than one of `DUNGEON`'s four walks, is PROBABLE — the program counter was not
+recorded at the time.
 
 **`NEWECL` — opcode `$20`, handler `DUNGEON $2011` — is the whole transition.**
 It does not load a map. It does five things:
@@ -85,11 +97,15 @@ cache slots `$6E15` and `$6E17`, mirrored in a save at `$4BC2` and `$4BC4`.
 | `NEWECL` sets `$49F2`, `$6E1B\|$80`, zeroes `$4A00`-`$4A1F`, restarts at `$0809` | **CONFIRMED** — read off `DUNGEON $2011`-`$203E` |
 | `$6E12` is the `POOL` disk the target area lives on | **CONFIRMED** — 32 of 33 static `SAVE n, [$6E12]` / `NEWECL t` pairs match the disk that carries `ECLt`; the one exception sets it in a `GOSUB` |
 | The arriving script loads its own `GEO`, not the departing one | **CONFIRMED** — every script's `LOADFILES` first operand is its own id (see the exceptions below) |
-| `$C04B`/`$C04C`/`$C04D` are the party square and writing them teleports | **CONFIRMED** — `$1A3C`; 29 of 30 scripts write them |
+| `$C04B`/`$C04C`/`$C04D` are the party square‡ and writing them teleports | **CONFIRMED** — `$1A3C`; 29 of 30 scripts write them |
 | A fasttravel can be performed from outside by making those writes and setting PC to `$2034` | **CONFIRMED** — `docs/50-experiments.md` P15, twice: Slums → New Phlan, `ResidentGeo.identify()` returning an exact `GEO00` match, and the party then walked |
 | The loader prompts for a disk when `$6E12` names one that is not in the drive | **CONFIRMED** — P17: POOL2 in the drive, `$6E12` = 3, and the game printed `INSERT SIDE # 3, AND PRESS ANY KEY.` and waited |
 | `$6DD5` is "a step was taken" | **wrong, and retired.** It is zero after an ordinary step — see open question 1 |
 | `$6DD5` is the count the routine at `$10EC` returns, and the exit scripts run only while it is non-zero | **PROBABLE** — `$10EE` clears it, `$1115 INC $6DD5` is the only site that raises it, and an execution checkpoint on that `INC` did not fire on an ordinary step |
+
+**‡ Only outside a renderer redraw — see above.** Every write in this table's
+rows is made with the PC confirmed inside the key-wait loop (§3), where no
+redraw is running, so the writes themselves are unaffected.
 
 **A table of exit squares per area does not exist**, and neither does a patched
 filename stem: `automap/area.py`'s `FilenameDigits` was already retired for the
