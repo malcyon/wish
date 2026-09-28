@@ -73,8 +73,7 @@ def test_an_ability_is_staged_into_both_of_the_records_arrays(tmp_path):
     of them would leave a character no roll could make."""
     path = _blank_save(tmp_path, {4: "MARK"})
     out = tmp_path / "staged.d64"
-    cp.stage(_Args(base=str(path), out=str(out), give=["MARK:wis=18"],
-                   repair=False))
+    cp.stage(_Args(base=str(path), out=str(out), give=["MARK:wis=18"]))
     _, payload = cp.payload_of(out.read_bytes())
     base = cp.SLOT0 + 4 * cp.SLOT_SIZE
     assert payload[base + cp.ABILITY_NOW + 2] == 18
@@ -85,8 +84,7 @@ def test_stage_writes_nothing_it_was_not_asked_for(tmp_path):
     """One field named, one byte pair changed, and the rest byte for byte."""
     path = _blank_save(tmp_path, {4: "MARK", 5: "MATHEW"})
     out = tmp_path / "staged.d64"
-    cp.stage(_Args(base=str(path), out=str(out), give=["MARK:wis=18"],
-                   repair=False))
+    cp.stage(_Args(base=str(path), out=str(out), give=["MARK:wis=18"]))
     _, before = cp.payload_of(path.read_bytes())
     _, after = cp.payload_of(out.read_bytes())
     moved = {i for i in range(len(before)) if before[i] != after[i]}
@@ -98,7 +96,7 @@ def test_a_name_the_disk_does_not_carry_is_refused(tmp_path):
     path = _blank_save(tmp_path, {5: "MATHEW"})
     with pytest.raises(SystemExit):
         cp.stage(_Args(base=str(path), out=str(tmp_path / "x.d64"),
-                       give=["NOBODY:wis=18"], repair=False))
+                       give=["NOBODY:wis=18"]))
     with pytest.raises(SystemExit):
         cp.find_slot(str(path), "NOBODY")
     assert cp.find_slot(str(path), "mathew") == 5

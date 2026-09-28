@@ -84,9 +84,9 @@ cost the time.
     row TRAIN CHARACTER
     row <NAME>                         # this presses; do **not** add a Return
     attach <slot dir>/SIDE0.D64        # after a save, once SAVING GAME has left
-                                       # row 24: the drive closes the file as
-                                       # the image is re-attached, so the copy
-                                       # out is one the game closed itself
+                                       # row 24: re-attaching the
+                                       # save disk makes VICE write the
+                                       # finished save into the image file
 
 **`row <NAME>` is the whole press.** Adding a Return after it starts a second
 training, which is what put a third thousand gold on LEDERA in the first

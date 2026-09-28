@@ -183,9 +183,10 @@ file turns five of the eight red on the refusal alone.
 Both came off the pool slot with `SAVEAZURE` unclosed --
 `#298 (A save disk copied out of an emulator slot before the drive closes the
 file cannot be loaded by the game)` reproduces every time -- so the second was
-repaired before anything read it. `tools/curse_of_the_azure_bonds/cursetrain.py stage` now refuses
-such a disk instead, because closing the entry cannot show whether the chain
-holds the game's write or the save before it (`#714 (cursepaladin.py's --repair --close-splat can silently mask stale data instead of refusing it)`).
+repaired before anything read it. `tools/curse_of_the_azure_bonds/cursetrain.py stage`
+refuses such a disk instead, because closing the entry cannot show whether the
+chain holds the game's write or the save before it
+(`#714 (cursepaladin.py's --repair --close-splat can silently mask stale data instead of refusing it)`).
 
 ## What still stands between this and Level Up for Curse
 

@@ -432,16 +432,48 @@ def test_no_stage_command_accepts_a_save_disk_the_drive_never_closed(
 
 
 @pytest.mark.parametrize("name", ["cursepaladin", "cursetrain"])
-def test_no_stage_command_takes_repair(tmp_path, name):
-    """`--repair` was how an open disk got closed over a possibly stale chain."""
-    base = _save_disk(tmp_path, closed=False)
+def test_no_stage_command_takes_repair(tmp_path, capsys, name):
+    """`--repair` was how an open disk got closed over a possibly stale chain.
+
+    The base is closed, so only the argument parser can refuse the flag.
+    """
+    base = _save_disk(tmp_path, closed=True)
     out = tmp_path / "out.d64"
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as refused:
         _stage_modules()[name].main(
             ["stage", "--base", str(base), "--out", str(out), "--repair"])
 
+    assert refused.value.code == 2
+    assert "unrecognized arguments: --repair" in capsys.readouterr().err
     assert not out.exists()
+
+
+def test_refuse_open_entries_passes_an_empty_disk(tmp_path):
+    path = tmp_path / "empty.d64"
+    path.write_bytes(D64.blank(b"EMPTY").to_bytes())
+
+    assert curseload.refuse_open_entries(str(path)) is None
+
+
+def test_refuse_open_entries_names_only_the_open_one_among_closed(tmp_path):
+    disk = D64.blank(b"MIXED")
+    for name in (b"ONE", b"TWO", b"THREE", b"FOUR"):
+        disk.write_file(name, b"x" * 300)
+    raw = bytearray(disk.to_bytes())
+    four = disk.entry(b"FOUR")
+    raw[four.offset] &= 0x7F
+    raw[four.offset + 28] = raw[four.offset + 29] = 0
+    path = tmp_path / "mixed.d64"
+    path.write_bytes(bytes(raw))
+
+    with pytest.raises(SystemExit) as refused:
+        curseload.refuse_open_entries(str(path))
+
+    message = str(refused.value)
+    assert "FOUR" in message
+    for closed in ("ONE", "TWO", "THREE"):
+        assert closed not in message
 
 
 @pytest.mark.parametrize("name", ["cursepaladin", "cursetrain", "cursethac0"])
