@@ -38,7 +38,7 @@ bytes with what it replaced.
 | `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for SECONDS (120) |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
-| `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save |
+| `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
@@ -90,6 +90,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import dataclasses
+import hashlib
 import json
 import pathlib
 import re
@@ -136,6 +137,9 @@ READY_SPECIMEN_ISSUE = (
     "#703 (A C64 acceptance driver's read step can report a garbled diff "
     "after a save step, because it reads from a disk-transfer staging address "
     "a preceding save's disk swaps leave stale)")
+POOL_SPECIMEN_ISSUE = (
+    "#700 (Converting a Pool of Radiance C64 party holding a camp-cast "
+    "Animate Dead zombie needs more than fixing the refusal that blocks it)")
 
 #: The camp's own bar, `ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT` (Pool
 #: `CAMP $0899`), and the MAGIC bar, `CAST MEMORIZE SCRIBE DISPLAY REST EXIT`
@@ -409,6 +413,21 @@ def ready_capture_order(steps: list[Step]) -> bool:
         n < saves[0] for n, _ in ready)
 
 
+def pool_specimen_mode(steps: list[Step]) -> str | None:
+    """Classify one #700 save as a BRUTUS Dispel run or its no-cast control."""
+    verbs = [step.verb for step in steps]
+    if (verbs == ["load", "view", "save"]
+            and steps[1].arg.upper() == "BRUTUS"):
+        return "control"
+    if (verbs == ["load", "view", "cast", "view", "save"]
+            and steps[1].arg.upper() == "BRUTUS"
+            and steps[3].arg.upper() == "BRUTUS"):
+        _, spell, target = parse_cast(steps[2].arg)
+        if spell == "DISPEL MAGIC" and target.upper() == "BRUTUS":
+            return "dispel"
+    return None
+
+
 def parse_checkpoints(texts) -> dict[str, int]:
     """`ADDR[=NAME]`, hex; the name defaults to the address."""
     out = {}
@@ -550,6 +569,11 @@ def _party_reading(records: list[bytes], roster: bytes, stride: int) -> list[dic
     return party
 
 
+def _record_sha256(records: list[bytes]) -> list[str]:
+    """Digest each complete 256-byte Pool record for saved/live comparison."""
+    return [hashlib.sha256(record).hexdigest() for record in records]
+
+
 def place_of(payload: bytes, game) -> dict:
     """The area, the square and the facing (0 to 3) a save payload holds,
     through the reader every conversion uses."""
@@ -603,6 +627,7 @@ def decode_save(path: pathlib.Path, staged: dict) -> dict:
                    for slot in range(PARTY_SLOTS)]
         out["party"] = _party_reading(records, roster[box.roster_offset:],
                                       box.roster_stride)
+        out["record_sha256"] = _record_sha256(records)
     return out
 
 
@@ -960,6 +985,7 @@ class PoolRun:
                "clock": clock, "counts": counts}
         if self.game.key == "pool-of-radiance":
             out["party"] = _party_reading(records, roster, self.box.roster_stride)
+            out["record_sha256"] = _record_sha256(records)
         return out
 
     # -- the steps ---------------------------------------------------------------
@@ -2441,6 +2467,36 @@ def validate_pool_dispel(results: list[dict]) -> None:
                              "post-dispel fields")
 
 
+def validate_pool_control(results: list[dict]) -> None:
+    """Require the no-cast control to retain BRUTUS and his effect row."""
+    if [r["verb"] for r in results] != ["load", "view", "save"]:
+        raise StepFailed("control did not complete load, view, save")
+    observed = []
+    for where, state in (("loaded", results[0].get("after", {})),
+                         ("saved", results[-1])):
+        party = [p for p in state.get("party", [])
+                 if p.get("name", "").upper() == "BRUTUS"]
+        if len(party) != 1:
+            raise StepFailed(f"control {where}: expected one BRUTUS")
+        brutus = party[0]
+        if (brutus.get("status") != 0x03
+                or 32 not in brutus.get("traits", [])
+                or brutus.get("creature_type") != 4):
+            raise StepFailed(f"control {where}: BRUTUS is not animated "
+                             "with trait 32 and creature type 4")
+        rows = state.get("effect_rows", [])
+        if (len(rows) != effects.EFFECT_SLOTS
+                or rows[63][:3] != [63, 32, brutus["slot"]]):
+            raise StepFailed(f"control {where}: row 63 is not BRUTUS's id 32")
+        digests = state.get("record_sha256", [])
+        if len(digests) != PARTY_SLOTS:
+            raise StepFailed(f"control {where}: no complete party record digests")
+        observed.append((brutus, rows[63], digests[brutus["slot"]]))
+    if observed[0] != observed[1]:
+        raise StepFailed("control saved BRUTUS or his complete row 63 "
+                         "differently from the loaded state")
+
+
 def validate_walks(results: list[dict]) -> None:
     """Require the game-written save to agree with the walks asked.
 
@@ -2657,6 +2713,9 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             if any(r.get("spell") in CAMP_PARTY_SPELLS for r in summary["results"]):
                 validate_pool_party_spells(summary["results"])
             validate_pool_dispel(summary["results"])
+        if (args.title == "pool" and getattr(args, "preserve_specimen", False)
+                and pool_specimen_mode(steps) == "control"):
+            validate_pool_control(summary["results"])
         if args.title == "curse" and any(s.verb in ("cast", "cure") for s in steps):
             kept = next((r["kept"] for r in reversed(summary["results"])
                          if r["verb"] == "save"), None)
@@ -2674,23 +2733,60 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             with contextlib.suppress(Exception):
                 pool.capture("lost-error")
     finally:
-        if getattr(args, "capture_ready", False):
+        capture_ready = getattr(args, "capture_ready", False)
+        preserve_specimen = getattr(args, "preserve_specimen", False)
+        if capture_ready or preserve_specimen:
             kept = out / "saved.D64"
-            if not ready_capture_order(steps):
+            completed_save = bool(summary["results"] and
+                                  summary["results"][-1].get("verb") == "save" and
+                                  summary["results"][-1].get("kept") == str(kept))
+            mode = ("ready" if capture_ready and ready_capture_order(steps)
+                    else pool_specimen_mode(steps) if preserve_specimen else None)
+            valid = ((capture_ready and not preserve_specimen and mode == "ready"
+                      and args.issue == "703" and args.title == "pool")
+                     or (preserve_specimen and not capture_ready
+                         and mode in ("dispel", "control")
+                         and args.issue == "700" and args.title == "pool"
+                         and completed_save))
+            if not valid:
                 summary["completed"] = False
                 earlier = summary.get("lost")
-                reason = "BAKSHI READY did not precede the sole save"
+                if capture_ready and preserve_specimen:
+                    reason = "capture-ready and preserve-specimen cannot be combined"
+                elif capture_ready:
+                    reason = "BAKSHI READY did not precede the sole save"
+                elif (mode not in ("dispel", "control") or args.issue != "700"
+                      or args.title != "pool"):
+                    reason = "no validated #700 Dispel or control sequence preceded the sole save"
+                else:
+                    reason = "no completed save from this #700 run"
                 summary["lost"] = f"{earlier}; {reason}" if earlier else reason
                 summary["specimen_registration"] = "skipped: " + reason
             elif kept.is_file():
+                summary["specimen_mode"] = mode
+                if preserve_specimen:
+                    summary["specimen_validation"] = (
+                        "passed" if summary["completed"] else "failed")
                 try:
-                    name = f"por-703-{git['sha'][:10]}-{args.run}".lower()
+                    failed_suffix = ("-failed" if preserve_specimen
+                                     and not summary["completed"] else "")
+                    name = (f"por-703-{git['sha'][:10]}-{args.run}"
+                            if mode == "ready" else
+                            f"por-700-{mode}{failed_suffix}-{git['sha'][:10]}-"
+                            f"{args.run}").lower()
+                    what = (f"Game-written save after BAKSHI READY diagnostic "
+                            f"{args.run}; evidence {out}" if mode == "ready" else
+                            f"Game-written Pool of Radiance {mode} save from "
+                            f"run {args.run}; validation "
+                            f"{summary['specimen_validation']}"
+                            f"{': ' + summary['lost'] if not summary['completed'] else ''}; "
+                            f"source {source}; evidence {out}")
                     registered = specimens.add(
-                        "c64", name, [kept], title="Pool of Radiance",
-                        issue=READY_SPECIMEN_ISSUE,
+                        "c64", name, [kept], title=game.title,
+                        issue=(READY_SPECIMEN_ISSUE if mode == "ready"
+                               else POOL_SPECIMEN_ISSUE),
                         made_by="tools/c64/acceptance.py through pooled VICE",
-                        what=f"Game-written save after BAKSHI READY diagnostic "
-                             f"{args.run}; evidence {out}",
+                        what=what,
                         command=shlex.join([sys.executable, *sys.argv]))
                     summary["registered_specimen"] = str(registered)
                     log.emit("specimen-added", path=str(registered))
@@ -2709,7 +2805,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 summary["specimen_registration"] = "no saved.D64 was produced"
                 if summary["completed"]:
                     summary["completed"] = False
-                    summary["lost"] = "capture-ready produced no saved.D64 to register"
+                    summary["lost"] = "preserved run produced no saved.D64 to register"
         write_summary()
         try:
             stack.close()
@@ -2760,6 +2856,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="for Pool BAKSHI READY, save paused screen, colour, "
                          "PNG and live $4900/$5100/$5D00 ranges before fire, "
                          "at first row change, and at stable return or timeout")
+    ap.add_argument("--preserve-specimen", action="store_true",
+                    help="register and check the game-written save from a #700 "
+                         "Pool Dispel or no-cast control run before slot teardown")
     ap.add_argument("--probe-step", action="store_true",
                     help="take one empty-square step after the first command bar")
     ap.add_argument("--walk-steps", type=int, default=40,
@@ -2794,10 +2893,17 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(str(e))
     if any(x.verb == "fight" for x in steps) and args.title == "ssb":
         ap.error("the fight step needs --title pool or curse")
+    if args.capture_ready and args.preserve_specimen:
+        ap.error("--capture-ready and --preserve-specimen are separate run modes")
     if args.capture_ready and (args.issue != "703" or args.title != "pool"
                                or not ready_capture_order(steps)):
         ap.error("--capture-ready requires --issue 703, Pool ready "
                  "BAKSHI>LABEL before the sole save step")
+    if args.preserve_specimen and (args.issue != "700" or args.title != "pool"
+                                   or pool_specimen_mode(steps) is None):
+        ap.error("--preserve-specimen requires --issue 700, Pool, and exactly "
+                 "load/view BRUTUS/save or load/view BRUTUS/"
+                 "cast CASTER:DISPEL MAGIC>BRUTUS/view BRUTUS/save")
     if args.attack_by and args.title != "curse":
         ap.error("--attack-by requires --title curse")
     if any(x.verb == "cure" for x in steps) and args.title != "curse":

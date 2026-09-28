@@ -1255,7 +1255,7 @@ class _Pool:
 
 def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=None,
            pool=_Pool, title="pool", catch=lambda: None, stage_only=False,
-           capture_ready=False):
+           capture_ready=False, preserve_specimen=False):
     import types
     slot = slot or _Slot(tmp_path)
     _Pool.clock = [0.0]
@@ -1269,9 +1269,10 @@ def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=Non
     args = types.SimpleNamespace(
         title=title, stage_row=[], stage_trait=[], stage_item=[],
         stage_only=stage_only, checkpoint=[], pool=None,
-        issue="703" if capture_ready else "i", run="r", disks=None,
+        issue="703" if capture_ready else "700" if preserve_specimen else "i",
+        run="r", disks=None,
         walk="I", walk_steps=1, max_seconds=max_seconds,
-        capture_ready=capture_ready)
+        capture_ready=capture_ready, preserve_specimen=preserve_specimen)
     out = tmp_path / "out"
     rc = A.run(args, A.parse_steps(steps), out, _fixture_disk(tmp_path),
                clock=lambda: _Pool.clock[0])
@@ -1419,6 +1420,285 @@ def test_capture_ready_rejects_save_before_first_ready_even_if_ready_follows(
     summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
     assert rc == 1 and slot.torn
     assert "READY" in summary["lost"] and "registered_specimen" not in summary
+
+
+def _brutus_zombie_state():
+    rows = [[n, 0, 0, 0, 0] for n in range(64)]
+    rows[63] = [63, 32, 5, 0, 5]
+    return {"party": [{"slot": 5, "name": "BRUTUS", "status": 0x03,
+                       "traits": [0] * 9 + [32], "creature_type": 4,
+                       "hp_current": 8}],
+            "effect_rows": rows,
+            "record_sha256": ["other"] * 5 + ["brutus-record"] + ["other"] * 2}
+
+
+class _SpecimenPool(_Pool):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.out = args[2]
+
+    def reading(self):
+        return _brutus_zombie_state()
+
+    def view(self, who):
+        return {"who": who}
+
+    def cast(self, arg):
+        return {"spell": "DISPEL MAGIC", "target": "BRUTUS"}
+
+    def save(self, staged):
+        kept = self.out / "saved.D64"
+        kept.write_bytes(b"saved")
+        return {"kept": str(kept), **_brutus_zombie_state()}
+
+
+@pytest.mark.parametrize("mode,steps", [
+    ("dispel", ["load", "view BRUTUS", "cast ROLAND:DISPEL MAGIC>BRUTUS",
+                "view BRUTUS", "save"]),
+    ("control", ["load", "view BRUTUS", "save"]),
+])
+def test_pool_specimen_modes_register_and_check_before_teardown(
+        tmp_path, monkeypatch, mode, steps):
+    from tools.registry import specimens
+
+    events = []
+
+    class Slot(_Slot):
+        def teardown(self):
+            events.append("teardown")
+            super().teardown()
+
+    def add(platform, name, sources, **kw):
+        events.append("add")
+        assert platform == "c64" and name.startswith(f"por-700-{mode}-")
+        assert sources == [tmp_path / "out" / "saved.D64"]
+        assert kw["title"] == "Pool of Radiance" and "#700 (" in kw["issue"]
+        assert mode in kw["what"]
+        return tmp_path / "registered.D64"
+
+    monkeypatch.setattr(specimens, "add", add)
+    monkeypatch.setattr(specimens, "check_specimens",
+                        lambda: events.append("check") or [])
+    monkeypatch.setattr(A, "validate_pool_dispel", lambda results: None)
+    slot = Slot(tmp_path)
+    rc, _, out = _drive(tmp_path, monkeypatch, steps, pool=_SpecimenPool, slot=slot,
+                         preserve_specimen=True)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 0 and slot.torn
+    assert events == ["add", "check", "teardown"]
+    assert summary["specimen_mode"] == mode
+    assert summary["specimen_validation"] == "passed"
+    assert summary["registered_specimen"] == str(tmp_path / "registered.D64")
+
+
+def test_pool_specimen_registry_failure_marks_run_lost_and_tears_down(
+        tmp_path, monkeypatch):
+    from tools.registry import specimens
+
+    monkeypatch.setattr(specimens, "add", lambda *a, **k: tmp_path / "registered.D64")
+    monkeypatch.setattr(specimens, "check_specimens", lambda: ["hash mismatch"])
+    rc, slot, out = _drive(tmp_path, monkeypatch,
+                           ["load", "view BRUTUS", "save"], pool=_SpecimenPool,
+                           preserve_specimen=True)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 1 and slot.torn
+    assert summary["specimen_mode"] == "control"
+    assert "hash mismatch" in summary["lost"]
+    assert summary["registered_specimen"] == str(tmp_path / "registered.D64")
+
+
+def test_pool_specimen_add_refusal_marks_run_lost_and_tears_down(tmp_path, monkeypatch):
+    from tools.registry import specimens
+
+    def refuse(*a, **k):
+        raise FileExistsError("specimen name is taken")
+
+    monkeypatch.setattr(specimens, "add", refuse)
+    monkeypatch.setattr(specimens, "check_specimens", lambda: pytest.fail("checked"))
+    rc, slot, out = _drive(tmp_path, monkeypatch,
+                           ["load", "view BRUTUS", "save"], pool=_SpecimenPool,
+                           preserve_specimen=True)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 1 and slot.torn
+    assert "specimen name is taken" in summary["lost"]
+    assert "registered_specimen" not in summary
+
+
+@pytest.mark.parametrize("fault", [
+    "loaded", "saved", "saved_row", "saved_row_payload", "saved_record",
+    "saved_unreported_record",
+])
+def test_pool_control_rejects_an_unmatched_animated_state(tmp_path, monkeypatch,
+                                                           fault):
+    from tools.registry import specimens
+
+    class Run(_SpecimenPool):
+        def reading(self):
+            state = super().reading()
+            if fault == "loaded":
+                state["effect_rows"][63][1] = 0
+            return state
+
+        def save(self, staged):
+            saved = super().save(staged)
+            if fault == "saved":
+                saved["party"][0]["traits"][-1] = 0
+            elif fault == "saved_row":
+                saved["effect_rows"][63][2] = 3
+            elif fault == "saved_row_payload":
+                saved["effect_rows"][63][4] = 6
+            elif fault == "saved_record":
+                saved["party"][0]["hp_current"] = 9
+            elif fault == "saved_unreported_record":
+                saved["record_sha256"][5] = "different-record"
+            return saved
+
+    added = []
+    monkeypatch.setattr(specimens, "add", lambda *a, **k: added.append(k)
+                        or tmp_path / "registered.D64")
+    monkeypatch.setattr(specimens, "check_specimens", lambda: [])
+    rc, slot, out = _drive(tmp_path, monkeypatch,
+                           ["load", "view BRUTUS", "save"], pool=Run,
+                           preserve_specimen=True)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 1 and slot.torn
+    assert "control" in summary["lost"]
+    assert summary["specimen_validation"] == "failed"
+    assert len(added) == 1 and "validation failed" in added[0]["what"]
+
+
+def test_pool_dispel_post_save_validation_failure_has_failure_provenance(
+        tmp_path, monkeypatch):
+    from tools.registry import specimens
+
+    def fail(_results):
+        raise A.StepFailed("saved Dispel row was restored")
+
+    added = []
+    monkeypatch.setattr(A, "validate_pool_dispel", fail)
+    monkeypatch.setattr(specimens, "add", lambda platform, name, sources, **kw:
+                        added.append((name, kw["what"]))
+                        or tmp_path / "registered.D64")
+    monkeypatch.setattr(specimens, "check_specimens", lambda: [])
+    rc, slot, out = _drive(
+        tmp_path, monkeypatch,
+        ["load", "view BRUTUS", "cast ROLAND:DISPEL MAGIC>BRUTUS",
+         "view BRUTUS", "save"],
+        pool=_SpecimenPool, preserve_specimen=True)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 1 and slot.torn
+    assert "saved Dispel row was restored" in summary["lost"]
+    assert summary["specimen_validation"] == "failed"
+    assert len(added) == 1 and "-failed-" in added[0][0]
+    assert "validation failed" in added[0][1]
+
+
+@pytest.mark.parametrize("steps", [
+    ["load", "view BRUTUS", "cast ROLAND:DISPEL MAGIC>BRUTUS",
+     "view BRUTUS", "save"],
+    ["load", "view BRUTUS", "save"],
+])
+def test_pool_specimen_modes_parse_and_stage_without_claim(tmp_path, monkeypatch,
+                                                           steps):
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed a slot"))
+    assert A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                   "--issue", "700", "--run", "preserved-control",
+                   "--preserve-specimen", "--stage-only", "--steps", *steps,
+                   "--out", str(tmp_path / "prepared")]) == 0
+
+
+@pytest.mark.parametrize("steps", [
+    ["load", "save", "cast ROLAND:DISPEL MAGIC>BRUTUS"],
+    ["load", "view BRUTUS", "save", "save"],
+    ["load", "save"],
+    ["load", "view BRUTUS", "cast ROLAND:ANIMATE DEAD", "save"],
+    ["load", "view BRUTUS", "cast ROLAND:DISPEL MAGIC>BRUTUS",
+     "cast ROLAND:DISPEL MAGIC>BRUTUS", "save"],
+    ["view BRUTUS", "save"],
+    ["load", "view BRUTUS", "cast ROLAND:DISPEL MAGIC>BRUTUS",
+     "load", "save"],
+    ["load", "view BRUTUS", "load", "save"],
+    ["load", "walk I", "view BRUTUS", "save"],
+    ["load", "view BRUTUS", "items BRUTUS", "save"],
+])
+def test_pool_specimen_rejects_ambiguous_steps_before_guest_claim(
+        tmp_path, monkeypatch, steps):
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed a slot"))
+    with pytest.raises(SystemExit) as exc:
+        A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                "--issue", "700", "--disks", str(tmp_path),
+                "--preserve-specimen", "--steps", *steps,
+                "--out", str(tmp_path / "rejected")])
+    assert exc.value.code == 2
+    assert not (tmp_path / "rejected").exists()
+
+
+@pytest.mark.parametrize("flags", [
+    ["--issue", "703", "--preserve-specimen"],
+    ["--issue", "700", "--capture-ready", "--preserve-specimen"],
+])
+def test_pool_specimen_rejects_mismatched_preservation_modes_before_claim(
+        tmp_path, monkeypatch, flags):
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed a slot"))
+    with pytest.raises(SystemExit) as exc:
+        A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                *flags, "--steps", "load", "view BRUTUS", "save",
+                "--out", str(tmp_path / "rejected")])
+    assert exc.value.code == 2
+    assert not (tmp_path / "rejected").exists()
+
+
+def test_pool_specimen_does_not_register_a_save_before_its_cast_for_direct_run(
+        tmp_path, monkeypatch):
+    from tools.registry import specimens
+
+    class Run(_Pool):
+        def cast(self, arg):
+            return {"spell": "DISPEL MAGIC", "target": "BRUTUS"}
+
+        def save(self, staged):
+            (tmp_path / "out" / "saved.D64").write_bytes(b"saved")
+            return {"kept": str(tmp_path / "out" / "saved.D64")}
+
+    monkeypatch.setattr(A, "validate_pool_dispel", lambda results: None)
+    monkeypatch.setattr(specimens, "add", lambda *a, **k: pytest.fail("registered"))
+    rc, slot, out = _drive(tmp_path, monkeypatch,
+                           ["load", "save", "cast ROLAND:DISPEL MAGIC>BRUTUS"],
+                           pool=Run, preserve_specimen=True)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 1 and slot.torn
+    assert "no validated #700" in summary["lost"]
+    assert "registered_specimen" not in summary
+
+
+def test_pool_specimen_does_not_register_stale_save_after_failed_cast(
+        tmp_path, monkeypatch):
+    from tools.registry import specimens
+
+    kept = tmp_path / "out" / "saved.D64"
+    kept.parent.mkdir()
+    kept.write_bytes(b"previous run")
+    added = []
+
+    class Run(_Pool):
+        def view(self, who):
+            return {"who": who}
+
+        def cast(self, arg):
+            raise A.StepFailed("cast stopped before game input")
+
+        def save(self, staged):
+            pytest.fail("the save step ran")
+
+    monkeypatch.setattr(specimens, "add", lambda *a, **k: added.append(True))
+    rc, slot, out = _drive(
+        tmp_path, monkeypatch,
+        ["load", "view BRUTUS", "cast ROLAND:DISPEL MAGIC>BRUTUS", "save"],
+        pool=Run, preserve_specimen=True)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 1 and slot.torn
+    assert not added and "registered_specimen" not in summary
+    assert "cast stopped before game input" in summary["lost"]
 
 
 # --- the camp cures (Curse: CURE BLINDNESS and the paladin's CURE) ---------------
