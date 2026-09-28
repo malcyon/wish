@@ -22,12 +22,13 @@ def import_slot(dest: AmigaDisk, dest_letter: str, source: AmigaDisk,
         entry.name: source.read_file(amiga_savegame.por_save_path(entry.name, source_drawer))
         for entry in source.entries(source.lookup(f"/{source_drawer}").block)
         if not entry.is_dir and re.fullmatch(
-            rf"CHRDAT{re.escape(source_letter)}[1-6]\.(sav|itm|spc)",
+            rf"CHRDAT{re.escape(source_letter)}[1-{amiga_savegame.PARTY_MAX}]\.(sav|itm|spc)",
             entry.name, re.IGNORECASE)}
     character_files = {
         name: data for name, data in slot_files.items()
-        if re.fullmatch(rf"CHRDAT{re.escape(source_letter)}[1-6]\.(sav|itm|spc)",
-                        name, re.IGNORECASE)}
+        if re.fullmatch(
+            rf"CHRDAT{re.escape(source_letter)}[1-{amiga_savegame.PARTY_MAX}]\.(sav|itm|spc)",
+            name, re.IGNORECASE)}
     target_game = amiga_savegame.retarget_savegame(savegame, dest_letter)
     snapshot = dest.to_bytes()
     try:
