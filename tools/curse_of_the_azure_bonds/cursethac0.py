@@ -58,7 +58,6 @@ import json
 import pathlib
 import re
 import shutil
-import struct
 import sys
 import time
 
@@ -275,12 +274,6 @@ def show(args) -> int:
 
 # -- the driven half -------------------------------------------------------
 
-def checkpoint_hits(mon, number: int) -> int:
-    """How many times a checkpoint has fired: bytes 13-16 of the response."""
-    body = mon.command(0x11, struct.pack("<I", number))
-    return struct.unpack("<I", body[13:17])[0]
-
-
 class Run:
     """One driven session, logging every reading as it is taken."""
 
@@ -328,7 +321,7 @@ class Run:
         if not self.checks:
             return {}
         with self.sess.mon(8) as m:
-            got = {k: checkpoint_hits(m, n) for k, n in self.checks.items()}
+            got = {k: m.checkpoint_hits(n) for k, n in self.checks.items()}
             m.resume()
         return got
 

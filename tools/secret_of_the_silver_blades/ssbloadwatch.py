@@ -38,7 +38,6 @@ sys.path.insert(0, str(ROOT))
 from automap import gamedisks  # noqa: E402
 from goldbox import c64_port as G  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
-from tools.curse_of_the_azure_bonds.cursethac0 import checkpoint_hits  # noqa: E402
 from tools.registry import (  # noqa: E402
     scratch,
     specimens,
@@ -78,7 +77,7 @@ def read_point(sess, ckpts: dict[str, int], tag: str, out: pathlib.Path,
     """One paused monitor block: every region, every hit count, the singles."""
     with sess.mon(15) as m:
         dumps = {name: m.read(start, length) for name, start, length in REGIONS}
-        hits = {name: checkpoint_hits(m, n) for name, n in ckpts.items()}
+        hits = {name: m.checkpoint_hits(n) for name, n in ckpts.items()}
         singles = {name: m.read(a, 1)[0] for name, a in SINGLES.items()}
         cache = m.read(0x7F13, 26)
         m.resume()

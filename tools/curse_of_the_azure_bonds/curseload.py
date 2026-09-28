@@ -99,7 +99,6 @@ PROBES = {
 DRIVE_ERROR_BUFFER = (0x02D5, 40)
 
 CMD_MEM_GET = 0x01
-CMD_CHECKPOINT_GET = 0x11
 
 #: The four instructions worth counting, all in `GEN` at `$0800`.  Counting
 #: them settles what a screen poll is too slow to see: whether the save-disk
@@ -110,16 +109,6 @@ COUNTERS = {
     "1F48_load": 0x1F48,           # JSR $3159
     "1F4D_refused": 0x1F4D,        # the UNABLE TO LOAD message
 }
-
-
-def checkpoint_hits(m, number: int) -> int:
-    """How many times a checkpoint has fired.
-
-    VICE puts the count at bytes 13-16 of the `CHECKPOINT_GET` response;
-    `tools/c64/c64addchar.py` and `tools/c64/traitdrive.py` unpack the same field.
-    """
-    body = m.command(CMD_CHECKPOINT_GET, struct.pack("<I", number))
-    return struct.unpack("<I", body[13:17])[0]
 
 
 def drive_read(m, start: int, length: int, memspace: int = 1) -> bytes:
@@ -248,7 +237,7 @@ def arm(sess) -> dict:
 
 def counts(sess, armed: dict) -> dict:
     with sess.mon(8) as m:
-        got = {k: checkpoint_hits(m, n) for k, n in armed.items()}
+        got = {k: m.checkpoint_hits(n) for k, n in armed.items()}
         m.resume()
     return got
 

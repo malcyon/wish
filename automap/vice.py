@@ -248,6 +248,17 @@ class Monitor:
     def checkpoint_delete(self, number: int) -> None:
         self.command(CMD_CHECKPOINT_DELETE, struct.pack("<I", number))
 
+    def checkpoint_hits(self, number: int) -> int:
+        """How many times a checkpoint has fired, without stopping the machine.
+
+        The `CHECKPOINT_GET` response is number(4), currently-hit(1), start(2),
+        end(2), stop-when-hit(1), enabled(1), operation(1), temporary(1), then
+        the hit count(4).  It is read by offset because older builds omit the
+        trailing bytes and a full unpack would raise on them.
+        """
+        body = self.command(CMD_CHECKPOINT_GET, struct.pack("<I", number))
+        return struct.unpack("<I", body[13:17])[0]
+
     def checkpoint_list(self) -> list[int]:
         """Numbers of every checkpoint VICE currently holds."""
         rid = self._send(CMD_CHECKPOINT_LIST, b"")

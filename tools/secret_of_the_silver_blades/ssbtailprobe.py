@@ -33,7 +33,6 @@ from tools.c64.laterbattle import Battle  # noqa: E402
 from tools.curse_of_the_azure_bonds import (  # noqa: E402
     cursethac0,
 )
-from tools.curse_of_the_azure_bonds.cursethac0 import checkpoint_hits  # noqa: E402
 from tools.registry import (  # noqa: E402
     scratch,
     specimens,
@@ -69,7 +68,7 @@ def read_block(sess, extra: dict, checkpoint: int | None) -> dict:
     with sess.mon(10) as m:
         tail = m.read(TAIL_START, TAIL_LEN)
         vals = {name: m.read(addr, 1)[0] for name, addr in extra.items()}
-        hits = None if checkpoint is None else checkpoint_hits(m, checkpoint)
+        hits = None if checkpoint is None else m.checkpoint_hits(checkpoint)
         m.resume()
     return {"tail": tail.hex(" "), "tail_raw": tail, **vals,
             "checkpoint_hits": hits}

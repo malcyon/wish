@@ -17,6 +17,8 @@ import struct
 import pytest
 from conftest import load_tools_module
 
+from automap.vice import Monitor
+
 iconswing = load_tools_module("iconswing")
 
 
@@ -29,9 +31,13 @@ def charpic(mapping: dict[int, bytes]) -> bytes:
 
 
 class FakeMonitor:
+    # The sweep asks the monitor itself, so the fake serves the real method
+    # off its own `command`.
+    checkpoint_hits = Monitor.checkpoint_hits
+
     def __init__(self, blob=b"", checkpoint_hits=0):
         self.blob = blob
-        self.checkpoint_hits = checkpoint_hits
+        self.hit_count = checkpoint_hits
 
     def __enter__(self):
         return self
@@ -48,7 +54,7 @@ class FakeMonitor:
         # bytes, then the hit count at offset 13.
         return (struct.pack("<I", 7) + bytes([1]) + struct.pack("<HH", 0, 0)
                 + bytes([1, 1, 1, 0])
-                + struct.pack("<II", self.checkpoint_hits, 0) + bytes([0, 0]))
+                + struct.pack("<II", self.hit_count, 0) + bytes([0, 0]))
 
 
 class FakeSession:
@@ -101,7 +107,7 @@ def test_the_expanded_blocks_are_162_bytes_apart():
 
 
 def test_a_checkpoint_reports_its_hit_count():
-    hits = iconswing.checkpoint_hits(FakeMonitor(checkpoint_hits=768), 7)
+    hits = FakeMonitor(checkpoint_hits=768).checkpoint_hits(7)
     assert hits == 768
 
 

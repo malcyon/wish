@@ -37,7 +37,6 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
-import struct
 import sys
 import time
 
@@ -61,13 +60,6 @@ WINDOWS = {"e4_e5": (0x6BE4, 0x6BE5),
 SAVE0_LOAD = 0x4900
 SLOT_BASE = 0x4D00
 SLOT_STRIDE = 0x100
-
-
-def checkpoint_hits(mon, number: int) -> int:
-    """How many times a checkpoint has fired; VICE's response puts the hit
-    count at bytes 13-16 (`tools/c64/traitdrive.py` unpacks the same field)."""
-    body = mon.command(0x11, struct.pack("<I", number))
-    return struct.unpack("<I", body[13:17])[0]
 
 
 def export(disk: D64, name: bytes) -> bytes:
@@ -159,7 +151,7 @@ class Run:
 
     def counts(self, stage: str) -> dict[str, int]:
         with self.sess.mon(8) as m:
-            got = {k: checkpoint_hits(m, v) for k, v in self.cp.items()}
+            got = {k: m.checkpoint_hits(v) for k, v in self.cp.items()}
             m.resume()
         self.log("counts", stage=stage, **got)
         return got

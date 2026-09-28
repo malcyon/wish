@@ -54,7 +54,6 @@ from automap.maps import load_maps  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox.geo import GEO_SIZE  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
-from tools.curse_of_the_azure_bonds import curseload  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: The page the loader leaves a `GEO` file on and never moves it.
@@ -169,8 +168,8 @@ def run(args) -> int:
             with sess.mon(10) as m:
                 got = reading(m, maps)
                 got.update(
-                    loads=curseload.checkpoint_hits(m, cps["load"]),
-                    stores=curseload.checkpoint_hits(m, cps["store"]))
+                    loads=m.checkpoint_hits(cps["load"]),
+                    stores=m.checkpoint_hits(cps["store"]))
             note(event="sample", at=tag, **got, **extra)
             return got
 

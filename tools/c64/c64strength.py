@@ -50,7 +50,6 @@ import argparse
 import json
 import pathlib
 import re
-import struct
 import sys
 import time
 
@@ -142,12 +141,6 @@ def build(cha: pathlib.Path, save: pathlib.Path, log) -> list[dict]:
     return made
 
 
-def checkpoint_hits(mon, number: int) -> int:
-    """How many times a checkpoint has fired: bytes 13-16 of the response."""
-    body = mon.command(0x11, struct.pack("<I", number))
-    return struct.unpack("<I", body[13:17])[0]
-
-
 def sheet_numbers(lines) -> dict:
     """`THACO` and `DAMAGE` off a character sheet, and the name it carries."""
     text = "\n".join(lines)
@@ -195,7 +188,7 @@ class Run:
 
     def gate_count(self, stage: str) -> int:
         with self.sess.mon(8) as m:
-            n = checkpoint_hits(m, self.gate)
+            n = m.checkpoint_hits(self.gate)
             m.resume()
         self.log("gate", stage=stage, hits=n)
         return n

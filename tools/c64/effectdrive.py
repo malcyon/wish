@@ -53,7 +53,6 @@ from tools.c64.route_pool import (  # noqa: E402
     SAVE0_LOAD,
     SLOT_BASE,
     SLOT_STRIDE,
-    checkpoint_hits,
     live_records,
     rest,
     sample,
@@ -252,7 +251,7 @@ def main(argv=None) -> int:
                 break
             with sess.mon(10) as m:
                 now = sample(m)
-                counts = {k: checkpoint_hits(m, v) for k, v in cp.items()}
+                counts = {k: m.checkpoint_hits(v) for k, v in cp.items()}
                 m.resume()
             log.emit("step", step=step, **now, **counts)
             log.say(f"  step {step:2d} clock {now['clock']} "
@@ -278,7 +277,7 @@ def main(argv=None) -> int:
             sess.settle(3)
             with sess.mon(10) as m:
                 camped = sample(m)
-                counts = {k: checkpoint_hits(m, v) for k, v in ccp.items()}
+                counts = {k: m.checkpoint_hits(v) for k, v in ccp.items()}
                 ids = list(m.read(ECL65_IDS, ECL65_N + 1))
                 lo = list(m.read(ECL65_LO, ECL65_N))
                 hi = list(m.read(ECL65_HI, ECL65_N))

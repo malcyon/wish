@@ -152,8 +152,8 @@ def run(args) -> int:
         def hits(tag: str) -> None:
             with sess.mon(5) as m:
                 note(event="hits", at=tag,
-                     loads=curseload.checkpoint_hits(m, cps["load"]),
-                     stores=curseload.checkpoint_hits(m, cps["store"]),
+                     loads=m.checkpoint_hits(cps["load"]),
+                     stores=m.checkpoint_hits(cps["store"]),
                      overlay=overlay(m), **sample(m, tag))
 
         if not sess.begin_adventuring():
@@ -176,8 +176,8 @@ def run(args) -> int:
 
         def take(m, i: int) -> None:
             note(event="sample", i=i, overlay=overlay(m),
-                 loads=curseload.checkpoint_hits(m, cps["load"]),
-                 stores=curseload.checkpoint_hits(m, cps["store"]),
+                 loads=m.checkpoint_hits(cps["load"]),
+                 stores=m.checkpoint_hits(cps["store"]),
                  colours=m.read(0xD021, 3).hex(" "),
                  **sample(m, f"07-sample-{i:02d}"))
 
@@ -218,7 +218,7 @@ def run(args) -> int:
         with sess.mon(60) as m:
             tmp = m.checkpoint_set(BUFFER, BUFFER_END, store=True, stop=True,
                                    temporary=True)
-            loads_before = curseload.checkpoint_hits(m, cps["load"])
+            loads_before = m.checkpoint_hits(cps["load"])
             m.resume()
             sess.kbd.key("Return")
             pc = m.wait_stopped(45)
@@ -228,8 +228,8 @@ def run(args) -> int:
                 regs = m.registers()
                 note(event="first-store", pc=f"${pc:04X}",
                      overlay=overlay(m),
-                     loads_at_stop=curseload.checkpoint_hits(m, cps["load"]),
-                     stores_at_stop=curseload.checkpoint_hits(m, cps["store"]),
+                     loads_at_stop=m.checkpoint_hits(cps["load"]),
+                     stores_at_stop=m.checkpoint_hits(cps["store"]),
                      registers={f"{k}": v for k, v in regs.items()},
                      code=m.read(pc, 8).hex(" "),
                      zp_fb_fe=m.read(0xFB, 4).hex(" "),

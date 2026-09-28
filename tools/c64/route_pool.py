@@ -8,7 +8,6 @@ live records and effect arrays, and rest for a set time.
 from __future__ import annotations
 
 import os
-import struct
 import time
 
 from goldbox import effects
@@ -338,13 +337,6 @@ REC_CHA = 0x019
 #: at a time -- `tools/c64/c64restinterrupt.py`.
 REST_TIME = 0x2898
 
-def checkpoint_hits(mon, number: int) -> int:
-    """How many times a checkpoint has been hit, machine still running.
-
-    VICE's `CHECKPOINT_RESPONSE` puts the hit count at byte 13.
-    """
-    body = mon.command(0x11, struct.pack("<I", number))
-    return struct.unpack("<I", body[13:17])[0]
 
 def sample(m) -> dict:
     """The four arrays and the clock, read in one pass."""
@@ -406,7 +398,7 @@ def rest(sess, log, minutes: int, hours: int, cp: dict) -> dict:
         last = now
     with sess.mon(10) as m:
         after = sample(m)
-        counts = {k: checkpoint_hits(m, v) for k, v in cp.items()}
+        counts = {k: m.checkpoint_hits(v) for k, v in cp.items()}
         records = live_records(m)
         m.resume()
     log.say(f"  rest {minutes}m {hours}h: clock {before['clock']} -> "

@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import argparse
 import pathlib
-import struct
 import sys
 import time
 
@@ -51,11 +50,6 @@ from tools.c64 import runlog  # noqa: E402
 from tools.c64 import savecheck as V  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
-
-#: `MON_CMD_CHECKPOINT_GET`.  `automap/vice.py` sets, deletes and lists
-#: checkpoints but never asks one for its hit count, which is the whole of
-#: what this tool wants from them.
-CMD_CHECKPOINT_GET = 0x11
 
 #: The shared icon table, from `goldbox/icons.py`: eight entries of 36 bytes,
 #: eighteen screen codes then eighteen colours.
@@ -254,19 +248,6 @@ def camp(sess, log, args, slots: list[dict], charset: bytes) -> int:
     return 0
 
 
-def checkpoint_hits(mon, number: int) -> int:
-    """How many times VICE has seen checkpoint `number` hit.
-
-    The response is `MON_RESPONSE_CHECKPOINT_INFO`: the number, a
-    currently-hit flag, start, end, four flag bytes, then the hit count as a
-    little-endian long at offset 13.  Read by offset rather than by
-    unpacking the whole record, because the trailing memspace byte is absent
-    from older builds and a full unpack would raise on them.
-    """
-    body = mon.command(CMD_CHECKPOINT_GET, struct.pack("<I", number))
-    return struct.unpack("<I", body[13:17])[0]
-
-
 def windows(slots: list[dict], control: int | None = None) -> list[dict]:
     """Every range to count the engine's reads of, per occupied slot.
 
@@ -346,7 +327,7 @@ def poll(sess, watch: list[dict]) -> list[dict]:
             for w in watch:
                 if w.get("cp") is None:
                     continue
-                now = checkpoint_hits(m, w["cp"])
+                now = m.checkpoint_hits(w["cp"])
                 if now != w["hits"]:
                     moved.append({"kind": w["kind"], "slot": w["slot"],
                                   "pose": w["pose"], "was": w["hits"],

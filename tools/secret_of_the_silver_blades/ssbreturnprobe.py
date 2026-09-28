@@ -216,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         with sess.mon(8) as m:
-            writes_before_step = cursethac0.checkpoint_hits(m, watch)
+            writes_before_step = m.checkpoint_hits(watch)
             m.resume()
         run.log("writes-before-step", count=writes_before_step)
 
@@ -263,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
             readings.append({"label": label, "elapsed": elapsed, **vals})
 
         with sess.mon(8) as m:
-            writes_after = cursethac0.checkpoint_hits(m, watch)
+            writes_after = m.checkpoint_hits(watch)
             m.checkpoint_delete(watch)
             m.resume()
         run.log("writes-after-step", count=writes_after,

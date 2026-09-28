@@ -11,6 +11,7 @@ Tests for the live automapper in `automap/`: its map model and geometry, the par
 | `test_automapbanks.py` | Checks that the screen address, the bitmap test and the status line are read from the memory the processor sees during a load, and that a poll still costs one resume. |
 | `test_busguard.py` | Checks that `automap/busguard.py` reads `$DD00` before a tick, holds the tick off while the bus is busy and cannot hold it off for ever. |
 | `test_c64machine.py` | Checks the per-title live addresses of `automap/c64.py`, that the three titles nobody has run answer none, and that every action refuses on them. |
+| `test_checkpoint_hits.py` | Checks that `Monitor.checkpoint_hits` reads the hit count at bytes 13-16 of the checkpoint response and that no other module defines a copy of it. |
 | `test_columns.py` | Checks that the automapper's three columns open at their old widths, can be dragged wider or shut, and are remembered across a restart. |
 | `test_combat.py` | Checks the combat view against a composed arena: what it reads, how the map, bars and conditions draw, and what a click lands on. |
 | `test_combatlog.py` | Checks the combat log against synthetic screens: how a message window is read, deduplicated, split into messages and rounds, and shown with its dice. |

@@ -1098,7 +1098,7 @@ class PoolRun:
             head = bytes(m.read(base, effects.EFFECT_MAGNITUDE_OFFSET
                                 + effects.EFFECT_SLOTS))
             clock = list(m.read(base + self.box.clock, 6))
-            counts = {k: route_pool.checkpoint_hits(m, v)
+            counts = {k: m.checkpoint_hits(v)
                       for k, v in self.armed.items()}
             if self.game.key == "pool-of-radiance":
                 records = [bytes(route_pool.live_record(m, slot))

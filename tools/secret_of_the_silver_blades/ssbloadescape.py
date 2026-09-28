@@ -34,7 +34,6 @@ from automap import gamedisks  # noqa: E402
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
-from tools.curse_of_the_azure_bonds.cursethac0 import checkpoint_hits  # noqa: E402
 from tools.registry import (  # noqa: E402
     scratch,
     specimens,
@@ -53,7 +52,7 @@ CHECKPOINTS = [("tail", 0x9AC8, 0x9B64), ("head", 0x8000, 0x800F)]
 def poll(sess, ckpts):
     with sess.mon(10) as m:
         lo, hi = m.read(0x2D9E, 1)[0], m.read(0x2DB7, 1)[0]
-        hits = {n: checkpoint_hits(m, k) for n, k in ckpts.items()}
+        hits = {n: m.checkpoint_hits(k) for n, k in ckpts.items()}
         tail = m.read(0x9AF9, 8)
         m.resume()
     return {"slot8_end": f"${hi:02X}{lo:02X}", "hits": hits,
@@ -164,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
 
         with sess.mon(20) as m:
             ram = m.read(0x8000, 0x2000)
-            hits = {n: checkpoint_hits(m, k) for n, k in ckpts.items()}
+            hits = {n: m.checkpoint_hits(k) for n, k in ckpts.items()}
             lo, hi = m.read(0x2D9E, 1)[0], m.read(0x2DB7, 1)[0]
             m.resume()
         (out / "03-world-script.bin").write_bytes(ram)

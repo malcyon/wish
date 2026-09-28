@@ -40,7 +40,6 @@ from __future__ import annotations
 import argparse
 import os
 import pathlib
-import struct
 import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parent.parent
@@ -145,19 +144,6 @@ def predicate_for(title: str, disks: str):
         if found is not None:
             return found
     raise SystemExit("traitdrive.py: no trait predicate in LIBRARY")
-
-
-def checkpoint_hits(mon, number: int) -> int:
-    """How many times a checkpoint has been hit, without stopping the machine.
-
-    `automap/vice.py` sets and deletes checkpoints and does not read one back,
-    and it belongs to another part of the tree, so the four bytes are unpacked
-    here. VICE's `CHECKPOINT_RESPONSE` is number(4), currently-hit(1),
-    start(2), end(2), stop-when-hit(1), enabled(1), operation(1),
-    temporary(1), **hit count(4)**, ignore count(4), condition(1), memspace(1).
-    """
-    body = mon.command(0x11, struct.pack("<I", number))
-    return struct.unpack("<I", body[13:17])[0]
 
 
 class Log(runlog.Log):
@@ -274,7 +260,7 @@ def main(argv=None) -> int:
             steps += 1
             if steps % 5 == 0:
                 with sess.mon(8) as m:
-                    counts = {k: checkpoint_hits(m, v) for k, v in cp.items()}
+                    counts = {k: m.checkpoint_hits(v) for k, v in cp.items()}
                     m.resume()
                 log.emit("counts", steps=steps, **counts)
                 log.say(f"  step {steps}: " + " ".join(
@@ -286,7 +272,7 @@ def main(argv=None) -> int:
             sess.settle(3)
 
         with sess.mon(8) as m:
-            counts = {k: checkpoint_hits(m, v) for k, v in cp.items()}
+            counts = {k: m.checkpoint_hits(v) for k, v in cp.items()}
             surprise = list(m.read(SURPRISE, 4))
             block = list(m.read(STAGING_PAGE + TRAIT_SLOT, 10))
             m.resume()
