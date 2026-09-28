@@ -105,7 +105,7 @@ def test_curse_keeps_its_race_step_and_has_no_trailing_thief():
 
 # --- the specimen sweep ------------------------------------------------------
 #: Our own writer's output, not DOS Silver Blades' rebuild -- excluded. Every
-#: other record is one the engine itself saved.
+#: other record is one the sweep treats as engine-written.
 _OUR_OWN_OUTPUT = {
     "por-dos/WISH-SPEC-ssb-299-built-from-nothing",
     "por-dos/WISH-SPEC-ssb-299-converted-and-resaved",
@@ -120,12 +120,16 @@ _OUR_OWN_OUTPUT_SLOTS = {
 }
 
 
+#: Index of the slot letter in `CHRDAT<slot><n>.SAV`.
+_SLOT_AT = len("CHRDAT")
+
+
 def _is_our_own_output(specimen_dir: str, file_name: str) -> bool:
     """True for a record this project's writers made, by directory or by the
     slot letter of `CHRDAT<slot><n>.SAV`."""
     if specimen_dir in _OUR_OWN_OUTPUT:
         return True
-    return file_name[len("CHRDAT")] in _OUR_OWN_OUTPUT_SLOTS.get(
+    return file_name[_SLOT_AT] in _OUR_OWN_OUTPUT_SLOTS.get(
         specimen_dir, ())
 
 
@@ -165,10 +169,10 @@ def _former_levels(char) -> dict[str, int]:
 
 
 def test_the_rule_reproduces_every_engine_written_dos_silver_blades_record():
-    """Written by the engine itself, 45 or more, none of them ours: 56
-    records of six characters where this was measured, every one agreeing,
-    including all nine of MALACHITE's, which only the trailing thief
-    comparison explains."""
+    """Treated as written by the engine itself, at least 45, none of them
+    ours: 74 records in 12 specimen directories where this was measured, every
+    one agreeing, including all nine of MALACHITE's, which only the trailing
+    thief comparison explains."""
     records = _ssb_dos_records()
     if not records:
         pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
@@ -196,7 +200,7 @@ def test_the_sweep_keeps_the_engines_slot_b_of_the_converted_specimen():
     kept = {(d, n) for d, n, _ in records}
     specimen = "ssb-dos/WISH-SPEC-ssb-690-amigatodos-malachite-fixed"
     assert (specimen, "CHRDATB4.SAV") in kept
-    assert not {n for d, n in kept if d == specimen and n[6] == "A"}
+    assert not {n for d, n in kept if d == specimen and n[_SLOT_AT] == "A"}
 
 
 # --- the table, re-read off the player's own START.EXE -----------------------
