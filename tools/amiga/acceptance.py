@@ -1042,6 +1042,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             result["unguarded"].append(state)
         return digest
 
+    def recognise(state: str, crop: pathlib.Path, done: dict[str, int]) -> str | None:
+        """The state, or `party_menu` once `credits` is behind it, that the crop matches."""
+        wanted = [state]
+        if "credits" in done and _has_rule(guard, "party_menu"):
+            wanted.append("party_menu")
+        return next((s for s in wanted if guard(s, crop)), None)
+
     def until_guard(state: str, name: str, first_wait: float,
                     poll: float, limit: float, *, strict: bool = True) -> str:
         """Wait, then grab every `poll` seconds until the guard matches; keep the last crop.
@@ -1055,10 +1062,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         while True:
             digest = capture(name, check=False, settle=False)
             if digest:
-                wanted = [state]
-                if "credits" in done and _has_rule(guard, "party_menu"):
-                    wanted.append("party_menu")
-                hit = next((s for s in wanted if guard(s, crop)), None)
+                hit = recognise(state, crop, done)
                 if hit:
                     check_identity(hit, crop)
                     landed["state"] = hit
@@ -1099,22 +1103,31 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     def measure_boot() -> str:
         """Capture the boot, keeping each distinct frame, until the title or a fixed span.
 
-        With a `title` guard, single grabs every TITLE_POLL seconds end at the
-        first recognised title, or fail after TITLE_LIMIT. Without one, settled
-        captures every MEASURE_BOOT_POLL seconds end after MEASURE_TITLE_SPAN.
+        With a `title` guard, single grabs every TITLE_POLL seconds act on the title's
+        own interstitial table, as accept mode's boot wait does, until a grab recognises
+        `title` (or `party_menu`, once `credits` is behind it), or the wait fails after
+        TITLE_LIMIT. Without one, settled captures every MEASURE_BOOT_POLL seconds end
+        after MEASURE_TITLE_SPAN.
         """
         title = _guards(guard, "title")
         started, last, n = time.monotonic(), "", 0
+        done: dict[str, int] = {}
         while True:
             name = f"00-boot-{n:02d}"
             digest = capture(name, check=False, settle=not title)
-            if title and digest and guard("title", shots / f"{name}.png"):
-                result["events"][-1]["recognized"] = "title"
-                return digest
+            event = result["events"][-1]
+            if title and digest:
+                crop = shots / f"{name}.png"
+                hit = recognise("title", crop, done)
+                if hit:
+                    event["recognized"] = hit
+                    landed["state"] = hit
+                    return digest
+                interstitial("title", crop, done)
             if digest and digest == last:
                 for path in (shots / f"{name}.raw.png", shots / f"{name}.png"):
                     path.unlink(missing_ok=True)
-                result["events"][-1]["kept"] = False
+                event["kept"] = False
             elif digest:
                 last, n = digest, n + 1
             elapsed = time.monotonic() - started
@@ -1149,7 +1162,17 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         if measure:
             previous = measure_boot()
             changed = True
-            for n, step in enumerate(route if title is None else title.measure_route, 1):
+            steps_m = route if title is None else title.measure_route
+            skip = 0
+            if landed["state"] == "title":
+                skip = next((i for i, s in enumerate(steps_m, 1) if s[1] == "title"), 0)
+            elif landed["state"] == "party_menu" and steps_m and steps_m[0][1] == "party_menu":
+                # Leaving the credits with ESC can land on the party menu, which `P` opens.
+                skip = 1
+            for n, step in enumerate(steps_m, 1):
+                if n <= skip:
+                    result["events"].append({"skipped": step[0], "step": n})
+                    continue
                 if title is None:
                     (key, state), kind = step, "key"
                     if key.upper() in write_keys:

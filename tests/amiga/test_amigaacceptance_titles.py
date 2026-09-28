@@ -1147,6 +1147,85 @@ def test_curse_leaves_the_intro_with_one_escape_and_only_while_waiting_for_the_t
     assert "ESC" not in _keys(guest)
 
 
+def test_curse_measure_with_a_title_guard_presses_the_boot_escapes_and_skips_them(
+        tmp_path, clock):
+    """#711: measure mode must act on the boot's interstitial table, as accept mode does,
+    or a Curse boot on the published disk-one path never reaches its title guard."""
+    guard = MapGuard(states=(*CURSE_STATES, "intro"), on={
+        "intro": lambda p: p.read_bytes() == b"frame 0",
+        "front_end": lambda p: p.read_bytes() == b"frame 1",
+        "title": lambda p: p.read_bytes() == b"frame 2"})
+    guest, result = _curse_run(tmp_path, clock, accept=False, measure=True, guard=guard)
+    assert _keys(guest) == "ESC ESC L B V E S".split()
+    assert result["success"] is True, result.get("error")
+    assert {"skipped": "ESC", "step": 1} in result["events"]
+    assert {"skipped": "ESC", "step": 2} in result["events"]
+
+
+def test_pool_measure_with_a_title_guard_presses_the_wheel_return_and_skips_it(tmp_path, clock):
+    """#711: Pool's measure route also starts with the key the boot wait already pressed."""
+    guard = MapGuard(states=STATES, on={
+        "wheel": lambda p: p.read_bytes() == b"frame 0",
+        "title": lambda p: p.read_bytes() == b"frame 1"})
+    guest, result = _run(tmp_path, clock, accept=False, measure=True, guard=guard)
+    assert _keys(guest) == "RET RET L RET A V E NP2 NP8 E S".split()
+    assert result["success"] is True, result.get("error")
+    assert {"skipped": "RET", "step": 1} in result["events"]
+
+
+def _sb_published_manifest(tmp_path):
+    slots = [("A", _slot(START))]
+    disks = {"df0": _adf(tmp_path / "df0.adf", "ONE", slots),
+             "df1": _adf(tmp_path / "df1.adf", "TWO")}
+    data = {"disks": disks, "registered": {}, "loaded_letter": "A",
+            "state_a": START, "names_a": NAMES}
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+@pytest.mark.parametrize("landing, keys", [
+    ("title", "ESC P L A V I E E S".split()),
+    ("party_menu", "ESC L A V I E E S".split()),
+])
+def test_published_silver_blades_measure_presses_escape_once_at_credits(
+        tmp_path, clock, landing, keys):
+    """#711: the published Silver Blades measure boot already worked; this pins both outcomes
+    of the credits ESC now that measure mode's boot wait presses it itself."""
+    title = dataclasses.replace(
+        foundation.route_silver_blades.published_title("A"),
+        read_slot=_read_slot, slot_letters=_letters, slot_files=_files)
+    guest = TitleGuest(clock, save_key="df0")
+    guest.place = dict(START)
+    guard = MapGuard(states=("title", "credits", "party_menu", "load_picker", "loaded_menu",
+                              "sheet", "items", "save_picker"),
+                     on={"credits": lambda p: p.read_bytes() == b"frame 0",
+                         landing: lambda p: p.read_bytes() == b"frame 1"})
+    result = foundation.run_recon(
+        _sb_published_manifest(tmp_path), guest=guest, guard=guard, holder="wish677-test",
+        audio_proof=_audio_proof(tmp_path), title=title, accept=False, measure=True)
+    assert _keys(guest) == keys
+    assert result["success"] is True, result.get("error")
+    if landing == "party_menu":
+        assert {"skipped": "P", "step": 1} in result["events"]
+
+
+def test_darkness_measure_with_a_title_guard_is_unaffected(tmp_path, clock):
+    """#711: no Darkness interstitial row waits for `title`, so the boot wait still only
+    watches for it passively, and the route's own first key (`P`) is unaffected."""
+    seen = {"n": 0}
+
+    def title_rule(path):
+        seen["n"] += 1
+        return seen["n"] >= 3
+
+    guard = MapGuard(states=DARK_STATES, on={"title": title_rule})
+    guest, result = _dark_run(tmp_path, clock, guard=guard, accept=False, measure=True)
+    assert _keys(guest)[0] == "P"
+    first_key = next(i for i, e in enumerate(result["events"]) if "key" in e)
+    assert not any("interstitial" in e for e in result["events"][:first_key])
+
+
 class _Called:
     """A stand-in `run_recon` that records its keywords and reports a passing run."""
 
