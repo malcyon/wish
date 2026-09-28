@@ -20,6 +20,7 @@ from tests.amiga.test_amigaacceptance_accept import (
     needs_posix_signals,
 )
 from tests.amiga.test_amigaacceptance_measure import ScreenGuest
+from tests.registry.test_specimens import _unlock
 from tools.amiga import acceptance, route, winuaesession
 from tools.registry import specimens
 
@@ -1156,7 +1157,10 @@ class _ReleaseWatcher(TitleGuest):
 def specimen_tree(tmp_path, monkeypatch):
     root = tmp_path / "specimens"
     monkeypatch.setattr(specimens, "tree_root", lambda: root)
-    return root
+    yield root
+    # The specimen tool leaves the tree read-only, which a plain rmtree cannot remove.
+    if root.is_dir():
+        _unlock(root)
 
 
 def _preserving(tmp_path, clock, **kw):

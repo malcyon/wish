@@ -26,6 +26,7 @@ from tests.amiga.test_amigaacceptance_title import (
     _read_slot,
     _slot,
 )
+from tests.registry.test_specimens import _unlock
 from tests.support import amigasavegame as synthetic_amiga
 from tools.amiga import acceptance as foundation
 from tools.amiga import (
@@ -353,9 +354,18 @@ def test_published_silver_uses_journal_preflight_and_answerer_with_working_df0(
                        for call in measured.calls)
 
 
-def test_published_specimen_name_is_idempotent_and_refuses_changed_source(tmp_path, monkeypatch):
+@pytest.fixture
+def specimen_root(tmp_path, monkeypatch):
     root = tmp_path / "specimens"
     monkeypatch.setattr(specimens, "tree_root", lambda: root)
+    yield root
+    # The specimen tool leaves the tree read-only, which a plain rmtree cannot remove.
+    if root.is_dir():
+        _unlock(root)
+
+
+def test_published_specimen_name_is_idempotent_and_refuses_changed_source(tmp_path, specimen_root):
+    root = specimen_root
     run = tmp_path / "run"
     fetched = run / "accept1" / "fetched-df0.adf"
     fetched.parent.mkdir(parents=True)
@@ -373,9 +383,8 @@ def test_published_specimen_name_is_idempotent_and_refuses_changed_source(tmp_pa
     assert pathlib.Path(first["path"]).read_bytes() == b"game-written DF0"
 
 
-def test_published_specimen_dotted_run_ids_have_distinct_valid_names(tmp_path, monkeypatch):
-    root = tmp_path / "specimens"
-    monkeypatch.setattr(specimens, "tree_root", lambda: root)
+def test_published_specimen_dotted_run_ids_have_distinct_valid_names(tmp_path, specimen_root):
+    root = specimen_root
     outputs = []
     for run_id in ("ssb.c64", "ssb-c64"):
         manifest = tmp_path / run_id / "prepare.json"
