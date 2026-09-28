@@ -1900,6 +1900,108 @@ def test_diagnose_cli_dispatches_only_published_silver_blades(tmp_path, monkeypa
     assert not observed
 
 
+@pytest.mark.parametrize("boot_failed", [False, True])
+def test_diagnose_cli_reports_preboot_failure_and_dirty_private_config(
+        tmp_path, monkeypatch, capsys, boot_failed):
+    error = (("RouteError: winvm ssh failed: config-hash is not in the guest "
+              "launcher's ValidateSet") if boot_failed else "")
+    remove_error = ("RouteError: winvm ssh failed: config-remove is not in the "
+                    "guest launcher's ValidateSet")
+    manifest = tmp_path / "prepare.json"
+    manifest.write_text("{}")
+    guards = tmp_path / "guards.json"
+    guards.write_text("{}")
+    audio = _audio_proof(tmp_path)
+    monkeypatch.setattr(foundation, "_published_manifest", lambda *_: (
+        {"loaded_letter": "A"}, foundation.route_silver_blades.published_title("A")))
+    monkeypatch.setattr(foundation, "WinGuest", lambda: object())
+    monkeypatch.setattr(foundation, "PixelGuards", lambda p: p)
+    monkeypatch.setattr(foundation, "run_recon", lambda *args, **kwargs: {
+        "diagnose": True, "success": False, "completed": False, "error": error,
+        "config_remove_error": remove_error, "remote_config_dirty": True,
+        "remote_config_path": r"C:\Amiga\configs\wish705-wish705-test.uae",
+    })
+
+    code = foundation.main([
+        "diagnose", "--title", "ssb", "--published-disk-one", "--manifest", str(manifest),
+        "--guards", str(guards), "--audio-proof", str(audio), "--attempt", "gfx705-test",
+    ])
+
+    assert code == 1
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["error"] == (error or remove_error)
+    assert printed["config_remove_error"] == remove_error
+    assert printed["remote_config_dirty"] is True
+    assert printed["remote_config_path"].endswith("wish705-wish705-test.uae")
+    assert printed["unguarded"] == []
+
+
+@pytest.mark.parametrize("failure,expected", [
+    ({"stop_error": "OSError: stop timed out"}, "OSError: stop timed out"),
+    ({"fetch_df0_error": "OSError: DF0 fetch failed"}, "OSError: DF0 fetch failed"),
+    ({"boot_log_error": "RouteError: stale boot log"}, "RouteError: stale boot log"),
+    ({"df0_fetched_unchanged": False}, "diagnostic failed; see"),
+    ({"gfx_api_rejected": True}, "diagnostic failed; see"),
+])
+def test_diagnose_summary_names_cleanup_failure_or_points_to_full_result(
+        tmp_path, failure, expected):
+    result = {"diagnose": True, "success": False, "error": "", **failure}
+    printed = json.loads(foundation._summary(result, tmp_path / "prepare.json", "probe"))
+    assert expected in printed["error"]
+    if expected == "diagnostic failed; see":
+        assert printed["summary"] in printed["error"]
+
+
+def test_diagnose_records_config_hash_failure_and_failed_cleanup(tmp_path):
+    disks = {key: tmp_path / f"{key}.adf" for key in ("df0", "df1")}
+    for key, path in disks.items():
+        path.write_bytes(key.encode())
+    manifest = tmp_path / "prepare.json"
+    manifest.write_text(json.dumps({"disks": {
+        key: {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        for key, path in disks.items()}}))
+
+    class Guest:
+        def __init__(self):
+            self.remote = {}
+
+        def claim(self, holder, timeout):
+            return f"ok claimed by {holder}"
+
+        def get(self, remote, local, timeout):
+            if remote == foundation.BOOT_LOG:
+                local.write_text("old boot log")
+            else:
+                local.write_bytes(self.remote[remote])
+
+        def put(self, local, remote, timeout):
+            self.remote[remote] = local.read_bytes()
+
+        def stage_private_config(self, holder, timeout):
+            raise foundation.RouteError("config-hash rejected by guest ValidateSet")
+
+        def remove_private_config(self, holder, timeout):
+            raise foundation.RouteError("config-remove rejected by guest ValidateSet")
+
+        def release(self, holder, timeout):
+            return f"ok released by {holder}"
+
+    result = foundation._run_diagnose(
+        manifest, json.loads(manifest.read_text()),
+        foundation.route_silver_blades.published_title("A"), disks, Guest(),
+        guard=None, holder="wish705-test", audio_proof=tmp_path / "mute.json",
+        attempt="preboot-failure", deadline=600, boot_limit=300)
+
+    assert result["error"] == "RouteError: config-hash rejected by guest ValidateSet"
+    assert result["config_remove_error"] == (
+        "RouteError: config-remove rejected by guest ValidateSet")
+    assert result["remote_config_dirty"] is True
+    assert result["remote_config_path"] == r"C:\Amiga\configs\wish705-wish705-test.uae"
+    assert result["release"] == "ok released by wish705-test"
+    assert result["df0_fetched_unchanged"] and result["df1_fetched_unchanged"]
+    assert json.loads((tmp_path / "preboot-failure" / "summary.json").read_text()) == result
+
+
 def test_measure_refuses_a_missing_disk2_prompt_guard_through_main_before_any_guest_call(
         tmp_path, monkeypatch, capsys):
     guest = _RecordingGuest()

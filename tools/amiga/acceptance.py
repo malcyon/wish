@@ -177,6 +177,7 @@ def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle
         for key, path in disks.items():
             guest.put(path, remotes[key], timeout=limit(90))
         config_staged = True
+        result["remote_config_path"] = WinGuest.private_config_path(holder)
         result["config"] = guest.stage_private_config(holder, timeout=limit(60))
         if not _mute_proof(audio_proof):
             raise RouteError("the Windows VM audio mute proof expired before WinUAE start")
@@ -296,6 +297,7 @@ def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle
             if key in result["fetched"]:
                 result[f"{key}_fetched_unchanged"] = (
                     result["fetched"][key]["sha256"] == manifest["disks"][key]["sha256"])
+        result["remote_config_dirty"] = config_staged and not bool(result.get("config_removed"))
         result["success"] = bool(result["completed"] and not result["error"] and stopped
                                  and result.get("release") and result.get("config_removed")
                                  and result.get("boot_log_fresh")
@@ -1590,13 +1592,28 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path) -> path
 
 
 def _summary(result: dict[str, Any], manifest: pathlib.Path, attempt: str) -> str:
-    summary = {"success": result["success"],
-               "error": (result["error"] or result.get("specimen_error") or
-                         result.get("release_error") or ""),
-               "unguarded": result["unguarded"],
-               "summary": str(manifest.parent / attempt / "summary.json")}
+    path = str(manifest.parent / attempt / "summary.json")
+    if result.get("diagnose"):
+        error = next((result[key] for key in (
+            "error", "stop_error", "fetch_df0_error", "fetch_df1_error",
+            "boot_log_error", "config_remove_error", "release_error")
+            if result.get(key)), "")
+        if not error and not result["success"]:
+            error = f"diagnostic failed; see {path}"
+    else:
+        error = (result["error"] or result.get("specimen_error") or
+                 result.get("release_error") or "")
+    summary = {"success": result["success"], "error": error,
+               "unguarded": result.get("unguarded", []),
+               "summary": path}
     if result.get("release_error"):
         summary["release_error"] = result["release_error"]
+    if result.get("diagnose"):
+        summary["remote_config_dirty"] = result.get("remote_config_dirty", False)
+        if result.get("remote_config_path"):
+            summary["remote_config_path"] = result["remote_config_path"]
+        if result.get("config_remove_error"):
+            summary["config_remove_error"] = result["config_remove_error"]
     return json.dumps(summary,
                       sort_keys=True)
 
