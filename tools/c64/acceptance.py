@@ -1049,9 +1049,14 @@ class PoolRun:
             return key
         raise self.fail("pick", f"none of {', '.join(keys)} picked the spell")
 
-    def _acknowledge(self, limit: int = 4, *, label: str = "cure") -> list[list[str]]:
+    def _acknowledge(self, limit: int = 4, *, label: str = "cure",
+                     until: float | None = None) -> list[list[str]]:
         """Answer up to LIMIT continuation pages and keep their text."""
-        rows = self.wait_rows(lambda r: CAST_WHOM not in r[24], 60)
+        def timeout(seconds: float) -> float:
+            return seconds if until is None else max(0, min(seconds,
+                                                             until - self.clock()))
+
+        rows = self.wait_rows(lambda r: CAST_WHOM not in r[24], timeout(60))
         if rows is None:
             raise self.fail("whom-stuck", "the target question never went away")
         messages: list[list[str]] = []
@@ -1062,13 +1067,68 @@ class PoolRun:
             shown = self.capture(f"{label}-message-{n}")
             messages.append([t for t in (_inner(r) for r in shown[:24])
                              if t and not _is_frame(t)])
+            if until is not None and self.clock() >= until:
+                raise self.fail("message-deadline",
+                                "Dispel observation deadline before continuation key")
             self.sess.press_kernal(0x0D)
-            rows = self.wait_rows(lambda r, was=shown: r != was, 30)
+            rows = self.wait_rows(lambda r, was=shown: r != was, timeout(30))
             if rows is None:
                 raise self.fail("message", "the key at the end of a message did nothing")
         if CONTINUE in rows[24]:
             raise self.fail("message", f"more than {limit} pages after the cure")
         return messages
+
+    def _observe_dispel(self, before: dict, caster: str) -> list[list[str]]:
+        """Wait for a completed Pool Dispel without guessing a blank-page key."""
+        start = self.clock()
+        until = min(start + 60, self.deadline if self.deadline is not None
+                    else float("inf"))
+        caster_slot = next(p["slot"] for p in before["party"] if
+                           p.get("name", "").upper() == caster.upper())
+        messages: list[list[str]] = []
+
+        def stalled() -> StepFailed:
+            pc = self.sess.stall_capture()
+            self.log.emit("dispel-stall", elapsed=self.clock() - start, pc=pc)
+            return self.fail("dispel-pending", "Dispel Magic remained pending "
+                             f"for {self.clock() - start:.1f} seconds; {pc}")
+
+        for mark in (0, 2, 10, 30, 60):
+            target = min(start + mark, until)
+            while self.clock() < target:
+                time.sleep(min(0.4, target - self.clock()))
+            if self.spent():
+                raise stalled()
+            rows = self.capture(f"dispel-observe-{mark}")
+            reading = self.reading()
+            self.log.emit("dispel-observe", elapsed=self.clock() - start,
+                          screen=rows, reading=reading)
+            bar = rows[24] if rows else ""
+            if CONTINUE in bar:
+                if self.clock() >= until:
+                    raise stalled()
+                try:
+                    messages.extend(self._acknowledge(label="dispel", until=until))
+                except StepFailed:
+                    if self.clock() >= until:
+                        raise stalled() from None
+                    raise
+                rows = self.capture("dispel-after-continue")
+                reading = self.reading()
+                self.log.emit("dispel-observe", elapsed=self.clock() - start,
+                              screen=rows, reading=reading)
+                bar = rows[24] if rows else ""
+            if (self._list_bar(bar) or MAGIC_BAR in bar or CAMP_BAR in bar):
+                caster_after = next(p for p in reading["party"] if
+                                    p["slot"] == caster_slot)
+                consumed = caster_after["memorised"] == []
+                if not consumed:
+                    continue
+                self.log.emit("dispel-outcome", result="menu-consumed",
+                              elapsed=self.clock() - start,
+                              row=reading["effect_rows"][63])
+                return messages
+        raise stalled()
 
     def _dispel_guard(self, before: dict, caster: str, target: str) -> int:
         """Refuse a cast unless its live members and row are the intended ones."""
@@ -1164,13 +1224,20 @@ class PoolRun:
             raise self.fail("cast-whom", f"{target} could not be chosen")
         if dispel:
             self.capture("dispel-result")
-        messages = self._acknowledge(label="dispel" if dispel else "cure")
+            messages = self._observe_dispel(before, caster)
+        else:
+            messages = self._acknowledge(label="cure")
         # The cured row clears only after the spell list is exited.
         if self._list_bar(self.bar()):
             self.choose_bar("EXIT", timeout=15)
         if dispel:
             after = self.reading()
             self.log.emit("dispel-after", reading=after)
+            if after["effect_rows"] == before["effect_rows"]:
+                self.log.emit("dispel-outcome", result="unsuccessful-roll",
+                              row=after["effect_rows"][63])
+                raise self.fail("dispel-roll", "Dispel Magic completed an "
+                                "unsuccessful roll; row 63 stayed unchanged")
             self._dispel_result(before, after, slot)
             return {"caster": caster, "spell": spell, "spell_id": 41,
                     "target": target, "slot": slot,

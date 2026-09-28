@@ -2330,6 +2330,117 @@ def test_pool_dispel_picks_the_named_target_and_keeps_raw_row_checkpoints(tmp_pa
                          ("key", "Return"), ("key", 0x0D)]
 
 
+def test_pool_dispel_waits_past_blank_announcement_without_a_key(tmp_path,
+                                                                   monkeypatch):
+    before, after = _dispel_readings()
+    run, log, sess = _dispel_run(tmp_path, before, after)
+    sess.screens["announcement"] = _window(
+        {2: "ROLAND CASTS", 3: "DISPEL MAGIC"}, "")
+    sess.moves[("on", ("key", "Return"))] = "announcement"
+    elapsed = [0.0]
+    run.clock = lambda: elapsed[0]
+
+    def advance(seconds):
+        elapsed[0] += seconds
+        if elapsed[0] >= 2 and sess.state == "announcement":
+            sess.state = "msg"
+
+    monkeypatch.setattr(A.time, "sleep", advance)
+    run.reading = lambda: after if sess.state == "magic" else before
+    try:
+        got = run.cast("ROLAND:DISPEL MAGIC>BRUTUS")
+    finally:
+        log.close()
+    assert got["row_after"] == [63, 0, 5, 0, 5]
+    assert ("key", 0x0D) in sess.sent
+    assert sess.sent.count(("key", 0x0D)) == 1
+    assert list(tmp_path.glob("*-dispel-observe-*.txt"))
+
+
+def test_pool_dispel_blank_announcement_times_out_with_pc_and_no_key(
+        tmp_path, monkeypatch):
+    before, after = _dispel_readings()
+    run, log, sess = _dispel_run(tmp_path, before, after)
+    sess.screens["announcement"] = _window(
+        {2: "ROLAND CASTS", 3: "DISPEL MAGIC"}, "")
+    sess.moves[("on", ("key", "Return"))] = "announcement"
+    sess.stall_capture = lambda: "CPU PC=$1234"
+    elapsed = [0.0]
+    run.clock = lambda: elapsed[0]
+    monkeypatch.setattr(A.time, "sleep", lambda seconds: elapsed.__setitem__(
+        0, elapsed[0] + seconds))
+    try:
+        with pytest.raises(A.StepFailed, match="pending"):
+            run.cast("ROLAND:DISPEL MAGIC>BRUTUS")
+    finally:
+        log.close()
+    assert ("key", 0x0D) not in sess.sent
+    assert "CPU PC=$1234" in (tmp_path / "run.jsonl").read_text()
+
+
+def test_pool_dispel_consumed_spell_with_unchanged_row_is_failed_roll(
+        tmp_path):
+    before, after = _dispel_readings()
+    after["effect_rows"] = before["effect_rows"]
+    after["effects"] = before["effects"]
+    run, log, sess = _dispel_run(tmp_path, before, after)
+    try:
+        with pytest.raises(A.StepFailed, match="unsuccessful roll"):
+            run.cast("ROLAND:DISPEL MAGIC>BRUTUS")
+    finally:
+        log.close()
+    assert sess.state == "magic"
+
+
+def test_pool_dispel_row_can_clear_only_after_exiting_spell_list(tmp_path):
+    before, after = _dispel_readings()
+    run, log, sess = _dispel_run(tmp_path, before, after)
+    listed = {**before, "party": after["party"]}
+    sess.moves[("msg", ("key", 0x0D))] = "list"
+    sess.moves[("list", ("bar", "EXIT"))] = "magic"
+    run.reading = lambda: (after if sess.state == "magic" else
+                           listed if sess.state == "list" else before)
+    try:
+        got = run.cast("ROLAND:DISPEL MAGIC>BRUTUS")
+    finally:
+        log.close()
+    assert got["row_after"] == [63, 0, 5, 0, 5]
+    assert ("bar", "EXIT") in sess.sent
+
+
+def test_pool_dispel_menu_with_spell_still_present_waits_for_deadline(
+        tmp_path, monkeypatch):
+    before, after = _dispel_readings()
+    run, log, sess = _dispel_run(tmp_path, before, after)
+    sess.stall_capture = lambda: "CPU PC=$5678"
+    run.reading = lambda: before
+    elapsed = [0.0]
+    run.clock = lambda: elapsed[0]
+    monkeypatch.setattr(A.time, "sleep", lambda seconds: elapsed.__setitem__(
+        0, elapsed[0] + seconds))
+    try:
+        with pytest.raises(A.StepFailed, match="pending"):
+            run.cast("ROLAND:DISPEL MAGIC>BRUTUS")
+    finally:
+        log.close()
+    assert elapsed[0] >= 60
+    assert "CPU PC=$5678" in (tmp_path / "run.jsonl").read_text()
+
+
+def test_pool_dispel_does_not_acknowledge_after_observation_deadline(tmp_path):
+    run, log, sess = _dispel_run(tmp_path, *_dispel_readings())
+    sess.state = "msg"
+    elapsed = [0.0]
+    run.clock = lambda: elapsed[0]
+    sess.settle = lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds)
+    try:
+        with pytest.raises(A.StepFailed, match="deadline"):
+            run._acknowledge(label="dispel", until=0.5)
+    finally:
+        log.close()
+    assert ("key", 0x0D) not in sess.sent
+
+
 def test_pool_dispel_refuses_wrong_member_before_input_and_wrong_spell_before_pick(
         tmp_path):
     before, after = _dispel_readings()
