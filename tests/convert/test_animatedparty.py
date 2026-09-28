@@ -213,4 +213,7 @@ def test_a_charmed_dos_zombie_still_writes_the_zombie_byte_and_the_charm_row(
     assert list(ids).count(effects.CHARM_ID) == 1
     assert rec.get("flags_0b8") == stored
     assert rec.get("treasure_share") == 0
+    # Count 1 with a party charmer is the one-level Dispel Magic difference,
+    # which is noted on the warnings and does not refuse the save.
     assert not rep.losses
+    assert len([w for w in rep.warnings if "low bit" in w]) == 1

@@ -918,6 +918,19 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 charm_row_written = True
                 charm_charmer_side, charm_own_side = \
                     effects.pool_charm_sides(node)
+                if (node[3] ^ node[3] >> 7) & 1:
+                    # The row's bit 0 is the charmer's side, so an odd count
+                    # with a party charmer (or an even one with a monster)
+                    # cannot keep its low bit where the C64's Dispel Magic
+                    # reads the level: it dispels one level off.
+                    # A destination-engine limit, not a bad write: it goes on
+                    # `warnings` (the debug log), not `losses`, which would
+                    # make Save As refuse the whole save.
+                    rep.warnings.append(
+                        f"{label}: a charm whose count's low bit differs "
+                        "from its charmer's side, which the C64 dispels one "
+                        "level off (bit 0 of the row is the charmer's side; "
+                        "#667)")
 
     share = use("treasure_share")
     modify_flag = None

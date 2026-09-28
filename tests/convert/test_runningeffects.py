@@ -1787,6 +1787,31 @@ def test_a_pool_charm_node_with_no_free_effect_slot_is_a_loss_and_no_row():
     assert rec.get("flags_0b8") == c64_codec.DOS_PC_TAKEN_OVER
 
 
+@pytest.mark.parametrize("count, charmer, low_bit_lost", [
+    (7, 0, True),    # $96: the C64 dispels at level 6, DOS at 7
+    (6, 1, True),    # $97
+    (1, 0, True),
+    (6, 0, False),   # $86, the C64's own form
+    (7, 1, False),   # $87
+    (12, 1, True),
+    (15, 1, False),
+])
+def test_a_charm_count_whose_low_bit_differs_from_the_charmer_is_noted_and_not_a_loss(
+        count, charmer, low_bit_lost):
+    payload = bytearray(0x1C00)
+    node = bytes((effects.CHARM_ID, 0, 0, charmer << 7 | 0x20 | count, 1))
+    _rec, rep = c64_codec.write(_charmed_character(0, node),
+                                payload=payload, party_slot=2,
+                                clock_minutes=0)
+    assert effects.charm_magnitude(count, charmer) in {
+        m for (_a, _b, _c, m) in _rows(payload).values()}
+    lines = [d for d in rep.warnings if "low bit" in d]
+    assert bool(lines) is low_bit_lost
+    if low_bit_lost:
+        assert "one level off" in lines[0]
+    assert not rep.losses
+
+
 def test_a_pool_charm_node_no_dos_route_writes_is_a_loss_and_takes_no_row():
     payload = bytearray(0x1C00)
     rec, rep = c64_codec.write(
@@ -2163,6 +2188,13 @@ def test_a_second_charm_node_writes_the_row_when_the_first_was_refused():
                 if f"effect {effects.CHARM_ID}:" in x]) == 1
 
 
+def _assert_only_the_charm_low_bit_loss(rep, node):
+    """No loss at all; the one-level Dispel Magic difference is a warning, when due."""
+    off = (node[3] ^ node[3] >> 7) & 1
+    assert not rep.losses
+    assert len([w for w in rep.warnings if "low bit" in w]) == off
+
+
 @pytest.mark.parametrize("count", range(16))
 @pytest.mark.parametrize("data_high", [0x20, 0x60, 0xA0, 0xE0])
 def test_a_charm_nodes_count_survives_a_dos_c64_dos_round_trip(
@@ -2171,7 +2203,7 @@ def test_a_charm_nodes_count_survives_a_dos_c64_dos_round_trip(
     char = _charmed_character(0, node)
     char.set("hostile", bool(data_high & 0x80), "built here")
     rec, rep, payload = _write_charmed(char)
-    assert not rep.losses
+    _assert_only_the_charm_low_bit_loss(rep, node)
     out = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=payload,
                          party_slot=2, clock_minutes=1, source="x")
     assert [bytes(n)[:5] for n in out.get("granted_effects")] == [node]
@@ -2212,7 +2244,7 @@ def test_a_charm_writes_0x10c_with_own_side_in_bit_0_and_bits_5_and_6_clear(
     char = _charmed_character(0, node)
     char.set("hostile", bool(charmer), "built here")
     rec, rep, _payload = _write_charmed(char)
-    assert not rep.losses
+    _assert_only_the_charm_low_bit_loss(rep, node)
     assert rec.get("combat_side") == 0x80 | own
 
 

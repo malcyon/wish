@@ -2042,6 +2042,15 @@ def test_a_c64_charm_row_no_pool_writer_leaves_stays_unconverted(
     assert effects.pool_charm_record(title, row, side) is None
 
 
+@pytest.mark.parametrize("magnitude", [0x80, 0x86, 0x9F, 0x06])
+def test_pool_charm_record_ignores_a_row_that_is_not_the_charm(magnitude):
+    # is_pool_charm_magnitude looks at the magnitude only; the id check is
+    # pool_charm_record's.
+    assert effects.is_pool_charm_magnitude(magnitude)
+    row = effects.Effect(63, 12, 2, 0, magnitude)
+    assert effects.pool_charm_record(_POOL, row, 0x80) is None
+
+
 @pytest.mark.parametrize("count, charmer, magnitude", [
     (6, 0, 0x86),    # a wand or scroll, the C64's own form
     (7, 1, 0x87),    # a monster's charm at the C64's own count

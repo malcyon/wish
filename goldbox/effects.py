@@ -999,7 +999,9 @@ def is_pool_charm_magnitude(magnitude: int) -> bool:
 
     The count-preserving forms (bit 7 set, bits 5 and 6 clear, the two bits
     the handler reads) and the vampire's gaze row, `$06` and `$07`, which is
-    the same charm without bit 7.
+    the same charm without bit 7. It checks the magnitude alone and assumes
+    the caller already checked that the row's id is the charm's; a non-charm
+    row can hold such a magnitude too.
     """
     return magnitude & 0xE0 == 0x80 or magnitude in (0x06, 0x07)
 
