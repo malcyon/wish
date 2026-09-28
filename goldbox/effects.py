@@ -348,9 +348,14 @@ COMBAT_CASTER_LEVEL_IDS = frozenset({2, 21, 29, 36, 52, 53, 71})
 #: The same rule for ids only one later title casts this way: 3 (spell 70,
 #: Curse and Silver Blades), Curse's 7 (spell 79) and Silver Blades' 73
 #: (spell 95, which runs one minute a level there and never ends in Curse).
+#: Dispel Evil (spell 73) puts Curse's 145 and Silver Blades' 32 on its
+#: targets through the generic cast; the C64 writes the level (camp row 45,
+#: `ECL65 $83EE`; combat `COMBAT $1AB8`, `$1F96`). Silver Blades' 106 is Power
+#: Word Stun (spell 117, `GAME.OVR:0x327DC`; C64 `COMBAT $2389` into the
+#: generic writer).
 TITLE_COMBAT_CASTER_LEVEL_IDS: dict[str, frozenset[int]] = {
-    "curse-of-the-azure-bonds": frozenset({3, 7}),
-    "secret-of-the-silver-blades": frozenset({3, 73}),
+    "curse-of-the-azure-bonds": frozenset({3, 7, 145}),
+    "secret-of-the-silver-blades": frozenset({3, 32, 73, 106}),
 }
 
 #: Spiritual Hammer (23) and Cause Disease (34). DOS stores the caster's
@@ -389,8 +394,9 @@ HASTE_MAX_DATA = 0x1F
 #: Slowed. DOS spell 55 writes `(42, 3 + caster level minutes, level, 0)`; the
 #: C64 combat cast writes the same minutes and magnitude `level & $0F`. No
 #: id-42 handler reads the magnitude, and Dispel Magic reads its low nibble.
-#: Silver Blades' `(42, 3, 0xFF, 0)` from its id-79 handler is a different
-#: node and stays refused.
+#: The later titles' Fumble writes `(42, level minutes, 0, 0)` on a save made,
+#: and the C64's Fumble the level. Silver Blades' `(42, 3, 0xFF, 0)` from its
+#: id-79 handler is a different node and stays refused.
 SLOWED_ID = 42
 SLOWED_MAX_LEVEL = 15
 SLOWED_MAX_MINUTES = 63
@@ -407,6 +413,63 @@ GIANT_STRENGTH_ID = 113
 GIANT_STRENGTH_DOS = (0x79, 1)
 GIANT_STRENGTH_C64 = 0xBC
 _BLADES = "secret-of-the-silver-blades"
+_CURSE = "curse-of-the-azure-bonds"
+
+#: Ids whose DOS cast stores data 0 where the C64 cast stores the caster's
+#: level, flag 0 on both, and whose handlers on neither port read the value:
+#: Dispel Evil's node on its caster (4; DOS spell 73's own apply, Curse
+#: `GAME.OVR:0x32462`, Silver Blades `0x30C3F`; C64 camp row 45 and `COMBAT
+#: $1AB8`, `$1F96`), Confusion (35; spell 82, `0x328CB`, `0x30FF7`; C64
+#: `COMBAT $1B81`, `$204D` into the generic writer) and Curse's 136 (spell 78,
+#: `0x3270C`; C64 `$1AD7`). The byte is copied both ways, so Dispel Magic,
+#: the only reader, gets the source's own level.
+ZERO_LEVEL_IDS: dict[str, frozenset[int]] = {
+    _CURSE: frozenset({4, 35, 136}),
+    _BLADES: frozenset({4, 35}),
+}
+
+#: Silver Blades' id-70 gaze writes Confusion as `(35, minutes, the monster's
+#: side, 1)` (`GAME.OVR:0x130CF`). The id-35 handler returns at once in remove
+#: mode (`0x11AC4` to `0x11C7E`), so the flag does nothing, and C64 bit 7
+#: would run the Confusion roll again at expiry: the flag is not written.
+_INERT_FLAG = frozenset({(_BLADES, 35)})
+
+#: Fumble's "fumbling" (27) in the later titles. DOS spell 86 writes `(27,
+#: minutes, 0, 0)` on a failed save, and its trailing generic cast adds or
+#: replaces one with `(27, minutes, level, 1)` (Curse `0x32E04`, `0x32EB8`);
+#: the C64 writes the level with bit 7 clear (`COMBAT $1CD7`) and its
+#: Confusion handler `level | $80` (`$2134`). Both ports' handlers take the
+#: turn away, read no value, and run at removal when the flag or bit 7 is
+#: set, so magnitude = data | flag << 7.
+FLAG_BIT_IDS: dict[str, frozenset[int]] = {
+    _CURSE: frozenset({27}),
+    _BLADES: frozenset({27}),
+}
+
+#: Stinking Cloud's two effects, 30 (the save made) and 31 (failed). Every DOS
+#: engine writes `(30, 1, 0xFF, 0)` or `(31, 1d4 + 1, 0xFF, 0)` (Pool
+#: `GAME.OVR:0x2BACB`, `0x2BB1A`; Curse `0x35F9F`, `0x3605B`; Silver Blades
+#: `0x36B5A`, `0x36C13`) and every C64 cast magnitude 0, because the cloud's
+#: writer never sets the override the cast entry clears. No handler reads
+#: either value; DOS's `0xFF` is proof against Dispel Magic and the C64's 0
+#: is dispelled as level 0, each engine's rule for its own cloud.
+STINKING_CLOUD_IDS = frozenset({30, 31})
+STINKING_CLOUD_DOS = (0xFF, 0)
+
+#: Ids whose state also lives in record bytes the codecs do not convert yet,
+#: so a row alone would not reproduce it. Charm (11) keeps the charmed
+#: character's own side in DOS data bit 6 and in C64 record `0x10C` bits 1-2;
+#: Fear (Curse 142, Silver Blades 111) sets DOS's control byte to `0xB3`
+#: where the C64 sets record `0x10C` bit 6 (`docs/226`).
+_RECORD_STATE_IDS: dict[str, frozenset[int]] = {
+    "pool-of-radiance": frozenset({11}),
+    _CURSE: frozenset({11, 142}),
+    _BLADES: frozenset({11, 111}),
+}
+
+#: Silver Blades' 65: DOS spell 114 names it in its row but its routine
+#: (`GAME.OVR:0x32323`) adds no node, and no other routine adds one.
+_UNWRITTEN_IDS: dict[str, frozenset[int]] = {_BLADES: frozenset({65})}
 
 #: The ids whose value the C64 stores in the magnitude and DOS in the data byte
 #: by a rule of its own: Enlarge (12), Friends (14), Mirror Image (28) and
@@ -570,12 +633,38 @@ def _slowed_title(title_key: str) -> bool:
     return title_key == "pool-of-radiance" or title_key in LATER_CAST_FLAGS
 
 
+def _slowed_min(title_key: str) -> int:
+    """The least Slowed data byte: Fumble (spell 86, Curse and Silver Blades
+    only) writes its slowed node with data 0 (Curse `GAME.OVR:0x32E65`)."""
+    return 0 if title_key in LATER_CAST_FLAGS else 1
+
+
 def _own_rule_row(title_key: str,
                   node: RunningEffect) -> tuple[int, int] | Unconverted | None:
     """`c64_row` for id 13, Haste, Slowed, Silver Blades' id 113, the flagged
-    caster-level ids and Pool's disease chain, or `None`."""
-    if node.id == _REDUCE_ID:
-        return Unconverted("no DOS engine writes a running id-13 node")
+    caster-level ids, Pool's disease chain, the zero-level ids, Fumble and
+    Stinking Cloud, or `None`."""
+    if node.id == _REDUCE_ID or node.id in _UNWRITTEN_IDS.get(title_key, ()):
+        return Unconverted(f"no DOS engine writes a running id-{node.id} "
+                           "node")
+    if node.id in _RECORD_STATE_IDS.get(title_key, ()):
+        return Unconverted("no rule yet: this effect's state also lives in "
+                           "record bytes the codecs do not convert")
+    if node.id in ZERO_LEVEL_IDS.get(title_key, ()):
+        if node.flag != 0 and (title_key, node.id) not in _INERT_FLAG:
+            return Unconverted("a flag byte no DOS cast of this effect writes")
+        if node.data > 0x7F:
+            return Unconverted("a data byte that is not a caster level")
+        return node.id, node.data
+    if node.id in FLAG_BIT_IDS.get(title_key, ()):
+        if node.flag > 1 or node.data > 0x7F:
+            return Unconverted("a Fumble node no DOS engine writes")
+        return node.id, node.data | node.flag << 7
+    if node.id in STINKING_CLOUD_IDS and _slowed_title(title_key):
+        if (node.data, node.flag) != STINKING_CLOUD_DOS:
+            return Unconverted("a stinking-cloud node other than the one DOS "
+                               "writes")
+        return node.id, 0
     if node.id == HASTE_ID and (title_key in LATER_CAST_FLAGS
                                 or title_key == "pool-of-radiance"):
         if node.flag != 0:
@@ -586,7 +675,7 @@ def _own_rule_row(title_key: str,
     if node.id == SLOWED_ID and _slowed_title(title_key):
         if node.flag != 0:
             return Unconverted("a flag byte other than 0 on Slowed")
-        if not 1 <= node.data <= SLOWED_MAX_LEVEL:
+        if not _slowed_min(title_key) <= node.data <= SLOWED_MAX_LEVEL:
             return Unconverted("a Slowed data byte that is not a caster "
                                "level of 1 to 15")
         if not 1 <= node.minutes <= SLOWED_MAX_MINUTES:
@@ -623,9 +712,21 @@ def _own_rule_node(title_key: str, effect_id: int,
             return Unconverted("a Haste magnitude no C64 cast writes")
         return m, 0
     if effect_id == SLOWED_ID and _slowed_title(title_key):
-        if not 1 <= m <= SLOWED_MAX_LEVEL:
+        if not _slowed_min(title_key) <= m <= SLOWED_MAX_LEVEL:
             return Unconverted("a Slowed magnitude no C64 cast writes")
         return m, 0
+    if effect_id in ZERO_LEVEL_IDS.get(title_key, ()):
+        if m > 0x7F:
+            return Unconverted("a magnitude the C64 cast of this effect "
+                               "does not write")
+        return m, 0
+    if effect_id in FLAG_BIT_IDS.get(title_key, ()):
+        return m & 0x7F, m >> 7
+    if effect_id in STINKING_CLOUD_IDS and _slowed_title(title_key):
+        if m != 0:
+            return Unconverted("a stinking-cloud magnitude other than the "
+                               "C64's own")
+        return STINKING_CLOUD_DOS
     if effect_id == GIANT_STRENGTH_ID and title_key == _BLADES:
         if m != GIANT_STRENGTH_C64:
             return Unconverted("an id-113 magnitude other than the C64's "
@@ -662,7 +763,8 @@ def c64_row(title_key: str, node: RunningEffect, *,
     `LATER_CASTER_LEVEL_IDS`) convert with flag 0 and a caster level as the
     data byte. Enlarge, Friends, Mirror Image and Strength (12, 14, 28, 38)
     take their title's rule from `docs/226`; `strength_nodes` counts the
-    nodes on this character that set strength. A state refused as one "no DOS
+    nodes on this character that set strength. The other ids with a rule of
+    their own are listed at `_own_rule_row`. A state refused as one "no DOS
     engine writes" is unreachable in play.
     """
     own = _own_rule_row(title_key, node)

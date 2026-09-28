@@ -561,7 +561,12 @@ each C64 cast down to its row writer. Static reads only; none has been booted.
 | Rule | Titles and ids | DOS node | C64 row | Code |
 |---|---|---|---|---|
 | magnitude = data, flag 0 | all: 2, 52, 53, 71 | `(id, minutes, level, 0)` | `level & $0F` from the generic combat writer | 2: the Bless area routine into the generic cast, Pool `GAME.OVR:0x28013`, Curse `0x2FD01`, Silver Blades `0x2E54F`; C64 `SPELLE00 $A8A1`, `COMBAT $15E7`, `$188B`. 52: Hold Person's own apply, Pool `0x287DD` (level from `START:0x3262`), Curse `0x2FC41`, Silver Blades `0x2E48F`; C64 `$AA45`, `$17E7`, `$1B84`. 53: spell 21 into the generic cast; C64 `$A9F8`, `$177C`, `$1AF8`. 71: Pool and Curse spell 63 and Silver Blades spell 79; Silver Blades casts 79 through the shared custom cast `0x2E313`, which tests for spell 79 at `0x2E3CA`; C64 Pool `SPELLE00 $AD54` and Curse `COMBAT $1A71` double the level first, and Silver Blades' `COMBAT2` row `04 1C 00 47 41 BF 1F`, Curse's id-7 row with the id changed, runs `COMBAT $1FBF` |
-| magnitude = data, flag 0 | Curse and Silver Blades: 3; Curse: 7; Silver Blades: 73 | the same | the same (73: `COMBAT $2283` writes the level through `$1223`) | 3: spell 70, handler reads data as a counter it drains (Curse `0xFFC3`); C64 `$1A85`, `$1F6D`. 7: Curse spell 79, Faerie Fire ("is highlighted"), through the shared custom cast `0x2FAD9`, which tests for spell 79 at `0x2FB92` and holds 52's apply call; C64 `COMBAT2` row `04 1C 00 07 41 EC 1A` runs `COMBAT $1AEC`. 73: Silver Blades spell 95; C64 `COMBAT2` row `00 F0 00 49 3A 83 22` runs `$2283`, which loads `LDX #$49` |
+| magnitude = data, flag 0 | Curse and Silver Blades: 3; Curse: 7, 145; Silver Blades: 32, 73, 106 | the same | the same (73: `COMBAT $2283` writes the level through `$1223`) | 3: spell 70, handler reads data as a counter it drains (Curse `0xFFC3`); C64 `$1A85`, `$1F6D`. 7: Curse spell 79, Faerie Fire ("is highlighted"), through the shared custom cast `0x2FAD9`, which tests for spell 79 at `0x2FB92` and holds 52's apply call; C64 `COMBAT2` row `04 1C 00 07 41 EC 1A` runs `COMBAT $1AEC`. 73: Silver Blades spell 95; C64 `COMBAT2` row `00 F0 00 49 3A 83 22` runs `$2283`, which loads `LDX #$49`. 145 and Silver Blades' 32: Dispel Evil (spell 73), below. 106: Silver Blades' Power Word Stun (spell 117, `0x327DC`, data from the level routine `0x3AFD7`); C64 `COMBAT $2389` rolls the same 4, 2 or 1 d4 by hit points and jumps to the generic writer `$0F70` |
+| magnitude = data \| `$80`, flag 1 | all: 23, 34 | `(id, minutes, level, 1)` | `level \| $80` | 23 Spiritual Hammer: generic cast flag 1, Pool `0x28A01`; C64 `SPELLE00 $AABF`, `COMBAT $1845`, `$1BF4`. 34 Cause Disease: generic cast flag 1, Pool `0x2938A`; C64 `$ABB9`, `$18A8`, `$1C63` |
+| `(0xFF, 1)` = `$FF` | Pool: 4, 7, 62 | `(4, 1440, FF, 1)`, `(7, 43200, FF, 1)`, `(62, 60, FF, 1)` | `$FF` | DOS spell 67 (generic cast `0x2A0E0`, data `FF`, flag 1), then handlers 4 (`0xEE13`) and 7 (`0xEED8`); C64 camp row 67 `SPELLE04 $ACC6`, expiry `$ACCE` and `$ACD7` through `$ADF3` |
+| magnitude = data, 0 allowed, flag 0 | Curse: 4, 35, 136; Silver Blades: 4, 35 | `(id, minutes, 0, 0)` | the caster's level | 4: Dispel Evil's node on its caster, spell 73's own apply (Curse `0x32462`, Silver Blades `0x30C3F`); C64 camp row 45 (`ECL65 $83EE`, `$8463`) and `COMBAT $1AB8`, `$1F96`. 35: Confusion, spell 82 (`0x328CB`, `0x30FF7`); C64 `COMBAT $1B81`, `$204D` into the generic writer. 136: Curse spell 78 (`0x3270C`, 10 minutes); C64 `$1AD7` into `$0F9B` |
+| magnitude = data \| flag << 7 | Curse and Silver Blades: 27 | `(27, minutes, 0, 0)` or `(27, minutes, level, 1)` | the level (Fumble), or `level \| $80` (Confusion) | Fumble, below |
+| `(0xFF, 0)` = 0 | all: 30, 31 | `(30, 1, FF, 0)`, `(31, 1d4 + 1, FF, 0)` | 0 | Stinking Cloud, below |
 
 The custom cast takes the id from the spell's row in the data segment, byte
 `0x37E6 + 16 × spell` in Curse (`0x2FC19`) and `0x44A7 + 16 × spell` in Silver
@@ -571,9 +576,8 @@ spell 63's names 71 in Pool and Curse and 0 in Silver Blades, and spell 70's
 names 3 in both later titles. The second row used to list the Silver Blades
 cast at `0x2E313` and `$1FBF` as "Silver Blades 71" among its evidence for
 Silver Blades' 73; both write 71, which belongs to the first row, and Silver
-Blades' 73 comes from spell 95.
-| magnitude = data \| `$80`, flag 1 | all: 23, 34 | `(id, minutes, level, 1)` | `level \| $80` | 23 Spiritual Hammer: generic cast flag 1, Pool `0x28A01`; C64 `SPELLE00 $AABF`, `COMBAT $1845`, `$1BF4`. 34 Cause Disease: generic cast flag 1, Pool `0x2938A`; C64 `$ABB9`, `$18A8`, `$1C63` |
-| `(0xFF, 1)` = `$FF` | Pool: 4, 7, 62 | `(4, 1440, FF, 1)`, `(7, 43200, FF, 1)`, `(62, 60, FF, 1)` | `$FF` | DOS spell 67 (generic cast `0x2A0E0`, data `FF`, flag 1), then handlers 4 (`0xEE13`) and 7 (`0xEED8`); C64 camp row 67 `SPELLE04 $ACC6`, expiry `$ACCE` and `$ACD7` through `$ADF3` |
+Blades' 73 comes from spell 95. This table used to sit split in two by that
+paragraph, which left its last two rows outside it.
 
 The C64 handler for each of these ids reads no magnitude, and neither does the
 DOS handler except 3's counter and Pool 62's, which copies the byte into the
@@ -581,13 +585,129 @@ node it re-adds every hour (`0x1014F`), so Dispel Magic's low nibble is the
 only reader of the value, the same on both ports. A converted row therefore behaves as the
 destination's own cast of the same spell. Where the engines differ, as when
 C64 Pool and Curse clear 52 and 53 at the end of a fight and DOS does not, the
-difference is each engine's own rule.
+difference is each engine's own rule. Silver Blades' C64 id-32 handler is the
+one exception on the C64 side: it copies the low nibble into `COMBAT2 $F2C9`
+for the banishing roll (`COMBAT $263D`-`$2645`), which copying the DOS level
+feeds as the C64's own cast does.
 
-Spell 86 (Curse and Silver Blades, a fourth-level magic-user spell) writes 27 or 42
-through its own apply with **data 0**, and then the generic cast with flag 1
-(Curse `0x32E04`, `0x32E65`, `0x32EB8`). The C64 writes both with the level
-(`COMBAT $1CD7`, `$1CE5`). Neither id converts yet, and the slowed rule refuses
-that form of 42.
+**Dispel Evil (spell 73), CONFIRMED from both ports' code.** DOS puts `(4,
+level minutes, 0, 0)` on the caster through its own apply and then the
+generic cast puts the spell row's id on the targets: 145 in Curse (row byte
+10 `0x91`), 32 in Silver Blades (`0x20`). The C64's combat cast writes both
+rows on the caster with the level and a duration of the level (Curse `COMBAT
+$1AB8`: `LDX #$91`, then `LDX #$04`; Silver Blades `$1F96`: `LDX #$20`, then
+`LDX #$04`). So 145 and Silver Blades' 32 do have C64 rows, which #667 (A DOS
+party under Prayer, the strength and charisma spells, Mirror Image or an
+effect with no C64 spell row is still refused when saved as a C64 save,
+because only the ordinary caster-level spells convert) had said they lack: the
+combat table names id 4 for spell 73, and the handler writes the second row
+itself. The id-145 and id-32 handlers on both ports banish an attacker of the
+flagged kind on a failed save and then remove 4 and themselves; the id-4
+handlers read no value.
+
+**PROBABLE, a C64 Silver Blades quirk:** the camp cast (row 45, `ECL65 $8463`)
+writes 4 and then **145**, Curse's id, not 32 (`LDA #$91 / STA $2AC0`). Silver
+Blades' combat handler table has 113 entries, so nothing there answers for 145.
+What would settle it: list every constant id Silver Blades' combat check lists
+(`COMBAT2 $EF4F` and its neighbours) ask for; no 145 confirms that a camp Dispel
+Evil protects only through id 4 on the C64. Coming back to DOS, that row has no
+rule (Silver Blades' DOS has no id-145 handler), which is reverse-direction
+work on #661 (A C64 party under a running spell loses it on the way to DOS or
+the Amiga with no line anywhere, because the C64 reader reads only the
+paladin's rows out of the effect arrays).
+
+**Confusion (35), CONFIRMED from both ports' code.** Spell 82 writes `(35,
+minutes, 0, 0)` and nothing else; the handler rolls each round and reads no
+node byte (Curse `0x108C0`, Silver Blades `0x11AB8`). Its outcomes are other
+nodes: 1-10 removes 35 and adds Fear-like `(142, 10, 0, 1)` (Silver Blades 111)
+with the record changes Fear makes, 61-80 adds `(137, 1, the side, 1)` (Silver
+Blades 107). The C64 handler (`COMBAT $2134`, `$2685`) copies the row's
+magnitude with bit 7 set into the override and writes 27, 137 or 142 (Silver
+Blades 27, 107, 111) for one round or ten minutes; the ids it derives read no
+magnitude, so the value is still only a Dispel level. An earlier reading
+that said the C64 "reuses the magnitude as the level of a retaliation cast" and
+that DOS takes it from the record misread both: the record byte DOS uses is
+the side, and it goes into the id-137 node. A DOS character holding 35 has
+no Confusion byte in the record; the record changes belong to the 142 and 137
+nodes, which are refused. Silver Blades also writes Confusion from its id-70
+gaze as `(35, 1d10 + 2, the monster's side, 1)` (`GAME.OVR:0x130CF`). Its
+handler returns at once in remove mode (`0x11AC4` to `0x11C7E`), so the flag
+does nothing there, and on the C64 bit 7 would run the Confusion roll a second
+time at expiry; the converted row keeps the data byte and not the flag, and
+comes back with flag 0. That byte is the one this rule does not round-trip.
+
+**Fumble (spell 86, Curse and Silver Blades), CONFIRMED in Curse, the Silver
+Blades call sites the same.** The spell rolls a save: a failure applies `(27,
+level minutes, 0, 0)`, a success `(42, level minutes, 0, 0)` (Curse `0x32E04`,
+`0x32E65`; Silver Blades `0x3142B`, `0x31496`). It then calls the generic cast
+with data 0 and flag 1 (`0x32EB8`, `0x314C8`), which rolls a **second** save
+for the target and on a failure applies the row's id, 27, as `(27, minutes,
+level, 1)`. Curse's apply finds an existing node of the id and removes it
+before adding (`0x37364`-`0x373B0`); Silver Blades' only raises the old node's
+duration (`0x37F10`-`0x37F48`). So a DOS target ends with `(27, m, 0, 0)`,
+`(27, m, level, 1)` (Curse, both saves failed), `(42, m, 0, 0)`, or `(42, m,
+0, 0)` together with `(27, m, level, 1)`. The C64 writes one row, 27 or 42
+with the level, and skips the 42 for a hasted target (`COMBAT $1CC9`-`$1CEC`).
+Both ports' id-27 handlers take the turn away (DOS `0x39E89` clears the combat
+record's action bytes; C64 `$2C4E` and Silver Blades `$FD2A` clear four combat
+arrays), read no value, and run again at removal when the flag or bit 7 is
+set; neither title's camp expiry list holds 27. So 27 converts as `data |
+flag << 7` and back, and the slowed rule takes data 0 in these two titles.
+
+**Stinking Cloud (30, 31), CONFIRMED from both ports' code.** The cloud check
+writes `(30, 1, FF, 0)` for a save made and `(31, 1d4 + 1, FF, 0)` for one
+failed, the same in all three DOS engines (Pool `0x2BACB`, `0x2BB1A`; Curse
+`0x35F9F`, `0x3605B`; Silver Blades `0x36B5A`, `0x36C13`). The C64 casts (Pool
+`SPELLE00 $AAD3`, Curse `COMBAT $1859`, Silver Blades `$1C08`) pick 30 or 31 on
+the same save and write through the row writer with the override the cast
+entry cleared (Curse `$0DD9`, Pool `ECL64 $991F`), so the magnitude is 0. No
+handler reads either byte. They differ in one thing a player could see: DOS's
+`FF` is proof against Dispel Magic, and the C64 dispels its own cloud rows as
+level 0 (all three C64 Dispels try 30 and 31). The conversion keeps each
+engine's own byte, so a converted party behaves as the destination's own
+cloud would. The two duration-0 `(31, 0, FF, 0)` records from handlers 43 and
+44 are granted effects and take the other route.
+
+### Charm and Fear keep part of their state in the record
+
+**CONFIRMED from both ports' code; not converted, because the row is only part
+of the state.** `goldbox.effects` refuses these with a reason that says so.
+
+| Effect | DOS | C64 |
+|---|---|---|
+| Charm, 11 | Silver Blades spells 10 and 96 write `(11, 60 + 60 a level, charmer's side << 7 \| level, 1)` (`0x2E75A`-`0x2E799`). The handler's first call adds `0x20` and the target's own side `<< 6`, sets the side byte `0x1A8` to bit 7, the quickfight byte `0x1A9` to 1 and the control byte `0xFF` to `0xB3`; remove mode puts back the side from bit 6 (`0x11183`-`0x1126B`). Pool and Curse write the node with duration 0 (spell 10's row, bytes 4-5 zero), so only Silver Blades holds a running one | the cast writes `$80 \| level` (`COMBAT $1A67`) and sets record `0x10C` to the charmer's side in bit 0, the target's own side in bit 1, and bits 2, 6 and 7 (`$1A87`-`$1A9E`, `ORA #$C4`; Curse `$171B`). The handler's expiry path puts bit 0 back from bit 1 when bit 2 is set (`$24B8`, Curse `$1EE4`) |
+| Fear, Curse 142, Silver Blades 111 | spell 84 writes `(id, level minutes, 0, 1)` and sets the quickfight byte (`0x198`, `0x1A9`) to 1 and the control byte (`0xF7`, `0xFF`) to `0xB3` (Curse `0x32B51`-`0x32B89`); Confusion's 1-10 does the same with `(id, 10, 0, 1)`. Remove mode clears both (`0x12819`, `0x144A0`) | the cast writes `level \| $80` and sets record `0x10C` bits 6 and 7 and the combat flee flag (`COMBAT $21C7`, Silver Blades `$2718`); the expiry handler clears bit 6 and the flee flag (`$2911`, `$297F`) |
+
+The node and the row map one to one (Charm: C64 `$80 | (data & $0F)` and bit
+7 for the flag; Fear: `data | $80`). What does not is the record. The C64
+reader masks `0x10C` to bits 0 and 7 and the writer sets only those, so a
+converted charmed character would lose the side the C64 puts back at expiry;
+and the DOS control byte `0xB3` reaches the C64's `0x0B8` unchanged, where the
+C64's own Fear never writes it and its end-of-Fear code keeps quickfight on
+while `0x0B8` bit 7 is set (`$241C`). `goldbox/layout.py` calls `0x10C` bits
+1-6 unused by every writer seen; the Charm, Fear and Confusion writers above
+set bits 1, 2 and 6, and `COM.PREP`, `POST.COM $31A2` and `ECL64 $3DD6` read
+them as part of the side. Converting these needs the record's side,
+quickfight and control bytes mapped together with the row, in both codecs.
+
+**Silver Blades' 65 is never a running node. CONFIRMED from a survey of
+every writer.** Spell 114's row names 65, but its routine (`GAME.OVR:0x32323`) rolls
+a save and calls the death routine without adding any node, and no constant
+`add_affect` or apply names 65. The C64's spell 114 row names no id. A writer
+that picks the id at run time would not show in that survey.
+
+**PROBABLE, a DOS Silver Blades defect: Power Word Stun on a target of 91 hit
+points or more writes a node that never ends.** Spell 117 picks 4d4, 2d4 or
+1d4 by hit points and 0 above 90 (`0x3274B`-`0x3279B`), and applies `(106,
+that roll, level, 0)` whatever the roll; the apply adds a duration-0 node
+(`0x37F4A`), which never expires, and the id-106 handler takes the turn away
+(`0x142E4`). The C64 cast returns without a row above 90 (`COMBAT $23A0`). What
+would settle it: a DOSBox-X run in which a Silver Blades magic-user casts
+Power Word Stun on a monster of more than 90 hit points, and the monster then
+loses every turn for the rest of the fight. On a party member the node takes
+the never-expiring route of #671 (A DOS character under Invisibility,
+blindness or another spell that never runs out reaches the C64 with it in a
+trait slot, where an attack or a combat cure cannot end it).
 
 ### The DOS duration routine gives six spells a time the row does not
 
@@ -744,7 +864,13 @@ missed them because their C64 casts are combat-only
 `(113, minutes, 0x79, 1)` and C64 magnitude `$BC`, the pair each engine writes
 for its own cast of spell 59 (read 1). Id 13 stays refused with a reason of
 its own, and no save a game wrote reaches it: DOS Reduce (spell 13) removes an
-id-12 node and writes no id-13 node in any title (read 3c).
+id-12 node and writes no id-13 node in any title (read 3c). Dispel Evil (4
+and Curse's 145 or Silver Blades' 32), Confusion (35), Fumble (27, and 42 with
+data 0), Stinking Cloud (30, 31), Curse's 136 and Silver Blades' Power Word
+Stun (106) convert both ways by the rules in "Combat-cast ids and their
+rules". Charm (11) and Fear (Curse 142, Silver Blades 111) wait on the record
+bytes they share with the row, Silver Blades' 65 is never a running node, and
+Slow Poison (22) waits on a save the DOS game writes with it running.
 
 Reproduce the static readings with `.venv/bin/python
 tools/c64/effectcrosswalk.py`; a later title's run prints its caster-level ids.
@@ -809,9 +935,9 @@ may be a monster, and party-wide ids 35 and 49 have a separate converter.
 
 | Title | Candidate ids with no `dos_record` rule |
 |---|---|
-| Pool of Radiance | 11, 13, 22, 30, 32, 33, 35, 49, 51, 77, 108 |
-| Curse of the Azure Bonds | 4, 11, 13, 15, 18, 22, 27, 33, 35, 49, 55, 58, 68, 73, 109, 136, 137, 142–144, 146 |
-| Secret of the Silver Blades | 4, 11, 13, 22, 27, 30, 33, 35, 49, 51, 55, 68, 106, 107, 111, 112 |
+| Pool of Radiance | 11, 13, 22, 32, 33, 35, 49, 51, 77, 108 |
+| Curse of the Azure Bonds | 11, 13, 15, 18, 22, 33, 49, 55, 58, 68, 73, 109, 137, 142–144, 146 |
+| Secret of the Silver Blades | 11, 13, 22, 33, 49, 51, 55, 68, 107, 111, 112 |
 
 | Refusal | Sweep evidence and limit |
 |---|---|

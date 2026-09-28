@@ -1206,6 +1206,123 @@ def test_pools_disease_chain_is_ff_on_both_ports(eid):
         assert isinstance(effects.c64_row(title, node), effects.Unconverted)
 
 
+@pytest.mark.parametrize("title, eid", [
+    ("curse-of-the-azure-bonds", 4), ("curse-of-the-azure-bonds", 35),
+    ("curse-of-the-azure-bonds", 136), (_BLADES, 4), (_BLADES, 35),
+])
+def test_dispel_evil_confusion_and_136_copy_a_zero_data_byte(title, eid):
+    # DOS writes data 0 (Dispel Evil's node on the caster, Confusion, 136);
+    # the C64 writes the caster's level. Only Dispel Magic reads either.
+    for data in (0, 1, 9, 0x7F):
+        node = effects.RunningEffect(eid, 7, data, 0)
+        assert effects.c64_row(title, node) == (eid, data)
+        row = effects.Effect(63, eid, 0, 7, data)
+        assert effects.dos_record(title, row, 0) == node
+    assert isinstance(effects.c64_row(title, effects.RunningEffect(
+        eid, 7, 0x80, 0)), effects.Unconverted)
+    assert isinstance(effects.dos_record(title, effects.Effect(
+        63, eid, 0, 7, 0x81), 0), effects.Unconverted)
+
+
+@pytest.mark.parametrize("title, eid", [
+    ("curse-of-the-azure-bonds", 4), ("curse-of-the-azure-bonds", 35),
+    ("curse-of-the-azure-bonds", 136), (_BLADES, 4),
+])
+def test_a_zero_data_node_with_a_flag_no_cast_writes_is_refused(title, eid):
+    node = effects.RunningEffect(eid, 7, 1, 1)
+    assert isinstance(effects.c64_row(title, node), effects.Unconverted)
+
+
+def test_silver_blades_gaze_confusion_converts_and_drops_only_its_inert_flag():
+    # The id-70 gaze writes (35, minutes, the monster's side, 1); Silver
+    # Blades' handler returns at once in remove mode, and C64 bit 7 would run
+    # the Confusion roll again at expiry, so the flag is not written.
+    node = effects.RunningEffect(35, 7, 1, 1)
+    assert effects.c64_row(_BLADES, node) == (35, 1)
+    assert effects.dos_record(_BLADES, effects.Effect(63, 35, 0, 7, 1), 0) \
+        == effects.RunningEffect(35, 7, 1, 0)
+    assert isinstance(effects.c64_row("curse-of-the-azure-bonds", node),
+                      effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", _LATER)
+def test_fumble_keeps_its_flag_in_bit_7(title):
+    # Fumble writes (27, m, 0, 0), and its trailing generic cast (27, m,
+    # level, 1); the C64's Confusion handler writes level | $80.
+    for data, flag in ((0, 0), (9, 0), (0, 1), (9, 1), (0x7F, 1)):
+        node = effects.RunningEffect(27, 9, data, flag)
+        assert effects.c64_row(title, node) == (27, data | flag << 7)
+        row = effects.Effect(63, 27, 0, 9, data | flag << 7)
+        assert effects.dos_record(title, row, 0) == node
+    for node in (effects.RunningEffect(27, 9, 0x80, 0),
+                 effects.RunningEffect(27, 9, 0, 2)):
+        assert isinstance(effects.c64_row(title, node), effects.Unconverted)
+    assert isinstance(effects.c64_row("pool-of-radiance",
+                                      effects.RunningEffect(27, 9, 0, 0)),
+                      effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", _LATER)
+def test_fumbles_slowed_node_of_data_0_converts_in_the_later_titles(title):
+    node = effects.RunningEffect(42, 9, 0, 0)
+    assert effects.c64_row(title, node) == (42, 0)
+    assert effects.dos_record(title, effects.Effect(63, 42, 0, 9, 0), 0) \
+        == node
+
+
+@pytest.mark.parametrize("title", _ALL)
+@pytest.mark.parametrize("eid, minutes", [(30, 1), (31, 5)])
+def test_stinking_cloud_is_ff_on_dos_and_zero_on_the_c64(title, eid, minutes):
+    node = effects.RunningEffect(eid, minutes, 0xFF, 0)
+    assert effects.c64_row(title, node) == (eid, 0)
+    row = effects.Effect(63, eid, 0, minutes, 0)
+    assert effects.dos_record(title, row, 0) == node
+    for bad in (effects.RunningEffect(eid, minutes, 5, 0),
+                effects.RunningEffect(eid, minutes, 0xFF, 1)):
+        assert isinstance(effects.c64_row(title, bad), effects.Unconverted)
+    assert isinstance(effects.dos_record(title, effects.Effect(
+        63, eid, 0, minutes, 5), 0), effects.Unconverted)
+
+
+@pytest.mark.parametrize("title, eid", [
+    ("curse-of-the-azure-bonds", 145), (_BLADES, 32), (_BLADES, 106),
+])
+def test_dispel_evil_and_power_word_stun_take_the_caster_level_rule(title, eid):
+    node = effects.RunningEffect(eid, 12, 6, 0)
+    assert effects.c64_row(title, node) == (eid, 6)
+    assert effects.dos_record(title, effects.Effect(63, eid, 0, 12, 6), 0) \
+        == node
+
+
+@pytest.mark.parametrize("title, eid", [
+    ("pool-of-radiance", 145), ("curse-of-the-azure-bonds", 106),
+    (_BLADES, 145), ("curse-of-the-azure-bonds", 32),
+])
+def test_a_dispel_evil_or_stun_id_of_another_title_stays_unconverted(
+        title, eid):
+    got = effects.c64_row(title, effects.RunningEffect(eid, 12, 6, 0))
+    assert isinstance(got, effects.Unconverted)
+
+
+@pytest.mark.parametrize("title, node", [
+    ("pool-of-radiance", effects.RunningEffect(11, 60, 0x05, 1)),
+    ("curse-of-the-azure-bonds", effects.RunningEffect(11, 60, 0x05, 1)),
+    (_BLADES, effects.RunningEffect(11, 120, 0x85, 1)),
+    ("curse-of-the-azure-bonds", effects.RunningEffect(142, 10, 0, 1)),
+    (_BLADES, effects.RunningEffect(111, 10, 0, 1)),
+])
+def test_charm_and_fear_wait_on_their_record_bytes(title, node):
+    got = effects.c64_row(title, node)
+    assert isinstance(got, effects.Unconverted)
+    assert "record" in got.reason and "no rule yet" in got.reason
+
+
+def test_silver_blades_65_is_never_written_as_a_running_node():
+    got = effects.c64_row(_BLADES, effects.RunningEffect(65, 5, 3, 0))
+    assert isinstance(got, effects.Unconverted)
+    assert "no DOS engine writes" in got.reason
+
+
 @pytest.mark.parametrize("title", _LATER)
 def test_a_later_title_invisible_node_becomes_id_and_level(title):
     assert effects.c64_row(title, effects.RunningEffect(25, 1, 0x0C, 0)) \
@@ -1739,10 +1856,16 @@ def test_a_slowed_node_round_trips_through_the_c64_row(title, level):
 def test_a_slowed_variant_no_ordinary_cast_writes_stays_unconverted(title):
     for node in (effects.RunningEffect(42, 3, 0xFF, 0),
                  effects.RunningEffect(42, 6, 3, 1),
-                 effects.RunningEffect(42, 6, 0, 0),
                  effects.RunningEffect(42, 6, 16, 0),
                  effects.RunningEffect(42, 64, 3, 0)):
         assert isinstance(effects.c64_row(title, node), effects.Unconverted)
+
+
+def test_pool_has_no_fumble_so_a_slowed_node_of_data_0_is_refused():
+    # Data 0 is Fumble's slowed node, and only the later titles cast Fumble.
+    node = effects.RunningEffect(42, 6, 0, 0)
+    assert isinstance(effects.c64_row("pool-of-radiance", node),
+                      effects.Unconverted)
 
 
 @pytest.mark.parametrize("title", _ALL)
@@ -1753,8 +1876,10 @@ def test_a_slowed_node_of_one_minute_converts_and_zero_cannot_be_built(title):
         effects.RunningEffect(42, 0, 3, 0)
 
 
-@pytest.mark.parametrize("title", _ALL)
-@pytest.mark.parametrize("magnitude", [0, 16])
+@pytest.mark.parametrize("title, magnitude", [
+    ("pool-of-radiance", 0), ("pool-of-radiance", 16),
+    ("curse-of-the-azure-bonds", 16), ("secret-of-the-silver-blades", 16),
+])
 def test_a_c64_slowed_row_with_a_magnitude_no_cast_writes_is_refused(
         title, magnitude):
     row = effects.Effect(63, 42, 0, 6, magnitude)

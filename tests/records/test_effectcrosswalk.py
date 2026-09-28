@@ -503,14 +503,14 @@ def test_the_later_title_command_prints_the_derived_ids(later_ids, capsys):
 @pytest.mark.parametrize("title, camp, combat, distinct, stripped, literal_ids, "
                          "generic, unresolved, no_rule", [
     ("pool-of-radiance", (67, 46), (67, 45), 42, 11, (5,), 20, 71,
-     {11, 13, 22, 30, 32, 33, 35, 49, 51, 77, 108}),
+     {11, 13, 22, 32, 33, 35, 49, 51, 77, 108}),
     ("curse-of-the-azure-bonds", (56, 38), (100, 61), 54, 8,
      (5, 13, 27, 45, 58, 137, 144), 24, 75,
-     {4, 11, 13, 15, 18, 22, 27, 33, 35, 49, 55, 58, 68, 73, 109, 136, 137,
-      142, 143, 144, 146}),
+     {11, 13, 15, 18, 22, 33, 49, 55, 58, 68, 73, 109, 137, 142, 143, 144,
+      146}),
     ("secret-of-the-silver-blades", (56, 39), (117, 64), 51, 0,
      (5, 12, 27, 45, 107), 27, 76,
-     {4, 11, 13, 22, 27, 30, 33, 35, 49, 51, 55, 68, 106, 107, 111, 112}),
+     {11, 13, 22, 33, 49, 51, 55, 68, 107, 111, 112}),
 ])
 def test_c64_row_sweep_counts_table_candidates_and_literal_writers(
         title, camp, combat, distinct, stripped, literal_ids,
