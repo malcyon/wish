@@ -1773,6 +1773,20 @@ def test_a_pool_charm_node_with_no_payload_is_a_loss():
     assert rec.get("flags_0b8") == c64_codec.DOS_PC_TAKEN_OVER
 
 
+def test_a_pool_charm_node_with_no_free_effect_slot_is_a_loss_and_no_row():
+    payload = bytearray(0x1C00)
+    for slot in range(effects.EFFECT_SLOTS):
+        effects.write_effect(payload, slot, 1, 5, 0x02, 1)
+    before = bytes(payload)
+    rec, rep = c64_codec.write(_charmed_character(0), payload=payload,
+                               party_slot=2, clock_minutes=0)
+    assert bytes(payload) == before
+    assert any(f"effect {effects.CHARM_ID}:" in line and "no free slot" in line
+               for line in rep.losses)
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+    assert rec.get("flags_0b8") == c64_codec.DOS_PC_TAKEN_OVER
+
+
 def test_a_pool_charm_node_no_dos_route_writes_is_a_loss_and_takes_no_row():
     payload = bytearray(0x1C00)
     rec, rep = c64_codec.write(

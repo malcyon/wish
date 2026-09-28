@@ -836,18 +836,19 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # records.  So a player character's share in these two titles is always
     # the raw byte, whatever its value.
     is_npc = bool(w.get("npc"))
-    # A Pool player character the engine has taken over by its charm: he is a
+    # A Pool player character the engine has taken over by its charm is a
     # player character on the C64, so his share byte is the ability-altered
-    # flag like any other player character's.
-    # The one predicate for the charm row, the 0x0B8 arm and the share byte:
-    # only a Pool character DOS itself charmed (an engine-driven record with
-    # the taken-over control byte, on the party's side) with an accepted node
-    # and somewhere to write the row converts; any other charm node is a loss.
+    # flag like any other player character's.  The one predicate for the charm
+    # row, the 0x0B8 arm and the share byte: only a Pool character DOS itself
+    # charmed (an engine-driven record with the taken-over control byte, on
+    # the party's side) with an accepted node converts; any other charm node
+    # is a loss.  A free slot is not tested here: an earlier row can take the
+    # last one before the charm row is written, so the write reports it.
     pool_charmed = bool(
         deltas is POOL_OF_RADIANCE_RECORD and is_npc
         and w.get("npc_control_byte") == DOS_PC_TAKEN_OVER
         and not w.get("hostile") and granted is not None
-        and payload is not None and effects.free_slot(payload) is not None
+        and payload is not None
         and any(isinstance(effects.pool_charm_row(deltas.key, bytes(n)),
                            tuple) for n in granted.value))
     charm_row_written = False
