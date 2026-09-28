@@ -116,6 +116,10 @@ norecursedirs = [
 # each other. `-n 0` on the command line disables this for a single debugging
 # run.
 addopts = "-n auto --dist loadgroup"
+# A passing test's `tmp_path` is removed when it finishes, because the Amiga
+# acceptance tests write about 12 MB of floppy images each and `/tmp` on the
+# agent machine is a shared 4 GB tmpfs. A failed test's directory stays.
+tmp_path_retention_policy = "failed"
 
 [tool.ruff]
 line-length = 88
