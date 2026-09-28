@@ -383,7 +383,7 @@ LATER_INVISIBLE_ID = 25
 #: Charm. DOS Pool of Radiance writes it as a granted node at duration 0 that
 #: outlasts the fight, so only a DOS Pool source reaches it; the other two
 #: titles clear a charm at the end of the fight it was cast in, so their
-#: characters carry none to convert.
+#: characters carry none to convert (`docs/226`).
 CHARM_ID = 11
 
 #: Haste. Both ports keep the caster's level in the low nibble and the "has

@@ -1544,8 +1544,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         granted_ids = []
         for node in (granted.value if granted is not None else ()):
             if int(node[0]) == effects.CHARM_ID:
-                # Its record bytes have no C64 writer yet, and a trait slot
-                # holding the bare id would be read as a different effect.
+                # Its record bytes (side and control bits) have no C64 writer
+                # yet, so a bare id in a trait slot would leave the record
+                # half converted.
                 rep.lost(f"effect {node[0]}: a charm, whose record bytes "
                          "the C64 writer does not convert yet")
                 continue
