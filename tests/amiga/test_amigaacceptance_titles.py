@@ -1009,6 +1009,31 @@ def test_darkness_presses_return_at_a_continue_page_three_times_at_most_and_only
     assert "RET" not in _keys(guest)
 
 
+def test_a_run_records_the_interstitial_screens_its_guard_map_cannot_recognise(tmp_path, clock):
+    _, result = _dark_run(tmp_path, clock)
+    assert result["interstitials_without_guard"] == ["continue", "yes_no"]
+    events = [json.loads(line) for line in (tmp_path / "recon1" / "run.jsonl").read_text().splitlines()]
+    logged = [e for e in events if e["event"] == "interstitials_without_guard"]
+    assert [e["screens"] for e in logged] == [["continue", "yes_no"]]
+    other = tmp_path / "other"
+    other.mkdir()
+    _, result = _dark_run(other, clock, guard=_dark_guard("continue", ["12-world"], world=1))
+    assert result["interstitials_without_guard"] == ["yes_no"]
+
+
+def test_a_strict_timeout_names_the_interstitial_screens_with_no_guard(tmp_path, clock):
+    guard = MapGuard(states=DARK_STATES, on={"world": _never})
+    _, result = _dark_run(tmp_path, clock, guard=guard)
+    assert result["success"] is False
+    assert "continue" in result["error"] and "yes_no" in result["error"]
+    other = tmp_path / "other"
+    other.mkdir()
+    both = MapGuard(states=(*DARK_STATES, "continue", "yes_no"), on={"world": _never})
+    _, result = _dark_run(other, clock, guard=both)
+    assert result["interstitials_without_guard"] == []
+    assert "no rule" not in result["error"]
+
+
 def _curse_guard(screen, when, **closed):
     on = {**CURSE_FIRST_SCREEN, screen: _on(*when), **{s: _never for s in closed}}
     return MapGuard(states=(*CURSE_STATES, screen, "front_end"), on=on)
@@ -1512,6 +1537,53 @@ def test_the_reload_description_is_pinned():
     assert not any(kind in ("write", "move") for _, _, kind in reload.route)
     assert foundation.place_state(dict(area=2, x=2, y=2, facing=geo.EAST)) == "place_x2_y2_f1"
     assert foundation.DARKNESS.control_letter == "F"
+
+
+def test_the_unstarted_darkness_description_is_pinned():
+    unstarted = foundation.DARKNESS_UNSTARTED
+    assert foundation.TITLES["darkness-unstarted"] is unstarted
+    assert route_darkness.DARKNESS_UNSTARTED_LOADED == "A"
+    route = (
+        ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
+        ("A", "disk2_prompt", "key"), route_darkness.DISK2_INSERT,
+        ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
+        ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", "yes_no", "key"),
+        ("N", "continue", "key"), ("RET", "continue", "key"), ("RET", "world", "key"))
+    assert unstarted.route == unstarted.measure_route == route
+    assert unstarted.kept_letters == ("B", "C", "D", "E")
+    assert unstarted.control_letter == "F" and unstarted.after_letter == "G"
+    assert unstarted.plain_keys == (("E", "loaded_menu"), ("B", "journal"))
+    assert unstarted.min_waits == {**foundation.DARKNESS.min_waits, "yes_no": 45.0,
+                                   "continue": 10.0, "loaded_menu": 40.0}
+    assert unstarted.interstitials == foundation.DARKNESS.interstitials
+    assert not any(kind in ("write", "move") for _, _, kind in unstarted.route)
+    assert foundation.DARKNESS.route[3][0] == "B"
+
+
+@pytest.mark.parametrize("command", ["accept", "reload"])
+def test_darkness_unstarted_only_measures(tmp_path, monkeypatch, capsys, command):
+    called = _Called()
+    monkeypatch.setattr(foundation, "run_recon", called)
+    monkeypatch.setattr(foundation, "WinGuest", lambda: object())
+    monkeypatch.setattr(foundation, "PixelGuards", lambda path: ("guards", str(path)))
+    args = _measure_args(tmp_path, "--guards", "g.json", "--identity", "i.json")
+    args[0] = command
+    args[args.index("--title") + 1] = "darkness-unstarted"
+    assert foundation.main(args) == 2
+    assert called.calls == [] and "only measures" in capsys.readouterr().err
+
+
+def test_darkness_unstarted_prepare_loads_slot_a_and_leaves_the_registered_images_unchanged(
+        tmp_path, monkeypatch):
+    _darkness_registered()
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    manifest = json.loads(foundation.prepare(
+        foundation.TITLES["darkness-unstarted"], "unstarted-run").read_text())
+    assert manifest["title"] == "darkness" and manifest["loaded_letter"] == "A"
+    assert manifest["state_a"] == {"area": 0, "x": 7, "y": 13, "facing": 0}
+    assert manifest["disks"]["disk3"]["sha256"] == route_darkness.DARKNESS_DISK3_SHA256
+    assert foundation._title_inputs(manifest, foundation.TITLES["darkness-unstarted"])[2] == "A"
 
 
 # Preparing a reload from a game-written disk 3, on synthetic disks.

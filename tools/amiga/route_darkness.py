@@ -148,8 +148,30 @@ DARKNESS_RELOAD = dataclasses.replace(
                       "loaded_menu", "journal", "journal_answer", "world"}),
 )
 
+# Loads disk 3's own slot A, a party that has not set out, and writes nothing, so the screens
+# between the journal and the world can be measured. B is a kept letter here and is also the
+# game's Begin key, which `plain_keys` names. The arrival screens are not in the guard map, so
+# `yes_no` and `continue` wait as long as `world` does after the journal, the area loading first.
+DARKNESS_UNSTARTED_LOADED = "A"
+_UNSTARTED_ROUTE = (
+    ("P", "party_menu", "key"), ("L", "load_from", "key"), ("P", "load_picker", "key"),
+    (DARKNESS_UNSTARTED_LOADED, "disk2_prompt", "key"), DISK2_INSERT,
+    ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
+    ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", "yes_no", "key"),
+    ("N", "continue", "key"), ("RET", "continue", "key"), ("RET", "world", "key"),
+)
+DARKNESS_UNSTARTED = dataclasses.replace(
+    DARKNESS, route=_UNSTARTED_ROUTE, measure_route=_UNSTARTED_ROUTE,
+    kept_letters=("B", "C", "D", "E"),
+    plain_keys=(("E", "loaded_menu"), ("B", "journal")),
+    # No `loaded_menu` guard is used on this boot, since its box covers menu items that differ
+    # per party; the accept boots recognised the menu 24 to 25 s after the key.
+    min_waits={**DARKNESS.min_waits, "yes_no": 45.0, "continue": 10.0, "loaded_menu": 40.0},
+)
 
-def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None) -> dict[str, Any]:
+
+def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
+                      loaded: str = DARKNESS_LOADED) -> dict[str, Any]:
     """Disk 3 is itself the registered save disk, so `override` stands in for it and no specimen file exists."""
     wanted = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256,
               "disk3": DARKNESS_DISK3_SHA256}
@@ -169,9 +191,9 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None) -> dict[
     for taken in (DARKNESS.control_letter, DARKNESS.after_letter):
         if taken in present:
             raise RouteError(f"slot {taken} already exists on disk 3")
-    loaded = DARKNESS.read_slot(save, DARKNESS_LOADED)
-    if "place" not in loaded:
-        raise RouteError(f"slot {DARKNESS_LOADED} does not decode: {loaded}")
+    reading = DARKNESS.read_slot(save, loaded)
+    if "place" not in reading:
+        raise RouteError(f"slot {loaded} does not decode: {reading}")
     scratch.ensure(run)
     disks: dict[str, dict[str, str]] = {}
     for key, (_label, data) in images.items():
@@ -184,8 +206,8 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None) -> dict[
         "title": "darkness", "disks": disks, "registered": {},
         "sources": {key: {"label": label, "sha256": wanted[key]}
                     for key, (label, _data) in images.items()},
-        "loaded_letter": DARKNESS_LOADED,
-        "state_a": loaded["place"], "names_a": loaded["names"],
+        "loaded_letter": loaded,
+        "state_a": reading["place"], "names_a": reading["names"],
     }
     after = _find_images({k: v for k, v in wanted.items() if override is None or k != "disk3"})
     if any(hashlib.sha256(after[key][1]).hexdigest() != wanted[key] for key in after):
