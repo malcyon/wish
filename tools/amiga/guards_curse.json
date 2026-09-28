@@ -24,6 +24,17 @@
       "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/05-save_picker.png",
       "sha256": "414355e907580d48d105d448d0cf1d36d16dff85627d1ea7f92f53876304f0b2"
     },
+    "continue": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "677/offline-curse-dos/accept1/shots/07-world.png",
+      "sha256": "1bf2400681523aa4dc95ae92305564fd26f826fa60277596e7801505cb6dd73c"
+    },
     "exit_game": {
       "also": [],
       "box": [
@@ -151,6 +162,9 @@
     }
   },
   "labels": {
+    "677/offline-curse-dos/accept1/shots/07-world.png": [
+      "continue"
+    ],
     "amiga-grab-crops/37__pipe__07-second-boot.png": [
       "intro"
     ]

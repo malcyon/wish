@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 from PIL import Image
 
 from tools.amiga import guardmaps
@@ -126,6 +127,29 @@ def test_committed_maps_cover_guarded_routes():
                                                   route_silver_blades.ACCEPT_ROUTE)
                             for step in route}
     assert required <= spec['guards'].keys()
+
+
+def _interstitial_screens(title):
+    from tools.amiga import route_silver_blades
+    from tools.amiga.route_curse import CURSE
+    from tools.amiga.route_darkness import DARKNESS, DARKNESS_RELOAD
+    from tools.amiga.route_pool import POOL
+
+    tables = {'pool': (POOL.interstitials,), 'curse': (CURSE.interstitials,),
+              'darkness': (DARKNESS.interstitials, DARKNESS_RELOAD.interstitials),
+              'ssb': (route_silver_blades.SILVER_BLADES_INTERSTITIALS,)}[title]
+    return {row[0] for table in tables for row in table}
+
+
+@pytest.mark.parametrize('title', [
+    'pool', 'curse', 'ssb',
+    pytest.param('darkness', marks=pytest.mark.xfail(
+        strict=True, reason='no Darkness capture of its continue or yes/no page exists yet')),
+])
+def test_committed_maps_guard_every_interstitial_screen(title):
+    """A row whose screen has no guard never fires, so the run waits out the screen it names."""
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, title)
+    assert _interstitial_screens(title) <= spec['guards'].keys()
 
 
 def test_add_refusals_leave_map_unchanged(tmp_path, capsys):
