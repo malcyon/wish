@@ -281,8 +281,10 @@ def sheet(run: "Run", who: str) -> bool:
     return True
 
 
-def save_current_game(run: "Run") -> bool:
-    """`SAVE CURRENT GAME`, which is the **party menu's** save.
+def save_current_game(run: "Run", dest: pathlib.Path, *,
+                      attempts: int = 4, backoff: float = 2.0) -> bool:
+    """`SAVE CURRENT GAME`, which is the **party menu's** save, copied out to
+    `dest` only once the drive has actually closed it.
 
     `CurseSession.save_game` is `ENCAMP > SAVE` and wants the party in the
     world; nothing here ever presses `BEGIN ADVENTURING`, so that one reports
@@ -291,6 +293,7 @@ def save_current_game(run: "Run") -> bool:
     classed` (`docs/172-curse-trainer.md`), and a save made here stands in
     area 0, before the party has begun adventuring.
     """
+    from tools.c64 import session as por  # noqa: PLC0415
     from tools.curse_of_the_azure_bonds.curseload import answer_yes  # noqa: PLC0415
 
     sess = run.sess
@@ -325,19 +328,42 @@ def save_current_game(run: "Run") -> bool:
         run.shot("saving-never-cleared")
         return False
     run.note(event="saving-cleared")
-    sess.settle(4)
-    # **Then put the save disk in again, so VICE writes it out.**  The
-    # drive's last act in a save is closing `SAVEAZURE` on track 18, and VICE
-    # writes a changed track back to the image file only when the head leaves
-    # it or the image is detached.  After this save the game asks for no
-    # other disk and the head stays on track 18, so the image file keeps the
-    # new data blocks under an entry still open with 0 blocks, however long
-    # the copy waits.  The camp saves in `curedrive.py` and `acceptance.py`
-    # are followed by a game-disk prompt, whose attach does this for them.
-    sess.attach(sess.save_disk)
-    run.note(event="save-disk-reattached")
-    run.shot("saved")
-    return True
+    # **`wait_text_gone` only proves the menu text state, not the drive
+    # state.**  Unlike `acceptance.py`'s `write_save`, which settles after a
+    # positive signal that the camp bar has actually redrawn, nothing here
+    # tells us the 1541 has finished closing `SAVEAZURE` -- so a single fixed
+    # `settle` before the attach-triggered flush is a guess, and the same
+    # class of guess as the `settle(12)` this file used before `#712`.
+    # Retry the settle/attach/copy instead of trusting one guess: each
+    # attempt gives VICE another `settle` before re-attaching and re-copying,
+    # and only `copy_closed_disk`'s own "still open" failure is retried --
+    # anything else propagates at once.
+    last_exc: RuntimeError | None = None
+    for attempt in range(attempts):
+        sess.settle(4)
+        # **Then put the save disk in again, so VICE writes it out.**  The
+        # drive's last act in a save is closing `SAVEAZURE` on track 18, and
+        # VICE writes a changed track back to the image file only when the
+        # head leaves it or the image is detached.  After this save the game
+        # asks for no other disk and the head stays on track 18, so the
+        # image file keeps the new data blocks under an entry still open
+        # with 0 blocks, however long the copy waits.  The camp saves in
+        # `curedrive.py` and `acceptance.py` are followed by a game-disk
+        # prompt, whose attach does this for them.
+        sess.attach(sess.save_disk)
+        try:
+            por.copy_closed_disk(pathlib.Path(sess.save_disk), dest)
+        except RuntimeError as exc:
+            last_exc = exc
+            run.note(event="save-copy-not-closed", attempt=attempt, error=str(exc))
+            if attempt + 1 < attempts:
+                time.sleep(backoff)
+            continue
+        run.note(event="save-disk-reattached")
+        run.shot("saved")
+        return True
+    run.note(event="save-copy-failed", error=str(last_exc))
+    raise last_exc
 
 
 #: Seconds `save_current_game` waits for `SAVING GAME` to leave the screen.
@@ -479,10 +505,9 @@ def drive(args) -> int:
                 run.record("final", n, name)
 
         if args.save_out:
-            if save_current_game(run):
-                dest = pathlib.Path(args.save_out)
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                por.copy_closed_disk(pathlib.Path(slot.dir) / "SIDE0.D64", dest)
+            dest = pathlib.Path(args.save_out)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if save_current_game(run, dest):
                 run.note(event="saved", to=str(dest))
             else:
                 run.note(event="save-failed")

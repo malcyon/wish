@@ -20,6 +20,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from goldbox.d64 import D64  # noqa: E402
+from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds import cursepaladin as cp  # noqa: E402
 
 #: `SAVEAZURE`'s payload length, from `goldbox/c64_save.py` by way of
@@ -178,6 +179,11 @@ def quick(monkeypatch):
         "tools.curse_of_the_azure_bonds.curseload.answer_yes",
         lambda sess, word: True)
     monkeypatch.setattr(cp.time, "sleep", lambda s: None)
+    # The default: the drive closed the entry on the first read, so a test
+    # that only cares about the menu-waiting half never has to know about
+    # the copy step underneath it.
+    monkeypatch.setattr(S, "copy_closed_disk",
+                        lambda src, dest: str(dest))
 
 
 def test_save_current_game_waits_for_saving_game_to_clear_then_flushes_the_disk(
@@ -191,7 +197,7 @@ def test_save_current_game_waits_for_saving_game_to_clear_then_flushes_the_disk(
     run = cp.Run(tmp_path / "out")
     run.sess = _FakeSess([_MENU, saving, saving, saving, saving, _MENU])
 
-    assert cp.save_current_game(run) is True
+    assert cp.save_current_game(run, tmp_path / "SAVED.D64") is True
 
     calls = run.sess.calls
     assert calls.count(("attach", _FakeSess.save_disk)) == 1, calls
@@ -206,7 +212,7 @@ def test_save_current_game_fails_if_saving_game_never_appears(tmp_path, quick):
     run = cp.Run(tmp_path / "out")
     run.sess = _FakeSess([_MENU])
 
-    assert cp.save_current_game(run) is False
+    assert cp.save_current_game(run, tmp_path / "SAVED.D64") is False
     assert not [c for c in run.sess.calls if c[0] == "attach"]
 
 
@@ -218,8 +224,68 @@ def test_save_current_game_fails_if_saving_game_never_clears(
     run = cp.Run(tmp_path / "out")
     run.sess = _FakeSess([_MENU + "SAVING GAME"])
 
-    assert cp.save_current_game(run) is False
+    assert cp.save_current_game(run, tmp_path / "SAVED.D64") is False
     assert not [c for c in run.sess.calls if c[0] == "attach"]
+
+
+def test_save_current_game_retries_the_settle_and_attach_until_the_drive_closes_it(
+        tmp_path, quick, monkeypatch):
+    """`wait_text_gone` only proves the menu text left -- not that the 1541
+    has actually closed `SAVEAZURE`.  A `copy_closed_disk` that still finds
+    it open on the first tries must not fail the save outright; it must
+    settle and re-attach again, the way `copy_closed_disk` itself retries a
+    read that finds a directory entry still open."""
+    saving = _MENU + "SAVING GAME"
+    run = cp.Run(tmp_path / "out")
+    run.sess = _FakeSess([_MENU, saving, saving, _MENU])
+    dest = tmp_path / "SAVED.D64"
+    attempts = []
+
+    def flaky(src, d):
+        attempts.append((src, d))
+        if len(attempts) < 3:
+            raise RuntimeError("open directory entry 'SAVEDGAME0'")
+        return str(d)
+
+    monkeypatch.setattr(S, "copy_closed_disk", flaky)
+    slept = []
+    monkeypatch.setattr(cp.time, "sleep", slept.append)
+
+    assert cp.save_current_game(run, dest) is True
+
+    assert len(attempts) == 3
+    assert all(src == pathlib.Path(run.sess.save_disk) and d == dest
+               for src, d in attempts)
+    assert run.sess.calls.count(("attach", run.sess.save_disk)) == 3
+    assert run.sess.calls.count(("settle", 4)) == 3
+    # `wait_text_gone`'s own polling sleeps land in the same list; only the
+    # two retry backoffs, at the end, are this loop's.
+    assert slept[-2:] == [2.0, 2.0]
+
+
+def test_save_current_game_gives_up_with_the_original_error_after_the_retry_budget(
+        tmp_path, quick, monkeypatch):
+    """A drive that never closes the entry must not be retried forever, and
+    the failure raised must be `copy_closed_disk`'s own, not a swallowed
+    generic one."""
+    saving = _MENU + "SAVING GAME"
+    run = cp.Run(tmp_path / "out")
+    run.sess = _FakeSess([_MENU, saving, saving, _MENU])
+    dest = tmp_path / "SAVED.D64"
+    attempts = []
+
+    def never_closes(src, d):
+        attempts.append((src, d))
+        raise RuntimeError("open directory entry 'SAVEDGAME0'")
+
+    monkeypatch.setattr(S, "copy_closed_disk", never_closes)
+    monkeypatch.setattr(cp.time, "sleep", lambda s: None)
+
+    with pytest.raises(RuntimeError, match="SAVEDGAME0"):
+        cp.save_current_game(run, dest, attempts=3, backoff=0.01)
+
+    assert len(attempts) == 3
+    assert run.sess.calls.count(("attach", run.sess.save_disk)) == 3
 
 
 def test_an_unreadable_screen_never_counts_as_the_text_having_gone(quick):
