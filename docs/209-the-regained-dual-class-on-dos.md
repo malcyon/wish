@@ -118,9 +118,22 @@ input. Every field in the table came out identical except the two the hit die
 decides -- MATHEW's `hp_rolled` 38 against 37 and PHILIPPE's 21 against 20 --
 which is the only random part of a training.
 
-## Two things the same run settles about the trainer
+## What else is known about the trainer
 
 Curse's trainer is `GAME.OVR:0x24CEE`.
+
+* **It refuses a character holding under 1000 gp before it looks at any
+  class.** `0x24D2D` calls `GAME.OVR:0x2A40B`, which sums the five coin words
+  at record `0x0FB` weighted by `DS:0x0CA4` (1, 10, 100, 200, 1000 copper) and
+  returns `(total + 100) / 200`, gold rounded; `0x24D39` refuses below 1000 with
+  `Training costs 1000 gp.` unless one of three flags is set (`0x75A1` is the
+  `Free training` toggle). The settled party menu shows no trace of the
+  message. The experience test that follows reads `DS:0x4293 + slot * 0x63 +
+  (level + 1) * 4` and passes at exactly the threshold (fighter row: 2001,
+  4001, 8001, 18001, 35001, 70001, 125001, 250001). CONFIRMED from the code;
+  the one refusal it explains is MARK in the
+  `#649 (Converting a dual-classed DOS Curse of the Azure Bonds character to C64 loses his leftover paladin cure-disease use)`
+  D3 run, holding 100 platinum (500 gp) with 70,001 experience at fighter 6.
 
 * **The hit-point divide counts the current array.** `0x254C4` counts the slots
   with a non-zero `class_levels` entry, and `0x25611` and `0x2564A` divide the
