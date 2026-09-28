@@ -251,9 +251,12 @@ class Run:
         # "moved" never advances past the first turn in its pattern and spins
         # on the spot -- measured on `#131`, 2026-09-05, twelve full circles
         # at 3,11.  Only x and y count.
-        moved = (before is None or after is None or before[:2] != after[:2])
+        # A square that never settled is not evidence of a move: counting it
+        # as one keeps the walker pressing the same key.
+        unsettled = before is None or after is None
+        moved = not unsettled and before[:2] != after[:2]
         return {"key": key, "before": before, "after": after,
-                "moved": moved, "row24": screen[24].strip(),
+                "unsettled": unsettled, "moved": moved, "row24": screen[24].strip(),
                 "kind": k, "screen": screen}
 
 
@@ -267,6 +270,7 @@ def walk_to_a_fight(run: Run, steps: int, pattern: str) -> dict | None:
     keys = list(pattern)
     i = 0
     misses = 0
+    unsettled = 0
     turn_next = False
     for n in range(steps):
         screen = run.screen()
@@ -310,6 +314,7 @@ def walk_to_a_fight(run: Run, steps: int, pattern: str) -> dict | None:
             got = run.step(keys[i % len(keys)])
             if not got["moved"]:
                 i += 1
+        unsettled = unsettled + 1 if got["unsettled"] else 0
         run.note(event="step", step=n, key=got["key"], before=got["before"],
                  after=got["after"], moved=got["moved"], kind=got["kind"],
                  row24=got["row24"])
@@ -317,6 +322,9 @@ def walk_to_a_fight(run: Run, steps: int, pattern: str) -> dict | None:
             run.keep("combat", got["screen"])
             run.note(event="combat", step=n, row24=got["row24"])
             return {"step": n, "screen": got["screen"]}
+        if unsettled >= 3:
+            run.note(event="unsettled", step=n, count=unsettled)
+            return None
     run.note(event="no-fight", steps=steps)
     return None
 

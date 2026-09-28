@@ -538,6 +538,9 @@ def main(argv=None) -> int:
             run.dump("after-melee")
             run.probe("after-melee")
         rc = 0
+    except cursethac0.Unsettled as exc:
+        run.log("unsettled", why=str(exc))
+        rc = 3
     finally:
         run.log("done", rc=rc)
         if run.sess is not None:

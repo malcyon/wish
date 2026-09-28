@@ -391,3 +391,70 @@ def test_triple_raises_unsettled_when_the_square_never_agrees(monkeypatch,
     with pytest.raises(cursethac0.Unsettled):
         run.triple()
     run.file.close()
+
+
+def test_goto_reports_the_fight_when_combat_keeps_the_square_moving(
+        monkeypatch, tmp_path):
+    now = [0.0]
+    monkeypatch.setattr(S.time, "time", lambda: now[0])
+    monkeypatch.setattr(S.time, "sleep", lambda s: now.__setitem__(0, now[0] + s))
+    reads = iter(range(1000))
+    run = scripted_run([(0, 0, 0)], tmp_path)
+    run.sess.live_triple = lambda: (next(reads), 0, 0)
+    calls = iter([False, False])                 # the two checks before the read
+    run.in_combat = lambda: next(calls, True)
+    assert run.goto((6, 10), budget=3) is True
+    run.file.close()
+
+
+def test_goto_still_raises_unsettled_when_there_is_no_fight(monkeypatch,
+                                                            tmp_path):
+    now = [0.0]
+    monkeypatch.setattr(S.time, "time", lambda: now[0])
+    monkeypatch.setattr(S.time, "sleep", lambda s: now.__setitem__(0, now[0] + s))
+    reads = iter(range(1000))
+    run = scripted_run([(0, 0, 0)], tmp_path)
+    run.sess.live_triple = lambda: (next(reads), 0, 0)
+    with pytest.raises(cursethac0.Unsettled):
+        run.goto((6, 10), budget=3)
+    run.file.close()
+
+
+def test_goto_arrives_after_one_step_on_agreeing_reads(monkeypatch, tmp_path):
+    """Guard against over-correction: (5,10) twice, a step, (6,10) twice."""
+    monkeypatch.setattr(S.time, "sleep", lambda _: None)
+    run = scripted_run([(5, 10, 1), (5, 10, 1), (5, 10, 1), (5, 10, 1),
+                        (6, 10, 1), (6, 10, 1)], tmp_path)
+    assert run.goto((6, 10), budget=3) is True
+    assert run.last_goto_steps == 2
+    run.file.close()
+
+
+def test_drive_reports_an_unsettled_square_as_a_result_not_a_traceback(
+        monkeypatch, tmp_path):
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from tools.curse_of_the_azure_bonds import curserun  # noqa: PLC0415
+
+    class Slot(SimpleNamespace):
+        def teardown(self):
+            pass
+
+    class Sess:
+        def __init__(self, *a, **k):
+            pass
+
+        def boot(self):
+            raise cursethac0.Unsettled("the party's square did not settle")
+
+        def terminate(self):
+            pass
+
+    monkeypatch.setattr(cursethac0, "area_geo", lambda save, disks: ("A", None))
+    monkeypatch.setattr(cursethac0.S, "claim_slot",
+                        lambda *a: Slot(n=0, display=0, dir=str(tmp_path)))
+    monkeypatch.setattr(curserun, "stage", lambda *a: "boot")
+    monkeypatch.setattr(curserun, "CurseSession", Sess)
+    args = SimpleNamespace(out=str(tmp_path), quiet=True, disks="d",
+                           save="x.d64", slot=None)
+    assert cursethac0.drive(args) == 3

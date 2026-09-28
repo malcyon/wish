@@ -77,6 +77,8 @@ def probe_square(sess) -> list[int]:
     """`$C04B`-`$C04D`, as a list, or an empty one if the read failed."""
     try:
         got = sess.steady_triple()
+        if got is None:
+            sess.log("  square did not settle; reading it as empty")
         return [] if got is None else list(got)
     except Exception:                                     # noqa: BLE001
         return []

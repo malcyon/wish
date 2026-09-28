@@ -99,3 +99,21 @@ def test_ssb_fight_charges_the_real_steps_a_leg_took(monkeypatch):
     goto_records = [r for r in run.records if r["kind"] == "goto"]
     assert len(goto_records) == 1
     assert goto_records[0]["spent"] == 17    # but only 17 were actually spent
+
+
+def test_main_reports_an_unsettled_square_as_a_result_not_a_traceback(
+        monkeypatch, tmp_path):
+    def unsettled(run, args, disks):
+        raise cursethac0.Unsettled("the party's square did not settle")
+
+    class Slot(SimpleNamespace):
+        def teardown(self):
+            pass
+
+    monkeypatch.setattr(laterbattle, "curse_fight", unsettled)
+    monkeypatch.setattr(laterbattle.S, "claim_slot",
+                        lambda *a: Slot(n=0, display=0, dir=str(tmp_path)))
+    monkeypatch.setattr(laterbattle.Battle, "sess", None, raising=False)
+    rc = laterbattle.main(["--save", "x.d64", "--disks", "d", "--out",
+                           str(tmp_path), "--quiet"])
+    assert rc == 3

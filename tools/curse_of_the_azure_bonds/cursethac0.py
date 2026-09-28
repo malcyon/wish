@@ -524,35 +524,43 @@ class Run:
             if self.in_combat():
                 self.last_goto_steps = took
                 return True
-            x, y, facing = self.triple()
-            if (x, y) == target:
-                self.last_goto_steps = took
-                return True
-            route = plan(geo, (x, y), target, banned) if geo else []
-            if route:
-                want = route[0]
-            else:
-                wants = [d for d, ok in ((0, y > target[1]), (2, y < target[1]),
-                                         (1, x < target[0]), (3, x > target[0]))
-                         if ok]
-                wants += [d for d in range(4) if d not in wants]
-                ahead = {0: (x, y - 1), 1: (x + 1, y), 2: (x, y + 1),
-                         3: (x - 1, y)}
-                fresh = [d for d in wants if (x, y, d) not in banned
-                         and ahead[d] != came_from]
-                want = (fresh or [d for d in wants if (x, y, d) not in banned]
-                        or wants)[0]
-            self.turn_to(want)
-            before = self.triple()
-            moved = self.press("I")
-            after = self.triple()
-            if before[:2] == after[:2]:
-                banned.add((x, y, want))
-            else:
-                came_from = before[:2]
-            self.log("step", before=list(before), after=list(after),
-                     want=want, moved=moved, planned=route,
-                     banned=len(banned), row24=self.row24())
+            try:
+                x, y, facing = self.triple()
+                if (x, y) == target:
+                    self.last_goto_steps = took
+                    return True
+                route = plan(geo, (x, y), target, banned) if geo else []
+                if route:
+                    want = route[0]
+                else:
+                    wants = [d for d, ok in ((0, y > target[1]), (2, y < target[1]),
+                                             (1, x < target[0]), (3, x > target[0]))
+                             if ok]
+                    wants += [d for d in range(4) if d not in wants]
+                    ahead = {0: (x, y - 1), 1: (x + 1, y), 2: (x, y + 1),
+                             3: (x - 1, y)}
+                    fresh = [d for d in wants if (x, y, d) not in banned
+                             and ahead[d] != came_from]
+                    want = (fresh or [d for d in wants if (x, y, d) not in banned]
+                            or wants)[0]
+                self.turn_to(want)
+                before = self.triple()
+                moved = self.press("I")
+                after = self.triple()
+                if before[:2] == after[:2]:
+                    banned.add((x, y, want))
+                else:
+                    came_from = before[:2]
+                self.log("step", before=list(before), after=list(after),
+                         want=want, moved=moved, planned=route,
+                         banned=len(banned), row24=self.row24())
+            except Unsettled:
+                # Combat keeps the square moving while it draws, so an
+                # unsettled read is the fight, not a lost party.
+                if self.in_combat():
+                    self.last_goto_steps = took
+                    return True
+                raise
         self.last_goto_steps = took
         return self.in_combat() or self.triple()[:2] == target
 
@@ -760,6 +768,9 @@ def drive(args) -> int:
             run.quickfight(args.quick)
             run.dump("after-fight")
             run.reading("after-fight")
+    except Unsettled as exc:
+        run.log("unsettled", why=str(exc))
+        rc = 3
     finally:
         run.log("done")
         if run.sess is not None:
