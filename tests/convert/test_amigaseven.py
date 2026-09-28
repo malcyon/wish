@@ -81,11 +81,14 @@ def test_a_seven_member_party_saves_as_amiga_with_all_seven(app, tmp_path, make,
     _check_disk(plan.files[image], party, slot)
 
 
-def test_a_seven_member_c64_party_converts_to_amiga_through_file_convert(app, tmp_path):
-    party = _c64_party()
+@pytest.mark.parametrize("direction_type,make", [
+    (convert.C64ToAmiga, _c64_party), (convert.DosToAmiga, _dos_party)])
+def test_a_seven_member_party_converts_to_amiga_through_file_convert(
+        app, tmp_path, direction_type, make):
+    party = make()
     source, assets = _assets(party, tmp_path)
     direction = next(d for d in convert.DIRECTIONS
-                     if type(d) is convert.C64ToAmiga
+                     if type(d) is direction_type
                      and d.shape.key == c64_port.POOL_OF_RADIANCE.key)
     rehearsal, slot = saveplan.rehearse(direction, source, assets)
     assert saveplan.losses(rehearsal.report) == []
