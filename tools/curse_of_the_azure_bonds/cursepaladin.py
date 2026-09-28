@@ -308,27 +308,64 @@ def save_current_game(run: "Run") -> bool:
         run.shot("no-save-question")
         return False
     run.shot("save-answered")
-    # **The write is not over when the question is answered.**  A fixed
-    # `settle(12)` here reliably let `copy_closed_disk()` run while the drive
-    # still held `SAVEAZURE` open for writing, and that guard's own
-    # 8-retry/0.25s backoff (`#298`) was not enough to outlast a real save,
-    # so the copy step failed every time (`#712`). `curedrive.py`'s own
-    # `save()` waits for `SAVING GAME` and then for its bar to come back
-    # before ever calling the copy helper; this does the same, waiting for
-    # `SAVE CURRENT GAME` to reappear, since it is itself one of the eleven
-    # items the party menu redraws (`docs/172-curse-trainer.md`).
+    # **The write is over when `SAVING GAME` leaves row 24, and not before.**
+    # The party menu, `SAVE CURRENT GAME` included, stays drawn for the whole
+    # write with `SAVING GAME` on the bottom row under it, so waiting for the
+    # menu item returns at once and the copy then finds `SAVEAZURE` open
+    # (`#712`).  `acceptance.py`'s `write_save` uses the same seen-then-gone
+    # test.
     if sess.wait_text("SAVING GAME", 30)[0] is None:
         run.note(event="no-saving-text")
         run.shot("no-saving-text")
         return False
+    run.note(event="saving-seen")
     run.shot("saving")
-    if sess.wait_text("SAVE CURRENT GAME", 180)[0] is None:
-        run.note(event="no-party-menu-after-save")
-        run.shot("no-party-menu-after-save")
+    if not wait_text_gone(sess, "SAVING GAME", SAVE_WRITE_WAIT):
+        run.note(event="saving-never-cleared")
+        run.shot("saving-never-cleared")
         return False
+    run.note(event="saving-cleared")
     sess.settle(4)
+    # **Then put the save disk in again, so VICE writes it out.**  The
+    # drive's last act in a save is closing `SAVEAZURE` on track 18, and VICE
+    # writes a changed track back to the image file only when the head leaves
+    # it or the image is detached.  After this save the game asks for no
+    # other disk and the head stays on track 18, so the image file keeps the
+    # new data blocks under an entry still open with 0 blocks, however long
+    # the copy waits.  The camp saves in `curedrive.py` and `acceptance.py`
+    # are followed by a game-disk prompt, whose attach does this for them.
+    sess.attach(sess.save_disk)
+    run.note(event="save-disk-reattached")
     run.shot("saved")
     return True
+
+
+#: Seconds `save_current_game` waits for `SAVING GAME` to leave the screen.
+SAVE_WRITE_WAIT = 180
+
+
+def wait_text_gone(sess, needle: str, timeout: float,
+                   interval: float = 0.35) -> bool:
+    """Wait until two screen reads in a row do not contain `needle`.
+
+    A read that fails (`screen()` returns None) counts as neither, so a
+    monitor hiccup never passes for the text having gone.  Disk prompts are
+    answered while waiting, as `wait_text` answers them.
+    """
+    deadline = time.time() + timeout
+    clear = 0
+    while time.time() < deadline:
+        s = sess.screen()
+        if s is not None:
+            if s.contains(needle):
+                clear = 0
+            else:
+                clear += 1
+                if clear >= 2:
+                    return True
+            sess.handle_prompt(s)
+        time.sleep(interval)
+    return False
 
 
 def drive(args) -> int:

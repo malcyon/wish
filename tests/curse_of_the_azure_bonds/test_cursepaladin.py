@@ -110,18 +110,35 @@ def test_the_live_class_is_the_one_non_zero_level_slot():
     assert cp.live_class({}) is None
 
 
+#: The party menu as the game leaves it drawn for the whole of a save
+#: (`#712`'s screens `06-save-answered` to `08-saved`): every item, `SAVE
+#: CURRENT GAME` included, with only row 24 changing.
+_MENU = "CREATE NEW CHARACTER\nVIEW CHARACTER\nSAVE CURRENT GAME\nBEGIN ADVENTURING\n"
+
+
 class _Screen:
+    def __init__(self, text):
+        self._text = text
+
     def text(self):
-        return "screen"
+        return self._text
+
+    def contains(self, needle):
+        return needle in self._text
 
 
 class _FakeSess:
-    """Enough of a `CurseSession` for `save_current_game`, with every wait
-    call recorded in order."""
+    """Enough of a `CurseSession` for `save_current_game`.
 
-    def __init__(self, saving_hit=True, menu_hit=True):
-        self.saving_hit = saving_hit
-        self.menu_hit = menu_hit
+    `screens` is what successive `screen()` reads return, the last one
+    repeating; `wait_text` reads through them the way the real one polls.
+    Every call that matters to the order is recorded.
+    """
+
+    save_disk = "/slot/SIDE0.D64"
+
+    def __init__(self, screens):
+        self.screens = list(screens)
         self.calls: list[tuple] = []
         self.kbd = self
 
@@ -130,70 +147,91 @@ class _FakeSess:
         return True
 
     def screen(self):
-        return _Screen()
+        text = self.screens.pop(0) if len(self.screens) > 1 else self.screens[0]
+        self.calls.append(("screen", text))
+        return _Screen(text)
 
     def screenshot(self, path):
         return True
 
+    def handle_prompt(self, s=None):
+        return False
+
     def wait_text(self, needle, timeout=180.0):
-        self.calls.append(("wait_text", needle, timeout))
-        if needle == "SAVING GAME":
-            return (needle, self.screen()) if self.saving_hit else (None, None)
-        if needle == "SAVE CURRENT GAME":
-            return (needle, self.screen()) if self.menu_hit else (None, None)
-        raise AssertionError(f"unexpected wait_text({needle!r})")
+        self.calls.append(("wait_text", needle))
+        for _ in range(len(self.screens) + 1):
+            s = self.screen()
+            if s.contains(needle):
+                return needle, s
+        return None, None
 
     def settle(self, seconds=6.0):
         self.calls.append(("settle", seconds))
 
+    def attach(self, path, unit=8, settle=None):
+        self.calls.append(("attach", path))
 
-def test_save_current_game_waits_for_the_save_to_finish_before_copying(
-        tmp_path, monkeypatch):
-    """Reproduces `#712`: a fixed `settle(12)` let the copy step run while
-    the drive still held `SAVEAZURE` open. This waits for `SAVING GAME` and
-    then for the party menu's own `SAVE CURRENT GAME` item to come back,
-    the same two-stage wait `curedrive.py`'s `save()` uses, before returning
-    control to the copy step."""
+
+@pytest.fixture
+def quick(monkeypatch):
     monkeypatch.setattr(
         "tools.curse_of_the_azure_bonds.curseload.answer_yes",
         lambda sess, word: True)
+    monkeypatch.setattr(cp.time, "sleep", lambda s: None)
+
+
+def test_save_current_game_waits_for_saving_game_to_clear_then_flushes_the_disk(
+        tmp_path, quick):
+    """`#712`: the party menu stays drawn under `SAVING GAME`, so waiting for
+    `SAVE CURRENT GAME` returned at once and the copy found `SAVEAZURE`
+    open.  The wait has to outlast `SAVING GAME` on the screen, and then the
+    save disk goes into the drive again, which is what makes VICE write the
+    closed directory entry out to the image file."""
+    saving = _MENU + "SAVING GAME"
     run = cp.Run(tmp_path / "out")
-    run.sess = _FakeSess()
+    run.sess = _FakeSess([_MENU, saving, saving, saving, saving, _MENU])
 
     assert cp.save_current_game(run) is True
 
-    waits = [c for c in run.sess.calls if c[0] == "wait_text"]
-    assert waits == [
-        ("wait_text", "SAVING GAME", 30),
-        ("wait_text", "SAVE CURRENT GAME", 180),
-    ], run.sess.calls
+    calls = run.sess.calls
+    assert calls.count(("attach", _FakeSess.save_disk)) == 1, calls
+    at = calls.index(("attach", _FakeSess.save_disk))
+    reads = [c[1] for c in calls[:at] if c[0] == "screen"]
+    assert reads.count(saving) == 4, reads
+    assert reads[-1] == _MENU
 
 
-def test_save_current_game_refuses_to_copy_if_saving_game_never_appears(
-        tmp_path, monkeypatch):
-    """A save that never even starts must not fall through to the copy step
-    just because a fixed settle ran out."""
-    monkeypatch.setattr(
-        "tools.curse_of_the_azure_bonds.curseload.answer_yes",
-        lambda sess, word: True)
+def test_save_current_game_fails_if_saving_game_never_appears(tmp_path, quick):
+    """A save that never starts must not fall through to the copy step."""
     run = cp.Run(tmp_path / "out")
-    run.sess = _FakeSess(saving_hit=False)
+    run.sess = _FakeSess([_MENU])
 
     assert cp.save_current_game(run) is False
-    assert ("wait_text", "SAVE CURRENT GAME", 180) not in run.sess.calls
+    assert not [c for c in run.sess.calls if c[0] == "attach"]
 
 
-def test_save_current_game_refuses_to_copy_if_the_party_menu_never_returns(
-        tmp_path, monkeypatch):
-    """The write can still be in progress after `SAVING GAME` is seen; this
-    must not report success until the party menu is back."""
-    monkeypatch.setattr(
-        "tools.curse_of_the_azure_bonds.curseload.answer_yes",
-        lambda sess, word: True)
+def test_save_current_game_fails_if_saving_game_never_clears(
+        tmp_path, quick, monkeypatch):
+    """A write still showing `SAVING GAME` at the deadline is not finished,
+    and the disk is not re-attached under it."""
+    monkeypatch.setattr(cp, "SAVE_WRITE_WAIT", 0.05)
     run = cp.Run(tmp_path / "out")
-    run.sess = _FakeSess(menu_hit=False)
+    run.sess = _FakeSess([_MENU + "SAVING GAME"])
 
     assert cp.save_current_game(run) is False
+    assert not [c for c in run.sess.calls if c[0] == "attach"]
+
+
+def test_an_unreadable_screen_never_counts_as_the_text_having_gone(quick):
+    """`screen()` returns None when the monitor read fails; two of those in a
+    row must not pass for `SAVING GAME` having left."""
+    sess = _FakeSess([_MENU + "SAVING GAME"])
+    reads = iter([None, None, None, _Screen(_MENU), _Screen(_MENU)])
+    sess.screen = lambda: next(reads)
+
+    assert cp.wait_text_gone(sess, "SAVING GAME", 5) is True
+    # Only the two real reads counted: the iterator is exhausted.
+    assert next(reads, "done") == "done"
 
 
 def test_the_class_slots_match_the_bit_the_engine_ors_back():
