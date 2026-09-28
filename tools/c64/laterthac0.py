@@ -262,7 +262,10 @@ def disagreements(title: str) -> list[tuple[str, int, int, int]]:
 # The records
 # ---------------------------------------------------------------------------
 def records(title: str):
-    """`(source, name, class levels, stored THAC0)` for every DOS record.
+    """`(source, name, class levels, regained, stored THAC0)` per DOS record.
+
+    `regained` is class name -> former level for each old class the record has
+    got back, which is `tools/dos/dualclassregain.regained`'s test.
 
     The specimen tree and the player's archives, the same two places
     `tools/records/thac0sweep.py` sweeps.  That tool's own reader cannot be used for
@@ -280,7 +283,9 @@ def records(title: str):
 
     tree = pathlib.Path(os.environ.get(
         "WISH_SPECIMENS", pathlib.Path.home() / "wish-specimens"))
-    from tools.dos import dosbox
+    from tools.dos import dosbox, dualclassregain
+
+    slot_names = {slot: name for slot, name, _ in dos_codec.CLASS_LEVEL_SLOTS}
 
     files: list[str] = []
     for folder in sorted(tree.glob("*/WISH-SPEC-*")):
@@ -300,8 +305,11 @@ def records(title: str):
         held = {name: raw[slot]
                 for slot, name, _ in dos_codec.CLASS_LEVEL_SLOTS
                 if slot < len(raw) and raw[slot]}
+        back = {slot_names[slot]: level
+                for slot, level in dualclassregain.regained(char).items()
+                if slot in slot_names}
         here = pathlib.Path(path)
-        yield (f"{here.parent.name}/{here.name}", char.name, held,
+        yield (f"{here.parent.name}/{here.name}", char.name, held, back,
                60 - char.get("thac0_base"))
 
 
@@ -310,8 +318,8 @@ def sweep(title: str) -> tuple[int, int, list[str]]:
     table = locate(title).table()
     agree = total = 0
     lines = []
-    for source, name, held, stored in records(title):
-        want = _best(table, held)
+    for source, name, held, back, stored in records(title):
+        want = _best(table, held, back)
         if want is None:
             continue
         total += 1
@@ -319,19 +327,31 @@ def sweep(title: str) -> tuple[int, int, list[str]]:
             agree += 1
         else:
             classes = ", ".join(f"{k} {v}" for k, v in sorted(held.items()))
+            classes += "".join(f", regained {k} {v}"
+                               for k, v in sorted(back.items()))
             lines.append(f"MISMATCH {source:<44} {name:<14} {classes:<28} "
                          f"stored={stored:<3} table={want}")
     return agree, total, lines
 
 
-def _best(table: dict[str, list[int]], class_levels) -> int | None:
+def _best(table: dict[str, list[int]], class_levels,
+          regained=None) -> int | None:
     """The best row among the classes the character has a level in.
 
     The engine's own rule: clear the byte, walk the class slots, keep the row
-    that beats what is there -- so no strength, no weapon and no clamp.
+    that beats what is there -- so no strength, no weapon and no clamp.  A
+    dual-classed human who has got his old class back then takes that class's
+    row at the level he left it, if it is better (Curse `GAME.OVR:0x3B274`,
+    `docs/209-the-regained-dual-class-on-dos.md`).  That pass also reads entry
+    0 of every row whose former level is zero, which is 39 or 40 in Curse and
+    so never beats two different classes' rows, since only the magic-user's
+    starts below 40.
     """
     best = None
-    for name, level in dict(class_levels or {}).items():
+    held = list(dict(class_levels or {}).items())
+    if not held:
+        return None
+    for name, level in held + list(dict(regained or {}).items()):
         row = table.get(name)
         if not row or not level:
             continue

@@ -46,34 +46,28 @@ DISAGREE = {
 }
 
 #: How many records of each title reproduce from its own table, and how many
-#: do not.  Almost every miss sits on a `DISAGREE` cell whose table byte is
-#: below 40, the flat value every engine writes at creation
-#: (`test_nothing_clamps_the_field_and_creation_writes_a_flat_40`, below):
-#: the DOS engine's own load routine writes 40 back over the table's lower
-#: number for these classes and levels, confirmed 2026-09-14 by diffing a
-#: `C64ToDos` Curse resave (PHILIPPE, magic-user 5, written 39 from our own
-#: table) against the same record read back after `LOAD SAVED GAME` in the
-#: engine (40) -- `#318`'s own finding for Pool of Radiance, still open for
-#: Curse and Silver Blades because it holds here too.  The engine-written
-#: `WISH-SPEC-curse-574-area2-spiritual-hammer-rest/CHRDATB2.SAV` and
-#: `CHRDATB6.SAV` add the same level-5 magic-user mismatch.  The one exception is
-#: a record the rebuild loop has not run over since it was dual-classed --
-#: see `docs/135-levelling.md`.  `WISH-SPEC-curse-632-wish-converted-resave`'s
-#: MARK adds two more, in both its Wish-written slot A and its engine-written
-#: slot B: his former paladin level 5 folds into `thac0_base` without his
-#: `class_levels` slot ever holding it, the same regained-class fold
-#: `docs/209-the-regained-dual-class-on-dos.md` describes for
-#: `WISH-SPEC-curse-408-regained-paladin`.  `WISH-SPEC-dos-curse-foundation-
-#: walked`'s MARK (`#679 (Make one repeatable load, inspect, move, save and
-#: verify run reliable on each destination platform, so conversion tickets
-#: reuse it)`) adds two more still, in its `CHRDATB2.SAV` and `CHRDATD2.SAV`:
-#: the same cleric 6, stored=16 against table=18, the same regained-class fold
-#: as the 632 specimen's MARK.  `WISH-SPEC-curse-597-experience-ceiling`'s
-#: `CHRDATE6.SAV` adds one more still: the default party's BRYTWYN
-#: (magic-user 5) resaved by the engine for `#597 (Can a DOS Curse or Silver
-#: Blades character hold more experience than the C64's three bytes?)`, the
-#: same record as the archives' `CHRDATB6.SAV` and the same flat-40 miss.
-RECORDS = {POOL: (202, 0), CURSE: (121, 19), SSB: (72, 2)}
+#: do not.  A regained old class is part of the rule, so MATHEW and MARK, who
+#: hit with the paladin 5 row they left, reproduce.  Every miss left is one
+#: kind: a magic-user of level 1 to 5 storing THAC0 20 where the table says 21,
+#: the flat 40 creation and the class change write
+#: (`test_nothing_clamps_the_field_and_creation_writes_a_flat_40`, below) and
+#: that the engine's load and resave wrote back over our 39 in a `C64ToDos`
+#: resave of PHILIPPE.  Curse's 18, by specimen:
+#:
+#: * PHILIPPE and BRYTWYN, magic-user 5: the archives' `Saves/` and `SAVE/`
+#:   (4), `amigatodos-curse-resave` (A2, with MATHEW magic-user 1 in A1),
+#:   `c64todos-curse-resave` (A6), `curse-131-four-items-readied` (I6),
+#:   `curse-234-party-dualclassed` (D6), `curse-597-experience-ceiling` (E6);
+#: * the unnamed magic-users 5 of `curse-574-area2-spiritual-hammer-rest`
+#:   (B2, B6);
+#: * MATHEW magic-user 1, former paladin 5 not yet regained, and PHILIPPE
+#:   magic-user 5, in `curse-131-dualclassed-in-area-1` (J1, J6) and the two
+#:   specimens driven on from it, `curse-535-former-paladin-node-running`
+#:   (E1, E6) and `curse-649-mark-regained-node-running` (F1, F6).
+#:
+#: Silver Blades' 2 are PAINE, magic-user 1, in `ssb-234-dualclassed` and
+#: `ssb-234-party-pair`.
+RECORDS = {POOL: (202, 0), CURSE: (134, 18), SSB: (72, 2)}
 
 
 def _located(title: str):
