@@ -128,9 +128,8 @@ ROSTER_SPELL_COUNTS = 0x03
 ROSTER_SPELL_COUNTS_LEN = 9
 #: How many of the nine this title can fill -- see the classifier above.
 ROSTER_SPELL_COUNTS_POOL = 4
-# The old names, because `unknown_03_05` is a key in the YAML export and
-# renaming that changes a file format rather than a reading.
-ROSTER_UNKNOWN_03 = ROSTER_SPELL_COUNTS
+# `unknown_03_05` is a key in the YAML export and renaming that changes a file
+# format rather than a reading, so the property and this length keep the name.
 ROSTER_UNKNOWN_03_LEN = 3
 # The record's own `combat_side` at 0x10C, one byte before `ROSTER_SLOT_INDEX`
 # -- which side the character fights on and the quickfight flag, packed the
@@ -167,7 +166,6 @@ ROSTER_MOVEMENT = 0x1B
 # better, and the game keeps the byte rising as the character improves.
 # Re-exported from goldbox/encoding.py, which is now the one place these live.
 COMBAT_BIAS = _enc.COMBAT_BIAS
-ARMOUR_BIAS = _enc.ARMOUR_BONUS_BIAS
 
 HEADER_SIZE = 0x400
 SLOT_AREA_BASE = SAVE0_LOAD_ADDRESS + HEADER_SIZE   # $4D00
@@ -213,8 +211,7 @@ ICON_SIZE = 0x24
 # The party is 8 slots; the slot *array* is 12. Combat fills 8-11, which is why
 # a monster's record turns up at $5500 after a fight.
 RECORD_SLOT_COUNT = 12
-COMBAT_SLOT_BASE = 0x5500          # slot 8; was called STAGING_PAGE_BASE
-STAGING_PAGE_BASE = COMBAT_SLOT_BASE   # old name, kept so callers do not break
+COMBAT_SLOT_BASE = 0x5500          # slot 8
 
 # Items live at $5900, immediately after the twelfth slot -- see goldbox/items.py.
 ITEM_AREA_BASE = 0x5900
@@ -752,7 +749,7 @@ class RosterBlock:
         no longer unknown. Pool of Radiance reaches level 4 at +0x06 for spell
         id 56 alone, so three covers every value any save here holds.
         """
-        b = self._base + ROSTER_UNKNOWN_03
+        b = self._base + ROSTER_SPELL_COUNTS
         return tuple(self._data[b:b + ROSTER_UNKNOWN_03_LEN])
 
     @unknown_03_05.setter
@@ -765,9 +762,9 @@ class RosterBlock:
         for offset, n in enumerate(values):
             if not 0 <= int(n) <= 0xFF:
                 raise SaveGameError(
-                    f"roster byte +0x{ROSTER_UNKNOWN_03 + offset:02X} out of "
+                    f"roster byte +0x{ROSTER_SPELL_COUNTS + offset:02X} out of "
                     f"range: {n}")
-        b = self._base + ROSTER_UNKNOWN_03
+        b = self._base + ROSTER_SPELL_COUNTS
         self._data[b:b + ROSTER_UNKNOWN_03_LEN] = bytes(int(n) for n in values)
 
     def __repr__(self) -> str:

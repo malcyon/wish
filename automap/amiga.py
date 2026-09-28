@@ -160,13 +160,6 @@ class AmigaMachine:
     notes: dict[str, int] = field(default_factory=dict)
 
 
-#: Pre-#470 name, kept so nothing importing it by the old name breaks before
-#: stage 9 removes every shim this ticket left. `#470 (Give the project a
-#: neutral title beside its neutral character record, with one port per
-#: platform a title shipped on)`.
-AmigaLayout = AmigaMachine
-
-
 #: The titles whose offsets have been read out of their executables.
 #:
 #: **Pool of Radiance is deliberately absent.** Its Amiga build is not a
@@ -214,11 +207,6 @@ MACHINES: dict[str, AmigaMachine] = {
         notes={"wall_ahead": 0x3F63, "square_attribute": 0x3F64},
     ),
 }
-
-#: Pre-#470 name, kept for the same reason `AmigaLayout` is. `#470 (Give the
-#: project a neutral title beside its neutral character record, with one
-#: port per platform a title shipped on)`.
-LAYOUTS = MACHINES
 
 
 class GuestError(NotConnected):

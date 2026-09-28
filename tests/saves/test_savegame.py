@@ -13,6 +13,7 @@ from gamedata import disk_dir, npc_party_disk
 
 from goldbox.record import CharacterRecord
 from goldbox.savegame import (
+    COMBAT_SLOT_BASE,
     HEADER_SIZE,
     ICON_SIZE,
     ICON_TABLE_BASE,
@@ -24,7 +25,6 @@ from goldbox.savegame import (
     SLOT_AREA_END,
     SLOT_COUNT,
     SLOT_STRIDE,
-    STAGING_PAGE_BASE,
     SaveGame0,
     SaveGame1,
     SaveGameError,
@@ -313,11 +313,11 @@ class TestStagingPage:
 
     @staticmethod
     def _page(save: SaveGame0) -> bytes:
-        off = STAGING_PAGE_BASE - SAVE0_LOAD_ADDRESS
+        off = COMBAT_SLOT_BASE - SAVE0_LOAD_ADDRESS
         return save.to_bytes()[off:off + SLOT_STRIDE]
 
     def test_it_is_the_page_right_after_the_slots(self):
-        assert STAGING_PAGE_BASE == SLOT_AREA_END
+        assert COMBAT_SLOT_BASE == SLOT_AREA_END
 
     def test_empty_before_the_fight_and_a_monster_after(self, party6):
         after = SaveGame0.from_prg(
@@ -334,7 +334,7 @@ class TestStagingPage:
         """$5600-$58FF is zero in every save we hold."""
         after = SaveGame0.from_prg(
             (FIXTURES / "party6_after_combat.bin").read_bytes())
-        base = STAGING_PAGE_BASE + SLOT_STRIDE - SAVE0_LOAD_ADDRESS
+        base = COMBAT_SLOT_BASE + SLOT_STRIDE - SAVE0_LOAD_ADDRESS
         end = ITEM_AREA_BASE - SAVE0_LOAD_ADDRESS
         assert set(after.to_bytes()[base:end]) == {0}
 
@@ -719,3 +719,22 @@ def test_the_dirty_bit_is_masked_off():
     payload = bytearray(0x1C00)
     payload[AREA - SAVE0_LOAD_ADDRESS] = 0x14 | LOADED_DIRTY
     assert SaveGame0.from_bytes(bytes(payload)).area == 0x14
+
+
+def test_the_retired_savegame_names_are_gone():
+    from goldbox import savegame
+
+    for name in ("STAGING_PAGE_BASE", "ARMOUR_BIAS", "ROSTER_UNKNOWN_03"):
+        assert not hasattr(savegame, name), name
+
+
+def test_the_retired_spell_names_and_amiga_aliases_are_gone():
+    from automap import amiga
+    from goldbox import amiga_later, spells
+
+    for name in ("SPELL_NAMES_FILE", "NAMES_TABLE_ENTRIES", "NAMES_HIGH_BYTES",
+                 "NAMES_TEXT", "NAMES_RESIDENT_BASE"):
+        assert not hasattr(spells, name), name
+    assert not hasattr(amiga_later, "AMIGA_LATER_ITEM_SHIFTS")
+    assert not hasattr(amiga, "AmigaLayout")
+    assert not hasattr(amiga, "LAYOUTS")

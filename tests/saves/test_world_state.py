@@ -202,13 +202,13 @@ def test_a_party_standing_in_the_world_is_left_where_it_is():
 
 
 # ---------------------------------------------------------------------------
-# Pool's state compatibility alias is `WorldState`
+# Pool's state has no alias of `WorldState`
 # ---------------------------------------------------------------------------
 
-def test_amiga_savegame_por_state_is_world_state():
+def test_amiga_savegame_has_no_por_state_alias():
     from goldbox import amiga_savegame
 
-    assert amiga_savegame.PorSaveState is world_state.WorldState
+    assert not hasattr(amiga_savegame, "PorSaveState")
 
 
 # ---------------------------------------------------------------------------

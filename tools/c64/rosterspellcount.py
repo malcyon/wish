@@ -44,7 +44,7 @@ POOL_LEVEL_THRESHOLDS = (0x16, 0x24, 0x38)
 
 #: How many counters the recompute loop clears: `LDX #$08 / LDA #$00 /
 #: STA $6C03,X / DEX / BPL`, so roster `+0x03` to `+0x0B`.
-COUNTER_AT = savegame.ROSTER_UNKNOWN_03
+COUNTER_AT = savegame.ROSTER_SPELL_COUNTS
 COUNTER_LEN = 9
 
 #: How many of those Pool of Radiance can ever fill -- the classifier returns

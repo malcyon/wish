@@ -33,7 +33,6 @@ from .amiga_por import (
 from .amiga_port import (
     AMIGA_DELTAS,
     AMIGA_DELTAS_BY_SIZE,
-    AMIGA_LATER_ITEM_SHIFTS,  # noqa: F401  re-exported for pre-#470 callers
     AMIGA_NAME_SIZE,
     AMIGA_POR_EFFECT_PAD,
     AMIGA_SSB_SCROLL_CHAIN,
@@ -204,7 +203,7 @@ class AmigaItem:
 
     Curse's is **66 bytes** where DOS spends 63, Silver Blades' is **70**,
     and the first 66 of each are the same layout -- see
-    `AMIGA_LATER_ITEM_SHIFTS` for the constructor both titles build one with.
+    `goldbox.amiga_port.AMIGA_LATER_ITEM_SHIFTS` for the constructor both titles build one with.
     The insertion Amiga Pool of Radiance does not have is the pad at `0x02F`,
     ahead of `name1`: the same Chain Mail reads `37 00 30 37` at `0x02E`
     there and `37 00 00 30 37` here.

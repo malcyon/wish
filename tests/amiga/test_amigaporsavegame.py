@@ -19,7 +19,7 @@ import gamedata
 import pytest
 from support.amigarecords import sample
 
-from goldbox import amiga_dax, amiga_por, amiga_savegame
+from goldbox import amiga_dax, amiga_por, amiga_savegame, world_state
 from goldbox.amiga_adf import AmigaDisk
 from goldbox.amiga_por import AmigaPorCharacter
 from goldbox.amiga_port import AmigaRecordError
@@ -107,7 +107,7 @@ def _amiga_outdoor_specimen(name: str) -> bytes:
     return where.read_bytes()
 
 
-def _c64_state(name: str) -> amiga_por.PorSaveState:
+def _c64_state(name: str) -> world_state.WorldState:
     from goldbox import c64_port
     from goldbox.d64 import load_payload
 
@@ -305,7 +305,7 @@ def test_the_regions_a_player_would_notice_round_trip_byte_for_byte(
 # What it refuses
 # ---------------------------------------------------------------------------
 
-def _outdoor_dos_state() -> amiga_por.PorSaveState:
+def _outdoor_dos_state() -> world_state.WorldState:
     """A DOS saved game of a party on the west travel window, built here.
 
     Built rather than read off a specimen so this never skips: the values
@@ -408,7 +408,7 @@ def test_an_area_the_amiga_has_no_script_for_is_refused(ecl_dax):
     """`ecl.dax` holds 29 blocks and the C64 has 30; area 30 is the missing
     one, so a party standing there has no script to stage."""
     assert 30 not in amiga_dax.block_ids(ecl_dax)
-    state = amiga_savegame.PorSaveState(title="Pool of Radiance", area=30, geo=30,
+    state = world_state.WorldState(title="Pool of Radiance", area=30, geo=30,
                                x=1, y=1, facing=0,
                                clock=(0,) * 6, wallset=(0xFFFF,) * 3,
                                flags=(0,) * 217, scratch={},

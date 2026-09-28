@@ -1107,34 +1107,31 @@ def por_put_word(save: bytearray, address: int, value: int) -> None:
     save[at:at + 2] = (value & 0xFFFF).to_bytes(2, "big")
 
 
-#: `PorSaveState` is now `WorldState` under its old name (`#352 (Lift
-#: PorSaveState into one WorldState that every port's saved-game reader
-#: fills and both container writers take)`): `por_savegame_writes` below only
-#: ever reads the ten fields Pool of Radiance needed, and a `WorldState` is
-#: a strict superset of those, so nothing here has to convert one into the
-#: other.  The three `por_state_from_*` readers are one-line wrappers of
-#: `goldbox.world_state`'s three general ones, each keeping the one thing
-#: that was Amiga-specific about it.  **They no longer refuse an outdoor
-#: party**: the two bytes that had never been seen were measured on
-#: 2026-09-07, on two saved games the Amiga game itself made on the travel
-#: grid (`#316 (Write the Amiga Pool of Radiance saved game from the source
-#: save, so a converted party arrives where it was standing)`, `#321 (An
-#: Amiga Pool of Radiance conversion refuses a party standing on the travel
-#: grid, because no outdoor Amiga saved game has ever been read)`).
-PorSaveState = world_state.WorldState
+#: `por_savegame_writes` below only ever reads the ten fields Pool of Radiance
+#: needed, and a `world_state.WorldState` is a strict superset of those, so
+#: nothing here converts one into the other.  The three `por_state_from_*`
+#: readers are one-line wrappers of `goldbox.world_state`'s three general
+#: ones, each keeping the one thing that was Amiga-specific about it.
+#: **They no longer refuse an outdoor party**: the two bytes that had never
+#: been seen were measured on 2026-09-07, on two saved games the Amiga game
+#: itself made on the travel grid (`#316 (Write the Amiga Pool of Radiance
+#: saved game from the source save, so a converted party arrives where it was
+#: standing)`, `#321 (An Amiga Pool of Radiance conversion refuses a party
+#: standing on the travel grid, because no outdoor Amiga saved game has ever
+#: been read)`).
 
 
-def por_state_from_c64(save0: bytes, source: str = "") -> PorSaveState:
+def por_state_from_c64(save0: bytes, source: str = "") -> world_state.WorldState:
     """A C64 Pool of Radiance `SAVEDGAME0` payload, as a place and a clock."""
     return world_state.from_c64(save0, source=source)
 
 
-def por_state_from_dos(savgam: bytes, source: str = "") -> PorSaveState:
+def por_state_from_dos(savgam: bytes, source: str = "") -> world_state.WorldState:
     """A DOS `SAVGAM<slot>.DAT`, as a place and a clock."""
     return world_state.from_dos(savgam, source=source)
 
 
-def por_state_from_amiga(savgam: bytes, source: str = "") -> PorSaveState:
+def por_state_from_amiga(savgam: bytes, source: str = "") -> world_state.WorldState:
     """An Amiga `savgam<letter>.dat`, as a place and a clock.
 
     Here so the writer can be checked against the game's own file: read a
@@ -1489,7 +1486,7 @@ def _por_note_word(report: PorSaveReport, address: int, words: int,
 
 
 def por_savegame_writes(save: bytearray, report: PorSaveReport,
-                        state: PorSaveState, slot: str, count: int,
+                        state: world_state.WorldState, slot: str, count: int,
                         script: bytes, *, portraits: bool = False) -> None:
     """Write everything the source save answers for into a 13141-byte buffer.
 
@@ -1702,7 +1699,7 @@ def por_savegame_zeroes(save: bytearray, report: PorSaveReport) -> None:
             "measurement (docs/165-amiga-savegame.md, \"Still open\")")
 
 
-def new_por_savegame(state: PorSaveState, slot: str, count: int,
+def new_por_savegame(state: world_state.WorldState, slot: str, count: int,
                      ecl_dax: bytes, *, portraits: bool = False
                      ) -> "tuple[bytes, PorSaveReport]":
     """Build all 13141 bytes of a `savgam<letter>.dat` from 13141 zeroes.

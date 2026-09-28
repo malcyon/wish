@@ -521,14 +521,8 @@ def for_game(game=None) -> SpellTable:
     return BY_KEY.get(getattr(game, "key", game), DEFAULT)
 
 
-# --- backwards compatibility -------------------------------------------------
-# Every caller outside this module predates the second game and means Pool of
-# Radiance. These stay so that none of them has to say so.
-SPELL_NAMES_FILE = POOL_OF_RADIANCE.file
-NAMES_TABLE_ENTRIES = POOL_OF_RADIANCE.entries
-NAMES_HIGH_BYTES = POOL_OF_RADIANCE.high_offset
-NAMES_TEXT = POOL_OF_RADIANCE.text_offset
-NAMES_RESIDENT_BASE = POOL_OF_RADIANCE.resident_base
+# --- Pool of Radiance's defaults ---------------------------------------------
+# Callers that do not pass a title mean Pool of Radiance and read these.
 SPELL_GROUPS = _GROUPS_POOL
 #: RESTORATION. A cleric spell far above anything Pool of Radiance grants a
 #: player, so it is presumably the temple's, and its level is not worth
