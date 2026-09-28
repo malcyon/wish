@@ -286,7 +286,12 @@ class CurseSession(por.Session):
         while time.time() < deadline:
             if not answer_prompts and self._prompt_up(self.screen()):
                 return False
-            now = self.steady_triple()
+            # Bounded by what is left of PATIENCE, so a party that never
+            # settles cannot stretch the wait or skip the prompt check.
+            left = deadline - time.time()
+            if left <= 0:
+                break
+            now = self.steady_triple(seconds=min(por.STEADY_SECONDS, left))
             if now is not None and now != before:
                 after = now
                 break

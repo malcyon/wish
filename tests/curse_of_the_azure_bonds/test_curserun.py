@@ -370,3 +370,16 @@ def test_a_party_square_that_never_settles_sends_no_key(monkeypatch):
     assert session.walk_one("I") is False
     assert session.pressed is False
     assert "did not settle" in session.walk_refused
+
+
+def test_a_party_that_never_settles_after_the_key_ends_the_wait_at_patience(
+        monkeypatch):
+    clock = FakeClock()
+    monkeypatch.setattr(C.time, "time", clock.time)
+    monkeypatch.setattr(C.time, "sleep", clock.sleep)
+    session = TripleSession((5, 5, 0), [(5, 5, 0)])
+    reads = iter(range(10000))
+    session.live_triple = (lambda: (5, 5, 0) if not session.pressed
+                           else (next(reads), 0, 0))
+    assert session.walk_one("I", patience=12.0) is False
+    assert clock.now <= 12.0 + 0.5

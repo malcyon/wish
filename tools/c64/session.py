@@ -1998,6 +1998,10 @@ class Session:
             if now == prior:
                 return now
             prior = now
+            # A pause that would end past the limit could not be followed by
+            # another read, so it is not taken.
+            if time.time() + STEADY_POLL >= limit:
+                break
             time.sleep(STEADY_POLL)
         return None
 

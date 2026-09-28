@@ -157,6 +157,18 @@ def test_the_memory_fallback_of_position_waits_for_two_agreeing_reads(monkeypatc
     assert sess.position() == (3, 12, 2)
 
 
+def test_a_party_that_keeps_moving_gives_no_steady_square_and_stops_at_the_limit(
+        monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(S.time, "time", lambda: now[0])
+    monkeypatch.setattr(S.time, "sleep", lambda s: now.__setitem__(0, now[0] + s))
+    reads = iter(range(1000))
+    sess = FakeSession()
+    sess.live_triple = lambda: (next(reads), 0, 0)
+    assert sess.steady_triple(seconds=1.1) is None
+    assert now[0] <= 1.1
+
+
 # -- every per-title driver names its own title (#426) -----------------------
 #
 # `CurseSession` got its `game` when `#360` was fixed; `SSBSession` did not,

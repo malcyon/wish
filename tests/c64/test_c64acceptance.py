@@ -5116,12 +5116,51 @@ def test_a_curse_run_reads_its_position_as_the_steady_triple(tmp_path, monkeypat
     assert run.took_nothing([3, 5, 2], [], []) is False
 
 
+class UnsteadyCurseSession(LaterWalkSession):
+    """A party whose square settles for the first SETTLED reads and never
+    again, and whose `walk_one` refuses the move for that reason."""
+
+    def __init__(self, settled, **kw):
+        super().__init__(**kw)
+        self.settled = settled
+        self.walk_refused = None
+
+    def steady_triple(self):
+        if self.settled > 0:
+            self.settled -= 1
+            return self.live_triple()
+        return None
+
+    def walk_one(self, move, *a, **k):
+        self.pressed.append(move)
+        self.walk_refused = "the party's square did not settle"
+        return False
+
+
 def test_a_curse_run_stops_when_the_party_square_never_settles(tmp_path, monkeypatch):
-    sess = SimpleNamespace(steady_triple=lambda: None)
+    sess = UnsteadyCurseSession(settled=0, x=4, y=4)
     run, log = _later_run(tmp_path, sess, monkeypatch)
-    log.close()
     with pytest.raises(A.StepFailed, match="did not settle"):
         run.position()
+    log.close()
+    assert any("lost-square" in p.name for p in tmp_path.iterdir())
+
+
+def test_a_refused_curse_step_reports_the_refusal_and_keeps_the_screen(
+        tmp_path, monkeypatch):
+    # The walk's start and the move's `before` settle; the third read, the one
+    # `took_nothing` asks for, does not, which is also when `walk_one` refuses.
+    sess = UnsteadyCurseSession(settled=2, x=4, y=4)
+    run, log = _later_run(tmp_path, sess, monkeypatch)
+    with pytest.raises(A.StepFailed, match="walk JI: .*did not settle"):
+        run.walk("JI")
+    log.close()
+    assert sess.pressed == ["J"]
+    assert any("lost-walk" in p.name for p in tmp_path.iterdir())
+    events = [json.loads(line) for line in
+              (tmp_path / "run.jsonl").read_text().splitlines()]
+    move = [e for e in events if e.get("kind") == "move"]
+    assert move and move[0]["keyed"] is False and move[0]["after"] is None
 
 
 def test_the_silver_blades_session_reads_the_live_triple():

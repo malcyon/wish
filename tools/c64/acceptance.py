@@ -1178,7 +1178,8 @@ class PoolRun:
                 and a.state["mode"] == b.state["mode"]
                 and a.state["area_pending"] == b.state["area_pending"])
 
-    def _temple_steady(self, what: str, seconds: float = 5.0) -> TempleSample:
+    def _temple_steady(self, what: str,
+                       seconds: float = S.STEADY_SECONDS) -> TempleSample:
         """Sample every 0.25 s until two consecutive samples agree, and
         return the second; stop if none agree within SECONDS, capped at the
         run's input deadline (#715)."""
@@ -1189,7 +1190,7 @@ class PoolRun:
             if self._temple_agrees(prior, sample):
                 return sample
             prior = sample
-            time.sleep(0.25)
+            time.sleep(S.STEADY_POLL)
         self._temple_stop("unsteady", f"place unsteady {what}", prior)
 
     def temple_checkpoint(self, tag: str, sample: TempleSample | None = None
@@ -2102,6 +2103,10 @@ class PoolRun:
         """Where the party stands: the status line's x, y and facing."""
         return list(self.sess.position())
 
+    def steady_position(self) -> list | None:
+        """`position`, or None when a read the title cannot settle did not."""
+        return self.position()
+
     def took_nothing(self, before, before_rows, screens) -> bool:
         """Whether the key just sent was not read by the game."""
         if screens is not None and screens[1] is not None:
@@ -2142,7 +2147,7 @@ class PoolRun:
             refused = getattr(self.sess, "walk_refused", None)
             if refused:
                 self.log.emit("move", move=move, n=n, before=before,
-                              after=self.position(), resent=resent,
+                              after=self.steady_position(), resent=resent,
                               row24=self.bar().strip(), text=None, keyed=False)
                 raise self.fail("walk", f"walk {route}: {refused}")
             # A square's event may put up a disk prompt after the key has been
@@ -2312,19 +2317,28 @@ class CurseRun(PoolRun):
                 "attack_by": self.attack_by, "attack_owner": self.attack_owner,
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
 
-    def position(self) -> list:
+    def steady_position(self) -> list | None:
         """The live triple `$C04B`-`$C04D`: the status line of these titles
         stays a step behind the party until the next move; read as
-        `steady_triple`, because the game moves it while it draws."""
+        `steady_triple`, because the game moves it while it draws.  None when
+        it never settled."""
         steady = self.sess.steady_triple()
-        if steady is None:
-            raise StepFailed("the party's square did not settle")
-        return list(steady)
+        return None if steady is None else list(steady)
+
+    def position(self) -> list:
+        """`steady_position`, failing with the screen kept when it never
+        settled."""
+        got = self.steady_position()
+        if got is None:
+            raise self.fail("square", "the party's square did not settle")
+        return got
 
     def took_nothing(self, before, before_rows, screens) -> bool:
         """Move mode changes row 24 on the first key whether or not it was
-        read, so only the party's own square says the key was lost."""
-        return self.position() == before
+        read, so only the party's own square says the key was lost.  A square
+        that will not settle says nothing, so the key is not called lost."""
+        now = self.steady_position()
+        return now is not None and now == before
 
     def to_world(self, tries: int = 10) -> bool:
         for _ in range(tries):
