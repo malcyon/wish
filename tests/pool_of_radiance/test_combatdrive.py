@@ -1352,3 +1352,47 @@ def test_a_list_whose_highlight_cannot_be_found_says_so(capsys):
     # prints, so the first letter of the sentence is the thing to look at.
     first = said.strip()[:1]
     assert first.isupper(), f"The line opens lowercase: {said.strip()[:60]!r}"
+
+
+CLASS_ROWS = {10: "FIGHTER/MAGIC-USER/THIEF", 11: "MAGIC-USER/THIEF"}
+
+
+class ClassList(Session):
+    """An elf's class list, where one entry is the tail of the one above."""
+
+    def __init__(self):
+        self.on = 10
+        self.kbd = FakeKeyboard(self)
+        self.taken: int | None = None
+
+    def screen(self):
+        rows = {r: " " + text for r, text in CLASS_ROWS.items()}
+        colours = {r: "5" + ("1" if r == self.on else "5") * len(text)
+                   for r, text in CLASS_ROWS.items()}
+        return real_screen(rows, colours)
+
+    def handle_prompt(self, s=None):
+        return False
+
+    def step(self):
+        key = self.kbd.sent[-1]
+        if key == "Down":
+            self.on = min(self.on + 1, 11)
+        elif key == "Up":
+            self.on = max(self.on - 1, 10)
+        elif key == "Return":
+            self.taken = self.on
+
+
+def test_an_exact_row_is_not_the_tail_of_a_longer_one():
+    sess = ClassList()
+    assert sess.select_row("MAGIC-USER/THIEF", timeout=5, exact=True) is True
+    assert sess.kbd.sent == ["Down", "Return"]
+    assert sess.taken == 11
+
+
+def test_without_exact_the_first_row_containing_the_label_is_taken():
+    sess = ClassList()
+    assert sess.select_row("MAGIC-USER/THIEF", timeout=5) is True
+    assert sess.kbd.sent == ["Return"]
+    assert sess.taken == 10

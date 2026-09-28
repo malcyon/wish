@@ -1207,7 +1207,17 @@ class Session:
 
     # -- menus ------------------------------------------------------------
 
-    def select_row(self, label: str, timeout=30.0, column: int | None = None) -> bool:
+    @staticmethod
+    def _exact_hit(s, label: str) -> tuple[int, int] | None:
+        """Where a row that is *label* and nothing else is, as `Screen.find` answers."""
+        want = label.upper()
+        for r, line in enumerate(s.rows()):
+            if line.strip() == want:
+                return r, line.find(want)
+        return None
+
+    def select_row(self, label: str, timeout=30.0, column: int | None = None,
+                   *, exact: bool = False) -> bool:
         """Vertical menu: walk the white row onto *label*, then Return.
 
         Driven by where the highlight is, not by counting from an assumed
@@ -1232,6 +1242,13 @@ class Session:
         runs **only** when the plain scan came up empty, so no screen this
         already drove is driven differently.
 
+        **`exact`** matches only a row whose whole text, stripped of
+        surrounding blanks, is the label.  The default takes the first row
+        that merely contains it, which is wrong in a list where one entry is
+        the tail of another (`FIGHTER/MAGIC-USER/THIEF` above
+        `MAGIC-USER/THIEF`); a list drawn beside other text on the same rows
+        never matches, so it is for a list with a screen to itself.
+
         And when neither finds a highlight, this says so rather than
         returning `False` off a silent timeout that looks exactly like a menu
         that ignored the keys.
@@ -1244,7 +1261,7 @@ class Session:
             if s is None:
                 time.sleep(0.3)
                 continue
-            hit = s.find(label)
+            hit = self._exact_hit(s, label) if exact else s.find(label)
             hot = s.highlighted_rows(column=column)
             if hit is not None and not hot and column is None:
                 hot = s.highlighted_rows(column=hit[1])
