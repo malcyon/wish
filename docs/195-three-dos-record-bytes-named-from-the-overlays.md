@@ -251,7 +251,8 @@ for Animate Dead and `0xF0EF` for Charm) and reads it back with `cmp ..., 0B3h`
 / `mov ..., 0`. For Animate Dead the C64 writes `old | 0xFE` and reads it back
 with `SQRPACI64 $09B5`, `CMP #$FE` / `BCC` / `AND #$01` -- which preserves bit 0,
 the C64's own trainer flag, where DOS has nothing to preserve. For Charm the C64
-leaves `0x0B8` alone and keeps the state in `0x10C` (`docs/226`). Both ports
+leaves `0x0B8` alone and keeps the state in `0x10C` (PROBABLE, `docs/232`;
+`docs/226`). Both ports
 write `0xB2` for a companion under Animate Dead.
 
 ### What the records hold, both ports

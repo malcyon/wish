@@ -120,7 +120,8 @@ player character of whoever holds it. It is the counterpart of `SPELLE00 +0x0480
 and `SPELLE04 +0x0304`, which set a player character's byte to `old | $FE`
 and a companion's to `$B2`. Those two are Animate Dead: the cure removes
 effect `$20`, which is 32, Animate Dead, and Pool of Radiance has no other
-spell that writes them (the charm cast leaves the byte alone, below). An
+spell that writes them (PROBABLE for the charm cast, which rests on the charm
+read below and leaves the byte alone). An
 earlier reading of the two writers named a different spell, and the cure's
 effect id shows that name was wrong. So in Pool of Radiance a companion stored at
 morale 252 or 254 is indistinguishable from an Animate Dead player character, and

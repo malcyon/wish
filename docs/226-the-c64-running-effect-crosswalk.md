@@ -671,8 +671,9 @@ cloud would. The two duration-0 `(31, 0, FF, 0)` records from handlers 43 and
 ### Charm and Fear keep part of their state in the record
 
 **CONFIRMED from both ports' code.** Charm converts in one case, in both
-directions, and the conversion has not been run in the game (conversion-validation
-boots are paused). A DOS Pool of Radiance character the engine itself has
+directions, and the conversion has not been run in the game. The C64 then playing him
+as a charmed party member is PROBABLE (fight-start placement below; `0x0B8` in
+`docs/232`). A DOS Pool of Radiance character the engine itself has
 charmed (an engine-driven record with the taken-over control byte, on the
 party's side, one accepted charm node and a free effect slot) writes the C64's
 shared effect row `(0x0B, slot, 0, 0x86)` and leaves the record's side byte
@@ -704,15 +705,16 @@ constant `$06`, where DOS holds a count, so C64 Dispel Magic tries it as a
 sixth- or seventh-level effect. What Charm's row alone does not carry is the
 record: the C64 reader takes `0x10C` bit 0 as `hostile` and bit 7 as
 `quickfight` and logs bits 1-6 as not converted, and the writer sets only
-bits 0 and 7 (and bit 6 with a Fear row), so a converted charmed character
-would lose the side the C64 puts back at expiry. `goldbox/layout.py` used to call `0x10C` bits 1-6 unused by every
+bits 0 and 7 (and bit 6 with a Fear row), so in the later titles a converted charmed
+character would lose the side the C64 puts back at expiry. `goldbox/layout.py` used to call `0x10C` bits 1-6 unused by every
 writer seen; the later titles' Charm, Fear and Confusion writers above set
 bits 1, 2 and 6, and `COM.PREP`, `POST.COM $31A2` and `ECL64 $3DD6` read them
 as part of the side. Pool's charm handler uses bits 5 and 6 instead;
 whether another Pool handler (Confusion's effect 107) also sets them is not
-known (SPECULATIVE, it needs a disassembly read). Converting
-Charm needs the record's side, quickfight and control bytes mapped together
-with the row, in both codecs.
+known (SPECULATIVE, it needs a disassembly read). In the later
+titles, converting Charm needs the record's side, quickfight and control bytes
+mapped together with the row, in both codecs; Pool leaves the side byte at
+`$80` (the section opening above).
 
 **C64 Pool of Radiance's charm, CONFIRMED from code except where graded.**
 Static reads; nothing was booted. `tools/c64/overlay.py` and
@@ -773,14 +775,16 @@ Static reads; nothing was booted. `tools/c64/overlay.py` and
   with `$80` as the control.
 
 **The id-84 hazard.** A party member charmed by the monster ability id 84 and
-then knocked out keeps `0x10C` = `$C1`, and `POST.COM` takes him for a slain
-enemy after a win (PROBABLE, above). That is the C64 game's own behaviour and
+then knocked out keeps `0x10C` = `$C1` (PROBABLE, above), and `POST.COM`
+takes him for a slain enemy after a win (PROBABLE, above). That is the C64 game's own behaviour and
 Wish does not write it: the charm conversion writes only the party cast's
 `$86` form, whose removal runs the expiry. Wish's one exposure is a C64 save
 holding `$C1` on a party member with no charm row, which `read` would take for
 an enemy-side member and DOS would drop after his next fight. By the reads so
-far no save holds it: after a win he is removed, after a loss the party is
-dead, and the fled loop removes a member who is not running.
+far no save holds it: after a win he is removed (`POST.COM $09AB`; the address
+is `$09EB` in one read, as above), Pool's fled loop `POST.COM $0DF8` is unread
+(PROBABLE by byte pattern from Curse's `$0DF2`), and the loss case is an
+inference from the game's rules, not a read.
 
 **Which saves can hold a charm on a party member.** A player can save only
 between fights, so this is a question about what survives the end of one.
@@ -852,8 +856,7 @@ companion back into a player character (`docs/232`), so a converted feared
 player character must write as a player character (`0x0B8` = 0, whether or not
 its Fear row also converts) rather than as a companion the control byte would
 otherwise make it. `c64_codec.write` does this for Curse and Silver Blades
-through `DOS_PC_TAKEN_OVER`; Pool of Radiance's own control byte is a
-different value. #720 (A Pool of Radiance player character the engine has taken
+through `DOS_PC_TAKEN_OVER`, and for a charmed Pool character (above). #720 (A Pool of Radiance player character the engine has taken
 over converts between DOS and the C64 as a companion, because both readers take
 the control byte's bit 7 for a companion) has no build of its own: its work sits
 in #667 (A DOS party under Prayer, the strength and charisma spells, Mirror
@@ -864,8 +867,10 @@ Animate Dead zombie needs more than fixing the refusal that blocks it) for
 Animate Dead. Bit 6 of `0x10C`
 goes with the row: written
 when a Fear row is written, and read back as `npc` true with control `0xB3`
-when a player character's row converted. Bits 1-5, and bit 6 with no Fear row,
-are still not converted anywhere and are logged rather than masked away.
+when a player character's row converted. The writer absorbs bit 6 without a
+drop line when a Fear row or a Pool charm row converted. Bits 1-5, and bit 6
+with neither a Fear row nor a Pool charm row, are still not converted anywhere
+and are logged rather than masked away.
 
 **Silver Blades' 65 is never a running node. CONFIRMED from a survey of
 every writer.** Spell 114's row names 65, but its routine (`GAME.OVR:0x32323`) rolls
@@ -1049,7 +1054,9 @@ rules". Fear (Curse 142, Silver Blades 111) converts both ways, its row and
 its record byte together (`effects.FEAR_IDS`, `c64_codec.DOS_PC_TAKEN_OVER`).
 Charm (11) converts for one case only, a DOS Pool character the engine has
 charmed, in both directions and not yet run in the game; every other charm node
-still waits on the record bytes it shares with the row. Only DOS
+stays a loss (Curse and Silver Blades running nodes are the ones that share
+the record bytes with the row; `goldbox/effects.py` refuses a Pool node outside
+the accepted state as one no DOS Pool route writes). Only DOS
 Pool's duration-0 node reaches a save (PROBABLE: nobody has read whether spell
 10's target picker offers an ally; the Charm and Fear section). Silver Blades'
 65 is never a running node. Slow Poison (22) waits on a save the DOS game
