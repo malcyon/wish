@@ -560,8 +560,18 @@ each C64 cast down to its row writer. Static reads only; none has been booted.
 
 | Rule | Titles and ids | DOS node | C64 row | Code |
 |---|---|---|---|---|
-| magnitude = data, flag 0 | all: 2, 52, 53, 71 | `(id, minutes, level, 0)` | `level & $0F` from the generic combat writer | 2: the Bless area routine into the generic cast, Pool `GAME.OVR:0x28013`, Curse `0x2FD01`, Silver Blades `0x2E54F`; C64 `SPELLE00 $A8A1`, `COMBAT $15E7`, `$188B`. 52: Hold Person's own apply, Pool `0x287DD` (level from `START:0x3262`), Curse `0x2FC41`, Silver Blades `0x2E48F`; C64 `$AA45`, `$17E7`, `$1B84`. 53: spell 21 into the generic cast; C64 `$A9F8`, `$177C`, `$1AF8` |
-| magnitude = data, flag 0 | Curse and Silver Blades: 3; Curse: 7; Silver Blades: 73 | the same | the same (73: `COMBAT $2283` writes the level through `$1223`) | 3: spell 70, handler reads data as a counter it drains (Curse `0xFFC3`); C64 `$1A85`, `$1F6D`. 7 and Silver Blades 71: spell 79 through the shared custom cast (Curse `0x2FAD9`, Silver Blades `0x2E313`); C64 `$1AEC`, `$1FBF` |
+| magnitude = data, flag 0 | all: 2, 52, 53, 71 | `(id, minutes, level, 0)` | `level & $0F` from the generic combat writer | 2: the Bless area routine into the generic cast, Pool `GAME.OVR:0x28013`, Curse `0x2FD01`, Silver Blades `0x2E54F`; C64 `SPELLE00 $A8A1`, `COMBAT $15E7`, `$188B`. 52: Hold Person's own apply, Pool `0x287DD` (level from `START:0x3262`), Curse `0x2FC41`, Silver Blades `0x2E48F`; C64 `$AA45`, `$17E7`, `$1B84`. 53: spell 21 into the generic cast; C64 `$A9F8`, `$177C`, `$1AF8`. 71: Pool and Curse spell 63 and Silver Blades spell 79; Silver Blades casts 79 through the shared custom cast `0x2E313`, which tests for spell 79 at `0x2E3CA`; C64 Pool `SPELLE00 $AD54` and Curse `COMBAT $1A71` double the level first, and Silver Blades' `COMBAT2` row `04 1C 00 47 41 BF 1F`, Curse's id-7 row with the id changed, runs `COMBAT $1FBF` |
+| magnitude = data, flag 0 | Curse and Silver Blades: 3; Curse: 7; Silver Blades: 73 | the same | the same (73: `COMBAT $2283` writes the level through `$1223`) | 3: spell 70, handler reads data as a counter it drains (Curse `0xFFC3`); C64 `$1A85`, `$1F6D`. 7: Curse spell 79, Faerie Fire ("is highlighted"), through the shared custom cast `0x2FAD9`, which tests for spell 79 at `0x2FB92` and holds 52's apply call; C64 `COMBAT2` row `04 1C 00 07 41 EC 1A` runs `COMBAT $1AEC`. 73: Silver Blades spell 95; C64 `COMBAT2` row `00 F0 00 49 3A 83 22` runs `$2283`, which loads `LDX #$49` |
+
+The custom cast takes the id from the spell's row in the data segment, byte
+`0x37E6 + 16 × spell` in Curse (`0x2FC19`) and `0x44A7 + 16 × spell` in Silver
+Blades (`0x2E45C`); Pool's row keeps it at `0x3204 + 16 × spell`. Spell 79's
+row names 7 in Curse and 71 in Silver Blades, spell 95's names 73 in both,
+spell 63's names 71 in Pool and Curse and 0 in Silver Blades, and spell 70's
+names 3 in both later titles. The second row used to list the Silver Blades
+cast at `0x2E313` and `$1FBF` as "Silver Blades 71" among its evidence for
+Silver Blades' 73; both write 71, which belongs to the first row, and Silver
+Blades' 73 comes from spell 95.
 | magnitude = data \| `$80`, flag 1 | all: 23, 34 | `(id, minutes, level, 1)` | `level \| $80` | 23 Spiritual Hammer: generic cast flag 1, Pool `0x28A01`; C64 `SPELLE00 $AABF`, `COMBAT $1845`, `$1BF4`. 34 Cause Disease: generic cast flag 1, Pool `0x2938A`; C64 `$ABB9`, `$18A8`, `$1C63` |
 | `(0xFF, 1)` = `$FF` | Pool: 4, 7, 62 | `(4, 1440, FF, 1)`, `(7, 43200, FF, 1)`, `(62, 60, FF, 1)` | `$FF` | DOS spell 67 (generic cast `0x2A0E0`, data `FF`, flag 1), then handlers 4 (`0xEE13`) and 7 (`0xEED8`); C64 camp row 67 `SPELLE04 $ACC6`, expiry `$ACCE` and `$ACD7` through `$ADF3` |
 
