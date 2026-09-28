@@ -5045,7 +5045,7 @@ def test_a_sheet_that_names_someone_else_is_not_taken_for_the_member_asked_for(
 # --- Silver Blades -----------------------------------------------------------------------
 
 def test_silver_blades_is_driven_and_its_run_is_a_later_title_run(tmp_path, monkeypatch):
-    from tools.secret_of_the_silver_blades import ssbsession, ssbwarp
+    from tools.secret_of_the_silver_blades import ssbsession
 
     built = []
 
@@ -5056,7 +5056,7 @@ def test_silver_blades_is_driven_and_its_run_is_a_later_title_run(tmp_path, monk
 
     monkeypatch.setattr(A, "SilverRun", _Silver)
     monkeypatch.setattr(A, "stage", lambda *a, **k: {"effects": [], "magic_items": {}})
-    monkeypatch.setattr(ssbwarp, "stage", lambda *a, **k: "first")
+    monkeypatch.setattr(ssbsession, "stage", lambda *a, **k: "first")
     monkeypatch.setattr(ssbsession, "silver_session_class", lambda: _Sess)
     rc, _, _ = _drive(tmp_path, monkeypatch, ["load"], 1e9, title="ssb")
     assert rc == 0 and len(built) == 1
@@ -5343,7 +5343,7 @@ def test_a_curse_run_on_the_specimen_panel_is_the_marching_order(tmp_path):
 
 from automap.screen import Screen  # noqa: E402
 from tools.curse_of_the_azure_bonds import curserun as _curserun  # noqa: E402
-from tools.secret_of_the_silver_blades import ssbwarp as _ssbwarp  # noqa: E402
+from tools.secret_of_the_silver_blades import ssbsession as _ssbsession  # noqa: E402
 
 _CAMP = "SAVE VIEW MAGIC REST ALTER FIX EXIT"
 _PRESS = "PRESS ANY KEY TO CONTINUE"
@@ -5465,7 +5465,7 @@ def _both_drivers():
 
 def _fake_time(monkeypatch):
     clock = _StepClock()
-    for module in (_curserun, _ssbwarp):
+    for module in (_curserun, _ssbsession):
         monkeypatch.setattr(module, "time", clock)
     return clock
 
@@ -5881,7 +5881,8 @@ def test_a_lost_fight_before_save_loses_the_run_at_the_fight(tmp_path, monkeypat
 
 
 BANNED_EXPERIMENT_IMPORTS = {"traitask", "effectdrive", "inventorycheck",
-                             "traitdrive", "traitquery", "cursewarp"}
+                             "traitdrive", "traitquery", "cursewarp",
+                             "ssbwarp"}
 
 
 def test_acceptance_imports_no_experiment_module_that_route_pool_replaced():
@@ -5895,11 +5896,13 @@ def test_acceptance_imports_no_experiment_module_that_route_pool_replaced():
         if isinstance(node, ast.ImportFrom) and node.module:
             parts = node.module.split(".")
             if parts[:2] in (["tools", "c64"],
-                             ["tools", "curse_of_the_azure_bonds"]) \
+                             ["tools", "curse_of_the_azure_bonds"],
+                             ["tools", "secret_of_the_silver_blades"]) \
                     and len(parts) > 2:
                 found.add(parts[2])
             elif node.module in ("tools.c64",
-                                 "tools.curse_of_the_azure_bonds"):
+                                 "tools.curse_of_the_azure_bonds",
+                                 "tools.secret_of_the_silver_blades"):
                 found.update(a.name for a in node.names)
         elif isinstance(node, ast.Import):
             found.update(a.name.split(".")[-1] for a in node.names)

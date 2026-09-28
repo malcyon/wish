@@ -1493,7 +1493,7 @@ def test_ssbwarp_stage_gives_the_game_a_writable_save_disk(pool):
     refused -- a driven run boots, loads the party, and reports success while
     nothing lands on the disk.
     """
-    ssbwarp = load_tools_module("ssbwarp")
+    ssbsession = load_tools_module("ssbsession")
     disks = pool / "disks"
     disks.mkdir()
     for i in range(1, 7):
@@ -1503,7 +1503,7 @@ def test_ssbwarp_stage_gives_the_game_a_writable_save_disk(pool):
     save.chmod(0o444)
 
     with instance.claim() as slot:
-        ssbwarp.stage(slot, str(disks), save=str(save))
+        ssbsession.stage(slot, str(disks), save=str(save))
 
         staged = Path(slot.dir) / "SIDE0.D64"
         assert staged.read_bytes() == b"a read-only specimen"
@@ -1518,7 +1518,7 @@ def test_ssbwarp_stage_recovers_a_read_only_leftover_save(pool):
     `PermissionError` on the second call, because `shutil.copy` opens an
     existing, now read-only, destination `'wb'`.
     """
-    ssbwarp = load_tools_module("ssbwarp")
+    ssbsession = load_tools_module("ssbsession")
     disks = pool / "disks"
     disks.mkdir()
     for i in range(1, 7):
@@ -1528,8 +1528,8 @@ def test_ssbwarp_stage_recovers_a_read_only_leftover_save(pool):
     save.chmod(0o444)
 
     with instance.claim() as slot:
-        ssbwarp.stage(slot, str(disks), save=str(save))
-        ssbwarp.stage(slot, str(disks), save=str(save))
+        ssbsession.stage(slot, str(disks), save=str(save))
+        ssbsession.stage(slot, str(disks), save=str(save))
 
         staged = Path(slot.dir) / "SIDE0.D64"
         assert staged.read_bytes() == b"a read-only specimen"
@@ -1545,7 +1545,7 @@ def test_ssbwarp_stage_replaces_a_read_only_side_left_in_the_slot(pool):
     what gets here -- and the copy raises `PermissionError` on `SIDE1.D64`
     before the save is ever reached.
     """
-    ssbwarp = load_tools_module("ssbwarp")
+    ssbsession = load_tools_module("ssbsession")
     disks = pool / "disks"
     disks.mkdir()
     for i in range(1, 7):
@@ -1559,7 +1559,7 @@ def test_ssbwarp_stage_replaces_a_read_only_side_left_in_the_slot(pool):
         stale.write_bytes(b"somebody else's side three")
         stale.chmod(0o444)
 
-        ssbwarp.stage(slot, str(disks), save=str(save))
+        ssbsession.stage(slot, str(disks), save=str(save))
 
         assert stale.read_bytes() == b"side 3"
         assert stale.stat().st_mode & stat.S_IWUSR

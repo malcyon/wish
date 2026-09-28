@@ -398,18 +398,18 @@ def curse_world(slot, r: Run, save: str, where: str, game, wait: float):
 def ssb_world(slot, r: Run, save: str, where: str, game, wait: float):
     """Boot Silver Blades, load the party and get it into the world.
 
-    `ssbwarp.enter_world` wants an `Addresses`, which is read out of this
+    `ssbsession.enter_world` wants an `Addresses`, which is read out of this
     title's own `DUNGEON` rather than written down -- and it is not optional
     here even though nothing warps: the function uses it to tell an idle
     machine from one half-way through a disk load, which is what gets a run
     past the prologue's four one-option screens.
     """
-    from tools.secret_of_the_silver_blades import ssbwarp
+    from tools.secret_of_the_silver_blades import ssbsession
 
-    first = ssbwarp.stage(slot, where, save)
+    first = ssbsession.stage(slot, where, save)
     save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
     os.chmod(save_disk, 0o644)
-    sess = ssbwarp.SSBSession(first, slot=slot)
+    sess = ssbsession.SSBSession(first, slot=slot)
     sess.save_disk = save_disk
     r.log("staged", save=save, side0=save_disk)
     if not sess.boot():
@@ -418,17 +418,17 @@ def ssb_world(slot, r: Run, save: str, where: str, game, wait: float):
         return sess, False
     r.log("boot", ok=True)
     r.capture(sess, "party-menu")
-    if not ssbwarp.load_party(sess, timeout=wait):
+    if not ssbsession.load_party(sess, timeout=wait):
         r.log("load", outcome="failed")
         r.capture(sess, "load-failed")
         return sess, False
     r.log("load", outcome="loaded")
-    addr = ssbwarp.Addresses(game, where)
-    if not ssbwarp.enter_world(sess, addr, timeout=wait):
+    addr = ssbsession.Addresses(game, where)
+    if not ssbsession.enter_world(sess, addr, timeout=wait):
         r.log("world", ok=False)
         r.capture(sess, "stuck")
         return sess, False
-    r.log("world", ok=True, bar=ssbwarp.clear_messages(sess))
+    r.log("world", ok=True, bar=ssbsession.clear_messages(sess))
     return sess, True
 
 

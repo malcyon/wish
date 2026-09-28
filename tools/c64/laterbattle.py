@@ -340,28 +340,28 @@ def ssb_fight(run: Battle, args, disks: str) -> int:
     `$7F11`, so a fight that starts while the screen is still a bitmap is seen
     on the next step rather than walked out of.
     """
-    from tools.secret_of_the_silver_blades import ssbwarp  # noqa: PLC0415
+    from tools.secret_of_the_silver_blades import ssbsession  # noqa: PLC0415
 
     # The guard that used to live here -- clearing whatever the last run left
-    # in SIDE0 before `ssbwarp.stage` -- came out once `#469 (A second Silver
+    # in SIDE0 before `ssbsession.stage` -- came out once `#469 (A second Silver
     # Blades run in the same pool slot cannot start, because the staged save
-    # disk is left read-only)` closed: `ssbwarp.stage` now unlinks and
+    # disk is left read-only)` closed: `ssbsession.stage` now unlinks and
     # restores the write bit itself (`tools.c64.session.stage_writable`, `#472`),
     # so a caller no longer has to.
-    boot = ssbwarp.stage(run.slot, disks, args.save)
-    sess = ssbwarp.SSBSession(boot, slot=run.slot)
+    boot = ssbsession.stage(run.slot, disks, args.save)
+    sess = ssbsession.SSBSession(boot, slot=run.slot)
     run.sess = sess
     sess.save_disk = str(pathlib.Path(run.slot.dir) / "SIDE0.D64")
     if not sess.boot():
         run.log("boot", reached_menu=False)
         return 1
     run.log("boot", reached_menu=True)
-    if not ssbwarp.load_party(sess):
+    if not ssbsession.load_party(sess):
         run.log("loaded", outcome="no")
         return 1
     run.log("loaded", outcome="loaded")
-    where = ssbwarp.Addresses(G.SECRET_OF_THE_SILVER_BLADES, disks)
-    entered = ssbwarp.enter_world(sess, where, timeout=args.world,
+    where = ssbsession.Addresses(G.SECRET_OF_THE_SILVER_BLADES, disks)
+    entered = ssbsession.enter_world(sess, where, timeout=args.world,
                                   stop_at_idle=False)
     run.log("world", entered=entered, row24=run.row24())
     run.dump("world")

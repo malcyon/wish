@@ -628,7 +628,7 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
             # Curse's own opening page -- row 24 reads "PRESS BUTTON OR
             # RETURN TO CONTINUE." -- is a one-option menu behind which the
             # world has already loaded, the same kind of screen
-            # `ssbwarp.enter_world` dismisses for Silver Blades' own
+            # `ssbsession.enter_world` dismisses for Silver Blades' own
             # prologue. Left unhandled this falls through to the STUCK
             # branch below and burns the whole timeout in silence.
             sess.press_kernal(0x0D)

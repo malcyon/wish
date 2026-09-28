@@ -462,18 +462,18 @@ def curse_boot(slot, log: Log, save: str, where: str, wait: float):
 
 
 def ssb_boot(slot, log: Log, save: str, where: str, wait: float):
-    from tools.secret_of_the_silver_blades import ssbwarp
-    first = ssbwarp.stage(slot, where, save)
+    from tools.secret_of_the_silver_blades import ssbsession
+    first = ssbsession.stage(slot, where, save)
     save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
     os.chmod(save_disk, 0o644)
-    sess = ssbwarp.SSBSession(first, slot=slot)
+    sess = ssbsession.SSBSession(first, slot=slot)
     sess.save_disk = save_disk
     log.emit("staged", save=save, side0=save_disk)
     if not sess.boot():
         log.emit("boot", ok=False)
         return sess, False
     log.emit("boot", ok=True)
-    ok = ssbwarp.load_party(sess, timeout=wait)
+    ok = ssbsession.load_party(sess, timeout=wait)
     log.emit("load", outcome="loaded" if ok else "failed")
     return sess, ok
 

@@ -362,7 +362,7 @@ def drive(save: str, out: str, pool: int | None, disks: str | None,
           remove: str, source: str, resave: bool) -> int:
     from tools.c64 import session as por
     from tools.curse_of_the_azure_bonds import curserun
-    from tools.secret_of_the_silver_blades import ssbwarp
+    from tools.secret_of_the_silver_blades import ssbsession
 
     game, _at, entries = table_entries(D64.open(save))
     if game.key not in ("curse-of-the-azure-bonds",
@@ -381,9 +381,9 @@ def drive(save: str, out: str, pool: int | None, disks: str | None,
         # write is still torn down rather than held until the lease expires.
         run.log("slot", n=slot.n, monitor=slot.port, display=slot.display,
                 dir=str(slot.dir))
-        stage = curserun.stage if curse else ssbwarp.stage
+        stage = curserun.stage if curse else ssbsession.stage
         first = stage(slot, where, save)
-        sess = (curserun.CurseSession if curse else ssbwarp.SSBSession)(
+        sess = (curserun.CurseSession if curse else ssbsession.SSBSession)(
             first, slot=slot)
         sess.save_disk = f"{slot.dir}/SIDE0.D64"
         run.sess = sess

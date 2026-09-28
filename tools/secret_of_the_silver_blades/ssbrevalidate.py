@@ -41,7 +41,7 @@ from tools.registry import (  # noqa: E402
     specimens,
 )
 from tools.secret_of_the_silver_blades import (  # noqa: E402
-    ssbwarp,
+    ssbsession,
 )
 
 OUT = scratch.scratch_dir("ssbrevalidate")
@@ -56,7 +56,7 @@ MOVE_SUBBAR_TEXT = "I,J,K,M"
 
 #: `cursethac0.Run.clear_bar` calls `self.sess.press_bar`, which exists only
 #: on `tools/curse_of_the_azure_bonds/curserun.py`'s `CurseSession` (a one-line alias for
-#: `select_bar`) -- `tools.c64.session.Session` and `ssbwarp.SSBSession` have no
+#: `select_bar`) -- `tools.c64.session.Session` and `ssbsession.SSBSession` have no
 #: such method, so calling it on a Silver Blades session raises
 #: `AttributeError`. Hit live in this run's first `clear_bar()` call at
 #: 14,11 (the shop square) -- reported to #334 as a discovered defect
@@ -101,20 +101,20 @@ def main(argv: list[str] | None = None) -> int:
              dir=str(run.slot.dir), save=SAVE, disks=disks)
     rc = 1
     try:
-        boot = ssbwarp.stage(run.slot, disks, SAVE)
-        sess = ssbwarp.SSBSession(boot, slot=run.slot)
+        boot = ssbsession.stage(run.slot, disks, SAVE)
+        sess = ssbsession.SSBSession(boot, slot=run.slot)
         run.sess = sess
         sess.save_disk = str(pathlib.Path(run.slot.dir) / "SIDE0.D64")
         if not sess.boot():
             run.log("boot", reached_menu=False)
             return 1
         run.log("boot", reached_menu=True)
-        if not ssbwarp.load_party(sess):
+        if not ssbsession.load_party(sess):
             run.log("loaded", outcome="no")
             return 1
         run.log("loaded", outcome="loaded")
-        where = ssbwarp.Addresses(G.SECRET_OF_THE_SILVER_BLADES, disks)
-        entered = ssbwarp.enter_world(sess, where, timeout=240,
+        where = ssbsession.Addresses(G.SECRET_OF_THE_SILVER_BLADES, disks)
+        entered = ssbsession.enter_world(sess, where, timeout=240,
                                       stop_at_idle=False)
         run.log("world", entered=entered, row24=run.row24())
         run.dump("world")

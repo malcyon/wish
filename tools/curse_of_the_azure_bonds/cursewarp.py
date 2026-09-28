@@ -60,7 +60,7 @@ from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
 from tools.curse_of_the_azure_bonds import curserun  # noqa: E402
-from tools.curse_of_the_azure_bonds.curseload import (  # noqa: E402,F401
+from tools.curse_of_the_azure_bonds.curseload import (  # noqa: E402
     Addresses,
     clear_messages,
     enter_world,

@@ -2967,7 +2967,7 @@ class CurseRun(PoolRun):
 
 
 class SilverRun(CurseRun):
-    """Silver Blades on `ssbwarp.SSBSession`: Curse's camp, sheet and save routes,
+    """Silver Blades on `ssbsession.SSBSession`: Curse's camp, sheet and save routes,
     its own load, and no fight (its route to a fight is Curse's tavern)."""
 
     def __init__(self, sess, log, out, game, points, disks, staged_disk):
@@ -2985,16 +2985,16 @@ class SilverRun(CurseRun):
         self.staged_disk = staged_disk
 
     def load(self) -> dict:
-        from tools.secret_of_the_silver_blades import ssbwarp
+        from tools.secret_of_the_silver_blades import ssbsession
 
         if not self.sess.boot():
             raise StepFailed(self.sess.boot_failure or "boot failed")
-        if not ssbwarp.load_party(self.sess):
+        if not ssbsession.load_party(self.sess):
             raise self.fail("load", "the game did not load the party")
-        addr = ssbwarp.Addresses(self.sess.game, self.disks)
-        if not ssbwarp.enter_world(self.sess, addr, timeout=240):
+        addr = ssbsession.Addresses(self.sess.game, self.disks)
+        if not ssbsession.enter_world(self.sess, addr, timeout=240):
             raise self.fail("world", "Silver Blades never reached the world")
-        ssbwarp.clear_messages(self.sess)
+        ssbsession.clear_messages(self.sess)
         # A loaded party can arrive on the starting-treasure bar or a sheet it
         # opens, and `to_world_bar` answers neither (`curedrive._enter_silver`).
         for _ in range(12):
@@ -3424,9 +3424,9 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             sess = curserun.CurseSession(first, slot=slot)
             sess.save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
         elif args.title == "ssb":
-            from tools.secret_of_the_silver_blades import ssbsession, ssbwarp
+            from tools.secret_of_the_silver_blades import ssbsession
 
-            first = ssbwarp.stage(slot, args.disks, str(staged_disk))
+            first = ssbsession.stage(slot, args.disks, str(staged_disk))
             sess = ssbsession.silver_session_class()(first, slot=slot)
             sess.save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
         else:

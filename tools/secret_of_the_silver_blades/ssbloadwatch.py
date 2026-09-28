@@ -44,7 +44,7 @@ from tools.registry import (  # noqa: E402
     specimens,
 )
 from tools.secret_of_the_silver_blades import (  # noqa: E402
-    ssbwarp,
+    ssbsession,
 )
 
 OUT = scratch.scratch_dir("ssbloadwatch")
@@ -118,8 +118,8 @@ def main(argv: list[str] | None = None) -> int:
     sess = None
     rc = 1
     try:
-        boot = ssbwarp.stage(slot, disks, SAVE)
-        sess = ssbwarp.SSBSession(boot, slot=slot)
+        boot = ssbsession.stage(slot, disks, SAVE)
+        sess = ssbsession.SSBSession(boot, slot=slot)
         sess.save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
         if not sess.boot():
             log("boot", reached_menu=False)
@@ -144,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
             if s is not None else "(bitmap)\n")
         read_point(sess, ckpts, "01-menu", out, log)
 
-        if not ssbwarp.load_party(sess):
+        if not ssbsession.load_party(sess):
             log("loaded", outcome="no")
             read_point(sess, ckpts, "02-loadfail", out, log)
             return 1
@@ -156,9 +156,9 @@ def main(argv: list[str] | None = None) -> int:
         sess.kbd.screenshot(str(out / "02-begin-adventuring.png"))
         read_point(sess, ckpts, "02-loaded", out, log)
 
-        addr = ssbwarp.Addresses(game, disks)
+        addr = ssbsession.Addresses(game, disks)
         S.INDOORS_AT = addr.indoors
-        entered = ssbwarp.enter_world(sess, addr, timeout=240.0,
+        entered = ssbsession.enter_world(sess, addr, timeout=240.0,
                                       stop_at_idle=False)
         s = sess.screen()
         log("world", entered=entered,

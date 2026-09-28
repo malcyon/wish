@@ -24,7 +24,7 @@ for the other two titles.  `--watch` launches and serves with no boot, for
 reading a screen nothing recognises.
 
 Five things about this rip cost `#20` a run each and all five are in
-`ssbwarp.SSBSession`: a cracker intro before the game, twenty-five seconds
+`ssbsession.SSBSession`: a cracker intro before the game, twenty-five seconds
 of silence needed before the first keypress, the fastloader prompt arriving
 *after* the intro rather than before it, `INSERT SIDE A` in letters rather
 than digits, and `$4BFB` hiding the status-line square in eleven of the
@@ -48,7 +48,7 @@ sys.path.insert(0, str(ROOT))
 from automap import gamedisks  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
 from tools.secret_of_the_silver_blades import (  # noqa: E402
-    ssbwarp,
+    ssbsession,
 )
 
 
@@ -85,10 +85,10 @@ def run(argv: list[str] | None = None) -> None:
     print(f"slot {slot.n}: monitor {slot.port} text {slot.text_port} "
           f"cmd {slot.cmd_port} display {slot.display} dir {slot.dir}",
           flush=True)
-    first = ssbwarp.stage(slot, disks, args.save)
+    first = ssbsession.stage(slot, disks, args.save)
     if args.save:
         print(f"save disk: {args.save} -> {slot.dir}/SIDE0.D64", flush=True)
-    sess = ssbwarp.SSBSession(first, slot=slot)
+    sess = ssbsession.SSBSession(first, slot=slot)
     sess.save_disk = f"{slot.dir}/SIDE0.D64"
     if args.out:
         pathlib.Path(args.out).mkdir(parents=True, exist_ok=True)
@@ -98,7 +98,7 @@ def run(argv: list[str] | None = None) -> None:
         booted = sess.boot()
         print("booted" if booted else "boot incomplete", flush=True)
         if booted:
-            loaded = ssbwarp.load_party(sess)
+            loaded = ssbsession.load_party(sess)
             print("party loaded" if loaded else "party not loaded", flush=True)
             time.sleep(1.0)
             sess.dump()

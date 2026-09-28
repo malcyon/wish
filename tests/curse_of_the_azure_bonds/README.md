@@ -17,6 +17,6 @@ Tests for Curse of the Azure Bonds: its C64 disks, saves, tables and level-up ru
 | `test_cursethac0.py` | Checks against the player's own disks what Curse's overlays do with the stored THAC0, and what the tool stages. |
 | `test_cursethiefskills.py` | Checks where a DOS Curse thief's seven extra skill points come from in the engines, and that a conversion no longer copies them into another title's record. |
 | `test_cursetrainer.py` | Checks Curse's saving throws, hit dice, attacks, spell slot rows and level-up behaviour against the trainer read out of `GEN` and the shipped party. |
-| `test_cursewarp.py` | Checks that `tools/curse_of_the_azure_bonds/cursewarp.py` sends its stuck-screen Escape only when the machine is idle in a key wait. |
+| `test_cursewarp.py` | Checks that `tools/curse_of_the_azure_bonds/curseload.py`'s world entry sends its stuck-screen Escape only when the machine is idle in a key wait. |
 | `test_cursewheel.py` | Checks that `tools/curse_of_the_azure_bonds/cursewheel.py` recognises DOS Curse's code-wheel prompt from frames built here and answers it. |
 | `test_curtraitnames.py` | Checks that Curse's effect-code names come from Curse's own tables and differ from Pool of Radiance's where the data disagrees. |

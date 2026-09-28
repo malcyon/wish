@@ -5,7 +5,7 @@ party, arrive, read one sheet, walk one square and let the engine resave.
 Written for `#52 (File ▸ Import and File ▸ Export for every direction the
 library supports)`, the `DosToC64` Silver Blades walk, when
 `tools/convert/convertrun.py` had no Silver Blades driver. It drives
-`tools.secret_of_the_silver_blades.ssbwarp.SSBSession` directly and reuses `tools/c64/savecheck.py`'s screen
+`tools.secret_of_the_silver_blades.ssbsession.SSBSession` directly and reuses `tools/c64/savecheck.py`'s screen
 readers, the pattern the sibling `AmigaToC64` Silver Blades walk set. The
 worked-around bug in `tools/secret_of_the_silver_blades/ssbwarp.py`'s save prompt
 (`#539 (tools/secret_of_the_silver_blades/ssbwarp.py's SAVE_PROMPT does not match Silver Blades' actual
@@ -35,7 +35,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.runlog import Log  # noqa: E402
 from tools.c64.savecheck import answer_bars, panel, walk_step_routed  # noqa: E402
-from tools.secret_of_the_silver_blades import ssbwarp  # noqa: E402
+from tools.secret_of_the_silver_blades import ssbsession  # noqa: E402
 
 
 def sheet_workaround(sess, index: int, tag: str, log: Log,
@@ -82,13 +82,13 @@ def main(argv=None) -> int:
     log.say(f"slot {slot.n} display {slot.display}")
     sess = None
     try:
-        boot = ssbwarp.stage(slot, str(args.disks), save=str(args.produced))
-        sess = ssbwarp.SSBSession(boot, slot=slot)
+        boot = ssbsession.stage(slot, str(args.disks), save=str(args.produced))
+        sess = ssbsession.SSBSession(boot, slot=slot)
         if not sess.boot():
             raise RuntimeError("boot failed -- never reached the party menu")
         sess.kbd.screenshot(str(out / "00-party-menu.png"))
 
-        if not ssbwarp.load_party(sess):
+        if not ssbsession.load_party(sess):
             raise RuntimeError("load_party failed -- never reached "
                                "BEGIN ADVENTURING")
         log.say("reached BEGIN ADVENTURING")

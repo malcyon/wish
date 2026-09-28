@@ -43,7 +43,7 @@ Two subcommands:
         sheet.  Writes one JSON line per event as it goes, so a run that dies
         halfway still says how far it got.
 
-Nothing writes to the player's disks: `tools/secret_of_the_silver_blades/ssbwarp.stage` copies the six
+Nothing writes to the player's disks: `tools/secret_of_the_silver_blades/ssbsession.stage` copies the six
 sides into the pool slot and opens them read only, and `--base` is copied
 before a byte of it is touched.
 """
@@ -232,7 +232,7 @@ def run(save: str, out: str, who: str, was: str, pool: int | None,
         disks: str = "") -> int:
     from automap import gamedisks
     from tools.c64 import session as por
-    from tools.secret_of_the_silver_blades import ssbwarp
+    from tools.secret_of_the_silver_blades import ssbsession
 
     where = disks or str(gamedisks.find("secret-of-the-silver-blades") or "")
     if not where:
@@ -244,8 +244,8 @@ def run(save: str, out: str, who: str, was: str, pool: int | None,
           display=slot.display, dir=str(slot.dir))
     sess = None
     try:
-        first = ssbwarp.stage(slot, where, save)
-        sess = ssbwarp.SSBSession(first, slot=slot)
+        first = ssbsession.stage(slot, where, save)
+        sess = ssbsession.SSBSession(first, slot=slot)
         sess.save_disk = f"{slot.dir}/SIDE0.D64"
         r.log("staged", save=save, side0=sess.save_disk)
         if not sess.boot():
@@ -253,7 +253,7 @@ def run(save: str, out: str, who: str, was: str, pool: int | None,
             r.capture(sess, "boot-failed")
             return 1
         r.log("boot", ok=True)
-        if not ssbwarp.load_party(sess):
+        if not ssbsession.load_party(sess):
             r.log("load", ok=False)
             r.capture(sess, "load-failed")
             return 1

@@ -1,4 +1,4 @@
-"""`tools/secret_of_the_silver_blades/ssbwarp.py`'s stuck-screen Escape must not abort a load in
+"""`tools/secret_of_the_silver_blades/ssbsession.py`'s stuck-screen Escape must not abort a load in
 progress (#568, the Silver Blades half of #334).
 
 Escape is VICE's RUN/STOP key, which aborts a KERNAL `LOAD` still running.
@@ -23,7 +23,7 @@ from contextlib import contextmanager
 
 from conftest import load_tools_module
 
-SSB = load_tools_module("ssbwarp")
+SSB = load_tools_module("ssbsession")
 
 
 class FakeRegs:

@@ -23,7 +23,7 @@ from conftest import load_tools_module
 from automap.screen import Screen
 
 POR = load_tools_module("session")
-SSB = load_tools_module("ssbwarp")
+SSB = load_tools_module("ssbsession")
 CURSE = load_tools_module("curserun")
 
 #: Row 18 and row 24 of the camp prompt, the same wording all three titles

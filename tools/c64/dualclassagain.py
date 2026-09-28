@@ -158,7 +158,7 @@ def record(sess) -> dict:
 def drive(args) -> int:
     from tools.c64 import session as por  # noqa: PLC0415
     from tools.curse_of_the_azure_bonds import curserun  # noqa: PLC0415
-    from tools.secret_of_the_silver_blades import ssbwarp  # noqa: PLC0415
+    from tools.secret_of_the_silver_blades import ssbsession  # noqa: PLC0415
 
     found = args.disks or gamedisks.find(args.title)
     if not found:
@@ -169,8 +169,8 @@ def drive(args) -> int:
     # Each title's harness owns the side-name patterns and the session class
     # that knows its prompts, so the disks are staged by the one that matches.
     curse = args.title == "curse-of-the-azure-bonds"
-    stage = curserun.stage if curse else ssbwarp.stage
-    session_class = curserun.CurseSession if curse else ssbwarp.SSBSession
+    stage = curserun.stage if curse else ssbsession.stage
+    session_class = curserun.CurseSession if curse else ssbsession.SSBSession
     out = pathlib.Path(args.out)
     scratch.ensure(out)
     log = (out / "run.jsonl").open("a")

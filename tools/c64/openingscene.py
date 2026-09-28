@@ -332,9 +332,9 @@ def run(args) -> int:
             sess = curserun.CurseSession(first, slot=slot)
             container = c64_save.CURSE_OF_THE_AZURE_BONDS
         else:
-            from tools.secret_of_the_silver_blades import ssbwarp  # noqa: PLC0415
-            first = ssbwarp.stage(slot, str(found), save=str(save))
-            sess = ssbwarp.SSBSession(first, slot=slot)
+            from tools.secret_of_the_silver_blades import ssbsession  # noqa: PLC0415
+            first = ssbsession.stage(slot, str(found), save=str(save))
+            sess = ssbsession.SSBSession(first, slot=slot)
             container = c64_save.SECRET_OF_THE_SILVER_BLADES
         side0 = pathlib.Path(slot.dir) / "SIDE0.D64"
         os.chmod(side0, 0o644)
@@ -359,7 +359,7 @@ def run(args) -> int:
             loaded = outcome == "loaded"
             note(event="load", outcome=outcome)
         else:
-            loaded = ssbwarp.load_party(sess)
+            loaded = ssbsession.load_party(sess)
             note(event="load", outcome=loaded)
         if not loaded:
             summary["outcome"] = "load failed"

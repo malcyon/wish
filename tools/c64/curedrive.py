@@ -231,7 +231,7 @@ class Run:
                  disks: str, pool: int | None):
         from tools.c64 import session as por
         from tools.curse_of_the_azure_bonds import curserun
-        from tools.secret_of_the_silver_blades import ssbsession, ssbwarp
+        from tools.secret_of_the_silver_blades import ssbsession
         self.out = out
         self.who = who
         self.disks = disks
@@ -242,7 +242,7 @@ class Run:
         self.conf = TITLES[game.key]
         self.silver = game.key == "secret-of-the-silver-blades"
         self.slot = por.claim_slot(pool, "curedrive")
-        stage_sides = ssbwarp.stage if self.silver else curserun.stage
+        stage_sides = ssbsession.stage if self.silver else curserun.stage
         first = stage_sides(self.slot, disks, str(save))
         self.save_disk = str(pathlib.Path(self.slot.dir) / "SIDE0.D64")
         os.chmod(self.save_disk, 0o644)
@@ -300,16 +300,16 @@ class Run:
         return True
 
     def _enter_silver(self, wait: float) -> bool:
-        from tools.secret_of_the_silver_blades import ssbwarp
-        if not ssbwarp.load_party(self.sess):
+        from tools.secret_of_the_silver_blades import ssbsession
+        if not ssbsession.load_party(self.sess):
             self.log(event="load", outcome="not loaded")
             return False
-        addr = ssbwarp.Addresses(self.sess.game, self.disks)
-        if not ssbwarp.enter_world(self.sess, addr, timeout=wait):
+        addr = ssbsession.Addresses(self.sess.game, self.disks)
+        if not ssbsession.enter_world(self.sess, addr, timeout=wait):
             self.log(event="never-reached-the-world")
             self.shot("stuck")
             return False
-        self.log(event="world", bar=ssbwarp.clear_messages(self.sess))
+        self.log(event="world", bar=ssbsession.clear_messages(self.sess))
         # A loaded Silver Blades party can arrive on the starting-treasure
         # bar or a sheet it opens, `VIEW TAKE POOL SHARE EXIT` or `EXIT`, and
         # leaving the treasure asks `GO BACK LEAVE TREASURE`; `to_world_bar`

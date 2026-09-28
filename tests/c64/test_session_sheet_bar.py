@@ -83,7 +83,7 @@ def test_a_character_who_owns_nothing_reads_too():
 # `game`, `handle_prompt`, `boot`, `ANY_KEY` and `QUIET` and nothing about the
 # sheet.
 
-SSB = load_tools_module("ssbwarp")
+SSB = load_tools_module("ssbsession")
 Curse = load_tools_module("curserun")
 
 
@@ -130,7 +130,7 @@ def test_the_base_class_still_does_not_recognise_silver_blades_bar():
 
 @pytest.mark.parametrize("module_name, class_name", [
     ("curserun", "CurseSession"),
-    ("ssbwarp", "SSBSession"),
+    ("ssbsession", "SSBSession"),
 ])
 def test_every_per_title_sheet_bar_override_answers_exit_not_the_world_bar(
         module_name, class_name):

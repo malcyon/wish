@@ -18,7 +18,7 @@ sys.path.insert(0, ".")
 
 from tools.c64 import laterbattle  # noqa: E402
 from tools.curse_of_the_azure_bonds import cursethac0  # noqa: E402
-from tools.secret_of_the_silver_blades import ssbwarp  # noqa: E402
+from tools.secret_of_the_silver_blades import ssbsession  # noqa: E402
 
 
 class FakeGotoRun(laterbattle.Battle):
@@ -77,13 +77,13 @@ class FakeGotoRun(laterbattle.Battle):
 
 def test_ssb_fight_charges_the_real_steps_a_leg_took(monkeypatch):
     """A leg that arrives in 17 of a 45-step allowance charges 17, not 45."""
-    monkeypatch.setattr(ssbwarp, "stage", lambda *a, **k: "boot")
+    monkeypatch.setattr(ssbsession, "stage", lambda *a, **k: "boot")
     monkeypatch.setattr(
-        ssbwarp, "SSBSession",
+        ssbsession, "SSBSession",
         lambda *a, **k: SimpleNamespace(save_disk=None, boot=lambda: True))
-    monkeypatch.setattr(ssbwarp, "load_party", lambda sess: True)
-    monkeypatch.setattr(ssbwarp, "Addresses", lambda *a, **k: None)
-    monkeypatch.setattr(ssbwarp, "enter_world", lambda *a, **k: True)
+    monkeypatch.setattr(ssbsession, "load_party", lambda sess: True)
+    monkeypatch.setattr(ssbsession, "Addresses", lambda *a, **k: None)
+    monkeypatch.setattr(ssbsession, "enter_world", lambda *a, **k: True)
     monkeypatch.setattr(cursethac0, "area_geo",
                         lambda save, disks: ("AREA00", "GEO00"))
 

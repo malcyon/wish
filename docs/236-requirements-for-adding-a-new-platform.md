@@ -100,6 +100,7 @@ The rules:
 | `_SAVGAM`, `containers_in`, `slots_in`, `source_slot`, `install`, `HALL_WORD`, `HALL_OPEN`, `HALL_TITLES`, `stage_hall`, `stage_xp`, `stage_node`, `node_dict` in `tools/dos/acceptance.py` | `tools/dos/staging.py` |
 | `bar_signature`, `name_signature`, `status_square`, `roster_name`, `roster_line`, `sheet_name`, `on_items_list`, `item_rows`, `item_highlight`, and the constants they read (`CELL`, `STATUS_TEXT_X`, `STATUS_COLUMNS`, `POD_ROSTER`, `POD_SHEET_NAME`, `POD_NAME_CELLS`, `POD_NAME_ROWS`, `ITEMS_BAR_HEAD`, `ITEMS_BAR_HEAD_CELLS`, `ITEM_READIED_COLUMN`, `ITEM_INK`, `ITEM_LIST_RECT`, `ITEM_HIGHLIGHT_PIXELS`, `BLANK_NAME`) in `tools/dos/acceptance.py` | `tools/dos/screens.py` |
 | `BARS`, `MENU_RECT`, `MENU_BEFORE`, `MENU_AFTER`, `RouteLost`, and the `Driver` methods `shot`, `bar`, `wait_bar`, `press`, `menu`, `to_party_menu`, `intro` in `tools/dos/ssbimport.py` | `tools/dos/route_silver_blades.py`, where the methods are on `Route` |
+| `SSBSession`, `stage`, `load_party`, `Addresses`, `enter_world`, `clear_messages`, `idle_in_key_window`, `snapshot`, `side_wanted`, `save_disk_wanted`, `impossible_side`, `SIDE_GLOBS`, `RE_SSB_SIDE`, `RE_START_CHECK`, `LOADER_SAVE_PROMPT` and `LIVE_X`, `LIVE_Y`, `LIVE_FACING` in `tools/secret_of_the_silver_blades/ssbwarp.py` | `tools/secret_of_the_silver_blades/ssbsession.py` |
 | `_silver_session_class` in `tools/c64/curedrive.py` | `silver_session_class` in `tools/secret_of_the_silver_blades/ssbsession.py` |
 | The run's pool-lease owner label `c64acceptance/<issue>/<run>` | Unchanged. |
 

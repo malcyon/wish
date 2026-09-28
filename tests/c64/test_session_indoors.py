@@ -183,7 +183,7 @@ def test_a_party_that_keeps_moving_gives_no_steady_square_and_stops_at_the_limit
 
 @pytest.mark.parametrize("module_name, class_name, expected_key", [
     ("curserun", "CurseSession", "curse-of-the-azure-bonds"),
-    ("ssbwarp", "SSBSession", "secret-of-the-silver-blades"),
+    ("ssbsession", "SSBSession", "secret-of-the-silver-blades"),
 ])
 def test_every_per_title_driver_names_its_own_title(
         module_name, class_name, expected_key):

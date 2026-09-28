@@ -296,20 +296,20 @@ class Curse(Title):
 
 class SilverBlades(Title):
     def boot(self, slot, disks, save, note, wait):
-        from tools.secret_of_the_silver_blades import ssbwarp
+        from tools.secret_of_the_silver_blades import ssbsession
 
-        first = ssbwarp.stage(slot, disks, save)
+        first = ssbsession.stage(slot, disks, save)
         save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
         os.chmod(save_disk, 0o644)
-        sess = ssbwarp.SSBSession(first, slot=slot)
+        sess = ssbsession.SSBSession(first, slot=slot)
         sess.save_disk = save_disk
         _own_title(sess, self.game)
         if not sess.boot():
             return sess, "boot-failed"
-        if not ssbwarp.load_party(sess, timeout=wait):
+        if not ssbsession.load_party(sess, timeout=wait):
             return sess, "load-failed"
-        addr = ssbwarp.Addresses(self.game, disks)
-        if not ssbwarp.enter_world(sess, addr, timeout=wait):
+        addr = ssbsession.Addresses(self.game, disks)
+        if not ssbsession.enter_world(sess, addr, timeout=wait):
             return sess, "world-failed"
         return sess, "world"
 

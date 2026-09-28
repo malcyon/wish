@@ -92,7 +92,7 @@ the roster slot to `$7C00` when the character is picked and writes it back
 on success.
 
 Nothing here writes to the player's own disks: the six sides are copied into
-the slot by `tools/secret_of_the_silver_blades/ssbwarp.stage`, which opens them read only.
+the slot by `tools/secret_of_the_silver_blades/ssbsession.stage`, which opens them read only.
 """
 from __future__ import annotations
 

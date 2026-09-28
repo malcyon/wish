@@ -15,7 +15,7 @@ def harnesses(monkeypatch, tmp_path):
     """Record which stager and session class `drive` reaches, launching nothing."""
     from tools.c64 import session as por
     from tools.curse_of_the_azure_bonds import curserun
-    from tools.secret_of_the_silver_blades import ssbwarp
+    from tools.secret_of_the_silver_blades import ssbsession
 
     slot_dir = tmp_path / "slot"
     slot_dir.mkdir()
@@ -41,9 +41,9 @@ def harnesses(monkeypatch, tmp_path):
 
     monkeypatch.setattr(por, "claim_slot", lambda *a, **k: slot)
     monkeypatch.setattr(curserun, "stage", stager("curse"))
-    monkeypatch.setattr(ssbwarp, "stage", stager("silver-blades"))
+    monkeypatch.setattr(ssbsession, "stage", stager("silver-blades"))
     monkeypatch.setattr(curserun, "CurseSession", session("curse"))
-    monkeypatch.setattr(ssbwarp, "SSBSession", session("silver-blades"))
+    monkeypatch.setattr(ssbsession, "SSBSession", session("silver-blades"))
     return reached
 
 

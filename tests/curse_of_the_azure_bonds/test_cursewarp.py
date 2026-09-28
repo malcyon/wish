@@ -1,4 +1,4 @@
-"""`tools/curse_of_the_azure_bonds/cursewarp.py`'s stuck-screen Escape has the identical vulnerability
+"""`tools/curse_of_the_azure_bonds/curseload.py`'s world entry, which `cursewarp.py` imports, has the identical vulnerability
 `tests/secret_of_the_silver_blades/test_ssbwarp.py` covers for Silver Blades (#568, general defect;
 `#334`'s own Silver Blades half is where it was first traced).
 

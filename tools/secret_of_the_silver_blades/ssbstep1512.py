@@ -40,7 +40,7 @@ from tools.registry import (  # noqa: E402
     specimens,
 )
 from tools.secret_of_the_silver_blades import (  # noqa: E402
-    ssbwarp,
+    ssbsession,
 )
 
 OUT = scratch.scratch_dir("ssbstep1512")
@@ -95,20 +95,20 @@ def main(argv: list[str] | None = None) -> int:
              dir=str(run.slot.dir), save=SAVE, disks=disks)
     rc = 1
     try:
-        boot = ssbwarp.stage(run.slot, disks, SAVE)
-        sess = ssbwarp.SSBSession(boot, slot=run.slot)
+        boot = ssbsession.stage(run.slot, disks, SAVE)
+        sess = ssbsession.SSBSession(boot, slot=run.slot)
         run.sess = sess
         sess.save_disk = str(pathlib.Path(run.slot.dir) / "SIDE0.D64")
         if not sess.boot():
             run.log("boot", reached_menu=False)
             return 1
         run.log("boot", reached_menu=True)
-        if not ssbwarp.load_party(sess):
+        if not ssbsession.load_party(sess):
             run.log("loaded", outcome="no")
             return 1
         run.log("loaded", outcome="loaded")
-        where = ssbwarp.Addresses(G.SECRET_OF_THE_SILVER_BLADES, disks)
-        entered = ssbwarp.enter_world(sess, where, timeout=240, stop_at_idle=False)
+        where = ssbsession.Addresses(G.SECRET_OF_THE_SILVER_BLADES, disks)
+        entered = ssbsession.enter_world(sess, where, timeout=240, stop_at_idle=False)
         run.log("world", entered=entered, row24=run.row24())
         run.dump("world")
         if not entered:

@@ -447,12 +447,12 @@ def curse_boot(slot, r: Run, save: str, where: str, wait: float):
 
 def ssb_boot(slot, r: Run, save: str, where: str, wait: float):
     """Boot Silver Blades and load the party as far as the formation menu."""
-    from tools.secret_of_the_silver_blades import ssbwarp
+    from tools.secret_of_the_silver_blades import ssbsession
 
-    first = ssbwarp.stage(slot, where, save)
+    first = ssbsession.stage(slot, where, save)
     save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
     os.chmod(save_disk, 0o644)
-    sess = ssbwarp.SSBSession(first, slot=slot)
+    sess = ssbsession.SSBSession(first, slot=slot)
     sess.save_disk = save_disk
     r.log("staged", save=save, side0=save_disk)
     if not sess.boot():
@@ -460,7 +460,7 @@ def ssb_boot(slot, r: Run, save: str, where: str, wait: float):
         r.capture(sess, "boot-failed")
         return sess, False
     r.log("boot", ok=True)
-    if not ssbwarp.load_party(sess, timeout=wait):
+    if not ssbsession.load_party(sess, timeout=wait):
         r.log("load", outcome="failed")
         r.capture(sess, "load-failed")
         return sess, False
