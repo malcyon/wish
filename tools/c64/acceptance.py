@@ -2314,8 +2314,12 @@ class CurseRun(PoolRun):
 
     def position(self) -> list:
         """The live triple `$C04B`-`$C04D`: the status line of these titles
-        stays a step behind the party until the next move."""
-        return list(self.sess.live_triple())
+        stays a step behind the party until the next move; read as
+        `steady_triple`, because the game moves it while it draws."""
+        steady = self.sess.steady_triple()
+        if steady is None:
+            raise StepFailed("the party's square did not settle")
+        return list(steady)
 
     def took_nothing(self, before, before_rows, screens) -> bool:
         """Move mode changes row 24 on the first key whether or not it was

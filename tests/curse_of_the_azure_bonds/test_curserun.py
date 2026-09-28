@@ -319,3 +319,54 @@ def test_a_failed_attach_does_not_hold_off_the_retry_for_the_same_disk(
         session.handle_prompt(screen)
     now[0] += 2.5
     assert session.handle_prompt(screen) is True
+
+
+class TripleSession(FakeSession):
+    """`live_triple` answers from a script keyed by how many reads came after
+    the move key, and repeats its last entry."""
+
+    def __init__(self, before, after_key):
+        super().__init__(side=2)
+        self.before = before
+        self.after_key = list(after_key)
+        self.pressed = False
+        self.enter_move = lambda **kw: True
+        self.screen = lambda: _screen("")
+
+    def move_key(self, *a, **k):
+        self.pressed = True
+
+    def live_triple(self):
+        if not self.pressed:
+            return self.before
+        if len(self.after_key) > 1:
+            return self.after_key.pop(0)
+        return self.after_key[0]
+
+
+def _clocked(monkeypatch):
+    clock = FakeClock()
+    monkeypatch.setattr(C.time, "time", clock.time)
+    monkeypatch.setattr(C.time, "sleep", clock.sleep)
+
+
+def test_one_stray_read_after_the_key_is_not_a_step_the_game_took(monkeypatch):
+    _clocked(monkeypatch)
+    session = TripleSession((5, 5, 0), [(6, 5, 1), (5, 5, 0)])
+    assert session.walk_one("I", patience=6) is False
+
+
+def test_the_same_other_square_on_two_reads_is_believed(monkeypatch):
+    _clocked(monkeypatch)
+    session = TripleSession((5, 5, 0), [(6, 5, 1), (6, 5, 1), (6, 5, 1)])
+    assert session.walk_one("I", patience=6) is True
+
+
+def test_a_party_square_that_never_settles_sends_no_key(monkeypatch):
+    _clocked(monkeypatch)
+    reads = iter(range(1000))
+    session = TripleSession((0, 0, 0), [(0, 0, 0)])
+    session.live_triple = lambda: (next(reads), 0, 0)
+    assert session.walk_one("I") is False
+    assert session.pressed is False
+    assert "did not settle" in session.walk_refused

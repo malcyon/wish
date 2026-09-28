@@ -5046,6 +5046,9 @@ class LaterWalkSession(WalkSession):
     def live_triple(self):
         return (self.x, self.y, self.facing)
 
+    def steady_triple(self):
+        return self.live_triple()
+
     def walk_one(self, move, *a, **k):
         self.pressed.append(move)
         self.moving = True
@@ -5102,6 +5105,23 @@ def test_a_later_title_bump_is_pressed_twice_and_stays_blocked(tmp_path, monkeyp
     log.close()
     assert sess.pressed == ["J", "I", "I"]
     assert got["blocked"] == [1] and got["moves"][1]["resent"] is True
+
+
+def test_a_curse_run_reads_its_position_as_the_steady_triple(tmp_path, monkeypatch):
+    sess = SimpleNamespace(steady_triple=lambda: (3, 4, 2))
+    run, log = _later_run(tmp_path, sess, monkeypatch)
+    log.close()
+    assert run.position() == [3, 4, 2]
+    assert run.took_nothing([3, 4, 2], [], []) is True
+    assert run.took_nothing([3, 5, 2], [], []) is False
+
+
+def test_a_curse_run_stops_when_the_party_square_never_settles(tmp_path, monkeypatch):
+    sess = SimpleNamespace(steady_triple=lambda: None)
+    run, log = _later_run(tmp_path, sess, monkeypatch)
+    log.close()
+    with pytest.raises(A.StepFailed, match="did not settle"):
+        run.position()
 
 
 def test_the_silver_blades_session_reads_the_live_triple():

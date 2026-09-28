@@ -237,15 +237,6 @@ class CurseSession(por.Session):
         row = s.row(24)
         return "EXIT" in row and "ENCAMP" not in row
 
-    def live_triple(self) -> tuple[int, ...]:
-        """`$C04B`-`$C04D`: x, y and facing, as the running game holds them.
-
-        A turn changes only the third of the three, so all three are read --
-        a caller comparing x and y alone cannot tell a turn from a wall.
-        """
-        with self.mon(8) as m:
-            return tuple(m.read(self.machine.live_position, 3))
-
     def walk_one(self, move: str, hold=0.15, gap=0.30, tries: int = 4,
                  patience: float = 12.0, answer_prompts: bool = True) -> bool:
         """One move, pressed **once** and judged in memory rather than on the
@@ -281,15 +272,22 @@ class CurseSession(por.Session):
                 "at. That is a driver error and not a wall")
             self.log("  never reached I,J,K,M; nothing sent")
             return False
-        before = self.live_triple()
+        before = self.steady_triple()
+        if before is None:
+            self.walk_refused = (
+                "the driver pressed nothing: the party's square did not "
+                "settle, so there was no square to judge the step against. "
+                "That is a driver error and not a wall")
+            self.log("  party square unsteady; nothing sent")
+            return False
         self.move_key(move, hold, gap)
         deadline = time.time() + patience
         after = before
         while time.time() < deadline:
             if not answer_prompts and self._prompt_up(self.screen()):
                 return False
-            now = self.live_triple()
-            if now != before:
+            now = self.steady_triple()
+            if now is not None and now != before:
                 after = now
                 break
             time.sleep(0.5)

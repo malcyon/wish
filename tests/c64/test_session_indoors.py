@@ -124,7 +124,37 @@ def test_curse_reads_its_own_live_square_and_not_pool_of_radiances():
     `#19` -- not `$49C0`, which in Curse is not the party's square."""
     sess = FakeSession(memory={LIVE_XY: 3, LIVE_XY + 1: 12})
     assert sess.square_and_world() == (3, 12, True)
-    assert sess.asked == [LIVE_XY]
+    assert set(sess.asked) == {LIVE_XY}
+
+
+class StrayReadSession(FakeSession):
+    """`live_triple` answers the scripted triples in order, then the last."""
+
+    def __init__(self, script):
+        super().__init__()
+        self.script = list(script)
+
+    def live_triple(self):
+        return self.script.pop(0) if len(self.script) > 1 else self.script[0]
+
+
+def test_one_stray_live_read_is_not_the_square_of_a_curse_party(monkeypatch):
+    monkeypatch.setattr(S.time, "sleep", lambda _: None)
+    sess = StrayReadSession([(9, 9, 1), (3, 12, 2)])
+    assert sess.square_and_world() == (3, 12, True)
+
+
+def test_the_same_stray_square_on_two_reads_is_believed(monkeypatch):
+    monkeypatch.setattr(S.time, "sleep", lambda _: None)
+    sess = StrayReadSession([(9, 9, 1), (9, 9, 1), (3, 12, 2)])
+    assert sess.square_and_world() == (9, 9, True)
+
+
+def test_the_memory_fallback_of_position_waits_for_two_agreeing_reads(monkeypatch):
+    monkeypatch.setattr(S.time, "sleep", lambda _: None)
+    sess = StrayReadSession([(9, 9, 1), (3, 12, 2), (3, 12, 2)])
+    sess.screen = lambda: None
+    assert sess.position() == (3, 12, 2)
 
 
 # -- every per-title driver names its own title (#426) -----------------------

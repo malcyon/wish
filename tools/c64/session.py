@@ -111,6 +111,11 @@ FACING = {"N": 0, "E": 1, "S": 2, "W": 3}
 # `Session.game` is what decides now, and `goldbox.c64_port` already knows that
 # neither later title has a travel grid to be on.
 INDOORS_AT = 0x49E6
+#: `steady_triple` believes a party square after two reads this far apart
+#: agree, and gives up after `STEADY_SECONDS`.
+STEADY_POLL = 0.25
+STEADY_SECONDS = 5.0
+
 #: The dungeon's live position triple: x, y, facing.  It freezes outdoors at
 #: the square the party left the grid on, so reading it out there answers the
 #: pier rather than where the party is standing.
@@ -1966,6 +1971,36 @@ class Session:
         got = self.square_and_world()
         return None if got is None else (got[0], got[1])
 
+    def live_triple(self) -> tuple[int, ...]:
+        """`$C04B`-`$C04D`: x, y and facing, as the running game holds them.
+
+        A turn changes only the third of the three, so all three are read --
+        a caller comparing x and y alone cannot tell a turn from a wall.  One
+        read is not the party's square; `steady_triple` is what a step is
+        judged by.
+        """
+        with self.mon(8) as m:
+            return tuple(m.read(self.machine.live_position, 3))
+
+    def steady_triple(self, seconds: float = STEADY_SECONDS
+                      ) -> tuple[int, ...] | None:
+        """The live triple once two consecutive reads, one `STEADY_POLL`
+        apart, agree on it; None if none agree within SECONDS.
+
+        A single read can land while the game uses the triple as a working
+        cursor, which returns a real, in-range square that is not the
+        party's.
+        """
+        limit = time.time() + seconds
+        prior = None
+        while time.time() < limit:
+            now = self.live_triple()
+            if now == prior:
+                return now
+            prior = now
+            time.sleep(STEADY_POLL)
+        return None
+
     def square_and_world(self) -> tuple[int, int, bool] | None:
         """`square()`, plus the `$49E6` it had to read to choose the pair.
 
@@ -1987,10 +2022,10 @@ class Session:
         flag)`).
         """
         try:
+            if not self.machine.title.travel_grid:
+                steady = self.steady_triple()
+                return None if steady is None else (steady[0], steady[1], True)
             with self.mon(5) as m:
-                if not self.machine.title.travel_grid:
-                    x, y = m.read(self.machine.live_position, 2)
-                    return x, y, True
                 inside = m.read(INDOORS_AT, 1)[0] != 0
                 x, y = m.read(DUNGEON_XY if inside else TRAVEL_XY, 2)
         except (OSError, MonitorError):
@@ -2021,11 +2056,10 @@ class Session:
             time.sleep(0.3)
         if not self.machine.title.travel_grid:
             try:
-                with self.mon(5) as mon:
-                    x, y, facing = mon.read(self.machine.live_position, 3)
+                steady = self.steady_triple()
             except (OSError, MonitorError):
                 return 0, 0, None
-            return x, y, facing
+            return (0, 0, None) if steady is None else steady
         here = self.square_and_world()   # fallback: the lagging memory copy
         if here is None:
             return 0, 0, None
