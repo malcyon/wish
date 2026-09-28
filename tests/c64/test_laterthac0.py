@@ -122,23 +122,13 @@ def test_the_two_ports_disagree_where_they_are_known_to(title):
 
 
 @pytest.mark.parametrize("title", [POOL, CURSE, SSB])
-def test_every_record_reproduces_except_the_ones_the_loop_never_ran_over(
+def test_every_record_reproduces_except_the_magic_users_the_dos_engine_stores_20_for(
         title):
-    """Counts, because a sweep with no count proves nothing.
+    """A miss is only a magic-user of level 1 to 5 storing 20 against 21.
 
-    **The claim is the miss count, not the corpus size.** The first number
-    was pinned as a literal until 2026-09-08, when it went 202 -> 214
-    overnight: a night of driven runs had added twelve Pool of Radiance
-    records, and a test that fails because the project measured more of the
-    game is a test that trains people to edit it without reading it. That is
-    the same shape `#362 (The two THAC0/damage-bonus population tests in
-    test_derive.py have outgrown their exception counts, and PORSAVEA/PORSAVEB
-    carry the same anomaly #348 found)` took out of `test_derive.py`.
-
-    So the corpus may only grow, and every record in it must still reproduce.
-    A table that stopped reproducing raises the miss count; a record whose
-    stored byte nobody has accounted for raises it too. Either turns this red,
-    which is what it is for.
+    The count is the miss count, not the number of records, so the specimens
+    may grow.  Each miss must also be that one kind, so a fixed known miss
+    alongside a new broken record fails at the same count.
     """
     _located(title)
     agree, total, lines = laterthac0.sweep(title)
@@ -151,6 +141,30 @@ def test_every_record_reproduces_except_the_ones_the_loop_never_ran_over(
         f"{agree} records reproduce, down from {want_agree} when this was "
         f"measured -- the corpus does not shrink, so something stopped being "
         f"read\n" + "\n".join(lines))
+    unknown = [(source, name, held, stored, want)
+               for source, name, held, _, stored, want
+               in laterthac0.outcomes(title)
+               if stored != want
+               and not (set(held) == {"magic-user"}
+                        and 1 <= held["magic-user"] <= 5
+                        and (stored, want) == (20, 21))]
+    assert unknown == []
+
+
+class _Table:
+    def table(self):
+        return {"magic-user": [21] * 5, "paladin": [20, 20, 19, 18, 17]}
+
+
+@pytest.mark.parametrize("title,want",
+                         [(CURSE, 17), (SSB, 21)])
+def test_a_regained_class_is_folded_in_for_curse_only(
+        monkeypatch, title, want):
+    monkeypatch.setattr(laterthac0, "locate", lambda _: _Table())
+    monkeypatch.setattr(laterthac0, "records", lambda _: iter(
+        [("synthetic/A.SAV", "X", {"magic-user": 3}, {"paladin": 5}, 21)]))
+
+    assert [w for *_, w in laterthac0.outcomes(title)] == [want]
 
 
 @pytest.mark.parametrize("title,constants",

@@ -313,15 +313,26 @@ def records(title: str):
                60 - char.get("thac0_base"))
 
 
+#: The titles whose regained former class is folded into the best row.  Only
+#: Curse's store, `GAME.OVR:0x3B274`, has been read; no regained Silver Blades
+#: record exists to check another title against.
+FOLDS_REGAINED = ("curse-of-the-azure-bonds",)
+
+
+def outcomes(title: str):
+    """`(source, name, held, regained, stored, want)` per record the table scores."""
+    table = locate(title).table()
+    for source, name, held, back, stored in records(title):
+        want = _best(table, held, back if title in FOLDS_REGAINED else None)
+        if want is not None:
+            yield source, name, held, back, stored, want
+
+
 def sweep(title: str) -> tuple[int, int, list[str]]:
     """`(agreeing, total, lines)` for every record against the table."""
-    table = locate(title).table()
     agree = total = 0
     lines = []
-    for source, name, held, back, stored in records(title):
-        want = _best(table, held, back)
-        if want is None:
-            continue
+    for source, name, held, back, stored, want in outcomes(title):
         total += 1
         if want == stored:
             agree += 1
@@ -343,9 +354,10 @@ def _best(table: dict[str, list[int]], class_levels,
     dual-classed human who has got his old class back then takes that class's
     row at the level he left it, if it is better (Curse `GAME.OVR:0x3B274`,
     `docs/209-the-regained-dual-class-on-dos.md`).  That pass also reads entry
-    0 of every row whose former level is zero, which is 39 or 40 in Curse and
-    so never beats two different classes' rows, since only the magic-user's
-    starts below 40.
+    0 of every row whose former level is zero.  Curse's table holds 39 or 40
+    there, and every row's level 1 is 40 or more except the magic-user's 39,
+    so two different classes' best row is at least 40 and entry 0 never beats
+    it.
     """
     best = None
     held = list(dict(class_levels or {}).items())
