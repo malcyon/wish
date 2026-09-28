@@ -758,7 +758,7 @@ _TAIL_UNWRITABLE_FOR = frozenset({
 def unwritable_fields(port: str, title_key: str) -> frozenset[str]:
     """Fields the sheet must grey because this port's writer cannot take an
     edit to them back -- either the field has nowhere to go
-    (`infravision`, and `turn_class`/`creature_type` on later titles), the
+    (`infravision`, and `turn_class` on later titles), the
     writer rebuilds it from other fields
     regardless of what is asked (`char_class`, the eight thief skills on a
     thief of these three port and title pairs, and the five saving throws on
@@ -770,7 +770,7 @@ def unwritable_fields(port: str, title_key: str) -> frozenset[str]:
         return frozenset()
     fields = _ALWAYS_UNWRITABLE
     if (port, title_key) in _LATER_SPECIAL_UNWRITABLE_FOR:
-        fields = fields | {"turn_class", "creature_type"}
+        fields = fields | {"turn_class"}
     if (port, title_key) in _THIEF_UNWRITABLE_FOR:
         fields = fields | _THIEF_FIELDS
     if (port, title_key) in _SAVES_UNWRITABLE_FOR:

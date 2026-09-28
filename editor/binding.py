@@ -257,6 +257,12 @@ NOT_ON_THE_SHEET = (
     # fixed by narrowing the name field; a sheet presentation is separate work.
     "paladin_cures",
     "lay_on_hands_uses",
+    # The byte Animate Dead sets on a zombie and the game clears when the
+    # animation is undone: the game sets it, a player does not. It is half of
+    # a zombie together with `turn_class`, so a widget for this byte alone
+    # would let somebody make a character that is undead in one byte and not
+    # the other. A save keeps the byte as read.
+    "creature_type",
 )
 
 

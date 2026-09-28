@@ -545,6 +545,17 @@ def test_flags_0b8_is_no_longer_a_generic_sheet_field(app, party):
     assert w.root.findChild(QWidget, "field_flags_0b8") is None
 
 
+def test_the_window_binds_exactly_the_fields_the_layout_expects(app, party):
+    """Compared as sets so a failure names the field: a field added to the
+    layout must get a widget or a row in `NOT_ON_THE_SHEET`. Runs without the
+    game disks, unlike the count checks."""
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(party))
+    bound = set(w._widgets) - {"icon"}
+    expected = {f.name for f in expected_sheet_fields()}
+    assert (expected - bound, bound - expected) == (set(), set())
+
+
 def test_a_player_character_shows_control_and_abilities_altered(app, tmp_path):
     from goldbox import c64_port
     save = synthetic_save(tmp_path, game=c64_port.POOL_OF_RADIANCE)
