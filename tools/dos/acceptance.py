@@ -54,13 +54,16 @@ a source whose title does not match `--title`:
 | `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P`.  Pool presses Return past a `PRESS <ENTER>/<RETURN> TO CONTINUE` bar first, when the loaded save is on an event square, so that screen is never recorded as the map (#701) |
 | `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars and Pools of Darkness' journal question and `YES NO` bars (below), to the map; Pools of Darkness' map only by its measured bar |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
-| `sheet N`, `items N` | Pools of Darkness, in camp: roster line N (from 1) highlighted with `Down`, `VIEW`, the sheet's name checked against line N's, and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
+| `sheet N`, `items N` | Curse, Silver Blades and Pools of Darkness (`items` Pools of Darkness only), in camp: roster line N (from 1) highlighted (`End` in Curse, `Down` in the other two), `VIEW`, the sheet's name checked against line N's, the bar read for `heal_offered` and `cure_offered` (`sheet_offers`), and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
+| `heal N` | the same three, in camp: line N's sheet, `HEAL` (`LAY` in Pools of Darkness), `SELECT` at `HEAL WHOM?` on the member it opens on, and the sheet required back without the word; back to camp |
+| `cure N` | Curse, in camp: line N's sheet, `CURE`, `SELECT` at `CURE WHOM?`, `YES` to `CURE ANYWAY` if asked, the sheet required back; back to camp |
+| `change N CLASS` | Curse, at the party menu with the hall open (`--hall`): line N, `HUMAN CHANGE CLASSES`, the class list's row for CLASS as the engine's own test orders them (`class_choices`), checked against the rows the highlight reaches, `SELECT`, back to the party menu |
 | `halve N I`, `join N I` | Pools of Darkness, in camp: member N's `ITEMS`, the highlight moved to row I (from 1, at most 18) with `Down`, `h` or `j` pressed once, and the rows counted before and after; `halve` must add a row and keep the highlight or the run stops before any save, `join` only records; back to camp |
 | `memorize N` | Pools of Darkness, in camp: roster line N highlighted with `Down`, `MAGIC`, `MEMORIZE`; the grimoire's title checked against line N's name; every page shot and its eleven rows read, turning with `NEXT` until the bar stops offering it; `lists_126` says whether a page draws `MONSTER SUMMONING`, spell id 126; `EXIT` to the Magic bar and to camp.  Nothing is memorized |
 | `view N` | At the party menu, before `begin`.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar), `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
-| `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below) |
+| `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below); in Curse a message over the continue bar that ends the rest (Tilverton's Royal Guards) gets `Return`, the map bar is required, and the party camps again, logged as `ended_by_message` |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
@@ -501,7 +504,207 @@ SPELL_126_ROW = next(k for k, v in GRIMOIRE_SPELLS.items() if v == 126)
 #: builder (`GAME.OVR` 0x2A80B) lists 126 when it is not zero.
 POD_BOOK_126 = 0x130
 
+#: The camp sheet's own words, read from each title's `GAME.OVR`.  Curse
+#: builds its bar at 0x27C94-0x27DF4 from `Items Spells Trade Drop Heal Cure
+#: Exit`, each word drawn only when its test passes: `Heal` when the gate at
+#: 0x2A64D passes (a paladin, or a regained one, not in game mode 5, status
+#: `0x195` zero, no node 140), `Cure` when 0x2A6B2 does (the same, and uses at
+#: `0x191` above zero).  The menu routine (0x3C465) returns the capital pressed
+#: and the loop calls the heal routine on `H` (0x27E75) and the cure on `C`
+#: (0x27E87).  Silver Blades is the same loop (gate 0x2AE3B; `H` at 0x28147,
+#: `C` at 0x2815F).  Pools of Darkness' bar is `Items Spells Trade Deposit Drop
+#: Lay Cure Exit` (`GAME.EXE` 0xBB4F), `Lay` enabled at 0x2467D when the gate
+#: 0x26ADA passes, and the loop dispatches word 5 (`Lay`) to the heal routine
+#: 0x26BC3 and word 6 to the cure 0x26CE6; the menu keys each word by its
+#: capital.
+SHEET_KEYS = {"curse": {"heal": "h", "cure": "c"},
+              "ssb": {"heal": "h", "cure": "c"},
+              "darkness": {"heal": "l", "cure": "c"}}
+#: The titles whose camp sheet `sheet N` and `heal N` drive.
+CAMP_SHEETS = frozenset(SHEET_KEYS)
+#: The titles `cure N` is driven in: the cure's prompts are read from Curse's
+#: code for #649's runs; the other two titles' are the same strings, undriven.
+CURES = frozenset({"curse"})
+#: What moves the camp's current member on, by title.  Curse's camp, like its
+#: party menu, hands `End` (scan code 0x4F) and `Home` (0x47) to the roster
+#: handler at `GAME.OVR` 0x2A32C, which every menu that opens the sheet calls;
+#: Silver Blades' handler (0x2AB0F) and Pools of Darkness' (0x2680C) take
+#: `Down` (0x50) and `Up` (0x48).
+CAMP_ROSTER_NEXT = {"curse": ROSTER_NEXT, "ssb": POD_ROSTER_NEXT,
+                    "darkness": POD_ROSTER_NEXT}
+#: `SELECT` at `HEAL WHOM?` and `CURE WHOM?`.  Curse's prompt (0x3A4C8) is the
+#: prompt, `Select` and `Exit`; its loop ends on Return, Escape, `E` or `S`
+#: (the set at 0x3A4A0), takes the member it is on for `S`, and opens on the
+#: party's first member (`[0x6524]`).  `End` and `Home` move it.  Silver
+#: Blades' `CURE WHOM? SELECT EXIT` took `S` in `ssbimport.py`'s run.
+PICK_SELECT = "s"
+#: `YES` to `<NAME> IS NOT DISEASED` / `CURE ANYWAY: YES NO`, which the cure
+#: asks when nobody in the party has a disease (Curse 0x2A8C6-0x2A915: it
+#: goes on only on `Y`).
+CURE_ANYWAY = "y"
+#: How long a sheet may take to come back after `SELECT`: the heal and the
+#: cure print their message and wait `[0x4FC2]` tenths of a second, the
+#: message speed, through `Delay` (`START.EXE` image 0x57F9), before the
+#: sheet redraws; no key is asked for.
+SHEET_BACK_SECONDS = 60.0
 
+#: `HUMAN CHANGE CLASSES` on Curse's party menu, `H` (`GAME.OVR` 0x20486),
+#: enabled at 0x20252 when the hall word `--hall` opens is set and the
+#: current member may change.  It calls 0x3BB4D on the current member.
+PARTY_CHANGE = "h"
+#: The class list 0x3BB4D shows (the list menu 0x104:0x34 over text columns
+#: 1-38 and rows 2-22): a `Pick New Class` header, then every class the member
+#: qualifies for, in his race's table order; `S` takes the highlighted class.
+#: The same list menu drives Curse's grimoire, where `End` moves the
+#: highlight down and wraps (`dosbox.Camp.GRIMOIRE_LIST`).  The rectangle is
+#: the list window clear of its border columns, not measured on this screen:
+#: the step counts the rows it can reach and stops unless they are as many
+#: as the classes the engine's own test allows.
+CHANGE_LIST = (16, 16, 288, 168)
+#: Rows a class list can hold: the six classes of a human's table.
+CHANGE_ROWS = 8
+
+#: `START.EXE` data-segment tables 0x3BB4D and its test 0x3B99E read: class
+#: names (27-byte Pascal strings), each race's class list (a count, then
+#: class ids), each class's six ability minima, and each class's alignments
+#: (a count, then up to nine).
+CLASS_NAMES_AT, CLASS_NAME_SIZE = 0x0CB8, 27
+RACE_CLASSES_AT, RACE_CLASSES_SIZE = 0x3FFA, 14
+CLASS_MINIMA_AT, CLASS_MINIMA_SIZE = 0x4174, 6
+CLASS_ALIGNMENTS_AT, CLASS_ALIGNMENTS_SIZE = 0x41DA, 10
+#: 0x3BF66: the current class is `0x11`, none, for any race but 7, human.
+HUMAN_RACE, NO_CLASS = 7, 0x11
+#: 0x3B99E: a minimum of 9 or more marks an ability the change tests; the
+#: class left must have each above 14 and the class taken each above 16.
+REQUISITE, KEEP_ABOVE, TAKE_ABOVE = 9, 14, 16
+#: The record fields the test reads (Curse `goldbox.dos_port`): the six
+#: abilities (the first byte of each two), race, the class-level array and
+#: alignment, at 0x10, 0x74, 0x109 and 0x11B in the code.
+ABILITIES = ("strength", "intelligence", "wisdom", "dexterity", "constitution",
+             "charisma")
+
+
+def bar_words(screen: dosbox.Screen) -> list[list[str]]:
+    """The command bar as words: runs of cells that are not flat, each cell
+    `Screen.glyphs` against its own paper, so a word lit by the highlight
+    block reads as the same word unlit."""
+    x0, y, w, h = dosbox.BAR
+    words: list[list[str]] = []
+    word: list[str] = []
+    for x in range(x0, x0 + w, CELL):
+        rect = (x, y, CELL, h)
+        if screen.flat(rect):
+            if word:
+                words.append(word)
+            word = []
+        else:
+            word.append(screen.glyphs(rect))
+    if word:
+        words.append(word)
+    return words
+
+
+def sheet_offers(words: list[list[str]], title: str) -> dict[str, bool] | None:
+    """Whether a sheet bar's words offer the heal and the cure, or None when
+    the bar does not end in the four-letter `EXIT` every sheet bar ends in.
+
+    Read by letter position, not by a measured digest, because which words
+    a sheet shows varies with what the member carries and knows.  The last
+    word's first cell is `E`.  Curse's and Silver Blades' `HEAL` is the one
+    four-letter word with `E` second; `CURE` the one with `E` fourth
+    (`DROP`, the other, has none); Pools of Darkness' `LAY` is its only
+    three-letter word.  Checked against the one Curse paladin's sheet and the
+    one Pools of Darkness paladin's sheet captured so far.
+    """
+    if not words or len(words[-1]) != 4:
+        return None
+    e = words[-1][0]
+    rest = words[:-1]
+    if title == "darkness":
+        heal = any(len(w) == 3 for w in rest)
+    else:
+        heal = any(len(w) == 4 and w[1] == e for w in rest)
+    cure = any(len(w) == 4 and w[3] == e and w[1] != e for w in rest)
+    return {"heal": heal, "cure": cure}
+
+
+def acted_word(words: list[list[str]], title: str, act: str) -> int | None:
+    """The index of the `HEAL`/`LAY` or `CURE` word in a sheet bar's words."""
+    if not words:
+        return None
+    e = words[-1][0]
+    for i, w in enumerate(words[:-1]):
+        if act == "heal" and (len(w) == 3 if title == "darkness"
+                              else len(w) == 4 and w[1] == e):
+            return i
+        if act == "cure" and len(w) == 4 and w[3] == e and w[1] != e:
+            return i
+    return None
+
+
+def yes_no_words(words: list[list[str]]) -> bool:
+    """A bar that ends `YES NO`: a three-letter word and a two-letter one."""
+    return len(words) >= 2 and len(words[-2]) == 3 and len(words[-1]) == 2
+
+
+def class_tables(start_exe: bytes) -> bytes:
+    """The data segment of Curse's `START.EXE`, where 0x3BB4D's tables are."""
+    from tools.dos import dosspellslots, unexepack
+    try:
+        image, _ = unexepack.unpack(start_exe)
+    except ValueError:
+        image = start_exe[int.from_bytes(start_exe[8:10], "little") * 16:]
+    return image[dosspellslots.data_segment(image) * 16:]
+
+
+def class_name(ds: bytes, cid: int) -> str:
+    at = CLASS_NAMES_AT + CLASS_NAME_SIZE * cid
+    return ds[at + 1:at + 1 + ds[at]].decode("latin-1").upper()
+
+
+def class_choices(record: bytes, ds: bytes) -> list[tuple[int, str]]:
+    """The classes 0x3BB4D lists for `record`, in the list's order, or none
+    when the party menu does not offer it the command.
+
+    The menu offers it (0x2022A-0x20252) only to a human (0xFE:0x3E, race 7)
+    who has not changed class before (0xFE:0x43, the same reading as the
+    current class over the former-class array, must find none).  The list is
+    the race's table in order, keeping each class 0x3B99E passes: not the
+    current class (0x3BF66, the first class level that is not zero, when it
+    is above zero, for a human); every ability the current class's minima
+    mark above `KEEP_ABOVE`; every ability the new class's mark above
+    `TAKE_ABOVE`; and the member's alignment among the new class's.
+    """
+    from goldbox import dos_port
+    fields = dos_port.FIELDS_BY_NAME_FOR["curse-of-the-azure-bonds"]
+    race = record[fields["race"].offset]
+
+    def first_class(field: str) -> int:
+        at = fields[field].offset
+        levels = record[at:at + 8]
+        first = next((i for i in range(7) if levels[i]), 7)
+        return first if 0 < levels[first] < 0x80 else NO_CLASS
+
+    if race != HUMAN_RACE or first_class("former_class_levels") != NO_CLASS:
+        return []
+    abilities = [record[fields[a].offset] for a in ABILITIES]
+    alignment = record[fields["alignment"].offset]
+    current = first_class("class_levels")
+
+    def meets(cid: int, above: int) -> bool:
+        at = CLASS_MINIMA_AT + CLASS_MINIMA_SIZE * cid
+        return all(ds[at + k] < REQUISITE or abilities[k] > above for k in range(6))
+
+    table = RACE_CLASSES_AT + RACE_CLASSES_SIZE * race
+    out = []
+    for idx in range(1, ds[table] + 1 if ds[table] < 0x80 else 1):
+        cid = ds[table + idx]
+        aligned = CLASS_ALIGNMENTS_AT + CLASS_ALIGNMENTS_SIZE * cid
+        allowed = ds[aligned + 1:aligned + 1 + ds[aligned]]
+        if (cid != current and meets(current, KEEP_ABOVE) and meets(cid, TAKE_ABOVE)
+                and alignment in allowed):
+            out.append((cid, class_name(ds, cid)))
+    return out
 
 
 def status_column(title: str) -> int:
@@ -780,8 +983,13 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
 
 
 STEP_HELP = ("load, begin, 'walk MI', 'walk 1', 'turn 4', camp, display, 'rest 5m', 'save D', "
-             "'train 1', 'sheet 1', 'items 1', 'halve 1 1', 'join 4 15', 'view 1', "
-             "'memorize 5', 'shot NAME', 'press KEY', read")
+             "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
+             "'halve 1 1', 'join 4 15', 'view 1', 'memorize 5', 'shot NAME', "
+             "'press KEY', read")
+#: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
+#: 0x0CB8), upper case.
+CHANGE_CLASSES = ("CLERIC", "DRUID", "FIGHTER", "PALADIN", "RANGER", "MAGIC-USER",
+                  "THIEF", "MONK")
 
 
 def parse_step(text: str) -> Step:
@@ -797,9 +1005,14 @@ def parse_step(text: str) -> Step:
         return Step(kind, text, minutes=minutes)
     if kind == "save" and len(words) == 2 and re.fullmatch(r"[A-Ja-j]", words[1]):
         return Step(kind, text, letter=words[1].upper())
-    if kind in ("train", "sheet", "items", "view", "memorize") and len(
+    if kind in ("train", "sheet", "items", "view", "memorize", "heal", "cure") and len(
             words) == 2 and re.fullmatch(r"[1-8]", words[1]):
         return Step(kind, text, line=int(words[1]))
+    if kind == "change" and len(words) == 3 and re.fullmatch(r"[1-8]", words[1]):
+        if words[2].upper() not in CHANGE_CLASSES:
+            raise ValueError(f"change to {words[2]!r} is refused: the class is one "
+                             f"of {', '.join(CHANGE_CLASSES)}")
+        return Step(kind, text, line=int(words[1]), name=words[2].upper())
     if kind in ("halve", "join") and len(words) == 3 and re.fullmatch(
             r"[1-8]", words[1]) and re.fullmatch(r"\d+", words[2]):
         row = int(words[2])
@@ -878,6 +1091,22 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "sheet" and title == "pool":
             if where != "map":
                 raise ValueError(f"sheet needs the loaded map: {step.text!r}")
+        elif k in ("sheet", "heal", "cure") and title in CAMP_SHEETS:
+            if k == "cure" and title not in CURES:
+                raise ValueError(f"cure is driven in {', '.join(sorted(CURES))} "
+                                 f"only, not {title}")
+            if where != "camp":
+                raise ValueError(f"{k} needs camp first: {step.text!r}")
+        elif k in ("heal", "cure"):
+            raise ValueError(f"{k} is driven in "
+                             f"{', '.join(sorted(CAMP_SHEETS if k == 'heal' else CURES))} "
+                             f"only, not {title}")
+        elif k == "change":
+            if title != "curse":
+                raise ValueError(f"change is driven in curse only, not {title}")
+            if where != "party":
+                raise ValueError(f"change needs the party menu, before begin: "
+                                 f"{step.text!r}")
         elif k in ("sheet", "items", "halve", "join", "memorize"):
             if title != "darkness":
                 raise ValueError(f"{k} is driven in darkness only, not {title}")
@@ -1515,6 +1744,8 @@ class Driver:
         #: Each roster line's sheet digest, once shown: two lines must never
         #: show the same sheet.
         self.sheets: dict[int, str] = {}
+        #: Curse's `START.EXE` data segment, read once for `change`.
+        self._class_ds: bytes | None = None
 
     # -- evidence ----------------------------------------------------------
 
@@ -1653,13 +1884,17 @@ class Driver:
         dosbox.settle_files(self.s.save_dir, quiet=1.0,
                             timeout=self.bounded(30.0, label))
 
-    def after_rest(self, timeout: float, in_step: str) -> None:
+    def after_rest(self, timeout: float, in_step: str) -> str | None:
         """Wait out a rest: the camp bar, or Pool's `GO STAY` answered with GO.
 
         Nothing but `GO` is ever pressed at the event.  A third event, any
         screen that is neither the camp bar, the event nor (after an event)
         the map, or a text window that stops changing for `REST_STALL`
-        seconds away from the camp bar, ends the run.
+        seconds away from the camp bar, ends the run.  In Curse, a message
+        over the one-button continue bar `CURSE_CONTINUE_BAR` ends the wait
+        with nothing pressed and returns `"message"` (Tilverton's Royal
+        Guards: `ECL01` entry 2 sets the rest interruption everywhere west of
+        x 5 or north of y 13).
         """
         answered = 0
         while True:
@@ -1680,6 +1915,9 @@ class Driver:
                         return
                 if self.title.watch and bar_signature(screen) == WATCH_BAR:
                     break
+                if (self.title.key == "curse" and answered == 0
+                        and screen.glyphs(dosbox.BAR) == CURSE_CONTINUE_BAR):
+                    return "message"
                 text, now = screen.digest(TEXT_WINDOW), time.time()
                 if text != last_text:
                     last_text, changed = text, now
@@ -2368,11 +2606,17 @@ class Driver:
         return {"name": want, "digest": digest, "sheet_bar": bar_signature(screen)}
 
     def open_sheet(self, line: int) -> dict:
-        """Camp: roster line `line` highlighted, `VIEW`, and the sheet checked."""
-        if self.title.key != "darkness" or self.camp_sig is None:
-            raise StepFailed("sheet and items need Pools of Darkness' camp first")
+        """Camp: roster line `line` highlighted, `VIEW`, and the sheet checked.
+
+        The sheet's bar is read for whether it offers the heal and the cure
+        (`sheet_offers`); the result and the `sheet` event carry both.
+        """
+        if self.title.key not in CAMP_SHEETS or self.camp_sig is None:
+            raise StepFailed("sheet needs the camp of Curse, Silver Blades or "
+                             "Pools of Darkness first")
         self.ensure_camp()
-        moved = self.pick_line(line, "camp", f"select-{line}")
+        moved = self.pick_line(line, "camp", f"select-{line}",
+                               CAMP_ROSTER_NEXT[self.title.key])
         want = roster_name(self.s.capture(), "camp", line)
         self.shot(f"line-{line}")
         # `V` is keyed by nothing on the sheet's bar, so a second one is inert.
@@ -2385,8 +2629,17 @@ class Driver:
                             "after VIEW")
         screen = self.s.settle(quiet=0.8, timeout=30.0)
         checked = self.check_sheet(screen, line, want, f"sheet-{line}-name")
-        return {"line": line, **moved, "sheet": self.shot(f"sheet-{line}"),
-                **checked}
+        words = bar_words(screen)
+        offers = sheet_offers(words, self.title.key)
+        shot = self.shot(f"sheet-{line}")
+        self.note(event="sheet", line=line, shot=f"{shot}.png",
+                  words=[len(w) for w in words],
+                  heal_offered=None if offers is None else offers["heal"],
+                  cure_offered=None if offers is None else offers["cure"])
+        return {"line": line, **moved, "sheet": shot, **checked,
+                "words": [len(w) for w in words],
+                "heal_offered": None if offers is None else offers["heal"],
+                "cure_offered": None if offers is None else offers["cure"]}
 
     def item_pages(self, label: str) -> list[dict]:
         """From a sheet: `ITEMS`, then every page shot, turning with `Next`
@@ -2564,6 +2817,71 @@ class Driver:
         got = self.open_sheet(line)
         self.back_to_camp(f"sheet-{line}-back")
         return got
+
+    def heal(self, line: int) -> dict:
+        """Roster line `line` lays on hands: `HEAL` (`LAY`) on his camp sheet,
+        `SELECT` at `HEAL WHOM?`, and back to camp.
+
+        The target is the member the prompt opens on (Curse's is the party's
+        first).  The game adds the timer to the paladin whoever the target
+        is.  The step is believed only when the sheet comes back without the
+        word, which is the game's own reading that the use is spent.
+        """
+        return self._sheet_act(line, "heal")
+
+    def cure(self, line: int) -> dict:
+        """Roster line `line` cures disease: `CURE` on his camp sheet, `SELECT`
+        at `CURE WHOM?`, `YES` to `CURE ANYWAY` if it is asked, and back to
+        camp.  The sheet must come back, with or without `CURE` (it stays
+        while uses are left)."""
+        return self._sheet_act(line, "cure")
+
+    def _sheet_act(self, line: int, act: str) -> dict:
+        word = "LAY" if act == "heal" and self.title.key == "darkness" else act.upper()
+        got = self.open_sheet(line)
+        label = f"{act}-{line}"
+        before = bar_words(self.s.capture())
+        at = acted_word(before, self.title.key, act)
+        if not got[f"{act}_offered"] or at is None:
+            raise self.fail(label, f"roster line {line}'s sheet does not offer "
+                            f"{word}, so it is not pressed")
+        without = before[:at] + before[at + 1:]
+        if not self.press_screen_changes(SHEET_KEYS[self.title.key][act], tries=1,
+                                         wait=15.0):
+            raise self.fail(label, f"{word} changed nothing on the sheet")
+        prompt = self.s.settle(quiet=0.8, timeout=30.0)
+        prompt_shot = self.shot(f"{label}-prompt")
+        if bar_words(prompt) in (before, without):
+            raise self.fail(label, f"{word} left a sheet bar showing, not the "
+                            f"{word} WHOM? prompt")
+        self.s.key(PICK_SELECT)
+        answered: list[str] = []
+        end = time.time() + self.bounded(SHEET_BACK_SECONDS, label)
+        while True:
+            self.check_deadline(label)
+            screen = self.s.settle(quiet=0.8, timeout=30.0)
+            words = bar_words(screen)
+            if words == without or (act == "cure" and words == before):
+                break
+            if act == "heal" and words == before:
+                raise self.fail(label, f"the sheet came back still offering {word}: "
+                                "SELECT did not spend the use")
+            if act == "cure" and not answered and yes_no_words(words):
+                self.shot(f"{label}-anyway")
+                self.s.key(CURE_ANYWAY)
+                answered.append(CURE_ANYWAY)
+                continue
+            if time.time() > end:
+                raise self.fail(label, f"the sheet never came back after SELECT at "
+                                f"{word} WHOM?")
+            time.sleep(0.3)
+        after = sheet_offers(words, self.title.key) or {}
+        back = self.shot(f"{label}-sheet-after")
+        self.back_to_camp(f"{label}-back")
+        return {**got, "act": act, "prompt": prompt_shot, "answered": answered,
+                "sheet_after": back, "words_after": [len(w) for w in words],
+                "heal_offered_after": after.get("heal"),
+                "cure_offered_after": after.get("cure")}
 
     def items(self, line: int) -> dict:
         """Roster line `line`'s `ITEMS` from its sheet, every page shot.
@@ -2813,10 +3131,23 @@ class Driver:
         self.shot("rest-set")
         self.s.key(self.keys.go)
         passes = minutes // REST_STEP
-        self.after_rest(60.0 + 2.0 * passes, f"rest {minutes}m")
+        ended = self.after_rest(60.0 + 2.0 * passes, f"rest {minutes}m")
+        if ended == "message":
+            self.rest_message()
         self.shot("rested")
         return {"asked": minutes, "zero_presses": zeroed, **presses,
-                "left_camp": self.left_camp}
+                "left_camp": self.left_camp, "ended_by_message": ended == "message"}
+
+    def rest_message(self) -> None:
+        """Curse: `Return` past the continue screens that ended a rest, the map
+        bar required, and `ENCAMP` again, so the step always ends in camp.  How
+        long the party rested is in the clock of the next save, not here."""
+        screen = self.press_continue_screens(self.s.capture(), CURSE_CONTINUE_BAR, "rest")
+        if not (self.on_world(screen)
+                or self.s.wait_for(self.on_world, self.bounded(30.0, "rest-map"))):
+            raise self.fail("rest-map", "the map bar did not come back after the "
+                            "message that ended the rest")
+        self.camp()
 
     def display(self) -> dict:
         """Capture Pool's single six-member Magic display page and return to camp."""
@@ -2948,6 +3279,81 @@ class Driver:
             pressed.append(key)
             self.shot(f"after-train-{key}")
         raise self.fail("train-back", "the party menu never came back after training")
+
+    def class_segment(self) -> bytes:
+        """Curse's `START.EXE` data segment, from the game this session runs."""
+        if self._class_ds is None:
+            self._class_ds = class_tables((self.s.source / "START.EXE").read_bytes())
+        return self._class_ds
+
+    def change(self, line: int, wanted: str) -> dict:
+        """Roster line `line`'s `HUMAN CHANGE CLASSES` to `wanted`, back to the
+        party menu.
+
+        Which row holds `wanted` comes from the engine's own test run over
+        his installed record and `START.EXE`'s tables (`class_choices`), and
+        is checked on the screen before anything is taken: the rows `End`
+        reaches from where the list opens must be exactly as many as the
+        classes the test allows, or the run stops with the list showing.  The
+        game then prints its message and returns to the party menu on its own
+        (0x3BE60, a timed wait), with no `YES NO` in the routine.
+        """
+        if self.where != "party" or self.title.key != "curse":
+            raise StepFailed("change is Curse's party-menu command")
+        label = f"change-{line}"
+        record = self.s.save_dir / f"CHRDAT{self.slot}{line}.SAV"
+        if not record.is_file():
+            raise StepFailed(f"line {line} has no {record.name} to read his classes from")
+        choices = class_choices(record.read_bytes(), self.class_segment())
+        names = [name for _, name in choices]
+        self.note(event="class_choices", line=line, choices=names)
+        if not names:
+            raise StepFailed(f"line {line} is not offered HUMAN CHANGE CLASSES: he is "
+                             "not human, has changed class before, or qualifies "
+                             "for no class")
+        if wanted not in names:
+            raise StepFailed(f"line {line} may not change to {wanted}: the engine's "
+                             f"test allows {', '.join(names)}")
+        moved = self.pick_line(line, "party", f"{label}-select", ROSTER_NEXT)
+        self.shot(f"{label}-line")
+        if not self.press_screen_changes(PARTY_CHANGE, tries=1, wait=15.0):
+            raise self.fail(label, f"HUMAN CHANGE CLASSES changed nothing for line "
+                            f"{line} (the hall is shut: stage --hall)")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        base = screen.highlight_row(CHANGE_LIST)
+        if base is None or self.on_party_menu(screen):
+            raise self.fail(label, "no class list with a highlighted row opened")
+        self.shot(f"{label}-list")
+        rows, stuck = [base], 0
+        while len(rows) <= CHANGE_ROWS:
+            self.s.key(dosbox.LIST_DOWN)
+            now = self.s.settle(quiet=0.5, timeout=20.0).highlight_row(CHANGE_LIST)
+            if now == base:
+                break
+            if now is None or now == rows[-1]:
+                stuck += 1
+                if now is None or stuck >= 2:
+                    break
+                continue
+            stuck = 0
+            rows.append(now)
+        if rows != list(range(base, base + len(rows))) or len(rows) != len(names):
+            raise self.fail(label, f"the list's highlight reached rows {rows} from "
+                            f"row {base}, not the {len(names)} consecutive rows of "
+                            f"{', '.join(names)}")
+        want = base + names.index(wanted)
+        here = self.s.capture().highlight_row(CHANGE_LIST)
+        key = dosbox.LIST_DOWN if here is not None and here <= want else dosbox.LIST_UP
+        if self.s.walk_highlight(CHANGE_LIST, want, key=key) != want:
+            raise self.fail(label, f"the list's highlight never reached row {want}")
+        picked = self.shot(f"{label}-{wanted.lower()}")
+        self.s.key(PICK_SELECT)
+        if not self.wait_party_menu(60.0):
+            raise self.fail(f"{label}-back", "the party menu never came back after "
+                            f"SELECT on {wanted}")
+        self.shot(f"{label}-back")
+        return {"line": line, **moved, "class": wanted, "choices": names,
+                "rows": rows, "row": want, "picked": picked}
 
 
 @contextlib.contextmanager
@@ -3140,8 +3546,14 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     saved.append(step.letter)
                 elif step.kind == "train":
                     r = d.train(step.line)
+                elif step.kind == "change":
+                    r = d.change(step.line, step.name)
                 elif step.kind == "sheet":
                     r = d.sheet(step.line)
+                elif step.kind == "heal":
+                    r = d.heal(step.line)
+                elif step.kind == "cure":
+                    r = d.cure(step.line)
                 elif step.kind == "items":
                     r = d.items(step.line)
                 elif step.kind == "halve":

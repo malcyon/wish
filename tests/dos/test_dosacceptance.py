@@ -4981,3 +4981,523 @@ def test_a_termination_signal_ends_the_command_with_lost_and_the_slot_released(
     summary = json.loads((tmp_path / "out" / "summary.json").read_text())
     assert summary["lost"] == "Terminated('signal 15')"
     assert (tmp_path / "released").read_text() == "yes"
+
+
+# -- the camp sheet's HEAL and CURE, HUMAN CHANGE CLASSES, a rest the guards end ----
+
+
+def _words_bar(text: str) -> bytes:
+    """A bar row carrying `text`: each letter's own code as its cell's pattern,
+    so equal letters draw equal cells, and a space as a blank cell."""
+    return bytes(0 if ch == " " else ord(ch) for ch in text)
+
+
+def test_the_bar_is_split_into_words_blind_to_the_highlight():
+    bar = _words_bar("TRADE DROP HEAL CURE EXIT")
+    plain = da.bar_words(_screen(bar, b""))
+    lit = da.bar_words(_screen(bar, b"", block=(0, 6)))
+    assert [len(w) for w in plain] == [5, 4, 4, 4, 4] and lit == plain
+
+
+@pytest.mark.parametrize("title,text,heal,cure", [
+    ("curse", "TRADE DROP HEAL CURE EXIT", True, True),
+    ("curse", "TRADE DROP CURE EXIT", False, True),
+    ("curse", "ITEMS SPELLS TRADE DROP HEAL EXIT", True, False),
+    ("ssb", "HEAL EXIT", True, False),
+    ("ssb", "SPELLS EXIT", False, False),
+    ("darkness", "ITEMS SPELLS TRADE DROP LAY CURE EXIT", True, True),
+    ("darkness", "ITEMS SPELLS TRADE DEPOSIT DROP EXIT", False, False),
+    ("darkness", "ITEMS TRADE DROP CURE EXIT", False, True),
+])
+def test_the_sheet_bar_offers_heal_and_cure_by_its_letters(title, text, heal, cure):
+    words = da.bar_words(_screen(_words_bar(text), b""))
+    assert da.sheet_offers(words, title) == {"heal": heal, "cure": cure}
+
+
+def test_a_bar_that_does_not_end_in_a_four_letter_word_is_no_sheet():
+    words = da.bar_words(_screen(_words_bar("HEAL WHOM? SELECT EXITS"), b""))
+    assert da.sheet_offers(words, "curse") is None
+    assert da.yes_no_words(da.bar_words(_screen(_words_bar("CURE ANYWAY: YES NO"), b"")))
+
+
+_SHEET_WORDS = {"curse": ("HEAL", "CURE"), "ssb": ("HEAL", "CURE"),
+                "darkness": ("LAY", "CURE")}
+
+
+class FakeSheetCamp(FakePool):
+    """A camp whose roster names the current member, `VIEW` opening his sheet,
+    as the three titles' `GAME.OVR` sheet loops do (see `da.SHEET_KEYS`).
+
+    `members` maps a roster line to `(may heal, cure uses)`.  The sheet's bar
+    is `TRADE DROP [HEAL] [CURE] EXIT`, `HEAL` being `LAY` in Pools of
+    Darkness; its key opens `<WORD> WHOM? SELECT EXIT`, whose `S` spends the
+    use (unless `select_exits`, which leaves as `EXIT` does), shows the
+    message for one capture, and redraws the sheet.  The cure asks `CURE
+    ANYWAY: YES NO` first when `anyway`.
+    """
+
+    CAMP = _words_bar("SAVE VIEW MAGIC REST ALTER FIX EXIT")
+
+    def __init__(self, tmp, title="curse", members=None, anyway=False,
+                 select_exits=False, size=6):
+        super().__init__(tmp, keys=TITLE_KEYS[title])
+        self.title, self.size, self.line, self.mode = title, size, 1, "camp"
+        self.members = members if members is not None else {1: (True, 1)}
+        self.anyway, self.select_exits = anyway, select_exits
+        self.acting, self.healed, self.cured = None, [], []
+
+    def bar_text(self) -> str:
+        heal, cure = _SHEET_WORDS[self.title]
+        may, uses = self.members.get(self.line, (False, 0))
+        return " ".join(["TRADE", "DROP"] + ([heal] if may else [])
+                        + ([cure] if uses else []) + ["EXIT"])
+
+    def key(self, k, gap=0.0):
+        self.keys.append(k)
+        keys = da.SHEET_KEYS[self.title]
+        m = self.mode
+        if m == "camp" and k == da.CAMP_ROSTER_NEXT[self.title]:
+            self.line = self.line % self.size + 1
+        elif m == "camp" and k == "v":
+            self.mode = "sheet"
+        elif m == "sheet" and k == "e":
+            self.mode = "camp"
+        elif m == "sheet" and k in keys.values():
+            act = "heal" if k == keys["heal"] else "cure"
+            word = _SHEET_WORDS[self.title][act == "cure"]
+            if word in self.bar_text().split():
+                self.mode, self.acting = "prompt", act
+        elif m == "prompt" and k == "e":
+            self.mode = "sheet"
+        elif m == "prompt" and k == "s":
+            if self.select_exits:
+                self.mode = "sheet"
+            elif self.acting == "cure" and self.anyway:
+                self.mode = "anyway"
+            else:
+                self._act()
+        elif m == "anyway" and k == "y":
+            self._act()
+        else:
+            self.keys.pop()
+            super().key(k, gap)
+
+    def _act(self):
+        may, uses = self.members[self.line]
+        if self.acting == "heal":
+            self.members[self.line] = (False, uses)
+            self.healed.append(self.line)
+        else:
+            self.members[self.line] = (may, uses - 1)
+            self.cured.append(self.line)
+        self.mode = "message"
+
+    def capture(self):
+        if self.mode == "message":
+            self.mode = "sheet"
+            return _screen(_words_bar("FEELS BETTER"), b"")
+        if self.mode == "camp":
+            return _with_roster(_screen(self.CAMP, bytes((self.line,))), "camp",
+                                self.size, self.line)
+        if self.mode in ("sheet", "prompt", "anyway"):
+            text = {"sheet": self.bar_text(), "anyway": "CURE ANYWAY: YES NO",
+                    "prompt": f"{_SHEET_WORDS[self.title][self.acting == 'cure']} "
+                              "WHOM? SELECT EXIT"}[self.mode]
+            return _with_roster(_screen(_words_bar(text), b""), "party", self.size,
+                                self.line, sheet=self.line)
+        return super().capture()
+
+
+def _sheet_camp(tmp_path, title="curse", **kw):
+    game = FakeSheetCamp(tmp_path, title, **kw)
+    d = da.Driver(game, lambda **k: None, "J", title, party_size=game.size)
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.camp_sig = screens.bar_signature(game.capture())
+    d.where = "camp"
+    return game, d
+
+
+@pytest.mark.parametrize("title,next_key", [("curse", "End"), ("ssb", "Down"),
+                                            ("darkness", "Down")])
+def test_a_camp_sheet_logs_whether_heal_and_cure_are_offered(tmp_path, title, next_key):
+    game, d = _sheet_camp(tmp_path, title, members={2: (True, 0), 3: (False, 2)})
+    got = d.sheet(2)
+    assert game.keys == [next_key, "v", "e"] and game.mode == "camp"
+    assert (got["heal_offered"], got["cure_offered"]) == (True, False)
+    got = d.sheet(3)
+    assert (got["heal_offered"], got["cure_offered"]) == (False, True)
+    sheets = [e for e in d.logged if e.get("event") == "sheet"]
+    assert [(e["line"], e["heal_offered"], e["cure_offered"]) for e in sheets] == [
+        (2, True, False), (3, False, True)]
+
+
+@pytest.mark.parametrize("title", ["curse", "ssb", "darkness"])
+def test_heal_spends_the_use_and_the_sheet_comes_back_without_it(tmp_path, title):
+    game, d = _sheet_camp(tmp_path, title, members={1: (True, 1), 2: (True, 1)})
+    got = d.heal(2)
+    heal_key = {"curse": "h", "ssb": "h", "darkness": "l"}[title]
+    assert game.keys[-4:] == ["v", heal_key, "s", "e"] and game.mode == "camp"
+    assert game.healed == [2] and game.members[2] == (False, 1)
+    assert (got["heal_offered"], got["heal_offered_after"]) == (True, False)
+    assert got["cure_offered_after"] is True
+
+
+def test_heal_is_not_pressed_on_a_sheet_that_does_not_offer_it(tmp_path):
+    game, d = _sheet_camp(tmp_path, members={1: (False, 1)})
+    with pytest.raises(da.StepFailed, match="does not offer HEAL"):
+        d.heal(1)
+    assert "h" not in game.keys and game.healed == []
+
+
+def test_a_select_that_leaves_heal_on_the_sheet_stops_the_run(tmp_path):
+    game, d = _sheet_camp(tmp_path, select_exits=True)
+    with pytest.raises(da.StepFailed, match="still offering HEAL"):
+        d.heal(1)
+    assert game.healed == []
+
+
+@pytest.mark.parametrize("anyway", [False, True])
+def test_cure_answers_cure_anyway_with_yes_and_keeps_a_use_left(tmp_path, anyway):
+    game, d = _sheet_camp(tmp_path, members={1: (True, 2)}, anyway=anyway)
+    got = d.cure(1)
+    assert game.cured == [1] and game.members[1] == (True, 1) and game.mode == "camp"
+    assert got["answered"] == (["y"] if anyway else [])
+    assert game.keys.count("y") == int(anyway)
+    assert got["cure_offered_after"] is True
+
+
+def test_the_last_cure_takes_cure_off_the_sheet(tmp_path):
+    game, d = _sheet_camp(tmp_path, members={1: (False, 1)})
+    got = d.cure(1)
+    assert game.cured == [1] and got["cure_offered_after"] is False
+
+
+# -- HUMAN CHANGE CLASSES ---------------------------------------------------------
+
+
+def _class_segment() -> bytes:
+    """A data segment holding Curse's four tables as the code reads them:
+    names for classes 0-7; human (race 7) listing cleric, fighter,
+    magic-user, thief, paladin, ranger; each class's minima; and each
+    class's alignments.  The values are this test's, not the game's."""
+    ds = bytearray(0x4400)
+    names = ("Cleric", "Druid", "Fighter", "Paladin", "Ranger", "Magic-User",
+             "Thief", "Monk")
+    for cid, name in enumerate(names):
+        at = da.CLASS_NAMES_AT + da.CLASS_NAME_SIZE * cid
+        ds[at] = len(name)
+        ds[at + 1:at + 1 + len(name)] = name.encode()
+    human = da.RACE_CLASSES_AT + da.RACE_CLASSES_SIZE * da.HUMAN_RACE
+    ds[human:human + 7] = bytes((6, 0, 2, 5, 6, 3, 4))
+    minima = {0: (0, 0, 9, 0, 0, 0), 2: (9, 0, 0, 0, 0, 0), 3: (12, 9, 13, 0, 9, 17),
+              4: (13, 13, 14, 0, 14, 0), 5: (0, 9, 0, 0, 0, 0), 6: (0, 0, 0, 9, 0, 0)}
+    for cid, row in minima.items():
+        at = da.CLASS_MINIMA_AT + da.CLASS_MINIMA_SIZE * cid
+        ds[at:at + 6] = bytes(row)
+    aligned = {0: range(9), 2: range(9), 3: (0,), 4: (0, 3, 6), 5: range(9),
+               6: (1, 2, 3, 4, 5, 7, 8)}
+    for cid, allowed in aligned.items():
+        at = da.CLASS_ALIGNMENTS_AT + da.CLASS_ALIGNMENTS_SIZE * cid
+        ds[at] = len(allowed)
+        ds[at + 1:at + 1 + len(allowed)] = bytes(allowed)
+    return bytes(ds)
+
+
+def _change_record(race=7, klass=3, level=5, abilities=(18, 17, 16, 17, 17, 17),
+                   alignment=0, former=None) -> bytes:
+    from goldbox import dos_port
+    fields = dos_port.FIELDS_BY_NAME_FOR["curse-of-the-azure-bonds"]
+    data = bytearray(_curse_record(b"MARK"))
+    data[fields["race"].offset] = race
+    data[fields["class_levels"].offset + klass] = level
+    if former is not None:
+        data[fields["former_class_levels"].offset + former] = 5
+    for name, value in zip(da.ABILITIES, abilities):
+        data[fields[name].offset] = value
+    data[fields["alignment"].offset] = alignment
+    return bytes(data)
+
+
+def test_the_class_test_reads_the_engines_offsets():
+    """0x3B99E reads `0x10 + 2k`, `0x74`, `0x109`, `0x111` and `0x11B`."""
+    from goldbox import dos_port
+    fields = dos_port.FIELDS_BY_NAME_FOR["curse-of-the-azure-bonds"]
+    assert [fields[a].offset for a in da.ABILITIES] == [0x10, 0x12, 0x14, 0x16, 0x18,
+                                                       0x1A]
+    assert [fields[f].offset for f in ("race", "class_levels", "former_class_levels",
+                                       "alignment")] == [0x74, 0x109, 0x111, 0x11B]
+
+
+@pytest.mark.parametrize("record,expected", [
+    # A lawful good paladin 5, wisdom 16: fighter and magic-user, not cleric or
+    # ranger (wisdom), thief (alignment) or paladin (his own class).
+    ({}, ["FIGHTER", "MAGIC-USER"]),
+    ({"abilities": (18, 17, 17, 17, 17, 17)},
+     ["CLERIC", "FIGHTER", "MAGIC-USER", "RANGER"]),
+    # Charisma 14 fails a paladin's own requisite, so he may take nothing.
+    ({"abilities": (18, 17, 16, 17, 17, 14)}, []),
+    # A neutral fighter may take thief, not paladin.
+    ({"klass": 2, "alignment": 4, "abilities": (17, 12, 12, 17, 12, 12)}, ["THIEF"]),
+    ({"race": 1}, []),
+    ({"former": 3, "klass": 5, "level": 1}, []),
+], ids=["paladin", "wise-paladin", "paladin-charisma-14", "neutral-fighter",
+        "dwarf", "changed-before"])
+def test_the_class_list_is_the_engines_test_in_the_races_order(record, expected):
+    got = da.class_choices(_change_record(**record), _class_segment())
+    assert [name for _, name in got] == expected
+
+
+class FakeChangeMenu(FakeCurseMenu):
+    """Curse's party menu with `HUMAN CHANGE CLASSES`: `h` opens a list whose
+    header takes row 0 and whose classes take the rows after it, the first
+    highlighted; `End` moves the highlight down and wraps, `Home` up; `s`
+    takes the class and returns to the party menu."""
+
+    BARS = {**FakeCurseMenu.BARS, "classes": b"\x17\x18"}
+
+    def __init__(self, tmp, classes=("FIGHTER", "MAGIC-USER"), shown=None,
+                 hall=True):
+        super().__init__(tmp)
+        self.classes, self.hall = list(classes), hall
+        self.shown = len(self.classes) if shown is None else shown
+        self.row, self.changed = 0, []
+
+    def key(self, k, gap=0.0):
+        if self.mode == "party" and k == da.PARTY_CHANGE:
+            self.keys.append(k)
+            if self.hall:
+                self.mode, self.row = "classes", 0
+        elif self.mode == "classes":
+            self.keys.append(k)
+            if k == "End":
+                self.row = (self.row + 1) % self.shown
+            elif k == "Home":
+                self.row = (self.row - 1) % self.shown
+            elif k == "s":
+                self.changed.append((self.line, self.classes[self.row]))
+                self.mode = "party"
+        else:
+            super().key(k, gap)
+
+    def capture(self):
+        if self.mode != "classes":
+            return super().capture()
+        px = bytearray(_screen(self.BARS["classes"], b"").px)
+        top = da.CHANGE_LIST[1] + screens.CELL * (1 + self.row)
+        for y in range(top, top + screens.CELL):
+            for x in range(40, 200):
+                px[(y * W + x) * 3:(y * W + x) * 3 + 3] = b"\xff\xff\xff"
+        return dosbox.Screen(W, H, bytes(px))
+
+    walk_highlight = dosbox.Session.walk_highlight
+
+
+def _changing(tmp_path, record, **kw):
+    (tmp_path / "game").mkdir()
+    game = FakeChangeMenu(tmp_path / "game", **kw)
+    d = da.Driver(game, lambda **k: None, "J", "curse", party_size=game.size)
+    d.game.to_main_menu = lambda timeout=120.0: None
+    d.load()
+    (game.save_dir / "CHRDATJ2.SAV").write_bytes(record)
+    d._class_ds = _class_segment()
+    return game, d
+
+
+@pytest.mark.parametrize("wanted,ends", [("FIGHTER", 0), ("MAGIC-USER", 1)])
+def test_change_takes_the_row_the_engines_test_puts_the_class_on(tmp_path, wanted,
+                                                                  ends):
+    game, d = _changing(tmp_path, _change_record())
+    got = d.change(2, wanted)
+    assert game.changed == [(2, wanted)] and game.mode == "party" and d.on_party_menu()
+    assert game.keys[2:4] == ["End", "h"]
+    assert got["choices"] == ["FIGHTER", "MAGIC-USER"] and got["row"] == 1 + ends
+
+
+def test_a_list_longer_than_the_engines_test_stops_before_select(tmp_path):
+    game, d = _changing(tmp_path, _change_record(),
+                        classes=("FIGHTER", "MAGIC-USER", "THIEF"))
+    with pytest.raises(da.StepFailed, match="not the 2 consecutive rows"):
+        d.change(2, "FIGHTER")
+    assert game.changed == [] and "s" not in game.keys[2:]
+
+
+def test_a_class_the_engine_does_not_offer_is_refused_before_a_key(tmp_path):
+    game, d = _changing(tmp_path, _change_record())
+    with pytest.raises(da.StepFailed, match="may not change to CLERIC"):
+        d.change(2, "CLERIC")
+    assert game.keys == ["l", "j"]
+
+
+def test_a_shut_hall_stops_the_change(tmp_path):
+    game, d = _changing(tmp_path, _change_record(), hall=False)
+    with pytest.raises(da.StepFailed, match="stage --hall"):
+        d.change(2, "FIGHTER")
+    assert game.changed == []
+
+
+# -- a Curse rest that a message ends ------------------------------------------------
+
+
+class _FakeCurseGuards(FakeCurseMenu):
+    """Curse whose rests end, `guards` times, on a message over the continue
+    bar; `Return` puts the party on the map, out of camp."""
+
+    BARS = {**FakeCurseMenu.BARS, "guards": b"\x19\x1a"}
+
+    def __init__(self, tmp, guards=1, back="map"):
+        super().__init__(tmp)
+        self.guards, self.back = guards, back
+
+    def key(self, k, gap=0.0):
+        if self.mode == "guards":
+            self.keys.append(k)
+            if k == "Return":
+                self.mode = self.back
+            return
+        super().key(k, gap)
+        if self.mode == "camp" and self.keys[-1] == "r" and self.rested and self.guards:
+            self.guards -= 1
+            self.mode = "guards"
+
+
+def _guarded(tmp_path, monkeypatch, **kw):
+    game = _FakeCurseGuards(tmp_path, **kw)
+    monkeypatch.setattr(da, "CURSE_CONTINUE_BAR",
+                        _screen(game.BARS["guards"], b"").glyphs(dosbox.BAR))
+    d = da.Driver(game, lambda **k: None, "J", "curse", party_size=game.size)
+    d.game.to_main_menu = lambda timeout=120.0: None
+    d.load()
+    d.begin()
+    d.camp()
+    return game, d
+
+
+def test_a_curse_rest_the_guards_end_continues_and_camps_again(tmp_path, monkeypatch):
+    game, d = _guarded(tmp_path, monkeypatch)
+    got = d.rest(5)
+    assert got["ended_by_message"] is True and game.rested == [5]
+    # `FakeCurseMenu` hands camp keys on to `FakePool`, which logs them again.
+    after = game.keys[game.keys.index("Return"):]
+    assert after[0] == "Return" and set(after[1:]) == {da.ENCAMP}
+    assert game.keys.count("Return") == 1 and game.mode == "camp"
+    assert d.where == "camp" and d.in_camp()
+    assert [e["kind"] for e in d.events] == ["press_continue"]
+    d.save("D")
+    assert (game.save_dir / "SAVGAMD.DAT").is_file()
+
+
+def test_a_rest_message_that_does_not_lead_to_the_map_stops_the_run(tmp_path,
+                                                                     monkeypatch):
+    game, d = _guarded(tmp_path, monkeypatch, back="party")
+    with pytest.raises(da.StepFailed, match="map bar did not come back"):
+        d.rest(5)
+
+
+def test_a_curse_rest_that_ends_in_camp_is_not_a_message(tmp_path, monkeypatch):
+    game, d = _guarded(tmp_path, monkeypatch, guards=0)
+    got = d.rest(5)
+    assert got["ended_by_message"] is False and "Return" not in game.keys
+
+
+# -- the new steps' words and orders --------------------------------------------------
+
+
+def test_heal_cure_and_change_parse_and_bad_ones_are_refused():
+    assert (da.parse_step("heal 2").kind, da.parse_step("heal 2").line) == ("heal", 2)
+    assert (da.parse_step("cure 8").kind, da.parse_step("cure 8").line) == ("cure", 8)
+    step = da.parse_step("change 2 magic-user")
+    assert (step.kind, step.line, step.name) == ("change", 2, "MAGIC-USER")
+    for bad in ("heal", "heal 9", "cure 0", "change 2", "change 2 WIZARD",
+                "change 9 FIGHTER"):
+        with pytest.raises(ValueError):
+            da.parse_step(bad)
+
+
+@pytest.mark.parametrize("title,steps", [
+    ("curse", ("load", "begin", "camp", "sheet 2", "rest 1h", "save C", "rest 1d",
+               "sheet 2", "heal 2", "save D", "read")),
+    ("curse", ("load", "train 2", "begin", "camp", "rest 5m", "save C", "cure 2",
+               "save D", "read")),
+    ("curse", ("load", "change 2 FIGHTER", "save E", "read")),
+    ("ssb", ("load", "begin", "camp", "sheet 1", "heal 1", "save D", "read")),
+    ("darkness", ("load", "begin", "camp", "sheet 4", "heal 4", "save D", "read")),
+])
+def test_orders_the_camp_sheet_steps_allow(title, steps):
+    da.validate_steps(_steps(*steps), title)
+
+
+@pytest.mark.parametrize("title,steps,why", [
+    ("curse", ("load", "heal 1"), "heal needs camp first"),
+    ("curse", ("load", "begin", "sheet 1"), "sheet needs camp first"),
+    ("ssb", ("load", "begin", "camp", "cure 1"), "cure is driven in curse only"),
+    ("pool", ("load", "camp", "heal 1"), "heal is driven in curse, darkness, ssb only"),
+    ("pool", ("load", "camp", "cure 1"), "cure is driven in curse only"),
+    ("curse", ("load", "begin", "change 1 FIGHTER"), "change needs the party menu"),
+    ("ssb", ("load", "change 1 FIGHTER"), "change is driven in curse only"),
+])
+def test_orders_the_camp_sheet_steps_refuse(title, steps, why):
+    with pytest.raises(ValueError, match=why):
+        da.validate_steps(_steps(*steps), title)
+
+
+# -- the same readings on the captures and the player's own tables ------------------
+
+
+@pytest.mark.parametrize("issue,run,shot,title,lengths,heal,cure", [
+    # DEMELTINA, a Curse paladin 5, `TRADE DROP HEAL CURE EXIT`.
+    ("597", "5466354e7a-xp-ceiling", "005-view-1-sheet", "curse", [5, 4, 4, 4, 4],
+     True, True),
+    # TURBO K, a Pools of Darkness paladin 12, `ITEMS SPELLS TRADE DROP LAY CURE EXIT`.
+    ("650", "eafdbfabb0-m-itemskeys", "009-sheet-1", "darkness",
+     [5, 6, 5, 4, 3, 4, 4], True, True),
+    ("678", "591c0bf9ce-run3-walk", "007-view-4-sheet", "darkness", [5, 6, 5, 4, 4],
+     False, False),
+    # PAINE, a Silver Blades ranger, `SPELLS EXIT`.
+    ("683", "6e377388d6-run", "006-view-2-sheet", "ssb", [6, 4], False, False),
+])
+def test_the_captured_sheets_offer_what_their_bars_say(issue, run, shot, title,
+                                                       lengths, heal, cure):
+    words = da.bar_words(_capture(run, shot, issue))
+    assert [len(w) for w in words] == lengths
+    assert da.sheet_offers(words, title) == {"heal": heal, "cure": cure}
+
+
+@pytest.mark.parametrize("run", ["8f554ce380-curse-crash", "8f554ce380-curse-crash-2"])
+def test_the_captured_guards_message_is_the_curse_continue_bar(run):
+    screen = _capture(run, "009-lost-rest-end", "649")
+    assert screen.glyphs(dosbox.BAR) == da.CURSE_CONTINUE_BAR
+
+
+def test_the_players_curse_tables_list_a_humans_classes_in_order():
+    try:
+        game = dosbox.find_game("CURSE")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS archives ($FR_ARCHIVES)")
+    ds = da.class_tables((game / "START.EXE").read_bytes())
+    human = da.RACE_CLASSES_AT + da.RACE_CLASSES_SIZE * da.HUMAN_RACE
+    assert [da.class_name(ds, c) for c in ds[human + 1:human + 1 + ds[human]]] == [
+        "CLERIC", "FIGHTER", "MAGIC-USER", "THIEF", "PALADIN", "RANGER"]
+    assert tuple(da.class_name(ds, c) for c in range(8)) == da.CHANGE_CLASSES
+
+
+def test_the_players_curse_tables_offer_mark_fighter_and_magic_user():
+    """`WISH-SPEC-curse-131-dualclassed-in-area-1` slot J: MARK, a lawful good
+    human paladin 5 with wisdom 16, is offered FIGHTER and MAGIC-USER, the
+    two his twin MATHEW was offered when he took MAGIC-USER in the game's own
+    screen; MATHEW, having changed, and the dwarf TRAVIS are offered none."""
+    from tools.registry import specimens
+    folder = specimens.tree_root() / "por-dos" / "WISH-SPEC-curse-131-dualclassed-in-area-1"
+    if not folder.is_dir():
+        pytest.skip("needs WISH-SPEC-curse-131-dualclassed-in-area-1")
+    try:
+        game = dosbox.find_game("CURSE")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS archives ($FR_ARCHIVES)")
+    ds = da.class_tables((game / "START.EXE").read_bytes())
+
+    def offered(n):
+        return [name for _, name in da.class_choices(
+            (folder / f"CHRDATJ{n}.SAV").read_bytes(), ds)]
+    assert offered(2) == ["FIGHTER", "MAGIC-USER"]
+    assert offered(1) == [] and offered(3) == []
