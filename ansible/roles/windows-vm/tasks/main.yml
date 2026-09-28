@@ -224,6 +224,21 @@
   when: winvm_install_winuae | bool
   register: winvm_winuae_dl
 
+# Keep the guest launcher and its machine configuration tied to the reviewed
+# repository files. The first-logon script installs both from the unattend ISO.
+- name: Stage the WinUAE harness files into the unattend ISO
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../tools/amiga/{{ item }}"
+    dest: "{{ winvm_state_dir }}/unattend/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - winuae.ps1
+    - goldbox-a500.uae
+  when: winvm_install_winuae | bool
+  register: winvm_winuae_harness
+
 # Same staging as WinUAE, but a zip: VICE has no installer, so guest-setup.ps1
 # unpacks it rather than msiexec installing it.
 - name: Download the VICE archive into the unattend staging directory
@@ -321,6 +336,7 @@
   when: >-
     winvm_unattend.changed
     or (winvm_winuae_dl.changed | default(false))
+    or (winvm_winuae_harness.changed | default(false))
     or (winvm_vice_dl.changed | default(false))
     or (winvm_kickstarts.changed | default(false))
     or (winvm_jiffydos.changed | default(false))

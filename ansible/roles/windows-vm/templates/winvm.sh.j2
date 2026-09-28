@@ -237,7 +237,9 @@ if (-not $u) { Write-Error 'UNATTEND volume not attached to this domain'; exit 1
 $s = '{0}:\guest-setup.ps1' -f $u.DriveLetter
 if (-not (Test-Path $s)) { Write-Error "not found: $s"; exit 1 }
 & $s
+$setupExit = $LASTEXITCODE
 Get-Content C:\Windows\Temp\guest-setup.log -Tail 40
+exit $setupExit
 PS
     ;;
   scp) shift; scp "${SSH_OPTS[@]}" "$@" ;;
