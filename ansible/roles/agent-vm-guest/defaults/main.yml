@@ -229,17 +229,6 @@ agent_guest_editor_leftovers:
 # The real gh, which the wrapper in /usr/local/bin runs with a fresh token.
 agent_guest_real_gh: /usr/bin/gh
 
-# The weekly job checks the three DOS emulator paths. C64 Ultimate hardware
-# remains available through a manual livetests run.
-agent_guest_live_tests:
-  - livetests/test_live_dosbox.py
-  - livetests/test_live_dosfight.py
-  - livetests/test_live_dosboxx.py
-agent_guest_emulator_tests_schedule: weekly
-agent_guest_emulator_tests_log_dir: "{{ ansible_user_dir }}/.cache/wish/emulator-tests"
-agent_guest_emulator_tests_keep: 5
-agent_guest_emulator_tests_issue_title: "The weekly live tests are failing"
-agent_guest_wish_slug: "{{ agent_guest_wish_repo | regex_replace('^https://github.com/', '') | regex_replace('\\.git$', '') }}"
 
 # --- gh / Claude Code -------------------------------------------------------
 agent_guest_gh_keyring_url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
