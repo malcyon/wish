@@ -94,6 +94,8 @@ whose `SAVGAM<L>.PTY` exists, and loads the one picked.  The menu routine
 slot letter.  The party menu after a load shows `Train Character` and `Human
 Change Classes` only when byte 0x2F of the save's first 1,024 bytes is not
 zero (0x14253), which moves `View`, `Save` and `Begin` down two rows.
+Silver Blades does the same on the word at 0xD51 of `SAVGAM<L>.DAT`
+(`route_silver_blades.menu_after`).
 
 **Pools of Darkness asks a journal copy-protection question between `Begin
 Adventuring` and the map**, and the archives' build passes any answer
@@ -1753,6 +1755,8 @@ class Driver:
         self._ssb = None
         #: Pools of Darkness' party-menu rows once a save is loaded.
         self.pod_rows = dict(POD_MENU_AFTER)
+        #: Silver Blades' party-menu rows once a save is loaded.
+        self.ssb_rows = dict(route_silver_blades.MENU_AFTER)
         #: Each roster line's sheet digest, once shown: two lines must never
         #: show the same sheet.
         self.sheets: dict[int, str] = {}
@@ -2157,6 +2161,9 @@ class Driver:
                             "party menu draws no roster")
 
     def _load_ssb(self) -> dict:
+        path = self.save_path(self.slot)
+        self.ssb_rows = route_silver_blades.menu_after(
+            path.read_bytes() if path.is_file() else None)
         self.ssb.to_party_menu(deadline=self.deadline)
         self.ssb.menu(SSB_LOAD_ROW, "load")
         if not self.s.wait_for(lambda sc: self.ssb.bar(sc) != "party_menu", 20.0):
@@ -2171,7 +2178,8 @@ class Driver:
         self.party_sig = bar_signature(screen)
         self.shot("loaded")
         self.where = "party"
-        return {"slot": self.slot, "party_menu": self.party_sig}
+        return {"slot": self.slot, "party_menu": self.party_sig,
+                "menu_rows": self.ssb_rows}
 
     def _load_pod(self) -> dict:
         """Past the titles to the party menu, `Load Saved Game`, then `POOLS`
@@ -2202,7 +2210,7 @@ class Driver:
         if self.where != "party":
             raise StepFailed("begin needs the party menu")
         if self.title.key == "ssb":
-            self.ssb.menu(route_silver_blades.MENU_AFTER["begin"], "begin")
+            self.ssb.menu(self.ssb_rows["begin"], "begin")
             self.ssb.intro(deadline=self.deadline)
         elif self.title.key == "darkness":
             self.pod_menu(self.pod_rows["begin"], "begin")
@@ -2730,11 +2738,12 @@ class Driver:
         return {"line": line, **moved, "sheet": sheet, **checked, "pages": []}
 
     def _view_ssb(self, line: int) -> dict:
-        """Row 3 `VIEW CHARACTER`, `PICK CHARACTER` (`Down` moves its highlight),
+        """`VIEW CHARACTER` (row 3, or 5 with training on the menu), `PICK
+        CHARACTER` (`Down` moves its highlight),
         then `s`, both answered in three foundation boots; `Return` also opens
         the sheet, unmeasured.  The sheet is judged by its name: its bar is not
         in `route_silver_blades.BARS`, so nothing here waits for a sheet bar."""
-        self.ssb.menu(route_silver_blades.MENU_AFTER["view"], f"view-{line}")
+        self.ssb.menu(self.ssb_rows["view"], f"view-{line}")
         self.ssb.wait_bar("pick_character", 20.0)
         pick = self.shot(f"pick-{line}")
         moved = self.pick_line(line, "party", f"pick-{line}-select", POD_ROSTER_NEXT)
@@ -3233,7 +3242,7 @@ class Driver:
         path = self.save_path(letter)
         was = path.read_bytes() if path.is_file() else None
         if self.title.key == "ssb":
-            self.ssb.menu(route_silver_blades.MENU_AFTER["save"], "save")
+            self.ssb.menu(self.ssb_rows["save"], "save")
             self.ssb.wait_bar("save_which")
         elif self.title.key == "darkness":
             self.pod_menu(self.pod_rows["save"], "save")

@@ -2741,6 +2741,112 @@ def test_the_party_menu_rows_move_two_lower_when_the_training_byte_is_set(savgam
     assert (got["view"], got["save"], got["begin"]) == rows
 
 
+_SSB_SAVGAM = 5469
+_SSB_WORD = route_silver_blades.TRAIN_WORD
+
+
+def _ssb_savgam(word: int) -> bytes:
+    data = bytearray(_SSB_SAVGAM)
+    data[_SSB_WORD:_SSB_WORD + 2] = word.to_bytes(2, "little")
+    return bytes(data)
+
+
+@pytest.mark.parametrize("savgam,rows", [
+    (_ssb_savgam(0), (3, 6, 7)),
+    (_ssb_savgam(20), (5, 8, 9)),
+    (_ssb_savgam(0x00FF), (5, 8, 9)),
+    (_ssb_savgam(0x0100), (5, 8, 9)),
+    (bytes(0x2F) + b"\x01" + bytes(_SSB_SAVGAM - 0x30), (3, 6, 7)),
+    (bytes(_SSB_WORD) + b"\x14", (3, 6, 7)),
+    (None, (3, 6, 7)),
+], ids=["zero", "hall-20", "staged-hall", "high-byte", "pod-byte-only",
+        "short", "missing"])
+def test_silver_blades_menu_rows_move_two_lower_when_the_hall_word_is_set(savgam, rows):
+    """`GAME.OVR` 0x1D793 and 0x1D7B5 enable `Train Character` and `Human
+    Change Classes` on one test of the word at 0xD51, never on Pools of
+    Darkness' byte 0x2F."""
+    got = route_silver_blades.menu_after(savgam)
+    assert (got["view"], got["save"], got["begin"]) == rows
+
+
+def _lit_band(top: int) -> dosbox.Screen:
+    """A 320x200 frame with the menu's columns near-white from `top` for 8 rows."""
+    px = bytearray(320 * 200 * 3)
+    x, _, w, _ = route_silver_blades.MENU_RECT
+    for y in range(top, top + 8):
+        px[(y * 320 + x) * 3:(y * 320 + x + w) * 3] = b"\xff" * (w * 3)
+    return dosbox.Screen(320, 200, bytes(px))
+
+
+@pytest.mark.parametrize("row", [0, 8, 9, 10])
+def test_the_silver_blades_menu_highlight_is_read_on_all_eleven_rows(row):
+    """The long menu's `Begin Adventuring` is row 9 and `Exit to DOS` row 10.
+    #628's first fixed run walked the highlight onto row 9 at y=168 and read
+    None, because the rectangle stopped at nine rows."""
+    screen = _lit_band(96 + 8 * row)
+    assert screen.highlight_row(route_silver_blades.MENU_RECT) == row
+
+
+def test_the_frame_under_the_silver_blades_menu_is_not_a_row():
+    """The band from y=184 carries 79 near-white pixels of frame in every
+    Silver Blades party-menu capture, with no highlight on it."""
+    screen = _lit_band(184)
+    assert screen.highlight_row(route_silver_blades.MENU_RECT) is None
+
+
+class _SsbAsked(Exception):
+    pass
+
+
+def _ssb_loaded(tmp_path, word):
+    """A Silver Blades driver loaded from a slot whose hall word is `word`;
+    any later party-menu row it asks for stops it with `_SsbAsked`."""
+    game = FakeCurseMenu(tmp_path)
+    game.mode = "title"
+    game.save_dir.mkdir(parents=True, exist_ok=True)
+    game.save_file("J").write_bytes(_ssb_savgam(word))
+    asked = []
+
+    class Ssb:
+        def to_party_menu(self, deadline=None):
+            pass
+
+        def menu(self, row, label):
+            if label == "load":
+                game.key("l")
+                game.key("j")
+                game.mode = "party"
+                return
+            asked.append((label, row))
+            raise _SsbAsked(label)
+
+        def bar(self, screen=None):
+            return "party_menu"
+
+        def wait_bar(self, want, timeout=45.0, deadline=None):
+            return game.capture()
+
+    d = da.Driver(game, lambda **k: None, "J", "ssb", party_size=game.size)
+    d._ssb = Ssb()
+    d.s.wait_for = lambda pred, timeout=0.0: True
+    return d, asked
+
+
+@pytest.mark.parametrize("word,rows", [(0, (3, 6, 7)), (20, (5, 8, 9))],
+                         ids=["short-menu", "long-menu"])
+def test_silver_blades_views_saves_and_begins_at_the_rows_its_save_draws(
+        tmp_path, word, rows):
+    """`WISH-SPEC-ssb-234-party-pair` slot C holds 20 there, and #628's run
+    found its menu two rows longer than the fixed rows assumed."""
+    d, asked = _ssb_loaded(tmp_path, word)
+    got = d.load()
+    for step in (lambda: d.view(1), lambda: d.save("B"), d.begin):
+        with pytest.raises(_SsbAsked):
+            step()
+    assert asked == [("view-1", rows[0]), ("save", rows[1]), ("begin", rows[2])]
+    assert got["menu_rows"] == dict(zip(("view", "save", "begin"), rows))
+
+
 def test_a_save_with_the_training_byte_begins_and_saves_two_rows_lower(tmp_path):
     """`Train Character` and `Human Change Classes` sit above `View`, so a save
     with byte 0x2F set moves `Save` to row 8 and `Begin` to row 9."""
@@ -4817,6 +4923,8 @@ def test_the_driver_gives_its_deadline_to_the_borrowed_route_calls(monkeypatch):
         return f
 
     monkeypatch.setattr(ssb, "to_party_menu", stop("ssb"))
+    d.slot = "A"
+    monkeypatch.setattr(d, "save_path", lambda slot: pathlib.Path("/nonexistent"))
     with pytest.raises(da.StepFailed):
         d._load_ssb()
     # Past the party menu, to the 90 s wait for the loaded party.

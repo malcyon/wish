@@ -11,11 +11,32 @@ import time
 
 from tools.dos import dosbox
 
-#: The party menu's highlight list: nine 8-pixel rows from y=96, read
+#: The party menu's highlight list: up to eleven 8-pixel rows from y=96, read
 #: between the left border and the mouse pointer the game parks at x=160.
-MENU_RECT = (64, 96, 90, 72)
+#: The frame below it, from y=184, is never read as a row.
+MENU_RECT = (64, 96, 90, 88)
 MENU_BEFORE = {"add": 1}
+#: The rows after a load when the menu has no `Train Character` or `Human
+#: Change Classes`: Create, Drop, Modify, View, Add, Remove, Save, Begin, Exit.
 MENU_AFTER = {"view": 3, "save": 6, "begin": 7}
+#: The save word whose non-zero value enables both `Train Character` and
+#: `Human Change Classes` (`GAME.OVR` 0x1D793 and 0x1D7B5, one test each:
+#: `cmp word es:[di+0x550], 0` on the buffer at DS 0x67CA, which the loader
+#: fills from file offset 0x801 of `SAVGAM<L>.DAT`): the training hall's word
+#: (`docs/194-the-dos-training-ladder.md`).
+TRAIN_WORD = 0xD51
+
+
+def menu_after(savgam: bytes | None) -> dict[str, int]:
+    """The party menu's `view`, `save` and `begin` rows after loading `savgam`.
+
+    A non-zero `TRAIN_WORD` puts `Train Character` and `Human Change Classes`
+    above `View`, so every row moves down two.  A missing or short save gives
+    the rows without them.
+    """
+    word = savgam[TRAIN_WORD:TRAIN_WORD + 2] if savgam else b""
+    shift = 2 if len(word) == 2 and any(word) else 0
+    return {k: v + shift for k, v in MENU_AFTER.items()}
 
 #: Command-bar digests (`Screen.glyphs(dosbox.BAR)`), measured off DOS Silver
 #: Blades 1.30's own captures in the probe that mapped this route.  Each is one
