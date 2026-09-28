@@ -253,7 +253,7 @@ the interstitial screens to answer while waiting, and each state's minimum
 wait. `run_recon` claims the lane, starts WinUAE with `goldbox-a500.uae` and
 the described drives, presses one key, and waits until the guard map's pixel
 box for the expected state matches the emulator crop. An unknown screen, a
-failed capture or a spent deadline stops the run with a failed verdict; a state
+failed capture or a spent deadline stops the run with a failed verdict (the route gets `--deadline` less min(300, deadline/2), which is kept for cleanup, and a lane call cut short by it is reported as the route time running out); a state
 with no guard is settled by two equal captures, listed as `unguarded`, and the
 run does not pass. It fetches the disks back, refuses if a registered disk or a
 kept slot changed, decodes the control and after slots, and prints one verdict

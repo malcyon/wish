@@ -1255,3 +1255,44 @@ def test_substituted_preservation_without_a_pinned_specimen_refuses_before_any_g
 def test_preservation_is_refused_without_accept(tmp_path, clock, specimen_tree):
     with pytest.raises(winuaesession.RouteError, match="published disk-one or substituted"):
         _preserving(tmp_path, clock, accept=False, measure=True)
+
+
+class _SlowLaneGuest(TitleGuest):
+    """A lane call that outlasts the time it was given, as winvm does."""
+
+    def press(self, holder, key, timeout=None):
+        if key == "A":
+            self.clock.now += timeout
+            raise winuaesession.RouteError(f"winvm ssh exceeded its {timeout:.1f}s limit")
+        super().press(holder, key, timeout)
+
+
+def test_a_lane_call_cut_short_by_the_route_time_reports_the_route_time(tmp_path, clock):
+    guest = _SlowLaneGuest(clock)
+    # 240 s of deadline leaves 120 s of route time, and the boot has used most of it by "A".
+    clock.sleeps.clear()
+    real_press = guest.press
+
+    def press(holder, key, timeout=None):
+        if key == "L":
+            clock.now += 110
+        return real_press(holder, key, timeout)
+
+    guest.press = press
+    _, result = _run(tmp_path, clock, guest=guest, deadline_seconds=240)
+    assert result["success"] is False
+    assert "route time of 120s" in result["error"] and "240s deadline" in result["error"]
+    assert "exceeded its" not in result["error"]
+    assert "exceeded its" in result["error_cause"]
+
+
+def test_a_lane_error_with_route_time_to_spare_is_reported_as_itself(tmp_path, clock):
+    guest = _SlowLaneGuest(clock)
+    _, result = _run(tmp_path, clock, guest=guest, deadline_seconds=1800)
+    assert "exceeded its" in result["error"] and "error_cause" not in result
+
+
+def test_the_minimum_wait_message_names_the_route_time(tmp_path, clock):
+    title = make_title(min_waits={"world": 60.0})
+    _, result = _run(tmp_path, clock, title=title, deadline_seconds=100)
+    assert "route time of 50s" in result["error"] and "100s deadline" in result["error"]

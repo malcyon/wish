@@ -950,6 +950,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     route_end = begun + deadline_seconds - cleanup_window
     total_end = begun + deadline_seconds
     cleanup_scale = cleanup_window / 300.0
+    route_note = (f"route time of {deadline_seconds - cleanup_window:.0f}s: the "
+                  f"{deadline_seconds:.0f}s deadline less a {cleanup_window:.0f}s cleanup reserve")
+    shortened = {"last": False}
 
     def log(event: str, **fields: Any) -> None:
         runlog.write(json.dumps({"event": event, "t": time.time(), **fields},
@@ -962,7 +965,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     def route_limit(cap: float) -> float:
         left = route_end - time.monotonic()
         if left <= 0:
-            raise RouteError("reconnaissance deadline reached before the next route action")
+            raise RouteError(f"the {route_note} ran out before the next route action")
+        shortened["last"] = left < cap
         return min(cap, left)
 
     def cleanup_limit(cap: float) -> float:
@@ -998,7 +1002,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     def wait(seconds: float) -> None:
         if seconds > 0:
             if route_end - time.monotonic() < seconds:
-                raise RouteError("reconnaissance deadline reached during a minimum wait")
+                raise RouteError(f"the {route_note} cannot cover a {seconds:g}s minimum wait")
             time.sleep(seconds)
 
     def check_identity(state: str, crop: pathlib.Path) -> None:
@@ -1314,6 +1318,14 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 log("reload", **shown)
             result["completed"] = True
     except BaseException as exc:
+        if (isinstance(exc, (RouteError, OSError)) and "route time" not in str(exc)
+                and time.monotonic() >= route_end - 1.0
+                and (shortened["last"] or time.monotonic() > route_end)):
+            # A lane call cut short by the route time reports its own few seconds as a timeout.
+            result["error_cause"] = f"{type(exc).__name__}: {exc}"
+            timed_out = RouteError(f"the {route_note} ran out during a lane call")
+            timed_out.__cause__ = exc
+            exc = timed_out
         result["error"] = f"{type(exc).__name__}: {exc}"
         if not isinstance(exc, (RouteError, OSError, ValueError)):
             result["lost"] = result["error"]
@@ -1767,7 +1779,9 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--audio-proof", required=True, type=pathlib.Path)
         p.add_argument("--attempt")
         p.add_argument("--holder", default=None)
-        p.add_argument("--deadline", type=float, default=1800)
+        p.add_argument("--deadline", type=float, default=1800,
+                       help="seconds for the whole run; the route gets this less "
+                            "min(300, deadline/2), which is kept for cleanup")
         p.add_argument("--published-disk-one", action="store_true")
 
     p = sub.add_parser("prepare", help="copy the registered images and the specimen into a run folder")
