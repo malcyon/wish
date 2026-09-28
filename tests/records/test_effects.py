@@ -1135,6 +1135,77 @@ def test_silence_enfeeblement_and_bestow_curse_become_id_and_level(title, eid):
         assert isinstance(effects.c64_row(title, node), effects.Unconverted)
 
 
+@pytest.mark.parametrize("title", _ALL)
+@pytest.mark.parametrize("eid", [2, 52, 53, 71])
+def test_reversed_bless_hold_sleep_and_71_become_id_and_level(title, eid):
+    for level in (1, 9, 0x0C, 0x7F):
+        node = effects.RunningEffect(eid, 47, level, 0)
+        assert effects.c64_row(title, node) == (eid, level)
+        row = effects.Effect(63, eid, 0, 47, level)
+        assert effects.dos_record(title, row, 0) == node
+    for node in (effects.RunningEffect(eid, 47, 5, 1),
+                 effects.RunningEffect(eid, 47, 0, 0),
+                 effects.RunningEffect(eid, 47, 0xFF, 0)):
+        assert isinstance(effects.c64_row(title, node), effects.Unconverted)
+
+
+@pytest.mark.parametrize("title, eid", [
+    ("curse-of-the-azure-bonds", 3), ("curse-of-the-azure-bonds", 7),
+    ("secret-of-the-silver-blades", 3), ("secret-of-the-silver-blades", 73),
+])
+def test_a_later_title_combat_caster_level_id_becomes_id_and_level(title, eid):
+    node = effects.RunningEffect(eid, 12, 6, 0)
+    assert effects.c64_row(title, node) == (eid, 6)
+    assert effects.dos_record(title, effects.Effect(63, eid, 0, 12, 6), 0) \
+        == node
+
+
+@pytest.mark.parametrize("title, eid", [
+    ("pool-of-radiance", 3), ("pool-of-radiance", 73),
+    ("curse-of-the-azure-bonds", 73), ("secret-of-the-silver-blades", 7),
+])
+def test_a_combat_caster_level_id_of_another_title_stays_unconverted(
+        title, eid):
+    got = effects.c64_row(title, effects.RunningEffect(eid, 12, 6, 0))
+    assert isinstance(got, effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", _ALL)
+@pytest.mark.parametrize("eid", [23, 34])
+def test_hammer_and_disease_keep_the_flag_in_bit_7(title, eid):
+    for level in (1, 9, 0x7F):
+        node = effects.RunningEffect(eid, 40, level, 1)
+        assert effects.c64_row(title, node) == (eid, level | 0x80)
+        row = effects.Effect(63, eid, 0, 40, level | 0x80)
+        assert effects.dos_record(title, row, 0) == node
+    for node in (effects.RunningEffect(eid, 40, 5, 0),
+                 effects.RunningEffect(eid, 40, 0, 1),
+                 effects.RunningEffect(eid, 40, 0x80, 1)):
+        assert isinstance(effects.c64_row(title, node), effects.Unconverted)
+    for magnitude in (0x05, 0x80, 0x00):
+        row = effects.Effect(63, eid, 0, 40, magnitude)
+        assert isinstance(effects.dos_record(title, row, 0),
+                          effects.Unconverted)
+
+
+@pytest.mark.parametrize("eid", [4, 7, 62])
+def test_pools_disease_chain_is_ff_on_both_ports(eid):
+    node = effects.RunningEffect(eid, 1440, 0xFF, 1)
+    assert effects.c64_row("pool-of-radiance", node) == (eid, 0xFF)
+    row = effects.Effect(63, eid, 0, 0x98, 0xFF)
+    got = effects.dos_record("pool-of-radiance", row, 0)
+    assert (got.id, got.data, got.flag) == (eid, 0xFF, 1)
+    for bad in (effects.RunningEffect(eid, 1440, 0xFF, 0),
+                effects.RunningEffect(eid, 1440, 5, 1)):
+        assert isinstance(effects.c64_row("pool-of-radiance", bad),
+                          effects.Unconverted)
+    assert isinstance(effects.dos_record(
+        "pool-of-radiance", effects.Effect(63, eid, 0, 0x98, 0x05), 0),
+        effects.Unconverted)
+    for title in _LATER:
+        assert isinstance(effects.c64_row(title, node), effects.Unconverted)
+
+
 @pytest.mark.parametrize("title", _LATER)
 def test_a_later_title_invisible_node_becomes_id_and_level(title):
     assert effects.c64_row(title, effects.RunningEffect(25, 1, 0x0C, 0)) \

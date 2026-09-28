@@ -329,14 +329,44 @@ LATER_CASTER_LEVEL_IDS = {
         {1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 37, 41, 45, 46, 57, 63, 69}),
 }
 
-#: The ids whose ordinary cast is a combat spell in every title: Silence 15'
-#: Radius (21), Ray of Enfeeblement (29) and Bestow Curse (36). DOS stores the
-#: caster's level with flag 0 and the C64's generic combat writer stores
-#: `level & $0F` after clearing its override, and nothing but Dispel Magic
-#: reads either. They have no C64 camp row, which is why the camp-row
-#: derivations behind `POOL_CASTER_LEVEL_IDS` and `LATER_CASTER_LEVEL_IDS` do
-#: not list them.
-COMBAT_CASTER_LEVEL_IDS = frozenset({21, 29, 36})
+#: The ids whose ordinary cast is a combat spell in every title: the reversed
+#: Bless (2), Silence 15' Radius (21), Ray of Enfeeblement (29), Bestow Curse
+#: (36), held (52), sleeping (53) and 71. DOS stores the caster's level with
+#: flag 0 and the C64's generic combat writer stores `level & $0F` after
+#: clearing its override, and nothing but Dispel Magic reads either. They have
+#: no C64 camp row that casts, which is why the camp-row derivations behind
+#: `POOL_CASTER_LEVEL_IDS` and `LATER_CASTER_LEVEL_IDS` do not list them.
+#: DOS writers: 2 through the Bless area routine (Pool `GAME.OVR:0x28013`,
+#: Curse `0x2FD01`, Silver Blades `0x2E54F`); 52 through Hold Person's custom
+#: apply (Pool `0x287DD`, Curse `0x2FC41`, Silver Blades `0x2E48F`) and spell
+#: 61; 53 through spell 21; 71 through Pool and Curse spell 63 and Silver
+#: Blades spell 79. `docs/226` has the C64 writers. Pool's and Curse's combat
+#: 71 doubles the level first (`SPELLE00 $AD54`, `COMBAT $1A71`); only
+#: Dispel Magic reads it, so the DOS byte is copied.
+COMBAT_CASTER_LEVEL_IDS = frozenset({2, 21, 29, 36, 52, 53, 71})
+
+#: The same rule for ids only one later title casts this way: 3 (spell 70,
+#: Curse and Silver Blades), Curse's 7 (spell 79) and Silver Blades' 73
+#: (spell 95, which runs one minute a level there and never ends in Curse).
+TITLE_COMBAT_CASTER_LEVEL_IDS: dict[str, frozenset[int]] = {
+    "curse-of-the-azure-bonds": frozenset({3, 7}),
+    "secret-of-the-silver-blades": frozenset({3, 73}),
+}
+
+#: Spiritual Hammer (23) and Cause Disease (34). DOS stores the caster's
+#: level with flag 1 (the generic cast's flag argument, Pool `0x28A01` and
+#: `0x2938A`) and the C64 combat cast stores `level | $80` (Pool `SPELLE00
+#: $AABF` and `$ABB9`, Curse `COMBAT $1845` and `$18A8`, Silver Blades `$1BF4`
+#: and `$1C63`), so magnitude = data | $80 and back.
+FLAGGED_CASTER_LEVEL_IDS = frozenset({23, 34})
+
+#: Pool's disease chain: spell 67 writes `(4, 1440, 0xFF, 1)`, and on expiry
+#: DOS handler 4 adds `(7, 43200, 0xFF, 1)` and handler 7 adds `(62, 60, 0xFF,
+#: 1)` (`GAME.OVR:0xEE13`, `0xEED8`). The C64 writes the same three rows with
+#: magnitude `$FF`: camp row 67 (`SPELLE04 $ACC6`) and the camp expiry
+#: handlers `$ACCE` and `$ACD7`.
+POOL_FF_CHAIN_IDS = frozenset({4, 7, 62})
+POOL_FF_CHAIN = (0xFF, 1)
 
 #: Invisible (25) in the later titles. Every C64 row for it writes the caster's
 #: level (camp rows 19, 32, 36 and 55 reach `ECL65 $819C`; combat goes through
@@ -469,7 +499,8 @@ def _caster_level_ids(title_key: str) -> frozenset[int]:
     later = LATER_CASTER_LEVEL_IDS.get(title_key)
     if later is None:
         return frozenset()
-    return later | COMBAT_CASTER_LEVEL_IDS | {LATER_INVISIBLE_ID}
+    return (later | COMBAT_CASTER_LEVEL_IDS | {LATER_INVISIBLE_ID}
+            | TITLE_COMBAT_CASTER_LEVEL_IDS.get(title_key, frozenset()))
 
 
 @dataclass(frozen=True)
@@ -541,7 +572,8 @@ def _slowed_title(title_key: str) -> bool:
 
 def _own_rule_row(title_key: str,
                   node: RunningEffect) -> tuple[int, int] | Unconverted | None:
-    """`c64_row` for id 13, Haste and Silver Blades' id 113, or `None`."""
+    """`c64_row` for id 13, Haste, Slowed, Silver Blades' id 113, the flagged
+    caster-level ids and Pool's disease chain, or `None`."""
     if node.id == _REDUCE_ID:
         return Unconverted("no DOS engine writes a running id-13 node")
     if node.id == HASTE_ID and (title_key in LATER_CAST_FLAGS
@@ -566,13 +598,25 @@ def _own_rule_row(title_key: str,
             return Unconverted("an id-113 node other than the one DOS "
                                "spell 59 writes")
         return node.id, GIANT_STRENGTH_C64
+    if node.id in FLAGGED_CASTER_LEVEL_IDS and _slowed_title(title_key):
+        if node.flag != 1:
+            return Unconverted("a flag byte other than 1 on a flagged "
+                               "caster-level effect")
+        if not 1 <= node.data <= 0x7F:
+            return Unconverted("a data byte that is not a caster level")
+        return node.id, node.data | MAGNITUDE_RESTORE_FLAG
+    if node.id in POOL_FF_CHAIN_IDS and title_key == "pool-of-radiance":
+        if (node.data, node.flag) != POOL_FF_CHAIN:
+            return Unconverted("a node of Pool's disease chain other than "
+                               "the one DOS writes")
+        return node.id, 0xFF
     return None
 
 
 def _own_rule_node(title_key: str, effect_id: int,
                    m: int) -> tuple[int, int] | Unconverted | None:
-    """`dos_record`'s `(data, flag)` for Haste and Silver Blades' id 113, the
-    inverse of `_own_rule_row`, or `None` for another id."""
+    """`dos_record`'s `(data, flag)` for the ids `_own_rule_row` converts,
+    its inverse, or `None` for another id."""
     if effect_id == HASTE_ID and (title_key in LATER_CAST_FLAGS
                                   or title_key == "pool-of-radiance"):
         if not 1 <= m <= HASTE_MAX_DATA:
@@ -587,6 +631,16 @@ def _own_rule_node(title_key: str, effect_id: int,
             return Unconverted("an id-113 magnitude other than the C64's "
                                "own, which waits on strength 23")
         return GIANT_STRENGTH_DOS
+    if effect_id in FLAGGED_CASTER_LEVEL_IDS and _slowed_title(title_key):
+        if not m & MAGNITUDE_RESTORE_FLAG or not m & 0x7F:
+            return Unconverted("a magnitude the C64 cast of this effect "
+                               "does not write")
+        return m & 0x7F, 1
+    if effect_id in POOL_FF_CHAIN_IDS and title_key == "pool-of-radiance":
+        if m != 0xFF:
+            return Unconverted("a magnitude of Pool's disease chain other "
+                               "than the C64's own")
+        return POOL_FF_CHAIN
     return None
 
 

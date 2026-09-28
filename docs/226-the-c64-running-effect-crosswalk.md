@@ -553,6 +553,52 @@ casting level and that the duration was computed from it. It rests on one
 party. Nothing in a DOS node records who cast it, and the conversion does not
 need to know.
 
+## Combat-cast ids and their rules
+
+**CONFIRMED from both ports' code**, by reading each DOS writer's pushes and
+each C64 cast down to its row writer. Static reads only; none has been booted.
+
+| Rule | Titles and ids | DOS node | C64 row | Code |
+|---|---|---|---|---|
+| magnitude = data, flag 0 | all: 2, 52, 53, 71 | `(id, minutes, level, 0)` | `level & $0F` from the generic combat writer | 2: the Bless area routine into the generic cast, Pool `GAME.OVR:0x28013`, Curse `0x2FD01`, Silver Blades `0x2E54F`; C64 `SPELLE00 $A8A1`, `COMBAT $15E7`, `$188B`. 52: Hold Person's own apply, Pool `0x287DD` (level from `START:0x3262`), Curse `0x2FC41`, Silver Blades `0x2E48F`; C64 `$AA45`, `$17E7`, `$1B84`. 53: spell 21 into the generic cast; C64 `$A9F8`, `$177C`, `$1AF8` |
+| magnitude = data, flag 0 | Curse and Silver Blades: 3; Curse: 7; Silver Blades: 73 | the same | the same (73: `COMBAT $2283` writes the level through `$1223`) | 3: spell 70, handler reads data as a counter it drains (Curse `0xFFC3`); C64 `$1A85`, `$1F6D`. 7 and Silver Blades 71: spell 79 through the shared custom cast (Curse `0x2FAD9`, Silver Blades `0x2E313`); C64 `$1AEC`, `$1FBF` |
+| magnitude = data \| `$80`, flag 1 | all: 23, 34 | `(id, minutes, level, 1)` | `level \| $80` | 23 Spiritual Hammer: generic cast flag 1, Pool `0x28A01`; C64 `SPELLE00 $AABF`, `COMBAT $1845`, `$1BF4`. 34 Cause Disease: generic cast flag 1, Pool `0x2938A`; C64 `$ABB9`, `$18A8`, `$1C63` |
+| `(0xFF, 1)` = `$FF` | Pool: 4, 7, 62 | `(4, 1440, FF, 1)`, `(7, 43200, FF, 1)`, `(62, 60, FF, 1)` | `$FF` | DOS spell 67 (generic cast `0x2A0E0`, data `FF`, flag 1), then handlers 4 (`0xEE13`) and 7 (`0xEED8`); C64 camp row 67 `SPELLE04 $ACC6`, expiry `$ACCE` and `$ACD7` through `$ADF3` |
+
+The C64 handler for each of these ids reads no magnitude, and neither does the
+DOS handler except 3's counter and Pool 62's, which copies the byte into the
+node it re-adds every hour (`0x1014F`), so Dispel Magic's low nibble is the
+only reader of the value, the same on both ports. A converted row therefore behaves as the
+destination's own cast of the same spell. Where the engines differ, as when
+C64 Pool and Curse clear 52 and 53 at the end of a fight and DOS does not, the
+difference is each engine's own rule.
+
+Spell 86 (Curse and Silver Blades, a fourth-level magic-user spell) writes 27 or 42
+through its own apply with **data 0**, and then the generic cast with flag 1
+(Curse `0x32E04`, `0x32E65`, `0x32EB8`). The C64 writes both with the level
+(`COMBAT $1CD7`, `$1CE5`). Neither id converts yet, and the slowed rule refuses
+that form of 42.
+
+### The DOS duration routine gives six spells a time the row does not
+
+Every DOS spell cast takes its minutes from one routine (Pool
+`GAME.OVR:0x277EE`, Curse `0x2EE47`, Silver Blades `0x2D5E2`), and it
+special-cases spells before falling back to row byte 4 plus row byte 5 per
+level:
+
+| Spell | Pool | Curse | Silver Blades |
+|---|---|---|---|
+| 26 | row | row | 3,780 minutes |
+| 40 | 1d6 × 10 | 1d6 × 10 | 1d6 × 10 |
+| 57, 61 | 5d4 | 5d4 | 5d4 |
+| 59 | 1d4 × 10 + 40 | 1d4 × 10 + 40 | 1d4 × 10 + 40 |
+| 63 | 2d10 × 10 in a fight, (1d10 + 10) × 10 outside | the same | row |
+| 67 | 1,440 | row | row |
+
+So a row whose bytes 4 and 5 are zero does not by itself mean a node that
+never expires. Cause Disease (34, spell 40), 71 (Pool and Curse spell 63),
+Haste from spell 57, held from spell 61 and Pool's 4 are all running nodes.
+
 ## Negative results and remaining work
 
 | Finding or gap | Grade and next bounded check |
@@ -753,9 +799,9 @@ may be a monster, and party-wide ids 35 and 49 have a separate converter.
 
 | Title | Candidate ids with no `dos_record` rule |
 |---|---|
-| Pool of Radiance | 2, 4, 11, 13, 22, 23, 30, 32–35, 49, 51–53, 71, 77, 108 |
-| Curse of the Azure Bonds | 2–4, 7, 11, 13, 15, 18, 22, 23, 27, 33–35, 49, 55, 58, 68, 71, 73, 109, 136, 137, 142–144, 146 |
-| Secret of the Silver Blades | 2–4, 11, 13, 22, 23, 27, 30, 33–35, 49, 51–53, 55, 68, 71, 73, 106, 107, 111, 112 |
+| Pool of Radiance | 11, 13, 22, 30, 32, 33, 35, 49, 51, 77, 108 |
+| Curse of the Azure Bonds | 4, 11, 13, 15, 18, 22, 27, 33, 35, 49, 55, 58, 68, 73, 109, 136, 137, 142–144, 146 |
+| Secret of the Silver Blades | 4, 11, 13, 22, 27, 30, 33, 35, 49, 51, 55, 68, 106, 107, 111, 112 |
 
 | Refusal | Sweep evidence and limit |
 |---|---|
