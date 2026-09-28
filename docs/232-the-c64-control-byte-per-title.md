@@ -120,23 +120,51 @@ player character of whoever holds it. It is the counterpart of `SPELLE00 +0x0480
 and `SPELLE04 +0x0304`, which set a player character's byte to `old | $FE`
 and a companion's to `$B2`. Those two are Animate Dead: the cure removes
 effect `$20`, which is 32, Animate Dead, and Pool of Radiance has no other
-spell that writes them (PROBABLE for the charm cast, which rests on the charm
-read below and leaves the byte alone). An
+spell that writes them (CONFIRMED for the charm cast for every direct store,
+which the charm read below shows leaves the byte alone). An
 earlier reading of the two writers named a different spell, and the cure's
 effect id shows that name was wrong. So in Pool of Radiance a companion stored at
 morale 252 or 254 is indistinguishable from an Animate Dead player character, and
 the editor must not write `$FE` or `$FF` for one.
 
 **A charmed Pool of Radiance player character stays a player character in
-`0x0B8`, PROBABLE.** The C64 charm leaves the byte alone and keeps
-its state in `0x10C` (`docs/226`, "Charm and Fear keep part of their state in
-the record"), and in combat `0x10C` bit 7 alone decides who commands him
-(`COMBAT $093C`). DOS writes `0xB3` for the same character (`docs/195`).
-The grade is PROBABLE because it rests on a static read of the handler, the
-game addresses a record through a pointer, and a static read cannot rule out an
-indirect store into `0x0B8`; nobody has watched the byte during a C64 charm
-cast. A watchpoint on `0x0B8` during that cast, or the live proof of the charm
-conversion, settles it.
+`0x0B8`, CONFIRMED from code for every direct store.** The C64 charm leaves
+the byte alone and keeps its state in `0x10C` (`docs/226`, "Charm and Fear keep
+part of their state in the record"), and in combat `0x10C` bit 7 alone decides
+who commands him (`COMBAT $093C`). DOS writes `0xB3` for the same character
+(`docs/195`).
+
+The grade rose from PROBABLE because every routine the cast and the handler
+run was read instruction by instruction: the cast path (`SPELLE00
+$A934`-`$A94A`, `$AA54`-`$AA77`, `COMBAT $29F7`-`$2A2F`, `ECL64
+$9974`-`$99D0` and `$99D1`-`$9A4C`, which store the rows `$4900`, `$4940`,
+`$4980` and `$4B80` and scratch in `$2Axx`/`$2Bxx`), the handler (`SPELLE01
+$A7DA`-`$A81A`, which stores `$6C0C`, `$A600,X` and `$2B67`) and the removal
+`$07E4` (which stores `$4900,X`). A sweep for stores reaching `$6BB8` in
+`COMBAT`, `SPELLE00`/`01`/`02`/`04`, `ECL64`/`65`, `SQRPACI01`, `COM.PREP`,
+`POST.COM`, `SPELLE65` and `CAMP` found only two absolute stores, `SPELLE00
+$AB80` and `SPELLE04 $AA04`, both Animate Dead, which the charm cast does not
+reach (`$AB31`-`$AB80`). Every indexed store has an index bounded below
+`0x0B8`: `$6BAD,X` has X at most 9 (`ECL64 $9AF4`, `$9B0E`), `$6B20,X` has X at
+most `$50` (`SPELLE00 $AB70`), and `$6B20,Y` is a spell slot (`COMBAT $239C`).
+
+What a static read cannot exclude is an indirect store with a computed index
+inside the shared helpers (`$12E6`, `$2744`, `$1B7E`, `$181F`, `$3173`). A
+watchpoint on `0x0B8` during a C64 charm cast closes it. Evidence:
+https://github.com/malcyon/wish/issues/667#issuecomment-5877901386.
+
+**The DOS side, quickfight and control offsets for the charm handler.**
+CONFIRMED from code. The handler writes them as the crosswalk's table
+describes (`docs/226`, "The DOS handler's effect on the control byte"):
+
+| Title | Side | Quickfight | Control | Handler |
+|---|---|---|---|---|
+| Pool of Radiance | `0x10E` | `0x10F` | `0x084` | `0xF05B` |
+| Curse of the Azure Bonds | `0x197` | `0x198` | `0xF7` | `0x10194` |
+| Silver Blades | `0x1A8` | `0x1A9` | `0xFF` | `0x11183` |
+
+The control byte becomes `0xB3` only over a value of `0x7F` or less, and goes
+back to 0 only from `0xB3`, whoever set it.
 
 ## Bit 0 of a player character: the trainer flag
 
