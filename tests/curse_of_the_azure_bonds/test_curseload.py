@@ -359,3 +359,97 @@ def test_walk_menu_gives_up_after_forty_seconds_and_not_before(monkeypatch):
     # The absent-label loop sleeps 0.3 s per pass, so the call ends within one
     # pass of the deadline.
     assert 40.0 <= now[0] <= 40.0 + 0.3 + 1e-6, now[0]
+
+
+def _save_disk(tmp_path, *, closed: bool, name="save.d64"):
+    """A generated Curse save disk, with `SAVEAZURE` closed or left open.
+
+    An open one is what the drive leaves behind when the image is copied out
+    before the file is finished: type `$02` and a block count of zero.
+    """
+    disk = D64.blank(b"CURSE SAVE")
+    body = bytearray(7424)
+    body[0xC00:0xC00 + 6] = b"MATHEW"
+    disk.write_file(b"SAVEAZURE", (0x4B00).to_bytes(2, "little") + bytes(body))
+    raw = bytearray(disk.to_bytes())
+    entry = disk.entry(b"SAVEAZURE")
+    if not closed:
+        raw[entry.offset] &= 0x7F
+        raw[entry.offset + 28] = raw[entry.offset + 29] = 0
+    path = tmp_path / name
+    path.write_bytes(bytes(raw))
+    return path
+
+
+def test_refuse_open_entries_names_every_open_entry(tmp_path):
+    path = _save_disk(tmp_path, closed=False)
+    disk = D64.open(path)
+    disk.write_file(b"OTHER", b"x")
+    raw = bytearray(disk.to_bytes())
+    other = disk.entry(b"OTHER")
+    raw[other.offset] &= 0x7F
+    path.write_bytes(bytes(raw))
+    before = path.read_bytes()
+
+    with pytest.raises(SystemExit) as refused:
+        curseload.refuse_open_entries(str(path))
+
+    assert "SAVEAZURE" in str(refused.value) and "OTHER" in str(refused.value)
+    assert path.read_bytes() == before
+
+
+def test_refuse_open_entries_passes_a_closed_disk(tmp_path):
+    path = _save_disk(tmp_path, closed=True)
+    before = path.read_bytes()
+
+    assert curseload.refuse_open_entries(str(path)) is None
+    assert path.read_bytes() == before
+
+
+def _stage_modules():
+    from tools.curse_of_the_azure_bonds import (  # noqa: PLC0415
+        cursepaladin,
+        cursethac0,
+        cursetrain,
+    )
+
+    return {"cursepaladin": cursepaladin, "cursetrain": cursetrain,
+            "cursethac0": cursethac0}
+
+
+@pytest.mark.parametrize("name", ["cursepaladin", "cursetrain", "cursethac0"])
+def test_no_stage_command_accepts_a_save_disk_the_drive_never_closed(
+        tmp_path, name):
+    base = _save_disk(tmp_path, closed=False)
+    out = tmp_path / "out.d64"
+
+    with pytest.raises(SystemExit) as refused:
+        _stage_modules()[name].main(
+            ["stage", "--base", str(base), "--out", str(out)])
+
+    assert "SAVEAZURE" in str(refused.value)
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("name", ["cursepaladin", "cursetrain"])
+def test_no_stage_command_takes_repair(tmp_path, name):
+    """`--repair` was how an open disk got closed over a possibly stale chain."""
+    base = _save_disk(tmp_path, closed=False)
+    out = tmp_path / "out.d64"
+
+    with pytest.raises(SystemExit):
+        _stage_modules()[name].main(
+            ["stage", "--base", str(base), "--out", str(out), "--repair"])
+
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("name", ["cursepaladin", "cursetrain", "cursethac0"])
+def test_a_closed_base_still_stages(tmp_path, name):
+    base = _save_disk(tmp_path, closed=True)
+    out = tmp_path / "out.d64"
+
+    assert _stage_modules()[name].main(
+        ["stage", "--base", str(base), "--out", str(out)]) == 0
+
+    assert D64.open(out).entry(b"SAVEAZURE").is_closed

@@ -310,6 +310,28 @@ def close_splat(path: str) -> list[dict]:
     return changed
 
 
+def refuse_open_entries(path: str) -> None:
+    """Refuse a disk image with a directory entry the drive never closed.
+
+    Closing such an entry by hand cannot show whether its data chain holds the
+    game's write or the save before it: the two images differ only in payload
+    bytes, so a staged disk built on one could carry the old party.  The way
+    out is to re-drive the save until the drive has flushed and closed it.
+    Writes nothing.
+    """
+    from goldbox.d64 import D64  # noqa: PLC0415
+
+    open_names = [e.display_name for e in D64.open(path).iter_directory()
+                  if not e.is_empty and not e.is_closed]
+    if open_names:
+        raise SystemExit(
+            f"{path} has an open directory entry ({', '.join(open_names)}): "
+            "the drive never finished writing the file, so its data chain "
+            "may still hold the previous save and cannot be checked. "
+            "Re-drive the save until the drive has closed the file; do not "
+            "close the entry by hand.")
+
+
 def answer_prompt(sess, how: str = "attach", note=None) -> bool:
     """Deal with `INSERT CURSE SAVE DISK, PRESS A KEY`.
 

@@ -165,7 +165,7 @@ every row, and does not affect `$18E4`'s count of non-zero levels.
 |---|---|
 | `goldbox/levelup.py` | `dual_class_old`; the four rules; the refusal gone; `divide_between_classes`' docstring corrected with what it still needs |
 | `tests/curse_of_the_azure_bonds/test_cursedualtrain.py` | 8 tests replaying the eight presses against the specimen pair |
-| `tools/curse_of_the_azure_bonds/cursetrain.py` | `stage --repair` and eight more `--give` fields; the driven recipe, including the roster address |
+| `tools/curse_of_the_azure_bonds/cursetrain.py` | `stage` and eight more `--give` fields; the driven recipe, including the roster address |
 | `docs/192-curse-dual-class.md` | this page |
 
 **Each of the four rules was mutated on its own and the matching test went
@@ -183,8 +183,9 @@ file turns five of the eight red on the refusal alone.
 Both came off the pool slot with `SAVEAZURE` unclosed --
 `#298 (A save disk copied out of an emulator slot before the drive closes the
 file cannot be loaded by the game)` reproduces every time -- so the second was
-repaired before anything read it, which `tools/curse_of_the_azure_bonds/cursetrain.py stage --repair`
-now does in one flag.
+repaired before anything read it. `tools/curse_of_the_azure_bonds/cursetrain.py stage` now refuses
+such a disk instead, because closing the entry cannot show whether the chain
+holds the game's write or the save before it (`#714 (cursepaladin.py's --repair --close-splat can silently mask stale data instead of refusing it)`).
 
 ## What still stands between this and Level Up for Curse
 

@@ -30,17 +30,18 @@ it" and saves a session of map-reading.
 
 Two subcommands:
 
-    tools/curse_of_the_azure_bonds/cursetrain.py stage --base <in.d64> --out <out.d64> --repair \\
+    tools/curse_of_the_azure_bonds/cursetrain.py stage --base <in.d64> --out <out.d64> \\
         --give SHARA:xp=30000,plat=2000 ...
 
         Copy a Curse save disk and write named fields into named slots of
         `SAVEAZURE`.  **Those are inputs we write and they prove nothing**;
         what the trainer does with them is the measurement
-        (`.claude/rules/testing.md`).  `--repair` closes a `SAVEAZURE` the
-        drive never finished writing, which is what every image copied out of
-        a pool slot after a `SAVE CURRENT GAME` looks like -- `$02` in the
-        directory type byte and a block count of zero, and the game refuses to
-        load one (`#298`).  The fields are `xp`, `plat`, `con`, `bits`,
+        (`.claude/rules/testing.md`).  `stage` refuses a base whose
+        `SAVEAZURE` the drive never closed -- `$02` in the directory type
+        byte and a block count of zero, which is what an image copied out of
+        a pool slot too early looks like and which the game will not load --
+        because closing the entry by hand cannot show whether its data chain
+        holds the save or the one before it.  The fields are `xp`, `plat`, `con`, `bits`,
         `dcs`, `dcl`, `hpr` and `lvl_<class>`; `plat` zeroes the four lesser
         coins so the total is exactly what it says.
 
@@ -82,6 +83,10 @@ cost the time.
     row VIEW CHARACTER / row EXIT      # any trip through the menu rebuilds it
     row TRAIN CHARACTER
     row <NAME>                         # this presses; do **not** add a Return
+    attach <slot dir>/SIDE0.D64        # after a save, once SAVING GAME has left
+                                       # row 24: the drive closes the file as
+                                       # the image is re-attached, so the copy
+                                       # out is one the game closed itself
 
 **`row <NAME>` is the whole press.** Adding a Return after it starts a second
 training, which is what put a third thousand gold on LEDERA in the first
@@ -230,6 +235,9 @@ def describe(record: bytes) -> dict:
 
 def stage(args) -> int:
     """Copy a save disk, writing experience and platinum into named slots."""
+    from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
+
+    curseload.refuse_open_entries(args.base)
     image = pathlib.Path(args.base).read_bytes()
     load, payload = payload_of(image)
     names = slot_names(payload)
@@ -259,21 +267,6 @@ def stage(args) -> int:
     disk.write_file_inplace(b"SAVEAZURE",
                             load.to_bytes(2, "little") + bytes(body))
     pathlib.Path(args.out).write_bytes(disk.to_bytes())
-    if args.repair:
-        # An image copied out of a pool slot before the drive finished closing
-        # `SAVEAZURE` is `*PRG` with no block count, and the game answers
-        # `UNABLE TO LOAD SAVED GAME.` -- `#298`.  The payload is already
-        # there, so setting the bit and the count is the whole repair, and it
-        # is done to our copy and never to what it was copied from.
-        from tools.curse_of_the_azure_bonds.curseload import (
-            close_splat,  # noqa: PLC0415
-        )
-
-        for entry in close_splat(args.out):
-            name = entry["name"]
-            name = name.decode("latin1") if isinstance(name, bytes) else name
-            print(f"closed {name}: type {entry['type_was']} -> "
-                  f"{entry['type_now']}, {entry['blocks_now']} blocks")
     print(f"wrote {args.out}")
     return 0
 
@@ -288,8 +281,6 @@ def main(argv=None) -> int:
     st.add_argument("--give", action="append", default=[],
                     metavar="NAME:xp=N,plat=N",
                     help="what to write into that character's slot")
-    st.add_argument("--repair", action="store_true",
-                    help="close a SAVEAZURE the drive never finished (#298)")
     st.set_defaults(func=stage)
 
     rn = sub.add_parser("run", help="boot a Curse session on a pooled slot")

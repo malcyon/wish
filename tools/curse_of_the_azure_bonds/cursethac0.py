@@ -223,6 +223,9 @@ def parse_spoil(want: str) -> tuple[str, int | None, int | None]:
 
 def stage(args) -> int:
     """Copy a Curse save disk and spoil the named characters' roster THAC0."""
+    from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
+
+    curseload.refuse_open_entries(args.base)
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(args.base, out)
@@ -243,13 +246,7 @@ def stage(args) -> int:
     image.write_file_inplace(GAME.save_file,
                              attach_load_address(load, bytes(body)))
     out.write_bytes(image.to_bytes())
-    # Every image copied out of a pool slot after `SAVE CURRENT GAME` has a
-    # `SAVEAZURE` the drive never closed, and the game refuses one with
-    # `60, WRITE FILE OPEN` (`tools/curse_of_the_azure_bonds/curseload.py`, `#298`).
-    from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
-    closed = curseload.close_splat(str(out))
-    print(json.dumps({"staged": str(out), "spoiled": made,
-                      "closed": closed}, indent=2))
+    print(json.dumps({"staged": str(out), "spoiled": made}, indent=2))
     return 0
 
 

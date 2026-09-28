@@ -28,7 +28,7 @@ The route, and why each step is where it is:
   once.  The staged number is an input; `class_bits`, the restored level slot
   and `char_class` are all written by the engine on that press.
 
-    tools/curse_of_the_azure_bonds/cursepaladin.py stage --base <in.d64> --out <out.d64> --repair \\
+    tools/curse_of_the_azure_bonds/cursepaladin.py stage --base <in.d64> --out <out.d64> \\
         --give MARK:wis=18
 
     tools/curse_of_the_azure_bonds/cursepaladin.py run --pool N --disks <PIS> --save <out.d64> \\
@@ -121,14 +121,14 @@ def describe(record: bytes) -> dict:
 def stage(args) -> int:
     """Copy a save disk, writing ability and level inputs into named slots.
 
-    `--repair` closes a `SAVEAZURE` the drive never finished (`#298`) by
-    flipping the directory entry's splat flag -- it does not check that the
-    data chain the entry now points at is the write the caller meant to keep.
-    Run against a disk left behind by a driven save that did not finish
-    (`#712`), it can report success while the record it "closed" is still the
-    pre-write one. It is **not** a substitute for `save_current_game()`
-    actually waiting for the save to complete before the disk is copied out.
+    Refuses a base whose `SAVEAZURE` the drive never closed: closing the entry
+    by hand cannot show that its data chain holds the write the caller meant
+    to keep rather than the save before it.  `save_current_game()` has to wait
+    for the drive to close the file before the disk is copied out.
     """
+    from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
+
+    curseload.refuse_open_entries(args.base)
     image = pathlib.Path(args.base).read_bytes()
     load, payload = payload_of(image)
     names = slot_names(payload)
@@ -166,16 +166,6 @@ def stage(args) -> int:
     disk.write_file_inplace(b"SAVEAZURE",
                             load.to_bytes(2, "little") + bytes(body))
     pathlib.Path(args.out).write_bytes(disk.to_bytes())
-    if args.repair:
-        from tools.curse_of_the_azure_bonds.curseload import (
-            close_splat,  # noqa: PLC0415
-        )
-
-        for entry in close_splat(args.out):
-            name = entry["name"]
-            name = name.decode("latin1") if isinstance(name, bytes) else name
-            print(f"closed {name}: type {entry['type_was']} -> "
-                  f"{entry['type_now']}, {entry['blocks_now']} blocks")
     print(f"wrote {args.out}")
     return 0
 
@@ -536,8 +526,6 @@ def main(argv=None) -> int:
     st.add_argument("--out", required=True)
     st.add_argument("--give", action="append", default=[],
                     metavar="NAME:wis=18,lvl_paladin=2")
-    st.add_argument("--repair", action="store_true",
-                    help="close a SAVEAZURE the drive never finished (#298)")
     st.set_defaults(func=stage)
 
     sh = sub.add_parser("show", help="print the class fields of a save disk")
