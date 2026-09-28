@@ -94,6 +94,22 @@ CLASSES_BY_RACE = {
 #: On-screen text, in the order of the code stored at `0x0D8`.
 ALIGNMENTS = tuple(a.upper() for a in ALIGNMENT_CODES)
 
+
+def alignments_offered(cls: str) -> tuple[str, ...]:
+    """The alignment list a class label is offered, in on-screen order.
+
+    Measured on every race and class pair a creation list offers: a class
+    containing CLERIC has no TRUE NEUTRAL, one containing THIEF has no LAWFUL
+    GOOD and no CHAOTIC GOOD, and every other class has all nine.
+    """
+    parts = cls.split("/")
+    barred = set()
+    if "CLERIC" in parts:
+        barred.add("TRUE NEUTRAL")
+    if "THIEF" in parts:
+        barred |= {"LAWFUL GOOD", "CHAOTIC GOOD"}
+    return tuple(a for a in ALIGNMENTS if a not in barred)
+
 #: The six ability lines of the roll screen, in record order (`0x014`-`0x019`).
 ABILITIES = ("strength", "intelligence", "wisdom", "dexterity", "constitution",
              "charisma")
@@ -211,7 +227,10 @@ def check_specs(specs: list[Spec]) -> None:
     """Refuse, before any key is pressed, a party the driver cannot build.
 
     A class label that an earlier row of the race's list contains would be
-    walked to that earlier row, so the run would create the wrong character.
+    walked to that earlier row, so the run would create the wrong character.  A
+    class the race is never offered, or an alignment the class is never offered,
+    stops the run here rather than after the characters before it are made.  A
+    roll that trims an otherwise valid class list is only seen on the screen.
     """
     if not specs:
         raise Lost("the spec names no characters")
@@ -220,10 +239,20 @@ def check_specs(specs: list[Spec]) -> None:
     if dupes:
         raise Lost(f"a name is used twice: {dupes}; the ADD list and the "
                    f"exports are found by name")
+    crossed = sorted({a for a in names for b in names if a != b and a in b})
+    if crossed:
+        raise Lost(f"a name is part of another name: {crossed}; the ADD list "
+                   f"selects the first row containing the text")
     for spec in specs:
         shown = CLASSES_BY_RACE[spec.race]
         if spec.cls not in shown:
-            continue    # the screen has the last word on a roll's class list
+            raise LabelProblem(f"{spec.name}: a {spec.race} is never offered "
+                               f"{spec.cls}; its class list is {list(shown)}")
+        offered = alignments_offered(spec.cls)
+        if spec.alignment not in offered:
+            raise LabelProblem(f"{spec.name}: {spec.cls} is never offered "
+                               f"{spec.alignment}; its alignment list is "
+                               f"{list(offered)}")
         earlier = next(e for e in shown if spec.cls in e)
         if earlier != spec.cls:
             raise LabelProblem(f"{spec.name}: {spec.cls} would select {earlier}, "
@@ -771,16 +800,28 @@ def check_records(rolled: pathlib.Path, party: pathlib.Path, specs: list[Spec],
     for dupe in sorted({n for n in names if names.count(n) > 1}):
         lines.append(f"{dupe}: named twice in the spec   MISMATCH")
         ok = False
-    exports = D64.open(str(rolled))
-    _game, sg0, _sg1 = savegame.load_save(D64.open(str(party)))
-    slots = {s.record.name.upper(): s.record for s in sg0.characters}
+    exports, slots, export_error = None, {}, ""
+    try:
+        exports = D64.open(str(rolled))
+    except Exception as e:  # noqa: BLE001 -- reported on the lines
+        export_error = repr(e)
+        lines.append(f"rolled.D64: cannot be read {export_error}   MISMATCH")
+        ok = False
+    try:
+        _game, sg0, _sg1 = savegame.load_save(D64.open(str(party)))
+        slots = {s.record.name.upper(): s.record for s in sg0.characters}
+    except Exception as e:  # noqa: BLE001 -- reported on the lines
+        lines.append(f"party.D64: cannot be read {e!r}   MISMATCH")
+        ok = False
     for spec in specs:
         roll = rolls.get(spec.name)
         if roll is None:
             lines.append(f"{spec.name}: no roll was read   MISMATCH")
             ok = False
-        rec, error = None, ""
+        rec, error = None, export_error
         try:
+            if exports is None:
+                raise OSError("rolled.D64 could not be read")
             rec = CharacterRecord.from_prg(
                 exports.read_file(b"\x01" + spec.name.encode("latin-1")))
         except Exception as e:  # noqa: BLE001 -- reported on the line
@@ -851,8 +892,10 @@ def run(sess, out: pathlib.Path, *, lists: bool = False,
             drv.capture("lost-error")
     finally:
         summary["rolls"] = drv.rolls
-        write_summary(out, summary)
-        log.close()
+        try:
+            write_summary(out, summary)
+        finally:
+            log.close()
     return 0 if summary["completed"] else 1
 
 
@@ -881,9 +924,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         specs = load_specs(args.build) if args.build else None
-        if specs is not None:
-            check_specs(specs)
-    except (ValueError, KeyError, OSError, Lost) as e:
+    except (ValueError, KeyError, OSError) as e:
         raise SystemExit(f"spec: {e!r}")
     found = args.disks or gamedisks.find("pool-of-radiance")
     if not found:
@@ -894,9 +935,13 @@ def main(argv: list[str] | None = None) -> int:
     runlog.catch_signals()
     deadline = time.monotonic() + args.max_seconds
     summary = new_summary(git, sys.argv[1:])
-    slot = S.claim_slot(args.pool, f"{ISSUE_NOTE}/{args.issue}/{args.run}")
-    sess = None
+    slot = sess = None
     try:
+        if specs is not None:
+            # Before a slot is claimed or VICE booted, but with the summary
+            # written, so a refused party leaves its reason in the evidence.
+            check_specs(specs)
+        slot = S.claim_slot(args.pool, f"{ISSUE_NOTE}/{args.issue}/{args.run}")
         first = S.stage_disks(slot, pathlib.Path(found))
         save = pathlib.Path(slot.dir) / "SIDE0.D64"
         D64.blank().save(str(save))
@@ -917,18 +962,28 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as e:
         summary["lost"] = summary["lost"] or str(e.code)
         raise
+    except Lost as e:
+        summary["lost"] = str(e)
+        raise SystemExit(f"spec: {e}") from e
     except Exception as e:
         summary["lost"] = summary["lost"] or repr(e)
         raise
     finally:
-        # A stop before `run` (boot failed, no party menu, a staging error)
-        # still leaves the evidence directory a summary.
-        write_summary(out, summary)
-        if sess is not None:
-            with contextlib.suppress(Exception):
-                sess.terminate()
-        slot.teardown()
-        slot.release()
+        # The emulator and the slot are let go first, so a summary that cannot
+        # be written does not leave VICE running or the slot leased.  A stop
+        # before `run` (boot failed, no party menu, a staging error) still
+        # leaves the evidence directory a summary.
+        try:
+            if sess is not None:
+                with contextlib.suppress(Exception):
+                    sess.terminate()
+            if slot is not None:
+                try:
+                    slot.teardown()
+                finally:
+                    slot.release()
+        finally:
+            write_summary(out, summary)
 
 
 if __name__ == "__main__":

@@ -132,11 +132,13 @@ class FakeGame:
                   "BEGIN ADVENTURING"]
 
     def __init__(self, tmp, rolls=ROLLS, add_closes=False, stall=None,
-                 start="party", lose_first=None, slow=None):
+                 start="party", lose_first=None, slow=None, trim=()):
         """`stall`: a state whose keys do nothing.  `lose_first`: a state whose
         first Return is dropped.  `slow`: state -> (polls, redraws), a Return
         that is accepted but takes that many screen reads to show its result,
-        the screen redrawn meanwhile or left as it was."""
+        the screen redrawn meanwhile or left as it was.  `trim`: class labels
+        the roll does not qualify for, left off the class list."""
+        self.trim = tuple(trim)
         self.tmp, self.rolls = tmp, list(rolls)
         self.add_closes, self.stall = add_closes, stall
         self.lose_first, self.slow = lose_first, dict(slow or {})
@@ -168,9 +170,11 @@ class FakeGame:
         if s == "roll":
             return ["ROLL AGAIN", "KEEP"]
         if s == "class":
-            return CLASSES[self.pick["race"]]
+            return [c for c in CLASSES[self.pick["race"]] if c not in self.trim]
         if s == "align":
             aligns = list(creation.ALIGNMENTS)
+            if "CLERIC" in self.pick["class"]:
+                aligns.remove("TRUE NEUTRAL")
             if "THIEF" in self.pick["class"]:
                 aligns = [a for a in aligns
                           if a not in ("LAWFUL GOOD", "CHAOTIC GOOD")]
@@ -408,6 +412,7 @@ class FakeSession(S.Session):
         self.world_timeouts: list[float] = []
         self.camp_saves = 0
         self.camp_lands = True
+        self.camp_wipes = False
         self.world_arrives = True
 
     def screen(self):
@@ -442,6 +447,8 @@ class FakeSession(S.Session):
         self.camp_saves += 1
         self.script.camped = self.camp_lands
         self.script.flush()
+        if self.camp_wipes:
+            D64.blank().save(self.script.save_disk)
         return True
 
 
@@ -507,12 +514,48 @@ def test_the_save_disk_is_reattached_before_each_copy(tmp_path):
         assert len(exports.read_file(name)) == 582
 
 
-def test_a_label_missing_from_its_list_stops_with_no_key_pressed(tmp_path):
-    """No magic-user in a dwarf's class list: the run stops on that screen and
-    sends neither an arrow nor Return there."""
+def test_a_class_the_race_is_never_offered_is_refused_before_any_key(tmp_path):
+    """No magic-user in a dwarf's class list: the refusal comes before the
+    first character is created, even when the dwarf is the second spec."""
     dwarf = spec("VICEMAG", "DWARF", "MALE", "MAGIC-USER", "LAWFUL GOOD")
-    code, sess, game, out, summary = drive(tmp_path, [dwarf])
-    assert code == 1 and "MAGIC-USER is not in the class list" in summary["lost"]
+    code, sess, game, out, summary = drive(tmp_path, [PAIR[0], dwarf])
+    assert code == 1 and "a DWARF is never offered MAGIC-USER" in summary["lost"]
+    assert sess.kbd.sent == [] and sess.kernal == [] and sess.attaches == []
+
+
+@pytest.mark.parametrize("cls, alignment", [
+    ("THIEF", "LAWFUL GOOD"), ("THIEF", "CHAOTIC GOOD"),
+    ("FIGHTER/THIEF", "LAWFUL GOOD"), ("CLERIC", "TRUE NEUTRAL"),
+    ("CLERIC/FIGHTER", "TRUE NEUTRAL")])
+def test_an_alignment_the_class_is_never_offered_is_refused_before_any_key(
+        tmp_path, cls, alignment):
+    bad = spec("VICEBAD", "HALF-ELF", "MALE", cls, alignment)
+    code, sess, game, out, summary = drive(tmp_path, [PAIR[0], bad])
+    assert code == 1 and f"{cls} is never offered {alignment}" in summary["lost"]
+    assert sess.kbd.sent == [] and sess.kernal == [] and sess.attaches == []
+
+
+def test_the_alignment_table_is_the_lists_the_screens_draw(tmp_path):
+    """Every class a list offers, opened on the fake, against the table."""
+    game = FakeGame(tmp_path)
+    sess = FakeSession(game)
+    clock = Clock()
+    out = tmp_path / "run"
+    assert creation.run(sess, out, lists=True, clock=clock,
+                        sleep=clock.sleep) == 0
+    found = json.loads((out / "lists.json").read_text())["alignments"]
+    assert "CLERIC" in found and "FIGHTER/THIEF" in found
+    assert {c: tuple(a) for c, a in found.items()} \
+        == {c: creation.alignments_offered(c) for c in found}
+
+
+def test_a_roll_that_trims_the_class_list_stops_on_that_screen(tmp_path):
+    """The roll, not the race, drops THIEF: only the screen can say so, and the
+    run stops there sending neither an arrow nor Return."""
+    game = FakeGame(tmp_path, trim=("THIEF",))
+    thief = spec("VICETHI", "HUMAN", "MALE", "THIEF", "LAWFUL NEUTRAL")
+    code, sess, game, out, summary = drive(tmp_path, [thief], game)
+    assert code == 1 and "THIEF is not in the class list" in summary["lost"]
     assert game.state == "class"
     assert [k for state, k in sess.kbd.sent if state == "class"] == []
     assert list((out / "shots").glob("*lost-label.txt"))
@@ -542,6 +585,7 @@ def test_the_class_table_is_the_lists_the_screens_draw():
 @pytest.mark.parametrize("specs, why", [
     ([], "names no characters"),
     ([PAIR[0], PAIR[0]], "a name is used twice"),
+    ([spec("VICE"), spec("VICEFTR")], "part of another name"),
 ])
 def test_a_party_the_driver_cannot_build_is_refused_before_any_key(
         tmp_path, specs, why):
@@ -655,6 +699,18 @@ def test_a_camp_save_that_did_not_land_is_lost(tmp_path):
     assert code == 1 and "camp save did not land" in summary["lost"]
 
 
+def test_a_camp_save_that_wrote_no_savegame_is_lost(tmp_path):
+    game = FakeGame(tmp_path)
+    sess = FakeSession(game)
+    sess.camp_wipes = True
+    clock = Clock()
+    out = tmp_path / "run"
+    code = creation.run(sess, out, specs=PAIR, clock=clock, sleep=clock.sleep,
+                        enter_world=True)
+    summary = json.loads((out / "summary.json").read_text())
+    assert code == 1 and "intown.D64 holds no SAVEDGAME0" in summary["lost"]
+
+
 def test_records_are_checked_before_the_world_is_entered(tmp_path):
     """A world that never arrives still leaves `records.txt`."""
     game = FakeGame(tmp_path)
@@ -700,6 +756,91 @@ def test_a_stop_before_the_run_still_leaves_a_summary(tmp_path, monkeypatch):
                        "--disks", str(tmp_path)])
     summary = json.loads((out / "summary.json").read_text())
     assert summary["completed"] is False and "no disks to stage" in summary["lost"]
+
+
+class Slot:
+    def __init__(self, tmp):
+        self.dir = str(tmp / "slot")
+        self.calls = []
+
+    def teardown(self):
+        self.calls.append("teardown")
+
+    def release(self):
+        self.calls.append("release")
+
+
+def stage_main(tmp_path, monkeypatch, slot=None):
+    """`main` with the pool, the evidence directory and the signals replaced."""
+    out = tmp_path / "evidence"
+    monkeypatch.setattr(creation.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(creation.evidence, "default_out", lambda *a, **k: out)
+    monkeypatch.setattr(creation.runlog, "catch_signals", lambda: None)
+    return out
+
+
+def test_a_refused_spec_leaves_a_summary_and_claims_no_slot(tmp_path, monkeypatch):
+    def claim(*_a, **_k):
+        raise AssertionError("a slot was claimed for a refused party")
+    out = stage_main(tmp_path, monkeypatch)
+    monkeypatch.setattr(creation.S, "claim_slot", claim)
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps([{"name": "VICEMAG", "race": "DWARF",
+                                "gender": "MALE", "class": "MAGIC-USER",
+                                "alignment": "LAWFUL GOOD"}]))
+    with pytest.raises(SystemExit, match="never offered MAGIC-USER"):
+        creation.main(["--build", str(bad), "--issue", "1", "--run", "r",
+                       "--disks", str(tmp_path)])
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["completed"] is False
+    assert "never offered MAGIC-USER" in summary["lost"]
+
+
+def test_a_full_pool_leaves_a_summary(tmp_path, monkeypatch):
+    out = stage_main(tmp_path, monkeypatch)
+
+    def full(*_a, **_k):
+        raise RuntimeError("every slot is leased")
+    monkeypatch.setattr(creation.S, "claim_slot", full)
+    with pytest.raises(RuntimeError):
+        creation.main(["--lists", "--issue", "1", "--run", "r",
+                       "--disks", str(tmp_path)])
+    assert "every slot is leased" in \
+        json.loads((out / "summary.json").read_text())["lost"]
+
+
+def test_a_summary_that_cannot_be_written_still_releases_the_slot(
+        tmp_path, monkeypatch):
+    slot = Slot(tmp_path)
+    stage_main(tmp_path, monkeypatch, slot)
+    monkeypatch.setattr(creation.S, "stage_disks",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("x")))
+
+    def cannot(*_a, **_k):
+        raise OSError("disk full")
+    monkeypatch.setattr(creation, "write_summary", cannot)
+    with pytest.raises(OSError):
+        creation.main(["--lists", "--issue", "1", "--run", "r",
+                       "--disks", str(tmp_path)])
+    assert slot.calls == ["teardown", "release"]
+
+
+def test_a_summary_that_cannot_be_written_still_closes_the_log(tmp_path, monkeypatch):
+    game = FakeGame(tmp_path)
+    sess = FakeSession(game)
+    closed = []
+    real = creation.runlog.Log.close
+    monkeypatch.setattr(creation.runlog.Log, "close",
+                        lambda self: (closed.append(1), real(self))[1])
+
+    def cannot(*_a, **_k):
+        raise OSError("disk full")
+    monkeypatch.setattr(creation, "write_summary", cannot)
+    clock = Clock()
+    with pytest.raises(OSError):
+        creation.run(sess, tmp_path / "run", specs=PAIR, clock=clock,
+                     sleep=clock.sleep)
+    assert closed == [1]
 
 
 # -- check_records ------------------------------------------------------------------
@@ -780,6 +921,26 @@ def test_a_missing_export_is_a_mismatch(tmp_path):
                                    {"VICEFTR": ROLLS[0]})
     assert lines[-1] == "SPEC MISMATCH" and "MISSING" in lines[0]
     assert "no such file" in lines[0]     # the read failure is shown, not hidden
+
+
+@pytest.mark.parametrize("gone", ["rolled.D64", "party.D64"])
+def test_a_disk_that_cannot_be_opened_is_a_mismatch_not_a_raise(tmp_path, gone):
+    checked(tmp_path)
+    (tmp_path / gone).unlink()
+    lines = creation.check_records(tmp_path / "rolled.D64",
+                                   tmp_path / "party.D64", PAIR[:1],
+                                   {"VICEFTR": ROLLS[0]})
+    assert lines[-1] == "SPEC MISMATCH"
+    assert f"{gone}: cannot be read" in lines[0] and "MISMATCH" in lines[0]
+
+
+def test_a_party_disk_with_no_savegame_is_a_mismatch_not_a_raise(tmp_path):
+    checked(tmp_path)
+    D64.blank().save(str(tmp_path / "party.D64"))
+    lines = creation.check_records(tmp_path / "rolled.D64",
+                                   tmp_path / "party.D64", PAIR[:1],
+                                   {"VICEFTR": ROLLS[0]})
+    assert lines[-1] == "SPEC MISMATCH" and "party.D64: cannot be read" in lines[0]
 
 
 @pytest.mark.parametrize("bad", [
