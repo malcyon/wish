@@ -5881,7 +5881,7 @@ def test_a_lost_fight_before_save_loses_the_run_at_the_fight(tmp_path, monkeypat
 
 
 BANNED_EXPERIMENT_IMPORTS = {"traitask", "effectdrive", "inventorycheck",
-                             "traitdrive", "traitquery"}
+                             "traitdrive", "traitquery", "cursewarp"}
 
 
 def test_acceptance_imports_no_experiment_module_that_route_pool_replaced():
@@ -5894,9 +5894,12 @@ def test_acceptance_imports_no_experiment_module_that_route_pool_replaced():
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
             parts = node.module.split(".")
-            if parts[:2] == ["tools", "c64"] and len(parts) > 2:
+            if parts[:2] in (["tools", "c64"],
+                             ["tools", "curse_of_the_azure_bonds"]) \
+                    and len(parts) > 2:
                 found.add(parts[2])
-            elif node.module == "tools.c64":
+            elif node.module in ("tools.c64",
+                                 "tools.curse_of_the_azure_bonds"):
                 found.update(a.name for a in node.names)
         elif isinstance(node, ast.Import):
             found.update(a.name.split(".")[-1] for a in node.names)

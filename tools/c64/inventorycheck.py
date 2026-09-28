@@ -364,7 +364,7 @@ def open_items(sess, r: Run, who: str) -> list[str] | None:
 
 def curse_world(slot, r: Run, save: str, where: str, game, wait: float):
     """Boot Curse, load the party and get it to the world command bar."""
-    from tools.curse_of_the_azure_bonds import curseload, curserun, cursewarp
+    from tools.curse_of_the_azure_bonds import curseload, curserun
 
     first = curserun.stage(slot, where, save)
     save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
@@ -386,12 +386,12 @@ def curse_world(slot, r: Run, save: str, where: str, game, wait: float):
         r.capture(sess, "load-failed")
         return sess, False
     sess.patch_disk_prompt()
-    addr = cursewarp.Addresses(game, where)
-    if not cursewarp.enter_world(sess, addr, timeout=wait):
+    addr = curseload.Addresses(game, where)
+    if not curseload.enter_world(sess, addr, timeout=wait):
         r.log("world", ok=False)
         r.capture(sess, "stuck")
         return sess, False
-    r.log("world", ok=True, bar=cursewarp.clear_messages(sess))
+    r.log("world", ok=True, bar=curseload.clear_messages(sess))
     return sess, True
 
 

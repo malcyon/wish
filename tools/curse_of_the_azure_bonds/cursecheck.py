@@ -59,7 +59,7 @@ sys.path.insert(0, str(ROOT))
 from automap import c64 as machines  # noqa: E402
 from automap import gamedisks  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
-from tools.curse_of_the_azure_bonds import curseload, curserun, cursewarp  # noqa: E402
+from tools.curse_of_the_azure_bonds import curseload, curserun  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: The live square triple -- x, y, facing -- which is where Curse keeps the
@@ -212,12 +212,12 @@ def run(args) -> int:
         if outcome != "loaded":
             return 1
         sess.patch_disk_prompt()
-        addr = cursewarp.Addresses(sess.game, disks)
-        if not cursewarp.enter_world(sess, addr, timeout=args.wait):
+        addr = curseload.Addresses(sess.game, disks)
+        if not curseload.enter_world(sess, addr, timeout=args.wait):
             log(event="never-reached-the-world")
             shot("03-stuck")
             return 1
-        report["bar"] = cursewarp.clear_messages(sess)
+        report["bar"] = curseload.clear_messages(sess)
         shot("03-world")
 
         at = sess.status()

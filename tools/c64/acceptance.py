@@ -2342,7 +2342,7 @@ class CurseRun(PoolRun):
         self.staged_disk = staged_disk
 
     def load(self) -> dict:
-        from tools.curse_of_the_azure_bonds import curseload, cursewarp
+        from tools.curse_of_the_azure_bonds import curseload
 
         if not self.sess.boot():
             raise StepFailed(self.sess.boot_failure or "boot failed")
@@ -2352,10 +2352,10 @@ class CurseRun(PoolRun):
         if outcome != "loaded":
             raise self.fail("load", f"Curse load ended at {outcome}")
         self.sess.patch_disk_prompt()
-        addr = cursewarp.Addresses(self.game, self.disks)
-        if not cursewarp.enter_world(self.sess, addr, timeout=240):
+        addr = curseload.Addresses(self.game, self.disks)
+        if not curseload.enter_world(self.sess, addr, timeout=240):
             raise self.fail("world", "Curse never reached the world bar")
-        cursewarp.clear_messages(self.sess)
+        curseload.clear_messages(self.sess)
         with self.sess.mon(10) as m:
             for name, point in self.points.items():
                 self.armed[name] = m.checkpoint_set(point, exec_=True, stop=False)

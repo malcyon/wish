@@ -273,7 +273,7 @@ class PoolOfRadiance(Title):
 
 class Curse(Title):
     def boot(self, slot, disks, save, note, wait):
-        from tools.curse_of_the_azure_bonds import curseload, curserun, cursewarp
+        from tools.curse_of_the_azure_bonds import curseload, curserun
 
         first = curserun.stage(slot, disks, save)
         save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
@@ -287,10 +287,10 @@ class Curse(Title):
         if outcome != "loaded":
             return sess, f"load-{outcome}"
         sess.patch_disk_prompt()
-        addr = cursewarp.Addresses(self.game, disks)
-        if not cursewarp.enter_world(sess, addr, timeout=wait):
+        addr = curseload.Addresses(self.game, disks)
+        if not curseload.enter_world(sess, addr, timeout=wait):
             return sess, "world-failed"
-        cursewarp.clear_messages(sess)
+        curseload.clear_messages(sess)
         return sess, "world"
 
 

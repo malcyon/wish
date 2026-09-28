@@ -94,6 +94,7 @@ The rules:
 | `porlaunch.sh` in `tools/c64/` | `tools/c64/launch.sh` |
 | `Log`, `Terminated`, `catch_signals`, `keep_old_log` in `tools/c64/savecheck.py` | `tools/c64/runlog.py` |
 | `highlighted`, `walk_menu` in `tools/c64/dualclassagain.py` | `tools/curse_of_the_azure_bonds/curseload.py` |
+| `Addresses`, `idle_in_key_window`, `enter_world`, `clear_messages` in `tools/curse_of_the_azure_bonds/cursewarp.py` | `tools/curse_of_the_azure_bonds/curseload.py` |
 | `dosacceptance.py` in `tools/dos/` | `tools/dos/acceptance.py` |
 | The `--note` default `dosacceptance` (a pool-lease label) | Unchanged. |
 | `_SAVGAM`, `containers_in`, `slots_in`, `source_slot`, `install`, `HALL_WORD`, `HALL_OPEN`, `HALL_TITLES`, `stage_hall`, `stage_xp`, `stage_node`, `node_dict` in `tools/dos/acceptance.py` | `tools/dos/staging.py` |

@@ -19,9 +19,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from conftest import load_tools_module
-
-CURSE = load_tools_module("cursewarp")
+from tools.curse_of_the_azure_bonds import curseload as CURSE
 
 
 class FakeRegs:

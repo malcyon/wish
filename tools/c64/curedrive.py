@@ -329,7 +329,7 @@ class Run:
         return False
 
     def _enter_curse(self, wait: float) -> bool:
-        from tools.curse_of_the_azure_bonds import curseload, cursewarp
+        from tools.curse_of_the_azure_bonds import curseload
         outcome = curseload.load_saved_game(
             self.sess, note=lambda **kw: self.log(**kw),
             shot=lambda tag: self.shot(tag), wait=wait)
@@ -337,12 +337,12 @@ class Run:
         if outcome != "loaded":
             return False
         self.sess.patch_disk_prompt()
-        addr = cursewarp.Addresses(self.sess.game, self.disks)
-        if not cursewarp.enter_world(self.sess, addr, timeout=wait):
+        addr = curseload.Addresses(self.sess.game, self.disks)
+        if not curseload.enter_world(self.sess, addr, timeout=wait):
             self.log(event="never-reached-the-world")
             self.shot("stuck")
             return False
-        self.log(event="world", bar=cursewarp.clear_messages(self.sess))
+        self.log(event="world", bar=curseload.clear_messages(self.sess))
         return True
 
     # -- readings ------------------------------------------------------------

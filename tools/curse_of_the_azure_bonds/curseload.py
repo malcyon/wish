@@ -71,6 +71,9 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
 from automap import gamedisks  # noqa: E402
+from automap.actions import pc_register  # noqa: E402
+from goldbox import c64_port  # noqa: E402
+from tools.areas import newecl  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: Every byte worth reading when the load has just failed, and why.
@@ -449,6 +452,236 @@ def load_saved_game(sess, *, note=None, shot=None, wait: float = 90.0,
             sess.handle_prompt(s)        # a side prompt is still a prompt
     picture(f"{tag}-{outcome}")
     return outcome
+
+
+class Addresses:
+    """Every address the warp needs, read out of this title's own overlays.
+
+    Built by `tools/areas/newecl.py`'s finders rather than written down, so the one
+    trap `#17` names -- an address taken from a PRG header, `$800` out -- has
+    no way in.  The `save` base is `Game.save_load_address`, which is the only
+    number here that comes from a table, and the two fields derived from it
+    are checked against the operands `NEWECL` itself uses.
+    """
+
+    def __init__(self, game: c64_port.C64Container, disks: str, base: int = 0x0800):
+        _, body = newecl.load("DUNGEON", disks, game)
+        self.base, self.body = base, body
+        call, lo_t, hi_t, opcode_at = newecl.dispatch_tables(body, base)
+        self.opcode_byte = opcode_at
+        self.handler = newecl.handler(body, base, lo_t, hi_t,
+                                      newecl.NEWECL_OPCODE)
+        lines = newecl.instructions(body, base, self.handler, 0x40)
+        self.tail = newecl.newecl_tail(lines)
+        # The handler's own operands are the writes, so take them from there.
+        # `LDA $xxxx / AND #$7F / STA $yyyy` opens it: the first is the cache
+        # slot, the second where the departing id is left.
+        self.slot = int(lines[0][2][5:], 16)
+        self.came_from = int(lines[2][2][5:], 16)
+        self.scratch = next(int(t[5:9], 16) for _, _, t in lines
+                            if t.startswith("STA $") and t.endswith(",X"))
+        test = newecl.find_window(body, base, newecl.KEY_WAIT_SIG, "key-wait")
+        if not test:
+            raise SystemExit("DUNGEON's key-wait loop is not where its page-3 "
+                             "signature says; nothing below can be trusted.")
+        self.key_wait = newecl.loop_start(body, base, test)
+        # The indoors flag is what the position flush tests before copying
+        # `$C04B` into the save, and the flush is the handler's own tail call.
+        flush = int(lines[[i for i, ln in enumerate(lines)
+                           if ln[0] == self.tail][0]][2][5:], 16)
+        self.indoors = int(newecl.instructions(body, base, flush, 4)[0][2][5:],
+                           16)
+        # `LINKER`'s first two absolute operands are the mode flag and the
+        # disk byte; they are base-independent, so `LINKER`'s own load address
+        # never has to be known.
+        _, lk = newecl.load("LINKER", disks, game)
+        loads = [t for _, _, t in newecl.instructions(lk, 0, 0, 0x20)
+                 if t.startswith(("LDA $", "STA $")) and "," not in t]
+        self.mode = int(loads[0][5:], 16)
+        # The disk byte is the flag's neighbour -- `$6E11`/`$6E12` in Pool of
+        # Radiance, `$7F11`/`$7F12` here -- and Curse's `LINKER` names it in
+        # its own prologue, which Pool of Radiance's does not have. Prefer
+        # what the file says and fall back to the neighbour, recording which.
+        self.disk = next((int(t[5:], 16) for t in loads[1:]
+                          if int(t[5:], 16) == self.mode + 1), self.mode + 1)
+        self.disk_named = any(t.endswith(f"${self.disk:04X}") for t in loads[1:])
+        _, lib = newecl.load("LIBRARY", disks, game)
+        called = next(int(t[5:], 16) for _, _, t
+                      in newecl.instructions(body, base, self.key_wait[0], 0x10)
+                      if t.startswith("JSR $"))
+        off = lib.find(newecl.KEY_FETCH_SIG)
+        self.key_fetch = (called, newecl.reachable_end(lib, called - off,
+                                                       called))
+
+    def as_dict(self) -> dict:
+        return {
+            "handler": self.handler, "tail": self.tail, "slot": self.slot,
+            "came_from": self.came_from, "scratch": self.scratch,
+            "indoors": self.indoors, "mode": self.mode, "disk": self.disk,
+            "key_wait": list(self.key_wait), "key_fetch": list(self.key_fetch),
+            "opcode_byte": self.opcode_byte,
+        }
+
+    def describe(self) -> str:
+        return (f"mode ${self.mode:04X}  disk ${self.disk:04X}  "
+                f"slot ${self.slot:04X}  came-from ${self.came_from:04X}  "
+                f"scratch ${self.scratch:04X}  indoors ${self.indoors:04X}  "
+                f"NEWECL ${self.handler:04X} tail ${self.tail:04X}  "
+                f"key-wait ${self.key_wait[0]:04X}-${self.key_wait[1]:04X}  "
+                f"fetch ${self.key_fetch[0]:04X}-${self.key_fetch[1]:04X}")
+
+
+def idle_in_key_window(sess, addr: Addresses) -> int | None:
+    """The PC, if the machine is sitting in a key window right now.
+
+    A single read rather than `tools/secret_of_the_silver_blades/ssbwarp.py`'s multi-sample poll of the
+    same name. `ssbwarp.py` needs several readings with the screen unchanged
+    across them because it uses a confirmed idle PC to *warp* -- jump the
+    party's own execution -- and its worry is the ECL interpreter's own print
+    routine passing through the key-wait window as ordinary control flow
+    while it is still printing, which a single sample could not tell apart
+    from genuinely parking there.
+
+    This function only ever gates a single Escape keypress, and the failure
+    it exists to rule out (`#568 (cursewarp.py and ssbwarp.py can abort a
+    mid-load ECL script by sending Escape to a screen that is merely slow,
+    not stuck)`) is a KERNAL `LOAD` still running underneath an unchanged
+    screen -- not a print in progress. A `LOAD` runs entirely in KERNAL ROM,
+    nowhere near `DUNGEON`'s own `key_wait`/`key_fetch` addresses, so a PC
+    reading that lands inside either window cannot be a load caught
+    mid-flight; it is the game's own code actually waiting there. That is a
+    different question from `ssbwarp.py`'s, which is why the same window
+    pair is answered here with one read rather than four.
+
+    `enter_world` also only calls this after its own `STUCK` wait has the
+    screen sitting unchanged for fifteen seconds, and keeps calling it every
+    pass of its loop for as long as that holds -- so a reading here is never
+    the first look at a freshly-stalled screen.
+
+    `DUNGEON`'s key-wait loop and `LIBRARY`'s fetcher are the two windows
+    `NEWECL`'s tail can safely be entered from -- the same ones `wait_idle`
+    polls for after a warp -- so the same pair of ranges answers this too.
+    """
+    windows = (addr.key_wait, addr.key_fetch)
+    try:
+        with sess.mon(6) as m:
+            pc = m.registers().get(pc_register(m))
+    except Exception:
+        return None
+    if pc is None or not any(lo <= pc < hi for lo, hi in windows):
+        return None
+    return pc
+
+
+def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
+                ) -> bool:
+    """Take a loaded party from the formation menu into the world.
+
+    `Session.begin_adventuring` picks the row once and then waits, and two
+    things get in the way of that here, both recorded rather than guessed:
+
+    * **A disk prompt can be up when the row is picked.**  Loading the party
+      pulls in side 2, so `INSERT SIDE # 2, AND PRESS ANY KEY.` sits over the
+      menu; a pick made then opened a submenu and lost `BEGIN ADVENTURING`
+      off the screen entirely (a capture in scratch, deleted).
+    * **The screen goes blank while the area draws.**  1024 zeroes is not a
+      menu that needs a keypress, and pressing one into it is how a run ends
+      up somewhere nobody can name.
+
+    So: act only on what is on screen, press nothing at a blank screen, and
+    back out with Escape only when some *other* menu has been sitting there
+    unchanged for `STUCK` seconds -- and, with `addr` given, only once the PC
+    is confirmed sitting in a key window rather than mid-load (#568): Escape
+    is VICE's RUN/STOP, which aborts a KERNAL LOAD in progress, and a screen
+    can sit unchanged for `STUCK` seconds either because a menu is waiting or
+    because a disk load has not finished drawing anything yet.
+
+    **`addr` is optional only for the callers that do not yet pass one** --
+    `tools/gui/livecheck.py`, `tools/c64/inventorycheck.py` and `tools/curse_of_the_azure_bonds/cursecheck.py`
+    all call this without an `Addresses`, and giving `addr` no default would
+    break them outright; without it, this falls back to the old unconditional
+    Escape and cannot tell a stuck menu from a slow load.
+    """
+    STUCK = 15.0
+    deadline = time.time() + timeout
+    seen, since = "", time.time()
+    while time.time() < deadline:
+        s = sess.screen()
+        if s is None:
+            time.sleep(0.5)
+            continue
+        text = s.text()
+        if "ENCAMP" in text:
+            return True
+        if sess.handle_prompt(s):
+            time.sleep(1.5)
+            continue
+        state = ("BEGIN" if "BEGIN ADVENTURING" in text
+                 else "(blank)" if not text.strip("@ \n") else s.row(24).strip())
+        if state != seen:
+            sess.log(f"  world: {state!r}")
+            seen, since = state, time.time()
+        if state == "BEGIN":
+            sess.select_row("BEGIN ADVENTURING")
+            sess.press_kernal(0x0D)
+        elif any(w in state for w in ("CONTINUE", "MORE", "PRESS")):
+            # Curse's own opening page -- row 24 reads "PRESS BUTTON OR
+            # RETURN TO CONTINUE." -- is a one-option menu behind which the
+            # world has already loaded, the same kind of screen
+            # `ssbwarp.enter_world` dismisses for Silver Blades' own
+            # prologue. Left unhandled this falls through to the STUCK
+            # branch below and burns the whole timeout in silence.
+            sess.press_kernal(0x0D)
+            since = time.time()
+        elif state != "(blank)" and time.time() - since > STUCK:
+            idle = idle_in_key_window(sess, addr) if addr is not None else True
+            if idle is not None:
+                sess.log("  world: backing out with Escape" +
+                         (f" (idle at ${idle:04X})" if addr is not None else ""))
+                sess.kbd.key("Escape")
+                since = time.time()
+            else:
+                # A stuck-but-not-idle state (a firmware wait, a submenu
+                # this loop's own state matching does not otherwise cover)
+                # now runs out the clock on `timeout` in silence instead of
+                # ever getting an Escape -- traded deliberately, because
+                # Escape aborting a load that was only slow was the more
+                # common and more damaging failure (#568).
+                sess.log("  world: screen stuck but not idle in a key "
+                         "window; assuming a slow load and waiting")
+        time.sleep(1.5)
+    return False
+
+
+def clear_messages(sess, timeout: float = 120.0) -> str:
+    """Answer the arriving script's messages until the command bar is back.
+
+    An arrival has a scene in front of it -- warping into area `$03` printed
+    four lines about the Tilverton sewers and then
+    `PRESS BUTTON OR RETURN TO CONTINUE.` -- and a party behind a message is
+    not yet a party that can be shown to walk.  Returns whatever row 24 says
+    when it stops.
+    """
+    deadline = time.time() + timeout
+    seen = ""
+    while time.time() < deadline:
+        s = sess.screen()
+        if s is None:
+            time.sleep(0.5)
+            continue
+        bar = s.row(24).strip()
+        if bar != seen:
+            sess.log(f"  bar: {bar!r}")
+            seen = bar
+        if "ENCAMP" in bar:
+            return bar
+        if sess.handle_prompt(s):
+            time.sleep(1.0)
+            continue
+        if "CONTINUE" in bar or "MORE" in bar or "PRESS" in bar:
+            sess.press_kernal(0x0D)
+        time.sleep(1.0)
+    return f"(never got the command bar back; last {seen!r})"
 
 
 def run(args) -> int:
