@@ -227,8 +227,10 @@ def _run_diagnose(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle
                 for other in getattr(guard, "rules", {}):
                     if other != "title" and guard(other, crop):
                         event["recognized"] = other
-                        result["events"].append(event)
-                        raise RouteError(f"recognized {other} before the title")
+                        if other != "credits":
+                            result["events"].append(event)
+                            raise RouteError(f"recognized {other} before the title")
+                        break
             result["events"].append(event)
             elapsed = time.monotonic() - boot_started
             if shown and elapsed >= 120 and not sampled and _white_screen(crop):

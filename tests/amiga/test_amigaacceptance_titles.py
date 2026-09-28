@@ -1705,13 +1705,16 @@ class _RecordingGuest:
         return record
 
 
-@pytest.mark.parametrize("reaches_title,stale_log,timing", [
-    (True, False, "normal"), (False, False, "normal"),
-    (True, True, "normal"), (False, False, "exhausted"),
-    (False, False, "probe_boundary"),
+@pytest.mark.parametrize("reaches_title,stale_log,timing,intermediate", [
+    (True, False, "normal", None), (False, False, "normal", None),
+    (True, True, "normal", None), (False, False, "exhausted", None),
+    (False, False, "probe_boundary", None),
+    (True, False, "normal", "credits"),
+    (False, False, "normal", "credits"),
+    (True, False, "normal", "party_menu"),
 ])
 def test_diagnose_uses_private_config_and_cleans_up_without_game_input(
-        tmp_path, monkeypatch, clock, reaches_title, stale_log, timing):
+        tmp_path, monkeypatch, clock, reaches_title, stale_log, timing, intermediate):
     title = dataclasses.replace(
         foundation.route_silver_blades.published_title("A"),
         read_slot=_read_slot, slot_letters=_letters, slot_files=_files)
@@ -1786,7 +1789,9 @@ def test_diagnose_uses_private_config_and_cleans_up_without_game_input(
             elif timing == "probe_boundary":
                 clock.now = 1299
             raw.write_bytes(b"raw")
-            crop.write_bytes(b"title" if reaches_title and clock.now >= 1130 else b"white")
+            crop.write_bytes(
+                intermediate.encode() if intermediate and 1010 <= clock.now < 1012 else
+                b"title" if reaches_title and clock.now >= 1130 else b"white")
             return True
 
         def status(self, timeout):
@@ -1824,25 +1829,36 @@ def test_diagnose_uses_private_config_and_cleans_up_without_game_input(
 
     guest = Guest()
     class Guard:
-        rules = {"title": {}}
+        rules = {"title": {}, "credits": {}, "party_menu": {}}
 
         def __contains__(self, state):
-            return state == "title"
+            return state in self.rules
 
         def __call__(self, state, crop):
-            return state == "title" and crop.read_bytes() == b"title"
+            return crop.read_bytes() == state.encode()
 
     result = foundation.run_recon(
         path, guest=guest, holder="wish705-test", audio_proof=_audio_proof(tmp_path),
         title=title, guard=Guard(), diagnose=True, published_disk_one=True,
         published_name="ssb", deadline_seconds=600, boot_limit=300)
-    assert result["success"] is (reaches_title and not stale_log and timing == "normal"), (
+    assert result["success"] is (reaches_title and not stale_log and timing == "normal"
+                                 and intermediate != "party_menu"), (
                                                result["error"], result.get("boot_log_error"),
                                                result.get("stop_error"),
                                                result.get("config_remove_error"),
                                                result.get("white_probe"))
-    assert result["completed"] is (reaches_title and timing == "normal")
-    if timing == "normal":
+    assert result["completed"] is (reaches_title and timing == "normal"
+                                   and intermediate != "party_menu")
+    if intermediate:
+        assert [event.get("recognized") for event in result["events"] if
+                event.get("recognized")] == (["credits", *(["title"] if reaches_title else [])]
+                                             if intermediate == "credits"
+                                             else ["party_menu"])
+    if intermediate == "party_menu":
+        assert result["error"] == "RouteError: recognized party_menu before the title"
+    if intermediate == "credits" and not reaches_title:
+        assert result["error"] == "RouteError: title screen was not recognized within 300s"
+    if timing == "normal" and intermediate != "party_menu":
         assert result["white_probe"]["first"]["execbase"] == 0x1000
         assert result["white_probe"]["status"].startswith("pid=123")
     if stale_log:
