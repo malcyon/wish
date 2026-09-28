@@ -292,9 +292,16 @@ def save_current_game(run: "Run", dest: pathlib.Path, *,
     that wrote `WISH-SPEC-curse-trained-party` and `WISH-SPEC-curse-dual-
     classed` (`docs/172-curse-trainer.md`), and a save made here stands in
     area 0, before the party has begun adventuring.
+
+    Exhausting `attempts` on a still-open `SAVEAZURE` re-raises
+    `copy_closed_disk`'s own `RuntimeError` rather than returning `False`
+    the way the earlier failure branches above do.
     """
     from tools.c64 import session as por  # noqa: PLC0415
     from tools.curse_of_the_azure_bonds.curseload import answer_yes  # noqa: PLC0415
+
+    if attempts < 1:
+        raise ValueError("attempts must be at least one")
 
     sess = run.sess
     if not sess.select_row("SAVE CURRENT GAME"):

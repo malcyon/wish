@@ -288,6 +288,17 @@ def test_save_current_game_gives_up_with_the_original_error_after_the_retry_budg
     assert run.sess.calls.count(("attach", run.sess.save_disk)) == 3
 
 
+def test_save_current_game_refuses_an_attempts_count_below_one(tmp_path, quick):
+    """`copy_closed_disk` guards the same way; without this guard
+    `attempts=0` leaves `last_exc` `None` and `raise last_exc` fails with a
+    confusing `TypeError` instead of a clear complaint."""
+    run = cp.Run(tmp_path / "out")
+    run.sess = _FakeSess([_MENU])
+
+    with pytest.raises(ValueError, match="attempts must be at least one"):
+        cp.save_current_game(run, tmp_path / "SAVED.D64", attempts=0)
+
+
 def test_an_unreadable_screen_never_counts_as_the_text_having_gone(quick):
     """`screen()` returns None when the monitor read fails; two of those in a
     row must not pass for `SAVING GAME` having left."""
