@@ -154,10 +154,17 @@ TEMPLE_ROUTE = (
 #: The route entry whose expected area differs from its before area (the
 #: only move allowed a side-3 disk prompt), and the route's last entry
 #: (temple arrival), computed from `TEMPLE_ROUTE` so a route-length change
-#: cannot silently strand these guards on a stale index.
-TEMPLE_CROSSING_INDEX = next(
+#: cannot silently strand these guards on a stale index. The assertion below
+#: makes a route with zero or two-or-more crossings fail import with a
+#: specific message, rather than a bare `StopIteration` or a second crossing
+#: silently misrouted as an unexpected disk prompt.
+_TEMPLE_CROSSINGS = [
     i for i, (_, before, expected) in enumerate(TEMPLE_ROUTE)
-    if before[0] != expected[0])
+    if before[0] != expected[0]]
+assert len(_TEMPLE_CROSSINGS) == 1, (
+    "TEMPLE_ROUTE must cross exactly one area boundary, found "
+    f"{len(_TEMPLE_CROSSINGS)}")
+TEMPLE_CROSSING_INDEX = _TEMPLE_CROSSINGS[0]
 TEMPLE_LAST_INDEX = len(TEMPLE_ROUTE) - 1
 
 #: The camp's own bar, `ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT` (Pool

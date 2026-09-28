@@ -508,7 +508,12 @@ def test_temple_probe_pins_the_lost_stop_the_live_m_route_hit(
     """Pins the exact stop `temple-route-a` hit at `42b8d40a12`: the old
     route's first key, `M`, was meant to turn the party in place, but in
     Pool of Radiance `M` steps one square backward, crossing the area edge
-    immediately. The driver's own guard stopped rather than guessing."""
+    immediately. The driver's own guard stopped rather than guessing.
+
+    This reconstructs the historical `M`-based route via monkeypatch to
+    freeze that old failure message; it does not exercise the current
+    default `TEMPLE_ROUTE`. The happy-path test asserting
+    `session.moves == list("KKIIJI")` is what proves the current route."""
     old_route = (
         ("M", (0x14, 15, 4, 3), (0x14, 15, 4, 1)),
         ("I", (0x14, 15, 4, 1), (0, 0, 4, 1)),
