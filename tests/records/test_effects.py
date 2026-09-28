@@ -1945,13 +1945,35 @@ def test_a_dos_pool_charm_node_becomes_the_c64_party_cast_row():
         (11, 0x86)
 
 
+@pytest.mark.parametrize("node, row", [
+    (bytes((11, 0, 0, 0xA1, 1)), (11, 0x87)),         # a monster charmer
+    (bytes((11, 0, 0, 0x61, 1)), (11, 0x86)),         # the target's own side
+    (bytes((11, 0, 0, 0xE1, 1)), (11, 0x87)),         # both
+    (bytes((11, 0x0A, 0, 0x21, 1)), (11, 0x86)),      # a running node
+    (bytes((11, 0x34, 0x12, 0xAC, 1)), (11, 0x87)),   # id 84's count of 12
+], ids=["monster-charmer", "own-side", "both", "running", "id-84"])
+def test_a_dos_pool_charm_node_no_engine_leaves_past_a_fight_still_converts(
+        node, row):
+    # The C64 keeps the charmer's side in the magnitude's bit 0 and never
+    # ages a charm, so the data bits 6 and 7 and the duration do not refuse.
+    assert effects.pool_charm_row(_POOL, node) == row
+
+
+@pytest.mark.parametrize("node, sides", [
+    (bytes((11, 0, 0, 0x21, 1)), (0, 0)),
+    (bytes((11, 0, 0, 0xA1, 1)), (1, 0)),
+    (bytes((11, 0, 0, 0x61, 1)), (0, 1)),
+    (bytes((11, 0, 0, 0xE1, 1)), (1, 1)),
+])
+def test_a_charm_nodes_sides_are_its_data_bits_7_and_6(node, sides):
+    assert effects.pool_charm_sides(node) == sides
+
+
 @pytest.mark.parametrize("node", [
     bytes((11, 0, 0, 0x01, 1)),   # data bit 5 clear
-    bytes((11, 0, 0, 0xA1, 1)),   # data bit 7
-    bytes((11, 0, 0, 0x61, 1)),   # data bit 6
     bytes((11, 0, 0, 0x21, 0)),   # flag 0
-    bytes((11, 0x0A, 0, 0x21, 1)),  # a duration
-], ids=["no-bit-5", "bit-7", "bit-6", "flag-0", "duration"])
+    bytes((11, 0, 0, 0xC1, 1)),   # data bit 5 clear, both sides set
+], ids=["no-bit-5", "flag-0", "no-bit-5-both-sides"])
 def test_a_pool_charm_node_no_dos_route_writes_is_unconverted(node):
     assert isinstance(effects.pool_charm_row(_POOL, node),
                       effects.Unconverted)
@@ -1970,16 +1992,53 @@ def test_a_c64_party_charm_row_becomes_a_dos_node(side):
         bytes((11, 0, 0, 0x26, 1)) + bytes(4)
 
 
+@pytest.mark.parametrize("magnitude, side, data", [
+    # Before the handler's first event bit 0 is the character's own side.
+    (0x86, 0x80, 0x26),
+    (0x86, 0x81, 0x66),
+    (0x87, 0x80, 0xA7),
+    (0x87, 0x81, 0xE7),
+    (0x06, 0x80, 0x26),
+    (0x07, 0x80, 0xA7),
+    # After it, bit 6 is set and bit 5 is his own side, bit 0 the charmer's.
+    (0x86, 0xC0, 0x26),
+    (0x86, 0xE0, 0x66),
+    (0x87, 0xC1, 0xA7),
+    (0x87, 0xE1, 0xE7),
+], ids=lambda v: f"{v:02x}")
+def test_a_c64_charm_row_becomes_the_dos_node_by_its_bit_map(
+        magnitude, side, data):
+    row = effects.Effect(63, 11, 2, 0, magnitude)
+    assert effects.pool_charm_record(_POOL, row, side) == \
+        bytes((11, 0, 0, data, 1)) + bytes(4)
+
+
+@pytest.mark.parametrize("magnitude, side", [
+    (0x86, 0x80), (0x86, 0x81), (0x87, 0x80), (0x87, 0x81), (0x06, 0x80),
+    (0x07, 0x81), (0x86, 0xC0), (0x86, 0xE0), (0x87, 0xC1), (0x87, 0xE1),
+])
+def test_a_c64_charm_row_written_back_is_the_row_and_side_it_came_from(
+        magnitude, side):
+    # The writer's row for the node the reader gives is the row's own
+    # magnitude bit 0, and its own side goes back to 0x10C bit 0.
+    row = effects.Effect(63, 11, 2, 0, magnitude)
+    node = effects.pool_charm_record(_POOL, row, side)
+    charmer, own = effects.pool_charm_sides(node)
+    assert effects.pool_charm_row(_POOL, node) == \
+        (11, 0x86 | (magnitude & 1))
+    assert charmer == magnitude & 1
+    assert own == (side >> 5 if side & 0x40 else side) & 1
+
+
 @pytest.mark.parametrize("title, row, side", [
-    (_POOL, effects.Effect(63, 11, 2, 0, 0x87), 0x80),
-    (_POOL, effects.Effect(63, 11, 2, 0, 0x06), 0x80),
-    (_POOL, effects.Effect(63, 11, 2, 0, 0x86), 0x81),
     (_POOL, effects.Effect(63, 11, 2, 0, 0x86), 0xA0),
     (_POOL, effects.Effect(63, 11, 2, 0, 0x86), None),
     (_POOL, effects.Effect(63, 11, 2, 5, 0x86), 0x80),
+    (_POOL, effects.Effect(63, 11, 2, 0, 0x85), 0x80),
+    (_POOL, effects.Effect(63, 11, 2, 0, 0x26), 0x80),
     ("curse-of-the-azure-bonds", effects.Effect(63, 11, 2, 0, 0x86), 0x80),
-], ids=["monster-form", "no-bit-7", "enemy-side", "bit-5", "no-side",
-        "duration", "curse"])
-def test_a_c64_charm_row_that_is_not_the_party_cast_stays_unconverted(
+], ids=["bit-5-alone", "no-side", "duration", "bit-2-magnitude",
+        "no-form-magnitude", "curse"])
+def test_a_c64_charm_row_no_pool_writer_leaves_stays_unconverted(
         title, row, side):
     assert effects.pool_charm_record(title, row, side) is None

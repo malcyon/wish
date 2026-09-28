@@ -473,10 +473,9 @@ STINKING_CLOUD_DOS = (0xFF, 0)
 #: Ids whose state also lives in record bytes the codecs do not convert yet,
 #: so a row alone would not reproduce it. Charm (11) keeps the charmed
 #: character's own side in DOS data bit 6 and, in Pool, C64 record `0x10C`
-#: bits 5 and 6. Pool's granted charm node converts through `pool_charm_row`;
-#: it converts for a player character and for a party companion alike, and
-#: two nodes make one row. Its running node stays refused, because no DOS
-#: engine leaves a running charm on a party member past a fight (`docs/226`).
+#: bits 5 and 6. Pool's charm node, granted or running, converts through
+#: `pool_charm_row`; it converts for a player character and for a party
+#: companion alike, and two nodes make one row.
 #: Fear (`FEAR_IDS`, below) has its own rule: `c64_codec` converts its record
 #: bytes alongside the row.
 _RECORD_STATE_IDS: dict[str, frozenset[int]] = {
@@ -985,34 +984,58 @@ def never_expiring_spell_record(title_key: str, row: "Effect") -> bytes | None:
 
 def pool_charm_row(title_key: str,
                    node: bytes) -> tuple[int, int] | Unconverted | None:
-    """The C64 `(id, magnitude)` for a DOS Pool charm granted node.
+    """The C64 `(id, magnitude)` for a DOS Pool charm node.
 
-    `None` when the node is not a Pool charm. A charm no DOS Pool route
-    writes (a duration, a clear or extra data bit, a count other than 1) is
-    `Unconverted`; the route that does write one is a party-side charm at
-    duration 0 with data bit 5 set and bits 6 and 7 clear.
+    `None` when the node is not a Pool charm. The row is the C64 cast's own
+    `POOL_CHARM_MAGNITUDE` with the charmer's side, data bit 7, in magnitude
+    bit 0. Whatever the node's duration, the row's is 0: the C64 never ages a
+    charm and ends it with the fight. A node whose data bit 5 is clear has
+    not been through DOS's charm handler, and a flag other than 1 is one no
+    DOS writer stores (spell 10 and id 84 both push 1), so both are
+    `Unconverted`.
     """
     if title_key != "pool-of-radiance" or node[0] != CHARM_ID:
         return None
-    if (node[1] == 0 and node[2] == 0 and node[4] == 1
-            and node[3] & 0x20 and node[3] & 0xC0 == 0):
-        return CHARM_ID, POOL_CHARM_MAGNITUDE
+    if node[3] & 0x20 and node[4] == 1:
+        return CHARM_ID, POOL_CHARM_MAGNITUDE | node[3] >> 7
     return Unconverted("a charm node no DOS Pool route writes")
+
+
+def pool_charm_sides(node: bytes) -> tuple[int, int]:
+    """`(charmer, own)` sides of a DOS charm node: data bits 7 and 6.
+
+    DOS's handler saves the charmed character's own side in bit 6 and puts the
+    charmer's side, bit 7, into his record; the C64's handler does the same
+    from record `0x10C` bit 0 and the row's magnitude bit 0.
+    """
+    return node[3] >> 7 & 1, node[3] >> 6 & 1
+
+
+#: The magnitudes a C64 Pool charm row holds: `$86` or `$87` from the party
+#: cast or a monster's, and `$06` or `$07` from the vampire's own gaze
+#: (DOS ability id 84), whose row has no bit 7. Bit 0 is the charmer's side.
+POOL_CHARM_MAGNITUDES = frozenset({0x06, 0x07, 0x86, 0x87})
 
 
 def pool_charm_record(title_key: str, row: "Effect",
                       combat_side: int | None) -> bytes | None:
-    """The DOS granted charm node for a C64 Pool party-side charm row, or `None`.
+    """The DOS charm node for a C64 Pool charm row, or `None`.
 
-    Bit 6 of `0x10C` may be either value, because `$C0` is the same charm one
-    round later; bit 0 (the enemy's side) or bit 5 refuses it. The count is
-    the C64 charm's fixed level, the row's magnitude low nibble.
+    Record `0x10C` bit 0 is the character's own side until the C64's charm
+    handler runs at his first event; after it, bit 6 is set, bit 5 holds his
+    own side and bit 0 the charmer's. The node takes the charmer from the
+    row's magnitude bit 0, the own side from whichever bit holds it, and the
+    count from the magnitude's low nibble. Bit 5 with bit 6 clear is a state
+    the handler never leaves, so it refuses.
     """
     if (title_key == "pool-of-radiance" and row.id == CHARM_ID
-            and row.duration == 0 and row.magnitude == POOL_CHARM_MAGNITUDE
-            and combat_side is not None and combat_side & 0x21 == 0):
-        return bytes((CHARM_ID, 0, 0, 0x20 | (row.magnitude & 0x0F),
-                      1)) + _RUNNING_EFFECT_NEXT
+            and row.duration == 0 and row.magnitude in POOL_CHARM_MAGNITUDES
+            and combat_side is not None
+            and not (combat_side & 0x20 and not combat_side & 0x40)):
+        own = combat_side >> 5 & 1 if combat_side & 0x40 else combat_side & 1
+        data = ((row.magnitude & 1) << 7 | own << 6 | 0x20
+                | (row.magnitude & 0x0F))
+        return bytes((CHARM_ID, 0, 0, data, 1)) + _RUNNING_EFFECT_NEXT
     return None
 
 
