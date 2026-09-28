@@ -647,3 +647,34 @@ def test_repair_refuses_a_change_outside_the_directory_entry(
     with pytest.raises(ValueError, match="outside every directory entry"):
         specimens.repair_unloadable("curse-left-open", note="x", root=tree)
     assert dest.read_bytes() == before
+
+
+# --- correct_what: a provenance written wrongly, the image untouched -----
+
+
+def test_correct_what_rewrites_the_text_and_records_the_old_one(tree, one_source):
+    prov = _add(tree, one_source) / "provenance.toml"
+    images = {p: specimens.sha256_file(p) for p in prov.parent.iterdir()
+              if p != prov}
+
+    specimens.correct_what("gnomf1", what="slot A written by Wish, C by the game",
+                           reason="the whole disk was not game-written",
+                           root=tree, today="2026-09-28")
+
+    fields = specimens.read_provenance(prov)
+    assert fields["what"] == "slot A written by Wish, C by the game"
+    assert "rolled a gnome" in fields["issue_note"]
+    assert "2026-09-28" in fields["issue_note"]
+    assert "the whole disk was not game-written" in fields["issue_note"]
+    assert fields["edited_afterwards"] is False
+    assert {p: specimens.sha256_file(p) for p in images} == images
+    assert specimens.check_specimens(tree) == []
+    assert not prov.stat().st_mode & stat.S_IWUSR
+
+
+def test_correct_what_refuses_a_specimen_that_no_longer_matches(tree, one_source):
+    d = _add(tree, one_source)
+    (d / "GNOMF1.CHA").chmod(stat.S_IRWXU)
+    (d / "GNOMF1.CHA").write_bytes(b"changed")
+    with pytest.raises(ValueError, match="no longer matches"):
+        specimens.correct_what("gnomf1", what="x", reason="y", root=tree)

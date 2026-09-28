@@ -614,6 +614,47 @@ def repair_unloadable(name: str, *, note: str, root: pathlib.Path | None = None,
     return report
 
 
+def correct_what(name: str, *, what: str, reason: str,
+                 root: pathlib.Path | None = None,
+                 today: str | None = None) -> dict:
+    """Replace a specimen's `what` text, leaving every image byte alone.
+
+    For a provenance that was written wrongly, not for a specimen that changed:
+    `edited_afterwards` stays as it was.  The old text, the date and `reason`
+    are appended to `issue_note`, so the correction is itself on record.  A
+    specimen whose files no longer match the manifest is refused, since the
+    manifest is what is being carried over unchanged.
+    """
+    root = root or tree_root()
+    entries = [e for e in list_specimens(root) if e.get("name") == name]
+    if not entries:
+        raise ValueError(f"no specimen named {name!r} under {root}")
+    entry = entries[0]
+    if entry.get("_no_provenance"):
+        raise ValueError(f"{name}: has no provenance.toml")
+    manifest = dict(entry.get("sha256", {}))
+    prov_path = pathlib.Path(entry["_provenance"])
+    for fname, expected in manifest.items():
+        path = prov_path.parent / fname
+        if not path.is_file() or sha256_file(path) != expected:
+            raise ValueError(f"{name}: {fname} no longer matches its manifest "
+                             f"-- find out what moved it before correcting "
+                             f"its provenance")
+    day = today or datetime.date.today().isoformat()
+    record = (f"Corrected {day}: the `what` text used to read "
+              f"{entry['what']!r}. Reason: {reason}")
+    fields = {k: v for k, v in entry.items() if not k.startswith("_")
+              and k != "sha256"}
+    old_note = fields.get("issue_note")
+    fields["what"] = what
+    fields["issue_note"] = f"{old_note}\n{record}" if old_note else record
+    prov_path.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+    write_provenance(prov_path, fields, manifest)
+    make_read_only(prov_path)
+    return {"name": name, "was": entry["what"], "now": what,
+            "issue_note": fields["issue_note"]}
+
+
 def _format_row(entry: dict) -> str:
     if entry.get("_no_provenance"):
         return f"{entry['name']:<20} NO PROVENANCE -- not a specimen"
@@ -662,6 +703,16 @@ def cmd_repair(args: argparse.Namespace) -> int:
         print(f"  sha256 {report['sha256_before'][:12]} -> "
               f"{report['sha256_after'][:12]}")
     return rc
+
+
+def cmd_correct(args: argparse.Namespace) -> int:
+    try:
+        r = correct_what(args.name, what=args.what, reason=args.reason)
+    except ValueError as exc:
+        print(f"refused: {exc}")
+        return 1
+    print(f"corrected {r['name']}\n  was: {r['was']}\n  now: {r['now']}")
+    return 0
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -747,6 +798,13 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--dry-run", action="store_true", dest="dry_run",
                    help="prove the repair on a copy and print it, write nothing")
     r.set_defaults(func=cmd_repair)
+
+    c = sub.add_parser("correct", help="rewrite a specimen's `what` text, "
+                                       "recording the old one; no image byte moves")
+    c.add_argument("name")
+    c.add_argument("--what", required=True, help="the corrected text")
+    c.add_argument("--reason", required=True, help="why the old text was wrong")
+    c.set_defaults(func=cmd_correct)
 
     sub.add_parser("list", help="what is in the tree").set_defaults(func=cmd_list)
     sub.add_parser("check", help="verify every specimen's SHA-256"
