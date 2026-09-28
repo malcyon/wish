@@ -307,11 +307,11 @@ def test_every_rule_file_has_a_row_in_the_routing_table(files):
     """A file under `.claude/rules/` with no row in `AGENTS.md`'s table is
     unreachable by anything that is not Claude Code.
 
-    Six of the thirteen load into a Claude Code session at launch and seven
+    Seven of the fourteen load into a Claude Code session at launch and seven
     load when Claude Code reads a matching file, but neither mechanism exists
     for a tool with no `paths:` frontmatter and no launch-time rule loader --
     `AGENTS.md`'s table is the only route it has to any of them, which is why
-    every one of the thirteen needs a row.
+    every one of the fourteen needs a row.
 
     This only checks that the filename is *named* somewhere in the table; it
     says nothing about whether the trigger sentence beside it is honest about
@@ -462,13 +462,14 @@ def test_claude_md_imports_the_file_that_holds_the_rules():
     assert (ROOT / IMPORTED).is_file(), (
         f"CLAUDE.md imports {IMPORTED}, which is not there.")
 
-    # "Banned Words" is the one exception: it lists the jargon Claude
-    # reaches for, so it belongs in Claude's file. Moved 2026-09-10.
-    assert "## Banned Words" in text, (
-        "CLAUDE.md no longer holds the words table. It lives here rather than "
-        f"in {IMPORTED} because it corrects this model's own habits.")
-    assert "## Banned Words" not in (ROOT / IMPORTED).read_text(encoding="utf-8"), (
-        f"the words table is Claude-only and belongs in CLAUDE.md, not {IMPORTED}.")
+    # The words table itself lives in `.claude/rules/words.md`, so that Codex
+    # -- which reads AGENTS.md but not this file -- is held to it too.
+    # CLAUDE.md keeps a one-line pointer.
+    assert "words.md" in text, (
+        "CLAUDE.md no longer points at .claude/rules/words.md, so a Claude "
+        "session has no way to find the banned-words table.")
+    assert (ROOT / ".claude" / "rules" / "words.md").is_file(), (
+        "CLAUDE.md points at .claude/rules/words.md, which is not there.")
 
 
 # -- a bare issue number is a lookup the reader has to go and do -------------
@@ -1266,3 +1267,8 @@ def test_the_hook_mode_check_flags_anything_but_100755(modes):
     bad = hook_paths_not_executable_in_git(
         ["$CLAUDE_PROJECT_DIR/h.py --flag", "/usr/bin/true"], modes)
     assert bad == ([] if modes.get("h.py") == "100755" else ["h.py"])
+
+
+def test_the_words_rule_is_shared_with_codex():
+    assert (ROOT / ".agents/rules/words.md").resolve() == (
+        ROOT / ".claude/rules/words.md").resolve()

@@ -474,7 +474,8 @@ def test_the_environment_unsets_wayland_display(monkeypatch):
 
 
 def test_the_environment_names_the_terminal_the_function_keys_are_sent_for():
-    """ncurses decodes F10 and F11 through terminfo, so `TERM` is load-bearing."""
+    """ncurses decodes F10 and F11 through terminfo, so the debugger depends
+    on `TERM` naming the terminal."""
     assert dosboxx.debug_env(None)["TERM"] == "xterm"
 
 

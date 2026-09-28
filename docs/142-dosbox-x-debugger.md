@@ -26,9 +26,9 @@ cd dosbox-x-dosbox-x-v2026.08.02
 sudo make install
 ```
 
-`--enable-debug=heavy` is the load-bearing flag: plain `--enable-debug` compiles
-the debugger but `#if C_HEAVY_DEBUG` guards `BPM`, and a watchpoint is the whole
-point.
+`--enable-debug=heavy` is the flag a watchpoint depends on: plain
+`--enable-debug` compiles the debugger but `#if C_HEAVY_DEBUG` guards `BPM`,
+and a watchpoint is the whole point.
 
 **Neither packaged build has a debugger, so do not reach for one.** Ubuntu
 noble's `dosbox-x` 2024.03.01 and Flathub's `com.dosbox_x.DOSBox-X` 2026.08.02

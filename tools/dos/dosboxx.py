@@ -471,9 +471,9 @@ def debug_env(display: str | None, **extra: str) -> dict[str, str]:
     Unsetting it, `XDG_SESSION_TYPE` and `XAUTHORITY` is what actually confines
     the process; `GDK_BACKEND=x11` and `QT_QPA_PLATFORM=offscreen` are belts.
 
-    `TERM` is load-bearing too: ncurses decodes function keys through terminfo,
-    so the debugger sees F10 and F11 only if `TERM` names the terminal whose
-    sequences `step()` sends.
+    The debugger depends on `TERM` too: ncurses decodes function keys through
+    terminfo, so the debugger sees F10 and F11 only if `TERM` names the
+    terminal whose sequences `step()` sends.
     """
     env = dict(os.environ)
     for v in ("WAYLAND_DISPLAY", "XDG_SESSION_TYPE", "XAUTHORITY"):

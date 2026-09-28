@@ -151,7 +151,8 @@ So the candidate set is the spell effects, 1–63, plus 89. Nineteen of those ha
 a name good enough to badge; the sheet below is those nineteen.
 
 **2. A badge must read the four `SAVEDGAME0` arrays, not the trait slots.** This
-is the load-bearing one and it is stronger than "the traits carry no duration".
+is the rule everything else here depends on, and it is stronger than "the
+traits carry no duration".
 
 `P3-EFFECTS.D64` was saved with **twenty-six spells running** and every
 character's ten trait slots at `0x0AD` came out byte-identical to how they went
