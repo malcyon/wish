@@ -2806,7 +2806,8 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         out.set("treasure_share", own_share,
                 "the C64's raw treasure-share byte at 0x0FA",
                 grade("treasure_share"),
-                dropped=() if (is_npc and not pool_zombie_pc) or not rec.get("flags_0b8") & 0x01 else (
+                dropped=() if ((is_npc and not pool_zombie_pc)
+                               or not rec.get("flags_0b8") & 0x01) else (
                     ("flags_0b8 bit 0: a player character with an "
                      f"ability-altered flag and a raw share of "
                      f"{own_share:#04x} at 0x0FA, where the other ports have "

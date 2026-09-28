@@ -13,6 +13,7 @@ from goldbox import (
     c64_save,
     dos_codec,
     dos_port,
+    effects,
     neutral,
 )
 from goldbox.record import CharacterRecord
@@ -183,3 +184,33 @@ def test_engine_written_zombie_fields_read_and_node32_stays_protected():
     for report in (dos_report, amiga_report):
         assert any("innate_effects 32 (Animate Dead)" in line
                    for line in report.dropped)
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "A C64 zombie reads as neutral status dead, while the write's zombie arm "
+    "keys on animated, so the write takes the companion arm and stores $B3; "
+    "the neutral status step settles which status a C64 zombie reads as"))
+@pytest.mark.parametrize("stored", [0xFE, 0xFF])
+def test_a_c64_zombie_survives_a_c64_read_and_write_unchanged(stored):
+    rec = _pool_c64(stored, 0x03)
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE)
+    back, _rep = c64_codec.write(char)
+    assert (back.get("flags_0b8"), back.get("treasure_share")) == (
+        rec.get("flags_0b8"), rec.get("treasure_share"))
+
+
+@pytest.mark.parametrize("flag, stored", [(0, 0xFE), (1, 0xFF)])
+def test_a_charmed_dos_zombie_still_writes_the_zombie_byte_and_the_charm_row(
+        flag, stored):
+    char = _pool_dos_character("animated", True, 0xB3, flag)
+    char.set("granted_effects",
+             [bytes((effects.CHARM_ID, 0, 0, 0x21, 1))], "built here")
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                               clock_minutes=0)
+    ids = payload[effects.EFFECT_ID_OFFSET:
+                  effects.EFFECT_ID_OFFSET + effects.EFFECT_SLOTS]
+    assert list(ids).count(effects.CHARM_ID) == 1
+    assert rec.get("flags_0b8") == stored
+    assert rec.get("treasure_share") == 0
+    assert not rep.losses
