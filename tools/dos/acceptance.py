@@ -561,7 +561,7 @@ PARTY_CHANGE = "h"
 #: the step counts the rows it can reach and stops unless they are as many
 #: as the classes the engine's own test allows.
 CHANGE_LIST = (16, 16, 288, 168)
-#: Rows a class list can hold: the six classes of a human's table.
+#: Rows a class list can hold: the eight classes of a human's table.
 CHANGE_ROWS = 8
 
 #: `START.EXE` data-segment tables 0x3BB4D and its test 0x3B99E read: class
@@ -629,8 +629,12 @@ def sheet_offers(words: list[list[str]], title: str) -> dict[str, bool] | None:
 
 
 def acted_word(words: list[list[str]], title: str, act: str) -> int | None:
-    """The index of the `HEAL`/`LAY` or `CURE` word in a sheet bar's words."""
-    if not words:
+    """The index of the `HEAL`/`LAY` or `CURE` word in a sheet bar's words.
+
+    Shares `sheet_offers`'s guard against a bar that does not end in the
+    four-letter `EXIT`, so the two cannot read a bar's shape differently.
+    """
+    if sheet_offers(words, title) is None:
         return None
     e = words[-1][0]
     for i, w in enumerate(words[:-1]):
@@ -1107,7 +1111,7 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
             if where != "party":
                 raise ValueError(f"change needs the party menu, before begin: "
                                  f"{step.text!r}")
-        elif k in ("sheet", "items", "halve", "join", "memorize"):
+        elif k in ("items", "halve", "join", "memorize"):
             if title != "darkness":
                 raise ValueError(f"{k} is driven in darkness only, not {title}")
             if where != "camp":
@@ -3119,6 +3123,12 @@ class Driver:
         return {"days": days, "hours": hours, "fives": fives}
 
     def rest(self, minutes: int) -> dict:
+        """Rest for `minutes`, or until an event ends it early.
+
+        When the returned `ended_by_message` is true, `"asked"` is the
+        minutes requested, not how long the party actually rested -- that
+        duration is in the clock of the next save, per `rest_message`.
+        """
         if self.camp_sig is None:
             raise StepFailed("rest needs camp first")
         self.ensure_camp()
