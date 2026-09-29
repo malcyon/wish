@@ -2198,10 +2198,22 @@ class Session:
         before = self.status()
         # No square on the status line means only the live square at `$C04B`
         # can say whether a key took, and a resent key would step again.
-        squareless = before is None and self._status_has_no_square()
+        squareless = False
+        if (before is None and self._status_has_no_square()
+                and self.machine.live_position is not None):
+            try:
+                before = self.steady_triple()
+                squareless = True
+            except (OSError, MonitorError) as e:
+                self.log(f"  live square unreadable, judging by the screen: {e}")
         if squareless:
+            if before is None:
+                self.walk_refused = (
+                    f"the driver pressed nothing for {move}: the live square "
+                    f"never steadied before the key; this is a driver error, "
+                    f"not a wall")
+                return False
             tries = 1
-            before = self.steady_triple()
         sent = False
         for _ in range(tries):
             s = self.screen()
@@ -2254,8 +2266,12 @@ class Session:
                 return False
             self.walk_screens = (self.walk_screens[0], self._rows(after))
             if squareless:
-                now = self.steady_triple()
-                moved = before is not None and now is not None and now != before
+                try:
+                    now = self.steady_triple()
+                except (OSError, MonitorError) as e:
+                    self.log(f"  live square unreadable after the key: {e}")
+                    now = None
+                moved = now is not None and now != before
             else:
                 moved = self.status() != before
             if moved:
@@ -2273,9 +2289,10 @@ class Session:
         return False
 
     def _status_has_no_square(self) -> bool:
-        """True when the screen carries a facing and a time but no square."""
+        """True when the status row (14) carries a facing and a time but no
+        square."""
         s = self.screen()
-        return s is not None and bool(RE_SQUARELESS_STATUS.search(s.text()))
+        return s is not None and bool(RE_SQUARELESS_STATUS.search(s.row(14)))
 
     #: The word `walk_one` answers on an encounter menu it stopped at, or None
     #: to answer nothing.  An attribute, beside `walk_expired`, so a subclass's

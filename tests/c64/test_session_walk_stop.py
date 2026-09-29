@@ -155,24 +155,39 @@ def test_a_blank_row_24_throughout_presses_no_return(monkeypatch):
     assert "never brought up" in sess.walk_refused
 
 
-class Squareless(Fake):
-    """A status line of facing and time only (`N 4:00`); `$C04B` is `triples`,
-    read in order, the last repeating, and advances when a key is sent."""
+class Machine:
+    live_position = 0xC04B
 
-    def __init__(self, monkeypatch, moves):
-        super().__init__(monkeypatch, (SUBBAR, ["N 4:00"]))
+
+class Squareless(Fake):
+    """A status line of facing and time only (`N 4:00`, on row 14); `$C04B` is
+    `square`, and becomes `moved_to` once a direction key is sent."""
+
+    machine = Machine()
+
+    def __init__(self, monkeypatch, moves=True, moved_to=(5, 4, 0),
+                 line="N 4:00", first=None):
+        super().__init__(monkeypatch, first or (SUBBAR, []),
+                         after_return=(WORLD, []))
+        self.current.rows[14] = line
         self.status = lambda: None
         self.moves = moves
+        self.moved_to = moved_to
         self.square = (5, 5, 0)
+        self.left = 0
 
     def steady_triple(self, seconds=1.0):
         if self.ticks and self.moves:
-            return (5, 4, 0)
+            return self.moved_to
         return self.square
+
+    def leave_move(self, *a, **k):
+        self.left += 1
+        return True
 
 
 def test_a_squareless_status_line_judges_the_step_by_the_live_square(monkeypatch):
-    sess = Squareless(monkeypatch, moves=True)
+    sess = Squareless(monkeypatch)
     assert sess.walk_one("I") is True
     assert sess.keys.count("i") == 1
 
@@ -181,3 +196,89 @@ def test_a_squareless_step_that_does_not_move_is_not_resent(monkeypatch):
     sess = Squareless(monkeypatch, moves=False)
     assert sess.walk_one("I") is False
     assert sess.keys.count("i") == 1
+
+
+def test_a_turn_alone_counts_as_moved(monkeypatch):
+    sess = Squareless(monkeypatch, moved_to=(5, 5, 1))
+    assert sess.walk_one("J") is True
+    assert sess.keys.count("j") == 1
+
+
+def test_a_squareless_move_leaves_the_sub_bar_like_the_old_path(monkeypatch):
+    sess = Squareless(monkeypatch)
+    assert sess.walk_one("I") is True
+    assert sess.left == 1
+    blocked = Squareless(monkeypatch, moves=False)
+    assert blocked.walk_one("I") is False
+    assert blocked.left == 1
+
+
+def test_an_unsteady_square_before_the_key_presses_nothing(monkeypatch):
+    sess = Squareless(monkeypatch)
+    sess.steady_triple = lambda seconds=1.0: None
+    assert sess.walk_one("I") is False
+    assert sess.keys == []
+    assert "never steadied" in sess.walk_refused
+    assert "driver error" in sess.walk_refused
+
+
+def test_no_live_position_keeps_the_old_retries(monkeypatch):
+    sess = Squareless(monkeypatch)
+    sess.machine = type("M", (), {"live_position": None})()
+    assert sess.walk_one("I", tries=3) is False
+    assert sess.keys.count("i") == 3
+
+
+def test_an_unreadable_live_square_falls_back_to_the_old_retries(monkeypatch):
+    sess = Squareless(monkeypatch)
+
+    def broken(seconds=1.0):
+        raise OSError("monitor gone")
+
+    sess.steady_triple = broken
+    assert sess.walk_one("I", tries=3) is False
+    assert sess.keys.count("i") == 3
+
+
+def _not_taken(monkeypatch, **kw):
+    sess = Squareless(monkeypatch, moves=False, **kw)
+
+    def forbidden(seconds=1.0):
+        raise AssertionError("the squareless branch was taken")
+
+    sess.steady_triple = forbidden
+    assert sess.walk_one("I", tries=3) is False
+    assert sess.keys.count("i") == 3
+
+
+def test_a_squared_status_line_does_not_take_the_branch(monkeypatch):
+    _not_taken(monkeypatch, line="E 4:00 7,28")
+
+
+def test_a_letter_and_time_off_the_status_row_do_not_take_the_branch(monkeypatch):
+    sess = Squareless(monkeypatch, moves=False, line="")
+    sess.current.rows[10] = "N 4:00"
+    sess.current.rows[20] = "S 12:30"
+
+    def forbidden(seconds=1.0):
+        raise AssertionError("the squareless branch was taken")
+
+    sess.steady_triple = forbidden
+    assert sess.walk_one("I", tries=3) is False
+    assert sess.keys.count("i") == 3
+
+
+def test_a_menu_or_combat_screen_does_not_take_the_branch(monkeypatch):
+    for bar, lines in ((TEMPLE[0], TEMPLE[1] + ["N 4:00"]),
+                       (FIGHT[0], ["E 9:15"])):
+        sess = Squareless(monkeypatch, moves=False, line="",
+                          first=(SUBBAR, []))
+        sess.current = screen((SUBBAR, lines))
+        sess.current.rows[15] = bar
+
+        def forbidden(seconds=1.0):
+            raise AssertionError("the squareless branch was taken")
+
+        sess.steady_triple = forbidden
+        assert sess.walk_one("I", tries=2) is False
+        assert sess.keys.count("i") == 2
