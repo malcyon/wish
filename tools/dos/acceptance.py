@@ -3967,13 +3967,15 @@ def share_verdict(read: dict | None) -> str | None:
 
 
 def expect_verdict(read: dict | None) -> str | None:
-    """Why an `--expect` the run stated was refuted by the last saved slot, or None."""
+    """Why each `--expect` the run stated was refuted by the last saved slot, or None."""
+    refuted = []
     for v in (read or {}).get("verdicts", []):
         if v["verdict"] == "refutes":
             e = v["expect"]
-            return (f"expectation {e['name']}:{e['id']}:{e['minutes']} refuted: "
-                    f"{v['why']}")
-    return None
+            data = "" if e.get("data") is None else f":{e['data']}"
+            refuted.append(f"expectation {e['name']}:{e['id']}:{e['minutes']}{data} "
+                           f"refuted: {v['why']}")
+    return "; ".join(refuted) or None
 
 
 def walk_verdict(steps: list[Step], read: dict | None) -> str | None:

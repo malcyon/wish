@@ -1933,7 +1933,7 @@ def _raised_after(guy_control=0, nodes=True, name="WISHFTR"):
         {"name": "GUY", "control": guy_control, "treasure_share": 0, "nodes": []}]}
 
 
-_ANIMATE = ["cast 1 ANIMATE-DEAD"]
+_ANIMATE_STEPS = ["cast 1 ANIMATE-DEAD"]
 
 
 def _animated(steps, expects, slot):
@@ -1942,7 +1942,7 @@ def _animated(steps, expects, slot):
 
 
 def test_the_member_an_animate_dead_run_raised_may_change_control_to_179():
-    animated = _animated(_ANIMATE, ["wishftr:32:0"], _raised_after())
+    animated = _animated(_ANIMATE_STEPS, ["wishftr:32:0"], _raised_after())
     rows = {r["name"]: r for r in da.compare_shares(
         _RAISED_BEFORE, _raised_after(), animated)}
     assert rows["WISHFTR"]["matches"] is True
@@ -1954,13 +1954,13 @@ def test_the_member_an_animate_dead_run_raised_may_change_control_to_179():
 def test_a_mixed_case_roster_name_is_exempt():
     slot = _raised_after(name="Wishftr")
     before = {"characters": [{"name": "Wishftr", "control": 0, "treasure_share": 1}]}
-    animated = _animated(_ANIMATE, ["WISHFTR:32:0"], slot)
+    animated = _animated(_ANIMATE_STEPS, ["WISHFTR:32:0"], slot)
     assert da.compare_shares(before, slot, animated)[0]["matches"] is True
 
 
 def test_another_members_control_change_still_fails_in_an_animate_dead_run():
     slot = _raised_after(guy_control=179)
-    animated = _animated(_ANIMATE, ["WISHFTR:32:0"], slot)
+    animated = _animated(_ANIMATE_STEPS, ["WISHFTR:32:0"], slot)
     rows = {r["name"]: r for r in da.compare_shares(_RAISED_BEFORE, slot, animated)}
     assert rows["GUY"]["matches"] is False
 
@@ -1974,13 +1974,13 @@ def test_a_run_without_an_animate_dead_step_fails_on_any_control_change():
 
 def test_a_refuted_id_32_expectation_exempts_nobody():
     slot = _raised_after(nodes=False)
-    assert _animated(_ANIMATE, ["WISHFTR:32:0"], slot) == set()
+    assert _animated(_ANIMATE_STEPS, ["WISHFTR:32:0"], slot) == set()
 
 
 def test_an_expectation_for_another_node_exempts_nobody():
     slot = _raised_after()
     slot["characters"][0]["nodes"].append({"id": 5, "minutes": 9, "data": 0})
-    assert _animated(_ANIMATE, ["WISHFTR:5:9"], slot) == set()
+    assert _animated(_ANIMATE_STEPS, ["WISHFTR:5:9"], slot) == set()
 
 
 def test_the_raised_member_may_not_change_share_or_take_another_control():
@@ -2004,7 +2004,7 @@ def test_read_step_exempts_the_raised_member_and_the_run_passes(monkeypatch, tmp
         "slot": letter, "clock": [0] * 6, "clock_minutes": 0,
         **slots["installed" if folder.name == "installed" else "resave"]})
     got = da.read_step(tmp_path / "save", tmp_path / "out", "A", ["D"],
-                       [da.parse_step(t) for t in _ANIMATE],
+                       [da.parse_step(t) for t in _ANIMATE_STEPS],
                        [da.parse_expect("WISHFTR:32:0")])
     assert got["verdicts"][0]["verdict"] == "accepts"
     assert da.share_verdict(got) is None and da.expect_verdict(got) is None
@@ -2019,7 +2019,7 @@ def test_a_refuted_expectation_fails_the_run_and_exempts_nobody(monkeypatch, tmp
         "slot": letter, "clock": [0] * 6, "clock_minutes": 0,
         **slots["installed" if folder.name == "installed" else "resave"]})
     got = da.read_step(tmp_path / "save", tmp_path / "out", "A", ["D"],
-                       [da.parse_step(t) for t in _ANIMATE],
+                       [da.parse_step(t) for t in _ANIMATE_STEPS],
                        [da.parse_expect("WISHFTR:32:0")])
     assert "WISHFTR" in da.expect_verdict(got)
     assert "WISHFTR" in da.share_verdict(got)
@@ -5238,6 +5238,14 @@ def test_a_run_whose_expectation_the_read_refutes_is_lost(monkeypatch, tmp_path)
     _walk_run(monkeypatch, tmp_path, read)
     assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 1
     assert "WISHFTR:32:0 refuted" in _summary(tmp_path)["lost"]
+
+
+def test_every_refuted_expectation_is_named_with_its_data():
+    def refuted(name, data):
+        return {"expect": {"name": name, "id": 32, "minutes": 0, "data": data},
+                "verdict": "refutes", "why": "no node"}
+    got = da.expect_verdict({"verdicts": [refuted("A", None), refuted("B", 7)]})
+    assert "A:32:0 refuted" in got and "B:32:0:7 refuted" in got
 
 
 # -- the signal, the interrupt and the wrapper's margin --------------------------
