@@ -132,14 +132,21 @@ def clear_bars(sess, log: Log, answers=("STAY", "NO"), seconds: float = 180.0,
             continue
         if sess.handle_prompt(s):
             continue
-        if stop_on_encounter and encounter_row(sess, log) is not None:
-            return "encounter"
         row = s.row(24)
+        indoors_read = []                   # one `$49E6` read per pass, if any
+
+        def indoors_now():
+            if not indoors_read:
+                indoors_read.append(_read_indoors(sess, log))
+            return indoors_read[0]
+
+        if stop_on_encounter and encounter_menu(row, indoors_now()) is not None:
+            return "encounter"
         if ("MOVE" in row and "ENCAMP" in row) or S.OUTDOOR_PROMPT in row:
             # `is (not want_outdoors)` rather than `is not want_outdoors`, so
             # a failed read -- `Session.indoors` answers None for one -- waits
             # rather than counting as an arrival.
-            if want_outdoors is None or sess.indoors() is (not want_outdoors):
+            if want_outdoors is None or indoors_now() is (not want_outdoors):
                 return "world"
         if "PRESS" in row:
             sess.kbd.key("Return")
@@ -416,32 +423,43 @@ def encounter_bar(sess, log: Log | None = None) -> str | None:
     return None if row is None else row.strip()
 
 
-def encounter_row(sess, log: Log | None = None) -> str | None:
-    """Row 24 when it is an encounter menu on the travel grid, else None.
+def _read_indoors(sess, log: Log | None = None):
+    """`Session.indoors`, or None when the read failed (logged).
 
-    A failed `$49E6` read counts as no encounter for this look and is logged,
-    as `probes` does: `Session.indoors` raises on a monitor timeout, and one
-    transient timeout must not end a run minutes after its boot.
+    `Session.indoors` raises on a monitor timeout, and one transient timeout
+    must not end a run minutes after its boot.
     """
-    s = sess.screen()
-    if s is None:
-        return None
     try:
-        indoors = sess.indoors()
+        return sess.indoors()
     except Exception as exc:
         if log is not None:
             log.say(f"  the indoors read failed: {type(exc).__name__}: {exc}")
             log.emit("indoors_read_failed",
                      error=f"{type(exc).__name__}: {exc}")
         return None
+
+
+def encounter_menu(row: str, indoors) -> str | None:
+    """`row` (screen row 24) when it is an encounter menu on the travel grid, else None.
+
+    Anything but a definite `indoors is False`, including a failed read, is
+    no encounter for this look.
+    """
     if indoors is not False:
         return None
-    row = s.row(24)
     if S.OUTDOOR_PROMPT in row or S.word_column(row, S.ENCOUNTER_FIGHT) < 0:
         return None
     if all(S.word_column(row, w) < 0 for w in ENCOUNTER_OTHERS):
         return None
     return row
+
+
+def encounter_row(sess, log: Log | None = None) -> str | None:
+    """Row 24 when it is an encounter menu on the travel grid, else None."""
+    s = sess.screen()
+    if s is None:
+        return None
+    return encounter_menu(s.row(24), _read_indoors(sess, log))
 
 
 def encounter_after_press(sess, looks: int = 3, gap: float = 1.0,
@@ -637,12 +655,25 @@ def walk_moves(args, sess, log: Log, moves: str, step: int, after_step) -> int:
                  before=before, after=after)
         time.sleep(1.0)
         moved_square = before.get("travel_49C3") != after.get("travel_49C3")
+        fought_before = args.encounters
         answered, reason = answer_disk_prompt(args, sess, log, step,
                                               moved=moved_square)
+        # `answer_disk_prompt` counts an encounter it fights, so a rise says it did.
+        fought = args.encounters > fought_before
+        if fought:
+            # Same look as after a fight of the walk's own: the first travel
+            # tick before any key.
+            step += 1
+            after_step(step)
         if reason is not None:
             args.stopped = reason
-            after_step(step)
+            if not fought:
+                after_step(step)
             break
+        if fought:
+            continue
+        # An encounter only fires on a step that moved, so a fight means the
+        # press was not eaten.
         if answered and _prompt_ate_the_press(sess, log, before, step):
             log.emit("walk_repeated", move=move, step=step)
             sess.walk_one(move)

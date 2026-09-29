@@ -581,7 +581,47 @@ def test_an_encounter_after_a_disk_answer_is_fought_and_the_walk_resumes(monkeyp
     assert log.of("encounter")[0]["bar"] == ENCOUNTER
     assert log.of("encounter_outcome")[0]["outcome"] == S.WON
     assert log.of("encounter_grid")[0]["outcome"] == "world"
-    assert seen == [1, 2, 3]                        # a look once the walk resumes
+    assert seen == [1, 3, 4]                        # a look right after the fight
+
+
+def test_an_encounter_at_a_prompt_is_not_taken_for_an_eaten_press(monkeypatch, tmp_path):
+    fake_clock(monkeypatch)
+    side = tmp_path / "SIDE6.D64"
+    side.write_bytes(b"")
+    sess, log = EncounterAfterDiskSess(side, moves_on_prompt=False), Log()
+    M.walk_moves(args(), sess, log, "77", 0, lambda n: None)
+    assert len(sess.fights) == 1 and sess.presses == ["7", "7"]
+    assert not log.of("walk_repeated") and not log.of("walk_repeat_unread")
+
+
+def test_the_encounter_cap_holds_after_a_disk_answer(monkeypatch, tmp_path):
+    fake_clock(monkeypatch)
+    side = tmp_path / "SIDE6.D64"
+    side.write_bytes(b"")
+    sess, log = EncounterAfterDiskSess(side), Log()
+    a = args(encounters=M.MAX_ENCOUNTERS)
+    M.walk_moves(a, sess, log, "777", 0, lambda n: None)
+    assert a.stopped == "the encounter limit was reached"
+    assert sess.fights == [] and log.of("encounter")[0]["handled"] == "stop"
+
+
+def test_a_wait_reads_indoors_once_a_pass_from_the_one_screen(monkeypatch):
+    fake_clock(monkeypatch)
+    sess = Sess()
+    sess.row = ENCOUNTER
+    reads = {"screen": 0, "indoors": 0}
+    real_screen, real_indoors = sess.screen, sess.indoors
+
+    def screen():
+        reads["screen"] += 1
+        return real_screen()
+
+    def indoors():
+        reads["indoors"] += 1
+        return real_indoors()
+    sess.screen, sess.indoors = screen, indoors
+    got = M.clear_bars(sess, Log(), want_outdoors=True, stop_on_encounter=True)
+    assert got == "encounter" and reads == {"screen": 1, "indoors": 1}
 
 
 def test_a_stop_after_a_disk_answer_leaves_the_encounter_alone(monkeypatch, tmp_path):
