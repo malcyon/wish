@@ -2653,20 +2653,16 @@ class PoolRun:
             # A `PRESS` bar after a move key with no encounter menu is an
             # ambush's narration, or a square's text: it is answered like an
             # arrival's, and a fight that opens behind it is fought below.
-            screen = sess.screen()
-            if screen is not None and sess.combat_state(screen).kind == S.BAR_PRESS:
-                ambush = True
-                self.leave_arrival(self.walk_verb)
+            ambush = self._answer_press_bar()
         if stop is None:
-            look_until = self.clock() + LOOK_SECONDS
-            while not sess.in_combat():
-                self.budget(1, f"{self.walk_verb} {route}")
-                self.refuse_prompt(route, last, "ran the square's event")
-                if self.clock() >= look_until:
-                    break
-                time.sleep(0.3)
+            self._look_for_fight(route, last)
             if not sess.in_combat():
                 stop = sess.walk_stop(wait=12.0)
+            if stop is None and not sess.in_combat() and self._answer_press_bar():
+                # A bar that drew after the first look, which `walk_stop`
+                # counts as recognised.
+                ambush = True
+                self._look_for_fight(route, last)
         if stop is not None:
             self._answer_stop(route, n, move, before, stop, pressed, answer,
                               word)
@@ -2695,7 +2691,8 @@ class PoolRun:
         if not sess.in_combat():
             # An ambush that left the world bar on the same square is sent
             # again by the caller, once, rather than judged as a wrong square.
-            return unread or ambush
+            return unread or (ambush and self.took_nothing(
+                before, before_rows, screens))
         number = len(fights)
         self.capture(f"fight-{number}-start")
         result = sess.fight(budget=WALK_FIGHT_SECONDS, tactic=S.Session.melee_turn)
@@ -2707,13 +2704,33 @@ class PoolRun:
         self.to_world()
         fights.append({"at_move": n, "square": self.position(),
                        **dataclasses.asdict(result)})
-        if flees is not None and ambush and word == ENCOUNTER_FLEE:
-            # No menu offered FLEE, so this fight could not be fled.
+        if flees and flees[-1]["at_move"] == n:
+            if flees[-1]["fight"] is None:
+                flees[-1]["fight"] = fights[-1]
+        elif flees is not None and ambush and word == ENCOUNTER_FLEE:
+            # No menu was answered FLEE for this move, so this fight could
+            # not be fled.
             flees.append({"at_move": n, "escaped": False, "ambush": True,
                           "fight": fights[-1]})
-        elif flees and flees[-1]["at_move"] == n and flees[-1]["fight"] is None:
-            flees[-1]["fight"] = fights[-1]
         return True
+
+    def _answer_press_bar(self) -> bool:
+        """Answer a `PRESS` bar if one is up, and say whether it was."""
+        screen = self.sess.screen()
+        if screen is None or self.sess.combat_state(screen).kind != S.BAR_PRESS:
+            return False
+        self.leave_arrival(self.walk_verb)
+        return True
+
+    def _look_for_fight(self, route, last) -> None:
+        """Watch `LOOK_SECONDS` for a fight to open."""
+        look_until = self.clock() + LOOK_SECONDS
+        while not self.sess.in_combat():
+            self.budget(1, f"{self.walk_verb} {route}")
+            self.refuse_prompt(route, last, "ran the square's event")
+            if self.clock() >= look_until:
+                break
+            time.sleep(0.3)
 
     def _answer_stop(self, route, n, move, before, rows, pressed, answer,
                      word=S.ENCOUNTER_FIGHT) -> None:

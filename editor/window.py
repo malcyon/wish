@@ -2353,7 +2353,8 @@ class EditorBinding(QObject):
                          if self.party.port == "c64"
                          and self.party.save1 is not None else None)
         payload_before = (self.party.save0.to_bytes()
-                          if roster_before is not None else None)
+                          if self.party.port == "c64"
+                          and self.party.save0 is not None else None)
         try:
             written = self._write_back()
             if self.party.port == "dos":
@@ -2363,13 +2364,14 @@ class EditorBinding(QObject):
                                        self.backup_dir())
         except Exception as exc:
             _log.exception("could not save %s", self.path)
+            # `write_movement` changed the roster in memory before the write
+            # failed; a later revert-and-save must compare against what is on
+            # disk, not against this attempt.
             if roster_before is not None:
-                # `write_movement` changed the roster in memory before the
-                # write failed; a later revert-and-save must compare against
-                # what is on disk, not against this attempt.
                 self.party.save1 = SaveGame1(roster_before, self.party.game)
-                # `_write_back` rebuilt `save0` (icons, items, and the roster
-                # page folded in) before the write failed.
+            # `_write_back` rebuilt `save0` (icons, items, and the roster page
+            # folded in) before the write failed.
+            if payload_before is not None:
                 self.party.save0 = SaveGame0.from_bytes(
                     payload_before, self.party.game)
             if interactive:

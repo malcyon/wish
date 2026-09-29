@@ -6422,11 +6422,24 @@ class AmbushWalk(FightWalk):
                                         ARRIVAL_BAR)
         self.moves[("press", ("key", 0x0D))] = "world"
         self.opens_fight = False
+        self.menu_after = False
+        self.late_reads = None
+
+    def screen(self):
+        if self.late_reads is not None:
+            self.late_reads -= 1
+            if self.late_reads <= 0:
+                self.late_reads, self.state = None, "press"
+        return super().screen()
 
     def walk_one(self, move, *a, **k):
         event = self.script.get(self.calls)
         before = (self.x, self.y)
         moved = super().walk_one(move, *a, **k)
+        if event == "late-ambush":
+            self.late_reads, self.opens_fight = 6, True
+        if event == "ambush-menu":
+            self.state, self.menu_after = "press", True
         if event in ("ambush", "ambush-stay"):
             self.state = "press"
             self.opens_fight = event == "ambush"
@@ -6438,6 +6451,8 @@ class AmbushWalk(FightWalk):
         super().press_kernal(code)
         if self.opens_fight:
             self.combat, self.opens_fight = True, False
+        if self.menu_after:
+            self.pending, self.menu_after = _stop_rows(self.ENCOUNTER), False
 
 
 @pytest.mark.parametrize("verb", ["walk_fight", "walk_flee"])
@@ -6465,6 +6480,42 @@ def test_an_ambush_press_bar_that_returns_to_the_same_square_sends_the_move_agai
     assert sess.pressed == ["I", "I"]
     assert got["moves"][0]["resent"] is True
     assert got["position"] == [5, 4, 0] and got["fights"] == []
+
+
+def test_a_press_bar_that_draws_after_the_first_look_is_answered_and_fought(
+        tmp_path, monkeypatch):
+    sess = AmbushWalk({0: "late-ambush"})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_fight("II")
+    log.close()
+    assert sess.sent == [("key", 0x0D)]
+    assert [f["at_move"] for f in got["fights"]] == [0]
+    assert sess.pressed == ["I", "I"]
+
+
+def test_a_narration_page_then_a_flee_menu_records_one_flee_with_its_fight(
+        tmp_path, monkeypatch):
+    sess = AmbushWalk({0: "ambush-menu"})
+    sess.flee_fails = True
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_flee("I")
+    log.close()
+    assert sess.selected == ["FLEE"]
+    assert len(got["flees"]) == 1
+    flee = got["flees"][0]
+    assert flee["fight"] == got["fights"][0] and "ambush" not in flee
+    assert flee["before"] == [5, 5, 0] and flee["after"] == [5, 4, 0]
+
+
+def test_an_ambush_page_on_a_square_the_party_entered_is_not_sent_again(
+        tmp_path, monkeypatch):
+    sess = AmbushWalk({0: "ambush-stay"})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    run.took_nothing = lambda *a: False
+    with pytest.raises(A.StepFailed, match="left the party on"):
+        run.walk_fight("I")
+    log.close()
+    assert sess.pressed == ["I"]
 
 
 def test_walk_flee_parses_and_is_refused_for_curse_and_silver_blades(
