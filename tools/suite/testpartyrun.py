@@ -322,22 +322,29 @@ def plan_fight_route(new_phlan, slums, start, target):
 def walk_route(sess, log: Log, path, facing: int, leg: str):
     """Walk `path` one square at a time, answering prompts, and stop in combat.
 
-    Returns `(facing, stopped_at)`; `stopped_at` is the planned square being
-    stepped to when combat was found, or None if the path finished.  Facing is
-    tracked from the keys sent, as `geowalk.keys_for` does, because the
-    Slums' status line carries no coordinates to check a step against.
+    Returns `(facing, stopped_at, desync)`.  `stopped_at` is the planned square
+    a fight was found on, or None if the path finished; a fight found after the
+    turn key of a two-key step belongs to the square the party was still on.
+    `desync` is None, or the first key `walk_one` reported as not moved with
+    the planned step -- the walk stops there, because every key after a
+    refused one was planned from a square the party is not on.  Facing is
+    tracked from the keys sent, as `geowalk.keys_for` does, because the Slums'
+    status line carries no coordinates to check a step against.
     """
     for here, there in zip(path, path[1:]):
         keys = geowalk.keys_for([here, there], facing)
         facing = geowalk.STEP.index((there[0] - here[0], there[1] - here[1]))
-        for key in keys:
-            moved = sess.walk_one(key.upper())
+        for n, key in enumerate(keys):
+            moved = bool(sess.walk_one(key.upper()))
             sess.handle_prompt()
-            log.emit("route_key", leg=leg, key=key, to=list(there),
-                     moved=bool(moved))
+            log.emit("route_key", leg=leg, key=key, to=list(there), moved=moved)
             if sess.in_combat():
-                return facing, there
-    return facing, None
+                last = n == len(keys) - 1
+                return facing, (there if last and moved else here), None
+            if not moved:
+                return facing, None, {"leg": leg, "key": key,
+                                      "from": list(here), "to": list(there)}
+    return facing, None, None
 
 
 def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
@@ -345,7 +352,9 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
     """New Phlan to the Slums and on to `target`, stopping in combat.
 
     A fight found before `target` (the Slums roll a wandering fight on
-    unscripted squares) is logged as on the way, not as the target.
+    unscripted squares) is logged as on the way, not as the target.  A key the
+    game did not act on ends the walk with `desynced` set, and `at_target` is
+    only ever true for a walk on which every key moved.
     """
     start = sess.position()
     if start[2] is None:
@@ -356,10 +365,23 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
     log.say(f"  {len(first) - 1} steps to {NEW_PHLAN_EXIT}, then "
             f"{len(second) - 1} in the Slums to {tuple(target)}")
     sess.walk_encounter = S.ENCOUNTER_FIGHT
-    facing, hit = walk_route(sess, log, first, start[2], "new-phlan")
+    facing, hit, desync = walk_route(sess, log, first, start[2], "new-phlan")
     leg = "new-phlan"
-    if hit is None:
-        moved = sess.walk_one("I")
+    if hit is None and desync is None:
+        at = tuple(sess.position()[:2])
+        if at != tuple(first[-1]):
+            raise RuntimeError(f"the party is at {at}, not the planned "
+                               f"{tuple(first[-1])}, at the edge")
+        # `ECL00` entry 0 is on the west edge, so the step must face west.
+        keys = geowalk.keys_for([NEW_PHLAN_EXIT, (-1, NEW_PHLAN_EXIT[1])],
+                                facing)
+        if keys == ["m"]:
+            raise RuntimeError("the party is facing east, away from the edge "
+                               "it must step off")
+        for key in keys[:-1]:
+            sess.walk_one(key.upper())
+            sess.handle_prompt()
+        moved = sess.walk_one(keys[-1].upper())
         sess.handle_prompt()
         sess.settle(3)
         area = resident_area(sess, log)
@@ -369,23 +391,26 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
             raise RuntimeError(f"expected area {SLUMS_AREA} after the edge, "
                                f"read {area}")
         leg = "slums"
-        # `ECL00` entry 0 steps forward, so the party keeps its facing.
-        facing, hit = walk_route(sess, log, second, facing, "slums")
+        # `ECL00` entry 0 steps forward, so the party leaves facing west.
+        west = geowalk.STEP.index((-1, 0))
+        facing, hit, desync = walk_route(sess, log, second, west, "slums")
     fighting = bool(sess.in_combat())
     began = list(hit) if hit else None
-    at_target = fighting and hit == tuple(target)
+    at_target = fighting and desync is None and hit == tuple(target)
     log.emit("walked", leg=leg, in_combat=fighting, began_at=began,
-             at_target=at_target)
+             at_target=at_target, desynced=desync)
     log.say(f"  in combat: {fighting}; began at {began}; "
-            f"{'the target' if at_target else 'not the target'}")
+            f"{'the target' if at_target else 'not the target'}"
+            + (f"; a key did not move the party: {desync}" if desync else ""))
     if fighting:
         sess.settle(2)
         dump(sess, out, log, "combat-icon")
-    return {"in_combat": fighting, "began_at": began, "at_target": at_target}
+    return {"in_combat": fighting, "began_at": began, "at_target": at_target,
+            "desynced": desync}
 
 
 def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150,
-                 fight_at=None) -> dict:
+                 fight_at=None, maps=None) -> dict:
     """Walk until the party is ambushed, and photograph the fight.
 
     Wall-following rather than a fixed pattern: go forward while it works,
@@ -398,13 +423,11 @@ def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150,
     signal to turn.
 
     `fight_at` is a Slums square `(x, y)`: the walk is then planned from the
-    map files to that square instead of wandering (`walk_to_fight`).
+    map files to that square instead of wandering (`walk_to_fight`); `maps` is
+    the New Phlan and Slums `Geo` pair, loaded by the caller before the boot.
     """
     if fight_at is not None:
-        return walk_to_fight(
-            sess, log, out, fight_at,
-            geowalk.load_geo("GEO00", "pool-of-radiance"),
-            geowalk.load_geo("GEO14", "pool-of-radiance"))
+        return walk_to_fight(sess, log, out, fight_at, *maps)
     taken = 0
     turn = "J"
     sess.walk_encounter = S.ENCOUNTER_FIGHT
@@ -456,14 +479,21 @@ def main(argv=None) -> int:
     if args.fight_at is not None:
         try:
             fight_at = tuple(int(v) for v in args.fight_at.split(","))
-            assert len(fight_at) == 2 and all(0 <= v < 16 for v in fight_at)
-        except (ValueError, AssertionError):
-            p.error("--fight-at takes X,Y, each 0 to 15")
+        except ValueError:
+            fight_at = ()
+        if len(fight_at) != 2 or not all(0 <= v < 16 for v in fight_at):
+            raise SystemExit("--fight-at takes X,Y, each 0 to 15")
 
     disks = pathlib.Path(args.disks) if args.disks else DISKS
     if disks is None:
         raise SystemExit("No game disks found. Set $POR_DISKS.")
     out = pathlib.Path(args.out) if args.out else scratch.scratch_dir("testpartyrun", "run")
+    # Both maps are read before the emulator boots, so a missing disk fails
+    # here rather than after the slow part of the run.
+    maps = None
+    if fight_at is not None:
+        maps = (geowalk.load_geo("GEO00", "pool-of-radiance"),
+                geowalk.load_geo("GEO14", "pool-of-radiance"))
     log = Log(out, args.quiet)
     log.emit("start", disk=str(args.disk), sides=str(disks))
 
@@ -541,7 +571,8 @@ def main(argv=None) -> int:
                          "TWO-HANDED SWORD", "LONG SWORD", "SHIELD"])
         if args.full or args.fight_only or fight_at:
             log.say("picking a fight ...")
-            findings["fight"] = pick_a_fight(sess, log, out, fight_at=fight_at)
+            findings["fight"] = pick_a_fight(sess, log, out, fight_at=fight_at,
+                                            maps=maps)
             (out / "findings.json").write_text(json.dumps(findings, indent=1))
     except Exception as exc:                       # noqa: BLE001
         log.emit("error", why=repr(exc))

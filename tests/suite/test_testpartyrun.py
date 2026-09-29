@@ -9,9 +9,13 @@ import pathlib
 
 import pytest
 from conftest import load_tools_module
+from gamedata import synthetic_geo
+
+from goldbox.geo import ATTRIBUTES, GRID, Geo
+from tools.areas import geowalk
+from tools.suite import testpartyrun as T
 
 S = load_tools_module("session")
-from tools.suite import testpartyrun as T  # noqa: E402
 
 
 class Screen:
@@ -85,11 +89,6 @@ def test_pick_a_fight_takes_an_encounter_menu_as_the_fight(monkeypatch):
 
 # -- `--fight-at`: the route is planned from the map files -------------------
 
-from gamedata import synthetic_geo  # noqa: E402
-
-from goldbox.geo import ATTRIBUTES, GRID, Geo  # noqa: E402
-
-
 def _geo(ids=None):
     raw = bytearray(synthetic_geo())
     for (x, y), value in (ids or {}).items():
@@ -116,19 +115,25 @@ def test_plan_refuses_when_a_scripted_column_cuts_off_the_goal():
 
 
 class WalkSession(PatrolSession):
-    """Fights when the party has sent `fight_after` keys."""
+    """Fights when the party has sent `fight_after` keys; refuses the keys
+    numbered in `refuse` (1-based); stands at `start` until `arrive_after`
+    keys have been sent, then on the New Phlan exit."""
 
-    def __init__(self, monkeypatch, fight_after=None, area=20):
+    def __init__(self, monkeypatch, fight_after=None, area=20, refuse=(),
+                 start=(3, 4, 3), arrive_after=None):
         super().__init__(monkeypatch)
         self.keys, self.fight_after, self.area = [], fight_after, area
+        self.refuse, self.start, self.arrive_after = refuse, start, arrive_after
 
     def walk_one(self, key, *a, **k):
         self.keys.append(key)
         self.fighting = self.fight_after == len(self.keys)
-        return True
+        return len(self.keys) not in self.refuse
 
     def position(self):
-        return (3, 4, 3)
+        if self.arrive_after is not None and len(self.keys) >= self.arrive_after:
+            return (*T.NEW_PHLAN_EXIT, 3)
+        return self.start
 
 
 class RecordingLog(Log):
@@ -139,13 +144,16 @@ class RecordingLog(Log):
         self.events.append((kind, what))
 
 
-def _walk(monkeypatch, fight_after, area=20):
-    from tools.c64 import hallmenu
+def _walk(monkeypatch, fight_after, area=20, refuse=(), start=(3, 4, 3),
+          arrive=True):
     monkeypatch.setattr(T, "dump", lambda *a, **k: None)
     monkeypatch.setattr(T, "resident_area", lambda sess, log=None: sess.area)
-    sess = WalkSession(monkeypatch, fight_after, area)
+    first, _ = T.plan_fight_route(_geo(), _geo(), start[:2], (12, 4))
+    # A route of no keys leaves the party on its start, which is the exit.
+    arrive_after = max(1, len(geowalk.keys_for(first, start[2]))) if arrive else None
+    sess = WalkSession(monkeypatch, fight_after, area, refuse, start,
+                       arrive_after)
     log = RecordingLog()
-    assert hallmenu  # imported by the module under test
     got = T.walk_to_fight(sess, log, pathlib.Path("."), (12, 4), _geo(), _geo())
     return sess, log, got
 
@@ -155,7 +163,8 @@ def test_walk_to_fight_reaches_the_target_and_says_so(monkeypatch):
     # One key a square (facing west already), one for the edge.
     total = (len(first) - 1) + 1 + (len(second) - 1)
     sess, log, got = _walk(monkeypatch, fight_after=total)
-    assert got == {"in_combat": True, "began_at": [12, 4], "at_target": True}
+    assert got == {"in_combat": True, "began_at": [12, 4], "at_target": True,
+                   "desynced": None}
     assert ("edge", {"moved": True, "area": 20}) in log.events
 
 
@@ -163,6 +172,55 @@ def test_walk_to_fight_logs_a_fight_on_the_way_as_not_the_target(monkeypatch):
     sess, log, got = _walk(monkeypatch, fight_after=3)
     assert got["in_combat"] and got["at_target"] is False
     assert got["began_at"] is not None
+
+
+def test_a_route_that_finishes_with_no_fight_began_nowhere(monkeypatch):
+    sess, log, got = _walk(monkeypatch, fight_after=None)
+    assert got["in_combat"] is False
+    assert got["began_at"] is None and got["at_target"] is False
+
+
+def test_a_refused_step_stops_the_walk_and_is_never_the_target(monkeypatch):
+    first, second = T.plan_fight_route(_geo(), _geo(), (3, 4), (12, 4))
+    total = (len(first) - 1) + 1 + (len(second) - 1)
+    # Refuse a Slums step, with the fight on the very last key the plan sends:
+    # the party never got there, so it is not at the target.
+    refused = total - 2
+    sess, log, got = _walk(monkeypatch, fight_after=total, refuse={refused})
+    assert len(sess.keys) == refused
+    assert got["at_target"] is not True and got["desynced"]["leg"] == "slums"
+    assert got["desynced"]["to"] == list(second[refused - len(first)])
+
+
+def test_a_refused_new_phlan_step_never_presses_the_edge(monkeypatch):
+    sess, log, got = _walk(monkeypatch, fight_after=None, refuse={1})
+    assert sess.keys == ["I"]
+    assert got["desynced"]["leg"] == "new-phlan" and got["at_target"] is False
+    assert not [e for e in log.events if e[0] == "edge"]
+
+
+def test_a_fight_after_a_turn_key_is_on_the_square_the_party_left():
+    sess = WalkSession(pytest.MonkeyPatch(), fight_after=1)
+    # Facing west, the step north turns right first: `K`, then `I`.
+    got = T.walk_route(sess, RecordingLog(), [(5, 5), (5, 4)], 3, "slums")
+    assert sess.keys == ["K"] and got == (0, (5, 5), None)
+
+
+def test_the_edge_is_refused_when_the_party_is_not_where_it_planned(monkeypatch):
+    with pytest.raises(RuntimeError, match="planned"):
+        _walk(monkeypatch, fight_after=None, arrive=False)
+
+
+def test_the_edge_step_turns_west_first_when_the_last_step_was_not_west(
+        monkeypatch):
+    # From (0, 5) facing north the one step is north, so the edge needs `J`.
+    sess, log, got = _walk(monkeypatch, fight_after=None, start=(0, 5, 0))
+    assert sess.keys[:2] == ["I", "J"] and sess.keys[2] == "I"
+
+
+def test_the_edge_is_refused_when_the_party_faces_away_from_it(monkeypatch):
+    with pytest.raises(RuntimeError, match="facing"):
+        _walk(monkeypatch, fight_after=None, start=(0, 4, 1))
 
 
 def test_walk_to_fight_stops_when_the_edge_leaves_the_wrong_area(monkeypatch):
