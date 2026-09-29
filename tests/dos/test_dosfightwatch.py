@@ -270,3 +270,53 @@ def test_a_split_that_takes_less_than_the_rule_says_is_reported():
 def test_pile_mode_refuses_to_run_without_a_folder():
     with pytest.raises(SystemExit):
         dosfightwatch.main(["pile"])
+
+
+def test_two_bytes_tripped_by_one_word_write_are_both_classified():
+    ovr = _ovr()
+    script = _script(1000, 532)
+    # The fill's two byte hits and the split's two arrive in one halt each.
+    dbg = _Debugger(ovr, script, counts=(13, 7))
+    real_run = dbg.run
+
+    def run():
+        real_run()
+        if dbg.bp is None and dbg.events and dbg.events[0][3] == script[0][3]:
+            real_run()
+        elif dbg.bp is None and dbg.events and dbg.events[0][3] == script[2][3]:
+            real_run()
+    dbg.run = run
+    report = dosfightwatch.measure_split(
+        _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
+        walk=lambda por, steps: {"met": True})
+    assert all(h["phase"] for h in report["hits"])
+    assert report["pile"] == {"before": 1000, "after": 468}
+    assert report["taken"] == 532 and report["matches"] is True
+
+
+def test_a_ds_that_is_not_the_games_is_refused_and_the_override_skips_the_check():
+    ovr = _ovr()
+    dbg = _Debugger(ovr, [], counts=(13, 7))
+    base = dosboxx.linear((DS, dosfightwatch.PILE_BASE))
+    dbg.mem[base + 8:base + 12] = b"\x00\x00\x05\x00"      # a pile of 327,680
+    report = dosfightwatch.measure_split(
+        _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
+        walk=lambda por, steps: {"met": True})
+    assert "not the game's data segment" in report["why"]
+    assert not any(c.startswith("BPM") for c in dbg.commands)
+    dbg2 = _Debugger(ovr, [], counts=(13, 7))
+    dbg2.mem[base + 8:base + 12] = b"\x00\x00\x05\x00"
+    dosfightwatch.measure_split(_por(dbg2), ovr, steps=5, ds=DS,
+                                fight_kw={"settled": 0.0},
+                                walk=lambda por, steps: {"met": True})
+    assert any(c.startswith("BPM") for c in dbg2.commands)
+
+
+def test_a_count_breakpoint_that_never_fires_says_why(monkeypatch):
+    ovr = _ovr()
+    dbg = _Debugger(ovr, _script(1000, 532), counts=(13, 7))
+    monkeypatch.setattr(dosfightwatch, "count_fight", lambda por, brk: None)
+    report = dosfightwatch.measure_split(
+        _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
+        walk=lambda por, steps: {"met": True})
+    assert "count breakpoint" in report["why"]

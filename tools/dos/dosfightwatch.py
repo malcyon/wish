@@ -284,21 +284,25 @@ def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
         if fresh:
             bar = por.bar_kind() or "?"
             last_bar = bar
-            for hit in fresh:
-                w.note(hit, bar=bar, t=round(time.time() - started, 2),
-                       cs_ip=None)
-            if len(w.hits) <= 40:
+            rows = [w.note(hit, bar=bar, t=round(time.time() - started, 2),
+                           cs_ip=None) for hit in fresh]
+            if on_hit is not None or len(w.hits) <= 40:
                 # `EV` is the only way a register reaches the log, and it
                 # costs a round trip -- so the writing address is recorded for
                 # the first hits, which are the ones that say what the engine
-                # did with our zero, and not for a thousandth repeat.
+                # did with our zero, and not for a thousandth repeat.  A
+                # caller with `on_hit` needs every one.  One halt has one
+                # `CS:IP`, and a word write can trip two watched bytes in it.
                 try:
                     regs = s.regs("CS", "IP")
-                    w.hits[-1]["cs_ip"] = f"{regs.get('CS', 0):04X}:{regs.get('IP', 0):04X}"
+                    at = f"{regs.get('CS', 0):04X}:{regs.get('IP', 0):04X}"
+                    for row in rows:
+                        row["cs_ip"] = at
                 except Exception:
                     pass
             if on_hit is not None:
-                on_hit(w.hits[-1])
+                for row in rows:
+                    on_hit(row)
             resumes += 1
             s.run()
             if len(w.hits) >= max_hits:
@@ -797,6 +801,8 @@ def pile_change(initial: bytes, hits: list[dict], base: int) -> dict | None:
     (`addr` is linear, `base` the pile's first byte).  The pile is rebuilt
     from `initial` by applying every hit, so what it held just before the
     first `split` hit and just after the last of that unbroken run is exact.
+    Only the low word's store is classified: the high-word `sbb`/`adc` is
+    not, so a pile of 65,536 or more is not measured.
     """
     state = bytearray(initial)
     before = after = None
@@ -869,6 +875,22 @@ def install_folder(save_dir: pathlib.Path, folder: pathlib.Path,
     return letter
 
 
+def check_piles(s, ds: int) -> str | None:
+    """None when the seven coin piles at `ds` look like a fight's start.
+
+    A `DS` read from wherever Alt+Pause stopped is only the game's if the
+    piles there are longints below 65,536 (the split measures the low word
+    only); otherwise a message says what was found.
+    """
+    raw = s.read((ds, PILE_BASE), 28)
+    piles = [int.from_bytes(raw[i:i + 4], "little") for i in range(0, 28, 4)]
+    if any(p >= 0x10000 for p in piles):
+        return (f"DS {ds:04X} is probably not the game's data segment: the "
+                f"coin piles at DS:{PILE_BASE:04X} read {piles}; "
+                f"name the segment with --ds")
+    return None
+
+
 def arm_pile(w: Watcher, ds: int) -> tuple[int, int]:
     """A `BPM` on each byte of the gold pile; returns its linear base and how
     many of the four bytes read nonzero (each owes one spurious first hit)."""
@@ -939,7 +961,14 @@ def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
     report["walk"] = walk(por, steps)
     if not report["walk"]["met"] or not s.attach():
         return report
-    report["ds"] = ds if ds is not None else s.regs("DS")["DS"]
+    if ds is None:
+        ds = s.regs("DS")["DS"]
+        bad = check_piles(s, ds)
+        if bad:
+            report["ds"] = ds
+            report["why"] = bad
+            return report
+    report["ds"] = ds
     w = Watcher(s)
     base, nonzero = arm_pile(w, report["ds"])
     initial = s.read(base, 4)
@@ -970,6 +999,8 @@ def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
         return report
     s.brk(brk)
     counts = count_fight(por, brk)
+    if counts is None:
+        report["why"] = "the count breakpoint was not reached in the second fight"
     report.update(summarize(initial, w.hits, ovr, base, counts))
     return report
 
@@ -1033,8 +1064,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--at", default=None, metavar="X,Y,FACING",
                     help="`pile`: poke the party's square before loading")
     ap.add_argument("--ds", type=lambda x: int(x, 16), default=None,
-                    help="`pile`: the game's data segment, hex, instead of "
-                         "reading DS at the encounter")
+                    help="`pile`: the game's data segment, hex; the fallback when "
+                         "the DS read at the encounter fails its check")
     args = ap.parse_args(argv)
 
     chars = tuple(int(x) for x in args.chars.split(",") if x.strip())
