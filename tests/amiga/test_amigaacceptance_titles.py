@@ -105,6 +105,23 @@ def test_published_routes_load_source_letter_and_write_c_then_f(letter):
         assert sum(kind == "move" for _, _, kind in title.route) == 2
 
 
+@pytest.mark.parametrize("letter", ["A", "D"])
+def test_published_silver_visits_the_items_screen_only_when_the_sheet_has_the_button(letter):
+    blades = foundation.route_silver_blades
+    with_items = blades.published_title(letter)
+    without = blades.published_title(letter, items_screen=False)
+    visits = [step for step in with_items.route if step[1] == "items"]
+    assert visits == [("I", "items", "key")]
+    assert ("I", "items", "key") not in without.route
+    assert all(state != "items" for _, state, _ in without.measure_route)
+    assert any(state == "items" for _, state, _ in with_items.measure_route)
+    # The writes and the walk are unchanged, and still follow the sheet's exit.
+    assert [k for k, _, kind in without.route if kind == "write"] == ["C", "F"]
+    assert sum(kind == "move" for _, _, kind in without.route) == 2
+    assert without.route[3:5] == (("V", "sheet", "key"), ("E", "loaded_menu", "key"))
+    assert len(without.route) == len(with_items.route) - 2
+
+
 @pytest.mark.parametrize("name,key,exe,ext,make", [
     ("curse", route_curse.CURSE_KEY, "/Curse", "dat", synthetic_amiga.synthetic_curse),
     ("ssb", foundation.route_silver_blades.TITLE, "/Secret", "sav",
@@ -146,6 +163,12 @@ def test_published_prepare_preserves_exact_reported_disk_one_and_rejects_tamperi
     manifest_path = foundation.prepare_published(name, f"test-{port}", report_path)
     manifest, title = foundation._published_manifest(manifest_path, name)
     assert manifest["loaded_letter"] == letter
+    if name == "ssb":
+        # The synthetic Guy carries nothing, so the route skips the items screen.
+        assert manifest["items_screen"] is False
+        assert all(state != "items" for _, state, _ in title.route)
+    else:
+        assert "items_screen" not in manifest
     assert manifest["published_source"] == {"path": str(published), "sha256": image_sha}
     assert (letter, "loaded_menu", "key") in title.route
     assert pathlib.Path(manifest["disks"]["df0"]["path"]).read_bytes() == published.read_bytes()

@@ -332,16 +332,21 @@ def _slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, bytes]:
 
 
 def published_title(letter: str, *, issue: str = "677",
-                    turn_about: bool | None = None) -> AmigaTitle:
+                    turn_about: bool | None = None,
+                    items_screen: bool = True) -> AmigaTitle:
     """The two-drive route for an exact Save As image in DF0.
 
-    `turn_about` None means the DOS letter D turns about.
+    `turn_about` None means the DOS letter D turns about. `items_screen` False
+    leaves out the sheet's ITEMS visit, because the game shows no ITEMS button
+    for a character who carries nothing and `I` then does nothing.
     """
     if letter not in ("A", "D"):
         raise ValueError(f"published Silver Blades slot {letter!r} is neither A nor D")
-    route = list(ACCEPT_ROUTE)
+    # ROUTE[4:6] is the ("I", "items"), ("E", "sheet") pair.
+    keys = ROUTE if items_screen else ROUTE[:4] + ROUTE[6:]
+    route = [*((key, state, "key") for key, state in keys), *ACCEPT_ROUTE[len(ROUTE):]]
     route[2] = (letter, "loaded_menu", "key")
-    route[len(ROUTE)] = ("C", "loaded_menu", "write")
+    route[len(keys)] = ("C", "loaded_menu", "write")
     route[-2] = ("F", "exit_game", "write")
     move_at = next(i for i, step in enumerate(route) if step[2] == "move")
     if turn_about is None:
@@ -349,7 +354,7 @@ def published_title(letter: str, *, issue: str = "677",
     if turn_about:
         route.insert(move_at, ("NP2", "world", "turn"))
     measured = tuple((key, state, "key") for key, state in
-                     (*ROUTE[:2], (letter, "loaded_menu"), *ROUTE[3:]))
+                     (*keys[:2], (letter, "loaded_menu"), *keys[3:]))
     return AmigaTitle(
         issue=issue, mounted=("df0", "df1"), save_disk="df0",
         read_slot=_slot_reading,

@@ -1581,14 +1581,15 @@ def _disk_files(disk: amiga_adf.AmigaDisk) -> dict[str, bytes]:
 
 
 def _published_title(name: str, letter: str, *, issue: str = PUBLISHED_ISSUE,
-                     turn_about: bool | None = None) -> AmigaTitle:
+                     turn_about: bool | None = None,
+                     items_screen: bool = True) -> AmigaTitle:
     if name == "curse":
         from tools.amiga.route_curse import published_title  # noqa: PLC0415
-    elif name == "ssb":
-        published_title = route_silver_blades.published_title
-    else:
-        raise RouteError("published disk one is only for Curse and Silver Blades")
-    return published_title(letter, issue=issue, turn_about=turn_about)
+        return published_title(letter, issue=issue, turn_about=turn_about)
+    if name == "ssb":
+        return route_silver_blades.published_title(
+            letter, issue=issue, turn_about=turn_about, items_screen=items_screen)
+    raise RouteError("published disk one is only for Curse and Silver Blades")
 
 
 def _turn_about(name: str, letter: str, place: dict | None) -> bool:
@@ -1620,7 +1621,11 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
     if "turn_about" in manifest and turn_about != _turn_about(name, letter,
                                                               manifest.get("state_a")):
         raise RouteError("the manifest turn_about disagrees with its recorded place")
-    title = _published_title(name, letter, issue=manifest["issue"], turn_about=turn_about)
+    items_screen = manifest.get("items_screen", True)
+    if not isinstance(items_screen, bool):
+        raise RouteError("the manifest items_screen is not a boolean")
+    title = _published_title(name, letter, issue=manifest["issue"], turn_about=turn_about,
+                             items_screen=items_screen)
     for key in ("source", "report", "published", "disk_one", "disk_two"):
         _input(manifest["registered"], key)
     disk1_pin, disk2_pin, executable, volume = PUBLISHED_DISKS[name]
@@ -1728,7 +1733,12 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     # The way out of the start square depends on where the party stands, not on the port:
     # Curse's party-menu square faces a wall to the east.
     turn_about = _turn_about(name, letter, reading["place"])
-    title = _published_title(name, letter, issue=issue, turn_about=turn_about)
+    # The sheet's ITEMS button is absent for a character with nothing, so the route
+    # visits the items screen only when the sheet's first member carries something.
+    items_screen = (name != "ssb" or
+                    reading["inventory"]["members"][0]["count"] > 0)
+    title = _published_title(name, letter, issue=issue, turn_about=turn_about,
+                             items_screen=items_screen)
     original = _verified_disk(disk1)
     slot_path = f"/SAVE/savgam{letter}.{'dat' if name == 'curse' else 'sav'}".lower()
     old, new = _disk_files(original), _disk_files(disk)
@@ -1775,6 +1785,8 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
                        "published": _entry(published), "disk_one": _entry(disk1),
                        "disk_two": _entry(disk2)},
     }
+    if name == "ssb":
+        manifest["items_screen"] = items_screen
     path = run / "prepare.json"
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     _published_manifest(path, name)
