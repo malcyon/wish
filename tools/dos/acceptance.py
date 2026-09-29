@@ -70,7 +70,7 @@ a source whose title does not match `--title`:
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
-| `walk MI`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
+| `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
 | `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement, record byte 0x130 (spell id 126's book byte, `book_0x130`) and items |
@@ -1133,9 +1133,10 @@ def ninth_level(rows: list[str]) -> list[int | str]:
 
 
 
-#: The walk each title drives: `MI`, two turns and a step at the map bar (Pool,
-#: Curse); `1`, a step in move mode (Silver Blades, Pools of Darkness).
-WALKS = {"pool": "MI", "curse": "MI", "ssb": "1", "darkness": "1"}
+#: The walks each title drives: `MI`, two turns and a step at the map bar (Pool,
+#: Curse); `I`, one step forward without turning (Pool, for a party already
+#: facing open ground); `1`, a step in move mode (Silver Blades, Pools of Darkness).
+WALKS = {"pool": ("MI", "I"), "curse": ("MI",), "ssb": ("1",), "darkness": ("1",)}
 #: The titles whose `turn N` control is driven: those with a walk to check.
 TURNS = frozenset(WALKS)
 #: The titles whose party menu `view N` opens a sheet from.
@@ -1340,7 +1341,7 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
     return days, hours, mins // REST_STEP
 
 
-STEP_HELP = ("load, begin, 'walk MI', 'walk 1', 'turn 4', camp, display, 'rest 5m', 'save D', "
+STEP_HELP = ("load, begin, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, display, 'rest 5m', 'save D', "
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
              "'halve 1 1', 'join 4 15', 'view 1', 'memorize 5', 'cast 2 BLESS', "
              "'cast 2 CURE-LIGHT-WOUNDS 4', 'shot NAME', "
@@ -1393,7 +1394,8 @@ def parse_step(text: str) -> Step:
                              f"{ITEM_ROWS} and the rows past them need Next, which "
                              "is not driven here")
         return Step(kind, text, line=int(words[1]), row=row)
-    if kind == "walk" and len(words) == 2 and words[1].upper() in WALKS.values():
+    if kind == "walk" and len(words) == 2 and any(
+            words[1].upper() in routes for routes in WALKS.values()):
         return Step(kind, text, key=words[1].upper())
     if kind == "turn" and len(words) == 2 and re.fullmatch(r"[1-4]", words[1]):
         return Step(kind, text, line=int(words[1]))
@@ -1453,9 +1455,9 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "walk":
             if title not in WALKS:
                 raise ValueError(f"walk is not driven in {title}")
-            if step.key != WALKS[title]:
-                raise ValueError(f"{title}'s walk is 'walk {WALKS[title]}', not "
-                                 f"{step.text!r}")
+            if step.key not in WALKS[title]:
+                routes = " or ".join(f"'walk {r}'" for r in WALKS[title])
+                raise ValueError(f"{title}'s walk is {routes}, not {step.text!r}")
             if where != "map":
                 raise ValueError(f"walk needs the map: {step.text!r}")
         elif k == "turn":
@@ -2812,8 +2814,8 @@ class Driver:
         if self.title.key in MOVE_KEYS and self.where == "map" and route == "1":
             return self._walk_one()
         if self.title.key not in ("pool", "curse") or self.where != "map" \
-                or route != "MI":
-            raise StepFailed("walk MI needs Pool's or Curse's map")
+                or route not in WALKS[self.title.key]:
+            raise StepFailed("walk MI needs Pool's or Curse's map, walk I Pool's")
 
         screens: list[dict] = []
 
@@ -2825,7 +2827,7 @@ class Driver:
             raise self.fail("walk-status", "the status line is blank on the map, "
                             "so there is no starting square (a shop or an "
                             "arrival draws it later)")
-        for n in (1, 2):
+        for n in (1, 2) if route == "MI" else ():
             if not self.game.turn_right():
                 raise self.fail(f"walk-turn-{n}", "the map bar did not return "
                                 "after turning (combat or an unknown screen)")

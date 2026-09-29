@@ -1038,6 +1038,7 @@ def test_steps_parse_and_a_bad_one_is_refused():
     assert da.parse_step("shot rest-screen").name == "rest-screen"
     assert da.parse_step("press Return").key == "Return"
     assert da.parse_step("walk MI").key == "MI"
+    assert da.parse_step("walk I").key == "I"
     assert da.parse_step("display").kind == "display"
     for bad in ("walk 2", "walk N", "save", "save K", "rest 7m", "load now", "train",
                 "train 9", "begin now", "press", "press a;b"):
@@ -1656,6 +1657,34 @@ def test_pool_walk_mi_turns_twice_then_steps_and_records_each_map_state(tmp_path
     assert got["status_before"] != got["status_after"]
     assert len(got["screens"]) == 4
     assert d.where == "map"
+
+
+def test_pool_walk_i_steps_once_without_turning(tmp_path):
+    game, d = _pool_walker(tmp_path)
+    got = d.walk("I")
+    assert d.game.keys == ["Up"]
+    assert got["route"] == "I"
+    assert got["square_before"] != got["square_after"]
+    assert len(got["screens"]) == 2
+    assert d.where == "map"
+
+
+def test_pool_walk_i_that_hits_a_wall_fails_the_walk(tmp_path):
+    game, d = _pool_walker(tmp_path, blocked=True)
+    with pytest.raises(da.StepFailed, match="walk-blocked"):
+        d.walk("I")
+    assert d.game.keys == ["Up"]
+
+
+def test_walk_i_is_pool_only(tmp_path):
+    game, d = _pool_walker(tmp_path, title="curse")
+    with pytest.raises(da.StepFailed, match="walk"):
+        d.walk("I")
+    da.validate_steps(_steps("load", "walk I"), "pool")
+    with pytest.raises(ValueError, match="walk"):
+        da.validate_steps(_steps("load", "walk I"), "curse")
+    with pytest.raises(ValueError, match="walk"):
+        da.validate_steps(_steps("load", "walk 1"), "pool")
 
 
 def test_curse_walk_mi_turns_twice_then_steps_on_the_map(tmp_path):
