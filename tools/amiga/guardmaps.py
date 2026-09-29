@@ -53,6 +53,10 @@ def _states(path: pathlib.Path) -> tuple[str, ...]:
         return ()
     if not isinstance(summary, dict) or not summary.get('success') or summary.get('measure'):
         return ()
+    # A diagnose run names its crops after the grab count (00-boot-NN), not after a screen.
+    argv = summary.get('argv')
+    if isinstance(argv, list) and argv and argv[0] == 'diagnose':
+        return ()
     state = re.sub(r'^\d+-', '', path.stem)
     if state in ('post_write', 'post-write'):
         state = 'loaded_menu'

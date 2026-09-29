@@ -108,6 +108,23 @@ def test_untrusted_run_needs_a_label(tmp_path):
     assert guardmaps.scan_crops(root)[0].states == ()
 
 
+def test_a_diagnose_runs_grab_names_are_not_screen_names(tmp_path, capsys):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    pool = _run(root, '1', 'real', 'pool', 'title')
+    assert guardmaps.main(['--root', str(root), '--maps', str(maps), 'add', '--title', 'pool',
+                           '--map', 'guards', '--state', 'title', '--crop', str(pool),
+                           '--box', '10,10,20,20']) == 0
+    shot = _run(root, '2', 'diagnose', 'pool', 'x')
+    boot = shot.with_name('00-boot-01.png')
+    shot.rename(boot)
+    summary = shot.parent.parent / 'summary.json'
+    summary.write_text(json.dumps({'success': True, 'measure': False, 'argv': ['diagnose', '--x']}))
+    assert guardmaps.scan_crops(root)[1].states == ()
+    assert guardmaps.main(['--root', str(root), '--maps', str(maps), 'check', '--title', 'pool']) == 0
+    assert 'collision' not in capsys.readouterr().out
+
+
 def test_committed_maps_cover_guarded_routes():
     from tools.amiga import route_silver_blades
     from tools.amiga.route_curse import CURSE
