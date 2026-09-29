@@ -860,15 +860,27 @@ def test_a_fail_line_from_a_non_zero_exit_is_a_refusal_and_any_other_error_is_no
     assert not isinstance(caught.value, amiga.GuestRefusal)
 
 
-def test_the_dump_directory_is_made_once_before_the_first_dump():
+def test_every_dumping_script_makes_the_dump_directory_first():
     """`S` cannot create the directory it writes into, so a guest without one
     answers every dump with a file it could not open."""
     p, guest = pipe({0xC00000: bytes(range(32))})
     t = amiga.AmigaTarget(p, CURSE, BASE)
     t.read(0xC00000, 4)
     t.read(0xC00010, 4)
-    made = [i for i, s in enumerate(guest.scripts) if "New-Item" in s]
-    assert made == [0], made
-    script = guest.scripts[0]
-    assert amiga.GUEST_DUMP in script
-    assert script.index("New-Item") < script.index("$cmds=@(")
+    assert len(guest.scripts) == 2
+    for script in guest.scripts:
+        assert script.startswith("New-Item -ItemType Directory -Force -Path "
+                                 f"'{amiga.GUEST_DUMP}' -ErrorAction Stop")
+
+
+def test_a_batch_that_fetches_nothing_makes_no_directory():
+    p, guest = pipe({0: b"\x00" * 16})
+    p.batch(["m 0 1"])
+    assert "New-Item" not in guest.scripts[0]
+
+
+def test_a_directory_the_guest_could_not_make_raises():
+    """The script stops at the failed `New-Item`, so no `<<end>>` comes back."""
+    p = amiga.WinuaePipe(runner=lambda argv, timeout: "")
+    with pytest.raises(amiga.PipeError, match="did not finish"):
+        p.batch(["S x 0 1"], [("b0", "x")])

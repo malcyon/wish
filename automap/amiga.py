@@ -828,8 +828,6 @@ class WinuaePipe:
         self.connection = connection
         #: Every command this session sent, for a run log.
         self.sent: list[str] = []
-        #: Whether this session has made the guest's dump directory.
-        self._dump_dir_ready = False
 
     # -- the guest script ------------------------------------------------
 
@@ -1053,18 +1051,16 @@ Write-Output '<<end>>'
         """
         fetch = fetch or []
         script = self.script(lines, fetch=fetch)
-        if fetch and not self._dump_dir_ready:
+        if fetch:
             # `S` opens its file for writing and cannot create the directory
             # above it, so a guest without `GUEST_DUMP` answers every dump with
-            # `Couldn't open file`. The console route makes it in every script;
-            # here it rides in the session's first dumping script, which costs
-            # no second round trip.
+            # `Couldn't open file`. It is made at the head of every dumping
+            # script: idempotent, no extra round trip, and `-ErrorAction Stop`
+            # ends the script before `<<end>>` so a failure raises `PipeError`.
             script = (f"New-Item -ItemType Directory -Force -Path "
-                      f"'{GUEST_DUMP}' | Out-Null\n{script}")
+                      f"'{GUEST_DUMP}' -ErrorAction Stop | Out-Null\n{script}")
         self.sent += list(lines)
         out = self._execute(script)
-        if fetch:
-            self._dump_dir_ready = True
         replies, _timings = self._replies(out, list(lines))
         text = "\n".join(f"--- {cmd}\n{reply}" for cmd, reply in replies)
         return text, {name: _blob(out, name) for name, _path in fetch}
