@@ -21,7 +21,7 @@ import dataclasses
 import struct
 
 import pytest
-from support.dossave import _game_dirs
+from support.dossave import _game_dirs, _records
 
 from editor import convert, saveplan
 from goldbox import (
@@ -713,6 +713,28 @@ def test_pod_new_savegame_builds_one_synthetic_character():
     assert report.unwritten == []
 
 
+def test_pod_new_savegame_takes_a_neutral_record_with_no_paladin_cures():
+    """A Pool of Radiance record has no cure-disease byte, so the neutral
+    value is None; the writer leaves 0x080 zero and the plan still names it."""
+    char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
+    char.fields.pop("paladin_cures", None)
+    assert char.get("paladin_cures") is None
+    built, report = amiga_savegame.pod_new_savegame(
+        _synthetic_state(1), [char])
+    assert report.unwritten == []
+    assert built[amiga_savegame.POD_PARTY_AT + amiga_pod.PALADIN_CURES] == 0
+
+
+def test_pod_new_savegame_builds_a_party_from_a_pool_of_radiance_record():
+    name, raw = next(iter(_records().items()))
+    char = dos_codec.to_neutral(dos_codec.DosCharacter(raw))
+    assert char.get("paladin_cures") is None, name
+    built, report = amiga_savegame.pod_new_savegame(
+        _synthetic_state(1), [char])
+    assert report.unwritten == [], name
+    assert len(built) == amiga_savegame.POD_SAVEGAME_SIZE
+
+
 #: The Amiga record's level-drain marks and ready-to-train byte: the highest
 #: experience, the seven highest class levels, the highest hit points and the
 #: flag the party list colours a name by.
@@ -818,3 +840,28 @@ def test_pod_new_savegame_refuses_a_party_outside_one_to_eight(count):
     char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
     with pytest.raises(amiga_savegame.AmigaSaveError, match="1 to"):
         amiga_savegame.pod_new_savegame(state, [char] * count)
+
+
+_NO_VALUE = "the neutral source has no value"
+
+
+def _no_value_notes(char) -> set[str]:
+    _rec, _, _, rep = dos_codec.write(char, dos_port.POOLS_OF_DARKNESS)
+    return {why.split(":")[0] for why in rep.sources.values()
+            if _NO_VALUE in why}
+
+
+def test_an_explicit_zero_drain_mark_is_not_reported_as_missing():
+    char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
+    assert char.get("highest_experience") == 0
+    assert _no_value_notes(char) == set()
+
+
+def test_a_missing_drain_mark_is_reported_as_missing():
+    char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
+    for name in ("highest_levels", "highest_experience", "highest_hp_max",
+                 "ready_to_train"):
+        char.fields.pop(name)
+    assert _no_value_notes(char) == {
+        "highest_class_levels", "highest_experience", "highest_hp_max",
+        "ready_to_train"}

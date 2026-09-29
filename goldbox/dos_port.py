@@ -1275,9 +1275,9 @@ _READY_TO_TRAIN_NOTE = (
     "when it is not (`0x35AF2`). Only the experience awards, training and "
     "Restoration store it (`0x251A`, `0x2614`, `0x4C13`, `0x18F14`, "
     "`0x2EE23`, each from the routine at `0x37798`), so loading a save does "
-    "not recompute it and a character an earlier converter wrote as 0 stays "
-    "0. The Amiga's twin is `0x0CB`, which the same rule reproduces in 86 of "
-    "86 distinct played records. Zero in every DOS record measured")
+    "not recompute it, and a conversion copies the byte as it stands. The "
+    "Amiga's twin is `0x0CB`, which the same rule reproduces in 86 of 86 "
+    "distinct played records. Zero in every DOS record measured")
 
 #: Pools of Darkness, 510 bytes, and the one with no C64 counterpart at all.
 #: It is the later engine: no drained-level pair, no `modified` byte, no
@@ -1339,7 +1339,9 @@ POOLS_OF_DARKNESS = DosDeltas(
              "experience": (
                  _x(4, "highest_experience", "Highest experience", _OK,
                     "the most experience the character has held, a little-"
-                    "endian longword compared as signed: the drain routine "
+                    "endian longword. The engine compares it as a signed "
+                    "32-bit value; the file field is read here as unsigned, "
+                    "as `experience` is. The drain routine "
                     "raises it (`0x1D071`-`0x1D09E`) and Restoration puts it "
                     "back when one level was missing (`0x2EDC9`). The "
                     "Amiga's twin is `0x048`, big-endian. Zero in every "

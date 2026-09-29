@@ -1580,13 +1580,13 @@ class PodWriter:
             (EXPERIENCE_HIGHEST, 4, "experience_highest"),
             (HP_MAX_HIGHEST, 1, "hp_max_highest"),
             (READY_TO_TRAIN, 1, "ready_to_train"),
+            (PALADIN_CURES, 1, "paladin_cures"),
             (SPELLS_MEMORISED, SPELLS_MEMORISED_LENGTH, "spells_memorised"),
             (PORTRAIT_HEAD, 1, "portrait_head"),
             (PORTRAIT_BODY, 1, "portrait_body"),
         ])
         for value, at, width, what in (
                 (self.thac0_base, THAC0_BASE, 1, "thac0_base"),
-                (self.paladin_cures, PALADIN_CURES, 1, "paladin_cures"),
                 (self.hit_points_rolled, HP_ROLLED, 1, "hit_points_rolled"),
                 (self.identity, UNNAMED_0AB, 1, "identity"),
                 (self.experience_award, EXPERIENCE_AWARD, 2,

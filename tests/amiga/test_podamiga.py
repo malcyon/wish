@@ -1053,9 +1053,8 @@ def test_the_reader_fills_seventy_two_of_the_neutral_records_fields():
     since `granted_effects` is set only when there is one -- the same way the
     Curse and Silver Blades reader sets it. `lay_on_hands_minutes` fills for
     every character, paladin or not, since a chain with no heal node means he
-    may heal now. Four more than before the level-drain marks and the
-    ready-to-train flag got neutral fields: they fill for every character,
-    zeros included.
+    may heal now. The level-drain marks and the ready-to-train flag fill for every
+    character, zeros included.
 
     The names it does not fill for a character on these disks:
     `npc_control_byte`, which is set only for a companion and so is absent
