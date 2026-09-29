@@ -362,11 +362,15 @@ def parse_sides(texts) -> list[tuple[int, int]]:
 
 
 def parse_key(text: str) -> int:
-    """`SPACE` or one printable character, as the PETSCII code the game reads."""
+    """`SPACE` or one printable character, as the PETSCII code the game reads.
+
+    `press_kernal` delivers PETSCII, where the unshifted letters are the
+    uppercase ASCII codes; a lowercase ASCII code would be a graphic.
+    """
     if text.upper() == "SPACE":
         return 0x20
     if len(text) == 1 and text.isprintable() and text.isascii():
-        return ord(text)
+        return ord(text.upper())
     raise ValueError(f"{text!r}: a key is SPACE or one printable character")
 
 
@@ -3413,6 +3417,9 @@ class CurseRun(PoolRun):
     #: `first_bar_key` (a PETSCII code) once at the first.
     log_bars = False
     first_bar_key = None
+    #: Whether the first bar of the run has been seen; the key and the
+    #: `placement` event belong to the run's first fight, not to each `fight` step.
+    first_bar_done = False
 
     def __init__(self, sess, log, out, game, points, disks, staged_disk,
                  attack_by="", quit_nonattacking=False):
@@ -3854,9 +3861,10 @@ class CurseRun(PoolRun):
 
         `--attack-by`'s observer fails a run whose named member never gets a
         bar, and a member under the computer never does, so this only records.
+        The bar where the key is pressed counts as one fight turn: the tactic
+        returns without moving, and the same bar is read and acted on next.
         """
         owner = self
-        state = {"first": True}
 
         def tactic(sess, bar):
             battle = sess.battle() if hasattr(sess, "battle") else None
@@ -3865,9 +3873,9 @@ class CurseRun(PoolRun):
                            actor=None if actor is None else {
                                "name": actor.name.strip(), "index": actor.index,
                                "position": [actor.x, actor.y]})
-            if not state["first"]:
+            if owner.first_bar_done:
                 return S.Session.melee_turn(sess, bar)
-            state["first"] = False
+            owner.first_bar_done = True
             owner.log.emit("placement", combatants=[
                 {"name": c.name.strip(), "index": c.index, "slot": c.slot,
                  "position": [c.x, c.y], "on_map": c.on_map, "hp": c.hp,
@@ -4930,6 +4938,12 @@ def main(argv: list[str] | None = None) -> int:
                  "cast CASTER:DISPEL MAGIC>BRUTUS/view BRUTUS/save")
     if args.attack_by and args.title != "curse":
         ap.error("--attack-by requires --title curse")
+    if args.first_bar_key is not None:
+        if args.title == "ssb":
+            ap.error("--first-bar-key: the fight step needs --title pool or curse, "
+                     "and Silver Blades has none yet")
+        if not any(x.verb == "fight" for x in steps):
+            ap.error("--first-bar-key needs a fight step")
     if args.stage_side and args.title == "pool":
         ap.error("--stage-side: Curse and Silver Blades only "
                  "(Pool's turndrive.py stages sides)")

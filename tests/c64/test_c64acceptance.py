@@ -7957,9 +7957,17 @@ def test_a_side_and_a_key_are_parsed():
         with pytest.raises(ValueError):
             A.parse_sides([bad])
     assert A.parse_key("SPACE") == 0x20 and A.parse_key("space") == 0x20
-    assert A.parse_key("m") == ord("m")
+    assert A.parse_key("m") == A.parse_key("M") == ord("M")
     with pytest.raises(ValueError):
         A.parse_key("ESC")
+
+
+def test_a_first_bar_key_without_a_fight_step_is_refused(tmp_path):
+    with pytest.raises(SystemExit) as info:
+        A.main(["--title", "curse", "--save", str(_fixture_disk(tmp_path)),
+                "--disks", str(tmp_path), "--steps", "load",
+                "--first-bar-key", "SPACE", "--out", str(tmp_path / "out")])
+    assert info.value.code == 2
 
 
 def test_a_first_bar_key_or_side_is_refused_where_it_cannot_apply(tmp_path):
@@ -7969,7 +7977,8 @@ def test_a_first_bar_key_or_side_is_refused_where_it_cannot_apply(tmp_path):
                   ["--title", "pool", "--first-bar-key", "SPACE"],
                   ["--title", "curse", "--first-bar-key", "SPACE",
                    "--attack-by", "ANNA"],
-                  ["--title", "curse", "--first-bar-key", "ESC"]):
+                  ["--title", "curse", "--first-bar-key", "ESC"],
+                  ["--title", "ssb", "--first-bar-key", "SPACE"]):
         with pytest.raises(SystemExit) as info:
             A.main([*extra, *base])
         assert info.value.code == 2
@@ -8033,6 +8042,15 @@ def test_every_bar_logs_its_actor_and_the_first_logs_where_everyone_stands(monke
     assert who["K"]["side"] == 0x80 and who["K"]["position"] == [1, 1]
     assert who["ORC"]["party"] is False
     assert sess.pressed == ["melee"] * 3
+
+
+def test_the_key_and_placement_fire_once_per_run_across_fight_steps(monkeypatch):
+    run, events, _ = _bar_run(monkeypatch, key=0x20)
+    first, second = _BarFight(["K", "K"]), _BarFight(["K", "K"])
+    first.bars(run, 2)
+    second.bars(run, 2)
+    assert first.pressed == [0x20, "melee"] and second.pressed == ["melee"] * 2
+    assert [k for k, _ in events].count("placement") == 1
 
 
 def test_a_member_who_never_gets_a_bar_does_not_fail_the_log(monkeypatch):
