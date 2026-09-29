@@ -286,3 +286,29 @@ def test_the_silver_blades_treasure_bar_and_world_guards_match_their_kept_crops(
         for crop in everything:
             digest = screens.box_digests(root / crop, {box})[box]
             assert (digest == rule['sha256']) is (crop in crops), (state, crop)
+
+
+def test_the_silver_blades_camp_save_picker_guard_matches_only_the_camp_picker_crops():
+    """Reads crops kept from live runs, so it skips on a machine without them."""
+    from tools.amiga import screens
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance')
+    pickers = ('640/ssb3/accept3/shots/15-camp_save_picker.png',
+               '672/f6f1f461a8-amiga-accept2/accept2/shots/15-camp_save_picker.png',
+               '672/400d2381cd-amiga-accept2/accept2/shots/15-camp_save_picker.png')
+    if not all((root / crop).is_file() for crop in pickers):
+        pytest.skip('the kept Silver Blades camp picker crops are not on this machine')
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'ssb')
+    rule = spec['guards']['camp_save_picker']
+    box = tuple(rule['box'])
+    for crop in guardmaps.scan_crops(root):
+        owned = crop.title == 'ssb' or crop.relative in spec['labels']
+        if not owned or not crop.path.is_file():
+            continue
+        digest = screens.box_digests(crop.path, {box})[box]
+        shown = 'camp_save_picker' in spec['labels'].get(crop.relative, crop.states)
+        if crop.relative in pickers or shown:
+            assert digest == rule['sha256'], crop.relative
+        elif crop.states:
+            assert digest != rule['sha256'], crop.relative

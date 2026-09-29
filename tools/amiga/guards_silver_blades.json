@@ -14,13 +14,13 @@
     "camp_save_picker": {
       "also": [],
       "box": [
-        440,
-        292,
-        686,
+        72,
+        316,
+        640,
         426
       ],
-      "example": "672/26293716ee-amiga-accept1b/accept1b/shots/15-camp_save_picker.png",
-      "sha256": "33c969795b8437c84e7944f0c6f6bc6e4a4b98fd44901ff427bc79c523f190df"
+      "example": "640/ssb3/accept3/shots/15-camp_save_picker.png",
+      "sha256": "ae971b4dc471badfb48e4ae37319830ad94972fd4ab22944fb085f6b2c3f6f4f"
     },
     "continue": {
       "also": [],
@@ -210,6 +210,15 @@
     ],
     "640/ssb2/accept2/shots/12-camp.png": [
       "world"
+    ],
+    "640/ssb3/accept3/shots/15-camp_save_picker.png": [
+      "camp_save_picker"
+    ],
+    "640/ssb3/accept3/shots/failure.png": [
+      "camp_save_picker"
+    ],
+    "672/f6f1f461a8-amiga-accept2/accept2/shots/15-camp_save_picker.png": [
+      "camp_save_picker"
     ],
     "amiga-grab-crops/28ssb__shots__05-begin.png": [
       "journal"
