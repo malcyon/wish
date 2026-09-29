@@ -48,7 +48,7 @@ from goldbox.iconparts import IconParts
 from goldbox.icons import load_icon_charset
 from goldbox.items import load_item_names, load_item_templates, load_item_types
 from goldbox.layout import FIELDS_BY_NAME, LOAD_ADDRESS
-from goldbox.savegame import store_save
+from goldbox.savegame import SaveGame1, store_save
 from goldbox.spells import capacity_by_class, load_spell_names
 from goldbox.spells import for_game as spell_table
 
@@ -2228,7 +2228,7 @@ class EditorBinding(QObject):
             return
         party.item_types = None
         game = party.game
-        if game.key != por_games.POOL_OF_RADIANCE.key:
+        if party.port != "c64" or game.key != por_games.POOL_OF_RADIANCE.key:
             return
         found = self._find_disk(load_item_types, game.disk_glob, game)
         if found is None:
@@ -2349,6 +2349,9 @@ class EditorBinding(QObject):
         failures = self._flush()
         if failures and interactive:
             self._report_flush_failures(failures)
+        roster_before = (self.party.save1.to_bytes()
+                         if self.party.port == "c64"
+                         and self.party.save1 is not None else None)
         try:
             written = self._write_back()
             if self.party.port == "dos":
@@ -2358,6 +2361,11 @@ class EditorBinding(QObject):
                                        self.backup_dir())
         except Exception as exc:
             _log.exception("could not save %s", self.path)
+            if roster_before is not None:
+                # `write_movement` changed the roster in memory before the
+                # write failed; a later revert-and-save must compare against
+                # what is on disk, not against this attempt.
+                self.party.save1 = SaveGame1(roster_before, self.party.game)
             if interactive:
                 QMessageBox.critical(self.root, "Cannot save", str(exc))
                 return "failed"

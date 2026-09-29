@@ -5,6 +5,7 @@ display -- QT_QPA_PLATFORM=offscreen, set in the fixture -- so all of it runs
 headless.
 """
 
+import contextlib
 import os
 import pathlib
 
@@ -5940,3 +5941,114 @@ def test_coins_put_back_between_two_window_saves_recompute_movement(tmp_path):
     w._edited()
     w.save(interactive=False)
     assert stored() == 12
+
+
+def _armour_only_types():
+    from goldbox.items import TYPE_LOCATION, ItemType
+    raw = bytearray(16)
+    raw[TYPE_LOCATION] = 2
+    return {5: ItemType(5, bytes(raw))}
+
+
+def _c64_movement_window(tmp_path):
+    """A window on a saved synthetic C64 party whose base movement is 12."""
+    from editor import saveplan
+    from editor.window import EditorBinding
+    path = synthetic_save(tmp_path)
+    seed = Party(str(path))
+    seed.members[0].record.set("movement", 12)
+    path.write_bytes(saveplan.c64_payloads(seed)[2].to_bytes())
+    w = EditorBinding(make_root(), str(path))
+    w.party.item_types = _armour_only_types()
+    w.roster.selectRow(0)
+    return w, path
+
+
+def test_a_failed_save_then_a_revert_still_writes_the_movement_on_disk(
+        tmp_path, monkeypatch):
+    """The coins are edited, the disk write fails, they are put back, and the
+    next save must compare with what is on disk, not with the failed try."""
+    import editor.window as ew
+    from goldbox.d64 import D64
+    from goldbox.savegame import load_save
+
+    w, path = _c64_movement_window(tmp_path)
+    index = w.party.member(0).index
+    real = ew.files.save_disk
+    calls = []
+
+    def fail_once(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("boom")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(ew.files, "save_disk", fail_once)
+    w._widgets["gold"].setValue(3000)
+    w._edited()
+    with pytest.raises(OSError):
+        w.save(interactive=False)
+    w._widgets["gold"].setValue(0)
+    w._edited()
+    w.save(interactive=False)
+    assert load_save(D64.open(str(path)))[2].roster(index).movement == 12
+
+
+def test_two_saves_with_no_edit_leave_the_stored_movement_alone(tmp_path):
+    from goldbox.d64 import D64
+    from goldbox.savegame import load_save
+
+    w, path = _c64_movement_window(tmp_path)
+    index = w.party.member(0).index
+
+    def stored():
+        return load_save(D64.open(str(path)))[2].roster(index).movement
+
+    w.save(interactive=False)
+    w.save(interactive=False)
+    assert stored() == 12
+
+
+@contextlib.contextmanager
+def _window_warnings():
+    """The window logger's warnings, read from a handler on the logger itself
+    so another test's logging setup cannot hide them."""
+    import logging
+
+    import editor.window as ew
+    seen = []
+
+    class Grab(logging.Handler):
+        def emit(self, record):
+            seen.append(record.getMessage())
+
+    handler, log = Grab(logging.WARNING), ew._log
+    was = (log.level, log.disabled)
+    log.addHandler(handler)
+    log.setLevel(logging.WARNING)
+    log.disabled = False
+    try:
+        yield seen
+    finally:
+        log.removeHandler(handler)
+        log.setLevel(was[0])
+        log.disabled = was[1]
+
+
+def test_a_c64_pool_party_with_no_items_disk_logs_it(
+        tmp_path, monkeypatch):
+    from editor.window import EditorBinding
+    monkeypatch.setattr(EditorBinding, "_find_disk",
+                        lambda self, *a, **k: None)
+    with _window_warnings() as seen:
+        EditorBinding(make_root(), str(synthetic_save(tmp_path)))
+    assert any("No disk with ITEMS found" in m for m in seen)
+
+
+def test_a_dos_pool_party_never_looks_for_an_items_disk(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr("editor.window.EditorBinding._find_disk",
+                        lambda self, *a, **k: None)
+    with _window_warnings() as seen:
+        _dos_pool_editor(tmp_path)
+    assert not any("No disk with ITEMS found" in m for m in seen)
