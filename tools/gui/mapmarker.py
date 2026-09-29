@@ -510,10 +510,12 @@ def answer_disk_prompt(args, sess, log: Log, step: int,
                        moved: bool | None = None) -> tuple[bool, str | None]:
     """Answer an `INSERT SIDE # n` prompt on row 24 and wait for the travel prompt.
 
-    Returns whether a prompt was answered and None when there was none or the
-    game is back on the grid, else why the walk cannot go on.  The side is attached and the key pressed
-    by `Session.handle_prompt`; a side the session has no image of ends the
-    walk rather than pressing a key at a drive with the wrong disk in it.
+    Returns `(answered, reason)`.  `(False, None)` means there was no prompt,
+    or it went away while the answer was being retried.  `(True, None)` means
+    the prompt was answered and the travel prompt is back.  `(True, reason)`
+    means it was answered but the grid did not come back, for instance after a
+    wrong grid.  `(False, reason)` means the prompt was not answered: the side
+    is not in the slot, the attach raised, or the retries ran out.
     """
     s = sess.screen()
     want = None if s is None else sess.wanted_disk(s)
@@ -535,6 +537,8 @@ def answer_disk_prompt(args, sess, log: Log, step: int,
                 break
             time.sleep(2.1)
             s = sess.screen() or s
+            if sess.wanted_disk(s) is None:
+                return False, None                  # the prompt went away by itself
     except Exception as exc:                        # an attach that raised
         log.emit("disk_prompt", step=step, side=name, bar=row, moved=moved,
                  outcome=f"attach-failed: {type(exc).__name__}: {exc}")
@@ -557,6 +561,21 @@ def _wait_for_grid(args, sess, log: Log, step: int) -> str | None:
     grid = clear_bars(sess, log, seconds=args.encounter_wait, want_outdoors=True)
     log.emit("encounter_grid", step=step, outcome=grid)
     return None if grid == "world" else f"no travel prompt after the fight ({grid})"
+
+
+def _prompt_ate_the_press(sess, log: Log, before: dict, step: int) -> bool:
+    """True when the travel square is still what it was before the press.
+
+    Read after the answer, because the game finishes a step the prompt
+    interrupted once the side is in.  A failed read is logged and is no
+    evidence the press was lost, so it never repeats.
+    """
+    now = press_state(sess)
+    square = now.get("travel_49C3")
+    if square is None:
+        log.emit("walk_repeat_unread", step=step, error=now.get("error"))
+        return False
+    return square == before.get("travel_49C3")
 
 
 def walk_moves(args, sess, log: Log, moves: str, step: int, after_step) -> int:
@@ -587,8 +606,7 @@ def walk_moves(args, sess, log: Log, moves: str, step: int, after_step) -> int:
             args.stopped = reason
             after_step(step)
             break
-        if answered and not moved_square:
-            # The prompt ate the press without moving the party: press it once more.
+        if answered and _prompt_ate_the_press(sess, log, before, step):
             log.emit("walk_repeated", move=move, step=step)
             sess.walk_one(move)
         bar = encounter_after_press(sess, log=log)

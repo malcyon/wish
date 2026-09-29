@@ -503,8 +503,10 @@ PROMPT = "INSERT SIDE # 6, AND PRESS ANY KEY."
 class DiskSess(Sess):
     """The second press raises a disk prompt; `handle_prompt` swaps the side."""
 
-    def __init__(self, side, moves_on_prompt=True, attach_raises=False):
+    def __init__(self, side, moves_on_prompt=True, attach_raises=False,
+                 finishes_on_answer=False):
         super().__init__()
+        self.finishes_on_answer = finishes_on_answer
         self.side = side
         self.moves_on_prompt = moves_on_prompt
         self.attach_raises = attach_raises
@@ -531,6 +533,8 @@ class DiskSess(Sess):
             raise AssertionError("refusing to attach")
         self.answered += 1
         self.row = GRID
+        if self.finishes_on_answer:
+            self.mem[0x49C3] -= 1                   # the interrupted step completes
         return True
 
 
@@ -578,3 +582,45 @@ def test_a_side_that_cannot_be_attached_stops_the_walk(monkeypatch, tmp_path):
     M.walk_moves(a, sess, log, "777", 0, lambda n: None)
     assert "could not be attached" in a.stopped and sess.presses == ["7", "7"]
     assert log.of("disk_prompt")[0]["outcome"].startswith("attach-failed")
+
+
+def test_a_step_the_game_finishes_after_the_answer_is_not_repeated(monkeypatch, tmp_path):
+    no_sleep(monkeypatch)
+    side = tmp_path / "SIDE6.D64"
+    side.write_bytes(b"")
+    sess, log = DiskSess(side, moves_on_prompt=False, finishes_on_answer=True), Log()
+    M.walk_moves(args(), sess, log, "77", 0, lambda n: None)
+    assert sess.answered == 1 and sess.presses == ["7", "7"]
+    assert not log.of("walk_repeated")
+
+
+def test_a_failed_read_after_the_answer_does_not_repeat_the_press(monkeypatch, tmp_path):
+    no_sleep(monkeypatch)
+    side = tmp_path / "SIDE6.D64"
+    side.write_bytes(b"")
+    sess, log = DiskSess(side, moves_on_prompt=False), Log()
+    real = M.press_state
+
+    def flaky(s):
+        return real(s) if s.answered == 0 else {"travel_49C3": None, "error": "timeout"}
+    monkeypatch.setattr(M, "press_state", flaky)
+    M.walk_moves(args(), sess, log, "77", 0, lambda n: None)
+    assert sess.presses == ["7", "7"] and not log.of("walk_repeated")
+    assert log.of("walk_repeat_unread")[0]["error"] == "timeout"
+
+
+def test_a_prompt_that_vanishes_while_retrying_is_no_prompt(monkeypatch, tmp_path):
+    no_sleep(monkeypatch)
+    side = tmp_path / "SIDE6.D64"
+    side.write_bytes(b"")
+    sess, log = DiskSess(side), Log()
+    sess.row = PROMPT
+    tries = []
+
+    def refuse(s=None):
+        tries.append(1)
+        sess.row = GRID                             # gone by the next look
+        return False
+    sess.handle_prompt = refuse
+    assert M.answer_disk_prompt(args(), sess, log, 1) == (False, None)
+    assert len(tries) == 1 and not log.of("disk_prompt")
