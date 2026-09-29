@@ -760,7 +760,7 @@ def test_tail_damage_refuses_a_tail_of_the_wrong_length():
 def test_the_block_damage_agrees_with_the_old_formula_on_every_specimen():
     import pathlib
 
-    from goldbox.d64 import D64
+    from goldbox.d64 import D64, D64Error
     disks = disk_dir()
     if not disks:
         pytest.skip("needs the player's save disks")
@@ -768,7 +768,7 @@ def test_the_block_damage_agrees_with_the_old_formula_on_every_specimen():
     for path in sorted(pathlib.Path(disks).glob("*SAVE*.D64")):
         try:
             sg1 = SaveGame1.from_prg(D64.open(str(path)).read_file(b"SAVEDGAME1"))
-        except Exception:
+        except (D64Error, SaveGameError):
             continue
         for block in sg1.roster_blocks:
             if not block.occupied:

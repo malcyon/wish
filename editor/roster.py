@@ -116,7 +116,8 @@ class Member:
     native: Any = None
     #: The character's condition as `(neutral status name, in play)`, either
     #: half None when the port's own reader does not set it. None as a whole
-    #: means the editor cannot read it (a Pool disk holding no SAVEDGAME1).
+    #: means the editor cannot read it: a Pool disk holding no SAVEDGAME1, or
+    #: an unoccupied C64 roster block.
     #: It is read from the port's own status, not the sheet's byte 0x100,
     #: which `c64_codec.write` cannot make hold every DOS state.
     condition: tuple[str | None, bool | None] | None = None

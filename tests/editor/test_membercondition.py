@@ -120,3 +120,19 @@ def test_a_dos_member_out_of_play_reads_the_active_flag(tmp_path):
     party = Party(str(_dos_folder(tmp_path, status="okay", active=False)))
     assert party.members[0].condition == ("okay", False)
     assert party.members[0].roster_tail is not None
+
+
+def test_an_amiga_member_reads_the_status_the_port_holds(tmp_path):
+    from goldbox import amiga_savegame
+    (tmp_path / "d").mkdir()
+    neutral = dos_codec.to_neutral(dos_codec.read_character(
+        _dos_folder(tmp_path / "d", status="dying", active=False)
+        / "CHRDATA1.SAV"))
+    savgam = bytearray(amiga_savegame.POR_SAVEGAME_SIZE)
+    at = amiga_savegame.POOL_OF_RADIANCE.party_at
+    savgam[at:at + 8] = b"CHRDATA1"
+    disk = amiga_savegame.make_por_save_disk("A", [neutral], bytes(savgam))
+    path = tmp_path / "pool.adf"
+    disk.save(str(path))
+    party = Party(str(path))
+    assert party.members[0].condition == ("dying", False)
