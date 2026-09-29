@@ -474,3 +474,126 @@ def test_the_placed_save_reports_what_still_differs_from_the_donor(tmp_path):
     dosfightwatch.install_folder(save, folder, place=(_donor(), script))
     report = dosfightwatch.place_like(save / "SAVGAME.DAT", _donor(), script)
     assert report["differs_from_donor"] == {"count": 1, "ranges": [[100, 100]]}
+
+
+# -- the screens a run keeps (#743): the fight ended at a bar nobody could see --
+
+
+class _UnknownBarScreen:
+    def glyphs(self, rect=None) -> str:
+        return "01364f4c1cd47efa"
+
+
+class _NoHits:
+    def drain(self):
+        return []
+
+
+class _PngSession:
+    """Writes a file for every `shot`, the way the pool's session does."""
+
+    def __init__(self, root):
+        self.root = root
+        self.root.mkdir(exist_ok=True)
+
+    def shot(self, name, allow_blank=False):
+        path = self.root / f"{name}.png"
+        path.write_bytes(b"\x89PNG " + name.encode())
+        return path
+
+    def capture(self):
+        return _UnknownBarScreen()
+
+    def key(self, *keys, gap=0.0):
+        pass
+
+
+def test_a_bar_the_fight_does_not_know_is_kept_in_the_run_folder(tmp_path):
+    por = _FakePoR([None])
+    por.s = _PngSession(tmp_path / "pool")
+    por.world_glyphs = "the-world"
+    evidence = dosfightwatch.Evidence(tmp_path / "out")
+    result = dosfightwatch.fight_watching(
+        por, _NoHits(), patience=0.0, evidence=evidence)
+    assert result["why"] == "unknown bar 01364f4c1cd47efa"
+    assert "unknown_bar_01364f4c1cd47efa.png" in evidence.files
+    for name in evidence.files:
+        assert (tmp_path / "out" / name).read_bytes().startswith(b"\x89PNG")
+
+
+def test_the_walk_keeps_a_bar_it_gives_up_on(tmp_path):
+    por = _FakePoR([None])
+    por.s = _PngSession(tmp_path / "pool")
+    evidence = dosfightwatch.Evidence(tmp_path / "out")
+    result = dosfightwatch.walk_to_encounter(
+        por, steps=5, patience=0.0, evidence=evidence)
+    assert result["met"] is False
+    assert (tmp_path / "out" / "walk_unknown_bar_01364f4c1cd47efa.png").exists()
+
+
+def test_each_encounter_is_kept_and_named(tmp_path):
+    ovr = _ovr()
+    dbg = _Debugger(ovr, _script(1000, 532), counts=(13, 7))
+    dbg.shot = _PngSession(tmp_path / "pool").shot
+    evidence = dosfightwatch.Evidence(tmp_path / "out")
+    dosfightwatch.measure_split(
+        _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
+        walk=lambda por, steps: {"met": True}, evidence=evidence)
+    assert evidence.files == ["encounter1.png", "encounter2.png"]
+    assert (tmp_path / "out" / "encounter2.png").exists()
+
+
+def test_pile_keeps_the_loaded_screen_and_the_report_names_the_shots(
+        tmp_path, monkeypatch):
+    folder, save = _stage(tmp_path)
+
+    class Claimed:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class Session(_PngSession):
+        def __init__(self, claimed, game):
+            super().__init__(tmp_path / "pool")
+            self.save_dir = save
+
+        def stage(self, fresh):
+            pass
+
+        def boot(self, fresh):
+            pass
+
+        def close(self):
+            pass
+
+    class Por:
+        def __init__(self, s):
+            self.s = s
+
+        def to_main_menu(self):
+            pass
+
+        def load_game(self, letter):
+            pass
+
+        def status(self):
+            return "status"
+
+    def measure(por, ovr, *, steps, ds, evidence, walk):
+        evidence.take(por.s, "encounter1")
+        return {"walk": {"met": True}}
+
+    monkeypatch.setattr(dosbox, "find_game", lambda *a: tmp_path)
+    monkeypatch.setattr(dosboxx, "claim", lambda *a: Claimed())
+    monkeypatch.setattr(dosboxx, "XSession", Session)
+    monkeypatch.setattr(dosbox, "PoolOfRadiance", Por)
+    monkeypatch.setattr(dosfightwatch, "find_ovr", lambda game: b"")
+    monkeypatch.setattr(dosfightwatch, "measure_split", measure)
+    out = tmp_path / "out"
+    report = dosfightwatch.pile(folder=folder, source=None, at=None, steps=1,
+                                out=out, ds=None)
+    assert report["screenshots"] == ["loaded.png", "encounter1.png"]
+    assert (out / "loaded.png").exists()
+    assert "loaded.png" in (out / "report.json").read_text()

@@ -72,6 +72,7 @@ are the ones to convert for this.
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
 import pathlib
@@ -119,6 +120,38 @@ HP_CURRENT = 0x11B
 #: so it is answered `n` and walked past.
 FIGHT_BARS = frozenset({"encounter", "message", "command",
                         "continue_battle", "treasure"})
+
+
+class Evidence:
+    """Screenshots a run keeps in its `--out` folder, and their names.
+
+    The pool's own shot directory goes when the slot is released, so a screen
+    nobody looked at during the run is lost.  `files` is what the report
+    names.  The DOS tooling compares pixels by digest and has no way to read
+    a screen's text, so a shot is the only record of what a bar said.
+    """
+
+    def __init__(self, out: pathlib.Path):
+        self.out = out
+        self.files: list[str] = []
+
+    def take(self, s, name: str) -> str | None:
+        path = s.shot(name, allow_blank=True)
+        if path is None:
+            return None
+        self.out.mkdir(parents=True, exist_ok=True)
+        shutil.copy(path, self.out / f"{name}.png")
+        if f"{name}.png" not in self.files:
+            self.files.append(f"{name}.png")
+        return f"{name}.png"
+
+
+def _shot(s, name: str, evidence: Evidence | None) -> None:
+    """The pool's own shot, and a copy in `--out` when the run keeps evidence."""
+    if evidence is None:
+        s.shot(name, allow_blank=True)
+    else:
+        evidence.take(s, name)
 
 
 def unsourced_fields() -> list[tuple[str, int, int]]:
@@ -264,7 +297,8 @@ def absorb_spurious(w: Watcher, expected: int, timeout: float = 40.0) -> list:
 def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
                    budget: float = 900.0, settled: float = 4.0,
                    dwell: float = 1.2, patience: float = 90.0,
-                   max_hits: int = 4000, on_hit=None) -> dict:
+                   max_hits: int = 4000, on_hit=None,
+                   evidence: Evidence | None = None) -> dict:
     """`PoolOfRadiance.fight`, with the emulator's halts handled.
 
     A watchpoint firing stops the emulator, so the screen freezes and the
@@ -333,9 +367,14 @@ def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
         world_since = None
         key = por.COMBAT_KEYS.get(por.bar_kind(screen) or "")
         if key is None:
+            if unknown_since is None and evidence is not None:
+                # Taken on first sight: the screen may change before
+                # `patience` runs out, and the first frame is the one that
+                # names what the fight asked.
+                evidence.take(s, f"unknown_bar_{bar}")
             unknown_since = unknown_since or time.time()
             if time.time() - unknown_since >= patience:
-                s.shot(f"watch_unknown_bar_{bar}", allow_blank=True)
+                _shot(s, f"watch_unknown_bar_{bar}", evidence)
                 return {"result": False, "why": f"unknown bar {bar}",
                         "resumes": resumes,
                         "seconds": round(time.time() - started, 1)}
@@ -344,13 +383,13 @@ def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
         unknown_since = None
         s.key(key)
         s.wait_while_glyphs(dosbox.BAR, bar, timeout=dwell)
-    s.shot("watch_stuck", allow_blank=True)
+    _shot(s, "watch_stuck", evidence)
     return {"result": False, "why": "budget", "resumes": resumes,
             "seconds": round(time.time() - started, 1)}
 
 
-def _await_bar(por: dosbox.PoolOfRadiance,
-               patience: float) -> tuple[str | None, bool]:
+def _await_bar(por: dosbox.PoolOfRadiance, patience: float,
+               evidence: Evidence | None = None) -> tuple[str | None, bool]:
     """Wait out a bar with no key, the way `PoolOfRadiance.fight()` does.
 
     `blank` -- the bar row caught mid-redraw -- is carried in
@@ -366,14 +405,20 @@ def _await_bar(por: dosbox.PoolOfRadiance,
     deadline = time.time() + patience
     screen = por.s.capture()
     kind = por.bar_kind(screen)
+    first_sight = True
     while kind not in FIGHT_BARS and por.COMBAT_KEYS.get(kind or "") is None:
+        if kind is None and first_sight and evidence is not None:
+            # `blank` is a frame caught mid-redraw and is not kept; a bar in
+            # no table is.
+            evidence.take(por.s, f"unknown_bar_{screen.glyphs(dosbox.BAR)}")
+        first_sight = False
         if time.time() >= deadline:
             # The shot is named for **this** capture's bar, the one the walk
             # actually gave up on.  Capturing again here to name it would let
             # the emulator redraw in between and save a picture of some other
             # frame -- which is the hazard this whole function exists for.
-            por.s.shot(f"walk_unknown_bar_{screen.glyphs(dosbox.BAR)}",
-                       allow_blank=True)
+            _shot(por.s, f"walk_unknown_bar_{screen.glyphs(dosbox.BAR)}",
+                  evidence)
             return kind, False
         time.sleep(0.25)
         screen = por.s.capture()
@@ -382,7 +427,8 @@ def _await_bar(por: dosbox.PoolOfRadiance,
 
 
 def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int, *,
-                      patience: float = 90.0) -> dict:
+                      patience: float = 90.0,
+                      evidence: Evidence | None = None) -> dict:
     """Walk until the encounter menu comes up, dismissing whatever else does.
 
     A blocked step returns to the same bar with the same status line; the
@@ -424,7 +470,7 @@ def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int, *,
         # No guard here: `_await_bar` returns at once on a bar the walk can
         # already act on, and one copy of that test is easier to keep true
         # than two.
-        kind, resolved = _await_bar(por, patience)
+        kind, resolved = _await_bar(por, patience, evidence)
         if not resolved:
             return {"met": False,
                     "why": f"a bar nobody has labelled ({kind})",
@@ -1069,7 +1115,8 @@ def count_fight(por: dosbox.PoolOfRadiance, brk_lin: int, *,
 
 def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
                   ds: int | None = None, fight_kw: dict | None = None,
-                  walk=walk_to_encounter) -> dict:
+                  walk=walk_to_encounter,
+                  evidence: Evidence | None = None) -> dict:
     """Watch the gold pile through one fight, then read `C` and `A` in another.
 
     The party is already loaded.  Fight one: walk to an encounter, arm a
@@ -1083,7 +1130,11 @@ def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
     s = por.s
     report: dict = {"mode": "pile"}
     report["walk"] = walk(por, steps)
-    if not report["walk"]["met"] or not s.attach():
+    if not report["walk"]["met"]:
+        return report
+    if evidence is not None:
+        evidence.take(s, "encounter1")
+    if not s.attach():
         return report
     if ds is None:
         ds = s.regs("DS")["DS"]
@@ -1101,7 +1152,7 @@ def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
     absorb_spurious(w, nonzero)
     s.run()
     report["fight"] = fight_watching(por, w, on_hit=lambda row: read_code_before(s, row),
-                                     **(fight_kw or {}))
+                                     evidence=evidence, **(fight_kw or {}))
     report.update(summarize(initial, w.hits, ovr, base, None))
     if report.get("bias") is None:
         report["why"] = "no unambiguous split hit, so no overlay base"
@@ -1112,7 +1163,11 @@ def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
     s.clear_breakpoints()
     s.run()
     report["walk2"] = walk(por, steps)
-    if not report["walk2"]["met"] or not s.attach():
+    if not report["walk2"]["met"]:
+        return report
+    if evidence is not None:
+        evidence.take(s, "encounter2")
+    if not s.attach():
         return report
     s.clear_breakpoints()
     brk = report["bias"] + COUNT_OFFSET
@@ -1135,6 +1190,7 @@ def pile(*, folder: pathlib.Path, source: str | None, at: str | None,
     """`measure_split` on a folder installed into a fresh DOSBox-X."""
     out.mkdir(parents=True, exist_ok=True)
     game = dosbox.find_game()
+    evidence = Evidence(out)
     report: dict = {"mode": "pile", "folder": str(folder)}
     place = None
     if place_like_path is not None:
@@ -1161,9 +1217,13 @@ def pile(*, folder: pathlib.Path, source: str | None, at: str | None,
             por = dosbox.PoolOfRadiance(s)
             por.to_main_menu()
             por.load_game(letter)
+            evidence.take(s, "loaded")
             report["status_at_load"] = por.status()
-            report.update(measure_split(por, find_ovr(game), steps=steps, ds=ds))
+            report.update(measure_split(
+                por, find_ovr(game), steps=steps, ds=ds, evidence=evidence,
+                walk=functools.partial(walk_to_encounter, evidence=evidence)))
         finally:
+            report["screenshots"] = evidence.files
             (out / "report.json").write_text(json.dumps(report, indent=1,
                                                        default=str))
             s.close()
