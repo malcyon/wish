@@ -1369,3 +1369,51 @@ def test_run_passes_one_move_to_the_walk(monkeypatch, tmp_path):
     _run_with_marks(monkeypatch, tmp_path,
                     {"through": 213.4, "landed": 220.0}, area_after=27)
     assert seen == {"stop_after_moves": 1}
+
+
+def test_settle_does_not_take_the_grid_prompt_when_indoors_is_unread(tmp_path):
+    sess, m = make()
+    sess = WalkSession(m, indoors=None)
+    sess.settled, sess.row = False, "1-8, RETURN OR BUTTON"
+    ok, message = FT.settle_world(sess, tmp_path, {})
+    assert not ok and "1-8, RETURN OR BUTTON" in message
+
+
+def test_settle_reads_indoors_again_after_the_wait(tmp_path):
+    # The hop finishes loading during the wait: indoors, then not.
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    sess.settled, sess.row = False, "1-8, RETURN OR BUTTON"
+
+    def wait(timeout=240.0):
+        sess._indoors = False
+        return False
+
+    sess.wait_for_world = wait
+    assert FT.settle_world(sess, tmp_path, {}) == (True, "")
+
+
+def test_a_single_attempt_refusal_keeps_its_screens_on_the_step():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    sess.walk_screens = ["row a"]
+    sess.walk_stop_screen = ["row b"]
+    sess.walk_refused = "the driver pressed nothing"
+    steps, _ = FT.walk_afterwards(sess)
+    assert "attempts" not in steps[0]
+    assert steps[0]["screens"] == ["row a"]
+    assert steps[0]["stop_screen"] == ["row b"]
+
+
+def test_a_walk_ending_on_a_prompt_does_not_press_the_sheet_into_it():
+    class Prompt(WalkSession):
+        def walk_one(self, move):
+            ok = super().walk_one(move)
+            self.row = "INSERT DISK"
+            return ok
+
+    sess, m = make()
+    sess = Prompt(m, indoors=True)
+    steps, sheet = FT.walk_afterwards(sess, timeout=0.0, stop_after_moves=1)
+    assert sheet is False and sess.sheets == []
+    assert steps[-1]["refused"] and "INSERT DISK" in steps[-1]["refused"]

@@ -336,13 +336,14 @@ def settle_world(sess, out: pathlib.Path, shots: dict) -> tuple[bool, str]:
     # again after the wait, in case the arrival settled there.
     # Indoors that prompt is the stale travel-grid screen of a hop that is
     # still loading, so only `wait_for_world` may settle the walk there.
-    grid_ok = not sess.indoors()
-    if (grid_ok and S.OUTDOOR_PROMPT in row24(sess)) \
+    # A failed read (None) is not the grid either, and the area byte is read
+    # again after the wait, which is when a hop finishes loading.
+    if (sess.indoors() is False and S.OUTDOOR_PROMPT in row24(sess)) \
             or sess.wait_for_world(timeout=60):
         print(f"  settled: row 24 {row24(sess)!r}", flush=True)
         return True, ""
     row = row24(sess)
-    if grid_ok and S.OUTDOOR_PROMPT in row:
+    if sess.indoors() is False and S.OUTDOOR_PROMPT in row:
         print(f"  settled: row 24 {row!r}", flush=True)
         return True, ""
     print(f"  not settled: row 24 {row!r}", flush=True)
@@ -546,6 +547,9 @@ def walk_afterwards(sess, timeout: float = 60.0,
         step = {"move": last["move"], "ok": last["ok"], "row": last["row"],
                 "before": before, "after": last["after"], "refused": refused,
                 "shadow_before": shadow_before, "shadow_after": sess.square()}
+        for key in ("screens", "stop_screen"):
+            if key in last:
+                step[key] = last[key]
         if len(attempts) > 1:
             # The last key may be a turn that worked, which must not read as a
             # step that moved the party.
@@ -569,6 +573,17 @@ def walk_afterwards(sess, timeout: float = 60.0,
             moved += 1
             if stop_after_moves is not None and moved >= stop_after_moves:
                 break
+    # A step can end on a prompt without `walk_refused` being set, and the
+    # sheet's keys must not be pressed into it.
+    row = settle_row(sess, timeout)
+    if steps and not sess.in_combat() and not recognised(row):
+        here = where(sess, indoors)
+        steps.append({"move": "sheet", "ok": False, "row": row,
+                      "before": here, "after": here,
+                      "refused": f"row 24 is not the world bar, the move "
+                                 f"sub-bar or the direction prompt: {row!r}"})
+        print(f"  sheet: stopped on row 24 {row!r}", flush=True)
+        return steps, False
     sheet = sess.character_sheet(0)
     return steps, bool(sheet)
 
@@ -734,8 +749,7 @@ def run(args) -> int:
         try:
             settled, why = settle_world(sess, out, shots)
             if settled:
-                steps, sheet = walk_afterwards(
-                    sess, stop_after_moves=1)
+                steps, sheet = walk_afterwards(sess, stop_after_moves=1)
                 walk_ok, walk_message = walk_verdict(steps, sheet)
             else:
                 steps, sheet, walk_ok, walk_message = [], False, False, why
