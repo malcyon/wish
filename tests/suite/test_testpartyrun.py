@@ -81,6 +81,17 @@ class Log:
 
 
 def test_pick_a_fight_takes_an_encounter_menu_as_the_fight(monkeypatch):
+    # The encounter bar is not the world's, so waiting for the world would time
+    # out: a fight already up is returned as it stands.
+    sess = PatrolSession(monkeypatch)
+    sess.fighting = True
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    got = T.pick_a_fight(sess, Log(), pathlib.Path("."), steps=3)
+    assert got["in_combat"] is True and sess.asked == []
+
+
+def test_pick_a_fight_presses_combat_on_an_encounter_menu_the_walk_opens(
+        monkeypatch):
     sess = PatrolSession(monkeypatch)
     monkeypatch.setattr(T, "dump", lambda *a, **k: None)
     # This fake stays on the encounter bar; leaving camp is tested below.
@@ -489,3 +500,55 @@ def test_pick_a_fight_raises_when_camp_will_not_go(monkeypatch):
     with pytest.raises(RuntimeError, match="ENCAMP:SAVE"):
         T.pick_a_fight(sess, log, pathlib.Path("."), steps=1)
     assert sess.keys == []
+
+
+def test_walk_to_fight_waits_for_the_square_after_the_facing_appears(
+        monkeypatch):
+    class Late(WalkSession):
+        reads = 0
+
+        def screen_text(self):
+            self.reads += 1
+            if self.reads <= 4:
+                return "HERE / N 8:07"
+            return super().screen_text()
+
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    monkeypatch.setattr(T, "resident_area", lambda sess, log=None: 20)
+    sess = Late(monkeypatch, None, 20, (), (3, 4, 3), None)
+    Clock(monkeypatch)
+    # It gets past the planning read; the arrival check then fails as before.
+    with pytest.raises(RuntimeError, match="planned"):
+        T.walk_to_fight(sess, RecordingLog(), pathlib.Path("."), (12, 4),
+                        _geo(), _geo())
+    assert sess.reads > 4
+
+
+def test_a_status_line_blank_for_one_read_after_a_turn_is_not_a_desync(
+        monkeypatch):
+    class Blink(WalkSession):
+        blank = False
+
+        def walk_one(self, key, *a, **k):
+            self.blank = True
+            return super().walk_one(key, *a, **k)
+
+        def screen_text(self):
+            if self.blank:
+                self.blank = False
+                return "HERE / "
+            return super().screen_text()
+
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    sess = Blink(monkeypatch, None, 20, (), (9, 13, 0), None, turns_move=False)
+    got = T.walk_route(sess, RecordingLog(), [(9, 13), (9, 14)], 0, "new-phlan")
+    assert got == (2, None, None)
+
+
+def test_to_world_reports_what_the_exit_press_returned(monkeypatch):
+    sess = WalkSession(monkeypatch, camp=True, camp_exit_works=False)
+    Clock(monkeypatch)
+    log = RecordingLog()
+    with pytest.raises(RuntimeError, match=r"returned True"):
+        T.to_world(sess, log)
+    assert ("to_world_exit", {"returned": True}) in log.events

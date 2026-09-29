@@ -349,29 +349,39 @@ def _row24(sess) -> str:
     return "" if s is None else s.row(24).strip()
 
 
-def to_world(sess, log: Log, timeout: float = 30) -> bool:
+def to_world(sess, log: Log, timeout: float = 30,
+             need_square: bool = False) -> bool:
     """Leave camp if the game is in it, then wait for the world bar.
 
     The item list's exit leaves the game on camp's own bar
     (`ENCAMP:SAVE VIEW ...`), where a walk presses nothing.  EXIT is pressed
     once, and the world is then polled for -- the bar is `MOVE` and the status
-    line shows a facing -- because a second EXIT may land on the world.  Every
-    distinct row 24 seen is logged.  Returns whether the world bar was reached.
+    line shows a facing, and a square too when `need_square` -- because a second
+    EXIT may land on the world.  Every distinct row 24 seen is logged, with what
+    `select_bar` returned for EXIT.  Raises `RuntimeError` naming row 24 and
+    that return value when the world bar does not come within `timeout`, and
+    otherwise returns True.
     """
     seen = _row24(sess)
     log.emit("to_world", row24=seen)
+    exited = None
     if seen.startswith("ENCAMP:"):
-        sess.select_bar("EXIT", timeout=10)
+        exited = sess.select_bar("EXIT", timeout=10)
+        log.emit("to_world_exit", returned=exited)
     deadline = time.monotonic() + timeout
     while True:
         row = _row24(sess)
         if row != seen:
             log.emit("to_world", row24=row)
             seen = row
-        if "MOVE" in row and _status_line(sess)[0] is not None:
-            return True
+        if "MOVE" in row:
+            face, square = _status_line(sess)
+            if face is not None and (square is not None or not need_square):
+                return True
         if time.monotonic() >= deadline:
-            return False
+            raise RuntimeError("the game never reached the world bar; row 24 "
+                               f"reads {row!r}; select_bar('EXIT') returned "
+                               f"{exited!r}")
         time.sleep(0.5)
 
 
@@ -397,7 +407,14 @@ def _turn_key(sess, log: Log, key: str, expected: int, leg: str, here, there):
             return {"leg": leg, "key": key, "from": list(here),
                     "to": list(there), "reason": "not_pressed",
                     "refused": refused}
+        # The line can be blank for a moment while the screen redraws after a
+        # turn, so it is read again for about a second before it counts as gone.
         seen = _status_line(sess)[0]
+        for _ in range(3):
+            if seen is not None or sess.in_combat():
+                break
+            time.sleep(0.35)
+            seen = _status_line(sess)[0]
     log.emit("route_key", leg=leg, key=key, to=list(there), turn=True,
              facing=seen, expected=expected)
     if seen is None and not sess.in_combat():
@@ -468,9 +485,7 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
     game did not act on ends the walk with `desynced` set, and `at_target` is
     only ever true for a walk on which every key moved.
     """
-    if not to_world(sess, log):
-        raise RuntimeError("the game never reached the world bar; row 24 "
-                           f"reads {_row24(sess)!r}")
+    to_world(sess, log, need_square=True)
     face, square = _status_line(sess)
     if face is None or square is None:
         raise RuntimeError("the status line gave no facing and square to "
@@ -559,9 +574,10 @@ def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150,
     """
     if fight_at is not None:
         return walk_to_fight(sess, log, out, fight_at, *maps)
-    if not to_world(sess, log):
-        raise RuntimeError("the game never reached the world bar; row 24 "
-                           f"reads {_row24(sess)!r}")
+    # A fight already up (an encounter menu the last step opened) is the fight;
+    # its bar is not the world's, so waiting for that would time out.
+    if not sess.in_combat():
+        to_world(sess, log)
     taken = 0
     turn = "J"
     sess.walk_encounter = S.ENCOUNTER_FIGHT
