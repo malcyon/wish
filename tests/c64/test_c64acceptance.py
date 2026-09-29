@@ -337,6 +337,7 @@ class _TempleSession:
         self.cursor_reads = 0
         self.heal_never_draws = unsafe == "heal-never-draws"
         self.heal_blank_reads = 0
+        self.heal_old_bar_reads = 0
         self.paused = False
         # The live run crossing the area edge showed the memory triple
         # ahead of the redrawn screen for one poll; `crossing_lag` makes
@@ -377,6 +378,18 @@ class _TempleSession:
             # screens between temple and service do.
             self.heal_blank_reads -= 1
             return _TempleScreen([""] * 25)
+        if self.phase == "heal" and self.unsafe == "heal-glitch":
+            # One mid-redraw bar, seen once, before the list is steady.
+            self.unsafe = None
+            rows = [""] * 25
+            rows[24] = "INSERT DISK"
+            return _TempleScreen(rows)
+        if self.phase == "heal" and self.heal_old_bar_reads:
+            # The temple bar lingers for a few reads after the key.
+            self.heal_old_bar_reads -= 1
+            rows = [""] * 25
+            rows[24] = "HEAL VIEW POOL APPRAISE EXIT"
+            return _TempleScreen(rows)
         if self.crossing_lag:
             place, phase = self._pre_crossing_place, "move"
             self.crossing_lag -= 1
@@ -455,7 +468,8 @@ class _TempleSession:
         if phase == "question":
             return _TempleScreen(rows, (0, 3))
         if phase == "temple":
-            return _TempleScreen(rows, (0, 4), 4)
+            return _TempleScreen(rows, (0, 4),
+                                 5 if self.unsafe == "highlight-row-5" else 4)
         return _TempleScreen(rows)
 
     def screenshot(self, path, timeout=None):
@@ -554,6 +568,7 @@ class _TempleSession:
             self.phase = "heal-blank" if self.heal_never_draws else "heal"
             if not self.heal_never_draws:
                 self.heal_blank_reads = 3
+                self.heal_old_bar_reads = 3 if self.unsafe == "heal-slow" else 0
             return
         assert self.phase == "question" and row == 24 and "YES" in was
         self.keys.append("YES")
@@ -675,11 +690,66 @@ def test_temple_probe_heal_stops_at_ninety_seconds_keeping_the_blank_frame(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch,
                                             unsafe="heal-never-draws")
-    with pytest.raises(A.StepFailed, match="90 seconds of HEAL"):
+    with pytest.raises(A.StepFailed, match="90 second limit"):
         run.temple_probe("BRUTUS HEAL")
     assert session.keys[-1] == "HEAL"
     assert run.temple_checkpoints[-1]["tag"] == "lost-heal"
     assert run.clock() >= 90
+
+
+def test_temple_probe_heal_stops_when_the_highlight_is_not_on_brutus_row(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            unsafe="highlight-row-5")
+    with pytest.raises(A.StepFailed, match="highlighted top row"):
+        run.temple_probe("BRUTUS HEAL")
+    assert "HEAL" not in session.keys
+    assert run.temple_checkpoints[-1]["tag"] == "lost-member"
+
+
+def test_temple_probe_heal_does_not_keep_the_lingering_temple_bar(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            unsafe="heal-slow")
+    run.temple_probe("BRUTUS HEAL")
+    kept = run.temple_checkpoints[-1]
+    assert kept["tag"] == "heal-first-screen"
+    assert (tmp_path / f"{kept['stem']}.json").is_file()
+    assert session.phase == "heal" and session.heal_old_bar_reads == 0
+
+
+def test_temple_probe_heal_keeps_only_a_bar_seen_twice_running(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            unsafe="heal-glitch")
+    kept = []
+    real = run.temple_checkpoint
+    run.temple_checkpoint = lambda tag, sample=None: (
+        kept.append((tag, sample and sample.screen.row(24))) or real(tag, sample))
+    run.temple_probe("BRUTUS HEAL")
+    assert kept[-1] == ("heal-first-screen", "SERVICE ONE TWO EXIT".ljust(40))
+
+
+def test_temple_probe_heal_stops_at_the_input_deadline_not_ninety_seconds(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            unsafe="heal-never-draws")
+    original = session.confirm_bar
+    fake_now = run.clock
+    offset = [0.0]
+    run.clock = lambda: fake_now() + offset[0]
+
+    def late(row, was):
+        heal = session.phase == "temple"
+        original(row, was)
+        if heal:
+            offset[0] = 1350.0 - fake_now()
+
+    session.confirm_bar = late
+    with pytest.raises(A.StepFailed, match="temple input deadline"):
+        run.temple_probe("BRUTUS HEAL")
+    assert run.temple_checkpoints[-1]["tag"] == "lost-heal"
+    assert 1400 <= run.clock() < 1450
 
 
 def test_temple_probe_heal_stops_before_heal_when_another_member_is_on_top(

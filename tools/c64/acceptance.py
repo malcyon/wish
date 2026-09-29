@@ -1924,17 +1924,25 @@ class PoolRun:
 
         BAR is the temple bar HEAL was chosen from; it stays on screen until
         the game redraws, so it is not the answer. Nothing is sent here."""
-        limit = min(self.clock() + 90, self.temple_input_deadline)
-        last = None
+        start = self.clock()
+        limit = min(start + 90, self.temple_input_deadline)
+        prior = last = None
         while self.clock() < limit:
             sample = self.temple_sample()
-            last = sample
+            prior, last = last, sample
             screen = sample.screen
-            if (screen is not None and screen.row(24).strip()
-                    and screen.row(24) != bar):
+            bar_now = "" if screen is None else screen.row(24)
+            # Two identical drawn reads, so a bar caught mid-redraw or a
+            # transient prompt is not what gets kept.
+            if (bar_now.strip() and bar_now != bar
+                    and prior is not None and prior.screen is not None
+                    and prior.screen.row(24) == bar_now):
                 return self.temple_checkpoint("heal-first-screen", sample)
             time.sleep(0.3)
-        self._temple_stop("heal", "no screen drawn within 90 seconds of HEAL",
+        cut = ("temple input deadline" if limit < start + 90
+               else "90 second limit")
+        self._temple_stop("heal", f"no steady screen drawn after HEAL before "
+                          f"the {cut} ({self.clock() - start:.1f} s waited)",
                           last)
 
     def temple_probe(self, who: str) -> dict:
@@ -1982,7 +1990,7 @@ class PoolRun:
                   "questions": counters["questions"],
                   "arrival": arrival["stem"]}
         if heal:
-            at_arrival = self.temple_sample()
+            at_arrival = self._temple_steady("before HEAL")
             if (at_arrival.screen is None
                     or not self._temple_top_row_is(at_arrival.screen, "BRUTUS")):
                 self._temple_stop("member", "BRUTUS is not the highlighted "
