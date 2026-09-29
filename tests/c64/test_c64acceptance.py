@@ -6109,20 +6109,23 @@ def test_warp_fails_naming_a_facing_other_than_east(tmp_path, monkeypatch):
         run.warp("10")
 
 
-def test_warp_parses_only_a_known_decimal_area():
+def test_warp_parses_only_an_area_whose_arrival_it_checks():
     assert A.parse_steps(["load", "warp 10"])[1] == A.Step("warp", "10")
-    for bad in ("warp", "warp x", "warp 99"):
+    for bad in ("warp", "warp x", "warp 99", "warp 7"):
         with pytest.raises(ValueError):
             A.parse_steps(["load", bad])
+    with pytest.raises(ValueError, match="area 10"):
+        A.parse_warp("7")
 
 
-def test_the_warp_step_is_refused_for_curse_and_silver_blades(tmp_path):
+def test_the_warp_step_is_refused_for_curse_and_silver_blades(tmp_path, capsys):
     for title in ("curse", "ssb"):
         with pytest.raises(SystemExit) as info:
             A.main(["--title", title, "--save", str(_fixture_disk(tmp_path)),
                     "--disks", str(tmp_path), "--steps", "load", "warp 10",
                     "--out", str(tmp_path / "out")])
         assert info.value.code == 2
+        assert "warp step: Pool of Radiance only" in capsys.readouterr().err
     for cls in (A.CurseRun, A.SilverRun):
         run = cls.__new__(cls)
         run.fail = lambda tag, why: A.StepFailed(why)

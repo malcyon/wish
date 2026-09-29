@@ -131,6 +131,7 @@ from tools.c64 import (  # noqa: E402
     screens,
 )
 from tools.c64 import session as S  # noqa: E402
+from tools.pool_of_radiance.koboldnpc import SessTarget  # noqa: E402
 from tools.registry import evidence, scratch, specimens  # noqa: E402
 
 TITLES = {"pool": "pool-of-radiance", "curse": "curse-of-the-azure-bonds",
@@ -470,39 +471,14 @@ WARP_IDLE_SECONDS = 300.0
 
 
 def parse_warp(arg: str) -> int:
-    """The area id a `warp` names: a decimal integer the game has a row for."""
+    """The area id a `warp` names: a decimal integer whose arrival is checked."""
     if not re.fullmatch(r"[0-9]+", arg):
         raise ValueError(f"warp {arg!r}: an area id, a decimal integer")
-    if auto_actions.area_by_id(int(arg)) is None:
-        raise ValueError(f"warp {arg!r}: no such area")
-    return int(arg)
-
-
-class SessTarget:
-    """`automap.actions`' Target contract over a driven session's monitor.
-
-    Copied from `tools/pool_of_radiance/koboldnpc.py`, which a harness in
-    `tools/c64` does not import from.
-    """
-
-    def __init__(self, sess):
-        self.sess = sess
-
-    def read(self, addr: int, length: int) -> bytes:
-        with self.sess.mon(5) as m:
-            return m.read(addr, length)
-
-    def write(self, addr: int, data) -> None:
-        with self.sess.mon(5) as m:
-            m.write(addr, bytes(data))
-
-    def pc(self):
-        with self.sess.mon(5) as m:
-            return m.registers().get(auto_actions.pc_register(m))
-
-    def set_pc(self, address: int) -> None:
-        with self.sess.mon(5) as m:
-            m.set_registers({auto_actions.pc_register(m): address})
+    area = int(arg)
+    if area not in ARRIVAL_FACING:
+        raise ValueError(f"warp {arg!r}: the step checks its arrival only for "
+                         "area " + ", ".join(map(str, sorted(ARRIVAL_FACING))))
+    return area
 
 
 def temple_source_guard(source: pathlib.Path) -> str:
@@ -2134,9 +2110,10 @@ class PoolRun:
     def _wait_idle(self, need: int = 6) -> bool:
         """Wait until the engine is back in its key-wait loop and stays there.
 
-        Copied from `tools/areas/wallpins.py`.  A fixed settle would measure
-        the floppy, and a read taken while the arriving area is still loading
-        sees it half loaded.
+        A fixed settle would measure the floppy, and a read taken while the
+        arriving area is still loading sees it half loaded.  Unlike
+        `tools/areas/wallpins.py`'s `wait_idle`, it fails the step instead of
+        returning False, and the run's deadline bounds it.
         """
         idle_ranges = (fasttravel.POOL_OF_RADIANCE.key_wait,
                        fasttravel.POOL_OF_RADIANCE.key_fetch)
