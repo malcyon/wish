@@ -1,7 +1,7 @@
 """Puts a saved game, and the inputs an acceptance run stages, into a DOS save folder.
 
 `install` copies one slot of a Wish-written save into a staged `SAVE` tree, and
-`stage_hall`, `stage_xp` and `stage_node` edit the installed records before the
+`stage_hall`, `stage_xp`, `stage_record` and `stage_node` edit the installed records before the
 game boots.
 """
 from __future__ import annotations
@@ -148,6 +148,29 @@ def stage_control(save_dir: pathlib.Path, letter: str, line: int, control: int,
         result["share_after"] = bytes(data[share_offset:share_offset + 1]).hex()
     path.write_bytes(bytes(data))
     return result
+
+
+def stage_record(save_dir: pathlib.Path, letter: str, line: int, offset: int,
+                 value: int) -> dict:
+    """Write `value` at `offset` of roster line `line`'s `CHRDAT` record.
+
+    The offset must lie inside the file: a write past the end of a bytearray
+    would grow the record, which no game wrote.
+    """
+    path = save_dir / f"CHRDAT{letter.upper()}{line}.SAV"
+    data = bytearray(path.read_bytes())
+    if not 0 <= offset < len(data):
+        raise ValueError(f"offset {offset:#x} is outside {path.name}, "
+                         f"which is {len(data)} bytes")
+    if not 0 <= value <= 0xFF:
+        raise ValueError(f"value {value} is not one byte")
+    name = dos_codec.read_character(path).name
+    before = data[offset]
+    data[offset] = value
+    path.write_bytes(bytes(data))
+    return {"stage": "record", "file": path.name, "name": name,
+            "offset": hex(offset), "before": f"{before:02x}",
+            "after": f"{value:02x}"}
 
 
 def stage_node(save_dir: pathlib.Path, letter: str, line: int, node: bytes) -> dict:

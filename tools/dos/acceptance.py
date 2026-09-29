@@ -142,7 +142,8 @@ bytes (`.claude/rules/testing.md`, "Poke a field before the boot"):
 CHARACTER` in the party menu wherever the party stands for every class
 (`docs/194-the-dos-training-ladder.md`); `--xp N=VALUE` sets roster line N's
 experience; `--add-node N=ID:MINUTES:DATA:FLAG` appends one effect node to
-line N's effect file (`.SPC`, `.FX` or `.SFX`).
+line N's effect file (`.SPC`, `.FX` or `.SFX`); `--stage-record
+LINE:OFFSET=VALUE` sets one byte of line N's `CHRDAT` record below its length.
 
 **The rest-time keys are read from each title's `GAME.OVR`**, because nobody
 had captured the screen.  Pool of Radiance's rest menu is `Rest daYs Hours
@@ -234,6 +235,7 @@ from tools.dos.staging import (  # noqa: E402
     stage_control,
     stage_hall,
     stage_node,
+    stage_record,
     stage_xp,
 )
 from tools.registry import evidence, scratch  # noqa: E402
@@ -1247,6 +1249,27 @@ def parse_control(text: str) -> tuple[int, int, int | None]:
     return int(line), control, share
 
 
+def parse_record_bytes(texts) -> list[tuple[int, int, int]]:
+    """`LINE:OFFSET=VALUE`, numbers decimal or `0x` hex, comma-separated or
+    repeated: one byte of roster line 1-8's `CHRDAT` record each.  Whether the
+    offset lies inside the record is `check_staging`'s and `stage_record`'s
+    to say, since the record's size is the installed title's."""
+    out = []
+    for text in texts:
+        for item in text.split(","):
+            where, sep, value = item.partition("=")
+            parts = where.split(":")
+            if not sep or len(parts) != 2 or not value.strip():
+                raise ValueError(f"{item!r}: a record byte is LINE:OFFSET=VALUE")
+            line, offset = (int(p, 0) for p in parts)
+            byte = int(value, 0)
+            if not 1 <= line <= 8 or offset < 0 or not 0 <= byte <= 0xFF:
+                raise ValueError(f"{item!r}: the line is 1 to 8, the offset "
+                                 "not negative, the value one byte")
+            out.append((line, offset, byte))
+    return out
+
+
 def parse_node(text: str) -> tuple[int, bytes]:
     """`LINE=ID:MINUTES:DATA:FLAG`, numbers decimal or `0x` hex: a node's five bytes."""
     line, sep, rest = text.partition("=")
@@ -1369,7 +1392,13 @@ def read_slot(folder: pathlib.Path, letter: str) -> dict:
             control_index = 1 if len(control_raw) == 5 else 0
             control = control_raw[control_index]
             treasure_share = control_raw[control_index + 1]
+        # None, not 0, in a title that has not mapped the byte.
+        own = {n: c.get(n) if n in c.fields else None
+               for n in ("creature_type", "turn_class", "movement")}
         out["characters"].append({
+            **own,
+            "status_bytes": (list(c.raw("field_10c_10f"))
+                             if "field_10c_10f" in c.fields else None),
             "name": c.name, "file": path.name,
             "experience": c.get("experience") if "experience" in c.fields else None,
             "control": control, "treasure_share": treasure_share,
@@ -3838,17 +3867,26 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
             raise ValueError(f"{word.name} is {word.stat().st_size} bytes, too "
                              f"short for the hall word at {HALL_WORD:#x}")
     names = {p.name.upper() for p in save.iterdir()}
+    records = parse_record_bytes(getattr(args, "stage_record", []) or [])
     lines = ([parse_xp(t)[0] for t in getattr(args, "xp", []) or []]
              + [parse_node(t)[0] for t in getattr(args, "add_node", []) or []]
-             + [parse_control(t)[0] for t in getattr(args, "stage_control", []) or []])
+             + [parse_control(t)[0] for t in getattr(args, "stage_control", []) or []]
+             + [r[0] for r in records])
     for line in lines:
         want = f"CHRDAT{from_slot}{line}.SAV"
         if want not in names:
             raise ValueError(f"line {line} has no {want} in {save}")
+    for line, offset, _ in records:
+        record = next(p for p in save.iterdir()
+                      if p.name.upper() == f"CHRDAT{from_slot}{line}.SAV")
+        if offset >= record.stat().st_size:
+            raise ValueError(f"--stage-record offset {offset:#x} is outside "
+                             f"{record.name}, which is {record.stat().st_size} bytes")
 
 
 def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
-    """The `--hall`, `--xp`, `--add-node` and `--stage-control` stages, in that order."""
+    """The `--hall`, `--xp`, `--add-node`, `--stage-control` and `--stage-record`
+    stages, in that order."""
     done = []
     if getattr(args, "hall", False):
         done.append(stage_hall(save_dir, letter))
@@ -3858,6 +3896,8 @@ def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
         done.append(stage_node(save_dir, letter, *parse_node(text)))
     for text in getattr(args, "stage_control", []) or []:
         done.append(stage_control(save_dir, letter, *parse_control(text)))
+    for line, offset, value in parse_record_bytes(getattr(args, "stage_record", []) or []):
+        done.append(stage_record(save_dir, letter, line, offset, value))
     return done
 
 
@@ -4056,6 +4096,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="stage roster line LINE's field_83_87 control byte, "
                          "and optionally the treasure-share byte after it, "
                          "before the boot")
+    ap.add_argument("--stage-record", action="append", default=[],
+                    metavar="LINE:OFFSET=VALUE",
+                    help="stage one byte of roster line LINE's CHRDAT record "
+                         "(decimal or 0x hex, comma-separated or repeated), "
+                         "after --stage-control, before the boot")
     ap.add_argument("--expect", action="append", default=[],
                     metavar="NAME:ID:MINUTES[:DATA]",
                     help="a node the last saved slot must hold (repeatable)")

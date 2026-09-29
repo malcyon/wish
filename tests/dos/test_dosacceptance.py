@@ -6234,3 +6234,79 @@ def test_validate_steps_takes_pool_items_in_camp_only():
     with pytest.raises(ValueError, match="driven in darkness only"):
         da.validate_steps(_steps("load", "begin", "camp", "items 2"), "curse")
     da.validate_steps(_steps("load", "begin", "camp", "items 2"), "darkness")
+
+
+def _pool_record(name: bytes = b"WISHFTR") -> bytes:
+    from goldbox import dos_port
+    size = dos_port.deltas_for("pool-of-radiance").record_size
+    data = bytearray(size)
+    data[0] = len(name)
+    data[1:1 + len(name)] = name
+    return bytes(data)
+
+
+def test_a_stage_record_line_parses_hex_and_decimal_and_lists():
+    assert da.parse_record_bytes(["1:0x10C=1"]) == [(1, 0x10C, 1)]
+    assert da.parse_record_bytes(["1:0x84=0xB3,2:114=6", "1:159=4"]) == [
+        (1, 0x84, 0xB3), (2, 114, 6), (1, 159, 4)]
+
+
+@pytest.mark.parametrize("bad", ["1:0x10C", "1=3", "0:5=1", "9:5=1", "1:5=256",
+                                 "1:-1=1", "1:5=", "x:5=1"])
+def test_a_bad_stage_record_line_is_refused(bad):
+    with pytest.raises(ValueError):
+        da.parse_record_bytes([bad])
+
+
+def test_stage_record_changes_exactly_the_named_byte(tmp_path):
+    original = _pool_record()
+    (tmp_path / "CHRDATD1.SAV").write_bytes(original)
+    got = staging.stage_record(tmp_path, "D", 1, 0x10C, 6)
+    after = (tmp_path / "CHRDATD1.SAV").read_bytes()
+    assert len(after) == len(original)
+    assert [i for i in range(len(after)) if after[i] != original[i]] == [0x10C]
+    assert after[0x10C] == 6
+    assert got == {"stage": "record", "file": "CHRDATD1.SAV", "name": "WISHFTR",
+                   "offset": "0x10c", "before": "00", "after": "06"}
+
+
+def test_stage_record_refuses_an_offset_past_the_record(tmp_path):
+    original = _pool_record()
+    (tmp_path / "CHRDATD1.SAV").write_bytes(original)
+    with pytest.raises(ValueError, match="outside"):
+        staging.stage_record(tmp_path, "D", 1, len(original), 1)
+    assert (tmp_path / "CHRDATD1.SAV").read_bytes() == original
+
+
+def test_the_command_line_wires_stage_record_after_stage_control(tmp_path):
+    (tmp_path / "CHRDATD1.SAV").write_bytes(_pool_record())
+    args = _run_args(tmp_path, [])
+    args.stage_control = ["1=0xB3"]
+    args.stage_record = ["1:0x10C=1", "1:0x9F=4"]
+    done = da.stage(tmp_path, "D", args)
+    assert [d["stage"] for d in done] == ["control", "record", "record"]
+    data = (tmp_path / "CHRDATD1.SAV").read_bytes()
+    assert (data[0x10C], data[0x9F]) == (1, 4)
+
+
+def test_check_staging_refuses_a_stage_record_before_the_boot(tmp_path):
+    args = _run_args(tmp_path, [])
+    args.stage_record = ["1:0x10C=1"]
+    with pytest.raises(ValueError, match="line 1"):
+        da.check_staging(args, tmp_path, "D")
+    (tmp_path / "CHRDATD1.SAV").write_bytes(_pool_record())
+    da.check_staging(args, tmp_path, "D")
+    args.stage_record = ["1:0x2000=1"]
+    with pytest.raises(ValueError, match="outside"):
+        da.check_staging(args, tmp_path, "D")
+
+
+def test_read_slot_reports_the_status_bytes_and_the_turning_readings(tmp_path):
+    (tmp_path / "SAVGAMD.DAT").write_bytes(bytes(13149))
+    record = bytearray(_pool_record())
+    for offset, value in ((0x10C, 1), (0x10F, 1), (0x9F, 4), (0x76, 2), (0x72, 6)):
+        record[offset] = value
+    (tmp_path / "CHRDATD1.SAV").write_bytes(bytes(record))
+    out = da.read_slot(tmp_path, "D")["characters"][0]
+    assert out["status_bytes"] == [1, 0, 0, 1]
+    assert (out["creature_type"], out["turn_class"], out["movement"]) == (4, 2, 6)
