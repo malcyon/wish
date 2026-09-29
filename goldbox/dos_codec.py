@@ -1932,33 +1932,13 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("experience_per_hit_point", "experience_per_hit_point"),
 )
 
-# The Pool Animate Dead path and record adapters establish these two bytes.
-# Later titles keep their existing layouts and need their own measurements.
-POOL_DIRECT: tuple[tuple[str, str], ...] = (
-    ("creature_type", "creature_type"),
-    ("turn_class", "turn_class"),
-)
-POOL_FIELDS_UNMEASURED: tuple[tuple[str, str], ...] = (
-    ("creature_type", "this title's creature-type byte has not been mapped"),
-    ("turn_class", "this title's undead turning row has not been measured"),
-)
-
-
-def undead_direct(key: str) -> tuple[tuple[str, str], ...]:
-    """The :data:`POOL_DIRECT` rows this title is measured to use.
-
-    The same answer as `goldbox.c64_codec.undead_direct`, over this module's
-    own tables, so every codec gates the two undead fields alike.
-    """
-    return tuple((n, d) for n, d in POOL_DIRECT
-                 if key == POOL_OF_RADIANCE.key
-                 or (n == "turn_class" and key in c64_codec.TURN_CLASS_TITLES))
-
-
-def undead_unmeasured(key: str) -> tuple[tuple[str, str], ...]:
-    """The :data:`POOL_FIELDS_UNMEASURED` rows :func:`undead_direct` leaves out."""
-    taken = {n for n, _ in undead_direct(key)}
-    return tuple((n, w) for n, w in POOL_FIELDS_UNMEASURED if n not in taken)
+# The Pool Animate Dead path and record adapters establish these two bytes;
+# Curse's turning row is measured too.  The tables and the gate are the C64
+# codec's, which has no import of this module, so all codecs answer alike.
+POOL_DIRECT = c64_codec.POOL_DIRECT
+POOL_FIELDS_UNMEASURED = c64_codec.POOL_FIELDS_UNMEASURED
+undead_direct = c64_codec.undead_direct
+undead_unmeasured = c64_codec.undead_unmeasured
 
 #: The straight copies only the later titles have, split off :data:`DIRECT`
 #: the way :data:`LATER_TITLE_DROPPED` is split off :data:`DROPPED`: Pool of
@@ -2272,10 +2252,10 @@ def field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
              undead_direct(deltas.key)),
         only(TRANSFORMED + LATER_TITLE_TRANSFORMED)
         + tuple((n, _PAIRED_ABILITY) for n in ABILITY_ORDER if n in paired),
-        only(DROPPED + (tuple((n, w) for n, w in LATER_TITLE_DROPPED
-                              if n != "turn_class" or
-                              deltas.key not in c64_codec.TURN_CLASS_TITLES)
-                        if deltas is not POOL_OF_RADIANCE else ())),
+        only(DROPPED + (tuple(
+            (n, w) for n, w in LATER_TITLE_DROPPED
+            if n not in {m for m, _ in undead_direct(deltas.key)})
+            if deltas is not POOL_OF_RADIANCE else ())),
         "the C64's",
         derived=only(tuple((n, w) for n, w, _run in DERIVED)),
         constants=only(CONSTANTS + LATER_TITLE_CONSTANTS))

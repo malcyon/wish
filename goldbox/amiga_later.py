@@ -803,9 +803,10 @@ LATER_ACCOUNTED: tuple[tuple[str, str], ...] = (
                                      "been shown to use"),
     ("turn_class", "the row of the turning matrix an undead creature "
                    "answers to, read off the *target* rather than the "
-                   "caster: 0 for every player character, and the neutral "
-                   "record has no field for it. The DOS reader drops it for "
-                   "the same reason (#297, docs/178-turning-undead.md)"),
+                   "caster. Curse's row is converted through the DOS table; "
+                   "Silver Blades' mapping has not been measured, so this "
+                   "entry applies to that title alone "
+                   "(docs/178-turning-undead.md)"),
 )
 
 _LATER_ACCOUNT = dict(LATER_ACCOUNTED)
@@ -864,9 +865,9 @@ LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {
     # where the Amiga keeps two -- but carries no line here, matching
     # Donald's ruling on the identical DOS line, 2026-09-06: "All PCs are
     # the same size, so it doesn't matter. Just leave that line out during
-    # conversions."  turn_class carries none for the same reason: it is the
-    # row of the turning matrix the *target* answers to, zero for every
-    # player character, and what a cleric can turn is `turn_power`.
+    # conversions."  turn_class carries none: Curse's row is converted, and
+    # Silver Blades' mapping is unmeasured, so its loss goes to the debug log
+    # by the drop list alone.
     #
     # No marker on the line below: every entry in this table becomes a drop
     # line, and a drop line goes to `wish/debuglog.py` rather than to a pane

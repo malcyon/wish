@@ -161,7 +161,8 @@ DIRECT: tuple[tuple[str, str], ...] = (
 )
 
 # Pool's Animate Dead and turning routines establish these two byte meanings.
-# Their locations and use in the other C64 titles remain unmeasured.
+# Curse's turning row is measured too (`TURN_CLASS_TITLES`); the creature type
+# in Curse, and both bytes in the other C64 titles, remain unmeasured.
 POOL_DIRECT: tuple[tuple[str, str], ...] = (
     ("creature_type", "creature_type"),
     ("turn_class", "turn_class"),
@@ -179,7 +180,11 @@ TURN_CLASS_TITLES = frozenset({"pool-of-radiance",
 
 
 def undead_direct(key: str) -> tuple[tuple[str, str], ...]:
-    """The :data:`POOL_DIRECT` rows this title's engine is measured to use."""
+    """The :data:`POOL_DIRECT` rows this title's engine is measured to use.
+
+    `goldbox.dos_codec` imports this one, so every codec gates the two undead
+    fields alike.
+    """
     return tuple((n, c) for n, c in POOL_DIRECT
                  if key == "pool-of-radiance"
                  or (n == "turn_class" and key in TURN_CLASS_TITLES))

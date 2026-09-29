@@ -9,6 +9,7 @@ from goldbox import (
     amiga_later,
     amiga_pod,
     amiga_por,
+    amiga_port,
     c64_codec,
     c64_port,
     c64_save,
@@ -110,7 +111,8 @@ def test_a_curse_turning_row_converts_between_dos_and_the_amiga():
     assert neutral_dos.get("turn_class") == 2
 
     amiga, report = amiga_later.write_later(neutral_dos, key)
-    assert amiga.raw[_CURSE_TURN] == 2
+    amiga_offset = amiga_port.CURSE_DELTAS.offset(_CURSE_TURN)
+    assert amiga.raw[amiga_offset] == 2
     assert not any(line.startswith("turn_class") for line in report.dropped)
     back = amiga_later.to_neutral_later(amiga)
     assert back.get("turn_class") == 2
@@ -118,6 +120,22 @@ def test_a_curse_turning_row_converts_between_dos_and_the_amiga():
     dos, _i, _s, report = dos_codec.write(back, deltas=deltas)
     assert dos[_CURSE_TURN] == 2
     assert not any(line.startswith("turn_class") for line in report.dropped)
+
+
+def test_a_curse_turning_row_survives_a_round_trip_through_the_c64():
+    deltas = dos_port.CURSE_OF_THE_AZURE_BONDS
+    raw = bytearray(deltas.record_size)
+    raw[_CURSE_TURN] = 2
+    neutral_dos = dos_codec.to_neutral(
+        dos_codec.DosCharacter(bytes(raw), deltas=deltas))
+
+    c64, report = c64_codec.write(neutral_dos)
+    assert c64.get("turn_class") == 2
+    assert not any(line.startswith("turn_class") for line in report.dropped)
+
+    dos, _i, _s, _r = dos_codec.write(c64_codec.read(
+        c64, game=c64_port.CURSE_OF_THE_AZURE_BONDS), deltas=deltas)
+    assert dos[_CURSE_TURN] == 2
 
 
 def _pool_c64(control: int, status: int) -> CharacterRecord:
@@ -471,3 +489,19 @@ def test_a_c64_zombie_survives_the_round_trip_through_dos():
     assert not rep.losses
     assert not [line for line in rep.dropped
                 if "Animate" in line or "innate_effects" in line]
+
+
+@pytest.mark.parametrize("deltas", (
+    dos_port.POOL_OF_RADIANCE,
+    dos_port.CURSE_OF_THE_AZURE_BONDS,
+    dos_port.SECRET_OF_THE_SILVER_BLADES,
+    dos_port.POOLS_OF_DARKNESS,
+), ids=lambda deltas: deltas.key)
+def test_every_dos_account_of_turn_class_follows_the_one_gate(deltas):
+    measured = "turn_class" in dict(c64_codec.undead_direct(deltas.key))
+    read = dos_codec.field_disposition(deltas)["turn_class"]
+    write = dos_codec.write_field_disposition(deltas)["turn_class"]
+    target = dos_codec.write_targets(deltas)["turn_class"]
+    assert (not read.startswith("dropped:")) is measured
+    assert (not write.startswith("dropped:")) is measured
+    assert target.startswith("from neutral") is measured
