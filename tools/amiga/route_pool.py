@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import pathlib
 import re
+from collections.abc import Callable
 from typing import Any
 
-from goldbox import amiga_adf, amiga_savegame
+from goldbox import amiga_adf, amiga_savegame, areas, geo
 from tools.amiga import amigaporslot
-from tools.amiga.route import ISSUE, AmigaTitle, effect_fields
+from tools.amiga.route import ISSUE, AmigaTitle, RouteError, effect_fields
 from tools.amiga.staging import _prepare_from, _Sources
 
 POOL_DISK1_SHA256 = "6ad445f5715d021d560ddcf003e78153003315af016a19dbc4b56d55d3019d4c"
@@ -112,6 +114,72 @@ POOL = AmigaTitle(
 )
 
 
+_ABOUT_STEP = ("NP2", "world", "turn")
+
+
+def _without_turn(route: tuple) -> tuple:
+    return tuple(step for step in route if step != _ABOUT_STEP)
+
+
+#: The same route for a party that walks out the way it faces, with no turn about.
+POOL_FORWARD = dataclasses.replace(
+    POOL, route=_without_turn(POOL.route), measure_route=_without_turn(POOL.measure_route),
+    turn=None)
+
+
+def _walkable(walls: geo.Geo, x: int, y: int, direction: int) -> bool:
+    """No wall on the edge, or a door standing open; a solid wall and a locked door are not."""
+    return (walls.wall(x, y, direction) == 0
+            or walls.barrier(x, y, direction) == geo.PASSABLE)
+
+
+def _disk_geo(name: str) -> geo.Geo:
+    from tools.areas import (
+        geomap,  # noqa: PLC0415 - reads the player's disks, only when asked
+    )
+    found = geomap.all_maps(name)
+    if name not in found:
+        raise RouteError(f"the wall data {name} is not on the game disks, so the route's "
+                         "step cannot be checked")
+    return found[name]
+
+
+def pool_turns_about(place: dict, *, load_geo: Callable[[str], geo.Geo] = _disk_geo) -> bool:
+    """Whether the route turns the party about before its one step, from the start square's own walls.
+
+    The route turns about unless that edge is closed and the edge the party
+    faces is open. An area with more than one map cannot say which the game
+    loaded, so it keeps the turn about.
+    """
+    area = areas.area_in(place["area"], areas.POOL_OF_RADIANCE)
+    if area is None or area.geo is None:
+        return True
+    walls = load_geo(area.geo)
+    x, y, facing = place["x"], place["y"], place["facing"]
+    if _walkable(walls, x, y, geo.OPPOSITE[facing]):
+        return True
+    if _walkable(walls, x, y, facing):
+        return False
+    raise RouteError(f"area {place['area']} ({x},{y}) has no open edge ahead or behind "
+                     f"facing {facing}, so the route has no step to take")
+
+
+def pool_title_for(manifest: dict, *,
+                   load_geo: Callable[[str], geo.Geo] = _disk_geo) -> AmigaTitle:
+    """The route this manifest's start square needs, refusing a recorded `turn_about` its walls contradict.
+
+    A manifest with no `turn_about` predates the choice and keeps the turn about.
+    """
+    if "turn_about" not in manifest:
+        return POOL
+    turn_about = manifest["turn_about"]
+    if not isinstance(turn_about, bool):
+        raise RouteError("the manifest turn_about is not a boolean")
+    if turn_about != pool_turns_about(manifest["state_a"], load_geo=load_geo):
+        raise RouteError("the manifest turn_about disagrees with its recorded place")
+    return POOL if turn_about else POOL_FORWARD
+
+
 POOL_SOURCES = _Sources("pool", POOL, POOL_SPECIMEN, POOL_SPECIMEN_SHA256, POOL_VOLUME,
                         POOL_LOADED, POOL_LATER,
                         {"disk1": POOL_DISK1_SHA256, "disk2": POOL_DISK2_SHA256},
@@ -121,5 +189,7 @@ POOL_SOURCES = _Sources("pool", POOL, POOL_SPECIMEN, POOL_SPECIMEN_SHA256, POOL_
 def _prepare_pool(run: pathlib.Path, specimen: pathlib.Path | None, *,
                   substitute: pathlib.Path | None = None, substitute_letter: str = "A"
                   ) -> dict[str, Any]:
-    return _prepare_from(POOL_SOURCES, run, specimen,
-                         substitute=substitute, substitute_letter=substitute_letter)
+    manifest = _prepare_from(POOL_SOURCES, run, specimen,
+                             substitute=substitute, substitute_letter=substitute_letter)
+    manifest["turn_about"] = pool_turns_about(manifest["state_a"])
+    return manifest

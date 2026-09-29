@@ -43,7 +43,12 @@ from tools.amiga.route_darkness import (  # noqa: E402
     _prepare_darkness,
     _prepare_darkness_reload,
 )
-from tools.amiga.route_pool import POOL, POOL_SOURCES, _prepare_pool  # noqa: E402
+from tools.amiga.route_pool import (  # noqa: E402
+    POOL,
+    POOL_SOURCES,
+    _prepare_pool,
+    pool_title_for,
+)
 from tools.amiga.route_silver_blades import (  # noqa: E402
     ACCEPT_ROUTE,
     CAMP_SAVE_LETTER,
@@ -976,6 +981,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 or specimen_issue is None or not SPECIMEN_ISSUE.fullmatch(specimen_issue)):
             raise RouteError(preserve_message + ", and a substituted one needs --specimen-issue "
                              '"#N (title)" naming its issue')
+    if title is POOL:
+        title = pool_title_for(manifest)
     if title is not None:
         disks, registered, letter = _title_inputs(manifest, title)
         originals: dict[str, pathlib.Path] = {}

@@ -35,6 +35,7 @@ Tests for the Amiga port: its filesystem, saved-game and character-record reader
 | `test_amigaporsavegame.py` | Checks that the Amiga Pool of Radiance saved game is built from the source save, from the player's disks and specimens. |
 | `test_amigaporsavegamecorpus.py` | Checks the Amiga Pool of Radiance container's region boundaries against every saved game on the machine. |
 | `test_amigaporspacewarning.py` | Checks that `write_por` warns a player when a character's name will lose its space on the Amiga's first save. |
+| `test_amigaroutepool.py` | Checks that the Pool route's one step leaves the start square by an open edge, from the square's own walls, and that the manifest records and re-checks the choice. |
 | `test_amigasavedisk.py` | Checks a `POOLSAVE` save disk formatted from nothing and the filename the game builds on it. |
 | `test_amigasavegame.py` | Checks the Amiga saved-game map in `goldbox.amiga_savegame`, on synthetic saves and on the player's own. |
 | `test_amigashots.py` | Checks that `tools/amiga/amigashots.py` finds the emulator's screen inside a grab of the whole guest desktop, on desktops built here. |
