@@ -60,6 +60,16 @@ class PatrolSession(S.Session):
     def settle(self, seconds=0):
         pass
 
+    # Once the fight is up a party member's turn is too, so the combat shot
+    # does not wait; before that the real classification of the scripted row.
+    def combat_state(self, s=None):
+        if self.fighting:
+            return S.CombatBar(S.BAR_COMMAND, "MOVE VIEW AIM USE QUICK DONE")
+        return super().combat_state(s)
+
+    def battle(self):
+        return None
+
     def position(self):
         return (0, 0, 0)
 
@@ -1096,3 +1106,87 @@ def test_a_fight_before_the_load_is_seen_is_new_phlans_not_the_slums(
     edge = next(w for kind, w in log.events if kind == "edge")
     assert edge["arrived"] == "fight_before_edge"
     assert sess.asked == []
+
+
+# -- the combat screenshot waits for a party member's command bar -------------
+
+class FightScreen(PatrolSession):
+    """`combat_state` answers the scripted kinds one poll at a time, the last
+    repeating; `battle()` returns `party` as combatants."""
+
+    def __init__(self, monkeypatch, kinds, party=()):
+        super().__init__(monkeypatch)
+        self.kinds, self.polls, self.pressed = list(kinds), 0, []
+        self.party = party
+
+    def combat_state(self, s=None):
+        self.polls += 1
+        kind = self.kinds[0]
+        if len(self.kinds) > 1:
+            self.kinds.pop(0)
+        return S.CombatBar(kind, "row " + kind)
+
+    def press_kernal(self, code):
+        self.pressed.append(code)
+
+    def battle(self):
+        class _Who:
+            def __init__(self, name, square):
+                self.name, self.square = name, square
+
+        class _Battle:
+            party = tuple(_Who(n, q) for n, q in self.party)
+
+        return _Battle()
+
+
+def _photograph(monkeypatch, kinds, **kw):
+    sess = FightScreen(monkeypatch, kinds, **kw)
+    seen = []
+    monkeypatch.setattr(
+        T, "dump", lambda sess_, out, log, name: seen.append((name, sess_.polls)))
+    clock = Clock(monkeypatch)
+    log = RecordingLog()
+    got = T.photograph_fight(sess, pathlib.Path("."), log)
+    return sess, log, seen, clock, got
+
+
+def test_the_combat_shot_waits_for_the_command_bar(monkeypatch):
+    sess, log, seen, clock, got = _photograph(
+        monkeypatch, [S.BAR_NONE, S.BAR_MESSAGE, S.BAR_COMMAND],
+        party=[("BULWARK", (3, 4)), ("PILFER", (4, 4))])
+    assert got is True
+    assert seen == [("combat-icon", 3)]
+    assert clock.now < T.FIGHT_WAIT
+    assert ("fight_screen", {"battlefield": True, "presses": 0, "party": [
+        {"name": "BULWARK", "square": [3, 4]},
+        {"name": "PILFER", "square": [4, 4]}]}) in log.events
+
+
+def test_a_press_prompt_on_the_way_gets_a_return(monkeypatch):
+    sess, log, seen, clock, got = _photograph(
+        monkeypatch, [S.BAR_PRESS, S.BAR_MOVE])
+    assert sess.pressed == [13]
+    assert seen == [("combat-icon", 2)] and got is True
+
+
+def test_no_command_bar_is_recorded_and_the_shot_is_still_taken(monkeypatch):
+    sess, log, seen, clock, got = _photograph(monkeypatch, [S.BAR_NONE])
+    assert got is False
+    assert [n for n, _ in seen] == ["combat-icon"]
+    assert T.FIGHT_WAIT <= clock.now < T.FIGHT_WAIT + 5
+    (kind, what), = [e for e in log.events if e[0] == "fight_screen"]
+    assert what["battlefield"] is False and what["row24"] == "row " + S.BAR_NONE
+
+
+def test_a_fight_already_up_is_photographed_only_once_its_command_bar_is(
+        monkeypatch):
+    sess = FightScreen(monkeypatch, [S.BAR_NONE, S.BAR_NONE, S.BAR_COMMAND])
+    sess.fighting = True
+    seen = []
+    monkeypatch.setattr(
+        T, "dump", lambda sess_, out, log, name: seen.append((name, sess_.polls)))
+    Clock(monkeypatch)
+    got = T.pick_a_fight(sess, RecordingLog(), pathlib.Path("."), steps=3)
+    assert got["in_combat"] is True
+    assert seen == [("combat-icon", 3)]

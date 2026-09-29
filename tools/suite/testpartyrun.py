@@ -43,8 +43,8 @@ questions the 2026-09-09T03:00:20Z comment named as sharing one boot:
    (`goldbox.savegame.RosterBlock`, `tools/c64/traitask.py`'s own item-list
    driving);
 4. walk until something ambushes the party and screenshot the fight, which is
-   the only way to see the icons `tools/suite/testparty.py --disk` (no
-   `--keep-icons`) cleared actually drawn.
+   the only way to see the icons `tools/suite/testparty.py --disk` wrote
+   actually drawn; the shot waits for a party member's command bar.
 """
 from __future__ import annotations
 
@@ -783,6 +783,50 @@ def await_slums(sess, log: Log, out: pathlib.Path, area_before,
            "; COMBAT was attempted and did not land" if taken else ""))
 
 
+FIGHT_WAIT = 180.0        # a limit, not a measurement
+FIGHT_POLL = 0.5
+FIGHT_PRESS_LIMIT = 3
+
+
+def photograph_fight(sess, out: pathlib.Path, log: Log,
+                     timeout: float = FIGHT_WAIT) -> bool:
+    """Wait for a party member's turn, then take the `combat-icon` screenshot.
+
+    The battlefield and every figure are drawn only once a party member has a
+    command or move bar; a shot taken when `in_combat` first answers shows two
+    empty panes.  A PRESS bar on the way gets a Return, at most
+    `FIGHT_PRESS_LIMIT` times.  At the limit the screenshot is taken anyway and
+    `fight_screen` records `battlefield: false`, so a missing bar is a finding
+    and not a crash.  Returns whether the bar appeared.
+    """
+    deadline = time.monotonic() + timeout
+    presses, state = 0, None
+    while True:
+        state = sess.combat_state()
+        if state.kind in (S.BAR_COMMAND, S.BAR_MOVE):
+            break
+        if state.kind == S.BAR_PRESS and presses < FIGHT_PRESS_LIMIT:
+            sess.press_kernal(0x0D)
+            presses += 1
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(FIGHT_POLL)
+    ready = state.kind in (S.BAR_COMMAND, S.BAR_MOVE)
+    party = []
+    battle = sess.battle()
+    if battle is not None:
+        party = [{"name": c.name, "square": list(c.square)}
+                 for c in battle.party]
+    what = {"battlefield": ready, "party": party, "presses": presses}
+    if not ready:
+        what["row24"] = state.text
+    log.emit("fight_screen", **what)
+    log.say(f"  fight screen: battlefield {'drawn' if ready else 'not seen'}"
+            f"; party {party}")
+    dump(sess, out, log, "combat-icon")
+    return ready
+
+
 def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
                   slums) -> dict:
     """New Phlan to the Slums and on to `target`, stopping in combat.
@@ -800,8 +844,7 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
         log.emit("walked", leg="start", in_combat=True, began_at=began,
                  at_target=False, desynced=None)
         log.say(f"  a fight is already up at {began}; not walking")
-        sess.settle(2)
-        dump(sess, out, log, "combat-icon")
+        photograph_fight(sess, out, log)
         return {"in_combat": True, "began_at": began, "at_target": False,
                 "desynced": None}
     to_world(sess, log, need_square=True)
@@ -889,8 +932,7 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
             f"{'the target' if at_target else 'not the target'}"
             + (f"; a key did not move the party: {desync}" if desync else ""))
     if fighting:
-        sess.settle(2)
-        dump(sess, out, log, "combat-icon")
+        photograph_fight(sess, out, log)
     return {"in_combat": fighting, "began_at": began, "at_target": at_target,
             "desynced": desync}
 
@@ -935,8 +977,7 @@ def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150,
              position=list(sess.position()))
     log.say(f"  walked {taken} steps; in combat: {bool(fighting)}")
     if fighting:
-        sess.settle(2)
-        dump(sess, out, log, "combat-icon")
+        photograph_fight(sess, out, log)
     return {"steps": taken, "in_combat": bool(fighting)}
 
 
