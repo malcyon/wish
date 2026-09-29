@@ -91,8 +91,9 @@ CLASSES_BY_RACE = {
     "HUMAN": ("CLERIC", "FIGHTER", "MAGIC-USER", "THIEF"),
 }
 
-#: The constitution each sturdy race's creation roll can give, as measured on
-#: the roll screen.  A band outside it is refused before any key is pressed.
+#: The constitution each sturdy race's creation roll can give, from a static
+#: read of the clamp tables in `GEN`, not from rolls seen on the screen.  A band
+#: outside it is refused before any key is pressed.
 CON_LIMITS = {"DWARF": (12, 19), "GNOME": (8, 18), "HALFLING": (10, 19)}
 #: The saving throws in stored order, `0x09A` to `0x09E`.
 SAVE_FIELDS = ("save_paralysis", "save_petrification", "save_wands",
@@ -583,19 +584,36 @@ class Driver:
             s = self.choose(s, ROLL, "ROLL AGAIN", ROLL, column=ROLL_COLUMN,
                             tag=f"{spec.name}-reroll")
             # The same roll twice is possible, so a screen still showing the
-            # last roll after the wait is taken as it is.
+            # last roll after the wait is taken as it is.  A half-drawn screen
+            # is not a new roll: all six scores must be there.
             end = self.clock() + self.left(REROLL_WAIT)
             while self.clock() < end:
                 now = self.sess.screen()
-                if now is not None and scores(now) not in ({}, roll):
-                    s = now
+                got = {} if now is None else scores(now)
+                if len(got) == len(ABILITIES) and got != roll:
                     break
                 self.sleep(self.poll)
-            roll = self.read_scores(s)
+            roll, s = self.settled_roll(s)
             seen.append(roll)
             self.log.emit("roll", name=spec.name, attempt=len(seen), **roll)
         self.rolls[spec.name] = roll
         return s
+
+    def settled_roll(self, s, tries: int = 6):
+        """The roll on the live screen once two reads a poll apart agree.
+
+        A redraw still under way is read again, up to TRIES times, before it
+        is a loss.  Returns the roll and the screen it was read from.
+        """
+        for _ in range(tries):
+            first = self.sess.screen()
+            self.sleep(self.poll)
+            live = self.sess.screen()
+            if (first is not None and live is not None
+                    and len(scores(live)) == len(ABILITIES)
+                    and scores(first) == scores(live)):
+                return scores(live), live
+        return self.read_scores(self.sess.screen() or s), self.sess.screen() or s
 
     # -- one character -----------------------------------------------------
 
@@ -927,8 +945,8 @@ def write_summary(out: pathlib.Path, summary: dict) -> None:
 def run(sess, out: pathlib.Path, *, lists: bool = False,
         specs: list[Spec] | None = None, enter_world: bool = False,
         world_budget: float = WORLD_BUDGET, max_seconds: float = 3600.0,
-        max_rolls: int = MAX_ROLLS, argv: list[str] | None = None, git: dict | None = None,
-        clock=time.monotonic, sleep=time.sleep,
+        max_rolls: int = MAX_ROLLS, argv: list[str] | None = None,
+        git: dict | None = None, clock=time.monotonic, sleep=time.sleep,
         deadline: float | None = None, summary: dict | None = None) -> int:
     """One pass on a booted session; always writes `summary.json`.
 
@@ -1001,7 +1019,8 @@ def main(argv: list[str] | None = None) -> int:
                          "ADVENTURING")
     ap.add_argument("--max-rolls", type=int, default=MAX_ROLLS,
                     help="rolls made looking for a spec's constitution band "
-                         "before the run gives up")
+                         "before the run gives up; each roll takes seconds, "
+                         "so a large count needs a larger --max-seconds")
     args = ap.parse_args(argv)
 
     try:

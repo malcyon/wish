@@ -135,7 +135,7 @@ class FakeGame:
 
     def __init__(self, tmp, rolls=ROLLS, add_closes=False, stall=None,
                  start="party", lose_first=None, slow=None, trim=(),
-                 roster=(), tail=None):
+                 roster=(), tail=None, slow_roll=False):
         """`stall`: a state whose keys do nothing.  `lose_first`: a state whose
         first Return is dropped.  `slow`: state -> (polls, redraws), a Return
         that is accepted but takes that many screen reads to show its result,
@@ -144,6 +144,7 @@ class FakeGame:
         names already on the ADD list that no spec asked for.  `tail`:
         `(state, column, text)` drawn on that screen's first row."""
         self.roster, self.tail = tuple(roster), tail
+        self.slow_roll, self.roll_reads = slow_roll, 0
         self.trim = tuple(trim)
         self.tmp, self.rolls = tmp, list(rolls)
         self.add_closes, self.stall = add_closes, stall
@@ -222,7 +223,10 @@ class FakeGame:
         elif s == "roll":
             put(2, 1, f"RACE {self.pick['race']}")
             put(3, 1, f"GENDER {self.pick['gender']}")
-            for i, (k, v) in enumerate(self.roll.items()):
+            drawn = list(self.roll.items())
+            if self.slow_roll and self.rolled > 1 and self.roll_reads < 4:
+                drawn = drawn[:3]     # a redraw under way: three lines so far
+            for i, (k, v) in enumerate(drawn):
                 put(5 + i, 1, f"{k.upper():<14}{v}")
             for i, label in enumerate(items):
                 put(12 + i, 2, label, i == self.cursor)
@@ -290,6 +294,7 @@ class FakeGame:
     # -- what a key does ----------------------------------------------------
 
     def new_roll(self):
+        self.roll_reads = 0
         self.roll = dict(self.rolls[self.rolled % len(self.rolls)])
         self.rolled += 1
 
@@ -398,6 +403,8 @@ class FakeGame:
             if self.delayed[0] <= 0:
                 self.delayed = None
                 self.enter()
+        if self.state == "roll":
+            self.roll_reads += 1
         if self.state == "saving" and self.stall != "saving":
             self.saving_polls -= 1
             if self.saving_polls <= 0:
@@ -936,6 +943,21 @@ def test_a_roll_outside_the_band_is_rerolled_and_the_first_inside_is_kept(
                                                  "highest": 14}
     assert (out / "records.txt").read_text().splitlines()[-1] == \
         "all records match the spec"
+
+
+def test_a_reroll_still_being_drawn_is_waited_out_not_lost(tmp_path):
+    game = FakeGame(tmp_path, rolls=[con_roll(14), con_roll(9)],
+                    slow_roll=True)
+    code, _sess, game, _out, summary = drive(tmp_path, [gnome([8, 10])], game)
+    assert code == 0, summary["lost"]
+    assert summary["rolls"]["VICEGNO"]["constitution"] == 9
+
+
+def test_the_help_says_the_roll_limit_needs_seconds(capsys):
+    with pytest.raises(SystemExit):
+        creation.main(["--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    assert "--max-rolls" in text and "larger --max-seconds" in text
 
 
 def test_a_roll_inside_the_band_stops_at_once(tmp_path):
