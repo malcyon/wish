@@ -19,11 +19,12 @@ Evidence for the fields themselves is in `goldbox/layout.py`; for the conversion
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Mapping
 
 from . import classcode, derive, effects, neutral, paladin, spells, titles, traits
 from . import levels as level_tables
 from .encoding import COMBAT_BIAS
-from .items import Item
+from .items import Item, ItemType
 from .layout import RECORD_SIZE, Confidence, Field
 from .neutral import NeutralCharacter, Provenance
 from .portraits import draws_sheet_portrait
@@ -731,6 +732,7 @@ def _max_stored(size: int) -> int:
 def write(char: NeutralCharacter, icon: bytes | None = None, *,
           payload: bytearray | None = None, party_slot: int | None = None,
           clock_minutes: int | None = None,
+          item_types: Mapping[int, ItemType] | None = None,
           ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a neutral one.
 
@@ -745,11 +747,18 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     `goldbox.dos_codec.write_c64_save` leaves them out -- a spent use has
     nowhere to write its row and is reported lost instead; see the paladin
     block below, placed after the per-class levels are written.
+
+    `item_types` is the ITEMS type table (`goldbox.items.load_item_types`).
+    With it a Pool of Radiance character's `roster_movement` is computed by
+    `derive.expected_movement` from the converted record; without it, and for
+    every other title, the source's `movement_current` is copied.
     """
     rec = CharacterRecord.blank()
     rep = Report()
     port = char.port
     deltas = deltas_for(char.game)
+    computes_movement = (deltas.key == "pool-of-radiance"
+                         and item_types is not None)
     w = neutral.Writer(
         char, rep, into="C64",
         dropped=DROPPED + (POOL_FIELDS_UNMEASURED
@@ -780,11 +789,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         # stored byte is exactly what a reader should hand back.
         if field in ("thac0_base", "thac0_current"):
             continue
+        if field == "movement_current" and computes_movement:
+            continue
         v = use(field)
         if v is None:
             continue
         dst = _field(c64_name)
         value, extra = v.value, ""
+        if field == "movement_current" and deltas.key == "pool-of-radiance":
+            extra = ", copied rather than recomputed: no item-type table was given"
         top = _max_stored(dst.size)
         if field == "experience" and int(value) > top:
             # The one scalar the DOS titles with a four-byte experience keep
@@ -1825,6 +1838,33 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         # scenario have a DOS save with 20 items on a character if it is not
         # been measured... I agree that we do not need the sentences."
 
+    # -- movement_current: the C64 roster rebuild's rule, not a copy --------
+    # A copied byte can be one the C64 would never compute (a stale DOS
+    # value), and the encounter menu's FLEE reads it before any fight
+    # rebuilds it.  Placed after the inventory, base movement, purses and
+    # strength index, which the rule reads from `rec`.
+    if computes_movement:
+        moved = use("movement_current")
+        if moved is not None:
+            dst = _field("roster_movement")
+            raw_inv = rec.get_raw("inventory")
+            raws = [raw_inv[n * ITEM_SIZE:(n + 1) * ITEM_SIZE]
+                    for n in range(ITEM_SLOTS)]
+            try:
+                rec.set(dst.name, derive.expected_movement(
+                    rec, raws, item_types))
+            except ValueError as err:
+                rec.set(dst.name, moved.value)
+                emit(moved, dst.name, dst.offset, dst.size,
+                     ", copied rather than recomputed")
+                rep.warnings.append(f"movement_current: copied, {err}")
+            else:
+                rep.note(dst.offset, dst.size,
+                         "roster_movement: computed by the C64 roster "
+                         "rebuild's rule (LIBRARY $3729) from the converted "
+                         "base movement, readied body armour, carried weight "
+                         "and strength allowance, not copied (#740)")
+
     # -- the combat icon: only the C64 has one -------------------------------
     # `use`d here, whether or not `icon` was also supplied, so `Writer.finish`
     # never adds its own generic line for a field this block has already
@@ -2222,6 +2262,12 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                    "because a source's own port may have written the byte "
                    "through a different one -- DOS's magic-user and thief "
                    "rows disagree with the C64's at low level (#366)"),
+    ("movement_current", "**computed, not copied** in Pool of Radiance when "
+                         "the item-type table is given: the rule of "
+                         "`LIBRARY $3729` over the converted base movement, "
+                         "readied body armour, carried weight and strength "
+                         "allowance (`derive.expected_movement`); copied "
+                         "without the table and in every other title"),
     ("thac0_current", "**recomputed, not copied**: this record's own "
                       "`thac0_base` plus the AD&D strength to-hit bonus, "
                       "the way `LIBRARY $3918` rebuilds it at the party's "

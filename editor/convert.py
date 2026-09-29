@@ -712,11 +712,12 @@ class AmigaToC64(DosToC64):
             save0, save1, report = dos_codec.new_save_from(
                 state, characters, options.icon, options.animate,
                 portraits=options.portraits, game=self.destination_game,
-                leave=leave)
+                leave=leave, item_types=options.item_types)
         else:
             save0, save1, report = dos_codec.new_save_from_neutral(
                 state, characters, party_icons, options.icon, options.animate,
-                game=self.destination_game, leave=leave)
+                game=self.destination_game, leave=leave,
+                item_types=options.item_types)
         image = dos_codec.save_disk(bytes(save0), bytes(save1),
                               self.destination_game)
         name = self._name.format(slot=slot)
@@ -1751,6 +1752,7 @@ def _game_files_from_folder(folder: pathlib.Path,
     """
     from goldbox.d64 import load_payload
     from goldbox.iconparts import IconParts
+    from goldbox.items import load_item_types
     from goldbox.portraits import PortraitError, tables_from_disks
 
     def read_animate(disk):
@@ -1772,15 +1774,21 @@ def _game_files_from_folder(folder: pathlib.Path,
     if icon_disk is None or animate_disk is None:
         return None
     portraits = None
+    item_types = None
     if game.key == c64_port.POOL_OF_RADIANCE.key:
         try:
             portraits = tables_from_disks(folder)
         except (PortraitError, OSError) as exc:
             _log.debug("no creation menu off %s: %s", folder, exc)
+        # `ITEMS` is on side 1, not on the disk that carries the icons.
+        items_disk = find(load_item_types)
+        if items_disk is not None:
+            item_types = load_item_types(items_disk)
     try:
         return dosimport.GameFiles(icon=IconParts.load(icon_disk),
                                    animate=read_animate(animate_disk),
-                                   portraits=portraits)
+                                   portraits=portraits,
+                                   item_types=item_types)
     except Exception:
         _log.exception("could not read the conversion's game files off %s",
                        folder)

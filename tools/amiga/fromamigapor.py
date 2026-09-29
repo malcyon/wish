@@ -112,7 +112,7 @@ def build(disk, slot: str, disks: pathlib.Path, out: pathlib.Path | None):
         portraits = None
     save0, save1, report = dos_codec.new_save_from(
         state, party, icon, animate, portraits=portraits,
-        game=c64_port.POOL_OF_RADIANCE)
+        game=c64_port.POOL_OF_RADIANCE, item_types=dosdisk.item_types(disks))
     if out is not None:
         scratch.ensure(out.parent)
         out.write_bytes(dos_codec.save_disk(bytes(save0), bytes(save1)).data)

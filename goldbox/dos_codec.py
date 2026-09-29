@@ -116,6 +116,7 @@ from .items import (
     WEAPON_NEEDS_ARROWS,
     WEAPON_NEEDS_BOLTS,
     WEAPON_RANGED,
+    ItemType,
 )
 from .layout import Confidence, Field, Kind
 from .neutral import NeutralCharacter, Provenance, ScrollBundle
@@ -2984,6 +2985,7 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
                   party_slot: int | None = None,
                   clock_minutes: int | None = None,
                   leave: Collection[int] = (),
+                  item_types: "Mapping[int, ItemType] | None" = None,
                   ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a DOS one.
 
@@ -3016,13 +3018,15 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
         out = _without_left_behind(out, leave)
     return neutral_to_c64_record(out, icon=icon, payload=payload,
                                  party_slot=party_slot,
-                                 clock_minutes=clock_minutes)
+                                 clock_minutes=clock_minutes,
+                                 item_types=item_types)
 
 
 def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None, *,
                           payload: bytearray | None = None,
                           party_slot: int | None = None,
                           clock_minutes: int | None = None,
+                          item_types: "Mapping[int, ItemType] | None" = None,
                           ) -> tuple[CharacterRecord, Report]:
     """Build one C64 record from an already decoded neutral character.
 
@@ -3031,7 +3035,9 @@ def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None, *,
     that another destination may consume.
 
     `payload`, `party_slot` and `clock_minutes` are `goldbox.c64_codec.
-    write`'s own three keyword arguments, handed straight on.
+    write`'s own three keyword arguments, handed straight on, and so is
+    `item_types`, the ITEMS type table that makes a Pool of Radiance
+    character's movement computed rather than copied.
     """
     out = NeutralCharacter(char.port, source=char.source, game=char.game)
     out.fields = dict(char.fields)
@@ -3044,7 +3050,8 @@ def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None, *,
                                "character set",
                 field.confidence, Provenance.RESHAPED)
     return c64_codec.write(out, icon=icon, payload=payload,
-                           party_slot=party_slot, clock_minutes=clock_minutes)
+                           party_slot=party_slot, clock_minutes=clock_minutes,
+                           item_types=item_types)
 
 
 def c64_name(name: str) -> str:
@@ -7326,6 +7333,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                    neutral_icons: "Sequence[DosIcon | None] | None" = None,
                    game=None,
                    leave: "Mapping[int, Collection[int]] | None" = None,
+                   item_types: "Mapping[int, ItemType] | None" = None,
                    ) -> C64SaveReport:
     """Write a DOS party into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
@@ -7469,7 +7477,8 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                 _without_left_behind(char, left) if left else char,
                 icon=_neutral_icon_for(
                     char, source_icon, icon, icon_tables.get(size)),
-                payload=save0, party_slot=place, clock_minutes=clock_mins)
+                payload=save0, party_slot=place, clock_minutes=clock_mins,
+                item_types=item_types)
             name = str(char.get("name", ""))
         else:
             rec, one = to_c64_record(
@@ -7478,7 +7487,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                                icon_tables.get(dos_size(char.get("size")))),
                 portraits=portraits,
                 payload=save0, party_slot=place, clock_minutes=clock_mins,
-                leave=left)
+                leave=left, item_types=item_types)
             name = char.name
         all_faced = all_faced and one.has_portrait
         # `party_order` in a roster block is the record's slot index, not the
@@ -7747,7 +7756,8 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                  icon: "bytes | IconParts | None" = None,
                  animate: bytes | None = None,
                  portraits: PortraitTables | None = None,
-                 game=None) -> C64SaveReport:
+                 game=None, *,
+                 item_types: "Mapping[int, ItemType] | None" = None) -> C64SaveReport:
     """Write a DOS save into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
     Reads the party and the place off `folder`'s own `CHRDAT<slot><n>.SAV`
@@ -7765,7 +7775,8 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     state = world_state.from_dos(savgam_path.read_bytes(), shape,
                                   source=str(savgam_path))
     return write_c64_save(save0, save1, state, party, icon=icon,
-                          animate=animate, portraits=portraits, game=container)
+                          animate=animate, portraits=portraits, game=container,
+                          item_types=item_types)
 
 
 def new_save_from(state: "world_state.WorldState",
@@ -7774,6 +7785,7 @@ def new_save_from(state: "world_state.WorldState",
                   animate: bytes, portraits: PortraitTables | None = None,
                   game=None, *,
                   leave: "Mapping[int, Collection[int]] | None" = None,
+                  item_types: "Mapping[int, ItemType] | None" = None,
                   ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a place and a party, owing nothing to another
     save (#118).  The engine `new_save` and #353's Amiga reader share; see
@@ -7787,7 +7799,8 @@ def new_save_from(state: "world_state.WorldState",
              else bytearray(container.roster_size))
     report = write_c64_save(save0, save1 or None, state, party,
                             icon=icon, animate=animate, portraits=portraits,
-                            game=container, leave=leave)
+                            game=container, leave=leave,
+                            item_types=item_types)
     if report.unwritten:
         raise DosRecordError(
             f"{len(report.unwritten)} bytes of the save have no source and "
@@ -7801,6 +7814,7 @@ def new_save_from_neutral(
         party_icons: "Sequence[DosIcon | None]", icon: "bytes | IconParts",
         animate: bytes, game=None, *,
         leave: "Mapping[int, Collection[int]] | None" = None,
+        item_types: "Mapping[int, ItemType] | None" = None,
         ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a neutral party and its source combat icons."""
     if len(party_icons) != len(party):
@@ -7813,7 +7827,8 @@ def new_save_from_neutral(
              else bytearray(container.roster_size))
     report = write_c64_save(
         save0, save1 or None, state, party, icon=icon, animate=animate,
-        neutral_icons=party_icons, game=container, leave=leave)
+        neutral_icons=party_icons, game=container, leave=leave,
+        item_types=item_types)
     if report.unwritten:
         raise DosRecordError(
             f"{len(report.unwritten)} bytes of the save have no source and "
@@ -7827,6 +7842,7 @@ def new_save(folder: str | pathlib.Path, slot: str,
              animate: bytes, portraits: PortraitTables | None = None,
              game=None, *,
              leave: "Mapping[int, Collection[int]] | None" = None,
+             item_types: "Mapping[int, ItemType] | None" = None,
              ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a DOS one, owing nothing to another save (#118).
 
@@ -7858,7 +7874,7 @@ def new_save(folder: str | pathlib.Path, slot: str,
     state = world_state.from_dos(savgam_path.read_bytes(), shape,
                                   source=str(savgam_path))
     return new_save_from(state, party, icon, animate, portraits=portraits,
-                         game=container, leave=leave)
+                         game=container, leave=leave, item_types=item_types)
 
 
 def save_disk(save0: bytes, save1: bytes, game=None):

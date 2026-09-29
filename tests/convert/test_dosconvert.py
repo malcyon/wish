@@ -1593,6 +1593,50 @@ def test_the_roster_tail_comes_from_the_dos_combat_tail():
         assert rec.get("roster_movement") == char.get("movement_current")
 
 
+def _item_types():
+    from goldbox.items import load_item_types
+    return load_item_types(gamedata.game_disk("POOL1"))
+
+
+@needs_dos_saves
+@needs_disks
+def test_a_converted_pool_partys_movement_is_the_c64_rules_value():
+    """#740: with the ITEMS table the roster movement is what the C64's roster
+    rebuild computes, so GILES's stale stored 12 arrives as 9 and the other
+    characters keep their values."""
+    from goldbox import derive
+
+    types = _item_types()
+    saw_giles = False
+    for slot in "AB":
+        for char in dos_codec.read_party(_save_dir(), slot):
+            rec, _ = dos_codec.to_c64_record(char, item_types=types)
+            raw = rec.get_raw("inventory")
+            raws = [raw[n * 16:(n + 1) * 16] for n in range(16)]
+            want = derive.expected_movement(rec, raws, types)
+            assert rec.get("roster_movement") == want, (slot, char.name)
+            if slot == "A" and char.name == "GILES":
+                saw_giles = True
+                assert char.get("movement_current") == 12
+                assert want == 9
+            else:
+                assert want == char.get("movement_current"), (slot, char.name)
+    assert saw_giles
+
+
+@needs_dos_saves
+@needs_disks
+def test_a_whole_save_carries_the_computed_movement_at_the_roster_byte():
+    """The byte the encounter menu's FLEE reads, in the written `SAVEDGAME1`."""
+    icon, animate = _game_files()
+    party = dos_codec.read_party(_save_dir(), "A")
+    _save0, save1, _ = dos_codec.new_save(
+        _save_dir(), "A", icon, animate, item_types=_item_types())
+    place = dos_codec.marching_slot([c.name for c in party].index("GILES"),
+                                    len(party))
+    assert save1[place * dos_codec.ROSTER_STRIDE + 0x1B] == 9
+
+
 @needs_dos_saves
 def test_the_converted_clock_is_the_dos_partys_and_not_the_templates():
     """The time of day is converted, not inherited (#103).

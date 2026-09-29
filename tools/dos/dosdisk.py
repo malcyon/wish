@@ -50,6 +50,7 @@ from automap.paths import tool_disks  # noqa: E402
 from goldbox import dos_codec  # noqa: E402
 from goldbox.d64 import D64, load_payload  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
+from goldbox.items import load_item_types  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -96,6 +97,20 @@ def game_files(disks: pathlib.Path) -> tuple[IconParts, bytes]:
                             + " or ".join(missing))
 
 
+def item_types(disks: pathlib.Path) -> dict | None:
+    """`ITEMS`' type table off whichever disk carries it (side 1), or None.
+
+    Pool of Radiance's converted movement is computed from it; without it the
+    source's value is copied.
+    """
+    for path in sorted(disks.glob("*.[dD]64")):
+        try:
+            return load_item_types(str(path))
+        except Exception:
+            continue
+    return None
+
+
 def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
           out: pathlib.Path) -> dos_codec.C64SaveReport:
     """Write `out` and return the report.  Nothing else is touched.
@@ -114,7 +129,8 @@ def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
     except PortraitError:
         portraits = None
     save0, save1, report = dos_codec.new_save(folder, slot, icon, animate,
-                                        portraits=portraits)
+                                        portraits=portraits,
+                                        item_types=item_types(disks))
     disk: D64 = dos_codec.save_disk(bytes(save0), bytes(save1))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(disk.data)

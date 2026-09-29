@@ -3848,3 +3848,56 @@ def test_a_pack_that_fits_never_asks(tmp_path, monkeypatch):
         assert _convert_with(window, tmp_path, out).startswith("converted")
     finally:
         window.close()
+
+
+# ---------------------------------------------------------------------------
+# A Pool of Radiance conversion's movement is computed from the ITEMS table,
+# so both routes that build a `GameFiles` have to carry it.
+# ---------------------------------------------------------------------------
+
+def _giles_roster_movement(payload_pair) -> int:
+    """GILES's roster-block `+0x1B`, the byte the encounter menu's FLEE reads."""
+    save0, save1 = payload_pair
+    party = dos_codec.read_party(_save_dir(), "A")
+    names = [c.name for c in party]
+    place = dos_codec.marching_slot(names.index("GILES"), len(party))
+    return bytes(save1)[place * dos_codec.ROSTER_STRIDE + 0x1B]
+
+
+def _files_giles_stale(files):
+    from editor.dosimport import rehearse
+    conversion = rehearse(_save_dir(), "A", files)
+    return _giles_roster_movement((conversion.save0.to_bytes(),
+                                   conversion.save1.to_bytes()))
+
+
+@needs_dos_saves
+def test_the_folder_route_reads_the_item_types_and_converts_giles_to_nine():
+    """GILES's DOS record stores 12 where the rule gives 9; the folder-row
+    route (`_game_files_from_folder`) must hand `rehearse` the ITEMS table."""
+    if disk_dir() is None:
+        pytest.skip("needs the game disks")
+    files = convert._game_files_from_folder(disk_dir(), c64_port.POOL_OF_RADIANCE)
+    assert files is not None and files.item_types
+    assert _files_giles_stale(files) == 9
+
+
+@needs_dos_saves
+def test_the_preferences_route_reads_the_item_types_and_converts_giles_to_nine(app):
+    """`EditorBinding.game_files_for`, the route Save As and an unedited
+    Convert row take."""
+    from PyQt6.QtWidgets import QMainWindow
+
+    from wish.ui_window import Ui_WishWindow
+
+    if disk_dir() is None:
+        pytest.skip("needs the game disks")
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    window = EditorBinding(root, disks=str(disk_dir()))
+    try:
+        files = window.game_files_for(c64_port.POOL_OF_RADIANCE)
+        assert files is not None and files.item_types
+        assert _files_giles_stale(files) == 9
+    finally:
+        window.close()

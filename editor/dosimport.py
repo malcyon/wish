@@ -157,6 +157,10 @@ class GameFiles:
     #: and Curse and Silver Blades draw none (#300).  So this is the one
     #: field here without which a conversion still goes ahead.
     portraits: PortraitTables | None = None
+    #: `ITEMS` read off the player's own disk (side 1 for Pool of Radiance),
+    #: `None` for the other titles or when no disk answers.  Without it a Pool
+    #: of Radiance character's movement is copied, not computed.
+    item_types: dict | None = None
 
 
 @dataclasses.dataclass
@@ -212,7 +216,8 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     payload0, payload1, report = dos_codec.new_save(folder, slot,
                                               files.icon, files.animate,
                                               portraits=files.portraits,
-                                              game=game, leave=leave)
+                                              game=game, leave=leave,
+                                              item_types=files.item_types)
     sg0 = SaveGame0.from_bytes(bytes(payload0), game)
     sg1 = SaveGame1(bytes(payload1), game) if payload1 else None
     disk = dos_codec.save_disk(bytes(payload0), bytes(payload1), game)

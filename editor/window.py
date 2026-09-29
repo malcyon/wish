@@ -1800,6 +1800,7 @@ class EditorBinding(QObject):
         if icon_disk is None or animate_disk is None:
             return None
         portraits = None
+        item_types = None
         if game.key == c64_port.POOL_OF_RADIANCE.key:
             for candidate in (self.disks, self._own_disk_folder(game)):
                 if not candidate:
@@ -1809,10 +1810,15 @@ class EditorBinding(QObject):
                     break
                 except (PortraitError, OSError) as exc:
                     _log.debug("no creation menu off %s: %s", candidate, exc)
+            # `ITEMS` is on side 1, not on the disk that carries the icons.
+            items_disk = self._find_disk(load_item_types, pattern, game)
+            if items_disk is not None:
+                item_types = load_item_types(items_disk)
         try:
             return GameFiles(icon=IconParts.load(icon_disk),
                              animate=read_animate(animate_disk),
-                             portraits=portraits)
+                             portraits=portraits,
+                             item_types=item_types)
         except Exception:
             _log.exception("could not read the conversion's game files off "
                            "%s and %s", icon_disk, animate_disk)
