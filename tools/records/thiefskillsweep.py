@@ -252,6 +252,17 @@ def expected(tables: dict, thief_level: int, race: int, dexterity: int,
 # ---------------------------------------------------------------------------
 def c64_records(title: str = "pool-of-radiance"):
     """`(source, name, race, thief level, dexterity, stored eight)`."""
+    for *row, _drained in c64_records_with_drain(title):
+        yield tuple(row)
+
+
+def c64_records_with_drain(title: str = "pool-of-radiance"):
+    """The same, plus `levels_drained` (record `0x0A1`) as a seventh item.
+
+    The C64 level drain lowers the class levels and leaves the eight stored
+    skills at the row of the pre-drain level, so a drained thief is not
+    expected to match its current level.
+    """
     where = gamedisks.find(title)
     paths = []
     if where is not None:
@@ -299,7 +310,8 @@ def c64_records(title: str = "pool-of-radiance"):
                 continue
             yield (source, record.name, record.get("race") or 0, level,
                    record.get("dexterity") or 0,
-                   [record.get(f) for f in SKILLS])
+                   [record.get(f) for f in SKILLS],
+                   record.get("levels_drained") or 0)
 
 
 def dos_records(title: str = "pool-of-radiance", extra=()):

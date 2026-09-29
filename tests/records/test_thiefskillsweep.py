@@ -179,8 +179,16 @@ def test_every_engine_written_c64_record_reproduces():
     """
     tables = _c64()
     seen, misses = 0, []
-    for source, name, race, level, dex, stored in sweep.c64_records(POOL):
+    for (source, name, race, level, dex, stored,
+         drained) in sweep.c64_records_with_drain(POOL):
         if source.split(":")[0].upper() in CONVERTED:
+            continue
+        # The C64 level drain lowers the class levels and leaves the eight
+        # thief bytes (0x0A5-0x0AC) at the pre-drain row, so a drained record
+        # is checked by the drain test below.  0x0A1 holds 248-255 on some
+        # non-thief NPC records; skipping on it is safe only because they are
+        # not thieves and never reach this check.
+        if drained:
             continue
         want = sweep.expected(tables, level, race, dex, False)
         if want is None:
@@ -203,8 +211,10 @@ def test_a_c64_halfling_thief_holds_the_displaced_row():
     """
     tables = _c64()
     found = []
-    for source, name, race, level, dex, stored in sweep.c64_records(POOL):
-        if source.split(":")[0].upper() in CONVERTED or race != 5:
+    for (source, name, race, level, dex, stored,
+         drained) in sweep.c64_records_with_drain(POOL):
+        # A drained record keeps its pre-drain row; see the test above.
+        if source.split(":")[0].upper() in CONVERTED or race != 5 or drained:
             continue
         found.append((source, name, stored,
                       sweep.expected(tables, level, race, dex, False)))
@@ -212,7 +222,32 @@ def test_a_c64_halfling_thief_holds_the_displaced_row():
         pytest.skip("no C64 halfling thief on this machine")
     for source, name, stored, want in found:
         assert stored == want, f"{source} {name}"
+    # The negatives are the displaced row's own; a thief of level 9 has
+    # levelled past them (PILFER's hear noise is +15), so they are required
+    # only where the table's answer holds them, and DAX must be one.
+    negative = [(s, n, st) for s, n, st, want in found
+                if want[5] < 0 and want[7] < 0]
+    assert negative, "no record shows the displaced row's negatives"
+    for source, name, stored in negative:
         assert stored[5] < 0 and stored[7] < 0, f"{source} {name} {stored}"
+
+
+def test_a_drained_single_class_c64_thief_keeps_the_pre_drain_row():
+    """PILFER on `WISH-SPEC-drained-test-party.D64`: thief 9 drained to 7.
+
+    Her skills are still the level-9 row, i.e. the row at `level +
+    levels_drained`.  The formula is for a single-class thief only: GRIMSTONE
+    (fighter/thief, drain 4) fell two thief levels, so it does not apply.
+    """
+    tables = _c64()
+    found = [row for row in sweep.c64_records_with_drain(POOL)
+             if row[1].strip() == "PILFER" and row[6]
+             and row[0].split(":")[0].upper() not in CONVERTED]
+    if not found:
+        pytest.skip("no drained PILFER on this machine")
+    for source, name, race, level, dex, stored, drained in found:
+        want = sweep.expected(tables, level + drained, race, dex, False)
+        assert stored == want, f"{source} {name} level {level}+{drained}"
 
 
 def test_the_dos_dexterity_block_holds_two_bytes_the_c64_does_not():
