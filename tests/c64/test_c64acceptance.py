@@ -4024,6 +4024,9 @@ class WalkSession(FakeSession):
     def position(self):
         return self.x, self.y, self.facing
 
+    def combat_state(self, s=None):
+        return A.S.Session.combat_state(self, s)
+
     def handle_prompt(self, s=None):
         self.prompts += 1
         return False
@@ -6452,3 +6455,57 @@ def test_the_drain_summary_takes_the_first_save_after_the_last_walk_fight():
     assert got["passed"] is None and "no save step" in got["why"]
     assert A.drain_summary([{"verb": "walk-fight"}] + results[:1],
                            staged)["passed"] is False
+
+
+# --- the arrival text a warp leaves up ---------------------------------------------
+
+ARRIVAL_BAR = "PRESS <RETURN> OR BUTTON TO CONTINUE"
+
+
+class ArrivalWalk(FightWalk):
+    """Starts on an arrival page; `pages` Returns clear it.  Records the state
+    the first move key found."""
+
+    def __init__(self, pages, **kw):
+        moves = {("press", ("key", 0x0D)): "world" if pages == 1 else "press"}
+        super().__init__({}, **kw)
+        self.screens["press"] = _window({3: "YOU ARRIVE."}, ARRIVAL_BAR)
+        self.moves, self.state = moves, "press"
+        self.state_at_first_key = None
+        self.walk_encounter = None
+
+    def walk_one(self, move, *a, **k):
+        if self.state_at_first_key is None:
+            self.state_at_first_key = self.state
+        return super().walk_one(move, *a, **k)
+
+
+def test_walk_fight_answers_the_arrival_bar_once_before_its_first_key(
+        tmp_path, monkeypatch):
+    sess = ArrivalWalk(1)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    run.walk_fight("I")
+    log.close()
+    assert sess.sent == [("key", 0x0D)]
+    assert sess.state_at_first_key == "world" and sess.pressed == ["I"]
+
+
+def test_walk_answers_the_arrival_bar_once_before_its_first_key(
+        tmp_path, monkeypatch):
+    sess = ArrivalWalk(1)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    run.walk("I")
+    log.close()
+    assert sess.sent == [("key", 0x0D)]
+    assert sess.state_at_first_key == "world"
+
+
+def test_walk_fight_fails_naming_row_24_when_the_arrival_bar_never_clears(
+        tmp_path, monkeypatch):
+    sess = ArrivalWalk(0)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    with pytest.raises(A.StepFailed, match="still reads 'PRESS <RETURN> OR BUTTON"):
+        run.walk_fight("I")
+    log.close()
+    assert sess.sent == [("key", 0x0D)] * A.ARRIVAL_PRESSES
+    assert sess.pressed == []

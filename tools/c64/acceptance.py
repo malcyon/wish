@@ -480,6 +480,11 @@ def parse_steps(texts) -> list[Step]:
 #: after a warp.  Pool of Radiance only; an area not listed is not checked.
 ARRIVAL_FACING = {10: 1}
 
+#: How many `PRESS ... TO CONTINUE` pages a walk answers before its first key,
+#: and how long it waits for each to give way.
+ARRIVAL_PRESSES = 3
+ARRIVAL_PAGE_SECONDS = 8.0
+
 #: The budget for each fight a `walk-fight` takes; the run's own
 #: `--max-seconds` still bounds the whole.
 WALK_FIGHT_SECONDS = 900.0
@@ -2385,9 +2390,38 @@ class PoolRun:
                         f"{before} so should reverse facing to "
                         f"{reversed_facing}, it faces {after[2]}")
 
+    def leave_arrival(self, step: str) -> None:
+        """Answer the `PRESS ... TO CONTINUE` bar a warp's arrival text leaves.
+
+        Each page gets one Return, then row 24 is read until it changes; a
+        move key sent at the bar would be taken as the answer to it.  Some
+        arrivals show more than one page, so up to `ARRIVAL_PRESSES` are
+        answered, and a bar that outlasts them fails the step naming its text.
+        Any other bar returns, for `to_world` to wait out.
+        """
+        for _ in range(ARRIVAL_PRESSES):
+            screen = self.sess.screen()
+            if screen is None:
+                return
+            state = self.sess.combat_state(screen)
+            if state.kind != S.BAR_PRESS:
+                return
+            self.sess.press_kernal(0x0D)
+            until = self.clock() + ARRIVAL_PAGE_SECONDS
+            while self.bar().strip() == state.text and self.clock() < until:
+                self.budget(1, f"{step} arrival")
+                time.sleep(0.4)
+        screen = self.sess.screen()
+        if screen is not None and self.sess.combat_state(screen).kind == S.BAR_PRESS:
+            raise self.fail("world", f"{step}: the world bar never came back, "
+                                     f"row 24 still reads "
+                                     f"{self.bar().strip()!r}")
+
     def _walk(self, route: str) -> dict:
+        self.leave_arrival(f"walk {route}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
+        self.leave_arrival(f"walk {route}")
         start = self.position()
         facing = start[2]
         moves = []
@@ -2509,8 +2543,10 @@ class PoolRun:
         `/NO` was given and fails the step anywhere else, with nothing pressed.
         """
         route, answer = parse_walk_fight(arg)
+        self.leave_arrival(f"walk-fight {route}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
+        self.leave_arrival(f"walk-fight {route}")
         # `Session._stop_walk` answers an encounter menu with this word and
         # presses nothing else; `walk_expired` bounds its waits by the run.
         self.sess.walk_encounter = S.ENCOUNTER_FIGHT
