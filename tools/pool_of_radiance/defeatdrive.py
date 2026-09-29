@@ -277,6 +277,46 @@ def drive(sess, log: Log, frames: Frames, budget: float,
     return outcome
 
 
+#: `LINKER`'s mode byte while `POST.COM`'s treasure menus run, and the value
+#: it returns to once the party is handed back to the world.  A run that saw
+#: the first and then the second has left the fight the way a player does.
+MODE_POST = 5
+
+
+def leave_after(sess, log: Log, budget: float, poll: float) -> bool:
+    """Take the post-combat menu out to the world; True when `mode` went 5 to 1.
+
+    `VIEW POOL EXIT` is answered with `EXIT`, which asks `GO BACK LEAVE
+    TREASURE`, and that is answered with `LEAVE TREASURE` -- `GO BACK` only
+    returns to the menu it came from.  The checkpoint is the mode byte, not a
+    screen: it must read `MODE_POST` at some point and `S.DUNGEON` afterward.
+    """
+    end = time.time() + budget
+    saw_post = False
+    while time.time() < end:
+        mode = sess.mode()
+        if mode == MODE_POST and not saw_post:
+            saw_post = True
+            log.emit("mode", value=mode, note="post-combat overlay")
+        elif mode == S.DUNGEON and saw_post:
+            log.emit("mode", value=mode, note="back in the world")
+            return True
+        state = sess.combat_state(sess.screen())
+        words = state.text.upper().split()
+        if state.kind == S.BAR_LEAVE:
+            log.emit("leave", answered="LEAVE TREASURE", bar=state.text)
+            sess.combat_bar("LEAVE", timeout=12.0)
+        elif state.kind == S.BAR_EXIT and "POOL" in words:
+            log.emit("leave", answered="EXIT", bar=state.text)
+            sess.combat_bar("EXIT", timeout=12.0)
+        elif state.kind == S.BAR_PRESS:
+            sess.press_kernal(0x0D)
+            sess.await_change(state.text, timeout=4.0)
+        else:
+            sess.idle(poll)
+    return False
+
+
 def watch_after(sess, log: Log, frames: Frames, seconds: float,
                 poll: float, knock_at: float = 0.0) -> list[int]:
     """Sample the screen and the program counter after the outcome line.
@@ -363,6 +403,12 @@ def main(argv=None) -> int:
                         "hit-point patch the harness itself made (#445, the "
                         "POST.COM $1544 experiment). Needs a much larger "
                         "--budget than the wounded default")
+    p.add_argument("--leave", action="store_true",
+                   help="after the outcome, press EXIT at VIEW POOL EXIT, "
+                        "answer LEAVE TREASURE, and record whether mode went "
+                        "from 5 to 1, for POST.COM $1544's mercy heal (#648)")
+    p.add_argument("--leave-budget", type=float, default=120.0,
+                   help="seconds to give --leave to reach the world")
     args = p.parse_args(argv)
     if args.disks is None:
         if DISKS is None:
@@ -466,6 +512,11 @@ def main(argv=None) -> int:
             sess.kbd.screenshot(str(out / "outcome.png"))
         except Exception as exc:
             log.emit("shot_failed", error=repr(exc))
+
+        if args.leave:
+            left = leave_after(sess, log, args.leave_budget, args.poll)
+            log.emit("left", mode_5_to_1=left)
+            log.say(f"  mode went 5 to 1: {left}")
 
         pcs = watch_after(sess, log, frames, args.after, args.poll,
                           knock_at=args.knock)
