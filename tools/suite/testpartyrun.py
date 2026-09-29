@@ -421,7 +421,7 @@ def _turn_key(sess, log: Log, key: str, expected: int, leg: str, here, there):
                      facing=None, expected=expected, refused=refused)
             return {"leg": leg, "key": key, "from": list(here),
                     "to": list(there), "reason": "not_pressed",
-                    "refused": refused}
+                    "refused": refused, "row24": _row24(sess)}
         # The line can be blank for a moment while the screen redraws after a
         # turn, so it is read again for about a second before it counts as gone.
         seen = _status_line(sess)[0]
@@ -441,7 +441,111 @@ def _turn_key(sess, log: Log, key: str, expected: int, leg: str, here, there):
     return None
 
 
-def walk_route(sess, log: Log, path, facing: int, leg: str):
+#: Seconds `settle_step` gives a square's script to hand the game back after
+#: a key: a wandering encounter loads its monster and, on a surprise, the
+#: fight itself from disk.  A limit, not a measurement.
+STEP_SETTLE_WAIT = 120.0
+
+#: Seconds between `settle_step`'s reads of row 24.
+SETTLE_POLL = 0.5
+
+#: Reads in a row a walkable bar must hold before the next key goes, and a
+#: bar the walk does not answer must hold before it counts as a choice
+#: rather than a bar caught half drawn.
+WALKABLE_READS = 2
+CHOICE_READS = 4
+
+
+def settle_step(sess, log: Log, key: str, there,
+                timeout: float = STEP_SETTLE_WAIT,
+                taken: bool = False) -> tuple[str, str]:
+    """Wait until what a square's script put up after `key` has cleared.
+
+    Returns `(outcome, row24)`: `"ready"` once the world bar or the move
+    sub-bar has held for `WALKABLE_READS` reads, `"fight"` once the combat
+    icon is up, `"choice"` for a bar the walk does not answer that held for
+    `CHOICE_READS` reads (nothing is pressed at it), and `"unsettled"` when
+    `timeout` runs out first.
+
+    A Slums script rolls a wandering encounter on every unscripted square
+    (`ECL14` entry 1, id 0).  Row 24 goes blank while its monster loads; a
+    surprise then prints its line over a `PRESS` bar and goes straight to
+    the fight, and any other roll opens `COMBAT WAIT FLEE ADVANCE`.  A key
+    sent in that time is refused by `walk_one`.  So a `PRESS` bar is
+    answered, a disk prompt handled, and the caller's `walk_encounter` word
+    taken once on a menu that
+    carries it, as `walk_one` itself does, unless `taken` says it already
+    was; a blank row is waited on.  Each change of row 24 after the first
+    read is logged as `step_screen`.
+    """
+    word = getattr(sess, "walk_encounter", None)
+    seen = None
+    walkable = held = 0
+    row = ""
+    next_combat = 0.0
+    deadline = time.monotonic() + timeout
+    while True:
+        now = time.monotonic()
+        if now >= next_combat:
+            next_combat = now + COMBAT_POLL
+            if sess.in_combat():
+                return "fight", row
+        s = sess.screen()
+        row = "" if s is None else s.row(24).strip()
+        if seen is not None and row != seen:
+            log.emit("step_screen", key=key, to=list(there), row24=row)
+        held = held + 1 if row == seen else 1
+        seen = row
+        if S.MOVE_SUBBAR in row or _world_bar(row):
+            walkable += 1
+            if walkable >= WALKABLE_READS:
+                return "ready", row
+        else:
+            walkable = 0
+            state = sess.combat_state(s) if s is not None else None
+            kind = state.kind if state is not None else S.BAR_BLANK
+            if kind == S.BAR_DISK:
+                sess.handle_prompt(s)
+            elif kind == S.BAR_PRESS:
+                log.emit("step_press", key=key, to=list(there), row24=row)
+                sess.press_kernal(0x0D)
+                sess.await_change(state.text, timeout=6)
+                continue
+            elif row and word and S.word_column(row, word) >= 0:
+                if not taken:
+                    log.say(f"  an encounter after {key} at {tuple(there)}: "
+                            f"{row!r}; taking {word}")
+                    log.emit("step_encounter", key=key, to=list(there),
+                             row24=row)
+                    sess.select_bar(word, timeout=8)
+                    taken = True
+            elif row and held >= CHOICE_READS:
+                return "choice", row
+        if time.monotonic() >= deadline:
+            return "unsettled", row
+        time.sleep(SETTLE_POLL)
+
+
+def _encounter_taken(sess) -> bool:
+    """Whether the last `walk_one` stopped at an encounter menu and took the
+    caller's `walk_encounter` word on it, as `_stop_walk` does."""
+    word = getattr(sess, "walk_encounter", None)
+    rows = getattr(sess, "walk_stop_screen", None)
+    return bool(word and rows and S.word_column(rows[24], word) >= 0)
+
+
+def _stopped(sess, log: Log, out, leg: str, key: str, here, there,
+             outcome: str, row: str) -> dict:
+    """The desync for a `settle_step` that did not hand the game back."""
+    log.say(f"  after {key} towards {tuple(there)} row 24 reads {row!r}; "
+            f"{'a choice the walk does not make' if outcome == 'choice' else 'it never cleared'}")
+    if out is not None:
+        dump(sess, out, log, f"{leg}-{outcome}-{there[0]}-{there[1]}")
+    return {"leg": leg, "key": key, "from": list(here), "to": list(there),
+            "reason": outcome, "row24": row}
+
+
+def walk_route(sess, log: Log, path, facing: int, leg: str, out=None):
     """Walk `path` one square at a time, answering prompts, and stop in combat.
 
     Returns `(facing, stopped_at, desync)`.  `stopped_at` is the planned square
@@ -457,30 +561,73 @@ def walk_route(sess, log: Log, path, facing: int, leg: str):
     square.  Facing is tracked from the keys sent, as `geowalk.keys_for` does,
     because the Slums' status line carries no coordinates to check a step
     against.
+
+    After every key that took, `settle_step` waits for the game to come back
+    to a bar the next key can go at, because a square's script can still be
+    running.  That wait cannot tell a bar left over from before the script
+    from a live one, so a key `walk_one` refused without pressing
+    (`not_pressed`) is followed by the same wait and sent once more when a
+    walkable bar comes back.  Either wait can find a fight, which stops the
+    walk on the square the party stands on.  A choice it offers, or a screen
+    that never clears, stops the walk with a screenshot under `out` when one
+    is given: after a key that took, `reason` is `choice` or `unsettled`;
+    after a refused key, `reason` stays `not_pressed` and `after` names
+    which of the two held.
     """
     for here, there in zip(path, path[1:]):
         keys = geowalk.keys_for([here, there], facing, reverse="turn")
         want = geowalk.STEP.index((there[0] - here[0], there[1] - here[1]))
-        for n, key in enumerate(keys):
-            if key != "i":
+        for key in keys:
+            turn = key != "i"
+            if turn:
                 facing = (facing + (1 if key == "k" else -1)) % 4
-                bad = _turn_key(sess, log, key, facing, leg, here, there)
-                if sess.in_combat():
-                    return want, here, None
-                if bad:
+            for attempt in range(2):
+                if turn:
+                    bad = _turn_key(sess, log, key, facing, leg, here, there)
+                    if sess.in_combat():
+                        return want, here, None
+                else:
+                    moved = bool(sess.walk_one(key.upper()))
+                    sess.handle_prompt()
+                    log.emit("route_key", leg=leg, key=key, to=list(there),
+                             moved=moved)
+                    if sess.in_combat():
+                        return want, (there if moved else here), None
+                    bad = None
+                    if not moved:
+                        bad = {"leg": leg, "key": key,
+                               "from": list(here), "to": list(there)}
+                        if sess.walk_refused is not None:
+                            bad.update(reason="not_pressed",
+                                       refused=sess.walk_refused,
+                                       row24=_row24(sess))
+                if bad is None:
+                    break
+                if bad.get("reason") != "not_pressed" or attempt:
                     return want, None, bad
+                # Nothing was pressed: wait out whatever is up, and send the
+                # key again only when a walkable bar comes back.
+                outcome, row = settle_step(sess, log, key, here,
+                                           taken=_encounter_taken(sess))
+                if outcome == "fight":
+                    return want, here, None
+                if outcome != "ready":
+                    # The refusal stays the reason; the wait says what held.
+                    stop = _stopped(sess, log, out, leg, key, here, there,
+                                    outcome, row)
+                    bad.update(after=outcome, row24=stop["row24"])
+                    return want, None, bad
+                log.emit("route_retry", leg=leg, key=key, to=list(there),
+                         refused=bad["refused"])
+            landed = here if turn else there
+            outcome, row = settle_step(sess, log, key, landed)
+            if outcome == "fight":
+                return want, landed, None
+            if outcome != "ready":
+                return want, None, _stopped(sess, log, out, leg, key, here,
+                                            there, outcome, row)
+            if turn:
                 continue
-            moved = bool(sess.walk_one(key.upper()))
-            sess.handle_prompt()
-            log.emit("route_key", leg=leg, key=key, to=list(there), moved=moved)
-            if sess.in_combat():
-                return want, (there if moved else here), None
-            if not moved:
-                bad = {"leg": leg, "key": key,
-                       "from": list(here), "to": list(there)}
-                if sess.walk_refused is not None:
-                    bad.update(reason="not_pressed", refused=sess.walk_refused)
-                return want, None, bad
             seen, square = _status_line(sess)
             if leg == "slums":
                 log.emit("slums_status", key=key, to=list(there), facing=seen,
@@ -629,7 +776,8 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
     log.say(f"  {len(first) - 1} steps to {NEW_PHLAN_EXIT}, then "
             f"{len(second) - 1} in the Slums to {tuple(target)}")
     sess.walk_encounter = S.ENCOUNTER_FIGHT
-    facing, hit, desync = walk_route(sess, log, first, start[2], "new-phlan")
+    facing, hit, desync = walk_route(sess, log, first, start[2], "new-phlan",
+                                      out)
     leg = "new-phlan"
     if hit is None and desync is None:
         at = tuple(sess.position()[:2])
@@ -652,6 +800,7 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
             if desync:
                 break
         if hit is None and desync:
+            dump(sess, out, log, "desynced")
             fighting = bool(sess.in_combat())
             log.emit("walked", leg=leg, in_combat=fighting, began_at=None,
                      at_target=False, desynced=desync)
@@ -676,7 +825,12 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
         else:
             # `ECL00` entry 0 steps forward, so the party leaves facing west.
             west = geowalk.STEP.index((-1, 0))
-            facing, hit, desync = walk_route(sess, log, second, west, "slums")
+            facing, hit, desync = walk_route(sess, log, second, west, "slums",
+                                              out)
+    if (desync is not None and "after" not in desync
+            and desync.get("reason") not in ("choice", "unsettled")):
+        # `_stopped` has already photographed a wait that did not clear.
+        dump(sess, out, log, "desynced")
     fighting = bool(sess.in_combat())
     began = list(hit) if hit else None
     at_target = fighting and desync is None and hit == tuple(target)

@@ -848,3 +848,172 @@ def test_every_slums_step_logs_the_status_line(monkeypatch):
     sess, log, got = _walk(monkeypatch, fight_after=None)
     seen = [e for e in log.events if e[0] == "slums_status"]
     assert seen and seen[0][1]["facing"] is not None
+
+
+# -- what a square's script leaves on screen after a step ---------------------
+
+PRESS = "PRESS <RETURN> OR BUTTON TO CONTINUE"
+ENCOUNTER = "COMBAT WAIT FLEE ADVANCE"
+
+
+class StepScript(WalkSession):
+    """A Slums walk south from (5,5) whose square script runs after key
+    `after_key`: row 24 reads `rows`, one entry per `screen()` read, the last
+    repeating.  `on_press` replaces them when Return is pressed, and a
+    `"<fight>"` entry brings the fight up.  A key sent while the script's row
+    is not a walkable bar is refused, as `walk_one` refuses it."""
+
+    def __init__(self, monkeypatch, after_key, rows, on_press=None,
+                 on_combat=None):
+        super().__init__(monkeypatch, None, 20, (), (5, 5, 2), None)
+        self.after_key, self.script = after_key, list(rows)
+        self.on_press, self.on_combat = on_press, on_combat
+
+    def _live(self):
+        return len(self.keys) >= self.after_key and bool(self.script)
+
+    def _arrival_row(self):
+        return self.script[0] if self._live() else WORLD
+
+    def screen(self):
+        if self.fighting:
+            return Screen("")
+        if not self._live():
+            return Screen(WORLD)
+        row = self.script[0]
+        if len(self.script) > 1:
+            self.script.pop(0)
+        if row == "<fight>":
+            self.fighting = True
+            return Screen("")
+        return Screen(row)
+
+    def press_kernal(self, code):
+        super().press_kernal(code)
+        if self.on_press is not None:
+            self.script = list(self.on_press)
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        if label == "COMBAT" and self.on_combat is not None:
+            self.asked.append(label)
+            self.script = list(self.on_combat)
+            return True
+        return super().select_bar(label, row, timeout, answer_prompts)
+
+    def walk_one(self, key, *a, **k):
+        # `_stop_walk`: at an encounter menu nothing is pressed for the key,
+        # and the caller's word is taken.
+        self.walk_stop_screen = None
+        row = self._arrival_row()
+        if (self._live() and self.walk_encounter
+                and S.word_column(row, self.walk_encounter) >= 0):
+            self.blank_keys.append(key)
+            self.walk_stop_screen = ("",) * 24 + (row,)
+            self.select_bar(self.walk_encounter)
+            self.walk_refused = ("the driver pressed nothing: an encounter "
+                                 "menu; it answered COMBAT")
+            return False
+        return super().walk_one(key, *a, **k)
+
+
+SOUTH = [(5, 5), (5, 6), (5, 7), (5, 8)]
+
+
+def _script_walk(monkeypatch, rows, on_press=None, after_key=1,
+                 on_combat=None):
+    dumps = []
+    monkeypatch.setattr(T, "dump", lambda sess, out, log, tag: dumps.append(tag))
+    sess = StepScript(monkeypatch, after_key, rows, on_press, on_combat)
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    clock = Clock(monkeypatch)
+    log = RecordingLog()
+    got = T.walk_route(sess, log, SOUTH, 2, "slums", pathlib.Path("."))
+    return sess, log, got, dumps, clock
+
+
+def test_a_surprise_after_a_step_is_answered_and_is_the_fight(monkeypatch):
+    # `ECL14`'s surprise: the monster loads with row 24 blank, its line prints
+    # over a PRESS bar, and the fight loads after the Return.
+    sess, log, got, dumps, _ = _script_walk(
+        monkeypatch, ["", "", PRESS], on_press=["", "", "<fight>"])
+    assert sess.pressed == [0x0D] and sess.blank_keys == []
+    assert sess.keys == ["I"] and got == (2, (5, 6), None)
+
+
+def test_an_encounter_menu_after_a_step_takes_combat_once(monkeypatch):
+    sess, log, got, dumps, _ = _script_walk(
+        monkeypatch, ["", ENCOUNTER, ENCOUNTER, ENCOUNTER, "<fight>"])
+    assert sess.asked == ["COMBAT"] and sess.blank_keys == []
+    assert got == (2, (5, 6), None)
+
+
+def test_a_message_that_clears_back_to_the_bar_lets_the_walk_go_on(
+        monkeypatch):
+    sess, log, got, dumps, _ = _script_walk(monkeypatch, ["", "", "", WORLD])
+    assert sess.keys == ["I", "I", "I"] and sess.blank_keys == []
+    assert got == (2, None, None) and sess.pressed == []
+
+
+def test_a_choice_after_a_step_stops_the_walk_and_presses_nothing(
+        monkeypatch):
+    sess, log, got, dumps, _ = _script_walk(monkeypatch,
+                                            ["", "LEAVE TALK ATTACK"])
+    assert sess.keys == ["I"] and sess.blank_keys == []
+    assert sess.asked == [] and sess.pressed == []
+    assert got[1] is None and got[2]["reason"] == "choice"
+    assert got[2]["row24"] == "LEAVE TALK ATTACK" and got[2]["to"] == [5, 6]
+    assert dumps == ["slums-choice-5-6"]
+
+
+def test_a_screen_that_never_clears_stops_the_walk_within_the_limit(
+        monkeypatch):
+    sess, log, got, dumps, clock = _script_walk(monkeypatch, [""])
+    assert sess.keys == ["I"] and sess.blank_keys == []
+    assert got[2]["reason"] == "unsettled" and got[2]["row24"] == ""
+    assert T.STEP_SETTLE_WAIT <= clock.now < T.STEP_SETTLE_WAIT + 5
+    assert dumps == ["slums-unsettled-5-6"]
+
+
+def test_a_script_after_a_turn_is_waited_out_before_the_step(monkeypatch):
+    # Facing west, the step south turns left first: `J`, then `I`.
+    dumps = []
+    monkeypatch.setattr(T, "dump", lambda sess, out, log, tag: dumps.append(tag))
+    sess = StepScript(monkeypatch, 1, ["", "", WORLD])
+    sess.facing = 3
+    Clock(monkeypatch)
+    got = T.walk_route(sess, RecordingLog(), [(5, 5), (5, 6)], 3, "slums")
+    assert sess.keys == ["J", "I"] and sess.blank_keys == []
+    assert got == (2, None, None)
+
+
+def test_a_key_refused_after_a_stale_bar_is_sent_again_once_the_bar_is_back(
+        monkeypatch):
+    # The bar from before the script is still up when the step's wait reads
+    # it, and the script blanks row 24 only afterwards (`full13`, (14,7)).
+    sess, log, got, dumps, _ = _script_walk(
+        monkeypatch, [WORLD, WORLD, "", "", "", WORLD])
+    assert sess.blank_keys == ["I"] and sess.keys == ["I", "I", "I"]
+    assert got == (2, None, None)
+    retries = [w for kind, w in log.events if kind == "route_retry"]
+    assert len(retries) == 1 and retries[0]["to"] == [5, 7]
+
+
+def test_an_encounter_the_refused_key_met_is_waited_into_the_fight(
+        monkeypatch):
+    # `full14`, (14,4): the next key met `COMBAT WAIT FLEE PARLAY`, `walk_one`
+    # took COMBAT, and the fight was still loading when it returned.
+    sess, log, got, dumps, _ = _script_walk(
+        monkeypatch, [WORLD, WORLD, "COMBAT WAIT FLEE PARLAY"],
+        on_combat=["", "", "<fight>"])
+    assert sess.asked == ["COMBAT"] and sess.keys == ["I"]
+    assert got == (2, (5, 6), None)
+
+
+def test_a_refused_key_at_a_choice_keeps_its_refusal_and_names_the_choice(
+        monkeypatch):
+    sess, log, got, dumps, _ = _script_walk(
+        monkeypatch, [WORLD, WORLD, "", "LEAVE TALK ATTACK"])
+    assert sess.keys == ["I"] and sess.asked == [] and sess.pressed == []
+    assert got[2]["reason"] == "not_pressed" and got[2]["after"] == "choice"
+    assert got[2]["row24"] == "LEAVE TALK ATTACK"
+    assert dumps == ["slums-choice-5-7"]
