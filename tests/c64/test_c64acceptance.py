@@ -4618,19 +4618,35 @@ def test_the_real_walk_one_does_not_answer_a_prompt_the_move_raised(
     assert sess.kernal == [] and sess.attaches == []
 
 
+class PromptAfterLookWalk(RealWalk):
+    """The disk prompt goes up on the first screen read after `_walk`'s own
+    `walk_stop(wait=12.0)` returns, which follows its look loop, so the prompt
+    opens after the look and before the next move, whatever the clock.
+    `walk_one`'s own `walk_stop` calls pass no `wait`."""
+
+    def __init__(self, clock, **kw):
+        super().__init__(clock, prompt_after=None, **kw)
+        self.look_over = False
+
+    def walk_stop(self, s=None, wait=0.0):
+        got = super().walk_stop(s, wait)
+        if wait:
+            self.look_over = True
+        return got
+
+    def screen(self):
+        if self.look_over:
+            return _Text(_window({}, self.PROMPT))
+        return super().screen()
+
+
 def test_a_prompt_that_opens_after_the_look_is_not_answered_by_the_next_move(
         tmp_path, monkeypatch):
-    # The first move ends by leaving move mode, and the prompt must open
-    # after the look window that follows it.  Seconds after the key:
-    # `walk_one`'s `time.sleep(1.2)`, `leave_move`'s 0.3 s two-read gate and
-    # its 0.6 s sleep after the Return (both literals in `Session.leave_move`),
-    # then `A.LOOK_SECONDS`, then a margin of one and a half of the fake's
-    # `position()` reads (each advances the clock by `moved_by`), which puts
-    # the prompt past the look's last 0.3 s poll and before the next move.
-    moved_by = 0.1
-    prompt_after = 1.2 + 0.3 + 0.6 + A.LOOK_SECONDS + 1.5 * moved_by
-    sess, run, log = _real_walk(tmp_path, monkeypatch, prompt_after=prompt_after)
-    sess.moved_by = moved_by
+    # The first move ends by leaving move mode; the prompt opens after the
+    # look window, so only the check before the next move can see it.
+    clock = _Clock(monkeypatch)
+    sess = PromptAfterLookWalk(clock)
+    run, log = _walk_run(tmp_path, sess, clock)
     with pytest.raises(A.StepFailed, match="move 0 \\(I\\).*before the next move"):
         run.walk("II")
     log.close()
