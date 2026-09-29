@@ -2579,16 +2579,21 @@ class PoolRun:
                         f"{before} so should reverse facing to "
                         f"{reversed_facing}, it faces {after[2]}")
 
-    def leave_arrival(self, step: str) -> None:
+    # Returns `leave_arrival` has sent since a walk-fight key began, so the
+    # cap on an ambush's pages counts every Return, not every call.
+    returns_sent = 0
+
+    def leave_arrival(self, step: str, presses: int = ARRIVAL_PRESSES) -> None:
         """Answer the `PRESS ... TO CONTINUE` bar a warp's arrival text leaves.
 
         Each page gets one Return, then row 24 is read until it changes; a
         move key sent at the bar would be taken as the answer to it.  Some
         arrivals show more than one page, so up to `ARRIVAL_PRESSES` are
         answered, and a bar that outlasts them fails the step naming its text.
+        `presses` lowers that cap for a caller that has already sent some.
         Any other bar returns, for `to_world` to wait out.
         """
-        for _ in range(ARRIVAL_PRESSES):
+        for _ in range(presses):
             screen = self.sess.screen()
             if screen is None:
                 return
@@ -2596,6 +2601,7 @@ class PoolRun:
             if state.kind != S.BAR_PRESS:
                 return
             self.sess.press_kernal(0x0D)
+            self.returns_sent += 1
             until = self.clock() + ARRIVAL_PAGE_SECONDS
             while self.bar().strip() == state.text and self.clock() < until:
                 self.budget(1, f"{step} arrival")
@@ -2834,13 +2840,14 @@ class PoolRun:
         return got
 
     def _refuse_blank_resend(self, route, n, move) -> None:
-        """Fail rather than send `walk_one` into a screen with no move bar:
-        after an unsent pass the game may still be busy, and `walk_one` would
-        press nothing and blame the driver."""
+        """Fail rather than send `walk_one` into a blank row 24: after an
+        unsent pass the game may still be busy, and `walk_one` would press
+        nothing and blame the driver.  A bar of any kind, a disk prompt or a
+        fresh `PRESS` page is left for `walk_one` to answer."""
         if self.sess.in_combat():
             return
         row = self.bar()
-        if self.at_world(row) or S.MOVE_SUBBAR in row:
+        if row.strip():
             return
         mode = getattr(self.sess, "mode", lambda: None)()
         raise self.fail(
@@ -2857,6 +2864,7 @@ class PoolRun:
         it was: a fight was fought, or `walk_one` reported no move and the
         screen agrees the game read nothing (the test `walk` uses)."""
         sess = self.sess
+        self.returns_sent = 0
         before_rows = self.rows()
         # Encounter detection is measured on Pool of Radiance only.
         extra = {"encounters": True} if self.walk_encounters else {}
@@ -2897,8 +2905,11 @@ class PoolRun:
             else:
                 self._look_for_fight(route, last)
             if stop is None and not sess.in_combat():
+                # Kept after the ambush wait: a menu can be raised through
+                # `walk_stop` while row 24 still shows the world bar.
                 stop = sess.walk_stop(wait=12.0)
-            if stop is None and not sess.in_combat() and self._answer_press_bar():
+            if (stop is None and not sess.in_combat() and self._answer_press_bar(
+                    max(ARRIVAL_PRESSES - self.returns_sent, 0))):
                 # A bar that drew after the first look, which `walk_stop`
                 # counts as recognised.
                 ambush = True
@@ -3058,12 +3069,12 @@ class PoolRun:
                                   f"{int(FIGHT_OPENS_SECONDS)} seconds")
             time.sleep(0.5)
 
-    def _answer_press_bar(self) -> bool:
+    def _answer_press_bar(self, presses: int = ARRIVAL_PRESSES) -> bool:
         """Answer a `PRESS` bar if one is up, and say whether it was."""
         screen = self.sess.screen()
         if screen is None or self.sess.combat_state(screen).kind != S.BAR_PRESS:
             return False
-        self.leave_arrival(self.walk_verb)
+        self.leave_arrival(self.walk_verb, presses)
         return True
 
     def _await_fight_after_press(self, route, last, n, move, before, word):
@@ -3073,14 +3084,19 @@ class PoolRun:
         says, so only a screen ends the wait, never a timing window: a Return
         leaves row 24 blank in mode 1, then mode 4, before combat opens.
         Returns the rows of an encounter menu or `YES NO` for the caller to
-        answer, or None once a fight is open or the world bar is back.  Fails
-        after `FIGHT_OPENS_SECONDS`, naming row 24 and the mode.  Each change
-        of (mode, row 24) is logged as `fight-wait`.
+        answer, or None once a fight is open or the world bar (or the move
+        sub-bar on two reads 1 s apart) is back.  Fails after
+        `FIGHT_OPENS_SECONDS`, naming row 24 and the mode, or once
+        `ARRIVAL_PRESSES` Returns have been sent for the key.  Each change of
+        (mode, row 24) is logged as `fight-wait`.
+
+        Row 24 was blank throughout modes 1 and 4 in all three measured
+        ambushes (`~/.cache/wish/748/ambush-diag/boot{2,3,4}/probe.jsonl`,
+        `timeline.py`), so a sub-bar seen here is the world coming back.
         """
         sess = self.sess
         start = self.clock()
         limit = start + FIGHT_OPENS_SECONDS
-        presses = 0
         subbar_since = None
         seen = None
         while True:
@@ -3096,14 +3112,15 @@ class PoolRun:
             if sess.in_combat():
                 return None
             if screen is not None and sess.combat_state(screen).kind == S.BAR_PRESS:
-                presses += 1
-                if presses > ARRIVAL_PRESSES:
+                left = ARRIVAL_PRESSES - self.returns_sent
+                if left <= 0:
                     raise self.fail(
                         self.walk_verb,
                         f"{self.walk_verb} {route}: move {n} ({move}) from "
-                        f"{before} met more than {ARRIVAL_PRESSES} PRESS "
-                        f"bars in a row, row 24 reads {row.strip()!r}")
-                self._answer_press_bar()
+                        f"{before} sent {self.returns_sent} Returns and "
+                        f"another PRESS bar is up, row 24 reads "
+                        f"{row.strip()!r}")
+                self._answer_press_bar(left)
             elif (S.word_column(row, "YES") >= 0 and S.word_column(row, "NO") >= 0
                     or S.word_column(row, word) >= 0):
                 return self.rows()

@@ -7289,7 +7289,7 @@ class UnsentPressBar(AmbushWalk):
             self.walk_unsent_press_bar = True
             return False
         row = self.screen().row(24)
-        if not (A.PoolRun.at_world(row) or A.S.MOVE_SUBBAR in row):
+        if not row.strip():
             self.walk_refused = self.REFUSAL
             return False
         return WalkSession.walk_one(self, move, *a, **k)
@@ -7374,6 +7374,93 @@ def test_walk_fight_will_not_send_walk_one_into_a_blank_row_24(tmp_path, monkeyp
         run.walk_fight("I")
     log.close()
     assert sess.pressed == [] and sess.calls == 1
+
+
+def test_the_blank_row_guard_lets_a_fresh_press_page_through_to_walk_one(
+        tmp_path, monkeypatch):
+    sess = UnsentPressBar()
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    sess.now = run.clock
+    run._await_fight_after_press = lambda *a: None
+    run._answer_press_bar = lambda *a: True
+    got = run.walk_fight("I")
+    log.close()
+    assert sess.pressed == ["I"] and got["position"] == [5, 4, 0]
+
+
+class PagedAmbush(UnsentPressBar):
+    """Each Return is followed by a blank second and then another `PRESS` page,
+    `pages_left` times."""
+
+    def __init__(self, pages_left, **kw):
+        super().__init__(**kw)
+        self.pages_left = pages_left
+
+    def screen(self):
+        if (self.state == "prep" and self.pages_left
+                and self.now() >= self.returned_at + 1.0):
+            self.state = "press"
+            self.pages_left -= 1
+        return super().screen()
+
+
+def test_a_second_press_page_during_the_load_is_answered_and_the_fight_fought(
+        tmp_path, monkeypatch):
+    sess = PagedAmbush(1)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    sess.now = run.clock
+    got = run.walk_fight("I")
+    log.close()
+    assert sess.sent == [("key", 0x0D)] * 2
+    assert [f["at_move"] for f in got["fights"]] == [0]
+    assert sess.pressed == ["I"]
+
+
+def test_a_fourth_press_page_fails_after_three_returns_counted_across_the_wait(
+        tmp_path, monkeypatch):
+    sess = PagedAmbush(10)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    sess.now = run.clock
+    with pytest.raises(A.StepFailed, match="sent 3 Returns and another PRESS"):
+        run.walk_fight("I")
+    log.close()
+    assert sess.sent == [("key", 0x0D)] * 3 and sess.pressed == []
+
+
+class MenuAfterPress(UnsentPressBar):
+    """After the gap the blank row 24 becomes `bar`, an encounter menu or a
+    `YES NO`; answering it opens the fight."""
+
+    def __init__(self, bar, **kw):
+        super().__init__(**kw)
+        self.screens["menu"] = _window(self.TEXT, bar)
+
+    def screen(self):
+        if (self.state == "prep"
+                and self.now() >= self.returned_at + self.gap_seconds):
+            self.state = "menu"
+        return super().screen()
+
+    def in_combat(self):
+        return self.combat
+
+    def fight(self, budget, tactic, stop=None):
+        self.combat = False
+        return super().fight(budget, tactic, stop)
+
+
+@pytest.mark.parametrize("bar, route, chosen", [
+    ("COMBAT WAIT FLEE ADVANCE", "I", "COMBAT"), ("YES NO", "I/NO", "NO")])
+def test_a_menu_or_yes_no_after_the_press_is_answered_not_waited_out(
+        tmp_path, monkeypatch, bar, route, chosen):
+    sess = MenuAfterPress(bar)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    sess.now = run.clock
+    got = run.walk_fight(route)
+    log.close()
+    assert sess.selected == [chosen]
+    assert [f["at_move"] for f in got["fights"]] == [0]
+    assert sess.pressed == ["I"]
 
 
 def test_walk_fight_fails_naming_a_key_that_was_never_sent_after_three_unsent_passes(
