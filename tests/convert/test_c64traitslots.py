@@ -168,12 +168,6 @@ def test_the_scan_skips_a_title_with_no_c64_port_and_keeps_the_others():
         assert _has_c64_port(_dos_record(shape, []))
 
 
-#: Registered without its `.ITM` item files, so `read_character` refuses its
-#: records (`item_count` above zero, no item file).  Its hashes are still
-#: checked; only its records are left out of the sweep.
-INCOMPLETE_SPECIMEN = "WISH-SPEC-por-634-outdoor-pool-rebuild-resave"
-
-
 @needs_specimens
 def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
     """The sweep #394 asks for, over every DOS save we watched being
@@ -216,10 +210,16 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
                 f"{folder.name}/{filename} has changed -- recorded "
                 f"{expected[:12]}, now {actual[:12]}; run tools/registry/specimens.py "
                 f"check")
-        if folder.name == INCOMPLETE_SPECIMEN:
-            continue
         for path in records:
-            char = dos_codec.read_character(path)
+            try:
+                char = dos_codec.read_character(path)
+            except dos_codec.DosRecordError as exc:
+                # A specimen registered without its item files is refused by
+                # design; skip that record only, so every other record in the
+                # folder, and every other kind of read error, still counts.
+                if "is missing" not in str(exc):
+                    raise
+                continue
             if char.is_pool_of_radiance:
                 name_len = char.get("name_length")
                 if 0xFF in char.raw("name_text")[:name_len]:

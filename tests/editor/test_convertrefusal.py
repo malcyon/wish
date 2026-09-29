@@ -9,13 +9,14 @@ loss, so no game data is read and nothing skips.
 from __future__ import annotations
 
 import struct
+import sys
 from types import SimpleNamespace
 
 import pytest
 from PyQt6.QtWidgets import QApplication
 
 from editor import convert, dosimport
-from goldbox import amiga_savegame, dos_port, dos_savegame
+from goldbox import amiga_savegame, dos_codec, dos_port, dos_savegame
 from goldbox.amiga_adf import AmigaDisk
 
 LOSSY = SimpleNamespace(
@@ -192,3 +193,37 @@ def test_the_file_menu_has_convert_in_its_place_when_the_flag_is_on(
                      "&Preview changes…", convert.MENU_CONVERT, "",
                      "&Preferences…", "", "&Quit"]
     assert action.text() == convert.MENU_CONVERT
+
+
+def test_a_dos_folder_copied_without_its_item_files_is_refused_not_a_crash(
+        tmp_path, monkeypatch):
+    """A record that counts items with no `.ITM` beside it reaches the same
+    refusal as any other unreadable source."""
+    shape = dos_port.POOL_OF_RADIANCE
+    folder = tmp_path / "dos"
+    folder.mkdir()
+    (folder / "SAVGAMA.DAT").write_bytes(b"\x00")
+    record = bytearray(shape.record_size)
+    record[dos_codec.FIELDS_BY_NAME_FOR[shape.key]["item_count"].offset] = 3
+    (folder / "CHRDATA1.SAV").write_bytes(bytes(record))
+    warned, critical = _capture_modals(monkeypatch)
+    logged: list[str] = []
+    monkeypatch.setattr(convert._log, "exception",
+                        lambda msg, *args, **kw: logged.append(
+                            str(sys.exc_info()[1])))
+    out = tmp_path / "out"
+    out.mkdir()
+    game_files = dosimport.GameFiles(icon=b"", animate=b"")
+    dialog = convert.ConvertDialog(
+        str(folder), None, lambda game: game_files,
+        destination="c64", folder=str(out))
+    try:
+        dialog.replan()
+        assert dialog.rehearsal is None
+        assert dialog._blocked == (convert.DIALOG_TITLE, convert.CANNOT_CONVERT)
+    finally:
+        dialog.close()
+    assert list(out.iterdir()) == []
+    #: Any unreadable source gives the same sentence, so the log is what
+    #: shows the refusal came from the missing item file.
+    assert "its item file CHRDATA1.ITM is missing" in " ".join(logged)

@@ -1755,9 +1755,9 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     is zero, which is what an export carries.  A record that counts items and
     has no item file beside it is an incomplete copy, and raises
     `DosRecordError` naming the character and the missing file rather than
-    reading as an empty pack.  A sibling that **is** present and does not reconcile with the record's own
-    item count, because it is short of a whole number of items or short of
-    the count, raises `DosRecordError` naming the file, the stride and both
+    reading as an empty pack.  A sibling that **is** present and does not
+    reconcile with the record's own item count, because it is short of a whole
+    number of items or short of the count, raises `DosRecordError` naming the file, the stride and both
     counts (#221) rather than silently handing back fewer items than the
     record says it has.
 
