@@ -1281,7 +1281,8 @@ def test_a_walk_whose_first_read_fails_does_not_pass(monkeypatch):
     assert not FT.walk_verdict(steps, sheet)[0]
 
 
-def test_settle_does_not_take_the_travel_grid_prompt_indoors(tmp_path):
+def test_settle_does_not_take_the_travel_grid_prompt_indoors(tmp_path,
+                                                             fake_clock):
     # A hop still loading leaves the travel grid's prompt on screen while the
     # area byte already says indoors.
     sess, m = make()
@@ -1291,10 +1292,10 @@ def test_settle_does_not_take_the_travel_grid_prompt_indoors(tmp_path):
     assert not ok and "1-8, RETURN OR BUTTON" in message
 
 
-def test_settle_indoors_settles_through_wait_for_world(tmp_path):
+def test_settle_indoors_settles_through_wait_for_world(tmp_path, fake_clock):
     sess, m = make()
     sess = WalkSession(m, indoors=True)
-    sess.settled, sess.row = True, "1-8, RETURN OR BUTTON"
+    sess.settled, sess.row = True, "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
     assert FT.settle_world(sess, tmp_path, {}) == (True, "")
 
 
@@ -1379,7 +1380,7 @@ def test_settle_does_not_take_the_grid_prompt_when_indoors_is_unread(tmp_path):
     assert not ok and "1-8, RETURN OR BUTTON" in message
 
 
-def test_settle_reads_indoors_again_after_the_wait(tmp_path):
+def test_settle_reads_indoors_again_after_the_wait(tmp_path, fake_clock):
     # The hop finishes loading during the wait: indoors, then not.
     sess, m = make()
     sess = WalkSession(m, indoors=True)
@@ -1417,3 +1418,36 @@ def test_a_walk_ending_on_a_prompt_does_not_press_the_sheet_into_it():
     steps, sheet = FT.walk_afterwards(sess, timeout=0.0, stop_after_moves=1)
     assert sheet is False and sess.sheets == []
     assert steps[-1]["refused"] and "INSERT DISK" in steps[-1]["refused"]
+
+
+@pytest.fixture
+def fake_clock(monkeypatch):
+    """A clock that only `sleep` advances, so a 60 s settle takes no time."""
+    now = [0.0]
+    monkeypatch.setattr(FT.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(FT.time, "sleep", lambda s: now.__setitem__(0, now[0] + s))
+
+
+def test_settle_indoors_accepts_the_move_sub_bar(tmp_path, fake_clock):
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    sess.settled, sess.row = False, FT.S.MOVE_SUBBAR + ", RETURN OR BUTTON"
+    assert FT.settle_world(sess, tmp_path, {}) == (True, "")
+    assert sess.pressed == [] and sess.kbd.paths == []
+
+
+def test_settle_indoors_settles_when_the_row_changes_to_the_sub_bar(
+        tmp_path, fake_clock):
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    sess.row = "1-8, RETURN OR BUTTON"
+    bar = FT.S.MOVE_SUBBAR + ", RETURN OR BUTTON"
+
+    def wait(timeout=240.0):
+        sess.row = bar
+        return False
+
+    sess.wait_for_world = wait
+    rows = []
+    assert FT.settle_world(sess, tmp_path, {}, rows) == (True, "")
+    assert rows == ["1-8, RETURN OR BUTTON", bar]

@@ -326,10 +326,19 @@ def row24(sess) -> str:
     return s.row(24).strip() if s is not None else ""
 
 
-def settle_world(sess, out: pathlib.Path, shots: dict) -> tuple[bool, str]:
+def indoor_bar(row: str) -> bool:
+    """Whether *row* is a bar the party rests on indoors: the world bar or the
+    move sub-bar the game waits in after a step. The travel grid's direction
+    prompt is not one."""
+    return "ENCAMP" in row or S.MOVE_SUBBAR in row
+
+
+def settle_world(sess, out: pathlib.Path, shots: dict,
+                 rows: list | None = None) -> tuple[bool, str]:
     """Wait for the world's command bar before the walk, so the walk never
     starts on a disk prompt or a menu. On failure row 24 is recorded verbatim
-    in the message and a screenshot is taken."""
+    in the message and a screenshot is taken. Each distinct row 24 seen while
+    waiting indoors is appended to *rows*."""
     # A walked exit onto the travel grid lands on the direction prompt, which
     # `wait_for_world` never counts as the world and might press Return at;
     # `Session.outdoor_key` drives a step from it, so it is checked first and
@@ -338,11 +347,19 @@ def settle_world(sess, out: pathlib.Path, shots: dict) -> tuple[bool, str]:
     # still loading, so only `wait_for_world` may settle the walk there.
     # A failed read (None) is not the grid either, and the area byte is read
     # again after the wait, which is when a hop finishes loading.
-    if (sess.indoors() is False and S.OUTDOOR_PROMPT in row24(sess)) \
-            or sess.wait_for_world(timeout=60):
-        print(f"  settled: row 24 {row24(sess)!r}", flush=True)
-        return True, ""
-    row = row24(sess)
+    if sess.indoors() is True:
+        # The move sub-bar is a resting state indoors, and `wait_for_world`
+        # never counts it, so it is polled for through `settle_row`.
+        row = settle_row(sess, 60, accept=indoor_bar, seen=rows)
+        if indoor_bar(row):
+            print(f"  settled: row 24 {row!r}", flush=True)
+            return True, ""
+    else:
+        if (sess.indoors() is False and S.OUTDOOR_PROMPT in row24(sess)) \
+                or sess.wait_for_world(timeout=60):
+            print(f"  settled: row 24 {row24(sess)!r}", flush=True)
+            return True, ""
+        row = row24(sess)
     if sess.indoors() is False and S.OUTDOOR_PROMPT in row:
         print(f"  settled: row 24 {row!r}", flush=True)
         return True, ""
@@ -357,9 +374,11 @@ def recognised(row: str) -> bool:
             or S.OUTDOOR_PROMPT in row)
 
 
-def settle_row(sess, timeout: float = 60.0, interval: float = 0.5) -> str:
-    """Row 24 once it reads as a bar the walk can drive from, or its last
-    reading when *timeout* runs out.
+def settle_row(sess, timeout: float = 60.0, interval: float = 0.5,
+               accept=None, seen: list | None = None) -> str:
+    """Row 24 once *accept* (default `recognised`) takes it, or its last
+    reading when *timeout* runs out. Each distinct reading is appended to
+    *seen* when given.
 
     An empty row is a screen still being redrawn, as after a disk-side prompt
     is answered, so it is waited out without pressing anything. A row that
@@ -369,9 +388,14 @@ def settle_row(sess, timeout: float = 60.0, interval: float = 0.5) -> str:
     at a prompt in the middle of one.
     """
     clock, sleep = time.monotonic, time.sleep
+    accept = accept or recognised
     end = clock() + timeout
     row = row24(sess)
-    while not recognised(row) and clock() < end and not sess.in_combat():
+    while True:
+        if seen is not None and row and row not in seen:
+            seen.append(row)
+        if accept(row) or clock() >= end or sess.in_combat():
+            break
         if row:
             sess.wait_for_world(timeout=min(10.0, max(1.0, end - clock())))
         # Also after the wait: it returns at once when ENCAMP is elsewhere on
@@ -746,8 +770,9 @@ def run(args) -> int:
 
         # The walk is judged on its own: the trip's verdict above is already
         # final, and a party that cannot walk afterwards is a second finding.
+        settle_rows: list[str] = []
         try:
-            settled, why = settle_world(sess, out, shots)
+            settled, why = settle_world(sess, out, shots, settle_rows)
             if settled:
                 steps, sheet = walk_afterwards(sess, stop_after_moves=1)
                 walk_ok, walk_message = walk_verdict(steps, sheet)
@@ -760,7 +785,7 @@ def run(args) -> int:
             shoot(sess, out, "after_walk", shots)
         result.update({"walk_ok": walk_ok, "walk_message": walk_message,
                        "walk": steps, "sheet_opened": sheet,
-                       "screenshots": shots})
+                       "settle_rows": settle_rows, "screenshots": shots})
         print(("PASS: walk: " if walk_ok else "FAIL: walk: ") + walk_message,
               flush=True)
         return 0 if walk_ok else 1
