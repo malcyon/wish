@@ -7,7 +7,9 @@ import argparse
 import base64
 import functools
 import hashlib
+import importlib.util
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -21,7 +23,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox import amiga_adf, areas, geo  # noqa: E402
-from tools.amiga import route_silver_blades  # noqa: E402
+from tools.amiga import amigabladesjournal, route_silver_blades  # noqa: E402
 from tools.amiga.route import (  # noqa: E402
     ISSUE,
     TITLE_LIMIT,
@@ -127,8 +129,10 @@ class DrawCounter:
     raises when it does not; it runs before every write.
     """
 
-    def __init__(self, target: Any, savecount: Any, lane_check: Callable[[], Any]) -> None:
+    def __init__(self, target: Any, savecount: Any, lane_check: Callable[[], Any],
+                 drawseed: Any = None) -> None:
         self.target, self.savecount, self.lane_check = target, savecount, lane_check
+        self.drawseed = drawseed
         self.base: int | None = None
 
     def locate(self) -> None:
@@ -138,13 +142,62 @@ class DrawCounter:
         if self.base is None:
             self.base = self.target.locate() + A4_BIAS
 
-    def stage(self) -> None:
+    def stage(self, record: int | None = None) -> None:
+        """Stage the next question; with `record`, also make the draw give that rule-book record."""
         self.locate()
         try:
             self.lane_check()
         except Exception as exc:
             raise RouteError(f"the lane claim was not confirmed: {type(exc).__name__}: {exc}") from exc
         self.savecount.stage_live(self.target.read, self.target.write, self.base)
+        if record is not None:
+            self.drawseed.stage_draw(self.target.read, self.target.write, self.base, record)
+
+    def drawn(self) -> int:
+        """The rule-book record the game's last draw gave, from the private helper."""
+        return self.drawseed.drawn(self.target.read, self.base)
+
+
+def _load_drawseed() -> Any:
+    """The private repository's `drawseed` module, loaded by path; failures name no message."""
+    path = amigabladesjournal.wheel_repo() / "ssb" / "analysis" / "drawseed.py"
+    if not path.is_file():
+        raise RouteError(f"{path} is missing; ${amigabladesjournal.ENV} names the "
+                         "private repository that holds it")
+    sys.path.insert(0, str(path.parent))
+    try:
+        spec = importlib.util.spec_from_file_location("drawseed", path)
+        if spec is None or spec.loader is None:
+            raise RouteError(f"{path} cannot be loaded as a module")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except RouteError:
+        raise
+    except (Exception, SystemExit) as exc:
+        raise RouteError(f"{path} failed to load: {type(exc).__name__}") from None
+    finally:
+        sys.path.remove(str(path.parent))
+    return module
+
+
+def _keep_tally_lines() -> list[str]:
+    """The answerer's kept tally lines so far, or none when it keeps no captures."""
+    keep = os.environ.get(route_silver_blades.KEEP_ENV)
+    tally = pathlib.Path(keep) / amigabladesjournal.TALLY if keep else None
+    if tally is None or not tally.is_file():
+        return []
+    return [x for x in tally.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+
+def _reader_index(before: list[str], after: list[str]) -> int | None:
+    """The table index the reader gave the one capture kept since `before`, else None."""
+    if len(after) != len(before) + 1:
+        return None
+    try:
+        value = json.loads(after[-1]).get("record")
+    except ValueError:
+        return None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _step_wait(min_waits: dict[str, float], state: str, kind: str) -> float:
@@ -832,7 +885,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               preserve_specimen: bool = False, specimen_issue: str | None = None,
               diagnose: bool = False, boot_limit: float = 300,
               rulebook_draws: int | None = None, target: Any = None,
-              lane_check: Callable[[], Any] | None = None) -> dict[str, Any]:
+              lane_check: Callable[[], Any] | None = None,
+              rulebook_records: list[int] | None = None) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -855,6 +909,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     `target` (an `AmigaTarget`), once `lane_check` has confirmed the lane claim. A draw that
     reaches EXIT GAME with no question fails the run; `result["rulebook"]` lists each. The
     run is refused before the claim when the deadline cannot cover the draws.
+    `rulebook_records` gives one record number per further draw: the private `drawseed` helper
+    stages each before its camp save, and after the answer its `drawn` is logged beside the
+    reader's kept-capture index; a draw that is not the staged record, or a reader index whose
+    distance from `drawn` changes between draws, fails the run.
 
     `reload` runs a title with no save letters: it loads the manifest's `loaded_letter`, walks
     the route, then waits for the screen to show that slot's place (`place_state` of `state_a`)
@@ -899,7 +957,19 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             savecount = route_silver_blades._load_savecount()
             if not (hasattr(savecount, "stage_live") and hasattr(savecount, "SaveCountError")):
                 raise RouteError("the private savecount module lacks stage_live or SaveCountError")
-            counter = DrawCounter(target, savecount, lane_check)
+            drawseed = None
+            if rulebook_records is not None:
+                if len(rulebook_records) != rulebook_draws - 1:
+                    raise RouteError("rulebook records need one number per further draw")
+                drawseed = _load_drawseed()
+                if not all(hasattr(drawseed, n) for n in ("stage_draw", "drawn", "DrawSeedError")):
+                    raise RouteError("the private drawseed module lacks stage_draw, drawn "
+                                     "or DrawSeedError")
+            counter = DrawCounter(target, savecount, lane_check, drawseed)
+        elif rulebook_records is not None:
+            raise RouteError("rulebook records need more than one draw")
+    elif rulebook_records is not None:
+        raise RouteError("rulebook records need rulebook draws")
     if accept or reload:
         if measure:
             raise RouteError("accept and measure are separate modes")
@@ -1376,12 +1446,18 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         """Each further draw: stage the question, camp-save to slot D, answer it, camp again."""
         save, write, back = steps[-3:]
         n = len(steps)
+        offset = None
         for draw in range(2, rulebook_draws + 1):
             record = {"draw": draw, "asked": False, "answer": None, "exit_game": False}
+            staged = None if rulebook_records is None else rulebook_records[draw - 2]
+            if staged is not None:
+                record.update(staged=staged, drawn=None, reader=None)
             result["rulebook"].append(record)
+            tally_before = _keep_tally_lines()
             try:
-                counter.stage()
-            except counter.savecount.SaveCountError as exc:
+                counter.stage(staged)
+            except (counter.savecount.SaveCountError,
+                    *((counter.drawseed.DrawSeedError,) if staged is not None else ())) as exc:
                 # The helper's own message can carry private detail, so only its type is kept.
                 log("draw_error", draw=draw, error=type(exc).__name__)
                 raise RouteError(f"draw {draw}: {type(exc).__name__}") from None
@@ -1408,6 +1484,19 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                         record["exit_game"] = True
                         if not record["asked"]:
                             raise RouteError(f"draw {draw} reached exit_game with no question")
+                if staged is not None:
+                    try:
+                        record["drawn"] = counter.drawn()
+                    except counter.drawseed.DrawSeedError as exc:
+                        raise RouteError(f"draw {draw}: {type(exc).__name__}") from None
+                    record["reader"] = _reader_index(tally_before, _keep_tally_lines())
+                    if record["drawn"] != staged:
+                        raise RouteError(f"draw {draw}: the game's draw is not the staged record")
+                    if record["reader"] is not None:
+                        distance = record["reader"] - record["drawn"]
+                        offset = distance if offset is None else offset
+                        if distance != offset:
+                            raise RouteError(f"draw {draw}: the reader disagrees with the game's draw")
             finally:
                 note_draw()
                 log("draw", **record)
@@ -2051,17 +2140,28 @@ def parse_write_keys(text: str) -> tuple[str, ...]:
     return keys
 
 
+def _record_numbers(text: str) -> list[int]:
+    try:
+        return [int(part) for part in text.split(",")]
+    except ValueError:
+        raise argparse.ArgumentTypeError("record numbers are comma-separated integers") from None
+
+
 def _draw_options(args: argparse.Namespace, holder: str) -> dict[str, Any]:
     """`run_recon`'s rulebook keywords, with the memory target only when there is more than one draw."""
     draws = getattr(args, "rulebook_draws", None)
+    records = getattr(args, "rulebook_records", None)
+    if records is not None and draws is None:
+        raise RouteError("--rulebook-records goes with --rulebook-draws")
     if draws is None:
         return {}
     if draws < 2:
-        return {"rulebook_draws": draws}
+        return {"rulebook_draws": draws, **({} if records is None else {"rulebook_records": records})}
     from automap import amiga  # noqa: PLC0415
 
     pipe = amiga.WinuaePipe()
     return {"rulebook_draws": draws,
+            **({} if records is None else {"rulebook_records": records}),
             "target": amiga.AmigaTarget(pipe, amiga.MACHINES["secret-of-the-silver-blades"]),
             "lane_check": lambda: pipe.drives(holder)}
 
@@ -2118,6 +2218,9 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--journal-python")
     a.add_argument("--rulebook-draws", type=int, default=None,
                    help=f"Silver Blades only: camp saves to make in this boot, 1 to {RULEBOOK_DRAWS_MAX}")
+    a.add_argument("--rulebook-records", type=_record_numbers, default=None,
+                   help="Silver Blades only: comma-separated rule-book record numbers, one per "
+                        "camp save after the first, staged before each")
     a.add_argument("--preserve-specimen", action="store_true",
                    help="register and check a successful published or substituted game's fetched "
                         "save disk before release")
@@ -2186,7 +2289,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise RouteError("Silver Blades accept requires --journal-python")
             if not silver_blades and args.journal_python is not None:
                 raise RouteError("--journal-python requires --title ssb")
-            if args.rulebook_draws is not None and (not silver_blades or args.published_disk_one):
+            if ((args.rulebook_draws is not None or args.rulebook_records is not None)
+                    and (not silver_blades or args.published_disk_one)):
                 raise RouteError("--rulebook-draws requires --title ssb without "
                                  "--published-disk-one")
         expect = parse_expect(args.expect) if getattr(args, "expect", None) else None
