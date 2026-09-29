@@ -1257,3 +1257,67 @@ def test_a_disk_prompt_goes_to_the_disk_handler_not_return(monkeypatch):
     sess, log, seen, clock, got = _photograph(
         monkeypatch, [S.BAR_PRESS, S.BAR_COMMAND], disk="SIDE 3")
     assert sess.pressed == [] and len(sess.handled) == 1 and got is True
+
+
+# -- a locked door on the way -------------------------------------------------
+
+DOOR = "BASH PICKLOCK QUIT"
+
+
+class DoorScript(StepScript):
+    """`StepScript` whose script is a locked door until QUIT is taken, when the
+    world bar comes back.  `asked` lists every bar word selected."""
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        if label == "QUIT":
+            self.asked.append(label)
+            self.script = [WORLD]
+            return True
+        return super().select_bar(label, row, timeout, answer_prompts)
+
+
+def _door_walk(monkeypatch, replan):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    sess = DoorScript(monkeypatch, 1, ["", DOOR])
+    sess.coords = False      # the Slums' status line has no square
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    Clock(monkeypatch)
+    log = RecordingLog()
+    got = T.walk_route(sess, log, SOUTH, 2, "slums", pathlib.Path("."),
+                       replan)
+    return sess, log, got
+
+
+def test_a_locked_door_is_answered_with_quit_once_and_never_bash_or_picklock(
+        monkeypatch):
+    sess, log, got = _door_walk(
+        monkeypatch, lambda here, square: [here, (6, 5), (6, 6)])
+    assert sess.asked == ["QUIT"] and sess.pressed == []
+    doors = [w for kind, w in log.events if kind == "locked_door"]
+    assert len(doors) == 1 and doors[0]["square"] == [5, 6]
+    assert got[1] is None and got[2] is None
+
+
+def test_the_replanned_route_keeps_off_the_locked_square(monkeypatch):
+    asked = []
+
+    def replan(here, square):
+        asked.append((here, square))
+        return T.geowalk.route(_geo(), here, (5, 8), avoid={square})
+
+    sess, log, got = _door_walk(monkeypatch, replan)
+    assert asked == [((5, 5), (5, 6))]
+    path = next(w["path"] for kind, w in log.events
+                if kind == "route_replanned")
+    assert path[0] == [5, 5] and path[-1] == [5, 8] and [5, 6] not in path
+    assert got == (2, None, None)
+
+
+def test_a_locked_door_with_no_route_round_it_records_the_refused_square(
+        monkeypatch):
+    sess, log, got = _door_walk(monkeypatch, lambda here, square: None)
+    assert sess.asked == ["QUIT"]
+    assert got[1] is None and got[2]["reason"] == "locked_door"
+    assert got[2]["square"] == [5, 6] and got[2]["from"] == [5, 5]
+    assert "(5, 6)" in got[2]["refused"]
+    assert sess.keys == ["I"]

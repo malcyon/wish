@@ -296,6 +296,13 @@ def item_toggle_pair(sess, log: Log, out: pathlib.Path, name: str,
     return diffs
 
 
+def slums_avoid(slums, blocked=()):
+    """The Slums squares a route keeps off: every id outside
+    `SLUMS_PLAIN_IDS`, and any square already found blocked this walk."""
+    return {(x, y) for x in range(16) for y in range(16)
+            if slums.script_id(x, y) not in SLUMS_PLAIN_IDS} | set(blocked)
+
+
 def plan_fight_route(new_phlan, slums, start, target):
     """The two legs to a Slums square: New Phlan `start` to its west exit, then
     `SLUMS_ENTRY` to `target`.
@@ -307,8 +314,7 @@ def plan_fight_route(new_phlan, slums, start, target):
     """
     scripted = {(x, y) for x in range(16) for y in range(16)
                 if new_phlan.script_id(x, y)}
-    other = {(x, y) for x in range(16) for y in range(16)
-             if slums.script_id(x, y) not in SLUMS_PLAIN_IDS}
+    other = slums_avoid(slums)
     out = geowalk.route(new_phlan, tuple(start), NEW_PHLAN_EXIT, avoid=scripted)
     if out is None:
         raise SystemExit(f"no unscripted New Phlan route from {tuple(start)} "
@@ -578,7 +584,42 @@ def _stopped(sess, log: Log, out, leg: str, key: str, here, there,
             "reason": outcome, "row24": row}
 
 
-def walk_route(sess, log: Log, path, facing: int, leg: str, out=None):
+def _locked_door(row: str) -> bool:
+    """The bar a locked door opens: `BASH PICKLOCK QUIT`."""
+    return all(S.word_column(row, w) >= 0 for w in ("BASH", "PICKLOCK", "QUIT"))
+
+
+def _answer_locked_door(sess, log: Log, out, leg: str, key: str, here, there,
+                        row: str, replan, facing: int, want: int):
+    """Take QUIT at a locked door and plan around `there`.
+
+    Returns `("replanned", path)`, or `("stopped", desync)` when QUIT was not
+    selectable, the game did not come back to a walkable bar, or `replan` has
+    no route.  BASH and PICKLOCK are never chosen.
+    """
+    log.say(f"  a locked door at {tuple(there)}: {row!r}; taking QUIT")
+    log.emit("locked_door", leg=leg, key=key, square=list(there), row24=row)
+    record = {"leg": leg, "key": key, "from": list(here), "to": list(there),
+              "reason": "locked_door", "square": list(there), "row24": row}
+    if not sess.select_bar("QUIT", timeout=8):
+        record["refused"] = "QUIT could not be selected on the door's bar"
+        return "stopped", record
+    outcome, after = settle_step(sess, log, key, here)
+    if outcome != "ready":
+        return "stopped", _stopped(sess, log, out, leg, key, here, there,
+                                   outcome, after)
+    path = replan(tuple(here), tuple(there)) if replan is not None else None
+    if path is None:
+        record["refused"] = (f"the door at {tuple(there)} is locked and no "
+                             f"route from {tuple(here)} avoids it")
+        return "stopped", record
+    log.emit("route_replanned", leg=leg, blocked=list(there),
+             path=[list(q) for q in path])
+    return "replanned", path
+
+
+def walk_route(sess, log: Log, path, facing: int, leg: str, out=None,
+               replan=None):
     """Walk `path` one square at a time, answering prompts, and stop in combat.
 
     Returns `(facing, stopped_at, desync)`.  `stopped_at` is the planned square
@@ -606,6 +647,12 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None):
     is given: after a key that took, `reason` is `choice` or `unsettled`;
     after a refused key, `reason` stays `not_pressed` and `after` names
     which of the two held.
+
+    A `BASH PICKLOCK QUIT` bar, a locked door on the square being stepped on,
+    is answered with QUIT and never BASH or PICKLOCK.  `replan(here, square)`
+    then gives a path from where the party stands that avoids `square`, and
+    the walk goes on along it; with no `replan` or no route the walk stops
+    with `reason` `locked_door` and the square named.
     """
     steps = list(zip(path, path[1:]))
     for number, (here, there) in enumerate(steps, 1):
@@ -649,6 +696,14 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None):
                                            quiet=quiet)
                 if outcome == "fight":
                     return want, here, None
+                if outcome == "choice" and _locked_door(row):
+                    kind, got = _answer_locked_door(
+                        sess, log, out, leg, key, here, there, row, replan,
+                        facing, want)
+                    if kind == "replanned":
+                        return walk_route(sess, log, got, want, leg, out,
+                                          replan)
+                    return want, None, got
                 if outcome != "ready":
                     # The refusal stays the reason; the wait says what held.
                     stop = _stopped(sess, log, out, leg, key, here, there,
@@ -660,6 +715,13 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None):
             outcome, row = settle_step(sess, log, key, landed, quiet=quiet)
             if outcome == "fight":
                 return want, landed, None
+            if outcome == "choice" and not turn and _locked_door(row):
+                kind, got = _answer_locked_door(
+                    sess, log, out, leg, key, here, there, row, replan,
+                    facing, want)
+                if kind == "replanned":
+                    return walk_route(sess, log, got, want, leg, out, replan)
+                return want, None, got
             if outcome != "ready":
                 return want, None, _stopped(sess, log, out, leg, key, here,
                                             there, outcome, row)
@@ -925,8 +987,18 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
             leg = "slums"
             # `ECL00` entry 0 steps forward, so the party leaves facing west.
             west = geowalk.STEP.index((-1, 0))
+            blocked = set()
+
+            def replan(here, square):
+                # A goal is exempt from `avoid`, so a locked target has no route.
+                blocked.add(square)
+                if square == tuple(target):
+                    return None
+                return geowalk.route(slums, here, tuple(target),
+                                     avoid=slums_avoid(slums, blocked))
+
             facing, hit, desync = walk_route(sess, log, second, west, "slums",
-                                              out)
+                                              out, replan)
     if (desync is not None and "after" not in desync
             and desync.get("reason") not in ("choice", "unsettled")):
         # `_stopped` has already photographed a wait that did not clear.
