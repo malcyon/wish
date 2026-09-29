@@ -338,6 +338,7 @@ class _TempleSession:
         self.heal_never_draws = unsafe == "heal-never-draws"
         self.heal_blank_reads = 0
         self.heal_old_bar_reads = 0
+        self.glitch_reads = 0
         self.paused = False
         # The live run crossing the area edge showed the memory triple
         # ahead of the redrawn screen for one poll; `crossing_lag` makes
@@ -379,8 +380,12 @@ class _TempleSession:
             self.heal_blank_reads -= 1
             return _TempleScreen([""] * 25)
         if self.phase == "heal" and self.unsafe == "heal-glitch":
-            # One half-drawn frame, seen once, before the list is steady.
-            self.unsafe = None
+            # A half-drawn frame that persists ~0.9 s of reads (three
+            # 0.3 s polls) before the list is drawn.
+            self.glitch_reads += 1
+            if self.glitch_reads > 3:
+                self.unsafe = None
+                return self.screen()
             rows = [""] * 25
             rows[2] = "BRUTUS"
             rows[3] = "WELCOME TO THE TEMPLE,"
@@ -742,6 +747,12 @@ def test_temple_probe_heal_keeps_only_a_bar_seen_twice_running(
     run.temple_probe("BRUTUS HEAL")
     assert kept[-1][0] == "heal-first-screen"
     assert "HOW MAY WE HELP YOU" in kept[-1][1]
+    assert "HELP" not in "".join(
+        text for tag, text in kept[:-1] if text)
+    assert [k for k in kept if k[0] == "heal-first-screen"] == [kept[-1]]
+    frames = [kw["rows"] for args, kw in events if args[0] == "temple-heal-frame"]
+    assert len(frames) == 3 and not any(frames[0])
+    assert frames[1][4] == "" and frames[2][4] == "HOW MAY WE HELP YOU"
 
 
 def test_temple_probe_heal_stops_at_the_input_deadline_not_ninety_seconds(

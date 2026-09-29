@@ -391,6 +391,10 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "temple-probe": "must", "warp": "must",
          "walk-fight": "must", "walk-flee": "must"}
 
+#: How long the screen after HEAL must stay unchanged before it is kept, so a
+#: half-drawn frame that lingers for a few reads is not taken for the list.
+HEAL_SCREEN_HOLD = 1.0
+
 #: What `temple-probe` accepts: the member, and with `HEAL` the one screen
 #: past the temple bar's HEAL.
 TEMPLE_PROBE_ARGS = ("BRUTUS", "BRUTUS HEAL")
@@ -1984,18 +1988,27 @@ class PoolRun:
         start = self.clock()
         limit = min(start + 90, self.temple_input_deadline)
         prior = last = None
+        seen: list[list[str]] = []
+        since = start
         while self.clock() < limit:
             sample = self.temple_sample()
             prior, last = last, sample
             screen = sample.screen
-            if (screen is not None and any(body(screen))
-                    and body(screen) != before
-                    and prior is not None and prior.screen is not None
-                    and [prior.screen.row(r) for r in range(25)]
-                    == [screen.row(r) for r in range(25)]):
+            if screen is None:
+                time.sleep(0.3)
+                continue
+            full = [screen.row(r) for r in range(25)]
+            if prior is None or prior.screen is None or full != [
+                    prior.screen.row(r) for r in range(25)]:
+                since = self.clock()
+            if body(screen) not in seen:
+                seen.append(body(screen))
+                self.log.emit("temple-heal-frame", at=self.clock() - start,
+                              rows=body(screen))
+            if (any(body(screen)) and body(screen) != before
+                    and self.clock() - since >= HEAL_SCREEN_HOLD):
                 kept = self.temple_checkpoint("heal-first-screen", sample)
-                return {**kept, "rows": [screen.row(r).rstrip()
-                                         for r in range(25)]}
+                return {**kept, "rows": [row.rstrip() for row in full]}
             time.sleep(0.3)
         cut = ("temple input deadline" if limit < start + 90
                else "90 second limit")
