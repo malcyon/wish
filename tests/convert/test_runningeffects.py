@@ -300,7 +300,12 @@ def test_save_as_c64_keeps_a_slow_poisoned_dos_party_slow_poisoned(tmp_path):
     rows = effects.active_effects(roster.Party(str(out)).save0.to_bytes())
     got = sorted((e.id, e.duration, e.magnitude) for e in rows)
     assert got == [(15, 0x0A, 0xFF), (22, 0x5E, 0xFF)]
-    assert len({e.owner for e in rows}) == 1
+    back = roster.Party(str(out))
+    names = {m.index: m.name for m in back.members}
+    assert {names[e.owner] for e in rows} == {"WISHFTR"}
+    owner = next(m for m in back.members if m.name == "WISHFTR")
+    slot = back.save0.characters[owner.index]
+    assert 55 in bytes(slot.record.get_raw("item_effects"))
 
 
 def test_save_as_c64_keeps_a_curse_party_shielded_and_protected(tmp_path):

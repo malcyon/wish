@@ -991,6 +991,14 @@ non-zero in Silver Blades (`0x7079`-`0x7087`; Curse `0x62C5`-`0x62D3`), which
 the Curse reimplementation names the combat type and the demo flag; PROBABLE
 that both are never set in a game a player saves.
 
+**The DOS end-of-fight strip removes one node of each listed id, not every
+node.** It calls `remove_affect` with a null node, and with a null node that
+routine removes only the first node of the id (Curse `0x3513E`-`0x3517D`,
+Silver Blades `0x35E8E`, the same). `add_affect` appends without checking for
+a duplicate (Curse `0x36412`-`0x364C6`). A character holding two nodes of one
+listed id when the fight ends keeps the second into the save. CONFIRMED from
+code.
+
 **At the end of a C64 fight in the later titles**, the round scheduler's
 fight-over branch (Curse `COMBAT2 $F962`/`$F9D7`, Silver Blades `$F605`/
 `$F66C`, both at `$E000`) sweeps every combatant and removes a fixed list of
@@ -1010,7 +1018,8 @@ it), so a Silver Blades party member still frightened when the fight ends keeps
 the only game-written source of either fear id. The conversion rule stands; a
 converted fear row is removed by the C64 at the end of its next fight.
 Confusion (`0x23`) and Fumble (`0x1B`) are on every end-of-fight list of both
-later titles on both ports, so no game-written save holds them either.
+later titles on both ports, so a single node of either does not survive to a
+save on the C64. On DOS a second node of the same id does (next paragraph).
 
 **Fear's record state is simpler, because it is one byte each way, and it is
 built.** DOS's control byte is not the side: it is `0xB3`, the engine's own
@@ -1225,8 +1234,22 @@ bit 5 clear, data bit 4 set or a flag other than 1 is one no DOS Pool route
 writes and stays a loss. Only DOS
 Pool's duration-0 node reaches a save (PROBABLE: nobody has read whether spell
 10's target picker offers an ally; the Charm and Fear section). Silver Blades'
-65 is never a running node. Slow Poison (22) waits on a save the DOS game
-writes with it running.
+65 is never a running node.
+
+Slow Poison (22) and its companion damage node (15) convert both ways in all
+three titles (`effects.SLOW_POISON_ID`, `SLOW_POISON_DAMAGE_ID`). DOS writes
+`(22, 60 x level minutes, 0xFF, 1)` (Silver Blades: a fixed 3780 minutes) and
+`(15, 10, 0xFF, 1)`, and Dispel skips data `0xFF`. The C64 camp cast writes row
+15 with magnitude `$FF` and row 22 with `level | $80` (Pool `SPELLE04 $AD2F`;
+Curse `$8519`; Silver Blades `$85A9`). Pool's Dispel skips magnitude `$FF`;
+Curse's and Silver Blades' Dispel lists leave out 22. So both DOS nodes become
+rows with magnitude `$FF`, which keeps the DOS node's immunity, and a `$FF` row
+reads back as the same node. Pool's own `level | $80` row reads back as
+`(level, 1, ...)` and stays dispellable at that level; in Curse and Silver
+Blades any row with bit 7 set reads back as `(22, m, 0xFF, 1)`. Any other
+node or magnitude stays a loss. Not yet run in the game on either port, and
+that the C64 reads `$83`, the state 22 stores when 55 is present, as dead is
+PROBABLE.
 
 Reproduce the static readings with `.venv/bin/python
 tools/c64/effectcrosswalk.py`; a later title's run prints its caster-level ids.
@@ -1291,9 +1314,9 @@ may be a monster, and party-wide ids 35 and 49 have a separate converter.
 
 | Title | Candidate ids with no `dos_record` rule |
 |---|---|
-| Pool of Radiance | 11, 13, 22, 32, 33, 35, 49, 51, 77, 108 |
-| Curse of the Azure Bonds | 11, 13, 15, 18, 22, 33, 49, 55, 58, 68, 73, 109, 137, 142–144, 146 |
-| Secret of the Silver Blades | 11, 13, 22, 33, 49, 51, 55, 68, 107, 111, 112 |
+| Pool of Radiance | 11, 13, 32, 33, 35, 49, 51, 77, 108 |
+| Curse of the Azure Bonds | 11, 13, 18, 33, 49, 55, 58, 68, 73, 109, 137, 142–144, 146 |
+| Secret of the Silver Blades | 11, 13, 33, 49, 51, 55, 68, 107, 111, 112 |
 
 | Refusal | Sweep evidence and limit |
 |---|---|
