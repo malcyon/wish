@@ -458,6 +458,7 @@ def test_walk_to_fight_leaves_camp_before_its_first_key(monkeypatch):
     assert got["desynced"] is None
     rows = [w["row24"] for kind, w in log.events if kind == "to_world"]
     assert rows[0].startswith("ENCAMP:") and rows[-1].startswith("MOVE")
+    assert ("to_world_exit", {"returned": True}) in log.events
 
 
 def test_walk_to_fight_raises_naming_row_24_when_camp_will_not_go(monkeypatch):
@@ -552,3 +553,19 @@ def test_to_world_reports_what_the_exit_press_returned(monkeypatch):
     with pytest.raises(RuntimeError, match=r"returned True"):
         T.to_world(sess, log)
     assert ("to_world_exit", {"returned": True}) in log.events
+
+
+def test_walk_to_fight_returns_at_once_when_a_fight_is_already_up(monkeypatch):
+    dumps = []
+    monkeypatch.setattr(T, "dump", lambda sess, out, log, name: dumps.append(name))
+    sess = WalkSession(monkeypatch, None, 20, (), (3, 4, 3), None)
+    clock = Clock(monkeypatch)
+    sess.fighting = True
+    log = RecordingLog()
+    got = T.walk_to_fight(sess, log, pathlib.Path("."), (12, 4), _geo(), _geo())
+    assert got == {"in_combat": True, "began_at": [3, 4], "at_target": False,
+                   "desynced": None}
+    assert sess.keys == [] and sess.asked == [] and clock.now == 0
+    assert dumps == ["combat-icon"]
+    assert ("walked", {"leg": "start", "in_combat": True, "began_at": [3, 4],
+                       "at_target": False, "desynced": None}) in log.events

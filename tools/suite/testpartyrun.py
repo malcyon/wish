@@ -485,6 +485,18 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
     game did not act on ends the walk with `desynced` set, and `at_target` is
     only ever true for a walk on which every key moved.
     """
+    if sess.in_combat():
+        # A fight already up has no world bar to wait for, so waiting would
+        # burn `to_world`'s whole timeout and then raise.
+        _, here = _status_line(sess)
+        began = list(here) if here is not None else None
+        log.emit("walked", leg="start", in_combat=True, began_at=began,
+                 at_target=False, desynced=None)
+        log.say(f"  a fight is already up at {began}; not walking")
+        sess.settle(2)
+        dump(sess, out, log, "combat-icon")
+        return {"in_combat": True, "began_at": began, "at_target": False,
+                "desynced": None}
     to_world(sess, log, need_square=True)
     face, square = _status_line(sess)
     if face is None or square is None:
