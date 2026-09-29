@@ -118,8 +118,10 @@ class FakeLog:
     def say(self, text):
         pass
 
+    closed = False
+
     def close(self):
-        pass
+        self.closed = True
 
     def kinds(self, kind):
         return [kw for k, kw in self.events if k == kind]
@@ -413,7 +415,7 @@ def test_the_post_stops_are_armed_only_inside_the_result_handler_and_deleted_aft
     assert machine.exec_checkpoints() == []
     machine.stops = [tb.ITEM_TALLY_CALL, tb.ITEM_TALLY_BACK, tb.SHARE,
                      tb.EMPTY_PILE, tb.TREASURE]
-    machine.store(tb.RESULT)
+    machine.store(tb.RESULT, pc=tb.RESULT_STORE_NEXT)
     connect(sess)
     stopped = [c for c in machine.calls if c.startswith("stopped")]
     assert len(stopped) == 5
@@ -430,7 +432,7 @@ def test_a_stop_at_an_unexpected_address_is_resumed_and_logged_not_handled():
     sess, traps = installed(machine)
     traps.arm_result()
     machine.stops = [0x1234, tb.ITEM_TALLY_CALL]
-    machine.store(tb.RESULT)
+    machine.store(tb.RESULT, pc=tb.RESULT_STORE_NEXT)
     connect(sess)
     assert traps.log.kinds("wrong_stop")
     assert len(traps.readings["item_tally_call"]) == 1
@@ -755,7 +757,7 @@ def test_every_stop_the_result_handler_waits_for_is_preceded_by_a_resume():
     traps.arm_result()
     machine.stops = [tb.ITEM_TALLY_CALL, tb.ITEM_TALLY_BACK, tb.SHARE,
                      tb.EMPTY_PILE, tb.TREASURE]
-    machine.store(tb.RESULT)
+    machine.store(tb.RESULT, pc=tb.RESULT_STORE_NEXT)
     connect(sess)
     calls = machine.calls
     for i, call in enumerate(calls):
@@ -816,3 +818,167 @@ def test_accepted_argument_combinations():
     assert tb.check_args(args()) is None
     assert tb.check_args(args(mode="flee", stay=1, charm=2, wound_allies=True)) is None
     assert tb.check_args(args(stage_6de3=0, stage_item="X", force_destination=4)) is None
+
+
+# -- the review's findings ----------------------------------------------------
+
+
+def test_a_store_to_the_result_byte_at_another_pc_is_logged_and_ignored():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm_result()
+    machine.stops = [tb.ITEM_TALLY_CALL]
+    machine.store(tb.RESULT, pc=0x1234)
+    connect(sess)
+    assert traps.readings["result_store_ignored"][0]["pc"] == 0x1234
+    assert "result" not in traps.readings
+    assert not traps.result_done
+    assert machine.exec_checkpoints() == []         # no POST.COM stop was armed
+    assert [cp["start"] for cp in machine.checkpoints.values()] == [tb.RESULT]
+    machine.store(tb.RESULT, pc=tb.RESULT_STORE_NEXT)  # the real one is still caught
+    connect(sess)
+    assert traps.result_done and "result" in traps.readings
+
+
+def test_a_mercy_hit_pending_when_the_trigger_stops_are_dropped_still_runs_its_handler():
+    machine = Machine()
+    sess, traps = installed(machine, stage_6de3=0)
+    traps.arm_trigger()
+    machine.mem[tb.NO_ITEMS] = 1
+    machine.store(tb.MERCY)                         # fired; no connection has seen it
+    traps.drop("mercy", "gamble")
+    assert machine.mem[tb.NO_ITEMS] == 0
+    assert traps.readings["mercy_store"][0]["read_back"] == 0
+    assert machine.checkpoints == {}
+
+
+def test_an_exec_stop_pending_when_the_post_stops_are_retired_still_runs_its_handler():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm("line_drawn", tb.LINE_DRAWN, traps.on_line_drawn)
+    machine.exec_at(tb.LINE_DRAWN)
+    traps.retire_exec()
+    assert len(traps.readings["line_drawn"]) == 1
+    assert machine.exec_checkpoints() == []
+
+
+def test_a_handler_that_raises_leaves_nothing_armed_and_lets_the_machine_run():
+    machine = Machine()
+    sess, traps = installed(machine)
+
+    def boom(m):
+        raise OSError("the handler fell over")
+
+    traps.arm("boom", 0x1234, boom, store=True, once=False)
+    machine.store(0x1234)
+    machine.calls.clear()
+    connect(sess)
+    assert traps.degraded
+    assert machine.checkpoints == {}
+    assert machine.calls[-1] == "resume"
+
+
+def test_the_post_stop_wait_has_an_overall_deadline(monkeypatch):
+    machine = Machine()
+    sess, traps = installed(machine)
+    ticks = iter(range(0, 10_000, 20))
+    monkeypatch.setattr(tb, "clock", lambda: float(next(ticks)))
+    traps.arm_result()
+    machine.stops = [0x1234] * 50                   # a stop that keeps recurring
+    machine.store(tb.RESULT, pc=tb.RESULT_STORE_NEXT)
+    connect(sess)
+    timeout = traps.log.kinds("stop_timeout")
+    assert timeout and timeout[0]["why"] == "deadline"
+    assert len(machine.stops) > 40                  # it gave up long before the 50
+
+
+def test_a_missing_disk_file_is_a_clear_error_from_the_byte_check():
+    def missing(name, root):
+        raise SystemExit(f"No file called {name} on any disk under {root}")
+
+    lines = []
+    assert tb.check_code("root", load=missing, out=lines.append) == 2
+    assert "cannot read POST.COM" in lines[0]
+
+
+def test_an_unreadable_item_disk_is_exit_seven_not_a_traceback(monkeypatch, tmp_path):
+    def gone(disk, *a, **k):
+        raise FileNotFoundError(disk)
+
+    monkeypatch.setattr(tb, "load_item_templates", gone)
+    with pytest.raises(tb.Exit) as exit_:
+        tb.resolve_item("X", "/disks")
+    assert exit_.value.code == 7
+    assert "cannot read" in exit_.value.why
+
+
+def fake_slot(torn):
+    return SimpleNamespace(n=1, display=":1", teardown=lambda: torn.append(1),
+                           release=lambda: None)
+
+
+def patch_run(monkeypatch, torn, log, **over):
+    monkeypatch.setattr(tb, "Log", lambda out, quiet=False: log)
+    monkeypatch.setattr(S, "claim_slot", lambda *a, **k: fake_slot(torn))
+    monkeypatch.setattr(S, "stage_disks", over.get("stage_disks", lambda *a, **k: "x"))
+    monkeypatch.setattr(S, "stage_writable", over.get("stage_writable", lambda *a, **k: None))
+    monkeypatch.setattr(S, "Session", over.get("Session", lambda *a, **k: FakeSession()))
+
+
+def test_the_slot_is_torn_down_when_the_session_cannot_be_built(monkeypatch, tmp_path):
+    torn, log = [], FakeLog()
+
+    def fail(*a, **k):
+        raise RuntimeError("no session")
+
+    patch_run(monkeypatch, torn, log, Session=fail)
+    assert tb.run(args(out=str(tmp_path / "o"))) == 2
+    assert torn == [1]
+    assert log.closed
+
+
+def test_the_slot_is_torn_down_when_staging_the_disks_fails(monkeypatch, tmp_path):
+    torn, log = [], FakeLog()
+
+    def fail(*a, **k):
+        raise OSError("disk full")
+
+    patch_run(monkeypatch, torn, log, stage_disks=fail)
+    assert tb.run(args(out=str(tmp_path / "o"))) == 2
+    assert torn == [1]
+    assert log.closed
+
+
+def test_the_log_is_closed_when_staging_fails_before_a_slot_is_claimed(monkeypatch, tmp_path):
+    torn, log = [], FakeLog()
+
+    def fail(*a, **k):
+        raise OSError("read-only")
+
+    patch_run(monkeypatch, torn, log, stage_writable=fail)
+    assert tb.run(args(out=str(tmp_path / "o"))) == 2
+    assert torn == []
+    assert log.closed
+
+
+def test_a_terminate_that_fails_still_closes_the_log_and_tears_the_slot_down(monkeypatch, tmp_path):
+    torn, log = [], FakeLog()
+    sess = FakeSession()
+
+    def bad_terminate():
+        raise OSError("kill failed")
+
+    sess.terminate = bad_terminate
+    patch_run(monkeypatch, torn, log, Session=lambda *a, **k: sess)
+    monkeypatch.setattr(tb, "to_world", lambda *a, **k: True)
+    monkeypatch.setattr(tb, "resident_area", lambda s, log=None: 20)   # ends the run early
+    assert tb.run(args(out=str(tmp_path / "o"))) == 1
+    assert torn == [1]
+    assert log.closed
+
+
+def test_a_refused_argument_combination_closes_the_log(monkeypatch, tmp_path):
+    torn, log = [], FakeLog()
+    patch_run(monkeypatch, torn, log)
+    assert tb.run(args(out=str(tmp_path / "o"), mode="flee")) == 1
+    assert log.closed

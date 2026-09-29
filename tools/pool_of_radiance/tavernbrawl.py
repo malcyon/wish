@@ -11,8 +11,8 @@ checkpoints inside `POST.COM` read what the game does with the result.
     POR_HEADLESS=1 tavernbrawl.py run --save SAVE.D64 --mode win|flee ...
 
 `code` reads seven byte runs off the player's own disks and refuses if any
-differs from what the driver was written against; `run` does the same before
-it claims a slot.  `run` boots an emulator through the instance pool and writes
+differs from what the driver was written against; `main` runs the same check
+before it calls `run`, so a mismatch never claims a slot.  `run` boots an emulator through the instance pool and writes
 `run.jsonl`, `readings.json`, `screens.txt` and PNGs under `--out`.  The save
 is copied into the slot; the player's disks are never written.
 
@@ -103,6 +103,11 @@ TALLIES = 0xA4FD
 GAMBLE_ROLL, DESTINATION = 0x9803, 0x9802
 #: The PC after `DUNGEON $17DA STA ($4C),Y`, the store every script `RANDOM` ends in.
 RANDOM_STORE_NEXT = 0x17DC
+#: The PC after `POST.COM $091A STA $6DC7`, the only store to the result byte
+#: the Stage 0 reads found; a hit at any other PC is not the fight's result.
+RESULT_STORE_NEXT = 0x091D
+#: How long `on_result` waits in all for the `POST.COM` stops, seconds.
+POST_WAIT = 60.0
 NEW_PHLAN = 0
 
 #: (x, y, facing) placements.  Entering from outside steps east onto (15,14);
@@ -141,9 +146,18 @@ ENTRY_SECONDS = 120.0
 UNKNOWN_READS = 4               # reads of one unrecognised row before giving up
 
 
+def clock() -> float:
+    """`time.monotonic`, in one place so a test can move time."""
+    return time.monotonic()
+
+
 def pause(seconds: float) -> None:
     """`time.sleep`, in one place so a test can skip the waiting."""
     time.sleep(seconds)
+
+
+class Unreadable(Exception):
+    """A disk file the byte check needs could not be read."""
 
 
 class Exit(Exception):
@@ -158,7 +172,7 @@ class Exit(Exception):
 
 
 def check_code(root: str, load=overlay, out=print) -> int:
-    """Print `CODE_ROWS` as `root`'s disks hold them; 1 if any differs, else 0.
+    """Print `CODE_ROWS` as `root`'s disks hold them; 1 if any differs, 2 if a file cannot be read, else 0.
 
     `load(name, root)` returns `(disk, declared address, body)` as
     `fleedrive.overlay` does.  A body is indexed at `address - LINKER_BASE`
@@ -169,20 +183,27 @@ def check_code(root: str, load=overlay, out=print) -> int:
 
     def body_of(name: str) -> bytes:
         if name not in bodies:
-            bodies[name] = load(name, root)[2]
+            try:
+                bodies[name] = load(name, root)[2]
+            except (SystemExit, Exception) as exc:
+                raise Unreadable(f"cannot read {name} under {root}: {exc}") from exc
         return bodies[name]
 
-    for name, at, want in CODE_ROWS:
-        wanted = bytes.fromhex(want)
-        start = at - LINKER_BASE
-        got = body_of(name)[start:start + len(wanted)]
-        ok = got == wanted
-        bad += not ok
-        out(f"{name:9} ${at:04X}  {got.hex(' ')}  "
-            f"{'ok' if ok else 'DIFFERS, expected ' + wanted.hex(' ')}")
-    for name, at in CODE_SHOWN:
-        start = at - LINKER_BASE
-        out(f"{name:9} ${at:04X}  {body_of(name)[start:start + 8].hex(' ')}  (not checked)")
+    try:
+        for name, at, want in CODE_ROWS:
+            wanted = bytes.fromhex(want)
+            start = at - LINKER_BASE
+            got = body_of(name)[start:start + len(wanted)]
+            ok = got == wanted
+            bad += not ok
+            out(f"{name:9} ${at:04X}  {got.hex(' ')}  "
+                f"{'ok' if ok else 'DIFFERS, expected ' + wanted.hex(' ')}")
+        for name, at in CODE_SHOWN:
+            start = at - LINKER_BASE
+            out(f"{name:9} ${at:04X}  {body_of(name)[start:start + 8].hex(' ')}  (not checked)")
+    except Unreadable as exc:
+        out(str(exc))
+        return 2
     return 1 if bad else 0
 
 
@@ -365,6 +386,9 @@ class Traps:
 
     def drop(self, *names) -> None:
         with self._mon(10) as m:
+            # A stop that fired just before this connection opened has not
+            # been through `check` (this connection is raw); handle it first.
+            self._scan(m, only=names)
             for s in [s for s in self.stops if s.name in names]:
                 m.checkpoint_delete(s.cp)
                 self.stops.remove(s)
@@ -387,8 +411,15 @@ class Traps:
         except Exception as exc:
             self.degraded = True
             self.log.emit("trap_failed", error=repr(exc))
-            self.log.say(f"  the monitor stopped answering: {exc!r}; the trap "
-                         f"makes no further reads")
+            self.log.say(f"  the trap failed: {exc!r}; it makes no further reads")
+            # The machine is stopped at the hit and no later connection will
+            # handle another one, so leave nothing armed and let it run.
+            for step in (m.checkpoints_clear, m.resume):
+                try:
+                    step()
+                except Exception as again:
+                    self.log.emit("release_failed", error=repr(again))
+            self.stops.clear()
         finally:
             self._busy = False
 
@@ -439,17 +470,24 @@ class Traps:
     # -- the result -----------------------------------------------------------
 
     def arm_result(self) -> None:
-        self.arm("result", RESULT, self.on_result, store=True, once=True)
+        self.arm("result", RESULT, self.on_result, store=True, once=False)
 
     def on_result(self, m) -> None:
         if self.result_done:
             return
+        pc = m.registers().get(A.pc_register(m))
+        if pc != RESULT_STORE_NEXT:
+            self.note("result_store_ignored", pc=pc, value=m.peek(RESULT))
+            return
         self.result_done = True
+        for s in [s for s in self.stops if s.name == "result"]:
+            m.checkpoint_delete(s.cp)
+            self.stops.remove(s)
         if self.tap is not None:
             self.tap.active = True
         blocks = m.read(COMBATANTS, BLOCKS * STRIDE)
         fields = counters_now(m)
-        fields.update(result=m.peek(RESULT), predicted=predicted_result(blocks),
+        fields.update(pc=pc, result=m.peek(RESULT), predicted=predicted_result(blocks),
                       no_items=m.peek(NO_ITEMS), mercy=m.peek(MERCY),
                       blocks_standing=[n for n in range(BLOCKS) if 0 < blocks[n * STRIDE] < 0x80])
         self.note("result", **fields)
@@ -458,11 +496,15 @@ class Traps:
         armed = self._arm_post(m)
         self.arm("destination", DESTINATION, self.on_destination, store=True,
                  once=False, m=m)
+        deadline = clock() + POST_WAIT
         while armed:
+            if clock() >= deadline:
+                self.log.emit("stop_timeout", waiting=sorted(armed), why="deadline")
+                break
             m.resume()
             pc = m.wait_stopped(15)
             if pc is None:
-                self.log.emit("stop_timeout", waiting=sorted(armed))
+                self.log.emit("stop_timeout", waiting=sorted(armed), why="no stop")
                 break
             hit = [s for s in self.stops if s.address == pc and s.name in armed]
             if not hit:
@@ -552,6 +594,7 @@ class Traps:
         """Read the hit counters and delete every `POST.COM` checkpoint left."""
         try:
             with self._mon(10) as m:
+                self._scan(m)
                 hits = {name: m.checkpoint_hits(cp) for name, cp in self.counters.items()}
                 self.note("counters", **hits)
                 for cp in self.counters.values():
@@ -813,7 +856,10 @@ def check_args(args) -> str | None:
 
 def resolve_item(name: str, disks: str) -> bytes:
     """The named item's 16 bytes, refusing (`Exit` 7) one whose plus is not 1-$7F."""
-    templates = load_item_templates(str(pathlib.Path(disks) / "POOL1.D64"))
+    try:
+        templates = load_item_templates(str(pathlib.Path(disks) / "POOL1.D64"))
+    except (SystemExit, Exception) as exc:
+        raise Exit(7, f"cannot read the item templates under {disks}: {exc}") from exc
     record = templates.get(name)
     if record is None:
         raise Exit(7, f"no item called {name!r}")
@@ -870,24 +916,32 @@ def after_fight(sess, traps: Traps, log, out: pathlib.Path, args, before: list) 
 
 
 def run(args) -> int:
+    """Drive one run; every path closes the log."""
     out = scratch.ensure(pathlib.Path(args.out))
     log = Log(out, args.quiet)
+    try:
+        return _run(args, out, log)
+    except Exit as exit_:
+        log.emit("refused", why=exit_.why, code=exit_.code)
+        log.say(exit_.why)
+        return exit_.code
+    except Exception as exc:
+        import traceback
+        log.emit("failed", error=repr(exc), traceback=traceback.format_exc())
+        traceback.print_exc()
+        return 2
+    finally:
+        log.close()
+
+
+def _run(args, out: pathlib.Path, log) -> int:
     started = time.time()
     frames = Frames()
     why = check_args(args)
     if why:
-        log.say(why)
-        log.emit("refused", why=why)
-        log.close()
-        return 1
+        raise Exit(1, why)
     disks = pathlib.Path(args.disks)
-    try:
-        item = resolve_item(args.stage_item, str(disks)) if args.stage_item else None
-    except Exit as exit_:
-        log.emit("refused", why=exit_.why)
-        log.say(exit_.why)
-        log.close()
-        return exit_.code
+    item = resolve_item(args.stage_item, str(disks)) if args.stage_item else None
     save = pathlib.Path(args.save)
     log.emit("save_disk", when="original", sha256=digest(save))
     staging = out / "disks"
@@ -957,11 +1011,17 @@ def run(args) -> int:
             log.emit("save_disk", when="original", sha256=digest(save))
         except Exception as exc:
             log.emit("cleanup_failed", step="records", error=repr(exc))
-        if sess is not None:
-            sess.terminate()
-        else:
-            slot.teardown()
-        log.close()
+        try:
+            if sess is not None:
+                sess.terminate()
+            else:
+                slot.teardown()
+        except Exception as exc:
+            log.emit("cleanup_failed", step="terminate", error=repr(exc))
+            try:
+                slot.teardown()
+            except Exception as again:
+                log.emit("cleanup_failed", step="teardown", error=repr(again))
     return rc
 
 
