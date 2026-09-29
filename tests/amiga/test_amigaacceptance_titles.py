@@ -667,6 +667,10 @@ def test_the_real_readers_decode_the_specimens_two_slots():
 def test_prepare_writes_the_places_and_leaves_every_registered_image_unchanged(
         tmp_path, monkeypatch):
     specimen = _registered()
+    try:
+        route_pool._disk_geo("GEO00")
+    except winuaesession.RouteError:
+        pytest.skip("the C64 Pool disks that hold the wall data are not here")
     before = {label: hashlib.sha256(data).hexdigest()
               for label, data in amigasaves.images()}
     specimen_before = staging.sha256(specimen)

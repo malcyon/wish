@@ -10,6 +10,7 @@ from collections.abc import Callable
 from typing import Any
 
 from goldbox import amiga_adf, amiga_savegame, areas, geo
+from goldbox.geo import load_geo_files
 from tools.amiga import amigaporslot
 from tools.amiga.route import ISSUE, AmigaTitle, RouteError, effect_fields
 from tools.amiga.staging import _prepare_from, _Sources
@@ -134,28 +135,38 @@ def _walkable(walls: geo.Geo, x: int, y: int, direction: int) -> bool:
 
 
 def _disk_geo(name: str) -> geo.Geo:
-    from tools.areas import (
-        geomap,  # noqa: PLC0415 - reads the player's disks, only when asked
+    from automap.paths import (
+        tool_disks,  # noqa: PLC0415 - the player's disks, only when asked
     )
-    found = geomap.all_maps(name)
-    if name not in found:
-        raise RouteError(f"the wall data {name} is not on the game disks, so the route's "
-                         "step cannot be checked")
-    return found[name]
+    from tools.areas import geomap  # noqa: PLC0415
+    root = tool_disks()
+    if root is None:
+        raise RouteError(f"the game disks are not found, so the wall data {name} cannot be read "
+                         "and the route's step cannot be checked")
+    for path in geomap.game_disks(root):
+        found = load_geo_files(path)
+        if name in found:
+            return found[name]
+    raise RouteError(f"the wall data {name} is not on the game disks, so the route's "
+                     "step cannot be checked")
 
 
-def pool_turns_about(place: dict, *, load_geo: Callable[[str], geo.Geo] = _disk_geo) -> bool:
+def pool_turns_about(place: dict, *,
+                     load_geo: Callable[[str], geo.Geo] | None = None) -> bool:
     """Whether the route turns the party about before its one step, from the start square's own walls.
 
     The route turns about unless that edge is closed and the edge the party
     faces is open. An area with more than one map cannot say which the game
     loaded, so it keeps the turn about.
     """
-    area = areas.area_in(place["area"], areas.POOL_OF_RADIANCE)
+    try:
+        number, x, y, facing = place["area"], place["x"], place["y"], place["facing"]
+    except (KeyError, TypeError) as exc:
+        raise RouteError(f"the recorded place {place!r} lacks an area, x, y or facing") from exc
+    area = areas.area_in(number, areas.POOL_OF_RADIANCE)
     if area is None or area.geo is None:
         return True
-    walls = load_geo(area.geo)
-    x, y, facing = place["x"], place["y"], place["facing"]
+    walls = (load_geo or _disk_geo)(area.geo)
     if _walkable(walls, x, y, geo.OPPOSITE[facing]):
         return True
     if _walkable(walls, x, y, facing):
@@ -165,7 +176,7 @@ def pool_turns_about(place: dict, *, load_geo: Callable[[str], geo.Geo] = _disk_
 
 
 def pool_title_for(manifest: dict, *,
-                   load_geo: Callable[[str], geo.Geo] = _disk_geo) -> AmigaTitle:
+                   load_geo: Callable[[str], geo.Geo] | None = None) -> AmigaTitle:
     """The route this manifest's start square needs, refusing a recorded `turn_about` its walls contradict.
 
     A manifest with no `turn_about` predates the choice and keeps the turn about.
@@ -175,6 +186,8 @@ def pool_title_for(manifest: dict, *,
     turn_about = manifest["turn_about"]
     if not isinstance(turn_about, bool):
         raise RouteError("the manifest turn_about is not a boolean")
+    if "state_a" not in manifest:
+        raise RouteError("the manifest has a turn_about but no state_a to check it against")
     if turn_about != pool_turns_about(manifest["state_a"], load_geo=load_geo):
         raise RouteError("the manifest turn_about disagrees with its recorded place")
     return POOL if turn_about else POOL_FORWARD

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from goldbox import geo
-from tools.amiga import route_pool
+from tools.amiga import acceptance, route_pool
 from tools.amiga.route import RouteError
 
 SOLID_WALL = 1
@@ -86,3 +88,37 @@ def test_prepare_records_the_choice(monkeypatch):
     monkeypatch.setattr(route_pool, "pool_turns_about",
                         lambda place: real(place, load_geo=walls))
     assert route_pool._prepare_pool(None, None)["turn_about"] is False
+
+
+def test_missing_disks_are_a_route_error_not_a_type_error(monkeypatch):
+    monkeypatch.setattr("automap.paths.tool_disks", lambda game=None: None)
+    with pytest.raises(RouteError, match="disks are not found"):
+        route_pool._disk_geo("GEO0D")
+
+
+def test_a_manifest_or_place_missing_its_area_is_a_route_error():
+    with pytest.raises(RouteError, match="no state_a"):
+        route_pool.pool_title_for({"turn_about": True})
+    with pytest.raises(RouteError, match="lacks an area"):
+        route_pool.pool_turns_about({"x": 6, "y": 5, "facing": 0})
+    with pytest.raises(RouteError, match="lacks an area"):
+        route_pool.pool_title_for({"turn_about": True, "state_a": {"x": 1}})
+
+
+def test_run_recon_selects_the_forward_route_for_a_manifest_that_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(route_pool, "_disk_geo", _loader(_map(x=6, y=5, closed=(geo.SOUTH,))))
+    monkeypatch.setattr(acceptance, "_mute_proof", lambda _path: True)
+    seen = []
+
+    def stop(_manifest, title):
+        seen.append(title)
+        raise RouteError("stop here")
+
+    monkeypatch.setattr(acceptance, "_title_inputs", stop)
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps({"state_a": KOBOLD_CAVES, "turn_about": False}))
+    with pytest.raises(RouteError, match="stop here"):
+        acceptance.run_recon(path, guest=None, holder="wish679-test",
+                             audio_proof=tmp_path / "mute.json", title=acceptance.POOL, measure=True)
+    assert seen == [route_pool.POOL_FORWARD]
+    assert ("NP2", "world", "turn") not in seen[0].route and seen[0].turn is None
