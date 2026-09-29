@@ -100,6 +100,8 @@ SAVE_FIELDS = ("save_paralysis", "save_petrification", "save_wands",
                "save_breath", "save_spell")
 #: Rolls made looking for a constitution band before the run gives up.
 MAX_ROLLS = 2000
+#: How long the rest of the party menu is waited for once its first row shows.
+MENU_DRAW_WAIT = 10.0
 #: How long a new roll is waited for after ROLL AGAIN.
 REROLL_WAIT = 3.0
 
@@ -705,6 +707,20 @@ class Driver:
             s = self.expect(PARTY_MENU, WAIT, "add-closed")
         return s
 
+    def drawn_menu(self, s, label: str):
+        """The party menu once LABEL is on it.
+
+        The menu is recognised by its first row, which is drawn before the rows
+        below it, so the screen that ends a wait can still lack the entry the
+        next step selects.  A label that never appears is left for `choose` to
+        refuse.
+        """
+        end = self.clock() + self.left(MENU_DRAW_WAIT)
+        while s is not None and not s.contains(label) and self.clock() < end:
+            self.sleep(self.poll)
+            s = self.sess.screen() or s
+        return s
+
     def starred(self, name: str):
         """Wait for the star that says the game took NAME into the party."""
         end = self.clock() + self.left(WAIT)
@@ -717,6 +733,7 @@ class Driver:
         raise self.lost(f"{name} was never starred in the ADD list", "star")
 
     def save_party(self, s):
+        s = self.drawn_menu(s, "SAVE CURRENT GAME")
         s = self.choose(s, PARTY_MENU, "SAVE CURRENT GAME", SAVE_YN,
                         tag="save-open")
         self.check("answering SAVE GAME")

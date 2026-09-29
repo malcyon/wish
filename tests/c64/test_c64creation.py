@@ -135,7 +135,8 @@ class FakeGame:
 
     def __init__(self, tmp, rolls=ROLLS, add_closes=False, stall=None,
                  start="party", lose_first=None, slow=None, trim=(),
-                 roster=(), tail=None, slow_roll=False):
+                 roster=(), tail=None, slow_roll=False,
+                 slow_party=0):
         """`stall`: a state whose keys do nothing.  `lose_first`: a state whose
         first Return is dropped.  `slow`: state -> (polls, redraws), a Return
         that is accepted but takes that many screen reads to show its result,
@@ -145,6 +146,7 @@ class FakeGame:
         `(state, column, text)` drawn on that screen's first row."""
         self.roster, self.tail = tuple(roster), tail
         self.slow_roll, self.roll_reads = slow_roll, 0
+        self.slow_party, self.party_reads = slow_party, 0
         self.trim = tuple(trim)
         self.tmp, self.rolls = tmp, list(rolls)
         self.add_closes, self.stall = add_closes, stall
@@ -214,6 +216,9 @@ class FakeGame:
             put(first + len(items) + 1, 2, prompt)
 
         if s == "party":
+            if self.slow_party and self.added \
+                    and self.party_reads <= self.slow_party:
+                items = items[:6]   # the rows under the first are not drawn yet
             for i, label in enumerate(items):
                 put(13 + i, 2, label, i == self.cursor)
         elif s == "race":
@@ -299,6 +304,7 @@ class FakeGame:
         self.rolled += 1
 
     def go(self, state):
+        self.party_reads = 0
         self.state, self.cursor = state, 0
 
     def key(self, name):
@@ -405,6 +411,8 @@ class FakeGame:
                 self.enter()
         if self.state == "roll":
             self.roll_reads += 1
+        if self.state == "party":
+            self.party_reads += 1
         if self.state == "saving" and self.stall != "saving":
             self.saving_polls -= 1
             if self.saving_polls <= 0:
@@ -951,6 +959,13 @@ def test_a_reroll_still_being_drawn_is_waited_out_not_lost(tmp_path):
     code, _sess, game, _out, summary = drive(tmp_path, [gnome([8, 10])], game)
     assert code == 0, summary["lost"]
     assert summary["rolls"]["VICEGNO"]["constitution"] == 9
+
+
+def test_a_party_menu_still_being_drawn_is_waited_out_before_save(tmp_path):
+    game = FakeGame(tmp_path, slow_party=2)
+    code, _sess, game, _out, summary = drive(tmp_path, PAIR[:1], game)
+    assert code == 0, summary["lost"]
+    assert ("party", "SAVE CURRENT GAME") in game.chosen
 
 
 def test_the_help_says_the_roll_limit_needs_seconds(capsys):
