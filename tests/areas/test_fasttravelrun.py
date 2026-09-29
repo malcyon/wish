@@ -342,7 +342,7 @@ class WalkSession(FakeSession):
     def position(self):
         return (self.x, 5, self.facing)
 
-    def walk_one(self, move):
+    def walk_one(self, move, tries=4):
         self.pressed.append(move)
         if move == "M" and self._indoors:
             raise AssertionError("M is unmodelled: docs/70 and session.py "
@@ -1702,6 +1702,10 @@ class HiddenSquareSession(WalkSession):
     def screen(self):
         return FakeScreen(self.row, "$ $...........$ $E 4:00                $")
 
+    def steady_triple(self):
+        # `$C04B`-`$C04D`, which a step moves at once.
+        return (self.x, 5, self.facing)
+
 
 @pytest.mark.parametrize("line, hidden", [
     ("$E 4:00                $", True),
@@ -1839,9 +1843,9 @@ def test_a_hidden_square_step_with_a_map_load_is_not_a_move(monkeypatch):
     sess = HiddenSquareSession(m)
     real = sess.walk_one
 
-    def walk_one(key):
+    def walk_one(key, tries=4):
         m.mem[FT.AREA_BYTE] = 9
-        return real(key)
+        return real(key, tries)
 
     sess.walk_one = walk_one
     steps, sheet = FT.walk_afterwards(sess, stop_after_moves=1)
@@ -1857,3 +1861,129 @@ def test_a_hidden_square_walk_carries_the_probable_note(tmp_path, fake_clock):
     result = {}
     FT.walk_after(sess, tmp_path, {}, result)
     assert result["memory_square"].startswith("PROBABLE")
+
+
+class CavesSession(HiddenSquareSession):
+    """The Kobold Caves as live run `737-large-3` and the step probe after it
+    saw them. The status line shows no square; `$49C0` keeps the arrival
+    square while the party steps and only `$C04B` moves; `walk_one` has no
+    square to verify a key by, so it returns False after every key; and each
+    `in_combat()` poll takes the next of *script*, a raw `$6E1B` value or
+    `"combat"`."""
+
+    def __init__(self, monitor, area=13, script=()):
+        super().__init__(monitor)
+        self.m = monitor
+        monitor.mem[FT.AREA_BYTE] = area
+        self.script = list(script)
+        self.calls = []          # (key, tries, raw $6E1B) at each walk_one
+        self.after_step = None   # run once after the first key that moves
+
+    def square(self):
+        return (10, 15)
+
+    def in_combat(self):
+        if self.script:
+            now = self.script.pop(0)
+            if now == "combat":
+                self.combat = True
+            else:
+                self.m.mem[FT.AREA_BYTE] = now
+        return self.combat
+
+    def walk_one(self, move, tries=4):
+        self.calls.append((move, tries, self.m.mem[FT.AREA_BYTE]))
+        x = self.x
+        super().walk_one(move, tries)
+        if self.x != x and self.after_step is not None:
+            then, self.after_step = self.after_step, None
+            then(self)
+        return False
+
+
+def test_a_caves_step_that_starts_a_fight_is_waited_out_then_walked_on(
+        monkeypatch):
+    """Run `737-large-3`: the step moved the party and started the kobold
+    fight, `$6E1B` read 100 (`ECL64`) under a stale command bar while the
+    fight loaded, and the retry key went into that load."""
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = CavesSession(m)
+
+    def fight_loads(s):
+        s.row = "MOVE VIEW CAST ENCAMP SEARCH LOOK"
+        s.script = [0x64, 0x64, 0x64 | 0x80, 0x64, "combat"]
+
+    sess.after_step = fight_loads
+    real_fight = sess.fight
+
+    def fight(budget, tactic):
+        out = real_fight(budget, tactic)
+        sess.script = [0x80 | 13, 13]
+        return out
+
+    sess.fight = fight
+    steps, sheet = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert [c[2] for c in sess.calls] == [13] * len(sess.calls)
+    assert all(c[1] == 1 for c in sess.calls)
+    assert len(sess.fights) == 1
+    first = steps[0]
+    assert first["before"] == (5, 5) and first["after"] == (6, 5)
+    assert first["fight_after"] and first["interrupted"]
+    ok, message = FT.walk_verdict(steps, sheet)
+    assert ok, message
+
+
+def test_a_caves_step_into_another_area_is_still_not_a_move(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = CavesSession(m)
+    sess.after_step = lambda s: setattr(s, "script", [0x89, 0x89, 0x09])
+    steps, sheet = FT.walk_afterwards(sess, stop_after_moves=1)
+    first = steps[0]
+    assert first["after"] != first["before"]
+    assert first["interrupted"] is True
+    assert first["area_before"] == 13 and first["area_after"] == 9
+    assert 0x89 in first["area_reads"] and first["area_reads"][-1] == 0x09
+    assert not FT.walk_verdict(steps[:1], sheet)[0]
+
+
+def test_a_caves_step_whose_area_byte_reloads_is_a_move(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = CavesSession(m)
+    sess.after_step = lambda s: setattr(s, "script", [0x8D, 0x8D, 0x0D])
+    steps, sheet = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert len([s for s in steps if "move" in s]) == 1
+    assert not steps[0].get("interrupted")
+    assert steps[0]["area_after"] == 13
+    assert FT.walk_verdict(steps, sheet)[0]
+
+
+def test_the_first_caves_step_waits_for_the_area_byte_to_settle(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = CavesSession(m, area=0x8D, script=[0x8D, 0x8D, 0x8D, 0x0D])
+    steps, sheet = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert sess.calls[0] == ("I", 1, 13)
+    assert FT.walk_verdict(steps, sheet)[0]
+
+
+def test_a_caves_walk_that_never_settles_presses_nothing(fake_clock):
+    sess, m = make()
+    sess = CavesSession(m, area=0x64)
+    steps, sheet = FT.walk_afterwards(sess, timeout=20)
+    assert sess.calls == [] and sheet is False
+    assert "$6E1B" in steps[0]["refused"] and "100" in steps[0]["refused"]
+    assert not FT.walk_verdict(steps, sheet)[0]
+
+
+def test_a_caves_turn_is_judged_by_the_facing_in_memory(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = CavesSession(m)
+    sess.walled = {0}
+    steps, sheet = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert [c[0] for c in sess.calls] == ["I", "J", "I"]
+    assert steps[0]["ok"] and steps[0]["off_route"]
+    assert FT.walk_verdict(steps, sheet)[0]

@@ -609,6 +609,59 @@ def fought(sess, steps: list[dict], row: str) -> bool:
     return "refused" not in steps[-1]
 
 
+#: `ECL64`, the fight's script. The game loads it into the `ECL` slot of the
+#: loaded-files cache, which `AREA_BYTE` is, while it sets a fight up, so a
+#: reading of 100 there is a fight on its way and not an area
+#: (`docs/140-loaded-files-cache.md`, and the `ECL64` row of the overlay
+#: table in `docs/50-experiments.md`).
+COMBAT_ECL = 0x64
+
+#: Seconds between the two readings `world_ready` must find identical.
+READY_GAP = 1.0
+
+
+def area_raw(sess) -> int | None:
+    """`AREA_BYTE` with its reload bit, or None when the read failed."""
+    try:
+        with sess.mon(5) as m:
+            return m.read(AREA_BYTE, 1)[0]
+    except (OSError, S.MonitorError):
+        return None
+
+
+def world_ready(sess, timeout: float = 60.0,
+                reads: list | None = None) -> tuple[str, int | None, str]:
+    """Wait until the game takes keys again after a step or a fight.
+
+    Returns `("combat", raw, row)` as soon as a fight is on, `("ready", raw,
+    row)` once two readings `READY_GAP` apart agree on `AREA_BYTE` and the
+    whole screen while row 24 is a bar the walk drives from, and `("timeout",
+    raw, row)` with the last reading when *timeout* runs out. A reading with
+    the reload bit set, or of `COMBAT_ECL`, is a load and never ready: the
+    command bar stays on screen while the fight loads, so row 24 alone
+    cannot tell. Each distinct raw `AREA_BYTE` is appended to *reads*."""
+    clock, sleep = time.monotonic, time.sleep
+    end = clock() + timeout
+    prior = None
+    raw, row = None, ""
+    while True:
+        if sess.in_combat():
+            return "combat", area_raw(sess), row24(sess)
+        raw = area_raw(sess)
+        screen = sess.screen()
+        row = screen.row(24).strip() if screen is not None else ""
+        if reads is not None and (not reads or reads[-1] != raw):
+            reads.append(raw)
+        loading = raw is None or raw & 0x80 or raw & 0x7F == COMBAT_ECL
+        now = None if loading or screen is None else (raw, screen.text())
+        if now is not None and now == prior and recognised(row):
+            return "ready", raw, row
+        if clock() >= end:
+            return "timeout", raw, row
+        prior = now
+        sleep(READY_GAP)
+
+
 def walk_afterwards(sess, timeout: float = 60.0,
                     stop_after_moves: int | None = None
                     ) -> tuple[list[dict], bool]:
@@ -640,16 +693,26 @@ def walk_afterwards(sess, timeout: float = 60.0,
 
     Indoors, `before` and `after` come from the status line and
     `shadow_before` and `shadow_after` from `square()`. In an area whose status
-    line shows no square (`square_hidden`) every `before` and `after` comes
-    from `square()` instead and each step carries `"square_from": "memory"`;
-    the choice is made once, so no step compares a status-line square with a
-    memory one. Such a step also carries `area_before`, `area_after` and
-    `fight_after`; a step during which the area byte changed or a fight began
-    is marked `interrupted` and `walk_verdict` does not count it as a move,
-    because `square()` then changes without the party having stepped. A
-    memory square that never changes fails the walk. That it changes only on a
-    real step is not established: it is PROBABLE until a live control reads
-    `$49C0` in such an area.
+    line shows no square (`square_hidden`) the walk is judged from memory
+    instead, and each step carries `"square_from": "memory"`; the choice is
+    made once, so no step compares a status-line square with a memory one.
+    There:
+
+    * `before` and `after` are the live square, `Session.steady_triple`
+      (`$C04B`), because `square()` (`$49C0`) keeps the old square while the
+      party steps on the move sub-bar;
+    * each key is sent once (`walk_one(key, tries=1)`), and whether it took is
+      read from the live triple -- the square for a step, the facing for a
+      turn -- because `walk_one` verifies a key by the status line's square,
+      finds none, and would otherwise send it again and report False;
+    * before every key and before the sheet the walk waits for `world_ready`,
+      so no key goes into a fight or an area still loading under a stale
+      command bar; a game that never settles ends the walk with a refused step;
+    * each step carries `area_before`, `area_after` (read once the game has
+      settled or a fight is on), `area_reads` (every raw `AREA_BYTE` seen
+      while waiting) and `fight_after`. A step after which the area changed or
+      a fight began is marked `interrupted` and `walk_verdict` does not count
+      it as a move. A reading taken during a load is waited out, not compared.
 
     Called before teardown, because the session is gone once `run` returns.
     """
@@ -658,12 +721,51 @@ def walk_afterwards(sess, timeout: float = 60.0,
         return [], False
     from_memory = bool(indoors) and square_hidden(sess)
     if from_memory:
-        print("  the status line shows no square; the walk reads square()",
+        print("  the status line shows no square; the walk reads $C04B",
               flush=True)
 
+    def triple():
+        return sess.steady_triple() if from_memory else None
+
     def at():
-        return sess.square() if from_memory else where(sess, indoors)
+        if not from_memory:
+            return where(sess, indoors)
+        now = triple()
+        return None if now is None else (now[0], now[1])
+
     steps: list[dict] = []
+
+    def unsettled(state: str, raw, row: str) -> list[dict]:
+        here = at()
+        steps.append({"move": "wait", "ok": False, "row": row,
+                      "before": here, "after": here,
+                      "refused": f"the game never settled: $6E1B reads "
+                                 f"{raw} and row 24 {row!r}"})
+        print(f"  walk: the game never settled ($6E1B={raw}, row 24 "
+              f"{row!r})", flush=True)
+        return steps
+
+    def ready_or_fought(row: str) -> tuple[bool, str]:
+        """In an area judged from memory, wait for `world_ready` and fight a
+        fight it finds; True with row 24 once keys may go, False once a
+        refused step has been recorded."""
+        if not from_memory:
+            return True, row
+        for _ in range(2):
+            state, raw, row = world_ready(sess, timeout)
+            if state == "ready":
+                return True, row
+            if state != "combat":
+                unsettled(state, raw, row)
+                return False, row
+            if not fought(sess, steps, row):
+                return False, row
+        state, raw, row = world_ready(sess, timeout)
+        if state == "ready":
+            return True, row
+        unsettled(state, raw, row)
+        return False, row
+
     retry_used = moved = 0
     for move in (WALK_INDOORS if indoors else WALK_OUTDOORS):
         row = settle_row(sess, timeout)
@@ -671,6 +773,9 @@ def walk_afterwards(sess, timeout: float = 60.0,
             if not fought(sess, steps, row):
                 return steps, False
             row = settle_row(sess, timeout)
+        go, row = ready_or_fought(row)
+        if not go:
+            return steps, False
         if not recognised(row):
             here = at()
             steps.append({"move": move, "ok": False, "row": row,
@@ -696,14 +801,29 @@ def walk_afterwards(sess, timeout: float = 60.0,
             for key, kind in group:
                 if attempts:
                     row = settle_row(sess, timeout)
+                    if not sess.in_combat() and recognised(row) and from_memory:
+                        state, _, row = world_ready(sess, timeout)
+                        if state != "ready":
+                            done = True   # the outer loop answers a fight or the stall
+                            break
                     if sess.in_combat() or not recognised(row):
                         done = True   # the outer loop answers a fight; a prompt ends the walk
                         break
-                start = at()
-                ok = bool(sess.walk_one(key))
+                if from_memory:
+                    start3 = triple()
+                    start = None if start3 is None else start3[:2]
+                    sess.walk_one(key, tries=1)
+                    end3 = triple()
+                    part = slice(0, 2) if kind == "step" else slice(2, 3)
+                    ok = (start3 is not None and end3 is not None
+                          and end3[part] != start3[part])
+                    after = None if end3 is None else end3[:2]
+                else:
+                    start = at()
+                    ok = bool(sess.walk_one(key))
+                    after = at()
                 attempts.append({"move": key, "ok": ok, "row": row,
-                                 "before": start,
-                                 "after": at()})
+                                 "before": start, "after": after})
                 screens = getattr(sess, "walk_screens", None)
                 if screens is not None:
                     attempts[-1]["screens"] = screens
@@ -747,10 +867,13 @@ def walk_afterwards(sess, timeout: float = 60.0,
         if capped:
             step["capped"] = True
         if from_memory:
+            reads: list = []
+            state, _, _ = world_ready(sess, timeout, reads)
             step["square_from"] = "memory"
             step["area_before"] = area_before
             step["area_after"] = area_of(sess)
-            step["fight_after"] = bool(sess.in_combat())
+            step["area_reads"] = reads
+            step["fight_after"] = state == "combat" or bool(sess.in_combat())
             if step["area_after"] != area_before or step["fight_after"]:
                 step["interrupted"] = True
         steps.append(step)
@@ -776,6 +899,10 @@ def walk_afterwards(sess, timeout: float = 60.0,
         if not fought(sess, steps, row):
             return steps, False
         row = settle_row(sess, timeout)
+    if steps and not sess.in_combat():
+        go, row = ready_or_fought(row)
+        if not go:
+            return steps, False
     if steps and not sess.in_combat() and not recognised(row):
         here = at()
         steps.append({"move": "sheet", "ok": False, "row": row,
