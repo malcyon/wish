@@ -982,3 +982,105 @@ def test_a_refused_argument_combination_closes_the_log(monkeypatch, tmp_path):
     patch_run(monkeypatch, torn, log)
     assert tb.run(args(out=str(tmp_path / "o"), mode="flee")) == 1
     assert log.closed
+
+
+# -- the last review ----------------------------------------------------------
+
+
+def boom(m):
+    raise OSError("the handler fell over")
+
+
+def test_nothing_is_armed_once_the_trap_has_degraded():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm("boom", 0x1234, boom, store=True, once=False)
+    machine.store(0x1234)
+    connect(sess)                                   # the trigger phase fails
+    assert traps.degraded
+    traps.arm_result()
+    assert machine.checkpoints == {}
+    assert traps.log.kinds("arm_skipped")
+
+
+def test_a_handler_failure_while_retiring_releases_the_machine_and_degrades():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm("boom", 0x1234, boom)
+    machine.exec_at(0x1234)
+    machine.calls.clear()
+    traps.retire_exec()
+    assert traps.degraded
+    assert machine.checkpoints == {}
+    assert machine.calls[-1] == "resume"
+
+
+def test_a_run_whose_retire_failed_does_not_exit_zero(monkeypatch, tmp_path):
+    machine = Machine()
+    sess = FakeSession(machine)
+
+    def retire_with_a_failure(sess_, traps, *a, **k):
+        traps.arm("boom", 0x1234, boom)
+        machine.exec_at(0x1234)
+        traps.retire_exec()
+
+    monkeypatch.setattr(S, "claim_slot", lambda *a, **k: fake_slot([]))
+    monkeypatch.setattr(S, "stage_disks", lambda *a, **k: "x")
+    monkeypatch.setattr(S, "stage_writable", lambda *a, **k: None)
+    monkeypatch.setattr(S, "Session", lambda *a, **k: sess)
+    monkeypatch.setattr(tb, "to_world", lambda *a, **k: True)
+    monkeypatch.setattr(tb, "resident_area", lambda s, log=None: 0)
+    monkeypatch.setattr(tb, "trigger", lambda s, traps, *a, **k: traps.brawl_started() or 1)
+    monkeypatch.setattr(tb, "after_fight", retire_with_a_failure)
+    assert tb.run(args(out=str(tmp_path / "o"))) == 4
+
+
+def test_retiring_deletes_the_result_stop_too():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm_result()
+    traps.retire_exec()
+    assert machine.checkpoints == {}
+
+
+def test_ignored_result_stores_are_logged_a_few_times_then_counted():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm_result()
+    for _ in range(10):
+        machine.store(tb.RESULT, pc=0x1234)
+        connect(sess)
+    assert len(traps.readings["result_store_ignored"]) == tb.IGNORED_LOGGED
+    traps.finish()
+    assert traps.readings["result_store_ignored_total"][0]["count"] == 10
+
+
+def run_main(monkeypatch, capsys, checked, lines):
+    def fake_check(root, load=None, out=print):
+        for line in lines:
+            out(line)
+        return checked
+
+    monkeypatch.setattr(tb, "check_code", fake_check)
+    monkeypatch.setattr(tb.runlog, "catch_signals", lambda: None)
+    monkeypatch.setattr(tb, "run", lambda a: 0)
+    rc = tb.main(["run", "--save", "x.d64", "--disks", "/d"])
+    return rc, capsys.readouterr().err
+
+
+def test_main_says_why_when_a_disk_file_cannot_be_read(monkeypatch, capsys):
+    rc, err = run_main(monkeypatch, capsys, 2, ["cannot read POST.COM under /d: nope"])
+    assert rc == 1
+    assert "cannot read POST.COM under /d: nope" in err
+    assert "differs" not in err
+
+
+def test_main_says_the_disks_differ_on_a_mismatch(monkeypatch, capsys):
+    rc, err = run_main(monkeypatch, capsys, 1, ["POST.COM $091B ..."])
+    assert rc == 1
+    assert "differs" in err
+
+
+def test_main_runs_when_the_disks_match(monkeypatch, capsys):
+    rc, err = run_main(monkeypatch, capsys, 0, [])
+    assert rc == 0 and err == ""

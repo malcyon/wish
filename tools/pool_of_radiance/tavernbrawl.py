@@ -12,15 +12,17 @@ checkpoints inside `POST.COM` read what the game does with the result.
 
 `code` reads seven byte runs off the player's own disks and refuses if any
 differs from what the driver was written against; `main` runs the same check
-before it calls `run`, so a mismatch never claims a slot.  `run` boots an emulator through the instance pool and writes
-`run.jsonl`, `readings.json`, `screens.txt` and PNGs under `--out`.  The save
-is copied into the slot; the player's disks are never written.
+before it calls `run`, so a mismatch never claims a slot.  `run` boots an
+emulator through the instance pool and writes `run.jsonl`, `readings.json`,
+`screens.txt` and PNGs under `--out`.  The save is copied into the slot; the
+player's disks are never written.
 
 Exit codes: 0 finished; 1 refused before the trigger (area, arrival, byte
 check, arguments); 2 an exception; 3 no brawl within `--max-entries`; 4 the
 trap lost the monitor; 5 an unknown screen; 6 the charm slot already had a
 charm row; 7 a bad `--stage-item`.  Pass conditions are judged from
-`readings.json`, not from the exit code.
+`readings.json`, not from the exit code.  `code` itself exits 2 when a disk
+file cannot be read.
 """
 
 from __future__ import annotations
@@ -103,9 +105,12 @@ TALLIES = 0xA4FD
 GAMBLE_ROLL, DESTINATION = 0x9803, 0x9802
 #: The PC after `DUNGEON $17DA STA ($4C),Y`, the store every script `RANDOM` ends in.
 RANDOM_STORE_NEXT = 0x17DC
-#: The PC after `POST.COM $091A STA $6DC7`, the only store to the result byte
-#: the Stage 0 reads found; a hit at any other PC is not the fight's result.
+#: The PC after `POST.COM $091A STA $6DC7`. It is the only store to `$6DC7`
+#: found on the eight sides (`$18A7` skips the result), so a hit at any other PC
+#: is not the fight's result.
 RESULT_STORE_NEXT = 0x091D
+#: How many ignored result-byte stores are logged in full; the rest are counted.
+IGNORED_LOGGED = 3
 #: How long `on_result` waits in all for the `POST.COM` stops, seconds.
 POST_WAIT = 60.0
 NEW_PHLAN = 0
@@ -354,6 +359,7 @@ class Traps:
         self.pending_shots: list[str] = []
         self.degraded = False
         self.result_done = False
+        self.ignored_stores = 0
         self.destination_at: float | None = None
         self.tap = None
         self._mon = None
@@ -369,7 +375,13 @@ class Traps:
         return _Watched(self, self._mon(timeout))
 
     def arm(self, name, address, handler, *, store=False, once=True, m=None) -> None:
-        """A stop checkpoint at `address` (store or exec), handled by `handler(m)`."""
+        """A stop checkpoint at `address` (store or exec), handled by `handler(m)`.
+
+        Once the trap has degraded nothing would handle a hit, so nothing is armed.
+        """
+        if self.degraded:
+            self.log.emit("arm_skipped", name=name, address=address)
+            return
         def go(mm):
             cp = mm.checkpoint_set(address, store=store, exec_=not store, stop=True)
             self.stops.append(Stop(name, address, handler, cp, once))
@@ -409,19 +421,26 @@ class Traps:
             if fired:
                 m.resume()
         except Exception as exc:
-            self.degraded = True
-            self.log.emit("trap_failed", error=repr(exc))
-            self.log.say(f"  the trap failed: {exc!r}; it makes no further reads")
-            # The machine is stopped at the hit and no later connection will
-            # handle another one, so leave nothing armed and let it run.
-            for step in (m.checkpoints_clear, m.resume):
-                try:
-                    step()
-                except Exception as again:
-                    self.log.emit("release_failed", error=repr(again))
-            self.stops.clear()
+            self._release(m, exc)
         finally:
             self._busy = False
+
+    def _release(self, m, exc) -> None:
+        """Give up: nothing is armed, the machine runs, and the run is marked incomplete.
+
+        The machine may be stopped at the hit and no later connection will handle
+        another one, so leave no checkpoint behind.
+        """
+        self.degraded = True
+        self.log.emit("trap_failed", error=repr(exc))
+        self.log.say(f"  the trap failed: {exc!r}; it makes no further reads")
+        for step in (m.checkpoints_clear, m.resume):
+            try:
+                step()
+            except Exception as again:
+                self.log.emit("release_failed", error=repr(again))
+        self.stops.clear()
+        self.counters.clear()
 
     def _scan(self, m, only=None) -> bool:
         fired = False
@@ -477,7 +496,9 @@ class Traps:
             return
         pc = m.registers().get(A.pc_register(m))
         if pc != RESULT_STORE_NEXT:
-            self.note("result_store_ignored", pc=pc, value=m.peek(RESULT))
+            self.ignored_stores += 1
+            if self.ignored_stores <= IGNORED_LOGGED:
+                self.note("result_store_ignored", pc=pc, value=m.peek(RESULT))
             return
         self.result_done = True
         for s in [s for s in self.stops if s.name == "result"]:
@@ -594,18 +615,23 @@ class Traps:
         """Read the hit counters and delete every `POST.COM` checkpoint left."""
         try:
             with self._mon(10) as m:
-                self._scan(m)
-                hits = {name: m.checkpoint_hits(cp) for name, cp in self.counters.items()}
-                self.note("counters", **hits)
-                for cp in self.counters.values():
-                    m.checkpoint_delete(cp)
-                self.counters.clear()
-                for s in [s for s in self.stops if s.address != RESULT
-                          and s.name not in ("mercy", "gamble", "destination")]:
-                    m.checkpoint_delete(s.cp)
-                    self.stops.remove(s)
-                m.resume()
+                try:
+                    self._scan(m)
+                    hits = {name: m.checkpoint_hits(cp) for name, cp in self.counters.items()}
+                    self.note("counters", **hits)
+                    for cp in self.counters.values():
+                        m.checkpoint_delete(cp)
+                    self.counters.clear()
+                    for s in [s for s in self.stops
+                              if s.name not in ("mercy", "gamble", "destination")]:
+                        m.checkpoint_delete(s.cp)
+                        self.stops.remove(s)
+                    m.resume()
+                except Exception as exc:
+                    self.log.emit("retire_failed", error=repr(exc))
+                    self._release(m, exc)
         except Exception as exc:
+            self.degraded = True
             self.log.emit("retire_failed", error=repr(exc))
 
     def flush_shots(self) -> None:
@@ -623,6 +649,8 @@ class Traps:
         self.sess.mon = self._mon
         try:
             with self._mon(10) as m:
+                if self.ignored_stores > IGNORED_LOGGED:
+                    self.note("result_store_ignored_total", count=self.ignored_stores)
                 for name, cp in self.counters.items():
                     try:
                         self.note("counter_at_finish", name=name, hits=m.checkpoint_hits(cp))
@@ -1063,7 +1091,12 @@ def main(argv=None) -> int:
     if why:
         print(why, file=sys.stderr)
         return 1
-    if check_code(disks, out=lambda line: None):
+    lines: list[str] = []
+    checked = check_code(disks, out=lines.append)
+    if checked == 2:
+        print(f"Cannot check the disks: {lines[-1]}", file=sys.stderr)
+        return 1
+    if checked:
         print("The disks' POST.COM or DUNGEON differs from what this tool was "
               "written against; run `tavernbrawl.py code`.", file=sys.stderr)
         return 1
