@@ -127,17 +127,18 @@ class SessionTarget:
             m.set_registers({pc_register(m): address})
 
 
-def probes(sess) -> dict:
-    """The addresses in `PROBES`, as hex, in one stop of the machine."""
+def probes(sess, names=None) -> dict:
+    """The addresses in `PROBES` (or just `names`), as hex, in one stop of the machine."""
+    wanted = {n: PROBES[n] for n in (names or PROBES)}
     try:
         with sess.mon(5) as m:
             return {name: m.read(addr, length).hex()
-                    for name, (addr, length) in PROBES.items()}
+                    for name, (addr, length) in wanted.items()}
     except Exception as exc:                       # a read that failed is data
         # Every key still comes back, because `look` writes them into its own
         # line.  Returning only the error truncated a whole run on the first
         # transient timeout, minutes after the boot that paid for it.
-        failed = {name: None for name in PROBES}
+        failed = {name: None for name in wanted}
         failed["error"] = f"{type(exc).__name__}: {exc}"
         return failed
 
@@ -434,29 +435,49 @@ def come_home(args, sess, target, app, binding, out, log, step: int) -> int:
 #: that keeps meeting monsters cannot hold a slot for ever.
 MAX_ENCOUNTERS = 5
 
+#: The other words on an outdoor encounter's opening menu; one of them must be
+#: on row 24 beside `COMBAT` for it to be taken for that menu.
+ENCOUNTER_OTHERS = ("FLEE", "PARLAY")
+
 
 def encounter_bar(sess) -> str | None:
     """Row 24 when it is an outdoor encounter's opening menu, else None.
 
-    The word is the session's own `ENCOUNTER_FIGHT`, the one `walk_one` takes
-    on a caller's behalf; the travel grid's direction prompt never carries it.
+    `COMBAT` alone is not enough: a message row can carry the word, and the
+    session's own `walk_one` never answers an outdoor menu (`walk_outdoors`
+    does not consult `walk_encounter`), so this is the detector.  The menu
+    also offers `FLEE` and `PARLAY`, which a message does not, and the travel
+    grid's direction prompt carries none of them.
     """
+    row = encounter_row(sess)
+    return None if row is None else row.strip()
+
+
+def encounter_row(sess) -> str | None:
+    """Row 24 when it is an encounter menu on the travel grid, else None."""
     s = sess.screen()
-    if s is None:
+    if s is None or sess.indoors() is not False:
         return None
     row = s.row(24)
-    if S.OUTDOOR_PROMPT not in row and S.word_column(row, S.ENCOUNTER_FIGHT) >= 0:
-        return row.strip()
-    return None
+    if S.OUTDOOR_PROMPT in row or S.word_column(row, S.ENCOUNTER_FIGHT) < 0:
+        return None
+    if all(S.word_column(row, w) < 0 for w in ENCOUNTER_OTHERS):
+        return None
+    return row
 
 
 def encounter_after_press(sess, looks: int = 3, gap: float = 1.0) -> str | None:
     """The encounter bar, if one comes up just after a press.
 
-    Polled for a few seconds because a step that ends in an encounter draws
-    the menu after `walk_outdoors` has already seen the square change.
+    One look while the travel prompt is up, because a step that lands on the
+    grid has not got an encounter coming; the few seconds of polling are for
+    a step that ends in an encounter and has not drawn its menu yet, which is
+    a screen that is not the prompt.
     """
     for n in range(looks):
+        s = sess.screen()
+        if s is not None and S.OUTDOOR_PROMPT in s.row(24):
+            return None
         row = encounter_bar(sess)
         if row is not None:
             return row
@@ -467,16 +488,16 @@ def encounter_after_press(sess, looks: int = 3, gap: float = 1.0) -> str | None:
 
 def press_state(sess) -> dict:
     """`$033D` and the travel square, in one stop, for a press's before and after."""
-    got = probes(sess)
-    return {"heading_033D": got.get("heading_033D"),
-            "travel_49C3": got.get("travel_49C3")}
+    return probes(sess, ("heading_033D", "travel_49C3"))
 
 
-def fight_encounter(args, sess, log: Log, bar: str, move: str, step: int) -> str:
+def fight_encounter(args, sess, log: Log, bar: str, move: str,
+                    step: int) -> str | None:
     """Take an outdoor encounter's `COMBAT`, fight it out, wait for the grid.
 
-    Returns `fought` when the travel prompt is back, else `stuck` naming
-    nothing further -- the log carries the fight's own outcome.
+    Returns None when the party won or ran and the travel prompt is back, else
+    the reason the walk cannot go on.  A lost fight is not resumed even if the
+    grid comes back.
     """
     log.say(f"Encounter at step {step} (after {move}): |{bar}|")
     log.emit("encounter", step=step, move=move, bar=bar,
@@ -484,7 +505,7 @@ def fight_encounter(args, sess, log: Log, bar: str, move: str, step: int) -> str
     if not sess.select_bar(S.ENCOUNTER_FIGHT, timeout=8):
         log.say("  COMBAT could not be selected")
         log.emit("encounter_outcome", step=step, outcome="not-selected")
-        return "stuck"
+        return "COMBAT could not be selected"
     deadline = time.time() + 20.0
     while not sess.in_combat() and time.time() < deadline:
         time.sleep(1.0)
@@ -494,11 +515,11 @@ def fight_encounter(args, sess, log: Log, bar: str, move: str, step: int) -> str
     log.emit("encounter_outcome", step=step, outcome=result.outcome,
              turns=result.turns, blows=result.blows,
              seconds=round(result.seconds, 1), bars=result.bars[-12:])
-    if result.outcome == S.NOT_FIGHTING:
-        return "stuck"
+    if result.outcome in (S.NOT_FIGHTING, S.LOST, S.BUDGET):
+        return f"the fight ended {result.outcome}"
     grid = clear_bars(sess, log, seconds=args.encounter_wait, want_outdoors=True)
     log.emit("encounter_grid", step=step, outcome=grid)
-    return "fought" if grid == "world" else "stuck"
+    return None if grid == "world" else f"no travel prompt after the fight ({grid})"
 
 
 def walk_moves(args, sess, log: Log, moves: str, step: int, after_step) -> int:
@@ -509,7 +530,7 @@ def walk_moves(args, sess, log: Log, moves: str, step: int, after_step) -> int:
     where a stale combat heading in `$033D` would show.  Each press logs
     `$033D` and `$49C3` before and after it, so a press into a blocked square
     can be told from a step.  The interrupted press is not repeated.  Returns
-    the last step number used; `args.stopped` is set when the walk ended early.
+    the last step number used; `args.stopped` is set to the reason when the walk ended early.
     """
     for move in moves:
         if args.stopped:
@@ -530,15 +551,30 @@ def walk_moves(args, sess, log: Log, moves: str, step: int, after_step) -> int:
             log.say(f"Encounter at step {step}: |{bar}| -- stopping the walk")
             log.emit("encounter", step=step, move=move, bar=bar,
                      handled="stop", **press_state(sess))
-            args.stopped = True
+            args.stopped = ("the encounter limit was reached"
+                            if args.on_encounter != "stop"
+                            else "--on-encounter stop")
             break
         args.encounters += 1
-        outcome = fight_encounter(args, sess, log, bar, move, step)
+        reason = fight_encounter(args, sess, log, bar, move, step)
         step += 1
         after_step(step)
-        if outcome != "fought":
-            args.stopped = True
+        if reason is not None:
+            args.stopped = reason
     return step
+
+
+def stopped_run(args, app, binding, out, log: Log, sess, step: int) -> int:
+    """End a run whose walk stopped early: one last look, the reason, non-zero.
+
+    Fast Travel, `--after`, `--home` and `--linger` would otherwise act on a
+    party still sitting in an encounter, and the run would report success.
+    """
+    step += 1
+    look(app, binding, f"{args.tag}-step{step}", out, log, sess)
+    log.say(f"The walk stopped: {args.stopped}")
+    log.emit("walk_stopped", reason=args.stopped, step=step)
+    return 1
 
 
 def run(args, log: Log) -> int:
@@ -577,6 +613,8 @@ def run(args, log: Log) -> int:
             step = walk_moves(args, sess, log, args.turn * args.turns, step,
                               looker)
         step = walk_moves(args, sess, log, args.walk, step, looker)
+        if args.stopped:
+            return stopped_run(args, app, binding, out, log, sess, step)
 
         if args.travel is not None:
             # The window's own Fast Travel, which is how a party can be put on
@@ -620,6 +658,8 @@ def run(args, log: Log) -> int:
                 log.say(f"placed the party at {tuple(args.place)} on the grid")
                 log.emit("place", x=args.place[0], y=args.place[1])
             step = walk_moves(args, sess, log, args.after, step, looker)
+            if args.stopped:
+                return stopped_run(args, app, binding, out, log, sess, step)
 
         if args.home is not None:
             step = come_home(args, sess, target, app, binding, out, log, step)
@@ -666,7 +706,10 @@ def main(argv=None) -> int:
     p.add_argument("--on-encounter", choices=("fight", "stop"), default="fight",
                    help="What to do when a press lands on an outdoor "
                         "encounter: fight it out with melee and resume the "
-                        "walk, or log it and stop the walk")
+                        "walk, or log it and stop the walk; a fight can "
+                        "take --fight-budget seconds and a run fights up to "
+                        f"{MAX_ENCOUNTERS} encounters, so the worst case is "
+                        "that many budgets plus the waits after each")
     p.add_argument("--fight-budget", type=float, default=300.0,
                    help="Seconds --on-encounter fight gives one fight")
     p.add_argument("--encounter-wait", type=float, default=120.0,

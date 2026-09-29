@@ -14,6 +14,8 @@ import pathlib
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from tools.c64 import session as S
 from tools.gui import mapmarker as M
 
@@ -68,6 +70,7 @@ class Sess:
         self.fights = []
         self.selected = []
         self.row = GRID
+        self.inside = False
 
     def mon(self, timeout=5.0):
         return Mon(self.mem)
@@ -101,7 +104,7 @@ class Sess:
         return False
 
     def indoors(self):
-        return False
+        return self.inside
 
 
 def args(**kw):
@@ -171,7 +174,7 @@ def test_the_look_records_033d_and_the_mappers_window_and_heading():
     assert log.of("look")[0]["mapper_heading"] == 6
 
 
-def test_turn_options_parse(monkeypatch):
+def test_turn_options_parse(monkeypatch, tmp_path):
     got = {}
 
     def fake_run(args_, log):
@@ -180,7 +183,7 @@ def test_turn_options_parse(monkeypatch):
     monkeypatch.setattr(M, "run", fake_run)
     monkeypatch.setattr(M, "_offscreen", lambda: None)
     monkeypatch.setattr(M, "Log", lambda path: LogClose())
-    M.main(["--disk", "x.d64", "--disks", "/d", "--out", "/tmp/mm-test",
+    M.main(["--disk", "x.d64", "--disks", "/d", "--out", str(tmp_path),
             "--turn", "7", "--turns", "3", "--walk", "12"])
     assert got["a"].turn == "7" and got["a"].turns == 3
     assert got["a"].on_encounter == "fight"
@@ -196,4 +199,143 @@ def test_turn_presses_log_the_heading_and_square_each_time(monkeypatch):
     sess, log = Sess(), Log()
     M.walk_moves(args(), sess, log, "777", 0, lambda n: None)
     assert sess.presses == ["7", "7", "7"]
-    assert [w["after"]["heading_033D"] for w in log.of("walk")] == ["06"] * 3
+    walks = log.of("walk")
+    assert [w["after"]["heading_033D"] for w in walks] == ["06"] * 3
+    assert [w["after"]["travel_49C3"] for w in walks] == ["031b", "021b", "011b"]
+
+
+def parse(monkeypatch, tmp_path, *extra):
+    monkeypatch.setattr(M, "run", lambda a, log: 0)
+    monkeypatch.setattr(M, "_offscreen", lambda: None)
+    monkeypatch.setattr(M, "Log", lambda path: LogClose())
+    return M.main(["--disk", "x.d64", "--disks", "/d", "--out", str(tmp_path),
+                   *extra])
+
+
+@pytest.mark.parametrize("bad", ["12", "9", "0", "x"])
+def test_turn_takes_one_compass_digit(monkeypatch, tmp_path, bad):
+    with pytest.raises(SystemExit):
+        parse(monkeypatch, tmp_path, "--turn", bad)
+
+
+@pytest.mark.parametrize("outcome", [S.LOST, S.BUDGET, S.NOT_FIGHTING])
+def test_a_fight_that_ends_badly_stops_the_walk_even_on_the_grid(monkeypatch, outcome):
+    no_sleep(monkeypatch)
+    sess = Sess(encounter_on={1}, fight_outcome=outcome)
+    a = args()
+    M.walk_moves(a, sess, Log(), "777", 0, lambda n: None)
+    assert sess.presses == ["7"]
+    assert outcome in a.stopped
+
+
+def test_a_fight_the_party_ran_from_resumes_the_walk(monkeypatch):
+    no_sleep(monkeypatch)
+    sess = Sess(encounter_on={1}, fight_outcome=S.RAN)
+    a = args()
+    M.walk_moves(a, sess, Log(), "777", 0, lambda n: None)
+    assert sess.presses == ["7", "7", "7"] and not a.stopped
+
+
+def test_the_sixth_encounter_is_logged_and_not_fought(monkeypatch):
+    no_sleep(monkeypatch)
+    sess = Sess(encounter_on=set(range(1, 10)))
+    a = args()
+    M.walk_moves(a, sess, Log(), "7" * 9, 0, lambda n: None)
+    assert len(sess.fights) == M.MAX_ENCOUNTERS
+    assert len(sess.presses) == M.MAX_ENCOUNTERS + 1
+    assert "limit" in a.stopped
+
+
+@pytest.mark.parametrize("row", ["THE PARTY MEETS COMBAT ORDERS", GRID,
+                                 "COMBAT WAIT", ""])
+def test_a_row_that_is_not_the_encounter_menu_is_not_one(row):
+    sess = Sess()
+    sess.row = row
+    assert M.encounter_bar(sess) is None
+
+
+def test_the_encounter_menu_is_not_taken_for_one_indoors():
+    sess = Sess()
+    sess.row = ENCOUNTER
+    sess.inside = True
+    assert M.encounter_bar(sess) is None
+    sess.inside = False
+    assert M.encounter_bar(sess) == ENCOUNTER
+
+
+def test_a_step_that_lands_on_the_grid_takes_one_look_not_three(monkeypatch):
+    slept = []
+    monkeypatch.setattr(M.time, "sleep", slept.append)
+    looks = []
+    sess = Sess()
+    real = sess.screen
+    sess.screen = lambda: looks.append(1) or real()
+    assert M.encounter_after_press(sess) is None
+    assert len(looks) == 1 and slept == []
+
+
+def test_press_state_reads_only_the_two_bytes_it_logs():
+    sess, asked = Sess(), []
+    real = Mon.read
+    Mon.read = lambda self, addr, n: asked.append(addr) or real(self, addr, n)
+    try:
+        M.press_state(sess)
+    finally:
+        Mon.read = real
+    assert sorted(asked) == [0x033D, 0x49C3]
+
+
+class RunSess(Sess):
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.kbd = MagicMock()
+
+    def boot(self):
+        return True
+
+    def load_save(self):
+        return True
+
+    def select_row(self, label):
+        return True
+
+    def status(self):
+        return None
+
+    def settle(self, n):
+        pass
+
+    def close(self):
+        pass
+
+
+def run_args(tmp_path, **kw):
+    return args(disk="x.d64", disks=str(tmp_path), slot=None, tag="t",
+                out=str(tmp_path), answer="NO", arrive=1.0, turn="",
+                turns=1, walk="7777", travel=26, after="1", home=20,
+                place=None, arrival=None, linger=2, **kw)
+
+
+def test_a_stopped_walk_skips_travel_after_home_and_linger(monkeypatch, tmp_path):
+    no_sleep(monkeypatch)
+    sess, called, looks = RunSess(encounter_on={2}), [], []
+    slot = MagicMock(n=1, display=":1", dir=str(tmp_path))
+    monkeypatch.setattr(M.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(M.S, "stage_disks", lambda *a, **k: None)
+    monkeypatch.setattr(M.S, "stage_writable", lambda *a, **k: None)
+    monkeypatch.setattr(M.S, "Session", lambda *a, **k: sess)
+    monkeypatch.setattr(M, "answer_bars", lambda *a, **k: "world")
+    monkeypatch.setattr(M, "SessionTarget", lambda s: MagicMock())
+    monkeypatch.setattr(M, "build_window",
+                        lambda *a: (MagicMock(), MagicMock(), MagicMock(), []))
+    monkeypatch.setattr(M, "look", lambda app, b, tag, *a: looks.append(tag))
+    monkeypatch.setattr(M, "come_home", lambda *a, **k: called.append("home"))
+    monkeypatch.setattr(M.actions, "FastTravel",
+                        lambda: called.append("travel") or MagicMock())
+    log = Log()
+    a = run_args(tmp_path, on_encounter="stop")
+    assert M.run(a, log) == 1
+    assert called == []
+    assert log.of("walk_stopped")[0]["reason"] == "--on-encounter stop"
+    assert sess.presses == ["7", "7"]
+    assert looks[-1] == "t-step3"                # one last look, no lingering
