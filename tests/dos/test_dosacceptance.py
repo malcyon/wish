@@ -1918,6 +1918,54 @@ def test_share_verdict_is_none_when_every_share_matches():
     assert da.share_verdict(None) is None
 
 
+_RAISED_BEFORE = {"characters": [{"name": "WISHFTR", "control": 0, "treasure_share": 1},
+                                 {"name": "GUY", "control": 0, "treasure_share": 0}]}
+
+
+def _raised_after(guy_control=0):
+    return {"characters": [
+        {"name": "WISHFTR", "control": 179, "treasure_share": 1},
+        {"name": "GUY", "control": guy_control, "treasure_share": 0}]}
+
+
+def test_the_member_an_animate_dead_run_raised_may_change_control_to_179():
+    steps = [da.parse_step("cast 1 ANIMATE-DEAD")]
+    animated = da.animated_members(steps, [da.parse_expect("wishftr:32:0")])
+    rows = {r["name"]: r for r in da.compare_shares(
+        _RAISED_BEFORE, _raised_after(), animated)}
+    assert rows["WISHFTR"]["matches"] is True
+    assert rows["WISHFTR"]["control_changed"] == {"WISHFTR": [0, 179],
+                                                  "reason": "animated"}
+    assert "control_changed" not in rows["GUY"]
+
+
+def test_another_members_control_change_still_fails_in_an_animate_dead_run():
+    steps = [da.parse_step("cast 1 ANIMATE-DEAD")]
+    animated = da.animated_members(steps, [da.parse_expect("WISHFTR:32:0")])
+    rows = {r["name"]: r for r in da.compare_shares(
+        _RAISED_BEFORE, _raised_after(guy_control=179), animated)}
+    assert rows["GUY"]["matches"] is False
+
+
+def test_a_run_without_an_animate_dead_step_fails_on_any_control_change():
+    steps = [da.parse_step("cast 1 BLESS")]
+    animated = da.animated_members(steps, [da.parse_expect("WISHFTR:32:0")])
+    assert animated == set()
+    rows = {r["name"]: r for r in da.compare_shares(
+        _RAISED_BEFORE, _raised_after(), animated)}
+    assert rows["WISHFTR"]["matches"] is False
+
+
+def test_the_raised_member_may_not_change_share_or_take_another_control():
+    animated = {"WISHFTR"}
+    after = _raised_after()
+    after["characters"][0]["treasure_share"] = 5
+    assert da.compare_shares(_RAISED_BEFORE, after, animated)[0]["matches"] is False
+    after = _raised_after()
+    after["characters"][0]["control"] = 7
+    assert da.compare_shares(_RAISED_BEFORE, after, animated)[0]["matches"] is False
+
+
 def test_stage_control_writes_the_control_and_share_bytes(tmp_path):
     (tmp_path / "CHRDATJ1.SAV").write_bytes(_curse_record())
     got = staging.stage_control(tmp_path, "J", 1, 0xB1, 3)

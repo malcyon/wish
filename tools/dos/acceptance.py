@@ -1487,10 +1487,25 @@ def compare_members(before: dict, after: dict) -> list[dict]:
     return rows
 
 
-def compare_shares(before: dict, after: dict) -> list[dict]:
+#: The control byte the game writes for a raised companion.
+ANIMATED_CONTROL = 0xB3
+
+
+def animated_members(steps: list["Step"], expects: list["Expect"]) -> set[str]:
+    """The members this run raised: those an `--expect` names as an id-32 node,
+    and only when a `cast N ANIMATE-DEAD` step is in the run."""
+    if not any(s.kind == "cast" and s.name == "ANIMATE-DEAD" for s in steps):
+        return set()
+    return {e.name for e in expects if e.id == 32}
+
+
+def compare_shares(before: dict, after: dict,
+                   animated: frozenset[str] | set[str] = frozenset()) -> list[dict]:
     """Each character's `control` and `treasure_share` bytes in `before` and
     `after`, matched by name.  A row with either byte unequal fails the run
-    (`read_step`/`describe`)."""
+    (`read_step`/`describe`), except that a member in `animated` may change
+    control to `ANIMATED_CONTROL` with its share unchanged; that row records
+    `control_changed`."""
     after_by = {c["name"]: c for c in after["characters"]}
     rows = []
     for c in before["characters"]:
@@ -1505,6 +1520,14 @@ def compare_shares(before: dict, after: dict) -> list[dict]:
         row["matches"] = (now is not None
                           and row["control_before"] == row["control_after"]
                           and row["share_before"] == row["share_after"])
+        if (not row["matches"] and now is not None and c["name"] in animated
+                and row["control_after"] == ANIMATED_CONTROL
+                and row["control_before"] != ANIMATED_CONTROL
+                and row["share_before"] == row["share_after"]):
+            row["matches"] = True
+            row["control_changed"] = {c["name"]: [row["control_before"],
+                                                  row["control_after"]],
+                                      "reason": "animated"}
         rows.append(row)
     return rows
 
@@ -3984,6 +4007,7 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
     result: dict = {"installed": before, "rested_minutes": asked, "slots": {},
                     "saved": list(saved)}
     previous = before
+    animated = animated_members(steps, expects)
     for x in saved:
         after = read_slot(resave, x)
         result["slots"][x] = {
@@ -3993,8 +4017,12 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
             "compare": compare_nodes(before, after),
             "experience": compare_experience(before, after),
             "members": compare_members(before, after),
-            "shares": compare_shares(before, after),
+            "shares": compare_shares(before, after, animated),
         }
+        changed = {k: v for row in result["slots"][x]["shares"]
+                   for k, v in row.get("control_changed", {}).items() if k != "reason"}
+        if changed:
+            result["slots"][x]["control_changed"] = {**changed, "reason": "animated"}
         if any(st.kind in ("walk", "turn") for st in steps):
             result["slots"][x]["place_changed"] = place_changed(before, after)
         previous = after
