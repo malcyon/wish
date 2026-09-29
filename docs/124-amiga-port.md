@@ -2548,12 +2548,21 @@ ports, so those are expected to agree — PROBABLE, and untested.
 
 #### What a driven session still owes
 
-The volume the game saves to. `0x25194` guards both the save and the load menu
-with a check for a volume and the prompt **"Please insert disk 3."**, and the
-path builder at `0x3F7D8` prefixes `SAVE` only on a hard-disk install and
-`DF0:` otherwise, leaving the name unqualified — so the file lands in whatever
-directory the game is in, and the shipped slots are in disk 3's `Save` drawer.
-PROBABLE, from the code; one `ENCAMP ▸ SAVE` settles it.
+Whether a converted save disk loads. **No volume name is checked anywhere** —
+CONFIRMED from the code. `0x25194` guards the save and load menus (and the two
+`.pc` sites) by calling `0x3FBD2`, which locks `<prefix>SAVE` and so tests only
+that a `SAVE` drawer exists. The path builder at `0x3F7D8` always adds `SAVE`
+(the flag set by `0x3FBB8` is on in all five callers), and the drive comes from
+a three-place search stepped by `0x3F874` and `0x3FBD2` through the table at
+`g388A`: the game's own directory, then `DF0:`, then `DF1:`. **"Please insert
+disk 3."** appears only when all three fail, and every save-disk request names
+"Disk 3" (`0x3F674`). Two more files are opened by name, so a fresh disk needs
+both or the player gets a disk request: `SAVE/spindisk`, read after every save
+with the contents discarded (`0x3F9BE`), and `SAVE/write.me`, opened at start-up
+(`0x171A8`). That a converted disk loads stays PROBABLE, from the code; one
+driven `ENCAMP ▸ SAVE` and Load settles it. The earlier reading here, a volume
+check and a `DF0:` prefix on floppy installs only, was wrong: it took the
+prompt for a volume test and did not follow the drive table.
 
 ### 1.21 Where Amiga Pool of Radiance keeps the NPC control byte, and the second insertion (#614 (A converted companion arrives at Amiga Pool of Radiance as a player character, because write_por overwrites the NPC control byte and reports nothing))
 

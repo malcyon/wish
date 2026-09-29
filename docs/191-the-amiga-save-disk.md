@@ -182,13 +182,20 @@ disk already had `A` on it.
   of `DF0:`, `SAVE` and `DISKA` at file offset 260206, and the requester
   beside it at 259918 reads `Insert %s and Press a Key`, `Disk %c`,
   `SAVE Disk`, `the Disk`, `'%s' not found`. There is no `path for save`
-  prompt anywhere in it and no volume name to answer with: it asks for a disk
-  by **drive** and looks in a `SAVE` drawer on it, which is where disk 3 keeps
-  `SAVGAMA.PTY` and the vault. So step 3 of
+  prompt anywhere in it and **no volume name is checked** (CONFIRMED, from the
+  code): it looks for a `SAVE` drawer in the game's own directory, then `DF0:`,
+  then `DF1:`, and asks for "Disk 3" only when all three fail -- the drive
+  search is `g388A`, stepped by `0x3F874` and `0x3FBD2`, and the drawer test is
+  the guard at `0x25194`. Disk 3 keeps `SAVGAMA.PTY` and the vault in that
+  drawer. It also opens `SAVE/spindisk` after every save (`0x3F9BE`, contents
+  discarded) and `SAVE/write.me` at start-up (`0x171A8`), so a fresh disk needs
+  both files or the player gets a disk request. So step 3 of
   `#36 (Write an Amiga disk image, not just the character files)`'s order of
   work -- `tools/amiga/toamiga.py` emitting a disk rather than loose `.pc` files --
-  needs its own measurement and cannot borrow this one. **PROBABLE**, from the
-  strings; nothing has been booted.
+  needs its own measurement and cannot borrow this one. That a converted disk
+  loads is **PROBABLE**, from the code; nothing has been booted. The grade was
+  PROBABLE from strings alone before the code was read, and the split is why
+  the volume claim is now higher.
 
   (`Place Secret save disk in DF0:` also appears in that executable, at
   152872, and is *not* this: `docs/124-amiga-port.md` §1.2 has it as the
