@@ -43,6 +43,14 @@ a scratch directory (`--out`; by default `scratch.scratch_dir("dosfightwatch")`)
     tools/dos/dosfightwatch.py locate --slot A     # stop after step 3
     tools/dos/dosfightwatch.py truth --c64 PORSAVE13.D64 --slot A --engine-slot B
 
+    tools/dos/dosfightwatch.py pile --folder /mnt/specimens/por-dos/WISH-SPEC-por-hireling-evoker-ff \\
+        --at 7,2,W --steps 60
+
+`pile` measures the treasure split.  It installs a DOS save folder as it stands
+(no conversion), walks to an encounter, watches the gold pile at `DS:0x67F4+12`
+through a fight and reads the companion and party parts `C` and `A` at the
+split's counting breakpoint in a second fight; see `measure_split`.
+
 `truth` is the other half of the comparison: the same party saved back by the
 game's own `ENCAMP > SAVE` before it is walked anywhere, then reloaded and
 taken to an encounter menu, so what the engine holds at the moment a fight
@@ -69,7 +77,9 @@ from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from tools.dos import dosbox, dosboxx  # noqa: E402
+from tools.dos import dosbox, dosboxx, staging  # noqa: E402
+from tools.dos.dosparty import wipe_roster  # noqa: E402
+from tools.dos.dostrain import move_to  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
@@ -243,7 +253,7 @@ def absorb_spurious(w: Watcher, expected: int, timeout: float = 40.0) -> list:
 def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
                    budget: float = 900.0, settled: float = 4.0,
                    dwell: float = 1.2, patience: float = 90.0,
-                   max_hits: int = 4000) -> dict:
+                   max_hits: int = 4000, on_hit=None) -> dict:
     """`PoolOfRadiance.fight`, with the emulator's halts handled.
 
     A watchpoint firing stops the emulator, so the screen freezes and the
@@ -256,6 +266,9 @@ def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
     emulator stopped, which is what makes a hit's *phase* readable: a write
     that lands while `COMBAT WAIT FLEE ADVANCE` is up happened before any
     character acted.
+
+    `on_hit(row)` is called for every hit while the emulator is still halted,
+    so a caller can read memory at the moment of the write.
     """
     s = por.s
     if por.world_glyphs is None:
@@ -284,6 +297,8 @@ def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
                     w.hits[-1]["cs_ip"] = f"{regs.get('CS', 0):04X}:{regs.get('IP', 0):04X}"
                 except Exception:
                     pass
+            if on_hit is not None:
+                on_hit(w.hits[-1])
             resumes += 1
             s.run()
             if len(w.hits) >= max_hits:
@@ -707,6 +722,282 @@ def truth(*, c64: pathlib.Path | None, slot: str, engine_slot: str, steps: int,
     return report
 
 
+# -- the treasure split (#743) ------------------------------------------------
+
+#: `DS` offset of the seven longint coin piles the fight fills and the split
+#: reduces, and the gold pile's place in it (copper, silver, electrum, gold, ...).
+PILE_BASE = 0x67F4
+GOLD_PILE = PILE_BASE + 4 * 3
+
+#: `GAME.OVR` offsets of the instructions the measurement is keyed on: the
+#: store that fills a pile, the store that reduces it in the split, and the
+#: point in the split where `C` and `A` are final.
+FILL_OFFSET = 0x005634
+SPLIT_OFFSET = 0x006943
+COUNT_OFFSET = 0x0068D8
+
+#: A watchpoint reports `CS:IP` of the instruction *after* the write, so the
+#: bytes before it are read back and matched to the overlay file to learn how
+#: long that instruction was.
+CODE_WINDOW = 8
+MIN_INSTRUCTION = 2
+
+
+def find_ovr(game: pathlib.Path) -> bytes:
+    """`GAME.OVR` of a DOS game directory, whatever its case."""
+    for p in game.iterdir():
+        if p.name.upper() == "GAME.OVR":
+            return p.read_bytes()
+    raise FileNotFoundError(f"no GAME.OVR in {game}")
+
+
+def expected_cut(pile: int, c: int, a: int) -> int:
+    """What the split takes from a pile: `cwd(((pile div A) & 0xFF) * C)`."""
+    cut = ((pile // a) & 0xFF) * c
+    cut &= 0xFFFF
+    return cut - 0x10000 if cut & 0x8000 else cut
+
+
+def instruction_end(code: bytes, ovr: bytes, offset: int) -> int | None:
+    """How many bytes of `ovr[offset:]` end exactly at the end of `code`.
+
+    `code` is what precedes the reported `IP`.  The smallest length of at
+    least `MIN_INSTRUCTION` that matches is taken; None when none does, which
+    is how a hit from some other routine is told apart.
+    """
+    for k in range(MIN_INSTRUCTION, min(len(code), CODE_WINDOW) + 1):
+        if code[-k:] == ovr[offset:offset + k]:
+            return k
+    return None
+
+
+def classify_hit(hit: dict, ovr: bytes) -> dict:
+    """The hit with `phase` (`fill`, `split` or None) and the overlay's linear
+    base (`bias`, so that `bias + file offset` is the runtime address)."""
+    out = dict(hit)
+    out["phase"] = None
+    out["bias"] = None
+    if not hit.get("cs_ip") or not hit.get("code"):
+        return out
+    seg, ofs = (int(x, 16) for x in hit["cs_ip"].split(":"))
+    code = bytes.fromhex(hit["code"])
+    for phase, offset in (("split", SPLIT_OFFSET), ("fill", FILL_OFFSET)):
+        k = instruction_end(code, ovr, offset)
+        if k is not None:
+            out["phase"] = phase
+            out["bias"] = dosboxx.linear((seg, ofs)) - k - offset
+            return out
+    return out
+
+
+def pile_change(initial: bytes, hits: list[dict], base: int) -> dict | None:
+    """The gold pile before and after the first split, from the hits.
+
+    `hits` are classified and in order; each names one byte of the pile
+    (`addr` is linear, `base` the pile's first byte).  The pile is rebuilt
+    from `initial` by applying every hit, so what it held just before the
+    first `split` hit and just after the last of that unbroken run is exact.
+    """
+    state = bytearray(initial)
+    before = after = None
+    in_split = False
+    for h in hits:
+        i = h["addr"] - base
+        if 0 <= i < len(state):
+            if h["phase"] == "split" and not in_split and before is None:
+                before = int.from_bytes(state, "little")
+                in_split = True
+            elif h["phase"] != "split":
+                in_split = False
+            state[i] = h["new"]
+            if in_split:
+                after = int.from_bytes(state, "little")
+    if before is None:
+        return None
+    return {"before": before, "after": after}
+
+
+def derive_bias(hits: list[dict]) -> dict:
+    """The overlay's runtime linear base, from the split hits.
+
+    The split's own hits give it; the fill hits are compared, because an
+    overlay swapped in twice puts the two at different bases.
+    """
+    split = sorted({h["bias"] for h in hits if h["phase"] == "split"})
+    fill = sorted({h["bias"] for h in hits if h["phase"] == "fill"})
+    out = {"split_biases": split, "fill_biases": fill, "bias": None,
+           "fill_agrees": None}
+    if len(split) == 1:
+        out["bias"] = split[0]
+        out["fill_agrees"] = bool(fill) and fill == split
+    return out
+
+
+def summarize(initial: bytes, hits: list[dict], ovr: bytes, base: int,
+              counts: dict | None) -> dict:
+    """The JSON report of a split measurement, from its raw hits and counts."""
+    classified = [classify_hit(h, ovr) for h in hits]
+    bias = derive_bias(classified)
+    change = pile_change(initial, classified, base)
+    out: dict = {"hits": classified, **bias, "pile": change, "counts": counts}
+    if bias["bias"] is not None:
+        seg, ofs = dosboxx.seg_off(bias["bias"] + COUNT_OFFSET)
+        out["count_break"] = f"{seg:04X}:{ofs:04X}"
+    if change and counts and counts.get("a"):
+        cut = expected_cut(change["before"], counts["c"], counts["a"])
+        taken = change["before"] - (change["after"] or 0)
+        out["expected_cut"] = cut
+        out["taken"] = taken
+        out["expected_after"] = change["before"] - cut
+        out["matches"] = cut == taken
+    return out
+
+
+def install_folder(save_dir: pathlib.Path, folder: pathlib.Path,
+                   at: str | None = None, source: str | None = None) -> str:
+    """Put a DOS-native save folder into a staged `SAVE` tree, unconverted.
+
+    Returns the slot letter.  `at` pokes the party's square as
+    `tools/dos/dostrain.py --at` does; the area is not changed, so the folder
+    has to stand where fights happen already.
+    """
+    wipe_roster(save_dir)
+    took = staging.install(folder, save_dir, staging.source_slot(folder, source))
+    letter = took["as_slot"]
+    if at:
+        move_to(save_dir / f"SAVGAM{letter}.DAT", at)
+    return letter
+
+
+def arm_pile(w: Watcher, ds: int) -> tuple[int, int]:
+    """A `BPM` on each byte of the gold pile; returns its linear base and how
+    many of the four bytes read nonzero (each owes one spurious first hit)."""
+    base = dosboxx.linear((ds, GOLD_PILE))
+    nonzero = 0
+    for i in range(4):
+        w.arm(base + i, f"gold[{i}]")
+        if w.s.read(base + i, 1) != b"\x00":
+            nonzero += 1
+    return base, nonzero
+
+
+def read_code_before(s, row: dict) -> None:
+    """Record on a hit row the bytes that precede its `CS:IP`."""
+    if not row.get("cs_ip"):
+        return
+    seg, ofs = (int(x, 16) for x in row["cs_ip"].split(":"))
+    lin = dosboxx.linear((seg, ofs))
+    row["code"] = s.read(lin - CODE_WINDOW, CODE_WINDOW).hex()
+
+
+def read_counts(s) -> dict:
+    """`C` and `A` from the split's frame: `[bp-5]` and `[bp-6]`."""
+    r = s.regs("SS", "BP")
+    raw = s.read(dosboxx.linear((r["SS"], (r["BP"] - 6) & 0xFFFF)), 2)
+    return {"a": raw[0], "c": raw[1]}
+
+
+def count_fight(por: dosbox.PoolOfRadiance, brk_lin: int, *,
+                budget: float = 900.0) -> dict | None:
+    """Fight on until the code breakpoint halts the emulator; read `C` and `A`.
+
+    **A code breakpoint prints nothing**, so it is found by asking whether the
+    emulator is halted (`XSession.halted`).
+    """
+    s = por.s
+    deadline = time.time() + budget
+    s.run()
+    while time.time() < deadline:
+        if s.halted(timeout=1.5):
+            r = s.regs("CS", "IP")
+            if dosboxx.linear((r["CS"], r["IP"])) == brk_lin:
+                return read_counts(s)
+            s.run()
+        bar = por.bar_kind()
+        key = por.COMBAT_KEYS.get(bar or "")
+        if key is not None:
+            s.key(key)
+        time.sleep(0.25)
+    return None
+
+
+def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
+                  ds: int | None = None, fight_kw: dict | None = None,
+                  walk=walk_to_encounter) -> dict:
+    """Watch the gold pile through one fight, then read `C` and `A` in another.
+
+    The party is already loaded.  Fight one: walk to an encounter, arm a
+    `BPM` on each byte of the gold pile, fight, and classify every hit by the
+    overlay bytes before its `CS:IP` (fill or split), which also gives the
+    overlay's runtime base.  Fight two: the same walk with a `BP` at
+    `COUNT_OFFSET` in that overlay, where `C` and `A` are read.  `ds` is read
+    from the halted emulator unless given; it is the game's data segment only
+    if the emulator halted in game code.
+    """
+    s = por.s
+    report: dict = {"mode": "pile"}
+    report["walk"] = walk(por, steps)
+    if not report["walk"]["met"] or not s.attach():
+        return report
+    report["ds"] = ds if ds is not None else s.regs("DS")["DS"]
+    w = Watcher(s)
+    base, nonzero = arm_pile(w, report["ds"])
+    initial = s.read(base, 4)
+    report["pile_at_encounter"] = int.from_bytes(initial, "little")
+    w.drain()
+    absorb_spurious(w, nonzero)
+    s.run()
+    report["fight"] = fight_watching(por, w, on_hit=lambda row: read_code_before(s, row),
+                                     **(fight_kw or {}))
+    report.update(summarize(initial, w.hits, ovr, base, None))
+    if report.get("bias") is None:
+        report["why"] = "no unambiguous split hit, so no overlay base"
+        return report
+
+    if not s.attach():
+        return report
+    s.clear_breakpoints()
+    s.run()
+    report["walk2"] = walk(por, steps)
+    if not report["walk2"]["met"] or not s.attach():
+        return report
+    s.clear_breakpoints()
+    brk = report["bias"] + COUNT_OFFSET
+    seen = s.read(brk, 8)
+    report["count_code_matches"] = seen == ovr[COUNT_OFFSET:COUNT_OFFSET + 8]
+    if not report["count_code_matches"]:
+        report["why"] = "the overlay is not at the derived base in the second fight"
+        return report
+    s.brk(brk)
+    counts = count_fight(por, brk)
+    report.update(summarize(initial, w.hits, ovr, base, counts))
+    return report
+
+
+def pile(*, folder: pathlib.Path, source: str | None, at: str | None,
+         steps: int, out: pathlib.Path, ds: int | None) -> dict:
+    """`measure_split` on a folder installed into a fresh DOSBox-X."""
+    out.mkdir(parents=True, exist_ok=True)
+    game = dosbox.find_game()
+    report: dict = {"mode": "pile", "folder": str(folder)}
+    with dosboxx.claim("issue743 treasure split") as claimed:
+        s = dosboxx.XSession(claimed, game)
+        try:
+            s.stage(fresh=True)
+            letter = install_folder(s.save_dir, folder, at, source)
+            s.boot(fresh=False)
+            por = dosbox.PoolOfRadiance(s)
+            por.to_main_menu()
+            por.load_game(letter)
+            report["status_at_load"] = por.status()
+            report.update(measure_split(por, find_ovr(game), steps=steps, ds=ds))
+        finally:
+            (out / "report.json").write_text(json.dumps(report, indent=1,
+                                                       default=str))
+            s.close()
+    return report
+
+
 def _counts(hits: list[dict]) -> dict:
     """How many hits each watched field took, and on which bars."""
     out: dict[str, dict] = {}
@@ -723,7 +1014,7 @@ def _counts(hits: list[dict]) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=("locate", "watch", "truth"))
+    ap.add_argument("command", choices=("locate", "watch", "truth", "pile"))
     ap.add_argument("--c64", default=None, help="the C64 save disk to convert")
     ap.add_argument("--slot", default="A", help="the DOS slot to write")
     ap.add_argument("--steps", type=int, default=40,
@@ -735,12 +1026,26 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=None, help="where the run's files go")
     ap.add_argument("--engine-slot", default="B",
                     help="the slot `truth` has the engine write for itself")
+    ap.add_argument("--folder", type=pathlib.Path, default=None,
+                    help="`pile`: the DOS save folder to install as it stands")
+    ap.add_argument("--from-slot", default=None,
+                    help="`pile`: which slot of the folder, when it holds several")
+    ap.add_argument("--at", default=None, metavar="X,Y,FACING",
+                    help="`pile`: poke the party's square before loading")
+    ap.add_argument("--ds", type=lambda x: int(x, 16), default=None,
+                    help="`pile`: the game's data segment, hex, instead of "
+                         "reading DS at the encounter")
     args = ap.parse_args(argv)
 
     chars = tuple(int(x) for x in args.chars.split(",") if x.strip())
     only = tuple(x for x in args.only.split(",") if x.strip())
     out = pathlib.Path(args.out or OUT)
-    if args.command == "truth":
+    if args.command == "pile":
+        if args.folder is None:
+            ap.error("pile needs --folder")
+        report = pile(folder=args.folder, source=args.from_slot, at=args.at,
+                      steps=args.steps, out=out, ds=args.ds)
+    elif args.command == "truth":
         report = truth(c64=args.c64, slot=args.slot,
                        engine_slot=args.engine_slot, steps=args.steps,
                        out=out)

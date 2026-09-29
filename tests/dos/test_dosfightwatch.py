@@ -99,3 +99,174 @@ def test_a_bar_nobody_has_labelled_at_all_still_gives_up_by_its_digest():
     result = dosfightwatch.walk_to_encounter(por, steps=5, patience=0.0)
     assert result["met"] is False
     assert result["why"] == "a bar nobody has labelled (None)"
+
+
+# -- the treasure split (#743): no emulator, a scripted debugger ---------------
+
+import pytest  # noqa: E402
+
+from goldbox import dos_savegame  # noqa: E402
+from tools.dos import dosboxx  # noqa: E402
+
+BIAS = 0x30000          # where the fake overlay sits in memory
+DS = 0x4000
+SS, BP = 0x5000, 0x0100
+
+
+def _ovr() -> bytes:
+    data = bytearray(0x7000)
+    for i in range(len(data)):
+        data[i] = (i * 7 + 3) & 0xFF
+    return bytes(data)
+
+
+class _Debugger:
+    """Just enough of `XSession`: a log, registers, memory and a script."""
+
+    def __init__(self, ovr: bytes, hits, counts):
+        self.mem = bytearray(0x100000)
+        self.mem[BIAS:BIAS + len(ovr)] = ovr
+        self.log = ""
+        self.regs_now: dict[str, int] = {"DS": DS, "SS": SS, "BP": BP}
+        self.commands: list[str] = []
+        self.events = list(hits)
+        self.counts = counts
+        self.bp: int | None = None
+        self.halted_now = False
+        self.keys: list[str] = []
+
+    # what the fight loop and the arming code call
+    def dbg(self, cmd, expect=None, timeout=5.0, quiet=0.3):
+        self.commands.append(cmd)
+        return ""
+
+    def log_text(self):
+        return self.log
+
+    def attach(self, tries=6, gap=1.0):
+        return True
+
+    def capture(self):
+        return _Screen()
+
+    def key(self, *keys, gap=0.0):
+        self.keys.extend(keys)
+
+    def shot(self, name, allow_blank=False):
+        return None
+
+    def regs(self, *names):
+        return {n: self.regs_now[n] for n in names}
+
+    def read(self, addr, n):
+        lin = dosboxx.linear(addr)
+        return bytes(self.mem[lin:lin + n])
+
+    def brk(self, addr):
+        self.bp = dosboxx.linear(addr)
+        self.commands.append(f"BP {self.bp:X}")
+
+    def clear_breakpoints(self):
+        self.bp = None
+        self.commands.append("BPDEL *")
+
+    def halted(self, timeout=3.0):
+        return self.halted_now
+
+    def run(self):
+        self.halted_now = False
+        if self.bp is not None:
+            cs, ip = dosboxx.seg_off(self.bp)
+            self.regs_now.update(CS=cs, IP=ip)
+            base = dosboxx.linear((SS, BP - 6))
+            self.mem[base:base + 2] = bytes(self.counts)
+            self.halted_now = True
+            return
+        if not self.events:
+            return
+        byte, old, new, offset, length = self.events.pop(0)
+        after = BIAS + offset + length
+        cs, ip = dosboxx.seg_off(after)
+        self.regs_now.update(CS=cs, IP=ip)
+        seg, ofs = dosboxx.seg_off(dosboxx.linear((DS, dosfightwatch.GOLD_PILE)) + byte)
+        self.log += (f"DEBUG: Memory breakpoint : {seg:04X}:{ofs:04X} - "
+                     f"{old:02X} -> {new:02X}\n")
+
+
+def _por(dbg):
+    por = _FakePoR(["command"])
+    por.s = dbg
+    por.world_glyphs = "blank-digest"
+    return por
+
+
+def _script(pile_before: int, cut: int):
+    """Fill hits for `pile_before`, then split hits down by `cut`."""
+    fill, split = dosfightwatch.FILL_OFFSET, dosfightwatch.SPLIT_OFFSET
+    hits, state = [], bytearray(4)
+    for target, offset, length in ((pile_before, fill, 3),
+                                   (pile_before - cut, split, 4)):
+        want = target.to_bytes(4, "little")
+        for i in range(4):
+            if want[i] != state[i]:
+                hits.append((i, state[i], want[i], offset, length))
+                state[i] = want[i]
+    return hits
+
+
+def test_the_split_formula_is_the_engines_byte_quotient():
+    assert dosfightwatch.expected_cut(1000, 7, 13) == 532
+    assert dosfightwatch.expected_cut(1000, 3, 9) == 333
+    assert dosfightwatch.expected_cut(4000, 7, 13) == 357   # (307 & 255) * 7
+
+
+def test_a_folder_is_installed_as_it_stands_and_can_be_moved(tmp_path):
+    folder, save = tmp_path / "spec", tmp_path / "SAVE"
+    folder.mkdir()
+    save.mkdir()
+    (folder / "SAVGAME.DAT").write_bytes(bytes(13000))
+    (folder / "CHRDATE7.SAV").write_bytes(b"\x07" * 285)
+    (save / "CHRDATA1.SAV").write_bytes(b"stale")
+    letter = dosfightwatch.install_folder(save, folder, at="5,6,E")
+    assert letter == "E"
+    assert sorted(p.name for p in save.iterdir()) == ["CHRDATE7.SAV", "SAVGAME.DAT"]
+    assert (save / "CHRDATE7.SAV").read_bytes() == b"\x07" * 285
+    data = (save / "SAVGAME.DAT").read_bytes()
+    assert (data[dos_savegame.POS_X], data[dos_savegame.POS_Y]) == (5, 6)
+
+
+def test_the_pile_is_watched_and_the_split_read_from_scripted_hits():
+    ovr = _ovr()
+    dbg = _Debugger(ovr, _script(1000, 532), counts=(13, 7))   # A, C
+    por = _por(dbg)
+    report = dosfightwatch.measure_split(
+        por, ovr, steps=5, fight_kw={"settled": 0.0},
+        walk=lambda por, steps: {"met": True})
+    gold = dosboxx.linear((DS, dosfightwatch.GOLD_PILE))
+    for i in range(4):
+        seg, ofs = dosboxx.seg_off(gold + i)
+        assert f"BPM {seg:X}:{ofs:X}" in dbg.commands
+    assert report["bias"] == BIAS
+    seg, ofs = dosboxx.seg_off(BIAS + dosfightwatch.COUNT_OFFSET)
+    assert report["count_break"] == f"{seg:04X}:{ofs:04X}"
+    assert dbg.bp == BIAS + dosfightwatch.COUNT_OFFSET
+    assert report["fill_agrees"] is True
+    assert report["pile"] == {"before": 1000, "after": 468}
+    assert (report["counts"]["c"], report["counts"]["a"]) == (7, 13)
+    assert report["expected_cut"] == 532 == report["taken"]
+    assert report["matches"] is True
+
+
+def test_a_split_that_takes_less_than_the_rule_says_is_reported():
+    ovr = _ovr()
+    dbg = _Debugger(ovr, _script(1000, 400), counts=(13, 7))
+    report = dosfightwatch.measure_split(
+        _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
+        walk=lambda por, steps: {"met": True})
+    assert report["taken"] == 400 and report["expected_cut"] == 532
+    assert report["matches"] is False
+
+
+def test_pile_mode_refuses_to_run_without_a_folder():
+    with pytest.raises(SystemExit):
+        dosfightwatch.main(["pile"])
