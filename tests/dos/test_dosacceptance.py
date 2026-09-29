@@ -12,6 +12,7 @@ disks.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pathlib
 import signal as _signal
@@ -373,6 +374,223 @@ def test_pool_display_captures_every_member_and_returns_to_camp_before_save(
     assert game.keys[-4:] == ["m", "d", "Return", "e"]
     d.save("D")
     assert game.save_file("D").is_file()
+
+
+# -- a camp cast in Pool ---------------------------------------------------------
+
+_GREEN = b"\x55\xff\x55"
+#: The fake spell list's rows: a level header, then spells, each a distinct
+#: synthetic glyph pattern.
+_HEADER, _BLESS, _CLW, _HOLD = b"\x81\x42", b"\x18\x24", b"\x21\x12", b"\x0f\x33"
+_POSSESSIVE = b"\x44\x88"
+
+
+class CastPool(FakePool):
+    """Pool's camp `MAGIC > CAST` as the live boot showed it: the roster
+    highlight picks the caster (`End` moves it); `m` opens the Magic bar and
+    `c` the caster's spell list, titled with his name, the highlight opening
+    on the last row; `End` moves it a spell on, skipping headers and
+    wrapping; `c` casts.  A party spell types messages with no bar change and
+    no highlight for a few frames, then redraws the list without its row; a
+    targeted one shows the camp roster over the target bar, where `End`
+    moves the highlight and `Return` picks; a combat-only one asks
+    `LOSE IT`.  `e` leaves the list for the Magic bar and that for camp."""
+
+    BARS = {**FakePool.BARS, "magic": b"\x12\x45\x78", "list": b"\x13\x46\x79",
+            "target": b"\x14\x47\x7a", "lose": b"\x15\x48\x7b", "wrong": b"\x16\x49\x7c"}
+    TARGETED = {_CLW}
+
+    def __init__(self, *a, failure: str = "", rows=None, **k):
+        super().__init__(*a, **k)
+        self.failure = failure
+        self.line = 1
+        self.rows = list(rows or [_HEADER, _BLESS, _CLW, _CLW, _HEADER, _HOLD])
+        self.hl = len(self.rows) - 1
+        self.message = 0
+        self.pending: bytes | None = None
+        self.cast: list[tuple[bytes, int | None]] = []
+
+    def spell_rows(self) -> list[int]:
+        return [i for i, r in enumerate(self.rows) if r != _HEADER]
+
+    def finish(self, target: int | None) -> None:
+        self.message = 0 if self.failure == "no_return" else 3
+        self.mode = "message"
+        self.cast.append((self.pending, target))
+
+    def key(self, k, gap=0.0):
+        handled = True
+        if self.mode in ("camp", "target") and k == "End":
+            self.line = self.line % 6 + 1
+        elif self.mode == "camp" and k == "m":
+            self.mode = "wrong" if self.failure == "magic" else "magic"
+        elif self.mode == "magic" and k == "c":
+            self.mode, self.hl = "list", len(self.rows) - 1
+        elif self.mode == "list" and k == "End":
+            spells = self.spell_rows()
+            self.hl = spells[(spells.index(self.hl) + 1) % len(spells)]
+        elif self.mode == "list" and k == "c":
+            self.pending = self.rows[self.hl]
+            if self.failure == "unknown":
+                self.mode = "wrong"
+            elif self.pending == _HOLD:
+                self.mode = "lose"
+            elif self.pending in self.TARGETED:
+                self.mode = "target"
+            else:
+                self.finish(None)
+        elif self.mode == "target" and k == "Return":
+            self.finish(self.line)
+        elif self.mode == "list" and k == "e":
+            self.mode = "magic"
+        elif self.mode == "magic" and k == "e":
+            self.mode = "camp"
+        elif self.mode in ("magic", "list", "message", "target", "lose", "wrong"):
+            pass
+        else:
+            handled = False
+        if handled:
+            self.keys.append(k)
+        else:
+            super().key(k, gap)
+
+    def _list_frame(self, highlight: bool) -> dosbox.Screen:
+        px = bytearray(_screen(self.BARS["list"], b"").px)
+        who = 1 if self.failure == "wrong_title" else self.line
+        _draw_name(px, 8, 8, _pod_name(who).rstrip(b"\x00") + _POSSESSIVE, _WHITE)
+        for i, row in enumerate(self.rows):
+            _draw_name(px, 8, 40 + 8 * i, row, _WHITE if highlight and i == self.hl
+                       else _GREEN)
+        return dosbox.Screen(W, H, bytes(px))
+
+    def capture(self):
+        if self.mode == "message":
+            if self.message:
+                self.message -= 1
+                if not self.message:
+                    del self.rows[self.rows.index(self.pending)]
+                    self.mode, self.hl = "list", len(self.rows) - 1
+            return self._list_frame(highlight=False)
+        if self.mode == "list":
+            return self._list_frame(highlight=True)
+        if self.mode in ("camp", "target"):
+            return _with_roster(_screen(self.BARS[self.mode], b""), "camp", 6, self.line)
+        return super().capture()
+
+    def wait_for(self, pred, timeout: float = 30.0) -> bool:
+        return any(pred(self.capture()) for _ in range(10))
+
+
+@pytest.fixture
+def _cast_measured(monkeypatch):
+    """The fake's bars and rows stand in for the measured ones."""
+    game = dosbox.PoolOfRadiance
+    for attr, bar in (("CAMP_BAR", "camp"), ("MAGIC_BAR", "magic"),
+                      ("SPELL_LIST_BAR", "list"), ("TARGET_BAR", "target"),
+                      ("LOSE_IT_BAR", "lose")):
+        monkeypatch.setattr(game, attr, screens.bar_signature(
+            _screen(CastPool.BARS[bar], b"")))
+    px = bytearray(W * H * 3)
+    for i, row in enumerate((_BLESS, _CLW)):
+        _draw_name(px, 8, 40 + 8 * i, row, _GREEN)
+    _draw_name(px, 8, 8, _POSSESSIVE, _GREEN)
+    frame = dosbox.Screen(W, H, bytes(px))
+    rows = game.spell_rows(frame)
+    monkeypatch.setattr(game, "CAST_SPELLS", {"BLESS": (rows[0], False),
+                                              "CURE-LIGHT-WOUNDS": (rows[1], True)})
+    monkeypatch.setattr(game, "SPELL_LIST_POSSESSIVE", hashlib.sha1("".join(
+        frame.glyphs((8 + screens.CELL * i, 8, screens.CELL, screens.POD_NAME_ROWS))
+        for i in range(2)).encode()).hexdigest()[:16])
+
+
+def _cast_camp(tmp_path, **kw) -> tuple[CastPool, da.Driver]:
+    game = CastPool(tmp_path, **kw)
+    d = da.Driver(game, lambda **k: None, "A")
+    d.camp()
+    return game, d
+
+
+def test_pool_cast_bless_picks_the_caster_casts_once_and_returns_to_camp(
+        tmp_path, _cast_measured):
+    game, d = _cast_camp(tmp_path)
+    got = d.cast(2, "BLESS")
+    assert game.keys == ["e", "End", "m", "c", "End", "c", "e", "e"]
+    assert game.cast == [(_BLESS, None)]
+    assert got["rows_before"] == 1 and got["rows_after"] == 0
+    assert got["line"] == 2 and got["target"] is None
+    assert game.mode == "camp" and d.where == "camp"
+    d.save("D")
+    assert game.save_file("D").is_file()
+
+
+def test_pool_cast_a_targeted_spell_picks_the_target_with_end_and_return(
+        tmp_path, _cast_measured):
+    game, d = _cast_camp(tmp_path)
+    got = d.cast(2, "CURE-LIGHT-WOUNDS", 4)
+    # End twice from the last row to the first CLW, End twice at the target
+    # screen from the caster's line (2) to line 4.
+    assert game.keys == ["e", "End", "m", "c", "End", "End", "c", "End", "End",
+                         "Return", "e", "e"]
+    assert game.cast == [(_CLW, 4)]
+    assert got["rows_before"] == 2 and got["rows_after"] == 1
+    assert game.mode == "camp"
+
+
+@pytest.mark.parametrize("failure,rows,why", [
+    ("magic", None, "Magic bar"),
+    ("wrong_title", None, "not roster line 2's name"),
+    ("", [_HEADER, _CLW, _HEADER, _HOLD], "BLESS is not in"),
+    ("unknown", None, "a screen it does not know"),
+    ("no_return", None, "never came back"),
+])
+def test_pool_cast_stops_at_an_unexpected_screen_before_any_save(
+        tmp_path, _cast_measured, failure, rows, why):
+    game, d = _cast_camp(tmp_path, failure=failure, rows=rows)
+    with pytest.raises(da.StepFailed, match=why):
+        d.cast(2, "BLESS")
+    assert not game.save_file("D").exists()
+    if failure in ("magic", "wrong_title") or rows:
+        assert game.cast == []                  # stopped before any cast key
+    assert "e" not in game.keys[1:]             # never pressed Exit anywhere
+
+
+def test_pool_cast_never_answers_lose_it(tmp_path, _cast_measured, monkeypatch):
+    game, d = _cast_camp(tmp_path)
+    # A measured row that turns out to be combat-only: the fake's HOLD row.
+    px = bytearray(W * H * 3)
+    _draw_name(px, 8, 40, _HOLD, _GREEN)
+    hold = dosbox.PoolOfRadiance.spell_rows(dosbox.Screen(W, H, bytes(px)))[0]
+    monkeypatch.setitem(dosbox.PoolOfRadiance.CAST_SPELLS, "BLESS", (hold, False))
+    with pytest.raises(da.StepFailed, match="LOSE IT"):
+        d.cast(2, "BLESS")
+    assert game.mode == "lose" and game.keys[-1] == "c"
+
+
+def test_pool_cast_steps_parse_and_a_bad_one_is_refused():
+    step = da.parse_step("cast 2 bless")
+    assert (step.kind, step.line, step.name, step.row) == ("cast", 2, "BLESS", 0)
+    step = da.parse_step("cast 2 CURE-LIGHT-WOUNDS 5")
+    assert (step.line, step.name, step.row) == (2, "CURE-LIGHT-WOUNDS", 5)
+    for bad, why in (("cast 2 BLESS 3", "no target"),
+                     ("cast 2 CURE-LIGHT-WOUNDS", "needs a target"),
+                     ("cast 2 HOLD-PERSON", "not one"),
+                     ("cast 9 BLESS", "not a step"),
+                     ("cast 2", "not a step")):
+        with pytest.raises(ValueError, match=why):
+            da.parse_step(bad)
+
+
+@pytest.mark.parametrize("title,steps,why", [
+    ("pool", ("load", "camp", "cast 2 BLESS", "cast 2 BLESS", "save D", "read"), None),
+    ("pool", ("load", "cast 2 BLESS"), "cast needs camp first"),
+    ("curse", ("load", "begin", "camp", "cast 2 BLESS"), "pool only"),
+])
+def test_pool_cast_step_orders(title, steps, why):
+    if why is None:
+        da.validate_steps(_steps(*steps), title)
+        return
+    with pytest.raises(ValueError, match=why):
+        da.validate_steps(_steps(*steps), title)
 
 
 @pytest.mark.parametrize("failure", ("", "caster", "wrong_member", "repeated_page",

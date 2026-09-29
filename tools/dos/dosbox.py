@@ -1474,6 +1474,192 @@ class PoolOfRadiance:
         self.s.shot("leave_camp_stuck", allow_blank=True)
         raise TimeoutError("could not get back to the map from camp")
 
+    # -- casting in camp ----------------------------------------------------
+    #
+    # Read off captures of a live camp cast (`~/.cache/wish/727-bless/`).
+    # `MAGIC` (`m`) on the camp bar opens `CAST MEMORIZE SCRIBE DISPLAY REST
+    # EXIT` for the member the roster highlights; `CAST` (`c`) opens
+    # `<NAME>'S SPELLS IN MEMORY` over `CHOOSE SPELL: CAST EXIT`, a row a
+    # memorised spell under a header a level, the current row white and the
+    # list opening on its last row.  `End` moves it a spell on, skipping the
+    # headers, and wraps; `c` casts the white row.  A party spell (Bless)
+    # types `<CASTER> CASTS / BLESS` and `<MEMBER> IS BLESSED` for each
+    # member into a window over the list's foot, asking for no key, then
+    # redraws the list without that row.  A spell with a target first shows
+    # the camp roster over `CAST SPELL ON WHOM SELECT EXIT`, the caster
+    # highlighted; `End` moves the highlight and `Return` picks.  A
+    # combat-only spell asks `LOSE IT? YES NO`.  `e` leaves the list for the
+    # Magic bar and the Magic bar for camp.  Bars by `screens.bar_signature`.
+    CAMP_BAR = "e229a5f1da0130ed"
+    MAGIC_BAR = "062aa229ea7afd11"
+    SPELL_LIST_BAR = "756a9b74819cebd5"
+    TARGET_BAR = "aeccade3043c6871"
+    LOSE_IT_BAR = "4c8baf710f38c28d"
+    #: The list: sixteen 8-pixel rows from y = 40, the white row found by
+    #: `Screen.highlight_row`; each row read from x = 8 over 37 cells.
+    SPELL_LIST = (8, 40, 296, 128)
+    SPELL_ROW_CELLS = 37
+    #: The title's first cell, and the signature of the `'S` after the name.
+    SPELL_LIST_TITLE = (8, 8)
+    SPELL_LIST_POSSESSIVE = "4f07e6518e5ebf8d"
+    #: The spells `cast` knows, by `spell_rows` signature, and whether each
+    #: asks `CAST SPELL ON WHOM`.  Each row was read on one caster, SIMON.
+    CAST_SPELLS: dict[str, tuple[str, bool]] = {
+        "BLESS": ("e4d6baf46572e796", False),
+        "CURE-LIGHT-WOUNDS": ("b039acb665601fe2", True),
+    }
+
+    @classmethod
+    def spell_rows(cls, screen: Screen) -> list[str]:
+        """Each list row as one signature of its cells, blind to the highlight."""
+        x, y, _, h = cls.SPELL_LIST
+        cell = 8
+        return [hashlib.sha1("".join(
+            screen.glyphs((x + cell * i, y + cell * k, cell, cell))
+            for i in range(cls.SPELL_ROW_CELLS)).encode()).hexdigest()[:16]
+            for k in range(h // cell)]
+
+    def cast(self, spell: str, target: int | None = None, *, party_size: int = 6,
+             caster: list[str] | None = None, shot=None,
+             timeout: float = 60.0) -> dict:
+        """Cast `spell` from camp for the member the roster highlights, on
+        roster line `target` when the spell asks for one, and return to camp.
+
+        Starts and ends at the camp bar.  Each screen is known by its bar
+        before the next key; any other screen raises `TimeoutError` with
+        nothing more pressed, and `LOSE IT` is never answered.  The cast is
+        believed only when the list comes back holding one row of `spell`
+        fewer.  `caster`, the roster name's cells, is checked against the
+        list's title.  `shot(label)` is called at each screen reached.
+        """
+        from tools.dos.screens import bar_signature, roster_line
+
+        if spell not in self.CAST_SPELLS:
+            raise ValueError(f"{spell} is not one of {', '.join(self.CAST_SPELLS)}")
+        sig, targeted = self.CAST_SPELLS[spell]
+        if targeted != (target is not None):
+            raise ValueError(f"{spell} {'needs a' if targeted else 'takes no'} target")
+        snap = shot or (lambda label: None)
+        rect = self.SPELL_LIST
+
+        def bar(sc: Screen) -> str:
+            return bar_signature(sc)
+
+        def press_for(key: str, want: str, was: str, what: str) -> None:
+            # Pressed again only while the screen it was pressed at still
+            # shows: the first key after a redraw can be lost.
+            for _ in range(2):
+                self.s.key(key)
+                if self.s.wait_for(lambda sc: bar(sc) == want, 15.0):
+                    return
+                if bar(self.s.capture()) != was:
+                    raise TimeoutError(f"{what} opened a screen that is not the "
+                                       f"{'Magic bar' if want == self.MAGIC_BAR else 'spell list'}")
+            raise TimeoutError(f"{what} changed nothing")
+
+        if bar(self.s.capture()) != self.CAMP_BAR:
+            raise TimeoutError("cast starts at the camp bar, which is not showing")
+        press_for("m", self.MAGIC_BAR, self.CAMP_BAR, "MAGIC")
+        shots = [snap("cast-magic")]
+        press_for("c", self.SPELL_LIST_BAR, self.MAGIC_BAR, "CAST")
+        screen = self.s.settle(quiet=0.8, timeout=20.0)
+        if bar(screen) != self.SPELL_LIST_BAR:
+            raise TimeoutError("the spell list did not stay up")
+        shots.append(snap("cast-list"))
+        if caster is not None:
+            x, y = self.SPELL_LIST_TITLE
+            title = [screen.glyphs((x + 8 * i, y, 8, 7)) for i in range(len(caster) + 2)]
+            if title[:len(caster)] != caster or hashlib.sha1("".join(
+                    title[len(caster):]).encode()).hexdigest()[:16] != self.SPELL_LIST_POSSESSIVE:
+                raise TimeoutError("the spell list's title is not the caster's name")
+        have = self.spell_rows(screen).count(sig)
+        if not have:
+            raise TimeoutError(f"{spell} is not in the caster's memory")
+
+        here, presses, stuck = screen.highlight_row(rect), 0, 0
+        while here is None or self.spell_rows(screen)[here] != sig:
+            if here is None:
+                raise TimeoutError("the spell list shows no highlighted row")
+            if presses > rect[3] // 8 or stuck >= 2:
+                raise TimeoutError(f"{presses} presses of {LIST_DOWN} never "
+                                   f"reached {spell}")
+            was = here
+            self.s.key(LIST_DOWN)
+            presses += 1
+            self.s.wait_for(lambda sc: sc.highlight_row(rect) != was, 5.0)
+            screen = self.s.capture()
+            here = screen.highlight_row(rect)
+            stuck = stuck + 1 if here == was else 0
+        shots.append(snap("cast-spell"))
+
+        def outcome(sc: Screen) -> str | None:
+            b = bar(sc)
+            if b == self.LOSE_IT_BAR:
+                return "lose"
+            if b == self.TARGET_BAR and targeted:
+                return "target"
+            if (b == self.SPELL_LIST_BAR and sc.highlight_row(rect) is not None
+                    and self.spell_rows(sc).count(sig) == have - 1):
+                return "cast"
+            return None
+
+        def settle_on(want: str) -> Screen:
+            if not self.s.wait_for(lambda sc: outcome(sc) in (want, "lose"), timeout):
+                last = bar(self.s.capture())
+                if last == self.TARGET_BAR and not targeted:
+                    raise TimeoutError(f"{spell} asks CAST SPELL ON WHOM, which "
+                                       "CAST_SPELLS says it does not")
+                if last in (self.SPELL_LIST_BAR, self.TARGET_BAR):
+                    raise TimeoutError(f"the spell list never came back one {spell} "
+                                       "shorter")
+                raise TimeoutError("the cast reached a screen it does not know")
+            sc = self.s.capture()
+            if outcome(sc) == "lose":
+                raise TimeoutError("the game asks LOSE IT (a combat-only spell); it "
+                                   "is not answered")
+            return sc
+
+        self.s.key("c")
+        picked, target_presses = None, 0
+        if targeted:
+            sc = settle_on("target")
+            here, stuck = roster_line(sc, "camp", party_size), 0
+            while here != target:
+                if here is None:
+                    raise TimeoutError("the target roster shows no highlighted line")
+                if target_presses > 2 * party_size or stuck >= 2:
+                    raise TimeoutError(f"{LIST_DOWN} never brought the target "
+                                       f"highlight to line {target}")
+                was = here
+                self.s.key(LIST_DOWN)
+                target_presses += 1
+                self.s.wait_for(lambda sc, was=was: roster_line(sc, "camp", party_size)
+                                != was, 5.0)
+                here = roster_line(self.s.capture(), "camp", party_size)
+                stuck = stuck + 1 if here == was else 0
+            picked = here
+            shots.append(snap("cast-target"))
+            self.s.key("Return")
+        settle_on("cast")
+        screen = self.s.settle(quiet=1.0, timeout=20.0)
+        if outcome(screen) != "cast":
+            raise TimeoutError("the spell list changed again after the cast")
+        shots.append(snap("cast-done"))
+        after = self.spell_rows(screen).count(sig)
+
+        press_for("e", self.MAGIC_BAR, self.SPELL_LIST_BAR, "EXIT")
+        for _ in range(2):
+            if bar(self.s.capture()) != self.MAGIC_BAR:
+                break
+            self.s.key("e")
+            if self.s.wait_for(lambda sc: bar(sc) == self.CAMP_BAR, 15.0):
+                break
+        if not self.s.wait_for(lambda sc: bar(sc) == self.CAMP_BAR, 15.0):
+            raise TimeoutError("the camp bar did not come back after EXIT")
+        return {"spell": spell, "target": picked, "rows_before": have,
+                "rows_after": after, "list_presses": presses,
+                "target_presses": target_presses, "shots": [s for s in shots if s]}
+
     # -- the fight ---------------------------------------------------------
     #
     # Every digest below is `Screen.glyphs(BAR)` -- the bottom text row

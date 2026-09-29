@@ -63,6 +63,7 @@ a source whose title does not match `--title`:
 | `view N` | At the party menu, before `begin`.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar), `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
+| `cast N SPELL [T]` | Pool, in camp: roster line N highlighted with `End`, `MAGIC`, `CAST`, the spell list's title checked against line N's name, the highlight moved with `End` to SPELL's row (`dosbox.PoolOfRadiance.CAST_SPELLS`: `BLESS`, and `CURE-LIGHT-WOUNDS`, which needs target line T), `CAST`, T picked with `End` and `Return` at `CAST SPELL ON WHOM`, and believed only when the list comes back one SPELL row shorter; `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below); in Curse a message over the continue bar that ends the rest (Tilverton's Royal Guards) gets `Return`, the map bar is required, and the party camps again, logged as `ended_by_message` |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
@@ -1002,7 +1003,8 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
 
 STEP_HELP = ("load, begin, 'walk MI', 'walk 1', 'turn 4', camp, display, 'rest 5m', 'save D', "
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
-             "'halve 1 1', 'join 4 15', 'view 1', 'memorize 5', 'shot NAME', "
+             "'halve 1 1', 'join 4 15', 'view 1', 'memorize 5', 'cast 2 BLESS', "
+             "'cast 2 CURE-LIGHT-WOUNDS 4', 'shot NAME', "
              "'press KEY', read")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
 #: 0x0CB8), upper case.
@@ -1026,6 +1028,19 @@ def parse_step(text: str) -> Step:
     if kind in ("train", "sheet", "items", "view", "memorize", "heal", "cure") and len(
             words) == 2 and re.fullmatch(r"[1-8]", words[1]):
         return Step(kind, text, line=int(words[1]))
+    if kind == "cast" and len(words) in (3, 4) and re.fullmatch(r"[1-8]", words[1]) and (
+            len(words) == 3 or re.fullmatch(r"[1-8]", words[3])):
+        spell = words[2].upper()
+        known = dosbox.PoolOfRadiance.CAST_SPELLS
+        if spell not in known:
+            raise ValueError(f"cast {words[2]!r} is refused: the spell is not one of "
+                             f"{', '.join(known)}, the rows measured")
+        target = int(words[3]) if len(words) == 4 else 0
+        if known[spell][1] and not target:
+            raise ValueError(f"cast {spell} needs a target line: {text!r}")
+        if target and not known[spell][1]:
+            raise ValueError(f"cast {spell} takes no target: {text!r}")
+        return Step(kind, text, line=int(words[1]), name=spell, row=target)
     if kind == "change" and len(words) == 3 and re.fullmatch(r"[1-8]", words[1]):
         if words[2].upper() not in CHANGE_CLASSES:
             raise ValueError(f"change to {words[2]!r} is refused: the class is one "
@@ -1139,11 +1154,11 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "rest":
             if where != "camp":
                 raise ValueError(f"rest needs camp first: {step.text!r}")
-        elif k == "display":
+        elif k in ("display", "cast"):
             if title != "pool":
-                raise ValueError(f"display is driven in pool only, not {title}")
+                raise ValueError(f"{k} is driven in pool only, not {title}")
             if where != "camp":
-                raise ValueError(f"display needs camp first: {step.text!r}")
+                raise ValueError(f"{k} needs camp first: {step.text!r}")
         elif k == "save":
             if where not in ("camp", "party"):
                 raise ValueError(f"save needs camp first: {step.text!r}")
@@ -3218,6 +3233,32 @@ class Driver:
         return {"magic_shot": magic, "display_shot": page, "camp_shot": camp,
                 "visible_members": visible, "back_in_camp": True}
 
+    def cast(self, line: int, spell: str, target: int | None = None) -> dict:
+        """Roster line `line` casts `spell` in Pool's camp, on roster line
+        `target` when the spell asks for one, and the party is back in camp.
+
+        The screens are `dosbox.PoolOfRadiance.cast`'s; any it does not know
+        stops the run with a `lost-cast-*` shot and nothing more pressed.
+        """
+        if self.title.key != "pool" or self.camp_sig is None:
+            raise StepFailed("cast needs Pool camp first")
+        self.ensure_camp()
+        label = f"cast-{line}"
+        moved = self.pick_line(line, "camp", f"{label}-select", POOL_ROSTER_NEXT)
+        name = roster_cells(self.s.capture(), line)
+        self.shot(f"{label}-line")
+        try:
+            got = self.game.cast(spell, target or None, party_size=self.party_size,
+                                 caster=name, shot=self.shot)
+        except TimeoutError as e:
+            why = str(e)
+            if "title is not the caster's" in why:
+                why = f"the spell list's title is not roster line {line}'s name"
+            raise self.fail(label, why) from None
+        if not self.wait_camp(timeout=15.0):
+            raise self.fail(f"{label}-back", "the camp bar did not stay after EXIT")
+        return {"line": line, **moved, **got, "back": self.shot(f"{label}-back")}
+
     def save(self, letter: str) -> dict:
         if self.where == "party":
             return self.party_save(letter)
@@ -3580,6 +3621,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.rest(step.minutes)
                 elif step.kind == "display":
                     r = d.display()
+                elif step.kind == "cast":
+                    r = d.cast(step.line, step.name, step.row or None)
                 elif step.kind == "save":
                     r = d.save(step.letter)
                     saved.append(step.letter)
