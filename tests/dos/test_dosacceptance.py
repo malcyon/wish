@@ -383,6 +383,7 @@ _GREEN = b"\x55\xff\x55"
 #: synthetic glyph pattern.
 _HEADER, _BLESS, _CLW, _HOLD = b"\x81\x42", b"\x18\x24", b"\x21\x12", b"\x0f\x33"
 _POSSESSIVE = b"\x44\x88"
+_ANIMATE = b"\x3c\x66"
 
 
 class CastPool(FakePool):
@@ -399,6 +400,9 @@ class CastPool(FakePool):
     BARS = {**FakePool.BARS, "magic": b"\x12\x45\x78", "list": b"\x13\x46\x79",
             "target": b"\x14\x47\x7a", "lose": b"\x15\x48\x7b", "wrong": b"\x16\x49\x7c"}
     TARGETED = {_CLW}
+    #: The measured Animate Dead cast: from a list holding nothing else, the
+    #: game returns to the Magic bar and not to an empty list.
+    EMPTY_TO_MAGIC = False
 
     def __init__(self, *a, failure: str = "", rows=None, flip_at=None, **k):
         super().__init__(*a, **k)
@@ -482,6 +486,10 @@ class CastPool(FakePool):
                     if self.failure != "hidden_row":
                         del self.rows[self.rows.index(self.pending)]
                     self.mode, self.hl = "list", len(self.rows) - 1
+                    if self.EMPTY_TO_MAGIC and not self.spell_rows():
+                        self.mode = "magic"
+            if self.mode == "magic":
+                return _screen(self.BARS["magic"], b"")
             return self._list_frame(highlight=False, hide=hide)
         if self.mode in ("list", "target"):
             here = self.hl if self.mode == "list" else self.line
@@ -611,6 +619,39 @@ def test_pool_cast_the_last_memorised_spell_needs_no_highlight_to_be_believed(
     got = d.cast(2, "BLESS")
     assert game.rows == [_HEADER] and got["rows_after"] == 0
     assert game.mode == "camp"
+
+
+def _animate_dead_measured(monkeypatch) -> None:
+    px = bytearray(W * H * 3)
+    _draw_name(px, 8, 40, _ANIMATE, _GREEN)
+    sig = dosbox.PoolOfRadiance.spell_rows(dosbox.Screen(W, H, bytes(px)))[0]
+    monkeypatch.setitem(dosbox.PoolOfRadiance.CAST_SPELLS, "ANIMATE-DEAD", (sig, False))
+
+
+def test_pool_cast_animate_dead_sends_no_target_and_returns_to_camp(
+        tmp_path, _cast_measured, monkeypatch):
+    _animate_dead_measured(monkeypatch)
+    monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
+    game, d = _cast_camp(tmp_path, rows=[_HEADER, _ANIMATE])
+    got = d.cast(2, "ANIMATE-DEAD")
+    assert game.cast == [(_ANIMATE, None)] and got["target"] is None
+    assert got["rows_before"] == 1 and got["rows_after"] == 0
+    assert game.keys[game.keys.index("c", game.keys.index("c") + 1):].count("Return") == 0
+    assert game.mode == "camp"
+
+
+def test_pool_cast_animate_dead_step_parses_and_save_and_read_may_follow():
+    step = da.parse_step("cast 2 animate-dead")
+    assert (step.kind, step.line, step.name, step.row) == ("cast", 2, "ANIMATE-DEAD", 0)
+    with pytest.raises(ValueError, match="no target"):
+        da.parse_step("cast 2 ANIMATE-DEAD 3")
+    da.validate_steps(_steps("load", "sheet 1", "camp", "cast 2 ANIMATE-DEAD",
+                             "save D", "read"), "pool")
+
+
+def test_the_animate_dead_row_is_the_measured_one():
+    assert dosbox.PoolOfRadiance.CAST_SPELLS["ANIMATE-DEAD"] == (
+        "dc4b635ec2d5df1c", False)
 
 
 def test_pool_cast_an_unreachable_target_line_stops_at_the_bound(

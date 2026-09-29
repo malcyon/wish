@@ -1509,7 +1509,11 @@ class PoolOfRadiance:
     #     checked against it by `cast`.
     #   CAST_SPELLS rows: BLESS as it shows in the list, and as `cast` casts
     #     it; CURE-LIGHT-WOUNDS as it shows in the list; not yet exercised by
-    #     `cast`.
+    #     `cast`; ANIMATE-DEAD as it shows in the list of a cleric holding it
+    #     alone (its `3RD LEVEL` header row is `1fb7b89c23f366c0`), read from
+    #     the `700/47e480c557-c3-animate-list` capture, which also shows it
+    #     asks for no target and, cast from a list with no other spell, comes
+    #     back to MAGIC_BAR and not to the list.
     CAMP_BAR = "e229a5f1da0130ed"
     MAGIC_BAR = "062aa229ea7afd11"
     SPELL_LIST_BAR = "756a9b74819cebd5"
@@ -1527,6 +1531,7 @@ class PoolOfRadiance:
     CAST_SPELLS: dict[str, tuple[str, bool]] = {
         "BLESS": ("e4d6baf46572e796", False),
         "CURE-LIGHT-WOUNDS": ("b039acb665601fe2", True),
+        "ANIMATE-DEAD": ("dc4b635ec2d5df1c", False),
     }
 
     @classmethod
@@ -1629,6 +1634,12 @@ class PoolOfRadiance:
             # with no row to highlight.
             if b == self.SPELL_LIST_BAR and self.spell_rows(sc).count(sig) == have - 1:
                 return "cast"
+            # A cast that empties the caster's list leaves the Magic bar, not
+            # an empty list; believed only when the spell was the sole row of
+            # its kind and no row of it is left.
+            if (b == self.MAGIC_BAR and have == 1 and not targeted
+                    and self.spell_rows(sc).count(sig) == 0):
+                return "cast"
             return None
 
         def settle_on(want: str) -> Screen:
@@ -1694,7 +1705,8 @@ class PoolOfRadiance:
         shots.append(snap("cast-done"))
         after = self.spell_rows(screen).count(sig)
 
-        press_for("e", self.MAGIC_BAR, self.SPELL_LIST_BAR, "EXIT")
+        if bar(screen) != self.MAGIC_BAR:
+            press_for("e", self.MAGIC_BAR, self.SPELL_LIST_BAR, "EXIT")
         for _ in range(2):
             if bar(self.s.capture()) != self.MAGIC_BAR:
                 break
