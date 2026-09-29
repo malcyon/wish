@@ -821,7 +821,7 @@ def _draws(tmp_path, clock, monkeypatch, draws, *, questions=None, memory=None, 
         def __call__(self, holder, adf, timeout):
             guest.pending = False
             clock.now += answer_seconds
-            if reader is not None and helper.calls:
+            if reader is not None and helper.calls and reader_values:
                 with (reader / "tally.jsonl").open("a") as tally:
                     tally.write(json.dumps({"record": reader_values.pop(0)}) + "\n")
             return super().__call__(holder, adf, timeout)
@@ -1060,46 +1060,53 @@ class FakeDrawSeed:
     class DrawSeedError(ValueError):
         pass
 
-    def __init__(self, shift=0, refuse=False):
-        self.shift, self.refuse, self.staged, self.calls, self.log = shift, refuse, [], [], []
+    def __init__(self, shift=0, refuse=False, raises=None, drawn_raises=None, index_raises=None):
+        self.shift, self.refuse, self.raises, self.drawn_raises = shift, refuse, raises, drawn_raises
+        self.index_raises = index_raises
+        self.staged, self.calls, self.log = [], [], []
 
     def stage_draw(self, read, write, a4, k):
         self.calls.append((read, write, a4, k))
         self.log.append(f"seed{k}")
+        if self.raises is not None:
+            raise self.raises
         if self.refuse:
             raise self.DrawSeedError("refused by the helper")
         self.staged.append(k)
 
+    def reader_index(self, k, table=None):
+        if self.index_raises is not None:
+            raise self.index_raises
+        return 1000 + k
+
     def drawn(self, read, a4):
+        if self.drawn_raises is not None:
+            raise self.drawn_raises
         return self.staged[-1] + self.shift
 
 
-def _seeded(tmp_path, clock, monkeypatch, records, *, seed=None, reader_values=None, keep=True,
-            **kw):
+def _seeded(tmp_path, clock, monkeypatch, records, *, seed=None, reader_values=None, **kw):
     seed = seed or FakeDrawSeed()
-    if keep:
-        (tmp_path / "keep").mkdir()
-        monkeypatch.setenv(route_silver_blades.KEEP_ENV, str(tmp_path / "keep"))
-    else:
-        monkeypatch.delenv(route_silver_blades.KEEP_ENV, raising=False)
+    (tmp_path / "keep").mkdir()
+    monkeypatch.setenv(route_silver_blades.KEEP_ENV, str(tmp_path / "keep"))
     run = _draws(tmp_path, clock, monkeypatch, len(records) + 1, seed=seed,
-                 rulebook_records=records, reader=tmp_path / "keep" if keep else None,
+                 rulebook_records=records, reader=tmp_path / "keep",
                  reader_values=reader_values, **kw)
     return seed, run
 
 
 def test_each_staged_record_is_seeded_after_the_question_and_before_s(
         tmp_path, clock, readings, monkeypatch):
-    seed, run = _seeded(tmp_path, clock, monkeypatch, [3, 7], reader_values=[33, 37])
+    seed, run = _seeded(tmp_path, clock, monkeypatch, [3, 7], reader_values=[1003, 1007])
     assert run.log == ["lane", "stage", "seed3", "S", "lane", "stage", "seed7", "S"]
     assert [c[3] for c in seed.calls] == [3, 7]
     assert [c[:2] for c in seed.calls] == [(run.memory.read, run.memory.write)] * 2
     assert {c[2] for c in seed.calls} == {run.memory.BASE + A4_BIAS}
     assert run.result["rulebook"] == [
         {"draw": 2, "asked": True, "answer": "answered", "exit_game": True,
-         "staged": 3, "drawn": 3, "reader": 33},
+         "staged": 3, "drawn": 3, "reader": 1003},
         {"draw": 3, "asked": True, "answer": "answered", "exit_game": True,
-         "staged": 7, "drawn": 7, "reader": 37}]
+         "staged": 7, "drawn": 7, "reader": 1007}]
     assert run.result["success"] is True
     logged = [e for e in _events(tmp_path) if e["event"] == "draw"]
     assert [e["drawn"] for e in logged] == [3, 7]
@@ -1108,35 +1115,59 @@ def test_each_staged_record_is_seeded_after_the_question_and_before_s(
 def test_a_draw_that_is_not_the_staged_record_fails_the_run_naming_no_value(
         tmp_path, clock, readings, monkeypatch):
     _, run = _seeded(tmp_path, clock, monkeypatch, [3, 7], seed=FakeDrawSeed(shift=1),
-                     reader_values=[34, 38])
+                     reader_values=[1004, 1008])
     assert run.result["success"] is False
     assert "not the staged record" in run.result["error"]
     assert not any(ch.isdigit() for ch in run.result["error"].split("draw 2")[-1])
 
 
-def test_a_reader_index_that_moves_against_the_game_fails_the_run(
+def test_a_reader_index_other_than_the_helpers_for_the_drawn_record_fails_the_run(
         tmp_path, clock, readings, monkeypatch):
-    _, run = _seeded(tmp_path, clock, monkeypatch, [3, 7], reader_values=[33, 38])
+    _, run = _seeded(tmp_path, clock, monkeypatch, [3, 7], reader_values=[1003, 1008])
     assert run.result["success"] is False and "reader disagrees" in run.result["error"]
-    assert run.result["rulebook"][1]["reader"] == 38
+    assert run.result["rulebook"][1]["reader"] == 1008
 
 
-def test_a_draw_run_with_no_kept_tally_records_no_reader_index(
+def test_a_staged_draw_the_reader_kept_nothing_for_fails_the_run(
         tmp_path, clock, readings, monkeypatch):
-    _, run = _seeded(tmp_path, clock, monkeypatch, [3], keep=False)
-    assert run.result["rulebook"][0]["reader"] is None and run.result["success"] is True
+    _, run = _seeded(tmp_path, clock, monkeypatch, [3], reader_values=[])
+    assert run.result["success"] is False and "no single capture" in run.result["error"]
+    assert run.result["rulebook"][0]["reader"] is None
+
+
+def test_records_are_refused_before_the_claim_without_the_keep_variable(
+        tmp_path, clock, readings, monkeypatch):
+    monkeypatch.delenv(route_silver_blades.KEEP_ENV, raising=False)
+    monkeypatch.setattr(route_silver_blades, "_load_savecount",
+                        lambda: fake_stage_helper(FakeGameMemory(), []))
+    guest = AcceptGuest(clock)
+    with pytest.raises(acceptance.RouteError, match="KEEP|JOURNAL_KEEP"):
+        _accept(tmp_path, clock, guest=guest, rulebook_draws=2, rulebook_records=[1],
+                target=FakeGameMemory(), lane_check=lambda: None, deadline_seconds=3600)
+    assert guest.calls == []
 
 
 def test_the_helpers_own_refusal_stops_the_draw_with_its_type_only(
         tmp_path, clock, readings, monkeypatch):
     _, run = _seeded(tmp_path, clock, monkeypatch, [3], seed=FakeDrawSeed(refuse=True))
-    assert run.result["error"].endswith("draw 2: DrawSeedError")
+    assert run.result["error"].endswith("stage_draw failed: DrawSeedError")
     assert "refused by the helper" not in run.result["error"]
+
+
+@pytest.mark.parametrize("where", ["raises", "drawn_raises", "index_raises"])
+def test_any_helper_exception_reaches_the_error_as_its_type_only(
+        tmp_path, clock, readings, monkeypatch, where):
+    _, run = _seeded(tmp_path, clock, monkeypatch, [3], seed=FakeDrawSeed(**{where: KeyError("secret")}),
+                     reader_values=[1003])
+    assert run.result["success"] is False
+    assert "KeyError" in run.result["error"] and "secret" not in run.result["error"]
+    assert "secret" not in json.dumps(_events(tmp_path))
 
 
 def test_records_are_refused_before_the_claim_when_they_cannot_be_used(
         tmp_path, clock, readings, monkeypatch):
     guest = AcceptGuest(clock)
+    monkeypatch.setenv(route_silver_blades.KEEP_ENV, str(tmp_path))
     monkeypatch.setattr(route_silver_blades, "_load_savecount",
                         lambda: fake_stage_helper(FakeGameMemory(), []))
     kw = {"guest": guest, "target": FakeGameMemory(), "lane_check": lambda: None,
@@ -1149,6 +1180,10 @@ def test_records_are_refused_before_the_claim_when_they_cannot_be_used(
         _accept(tmp_path, clock, rulebook_draws=1, rulebook_records=[], **kw)
     monkeypatch.setattr(acceptance, "_load_drawseed", lambda: object())
     with pytest.raises(acceptance.RouteError, match="lacks stage_draw"):
+        _accept(tmp_path, clock, rulebook_draws=2, rulebook_records=[1], **kw)
+    monkeypatch.setattr(acceptance, "_load_drawseed",
+                        lambda: types.SimpleNamespace(stage_draw=1, drawn=1, DrawSeedError=1))
+    with pytest.raises(acceptance.RouteError, match="reader_index"):
         _accept(tmp_path, clock, rulebook_draws=2, rulebook_records=[1], **kw)
     assert guest.calls == []
 

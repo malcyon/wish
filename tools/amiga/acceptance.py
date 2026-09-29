@@ -151,11 +151,30 @@ class DrawCounter:
             raise RouteError(f"the lane claim was not confirmed: {type(exc).__name__}: {exc}") from exc
         self.savecount.stage_live(self.target.read, self.target.write, self.base)
         if record is not None:
-            self.drawseed.stage_draw(self.target.read, self.target.write, self.base, record)
+            # `stage_live` has already written by now; harmless, because a failure here ends the run.
+            try:
+                self.drawseed.stage_draw(self.target.read, self.target.write, self.base, record)
+            except Exception as exc:
+                raise RouteError(f"drawseed stage_draw failed: {type(exc).__name__}") from None
 
     def drawn(self) -> int:
-        """The rule-book record the game's last draw gave, from the private helper."""
-        return self.drawseed.drawn(self.target.read, self.base)
+        """The rule-book record the game's last draw gave, from the private helper.
+
+        Read after EXIT GAME; the first live run confirms the state still reads correctly then.
+        Any helper failure is reduced to its type, so no helper message reaches the run's error.
+        """
+        try:
+            return self.drawseed.drawn(self.target.read, self.base)
+        except Exception as exc:
+            raise RouteError(f"drawseed drawn failed: {type(exc).__name__}") from None
+
+
+    def reader_index(self, record: int) -> int:
+        """The table index the journal reader reports for rule-book record `record`."""
+        try:
+            return self.drawseed.reader_index(record)
+        except Exception as exc:
+            raise RouteError(f"drawseed reader_index failed: {type(exc).__name__}") from None
 
 
 def _load_drawseed() -> Any:
@@ -911,8 +930,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     run is refused before the claim when the deadline cannot cover the draws.
     `rulebook_records` gives one record number per further draw: the private `drawseed` helper
     stages each before its camp save, and after the answer its `drawn` is logged beside the
-    reader's kept-capture index; a draw that is not the staged record, or a reader index whose
-    distance from `drawn` changes between draws, fails the run.
+    reader's kept-capture index; a draw that is not the staged record, no single kept capture,
+    or a reader index other than the helper's `reader_index` for `drawn`, fails the run.
 
     `reload` runs a title with no save letters: it loads the manifest's `loaded_letter`, walks
     the route, then waits for the screen to show that slot's place (`place_state` of `state_a`)
@@ -961,10 +980,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             if rulebook_records is not None:
                 if len(rulebook_records) != rulebook_draws - 1:
                     raise RouteError("rulebook records need one number per further draw")
+                if not os.environ.get(route_silver_blades.KEEP_ENV):
+                    raise RouteError(f"rulebook records need ${route_silver_blades.KEEP_ENV} "
+                                     "set, so the reader's record can be compared")
                 drawseed = _load_drawseed()
-                if not all(hasattr(drawseed, n) for n in ("stage_draw", "drawn", "DrawSeedError")):
-                    raise RouteError("the private drawseed module lacks stage_draw, drawn "
-                                     "or DrawSeedError")
+                if not all(hasattr(drawseed, n) for n in ("stage_draw", "drawn", "reader_index", "DrawSeedError")):
+                    raise RouteError("the private drawseed module lacks stage_draw, drawn, "
+                                     "reader_index or DrawSeedError")
             counter = DrawCounter(target, savecount, lane_check, drawseed)
         elif rulebook_records is not None:
             raise RouteError("rulebook records need more than one draw")
@@ -1446,7 +1468,6 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         """Each further draw: stage the question, camp-save to slot D, answer it, camp again."""
         save, write, back = steps[-3:]
         n = len(steps)
-        offset = None
         for draw in range(2, rulebook_draws + 1):
             record = {"draw": draw, "asked": False, "answer": None, "exit_game": False}
             staged = None if rulebook_records is None else rulebook_records[draw - 2]
@@ -1456,8 +1477,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             tally_before = _keep_tally_lines()
             try:
                 counter.stage(staged)
-            except (counter.savecount.SaveCountError,
-                    *((counter.drawseed.DrawSeedError,) if staged is not None else ())) as exc:
+            except counter.savecount.SaveCountError as exc:
                 # The helper's own message can carry private detail, so only its type is kept.
                 log("draw_error", draw=draw, error=type(exc).__name__)
                 raise RouteError(f"draw {draw}: {type(exc).__name__}") from None
@@ -1485,18 +1505,14 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                         if not record["asked"]:
                             raise RouteError(f"draw {draw} reached exit_game with no question")
                 if staged is not None:
-                    try:
-                        record["drawn"] = counter.drawn()
-                    except counter.drawseed.DrawSeedError as exc:
-                        raise RouteError(f"draw {draw}: {type(exc).__name__}") from None
+                    record["drawn"] = counter.drawn()
                     record["reader"] = _reader_index(tally_before, _keep_tally_lines())
                     if record["drawn"] != staged:
                         raise RouteError(f"draw {draw}: the game's draw is not the staged record")
-                    if record["reader"] is not None:
-                        distance = record["reader"] - record["drawn"]
-                        offset = distance if offset is None else offset
-                        if distance != offset:
-                            raise RouteError(f"draw {draw}: the reader disagrees with the game's draw")
+                    if record["reader"] is None:
+                        raise RouteError(f"draw {draw}: the reader kept no single capture to compare")
+                    if record["reader"] != counter.reader_index(record["drawn"]):
+                        raise RouteError(f"draw {draw}: the reader disagrees with the game's draw")
             finally:
                 note_draw()
                 log("draw", **record)
