@@ -11,4 +11,5 @@ Tests for Pool of Radiance: its fight driver, the messages and icons it draws, a
 | `test_ohlowatch.py` | Checks that `tools/pool_of_radiance/ohlowatch.py`'s `rows` mode returns Quest Log rows from an all-zero memory window. |
 | `test_outdoorwalk.py` | Checks that `tools/pool_of_radiance/outdoorwalk.py` raises when the world bar never appears after BEGIN ADVENTURING, with a fake session whose wait times out. |
 | `test_pordossaves.py` | Checks that a C64 party converted to DOS gets the saving throws DOS Pool of Radiance's own load-time rebuild leaves, against the rule, the table in `START.EXE`, every engine-written record and the engine's own dwarves. |
+| `test_tavernbrawl.py` | Checks `tools/pool_of_radiance/tavernbrawl.py`'s byte check, its prediction of the fight's result, the charm, ally and item staging, its stop checkpoints and its answers to the tavern's menus, on a fake machine. |
 | `test_worldtiles.py` | Checks the three cell rules of `tools/pool_of_radiance/worldtiles.py` on glyphs built here. |
