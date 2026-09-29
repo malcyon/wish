@@ -33,7 +33,10 @@ stopping exec checkpoint armed at `load`: at PC it checks the code bytes there
 equal GUARD, so a hit in another overlay loaded at the same address is counted
 as `foreign` and skipped, reads each ADDR:N and A, X, Y, logs a `read-at`
 record to `run.jsonl`, and resumes.  Every stop is deleted on the way out of the
-run, and the hit counts go to `summary.json` as `read_at`.
+run.  `summary.json` gets `read_at`: `stops`, each stop's `hits` and `foreign`
+counts with `skipped` (never armed) or `retired` (deleted after 20 foreign hits)
+when set, and `degraded` (the trap failed and cleared every checkpoint, so the
+`--checkpoint` counters read `cleared`).
 
 | step | what it does and reads |
 |---|---|
@@ -1352,7 +1355,8 @@ class PoolRun:
             head = bytes(m.read(base, effects.EFFECT_MAGNITUDE_OFFSET
                                 + effects.EFFECT_SLOTS))
             clock = list(m.read(base + self.box.clock, 6))
-            # A degraded trap cleared every checkpoint, these counters too;
+            # `self.armed` is filled at `load`, before `arm_read_at`.  A degraded
+            # trap cleared every checkpoint, these counters too;
             # asking VICE for a deleted one would fail or read 0.
             cleared = self.traps is not None and self.traps.degraded
             counts = {k: ("cleared" if cleared else m.checkpoint_hits(v))
@@ -1402,11 +1406,15 @@ class PoolRun:
         self.read_at_counts = {}
         for spec in self.read_ats:
             self.read_at_counts[spec.name] = {"hits": 0, "foreign": 0}
-            self.traps.arm(spec.name, spec.pc, self._read_at_handler(spec), once=False)
+            self.traps.arm(spec.name, spec.pc, self._read_at_handler(spec, self.traps),
+                           once=False)
             if not any(s.name == spec.name for s in self.traps.stops):
                 self.read_at_counts[spec.name]["skipped"] = True
 
-    def _read_at_handler(self, spec: ReadAt):
+    def _read_at_handler(self, spec: ReadAt, traps: Traps):
+        """The stop handler for SPEC.  It holds TRAPS itself: `release_read_at`
+        clears `self.traps` before `drop` handles a pending hit.  The foreign
+        count is cumulative over the run, matched hits not included."""
         counts_for = lambda: self.read_at_counts[spec.name]   # noqa: E731
 
         def handle(m) -> None:
@@ -1421,9 +1429,9 @@ class PoolRun:
                 if counts["foreign"] >= READ_AT_FOREIGN_MAX:
                     # Every stop costs a monitor round trip; an address another
                     # overlay runs constantly would stall the game.
-                    for s in [s for s in self.traps.stops if s.name == spec.name]:
+                    for s in [s for s in traps.stops if s.name == spec.name]:
                         m.checkpoint_delete(s.cp)
-                        self.traps.stops.remove(s)
+                        traps.stops.remove(s)
                     counts["retired"] = True
                     self.log.emit("read-at-retired", name=spec.name,
                                   foreign=counts["foreign"])

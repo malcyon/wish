@@ -7485,6 +7485,17 @@ def test_release_read_at_deletes_every_stop(tmp_path):
     assert machine.checkpoints == {} and set(got["stops"]) == {"read-at-09DD", "read-at-0C8C"}
 
 
+def test_release_read_at_handles_a_pending_twentieth_foreign_hit(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+    machine.mem[0x09DD] = 0x00
+    run.read_at_counts["read-at-09DD"]["foreign"] = A.READ_AT_FOREIGN_MAX - 1
+    machine.hit(0x09DD)
+    run.release_read_at()
+    assert machine.checkpoints == {}
+    assert run.log.of("read-at-release-failed") == []
+    assert len(run.log.of("read-at-retired")) == 1
+
+
 def test_release_read_at_does_not_raise_when_the_emulator_is_gone(tmp_path):
     run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
 
