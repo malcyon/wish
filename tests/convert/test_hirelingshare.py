@@ -169,3 +169,32 @@ def test_the_amiga_writer_gives_the_byte_the_dos_writer_gives(share):
     amiga, _itm, _spc, _rep = _to_amiga(_c64_companion(share))
     assert dos[DOS_SHARE] == amiga[AMIGA_SHARE] == \
         dos_codec.dos_share_from_c64(share)
+
+
+def _player(share: int) -> CharacterRecord:
+    rec = CharacterRecord.blank()
+    rec.set("name", b"HERO")
+    rec.set("treasure_share", share)
+    return rec
+
+
+@pytest.mark.parametrize("share", (0x04, 0x84, 0xFF))
+def test_a_c64_player_characters_share_with_bit_2_is_still_refused(share):
+    """His byte in that slot is not a share, so nothing says what to clear."""
+    rec = _player(share)
+    assert not rec.get("flags_0b8") & 0x80
+    with pytest.raises(ValueError, match="bit 2 set"):
+        _to_dos(rec)
+    with pytest.raises(ValueError, match="bit 2 set"):
+        _to_amiga(_player(share))
+
+
+@pytest.mark.parametrize("game", ("curse-of-the-azure-bonds",
+                                  "secret-of-the-silver-blades"))
+@pytest.mark.parametrize("share", (0x04, 0x84, 0xFF))
+def test_a_c64_companions_share_with_bit_2_is_still_refused_outside_pool(
+        game, share):
+    """Only Pool of Radiance's DOS and Amiga masks are measured."""
+    rec = _c64_companion(share)
+    with pytest.raises(ValueError, match="bit 2 set"):
+        dos_codec.write(c64_codec.read(rec, game=game))

@@ -1075,10 +1075,17 @@ def _expected_treasure_share(record: CharacterRecord,
     Those engines count bit 2 as a part and the C64 does not, so the writer
     clears it (`goldbox.dos_codec.dos_share_from_c64`). `None` for a source
     that is not the C64 (a DOS or Amiga byte is copied as it is), for a
-    native or C64 destination, and for a byte with bit 2 clear.
+    native or C64 destination, for a title other than Pool of Radiance, for a
+    player character, and for a byte with bit 2 clear.
     """
     if (source_port != "c64" or destination.native
             or destination.port not in ("dos", "amiga")):
+        return None
+    # Only a Pool of Radiance companion is rewritten; a player character's
+    # byte and the other titles' stay refused by the writer.
+    if (getattr(destination.title, "key", destination.title)
+            != dos_codec.POOL_OF_RADIANCE.key
+            or not int(record.get("flags_0b8")) & 0x80):
         return None
     return dos_codec.dos_share_from_c64(int(record.get("treasure_share")))
 
@@ -1604,7 +1611,7 @@ def validate(destination: Destination, files: dict[str, bytes],
              expected: "list[CharacterRecord] | None" = None,
              accounted: "list[str] | tuple[str, ...]" = (),
              expected_names: "list[str] | None" = None,
-             source_port: "str | None" = None) -> None:
+             *, source_port: "str | None") -> None:
     """Open the prepared bytes as a saved game, somewhere else entirely.
 
     Two checks, both before a byte of the player's destination is touched.

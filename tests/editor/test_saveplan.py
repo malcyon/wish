@@ -655,3 +655,20 @@ def test_a_c64_hireling_is_expected_with_bit_2_cleared_and_no_other_byte(port):
     lines = saveplan.compare([_hireling(0xFF)], [_hireling(0xFF, True)],
                              destination, source_port="c64")
     assert any("treasure_share" in line for line in lines)
+
+
+def test_a_c64_share_with_bit_2_is_expected_rewritten_only_for_a_pool_companion():
+    """A player character's byte and another title's companion keep the
+    writer's refusal, so the check expects them unchanged."""
+    destination = _destination("dos", c64_port.POOL_OF_RADIANCE)
+    player = _hireling(0xFF)
+    player.set("flags_0b8", 0)
+    lines = saveplan.compare([player], [_hireling(0xFB, True)],
+                             destination, source_port="c64")
+    assert any("treasure_share" in line for line in lines)
+    for title in (c64_port.CURSE_OF_THE_AZURE_BONDS,
+                  c64_port.SECRET_OF_THE_SILVER_BLADES):
+        other = _destination("dos", title)
+        lines = saveplan.compare([_hireling(0xFF)], [_hireling(0xFB, True)],
+                                 other, source_port="c64")
+        assert any("treasure_share" in line for line in lines), title

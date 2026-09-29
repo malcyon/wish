@@ -3388,14 +3388,12 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                        "preserved. For a player character that byte is the "
                        "ability-altered flag MODIFY CHARACTER's KEEP writes "
                        "rather than a share, and a C64 source's own flag "
-                       "arrives in it. A C64 byte with bit 2 set is "
-                       "written with that bit cleared ($04 as $08): the "
-                       "C64 masks a companion's share with 3 in Pool of "
-                       "Radiance, Curse of the Azure Bonds and Secret of "
-                       "the Silver Blades, and this engine with 7. Measured "
-                       "for Pool of Radiance; the other two by the same "
-                       "code, and a title not measured is rewritten the "
-                       "same way (dos_share_from_c64)"),
+                       "arrives in it. A Pool of Radiance companion's C64 "
+                       "byte with bit 2 set is written with that bit "
+                       "cleared ($04 as $08), because the C64 masks the "
+                       "share with 3 and this engine with 7 "
+                       "(dos_share_from_c64). A player character's byte, "
+                       "and any other title's, is refused as before"),
 )
 
 #: Neutral fields the DOS writer takes nothing from, and why.  Reported by
@@ -4542,14 +4540,16 @@ def set_window_source(char: NeutralCharacter, raw: bytes) -> None:
 def dos_share_from_c64(raw: int) -> int:
     """The DOS or Amiga treasure share that splits treasure as C64 `raw` does.
 
-    Pool of Radiance's engines skip a companion whose raw byte is zero and
-    otherwise give him `raw & mask` parts: the C64 masks with 3
+    For a Pool of Radiance companion only: the writer and the Save As check
+    apply it to nothing else.  The engines skip a companion whose raw byte is
+    zero and otherwise give him `raw & mask` parts: the C64 masks with 3
     (`POST.COM $194A`), DOS with 7 (`GAME.OVR 0x0068AC`) and the Amiga with 7
-    (`/program 0x02DA38`).  The C64 code is the same in Curse of the Azure
-    Bonds (`$1918`) and Secret of the Silver Blades (`$199E`); their DOS and
-    Amiga masks are not measured here.  Bit 2 is a part on DOS and the Amiga
-    and nothing on the C64, so it alone is cleared; `$04`, which that would
-    leave zero, becomes `$08`, not zero and no parts.
+    (`/program 0x02DA38`).  Curse of the Azure Bonds and Secret of the Silver
+    Blades share the C64 code, but their DOS and Amiga masks are not measured,
+    and a player character's byte in that slot is a different flag.  Bit 2 is
+    a part on DOS and the Amiga and nothing on the C64, so it alone is
+    cleared; `$04`, which that would leave zero, becomes `$08`, not zero and
+    no parts.
     """
     raw &= 0xFF
     if not raw & 0x04:
@@ -5971,7 +5971,13 @@ def write(char: NeutralCharacter,
     share_index = control_index + 1
     share_offset = f83.offset + share_index
     share = use("treasure_share")
-    if share is not None and char.port == "C64" and int(share.value) & 0x04:
+    # Only a Pool of Radiance companion's byte is a share the C64 masks with
+    # 3; a player character's byte there is a different flag, and the other
+    # titles' DOS and Amiga masks are not measured, so both keep the refusal.
+    rewrite_share = (share is not None and char.port == "C64"
+                     and deltas is POOL_OF_RADIANCE and bool(w.get("npc"))
+                     and int(share.value) & 0x04)
+    if rewrite_share:
         written = dos_share_from_c64(int(share.value))
         rec[share_offset] = written
         emit(share, "field_83_87", share_offset, 1,
@@ -5979,6 +5985,10 @@ def write(char: NeutralCharacter,
              f"nothing on the C64, so it is cleared, giving the same "
              f"{written & 7} parts and the same zero test")
     elif share is not None:
+        if char.port == "C64" and int(share.value) & 0x04:
+            raise ValueError(
+                f"treasure share {int(share.value):#04x} has bit 2 set; "
+                "DOS and Amiga records mask shares with 7")
         rec[share_offset] = int(share.value) & 0xFF
         emit(share, "field_83_87", share_offset, 1,
              " -- raw treasure share, unchanged")
