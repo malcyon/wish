@@ -24,16 +24,7 @@ from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import QTableView
 
-# EMPTY is re-exported: the form's tests read it as `effects.EMPTY`.
-from goldbox.traits import (  # noqa: F401
-    EMPTY,
-    FILL,
-    NAMES,
-    SLOTS,
-    confidence,
-    describe,
-    for_game,
-)
+from goldbox.traits import FILL, SLOTS, confidence, describe, for_game
 
 FADED = QColor("#808080")
 UNSURE = QColor("#7d6608")     # a GUESS, coloured the way an NPC name is

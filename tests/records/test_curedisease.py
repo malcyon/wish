@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from goldbox import effects
+from goldbox import effects, paladin
 from tools.c64 import curedisease
 
 #: What the instruction read settles, one row a title.
@@ -205,9 +205,9 @@ def test_dos_leaves_a_former_paladins_node_running_and_refreshes_it_at_level_0(
 
 
 def test_dos_and_the_c64_refill_to_the_same_count_through_level_15():
-    assert [curedisease.dos_full_count(level) for level in range(1, 16)] == \
+    assert [paladin.dos_full_count(level) for level in range(1, 16)] == \
         [curedisease.full_count(level) for level in range(1, 16)]
-    assert curedisease.dos_full_count(16) == 4
+    assert paladin.dos_full_count(16) == 4
     assert curedisease.full_count(16) == 3
 
 
@@ -267,10 +267,10 @@ def test_the_uses_byte_is_the_dos_uses_and_a_node_is_a_row(case):
     title, level, cures, minutes = case
     want = WRITER_CASES[case]
     if want is None:
-        with pytest.raises(curedisease.Unrepresentable):
-            curedisease.c64_cure_write(title, level, cures, minutes, CLOCK)
+        with pytest.raises(paladin.Unrepresentable):
+            paladin.c64_cure_write(title, level, cures, minutes, CLOCK)
         return
-    got = curedisease.c64_cure_write(title, level, cures, minutes, CLOCK)
+    got = paladin.c64_cure_write(title, level, cures, minutes, CLOCK)
     assert (got.cures, got.rows) == want
     if minutes is not None:
         (_, byte, magnitude), = got.rows
@@ -324,7 +324,7 @@ def test_c64_silver_blades_plays_back_one_use_of_three_as_written():
     """Silver Blades starts the timer on the absence of a row, as DOS does,
     so `0x012` = 1 and no row gives him DOS's one cure and DOS's recovery:
     seven days after he cures, to the C64's midnight."""
-    write = curedisease.c64_cure_write(SILVER, 11, 1, None, CLOCK)
+    write = paladin.c64_cure_write(SILVER, 11, 1, None, CLOCK)
     assert (write.cures, write.rows) == (1, ())
     for cure_at in (0, 5 * 1440):
         cures, back = _silver_c64(write.cures, [], cure_at)
@@ -356,7 +356,7 @@ def test_the_written_c64_state_plays_back_a_dos_node():
     `0x012` = 1 and a `$C3` row: the cure leaves 0, and the three come back
     when the row runs out -- at 4098 minutes, the nearest the C64's day unit
     gets to 4000 -- whenever he cured."""
-    write = curedisease.c64_cure_write(CURSE, 11, 1, NODE, CLOCK)
+    write = paladin.c64_cure_write(CURSE, 11, 1, NODE, CLOCK)
     (_, byte, _), = write.rows
     left = effects.remaining_minutes(byte, CLOCK)
     for cure_at in (0, 1000, 3000):

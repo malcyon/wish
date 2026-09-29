@@ -12,7 +12,7 @@ import re
 
 import pytest
 
-from automap.state import AREA_NAMES, AutomapState
+from automap.state import AutomapState
 from goldbox import areas
 from goldbox.areas import (
     CURSE_OF_THE_AZURE_BONDS,
@@ -317,11 +317,10 @@ def test_the_tables_are_read_only_views():
 
 
 def test_area_names_is_a_view_over_por_areas_and_is_keyed_by_title():
-    assert AREA_NAMES is areas.GEO_NAMES
-    assert AREA_NAMES[POOL_OF_RADIANCE]["GEO00"] == "New Phlan"
-    assert (AREA_NAMES[CURSE_OF_THE_AZURE_BONDS]["GEO20"]
+    assert areas.GEO_NAMES[POOL_OF_RADIANCE]["GEO00"] == "New Phlan"
+    assert (areas.GEO_NAMES[CURSE_OF_THE_AZURE_BONDS]["GEO20"]
             == "Zhentil Keep streets")
-    assert AREA_NAMES[CURSE_OF_THE_AZURE_BONDS] != AREA_NAMES[POOL_OF_RADIANCE]
+    assert areas.GEO_NAMES[CURSE_OF_THE_AZURE_BONDS] != areas.GEO_NAMES[POOL_OF_RADIANCE]
 
 
 def test_the_old_hand_written_names_all_survived_the_move():

@@ -384,13 +384,13 @@ def with_effect(machine, code: int, *owners: int) -> MemoryTarget:
     which is what a slot the game has never used holds. `active_effects`
     filters on the id and nothing else, so that is all it takes.
     """
-    from automap import live
-    ids = bytearray(live.EFFECT_SLOTS)
-    who = bytearray(live.EFFECT_SLOTS)
+    from goldbox import effects
+    ids = bytearray(effects.EFFECT_SLOTS)
+    who = bytearray(effects.EFFECT_SLOTS)
     for slot, owner in enumerate(owners):
         ids[slot], who[slot] = code, owner
-    machine.memory[combat.SAVE_HEAD + live.EFFECT_ID_OFFSET] = bytes(ids)
-    machine.memory[combat.SAVE_HEAD + live.EFFECT_OWNER_OFFSET] = bytes(who)
+    machine.memory[combat.SAVE_HEAD + effects.EFFECT_ID_OFFSET] = bytes(ids)
+    machine.memory[combat.SAVE_HEAD + effects.EFFECT_OWNER_OFFSET] = bytes(who)
     return machine
 
 
@@ -460,13 +460,13 @@ def test_two_helpless_traits_at_once_list_each_on_its_own_line_ascending():
     """A combatant carrying more than one of the three shows each, in
     ascending id order, so the tooltip is deterministic."""
     machine = arena()
-    from automap import live
-    ids = bytearray(live.EFFECT_SLOTS)
-    who = bytearray(live.EFFECT_SLOTS)
+    from goldbox import effects
+    ids = bytearray(effects.EFFECT_SLOTS)
+    who = bytearray(effects.EFFECT_SLOTS)
     ids[0], who[0] = combat.SLEEPING, 8
     ids[1], who[1] = combat.HELPLESS, 8
-    machine.memory[combat.SAVE_HEAD + live.EFFECT_ID_OFFSET] = bytes(ids)
-    machine.memory[combat.SAVE_HEAD + live.EFFECT_OWNER_OFFSET] = bytes(who)
+    machine.memory[combat.SAVE_HEAD + effects.EFFECT_ID_OFFSET] = bytes(ids)
+    machine.memory[combat.SAVE_HEAD + effects.EFFECT_OWNER_OFFSET] = bytes(who)
     orc = combat.read_battle(machine).enemies[0]
     lines = orc.lines()
     assert lines.index("Helpless") < lines.index("Sleeping")

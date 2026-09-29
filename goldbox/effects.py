@@ -1,13 +1,11 @@
 """The active-effect arrays at `SAVEDGAME0` `$4900`, and the spell table that
 gives a new one its duration.
 
-Ported out of `automap/live.py` on `#13 (Edit traits and active effects, in
-two separate panels)`, because the panels that read and write this belong to
-`editor/`, and `editor/` may not import `automap` -- `tests/wish/test_wish.py::
-test_editor_imports_nothing_live` is what enforces it. `automap/live.py`
-imports these same names back, so `automap/combat.py`, `tools/gui/combatshot.py`,
-`tools/gui/livestrip.py` and `tests/c64/test_coldread.py` still resolve them as
-`live.EFFECT_ID_OFFSET` and so on.
+Here rather than in `automap/live.py`, because the panels that read and write
+this belong to `editor/`, and `editor/` may not import `automap` --
+`tests/wish/test_wish.py::test_editor_imports_nothing_live` is what enforces it.
+`automap/live.py` imports only `Effect` and `active_effects`; every other
+consumer reads the names from here.
 
 No Qt and no emulator here, the same rule the rest of `goldbox/` follows --
 `load_effect_table` is the one function that touches a disk, and it is bytes

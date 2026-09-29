@@ -32,14 +32,6 @@ from .notes import Note
 from .paths import data_dir as _data_dir
 from .target import Fix, read_fix
 
-#: A read-only view over `goldbox/areas.py`, keyed **by game title first**. This
-#: used to be a flat `GEO -> name` dictionary, which was a Pool of Radiance
-#: table with nothing saying so: `GEO15` exists in Curse of the Azure Bonds too
-#: (`docs/120-curse-testing.md`), and a Curse party standing in it was labelled
-#: "Sokol Keep". Use `goldbox.areas.area_name`, which degrades an unknown title to
-#: "area 21" instead of guessing.
-AREA_NAMES = areas.GEO_NAMES
-
 #: Said on the strip and the area label while the party is on the travel
 #: grid, where none of the loaded maps reach -- `#205 (A party that walks out
 #: onto the travel grid leaves the automapper's marker behind)`. The grid

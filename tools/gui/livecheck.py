@@ -64,7 +64,7 @@ from automap.maps import load_maps  # noqa: E402
 from automap.state import Automapper  # noqa: E402
 from automap.target import party_fix  # noqa: E402
 from automap.vice import banked  # noqa: E402
-from goldbox import c64_port, items, savegame  # noqa: E402
+from goldbox import c64_port, effects, items, savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -811,10 +811,10 @@ class Run:
         groups = live.condition_badges(self.game)
         who = snap.characters[0]
         base = self.game.save_load_address
-        rows = ((live.EFFECT_ID_OFFSET, self.BADGE_ID),
-                (live.EFFECT_OWNER_OFFSET, who.slot),
-                (live.EFFECT_DURATION_OFFSET, 8),
-                (live.EFFECT_MAGNITUDE_OFFSET, 0))
+        rows = ((effects.EFFECT_ID_OFFSET, self.BADGE_ID),
+                (effects.EFFECT_OWNER_OFFSET, who.slot),
+                (effects.EFFECT_DURATION_OFFSET, 8),
+                (effects.EFFECT_MAGNITUDE_OFFSET, 0))
         was = {at: self.target.read(base + at, 1)[0] for at, _v in rows}
         for at, value in rows:
             self.target.write(base + at, bytes([value]))

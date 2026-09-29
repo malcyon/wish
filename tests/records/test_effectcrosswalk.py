@@ -338,27 +338,27 @@ def test_the_ability_pair_proof_rejects_a_changed_engine(later, part):
     (0xE6, (2, 0)),
 ])
 def test_one_byte_carries_a_whole_later_score(data, score):
-    assert cross.later_node_score(data) == score
+    assert effects.later_node_score(data) == score
     if data < 0x80:
-        assert cross.later_node_data(*score) == data
+        assert effects.later_node_data(*score) == data
 
 
 def test_every_enlarge_level_round_trips_through_the_engines_own_byte():
-    data = [cross.later_node_data(*score) for score in effects.ENLARGE_STRENGTHS]
+    data = [effects.later_node_data(*score) for score in effects.ENLARGE_STRENGTHS]
     assert data == [1, 2, 52, 77, 92, 101, 119, 120, 121, 122]
-    assert [cross.later_node_score(byte) for byte in data] == list(
+    assert [effects.later_node_score(byte) for byte in data] == list(
         effects.ENLARGE_STRENGTHS)
 
 
 def test_a_strength_of_one_and_18_over_100_share_one_byte():
-    assert cross.later_node_data(1, 0) == cross.later_node_data(18, 100) == 101
-    assert cross.later_node_score(101) == (18, 100)
+    assert effects.later_node_data(1, 0) == effects.later_node_data(18, 100) == 101
+    assert effects.later_node_score(101) == (18, 100)
 
 
 @pytest.mark.parametrize("strength, percentile", [(0, 0), (156, 0), (18, 101)])
 def test_a_score_outside_the_engines_range_is_refused(strength, percentile):
     with pytest.raises(ValueError, match="1 to 155"):
-        cross.later_node_data(strength, percentile)
+        effects.later_node_data(strength, percentile)
 
 
 def test_a_record_store_sweep_reads_its_displacement_and_its_pointer():

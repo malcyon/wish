@@ -3711,6 +3711,7 @@ def test_the_effect_list_shows_an_elfs_racial_resistance(editor):
     """107 in the first slot is what GEN seeds an elf with, and the editor
     showed no sign of it before."""
     from editor import effects
+    from goldbox import traits
     view = editor._widgets["item_effects"]
     editor.roster.selectRow(5)                     # MALCYON -- row 5, #160; an elf
     assert view.codes()[0] == 107
@@ -3719,7 +3720,7 @@ def test_the_effect_list_shows_an_elfs_racial_resistance(editor):
     assert view.model_.rowCount() == effects.SLOTS
     editor.roster.selectRow(3)                     # ROLAND -- row 3, #160; a human
     assert not any(view.codes())
-    assert view.model_.data(view.model_.index(0, 1)) == effects.EMPTY
+    assert view.model_.data(view.model_.index(0, 1)) == traits.EMPTY
 
 
 def test_a_code_nobody_has_named_is_shown_as_a_number():

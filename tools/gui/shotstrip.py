@@ -75,6 +75,7 @@ from PyQt6.QtWidgets import QApplication, QMainWindow  # noqa: E402
 from automap import live  # noqa: E402
 from automap.panel import BottomStrip  # noqa: E402
 from automap.state import AutomapState  # noqa: E402
+from goldbox.effects import FIRST_MONSTER, PARTY_WIDE  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 from wish.ui_window import Ui_WishWindow  # noqa: E402
 
@@ -89,11 +90,11 @@ def snapshot(party, monsters: int):
     Only the effect table matters here; everything else is what an empty
     machine would answer, because the row reads nothing else.
     """
-    effects = [live.Effect(slot=i, id=n, owner=live.PARTY_WIDE, duration=8,
+    effects = [live.Effect(slot=i, id=n, owner=PARTY_WIDE, duration=8,
                            magnitude=0)
                for i, n in enumerate(party)]
     effects += [live.Effect(slot=len(effects) + i, id=39,
-                            owner=live.FIRST_MONSTER + i, duration=8,
+                            owner=FIRST_MONSTER + i, duration=8,
                             magnitude=0)
                 for i in range(monsters)]
     return live.Snapshot(characters=(), effects=tuple(effects), x=3, y=14,

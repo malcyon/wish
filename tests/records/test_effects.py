@@ -28,21 +28,27 @@ def test_the_four_offsets_match_the_cold_read_evidence():
     assert effects.EFFECT_SLOTS == coldread.EFFECT_SLOTS
 
 
-def test_automap_live_reexports_the_same_names():
-    """`automap/live.py` imports these back under the same names, so
-    `automap/combat.py`, `tools/gui/combatshot.py`, `tools/gui/livestrip.py` and
-    `tests/c64/test_coldread.py` still resolve `live.EFFECT_ID_OFFSET` and the
-    rest unchanged.
-    """
-    from automap import live
+_FORWARDED = (
+    ("automap.live", ("EFFECT_ID_OFFSET", "EFFECT_OWNER_OFFSET",
+                      "EFFECT_DURATION_OFFSET", "EFFECT_MAGNITUDE_OFFSET",
+                      "EFFECT_SLOTS", "FIRST_MONSTER", "PARTY_WIDE",
+                      "DURATION_COUNT", "DURATION_UNIT")),
+    ("tools.c64.effectcrosswalk", ("later_node_data", "later_node_score")),
+    ("editor.effects", ("EMPTY", "NAMES")),
+    ("tools.c64.curedisease", ("CURE_TIMER", "CureWrite", "Unrepresentable",
+                               "c64_cure_write", "dos_full_count")),
+    ("automap.state", ("AREA_NAMES",)),
+)
 
-    for name in ("EFFECT_ID_OFFSET", "EFFECT_OWNER_OFFSET",
-                 "EFFECT_DURATION_OFFSET", "EFFECT_MAGNITUDE_OFFSET",
-                 "EFFECT_SLOTS", "FIRST_MONSTER", "PARTY_WIDE",
-                 "DURATION_COUNT", "DURATION_UNIT"):
-        assert getattr(live, name) is getattr(effects, name)
-    assert live.Effect is effects.Effect
-    assert live.active_effects is effects.active_effects
+
+@pytest.mark.parametrize(
+    "module, name",
+    [(m, n) for m, names in _FORWARDED for n in names])
+def test_the_modules_that_forwarded_a_moved_name_no_longer_do(module, name):
+    """Each name lives in `goldbox`; its callers import it from there."""
+    import importlib
+
+    assert not hasattr(importlib.import_module(module), name)
 
 
 def _blank_payload() -> bytearray:
@@ -1792,8 +1798,6 @@ def test_a_later_mirror_image_count_survives_and_its_level_becomes_the_count(
 
 
 def test_the_two_node_score_helpers_live_in_goldbox_and_the_crosswalk_uses_them():
-    assert effectcrosswalk.later_node_score is effects.later_node_score
-    assert effectcrosswalk.later_node_data is effects.later_node_data
     assert effects.later_node_score(0x7B) == (23, 0)
     assert effects.later_node_data(23, 0) == 0x7B
 

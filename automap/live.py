@@ -39,19 +39,7 @@ import pathlib
 from dataclasses import dataclass
 
 from goldbox import c64_port, levels, titles, traits
-from goldbox.effects import (  # noqa: F401 -- re-exported, see the note below
-    DURATION_COUNT,
-    DURATION_UNIT,
-    EFFECT_DURATION_OFFSET,
-    EFFECT_ID_OFFSET,
-    EFFECT_MAGNITUDE_OFFSET,
-    EFFECT_OWNER_OFFSET,
-    EFFECT_SLOTS,
-    FIRST_MONSTER,
-    PARTY_WIDE,
-    Effect,
-    active_effects,
-)
+from goldbox.effects import Effect, active_effects
 from goldbox.items import items_for_slot, load_item_names
 from goldbox.record import FieldNotStored
 from goldbox.savegame import (
@@ -69,17 +57,6 @@ _log = logging.getLogger("wish.automap.live")
 
 ROSTER_PAGE = ROSTER_COUNT * ROSTER_STRIDE            # $100
 
-# EFFECT_ID_OFFSET, EFFECT_OWNER_OFFSET, EFFECT_DURATION_OFFSET,
-# EFFECT_MAGNITUDE_OFFSET, EFFECT_SLOTS, FIRST_MONSTER, PARTY_WIDE,
-# DURATION_COUNT, DURATION_UNIT, Effect and active_effects moved to
-# `goldbox/effects.py` on `#13 (Edit traits and active effects, in two
-# separate panels)`, because the editor's traits and active-effects panels
-# need them and `editor/` may not import `automap`
-# (`tests/wish/test_wish.py::test_editor_imports_nothing_live`). Imported above
-# under the same names, so `automap/combat.py`, `tools/gui/combatshot.py`,
-# `tools/gui/livestrip.py` and `tests/c64/test_coldread.py` still resolve
-# `live.EFFECT_ID_OFFSET` and the rest unchanged.
-
 
 def memory_blocks(game: c64_port.C64Container | None = None):
     """The ranges one poll reads, as (address, length), for this title.
@@ -96,10 +73,8 @@ def memory_blocks(game: c64_port.C64Container | None = None):
     return (payload, (c64.machine_for(game).roster_base, ROSTER_PAGE))
 
 
-# `FIRST_MONSTER`, `PARTY_WIDE`, `DURATION_COUNT` and `DURATION_UNIT` moved to
-# `goldbox/effects.py` with the offsets above -- see the note beside the
-# import. A row reading only `PARTY_WIDE` still draws nothing for Bless, which
-# is why `Snapshot.whole_party_effects` below is the union of the two shapes.
+# A row reading only `PARTY_WIDE` still draws nothing for Bless, which is why
+# `Snapshot.whole_party_effects` below is the union of the two forms.
 
 # The quickfight bit, in the roster block: byte `+0x0C`, bit 7. CONFIRMED --
 # "The quickfight bit is roster `+0x0C`" in `docs/50-experiments.md`, where

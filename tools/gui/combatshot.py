@@ -44,6 +44,7 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 from automap import combat, live  # noqa: E402
 from automap.target import MemoryTarget, ViceTarget  # noqa: E402
 from automap.window import CombatCanvas  # noqa: E402
+from goldbox import effects  # noqa: E402
 from tools.gui import shotwindow  # noqa: E402,F401  (shotwindow: side effect)
 from tools.registry import scratch  # noqa: E402,F401  (shotwindow: side effect)
 
@@ -64,23 +65,23 @@ def from_arena(helpless: list[int]):
 
     target = MemoryTarget(synthetic_arena())
     if helpless:
-        ids = bytearray(live.EFFECT_SLOTS)
-        owners = bytearray(live.EFFECT_SLOTS)
-        for slot, index in enumerate(helpless[:live.EFFECT_SLOTS]):
+        ids = bytearray(effects.EFFECT_SLOTS)
+        owners = bytearray(effects.EFFECT_SLOTS)
+        for slot, index in enumerate(helpless[:effects.EFFECT_SLOTS]):
             ids[slot], owners[slot] = combat.HELPLESS, index
-        target.memory[combat.SAVE_HEAD + live.EFFECT_ID_OFFSET] = bytes(ids)
-        target.memory[combat.SAVE_HEAD + live.EFFECT_OWNER_OFFSET] = \
+        target.memory[combat.SAVE_HEAD + effects.EFFECT_ID_OFFSET] = bytes(ids)
+        target.memory[combat.SAVE_HEAD + effects.EFFECT_OWNER_OFFSET] = \
             bytes(owners)
     head = target.read(combat.SAVE_HEAD, combat.SAVE_HEAD_LEN)
     return head, combat.read_battle(target)
 
 
 def say_effects(head: bytes) -> None:
-    for label, offset in (("id ", live.EFFECT_ID_OFFSET),
-                          ("own", live.EFFECT_OWNER_OFFSET),
-                          ("dur", live.EFFECT_DURATION_OFFSET),
-                          ("mag", live.EFFECT_MAGNITUDE_OFFSET)):
-        block = head[offset:offset + live.EFFECT_SLOTS]
+    for label, offset in (("id ", effects.EFFECT_ID_OFFSET),
+                          ("own", effects.EFFECT_OWNER_OFFSET),
+                          ("dur", effects.EFFECT_DURATION_OFFSET),
+                          ("mag", effects.EFFECT_MAGNITUDE_OFFSET)):
+        block = head[offset:offset + effects.EFFECT_SLOTS]
         print(f"    {label} ${combat.SAVE_HEAD + offset:04X}: "
               f"{block.hex(' ')}")
     running = live.active_effects(head)

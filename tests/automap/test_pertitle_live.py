@@ -24,7 +24,7 @@ save anybody holds was taken with a spell running on a later title.
 import dataclasses
 
 from automap import c64, live
-from goldbox import c64_port, traits
+from goldbox import c64_port, effects, traits
 from goldbox.record import CharacterRecord
 from goldbox.savegame import SaveGame0
 
@@ -65,9 +65,9 @@ def _payload(game, record, effect=None, owner=0) -> bytes:
     save0.write_record(0, record)
     data = bytearray(save0.to_bytes())
     if effect is not None:
-        data[live.EFFECT_ID_OFFSET] = effect
-        data[live.EFFECT_OWNER_OFFSET] = owner
-        data[live.EFFECT_DURATION_OFFSET] = 8
+        data[effects.EFFECT_ID_OFFSET] = effect
+        data[effects.EFFECT_OWNER_OFFSET] = owner
+        data[effects.EFFECT_DURATION_OFFSET] = 8
     return bytes(data)
 
 
@@ -141,15 +141,15 @@ def test_the_party_strip_is_per_title_too_and_the_effect_is_not_lost():
     with the card -- and the effect has to stay *visible* somewhere, which is
     what `unbadged_party_effects` is for: `automap/panel.py` puts those in the
     debug log precisely so a title short of a glyph says so."""
-    snap = _snapshot(SSB, _fighter(), effect=HASTE, owner=live.PARTY_WIDE)
+    snap = _snapshot(SSB, _fighter(), effect=HASTE, owner=effects.PARTY_WIDE)
     assert [i for i, _ in snap.party_badges] == ["running-ninja"]
     assert snap.unbadged_party_effects == ()
 
-    unread = _snapshot(SSB, _fighter(), effect=38, owner=live.PARTY_WIDE)
+    unread = _snapshot(SSB, _fighter(), effect=38, owner=effects.PARTY_WIDE)
     assert unread.party_badges == ()
     assert [e.id for e in unread.unbadged_party_effects] == [38]
 
-    control = _snapshot(POOL, _fighter(), effect=HASTE, owner=live.PARTY_WIDE)
+    control = _snapshot(POOL, _fighter(), effect=HASTE, owner=effects.PARTY_WIDE)
     assert control.party_badges == (
         ("running-ninja", POOL_NAME_FOR_39.capitalize()),)
     assert control.unbadged_party_effects == ()

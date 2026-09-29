@@ -42,6 +42,7 @@ from automap.state import Automapper, AutomapState, Exploration, title_dir
 from automap.state import data_dir as state_data_dir
 from automap.target import Fix, MemoryTarget, ReplayTarget
 from goldbox import c64_port
+from goldbox import effects as goldbox_effects
 from goldbox.geo import (
     ATTRIBUTES,
     BARRIERS,
@@ -1154,8 +1155,8 @@ def test_the_effect_arrays_follow_the_save_image():
     same four offsets off `$4B00` in Curse."""
     save0, roster = captured()
     raw = bytearray(save0)
-    raw[live.EFFECT_ID_OFFSET] = 7
-    raw[live.EFFECT_OWNER_OFFSET] = live.PARTY_WIDE
+    raw[goldbox_effects.EFFECT_ID_OFFSET] = 7
+    raw[goldbox_effects.EFFECT_OWNER_OFFSET] = goldbox_effects.PARTY_WIDE
     machine = MemoryTarget({CURSE.save_load_address: bytes(raw) + roster})
     snap = live.read_snapshot(machine, game=CURSE)
     assert [e.id for e in snap.party_effects] == [7]
@@ -1209,10 +1210,10 @@ def test_the_combat_numbers_come_from_the_roster_not_the_record():
 def with_effect(slot=0, id=1, owner=0, duration=0x43, magnitude=2):
     save0, save1 = captured()
     raw = bytearray(save0)
-    for at, value in ((live.EFFECT_ID_OFFSET, id),
-                      (live.EFFECT_OWNER_OFFSET, owner),
-                      (live.EFFECT_DURATION_OFFSET, duration),
-                      (live.EFFECT_MAGNITUDE_OFFSET, magnitude)):
+    for at, value in ((goldbox_effects.EFFECT_ID_OFFSET, id),
+                      (goldbox_effects.EFFECT_OWNER_OFFSET, owner),
+                      (goldbox_effects.EFFECT_DURATION_OFFSET, duration),
+                      (goldbox_effects.EFFECT_MAGNITUDE_OFFSET, magnitude)):
         raw[at + slot] = value
     return bytes(raw), save1
 
@@ -1227,7 +1228,7 @@ def test_an_effect_that_has_expired_is_not_shown():
 
 
 def test_an_effect_knows_whose_it_is():
-    party = live.snapshot_from_bytes(*with_effect(owner=live.PARTY_WIDE))
+    party = live.snapshot_from_bytes(*with_effect(owner=goldbox_effects.PARTY_WIDE))
     assert party.party_effects and not party.monster_effects
     monster = live.snapshot_from_bytes(*with_effect(owner=9))
     assert monster.monster_effects and not monster.party_effects
@@ -1345,12 +1346,12 @@ def party_snapshot(*effects):
     """
     save0, save1 = captured()
     raw = bytearray(save0)
-    for slot in range(live.EFFECT_SLOTS):
-        raw[live.EFFECT_ID_OFFSET + slot] = 0
-        raw[live.EFFECT_OWNER_OFFSET + slot] = 0
+    for slot in range(goldbox_effects.EFFECT_SLOTS):
+        raw[goldbox_effects.EFFECT_ID_OFFSET + slot] = 0
+        raw[goldbox_effects.EFFECT_OWNER_OFFSET + slot] = 0
     for slot, (eid, owner) in enumerate(effects):
-        raw[live.EFFECT_ID_OFFSET + slot] = eid
-        raw[live.EFFECT_OWNER_OFFSET + slot] = owner
+        raw[goldbox_effects.EFFECT_ID_OFFSET + slot] = eid
+        raw[goldbox_effects.EFFECT_OWNER_OFFSET + slot] = owner
     return live.snapshot_from_bytes(bytes(raw), save1)
 
 
@@ -1371,7 +1372,7 @@ def test_a_spell_on_the_whole_party_puts_its_icon_on_the_strip(app):
     Before this, nothing appeared at all -- the line was worked out five times
     a second and written into a widget that had been deleted from the form.
     """
-    names, tip = shown(app, party_snapshot((1, live.PARTY_WIDE)))
+    names, tip = shown(app, party_snapshot((1, goldbox_effects.PARTY_WIDE)))
     assert names == ("healing-shield",)
     assert tip == "Bless"
 
@@ -1381,8 +1382,8 @@ def test_prayer_and_bless_share_one_icon_and_the_tooltip_says_both(app):
     and shown nowhere)`: Prayer joins *blessed* rather than taking a glyph of
     its own, because to a player the two are the same idea. Two spells, one
     picture, and the tooltip is what separates them."""
-    names, tip = shown(app, party_snapshot((1, live.PARTY_WIDE),
-                                           (49, live.PARTY_WIDE)))
+    names, tip = shown(app, party_snapshot((1, goldbox_effects.PARTY_WIDE),
+                                           (49, goldbox_effects.PARTY_WIDE)))
     assert names == ("healing-shield",)
     assert tip.splitlines() == ["Bless", "Prayer"]
 
@@ -1391,8 +1392,8 @@ def test_the_two_new_glyphs_draw_silence_and_slowed(app):
     """`mute` and `snail`, Donald's choices, and the only two effects on the
     party line that did not already have a badge from
     `#4 (Condition badges on the roster card)`."""
-    names, tip = shown(app, party_snapshot((21, live.PARTY_WIDE),
-                                           (42, live.PARTY_WIDE)))
+    names, tip = shown(app, party_snapshot((21, goldbox_effects.PARTY_WIDE),
+                                           (42, goldbox_effects.PARTY_WIDE)))
     assert names == ("mute", "snail")
     assert tip.splitlines() == ["Silence, 15' Radius", "Slowed"]
 
@@ -1500,7 +1501,7 @@ def test_the_owner_byte_for_the_whole_party_draws_on_its_own(app):
     snap = party_of((11, ()), (11, ()))
     snap = live.Snapshot(
         characters=snap.characters,
-        effects=(live.Effect(slot=0, id=39, owner=live.PARTY_WIDE,
+        effects=(live.Effect(slot=0, id=39, owner=goldbox_effects.PARTY_WIDE,
                              duration=6, magnitude=0),),
         x=3, y=14, facing=0, clock_text="10:15", area_file="GEO14")
     names, tip = shown(app, snap)
@@ -1524,7 +1525,7 @@ def test_the_strip_draws_the_same_icon_as_the_card_for_the_same_spell(app):
         effects=tuple(live.Effect(slot=i, id=n, owner=0, duration=8,
                                   magnitude=0)
                       for i, n in enumerate(spells))))
-    names, _ = shown(app, party_snapshot(*((n, live.PARTY_WIDE)
+    names, _ = shown(app, party_snapshot(*((n, goldbox_effects.PARTY_WIDE)
                                            for n in spells)))
     assert names == card.conditions.names
     assert len(names) == len(live.CONDITION_BADGES)
@@ -1541,7 +1542,7 @@ def test_effects_on_monsters_are_never_mentioned_on_the_partys_row(app):
     so a row that drew or named monster effects would show a snail or a second
     tooltip line, and this fails.
     """
-    names, tip = shown(app, party_snapshot((1, live.PARTY_WIDE),
+    names, tip = shown(app, party_snapshot((1, goldbox_effects.PARTY_WIDE),
                                            (39, 9), (42, 10)))
     assert names == ("healing-shield",)
     assert tip.splitlines() == ["Bless"]
@@ -1561,7 +1562,7 @@ def test_a_party_effect_no_badge_covers_is_reported_rather_than_dropped(
     strip = BottomStrip(make_root())
     state = AutomapState()
     state.area, state.source = "GEO00", "status"
-    snap = party_snapshot((64, live.PARTY_WIDE))
+    snap = party_snapshot((64, goldbox_effects.PARTY_WIDE))
     with caplog.at_level(logging.WARNING, logger="wish.automap.panel"):
         for _poll in range(5):
             strip.show_state(state, snap)

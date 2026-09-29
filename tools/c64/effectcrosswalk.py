@@ -21,8 +21,6 @@ from goldbox.effects import (  # noqa: E402
     EFFECT_SLOTS,
     ENLARGE_STRENGTHS,
     PARTY_WIDE,
-    later_node_data,  # noqa: F401 -- re-exported: the moved helpers keep their old home for callers
-    later_node_score,  # noqa: F401
 )
 from tools.c64 import coldread, d6502  # noqa: E402
 

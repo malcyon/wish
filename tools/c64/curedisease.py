@@ -498,18 +498,7 @@ def dos_class_change(title: str, game: pathlib.Path | None = None) -> dict:
             "chain": tuple(found["chain"]), "uses": tuple(found["uses"])}
 
 
-#: Moved to `goldbox/paladin.py` (#626): `goldbox/c64_codec.py` needs
-#: `c64_cure_write` and cannot import `tools/`.  Kept as names here so this
-#: module's own callers, and `tests/records/test_curedisease.py`, are
-#: unchanged.
-from goldbox.paladin import (  # noqa: E402, F401
-    CURE_TIMER,
-    CureWrite,
-    Unrepresentable,
-    c64_cure_write,
-    dos_full_count,
-    full_count,
-)
+from goldbox.paladin import full_count  # noqa: E402
 
 
 def records(paths: list[str]) -> list[str]:

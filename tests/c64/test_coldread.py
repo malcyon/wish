@@ -36,7 +36,7 @@ coldread = load_tools_module("coldread")
 
 from support.coldread import CURSE, POOL, _root
 
-from goldbox import c64_port, items, traits  # noqa: E402
+from goldbox import c64_port, effects, items, traits  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 
 SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
@@ -360,10 +360,8 @@ def test_the_effect_arrays_sit_where_the_save_image_puts_them(game):
     cannot corroborate it -- every slot in one is zero -- so the evidence is
     the overlays that touch each array at this title's own load address.
     """
-    from automap import live
-
-    assert (live.EFFECT_ID_OFFSET, live.EFFECT_OWNER_OFFSET,
-            live.EFFECT_DURATION_OFFSET, live.EFFECT_MAGNITUDE_OFFSET) == \
+    assert (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
+            effects.EFFECT_DURATION_OFFSET, effects.EFFECT_MAGNITUDE_OFFSET) == \
         tuple(offset for _, offset in coldread.EFFECT_ARRAYS)
     users = coldread.effect_users(game, _root(game))
     for label, offset in coldread.EFFECT_ARRAYS:
@@ -382,8 +380,6 @@ def test_camp_renumbers_sixty_four_effect_owners_in_every_title(game):
     operands move with the title's save base. That is what says
     `EFFECT_SLOTS` is 64 in the later titles rather than assumed to be.
     """
-    from automap import live
-
     body = coldread.overlay(game, b"CAMP", _root(game))
     owner = game.save_load_address + 0x040
     read = bytes([0xBD, owner & 0xFF, owner >> 8])
@@ -391,7 +387,7 @@ def test_camp_renumbers_sixty_four_effect_owners_in_every_title(game):
     assert at, f"{game.title}'s CAMP does not index the owner array"
     for address in at:
         head = body[address - BASE - 2:address - BASE]
-        if head == bytes([0xA2, live.EFFECT_SLOTS - 1]):
+        if head == bytes([0xA2, effects.EFFECT_SLOTS - 1]):
             tail = body[address - BASE + 3:address - BASE + 17]
             assert bytes([0x9D, owner & 0xFF, owner >> 8]) in tail, tail.hex()
             assert bytes([0xCA, 0x10]) in tail, tail.hex()      # DEX / BPL
