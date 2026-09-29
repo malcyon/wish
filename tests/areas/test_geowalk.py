@@ -29,3 +29,20 @@ def test_route_ends_on_an_avoided_goal():
 def test_route_is_none_when_every_way_is_avoided():
     wall = {(10, y) for y in range(16)}
     assert geowalk.route(_geo(), (8, 10), (12, 10), avoid=wall) is None
+
+
+def test_a_reverse_step_is_one_m_by_default():
+    assert geowalk.keys_for([(5, 5), (5, 6)], 0) == ["m"]
+
+
+def test_a_reverse_step_can_turn_twice_and_step_forward():
+    path = [(5, 5), (5, 6), (5, 7), (6, 7)]
+    # South is behind a north-facing party; then straight on; then a left turn.
+    assert geowalk.keys_for(path, 0, reverse="turn") == [
+        "k", "k", "i", "i", "j", "i"]
+
+
+def test_reverse_option_rejects_an_unknown_value():
+    import pytest
+    with pytest.raises(ValueError):
+        geowalk.keys_for([(5, 5), (5, 6)], 0, reverse="x")

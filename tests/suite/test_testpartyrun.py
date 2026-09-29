@@ -218,9 +218,17 @@ def test_the_edge_step_turns_west_first_when_the_last_step_was_not_west(
     assert sess.keys[:2] == ["I", "J"] and sess.keys[2] == "I"
 
 
-def test_the_edge_is_refused_when_the_party_faces_away_from_it(monkeypatch):
-    with pytest.raises(RuntimeError, match="facing"):
-        _walk(monkeypatch, fight_after=None, start=(0, 4, 1))
+def test_the_edge_step_turns_about_when_the_party_faces_away_from_it(
+        monkeypatch):
+    sess, log, got = _walk(monkeypatch, fight_after=None, start=(0, 4, 1))
+    assert "M" not in sess.keys and sess.keys[:3] == ["K", "K", "I"]
+
+
+def test_a_reverse_first_step_turns_twice_rather_than_sending_m(monkeypatch):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    sess = WalkSession(monkeypatch, None, 20, (), (5, 5, 0), None)
+    got = T.walk_route(sess, RecordingLog(), [(5, 5), (5, 6)], 0, "slums")
+    assert sess.keys == ["K", "K", "I"] and got == (2, None, None)
 
 
 def test_walk_to_fight_stops_when_the_edge_leaves_the_wrong_area(monkeypatch):

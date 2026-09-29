@@ -332,7 +332,7 @@ def walk_route(sess, log: Log, path, facing: int, leg: str):
     status line carries no coordinates to check a step against.
     """
     for here, there in zip(path, path[1:]):
-        keys = geowalk.keys_for([here, there], facing)
+        keys = geowalk.keys_for([here, there], facing, reverse="turn")
         facing = geowalk.STEP.index((there[0] - here[0], there[1] - here[1]))
         for n, key in enumerate(keys):
             moved = bool(sess.walk_one(key.upper()))
@@ -374,10 +374,7 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
                                f"{tuple(first[-1])}, at the edge")
         # `ECL00` entry 0 is on the west edge, so the step must face west.
         keys = geowalk.keys_for([NEW_PHLAN_EXIT, (-1, NEW_PHLAN_EXIT[1])],
-                                facing)
-        if keys == ["m"]:
-            raise RuntimeError("the party is facing east, away from the edge "
-                               "it must step off")
+                                facing, reverse="turn")
         for key in keys[:-1]:
             sess.walk_one(key.upper())
             sess.handle_prompt()

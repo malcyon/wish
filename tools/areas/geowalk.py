@@ -80,13 +80,21 @@ def route(geo: Geo, start, goal, avoid=frozenset()) -> list[tuple[int, int]] | N
     return None
 
 
-def keys_for(path, facing: int) -> list[str]:
-    """`I J K M` for a route, given the facing it starts from."""
+def keys_for(path, facing: int, reverse: str = "m") -> list[str]:
+    """`I J K M` for a route, given the facing it starts from.
+
+    A step directly behind the party is one `M` by default.  `reverse="turn"`
+    turns about with two `K` and steps with `I`, for a caller that must know
+    the party moved: `M` may only turn about and not step.
+    """
+    if reverse not in ("m", "turn"):
+        raise ValueError(f"reverse is 'm' or 'turn', not {reverse!r}")
     out: list[str] = []
     for here, there in zip(path, path[1:]):
         want = STEP.index((there[0] - here[0], there[1] - here[1]))
         turn = (want - facing) % 4
-        out += {0: [], 1: ["k"], 2: ["m"], 3: ["j"]}[turn]
+        about = ["m"] if reverse == "m" else ["k", "k"]
+        out += {0: [], 1: ["k"], 2: about, 3: ["j"]}[turn]
         # #708: `M` turns about and tries the edge behind the original
         # facing; the engine's own rule is that it lands one square back
         # keeping the original facing where that edge carries no wall art,
@@ -94,7 +102,7 @@ def keys_for(path, facing: int) -> list[str]:
         # a solid or locked one, where it does. A reversal being one key is
         # the open-door row only -- `is_passable` lets `route()` plan through
         # a locked door too, which this has not been checked against.
-        if turn != 2:
+        if turn != 2 or reverse == "turn":
             out.append("i")
         facing = want
     return out
