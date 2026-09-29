@@ -1347,6 +1347,10 @@ class PendingHop:
     arrival: object
     #: `time.monotonic()` after which the trip is given up.
     deadline: float
+    #: Set on the first poll that reads `through`, whether or not the load has
+    #: finished, so a party that comes back to `from_area` is told apart from
+    #: one that never left.
+    been_through: bool = False
 
 
 def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
@@ -2091,11 +2095,26 @@ class FastTravel(Action):
         if pending is None or target is None or addr is None:
             return None
         raw = _read(target, addr.slot, 1)
-        if not raw or raw[0] & 0x80:
+        if not raw:
+            return None
+        # Before the loader check: a party that goes through and back inside
+        # one poll's loading window must still count as having been through.
+        if raw[0] & 0x7F == pending.through:
+            pending.been_through = True
+        if raw[0] & 0x80:
             return None
         area_now = raw[0] & 0x7F
         name = getattr(pending.area, "name", None) or "this area"
         if area_now == pending.from_area:
+            if pending.been_through:
+                # The party went through the door and came back by the game's
+                # own route (an arrival menu's LARGE or SMALL, say): the trip
+                # is over, and it must not fire if the party walks out again.
+                _log.debug("two-hop fast travel cancelled: the party went "
+                           "through area %d and came back to area %d",
+                           pending.through, pending.from_area)
+                self.pending = None
+                return None
             # Still where it started: the handler is asking its question, or
             # was answered no. Five of the exits start a fight on the way out,
             # possibly before the area byte changes, and a fight must not use

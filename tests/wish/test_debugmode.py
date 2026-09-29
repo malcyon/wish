@@ -848,6 +848,26 @@ def test_the_bar_makes_a_pending_second_hop_on_the_poll_and_attach_none_clears_i
     assert target2.jumps == []
 
 
+def test_a_party_that_went_through_and_came_back_says_nothing(app, monkeypatch):
+    """The Messages panel stays empty when the arrival menu's LARGE or SMALL
+    brings the party back into the starting area."""
+    import time
+
+    monkeypatch.delenv(actions.TWO_HOP_ENV, raising=False)
+    said = []
+    ft = actions.FastTravel()
+    ft.pending = actions.PendingHop(13, 27, area(0), None,
+                                    time.monotonic() - 1)
+    row = bar(app, say=lambda text, detail="", alarm=False:
+              said.append((text, alarm)), fasttravel=ft)
+    through, back = machine(area=27, pc=0x0400), machine(area=13)
+    row.attach(through)
+    row.attach(back)
+    assert said == []
+    assert ft.pending is None
+    assert through.jumps == [] and back.jumps == []
+
+
 def test_a_refused_fasttravel_is_reported_as_an_alarm(app):
     said = []
     row = bar(app, machine(mode=COMBAT),

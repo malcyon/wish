@@ -1671,6 +1671,54 @@ def test_a_declined_exit_gives_up_at_the_deadline_and_writes_nothing(
     assert target.jumps == []
 
 
+def test_going_through_and_coming_back_cancels_the_trip_silently(monkeypatch):
+    """The arrival menu's LARGE or SMALL walks the party back into the starting
+    area, and the arrival menu keeps the idle check refusing meanwhile."""
+    target, ft = _first_hop(monkeypatch)
+    addr = fasttravel.POOL_OF_RADIANCE
+    target.memory[addr.slot] = bytes([27])
+    target._pc = 0x0400                     # the arrival menu: not idle
+    assert ft.continue_pending(target) is None
+    assert ft.pending is not None
+    before = dict(target.memory)
+    target.memory[addr.slot] = bytes([13])
+    before[addr.slot] = bytes([13])
+    ft.pending.deadline = time.monotonic() - 1
+    assert ft.continue_pending(target) is None
+    assert ft.pending is None
+    assert target.memory == before
+    assert target.jumps == []
+    # Walking out again and picking LEAVE does not revive the old trip.
+    target.memory[addr.slot] = bytes([27])
+    target._pc = addr.key_wait[0]
+    assert ft.continue_pending(target) is None
+    assert target.jumps == []
+
+
+def test_coming_back_mid_load_still_counts_as_having_been_through(monkeypatch):
+    target, ft = _first_hop(monkeypatch)
+    addr = fasttravel.POOL_OF_RADIANCE
+    target.memory[addr.slot] = bytes([27 | 0x80])
+    assert ft.continue_pending(target) is None
+    assert ft.pending is not None
+    target.memory[addr.slot] = bytes([13])
+    assert ft.continue_pending(target) is None
+    assert ft.pending is None
+    assert target.jumps == []
+
+
+def test_coming_back_cancels_before_the_deadline(monkeypatch):
+    target, ft = _first_hop(monkeypatch)
+    addr = fasttravel.POOL_OF_RADIANCE
+    target.memory[addr.slot] = bytes([27])
+    target._pc = 0x0400
+    assert ft.continue_pending(target) is None
+    target.memory[addr.slot] = bytes([13])
+    assert ft.pending.deadline > time.monotonic()
+    assert ft.continue_pending(target) is None
+    assert ft.pending is None
+
+
 def test_a_fight_does_not_eat_the_wait(monkeypatch):
     """Five exits start a fight on the way out. If it starts while `$6E1B`
     still reads the first area, the deadline must not run out under the
