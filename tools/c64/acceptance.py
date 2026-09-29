@@ -2203,8 +2203,7 @@ class PoolRun:
                 time.sleep(0.3)
             # A step whose question is typed after `walk_one` returns leaves
             # the status line stale; the screen is what says it is up.
-            walk_stop = getattr(self.sess, "walk_stop", None)
-            stopped = None if walk_stop is None else walk_stop(wait=12.0)
+            stopped = self.sess.walk_stop(wait=12.0)
             if stopped is not None:
                 key_rows = screens[0] if screens else None
                 self.log.emit(

@@ -11,6 +11,7 @@ Tests for the suite's own tooling under `tools/suite/` and the guards that keep 
 | `test_staging_sweep.py` | Checks that no script under `tools/` stages a copy of a read-only specimen where the game has to write, against a reviewed allowlist. |
 | `test_suiterun.py` | Checks that `tools/suite/suiterun.py` runs the no-data pass with the example's variables and `WISH_SPECIMENS` removed (a child that needs the registry stops as on CI), falls back to a missing path where the probe finds the machine still answering (including for the one run of a machine with no registry), runs the whole suite in both passes, cleans up its worktree and names a marker only for a green run. |
 | `test_testparty.py` | Checks that `tools/suite/testparty.py` generates the same six-character party every time and that its level-one party matches the six the engine rolled. |
+| `test_testpartyrun.py` | Checks that `pick_a_fight` in `tools/suite/testpartyrun.py` takes an encounter menu as the fight instead of walking on. |
 | `test_tmp_retention.py` | Checks by a child `pytest` run under the repository's own configuration that a passing test's `tmp_path` is removed and a failed test's stays. |
 | `test_toolhelp.py` | Checks by reading each script under `tools/` that no call which claims a slot, boots an emulator or opens a window runs before `argparse` has handled `--help`. |
 | `test_toolpaths.py` | Checks that every `tools/` path a tracked text file cites is a path that exists. |

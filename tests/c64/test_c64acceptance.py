@@ -1260,6 +1260,10 @@ class FakeSession:
         self.attaches = []
         self.prompts_handled = 0
 
+    def walk_stop(self, s=None, wait=0.0):
+        """No stop screen: these fakes never put up a question."""
+        return None
+
     def attach(self, path, unit=8, **kw):
         self.attaches.append(path)
         return True
@@ -4616,10 +4620,17 @@ def test_the_real_walk_one_does_not_answer_a_prompt_the_move_raised(
 
 def test_a_prompt_that_opens_after_the_look_is_not_answered_by_the_next_move(
         tmp_path, monkeypatch):
-    # The first move ends by leaving move mode; the prompt opens 4 s after
-    # its key, past the two-second look.
-    sess, run, log = _real_walk(tmp_path, monkeypatch, prompt_after=4.25)  # just after the look window, which includes leave_move's two-read gate
-    sess.moved_by = 0.1
+    # The first move ends by leaving move mode, and the prompt must open
+    # after the look window that follows it.  Seconds after the key:
+    # `walk_one`'s `time.sleep(1.2)`, `leave_move`'s 0.3 s two-read gate and
+    # its 0.6 s sleep after the Return (both literals in `Session.leave_move`),
+    # then `A.LOOK_SECONDS`, then a margin of one and a half of the fake's
+    # `position()` reads (each advances the clock by `moved_by`), which puts
+    # the prompt past the look's last 0.3 s poll and before the next move.
+    moved_by = 0.1
+    prompt_after = 1.2 + 0.3 + 0.6 + A.LOOK_SECONDS + 1.5 * moved_by
+    sess, run, log = _real_walk(tmp_path, monkeypatch, prompt_after=prompt_after)
+    sess.moved_by = moved_by
     with pytest.raises(A.StepFailed, match="move 0 \\(I\\).*before the next move"):
         run.walk("II")
     log.close()

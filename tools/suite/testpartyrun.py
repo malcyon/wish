@@ -297,6 +297,7 @@ def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150) -> dict:
     """
     taken = 0
     turn = "J"
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
     while taken < steps and not sess.in_combat():
         moved = sess.walk_one("I")
         sess.handle_prompt()
