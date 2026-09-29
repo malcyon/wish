@@ -698,6 +698,23 @@ def _lengths(words: list[list[str]], *want: int) -> bool:
         len(w) == n for w, n in zip(words, want))
 
 
+def continue_battle_words(words: list[list[str]]) -> bool:
+    """Silver Blades' `CONTINUE BATTLE: YES NO`, asked when no monster is left.
+
+    The colon touches the `Y`, so `BATTLE:YES` reads as one ten-cell word and
+    `yes_no_words` never sees it.  With the words `c, b, n`, `N` is
+    `CONTINUE`'s third and sixth cells and opens `NO`, `O` is its second and
+    `NO`'s second, `T` is its fourth and `BATTLE`'s third and fourth, and `E`
+    is its last and `BATTLE`'s sixth and the last cell of `YES`.  The
+    highlighted answer reads as the same cells as an unlit one.
+    """
+    if len(words) != 3 or not _lengths(words, 8, 10, 2):
+        return False
+    c, b, n = words
+    return (c[2] == c[5] == n[0] and c[1] == n[1]
+            and c[3] == b[2] == b[3] and c[7] == b[5] == b[8])
+
+
 def command_words(words: list[list[str]]) -> bool:
     """A combat command bar: `MOVE VIEW AIM` first, whatever follows.
 
@@ -761,6 +778,8 @@ def fight_bar_kind(screen: dosbox.Screen) -> str | None:
         return "encounter"
     if treasure_words(words):
         return "treasure"
+    if continue_battle_words(words):
+        return "continue_battle"
     if yes_no_words(words):
         return "yes_no"
     return None
@@ -770,9 +789,12 @@ def fight_bar_kind(screen: dosbox.Screen) -> str | None:
 #: bar to the computer for the rest of the fight, so the fight runs itself to
 #: its end; `COMBAT` at the encounter menu; `EXIT` at the treasure, leaving
 #: it where it lies; `NO` at every `YES NO` (the treasure left behind, and
-#: any other question the walk meets).  A bar not listed is waited out.
+#: any other question the walk meets) and at `CONTINUE BATTLE`, where
+#: `Return` would answer YES and start another round.  A bar not listed is
+#: waited out.
 FIGHT_KEYS = {"command": "q", "encounter": "c", "continue": "Return",
-              "treasure": "e", "treasure_left": "n", "yes_no": "n"}
+              "treasure": "e", "treasure_left": "n", "yes_no": "n",
+              "continue_battle": "n"}
 #: What `--intervene` starts the game with, after `START.EXE`.  Silver Blades'
 #: Alt+X handler at the combat command bar (`GAME.OVR` 0xC06D, then 0x18D17)
 #: compares `ParamStr(2)` with the Pascal string `Gem` in `START.EXE`'s data
@@ -3185,7 +3207,8 @@ class Driver:
         state: dict = {"met": False, "met_after": None, "bars": [],
                        "placement": None, "after_key": None, "records": {},
                        "kinds": {}, "encounters": 0, "presses": 0,
-                       "key_pressed": False, "intervened": False, "ds": None, "torn": 0, "loose": 0,
+                       "key_pressed": False, "intervened": False, "after_intervene": None,
+                       "ds": None, "torn": 0, "loose": 0,
                        "last_bar": None, "repeats": 0, "unknown_shots": 0,
                        "back_since": None, "unknown_since": None,
                        "walking": None if enter else self.world_sig}
@@ -3373,6 +3396,14 @@ class Driver:
         if kind == "encounter":
             state["encounters"] += 1
         state["last_bar"] = None
+        if (kind == "continue_battle" and state["intervened"]
+                and not state["after_intervene"]):
+            # The fight's end after the cheat: every side-1 record and the
+            # computer-controlled member as the game leaves them.
+            snap = self.combat_memory(True, state["records"])
+            state["after_intervene"] = [
+                {k: c.get(k) for k in PLACEMENT_FIELDS} for c in snap["combatants"]]
+            self.note(event="after-intervene", combatants=state["after_intervene"])
         self._answer(FIGHT_KEYS[kind], glyphs, kind, state)
         return False
 

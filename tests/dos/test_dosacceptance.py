@@ -6929,7 +6929,9 @@ class FakeFight:
               "bar": "MOVE VIEW AIM USE CAST QUICK DONE",
               "treasure": "VIEW TAKE POOL SHARE EXIT", "left": "YES NO",
               "archway": "YES NO", "blank1": "",
-              "lost": "PRESS ANY KEY TO CONTINUE"}
+              "lost": "PRESS ANY KEY TO CONTINUE",
+              # The colon between the words is drawn as one more cell.
+              "confirm": "CONTINUE BATTLEHYES NO"}
 
     def __init__(self, tmp_path, archway=False, endless=False, odd=False,
                  swallow=False):
@@ -6946,6 +6948,9 @@ class FakeFight:
         #: cheat); with `lose`, `q` at GUY's bar ends it in a defeat, whose
         #: first text row is drawn only with `line`.
         self.cheat, self.lose, self.line = True, False, True
+        #: With `prompt`, the cheat's end of the fight asks `CONTINUE BATTLE`
+        #: first, and only `n` gets past it.
+        self.prompt = False
         self.looks = 0
         self.fought = False
         self.map_after = 0
@@ -7050,7 +7055,9 @@ class FakeFight:
                 self.state, self.actor, self.fought = "bar1", "GUY", True
             elif s.startswith("bar") and k == "alt+x":
                 if self.cheat:
-                    self.state = "treasure"
+                    self.state = "confirm" if self.prompt else "treasure"
+            elif s == "confirm" and k == "n":
+                self.state = "treasure"
             elif s == "bar1" and k == "q" and self.lose:
                 self.state = "lost"
             elif s == "bar1" and k == "q" and self.swallow:
@@ -7725,6 +7732,40 @@ def test_main_refuses_intervene_it_cannot_use(tmp_path, monkeypatch, capsys,
                  "--intervene", "--out", str(tmp_path / "out")])
     err = capsys.readouterr().err
     assert error in err
+
+
+def test_the_continue_battle_bar_is_known_by_its_letters():
+    assert da.continue_battle_words(_words("CONTINUE BATTLEHYES NO"))
+    for text in ("CONTINUE BATTLEHYES", "MOVE VIEW AIM USE CAST QUICK DONE",
+                 "CONTINUE BATTLEHYES YES", "CONTINUE BATTLEHYNS NO",
+                 "CONTINUE BATTLEHYES YO", "CONTINUE BASTLEHYES NO"):
+        assert not da.continue_battle_words(_words(text)), text
+    screen = _screen(_bar("CONTINUE BATTLEHYES NO"), b"")
+    assert da.fight_bar_kind(screen) == "continue_battle"
+    assert da.FIGHT_KEYS["continue_battle"] == "n"
+
+
+def test_the_captured_continue_battle_bar_is_not_the_command_bar():
+    prompt = _capture("5713d952cb-f1-dos-won",
+                      "016-lost-fight-unknown-40c63b73f7556db4", issue="733")
+    assert da.fight_bar_kind(da.loose_halve(prompt)) == "continue_battle"
+    command = _capture("5713d952cb-f1-dos-won", "013-first-bar-key", issue="733")
+    assert da.fight_bar_kind(da.loose_halve(command)) == "command"
+
+
+def test_continue_battle_after_intervene_is_answered_no_and_read_once(
+        tmp_path, fight_now):
+    game, d = _fighter(tmp_path, intervene=True)
+    game.prompt = True
+    got = d.fight()
+    assert game.keys == ["m", "Up", "Up", "c", "alt+x", "n", "e", "n"]
+    assert "Return" not in game.keys and got["intervened"]
+    after = _events(d, "after-intervene")
+    assert len(after) == 1
+    assert {c["name"] for c in after[0]["combatants"]} >= {"GUY", "ORC"}
+    assert [e["event"] for e in d.logged
+            if e.get("event") in ("intervene", "after-intervene")] == [
+        "intervene", "after-intervene"]
 
 
 def _destroyed_digests(monkeypatch, tmp_path):
