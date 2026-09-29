@@ -387,6 +387,10 @@ def come_home(args, sess, target, app, binding, out, log, step: int) -> int:
 #: that keeps meeting monsters cannot hold a slot for ever.
 MAX_ENCOUNTERS = 5
 
+#: How long a chosen `COMBAT` waits for the combat grid before the fight is
+#: given up, in seconds.
+FIGHT_GRID_WAIT = 60.0
+
 #: The other words on an outdoor encounter's opening menu; one of them must be
 #: on row 24 beside `COMBAT` for it to be taken for that menu.
 ENCOUNTER_OTHERS = ("FLEE", "PARLAY")
@@ -488,8 +492,13 @@ def fight_encounter(args, sess, log: Log, bar: str, move: str,
         # Flight is the tactic that steps off the combat map, so a run asked
         # to flee that has to fight still tries to.
         tactic = S.Session.melee_turn if args.on_encounter == "fight" else Flight(log)
-        # No grid is caught by `sess.fight` below, which reports NOT_FIGHTING and stops the walk.
-        _fight_began(sess)
+        # `sess.fight` reports NOT_FIGHTING when no combat grid is up yet, and
+        # a grid can take longer than 20 s to draw, so it is asked only once
+        # the grid is there.
+        if not _fight_began(sess, FIGHT_GRID_WAIT):
+            log.say("  the combat grid never appeared")
+            log.emit("fight_not_begun", step=step, waited=FIGHT_GRID_WAIT)
+            return "the combat grid never appeared"
     result = sess.fight(budget=args.fight_budget, tactic=tactic)
     log.say(f"  fight: {result.outcome} in {result.turns} turns, "
             f"{result.seconds:.0f}s")
@@ -501,9 +510,9 @@ def fight_encounter(args, sess, log: Log, bar: str, move: str,
     return _wait_for_grid(args, sess, log, step)
 
 
-def _fight_began(sess) -> bool:
-    """Wait up to 20 s for the combat grid; False when the game never drew it."""
-    deadline = time.time() + 20.0
+def _fight_began(sess, wait: float = 20.0) -> bool:
+    """Wait up to `wait` seconds for the combat grid; False when the game never drew it."""
+    deadline = time.time() + wait
     while not sess.in_combat():
         if time.time() >= deadline:
             return False

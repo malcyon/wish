@@ -715,3 +715,41 @@ def test_start_read_back_mismatch_stops_the_run(monkeypatch, tmp_path):
                     start=(3, 27), walk="77")
     assert log.of("start_mismatch") == [{"wrote": "031b", "read_back": "021a"}]
     assert not [e for e in events if e[0] == "press"]
+
+
+class LateGridSess(Sess):
+    """A session whose combat grid is up only once the fake clock passes `appears`."""
+
+    def __init__(self, appears, **kw):
+        super().__init__(**kw)
+        self.appears = appears
+        self.grid_seen_at = None
+
+    def in_combat(self):
+        up = M.time.time() >= self.appears
+        if up and self.grid_seen_at is None:
+            self.grid_seen_at = M.time.time()
+        return up
+
+    def fight(self, budget, tactic):
+        assert self.grid_seen_at is not None, "fight asked before the grid was up"
+        return super().fight(budget, tactic)
+
+
+def test_a_grid_that_draws_after_thirty_seconds_is_waited_for_before_fighting(monkeypatch):
+    fake_clock(monkeypatch)
+    # The clock ticks once per reading, so the deadline is its first reading + 60.
+    sess, log = LateGridSess(appears=40, encounter_on={1}), Log()
+    a = args()
+    M.walk_moves(a, sess, log, "77", 0, lambda n: None)
+    assert len(sess.fights) == 1 and not a.stopped
+    assert not log.of("fight_not_begun")
+
+
+def test_a_grid_that_never_draws_stops_the_walk_with_fight_not_begun(monkeypatch):
+    fake_clock(monkeypatch)
+    sess, log = LateGridSess(appears=10**9, encounter_on={1}), Log()
+    a = args()
+    M.walk_moves(a, sess, log, "77", 0, lambda n: None)
+    assert sess.fights == [] and a.stopped
+    assert log.of("fight_not_begun")[0]["waited"] == M.FIGHT_GRID_WAIT
