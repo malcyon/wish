@@ -7,8 +7,9 @@ nodes the engine reads past the duration, what a readied magical item writes,
 what a strength item's value byte holds, whether Secret of the Silver
 Blades' C64 halfling id 92 is the effect DOS gives a halfling and what DOS's
 own 92 protects against, what else in DOS Silver Blades stands between Ray of
-Enfeeblement or Feeblemind and a halfling, and whether any C64 title's Dispel
-Magic can remove an effect held in a trait slot. It is Stage 2 of the plan on
+Enfeeblement or Feeblemind and a halfling, whether any C64 title's Dispel
+Magic can remove an effect held in a trait slot, and what a second node of
+one id on a Pool of Radiance character changes. It is Stage 2 of the plan on
 #621 (A C64 character carrying an effect in a trait slot cannot be saved as a DOS or Amiga save, because the writer keeps only the eight ids the game's own importer keeps),
 and the DOS column of #600 (The neutral record has no field for an effect's remaining duration or a paladin's cure-disease uses, so a converted character loses both)'s
 Stage 4c.
@@ -37,6 +38,8 @@ flag, next pointer.
 | from Feeblemind | -- | -- | his class: the spell answers "unaffected" to a fighter, a thief and a fighter/thief before any save | CONFIRMED |
 | does any saving throw ask the constitution bonus, 97 | yes, list 12 | yes, list 12 | **no**: 97 is on no list | CONFIRMED |
 | can the **C64** Dispel Magic remove an effect held in a trait slot | no | no | no | CONFIRMED |
+| what a second Bless node changes on DOS | the odds of keeping Bless through Dispel Magic, and nothing else | not read | not read | CONFIRMED |
+| does any monster cast Dispel Magic on DOS | no record memorises it and no monster item has it as its effect | not read | not read | CONFIRMED for the files; PROBABLE that no other route exists |
 
 ## How it was read
 
@@ -371,6 +374,55 @@ his class, immune to Fear only if he carries 92, and has no protection from
 Ray of Enfeeblement but his save.** The C64 halfling's immunity to Ray of
 Enfeeblement is the one of the three that DOS has no way to keep.
 
+## (g) Two nodes of one id on one Pool of Radiance character
+
+DOS keeps no duplicate check, so two camp Blesses leave every member with two
+identical nodes, `01 06 00 06 00` twice (measured in DOSBox on
+#727 (Can a Pool of Radiance party carry more running effects than the C64's 64 shared effect rows hold?)).
+**In a fight the second node gives nothing: Bless's +1 is added once per
+attack whatever the count. The one reader it changes is Dispel Magic, which
+rolls for each node, so two Blesses survive a dispel more often than one.**
+The C64 holds one row per id and owner, so a merged row gives the C64 player
+what a one-node DOS player has. Everything here is static, from `GAME.OVR`;
+the tests named below pin it.
+
+| reader | what a second Bless node changes | grade |
+|---|---|---|
+| the Bless handler, `0xED68` | nothing: `add byte [0x6825], 5`, `inc byte [0x6822]`, `retf 0xA`, and no access to its node. Nothing calls `find_affect` with 1 as a constant, and no chain walker tests byte 0 against 1 | CONFIRMED |
+| check list 10, the attack roll | nothing. Of the 28 calls to the list walker (`0x2B1E4`), only `0x2BBDF` passes 10 (routine `0x2BBA1`, which rolls a d20 into `[0x6822]`, walks list 10 on the attacker and list 16 on the defender, and compares the sum with the number needed) | CONFIRMED that 10 is walked only there; PROBABLE that `[0x6822]` is the to-hit roll: a natural 1 misses and a 20 becomes 100 |
+| one call to the handler per id per walk | nothing. The walker's 140 asks of `0x2B04A` are straight-line code, one per id on a list, and Bless is once on list 10. The ask calls `find_affect`, which stops at the first node of the id, and calls the handler once, at `0x2B1DB`, outside any loop. On a miss it looks for the id on other members for the ids in the set at `cs:0x140`, and still calls the handler at most once | CONFIRMED |
+| check list 17, walked twice in `0xBC97` | nothing: each walk adds Bless's 5 to `[0x6825]` once | CONFIRMED; PROBABLE that `0xBC97` is a morale test (it compares against record `0x84`) |
+| **Dispel Magic**, `0x2939D` (spells 41 and 46) | **the odds.** It walks every node of every target. For each node whose byte 3 is below `0xFF` it takes the low nibble as the node's level `L` (6 for Bless) and rolls d100 against `50 + 5 * (caster - L)` when the caster is higher, `50 - 2 * (L - caster)` when lower, 50 when equal; a roll at or under the chance removes that node alone (`remove_affect` at `0x29499`, inside the walk). At equal levels one node survives half the time and two nodes, until both fail, three times in four | CONFIRMED |
+| expiry | nothing: each node's duration counts down on its own, and nodes of equal duration end together (`tools/dos/dosspcexpiry.py`) | PROBABLE: two nodes running out has not been watched |
+| `remove_affect`, `0x2AF10` | nothing: it runs the handler's remove path only for a non-zero byte 4, and Bless's is `00` | CONFIRMED |
+
+`test_pool_asks_list_10_in_the_attack_roll_and_nowhere_else`,
+`test_pool_the_walker_asks_each_id_once_and_the_ask_calls_one_handler` and
+`test_pool_bless_handler_reads_nothing_from_its_node` pin the first four rows.
+Each fails when pointed at the wrong thing: list 16 (two calls), Dispel
+Magic's `remove_affect` call (inside a loop), and handler 89 (reads and writes
+byte 3). `test_pool_dispel_magic_removes_node_by_node` keeps the Dispel Magic
+case as the loop test's control.
+
+**No Pool of Radiance monster casts Dispel Magic.** A monster casts in two
+ways, both read from the combat turn at `0xABCF`: the choice at `0xB105` picks
+at random from the record's memorised list (`0x017`, 21 bytes), and the one at
+`0xAFA4` uses a readied item's effect byte `0x3D` (less `0x17` above `0x38`).
+None of the 172 records in `MON1CHA.DAX`-`MON8CHA.DAX` memorises 41 or 46; the
+27 that memorise anything hold other spells, among them the cleric
+third-level 38, 40, 42 and 44 beside Dispel Magic's 41. None of the 301 items in the `MON*ITM.DAX`
+blocks has either as its effect. CONFIRMED for those files, pinned by
+`test_no_pool_monster_memorises_or_carries_dispel_magic`; PROBABLE that
+nothing else makes a monster cast, since the rest of `0xABCF` and the ECL
+scripts were not read for a spell cast.
+
+So a player meets the difference only when a Dispel Magic from his own side
+lands on a blessed member: his own cast (PROBABLE; the DOS camp and combat
+target prompts were not read), a party cleric under QUICK control, or a
+charmed party member (both SPECULATIVE: whether `0xAEAB`, the check each
+choice asks before casting, lets the computer cast Dispel Magic over its own
+allies is not read).
+
 ## The value and flag bytes a converted trait slot gets
 
 The rule follows from (a), (b) and (e). **CONFIRMED** for every row but the
@@ -409,3 +461,15 @@ decision for the conversion, not a reading.
   lands on a failed save both times. No driver in the tree casts a chosen
   spell at a party member in DOS Silver Blades; `tools/dos/dosfightrun.py`
   drives Pool of Radiance only.
+* **Whether the computed list at `0x13F49` can be 10.** Routine `0x13C01`
+  passes `[bp - 0x15] + 1`, a counter that starts at byte 4 of the record's
+  `0x108` block, counts down to 1 and indexes the per-attack bytes at record
+  `0x112 + i`, which the routine's other two loops clear for 1 and 2 only. So it asks lists 2
+  and 3: PROBABLE. A DOSBox-X breakpoint at `GAME.OVR:0x13F49` through a few
+  fights, reading `ax`, would settle it; any 10 would refute it.
+* **What a second Bless node does against a real Dispel Magic.** The odds in
+  (g) are from the code. The experiment: from the two-Blesses camp save, a
+  party cleric casts Dispel Magic over the party in camp, several times from
+  the same save, then `tools/dos/dosspcexpiry.py chain` counts the Bless nodes
+  left on each member. Expected at equal levels: a member loses both about
+  one time in four, where a one-node member loses Bless about half the time.

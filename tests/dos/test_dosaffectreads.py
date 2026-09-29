@@ -19,6 +19,7 @@ halfling test without the Silver Blades disks).
 
 from __future__ import annotations
 
+import re
 import struct
 
 import pytest
@@ -523,3 +524,142 @@ def test_the_c64_dispel_magic_never_reaches_a_trait_slot(key):
         assert (d.skip, d.level_mask) == (0xFF, 0x0F)
         assert (d.chance_base, d.per_level_above, d.per_level_below) == (50, 5, 2)
         assert d.trait_refs == []
+
+
+# --------------------------------------------------------------------------
+# Two nodes of one id on one Pool of Radiance character
+# --------------------------------------------------------------------------
+# Two camp Blesses leave each member with two identical Bless nodes.  These
+# pin why the second changes nothing but Dispel Magic's odds:
+# `docs/230-who-reads-a-dos-effect-node.md`, section (g).
+
+#: Where Pool of Radiance asks check list 10 (the attack roll, on the
+#: attacker), and the routine that holds the call.
+POOL_LIST_10 = [(0x2BBDF, 0x2BBA1)]
+
+#: The one walker call whose list number is computed: an attack-slot counter
+#: plus one, in the routine at `0x13C01`.
+POOL_COMPUTED_LIST = [0x13F49]
+
+#: The list walker's per-id ask, and the one place it calls a handler.
+POOL_ASK = (0x2B04A, [0x2B1DB])
+
+
+def _walker_list(eng, site: int, routine: int) -> int | None:
+    """The list number a walker call at `site` passes: the argument pushed
+    before the record's far pointer, when a `mov al, n` loads it."""
+    ins = reads.body(eng.ovr, routine, 0x3000)
+    k = next(n for n, i in enumerate(ins) if i.address == site)
+    pushes = [n for n in range(k - 1, -1, -1)
+              if ins[n].mnemonic == "push" and ins[n].op_str != "cs"]
+    third = pushes[2]
+    assert ins[third].op_str == "ax"
+    load = ins[third - 1]
+    imm = re.fullmatch(r"al, (0x[0-9a-f]+|\d+)", load.op_str)
+    return int(imm.group(1), 0) if load.mnemonic == "mov" and imm else None
+
+
+def _calls_to(eng, routine: int, target: int) -> list[tuple[int, bool]]:
+    """`(site, in a loop)` for each call from `routine` to `GAME.OVR:target`.
+    A site is in a loop when a jump after it lands at or before it."""
+    ins = reads.body(eng.ovr, routine, 0x3000)
+    jumps = [(i.address, int(i.op_str, 0)) for i in ins
+             if i.mnemonic.startswith("j") and i.op_str.startswith("0x")]
+    out = []
+    for n, i in enumerate(ins):
+        if i.mnemonic == "call" and i.op_str.startswith("0x"):
+            hit = int(i.op_str, 0) == target
+        elif i.mnemonic == "lcall":
+            hit = reads._far(eng, i.op_str) == ("GAME.OVR", target)
+        else:
+            continue
+        if hit:
+            looped = any(src > i.address >= dst for src, dst in jumps)
+            out.append((i.address, looped))
+    return out
+
+
+def test_pool_asks_list_10_in_the_attack_roll_and_nowhere_else():
+    """Bless (1) is on lists 10 and 17 only.  Of the 28 calls to the list
+    walker, one passes 10 and one passes a computed number; list 17 is the
+    morale test's two walks."""
+    eng = _title("pool")
+    walk = reads.apply_walk(eng)
+    assert reads.lists_holding(eng, 1) == [10, 17]
+    assert walk["lists"][10].count(1) == 1
+    calls = reads.routine_callers(eng, walk["walker"])
+    assert len(calls) == 28
+    lists = {site: (_walker_list(eng, site, routine), routine) for site, routine in calls}
+    assert [(s, r) for s, (n, r) in lists.items() if n == 10] == POOL_LIST_10
+    assert [s for s, (n, _) in lists.items() if n is None] == POOL_COMPUTED_LIST
+    assert [(s, r) for s, (n, r) in lists.items() if n == 17] == \
+        [(0xBD2C, 0xBC97), (0xBD7F, 0xBC97)]
+
+
+def test_pool_the_walker_asks_each_id_once_and_the_ask_calls_one_handler():
+    """The walker's 140 asks are straight-line, and the ask finds the first
+    node of its id and calls the handler at most once, outside any loop, so
+    a second Bless node is never dispatched."""
+    eng = _title("pool")
+    walker = reads.apply_walk(eng)["walker"]
+    ask, dispatch = POOL_ASK
+    asks = _calls_to(eng, walker, ask)
+    assert len(asks) == 140
+    assert not any(looped for _, looped in asks)
+    assert _calls_to(eng, ask, eng.dispatcher) == [(s, False) for s in dispatch]
+    finds = [i for i in reads.body(eng.ovr, ask, 0x3000) if i.mnemonic == "lcall"
+             and reads._far(eng, i.op_str) == eng.find_affect_at]
+    assert len(finds) == 2
+
+
+def test_pool_dispel_magic_removes_node_by_node():
+    """The control for the test above: Dispel Magic (spells 41 and 46) calls
+    `remove_affect` inside its walk over the chain, once per failed roll, so
+    `_calls_to` does report a call made for every node."""
+    eng = _title("pool")
+    routines = reads.spell_routines(eng)
+    assert [s for s, r in routines.items() if r == ("GAME.OVR", 0x2939D)] == [41, 46]
+    assert _calls_to(eng, 0x2939D, eng.remove_affect_at) == [(0x29499, True)]
+
+
+def test_pool_bless_handler_reads_nothing_from_its_node():
+    """Handler 1 adds to two globals and returns.  Nothing asks `find_affect`
+    for 1 by constant, and no chain walker tests byte 0 against it."""
+    eng = _title("pool")
+    assert eng.handlers[1] == ("GAME.OVR", 0xED68)
+    uses = reads.handler_uses(eng, 1)
+    assert (uses.access, uses.dispatches, uses.removes) == (set(), [], [])
+    text = [f"{i.mnemonic} {i.op_str}" for i in reads.body(eng.ovr, 0xED68)]
+    assert text[2:4] == ["add byte ptr [0x6825], 5", "inc byte ptr [0x6822]"]
+    assert not [s for s in reads.find_affect_sites(eng) if s[2] == 1]
+    assert not any(1 in u.compares for u in reads.chain_walkers(eng).values())
+
+
+def test_no_pool_monster_memorises_or_carries_dispel_magic():
+    """A monster casts from its record's memorised list (0x017, 21 bytes,
+    read by the combat choice at `0xB105`) or through a readied item's effect
+    byte (`0xAFA4`, 0x3D, less 0x17 above 0x38).  None of the 172 records in
+    `MON*CHA.DAX` holds 41 or 46, and none of the items in `MON*ITM.DAX` does."""
+    from goldbox import dos_savegame
+
+    eng = _title("pool")
+    game = dosbox.find_game(reads.TITLES["pool"])
+    spells = [f"{i.mnemonic} {i.op_str}" for i in reads.body(eng.ovr, 0xB105)]
+    assert "mov dl, byte ptr es:[di + 0x17]" in spells
+    assert "cmp byte ptr [bp - 0x21], 0x14" in spells
+    wands = [f"{i.mnemonic} {i.op_str}" for i in reads.body(eng.ovr, 0xAFA4)]
+    assert "mov al, byte ptr es:[di + 0x3d]" in wands
+    assert "sub ax, 0x17" in wands
+    records = items = 0
+    for f in sorted(game.glob("MON*CHA.DAX")):
+        for _bid, rec in dos_savegame.dax_blocks(f.read_bytes(), f.name):
+            records += 1
+            assert not {b & 0x7F for b in rec[0x17:0x2C]} & {41, 46}, f.name
+    for f in sorted(game.glob("MON*ITM.DAX")):
+        for _bid, blk in dos_savegame.dax_blocks(f.read_bytes(), f.name):
+            for k in range(0, len(blk), 63):
+                items += 1
+                e = blk[k + 0x3D]
+                assert (e - 0x17 if e > 0x38 else e) not in (41, 46), f.name
+    assert records == 172
+    assert items == 301
