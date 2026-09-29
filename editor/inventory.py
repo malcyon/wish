@@ -533,6 +533,18 @@ class ItemTraitsModel(QAbstractTableModel):
         return (f"effect {sid} — the item-only range past spell "
                 f"{self.spells.last_spell}")
 
+    def _scroll_spell(self, sid: int) -> str:
+        """A scroll's spell id, named by its real spell when the scribe mark is on.
+
+        DOS and Amiga add 128 to a scroll's spell while it is being scribed
+        and a camp save can keep it. Only a real spell's mark is read that
+        way; a byte whose low seven bits are past the title's last spell is
+        left to :meth:`_spell`.
+        """
+        if sid > 0x80 and sid & 0x7F <= self.spells.last_spell:
+            sid &= 0x7F
+        return self._spell(sid)
+
     def _describe(self, item: Item) -> list[tuple[str, str]]:
         kind = self.types.get(item.type_index)
         where = _location_name(kind)
@@ -580,7 +592,7 @@ class ItemTraitsModel(QAbstractTableModel):
         """
         charges, effect, power = item.effects
         if kind is not None and kind.raw[TYPE_LOCATION] in SCROLL_LOCATIONS:
-            spells = [self._spell(s) for s in (charges, effect, power) if s]
+            spells = [self._scroll_spell(s) for s in (charges, effect, power) if s]
             return [("Spells", ", ".join(spells) if spells else EMPTY_TEXT)]
         rows = [("Charges", str(charges) if charges else EMPTY_TEXT)]
         if item.effect is not None:

@@ -3049,9 +3049,31 @@ def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None, *,
                 field.origin + ", folded to capitals for the C64's own "
                                "character set",
                 field.confidence, Provenance.RESHAPED)
+    field = out.fields.get("inventory")
+    if field is not None:
+        cleared = [_scribe_mark_cleared(bytes(item)) for item in field.value]
+        if cleared != [bytes(item) for item in field.value]:
+            out.set("inventory", cleared,
+                    field.origin + ", a scroll's scribe mark cleared for the "
+                                   "C64, which cancels a scribe before it "
+                                   "saves",
+                    field.confidence, Provenance.RESHAPED)
     return c64_codec.write(out, icon=icon, payload=payload,
                            party_slot=party_slot, clock_minutes=clock_minutes,
                            item_types=item_types)
+
+
+def _scribe_mark_cleared(item: bytes) -> bytes:
+    """A C64 item with bit 7 of a scroll's three spell bytes cleared.
+
+    DOS and Amiga add 128 to a spell while it is being scribed and a camp save
+    keeps it.  The C64 never writes that mark: it cancels the scribe before
+    its own camp save, and it reads bit 7 of the third byte as an item-effect
+    code.  Only a scroll's bytes hold spells; any other item is left alone.
+    """
+    if len(item) != 16 or item[0] not in SCROLL_TYPES:
+        return item
+    return item[:13] + bytes(b & 0x7F for b in item[13:16])
 
 
 def c64_name(name: str) -> str:

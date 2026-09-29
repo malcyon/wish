@@ -156,7 +156,8 @@ class LeaveBehindDialog(QDialog):
         """The spells a scroll holds, one to a line, on a quieter row beneath
         it: three spells with their classes and levels are wider than the
         window, and a row of an item view cuts what does not fit."""
-        spells = [self._spell_reader._spell(s) for s in raw[SPELL_BYTES] if s]
+        spells = [self._spell_reader._scroll_spell(s)
+                  for s in raw[SPELL_BYTES] if s]
         if not spells:
             return
         line = QTreeWidgetItem(row, ["\n".join(spells)])

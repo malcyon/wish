@@ -492,7 +492,7 @@ def test_a_party_the_amiga_loader_would_cut_short_is_not_written(tmp_path):
 # --- the player chooses what stays behind (#432) -----------------------------
 A_SLOT = bytes.fromhex("27000000000000000100002c01010203")
 B_SLOT = bytes.fromhex("27000000000000000100006400040000")
-C_SLOT = bytes.fromhex("28000000000000000100 00c8008506 00".replace(" ", ""))
+C_SLOT = bytes.fromhex("28000000000000000100 00c8000506 00".replace(" ", ""))
 
 
 def _plain(n: int) -> bytes:

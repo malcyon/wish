@@ -83,9 +83,9 @@ ROSTER_AREA_END = SAVE1_LOAD_ADDRESS + ROSTER_COUNT * ROSTER_STRIDE   # $8400
 # converts to DOS alive, because the reader never reads the four bytes past
 # 0x100).
 ROSTER_IN_USE = 0x00
-# +0x01 and +0x02 are the character's slice of the party-wide **spell
-# memorisation queue** CAMP keeps at its own $2939: +0x01 the index of his first
-# entry, +0x02 how many entries are his. PROBABLE. CAMP $15A1 appends with
+# +0x01 and +0x02 are the character's slice of the party-wide **scribe
+# queue** of scrolls being scribed, which CAMP keeps at its own $2939: +0x01
+# the index of his first entry, +0x02 how many entries are his. PROBABLE. CAMP $15A1 appends with
 # `STA $2939,X / INC $2894 / INC $6C02`, CAMP $15EB starts an empty character's
 # slice at the current end (`LDA $6C02 / BNE + / STX $6C01`), and CAMP $11FE
 # walks it (`LDX $6C02 / BEQ + / LDY $6C01 / LDA $2939,Y`). DUNGEON reuses both
