@@ -1513,7 +1513,11 @@ class PoolOfRadiance:
     #     alone (its `3RD LEVEL` header row is `1fb7b89c23f366c0`), read from
     #     the `700/47e480c557-c3-animate-list` capture, which also shows it
     #     asks for no target and, cast from a list with no other spell, comes
-    #     back to MAGIC_BAR and not to the list.
+    #     back to MAGIC_BAR and not to the list; SLOW-POISON as it shows in the
+    #     list of WISHCLE holding it alone (its `2ND LEVEL` header row is
+    #     `da676c4234ffee66`), read from the `667/aed7e96fc4-sp1-list`
+    #     capture, which also shows `c` on it opens TARGET_BAR and `Return`
+    #     there, from a list with no other spell, comes back to MAGIC_BAR.
     CAMP_BAR = "e229a5f1da0130ed"
     MAGIC_BAR = "062aa229ea7afd11"
     SPELL_LIST_BAR = "756a9b74819cebd5"
@@ -1532,6 +1536,7 @@ class PoolOfRadiance:
         "BLESS": ("e4d6baf46572e796", False),
         "CURE-LIGHT-WOUNDS": ("b039acb665601fe2", True),
         "ANIMATE-DEAD": ("dc4b635ec2d5df1c", False),
+        "SLOW-POISON": ("a06057763f5812ed", True),
     }
     #: The spells measured to return to the Magic bar, not to the list, when
     #: cast as the caster's only spell.

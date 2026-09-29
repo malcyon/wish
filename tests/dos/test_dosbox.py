@@ -1549,3 +1549,16 @@ def test_the_move_attack_prompt_is_a_known_bar_matched_by_its_prefix(monkeypatch
     por = dosbox.PoolOfRadiance(None)
     assert por.bar_kind(first) == "move_attack"
     assert por.bar_kind(second) == "move_attack"
+
+
+def test_slow_poison_is_a_targeted_camp_cast_at_its_measured_row():
+    """Pool's SLOW POISON row, read off the `667/aed7e96fc4-sp1-list` capture,
+    asks CAST SPELL ON WHOM, so the `cast` step needs a target line."""
+    from tools.dos import acceptance
+
+    assert dosbox.PoolOfRadiance.CAST_SPELLS["SLOW-POISON"] == (
+        "a06057763f5812ed", True)
+    step = acceptance.parse_step("cast 2 slow-poison 1")
+    assert (step.kind, step.line, step.name, step.row) == ("cast", 2, "SLOW-POISON", 1)
+    with pytest.raises(ValueError, match="needs a target"):
+        acceptance.parse_step("cast 2 SLOW-POISON")
