@@ -144,6 +144,16 @@ def wipe_roster(save_dir: pathlib.Path) -> list[str]:
     return gone
 
 
+#: X keysym for each printable character whose keysym is not the character
+#: itself, so a name can carry punctuation. Letters and digits are their own.
+KEYSYMS = {
+    " ": "space", ".": "period", "*": "asterisk", ",": "comma",
+    "?": "question", "/": "slash", ":": "colon", ";": "semicolon",
+    "[": "bracketleft", "\\": "backslash", "]": "bracketright",
+    "^": "asciicircum", "_": "underscore", "`": "grave",
+}
+
+
 class Driver:
     """The keystrokes of the front end, each waited on by screen digest."""
 
@@ -162,7 +172,7 @@ class Driver:
 
     def type(self, text: str, tag: str) -> str:
         for ch in text:
-            self.s.key("space" if ch == " " else ch)
+            self.s.key(KEYSYMS.get(ch, ch))
         time.sleep(0.5)
         self.s.settle(quiet=0.5, timeout=15.0)
         self.s.shot(f"{self.n:03d}-{tag}", allow_blank=True)

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime
 import pathlib
+from collections.abc import Mapping
 from typing import Any
 
 #: The file a Save As writes for a destination that is a single image.
@@ -39,7 +40,8 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
             dos_folder: "str | pathlib.Path | None" = None,
             amiga_disk: "str | pathlib.Path | None" = None,
             amiga_disk_one: "str | pathlib.Path | None" = None,
-            source_slot: "str | None" = None) -> dict:
+            source_slot: "str | None" = None,
+            names: "Mapping[int, str] | None" = None) -> dict:
     """Open `source`, Save As it to `port` under `folder`, and say what landed.
 
     `window` is an `EditorBinding`, whose `game_files_for` finds the game data
@@ -51,6 +53,12 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
     saved games to read, the same letter `editor.convert.Source.detect`
     itself takes; `None` keeps its own default, the alphabetically first slot
     the source holds.
+
+    `names` is the `{position: name}` a player would choose in the Shorten
+    window, handed to `prepare_save_as`. A name too long for the destination
+    with no choice for it is refused as `NamesDoNotFit`, and the report then
+    also carries `unfit` (`[position, name]` for each) and `width`, so a caller
+    can see which names needed a choice and not only that Save As refused.
     """
     from editor import saveplan
     from editor.convert import Source
@@ -67,11 +75,16 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
             game_files=window.game_files_for, c64_folder=c64_folder,
             dos_folder=dos_folder, amiga_disk=amiga_disk,
             amiga_disk_one=amiga_disk_one)
-        plan = saveplan.prepare_save_as(party, port, path, assets)
+        plan = saveplan.prepare_save_as(
+            party, port, path, assets,
+            **({"names": names} if names is not None else {}))
         report["losses"] = saveplan.losses(plan.report) if plan.report else []
         report["dropped"] = list(getattr(plan.report, "dropped", []) or [])
         published = saveplan.publish(plan, party, assets=assets)
     except Exception as exc:
+        if isinstance(exc, saveplan.NamesDoNotFit):
+            report["unfit"] = [[position, name] for position, name in exc.unfit]
+            report["width"] = exc.width
         report["refused"] = [type(exc).__name__, str(exc)]
         report["error"] = f"{type(exc).__name__}: {exc}"
         return report

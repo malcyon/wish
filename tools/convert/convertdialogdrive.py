@@ -23,6 +23,11 @@ is the C64 game-disks folder a C64 source needs (`--c64-game` looks it up in
         --amiga-disk2 /path/to/SecretOfTheSilverBlades_B.adf \\
         --amiga-disk1 /path/to/SecretOfTheSilverBlades_A.adf
 
+A name over the Amiga field's width is refused as `NamesDoNotFit`, with the
+names and the width under `save_as` `unfit` and `width`. `--name POSITION=NAME`
+(repeatable) gives the name to use for that party position, as the Shorten
+window's box does: `--name 0=SHORTNAME`.
+
 Runs offscreen; nothing opens on the desktop.
 """
 from __future__ import annotations
@@ -60,6 +65,10 @@ def main(argv=None) -> int:
     ap.add_argument("--c64-game",
                     help="look the C64 disks up in automap/gamedisks.py by this "
                          "title key, e.g. secret-of-the-silver-blades")
+    ap.add_argument("--name", action="append", default=[], metavar="POSITION=NAME",
+                    help="the name to give the party member at POSITION, in "
+                         "place of one too long for the Amiga field; "
+                         "repeatable, one per position")
     ap.add_argument("--tree", type=pathlib.Path, default=ROOT,
                     help="checkout to run the conversion from (default: this "
                          "one)")
@@ -78,12 +87,24 @@ def main(argv=None) -> int:
     from automap import gamedisks
     from editor.window import EditorBinding
     from tools.convert import saveasdrive
+    from tools.dos.acceptance import parse_name
     from tools.registry import scratch
+
+    report: dict = {}
+
+    names: dict[int, str] = {}
+    for text in args.name:
+        try:
+            position, name = parse_name(text)
+        except ValueError as exc:
+            ap.error(str(exc))
+        if position in names:
+            ap.error(f"--name gives position {position} twice")
+        names[position] = name
+    report["names"] = {str(k): v for k, v in names.items()}
 
     out = args.out_dir or scratch.scratch_dir("convertdialogdrive")
     report_path = args.report or out / "convert-report.json"
-
-    report: dict = {}
 
     specimen = args.specimen.expanduser()
     if not specimen.exists():
@@ -117,7 +138,8 @@ def main(argv=None) -> int:
     try:
         result = saveasdrive.save_as(window, specimen, "amiga", out,
                                      c64_folder=None, amiga_disk=amiga_disk2,
-                                     amiga_disk_one=amiga_disk1)
+                                     amiga_disk_one=amiga_disk1,
+                                     names=names or None)
     finally:
         window.close()
 
