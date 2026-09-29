@@ -42,10 +42,17 @@ not drawn when the last screenshot was taken.
 **What the generator cannot make**: a trait ceiling, because Pool of
 Radiance's C64 seeds a trait only to an elf and a half-elf.
 
-**What no boot has reached**: BULWARK's 3/2 attacks in a fight, a level drain,
-more than sixteen spells memorised, and a sturdy race with constitution below 11.
-`0x100` other than 1 is held by `WISH-SPEC-porunconscious1.d64`, roster slot 5
-(counting from 0): `$85`, written by the game during a fight.
+**What no boot has reached**: BULWARK's 3/2 attacks in a fight, the game's own
+camp MEMORIZE screen filling the list beyond sixteen, and a sturdy race with
+constitution below 10.
+
+**What a game-written save now holds**: a level drain in
+`WISH-SPEC-drained-test-party.D64`; a sturdy halfling and a sturdy gnome, each at
+constitution 10, in `WISH-SPEC-sturdy-halfling-thief.D64` and
+`WISH-SPEC-sturdy-gnome-thief.D64`; twenty memorised spells kept through the
+game's own save, from a staged list, in `WISH-SPEC-twenty-memorised-spells.D64`; and `0x100` other than 1 in
+`WISH-SPEC-porunconscious1.d64`, roster slot 5 (counting from 0): `$85`, written
+by the game during a fight.
 
 
 The training hall is **area 11**, which has

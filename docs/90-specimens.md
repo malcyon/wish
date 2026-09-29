@@ -571,7 +571,7 @@ save we made:
 
 * ~~a character who has **levelled up**~~ — **found**, in `npc_party.d64`:
   characters at levels 4, 6, 7 and 8 identified `0x0A0` as level. The
-  **level-drain pair** is still open, and still needs a character drained in play.
+  **level-drain pair** is held by `WISH-SPEC-drained-test-party.D64`.
 * ~~a **spellcaster with spells memorised**~~ — **found**, in the same disk. The
   counts are in the `SAVEDGAME1` roster block and the packed list is at record
   offset `0x020`, and the **spellbook** — which spells a character knows at all —
@@ -642,16 +642,28 @@ Two more have closed since:
 
 Still wanted, and each needs a save we make ourselves:
 
-* a character **drained a level** by undead. Not for the "current/true level
-  pair", which does not exist: `0x0A0` is the current level and `0x0A1`/`0x0A2`
-  are the drain delta, both read off the drain and restoration routines. What is
-  wanted is a specimen showing the pair non-zero, because no character of ours
-  has ever been drained;
+* ~~a character **drained a level** by undead~~ — **held** by
+  `WISH-SPEC-drained-test-party.D64`, written by the game after two won fights
+  in Valhingen Graveyard. WARDEN, PILFER, GRIMSTONE and ASTRA read `0x0A1` = 1,
+  2, 4 and 3 with `0x0A2` = 10, 14, 20 and 7, and each one's 16-bit maximum hit
+  points at `0x076` fell by exactly its `0x0A2`. There is no "current/true level
+  pair": `0x0A0` is the current level and `0x0A1`/`0x0A2` are the drain delta.
+  The class levels fell by the drained count for WARDEN (1) and PILFER (2); for
+  the two multi-class members they do not match the count (ASTRA 2, 0 and 1
+  against 3; GRIMSTONE 2 and 2 against 4), which is not yet interpreted;
 * a **multi-class character above level 1** — to tell "character level" at
   `0x0A0` apart from "the single class's level";
-* a **character of a sturdy race with constitution below 11**, to exercise the
-  `+1` and `+2` bands of the saving-throw constitution bonus. Only `+3`/`+4`/`+5`
-  have ever been seen;
+* ~~a **character of a sturdy race with constitution below 11**~~ — **held**
+  by `WISH-SPEC-sturdy-halfling-thief.D64` and `WISH-SPEC-sturdy-gnome-thief.D64`,
+  both created in the game's own screens at constitution 10; the five saving
+  throws the game wrote, 11, 10, 12, 14 and 13, equal `levels.saving_throws` for
+  a level-1 thief of each race. Constitution below 10 is not shown for either
+  race;
+* ~~**more than sixteen spells memorised**~~ — **held** by
+  `WISH-SPEC-twenty-memorised-spells.D64`, which the game wrote from the ENCAMP
+  menu after a staged record listed twenty memorised spells for ASTRA: the same
+  twenty bytes came back at `0x020`-`0x033`. The game's own camp MEMORIZE screen
+  filling the list beyond sixteen is not shown.
 
 ~~**one specimen where `0x100` reads other than 1**, which is what the status
 question turns on.~~ **Met.** `WISH-SPEC-porunconscious1.d64`, roster slot 5
