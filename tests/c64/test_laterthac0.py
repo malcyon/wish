@@ -45,29 +45,20 @@ DISAGREE = {
          + [("thief", level, 20, 21) for level in range(1, 5)],
 }
 
-#: How many records of each title reproduce from its own table, and how many
-#: do not.  A regained old class is part of the rule, so MATHEW and MARK, who
-#: hit with the paladin 5 row they left, reproduce.  Every miss left is one
-#: kind: a magic-user of level 1 to 5 storing THAC0 20 where the table says 21,
-#: the flat 40 creation and the class change write
+#: The fewest records of each title the sweep must read, and the fewest of
+#: them that reproduce from the title's own table.  These are lower bounds
+#: against an empty or shrunken read: the specimens grow, so an exact count
+#: would fail on every new one.  A regained old class is part of the rule, so
+#: a magic-user who hit with the paladin 5 row they left reproduces.  Every
+#: miss left is one kind: a magic-user of level 1 to 5 storing THAC0 20 where
+#: the table says 21, the flat 40 creation and the class change write
 #: (`test_nothing_clamps_the_field_and_creation_writes_a_flat_40`, below) and
 #: that the engine's load and resave wrote back over our 39 in a `C64ToDos`
-#: resave of PHILIPPE.  Curse's 18, by specimen:
-#:
-#: * PHILIPPE and BRYTWYN, magic-user 5: the archives' `Saves/` and `SAVE/`
-#:   (4), `amigatodos-curse-resave` (A2, with MATHEW magic-user 1 in A1),
-#:   `c64todos-curse-resave` (A6), `curse-131-four-items-readied` (I6),
-#:   `curse-234-party-dualclassed` (D6), `curse-597-experience-ceiling` (E6);
-#: * the unnamed magic-users 5 of `curse-574-area2-spiritual-hammer-rest`
-#:   (B2, B6);
-#: * MATHEW magic-user 1, former paladin 5 not yet regained, and PHILIPPE
-#:   magic-user 5, in `curse-131-dualclassed-in-area-1` (J1, J6) and the two
-#:   specimens driven on from it, `curse-535-former-paladin-node-running`
-#:   (E1, E6) and `curse-649-mark-regained-node-running` (F1, F6).
-#:
-#: Silver Blades' 2 are PAINE, magic-user 1, in `ssb-234-dualclassed` and
+#: resave of PHILIPPE.  Curse's are PHILIPPE, BRYTWYN, MATHEW and two unnamed
+#: mages, in the archives and in the specimens driven on from one another;
+#: Silver Blades' are PAINE, magic-user 1, in `ssb-234-dualclassed` and
 #: `ssb-234-party-pair`.
-RECORDS = {POOL: (202, 0), CURSE: (134, 18), SSB: (72, 2)}
+RECORDS = {POOL: (202, 202), CURSE: (158, 138), SSB: (74, 72)}
 
 
 def _located(title: str):
@@ -126,21 +117,21 @@ def test_every_record_reproduces_except_the_magic_users_the_dos_engine_stores_20
         title):
     """A miss is only a magic-user of level 1 to 5 storing 20 against 21.
 
-    The count is the miss count, not the number of records, so the specimens
-    may grow.  Each miss must also be that one kind, so a fixed known miss
-    alongside a new broken record fails at the same count.
+    The rule is asserted and the counts are only lower bounds, so the
+    specimens may grow.  Every other record must reproduce, so a fixed known
+    miss alongside a new broken record fails.
     """
     _located(title)
     agree, total, lines = laterthac0.sweep(title)
     if not total:
         pytest.skip(f"no DOS {title} records on this machine")
-    want_agree, want_miss = RECORDS[title]
+    want_total, want_agree = RECORDS[title]
 
-    assert total - agree == want_miss, "\n".join(lines)
-    assert agree >= want_agree, (
-        f"{agree} records reproduce, down from {want_agree} when this was "
-        f"measured -- the corpus does not shrink, so something stopped being "
-        f"read\n" + "\n".join(lines))
+    assert total >= want_total and agree >= want_agree, (
+        f"{agree} of {total} records reproduce, against at least "
+        f"{want_agree} of {want_total} when this was measured -- the "
+        f"specimens do not shrink, so something stopped being read\n"
+        + "\n".join(lines))
     unknown = [(source, name, held, stored, want)
                for source, name, held, _, stored, want
                in laterthac0.outcomes(title)
