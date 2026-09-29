@@ -212,7 +212,7 @@ class FakeSession:
         self.shots.append(f"sheet{index}")
         return ["SHEET"]
 
-    def fight(self, budget=300.0, tactic=None, poll=1.0):
+    def fight(self, budget=300.0, tactic=None, poll=1.0, stop=None):
         self.fight_hook(tactic)
         return S.FightResult("WON", 1, 1.0, {}, [], 0, [])
 
@@ -1364,3 +1364,55 @@ def test_flee_mode_reads_no_combatant_blocks_for_sides():
     finally:
         FakeMon.read = real
     assert (tb.COMBATANTS, tb.BLOCKS * tb.STRIDE) not in reads
+
+
+REAL_FIGHT = S.Session.fight
+
+
+class WatchSession(FakeSession):
+    """A fight over, the world not back, and row 24 on the city watch's question."""
+
+    def __init__(self, machine=None):
+        super().__init__(machine)
+        self.combat = True
+        self.script = ["STAY RUN"]
+
+    def mode(self):
+        return S.COMBAT
+
+    def screen(self):
+        s = super().screen()
+        if s is not None:
+            s.text = lambda: s.row(24)
+        return s
+
+    def idle(self, seconds):
+        self.idled = getattr(self, "idled", 0) + 1
+        if self.idled > 50:
+            raise AssertionError("the fight kept polling the city watch's row")
+
+    def fight(self, budget=300.0, tactic=None, poll=1.0, stop=None):
+        return REAL_FIGHT(self, budget=budget, tactic=tactic, poll=poll, stop=stop)
+
+
+def test_the_fight_ends_at_the_city_watch_row_once_the_result_is_stored(monkeypatch, tmp_path):
+    machine = brawl_machine()
+    sess = WatchSession(machine)
+    log = FakeLog()
+    monkeypatch.setattr(tb, "Log", lambda out, quiet=False: log)
+    monkeypatch.setattr(tb.Traps, "arm_result", lambda self: setattr(self, "result_done", True))
+    run_with(monkeypatch, sess, tmp_path)
+    [end] = log.kinds("fight_end")
+    assert end["outcome"] == S.ENDED
+    assert [r["outcome"] for r in log.kinds("fight_result")] == [S.ENDED]
+
+
+def test_the_city_watch_row_before_the_result_is_stored_does_not_end_the_fight():
+    sess = FakeSession()
+    traps = tb.Traps(sess, FakeLog(), pathlib.Path("."), args())
+    assert not traps.result_done
+    assert not tb.watch_prompt_up(traps, FakeScreen("STAY RUN"))
+    traps.result_done = True
+    assert tb.watch_prompt_up(traps, FakeScreen("STAY RUN"))
+    assert not tb.watch_prompt_up(traps, FakeScreen("VIEW AIM USE QUICK DONE"))
+    assert not tb.watch_prompt_up(traps, None)

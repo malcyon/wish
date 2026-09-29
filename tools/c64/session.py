@@ -3474,7 +3474,7 @@ class Session:
         return "MOVE"
 
     def fight(self, budget: float = 300.0, tactic=None,
-              poll: float = 1.0) -> FightResult:
+              poll: float = 1.0, stop=None) -> FightResult:
         """Drive a fight from mode 2 back to mode 1.
 
         The mode flag is this title's own -- `$6E11` in Pool of Radiance and
@@ -3492,6 +3492,11 @@ class Session:
 
         `tactic(session, state)` is called once per command bar and returns
         what it chose; the default passes the turn with `DONE`.
+
+        `stop(session, screen)`, when given, is asked once per iteration and
+        ends the fight as soon as it returns true, for a caller that knows a
+        screen this method does not -- a prompt the game puts up after the
+        fight, where the world never comes back until it is answered.
 
         **`budget` says how long this runs at minimum, not a limit on how
         long it runs.**  The deadline is tested once per iteration, and the
@@ -3537,6 +3542,10 @@ class Session:
             # letter, so a pattern that wants one never matches and the fight
             # runs to its whole budget after it is over (`#189`).
             if mode == DUNGEON and parse_status(text) is not None:
+                return FightResult(outcome or ENDED, turns,
+                                   time.time() - started, bars, lines,
+                                   blows, highlights)
+            if stop is not None and stop(self, s):
                 return FightResult(outcome or ENDED, turns,
                                    time.time() - started, bars, lines,
                                    blows, highlights)

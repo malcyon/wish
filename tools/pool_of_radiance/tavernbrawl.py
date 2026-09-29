@@ -762,6 +762,16 @@ def classify(row: str) -> str:
     return "UNKNOWN"
 
 
+def watch_prompt_up(traps: "Traps", screen) -> bool:
+    """True once the result is stored and the city watch's `STAY` `RUN` row is up.
+
+    The world does not come back until that row is answered, so `Session.fight`
+    would poll it for the whole budget; `after_fight` answers it.
+    """
+    return (traps.result_done and screen is not None
+            and classify(screen.row(24)) == "RUN")
+
+
 def answer_until(sess, log, out: pathlib.Path, label: str, *, stop_on_combat: bool,
                  quiet_reads: int = WORLD_HOLD_READS, quiet_seconds: float = 0.0,
                  timeout: float = ENTRY_SECONDS) -> dict:
@@ -1184,7 +1194,8 @@ def _run(args, out: pathlib.Path, log) -> int:
 
         flight = Flight(log) if args.mode == "flee" else None
         tactic = Tactic(sess, log, args, flight)
-        result = sess.fight(budget=args.budget, tactic=tactic, poll=0.12)
+        result = sess.fight(budget=args.budget, tactic=tactic, poll=0.12,
+                            stop=lambda _sess, s: watch_prompt_up(traps, s))
         tap.active = False
         log.emit("fight_result", outcome=result.outcome, turns=result.turns,
                  seconds=result.seconds)
