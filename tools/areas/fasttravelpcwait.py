@@ -34,7 +34,8 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.actions import KEY_FETCH, KEY_WAIT, pc_register  # noqa: E402
+from automap.actions import pc_register  # noqa: E402
+from automap.fasttravel import POOL_OF_RADIANCE  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from automap.vice import Monitor, MonitorError  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
@@ -42,7 +43,8 @@ from tools.registry import scratch  # noqa: E402
 
 
 def in_window(pc: int) -> bool:
-    return any(lo <= pc < hi for lo, hi in (KEY_WAIT, KEY_FETCH))
+    return any(lo <= pc < hi for lo, hi in (POOL_OF_RADIANCE.key_wait,
+                                      POOL_OF_RADIANCE.key_fetch))
 
 
 def trace(mon: Monitor, n: int, gap: float) -> list[tuple[float, int]]:

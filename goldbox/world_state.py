@@ -7,11 +7,9 @@ map, quest flags and script scratch. Donald named the concept on
 2026-09-07 and said the two names side by side are no trouble:
 "Having world.py and world_state.py is fine. I can tell the difference."
 
-The lift `#352 (Handle world state for Amiga saves)` asks for:
-`goldbox.amiga_por.PorSaveState` proved the shape for a Pool of Radiance party
-standing indoors, and `WorldState` is that shape generalised over the three
-titles whose saved game is an array of ECL words (Pool of Radiance, Curse of
-the Azure Bonds, Secret of the Silver Blades): `from_c64` and `from_dos` read
+`WorldState` covers the three titles whose saved game is an array of ECL
+words (Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver
+Blades): `from_c64` and `from_dos` read
 all three and `from_amiga` reads Pool of Radiance, so the C64 and DOS container
 writers no longer have to read their source straight out of the other port's
 file.  `PodWorldState` is the separate class for Pools of Darkness, whose saved
@@ -22,10 +20,8 @@ measured per port and some are still guesses.  Nothing here is graded:
 every address a :class:`WorldState` names is read identically by all
 three engines' own save routines (`docs/165-amiga-savegame.md`,
 `docs/141-dos-savegame.md`, `goldbox/c64_save.py`), which is what
-`#352`'s ratifying comment on `#51 (Every permutation of DOS, C64 and
-Amiga, in both directions)` (2026-09-07) calls the whole cost of the lift:
-five fields `PorSaveState` lacked against what DOS <-> C64 already
-converts.  So `WorldState` is a frozen dataclass and stays one -- it gets
+`#51 (Every permutation of DOS, C64 and Amiga, in both directions)`.
+So `WorldState` is a frozen dataclass and stays one -- it gets
 none of `NeutralCharacter`'s `Value`/`Confidence`/`Writer.take` machinery.
 
 **What each container holds that the other two do not never lives here.**
@@ -62,18 +58,9 @@ class WorldState:
     `facing` is the C64's 0-3.  Both DOS and the Amiga store it doubled and
     both writers do the doubling, so a caller never sees the doubled form.
 
-    Lifted from `goldbox.amiga_por.PorSaveState`, which held everything below
-    but `title`, `outdoors`, `travel`, `set_out` and `header` -- the five
-    fields the DOS <-> C64 pair already needed and the Amiga writer never
-    had to ask for, because `#316 (Write the Amiga Pool of Radiance saved
-    game from the source save, so a converted party arrives where it was
-    standing)` used to refuse an outdoor party and a party that has not set
-    out before either ever reached a `PorSaveState`.  **The outdoor half of
-    that is over**: the two bytes nobody had seen were measured on
-    2026-09-07 and `#321 (An Amiga Pool of Radiance conversion refuses a
-    party standing on the travel grid, because no outdoor Amiga saved game
-    has ever been read)` closed, so an outdoor Amiga party is read like any
-    other.
+    `title`, `outdoors`, `travel`, `set_out` and `header` are the fields the
+    DOS <-> C64 pair needs and the Amiga writer does not ask for.  An outdoor
+    Amiga party is read like any other.
     """
 
     #: The title this save belongs to, `goldbox.c64_port.C64Container.title`.

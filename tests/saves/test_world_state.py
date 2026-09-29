@@ -1,12 +1,11 @@
-"""`goldbox.world_state.WorldState`, the lift of `goldbox.amiga_savegame.PorSaveState`
-into one shape every port's saved-game reader fills
-(`#352 (Handle world state for Amiga saves)`).
+"""`goldbox.world_state.WorldState`, the one structure every port's saved-game
+reader fills (`#352 (Handle world state for Amiga saves)`).
 
 `tests/amiga/test_amigaporsavegame.py` and `tests/convert/test_toamigapor.py` keep the
 Amiga-specific coverage of the three `goldbox.amiga_savegame.por_state_from_*`
 wrappers; what belongs here is the general reader itself -- that it agrees
-with a title's own C64 and DOS specimens, and the five fields it added
-against `PorSaveState`.
+with a title's own C64 and DOS specimens, and the five fields the Amiga
+Pool of Radiance reader does not need.
 """
 
 from __future__ import annotations
@@ -97,7 +96,7 @@ def test_from_c64_and_from_dos_agree_on_the_projects_one_twin_pair():
 
 
 # ---------------------------------------------------------------------------
-# The five fields PorSaveState lacked
+# The five fields the Amiga Pool of Radiance reader does not need
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("game,width", [
@@ -105,10 +104,10 @@ def test_from_c64_and_from_dos_agree_on_the_projects_one_twin_pair():
     (c64_port.SECRET_OF_THE_SILVER_BLADES, 224),
 ])
 def test_the_flag_window_is_the_later_titles_own_wider_one(game, width):
-    """`PorSaveState` always read Pool of Radiance's 217-byte window, which
-    is 7 bytes short of Curse and Secret of the Silver Blades' own 224
-    (`c64_save.Container.quest_flags`).  `from_c64` and `from_dos` both
-    read the width from that table instead of assuming Pool of Radiance's.
+    """Pool of Radiance's flag window is 217 bytes, 7 short of Curse and
+    Secret of the Silver Blades' own 224 (`C64Container.quest_flags`).
+    `from_c64` and `from_dos` both read the width from that table instead of
+    assuming Pool of Radiance's.
     """
     name = ("curse-dual-classed" if game is c64_port.CURSE_OF_THE_AZURE_BONDS
             else "ssb-malachite-trained")

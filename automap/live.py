@@ -9,7 +9,7 @@ Radiance those are:
 
 **and in no other title.** Curse and Silver Blades load the save at `$4B00` and
 keep the roster inside it at `$6700`, which is one read rather than two. Every
-address here therefore comes from the `goldbox.c64_port.Game` descriptor -- see
+address here therefore comes from the `goldbox.c64_save.C64Container` descriptor -- see
 `memory_blocks` -- and not from a constant, so a new title costs a table row.
 `automap/actions.py` reads through the same `read_blocks`, so the write side
 cannot come to disagree with the read side about where a title lives.
@@ -93,7 +93,7 @@ QUICKFIGHT_BIT = 0x80
 # **Seven entries, not four**, because the array at 0x0C9 is eight slots and
 # the bit number *is* the slot number: bit 4 the knight at 0x0CD, bit 6 the
 # paladin at 0x0CF, bit 7 the ranger at 0x0D0. Which of the seven a title
-# offers is `Game.class_bits`, not this table -- see `_classes`. Four entries
+# offers is `C64Container.class_bits`, not this table -- see `_classes`. Four entries
 # is what left a Curse paladin and a Silver Blades ranger reading `?  L8`
 # (#197).
 CLASS_LEVEL_FIELD = {"magic-user": "level_magic_user", "cleric": "level_cleric",
@@ -176,7 +176,7 @@ BADGE_TABLES: dict[str, tuple[tuple[str, tuple[int, ...]], ...]] = {
 def condition_badges(game=None) -> tuple[tuple[str, tuple[int, ...]], ...]:
     """The badge groups for a title, or Pool of Radiance's.
 
-    Takes a `goldbox.c64_port.Game`, a game key, or None -- duck-typed on `.key`
+    Takes a `goldbox.c64_save.C64Container`, a game key, or None -- duck-typed on `.key`
     the way `goldbox/traits.py:for_game` is, so a caller holding a
     `levels.LevelTables` or nothing at all still gets an answer.
     """
@@ -517,7 +517,7 @@ def _classes(record, game) -> tuple[ClassProgress, ...]:
     apart. Each class's bar is drawn against the same stored number, which is
     right if it is a per-class share and optimistic if it is a total.
 
-    **Which bits exist is the title's business**, `Game.class_bits`: Pool of
+    **Which bits exist is the title's business**, `C64Container.class_bits`: Pool of
     Radiance's four, Curse and Silver Blades' six, Krynn's seven. Walking the
     classic four whatever was running is what gave a Curse paladin and a
     Silver Blades ranger a card reading `?  L8`, with no class name and no

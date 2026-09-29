@@ -62,12 +62,7 @@ def _u16(data: bytes, at: int) -> int:
 #: count, then a fixed two hundred twenty-byte item nodes, the unused ones
 #: padded from the same item template table (`0x3DA86`).  12 + 4 + 200 * 20 =
 #: 4016, which is what every one of them measures.  The map lives in
-#: `goldbox.amiga_savegame` under `POD_VAULT_*`; these aliases keep this
-#: module's and its tests' own spelling.
-VAULT_HEADER = amiga_savegame.POD_VAULT_HEADER
-VAULT_MARKER = amiga_savegame.POD_VAULT_MARKER
-VAULT_ITEMS = amiga_savegame.POD_VAULT_NODES
-VAULT_SIZE = amiga_savegame.POD_VAULT_SIZE
+#: `goldbox.amiga_savegame` under `POD_VAULT_*`.
 
 #: The executable, on disk 1.
 EXECUTABLE = "Pools of Darkness"
@@ -247,15 +242,16 @@ def main(argv: list[str] | None = None) -> int:
         for name, copies in found.items():
             for index, (_label, blob) in enumerate(copies):
                 label = f"{name}{'' if not index else f'#{index}'}"
-                if len(blob) < VAULT_HEADER + 4:
+                if len(blob) < amiga_savegame.POD_VAULT_HEADER + 4:
                     print(f"{label}  {len(blob)}  <- too short to hold a "
                           "vault header")
                     clean = False
                     continue
-                marker = _u16(blob, VAULT_HEADER)
-                count = _u16(blob, VAULT_HEADER + 2)
-                ok = (len(blob) == VAULT_SIZE and marker == VAULT_MARKER
-                      and count <= VAULT_ITEMS)
+                marker = _u16(blob, amiga_savegame.POD_VAULT_HEADER)
+                count = _u16(blob, amiga_savegame.POD_VAULT_HEADER + 2)
+                ok = (len(blob) == amiga_savegame.POD_VAULT_SIZE
+                      and marker == amiga_savegame.POD_VAULT_MARKER
+                      and count <= amiga_savegame.POD_VAULT_NODES)
                 print(f"{label}  {len(blob)}"
                       f"  marker=${marker:04X}  items={count}"
                       f"{'' if ok else '  <- not the measured vault'}")

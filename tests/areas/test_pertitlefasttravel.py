@@ -122,7 +122,7 @@ def test_actions_holds_no_second_copy_of_pool_of_radiances_addresses():
         "FASTTRAVEL_DISK", "FASTTRAVEL_TRAVEL_X", "FASTTRAVEL_FROM",
         "FASTTRAVEL_SLOT", "FASTTRAVEL_WALLS_SLOT", "FASTTRAVEL_SCRATCH",
         "FASTTRAVEL_SCRATCH_LEN", "FASTTRAVEL_INDOORS", "WALL_SLOT_PINNED",
-        "WALL_SLOT_PINNED_LEN", "NEWECL_TAIL",
+        "WALL_SLOT_PINNED_LEN", "NEWECL_TAIL", "KEY_WAIT", "KEY_FETCH",
     ]
     assert [n for n in forwarded if hasattr(actions, n)] == []
 

@@ -1107,18 +1107,13 @@ def por_put_word(save: bytearray, address: int, value: int) -> None:
     save[at:at + 2] = (value & 0xFFFF).to_bytes(2, "big")
 
 
-#: `por_savegame_writes` below only ever reads the ten fields Pool of Radiance
-#: needed, and a `world_state.WorldState` is a strict superset of those, so
-#: nothing here converts one into the other.  The three `por_state_from_*`
-#: readers are one-line wrappers of `goldbox.world_state`'s three general
-#: ones, each keeping the one thing that was Amiga-specific about it.
-#: **They no longer refuse an outdoor party**: the two bytes that had never
-#: been seen were measured on 2026-09-07, on two saved games the Amiga game
-#: itself made on the travel grid (`#316 (Write the Amiga Pool of Radiance
-#: saved game from the source save, so a converted party arrives where it was
-#: standing)`, `#321 (An Amiga Pool of Radiance conversion refuses a party
-#: standing on the travel grid, because no outdoor Amiga saved game has ever
-#: been read)`).
+# `por_savegame_writes` below only reads the ten fields Pool of Radiance
+# needs, and a `world_state.WorldState` is a strict superset of those, so
+# nothing here converts one into the other.  The three `por_state_from_*`
+# readers are one-line wrappers of `goldbox.world_state`'s three general ones,
+# each keeping the one thing that is Amiga-specific about it.  They accept an
+# outdoor party: the two bytes an outdoor party sets were measured on two
+# saved games the Amiga game itself made on the travel grid.
 
 
 def por_state_from_c64(save0: bytes, source: str = "") -> world_state.WorldState:

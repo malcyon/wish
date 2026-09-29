@@ -38,6 +38,7 @@ from PyQt6.QtWidgets import (
 )
 
 from . import actions as engine
+from . import fasttravel
 from .area import ResidentGeo
 from .config import Settings
 from .panel import (
@@ -94,18 +95,19 @@ class _NotAskingThePC(_OnePoll):
     """
 
     def pc(self) -> int:
-        return engine.KEY_WAIT[0]
+        return fasttravel.POOL_OF_RADIANCE.key_wait[0]
 
 
 def in_key_wait(pc: int) -> bool:
     """Whether the CPU is somewhere `NEWECL` may be entered from.
 
-    The two windows are `automap/actions.py`'s -- P15's key-wait loop and the
+    The two windows are Pool of Radiance's row in `automap/fasttravel.py` -- P15's key-wait loop and the
     key fetcher it calls -- and this is the test `FastTravel.legality` makes on
     them. It is asked separately here because the wait after a click needs to
     know when to stop, and `legality` answers about a whole trip.
     """
-    return any(lo <= pc < hi for lo, hi in (engine.KEY_WAIT, engine.KEY_FETCH))
+    row = fasttravel.POOL_OF_RADIANCE
+    return any(lo <= pc < hi for lo, hi in (row.key_wait, row.key_fetch))
 
 
 #: Buttons per row. Three keeps the block no wider than the 596px map above

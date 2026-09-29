@@ -106,15 +106,6 @@ _log = logging.getLogger("wish.editor.dosimport")
 # Every string below is Donald's -- approved 2026-08-24, and the refusal
 # 2026-08-27. Changing one is his call, not a refactor.
 
-#: The heading over a list of what a converted character loses, Donald's
-#: wording of 2026-09-05 (`09027bb`).  **Nothing draws it any more**: the
-#: pane stopped carrying the drop list at all on 2026-09-08, when the
-#: accounting moved to the debug log (`pane_text` below), and before that it
-#: sat under `Conversion Info` with no heading of its own (2026-09-06); the
-#: now-deleted `DosImportDialog`'s own pane never drew it either, both
-#: before and after that date.
-DROPPED_HEADING = "Wish cannot currently convert these fields:"
-
 #: The refusal when the player's game disks cannot be found, which is the one
 #: thing the conversion cannot do without: the combat icon comes out of
 #: `SPELLE64` and `$8400` out of `ANIMATE00`, and neither may be stored here.

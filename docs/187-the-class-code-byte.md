@@ -207,9 +207,9 @@ imports `goldbox/c64_codec.py`, so the table and the mask-then-levels rule
 belong in the middle. `classcode.code_for` is the rule this page describes --
 mask first, the level array only for a dual-classed character -- and
 `classcode.repair` says what should replace a stored code that disagrees.
-`goldbox.dos_codec.CLASS_CODE_TABLE`, `goldbox.dos_codec.CLASS_CODE_FOR_BITS` and
-`goldbox.yaml_io.CLASS_CODES` re-export the two tables, so nothing that
-already imported them by name had to change.
+`goldbox.classcode.CLASS_CODE_TABLE` and `goldbox.classcode.CLASS_CODE_FOR_BITS`
+are the two tables, and `goldbox.yaml_io.CLASS_CODES` is Pool of Radiance's
+table under the name the YAML reader uses.
 
 `goldbox.c64_codec.read` sets `char_class` with `Provenance.COMPUTED` and an
 origin naming both numbers whenever the repair fires, exactly the way

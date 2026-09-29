@@ -106,3 +106,7 @@ The automapper relies on VICE's built-in binary monitor to peek into the Commodo
 1. The `Session` polls the connection.
 2. The `Target` (in `automap/target.py`) sends specific memory read requests over TCP.
 3. The responses are decoded to identify the current area, party location, HP, and combat status.
+
+## Renaming a name
+
+A rename moves every maintained caller to the new name and removes the old name in the same effort. A module does not keep the old spelling as an alias or a re-export for callers that could simply change. A temporary exception names its consumer and its removal condition in a comment beside the alias, and is deleted when that condition holds.

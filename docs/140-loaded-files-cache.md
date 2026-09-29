@@ -128,6 +128,32 @@ is "reload slot `X` if it is dirty".
 the three `WALLDEF` slots, which live in the staging buffer — and `$FF` at slot
 24 ends the loop.
 
+## The empty `WALLS` slot
+
+Slot 9 is the resident `WALLS` file, which loads at `$ED50` under the KERNAL.
+Every area but New Phlan uses a `WALLDEF` triple instead: `LOADPIECES`
+(`DUNGEON $276E`) marks the three slots dirty, `$145C` reloads each into the
+`$8C00` staging buffer, and `$1485` unpacks them onto `$ED50`, `$F05C` and
+`$F368` without telling slot 9 that its memory was overwritten. A genuine exit
+from New Phlan empties the slot with `ECL00 $9955`/`$9BDC`, `LOADFILES 255, 255,
+127`. `FastTravel` enters `NEWECL` at its tail, past that statement, so a fast
+travel out of New Phlan never empties it, and the next arrival there finds it
+still saying `WALLS00` and skips the reload (masked `A` equal to the slot means
+no load, above).
+
+`$FF` is the value to write: it is the empty marker this document names, it is
+what every engine-written save in a `WALLDEF` area carries in this slot, and it
+is the one value `LIBRARY $4225` leaves alone, so the next `LOADFILES 0, 0, 0`
+in New Phlan reloads `WALLS00`. `00` would make that call decline the reload,
+because the slot would already say `00`.
+
+**Only Pool of Radiance has a `WALLS` file.** A directory read of all nine Pool
+of Radiance sides, all six Curse sides and all six Silver Blades sides finds
+`WALLS00` on Pool of Radiance's alone; the other two carry `WALLDEF` and
+`WALLSET` pairs and nothing else. So the fast-travel table's `walls_slot` is
+`None` for them, and nothing is written to a cache entry whose contents in those
+titles nobody has read.
+
 ## Saving and loading
 
 * **Saving.** `CAMP $0D00`: `LDX #$18 / LDA $6E13,X / STA $4BC0,X` — all 25

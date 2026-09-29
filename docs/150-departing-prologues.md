@@ -56,7 +56,7 @@ reads and a handful of tests.
 
 | written in the block that runs into the `NEWECL` | exits | reproduced? | grade |
 |---|---|---|---|
-| `$6E12`, the `POOL` side the target lives on | 32 | yes -- `FASTTRAVEL_DISK`, from the area table | harmless |
+| `$6E12`, the `POOL` side the target lives on | 32 | yes -- the `disk` field of the title's row in `automap/fasttravel.py`, from the area table. `LIBRARY $43A4` reads `$6E12` and prompts if that disk is not in the drive | harmless |
 | `$C04B`-`$C04D`, the live square and facing | 19 | yes when the area has a known arrival square -- but the *area's* square, not this exit's | harmless: a different legal square, not a wrong one |
 | `$49C3`/`$49C4`, the overland square | 10 | **no** | **visible** -- see below |
 | `$4A20`+, a persistent quest flag | 9 | no | **not a defect**: the party did not take that route, so the flag should not move |
@@ -138,6 +138,17 @@ and clears the pins on only one of them: leaving south goes to area 9 with the
 pins cleared, and leaving any other way goes to area 3, which is another
 quarter of the same castle and wants the same wall art. It is an optimisation
 between areas that share a wall set, and a fast travel takes neither branch.
+`ECL06`'s Valjevo-to-Valjevo route is the one place the game leaves the pins
+set on purpose, so zeroing them costs one extra relocation pass there and
+nothing in the areas that never set them.
+
+**Curse and Silver Blades have the same array, and it transfers.** It is at
+`$4BE7`, `save_load_address` plus `$0200`. Each title's `DUNGEON` holds exactly
+one reference to it, `LDA $4BE7,X / BNE`, in front of the same unpack setup
+Pool of Radiance guards (`LDA #$0C / STA $B0 / LDA #$03 / STA $B1`, the piece
+geometry): one hit per overlay across the three overlays, so no second array
+exists that could be the real one. Which of the later titles' scripts pin a
+piece is unmeasured.
 
 **Grade: CONFIRMED**, in the emulator on 2026-09-02 by `tools/areas/wallpins.py`.
 This said PROBABLE until then, on the grounds that nobody had warped out of one

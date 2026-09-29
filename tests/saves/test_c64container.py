@@ -25,7 +25,7 @@ import dataclasses
 
 import pytest
 
-from editor import convert
+from editor import convert, dosimport
 from goldbox import c64_codec, c64_port, c64_save, titles
 from goldbox.c64_save import C64Container
 
@@ -55,6 +55,7 @@ RETIRED_NAMES = (
     (c64_save, "Container"),
     (c64_codec, "RECORD_SHAPES"),
     (convert, "DROPPED_HEADING"),
+    (dosimport, "DROPPED_HEADING"),
     *((c64_port, name) for name in (
         "CLOCK_OFFSET", "HEADER_SIZE", "ICON_TABLE_OFFSET",
         "INDOORS_FLAG_OFFSET", "ITEM_AREA_OFFSET",

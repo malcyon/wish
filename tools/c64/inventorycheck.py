@@ -292,6 +292,9 @@ def sheet_up(s) -> bool:
 def open_items(sess, r: Run, who: str) -> list[str] | None:
     """`VIEW` the character called `who`, then `ITEMS`, and read the list.
 
+    This is the item-screen opener of this tool, distinct from
+    `tools/c64/route_pool.open_items`.
+
     The party panel is in **marching order**, not slot order, so which row
     to highlight is read off the screen rather than taken from the save.
 

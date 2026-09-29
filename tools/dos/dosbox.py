@@ -1166,8 +1166,8 @@ def run_walked(built: dict, resaved: dict) -> bool:
 # The `.DAX` container, and the 63-byte item record inside `.ITM`
 # --------------------------------------------------------------------------
 
-#: The container reader is `goldbox/dos_savegame.py`'s: one index, one
-#: run-length decode, one set of refusals.
+# The container reader is `goldbox/dos_savegame.py`'s: one index, one
+# run-length decode, one set of refusals.
 
 
 # One item, in a `.ITM` file or an `ITEM<n>.DAX` block.  The file is

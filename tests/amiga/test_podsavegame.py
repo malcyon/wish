@@ -209,7 +209,7 @@ def test_the_square_block_is_dos_field_order_with_one_more_byte():
 
 
 def test_the_vault_is_two_hundred_item_slots():
-    assert podsavegame.VAULT_SIZE == 4016
+    assert amiga_savegame.POD_VAULT_SIZE == 4016
 
 
 # ---------------------------------------------------------------------------
@@ -321,11 +321,11 @@ def test_every_vault_is_the_size_its_own_writer_makes_it():
     for name, copies in found.items():
         for _label, blob in copies:
             total += 1
-            assert len(blob) == podsavegame.VAULT_SIZE, name
+            assert len(blob) == amiga_savegame.POD_VAULT_SIZE, name
             marker, count = struct.unpack_from(">HH", blob,
-                                               podsavegame.VAULT_HEADER)
-            assert marker == podsavegame.VAULT_MARKER, name
-            assert count <= podsavegame.VAULT_ITEMS, f"{name}: {count}"
+                                               amiga_savegame.POD_VAULT_HEADER)
+            assert marker == amiga_savegame.POD_VAULT_MARKER, name
+            assert count <= amiga_savegame.POD_VAULT_NODES, f"{name}: {count}"
     assert total >= 8
 
 
@@ -372,7 +372,7 @@ RETIRED_ALIASES = (
     "COUNT_AT", "PARTY_AT", "PARTY_MAX", "RECORD_BYTES", "ITEM_BYTES",
     "EFFECT_BYTES", "BUNDLE_ID", "BUNDLE_COUNT", "ITEM_COUNT_AT",
     "EFFECT_HEAD_AT", "EFFECT_NEXT_AT", "NAME_AT", "NAME_BYTES",
-    "PodCharacter",
+    "PodCharacter", "VAULT_HEADER", "VAULT_MARKER", "VAULT_ITEMS", "VAULT_SIZE",
 )
 
 

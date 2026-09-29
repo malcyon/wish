@@ -1222,25 +1222,6 @@ FASTTRAVEL_Y, FASTTRAVEL_FACING = FASTTRAVEL_X + 1, FASTTRAVEL_X + 2
 #: `$6E11`: DUNGEON is the resident overlay. `$2034` is some other overlay's
 #: code when it is not.
 DUNGEON = 1
-#: `DUNGEON`'s key-wait loop in the world, the one place it is safe to take the
-#: PC from -- mid-script or mid-load the stack reset would discard work in
-#: flight.
-#:
-#: **Measured, not guessed.** 400 PC samples of an idle party landed on exactly
-#: `$10C2 $10C5 $10C8 $10CA $10CC $10CF $10D1 $10D3 $10D6` in the loop and
-#: nothing above it, and the code agrees: `$10E0` is the `JMP $10C2` that
-#: closes it, `$10E3`-`$10EB` is its own exit tail, and `$10EC` starts a
-#: different routine (`LDA #$00 / STA $6DD5`). So the window ends at `$10EC`.
-KEY_WAIT = POOL_ADDRESSES.key_wait
-#: The key fetcher the loop calls, `$2E4E`-`$2E6A` inclusive: `LDA $DC00` for
-#: the CIA row, then the KERNAL buffer, then `RTS`. FastTraveling from inside it is
-#: safe for the same reason as the loop -- it is called *from* the loop, so
-#: `$203A`'s stack reload discards the same nothing -- and P15 fasttraveled
-#: successfully from `$2E4E` before this was written down. Nine idle samples
-#: in ten land in one window or the other, so refusing the fetcher made the
-#: button fail about half the times it was pressed.
-KEY_FETCH = POOL_ADDRESSES.key_fetch
-
 
 #: No title given means "whatever table this build has", which is what every
 #: caller written before there was a second title meant. A caller that has a

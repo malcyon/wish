@@ -232,7 +232,7 @@ record per stored item, empty at 12 bytes. See the 2026-09-27 comment on
 #651 (Convert a Pools of Darkness party's item vault between DOS and the
 Amiga along with its saved game).
 
-`goldbox/dos_savegame.py`'s `SAVE_SHAPES` is the machine-readable form: one
+`goldbox/dos_savegame.py`'s `CONTAINERS` is the machine-readable form: one
 row per title, region widths rather than offsets, and the widths must add up
 to the size the file is or the row raises at import. `tools/dos/dossavgam.py`
 prints the map and the anchors.

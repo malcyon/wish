@@ -182,13 +182,10 @@ class Record:
                 f"{self.levels:24s}")
 
 
-#: Directory names of Gold Box titles on the same engine whose record this
-#: module has **no layout for**, and `foreign_title()`, which names the one a
-#: path is inside.  Moved to `tools/dos/dostailsweep.py` by
-#: `#400 (The DOS record sweep counts Gateway and Treasures characters as
-#: Curse and Pools of Darkness ones, because it identifies a title by record
-#: size)`, so every caller of its finder gets the same exclusion this module
-#: worked out first -- kept as names here so nothing importing them breaks.
+#: Names the Gold Box title, if any, whose record this module has **no layout
+#: for** that a path is inside.  The directory list lives in
+#: `tools/dos/dostailsweep.py`, so every finder shares one exclusion; this is
+#: the short spelling of its function used below.
 foreign_title = dostailsweep.foreign_title
 
 

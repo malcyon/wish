@@ -11,7 +11,7 @@ in `$POR_DISKS`, and writes `results.json` to DIR (default
 `wish/automappoll` under the temp directory).
 
 E1  Sample the CPU's PC while the party stands still in DUNGEON, and count how
-    often it lands outside FastTravel's KEY_WAIT/KEY_FETCH windows.  That is
+    often it lands outside FastTravel's key-wait and key-fetch windows.  That is
     the Fast Travel button's own gate, so the miss rate *is* the flicker rate.
 E2  With one binary-monitor connection held, what does a second attach do and
     how long does it take?  (The state wish is left in after a give-up.)
@@ -31,7 +31,8 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.actions import KEY_FETCH, KEY_WAIT, pc_register  # noqa: E402
+from automap.actions import pc_register  # noqa: E402
+from automap.fasttravel import POOL_OF_RADIANCE  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from automap.target import NotConnected, ViceTarget, monitor_listening  # noqa: E402
 from automap.vice import Monitor, MonitorError  # noqa: E402
@@ -65,7 +66,8 @@ def claim_slot(n: int) -> instance.Slot:
 
 
 def in_window(pc: int) -> bool:
-    return any(lo <= pc < hi for lo, hi in (KEY_WAIT, KEY_FETCH))
+    return any(lo <= pc < hi for lo, hi in (POOL_OF_RADIANCE.key_wait,
+                                      POOL_OF_RADIANCE.key_fetch))
 
 
 def sample(mon: Monitor, n: int, gap: float, mode_addr: int = 0x6E11) -> dict:

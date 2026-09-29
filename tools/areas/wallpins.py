@@ -128,7 +128,8 @@ def wait_idle(sess, timeout: float = 300.0, need: int = 6) -> bool:
         except Exception:                       # noqa: BLE001
             pc = None
         idle = pc is not None and any(lo <= pc < hi
-                                      for lo, hi in (A.KEY_WAIT, A.KEY_FETCH))
+                                      for lo, hi in (fasttravel.POOL_OF_RADIANCE.key_wait,
+                                      fasttravel.POOL_OF_RADIANCE.key_fetch))
         inloop = inloop + 1 if idle else 0
         if inloop >= need:
             return True

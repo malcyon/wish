@@ -50,7 +50,7 @@ C64_KEYS = (
 
 
 @pytest.mark.parametrize("key", C64_KEYS)
-def test_race_and_class_tables_agree_with_the_c64_port(key):
+def test_a_key_and_a_container_give_the_same_race_and_class_table(key):
     game = c64_port.by_key(key)
     assert titles.race_table(key) == titles.race_table(game)
     assert titles.class_table(key) == titles.class_table(game)

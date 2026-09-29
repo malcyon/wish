@@ -489,7 +489,7 @@ cleric grant's levels 1–4 the same way.
 
 ### The container, per title
 
-`goldbox/dos_savegame.py`'s `SAVE_SHAPES` is the record table's sibling and
+`goldbox/dos_savegame.py`'s `CONTAINERS` is the record table's sibling and
 works the same way: a title is a row of region widths, and the widths have to
 add up to the size the file is or the row raises at import.
 [`141-dos-savegame.md`](141-dos-savegame.md) has the region map and the
@@ -619,7 +619,7 @@ payload directly (`container.position`, `.travel_position`, `.clock`,
 Adding the Amiga would have meant writing the C64 and DOS container writers a
 second time, this time reading an Amiga source, or parametrising each on
 where its values come from — which is a shared shape under another name.
-`#352 (Handle world state for Amiga saves)` lifted `goldbox.amiga_codec.PorSaveState`
+`#352 (Handle world state for Amiga saves)` lifted the Pool of Radiance Amiga writer's own state class
 — which had already proved the shape for a Pool of Radiance party standing
 indoors — into `WorldState`: one shape, filled by a reader per port, taken by
 all three container writers.
@@ -632,10 +632,11 @@ all three container writers.
 | DOS `SAVGAM<slot>.DAT` | `goldbox.world_state.from_dos` | `goldbox.dos_codec.write_dos_save_from`, or `new_dos_save_from` for a save owing nothing to another (#26 (Write a DOS save, not just read one)) |
 | Amiga `savgam<letter>.dat` | `goldbox.world_state.from_amiga` | `goldbox.amiga_savegame.por_savegame_writes`, or `new_por_savegame` for a save owing nothing to another |
 
-`goldbox.amiga_por.por_state_from_c64`, `.por_state_from_dos`, `.por_state_from_amiga`
-and `.read_por_state` are wrappers around the readers above kept for the
-Amiga's existing callers — `tools/amiga/toamigapor.py` and `tools/amiga/fromamigapor.py`
-among them — and `PorSaveState` is `WorldState` under its old name.
+`goldbox.amiga_savegame.por_state_from_c64`, `.por_state_from_dos`,
+`.por_state_from_amiga` and `.read_por_state` are wrappers around the readers
+above that keep the Amiga's own spelling for its callers —
+`tools/amiga/toamigapor.py` and `tools/amiga/fromamigapor.py` among them — and
+each returns a `WorldState`.
 
 **What the shape holds, and what it deliberately does not.** `title`, `area`,
 `geo`, `x`, `y`, `facing`, the six-digit `clock`, the `wallset` triple, the
@@ -1071,7 +1072,7 @@ from somewhere.** This is the whole list.
 | region | size | what it is | can we produce it from a DOS save? |
 |---|---|---|---|
 | `$4D00`-`$58FF` | 3072 | twelve character slots | **yes, with work** — a field remap, `goldbox/dos_port.py` |
-| `$5900`-`$64FF` | 3072 | item area, 16 items x 16 bytes per slot | **yes** — the DOS item record's last 17 bytes *are* the C64's 16, unpacked; `tools.dos.dosbox.item_to_c64` is the copy. Obstacle 3 |
+| `$5900`-`$64FF` | 3072 | item area, 16 items x 16 bytes per slot | **yes** — the DOS item record's last 17 bytes *are* the C64's 16, unpacked; `goldbox.dos_codec.item_to_c64` is the copy. Obstacle 3 |
 | `$8300`-`$83FF` | 256 | roster: derived combat values | **yes** — recompute for the target, do not copy |
 | `$8400`-`$8753` | 852 | `ANIMATE00`, resident — code, not party state | **yes** — read the file off the player's own `POOL` disk. 852 payload bytes at load address `$1000`, byte-identical on all eight sides, and 829 of the 852 match what an engine-written save holds here on all 14 of Donald's save disks. `$8400 + 852 - 1` is `$8753`, so the boundary with the buffer below is the file's own length rather than a guess. **Not scratch**: cache slot 11 tells the engine the file is resident, so nothing reloads it — `docs/140-loaded-files-cache.md` §"Slot 11 is not lazy, because the save is carrying the file", and #122 (A converted save says ANIMATE00 is resident and carries whatever the template had there) |
 | `$8754`-`$8AFF` | 940 | bitmap buffer | **yes, as zero** — 407 non-zero bytes of a template wiped, and the result loaded, walked, fought and changed area indistinguishably from the control (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64) step 3) |
@@ -1233,7 +1234,7 @@ record with its packed bytes spread out one to a byte**:
 0x036        cursed             -> C64 +7 bit 7
 ```
 
-`tools.dos.dosbox.item_to_c64` is that projection, and the projection is the
+`goldbox.dos_codec.item_to_c64` is that projection, and the projection is the
 evidence: applied to every record in the DOS game's own `ITEM1.DAX`-`ITEM8.DAX`
 it reproduces **157 of the 163 distinct item records on the C64 disks byte for
 byte**, packed bytes included. One wrong offset, sign or bit collapses the
@@ -1310,7 +1311,7 @@ invented.
 | region | bytes changed | from |
 |---|---|---|
 | six character slot windows `$4D00`-`$52FF` | 205 | the DOS record, field by field |
-| six inventories `$5900`-`$5EFF` | 465 | `tools.dos.dosbox.item_to_c64` per item |
+| six inventories `$5900`-`$5EFF` | 465 | `goldbox.dos_codec.item_to_c64` per item |
 | quest flags `$4A20`-`$4AF8` | 27 | the DOS word array, narrowed to bytes |
 | party square `$49C0`-`$49C2` | 3 | file offsets 12801-12803, facing halved |
 | `SAVEDGAME1` roster | 6 | current hit points and party order |
@@ -2036,8 +2037,8 @@ graph LR
 **A** is the known exception and it is declared, not hidden: `FIELDS` says
 `inventory` is "the shared sixteen-byte item shape `goldbox/items.py` reads", so
 the neutral vocabulary itself admits that one field is a port's shape. The
-value `to_neutral` sets has already been through `dos.item_to_c64`. It carries
-the 157-of-163 evidence and `tools/dos/dosbox.py` re-exports it, so it stays;
+value `to_neutral` sets has already been through `dos_codec.item_to_c64`. It carries
+the 157-of-163 evidence, so it stays;
 what the drawing adds is that the exception is one field wide and stated in
 the vocabulary.
 
@@ -2139,7 +2140,7 @@ opens a file of its own format and runs a whole party through —
 save has to call the C64 reader. What crosses each of those edges is a
 `NeutralCharacter`, never one port's record handed to another port's writer,
 which is the distinction the invariant is actually about. `goldbox/dos_codec.py` also
-re-exports `c64_codec.Report` and `INFRAVISION` under their old names.
+re-exports `c64_codec.Report`.
 
 The graph is read out of the AST by `tools/generate/genimports.py` rather than drawn by
 hand, because a codec quietly reaching into another format's layout is exactly
@@ -2323,7 +2324,7 @@ the block above ever drifts from what the tool prints.
 1. **Does the neutral record sit in the middle?** Yes, for every codec. Each
    reader names its own offsets, each writer names its own fields, and none
    imports another's table: what crosses is a `NeutralCharacter`.
-   `dos.item_to_c64` is the one declared exception, it is one field wide, and
+   `dos_codec.item_to_c64` is the one declared exception, it is one field wide, and
    `FIELDS` itself states that `inventory` carries the shared sixteen-byte
    item shape — the vocabulary admits it rather than hiding it.
 2. **Is the reader/writer split in the right place at every field?** Yes. The

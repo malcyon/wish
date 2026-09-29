@@ -4450,8 +4450,8 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
 
   Consequences, all the other way round from the prediction: entry 4 works as
   designed under a fasttravel, an arriving script *will* place the party if it has a
-  rule for it, and `newecl_writes()` needs no change. `automap/actions.py`'s
-  note on `FASTTRAVEL_FROM` now carries the story.
+  rule for it, and `newecl_writes()` needs no change. The measurement above is
+  the whole story.
 
 - **P43 corollary: the arriving script's placement can be suppressed, and that
   is how to fasttravel onto a chosen square.** `ECL15`'s entry gates on `$4A02`, not

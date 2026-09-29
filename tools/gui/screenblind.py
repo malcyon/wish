@@ -166,6 +166,7 @@ def staged_reads(m, where: str) -> dict:
     out["before"] = {"addr": before.address, "row24": before.row(24)}
     m.write(0x01, bytes([0x30]))
     out["p01_staged"] = m.read(0x01, 1)[0]
+    # Both keys call the same function, so the two entries are one reading twice.
     old = V.read_screen(m)
     out["old_reader"] = {"addr": old.address, "row24": old.row(24)}
     new = V.read_screen(m)

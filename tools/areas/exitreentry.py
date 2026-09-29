@@ -52,6 +52,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
+from automap import fasttravel  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -93,7 +94,7 @@ def indoors(sess) -> bool:
 
     `DUNGEON`'s key-wait loop is an indoor loop -- `$08F4` branches to
     `$0ABA`, the overland loop, when this reads zero -- so waiting for
-    `KEY_WAIT` after an exit that lands in the wilderness waits for
+    the key-wait window after an exit that lands in the wilderness waits for
     something that will never happen.
     """
     with sess.mon(5) as m:
@@ -111,7 +112,8 @@ def wait_idle(sess, timeout: float = 300.0, need: int = 6) -> bool:
         except Exception:                       # noqa: BLE001
             pc = None
         idle = pc is not None and any(lo <= pc < hi
-                                      for lo, hi in (A.KEY_WAIT, A.KEY_FETCH))
+                                      for lo, hi in (fasttravel.POOL_OF_RADIANCE.key_wait,
+                                      fasttravel.POOL_OF_RADIANCE.key_fetch))
         inloop = inloop + 1 if idle else 0
         if inloop >= need:
             return True
