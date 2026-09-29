@@ -886,3 +886,105 @@ def test_a_broken_ring_alone_is_not_an_edit_of_movement(tmp_path):
     assert inventory.raws != inventory.original
     _s0, save1, _disk = saveplan.c64_payloads(again)
     assert save1.to_bytes() == again.save1.to_bytes()
+
+
+# ---------------------------------------------------------------------------
+# DOS Pool of Radiance roster movement
+# ---------------------------------------------------------------------------
+
+POOL_DOS = dos_port.POOL_OF_RADIANCE
+_MOVEMENT_AT = dos_codec.FIELDS_BY_NAME_FOR[POOL_DOS.key][
+    "movement_current"].offset
+
+
+def _dos_movement_party(tmp_path, types="armour", deltas=POOL_DOS):
+    """A DOS party whose first character has base movement 12 and nothing
+    readied, so the stored byte and the rule agree until something is edited."""
+    folder = dos_folder(tmp_path, deltas=deltas, numbers=(1,))
+    seed = Party(str(folder))
+    seed_record = seed.members[0].record
+    seed_record.set("movement", 12)
+    # Strength 17 carries 500 before it slows anybody; the made-up character's
+    # 1 carries nothing, and its coins would already cap the movement.
+    seed_record.set("strength", 17)
+    seed_record.set("exceptional_strength", 0)
+    for coin in ("copper", "silver", "electrum", "gold", "platinum", "gems",
+                 "jewelry"):
+        seed_record.set(coin, 0)
+    for slot in range(len(seed.members[0].inventory.raws)):
+        seed.members[0].inventory.set_raw(slot, bytes(16))
+    for name, data in saveplan.dos_files(seed).items():
+        if data:
+            (folder / name).write_bytes(data)
+        else:
+            (folder / name).unlink(missing_ok=True)
+    # The byte the game itself stores for base movement 12 and no burden.
+    record = bytearray((folder / "CHRDATA1.SAV").read_bytes())
+    record[_MOVEMENT_AT] = 12
+    (folder / "CHRDATA1.SAV").write_bytes(bytes(record))
+    party = Party(str(folder))
+    party.item_types = _armour_types() if types == "armour" else types
+    return party, party.members[0], folder
+
+
+def _dos_stored(party, member) -> int:
+    name = f"CHRDATA{member.index}.SAV"
+    return saveplan.dos_files(party)[name][_MOVEMENT_AT]
+
+
+def _ready(member, weight, plus=0):
+    """Ready a type-5 item, which `_armour_types` makes body armour."""
+    raw = bytearray(16)
+    raw[0], raw[6] = 5, 0x80
+    raw[8], raw[9] = weight & 0xFF, weight >> 8
+    raw[7] = plus
+    member.inventory.add(bytes(raw))
+
+
+def test_readied_heavy_armour_writes_the_dos_movement_the_game_computes(
+        tmp_path):
+    """Nothing in the DOS game rebuilds the byte before an encounter menu's
+    FLEE reads it."""
+    party, member, _folder = _dos_movement_party(tmp_path)
+    assert _dos_stored(party, member) == 12
+    _ready(member, 450)
+    assert _dos_stored(party, member) == 6
+
+
+def test_coins_with_armour_on_write_the_dos_movement_the_game_computes(
+        tmp_path):
+    party, member, _folder = _dos_movement_party(tmp_path)
+    _ready(member, 100)
+    member.record.set("gold", 3000)
+    assert _dos_stored(party, member) == 3
+
+
+def test_an_untouched_dos_party_with_a_table_is_byte_identical(tmp_path):
+    party, _member, folder = _dos_movement_party(tmp_path)
+    before = files_under(folder)
+    files = saveplan.dos_files(party)
+    for name, data in files.items():
+        assert data == before.get(name), name
+
+
+@pytest.mark.parametrize("types", [None, {}])
+def test_no_item_table_leaves_a_dos_armed_characters_movement_and_logs_it(
+        tmp_path, types, caplog):
+    party, member, _folder = _dos_movement_party(tmp_path, types=types)
+    _ready(member, 450)
+    with caplog.at_level("WARNING", logger="wish.editor.roster"):
+        assert _dos_stored(party, member) == 12
+    lines = [r.getMessage() for r in caplog.records]
+    assert len(lines) == 1 and member.name in lines[0]
+
+
+def test_dos_curse_movement_is_written_as_it_was(tmp_path):
+    curse = dos_codec.deltas_for(CURSE_KEY)
+    party, member, _folder = _dos_movement_party(tmp_path, deltas=curse)
+    member.record.set("gold", 3000)
+    at = dos_codec.FIELDS_BY_NAME_FOR[CURSE_KEY]["movement_current"].offset
+    name = f"CHRDATA{member.index}.SAV"
+    with_hook = saveplan.dos_files(party)[name]
+    raw = rewrite.rewrite_dos(member.native, saveplan.original_record(member),
+                              saveplan.edited_record(member))
+    assert with_hook == raw.record and with_hook[at] == raw.record[at]

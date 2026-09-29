@@ -46,6 +46,8 @@ from goldbox.encoding import combat_value
 from goldbox.icons import ICON_SIZE, Icon, icon_for_slot
 from goldbox.items import (
     ITEM_SIZE,
+    ITEM_TYPE_COUNT,
+    ITEM_TYPE_SIZE,
     ITEMS_PER_CHARACTER,
     repair_ring_of_fire_resistance,
 )
@@ -297,8 +299,9 @@ class Party:
         self.save0: SaveGame0 | None = None
         self.save1: SaveGame1 | None = None
         self.members: list[Member] = []
-        # The C64 `ITEMS` type table, Pool of Radiance only, set by the window.
-        # Without it movement is left as read.
+        # The Pool of Radiance item type table, off the DOS game's `ITEMS` or
+        # the C64 disk's, set by the window. Without it movement is left as
+        # read.
         self.item_types: dict | None = None
         if self.port == "c64":
             self._open_c64(game, disk)
@@ -573,6 +576,44 @@ class Party:
                 continue
             if movement != block.movement:
                 block.movement = movement
+
+    def dos_movement(self, member: Any, record: bytes, items: bytes) -> bytes:
+        """`record` with the movement the game's rule gives, if the edit moved it.
+
+        `rewrite.rewrite_dos` renders with no item type table, so for a
+        character with anything readied it copies the stored movement, and the
+        DOS game's encounter menu judges the party on that byte without
+        rebuilding it. Here the rule runs on the loaded record and on the
+        written one, and only a difference between the two is written, so an
+        untouched character stays byte-identical. With no table an armed
+        character keeps the stored byte.
+        """
+        if (self.port != "dos"
+                or self.game.key != c64_port.POOL_OF_RADIANCE.key):
+            return record
+        types = None
+        if self.item_types:
+            table = self.item_types
+            types = b"".join(
+                table[i].raw if i in table else bytes(ITEM_TYPE_SIZE)
+                for i in range(ITEM_TYPE_COUNT))
+        native = member.native
+        loaded_items = b"".join(bytes(i) for i in native.items)
+        deltas = native.deltas
+        before = dos_codec.dos_combat_rebuild(
+            native.to_bytes(), loaded_items, types, deltas)
+        after = dos_codec.dos_combat_rebuild(record, items, types, deltas)
+        if before is None or after is None:
+            if record != native.to_bytes() or items != loaded_items:
+                _log.warning("Movement of %s left as it was: no item type "
+                             "table", member.name)
+            return record
+        if before.movement_current == after.movement_current:
+            return record
+        at = dos_codec.FIELDS_BY_NAME_FOR[deltas.key]["movement_current"].offset
+        out = bytearray(record)
+        out[at] = after.movement_current
+        return bytes(out)
 
     def mark_saved(self) -> None:
         """Take what was just written as the baseline for the next save.

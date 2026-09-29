@@ -392,16 +392,21 @@ class ItemType:
         return "; ".join(parts)
 
 
-def load_item_types(disk: D64 | str) -> dict[int, ItemType]:
-    """Read the ITEMS type table off a game disk, keyed by the index an item
-    record stores in its byte +0."""
-    payload = load_payload(disk, ITEM_TYPES_FILE)
+def item_types_from_payload(payload: bytes) -> dict[int, ItemType]:
+    """The type table in an `ITEMS` payload, keyed by the index an item record
+    stores in its byte +0."""
     out: dict[int, ItemType] = {}
     for i in range(min(ITEM_TYPE_COUNT, len(payload) // ITEM_TYPE_SIZE)):
         raw = bytes(payload[i * ITEM_TYPE_SIZE:(i + 1) * ITEM_TYPE_SIZE])
         if any(raw):
             out[i] = ItemType(i, raw)
     return out
+
+
+def load_item_types(disk: D64 | str) -> dict[int, ItemType]:
+    """Read the ITEMS type table off a game disk, keyed by the index an item
+    record stores in its byte +0."""
+    return item_types_from_payload(load_payload(disk, ITEM_TYPES_FILE))
 
 
 @dataclass(frozen=True)

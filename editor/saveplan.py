@@ -175,7 +175,9 @@ def dos_files(party: Any) -> dict[str, bytes | None]:
 
     `None` where the file should not exist at all -- a character carrying no
     items has no item file -- which is what `editor.files.save_folder` deletes
-    and what a snapshot leaves out.
+    and what a snapshot leaves out. A Pool of Radiance character's movement is
+    rebuilt afterwards (`Party.dos_movement`), because the rewrite has no item
+    type table to rebuild it with.
     """
     slot = party.source.slot
     written: dict[str, bytes | None] = {}
@@ -184,7 +186,8 @@ def dos_files(party: Any) -> dict[str, bytes | None]:
                                      edited_record(member))
         deltas = member.native.deltas
         stem = f"CHRDAT{slot}{member.index}"
-        for suffix, data in ((".SAV", result.record),
+        record = party.dos_movement(member, result.record, result.items)
+        for suffix, data in ((".SAV", record),
                              (deltas.item_suffix, result.items),
                              (deltas.effect_suffix, result.effects)):
             written[stem + suffix] = data or None

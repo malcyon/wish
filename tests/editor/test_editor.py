@@ -6045,13 +6045,29 @@ def test_a_c64_pool_party_with_no_items_disk_logs_it(
     assert any("No disk with ITEMS found" in m for m in seen)
 
 
-def test_a_dos_pool_party_never_looks_for_an_items_disk(
+def test_a_dos_pool_party_with_the_games_items_beside_it_needs_no_items_disk(
+        tmp_path, monkeypatch):
+    """The game's own `ITEMS`, two header bytes and 128 types of 16, is found
+    before any C64 disk is looked for."""
+    monkeypatch.setattr("editor.window.EditorBinding._find_disk",
+                        lambda self, *a, **k: None)
+    (tmp_path / "ITEMS").write_bytes(bytes(2 + 128 * 16))
+    with _window_warnings() as seen:
+        w = _dos_pool_editor(tmp_path)
+        (tmp_path / "ITEMS").unlink()
+        (tmp_path / "por" / "ITEMS").write_bytes(bytes(2 + 128 * 16))
+        w._load_movement_items()
+    assert not any("No disk with ITEMS found" in m for m in seen)
+    assert w.party.item_types is not None
+
+
+def test_a_dos_pool_party_with_no_items_anywhere_logs_it(
         tmp_path, monkeypatch):
     monkeypatch.setattr("editor.window.EditorBinding._find_disk",
                         lambda self, *a, **k: None)
     with _window_warnings() as seen:
         _dos_pool_editor(tmp_path)
-    assert not any("No disk with ITEMS found" in m for m in seen)
+    assert sum("No disk with ITEMS found" in m for m in seen) == 1
 
 
 def test_a_failed_save_then_a_reverted_icon_still_writes_the_icon_on_disk(
@@ -6085,3 +6101,63 @@ def test_a_failed_save_then_a_reverted_icon_still_writes_the_icon_on_disk(
     w.save(interactive=False)
     saved = load_save(D64.open(str(path)))[1].to_bytes()
     assert saved[at:at + ICON_SIZE] == original
+
+
+def _dos_movement_window(tmp_path, with_items):
+    """The Archives' slot A copied to `tmp_path/game/SAVE`, with the game's own
+    `ITEMS` beside it when `with_items`, and BRUTUS given 3000 gold.
+
+    Slot A is the Archives' shipped save, so which hands wrote it is unknown
+    (`.claude/rules/testing.md`); the test rests on the game's rule and on
+    what the edit changes, not on the specimen's history."""
+    import shutil
+
+    from editor.window import EditorBinding
+
+    source = _dos_save_dir()
+    game = tmp_path / "game"
+    save = game / "SAVE"
+    save.mkdir(parents=True)
+    for path in source.iterdir():
+        if path.is_file():
+            shutil.copy(path, save / path.name)
+    if with_items:
+        items = source.parent / "ITEMS"
+        if not items.is_file():
+            pytest.skip("needs the game's ITEMS beside the save folder")
+        shutil.copy(items, game / "ITEMS")
+    w = EditorBinding(make_root(), str(save / "SAVGAMA.DAT"))
+    if not with_items:
+        w.set_disks(str(disk_dir()))
+    row = next(r for r in range(len(w.party))
+               if w.party.member(r).name == "BRUTUS")
+    w.roster.selectRow(row)
+    w._widgets["gold"].setValue(w._widgets["gold"].value() + 3000)
+    w._edited()
+    return w, source, save
+
+
+@game_disks
+@pytest.mark.parametrize("with_items", [True, False])
+def test_a_coins_edit_writes_a_dos_pool_characters_movement(tmp_path,
+                                                            with_items):
+    """A DOS party goes from the editor to the game with the stored movement
+    the game's own rule gives, since nothing on its way to an encounter menu
+    rebuilds it. The table is the game's `ITEMS` beside the save, or the C64
+    disk's when the folder has none. GILES is not edited and keeps the 12 the
+    game wrote for him; the other four are byte-identical."""
+    from editor.roster import Party
+    from goldbox import dos_codec
+
+    w, source, save = _dos_movement_window(tmp_path, with_items)
+    assert "wrote" in w.save(interactive=False)
+
+    at = dos_codec.FIELDS_BY_NAME_FOR["pool-of-radiance"][
+        "movement_current"].offset
+    stored = {m.name: (save / f"CHRDATA{m.index}.SAV")
+              for m in Party(str(source / "SAVGAMA.DAT")).members}
+    brutus, giles = stored.pop("BRUTUS"), stored.pop("GILES")
+    assert brutus.read_bytes()[at] == 3
+    assert giles.read_bytes()[at] == 12
+    for path in [giles, *stored.values()]:
+        assert path.read_bytes() == (source / path.name).read_bytes()

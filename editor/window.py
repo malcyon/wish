@@ -46,7 +46,12 @@ from goldbox import c64_port as por_games
 from goldbox.encoding import combat_byte, combat_value
 from goldbox.iconparts import IconParts
 from goldbox.icons import load_icon_charset
-from goldbox.items import load_item_names, load_item_templates, load_item_types
+from goldbox.items import (
+    item_types_from_payload,
+    load_item_names,
+    load_item_templates,
+    load_item_types,
+)
 from goldbox.layout import FIELDS_BY_NAME, LOAD_ADDRESS
 from goldbox.savegame import SaveGame0, SaveGame1, store_save
 from goldbox.spells import capacity_by_class, load_spell_names
@@ -2228,8 +2233,16 @@ class EditorBinding(QObject):
             return
         party.item_types = None
         game = party.game
-        if party.port != "c64" or game.key != por_games.POOL_OF_RADIANCE.key:
+        if (party.port not in ("c64", "dos")
+                or game.key != por_games.POOL_OF_RADIANCE.key):
             return
+        if party.port == "dos":
+            here = pathlib.Path(party.source.path)
+            for folder in (here, here.parent):
+                table = dos_codec.item_type_table(folder)
+                if table is not None:
+                    party.item_types = item_types_from_payload(table)
+                    return
         found = self._find_disk(load_item_types, game.disk_glob, game)
         if found is None:
             _log.warning("No disk with ITEMS found, so movement is left as "
