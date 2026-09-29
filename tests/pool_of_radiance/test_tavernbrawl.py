@@ -1416,3 +1416,67 @@ def test_the_city_watch_row_before_the_result_is_stored_does_not_end_the_fight()
     assert tb.watch_prompt_up(traps, FakeScreen("STAY RUN"))
     assert not tb.watch_prompt_up(traps, FakeScreen("VIEW AIM USE QUICK DONE"))
     assert not tb.watch_prompt_up(traps, None)
+
+
+def test_a_failed_trap_still_ends_the_fight_at_the_city_watch_row(monkeypatch, tmp_path):
+    machine = brawl_machine()
+    sess = WatchSession(machine)
+    log = FakeLog()
+    monkeypatch.setattr(tb, "Log", lambda out, quiet=False: log)
+    monkeypatch.setattr(tb.Traps, "arm_result", lambda self: setattr(self, "degraded", True))
+    run_with(monkeypatch, sess, tmp_path)
+    [end] = log.kinds("fight_end")
+    assert end["outcome"] == S.ENDED
+    assert "result_unread" in end
+
+
+def test_a_working_trap_leaves_no_unread_result_note(tmp_path):
+    sess = FakeSession()
+    log = FakeLog()
+    traps = tb.Traps(sess, log, tmp_path, args())
+    traps.result_done = True
+    tb.fight_end(sess, log, tmp_path, S.ENDED, traps)
+    assert "result_unread" not in log.kinds("fight_end")[0]
+
+
+def test_a_transient_timeout_reading_the_hit_count_is_retried():
+    machine = Machine()
+    sess, traps = installed(machine)
+    seen = []
+    traps.arm("boom", 0x1234, lambda m: seen.append(1), store=True, once=False)
+    machine.store(0x1234)
+    real = FakeMon.checkpoint_hits
+    fails = [1]
+
+    def flaky(self, n):
+        if fails:
+            fails.pop()
+            raise TimeoutError("timed out")
+        return real(self, n)
+
+    FakeMon.checkpoint_hits = flaky
+    try:
+        connect(sess)
+    finally:
+        FakeMon.checkpoint_hits = real
+    assert not traps.degraded
+    assert seen == [1]
+    assert len(traps.log.kinds("trap_retry")) == 1
+
+
+def test_a_persistent_timeout_reading_the_hit_count_degrades_the_trap():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm("boom", 0x1234, lambda m: None, store=True, once=False)
+
+    def dead(self, n):
+        raise TimeoutError("timed out")
+
+    real = FakeMon.checkpoint_hits
+    FakeMon.checkpoint_hits = dead
+    try:
+        connect(sess)
+    finally:
+        FakeMon.checkpoint_hits = real
+    assert traps.degraded
+    assert len(traps.log.kinds("trap_retry")) == tb.HITS_RETRIES - 1

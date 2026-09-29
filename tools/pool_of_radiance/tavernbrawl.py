@@ -40,6 +40,7 @@ import pathlib
 import re
 import sys
 import time
+import traceback
 from dataclasses import dataclass, fields
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
@@ -482,7 +483,8 @@ class Traps:
         another one, so leave no checkpoint behind.
         """
         self.degraded = True
-        self.log.emit("trap_failed", error=repr(exc))
+        self.log.emit("trap_failed", error=repr(exc),
+                      where="".join(traceback.format_exception(exc)))
         self.log.say(f"  the trap failed: {exc!r}; it makes no further reads")
         for step in (m.checkpoints_clear, m.resume):
             try:
@@ -492,12 +494,23 @@ class Traps:
         self.stops.clear()
         self.counters.clear()
 
+    def _hits(self, m, s) -> int:
+        """`checkpoint_hits`, retried on a monitor timeout: it only reads, so a repeat is safe."""
+        for attempt in range(1, HITS_RETRIES + 1):
+            try:
+                return m.checkpoint_hits(s.cp)
+            except TimeoutError as exc:
+                if attempt == HITS_RETRIES:
+                    raise
+                self.log.emit("trap_retry", name=s.name, attempt=attempt, error=repr(exc))
+        raise AssertionError("unreachable")
+
     def _scan(self, m, only=None) -> bool:
         fired = False
         for s in list(self.stops):
             if only is not None and s.name not in only:
                 continue
-            hits = m.checkpoint_hits(s.cp)
+            hits = self._hits(m, s)
             if hits <= s.hits:
                 continue
             s.hits = hits
@@ -766,9 +779,12 @@ def watch_prompt_up(traps: "Traps", screen) -> bool:
     """True once the result is stored and the city watch's `STAY` `RUN` row is up.
 
     The world does not come back until that row is answered, so `Session.fight`
-    would poll it for the whole budget; `after_fight` answers it.
+    would poll it for the whole budget; `after_fight` answers it.  When the trap
+    has failed the result store is never seen, and the row alone is the signal.
     """
-    return (traps.result_done and screen is not None
+    # A dead trap never sets `result_done`, so the row alone ends the fight.
+    # STAY RUN is not a turn's bar and appears only after the result.
+    return ((traps.result_done or traps.degraded) and screen is not None
             and classify(screen.row(24)) == "RUN")
 
 
@@ -1068,9 +1084,12 @@ def after_fight(sess, traps: Traps, log, out: pathlib.Path, args, before: list) 
 
 #: Seconds `record_stall` gives the screenshot, so a hung `import` cannot hold the slot.
 STALL_SHOT_TIMEOUT = 20.0
+# Reads of a checkpoint's hit count tried before a timeout fails the trap.
+HITS_RETRIES = 3
 
 
-def fight_end(sess, log, out: pathlib.Path, outcome: str) -> None:
+def fight_end(sess, log, out: pathlib.Path, outcome: str,
+              traps: "Traps | None" = None) -> None:
     """A PNG, row 24 and the driver's prediction from the combatant blocks when the fight returns.
 
     It runs on every outcome, the budget included, because `on_result` only
@@ -1095,6 +1114,8 @@ def fight_end(sess, log, out: pathlib.Path, outcome: str) -> None:
                    standing=standing_by_side(blocks))
     except Exception as exc:
         got.update(predicted=None, predicted_why=f"combatant blocks unreadable: {exc!r}")
+    if traps is not None and traps.degraded and not traps.result_done:
+        got["result_unread"] = "the trap failed before the result store, so no result was read"
     log.emit("fight_end", **got)
 
 
@@ -1199,7 +1220,7 @@ def _run(args, out: pathlib.Path, log) -> int:
         tap.active = False
         log.emit("fight_result", outcome=result.outcome, turns=result.turns,
                  seconds=result.seconds)
-        fight_end(sess, log, out, result.outcome)
+        fight_end(sess, log, out, result.outcome, traps)
         traps.flush_shots()
         after_fight(sess, traps, log, out, args, before)
         if traps.degraded:
