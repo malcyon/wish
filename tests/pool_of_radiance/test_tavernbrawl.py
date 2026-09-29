@@ -1773,12 +1773,13 @@ def test_a_handler_run_at_another_pc_is_logged_late_and_one_at_its_address_is_no
 def test_stage_dying_writes_status_and_zero_hit_points_at_the_result_stop_only():
     machine = Machine()
     put_hp(machine, 1, 40)
+    machine.mem[tb.COMBATANTS + tb.STRIDE] = 1
     machine.mem[tb.ACTING] = 1
     sess, traps = installed(machine, stage_dying=1)
     traps.arm_trigger()
     machine.store(tb.MERCY)
     connect(sess)
-    assert machine.mem[tb.COMBATANTS + tb.STRIDE] == 0            # not at the mercy store
+    assert machine.mem[tb.COMBATANTS + tb.STRIDE] == 1            # untouched at the mercy store
     traps.arm_result()
     result_hit(machine, sess, 0x01)
     assert machine.mem[tb.COMBATANTS + tb.STRIDE] == tb.DYING
@@ -1786,6 +1787,7 @@ def test_stage_dying_writes_status_and_zero_hit_points_at_the_result_stop_only()
     assert (machine.mem[tb.COMBATANTS + tb.STRIDE + tb.HP_AT], machine.mem[tb.WORK + tb.HP_AT]) == (0, 0)
     got = traps.readings["dying_staged"][0]
     assert (got["slot"], got["status"], got["hp"]) == (1, tb.DYING, 0)
+    assert (got["status_was"], got["hp_was"]) == (1, 40)
     assert traps.readings["result"][0]["party"][1]["hp"] == 40   # the "before" is read first
 
 
@@ -1886,3 +1888,19 @@ def test_the_share_reading_carries_the_pile_count():
     with FakeMon(machine) as m:
         traps.on_share(m)
     assert traps.readings["share"][0]["pile_count"] == 26
+
+
+def test_stage_dying_on_an_empty_block_writes_nothing_and_logs_what_it_found():
+    machine = Machine()
+    put_hp(machine, 6, 9)
+    sess, traps = installed(machine, stage_dying=5)
+    traps.arm_result()
+    result_hit(machine, sess, 0x01)
+    got = traps.readings["dying_staged"][0]
+    assert got["refused"] == "empty block" and (got["status_was"], got["hp_was"]) == (0, 0)
+    assert machine.writes == []
+
+
+def test_the_mercy_heal_address_is_defined_once():
+    from tools.pool_of_radiance import defeatdrive
+    assert tb.MERCY_HEAL is defeatdrive.MERCY_HEAL

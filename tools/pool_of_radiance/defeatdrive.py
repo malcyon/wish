@@ -289,21 +289,39 @@ MERCY_HEAL = 0x1549
 LEAVE_FAILED = 2
 
 
-def heal_counter(sess, log: Log, arm: bool = True, cp: int | None = None) -> int | None:
-    """Arm (`arm`) or read and delete (`cp`) a non-stop exec counter at `MERCY_HEAL`.
+def arm_heal_counter(sess, log: Log) -> int | None:
+    """Arm a non-stop exec counter at `MERCY_HEAL`; None, logged, if the monitor fails.
 
-    A monitor failure is logged and the leave goes on: the counter is
-    evidence, and losing it must not end the run that produces the rest.
+    The counter is evidence, and losing it must not end the run that produces
+    the rest.
     """
     try:
         with sess.mon(5) as m:
-            if arm:
-                return m.checkpoint_set(MERCY_HEAL, exec_=True, stop=False)
-            log.emit("mercy_heal", hits=m.checkpoint_hits(cp))
-            m.checkpoint_delete(cp)
+            return m.checkpoint_set(MERCY_HEAL, exec_=True, stop=False)
     except Exception as exc:
-        log.emit("mercy_heal_failed", error=repr(exc))
-    return None
+        log.emit("mercy_heal_failed", step="arm", error=repr(exc))
+        return None
+
+
+def retire_heal_counter(sess, log: Log, cp: int) -> None:
+    """Log the counter's hits and delete it; a failed read still deletes.
+
+    A zero count proves the heal never ran only if the counter was armed
+    before the status pass at `$14FB`; the mode byte reading 5 is not
+    confirmed to come first.
+    """
+    try:
+        with sess.mon(5) as m:
+            try:
+                log.emit("mercy_heal", hits=m.checkpoint_hits(cp))
+            except Exception as exc:
+                log.emit("mercy_heal_failed", step="hits", error=repr(exc))
+            try:
+                m.checkpoint_delete(cp)
+            except Exception as exc:
+                log.emit("mercy_heal_failed", step="delete", error=repr(exc))
+    except Exception as exc:
+        log.emit("mercy_heal_failed", step="connect", error=repr(exc))
 
 
 def leave_after(sess, log: Log, budget: float, poll: float) -> bool:
@@ -313,35 +331,42 @@ def leave_after(sess, log: Log, budget: float, poll: float) -> bool:
     TREASURE`, and that is answered with `LEAVE TREASURE` -- `GO BACK` only
     returns to the menu it came from.  The checkpoint is the mode byte, not a
     screen: it must read `MODE_POST` at some point and `S.DUNGEON` afterward.
+
+    A counter at `MERCY_HEAL` is armed when the mode first reads 5 and is read
+    and deleted however the leave ends.  Its count is a lower bound: a zero
+    does not prove the heal never ran if the status pass at `$14FB` came
+    before the counter was armed.
     """
     end = time.time() + budget
     saw_post = False
     heal_cp = None
-    while time.time() < end:
-        mode = sess.mode()
-        if mode == MODE_POST and not saw_post:
-            saw_post = True
-            log.emit("mode", value=mode, note="post-combat overlay")
-            heal_cp = heal_counter(sess, log)
-        elif mode == S.DUNGEON and saw_post:
-            log.emit("mode", value=mode, note="back in the world")
-            if heal_cp is not None:
-                heal_counter(sess, log, arm=False, cp=heal_cp)
-            return True
-        state = sess.combat_state(sess.screen())
-        words = state.text.upper().split()
-        if state.kind == S.BAR_LEAVE:
-            log.emit("leave", answered="LEAVE TREASURE", bar=state.text)
-            sess.combat_bar("LEAVE", timeout=12.0)
-        elif state.kind == S.BAR_EXIT and "POOL" in words:
-            log.emit("leave", answered="EXIT", bar=state.text)
-            sess.combat_bar("EXIT", timeout=12.0)
-        elif state.kind == S.BAR_PRESS:
-            sess.press_kernal(0x0D)
-            sess.await_change(state.text, timeout=4.0)
-        else:
-            sess.idle(poll)
-    return False
+    try:
+        while time.time() < end:
+            mode = sess.mode()
+            if mode == MODE_POST and not saw_post:
+                saw_post = True
+                log.emit("mode", value=mode, note="post-combat overlay")
+                heal_cp = arm_heal_counter(sess, log)
+            elif mode == S.DUNGEON and saw_post:
+                log.emit("mode", value=mode, note="back in the world")
+                return True
+            state = sess.combat_state(sess.screen())
+            words = state.text.upper().split()
+            if state.kind == S.BAR_LEAVE:
+                log.emit("leave", answered="LEAVE TREASURE", bar=state.text)
+                sess.combat_bar("LEAVE", timeout=12.0)
+            elif state.kind == S.BAR_EXIT and "POOL" in words:
+                log.emit("leave", answered="EXIT", bar=state.text)
+                sess.combat_bar("EXIT", timeout=12.0)
+            elif state.kind == S.BAR_PRESS:
+                sess.press_kernal(0x0D)
+                sess.await_change(state.text, timeout=4.0)
+            else:
+                sess.idle(poll)
+        return False
+    finally:
+        if heal_cp is not None:
+            retire_heal_counter(sess, log, heal_cp)
 
 
 def leave_status(sess, log: Log, budget: float, poll: float) -> int:

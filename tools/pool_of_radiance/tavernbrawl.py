@@ -57,6 +57,7 @@ from tools.c64 import runlog  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.hallmenu import area as resident_area  # noqa: E402
 from tools.curse_of_the_azure_bonds.curseflee import _Watched  # noqa: E402
+from tools.pool_of_radiance.defeatdrive import MERCY_HEAL  # noqa: E402
 from tools.pool_of_radiance.fleedrive import (  # noqa: E402
     LINKER_BASE,
     MERCY,
@@ -157,7 +158,7 @@ LINE_DRAWN, AFTER_DROP = 0x0930, 0x0933
 STATUS_PASS, STATUS_DONE, STATUS_CALL = 0x14FB, 0x14B2, 0x14AF
 #: `LDA #$01 / STA $6C19`, the mercy heal, and the `LDA #$00` that only runs
 #: once `$6DE3` is non-zero at `$0A48`, i.e. the pile was emptied.
-MERCY_HEAL, MERCY_TEST, PILE_EMPTIED = 0x1549, 0x1544, 0x0A4D
+MERCY_TEST, PILE_EMPTIED = 0x1544, 0x0A4D
 
 #: What the driver was written against: (file, run-time address, bytes).
 CODE_ROWS = (
@@ -691,10 +692,17 @@ class Traps:
         if self.args.stage_dying is not None:
             slot = self.args.stage_dying
             acting = m.peek(ACTING)
-            write_combatant(m, slot, 0, bytes([DYING]), acting)
-            write_combatant(m, slot, HP_AT, bytes([0, 0]), acting)
-            self.note("dying_staged", slot=slot, acting=acting,
-                      status=m.peek(COMBATANTS + STRIDE * slot), hp=hp_of(m, slot))
+            was = {"status_was": m.peek(COMBATANTS + STRIDE * slot),
+                   "hp_was": hp_of(m, slot)}
+            if not was["status_was"]:
+                # An empty block (status 0) is not a character; dying it would
+                # stage nothing the status pass counts.
+                self.note("dying_staged", slot=slot, acting=acting, refused="empty block", **was)
+            else:
+                write_combatant(m, slot, 0, bytes([DYING]), acting)
+                write_combatant(m, slot, HP_AT, bytes([0, 0]), acting)
+                self.note("dying_staged", slot=slot, acting=acting,
+                          status=m.peek(COMBATANTS + STRIDE * slot), hp=hp_of(m, slot), **was)
         if self.args.stage_mercy is not None:
             m.write(MERCY, bytes([self.args.stage_mercy]))
             self.note("mercy_staged", staged=self.args.stage_mercy, read_back=m.peek(MERCY))

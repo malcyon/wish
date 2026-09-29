@@ -168,3 +168,41 @@ def test_no_heal_counter_is_armed_before_the_post_combat_mode():
     sess = Counting([(1, S.BAR_BLANK, "")])
     assert defeatdrive.leave_after(sess, Log(), 0.05, 0.0) is False
     assert sess.calls == []
+
+
+def test_a_leave_that_runs_out_of_budget_after_arming_still_deletes_the_counter():
+    sess = Counting([(5, S.BAR_BLANK, "")], hits=0)
+    log = Log()
+    assert defeatdrive.leave_after(sess, log, 0.05, 0.0) is False
+    assert sess.calls == [("set", 0x1549, True, False), ("hits", 7), ("delete", 7)]
+    assert [kw for k, kw in log.events if k == "mercy_heal"] == [{"hits": 0}]
+
+
+def test_a_leave_that_raises_after_arming_still_deletes_the_counter():
+    sess = Counting([(5, S.BAR_EXIT, "VIEW POOL EXIT")])
+
+    def boom(label, timeout=0.0):
+        raise RuntimeError("bar gone")
+
+    sess.combat_bar = boom
+    try:
+        defeatdrive.leave_after(sess, Log(), 5.0, 0.0)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("the leave should have raised")
+    assert ("delete", 7) in sess.calls
+
+
+def test_a_failed_hit_read_still_deletes_the_counter_and_says_so():
+    sess = Counting([(5, S.BAR_BLANK, ""), (1, S.BAR_BLANK, "")])
+
+    class Bad(Mon):
+        def checkpoint_hits(self, cp):
+            raise TimeoutError("no answer")
+
+    sess.mon = lambda timeout=5.0: Bad(sess) if any(c[0] == "set" for c in sess.calls) else Mon(sess)
+    log = Log()
+    assert defeatdrive.leave_after(sess, log, 5.0, 0.0) is True
+    assert ("delete", 7) in sess.calls
+    assert [kw["step"] for k, kw in log.events if k == "mercy_heal_failed"] == ["hits"]
