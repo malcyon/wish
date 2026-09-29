@@ -344,19 +344,65 @@ def _status_line(sess):
             (at.x, at.y) if at else None)
 
 
-def _turn_key(sess, log: Log, key: str, expected: int, leg: str, here, there):
-    """Send a turn key; return a `turn_not_seen` desync, or None.
+def _row24(sess) -> str:
+    s = sess.screen()
+    return "" if s is None else s.row(24).strip()
 
-    A turn does not always change the status tuple `walk_one` compares (New
-    Phlan's does not), so its return value says nothing.  The facing the status
-    line then reports is the check; a line with no facing cannot refute the
-    turn, so the walk goes on.
+
+def to_world(sess, log: Log, timeout: float = 30) -> bool:
+    """Leave camp if the game is in it, then wait for the world bar.
+
+    The item list's exit leaves the game on camp's own bar
+    (`ENCAMP:SAVE VIEW ...`), where a walk presses nothing.  EXIT is pressed
+    once, and the world is then polled for -- the bar is `MOVE` and the status
+    line shows a facing -- because a second EXIT may land on the world.  Every
+    distinct row 24 seen is logged.  Returns whether the world bar was reached.
+    """
+    seen = _row24(sess)
+    log.emit("to_world", row24=seen)
+    if seen.startswith("ENCAMP:"):
+        sess.select_bar("EXIT", timeout=10)
+    deadline = time.monotonic() + timeout
+    while True:
+        row = _row24(sess)
+        if row != seen:
+            log.emit("to_world", row24=row)
+            seen = row
+        if "MOVE" in row and _status_line(sess)[0] is not None:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.5)
+
+
+def _turn_key(sess, log: Log, key: str, expected: int, leg: str, here, there):
+    """Send a turn key; return a `not_pressed`, `no_status_line` or
+    `turn_not_seen` desync, or None.
+
+    A turn does not always change the status tuple `walk_one` compares, so its
+    return value says nothing; only `walk_refused`, set when the driver pressed
+    nothing, does.  The facing the status line then reports is the check, and a
+    line with no facing is a desync too, because both the New Phlan and Slums
+    lines carry one.
     """
     sess.walk_one(key.upper())
     sess.handle_prompt()
-    seen = None if sess.in_combat() else _status_line(sess)[0]
+    if sess.in_combat():
+        seen = None
+    else:
+        refused = sess.walk_refused
+        if refused is not None:
+            log.emit("route_key", leg=leg, key=key, to=list(there), turn=True,
+                     facing=None, expected=expected, refused=refused)
+            return {"leg": leg, "key": key, "from": list(here),
+                    "to": list(there), "reason": "not_pressed",
+                    "refused": refused}
+        seen = _status_line(sess)[0]
     log.emit("route_key", leg=leg, key=key, to=list(there), turn=True,
              facing=seen, expected=expected)
+    if seen is None and not sess.in_combat():
+        return {"leg": leg, "key": key, "from": list(here), "to": list(there),
+                "reason": "no_status_line", "row24": _row24(sess)}
     if seen is not None and seen != expected:
         return {"leg": leg, "key": key, "from": list(here), "to": list(there),
                 "reason": "turn_not_seen", "facing": seen, "expected": expected}
@@ -398,8 +444,11 @@ def walk_route(sess, log: Log, path, facing: int, leg: str):
             if sess.in_combat():
                 return want, (there if moved else here), None
             if not moved:
-                return want, None, {"leg": leg, "key": key,
-                                    "from": list(here), "to": list(there)}
+                bad = {"leg": leg, "key": key,
+                       "from": list(here), "to": list(there)}
+                if sess.walk_refused is not None:
+                    bad.update(reason="not_pressed", refused=sess.walk_refused)
+                return want, None, bad
             square = _status_line(sess)[1]
             if square is not None and square != tuple(there):
                 return want, None, {"leg": leg, "key": key,
@@ -419,9 +468,14 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
     game did not act on ends the walk with `desynced` set, and `at_target` is
     only ever true for a walk on which every key moved.
     """
-    start = sess.position()
-    if start[2] is None:
-        raise RuntimeError("the status line gave no facing to plan from")
+    if not to_world(sess, log):
+        raise RuntimeError("the game never reached the world bar; row 24 "
+                           f"reads {_row24(sess)!r}")
+    face, square = _status_line(sess)
+    if face is None or square is None:
+        raise RuntimeError("the status line gave no facing and square to "
+                           "plan from")
+    start = (*square, face)
     first, second = plan_fight_route(new_phlan, slums, start[:2], target)
     log.emit("fight_plan", start=list(start[:2]), target=list(target),
              new_phlan=[list(q) for q in first], slums=[list(q) for q in second])
@@ -505,6 +559,9 @@ def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150,
     """
     if fight_at is not None:
         return walk_to_fight(sess, log, out, fight_at, *maps)
+    if not to_world(sess, log):
+        raise RuntimeError("the game never reached the world bar; row 24 "
+                           f"reads {_row24(sess)!r}")
     taken = 0
     turn = "J"
     sess.walk_encounter = S.ENCOUNTER_FIGHT

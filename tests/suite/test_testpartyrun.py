@@ -83,6 +83,8 @@ class Log:
 def test_pick_a_fight_takes_an_encounter_menu_as_the_fight(monkeypatch):
     sess = PatrolSession(monkeypatch)
     monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    # This fake stays on the encounter bar; leaving camp is tested below.
+    monkeypatch.setattr(T, "to_world", lambda *a, **k: True)
     got = T.pick_a_fight(sess, Log(), pathlib.Path("."), steps=3)
     assert got["in_combat"] is True and sess.asked == ["COMBAT"]
 
@@ -121,19 +123,43 @@ class WalkSession(PatrolSession):
 
     def __init__(self, monkeypatch, fight_after=None, area=20, refuse=(),
                  start=(3, 4, 3), arrive_after=None, turns_move=True,
-                 turn_lands=True, facing_known=True, coords=True, drift=False):
+                 turn_lands=True, facing_known=True, coords=True, drift=False,
+                 camp=False, camp_exit_works=True):
         super().__init__(monkeypatch)
         self.keys, self.fight_after, self.area = [], fight_after, area
         self.refuse, self.start, self.arrive_after = refuse, start, arrive_after
-        # New Phlan's status tuple does not change on a turn, so `walk_one`
-        # says False for one; `turn_lands` False leaves the facing unchanged.
+        # `turns_move` False makes `walk_one` say False for a turn, as it may
+        # when the status tuple it compares does not change; the live facing
+        # letter does change on every turn, and `turn_lands` False leaves it
+        # unchanged.
         self.turns_move, self.turn_lands = turns_move, turn_lands
         self.facing_known, self.facing = facing_known, start[2]
         # The status line the party sees: New Phlan's shows the square, the
         # Slums' does not, and `drift` leaves the square where it was.
         self.coords, self.drift, self.square = coords, drift, tuple(start[:2])
+        # In camp row 24 is camp's own bar, there is no status line, and
+        # `walk_one` presses nothing and says so in `walk_refused`.
+        self.camp, self.camp_exit_works = camp, camp_exit_works
+        self.camp_refusals, self.exits = [], 0
+
+    def screen(self):
+        if self.camp:
+            return Screen("ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT")
+        return Screen("MOVE VIEW CAST AREA ENCAMP SEARCH LOOK")
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        self.asked.append(label)
+        self.exits += label == "EXIT"
+        if label == "EXIT" and self.camp_exit_works:
+            self.camp = False
+        return True
 
     def walk_one(self, key, *a, **k):
+        if self.camp:
+            self.camp_refusals.append(key)
+            self.walk_refused = "the driver pressed nothing: camp's bar"
+            return False
+        self.walk_refused = None
         self.keys.append(key)
         self.fighting = self.fight_after == len(self.keys)
         if key in "KJ":
@@ -147,6 +173,8 @@ class WalkSession(PatrolSession):
         return moved
 
     def screen_text(self):
+        if self.camp:
+            return "HERE / "
         line = "8:07"
         if self.facing_known:
             line = "NESW"[self.facing] + " " + line
@@ -286,11 +314,30 @@ def test_a_turn_that_leaves_the_wrong_facing_desyncs_as_turn_not_seen(
     assert got[2]["reason"] == "turn_not_seen" and got[2]["key"] == "k"
 
 
-def test_a_turn_with_no_facing_on_the_status_line_is_logged_and_goes_on(
-        monkeypatch):
+def test_a_turn_with_no_facing_on_the_status_line_is_a_desync(monkeypatch):
     sess, got = _turning_walk(monkeypatch, turns_move=False, turn_lands=False,
                               facing_known=False)
-    assert sess.keys == ["K", "K", "I"] and got[2] is None
+    assert sess.keys == ["K"] and got[1] is None
+    assert got[2]["reason"] == "no_status_line" and got[2]["key"] == "k"
+    assert got[2]["row24"].startswith("MOVE")
+
+
+def test_a_turn_the_driver_did_not_press_is_a_not_pressed_desync(monkeypatch):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    sess = WalkSession(monkeypatch, None, 20, (), (9, 13, 0), None, camp=True)
+    got = T.walk_route(sess, RecordingLog(), [(9, 13), (9, 14)], 0, "new-phlan")
+    assert got[2]["reason"] == "not_pressed" and got[2]["key"] == "k"
+    assert "camp" in got[2]["refused"] and sess.camp_refusals == ["K"]
+
+
+def test_a_forward_key_the_driver_did_not_press_is_a_not_pressed_desync(
+        monkeypatch):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    sess = WalkSession(monkeypatch, None, 20, (), (9, 13, 0), None, camp=True)
+    got = T.walk_route(sess, RecordingLog(), [(9, 13), (9, 13 - 1)], 0,
+                       "new-phlan")
+    assert sess.camp_refusals == ["I"]
+    assert got[2]["reason"] == "not_pressed" and got[2]["key"] == "i"
 
 
 def test_the_edge_turn_desyncs_as_turn_not_seen(monkeypatch):
@@ -366,3 +413,79 @@ def test_a_fight_found_by_the_edge_turn_stops_before_the_edge_step(monkeypatch):
                           _geo(), _geo())
     assert sess.keys == ["K"] and got["in_combat"] is True
     assert got["began_at"] == [0, 4] and got["at_target"] is False
+
+
+# -- the game may still be in camp when the walk starts -----------------------
+
+class Clock:
+    """A clock the fake `sleep` advances, so a 30-second wait costs nothing."""
+
+    def __init__(self, monkeypatch):
+        self.now = 0.0
+        monkeypatch.setattr(T.time, "monotonic", lambda: self.now)
+        monkeypatch.setattr(T.time, "sleep", self.sleep)
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+def _camp_walk(monkeypatch, **fake):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    monkeypatch.setattr(T, "resident_area", lambda sess, log=None: 20)
+    sess = WalkSession(monkeypatch, None, 20, (), (3, 4, 3), 1, camp=True,
+                       **fake)
+    Clock(monkeypatch)      # after the session, whose init stubs `sleep`
+    log = RecordingLog()
+    return sess, log
+
+
+def test_walk_to_fight_leaves_camp_before_its_first_key(monkeypatch):
+    sess, log = _camp_walk(monkeypatch)
+    got = T.walk_to_fight(sess, log, pathlib.Path("."), (12, 4), _geo(), _geo())
+    assert sess.asked == ["EXIT"] and sess.exits == 1
+    assert sess.camp_refusals == [] and sess.keys
+    assert got["desynced"] is None
+    rows = [w["row24"] for kind, w in log.events if kind == "to_world"]
+    assert rows[0].startswith("ENCAMP:") and rows[-1].startswith("MOVE")
+
+
+def test_walk_to_fight_raises_naming_row_24_when_camp_will_not_go(monkeypatch):
+    sess, log = _camp_walk(monkeypatch, camp_exit_works=False)
+    with pytest.raises(RuntimeError, match="ENCAMP:SAVE"):
+        T.walk_to_fight(sess, log, pathlib.Path("."), (12, 4), _geo(), _geo())
+    assert sess.keys == [] and sess.camp_refusals == [] and sess.exits == 1
+
+
+def test_to_world_presses_nothing_when_the_world_bar_is_already_up(monkeypatch):
+    sess = WalkSession(monkeypatch)
+    Clock(monkeypatch)
+    assert T.to_world(sess, RecordingLog()) is True and sess.asked == []
+
+
+def test_walk_to_fight_plans_from_the_status_line_not_the_memory_copy(
+        monkeypatch):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    monkeypatch.setattr(T, "resident_area", lambda sess, log=None: 20)
+    sess = WalkSession(monkeypatch, None, 20, (), (3, 4, 3), None)
+    Clock(monkeypatch)
+    # The lagging copy still says the party is elsewhere.
+    monkeypatch.setattr(WalkSession, "position", lambda self: (9, 9, 0))
+    log = RecordingLog()
+    with pytest.raises(RuntimeError, match="planned"):
+        T.walk_to_fight(sess, log, pathlib.Path("."), (12, 4), _geo(), _geo())
+    plan = next(w for kind, w in log.events if kind == "fight_plan")
+    assert plan["start"] == [3, 4]
+
+
+def test_pick_a_fight_leaves_camp_before_wandering(monkeypatch):
+    sess, log = _camp_walk(monkeypatch)
+    T.pick_a_fight(sess, log, pathlib.Path("."), steps=1)
+    assert sess.asked == ["EXIT"] and sess.camp_refusals == []
+    assert sess.keys == ["I"]
+
+
+def test_pick_a_fight_raises_when_camp_will_not_go(monkeypatch):
+    sess, log = _camp_walk(monkeypatch, camp_exit_works=False)
+    with pytest.raises(RuntimeError, match="ENCAMP:SAVE"):
+        T.pick_a_fight(sess, log, pathlib.Path("."), steps=1)
+    assert sess.keys == []
