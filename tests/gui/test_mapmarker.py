@@ -338,7 +338,7 @@ def run_args(tmp_path, **kw):
     base = dict(disk="x.d64", disks=str(tmp_path), slot=None, tag="t",
                 out=str(tmp_path), answer="NO", arrive=1.0, turn="",
                 turns=1, walk="7777", travel=26, after="1", home=20,
-                place=None, arrival=None, linger=2)
+                place=None, start=None, arrival=None, linger=2)
     base.update(kw)
     return args(**base)
 
@@ -624,3 +624,65 @@ def test_a_prompt_that_vanishes_while_retrying_is_no_prompt(monkeypatch, tmp_pat
     sess.handle_prompt = refuse
     assert M.answer_disk_prompt(args(), sess, log, 1) == (False, None)
     assert len(tries) == 1 and not log.of("disk_prompt")
+
+
+def start_run(monkeypatch, tmp_path, events, **kw):
+    no_sleep(monkeypatch)
+    sess = RunSess()
+    real_press = sess.walk_one
+    sess.walk_one = lambda m: events.append(("press", m)) or real_press(m)
+    slot = MagicMock(n=1, display=":1", dir=str(tmp_path))
+    monkeypatch.setattr(M.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(M.S, "stage_disks", lambda *a, **k: None)
+    monkeypatch.setattr(M.S, "stage_writable", lambda *a, **k: None)
+    monkeypatch.setattr(M.S, "Session", lambda *a, **k: sess)
+    monkeypatch.setattr(M, "answer_bars", lambda *a, **k: "world")
+
+    class Target:
+        def write(self, addr, data):
+            events.append(("write", addr, bytes(data)))
+            self.mem = bytes(data)
+
+        def read(self, addr, n):
+            return self.mem
+
+    monkeypatch.setattr(M, "SessionTarget", lambda s, **k: Target())
+    monkeypatch.setattr(M, "build_window",
+                        lambda *a: (MagicMock(), MagicMock(), MagicMock(), []))
+    monkeypatch.setattr(M, "look",
+                        lambda app, b, tag, *a: events.append(("look", tag)))
+    log = Log()
+    a = run_args(tmp_path, travel=None, after="", home=None, linger=0, **kw)
+    assert M.run(a, log) == 0
+    return log
+
+
+def test_start_writes_the_square_before_the_first_press_and_looks_after(monkeypatch, tmp_path):
+    events = []
+    log = start_run(monkeypatch, tmp_path, events, start=(3, 27), walk="77")
+    assert events == [("look", "t-step0"), ("write", 0x49C3, bytes([3, 27])),
+                      ("look", "t-step1"), ("press", "7"), ("look", "t-step2"),
+                      ("press", "7"), ("look", "t-step3")]
+    assert log.of("start") == [{"x": 3, "y": 27, "read_back": "031b"}]
+
+
+def test_no_start_writes_nothing(monkeypatch, tmp_path):
+    events = []
+    start_run(monkeypatch, tmp_path, events, start=None, walk="7")
+    assert not [e for e in events if e[0] == "write"]
+
+
+@pytest.mark.parametrize("bad", ["3", "1,2,3", "256,1", "-1,4", "x,1"])
+def test_start_refuses_a_square_that_is_not_two_bytes(monkeypatch, tmp_path, bad):
+    with pytest.raises(SystemExit):
+        parse(monkeypatch, tmp_path, "--start", bad)
+
+
+def test_start_parses_a_square(monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(M, "run", lambda a, log: seen.append(a.start) or 0)
+    monkeypatch.setattr(M, "_offscreen", lambda: None)
+    monkeypatch.setattr(M, "Log", lambda path: LogClose())
+    M.main(["--disk", "x.d64", "--disks", "/d", "--out", str(tmp_path),
+            "--start", "3,27"])
+    assert seen == [(3, 27)]

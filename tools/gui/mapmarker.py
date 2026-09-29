@@ -329,6 +329,11 @@ def wait_indoors(sess, log: Log, seconds: float) -> str:
     return "stuck"
 
 
+def write_square(target, square) -> None:
+    """Write the travel square `$49C3`/`$49C4`, which is all `FastTravel` writes for a window."""
+    target.write(fasttravel.POOL_OF_RADIANCE.travel_square, bytes(square[:2]))
+
+
 def come_home(args, sess, target, app, binding, out, log, step: int) -> int:
     """Bring the party back off the travel grid, into `--home`'s area.
 
@@ -675,6 +680,17 @@ def run(args, log: Log) -> int:
             look(app, binding, f"{args.tag}-step{n}", out, log, sess)
 
         step = 0
+        if args.start is not None:
+            # Written before the first press so a run can begin beside the
+            # square it is after and give random encounters fewer steps to
+            # happen in. The screen redraws only on a step, hence the look
+            # after the first press rather than a claim about this one.
+            write_square(target, args.start)
+            back = target.read(fasttravel.POOL_OF_RADIANCE.travel_square, 2)
+            log.say(f"started the party at {tuple(args.start)}; read back {back.hex()}")
+            log.emit("start", x=args.start[0], y=args.start[1], read_back=back.hex())
+            step += 1
+            look(app, binding, f"{args.tag}-step{step}", out, log, sess)
         if args.turn:
             step = walk_moves(args, sess, log, args.turn * args.turns, step,
                               looker)
@@ -719,8 +735,7 @@ def run(args, log: Log) -> int:
                 # comes back to next door to the one it left from. The screen
                 # does not redraw until a step, so a `--place` is only useful
                 # with an `--after` move behind it.
-                target.write(fasttravel.POOL_OF_RADIANCE.travel_square,
-                             bytes(args.place[:2]))
+                write_square(target, args.place)
                 log.say(f"placed the party at {tuple(args.place)} on the grid")
                 log.emit("place", x=args.place[0], y=args.place[1])
             step = walk_moves(args, sess, log, args.after, step, looker)
@@ -750,6 +765,14 @@ def _pair(text: str) -> tuple[int, ...]:
     got = tuple(int(part) for part in text.split(","))
     if len(got) not in (2, 3):
         raise argparse.ArgumentTypeError("give x,y or x,y,facing")
+    return got
+
+
+def _square(text: str) -> tuple[int, int]:
+    """`x,y` as two bytes, since `$49C3`/`$49C4` are one byte each."""
+    got = tuple(int(part) for part in text.split(","))
+    if len(got) != 2 or not all(0 <= n <= 255 for n in got):
+        raise argparse.ArgumentTypeError("give x,y, each 0-255")
     return got
 
 
@@ -797,6 +820,10 @@ def main(argv=None) -> int:
                    help="Write $49C3/$49C4 after the Fast Travel: `x,y` on "
                         "the travel grid, so the next `--after` move ends on "
                         "a chosen square")
+    p.add_argument("--start", type=_square,
+                   help="`x,y` written to $49C3/$49C4 once the party is on the "
+                        "travel grid and before --turn and --walk, so the walk "
+                        "begins beside a chosen square")
     p.add_argument("--arrival", type=_pair,
                    help="`x,y` or `x,y,facing` for `--home` to land on, "
                         "written to $C04B: an area with no arrival square of "
