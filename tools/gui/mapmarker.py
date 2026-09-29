@@ -483,6 +483,7 @@ def fight_encounter(args, sess, log: Log, bar: str, move: str,
         # Flight is the tactic that steps off the combat map, so a run asked
         # to flee that has to fight still tries to.
         tactic = S.Session.melee_turn if args.on_encounter == "fight" else Flight(log)
+        # No grid is caught by `sess.fight` below, which reports NOT_FIGHTING and stops the walk.
         _fight_began(sess)
     result = sess.fight(budget=args.fight_budget, tactic=tactic)
     log.say(f"  fight: {result.outcome} in {result.turns} turns, "

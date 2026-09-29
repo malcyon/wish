@@ -414,8 +414,15 @@ class FleeSess(Sess):
         return self.combat
 
 
+def fake_clock(monkeypatch):
+    """A clock that moves one second per reading, so a timed wait costs no real time."""
+    ticks = iter(range(10**6))
+    monkeypatch.setattr(M, "time", SimpleNamespace(time=lambda: float(next(ticks)),
+                                                   sleep=lambda s: None))
+
+
 def test_flee_is_selected_when_the_bar_offers_it_and_the_walk_resumes(monkeypatch):
-    no_sleep(monkeypatch)
+    fake_clock(monkeypatch)
     sess, log, seen = FleeSess(encounter_on={2}), Log(), []
     a = args(on_encounter="flee")
     M.walk_moves(a, sess, log, "7777", 0, seen.append)
@@ -423,6 +430,22 @@ def test_flee_is_selected_when_the_bar_offers_it_and_the_walk_resumes(monkeypatc
     assert sess.presses == ["7", "7", "7", "7"] and not a.stopped
     assert log.of("encounter_choice")[0]["choice"] == "flee"
     assert log.of("encounter_outcome")[0]["outcome"] == S.RAN
+
+
+def test_a_flee_that_leaves_no_travel_prompt_stops_the_walk(monkeypatch):
+    fake_clock(monkeypatch)
+    sess = FleeSess(encounter_on={1})
+    select = sess.select_bar
+
+    def select_then_blank(label, timeout=8):
+        select(label, timeout)
+        sess.row = ""                # neither a combat grid nor a travel prompt
+        return True
+    sess.select_bar = select_then_blank
+    a, log = args(on_encounter="flee"), Log()
+    M.walk_moves(a, sess, log, "777", 0, lambda n: None)
+    assert log.of("encounter_grid")[0]["outcome"] == "stuck"
+    assert "stuck" in a.stopped and sess.presses == ["7"]
 
 
 def test_a_flee_that_fails_fights_with_flight_in_budget_and_a_lost_one_stops(monkeypatch):
