@@ -782,10 +782,10 @@ class DrawGuest(AcceptGuest):
 
 
 def _draws(tmp_path, clock, monkeypatch, draws, *, questions=None, memory=None, refuse_at=None,
-           lane_check=None, **kw):
+           lane_check=None, helper_args=None, **kw):
     memory = memory or FakeGameMemory()
     log = []
-    helper = fake_stage_helper(memory, log, refuse_at=refuse_at)
+    helper = fake_stage_helper(memory, log, refuse_at=refuse_at, **(helper_args or {}))
     monkeypatch.setattr(route_silver_blades, "_load_savecount", lambda: helper)
     guest = DrawGuest(clock, helper, questions=questions)
     guest.log = log
@@ -855,14 +855,32 @@ def test_a_draw_that_reaches_exit_game_with_no_question_fails_the_run(
     assert run.result["rulebook"][-1]["asked"] is False and run.result["success"] is False
 
 
-def test_a_refusal_by_the_helper_stops_before_s_and_is_logged_as_it_came(
+def test_a_refusal_by_the_helper_stops_before_s_and_its_type_is_logged(
         tmp_path, clock, readings, monkeypatch):
     run = _draws(tmp_path, clock, monkeypatch, 3, refuse_at=2)
     assert _keys(run.guest) == KEYS + ["S", "D", "N"]
-    assert run.result["error"] == "RouteError: draw 3: refused by the helper"
+    assert run.result["error"] == "RouteError: draw 3: SaveCountError"
     refused = [e for e in _events(tmp_path) if e["event"] == "draw_error"]
-    assert [(e["draw"], e["error"]) for e in refused] == [(3, "refused by the helper")]
+    assert [(e["draw"], e["error"]) for e in refused] == [(3, "SaveCountError")]
     assert run.result["success"] is False
+
+
+def test_a_helper_message_never_reaches_the_log_or_the_result(
+        tmp_path, clock, readings, monkeypatch):
+    run = _draws(tmp_path, clock, monkeypatch, 3, refuse_at=1,
+                 helper_args={"message": "private-detail"})
+    assert "private-detail" not in (tmp_path / "recon1" / "run.jsonl").read_text()
+    assert "private-detail" not in json.dumps(run.result, default=str)
+    assert "private-detail" not in (tmp_path / "recon1" / "summary.json").read_text()
+
+
+def test_any_other_failure_out_of_the_helper_is_logged_by_type_and_raised(
+        tmp_path, clock, readings, monkeypatch):
+    run = _draws(tmp_path, clock, monkeypatch, 3,
+                 helper_args={"raises": GuestError("private-detail")})
+    failed = [e for e in _events(tmp_path) if e["event"] == "draw_error"]
+    assert [(e["draw"], e["error"]) for e in failed] == [(2, "GuestError")]
+    assert _keys(run.guest) == KEYS and run.result["success"] is False
 
 
 def test_without_the_lane_claim_nothing_is_staged(tmp_path, clock, readings, monkeypatch):

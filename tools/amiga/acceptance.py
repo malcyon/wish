@@ -1369,8 +1369,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             try:
                 counter.stage()
             except counter.savecount.SaveCountError as exc:
-                log("draw_error", draw=draw, error=str(exc))
-                raise RouteError(f"draw {draw}: {exc}") from None
+                # The helper's own message can carry private detail, so only its type is kept.
+                log("draw_error", draw=draw, error=type(exc).__name__)
+                raise RouteError(f"draw {draw}: {type(exc).__name__}") from None
+            except Exception as exc:
+                log("draw_error", draw=draw, error=type(exc).__name__)
+                raise
             first = len(result["events"])
             try:
                 for key, state, kind in (save, write, back):

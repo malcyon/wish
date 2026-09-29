@@ -52,10 +52,12 @@ class FakeGameMemory:
         pass
 
 
-def fake_stage_helper(memory, log, *, refuse_at=None):
+def fake_stage_helper(memory, log, *, refuse_at=None, message="refused by the helper",
+                      raises=None):
     """A fake private helper: `stage_live` records its arguments and appends to `log`.
 
-    `refuse_at` is the call number that raises the helper's own error, `helper.SaveCountError`.
+    `refuse_at` is the call number that raises the helper's own error, `helper.SaveCountError`,
+    with `message`; `raises` is another exception raised on the first call.
     """
     class SaveCountError(ValueError):
         pass
@@ -63,8 +65,10 @@ def fake_stage_helper(memory, log, *, refuse_at=None):
     def stage_live(read_memory, write_memory, a4):
         helper.calls.append((read_memory, write_memory, a4))
         log.append("stage")
+        if raises is not None:
+            raise raises
         if refuse_at == len(helper.calls):
-            raise SaveCountError("refused by the helper")
+            raise SaveCountError(message)
         helper.armed = True
 
     helper = types.SimpleNamespace(stage_live=stage_live, SaveCountError=SaveCountError,
