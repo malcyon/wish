@@ -47,6 +47,8 @@ Three things make the claim checkable rather than a promise:
 | `lost the monitor: TimeoutError: timed out` | a live connection fails and is hung up. **Which exception it was is the whole point of the line** -- Donald's log of a real disconnection recorded that a poll took 5004 ms and that the session gave up, and nothing at all about whether that was a socket timeout, a reset or a short read (`#151 (The automapper loses VICE and cannot get back in, because it never hangs up the connection it gave up on)`) |
 | `the poll raised, and was swallowed` + traceback | `Session.poll` catches an exception to keep the window alive |
 
+Save As also writes the conversion's warnings to the log as one `Conversion warnings:` line.
+
 The last is the point of the feature. A poll that throws leaves the window up
 and one line in the status bar; the traceback used to die there. It is written
 once per distinct failure, because a poll that fails every tick would otherwise

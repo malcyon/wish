@@ -1097,12 +1097,11 @@ def _expected_treasure_share(record: CharacterRecord,
         return None
     # Only a Pool of Radiance companion is rewritten; a player character's
     # byte and the other titles' stay refused by the writer.
-    # An animated zombie is a player character to the C64, with 0x0B8 at
-    # $FE or $FF, and the writer refuses its share as it does any other's.
-    flags = int(record.get("flags_0b8"))
+    # A DOS zombie or charmed player character carrying bit 2 never reaches
+    # the comparison: the C64 writer refuses it first.
     if (getattr(destination.title, "key", destination.title)
             != dos_codec.POOL_OF_RADIANCE.key
-            or not flags & 0x80 or flags in (0xFE, 0xFF)):
+            or not int(record.get("flags_0b8")) & 0x80):
         return None
     return convert(int(record.get("treasure_share")))
 

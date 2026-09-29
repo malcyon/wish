@@ -726,13 +726,18 @@ def test_a_dos_hirelings_reduced_share_reaches_the_debug_log(tmp_path):
     assert any(expected in line for line in lines), lines
 
 
-def test_an_animated_zombie_with_a_bit_2_share_is_expected_unchanged_for_the_c64():
-    destination = _destination("c64", c64_port.POOL_OF_RADIANCE)
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+def test_a_c64_zombie_is_expected_with_its_share_rewritten_like_a_companions(
+        port):
+    """The DOS writer rewrites the byte of a C64 record whose 0x0B8 is $FE,
+    as it does a companion's, so the check expects the same."""
+    destination = _destination(port, c64_port.POOL_OF_RADIANCE)
     zombie = _hireling(0x84)
-    zombie.set("flags_0b8", 0xFF)
-    lines = saveplan.compare([zombie], [_hireling(0x87)], destination,
-                             source_port="dos")
-    assert any("treasure_share" in line for line in lines)
+    zombie.set("flags_0b8", 0xFE)
+    written = _hireling(0x80, True)
+    written.set("flags_0b8", 0xFE)
+    assert saveplan.compare([zombie], [written], destination,
+                            source_port="c64") == []
 
 
 @pytest.mark.parametrize("share", [0xFF, 0x84, 0x04, 0x05])
