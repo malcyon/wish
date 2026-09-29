@@ -57,6 +57,7 @@ from goldbox import (  # noqa: E402
     dos_savegame,
 )
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
+from goldbox.classcode import CLASS_BIT_FOR_NAME, CLASS_CODE_TABLE  # noqa: E402
 from tools.amiga import amigalaterwrite  # noqa: E402
 
 SAVE_DRAWER = amigalaterwrite.SAVE_DRAWER
@@ -213,6 +214,51 @@ def clock_minutes(save: amiga_savegame.AmigaSavegame) -> int:
         save.word(dos_savegame.CLOCK + i)
         for i in range(dos_savegame.CLOCK_DIGITS))
     return units + 10 * tens + 60 * (hour + 24 * (day + 30 * month))
+
+
+# ---------------------------------------------------------------------------
+# The opening scene's award
+# ---------------------------------------------------------------------------
+
+#: Silver Blades' opening scene pools 20 gems at 250 and 12 items with plus
+#: values summing to 25 at 400 (`ecllist.py secret-of-the-silver-blades ECL10`);
+#: this is the sum, shared out by party size.
+OPENING_POOL = 20 * 250 + 25 * 400
+#: A single-class member whose every prime requisite exceeds this gets +10%.
+PRIME_BONUS_ABOVE = 15
+#: Prime requisites by class bit (AD&D 1e, as `coab-source` `ovr006.cs` uses
+#: them); the project has no other table of them.
+PRIME_REQUISITES = {
+    CLASS_BIT_FOR_NAME["fighter"]: ("strength",),
+    CLASS_BIT_FOR_NAME["paladin"]: ("strength", "wisdom"),
+    CLASS_BIT_FOR_NAME["ranger"]: ("strength", "intelligence", "wisdom"),
+    CLASS_BIT_FOR_NAME["cleric"]: ("wisdom",),
+    CLASS_BIT_FOR_NAME["magic-user"]: ("intelligence",),
+    CLASS_BIT_FOR_NAME["thief"]: ("dexterity",),
+}
+
+
+def opening_award(char: amiga_later.AmigaCharacter, party_size: int) -> int:
+    """The experience the opening scene gives one member, from `coab-source`
+    `ovr006.cs`'s after-combat rule: an even share of `OPENING_POOL`, +10%
+    for a single-class member meeting `PRIME_BONUS_ABOVE`, divided by the
+    class count."""
+    bits = CLASS_CODE_TABLE[char.get("char_class")]
+    classes = [bit for bit in PRIME_REQUISITES if bits & bit]
+    share = OPENING_POOL // party_size
+    if len(classes) == 1:
+        score = dict(zip(amiga_later.ABILITY_KEYS, char.abilities))
+        if all(score[k] > PRIME_BONUS_ABOVE
+               for k in PRIME_REQUISITES[classes[0]]):
+            share += share // 10
+    return share // max(len(classes), 1)
+
+
+def _experience_at(char: amiga_later.AmigaCharacter) -> range:
+    """The record offsets of the four experience bytes."""
+    f = char.deltas.dos_field("experience")
+    at = char.deltas.offset(f.offset)
+    return range(at, at + f.size)
 
 
 # ---------------------------------------------------------------------------
@@ -391,6 +437,14 @@ def do_diff(args) -> int:
                 declared += 1
             else:
                 loose.append(at)
+        if args.opening_award:
+            xp = _experience_at(mine)
+            rise = (int.from_bytes(b[xp.start:xp.stop], "big")
+                    - int.from_bytes(a[xp.start:xp.stop], "big"))
+            award = opening_award(mine, len(ours))
+            if rise == award and any(at in xp for at in loose):
+                print(f"  experience rose {rise}, the opening scene's award")
+                loose = [at for at in loose if at not in xp]
         print(f"  {declared} bytes differ inside the declared lists, "
               f"{len(loose)} outside them")
         for at in loose[:40]:
@@ -438,6 +492,9 @@ def main(argv: list[str] | None = None) -> int:
     diff.add_argument("--ours-slot")
     diff.add_argument("--theirs", required=True, type=pathlib.Path)
     diff.add_argument("--theirs-slot")
+    diff.add_argument("--opening-award", choices=("ssb",),
+                      help="accept each member's experience rise when it "
+                           "equals the Silver Blades opening scene's award")
 
     args = ap.parse_args(argv)
     return do_build(args) if args.command == "build" else do_diff(args)

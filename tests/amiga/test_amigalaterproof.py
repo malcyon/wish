@@ -410,3 +410,92 @@ def test_an_effect_the_engine_kept_past_its_time_is_named_and_the_next_still_lin
     assert "kept by the engine" in out
     assert "\n1 differences outside the declared lists" in out
     assert "effect 1" not in out            # the follower was not misaligned
+
+
+# ---------------------------------------------------------------------------
+# The opening scene's award
+# ---------------------------------------------------------------------------
+
+_SB = amiga_port.SILVER_BLADES_DELTAS
+_XP = _SB.offset(dos_port.FIELDS_BY_NAME_FOR[_SB.dos.key]["experience"].offset)
+
+
+class _Member:
+    """What `do_diff` and `opening_award` read of an `AmigaCharacter`."""
+
+    def __init__(self, name, char_class, scores, xp) -> None:
+        self.name = name
+        self.deltas = _SB
+        self.items: tuple = ()
+        self.effects: tuple = ()
+        self.abilities = list(scores)
+        self._class = char_class
+        raw = bytearray(_SB.record_size)
+        raw[_XP:_XP + 4] = xp.to_bytes(4, "big")
+        self.raw = bytes(raw)
+
+    def get(self, field):
+        assert field == "char_class"
+        return self._class
+
+    def block_bytes(self):
+        return self.raw
+
+
+class _Save:
+    def __init__(self, members) -> None:
+        self.characters = members
+
+
+# class codes: 3 paladin, 2 fighter, 4 ranger, 0 cleric, 5 magic-user,
+# 14 fighter/thief (goldbox.classcode.CLASS_CODE_TABLE)
+_PARTY = (("GUY", 3, (18, 10, 18, 10, 10, 10)),
+          ("EPONA", 2, (18, 10, 10, 10, 10, 10)),
+          ("PAINE", 4, (18, 17, 16, 10, 10, 10)),
+          ("DOMINIC", 0, (10, 10, 18, 10, 10, 10)),
+          ("MALACHITE", 14, (18, 10, 10, 18, 10, 10)),
+          ("MORGAINE", 5, (10, 18, 10, 10, 10, 10)))
+
+
+def _award_diff(monkeypatch, capsys, rises, flag):
+    ours = [_Member(n, c, s, 200000) for n, c, s in _PARTY]
+    theirs = [_Member(n, c, s, 200000 + r)
+              for (n, c, s), r in zip(_PARTY, rises)]
+    monkeypatch.setattr(proof, "slot_bytes", lambda p, s: (b"", str(p)))
+    monkeypatch.setattr(proof, "save_of",
+                        lambda data, where: _Save(
+                            ours if "ours" in where else theirs))
+    monkeypatch.setattr(proof, "clock_minutes", lambda save: 0)
+    args = type("A", (), {"ours": "ours", "ours_slot": None,
+                          "theirs": "theirs", "theirs_slot": None,
+                          "opening_award": flag})()
+    code = proof.do_diff(args)
+    return code, capsys.readouterr().out
+
+
+_AWARDS = [2750, 2750, 2750, 2750, 1250, 2750]
+
+
+def test_each_members_own_award_is_accepted_with_the_flag(monkeypatch, capsys):
+    code, out = _award_diff(monkeypatch, capsys, _AWARDS, "ssb")
+    assert code == 0, out
+    assert "0 differences outside the declared lists" in out
+
+
+def test_the_same_rise_is_undeclared_without_the_flag(monkeypatch, capsys):
+    code, out = _award_diff(monkeypatch, capsys, _AWARDS, None)
+    assert code == 1
+    assert "experience" in out
+
+
+def test_a_rise_one_off_the_award_stays_undeclared(monkeypatch, capsys):
+    rises = list(_AWARDS)
+    rises[2] += 1
+    code, out = _award_diff(monkeypatch, capsys, rises, "ssb")
+    assert code == 1
+    assert "PAINE" in out and "experience" in out
+
+
+def test_a_single_class_member_short_of_the_prime_bonus_gets_the_base_share():
+    weak = _Member("X", 2, (15, 10, 10, 10, 10, 10), 0)
+    assert proof.opening_award(weak, 6) == 2500
