@@ -3045,7 +3045,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                  else None)
     zombie_read = bool(deltas is POOL_OF_RADIANCE_RECORD
                        and early_raw is not None
-                       and early_raw & 0x87 == ZOMBIE_STATUS)
+                       and early_raw == ZOMBIE_STATUS)
     zombie_node_converted = False
     if payload is not None and party_slot is not None:
         rows = effects.active_effects(bytes(payload))
@@ -3092,6 +3092,8 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 # (SPELLE04 $A9D7), and the caster's level is the magnitude.
                 # Magnitude $FF is skipped by both engines' Dispel, and DOS
                 # would restore side 15 from it, so it is not converted.
+                # Pool of Radiance's level ceilings top out at 9 (`levels.py`),
+                # so no caster's level overflows the node's nibble.
                 side = (combat_side_raw or 0) & 1
                 granted.append(bytes((ANIMATE_DEAD_ID, 0, 0,
                                       side << 4 | row.magnitude & 0x0F, 1)))
@@ -3391,7 +3393,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     if raw is not None:
         name = STATUS_BY_BITS.get(raw & 0x07)
         zombie_byte = (deltas is POOL_OF_RADIANCE_RECORD
-                       and raw & 0x87 == ZOMBIE_STATUS)
+                       and raw == ZOMBIE_STATUS)
         if zombie_byte:
             # `$03` with bit 7 clear is written only by Animate Dead
             # (SPELLE04 $AA11 in camp, SPELLE00 $AB4F in combat); an

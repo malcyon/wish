@@ -386,3 +386,44 @@ def test_a_c64_zombie_with_no_row_value_to_convert_still_refuses(
     _dos, _itm, _spc, report = dos_codec.write(char)
     assert any("innate_effects 32 (Animate Dead)" in line
                for line in report.dropped)
+
+
+@pytest.mark.parametrize("status", [0x0B, 0x13, 0x23, 0x43, 0x7B])
+def test_a_pool_status_with_bits_three_to_six_set_is_not_a_zombie(status):
+    char = c64_codec.read(_pool_c64(0xFF, status),
+                          game=c64_port.POOL_OF_RADIANCE)
+    assert char.get("status") == "dead"
+
+
+@pytest.mark.parametrize("level", [9, 15])
+def test_the_highest_pool_caster_level_fits_the_node_nibble(level):
+    rec, payload = _zombie_source(level)
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                          payload=bytes(payload), party_slot=4)
+    assert char.get("granted_effects") == [bytes((32, 0, 0, 16 | level, 1))]
+
+
+def test_a_c64_zombie_survives_the_round_trip_through_dos():
+    rec, payload = _zombie_source(5)
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                          payload=bytes(payload), party_slot=4)
+    dos, _itm, spc, _rep = dos_codec.write(char)
+    nodes = bytes(spc)
+    assert nodes.count(bytes((32, 0, 0, 0x15, 1))) == 1
+    dos_char = dos_codec.DosCharacter(
+        dos, effects=[nodes[i:i + 9] for i in range(0, len(nodes), 9)])
+    back_char = dos_codec.to_neutral(dos_char)
+    assert back_char.get("status") == "animated"
+
+    out_payload = bytearray(0x1C00)
+    back, rep = c64_codec.write(back_char, payload=out_payload, party_slot=4,
+                                clock_minutes=0)
+    assert back.get("roster_in_use") == 0x03
+    assert back.get("flags_0b8") == 0xFE
+    rows = [r for r in effects.active_effects(bytes(out_payload))
+            if r.id == 32]
+    assert len(rows) == 1
+    assert (rows[0].owner, rows[0].duration, rows[0].magnitude) == (4, 0, 5)
+    assert not rep.losses
+    # A blank record has no combat icon to convert; that drop is not the zombie's.
+    assert not [line for line in rep.dropped if "Combat icon" not in line]
