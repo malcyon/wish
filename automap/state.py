@@ -45,8 +45,7 @@ OUTDOORS_AREA = "Wilderness"
 OUTDOORS_REGIONS = ("West of Phlan", "Stojanow Valley", "East of Phlan")
 
 #: `WISH_EXPERIMENTAL_WILDERNESS_MAP`: drawing the game's own wilderness tiles
-#: on the map while the party is on the travel grid, and recording where it has
-#: been. The truthiness rule is `wish/debugmode.py`'s: an empty string, `0` and
+#: on the map while the party is on the travel grid. The truthiness rule is `wish/debugmode.py`'s: an empty string, `0` and
 #: `off` are off, so a variable somebody exported once and forgot does not put
 #: an unfinished feature in front of them.
 #:
@@ -59,7 +58,7 @@ _TRUE = ("1", "true", "yes", "on")
 
 
 def wilderness_enabled() -> bool:
-    """Is the wilderness recording on in this run?"""
+    """Is the wilderness map drawn on the travel grid in this run?"""
     return os.environ.get(WILDERNESS_ENV, "").strip().lower() in _TRUE
 
 
@@ -645,9 +644,12 @@ class Automapper:
             # Back on the square the hold was waiting to leave: a later jump
             # to the held coordinates is a new jump and is held again.
             self._outdoor_pending = None
-            if self.state.window is not None:
+            if (self.state.window is not None
+                    and self._ticks % self.RESIDENT_EVERY == 0):
                 # A turn in place changes the heading and not the square, so
-                # the one byte is read on a standing tick too.
+                # the one byte is read on a standing tick too, on the
+                # resident block's cadence: every read freezes a C64 Ultimate's
+                # processor, and a freeze during a disk load hangs the game.
                 changed_heading = self._read_heading()
         if moved:
             read = self._read_window()

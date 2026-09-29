@@ -379,11 +379,58 @@ def test_a_new_heading_is_seen_on_the_next_move(app, tmp_path, monkeypatch):
     assert win.state.heading == 3
 
 
+def _stand_to_the_cadence(win):
+    """Poll until the next tick that falls on the resident cadence."""
+    every = win.mapper.RESIDENT_EVERY
+    while (win.mapper._ticks + 1) % every:
+        win.mapper.poll()
+
+
 def test_a_turn_in_place_is_seen_without_a_move(app, tmp_path, monkeypatch):
     win, target = _window_on(app, tmp_path, monkeypatch,
                              [out(8, 27)], heading=2)
     win.mapper.poll()
     target.heading = 4
+    _stand_to_the_cadence(win)
     assert win.mapper.poll() is True
     assert win.state.heading == 4
     assert win.mapper.poll() is False
+
+
+def _count_heading_reads(target):
+    reads = []
+    inner = target.read
+
+    def read(addr, length):
+        if addr == HEADING:
+            reads.append(addr)
+        return inner(addr, length)
+    target.read = read
+    return reads
+
+
+def test_standing_still_reads_the_heading_once_per_cadence(
+        app, tmp_path, monkeypatch):
+    win, target = _window_on(app, tmp_path, monkeypatch, [out(8, 27)], heading=2)
+    win.mapper.poll()
+    reads = _count_heading_reads(target)
+    for _ in range(win.mapper.RESIDENT_EVERY):
+        win.mapper.poll()
+    assert len(reads) == 1
+
+
+def test_no_heading_is_read_on_standing_ticks_in_a_battle(
+        app, tmp_path, monkeypatch):
+    from gamedata import synthetic_arena
+
+    from automap import combat
+    from automap.target import MemoryTarget
+    win, target = _window_on(app, tmp_path, monkeypatch, [out(8, 27)], heading=2)
+    win.mapper.poll()
+    battle = win.battle = combat.read_battle(MemoryTarget(synthetic_arena()))
+    # The fight is still on at every tick, as the running game would have it.
+    monkeypatch.setattr(combat, "read_battle", lambda *a, **k: battle)
+    reads = _count_heading_reads(target)
+    for _ in range(win.mapper.RESIDENT_EVERY):
+        win.tick()
+    assert reads == []
