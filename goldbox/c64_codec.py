@@ -699,8 +699,8 @@ def pool_thac0_current_byte(base_byte: int, hit_bonus: int, missile: int,
     def readied_plus(type_index: int) -> int:
         return next((_signed_plus(r) for r in readied if r[0] == type_index), 0)
 
-    # With two readied body-place-0 items the choice is unread: no specimen
-    # holds two.
+    # The lowest slot wins, as the game's downward scan leaves it; READY
+    # refuses a second weapon, so only a save the game did not write has two.
     weapon = next((r for r in readied
                    if r[0] in item_types
                    and item_types[r[0]].raw[TYPE_LOCATION] == 0), None)
