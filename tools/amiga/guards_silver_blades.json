@@ -143,6 +143,17 @@
       "example": "672/26293716ee-amiga-accept1b/accept1b/shots/title.png",
       "sha256": "9467a8fd861377797f5164c08e9889d9526539e159967e572401151f63950097"
     },
+    "treasure": {
+      "also": [],
+      "box": [
+        72,
+        302,
+        440,
+        352
+      ],
+      "example": "640/ssb2/accept1/shots/13-camp_save_picker.png",
+      "sha256": "b9e5057a86e1d58e96a3245f5f8f3d6813ebb8c444e224f3d5ba8e0612146dbc"
+    },
     "world": {
       "also": [],
       "box": [

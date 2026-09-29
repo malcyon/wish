@@ -137,7 +137,8 @@ def _interstitial_screens(title):
 
     tables = {'pool': (POOL.interstitials,), 'curse': (CURSE.interstitials,),
               'darkness': (DARKNESS.interstitials, DARKNESS_RELOAD.interstitials),
-              'ssb': (route_silver_blades.SILVER_BLADES_INTERSTITIALS,)}[title]
+              'ssb': (route_silver_blades.SILVER_BLADES_INTERSTITIALS,
+                      route_silver_blades.PUBLISHED_INTERSTITIALS)}[title]
     return {row[0] for table in tables for row in table}
 
 

@@ -389,6 +389,18 @@ def test_the_continue_screen_is_answered_with_return(tmp_path, clock, readings):
     assert result["success"] is True
 
 
+def test_the_treasure_prompt_after_the_camp_key_is_answered_with_no(tmp_path, clock, readings):
+    guest = AcceptGuest(clock)
+    asked = lambda p: p.name == "14-camp.png" and "N" not in _keys(guest)  # noqa: E731
+    guard = MapGuard(on={"treasure": asked,
+                         "camp": lambda p: "camp" in p.name and not asked(p)})
+    guard.states.add("treasure")
+    _, result = _accept(tmp_path, clock, guest=guest, guard=guard)
+    keys = _keys(guest)
+    assert keys[12:15] == ["E", "N", "S"] and keys.count("N") == 2  # the answer, then the route's own
+    assert result["success"] is True
+
+
 def test_a_question_after_the_camp_save_is_answered(tmp_path, clock, readings):
     guest = AcceptGuest(clock)
     guest.answer = answer = Answer(guest)

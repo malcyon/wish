@@ -519,7 +519,7 @@ def test_the_silver_blades_defaults_are_the_ones_a_title_run_leaves_alone(tmp_pa
                       acceptance.MENU_SAVE_LETTER, acceptance.CAMP_SAVE_LETTER,
                       acceptance.MEASURE_TITLE_SPAN)
     assert [row[0] for row in acceptance.SILVER_BLADES_INTERSTITIALS] == [
-        "credits", "continue", "journal"]
+        "credits", "continue", "journal", "treasure"]
 
 
 def _swap(route, at, step):

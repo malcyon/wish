@@ -471,10 +471,13 @@ def _stderr_tail(stderr: str) -> str:
 # do `action` once per wait, `limit` times at most, while waiting for one of the
 # states in `waiting_for` (None: any). `credits` is left with ESC, `continue` takes
 # RETURN, and the journal challenge goes to the answerer; the last two only when accepting.
+# `treasure` is the game's offer to go back for treasure left behind, which the camp key can
+# raise depending on the square; NO leaves the party as it was.
 SILVER_BLADES_INTERSTITIALS = (
     ("credits", ("keys", "ESC"), frozenset({"title"}), 1),
     ("continue", ("keys", "RET"), None, 1),
     ("journal", ("answer",), frozenset({"exit_game"}), 1),
+    ("treasure", ("keys", "N"), frozenset({"camp", "camp_save_picker"}), 1),
 )
 
 #: The published route begins a party that has not set out, so its opening scene can show
