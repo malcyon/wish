@@ -1029,10 +1029,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("DF0, published DF1 and working DF1 must be separate files")
         letter = manifest["slot_letter"]
         slot = _verified_disk(published).read_file("/SAVE/savgamA.sav")
-        if hashlib.sha256(slot).hexdigest() != manifest["slot_sha256"]:
+        # A save count edits only the staged slot, so the published one has its own digest.
+        published_sha = manifest.get("published_slot_sha256", manifest["slot_sha256"])
+        if hashlib.sha256(slot).hexdigest() != published_sha:
             raise RouteError("the published slot differs from the manifest")
         df0_disk = _verified_disk(df0)
-        if df0_disk.read_file(f"/SAVE/savgam{letter}.sav") != slot:
+        staged = df0_disk.read_file(f"/SAVE/savgam{letter}.sav")
+        if hashlib.sha256(staged).hexdigest() != manifest["slot_sha256"]:
             raise RouteError(f"DF0 /SAVE/savgam{letter}.sav is not Wish's published slot")
         df1_disk = _verified_disk(df1)
         if df1_disk.volume_name != "Secret 2":

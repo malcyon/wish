@@ -151,7 +151,8 @@ def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | No
 
     `save_count`, when given, is written into the staged slot only, through the
     private `with_count`; the published disk and every other byte stay as they
-    were, and `slot_sha256` is the digest of the edited slot.
+    were. `slot_sha256` is the digest of the edited slot and
+    `published_slot_sha256` that of the unedited one on the published disk.
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
@@ -211,6 +212,7 @@ def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | No
     inventory = _inventory(save)
     state = amiga_savegame.state_from_savegame(save)
     slot = disk.read_file("/SAVE/savgamA.sav")
+    published_slot_sha = hashlib.sha256(slot).hexdigest()
     if savecount is not None:
         try:
             slot = savecount.with_count(slot, save_count)
@@ -235,6 +237,7 @@ def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | No
         "df0": _entry(df0), "published_df1": _entry(published),
         "disk_b_source": _entry(disk_b_source), "df1": _entry(df1),
         "slot_letter": SLOT_LETTER, "slot_sha256": hashlib.sha256(slot).hexdigest(),
+        "published_slot_sha256": published_slot_sha,
         "stage": stage, "inventory_a": inventory,
         "state_a": {"area": state.area, "x": state.x, "y": state.y,
                     "facing": state.facing},

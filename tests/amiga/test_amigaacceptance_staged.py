@@ -225,6 +225,7 @@ def test_prepare_without_a_save_count_stages_the_slot_untouched(tmp_path, monkey
     assert staged == [b"slot"]
     assert "save_count" not in manifest
     assert manifest["slot_sha256"] == route.hashlib.sha256(b"slot").hexdigest()
+    assert manifest["published_slot_sha256"] == manifest["slot_sha256"]
 
 
 def test_prepare_with_a_save_count_stages_the_edited_slot(tmp_path, monkeypatch):
@@ -235,6 +236,7 @@ def test_prepare_with_a_save_count_stages_the_edited_slot(tmp_path, monkeypatch)
     assert staged == [b"slot|count=29"]
     assert manifest["save_count"] == 29
     assert manifest["slot_sha256"] == route.hashlib.sha256(b"slot|count=29").hexdigest()
+    assert manifest["published_slot_sha256"] == route.hashlib.sha256(b"slot").hexdigest()
     published = AmigaDisk.open(tmp_path / "acceptance" / "672" / "run" / "SECRETSAVE-published.adf")
     assert published.read_file("/SAVE/savgamA.sav") == b"slot"
 

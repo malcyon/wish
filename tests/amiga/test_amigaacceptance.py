@@ -511,6 +511,43 @@ def test_recon_refuses_a_published_slot_that_differs_from_the_manifest(tmp_path)
              "published slot differs")
 
 
+def _with_edited_staged_slot(manifest, root):
+    """DF0 carries an edited copy of the slot; the published disk keeps the original."""
+    edited = b"composed save|edited"
+    boot = AmigaDisk.open(root / "boot.adf")
+    boot.write_file("/SAVE/savgamC.sav", edited)
+    boot.save(root / "boot.adf")
+    manifest["df0"]["sha256"] = _sha(root / "boot.adf")
+    manifest["published_slot_sha256"] = manifest["slot_sha256"]
+    manifest["slot_sha256"] = hashlib.sha256(edited).hexdigest()
+
+
+def test_recon_accepts_an_edited_staged_slot_beside_the_unedited_published_one(tmp_path):
+    path = _manifest_with(tmp_path, _with_edited_staged_slot)
+    guest = FailedPostWriteGuest()
+    result = acceptance.run_recon(
+        path, guest=guest, guard=lambda s, p: True, holder="wish672-test",
+        audio_proof=_audio_proof(tmp_path))
+    assert "save prompt after B" in result["error"]
+    assert ("claim", "wish672-test") in guest.calls
+
+
+def test_recon_refuses_a_tampered_published_slot_when_the_staged_one_is_edited(tmp_path):
+    def mutate(manifest, root):
+        _with_edited_staged_slot(manifest, root)
+        manifest["published_slot_sha256"] = "0" * 64
+
+    _refused(tmp_path, mutate, "published slot differs")
+
+
+def test_recon_refuses_a_staged_slot_that_differs_from_its_recorded_digest(tmp_path):
+    def mutate(manifest, root):
+        _with_edited_staged_slot(manifest, root)
+        manifest["slot_sha256"] = "0" * 64
+
+    _refused(tmp_path, mutate, "not Wish's published slot")
+
+
 def test_recon_refuses_a_boot_disk_slot_that_is_not_the_published_one(tmp_path):
     def mutate(manifest, root):
         boot = AmigaDisk.open(root / "boot.adf")
