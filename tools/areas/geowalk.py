@@ -47,8 +47,13 @@ def load_geo(name: str, key: str) -> Geo:
     raise SystemExit(f"no disk under {key} carries {name}")
 
 
-def route(geo: Geo, start, goal) -> list[tuple[int, int]] | None:
-    """The shortest legal walk from `start` to `goal`, or None."""
+def route(geo: Geo, start, goal, avoid=frozenset()) -> list[tuple[int, int]] | None:
+    """The shortest legal walk from `start` to `goal`, or None.
+
+    `avoid` names squares the walk may not step on, so a caller can keep clear
+    of the ones that run a script.  `goal` is exempt: asking to end on a square
+    is asking to step on it.
+    """
     seen = {start: None}
     frontier = [start]
     while frontier:
@@ -67,7 +72,7 @@ def route(geo: Geo, start, goal) -> list[tuple[int, int]] | None:
                 step = (x + dx, y + dy)
                 if not 0 <= step[0] < 16 or not 0 <= step[1] < 16:
                     continue
-                if step in seen:
+                if step in seen or (step in avoid and step != goal):
                     continue
                 seen[step] = square
                 nxt.append(step)

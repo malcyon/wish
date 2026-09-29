@@ -61,9 +61,11 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import SLOT_AREA_BASE, SLOT_STRIDE  # noqa: E402
+from tools.areas import geowalk  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.c64addprobe import answer as answer_yn  # noqa: E402
 from tools.c64.c64nametable import character_files  # noqa: E402
+from tools.c64.hallmenu import area as resident_area  # noqa: E402
 from tools.c64.route_pool import leave_items, open_items, toggle_item  # noqa: E402
 from tools.c64.traitask import ROSTER_STRIDE, SAVE1_LOAD  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -73,6 +75,16 @@ DISKS: pathlib.Path | None = tool_disks()
 #: Pool of Radiance's own prefix byte for a parked character's filename
 #: (`tools/c64/c64nametable.py`'s `PREFIX`).
 POR_PREFIX = 0x01
+
+
+#: The Slums' area number, and the New Phlan square whose step off the west
+#: edge (`ECL00` entry 0) puts the party at `SLUMS_ENTRY` in it.
+SLUMS_AREA = 20
+NEW_PHLAN_EXIT = (0, 4)
+SLUMS_ENTRY = (15, 4)
+#: The Slums squares a route to a fight may step on: unscripted (0), or the
+#: one text square (4).  Any other id runs a script that can menu or fight.
+SLUMS_PLAIN_IDS = (0, 4)
 
 
 class Log:
@@ -283,7 +295,97 @@ def item_toggle_pair(sess, log: Log, out: pathlib.Path, name: str,
     return diffs
 
 
-def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150) -> dict:
+def plan_fight_route(new_phlan, slums, start, target):
+    """The two legs to a Slums square: New Phlan `start` to its west exit, then
+    `SLUMS_ENTRY` to `target`.
+
+    Both come from the map files, so a script's square is known before it is
+    stepped on: the first leg touches none but the exit, the second only
+    squares whose id is in `SLUMS_PLAIN_IDS`.  Raises `SystemExit` when either
+    leg has no route.
+    """
+    scripted = {(x, y) for x in range(16) for y in range(16)
+                if new_phlan.script_id(x, y)}
+    other = {(x, y) for x in range(16) for y in range(16)
+             if slums.script_id(x, y) not in SLUMS_PLAIN_IDS}
+    out = geowalk.route(new_phlan, tuple(start), NEW_PHLAN_EXIT, avoid=scripted)
+    if out is None:
+        raise SystemExit(f"no unscripted New Phlan route from {tuple(start)} "
+                         f"to {NEW_PHLAN_EXIT}")
+    into = geowalk.route(slums, SLUMS_ENTRY, tuple(target), avoid=other)
+    if into is None:
+        raise SystemExit(f"no Slums route from {SLUMS_ENTRY} to "
+                         f"{tuple(target)} over ids {SLUMS_PLAIN_IDS} only")
+    return out, into
+
+
+def walk_route(sess, log: Log, path, facing: int, leg: str):
+    """Walk `path` one square at a time, answering prompts, and stop in combat.
+
+    Returns `(facing, stopped_at)`; `stopped_at` is the planned square being
+    stepped to when combat was found, or None if the path finished.  Facing is
+    tracked from the keys sent, as `geowalk.keys_for` does, because the
+    Slums' status line carries no coordinates to check a step against.
+    """
+    for here, there in zip(path, path[1:]):
+        keys = geowalk.keys_for([here, there], facing)
+        facing = geowalk.STEP.index((there[0] - here[0], there[1] - here[1]))
+        for key in keys:
+            moved = sess.walk_one(key.upper())
+            sess.handle_prompt()
+            log.emit("route_key", leg=leg, key=key, to=list(there),
+                     moved=bool(moved))
+            if sess.in_combat():
+                return facing, there
+    return facing, None
+
+
+def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
+                  slums) -> dict:
+    """New Phlan to the Slums and on to `target`, stopping in combat.
+
+    A fight found before `target` (the Slums roll a wandering fight on
+    unscripted squares) is logged as on the way, not as the target.
+    """
+    start = sess.position()
+    if start[2] is None:
+        raise RuntimeError("the status line gave no facing to plan from")
+    first, second = plan_fight_route(new_phlan, slums, start[:2], target)
+    log.emit("fight_plan", start=list(start[:2]), target=list(target),
+             new_phlan=[list(q) for q in first], slums=[list(q) for q in second])
+    log.say(f"  {len(first) - 1} steps to {NEW_PHLAN_EXIT}, then "
+            f"{len(second) - 1} in the Slums to {tuple(target)}")
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    facing, hit = walk_route(sess, log, first, start[2], "new-phlan")
+    leg = "new-phlan"
+    if hit is None:
+        moved = sess.walk_one("I")
+        sess.handle_prompt()
+        sess.settle(3)
+        area = resident_area(sess, log)
+        log.emit("edge", moved=bool(moved), area=area)
+        log.say(f"  stepped off the edge; area {area}")
+        if area != SLUMS_AREA:
+            raise RuntimeError(f"expected area {SLUMS_AREA} after the edge, "
+                               f"read {area}")
+        leg = "slums"
+        # `ECL00` entry 0 steps forward, so the party keeps its facing.
+        facing, hit = walk_route(sess, log, second, facing, "slums")
+    fighting = bool(sess.in_combat())
+    began = list(hit) if hit else None
+    at_target = fighting and hit == tuple(target)
+    log.emit("walked", leg=leg, in_combat=fighting, began_at=began,
+             at_target=at_target)
+    log.say(f"  in combat: {fighting}; began at {began}; "
+            f"{'the target' if at_target else 'not the target'}")
+    if fighting:
+        sess.settle(2)
+        dump(sess, out, log, "combat-icon")
+    return {"in_combat": fighting, "began_at": began, "at_target": at_target}
+
+
+def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150,
+                 fight_at=None) -> dict:
     """Walk until the party is ambushed, and photograph the fight.
 
     Wall-following rather than a fixed pattern: go forward while it works,
@@ -294,7 +396,15 @@ def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150) -> dict:
     never pointed it anywhere new twice in a row (a scratch run directory,
     2026-09-16, deleted).  A wall refusing a step is not an error here, just the
     signal to turn.
+
+    `fight_at` is a Slums square `(x, y)`: the walk is then planned from the
+    map files to that square instead of wandering (`walk_to_fight`).
     """
+    if fight_at is not None:
+        return walk_to_fight(
+            sess, log, out, fight_at,
+            geowalk.load_geo("GEO00", "pool-of-radiance"),
+            geowalk.load_geo("GEO14", "pool-of-radiance"))
     taken = 0
     turn = "J"
     sess.walk_encounter = S.ENCOUNTER_FIGHT
@@ -338,7 +448,17 @@ def main(argv=None) -> int:
                    help="skip the remove/re-add and the item toggles -- just "
                         "boot, load, begin adventuring and pick a fight, for "
                         "re-running the slow part of --full on its own")
+    p.add_argument("--fight-at", default=None, metavar="X,Y",
+                   help="walk to this Slums square, over the maps, instead of "
+                        "wandering for a fight")
     args = p.parse_args(argv)
+    fight_at = None
+    if args.fight_at is not None:
+        try:
+            fight_at = tuple(int(v) for v in args.fight_at.split(","))
+            assert len(fight_at) == 2 and all(0 <= v < 16 for v in fight_at)
+        except (ValueError, AssertionError):
+            p.error("--fight-at takes X,Y, each 0 to 15")
 
     disks = pathlib.Path(args.disks) if args.disks else DISKS
     if disks is None:
@@ -419,9 +539,9 @@ def main(argv=None) -> int:
                 sess, log, out, "BULWARK", "TWO-HANDED SWORD", "bulwark-sword",
                 sequence=["SHIELD", "LONG SWORD", "TWO-HANDED SWORD",
                          "TWO-HANDED SWORD", "LONG SWORD", "SHIELD"])
-        if args.full or args.fight_only:
+        if args.full or args.fight_only or fight_at:
             log.say("picking a fight ...")
-            findings["fight"] = pick_a_fight(sess, log, out)
+            findings["fight"] = pick_a_fight(sess, log, out, fight_at=fight_at)
             (out / "findings.json").write_text(json.dumps(findings, indent=1))
     except Exception as exc:                       # noqa: BLE001
         log.emit("error", why=repr(exc))
