@@ -52,6 +52,7 @@ from automap import gamedisks  # noqa: E402
 from automap.actions import CMD_REGISTERS_AVAILABLE, PC_REGISTER  # noqa: E402
 from automap.vice import (  # noqa: E402
     CMD_REGISTERS_GET,
+    CMD_REGISTERS_SET,
     Monitor,
     MonitorError,
     ScreenUnreadable,
@@ -682,12 +683,28 @@ CODE_WORD_LABEL = "INPUT THE CODE WORD:"
 CODE_WORD_CURSOR = 0x1C
 
 
-def _pc_id_of(mon, memspace: int) -> int | None:
-    """The register id `PC` has in one memspace, asked of the monitor.
+#: The KERNAL's TKSA turnaround loop (`$EDD6: JSR $EEA9 / $EDD9: BMI $EDD6`)
+#: waits for the talker to pull CLK low with no timeout.  When the drive's
+#: pulse is shorter than the C64's polling step the C64 waits for ever, with
+#: the drive back in its idle loop.  `$EDD8` is the return address `JSR $EEA9`
+#: leaves on the stack, which keeps the ISOUR wait (`$ED5A`) out of the match.
+IEC_TKSA_LOOP = (0xEDD6, 0xEDDB)
+IEC_DEBPIA = (0xEEA9, 0xEEB2)
+IEC_TKSA_RETURN = 0xEDD8
+#: Drive 8's DOS idle loop, and the talker turnaround the ROM runs on TALK.
+IEC_DRIVE_IDLE = (0xEBE7, 0xEC9D)
+IEC_TALKER_TURNAROUND = 0xE8F1
+#: The KERNAL's secondary address, whose high nibble `$60` is a LOAD.
+IEC_SECONDARY = 0xB9
+IEC_LOAD_SECONDARY = 0x60
+IEC_MAX_NUDGES = 2
+
+
+def _reg_id_of(mon, memspace: int, name: bytes) -> int | None:
+    """The id a register has in one memspace, asked of the monitor.
 
     Each memspace lists its own registers, so the C64's id is not assumed to
-    be the drive's.  A monitor that will not list them leaves the C64 at
-    `PC_REGISTER` (established for memspace 0 only) and the drive at None.
+    be the drive's.  A monitor that will not list them answers None.
     """
     try:
         resp = mon.command(CMD_REGISTERS_AVAILABLE, struct.pack("<B", memspace))
@@ -695,27 +712,50 @@ def _pc_id_of(mon, memspace: int) -> int | None:
         off = 2
         for _ in range(count):
             size, rid, _bits, length = resp[off:off + 4]
-            if resp[off + 4:off + 4 + length] == b"PC":
+            if resp[off + 4:off + 4 + length] == name:
                 return rid
             off += size + 1
     except (OSError, MonitorError, IndexError, ValueError, struct.error):
         pass
-    return PC_REGISTER if memspace == 0 else None
+    return None
 
 
-def _pc_of(mon, memspace: int, pc_id: int | None) -> int | None:
-    """The program counter of one CPU: memspace 0 is the C64, 1 is drive 8."""
-    if pc_id is None:
+def _pc_id_of(mon, memspace: int) -> int | None:
+    """The register id `PC` has in one memspace, asked of the monitor.
+
+    A monitor that will not list them leaves the C64 at `PC_REGISTER`
+    (established for memspace 0 only) and the drive at None.
+    """
+    rid = _reg_id_of(mon, memspace, b"PC")
+    if rid is None and memspace == 0:
+        return PC_REGISTER
+    return rid
+
+
+def _reg_of(mon, memspace: int, reg_id: int | None) -> int | None:
+    """One register of one CPU: memspace 0 is the C64, 1 is drive 8."""
+    if reg_id is None:
         return None
     resp = mon.command(CMD_REGISTERS_GET, struct.pack("<B", memspace))
     count = struct.unpack("<H", resp[:2])[0]
     off = 2
     for _ in range(count):
         size, rid = resp[off], resp[off + 1]
-        if rid == pc_id:
-            return struct.unpack("<H", resp[off + 2:off + 4])[0]
+        if rid == reg_id:
+            return int.from_bytes(resp[off + 2:off + 1 + size], "little")
         off += size + 1
     return None
+
+
+def _pc_of(mon, memspace: int, pc_id: int | None) -> int | None:
+    """The program counter of one CPU: memspace 0 is the C64, 1 is drive 8."""
+    return _reg_of(mon, memspace, pc_id)
+
+
+def _set_reg(mon, memspace: int, reg_id: int, value: int) -> None:
+    """Write one register of one CPU.  `Monitor.set_registers` is memspace 0 only."""
+    mon.command(CMD_REGISTERS_SET, struct.pack("<BHBBH", memspace, 1, 3, reg_id,
+                                               value & 0xFFFF))
 
 
 def _xdo(display: str, *args: str) -> str:
@@ -1194,11 +1234,105 @@ class Session:
         self._last_prompt = time.time()
         return True
 
+    #: Seconds the stall must hold between two checks, and between the six
+    #: samples of one check; a real turnaround lasts under a millisecond.
+    IEC_HOLD = 3.0
+    IEC_SAMPLE_GAP = 0.2
+    _iec_checked = 0.0
+    _iec_first: float | None = None
+    _iec_nudges = 0
+
+    def _iec_stalled(self) -> bool:
+        """True when six samples all show the missed-turnaround stall.
+
+        The C64 is in the TKSA loop, the drive is idle, and the secondary
+        address is a LOAD.  A monitor that will not answer is not a stall.
+        """
+        if getattr(self, "mon_port", None) is None:
+            return False  # a session that was never launched has no monitor
+        try:
+            with self.mon(3) as m:
+                c64_pc = _pc_id_of(m, 0)
+                sp_id = _reg_id_of(m, 0, b"SP")
+                drive_pc = _pc_id_of(m, 1)
+            if drive_pc is None or sp_id is None:
+                return False
+            idle = 0
+            for i in range(6):
+                if i:
+                    time.sleep(self.IEC_SAMPLE_GAP)
+                with self.mon(3) as m:
+                    pc = _reg_of(m, 0, c64_pc)
+                    if pc is None:
+                        return False
+                    if IEC_DEBPIA[0] <= pc <= IEC_DEBPIA[1]:
+                        sp = _reg_of(m, 0, sp_id)
+                        if sp is None or struct.unpack(
+                                "<H", m.read(0x0101 + sp, 2))[0] != IEC_TKSA_RETURN:
+                            return False
+                    elif not IEC_TKSA_LOOP[0] <= pc <= IEC_TKSA_LOOP[1]:
+                        return False
+                    dpc = _reg_of(m, 1, drive_pc)
+                    if dpc is not None and IEC_DRIVE_IDLE[0] <= dpc <= IEC_DRIVE_IDLE[1]:
+                        idle += 1
+            with self.mon(3) as m:
+                secondary = m.read(IEC_SECONDARY, 1)[0]
+            return idle >= 4 and secondary & 0xF0 == IEC_LOAD_SECONDARY
+        except (OSError, MonitorError, IndexError, struct.error):
+            return False
+
+    def _iec_nudge(self) -> None:
+        """Run drive 8's talker turnaround again by setting its PC."""
+        with self.mon(3) as m:
+            _set_reg(m, 1, _pc_id_of(m, 1), IEC_TALKER_TURNAROUND)
+
+    def iec_stall_check(self) -> bool:
+        """Answer a missed talker turnaround; True when the run must give up.
+
+        Called from every wait that can sit in a load.  Looks at most once
+        every `IEC_HOLD` seconds, and acts only when two looks that far apart
+        both show the stall, by setting drive 8's PC to the turnaround the
+        ROM runs on TALK -- at most `IEC_MAX_NUDGES` times in a row, each
+        logged.  A stall that survives them is reported at once, with
+        `stall_capture`'s line, instead of after the rest of the wait's limit.
+        """
+        now = time.time()
+        if now - self._iec_checked < self.IEC_HOLD:
+            return False
+        self._iec_checked = now
+        if not self._iec_stalled():
+            self._iec_first = None
+            self._iec_nudges = 0
+            return False
+        if self._iec_first is None:
+            self._iec_first = now
+            return False
+        if now - self._iec_first < self.IEC_HOLD:
+            return False
+        self._iec_first = None
+        if self._iec_nudges >= IEC_MAX_NUDGES:
+            self.log("  the C64 is still waiting in the KERNAL talker "
+                     f"turnaround after {IEC_MAX_NUDGES} nudges of drive 8 "
+                     f"(idle, LOAD); giving up.  {self.stall_capture()}")
+            return True
+        self._iec_nudges += 1
+        self.log("  the C64 is waiting in the KERNAL talker turnaround with "
+                 "drive 8 idle on a LOAD (the drive's CLK pulse was missed); "
+                 f"setting drive 8 PC to ${IEC_TALKER_TURNAROUND:04X} "
+                 f"({self._iec_nudges} of {IEC_MAX_NUDGES})")
+        try:
+            self._iec_nudge()
+        except (OSError, MonitorError, TypeError, struct.error) as e:
+            self.log(f"  the nudge failed: {e}")
+        return False
+
     def wait_text(self, needle, timeout=180.0, interval=0.35):
         needles = [needle] if isinstance(needle, str) else list(needle)
         deadline = time.time() + timeout
         while time.time() < deadline:
             self._require_alive()
+            if self.iec_stall_check():
+                return None, None
             s = self.screen()
             if s is not None:
                 for n in needles:
@@ -1932,6 +2066,8 @@ class Session:
         start = menu_since = time.time()
         resends = 0
         while resends < max_resends and time.time() - start < limit:
+            if self.iec_stall_check():
+                return False
             s = self.screen()
             if (s is None or self.wanted_disk(s) is not None
                     or not self._begin_menu_up(s)):
@@ -1982,6 +2118,8 @@ class Session:
         """
         deadline = time.time() + timeout
         while time.time() < deadline:
+            if self.iec_stall_check():
+                return False
             s = self.screen()
             if s is None:
                 time.sleep(interval)

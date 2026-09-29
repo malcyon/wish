@@ -7,6 +7,7 @@ Tests for the C64 side: the driven-session code under `tools/c64/`, the memory m
 | `test_arrivalscene.py` | Checks that `Session.begin_adventuring` plays through an arrival scene to the world bar, on a fake session driven by a script of bars. |
 | `test_bamsweep.py` | Checks the byte-range comparison of `tools/c64/bamsweep.py` on buffers built here, and that its fixed table matches the documented layout. |
 | `test_beginresend.py` | Checks that `Session.begin_adventuring` resends a lost Return to BEGIN ADVENTURING, and only while the party menu is still up, on a fake session. |
+| `test_iecstall.py` | Checks that `Session.iec_stall_check` nudges drive 8 only when the C64 is stuck in the KERNAL talker turnaround with the drive idle on a LOAD, at most twice, then fails at once, on a fake monitor. |
 | `test_c64acceptance.py` | Checks that `tools/c64/acceptance.py` stages exactly the bytes asked for, the same bytes `effectdrive.py` and `traitdrive.py` write, refuses a step list or title it cannot run before claiming a slot, and reads the camp list, the whom menu and the item list's Detect Magic mark off screens composed from the game's own. |
 | `test_c64addprobe.py` | Checks that `tools/c64/c64addprobe.py` refuses a run with no save or no disks before it claims an emulator slot. |
 | `test_c64nametable.py` | Checks the six places `GEN` touches the `+$C00` name table of a C64 save, the filename prefix it uses, and that Pool of Radiance has no such table. |
