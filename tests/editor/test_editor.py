@@ -4945,8 +4945,10 @@ def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None,
             char.set("level", level, "made up, chosen for the test")
         record, itm, spc, _rep = dos_codec.write(char, deltas=deltas)
         (tmp_path / f"CHRDATA{n}.SAV").write_bytes(record)
-        (tmp_path / f"CHRDATA{n}.ITM").write_bytes(itm)
-        (tmp_path / f"CHRDATA{n}.SPC").write_bytes(spc)
+        # The title names its own item and effect files (`.SWG`/`.FX` on Curse),
+        # and the reader refuses a record that counts items with no item file.
+        (tmp_path / f"CHRDATA{n}{deltas.item_suffix}").write_bytes(itm)
+        (tmp_path / f"CHRDATA{n}{deltas.effect_suffix}").write_bytes(spc)
     (tmp_path / "SAVGAMA.DAT").write_bytes(b"")
     return tmp_path
 
@@ -5220,8 +5222,9 @@ def test_opening_a_multi_slot_dos_folder_uses_the_slot_picker(
 
     _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
     (tmp_path / "SAVGAMB.DAT").write_bytes(b"")
-    (tmp_path / "CHRDATB1.SAV").write_bytes(
-        (tmp_path / "CHRDATA1.SAV").read_bytes())
+    for suffix in (".SAV", ".ITM", ".SPC"):    # the reader refuses a record without its item file
+        (tmp_path / f"CHRDATB1{suffix}").write_bytes(
+            (tmp_path / f"CHRDATA1{suffix}").read_bytes())
     shown = []
 
     class PickB:
