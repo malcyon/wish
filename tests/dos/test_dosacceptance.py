@@ -6928,7 +6928,8 @@ class FakeFight:
               "encounter": "COMBAT WAIT FLEE ADVANCE",
               "bar": "MOVE VIEW AIM USE CAST QUICK DONE",
               "treasure": "VIEW TAKE POOL SHARE EXIT", "left": "YES NO",
-              "archway": "YES NO", "blank1": ""}
+              "archway": "YES NO", "blank1": "",
+              "lost": "PRESS ANY KEY TO CONTINUE"}
 
     def __init__(self, tmp_path, archway=False, endless=False, odd=False,
                  swallow=False):
@@ -6941,6 +6942,10 @@ class FakeFight:
         #: With `twice`, GUY's first `QUICK` is followed by a monster's turn
         #: (a blank bar) and then GUY's own bar again: a second turn.
         self.twice = False
+        #: Whether Alt+X at a command bar ends the fight (the game took the
+        #: cheat); with `lose`, `q` at GUY's bar ends it in a defeat, whose
+        #: first text row is drawn only with `line`.
+        self.cheat, self.lose, self.line = True, False, True
         self.looks = 0
         self.fought = False
         self.map_after = 0
@@ -6964,6 +6969,14 @@ class FakeFight:
         else:
             bar = _bar(self.FRAMES["bar" if self.state.startswith("bar") else self.state])
         screen = _screen(bar, b"")
+        if self.state == "lost" and self.line:
+            px = bytearray(screen.px)
+            x, y, w, h = da.PARTY_DESTROYED_LINE
+            for dy in range(h):
+                for dx in range(0, w, 3):
+                    at = ((y + dy) * W + x + dx) * 3
+                    px[at:at + 3] = b"\xff\xff\xff"
+            screen = dosbox.Screen(W, H, bytes(px))
         if self.state in ("map", "move"):
             px = bytearray(screen.px)
             col = da.status_column("ssb")
@@ -7035,6 +7048,11 @@ class FakeFight:
                 self.state = "move"
             elif s == "encounter" and k == "c":
                 self.state, self.actor, self.fought = "bar1", "GUY", True
+            elif s.startswith("bar") and k == "alt+x":
+                if self.cheat:
+                    self.state = "treasure"
+            elif s == "bar1" and k == "q" and self.lose:
+                self.state = "lost"
             elif s == "bar1" and k == "q" and self.swallow:
                 self.swallow = False
             elif s == "bar1" and k == "q" and self.twice:
@@ -7082,7 +7100,7 @@ def fight_now(monkeypatch):
     monkeypatch.setattr(da, "FIGHT_SETTLED", 0.0)
 
 
-def _fighter(tmp_path, key=None, archway=False):
+def _fighter(tmp_path, key=None, archway=False, intervene=False):
     game = FakeFight(tmp_path, archway)
     d = da.Driver(game, lambda **k: None, "D", "ssb", party_size=3)
     d.logged = []
@@ -7090,6 +7108,7 @@ def _fighter(tmp_path, key=None, archway=False):
     d.record_world(game.capture())
     d.where = "map"
     d.first_bar_key = key
+    d.intervene = intervene
     return game, d
 
 
@@ -7640,3 +7659,117 @@ def test_a_prayer_watch_that_fails_mid_fight_still_releases_the_debugger(tmp_pat
     assert calls == ["attach", "arm", "finish"]
     # Keys were pressed, so the party's place is not known to later steps.
     assert d.where == "pressed"
+
+
+def test_intervene_boots_silver_blades_with_its_cheat_arguments(monkeypatch, tmp_path):
+    _fake_run(monkeypatch, tmp_path, menu_error=TimeoutError("x"))
+    made: list[dict] = []
+    x_log: list[str] = []
+    monkeypatch.setattr(da.dosboxx, "claim", lambda note="": _Slot(x_log))
+
+    def x_session(slot, game, **kw):
+        made.append(kw)
+        return _Session(tmp_path, x_log)
+
+    monkeypatch.setattr(da.dosboxx, "XSession", x_session)
+    for intervene in (True, False):
+        args = _run_args(tmp_path, ["load", "begin", "fight"])
+        args.title, args.intervene = "ssb", intervene
+        da.run(args)
+    assert made == [{"exe": "START.EXE X Gem"}, {}]
+
+
+def test_intervene_is_pressed_once_at_the_bar_after_the_first_bar_key(tmp_path, fight_now):
+    game, d = _fighter(tmp_path, key="space", intervene=True)
+    got = d.fight()
+    assert game.keys == ["m", "Up", "Up", "c", "space", "alt+x", "e", "n"]
+    assert d.where == "map" and got["intervened"]
+    names = [e["event"] for e in d.logged
+             if e.get("event") in ("placement", "first-bar-key",
+                                   "after-first-bar-key", "intervene")]
+    assert names == ["placement", "first-bar-key", "after-first-bar-key", "intervene"]
+    assert _events(d, "intervene")[0]["actor"]["name"] == "GUY"
+
+
+def test_intervene_without_a_first_bar_key_is_pressed_at_the_first_bar(tmp_path, fight_now):
+    game, d = _fighter(tmp_path, intervene=True)
+    got = d.fight()
+    assert game.keys == ["m", "Up", "Up", "c", "alt+x", "e", "n"]
+    assert got["intervened"] and len(_events(d, "placement")) == 1
+    assert len(_events(d, "intervene")) == 1
+
+
+def test_a_command_bar_after_intervene_stops_the_run(tmp_path, fight_now):
+    game, d = _fighter(tmp_path, intervene=True)
+    game.cheat = False
+    with pytest.raises(da.StepFailed, match="Alt.X did not end the fight"):
+        d.fight()
+    assert "q" not in game.keys and game.keys.count("alt+x") == 1
+
+
+@pytest.mark.parametrize("extra, title, error", [
+    ([], "ssb", "add a fight step"),
+    (["fight"], "curse", "ssb only"),
+    (["fight"], "darkness", "ssb only"),
+])
+def test_main_refuses_intervene_it_cannot_use(tmp_path, monkeypatch, capsys,
+                                              extra, title, error):
+    def claimed(*a, **k):
+        raise AssertionError("an emulator slot was claimed")
+
+    monkeypatch.setattr(da.dosbox, "claim", claimed)
+    monkeypatch.setattr(da.dosboxx, "claim", claimed)
+    steps = ["load", "begin", *extra] if title != "darkness" else ["load", "begin"]
+    with pytest.raises(SystemExit):
+        da.main(["--title", title, "--save", str(tmp_path), "--steps", *steps,
+                 "--intervene", "--out", str(tmp_path / "out")])
+    err = capsys.readouterr().err
+    assert error in err
+
+
+def _destroyed_digests(monkeypatch, tmp_path):
+    game, _ = _fighter(tmp_path / "digest")
+    game.state = "lost"
+    screen = game.frame()
+    assert da.fight_bar_kind(screen) is None
+    digests = (screen.glyphs(dosbox.BAR), screen.glyphs(da.PARTY_DESTROYED_LINE))
+    monkeypatch.setattr(da, "PARTY_DESTROYED", digests)
+
+
+def test_a_destroyed_party_stops_the_fight_at_once_with_its_reason(
+        tmp_path, monkeypatch, clock):
+    _destroyed_digests(monkeypatch, tmp_path)
+    game, d = _fighter(tmp_path)
+    game.lose = True
+    with pytest.raises(da.StepFailed, match="party was destroyed"):
+        d.fight(600)
+    assert [e["outcome"] for e in _events(d, "fight-outcome")] == ["destroyed"]
+    assert game.looks < da.FIGHT_PATIENCE
+
+
+def test_the_defeat_bar_alone_stays_unclassified(tmp_path, monkeypatch, clock):
+    _destroyed_digests(monkeypatch, tmp_path)
+    game, d = _fighter(tmp_path)
+    game.lose, game.line = True, False
+    with pytest.raises(da.StepFailed, match=f"stayed {da.FIGHT_PATIENCE:.0f} s"):
+        d.fight(600)
+    assert _events(d, "fight-outcome") == []
+
+
+def test_silver_blades_gates_alt_x_on_its_second_argument():
+    from tools.dos import dosspellslots
+    try:
+        game = da.TITLES["ssb"].find_game()
+    except (FileNotFoundError, OSError):
+        pytest.skip("needs the DOS Secret of the Silver Blades archive")
+    if not (game / "GAME.OVR").is_file() or not (game / "START.EXE").is_file():
+        pytest.skip("no START.EXE and GAME.OVR in the Silver Blades archive")
+    image = dosspellslots.image_of(game, "START.EXE")
+    at = dosspellslots.data_segment(image) * 16 + 0x190F
+    assert image[at:at + 4] == b"\x03Gem"
+    assert da.CHEAT_ARGS["ssb"].split()[1].encode() == b"Gem"
+    ovr = (game / "GAME.OVR").read_bytes()
+    assert ovr[0xC06D:0xC072] == bytes.fromhex("3C2D75349A")
+    handler = ovr[0x18D17:0x18DEC]
+    assert bytes.fromhex("2680BDA80101") in handler
+    assert bytes.fromhex("26C685A60106") in handler

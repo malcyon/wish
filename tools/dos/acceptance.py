@@ -64,7 +64,7 @@ a source whose title does not match `--title`:
 | `items N` | Pool, in camp: member N's `ITEMS` list, first screen only, from `End` to the line, `v`, `i`, and `Escape` twice back to camp; refuses a sheet with no `ITEMS`; records `rows` and `marked`, the rows (from 1) drawn with the Detect Magic `* ` |
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
-| `cast N SPELL [T]` | Pool, in camp: roster line N highlighted with `End`, `MAGIC`, `CAST`, the spell list's title checked against line N's name, the highlight moved with `End` to SPELL's row (`dosbox.PoolOfRadiance.CAST_SPELLS`: `BLESS`, `ANIMATE-DEAD`, and `CURE-LIGHT-WOUNDS`, which needs target line T), `CAST`, T picked with `End` and `Return` at `CAST SPELL ON WHOM`, and believed only when the list comes back one SPELL row shorter, or the Magic bar comes back when SPELL was the caster's only row; `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
+| `cast N SPELL [T]` | Pool, in camp: roster line N highlighted with `End`, `MAGIC`, `CAST`, the spell list's title checked against line N's name, the highlight moved with `End` to SPELL's row (`dosbox.PoolOfRadiance.CAST_SPELLS`: `BLESS`, `ANIMATE-DEAD`, `SLOW-POISON`, and `CURE-LIGHT-WOUNDS`, which needs target line T), `CAST`, T picked with `End` and `Return` at `CAST SPELL ON WHOM`, and believed only when the list comes back one SPELL row shorter, or the Magic bar comes back when SPELL was the caster's only row; `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below); in Curse a message over the continue bar that ends the rest (Tilverton's Royal Guards) gets `Return`, the map bar is required, and the party camps again, logged as `ended_by_message` |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
@@ -72,7 +72,7 @@ a source whose title does not match `--title`:
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
 | `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
-| `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is refused unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
+| `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is refused unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
 | `prayer-watch 49`, `prayer-watch 35` | Pool, from the map, `load` first: walk to an encounter (`walk_to_encounter`), read every member's effect nodes and Prayer's handler table at the encounter menu, break on the id-49 and id-35 stubs, arm the handler, bonus test, +1 helper and penalty at the overlay segment the stub's far jump names once it loads, answer each bar by `COMBAT_KEYS`, and log each halt as `prayer-halt`: registers, 16 bytes at `SS:SP`, the four-frame `BP` chain, combatant name and side, the node's five bytes and `DS:0x6816` and `DS:0x6822`.  It stops after one party attack round (a stub halt whose list walker returns to the attack roll's list-10 call for a side-0 attacker, then a helper or penalty halt), when the map has held `FIGHT_SETTLED` seconds, or after `PRAYER_FIGHT_SECONDS`; the step fails if the menu came more than `PRAYER_BOOT_SECONDS` after the driver was made (the walk itself is bounded by its 40 steps and the run's `--deadline`).  The result is `conclusive: False`, and the run exits 2 with `inconclusive` in `summary.json` rather than `lost` or `completed`, when no member carried the node at the menu or at the stop, an armed or halted routine's code did not match `GAME.OVR`, the stop-time party was not read, or no party attack armed at the stubs ran its helper or penalty (the first call loads the overlay before its routines are armed, so a round needs a later attack).  The attack roll's own list-10 call is not armed: its unit's stub entry is unmeasured.  Only `shot`, `press` and `read` may follow |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement, record byte 0x130 (spell id 126's book byte, `book_0x130`) and items |
 
@@ -773,6 +773,20 @@ def fight_bar_kind(screen: dosbox.Screen) -> str | None:
 #: any other question the walk meets).  A bar not listed is waited out.
 FIGHT_KEYS = {"command": "q", "encounter": "c", "continue": "Return",
               "treasure": "e", "treasure_left": "n", "yes_no": "n"}
+#: What `--intervene` starts the game with, after `START.EXE`.  Silver Blades'
+#: Alt+X handler at the combat command bar (`GAME.OVR` 0xC06D, then 0x18D17)
+#: compares `ParamStr(2)` with the Pascal string `Gem` in `START.EXE`'s data
+#: segment (`DS:0x190F`) and, on a match, kills every side-1 combatant and
+#: ends the acting member's turn; nothing on that path reads `ParamStr(1)`.
+#: The first argument is not `Hoop`, whose start-up branch (`START.EXE` image
+#: 0x1B4) is unread; any other word leaves start-up as it is.
+CHEAT_ARGS = {"ssb": "X Gem"}
+#: The screen that ends a lost fight, `THE MONSTERS REJOICE FOR THE PARTY HAS
+#: BEEN DESTROYED` over `PRESS ANY KEY TO CONTINUE`: the `glyphs` digest of the
+#: bar row and of `PARTY_DESTROYED_LINE`, the message's first text row.  The
+#: bar alone is too generic to trust.
+PARTY_DESTROYED = ("01364f4c1cd47efa", "e97633ef7e8cf145")
+PARTY_DESTROYED_LINE = (16, 40, 288, 8)
 #: The titles `fight` drives.
 FIGHT_TITLES = frozenset({"curse", "ssb"})
 #: The Prayer node ids `prayer-watch` tests: 49 is DOS's own Prayer (the
@@ -2311,6 +2325,8 @@ class Driver:
         #: Set by `run`: the X keysym `fight` presses once at the first
         #: command bar, or None.
         self.first_bar_key: str | None = None
+        #: Set by `run` for `--intervene`: `fight` presses Alt+X once.
+        self.intervene = False
         #: The game's data segment, once a fight's combatants have read true.
         self.combat_ds: int | None = None
         #: When the driver was made, which is when the boot was over.
@@ -3142,7 +3158,10 @@ class Driver:
         `first_bar_key` once instead of `QUICK`, so the next reading of the
         bar is logged as a bar of its own.  The bar after that key reads every
         record again (`after-first-bar-key`), which is where a key that
-        changed a quickfight byte shows.  The step ends when the map bar has
+        changed a quickfight byte shows.  With `intervene` Alt+X is pressed
+        once at that bar (at the first without a first-bar key) and a command
+        bar coming back fails the step; the defeat screen fails it at once.
+        The step ends when the map bar has
         held `FIGHT_SETTLED` seconds after the fight, with the party left on
         the map; `seconds` bounds walk and fight together.
         """
@@ -3166,7 +3185,7 @@ class Driver:
         state: dict = {"met": False, "met_after": None, "bars": [],
                        "placement": None, "after_key": None, "records": {},
                        "kinds": {}, "encounters": 0, "presses": 0,
-                       "key_pressed": False, "ds": None, "torn": 0, "loose": 0,
+                       "key_pressed": False, "intervened": False, "ds": None, "torn": 0, "loose": 0,
                        "last_bar": None, "repeats": 0, "unknown_shots": 0,
                        "back_since": None, "unknown_since": None,
                        "walking": None if enter else self.world_sig}
@@ -3203,6 +3222,7 @@ class Driver:
                 "actors": [b["actor"]["name"] if b["actor"] else None for b in bars],
                 "placement": state["placement"],
                 "first_bar_key": self.first_bar_key if state["key_pressed"] else None,
+                "intervened": state["intervened"],
                 "after_first_bar_key": state["after_key"],
                 "ds": None if state["ds"] is None else f"{state['ds']:04X}",
                 "torn_frames": state["torn"], "loose_frames": state["loose"],
@@ -3332,6 +3352,9 @@ class Driver:
                 # next command bar is a new turn even if it looks the same.
                 state["last_bar"] = None
             if kind is None:
+                if (glyphs, screen.glyphs(PARTY_DESTROYED_LINE)) == PARTY_DESTROYED:
+                    self.note(event="fight-outcome", outcome="destroyed")
+                    raise self.fail("fight-destroyed", "the party was destroyed")
                 state["unknown_since"] = state["unknown_since"] or time.time()
                 if time.time() - state["unknown_since"] >= FIGHT_PATIENCE:
                     words = [len(w) for w in bar_words(screen)]
@@ -3449,7 +3472,7 @@ class Driver:
 
     def _command_bar(self, glyphs: str, state: dict) -> None:
         """Log who acts, and at the first bar where everyone stands; then press
-        `QUICK`, or the first-bar key once.
+        `QUICK`, or the first-bar key once, or with `intervene` Alt+X once.
 
         Every look at a command bar reads who acts.  The same bar digest with
         the same acting record as the last one logged is the same turn, whose
@@ -3458,6 +3481,9 @@ class Driver:
         look the same, and its acting record tells it apart.  The bar after
         the first-bar key is logged again, since a key was pressed at it.
         """
+        if state["intervened"]:
+            raise self.fail("fight-intervene", "Alt+X did not end the fight: a "
+                            "command bar came back")
         first = not state["bars"]
         after_key = state["key_pressed"] and state["after_key"] is None
         if first:
@@ -3496,6 +3522,18 @@ class Driver:
         elif after_key:
             state["after_key"] = public
             self.note(event="after-first-bar-key", combatants=public)
+        if self.intervene:
+            # Only the bar after the first-bar key, or the first bar without
+            # one, gets here.
+            self.s.key("alt+x")
+            state["presses"] += 1
+            state["intervened"] = True
+            state["last_bar"] = None
+            time.sleep(1.0)
+            self.note(event="intervene", actor=bar["actor"],
+                      shot=self._fight_shot("intervene"))
+            self.s.wait_while_glyphs(dosbox.BAR, glyphs, timeout=FIGHT_DWELL)
+            return
         self.s.key(FIGHT_KEYS["command"])
         state["presses"] += 1
         self.s.wait_while_glyphs(dosbox.BAR, glyphs, timeout=FIGHT_DWELL)
@@ -4626,7 +4664,11 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         # `START.EXE` is `Session`'s own default, so only another launcher
         # is named.
         if debugger:
-            session = dosboxx.XSession(slot, game)
+            if getattr(args, "intervene", False):
+                session = dosboxx.XSession(
+                    slot, game, exe=f"START.EXE {CHEAT_ARGS[args.title]}")
+            else:
+                session = dosboxx.XSession(slot, game)
         else:
             session = (dosbox.Session(slot, game) if title.exe == "START.EXE"
                        else dosbox.Session(slot, game, exe=title.exe))
@@ -4668,6 +4710,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                        deadline=deadline)
             if getattr(args, "first_bar_key", None) is not None:
                 d.first_bar_key = parse_key(args.first_bar_key)
+            d.intervene = bool(getattr(args, "intervene", False))
             summary["events"] = getattr(d, "events", [])
             results = []
             for step in steps:
@@ -5119,6 +5162,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="SPACE or one letter or digit, pressed once at the "
                          "first command bar of the first fight instead of "
                          "QUICK (curse and ssb, with a fight step)")
+    ap.add_argument("--intervene", action="store_true",
+                    help="start the game as `START.EXE X Gem` and press its own "
+                         "Alt+X once at the bar after the first-bar key (at the "
+                         "first bar without one), which kills the monsters and "
+                         "ends the fight in the party's favour (ssb, with a "
+                         "fight step)")
     ap.add_argument("--expect", action="append", default=[],
                     metavar="NAME:ID:MINUTES[:DATA]",
                     help="a node the last saved slot must hold (repeatable)")
@@ -5156,6 +5205,12 @@ def main(argv: list[str] | None = None) -> int:
             if not any(parse_step(s).kind == "fight" for s in getattr(args, "steps", [])):
                 raise ValueError("--first-bar-key is pressed in a fight: add a "
                                  "fight step")
+        if args.intervene:
+            if args.title not in CHEAT_ARGS:
+                raise ValueError(f"--intervene is measured for "
+                                 f"{', '.join(sorted(CHEAT_ARGS))} only, not {args.title}")
+            if not any(parse_step(s).kind == "fight" for s in args.steps):
+                raise ValueError("--intervene is pressed in a fight: add a fight step")
         if args.hall and args.title not in HALL_TITLES:
             raise ValueError(f"--hall is measured for {', '.join(sorted(HALL_TITLES))} "
                              f"only, not {args.title}")

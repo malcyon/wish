@@ -145,6 +145,8 @@ at startup; Alt+X then produces "the gods intervene".
 | Death Knights of Krynn | `start.exe anything Helm` |
 | Gateway to the Savage Frontier | a patched `game.exe`, then `game.exe Super Wooden` |
 
+In Secret of the Silver Blades the combat command bar's Alt+X handler (`GAME.OVR` 0xC06D, then 0x18D17) compares only `ParamStr(2)` with the string `Gem` in `START.EXE`'s data segment (`DS:0x190F`), so any first argument works, and a match kills every side-1 combatant and ends the acting member's turn.
+
 Simeon notes the two Buck Rogers games are built on the Pool of Radiance code
 base **with the cheat removed**, and that Dark Queen and FRUA answer Alt+X with
 "That doesn't work".
