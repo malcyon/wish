@@ -652,8 +652,11 @@ Still wanted, and each needs a save we make ourselves:
 * a **character of a sturdy race with constitution below 11**, to exercise the
   `+1` and `+2` bands of the saving-throw constitution bonus. Only `+3`/`+4`/`+5`
   have ever been seen;
-* **one specimen where `0x100` reads other than 1**, which is what the status
-  question turns on.
+
+~~**one specimen where `0x100` reads other than 1**, which is what the status
+question turns on.~~ **Met.** `WISH-SPEC-porunconscious1.d64`, roster slot 5
+(counting from 0), holds `0x100` = `$85`, written by the game's own damage code
+in a fight and saved from camp.
 
 ~~A **magical weapon or armour** obtained in play — to read the item effect bytes
 against a known item.~~ **No longer needed for the effect bytes.** The `0x0AD`

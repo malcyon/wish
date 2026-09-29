@@ -43,8 +43,9 @@ not drawn when the last screenshot was taken.
 Radiance's C64 seeds a trait only to an elf and a half-elf.
 
 **What no boot has reached**: BULWARK's 3/2 attacks in a fight, a level drain,
-more than sixteen spells memorised, a sturdy race with constitution below 11,
-and `0x100` other than 1.
+more than sixteen spells memorised, and a sturdy race with constitution below 11.
+`0x100` other than 1 is held by `WISH-SPEC-porunconscious1.d64`, roster slot 5
+(counting from 0): `$85`, written by the game during a fight.
 
 
 The training hall is **area 11**, which has
