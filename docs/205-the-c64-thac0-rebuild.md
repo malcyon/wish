@@ -179,6 +179,18 @@ there.
 The byte that does matter is `0x0E3`. A record whose gate is zero fights at no
 strength bonus for ever, and looks right on the sheet until it does.
 
+## Pool of Radiance also adds the readied weapon
+
+Pool of Radiance's rebuild (`$3729`, weapon block `$368F`) adds the readied
+weapon's terms to `thac0_base`: the strength to-hit row when no weapon is
+readied or the type's `+14` bit 2 is set, record `0x0EC` when bit 1 is set, the
+item's own plus always, and the plus of a readied type-`$1C` (bit 7) or
+type-`$49` (bit 0) item. `0x0EC` is `COM.PREP $1682[dexterity]`, and the
+converter writes both bytes, so a READY before the first fight leaves the
+number unchanged. The rule reproduces the byte in all 124 engine-written
+slots checked; Curse and Silver Blades' weapon block (`$387E`) is unread, so
+their converted byte stays base plus strength.
+
 ## Where the numbers came from
 
 * `tools/c64/recordsweep.py --game curse --offset 0x10E` and

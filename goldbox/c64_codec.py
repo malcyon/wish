@@ -24,7 +24,7 @@ from collections.abc import Mapping
 from . import classcode, derive, effects, neutral, paladin, spells, titles, traits
 from . import levels as level_tables
 from .encoding import COMBAT_BIAS
-from .items import Item, ItemType
+from .items import TYPE_LOCATION, Item, ItemType
 from .layout import RECORD_SIZE, Confidence, Field
 from .neutral import NeutralCharacter, Provenance
 from .portraits import draws_sheet_portrait
@@ -35,6 +35,8 @@ __all__ = [
     "INFRAVISION",
     "LEVEL_FIELDS",
     "strength_index",
+    "pool_missile_adjustment",
+    "pool_thac0_current_byte",
     "thac0_current_byte",
     "write",
     "read",
@@ -654,6 +656,65 @@ def thac0_current_byte(base_byte: int, hit_bonus: int, bonus_flag: bool) -> int:
     if not bonus_flag:
         return base_byte & 0xFF
     return (base_byte + hit_bonus) & 0xFF
+
+
+#: `COM.PREP $1682`, indexed by dexterity 3-21: what dexterity is worth to hit
+#: at range, which `COM.PREP $1633` caches at record `0x0EC` and the roster
+#: rebuild adds for a ranged weapon.  Dexterity 22 and over is clamped to the
+#: last row, and 3 is the first (CONFIRMED for Pool of Radiance only).
+_MISSILE_BY_DEX = (-3, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 3, 3, 4)
+
+#: The item types whose readied plus a launcher adds to the roster THAC0 in
+#: Pool of Radiance: `LIBRARY $36F9` takes type `$1C` for weapon-flag bit 7
+#: and type `$49` for bit 0.
+_POOL_AMMO_BIT7, _POOL_AMMO_BIT0 = 0x1C, 0x49
+
+
+def pool_missile_adjustment(dexterity: int) -> int:
+    """What `COM.PREP $1682` gives a dexterity, as the signed value stored at
+    record `0x0EC`."""
+    return _MISSILE_BY_DEX[min(max(int(dexterity), 3), 21) - 3]
+
+
+def _signed_plus(raw: bytes) -> int:
+    return raw[4] - 256 if raw[4] > 127 else raw[4]
+
+
+def pool_thac0_current_byte(base_byte: int, hit_bonus: int, missile: int,
+                            raws: list[bytes],
+                            item_types: Mapping[int, ItemType]) -> int:
+    """The byte `LIBRARY $3729` leaves in `thac0_current` in Pool of Radiance:
+    `thac0_base`, the strength to-hit bonus with no weapon readied, and
+    otherwise the readied weapon's own terms -- record `0x0EC` for type-flag
+    bit 1, the strength bonus for bit 2, its own plus always, and the plus of
+    a readied ammunition item for bits 7 and 0.
+
+    `hit_bonus` is the strength to-hit byte for this record (0 with the gate
+    closed), `missile` the value stored at `0x0EC`, `raws` the sixteen item
+    records.  An item whose type is missing from `item_types` is skipped.
+    """
+    readied = [r for r in raws if r[0] and r[6] & 0x80]
+
+    def readied_plus(type_index: int) -> int:
+        return next((_signed_plus(r) for r in readied if r[0] == type_index), 0)
+
+    weapon = next((r for r in readied
+                   if r[0] in item_types
+                   and item_types[r[0]].raw[TYPE_LOCATION] == 0), None)
+    total = base_byte
+    if weapon is None:
+        return (total + hit_bonus) & 0xFF
+    flags = item_types[weapon[0]].weapon_flags
+    if flags & 0x02:
+        total += missile
+    if flags & 0x04:
+        total += hit_bonus
+    total += _signed_plus(weapon)
+    if flags & 0x80:
+        total += readied_plus(_POOL_AMMO_BIT7)
+    elif flags & 0x01:
+        total += readied_plus(_POOL_AMMO_BIT0)
+    return total & 0xFF
 
 
 def _clamp_nibble(n: int) -> int:
@@ -1747,7 +1808,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # Pool of Radiance) rebuilds it -- CONFIRMED in the running game,
     # `docs/205-the-c64-thac0-rebuild.md` (#368).
     current = use("thac0_current")
-    if current is not None:
+    if current is not None and not computes_movement:
         dst = _field("thac0")
         hit, _ = derive.strength_bonuses(w.get("strength", 0),
                                          w.get("exceptional_strength", 0))
@@ -1955,6 +2016,34 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                          "rebuild's rule (LIBRARY $3729) from the converted "
                          "base movement, readied body armour, carried weight "
                          "and strength allowance, not copied")
+
+    # -- thac0_current and 0x0EC in Pool of Radiance: the whole rule --------
+    # Placed after the inventory, which the readied weapon's terms read.  A
+    # READY before the first fight rebuilds the byte from the stored `0x0EC`,
+    # so that is written too, from the same dexterity table `COM.PREP $1633`
+    # uses; otherwise a dart thrower would drop back to the strength-only
+    # number.  `docs/205-the-c64-thac0-rebuild.md`.
+    if computes_movement and current is not None:
+        dst = _field("thac0")
+        dex_dst = _field("missile_attack_adjustment")
+        missile = pool_missile_adjustment(rec.get("dexterity"))
+        rec.set("missile_attack_adjustment", missile)
+        raw_inv = rec.get_raw("inventory")
+        hit, _ = derive.strength_bonuses(w.get("strength", 0),
+                                         w.get("exceptional_strength", 0))
+        rec.set("thac0", pool_thac0_current_byte(
+            rec.get("thac0_base"),
+            hit if rec.get("strength_bonus_flag") else 0, missile,
+            [raw_inv[n * ITEM_SIZE:(n + 1) * ITEM_SIZE]
+             for n in range(ITEM_SLOTS)], item_types))
+        rep.note(dex_dst.offset, dex_dst.size,
+                 "missile_attack_adjustment: what dexterity is worth at "
+                 "range, from the table COM.PREP writes at the start of "
+                 "every fight")
+        rep.note(dst.offset, dst.size,
+                 "thac0: computed by the C64 roster rebuild's rule "
+                 "(LIBRARY $3729) from this record's thac0_base, strength, "
+                 "readied weapon and missile adjustment, not copied")
 
     # -- the combat icon: only the C64 has one -------------------------------
     # `use`d here, whether or not `icon` was also supplied, so `Writer.finish`
@@ -2385,8 +2474,11 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                       "`thac0_base` plus the AD&D strength to-hit bonus, "
                       "the way `LIBRARY $3918` rebuilds it at the party's "
                       "first fight -- a copied byte can show a number "
-                      "neither port's tables would produce until then "
-                      "(#405)"),
+                      "neither port's tables would produce until then. "
+                      "In Pool of Radiance with the item-type table it "
+                      "also takes the readied weapon's terms and the "
+                      "missile adjustment written at 0x0EC "
+                      "(`LIBRARY $3729`)"),
     ("turn_power", "**computed, not copied**: the C64's caster turning byte "
                    "at 0x0A4 is what this title's own GEN writes from the "
                    "cleric and paladin levels, because no port a conversion "
