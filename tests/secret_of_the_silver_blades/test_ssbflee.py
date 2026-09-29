@@ -149,3 +149,29 @@ def test_reach_fight_gives_up_after_the_ninety_second_bound(monkeypatch):
     assert arm16.reach_fight(run, ReachSession(bytes(arm16.STAGE))) is False
     assert "watch" in run.events
     assert run.events[-1] == "fight-triggered"
+
+
+def test_a_failing_cleanup_step_does_not_stop_the_steps_after_it():
+    calls = []
+
+    class Run:
+        sess = None
+
+        def __init__(self):
+            self.slot = type("Slot", (), {
+                "teardown": lambda self: calls.append("teardown"),
+                "release": lambda self: calls.append("release")})()
+
+        def log(self, what, **kw):
+            if what == "done":
+                raise OSError("disk full")
+            calls.append(what)
+
+    class FlightLog:
+        def close(self):
+            calls.append("close")
+            raise RuntimeError("boom")
+
+    ssbflee.cleanup(Run(), FlightLog(), 0)
+    assert calls == ["cleanup-failed", "close", "cleanup-failed",
+                     "teardown", "release"]

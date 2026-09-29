@@ -70,15 +70,40 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def cleanup(run, flight_log, rc) -> None:
+    """Run every teardown step, each isolated so one failure cannot skip the rest."""
+    steps = [("done log", lambda: run.log("done", rc=rc))]
+    if flight_log is not None:
+        steps.append(("flight log", flight_log.close))
+    if run.sess is not None:
+        def clear_checkpoints():
+            with run.sess.mon(5) as m:
+                m.checkpoints_clear()
+                m.resume()
+        steps += [("checkpoints", clear_checkpoints),
+                  ("terminate", run.sess.terminate)]
+    steps += [("slot teardown", run.slot.teardown),
+              ("slot release", run.slot.release)]
+    for what, step in steps:
+        try:
+            step()
+        except Exception as exc:
+            try:
+                run.log("cleanup-failed", step=what, error=repr(exc))
+            except Exception:
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     out = scratch.ensure(args.out)
     run = laterbattle.Battle(out, quiet=args.quiet)
     disks = str(gamedisks.find(G.SECRET_OF_THE_SILVER_BLADES.key))
     run.slot = S.claim_slot(None, "ssbflee/648")
-    flight_log = Log(out, args.quiet)
+    flight_log = None
     rc = 1
     try:
+        flight_log = Log(out, args.quiet)
         sess = ssbsession.SSBSession(
             ssbsession.stage(run.slot, disks, arm16.SAVE), slot=run.slot)
         run.sess = sess
@@ -105,22 +130,7 @@ def main(argv: list[str] | None = None) -> int:
         run.dump("after-fight")
         rc = 0
     finally:
-        run.log("done", rc=rc)
-        steps = [("flight log", flight_log.close)]
-        if run.sess is not None:
-            def clear_checkpoints():
-                with run.sess.mon(5) as m:
-                    m.checkpoints_clear()
-                    m.resume()
-            steps += [("checkpoints", clear_checkpoints),
-                      ("terminate", run.sess.terminate)]
-        steps += [("slot teardown", run.slot.teardown),
-                  ("slot release", run.slot.release)]
-        for what, step in steps:
-            try:
-                step()
-            except Exception as exc:
-                run.log("cleanup-failed", step=what, error=repr(exc))
+        cleanup(run, flight_log, rc)
     return rc
 
 
