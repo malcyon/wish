@@ -136,7 +136,7 @@ class FakeGame:
     def __init__(self, tmp, rolls=ROLLS, add_closes=False, stall=None,
                  start="party", lose_first=None, slow=None, trim=(),
                  roster=(), tail=None, slow_roll=False,
-                 slow_party=0):
+                 slow_party=0, hide_add=0, hide_save=False):
         """`stall`: a state whose keys do nothing.  `lose_first`: a state whose
         first Return is dropped.  `slow`: state -> (polls, redraws), a Return
         that is accepted but takes that many screen reads to show its result,
@@ -147,6 +147,7 @@ class FakeGame:
         self.roster, self.tail = tuple(roster), tail
         self.slow_roll, self.roll_reads = slow_roll, 0
         self.slow_party, self.party_reads = slow_party, 0
+        self.hide_add, self.hide_save = hide_add, hide_save
         self.trim = tuple(trim)
         self.tmp, self.rolls = tmp, list(rolls)
         self.add_closes, self.stall = add_closes, stall
@@ -219,6 +220,11 @@ class FakeGame:
             if self.slow_party and self.added \
                     and self.party_reads <= self.slow_party:
                 items = items[:6]   # the rows under the first are not drawn yet
+            if self.hide_add and self.created and not self.added \
+                    and self.party_reads <= self.hide_add:
+                items = [i for i in items if i != "ADD CHARACTER TO PARTY"]
+            if self.hide_save and self.added:
+                items = [i for i in items if i != "SAVE CURRENT GAME"]
             for i, label in enumerate(items):
                 put(13 + i, 2, label, i == self.cursor)
         elif s == "race":
@@ -966,6 +972,22 @@ def test_a_party_menu_still_being_drawn_is_waited_out_before_save(tmp_path):
     code, _sess, game, _out, summary = drive(tmp_path, PAIR[:1], game)
     assert code == 0, summary["lost"]
     assert ("party", "SAVE CURRENT GAME") in game.chosen
+
+
+def test_a_party_menu_without_its_add_row_yet_is_waited_out(tmp_path):
+    game = FakeGame(tmp_path, hide_add=2)
+    code, _sess, game, _out, summary = drive(tmp_path, PAIR[:1], game)
+    assert code == 0, summary["lost"]
+    assert ("party", "ADD CHARACTER TO PARTY") in game.chosen
+
+
+def test_a_save_row_that_never_appears_loses_the_run_and_sends_no_key(tmp_path):
+    game = FakeGame(tmp_path, hide_save=True)
+    code, sess, game, _out, summary = drive(tmp_path, PAIR[:1], game)
+    assert code == 1
+    assert summary["lost"] == "SAVE CURRENT GAME is not on the party screen"
+    # The last key was the EXIT that closed the ADD list; none went in the wait.
+    assert sess.kbd.sent[-1][0] == "add"
 
 
 def test_the_help_says_the_roll_limit_needs_seconds(capsys):

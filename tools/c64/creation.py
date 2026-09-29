@@ -685,6 +685,7 @@ class Driver:
         leaves it.  A list that had closed itself is left alone: pressing EXIT
         at the party menu is not this driver's to do.
         """
+        s = self.drawn_menu(s, "ADD CHARACTER TO PARTY")
         s = self.choose(s, PARTY_MENU, "ADD CHARACTER TO PARTY", ADD_LIST,
                         tag="add-open")
         for i, spec in enumerate(specs):
