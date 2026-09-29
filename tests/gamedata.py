@@ -582,7 +582,8 @@ ARENA_MAX_X, ARENA_MAX_Y = 55, 25
 OFF_MAP = 0xFF
 
 
-def synthetic_arena(fighters=((0, 25, 13), (8, 30, 13))) -> dict[int, bytes]:
+def synthetic_arena(fighters=((0, 25, 13), (8, 30, 13)),
+                    sides: dict[int, int] | None = None) -> dict[int, bytes]:
     """A fight, built from the player's own saves plus generated structures.
 
     This replaces a capture of live machine memory. A capture was the quick way
@@ -599,12 +600,17 @@ def synthetic_arena(fighters=((0, 25, 13), (8, 30, 13))) -> dict[int, bytes]:
     * the position table at `$8B00`, `$FF $FF` for everyone not fighting.
 
     `fighters` is `(index, x, y)`, index 0-7 the party and 8 upward monsters.
+    `sides` maps an index to the value of its roster block's side byte; a
+    monster with no entry is on the enemy side (1), a party slot keeps the
+    saved block's.
+
     The party fighter must be an index the saved roster actually fills --
     `savedgame1.bin` holds one, at 0 -- or it has no record and is skipped.
     """
     from goldbox.encoding import COMBAT_BIAS
     from goldbox.savegame import (
         ROSTER_ARMOUR_CLASS,
+        ROSTER_COMBAT_SIDE,
         ROSTER_HP_CURRENT,
         ROSTER_MOVEMENT,
         ROSTER_STRIDE,
@@ -655,12 +661,15 @@ def synthetic_arena(fighters=((0, 25, 13), (8, 30, 13))) -> dict[int, bytes]:
         at = index * ROSTER_STRIDE
         block = bytearray(roster[:ROSTER_STRIDE])
         block[ROSTER_RECORD_SLOT] = index
+        block[ROSTER_COMBAT_SIDE] = 1
         block[ROSTER_HP_CURRENT] = 5
         # The derived combat numbers come from here, not from the record.
         block[ROSTER_THAC0] = COMBAT_BIAS - 19
         block[ROSTER_ARMOUR_CLASS] = COMBAT_BIAS - 6
         block[ROSTER_MOVEMENT] = 9
         roster[at:at + ROSTER_STRIDE] = block
+    for index, side in (sides or {}).items():
+        roster[index * ROSTER_STRIDE + ROSTER_COMBAT_SIDE] = side
     roster += positions
 
     # Descending, so the first fighter listed acts first and the round is

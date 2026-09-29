@@ -468,7 +468,7 @@ class Caster:
         return S.Session.melee_turn(sess, state)
 
     def cast(self, sess: S.Session, b, me, spell: str, target: str) -> bool:
-        who = next((c for c in b.party if c.name.strip() == target), None)
+        who = next((c for c in b.characters if c.name.strip() == target), None)
         if who is None:
             self.log.say(f"  no {target} on the map")
             return False

@@ -446,7 +446,7 @@ def roll_call(sess) -> dict:
               "on_map": c.on_map, "hp": c.hp, "alive": c.alive,
               "slot": c.slot, "pose": c.pose,
               "in_window": inside(c)}
-             for c in battle.party]
+             for c in battle.characters]
     return {
         "map": [battle.shape.width, battle.shape.height],
         "camera": [x0, y0],

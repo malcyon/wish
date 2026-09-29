@@ -107,6 +107,31 @@ def test_the_party_is_the_first_eight_slots(battle):
     assert battle.party[0].kind == "party" and battle.enemies[0].kind == "enemy"
 
 
+def test_an_ally_past_the_party_slots_is_on_the_party_side():
+    """The side is the roster block's side byte, not the index: the tavern
+    brawl's computer-run allies stand at 41-53 and fight for the party."""
+    target = MemoryTarget(synthetic_arena(
+        ((0, 25, 13), (8, 30, 13), (41, 27, 13)), sides={41: 0}))
+    b = combat.read_battle(target)
+    assert [c.index for c in b.party] == [0, 41]
+    assert [c.index for c in b.enemies] == [8]
+    assert [c.index for c in b.characters] == [0]
+    assert b.at(27, 13).kind == "party"
+
+
+def test_a_charmed_party_member_is_on_the_other_side_but_still_a_character():
+    """A charm sets the side byte to `$C0`/`$C1`, and the top bit is not the
+    side."""
+    for byte in (0xC0, 0xC1):
+        target = MemoryTarget(synthetic_arena(sides={0: byte}))
+        b = combat.read_battle(target)
+        assert [c.index for c in b.party] == []
+        assert [c.index for c in b.enemies] == [0, 8]
+        assert [c.index for c in b.characters] == [0]
+        assert b.at(25, 13).kind == "enemy"
+        assert b.at(25, 13).is_player
+
+
 def test_bit_seven_of_a_square_agrees_with_the_position_table(battle):
     """Occupancy is in the map as well as in $8B00, so the two check each
     other. $C086 BPL branches past the glyph lookup when bit 7 is set."""

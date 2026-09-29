@@ -209,10 +209,24 @@ class Combatant:
     #: right now, empty if none. Recomputed from the `$4900` arrays every poll
     #: and never carried forward, so it goes the moment the game clears the id.
     helpless: frozenset[int] = frozenset()
+    #: The roster block's side byte (`+$0C`) with the top bit dropped: 0 is the
+    #: party's side, and a charm sets `$40` or `$41` (`POST.COM $0903` counts
+    #: the sides from this byte). None where nobody read the block, which falls
+    #: back to the index.
+    side: int | None = None
+
+    @property
+    def is_player(self) -> bool:
+        """One of the party's eight save slots, whichever side it is on now."""
+        return self.index < FIRST_MONSTER
 
     @property
     def is_party(self) -> bool:
-        return self.index < FIRST_MONSTER
+        """On the party's side: a computer-run ally at index 8 or more is, and
+        a charmed party member is not."""
+        if self.side is None:
+            return self.is_player
+        return self.side == 0
 
     @property
     def name(self) -> str:
@@ -296,7 +310,7 @@ class Combatant:
 
         dice = self.record.get("level")
         if dice:
-            out.append(f"level {dice}" if self.is_party else f"{dice} hit dice")
+            out.append(f"level {dice}" if self.is_player else f"{dice} hit dice")
         for attack in monster.attacks(self.record):
             out.append(attack.text)
         saves = monster.saving_throws(self.record)
@@ -342,6 +356,11 @@ class Battle:
     @property
     def party(self) -> tuple[Combatant, ...]:
         return tuple(c for c in self.combatants if c.is_party)
+
+    @property
+    def characters(self) -> tuple[Combatant, ...]:
+        """The party's eight save slots, whichever side they are on."""
+        return tuple(c for c in self.combatants if c.is_player)
 
     @property
     def enemies(self) -> tuple[Combatant, ...]:
@@ -430,7 +449,8 @@ def _combatant(index: int, positions: bytes, roster: bytes, records: bytes,
         hp=block.hit_points, hp_max=hp_max,
         armour_class=block.armour_class, thac0=block.thac0,
         movement=block.movement, record=record,
-        helpless=helpless.get(index, frozenset()))
+        helpless=helpless.get(index, frozenset()),
+        side=block.combat_side & 0x7F)
 
 
 def _blocks(target, blocks) -> list[bytes]:

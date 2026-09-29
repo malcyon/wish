@@ -3018,7 +3018,7 @@ class Session:
         panel = " ".join(s.row(r)[PANEL_LEFT:] for r in PANEL_ROWS)
         # Longest first, so a party holding both SEAN and BROTHER SEAN does not
         # hand every one of BROTHER SEAN's turns to SEAN.
-        named = sorted((c for c in battle.party if c.name.strip()),
+        named = sorted((c for c in battle.characters if c.name.strip()),
                        key=lambda c: -len(c.name.strip()))
         for who in named:
             if who.name.strip() in panel:

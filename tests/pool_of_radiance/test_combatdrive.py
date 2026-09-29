@@ -624,6 +624,16 @@ def test_melee_walks_the_acting_character_towards_the_nearest_enemy():
     assert sess.kbd.sent == ["Return", "KP_6", "KP_6", "KP_6"]
 
 
+def test_melee_steps_past_a_nearer_ally_towards_the_monster():
+    """An ally on the party's side at index 41 is nearer than the orc.  Aiming
+    at it draws `ATTACK ALLY: YES NO` and the same turn again."""
+    b = combat.read_battle(MemoryTarget(synthetic_arena(
+        ((0, 25, 13), (8, 25, 18), (41, 27, 13)), sides={41: 0})))
+    sess = ArenaSession(b, b.combatants[0].name, steps=2)
+    assert sess.melee_turn(sess.combat_state()) == "MOVE"
+    assert sess.kbd.sent == ["Return", "KP_2", "KP_2"]
+
+
 def test_the_driver_waits_for_the_move_sub_bar_to_be_drawn():
     """The bar lags the keypress, and one read is not an answer.
 
@@ -665,10 +675,10 @@ def test_a_turn_with_nothing_left_to_fight_passes_instead_of_moving():
 
 
 class _Party:
-    """Just enough of a `Battle` for `acting`: it reads `battle.party` names."""
+    """Just enough of a `Battle` for `acting`: it reads `battle.characters` names."""
 
     def __init__(self, *names):
-        self.party = tuple(
+        self.characters = tuple(
             type("Who", (), {"index": i, "name": n})() for i, n in enumerate(names))
 
 
