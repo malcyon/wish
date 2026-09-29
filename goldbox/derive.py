@@ -327,6 +327,10 @@ ALLOWANCE = (0,) * 12 + (100, 100, 200, 200, 350, 500, 750, 1000, 1250, 1500,
 _PURSES = ("copper", "silver", "electrum", "gold", "platinum", "gems",
            "jewelry")
 
+#: The record fields `expected_movement` reads, apart from the items: base
+#: movement, the strength row that sets the allowance, and the purses.
+MOVEMENT_INPUTS = ("movement", "strength_index") + _PURSES
+
 
 def expected_movement(record, raws, types) -> int:
     """The movement the game's roster rebuild at `LIBRARY $3729` stores.

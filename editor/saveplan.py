@@ -281,7 +281,8 @@ def amiga_image(party: Any) -> bytes:
 # C64
 # ---------------------------------------------------------------------------
 
-def apply_c64(party: Any, save0: SaveGame0) -> SaveGame0:
+def apply_c64(party: Any, save0: SaveGame0,
+              save1: "SaveGame1 | None" = None) -> SaveGame0:
     """Every member's record, items and icon, into `save0`.
 
     Returns the payload to keep: `Party.write_items` and `Party.write_icons`
@@ -292,6 +293,9 @@ def apply_c64(party: Any, save0: SaveGame0) -> SaveGame0:
 
     An item block or an icon nobody moved is not rewritten, which is what
     keeps a save with no edit in it byte-identical.
+
+    `save1`'s roster movement is updated in place for a character whose items
+    or movement inputs were edited (`Party.write_movement`).
     """
     for member in party.members:
         save0.write_record(member.index, member.record)
@@ -299,6 +303,7 @@ def apply_c64(party: Any, save0: SaveGame0) -> SaveGame0:
     try:
         party.write_items()
         party.write_icons()
+        party.write_movement(save1)
         return party.save0
     finally:
         party.save0 = live
@@ -316,7 +321,7 @@ def c64_payloads(party: Any) -> tuple[SaveGame0, "SaveGame1 | None", D64]:
     save1 = (None if party.save1 is None
              else SaveGame1(party.save1.to_bytes(), party.game))
     disk = D64.from_bytes(party.disk.to_bytes())
-    save0 = apply_c64(party, save0)
+    save0 = apply_c64(party, save0, save1)
     store_save(disk, save0, save1, party.game)
     return save0, save1, disk
 

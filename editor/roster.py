@@ -33,6 +33,7 @@ from goldbox import (
     amiga_por,
     amiga_savegame,
     c64_port,
+    derive,
     dos_codec,
     dos_port,
     rewrite,
@@ -292,6 +293,9 @@ class Party:
         self.save0: SaveGame0 | None = None
         self.save1: SaveGame1 | None = None
         self.members: list[Member] = []
+        # The C64 `ITEMS` type table, Pool of Radiance only, set by the window.
+        # Without it movement is left as read.
+        self.item_types: dict | None = None
         if self.port == "c64":
             self._open_c64(game, disk)
         else:
@@ -529,6 +533,35 @@ class Party:
             at = ICON_TABLE_OFFSET + m.index * ICON_SIZE
             payload[at:at + ICON_SIZE] = m.icon.raw
         self.save0 = SaveGame0.from_bytes(bytes(payload), self.game)
+
+    def write_movement(self, save1: SaveGame1 | None) -> None:
+        """Recompute the roster movement of a character whose inputs changed.
+
+        The C64 Pool of Radiance game reads the roster block's movement byte
+        without rebuilding it first, so a stale one from an edit decides who
+        gets away from an encounter. Only a character whose items or record
+        inputs moved is touched, so a no-op save stays byte-identical. An
+        empty table counts as none: it would treat every armour as non-armour.
+        """
+        if (save1 is None or not self.item_types
+                or self.game.key != c64_port.POOL_OF_RADIANCE.key):
+            return
+        for m in self.members:
+            if m.inventory is None or m.record_original is None:
+                continue
+            before = type(m.record).from_bytes(m.record_original)
+            if (m.inventory.raws == m.inventory.original
+                    and all(before.get(n) == m.record.get(n)
+                            for n in derive.MOVEMENT_INPUTS)):
+                continue
+            block = save1.roster(m.index)
+            if not block.occupied:
+                continue
+            try:
+                block.movement = derive.expected_movement(
+                    m.record, m.inventory.raws, self.item_types)
+            except ValueError as exc:
+                _log.warning("Movement of %s left as it was: %s", m.name, exc)
 
     def member(self, row: int) -> Member:
         return self.members[row]

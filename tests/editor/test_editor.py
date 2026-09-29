@@ -5876,3 +5876,32 @@ def test_an_amiga_pool_save_lists_the_roster_its_converted_disk_lists():
     converted = Party("", game=direction.destination_game, disk=disk)
     assert len(straight) == len(converted) > 0
     assert _roster_rows(straight) == _roster_rows(converted)
+
+
+@game_disks
+def test_a_coins_edit_in_the_window_recomputes_the_roster_movement(tmp_path):
+    """The window finds `ITEMS` on POOL1 for itself, so BRUTUS's stored
+    movement follows his new coin load and the other five stay at 12."""
+    from editor.window import EditorBinding
+    from goldbox.d64 import D64
+    from goldbox.savegame import load_save
+
+    src = disk_path("NEWSAVE1")
+    if src is None:
+        pytest.skip("needs the save disks")
+    save = tmp_path / "NEWSAVE1.D64"
+    save.write_bytes(src.read_bytes())
+    w = EditorBinding(make_root(), str(save))
+    w.set_disks(str(disk_dir()))
+    row = next(r for r in range(len(w.party))
+               if w.party.member(r).name == "BRUTUS")
+    w.roster.selectRow(row)
+    w._widgets["gold"].setValue(w._widgets["gold"].value() + 3000)
+    w._edited()
+    assert "wrote" in w.save(interactive=False)
+
+    _game, _save0, save1 = load_save(D64.open(str(save)))
+    stored = {m.name: save1.roster(m.index).movement
+              for m in w.party.members}
+    assert stored.pop("BRUTUS") == 3
+    assert set(stored.values()) == {12}

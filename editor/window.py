@@ -2217,7 +2217,29 @@ class EditorBinding(QObject):
     def _find_game_disk(self) -> str | None:
         return self._find_disk(load_icon_charset)
 
+    def _load_movement_items(self) -> None:
+        """Give a Pool of Radiance party the `ITEMS` table its movement needs.
+
+        `ITEMS` is on side 1 only, and `_load_game_disk` reads `item_types` off
+        whichever disk carries the icon charset, so it cannot be reused.
+        """
+        party = self.party
+        if party is None:
+            return
+        party.item_types = None
+        game = party.game
+        if game.key != por_games.POOL_OF_RADIANCE.key:
+            return
+        found = self._find_disk(load_item_types, game.disk_glob, game)
+        if found is None:
+            return
+        try:
+            party.item_types = load_item_types(found)
+        except Exception:
+            _log.exception("could not read the item types off %s", found)
+
     def _load_game_disk(self) -> None:
+        self._load_movement_items()
         self.charset, self.item_names, self.templates = b"", {}, {}
         self.spell_names, self.item_types = {}, {}
         self._load_icon_parts()
@@ -2879,7 +2901,8 @@ class EditorBinding(QObject):
         """
         party = self.party
         if party.port == "c64" and party.save0 is not None:
-            party.save0 = saveplan.apply_c64(party, party.save0)
+            party.save0 = saveplan.apply_c64(party, party.save0,
+                                               party.save1)
             store_save(party.disk, party.save0, party.save1, party.game)
             return {}
         if party.port == "c64":

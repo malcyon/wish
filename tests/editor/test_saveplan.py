@@ -672,3 +672,69 @@ def test_a_c64_share_with_bit_2_is_expected_rewritten_only_for_a_pool_companion(
         lines = saveplan.compare([_hireling(0xFF)], [_hireling(0xFB, True)],
                                  other, source_port="c64")
         assert any("treasure_share" in line for line in lines), title
+
+
+# ---------------------------------------------------------------------------
+# C64 Pool of Radiance roster movement
+# ---------------------------------------------------------------------------
+
+def _armour_types():
+    from goldbox.items import TYPE_LOCATION, ItemType
+
+    raw = bytearray(16)
+    raw[TYPE_LOCATION] = 2
+    return {5: ItemType(5, bytes(raw))}
+
+
+def _plate() -> bytes:
+    raw = bytearray(16)
+    raw[0], raw[6] = 5, 0x80
+    raw[8], raw[9] = 450 & 0xFF, 450 >> 8
+    return bytes(raw)
+
+
+def _movement_party(tmp_path, game=None, types="armour"):
+    party = Party(str(synthetic_save(tmp_path, game=game)))
+    party.item_types = _armour_types() if types == "armour" else types
+    member = party.members[0]
+    member.record.set("movement", 12)
+    return party, member
+
+
+def _stored(party, member) -> int:
+    _s0, save1, _disk = saveplan.c64_payloads(party)
+    return save1.roster(member.index).movement
+
+
+def test_a_coins_edit_recomputes_the_roster_movement(tmp_path):
+    party, member = _movement_party(tmp_path)
+    assert _stored(party, member) == 12
+    member.record.set("gold", 3000)
+    assert _stored(party, member) == 3
+
+
+def test_readied_heavy_armour_recomputes_the_roster_movement(tmp_path):
+    party, member = _movement_party(tmp_path)
+    member.inventory.add(_plate())
+    assert _stored(party, member) == 6
+
+
+def test_an_untouched_party_keeps_its_movement_bytes(tmp_path):
+    party = Party(str(synthetic_save(tmp_path)))
+    party.item_types = _armour_types()
+    _s0, save1, _disk = saveplan.c64_payloads(party)
+    assert save1.to_bytes() == party.save1.to_bytes()
+
+
+@pytest.mark.parametrize("types", [None, {}])
+def test_no_item_table_leaves_movement_alone(tmp_path, types):
+    party, member = _movement_party(tmp_path, types=types)
+    member.record.set("gold", 3000)
+    assert _stored(party, member) == 12
+
+
+def test_another_title_keeps_its_movement(tmp_path):
+    party, member = _movement_party(
+        tmp_path, game=c64_port.by_key(CURSE_KEY))
+    member.record.set("gold", 3000)
+    assert _stored(party, member) == 12
