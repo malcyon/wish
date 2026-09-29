@@ -6132,13 +6132,23 @@ def test_warp_fails_naming_a_facing_other_than_east(tmp_path, monkeypatch):
         run.warp("10")
 
 
-def test_warp_parses_only_an_area_whose_arrival_it_checks():
+def test_warp_parses_any_listed_area_and_refuses_the_rest():
     assert A.parse_steps(["load", "warp 10"])[1] == A.Step("warp", "10")
-    for bad in ("warp", "warp x", "warp 99", "warp 7"):
+    assert A.parse_steps(["load", "warp 9"])[1] == A.Step("warp", "9")
+    for bad in ("warp", "warp x", "warp 99", "warp 12"):
         with pytest.raises(ValueError):
             A.parse_steps(["load", bad])
-    with pytest.raises(ValueError, match="area 10"):
-        A.parse_warp("7")
+    with pytest.raises(ValueError, match="not an area"):
+        A.parse_warp("99")
+
+
+def test_warp_to_an_area_without_an_arrival_facing_runs_unchecked(tmp_path, monkeypatch):
+    run, calls = _warp_run(tmp_path, monkeypatch, triple=(0, 4, 3))
+    said = []
+    run.log = type("L", (), {"say": staticmethod(said.append)})()
+    got = run.warp("9")
+    assert got["area"] == 9 and ("jump", A.fasttravel.POOL_OF_RADIANCE.tail) in calls
+    assert any("facing not checked" in line for line in said)
 
 
 def test_the_warp_step_is_refused_for_curse_and_silver_blades(tmp_path, capsys):

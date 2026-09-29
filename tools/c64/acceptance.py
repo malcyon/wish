@@ -515,13 +515,12 @@ WARP_IDLE_SECONDS = 300.0
 
 
 def parse_warp(arg: str) -> int:
-    """The area id a `warp` names: a decimal integer whose arrival is checked."""
+    """The area id a `warp` names: a decimal integer the area table lists."""
     if not re.fullmatch(r"[0-9]+", arg):
         raise ValueError(f"warp {arg!r}: an area id, a decimal integer")
     area = int(arg)
-    if area not in ARRIVAL_FACING:
-        raise ValueError(f"warp {arg!r}: the step checks its arrival only for "
-                         "area " + ", ".join(map(str, sorted(ARRIVAL_FACING))))
+    if auto_actions.area_by_id(area) is None:
+        raise ValueError(f"warp {arg!r}: not an area the warp can reach")
     return area
 
 
@@ -2304,7 +2303,9 @@ class PoolRun:
         with self.sess.mon(5) as m:
             triple = list(bytes(m.read(0xC04B, 3)))
         want = ARRIVAL_FACING.get(area)
-        if want is not None and triple[2] != want:
+        if want is None:
+            self.log.say(f"  arrival facing not checked for area {area}")
+        elif triple[2] != want:
             raise self.fail("warp", f"$C04D read {triple[2]} after the warp, "
                                     f"not {want} (triple {triple})")
         self.capture(f"warped-{area}")
