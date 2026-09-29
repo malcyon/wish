@@ -2450,8 +2450,9 @@ class Session:
                 return False
             tries = 1
         sent = False
+        last = None
         for _ in range(tries):
-            s = self.screen()
+            s = last = self.screen()
             if not answer_prompts and self._prompt_up(s):
                 return False
             row = "" if s is None else s.row(24)
@@ -2481,7 +2482,7 @@ class Session:
                         if self._walk_expired():
                             break
                         time.sleep(0.3)
-                    s = self.screen()
+                    s = last = self.screen()
                     if not answer_prompts and self._prompt_up(s):
                         return False
                     if s is not None and MOVE_SUBBAR in s.row(24):
@@ -2542,6 +2543,15 @@ class Session:
         if (encounters and not self._walk_expired()
                 and (rows := self._encounter_menu(self.screen()))):
             return self._stop_walk(move, rows)
+        if (not sent and encounters and self.walk_encounter
+                and not self._walk_expired() and self._press_bar_up(last)):
+            # A square's own text (an ambush) is up where the move bar
+            # should be.  A caller that fights encounters answers a `PRESS`
+            # bar itself and fights what opens behind it, so this is neither
+            # a driver error nor a stop; a plain walk still reports it.
+            _log_line(self, "  A PRESS bar is up instead of the move bar: "
+                            "leaving it for the caller to answer")
+            return False
         self._leave_move(answer_prompts)
         if not sent and self._walk_expired():
             self.walk_refused = (
@@ -2588,6 +2598,12 @@ class Session:
                 or (word_column(row, "YES") >= 0 and word_column(row, "NO") >= 0)):
             return self._rows(s)
         return None
+
+    def _press_bar_up(self, s) -> bool:
+        """Whether `s` has a `PRESS` acknowledgement on row 24, not a disk
+        prompt; the screen `walk_one` last read, so no read is added."""
+        return (s is not None and self.wanted_disk(s) is None
+                and self.combat_state(s).kind == BAR_PRESS)
 
     def _status_has_no_square(self) -> bool:
         """True when the status row (14) carries a facing and a time but no

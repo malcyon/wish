@@ -570,3 +570,38 @@ def test_a_later_lost_line_does_not_replace_an_earlier_won_or_ran_outcome(
     for line, want in ((S.WON_TEXT, S.WON), (S.RAN_TEXT, S.RAN)):
         sess = WonThenLost(monkeypatch, line)
         assert sess.fight(budget=5.0).outcome == want
+
+
+PRESS_BAR = ("PRESS <RETURN> OR BUTTON TO CONTINUE",
+             ["DARK, BENT CREATURES RUSH SWIFTLY AT", "YOU."])
+
+
+class Ambush(Fake):
+    """An ambush's `PRESS` bar is up where the move bar should be, and
+    `select_bar` cannot bring `MOVE` up behind it."""
+
+    def __init__(self, monkeypatch):
+        super().__init__(monkeypatch, PRESS_BAR)
+        self.left = 0
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        self.asked.append(label)
+        return False
+
+    def leave_move(self, *a, **k):
+        self.left += 1
+        return True
+
+
+def test_a_walk_that_fights_leaves_an_ambush_press_bar_for_its_caller(monkeypatch):
+    sess = Ambush(monkeypatch)
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    assert sess.walk_one("I", tries=1, encounters=True) is False
+    assert sess.walk_refused is None and sess.walk_stop_screen is None
+    assert sess.keys == [] and sess.left == 0
+
+
+def test_a_plain_walk_still_reports_a_press_bar(monkeypatch):
+    sess = Ambush(monkeypatch)
+    assert sess.walk_one("I", tries=1) is False
+    assert "never brought up" in sess.walk_refused
