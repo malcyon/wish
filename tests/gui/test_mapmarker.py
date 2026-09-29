@@ -263,6 +263,17 @@ def test_the_encounter_menu_is_not_taken_for_one_indoors():
     assert M.encounter_bar(sess) == ENCOUNTER
 
 
+def test_a_failed_indoors_read_is_logged_and_is_no_encounter():
+    sess, log = Sess(), Log()
+    sess.row = ENCOUNTER
+
+    def boom():
+        raise RuntimeError("boot failed")
+    sess.indoors = boom
+    assert M.encounter_bar(sess, log) is None
+    assert "boot failed" in log.of("indoors_read_failed")[0]["error"]
+
+
 def test_a_step_that_lands_on_the_grid_takes_one_look_not_three(monkeypatch):
     slept = []
     monkeypatch.setattr(M.time, "sleep", slept.append)
@@ -310,10 +321,12 @@ class RunSess(Sess):
 
 
 def run_args(tmp_path, **kw):
-    return args(disk="x.d64", disks=str(tmp_path), slot=None, tag="t",
+    base = dict(disk="x.d64", disks=str(tmp_path), slot=None, tag="t",
                 out=str(tmp_path), answer="NO", arrive=1.0, turn="",
                 turns=1, walk="7777", travel=26, after="1", home=20,
-                place=None, arrival=None, linger=2, **kw)
+                place=None, arrival=None, linger=2)
+    base.update(kw)
+    return args(**base)
 
 
 def test_a_stopped_walk_skips_travel_after_home_and_linger(monkeypatch, tmp_path):
@@ -339,3 +352,32 @@ def test_a_stopped_walk_skips_travel_after_home_and_linger(monkeypatch, tmp_path
     assert log.of("walk_stopped")[0]["reason"] == "--on-encounter stop"
     assert sess.presses == ["7", "7"]
     assert looks[-1] == "t-step3"                # one last look, no lingering
+
+
+def test_a_stop_during_the_after_walk_ends_the_run_before_home(monkeypatch, tmp_path):
+    no_sleep(monkeypatch)
+    sess, called, looks = RunSess(encounter_on={1}), [], []
+    slot = MagicMock(n=1, display=":1", dir=str(tmp_path))
+    monkeypatch.setattr(M.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(M.S, "stage_disks", lambda *a, **k: None)
+    monkeypatch.setattr(M.S, "stage_writable", lambda *a, **k: None)
+    monkeypatch.setattr(M.S, "Session", lambda *a, **k: sess)
+    monkeypatch.setattr(M, "answer_bars", lambda *a, **k: "world")
+    monkeypatch.setattr(M, "clear_bars", lambda *a, **k: "world")
+    monkeypatch.setattr(M, "SessionTarget", lambda s: MagicMock())
+    monkeypatch.setattr(M, "build_window",
+                        lambda *a: (MagicMock(), MagicMock(), MagicMock(), []))
+    monkeypatch.setattr(M, "look", lambda app, b, tag, *a: looks.append(tag))
+    monkeypatch.setattr(M, "come_home", lambda *a, **k: called.append("home"))
+
+    def travel():
+        called.append("travel")
+        return MagicMock(apply=lambda *a, **k: SimpleNamespace(ok=True, message=""))
+    monkeypatch.setattr(M.actions, "FastTravel", travel)
+    log = Log()
+    a = run_args(tmp_path, on_encounter="stop", walk="")
+    assert M.run(a, log) == 1
+    assert called == ["travel"]
+    assert sess.presses == ["1"]
+    assert log.of("walk_stopped")[0]["reason"] == "--on-encounter stop"
+    assert looks[-1] == "t-step3"        # step0, the trip's look, the press, then the stop

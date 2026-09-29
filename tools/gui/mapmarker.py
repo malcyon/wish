@@ -440,7 +440,7 @@ MAX_ENCOUNTERS = 5
 ENCOUNTER_OTHERS = ("FLEE", "PARLAY")
 
 
-def encounter_bar(sess) -> str | None:
+def encounter_bar(sess, log: Log | None = None) -> str | None:
     """Row 24 when it is an outdoor encounter's opening menu, else None.
 
     `COMBAT` alone is not enough: a message row can carry the word, and the
@@ -449,14 +449,29 @@ def encounter_bar(sess) -> str | None:
     also offers `FLEE` and `PARLAY`, which a message does not, and the travel
     grid's direction prompt carries none of them.
     """
-    row = encounter_row(sess)
+    row = encounter_row(sess, log)
     return None if row is None else row.strip()
 
 
-def encounter_row(sess) -> str | None:
-    """Row 24 when it is an encounter menu on the travel grid, else None."""
+def encounter_row(sess, log: Log | None = None) -> str | None:
+    """Row 24 when it is an encounter menu on the travel grid, else None.
+
+    A failed `$49E6` read counts as no encounter for this look and is logged,
+    as `probes` does: `Session.indoors` raises on a monitor timeout, and one
+    transient timeout must not end a run minutes after its boot.
+    """
     s = sess.screen()
-    if s is None or sess.indoors() is not False:
+    if s is None:
+        return None
+    try:
+        indoors = sess.indoors()
+    except Exception as exc:
+        if log is not None:
+            log.say(f"  the indoors read failed: {type(exc).__name__}: {exc}")
+            log.emit("indoors_read_failed",
+                     error=f"{type(exc).__name__}: {exc}")
+        return None
+    if indoors is not False:
         return None
     row = s.row(24)
     if S.OUTDOOR_PROMPT in row or S.word_column(row, S.ENCOUNTER_FIGHT) < 0:
@@ -466,7 +481,8 @@ def encounter_row(sess) -> str | None:
     return row
 
 
-def encounter_after_press(sess, looks: int = 3, gap: float = 1.0) -> str | None:
+def encounter_after_press(sess, looks: int = 3, gap: float = 1.0,
+                          log: Log | None = None) -> str | None:
     """The encounter bar, if one comes up just after a press.
 
     One look while the travel prompt is up, because a step that lands on the
@@ -478,7 +494,7 @@ def encounter_after_press(sess, looks: int = 3, gap: float = 1.0) -> str | None:
         s = sess.screen()
         if s is not None and S.OUTDOOR_PROMPT in s.row(24):
             return None
-        row = encounter_bar(sess)
+        row = encounter_bar(sess, log)
         if row is not None:
             return row
         if n + 1 < looks:
@@ -543,7 +559,7 @@ def walk_moves(args, sess, log: Log, moves: str, step: int, after_step) -> int:
         log.emit("walk", move=move, moved=moved,
                  before=before, after=after)
         time.sleep(1.0)
-        bar = encounter_after_press(sess)
+        bar = encounter_after_press(sess, log=log)
         if bar is None:
             after_step(step)
             continue
