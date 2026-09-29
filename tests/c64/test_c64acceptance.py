@@ -6023,3 +6023,108 @@ def test_route_pool_imports_no_experiment_module():
     done = subprocess.run([sys.executable, "-c", code], cwd=root,
                           capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
+
+
+# --- warp ------------------------------------------------------------------------
+
+class _WarpMonitor:
+    def __init__(self, sess):
+        self.sess = sess
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, addr, length):
+        assert (addr, length) == (0xC04B, 3)
+        return bytes(self.sess.triple)
+
+    def registers(self):
+        return {0: self.sess.pc}
+
+
+class _WarpSession:
+    def __init__(self, triple=(0, 4, 1)):
+        self.triple = triple
+        self.pc = A.fasttravel.POOL_OF_RADIANCE.key_wait[0]
+
+    def mon(self, timeout=5.0):
+        return _WarpMonitor(self)
+
+    def settle(self, seconds=0):
+        pass
+
+
+def _warp_run(tmp_path, monkeypatch, triple=(0, 4, 1), legal=True):
+    calls = []
+
+    class Verdict:
+        ok = legal
+        reason = "the party is busy"
+
+    class FakeTravel:
+        def legality(self, target, row):
+            calls.append(("legality", row.id))
+            return Verdict()
+
+        def current_area(self, target):
+            return 5
+
+    monkeypatch.setattr(A.auto_actions, "FastTravel", FakeTravel)
+    monkeypatch.setattr(A.auto_actions, "pc_register", lambda m: 0)
+    monkeypatch.setattr(A.auto_actions, "_write_all",
+                        lambda target, writes: calls.append(("write", tuple(writes))))
+    monkeypatch.setattr(A.auto_actions, "jump",
+                        lambda target, addr: calls.append(("jump", addr)) or True)
+    sess = _WarpSession(triple)
+    run, _ = _pool_run(tmp_path, sess)
+    run.to_world = lambda tries=10: True
+    run.capture = lambda tag, rows=None: []
+    run.position = lambda: list(sess.triple)
+    return run, calls
+
+
+def test_warp_writes_the_new_area_then_sets_the_program_counter(tmp_path, monkeypatch):
+    run, calls = _warp_run(tmp_path, monkeypatch)
+    got = run.warp("10")
+    row = A.auto_actions.area_by_id(10)
+    writes = A.auto_actions.newecl_writes(5, 10, getattr(row, "disk", None), None)
+    assert calls == [("legality", 10), ("write", tuple(writes)),
+                     ("jump", A.fasttravel.POOL_OF_RADIANCE.tail)]
+    assert got["triple"] == [0, 4, 1] and got["area"] == 10
+
+
+def test_warp_refused_by_legality_writes_and_jumps_nothing(tmp_path, monkeypatch):
+    run, calls = _warp_run(tmp_path, monkeypatch, legal=False)
+    with pytest.raises(A.StepFailed, match="the party is busy"):
+        run.warp("10")
+    assert calls == [("legality", 10)]
+
+
+def test_warp_fails_naming_a_facing_other_than_east(tmp_path, monkeypatch):
+    run, _ = _warp_run(tmp_path, monkeypatch, triple=(0, 4, 3))
+    with pytest.raises(A.StepFailed, match=r"\$C04D read 3"):
+        run.warp("10")
+
+
+def test_warp_parses_only_a_known_decimal_area():
+    assert A.parse_steps(["load", "warp 10"])[1] == A.Step("warp", "10")
+    for bad in ("warp", "warp x", "warp 99"):
+        with pytest.raises(ValueError):
+            A.parse_steps(["load", bad])
+
+
+def test_the_warp_step_is_refused_for_curse_and_silver_blades(tmp_path):
+    for title in ("curse", "ssb"):
+        with pytest.raises(SystemExit) as info:
+            A.main(["--title", title, "--save", str(_fixture_disk(tmp_path)),
+                    "--disks", str(tmp_path), "--steps", "load", "warp 10",
+                    "--out", str(tmp_path / "out")])
+        assert info.value.code == 2
+    for cls in (A.CurseRun, A.SilverRun):
+        run = cls.__new__(cls)
+        run.fail = lambda tag, why: A.StepFailed(why)
+        with pytest.raises(A.StepFailed, match="Pool of Radiance only"):
+            run.warp("10")

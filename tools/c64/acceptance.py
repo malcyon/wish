@@ -41,6 +41,7 @@ bytes with what it replaced.
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown |
+| `warp AREA` | Pool only: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`); Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
@@ -103,6 +104,8 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 REPO = TOOLS.parent
 sys.path.insert(0, str(REPO))
 
+from automap import actions as auto_actions  # noqa: E402
+from automap import fasttravel  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from goldbox import (  # noqa: E402
     c64_codec,
@@ -334,7 +337,7 @@ class Step:
 VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "rest": "must", "fight": "may", "peek": "must", "save": "never",
          "cast": "must", "cure": "must", "walk": "must", "ready": "must",
-         "temple-probe": "must"}
+         "temple-probe": "must", "warp": "must"}
 
 #: How long a walk keeps watching for a disk prompt after a move (seconds).
 LOOK_SECONDS = 2.0
@@ -445,6 +448,8 @@ def parse_steps(texts) -> list[Step]:
             parse_ready(arg)
         elif verb == "temple-probe" and arg != "BRUTUS":
             raise ValueError("temple-probe requires BRUTUS")
+        elif verb == "warp":
+            parse_warp(arg)
         elif verb == "fight" and arg and not (arg.isdigit() and int(arg) > 0):
             raise ValueError(f"fight {arg!r}: seconds, more than zero")
         steps.append(Step(verb, arg))
@@ -453,6 +458,51 @@ def parse_steps(texts) -> list[Step]:
     if any(s.verb == "load" for s in steps[1:]):
         raise ValueError("one boot, one load")
     return steps
+
+
+#: The facing `$C04D` an area's arrival script writes over any arrival square
+#: (`ECL0A` entry 4 writes `0, 4, 1` at `$C04B`-`$C04D` on every arrival), read
+#: after a warp.  Pool of Radiance only; an area not listed is not checked.
+ARRIVAL_FACING = {10: 1}
+
+#: How long a warp waits for the engine to settle into its key-wait loop.
+WARP_IDLE_SECONDS = 300.0
+
+
+def parse_warp(arg: str) -> int:
+    """The area id a `warp` names: a decimal integer the game has a row for."""
+    if not re.fullmatch(r"[0-9]+", arg):
+        raise ValueError(f"warp {arg!r}: an area id, a decimal integer")
+    if auto_actions.area_by_id(int(arg)) is None:
+        raise ValueError(f"warp {arg!r}: no such area")
+    return int(arg)
+
+
+class SessTarget:
+    """`automap.actions`' Target contract over a driven session's monitor.
+
+    Copied from `tools/pool_of_radiance/koboldnpc.py`, which a harness in
+    `tools/c64` does not import from.
+    """
+
+    def __init__(self, sess):
+        self.sess = sess
+
+    def read(self, addr: int, length: int) -> bytes:
+        with self.sess.mon(5) as m:
+            return m.read(addr, length)
+
+    def write(self, addr: int, data) -> None:
+        with self.sess.mon(5) as m:
+            m.write(addr, bytes(data))
+
+    def pc(self):
+        with self.sess.mon(5) as m:
+            return m.registers().get(auto_actions.pc_register(m))
+
+    def set_pc(self, address: int) -> None:
+        with self.sess.mon(5) as m:
+            m.set_registers({auto_actions.pc_register(m): address})
 
 
 def temple_source_guard(source: pathlib.Path) -> str:
@@ -2081,6 +2131,60 @@ class PoolRun:
         return {"walked": taken, "acted": result.acted,
                 **dataclasses.asdict(result)}
 
+    def _wait_idle(self, need: int = 6) -> bool:
+        """Wait until the engine is back in its key-wait loop and stays there.
+
+        Copied from `tools/areas/wallpins.py`.  A fixed settle would measure
+        the floppy, and a read taken while the arriving area is still loading
+        sees it half loaded.
+        """
+        idle_ranges = (fasttravel.POOL_OF_RADIANCE.key_wait,
+                       fasttravel.POOL_OF_RADIANCE.key_fetch)
+        inloop = 0
+        limit = self.clock() + WARP_IDLE_SECONDS
+        while self.clock() < limit:
+            self.sess.settle(2)
+            try:
+                with self.sess.mon(5) as m:
+                    pc = m.registers().get(auto_actions.pc_register(m))
+            except Exception:                   # noqa: BLE001
+                pc = None
+            idle = pc is not None and any(lo <= pc < hi for lo, hi in idle_ranges)
+            inloop = inloop + 1 if idle else 0
+            if inloop >= need:
+                return True
+            self.budget(1, "the key-wait loop after a warp")
+        raise self.fail("warp", "the engine never went back to its key-wait loop")
+
+    def warp(self, arg: str) -> dict:
+        area = parse_warp(arg)
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        target = SessTarget(self.sess)
+        ft = auto_actions.FastTravel()
+        row = auto_actions.area_by_id(area)
+        verdict = ft.legality(target, row)
+        if not verdict.ok:
+            raise self.fail("warp", verdict.reason)
+        writes = auto_actions.newecl_writes(ft.current_area(target) or 0, area,
+                                            getattr(row, "disk", None), None)
+        listing = [f"${a:04X}={bytes(d).hex()}" for a, d in writes]
+        self.log.say("  writes: " + ", ".join(listing))
+        auto_actions._write_all(target, writes)
+        if not auto_actions.jump(target, fasttravel.POOL_OF_RADIANCE.tail):
+            raise self.fail("warp", "the program counter could not be set")
+        self._wait_idle()
+        self.sess.settle(4)
+        with self.sess.mon(5) as m:
+            triple = list(bytes(m.read(0xC04B, 3)))
+        want = ARRIVAL_FACING.get(area)
+        if want is not None and triple[2] != want:
+            raise self.fail("warp", f"$C04D read {triple[2]} after the warp, "
+                                    f"not {want} (triple {triple})")
+        self.capture(f"warped-{area}")
+        return {"area": area, "writes": listing, "triple": triple,
+                "position": self.position()}
+
     def refuse_prompt(self, route: str, last, why: str) -> None:
         """Fail the walk when a disk prompt is on the screen, answering nothing."""
         screen = self.sess.screen()
@@ -2909,6 +3013,9 @@ class CurseRun(PoolRun):
             self.observe_curse("first-combat-mode")
         return entered
 
+    def warp(self, arg: str) -> dict:
+        raise self.fail("warp", "Pool of Radiance only")
+
     def fight(self, arg: str, walk: str, steps: int) -> dict:
         from tools.c64 import laterbattle
         from tools.curse_of_the_azure_bonds import cursethac0
@@ -3493,6 +3600,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.walk(step.arg)
             elif step.verb == "fight":
                 got = pool.fight(step.arg, args.walk, args.walk_steps)
+            elif step.verb == "warp":
+                got = pool.warp(step.arg)
             elif step.verb == "peek":
                 got = pool.peek(step.arg)
             elif step.verb == "cast":
@@ -3732,6 +3841,8 @@ def main(argv: list[str] | None = None) -> int:
         parse_checkpoints(args.checkpoint)
     except ValueError as e:
         ap.error(str(e))
+    if any(x.verb == "warp" for x in steps) and args.title != "pool":
+        ap.error("the warp step: Pool of Radiance only")
     if any(x.verb == "fight" for x in steps) and args.title == "ssb":
         ap.error("the fight step needs --title pool or curse")
     temple_mode = any(step.verb == "temple-probe" for step in steps)
