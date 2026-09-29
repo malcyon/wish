@@ -8664,7 +8664,8 @@ def test_temple_probe_raise_classifies_the_outcome_from_the_last_screen_only(
 
             def screen():
                 reads[0] += 1
-                if reads[0] > 140:
+                if reads[0] > int(
+                        A.TEMPLE_RESULT_WINDOW / A.TEMPLE_RESULT_POLL) + 20:
                     session.result_text = "BRUTUS FAILED"
                 return original()
             session.screen = screen
@@ -8734,6 +8735,7 @@ def test_temple_probe_raise_says_when_the_deadline_cut_the_result_window(
     assert window["cut"] is True
     assert window["end"] - window["start"] < A.TEMPLE_RESULT_WINDOW
     assert [kw for a, kw in events if a[0] == "temple-result-window"] == [window]
+    assert session.keys[-1] == "YES" and session.keys.count("YES") == 2
 
 
 def test_temple_probe_raise_with_no_frame_in_the_window_reads_the_settled_screen(
@@ -8763,6 +8765,29 @@ def test_temple_probe_raise_with_no_frame_in_the_window_reads_the_settled_screen
     assert result["result_window"]["cut"] is False
     assert result["result_window"]["frames"] == 1
     assert result["outcome"] == "alive"
+    assert session.keys[-1] == "YES" and session.keys.count("YES") == 2
+
+
+def test_temple_probe_raise_records_a_fault_inside_the_result_window(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    real = session.confirm_bar
+    run.temple_result_window = {"stale": True}
+
+    def confirm(row, was):
+        real(row, was)
+        if session.phase == "result":
+            def broken():
+                raise A.StepFailed("temple state unreadable: gone")
+            run.temple_sample = broken
+
+    session.confirm_bar = confirm
+    with pytest.raises(A.StepFailed, match="unreadable"):
+        run.temple_probe("BRUTUS RAISE")
+    window = run.temple_result_window
+    assert "stale" not in window and "unreadable" in window["faulted"]
+    assert window["seconds"] == window["end"] - window["start"]
+    assert session.keys[-1] == "YES" and session.keys.count("YES") == 2
 
 
 @pytest.mark.parametrize("unsafe,missing", [

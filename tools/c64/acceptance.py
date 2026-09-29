@@ -2212,23 +2212,33 @@ class PoolRun:
         `temple_result_window`: `cut` is true when the input deadline ended
         it before `TEMPLE_RESULT_WINDOW`, so a short or empty list can be told
         from a window in which no result text appeared."""
+        self.temple_result_window = None
         frames: list[dict] = []
         start = self.clock()
         limit = min(start + TEMPLE_RESULT_WINDOW, self.temple_input_deadline)
         cut = limit < start + TEMPLE_RESULT_WINDOW
-        while self.clock() < limit:
-            screen = self.temple_sample().screen
-            if screen is not None:
-                rows = [screen.row(r).rstrip() for r in range(25)]
-                if not frames or frames[-1]["rows"] != rows:
-                    frames.append({"at": round(self.clock() - start, 3),
-                                   "rows": rows,
-                                   "is_price": rows[:24] == price_rows[:24]})
-                    self.log.emit("temple-result-frame", **frames[-1])
-            time.sleep(TEMPLE_RESULT_POLL)
-        self.temple_result_window = {"start": start, "end": self.clock(),
-                                     "cut": cut, "frames": len(frames)}
-        self.log.emit("temple-result-window", **self.temple_result_window)
+        fault = None
+        try:
+            while self.clock() < limit:
+                screen = self.temple_sample().screen
+                if screen is not None:
+                    rows = [screen.row(r).rstrip() for r in range(25)]
+                    if not frames or frames[-1]["rows"] != rows:
+                        frames.append({"at": round(self.clock() - start, 3),
+                                       "rows": rows,
+                                       "is_price": rows[:24] == price_rows[:24]})
+                        self.log.emit("temple-result-frame", **frames[-1])
+                time.sleep(TEMPLE_RESULT_POLL)
+        except Exception as exc:                    # noqa: BLE001
+            fault = repr(exc)
+            raise
+        finally:
+            end = self.clock()
+            self.temple_result_window = {
+                "start": start, "end": end, "seconds": end - start,
+                "cut": cut, "frames": len(frames),
+                **({} if fault is None else {"faulted": fault})}
+            self.log.emit("temple-result-window", **self.temple_result_window)
         return frames
 
     @staticmethod
