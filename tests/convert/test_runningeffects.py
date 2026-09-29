@@ -1842,12 +1842,16 @@ def test_a_c64_later_charm_row_at_80_carries_its_sides_in_the_magnitude(
     assert not [d for d in out.dropped if "bits 1-6" in d]
 
 
-def test_a_blades_charm_row_with_time_left_reads_back_as_a_running_node():
+@pytest.mark.parametrize("game", _LATER_GAMES, ids=lambda g: g.key)
+@pytest.mark.parametrize("side", [0x80, 0xC5])
+def test_a_later_charm_row_with_time_left_reads_back_as_a_running_node(
+        game, side):
     payload = bytearray(0x1C00)
     effects.write_effect(payload, 0, effects.CHARM_ID, 2, 0x05, 0x86)
-    out = _later_read(_SILVER_G, payload, 0x80)
+    out = _later_read(game, payload, side)
+    assert not [d for d in out.dropped if "bits 1-6" in d]
     node = bytes(out.get("running_effects")[0])
-    assert node[3:5] == bytes((0x26, 1))
+    assert node[3:5] == bytes((0xA6 if side & 1 else 0x26, 1))
     assert node[1] | node[2] << 8 == effects.remaining_minutes(0x05, 1)
     assert out.get("npc") is True
 

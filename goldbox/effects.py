@@ -863,7 +863,7 @@ def dos_record(title_key: str, row: "Effect",
         raise ValueError("a never-expiring row has no running-effect node")
     if row.id == CHARM_ID and title_key in LATER_CAST_FLAGS:
         # `c64_codec.read` calls `later_charm_record` itself, with the row's
-        # `0x10C`; without one the row reads as the plain form.
+        # `0x10C`; without one the row reads as the form with bit 2 clear.
         record = later_charm_record(title_key, row, None, clock_minutes)
         if record is None:
             return Unconverted("a charm row with time left, which no C64 "
@@ -1102,8 +1102,8 @@ def later_charm_record(title_key: str, row: "Effect", combat_side: int | None,
     stands for) the charmer is magnitude bit 6 and the own side bit 5. The
     level is `magnitude & $1F` and the flag magnitude bit 7. A duration-0 row
     is a granted node with no minutes, which neither DOS engine ages; a row
-    with time left is a running node in Silver Blades only, because no C64
-    Curse cast writes one.
+    with time left is a running node in both titles, because DOS Curse can
+    hold one too (its remove mode runs when the minutes do).
     """
     if title_key not in LATER_CAST_FLAGS or row.id != CHARM_ID:
         return None
@@ -1117,8 +1117,6 @@ def later_charm_record(title_key: str, row: "Effect", combat_side: int | None,
     flag = magnitude >> 7
     if row.duration == 0:
         return bytes((CHARM_ID, 0, 0, data, flag)) + _RUNNING_EFFECT_NEXT
-    if title_key != _BLADES:
-        return None
     minutes = min(remaining_minutes(row.duration, clock_minutes),
                   DOS_MINUTES_MAX)
     return RunningEffect(CHARM_ID, minutes, data, flag).to_record()

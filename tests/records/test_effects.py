@@ -1379,10 +1379,16 @@ def test_a_blades_charm_row_with_time_left_is_a_running_node():
     got = effects.later_charm_record(_BLADES, row, 0x80, 0)
     assert got[0] == 11 and got[3:5] == bytes((0x26, 1))
     assert got[1] | got[2] << 8 == effects.remaining_minutes(0x05, 0)
-    assert effects.later_charm_record("curse-of-the-azure-bonds", row,
-                                      0x80, 0) is None
-    assert isinstance(effects.dos_record("curse-of-the-azure-bonds", row, 0),
-                      effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", _LATER_TITLES)
+def test_a_later_charm_row_with_time_left_is_a_running_node_in_both_titles(
+        title):
+    row = effects.Effect(0, 11, 2, 0x05, 0xC6)
+    got = effects.later_charm_record(title, row, 0x80, 0)
+    assert got[3:5] == bytes((0xA6, 1))
+    assert effects.dos_record(title, row, 0) == effects.RunningEffect(
+        11, effects.remaining_minutes(0x05, 0), 0xA6, 1)
 
 
 @pytest.mark.parametrize("title, node_id", [
