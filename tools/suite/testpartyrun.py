@@ -494,6 +494,88 @@ def walk_route(sess, log: Log, path, facing: int, leg: str):
     return facing, None, None
 
 
+#: Seconds `await_slums` gives the Slums to come up after the edge key has
+#: been answered.  Measured: row 24 blank until 55 s after the step on to the
+#: exit with no fight, and a fight's menu at 64 s; a limit, not a measurement.
+SLUMS_ARRIVAL_WAIT = 180.0
+
+
+def _world_bar(row: str) -> bool:
+    """The world's command bar, not camp's `ENCAMP:` header bar."""
+    return "ENCAMP" in row and "ENCAMP:" not in row
+
+
+def await_slums(sess, log: Log, out: pathlib.Path, area_before,
+                timeout: float = SLUMS_ARRIVAL_WAIT) -> str:
+    """Wait out the Slums' load after the step off the edge; `"move"`,
+    `"world"` or `"fight"`.
+
+    The load reads side 2 for about a minute.  The screen keeps New Phlan's
+    last view and status line (`0,4`) with row 24 blank, while the area byte
+    already reads the Slums, so neither the byte nor a world bar alone says
+    the Slums are up.  The load counts as started once row 24 has gone blank
+    or a disk prompt has been seen, or when the area has changed from
+    `area_before` and the status line has left the exit; only then is a bar
+    taken as the Slums'.  With no fight the load ends on the move sub-bar
+    (`I,J,K,M, RETURN OR BUTTON`, `"move"`), because the edge was a step
+    taken from it, and the world bar never shows; `walk_one` steps from the
+    sub-bar as it stands.  The Slums can roll a fight on arrival
+    (`COMBAT WAIT FLEE ADVANCE`): COMBAT is taken once, as `walk_encounter`
+    asks of every step, and the call returns `"fight"` when the fight is up.
+    A `PRESS` bar is answered and a disk prompt handled, as `wait_for_world`
+    does.  Each change of row 24 is logged with the area; at the limit a
+    screenshot is taken and `RuntimeError` names row 24 and the area.
+    """
+    started = taken = False
+    seen = None
+    row, area = "", None
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if sess.in_combat():
+            return "fight"
+        s = sess.screen()
+        row = "" if s is None else s.row(24).strip()
+        area = resident_area(sess, log)
+        if row != seen:
+            log.emit("slums_arrival", row24=row, area=area)
+            seen = row
+        if s is not None:
+            if not row or sess.wanted_disk(s) is not None:
+                started = True
+            elif (area == SLUMS_AREA and area_before != SLUMS_AREA
+                  and _status_line(sess)[1] != NEW_PHLAN_EXIT):
+                started = True
+            state = sess.combat_state(s)
+            if state.kind == S.BAR_DISK:
+                sess.handle_prompt(s)
+            elif state.kind == S.BAR_PRESS:
+                sess.press_kernal(0x0D)
+                sess.await_change(state.text, timeout=6)
+                continue
+            elif started and S.MOVE_SUBBAR in row:
+                return "move"
+            elif started and _world_bar(row):
+                return "world"
+            elif (started and not taken
+                  and S.word_column(row, S.ENCOUNTER_FIGHT) >= 0):
+                log.say(f"  a fight on arrival: {row!r}; taking "
+                        f"{S.ENCOUNTER_FIGHT}")
+                log.emit("slums_arrival_fight", row24=row)
+                sess.select_bar(S.ENCOUNTER_FIGHT, timeout=8)
+                taken = True
+            else:
+                sess.handle_prompt(s)
+        time.sleep(0.5)
+    log.emit("slums_arrival_failed", row24=row, area=area, started=started,
+             fight_taken=taken)
+    dump(sess, out, log, "slums-arrival-failed")
+    raise RuntimeError(
+        f"the Slums never came up after the step off the edge: row 24 reads "
+        f"{row!r}, area {area}; the load was "
+        f"{'seen' if started else 'never seen'} starting"
+        + ("; COMBAT was taken and no fight came up" if taken else ""))
+
+
 def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
                   slums) -> dict:
     """New Phlan to the Slums and on to `target`, stopping in combat.
@@ -557,23 +639,24 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
             return {"in_combat": fighting, "began_at": None,
                     "at_target": False, "desynced": desync}
     if hit is None and desync is None:
+        area_before = resident_area(sess, log)
         moved = sess.walk_one(keys[-1].upper())
         sess.handle_prompt()
-        # The Slums load from side 2 for about a minute while the screen still
-        # shows New Phlan and row 24 is blank; a step sent then is not taken.
-        if not sess.wait_for_world(timeout=120):
-            raise RuntimeError("the world bar (row 24) never came back after "
-                               "the step off the edge; the Slums did not load")
+        arrived = await_slums(sess, log, out, area_before)
         area = resident_area(sess, log)
-        log.emit("edge", moved=bool(moved), area=area)
-        log.say(f"  stepped off the edge; area {area}")
+        log.emit("edge", moved=bool(moved), area=area, arrived=arrived)
+        log.say(f"  stepped off the edge; area {area}; {arrived} up")
         if area != SLUMS_AREA:
             raise RuntimeError(f"expected area {SLUMS_AREA} after the edge, "
                                f"read {area}")
         leg = "slums"
-        # `ECL00` entry 0 steps forward, so the party leaves facing west.
-        west = geowalk.STEP.index((-1, 0))
-        facing, hit, desync = walk_route(sess, log, second, west, "slums")
+        if arrived == "fight":
+            # Rolled on arrival: the party never left the entry square.
+            hit = SLUMS_ENTRY
+        else:
+            # `ECL00` entry 0 steps forward, so the party leaves facing west.
+            west = geowalk.STEP.index((-1, 0))
+            facing, hit, desync = walk_route(sess, log, second, west, "slums")
     fighting = bool(sess.in_combat())
     began = list(hit) if hit else None
     at_target = fighting and desync is None and hit == tuple(target)

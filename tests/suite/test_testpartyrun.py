@@ -127,6 +127,10 @@ def test_plan_refuses_when_a_scripted_column_cuts_off_the_goal():
         T.plan_fight_route(_geo(), slums, (3, 4), (12, 4))
 
 
+WORLD = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
+SUBBAR = "I,J,K,M, RETURN OR BUTTON"
+
+
 class WalkSession(PatrolSession):
     """Fights when the party has sent `fight_after` keys; refuses the keys
     numbered in `refuse` (1-based); stands at `start` until `arrive_after`
@@ -135,14 +139,19 @@ class WalkSession(PatrolSession):
     def __init__(self, monkeypatch, fight_after=None, area=20, refuse=(),
                  start=(3, 4, 3), arrive_after=None, turns_move=True,
                  turn_lands=True, facing_known=True, coords=True, drift=False,
-                 camp=False, camp_exit_works=True, load_polls=0,
-                 world_returns=True):
+                 camp=False, camp_exit_works=True, arrival=None,
+                 area_before=None):
         super().__init__(monkeypatch)
-        # `load_polls` blanks row 24 for that many polls after the edge key,
-        # as the Slums' load from side 2 does; a key sent then is not taken.
-        self.load_polls, self.load_left = load_polls, 0
-        self.world_returns, self.blank_keys = world_returns, []
-        self.keys, self.fight_after, self.area = [], fight_after, area
+        # `arrival` is row 24 after the edge key, one entry per `screen()`
+        # read, the last one repeating: by default one blank read, as the
+        # Slums' load from side 2 leaves it, then the world bar.  `STALE` is
+        # New Phlan's own world bar still up, with its status line at the
+        # exit.  A key sent before the world bar is in `blank_keys`.
+        self.arrival = list(arrival) if arrival is not None else ["", WORLD]
+        self.arriving, self.blank_keys, self.pressed = False, [], []
+        # `area_before`, when set, is the area until the edge key is sent.
+        self.area_now, self.area_before = area, area_before
+        self.keys, self.fight_after = [], fight_after
         self.refuse, self.start, self.arrive_after = refuse, start, arrive_after
         # `turns_move` False makes `walk_one` say False for a turn, as it may
         # when the status tuple it compares does not change; the live facing
@@ -158,23 +167,51 @@ class WalkSession(PatrolSession):
         self.camp, self.camp_exit_works = camp, camp_exit_works
         self.camp_refusals, self.exits = [], 0
 
+    @property
+    def area(self):
+        if self.area_before is not None and not self.arriving:
+            return self.area_before
+        return self.area_now
+
+    def _arrival_row(self):
+        return self.arrival[0] if self.arriving else WORLD
+
     def wait_for_world(self, timeout=240.0, interval=0.35):
-        while self.load_left > 0:
-            self.load_left -= 1
-        return self.world_returns
+        # The real loop's decisions, over this fake's screens: `ENCAMP`
+        # anywhere ends it, and a `PRESS` bar is answered.
+        for _ in range(50):
+            s = self.screen()
+            if s.contains("ENCAMP"):
+                return True
+            if "PRESS" in s.bar:
+                self.press_kernal(0x0D)
+        return False
 
     def screen(self):
-        if self.load_left > 0:
-            return Screen("")
         if self.camp:
             return Screen("ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT")
-        return Screen("MOVE VIEW CAST AREA ENCAMP SEARCH LOOK")
+        if not self.arriving:
+            return Screen(WORLD)
+        row = self.arrival[0]
+        if len(self.arrival) > 1:
+            self.arrival.pop(0)
+        if row == "COMBAT WAIT FLEE ADVANCE" and self.fighting:
+            row = ""
+        return Screen(WORLD if row == "STALE" else row)
+
+    def press_kernal(self, code):
+        self.pressed.append(code)
+
+    def await_change(self, was, timeout=6.0, interval=0.3):
+        return True
 
     def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
         self.asked.append(label)
         self.exits += label == "EXIT"
         if label == "EXIT" and self.camp_exit_works:
             self.camp = False
+        if label == "COMBAT":
+            self.fighting = True
         return True
 
     def walk_one(self, key, *a, **k):
@@ -183,14 +220,11 @@ class WalkSession(PatrolSession):
             self.walk_refused = "the driver pressed nothing: camp's bar"
             return False
         self.walk_refused = None
-        if self.load_left > 0:
+        if self._arrival_row() not in (WORLD, SUBBAR):
             self.blank_keys.append(key)
-            self.walk_refused = "the driver pressed nothing: blank row 24"
+            self.walk_refused = "the driver pressed nothing: row 24 not the world's"
             return False
         self.keys.append(key)
-        if (self.load_polls and self.arrive_after is not None
-                and len(self.keys) == self.arrive_after + 1):
-            self.load_left = self.load_polls
         self.fighting = self.fight_after == len(self.keys)
         if key in "KJ":
             if self.turn_lands:
@@ -200,11 +234,15 @@ class WalkSession(PatrolSession):
         if moved and not self.drift:
             dx, dy = geowalk.STEP[self.facing]
             self.square = (self.square[0] + dx, self.square[1] + dy)
+            # The step off the west edge starts the Slums' load.
+            self.arriving = self.arriving or self.square[0] < 0
         return moved
 
     def screen_text(self):
         if self.camp:
             return "HERE / "
+        if self.arriving and self.arrival[0] == "STALE":
+            return "HERE / W 0:47 0,4"
         line = "8:07"
         if self.facing_known:
             line = "NESW"[self.facing] + " " + line
@@ -236,6 +274,7 @@ def _walk(monkeypatch, fight_after, area=20, refuse=(), start=(3, 4, 3),
     arrive_after = max(1, len(geowalk.keys_for(first, start[2]))) if arrive else None
     sess = WalkSession(monkeypatch, fight_after, area, refuse, start,
                        arrive_after, **fake)
+    Clock(monkeypatch)      # after the session, whose init stubs `sleep`
     log = RecordingLog()
     got = T.walk_to_fight(sess, log, pathlib.Path("."), (12, 4), _geo(), _geo())
     return sess, log, got
@@ -248,7 +287,7 @@ def test_walk_to_fight_reaches_the_target_and_says_so(monkeypatch):
     sess, log, got = _walk(monkeypatch, fight_after=total)
     assert got == {"in_combat": True, "began_at": [12, 4], "at_target": True,
                    "desynced": None}
-    assert ("edge", {"moved": True, "area": 20}) in log.events
+    assert ("edge", {"moved": True, "area": 20, "arrived": "world"}) in log.events
 
 
 def test_walk_to_fight_logs_a_fight_on_the_way_as_not_the_target(monkeypatch):
@@ -596,7 +635,6 @@ class MenuChain(WalkSession):
 
 ITEMS = "VIEW:ITEMS TRADE DROP EXIT"
 CAMP = "ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT"
-WORLD = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
 
 
 def test_to_world_leaves_the_item_view_and_then_camp(monkeypatch):
@@ -635,14 +673,94 @@ def test_walk_to_fight_returns_at_once_when_a_fight_is_already_up(monkeypatch):
 
 def test_the_first_slums_key_waits_for_the_world_bar_after_the_edge(
         monkeypatch):
-    sess, log, got = _walk(monkeypatch, fight_after=None, load_polls=5)
-    assert sess.blank_keys == []
-    assert got["desynced"] is None and sess.load_left == 0
+    sess, log, got = _walk(monkeypatch, fight_after=None,
+                           arrival=[""] * 5 + [WORLD])
+    assert sess.blank_keys == [] and sess.keys[-1] == "I"
+    assert got["desynced"] is None
+    rows = [w["row24"] for kind, w in log.events if kind == "slums_arrival"]
+    assert rows == ["", WORLD]
 
 
-def test_an_area_load_that_never_ends_is_refused_naming_row_24(monkeypatch):
+def test_the_slums_coming_up_on_the_move_sub_bar_is_walked(monkeypatch):
+    # Measured: with no fight the load ends on `I,J,K,M, RETURN OR BUTTON`,
+    # 55 s after the edge, and the world bar never shows.
+    sess, log, got = _walk(monkeypatch, fight_after=None,
+                           arrival=["", "", SUBBAR])
+    assert sess.blank_keys == [] and sess.keys[-1] == "I"
+    assert got["desynced"] is None
+    edge = next(w for kind, w in log.events if kind == "edge")
+    assert edge["arrived"] == "move"
+
+
+def test_new_phlans_bar_still_up_after_the_edge_is_not_the_slums(monkeypatch):
+    # The area byte already reads the Slums while the old screen is up, so
+    # only a blank row 24 says the load has begun.
+    sess, log, got = _walk(monkeypatch, fight_after=None,
+                           arrival=["STALE", "STALE", "", WORLD])
+    assert sess.blank_keys == [] and got["desynced"] is None
+
+
+def test_a_slums_bar_with_the_area_changed_needs_no_blank_row(monkeypatch):
+    # A wait that begins after the load has finished sees no blank row; the
+    # area changed from New Phlan's and the status line has left the exit.
+    sess, log, got = _walk(monkeypatch, fight_after=None, arrival=[WORLD],
+                           area_before=0)
+    assert sess.blank_keys == [] and got["desynced"] is None
+
+
+def test_the_stale_bar_is_not_accepted_on_the_area_byte_alone(monkeypatch):
+    dumps = []
+    monkeypatch.setattr(T, "dump", lambda sess, out, log, tag: dumps.append(tag))
+    monkeypatch.setattr(T, "resident_area", lambda sess, log=None: sess.area)
+    first, _ = T.plan_fight_route(_geo(), _geo(), (3, 4), (12, 4))
+    sess = WalkSession(monkeypatch, None, 20, (), (3, 4, 3),
+                       len(geowalk.keys_for(first, 3)), arrival=["STALE"],
+                       area_before=0)
+    Clock(monkeypatch)
     with pytest.raises(RuntimeError, match="row 24"):
-        _walk(monkeypatch, fight_after=None, world_returns=False)
+        T.walk_to_fight(sess, RecordingLog(), pathlib.Path("."), (12, 4),
+                        _geo(), _geo())
+    assert sess.blank_keys == [] and dumps == ["slums-arrival-failed"]
+
+
+def test_an_area_load_that_never_ends_is_refused_with_a_screenshot(
+        monkeypatch):
+    dumps = []
+    monkeypatch.setattr(T, "dump", lambda sess, out, log, tag: dumps.append(tag))
+    first, _ = T.plan_fight_route(_geo(), _geo(), (3, 4), (12, 4))
+    monkeypatch.setattr(T, "resident_area", lambda sess, log=None: sess.area)
+    sess = WalkSession(monkeypatch, None, 20, (), (3, 4, 3),
+                       len(geowalk.keys_for(first, 3)), arrival=[""])
+    clock = Clock(monkeypatch)
+    log = RecordingLog()
+    with pytest.raises(RuntimeError, match=r"row 24 reads '', area 20"):
+        T.walk_to_fight(sess, log, pathlib.Path("."), (12, 4), _geo(), _geo())
+    assert dumps == ["slums-arrival-failed"]
+    failed = [w for kind, w in log.events if kind == "slums_arrival_failed"]
+    assert failed == [{"row24": "", "area": 20, "started": True,
+                       "fight_taken": False}]
+    assert T.SLUMS_ARRIVAL_WAIT <= clock.now < T.SLUMS_ARRIVAL_WAIT + 5
+    assert sess.blank_keys == []
+
+
+def test_a_fight_rolled_on_arrival_is_the_fight(monkeypatch):
+    # Measured: `COMBAT WAIT FLEE ADVANCE` over `YOU SPY A GROUP OF
+    # SEEDY-LOOKING GOBLINS.` 64 s after the edge key.
+    sess, log, got = _walk(monkeypatch, fight_after=None,
+                           arrival=["", "", "COMBAT WAIT FLEE ADVANCE"])
+    assert sess.asked == ["COMBAT"] and sess.blank_keys == []
+    assert got == {"in_combat": True, "began_at": list(T.SLUMS_ENTRY),
+                   "at_target": False, "desynced": None}
+    edge = next(w for kind, w in log.events if kind == "edge")
+    assert edge["arrived"] == "fight"
+
+
+def test_a_press_bar_during_the_load_is_answered(monkeypatch):
+    sess, log, got = _walk(monkeypatch, fight_after=None,
+                           arrival=["", "PRESS RETURN OR BUTTON TO CONTINUE",
+                                    WORLD])
+    assert sess.pressed == [0x0D] and sess.blank_keys == []
+    assert got["desynced"] is None
 
 
 def test_every_slums_step_logs_the_status_line(monkeypatch):
