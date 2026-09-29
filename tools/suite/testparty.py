@@ -477,7 +477,7 @@ def equip(one: Built, tables, game=None) -> None:
                 and raw[14] & 0x0F != one.spec.alignment):
             raise SystemExit(
                 f"{one.spec.name}: {item.name} is readied but accepts "
-                f"alignment {raw[14] & 0x0F} and he is alignment "
+                f"alignment {raw[14] & 0x0F} and {one.spec.name} is alignment "
                 f"{one.spec.alignment}; the game refuses it on READY and "
                 f"takes {raw[14] >> 4} hit points")
         kind = types.get(item.type_index)

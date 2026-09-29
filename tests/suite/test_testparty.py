@@ -480,7 +480,23 @@ def test_an_alignment_locked_item_is_refused_for_the_wrong_alignment():
     with pytest.raises(SystemExit) as why:
         testparty.equip(one, tables)
     text = str(why.value)
-    assert "SWORD" in text and "alignment 0" in text and "15 hit points" in text
+    assert "accepts alignment 0 and BULWARK is alignment 1" in text
+    assert "SWORD" in text and "15 hit points" in text
+    assert " he " not in text
+
+
+def test_an_alignment_locked_item_not_readied_is_accepted_for_the_wrong_alignment():
+    one, tables = _one_with(1, _LOCKED)
+    one.spec = dataclasses.replace(
+        one.spec, equipment=(testparty.Equip("LOCKED SWORD", readied=False),))
+    testparty.equip(one, tables)
+    assert one.record.get_raw("inventory")[:16][6] & 0x80 == 0
+
+
+def test_a_readied_item_without_the_locked_power_byte_is_accepted():
+    one, tables = _one_with(1, _LOCKED[:15] + bytes([0x00]))
+    testparty.equip(one, tables)
+    assert one.record.get_raw("inventory")[:16][15] == 0x00
 
 
 def test_an_alignment_locked_item_is_accepted_for_its_own_alignment():
@@ -495,7 +511,7 @@ def test_bulwark_is_lawful_good_for_his_long_sword():
 
 
 def test_the_attacks_left_bytes_are_written_zero_with_a_weapon_readied(armed):
-    """`+0x11` and `+0x12` belong to `COMBAT`; a dart's 3 was a leftover."""
+    """Roster `+0x11` and `+0x12` are 0 on every generated record."""
     built, _ = armed
     for one in built:
         tail = one.record.get_raw("roster_tail")
