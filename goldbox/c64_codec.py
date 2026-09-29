@@ -3092,11 +3092,11 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 # (SPELLE04 $A9D7), and the caster's level is the magnitude.
                 # Magnitude $FF is skipped by both engines' Dispel, and DOS
                 # would restore side 15 from it, so it is not converted.
-                # Pool of Radiance's level ceilings top out at 9 (`levels.py`),
-                # so no caster's level overflows the node's nibble.
+                # Pool's caster ceilings are 6, so the game never reaches 15;
+                # an edited level above 15 is clamped, where `& 0x0F` would wrap.
                 side = (combat_side_raw or 0) & 1
                 granted.append(bytes((ANIMATE_DEAD_ID, 0, 0,
-                                      side << 4 | row.magnitude & 0x0F, 1)))
+                                      side << 4 | min(row.magnitude, 0x0F), 1)))
                 zombie_node_converted = True
                 continue
             if row.duration == 0:

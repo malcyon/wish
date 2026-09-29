@@ -370,9 +370,9 @@ def test_a_c64_zombie_row_becomes_the_node_dos_writes_with_flag_one(side):
     char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
                           payload=bytes(payload), party_slot=4)
     assert 32 not in char.get("innate_effects")
-    assert char.get("granted_effects") == [bytes((32, 0, 0, side << 4 | 5, 1))]
+    assert char.get("granted_effects") == [bytes((32, 0, 0, side << 4 | 15, 1))]
     _dos, _itm, spc, report = dos_codec.write(char)
-    assert bytes((32, 0, 0, side << 4 | 5, 1)) in bytes(spc)
+    assert bytes((32, 0, 0, side << 4 | 15, 1)) in bytes(spc)
     assert not any("innate_effects 32" in line for line in report.dropped)
 
 
@@ -388,26 +388,31 @@ def test_a_c64_zombie_with_no_row_value_to_convert_still_refuses(
                for line in report.dropped)
 
 
-@pytest.mark.parametrize("status", [0x0B, 0x13, 0x23, 0x43, 0x7B])
+@pytest.mark.parametrize("status", [0x0B, 0x13, 0x23, 0x43, 0x7B, 0x83])
 def test_a_pool_status_with_bits_three_to_six_set_is_not_a_zombie(status):
     char = c64_codec.read(_pool_c64(0xFF, status),
                           game=c64_port.POOL_OF_RADIANCE)
     assert char.get("status") == "dead"
 
 
-@pytest.mark.parametrize("level", [9, 15])
-def test_the_highest_pool_caster_level_fits_the_node_nibble(level):
+@pytest.mark.parametrize("level, stored", [(9, 9), (15, 15), (16, 15),
+                                           (20, 15)])
+def test_a_caster_level_past_the_node_nibble_is_clamped_not_wrapped(
+        level, stored):
     rec, payload = _zombie_source(level)
     char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
                           payload=bytes(payload), party_slot=4)
-    assert char.get("granted_effects") == [bytes((32, 0, 0, 16 | level, 1))]
+    assert char.get("granted_effects") == [bytes((32, 0, 0, 16 | stored, 1))]
 
 
 def test_a_c64_zombie_survives_the_round_trip_through_dos():
     rec, payload = _zombie_source(5)
     char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
                           payload=bytes(payload), party_slot=4)
-    dos, _itm, spc, _rep = dos_codec.write(char)
+    dos, _itm, spc, dos_rep = dos_codec.write(char)
+    assert not dos_rep.losses
+    assert not [line for line in dos_rep.dropped
+                if "Animate" in line or "innate_effects" in line]
     nodes = bytes(spc)
     assert nodes.count(bytes((32, 0, 0, 0x15, 1))) == 1
     dos_char = dos_codec.DosCharacter(
@@ -425,5 +430,5 @@ def test_a_c64_zombie_survives_the_round_trip_through_dos():
     assert len(rows) == 1
     assert (rows[0].owner, rows[0].duration, rows[0].magnitude) == (4, 0, 5)
     assert not rep.losses
-    # A blank record has no combat icon to convert; that drop is not the zombie's.
-    assert not [line for line in rep.dropped if "Combat icon" not in line]
+    assert not [line for line in rep.dropped
+                if "Animate" in line or "innate_effects" in line]
