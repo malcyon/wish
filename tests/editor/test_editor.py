@@ -5905,3 +5905,38 @@ def test_a_coins_edit_in_the_window_recomputes_the_roster_movement(tmp_path):
               for m in w.party.members}
     assert stored.pop("BRUTUS") == 3
     assert set(stored.values()) == {12}
+
+
+def test_coins_put_back_between_two_window_saves_recompute_movement(tmp_path):
+    from editor.roster import Party
+    from editor.window import EditorBinding
+    from goldbox.d64 import D64
+    from goldbox.items import TYPE_LOCATION, ItemType
+    from goldbox.savegame import load_save
+
+    # A saved party whose base movement is already 12, so the window's first
+    # baseline matches and only the coins move.
+    path = synthetic_save(tmp_path)
+    seed = Party(str(path))
+    seed.members[0].record.set("movement", 12)
+    from editor import saveplan
+    path.write_bytes(saveplan.c64_payloads(seed)[2].to_bytes())
+
+    w = EditorBinding(make_root(), str(path))
+    raw = bytearray(16)
+    raw[TYPE_LOCATION] = 2
+    w.party.item_types = {5: ItemType(5, bytes(raw))}
+    w.roster.selectRow(0)
+    index = w.party.member(0).index
+
+    def stored():
+        return load_save(D64.open(str(path)))[2].roster(index).movement
+
+    w._widgets["gold"].setValue(3000)
+    w._edited()
+    w.save(interactive=False)
+    assert stored() == 3
+    w._widgets["gold"].setValue(0)
+    w._edited()
+    w.save(interactive=False)
+    assert stored() == 12

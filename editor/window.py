@@ -2232,6 +2232,8 @@ class EditorBinding(QObject):
             return
         found = self._find_disk(load_item_types, game.disk_glob, game)
         if found is None:
+            _log.warning("No disk with ITEMS found, so movement is left as "
+                         "read")
             return
         try:
             party.item_types = load_item_types(found)
@@ -2360,7 +2362,9 @@ class EditorBinding(QObject):
                 QMessageBox.critical(self.root, "Cannot save", str(exc))
                 return "failed"
             raise
-        if self.party.port != "c64" and note != "no changes":
+        if self.party.port == "c64":
+            self.party.mark_saved()
+        elif note != "no changes":
             for member in self.party.members:
                 if member.inventory is not None:
                     member.inventory.original = list(member.inventory.raws)

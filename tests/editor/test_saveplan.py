@@ -738,3 +738,60 @@ def test_another_title_keeps_its_movement(tmp_path):
         tmp_path, game=c64_port.by_key(CURSE_KEY))
     member.record.set("gold", 3000)
     assert _stored(party, member) == 12
+
+
+def test_a_carried_weight_alone_recomputes_the_roster_movement(tmp_path):
+    party, member = _movement_party(tmp_path)
+    heavy = bytearray(16)
+    heavy[0] = 6
+    heavy[8], heavy[9] = 1100 & 0xFF, 1100 >> 8
+    member.inventory.add(bytes(heavy))
+    assert _stored(party, member) == 3
+
+
+def test_a_dropped_item_recomputes_after_the_save_that_kept_it(tmp_path):
+    party, member = _movement_party(tmp_path)
+    slot = member.inventory.add(_plate())
+    assert _stored(party, member) == 6
+    party.mark_saved()
+    member.inventory.set_raw(slot, bytes(16))
+    assert _stored(party, member) == 12
+
+
+def test_coins_put_back_after_a_save_recompute_on_the_next(tmp_path):
+    party, member = _movement_party(tmp_path)
+    member.record.set("gold", 3000)
+    _s0, save1, _disk = saveplan.c64_payloads(party)
+    party.save1 = save1
+    party.mark_saved()
+    member.record.set("gold", 0)
+    assert _stored(party, member) == 12
+
+
+def test_a_strength_index_off_the_table_leaves_movement_alone(tmp_path):
+    party, member = _movement_party(tmp_path)
+    member.record.set("strength_index", 31)
+    member.record.set("gold", 3000)
+    assert _stored(party, member) == 12
+
+
+def test_a_broken_ring_alone_is_not_an_edit_of_movement(tmp_path):
+    from goldbox.items import RING_OF_FIRE_RESISTANCE_ID
+
+    # A stale 12 beside 3000 coins, as the game itself can leave it: with no
+    # table nothing is recomputed on the way to the file.
+    party, member = _movement_party(tmp_path, types=None)
+    member.record.set("gold", 3000)
+    ring = bytearray(16)
+    ring[:4] = bytes(RING_OF_FIRE_RESISTANCE_ID)
+    member.inventory.add(bytes(ring))
+    _s0, _s1, disk = saveplan.c64_payloads(party)
+    path = tmp_path / "RING.D64"
+    path.write_bytes(disk.to_bytes())
+
+    again = Party(str(path))
+    again.item_types = _armour_types()
+    inventory = again.members[0].inventory
+    assert inventory.raws != inventory.original
+    _s0, save1, _disk = saveplan.c64_payloads(again)
+    assert save1.to_bytes() == again.save1.to_bytes()

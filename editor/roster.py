@@ -44,7 +44,11 @@ from goldbox.c64_save import ICON_TABLE_OFFSET
 from goldbox.d64 import D64
 from goldbox.encoding import combat_value
 from goldbox.icons import ICON_SIZE, Icon, icon_for_slot
-from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER
+from goldbox.items import (
+    ITEM_SIZE,
+    ITEMS_PER_CHARACTER,
+    repair_ring_of_fire_resistance,
+)
 from goldbox.record import CharacterRecord
 from goldbox.savegame import SaveGame0, SaveGame1, load_save, looks_occupied
 
@@ -550,7 +554,11 @@ class Party:
             if m.inventory is None or m.record_original is None:
                 continue
             before = type(m.record).from_bytes(m.record_original)
-            if (m.inventory.raws == m.inventory.original
+            # The Ring of Fire Resistance repair happens on read and touches
+            # only +14/+15, so it is not an edit of anything the rule reads.
+            loaded = [repair_ring_of_fire_resistance(r)
+                      for r in m.inventory.original]
+            if (m.inventory.raws == loaded
                     and all(before.get(n) == m.record.get(n)
                             for n in derive.MOVEMENT_INPUTS)):
                 continue
@@ -558,10 +566,25 @@ class Party:
             if not block.occupied:
                 continue
             try:
-                block.movement = derive.expected_movement(
+                movement = derive.expected_movement(
                     m.record, m.inventory.raws, self.item_types)
             except ValueError as exc:
                 _log.warning("Movement of %s left as it was: %s", m.name, exc)
+                continue
+            if movement != block.movement:
+                block.movement = movement
+
+    def mark_saved(self) -> None:
+        """Take what was just written as the baseline for the next save.
+
+        `write_movement` compares against it, so a value edited and then put
+        back between two saves is seen as an edit the second time.
+        """
+        for m in self.members:
+            if m.inventory is not None:
+                m.inventory.original = list(m.inventory.raws)
+            if m.record_original is not None:
+                m.record_original = m.record.to_bytes()
 
     def member(self, row: int) -> Member:
         return self.members[row]
