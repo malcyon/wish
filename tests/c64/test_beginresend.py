@@ -24,6 +24,20 @@ class MenuScreen(FakeScreen):
         return [10]
 
 
+class MenuAndDiskScreen(MenuScreen):
+    """The menu still drawn, with a disk prompt over its bottom row."""
+
+    def __init__(self):
+        super().__init__()
+        for i, ch in enumerate("INSERT SIDE # 3, AND PRESS ANY KEY."):
+            self.codes[24 * base.COLS + i] = ord(ch)
+
+
+class MovedMenuScreen(MenuScreen):
+    def highlighted_rows(self, colour=1, column=None):
+        return [11]
+
+
 class DiskScreen(FakeScreen):
     def __init__(self):
         super().__init__("INSERT SIDE # 3, AND PRESS ANY KEY.")
@@ -65,6 +79,7 @@ def run(sess, **kw):
 
 def test_a_dropped_return_is_resent_once_and_the_world_is_reached():
     sess = Fake([MenuScreen(), FakeScreen(base.WORLD_BAR)])
+    sess.wait_for_world = lambda timeout=240.0, interval=0.35: True
     assert run(sess) is True
     assert sess.injected == [0x0D]
     assert len(sess.logged) == 1
@@ -84,3 +99,35 @@ def test_a_menu_that_never_changes_stops_at_the_bound_and_fails():
     sess.wait_for_world = lambda timeout=240.0, interval=0.35: orig(0.1, 0.005)
     assert run(sess, max_resends=2) is False
     assert sess.injected == [0x0D, 0x0D]
+
+
+def _no_resend(screens):
+    sess = Fake(screens)
+    sess.wait_for_world = lambda timeout=240.0, interval=0.35: True
+    assert run(sess) is True
+    assert sess.injected == []
+
+
+def test_the_menu_with_a_disk_prompt_over_it_gets_no_resend():
+    _no_resend([MenuAndDiskScreen()])
+
+
+def test_a_moved_highlight_gets_no_resend():
+    _no_resend([MovedMenuScreen()])
+
+
+def test_a_message_screen_gets_no_resend():
+    _no_resend([FakeScreen("THE PARTY IS LOADING")])
+
+
+def test_the_world_bar_gets_no_resend():
+    _no_resend([FakeScreen(base.WORLD_BAR)])
+
+
+def test_a_screen_that_cannot_be_read_gets_no_resend():
+    sess = Fake([None])
+    reads = iter([None, None])
+    sess.screen = lambda: next(reads, FakeScreen(base.WORLD_BAR))
+    sess.wait_for_world = lambda timeout=240.0, interval=0.35: True
+    sess.begin_adventuring(resend_after=0.02, interval=0.005, max_resends=3)
+    assert sess.injected == []

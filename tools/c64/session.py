@@ -1940,6 +1940,13 @@ class Session:
                 time.sleep(interval)
                 continue
             if time.time() - menu_since >= resend_after:
+                # Looked at again, because a disk prompt can have come up
+                # since the read above and a Return there sends the game to
+                # the wrong side.
+                s = self.screen()
+                if (s is None or self.wanted_disk(s) is not None
+                        or not self._begin_menu_up(s)):
+                    continue
                 resends += 1
                 self.log(f"  BEGIN ADVENTURING is still up after "
                          f"{resend_after:.0f} s; resending Return through the "
