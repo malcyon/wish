@@ -78,7 +78,8 @@ class FakeMonitor:
 
 
 class Fake(Session):
-    IEC_HOLD = 0.03
+    IEC_HOLD = 0.15
+    IEC_EXPIRY = 0.6
     IEC_SAMPLE_GAP = 0.0
 
     def __init__(self):
@@ -111,7 +112,7 @@ def look(sess, times):
     import time
     answer = False
     for _ in range(times):
-        time.sleep(sess.IEC_HOLD + 0.01)
+        time.sleep(sess.IEC_HOLD + 0.03)
         answer = sess.iec_stall_check()
     return answer
 
@@ -224,8 +225,37 @@ def test_a_look_from_an_earlier_wait_does_not_count_towards_a_nudge():
     import time
     sess = Fake()
     look(sess, 1)
-    time.sleep(sess.IEC_HOLD * 2.5)
+    time.sleep(sess.IEC_EXPIRY * 1.5)
     assert sess.iec_stall_check() is False
     assert sess.st.writes == []
     look(sess, 1)
+    assert len(sess.st.writes) == 1
+
+
+def test_a_nudge_that_is_always_skipped_gives_up_after_three():
+    sess = Fake()
+    sess._iec_stalled = lambda: True
+    sess.st.drive_pc = 0xFE70
+    assert look(sess, 3) is False
+    assert look(sess, 1) is True
+    assert sess.st.writes == []
+    assert "giving up" in sess.logged[-1] and "CAPTURE" in sess.logged[-1]
+
+
+def test_a_write_that_always_fails_gives_up_after_three():
+    sess = Fake()
+
+    def boom(*a):
+        raise OSError("no monitor")
+    sess._iec_nudge = boom
+    assert look(sess, 4) is True
+    assert "no monitor" in sess.logged[-1]
+
+
+def test_a_counted_nudge_resets_the_failure_count():
+    sess = Fake()
+    look(sess, 1)
+    sess._iec_failures = 2
+    look(sess, 1)
+    assert sess._iec_failures == 0
     assert len(sess.st.writes) == 1

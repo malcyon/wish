@@ -1241,6 +1241,14 @@ class Session:
     _iec_checked = 0.0
     _iec_first: float | None = None
     _iec_nudges = 0
+    _iec_failures = 0
+    #: A look older than this belongs to an earlier wait.  It is well over the
+    #: longest a wait's own loop stays away from the check: `handle_prompt`
+    #: swaps a disk in 3.5 s, and `await_change` can hold `wait_for_world` for
+    #: 6 s.
+    IEC_EXPIRY = 15.0
+    #: Consecutive nudges that were skipped or failed before the run gives up.
+    IEC_MAX_FAILURES = 3
 
     def _iec_stalled(self) -> bool:
         """True when six samples all show the missed-turnaround stall.
@@ -1310,14 +1318,16 @@ class Session:
         now = time.time()
         if now - self._iec_checked < self.IEC_HOLD:
             return False
-        if now - self._iec_checked > 2 * self.IEC_HOLD:
+        if now - self._iec_checked > self.IEC_EXPIRY:
             # A look from an earlier wait says nothing about this one.
             self._iec_first = None
             self._iec_nudges = 0
+            self._iec_failures = 0
         self._iec_checked = now
         if not self._iec_stalled():
             self._iec_first = None
             self._iec_nudges = 0
+            self._iec_failures = 0
             return False
         if self._iec_first is None:
             self._iec_first = now
@@ -1332,13 +1342,20 @@ class Session:
             return True
         try:
             nudged = self._iec_nudge()
+            why = "drive 8 was not in its idle loop when the nudge was due"
         except (OSError, MonitorError, TypeError, struct.error) as e:
-            self.log(f"  the nudge failed: {e}")
-            return False
+            nudged = False
+            why = f"the nudge failed: {e}"
         if not nudged:
-            self.log("  drive 8 was not in its idle loop when the nudge was "
-                     "due; skipped, the next check retries")
+            self._iec_failures += 1
+            if self._iec_failures >= self.IEC_MAX_FAILURES:
+                self.log(f"  the C64 is stuck in the KERNAL talker turnaround "
+                         f"and {self._iec_failures} nudges in a row could not "
+                         f"be made ({why}); giving up.  {self.stall_capture()}")
+                return True
+            self.log(f"  {why}; skipped, the next check retries")
             return False
+        self._iec_failures = 0
         self._iec_first = None
         self._iec_nudges += 1
         self.log("  the C64 is waiting in the KERNAL talker turnaround with "
