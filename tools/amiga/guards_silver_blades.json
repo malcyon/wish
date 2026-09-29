@@ -14,13 +14,13 @@
     "camp_save_picker": {
       "also": [],
       "box": [
-        72,
-        316,
+        440,
+        288,
         640,
         426
       ],
-      "example": "640/ssb3/accept3/shots/15-camp_save_picker.png",
-      "sha256": "ae971b4dc471badfb48e4ae37319830ad94972fd4ab22944fb085f6b2c3f6f4f"
+      "example": "449/rb449-4/accept1/shots/15-camp_save_picker.png",
+      "sha256": "7f73e04cb8ac9bc8d3dae5ad13a9b1792b3b8a00fdeddd5f787ff191d5867490"
     },
     "continue": {
       "also": [],
@@ -202,6 +202,18 @@
     }
   },
   "labels": {
+    "449/rb449-2/accept1/shots/15-camp_save_picker.png": [
+      "journal"
+    ],
+    "449/rb449-3/accept1/shots/15-camp_save_picker.png": [
+      "journal"
+    ],
+    "449/rb449-3/accept1/shots/16-exit_game.png": [
+      "journal"
+    ],
+    "449/rb449-4/accept1/shots/15-camp_save_picker.png": [
+      "camp_save_picker"
+    ],
     "640/ssb2/accept1/shots/11-world.png": [
       "treasure_bar"
     ],

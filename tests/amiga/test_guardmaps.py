@@ -296,8 +296,15 @@ def test_the_silver_blades_camp_save_picker_guard_matches_only_the_camp_picker_c
     root = scratch.cache_dir('acceptance')
     pickers = ('640/ssb3/accept3/shots/15-camp_save_picker.png',
                '672/f6f1f461a8-amiga-accept2/accept2/shots/15-camp_save_picker.png',
-               '672/400d2381cd-amiga-accept2/accept2/shots/15-camp_save_picker.png')
-    if not all((root / crop).is_file() for crop in pickers):
+               '672/400d2381cd-amiga-accept2/accept2/shots/15-camp_save_picker.png',
+               '449/rb449-4/accept1/shots/15-camp_save_picker.png')
+    # The menu's own picker shares the bar row with this one, and the last
+    # three are the rule-book question screen, which no picker rule may match.
+    not_pickers = ('449/rb449-4/accept1/shots/08-save_picker.png',
+                   '449/rb449-2/accept1/shots/15-camp_save_picker.png',
+                   '449/rb449-3/accept1/shots/15-camp_save_picker.png',
+                   '449/rb449-3/accept1/shots/16-exit_game.png')
+    if not all((root / crop).is_file() for crop in (*pickers, *not_pickers)):
         pytest.skip('the kept Silver Blades camp picker crops are not on this machine')
     spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'ssb')
     rule = spec['guards']['camp_save_picker']
@@ -310,5 +317,7 @@ def test_the_silver_blades_camp_save_picker_guard_matches_only_the_camp_picker_c
         shown = 'camp_save_picker' in spec['labels'].get(crop.relative, crop.states)
         if crop.relative in pickers or shown:
             assert digest == rule['sha256'], crop.relative
+        elif crop.relative in not_pickers:
+            assert digest != rule['sha256'], crop.relative
         elif crop.states:
             assert digest != rule['sha256'], crop.relative
