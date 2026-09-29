@@ -1567,17 +1567,17 @@ def _save_as_dos(party, out: pathlib.Path, title: str, report: dict,
                                      game_files=convertdrops.game_files,
                                      dos_folder=dosbox.find_game(TITLES[title].stem))
     dest = out / "source"
+    if names and max(names) >= len(party.members):
+        return {**report, "refused": f"--name position {max(names)} is not a "
+                f"member of a party of {len(party.members)}"}
     try:
         plan = saveplan.prepare_save_as(party, "dos", dest, assets,
                                         **({"names": names} if names else {}))
     except saveplan.DroppedFields as e:
         return {**report, "refused": str(e)}
-    except saveplan.NamesDoNotFit:
-        raise
-    except saveplan.SaveAsError as e:
-        if not names:
-            raise
-        return {**report, "refused": str(e)}
+    except saveplan.NamesDoNotFit as e:
+        return {**report, "refused": "no --name for " + "; ".join(
+            f"position {p} ({n!r}, {e.width} fit)" for p, n in e.unfit)}
     report["dropped"] = list(plan.report.dropped)
     report["losses"] = list(plan.report.losses)
     saveplan.publish(plan, party)
@@ -3580,10 +3580,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
     elif getattr(args, "convert", None):
         shutil.rmtree(out / "source", ignore_errors=True)
         chosen = parse_names(args.name, args.title) if args.name else None
-        built = (build_saveas_source(args.convert, args.convert_slot.upper(), out,
-                                     args.title, chosen) if chosen else
-                 build_saveas_source(args.convert, args.convert_slot.upper(), out,
-                                     args.title))
+        built = build_saveas_source(args.convert, args.convert_slot.upper(), out,
+                                    args.title, chosen)
         summary["source"] = built
         note(event="converted", **{k: v for k, v in built.items() if k != "read"})
         if "refused" in built or built["dropped"] or built["losses"]:

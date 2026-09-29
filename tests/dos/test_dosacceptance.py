@@ -2167,7 +2167,7 @@ def test_main_calls_build_saveas_source_with_the_convert_path_slot_and_title(
     and a refused result stops the run with `summary["lost"]` set."""
     calls = []
 
-    def fake(path, slot, out, title):
+    def fake(path, slot, out, title, names=None):
         calls.append((path, slot, out, title))
         return {"refused": "not this title"}
 
@@ -2194,23 +2194,39 @@ def test_name_options_parse_into_positions():
     assert da.parse_names(["0=Wren", "3=A B"], "pool") == {0: "Wren", 3: "A B"}
 
 
-@pytest.mark.parametrize("names", [
-    ["Wren"], ["x=Wren"], ["0="], ["-1=Wren"], ["0=Wr\u00e9n"],
-    ["0=Wren", "0=Bran"], ["1=" + "W" * 16]])
-def test_a_bad_name_option_is_refused_before_any_boot(names, tmp_path, monkeypatch):
+@pytest.mark.parametrize("names, message", [
+    (["Wren"], "not POSITION=NAME"),
+    (["x=Wren"], "not POSITION=NAME"),
+    (["0="], "printable ASCII"),
+    (["--name=-1=Wren"], "not POSITION=NAME"),
+    (["0=Wr\u00e9n"], "printable ASCII"),
+    (["0=Wren", "0=Bran"], "position 0 twice"),
+    (["1=" + "W" * 16], "over the 15"),
+    (["--name=1=" + "W" * 16], "over the 15")])
+def test_a_bad_name_option_is_refused_before_any_boot(
+        names, message, tmp_path, monkeypatch, capsys):
     def boom(*a, **k):
         raise AssertionError("reached the conversion")
     monkeypatch.setattr(da, "build_saveas_source", boom)
     argv = ["--title", "pool", "--convert", "X", "--out", str(tmp_path / "o")]
     for n in names:
-        argv += ["--name", n]
+        argv += [n] if n.startswith("--name=") else ["--name", n]
     with pytest.raises(SystemExit):
         da.main(argv)
+    assert message in capsys.readouterr().err
 
 
-def test_name_needs_convert():
+def test_name_needs_convert(capsys):
     with pytest.raises(SystemExit):
         da.main(["--title", "pool", "--save", ".", "--name", "0=Wren"])
+    assert "--name goes with --convert" in capsys.readouterr().err
+
+
+def test_a_good_name_with_convert_does_not_exit_at_parsing(tmp_path, monkeypatch):
+    monkeypatch.setattr(da, "build_saveas_source",
+                        lambda *a, **k: {"refused": "stop"})
+    assert da.main(["--title", "pool", "--convert", "X", "--name", "0=Wren",
+                    "--out", str(tmp_path / "o"), "--issue", "1", "--run", "t"]) == 1
 
 
 def test_main_hands_the_chosen_names_to_the_conversion(tmp_path, monkeypatch):
@@ -2228,21 +2244,21 @@ def test_main_hands_the_chosen_names_to_the_conversion(tmp_path, monkeypatch):
     assert calls == [{0: "Wren", 2: "Bran"}]
 
 
-def test_save_as_dos_passes_names_to_prepare_save_as_only_when_given(
-        tmp_path, monkeypatch):
-    """A fake `prepare_save_as` records `names`; a SaveAsError from a bad
-    position is a `refused` report, and a NamesDoNotFit with no names still
-    raises."""
+def test_save_as_dos_passes_names_and_refuses_cleanly(tmp_path, monkeypatch):
+    """A fake `prepare_save_as` records `names`; an out-of-party position and a
+    name still too long are `refused` reports, and any other SaveAsError
+    still raises."""
+    from types import SimpleNamespace
+
     from editor import saveplan
     from editor.convert import Source
     from tools.convert import convertdrops
     seen = []
+    raises = []
 
     def fake_prepare(party, port, dest, assets, **kw):
         seen.append(kw)
-        if kw.get("names") == {9: "X"}:
-            raise saveplan.SaveAsError("position 9 is not a character")
-        raise saveplan.NamesDoNotFit(((0, "L" * 18),), 15)
+        raise raises[0]
 
     monkeypatch.setattr(saveplan, "prepare", lambda party: None)
     monkeypatch.setattr(Source, "of_snapshot", staticmethod(lambda snap: None))
@@ -2250,14 +2266,20 @@ def test_save_as_dos_passes_names_to_prepare_save_as_only_when_given(
     monkeypatch.setattr(convertdrops, "game_files", None, raising=False)
     monkeypatch.setattr(da.dosbox, "find_game", lambda stem: None)
     monkeypatch.setattr(saveplan, "prepare_save_as", fake_prepare)
-    with pytest.raises(saveplan.NamesDoNotFit):
-        da._save_as_dos(None, tmp_path, "pool", {})
-    assert seen == [{}]
-    built = da._save_as_dos(None, tmp_path, "pool", {}, {9: "X"})
-    assert "refused" in built and seen[1] == {"names": {9: "X"}}
-    with pytest.raises(saveplan.NamesDoNotFit):
-        da._save_as_dos(None, tmp_path, "pool", {}, {0: "Wren"})
-    assert seen[2] == {"names": {0: "Wren"}}
+    party = SimpleNamespace(members=[object(), object()])
+
+    built = da._save_as_dos(party, tmp_path, "pool", {}, {2: "X"})
+    assert "position 2" in built["refused"] and seen == []
+
+    raises.append(saveplan.NamesDoNotFit(((1, "L" * 18),), 15))
+    built = da._save_as_dos(party, tmp_path, "pool", {}, {0: "Wren"})
+    assert "position 1" in built["refused"] and seen == [{"names": {0: "Wren"}}]
+    built = da._save_as_dos(party, tmp_path, "pool", {})
+    assert "position 1" in built["refused"] and seen[1] == {}
+
+    raises[0] = saveplan.SaveAsError("other")
+    with pytest.raises(saveplan.SaveAsError):
+        da._save_as_dos(party, tmp_path, "pool", {}, {0: "Wren"})
 
 
 def test_build_saveas_source_refuses_a_title_mismatch(tmp_path):
