@@ -339,18 +339,33 @@ class AmigaDisk:
                 number = self._u32(entry, _HDR_NEXT_HASH)
         return out
 
-    def walk(self, header: int | None = None,
-             path: str = "") -> Iterator[tuple[str, DirEntry]]:
+    def _enter_dir(self, header: int | None, seen: set[int] | None,
+                   block: int | None = None) -> set[int]:
+        """The visited-drawer set, refusing a drawer reached a second time."""
+        if seen is None:
+            seen = {self.root if header is None else header}
+        if block is not None:
+            if block in seen:
+                raise AmigaDiskError(
+                    f"the directory tree returns to block {block}")
+            seen.add(block)
+        return seen
+
+    def walk(self, header: int | None = None, path: str = "",
+             _seen: set[int] | None = None) -> Iterator[tuple[str, DirEntry]]:
         """Every file on the disk, as `(path, entry)`, depth first."""
+        seen = self._enter_dir(header, _seen)
         for entry in self.entries(header):
             here = f"{path}/{entry.name}"
             if entry.is_dir:
-                yield from self.walk(entry.block, here)
+                self._enter_dir(header, seen, entry.block)
+                yield from self.walk(entry.block, here, seen)
             else:
                 yield here, entry
 
-    def walk_dirs(self, header: int | None = None,
-                  path: str = "") -> Iterator[tuple[str, DirEntry]]:
+    def walk_dirs(self, header: int | None = None, path: str = "",
+                  _seen: set[int] | None = None
+                  ) -> Iterator[tuple[str, DirEntry]]:
         """Every drawer on the disk, as `(path, entry)`, depth first.
 
         The companion to :meth:`walk`, which yields only files -- and the
@@ -359,12 +374,14 @@ class AmigaDisk:
         module wrote was the root, which `verify()` checks by hand, so the
         gap was invisible: a drawer with a wrong checksum verified clean.
         """
+        seen = self._enter_dir(header, _seen)
         for entry in self.entries(header):
             if not entry.is_dir:
                 continue
+            self._enter_dir(header, seen, entry.block)
             here = f"{path}/{entry.name}"
             yield here, entry
-            yield from self.walk_dirs(entry.block, here)
+            yield from self.walk_dirs(entry.block, here, seen)
 
     def lookup(self, path: str) -> DirEntry:
         """One entry by `SAVE/NAME.cha`-style path, case-insensitively.
@@ -566,10 +583,12 @@ class AmigaDisk:
         # its own replacement, so a same-size replace that used to succeed
         # on a disk with no other room now fails instead of overwriting in
         # place (#36).
+        old_blocks = (self._file_blocks(existing.block)
+                      if existing is not None else [])
         allocated = self._allocate(blocks_needed + headers_needed)
         if existing is not None:
             self._unlink(parent, existing)
-            self._free_file(existing.block)
+            self._free_blocks(old_blocks)
         header = allocated[0]
         extensions = allocated[1:headers_needed]
         data_blocks = allocated[headers_needed:]
@@ -752,15 +771,29 @@ class AmigaDisk:
             f"directory and the header disagree and nothing was changed")
 
     def _free_file(self, header: int) -> None:
+        self._free_blocks(self._file_blocks(header))
+
+    def _free_blocks(self, blocks: list[int]) -> None:
+        for number in blocks:
+            self._set_free(number, True)
+
+    def _file_blocks(self, header: int) -> list[int]:
+        """Every block a file holds, refusing a looping extension chain."""
+        blocks: list[int] = []
+        seen: set[int] = set()
         current = header
         while current:
+            if current in seen:
+                raise AmigaDiskError(
+                    f"the extension chain of block {header} returns to "
+                    f"block {current}; nothing was changed")
+            seen.add(current)
             block = self.block(current)
             for index in range(self._u32(block, _HDR_HIGH_SEQ)):
-                self._set_free(self._u32(block, _HDR_DATA_TABLE - 4 * index),
-                               True)
-            nxt = self._u32(block, _HDR_EXTENSION)
-            self._set_free(current, True)
-            current = nxt
+                blocks.append(self._u32(block, _HDR_DATA_TABLE - 4 * index))
+            blocks.append(current)
+            current = self._u32(block, _HDR_EXTENSION)
+        return blocks
 
     # -- housekeeping -------------------------------------------------------
     def _touch(self, header: int,
@@ -879,7 +912,14 @@ class AmigaDisk:
         for _, entry in self.walk():
             current = entry.block
             head = True
+            chain = set()
             while current:
+                if current in chain:
+                    problems.append(
+                        f"the extension chain of block {entry.block} loops "
+                        f"back to block {current}")
+                    break
+                chain.add(current)
                 check(current, _HDR_CHECKSUM,
                       "file header" if head else "extension block")
                 block = self.block(current)

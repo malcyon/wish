@@ -485,3 +485,59 @@ def test_a_drawer_takes_exactly_one_block():
     before = disk.free_count()
     disk.make_dir("save", when=WHEN)
     assert disk.free_count() == before - 1
+
+
+def _looping_big_file(tmp_path):
+    """A disk holding a file whose extension block names itself."""
+    disk = AmigaDisk.blank()
+    disk.write_file("BIG.BIN", bytes(range(256)) * 200, when=WHEN)
+    header = disk.lookup("BIG.BIN").block
+    extension = struct.unpack_from(">I", disk.block(header),
+                                   BLOCK_SIZE - 8)[0]
+    assert extension
+    struct.pack_into(">I", disk._data, extension * BLOCK_SIZE + BLOCK_SIZE - 8,
+                     extension)
+    path = tmp_path / "loop.adf"
+    disk.save(str(path))
+    return AmigaDisk.open(str(path))
+
+
+def _bitmap_bytes(disk):
+    start = disk._bitmap_block() * BLOCK_SIZE
+    return bytes(disk._data[start:start + BLOCK_SIZE])
+
+
+def test_removing_a_file_whose_extension_chain_loops_is_refused_and_frees_nothing(
+        tmp_path):
+    disk = _looping_big_file(tmp_path)
+    before = _bitmap_bytes(disk)
+    with pytest.raises(AmigaDiskError, match="extension chain"):
+        disk.remove_file("BIG.BIN")
+    assert _bitmap_bytes(disk) == before
+
+
+def test_writing_over_a_file_whose_extension_chain_loops_is_refused_and_frees_nothing(
+        tmp_path):
+    disk = _looping_big_file(tmp_path)
+    before = _bitmap_bytes(disk)
+    with pytest.raises(AmigaDiskError, match="extension chain"):
+        disk.write_file("BIG.BIN", b"new", when=WHEN)
+    assert _bitmap_bytes(disk) == before
+
+
+def test_verify_reports_an_extension_chain_that_loops_and_returns(tmp_path):
+    disk = _looping_big_file(tmp_path)
+    problems = disk.verify()
+    assert sum("extension chain" in p and "loops" in p for p in problems) == 1
+
+
+def test_a_directory_tree_that_loops_is_refused_by_walk(tmp_path):
+    disk = AmigaDisk.blank()
+    disk.make_dir("SAVE")
+    drawer = disk.lookup("SAVE").block
+    # The drawer's hash table points back at the root.
+    struct.pack_into(">I", disk._data, drawer * BLOCK_SIZE + 24, disk.root)
+    with pytest.raises(AmigaDiskError, match="directory tree"):
+        list(disk.walk())
+    with pytest.raises(AmigaDiskError, match="directory tree"):
+        list(disk.walk_dirs())
