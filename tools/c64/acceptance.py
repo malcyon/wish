@@ -515,12 +515,22 @@ WARP_IDLE_SECONDS = 300.0
 
 
 def parse_warp(arg: str) -> int:
-    """The area id a `warp` names: a decimal integer the area table lists."""
+    """The area id a `warp` names: a fast-travelable dungeon or town area.
+
+    A wilderness row is refused because `warp` writes no overland square, so
+    the party would land on its last one.
+    """
     if not re.fullmatch(r"[0-9]+", arg):
         raise ValueError(f"warp {arg!r}: an area id, a decimal integer")
     area = int(arg)
-    if auto_actions.area_by_id(area) is None:
-        raise ValueError(f"warp {arg!r}: not an area the warp can reach")
+    row = auto_actions.area_by_id(area)
+    if row is None:
+        raise ValueError(f"warp {arg!r}: not an area in the area table")
+    if getattr(row, "overland", None) is not None:
+        raise ValueError(f"warp {arg!r}: a wilderness area, which the step "
+                         "cannot place; only dungeon and town areas")
+    if not getattr(row, "fasttravelable", False):
+        raise ValueError(f"warp {arg!r}: an area fast travel cannot enter")
     return area
 
 

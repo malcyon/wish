@@ -6142,6 +6142,14 @@ def test_warp_parses_any_listed_area_and_refuses_the_rest():
         A.parse_warp("99")
 
 
+def test_warp_refuses_wilderness_and_non_fast_travelable_areas_at_parse():
+    for area in (25, 26, 27):
+        with pytest.raises(ValueError, match="wilderness"):
+            A.parse_warp(str(area))
+    with pytest.raises(ValueError, match="fast travel cannot"):
+        A.parse_warp("30")
+
+
 def test_warp_to_an_area_without_an_arrival_facing_runs_unchecked(tmp_path, monkeypatch):
     run, calls = _warp_run(tmp_path, monkeypatch, triple=(0, 4, 3))
     said = []
