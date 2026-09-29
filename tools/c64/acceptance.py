@@ -399,9 +399,21 @@ HEAL_SCREEN_HOLD = 1.0
 #: drawn, before the wait ends; a later redraw restarts it.
 HEAL_SETTLE = 15.0
 
-#: What `temple-probe` accepts: the member, and with `HEAL` the one screen
-#: past the temple bar's HEAL.
-TEMPLE_PROBE_ARGS = ("BRUTUS", "BRUTUS HEAL")
+#: What `temple-probe` accepts: the member; with `HEAL` the one screen past
+#: the temple bar's HEAL; with `RAISE` the purchase of RAISE DEAD for him.
+TEMPLE_PROBE_ARGS = ("BRUTUS", "BRUTUS HEAL", "BRUTUS RAISE")
+
+#: The only `--stage-record` bytes a `RAISE` run takes, all on BRUTUS's slot:
+#: constitution 18 (the temple's roll then always succeeds) and 6,000 gold
+#: (`0x0C1`/`0x0C2`, little-endian `$1770`), so the 5,500 gold price is paid
+#: in the coin it is quoted in.
+TEMPLE_RAISE_STAGING = ((5, 0x018, 18), (5, 0x0C1, 0x70), (5, 0x0C2, 0x17))
+
+#: The service list's ten rows, where its names start, and the price screen's
+#: text; a price screen missing any of them is not answered.
+TEMPLE_LIST_ROWS = range(9, 19)
+TEMPLE_LIST_COLUMN = 2
+TEMPLE_PRICE_NEEDLES = (r"WILL COST", r"\b5,?500\b", r"PAY FOR CURE")
 
 #: How long a walk keeps watching for a disk prompt after a move (seconds).
 LOOK_SECONDS = 2.0
@@ -524,7 +536,7 @@ def parse_steps(texts) -> list[Step]:
             parse_ready(arg)
         elif verb == "temple-probe" and arg not in TEMPLE_PROBE_ARGS:
             raise ValueError("temple-probe requires BRUTUS, optionally "
-                             "followed by HEAL")
+                             "followed by HEAL or RAISE")
         elif verb == "warp":
             parse_warp(arg)
         elif verb == "fight" and arg and not (arg.isdigit() and int(arg) > 0):
@@ -1727,6 +1739,71 @@ class PoolRun:
                 and S.word_column(bar, "YES") >= 0
                 and S.word_column(bar, "NO") >= 0)
 
+    @staticmethod
+    def _temple_raise_price(screen) -> bool:
+        """The RAISE DEAD price screen: the cost and PAY FOR CURE, with YES
+        and NO on row 24 (`SQRPACI64 $04C3`)."""
+        text = screen.text().upper()
+        bar = screen.row(24)
+        return (all(re.search(n, text) for n in TEMPLE_PRICE_NEEDLES)
+                and S.word_column(bar, "YES") >= 0
+                and S.word_column(bar, "NO") >= 0)
+
+    @classmethod
+    def _temple_list(cls, screen) -> list[str]:
+        """The service list's ten names."""
+        return [screen.row(r).strip() for r in TEMPLE_LIST_ROWS]
+
+    def _temple_select_row(self, label: str):
+        """Move the service list's highlight to LABEL with Down and press
+        Return once; return the list screen it was pressed on.
+
+        It reads every sample through `temple_sample()`, keeps to the list
+        it first saw, and never calls `Session.select_row`, whose
+        `handle_prompt` would answer a prompt."""
+        first = self.temple_sample()
+        if first.screen is None:
+            self._temple_stop("list", "service list unreadable", first)
+        names = self._temple_list(first.screen)
+        if names.count(label) != 1:
+            self._temple_stop("list", f"{label} absent from the list", first)
+        target = TEMPLE_LIST_ROWS[names.index(label)]
+
+        def highlight(sample):
+            screen = sample.screen
+            if (screen is None or self._temple_list(screen) != names
+                    or self._temple_disk(screen)
+                    or self._temple_continuation(screen)
+                    or re.search(r"\bYES\b.*\bNO\b", screen.text(), re.DOTALL)
+                    or re.search(r"\bPRESS\b", screen.text())):
+                self._temple_stop("list", f"list changed before {label}",
+                                  sample)
+            hot = [r for r in screen.highlighted_rows(column=TEMPLE_LIST_COLUMN)
+                   if r in TEMPLE_LIST_ROWS]
+            if len(hot) != 1:
+                self._temple_stop("list", "list highlight unreadable", sample)
+            return hot[0]
+
+        for _ in range(len(TEMPLE_LIST_ROWS)):
+            sample = self.temple_sample()
+            at = highlight(sample)
+            if at == target:
+                self._temple_input_budget(f"selecting {label}")
+                self.sess.kbd.key("Return")
+                return sample.screen
+            if at > target:
+                self._temple_stop("list", f"highlight is past {label}", sample)
+            self._temple_input_budget(f"moving to {label}")
+            self.sess.kbd.key("Down")
+            limit = min(self.clock() + 5, self.temple_input_deadline)
+            while self.clock() < limit:
+                if highlight(self.temple_sample()) != at:
+                    break
+                time.sleep(0.25)
+            else:
+                self._temple_stop("list", f"{label} highlight did not move")
+        self._temple_stop("list", f"{label} highlight never reached")
+
     def _temple_select_bar(self, word: str, kind: str) -> None:
         """Select one guarded word; never answer prompts inside a selector."""
         first = self.temple_sample()
@@ -1742,14 +1819,16 @@ class PoolRun:
             if (screen is None or screen.row(24) != bar
                     or self._temple_disk(screen)
                     or self._temple_continuation(screen)
-                    or (kind != "question"
+                    or (kind not in ("question", "payment")
                         and re.search(r"\bYES\b.*\bNO\b", screen.text(),
                                       re.DOTALL))
                     or re.search(r"\bPRESS\b", screen.text())
                     or (kind == "world" and not self._temple_is_world(screen))
                     or (kind == "temple" and not self._temple_is_greeting(screen))
                     or (kind == "question"
-                        and not self._temple_heal_question(screen))):
+                        and not self._temple_heal_question(screen))
+                    or (kind == "payment"
+                        and not self._temple_raise_price(screen))):
                 self._temple_stop("menu", f"{kind} bar changed before {word}",
                                   sample)
             span = S.span_in(screen, 24)
@@ -1981,11 +2060,17 @@ class PoolRun:
                 and screen.colours[top * 40 + S.PARTY_COLUMN] == 1
                 and screen.row(top)[S.PARTY_COLUMN:].split()[:1] == [name])
 
-    def _temple_heal_screen(self, arrival) -> dict:
+    @staticmethod
+    def _temple_body(screen) -> list[str]:
+        return [screen.row(r).rstrip() for r in range(24)]
+
+    def _temple_heal_screen(self, arrival, *, tag: str = "heal-screen",
+                            stop: str = "heal", what: str = "HEAL") -> dict:
         """Keep the last steady screen after HEAL, once nothing changes.
 
-        ARRIVAL is the temple screen HEAL was chosen from; it stays up until
-        the game redraws. The first screen after HEAL is the welcome alone
+        ARRIVAL is the screen the key was sent from, as a screen or as its
+        rows 0-23; it stays up until the game redraws. TAG names the kept
+        checkpoint, and STOP and WHAT the stop if none is drawn. The first screen after HEAL is the welcome alone
         (`0546662ef7-temple-route-h`) and the list draws later
         (`8e1934def7-temple-route-g`, `11-temple-lost-heal`, row 24 blank), so
         a screen is steady after `HEAL_SCREEN_HOLD` seconds unchanged and the
@@ -1996,10 +2081,9 @@ class PoolRun:
         stood). Its PNG is taken only if the screen still reads as the kept
         rows; otherwise `stem` is None. Judged by rows 0-23; nothing is
         matched on text and nothing is sent."""
-        def body(screen) -> list[str]:
-            return [screen.row(r).rstrip() for r in range(24)]
-
-        before = body(arrival)
+        body = self._temple_body
+        before = (list(arrival) if isinstance(arrival, list)
+                  else body(arrival))
         start = self.clock()
         limit = min(start + 90, self.temple_input_deadline)
         prior = last = None
@@ -2038,13 +2122,13 @@ class PoolRun:
         if not steady:
             cut = ("temple input deadline" if limit < start + 90
                    else "90 second limit")
-            self._temple_stop("heal", f"no steady screen drawn after HEAL "
+            self._temple_stop(stop, f"no steady screen drawn after {what} "
                               f"before the {cut} "
                               f"({self.clock() - start:.1f} s waited)", last)
         rows = steady[-1][1]
         now = (None if last is None or last.screen is None else
                [last.screen.row(r).rstrip() for r in range(25)])
-        kept = (self.temple_checkpoint("heal-screen", last) if now == rows
+        kept = (self.temple_checkpoint(tag, last) if now == rows
                 else {"stem": None})
         return {**kept, "rows": rows, "settled": settled,
                 "held": kept_held,
@@ -2052,7 +2136,13 @@ class PoolRun:
 
     def temple_probe(self, who: str) -> dict:
         """Capture the temple arrival screen and stop; with `HEAL`, select it
-        once and capture the last settled screen after it.
+        once and capture the last settled screen after it; with `RAISE`,
+        go on to buy RAISE DEAD for the highlighted member.
+
+        `RAISE` is the one mode that answers a prompt: only the price
+        prompt, only with YES, once. It stops at the result screen with no
+        further key, and records `outcome` as alive, failed, no-money or
+        unknown; the last three are results, not faults.
 
         The HEAL service list -- its text, its bar, whether RAISE DEAD
         appears, and the resident byte there -- has never been seen live
@@ -2062,7 +2152,8 @@ class PoolRun:
         own path; the run stages its own copy, so none is made by hand."""
         if who not in TEMPLE_PROBE_ARGS or self.game.key != "pool-of-radiance":
             raise StepFailed("temple probe requires Pool BRUTUS")
-        heal = who.endswith(" HEAL")
+        raising = who.endswith(" RAISE")
+        heal = raising or who.endswith(" HEAL")
         initial = self.temple_checkpoint(
             "loaded-source", self._temple_steady("in the loaded source"))
         place = self._temple_place(initial["state"])
@@ -2109,6 +2200,34 @@ class PoolRun:
                                      "settled": kept["settled"],
                                      "held": kept["held"]}
             result["heal_screens"] = kept["steady"]
+        if raising:
+            listing = self._temple_select_row("RAISE DEAD")
+            price = self._temple_heal_screen(
+                self._temple_body(listing), tag="raise-price", stop="price",
+                what="RAISE DEAD")
+            result["raise_price"] = {"stem": price["stem"],
+                                     "rows": price["rows"],
+                                     "settled": price["settled"],
+                                     "held": price["held"]}
+            priced = self.temple_sample()
+            if priced.screen is None or not self._temple_raise_price(
+                    priced.screen):
+                self._temple_stop("price", "no RAISE DEAD price screen",
+                                  priced)
+            self._temple_select_bar("YES", "payment")
+            done = self._temple_heal_screen(
+                price["rows"][:24], tag="raise-result", stop="result",
+                what="YES")
+            text = "\n".join("\n".join(rows) for rows in done["steady"]).upper()
+            outcome = ("alive" if "IS ALIVE" in text else
+                       "failed" if "FAILED" in text else
+                       "no-money" if "NOT ENOUGH MONEY" in text else
+                       "unknown")
+            result["raise_result"] = {"stem": done["stem"],
+                                      "rows": done["rows"],
+                                      "settled": done["settled"],
+                                      "held": done["held"]}
+            result["outcome"] = outcome
         result["checkpoints"] = len(self.temple_checkpoints)
         return result
 
@@ -4811,7 +4930,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
     summary["staged"] = staged
     if temple_mode:
         summary["staged_sha256"] = specimens.sha256_file(staged_disk)
-        if summary["staged_sha256"] != summary["source_sha256"]:
+        if (not getattr(args, "stage_record", [])
+                and summary["staged_sha256"] != summary["source_sha256"]):
             summary["lost"] = "temple staging changed the source bytes"
             write_summary()
             log.close()
@@ -5114,7 +5234,7 @@ def main(argv: list[str] | None = None) -> int:
                          "'rest 8h', 'walk I', 'fight [SECONDS]', 'peek ADDR N', "
                          "'cast CASTER:SPELL[>TARGET]', 'cure PALADIN>TARGET', "
                          "'ready WHO>LABEL' (Pool only), "
-                         "'temple-probe BRUTUS [HEAL]' (bounded Pool observation), save")
+                         "'temple-probe BRUTUS [HEAL|RAISE]' (bounded Pool observation), save")
     ap.add_argument("--checkpoint", action="append", default=[],
                     metavar="ADDR[=NAME]",
                     help="hex; a non-stopping exec checkpoint armed after the "
@@ -5190,11 +5310,15 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("the walk-flee step: Pool of Radiance only")
     temple_mode = any(step.verb == "temple-probe" for step in steps)
     if temple_mode:
+        raising = steps == [Step("load"), Step("temple-probe", "BRUTUS RAISE")]
         if (steps not in ([Step("load"), Step("temple-probe", "BRUTUS")],
-                          [Step("load"), Step("temple-probe", "BRUTUS HEAL")])
+                          [Step("load"), Step("temple-probe", "BRUTUS HEAL")],
+                          [Step("load"), Step("temple-probe", "BRUTUS RAISE")])
                 or args.title != "pool" or args.issue != "700"
+                or sorted(parse_record_bytes(args.stage_record))
+                != (sorted(TEMPLE_RAISE_STAGING) if raising else [])
                 or any((args.stage_row, args.stage_trait, args.stage_item,
-                        args.stage_record, args.stage_status, args.stage_side,
+                        args.stage_status, args.stage_side,
                         args.first_bar_key, args.checkpoint,
                         args.read_at))
                 or args.stage_only or args.preserve_specimen or args.capture_ready
@@ -5203,7 +5327,9 @@ def main(argv: list[str] | None = None) -> int:
                 or args.walk != "I" or args.walk_steps != 40
                 or not 100 < args.max_seconds <= 1500):
             ap.error("temple-probe requires exactly --title pool --issue 700 "
-                     "--steps load 'temple-probe BRUTUS [HEAL]', no staging, saving, "
+                     "--steps load 'temple-probe BRUTUS [HEAL|RAISE]', no staging "
+                     "(RAISE alone takes exactly BRUTUS's constitution 18 "
+                     "and 6,000 gold), saving, "
                      "checkpoint or other probe options, and a 1500-second "
                      "maximum with 100 seconds reserved for cleanup")
     if args.capture_ready and args.preserve_specimen:

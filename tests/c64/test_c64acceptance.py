@@ -120,10 +120,59 @@ def test_the_steps_parse_and_keep_their_arguments():
 def test_temple_probe_step_takes_an_optional_heal():
     assert A.parse_steps(["load", "temple-probe BRUTUS HEAL"])[1] == (
         A.Step("temple-probe", "BRUTUS HEAL"))
-    for bad in ("temple-probe BRUTUS RAISE", "temple-probe HEAL",
+    for bad in ("temple-probe BRUTUS RAISE HEAL", "temple-probe HEAL",
                 "temple-probe BAKSHI HEAL", "temple-probe BRUTUS HEAL HEAL"):
         with pytest.raises(ValueError):
             A.parse_steps(["load", bad])
+
+
+def test_temple_probe_step_takes_raise_for_brutus_only():
+    assert A.parse_steps(["load", "temple-probe BRUTUS RAISE"])[1] == (
+        A.Step("temple-probe", "BRUTUS RAISE"))
+    for bad in ("temple-probe BAKSHI RAISE", "temple-probe RAISE",
+                "temple-probe BRUTUS RAISE RAISE"):
+        with pytest.raises(ValueError):
+            A.parse_steps(["load", bad])
+
+
+_RAISE_STAGING = ["--stage-record", "5:0x018=18,5:0x0C1=0x70,5:0x0C2=0x17"]
+
+
+def _raise_argv(tmp_path, *extra, step="temple-probe BRUTUS RAISE"):
+    return ["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+            "--disks", str(tmp_path), "--issue", "700",
+            "--run", "temple-raise-a", "--max-seconds", "1500",
+            "--steps", "load", step, *extra,
+            "--out", str(tmp_path / "out")]
+
+
+def test_temple_probe_main_accepts_raise_with_exactly_the_staging(
+        tmp_path, monkeypatch):
+    observed = []
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    monkeypatch.setattr(A, "run", lambda args, steps, out, selected: observed.append(
+        (steps, args.stage_record)) or 0)
+    assert A.main(_raise_argv(tmp_path, *_RAISE_STAGING)) == 0
+    assert observed == [([A.Step("load"), A.Step("temple-probe", "BRUTUS RAISE")],
+                         [_RAISE_STAGING[1]])]
+
+
+@pytest.mark.parametrize("extra,step", [
+    (["--stage-record", "5:0x018=18,5:0x0C1=0x70"], None),
+    (["--stage-record", "5:0x018=17,5:0x0C1=0x70,5:0x0C2=0x17"], None),
+    (["--stage-record", "4:0x018=18,4:0x0C1=0x70,4:0x0C2=0x17"], None),
+    ([*_RAISE_STAGING, "--stage-record", "5:0x20=1"], None),
+    ([*_RAISE_STAGING, "--stage-status", "5=3"], None),
+    ([], None),
+    (_RAISE_STAGING, "temple-probe BRUTUS HEAL"),
+    (_RAISE_STAGING, "temple-probe BRUTUS"),
+])
+def test_temple_probe_refuses_other_staging_before_a_slot_is_claimed(
+        tmp_path, monkeypatch, extra, step):
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    kwargs = {} if step is None else {"step": step}
+    _refused_before_a_slot(tmp_path, monkeypatch, _raise_argv(
+        tmp_path, *extra, **kwargs)[:-2])
 
 
 def test_temple_probe_step_names_only_brutus():
@@ -250,7 +299,8 @@ def test_temple_source_guard_requires_registry_path_and_recorded_hash(
 
 
 class _TempleScreen:
-    def __init__(self, rows, bar_highlight=None, party_highlight=None):
+    def __init__(self, rows, bar_highlight=None, party_highlight=None,
+                 list_highlight=None):
         self._rows = [row.ljust(40)[:40] for row in rows]
         self.codes = bytes(ord(char) for row in self._rows for char in row)
         colours = bytearray(1000)
@@ -259,6 +309,9 @@ class _TempleScreen:
             colours[24 * 40 + start:24 * 40 + start + width] = bytes([1]) * width
         if party_highlight is not None:
             colours[party_highlight * 40 + A.S.PARTY_COLUMN] = 1
+        if list_highlight is not None:
+            colours[list_highlight * 40 + 2:list_highlight * 40 + 8] = (
+                bytes([1]) * 6)
         self.colours = bytes(colours)
 
     def row(self, n):
@@ -266,6 +319,10 @@ class _TempleScreen:
 
     def text(self):
         return "\n".join(self._rows)
+
+    def highlighted_rows(self, colour=1, column=None):
+        from automap.screen import Screen
+        return Screen.highlighted_rows(self, colour, column)
 
 
 class _TempleMonitor:
@@ -373,6 +430,20 @@ class _TempleSession:
         self.window_text = ""
         self._typed_text = ""
         self._question_answered_once = False
+        # RAISE DEAD purchase: the list's highlight index (row 9 + this),
+        # and the invented price and result texts of the `price` and
+        # `result` phases.
+        self.list_cursor = 0
+        self.result_text = "BRUTUS IS ALIVE"
+
+    def key(self, name, *timing):
+        assert self.phase == "heal", self.phase
+        self.keys.append(name)
+        if name == "Down" and self.unsafe != "list-stuck":
+            self.list_cursor += 1
+        elif name == "Return":
+            self.phase = ("price" if 9 + self.list_cursor == 15
+                          else "heal-blank")
 
     def mon(self, _timeout):
         return _TempleMonitor(self)
@@ -484,9 +555,20 @@ class _TempleSession:
                         ("CURE BLINDNESS", "CURE DISEASE",
                          "CURE LIGHT WOUNDS", "CURE SERIOUS WOUNDS",
                          "CURE CRITICAL WOUNDS", "NEUTRALIZE POISON",
-                         "RAISE DEAD", "REMOVE CURSE", "STONE TO FLESH",
+                         "RAISE DEAD" if self.unsafe != "list-no-raise"
+                         else "RESURRECT",
+                         "REMOVE CURSE", "STONE TO FLESH",
                          "EXIT"), 9):
                     rows[row] = " " + text
+        elif phase == "price":
+            # Invented text holding the needles the probe reads; the price
+            # screen has not been seen live.
+            rows[11] = "IT WILL COST 5500 GOLD PIECES"
+            rows[13] = ("PAY FOR CURE" if self.unsafe != "price-wrong"
+                        else "SOMETHING ELSE")
+            rows[24] = "YES NO"
+        elif phase == "result":
+            rows[12] = self.result_text
         else:
             raise AssertionError(phase)
         if phase == "question":
@@ -494,6 +576,10 @@ class _TempleSession:
         if phase == "temple":
             return _TempleScreen(rows, (0, 4),
                                  5 if self.unsafe == "highlight-row-5" else 4)
+        if phase == "price":
+            return _TempleScreen(rows, (0, 3))
+        if phase == "heal" and rows[15]:
+            return _TempleScreen(rows, list_highlight=9 + self.list_cursor)
         return _TempleScreen(rows)
 
     def screenshot(self, path, timeout=None):
@@ -593,6 +679,11 @@ class _TempleSession:
             if not self.heal_never_draws:
                 self.heal_blank_reads = 3
                 self.heal_old_bar_reads = 3 if self.unsafe == "heal-slow" else 0
+            return
+        if self.phase == "price":
+            assert row == 24 and "YES" in was
+            self.keys.append("YES")
+            self.phase = "result"
             return
         assert self.phase == "question" and row == 24 and "YES" in was
         self.keys.append("YES")
@@ -8465,3 +8556,85 @@ def test_a_gate_that_will_not_go_back_fails_a_won_fight(monkeypatch, tmp_path):
     run, _, _ = _silver_run(monkeypatch, tmp_path, sess)
     with pytest.raises(A.StepFailed, match=r"\$4C2D was not put back to 0: it reads 1"):
         run.fight("600", "I", 40)
+
+
+def _raise_tags(run):
+    return [x["tag"] for x in run.temple_checkpoints]
+
+
+def test_temple_probe_raise_buys_raise_dead_and_records_the_result(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    result = run.temple_probe("BRUTUS RAISE")
+    assert session.keys == (["side3", "YES", "HEAL"] + ["Down"] * 6
+                            + ["Return", "YES"])
+    assert _raise_tags(run)[-3:] == ["heal-screen", "raise-price",
+                                     "raise-result"]
+    assert "PAY FOR CURE" in "\n".join(result["raise_price"]["rows"])
+    assert result["raise_result"]["rows"][12] == "BRUTUS IS ALIVE"
+    assert result["raise_result"]["settled"] is True
+    assert result["outcome"] == "alive"
+    assert result["heal_screen"]["rows"][15] == " RAISE DEAD"
+    assert session.phase == "result"
+
+
+@pytest.mark.parametrize("text,outcome", [
+    ("BRUTUS FAILED", "failed"), ("NOT ENOUGH MONEY !", "no-money"),
+    ("SOMETHING UNSEEN", "unknown")])
+def test_temple_probe_raise_records_each_outcome_and_sends_nothing_after_yes(
+        tmp_path, monkeypatch, text, outcome):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.result_text = text
+    result = run.temple_probe("BRUTUS RAISE")
+    assert result["outcome"] == outcome
+    assert session.keys[-1] == "YES" and session.keys.count("YES") == 2
+    assert session.keys.count("Return") == 1
+
+
+def test_temple_probe_heal_sends_no_key_after_the_list(tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    result = run.temple_probe("BRUTUS HEAL")
+    assert session.keys == ["side3", "YES", "HEAL"]
+    assert "outcome" not in result and "raise_price" not in result
+
+
+def test_temple_probe_raise_without_the_row_stops_before_any_down(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            unsafe="list-no-raise")
+    with pytest.raises(A.StepFailed, match="RAISE DEAD absent"):
+        run.temple_probe("BRUTUS RAISE")
+    assert session.keys == ["side3", "YES", "HEAL"]
+    assert run.temple_checkpoints[-1]["tag"] == "lost-list"
+
+
+def test_temple_probe_raise_stops_after_one_down_when_the_highlight_is_stuck(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            unsafe="list-stuck")
+    with pytest.raises(A.StepFailed, match="did not move"):
+        run.temple_probe("BRUTUS RAISE")
+    assert session.keys[3:] == ["Down"]
+    assert run.temple_checkpoints[-1]["tag"] == "lost-list"
+
+
+def test_temple_probe_raise_stops_on_a_price_screen_without_pay_for_cure(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            unsafe="price-wrong")
+    with pytest.raises(A.StepFailed, match="price screen"):
+        run.temple_probe("BRUTUS RAISE")
+    assert session.keys[-1] == "Return"
+    assert "raise-price" in _raise_tags(run)
+    assert run.temple_checkpoints[-1]["tag"] == "lost-price"
+
+
+@pytest.mark.parametrize("unsafe", ["highlight-row-5", "other-top"])
+def test_temple_probe_raise_refuses_a_member_other_than_the_top_row(
+        tmp_path, monkeypatch, unsafe):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            unsafe=unsafe)
+    with pytest.raises(A.StepFailed, match="highlighted top row"):
+        run.temple_probe("BRUTUS RAISE")
+    assert session.keys == ["side3", "YES"]
+    assert run.temple_checkpoints[-1]["tag"] == "lost-member"
