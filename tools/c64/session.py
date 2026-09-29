@@ -2651,6 +2651,8 @@ class Session:
             f"the driver pressed nothing for {move}: row 24 reads {row!r}, "
             f"and a walk does not answer that screen")
         word = self.walk_encounter
+        if not (word and word_column(row, word) >= 0):
+            self.log(f"  Encounter stop {row!r}: pressing nothing")
         if word and word_column(row, word) >= 0:
             self.log(f"  Encounter menu {row!r}: taking {word} as asked")
             self.select_bar(word, timeout=8)
@@ -3608,6 +3610,7 @@ class Session:
         turns = 0
         blows = 0
         outcome: str | None = None
+        logged_press = None
         if not self.in_combat():
             return FightResult(NOT_FIGHTING, 0, 0.0, bars, lines)
         next_report = started + FIGHT_REPORT_SECONDS
@@ -3626,6 +3629,12 @@ class Session:
                 if row and row not in seen and RE_NOTABLE.search(row.upper()):
                     seen.add(row)
                     lines.append(row)
+            if LOST_TEXT in text:
+                # Nobody is standing and nobody ran, and no bar follows: row
+                # 24 can stay blank for good, so waiting for the world to
+                # come back would spend the whole budget on a dead party.
+                return FightResult(LOST, turns, time.time() - started, bars,
+                                   lines, blows, highlights)
             # `parse_status`, not `RE_STATUS`: an ambush on the travel grid
             # ends back on `OUTDOORS 22:02 7,28`, which carries no facing
             # letter, so a pattern that wants one never matches and the fight
@@ -3666,6 +3675,9 @@ class Session:
                 # out to the world.
                 self.combat_bar("LEAVE", timeout=min(12.0, left()))
             elif state.kind == BAR_PRESS:
+                if state.text != logged_press:
+                    logged_press = state.text
+                    _log_line(self, f"  Fight prompt {state.text!r}")
                 # XTEST Return is not dependable at a prompt; the buffer is.
                 self.press_kernal(0x0D)
                 # And **once per prompt, not once per reading**.  The prompt
@@ -3719,6 +3731,14 @@ class Session:
 
 #: Seconds between the progress lines a running fight logs.
 FIGHT_REPORT_SECONDS = 60.0
+
+
+def _log_line(sess, line: str) -> None:
+    """Log `line` on a session that has a `log`; one that has none is not an
+    error."""
+    log = getattr(sess, "log", None)
+    if log is not None:
+        log(line)
 
 
 def _report_fight(sess, started: float, turns: int) -> None:

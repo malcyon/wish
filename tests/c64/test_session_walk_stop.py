@@ -497,3 +497,56 @@ def test_a_fight_on_an_object_without_a_log_still_reports_nothing_and_runs(
     sess.log = None
     assert sess.fight(budget=100.0).outcome == S.BUDGET
     assert sess.reads == 1
+
+
+class Wiped(Fighting):
+    """A party wiped out: the loss line is up and row 24 stays blank."""
+
+    def screen(self):
+        return Screen("", ["THE PARTY HAS LOST"])
+
+    def idle(self, seconds=1.0):
+        raise AssertionError("a lost fight must not wait for anything")
+
+
+def test_a_lost_fight_with_a_blank_row_24_returns_lost_at_once(monkeypatch):
+    sess = Wiped(monkeypatch)
+    result = sess.fight(budget=3000.0)
+    assert result.outcome == S.LOST
+    assert sess.now == 1000.0
+
+
+class PressPrompt(Fighting):
+    """One `PRESS <RETURN>` prompt, up until Return has been pressed."""
+
+    def __init__(self, monkeypatch):
+        super().__init__(monkeypatch)
+        self.pressed = 0
+
+    def screen(self):
+        s = Screen("PRESS <RETURN> OR BUTTON TO CONTINUE")
+        s.colours = [0] * 1000      # no highlight span on row 24
+        s.codes = [0x20] * 1000
+        return s
+
+    def press_kernal(self, code):
+        self.pressed += 1
+
+    def await_change(self, text, timeout=0):
+        self.now += timeout
+
+
+def test_an_encounter_press_prompt_is_logged_once(monkeypatch):
+    sess = PressPrompt(monkeypatch)
+    sess.fight(budget=20.0)
+    logged = [x for x in sess.lines if "PRESS" in x]
+    assert sess.pressed > 1 and len(logged) == 1
+    assert "Fight prompt" in logged[0]
+
+
+def test_an_unanswered_encounter_menu_is_logged(monkeypatch):
+    sess = LateMenu(monkeypatch)
+    sess.lines = []
+    sess.log = sess.lines.append
+    sess._stop_walk("I", [""] * 24 + ["COMBAT WAIT FLEE ADVANCE"])
+    assert any("COMBAT WAIT FLEE ADVANCE" in x for x in sess.lines)
