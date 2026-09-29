@@ -3388,7 +3388,10 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                        "preserved. For a player character that byte is the "
                        "ability-altered flag MODIFY CHARACTER's KEEP writes "
                        "rather than a share, and a C64 source's own flag "
-                       "arrives in it"),
+                       "arrives in it. A C64 companion's byte with bit 2 set "
+                       "is written with that bit cleared ($04 as $08), "
+                       "because the C64 masks the share with 3 and this "
+                       "engine with 7 (dos_share_from_c64)"),
 )
 
 #: Neutral fields the DOS writer takes nothing from, and why.  Reported by
@@ -4530,6 +4533,21 @@ def window_source(char: NeutralCharacter) -> bytes | None:
 def set_window_source(char: NeutralCharacter, raw: bytes) -> None:
     """Hand :func:`write` the source's own `field_83_87` run."""
     setattr(char, _FIELD_83_87_SOURCE, bytes(raw))
+
+
+def dos_share_from_c64(raw: int) -> int:
+    """The DOS or Amiga treasure share that splits treasure as C64 `raw` does.
+
+    Every engine skips a companion whose raw byte is zero and otherwise gives
+    him `raw & mask` parts: the C64 masks with 3 (`POST.COM $1954`), DOS with
+    7 (`GAME.OVR 0x0068AC`) and the Amiga with 7 (`/program 0x02DA38`).  Bit 2
+    is a part here and nothing on the C64, so it alone is cleared; `$04`,
+    which that would leave zero, becomes `$08`, not zero and no parts.
+    """
+    raw &= 0xFF
+    if not raw & 0x04:
+        return raw
+    return (raw & ~0x04 & 0xFF) or 0x08
 
 
 #: Marks a neutral read back from the sheet's C64 record during an in-place
@@ -5946,11 +5964,14 @@ def write(char: NeutralCharacter,
     share_index = control_index + 1
     share_offset = f83.offset + share_index
     share = use("treasure_share")
-    if share is not None:
-        if char.port == "C64" and int(share.value) & 0x04:
-            raise ValueError(
-                f"treasure share {int(share.value):#04x} has bit 2 set; "
-                "DOS and Amiga records mask shares with 7")
+    if share is not None and char.port == "C64" and int(share.value) & 0x04:
+        written = dos_share_from_c64(int(share.value))
+        rec[share_offset] = written
+        emit(share, "field_83_87", share_offset, 1,
+             f" -- treasure share {written:#04x}: bit 2 is a part here and "
+             f"nothing on the C64, so it is cleared, giving the same "
+             f"{written & 7} parts and the same zero test")
+    elif share is not None:
         rec[share_offset] = int(share.value) & 0xFF
         emit(share, "field_83_87", share_offset, 1,
              " -- raw treasure share, unchanged")

@@ -582,3 +582,41 @@ def disk_one_assets(tmp_path, party, slots=("A",)):
         return None
     return saveplan.Assets(
         amiga_disk_one=_disk_one_path(tmp_path, party.source.key, slots))
+
+
+@pytest.mark.parametrize("share", [0xFF, 0x84])
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+def test_a_c64_hireling_with_bit_2_in_his_share_prepares_for_dos_and_amiga(
+        tmp_path, port, share):
+    """The Training Hall's `$FF` and `$84` shares arrive as the byte that
+    splits treasure the same way, not as a dropped field."""
+    from tools.convert import convertdrops
+    from tools.dos import dosbox
+
+    party = Party(str(synthetic_save(tmp_path)))
+    for n, member in enumerate(party.members):
+        member.record.set("name", f"HERO{n}")
+        member.record.set("hp_max", 30)
+    record = party.members[0].record
+    record.set("flags_0b8", int(record.get("flags_0b8")) | 0x80)
+    record.set("treasure_share", share)
+    source = convert.Source.detect(party.path)
+    try:
+        if port == "dos":
+            assets = saveplan.resolve_assets(
+                source, "dos", game_files=convertdrops.game_files,
+                dos_folder=dosbox.find_game("POOLRAD"))
+            out = tmp_path / "out"
+        else:
+            disk = convertdrops.amiga_game_disks(tmp_path).get(
+                c64_port.POOL_OF_RADIANCE.key)
+            assets = saveplan.resolve_assets(
+                source, "amiga", game_files=convertdrops.game_files,
+                amiga_disk=disk)
+            out = tmp_path / "out.adf"
+    except (saveplan.MissingAssets, FileNotFoundError):
+        pytest.skip("needs Pool of Radiance's own C64 disks and the "
+                    "destination's game files")
+
+    plan = saveplan.prepare_save_as(party, port, out, assets)
+    assert isinstance(plan, saveplan.SavePlan)

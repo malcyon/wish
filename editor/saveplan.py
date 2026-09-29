@@ -48,6 +48,7 @@ from goldbox import (
     c64_codec,
     classcode,
     derive,
+    dos_codec,
     dos_port,
     layout,
     rewrite,
@@ -1066,6 +1067,20 @@ def _expected_dual_class(destination: "Destination") -> "int | None":
     return 0
 
 
+def _expected_treasure_share(record: CharacterRecord,
+                             destination: "Destination") -> "int | None":
+    """The share a C64 sheet's byte is written as on DOS or the Amiga.
+
+    Those engines count bit 2 as a part and the C64 does not, so the writer
+    clears it (`goldbox.dos_codec.dos_share_from_c64`). `None` for a native
+    or C64 destination, and for a byte with bit 2 clear, which arrives as it
+    is.
+    """
+    if destination.native or destination.port not in ("dos", "amiga"):
+        return None
+    return dos_codec.dos_share_from_c64(int(record.get("treasure_share")))
+
+
 def _signature(record: CharacterRecord,
                destination: "Destination | None" = None,
                name: "str | None" = None,
@@ -1097,6 +1112,8 @@ def _signature(record: CharacterRecord,
                 override = _expected_strength_bonus_flag(destination)
             elif field in ("dual_class_slot", "dual_class_level"):
                 override = _expected_dual_class(destination)
+            elif field == "treasure_share":
+                override = _expected_treasure_share(record, destination)
             else:
                 override = None
             if override is not None:
