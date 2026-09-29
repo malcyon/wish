@@ -1081,3 +1081,18 @@ def test_the_retry_after_a_refused_key_keeps_the_last_steps_quiet_hold(
     # The last step's key is refused behind a stale bar, then goes.
     _script_walk(monkeypatch, [WORLD, WORLD, "", "", WORLD], after_key=2)
     assert quiets[-2:] == [T.FINAL_QUIET, T.FINAL_QUIET]
+
+
+def test_a_fight_before_the_load_is_seen_is_new_phlans_not_the_slums(
+        monkeypatch):
+    # The edge step rolled a fight in New Phlan: combat is up on the first
+    # poll, row 24 never blank, no disk prompt, the area unchanged.
+    first, _ = T.plan_fight_route(_geo(), _geo(), (3, 4), (12, 4))
+    edge_key = (len(first) - 1) + 1
+    sess, log, got = _walk(monkeypatch, fight_after=edge_key, area_before=20,
+                           arrival=["STALE"])
+    assert got == {"in_combat": True, "began_at": list(T.NEW_PHLAN_EXIT),
+                   "at_target": False, "desynced": None}
+    edge = next(w for kind, w in log.events if kind == "edge")
+    assert edge["arrived"] == "fight_before_edge"
+    assert sess.asked == []

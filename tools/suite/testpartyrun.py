@@ -695,7 +695,7 @@ def _world_bar(row: str) -> bool:
 def await_slums(sess, log: Log, out: pathlib.Path, area_before,
                 timeout: float = SLUMS_ARRIVAL_WAIT) -> str:
     """Wait out the Slums' load after the step off the edge; `"move"`,
-    `"world"` or `"fight"`.
+    `"world"`, `"fight"` or `"fight_before_edge"`.
 
     The load reads side 2 for about a minute.  The screen keeps New Phlan's
     last view and status line (`0,4`) with row 24 blank, while the area byte
@@ -709,6 +709,9 @@ def await_slums(sess, log: Log, out: pathlib.Path, area_before,
     sub-bar as it stands.  The Slums can roll a fight on arrival
     (`COMBAT WAIT FLEE ADVANCE`): COMBAT is taken once, as `walk_encounter`
     asks of every step, and the call returns `"fight"` when the fight is up.
+    A fight already up before the load has been seen is New Phlan's, rolled by
+    the edge step itself: it returns `"fight_before_edge"`, because the Slums
+    are not up and the party never crossed.
     A `PRESS` bar is answered and a disk prompt handled, as `wait_for_world`
     does.  Each change of row 24 is logged with the area; at the limit a
     screenshot is taken and `RuntimeError` names row 24 and the area.
@@ -725,7 +728,7 @@ def await_slums(sess, log: Log, out: pathlib.Path, area_before,
         if time.monotonic() >= next_combat:
             next_combat = time.monotonic() + COMBAT_POLL
             if sess.in_combat():
-                return "fight"
+                return "fight" if started else "fight_before_edge"
         s = sess.screen()
         row = "" if s is None else s.row(24).strip()
         area = resident_area(sess, log)
@@ -854,14 +857,21 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
         log.say(f"  stepped off the edge; area {area}; {arrived} up")
         # A fight's own script is resident while it runs, so its area is not
         # the Slums' and only a move or a world bar is checked against it.
-        if arrived != "fight" and area != SLUMS_AREA:
+        if arrived in ("move", "world") and area != SLUMS_AREA:
             raise RuntimeError(f"expected area {SLUMS_AREA} after the edge, "
                                f"read {area}")
-        leg = "slums"
-        if arrived == "fight":
+        if arrived == "fight_before_edge":
+            # The edge step rolled a fight in New Phlan: no load was seen, so
+            # the party is still on the exit square.
+            log.say(f"  the edge was not crossed: a fight is up at "
+                    f"{NEW_PHLAN_EXIT}")
+            hit = NEW_PHLAN_EXIT
+        elif arrived == "fight":
             # Rolled on arrival: the party never left the entry square.
+            leg = "slums"
             hit = SLUMS_ENTRY
         else:
+            leg = "slums"
             # `ECL00` entry 0 steps forward, so the party leaves facing west.
             west = geowalk.STEP.index((-1, 0))
             facing, hit, desync = walk_route(sess, log, second, west, "slums",
