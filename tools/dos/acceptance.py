@@ -4663,6 +4663,9 @@ def check_gate(args, save: pathlib.Path, from_slot: str | None) -> None:
             parse_step(s).kind == "fight" for s in getattr(args, "steps", []))):
         return
     savgam = save / f"SAVGAM{from_slot}.DAT"
+    if staged and (args.title == "darkness" or not savgam.is_file()):
+        raise ValueError(f"--stage-var needs a SAVGAM{from_slot}.DAT holding the "
+                         f"script-variable array; {args.title} has none here")
     if not savgam.is_file():
         return
     data = savgam.read_bytes()
@@ -4847,6 +4850,8 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
                                    data, dos_savegame.pool_address(address, container),
                                    container)}
             for address, value in staged_vars}
+        for row in result["staged_vars"].values():
+            row["held"] = row["staged"] == row["saved"]
     if saved and expects:
         result["verdicts"] = [judge(e, result["slots"][saved[-1]]) for e in expects]
     for line in describe(result):
@@ -4906,6 +4911,10 @@ def describe(result: dict) -> list[str]:
         e = v["expect"]
         lines.append(f"expect {e['name']} id {e['id']} at {e['minutes']} minutes: "
                      f"{v['verdict']}" + (f" ({v['why']})" if "why" in v else ""))
+    for address, row in (result.get("staged_vars") or {}).items():
+        if not row["held"]:
+            lines.append(f"staged variable ${address}: staged {row['staged']}, "
+                         f"slot {row['slot']} holds {row['saved']}")
     return lines
 
 

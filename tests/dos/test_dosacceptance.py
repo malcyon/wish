@@ -7357,11 +7357,18 @@ def test_stage_var_refuses_an_address_outside_the_array_and_a_bad_value(tmp_path
     assert (tmp_path / "SAVGAMD.DAT").read_bytes() == bytes(5469)
 
 
-def test_stage_var_refuses_pools_of_darkness(tmp_path):
-    from goldbox import dos_savegame
-    (tmp_path / "SAVGAMD.DAT").write_bytes(bytes(1364))
-    with pytest.raises(dos_savegame.DosSaveError):
-        staging.stage_var(tmp_path, "D", 0x4C2D, 1)
+def test_stage_var_refuses_pools_of_darkness_before_a_slot_is_claimed(
+        monkeypatch, tmp_path):
+    log, args = _staged_run(monkeypatch, tmp_path, stage_var=["4C2D=1"])
+    saves = tmp_path / "saves"
+    (saves / "SAVGAMA.DAT").unlink()
+    (saves / "SAVGAMA.PTY").write_bytes(bytes(1364))
+    args.title = "darkness"
+    with pytest.raises(ValueError, match="--stage-var"):
+        da.check_staging(args, saves, "A")
+    with pytest.raises(ValueError, match="--stage-var"):
+        da.run(args)
+    assert "claim" not in log
 
 
 def test_the_command_line_wires_stage_var_after_stage_record(tmp_path):
@@ -7416,7 +7423,13 @@ def test_read_reports_each_staged_word_as_the_saved_slot_holds_it(tmp_path, monk
     staging.stage_var(save, "E", 0x4C2D, 1)
     monkeypatch.setattr(da, "read_slot", lambda *a: {"clock_minutes": 0, "nodes": [], "characters": []})
     got = da.read_step(save, tmp_path / "out", "D", ["E"], [], [], [(0x4C2D, 1)])
-    assert got["staged_vars"] == {"4C2D": {"slot": "E", "staged": 1, "saved": 1}}
+    assert got["staged_vars"] == {"4C2D": {"slot": "E", "staged": 1, "saved": 1,
+                                           "held": True}}
+    assert not any("staged variable" in line for line in da.describe(got))
+    (save / "SAVGAME.DAT").write_bytes(bytes(5469))
+    got = da.read_step(save, tmp_path / "out", "D", ["E"], [], [], [(0x4C2D, 1)])
+    assert got["staged_vars"]["4C2D"]["held"] is False
+    assert any("staged variable $4C2D" in line for line in da.describe(got))
 
 
 def test_the_dos_new_verdigris_script_is_the_c64_one():
@@ -7432,7 +7445,11 @@ def test_the_dos_new_verdigris_script_is_the_c64_one():
         game = dosbox.find_game("SECRET")
     except FileNotFoundError:
         pytest.skip("needs the DOS archives ($FR_ARCHIVES)")
-    c64 = coldread.every_file(c64_port.SECRET_OF_THE_SILVER_BLADES, str(disks))["ECL10"]
+    try:
+        c64 = coldread.every_file(c64_port.SECRET_OF_THE_SILVER_BLADES,
+                                  str(disks))["ECL10"]
+    except SystemExit:
+        pytest.skip("needs the Silver Blades C64 disks")
     dos = dos_savegame.dax_block((game / "ECL1.DAX").read_bytes(), 16)
     assert dos[2:] == c64
     assert c64[0x592:0x594] == c64[0x5AE:0x5B0] == bytes((0x2D, 0x4C))
