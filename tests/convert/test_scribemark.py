@@ -82,3 +82,15 @@ def test_dos_to_amiga_keeps_the_mark(tmp_path):
     # The scroll's spells in a Silver Blades node: `0x3F`-`0x41`.
     at = SILVER_BLADES_DELTAS.record_size + 0x3F
     assert tuple(block[at:at + 3]) == MARKED
+
+
+def test_a_marked_scroll_on_an_amiga_party_reaches_the_c64_with_bit_7_clear(
+        tmp_path):
+    char = _neutral(tmp_path, _item(0x27, MARKED))
+    built, _report = amiga_later.write_later(char, SILVER_BLADES_DELTAS)
+    amiga, _end = amiga_later._amiga_block(built.block_bytes(), 0,
+                                           SILVER_BLADES_DELTAS)
+    neutral = amiga_later.to_neutral_later(amiga)
+    assert tuple(neutral.get("inventory")[0][13:16]) == MARKED
+    rec, _ = dos_codec.neutral_to_c64_record(neutral)
+    assert tuple(rec.get_raw("inventory")[13:16]) == (1, 2, 117)

@@ -85,16 +85,17 @@ ROSTER_AREA_END = SAVE1_LOAD_ADDRESS + ROSTER_COUNT * ROSTER_STRIDE   # $8400
 ROSTER_IN_USE = 0x00
 # +0x01 and +0x02 are the character's slice of the party-wide **scribe
 # queue** of scrolls being scribed, which CAMP keeps at its own $2939: +0x01
-# the index of his first entry, +0x02 how many entries are his. PROBABLE. CAMP $15A1 appends with
-# `STA $2939,X / INC $2894 / INC $6C02`, CAMP $15EB starts an empty character's
-# slice at the current end (`LDA $6C02 / BNE + / STX $6C01`), and CAMP $11FE
-# walks it (`LDX $6C02 / BEQ + / LDY $6C01 / LDA $2939,Y`). DUNGEON reuses both
+# the index of his first entry, +0x02 how many entries are his. PROBABLE.
+# CAMP $15A1 appends with `STA $2939,X / INC $2894 / INC $6C02`, CAMP $15EB
+# starts an empty character's slice at the current end
+# (`LDA $6C02 / BNE + / STX $6C01`), and CAMP $11FE walks it
+# (`LDX $6C02 / BEQ + / LDY $6C01 / LDA $2939,Y`). DUNGEON reuses both
 # bytes for something else entirely on a **monster's** block -- $1AB2/$1AB7 make
 # them a group link, and COM.PREP $1610 skips a slot whose +0x01 has bit 7 set
 # -- so this reading is about a party character's block only. The queue's own
 # contents live in CAMP and are not saved, which is not chased here.
-ROSTER_MEMORISE_QUEUE_AT = 0x01
-ROSTER_MEMORISE_QUEUE_COUNT = 0x02
+ROSTER_SCRIBE_QUEUE_AT = 0x01
+ROSTER_SCRIBE_QUEUE_COUNT = 0x02
 # **The count of memorised spells at each spell level**, level 1 at +0x03.
 # CONFIRMED, and the earlier retraction of exactly this reading is withdrawn:
 # what made PORSAVE4 read 0/0/0 beside a set memorised list is that nothing
