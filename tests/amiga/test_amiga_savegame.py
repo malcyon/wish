@@ -356,6 +356,22 @@ def test_a_c64_party_lands_with_each_combat_figure_at_its_file_position(key):
     assert [c.get("combat_figure") for c in landed] == [0, 1, 2, 3, 4, 5]
 
 
+@pytest.mark.parametrize("key", sorted(PRE_ADVENTURE))
+def test_a_three_member_party_lands_with_combat_figures_0_1_2(key):
+    from goldbox import c64_port, dos_codec, world_state
+    game = c64_port.by_key(key)
+    save0 = _c64_pre_adventure(key)
+    state = world_state.from_c64(save0, game=game)
+    characters, _icons = dos_codec.c64_party(save0, None, game)
+
+    built, _report = amiga_savegame.new_savegame(
+        state, characters[:3], "B")
+
+    landed = amiga_savegame.parse(
+        built, amiga_savegame.container_for(key)).characters
+    assert [c.get("combat_figure") for c in landed] == [0, 1, 2]
+
+
 def _dos_saves_folder(stem: str) -> pathlib.Path:
     from support.dossave import _game_dirs
     folder = _game_dirs().get(stem)

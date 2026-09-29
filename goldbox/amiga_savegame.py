@@ -525,6 +525,7 @@ def _at_figure_slot(char: neutral.NeutralCharacter,
     moved.fields = dict(char.fields)
     moved.set("combat_figure", position,
               "the member's position in the party file, as the game writes it",
+              confidence=neutral.Confidence.PROBABLE,
               how=neutral.Provenance.COMPUTED)
     return moved
 
