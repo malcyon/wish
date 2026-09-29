@@ -39,6 +39,7 @@ has shipped that passed every byte-level check that existed.
 from __future__ import annotations
 
 import argparse
+import logging
 import pathlib
 import sys
 
@@ -56,6 +57,8 @@ from tools.registry import scratch  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
 DISKS: pathlib.Path | None = tool_disks()
+
+log = logging.getLogger(__name__)
 
 
 def dos_folder() -> pathlib.Path:
@@ -106,8 +109,8 @@ def item_types(disks: pathlib.Path) -> dict | None:
     for path in sorted(disks.glob("*.[dD]64")):
         try:
             return load_item_types(str(path))
-        except Exception:
-            continue
+        except Exception as err:
+            log.debug("no ITEMS type table on %s: %s", path, err)
     return None
 
 

@@ -1863,7 +1863,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                          "roster_movement: computed by the C64 roster "
                          "rebuild's rule (LIBRARY $3729) from the converted "
                          "base movement, readied body armour, carried weight "
-                         "and strength allowance, not copied (#740)")
+                         "and strength allowance, not copied")
 
     # -- the combat icon: only the C64 has one -------------------------------
     # `use`d here, whether or not `icon` was also supplied, so `Writer.finish`

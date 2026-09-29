@@ -26,8 +26,9 @@ keeps at record `0x0A4`. DOS stores nothing a converter could copy -- it works t
 turning row out from the cleric level at the moment somebody presses Turn --
 so a conversion that copies has nothing to copy and leaves a cleric who cannot
 turn undead. `goldbox/c64_codec.py` calls this instead of copying (#288).
-The other is :func:`expected_movement`, which `tools/suite/testparty.py` stores
-for the Pool of Radiance C64 test party only; it is not derived for any other
+The other is :func:`expected_movement`, which `tools/suite/testparty.py` and
+`goldbox.c64_codec.write` store for Pool of Radiance's C64 record only (the
+latter when it is given the ITEMS type table); it is not derived for any other
 title.
 See docs/178-turning-undead.md.
 """
