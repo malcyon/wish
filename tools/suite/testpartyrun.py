@@ -51,6 +51,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import re
 import sys
 import time
 
@@ -319,6 +320,25 @@ def plan_fight_route(new_phlan, slums, start, target):
     return out, into
 
 
+#: The facing letter and clock of a status line, with or without the
+#: coordinates the Slums' line lacks (`S 8:07`).
+RE_FACING = re.compile(r"(?<![A-Z])([NESW])(?![A-Z]) +\d+:\d+")
+
+
+def _status_line(sess):
+    """`(facing, square)` read off the status line's text alone.
+
+    Never `sess.position()`: with no coordinates on the line (the Slums) it
+    retries for seconds and then falls back to the memory copy, which lags a
+    move.  Either part is None when the line does not show it.
+    """
+    text = sess.screen_text() or ""
+    m = RE_FACING.search(text)
+    at = S.parse_status(text)
+    return (S.FACING[m.group(1)] if m else None,
+            (at.x, at.y) if at else None)
+
+
 def _turn_key(sess, log: Log, key: str, expected: int, leg: str, here, there):
     """Send a turn key; return a `turn_not_seen` desync, or None.
 
@@ -329,7 +349,7 @@ def _turn_key(sess, log: Log, key: str, expected: int, leg: str, here, there):
     """
     sess.walk_one(key.upper())
     sess.handle_prompt()
-    seen = None if sess.in_combat() else sess.position()[2]
+    seen = None if sess.in_combat() else _status_line(sess)[0]
     log.emit("route_key", leg=leg, key=key, to=list(there), turn=True,
              facing=seen, expected=expected)
     if seen is not None and seen != expected:
@@ -345,7 +365,9 @@ def walk_route(sess, log: Log, path, facing: int, leg: str):
     a fight was found on, or None if the path finished; a fight found after the
     turn key of a two-key step belongs to the square the party was still on.
     `desync` is None, or the first forward key `walk_one` reported as not moved
-    with the planned step, or a turn after which the status line reports the
+    or after which a status line with coordinates (New Phlan's) shows a square
+    other than the planned one (`reason` is `square_not_reached`) -- with the
+    planned step --, or a turn after which the status line reports the
     wrong facing (`reason` is `turn_not_seen`) -- the walk stops there, because
     every key after it was planned from a square or facing the party is not
     on.  A turn's own `walk_one` result is ignored, since a turn moves no
@@ -373,6 +395,12 @@ def walk_route(sess, log: Log, path, facing: int, leg: str):
             if not moved:
                 return want, None, {"leg": leg, "key": key,
                                     "from": list(here), "to": list(there)}
+            square = _status_line(sess)[1]
+            if square is not None and square != tuple(there):
+                return want, None, {"leg": leg, "key": key,
+                                    "from": list(here), "to": list(there),
+                                    "reason": "square_not_reached",
+                                    "square": list(square)}
         facing = want
     return facing, None, None
 
@@ -408,17 +436,23 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
         turning = facing
         for key in keys[:-1]:
             turning = (turning + (1 if key == "k" else -1)) % 4
-            desync = desync or _turn_key(sess, log, key, turning, "new-phlan",
-                                         NEW_PHLAN_EXIT, (-1, NEW_PHLAN_EXIT[1]))
+            desync = _turn_key(sess, log, key, turning, "new-phlan",
+                               NEW_PHLAN_EXIT, (-1, NEW_PHLAN_EXIT[1]))
+            if sess.in_combat():
+                # A fight found by the turn belongs to the edge square, and the
+                # step off the edge must not be sent into it.
+                hit = NEW_PHLAN_EXIT
+                break
             if desync:
                 break
-        if desync:
+        if hit is None and desync:
             fighting = bool(sess.in_combat())
             log.emit("walked", leg=leg, in_combat=fighting, began_at=None,
                      at_target=False, desynced=desync)
             log.say(f"  the turn at the edge was not seen: {desync}")
             return {"in_combat": fighting, "began_at": None,
                     "at_target": False, "desynced": desync}
+    if hit is None and desync is None:
         moved = sess.walk_one(keys[-1].upper())
         sess.handle_prompt()
         sess.settle(3)

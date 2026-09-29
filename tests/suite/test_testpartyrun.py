@@ -121,7 +121,7 @@ class WalkSession(PatrolSession):
 
     def __init__(self, monkeypatch, fight_after=None, area=20, refuse=(),
                  start=(3, 4, 3), arrive_after=None, turns_move=True,
-                 turn_lands=True, facing_known=True):
+                 turn_lands=True, facing_known=True, coords=True, drift=False):
         super().__init__(monkeypatch)
         self.keys, self.fight_after, self.area = [], fight_after, area
         self.refuse, self.start, self.arrive_after = refuse, start, arrive_after
@@ -129,6 +129,9 @@ class WalkSession(PatrolSession):
         # says False for one; `turn_lands` False leaves the facing unchanged.
         self.turns_move, self.turn_lands = turns_move, turn_lands
         self.facing_known, self.facing = facing_known, start[2]
+        # The status line the party sees: New Phlan's shows the square, the
+        # Slums' does not, and `drift` leaves the square where it was.
+        self.coords, self.drift, self.square = coords, drift, tuple(start[:2])
 
     def walk_one(self, key, *a, **k):
         self.keys.append(key)
@@ -137,7 +140,19 @@ class WalkSession(PatrolSession):
             if self.turn_lands:
                 self.facing = (self.facing + (1 if key == "K" else -1)) % 4
             return self.turns_move and len(self.keys) not in self.refuse
-        return len(self.keys) not in self.refuse
+        moved = len(self.keys) not in self.refuse
+        if moved and not self.drift:
+            dx, dy = geowalk.STEP[self.facing]
+            self.square = (self.square[0] + dx, self.square[1] + dy)
+        return moved
+
+    def screen_text(self):
+        line = "8:07"
+        if self.facing_known:
+            line = "NESW"[self.facing] + " " + line
+            if self.coords and self.square[0] >= 0:
+                line += " %d,%d" % self.square
+        return "HERE / " + line
 
     def position(self):
         facing = self.facing if self.facing_known else None
@@ -287,3 +302,57 @@ def test_the_edge_turn_desyncs_as_turn_not_seen(monkeypatch):
                           _geo(), _geo())
     assert got["desynced"]["reason"] == "turn_not_seen"
     assert got["at_target"] is False and sess.keys == ["K"]
+
+
+def test_a_status_line_without_coordinates_still_gives_the_facing(monkeypatch):
+    # The Slums' line reads `S 8:07`; the memory copy behind `position()` lags,
+    # so the check must not ask it.
+    sess, got = _turning_walk(monkeypatch, turns_move=False, coords=False)
+    assert sess.keys == ["K", "K", "I"] and got == (2, None, None)
+    monkeypatch.setattr(sess, "position", lambda: (_ for _ in ()).throw(
+        AssertionError("position() is the lagging copy")))
+    log = RecordingLog()
+    assert T._turn_key(sess, log, "k", (sess.facing + 1) % 4, "slums",
+                       (9, 13), (9, 14)) is None
+
+
+def test_a_status_line_with_no_facing_is_logged_as_none(monkeypatch):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    sess = WalkSession(monkeypatch, None, 20, (), (9, 13, 0), None,
+                       turns_move=False, facing_known=False)
+    log = RecordingLog()
+    T.walk_route(sess, log, [(9, 13), (9, 14)], 0, "new-phlan")
+    turns = [w for kind, w in log.events if kind == "route_key" and w.get("turn")]
+    assert turns and all(w["facing"] is None for w in turns)
+
+
+def test_a_fight_found_by_a_turn_is_at_the_square_the_party_stood_on(
+        monkeypatch):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    sess = WalkSession(monkeypatch, 1, 20, (), (9, 13, 0), None,
+                       turns_move=False)
+    got = T.walk_route(sess, RecordingLog(), [(9, 13), (9, 14)], 0, "new-phlan")
+    assert got[1:] == ((9, 13), None) and sess.keys == ["K"]
+
+
+def test_a_forward_key_that_lands_on_another_square_desyncs_in_new_phlan(
+        monkeypatch):
+    sess, got = _turning_walk(monkeypatch, turns_move=False, drift=True)
+    assert got[1] is None and got[2]["reason"] == "square_not_reached"
+    assert got[2]["square"] == [9, 13] and got[2]["to"] == [9, 14]
+
+
+def test_the_slums_forward_key_is_not_checked_against_a_square(monkeypatch):
+    sess, got = _turning_walk(monkeypatch, turns_move=False, drift=True,
+                              coords=False)
+    assert got == (2, None, None)
+
+
+def test_a_fight_found_by_the_edge_turn_stops_before_the_edge_step(monkeypatch):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    monkeypatch.setattr(T, "resident_area", lambda sess, log=None: 20)
+    sess = WalkSession(monkeypatch, 1, 20, (), (0, 4, 1), 1, turns_move=False)
+    got = T.walk_to_fight(sess, RecordingLog(), pathlib.Path("."), (12, 4),
+                          _geo(), _geo())
+    assert sess.keys == ["K"] and got["in_combat"] is True
+    assert got["began_at"] == [0, 4] and got["at_target"] is False
