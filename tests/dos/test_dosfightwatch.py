@@ -706,3 +706,79 @@ def test_a_known_bar_with_no_key_is_not_kept_as_an_unknown_bar(tmp_path):
         por, _NoHits(), patience=0.0, evidence=evidence)
     assert not any(f.startswith("unknown_bar_") for f in evidence.files)
     assert result["why"].startswith("unknown bar")   # bounded, not endless
+
+
+# -- a torn frame is skipped, not fatal (#743) --
+
+
+class _TornThenWorld:
+    """Raises `NotLineDoubled` on the first `torn` captures, then shows the world bar."""
+
+    def __init__(self, torn):
+        self.torn = torn
+        self.calls = 0
+
+    def capture(self):
+        self.calls += 1
+        if self.calls <= self.torn:
+            raise dosboxx.NotLineDoubled("block at (0,314) is not one pixel")
+        return _WorldScreen()
+
+    def key(self, *keys, gap=0.0):
+        pass
+
+    def shot(self, name, allow_blank=False):
+        return None
+
+
+class _WorldScreen:
+    def glyphs(self, rect=None) -> str:
+        return "the-world"
+
+
+def test_a_torn_frame_mid_fight_does_not_end_the_fight():
+    por = _FakePoR([None])
+    por.s = _TornThenWorld(3)
+    por.world_glyphs = "the-world"
+    result = dosfightwatch.fight_watching(por, _NoHits(), settled=0.0)
+    assert result["result"] is True
+    assert por.s.calls == 4
+
+
+def test_a_torn_frame_at_a_hit_is_recorded_with_an_unknown_bar():
+    class OneHit:
+        def __init__(self):
+            self.rows = []
+            self.hits = []
+
+        def drain(self):
+            fresh, self.rows = self.rows, []
+            return fresh
+
+        def note(self, hit, **kw):
+            self.hits.append(kw)
+            return dict(kw)
+
+    class Session(_TornThenWorld):
+        def regs(self, *names):
+            return {}
+
+        def run(self):
+            pass
+
+    w = OneHit()
+    w.rows = [object()]
+    por = _FakePoR([None])
+    por.s = Session(1)
+    por.world_glyphs = "the-world"
+    result = dosfightwatch.fight_watching(por, w, settled=0.0)
+    assert result["result"] is True
+    assert w.hits[0]["bar"] == "?"
+
+
+def test_a_torn_frame_while_waiting_for_the_bar_is_retried():
+    por = _FakePoR(["encounter"])
+    por.s = _TornThenWorld(2)
+    kind, resolved = dosfightwatch._await_bar(por, patience=5.0)
+    assert (kind, resolved) == ("encounter", True)
+    assert por.s.calls == 3

@@ -301,6 +301,23 @@ def absorb_spurious(w: Watcher, expected: int, timeout: float = 40.0) -> list:
     return got
 
 
+def _grab(por: dosbox.PoolOfRadiance):
+    """`(screen, bar kind)` of a fresh capture, or `(None, None)` for a frame
+    the grab could not read.
+
+    The debugger halts the emulator on a watchpoint between two blits, and a
+    frame captured then is torn; `dosboxx.halve` refuses it, and it stays
+    torn until the emulator runs again.  That is a frame to skip, not the end
+    of the run, so the caller keeps polling.
+    """
+    try:
+        screen = por.s.capture()
+    except dosboxx.NotLineDoubled as e:
+        print(f"unreadable frame ({e}); polling on")
+        return None, None
+    return screen, por.bar_kind(screen)
+
+
 def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
                    budget: float = 900.0, settled: float = 4.0,
                    dwell: float = 1.2, patience: float = 90.0,
@@ -334,7 +351,7 @@ def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
     while time.time() < deadline:
         fresh = w.drain()
         if fresh:
-            bar = por.bar_kind() or "?"
+            bar = _grab(por)[1] or "?"
             last_bar = bar
             rows = [w.note(hit, bar=bar, t=round(time.time() - started, 2),
                            cs_ip=None) for hit in fresh]
@@ -362,7 +379,12 @@ def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
                         "seconds": round(time.time() - started, 1)}
             continue
 
-        screen = s.capture()
+        try:
+            screen = s.capture()
+        except dosboxx.NotLineDoubled as e:
+            print(f"unreadable frame ({e}); polling on")
+            time.sleep(0.25)
+            continue
         bar = screen.glyphs(dosbox.BAR)
         if bar == por.world_glyphs:
             world_since = world_since or time.time()
@@ -414,16 +436,20 @@ def _await_bar(por: dosbox.PoolOfRadiance, patience: float,
     pass with it still unresolved.
     """
     deadline = time.time() + patience
-    screen = por.s.capture()
-    kind = por.bar_kind(screen)
     first_sight = True
-    while kind not in FIGHT_BARS and por.COMBAT_KEYS.get(kind or "") is None:
-        if kind is None and first_sight and evidence is not None:
-            # `blank` is a frame caught mid-redraw and is not kept; a bar in
-            # no table is.
-            evidence.take(por.s, f"unknown_bar_{screen.glyphs(dosbox.BAR)}")
-        first_sight = False
+    while True:
+        screen, kind = _grab(por)
+        if screen is not None:
+            if kind in FIGHT_BARS or por.COMBAT_KEYS.get(kind or "") is not None:
+                return kind, True
+            if kind is None and first_sight and evidence is not None:
+                # `blank` is a frame caught mid-redraw and is not kept; a bar
+                # in no table is.
+                evidence.take(por.s, f"unknown_bar_{screen.glyphs(dosbox.BAR)}")
+            first_sight = False
         if time.time() >= deadline:
+            if screen is None:
+                return None, False
             # The shot is named for **this** capture's bar, the one the walk
             # actually gave up on.  Capturing again here to name it would let
             # the emulator redraw in between and save a picture of some other
@@ -432,9 +458,6 @@ def _await_bar(por: dosbox.PoolOfRadiance, patience: float,
                   evidence)
             return kind, False
         time.sleep(0.25)
-        screen = por.s.capture()
-        kind = por.bar_kind(screen)
-    return kind, True
 
 
 def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int, *,
