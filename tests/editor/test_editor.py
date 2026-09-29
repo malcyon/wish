@@ -6172,3 +6172,108 @@ def test_a_coins_edit_writes_a_dos_pool_characters_movement(tmp_path,
     assert giles.read_bytes()[at] == 12
     for path in [giles, *stored.values()]:
         assert path.read_bytes() == (source / path.name).read_bytes()
+
+
+def _amiga_items_disk(tmp_path, size):
+    """An `.adf` holding an `/items` of `size` bytes, like the game's disk 2."""
+    from support.amigasavegame import synthetic_curse
+
+    from goldbox import amiga_savegame
+    disk = amiga_savegame.make_save_disk(
+        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA",)))
+    disk.write_file("/items", bytes(size))
+    disk.save(str(tmp_path / "PoolOfRadiance-2.adf"))
+
+
+def test_an_amiga_pool_party_with_the_games_items_disk_beside_it_needs_no_items_disk(
+        tmp_path, monkeypatch):
+    """The game's own `/items` on disk 2, two header bytes and 128 types of
+    16, is found before any C64 disk is looked for."""
+    monkeypatch.setattr("editor.window.EditorBinding._find_disk",
+                        lambda self, *a, **k: None)
+    _amiga_items_disk(tmp_path, 2 + 128 * 16)
+    with _window_warnings() as seen:
+        w = _amiga_pool_editor(tmp_path)
+    assert not any("No disk with ITEMS found" in m for m in seen)
+    assert w.party.item_types is not None
+
+
+def test_an_items_file_of_the_wrong_size_beside_an_amiga_pool_party_is_ignored(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr("editor.window.EditorBinding._find_disk",
+                        lambda self, *a, **k: None)
+    _amiga_items_disk(tmp_path, 2 + 128 * 16 - 1)
+    with _window_warnings() as seen:
+        w = _amiga_pool_editor(tmp_path)
+    assert not w.party.item_types
+    assert sum("No disk with ITEMS found" in m for m in seen) == 1
+
+
+def _shipped_amiga_pool_disks():
+    """The shipped Pool of Radiance disk 1 (with its saved game) and disk 2
+    (with `/items`) as `(bytes, bytes)`, or a skip. Shipped, not watched: the
+    test rests on the game's rule and on what the edit changes."""
+    from automap import gamedisks
+    from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
+    from tools.amiga import amigasaves
+
+    if not gamedisks.candidates("amiga"):
+        pytest.skip("needs the amiga registry entry")
+    one = two = None
+    for label, data in amigasaves.images():
+        if "Radiance" not in label:
+            continue
+        disk = AmigaDisk(bytearray(data))
+        try:
+            disk.lookup("/save/savgamA.dat")
+            one = one or bytes(data)
+        except AmigaDiskError:
+            pass
+        try:
+            disk.lookup("/items")
+            two = two or bytes(data)
+        except AmigaDiskError:
+            pass
+    if one is None or two is None:
+        pytest.skip("needs Amiga Pool of Radiance disks 1 and 2")
+    return one, two
+
+
+@pytest.mark.parametrize("disk_two_beside", [True, False])
+def test_a_coins_edit_writes_an_amiga_pool_characters_movement(
+        app, tmp_path, monkeypatch, disk_two_beside):
+    """GARWAN, given 4000 gold, is stored at 3 (the game wrote 9), from
+    disk 2's `/items` beside the save or from the C64 disks' `ITEMS`. The
+    other five characters' files are byte-identical."""
+    from editor.window import EditorBinding
+    from goldbox import amiga_por, amiga_savegame, dos_codec
+    from goldbox.amiga_adf import AmigaDisk
+
+    one, two = _shipped_amiga_pool_disks()
+    image = tmp_path / "PoolOfRadiance-1.adf"
+    image.write_bytes(one)
+    if disk_two_beside:
+        (tmp_path / "PoolOfRadiance-2.adf").write_bytes(two)
+    elif not pathlib.Path(f"{DISKS}/PORSAVE11.D64").exists():
+        pytest.skip("needs the C64 Pool of Radiance disks")
+    before = amiga_savegame.read_por_characters(AmigaDisk.open(str(image)),
+                                                "A")
+    w = EditorBinding(make_root(), str(image))
+    if not disk_two_beside:
+        w.set_disks(str(disk_dir()))
+    row = next(r for r in range(len(w.party))
+               if w.party.member(r).name == "GARWAN")
+    w.roster.selectRow(row)
+    w._widgets["gold"].setValue(4000)
+    w._edited()
+    w.save(interactive=False)
+
+    after = amiga_savegame.read_por_characters(AmigaDisk.open(str(image)), "A")
+    at = amiga_por.amiga_por_offset(dos_codec.FIELDS_BY_NAME_FOR[
+        "pool-of-radiance"]["movement_current"].offset)
+    assert len(after) == len(before)
+    for old, new in zip(before, after):
+        if new.name == "GARWAN":
+            assert (old.raw[at], new.raw[at]) == (9, 3)
+        else:
+            assert new.raw == old.raw

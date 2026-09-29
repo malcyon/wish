@@ -804,6 +804,22 @@ def por_save_path(name: str, drawer: str = POR_SAVE_DRAWER) -> str:
     return f"/{drawer}/{name}" if drawer else f"/{name}"
 
 
+def item_type_table(disk: AmigaDisk) -> bytes | None:
+    """The item type table an Amiga Pool of Radiance loads, off its `/items`.
+
+    It is on disk 2, a two-byte header and then 128 types of 16 bytes, the
+    same rows as the DOS `ITEMS` (`dos_codec.item_type_table`). `None` when
+    the disk has no such file or its length is not that.
+    """
+    try:
+        data = disk.read_file("/items")
+    except AmigaDiskError:
+        return None
+    if len(data) != dos_codec.ITEM_TYPE_COUNT * dos_codec.ITEM_TYPE_SIZE + 2:
+        return None
+    return data[2:]
+
+
 def por_save_drawer(disk: AmigaDisk) -> str:
     try:
         entry = disk.lookup(f"/{POR_SAVE_DRAWER}")

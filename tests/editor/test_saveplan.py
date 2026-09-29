@@ -18,6 +18,7 @@ from gamedata import synthetic_save
 from editor import convert, saveplan
 from editor.roster import Party
 from goldbox import (
+    amiga_por,
     amiga_savegame,
     c64_codec,
     c64_port,
@@ -26,7 +27,7 @@ from goldbox import (
     dos_savegame,
     rewrite,
 )
-from goldbox.amiga_adf import AmigaDisk
+from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
 from goldbox.icons import ICON_SIZE, Icon
 from goldbox.layout import Confidence
 from goldbox.record import CharacterRecord
@@ -989,3 +990,140 @@ def test_dos_curse_movement_is_written_as_it_was(tmp_path):
     raw = rewrite.rewrite_dos(member.native, saveplan.original_record(member),
                               saveplan.edited_record(member))
     assert with_hook == raw.record and with_hook[at] == raw.record[at]
+
+
+# ---------------------------------------------------------------------------
+# Amiga Pool of Radiance roster movement
+# ---------------------------------------------------------------------------
+
+_AMIGA_MOVEMENT_AT = amiga_por.amiga_por_offset(_MOVEMENT_AT)
+
+
+def _amiga_por_sav(disk):
+    drawer = amiga_savegame.por_save_drawer(disk)
+    return amiga_savegame.por_save_path(
+        amiga_por.por_filename("A", 1, "") + ".sav", drawer)
+
+
+def _amiga_movement_party(tmp_path, types="armour"):
+    """An Amiga party whose first character has base movement 12 and nothing
+    readied, so the stored byte and the rule agree until something is edited."""
+    path = amiga_por_disk(tmp_path)
+    seed = Party(str(path))
+    seed_record = seed.members[0].record
+    seed_record.set("movement", 12)
+    seed_record.set("strength", 17)
+    seed_record.set("exceptional_strength", 0)
+    for coin in ("copper", "silver", "electrum", "gold", "platinum", "gems",
+                 "jewelry"):
+        seed_record.set(coin, 0)
+    for slot in range(len(seed.members[0].inventory.raws)):
+        seed.members[0].inventory.set_raw(slot, bytes(16))
+    disk = saveplan.write_amiga(seed, AmigaDisk.open(str(path)))
+    # The byte the game itself stores for base movement 12 and no burden.
+    sav = bytearray(disk.read_file(_amiga_por_sav(disk)))
+    sav[_AMIGA_MOVEMENT_AT] = 12
+    disk.write_file(_amiga_por_sav(disk), bytes(sav))
+    disk.save(str(path))
+    party = Party(str(path))
+    party.item_types = _armour_types() if types == "armour" else types
+    return party, party.members[0], path
+
+
+def _amiga_written(party, path):
+    disk = saveplan.write_amiga(party, AmigaDisk.open(str(path)))
+    return disk.read_file(_amiga_por_sav(disk))
+
+
+def _amiga_stored(party, path) -> int:
+    return _amiga_written(party, path)[_AMIGA_MOVEMENT_AT]
+
+
+def test_amiga_coins_with_nothing_readied_write_the_movement_the_game_computes(
+        tmp_path):
+    """No Amiga render rebuilds the byte, and nothing in the Amiga game does
+    before an encounter menu's FLEE reads it. With no table an unarmed
+    character is rebuilt all the same."""
+    party, member, path = _amiga_movement_party(tmp_path, types=None)
+    assert _amiga_stored(party, path) == 12
+    member.record.set("gold", 3000)
+    assert _amiga_stored(party, path) == 3
+
+
+def test_readied_heavy_armour_writes_the_amiga_movement_the_game_computes(
+        tmp_path):
+    party, member, path = _amiga_movement_party(tmp_path)
+    _ready(member, 450)
+    assert _amiga_stored(party, path) == 6
+
+
+def test_amiga_coins_with_armour_on_write_the_movement_the_game_computes(
+        tmp_path):
+    party, member, path = _amiga_movement_party(tmp_path)
+    _ready(member, 100)
+    member.record.set("gold", 3000)
+    assert _amiga_stored(party, path) == 3
+
+
+def test_a_typed_amiga_movement_is_kept(tmp_path):
+    party, member, path = _amiga_movement_party(tmp_path)
+    member.record.set("roster_movement", 15)
+    assert _amiga_stored(party, path) == 15
+
+
+def test_a_typed_amiga_movement_survives_coins_in_the_same_save(tmp_path):
+    party, member, path = _amiga_movement_party(tmp_path)
+    member.record.set("roster_movement", 15)
+    member.record.set("gold", 3000)
+    assert _amiga_stored(party, path) == 15
+
+
+def test_an_untouched_amiga_party_with_a_table_is_byte_identical(tmp_path):
+    party, _member, path = _amiga_movement_party(tmp_path)
+    # File dates differ between two writes of one disk, so compare the
+    # character's files rather than the image.
+    def files(disk):
+        stem = _amiga_por_sav(disk)[:-len(".sav")]
+        out = {}
+        for suffix in (".sav", ".itm", ".spc"):
+            try:
+                out[suffix] = disk.read_file(stem + suffix)
+            except AmigaDiskError:
+                out[suffix] = None
+        return out
+
+    before = files(AmigaDisk.open(str(path)))
+    assert files(saveplan.write_amiga(
+        party, AmigaDisk.open(str(path)))) == before
+
+
+@pytest.mark.parametrize("types", [None, {}])
+def test_no_item_table_leaves_an_amiga_armed_characters_movement_and_logs_it(
+        tmp_path, types, caplog):
+    party, member, path = _amiga_movement_party(tmp_path, types=types)
+    _ready(member, 450)
+    with caplog.at_level("WARNING", logger="wish.editor.saveplan"):
+        assert _amiga_stored(party, path) == 12
+    lines = [r.getMessage() for r in caplog.records]
+    assert len(lines) == 1 and member.name in lines[0]
+    assert "not rebuilt" in lines[0]
+
+
+def test_amiga_curse_movement_is_written_as_it_was(tmp_path):
+    from support.amigasavegame import synthetic_curse
+
+    disk = amiga_savegame.make_save_disk(
+        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA",)))
+    path = tmp_path / "curse.adf"
+    disk.save(str(path))
+    party = Party(str(path))
+    party.members[0].record.set("gold", 3000)
+    with_hook = saveplan.write_amiga(party, AmigaDisk.open(str(path)))
+    save = amiga_savegame.read_slot(AmigaDisk.open(str(path)), "A",
+                                    party.source.title.key)
+    member = party.members[0]
+    raw = rewrite.rewrite_amiga_later(
+        member.native, saveplan.original_record(member),
+        saveplan.edited_record(member)).character
+    slot = amiga_savegame.slot_path(party.source.title, "A")
+    assert with_hook.read_file(slot) == amiga_savegame.rebuild(save, [raw])

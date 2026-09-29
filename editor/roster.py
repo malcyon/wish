@@ -577,6 +577,16 @@ class Party:
             if movement != block.movement:
                 block.movement = movement
 
+    def _movement_types(self) -> bytes | None:
+        """`item_types` as the 128 raw rows the movement rule reads."""
+        if not self.item_types:
+            return None
+        table = self.item_types
+        # A type the table skips as all zero is a zero row in the game's.
+        return b"".join(
+            table[i].raw if i in table else bytes(ITEM_TYPE_SIZE)
+            for i in range(ITEM_TYPE_COUNT))
+
     def dos_movement(self, member: Any, record: bytes, items: bytes,
                      unrebuilt: list[str]) -> bytes:
         """`record` with the movement the game's rule gives, if the edit moved it.
@@ -593,13 +603,7 @@ class Party:
         if (self.port != "dos"
                 or self.game.key != c64_port.POOL_OF_RADIANCE.key):
             return record
-        types = None
-        if self.item_types:
-            table = self.item_types
-            # A type the table skips as all zero is a zero row in the game's.
-            types = b"".join(
-                table[i].raw if i in table else bytes(ITEM_TYPE_SIZE)
-                for i in range(ITEM_TYPE_COUNT))
+        types = self._movement_types()
         native = member.native
         loaded_items = b"".join(bytes(i) for i in native.items)
         deltas = native.deltas
@@ -613,6 +617,47 @@ class Party:
         if before.movement_current == after.movement_current:
             return record
         at = dos_codec.FIELDS_BY_NAME_FOR[deltas.key]["movement_current"].offset
+        out = bytearray(record)
+        out[at] = after.movement_current
+        return bytes(out)
+
+    def amiga_movement(self, member: Any, record: bytes, items: bytes,
+                       unrebuilt: list[str]) -> bytes:
+        """`record` with the movement the game's rule gives, if the edit moved it.
+
+        The Amiga write path never rebuilds movement, and the game's encounter
+        menu judges the party on the stored byte, so the rule runs on the
+        loaded character and on the written one -- the Amiga record re-cut as
+        the DOS one, which the rule reads -- and only a difference is written.
+        A number typed into the movement box is kept. With no table an armed
+        character keeps the stored byte and his name goes on `unrebuilt`.
+        """
+        if (self.port != "amiga"
+                or self.game.key != c64_port.POOL_OF_RADIANCE.key):
+            return record
+        original = type(member.record).from_bytes(member.record_original)
+        if (original.get("roster_movement")
+                != member.record.get("roster_movement")):
+            return record
+        types = self._movement_types()
+        deltas = dos_port.POOL_OF_RADIANCE
+        native = member.native
+        loaded_items = b"".join(i.raw for i in native.items)
+        before, after = (
+            dos_codec.dos_combat_rebuild(
+                x.to_bytes(), b"".join(bytes(i) for i in x.items), types,
+                deltas)
+            for x in (amiga_por.to_dos_character(native),
+                      amiga_por.to_dos_character(
+                          amiga_por.por_character(record, items))))
+        if before is None or after is None:
+            if record != native.raw or items != loaded_items:
+                unrebuilt.append(member.name)
+            return record
+        if before.movement_current == after.movement_current:
+            return record
+        at = amiga_por.amiga_por_offset(dos_codec.FIELDS_BY_NAME_FOR[
+            deltas.key]["movement_current"].offset)
         out = bytearray(record)
         out[at] = after.movement_current
         return bytes(out)

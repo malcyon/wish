@@ -36,6 +36,7 @@ from PyQt6.QtWidgets import (
 from goldbox import (
     amiga_pod,
     amiga_port,
+    amiga_savegame,
     backstab,
     c64_codec,
     classcode,
@@ -2233,7 +2234,7 @@ class EditorBinding(QObject):
             return
         party.item_types = None
         game = party.game
-        if (party.port not in ("c64", "dos")
+        if (party.port not in ("c64", "dos", "amiga")
                 or game.key != por_games.POOL_OF_RADIANCE.key):
             return
         if party.port == "dos":
@@ -2246,6 +2247,8 @@ class EditorBinding(QObject):
                 if table is not None:
                     party.item_types = item_types_from_payload(table)
                     return
+        if party.port == "amiga" and self._load_amiga_movement_items():
+            return
         found = self._find_disk(load_item_types, game.disk_glob, game)
         if found is None:
             _log.warning("No disk with ITEMS found, so movement is left as "
@@ -2255,6 +2258,23 @@ class EditorBinding(QObject):
             party.item_types = load_item_types(found)
         except Exception:
             _log.exception("could not read the item types off %s", found)
+
+    def _load_amiga_movement_items(self) -> bool:
+        """Read `/items` off an `.adf` beside the opened Amiga disk, if one has it."""
+        from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
+
+        folder = pathlib.Path(self.party.source.path).parent
+        for image in sorted(p for p in folder.iterdir()
+                            if p.suffix.lower() == ".adf"):
+            try:
+                table = amiga_savegame.item_type_table(
+                    AmigaDisk.open(str(image)))
+            except (OSError, AmigaDiskError):
+                continue
+            if table is not None:
+                self.party.item_types = item_types_from_payload(table)
+                return True
+        return False
 
     def _load_game_disk(self) -> None:
         self._load_movement_items()

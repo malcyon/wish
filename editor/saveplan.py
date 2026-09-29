@@ -231,11 +231,14 @@ def write_amiga(party: Any, disk: Any) -> Any:
     Returns the same disk. **The image is put back and the failure re-raised
     if any character refuses**: AmigaDOS allocates the replacement before it
     frees the original, so a run that stops halfway leaves a disk that is
-    neither what it was nor what it meant to be.
+    neither what it was nor what it meant to be. A Pool of Radiance
+    character's movement is rebuilt afterwards (`Party.amiga_movement`),
+    because no Amiga render rebuilds it.
     """
     from goldbox.amiga_adf import AmigaDiskError
 
     snapshot = disk.to_bytes()
+    unrebuilt: list[str] = []
     try:
         if party.source.title.key == "pool-of-radiance":
             drawer = amiga_savegame.por_save_drawer(disk)
@@ -246,7 +249,9 @@ def write_amiga(party: Any, disk: Any) -> Any:
                 stem = amiga_savegame.por_save_path(
                     amiga_por.por_filename(party.source.slot, member.index, ""),
                     drawer)
-                for suffix, data in ((".sav", result.record),
+                record = party.amiga_movement(member, result.record,
+                                              result.items, unrebuilt)
+                for suffix, data in ((".sav", record),
                                      (".itm", result.items),
                                      (".spc", result.effects)):
                     path = stem + suffix
@@ -257,6 +262,9 @@ def write_amiga(party: Any, disk: Any) -> Any:
                             disk.remove_file(path)
                         except AmigaDiskError:
                             pass
+            if unrebuilt:
+                _log.warning("Movement of %s not rebuilt: no item type table",
+                             ", ".join(unrebuilt))
         else:
             save = amiga_savegame.read_slot(
                 disk, party.source.slot, party.source.title.key)
