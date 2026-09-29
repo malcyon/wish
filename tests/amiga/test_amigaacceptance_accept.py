@@ -798,7 +798,7 @@ class DrawGuest(AcceptGuest):
 
 
 def _draws(tmp_path, clock, monkeypatch, draws, *, questions=None, memory=None, refuse_at=None,
-           lane_check=None, helper_args=None, **kw):
+           lane_check=None, helper_args=None, answer_seconds=0.0, picker_seen=True, **kw):
     memory = memory or FakeGameMemory()
     log = []
     helper = fake_stage_helper(memory, log, refuse_at=refuse_at, **(helper_args or {}))
@@ -808,12 +808,14 @@ def _draws(tmp_path, clock, monkeypatch, draws, *, questions=None, memory=None, 
     asked = lambda p: p.stem.endswith("camp_save_picker") and guest.pending  # noqa: E731
     guard = MapGuard(on={"journal": lambda p: p.name == "10-journal.png" or asked(p),
                          "camp_save_picker": lambda p: (p.stem.endswith("camp_save_picker")
-                                                        and not guest.pending),
+                                                        and not guest.pending
+                                                        and (picker_seen or not helper.calls)),
                          "exit_game": lambda p: p.stem.endswith("exit_game") and not guest.pending})
 
     class Answered(Answer):
         def __call__(self, holder, adf, timeout):
             guest.pending = False
+            clock.now += answer_seconds
             return super().__call__(holder, adf, timeout)
 
     guest.answer = answer = Answered(guest)
@@ -834,6 +836,23 @@ def test_each_further_draw_stages_the_question_and_camp_saves_again(
     assert run.result["rulebook"] == [
         {"draw": n, "asked": True, "answer": "answered", "exit_game": True} for n in (2, 3)]
     assert run.result["error"] == "" and run.result["success"] is True
+
+
+def test_a_slow_answer_does_not_use_up_the_wait_for_the_screen_after_it(
+        tmp_path, clock, readings, monkeypatch):
+    run = _draws(tmp_path, clock, monkeypatch, 2, answer_seconds=acceptance.GUARD_LIMIT + 10,
+                 deadline_seconds=3600)
+    assert run.result["error"] == "" and run.result["success"] is True
+
+
+def test_a_draw_whose_wait_raises_after_the_answer_still_records_it(
+        tmp_path, clock, readings, monkeypatch):
+    run = _draws(tmp_path, clock, monkeypatch, 2, picker_seen=False)
+    assert "was not recognized" in run.result["error"]
+    assert run.result["rulebook"] == [
+        {"draw": 2, "asked": True, "answer": "answered", "exit_game": False}]
+    drawn = [e for e in _events(tmp_path) if e["event"] == "draw"]
+    assert drawn[0]["asked"] is True and drawn[0]["answer"] == "answered"
 
 
 def test_the_question_is_answered_after_s_and_before_any_slot_letter(

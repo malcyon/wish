@@ -116,8 +116,8 @@ BOOT_LOG = r"C:\Users\Public\Documents\Amiga Files\WinUAE\winuaebootlog.txt"
 
 #: The most draws one boot may make; the route's own camp save is the first.
 RULEBOOK_DRAWS_MAX = 15
-#: Seconds one draw's question may take to answer, for the deadline check; an allowance, not a measurement.
-DRAW_ANSWER_SECONDS = 60.0
+#: Seconds one draw's question may take to answer, for the deadline check; measured answers ran 48 to 114 s.
+DRAW_ANSWER_SECONDS = 120.0
 
 
 class DrawCounter:
@@ -1298,7 +1298,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     result["events"][-1]["recognized"] = hit
                     log("recognized", state=hit, name=name)
                     return digest
-                interstitial(state, crop, done)
+                if interstitial(state, crop, done):
+                    # The limit measures waiting for the screen, not the time spent acting on
+                    # a screen; each interstitial row's count and the route deadline bound it.
+                    started = time.monotonic()
             if time.monotonic() - started >= limit:
                 if not strict:
                     return settle_unguarded(state, name)
@@ -1386,22 +1389,27 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 log("draw_error", draw=draw, error=type(exc).__name__)
                 raise
             first = len(result["events"])
+
+            def note_draw(record: dict = record, first: int = first) -> None:
+                events = result["events"][first:]
+                record["asked"] = any(
+                    e.get("interstitial") == "journal" and "key" not in e for e in events)
+                record["answer"] = next(
+                    (e["answer"] for e in reversed(events) if "answer" in e), None)
+
             try:
                 for key, state, kind in (save, write, back):
                     n += 1
                     perform(key, kind, state, n)
                     reach(state, f"{n:02d}-{state}", _step_wait(min_waits, state, kind),
                           strict=True)
-                    events = result["events"][first:]
-                    record["asked"] = any(
-                        e.get("interstitial") == "journal" and "key" not in e for e in events)
-                    record["answer"] = next(
-                        (e["answer"] for e in reversed(events) if "answer" in e), None)
+                    note_draw()
                     if state == "exit_game":
                         record["exit_game"] = True
                         if not record["asked"]:
                             raise RouteError(f"draw {draw} reached exit_game with no question")
             finally:
+                note_draw()
                 log("draw", **record)
 
     try:

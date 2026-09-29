@@ -2834,18 +2834,25 @@ def test_the_opening_accept_presses_the_exact_keys_and_answers_twelve_pages(
     assert guest.place == {"area": 16, "x": 3, "y": 5, "facing": geo.SOUTH}
 
 
-def test_the_opening_accept_fails_with_the_old_limits(tmp_path, monkeypatch, clock):
+def test_the_opening_accept_needs_the_continue_limit_but_not_the_wait_limits(
+        tmp_path, monkeypatch, clock):
     blades = foundation.route_silver_blades
     old = tuple((name, action, waiting_for, 3 if name == "continue" else limit)
                 for name, action, waiting_for, limit in blades.PUBLISHED_INTERSTITIALS)
     base = blades.published_title("A", items_screen=False, opening_scene=True)
-    for at, title in enumerate((dataclasses.replace(base, interstitials=old),
-                                dataclasses.replace(base, wait_limits={}))):
-        folder = tmp_path / str(at)
-        folder.mkdir()
-        _, result, _ = _opening_accept(folder, monkeypatch, clock, title=title)
-        assert result["success"] is False, at
-        assert "treasure_bar screen was not recognized" in result["error"], at
+    folder = tmp_path / "0"
+    folder.mkdir()
+    _, result, _ = _opening_accept(folder, monkeypatch, clock,
+                                   title=dataclasses.replace(base, interstitials=old))
+    assert result["success"] is False
+    assert "treasure_bar screen was not recognized" in result["error"]
+    # The wait clock restarts after each interstitial, so the default limit now covers the
+    # twelve continue presses that the per-state limits were added for.
+    folder = tmp_path / "1"
+    folder.mkdir()
+    _, result, _ = _opening_accept(folder, monkeypatch, clock,
+                                   title=dataclasses.replace(base, wait_limits={}))
+    assert result["error"] == "" and result["success"] is True
 
 
 def test_a_strict_world_stops_on_an_unguarded_screen_instead_of_settling(
