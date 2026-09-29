@@ -291,15 +291,15 @@ _NOT_A_SPELL_SILVER_BLADES = (57, 59, 60, 61, 62, 63, 64, 65, 95, 97, 99,
                               101, 102, 103, 104, 105, 106, 107, 108)
 
 #: The ids inside a group that the trainer's menu never offers. 100 is a real
-#: magic-user 4 spell that the DOS hall's level-4 row offers, but the C64 hall's
-#: row at `GEN $1896` stops at 89, and Wish's level-up models the C64 menu.
-#: 109 and 110 are both `DEATH SPELL` -- a duplicate the way 105-108 are all
-#: `TRIP` -- and
-#: `GEN $1896` builds its candidate mask out of `$1936`/`$1942`, whose
-#: sixth-level row is byte 13 mask `$C0` and byte 14 mask `$07`: ids 110-114
-#: and not 109. So a Silver Blades magic-user reaching level 12 is offered
-#: five sixth-level spells rather than six. CONFIRMED,
-#: `tools/c64/trainerspells.py --check` (#89).
+#: magic-user 4 spell, and the DOS hall's level-4 row offers it -- read out of
+#: `GAME.OVR`, not seen running -- but the C64 hall's row at `GEN $1896` stops
+#: at 89, and Wish's level-up models the C64 menu. 109 and 110 are both
+#: `DEATH SPELL`, a duplicate the way 105-108 are all `TRIP`, and `GEN $1896`
+#: builds its candidate mask out of `$1936`/`$1942`, whose sixth-level row is
+#: byte 13 mask `$C0` and byte 14 mask `$07`: ids 110-114 and not 109. So a
+#: Silver Blades magic-user reaching level 12 is offered five sixth-level
+#: spells rather than six. CONFIRMED, `tools/c64/trainerspells.py --check`
+#: (#89).
 _NOT_GRANTED_SILVER_BLADES = (100, 109)
 
 #: How wide the spellbook bitmask at record `0x078` is, per title. **Measured
