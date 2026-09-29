@@ -1422,3 +1422,35 @@ def test_a_bar_missing_a_door_word_is_not_answered_with_quit(monkeypatch):
         monkeypatch, lambda here, square: [here, (6, 5)],
         rows=("", "BASH QUIT"))
     assert sess.asked == [] and got[2]["reason"] == "choice"
+
+
+class EncounterAfterKey(WalkSession):
+    """The first `I` is sent and the square's script puts up an encounter menu
+    that `walk_one` had already left: it says the party did not move and
+    refuses nothing (`full18`, (14,4))."""
+
+    def __init__(self, monkeypatch):
+        super().__init__(monkeypatch, None, 20, (), (5, 5, 2), None)
+        self.coords, self.encounter = False, False
+
+    def walk_one(self, key, *a, **k):
+        self.walk_refused = None
+        self.keys.append(key)
+        self.encounter = True
+        return False
+
+    def screen(self):
+        if self.encounter and not self.fighting:
+            return Screen(ENCOUNTER)
+        return super().screen()
+
+
+def test_an_encounter_menu_after_a_key_that_did_not_move_is_the_fight(
+        monkeypatch):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    sess = EncounterAfterKey(monkeypatch)
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    Clock(monkeypatch)
+    got = T.walk_route(sess, RecordingLog(), SOUTH, 2, "slums")
+    assert got == (2, (5, 5), None)
+    assert sess.asked == ["COMBAT"] and sess.keys == ["I"]

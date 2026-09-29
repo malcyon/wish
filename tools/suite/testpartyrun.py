@@ -617,7 +617,7 @@ def _answer_locked_door(sess, log: Log, out, leg: str, key: str, here, there,
     game did not come back to a walkable bar, or `replan` has no route.  BASH
     and PICKLOCK are never chosen.  The replan starts from `here`, the planned
     square: the Slums' status line has no square to check it against, so the
-    next live run is what confirms the party did not move.
+    party is assumed not to have moved.
     """
     log.say(f"  a locked door at {tuple(there)}: {row!r}; taking QUIT")
     log.emit("locked_door", leg=leg, key=key, square=list(there), row24=row)
@@ -666,8 +666,11 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None,
     from a live one, so a key `walk_one` refused without pressing
     (`not_pressed`) is followed by the same wait and sent once more when a
     walkable bar comes back.  Either wait can find a fight, which stops the
-    walk on the square the party stands on.  A choice it offers, or a screen
-    that never clears, stops the walk with a screenshot under `out` when one
+    walk on the square the party stands on.  A key that was sent but did not
+    move the party gets the same wait, because a square's script can put up an
+    encounter menu after `walk_one` has stopped looking; the wait takes the
+    word and the fight is returned as for any fight.  A choice it offers, or a
+    screen that never clears, stops the walk with a screenshot under `out` when one
     is given: after a key that took, `reason` is `choice` or `unsettled`;
     after a refused key, `reason` stays `not_pressed` and `after` names
     which of the two held.
@@ -711,6 +714,16 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None,
                                        row24=_row24(sess))
                 if bad is None:
                     break
+                if "reason" not in bad:
+                    # The key was sent and the status did not change: a wall,
+                    # or a square whose script put up an encounter menu that
+                    # `walk_one` had already left.  The wait takes the menu's
+                    # `walk_encounter` word once and finds the fight; a bar it
+                    # finds nothing to answer on leaves the desync as it was.
+                    outcome, _ = settle_step(sess, log, key, here,
+                                             taken=_encounter_taken(sess))
+                    if outcome == "fight":
+                        return want, here, None
                 if bad.get("reason") != "not_pressed" or attempt:
                     return want, None, bad
                 # Nothing was pressed: wait out whatever is up, and send the
