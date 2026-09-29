@@ -6052,3 +6052,36 @@ def test_a_dos_pool_party_never_looks_for_an_items_disk(
     with _window_warnings() as seen:
         _dos_pool_editor(tmp_path)
     assert not any("No disk with ITEMS found" in m for m in seen)
+
+
+def test_a_failed_save_then_a_reverted_icon_still_writes_the_icon_on_disk(
+        tmp_path, monkeypatch):
+    """`_write_back` rebuilds `save0` before the disk write, so a failed try
+    must not leave the edited icon in it for the reverted save to keep."""
+    import editor.window as ew
+    from editor.roster import ICON_SIZE, ICON_TABLE_OFFSET
+    from goldbox.d64 import D64
+    from goldbox.icons import Icon
+    from goldbox.savegame import load_save
+
+    w, path = _c64_movement_window(tmp_path)
+    member = w.party.member(0)
+    at = ICON_TABLE_OFFSET + member.index * ICON_SIZE
+    original = load_save(D64.open(str(path)))[1].to_bytes()[at:at + ICON_SIZE]
+    real = ew.files.save_disk
+    calls = []
+
+    def fail_once(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("boom")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(ew.files, "save_disk", fail_once)
+    member.icon = Icon(bytes(b ^ 0xFF for b in member.icon.raw))
+    with pytest.raises(OSError):
+        w.save(interactive=False)
+    member.icon = member.icon_original
+    w.save(interactive=False)
+    saved = load_save(D64.open(str(path)))[1].to_bytes()
+    assert saved[at:at + ICON_SIZE] == original

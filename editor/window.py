@@ -48,7 +48,7 @@ from goldbox.iconparts import IconParts
 from goldbox.icons import load_icon_charset
 from goldbox.items import load_item_names, load_item_templates, load_item_types
 from goldbox.layout import FIELDS_BY_NAME, LOAD_ADDRESS
-from goldbox.savegame import SaveGame1, store_save
+from goldbox.savegame import SaveGame0, SaveGame1, store_save
 from goldbox.spells import capacity_by_class, load_spell_names
 from goldbox.spells import for_game as spell_table
 
@@ -2352,6 +2352,8 @@ class EditorBinding(QObject):
         roster_before = (self.party.save1.to_bytes()
                          if self.party.port == "c64"
                          and self.party.save1 is not None else None)
+        payload_before = (self.party.save0.to_bytes()
+                          if roster_before is not None else None)
         try:
             written = self._write_back()
             if self.party.port == "dos":
@@ -2366,6 +2368,10 @@ class EditorBinding(QObject):
                 # write failed; a later revert-and-save must compare against
                 # what is on disk, not against this attempt.
                 self.party.save1 = SaveGame1(roster_before, self.party.game)
+                # `_write_back` rebuilt `save0` (icons, items, and the roster
+                # page folded in) before the write failed.
+                self.party.save0 = SaveGame0.from_bytes(
+                    payload_before, self.party.game)
             if interactive:
                 QMessageBox.critical(self.root, "Cannot save", str(exc))
                 return "failed"
