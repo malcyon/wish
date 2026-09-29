@@ -469,11 +469,10 @@ STINKING_CLOUD_DOS = (0xFF, 0)
 #: `pool_charm_row`; it converts for a player character and for a party
 #: companion alike, and two nodes make one row.
 #: Fear (`FEAR_IDS`, below) has its own rule: `c64_codec` converts its record
-#: bytes alongside the row.
+#: bytes alongside the row. So does a later title's charm, through
+#: `later_charm_row`, with its record bytes in `c64_codec`.
 _RECORD_STATE_IDS: dict[str, frozenset[int]] = {
     "pool-of-radiance": frozenset({11}),
-    _CURSE: frozenset({11}),
-    _BLADES: frozenset({11}),
 }
 
 #: Fear (Curse 142, Silver Blades 111). DOS writes `(id, minutes, level, 1)`
@@ -670,6 +669,8 @@ def _own_rule_row(title_key: str,
     if node.id in _RECORD_STATE_IDS.get(title_key, ()):
         return Unconverted("no rule yet: this effect's state also lives in "
                            "record bytes the codecs do not convert")
+    if node.id == CHARM_ID and title_key in LATER_CAST_FLAGS:
+        return later_charm_row(title_key, node.to_record())
     if node.id in FEAR_IDS.get(title_key, ()):
         if node.flag != 1 or node.data > 0x7F:
             return Unconverted("a Fear node no DOS engine writes")
@@ -860,6 +861,14 @@ def dos_record(title_key: str, row: "Effect",
     """
     if row.duration == 0:
         raise ValueError("a never-expiring row has no running-effect node")
+    if row.id == CHARM_ID and title_key in LATER_CAST_FLAGS:
+        # `c64_codec.read` calls `later_charm_record` itself, with the row's
+        # `0x10C`; without one the row reads as the plain form.
+        record = later_charm_record(title_key, row, None, clock_minutes)
+        if record is None:
+            return Unconverted("a charm row with time left, which no C64 "
+                               "cast of this title writes")
+        return RunningEffect.from_record(record)
     minutes = min(remaining_minutes(row.duration, clock_minutes),
                   DOS_MINUTES_MAX)
     made = _own_rule_node(title_key, row.id, row.magnitude)
@@ -1055,6 +1064,64 @@ def pool_charm_record(title_key: str, row: "Effect",
                 | charm_count(row.magnitude))
         return bytes((CHARM_ID, 0, 0, data, 1)) + _RUNNING_EFFECT_NEXT
     return None
+
+
+def later_charm_row(title_key: str, node: bytes) -> tuple[int, int] | None:
+    """The C64 `(id, magnitude)` for a Curse or Silver Blades charm node.
+
+    `None` unless the title is a later one and the node's id is the charm's.
+    The magnitude is bit 7 for a non-zero flag (DOS's `remove_affect` tests
+    only that the flag is non-zero), the charmer's side (data bit 7) in bit 6,
+    the charmed character's own side (data bit 6) in bit 5 and the level
+    (data bits 0-4) below. No C64 code reads bits 5 and 6, and both ports'
+    Dispel Magic reads `& $0F`. Data bit 5 (the handler has run) is not kept:
+    the C64 handler sets the state up itself at the character's first event.
+    A node whose row would be `$FF`, which Dispel Magic skips on both ports,
+    loses the own-side bit (`later_charm_dispel_proof`).
+    """
+    if title_key not in LATER_CAST_FLAGS or node[0] != CHARM_ID:
+        return None
+    data = node[3]
+    own = 0 if later_charm_dispel_proof(node) else data >> 6 & 1
+    return CHARM_ID, ((0x80 if node[4] else 0) | (data >> 7) << 6 | own << 5
+                      | data & 0x1F)
+
+
+def later_charm_dispel_proof(node: bytes) -> bool:
+    """Whether `later_charm_row` would make `$FF` of this node: flag set,
+    both side bits set and a level of 31."""
+    return bool(node[4]) and node[3] & 0xDF == 0xDF
+
+
+def later_charm_record(title_key: str, row: "Effect", combat_side: int | None,
+                       clock_minutes: int) -> bytes | None:
+    """The DOS charm node for a C64 Curse or Silver Blades charm row, or `None`.
+
+    With record `0x10C` bit 2 set (the C64 cast's own form) the charmer is
+    bit 0 and the own side bit 1; otherwise (the form `later_charm_row`
+    stands for) the charmer is magnitude bit 6 and the own side bit 5. The
+    level is `magnitude & $1F` and the flag magnitude bit 7. A duration-0 row
+    is a granted node with no minutes, which neither DOS engine ages; a row
+    with time left is a running node in Silver Blades only, because no C64
+    Curse cast writes one.
+    """
+    if title_key not in LATER_CAST_FLAGS or row.id != CHARM_ID:
+        return None
+    side = combat_side or 0
+    magnitude = row.magnitude
+    if side & 0x04:
+        charmer, own = side & 1, side >> 1 & 1
+    else:
+        charmer, own = magnitude >> 6 & 1, magnitude >> 5 & 1
+    data = charmer << 7 | own << 6 | 0x20 | magnitude & 0x1F
+    flag = magnitude >> 7
+    if row.duration == 0:
+        return bytes((CHARM_ID, 0, 0, data, flag)) + _RUNNING_EFFECT_NEXT
+    if title_key != _BLADES:
+        return None
+    minutes = min(remaining_minutes(row.duration, clock_minutes),
+                  DOS_MINUTES_MAX)
+    return RunningEffect(CHARM_ID, minutes, data, flag).to_record()
 
 
 def never_expiring_strength_record(title_key: str,

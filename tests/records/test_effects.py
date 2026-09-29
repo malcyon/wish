@@ -1318,15 +1318,81 @@ def test_a_dispel_evil_or_stun_id_of_another_title_stays_unconverted(
     assert isinstance(got, effects.Unconverted)
 
 
-@pytest.mark.parametrize("title, node", [
-    ("pool-of-radiance", effects.RunningEffect(11, 60, 0x05, 1)),
-    ("curse-of-the-azure-bonds", effects.RunningEffect(11, 60, 0x05, 1)),
-    (_BLADES, effects.RunningEffect(11, 120, 0x85, 1)),
-])
-def test_charm_and_fear_wait_on_their_record_bytes(title, node):
-    got = effects.c64_row(title, node)
+def test_pool_charm_waits_on_its_record_bytes():
+    got = effects.c64_row("pool-of-radiance",
+                          effects.RunningEffect(11, 60, 0x05, 1))
     assert isinstance(got, effects.Unconverted)
     assert "record" in got.reason and "no rule yet" in got.reason
+
+
+_LATER_TITLES = ["curse-of-the-azure-bonds", _BLADES]
+
+
+def _charm(data, flag=1):
+    return bytes((11, 0, 0, data, flag))
+
+
+@pytest.mark.parametrize("title", _LATER_TITLES)
+@pytest.mark.parametrize("data, flag, magnitude", [
+    (0x26, 1, 0x86),      # the party's charm at level 6
+    (0x26, 0, 0x06),      # flag 0 writes no bit 7
+    (0x26, 2, 0x86),      # any non-zero flag is bit 7
+    (0x20 | 17, 1, 0x91),  # a level of 17 keeps its bit 4
+    (0xA6, 1, 0xC6),      # a monster's charm: the charmer is bit 6
+    (0x66, 1, 0xA6),      # own side 1: bit 5
+    (0xE6, 1, 0xE6),
+    (0x06, 1, 0x86),      # data bit 5 clear converts the same
+    (0xFF, 1, 0xDF),      # $FF would be skipped by Dispel Magic
+])
+def test_a_later_charm_node_becomes_the_c64_casts_row(
+        title, data, flag, magnitude):
+    assert effects.later_charm_row(title, _charm(data, flag)) \
+        == (11, magnitude)
+    assert effects.c64_row(title, effects.RunningEffect(11, 60, data, flag)) \
+        == (11, magnitude)
+
+
+@pytest.mark.parametrize("title", _LATER_TITLES)
+@pytest.mark.parametrize("magnitude, side, data", [
+    (0x86, 0x80, 0x26),
+    (0x86, 0xC4, 0x26),
+    (0x86, 0xC5, 0xA6),
+    (0x86, 0xC7, 0xE6),
+    (0xC6, 0x80, 0xA6),   # the sides in the magnitude when bit 2 is clear
+    (0xA6, 0x80, 0x66),
+    (0x86, None, 0x26),
+])
+def test_a_later_charm_row_becomes_the_dos_node(title, magnitude, side, data):
+    row = effects.Effect(0, 11, 2, 0, magnitude)
+    assert effects.later_charm_record(title, row, side, 0) \
+        == bytes((11, 0, 0, data, 1)) + bytes(4)
+
+
+def test_a_later_charm_row_without_bit_7_is_a_node_with_flag_0():
+    row = effects.Effect(0, 11, 2, 0, 0x06)
+    assert effects.later_charm_record(_BLADES, row, 0x80, 0) \
+        == bytes((11, 0, 0, 0x26, 0)) + bytes(4)
+
+
+def test_a_blades_charm_row_with_time_left_is_a_running_node():
+    row = effects.Effect(0, 11, 2, 0x05, 0x86)
+    got = effects.later_charm_record(_BLADES, row, 0x80, 0)
+    assert got[0] == 11 and got[3:5] == bytes((0x26, 1))
+    assert got[1] | got[2] << 8 == effects.remaining_minutes(0x05, 0)
+    assert effects.later_charm_record("curse-of-the-azure-bonds", row,
+                                      0x80, 0) is None
+    assert isinstance(effects.dos_record("curse-of-the-azure-bonds", row, 0),
+                      effects.Unconverted)
+
+
+@pytest.mark.parametrize("title, node_id", [
+    ("pool-of-radiance", 11), (_BLADES, 25),
+    ("curse-of-the-azure-bonds", 142)])
+def test_later_charm_functions_leave_pool_and_other_ids_alone(title, node_id):
+    node = bytes((node_id, 0, 0, 0x26, 1))
+    assert effects.later_charm_row(title, node) is None
+    row = effects.Effect(0, node_id, 2, 0, 0x86)
+    assert effects.later_charm_record(title, row, 0x80, 0) is None
 
 
 @pytest.mark.parametrize("title, eid", [

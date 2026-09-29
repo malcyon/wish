@@ -1718,19 +1718,230 @@ def test_a_slowed_node_is_written_as_a_row_and_not_dropped(game):
     assert 42 in [v[0] for v in _rows(payload).values()]
 
 
-@pytest.mark.parametrize("game", [c64_port.CURSE_OF_THE_AZURE_BONDS,
-                                  c64_port.SECRET_OF_THE_SILVER_BLADES],
-                         ids=lambda g: g.key)
-def test_a_dos_charm_node_is_a_loss_and_takes_no_trait_slot(game):
+# --- Curse and Silver Blades charm (11): the cast's row, and 0x10C at $80 ---
+
+_LATER_GAMES = [c64_port.CURSE_OF_THE_AZURE_BONDS,
+                c64_port.SECRET_OF_THE_SILVER_BLADES]
+_HANDED_BACK = ("handed back if the player presses SPACE at a bar, or any "
+                "key but M or the joystick during a computer turn; DOS keeps "
+                "a member at 0xB3 under the computer")
+_BY_MONSTERS = ("fights for the party under the computer, where DOS fights "
+                "him for the monsters")
+_QUICK = ("leaves the fight at $80, still under QUICK until the player "
+          "presses a key, where DOS hands him back")
+
+
+def _later_charmed(game, data=0x26, flag=1, minutes=0, control=None,
+                   npc=True, hostile=False):
+    """A player character holding one charm node: Curse's is granted, Silver
+    Blades' a running node of `minutes` (120 unless said), as each DOS engine
+    writes it."""
+    if game is c64_port.SECRET_OF_THE_SILVER_BLADES:
+        minutes = minutes or 120
+    node = bytes((effects.CHARM_ID, minutes & 0xFF, minutes >> 8, data, flag))
     char = _title_character(game)
-    char.set("granted_effects", [bytes((effects.CHARM_ID, 0, 0, 0x26, 1))],
-             "built here")
-    payload = bytearray(0x1C00)
-    rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
-                               clock_minutes=0)
+    char.set("running_effects" if minutes else "granted_effects",
+             [node + NULL], "built here")
+    char.set("npc", npc, "built here")
+    if control is not None:
+        char.set("npc_control_byte", control, "built here")
+    char.set("quickfight", True, "built here")
+    char.set("hostile", hostile, "built here")
+    return char
+
+
+def _later_read(game, payload, side):
+    rec = CharacterRecord.blank()
+    rec.set("combat_side", side)
+    return c64_codec.read(rec, game=game, payload=payload, party_slot=2,
+                          clock_minutes=1, source="x")
+
+
+@pytest.mark.parametrize("game", _LATER_GAMES, ids=lambda g: g.key)
+def test_a_later_dos_charm_writes_the_casts_row_and_0x10c_80(game):
+    char = _later_charmed(game, control=c64_codec.DOS_PC_TAKEN_OVER)
+    rec, rep, payload = _write_charmed(char)
+    rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
+    assert rows == [(effects.CHARM_ID, 2, 0, 0x86)]
+    assert rec.get("combat_side") == 0x80
+    assert rec.get("flags_0b8") == 0
     assert bytes(rec.get_raw("item_effects")) == bytes(10)
-    assert set(_rows(payload).values()) == {(0, 0, 0, 0)}
-    assert any(f"effect {effects.CHARM_ID}:" in line for line in rep.losses)
+    assert not rep.losses
+    mine = [w for w in rep.warnings if f"effect {effects.CHARM_ID}" in w
+            or "running" in w]
+    assert len(mine) == (3 if game is _SILVER_G else 1)
+    assert any(_HANDED_BACK in w for w in mine)
+    assert not any(_BY_MONSTERS in w for w in mine)
+    assert any(_QUICK in w for w in mine) == (game is _SILVER_G)
+    assert any("lets it run out after 120 minutes" in w
+               and "the row is kept until the next fight ends" in w
+               for w in mine) == (game is _SILVER_G)
+
+
+@pytest.mark.parametrize("game", _LATER_GAMES, ids=lambda g: g.key)
+def test_a_later_charm_by_the_monsters_writes_the_tables_form(game):
+    char = _later_charmed(game, data=0xA6, hostile=True,
+                          control=c64_codec.DOS_PC_TAKEN_OVER)
+    rec, rep, payload = _write_charmed(char)
+    rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
+    assert rows == [(effects.CHARM_ID, 2, 0, 0xC6)]
+    # Bit 0 stays clear: any of bits 0-6 puts him at the monsters' edge.
+    assert rec.get("combat_side") == 0x80
+    assert any(_BY_MONSTERS in w for w in rep.warnings)
+    assert not any("hostile is" in w for w in rep.warnings)
+    assert not rep.losses
+
+
+def test_a_later_charm_nodes_side_beats_a_disagreeing_hostile_flag():
+    char = _later_charmed(c64_port.CURSE_OF_THE_AZURE_BONDS, hostile=True,
+                          control=c64_codec.DOS_PC_TAKEN_OVER)
+    rec, rep, _payload = _write_charmed(char)
+    assert rec.get("combat_side") == 0x80
+    assert any("hostile is True" in w for w in rep.warnings)
+
+
+@pytest.mark.parametrize("game", _LATER_GAMES, ids=lambda g: g.key)
+def test_a_later_charm_with_the_dispel_proof_magnitude_loses_the_own_side_bit(
+        game):
+    char = _later_charmed(game, data=0xFF,
+                          control=c64_codec.DOS_PC_TAKEN_OVER)
+    _rec, rep, payload = _write_charmed(char)
+    rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
+    assert rows == [(effects.CHARM_ID, 2, 0, 0xDF)]
+    assert any("$FF" in w and "Dispel Magic" in w for w in rep.warnings)
+
+
+@pytest.mark.parametrize("side", [0x80, 0xC4, 0xC5, 0xC7])
+@pytest.mark.parametrize("game", _LATER_GAMES, ids=lambda g: g.key)
+def test_a_c64_later_charm_row_reads_back_as_a_player_character_taken_over(
+        game, side):
+    payload = bytearray(0x1C00)
+    effects.write_effect(payload, 0, effects.CHARM_ID, 2, 0, 0x86)
+    out = _later_read(game, payload, side)
+    charmer = side & 1
+    data = charmer << 7 | (side >> 1 & 1) << 6 | 0x26
+    assert [bytes(n)[:5] for n in out.get("granted_effects")] == \
+        [bytes((effects.CHARM_ID, 0, 0, data, 1))]
+    assert out.get("npc") is True
+    assert out.get("npc_control_byte") == c64_codec.DOS_PC_TAKEN_OVER
+    assert out.get("quickfight") is True
+    assert out.get("hostile") is bool(charmer)
+    assert not [d for d in out.dropped if "bits 1-6" in d]
+
+
+@pytest.mark.parametrize("magnitude, data", [(0x86, 0x26), (0xC6, 0xA6),
+                                             (0xA6, 0x66)])
+def test_a_c64_later_charm_row_at_80_carries_its_sides_in_the_magnitude(
+        magnitude, data):
+    payload = bytearray(0x1C00)
+    effects.write_effect(payload, 0, effects.CHARM_ID, 2, 0, magnitude)
+    out = _later_read(_SILVER_G, payload, 0x80)
+    assert [bytes(n)[:5] for n in out.get("granted_effects")] == \
+        [bytes((effects.CHARM_ID, 0, 0, data, 1))]
+    assert out.get("hostile") is bool(data >> 7)
+    assert not [d for d in out.dropped if "bits 1-6" in d]
+
+
+def test_a_blades_charm_row_with_time_left_reads_back_as_a_running_node():
+    payload = bytearray(0x1C00)
+    effects.write_effect(payload, 0, effects.CHARM_ID, 2, 0x05, 0x86)
+    out = _later_read(_SILVER_G, payload, 0x80)
+    node = bytes(out.get("running_effects")[0])
+    assert node[3:5] == bytes((0x26, 1))
+    assert node[1] | node[2] << 8 == effects.remaining_minutes(0x05, 1)
+    assert out.get("npc") is True
+
+
+@pytest.mark.parametrize("data", [0x26, 0xA6, 0xE6, 0x66])
+@pytest.mark.parametrize("game", _LATER_GAMES, ids=lambda g: g.key)
+def test_a_later_charm_makes_a_dos_c64_dos_round_trip(game, data):
+    char = _later_charmed(game, data=data, hostile=bool(data >> 7),
+                          control=c64_codec.DOS_PC_TAKEN_OVER)
+    _rec, _rep, payload = _write_charmed(char)
+    out = _later_read(game, payload, 0x80)
+    # A duration-0 row is a granted node with no minutes, which neither DOS
+    # engine ages, so Silver Blades' running node comes back granted.
+    node = bytes(out.get("granted_effects")[0])
+    assert node[0] == effects.CHARM_ID and node[3:5] == bytes((data, 1))
+    assert out.get("npc") is True and out.get("hostile") is bool(data >> 7)
+    dos_rec, _i, _spc, _r = dos_codec.write(out)
+    fields = dos_port.FIELDS_BY_NAME_FOR[game.key]
+    f83 = fields["field_83_87"]
+    assert dos_rec[f83.offset + (1 if f83.size == 5 else 0)] == \
+        c64_codec.DOS_PC_TAKEN_OVER
+    sides = fields["field_10c_10f"].offset
+    assert dos_rec[sides + 2] == data >> 7
+    assert dos_rec[sides + 3] == 1
+
+
+def test_two_curse_charm_nodes_write_one_row_with_the_last_nodes_level_and_charmer():
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    char = _later_charmed(game, control=c64_codec.DOS_PC_TAKEN_OVER)
+    char.set("granted_effects", [bytes((11, 0, 0, 0x26, 1)) + NULL,
+                                 bytes((11, 0, 0, 0xA9, 1)) + NULL],
+             "built here")
+    rec, rep, payload = _write_charmed(char)
+    rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
+    assert rows == [(effects.CHARM_ID, 2, 0, 0xC9)]
+    assert "second charm node" in rep.sources[0x10C]
+    assert not rep.losses
+    assert rec.get("combat_side") == 0x80
+
+
+@pytest.mark.parametrize("game", _LATER_GAMES, ids=lambda g: g.key)
+def test_a_charmed_later_companion_keeps_his_byte(game):
+    char = _later_charmed(game, control=0x8C)
+    rec, rep, payload = _write_charmed(char)
+    rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
+    assert rows == [(effects.CHARM_ID, 2, 0, 0x86)]
+    assert rec.get("flags_0b8") == 0x8C
+    assert rec.get("combat_side") == 0x80
+    assert not rep.losses
+
+
+@pytest.mark.parametrize("game", _LATER_GAMES, ids=lambda g: g.key)
+def test_a_later_charm_node_with_bit_5_clear_writes_the_state_dos_sets_up_at_the_next_fight(
+        game):
+    char = _later_charmed(game, data=0x06, npc=False)
+    rec, rep, payload = _write_charmed(char)
+    rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
+    assert rows == [(effects.CHARM_ID, 2, 0, 0x86)]
+    assert rec.get("combat_side") == 0x80
+    assert rec.get("flags_0b8") == 0
+    assert "data bit 5 is clear" in rep.sources[0x10C]
+    assert not rep.losses
+    assert not any("bit 5" in w for w in rep.warnings)
+
+
+def test_a_blades_charms_minutes_become_a_warning_and_the_row_has_no_duration():
+    char = _later_charmed(_SILVER_G, minutes=0x0203,
+                          control=c64_codec.DOS_PC_TAKEN_OVER)
+    _rec, rep, payload = _write_charmed(char)
+    rows = [r for r in _rows(payload).values() if r != (0, 0, 0, 0)]
+    assert rows == [(effects.CHARM_ID, 2, 0, 0x86)]
+    assert any("run out after 515 minutes" in w for w in rep.warnings)
+
+
+@pytest.mark.parametrize("game", _LATER_GAMES, ids=lambda g: g.key)
+def test_a_later_charm_node_with_no_payload_is_a_loss(game):
+    rec, rep = c64_codec.write(
+        _later_charmed(game, control=c64_codec.DOS_PC_TAKEN_OVER))
+    assert any(f"effect {effects.CHARM_ID}:" in line or "running" in line
+               for line in rep.losses)
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+
+
+@pytest.mark.parametrize("game", _LATER_GAMES, ids=lambda g: g.key)
+def test_a_later_charm_node_with_no_free_effect_slot_is_a_loss_and_no_row(game):
+    payload = bytearray(0x1C00)
+    for i in range(effects.EFFECT_SLOTS):
+        effects.write_effect(payload, i, 1, 3, 0x02, 0x01)
+    before = bytes(payload)
+    rec, rep, payload = _write_charmed(
+        _later_charmed(game, control=c64_codec.DOS_PC_TAKEN_OVER), payload)
+    assert bytes(payload) == before
+    assert any("no free slot" in line for line in rep.losses)
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
 
 
 # --- Pool charm (11): the party cast's own row, and 0x10C left at $80 --------

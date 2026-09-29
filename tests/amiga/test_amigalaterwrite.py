@@ -522,3 +522,24 @@ def test_a_c64_former_paladin_who_has_not_regained_is_written_at_his_full_count(
         c64_codec.read(c64, game=shape.dos.key))
     at = shape.offset(shape.dos_field("paladin_cures").offset)
     assert built.raw[at] == 1
+
+
+@pytest.mark.parametrize("shape", [amiga_port.CURSE_DELTAS,
+                                   amiga_port.SILVER_BLADES_DELTAS],
+                         ids=lambda s: s.key)
+def test_a_later_charm_node_crosses_dos_and_amiga_whole(shape):
+    """A charm node a DOS Curse or Silver Blades save holds reaches the Amiga
+    record and comes back with its node and the taken-over control byte, so
+    the C64 writer's charm row has nothing to add on the Amiga side. The
+    Amiga later reader has no field for the side or quickfight, which are
+    not asserted."""
+    node = bytes((11, 0, 0, 0xA6, 1)) + bytes(4)
+    char = _bare(shape)
+    char.set("granted_effects", [node], "a charm node")
+    char.set("npc", True, "a charmed player character")
+    char.set("npc_control_byte", 0xB3, "the taken-over byte")
+    built, _report = amiga_later.write_later(char)
+    back = amiga_later.to_neutral_later(built)
+    assert [bytes(n)[:5] for n in back.get("granted_effects")] == [node[:5]]
+    assert back.get("npc") is True
+    assert back.get("npc_control_byte") == 0xB3
