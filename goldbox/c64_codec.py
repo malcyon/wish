@@ -3038,6 +3038,15 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             rec.get("combat_side"), "C64 record 0x10C")
     else:
         combat_side_raw = None
+    # Whether this is Animate Dead's zombie, read here rather than at the
+    # status step below because its id-32 row converts in the loop that follows.
+    early_raw = (roster.roster_in_use if roster is not None
+                 else rec.get("roster_in_use") if rec.is_stored("roster_in_use")
+                 else None)
+    zombie_read = bool(deltas is POOL_OF_RADIANCE_RECORD
+                       and early_raw is not None
+                       and early_raw & 0x87 == ZOMBIE_STATUS)
+    zombie_node_converted = False
     if payload is not None and party_slot is not None:
         rows = effects.active_effects(bytes(payload))
         consumed: set[int] = set()
@@ -3073,6 +3082,20 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         # trip keeps each character's node order.
         for row in sorted(rows, key=lambda r: -r.slot):
             if row.owner != party_slot or row.slot in consumed:
+                continue
+            if (row.duration == 0 and zombie_read
+                    and row.id == ANIMATE_DEAD_ID and row.magnitude != 0xFF
+                    and not zombie_node_converted):
+                # DOS's own camp cast writes this node with removal flag 1;
+                # flag 0 would stop the DOS temple restoring the character.
+                # Side is bit 0 of 0x10C, which the cast leaves alone
+                # (SPELLE04 $A9D7), and the caster's level is the magnitude.
+                # Magnitude $FF is skipped by both engines' Dispel, and DOS
+                # would restore side 15 from it, so it is not converted.
+                side = (combat_side_raw or 0) & 1
+                granted.append(bytes((ANIMATE_DEAD_ID, 0, 0,
+                                      side << 4 | row.magnitude & 0x0F, 1)))
+                zombie_node_converted = True
                 continue
             if row.duration == 0:
                 charm_record = effects.pool_charm_record(
@@ -3367,11 +3390,21 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # past 0x100).
     if raw is not None:
         name = STATUS_BY_BITS.get(raw & 0x07)
+        zombie_byte = (deltas is POOL_OF_RADIANCE_RECORD
+                       and raw & 0x87 == ZOMBIE_STATUS)
+        if zombie_byte:
+            # `$03` with bit 7 clear is written only by Animate Dead
+            # (SPELLE04 $AA11 in camp, SPELLE00 $AB4F in combat); an
+            # ordinary death is `$83`.
+            name = "animated"
         if name is not None:
             out.set("status", name,
-                    f"the low three bits of {roster_in_use_origin}, "
-                    f"${raw:02X}, indexed into the game's own seven status "
-                    f"words",
+                    (f"{roster_in_use_origin}, ${raw:02X}: Pool of Radiance "
+                     f"writes $03 with bit 7 clear only for Animate Dead's "
+                     f"zombie") if zombie_byte else
+                    (f"the low three bits of {roster_in_use_origin}, "
+                     f"${raw:02X}, indexed into the game's own seven status "
+                     f"words"),
                     grade("roster_in_use"), Provenance.RESHAPED)
             out.set("active", not raw & OUT_OF_PLAY,
                     f"bit 7 of {roster_in_use_origin}, ${raw:02X} -- set "
@@ -3551,7 +3584,8 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
 
     out.set("attack_forms", rec.get_raw("attack_forms"),
             origin("attack_forms"), grade("attack_forms"))
-    slot_ids = [b for b in rec.get_raw("item_effects") if b]
+    slot_ids = [b for b in rec.get_raw("item_effects") if b
+                and not (zombie_node_converted and b == ANIMATE_DEAD_ID)]
     out.set("innate_effects",
             slot_ids + [i for i in permanent if i not in slot_ids],
             "the C64's ten trait slots @0x0AD, zeroes stripped, then the "

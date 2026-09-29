@@ -145,7 +145,7 @@ def test_a_companion_zombie_control_crosses_whole_both_ways():
     assert rec.get("flags_0b8") == 0xB2
 
 
-def test_engine_written_zombie_fields_read_and_node32_stays_protected():
+def test_engine_written_zombie_fields_read_and_convert_with_node32():
     from editor import convert
     from tools.registry import specimens
 
@@ -179,17 +179,22 @@ def test_engine_written_zombie_fields_read_and_node32_stays_protected():
             zombie.get("treasure_share")) == (True, 0xB3, 1)
     assert (control.get("creature_type"), control.get("turn_class")) == (0, 0)
 
-    _record, _itm, _spc, dos_report = dos_codec.write(zombie)
+    assert zombie.get("status") == "animated"
+    assert control.get("status") == "dead"
+    record, _itm, spc, dos_report = dos_codec.write(zombie)
+    assert not dos_report.losses
+    assert not any("innate_effects 32" in line for line in dos_report.dropped)
+    status = dos_port.FIELDS_BY_NAME["field_10c_10f"].offset
+    assert tuple(record[status:status + 4]) == (1, 1, 0, 1)
+    assert bytes(spc).count(bytes((32, 0, 0, 5, 1))) == 1
+    assert (record[0x09F], record[0x076]) == (4, 2)
+    field = dos_port.FIELDS_BY_NAME["field_83_87"].offset
+    assert (record[field + 1], record[field + 2]) == (0xB3, 1)
     _record, _itm, _spc, amiga_report = amiga_por.write_por(zombie)
-    for report in (dos_report, amiga_report):
-        assert any("innate_effects 32 (Animate Dead)" in line
-                   for line in report.dropped)
+    assert not amiga_report.losses
+    assert not any("innate_effects 32" in line for line in amiga_report.dropped)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "A C64 zombie reads as neutral status dead, while the write's zombie arm "
-    "keys on animated, so the write takes the companion arm and stores $B3; "
-    "the neutral status step settles which status a C64 zombie reads as"))
 @pytest.mark.parametrize("stored", [0xFE, 0xFF])
 def test_a_c64_zombie_survives_a_c64_read_and_write_unchanged(stored):
     rec = _pool_c64(stored, 0x03)
@@ -333,3 +338,51 @@ def test_a_charmed_zombie_is_not_refused_for_the_charms_side(charm):
     _rec, rep = c64_codec.write(char, payload=bytearray(0x1C00),
                                 party_slot=2, clock_minutes=0)
     assert not rep.losses
+
+
+def test_a_pool_death_with_bit_seven_set_still_reads_dead():
+    char = c64_codec.read(_pool_c64(0xFF, 0x83),
+                          game=c64_port.POOL_OF_RADIANCE)
+    assert char.get("status") == "dead"
+
+
+def test_a_curse_roster_status_of_three_still_reads_dead():
+    char = c64_codec.read(_pool_c64(0xFF, 0x03),
+                          game=c64_port.CURSE_OF_THE_AZURE_BONDS)
+    assert char.get("status") == "dead"
+
+
+def _zombie_source(magnitude, side=1, row=True):
+    rec = _pool_c64(0xFE, 0x03)
+    rec.set("combat_side", side)
+    slots = bytearray(rec.get_raw("item_effects"))
+    slots[9] = 32
+    rec.set("item_effects", bytes(slots))
+    payload = bytearray(0x1C00)
+    if row:
+        effects.write_effect(payload, 3, 32, 4, 0, magnitude)
+    return rec, payload
+
+
+@pytest.mark.parametrize("side", [0, 1])
+def test_a_c64_zombie_row_becomes_the_node_dos_writes_with_flag_one(side):
+    rec, payload = _zombie_source(0xF5, side)
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                          payload=bytes(payload), party_slot=4)
+    assert 32 not in char.get("innate_effects")
+    assert char.get("granted_effects") == [bytes((32, 0, 0, side << 4 | 5, 1))]
+    _dos, _itm, spc, report = dos_codec.write(char)
+    assert bytes((32, 0, 0, side << 4 | 5, 1)) in bytes(spc)
+    assert not any("innate_effects 32" in line for line in report.dropped)
+
+
+@pytest.mark.parametrize("magnitude, row", [(0xFF, True), (0, False)])
+def test_a_c64_zombie_with_no_row_value_to_convert_still_refuses(
+        magnitude, row):
+    rec, payload = _zombie_source(magnitude, row=row)
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                          payload=bytes(payload), party_slot=4)
+    assert 32 in char.get("innate_effects")
+    _dos, _itm, _spc, report = dos_codec.write(char)
+    assert any("innate_effects 32 (Animate Dead)" in line
+               for line in report.dropped)
