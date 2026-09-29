@@ -135,8 +135,13 @@ class WalkSession(PatrolSession):
     def __init__(self, monkeypatch, fight_after=None, area=20, refuse=(),
                  start=(3, 4, 3), arrive_after=None, turns_move=True,
                  turn_lands=True, facing_known=True, coords=True, drift=False,
-                 camp=False, camp_exit_works=True):
+                 camp=False, camp_exit_works=True, load_polls=0,
+                 world_returns=True):
         super().__init__(monkeypatch)
+        # `load_polls` blanks row 24 for that many polls after the edge key,
+        # as the Slums' load from side 2 does; a key sent then is not taken.
+        self.load_polls, self.load_left = load_polls, 0
+        self.world_returns, self.blank_keys = world_returns, []
         self.keys, self.fight_after, self.area = [], fight_after, area
         self.refuse, self.start, self.arrive_after = refuse, start, arrive_after
         # `turns_move` False makes `walk_one` say False for a turn, as it may
@@ -153,7 +158,14 @@ class WalkSession(PatrolSession):
         self.camp, self.camp_exit_works = camp, camp_exit_works
         self.camp_refusals, self.exits = [], 0
 
+    def wait_for_world(self, timeout=240.0, interval=0.35):
+        while self.load_left > 0:
+            self.load_left -= 1
+        return self.world_returns
+
     def screen(self):
+        if self.load_left > 0:
+            return Screen("")
         if self.camp:
             return Screen("ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT")
         return Screen("MOVE VIEW CAST AREA ENCAMP SEARCH LOOK")
@@ -171,7 +183,14 @@ class WalkSession(PatrolSession):
             self.walk_refused = "the driver pressed nothing: camp's bar"
             return False
         self.walk_refused = None
+        if self.load_left > 0:
+            self.blank_keys.append(key)
+            self.walk_refused = "the driver pressed nothing: blank row 24"
+            return False
         self.keys.append(key)
+        if (self.load_polls and self.arrive_after is not None
+                and len(self.keys) == self.arrive_after + 1):
+            self.load_left = self.load_polls
         self.fighting = self.fight_after == len(self.keys)
         if key in "KJ":
             if self.turn_lands:
@@ -209,14 +228,14 @@ class RecordingLog(Log):
 
 
 def _walk(monkeypatch, fight_after, area=20, refuse=(), start=(3, 4, 3),
-          arrive=True):
+          arrive=True, **fake):
     monkeypatch.setattr(T, "dump", lambda *a, **k: None)
     monkeypatch.setattr(T, "resident_area", lambda sess, log=None: sess.area)
     first, _ = T.plan_fight_route(_geo(), _geo(), start[:2], (12, 4))
     # A route of no keys leaves the party on its start, which is the exit.
     arrive_after = max(1, len(geowalk.keys_for(first, start[2]))) if arrive else None
     sess = WalkSession(monkeypatch, fight_after, area, refuse, start,
-                       arrive_after)
+                       arrive_after, **fake)
     log = RecordingLog()
     got = T.walk_to_fight(sess, log, pathlib.Path("."), (12, 4), _geo(), _geo())
     return sess, log, got
@@ -612,3 +631,21 @@ def test_walk_to_fight_returns_at_once_when_a_fight_is_already_up(monkeypatch):
     assert dumps == ["combat-icon"]
     assert ("walked", {"leg": "start", "in_combat": True, "began_at": [3, 4],
                        "at_target": False, "desynced": None}) in log.events
+
+
+def test_the_first_slums_key_waits_for_the_world_bar_after_the_edge(
+        monkeypatch):
+    sess, log, got = _walk(monkeypatch, fight_after=None, load_polls=5)
+    assert sess.blank_keys == []
+    assert got["desynced"] is None and sess.load_left == 0
+
+
+def test_an_area_load_that_never_ends_is_refused_naming_row_24(monkeypatch):
+    with pytest.raises(RuntimeError, match="row 24"):
+        _walk(monkeypatch, fight_after=None, world_returns=False)
+
+
+def test_every_slums_step_logs_the_status_line(monkeypatch):
+    sess, log, got = _walk(monkeypatch, fight_after=None)
+    seen = [e for e in log.events if e[0] == "slums_status"]
+    assert seen and seen[0][1]["facing"] is not None

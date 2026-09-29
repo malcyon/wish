@@ -481,7 +481,10 @@ def walk_route(sess, log: Log, path, facing: int, leg: str):
                 if sess.walk_refused is not None:
                     bad.update(reason="not_pressed", refused=sess.walk_refused)
                 return want, None, bad
-            square = _status_line(sess)[1]
+            seen, square = _status_line(sess)
+            if leg == "slums":
+                log.emit("slums_status", key=key, to=list(there), facing=seen,
+                         square=list(square) if square else None)
             if square is not None and square != tuple(there):
                 return want, None, {"leg": leg, "key": key,
                                     "from": list(here), "to": list(there),
@@ -556,7 +559,11 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
     if hit is None and desync is None:
         moved = sess.walk_one(keys[-1].upper())
         sess.handle_prompt()
-        sess.settle(3)
+        # The Slums load from side 2 for about a minute while the screen still
+        # shows New Phlan and row 24 is blank; a step sent then is not taken.
+        if not sess.wait_for_world(timeout=120):
+            raise RuntimeError("the world bar (row 24) never came back after "
+                               "the step off the edge; the Slums did not load")
         area = resident_area(sess, log)
         log.emit("edge", moved=bool(moved), area=area)
         log.say(f"  stepped off the edge; area {area}")
