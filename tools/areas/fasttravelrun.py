@@ -343,8 +343,9 @@ def settle_world(sess, out: pathlib.Path, shots: dict,
     # `wait_for_world` never counts as the world and might press Return at;
     # `Session.outdoor_key` drives a step from it, so it is checked first and
     # again after the wait, in case the arrival settled there.
-    # Indoors that prompt is the stale travel-grid screen of a hop that is
-    # still loading, so only `wait_for_world` may settle the walk there.
+    # Indoors the settle is judged by row 24 through `indoor_bar`, so that
+    # prompt, the stale travel-grid screen of a hop still loading, is refused
+    # there because it is not an indoor bar.
     # A failed read (None) is not the grid either, and the area byte is read
     # again after the wait, which is when a hop finishes loading.
     if sess.indoors() is True:

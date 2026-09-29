@@ -1292,10 +1292,10 @@ def test_settle_does_not_take_the_travel_grid_prompt_indoors(tmp_path,
     assert not ok and "1-8, RETURN OR BUTTON" in message
 
 
-def test_settle_indoors_settles_through_wait_for_world(tmp_path, fake_clock):
+def test_settle_indoors_settles_on_the_command_bar(tmp_path, fake_clock):
     sess, m = make()
     sess = WalkSession(m, indoors=True)
-    sess.settled, sess.row = True, "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
+    sess.settled, sess.row = False, "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
     assert FT.settle_world(sess, tmp_path, {}) == (True, "")
 
 
@@ -1422,10 +1422,12 @@ def test_a_walk_ending_on_a_prompt_does_not_press_the_sheet_into_it():
 
 @pytest.fixture
 def fake_clock(monkeypatch):
-    """A clock that only `sleep` advances, so a 60 s settle takes no time."""
+    """A clock that only `sleep` advances, so a 60 s settle takes no time. It
+    replaces the tool's own `time`, not the global module."""
     now = [0.0]
-    monkeypatch.setattr(FT.time, "monotonic", lambda: now[0])
-    monkeypatch.setattr(FT.time, "sleep", lambda s: now.__setitem__(0, now[0] + s))
+    monkeypatch.setattr(FT, "time", types.SimpleNamespace(
+        monotonic=lambda: now[0], time=lambda: now[0],
+        sleep=lambda s: now.__setitem__(0, now[0] + s)))
 
 
 def test_settle_indoors_accepts_the_move_sub_bar(tmp_path, fake_clock):
@@ -1451,3 +1453,13 @@ def test_settle_indoors_settles_when_the_row_changes_to_the_sub_bar(
     rows = []
     assert FT.settle_world(sess, tmp_path, {}, rows) == (True, "")
     assert rows == ["1-8, RETURN OR BUTTON", bar]
+
+
+def test_settle_indoors_records_a_stale_row_held_for_the_whole_wait(
+        tmp_path, fake_clock):
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    sess.settled, sess.row = False, "1-8, RETURN OR BUTTON"
+    rows = []
+    ok, _ = FT.settle_world(sess, tmp_path, {}, rows)
+    assert not ok and rows == ["1-8, RETURN OR BUTTON"]
