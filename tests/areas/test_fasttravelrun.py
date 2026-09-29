@@ -1324,6 +1324,21 @@ def test_an_attempt_records_the_screens_walk_one_kept():
     assert steps[0]["attempts"][0]["screens"] == ["row a"]
 
 
+def test_an_attempt_records_the_screen_walk_one_stopped_at():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True, blocked={"I"})
+    sess.walk_stop_screen = ("row a",)
+    steps, _ = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert steps[0]["attempts"][0]["stop_screen"] == ("row a",)
+
+
+def test_an_attempt_without_a_stop_records_no_stop_screen():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True, blocked={"I"})
+    steps, _ = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert "stop_screen" not in steps[0]["attempts"][0]
+
+
 def test_stop_after_moves_ends_the_walk_after_one_changed_square():
     sess, m = make()
     sess = WalkSession(m, indoors=True)

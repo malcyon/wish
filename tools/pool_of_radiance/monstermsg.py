@@ -264,6 +264,7 @@ def drive(args) -> int:
             raise RuntimeError("begin_adventuring failed")
         sess.settle(3)
         emit("world", at=list(sess.position()))
+        sess.walk_encounter = S.ENCOUNTER_FIGHT
         steps = 0
         while not sess.in_combat():
             if steps > args.steps:

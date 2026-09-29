@@ -242,6 +242,7 @@ def main(argv=None) -> int:
             m.resume()
         log.emit("armed_walk", checkpoints=cp, points=WALK_POINTS)
 
+        sess.walk_encounter = S.ENCOUNTER_FIGHT
         for step in range(1, args.steps + 1):
             sess.walk_one(args.walk)
             sess.handle_prompt()

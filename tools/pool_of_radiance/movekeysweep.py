@@ -190,6 +190,7 @@ def main(argv=None) -> int:
             raise RuntimeError("begin_adventuring failed")
         sess.settle(3)
         print("in the world at", sess.position(), flush=True)
+        sess.walk_encounter = S.ENCOUNTER_FIGHT
         steps = 0
         while not sess.in_combat():
             if steps > 400:

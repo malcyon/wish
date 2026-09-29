@@ -207,6 +207,7 @@ def main(argv=None) -> int:
         run.say(f"in the world at {sess.position()}")
         run.emit("world", at=list(sess.position()))
         for fight in range(1, args.fights + 1):
+            sess.walk_encounter = S.ENCOUNTER_FIGHT
             steps = 0
             while not sess.in_combat():
                 if steps > args.steps:

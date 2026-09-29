@@ -134,6 +134,7 @@ def main(argv=None) -> int:
         binding = AutomapBinding(root, mapper, interval_ms=200)
         emit("assembled")
 
+        sess.walk_encounter = S.ENCOUNTER_FIGHT
         steps = 0
         while not sess.in_combat():
             if steps > 400:

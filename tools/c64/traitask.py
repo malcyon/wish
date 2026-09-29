@@ -769,6 +769,7 @@ def main(argv=None) -> int:
 
         if args.fight:
             tracer.phase = "walk"
+            sess.walk_encounter = S.ENCOUNTER_FIGHT
             steps = 0
             while not sess.in_combat() and steps < args.steps:
                 sess.walk_one(args.walk)

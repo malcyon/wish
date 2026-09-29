@@ -353,6 +353,7 @@ def main(argv=None) -> int:
             log.say("sheets written to " + str(out / "sheets.txt"))
             return rc
 
+        sess.walk_encounter = S.ENCOUNTER_FIGHT
         steps = 0
         while not sess.in_combat():
             if steps > args.steps:

@@ -278,6 +278,7 @@ def main(argv=None) -> int:
         sess.settle(3)
         log.say(f"in the world at {sess.position()}")
 
+        sess.walk_encounter = S.ENCOUNTER_FIGHT
         steps = 0
         while not sess.in_combat():
             if steps > args.steps:

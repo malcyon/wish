@@ -44,6 +44,7 @@ Tests for the C64 side: the driven-session code under `tools/c64/`, the memory m
 | `test_session_paths.py` | Checks that `Session` builds its disk, side and log paths with `os.path.join` and not a hardcoded `/`. |
 | `test_session_sheet_bar.py` | Checks that `Session.character_sheet` reads the sheet of a character who owns nothing, and the Silver Blades sheet, on the bar the game draws. |
 | `test_session_walk_movebar.py` | Checks that `Session.walk_one` sends a direction key straight at an already selected move sub-bar and does not report the step blocked. |
+| `test_session_walk_stop.py` | Checks that `Session.walk_one` and `leave_move` press no key at an encounter menu, a `YES NO`, a fight bar or the world bar, and stop with the row recorded. |
 | `test_sheetexit.py` | Checks that one interpreter reads every Gold Box command bar and that a sheet is left with the key the bar names. |
 | `test_sideprompt.py` | Checks that a disk prompt is classified as a disk prompt and answered with a disk, not treated as a `PRESS` continue bar. |
 | `test_trainerspells.py` | Checks each class's trainer spell step in each title against that title's own overlay and against `goldbox/levelup.py`. |

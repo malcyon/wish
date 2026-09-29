@@ -200,6 +200,12 @@ PARTY_ROWS = range(0, 12)
 #: first -- `walk_one` used to -- spends every one of its tries failing to
 #: find a word that was never going to be there (`#275`).
 MOVE_SUBBAR = "I,J,K,M"
+#: The word on a fight's opening menu, `COMBAT WAIT FLEE ADVANCE` under `A
+#: PATROL CONFRONTS YOU`, measured on C64 Curse
+#: (`/mnt/disks/cited/15/curse25/43/before.json`); DOS Pool's bars are at
+#: `tools/dos/dosbox.py:1508`.  A fight-seeking caller sets `walk_encounter`
+#: to it so a walk that meets that menu takes the fight.
+ENCOUNTER_FIGHT = "COMBAT"
 
 #: The camp's own bar, `ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT`.  A caller
 #: that has already left its own screen back to camp -- rather than the
@@ -2183,6 +2189,7 @@ class Session:
         self.walk_prompt = None
         self.walked_outdoors = False
         self.walk_screens = None
+        self.walk_stop_screen = None
         if self.indoors() is False:
             self.walked_outdoors = True
             return self.walk_outdoors(move, hold, gap)
@@ -2199,6 +2206,8 @@ class Session:
                 sent = True
             elif self._walk_expired():
                 break
+            elif (stopped := self.walk_stop(s)) is not None:
+                return self._stop_walk(move, stopped)
             elif self.select_bar("MOVE", timeout=8, answer_prompts=answer_prompts):
                 if not answer_prompts and self._prompt_up(self.screen()):
                     return False
@@ -2227,7 +2236,9 @@ class Session:
             else:
                 if not answer_prompts and self._prompt_up(self.screen()):
                     return False
-                self._leave_move(answer_prompts, 2)
+                stopped = self.walk_stop(self.screen())
+                if stopped is not None:
+                    return self._stop_walk(move, stopped)
                 continue
             time.sleep(1.2)
             after = self.screen()
@@ -2246,6 +2257,69 @@ class Session:
             self.walk_refused = (
                 f"the driver pressed nothing for {move}: taking MOVE never "
                 f"brought up {MOVE_SUBBAR}; this is a driver error, not a wall")
+        return False
+
+    #: The word `walk_one` answers on an encounter menu it stopped at, or None
+    #: to answer nothing.  An attribute, beside `walk_expired`, so a subclass's
+    #: own `walk_one` signature is untouched.
+    walk_encounter = None
+
+    #: The 25 rows of the screen the last `walk_one` stopped at, or None.
+    walk_stop_screen = None
+
+    def walk_stop(self, s=None, wait: float = 0.0):
+        """None for a screen a walk answers or waits on, else its 25 rows.
+
+        A walk presses Return only at the move sub-bar, a disk prompt, a
+        `PRESS` acknowledgement and the world bar's own screens.  Anything
+        else -- an encounter menu, `YES NO`, a fight bar -- has a highlighted
+        choice a Return would take for the party.  A blank or half-drawn row
+        is waited on, and a stop is decided only after a second read a
+        second later, so a bar caught mid-redraw does not stop the walk.
+        With `wait` the blank row is re-read every 0.3 s until it fills or
+        `wait` runs out.
+        """
+        if s is None:
+            s = self.screen()
+        waited = 0.0
+        while waited < wait and (s is None or not s.row(24).strip()):
+            time.sleep(0.3)
+            waited += 0.3
+            s = self.screen()
+        if self._walk_recognised(s):
+            return None
+        time.sleep(1.0)
+        s = self.screen()
+        if self._walk_recognised(s):
+            return None
+        return self._rows(s)
+
+    def _walk_recognised(self, s) -> bool:
+        if s is None:
+            return True
+        row = s.row(24)
+        if not row.strip() or MOVE_SUBBAR in row:
+            return True
+        if "ENCAMP" in row and "ENCAMP:" not in row:
+            return True
+        if self.wanted_disk(s) is not None:
+            return True
+        return self.combat_state(s).kind == BAR_PRESS
+
+    def _stop_walk(self, move: str, rows) -> bool:
+        """End `walk_one` at a screen it does not answer; press nothing
+        unless the caller named a `walk_encounter` word that is on the row."""
+        self.walk_stop_screen = rows
+        row = rows[24].strip()
+        self.walk_refused = (
+            f"the driver pressed nothing for {move}: row 24 reads {row!r}, "
+            f"and a walk does not answer that screen")
+        word = self.walk_encounter
+        if word and word_column(row, word) >= 0:
+            self.log(f"  Encounter menu {row!r}: taking {word} as asked")
+            self.select_bar(word, timeout=8)
+            self.walk_refused += (
+                f"; it answered {word} because the caller asked")
         return False
 
     #: A caller's "time is up" test, consulted before each wait and before the
@@ -2436,7 +2510,7 @@ class Session:
     def leave_outdoor_move(self, tries: int = 4) -> bool:
         """Get off the travel grid's direction prompt, and only if it is up.
 
-        Not `leave_move`, which presses Return before it looks: outdoors the
+        Not `leave_move`, which is for the dungeon's sub-bar: outdoors the
         prompt may already have given way to the command bar, and a Return
         there runs whichever command the highlight is sitting on rather than
         backing out of anything.
@@ -2469,30 +2543,41 @@ class Session:
     def leave_move(self, tries: int = 8, answer_prompts: bool = True) -> bool:
         """Get out of move mode, and *check*.
 
-        A single Return here is not enough: the game swallows input while it
-        redraws the view, and the next thing the driver does is hunt for a
-        command bar that is still showing `I,J,K,M`.
+        Presses Return only while row 24 shows the move sub-bar on two reads
+        0.3 s apart; on any other screen it returns True without a key, since
+        a Return at an encounter menu or `YES NO` takes the highlighted
+        choice.  One Return is not always enough: the game swallows input
+        while it redraws the view, so it presses again up to `tries` times.
 
         With `answer_prompts` False a disk prompt on screen is checked for
         before every key and ends the call with `False`, so the Return never
         lands on a prompt's `press any key`; `walk_prompt` records it.
         """
         for n in range(tries):
-            if not answer_prompts and self._prompt_up(self.screen()):
+            s = self.screen()
+            if not answer_prompts and self._prompt_up(s):
                 return False
+            if s is None:
+                time.sleep(0.6)
+                continue
+            if answer_prompts and self.wanted_disk(s) is not None:
+                self.handle_prompt(s)
+                time.sleep(0.6)
+                continue
+            if MOVE_SUBBAR not in s.row(24):
+                return True
+            time.sleep(0.3)
+            again = self.screen()
+            if again is None:
+                continue
+            if MOVE_SUBBAR not in again.row(24):
+                return True
             if n % 2:
                 # XTEST Return is not dependable here; the KERNAL buffer is.
                 self.press_kernal(0x0D)
             else:
                 self.kbd.key("Return", 0.20, 0.30)
             time.sleep(0.6)
-            s = self.screen()
-            if not answer_prompts and self._prompt_up(s):
-                return False
-            if s is not None and not s.contains(MOVE_SUBBAR):
-                return True
-            if answer_prompts:
-                self.handle_prompt(s)
         return False
 
     def save_game(self, to: str | None = None) -> bool:

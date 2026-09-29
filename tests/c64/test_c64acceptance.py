@@ -4529,6 +4529,81 @@ def _real_walk(tmp_path, monkeypatch, **kw):
     return sess, run, log
 
 
+class TempleQuestionWalk(RealWalk):
+    """A step onto a square that asks `DO YOU SEEK HEALING?`: after the last
+    `i` the screen is the question over `YES NO` and the status line has not
+    moved, so a Return would answer YES."""
+
+    QUESTION = "SUNE.' DO YOU SEEK HEALING?'"
+
+    def __init__(self, clock, **kw):
+        super().__init__(clock, prompt_after=None, **kw)
+        self.asked = False
+        base = self.kbd.key
+
+        class Kbd:
+            def key(kself, name, *timing):
+                if name == "i":
+                    self.asked = True
+                    self.keys.append(name)
+                    self.keyed_at = self.clock.now
+                    return
+                base(name, *timing)
+
+            screenshot = self.kbd.screenshot
+
+        self.kbd = Kbd()
+
+    def screen(self):
+        if self.asked:
+            return _Text(_window({21: self.QUESTION}, "YES NO"))
+        return super().screen()
+
+
+def test_a_step_onto_a_question_square_fails_the_walk_and_answers_nothing(
+        tmp_path, monkeypatch):
+    clock = _Clock(monkeypatch)
+    sess = TempleQuestionWalk(clock)
+    run, log = _walk_run(tmp_path, sess, clock)
+    with pytest.raises(A.StepFailed, match="YES NO"):
+        run.walk("I")
+    log.close()
+    assert sess.keys == ["i"] and sess.kernal == []
+    record = _move_records(tmp_path)[-1]
+    assert record["keyed"] is True
+    assert TempleQuestionWalk.QUESTION in " ".join(record["stop_screen"])
+
+
+def test_pool_fight_asks_the_walk_to_take_an_encounter_menu_only_while_it_walks():
+    seen = []
+
+    class Session:
+        walk_encounter = None
+        combat = False
+
+        def in_combat(self):
+            return self.combat
+
+        def walk_one(self, move):
+            seen.append(self.walk_encounter)
+            self.combat = True
+
+        def handle_prompt(self):
+            pass
+
+        def fight(self, *, budget, tactic):
+            return A.S.FightResult(A.S.WON, 1, 1.0, [], [])
+
+    run = A.PoolRun.__new__(A.PoolRun)
+    run.sess = Session()
+    run.to_world = lambda: True
+    run.spent = lambda: False
+    run.capture = lambda name: None
+    run.fight("60", "I", 5)
+    assert seen == [A.S.ENCOUNTER_FIGHT]
+    assert run.sess.walk_encounter is None
+
+
 def test_the_real_walk_one_does_not_answer_a_prompt_the_move_raised(
         tmp_path, monkeypatch):
     sess, run, log = _real_walk(tmp_path, monkeypatch, prompt_after=0.0)
@@ -4543,7 +4618,7 @@ def test_a_prompt_that_opens_after_the_look_is_not_answered_by_the_next_move(
         tmp_path, monkeypatch):
     # The first move ends by leaving move mode; the prompt opens 4 s after
     # its key, past the two-second look.
-    sess, run, log = _real_walk(tmp_path, monkeypatch, prompt_after=3.95)
+    sess, run, log = _real_walk(tmp_path, monkeypatch, prompt_after=4.25)  # just after the look window, which includes leave_move's two-read gate
     sess.moved_by = 0.1
     with pytest.raises(A.StepFailed, match="move 0 \\(I\\).*before the next move"):
         run.walk("II")

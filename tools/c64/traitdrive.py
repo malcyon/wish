@@ -253,6 +253,7 @@ def main(argv=None) -> int:
         log.emit("armed", checkpoints=cp, asked=asked, entered=entered,
                  matched=matched)
 
+        sess.walk_encounter = S.ENCOUNTER_FIGHT
         steps = 0
         while not sess.in_combat() and steps < args.steps:
             sess.walk_one(args.walk)

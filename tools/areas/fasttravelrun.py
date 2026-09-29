@@ -521,6 +521,9 @@ def walk_afterwards(sess, timeout: float = 60.0,
                 screens = getattr(sess, "walk_screens", None)
                 if screens is not None:
                     attempts[-1]["screens"] = screens
+                stop_screen = getattr(sess, "walk_stop_screen", None)
+                if stop_screen is not None:
+                    attempts[-1]["stop_screen"] = stop_screen
                 if gi:
                     retry_used += 1
                 refused = getattr(sess, "walk_refused", None)

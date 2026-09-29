@@ -399,6 +399,7 @@ def main(argv=None) -> int:
         log.say("  before: " + "  ".join(
             f"{i}:{describe(before[i])}" for i in occupied))
 
+        sess.walk_encounter = S.ENCOUNTER_FIGHT
         steps = 0
         while not sess.in_combat():
             if steps > args.steps:

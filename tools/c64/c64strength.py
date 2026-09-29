@@ -355,6 +355,7 @@ def main(argv=None) -> int:
             for name, _slot, _flag, _spoil in VARIANTS:
                 run.view(name, where="world")
 
+        sess.walk_encounter = S.ENCOUNTER_FIGHT
         steps, seen = 0, 0
         while not sess.in_combat() and steps < args.steps:
             sess.walk_one(args.walk)

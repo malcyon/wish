@@ -2059,10 +2059,15 @@ class PoolRun:
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
         taken = 0
-        while not self.sess.in_combat() and taken < steps:
-            self.sess.walk_one(walk)
-            self.sess.handle_prompt()
-            taken += 1
+        # An encounter that opens on a menu is answered with the fight.
+        self.sess.walk_encounter = S.ENCOUNTER_FIGHT
+        try:
+            while not self.sess.in_combat() and taken < steps:
+                self.sess.walk_one(walk)
+                self.sess.handle_prompt()
+                taken += 1
+        finally:
+            self.sess.walk_encounter = None
         if not self.sess.in_combat():
             raise self.fail("fight", f"no fight in {taken} steps of {walk}")
         self.capture("fight-start")
@@ -2196,6 +2201,23 @@ class PoolRun:
                 if self.clock() >= look_until:
                     break
                 time.sleep(0.3)
+            # A step whose question is typed after `walk_one` returns leaves
+            # the status line stale; the screen is what says it is up.
+            walk_stop = getattr(self.sess, "walk_stop", None)
+            stopped = None if walk_stop is None else walk_stop(wait=12.0)
+            if stopped is not None:
+                key_rows = screens[0] if screens else None
+                self.log.emit(
+                    "move", move=move, n=n, before=before,
+                    after=self.steady_position(), resent=resent,
+                    row24=self.bar().strip(),
+                    text=(None if key_rows is None else
+                          [r.strip() for r in key_rows[17:23]]),
+                    keyed=True, stop_screen=[r.strip() for r in stopped])
+                raise self.fail(
+                    "walk", f"walk {route}: move {n} ({move}) from {before} "
+                            f"ended on a screen a walk does not answer: "
+                            f"{stopped[24].strip()}")
             after = self.position()
             key_rows = screens[0] if screens else None
             text = (None if key_rows is None else
