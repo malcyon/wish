@@ -6,9 +6,9 @@ which are items, where the names and the roster are, which header bytes a
 conversion computes and which it writes as a measured zero.  A table, not a
 class hierarchy: what differs between the titles is a handful of numbers.
 
-**One class carries both halves, with six rows**: the disk geometry for every
-title and the payload map for the measured ones, so *"where does this save
-load?"* and *"what is at `+$C7`?"* are answered from the same offsets.
+**One class with six rows** holds the disk geometry for every title and the
+payload map for the measured ones, so *"where does this save load?"* and
+*"what is at `+$C7`?"* are answered from the same offsets.
 `goldbox.c64_port` holds the registry of the six rows.
 
 **Three of the six rows have no measured payload map**, and that is the point
@@ -258,9 +258,7 @@ class C64Container:
     #: which on `ENCAMP` is always the camp scene.  None for a title whose
     #: save does not span it.
     #:
-    #: **Not a map**, though it was called one until #309 (Eight files still
-    #: call Curse's picture buffer a map region, which is what it was guessed
-    #: to be before anybody read it).  It is not a region the game keeps
+    #: **Not a map**: it is not a region the game keeps
     #: anything in: a Curse or Silver Blades save is one KERNAL `SAVE` of
     #: `$4B00`-`$67FF` and `$6300` is simply what lies between the item pages
     #: and the roster.  `docs/181-curse-picture-buffer.md` has the decode,

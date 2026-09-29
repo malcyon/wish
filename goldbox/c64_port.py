@@ -6,8 +6,8 @@ it loads, and whether the party roster is a second file or the last page of
 the first -- so the descriptor is a table, not a class hierarchy.
 
 **The table itself is `goldbox/c64_save.py`.** Each row is a `C64Container`,
-which answers both *"where does this save load?"* and *"what is at `+$C7`?"*
-from one set of offsets.
+which answers *"where does this save load?"* and *"what is at `+$C7`?"* from
+one set of offsets.
 
 What is left here is the registry -- the six rows in order, the three lookup
 dictionaries, and `detect`, which is how a disk in a drive turns into a title.
