@@ -356,6 +356,67 @@ def test_writing_over_a_read_only_leftover_does_not_raise(tmp_path):
     testparty.write_disk([], base, out)  # must not raise
 
 
+def _icons_on(disk_path):
+    """The eight combat-icon entries of a save disk, as bytes."""
+    from goldbox import icons
+
+    game, sg0, _ = savegame.load_save(D64.open(str(disk_path)))
+    payload = sg0.to_bytes()
+    base = icons.ICON_TABLE_BASE - game.save_load_address
+    return [payload[base + i * icons.ICON_SIZE:
+                    base + (i + 1) * icons.ICON_SIZE]
+            for i in range(savegame.ROSTER_COUNT)]
+
+
+@gamedata.needs_disks
+def test_the_generated_disk_carries_the_creation_default_icon_not_zero(
+        tmp_path):
+    """An all-zero icon draws as a solid block of hooks in a fight, so the
+    generator writes the game's own creation default into all eight."""
+    from tools.pool_of_radiance import dirtenicon
+
+    disk = tmp_path / "TESTPARTY.D64"
+    assert testparty.main(["--no-items", "--disk", str(disk),
+                           "--base", str(gamedata.save_disk("PORSAVE"))]) == 0
+    default = dirtenicon.native_default().icon
+    assert any(default)
+    assert _icons_on(disk) == [default] * savegame.ROSTER_COUNT
+
+
+@gamedata.needs_disks
+def test_keep_icons_leaves_the_base_disks_eight_icons_as_they_were(tmp_path):
+    base = gamedata.save_disk("PORSAVE")
+    disk = tmp_path / "TESTPARTY.D64"
+    assert testparty.main(["--no-items", "--keep-icons", "--disk", str(disk),
+                           "--base", str(base)]) == 0
+    assert _icons_on(disk) == _icons_on(base)
+
+
+def test_no_icon_leaves_the_base_disks_icon_bytes_unchanged(tmp_path):
+    from goldbox import icons
+
+    game = c64_port.by_key("pool-of-radiance")
+    marked = bytes(range(1, icons.ICON_SIZE + 1))
+    disk = D64.blank()
+    payload = bytearray(game.save_size)
+    at = icons.ICON_TABLE_BASE - game.save_load_address
+    for i in range(savegame.ROSTER_COUNT):
+        payload[at + i * icons.ICON_SIZE:
+                at + (i + 1) * icons.ICON_SIZE] = marked
+    disk.write_file(game.save_file,
+                    savegame.SaveGame0.from_bytes(bytes(payload), game)
+                    .to_prg())
+    disk.write_file(game.roster_file,
+                    savegame.SaveGame1(bytes(game.roster_size), game).to_prg())
+    base = tmp_path / "base.d64"
+    disk.save(str(base))
+    out = tmp_path / "TESTPARTY.D64"
+
+    testparty.write_disk([], base, out)
+
+    assert _icons_on(out) == [marked] * savegame.ROSTER_COUNT
+
+
 # --- the loadouts, and the sixteen-item ceiling ------------------------------
 
 @pytest.fixture(scope="module")

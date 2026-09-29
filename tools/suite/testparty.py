@@ -36,7 +36,8 @@ save's header -- where the party is standing, the loaded map and script, the
 clock and the quest flags.  A generated party arrives wherever the base save's
 party was, which is somewhere the game already agrees is legal.  Everything
 else that belongs to a character is overwritten, including the item pages and
-the combat icons, so nobody inherits the base party's gear or art.
+the combat icons (set to the creation default), so nobody inherits the base
+party's gear or art.
 
 Where each number comes from
 ----------------------------
@@ -878,7 +879,7 @@ def write_records(built: list[Built], out: pathlib.Path) -> list[pathlib.Path]:
 
 
 def write_disk(built: list[Built], base: pathlib.Path, out: pathlib.Path,
-               keep_icons: bool = False) -> pathlib.Path:
+               icon: "bytes | None" = None) -> pathlib.Path:
     """Put the party on a **copy** of a save disk, and never on the original.
 
     The player's own disk is opened nowhere here: `base` is copied to `out`
@@ -895,9 +896,10 @@ def write_disk(built: list[Built], base: pathlib.Path, out: pathlib.Path,
     **The item page is written even though nobody carries anything**, and
     that is the point: leaving it alone would hand a generated character the
     base disk's party's gear, which is inherited data wearing our name.  The
-    combat icons go the same way and for the same reason -- `--keep-icons`
-    leaves the disk's own, which is the only art on it that is known to draw,
-    and is a deliberate exception a caller has to ask for.
+    eight combat icons are written the same way: `icon`, when given, goes
+    into every entry, because the game's own `INIT` seeds all eight alike, and
+    zero is never written -- an all-zero icon draws as a block of hooks.
+    `None` leaves the disk's own bytes alone.
 
     **What the copy keeps, deliberately**, is the base save's header: where
     the party is standing, which map and script are loaded, the clock and the
@@ -943,9 +945,12 @@ def write_disk(built: list[Built], base: pathlib.Path, out: pathlib.Path,
         payload[at:at + items.ITEM_BLOCK_STRIDE] = (
             record.slice(0x120, items.ITEM_BLOCK_STRIDE) if record
             else bytes(items.ITEM_BLOCK_STRIDE))
-        if not keep_icons:
+        if icon is not None:
+            if len(icon) != icons.ICON_SIZE:
+                raise ValueError(f"a combat icon is {icons.ICON_SIZE} bytes, "
+                                 f"not {len(icon)}")
             at = icon_base + index * icons.ICON_SIZE
-            payload[at:at + icons.ICON_SIZE] = bytes(icons.ICON_SIZE)
+            payload[at:at + icons.ICON_SIZE] = icon
 
     # The slot writes went into `sg0`; the item and icon writes went into a
     # copy of its payload, so put the slots back over it rather than losing
@@ -1010,8 +1015,7 @@ def main(argv: "list[str] | None" = None) -> int:
                          "records out of (default: the player's own)")
     ap.add_argument("--keep-icons", action="store_true",
                     help="leave the base disk's combat icons alone instead of "
-                         "clearing them; inherited art, and the only art on "
-                         "the disk known to draw")
+                         "setting them to the creation default")
     args = ap.parse_args(argv)
 
     if args.list:
@@ -1044,10 +1048,19 @@ def main(argv: "list[str] | None" = None) -> int:
             print(f"wrote {path}")
     if args.disk:
         base = args.base or base_save_disk()
-        where = write_disk(built, base, args.disk, args.keep_icons)
+        icon = None
+        if not args.keep_icons:
+            from tools.pool_of_radiance import dirtenicon
+            try:
+                icon = dirtenicon.native_default().icon
+            except dirtenicon.RepairError as error:
+                raise SystemExit(f"cannot read the creation-default combat "
+                                 f"icon: {error}")
+        where = write_disk(built, base, args.disk, icon)
         print(f"wrote {where} from {base}"
               + ("" if args.keep_icons else
-                 "; item pages and combat icons cleared"))
+                 "; item pages cleared and combat icons set to the creation "
+                 "default"))
     return 0
 
 
