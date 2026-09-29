@@ -32,7 +32,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 | `test_droptext_platform_neutral.py` | Checks that a drop line written while reading the source names no destination it does not yet know. |
 | `test_hirelingshare.py` | Checks that a Pool of Radiance companion's treasure share with bit 2 set converts from the C64 to DOS and the Amiga with the same parts and zero test, synthetically and on the shipped hireling templates. |
 | `test_joinedscroll.py` | Checks a Silver Blades joined scroll read off DOS and the Amiga and converted to each port: the join kept where the port holds one, its scrolls one to a slot on the C64, the pack after it intact, and the two capacity limits refused rather than cut. |
-| `test_namefit.py` | Checks `editor.saveplan.fit_names` and `name_width`: a name over the destination's width is named rather than cut, a chosen replacement is written with nothing left to clamp, and every title's width per port. |
+| `test_namefit.py` | Checks `editor.saveplan.fit_names` and `name_width`: a name over the destination's width is named by position rather than cut, two characters sharing a name each take their own replacement, a position outside the party is refused, and every title's width per port. |
 | `test_neutral.py` | Checks the neutral character record and the codecs around it: what is written unchanged, what is reported and what is refused. |
 | `test_podconvert.py` | Checks converting a DOS Pools of Darkness character to the Amiga and back. |
 | `test_podsave.py` | Checks `goldbox.dos_codec.pod_savgam`/`new_pod_save_from` and `editor.convert.PodAmigaToDos` writing a Pools of Darkness DOS save from an Amiga saved game, behind `WISH_EXPERIMENTAL_POD_CONVERT`. |

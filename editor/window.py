@@ -885,6 +885,10 @@ class EditorBinding(QObject):
         #: and the packs it was chosen against -- `(leave, packs)`, see
         #: `_packs_of`. Read only by a stale plan's re-preparation.
         self._left_behind: "tuple[dict, dict] | None" = None
+        #: The names the player chose for the Save As in progress, and the
+        #: `(position, name)` entries they were chosen against --
+        #: `(names, unfit)`. Read only by a stale plan's re-preparation.
+        self._named: "tuple[dict, tuple] | None" = None
         self._build_open_menu()
         self._build_save_menu()
         self._wire_destination_section()
@@ -1882,6 +1886,26 @@ class EditorBinding(QObject):
         while True:
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return "cancelled"
+            if dialog.rehearsal is None and dialog.unfit_names is not None:
+                # A name is too long for the destination: ask for shorter
+                # ones, now that Convert has been pressed.
+                choice = self._choose_names(
+                    dialog.unfit_names.unfit, dialog.unfit_names.width,
+                    convert_mod.BUTTON_CONVERT)
+                if choice is None:
+                    # Back to the Convert window with its rows as they were,
+                    # the way Save As stays open.
+                    continue
+                try:
+                    dialog.rehearse_naming(choice)
+                except Exception:
+                    _log.exception("could not convert with the names %s",
+                                   choice)
+                    dialog.refuse(convert_mod.CANNOT_CONVERT)
+                    continue
+                if dialog.rehearsal is None:
+                    dialog.refuse(convert_mod.CANNOT_CONVERT)
+                    continue
             if dialog.rehearsal is None and dialog.pack_overflow:
                 # The destination cannot hold a pack as it stands: ask what
                 # stays behind, now that Convert has been pressed.
@@ -1944,6 +1968,18 @@ class EditorBinding(QObject):
                 self.root, convert_mod.DIALOG_TITLE,
                 convert_mod.CONVERT_SUCCESS.format(folder=fresh))
             return result
+
+    def _choose_names(self, unfit, width: int, accept_label: str
+                      ) -> "dict[int, str] | None":
+        """Ask for a shorter name for every character whose name is over
+        `width`: one window, a box per character. `None` when the player
+        cancels; otherwise each character's name, keyed by its position."""
+        from .namefit import NameFitDialog
+
+        dialog = NameFitDialog(unfit, width, accept_label, self.root)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return dialog.chosen()
 
     def _choose_left_behind(self, overflow, game, accept_label: str
                             ) -> "dict[int, frozenset[int]] | None":
@@ -2660,6 +2696,7 @@ class EditorBinding(QObject):
                 return
         field.setText(str(path))
         self._left_behind = None
+        self._named = None
         self._report_flush_failures(self._flush())
         assets = self._resolve_destination_assets()
         if assets is None:
@@ -2703,24 +2740,41 @@ class EditorBinding(QObject):
         return {entry.members[0]: entry.items[0] for entry in overflow}
 
     def _prepare_plan(self, source, port: str, path: pathlib.Path,
-                      assets, leave=None, remembered=None
-                      ) -> "saveplan.SavePlan | None":
+                      assets, leave=None, remembered=None, names=None,
+                      remembered_names=None) -> "saveplan.SavePlan | None":
         """Prepare a Save As. `remembered` is an earlier choice of what to
         leave behind, `(leave, packs)`: it is reused only when the packs that
         overflow now are the ones it was chosen against, and otherwise the
         player is asked again, because an index names whatever item is there
-        now."""
+        now. `remembered_names` is the same for shortened names, `(names,
+        unfit)`, and is reused only against the same characters and names."""
         try:
             # Only a real choice is handed on: `prepare_save_as` treats none
             # and an empty one alike.
             chosen = {"leave": leave} if leave else {}
+            if names:
+                chosen["names"] = names
             return saveplan.prepare_save_as(self.party, port, path, assets,
                                             **chosen)
         except saveplan.NamesDoNotFit as exc:
-            # No dialog to ask for a replacement yet (#619's Stage C), so
-            # this refuses the way `DroppedFields` already does.
-            _log.debug("Save As to %s refused: %s", path, exc)
-            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
+            _log.info("The names do not fit the %s destination: %s",
+                      port, exc)
+            if names:
+                # The window lets nothing through that still does not fit, so
+                # this is a writer refusing what the player chose.
+                QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
+                return None
+            if (remembered_names is not None
+                    and remembered_names[1] == exc.unfit):
+                choice = remembered_names[0]
+            else:
+                choice = self._choose_names(exc.unfit, exc.width,
+                                            self._save_as_label())
+                if choice is None:
+                    return None
+            self._named = (choice, exc.unfit)
+            return self._prepare_plan(source, port, path, assets, leave=leave,
+                                      names=choice, remembered=remembered)
         except saveplan.DroppedFields as exc:
             _log.debug("Save As to %s refused: %s", path, exc)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
@@ -2750,7 +2804,8 @@ class EditorBinding(QObject):
             self._left_behind = (
                 {member: frozenset(kept) for member, kept in choice.items()},
                 packs)
-            return self._prepare_plan(source, port, path, assets, leave=choice)
+            return self._prepare_plan(source, port, path, assets, leave=choice,
+                                      names=names)
         except (dos_codec.DosRecordError, amiga_port.AmigaRecordError,
                 amiga_pod.ConversionError) as exc:
             # A writer refusing this particular party. Uncaught, PyQt6 aborts
@@ -2782,7 +2837,8 @@ class EditorBinding(QObject):
                 return
             fresh = self._prepare_plan(self._save_as_source, self._save_as_port,
                                        plan.destination.path, assets,
-                                       remembered=self._left_behind)
+                                       remembered=self._left_behind,
+                                       remembered_names=self._named)
             if fresh is None:
                 return
             self._publish_plan(fresh, assets, _retried=True)

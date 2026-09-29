@@ -351,21 +351,22 @@ class NamesDoNotFit(SaveAsError):
     """A name too long for the destination's field, with a chosen name still
     to be asked for.
 
-    `unfit` is every distinct name over `width`, in party order -- the ones
-    `fit_names` found nobody had a replacement for. `taken` is every name in
-    the party that already fits, its own or a replacement already chosen,
-    so a caller offering a chooser can refuse a duplicate. The message is
-    for the debug log only.
+    `unfit` is `(position, name)` for every character whose name is over
+    `width`, in party order, so two characters sharing one long name are two
+    entries -- the ones `fit_names` found nobody had a replacement for. The
+    position is the character's place in the party the direction built, which
+    for a C64 source is the character's row on the sheet. The message is for
+    the debug log only.
     """
 
-    def __init__(self, unfit: "tuple[str, ...] | list[str]", width: int,
-                 taken: "tuple[str, ...] | list[str]" = ()):
-        self.unfit = tuple(unfit)
+    def __init__(self, unfit: "tuple[tuple[int, str], ...] | list[tuple[int, str]]",
+                 width: int):
+        self.unfit = tuple((position, name) for position, name in unfit)
         self.width = width
-        self.taken = tuple(taken)
         super().__init__(
             f"{len(self.unfit)} name(s) do not fit the {width}-character "
-            f"field: " + "; ".join(self.unfit))
+            f"field: " + "; ".join(f"{position}: {name}"
+                                   for position, name in self.unfit))
 
 
 class DroppedFields(SaveAsError):
@@ -604,7 +605,7 @@ def resolve_assets(source: Any, port: str, *, game_files: Any = None,
 # ---------------------------------------------------------------------------
 
 def rehearse(direction: Any, source: Any, assets: Assets,
-            names: "Mapping[str, str] | None" = None,
+            names: "Mapping[int, str] | None" = None,
             leave: "Mapping[int, Collection[int]] | None" = None
             ) -> tuple[Any, str]:
     """Run `direction` in memory, and say which slot it wrote.
@@ -615,8 +616,9 @@ def rehearse(direction: Any, source: Any, assets: Assets,
     written anywhere -- the whole output is bytes in the returned
     `Rehearsal`.
 
-    `names` is passed straight to `direction.rehearse`, which calls
-    `fit_names` on the neutral party it builds -- a name still too long
+    `names` maps a position in the party the direction builds to the name the
+    player chose for it. It is passed straight to `direction.rehearse`, which
+    calls `fit_names` on the neutral party it builds -- a name still too long
     raises `NamesDoNotFit` from in there.
 
     Raises `MissingAssets` before running anything when `assets` does not
@@ -666,34 +668,38 @@ def name_width(port: str, title_key: str) -> int:
 
 
 def fit_names(party: "Sequence[Any]", port: str, title_key: str,
-             names: "Mapping[str, str] | None" = None) -> "list[Any]":
+             names: "Mapping[int, str] | None" = None) -> "list[Any]":
     """Give the destination a name it has nowhere to cut, or say who has none.
 
-    `party` is a list of `goldbox.neutral.NeutralCharacter`, keyed by the
-    name each one is read holding -- not by position, because the C64
-    party comes out of `goldbox.dos_codec.c64_party` in a different order
-    from the sheet's own rows, and a name is the one key both share.
-    `names` maps that name to the one the player chose for it; every
-    character sharing a long name takes the same replacement, since the C64
-    game itself refuses a duplicate name in its own party
-    (`docs/170-c64-identity-pair.md`).
+    `party` is a list of `goldbox.neutral.NeutralCharacter`, and `names` maps
+    a position in it to the name the player chose for that character, so two
+    characters sharing one long name are two positions with a replacement
+    each. The position is a place in the party this direction built. For a C64
+    source that is the sheet's own row: `goldbox.dos_codec.c64_party` reads
+    the characters in slot order and reverses them, and the sheet's marching
+    order is that same reversal.
 
     A chosen replacement that is empty, over `width`, or not printable
-    ASCII raises `SaveAsError` -- a caller's own mistake, never a player's
-    typing reaching this far unchecked. Every name still over `width` once
-    the replacements are applied is collected and raised as
-    `NamesDoNotFit`, naming every one, in party order, so a caller can put
-    up one dialog rather than refusing after the first.
+    ASCII raises `SaveAsError`, as does a position that is not in `party` --
+    a caller's own mistake, never a player's typing reaching this far
+    unchecked. Every name still over `width` once the replacements are
+    applied is collected and raised as `NamesDoNotFit`, one entry per
+    character in party order, so a caller can put up one dialog rather than
+    refusing after the first.
     """
     width = name_width(port, title_key)
     names = names or {}
-    unfit: list[str] = []
-    taken: list[str] = []
-    for char in party:
+    for position in names:
+        if not 0 <= position < len(party):
+            raise SaveAsError(
+                f"position {position} is not a character in a party of "
+                f"{len(party)}")
+    unfit: list[tuple[int, str]] = []
+    for position, char in enumerate(party):
         held = char.value("name")
         old = held.value
-        if old in names:
-            new = names[old]
+        if position in names:
+            new = names[position]
             if (not new or len(new) > width
                     or any(not (0x20 <= ord(ch) <= 0x7E) for ch in new)):
                 raise SaveAsError(
@@ -703,15 +709,10 @@ def fit_names(party: "Sequence[Any]", port: str, title_key: str,
                 held, value=new,
                 origin=f"{held.origin}, renamed to fit the {port} {width}-"
                       f"character name field")
-            if new not in taken:
-                taken.append(new)
         elif len(old) > width:
-            if old not in unfit:
-                unfit.append(old)
-        elif old not in taken:
-            taken.append(old)
+            unfit.append((position, old))
     if unfit:
-        raise NamesDoNotFit(unfit, width, taken)
+        raise NamesDoNotFit(unfit, width)
     return list(party)
 
 
@@ -1253,11 +1254,11 @@ class SavePlan:
     key: tuple
     assets: "Assets | None" = None
     stale: bool = False
-    #: The name each character was given, keyed by the name it was read
-    #: holding -- empty for a plan that needed no chosen name. A
-    #: re-preparation (`StalePlan`) passes this straight back, so a player is
-    #: not asked a second time for a name already chosen.
-    names: "dict[str, str]" = dataclasses.field(default_factory=dict)
+    #: The name each character was given, keyed by its row on the sheet --
+    #: empty for a plan that needed no chosen name. A re-preparation
+    #: (`StalePlan`) passes this straight back, so a player is not asked a
+    #: second time for a name already chosen.
+    names: "dict[int, str]" = dataclasses.field(default_factory=dict)
     #: The pack positions the player chose to leave behind, keyed by member
     #: index -- empty when nothing was chosen. The caller supplies it; the
     #: writer reports each item left as a line of `Report.left_behind`.
@@ -1503,7 +1504,7 @@ def native_files(snapshot: Snapshot) -> dict[str, bytes]:
 
 def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
                     assets: "Assets | None" = None,
-                    names: "Mapping[str, str] | None" = None,
+                    names: "Mapping[int, str] | None" = None,
                     leave: "Mapping[int, Collection[int]] | None" = None
                     ) -> SavePlan:
     """Everything a Save As would write, in memory and validated.
@@ -1528,7 +1529,7 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
     Without that check a player typing `MySave` for an Amiga destination gets
     the validation's own sentence about a D64 image of 901,120 bytes.
 
-    `names` maps a name as the sheet holds it to the one the player chose
+    `names` maps a character's row on the sheet to the name the player chose
     for it, and is threaded through to `rehearse` and, from there, to
     `fit_names`; a source name still too long once `names` is applied
     raises `NamesDoNotFit`, propagated rather than caught here, so the
@@ -1578,13 +1579,13 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
         # field either way, as `record.get("name")` alone did before #638,
         # reports an unedited mixed-case DOS or Amiga name as having arrived
         # folded to capitals when the true written bytes never were.
-        # `names[sheet]` is the player's own Save As replacement, kept
+        # `names[row]` is the player's own Save As replacement, kept
         # verbatim rather than through either fold.
         expected_names = []
-        for member, record in zip(party.members, expected):
+        for row, (member, record) in enumerate(zip(party.members, expected)):
             sheet = record.get("name")
-            if names and sheet in names:
-                expected_names.append(names[sheet])
+            if names and row in names:
+                expected_names.append(names[row])
             elif sheet != original_record(member).get("name"):
                 expected_names.append(sheet)
             else:
@@ -1594,10 +1595,9 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
         # records, so a chosen name goes into the copy here or `compare`
         # reports the player's own choice as a loss. The member's own
         # record, which the sheet still shows, is never touched.
-        for record in expected:
-            old = record.get("name")
-            if old in names:
-                record.set("name", names[old])
+        for row, record in enumerate(expected):
+            if row in names:
+                record.set("name", names[row])
     validate(destination, files, expected, accounted=losses(report),
              expected_names=expected_names, source_port=source.port)
     return SavePlan(source=source, destination=destination, files=files,

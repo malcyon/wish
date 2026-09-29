@@ -3851,6 +3851,224 @@ def test_a_pack_that_fits_never_asks(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# A name the destination cannot hold (#619): held by the dialog, asked at
+# Convert
+# ---------------------------------------------------------------------------
+
+LONG_NAME = "ABCDEFGHIJKLMNOPQR"
+
+
+def _name_overflowing_dialog(tmp_path, monkeypatch, *, folder=True):
+    """A `ConvertDialog` over a Pool of Radiance C64 save disk whose
+    rehearsal reports two names too long for DOS, and the fake
+    `saveplan.rehearse` that recorded the `names` it was handed.
+
+    `saveplan.rehearse` raises `NamesDoNotFit` until it is given a choice, and
+    then returns a rehearsal of one made-up file: what is under test is what
+    the dialog and the window do with the unfit names, not the writer, which
+    `tests/convert/test_namefit.py` and `tests/editor/test_savepublish.py`
+    cover.
+    """
+    seen = []
+
+    def rehearse(direction, source, assets, names=None, leave=None):
+        seen.append(names)
+        if not names:
+            raise convert.saveplan.NamesDoNotFit(
+                ((0, LONG_NAME), (1, LONG_NAME)), 15)
+        return (convert.Rehearsal(convert.neutral.Report(),
+                                  {"SAVGAMA.DAT": b"a save"}), "A")
+
+    def write(self, rehearsal, folder):
+        return [_put(pathlib.Path(folder) / name, data)
+                for name, data in rehearsal.files.items()]
+
+    def _put(path, data):
+        path.write_bytes(data)
+        return path
+
+    monkeypatch.setattr(convert.saveplan, "rehearse", rehearse)
+    monkeypatch.setattr(convert.saveplan, "resolve_assets",
+                        lambda *a, **k: convert.saveplan.Assets())
+    # The real write needs the state a real rehearsal carries.
+    monkeypatch.setattr(convert.C64ToDos, "write", write)
+    out = tmp_path / "out"
+    out.mkdir()
+    dialog = convert.ConvertDialog(
+        str(_por_c64_disk(tmp_path)), None, _some_disks, destination="dos",
+        folder=str(out) if folder else None)
+    return dialog, seen, out
+
+
+def test_a_name_too_long_shows_nothing_and_leaves_convert_pressable(
+        tmp_path, monkeypatch, caplog):
+    """Until Convert is pressed the dialog neither refuses nor pops a modal:
+    it keeps what did not fit, and Convert is enabled once a folder is named.
+
+    Fails without the change: `_blocked` is `(DIALOG_TITLE, CANNOT_CONVERT)`,
+    `critical` is called and Convert stays disabled.
+    """
+    import logging
+
+    shown = []
+    monkeypatch.setattr(convert.QMessageBox, "critical",
+                        lambda *a, **k: shown.append(a))
+    dialog, _seen, _out = _name_overflowing_dialog(tmp_path, monkeypatch)
+    try:
+        with caplog.at_level(logging.INFO, logger="wish"):
+            dialog._interactive = True
+            dialog.replan()
+        assert dialog._blocked is None
+        assert shown == []
+        assert dialog.unfit_names.unfit == ((0, LONG_NAME), (1, LONG_NAME))
+        assert dialog.unfit_names.width == 15
+        assert dialog.rehearsal is None
+        assert dialog.ui.convert_destination_line.text()
+        assert dialog.buttons.button(
+            QDialogButtonBox.StandardButton.Ok).isEnabled()
+        assert any("do not fit the dos destination" in r.getMessage()
+                   for r in caplog.records)
+    finally:
+        dialog.close()
+
+
+def test_a_name_too_long_still_needs_a_folder_before_convert_goes(
+        tmp_path, monkeypatch):
+    dialog, _seen, _out = _name_overflowing_dialog(tmp_path, monkeypatch,
+                                                   folder=False)
+    try:
+        assert dialog.unfit_names is not None
+        assert dialog._blocked == (convert.DIALOG_TITLE, convert.NO_FOLDER)
+        assert not dialog.buttons.button(
+            QDialogButtonBox.StandardButton.Ok).isEnabled()
+    finally:
+        dialog.close()
+
+
+def test_changing_a_row_forgets_the_unfit_names(tmp_path, monkeypatch):
+    dialog, _seen, _out = _name_overflowing_dialog(tmp_path, monkeypatch)
+    try:
+        assert dialog.unfit_names is not None
+        dialog._source_path = ""
+        dialog.replan()
+        assert dialog.unfit_names is None
+    finally:
+        dialog.close()
+
+
+def test_rehearse_naming_hands_the_names_to_the_writer(tmp_path, monkeypatch):
+    dialog, seen, _out = _name_overflowing_dialog(tmp_path, monkeypatch)
+    try:
+        dialog.rehearse_naming({0: "FIRST", 1: "SECOND"})
+        assert seen[-1] == {0: "FIRST", 1: "SECOND"}
+        assert dialog.rehearsal is not None
+    finally:
+        dialog.close()
+
+
+def _convert_c64_to_dos(window, tmp_path, out):
+    return window.convert(source=str(tmp_path / "PORSAVEA.D64"),
+                          destination="dos", folder=str(out))
+
+
+def test_pressing_convert_asks_and_the_names_reach_the_writer_by_position(
+        tmp_path, monkeypatch):
+    dialog, seen, out = _name_overflowing_dialog(tmp_path, monkeypatch)
+    dialog.close()
+    window, _loaded = _window_for_pack_overflow(monkeypatch)
+    asked = []
+
+    def choose(unfit, width, accept_label):
+        asked.append((unfit, width, accept_label))
+        return {0: "FIRST", 1: "SECOND"}
+
+    monkeypatch.setattr(window, "_choose_names", choose)
+    try:
+        outcome = _convert_c64_to_dos(window, tmp_path, out)
+    finally:
+        window.close()
+
+    assert asked == [(((0, LONG_NAME), (1, LONG_NAME)), 15,
+                      convert.BUTTON_CONVERT)]
+    assert seen[-1] == {0: "FIRST", 1: "SECOND"}
+    today = datetime.date.today().isoformat()
+    written = out / f"wish-{today}"
+    assert [p.read_bytes() for p in written.iterdir()] == [b"a save"]
+    assert outcome == convert.CONVERTED_DOS.format(slot="A", folder=written)
+
+
+def test_cancelling_the_name_window_writes_nothing(tmp_path, monkeypatch):
+    dialog, seen, out = _name_overflowing_dialog(tmp_path, monkeypatch)
+    dialog.close()
+    window, loaded = _window_for_pack_overflow(monkeypatch,
+                                               presses=[True, False])
+    monkeypatch.setattr(window, "_choose_names", lambda *a: None)
+    try:
+        outcome = _convert_c64_to_dos(window, tmp_path, out)
+    finally:
+        window.close()
+
+    assert outcome == "cancelled"
+    assert list(out.iterdir()) == []
+    assert loaded == []
+    assert all(not names for names in seen)
+
+
+def test_cancelling_the_name_window_returns_to_the_convert_window_and_asks_again(
+        tmp_path, monkeypatch):
+    dialog, seen, out = _name_overflowing_dialog(tmp_path, monkeypatch)
+    dialog.close()
+    window, _loaded = _window_for_pack_overflow(monkeypatch)
+    real_exec = QDialog.exec
+
+    def pressed(dialog):
+        window.shown.append((dialog, dialog.folder))
+        QTimer.singleShot(0, dialog.buttons.button(
+            QDialogButtonBox.StandardButton.Ok).click)
+        return real_exec(dialog)
+
+    monkeypatch.setattr(convert.ConvertDialog, "exec", pressed)
+    answers = [None, {0: "FIRST", 1: "SECOND"}]
+    asked = []
+
+    def choose(unfit, width, accept_label):
+        asked.append(unfit)
+        return answers.pop(0)
+
+    monkeypatch.setattr(window, "_choose_names", choose)
+    try:
+        outcome = _convert_c64_to_dos(window, tmp_path, out)
+    finally:
+        window.close()
+
+    (first, first_folder), (second, second_folder) = window.shown
+    assert first is second
+    assert first_folder == second_folder == str(out)
+    assert len(asked) == 2
+    assert seen[-1] == {0: "FIRST", 1: "SECOND"}
+    assert outcome.startswith("Converted to DOS")
+
+
+def test_names_that_fit_never_ask(tmp_path, monkeypatch):
+    """A rehearsal that succeeds outright names nothing, so the window is not
+    opened."""
+    dialog, _seen, out = _name_overflowing_dialog(tmp_path, monkeypatch)
+    dialog.close()
+    monkeypatch.setattr(
+        convert.saveplan, "rehearse",
+        lambda *a, **k: (convert.Rehearsal(convert.neutral.Report(),
+                                           {"SAVGAMA.DAT": b"a save"}), "A"))
+    window, _loaded = _window_for_pack_overflow(monkeypatch)
+    monkeypatch.setattr(window, "_choose_names",
+                        lambda *a: pytest.fail("the window was opened"))
+    try:
+        assert _convert_c64_to_dos(window, tmp_path, out).startswith(
+            "Converted to DOS")
+    finally:
+        window.close()
+
+
+# ---------------------------------------------------------------------------
 # A Pool of Radiance conversion's movement is computed from the ITEMS table,
 # so both routes that build a `GameFiles` have to carry it.
 # ---------------------------------------------------------------------------

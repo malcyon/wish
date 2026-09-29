@@ -457,7 +457,7 @@ def test_the_c64_to_amiga_rehearsal_hands_its_source_to_the_disk_check(
         patch.setattr(convert, "_amiga_destination_data", spy)
         try:
             direction.rehearse(source, "A", tmp_path / "no-such-disk.adf",
-                              names={"W" * 18: "Wren"},
+                              names={n: "Wren" for n in range(6)},
                               disk_one=_disk_one_path(tmp_path, CURSE_KEY))
         except FileNotFoundError:
             pytest.fail("the rehearsal opened the Amiga disk")
@@ -679,14 +679,14 @@ def test_every_known_field_is_compared_or_named_as_not_compared():
 
 def test_a_c64_party_that_does_not_fit_a_dos_save_is_refused(tmp_path):
     """A conversion driven whole, with the player's own disks, whose C64
-    party carries an eighteen-character name and 65,535 maximum hit points.
+    party carries eighteen-character names and 65,535 maximum hit points.
 
     Refusing the whole party for a name alone is the defect `#619`'s Stage A
     plan fixes: with no chosen replacement, `prepare_save_as` raises
-    `NamesDoNotFit` naming that name, and only that -- no game writes 65,535
-    hit points, so `hp_max`'s own clamp is not this test's business. With a
-    replacement supplied, the party still refuses on `hp_max` alone, and the
-    name is no longer among what it names.
+    `NamesDoNotFit` naming each character's name, and only those -- no game
+    writes 65,535 hit points, so `hp_max`'s own clamp is not this test's
+    business. With a replacement supplied, the party still refuses on
+    `hp_max` alone, and the name is no longer among what it names.
 
     Skips where this machine's registry has no Pool of Radiance C64 disks or
     no DOS Pool of Radiance game folder.
@@ -702,12 +702,13 @@ def test_a_c64_party_that_does_not_fit_a_dos_save_is_refused(tmp_path):
 
     with pytest.raises(saveplan.NamesDoNotFit) as caught:
         saveplan.prepare_save_as(party, "dos", out, assets)
-    assert caught.value.unfit == (long_name,)
+    # The synthetic save names all six characters alike.
+    assert caught.value.unfit == tuple((n, long_name) for n in range(6))
     assert not out.exists()
 
     with pytest.raises(saveplan.DroppedFields) as caught:
         saveplan.prepare_save_as(party, "dos", out, assets,
-                                 names={long_name: "W" * 15})
+                                 names={n: "W" * 15 for n in range(6)})
 
     named = {line.split(":", 1)[0] for line in caught.value.lost}
     assert "hp_max" in named and "name" not in named
@@ -760,11 +761,11 @@ def test_a_c64_name_too_long_for_dos_converts_under_the_name_the_player_chose(
 
     with pytest.raises(saveplan.NamesDoNotFit) as caught:
         saveplan.prepare_save_as(party, port, out, assets)
-    assert caught.value.unfit == (long_name,)
+    assert caught.value.unfit == ((0, long_name),)
     assert not out.exists()
 
     plan = saveplan.prepare_save_as(party, port, out, assets,
-                                    names={long_name: chosen})
+                                    names={0: chosen})
     assert plan.report.losses == []
     published = saveplan.publish(plan, party, assets=assets,
                                  backups=tmp_path / "backups")
@@ -775,9 +776,70 @@ def test_a_c64_name_too_long_for_dos_converts_under_the_name_the_player_chose(
     assert chosen in {saveplan.stored_name(m) for m in written.members}
 
     expected = [saveplan.edited_record(member) for member in party.members]
-    for record in expected:
-        if record.get("name") == long_name:
-            record.set("name", chosen)
+    expected[0].set("name", chosen)
+    assert saveplan.compare(
+        expected, [member.record for member in written.members]) == []
+
+
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+def test_two_characters_sharing_a_long_name_each_convert_under_their_own(
+        tmp_path, port):
+    """You have a Commodore 64 Pool of Radiance save in which the first two
+    characters are both called `ABCDEFGHIJKLMNOPQR`. `File ▸ Save As…` asks
+    for a shorter name for each of them, `FIRST` for the one at the top of
+    the sheet and `SECOND` for the next, and the saved game holds each name
+    on the character who had it, with everything else of that character.
+
+    `saveplan.compare` matches whole characters, so this goes red if `FIRST`
+    lands on the second character's record: that pins a position in the
+    neutral party to a row of the sheet for real saves.
+
+    Skips where this machine's registry has no Pool of Radiance C64 save
+    disks or DOS game folder, or, for the Amiga destination, no Amiga Pool
+    of Radiance disk 2.
+    """
+    from support.toamigapor import _por_disk_2
+
+    saves = _c64_pool_saves()
+    files_for = _registry_game_files(POOL_OF_RADIANCE)
+    if not saves or files_for is None:
+        pytest.skip("needs the Pool of Radiance C64 save disks")
+    if port == "dos":
+        game_folder = _dos_game_folder()
+        if game_folder is None:
+            pytest.skip("needs the DOS Pool of Radiance game folder")
+        assets = saveplan.Assets(dos_folder=game_folder, source_files=files_for)
+        out = tmp_path / "copy"
+    else:
+        disk2 = _por_disk_2(tmp_path)
+        assets = saveplan.Assets(amiga_disk=disk2, source_files=files_for)
+        out = tmp_path / "copy.adf"
+
+    long_name = "ABCDEFGHIJKLMNOPQR"
+    party = Party(str(saves[0]))
+    for member in party.members[:2]:
+        member.record.set("name", long_name)
+
+    with pytest.raises(saveplan.NamesDoNotFit) as caught:
+        saveplan.prepare_save_as(party, port, out, assets)
+    assert caught.value.unfit == ((0, long_name), (1, long_name))
+    assert not out.exists()
+
+    plan = saveplan.prepare_save_as(party, port, out, assets,
+                                    names={0: "FIRST", 1: "SECOND"})
+    assert plan.report.losses == []
+    assert plan.names == {0: "FIRST", 1: "SECOND"}
+    published = saveplan.publish(plan, party, assets=assets,
+                                 backups=tmp_path / "backups")
+
+    written = Party(convert.Source.detect(out, slot=published.destination.slot))
+    stored = {saveplan.stored_name(m) for m in written.members}
+    assert {"FIRST", "SECOND"} <= stored
+    assert long_name not in stored
+
+    expected = [saveplan.edited_record(member) for member in party.members]
+    expected[0].set("name", "FIRST")
+    expected[1].set("name", "SECOND")
     assert saveplan.compare(
         expected, [member.record for member in written.members]) == []
 

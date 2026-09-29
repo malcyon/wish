@@ -702,6 +702,133 @@ def test_a_choice_the_writer_still_refuses_shows_the_existing_sentence(
     assert run.published == []
 
 
+# ---------------------------------------------------------------------------
+# A name the destination cannot hold (#619): Save As asks, and the choice is
+# prepared
+# ---------------------------------------------------------------------------
+
+LONG_NAME = "ABCDEFGHIJKLMNOPQR"
+
+
+class _UnfitSaveAs(_OverflowingSaveAs):
+    """`_OverflowingSaveAs`' twin for names: `prepare_save_as` raises
+    `NamesDoNotFit` until it is handed `names`, and `_choose_names` is a
+    double that records what it was opened with.
+
+    The writer is not run: `tests/convert/test_namefit.py` and
+    `tests/editor/test_savepublish.py` cover what `names` does there.
+    """
+
+    def __init__(self, app, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+
+        super().__init__(app, tmp_path, monkeypatch)
+        self.overflow = ()
+        self.unfit = ((0, LONG_NAME), (1, LONG_NAME))
+        self.names_prepared = []     # the `names` each preparation was given
+        self.names_asked = []        # what the name window was opened with
+        self.names_answer = {0: "FIRST", 1: "SECOND"}
+        self.names_later_answers = []
+
+        def prepare(party, port, path, assets, names=None, leave=None):
+            self.names_prepared.append(names)
+            if not names and self.unfit:
+                raise saveplan.NamesDoNotFit(self.unfit, 15)
+            return SimpleNamespace(destination=_StubDestination(path),
+                                   names=dict(names or {}))
+
+        def choose(unfit, width, accept_label):
+            self.names_asked.append((unfit, width, accept_label))
+            return (self.names_later_answers.pop(0)
+                    if self.names_later_answers else self.names_answer)
+
+        monkeypatch.setattr(ew.saveplan, "prepare_save_as", prepare)
+        monkeypatch.setattr(self.binding, "_choose_names", choose)
+
+
+def test_save_as_asks_for_shorter_names_and_prepares_with_them(
+        app, tmp_path, monkeypatch):
+    run = _UnfitSaveAs(app, tmp_path, monkeypatch)
+    run.press()
+
+    assert run.said == []
+    assert run.names_prepared == [None, {0: "FIRST", 1: "SECOND"}]
+    assert run.names_asked == [
+        (run.unfit, 15, run.binding._child("button_destination_save_as").text())]
+    assert len(run.published) == 1
+    assert run.published[0].names == {0: "FIRST", 1: "SECOND"}
+    assert run.binding._child("destination_section").isHidden()
+
+
+def test_cancelling_the_name_window_leaves_save_as_open_with_its_path(
+        app, tmp_path, monkeypatch):
+    run = _UnfitSaveAs(app, tmp_path, monkeypatch)
+    run.names_answer = None
+    run.press()
+
+    assert run.said == []
+    assert run.names_prepared == [None]
+    assert run.published == []
+    assert not run.binding._child("destination_section").isHidden()
+    assert run.binding._child("destination_path").text() == str(run.target)
+
+
+def test_a_stale_plan_is_reprepared_with_the_names_and_the_player_is_not_asked_twice(
+        app, tmp_path, monkeypatch):
+    run = _UnfitSaveAs(app, tmp_path, monkeypatch)
+    run.stale_once = True
+    run.press()
+
+    assert run.said == []
+    assert len(run.names_asked) == 1
+    assert run.names_prepared == [None, {0: "FIRST", 1: "SECOND"}, None,
+                                  {0: "FIRST", 1: "SECOND"}]
+    assert len(run.published) == 2
+    assert run.published[1].names == {0: "FIRST", 1: "SECOND"}
+
+
+def test_a_stale_plan_whose_names_changed_asks_again_rather_than_reuse_the_positions(
+        app, tmp_path, monkeypatch):
+    """A position names whatever character is there now, so an old choice for
+    a party whose long names have changed would rename the wrong ones."""
+    run = _UnfitSaveAs(app, tmp_path, monkeypatch)
+    run.stale_once = True
+    first, second = {0: "FIRST", 1: "SECOND"}, {1: "THIRD"}
+    run.names_later_answers = [first, second]
+    original = run.unfit
+
+    real_publish = ew.saveplan.publish
+
+    def publish(plan, party, **kwargs):
+        if not run.published:
+            run.unfit = ((1, LONG_NAME),)
+        return real_publish(plan, party, **kwargs)
+
+    monkeypatch.setattr(ew.saveplan, "publish", publish)
+    run.press()
+
+    assert run.said == []
+    assert [entry[0] for entry in run.names_asked] == [original, run.unfit]
+    assert run.published[1].names == second
+
+
+def test_names_the_writer_still_refuses_show_the_existing_sentence(
+        app, tmp_path, monkeypatch):
+    run = _UnfitSaveAs(app, tmp_path, monkeypatch)
+
+    def still_too_long(*_args, names=None, **_kwargs):
+        run.names_prepared.append(names)
+        raise saveplan.NamesDoNotFit(run.unfit, 15)
+
+    monkeypatch.setattr(ew.saveplan, "prepare_save_as", still_too_long)
+    run.press()
+
+    assert run.said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_REFUSED)]
+    assert run.names_prepared == [None, {0: "FIRST", 1: "SECOND"}]
+    assert len(run.names_asked) == 1
+    assert run.published == []
+
+
 def test_save_as_with_a_choice_reads_the_written_disk_back_without_a_false_mismatch(
         app, tmp_path, monkeypatch):
     """The real writer, `validate` and `compare`, with a member's pack cut to

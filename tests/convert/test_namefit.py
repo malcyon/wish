@@ -36,7 +36,7 @@ def test_a_long_name_with_no_replacement_names_it_and_the_width():
     char = _char("ABCDEFGHIJKLMNOPQR")
     with pytest.raises(saveplan.NamesDoNotFit) as excinfo:
         saveplan.fit_names([char], "dos", boundarychars.GAME)
-    assert excinfo.value.unfit == ("ABCDEFGHIJKLMNOPQR",)
+    assert excinfo.value.unfit == ((0, "ABCDEFGHIJKLMNOPQR"),)
     assert excinfo.value.width == 15
 
 
@@ -45,7 +45,7 @@ def test_a_replacement_is_written_and_the_writer_has_nothing_left_to_cut():
 
     char = _char("ABCDEFGHIJKLMNOPQR")
     saveplan.fit_names([char], "dos", boundarychars.GAME,
-                       {"ABCDEFGHIJKLMNOPQR": "RENAMED"})
+                       {0: "RENAMED"})
     assert char.get("name") == "RENAMED"
     record, itm, spc, report = dos_codec.write(char)
     assert report.losses == []
@@ -65,16 +65,38 @@ def test_a_replacement_that_does_not_fit_raises_saveaserror(bad):
     char = _char("ABCDEFGHIJKLMNOPQR")
     with pytest.raises(saveplan.SaveAsError):
         saveplan.fit_names([char], "dos", boundarychars.GAME,
-                           {"ABCDEFGHIJKLMNOPQR": bad})
+                           {0: bad})
 
 
-def test_two_characters_sharing_one_long_name_both_take_the_replacement():
-    a = _char("ABCDEFGHIJKLMNOPQR")
-    b = _char("ABCDEFGHIJKLMNOPQR")
+def test_two_characters_sharing_one_long_name_each_take_their_own_replacement():
+    long_name = "ABCDEFGHIJKLMNOPQR"
+    a = _char(long_name)
+    b = _char(long_name)
+    with pytest.raises(saveplan.NamesDoNotFit) as excinfo:
+        saveplan.fit_names([a, b], "dos", boundarychars.GAME)
+    assert excinfo.value.unfit == ((0, long_name), (1, long_name))
     saveplan.fit_names([a, b], "dos", boundarychars.GAME,
-                       {"ABCDEFGHIJKLMNOPQR": "RENAMED"})
-    assert a.get("name") == "RENAMED"
-    assert b.get("name") == "RENAMED"
+                       {0: "FIRST", 1: "SECOND"})
+    assert a.get("name") == "FIRST"
+    assert b.get("name") == "SECOND"
+
+
+def test_a_replacement_for_one_of_two_leaves_the_other_named_as_unfit():
+    long_name = "ABCDEFGHIJKLMNOPQR"
+    a, b = _char(long_name), _char(long_name)
+    with pytest.raises(saveplan.NamesDoNotFit) as excinfo:
+        saveplan.fit_names([a, b], "dos", boundarychars.GAME, {1: "SECOND"})
+    assert excinfo.value.unfit == ((0, long_name),)
+    assert b.get("name") == "SECOND"
+
+
+@pytest.mark.parametrize("position", [-1, 1, 7])
+def test_a_key_that_is_not_a_position_in_the_party_raises_saveaserror(position):
+    char = _char("SHORT NAME")
+    with pytest.raises(saveplan.SaveAsError):
+        saveplan.fit_names([char], "dos", boundarychars.GAME,
+                           {position: "RENAMED"})
+    assert char.get("name") == "SHORT NAME"
 
 
 @pytest.mark.parametrize("key", dos_port.LAYOUTS.keys())

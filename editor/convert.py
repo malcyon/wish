@@ -556,7 +556,7 @@ class Direction:
     destination_game: Any
 
     def rehearse(self, source: Source, slot: str, options: Any,
-                names: "Mapping[str, str] | None" = None,
+                names: "Mapping[int, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None) -> Rehearsal:
         raise NotImplementedError
 
@@ -623,7 +623,7 @@ class DosToC64(Direction):
 
     def rehearse(self, source: Source, slot: str,
                 options: "dosimport.GameFiles",
-                names: "Mapping[str, str] | None" = None,
+                names: "Mapping[int, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None) -> Rehearsal:
         if names:
             # A DOS name is at most fifteen characters and the C64 field
@@ -675,7 +675,7 @@ class AmigaToC64(DosToC64):
 
     def rehearse(self, source: Source, slot: str,
                 options: "dosimport.GameFiles",
-                names: "Mapping[str, str] | None" = None,
+                names: "Mapping[int, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None) -> Rehearsal:
         disk = source.amiga_disk()
         if self.shape is dos_port.POOL_OF_RADIANCE:
@@ -767,7 +767,7 @@ class C64ToDos(Direction):
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
                 icon_parts: "Any | None" = None,
-                names: "Mapping[str, str] | None" = None,
+                names: "Mapping[int, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None
                 ) -> "AmigaDosRehearsal":
         if leave:
@@ -868,7 +868,7 @@ class AmigaToDos(C64ToDos):
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
-                names: "Mapping[str, str] | None" = None,
+                names: "Mapping[int, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None
                 ) -> AmigaDosRehearsal:
         if leave:
@@ -942,7 +942,7 @@ class PodAmigaToDos(Direction):
         self.source_key = self.shape.key
 
     def rehearse(self, source: Source, slot: str, options: Any,
-                names: "Mapping[str, str] | None" = None,
+                names: "Mapping[int, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None
                 ) -> "PodAmigaDosRehearsal":
         if leave:
@@ -1231,7 +1231,7 @@ class C64ToAmiga(Direction):
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
                 icon_parts: "Any | None" = None,
-                names: "Mapping[str, str] | None" = None,
+                names: "Mapping[int, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None,
                 disk_one: "str | pathlib.Path | None" = None) -> AmigaWriteRehearsal:
         if leave:
@@ -1287,7 +1287,7 @@ class DosToAmiga(Direction):
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
-                names: "Mapping[str, str] | None" = None,
+                names: "Mapping[int, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None,
                 disk_one: "str | pathlib.Path | None" = None) -> AmigaWriteRehearsal:
         if leave:
@@ -1892,6 +1892,11 @@ class ConvertDialog(QDialog):
         #: `EditorBinding.convert` asks the player what to leave behind once
         #: Convert is pressed. `_assets` is what that second rehearsal reads.
         self.pack_overflow: tuple = ()
+        #: Set when a name is too long for the destination
+        #: (`saveplan.NamesDoNotFit`): no rehearsal exists yet, and
+        #: `EditorBinding.convert` asks the player to shorten the names once
+        #: Convert is pressed.
+        self.unfit_names: "saveplan.NamesDoNotFit | None" = None
         self._assets = None
 
         #: What stops Convert right now, `(title, text)` or `None`. Four of
@@ -2046,6 +2051,7 @@ class ConvertDialog(QDialog):
         self.rehearsal = None
         self.slot = None
         self.pack_overflow = ()
+        self.unfit_names = None
         self._assets = None
         #: Cleared on every plan and set only by `_rehearse_and_report`'s
         #: own success tail below, so every early return here -- no source,
@@ -2202,12 +2208,13 @@ class ConvertDialog(QDialog):
             self._name_destination()
             return
         except saveplan.NamesDoNotFit as exc:
-            # No dialog to ask for a replacement yet (#619's Stage C), so
-            # this stops the write the way a name too long for the C64's
-            # field already refuses it: a real refusal, not a silent cut.
+            # Not a refusal: the player shortens the names once Convert is
+            # pressed (`EditorBinding.convert`), so nothing is shown now and
+            # Convert stays pressable.
             _log.info("names do not fit the %s destination: %s",
                       direction.destination_port, exc)
-            self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
+            self.unfit_names = exc
+            self._name_destination()
             return
         except dos_codec.DosRecordError as exc:
             _log.exception("could not rehearse %s", self._source_path)
@@ -2239,6 +2246,16 @@ class ConvertDialog(QDialog):
         """
         self.rehearsal, self.slot = saveplan.rehearse(
             self.direction, self.source, self._assets, leave=leave)
+        self._finish_rehearsal()
+
+    def rehearse_naming(self, names: "Mapping[int, str]") -> None:
+        """Rehearse again with the names the player chose, keyed by position.
+
+        Raises what the writer raises, so a caller can refuse the write; a
+        rehearsal that comes out with a loss is left `None`, as `replan` does.
+        """
+        self.rehearsal, self.slot = saveplan.rehearse(
+            self.direction, self.source, self._assets, names=names)
         self._finish_rehearsal()
 
     def _finish_rehearsal(self) -> None:
@@ -2373,5 +2390,6 @@ class ConvertDialog(QDialog):
         reason a ready rehearsal with no folder still shows `NO_FOLDER`
         rather than the writes list (`_rehearse_and_report` above)."""
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
-            (self.rehearsal is not None or bool(self.pack_overflow))
+            (self.rehearsal is not None or bool(self.pack_overflow)
+             or self.unfit_names is not None)
             and bool(self._folder_path))
