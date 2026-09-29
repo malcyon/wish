@@ -345,3 +345,136 @@ def test_the_encounter_flag_is_cleared_by_the_next_walk_one(monkeypatch):
     sess.live_moves = False
     sess.walk_one("I", tries=1, encounters=True)
     assert sess.walk_encounter_started is False
+
+
+class LateMenu(Fake):
+    """`MOVE` is taken and its sub-bar never comes: the world bar stays up
+    until the square's encounter menu is drawn on the third read after."""
+
+    def __init__(self, monkeypatch, menu=PATROL, draws_at=4):
+        super().__init__(monkeypatch, WORLD)
+        self.menu, self.taken, self.looks = screen(menu), False, 0
+        self.draws_at = draws_at
+        self.left = 0
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        self.asked.append(label)
+        if label == "MOVE":
+            self.taken = True
+            return True
+        return S.word_column(self.current.row(24), label) >= 0
+
+    def screen(self):
+        if self.taken:
+            self.looks += 1
+            if self.looks >= self.draws_at:
+                self.current = self.menu
+        return self.current
+
+    def leave_move(self, *a, **k):
+        self.left += 1
+        return True
+
+
+def test_a_menu_drawn_while_move_waits_for_its_sub_bar_is_answered(monkeypatch):
+    sess = LateMenu(monkeypatch)
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    assert sess.walk_one("I", tries=1, encounters=True) is False
+    assert sess.asked == ["MOVE", "COMBAT"]
+    assert sess.keys == [] and sess.left == 0
+    assert sess.walk_stop_screen[24].strip() == "COMBAT WAIT FLEE ADVANCE"
+    assert "because the caller asked" in sess.walk_refused
+
+
+def test_a_late_yes_no_is_recorded_and_nothing_is_pressed(monkeypatch):
+    sess = LateMenu(monkeypatch, menu=TEMPLE)
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    assert sess.walk_one("I", tries=1, encounters=True) is False
+    assert sess.asked == ["MOVE"] and sess.keys == [] and sess.left == 0
+    assert sess.walk_stop_screen[24].strip() == "YES NO"
+
+
+def test_without_the_opt_in_a_late_menu_is_not_looked_for(monkeypatch):
+    sess = LateMenu(monkeypatch)
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    assert sess.walk_one("I", tries=1) is False
+    assert "COMBAT" not in sess.asked and sess.walk_stop_screen is None
+
+
+class Fighting(S.Session):
+    """A fight that only lets its fake clock run, one second a poll."""
+
+    def __init__(self, monkeypatch):
+        self.now = 1000.0
+        monkeypatch.setattr(S.time, "time", lambda: self.now)
+        self.lines = []
+        self.reads = 0
+
+    def in_combat(self):
+        return True
+
+    def mode(self):
+        return S.COMBAT
+
+    def screen(self):
+        return Screen("")
+
+    def idle(self, seconds=1.0):
+        self.now += seconds
+
+    def handle_prompt(self, s=None):
+        return False
+
+    def log(self, *a):
+        self.lines.append(" ".join(str(x) for x in a))
+
+    def battle(self):
+        self.reads += 1
+
+        class C:
+            def __init__(self, name, hp, party):
+                self.name, self.hp, self.is_party = name, hp, party
+
+        class B:
+            combatants = [C("ASTRA", 12, True), C("SKELETON", 3, False)]
+
+        return B()
+
+
+def test_a_long_fight_logs_one_line_a_minute_with_the_party_hp(monkeypatch):
+    sess = Fighting(monkeypatch)
+    result = sess.fight(budget=185.0)
+    assert result.outcome == S.BUDGET
+    assert len(sess.lines) == 3 and sess.reads == 3
+    assert "60 s, 0 turns, party hp ASTRA=12" in sess.lines[0]
+    assert "SKELETON" not in sess.lines[0]
+
+
+def test_a_short_fight_logs_no_progress_line(monkeypatch):
+    sess = Fighting(monkeypatch)
+    sess.fight(budget=30.0)
+    assert sess.lines == [] and sess.reads == 0
+
+
+def test_a_menu_that_draws_fourteen_seconds_after_the_key_is_still_answered(
+        monkeypatch):
+    # Reads are 0.3 s apart, so 14 s is read 47; the plain wait ends at 27.
+    sess = LateMenu(monkeypatch, draws_at=47)
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    assert sess.walk_one("I", tries=1, encounters=True) is False
+    assert sess.asked == ["MOVE", "COMBAT"] and sess.keys == []
+
+
+def test_a_menu_that_never_draws_ends_with_the_old_message_after_the_long_wait(
+        monkeypatch):
+    sess = LateMenu(monkeypatch, draws_at=10 ** 6)
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    assert sess.walk_one("I", tries=1, encounters=True) is False
+    assert sess.looks == S.Session.ENCOUNTER_MENU_LOOKS + 1
+    assert "never brought up" in sess.walk_refused
+
+
+def test_without_the_opt_in_the_sub_bar_wait_is_the_usual_length(monkeypatch):
+    sess = LateMenu(monkeypatch, draws_at=10 ** 6)
+    assert sess.walk_one("I", tries=1) is False
+    assert sess.looks == S.Session.MOVE_SUBBAR_LOOKS

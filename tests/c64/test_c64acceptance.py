@@ -7043,3 +7043,84 @@ def test_walk_fight_fails_naming_row_24_when_the_arrival_bar_never_clears(
     log.close()
     assert sess.sent == [("key", 0x0D)] * A.ARRIVAL_PRESSES
     assert sess.pressed == []
+
+
+class LateMenuWalk(RealWalk):
+    """The real `walk_one` over a party whose second step was taken normally
+    (the compass moved) and whose encounter menu draws `DRAW` seconds after
+    `MOVE` is taken on the next key, while the sub-bar never comes up.  The
+    first step is ordinary."""
+
+    MENU = "COMBAT WAIT FLEE ADVANCE"
+    DRAW = 3.0
+
+    def __init__(self, clock, **kw):
+        super().__init__(clock, prompt_after=None, **kw)
+        self.moves_taken = 0
+        self.taken_at = None
+        self.combat = False
+        self.selected = []
+        self.tactics = []
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        self.selected.append(label)
+        if label == "MOVE":
+            self.moves_taken += 1
+            if self.moves_taken == 1:
+                self.bar = A.S.MOVE_SUBBAR
+            else:
+                self.taken_at = self.clock.now
+            return True
+        if label in ("COMBAT", "FLEE") and self.bar == self.MENU:
+            self.combat, self.bar = True, ""
+            return True
+        return False
+
+    def screen(self):
+        if (self.taken_at is not None and not self.combat
+                and self.clock.now >= self.taken_at + self.DRAW):
+            self.bar = self.MENU
+        return super().screen()
+
+    def mode(self):
+        return A.S.COMBAT if self.combat else A.S.DUNGEON
+
+    def in_combat(self):
+        return self.combat
+
+    def fight(self, budget, tactic):
+        self.tactics.append(tactic)
+        self.combat, self.bar = False, WORLD_BAR
+        self.y -= 1
+        return A.S.FightResult(A.S.WON, 3, 1.0, [], [])
+
+
+def test_an_encounter_menu_drawn_while_move_waits_for_its_sub_bar_is_answered_combat(
+        tmp_path, monkeypatch):
+    sess, run, log = _real_walk_with(LateMenuWalk, tmp_path, monkeypatch)
+    got = run.walk_fight("II")
+    log.close()
+    assert sess.selected == ["MOVE", "MOVE", "COMBAT"]
+    # The first step's own key and its Return; nothing at the menu.
+    assert sess.keys == ["i", "Return"]
+    assert [f["at_move"] for f in got["fights"]] == [1]
+    assert sess.tactics == [A.S.Session.melee_turn]
+    assert got["position"] == [5, 3, 0]
+
+
+def test_the_same_late_menu_is_answered_flee_for_walk_flee(tmp_path, monkeypatch):
+    sess, run, log = _real_walk_with(LateMenuWalk, tmp_path, monkeypatch)
+    run._flee_settles = lambda: True
+    run.walk_flee("II")
+    log.close()
+    assert sess.selected == ["MOVE", "MOVE", "FLEE"]
+    assert sess.keys == ["i", "Return"]
+
+
+def _real_walk_with(cls, tmp_path, monkeypatch, **kw):
+    clock = _Clock(monkeypatch)
+    sess = cls(clock, **kw)
+    run, log = _walk_run(tmp_path, sess, clock)
+    run.capture = lambda tag, rows=None: []
+    run.reading = lambda: {}
+    return sess, run, log

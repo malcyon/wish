@@ -2470,7 +2470,8 @@ class Session:
                 if not answer_prompts and self._prompt_up(self.screen()):
                     return False
                 up = None
-                for look in range(self.MOVE_SUBBAR_LOOKS):
+                for look in range(self.ENCOUNTER_MENU_LOOKS if encounters
+                                  else self.MOVE_SUBBAR_LOOKS):
                     if look:
                         if self._walk_expired():
                             break
@@ -2481,6 +2482,10 @@ class Session:
                     if s is not None and MOVE_SUBBAR in s.row(24):
                         up = s
                         break
+                    if encounters and (rows := self._encounter_menu(s)):
+                        # The square's encounter drew its menu while `MOVE`
+                        # waited for its sub-bar: answer it, do not give up.
+                        return self._stop_walk(move, rows)
                 if up is None:
                     continue
                 if self._walk_expired():
@@ -2529,6 +2534,8 @@ class Session:
             if moved:
                 self._leave_move(answer_prompts)
                 return True
+        if encounters and (rows := self._encounter_menu(self.screen())):
+            return self._stop_walk(move, rows)
         self._leave_move(answer_prompts)
         if not sent and self._walk_expired():
             self.walk_refused = (
@@ -2563,6 +2570,18 @@ class Session:
         except (OSError, MonitorError):
             return None
         return None if triple is None else tuple(triple[:2])
+
+    def _encounter_menu(self, s):
+        """The 25 rows of `s` when row 24 is the encounter menu the caller
+        named in `walk_encounter`, or a `YES NO`; else None.  It is the
+        classification `_stop_walk` and the acceptance walk answer."""
+        if s is None or not self.walk_encounter:
+            return None
+        row = s.row(24)
+        if (word_column(row, self.walk_encounter) >= 0
+                or (word_column(row, "YES") >= 0 and word_column(row, "NO") >= 0)):
+            return self._rows(s)
+        return None
 
     def _status_has_no_square(self) -> bool:
         """True when the status row (14) carries a facing and a time but no
@@ -2644,6 +2663,11 @@ class Session:
     #: Reads of the screen, 0.3 s apart, that `walk_one` gives `MOVE` to bring
     #: up its sub-bar: about 8 s, a limit and not a measurement.
     MOVE_SUBBAR_LOOKS = 27
+
+    #: The same reads for a caller that fights encounters: 0.3 s apart, about
+    #: 30 s, because a square's encounter draws its menu ~12.5 s after the key
+    #: and the sub-bar does not come up before it.
+    ENCOUNTER_MENU_LOOKS = 100
 
     @staticmethod
     def _rows(s):
@@ -3580,7 +3604,11 @@ class Session:
         outcome: str | None = None
         if not self.in_combat():
             return FightResult(NOT_FIGHTING, 0, 0.0, bars, lines)
+        next_report = started + FIGHT_REPORT_SECONDS
         while time.time() < end:
+            if time.time() >= next_report:
+                next_report += FIGHT_REPORT_SECONDS
+                _report_fight(self, started, turns)
             mode = self.mode()
             s = self.screen()
             text = s.text() if s is not None else ""
@@ -3681,6 +3709,27 @@ class Session:
             self.handle_prompt()
         return FightResult(outcome or BUDGET, turns, time.time() - started,
                            bars, lines, blows, highlights)
+
+
+#: Seconds between the progress lines a running fight logs.
+FIGHT_REPORT_SECONDS = 60.0
+
+
+def _report_fight(sess, started: float, turns: int) -> None:
+    """Log one line saying a long fight is still going: the turns taken and
+    each party member's hit points.  A module function so a caller that runs
+    `Session.fight` on an object that is not a `Session` is unaffected; a read
+    that fails is left out and never changes what the fight does."""
+    hp = ""
+    try:
+        b = sess.battle()
+        if b is not None:
+            hp = ", party hp " + " ".join(
+                f"{c.name}={c.hp}" for c in b.combatants
+                if c.is_party and c.hp is not None)
+    except Exception as e:  # a log line must not end a fight
+        hp = f", party hp unread ({e})"
+    sess.log(f"  fight: {int(time.time() - started)} s, {turns} turns{hp}")
 
 
 # -- claiming a slot, and putting the player's disks in it ------------------
