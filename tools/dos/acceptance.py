@@ -3397,13 +3397,21 @@ class Driver:
             state["encounters"] += 1
         state["last_bar"] = None
         if (kind == "continue_battle" and state["intervened"]
-                and not state["after_intervene"]):
+                and state["after_intervene"] is None):
             # The fight's end after the cheat: every side-1 record and the
-            # computer-controlled member as the game leaves them.
-            snap = self.combat_memory(True, state["records"])
-            state["after_intervene"] = [
-                {k: c.get(k) for k in PLACEMENT_FIELDS} for c in snap["combatants"]]
-            self.note(event="after-intervene", combatants=state["after_intervene"])
+            # computer-controlled member as the game leaves them.  The fight
+            # is already won, so a read that fails is logged and the prompt
+            # still answered.
+            try:
+                snap = self.combat_memory(True, state["records"])
+            except StepFailed as e:
+                state["after_intervene"] = []
+                self.note(event="after-intervene-unread", why=str(e))
+            else:
+                state["after_intervene"] = [
+                    {k: c.get(k) for k in PLACEMENT_FIELDS}
+                    for c in snap["combatants"]]
+                self.note(event="after-intervene", combatants=state["after_intervene"])
         self._answer(FIGHT_KEYS[kind], glyphs, kind, state)
         return False
 

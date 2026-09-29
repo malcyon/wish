@@ -7768,6 +7768,24 @@ def test_continue_battle_after_intervene_is_answered_no_and_read_once(
         "intervene", "after-intervene"]
 
 
+def test_an_unreadable_after_intervene_read_is_logged_and_the_prompt_still_answered(
+        tmp_path, fight_now):
+    game, d = _fighter(tmp_path, intervene=True)
+    game.prompt = True
+    real = game.read
+
+    def read(addr, n):
+        if game.state == "confirm":
+            raise da.dosboxx.NotHalted("MEMDUMPBIN answered ''")
+        return real(addr, n)
+
+    game.read = read
+    d.fight()
+    assert game.keys == ["m", "Up", "Up", "c", "alt+x", "n", "e", "n"]
+    assert _events(d, "after-intervene") == []
+    assert len(_events(d, "after-intervene-unread")) == 1
+
+
 def _destroyed_digests(monkeypatch, tmp_path):
     game, _ = _fighter(tmp_path / "digest")
     game.state = "lost"
