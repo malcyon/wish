@@ -212,12 +212,15 @@ def test_an_absolute_path_is_reduced_to_its_last_component():
     assert debuglog.scrub(r"C:\Users\Ada\wish\log.txt") == "...\\log.txt"
 
 
-def test_a_path_in_a_message_never_reaches_the_file(logs):
+def test_a_path_in_a_message_never_reaches_the_file(logs, monkeypatch):
+    # The version line carries the commit's short SHA, which can contain any
+    # three hex-compatible letters, so the check is on path components only.
+    monkeypatch.setattr(debuglog, "versions", lambda: "wish ev1336+g33ada227")
     debuglog.start()
     debuglog.note("opened %s", "/home/ada/Documents/Pool of Radiance/PORSAVE11.D64")
     text = only_log(logs).read_text()
     assert "PORSAVE11.D64" in text
-    assert "ada" not in text and "Documents" not in text
+    assert "/home/ada" not in text and "Documents" not in text
 
 
 def test_a_traceback_carries_its_frames_but_not_their_paths(logs):
