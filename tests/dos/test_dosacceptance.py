@@ -1918,19 +1918,31 @@ def test_share_verdict_is_none_when_every_share_matches():
     assert da.share_verdict(None) is None
 
 
+def _node(minutes=0):
+    return {"id": 32, "minutes": minutes, "data": 0}
+
+
 _RAISED_BEFORE = {"characters": [{"name": "WISHFTR", "control": 0, "treasure_share": 1},
                                  {"name": "GUY", "control": 0, "treasure_share": 0}]}
 
 
-def _raised_after(guy_control=0):
+def _raised_after(guy_control=0, nodes=True, name="WISHFTR"):
     return {"characters": [
-        {"name": "WISHFTR", "control": 179, "treasure_share": 1},
-        {"name": "GUY", "control": guy_control, "treasure_share": 0}]}
+        {"name": name, "control": 179, "treasure_share": 1,
+         "nodes": [_node()] if nodes else []},
+        {"name": "GUY", "control": guy_control, "treasure_share": 0, "nodes": []}]}
+
+
+_ANIMATE = ["cast 1 ANIMATE-DEAD"]
+
+
+def _animated(steps, expects, slot):
+    return da.animated_members([da.parse_step(t) for t in steps],
+                               [da.parse_expect(t) for t in expects], slot)
 
 
 def test_the_member_an_animate_dead_run_raised_may_change_control_to_179():
-    steps = [da.parse_step("cast 1 ANIMATE-DEAD")]
-    animated = da.animated_members(steps, [da.parse_expect("wishftr:32:0")])
+    animated = _animated(_ANIMATE, ["wishftr:32:0"], _raised_after())
     rows = {r["name"]: r for r in da.compare_shares(
         _RAISED_BEFORE, _raised_after(), animated)}
     assert rows["WISHFTR"]["matches"] is True
@@ -1939,21 +1951,36 @@ def test_the_member_an_animate_dead_run_raised_may_change_control_to_179():
     assert "control_changed" not in rows["GUY"]
 
 
+def test_a_mixed_case_roster_name_is_exempt():
+    slot = _raised_after(name="Wishftr")
+    before = {"characters": [{"name": "Wishftr", "control": 0, "treasure_share": 1}]}
+    animated = _animated(_ANIMATE, ["WISHFTR:32:0"], slot)
+    assert da.compare_shares(before, slot, animated)[0]["matches"] is True
+
+
 def test_another_members_control_change_still_fails_in_an_animate_dead_run():
-    steps = [da.parse_step("cast 1 ANIMATE-DEAD")]
-    animated = da.animated_members(steps, [da.parse_expect("WISHFTR:32:0")])
-    rows = {r["name"]: r for r in da.compare_shares(
-        _RAISED_BEFORE, _raised_after(guy_control=179), animated)}
+    slot = _raised_after(guy_control=179)
+    animated = _animated(_ANIMATE, ["WISHFTR:32:0"], slot)
+    rows = {r["name"]: r for r in da.compare_shares(_RAISED_BEFORE, slot, animated)}
     assert rows["GUY"]["matches"] is False
 
 
 def test_a_run_without_an_animate_dead_step_fails_on_any_control_change():
-    steps = [da.parse_step("cast 1 BLESS")]
-    animated = da.animated_members(steps, [da.parse_expect("WISHFTR:32:0")])
+    slot = _raised_after()
+    animated = _animated(["cast 1 BLESS"], ["WISHFTR:32:0"], slot)
     assert animated == set()
-    rows = {r["name"]: r for r in da.compare_shares(
-        _RAISED_BEFORE, _raised_after(), animated)}
-    assert rows["WISHFTR"]["matches"] is False
+    assert da.compare_shares(_RAISED_BEFORE, slot, animated)[0]["matches"] is False
+
+
+def test_a_refuted_id_32_expectation_exempts_nobody():
+    slot = _raised_after(nodes=False)
+    assert _animated(_ANIMATE, ["WISHFTR:32:0"], slot) == set()
+
+
+def test_an_expectation_for_another_node_exempts_nobody():
+    slot = _raised_after()
+    slot["characters"][0]["nodes"].append({"id": 5, "minutes": 9, "data": 0})
+    assert _animated(_ANIMATE, ["WISHFTR:5:9"], slot) == set()
 
 
 def test_the_raised_member_may_not_change_share_or_take_another_control():
@@ -1964,6 +1991,38 @@ def test_the_raised_member_may_not_change_share_or_take_another_control():
     after = _raised_after()
     after["characters"][0]["control"] = 7
     assert da.compare_shares(_RAISED_BEFORE, after, animated)[0]["matches"] is False
+
+
+def test_read_step_exempts_the_raised_member_and_the_run_passes(monkeypatch, tmp_path):
+    # The installed slot and the resave are the same mock, so the control
+    # change is staged by giving read_slot a different answer per folder.
+    (tmp_path / "save").mkdir()
+    slots = {"installed": {"characters": [dict(c, nodes=[]) for c in
+                                          _RAISED_BEFORE["characters"]]},
+             "resave": _raised_after()}
+    monkeypatch.setattr(da, "read_slot", lambda folder, letter: {
+        "slot": letter, "clock": [0] * 6, "clock_minutes": 0,
+        **slots["installed" if folder.name == "installed" else "resave"]})
+    got = da.read_step(tmp_path / "save", tmp_path / "out", "A", ["D"],
+                       [da.parse_step(t) for t in _ANIMATE],
+                       [da.parse_expect("WISHFTR:32:0")])
+    assert got["verdicts"][0]["verdict"] == "accepts"
+    assert da.share_verdict(got) is None and da.expect_verdict(got) is None
+
+
+def test_a_refuted_expectation_fails_the_run_and_exempts_nobody(monkeypatch, tmp_path):
+    slots = {"installed": {"characters": [dict(c, nodes=[]) for c in
+                                          _RAISED_BEFORE["characters"]]},
+             "resave": _raised_after(nodes=False)}
+    (tmp_path / "save").mkdir()
+    monkeypatch.setattr(da, "read_slot", lambda folder, letter: {
+        "slot": letter, "clock": [0] * 6, "clock_minutes": 0,
+        **slots["installed" if folder.name == "installed" else "resave"]})
+    got = da.read_step(tmp_path / "save", tmp_path / "out", "A", ["D"],
+                       [da.parse_step(t) for t in _ANIMATE],
+                       [da.parse_expect("WISHFTR:32:0")])
+    assert "WISHFTR" in da.expect_verdict(got)
+    assert "WISHFTR" in da.share_verdict(got)
 
 
 def test_stage_control_writes_the_control_and_share_bytes(tmp_path):
@@ -5169,6 +5228,16 @@ def test_read_reports_did_not_move_after_turns_only(monkeypatch, tmp_path, capsy
                        _steps("turn 4"), [])
     assert got["slots"]["D"]["place_changed"] is False
     assert "did not move" in capsys.readouterr().out
+
+
+def test_a_run_whose_expectation_the_read_refutes_is_lost(monkeypatch, tmp_path):
+    read = _read(changed=True)
+    read["verdicts"] = [{"expect": {"name": "WISHFTR", "id": 32, "minutes": 0,
+                                    "data": None},
+                         "verdict": "refutes", "why": "WISHFTR holds no node with id 32"}]
+    _walk_run(monkeypatch, tmp_path, read)
+    assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 1
+    assert "WISHFTR:32:0 refuted" in _summary(tmp_path)["lost"]
 
 
 # -- the signal, the interrupt and the wrapper's margin --------------------------

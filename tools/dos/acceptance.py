@@ -1491,12 +1491,15 @@ def compare_members(before: dict, after: dict) -> list[dict]:
 ANIMATED_CONTROL = 0xB3
 
 
-def animated_members(steps: list["Step"], expects: list["Expect"]) -> set[str]:
-    """The members this run raised: those an `--expect` names as an id-32 node,
-    and only when a `cast N ANIMATE-DEAD` step is in the run."""
+def animated_members(steps: list["Step"], expects: list["Expect"],
+                     slot: dict) -> set[str]:
+    """The members this run raised, upper-cased: those whose id-32 `--expect`
+    the resave `slot` accepts, and only when a `cast N ANIMATE-DEAD` step is in
+    the run.  A refuted expectation exempts nobody."""
     if not any(s.kind == "cast" and s.name == "ANIMATE-DEAD" for s in steps):
         return set()
-    return {e.name for e in expects if e.id == 32}
+    return {e.name for e in expects
+            if e.id == 32 and judge(e, slot)["verdict"] == "accepts"}
 
 
 def compare_shares(before: dict, after: dict,
@@ -1520,7 +1523,7 @@ def compare_shares(before: dict, after: dict,
         row["matches"] = (now is not None
                           and row["control_before"] == row["control_after"]
                           and row["share_before"] == row["share_after"])
-        if (not row["matches"] and now is not None and c["name"] in animated
+        if (not row["matches"] and now is not None and c["name"].upper() in animated
                 and row["control_after"] == ANIMATED_CONTROL
                 and row["control_before"] != ANIMATED_CONTROL
                 and row["share_before"] == row["share_after"]):
@@ -3849,7 +3852,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                      **{k: v for k, v in r.items() if k != "slots"})
             summary["results"] = results
             unproved = (walk_verdict(steps, summary.get("read"))
-                       or share_verdict(summary.get("read")))
+                       or share_verdict(summary.get("read"))
+                       or expect_verdict(summary.get("read")))
             if unproved:
                 summary["lost"] = unproved
                 note(event="lost", why=unproved)
@@ -3962,6 +3966,16 @@ def share_verdict(read: dict | None) -> str | None:
     return None
 
 
+def expect_verdict(read: dict | None) -> str | None:
+    """Why an `--expect` the run stated was refuted by the last saved slot, or None."""
+    for v in (read or {}).get("verdicts", []):
+        if v["verdict"] == "refutes":
+            e = v["expect"]
+            return (f"expectation {e['name']}:{e['id']}:{e['minutes']} refuted: "
+                    f"{v['why']}")
+    return None
+
+
 def walk_verdict(steps: list[Step], read: dict | None) -> str | None:
     """Why a run that asked for a walk or a turn has not shown it, or None.
 
@@ -4007,9 +4021,9 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
     result: dict = {"installed": before, "rested_minutes": asked, "slots": {},
                     "saved": list(saved)}
     previous = before
-    animated = animated_members(steps, expects)
     for x in saved:
         after = read_slot(resave, x)
+        animated = animated_members(steps, expects, after)
         result["slots"][x] = {
             **after,
             "clock_advanced": after["clock_minutes"] - before["clock_minutes"],
@@ -4019,10 +4033,6 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
             "members": compare_members(before, after),
             "shares": compare_shares(before, after, animated),
         }
-        changed = {k: v for row in result["slots"][x]["shares"]
-                   for k, v in row.get("control_changed", {}).items() if k != "reason"}
-        if changed:
-            result["slots"][x]["control_changed"] = {**changed, "reason": "animated"}
         if any(st.kind in ("walk", "turn") for st in steps):
             result["slots"][x]["place_changed"] = place_changed(before, after)
         previous = after
