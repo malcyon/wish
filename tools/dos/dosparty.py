@@ -145,12 +145,18 @@ def wipe_roster(save_dir: pathlib.Path) -> list[str]:
 
 
 #: X keysym for each printable character whose keysym is not the character
-#: itself, so a name can carry punctuation. Letters and digits are their own.
+#: itself, so a name can carry any printable ASCII character. Letters and
+#: digits are their own keysym.
 KEYSYMS = {
     " ": "space", ".": "period", "*": "asterisk", ",": "comma",
     "?": "question", "/": "slash", ":": "colon", ";": "semicolon",
     "[": "bracketleft", "\\": "backslash", "]": "bracketright",
     "^": "asciicircum", "_": "underscore", "`": "grave",
+    "-": "minus", "'": "apostrophe", '"': "quotedbl", "!": "exclam",
+    "@": "at", "#": "numbersign", "$": "dollar", "%": "percent",
+    "&": "ampersand", "(": "parenleft", ")": "parenright", "+": "plus",
+    "=": "equal", "<": "less", ">": "greater", "{": "braceleft",
+    "|": "bar", "}": "braceright", "~": "asciitilde",
 }
 
 
@@ -172,7 +178,13 @@ class Driver:
 
     def type(self, text: str, tag: str) -> str:
         for ch in text:
-            self.s.key(KEYSYMS.get(ch, ch))
+            if ch in KEYSYMS:
+                key = KEYSYMS[ch]
+            elif ch.isascii() and ch.isalnum():
+                key = ch
+            else:
+                raise ValueError(f"no X keysym for {ch!r}; add it to KEYSYMS")
+            self.s.key(key)
         time.sleep(0.5)
         self.s.settle(quiet=0.5, timeout=15.0)
         self.s.shot(f"{self.n:03d}-{tag}", allow_blank=True)

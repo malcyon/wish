@@ -87,20 +87,23 @@ def main(argv=None) -> int:
     from automap import gamedisks
     from editor.window import EditorBinding
     from tools.convert import saveasdrive
-    from tools.dos.acceptance import parse_name
     from tools.registry import scratch
 
     report: dict = {}
 
     names: dict[int, str] = {}
-    for text in args.name:
-        try:
-            position, name = parse_name(text)
-        except ValueError as exc:
-            ap.error(str(exc))
-        if position in names:
-            ap.error(f"--name gives position {position} twice")
-        names[position] = name
+    if args.name:
+        # Lazy: the DOS driver's imports do not belong in a run with no
+        # --name, and an older --tree checkout has no such function.
+        from tools.dos.acceptance import parse_name
+        for text in args.name:
+            try:
+                position, name = parse_name(text)
+            except ValueError as exc:
+                ap.error(str(exc))
+            if position in names:
+                ap.error(f"--name gives position {position} twice")
+            names[position] = name
     report["names"] = {str(k): v for k, v in names.items()}
 
     out = args.out_dir or scratch.scratch_dir("convertdialogdrive")

@@ -4,7 +4,10 @@ keysym the DOSBox window needs, punctuation included."""
 from __future__ import annotations
 
 import pathlib
+import string
 import sys
+
+import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
@@ -52,3 +55,17 @@ def test_punctuation_is_sent_as_its_keysym(monkeypatch, tmp_path):
 def test_letters_and_spaces_type_as_before(monkeypatch, tmp_path):
     assert _typed("wren a1", monkeypatch, tmp_path) == [
         "w", "r", "e", "n", "space", "a", "1"]
+
+
+def test_every_printable_non_alphanumeric_character_has_a_keysym(monkeypatch,
+                                                                  tmp_path):
+    for ch in string.printable[:-5]:
+        if ch.isalnum() or ch == " ":
+            continue
+        (key,) = _typed(ch, monkeypatch, tmp_path)
+        assert key.isalpha() and key.isascii(), (ch, key)
+
+
+def test_a_character_with_no_keysym_is_refused(monkeypatch, tmp_path):
+    with pytest.raises(ValueError):
+        _typed("a\u00e9", monkeypatch, tmp_path)

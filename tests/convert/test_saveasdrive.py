@@ -163,3 +163,12 @@ def test_a_repeated_name_position_exits_before_save_as(monkeypatch, tmp_path):
 
     assert stop.value.code != 0
     assert calls == []
+
+
+def test_no_name_option_never_imports_the_dos_driver(monkeypatch, tmp_path):
+    import sys
+
+    monkeypatch.delitem(sys.modules, "tools.dos.acceptance", raising=False)
+    calls = []
+    assert _run_dialogdrive(monkeypatch, tmp_path, calls) == 0
+    assert calls and "tools.dos.acceptance" not in sys.modules
