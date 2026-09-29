@@ -400,9 +400,14 @@ class CastPool(FakePool):
             "target": b"\x14\x47\x7a", "lose": b"\x15\x48\x7b", "wrong": b"\x16\x49\x7c"}
     TARGETED = {_CLW}
 
-    def __init__(self, *a, failure: str = "", rows=None, **k):
+    def __init__(self, *a, failure: str = "", rows=None, flip_at=None, **k):
         super().__init__(*a, **k)
         self.failure = failure
+        # `flip_at` is (mode, position, n): the screen becomes an unknown one
+        # after the nth capture of that mode with the list highlight, or the
+        # target line, at that position; `flipped_at` is how many keys had
+        # been pressed by then.
+        self.flip_at, self.seen, self.flipped_at = flip_at, 0, None
         self.line = 1
         self.rows = list(rows or [_HEADER, _BLESS, _CLW, _CLW, _HEADER, _HOLD])
         self.hl = len(self.rows) - 1
@@ -444,7 +449,7 @@ class CastPool(FakePool):
         elif self.mode == "list" and k == "e":
             self.mode = "magic"
         elif self.mode == "magic" and k == "e":
-            self.mode = "camp"
+            self.mode = "magic" if self.failure == "exit" else "camp"
         elif self.mode in ("magic", "list", "message", "target", "lose", "wrong"):
             pass
         else:
@@ -460,7 +465,7 @@ class CastPool(FakePool):
         _draw_name(px, 8, 8, _pod_name(who).rstrip(b"\x00") + _POSSESSIVE, _WHITE)
         for i, row in enumerate(self.rows):
             _draw_name(px, 8, 40 + 8 * i, row, _WHITE if highlight and i == self.hl
-                       else _GREEN)
+                       and self.spell_rows() else _GREEN)
         return dosbox.Screen(W, H, bytes(px))
 
     def capture(self):
@@ -471,10 +476,18 @@ class CastPool(FakePool):
                     del self.rows[self.rows.index(self.pending)]
                     self.mode, self.hl = "list", len(self.rows) - 1
             return self._list_frame(highlight=False)
-        if self.mode == "list":
-            return self._list_frame(highlight=True)
-        if self.mode in ("camp", "target"):
-            return _with_roster(_screen(self.BARS[self.mode], b""), "camp", 6, self.line)
+        if self.mode in ("list", "target"):
+            here = self.hl if self.mode == "list" else self.line
+            if self.flip_at and self.flip_at[:2] == (self.mode, here):
+                self.seen += 1
+            frame = (self._list_frame(highlight=True) if self.mode == "list" else
+                     _with_roster(_screen(self.BARS["target"], b""), "camp", 6, self.line))
+            if self.flip_at and self.seen == self.flip_at[2]:
+                self.seen = -1
+                self.mode, self.flipped_at = "wrong", len(self.keys)
+            return frame
+        if self.mode == "camp":
+            return _with_roster(_screen(self.BARS["camp"], b""), "camp", 6, self.line)
         return super().capture()
 
     def wait_for(self, pred, timeout: float = 30.0) -> bool:
@@ -552,6 +565,51 @@ def test_pool_cast_stops_at_an_unexpected_screen_before_any_save(
     if failure in ("magic", "wrong_title") or rows:
         assert game.cast == []                  # stopped before any cast key
     assert "e" not in game.keys[1:]             # never pressed Exit anywhere
+
+
+@pytest.mark.parametrize("spell,target,at", [
+    # Mid-loop, then at the capture made just before the key that ends it:
+    # the list at its first and its second End (the second is the row cast),
+    # the target roster at line 3 and at line 4 (the line picked).
+    ("CURE-LIGHT-WOUNDS", 4, ("list", 1, 1)),
+    ("CURE-LIGHT-WOUNDS", 4, ("list", 2, 1)),
+    ("CURE-LIGHT-WOUNDS", 4, ("list", 2, 2)),
+    ("CURE-LIGHT-WOUNDS", 4, ("target", 3, 1)),
+    ("CURE-LIGHT-WOUNDS", 4, ("target", 4, 1)),
+    ("CURE-LIGHT-WOUNDS", 4, ("target", 4, 2)),
+])
+def test_pool_cast_rechecks_the_screen_before_every_key_after_the_first(
+        tmp_path, _cast_measured, spell, target, at):
+    game, d = _cast_camp(tmp_path, flip_at=at)
+    with pytest.raises(da.StepFailed, match="changed under the keys"):
+        d.cast(2, spell, target)
+    assert game.flipped_at is not None
+    assert game.flipped_at == len(game.keys)       # nothing pressed after it
+    assert game.cast == []
+
+
+def test_pool_cast_the_last_memorised_spell_needs_no_highlight_to_be_believed(
+        tmp_path, _cast_measured):
+    game, d = _cast_camp(tmp_path, rows=[_HEADER, _BLESS])
+    got = d.cast(2, "BLESS")
+    assert game.rows == [_HEADER] and got["rows_after"] == 0
+    assert game.mode == "camp"
+
+
+def test_pool_cast_an_unreachable_target_line_stops_at_the_bound(
+        tmp_path, _cast_measured):
+    game, d = _cast_camp(tmp_path)
+    with pytest.raises(da.StepFailed, match="never brought the target highlight to line 8"):
+        d.cast(2, "CURE-LIGHT-WOUNDS", 8)
+    assert "Return" not in game.keys
+    assert game.keys[game.keys.index("c", game.keys.index("c") + 1):].count("End") <= 13
+
+
+def test_pool_cast_stops_when_exit_never_reaches_camp(tmp_path, _cast_measured):
+    game, d = _cast_camp(tmp_path, failure="exit")
+    with pytest.raises(da.StepFailed, match="camp bar did not come back"):
+        d.cast(2, "BLESS")
+    assert game.mode == "magic" and not game.save_file("D").exists()
 
 
 def test_pool_cast_never_answers_lose_it(tmp_path, _cast_measured, monkeypatch):

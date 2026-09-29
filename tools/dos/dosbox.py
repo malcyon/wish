@@ -123,6 +123,10 @@ class PoolFull(RuntimeError):
     """Every instance slot is leased by another process."""
 
 
+class WrongCaster(TimeoutError):
+    """The camp spell list is titled with a name other than the caster's."""
+
+
 class BlankCapture(RuntimeError):
     """A capture came back a single colour, so it is showing nothing."""
 
@@ -1476,7 +1480,7 @@ class PoolOfRadiance:
 
     # -- casting in camp ----------------------------------------------------
     #
-    # Read off captures of a live camp cast (`~/.cache/wish/727-bless/`).
+    # Read off captures of a live camp cast.
     # `MAGIC` (`m`) on the camp bar opens `CAST MEMORIZE SCRIBE DISPLAY REST
     # EXIT` for the member the roster highlights; `CAST` (`c`) opens
     # `<NAME>'S SPELLS IN MEMORY` over `CHOOSE SPELL: CAST EXIT`, a row a
@@ -1490,6 +1494,23 @@ class PoolOfRadiance:
     # highlighted; `End` moves the highlight and `Return` picks.  A
     # combat-only spell asks `LOSE IT? YES NO`.  `e` leaves the list for the
     # Magic bar and the Magic bar for camp.  Bars by `screens.bar_signature`.
+    #
+    # How each signature below was measured, all on DOSBox 0.74-3,
+    # `machine=vga`, `cycles=fixed 20000`, from the Forgotten Realms Archives
+    # Collection Two copy of `POOLRAD`, casting for SIMON, the second roster
+    # line of the party read:
+    #   CAMP_BAR, MAGIC_BAR, SPELL_LIST_BAR: three boots, the Magic bar and
+    #     the list each reached by `m` and `c`; the third boot was `cast`
+    #     itself.
+    #   TARGET_BAR: one boot, at Cure Light Wounds' `CAST SPELL ON WHOM`,
+    #     reached by a scratch driver rather than by `cast`.
+    #   LOSE_IT_BAR: one boot, the list's last row cast, which was a
+    #     combat-only spell; `cast` has not reached it.
+    #   SPELL_LIST_POSSESSIVE: read off SIMON's list title, and checked
+    #     against it by `cast` in the third boot.
+    #   CAST_SPELLS rows: BLESS was seen live in all three boots, and cast by
+    #     `cast` in the third; CURE-LIGHT-WOUNDS in one boot, through the
+    #     scratch driver, and never by `cast`.
     CAMP_BAR = "e229a5f1da0130ed"
     MAGIC_BAR = "062aa229ea7afd11"
     SPELL_LIST_BAR = "756a9b74819cebd5"
@@ -1503,7 +1524,7 @@ class PoolOfRadiance:
     SPELL_LIST_TITLE = (8, 8)
     SPELL_LIST_POSSESSIVE = "4f07e6518e5ebf8d"
     #: The spells `cast` knows, by `spell_rows` signature, and whether each
-    #: asks `CAST SPELL ON WHOM`.  Each row was read on one caster, SIMON.
+    #: asks `CAST SPELL ON WHOM`.
     CAST_SPELLS: dict[str, tuple[str, bool]] = {
         "BLESS": ("e4d6baf46572e796", False),
         "CURE-LIGHT-WOUNDS": ("b039acb665601fe2", True),
@@ -1545,6 +1566,11 @@ class PoolOfRadiance:
         def bar(sc: Screen) -> str:
             return bar_signature(sc)
 
+        def still(sc: Screen, want: str, what: str) -> None:
+            if bar(sc) != want:
+                raise TimeoutError(f"the {what} changed under the keys; nothing "
+                                   "more is pressed")
+
         def press_for(key: str, want: str, was: str, what: str) -> None:
             # Pressed again only while the screen it was pressed at still
             # shows: the first key after a redraw can be lost.
@@ -1571,7 +1597,7 @@ class PoolOfRadiance:
             title = [screen.glyphs((x + 8 * i, y, 8, 7)) for i in range(len(caster) + 2)]
             if title[:len(caster)] != caster or hashlib.sha1("".join(
                     title[len(caster):]).encode()).hexdigest()[:16] != self.SPELL_LIST_POSSESSIVE:
-                raise TimeoutError("the spell list's title is not the caster's name")
+                raise WrongCaster("the spell list's title is not the caster's name")
         have = self.spell_rows(screen).count(sig)
         if not have:
             raise TimeoutError(f"{spell} is not in the caster's memory")
@@ -1588,8 +1614,10 @@ class PoolOfRadiance:
             presses += 1
             self.s.wait_for(lambda sc: sc.highlight_row(rect) != was, 5.0)
             screen = self.s.capture()
+            still(screen, self.SPELL_LIST_BAR, "spell list")
             here = screen.highlight_row(rect)
             stuck = stuck + 1 if here == was else 0
+        still(self.s.capture(), self.SPELL_LIST_BAR, "spell list")
         shots.append(snap("cast-spell"))
 
         def outcome(sc: Screen) -> str | None:
@@ -1598,8 +1626,9 @@ class PoolOfRadiance:
                 return "lose"
             if b == self.TARGET_BAR and targeted:
                 return "target"
-            if (b == self.SPELL_LIST_BAR and sc.highlight_row(rect) is not None
-                    and self.spell_rows(sc).count(sig) == have - 1):
+            # No highlight is asked for: the caster's last spell leaves a list
+            # with no row to highlight.
+            if b == self.SPELL_LIST_BAR and self.spell_rows(sc).count(sig) == have - 1:
                 return "cast"
             return None
 
@@ -1625,6 +1654,7 @@ class PoolOfRadiance:
             sc = settle_on("target")
             here, stuck = roster_line(sc, "camp", party_size), 0
             while here != target:
+                still(sc, self.TARGET_BAR, "target roster")
                 if here is None:
                     raise TimeoutError("the target roster shows no highlighted line")
                 if target_presses > 2 * party_size or stuck >= 2:
@@ -1635,8 +1665,11 @@ class PoolOfRadiance:
                 target_presses += 1
                 self.s.wait_for(lambda sc, was=was: roster_line(sc, "camp", party_size)
                                 != was, 5.0)
-                here = roster_line(self.s.capture(), "camp", party_size)
+                sc = self.s.capture()
+                still(sc, self.TARGET_BAR, "target roster")
+                here = roster_line(sc, "camp", party_size)
                 stuck = stuck + 1 if here == was else 0
+            still(self.s.capture(), self.TARGET_BAR, "target roster")
             picked = here
             shots.append(snap("cast-target"))
             self.s.key("Return")

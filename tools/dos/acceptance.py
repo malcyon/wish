@@ -3250,11 +3250,11 @@ class Driver:
         try:
             got = self.game.cast(spell, target or None, party_size=self.party_size,
                                  caster=name, shot=self.shot)
+        except dosbox.WrongCaster:
+            raise self.fail(label, f"the spell list's title is not roster line "
+                                   f"{line}'s name") from None
         except TimeoutError as e:
-            why = str(e)
-            if "title is not the caster's" in why:
-                why = f"the spell list's title is not roster line {line}'s name"
-            raise self.fail(label, why) from None
+            raise self.fail(label, str(e)) from None
         if not self.wait_camp(timeout=15.0):
             raise self.fail(f"{label}-back", "the camp bar did not stay after EXIT")
         return {"line": line, **moved, **got, "back": self.shot(f"{label}-back")}
