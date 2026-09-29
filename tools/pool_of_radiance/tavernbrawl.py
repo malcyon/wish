@@ -943,6 +943,35 @@ def after_fight(sess, traps: Traps, log, out: pathlib.Path, args, before: list) 
                  **step_on(sess, square_now(sess), out, "after-destination"))
 
 
+def record_stall(sess, log, out: pathlib.Path, step: str) -> None:
+    """Log what the machine showed when a setup step gave up, and take a PNG.
+
+    `Session.begin_adventuring` returns False after its wait with nothing on
+    the console, so without this a failed step leaves no screen to read.
+    Every reading is guarded: this runs on a path that is already failing.
+    """
+    rows: list[str] | str
+    try:
+        s = sess.screen()
+        rows = ("no readable text screen" if s is None else
+                [line.rstrip() for line in s.rows() if line.strip()])
+    except Exception as exc:
+        rows = f"unreadable: {exc!r}"
+    try:
+        stall = sess.stall_capture()
+    except Exception as exc:
+        stall = f"unreadable: {exc!r}"
+    shot = out / f"{step}-failed.png"
+    try:
+        took = bool(sess.kbd.screenshot(str(shot)))
+    except Exception as exc:
+        log.emit("shot_failed", label=f"{step}-failed", error=repr(exc))
+        took = False
+    log.emit("step_failed", step=step, rows=rows, stall=stall,
+             shot=str(shot) if took else None)
+    log.say(f"{step} failed; screen: {rows}; {stall}")
+
+
 def run(args) -> int:
     """Drive one run; every path closes the log."""
     out = scratch.ensure(pathlib.Path(args.out))
@@ -987,6 +1016,7 @@ def _run(args, out: pathlib.Path, log) -> int:
         sess = S.Session(S.stage_disks(slot, staging, "STAGED.D64"), slot=slot)
         for step in ("boot", "load_save", "begin_adventuring"):
             if not getattr(sess, step)():
+                record_stall(sess, log, out, step)
                 raise RuntimeError(f"{step} failed")
         to_world(sess, log, timeout=60, need_square=True)
         log.emit("save_disk", when="staged", sha256=digest(sess.save_disk))

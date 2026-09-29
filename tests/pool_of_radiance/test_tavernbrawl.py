@@ -790,7 +790,7 @@ def test_a_party_off_the_map_is_logged_and_the_panel_and_sheet_are_skipped(monke
 def test_a_party_on_the_map_gets_its_panel_and_sheet(monkeypatch, tmp_path):
     sess, log = after(monkeypatch, tmp_path, (7, 3, 0))
     assert not log.kinds("off_map")
-    assert [p.rsplit("/", 1)[1] for p in sess.kbd.shots] == ["panel.png"]
+    assert [pathlib.Path(p).name for p in sess.kbd.shots] == ["panel.png"]
     assert sess.shots == ["sheet0"]
 
 
@@ -975,6 +975,24 @@ def test_a_terminate_that_fails_still_closes_the_log_and_tears_the_slot_down(mon
     assert tb.run(args(out=str(tmp_path / "o"))) == 1
     assert torn == [1]
     assert log.closed
+
+
+def test_a_failed_setup_step_logs_the_screen_the_stall_and_a_picture(monkeypatch, tmp_path):
+    torn, log = [], FakeLog()
+    sess = FakeSession()
+    sess.begin_adventuring = lambda: False
+    sess.screen = lambda: SimpleNamespace(rows=lambda: ["", " BEGIN ADVENTURING  "])
+    sess.stall_capture = lambda: "C64 PC 1234"
+    sess.kbd = SimpleNamespace(shots=[], screenshot=lambda p: sess.kbd.shots.append(p) or True)
+    patch_run(monkeypatch, torn, log, Session=lambda *a, **k: sess)
+    assert tb.run(args(out=str(tmp_path / "o"))) == 2
+    [failed] = log.kinds("step_failed")
+    assert failed["step"] == "begin_adventuring"
+    assert failed["rows"] == [" BEGIN ADVENTURING"]
+    assert failed["stall"] == "C64 PC 1234"
+    assert [pathlib.Path(p).name for p in sess.kbd.shots] == ["begin_adventuring-failed.png"]
+    assert failed["shot"] == sess.kbd.shots[0]
+    assert torn == [] and sess.terminated
 
 
 def test_a_refused_argument_combination_closes_the_log(monkeypatch, tmp_path):
