@@ -98,7 +98,7 @@ The pruner globs `wish-*.log*`, not `wish-*.log`: a rotated part is
 * **No file paths.** `scrub()` rewrites every absolute path to its last
   component, so a save disk appears as `PORSAVE11.D64` and a frame as
   `File ".../session.py"`.
-* **No character names, and no save contents.** `save_summary()` reports size,
+* **No save contents.** `save_summary()` reports size,
   blocks, kind, character count and area id, and reads no record.
 * **No environment dump, no process list, no network state.**
 * **Nothing about any process but ours.**
@@ -140,7 +140,7 @@ The pruner globs `wish-*.log*`, not `wish-*.log`: a rotated part is
 * starting the log turns debug mode on and stopping it turns it off; a log that
   could not be opened leaves debug mode off;
 * with it on, a real save opened in a real window leaves a log with no absolute
-  path, no character name, and no twelve-byte run from the disk in it;
+  path and no twelve-byte run from the disk in it;
 * an induced exception in a poll appears with its traceback, the traceback
   carries frames but no paths, and the window is still up afterwards;
 * another library's logger, and the root logger, cannot reach the file;
