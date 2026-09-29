@@ -338,6 +338,24 @@ def test_a_party_saved_before_begin_adventuring_converts_to_the_shipped_form(key
         assert built[:shape.party_at] == shipped[:shape.party_at]
 
 
+@pytest.mark.parametrize("key", sorted(PRE_ADVENTURE))
+def test_a_c64_party_lands_with_each_combat_figure_at_its_file_position(key):
+    """The game numbers a loaded party 0..n-1 in file order and throws the
+    saved byte away, so a C64 roster slot (5..0) must not land in the record."""
+    from goldbox import c64_port, dos_codec, world_state
+    game = c64_port.by_key(key)
+    save0 = _c64_pre_adventure(key)
+    state = world_state.from_c64(save0, game=game)
+    characters, _icons = dos_codec.c64_party(save0, None, game)
+    assert [c.get("combat_figure") for c in characters] == [5, 4, 3, 2, 1, 0]
+    shape = amiga_savegame.container_for(key)
+
+    built, _report = amiga_savegame.new_savegame(state, characters, "B")
+
+    landed = amiga_savegame.parse(built, shape).characters
+    assert [c.get("combat_figure") for c in landed] == [0, 1, 2, 3, 4, 5]
+
+
 def _dos_saves_folder(stem: str) -> pathlib.Path:
     from support.dossave import _game_dirs
     folder = _game_dirs().get(stem)

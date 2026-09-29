@@ -15,6 +15,7 @@ being consolidated here with the slot implementation.
 from __future__ import annotations
 
 import contextlib
+import copy
 import dataclasses
 import struct
 from collections.abc import Sequence
@@ -517,6 +518,17 @@ class SaveReport(neutral.Report):
         return lines
 
 
+def _at_figure_slot(char: neutral.NeutralCharacter,
+                    position: int) -> neutral.NeutralCharacter:
+    """A copy of `char` whose `combat_figure` is its place in the party."""
+    moved = copy.copy(char)
+    moved.fields = dict(char.fields)
+    moved.set("combat_figure", position,
+              "the member's position in the party file, as the game writes it",
+              how=neutral.Provenance.COMPUTED)
+    return moved
+
+
 def new_savegame(state: world_state.WorldState,
                  characters: Sequence[neutral.NeutralCharacter],
                  slot: str,
@@ -543,7 +555,11 @@ def new_savegame(state: world_state.WorldState,
     built = []
     char_reports = []
     report = SaveReport()
-    for char, icon in zip(party, icons):
+    for position, (char, icon) in enumerate(zip(party, icons)):
+        # The game's party loader overwrites this byte with the member's
+        # position in file order and writes it that way on every save, so
+        # the C64 roster slot the source holds (5..0) is not carried over.
+        char = _at_figure_slot(char, position)
         block, char_report = amiga_later.write_later(char, container.deltas,
                                                       icon=icon)
         built.append(block)
