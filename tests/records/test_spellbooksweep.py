@@ -178,11 +178,17 @@ def test_no_pool_of_radiance_record_on_the_c64_disks_sets_the_missing_id():
     assert [r.who for r in clerics if not r.known] == []
     # A cleric at the top of the game's grant holds exactly what `GEN $20C6`
     # ORs in and nothing above id 44 -- ids 1-8, 22-28, 36-44.
-    # A multi-class cleric (ASTRA, magic-user/cleric/fighter) also holds
-    # magic-user ids up to 55, so only the cleric-flagged ids are compared.
+    # A cleric who is also a magic-user (ASTRA) holds magic-user ids up to 55,
+    # so only her cleric-flagged ids are compared; a pure cleric is held to
+    # the strict maximum.
     base = 0x800
     flags = gamedata.game_file("GEN")[0x226B - base:0x226B - base + 56]
     top = [r for r in clerics if len(r.known) >= 24]
-    for row in top:
+    strict = [r for r in top if "magic" not in r.klass]
+    mixed = [r for r in top if "magic" in r.klass]
+    assert strict, "no pure cleric at the top of the grant"
+    for row in strict:
+        assert max(row.known) == 44, (row.who, row.known)
+    for row in mixed:
         cleric_ids = [i for i in row.known if i < 56 and flags[i]]
         assert max(cleric_ids) == 44, (row.who, row.known)
