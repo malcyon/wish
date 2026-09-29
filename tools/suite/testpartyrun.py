@@ -344,36 +344,50 @@ def _status_line(sess):
             (at.x, at.y) if at else None)
 
 
+MAX_EXITS = 4
+
+
 def _row24(sess) -> str:
     s = sess.screen()
     return "" if s is None else s.row(24).strip()
 
 
+def _leavable(row: str) -> bool:
+    """True when row 24 is a menu the walk must leave with EXIT: the item view
+    the READY toggles leave up, or camp's own bar."""
+    return row.startswith("ENCAMP:") or (row.startswith("VIEW:")
+                                         and "EXIT" in row)
+
+
 def to_world(sess, log: Log, timeout: float = 30,
              need_square: bool = False) -> bool:
-    """Leave camp if the game is in it, then wait for the world bar.
+    """Leave the item view and camp if the game is in either, then wait for the
+    world bar.
 
-    The item list's exit leaves the game on camp's own bar
-    (`ENCAMP:SAVE VIEW ...`), where a walk presses nothing.  EXIT is pressed
-    once, and the world is then polled for -- the bar is `MOVE` and the status
-    line shows a facing, and a square too when `need_square` -- because a second
-    EXIT may land on the world.  Every distinct row 24 seen is logged, with what
-    `select_bar` returned for EXIT.  Raises `RuntimeError` naming row 24 and
-    that return value when the world bar does not come within `timeout`, and
-    otherwise returns True.
+    Leaving the item list lands on camp's own bar (`ENCAMP:SAVE VIEW ...`), so
+    the exit is a chain.  Whenever row 24 is such a menu, EXIT is pressed, at
+    most once per distinct row 24 and at most `MAX_EXITS` times in all, and each
+    press is logged with the row and what `select_bar` returned.  The world is
+    polled for throughout -- the bar is `MOVE` and the status line shows a
+    facing, and a square too when `need_square`.  Raises `RuntimeError` naming
+    the last row 24 and every EXIT result when the world bar does not come
+    within `timeout`, and otherwise returns True.
     """
-    seen = _row24(sess)
-    log.emit("to_world", row24=seen)
-    exited = None
-    if seen.startswith("ENCAMP:"):
-        exited = sess.select_bar("EXIT", timeout=10)
-        log.emit("to_world_exit", returned=exited)
+    seen = None
+    pressed = []
+    results = []
     deadline = time.monotonic() + timeout
     while True:
         row = _row24(sess)
         if row != seen:
             log.emit("to_world", row24=row)
             seen = row
+        if (_leavable(row) and row not in pressed
+                and len(pressed) < MAX_EXITS):
+            pressed.append(row)
+            results.append(sess.select_bar("EXIT", timeout=10))
+            log.emit("to_world_exit", row24=row, returned=results[-1])
+            continue
         if "MOVE" in row:
             face, square = _status_line(sess)
             if face is not None and (square is not None or not need_square):
@@ -381,7 +395,8 @@ def to_world(sess, log: Log, timeout: float = 30,
         if time.monotonic() >= deadline:
             raise RuntimeError("the game never reached the world bar; row 24 "
                                f"reads {row!r}; select_bar('EXIT') returned "
-                               f"{exited!r}")
+                               + (", ".join(repr(r) for r in results)
+                                  or "None"))
         time.sleep(0.5)
 
 

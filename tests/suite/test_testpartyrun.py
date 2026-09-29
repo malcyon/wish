@@ -458,7 +458,8 @@ def test_walk_to_fight_leaves_camp_before_its_first_key(monkeypatch):
     assert got["desynced"] is None
     rows = [w["row24"] for kind, w in log.events if kind == "to_world"]
     assert rows[0].startswith("ENCAMP:") and rows[-1].startswith("MOVE")
-    assert ("to_world_exit", {"returned": True}) in log.events
+    assert ("to_world_exit", {"row24": "ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT",
+                              "returned": True}) in log.events
 
 
 def test_walk_to_fight_raises_naming_row_24_when_camp_will_not_go(monkeypatch):
@@ -552,7 +553,49 @@ def test_to_world_reports_what_the_exit_press_returned(monkeypatch):
     log = RecordingLog()
     with pytest.raises(RuntimeError, match=r"returned True"):
         T.to_world(sess, log)
-    assert ("to_world_exit", {"returned": True}) in log.events
+    assert ("to_world_exit", {"row24": "ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT",
+                              "returned": True}) in log.events
+
+
+class MenuChain(WalkSession):
+    """Row 24 walks through `rows`; each EXIT moves to the next unless
+    `stuck`, and the last row is the world bar."""
+
+    def __init__(self, monkeypatch, rows, stuck=False):
+        super().__init__(monkeypatch)
+        self.rows, self.stuck = list(rows), stuck
+
+    def screen(self):
+        return Screen(self.rows[0])
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        self.asked.append(label)
+        if not self.stuck and len(self.rows) > 1:
+            self.rows.pop(0)
+        return True
+
+
+ITEMS = "VIEW:ITEMS TRADE DROP EXIT"
+CAMP = "ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT"
+WORLD = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
+
+
+def test_to_world_leaves_the_item_view_and_then_camp(monkeypatch):
+    sess = MenuChain(monkeypatch, [ITEMS, CAMP, WORLD])
+    Clock(monkeypatch)
+    log = RecordingLog()
+    assert T.to_world(sess, log) is True
+    assert sess.asked == ["EXIT", "EXIT"]
+    assert [w["row24"] for k, w in log.events if k == "to_world_exit"] == [
+        ITEMS, CAMP]
+
+
+def test_to_world_presses_exit_once_for_a_row_that_will_not_leave(monkeypatch):
+    sess = MenuChain(monkeypatch, [CAMP], stuck=True)
+    Clock(monkeypatch)
+    with pytest.raises(RuntimeError, match=r"ENCAMP:.*returned True"):
+        T.to_world(sess, RecordingLog())
+    assert sess.asked == ["EXIT"]
 
 
 def test_walk_to_fight_returns_at_once_when_a_fight_is_already_up(monkeypatch):
