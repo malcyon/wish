@@ -1269,6 +1269,16 @@ SECRET_OF_THE_SILVER_BLADES = DosDeltas(
                     "shipped party does not have would settle it")),
              "icon_colours": 3, "heap_104": 1})
 
+_READY_TO_TRAIN_NOTE = (
+    "whether the character has the experience for the next level of some "
+    "class. The party list draws the name in colour 13 when it is set and 11 "
+    "when it is not (`0x35AF2`). Only the experience awards, training and "
+    "Restoration store it (`0x251A`, `0x2614`, `0x4C13`, `0x18F14`, "
+    "`0x2EE23`, each from the routine at `0x37798`), so loading a save does "
+    "not recompute it and a character an earlier converter wrote as 0 stays "
+    "0. The Amiga's twin is `0x0CB`, which the same rule reproduces in 86 of "
+    "86 distinct played records. Zero in every DOS record measured")
+
 #: Pools of Darkness, 510 bytes, and the one with no C64 counterpart at all.
 #: It is the later engine: no drained-level pair, no `modified` byte, no
 #: `type`, no monk, no experience-per-hit-point award -- and **only three
@@ -1317,20 +1327,38 @@ POOLS_OF_DARKNESS = DosDeltas(
              "class_levels": (
                  _x(7, "former_class_levels", "Former class levels", _OK,
                     _FORMER_NOTE),
-                 _x(7, "highest_class_levels", "Highest class levels", _MAYBE,
+                 _x(7, "highest_class_levels", "Highest class levels", _OK,
                     "a third copy of the level array, and what a title with "
                     "level drain that matters needs: the level to restore to. "
-                    "Zero in every shipped record, so PROBABLE from its "
-                    "position and from the highest-experience field that sits "
-                    "beside experience for the same reason")),
-             "experience": 5, "spells_castable_cleric": (
+                    "Read out of the code: the drain routine raises only the "
+                    "drained class's mark to its level (`0x1D049`-`0x1D069`), "
+                    "Restoration compares it with the current level of each "
+                    "class (`0x3E15`, `0x2EC27`) and the dual-class routine "
+                    "zeroes it (`0x39176`). Zero in every record measured, "
+                    "since none of those characters was ever drained")),
+             "experience": (
+                 _x(4, "highest_experience", "Highest experience", _OK,
+                    "the most experience the character has held, a little-"
+                    "endian longword compared as signed: the drain routine "
+                    "raises it (`0x1D071`-`0x1D09E`) and Restoration puts it "
+                    "back when one level was missing (`0x2EDC9`). The "
+                    "Amiga's twin is `0x048`, big-endian. Zero in every "
+                    "record measured", kind=Kind.UINT_LE),
+                 _x(1, "highest_hp_max", "Highest maximum hit points", _OK,
+                    "the most `hp_max` the character has held, unsigned: the "
+                    "drain routine raises it (`0x1D0AB`-`0x1D0C5`) and "
+                    "Restoration spreads the difference over the levels it "
+                    "restores (`0x2ED06`). The Amiga's twin is `0x0B6`. Zero "
+                    "in every record measured", kind=Kind.U8)),
+             "spells_castable_cleric": (
                  _x(9, "spells_castable_druid", "Druid spell slots", _MAYBE,
                     _DRUID_SLOT_NOTE),),
              "icon_colours": (_x(2, "unnamed_1a4", "Unattributed @0x1A4",
                                  _NOPE, _UNNAMED_1A4_NOTE),),
              "hands_used": (_x(1, "unnamed_1e0", "Unattributed @0x1E0",
                                _NOPE, _UNNAMED_1E0_NOTE, kind=Kind.U8),),
-             "heap_104": 2})
+             "heap_104": (1, _x(1, "ready_to_train", "Ready to train", _OK,
+                                _READY_TO_TRAIN_NOTE, kind=Kind.U8))})
 
 DELTAS: tuple[DosDeltas, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
                                 SECRET_OF_THE_SILVER_BLADES,

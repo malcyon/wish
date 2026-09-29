@@ -1269,8 +1269,9 @@ def item_dict(item) -> dict:
 
 def read_pod_slot(folder: pathlib.Path, letter: str) -> dict:
     """A Pools of Darkness slot: the clock, the square, and every character's
-    nodes, experience, thief skills, item count, encumbrance, movement, items
-    and record byte `POD_BOOK_126` (spell id 126's book byte), read through
+    nodes, experience, thief skills, item count, encumbrance, movement, items,
+    the record byte `POD_BOOK_126` (spell id 126's book byte), the three
+    level-drain marks and the ready-to-train byte at 0x1EC, read through
     `world_state.pod_from_dos` and `dos_codec.read_party`."""
     savgam = (folder / f"SAVGAM{letter}.PTY").read_bytes()
     state = world_state.pod_from_dos(savgam, source=str(folder))
@@ -1300,6 +1301,10 @@ def read_pod_slot(folder: pathlib.Path, letter: str) -> dict:
             "movement": c.get("movement"),
             "movement_current": c.get("movement_current"),
             "book_0x130": c.to_bytes()[POD_BOOK_126],
+            "highest_class_levels": list(c.raw("highest_class_levels")),
+            "highest_experience": c.get("highest_experience"),
+            "highest_hp_max": c.get("highest_hp_max"),
+            "ready_to_train": c.get("ready_to_train"),
             "items": [item_dict(i) for i in c.items]})
     return out
 

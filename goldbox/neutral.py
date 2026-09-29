@@ -192,6 +192,19 @@ FIELDS: dict[str, str] = {
                             "such timer on any port",
     "levels_drained": "levels lost to undead and not yet restored",
     "hp_lost_to_drain": "hit points lost with those levels",
+    "highest_levels": "class name -> the highest level that class reached, "
+                      "non-zero entries only. Pools of Darkness keeps it "
+                      "beside the current levels, and Restoration gives a "
+                      "drained character back levels up to it",
+    "highest_experience": "the most experience points the character has held, "
+                          "which Restoration puts back when it restores one "
+                          "level. Pools of Darkness only",
+    "highest_hp_max": "the most maximum hit points the character has held, "
+                      "which Restoration spreads over the levels it restores. "
+                      "Pools of Darkness only",
+    "ready_to_train": "whether the character has enough experience for the "
+                      "next level of some class, which the party list draws "
+                      "as the name's colour. Pools of Darkness only",
     "experience": "experience points",
     "hp_max": "maximum hit points",
     "hp_rolled": "hit points rolled, before the constitution bonus",

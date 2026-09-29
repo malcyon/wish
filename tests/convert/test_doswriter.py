@@ -162,9 +162,15 @@ def test_every_neutral_field_has_a_write_disposition():
     derived = tuple((n, w) for n, w in dos_codec.WRITE_DERIVED
                     if n not in {tn for tn, _ in dos_codec.WRITE_TRANSFORMED}) \
         + dos_codec.WRITE_NO_SUCH_FIELD
+    # Pool of Radiance has none of the Pools of Darkness level-drain fields,
+    # so each is reported as absent rather than copied.
+    absent = dos_codec.write_absent()
+    assert {n for n, _ in absent} == {
+        n for n, _ in dos_codec.DARKNESS_WRITE_DIRECT} | set(
+            dos_codec._WRITE_TRANSFORM_NEEDS)
     assert dos_codec.write_field_disposition() == neutral.disposition(
         dos_codec.WRITE_DIRECT + dos_codec.POOL_WRITE_DIRECT,
-        dos_codec.WRITE_TRANSFORMED, dos_codec.WRITE_DROPPED,
+        dos_codec.WRITE_TRANSFORMED, dos_codec.WRITE_DROPPED + absent,
         "the DOS record's", derived=derived)
 
 

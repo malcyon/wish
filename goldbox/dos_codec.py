@@ -2109,12 +2109,21 @@ LATER_TITLE_DROPPED: tuple[tuple[str, str], ...] = (
                    "this title's mapping has not been measured"),
     ("highest_class_levels",
      "Pools of Darkness' third level array, the level to restore a drained "
-     "character to. It has no neutral home, so a conversion out of this "
-     "title cannot take it -- but nothing is lost by that yet: it is zero "
-     "in 24 of 24 of the title's records, which is every one this project "
-     "can reach. The reason this row used to give -- that there is no C64 "
-     "Pools of Darkness to convert to -- stopped being the whole reason on "
-     "2026-09-08, when `#194` made the Amiga this title's destination"),
+     "character to. It is read into the neutral `highest_levels`, and the C64 "
+     "has no Pools of Darkness to convert to, so the C64 writer lists it "
+     "as dropped"),
+    ("highest_experience",
+     "Pools of Darkness' highest experience, read into the neutral "
+     "`highest_experience`; see `highest_class_levels` for why the C64 "
+     "writer drops it"),
+    ("highest_hp_max",
+     "Pools of Darkness' highest maximum hit points, read into the neutral "
+     "`highest_hp_max`; see `highest_class_levels` for why the C64 writer "
+     "drops it"),
+    ("ready_to_train",
+     "Pools of Darkness' ready-to-train flag, read into the neutral "
+     "`ready_to_train`; see `highest_class_levels` for why the C64 writer "
+     "drops it"),
     ("unnamed_1e0",
      "one byte only Pools of Darkness has, 0 in 20 of its 24 records and 2 "
      "in the four that are ABAGAIL and BRYTWYN. UNKNOWN, so there is "
@@ -2575,6 +2584,31 @@ def to_neutral(dos: DosCharacter,
                 f"DOS former_class_levels @{f.offset:#05x}, permuted the "
                 f"same way as the current array, non-zero entries only",
                 f.confidence)
+
+    # -- the level-drain marks and the training flag, Pools of Darkness only --
+    # Read always, zeros included: a zero mark is what an undrained character
+    # holds and the Amiga writer credits it as a value, not as a gap.
+    if "highest_class_levels" in dos.fields:
+        f = dos.fields["highest_class_levels"]
+        out.set("highest_levels",
+                {name: level for name, level in _by_class(
+                    "highest_class_levels").items() if level},
+                f"DOS highest_class_levels @{f.offset:#05x}, permuted the "
+                f"same way as the current array, non-zero entries only",
+                f.confidence)
+    for _dos_name, _neutral_name in (("highest_experience",
+                                      "highest_experience"),
+                                     ("highest_hp_max", "highest_hp_max")):
+        if _dos_name in dos.fields:
+            f = dos.fields[_dos_name]
+            out.set(_neutral_name, int(dos.get(_dos_name)),
+                    f"DOS {_dos_name} @{f.offset:#05x} ({f.confidence})",
+                    f.confidence)
+    if "ready_to_train" in dos.fields:
+        f = dos.fields["ready_to_train"]
+        out.set("ready_to_train", bool(dos.get("ready_to_train")),
+                f"DOS ready_to_train @{f.offset:#05x} ({f.confidence}), the "
+                f"byte the party list colours a name by", f.confidence)
 
     # -- spell slots, by class: two arrays on Pool of Radiance, three after --
     castable = {"cleric": tuple(dos.raw("spells_castable_cleric")),
@@ -3211,6 +3245,18 @@ WRITE_DIRECT: tuple[tuple[str, str], ...] = (
     ("experience_per_hit_point", "experience_per_hit_point"),
 )
 
+#: The three straight copies only Pools of Darkness has: the level drain's
+#: experience and hit-point marks and the flag the party list colours a name
+#: by.  Kept apart from :data:`WRITE_DIRECT` because the reader's `DIRECT`
+#: mirrors that table for every title and `to_neutral` reads these three in
+#: a block of its own; the other titles report a source's value as absent
+#: (`write_absent`).
+DARKNESS_WRITE_DIRECT: tuple[tuple[str, str], ...] = (
+    ("highest_experience", "highest_experience"),
+    ("highest_hp_max", "highest_hp_max"),
+    ("ready_to_train", "ready_to_train"),
+)
+
 POOL_WRITE_DIRECT = POOL_DIRECT
 
 #: Neutral fields the DOS writer takes by a rule rather than by a copy.
@@ -3399,6 +3445,21 @@ _ABSENT_WHY: dict[str, str] = {
     "experience_per_hit_point": "keeps the base experience award alone; the "
                                 "per-hit-point rate is a byte the later "
                                 "engine dropped",
+    "highest_levels": "keeps no highest-class-level array; only Pools of "
+                      "Darkness has the level-drain marks",
+    "highest_experience": "keeps no highest-experience field; only Pools of "
+                          "Darkness has the level-drain marks",
+    "highest_hp_max": "keeps no highest-hit-point field; only Pools of "
+                      "Darkness has the level-drain marks",
+    "ready_to_train": "keeps no ready-to-train byte; only Pools of Darkness "
+                      "has one",
+}
+
+#: Neutral fields written by a rule rather than a copy, and the DOS field each
+#: one needs, so a title whose layout lacks it reports the field absent the
+#: way a direct copy does.
+_WRITE_TRANSFORM_NEEDS: dict[str, str] = {
+    "highest_levels": "highest_class_levels",
 }
 
 
@@ -3413,7 +3474,9 @@ def write_absent(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     table = FIELDS_BY_NAME_FOR[deltas_for(deltas).key]
     title = deltas_for(deltas).title
     return tuple((n, f"{title} {_ABSENT_WHY[n]}")
-                 for n, dos_name in WRITE_DIRECT if dos_name not in table)
+                 for n, dos_name in WRITE_DIRECT + DARKNESS_WRITE_DIRECT + tuple(
+                     _WRITE_TRANSFORM_NEEDS.items())
+                 if dos_name not in table)
 
 #: Neutral fields DOS has no field for **on any title**, ever -- distinct from
 #: :data:`_ABSENT_WHY`, which is a title-by-title gap in one record layout.
@@ -4324,6 +4387,8 @@ WRITE_TRANSFORMED_LATER: tuple[tuple[str, str], ...] = (
     ("paladin_cures", "copied to the byte the title keeps it in, which the "
                       "later titles declare and Pool of Radiance does not; a "
                       "source with none gets the class rule instead"),
+    ("highest_levels", "permuted onto Pools of Darkness' highest-class-level "
+                       "array the same way the current levels are"),
     ("lay_on_hands_minutes", "written as an .SPC effect node rather than a "
                              "record byte, id 140 in Curse and 109 in Secret "
                              "of the Silver Blades and Pools of Darkness, "
@@ -4475,13 +4540,6 @@ WRITE_UNSOURCED_LATER: tuple[tuple[str, str], ...] = (
      "attributed it to a class: cleric, druid and magic-user account for the "
      "other three arrays and a paladin's spells go in the cleric's "
      "(#222). So zero is the measured value and not a shrug"),
-    ("highest_class_levels",
-     "Pools of Darkness' third level array -- the level to restore a drained "
-     "character to. **Zero in 24 of 24 of its records**, which is every one "
-     "on this machine, so zero is what the source holds rather than a value "
-     "thrown away. The neutral record has no field for it and none is added "
-     "here: `#194` is the ticket, and a source that ever holds a non-zero "
-     "array is the measurement that would earn one"),
 )
 
 #: Fields the later titles derive from the record rather than from a neutral
@@ -4635,6 +4693,10 @@ def write_targets(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     declared = set(FIELDS_BY_NAME_FOR[deltas.key])
     out = dict(WRITE_TARGETS)
     out |= {name: f"derived: {why}" for name, why in WRITE_DERIVED_LATER}
+    # Cut from `WRITE_TARGETS` with the other later-title names, so added
+    # here for the one title that declares them.
+    out |= {dos_name: f"from neutral {n}"
+            for n, dos_name in DARKNESS_WRITE_DIRECT}
     out |= {name: f"constant: {why}"
             for name, _, why in write_constants(deltas)}
     # The whole of `WRITE_DEFAULTS`, not the part Pool of Radiance declares:
@@ -4646,6 +4708,8 @@ def write_targets(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
                         "the byte the engine keeps it in",
         "former_class_levels": "from neutral former_levels, permuted to "
                                "class numbers",
+        "highest_class_levels": "from neutral highest_levels, permuted to "
+                                "class numbers",
         "spells_castable_druid":
             "from neutral spells_castable['druid'], recomputed from a "
             "ranger's level 8 and above for a source port whose own C64 "
@@ -4881,7 +4945,7 @@ def write(char: NeutralCharacter,
     # each crossed both ways (#401, docs/204-the-dos-ability-pair.md).
     second = use("abilities_second")
     seconds = dict(second.value) if second is not None else {}
-    for neutral_name, dos_name in (WRITE_DIRECT +
+    for neutral_name, dos_name in (WRITE_DIRECT + DARKNESS_WRITE_DIRECT +
                                    (POOL_WRITE_DIRECT if deltas is
                                     POOL_OF_RADIANCE else ())):
         # A field this title's record does not have at all -- Pools of
@@ -5327,6 +5391,22 @@ def write(char: NeutralCharacter,
             f"former_levels: a {deltas.title} record has no former-class "
             f"level array; that title does not let a character change "
             f"class.")
+
+    # -- the level-drain marks and the training flag, Pools of Darkness only --
+    # The two scalars and the flag were copied by the `WRITE_DIRECT` loop; the
+    # array is permuted like the other two level arrays.  A source with no
+    # value leaves the bytes zero and says so.
+    if "highest_class_levels" in table:
+        highest = use("highest_levels")
+        if highest is not None:
+            _levels_into(highest, "highest_class_levels",
+                         ", permuted from class name to class number")
+        for _mark in ("highest_class_levels", "highest_experience",
+                      "highest_hp_max", "ready_to_train"):
+            f = table[_mark]
+            if f.offset not in rep.sources:
+                rep.note(f.offset, f.size,
+                         f"{_mark}: zero -- the neutral source has no value")
 
     # -- spell slots, by class: two arrays on Pool of Radiance, three after --
     # Three levels of slots in Pool of Radiance, five in Curse and seven in
@@ -6207,7 +6287,10 @@ def write_field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     deltas = deltas_for(deltas)
     absent = write_absent(deltas)
     gone = {n for n, _ in absent}
-    direct = tuple((n, d) for n, d in WRITE_DIRECT if n not in gone)
+    direct = tuple((n, d) for n, d in WRITE_DIRECT + DARKNESS_WRITE_DIRECT
+                   if n not in gone)
+    transformed_later = tuple((n, w) for n, w in WRITE_TRANSFORMED_LATER
+                              if n not in gone)
     if deltas is POOL_OF_RADIANCE:
         return neutral.disposition(
             direct + POOL_WRITE_DIRECT, WRITE_TRANSFORMED,
@@ -6215,7 +6298,7 @@ def write_field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
             "the DOS record's", derived=_WRITE_FIELD_DISPOSITION_DERIVED)
     later = {n for n, _ in WRITE_TRANSFORMED_LATER}
     return neutral.disposition(
-        direct, WRITE_TRANSFORMED + WRITE_TRANSFORMED_LATER,
+        direct, WRITE_TRANSFORMED + transformed_later,
         tuple((n, w) for n, w in WRITE_DROPPED if n not in later)
         + absent + WRITE_POOL_FIELDS_UNMEASURED,
         "the DOS record's", derived=_WRITE_FIELD_DISPOSITION_DERIVED)

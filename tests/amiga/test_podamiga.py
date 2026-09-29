@@ -1045,16 +1045,17 @@ def test_the_reader_has_nothing_left_to_say_to_a_player():
         assert out.warnings == [], name
 
 
-def test_the_reader_fills_sixty_eight_of_the_neutral_records_fields():
+def test_the_reader_fills_seventy_two_of_the_neutral_records_fields():
     """The count that says how far the Amiga decode has got, pinned so it
     moves when somebody decodes another region rather than drifting.
 
-    68 of the 78, and 69 for a character with an effect that never expires,
+    72 of the 89, and 73 for a character with an effect that never expires,
     since `granted_effects` is set only when there is one -- the same way the
-    Curse and Silver Blades reader sets it. On this machine that is ten
-    characters at 68 and nine at 69. One higher than before #628 gave
-    `lay_on_hands_minutes` a neutral home: it fills for every character,
-    paladin or not, since a chain with no heal node means he may heal now.
+    Curse and Silver Blades reader sets it. `lay_on_hands_minutes` fills for
+    every character, paladin or not, since a chain with no heal node means he
+    may heal now. Four more than before the level-drain marks and the
+    ready-to-train flag got neutral fields: they fill for every character,
+    zeros included.
 
     The names it does not fill for a character on these disks:
     `npc_control_byte`, which is set only for a companion and so is absent
@@ -1067,14 +1068,14 @@ def test_the_reader_fills_sixty_eight_of_the_neutral_records_fields():
     for _name, raw in pc_records():
         out = amiga_pod.pod_to_neutral(raw)
         effects = amiga_pod.PodCharacter.from_bytes(raw).effects
-        assert len(out.fields) == 68 + bool(effects), sorted(out.fields)
+        assert len(out.fields) == 72 + bool(effects), sorted(out.fields)
         named = set(out.fields) | {n for n, _ in amiga_pod.pod_read_dropped()}
         assert set(neutral.FIELDS) - named == (
             {"npc_control_byte", "running_effects"} if effects
             else {"npc_control_byte", "running_effects", "granted_effects"})
         counts[len(out.fields)] = counts.get(len(out.fields), 0) + 1
     assert sum(counts.values()) >= 12, counts
-    assert counts.get(68), counts
+    assert counts.get(72), counts
 
 
 # --- the engine's own account of its record, read off the player's disk ------
@@ -1199,23 +1200,22 @@ def test_the_roster_tail_is_derived_and_not_dropped():
     assert amiga_pod.UNNAMED_0C9 in amiga_pod.DERIVED
 
 
-def test_derived_holds_the_sixteen_offsets_the_engine_rebuilds():
+def test_derived_holds_the_seventeen_offsets_the_engine_rebuilds():
     """Dropping an offset from `DERIVED` would make the writer's zero there
     look like an unaccounted byte, so the list is pinned by count and by the
     two ends the last change added.
 
     Needs no disk: it reads the writer's own declared table.
     """
-    assert len(amiga_pod.DERIVED) == 16, len(amiga_pod.DERIVED)
-    assert len(set(amiga_pod.DERIVED)) == 16
+    assert len(amiga_pod.DERIVED) == 17, len(amiga_pod.DERIVED)
+    assert len(set(amiga_pod.DERIVED)) == 17
     for at in (amiga_pod.ITEM_COUNT_CACHE, amiga_pod.HANDS_USED,
                amiga_pod.UNNAMED_0C9):
         assert at in amiga_pod.DERIVED, hex(at)
 
 
 def test_the_writer_leaves_every_byte_the_engine_rebuilds_alone():
-    """A record this writer makes is zero at all sixteen `DERIVED` offsets,
-    and at the low byte of the encumbrance word beside the first of them.
+    """A record this writer makes is zero at all seventeen `DERIVED` offsets.
 
     The other half of the row above: a table saying a field is derived is only
     true while the writer actually declines to write it. Built from the writer
@@ -1238,9 +1238,7 @@ def test_the_writer_leaves_every_byte_the_engine_rebuilds_alone():
         items=(bytes(node),)).to_bytes()
     left = {at: built[at] for at in amiga_pod.DERIVED if built[at]}
     assert left == {}, {hex(k): v for k, v in left.items()}
-    # `encumbrance` is a big-endian word and `DERIVED` names its high byte,
-    # which stays zero under 256 whatever is written; the low byte is where
-    # a weight would land.
+    # `encumbrance` is a big-endian word and `DERIVED` names both its bytes.
     assert built[amiga_pod.ENCUMBRANCE:amiga_pod.ENCUMBRANCE + 2] == \
         bytes(2), built[amiga_pod.ENCUMBRANCE:amiga_pod.ENCUMBRANCE + 2].hex()
     # And `attack_forms`, which the fight setup fills `0x189` and `0x18A`
@@ -1442,3 +1440,33 @@ def test_the_former_class_level_only_counts_when_the_engines_gate_opens():
     assert podimportmap.thac0_base(table, built("HUMAN", 11)) == 50
     assert podimportmap.thac0_base(table, built("HUMAN", 12)) == 12
     assert podimportmap.thac0_base(table, built("DWARF", 11)) == 12
+
+
+def test_the_level_drain_marks_and_the_training_flag_are_written_and_read():
+    """Restoration reads the three marks and the party list reads the flag, so
+    the writer puts each at its offset and the reader takes each back into the
+    neutral record; a neutral record written again keeps them.
+
+    Needs no disk: built from the writer.
+    """
+    built = amiga_pod.PodWriter(
+        name="R", race=amiga_pod.RACES.index("HUMAN"),
+        character_class=amiga_pod.CLASSES.index("FIGHTER"),
+        class_levels=(0, 0, 3, 0, 0, 0, 0),
+        class_bits=amiga_pod.CLASS_BIT["fighter"],
+        class_levels_highest=(0, 0, 9, 0, 0, 0, 0),
+        experience_highest=51234, hp_max_highest=77,
+        ready_to_train=True).to_bytes()
+    assert built[0x048:0x04C] == (51234).to_bytes(4, "big")
+    assert built[0x096:0x09D] == bytes((0, 0, 9, 0, 0, 0, 0))
+    assert built[0x0B6] == 77
+    assert built[0x0CB] == 1
+    char = amiga_pod.pod_to_neutral(built)
+    assert char.get("highest_levels") == {"fighter": 9}
+    assert char.get("highest_experience") == 51234
+    assert char.get("highest_hp_max") == 77
+    assert char.get("ready_to_train") is True
+    again, _report = amiga_pod.to_pc(char)
+    assert again[0x048:0x04C] == built[0x048:0x04C]
+    assert again[0x096:0x09D] == built[0x096:0x09D]
+    assert again[0x0B6] == 77 and again[0x0CB] == 1

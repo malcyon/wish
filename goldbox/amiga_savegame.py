@@ -2033,9 +2033,8 @@ def pod_new_savegame(state: world_state.PodWorldState,
         size = _pod_walk(pc, 0).size
         at = len(out)
         out += pc[:size]
-        # `to_pc` credits only the bytes it wrote non-zero; the rest of the
-        # block is the zero its writer leaves for the loader to fill.
-        report.note(at, size, "character block byte the record writer leaves zero")
+        # `to_pc` credits every byte it writes, zero or not, and names each
+        # byte it leaves zero on purpose; anything else fails the gate below.
         for offset, why in char_report.sources.items():
             if offset < size:
                 report.sources[at + offset] = why

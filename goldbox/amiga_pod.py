@@ -133,7 +133,7 @@ EXPERIENCE = 0x044           # u32
 #: experience rises -- `move.l $48(a2), d0; cmp.l $44(a2), d0; bgt;
 #: move.l $44(a2), $48(a2)` -- and `0x03315E` puts it back into experience,
 #: which is the restoration a level drain needs. CONFIRMED from the code; the
-#: matching run in the DOS record is `gap_176`. Not a neutral field.
+#: matching field in the DOS record is `highest_experience` at 0x176.
 EXPERIENCE_HIGHEST = 0x048   # u32
 PLATINUM = 0x04C             # u16 each, in this order
 GEMS = 0x04E
@@ -211,8 +211,11 @@ NPC_CONTROL = 0x093
 FIELD_83_87_SECOND = 0x094
 FIELD_83_87_FOURTH = 0x095
 #: The class levels' own high-water marks, the second of the three fields
-#: this title has and no earlier one does. `0x015F6C` walks the seven slots
-#: and raises `0x096[i]` to `0x09D[i]` whenever the current level is higher.
+#: this title has and no earlier one does. `0x015EF8`-`0x015F6A` only chooses
+#: the class the drain will take a level from, and `0x015F6C`-`0x015F9E` then
+#: raises that one class's mark `0x096[i]` to `0x09D[i]` when the mark is not
+#: above the current level. DOS does the same for its own `0x15F` array, so
+#: both ports raise only the drained class's mark.
 CLASS_LEVELS_HIGHEST = 0x096
 #: The class a dual-classed character trained out of, one byte a class slot.
 #: `0x03CD06` writes the old level into `0x0A4 + old class` on its way past.
@@ -329,8 +332,12 @@ UNNAMED_0C9 = 0x0C9
 UNNAMED_0CA = 0x0CA
 #: Written from a routine's return value in eight places, one of them
 #: immediately after the engine prints `SCROLLS DROPPED!`, so it is a cached
-#: count of something rather than a level. UNKNOWN.
-UNNAMED_0CB = 0x0CB
+#: count of something rather than a level. It is the ready-to-train flag: the
+#: party list draws the name in colour 13 when it is set and 10 when it is not,
+#: and the DOS twin at 0x1EC is set by the same experience, training and
+#: restoration routines. The rule that fills it reproduces this byte in 86 of
+#: 86 distinct played records, so the two ports store one flag.
+READY_TO_TRAIN = 0x0CB
 #: Memorised spell ids, 141 bytes -- the same width DOS Pools of Darkness
 #: gives `spells_memorised`, and the run ends exactly where the spellbook
 #: begins. CONFIRMED from the dual-class routine, which clears this region and
@@ -571,16 +578,41 @@ PORTRAIT_BODY = PORTRAIT_HEAD + 1
 #: running on load.
 DERIVED_REBUILD = 0x019428
 #: The game recomputes these on load and ignores what the file holds, so the
-#: writer must not fill them in: 0x056 encumbrance (it is the coin count),
+#: writer must not fill them in: 0x056-0x057 encumbrance, a big-endian word
+#: (it is the coin count),
 #: 0x0C7 the stale item count, 0x0C8 `hands_used`, 0x0C9 the qualifying
 #: readied items' saving-throw bonus, 0x186 `60 - THAC0` (it is the best of
 #: the class levels), 0x187 armour class, the whole of :data:`ROSTER_TAIL`, and
 #: 0x192 movement. :data:`DERIVED_REBUILD` writes all of them but 0x189 and 0x18A,
 #: which a fight's own setup loop fills from :data:`ATTACK_FORMS`.
-DERIVED = (ENCUMBRANCE, ITEM_COUNT_CACHE, HANDS_USED, UNNAMED_0C9,
-           THAC0_CURRENT, ARMOUR_CLASS_CURRENT,
+DERIVED = (ENCUMBRANCE, ENCUMBRANCE + 1, ITEM_COUNT_CACHE, HANDS_USED,
+           UNNAMED_0C9, THAC0_CURRENT, ARMOUR_CLASS_CURRENT,
            *range(ROSTER_TAIL, ROSTER_TAIL + ROSTER_TAIL_LENGTH),
            MOVEMENT_CURRENT)
+#: Record bytes the writer leaves zero on purpose, as `(first, last, why)`.
+#: Every other byte of a record is either written, credited by the writer's
+#: own plan, or in :data:`DERIVED`, so a byte in none of the three is one the
+#: writer forgot and the save builder's `unwritten` gate refuses it.
+LEFT_ZERO: tuple[tuple[int, int, str], ...] = (
+    (0x000, 0x043, "the heap: `heap_104`'s two halves, the two chain heads "
+                   "and the thirteen readied-item longwords, which the "
+                   "loader rebuilds when it reads the tail"),
+    (TURN_CLASS, TURN_CLASS, "`turn_class`, in POD_WRITE_DROPPED: zero in 88 "
+                             "of 88 played records"),
+    (UNNAMED_07E, UNNAMED_07E, "the hours of rest before memorising starts, "
+                               "which the next rest recomputes (PROBABLE)"),
+    (STRENGTH_BONUS, STRENGTH_BONUS, "written only by the Silver Blades "
+                                     "importer and read by no code found; "
+                                     "DOS Pools of Darkness has no byte for "
+                                     "it, so no same-title route can move it"),
+    (UNNAMED_0CA, UNNAMED_0CA, "written only by the Silver Blades importer "
+                               "and an ECL field setter, read by two "
+                               "routines; UNKNOWN, and zero in 88 of 88 "
+                               "played records -- provisional until the ECL "
+                               "blocks are swept for a write that lands here"),
+    (0x193, 0x193, "the record's last byte, which nothing reaches"),
+)
+
 #: The `jsr` *Add Character* makes on the loaded record. The `.pc` loader at
 #: `0x025806` is called at `0x026A34`, its return code is tested, and this
 #: call at `0x026A6C` follows about a dozen instructions later, one push
@@ -1140,6 +1172,23 @@ class PodCharacter:
                              FORMER_CLASS_LEVELS + CLASS_LEVEL_COUNT])
 
     @property
+    def class_levels_highest(self) -> list[int]:
+        return list(self.raw[CLASS_LEVELS_HIGHEST:
+                             CLASS_LEVELS_HIGHEST + CLASS_LEVEL_COUNT])
+
+    @property
+    def experience_highest(self) -> int:
+        return struct.unpack_from(">I", self.raw, EXPERIENCE_HIGHEST)[0]
+
+    @property
+    def hp_max_highest(self) -> int:
+        return self.raw[HP_MAX_HIGHEST]
+
+    @property
+    def ready_to_train(self) -> bool:
+        return bool(self.raw[READY_TO_TRAIN])
+
+    @property
     def attack_forms(self) -> bytes:
         return self.raw[ATTACK_FORMS:ATTACK_FORMS + ATTACK_FORM_COUNT]
 
@@ -1367,6 +1416,13 @@ class PodWriter:
     npc_control_byte: int | None = None
     former_level: int | None = None
     former_class_levels: tuple[int, ...] | None = None
+    #: The level-drain marks Restoration reads and the flag the party list
+    #: colours a name by: the highest level of each class, the highest
+    #: experience and hit points, and whether the character may train.
+    class_levels_highest: tuple[int, ...] | None = None
+    experience_highest: int | None = None
+    hp_max_highest: int | None = None
+    ready_to_train: bool | None = None
     #: `field_83_87`'s third and fourth bytes in the shared DOS order --
     #: the class a dual-classed human left (0x05B) and the byte after it
     #: (0x095) -- neither read by this title's own engine, carried across a
@@ -1442,6 +1498,9 @@ class PodWriter:
         if (self.former_class_levels is not None
                 and len(self.former_class_levels) != CLASS_LEVEL_COUNT):
             raise ValueError(f"{CLASS_LEVEL_COUNT} former class levels")
+        if (self.class_levels_highest is not None
+                and len(self.class_levels_highest) != CLASS_LEVEL_COUNT):
+            raise ValueError(f"{CLASS_LEVEL_COUNT} highest class levels")
         if (self.attack_forms is not None
                 and len(self.attack_forms) != ATTACK_FORM_COUNT):
             raise ValueError(f"{ATTACK_FORM_COUNT} attack-form bytes")
@@ -1510,6 +1569,21 @@ class PodWriter:
             plan.append((FIELD_83_87_SECOND, 1, "treasure_share"))
         plan.extend([(STATUS, 1, "status"), (HOSTILE, 1, "hostile"),
                      (ACTIVE, 1, "active"), (QUICKFIGHT, 1, "quickfight")])
+        # Credited whole and whatever the value: a zero here is a byte this
+        # writer chose, which is what the save builder's `unwritten` gate
+        # has to be able to tell from one it forgot.
+        plan.extend([
+            (FORMER_LEVEL, 1, "former_level"),
+            (NPC_CONTROL, 1, "npc_control_byte"),
+            (FORMER_CLASS_LEVELS, CLASS_LEVEL_COUNT, "former_class_levels"),
+            (CLASS_LEVELS_HIGHEST, CLASS_LEVEL_COUNT, "class_levels_highest"),
+            (EXPERIENCE_HIGHEST, 4, "experience_highest"),
+            (HP_MAX_HIGHEST, 1, "hp_max_highest"),
+            (READY_TO_TRAIN, 1, "ready_to_train"),
+            (SPELLS_MEMORISED, SPELLS_MEMORISED_LENGTH, "spells_memorised"),
+            (PORTRAIT_HEAD, 1, "portrait_head"),
+            (PORTRAIT_BODY, 1, "portrait_body"),
+        ])
         for value, at, width, what in (
                 (self.thac0_base, THAC0_BASE, 1, "thac0_base"),
                 (self.paladin_cures, PALADIN_CURES, 1, "paladin_cures"),
@@ -1517,17 +1591,12 @@ class PodWriter:
                 (self.identity, UNNAMED_0AB, 1, "identity"),
                 (self.experience_award, EXPERIENCE_AWARD, 2,
                  "experience_award"),
-                (self.npc_control_byte, NPC_CONTROL, 1, "npc_control_byte"),
-                (self.former_level, FORMER_LEVEL, 1, "former_level"),
                 (self.field_83_87_third, FIELD_83_87_THIRD, 1,
                  "field_83_87_third"),
                 (self.field_83_87_fourth, FIELD_83_87_FOURTH, 1,
                  "field_83_87_fourth")):
             if value is not None:
                 plan.append((at, width, what))
-        if self.former_class_levels is not None:
-            plan.append((FORMER_CLASS_LEVELS, CLASS_LEVEL_COUNT,
-                         "former_class_levels"))
         if self.abilities_permanent is not None:
             plan.extend((ABILITIES + 2 * i, 1, "abilities_permanent")
                         for i in range(ABILITY_COUNT))
@@ -1543,10 +1612,6 @@ class PodWriter:
             plan.append((SPELLS_CASTABLE,
                          SPELL_SLOT_LEVELS * len(SPELL_SLOT_CLASSES),
                          "spells_castable"))
-        if self.spells_memorised:
-            plan.append((SPELLS_MEMORISED,
-                         min(len(self.spells_memorised),
-                             SPELLS_MEMORISED_LENGTH), "spells_memorised"))
         plan.extend([(SIZE, 1, "size"), (UNNAMED_1A4, 2, "unnamed_1a4"),
                      (ICON_HEAD, 1, "icon_head"), (ICON_BODY, 1, "icon_body"),
                      (ICON_COLOURS, ICON_COLOUR_COUNT, "icon_colours"),
@@ -1658,6 +1723,17 @@ class PodWriter:
             out[FORMER_CLASS_LEVELS:
                 FORMER_CLASS_LEVELS + CLASS_LEVEL_COUNT] = bytes(
                     self.former_class_levels)
+        if self.class_levels_highest is not None:
+            out[CLASS_LEVELS_HIGHEST:
+                CLASS_LEVELS_HIGHEST + CLASS_LEVEL_COUNT] = bytes(
+                    self.class_levels_highest)
+        if self.experience_highest is not None:
+            struct.pack_into(">I", out, EXPERIENCE_HIGHEST,
+                             min(self.experience_highest, 0xFFFFFFFF))
+        if self.hp_max_highest is not None:
+            out[HP_MAX_HIGHEST] = min(self.hp_max_highest, 0xFF)
+        if self.ready_to_train is not None:
+            out[READY_TO_TRAIN] = int(bool(self.ready_to_train))
         if self.abilities_permanent is not None:
             for i, score in enumerate(self.abilities_permanent):
                 out[ABILITIES + 2 * i] = score
@@ -2002,6 +2078,15 @@ POD_WRITE_WHEN_PRESENT: tuple[tuple[str, str], ...] = (
                       "dual-class routine writes there"),
     ("npc_control_byte", "the byte at 0x093 unchanged: bit 7 plus the low "
                          "seven bits of morale, stored halved"),
+    ("highest_levels", "the seven-slot array at 0x096, named the same way as "
+                       "the current levels: the level Restoration gives a "
+                       "drained character back"),
+    ("highest_experience", "the big-endian longword at 0x048, which "
+                           "Restoration puts back into experience"),
+    ("highest_hp_max", "the byte at 0x0B6, which Restoration spreads over "
+                       "the levels it restores"),
+    ("ready_to_train", "the byte at 0x0CB, 1 or 0: the party list colours "
+                       "the name by it and no event refreshes it on load"),
     ("scroll_bundles", "set by no reader of this title -- DOS Pools of "
                        "Darkness keeps no scroll case -- and, where a source "
                        "has one, its scrolls are already in inventory and "
@@ -2057,11 +2142,10 @@ POD_WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     ("infravision", "a C64 field; neither this title's `.pc` nor its DOS "
                     "record has one, and PoD takes what it needs from race"),
     ("hp_lost_to_drain", "this title counts level drain the other way round, "
-                         "keeping the highest levels reached at 0x096, the "
-                         "highest experience at 0x048 and the highest hit "
-                         "points at 0x0B6. Its DOS record has no "
-                         "drained-level pair either, so a source of this "
-                         "title has nothing to give"),
+                         "with the marks `highest_levels`, "
+                         "`highest_experience` and `highest_hp_max`. Its DOS "
+                         "record has no drained-level pair either, so a "
+                         "source of this title has nothing to give"),
     ("levels_drained", "see `hp_lost_to_drain`: the high-water marks are what "
                        "this title stores instead"),
     ("turn_power", "a cleric's turning strength is worked out from the class "
@@ -2227,6 +2311,11 @@ POD_READ_DIRECT: tuple[tuple[str, str], ...] = (
     ("quickfight", "quickfight, the .pc's byte at 0x185"),
     ("unnamed_0ab", "unnamed_0ab, the .pc's byte at 0x0B5"),
     ("experience_award", "experience_award, the .pc's word at 0x054"),
+    ("highest_experience", "highest_experience, the .pc's big-endian "
+                           "longword at 0x048"),
+    ("highest_hp_max", "highest_hp_max, the .pc's byte at 0x0B6"),
+    ("ready_to_train", "ready_to_train, whether the .pc's byte at 0x0CB is "
+                       "set"),
     ("portrait_head", "portrait_head, the .pc's byte at 0x0B9 -- zero in 19 "
                       "of 19, since this title draws no sheet face"),
     ("portrait_body", "portrait_body, the .pc's byte at 0x0BA"),
@@ -2251,6 +2340,8 @@ POD_READ_TRANSFORMED: tuple[tuple[str, str], ...] = (
                "same order as this title's DOS record"),
     ("former_levels", "the seven-slot array at 0x0A4, named the same way, "
                       "non-zero entries only"),
+    ("highest_levels", "the seven-slot array at 0x096, named the same way, "
+                       "non-zero entries only"),
     ("abilities_second", "the *first* byte of each ability pair at 0x070, "
                          "which is the permanent score behind the one in "
                          "force -- and byte 1 of the exceptional-strength "
@@ -2337,9 +2428,8 @@ POD_READ_DROPPED: tuple[tuple[str, str], ...] = (
     ("electrum", "see `copper`: this title has three money slots"),
     ("gold", "see `copper`: this title has three money slots"),
     ("levels_drained", "this title counts level drain the other way round: "
-                       "it keeps the *highest* levels reached at 0x096, the "
-                       "highest experience at 0x048 and the highest hit "
-                       "points at 0x0B6, and restores from those. Its DOS "
+                       "it restores from the marks `highest_levels`, "
+                       "`highest_experience` and `highest_hp_max`. Its DOS "
                        "record has no drained-level pair either"),
     ("hp_lost_to_drain", "see `levels_drained`: the high-water marks are "
                          "what this title stores instead"),
@@ -2399,7 +2489,7 @@ def pod_field_disposition() -> dict[str, str]:
     and the test that keeps this half honest: a field `goldbox/neutral.py` declares
     and this names nowhere would be one dropped in silence.
 
-    This reader fills 68 of the 85 neutral fields, and 69 for a character
+    This reader fills 72 of the 89 neutral fields, and 73 for a character
     with something at duration zero in his chain.  The fourteen names
     :func:`pod_read_dropped` gives: **nine** are fields this *title* stores
     on neither port, **two** have unmeasured creature-type and turning-row
@@ -2573,6 +2663,26 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
             f"routine writes the old level into this array and the old "
             f"character level into {FORMER_LEVEL:#05x}",
             Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
+
+    # -- the level-drain marks, read always, zeros included ------------------
+    highest = {name.lower(): level
+               for name, level in zip(CLASS_LEVEL_SLOTS,
+                                      char.class_levels_highest) if level}
+    out.set("highest_levels", highest,
+            f"Amiga .pc highest class levels @{CLASS_LEVELS_HIGHEST:#05x}, "
+            f"named the same way as the current array. The drain routine "
+            f"raises the drained class's mark to its level before it takes "
+            f"the level away",
+            Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
+    out.set("highest_experience", char.experience_highest,
+            f"Amiga .pc highest experience @{EXPERIENCE_HIGHEST:#05x}, a "
+            f"big-endian longword", Confidence.CONFIRMED)
+    out.set("highest_hp_max", char.hp_max_highest,
+            f"Amiga .pc highest hit points @{HP_MAX_HIGHEST:#05x}",
+            Confidence.CONFIRMED)
+    out.set("ready_to_train", char.ready_to_train,
+            f"Amiga .pc @{READY_TO_TRAIN:#05x}, the flag the party list "
+            f"colours a name by", Confidence.CONFIRMED)
 
     # -- magic ---------------------------------------------------------------
     out.set("spells_known", char.spells_known,
@@ -2774,7 +2884,8 @@ def _classes_of(names) -> tuple[list[str], list[str]]:
 _POD_CLAMPED_SCALARS = (
     ("thac0_base", 0xFF), ("paladin_cures", 0xFF), ("hp_rolled", 0xFF),
     ("unnamed_0ab", 0xFF), ("npc_control_byte", 0xFF),
-    ("experience_award", 0xFFFF),
+    ("experience_award", 0xFFFF), ("highest_hp_max", 0xFF),
+    ("highest_experience", 0xFFFFFFFF),
 )
 
 
@@ -2999,6 +3110,30 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         former_slots = tuple(slots_was)
         former_level = max(slots_was)
 
+    # -- the level-drain marks and the training flag ------------------------
+    # Only Pools of Darkness keeps them, on both ports, so a source of another
+    # title has none and the writer leaves the bytes zero.
+    highest_value = w.use("highest_levels")
+    highest_slots: tuple[int, ...] | None = None
+    if highest_value is not None:
+        marks = [0] * CLASS_LEVEL_COUNT
+        for class_name, level in (highest_value.value or {}).items():
+            if not level:
+                continue
+            slot = CLASS_LEVEL_SLOT.get(str(class_name).strip().lower())
+            if slot is None:
+                rep.dropped.append(
+                    f"the highest {class_name} level: Pools of Darkness has "
+                    f"no slot for it in the array at "
+                    f"{CLASS_LEVELS_HIGHEST:#05x}")
+                continue
+            if level > 0xFF:
+                rep.lost(
+                    f"the highest {class_name} level {level} does not fit "
+                    f"the Amiga's one byte; clamped to 255")
+            marks[CLASS_LEVEL_SLOTS.index(slot)] = min(int(level), 0xFF)
+        highest_slots = tuple(marks)
+
     # -- the companion's control byte, bit 7 plus morale --------------------
     npc = flag("npc")
     control = opt("npc_control_byte")
@@ -3161,6 +3296,11 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         npc_control_byte=control,
         former_level=former_level,
         former_class_levels=former_slots,
+        class_levels_highest=highest_slots,
+        experience_highest=opt("highest_experience"),
+        hp_max_highest=opt("highest_hp_max"),
+        ready_to_train=(None if (ready := w.use("ready_to_train")) is None
+                        else bool(ready.value)),
         field_83_87_third=field_83_87_third,
         field_83_87_fourth=field_83_87_fourth,
         abilities_permanent=permanent,
@@ -3280,6 +3420,15 @@ def to_pc(char: NeutralCharacter) -> tuple[bytes, Report]:
     rep.total = len(record)
     for offset, who in writer.provenance().items():
         rep.sources[offset] = f"{who} <- {char.port} {_SOURCE_OF.get(who, who)}"
+    # A byte left zero on purpose is named with its reason, after the plan so
+    # a written byte inside a row (the chain heads at 0x004 and 0x008) keeps
+    # the field that wrote it.
+    for first, last, why in LEFT_ZERO:
+        for offset in range(first, last + 1):
+            rep.sources.setdefault(offset, f"left zero: {why}")
+    for offset in DERIVED:
+        rep.sources.setdefault(
+            offset, "left zero: the game rebuilds it on load (DERIVED)")
     return record, rep
 
 
@@ -3323,6 +3472,12 @@ _SOURCE_OF: dict[str, str] = {
     "npc_control_byte": "npc_control_byte",
     "former_level": "former_levels, the highest of them",
     "former_class_levels": "former_levels",
+    "class_levels_highest": "highest_levels",
+    "experience_highest": "highest_experience",
+    "hp_max_highest": "highest_hp_max",
+    "ready_to_train": "ready_to_train",
+    "portrait_head": "portrait_head",
+    "portrait_body": "portrait_body",
     "abilities_permanent": "abilities_second",
     "exceptional_strength_permanent": "abilities_second",
     "attack_forms": "attack_forms",

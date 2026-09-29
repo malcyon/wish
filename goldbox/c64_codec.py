@@ -2388,7 +2388,15 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
 
 #: Neutral fields the C64 writer takes nothing from, and why.  Reported by
 #: `Writer.finish` for any character that carries one, never silent.
-DROPPED: tuple[tuple[str, str], ...] = ()
+DROPPED: tuple[tuple[str, str], ...] = (
+    ("highest_levels", "there is no C64 Pools of Darkness, so no C64 record "
+                       "keeps the level-drain marks and a C64 writer is "
+                       "never handed a source that holds them"),
+    ("highest_experience", "see `highest_levels`"),
+    ("highest_hp_max", "see `highest_levels`"),
+    ("ready_to_train", "see `highest_levels`: only Pools of Darkness keeps "
+                       "a ready-to-train flag"),
+)
 
 #: Neutral fields the C64 **recomputes for itself**, so writing them would be
 #: pointless rather than impossible.  Reported by `field_disposition` as

@@ -379,6 +379,45 @@ def test_two_former_classes_keep_the_array_and_say_the_byte_holds_one():
     assert any("holds one" in w for w in rep.warnings), rep.warnings
 
 
+def test_pools_of_darkness_writes_and_reads_the_level_drain_marks():
+    """Restoration compares the highest class levels with the current ones and
+    puts the highest experience and hit points back, and the party list
+    colours a name by the ready-to-train byte; all four are written from the
+    neutral record and read back into it."""
+    table = dos_port.FIELDS_BY_NAME_FOR[POD.key]
+    rec, _, _, rep = dos_codec.write(_neutral(
+        POD.key, levels={"fighter": 3}, highest_levels={"fighter": 9},
+        highest_experience=51234, highest_hp_max=77, ready_to_train=True))
+    marks = table["highest_class_levels"]
+    assert marks.offset == 0x15F
+    assert rec[marks.offset + dos_codec._DOS_CLASS_SLOT["fighter"]] == 9
+    assert sum(rec[marks.offset:marks.end]) == 9
+    assert table["highest_experience"].offset == 0x176
+    assert int.from_bytes(rec[0x176:0x17A], "little") == 51234
+    assert table["highest_hp_max"].offset == 0x17A and rec[0x17A] == 77
+    assert table["ready_to_train"].offset == 0x1EC and rec[0x1EC] == 1
+    assert rec[0x1EB] == 0
+    assert rep.dropped == [], rep.dropped
+    back = dos_codec.to_neutral(dos_codec.DosCharacter(rec, items=[]))
+    assert back.get("highest_levels") == {"fighter": 9}
+    assert back.get("highest_experience") == 51234
+    assert back.get("highest_hp_max") == 77
+    assert back.get("ready_to_train") is True
+
+
+def test_the_other_titles_report_the_level_drain_marks_as_absent():
+    """Only Pools of Darkness keeps them, so a source that carries them loses
+    them out loud in the three titles whose record has no field."""
+    for shape in (POOL, CURSE, SSB):
+        _rec, _, _, rep = dos_codec.write(_neutral(
+            shape.key, levels={"fighter": 3}, highest_levels={"fighter": 9},
+            highest_experience=51234, highest_hp_max=77, ready_to_train=True))
+        for name in ("highest_levels", "highest_experience", "highest_hp_max",
+                     "ready_to_train"):
+            assert any(line.startswith(f"{name}:") for line in rep.dropped), (
+                shape.key, name, rep.dropped)
+
+
 def test_pool_of_radiance_reports_a_former_class_it_cannot_hold():
     _rec, _, _, rep = dos_codec.write(_neutral(
         POOL.key, levels={"cleric": 1}, former_levels={"paladin": 5}))

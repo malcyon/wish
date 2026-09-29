@@ -68,6 +68,9 @@ STRUCTURED: dict[str, str] = {
                   "255 comes back as 127; only one past a byte is a width",
     "former_levels": "the one level a dual-classed character left, again in "
                      "its own byte, taken from the class it left",
+    "ready_to_train": "a flag, held by the neutral record as a bool and "
+                      "written as 0 or 1, so a number past 1 comes back as "
+                      "True and is not a width",
     "paladin_cures": "the source's own byte, or the class rule's when the "
                      "source has none; the boundary base character sets none, "
                      "so `test_boundary.py` sets one directly",

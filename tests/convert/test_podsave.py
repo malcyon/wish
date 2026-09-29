@@ -713,6 +713,93 @@ def test_pod_new_savegame_builds_one_synthetic_character():
     assert report.unwritten == []
 
 
+#: The Amiga record's level-drain marks and ready-to-train byte: the highest
+#: experience, the seven highest class levels, the highest hit points and the
+#: flag the party list colours a name by.
+_DRAIN_MARK_SPANS = ((0x048, 0x04C), (0x096, 0x09D), (0x0B6, 0x0B7),
+                     (0x0CB, 0x0CC))
+
+
+def test_pod_new_savegame_keeps_the_drain_marks_and_the_training_flag():
+    """A rebuilt block holds the same bytes at the four places, where the
+    writer used to leave them zero for 38 of the 88 played characters."""
+    held = 0
+    for label, blob in _pod_amiga_slots():
+        for i, (was, now) in enumerate(_rebuilt_characters(blob)):
+            for first, last in _DRAIN_MARK_SPANS:
+                assert now[first:last] == was[first:last], (
+                    label, i, hex(first))
+                held += any(was[first:last])
+    assert held > 0
+
+
+def test_amiga_to_dos_keeps_the_drain_marks(tmp_path):
+    """The DOS resave of a converted party carries the Amiga's marks and
+    ready-to-train byte, which came out zero before."""
+    held = 0
+    for n, (name, disk, letter) in enumerate(_pod_amiga_disks_with_vaults()):
+        blob = amiga_savegame.pod_read_slot(disk, letter)
+        state = amiga_savegame.pod_from_amiga(blob, source=name)
+        blocks = amiga_savegame.pod_parse(blob).blocks
+        characters = [amiga_pod.pod_to_neutral(b) for b in blocks]
+        out = tmp_path / f"slot{n}"
+        dos_codec.new_pod_save_from(
+            state, characters, out, "A",
+            vault=amiga_savegame.pod_read_vault(disk, letter))
+        party = dos_codec.read_party(out, "A")
+        for block, char in zip(blocks, party):
+            source = amiga_pod.PodCharacter.from_bytes(block)
+            assert list(char.raw("highest_class_levels")) == \
+                source.class_levels_highest, (name, char.name)
+            assert char.get("highest_experience") == \
+                source.experience_highest, (name, char.name)
+            assert char.get("highest_hp_max") == source.hp_max_highest, (
+                name, char.name)
+            assert bool(char.get("ready_to_train")) == source.ready_to_train, (
+                name, char.name)
+            held += source.experience_highest > 0
+    assert held > 0
+
+
+def test_pod_new_savegame_credits_each_byte_it_leaves_zero_by_name():
+    """The `unwritten` gate only means something when the writer says what it
+    left zero: every byte of a block is a field the plan wrote or a row of
+    `LEFT_ZERO` or `DERIVED`, none is a blanket credit, and a writer whose
+    plan lost a field is refused."""
+    state = _synthetic_state(1)
+    char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
+    built, report = amiga_savegame.pod_new_savegame(state, [char])
+    at = amiga_savegame.POD_PARTY_AT
+    size = amiga_savegame._pod_walk(built[at:], 0).size
+    notes = {report.sources[at + offset] for offset in range(size)}
+    assert not any("record writer leaves zero" in why for why in notes), notes
+    for offset in (amiga_pod.CLASS_LEVELS_HIGHEST, amiga_pod.EXPERIENCE_HIGHEST,
+                   amiga_pod.HP_MAX_HIGHEST, amiga_pod.READY_TO_TRAIN,
+                   amiga_pod.FORMER_LEVEL, amiga_pod.NPC_CONTROL,
+                   amiga_pod.FORMER_CLASS_LEVELS):
+        assert not report.sources[at + offset].startswith("left zero"), (
+            hex(offset), report.sources[at + offset])
+    for first, last, why in amiga_pod.LEFT_ZERO:
+        for offset in range(first, last + 1):
+            if offset not in (amiga_pod.EFFECT_CHAIN, amiga_pod.ITEM_CHAIN):
+                assert report.sources[at + offset] == f"left zero: {why}"
+
+
+def test_pod_new_savegame_refuses_a_writer_whose_plan_lost_a_field(monkeypatch):
+    plan = amiga_pod.PodWriter._plan
+
+    def without_former_class_levels(self):
+        return [row for row in plan(self)
+                if row[2] != "former_class_levels"]
+
+    monkeypatch.setattr(amiga_pod.PodWriter, "_plan",
+                        without_former_class_levels)
+    state = _synthetic_state(1)
+    char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="no source"):
+        amiga_savegame.pod_new_savegame(state, [char])
+
+
 def test_pod_new_savegame_refuses_a_party_the_state_does_not_count():
     state = _synthetic_state(2)
     char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))

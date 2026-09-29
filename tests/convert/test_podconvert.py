@@ -413,9 +413,12 @@ def test_the_record_has_no_field_for_seven_neutral_names():
     assert set(absent) == set(ABSENT)
     for name, why in absent.items():
         assert why.startswith(POD.title), name
-    # Nothing is absent from the three titles that declare everything.
+    # The three earlier titles are missing only what Pools of Darkness added
+    # -- the level-drain marks and the ready-to-train byte.
+    added = {"highest_levels", "highest_experience", "highest_hp_max",
+             "ready_to_train"}
     for shape in (POOL, dos_port.CURSE_OF_THE_AZURE_BONDS, SSB):
-        assert dos_codec.write_absent(shape) == ()
+        assert {n for n, _ in dos_codec.write_absent(shape)} == added
 
 
 def test_an_absent_field_is_reported_as_dropped_and_never_copied():
