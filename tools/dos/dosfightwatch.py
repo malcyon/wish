@@ -917,8 +917,10 @@ def summarize(initial: bytes, hits: list[dict], ovr: bytes, base: int,
     entry per pile whose split was seen, with its `before`, `after`, `taken`
     and, once `counts` is known, `expected_cut`, `expected_after` and
     `matches`.  `pile`, `expected_cut`, `taken` and `expected_after` are the
-    gold pile's own, and `matches` is true only if every measured pile's
-    split equals the rule's.
+    gold pile's own, and `matches` is true only if at least one pile was measured, none that
+    held coins at the encounter is missing (`unmeasured_piles`) and every
+    measured pile's split equals the rule's.  `gold_split_seen` says whether
+    the gold keys above are the gold pile's own.
     """
     classified = [classify_hit(h, ovr) for h in hits]
     bias = derive_bias(classified)
@@ -946,8 +948,18 @@ def summarize(initial: bytes, hits: list[dict], ovr: bytes, base: int,
     if gold and "expected_cut" in gold:
         for key in ("expected_cut", "taken", "expected_after"):
             out[key] = gold[key]
-    if piles and counts and counts.get("a"):
-        out["matches"] = all(p["matches"] for p in piles.values())
+    out["gold_split_seen"] = gold is not None
+    out["unmeasured_piles"] = [
+        name for i, name in enumerate(PILE_NAMES)
+        if name not in piles and any(initial[4 * i:4 * i + 4])]
+    if counts and counts.get("a"):
+        out["matches"] = (bool(piles) and not out["unmeasured_piles"]
+                          and all(p["matches"] for p in piles.values()))
+        if not piles:
+            out["why"] = "no pile's split was measured"
+        elif out["unmeasured_piles"]:
+            out["why"] = ("a pile held coins at the encounter but its split "
+                          "was not seen: " + ", ".join(out["unmeasured_piles"]))
     return out
 
 

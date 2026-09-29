@@ -278,6 +278,25 @@ def test_a_split_that_hits_only_the_silver_pile_is_measured_and_matched():
     assert report["piles_at_encounter"]["silver"] == 0
 
 
+def test_a_nonzero_pile_with_no_split_seen_keeps_matches_false():
+    ovr = _ovr()
+    # The four bytes of the nonzero gold pile each owe one false first hit,
+    # which arming absorbs before the fight's own hits.
+    spurious = [(i, 0, (500).to_bytes(4, "little")[i], 0, 2) for i in range(4)]
+    dbg = _Debugger(ovr, spurious + _script(1000, 532), counts=(13, 7))
+    dbg.pile = dosfightwatch.PILE_BASE + 4          # silver is split
+    gold = dosboxx.linear((DS, dosfightwatch.GOLD_PILE))
+    dbg.mem[gold:gold + 4] = (500).to_bytes(4, "little")   # gold never is
+    report = dosfightwatch.measure_split(
+        _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
+        walk=lambda por, steps: {"met": True})
+    assert report["piles"]["silver"]["matches"] is True
+    assert report["unmeasured_piles"] == ["gold"]
+    assert report["gold_split_seen"] is False
+    assert report["matches"] is False
+    assert "gold" in report["why"]
+
+
 def test_each_pile_is_reported_on_its_own_when_two_are_split():
     ovr = _ovr()
     dbg = _Debugger(ovr, [], counts=(13, 7))
