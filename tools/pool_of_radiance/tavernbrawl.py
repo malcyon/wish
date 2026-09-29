@@ -33,11 +33,13 @@ import pathlib
 import re
 import sys
 import time
+from dataclasses import dataclass, fields
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
+from automap.combat import Battle  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from automap.vice import read_screen  # noqa: E402
 from goldbox import savegame  # noqa: E402
@@ -244,6 +246,45 @@ def allies_of(blocks: bytes) -> list[int]:
     return [n for n in range(8, BLOCKS)
             if 0 < blocks[n * STRIDE] < 0x80
             and blocks[n * STRIDE + SIDE] & 0x7F == 0]
+
+
+def party_side(blocks: bytes) -> frozenset[int]:
+    """Every occupied combatant whose side byte is the party's (X = 0), down or not."""
+    return frozenset(n for n in range(BLOCKS)
+                     if blocks[n * STRIDE] and blocks[n * STRIDE + SIDE] & 0x7F == 0)
+
+
+def standing_by_side(blocks: bytes) -> dict[int, int]:
+    """How many combatants stand on each side X, counted the way `predicted_result` counts."""
+    out: dict[int, int] = {}
+    for n in range(BLOCKS):
+        block = blocks[n * STRIDE:(n + 1) * STRIDE]
+        if 0 < block[0] < 0x80 and not block[SKIP] & 0x80:
+            x = block[SIDE] & 0x7F
+            out[x] = out.get(x, 0) + 1
+    return out
+
+
+@dataclass(frozen=True)
+class SidedBattle(Battle):
+    """A `Battle` whose enemies leave out combatants on the party's side.
+
+    `automap.combat.Combatant.is_party` is `index < 8`, so the brawl's 13
+    allies at indices 41-53 read as enemies and `Session.melee_turn` walks
+    into the nearest of them, which the game answers `ATTACK ALLY: YES NO`.
+    """
+
+    friends: frozenset[int] = frozenset()
+
+    @classmethod
+    def of(cls, battle: Battle, friends: frozenset[int]) -> "SidedBattle":
+        return cls(**{f.name: getattr(battle, f.name) for f in fields(Battle)},
+                   friends=friends)
+
+    @property
+    def enemies(self):
+        return tuple(c for c in self.combatants
+                     if not c.is_party and c.index not in self.friends)
 
 
 def predicted_share(total: int, standing: int, flags: int) -> int | None:
@@ -834,12 +875,45 @@ class Tactic:
                 self.log.emit("charm_readback", call=self.calls,
                               **charm_state(m, self.args.charm, self.charm_row),
                               tallies=list(m.read(TALLIES, 2)))
+            friends = party_side(m.read(COMBATANTS, BLOCKS * STRIDE))
         self.log.emit("party_status", call=self.calls, status=statuses(page), acting=acting)
         if self.args.mode == "win":
-            return sess.melee_turn(state)
+            return self.melee(sess, state, friends)
         if acting in (self.args.stay, self.args.charm):
             return sess.combat_turn()
         return self.flight(sess, state)
+
+    def melee(self, sess, state, friends: frozenset[int]) -> str:
+        """`Session.melee_turn` against the monster side only; refuse an ally attack.
+
+        `melee_turn` picks its target from `battle().enemies`, so `battle` is
+        wrapped for the one call.  Should the game still ask `ATTACK ALLY`, the
+        answer is NO and the turn is passed, so the same bar cannot come back
+        to the same character with the same target.
+        """
+        own = "battle" in vars(sess)
+        real = sess.battle
+
+        def sided():
+            b = real()
+            return None if b is None else SidedBattle.of(b, friends)
+
+        sess.battle = sided
+        try:
+            chose = sess.melee_turn(state)
+        finally:
+            if own:
+                sess.battle = real
+            else:
+                del sess.battle
+        s = sess.screen()
+        if s is not None and "ATTACK ALLY" in s.row(24):
+            self.log.emit("attack_ally_refused", call=self.calls)
+            sess.combat_bar("NO", timeout=12)
+            if sess.await_bar((S.BAR_MOVE,), timeout=6) is not None:
+                sess.press_kernal(0x0D)         # back out of move mode
+            return sess.combat_turn()
+        return chose
 
     def first(self, m, acting: int) -> None:
         blocks = m.read(COMBATANTS, BLOCKS * STRIDE)
@@ -919,13 +993,28 @@ def after_fight(sess, traps: Traps, log, out: pathlib.Path, args, before: list) 
     traps.retire_exec()
     with sess.mon(5) as m:
         after = party_readings(m)
-    share = traps.readings.get("share", [{}])[-1]
+    shares = traps.readings.get("share")
+    share = shares[-1] if shares else {}
+    if not shares:
+        why = f"no share reading: POST.COM ${SHARE:04X} never ran"
+    elif not share.get("standing"):
+        why = f"standing ${STANDING:04X} was 0 at the share"
+    else:
+        why = None
     for b, a in zip(before, after):
+        fields_ = {"predicted_why": why} if why else {}
         log.emit("experience_delta", slot=a["slot"], before=b["experience"],
                  after=a["experience"], delta=a["experience"] - b["experience"],
                  predicted=predicted_share(share.get("xp_total", 0),
                                            share.get("standing", 0), b["flags"]),
-                 status=a["status"], name_byte=a["name_byte"])
+                 status=a["status"], name_byte=a["name_byte"], **fields_)
+    if sess.in_combat():
+        # A fight that ran out its budget is still on its command bars, which
+        # `answer_until` does not know, and `$C04B`-`$C04D` is the world's
+        # square only in the world.
+        s = sess.screen()
+        log.emit("still_fighting", row24=None if s is None else s.row(24).strip())
+        return
     met = answer_until(sess, log, out, "after", stop_on_combat=False,
                        quiet_reads=6, quiet_seconds=3.0)
     log.emit("after_fight", outcome=met["outcome"], rows=met["rows"])
@@ -945,6 +1034,34 @@ def after_fight(sess, traps: Traps, log, out: pathlib.Path, args, before: list) 
 
 #: Seconds `record_stall` gives the screenshot, so a hung `import` cannot hold the slot.
 STALL_SHOT_TIMEOUT = 20.0
+
+
+def fight_end(sess, log, out: pathlib.Path, outcome: str) -> None:
+    """A PNG, row 24 and the driver's prediction from the combatant blocks when the fight returns.
+
+    It runs on every outcome, the budget included, because `on_result` only
+    predicts when `POST.COM` stores the result.
+    """
+    shot = out / "fight-end.png"
+    try:
+        took = bool(sess.kbd.screenshot(str(shot), timeout=STALL_SHOT_TIMEOUT))
+    except Exception as exc:
+        log.emit("shot_failed", label="fight-end", error=repr(exc))
+        took = False
+    got: dict = {"outcome": outcome, "shot": str(shot) if took else None}
+    try:
+        s = sess.screen()
+        got["row24"] = None if s is None else s.row(24).strip()
+    except Exception as exc:
+        got["row24"] = f"unreadable: {exc!r}"
+    try:
+        with sess.mon(5) as m:
+            blocks = m.read(COMBATANTS, BLOCKS * STRIDE)
+        got.update(predicted=predicted_result(blocks),
+                   standing=standing_by_side(blocks))
+    except Exception as exc:
+        got.update(predicted=None, predicted_why=f"combatant blocks unreadable: {exc!r}")
+    log.emit("fight_end", **got)
 
 
 def record_stall(sess, log, out: pathlib.Path, step: str) -> None:
@@ -1047,6 +1164,7 @@ def _run(args, out: pathlib.Path, log) -> int:
         tap.active = False
         log.emit("fight_result", outcome=result.outcome, turns=result.turns,
                  seconds=result.seconds)
+        fight_end(sess, log, out, result.outcome)
         traps.flush_shots()
         after_fight(sess, traps, log, out, args, before)
         if traps.degraded:

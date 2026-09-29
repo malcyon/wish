@@ -176,9 +176,26 @@ class FakeSession:
 
     load_save = begin_adventuring = boot
 
+    fight_battle = None
+    #: What `melee_turn` saw as the enemies, one list per call.
+    aimed_at: list
+
+    def battle(self):
+        return self.fight_battle
+
     def melee_turn(self, state):
         self.turns.append("melee")
+        b = self.battle()
+        self.aimed_at = getattr(self, "aimed_at", []) + [
+            None if b is None else [c.index for c in b.enemies]]
         return "melee"
+
+    def combat_bar(self, label, timeout=30.0):
+        self.picked.append(label)
+        return True
+
+    def await_bar(self, kinds, timeout=6.0, interval=0.4):
+        return None
 
     def combat_turn(self):
         self.turns.append("combat_turn")
@@ -198,9 +215,12 @@ class FakeSession:
     class kbd:
         shots: list[str] = []
 
+        timeouts: list = []
+
         @staticmethod
         def screenshot(path, timeout=None):
             FakeSession.kbd.shots.append(path)
+            FakeSession.kbd.timeouts.append(timeout)
             return True
 
 
@@ -210,6 +230,7 @@ def quick(monkeypatch):
     monkeypatch.setattr(tb.A, "pc_register", lambda m: 3)
     monkeypatch.setattr(tb, "read_screen", lambda m: FakeScreen("EXIT"))
     FakeSession.kbd.shots = []
+    FakeSession.kbd.timeouts = []
 
 
 def args(**kw):
@@ -1150,3 +1171,114 @@ def test_main_says_the_disks_differ_on_a_mismatch(monkeypatch, capsys):
 def test_main_runs_when_the_disks_match(monkeypatch, capsys):
     rc, err = run_main(monkeypatch, capsys, 0, [])
     assert rc == 0 and err == ""
+
+
+# -- 15. the brawl's allies ---------------------------------------------------
+
+
+def brawl_battle():
+    """Party member 4 at (5,5), an ally (index 41) beside it, a monster (20) three squares off."""
+    from automap.combat import Battle, Combatant, MapGeometry
+    shape = MapGeometry(map_base=0x1000, stride=16, width=16, height=16,
+                        positions=0x2000, count=64)
+    people = tuple(Combatant(index=i, x=x, y=5, slot=0, pose=0, on_map=True,
+                             initiative=1, hp=10)
+                   for i, x in ((4, 5), (41, 6), (20, 9)))
+    return Battle(shape=shape, terrain=bytes(256), combatants=people, camera=(0, 0))
+
+
+def brawl_machine():
+    machine = Machine()
+    for n, side in ((4, 0), (41, 0), (20, 1)):
+        machine.mem[tb.COMBATANTS + n * tb.STRIDE] = 1
+        machine.mem[tb.COMBATANTS + n * tb.STRIDE + tb.SIDE] = side
+    machine.mem[tb.ACTING] = 4
+    return machine
+
+
+def test_win_mode_never_aims_at_a_combatant_on_the_party_side():
+    sess = FakeSession(brawl_machine())
+    sess.fight_battle = brawl_battle()
+    assert [c.index for c in sess.battle().enemies] == [41, 20]   # the game's own reading
+    tactic = tb.Tactic(sess, FakeLog(), args())
+    tactic(sess, None)
+    tactic(sess, None)
+    assert sess.aimed_at == [[20], [20]]
+    assert "battle" not in vars(sess)                               # put back after the turn
+
+
+def test_an_attack_ally_prompt_is_answered_no_and_the_turn_is_passed():
+    sess = FakeSession(brawl_machine())
+    sess.fight_battle = brawl_battle()
+    log = FakeLog()
+    sess.script = ["ATTACK ALLY: YES NO"]
+    tactic = tb.Tactic(sess, log, args())
+    assert tactic(sess, None) == "done"
+    assert sess.picked == ["NO"]
+    assert sess.turns == ["melee", "combat_turn"]
+    assert log.kinds("attack_ally_refused")
+
+
+def test_no_prompt_leaves_the_melee_answer_alone():
+    sess = FakeSession(brawl_machine())
+    sess.fight_battle = brawl_battle()
+    tactic = tb.Tactic(sess, FakeLog(), args())
+    assert tactic(sess, None) == "melee"
+    assert sess.picked == []
+
+
+@pytest.mark.parametrize("outcome", [S.BUDGET, "WON"])
+def test_the_fight_end_gets_a_picture_and_a_prediction_on_every_outcome(
+        monkeypatch, tmp_path, outcome):
+    machine = brawl_machine()
+    sess = FakeSession(machine)
+    log = FakeLog()
+    monkeypatch.setattr(tb, "Log", lambda out, quiet=False: log)
+    sess.fight = lambda **k: S.FightResult(outcome, 372, 901.0, [], [], 0, [])
+    run_with(monkeypatch, sess, tmp_path)
+    [end] = log.kinds("fight_end")
+    assert end["outcome"] == outcome
+    assert end["predicted"] == 0                     # side 0 stands, nobody ran
+    assert end["standing"] == {0: 2, 1: 1}
+    assert pathlib.Path(end["shot"]).name == "fight-end.png"
+    assert FakeSession.kbd.timeouts[FakeSession.kbd.shots.index(end["shot"])] \
+        == tb.STALL_SHOT_TIMEOUT
+
+
+def test_a_fight_end_with_unreadable_blocks_says_why_there_is_no_prediction(tmp_path):
+    sess = FakeSession()
+    log = FakeLog()
+
+    def gone(timeout=5.0):
+        raise OSError("monitor gone")
+
+    sess.mon = gone
+    tb.fight_end(sess, log, tmp_path, S.BUDGET)
+    [end] = log.kinds("fight_end")
+    assert end["predicted"] is None and "OSError" in end["predicted_why"]
+
+
+def test_an_experience_delta_with_no_share_reading_says_why(monkeypatch, tmp_path):
+    _, log = after(monkeypatch, tmp_path, (7, 3, 0))
+    deltas = log.kinds("experience_delta")
+    assert all(d["predicted"] is None for d in deltas)
+    assert all(d["predicted_why"].startswith("no share reading") for d in deltas)
+
+
+def test_a_party_still_fighting_is_not_read_as_off_the_map(monkeypatch, tmp_path):
+    machine = Machine()
+    machine.mem[SQUARE:SQUARE + 3] = bytes((76, 47, 197))
+    sess = FakeSession(machine)
+    sess.combat = True
+    sess.script = ["VIEW AIM USE QUICK DONE"]
+    answered = []
+    monkeypatch.setattr(tb, "answer_until", lambda *a, **k: answered.append(1) or {
+        "outcome": "unknown", "rows": []})
+    log = FakeLog()
+    tb.after_fight(sess, tb.Traps(sess, log, tmp_path, args()), log, tmp_path, args(), [
+        {"slot": i, "experience": 0, "flags": 0} for i in range(8)])
+    assert answered == []                  # its unknown-row exit would end the run with 5
+    assert not log.kinds("off_map")
+    assert log.kinds("still_fighting") == [{"row24": "VIEW AIM USE QUICK DONE"}]
+    assert len(log.kinds("experience_delta")) == 8
+    assert sess.shots == []
