@@ -1249,11 +1249,17 @@ def parse_control(text: str) -> tuple[int, int, int | None]:
     return int(line), control, share
 
 
+_RECORD_NUMBER = re.compile(r"0|[1-9][0-9]*|0[xX][0-9a-fA-F]+")
+
+
 def parse_record_bytes(texts) -> list[tuple[int, int, int]]:
     """`LINE:OFFSET=VALUE`, numbers decimal or `0x` hex, comma-separated or
     repeated: one byte of roster line 1-8's `CHRDAT` record each.  Whether the
     offset lies inside the record is `check_staging`'s and `stage_record`'s
-    to say, since the record's size is the installed title's."""
+    to say, since the record's size is the installed title's.  A number is `0`,
+    a decimal with no leading zero, or `0x` hex; a leading zero (`010`), `_`,
+    a sign and `0b`/`0o` are refused rather than read as some other base.  A
+    byte named twice takes its last value, because the stages run in order."""
     out = []
     for text in texts:
         for item in text.split(","):
@@ -1261,8 +1267,12 @@ def parse_record_bytes(texts) -> list[tuple[int, int, int]]:
             parts = where.split(":")
             if not sep or len(parts) != 2 or not value.strip():
                 raise ValueError(f"{item!r}: a record byte is LINE:OFFSET=VALUE")
-            line, offset = (int(p, 0) for p in parts)
-            byte = int(value, 0)
+            numbers = [p.strip() for p in (*parts, value)]
+            for n in numbers:
+                if not _RECORD_NUMBER.fullmatch(n):
+                    raise ValueError(f"{item!r}: {n!r} is not a number "
+                                     "(decimal without a leading zero, or 0x hex)")
+            line, offset, byte = (int(n, 0) for n in numbers)
             if not 1 <= line <= 8 or offset < 0 or not 0 <= byte <= 0xFF:
                 raise ValueError(f"{item!r}: the line is 1 to 8, the offset "
                                  "not negative, the value one byte")
@@ -4127,6 +4137,9 @@ def main(argv: list[str] | None = None) -> int:
             parse_xp(x)
         for n in args.add_node:
             parse_node(n)
+        for c in args.stage_control:
+            parse_control(c)
+        parse_record_bytes(args.stage_record)
         validate_steps([parse_step(s) for s in args.steps], args.title)
         if args.hall and args.title not in HALL_TITLES:
             raise ValueError(f"--hall is measured for {', '.join(sorted(HALL_TITLES))} "

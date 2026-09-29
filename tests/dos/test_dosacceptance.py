@@ -6310,3 +6310,53 @@ def test_read_slot_reports_the_status_bytes_and_the_turning_readings(tmp_path):
     out = da.read_slot(tmp_path, "D")["characters"][0]
     assert out["status_bytes"] == [1, 0, 0, 1]
     assert (out["creature_type"], out["turn_class"], out["movement"]) == (4, 2, 6)
+
+
+@pytest.mark.parametrize("bad", ["1:010=1", "1:0x10=01", "1:1_0=1", "1:+5=1",
+                                 "1:0b11=1", "1:0o7=1", "1:0xZZ=1", "1:5=1.5"])
+def test_a_record_number_that_is_not_plain_decimal_or_hex_is_refused_by_item(bad):
+    with pytest.raises(ValueError) as e:
+        da.parse_record_bytes(["1:2=3", bad])
+    assert repr(bad) in str(e.value)
+
+
+def test_a_repeated_record_offset_keeps_the_last_value(tmp_path):
+    (tmp_path / "CHRDATD1.SAV").write_bytes(_pool_record())
+    args = _run_args(tmp_path, [])
+    args.stage_record = ["1:0x10C=1", "1:0x10C=6"]
+    da.stage(tmp_path, "D", args)
+    assert (tmp_path / "CHRDATD1.SAV").read_bytes()[0x10C] == 6
+
+
+def test_read_slot_gives_none_for_a_byte_a_title_has_not_mapped(tmp_path):
+    (tmp_path / "SAVGAMJ.DAT").write_bytes(bytes(13149))
+    (tmp_path / "CHRDATJ1.SAV").write_bytes(_curse_record())
+    out = da.read_slot(tmp_path, "J")["characters"][0]
+    assert out["creature_type"] is None
+    assert out["status_bytes"] == [0, 0, 0, 0]
+    assert (out["turn_class"], out["movement"]) == (0, 0)
+
+
+def test_a_stage_record_names_a_lowercase_source_file_and_any_slot_letter(tmp_path):
+    (tmp_path / "chrdatj1.sav").write_bytes(_pool_record())
+    args = _run_args(tmp_path, [])
+    args.stage_record = ["1:0x10C=1"]
+    da.check_staging(args, tmp_path, "J")
+    (tmp_path / "chrdatj1.sav").rename(tmp_path / "CHRDATJ1.SAV")
+    assert da.stage(tmp_path, "j", args)[0]["file"] == "CHRDATJ1.SAV"
+    assert (tmp_path / "CHRDATJ1.SAV").read_bytes()[0x10C] == 1
+
+
+@pytest.mark.parametrize("option, bad", [("--stage-record", "1:010=1"),
+                                         ("--stage-control", "1=0xZZ")])
+def test_main_refuses_a_bad_stage_value_before_anything_is_built(
+        tmp_path, monkeypatch, capsys, option, bad):
+    def claimed(*a, **k):
+        raise AssertionError("an emulator slot was claimed")
+
+    monkeypatch.setattr(da.dosbox, "claim", claimed)
+    with pytest.raises(SystemExit):
+        da.main(["--save", str(tmp_path), "--steps", "load", option, bad,
+                 "--out", str(tmp_path / "out")])
+    err = capsys.readouterr().err
+    assert bad.partition("=")[2] in err if option == "--stage-control" else repr(bad) in err
