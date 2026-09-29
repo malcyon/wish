@@ -1171,7 +1171,7 @@ def test_outdoors_where_uses_square_and_never_position():
     assert steps[0]["before"] == (5, 5)
 
 
-def _run_with_marks(monkeypatch, tmp_path, marks_set):
+def _run_with_marks(monkeypatch, tmp_path, marks_set, area_after=13):
     import json
 
     slot = types.SimpleNamespace(
@@ -1183,7 +1183,8 @@ def _run_with_marks(monkeypatch, tmp_path, marks_set):
     monkeypatch.setattr(FT.S, "stage_writable", lambda *a, **k: None)
     monkeypatch.setattr(FT.S, "Session", lambda *a, **k: sess)
     monkeypatch.setattr(FT, "party", lambda s: [])
-    monkeypatch.setattr(FT, "area_of", lambda s: 13)
+    areas = iter([13, area_after])
+    monkeypatch.setattr(FT, "area_of", lambda s: next(areas, area_after))
     monkeypatch.setattr(FT, "shoot", lambda *a, **k: None)
     monkeypatch.setattr(FT, "ViceTarget", lambda **k: types.SimpleNamespace(
         close=lambda: None))
@@ -1278,3 +1279,78 @@ def test_a_walk_whose_first_read_fails_does_not_pass(monkeypatch):
     steps, sheet = FT.walk_afterwards(sess)
     assert steps[0]["before"] is None
     assert not FT.walk_verdict(steps, sheet)[0]
+
+
+def test_settle_does_not_take_the_travel_grid_prompt_indoors(tmp_path):
+    # A hop still loading leaves the travel grid's prompt on screen while the
+    # area byte already says indoors.
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    sess.settled, sess.row = False, "1-8, RETURN OR BUTTON"
+    ok, message = FT.settle_world(sess, tmp_path, {})
+    assert not ok and "1-8, RETURN OR BUTTON" in message
+
+
+def test_settle_indoors_settles_through_wait_for_world(tmp_path):
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    sess.settled, sess.row = True, "1-8, RETURN OR BUTTON"
+    assert FT.settle_world(sess, tmp_path, {}) == (True, "")
+
+
+def test_a_refused_step_ends_the_walk_at_once():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    real = sess.walk_one
+
+    def walk_one(key):
+        ok = real(key)
+        if len(sess.pressed) == 2:
+            sess.walk_refused = "the driver pressed nothing"
+        return ok
+
+    sess.walk_one = walk_one
+    steps, sheet = FT.walk_afterwards(sess)
+    assert sess.pressed == ["I", "I"]
+    assert steps[-1]["refused"] and len(steps) == 2
+    assert sheet is False and sess.sheets == [] and sess.fights == []
+
+
+def test_an_attempt_records_the_screens_walk_one_kept():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True, blocked={"I"})
+    sess.walk_screens = ["row a"]
+    steps, _ = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert steps[0]["attempts"][0]["screens"] == ["row a"]
+
+
+def test_stop_after_moves_ends_the_walk_after_one_changed_square():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    steps, sheet = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert sess.pressed == ["I"] and len(steps) == 1
+    assert sheet and sess.sheets == [0]
+
+
+def test_stop_after_moves_counts_the_retry_that_moved():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    sess.walled = {0}
+    steps, sheet = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert sess.pressed == ["I", "J", "I"] and len(steps) == 1
+    assert steps[0]["ok"] and sheet
+
+
+def test_run_passes_one_move_to_the_walk(monkeypatch, tmp_path):
+    seen = {}
+
+    def walk(sess, *a, **k):
+        seen.update(k)
+        return [], False
+
+    monkeypatch.setattr(FT, "verdict", lambda *a, **k: (True, "landed"))
+    monkeypatch.setattr(FT, "settle_world", lambda *a: (True, ""))
+    monkeypatch.setattr(FT, "walk_afterwards", walk)
+    _run_with_marks(monkeypatch, tmp_path,
+                    {"through": 213.4, "landed": 220.0}, area_after=27)
+    assert seen == {"stop_after_moves": 1}

@@ -334,11 +334,15 @@ def settle_world(sess, out: pathlib.Path, shots: dict) -> tuple[bool, str]:
     # `wait_for_world` never counts as the world and might press Return at;
     # `Session.outdoor_key` drives a step from it, so it is checked first and
     # again after the wait, in case the arrival settled there.
-    if S.OUTDOOR_PROMPT in row24(sess) or sess.wait_for_world(timeout=60):
+    # Indoors that prompt is the stale travel-grid screen of a hop that is
+    # still loading, so only `wait_for_world` may settle the walk there.
+    grid_ok = not sess.indoors()
+    if (grid_ok and S.OUTDOOR_PROMPT in row24(sess)) \
+            or sess.wait_for_world(timeout=60):
         print(f"  settled: row 24 {row24(sess)!r}", flush=True)
         return True, ""
     row = row24(sess)
-    if S.OUTDOOR_PROMPT in row:
+    if grid_ok and S.OUTDOOR_PROMPT in row:
         print(f"  settled: row 24 {row!r}", flush=True)
         return True, ""
     print(f"  not settled: row 24 {row!r}", flush=True)
@@ -431,10 +435,16 @@ def where(sess, indoors: bool):
     return None
 
 
-def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
+def walk_afterwards(sess, timeout: float = 60.0,
+                    stop_after_moves: int | None = None
+                    ) -> tuple[list[dict], bool]:
     """A few steps in each direction, then the first character's sheet opened
     and closed -- the one action that is not a move. Returns every step's
     result and whether the sheet came up.
+
+    With *stop_after_moves* the walk ends, and the sheet opens, after the step
+    that makes that many steps change the square; every further step is a
+    further chance of a random encounter, which the driver can only fight.
 
     A step that a wall stopped is retried from other directions
     (`_retry_groups`).  Its record describes the last attempt -- `move`, `ok`,
@@ -451,6 +461,9 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
     stops the walk with a refused step, because `walk_one` would press Return at it and pick a menu's first
     option.
 
+    A refused step ends the walk at once; an attempt carries `screens`, the rows
+    `Session.walk_one` kept for its key, whenever it kept any.
+
     Indoors, `before` and `after` come from the status line and
     `shadow_before` and `shadow_after` from `square()`.
 
@@ -460,7 +473,7 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
     if indoors is None:
         return [], False
     steps: list[dict] = []
-    retry_used = 0
+    retry_used = moved = 0
     for move in (WALK_INDOORS if indoors else WALK_OUTDOORS):
         row = settle_row(sess, timeout)
         if sess.in_combat():
@@ -505,6 +518,9 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
                 attempts.append({"move": key, "ok": ok, "row": row,
                                  "before": start,
                                  "after": where(sess, indoors)})
+                screens = getattr(sess, "walk_screens", None)
+                if screens is not None:
+                    attempts[-1]["screens"] = screens
                 if gi:
                     retry_used += 1
                 refused = getattr(sess, "walk_refused", None)
@@ -541,8 +557,15 @@ def walk_afterwards(sess, timeout: float = 60.0) -> tuple[list[dict], bool]:
         steps.append(step)
         print(f"  walk {last['move']}: ok={step['ok']} {before} -> {step['after']}"
               f" ({len(attempts)} attempt(s))", flush=True)
+        if refused:
+            return steps, False
         if capped:
             break
+        if step["before"] is not None and step["after"] is not None \
+                and step["before"] != step["after"]:
+            moved += 1
+            if stop_after_moves is not None and moved >= stop_after_moves:
+                break
     sheet = sess.character_sheet(0)
     return steps, bool(sheet)
 
@@ -708,7 +731,8 @@ def run(args) -> int:
         try:
             settled, why = settle_world(sess, out, shots)
             if settled:
-                steps, sheet = walk_afterwards(sess)
+                steps, sheet = walk_afterwards(
+                    sess, stop_after_moves=1)
                 walk_ok, walk_message = walk_verdict(steps, sheet)
             else:
                 steps, sheet, walk_ok, walk_message = [], False, False, why
