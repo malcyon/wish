@@ -6463,16 +6463,28 @@ ARRIVAL_BAR = "PRESS <RETURN> OR BUTTON TO CONTINUE"
 
 
 class ArrivalWalk(FightWalk):
-    """Starts on an arrival page; `pages` Returns clear it.  Records the state
-    the first move key found."""
+    """Starts on the first of `pages` identical arrival pages; each Return
+    turns one, and the last leads to the world.  `pages` 0 never clears.
+    Records the state the first move key found and when each Return came."""
 
     def __init__(self, pages, **kw):
-        moves = {("press", ("key", 0x0D)): "world" if pages == 1 else "press"}
         super().__init__({}, **kw)
-        self.screens["press"] = _window({3: "YOU ARRIVE."}, ARRIVAL_BAR)
-        self.moves, self.state = moves, "press"
+        names = [f"press{i}" for i in range(max(pages, 1))]
+        self.moves = {}
+        for i, name in enumerate(names):
+            self.screens[name] = _window({3: "YOU ARRIVE."}, ARRIVAL_BAR)
+            after = (names[i + 1] if i + 1 < len(names)
+                     else "world" if pages else name)
+            self.moves[(name, ("key", 0x0D))] = after
+        self.state = names[0]
         self.state_at_first_key = None
         self.walk_encounter = None
+        self.stamp = lambda: None
+        self.return_times = []
+
+    def press_kernal(self, code):
+        self.return_times.append(self.stamp())
+        return super().press_kernal(code)
 
     def walk_one(self, move, *a, **k):
         if self.state_at_first_key is None:
@@ -6487,6 +6499,20 @@ def test_walk_fight_answers_the_arrival_bar_once_before_its_first_key(
     run.walk_fight("I")
     log.close()
     assert sess.sent == [("key", 0x0D)]
+    assert sess.state_at_first_key == "world" and sess.pressed == ["I"]
+
+
+def test_walk_fight_answers_two_identical_arrival_pages_before_its_first_key(
+        tmp_path, monkeypatch):
+    sess = ArrivalWalk(2)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    sess.stamp = run.clock
+    run.walk_fight("I")
+    log.close()
+    assert sess.sent == [("key", 0x0D)] * 2
+    # Identical pages cannot be told apart, so the first is given its whole
+    # wait before the second Return; the first move key follows the second.
+    assert sess.return_times[1] - sess.return_times[0] >= A.ARRIVAL_PAGE_SECONDS
     assert sess.state_at_first_key == "world" and sess.pressed == ["I"]
 
 

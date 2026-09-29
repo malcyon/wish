@@ -2421,7 +2421,6 @@ class PoolRun:
         self.leave_arrival(f"walk {route}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
-        self.leave_arrival(f"walk {route}")
         start = self.position()
         facing = start[2]
         moves = []
@@ -2546,7 +2545,6 @@ class PoolRun:
         self.leave_arrival(f"walk-fight {route}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
-        self.leave_arrival(f"walk-fight {route}")
         # `Session._stop_walk` answers an encounter menu with this word and
         # presses nothing else; `walk_expired` bounds its waits by the run.
         self.sess.walk_encounter = S.ENCOUNTER_FIGHT
