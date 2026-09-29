@@ -1208,6 +1208,8 @@ def _no_game_disks_for_the_icon_score(monkeypatch):
         raise T.dirtenicon.RepairError("no disks in a fake")
     monkeypatch.setattr(T.dirtenicon, "native_default", refuse)
     monkeypatch.setattr(T.savecheck, "roll_call", _fake_roll)
+    # CI has no registry and no disks: discovery finds nothing.
+    monkeypatch.setattr(T, "DISKS", None)
 
 
 def _fake_roll(sess):

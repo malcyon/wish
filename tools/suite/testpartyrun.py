@@ -934,7 +934,8 @@ def score_party_icons(sess, log: Log, roll: dict, disks=None) -> None:
     figure is listed under `not_drawn`.  `disks` is where `CHARPIC00` is read
     from; `native_default` takes no path and reads `$POR_DISKS` or the
     registry, so the two are the same directory only when the run was started
-    that way.  Logs `icon_score_unavailable` and returns when `roll` is empty
+    that way.  With no directory at all `icon_charset` is asked with None and
+    refuses, which is logged the same way.  Logs `icon_score_unavailable` and returns when `roll` is empty
     or the game's own default or glyphs cannot be read.
     """
     if not roll:
@@ -942,7 +943,9 @@ def score_party_icons(sess, log: Log, roll: dict, disks=None) -> None:
         return
     try:
         icon = dirtenicon.native_default().icon
-        charset = savecheck.icon_charset(pathlib.Path(disks or DISKS))
+        where = disks or DISKS
+        charset = savecheck.icon_charset(
+            pathlib.Path(where) if where else None)
         slots = [{"slot": n, "occupied": True, "shape": icon[:18].hex(),
                   "colours": icon[18:].hex()} for n in range(8)]
         evidence = savecheck.icon_evidence(sess, icon, slots=slots,
