@@ -1592,6 +1592,15 @@ def _published_title(name: str, letter: str, *, issue: str = PUBLISHED_ISSUE,
     raise RouteError("published disk one is only for Curse and Silver Blades")
 
 
+def _items_screen(name: str, reading: dict) -> bool:
+    """Whether the route visits the items screen: only Silver Blades' sheet ever lacks the button.
+
+    The button is absent for a character with nothing, and the sheet the route
+    opens is the party's first member, GUY DE VALOIS, first in the saved order too.
+    """
+    return name != "ssb" or reading["inventory"]["members"][0]["count"] > 0
+
+
 def _turn_about(name: str, letter: str, place: dict | None) -> bool:
     """Whether the route turns the party about before walking out of the start square."""
     if letter == "D":
@@ -1621,6 +1630,8 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
     if "turn_about" in manifest and turn_about != _turn_about(name, letter,
                                                               manifest.get("state_a")):
         raise RouteError("the manifest turn_about disagrees with its recorded place")
+    if name != "ssb" and "items_screen" in manifest:
+        raise RouteError("only a Silver Blades manifest records items_screen")
     items_screen = manifest.get("items_screen", True)
     if not isinstance(items_screen, bool):
         raise RouteError("the manifest items_screen is not a boolean")
@@ -1628,6 +1639,11 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
                              items_screen=items_screen)
     for key in ("source", "report", "published", "disk_one", "disk_two"):
         _input(manifest["registered"], key)
+    if name == "ssb":
+        recorded = title.read_slot(
+            _verified_disk(_input(manifest["registered"], "published")), letter)
+        if "inventory" not in recorded or items_screen != _items_screen(name, recorded):
+            raise RouteError("the manifest items_screen disagrees with the published slot")
     disk1_pin, disk2_pin, executable, volume = PUBLISHED_DISKS[name]
     if (manifest["registered"]["disk_one"]["sha256"] != disk1_pin or
             manifest["registered"]["disk_two"]["sha256"] != disk2_pin):
@@ -1733,10 +1749,7 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     # The way out of the start square depends on where the party stands, not on the port:
     # Curse's party-menu square faces a wall to the east.
     turn_about = _turn_about(name, letter, reading["place"])
-    # The sheet's ITEMS button is absent for a character with nothing, so the route
-    # visits the items screen only when the sheet's first member carries something.
-    items_screen = (name != "ssb" or
-                    reading["inventory"]["members"][0]["count"] > 0)
+    items_screen = _items_screen(name, reading)
     title = _published_title(name, letter, issue=issue, turn_about=turn_about,
                              items_screen=items_screen)
     original = _verified_disk(disk1)

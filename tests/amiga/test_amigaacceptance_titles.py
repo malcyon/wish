@@ -122,6 +122,88 @@ def test_published_silver_visits_the_items_screen_only_when_the_sheet_has_the_bu
     assert len(without.route) == len(with_items.route) - 2
 
 
+def _prepared_published(tmp_path, monkeypatch, name="ssb", members_items=0):
+    """A published-disk-one run prepared from synthetic disks; the first member's item count is forced."""
+    key, exe, ext, make = (
+        (foundation.route_silver_blades.TITLE, "/Secret", "sav",
+         synthetic_amiga.synthetic_silver_blades) if name == "ssb" else
+        (route_curse.CURSE_KEY, "/Curse", "dat", synthetic_amiga.synthetic_curse))
+    source = tmp_path / "party.D64"
+    source.write_bytes(b"synthetic source")
+    disk1 = tmp_path / "disk1.adf"
+    one = synthetic_amiga.synthetic_disk_one(key)
+    disk1.write_bytes(one.to_bytes())
+    disk2 = tmp_path / "disk2.adf"
+    disk2.write_bytes(AmigaDisk.blank("Disk2").to_bytes())
+    published = tmp_path / "POOLSAVE.ADF"
+    converted = AmigaDisk(one.to_bytes())
+    converted.write_file(f"/SAVE/savgamA.{ext}",
+                         make(("GUY DE VALOIS",)) if name == "ssb" else make(("CONVERTED",)))
+    published.write_bytes(converted.to_bytes())
+    source_sha, image_sha = staging.sha256(source), staging.sha256(published)
+    monkeypatch.setitem(foundation.PUBLISHED_SOURCES, (name, "c64"), source_sha)
+    monkeypatch.setitem(foundation.PUBLISHED_DISKS, name, (
+        staging.sha256(disk1), staging.sha256(disk2), exe, "Disk1"))
+    monkeypatch.setattr(foundation.scratch, "cache_dir",
+                        lambda *parts: tmp_path.joinpath("cache", *map(str, parts)))
+    if name == "ssb":
+        real = foundation.route_silver_blades._slot_reading
+
+        def reading(disk, letter):
+            out = real(disk, letter)
+            if "inventory" in out:
+                out["inventory"]["members"][0]["count"] = members_items
+            return out
+
+        monkeypatch.setattr(foundation.route_silver_blades, "_slot_reading", reading)
+    report = {
+        "specimen": str(source), "specimen_sha256": source_sha,
+        "amiga_disk1": str(disk1), "amiga_disk2": str(disk2),
+        "c64_disks_dir": str(tmp_path),
+        "save_as": {"source": str(source), "to": "amiga", "slot": "A",
+                    "destination": str(published), "written": [str(published)],
+                    "losses": [], "dropped": []},
+        "written": [str(published)], "written_sha256": {"POOLSAVE.ADF": image_sha},
+    }
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(report))
+    return foundation.prepare_published(name, "items", report_path)
+
+
+def test_published_silver_with_items_keeps_the_items_screen(tmp_path, monkeypatch):
+    path = _prepared_published(tmp_path, monkeypatch, members_items=1)
+    manifest, title = foundation._published_manifest(path, "ssb")
+    assert manifest["items_screen"] is True
+    assert ("I", "items", "key") in title.route
+
+
+def test_published_silver_without_items_records_and_skips_it(tmp_path, monkeypatch):
+    path = _prepared_published(tmp_path, monkeypatch, members_items=0)
+    manifest, title = foundation._published_manifest(path, "ssb")
+    assert manifest["items_screen"] is False
+    assert all(state != "items" for _, state, _ in title.route)
+
+
+@pytest.mark.parametrize("items,recorded", [(1, False), (0, True)])
+def test_published_silver_refuses_an_items_screen_the_slot_contradicts(
+        tmp_path, monkeypatch, items, recorded):
+    path = _prepared_published(tmp_path, monkeypatch, members_items=items)
+    manifest = json.loads(path.read_text())
+    manifest["items_screen"] = recorded
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(winuaesession.RouteError, match="items_screen disagrees"):
+        foundation._published_manifest(path, "ssb")
+
+
+def test_published_curse_refuses_an_items_screen_record(tmp_path, monkeypatch):
+    path = _prepared_published(tmp_path, monkeypatch, name="curse")
+    manifest = json.loads(path.read_text())
+    manifest["items_screen"] = True
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(winuaesession.RouteError, match="only a Silver Blades"):
+        foundation._published_manifest(path, "curse")
+
+
 @pytest.mark.parametrize("name,key,exe,ext,make", [
     ("curse", route_curse.CURSE_KEY, "/Curse", "dat", synthetic_amiga.synthetic_curse),
     ("ssb", foundation.route_silver_blades.TITLE, "/Secret", "sav",
