@@ -2413,6 +2413,7 @@ class Session:
         self.walked_outdoors = False
         self.walk_screens = None
         self.walk_stop_screen = None
+        self.walk_encounter_started = False
         if self.indoors() is False:
             self.walked_outdoors = True
             return self.walk_outdoors(move, hold, gap)
@@ -2441,8 +2442,10 @@ class Session:
             if not answer_prompts and self._prompt_up(s):
                 return False
             row = "" if s is None else s.row(24)
+            live_before = None
             if MOVE_SUBBAR in row:
                 self.walk_screens = (self._rows(s), None)
+                live_before = self._live_square()
                 self.move_key(move, hold, gap)
                 sent = True
             elif self._walk_expired():
@@ -2472,6 +2475,7 @@ class Session:
                 if self._walk_expired():
                     break
                 self.walk_screens = (self._rows(up), None)
+                live_before = self._live_square()
                 self.move_key(move, hold, gap)
                 sent = True
             else:
@@ -2495,6 +2499,14 @@ class Session:
                 moved = now is not None and now != before
             else:
                 moved = self.status() != before
+                if (not moved and live_before is not None
+                        and self._live_square() not in (None, live_before)):
+                    # The game updates the party's square before it draws an
+                    # encounter's text, and the status line and row 24 stay
+                    # as they were for ~12 s.  The step was taken: the caller
+                    # waits for the encounter, and nothing is pressed here.
+                    self.walk_encounter_started = True
+                    return True
             if moved:
                 self._leave_move(answer_prompts)
                 return True
@@ -2508,6 +2520,22 @@ class Session:
                 f"the driver pressed nothing for {move}: taking MOVE never "
                 f"brought up {MOVE_SUBBAR}; this is a driver error, not a wall")
         return False
+
+    #: Set by `walk_one` when the party's live square changed while the status
+    #: line did not: an encounter has started, and row 24 is a stale move bar
+    #: until its text is drawn.
+    walk_encounter_started = False
+
+    def _live_square(self):
+        """The live x, y at `$C04B`, or None if this title has none or the
+        read fails."""
+        machine = getattr(self, "machine", None)
+        if getattr(machine, "live_position", None) is None:
+            return None
+        try:
+            return self.live_triple()[:2]
+        except (OSError, MonitorError):
+            return None
 
     def _status_has_no_square(self) -> bool:
         """True when the status row (14) carries a facing and a time but no

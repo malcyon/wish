@@ -491,8 +491,16 @@ ARRIVAL_PAGE_SECONDS = 8.0
 ENCOUNTER_FLEE = "FLEE"
 
 #: The budget for each fight a `walk-fight` takes; the run's own
-#: `--max-seconds` still bounds the whole.
+#: `--max-seconds` still bounds the whole.  `--walk-fight-seconds` sets it.
 WALK_FIGHT_SECONDS = 900.0
+
+#: LINKER's dispatch byte while the combat overlay prepares the fight, which
+#: lasts ~20 s with row 24 blank before the byte reads `S.COMBAT`.
+COMBAT_PREP = 4
+
+#: How long `walk-fight` waits, after a move that started an encounter, for
+#: the encounter's bar or menu to be drawn; the game takes 11.8-12.8 s.
+ENCOUNTER_DRAW_SECONDS = 30.0
 
 #: How long `walk-fight` waits for a fight to open after it has answered an
 #: encounter menu or a `YES NO`.
@@ -2642,7 +2650,10 @@ class PoolRun:
         before_rows = self.rows()
         moved = sess.walk_one(move, tries=1, answer_prompts=False)
         screens = getattr(sess, "walk_screens", None)
-        unread = (not moved and self.took_nothing(before, before_rows, screens)
+        # The live square is not the party's while an encounter loads, so a
+        # move that started one is never judged by it.
+        unread = (not moved and not getattr(sess, "walk_encounter_started", False)
+                  and self.took_nothing(before, before_rows, screens)
                   and not getattr(sess, "walked_outdoors", False))
         self.refuse_prompt(route, last, "ran the square's event")
         stop = getattr(sess, "walk_stop_screen", None)
@@ -2651,20 +2662,23 @@ class PoolRun:
             raise self.fail(self.walk_verb, f"{self.walk_verb} {route}: {refused}")
         pressed = stop is not None
         ambush = False
-        if stop is None and not sess.in_combat():
-            # A `PRESS` bar after a move key with no encounter menu is an
-            # ambush's narration, or a square's text: it is answered like an
-            # arrival's, and a fight that opens behind it is fought below.
+        if getattr(sess, "walk_encounter_started", False):
+            # The game took the step and is loading the square's encounter,
+            # while the status line and row 24 still show the step's start.
+            # Nothing is pressed until a real screen is up, and the move is
+            # never sent again.
+            stop, ambush, ended = self._await_encounter(route, last, word)
+            if ended:
+                return False
+        elif stop is None and not sess.in_combat():
+            # A `PRESS` bar after a move key with no encounter menu is a
+            # square's text: it is answered like an arrival's, and a fight
+            # that opens behind it is fought below.
             ambush = self._answer_press_bar()
-        if stop is None:
+        if stop is None and not getattr(sess, "walk_encounter_started", False):
             self._look_for_fight(route, last)
             if not sess.in_combat():
                 stop = sess.walk_stop(wait=12.0)
-            if stop is None and not sess.in_combat() and self._answer_press_bar():
-                # A bar that drew after the first look, which `walk_stop`
-                # counts as recognised.
-                ambush = True
-                self._look_for_fight(route, last)
         if stop is not None:
             self._answer_stop(route, n, move, before, stop, pressed, answer,
                               word)
@@ -2690,11 +2704,16 @@ class PoolRun:
                                   f"{before} answered {stop[24].strip()!r} and "
                                   f"no fight opened in "
                                   f"{int(FIGHT_OPENS_SECONDS)} seconds")
+        elif getattr(sess, "walk_encounter_started", False):
+            # Mode 4 with a blank row 24 is a fight still opening.
+            if not self._fight_opens():
+                raise self.fail(
+                    self.walk_verb, f"{self.walk_verb} {route}: move {n} ({move}) from "
+                                  f"{before} started an encounter and no "
+                                  f"fight opened in "
+                                  f"{int(FIGHT_OPENS_SECONDS)} seconds")
         if not sess.in_combat():
-            # An ambush that left the world bar on the same square is sent
-            # again by the caller, once, rather than judged as a wrong square.
-            return unread or (ambush and self.took_nothing(
-                before, before_rows, screens))
+            return unread
         number = len(fights)
         self.capture(f"fight-{number}-start")
         result = sess.fight(budget=WALK_FIGHT_SECONDS, tactic=S.Session.melee_turn)
@@ -2715,6 +2734,43 @@ class PoolRun:
             flees.append({"at_move": n, "escaped": False, "ambush": True,
                           "fight": fights[-1]})
         return True
+
+    def _await_encounter(self, route, last, word):
+        """Wait for the screen an encounter starts, pressing nothing at the
+        stale move bar or a blank row 24.
+
+        Returns `(stop, ambush, ended)`: the rows of an encounter menu or
+        `YES NO` for the caller to answer, whether a `PRESS` bar was answered
+        (one Return), and whether the world came back with no fight at all.
+        Mode 4 or 2 returns with neither, for the caller to wait out.  The
+        live square at `$C04B` is read only in mode 1, where it is the
+        party's.
+        """
+        sess = self.sess
+        limit = self.clock() + ENCOUNTER_DRAW_SECONDS
+        while True:
+            self.budget(1, f"{self.walk_verb} {route}")
+            self.refuse_prompt(route, last, "started an encounter")
+            if sess.mode() in (S.COMBAT, COMBAT_PREP):
+                return None, False, False
+            screen = sess.screen()
+            row = "" if screen is None else screen.row(24)
+            if screen is not None and sess.combat_state(screen).kind == S.BAR_PRESS:
+                sess.press_kernal(0x0D)
+                return None, True, False
+            if (S.word_column(row, "YES") >= 0 and S.word_column(row, "NO") >= 0
+                    or S.word_column(row, word) >= 0):
+                return self.rows(), False, False
+            if (self.at_world(row) and sess.mode() == S.DUNGEON
+                    and sess.live_triple()[:2] == tuple(self.position()[:2])):
+                return None, False, True
+            if self.clock() >= limit:
+                raise self.fail(
+                    self.walk_verb, f"{self.walk_verb} {route}: the encounter "
+                                  f"the move started drew no bar or menu in "
+                                  f"{int(ENCOUNTER_DRAW_SECONDS)} seconds, "
+                                  f"row 24 reads {row.strip()!r}")
+            time.sleep(0.3)
 
     def _answer_press_bar(self) -> bool:
         """Answer a `PRESS` bar if one is up, and say whether it was."""
@@ -4194,6 +4250,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
 
 
 def main(argv: list[str] | None = None) -> int:
+    global WALK_FIGHT_SECONDS
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--title", choices=sorted(TITLES), default="pool")
     ap.add_argument("--save", help="the save disk: a path, or a name inside --disks")
@@ -4238,6 +4295,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="take one empty-square step after the first command bar")
     ap.add_argument("--walk-steps", type=int, default=40,
                     help="how far `fight` walks looking for one")
+    ap.add_argument("--walk-fight-seconds", type=float, default=WALK_FIGHT_SECONDS,
+                    help="the budget for each fight a walk-fight or walk-flee "
+                         "step fights")
     ap.add_argument("--pool", type=int, default=None, help="demand this pool slot")
     ap.add_argument("--max-seconds", type=float, default=MAX_SECONDS,
                     help="the whole run's budget; a step not begun by then is lost")
@@ -4251,6 +4311,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--compare", nargs=2, metavar="RUN", default=None,
                     help="two evidence directories: print what their readings differ in")
     args = ap.parse_args(argv)
+    WALK_FIGHT_SECONDS = args.walk_fight_seconds
     if args.compare:
         print(json.dumps(compare(*map(pathlib.Path, args.compare)), indent=2))
         return 0

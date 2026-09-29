@@ -55,6 +55,9 @@ class FakeSession(Session):
     def indoors(self):
         return True
 
+    def live_triple(self):
+        return (5, 5, 0)
+
     def screen(self):
         return FakeScreen(self._row24)
 

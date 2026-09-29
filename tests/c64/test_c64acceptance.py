@@ -4355,6 +4355,9 @@ class RealWalk(A.S.Session):
     def indoors(self):
         return True
 
+    def live_triple(self):
+        return (self.x, self.y, self.facing)
+
     def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
         """`MOVE` chosen; the highlight walk itself is `test_sideprompt.py`'s."""
         self.bar = A.S.MOVE_SUBBAR
@@ -6430,8 +6433,8 @@ def test_walk_flee_an_encounter_menu_without_flee_fails_and_presses_nothing(
 
 class AmbushWalk(FightWalk):
     """A move key can bring up a `PRESS` page with no encounter menu:
-    "ambush" then a Return opens a fight, "ambush-stay" leaves the party on
-    its square and a Return returns to the world bar."""
+    "ambush" then a Return opens a fight; "ambush-menu" follows the Return
+    with an encounter menu."""
 
     def __init__(self, script, **kw):
         super().__init__(script, **kw)
@@ -6440,28 +6443,14 @@ class AmbushWalk(FightWalk):
         self.moves[("press", ("key", 0x0D))] = "world"
         self.opens_fight = False
         self.menu_after = False
-        self.late_reads = None
-
-    def screen(self):
-        if self.late_reads is not None:
-            self.late_reads -= 1
-            if self.late_reads <= 0:
-                self.late_reads, self.state = None, "press"
-        return super().screen()
 
     def walk_one(self, move, *a, **k):
         event = self.script.get(self.calls)
-        before = (self.x, self.y)
         moved = super().walk_one(move, *a, **k)
-        if event == "late-ambush":
-            self.late_reads, self.opens_fight = 6, True
         if event == "ambush-menu":
             self.state, self.menu_after = "press", True
-        if event in ("ambush", "ambush-stay"):
-            self.state = "press"
-            self.opens_fight = event == "ambush"
-            if event == "ambush-stay":
-                self.x, self.y = before
+        if event == "ambush":
+            self.state, self.opens_fight = "press", True
         return moved
 
     def press_kernal(self, code):
@@ -6487,29 +6476,6 @@ def test_an_ambush_press_bar_opens_a_fight_that_is_fought_and_the_route_goes_on(
                 for f in got["flees"]] == [(0, False, True, got["fights"][0])]
 
 
-@pytest.mark.parametrize("verb", ["walk_fight", "walk_flee"])
-def test_an_ambush_press_bar_that_returns_to_the_same_square_sends_the_move_again(
-        tmp_path, monkeypatch, verb):
-    sess = AmbushWalk({0: "ambush-stay"})
-    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
-    got = getattr(run, verb)("I")
-    log.close()
-    assert sess.pressed == ["I", "I"]
-    assert got["moves"][0]["resent"] is True
-    assert got["position"] == [5, 4, 0] and got["fights"] == []
-
-
-def test_a_press_bar_that_draws_after_the_first_look_is_answered_and_fought(
-        tmp_path, monkeypatch):
-    sess = AmbushWalk({0: "late-ambush"})
-    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
-    got = run.walk_fight("II")
-    log.close()
-    assert sess.sent == [("key", 0x0D)]
-    assert [f["at_move"] for f in got["fights"]] == [0]
-    assert sess.pressed == ["I", "I"]
-
-
 def test_a_narration_page_then_a_flee_menu_records_one_flee_with_its_fight(
         tmp_path, monkeypatch):
     sess = AmbushWalk({0: "ambush-menu"})
@@ -6522,17 +6488,6 @@ def test_a_narration_page_then_a_flee_menu_records_one_flee_with_its_fight(
     flee = got["flees"][0]
     assert flee["fight"] == got["fights"][0] and "ambush" not in flee
     assert flee["before"] == [5, 5, 0] and flee["after"] == [5, 4, 0]
-
-
-def test_an_ambush_page_on_a_square_the_party_entered_is_not_sent_again(
-        tmp_path, monkeypatch):
-    sess = AmbushWalk({0: "ambush-stay"})
-    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
-    run.took_nothing = lambda *a: False
-    with pytest.raises(A.StepFailed, match="left the party on"):
-        run.walk_fight("I")
-    log.close()
-    assert sess.pressed == ["I"]
 
 
 def test_walk_flee_parses_and_is_refused_for_curse_and_silver_blades(
@@ -6707,6 +6662,177 @@ def test_the_drain_summary_takes_the_first_save_after_the_last_walk_fight():
     assert got["passed"] is None and "no save step" in got["why"]
     assert A.drain_summary([{"verb": "walk-fight"}] + results[:1],
                            staged)["passed"] is False
+
+
+# --- an encounter the move started, measured on the C64 ------------------------------
+
+class EncounterWalk(WalkSession):
+    """The measured sequence after a step onto an encounter square: the status
+    line and row 24 (the old move bar) stay as they were for 12 s while
+    `$C04B` already holds the new square, then a `PRESS` bar (kind "press") or
+    the sneak-up menu (kind "menu") is drawn and waits for an answer; 22 s
+    after the answer row 24 is blank and LINKER's byte reads 4 (COM.PREP), then
+    2.  Kind "none" is a step whose encounter ends without a fight: the world
+    bar and the compass catch up together.  `script` maps the `walk_one` call
+    number to a kind; other calls are ordinary steps."""
+
+    OLD_BAR = A.S.MOVE_SUBBAR + ", RETURN OR BUTTON"
+    MENU = "COMBAT WAIT FLEE PARLAY"
+    DRAW, PREP = 12.0, 22.0
+
+    def __init__(self, script, clock, **kw):
+        super().__init__(**kw)
+        self.script, self.timer = script, clock
+        self.calls = 0
+        self.kind = self.started = self.answered = self.new = None
+        self.done = False
+        self.walk_encounter_started = False
+        self.walk_stop_screen = None
+        self.presses = []
+        self.tactics = []
+
+    def phase(self):
+        if self.kind is None or self.done:
+            return "idle"
+        t = self.timer() - self.started
+        if self.answered is not None:
+            return "fight" if self.timer() - self.answered >= self.PREP else "prep"
+        if self.kind == "none":
+            return "idle" if t >= 3 else "stale"
+        return "stale" if t < self.DRAW else self.kind
+
+    def walk_one(self, move, *a, **k):
+        self.walk_encounter_started = False
+        event = self.script.get(self.calls)
+        self.calls += 1
+        if event is None:
+            return super().walk_one(move)
+        self.pressed.append(move)
+        self.kind, self.started, self.answered, self.done = (
+            event, self.timer(), None, False)
+        self.new = (self.x, self.y - 1)
+        self.walk_encounter_started = True
+        return True
+
+    def mode(self):
+        return {"prep": 4, "fight": 2}.get(self.phase(), 1)
+
+    def in_combat(self):
+        return self.mode() == 2
+
+    def live_triple(self):
+        assert self.mode() == 1, "the live square was read outside mode 1"
+        if self.kind is not None and not self.done:
+            return (*self.new, self.facing)
+        return (self.x, self.y, self.facing)
+
+    def screen(self):
+        phase = self.phase()
+        if phase == "none":
+            phase = "idle"
+        if phase == "idle" and self.kind == "none" and not self.done:
+            self.x, self.y = self.new
+            self.done = True
+        bar = {"stale": self.OLD_BAR, "press": ARRIVAL_BAR, "menu": self.MENU,
+               "idle": WORLD_BAR}.get(phase, "")
+        text = {"press": {3: "SKELETONS SILENTLY ATTACK."},
+                "menu": {3: "YOU HAVE MANAGED TO SNEAK UP."},
+                "prep": {3: "THE PARTY ATTACKS"}}.get(phase, {})
+        return FakeScreen(_window(text, bar))
+
+    def press_kernal(self, code):
+        self.presses.append((code, self.phase()))
+        if self.phase() == "press":
+            self.answered = self.timer()
+
+    def select_bar(self, label, row=24, timeout=0, **kw):
+        self.presses.append((label, self.phase()))
+        if self.phase() == "menu" and label in ("COMBAT", "FLEE"):
+            self.answered = self.timer()
+            return True
+        return False
+
+    def fight(self, budget, tactic):
+        self.tactics.append(budget)
+        self.x, self.y = self.new
+        self.done = True
+        return A.S.FightResult(A.S.WON, 3, 1.0, [], [])
+
+
+def _encounter_run(tmp_path, monkeypatch, script):
+    sess = EncounterWalk(script, None)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    sess.timer = run.clock
+    return sess, run, log
+
+
+def test_an_encounter_step_presses_nothing_until_the_press_bar_then_one_return(
+        tmp_path, monkeypatch):
+    sess, run, log = _encounter_run(tmp_path, monkeypatch, {0: "press"})
+    got = run.walk_fight("I")
+    log.close()
+    assert sess.presses == [(0x0D, "press")]
+    assert sess.pressed == ["I"]
+    assert got["moves"][0]["resent"] is False
+    assert [f["at_move"] for f in got["fights"]] == [0]
+    assert got["position"] == [5, 4, 0] and sess.tactics == [A.WALK_FIGHT_SECONDS]
+
+
+def test_an_encounter_step_answers_the_sneak_up_menu_combat_once(tmp_path, monkeypatch):
+    sess, run, log = _encounter_run(tmp_path, monkeypatch, {0: "menu"})
+    got = run.walk_fight("I")
+    log.close()
+    assert sess.presses == [("COMBAT", "menu")]
+    assert sess.pressed == ["I"] and len(got["fights"]) == 1
+
+
+def test_an_encounter_step_answers_the_sneak_up_menu_flee_for_walk_flee(
+        tmp_path, monkeypatch):
+    sess, run, log = _encounter_run(tmp_path, monkeypatch, {0: "menu"})
+    got = run.walk_flee("I")
+    log.close()
+    assert sess.presses == [("FLEE", "menu")]
+    assert sess.pressed == ["I"]
+    assert [(f["at_move"], f["escaped"]) for f in got["flees"]] == [(0, False)]
+
+
+def test_an_encounter_that_ends_without_a_fight_is_not_resent(tmp_path, monkeypatch):
+    sess, run, log = _encounter_run(tmp_path, monkeypatch, {0: "none"})
+    got = run.walk_fight("I")
+    log.close()
+    assert sess.presses == [] and sess.pressed == ["I"]
+    assert got["fights"] == [] and got["position"] == [5, 4, 0]
+
+
+def test_a_route_goes_on_after_an_encounter_step(tmp_path, monkeypatch):
+    sess, run, log = _encounter_run(tmp_path, monkeypatch, {0: "press"})
+    got = run.walk_fight("II")
+    log.close()
+    assert sess.pressed == ["I", "I"] and got["position"] == [5, 3, 0]
+
+
+def test_an_encounter_that_never_draws_a_bar_fails_the_step(tmp_path, monkeypatch):
+    sess, run, log = _encounter_run(tmp_path, monkeypatch, {0: "press"})
+    sess.DRAW = 1000.0
+    with pytest.raises(A.StepFailed, match="drew no bar or menu"):
+        run.walk_fight("I")
+    log.close()
+    assert sess.presses == [] and sess.pressed == ["I"]
+
+
+def test_an_ordinary_step_is_unchanged_by_the_encounter_wait(tmp_path, monkeypatch):
+    sess, run, log = _encounter_run(tmp_path, monkeypatch, {})
+    got = run.walk_fight("II")
+    log.close()
+    assert sess.presses == [] and got["fights"] == []
+    assert got["position"] == [5, 3, 0]
+
+
+def test_the_walk_fight_budget_is_set_from_the_command_line(monkeypatch):
+    monkeypatch.setattr(A, "WALK_FIGHT_SECONDS", A.WALK_FIGHT_SECONDS)
+    with pytest.raises(SystemExit):
+        A.main(["--walk-fight-seconds", "1800"])
+    assert A.WALK_FIGHT_SECONDS == 1800.0
 
 
 # --- the arrival text a warp leaves up ---------------------------------------------

@@ -71,6 +71,11 @@ class Fake(S.Session):
     def indoors(self):
         return True
 
+    def live_triple(self):
+        # `walk_one` reads the live square around the key; a step that
+        # leaves the status line alone leaves this alone too.
+        return (5, 5, 0)
+
     def screen(self):
         return self.current
 
@@ -282,3 +287,44 @@ def test_a_menu_or_combat_screen_does_not_take_the_branch(monkeypatch):
         sess.steady_triple = forbidden
         assert sess.walk_one("I", tries=2) is False
         assert sess.keys.count("i") == 2
+
+
+class Encounter(Fake):
+    """The status line and row 24 stay as they were after the key while
+    `$C04B` already holds the new square, as an encounter's load does."""
+
+    def __init__(self, monkeypatch, live_moves=True):
+        super().__init__(monkeypatch, SUBBAR)
+        self.live_moves = live_moves
+        self.status = lambda: 0
+        self.left = 0
+
+    def live_triple(self):
+        return (5, 4, 0) if self.ticks and self.live_moves else (5, 5, 0)
+
+    def leave_move(self, *a, **k):
+        self.left += 1
+        return True
+
+
+def test_a_step_that_moves_the_live_square_and_not_the_status_line_is_an_encounter(
+        monkeypatch):
+    sess = Encounter(monkeypatch)
+    assert sess.walk_one("I", tries=1) is True
+    assert sess.walk_encounter_started is True
+    assert sess.keys == ["i"] and sess.kernal == [] and sess.left == 0
+
+
+def test_a_step_that_moves_neither_is_not_an_encounter_and_leaves_the_move_bar(
+        monkeypatch):
+    sess = Encounter(monkeypatch, live_moves=False)
+    assert sess.walk_one("I", tries=1) is False
+    assert sess.walk_encounter_started is False and sess.left == 1
+
+
+def test_the_encounter_flag_is_cleared_by_the_next_walk_one(monkeypatch):
+    sess = Encounter(monkeypatch)
+    sess.walk_one("I", tries=1)
+    sess.live_moves = False
+    sess.walk_one("I", tries=1)
+    assert sess.walk_encounter_started is False
