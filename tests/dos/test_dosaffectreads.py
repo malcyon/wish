@@ -594,6 +594,9 @@ def test_pool_asks_list_10_in_the_attack_roll_and_nowhere_else():
     assert [s for s, (n, _) in lists.items() if n is None] == POOL_COMPUTED_LIST
     assert [(s, r) for s, (n, r) in lists.items() if n == 17] == \
         [(0xBD2C, 0xBC97), (0xBD7F, 0xBC97)]
+    # Negative control: the pin is one call site for list 10, and list 16
+    # (the defender's side of the same roll) has two, so it cannot match 16.
+    assert len([s for s, (n, _) in lists.items() if n == 16]) == 2
 
 
 def test_pool_the_walker_asks_each_id_once_and_the_ask_calls_one_handler():
@@ -610,6 +613,8 @@ def test_pool_the_walker_asks_each_id_once_and_the_ask_calls_one_handler():
     finds = [i for i in reads.body(eng.ovr, ask, 0x3000) if i.mnemonic == "lcall"
              and reads._far(eng, i.op_str) == eng.find_affect_at]
     assert len(finds) == 2
+    # Negative control: the same call reader does report a call inside a loop.
+    assert _calls_to(eng, 0x2939D, eng.remove_affect_at) == [(0x29499, True)]
 
 
 def test_pool_dispel_magic_removes_node_by_node():
@@ -633,6 +638,9 @@ def test_pool_bless_handler_reads_nothing_from_its_node():
     assert text[2:4] == ["add byte ptr [0x6825], 5", "inc byte ptr [0x6822]"]
     assert not [s for s in reads.find_affect_sites(eng) if s[2] == 1]
     assert not any(1 in u.compares for u in reads.chain_walkers(eng).values())
+    # Negative control: a handler that does read its node shows up as a read.
+    assert {b for b, _, _ in reads.handler_uses(eng, 89).access} >= {3}
+    assert {m for _, m, _ in reads.handler_uses(eng, 89).access} >= {"r", "w"}
 
 
 def test_no_pool_monster_memorises_or_carries_dispel_magic():
@@ -657,7 +665,8 @@ def test_no_pool_monster_memorises_or_carries_dispel_magic():
             assert not {b & 0x7F for b in rec[0x17:0x2C]} & {41, 46}, f.name
     for f in sorted(game.glob("MON*ITM.DAX")):
         for _bid, blk in dos_savegame.dax_blocks(f.read_bytes(), f.name):
-            for k in range(0, len(blk), 63):
+            assert len(blk) % dos_port.ITEM_SIZE == 0, f.name
+            for k in range(0, len(blk), dos_port.ITEM_SIZE):
                 items += 1
                 e = blk[k + 0x3D]
                 assert (e - 0x17 if e > 0x38 else e) not in (41, 46), f.name

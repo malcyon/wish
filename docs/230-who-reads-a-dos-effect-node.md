@@ -392,17 +392,13 @@ the tests named below pin it.
 | check list 10, the attack roll | nothing. Of the 28 calls to the list walker (`0x2B1E4`), only `0x2BBDF` passes 10 (routine `0x2BBA1`, which rolls a d20 into `[0x6822]`, walks list 10 on the attacker and list 16 on the defender, and compares the sum with the number needed) | CONFIRMED that 10 is walked only there; PROBABLE that `[0x6822]` is the to-hit roll: a natural 1 misses and a 20 becomes 100 |
 | one call to the handler per id per walk | nothing. The walker's 140 asks of `0x2B04A` are straight-line code, one per id on a list, and Bless is once on list 10. The ask calls `find_affect`, which stops at the first node of the id, and calls the handler once, at `0x2B1DB`, outside any loop. On a miss it looks for the id on other members for the ids in the set at `cs:0x140`, and still calls the handler at most once | CONFIRMED |
 | check list 17, walked twice in `0xBC97` | nothing: each walk adds Bless's 5 to `[0x6825]` once | CONFIRMED; PROBABLE that `0xBC97` is a morale test (it compares against record `0x84`) |
-| **Dispel Magic**, `0x2939D` (spells 41 and 46) | **the odds.** It walks every node of every target. For each node whose byte 3 is below `0xFF` it takes the low nibble as the node's level `L` (6 for Bless) and rolls d100 against `50 + 5 * (caster - L)` when the caster is higher, `50 - 2 * (L - caster)` when lower, 50 when equal; a roll at or under the chance removes that node alone (`remove_affect` at `0x29499`, inside the walk). At equal levels one node survives half the time and two nodes, until both fail, three times in four | CONFIRMED |
+| **Dispel Magic**, `0x2939D` (spells 41 and 46) | **the odds.** It walks every node of every target. For each node whose byte 3 is below `0xFF` it takes the low nibble as the node's level `L` (6 for Bless) and rolls d100 against `50 + 5 * (caster - L)` when the caster is higher, `50 - 2 * (L - caster)` when lower, 50 when equal; a roll at or under the chance removes that node alone (`remove_affect` at `0x29499`, inside the walk). At equal levels Bless survives a dispel half the time with one node and three times in four with two | CONFIRMED |
 | expiry | nothing: each node's duration counts down on its own, and nodes of equal duration end together (`tools/dos/dosspcexpiry.py`) | PROBABLE: two nodes running out has not been watched |
 | `remove_affect`, `0x2AF10` | nothing: it runs the handler's remove path only for a non-zero byte 4, and Bless's is `00` | CONFIRMED |
 
 `test_pool_asks_list_10_in_the_attack_roll_and_nowhere_else`,
 `test_pool_the_walker_asks_each_id_once_and_the_ask_calls_one_handler` and
 `test_pool_bless_handler_reads_nothing_from_its_node` pin the first four rows.
-Each fails when pointed at the wrong thing: list 16 (two calls), Dispel
-Magic's `remove_affect` call (inside a loop), and handler 89 (reads and writes
-byte 3). `test_pool_dispel_magic_removes_node_by_node` keeps the Dispel Magic
-case as the loop test's control.
 
 **No Pool of Radiance monster casts Dispel Magic.** A monster casts in two
 ways, both read from the combat turn at `0xABCF`: the choice at `0xB105` picks
