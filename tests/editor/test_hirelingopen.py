@@ -31,7 +31,7 @@ from goldbox.layout import Confidence
 POOL = dos_port.POOL_OF_RADIANCE
 F83 = dos_port.FIELDS_BY_NAME["field_83_87"].offset
 CONTROL_AT, SHARE_AT = F83 + 1, F83 + 2
-SHARES = (0xFF, 0x84, 0x04, 0x05)
+SHARES = (0xFF, 0x84, 0x04, 0x05, 0x02, 0x03, 0x08)
 
 
 @pytest.fixture
@@ -117,7 +117,7 @@ def test_the_window_opens_a_hireling_folder_without_a_dialog(
     assert len(binding.party.members) == 2
 
 
-@pytest.mark.parametrize("share", (0xFF, 0x84))
+@pytest.mark.parametrize("share", (0xFF, 0x84, 0x02, 0x03, 0x08))
 def test_a_hireling_saves_back_with_its_engine_share(tmp_path, share):
     folder = _folder(tmp_path, share)
     on_disk = (folder / "CHRDATA2.SAV").read_bytes()
