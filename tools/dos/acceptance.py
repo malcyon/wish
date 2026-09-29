@@ -210,6 +210,7 @@ from tools.dos.screens import (  # noqa: E402
     POD_NAME_CELLS,
     POD_NAME_ROWS,
     POD_ROSTER,
+    POD_SHEET_NAME,
     STATUS_COLUMNS,
     bar_signature,
     item_highlight,
@@ -260,12 +261,21 @@ POOL_MAP_BARS: dict[str, str] = {"town": "809e2e1cc9504b5b",
 #: `ea7f848a84-ea7f848a-dos-pool-rebuild-outdoor`, ROLAND's sheet.  What
 #: distinguishes `no_items` from `items` is whether the sheet offers ITEMS,
 #: not where the party stands: `VIEW:TRADE DROP EXIT` (no_items) against
-#: `VIEW:ITEMS TRADE DROP EXIT` (items).  A caster carrying nothing
+#: `VIEW:ITEMS TRADE DROP EXIT` (items).  An NPC's sheet offers no TRADE or
+#: DROP: `npc_items` is `VIEW:ITEMS EXIT`, measured on SKULLCRUSHER's sheet
+#: (an NPC fighter) in three DOSBox boots of the pooled `dosbox.conf` on the
+#: town map, `WISH-SPEC-issue641-dirten-seven-resave` slot B and #736's
+#: `727-bless/twice2/resave` slots C and D, and on PRINCESS FATIMA's and MAD
+#: MAN's in the slot D boot; `npc_caster` is `VIEW:ITEMS SPELLS EXIT`, measured
+#: once, on GENHEERIS's sheet (an NPC magic-user) in that slot D boot, where
+#: the step stopped before this entry existed.  A caster carrying nothing
 #: (`VIEW:SPELLS TRADE DROP EXIT`, presumably) is not measured and would
 #: still stop a `sheet` step.
 POOL_SHEET_BARS: dict[str, str] = {"no_items": "33ad531ed78cfa70",
                                    "items": "95afa0d95cd09ab7",
-                                   "caster": "49958cda77bfdd82"}
+                                   "caster": "49958cda77bfdd82",
+                                   "npc_caster": "740a10d0bc93a12a",
+                                   "npc_items": "90b53c9e64947226"}
 POOL_ROSTER_NEXT = "End"
 # Names start at x=8; effect lines are indented to x=17. Count the left
 # character cell across the page, allowing row spacing to change by effect.
@@ -745,6 +755,10 @@ def _cells(screen: dosbox.Screen, x: int, y: int, count: int,
 
 
 _BLANK_CELL = dosbox.Screen(CELL, POD_NAME_ROWS, bytes(CELL * POD_NAME_ROWS * 3)).glyphs()
+
+
+def _cell_digest(cells: list[str]) -> str:
+    return hashlib.sha1("".join(cells).encode()).hexdigest()[:16]
 
 
 def roster_cells(screen: dosbox.Screen, line: int) -> list[str]:
@@ -2634,12 +2648,15 @@ class Driver:
         self.line = line
         return {"presses": presses}
 
-    def check_sheet(self, screen, line: int, want: str, label: str) -> dict:
+    def check_sheet(self, screen, line: int, want: str, label: str,
+                    got: str | None = None) -> dict:
         """The sheet on `screen` is roster line `line`'s: its name cells match
-        the roster's, and no other line's sheet has had this frame."""
+        the roster's, and no other line's sheet has had this frame.  `got` is
+        the sheet's name when the caller read it over fewer cells than
+        `sheet_name` does."""
         if want == BLANK_NAME:
             raise self.fail(label, f"roster line {line} has no name drawn")
-        got = sheet_name(screen)
+        got = sheet_name(screen) if got is None else got
         if got != want:
             raise self.fail(label, f"the sheet's name is not roster line {line}'s "
                             f"(sheet {got}, roster {want})")
@@ -2840,12 +2857,19 @@ class Driver:
             raise self.fail(f"sheet-{line}-map", "the map bar is not showing")
         map_kind = next(k for k, bar in POOL_MAP_BARS.items() if bar == start)
         moved = self.pick_line(line, "camp", f"sheet-{line}-select", POOL_ROSTER_NEXT)
-        want = roster_name(self.s.capture(), "camp", line)
+        name = roster_cells(self.s.capture(), line)
+        if not name:
+            raise self.fail(f"sheet-{line}-name", f"roster line {line} has no name drawn")
         self.s.key(VIEW)
         if not self.s.wait_for(lambda sc: bar_signature(sc) in POOL_SHEET_BARS.values(), 15.0):
             raise self.fail(f"sheet-{line}-open", "VIEW did not open the sheet bar")
         screen = self.s.settle(quiet=0.8, timeout=30.0)
-        checked = self.check_sheet(screen, line, want, f"sheet-{line}-name")
+        # An NPC's sheet draws ` (NPC)` after the name, so the name is
+        # compared over its own cells and the blank one after it.
+        count = min(len(name) + 1, POD_NAME_CELLS)
+        want = _cell_digest((name + [_BLANK_CELL])[:count])
+        got = _cell_digest(_cells(screen, *POD_SHEET_NAME, count))
+        checked = self.check_sheet(screen, line, want, f"sheet-{line}-name", got=got)
         sheet = self.shot(f"sheet-{line}")
         self.s.key("Escape")
         if not self.s.wait_for(lambda sc: bar_signature(sc) == start, 15.0):

@@ -718,9 +718,9 @@ def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
         assert not game.save_file("D").exists()
         return
     if failure == "repeated_page":
-        # The name check passes and the frame is the same one both times.
-        monkeypatch.setattr(da, "sheet_name", lambda screen: screens.roster_name(
-            _with_roster(_screen(b"", b""), "camp", 6, 1), "camp", game.line))
+        # The name check passes (both sides read as one digest) and the
+        # frame is the same one both times.
+        monkeypatch.setattr(da, "_cell_digest", lambda cells: "name")
         monkeypatch.setattr(SheetPool, "capture", lambda self: (
             _screen(self.BARS["sheet"], b"") if self.mode == "sheet"
             else _with_roster(_screen(self.BARS[self.mode], b""), "camp", 6, self.line)))
@@ -747,6 +747,70 @@ def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
     got = d.sheet(3)
     assert game.keys == ["End", "End", "v", "Escape"]
     assert got["line"] == 3 and game.mode == "map"
+
+
+@pytest.mark.parametrize("sheet_name", ("npc", "longer"))
+def test_pool_sheet_opens_an_npcs_sheet_with_the_measured_bar(tmp_path, monkeypatch,
+                                                            sheet_name):
+    """`POOL_SHEET_BARS` as shipped knows the bar an NPC's sheet shows
+    (`VIEW:ITEMS EXIT`, digest measured off SKULLCRUSHER's sheet), and the
+    name check takes the sheet's `SKULLCRUSHER (NPC)` as the roster's
+    `SKULLCRUSHER`: the roster name's cells, then a blank one.  A sheet
+    whose name runs on a letter past the roster's is another member's.  The
+    fake bar stands in for the measured digest, the one thing a fake cannot
+    draw."""
+    npc_bar = b"\x18\x4b\x7e"
+    real = da.bar_signature
+    stand_in = real(_screen(npc_bar, b""))
+
+    def signature(screen, *a, **k):
+        got = real(screen, *a, **k)
+        return "90b53c9e64947226" if got == stand_in else got
+
+    def short(n: int) -> bytes:
+        return _pod_name(n)[:6]
+
+    after = {"npc": b"\x00\x18\x24\x42\x81", "longer": b"\x42"}[sheet_name]
+
+    class NpcPool(FakePool):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.line = 1
+
+        def key(self, k, gap=0.0):
+            self.keys.append(k)
+            if self.mode == "map" and k == "End":
+                self.line = self.line % 6 + 1
+            elif self.mode == "map" and k == "v":
+                self.mode = "sheet"
+            elif self.mode == "sheet" and k == "Escape":
+                self.mode = "map"
+
+        def capture(self):
+            if self.mode == "sheet":
+                px = bytearray(_screen(npc_bar, b"").px)
+                _draw_name(px, *screens.POD_SHEET_NAME, short(self.line) + after, _WHITE)
+                return dosbox.Screen(W, H, bytes(px))
+            px = bytearray(super().capture().px)
+            x, y = screens.POD_ROSTER["camp"]
+            for n in range(1, 7):
+                _draw_name(px, x, y + screens.CELL * (n - 1), short(n),
+                           _WHITE if n == self.line else _CYAN)
+            return dosbox.Screen(W, H, bytes(px))
+
+    monkeypatch.setattr(da, "bar_signature", signature)
+    monkeypatch.setattr(da, "POOL_MAP_BARS",
+                        {"town": real(_screen(FakePool.BARS["map"], b""))})
+    game = NpcPool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A")
+    d.where = "map"
+    if sheet_name == "longer":
+        with pytest.raises(da.StepFailed, match="name is not roster line 1"):
+            d.sheet(1)
+        return
+    got = d.sheet(1)
+    assert game.keys == ["v", "Escape"]
+    assert got["sheet_bar"] == "90b53c9e64947226" and game.mode == "map"
 
 
 # -- a random event ends the rest ------------------------------------------------
