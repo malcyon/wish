@@ -550,3 +550,23 @@ def test_an_unanswered_encounter_menu_is_logged(monkeypatch):
     sess.log = sess.lines.append
     sess._stop_walk("I", [""] * 24 + ["COMBAT WAIT FLEE ADVANCE"])
     assert any("COMBAT WAIT FLEE ADVANCE" in x for x in sess.lines)
+
+
+class WonThenLost(Fighting):
+    """The first fight-end line is `first`; a loss line follows on the next
+    read, as a stale redraw would."""
+
+    def __init__(self, monkeypatch, first):
+        super().__init__(monkeypatch)
+        self.first, self.n = first, 0
+
+    def screen(self):
+        self.n += 1
+        return Screen("", [self.first if self.n == 1 else S.LOST_TEXT])
+
+
+def test_a_later_lost_line_does_not_replace_an_earlier_won_or_ran_outcome(
+        monkeypatch):
+    for line, want in ((S.WON_TEXT, S.WON), (S.RAN_TEXT, S.RAN)):
+        sess = WonThenLost(monkeypatch, line)
+        assert sess.fight(budget=5.0).outcome == want

@@ -2651,13 +2651,13 @@ class Session:
             f"the driver pressed nothing for {move}: row 24 reads {row!r}, "
             f"and a walk does not answer that screen")
         word = self.walk_encounter
-        if not (word and word_column(row, word) >= 0):
-            self.log(f"  Encounter stop {row!r}: pressing nothing")
         if word and word_column(row, word) >= 0:
-            self.log(f"  Encounter menu {row!r}: taking {word} as asked")
+            _log_line(self, f"  Encounter menu {row!r}: taking {word} as asked")
             self.select_bar(word, timeout=8)
             self.walk_refused += (
                 f"; it answered {word} because the caller asked")
+        else:
+            _log_line(self, f"  Encounter stop {row!r}: pressing nothing")
         return False
 
     #: A caller's "time is up" test, consulted before each wait and before the
@@ -3629,10 +3629,11 @@ class Session:
                 if row and row not in seen and RE_NOTABLE.search(row.upper()):
                     seen.add(row)
                     lines.append(row)
-            if LOST_TEXT in text:
+            if LOST_TEXT in text and outcome in (None, LOST):
                 # Nobody is standing and nobody ran, and no bar follows: row
                 # 24 can stay blank for good, so waiting for the world to
                 # come back would spend the whole budget on a dead party.
+                # An earlier WON or RAN line stays the outcome.
                 return FightResult(LOST, turns, time.time() - started, bars,
                                    lines, blows, highlights)
             # `parse_status`, not `RE_STATUS`: an ambush on the travel grid
