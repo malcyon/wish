@@ -1515,3 +1515,37 @@ def test_save_game_records_the_map_word_when_nothing_did_before_it(tmp_path):
 def test_the_dax_and_item_names_are_read_from_goldbox_not_the_harness(name):
     """`goldbox.dos_savegame` and `goldbox.dos_codec` own these; the harness has no copy."""
     assert not hasattr(dosbox, name)
+
+
+def test_the_move_attack_prompt_is_a_known_bar_matched_by_its_prefix(monkeypatch):
+    """`MOVE/ATTACK, MOVE LEFT = N`: the digit must not change the match.
+
+    The prefix is measured from the run's own screenshots: the ink of
+    `MOVE/ATTACK, MOVE LEFT =` ends at column 190 and the digits start at 203.
+    The bar here is synthetic, lit in the words' columns and, apart, in a
+    digit's columns; the table's own width and label are used and its digest is
+    recomputed from the first bar, so a second bar with another digit has to
+    match on the prefix alone.
+    """
+    row = next((r for r in dosbox.PoolOfRadiance.COMBAT_BARS
+                if r[2] == "move_attack"), None)
+    assert row is not None, "no move_attack row in COMBAT_BARS"
+    width, _digest, label = row
+    assert 190 < width <= 203
+    assert label not in dosbox.PoolOfRadiance.COMBAT_KEYS
+
+    def bar(digit_columns):
+        px = bytearray(320 * 200 * 3)
+        for y in range(dosbox.BAR[1], dosbox.BAR[1] + dosbox.BAR[3]):
+            for x in list(range(0, 191, 3)) + digit_columns:
+                i = (y * 320 + x) * 3
+                px[i:i + 3] = b"\xff\xff\xff"
+        return dosbox.Screen(320, 200, bytes(px))
+
+    first, second = bar([204, 205]), bar([212, 213, 214])
+    assert first.glyphs(dosbox.BAR) != second.glyphs(dosbox.BAR)
+    digest = first.glyphs((dosbox.BAR[0], dosbox.BAR[1], width, dosbox.BAR[3]))
+    monkeypatch.setattr(dosbox.PoolOfRadiance, "COMBAT_BARS", ((width, digest, label),))
+    por = dosbox.PoolOfRadiance(None)
+    assert por.bar_kind(first) == "move_attack"
+    assert por.bar_kind(second) == "move_attack"

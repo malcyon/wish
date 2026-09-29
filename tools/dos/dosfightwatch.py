@@ -47,8 +47,8 @@ a scratch directory (`--out`; by default `scratch.scratch_dir("dosfightwatch")`)
         --place-like /mnt/specimens/por-dos/WISH-SPEC-por-amiga-slums-dos-resave/SAVGAMD.DAT --steps 60
 
 `pile` measures the treasure split.  It installs a DOS save folder as it stands
-(no conversion), walks to an encounter, watches the gold pile at `DS:0x67F4+12`
-through a fight and reads the companion and party parts `C` and `A` at the
+(no conversion), walks to an encounter, watches the seven coin piles at `DS:0x67F4`
+through a fight, reporting the split per pile, and reads the companion and party parts `C` and `A` at the
 split's counting breakpoint in a second fight; see `measure_split`.  A folder
 saved where no wandering encounter happens (the Training Hall) is moved to where
 a donor save the DOS game wrote stands by `--place-like`, which rewrites the
@@ -375,12 +375,13 @@ def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
         kind = por.bar_kind(screen)
         key = por.COMBAT_KEYS.get(kind or "")
         if key is None:
-            if unknown_since is None and evidence is not None and kind != "blank":
+            if unknown_since is None and evidence is not None and kind is None:
                 # Taken on first sight: the screen may change before
                 # `patience` runs out, and the first frame is the one that
                 # names what the fight asked.  It is a fresh grab, not the
-                # frame the bar was read from, and a mid-redraw `blank` is
-                # skipped as `_await_bar` skips it.
+                # frame the bar was read from, and a bar in the table
+                # (`blank`, `message`, `move_attack`) is skipped as
+                # `_await_bar` skips it.
                 evidence.take(s, f"unknown_bar_{bar}")
             unknown_since = unknown_since or time.time()
             if time.time() - unknown_since >= patience:
@@ -797,8 +798,10 @@ def truth(*, c64: pathlib.Path | None, slot: str, engine_slot: str, steps: int,
 
 #: `DS` offset of the seven longint coin piles the fight fills and the split
 #: reduces, and the gold pile's place in it (copper, silver, electrum, gold, ...).
+#: Only the first four are named; the last three are not identified.
 PILE_BASE = 0x67F4
 GOLD_PILE = PILE_BASE + 4 * 3
+PILE_NAMES = ("copper", "silver", "electrum", "gold", "pile4", "pile5", "pile6")
 
 #: `GAME.OVR` offsets of the instructions the measurement is keyed on: the
 #: store that fills a pile, the store that reduces it in the split, and the
@@ -908,21 +911,43 @@ def derive_bias(hits: list[dict]) -> dict:
 
 def summarize(initial: bytes, hits: list[dict], ovr: bytes, base: int,
               counts: dict | None) -> dict:
-    """The JSON report of a split measurement, from its raw hits and counts."""
+    """The JSON report of a split measurement, from its raw hits and counts.
+
+    `initial` is the 28 bytes of the seven piles at `base`.  `piles` has one
+    entry per pile whose split was seen, with its `before`, `after`, `taken`
+    and, once `counts` is known, `expected_cut`, `expected_after` and
+    `matches`.  `pile`, `expected_cut`, `taken` and `expected_after` are the
+    gold pile's own, and `matches` is true only if every measured pile's
+    split equals the rule's.
+    """
     classified = [classify_hit(h, ovr) for h in hits]
     bias = derive_bias(classified)
-    change = pile_change(initial, classified, base)
-    out: dict = {"hits": classified, **bias, "pile": change, "counts": counts}
+    piles: dict[str, dict] = {}
+    for i, name in enumerate(PILE_NAMES):
+        start = base + 4 * i
+        own = [h for h in classified if 0 <= h["addr"] - start < 4]
+        change = pile_change(initial[4 * i:4 * i + 4], own, start)
+        if change is None:
+            continue
+        row = {**change, "taken": change["before"] - (change["after"] or 0)}
+        if counts and counts.get("a"):
+            cut = expected_cut(change["before"], counts["c"], counts["a"])
+            row["expected_cut"] = cut
+            row["expected_after"] = change["before"] - cut
+            row["matches"] = cut == row["taken"]
+        piles[name] = row
+    gold = piles.get("gold")
+    out: dict = {"hits": classified, **bias, "pile": (
+        {"before": gold["before"], "after": gold["after"]} if gold else None),
+        "piles": piles, "counts": counts}
     if bias["bias"] is not None:
         seg, ofs = dosboxx.seg_off(bias["bias"] + COUNT_OFFSET)
         out["count_break"] = f"{seg:04X}:{ofs:04X}"
-    if change and counts and counts.get("a"):
-        cut = expected_cut(change["before"], counts["c"], counts["a"])
-        taken = change["before"] - (change["after"] or 0)
-        out["expected_cut"] = cut
-        out["taken"] = taken
-        out["expected_after"] = change["before"] - cut
-        out["matches"] = cut == taken
+    if gold and "expected_cut" in gold:
+        for key in ("expected_cut", "taken", "expected_after"):
+            out[key] = gold[key]
+    if piles and counts and counts.get("a"):
+        out["matches"] = all(p["matches"] for p in piles.values())
     return out
 
 
@@ -1072,14 +1097,17 @@ def check_piles(s, ds: int) -> str | None:
 
 
 def arm_pile(w: Watcher, ds: int) -> tuple[int, int]:
-    """A `BPM` on each byte of the gold pile; returns its linear base and how
-    many of the four bytes read nonzero (each owes one spurious first hit)."""
-    base = dosboxx.linear((ds, GOLD_PILE))
+    """A `BPM` on each byte of all seven coin piles; returns the first pile's
+    linear base and how many of the 28 bytes read nonzero (each owes one
+    spurious first hit).  A fight can drop any coin kind, and the split cuts
+    whichever piles it was given, so the gold pile alone can miss it."""
+    base = dosboxx.linear((ds, PILE_BASE))
     nonzero = 0
-    for i in range(4):
-        w.arm(base + i, f"gold[{i}]")
-        if w.s.read(base + i, 1) != b"\x00":
-            nonzero += 1
+    for p, name in enumerate(PILE_NAMES):
+        for i in range(4):
+            w.arm(base + 4 * p + i, f"{name}[{i}]")
+            if w.s.read(base + 4 * p + i, 1) != b"\x00":
+                nonzero += 1
     return base, nonzero
 
 
@@ -1127,10 +1155,10 @@ def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
                   ds: int | None = None, fight_kw: dict | None = None,
                   walk=walk_to_encounter,
                   evidence: Evidence | None = None) -> dict:
-    """Watch the gold pile through one fight, then read `C` and `A` in another.
+    """Watch the seven coin piles through one fight, then read `C` and `A` in another.
 
     The party is already loaded.  Fight one: walk to an encounter, arm a
-    `BPM` on each byte of the gold pile, fight, and classify every hit by the
+    `BPM` on each byte of the coin piles, fight, and classify every hit by the
     overlay bytes before its `CS:IP` (fill or split), which also gives the
     overlay's runtime base.  Fight two: the same walk with a `BP` at
     `COUNT_OFFSET` in that overlay, where `C` and `A` are read.  `ds` is read
@@ -1156,8 +1184,11 @@ def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
     report["ds"] = ds
     w = Watcher(s)
     base, nonzero = arm_pile(w, report["ds"])
-    initial = s.read(base, 4)
-    report["pile_at_encounter"] = int.from_bytes(initial, "little")
+    initial = s.read(base, 4 * len(PILE_NAMES))
+    report["piles_at_encounter"] = {
+        name: int.from_bytes(initial[4 * i:4 * i + 4], "little")
+        for i, name in enumerate(PILE_NAMES)}
+    report["pile_at_encounter"] = report["piles_at_encounter"]["gold"]
     w.drain()
     absorb_spurious(w, nonzero)
     s.run()

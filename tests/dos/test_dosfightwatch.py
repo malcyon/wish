@@ -134,6 +134,7 @@ class _Debugger:
         self.bp: int | None = None
         self.halted_now = False
         self.keys: list[str] = []
+        self.pile = dosfightwatch.GOLD_PILE     # which pile the events hit
 
     # what the fight loop and the arming code call
     def dbg(self, cmd, expect=None, timeout=5.0, quiet=0.3):
@@ -188,7 +189,7 @@ class _Debugger:
         after = BIAS + offset + length
         cs, ip = dosboxx.seg_off(after)
         self.regs_now.update(CS=cs, IP=ip)
-        seg, ofs = dosboxx.seg_off(dosboxx.linear((DS, dosfightwatch.GOLD_PILE)) + byte)
+        seg, ofs = dosboxx.seg_off(dosboxx.linear((DS, self.pile)) + byte)
         self.log += (f"DEBUG: Memory breakpoint : {seg:04X}:{ofs:04X} - "
                      f"{old:02X} -> {new:02X}\n")
 
@@ -255,6 +256,57 @@ def test_the_pile_is_watched_and_the_split_read_from_scripted_hits():
     assert (report["counts"]["c"], report["counts"]["a"]) == (7, 13)
     assert report["expected_cut"] == 532 == report["taken"]
     assert report["matches"] is True
+
+
+def test_a_split_that_hits_only_the_silver_pile_is_measured_and_matched():
+    ovr = _ovr()
+    dbg = _Debugger(ovr, _script(1000, 532), counts=(13, 7))
+    dbg.pile = dosfightwatch.PILE_BASE + 4          # silver
+    report = dosfightwatch.measure_split(
+        _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
+        walk=lambda por, steps: {"met": True})
+    base = dosboxx.linear((DS, dosfightwatch.PILE_BASE))
+    for i in range(28):
+        seg, ofs = dosboxx.seg_off(base + i)
+        assert f"BPM {seg:X}:{ofs:X}" in dbg.commands
+    assert report["bias"] == BIAS
+    assert report["pile"] is None                    # no gold change
+    assert report["piles"] == {"silver": {
+        "before": 1000, "after": 468, "taken": 532, "expected_cut": 532,
+        "expected_after": 468, "matches": True}}
+    assert report["matches"] is True
+    assert report["piles_at_encounter"]["silver"] == 0
+
+
+def test_each_pile_is_reported_on_its_own_when_two_are_split():
+    ovr = _ovr()
+    dbg = _Debugger(ovr, [], counts=(13, 7))
+    gold_hits = _script(1000, 532)
+    silver_hits = _script(300, 100)
+    piles = {}
+    for pile, hits in ((dosfightwatch.GOLD_PILE, gold_hits),
+                       (dosfightwatch.PILE_BASE + 4, silver_hits)):
+        piles[pile] = hits
+    # One pile at a time: each pile's events are replayed against its own address.
+    events = []
+    for pile, hits in piles.items():
+        events += [(pile, h) for h in hits]
+    real_run = dbg.run
+
+    def run():
+        if dbg.bp is None and dbg.events == [] and events:
+            pile, hit = events.pop(0)
+            dbg.pile = pile
+            dbg.events = [hit]
+        real_run()
+    dbg.run = run
+    report = dosfightwatch.measure_split(
+        _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
+        walk=lambda por, steps: {"met": True})
+    assert report["piles"]["gold"]["taken"] == 532
+    assert report["piles"]["silver"]["before"] == 300
+    assert report["piles"]["silver"]["taken"] == 100
+    assert report["piles"]["silver"]["matches"] is False   # the rule says 161
 
 
 def test_a_split_that_takes_less_than_the_rule_says_is_reported():
@@ -624,3 +676,14 @@ def test_a_blank_frame_is_not_kept_as_an_unknown_bar(tmp_path):
     evidence = dosfightwatch.Evidence(tmp_path / "out")
     dosfightwatch.fight_watching(por, _NoHits(), patience=0.0, evidence=evidence)
     assert not any(f.startswith("unknown_bar_") for f in evidence.files)
+
+
+def test_a_known_bar_with_no_key_is_not_kept_as_an_unknown_bar(tmp_path):
+    por = _FakePoR(["move_attack"])
+    por.s = _PngSession(tmp_path / "pool")
+    por.world_glyphs = "the-world"
+    evidence = dosfightwatch.Evidence(tmp_path / "out")
+    result = dosfightwatch.fight_watching(
+        por, _NoHits(), patience=0.0, evidence=evidence)
+    assert not any(f.startswith("unknown_bar_") for f in evidence.files)
+    assert result["why"].startswith("unknown bar")   # bounded, not endless

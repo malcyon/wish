@@ -1790,6 +1790,14 @@ class PoolOfRadiance:
         # BACK AND CLAIM YOUR TREASURE?`, asked because the driver leaves the
         # treasure where it lies.  cited/dosbox/p114/claim-treasure.png
         (320, "c576b6838d2e460b", "claim_treasure"),
+        # `MOVE/ATTACK, MOVE LEFT = N` -- the prompt a character gets while
+        # moving after a `QUICK` or `AIM`.  A prefix, because the digit changes
+        # the whole-strip digest: the ink of `MOVE/ATTACK, MOVE LEFT =` ends at
+        # column 190 and the digits start at 203, so 196 reaches the `=` and
+        # none of the digits.  The screenshots for `= 11` and `= 12` agree at
+        # this width and differ from column 210.  It carries no key, so the
+        # driver waits it out.
+        (196, "50436d944cf9c8f2", "move_attack"),
         # `COMBAT WAIT FLEE` -- the first sixteen of every encounter menu.
         # cited/dosbox/p114/bar01_327fcbaaeb46c2fb.png and
         # cited/dosbox/p114/encounter-with-parlay.png
