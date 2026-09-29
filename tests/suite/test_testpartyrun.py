@@ -120,20 +120,30 @@ class WalkSession(PatrolSession):
     keys have been sent, then on the New Phlan exit."""
 
     def __init__(self, monkeypatch, fight_after=None, area=20, refuse=(),
-                 start=(3, 4, 3), arrive_after=None):
+                 start=(3, 4, 3), arrive_after=None, turns_move=True,
+                 turn_lands=True, facing_known=True):
         super().__init__(monkeypatch)
         self.keys, self.fight_after, self.area = [], fight_after, area
         self.refuse, self.start, self.arrive_after = refuse, start, arrive_after
+        # New Phlan's status tuple does not change on a turn, so `walk_one`
+        # says False for one; `turn_lands` False leaves the facing unchanged.
+        self.turns_move, self.turn_lands = turns_move, turn_lands
+        self.facing_known, self.facing = facing_known, start[2]
 
     def walk_one(self, key, *a, **k):
         self.keys.append(key)
         self.fighting = self.fight_after == len(self.keys)
+        if key in "KJ":
+            if self.turn_lands:
+                self.facing = (self.facing + (1 if key == "K" else -1)) % 4
+            return self.turns_move and len(self.keys) not in self.refuse
         return len(self.keys) not in self.refuse
 
     def position(self):
+        facing = self.facing if self.facing_known else None
         if self.arrive_after is not None and len(self.keys) >= self.arrive_after:
-            return (*T.NEW_PHLAN_EXIT, 3)
-        return self.start
+            return (*T.NEW_PHLAN_EXIT, facing)
+        return (*self.start[:2], facing)
 
 
 class RecordingLog(Log):
@@ -234,3 +244,46 @@ def test_a_reverse_first_step_turns_twice_rather_than_sending_m(monkeypatch):
 def test_walk_to_fight_stops_when_the_edge_leaves_the_wrong_area(monkeypatch):
     with pytest.raises(RuntimeError, match="area 20"):
         _walk(monkeypatch, fight_after=None, area=1)
+
+
+def _turning_walk(monkeypatch, refuse=(), **fake):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    sess = WalkSession(monkeypatch, None, 20, refuse, (9, 13, 0), None, **fake)
+    # (9, 14) is behind a party at (9, 13) facing north: two turns, then forward.
+    got = T.walk_route(sess, RecordingLog(), [(9, 13), (9, 14)], 0, "new-phlan")
+    return sess, got
+
+
+def test_a_turn_walk_one_reports_unmoved_does_not_desync_the_walk(monkeypatch):
+    sess, got = _turning_walk(monkeypatch, turns_move=False)
+    assert sess.keys == ["K", "K", "I"] and got == (2, None, None)
+
+
+def test_a_forward_key_reported_unmoved_still_desyncs_after_turns(monkeypatch):
+    sess, got = _turning_walk(monkeypatch, turns_move=False, refuse={3})
+    assert got[2]["key"] == "i" and "reason" not in got[2]
+
+
+def test_a_turn_that_leaves_the_wrong_facing_desyncs_as_turn_not_seen(
+        monkeypatch):
+    sess, got = _turning_walk(monkeypatch, turns_move=False, turn_lands=False)
+    assert sess.keys == ["K"] and got[1] is None
+    assert got[2]["reason"] == "turn_not_seen" and got[2]["key"] == "k"
+
+
+def test_a_turn_with_no_facing_on_the_status_line_is_logged_and_goes_on(
+        monkeypatch):
+    sess, got = _turning_walk(monkeypatch, turns_move=False, turn_lands=False,
+                              facing_known=False)
+    assert sess.keys == ["K", "K", "I"] and got[2] is None
+
+
+def test_the_edge_turn_desyncs_as_turn_not_seen(monkeypatch):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    monkeypatch.setattr(T, "resident_area", lambda sess, log=None: 20)
+    sess = WalkSession(monkeypatch, None, 20, (), (0, 4, 1), 1,
+                       turns_move=False, turn_lands=False)
+    got = T.walk_to_fight(sess, RecordingLog(), pathlib.Path("."), (12, 4),
+                          _geo(), _geo())
+    assert got["desynced"]["reason"] == "turn_not_seen"
+    assert got["at_target"] is False and sess.keys == ["K"]

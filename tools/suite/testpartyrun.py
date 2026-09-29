@@ -319,31 +319,61 @@ def plan_fight_route(new_phlan, slums, start, target):
     return out, into
 
 
+def _turn_key(sess, log: Log, key: str, expected: int, leg: str, here, there):
+    """Send a turn key; return a `turn_not_seen` desync, or None.
+
+    A turn does not always change the status tuple `walk_one` compares (New
+    Phlan's does not), so its return value says nothing.  The facing the status
+    line then reports is the check; a line with no facing cannot refute the
+    turn, so the walk goes on.
+    """
+    sess.walk_one(key.upper())
+    sess.handle_prompt()
+    seen = None if sess.in_combat() else sess.position()[2]
+    log.emit("route_key", leg=leg, key=key, to=list(there), turn=True,
+             facing=seen, expected=expected)
+    if seen is not None and seen != expected:
+        return {"leg": leg, "key": key, "from": list(here), "to": list(there),
+                "reason": "turn_not_seen", "facing": seen, "expected": expected}
+    return None
+
+
 def walk_route(sess, log: Log, path, facing: int, leg: str):
     """Walk `path` one square at a time, answering prompts, and stop in combat.
 
     Returns `(facing, stopped_at, desync)`.  `stopped_at` is the planned square
     a fight was found on, or None if the path finished; a fight found after the
     turn key of a two-key step belongs to the square the party was still on.
-    `desync` is None, or the first key `walk_one` reported as not moved with
-    the planned step -- the walk stops there, because every key after a
-    refused one was planned from a square the party is not on.  Facing is
-    tracked from the keys sent, as `geowalk.keys_for` does, because the Slums'
-    status line carries no coordinates to check a step against.
+    `desync` is None, or the first forward key `walk_one` reported as not moved
+    with the planned step, or a turn after which the status line reports the
+    wrong facing (`reason` is `turn_not_seen`) -- the walk stops there, because
+    every key after it was planned from a square or facing the party is not
+    on.  A turn's own `walk_one` result is ignored, since a turn moves no
+    square.  Facing is tracked from the keys sent, as `geowalk.keys_for` does,
+    because the Slums' status line carries no coordinates to check a step
+    against.
     """
     for here, there in zip(path, path[1:]):
         keys = geowalk.keys_for([here, there], facing, reverse="turn")
-        facing = geowalk.STEP.index((there[0] - here[0], there[1] - here[1]))
+        want = geowalk.STEP.index((there[0] - here[0], there[1] - here[1]))
         for n, key in enumerate(keys):
+            if key != "i":
+                facing = (facing + (1 if key == "k" else -1)) % 4
+                bad = _turn_key(sess, log, key, facing, leg, here, there)
+                if sess.in_combat():
+                    return want, here, None
+                if bad:
+                    return want, None, bad
+                continue
             moved = bool(sess.walk_one(key.upper()))
             sess.handle_prompt()
             log.emit("route_key", leg=leg, key=key, to=list(there), moved=moved)
             if sess.in_combat():
-                last = n == len(keys) - 1
-                return facing, (there if last and moved else here), None
+                return want, (there if moved else here), None
             if not moved:
-                return facing, None, {"leg": leg, "key": key,
-                                      "from": list(here), "to": list(there)}
+                return want, None, {"leg": leg, "key": key,
+                                    "from": list(here), "to": list(there)}
+        facing = want
     return facing, None, None
 
 
@@ -375,9 +405,20 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
         # `ECL00` entry 0 is on the west edge, so the step must face west.
         keys = geowalk.keys_for([NEW_PHLAN_EXIT, (-1, NEW_PHLAN_EXIT[1])],
                                 facing, reverse="turn")
+        turning = facing
         for key in keys[:-1]:
-            sess.walk_one(key.upper())
-            sess.handle_prompt()
+            turning = (turning + (1 if key == "k" else -1)) % 4
+            desync = desync or _turn_key(sess, log, key, turning, "new-phlan",
+                                         NEW_PHLAN_EXIT, (-1, NEW_PHLAN_EXIT[1]))
+            if desync:
+                break
+        if desync:
+            fighting = bool(sess.in_combat())
+            log.emit("walked", leg=leg, in_combat=fighting, began_at=None,
+                     at_target=False, desynced=desync)
+            log.say(f"  the turn at the edge was not seen: {desync}")
+            return {"in_combat": fighting, "began_at": None,
+                    "at_target": False, "desynced": desync}
         moved = sess.walk_one(keys[-1].upper())
         sess.handle_prompt()
         sess.settle(3)
