@@ -18,6 +18,9 @@ from tools.suite import testpartyrun as T
 S = load_tools_module("session")
 
 
+COMMAND = "MOVE VIEW AIM USE QUICK DONE"    # a party member's turn
+
+
 class Screen:
     def __init__(self, bar):
         self.bar = bar
@@ -46,6 +49,8 @@ class PatrolSession(S.Session):
         return True
 
     def screen(self):
+        if self.fighting:
+            return Screen(COMMAND)
         return Screen("COMBAT WAIT FLEE ADVANCE")
 
     def status(self):
@@ -60,11 +65,12 @@ class PatrolSession(S.Session):
     def settle(self, seconds=0):
         pass
 
-    # Once the fight is up a party member's turn is too, so the combat shot
-    # does not wait; before that the real classification of the scripted row.
+    # A fight that is up shows a party member's turn, so the combat shot does
+    # not wait.  Only a call with no screen is answered here: `settle_step` and
+    # `await_slums` pass their scripted rows and get the real classification.
     def combat_state(self, s=None):
-        if self.fighting:
-            return S.CombatBar(S.BAR_COMMAND, "MOVE VIEW AIM USE QUICK DONE")
+        if self.fighting and s is None:
+            return S.CombatBar(S.BAR_COMMAND, COMMAND)
         return super().combat_state(s)
 
     def battle(self):
@@ -190,7 +196,7 @@ class WalkSession(PatrolSession):
         if self.camp:
             return Screen("ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT")
         if not self.arriving:
-            return Screen(WORLD)
+            return Screen(COMMAND if self.fighting else WORLD)
         row = self.arrival[0]
         if len(self.arrival) > 1:
             self.arrival.pop(0)
@@ -1112,15 +1118,36 @@ def test_a_fight_before_the_load_is_seen_is_new_phlans_not_the_slums(
 
 class FightScreen(PatrolSession):
     """`combat_state` answers the scripted kinds one poll at a time, the last
-    repeating; `battle()` returns `party` as combatants."""
+    repeating; `battle()` returns `party` as combatants.  After a Return a
+    PRESS bar stays up for `fade` more polls unless `await_change` is called,
+    as the real prompt does; `disk` is the wanted-disk answer."""
 
-    def __init__(self, monkeypatch, kinds, party=()):
+    def __init__(self, monkeypatch, kinds, party=(), fade=0, disk=None):
         super().__init__(monkeypatch)
         self.kinds, self.polls, self.pressed = list(kinds), 0, []
-        self.party = party
+        self.party, self.fade, self.disk = party, fade, disk
+        self.fading, self.handled, self.waited = 0, [], 0
+
+    def screen(self):
+        return Screen("row")
+
+    def wanted_disk(self, s):
+        return self.disk
+
+    def handle_prompt(self, s=None):
+        self.handled.append(s)
+        self.disk = None
+        return True
+
+    def await_change(self, was, timeout=6.0, interval=0.4):
+        self.waited += 1
+        self.fading = 0
 
     def combat_state(self, s=None):
         self.polls += 1
+        if self.fading:
+            self.fading -= 1
+            return S.CombatBar(S.BAR_PRESS, "row " + S.BAR_PRESS)
         kind = self.kinds[0]
         if len(self.kinds) > 1:
             self.kinds.pop(0)
@@ -1128,6 +1155,7 @@ class FightScreen(PatrolSession):
 
     def press_kernal(self, code):
         self.pressed.append(code)
+        self.fading = self.fade
 
     def battle(self):
         class _Who:
@@ -1190,3 +1218,29 @@ def test_a_fight_already_up_is_photographed_only_once_its_command_bar_is(
     got = T.pick_a_fight(sess, RecordingLog(), pathlib.Path("."), steps=3)
     assert got["in_combat"] is True
     assert seen == [("combat-icon", 3)]
+
+
+def test_a_monsters_turn_does_not_count_as_the_battlefield(monkeypatch):
+    sess, log, seen, clock, got = _photograph(
+        monkeypatch, [S.BAR_BLANK, S.BAR_BLANK, S.BAR_MOVE])
+    assert got is True and seen == [("combat-icon", 3)]
+
+
+def test_return_is_pressed_at_most_the_limit_and_the_shot_still_comes(
+        monkeypatch):
+    sess, log, seen, clock, got = _photograph(monkeypatch, [S.BAR_PRESS])
+    assert got is False
+    assert sess.pressed == [13] * T.FIGHT_PRESS_LIMIT
+    assert [n for n, _ in seen] == ["combat-icon"]
+
+
+def test_a_prompt_that_fades_slowly_gets_one_return(monkeypatch):
+    sess, log, seen, clock, got = _photograph(
+        monkeypatch, [S.BAR_PRESS, S.BAR_COMMAND], fade=2)
+    assert sess.pressed == [13] and sess.waited == 1 and got is True
+
+
+def test_a_disk_prompt_goes_to_the_disk_handler_not_return(monkeypatch):
+    sess, log, seen, clock, got = _photograph(
+        monkeypatch, [S.BAR_DISK, S.BAR_COMMAND], disk="SIDE 3")
+    assert sess.pressed == [] and len(sess.handled) == 1 and got is True

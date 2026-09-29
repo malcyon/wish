@@ -795,19 +795,27 @@ def photograph_fight(sess, out: pathlib.Path, log: Log,
     The battlefield and every figure are drawn only once a party member has a
     command or move bar; a shot taken when `in_combat` first answers shows two
     empty panes.  A PRESS bar on the way gets a Return, at most
-    `FIGHT_PRESS_LIMIT` times.  At the limit the screenshot is taken anyway and
+    `FIGHT_PRESS_LIMIT` times, and is waited out before the next read; a disk
+    prompt goes to `handle_prompt`.  At the limit the screenshot is taken anyway and
     `fight_screen` records `battlefield: false`, so a missing bar is a finding
     and not a crash.  Returns whether the bar appeared.
     """
     deadline = time.monotonic() + timeout
     presses, state = 0, None
     while True:
-        state = sess.combat_state()
+        screen = sess.screen()
+        state = sess.combat_state(screen)
         if state.kind in (S.BAR_COMMAND, S.BAR_MOVE):
             break
-        if state.kind == S.BAR_PRESS and presses < FIGHT_PRESS_LIMIT:
+        if screen is not None and sess.wanted_disk(screen) is not None:
+            # A disk prompt is answered by the disk handler; Return would not do.
+            sess.handle_prompt(screen)
+        elif state.kind == S.BAR_PRESS and presses < FIGHT_PRESS_LIMIT:
             sess.press_kernal(0x0D)
             presses += 1
+            # The prompt stays up a moment after the key is taken: pressing at
+            # every poll would send a second Return into the next bar.
+            sess.await_change(state.text, timeout=6)
         if time.monotonic() >= deadline:
             break
         time.sleep(FIGHT_POLL)
