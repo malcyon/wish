@@ -42,7 +42,7 @@ bytes with what it replaced.
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown |
 | `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
-| `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
+| `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
 | `warp AREA` | Pool only: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`); Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
@@ -2710,19 +2710,21 @@ class PoolRun:
                     and S.word_column(stop[24], "YES") < 0):
                 # The menu was answered FLEE: the party either got away or
                 # a fight opened, and both are results, not a hang.
+                self.flee_escaped = None
                 if not self._flee_settles():
                     raise self.fail(
                         self.walk_verb,
                         f"{self.walk_verb} {route}: move {n} ({move}) from "
                         f"{before} answered FLEE and neither a fight nor the "
-                        f"world bar came back in {int(FIGHT_OPENS_SECONDS)} "
+                        f"world bar or move prompt came back in {int(FIGHT_OPENS_SECONDS)} "
                         f"seconds")
-                flees.append({"at_move": n, "escaped": not sess.in_combat(),
-                              "fight": None})
+                escaped = (self.flee_escaped if self.flee_escaped is not None
+                           else not sess.in_combat())
+                flees.append({"at_move": n, "escaped": escaped, "fight": None})
                 # The list is returned only when the step succeeds, so a step
                 # that fails later would lose the record without this line.
                 self.log.emit("flee", at_move=n, escaped=flees[-1]["escaped"])
-                if flees[-1]["escaped"]:
+                if escaped:
                     self.capture(f"flee-{len(flees) - 1}-escaped")
                     return False
             elif not self._fight_opens():
@@ -2883,22 +2885,38 @@ class PoolRun:
     def _flee_settles(self) -> bool:
         """Whether a fight opened or the party is back in movement after FLEE.
 
-        Back in movement is the world bar or the move key-wait bar
-        `I,J,K,M, RETURN OR BUTTON`, which the game leaves up after "THE PARTY
-        FLEES"; `walk_one` sends the next move key straight at that bar."""
+        Back in movement is the world bar, or the move key-wait bar
+        `I,J,K,M, RETURN OR BUTTON` that the game leaves up after "THE PARTY
+        FLEES" (`walk_one` sends the next move key straight at it).  That bar
+        also lingers while a caught party's fight loads, so it counts only when
+        it is read on two looks a second apart with no fight in between.  The
+        verdict is left in `flee_escaped`, decided from the same read."""
+        self.flee_escaped = None
         limit = self.clock() + FIGHT_OPENS_SECONDS
-        while not self.sess.in_combat():
+        subbar_since = None
+        while True:
+            if self.sess.in_combat():
+                self.flee_escaped = False
+                return True
             # A narration page after the answer is acknowledged as an
             # arrival's is; a bar that outlasts its presses fails the step.
             self.leave_arrival(self.walk_verb)
             bar = self.bar()
-            if self.at_world(bar) or S.MOVE_SUBBAR in bar:
+            if self.at_world(bar):
+                self.flee_escaped = True
                 return True
+            if S.MOVE_SUBBAR in bar:
+                if subbar_since is None:
+                    subbar_since = self.clock()
+                elif self.clock() - subbar_since >= 1.0:
+                    self.flee_escaped = not self.sess.in_combat()
+                    return True
+            else:
+                subbar_since = None
             if self.clock() >= limit:
                 return False
             self.budget(1, "the answer to FLEE")
             time.sleep(0.5)
-        return True
 
     def _fight_opens(self) -> bool:
         limit = self.clock() + FIGHT_OPENS_SECONDS

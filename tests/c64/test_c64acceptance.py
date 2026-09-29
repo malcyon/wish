@@ -6356,6 +6356,62 @@ def test_walk_flee_escape_that_leaves_the_move_key_wait_bar_is_an_escape(
     assert sess.pressed == ["I", "I"]
 
 
+def _subbar_after_flee(sess):
+    select = sess.select_bar
+
+    def flee_leaves_subbar(label, *a, **k):
+        select(label, *a, **k)
+        if label == "FLEE":
+            sess.screens = {"world": _window({}, "I,J,K,M, RETURN OR BUTTON")}
+        return True
+
+    sess.select_bar = flee_leaves_subbar
+
+
+def test_walk_flee_move_bar_seen_once_before_a_fight_is_not_an_escape(
+        tmp_path, monkeypatch):
+    """The move bar lingers while a caught party's fight loads."""
+    sess = FightWalk({0: "encounter"})
+    _subbar_after_flee(sess)
+    looks = []
+
+    def in_combat():
+        if "FLEE" not in sess.selected:
+            return False
+        looks.append(1)
+        # The bar is up with no fight for the first two looks, which a caller
+        # that read the bar once and asked again would take as an escape; the
+        # fight is loaded by the third.
+        return len(looks) >= 3
+
+    sess.in_combat = in_combat
+    fight = sess.fight
+
+    def fight_then_world(*a, **k):
+        sess.screens = {"world": _window({}, WORLD_BAR)}
+        return fight(*a, **k)
+
+    sess.fight = fight_then_world
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_flee("I")
+    log.close()
+    assert got["flees"][0]["escaped"] is False
+    assert len(got["fights"]) == 1
+
+
+def test_walk_flee_writes_its_flee_line_to_the_log_when_the_step_later_fails(
+        tmp_path, monkeypatch):
+    sess = FightWalk({0: "encounter"}, walls={(5, 3)})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    with pytest.raises(A.StepFailed):
+        run.walk_flee("II")
+    log.close()
+    events = [json.loads(line) for line in
+              (tmp_path / "run.jsonl").read_text().splitlines()]
+    assert [(e["at_move"], e["escaped"]) for e in events
+            if e["kind"] == "flee"] == [(0, True)]
+
+
 def test_walk_flee_that_fails_opens_a_fight_and_reports_its_result(
         tmp_path, monkeypatch):
     sess = FightWalk({0: "encounter"})
