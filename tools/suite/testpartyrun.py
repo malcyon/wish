@@ -796,8 +796,8 @@ def photograph_fight(sess, out: pathlib.Path, log: Log,
     command or move bar; a shot taken when `in_combat` first answers shows two
     empty panes.  A PRESS bar on the way gets a Return, at most
     `FIGHT_PRESS_LIMIT` times, and is waited out before the next read; a disk
-    prompt goes to `handle_prompt`.  At the limit the screenshot is taken anyway and
-    `fight_screen` records `battlefield: false`, so a missing bar is a finding
+    prompt goes to `handle_prompt`.  At the limit the screenshot is taken anyway
+    and `fight_screen` records `battlefield: false`, so a missing bar is a finding
     and not a crash.  Returns whether the bar appeared.
     """
     deadline = time.monotonic() + timeout

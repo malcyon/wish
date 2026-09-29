@@ -19,6 +19,7 @@ S = load_tools_module("session")
 
 
 COMMAND = "MOVE VIEW AIM USE QUICK DONE"    # a party member's turn
+ENCOUNTER = "COMBAT WAIT FLEE ADVANCE"
 
 
 class Screen:
@@ -44,14 +45,17 @@ class PatrolSession(S.Session):
         self.asked = []
         self.here, self.save_disk = "/slot", "/slot/SAVE.D64"
         self._last_prompt = 0.0
+        # What row 24 shows once a fight is up: the encounter menu until a test
+        # says a party member's turn has come.
+        self.fight_row = ENCOUNTER
 
     def indoors(self):
         return True
 
     def screen(self):
         if self.fighting:
-            return Screen(COMMAND)
-        return Screen("COMBAT WAIT FLEE ADVANCE")
+            return Screen(self.fight_row)
+        return Screen(ENCOUNTER)
 
     def status(self):
         return 0
@@ -101,14 +105,21 @@ def test_pick_a_fight_takes_an_encounter_menu_as_the_fight(monkeypatch):
     # out: a fight already up is returned as it stands.
     sess = PatrolSession(monkeypatch)
     sess.fighting = True
-    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    rows = []
+    # The shot itself waits for a command bar, which this menu is not; what is
+    # under test is the path taken to it.
+    monkeypatch.setattr(T, "photograph_fight",
+                        lambda sess_, *a, **k: rows.append(
+                            sess_.screen().row(24)))
     got = T.pick_a_fight(sess, Log(), pathlib.Path("."), steps=3)
     assert got["in_combat"] is True and sess.asked == []
+    assert rows == [ENCOUNTER]
 
 
 def test_pick_a_fight_presses_combat_on_an_encounter_menu_the_walk_opens(
         monkeypatch):
     sess = PatrolSession(monkeypatch)
+    sess.fight_row = COMMAND     # once COMBAT is taken the fight's first turn
     monkeypatch.setattr(T, "dump", lambda *a, **k: None)
     # This fake stays on the encounter bar; leaving camp is tested below.
     monkeypatch.setattr(T, "to_world", lambda *a, **k: True)
@@ -158,6 +169,7 @@ class WalkSession(PatrolSession):
                  camp=False, camp_exit_works=True, arrival=None,
                  area_before=None):
         super().__init__(monkeypatch)
+        self.fight_row = COMMAND
         # `arrival` is row 24 after the edge key, one entry per `screen()`
         # read, the last one repeating: by default one blank read, as the
         # Slums' load from side 2 leaves it, then the world bar.  `STALE` is
@@ -1241,6 +1253,7 @@ def test_a_prompt_that_fades_slowly_gets_one_return(monkeypatch):
 
 
 def test_a_disk_prompt_goes_to_the_disk_handler_not_return(monkeypatch):
+    # A PRESS row that is also a disk prompt: only `wanted_disk` tells them apart.
     sess, log, seen, clock, got = _photograph(
-        monkeypatch, [S.BAR_DISK, S.BAR_COMMAND], disk="SIDE 3")
+        monkeypatch, [S.BAR_PRESS, S.BAR_COMMAND], disk="SIDE 3")
     assert sess.pressed == [] and len(sess.handled) == 1 and got is True
