@@ -2295,17 +2295,13 @@ class Session:
     def position(self) -> tuple[int, int, int | None]:
         """x, y, facing -- and **facing is None on the travel grid**.
 
-        Read off the game's own status line, not out of memory.  The memory
-        copy is real and it does end up on the disk, but it lags a move --
-        reading it straight after a step gives the *previous* square, which
-        silently turns a good step into a "blocked" one.  The status line
-        (`E 16:48 5,2`) is correct the moment the screen settles.
-
-        **Outdoors the status line lags too**, measured on 2026-09-02: after a
-        step from (11,26) to (12,26), `$49C3`/`$49C4` read 12,26 and the line
-        still read 11,26.  So out there the memory pair is the better source
-        and `walk_outdoors` uses it directly; this stays screen-first because
-        that is what every indoor caller wants.
+        A status line with a square is read off the screen.  A status line
+        with facing and time but no square, and any indoor screen with no
+        status line, is read from the live triple `$C04B`-`$C04D`
+        (`steady_triple`), or `(0, 0, None)` if it cannot be read or never
+        settles.  Outdoors the memory pair `$49C3`/`$49C4` is read, with no
+        facing.  `$49C0`-`$49C2` is never read as the square, because it is
+        the save-time copy and does not change while the party walks.
         """
         for _ in range(12):
             s = self.screen()
@@ -2322,14 +2318,14 @@ class Session:
             time.sleep(0.3)
         if not self.machine.title.travel_grid:
             return self._steady_or_unknown()
-        here = self.square_and_world()   # fallback: the lagging memory copy
+        here = self.square_and_world()   # picks the pair by `$49E6`
         if here is None:
             return 0, 0, None
         x, y, inside = here
         if not inside:
             return x, y, None
-        # `$49C0`-`$49C2` is the save-time copy and does not change while the
-        # party walks, so indoors the live triple is read instead.
+        # Indoors: the live triple, since `$49C0`-`$49C2` is only the
+        # save-time copy.
         return self._steady_or_unknown()
 
     def _steady_or_unknown(self) -> tuple[int, int, int | None]:

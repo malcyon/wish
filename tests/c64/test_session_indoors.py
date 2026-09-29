@@ -275,3 +275,20 @@ def test_indoors_with_no_status_line_reads_the_live_triple_not_the_save_copy(
     monkeypatch.setattr(S.time, "sleep", lambda _: None)
     sess = PoolPositionSession("", _pool_memory(True))
     assert sess.position() == (2, 2, 2)
+
+
+def test_a_squareless_line_with_no_steady_live_triple_is_unknown(monkeypatch):
+    monkeypatch.setattr(S.time, "sleep", lambda _: None)
+    sess = PoolPositionSession("S 0:05", _pool_memory(True))
+    sess.steady_triple = lambda *a, **k: None
+    assert sess.position() == (0, 0, None)
+
+
+def test_a_squareless_line_with_an_unreadable_live_triple_is_unknown(monkeypatch):
+    monkeypatch.setattr(S.time, "sleep", lambda _: None)
+    sess = PoolPositionSession("S 0:05", _pool_memory(True))
+
+    def unreadable(*a, **k):
+        raise S.MonitorError("unavailable")
+    sess.live_triple = unreadable
+    assert sess.position() == (0, 0, None)
