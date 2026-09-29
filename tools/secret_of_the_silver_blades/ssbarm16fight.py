@@ -99,6 +99,58 @@ def local_clear_bar(sess, run, accept: bool = False) -> str | None:
     return None
 
 
+def reach_fight(run, sess) -> bool | None:
+    """Teleport to `15,11`, step onto `15,12` and watch 90 s for the fight.
+
+    True once the combat floor is up, False when 90 s pass without one, None
+    when the teleport or the step did not take (an escape hatch, logged).
+    """
+    with sess.mon(8) as m:
+        m.write(cursethac0.POSITION, bytes(STAGE))
+        back = m.read(cursethac0.POSITION, 3)
+        m.resume()
+    run.log("teleport", wrote=list(STAGE), read_back=list(back))
+    if list(back) != list(STAGE):
+        run.log("escape-hatch", why="the position triple did not take",
+                read_back=list(back))
+        return None
+
+    before = run.triple()
+    moved = run.press("I")
+    after = run.triple()
+    attr = run.peek(SQUARE_ATTR, 1)[0]
+    run.log("the-step", before=list(before), after=list(after), moved=moved,
+            square_attr=attr, arm=attr & 63, row24=run.row24())
+    run.dump("after-the-step")
+    if list(after[:2]) != list(TARGET):
+        run.log("escape-hatch", why="the step did not land on 15,12",
+                triple=list(after))
+        return None
+
+    fight_seen = run.in_combat()
+    cleared: list[str] = []
+    deadline = time.time() + 90.0
+    while not fight_seen and time.time() < deadline:
+        row = run.row24()
+        ordinary = (not row or MOVE_SUBBAR_TEXT in row
+                    or ("MOVE" in row and "ENCAMP" in row))
+        if not ordinary:
+            word = local_clear_bar(sess, run, accept=True)
+            if word:
+                cleared.append(word)
+                run.log("cleared", word=word, row24=row)
+            else:
+                run.log("unrecognised-row", row24=row)
+        time.sleep(1.0)
+        fight_seen = run.in_combat()
+        run.log("watch", in_combat=fight_seen, mode=sess.mode(),
+                row24=run.row24(), triple=list(run.triple()))
+    run.log("fight-triggered", result=fight_seen, cleared=cleared,
+            triple=list(run.triple()))
+    run.dump("combat-check")
+    return fight_seen
+
+
 def main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(
         description=__doc__,
@@ -154,52 +206,9 @@ def main(argv: list[str] | None = None) -> int:
         flags = {name: run.peek(addr, 1)[0] for name, addr in FLAGS.items()}
         run.log("flags-before", **flags)
 
-        # -- the teleport ------------------------------------------------
-        with sess.mon(8) as m:
-            m.write(cursethac0.POSITION, bytes(STAGE))
-            back = m.read(cursethac0.POSITION, 3)
-            m.resume()
-        run.log("teleport", wrote=list(STAGE), read_back=list(back))
-        if list(back) != list(STAGE):
-            run.log("escape-hatch", why="the position triple did not take",
-                    read_back=list(back))
+        fight_seen = reach_fight(run, sess)
+        if fight_seen is None:
             return 1
-
-        # -- the step ----------------------------------------------------
-        before = run.triple()
-        moved = run.press("I")
-        after = run.triple()
-        attr = run.peek(SQUARE_ATTR, 1)[0]
-        run.log("the-step", before=list(before), after=list(after), moved=moved,
-                square_attr=attr, arm=attr & 63, row24=run.row24())
-        run.dump("after-the-step")
-        if list(after[:2]) != list(TARGET):
-            run.log("escape-hatch", why="the step did not land on 15,12",
-                    triple=list(after))
-            return 1
-
-        # -- watch for the fight -----------------------------------------
-        fight_seen = run.in_combat()
-        cleared: list[str] = []
-        deadline = time.time() + 90.0
-        while not fight_seen and time.time() < deadline:
-            row = run.row24()
-            ordinary = (not row or MOVE_SUBBAR_TEXT in row
-                        or ("MOVE" in row and "ENCAMP" in row))
-            if not ordinary:
-                word = local_clear_bar(sess, run, accept=True)
-                if word:
-                    cleared.append(word)
-                    run.log("cleared", word=word, row24=row)
-                else:
-                    run.log("unrecognised-row", row24=row)
-            time.sleep(1.0)
-            fight_seen = run.in_combat()
-            run.log("watch", in_combat=fight_seen, mode=sess.mode(),
-                    row24=run.row24(), triple=list(run.triple()))
-        run.log("fight-triggered", result=fight_seen, cleared=cleared,
-                triple=list(run.triple()))
-        run.dump("combat-check")
         if not fight_seen:
             run.log("negative-result", why="no fight at 15,12 in 90 seconds",
                     flags={name: run.peek(addr, 1)[0]

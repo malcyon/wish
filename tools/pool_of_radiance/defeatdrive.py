@@ -281,6 +281,9 @@ def drive(sess, log: Log, frames: Frames, budget: float,
 #: it returns to once the party is handed back to the world.  A run that saw
 #: the first and then the second has left the fight the way a player does.
 MODE_POST = 5
+#: Exit status when `--leave` never saw the mode go from 5 to 1; 1 is an
+#: exception in the run.
+LEAVE_FAILED = 2
 
 
 def leave_after(sess, log: Log, budget: float, poll: float) -> bool:
@@ -315,6 +318,14 @@ def leave_after(sess, log: Log, budget: float, poll: float) -> bool:
         else:
             sess.idle(poll)
     return False
+
+
+def leave_status(sess, log: Log, budget: float, poll: float) -> int:
+    """Run `leave_after`, record it, and return 0, or `LEAVE_FAILED` if the mode never went 5 to 1."""
+    left = leave_after(sess, log, budget, poll)
+    log.emit("left", mode_5_to_1=left)
+    log.say(f"  mode went 5 to 1: {left}")
+    return 0 if left else LEAVE_FAILED
 
 
 def watch_after(sess, log: Log, frames: Frames, seconds: float,
@@ -406,7 +417,8 @@ def main(argv=None) -> int:
     p.add_argument("--leave", action="store_true",
                    help="after the outcome, press EXIT at VIEW POOL EXIT, "
                         "answer LEAVE TREASURE, and record whether mode went "
-                        "from 5 to 1, for POST.COM $1544's mercy heal (#648)")
+                        "from 5 to 1, for POST.COM $1544's mercy heal (#648); "
+                        "exit status 2 when it did not")
     p.add_argument("--leave-budget", type=float, default=120.0,
                    help="seconds to give --leave to reach the world")
     args = p.parse_args(argv)
@@ -514,9 +526,7 @@ def main(argv=None) -> int:
             log.emit("shot_failed", error=repr(exc))
 
         if args.leave:
-            left = leave_after(sess, log, args.leave_budget, args.poll)
-            log.emit("left", mode_5_to_1=left)
-            log.say(f"  mode went 5 to 1: {left}")
+            rc = leave_status(sess, log, args.leave_budget, args.poll)
 
         pcs = watch_after(sess, log, frames, args.after, args.poll,
                           knock_at=args.knock)
