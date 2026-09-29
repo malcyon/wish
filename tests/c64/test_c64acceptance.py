@@ -7398,6 +7398,9 @@ class _ReadMon:
     def checkpoint_hits(self, n):
         return self.m.hits.get(n, 0)
 
+    def checkpoints_clear(self):
+        self.m.checkpoints.clear()
+
     def resume(self):
         self.m.resumes += 1
 
@@ -7478,8 +7481,8 @@ def test_read_at_with_another_overlay_at_the_pc_reads_nothing_and_resumes(tmp_pa
 def test_release_read_at_deletes_every_stop(tmp_path):
     run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2", "0C8C=20:6BBB:14"])
     assert len(machine.checkpoints) == 2
-    counts = run.release_read_at()
-    assert machine.checkpoints == {} and set(counts) == {"read-at-09DD", "read-at-0C8C"}
+    got = run.release_read_at()
+    assert machine.checkpoints == {} and set(got["stops"]) == {"read-at-09DD", "read-at-0C8C"}
 
 
 def test_release_read_at_does_not_raise_when_the_emulator_is_gone(tmp_path):
@@ -7492,6 +7495,44 @@ def test_release_read_at_does_not_raise_when_the_emulator_is_gone(tmp_path):
     run.traps._mon = dead
     run.release_read_at()
     assert run.log.of("read-at-release-failed")
+
+
+def test_read_at_reports_a_degraded_trap_and_the_counters_it_cleared(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+    run.armed = {"purse": 0x0C8C}
+    run.box = SimpleNamespace(save_load_address=0x100, clock=0, roster_base=0,
+                              roster_stride=1)
+    run.game = SimpleNamespace(key="other")
+    said = []
+    run.log.say = said.append
+    machine.mem[0x09DD] = 0x00
+    machine.hit(0x09DD)
+    real = _ReadMon.read
+
+    def broken(self, start, length, bank=0):
+        raise RuntimeError("monitor broke")
+
+    _ReadMon.read = broken
+    try:
+        _connect(run)
+    finally:
+        _ReadMon.read = real
+    assert run.traps.degraded
+    assert run.reading()["counts"] == {"purse": "cleared"}
+    got = run.release_read_at()
+    assert got["degraded"] is True and any("degraded" in line for line in said)
+
+
+def test_read_at_retires_a_stop_after_too_many_foreign_hits(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+    machine.mem[0x09DD] = 0x00
+    for _ in range(A.READ_AT_FOREIGN_MAX):
+        machine.hit(0x09DD)
+        _connect(run)
+    assert machine.checkpoints == {}
+    retired, = run.log.of("read-at-retired")
+    assert retired["foreign"] == A.READ_AT_FOREIGN_MAX
+    assert run.read_at_counts["read-at-09DD"]["retired"] is True
 
 
 def _read_at_pool(machine):
@@ -7521,7 +7562,7 @@ def test_the_run_deletes_its_read_at_stops_on_a_normal_exit(tmp_path, monkeypatc
                         read_at=["09DD=CD782B:2B78:2"])
     assert rc == 0 and machine.checkpoints == {}
     assert json.loads((out / "summary.json").read_text())["read_at"] == {
-        "read-at-09DD": {"hits": 0, "foreign": 0}}
+        "stops": {"read-at-09DD": {"hits": 0, "foreign": 0}}, "degraded": False}
 
 
 def test_the_run_deletes_its_read_at_stops_when_a_step_raises(tmp_path, monkeypatch):

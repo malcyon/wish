@@ -632,8 +632,10 @@ def pool_specimen_mode(steps: list[Step]) -> str | None:
 #: The treasure bar `VIEW TAKE POOL SHARE EXIT`, which `Session.fight` then
 #: answers with EXIT and LEAVE TREASURE.
 TREASURE_WORDS = ("VIEW", "TAKE", "EXIT")
-#: VICE's register ids for A, X, Y and PC on the 6510.
-READ_AT_A, READ_AT_X, READ_AT_Y, READ_AT_PC = 0, 1, 2, 3
+#: VICE's register ids for A, X and Y on the 6510; the PC's is asked for.
+READ_AT_A, READ_AT_X, READ_AT_Y = 0, 1, 2
+#: Foreign hits at one PC after which its stop is deleted.
+READ_AT_FOREIGN_MAX = 20
 
 
 def parse_checkpoints(texts) -> dict[str, int]:
@@ -1138,7 +1140,6 @@ class PoolRun:
     #: The `--read-at` stops to arm at `load`, and the trap that handles them.
     read_ats: tuple = ()
     traps = None
-    read_at_counts: dict = {}
 
     #: The run's own deadline on `clock`, and the clock; `run` sets both.  A
     #: wait that would outlast the deadline ends there, with the screen kept,
@@ -1160,6 +1161,7 @@ class PoolRun:
         self.temple_checkpoints: list[dict] = []
         self.temple_input_deadline: float | None = None
         self.temple_pc_id: int | None = None
+        self.read_at_counts: dict = {}
 
     # -- the screen ------------------------------------------------------------
     def rows(self) -> list[str]:
@@ -1350,7 +1352,10 @@ class PoolRun:
             head = bytes(m.read(base, effects.EFFECT_MAGNITUDE_OFFSET
                                 + effects.EFFECT_SLOTS))
             clock = list(m.read(base + self.box.clock, 6))
-            counts = {k: m.checkpoint_hits(v)
+            # A degraded trap cleared every checkpoint, these counters too;
+            # asking VICE for a deleted one would fail or read 0.
+            cleared = self.traps is not None and self.traps.degraded
+            counts = {k: ("cleared" if cleared else m.checkpoint_hits(v))
                       for k, v in self.armed.items()}
             if self.game.key == "pool-of-radiance":
                 records = [bytes(route_pool.live_record(m, slot))
@@ -1398,6 +1403,8 @@ class PoolRun:
         for spec in self.read_ats:
             self.read_at_counts[spec.name] = {"hits": 0, "foreign": 0}
             self.traps.arm(spec.name, spec.pc, self._read_at_handler(spec), once=False)
+            if not any(s.name == spec.name for s in self.traps.stops):
+                self.read_at_counts[spec.name]["skipped"] = True
 
     def _read_at_handler(self, spec: ReadAt):
         counts_for = lambda: self.read_at_counts[spec.name]   # noqa: E731
@@ -1405,12 +1412,21 @@ class PoolRun:
         def handle(m) -> None:
             counts = counts_for()
             regs = m.registers()
-            pc = regs.get(READ_AT_PC)
+            pc = regs.get(auto_actions.pc_register(m))
             code = bytes(m.read(spec.pc, len(spec.guard)))
             if code != spec.guard:
                 counts["foreign"] += 1
                 self.log.emit("read-at-foreign", name=spec.name, pc=pc,
                               code=code.hex(), foreign=counts["foreign"])
+                if counts["foreign"] >= READ_AT_FOREIGN_MAX:
+                    # Every stop costs a monitor round trip; an address another
+                    # overlay runs constantly would stall the game.
+                    for s in [s for s in self.traps.stops if s.name == spec.name]:
+                        m.checkpoint_delete(s.cp)
+                        self.traps.stops.remove(s)
+                    counts["retired"] = True
+                    self.log.emit("read-at-retired", name=spec.name,
+                                  foreign=counts["foreign"])
                 return
             counts["hits"] += 1
             self.log.emit(
@@ -1422,16 +1438,24 @@ class PoolRun:
         return handle
 
     def release_read_at(self) -> dict:
-        """Delete every armed `--read-at` stop and return the counts.  Never raises:
-        it runs on every way out of the run, and a dead emulator is one of them."""
+        """Delete every armed `--read-at` stop and return the counts and whether the
+        trap degraded.  Never raises: it runs on every way out of the run, and a
+        dead emulator is one of them."""
         traps, self.traps = self.traps, None
+        degraded = bool(traps is not None and traps.degraded)
+        skipped = [n for n, c in self.read_at_counts.items() if c.get("skipped")]
+        if degraded or skipped:
+            self.log.say("  --read-at: the trap "
+                         + ("degraded and cleared every checkpoint, the --checkpoint "
+                            "counters too" if degraded else "skipped an arm")
+                         + "; its counts are incomplete")
         if traps is not None and traps.stops:
             names = tuple(s.name for s in traps.stops)
             try:
                 traps.drop(*names)
             except Exception as e:                  # noqa: BLE001
                 self.log.emit("read-at-release-failed", error=repr(e))
-        return self.read_at_counts
+        return {"stops": self.read_at_counts, "degraded": degraded}
 
     # -- one bounded New Phlan temple observation ------------------------------
     def temple_sample(self) -> TempleSample:
@@ -4550,7 +4574,8 @@ def main(argv: list[str] | None = None) -> int:
                          "if the code bytes there are GUARD, read each ADDR:N and the "
                          "registers into run.jsonl and resume (a hit in another overlay "
                          "at the same address is counted and skipped); repeatable, Pool "
-                         "only, e.g. 09DD=CD782B:2B78:2,6E3E:1")
+                         "only, e.g. 09DD=CD782B:2B78:2,6E3E:1; choose a PC that is "
+                         "rarely hit, since each stop costs a monitor round trip")
     ap.add_argument("--walk", default="I", help="the move `fight` repeats")
     ap.add_argument("--attack-by", default="",
                     help="record the named fighter's first confirmed melee attack")
