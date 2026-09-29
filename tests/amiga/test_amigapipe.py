@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import re
+import subprocess
 
 import pytest
 
@@ -879,8 +880,12 @@ def test_a_batch_that_fetches_nothing_makes_no_directory():
     assert "New-Item" not in guest.scripts[0]
 
 
-def test_a_directory_the_guest_could_not_make_raises():
-    """The script stops at the failed `New-Item`, so no `<<end>>` comes back."""
-    p = amiga.WinuaePipe(runner=lambda argv, timeout: "")
-    with pytest.raises(amiga.PipeError, match="did not finish"):
+def test_a_directory_the_guest_could_not_make_raises(monkeypatch):
+    """`-ErrorAction Stop` makes PowerShell exit 1, which `_run` raises as a `GuestError`."""
+    def failed(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 1, "", "New-Item : Access denied")
+
+    monkeypatch.setattr(amiga.subprocess, "run", failed)
+    p = amiga.WinuaePipe()
+    with pytest.raises(amiga.GuestError, match="Access denied"):
         p.batch(["S x 0 1"], [("b0", "x")])

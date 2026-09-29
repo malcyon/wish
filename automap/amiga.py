@@ -1056,7 +1056,7 @@ Write-Output '<<end>>'
             # above it, so a guest without `GUEST_DUMP` answers every dump with
             # `Couldn't open file`. It is made at the head of every dumping
             # script: idempotent, no extra round trip, and `-ErrorAction Stop`
-            # ends the script before `<<end>>` so a failure raises `PipeError`.
+            # makes PowerShell exit non-zero, so `_run` raises `GuestError`.
             script = (f"New-Item -ItemType Directory -Force -Path "
                       f"'{GUEST_DUMP}' -ErrorAction Stop | Out-Null\n{script}")
         self.sent += list(lines)
