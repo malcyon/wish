@@ -227,7 +227,9 @@ OPENING_POOL = 20 * 250 + 25 * 400
 #: A single-class member whose every prime requisite exceeds this gets +10%.
 PRIME_BONUS_ABOVE = 15
 #: Prime requisites by class bit (AD&D 1e, as `coab-source` `ovr006.cs` uses
-#: them); the project has no other table of them.
+#: them); the project has no other table of them.  The paladin and ranger rows
+#: come from the Curse DOS reconstruction and are unread for Silver Blades
+#: (the Pool of Radiance code gives them no bonus, and Pool has neither class).
 PRIME_REQUISITES = {
     CLASS_BIT_FOR_NAME["fighter"]: ("strength",),
     CLASS_BIT_FOR_NAME["paladin"]: ("strength", "wisdom"),
@@ -238,12 +240,17 @@ PRIME_REQUISITES = {
 }
 
 
-def opening_award(char: amiga_later.AmigaCharacter, party_size: int) -> int:
+def opening_award(char: amiga_later.AmigaCharacter,
+                  party_size: int) -> int | None:
     """The experience the opening scene gives one member, from `coab-source`
     `ovr006.cs`'s after-combat rule: an even share of `OPENING_POOL`, +10%
     for a single-class member meeting `PRIME_BONUS_ABOVE`, divided by the
-    class count."""
-    bits = CLASS_CODE_TABLE[char.get("char_class")]
+    class count.  `party_size` assumes every member is present and none is
+    animated.  An out-of-range class code returns None: no award predicted."""
+    code = char.get("char_class")
+    if code >= len(CLASS_CODE_TABLE):
+        return None
+    bits = CLASS_CODE_TABLE[code]
     classes = [bit for bit in PRIME_REQUISITES if bits & bit]
     share = OPENING_POOL // party_size
     if len(classes) == 1:
@@ -394,6 +401,10 @@ def do_diff(args) -> int:
     ours_save = save_of(ours_data, ours_where)
     theirs_save = save_of(theirs_data, theirs_where)
     ours, theirs = list(ours_save.characters), list(theirs_save.characters)
+    if args.opening_award and ours and (
+            ours[0].deltas.key != amiga_port.SILVER_BLADES_DELTAS.key):
+        raise SystemExit(f"--opening-award {args.opening_award} is the Silver "
+                         f"Blades opening scene; {ours_where} is another title")
     elapsed = clock_minutes(theirs_save) - clock_minutes(ours_save)
     print(f"ours   {ours_where}: {len(ours)} characters")
     print(f"theirs {theirs_where}: {len(theirs)} characters")

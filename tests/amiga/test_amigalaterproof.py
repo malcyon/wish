@@ -20,6 +20,8 @@ because both of them would spoil a run silently:
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 from gamedata import specimen_root
 
@@ -420,12 +422,15 @@ _SB = amiga_port.SILVER_BLADES_DELTAS
 _XP = _SB.offset(dos_port.FIELDS_BY_NAME_FOR[_SB.dos.key]["experience"].offset)
 
 
+_MEMBER_DELTAS = _SB
+
+
 class _Member:
     """What `do_diff` and `opening_award` read of an `AmigaCharacter`."""
 
     def __init__(self, name, char_class, scores, xp) -> None:
         self.name = name
-        self.deltas = _SB
+        self.deltas = _MEMBER_DELTAS
         self.items: tuple = ()
         self.effects: tuple = ()
         self.abilities = list(scores)
@@ -499,3 +504,22 @@ def test_a_rise_one_off_the_award_stays_undeclared(monkeypatch, capsys):
 def test_a_single_class_member_short_of_the_prime_bonus_gets_the_base_share():
     weak = _Member("X", 2, (15, 10, 10, 10, 10, 10), 0)
     assert proof.opening_award(weak, 6) == 2500
+
+
+def test_a_thief_and_a_ranger_just_below_their_thresholds_get_the_base_share():
+    thief = _Member("T", 6, (10, 10, 10, 15, 10, 10), 0)
+    ranger = _Member("R", 4, (18, 18, 15, 10, 10, 10), 0)
+    assert proof.opening_award(thief, 6) == 2500
+    assert proof.opening_award(ranger, 6) == 2500
+
+
+def test_an_out_of_range_class_code_predicts_no_award():
+    assert proof.opening_award(_Member("X", 200, (18,) * 6, 0), 6) is None
+
+
+def test_the_flag_is_refused_on_a_save_that_is_not_silver_blades(
+        monkeypatch, capsys):
+    monkeypatch.setattr(sys.modules[__name__], "_MEMBER_DELTAS",
+                        amiga_port.CURSE_DELTAS)
+    with pytest.raises(SystemExit):
+        _award_diff(monkeypatch, capsys, _AWARDS, "ssb")
