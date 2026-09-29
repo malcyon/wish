@@ -6091,3 +6091,146 @@ def test_the_players_curse_tables_offer_mark_fighter_and_magic_user():
             (folder / f"CHRDATJ{n}.SAV").read_bytes(), ds)]
     assert offered(2) == ["FIGHTER", "MAGIC-USER"]
     assert offered(1) == [] and offered(3) == []
+
+
+# -- Pool's ITEMS list, from camp ------------------------------------------------
+
+#: Synthetic bars for the sheet, the sheet with no ITEMS, and the list.
+_POOL_ITEMS_BARS = {"sheet": b"\x15\x48\x7b", "no_items": b"\x16\x49\x7c",
+                    "list": b"\x1b\x1c\x1d"}
+_MARK = b"\x5a"
+
+
+class PoolItems(FakePool):
+    """Pool's camp `VIEW` > `ITEMS` as the live boot showed it: `End` moves the
+    roster, `v` opens the sheet, `i` the list, `Escape` steps back one screen.
+    `rows` is what the list draws, each entry `(marked)`."""
+
+    BARS = {**FakePool.BARS, **_POOL_ITEMS_BARS}
+
+    def __init__(self, *a, rows=(False, False), sheet="sheet", back="camp", **k):
+        super().__init__(*a, **k)
+        self.line, self.rows, self.sheet, self.back = 1, rows, sheet, back
+
+    def key(self, k, gap=0.0):
+        if self.mode == "camp" and k == "End":
+            self.keys.append(k)
+            self.line = self.line % 6 + 1
+        elif self.mode == "camp" and k == "v":
+            self.keys.append(k)
+            self.mode = "sheet"
+        elif self.mode == "sheet" and k == "i":
+            self.keys.append(k)
+            self.mode = "list" if self.sheet == "sheet" else "sheet"
+        elif self.mode == "list" and k == "Escape":
+            self.keys.append(k)
+            self.mode = "sheet"
+        elif self.mode == "sheet" and k == "Escape":
+            self.keys.append(k)
+            self.mode = "camp" if self.back == "camp" else "sheet"
+        else:
+            super().key(k, gap)
+
+    def capture(self):
+        if self.mode == "camp":
+            return _with_roster(_screen(self.BARS["camp"], b""), "camp", 6, self.line)
+        if self.mode == "sheet":
+            return _with_roster(_screen(self.BARS[self.sheet], b""), "camp", 6, 0,
+                                sheet=self.line)
+        if self.mode == "list":
+            px = bytearray(_screen(self.BARS["list"], b"").px)
+            for k, marked in enumerate(self.rows):
+                _draw_name(px, 16, 40 + 8 * k, b"\x18\x24\x42", _GREEN)
+                if marked:
+                    _draw_name(px, da.POOL_ITEM_MARK_X, 40 + 8 * k, _MARK, _GREEN)
+            return dosbox.Screen(W, H, bytes(px))
+        return super().capture()
+
+
+def _pool_items(tmp_path, monkeypatch, **kw) -> tuple[PoolItems, da.Driver]:
+    def sig(name):
+        return screens.bar_signature(_screen(_POOL_ITEMS_BARS[name], b""))
+
+    monkeypatch.setattr(da, "POOL_SHEET_BARS", {"items": sig("sheet"),
+                                                "no_items": sig("no_items")})
+    monkeypatch.setattr(screens, "POOL_ITEMS_BAR", sig("list"))
+    marked = _screen(b"", b"")
+    px = bytearray(marked.px)
+    _draw_name(px, da.POOL_ITEM_MARK_X, 40, _MARK, _GREEN)
+    monkeypatch.setattr(da, "POOL_ITEM_MARK", hashlib.sha1(dosbox.Screen(
+        W, H, bytes(px)).glyphs((da.POOL_ITEM_MARK_X, 40, 8, 8)).encode()).hexdigest()[:16])
+    game = PoolItems(tmp_path, **kw)
+    d = da.Driver(game, lambda **k: None, "A")
+    d.camp()
+    return game, d
+
+
+def test_pool_items_reads_the_rows_and_which_are_marked_and_returns_to_camp(
+        tmp_path, monkeypatch):
+    game, d = _pool_items(tmp_path, monkeypatch, rows=(True, False, True))
+    got = d.items(2)
+    assert game.keys[1:] == ["End", "v", "i", "Escape", "Escape"]     # never `e`
+    assert got["rows"] == 3 and got["marked"] == [1, 3] and got["line"] == 2
+    assert game.mode == "camp" and d.where == "camp"
+
+
+def test_pool_items_reports_no_marked_row_on_an_unmarked_list(tmp_path, monkeypatch):
+    game, d = _pool_items(tmp_path, monkeypatch, rows=(False, False))
+    got = d.items(1)
+    assert got["rows"] == 2 and got["marked"] == []
+
+
+def test_pool_items_refuses_a_sheet_with_no_items_before_pressing_i(tmp_path, monkeypatch):
+    game, d = _pool_items(tmp_path, monkeypatch, sheet="no_items")
+    with pytest.raises(da.StepFailed, match="offers no ITEMS"):
+        d.items(1)
+    assert "i" not in game.keys
+
+
+def test_pool_items_stops_when_the_list_bar_is_not_showing(tmp_path, monkeypatch):
+    game, d = _pool_items(tmp_path, monkeypatch, rows=(True,))
+    monkeypatch.setattr(screens, "POOL_ITEMS_BAR", "0" * 16)
+    with pytest.raises(da.StepFailed, match="list bar"):
+        d.items(1)
+    assert "Escape" not in game.keys
+
+
+def test_pool_items_stops_when_escape_does_not_reach_camp(tmp_path, monkeypatch):
+    game, d = _pool_items(tmp_path, monkeypatch, back="sheet")
+    with pytest.raises(da.StepFailed, match="camp bar did not return"):
+        d.items(1)
+    assert not game.save_file("D").exists()
+
+
+def test_pool_items_a_list_that_fills_the_readable_rows_stops(tmp_path, monkeypatch):
+    game, d = _pool_items(tmp_path, monkeypatch, rows=(False,) * da.ITEM_ROWS)
+    with pytest.raises(da.StepFailed, match="next page"):
+        d.items(1)
+
+
+def test_the_pool_items_bar_is_recognised_as_a_list_and_a_sheet_is_not(monkeypatch):
+    bar = screens.bar_signature(_screen(_POOL_ITEMS_BARS["list"], b""))
+    monkeypatch.setattr(screens, "POOL_ITEMS_BAR", bar)
+    px = bytearray(_screen(_POOL_ITEMS_BARS["list"], b"").px)
+    _draw_name(px, 16, 40, b"\x18\x24\x42", _GREEN)
+    listed = dosbox.Screen(W, H, bytes(px))
+    assert screens.on_items_list(listed) and screens.item_rows(listed) == 1
+    sheet = _screen(_POOL_ITEMS_BARS["sheet"], b"")
+    assert not screens.on_items_list(sheet) and screens.item_rows(sheet) is None
+    # Pools of Darkness' head still names its own list.
+    pod = _screen(b"\x2b\x2c", b"")
+    assert screens.on_items_list(pod)
+
+
+def test_the_measured_pool_items_constants():
+    assert da.POOL_ITEMS_BAR == screens.POOL_ITEMS_BAR == "0a653b8b1d7793d7"
+    assert da.POOL_ITEM_MARK == "4590f6541a365c32" and da.POOL_ITEM_MARK_X == 56
+
+
+def test_validate_steps_takes_pool_items_in_camp_only():
+    da.validate_steps(_steps("load", "camp", "items 2", "save D", "read"), "pool")
+    with pytest.raises(ValueError, match="items needs camp first"):
+        da.validate_steps(_steps("load", "items 2"), "pool")
+    with pytest.raises(ValueError, match="driven in darkness only"):
+        da.validate_steps(_steps("load", "begin", "camp", "items 2"), "curse")
+    da.validate_steps(_steps("load", "begin", "camp", "items 2"), "darkness")

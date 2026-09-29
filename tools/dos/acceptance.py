@@ -54,13 +54,14 @@ a source whose title does not match `--title`:
 | `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P`.  Pool presses Return past each `PRESS <ENTER>/<RETURN> TO CONTINUE` bar first, when the loaded save is on an event square, so that screen is never recorded as the map (#701); a party that has not taken Rolf's opening tour meets eight (PROBABLE: one boot of one party), and the run stops at `POOL_LOAD_CONTINUE_ROUNDS` (#631) |
 | `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars and Pools of Darkness' journal question and `YES NO` bars (below), to the map; Pools of Darkness' map only by its measured bar |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
-| `sheet N`, `items N` | Curse, Silver Blades and Pools of Darkness (`items` Pools of Darkness only), in camp: roster line N (from 1) highlighted (`End` in Curse, `Down` in the other two), `VIEW`, the sheet's name checked against line N's, the bar read for `heal_offered` and `cure_offered` (`sheet_offers`), and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
+| `sheet N`, `items N` | Curse, Silver Blades and Pools of Darkness (`items` Pools of Darkness only; Pool's is the next row), in camp: roster line N (from 1) highlighted (`End` in Curse, `Down` in the other two), `VIEW`, the sheet's name checked against line N's, the bar read for `heal_offered` and `cure_offered` (`sheet_offers`), and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
 | `heal N` | the same three, in camp: line N's sheet, `HEAL` (`LAY` in Pools of Darkness), `SELECT` at `HEAL WHOM?` on the member it opens on, and the sheet required back without the word; back to camp |
 | `cure N` | Curse, in camp: line N's sheet, `CURE`, `SELECT` at `CURE WHOM?`, `YES` to `CURE ANYWAY` if asked, the sheet required back; back to camp |
 | `change N CLASS` | Curse, at the party menu with the hall open (`--hall`): line N, `HUMAN CHANGE CLASSES`, the class list's row for CLASS as the engine's own test orders them (`class_choices`), checked against the rows the highlight reaches, `SELECT`, back to the party menu |
 | `halve N I`, `join N I` | Pools of Darkness, in camp: member N's `ITEMS`, the highlight moved to row I (from 1, at most 18) with `Down`, `h` or `j` pressed once, and the rows counted before and after; `halve` must add a row and keep the highlight or the run stops before any save, `join` only records; back to camp |
 | `memorize N` | Pools of Darkness, in camp: roster line N highlighted with `Down`, `MAGIC`, `MEMORIZE`; the grimoire's title checked against line N's name; every page shot and its eleven rows read, turning with `NEXT` until the bar stops offering it; `lists_126` says whether a page draws `MONSTER SUMMONING`, spell id 126; `EXIT` to the Magic bar and to camp.  Nothing is memorized |
 | `view N` | At the party menu, before `begin`.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar), `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
+| `items N` | Pool, in camp: member N's `ITEMS` list, first screen only, from `End` to the line, `v`, `i`, and `Escape` twice back to camp; refuses a sheet with no `ITEMS`; records `rows` and `marked`, the rows (from 1) drawn with the Detect Magic `* ` |
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
 | `cast N SPELL [T]` | Pool, in camp: roster line N highlighted with `End`, `MAGIC`, `CAST`, the spell list's title checked against line N's name, the highlight moved with `End` to SPELL's row (`dosbox.PoolOfRadiance.CAST_SPELLS`: `BLESS`, and `CURE-LIGHT-WOUNDS`, which needs target line T), `CAST`, T picked with `End` and `Return` at `CAST SPELL ON WHOM`, and believed only when the list comes back one SPELL row shorter; `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
@@ -211,10 +212,12 @@ from tools.dos.screens import (  # noqa: E402
     POD_NAME_ROWS,
     POD_ROSTER,
     POD_SHEET_NAME,
+    POOL_ITEMS_BAR,  # noqa: F401 -- the constant lives in screens, which reads it; tests and runs name it here
     STATUS_COLUMNS,
     bar_signature,
     item_highlight,
     item_rows,
+    on_items_list,
     roster_line,
     roster_name,
     sheet_name,
@@ -271,6 +274,13 @@ POOL_SHEET_BARS: dict[str, str] = {"no_items": "33ad531ed78cfa70",
                                    "npc_caster": "740a10d0bc93a12a",
                                    "npc_items": "90b53c9e64947226"}
 POOL_ROSTER_NEXT = "End"
+#: Where Pool's `ITEMS` list draws the Detect Magic mark, `* ` between the
+#: READY column and the name: text column 7 (x 56) of each row, from y 40, one
+#: row per 8 pixels.  `POOL_ITEM_MARK` is the `*` glyph's signature there,
+#: `Screen.glyphs` of one 8x8 cell, measured on 2 marked rows (both on the
+#: highlighted row 1); a mark on another row or on a `NO` row is unmeasured.
+POOL_ITEM_MARK_X = 56
+POOL_ITEM_MARK = "4590f6541a365c32"
 # Names start at x=8; effect lines are indented to x=17. Count the left
 # character cell across the page, allowing row spacing to change by effect.
 POOL_DISPLAY_NAME_ROWS = range(32, 184, 8)
@@ -1148,6 +1158,9 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
             if where != "party":
                 raise ValueError(f"change needs the party menu, before begin: "
                                  f"{step.text!r}")
+        elif k == "items" and title == "pool":
+            if where != "camp":
+                raise ValueError(f"items needs camp first: {step.text!r}")
         elif k in ("items", "halve", "join", "memorize"):
             if title != "darkness":
                 raise ValueError(f"{k} is driven in darkness only, not {title}")
@@ -2988,12 +3001,67 @@ class Driver:
                 "heal_offered_after": after.get("heal"),
                 "cure_offered_after": after.get("cure")}
 
+    def pool_items(self, line: int) -> dict:
+        """Pool: roster line `line`'s `ITEMS` list from camp, and back to camp.
+
+        `End` to the line, `v`, `i`, then `Escape` twice; never `e`, which on
+        Pool's camp bar is Exit.  Only the list's first screen is read: Pool's
+        paging key and row key are unmeasured, so a list that fills the
+        readable rows stops the run instead of guessing.  `marked` is the
+        rows (from 1) whose cell at `POOL_ITEM_MARK_X` is `POOL_ITEM_MARK`.
+        """
+        if self.title.key != "pool" or self.camp_sig is None:
+            raise StepFailed("items needs Pool camp first")
+        self.ensure_camp()
+        label = f"items-{line}"
+        moved = self.pick_line(line, "camp", f"{label}-select", POOL_ROSTER_NEXT)
+        name = roster_cells(self.s.capture(), line)
+        if not name:
+            raise self.fail(f"{label}-name", f"roster line {line} has no name drawn")
+        self.s.key(VIEW)
+        if not self.s.wait_for(lambda sc: bar_signature(sc) in POOL_SHEET_BARS.values(), 15.0):
+            raise self.fail(f"{label}-open", "VIEW did not open the sheet bar")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        count = min(len(name) + 1, POD_NAME_CELLS)
+        want = _cell_digest((name + [_BLANK_CELL])[:count])
+        got = _cell_digest(_cells(screen, *POD_SHEET_NAME, count))
+        checked = self.check_sheet(screen, line, want, f"{label}-name", got=got)
+        sheet_bar = bar_signature(screen)
+        if sheet_bar == POOL_SHEET_BARS["no_items"]:
+            raise self.fail(f"{label}-sheet", f"roster line {line}'s sheet offers no ITEMS")
+        self.shot(f"{label}-sheet")
+        self.s.key(SHEET_ITEMS)
+        if not self.s.wait_for(on_items_list, 15.0):
+            raise self.fail(f"{label}-list", "ITEMS did not open Pool's list bar")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        if not on_items_list(screen):
+            raise self.fail(f"{label}-list", "the list bar did not stay")
+        rows = item_rows(screen)
+        if not rows or rows >= ITEM_ROWS:
+            raise self.fail(f"{label}-rows", f"the list reads {rows} rows; one that "
+                            f"fills {ITEM_ROWS} may have a next page, unmeasured")
+        marked = [k + 1 for k in range(rows) if hashlib.sha1(screen.glyphs(
+            (POOL_ITEM_MARK_X, 40 + CELL * k, CELL, CELL)).encode()
+        ).hexdigest()[:16] == POOL_ITEM_MARK]
+        list_shot = self.shot(f"{label}-list")
+        self.s.key("Escape")
+        if not self.s.wait_for(lambda sc: bar_signature(sc) == sheet_bar, 15.0):
+            raise self.fail(f"{label}-sheet-back", "the sheet did not return after Escape")
+        self.s.key("Escape")
+        if not self.wait_camp(timeout=15.0):
+            raise self.fail(f"{label}-back", "the camp bar did not return after the "
+                            "second Escape")
+        return {"line": line, **moved, **checked, "list_shot": list_shot, "rows": rows,
+                "marked": marked}
+
     def items(self, line: int) -> dict:
         """Roster line `line`'s `ITEMS` from its sheet, every page shot.
 
         `Next` is pressed until it changes nothing or brings back the first
         page; `ITEMS_PAGES` pages that are all different stop the run.
         """
+        if self.title.key == "pool":
+            return self.pool_items(line)
         got = self.open_sheet(line)
         pages = self.item_pages(f"items-{line}")
         self.back_to_camp(f"items-{line}-back")

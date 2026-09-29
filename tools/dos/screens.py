@@ -34,6 +34,11 @@ ITEMS_BAR_HEAD = "cdea54ada656e489"
 
 ITEMS_BAR_HEAD_CELLS = 5
 
+#: Pool of Radiance's whole `ITEMS` bar, `READY USE TRADE DROP HALVE JOIN
+#: EXIT`, by `bar_signature`: the same value on 5 lists of 3 members, whichever
+#: item the highlight was on.  Its head is not `ITEMS_BAR_HEAD`.
+POOL_ITEMS_BAR = "0a653b8b1d7793d7"
+
 #: Text column 17, where the status line's text starts; the cell at x 128 is
 #: the viewport's frame.
 STATUS_TEXT_X = 136
@@ -139,9 +144,11 @@ def bar_signature(screen: dosbox.Screen, cells: int | None = None) -> str:
 
 
 def on_items_list(screen: dosbox.Screen) -> bool:
-    """Whether `screen` is an `ITEMS` list.  A sheet reads as a one-row list
-    with its highlight on band 12, so the readers below ask this first."""
-    return bar_signature(screen, ITEMS_BAR_HEAD_CELLS) == ITEMS_BAR_HEAD
+    """Whether `screen` is an `ITEMS` list, Pools of Darkness' or Pool of
+    Radiance's.  A sheet reads as a one-row list with its highlight on band 12,
+    so the readers below ask this first."""
+    return (bar_signature(screen, ITEMS_BAR_HEAD_CELLS) == ITEMS_BAR_HEAD
+            or bar_signature(screen) == POOL_ITEMS_BAR)
 
 
 def item_rows(screen: dosbox.Screen) -> int | None:
