@@ -291,13 +291,18 @@ def test_a_menu_or_combat_screen_does_not_take_the_branch(monkeypatch):
 
 class Encounter(Fake):
     """The status line and row 24 stay as they were after the key while
-    `$C04B` already holds the new square, as an encounter's load does."""
+    `$C04B` already holds the new square, as an encounter's load does.  With
+    `slow` the status line catches up on its third read: a slow line, not an
+    encounter."""
 
-    def __init__(self, monkeypatch, live_moves=True):
+    def __init__(self, monkeypatch, live_moves=True, slow=False):
         super().__init__(monkeypatch, SUBBAR)
-        self.live_moves = live_moves
-        self.status = lambda: 0
+        self.live_moves, self.slow, self.reads = live_moves, slow, 0
         self.left = 0
+
+    def status(self):
+        self.reads += 1
+        return 1 if self.slow and self.reads >= 3 else 0
 
     def live_triple(self):
         return (5, 4, 0) if self.ticks and self.live_moves else (5, 5, 0)
@@ -310,21 +315,33 @@ class Encounter(Fake):
 def test_a_step_that_moves_the_live_square_and_not_the_status_line_is_an_encounter(
         monkeypatch):
     sess = Encounter(monkeypatch)
-    assert sess.walk_one("I", tries=1) is True
+    assert sess.walk_one("I", tries=1, encounters=True) is True
     assert sess.walk_encounter_started is True
     assert sess.keys == ["i"] and sess.kernal == [] and sess.left == 0
+
+
+def test_the_same_step_without_the_opt_in_behaves_as_it_always_did(monkeypatch):
+    sess = Encounter(monkeypatch)
+    assert sess.walk_one("I", tries=1) is False
+    assert sess.walk_encounter_started is False and sess.left == 1
+
+
+def test_a_slow_status_line_is_not_called_an_encounter(monkeypatch):
+    sess = Encounter(monkeypatch, slow=True)
+    assert sess.walk_one("I", tries=1, encounters=True) is True
+    assert sess.walk_encounter_started is False and sess.left == 1
 
 
 def test_a_step_that_moves_neither_is_not_an_encounter_and_leaves_the_move_bar(
         monkeypatch):
     sess = Encounter(monkeypatch, live_moves=False)
-    assert sess.walk_one("I", tries=1) is False
+    assert sess.walk_one("I", tries=1, encounters=True) is False
     assert sess.walk_encounter_started is False and sess.left == 1
 
 
 def test_the_encounter_flag_is_cleared_by_the_next_walk_one(monkeypatch):
     sess = Encounter(monkeypatch)
-    sess.walk_one("I", tries=1)
+    sess.walk_one("I", tries=1, encounters=True)
     sess.live_moves = False
-    sess.walk_one("I", tries=1)
+    sess.walk_one("I", tries=1, encounters=True)
     assert sess.walk_encounter_started is False

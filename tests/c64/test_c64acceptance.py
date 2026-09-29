@@ -6684,12 +6684,24 @@ class EncounterWalk(WalkSession):
         super().__init__(**kw)
         self.script, self.timer = script, clock
         self.calls = 0
+        self.opted_in = None
         self.kind = self.started = self.answered = self.new = None
         self.done = False
         self.walk_encounter_started = False
         self.walk_stop_screen = None
         self.presses = []
+        self.left = []
         self.tactics = []
+
+    def _live_square(self, steady=False):
+        return self.live_triple()[:2]
+
+    def leave_move(self, *a, **k):
+        self.left.append(self.phase())
+        if self.kind is not None and not self.done:
+            self.x, self.y = self.new
+            self.done = True
+        return True
 
     def phase(self):
         if self.kind is None or self.done:
@@ -6699,9 +6711,11 @@ class EncounterWalk(WalkSession):
             return "fight" if self.timer() - self.answered >= self.PREP else "prep"
         if self.kind == "none":
             return "idle" if t >= 3 else "stale"
-        return "stale" if t < self.DRAW else self.kind
+        return "stale" if t < self.DRAW else (
+            "press" if self.kind == "text" else self.kind)
 
     def walk_one(self, move, *a, **k):
+        self.opted_in = k.get("encounters", False)
         self.walk_encounter_started = False
         event = self.script.get(self.calls)
         self.calls += 1
@@ -6710,6 +6724,7 @@ class EncounterWalk(WalkSession):
         self.pressed.append(move)
         self.kind, self.started, self.answered, self.done = (
             event, self.timer(), None, False)
+        self.text_only = event == "text"
         self.new = (self.x, self.y - 1)
         self.walk_encounter_started = True
         return True
@@ -6744,6 +6759,9 @@ class EncounterWalk(WalkSession):
         self.presses.append((code, self.phase()))
         if self.phase() == "press":
             self.answered = self.timer()
+            if self.kind == "text":
+                self.x, self.y = self.new
+                self.done = True
 
     def select_bar(self, label, row=24, timeout=0, **kw):
         self.presses.append((label, self.phase()))
@@ -6813,7 +6831,7 @@ def test_a_route_goes_on_after_an_encounter_step(tmp_path, monkeypatch):
 
 def test_an_encounter_that_never_draws_a_bar_fails_the_step(tmp_path, monkeypatch):
     sess, run, log = _encounter_run(tmp_path, monkeypatch, {0: "press"})
-    sess.DRAW = 1000.0
+    sess.DRAW, sess.OLD_BAR = 1000.0, ""
     with pytest.raises(A.StepFailed, match="drew no bar or menu"):
         run.walk_fight("I")
     log.close()
@@ -6828,11 +6846,47 @@ def test_an_ordinary_step_is_unchanged_by_the_encounter_wait(tmp_path, monkeypat
     assert got["position"] == [5, 3, 0]
 
 
-def test_the_walk_fight_budget_is_set_from_the_command_line(monkeypatch):
-    monkeypatch.setattr(A, "WALK_FIGHT_SECONDS", A.WALK_FIGHT_SECONDS)
-    with pytest.raises(SystemExit):
-        A.main(["--walk-fight-seconds", "1800"])
-    assert A.WALK_FIGHT_SECONDS == 1800.0
+def test_a_press_bar_with_no_fight_ends_the_move_at_the_world_bar(
+        tmp_path, monkeypatch):
+    sess, run, log = _encounter_run(tmp_path, monkeypatch, {0: "text"})
+    start = run.clock()
+    got = run.walk_fight("I")
+    log.close()
+    assert sess.presses == [(0x0D, "press")] and sess.pressed == ["I"]
+    assert got["fights"] == [] and got["position"] == [5, 4, 0]
+    assert run.clock() - start < 30, "waited out the fight-opens limit"
+
+
+def test_a_move_bar_that_outlasts_the_draw_time_is_left_and_judged_by_position(
+        tmp_path, monkeypatch):
+    sess, run, log = _encounter_run(tmp_path, monkeypatch, {0: "press"})
+    sess.DRAW = 1000.0
+    got = run.walk_fight("I")
+    log.close()
+    assert sess.left == ["stale"] and sess.presses == []
+    assert sess.pressed == ["I"] and got["fights"] == []
+    assert got["position"] == [5, 4, 0]
+
+
+def test_only_pool_asks_walk_one_to_detect_encounters(tmp_path, monkeypatch):
+    sess, run, log = _encounter_run(tmp_path, monkeypatch, {0: "none"})
+    run.walk_fight("I")
+    assert sess.opted_in is True
+    sess2, run2, log2 = _encounter_run(tmp_path, monkeypatch, {0: "none"})
+    run2.walk_encounters = False
+    run2.walk_fight("I")
+    log.close()
+    log2.close()
+    assert A.CurseRun.walk_encounters is False and A.SilverRun.walk_encounters is False
+    assert sess2.opted_in is False
+
+
+def test_the_walk_fight_budget_is_the_runs_own(tmp_path, monkeypatch):
+    sess, run, log = _encounter_run(tmp_path, monkeypatch, {0: "press"})
+    run.walk_fight_seconds = 1800.0
+    run.walk_fight("I")
+    log.close()
+    assert sess.tactics == [1800.0] and A.WALK_FIGHT_SECONDS == 900.0
 
 
 # --- the arrival text a warp leaves up ---------------------------------------------

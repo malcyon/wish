@@ -2360,7 +2360,7 @@ class Session:
         self.kbd.key(move.lower(), hold, gap)
 
     def walk_one(self, move: str, hold=0.15, gap=0.30, tries: int = 4,
-                 answer_prompts: bool = True) -> bool:
+                 answer_prompts: bool = True, encounters: bool = False) -> bool:
         """One move, verified -- by the status line indoors, by memory outdoors.
 
         Nothing here can be taken on trust.  Selecting `MOVE` succeeds against
@@ -2401,6 +2401,17 @@ class Session:
         move key, ends the call with `False` and `walk_prompt` set to row 24;
         no key is pressed at it and no disk is attached.  `walk_prompt` is
         None otherwise.
+
+        **`encounters=True` is for a caller that fights encounters, and it
+        is measured on Pool of Radiance only.**  The game moves the party's
+        live square (`$C04B`) before it draws an encounter's text, and the
+        status line and row 24 stay as they were for ~12 s.  With the flag,
+        a step whose status line stays put while a steady live square
+        changes, and stays put on a re-read a second later, sets
+        `walk_encounter_started` and returns True *with the move bar still
+        up*: nothing is pressed, and the caller waits for the encounter's own
+        screen.  Without it `walk_one` behaves as it always did and
+        `walk_encounter_started` stays False.
 
         **Taking `MOVE` can run the square's own text first**, and a key sent
         before `I,J,K,M` is up is lost, so the direction key waits for that
@@ -2445,7 +2456,7 @@ class Session:
             live_before = None
             if MOVE_SUBBAR in row:
                 self.walk_screens = (self._rows(s), None)
-                live_before = self._live_square()
+                live_before = (self._live_square(True) if encounters else None)
                 self.move_key(move, hold, gap)
                 sent = True
             elif self._walk_expired():
@@ -2475,7 +2486,7 @@ class Session:
                 if self._walk_expired():
                     break
                 self.walk_screens = (self._rows(up), None)
-                live_before = self._live_square()
+                live_before = (self._live_square(True) if encounters else None)
                 self.move_key(move, hold, gap)
                 sent = True
             else:
@@ -2499,14 +2510,17 @@ class Session:
                 moved = now is not None and now != before
             else:
                 moved = self.status() != before
-                if (not moved and live_before is not None
-                        and self._live_square() not in (None, live_before)):
-                    # The game updates the party's square before it draws an
-                    # encounter's text, and the status line and row 24 stay
-                    # as they were for ~12 s.  The step was taken: the caller
-                    # waits for the encounter, and nothing is pressed here.
-                    self.walk_encounter_started = True
-                    return True
+                if (not moved and encounters and live_before is not None
+                        and self._live_square(True) not in (None, live_before)):
+                    # A slow status line looks the same for a moment, so it
+                    # is read again before the step is called an encounter.
+                    time.sleep(self.ENCOUNTER_RECHECK)
+                    moved = self.status() != before
+                    if not moved:
+                        # The step was taken: the caller waits for the
+                        # encounter, and nothing is pressed here.
+                        self.walk_encounter_started = True
+                        return True
             if moved:
                 self._leave_move(answer_prompts)
                 return True
@@ -2526,16 +2540,21 @@ class Session:
     #: until its text is drawn.
     walk_encounter_started = False
 
-    def _live_square(self):
+    #: Seconds between the first and the second read of the status line that
+    #: decide a step was an encounter and not a slow status line.
+    ENCOUNTER_RECHECK = 1.0
+
+    def _live_square(self, steady: bool = False):
         """The live x, y at `$C04B`, or None if this title has none or the
-        read fails."""
+        read fails.  `steady` waits for two agreeing reads."""
         machine = getattr(self, "machine", None)
         if getattr(machine, "live_position", None) is None:
             return None
         try:
-            return self.live_triple()[:2]
+            triple = self.steady_triple() if steady else self.live_triple()
         except (OSError, MonitorError):
             return None
+        return None if triple is None else tuple(triple[:2])
 
     def _status_has_no_square(self) -> bool:
         """True when the status row (14) carries a facing and a time but no
