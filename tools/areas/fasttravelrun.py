@@ -188,7 +188,8 @@ def walk_verdict(steps: list[dict], sheet_opened: bool) -> tuple[bool, str]:
         return False, f"the driver refused a step: {refused[0]['refused']}"
     walked = [s for s in steps if "move" in s]
     moved = sum(1 for s in walked
-                if s.get("before") is not None and s.get("after") is not None
+                if not s.get("interrupted")
+                and s.get("before") is not None and s.get("after") is not None
                 and s["after"] != s["before"])
     if not moved:
         return False, (f"the party did not move: its square did not change on "
@@ -423,7 +424,8 @@ def settle_world(sess, out: pathlib.Path, shots: dict,
 
     With *stay*, a `YES`/`NO` bar under `LEAVE_QUESTION` indoors is answered
     `STAY`, once, as a player who wants to stay would, and
-    `{"question": ..., "answer": ...}` is appended to *answered*. Any other
+    `{"question": ..., "answer": ...}` is appended to *answered*, with the
+    answer None when `select_bar` did not report the word picked. Any other
     `YES`/`NO` question is left unanswered and fails the settle."""
     # A walked exit onto the travel grid lands on the direction prompt, which
     # `wait_for_world` never counts as the world and might press Return at;
@@ -448,9 +450,10 @@ def settle_world(sess, out: pathlib.Path, shots: dict,
             else:
                 print(f"  question: {question!r}; answering {STAY}",
                       flush=True)
-                sess.select_bar(STAY, timeout=15)
+                picked = sess.select_bar(STAY, timeout=15)
                 if answered is not None:
-                    answered.append({"question": question, "answer": STAY})
+                    answered.append({"question": question,
+                                     "answer": STAY if picked else None})
                 row = settle_row(sess, 60, accept=indoor_bar, seen=rows)
         if indoor_bar(row):
             print(f"  settled: row 24 {row!r}", flush=True)
@@ -564,13 +567,16 @@ def where(sess, indoors: bool):
 #: An indoor status line with a facing and a time but no square, as the
 #: Kobold Caves print it (`E 4:00`): an area that hides its map hides the
 #: party's square too.
+#: Matched against one screen row that ends after the minutes (a message box's
+#: border glyph and blanks may follow), so a line still being drawn, such as
+#: `N 12:00 1`, is not taken for one that hides its square.
 RE_NO_SQUARE = re.compile(
-    r"(?<![A-Z])[NESW](?![A-Z]) +\d+:\d\d(?!\d)(?! +\d+,\d+)")
+    r"(?<![A-Z])[NESW](?![A-Z]) +\d+:\d\d[ $]*$")
 
 
 def square_hidden(sess, tries: int = 12) -> bool:
     """Whether the indoor status line shows no square: True on the first read
-    that matches `RE_NO_SQUARE`, False on the first that `parse_status`
+    with a row that matches `RE_NO_SQUARE`, False on the first that `parse_status`
     reads a square from, and False when *tries* reads find neither."""
     for _ in range(tries):
         screen = sess.screen()
@@ -578,10 +584,29 @@ def square_hidden(sess, tries: int = 12) -> bool:
             text = screen.text()
             if parse_status(text) is not None:
                 return False
-            if RE_NO_SQUARE.search(text):
+            if any(RE_NO_SQUARE.search(line) for line in text.splitlines()):
                 return True
         time.sleep(0.3)
     return False
+
+
+def fought(sess, steps: list[dict], row: str) -> bool:
+    """Fight the fight the party is in, append `{"fight": ...}` to *steps*, and
+    say whether the walk may go on. A `refused` reason is recorded, and False
+    returned, when the fight was lost, the world did not come back, or another
+    fight is already on."""
+    result = sess.fight(budget=300, tactic=S.Session.melee_turn)
+    outcome = getattr(result, "outcome", str(result))
+    back = bool(sess.wait_for_world())
+    steps.append({"fight": outcome, "row": row, "world": back})
+    print(f"  fight: {outcome} world={back}", flush=True)
+    if outcome == S.LOST:
+        steps[-1]["refused"] = "the fight was lost"
+    elif not back:
+        steps[-1]["refused"] = "the world did not come back after a fight"
+    elif sess.in_combat():
+        steps[-1]["refused"] = "another fight began straight after a fight"
+    return "refused" not in steps[-1]
 
 
 def walk_afterwards(sess, timeout: float = 60.0,
@@ -618,8 +643,13 @@ def walk_afterwards(sess, timeout: float = 60.0,
     line shows no square (`square_hidden`) every `before` and `after` comes
     from `square()` instead and each step carries `"square_from": "memory"`;
     the choice is made once, so no step compares a status-line square with a
-    memory one. A memory copy left stale by a warp never changes, so it can
-    fail a walk but never pass one.
+    memory one. Such a step also carries `area_before`, `area_after` and
+    `fight_after`; a step during which the area byte changed or a fight began
+    is marked `interrupted` and `walk_verdict` does not count it as a move,
+    because `square()` then changes without the party having stepped. A
+    memory square that never changes fails the walk. That it changes only on a
+    real step is not established: it is PROBABLE until a live control reads
+    `$49C0` in such an area.
 
     Called before teardown, because the session is gone once `run` returns.
     """
@@ -638,13 +668,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
     for move in (WALK_INDOORS if indoors else WALK_OUTDOORS):
         row = settle_row(sess, timeout)
         if sess.in_combat():
-            result = sess.fight(budget=300, tactic=S.Session.melee_turn)
-            back = bool(sess.wait_for_world())
-            steps.append({"fight": getattr(result, "outcome", str(result)),
-                          "row": row, "world": back})
-            print(f"  fight: {steps[-1]['fight']} world={back}", flush=True)
-            if not back:
-                steps[-1]["refused"] = "the world did not come back after a fight"
+            if not fought(sess, steps, row):
                 return steps, False
             row = settle_row(sess, timeout)
         if not recognised(row):
@@ -657,6 +681,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
             return steps, False
         before = at()
         shadow_before = sess.square()
+        area_before = area_of(sess) if from_memory else None
         attempts: list[dict] = []
         facing = 0          # quarter turns away from the facing the step began with
         off_route = capped = False
@@ -723,6 +748,11 @@ def walk_afterwards(sess, timeout: float = 60.0,
             step["capped"] = True
         if from_memory:
             step["square_from"] = "memory"
+            step["area_before"] = area_before
+            step["area_after"] = area_of(sess)
+            step["fight_after"] = bool(sess.in_combat())
+            if step["area_after"] != area_before or step["fight_after"]:
+                step["interrupted"] = True
         steps.append(step)
         print(f"  walk {last['move']}: ok={step['ok']} {before} -> {step['after']}"
               f" ({len(attempts)} attempt(s))", flush=True)
@@ -731,7 +761,8 @@ def walk_afterwards(sess, timeout: float = 60.0,
         if capped:
             break
         if step["before"] is not None and step["after"] is not None \
-                and step["before"] != step["after"]:
+                and step["before"] != step["after"] \
+                and not step.get("interrupted"):
             moved += 1
             if stop_after_moves is not None and moved >= stop_after_moves:
                 break
@@ -742,13 +773,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
         # The walk's last step can start a fight, which the loop above only
         # answers at the start of the next step; `VIEW` pressed into it
         # opens the fight's own sheet rather than the world's.
-        result = sess.fight(budget=300, tactic=S.Session.melee_turn)
-        back = bool(sess.wait_for_world())
-        steps.append({"fight": getattr(result, "outcome", str(result)),
-                      "row": row, "world": back})
-        print(f"  fight: {steps[-1]['fight']} world={back}", flush=True)
-        if not back:
-            steps[-1]["refused"] = "the world did not come back after a fight"
+        if not fought(sess, steps, row):
             return steps, False
         row = settle_row(sess, timeout)
     if steps and not sess.in_combat() and not recognised(row):
@@ -835,6 +860,11 @@ def walk_after(sess, out: pathlib.Path, shots: dict, result: dict,
                    "settle_rows": settle_rows, "screenshots": shots})
     if stay:
         result["settle_answers"] = answered
+    if any(s.get("square_from") == "memory" for s in steps):
+        result["memory_square"] = (
+            "PROBABLE: the walk read the square from `$49C0` because the "
+            "status line shows none; that it changes only on a real step "
+            "awaits a live control")
     print(("PASS: walk: " if walk_ok else "FAIL: walk: ") + walk_message,
           flush=True)
     return 0 if walk_ok else 1

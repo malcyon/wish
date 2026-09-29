@@ -1705,12 +1705,34 @@ class HiddenSquareSession(WalkSession):
 
 @pytest.mark.parametrize("line, hidden", [
     ("$E 4:00                $", True),
+    ("N 12:00 1", False),
+    ("N 12:00", True),
     ("$N 12:04 10,5          $", False),
     ("$OUTDOORS 4:00 3,7     $", False),
     ("$NAME            AC HP $", False),
 ])
 def test_the_no_square_status_line_is_told_apart(line, hidden):
     assert bool(FT.RE_NO_SQUARE.search(line)) is hidden
+
+
+class PartialDrawSession(WalkSession):
+    def screen(self):
+        return FakeScreen(self.row, "N 12:00 1")
+
+
+def test_a_status_line_still_being_drawn_is_not_a_hidden_square(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    assert FT.square_hidden(PartialDrawSession(m, indoors=True), tries=2) \
+        is False
+
+
+def test_the_no_square_text_off_the_status_row_is_not_hidden(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    sess.screen = lambda: FakeScreen("E 4:00 X", "")
+    assert FT.square_hidden(sess, tries=2) is False
 
 
 def test_a_walk_where_the_square_is_hidden_reads_it_from_memory(monkeypatch):
@@ -1764,3 +1786,74 @@ def test_a_fight_on_the_last_step_is_fought_before_the_sheet(monkeypatch):
     assert len(sess.fights) == 1 and steps[-1]["fight"] == "won"
     assert sheets_in_combat == [False] and opened
     assert FT.walk_verdict(steps, opened)[0]
+
+
+def test_settle_records_no_answer_when_select_bar_did_not_pick(
+        tmp_path, fake_clock):
+    sess, m = make()
+    sess = ExitSquareSession(m)
+    sess.select_bar = lambda label, timeout=0: False
+    answered = []
+    FT.settle_world(sess, tmp_path, {}, stay=True, answered=answered)
+    assert answered == [{"question": "DO YOU WANT TO LEAVE?", "answer": None}]
+
+
+def _last_step_fight(m, outcome="won", after=None, settled=True):
+    sess = WalkSession(m, indoors=True)
+    sess.settled = settled
+    real, real_fight = sess.walk_one, sess.fight
+
+    def walk_one(key):
+        moved = real(key)
+        sess.combat = True
+        return moved
+
+    def fight(budget, tactic):
+        real_fight(budget, tactic)
+        sess.combat = bool(after)
+        return types.SimpleNamespace(outcome=outcome)
+
+    sess.walk_one, sess.fight = walk_one, fight
+    return sess
+
+
+@pytest.mark.parametrize("kw, reason", [
+    ({"after": True}, "another fight"),
+    ({"settled": False}, "did not come back"),
+    ({"outcome": "lost"}, "lost"),
+])
+def test_a_fight_that_is_not_cleanly_over_refuses_the_sheet(
+        monkeypatch, kw, reason):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = _last_step_fight(m, **kw)
+    steps, opened = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert opened is False and sess.sheets == []
+    assert reason in steps[-1]["refused"]
+    assert not FT.walk_verdict(steps, opened)[0]
+
+
+def test_a_hidden_square_step_with_a_map_load_is_not_a_move(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = HiddenSquareSession(m)
+    real = sess.walk_one
+
+    def walk_one(key):
+        m.mem[FT.AREA_BYTE] = 9
+        return real(key)
+
+    sess.walk_one = walk_one
+    steps, sheet = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert steps[0]["interrupted"] is True
+    assert steps[0]["area_before"] == 0 and steps[0]["area_after"] == 9
+    ok, _ = FT.walk_verdict(steps[:1], sheet)
+    assert not ok
+
+
+def test_a_hidden_square_walk_carries_the_probable_note(tmp_path, fake_clock):
+    sess, m = make()
+    sess = HiddenSquareSession(m)
+    result = {}
+    FT.walk_after(sess, tmp_path, {}, result)
+    assert result["memory_square"].startswith("PROBABLE")
