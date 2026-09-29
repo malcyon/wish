@@ -7895,3 +7895,201 @@ def test_walk_fight_keeps_the_treasure_screen_before_the_fight_answers_it(
     treasure = [(t, r) for t, r in taken if t == "treasure"]
     assert len(treasure) == 1 and treasure[0][1][24] == TREASURE_BAR
     assert sess.pressed == ["I"]
+
+
+# --- a later title's combat side, the bar log and the first-bar key -------------
+
+_SIDE_SPECIMENS = {"curse": ("curse-h-engine-resave-walked", "curse-of-the-azure-bonds"),
+                   "ssb": ("ssb-joined-arrow-c64-672", "secret-of-the-silver-blades")}
+
+
+def _roster_and_payload(path):
+    from goldbox import c64_port, c64_save
+
+    image = D64.open(str(path))
+    game = c64_port.detect(image)
+    box = c64_save.CONTAINERS[game.key]
+    _, payload = A._payload(image, game)
+    if box.roster_file is None:
+        return box, bytes(payload), bytes(payload)
+    return box, bytes(payload), bytes(split_load_address(
+        image.read_file(box.roster_file))[1])
+
+
+def _diff(before: bytes, after: bytes) -> list[int]:
+    assert len(before) == len(after)
+    return [i for i, (a, b) in enumerate(zip(before, after)) if a != b]
+
+
+@pytest.mark.parametrize("title", sorted(_SIDE_SPECIMENS))
+def test_a_staged_side_goes_into_the_later_roster_block_and_nothing_else(
+        title, tmp_path):
+    from tests.c64.test_c64nametable import specimen_disk
+
+    name, key = _SIDE_SPECIMENS[title]
+    source = specimen_disk(name)
+    dest = tmp_path / "staged.D64"
+    took = A.stage(source, dest, key, sides=[(2, 0xC0)])
+    box, payload0, roster0 = _roster_and_payload(source)
+    _, payload1, roster1 = _roster_and_payload(dest)
+    at = box.roster_offset + 2 * box.roster_stride + A.ROSTER_COMBAT_SIDE
+    assert took["sides"] == [{"slot": 2, "offset": at, "was": roster0[at],
+                              "now": 0xC0}]
+    assert roster1[at] == 0xC0
+    if box.roster_file is None:
+        assert _diff(payload0, payload1) == [at]
+    else:
+        assert payload1 == payload0
+        assert _diff(roster0, roster1) == [at]
+
+
+def test_a_staged_side_for_an_empty_roster_slot_is_refused(tmp_path):
+    from tests.c64.test_c64nametable import specimen_disk
+
+    name, key = _SIDE_SPECIMENS["curse"]
+    with pytest.raises(ValueError, match="empty"):
+        A.stage(specimen_disk(name), tmp_path / "s.D64", key, sides=[(7, 0x80)])
+
+
+def test_a_side_and_a_key_are_parsed():
+    assert A.parse_sides(["2=0xC0", "3=0x80,4=0"]) == [(2, 0xC0), (3, 0x80), (4, 0)]
+    for bad in ("2", "8=1", "2=0x100"):
+        with pytest.raises(ValueError):
+            A.parse_sides([bad])
+    assert A.parse_key("SPACE") == 0x20 and A.parse_key("space") == 0x20
+    assert A.parse_key("m") == ord("m")
+    with pytest.raises(ValueError):
+        A.parse_key("ESC")
+
+
+def test_a_first_bar_key_or_side_is_refused_where_it_cannot_apply(tmp_path):
+    base = ["--save", str(_fixture_disk(tmp_path)), "--disks", str(tmp_path),
+            "--steps", "load", "--out", str(tmp_path / "out")]
+    for extra in (["--title", "pool", "--stage-side", "1=0x80"],
+                  ["--title", "pool", "--first-bar-key", "SPACE"],
+                  ["--title", "curse", "--first-bar-key", "SPACE",
+                   "--attack-by", "ANNA"],
+                  ["--title", "curse", "--first-bar-key", "ESC"]):
+        with pytest.raises(SystemExit) as info:
+            A.main([*extra, *base])
+        assert info.value.code == 2
+
+
+class _BarFight:
+    """A fight of three command bars, read the way `Session.fight` reads them."""
+
+    def __init__(self, names):
+        self.names = names
+        self.pressed = []
+        self.turns = []
+
+    def battle(self):
+        member = lambda i, n, x: SimpleNamespace(  # noqa: E731
+            name=f"{n} ", index=i, slot=i, x=x, y=1, on_map=True, hp=9,
+            side=0x80 if n == "K" else 0, is_party=True)
+        foe = SimpleNamespace(name="ORC", index=8, slot=0, x=5, y=5, on_map=True,
+                              hp=4, side=1, is_party=False)
+        return SimpleNamespace(combatants=(member(0, "K", 1), member(1, "J", 2), foe))
+
+    def acting(self, battle, s=None):
+        return next(c for c in battle.combatants
+                    if c.name.strip() == self.names[len(self.turns) - 1])
+
+    def press_kernal(self, code):
+        self.pressed.append(code)
+
+    def settle(self, seconds=6.0):
+        pass
+
+    def bars(self, run, n):
+        tactic = run.bar_tactic()
+        out = []
+        for _ in range(n):
+            self.turns.append(1)
+            out.append(tactic(self, SimpleNamespace(text="MOVE DONE")))
+        return out
+
+
+def _bar_run(monkeypatch, key=None):
+    events, captures = [], []
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.log = SimpleNamespace(emit=lambda kind, **kw: events.append((kind, kw)))
+    run.capture = captures.append
+    run.first_bar_key = key
+    monkeypatch.setattr(A.S.Session, "melee_turn",
+                        lambda sess, bar: sess.pressed.append("melee") or "MOVE")
+    return run, events, captures
+
+
+def test_every_bar_logs_its_actor_and_the_first_logs_where_everyone_stands(monkeypatch):
+    run, events, _ = _bar_run(monkeypatch)
+    sess = _BarFight(["K", "J", "K"])
+    sess.bars(run, 3)
+    bars = [kw["actor"]["name"] for kind, kw in events if kind == "bar"]
+    assert bars == ["K", "J", "K"]
+    placements = [kw for kind, kw in events if kind == "placement"]
+    assert len(placements) == 1
+    who = {c["name"]: c for c in placements[0]["combatants"]}
+    assert who["K"]["side"] == 0x80 and who["K"]["position"] == [1, 1]
+    assert who["ORC"]["party"] is False
+    assert sess.pressed == ["melee"] * 3
+
+
+def test_a_member_who_never_gets_a_bar_does_not_fail_the_log(monkeypatch):
+    run, events, _ = _bar_run(monkeypatch)
+    _BarFight(["J", "J"]).bars(run, 2)
+    assert [kw["actor"]["name"] for kind, kw in events if kind == "bar"] == ["J", "J"]
+
+
+def test_the_first_bar_key_is_pressed_once_at_the_first_bar_and_captured(monkeypatch):
+    run, events, captures = _bar_run(monkeypatch, key=0x20)
+    sess = _BarFight(["K", "K", "J"])
+    got = sess.bars(run, 3)
+    assert sess.pressed == [0x20, "melee", "melee"]
+    assert captures == ["first-bar-key"]
+    assert got[0] == "KEY 0x20" and got[1:] == ["MOVE", "MOVE"]
+    assert [k for k, _ in events].count("first-bar-key") == 1
+
+
+def test_a_plain_fight_uses_the_logging_tactic_only_when_asked(monkeypatch, tmp_path):
+    from tools.c64 import laterbattle
+    from tools.curse_of_the_azure_bonds import cursethac0
+
+    class Route:
+        last_goto_steps = 1
+
+        def __init__(self, out, quiet):
+            self.file = SimpleNamespace(close=lambda: None)
+
+        def goto(self, target, steps, geo):
+            return True
+
+    tactics = []
+
+    class Session:
+        def in_combat(self):
+            return True
+
+        def await_bar(self, *a, **k):
+            return None
+
+        def fight(self, *, budget, tactic):
+            tactics.append(tactic)
+            return A.S.FightResult("ended", 1, 1.0, [], [])
+
+    monkeypatch.setattr(laterbattle, "Battle", Route)
+    monkeypatch.setattr(cursethac0, "area_geo", lambda *a: ("GEO01", object()))
+    for log_bars in (False, True):
+        run = A.CurseRun.__new__(A.CurseRun)
+        run.attack_by, run.attack_owner = "", None
+        run.attack_evidence = run.quit_evidence = None
+        run.log_bars = log_bars
+        run.log = SimpleNamespace(emit=lambda *a, **k: None)
+        run.sess, run.out = Session(), tmp_path
+        run.staged_disk, run.disks = tmp_path / "s.D64", "unused"
+        run.to_world = lambda: True
+        run.await_combat = lambda: True
+        run.capture = lambda tag: None
+        run.fight("10", "I", 5)
+    assert tactics[0] is A.S.Session.melee_turn
+    assert tactics[1] is not A.S.Session.melee_turn

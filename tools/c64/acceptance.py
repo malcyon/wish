@@ -23,10 +23,19 @@ Staging is an input, written before the boot and never after the load:
   is the bonus byte Detect Magic marks an item by;
 * `--stage-record SLOT:OFFSET=VALUE`, one byte below `0x100` in a party record;
 * `--stage-status SLOT=BYTE`, the roster status byte in the roster file or
-  embedded roster, according to the title.
+  embedded roster, according to the title;
+* `--stage-side SLOT=BYTE`, the roster block's `combat_side` (`+0x0C`) in that
+  same roster, for a title whose save slot stores only the record's first
+  `0x100` bytes.
 
 SLOT is the save slot, 0 first.  Every option repeats, and each is logged in
 bytes with what it replaced.
+
+Curse's and Silver Blades' `fight` step logs a `bar` event at every command bar
+(the acting member's name, index and square, and the bar text) and one
+`placement` event at the first (every combatant's square and side byte).
+`--first-bar-key KEY` (`SPACE`, or one printable character) is pressed once at
+that first bar, with a capture after it.
 
 `--read-at PC=GUARD:ADDR:N[,ADDR:N...]` (hex, Pool only, repeatable) is a
 stopping exec checkpoint armed at `load`: at PC it checks the code bytes there
@@ -335,6 +344,30 @@ def parse_statuses(texts) -> list[tuple[int, int]]:
                 raise ValueError(f"{item!r}: the slot is 0 to 7")
             out.append((index, _byte(value, "the status")))
     return out
+
+
+def parse_sides(texts) -> list[tuple[int, int]]:
+    """`SLOT=BYTE`, one roster `combat_side` per slot."""
+    out = []
+    for text in texts:
+        for item in text.split(","):
+            slot, sep, value = item.partition("=")
+            if not sep or not value:
+                raise ValueError(f"{item!r}: a combat side is SLOT=BYTE")
+            index = int(slot, 0)
+            if not 0 <= index < PARTY_SLOTS:
+                raise ValueError(f"{item!r}: the slot is 0 to 7")
+            out.append((index, _byte(value, "the side")))
+    return out
+
+
+def parse_key(text: str) -> int:
+    """`SPACE` or one printable character, as the PETSCII code the game reads."""
+    if text.upper() == "SPACE":
+        return 0x20
+    if len(text) == 1 and text.isprintable() and text.isascii():
+        return ord(text)
+    raise ValueError(f"{text!r}: a key is SPACE or one printable character")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -740,7 +773,8 @@ def _effect_rows(payload: bytes) -> list[list[int]]:
 
 
 def stage(src: pathlib.Path, dest: pathlib.Path, title_key: str,
-          rows=(), traits=(), items=(), record_bytes=(), statuses=()) -> dict:
+          rows=(), traits=(), items=(), record_bytes=(), statuses=(),
+          sides=()) -> dict:
     """Copy `src` to `dest` and write the named bytes into the copy's payload.
 
     Editing an input and then watching the engine compute from it is the
@@ -765,7 +799,7 @@ def stage(src: pathlib.Path, dest: pathlib.Path, title_key: str,
         roster = bytearray(body)
     took: dict = {"title": game.key, "source": str(src), "staged": str(dest),
                   "rows": [], "traits": [], "items": [],
-                  "record_bytes": [], "statuses": []}
+                  "record_bytes": [], "statuses": [], "sides": []}
     arrays = (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
               effects.EFFECT_DURATION_OFFSET, effects.EFFECT_MAGNITUDE_OFFSET)
     for slot, eid, owner, duration, magnitude in rows:
@@ -796,9 +830,18 @@ def stage(src: pathlib.Path, dest: pathlib.Path, title_key: str,
                                      "latin1"),
                                  "offset": at, "was": roster[at], "now": value})
         roster[at] = value
+    for slot, value in sides:
+        at = box.roster_offset + slot * box.roster_stride
+        if not any(roster[at:at + box.roster_stride]):
+            raise ValueError(f"roster slot {slot} is empty; a side byte would "
+                             "make it look occupied")
+        took["sides"].append({"slot": slot, "offset": at + ROSTER_COMBAT_SIDE,
+                              "was": roster[at + ROSTER_COMBAT_SIDE],
+                              "now": value})
+        roster[at + ROSTER_COMBAT_SIDE] = value
     image.write_file_inplace(game.save_file,
                              addr.to_bytes(2, "little") + bytes(payload))
-    if box.roster_file is not None and statuses:
+    if box.roster_file is not None and (statuses or sides):
         image.write_file_inplace(box.roster_file,
                                  roster_addr.to_bytes(2, "little") + bytes(roster))
     image.save(str(dest))
@@ -888,6 +931,8 @@ def decode_save(path: pathlib.Path, staged: dict) -> dict:
                          for r in staged.get("record_bytes", [])],
         "statuses": [{**s, "saved": roster[s["offset"]]}
                      for s in staged.get("statuses", [])],
+        "sides": [{**s, "saved": roster[s["offset"]]}
+                  for s in staged.get("sides", [])],
     }
     if game.key == "pool-of-radiance":
         records = [payload[box.slot(slot):box.slot(slot) + box.slot_stride]
@@ -3364,6 +3409,10 @@ class CurseRun(PoolRun):
     """Read Curse's effects with the shared reader and drive its measured fight route."""
 
     walk_encounters = False
+    #: Set by `main`: log every command bar of a plain `fight`, and press
+    #: `first_bar_key` (a PETSCII code) once at the first.
+    log_bars = False
+    first_bar_key = None
 
     def __init__(self, sess, log, out, game, points, disks, staged_disk,
                  attack_by="", quit_nonattacking=False):
@@ -3800,6 +3849,40 @@ class CurseRun(PoolRun):
                                                    actor.y + delta[1]):
             raise StepFailed("one-step control did not reach its empty square")
 
+    def bar_tactic(self):
+        """`melee_turn`, logging each command bar, with `first_bar_key` once.
+
+        `--attack-by`'s observer fails a run whose named member never gets a
+        bar, and a member under the computer never does, so this only records.
+        """
+        owner = self
+        state = {"first": True}
+
+        def tactic(sess, bar):
+            battle = sess.battle() if hasattr(sess, "battle") else None
+            actor = sess.acting(battle) if battle is not None else None
+            owner.log.emit("bar", bar=getattr(bar, "text", None),
+                           actor=None if actor is None else {
+                               "name": actor.name.strip(), "index": actor.index,
+                               "position": [actor.x, actor.y]})
+            if not state["first"]:
+                return S.Session.melee_turn(sess, bar)
+            state["first"] = False
+            owner.log.emit("placement", combatants=[
+                {"name": c.name.strip(), "index": c.index, "slot": c.slot,
+                 "position": [c.x, c.y], "on_map": c.on_map, "hp": c.hp,
+                 "side": c.side, "party": c.is_party}
+                for c in (battle.combatants if battle is not None else ())])
+            if owner.first_bar_key is None:
+                return S.Session.melee_turn(sess, bar)
+            sess.press_kernal(owner.first_bar_key)
+            sess.settle(1.0)
+            owner.capture("first-bar-key")
+            owner.log.emit("first-bar-key", key=owner.first_bar_key)
+            return f"KEY {owner.first_bar_key:#04x}"
+
+        return tactic
+
     def first_command_bar(self) -> None:
         if self.sess.await_bar((S.BAR_COMMAND,), timeout=60, interval=2.0) is None:
             self.capture("lost-first-command-bar")
@@ -4008,7 +4091,8 @@ class CurseRun(PoolRun):
         else:
             self.sess.await_bar((S.BAR_COMMAND,), timeout=60, interval=2.0)
             result = self.sess.fight(budget=float(arg or 120),
-                                     tactic=S.Session.melee_turn)
+                                     tactic=(self.bar_tactic() if self.log_bars
+                                             else S.Session.melee_turn))
         self.capture("fight-end")
         if result.outcome == S.BUDGET:
             raise self.fight_over_budget(arg, result)
@@ -4429,7 +4513,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                        traits=parse_traits(args.stage_trait),
                        items=parse_items(args.stage_item),
                        record_bytes=parse_record_bytes(getattr(args, "stage_record", [])),
-                       statuses=parse_statuses(getattr(args, "stage_status", [])))
+                       statuses=parse_statuses(getattr(args, "stage_status", [])),
+                       sides=parse_sides(getattr(args, "stage_side", [])))
     except ValueError as e:
         summary["lost"] = str(e)
         write_summary()
@@ -4500,6 +4585,10 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 if args.title == "ssb"
                 else PoolRun(sess, log, out, game, points))
         pool.deadline, pool.clock = deadline, clock
+        if args.title != "pool":
+            pool.log_bars = True
+            pool.first_bar_key = (None if getattr(args, "first_bar_key", None) is None
+                                  else parse_key(getattr(args, "first_bar_key", None)))
         if hasattr(args, "walk_fight_seconds"):
             pool.walk_fight_seconds = args.walk_fight_seconds
         pool.read_ats = tuple(parse_read_at(getattr(args, "read_at", [])))
@@ -4724,6 +4813,11 @@ def main(argv: list[str] | None = None) -> int:
                     metavar="SLOT:OFFSET=VALUE")
     ap.add_argument("--stage-status", action="append", default=[],
                     metavar="SLOT=BYTE")
+    ap.add_argument("--stage-side", action="append", default=[],
+                    metavar="SLOT=BYTE")
+    ap.add_argument("--first-bar-key", default=None, metavar="KEY",
+                    help="SPACE or one character, pressed once at the first command "
+                         "bar of the first fight (Curse and Silver Blades)")
     ap.add_argument("--steps", nargs="*", default=[],
                     help="load, camp-list [WHO], 'items WHO', 'view WHO', "
                          "'rest 8h', 'walk I', 'fight [SECONDS]', 'peek ADDR N', "
@@ -4788,6 +4882,9 @@ def main(argv: list[str] | None = None) -> int:
         parse_items(args.stage_item)
         parse_record_bytes(args.stage_record)
         parse_statuses(args.stage_status)
+        parse_sides(args.stage_side)
+        if args.first_bar_key is not None:
+            parse_key(args.first_bar_key)
         parse_checkpoints(args.checkpoint)
         parse_read_at(args.read_at)
     except ValueError as e:
@@ -4808,7 +4905,8 @@ def main(argv: list[str] | None = None) -> int:
                           [Step("load"), Step("temple-probe", "BRUTUS HEAL")])
                 or args.title != "pool" or args.issue != "700"
                 or any((args.stage_row, args.stage_trait, args.stage_item,
-                        args.stage_record, args.stage_status, args.checkpoint,
+                        args.stage_record, args.stage_status, args.stage_side,
+                        args.first_bar_key, args.checkpoint,
                         args.read_at))
                 or args.stage_only or args.preserve_specimen or args.capture_ready
                 or args.probe_step or args.joy or args.pool is not None
@@ -4832,6 +4930,11 @@ def main(argv: list[str] | None = None) -> int:
                  "cast CASTER:DISPEL MAGIC>BRUTUS/view BRUTUS/save")
     if args.attack_by and args.title != "curse":
         ap.error("--attack-by requires --title curse")
+    if args.stage_side and args.title == "pool":
+        ap.error("--stage-side: Curse and Silver Blades only "
+                 "(Pool's turndrive.py stages sides)")
+    if args.first_bar_key is not None and (args.title == "pool" or args.attack_by):
+        ap.error("--first-bar-key requires --title curse or ssb, without --attack-by")
     if any(x.verb == "cure" for x in steps) and args.title != "curse":
         ap.error("the cure step requires --title curse")
     for step in (s for s in steps if s.verb == "cast"):
