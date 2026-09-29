@@ -749,14 +749,15 @@ def test_pool_sheet_selects_named_member_and_returns_to_map_before_save(
     assert got["line"] == 3 and game.mode == "map"
 
 
-@pytest.mark.parametrize("sheet_name", ("npc", "longer"))
+@pytest.mark.parametrize("sheet_name", ("npc", "longer", "shorter"))
 def test_pool_sheet_opens_an_npcs_sheet_with_the_measured_bar(tmp_path, monkeypatch,
                                                             sheet_name):
     """`POOL_SHEET_BARS` as shipped knows the bar an NPC's sheet shows
     (`VIEW:ITEMS EXIT`, digest measured off SKULLCRUSHER's sheet), and the
     name check takes the sheet's `SKULLCRUSHER (NPC)` as the roster's
     `SKULLCRUSHER`: the roster name's cells, then a blank one.  A sheet
-    whose name runs on a letter past the roster's is another member's.  The
+    whose name runs on a letter past the roster's, or stops short of it
+    (`SKULL`), is another member's.  The
     fake bar stands in for the measured digest, the one thing a fake cannot
     draw."""
     npc_bar = b"\x18\x4b\x7e"
@@ -770,7 +771,9 @@ def test_pool_sheet_opens_an_npcs_sheet_with_the_measured_bar(tmp_path, monkeypa
     def short(n: int) -> bytes:
         return _pod_name(n)[:6]
 
-    after = {"npc": b"\x00\x18\x24\x42\x81", "longer": b"\x42"}[sheet_name]
+    after = {"npc": b"\x00\x18\x24\x42\x81", "longer": b"\x42",
+             "shorter": b"\x00\x18\x24\x42\x81"}[sheet_name]
+    keep = 3 if sheet_name == "shorter" else 6
 
     class NpcPool(FakePool):
         def __init__(self, *a, **k):
@@ -789,7 +792,7 @@ def test_pool_sheet_opens_an_npcs_sheet_with_the_measured_bar(tmp_path, monkeypa
         def capture(self):
             if self.mode == "sheet":
                 px = bytearray(_screen(npc_bar, b"").px)
-                _draw_name(px, *screens.POD_SHEET_NAME, short(self.line) + after, _WHITE)
+                _draw_name(px, *screens.POD_SHEET_NAME, short(self.line)[:keep] + after, _WHITE)
                 return dosbox.Screen(W, H, bytes(px))
             px = bytearray(super().capture().px)
             x, y = screens.POD_ROSTER["camp"]
@@ -804,13 +807,20 @@ def test_pool_sheet_opens_an_npcs_sheet_with_the_measured_bar(tmp_path, monkeypa
     game = NpcPool(tmp_path)
     d = da.Driver(game, lambda **k: None, "A")
     d.where = "map"
-    if sheet_name == "longer":
+    if sheet_name != "npc":
         with pytest.raises(da.StepFailed, match="name is not roster line 1"):
             d.sheet(1)
         return
     got = d.sheet(1)
     assert game.keys == ["v", "Escape"]
     assert got["sheet_bar"] == "90b53c9e64947226" and game.mode == "map"
+
+
+def test_pool_sheet_bars_include_the_npc_entries():
+    """The measured digests of an NPC's `VIEW:ITEMS EXIT` bar and an NPC
+    caster's `VIEW:ITEMS SPELLS EXIT` bar are in `POOL_SHEET_BARS`."""
+    assert da.POOL_SHEET_BARS["npc_items"] == "90b53c9e64947226"
+    assert da.POOL_SHEET_BARS["npc_caster"] == "740a10d0bc93a12a"
 
 
 # -- a random event ends the rest ------------------------------------------------

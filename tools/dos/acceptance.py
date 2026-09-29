@@ -254,21 +254,15 @@ POOL_DISPLAY_BAR = "98286ceaa33edc12"
 #: returns to the map with the highlight where it was.
 POOL_MAP_BARS: dict[str, str] = {"town": "809e2e1cc9504b5b",
                                  "overland": "f379c606cadd4484"}
-#: The sheet's bar itself, measured the same two ways (`no_items` on the runs
-#: above, `items` on #634's `bce4a7c742-140c8082-dos-pool-rebuild-outdoor`),
-#: plus a third for a caster: a cleric's sheet adds `SPELLS` to the bar
-#: (`VIEW ITEMS SPELLS TRADE DROP EXIT`), measured on #634's
-#: `ea7f848a84-ea7f848a-dos-pool-rebuild-outdoor`, ROLAND's sheet.  What
-#: distinguishes `no_items` from `items` is whether the sheet offers ITEMS,
-#: not where the party stands: `VIEW:TRADE DROP EXIT` (no_items) against
-#: `VIEW:ITEMS TRADE DROP EXIT` (items).  An NPC's sheet offers no TRADE or
-#: DROP: `npc_items` is `VIEW:ITEMS EXIT`, measured on SKULLCRUSHER's sheet
-#: (an NPC fighter) in three DOSBox boots of the pooled `dosbox.conf` on the
-#: town map, `WISH-SPEC-issue641-dirten-seven-resave` slot B and #736's
-#: `727-bless/twice2/resave` slots C and D, and on PRINCESS FATIMA's and MAD
-#: MAN's in the slot D boot; `npc_caster` is `VIEW:ITEMS SPELLS EXIT`, measured
-#: once, on GENHEERIS's sheet (an NPC magic-user) in that slot D boot, where
-#: the step stopped before this entry existed.  A caster carrying nothing
+#: The character sheet's bar, by `bar_signature`, one entry per kind of sheet,
+#: each measured off real screens: `no_items` is `VIEW:TRADE DROP EXIT`,
+#: `items` is `VIEW:ITEMS TRADE DROP EXIT`, `caster` is `VIEW ITEMS SPELLS
+#: TRADE DROP EXIT` (a cleric's sheet); which of the first two shows depends
+#: on whether the sheet offers ITEMS, not on where the party stands.  An NPC's
+#: sheet offers no TRADE or DROP: `npc_items` is `VIEW:ITEMS EXIT` (an NPC
+#: fighter, several captures across DOSBox runs of the pooled `dosbox.conf`
+#: on the town map) and `npc_caster` is `VIEW:ITEMS SPELLS EXIT` (an NPC
+#: magic-user, one capture).  A caster carrying nothing
 #: (`VIEW:SPELLS TRADE DROP EXIT`, presumably) is not measured and would
 #: still stop a `sheet` step.
 POOL_SHEET_BARS: dict[str, str] = {"no_items": "33ad531ed78cfa70",
