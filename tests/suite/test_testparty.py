@@ -28,7 +28,7 @@ import stat
 import gamedata
 import pytest
 
-from goldbox import c64_port, derive, levels, levelup, savegame
+from goldbox import c64_port, derive, levels, levelup, savegame, spells
 from goldbox.d64 import D64
 from goldbox.record import CharacterRecord
 from goldbox.titles import CLASS_BITS_CLASSIC
@@ -127,6 +127,36 @@ def test_astra_is_the_only_record_with_both_spell_nibbles_at_once(built):
         if any(b >> 4 for b in raw) and any(b & 0x0F for b in raw):
             both.append(str(one.record.name))
     assert both == ["ASTRA"]
+
+
+def _fillable(one) -> int:
+    """How many memorise slots the character can fill from her own spellbook:
+    her capacity at each class and spell level, counted only where she knows
+    at least one spell of that class and level."""
+    record = one.record
+    known = {spells.spell_group(i, GAME)
+             for i in spells.spells_known(bytes(record), GAME)}
+    capacity = spells.capacity_by_class(
+        dict(one.spec.levels), record.get("wisdom"), GAME)
+    return sum(slots for school, row in capacity.items()
+               for level, slots in enumerate(row, start=1)
+               if (school, level) in known)
+
+
+def test_astra_can_fill_all_twenty_memorise_slots_from_her_own_spellbook(built):
+    """A magic-user learns the highest spell the trainer offers, so ASTRA
+    holds a spell at every class and level she has room for. Cleric 5/5/2
+    plus magic-user 4/2/2 is 20, past the sixteen bytes the layout once
+    gave the list."""
+    assert _fillable(_by_name(built)["ASTRA"]) == 20
+
+
+def test_ember_knows_a_third_level_magic_user_spell(built):
+    one = _by_name(built)["EMBER"]
+    known = {spells.spell_group(i, GAME)
+             for i in spells.spells_known(bytes(one.record), GAME)}
+    assert ("magic-user", 3) in known
+    assert _fillable(one) == 8
 
 
 def test_grimstone_holds_two_different_non_zero_class_levels(built):

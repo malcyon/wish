@@ -764,7 +764,9 @@ def build(spec: Spec, game=None, rolls: str = "max", seed: int = 0,
         learn = None
         if name == "magic-user":
             offered = levelup.learnable(out.record, game, level=at + 1)
-            learn = offered[0] if offered else None
+            # Ids rise with spell level, so the last offer is the highest
+            # level on offer and the spellbook reaches every memorise slot.
+            learn = offered[-1] if offered else None
         plan = levelup.plan(out.record, name, game=game, rng=rng, learn=learn)
         cached = out.record.get("thac0")
         out.record = levelup.apply_to(out.record, plan)
