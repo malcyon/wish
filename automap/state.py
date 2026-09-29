@@ -45,14 +45,15 @@ OUTDOORS_AREA = "Wilderness"
 OUTDOORS_REGIONS = ("West of Phlan", "Stojanow Valley", "East of Phlan")
 
 #: `WISH_EXPERIMENTAL_WILDERNESS_MAP`: drawing the game's own wilderness tiles
-#: on the map while the party is on the travel grid. The truthiness rule is `wish/debugmode.py`'s: an empty string, `0` and
-#: `off` are off, so a variable somebody exported once and forgot does not put
-#: an unfinished feature in front of them.
+#: on the map while the party is on the travel grid. The truthiness rule is
+#: `wish/debugmode.py`'s: an empty string, `0` and `off` are off, so a variable
+#: somebody exported once and forgot does not put an unfinished feature in
+#: front of them.
 #:
 #: **Comes off when `#11 (Draw the wilderness on the automapper)` closes**,
-#: which needs Donald's approval of the page from a screenshot, the eight
-#: heading values confirmed against the running game, and a live walk across a
-#: seam.
+#: which needs a `grab()` of the world page in both views, posted on that
+#: issue as our own visual check, and the live walk across a seam, run and
+#: posted there.
 WILDERNESS_ENV = "WISH_EXPERIMENTAL_WILDERNESS_MAP"
 _TRUE = ("1", "true", "yes", "on")
 
@@ -619,14 +620,16 @@ class Automapper:
         return changed
 
     def _poll_outdoors(self, fix: Fix) -> bool:
-        """Track the party's presence on the travel grid, and nothing else.
+        """Track the party's square, the resident wilderness window and the
+        travel heading on the travel grid.
 
-        No `GEO` reaches out there (`#11 (Draw the wilderness on the
-        automapper)`'s to build), so nothing is recorded into the explored
-        set, no edge is drawn into the fingerprint, and the periodic
-        `_check_resident` is skipped outright: no `GEO` is resident on the
-        travel grid (`docs/140-loaded-files-cache.md`), so it could only ever
-        answer `UNKNOWN` for the cost of a read.
+        No `GEO` reaches out there, so nothing is recorded into the explored
+        set or the fingerprint, and the periodic `_check_resident` is skipped
+        outright: no `GEO` is resident on the travel grid
+        (`docs/140-loaded-files-cache.md`), so it could only ever answer
+        `UNKNOWN` for the cost of a read. The window the game has resident
+        and the heading are read into `state.window` and `state.heading`, and
+        the wilderness page draws from them.
 
         `state.facing`, `area`, `geo`, `exploration`, `notes`, `candidates`
         and the fingerprint are the party's last indoor ones and are left

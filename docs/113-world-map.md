@@ -234,8 +234,10 @@ answers unknown 2 on its own.
 
 ## What not to do
 
-* **Do not draw the unvisited world.** It is all on the disk; showing it is
-  giving away the game.
+* **The map draws the whole world, visited or not.** It reads every square from
+  the disks and keeps no record of where the party has been, so the party's
+  marker is the only sign of where it is; `137-wilderness-automap.md`, section
+  6, has what that includes and what is undecided.
 * **Do not read a terrain code against another map's table.** `2E` is walkable
   mountain on map `19` and solid on map `1B`.
 * **Do not reuse `GEO` passability logic.** There are no walls, no doors and no
