@@ -3114,6 +3114,12 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
                 f"holds up to {top}; clamped")
 
     character_level = num("level") or max(slots)
+    # A current class with no level data still holds its own bit; the engine
+    # rule in `_class_mask` decides only the former classes.
+    class_mask = _class_mask(slots, former_slots, character_level)
+    for class_name in classes:
+        if not slots[CLASS_LEVEL_SLOTS.index(CLASS_LEVEL_SLOT[class_name])]:
+            class_mask |= CLASS_BIT[class_name]
     writer = PodWriter(
         name=name[:NAME_LENGTH],
         race=RACES.index(race_name),
@@ -3136,7 +3142,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         level=character_level,
         saving_throws=tuple(num(k) for k in SAVE_KEYS),
         thief_skills=tuple(num(k) for k in THIEF_KEYS),
-        class_bits=_class_mask(slots, former_slots, character_level),
+        class_bits=class_mask,
         treasure_share=(None if treasure_share is None
                         else int(treasure_share.value)),
         status=status,

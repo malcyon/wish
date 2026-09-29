@@ -573,6 +573,20 @@ def _dual_class_magic_user(former_cleric: int) -> "amiga_pod.PodWriter":
 def test_a_class_passed_in_level_keeps_its_bit_and_one_not_yet_passed_does_not():
     assert _dual_class_magic_user(11).class_bits == 3
     assert _dual_class_magic_user(13).class_bits == 1
+    # The rule is strictly former < level: a former level equal to the
+    # current one has not been passed.
+    assert _dual_class_magic_user(12).class_bits == 1
+
+
+def test_a_current_class_with_no_level_data_still_gets_its_bit():
+    raw = amiga_pod.PodWriter(
+        name="MAGE", hit_points_max=9, level=3,
+        character_class=amiga_pod.CLASSES.index("MAGIC-USER"),
+        class_levels=(0, 0, 0, 0, 0, 3, 0),
+        class_bits=amiga_pod.CLASS_BIT["magic-user"]).to_bytes()
+    char = amiga_pod.pod_to_neutral(raw)
+    char.fields.pop("levels")
+    assert amiga_pod.write_pod(char)[0].class_bits == 1
 
 
 def test_pending_memorised_spells_keep_the_order_they_were_saved_in():
