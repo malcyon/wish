@@ -631,15 +631,17 @@ Two more have closed since:
 
 * ~~a character **wounded and then saved**~~ — **found**, in `PORSAVE4.D64`:
   LADY KATHERINE at 4 of 5 hit points, which confirmed roster `+0x19`. It does
-  **not** settle `0x119` in an export, because no wounded character has been
-  exported.
+  **not** settle `0x119` in an export, because that save holds no export.
+* ~~a character **exported while wounded**~~ — **found**, as
+  `WISH-SPEC-por-c64-wounded-export`: the game's own REMOVE CHARACTER FROM PARTY
+  wrote BULWARK with `0x119` = 72 against `0x076` = 112, which settles `0x119`
+  as current hit points in an export.
 * ~~the party **moved a few squares** between two saves~~ — **done**, four
   saves one action apart, which located x, y, facing, the previous square and
   the counter in the `SAVEDGAME0` header.
 
 Still wanted, and each needs a save we make ourselves:
 
-* a character **exported while wounded** — the one step that settles `0x119`;
 * a character **drained a level** by undead. Not for the "current/true level
   pair", which does not exist: `0x0A0` is the current level and `0x0A1`/`0x0A2`
   are the drain delta, both read off the drain and restoration routines. What is

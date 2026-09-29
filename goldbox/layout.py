@@ -1136,8 +1136,9 @@ _DECLARED: Sequence[Field] = (
            "16-bit LE, and genuinely current hit points rather than a second "
            "copy of the maximum: GEN $0BD0 initialises it from hp_max, and "
            "both the trainer and the drain routine move it independently "
-           "afterwards. It equals hp_max in every specimen only because no "
-           "wounded character has yet been exported. Note it lies beyond the "
+           "afterwards. A wounded export confirms it: the game's own REMOVE "
+           "CHARACTER FROM PARTY wrote 72 here against 112 in hp_max "
+           "(WISH-SPEC-por-c64-wounded-export). Note it lies beyond the "
            "256 bytes a save slot holds, so it exists in an export and not in "
            "a save"),
     _field(0x10D, 1, _U8, "party_order", "Party order", _MAYBE,

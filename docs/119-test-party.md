@@ -1,54 +1,51 @@
 # A high-level party for automated testing — plan
 
-**Status: the generator exists and makes all six characters.**
-`tools/suite/testparty.py`, 2026-09-08. Twenty-nine trainings driven through the
-game's own school in 2026-08-22 gave the level-up specification, every one
-diffed across the 580-byte record — the tables, the rules and the corrections
-are in §7 — and the generator replays that specification rather than reading
-the tables again. **The disk that party was on, `drive/P18PARTY.D64`, is
-gone from this machine**, which is the argument for a generator made for us:
+**Status: the generator makes all six characters, equipped, and the game
+agrees with it.** `tools/suite/testparty.py` replays the level-up specification
+that twenty-nine trainings driven through the game's own school produced, every
+one diffed across the 580-byte record; the tables, the rules and the
+corrections are in §7. The disk that party was on, `drive/P18PARTY.D64`, is gone
+from this machine, which is the argument for a generator:
 `python3 tools/suite/testparty.py --disk $TMPDIR/TESTPARTY.D64` rebuilds an
 equivalent one in about a second.
 
-**And the game agrees with it.** `tools/suite/testpartyrun.py` booted the generated
-disk on 2026-09-08, loaded it, put the party in the world at (9, 13) indoors
-and drew all six `VIEW` sheets. Level, experience, hit points, armour class and
-THAC0 come back through the game's own sheet routine and its own charset, and
-six of six match what the generator printed -- BULWARK at LEVEL 8, EXP 130000,
-HITPOINTS 72, AC 8 and THACO 11, which is his base 13 with the 18/76 strength
-bonus on it. §6's third gate, the one that breaks the circle, is passed.
+**What the boots have shown.** `tools/suite/testpartyrun.py` boots the
+generated disk, loads it, puts the party in the world and draws every `VIEW`
+sheet through the game's own routine and charset:
 
-**The party is equipped as of 2026-09-08.** `Spec.equipment` names items and
-`tools/suite/testparty.equip` copies the game's own sixteen-byte records out of the
-`ITEMFILE*` lists on the player's sides, so nothing is built from a name and a
-type and the bytes nobody here understands -- `+13` to `+15`, where an item's
-granted effect lives -- come along whole. BULWARK carries a **full sixteen**,
-which is the ceiling `.claude/rules/conversions.md` names and which no record
-this project generated had ever reached.
+* Level, experience, hit points and armour class match what the generator
+  printed for all six. BULWARK reads LEVEL 8, EXP 130000, HITPOINTS 72 and, with
+  his items, THACO 9. §6's third gate, the one that breaks the circle, is
+  passed.
+* BULWARK carries a full sixteen items, the ceiling `.claude/rules/conversions.md`
+  names, and his item list draws all sixteen rows.
+* The cache an armed character implies holds. Un-readying and re-readying gear
+  moves roster `+0x10` (PILFER's magic armour: 54, 48, 54), and toggling the
+  alignment-locked long sword moves only `+0x0E`, `+0x15` and `+0x17`; `+0x11`
+  and `+0x19` stay put. The game's own rebuild of `+0x1B` agrees with the generator's
+  movement of 3.
+* The party walks New Phlan, crosses into the Slums and meets a wandering fight.
+* REMOVE CHARACTER FROM PARTY writes BULWARK's export with `0x119` = 72 against
+  `0x076` = 112, which settles `0x119` as current hit points
+  (`WISH-SPEC-por-c64-wounded-export`).
+* An unarmed character holds `30 00 00 01 00 02 00 bb 00` in the roster tail --
+  armour bonus `48 + 0`, one blow, `1d2`, then the strength damage bonus -- as
+  the three `.chr` exports in `tests/fixtures/` show, and the generator writes
+  that pattern.
 
-**And that work found the reason the 2026-09-08 sheets all said `DAMAGE 0D0`.**
-It was read at the time as "the generator's no-items gap, seen from the
-player's side". It is not: the three `.chr` exports in `tests/fixtures/` show
-an *unarmed* character holds `30 00 00 01 00 02 00 bb 00` in the roster tail --
-armour bonus `48 + 0`, one blow, **`1d2`**, then the strength damage bonus --
-and the generator was writing nine zeros with the bonus dropped in. The game
-was printing our own bytes back. Fixed, and
-`test_an_unarmed_tail_is_the_byte_pattern_the_three_exports_hold` pins it.
+**The combat icon** of all eight party entries is the game's creation default,
+the figure `INIT` seeds, and not zeros, which the game draws as a solid block of
+black hooks. `--keep-icons` leaves the base disk's icons untouched instead. No
+boot has yet photographed the party's figures in a fight: the battlefield had
+not drawn when the last screenshot was taken.
 
-**What the generator still cannot make**: no combat icon, which is `#130 (A
-converted DOS party arrives with six identical combat figures, not its own)`'s
-gap from the other side; and no trait ceiling, because Pool of Radiance's C64
-seeds a trait only to an elf and a half-elf.
+**What the generator cannot make**: a trait ceiling, because Pool of
+Radiance's C64 seeds a trait only to an elf and a half-elf.
 
-**What no boot has confirmed**: the cache an armed character implies. The
-armour class at `0x10F`, the THAC0 at `0x10E` and the nine tail bytes are
-`goldbox.derive`'s arithmetic rather than the game's, and two of the nine are
-UNVERIFIED for an armed character -- `+0x10`'s armour bonus with *magical*
-armour on (PILFER's LEATHER ARMOR +4 is in the loadout to answer it) and
-`+0x11`'s attack count, which `goldbox/savegame.py` grades PROBABLE. One boot
-settles both: load the party, un-ready and re-ready a weapon, and read
-`$8300 + slot * 0x20` for thirty-two bytes before and after. The engine's own
-rebuild is `LIBRARY $36A0`.
+**What no boot has reached**: BULWARK's 3/2 attacks in a fight, a level drain,
+more than sixteen spells memorised, a sturdy race with constitution below 11,
+and `0x100` other than 1.
+
 
 The training hall is **area 11**, which has
 no map of its own: it reuses `GEO00`, so the schools are New Phlan's own
@@ -113,7 +110,7 @@ is the source for levels and thresholds.
 | 1 | WARDEN | human | F | cleric | 6 | 30,000 | the turning question, `0x0A3` vs `0x0A4`; cleric spell slots 3/3/2 **plus a WIS 18 bonus** → the high nibble of `spells_castable` at `0x0EE` above 1; the spellbook bitmask with every cleric id set |
 | 2 | EMBER | human | M | magic-user | 6 | 42,000 | the top spell level the game implements (4/2/2, third-level spells); the low nibble of `0x0EE`; a spellbook that is a *subset*, which is the only thing distinguishing `0x078` from "all bits set"; THAC0 19, the class's only step |
 | 3 | PILFER | halfling | M | thief | 9 | 115,000 | **the highest level anywhere in the game's tables.** Every one of the eight thief skills non-trivial and none at its level-1 value; read-languages was **−5** for a halfling at level 1, so this is the signed field crossing zero. Also the small size flag at `0x099` |
-| 4 | BULWARK | human | M | fighter | 8 | 130,000 | the class ceiling: THAC0 13, hp_max 112, and **3/2 attacks**, which is the only reason to care about `0x0D9`. Carried **wounded** (hp_current < hp_max) because a wounded *export* is still wanted and settles `0x119` |
+| 4 | BULWARK | human | M | fighter | 8 | 130,000 | the class ceiling: THAC0 13, hp_max 112, and **3/2 attacks**, which is the only reason to care about `0x0D9`. Carried **wounded** (hp_current < hp_max), which is what made the wounded export that settles `0x119` |
 | 5 | GRIMSTONE | dwarf | M | fighter/thief | F7 / T8 | 150,000 | the specimen `docs/90-specimens.md` names as missing: **a multi-class character above level 1**, with two *different* non-zero entries in the per-class array at `0x0C9`–`0x0CC`. That is the only thing that can separate `0x0A0` ("character level") from "the single class's level". Plus `class_bits` 12, infravision 6, size small |
 | 6 | ASTRA | half-elf | F | cleric/fighter/magic-user | **5** / 6 / 6 | 135,000 | the widest class bitmask the game supports (`class_bits` 11) and **the only record in which both nibbles of `0x0EE` are non-zero at once** — cleric capacity and magic-user capacity in the same byte. Also the half-elf trait seed 124 at `0x0AD` |
 
@@ -496,10 +493,7 @@ Six of the blockers in §3's table are now answerable, and one is not:
   POSSIBLE`. `GEN $1E21`'s clamp sits behind that refusal and has still never
   been seen to fire.
 
-### Still not built
-
-**All four of these are built now** — `tools/suite/testparty.py`, 2026-09-08 — and
-what is left is narrower than the list they replaced:
+### Built
 
 | was missing | now |
 |---|---|
@@ -508,10 +502,8 @@ what is left is narrower than the list they replaced:
 | a wounded fighter 8 on disk | BULWARK, 72 of 112, wounded after the last training because the trainer heals |
 | the generator itself | `tools/suite/testparty.py`, six records in about a second |
 
-**What is left, in order.** The generator's characters carry nothing, so
-nobody is armed, the roster's damage dice are zero and the sixteen-item
-ceiling is untouched — `Spec.inventory` is the hook and the item templates are
-on the player's own disks. Nothing generated has been **loaded in the game**:
-`docs/119-test-party.md` §6's third and fourth gates, the ones that break the
-circle, are the driven run this ticket still wants. And `0x0A4`'s value stays
+**What is left.** The generated party has been loaded and its sheets read
+(§6's third gate), and the roster cache is confirmed; §6's fourth gate, the
+game's *treatment* of the party in a fight, is not: no boot has photographed the
+combat figures or shown BULWARK's 3/2 attacks. `0x0A4`'s value stays
 unexplained.
