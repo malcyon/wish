@@ -70,10 +70,9 @@ TOLERANCE = 120
 
 #: The challenge screen's own layout, measured on the captures
 #: `#28 (Decode an Amiga saved game, not just a character file)` left behind:
-#: its text lines sit on **alternate** character rows, and every one of them
-#: starts at **column 4**.  Neither says anything about what the text is; they
-#: are what turns an ink bounding box into the absolute row and column the
-#: reader indexes by.
+#: text lines sit on alternate character rows, the first at column 4.  Neither
+#: says anything about what the text is; they are what turns an ink bounding
+#: box into the absolute row and column the reader indexes by.
 ROWS_APART = 2
 LEFT_MARGIN = 4
 
@@ -145,8 +144,8 @@ def fit_grid(bands: list[tuple[int, int, int, int]]):
     Each band is `(top, bottom, left, right)` in captured pixels.  The pitch
     comes from the **closest** pair of band tops, because that pair is two
     character rows apart and every other pair is a multiple of it; the origin
-    then follows from the first band's top and from the leftmost ink on the
-    screen, which is a glyph that fills its cell to the left edge.
+    then follows from the first (topmost) band's top and its leftmost ink,
+    which is taken to be a glyph that fills its cell to the left edge.
 
     `None` when there are too few bands to measure a pitch, which is every
     screen that is not the challenge.
@@ -157,8 +156,9 @@ def fit_grid(bands: list[tuple[int, int, int, int]]):
     pitch = min(b - a for a, b in zip(tops, tops[1:])) / ROWS_APART
     if pitch <= 0:
         return None
-    x0 = min(band[2] for band in bands) - LEFT_MARGIN * pitch
-    return x0, tops[0] - ROWS_APART * pitch, pitch
+    first = min(bands, key=lambda band: band[0])
+    x0 = first[2] - LEFT_MARGIN * pitch
+    return x0, first[0] - ROWS_APART * pitch, pitch
 
 
 #: How far apart two inked rows may be and still be one band.  The private

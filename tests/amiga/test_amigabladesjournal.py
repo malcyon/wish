@@ -69,13 +69,11 @@ def test_the_pitch_comes_from_the_closest_pair_of_lines():
     assert (x0, y0) == (122 - journal.LEFT_MARGIN * 16, 91 - 2 * 16)
 
 
-def test_the_origin_is_the_leftmost_ink_on_the_whole_screen():
-    # Glyphs sit differently inside their cells -- a bracket is inset where a
-    # W fills the cell -- so the leftmost ink of any line is the one that
-    # names the margin, not the leftmost ink of the first line.
-    bands = [(91, 104, 130, 375), (123, 136, 122, 455), (155, 168, 126, 423)]
-    x0, _, pitch = journal.fit_grid(bands)
-    assert x0 == 122 - journal.LEFT_MARGIN * pitch
+def test_the_origin_comes_from_the_first_stripe():
+    # A later band's ink does not move the origin.
+    bands = [(300, 313, 200, 480), (332, 345, 191, 470), (364, 377, 200, 440)]
+    x0, y0, pitch = journal.fit_grid(bands)
+    assert (x0, y0) == (200 - journal.LEFT_MARGIN * pitch, 300 - 2 * pitch)
 
 
 def test_too_few_lines_is_not_a_challenge():
@@ -590,7 +588,7 @@ def _stripes_frame(path, stripes, *, x0=58.0, y0=59.0, pitch=16, size=(1920, 108
 
 
 def test_a_stripe_starting_mid_cell_does_not_move_the_grid(tmp_path):
-    # Only the leftmost ink on the whole frame names the margin, so a stripe
+    # Only the first stripe's ink places the grid, so a stripe
     # inked from the middle of its first cell must not decide the origin, and
     # extra stripes must not change the fit.
     PIL_Image = pytest.importorskip("PIL.Image")
