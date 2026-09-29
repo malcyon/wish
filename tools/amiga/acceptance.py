@@ -109,6 +109,60 @@ GUARD_LIMIT = 120.0
 POST_WRITE_WAIT = 20.0
 BOOT_LOG = r"C:\Users\Public\Documents\Amiga Files\WinUAE\winuaebootlog.txt"
 
+#: The most draws one boot may make; the route's own camp save is the first.
+RULEBOOK_DRAWS_MAX = 15
+#: Seconds one draw's question may take to answer, for the deadline check; an allowance, not a measurement.
+DRAW_ANSWER_SECONDS = 60.0
+
+
+class DrawCounter:
+    """Stages the next camp save's question in the running game, through the private helper.
+
+    `target` is an `AmigaTarget`. `lane_check` proves this run still holds the WinUAE lane and
+    raises when it does not; it runs before every write.
+    """
+
+    def __init__(self, target: Any, savecount: Any, lane_check: Callable[[], Any]) -> None:
+        self.target, self.savecount, self.lane_check = target, savecount, lane_check
+        self.base: int | None = None
+
+    def locate(self) -> None:
+        """Find the running game once; a title that is not there fails here, before any save."""
+        from tools.amiga.amigatarget import A4_BIAS  # noqa: PLC0415
+
+        if self.base is None:
+            self.base = self.target.locate() + A4_BIAS
+
+    def stage(self) -> None:
+        self.locate()
+        try:
+            self.lane_check()
+        except Exception as exc:
+            raise RouteError(f"the lane claim was not confirmed: {type(exc).__name__}: {exc}") from exc
+        self.savecount.stage_live(self.target.read, self.target.write, self.base)
+
+
+def _step_wait(min_waits: dict[str, float], state: str, kind: str) -> float:
+    return min_waits.get(state, POST_WRITE_WAIT if kind == "write" else 0)
+
+
+def _check_draws_fit(draws: int, steps: Any, min_waits: dict[str, float],
+                     deadline_seconds: float) -> None:
+    """Refuse a run whose draws cannot fit the route time, by the steps' minimum waits.
+
+    The route itself is estimated by the sum of its minimum waits, and each further draw by
+    its three steps' waits plus `DRAW_ANSWER_SECONDS`; the route time is the deadline less
+    its cleanup reserve.
+    """
+    route = sum(_step_wait(min_waits, state, kind) for _, state, kind in steps)
+    each = sum(_step_wait(min_waits, state, kind) for _, state, kind in steps[-3:]
+               ) + DRAW_ANSWER_SECONDS
+    needed = route + (draws - 1) * each
+    available = deadline_seconds - min(300.0, deadline_seconds / 2)
+    if needed > available:
+        raise RouteError(f"{draws} rulebook draws need about {needed:.0f}s of route time "
+                         f"and the deadline leaves {available:.0f}s")
+
 
 def _diagnose_bytes(guest: Any, holder: str, address: int, length: int,
                     limit: Callable[[float], float]) -> tuple[bytes, list[dict[str, Any]]]:
@@ -771,7 +825,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               title: AmigaTitle | None = None, reload: bool = False,
               published_disk_one: bool = False, published_name: str | None = None,
               preserve_specimen: bool = False, specimen_issue: str | None = None,
-              diagnose: bool = False, boot_limit: float = 300) -> dict[str, Any]:
+              diagnose: bool = False, boot_limit: float = 300,
+              rulebook_draws: int | None = None, target: Any = None,
+              lane_check: Callable[[], Any] | None = None) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -788,6 +844,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     measuring one; the route states never fall back. It reads slots B and D
     back, and `answer(journal_python, holder, adf, timeout)` stands in for the
     answerer's subprocess.
+
+    `rulebook_draws` (Silver Blades accept only) makes that many camp saves in one boot: the
+    route's own, then each further one after the private helper's `stage_live` has run on
+    `target` (an `AmigaTarget`), once `lane_check` has confirmed the lane claim. A draw that
+    reaches EXIT GAME with no question fails the run; `result["rulebook"]` lists each. The
+    run is refused before the claim when the deadline cannot cover the draws.
 
     `reload` runs a title with no save letters: it loads the manifest's `loaded_letter`, walks
     the route, then waits for the screen to show that slot's place (`place_state` of `state_a`)
@@ -820,6 +882,19 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("a title brings its own route and write keys")
     if reload and title is None:
         raise RouteError("reload needs a title")
+    counter = None
+    if rulebook_draws is not None:
+        if not accept or title is not None:
+            raise RouteError("rulebook draws are for the Silver Blades accept route")
+        if not 1 <= rulebook_draws <= RULEBOOK_DRAWS_MAX:
+            raise RouteError(f"rulebook draws are 1 to {RULEBOOK_DRAWS_MAX}")
+        if rulebook_draws > 1:
+            if target is None or lane_check is None:
+                raise RouteError("rulebook draws need a memory target and a lane check")
+            savecount = route_silver_blades._load_savecount()
+            if not (hasattr(savecount, "stage_live") and hasattr(savecount, "SaveCountError")):
+                raise RouteError("the private savecount module lacks stage_live or SaveCountError")
+            counter = DrawCounter(target, savecount, lane_check)
     if accept or reload:
         if measure:
             raise RouteError("accept and measure are separate modes")
@@ -865,6 +940,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     if accept and journal_python is not None and (title is None or published_disk_one):
         (preflight or journal_preflight)(journal_python)
     min_waits = {**(title.min_waits if title else {}), **(min_waits or {})}
+    if counter is not None:
+        _check_draws_fit(rulebook_draws, ACCEPT_ROUTE, min_waits, deadline_seconds)
     write_keys = tuple(k.upper() for k in write_keys)
     if not all(write_keys):
         raise RouteError("write keys must not contain an empty entry")
@@ -989,6 +1066,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         table = SILVER_BLADES_INTERSTITIALS
     title_limit = title.title_limit if title else TITLE_LIMIT
     boot_span = title.boot_span if title else MEASURE_TITLE_SPAN
+    if counter is not None:
+        result["rulebook"] = []
     landed: dict[str, Any] = {"state": None}
     if accept and answer is None and journal_python is not None:
         answer = functools.partial(run_journal_answer, journal_python)
@@ -1101,6 +1180,25 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
 
     inserts_done: dict[str, int] = {}
 
+    def keep_interstitial(crop: pathlib.Path, screen: str, n: int) -> None:
+        """Copy the matched crop and its raw grab under their own names, before the screen is acted on.
+
+        Only a run of several draws keeps them; a failed copy is logged and the run goes on.
+        The next grab of the same state overwrites `crop`, so without this the screen that
+        was answered is gone by the time anybody wants to see it.
+        """
+        try:
+            while (kept := shots / f"{crop.stem}-{screen}-{n}.png").exists():
+                n += 1
+            shutil.copyfile(crop, kept)
+            raw = crop.with_name(f"{crop.stem}.raw.png")
+            if raw.exists():
+                shutil.copyfile(raw, kept.with_name(f"{kept.stem}.raw.png"))
+        except OSError as exc:
+            log("interstitial_keep_error", screen=screen, error=f"{type(exc).__name__}: {exc}")
+            return
+        log("interstitial_kept", screen=screen, crop=str(kept))
+
     def interstitial(state: str, crop: pathlib.Path, done: dict[str, int],
                      inserts_only: bool = False) -> bool:
         """Act on a known screen that is not the wanted one, by the title's table.
@@ -1119,6 +1217,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     or not guard(screen, crop)):
                 continue
             count[screen] = count.get(screen, 0) + 1
+            if counter is not None:
+                keep_interstitial(crop, screen, count[screen])
             if action[0] == "answer":
                 result["events"].append({"interstitial": screen})
                 log("interstitial", screen=screen, key=None)
@@ -1259,6 +1359,37 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 return last
             wait(TITLE_POLL if title else MEASURE_BOOT_POLL)
 
+    def rulebook_draws_after_route() -> None:
+        """Each further draw: stage the question, camp-save to slot D, answer it, camp again."""
+        save, write, back = steps[-3:]
+        n = len(steps)
+        for draw in range(2, rulebook_draws + 1):
+            record = {"draw": draw, "asked": False, "answer": None, "exit_game": False}
+            result["rulebook"].append(record)
+            try:
+                counter.stage()
+            except counter.savecount.SaveCountError as exc:
+                log("draw_error", draw=draw, error=str(exc))
+                raise RouteError(f"draw {draw}: {exc}") from None
+            first = len(result["events"])
+            try:
+                for key, state, kind in (save, write, back):
+                    n += 1
+                    perform(key, kind, state, n)
+                    reach(state, f"{n:02d}-{state}", _step_wait(min_waits, state, kind),
+                          strict=True)
+                    events = result["events"][first:]
+                    record["asked"] = any(
+                        e.get("interstitial") == "journal" and "key" not in e for e in events)
+                    record["answer"] = next(
+                        (e["answer"] for e in reversed(events) if "answer" in e), None)
+                    if state == "exit_game":
+                        record["exit_game"] = True
+                        if not record["asked"]:
+                            raise RouteError(f"draw {draw} reached exit_game with no question")
+            finally:
+                log("draw", **record)
+
     try:
         receipt = guest.claim(holder, timeout=route_limit(30))
         if receipt != f"ok claimed by {holder}":
@@ -1352,6 +1483,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     result["events"][-1]["crop_changed"] = digest != previous_world
                 if state == "world":
                     previous_world = digest
+                    if counter is not None:
+                        counter.locate()
+            if counter is not None:
+                rulebook_draws_after_route()
             if reload:
                 # The world bar matched before this point, so the place needs no first wait.
                 place, other = manifest["state_a"], manifest["other_place"]
@@ -1876,6 +2011,21 @@ def parse_write_keys(text: str) -> tuple[str, ...]:
     return keys
 
 
+def _draw_options(args: argparse.Namespace, holder: str) -> dict[str, Any]:
+    """`run_recon`'s rulebook keywords, with the memory target only when there is more than one draw."""
+    draws = getattr(args, "rulebook_draws", None)
+    if draws is None:
+        return {}
+    if draws < 2:
+        return {"rulebook_draws": draws}
+    from automap import amiga  # noqa: PLC0415
+
+    pipe = amiga.WinuaePipe()
+    return {"rulebook_draws": draws,
+            "target": amiga.AmigaTarget(pipe, amiga.MACHINES["secret-of-the-silver-blades"]),
+            "lane_check": lambda: pipe.drives(holder)}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1900,6 +2050,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--source", type=pathlib.Path)
     p.add_argument("--staged-from", type=pathlib.Path)
     p.add_argument("--issue")
+    p.add_argument("--save-count", type=int, default=None,
+                   help="Silver Blades only: a value for the private helper that stages the prepared slot")
     p.add_argument("--disk3", type=pathlib.Path, default=None,
                    help="darkness-reload only: the game-written disk 3 an accept run fetched")
     p.add_argument("--disk3-sha256", default=None, help="darkness-reload only: that disk's SHA-256")
@@ -1924,6 +2076,8 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--expect", default=None,
                    help="NAME:ID:MINUTES:DATA, checked against the route's later slot")
     a.add_argument("--journal-python")
+    a.add_argument("--rulebook-draws", type=int, default=None,
+                   help=f"Silver Blades only: camp saves to make in this boot, 1 to {RULEBOOK_DRAWS_MAX}")
     a.add_argument("--preserve-specimen", action="store_true",
                    help="register and check a successful published or substituted game's fetched "
                         "save disk before release")
@@ -1953,7 +2107,8 @@ def main(argv: list[str] | None = None) -> int:
                 if args.saveas_report is None:
                     raise RouteError("published disk one needs --saveas-report")
                 if any((args.source, args.staged_from, args.disk3,
-                        args.disk3_sha256, args.accept_summary, args.substitute)):
+                        args.disk3_sha256, args.accept_summary, args.substitute,
+                        args.save_count is not None)):
                     raise RouteError("published disk one takes only a Save As report")
                 print(prepare_published(args.title, args.run_id, args.saveas_report,
                                         args.issue or PUBLISHED_ISSUE))
@@ -1977,8 +2132,10 @@ def main(argv: list[str] | None = None) -> int:
                         or args.accept_summary is not None or args.substitute is not None
                         or args.substitute_letter != "A"):
                     raise RouteError("Silver Blades prepare takes no title-only options")
-            elif args.source is not None or args.staged_from is not None or args.issue is not None:
-                raise RouteError("--source, --staged-from and --issue require --title ssb")
+            elif (args.source is not None or args.staged_from is not None
+                  or args.issue is not None or args.save_count is not None):
+                raise RouteError("--source, --staged-from, --issue and --save-count "
+                                 "require --title ssb")
         elif not silver_blades and args.attempt is None:
             raise RouteError("--attempt is required for this title")
         if (args.command == "measure" and not silver_blades
@@ -1989,13 +2146,17 @@ def main(argv: list[str] | None = None) -> int:
                 raise RouteError("Silver Blades accept requires --journal-python")
             if not silver_blades and args.journal_python is not None:
                 raise RouteError("--journal-python requires --title ssb")
+            if args.rulebook_draws is not None and (not silver_blades or args.published_disk_one):
+                raise RouteError("--rulebook-draws requires --title ssb without "
+                                 "--published-disk-one")
         expect = parse_expect(args.expect) if getattr(args, "expect", None) else None
         with terminating():
             if args.command == "prepare":
                 if silver_blades:
                     print(route_silver_blades.prepare(
                         args.source, args.run_id, staged_from=args.staged_from,
-                        issue=args.issue or "672"))
+                        issue=args.issue or "672",
+                        **({} if args.save_count is None else {"save_count": args.save_count})))
                     return 0
                 print(prepare(TITLES[args.title], args.run_id, specimen=args.disk3,
                               specimen_sha256=args.disk3_sha256,
@@ -2044,6 +2205,7 @@ def main(argv: list[str] | None = None) -> int:
                     published_disk_one=args.published_disk_one,
                     published_name=args.title if args.published_disk_one else None,
                     journal_python=getattr(args, "journal_python", None),
+                    **_draw_options(args, holder),
                     preserve_specimen=getattr(args, "preserve_specimen", False),
                     specimen_issue=getattr(args, "specimen_issue", None),
                     **({"accept": True,

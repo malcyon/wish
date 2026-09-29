@@ -7,14 +7,18 @@ import os
 import signal
 import subprocess
 import sys
+import types
 
 import pytest
 
+from automap.amiga import GuestError
 from goldbox.amiga_adf import AmigaDisk
 from tests.amiga import test_amigaacceptance_measure as measure
+from tests.amiga.fakes import FakeGameMemory, fake_stage_helper
 from tests.amiga.test_amigaacceptance import _audio_proof, _sha
 from tests.amiga.test_amigaacceptance_measure import ScreenGuest, _keys, _menu_manifest
 from tools.amiga import acceptance, route_silver_blades, winuaesession
+from tools.amiga.amigatarget import A4_BIAS
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
 BEFORE = {"area": 16, "x": 3, "y": 5, "facing": 2}
@@ -759,3 +763,218 @@ def test_an_injected_answerer_needs_no_journal_interpreter_for_the_preflight(
         tmp_path, clock, readings):
     guest, result = _accept(tmp_path, clock, journal_python=None, preflight=None)
     assert result["success"] is True
+
+
+class DrawGuest(AcceptGuest):
+    """A camp save to slot D asks its question when the helper has staged one, then needs staging again."""
+
+    def __init__(self, clock, helper, *, questions=None):
+        super().__init__(clock)
+        self.helper, self.pending, self.questions, self.log = helper, False, questions, []
+
+    def press(self, holder, key, timeout=None):
+        super().press(holder, key, timeout)
+        if key == "S" and self.helper.calls:
+            self.log.append("S")
+        if key == "D" and self.helper.armed and self.questions != 0:
+            self.pending, self.helper.armed = True, False
+            self.questions = None if self.questions is None else self.questions - 1
+
+
+def _draws(tmp_path, clock, monkeypatch, draws, *, questions=None, memory=None, refuse_at=None,
+           lane_check=None, **kw):
+    memory = memory or FakeGameMemory()
+    log = []
+    helper = fake_stage_helper(memory, log, refuse_at=refuse_at)
+    monkeypatch.setattr(route_silver_blades, "_load_savecount", lambda: helper)
+    guest = DrawGuest(clock, helper, questions=questions)
+    guest.log = log
+    asked = lambda p: p.stem.endswith("exit_game") and guest.pending  # noqa: E731
+    guard = MapGuard(on={"journal": lambda p: p.name == "10-journal.png" or asked(p),
+                         "exit_game": lambda p: p.stem.endswith("exit_game") and not guest.pending})
+
+    class Answered(Answer):
+        def __call__(self, holder, adf, timeout):
+            guest.pending = False
+            return super().__call__(holder, adf, timeout)
+
+    guest.answer = answer = Answered(guest)
+    _, result = _accept(tmp_path, clock, guest=guest, guard=guard, answer=answer,
+                        rulebook_draws=draws, target=memory,
+                        lane_check=lane_check or (lambda: log.append("lane")), **kw)
+    return types.SimpleNamespace(guest=guest, memory=memory, helper=helper, answer=answer,
+                                 result=result, log=log)
+
+
+def test_each_further_draw_stages_the_question_and_camp_saves_again(
+        tmp_path, clock, readings, monkeypatch):
+    run = _draws(tmp_path, clock, monkeypatch, 3)
+    assert _keys(run.guest) == KEYS + ["S", "D", "N"] * 2
+    assert [c[:2] for c in run.helper.calls] == [(run.memory.read, run.memory.write)] * 2
+    assert {c[2] for c in run.helper.calls} == {run.memory.BASE + A4_BIAS}
+    assert len(run.answer.calls) == 4  # BEGIN's, then one per camp save
+    assert run.result["rulebook"] == [
+        {"draw": n, "asked": True, "answer": "answered", "exit_game": True} for n in (2, 3)]
+    assert run.result["error"] == "" and run.result["success"] is True
+
+
+def test_staging_comes_after_a_lane_check_and_before_s(tmp_path, clock, readings, monkeypatch):
+    run = _draws(tmp_path, clock, monkeypatch, 3)
+    assert run.log == ["lane", "stage", "S"] * 2
+    assert [c[0] for c in run.helper.calls] == [run.memory.read] * 2
+
+
+def test_each_draw_goes_in_the_run_log_once(tmp_path, clock, readings, monkeypatch):
+    _draws(tmp_path, clock, monkeypatch, 3)
+    drawn = [e for e in _events(tmp_path) if e["event"] == "draw"]
+    assert [e["draw"] for e in drawn] == [2, 3] and all(e["asked"] for e in drawn)
+
+
+def test_the_game_is_located_once_when_the_world_is_reached(tmp_path, clock, readings, monkeypatch):
+    run = _draws(tmp_path, clock, monkeypatch, 3)
+    assert run.memory.locates == 1
+
+
+def test_a_game_that_cannot_be_located_stops_before_the_first_camp_save(
+        tmp_path, clock, readings, monkeypatch):
+    run = _draws(tmp_path, clock, monkeypatch, 3, memory=FakeGameMemory(error=GuestError("gone")))
+    assert _keys(run.guest) == KEYS[:10] and run.helper.calls == []
+    assert "gone" in run.result["error"] and run.result["success"] is False
+
+
+def test_one_draw_is_the_route_alone_and_needs_no_target(tmp_path, clock, readings):
+    guest, result = _accept(tmp_path, clock, rulebook_draws=1)
+    assert _keys(guest) == KEYS and "rulebook" not in result and result["success"] is True
+
+
+def test_a_draw_that_reaches_exit_game_with_no_question_fails_the_run(
+        tmp_path, clock, readings, monkeypatch):
+    run = _draws(tmp_path, clock, monkeypatch, 3, questions=1)
+    assert _keys(run.guest) == KEYS + ["S", "D"]
+    assert "draw 2 reached exit_game with no question" in run.result["error"]
+    assert run.result["rulebook"][-1]["asked"] is False and run.result["success"] is False
+
+
+def test_a_refusal_by_the_helper_stops_before_s_and_is_logged_as_it_came(
+        tmp_path, clock, readings, monkeypatch):
+    run = _draws(tmp_path, clock, monkeypatch, 3, refuse_at=2)
+    assert _keys(run.guest) == KEYS + ["S", "D", "N"]
+    assert run.result["error"] == "RouteError: draw 3: refused by the helper"
+    refused = [e for e in _events(tmp_path) if e["event"] == "draw_error"]
+    assert [(e["draw"], e["error"]) for e in refused] == [(3, "refused by the helper")]
+    assert run.result["success"] is False
+
+
+def test_without_the_lane_claim_nothing_is_staged(tmp_path, clock, readings, monkeypatch):
+    def unclaimed():
+        raise GuestError("no claim")
+
+    run = _draws(tmp_path, clock, monkeypatch, 3, lane_check=unclaimed)
+    assert run.helper.calls == [] and _keys(run.guest) == KEYS
+    assert "lane claim was not confirmed" in run.result["error"]
+
+
+def test_draws_are_refused_before_the_claim_without_what_they_need(
+        tmp_path, clock, readings, monkeypatch):
+    guest = AcceptGuest(clock)
+    with pytest.raises(acceptance.RouteError, match="memory target"):
+        _accept(tmp_path, clock, guest=guest, rulebook_draws=2, lane_check=lambda: None)
+    with pytest.raises(acceptance.RouteError, match="lane check"):
+        _accept(tmp_path, clock, guest=guest, rulebook_draws=2, target=FakeGameMemory())
+    monkeypatch.setattr(route_silver_blades, "_load_savecount", lambda: object())
+    with pytest.raises(acceptance.RouteError, match="lacks stage_live"):
+        _accept(tmp_path, clock, guest=guest, rulebook_draws=2, target=FakeGameMemory(),
+                lane_check=lambda: None)
+    assert guest.calls == []
+
+
+def test_draws_that_cannot_fit_the_deadline_are_refused_before_the_claim(
+        tmp_path, clock, readings, monkeypatch):
+    monkeypatch.setattr(route_silver_blades, "_load_savecount",
+                        lambda: fake_stage_helper(FakeGameMemory(), []))
+    guest = AcceptGuest(clock)
+    with pytest.raises(acceptance.RouteError, match=r"15 rulebook draws need about \d+s"):
+        _accept(tmp_path, clock, guest=guest, rulebook_draws=15, target=FakeGameMemory(),
+                lane_check=lambda: None, deadline_seconds=600)
+    assert guest.calls == []
+    run = _draws(tmp_path, clock, monkeypatch, 3, deadline_seconds=1800)
+    assert run.result["success"] is True
+
+
+@pytest.mark.parametrize("draws", [0, 16, -1])
+def test_a_draw_count_outside_one_to_fifteen_is_refused(tmp_path, clock, readings, draws):
+    with pytest.raises(acceptance.RouteError, match="1 to 15"):
+        _accept(tmp_path, clock, rulebook_draws=draws)
+
+
+def test_an_answered_screen_is_kept_under_its_own_name_in_a_draw_run(
+        tmp_path, clock, readings, monkeypatch):
+    _draws(tmp_path, clock, monkeypatch, 2)
+    shots = tmp_path / "recon1" / "shots"
+    kept = shots / "16-exit_game-journal-1.png"
+    assert kept.read_bytes().startswith(b"frame")
+    assert kept.with_name("16-exit_game-journal-1.raw.png").read_bytes().startswith(b"grab")
+    assert (shots / "19-exit_game-journal-1.png").exists()
+
+
+def test_a_run_without_draws_keeps_no_interstitial_copies(tmp_path, clock, readings):
+    guest = AcceptGuest(clock)
+    guest.answer = answer = Answer(guest)
+    asked = lambda p: p.name == "16-exit_game.png" and len(answer.calls) < 2  # noqa: E731
+    guard = MapGuard(on={"journal": lambda p: p.name == "10-journal.png" or asked(p),
+                         "exit_game": lambda p: p.name == "16-exit_game.png" and not asked(p)})
+    _, result = _accept(tmp_path, clock, guest=guest, guard=guard, answer=answer)
+    assert len(answer.calls) == 2 and result["success"] is True
+    assert not list((tmp_path / "recon1" / "shots").glob("*-journal-*"))
+
+
+def test_a_failed_copy_of_a_kept_screen_is_logged_and_the_run_goes_on(
+        tmp_path, clock, readings, monkeypatch):
+    def refuse(*args):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(acceptance.shutil, "copyfile", refuse)
+    run = _draws(tmp_path, clock, monkeypatch, 2)
+    assert run.result["success"] is True
+    errors = [e for e in _events(tmp_path) if e["event"] == "interstitial_keep_error"]
+    assert errors and "disk full" in errors[0]["error"]
+
+
+def test_silver_blades_accept_forwards_the_draws_and_a_memory_target(monkeypatch):
+    seen, _ = _record_cli(monkeypatch)
+    argv = ["accept", "--title", "ssb", "--manifest", "m.json", "--guards", "g.json",
+            "--identity", "i.json", "--journal-python", "python", "--audio-proof", "mute.json"]
+    assert acceptance.main([*argv, "--rulebook-draws", "3"]) == 0
+    kw = seen[0][1]
+    assert kw["rulebook_draws"] == 3 and kw["target"].layout.executable == "/Secret"
+    assert callable(kw["lane_check"])
+    assert acceptance.main([*argv, "--rulebook-draws", "1"]) == 0
+    assert seen[1][1]["rulebook_draws"] == 1 and "target" not in seen[1][1]
+    assert acceptance.main(argv) == 0 and "rulebook_draws" not in seen[2][1]
+
+
+def test_rulebook_draws_are_only_for_silver_blades_accept(monkeypatch, capsys):
+    _record_cli(monkeypatch)
+    common = ["--manifest", "m.json", "--guards", "g.json", "--identity", "i.json",
+              "--audio-proof", "mute.json", "--attempt", "a1"]
+    assert acceptance.main(["accept", "--title", "pool", *common, "--rulebook-draws", "2"]) == 2
+    assert acceptance.main(["accept", "--title", "ssb", *common, "--journal-python", "py",
+                            "--published-disk-one", "--rulebook-draws", "2"]) == 2
+    assert capsys.readouterr().err.count("--rulebook-draws requires") == 2
+
+
+def test_prepare_passes_the_save_count_to_the_silver_blades_route(
+        tmp_path, monkeypatch, capsys):
+    seen = []
+    monkeypatch.setattr(route_silver_blades, "prepare",
+                        lambda *a, **kw: seen.append((a, kw)) or tmp_path / "prepare.json")
+    argv = ["prepare", "--title", "ssb", "--run-id", "r", "--source", "s.d64"]
+    assert acceptance.main([*argv, "--save-count", "5"]) == 0
+    assert seen[0][1]["save_count"] == 5
+    assert acceptance.main(argv) == 0 and "save_count" not in seen[1][1]
+
+
+def test_the_save_count_is_only_for_silver_blades_prepare(capsys):
+    assert acceptance.main(["prepare", "--title", "pool", "--run-id", "r",
+                            "--save-count", "5"]) == 2
+    assert "--save-count" in capsys.readouterr().err

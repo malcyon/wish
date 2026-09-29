@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import types
+
 
 def fake_savecount_builder():
     """Build a fake private `savecount.py` under `directory/ssb/analysis`.
@@ -26,3 +28,45 @@ def fake_savecount_builder():
 
 
 fake_savecount = fake_savecount_builder()
+
+
+
+class FakeGameMemory:
+    """A stand-in for `AmigaTarget`: `locate` (counted, or raising `error`), `read` and `write`."""
+
+    BASE = 0x40000
+
+    def __init__(self, error=None):
+        self.error, self.locates = error, 0
+
+    def locate(self):
+        self.locates += 1
+        if self.error:
+            raise self.error
+        return self.BASE
+
+    def read(self, addr, length):
+        return bytes(length)
+
+    def write(self, addr, data):
+        pass
+
+
+def fake_stage_helper(memory, log, *, refuse_at=None):
+    """A fake private helper: `stage_live` records its arguments and appends to `log`.
+
+    `refuse_at` is the call number that raises the helper's own error, `helper.SaveCountError`.
+    """
+    class SaveCountError(ValueError):
+        pass
+
+    def stage_live(read_memory, write_memory, a4):
+        helper.calls.append((read_memory, write_memory, a4))
+        log.append("stage")
+        if refuse_at == len(helper.calls):
+            raise SaveCountError("refused by the helper")
+        helper.armed = True
+
+    helper = types.SimpleNamespace(stage_live=stage_live, SaveCountError=SaveCountError,
+                                   calls=[], armed=True)
+    return helper
