@@ -12,6 +12,7 @@ from tests.amiga.test_amigaacceptance import (
     FailedPostWriteGuest,
     _audio_proof,
     _prepared,
+    _with_edited_staged_slot,
 )
 from tools.amiga import (
     acceptance,
@@ -422,11 +423,16 @@ class WritingGuest(ScreenGuest):
 
 
 def _menu_run(tmp_path, clock, monkeypatch, *, reading=GOOD_READING, guest=None,
-              guard=lambda s, p: True):
+              guard=lambda s, p: True, staged_edit=False):
     monkeypatch.setattr(acceptance, "_slot_reading", lambda fetched, letter: reading)
     guest = guest or WritingGuest(clock)
+    manifest = _menu_manifest(tmp_path)
+    if staged_edit:
+        data = json.loads(manifest.read_text())
+        _with_edited_staged_slot(data, tmp_path)
+        manifest.write_text(json.dumps(data))
     return acceptance.run_recon(
-        _menu_manifest(tmp_path), guest=guest, guard=guard,
+        manifest, guest=guest, guard=guard,
         holder="wish672-test", audio_proof=_audio_proof(tmp_path))
 
 
@@ -476,6 +482,21 @@ def test_guarded_mode_passes_when_slot_b_is_the_prepared_party(tmp_path, clock, 
     assert result["menu_save_problems"] == []
     assert result["df0_unchanged"] is False
     assert result["success"] is True
+
+
+def test_an_edited_staged_slot_left_alone_by_the_game_counts_as_unchanged(
+        tmp_path, clock, monkeypatch):
+    result = _menu_run(tmp_path, clock, monkeypatch, staged_edit=True)
+    assert result["slot_unchanged"] is True
+    assert result["success"] is True
+
+
+def test_an_edited_staged_slot_the_game_rewrote_counts_as_changed(
+        tmp_path, clock, monkeypatch):
+    result = _menu_run(tmp_path, clock, monkeypatch, staged_edit=True,
+                       guest=WritingGuest(clock, spoil=_rewrite(0, "/SAVE/savgamC.sav")))
+    assert result["slot_unchanged"] is False
+    assert result["success"] is False
 
 
 @pytest.mark.parametrize("reading, why", [

@@ -1595,8 +1595,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 # The game saves to the boot disk it found its SAVE drawer on.
                 try:
                     fetched = _verified_disk(out / "fetched-df0.adf")
+                    # The game loads the staged slot, which a save count edits away from
+                    # the published one, so the staged file is what must survive.
                     result["slot_unchanged"] = (
-                        fetched.read_file(f"/SAVE/savgam{letter}.sav") == slot)
+                        fetched.read_file(f"/SAVE/savgam{letter}.sav") == staged)
                     result["slot_a_unchanged"] = (
                         fetched.read_file("/SAVE/savgamA.sav")
                         == df0_disk.read_file("/SAVE/savgamA.sav"))
