@@ -204,7 +204,8 @@ def test_a_charmed_dos_zombie_still_writes_the_zombie_byte_and_the_charm_row(
         flag, stored):
     char = _pool_dos_character("animated", True, 0xB3, flag)
     char.set("granted_effects",
-             [bytes((effects.CHARM_ID, 0, 0, 0x21, 1))], "built here")
+             [bytes((32, 0, 0, 5, 1)),
+              bytes((effects.CHARM_ID, 0, 0, 0x21, 1))], "built here")
     payload = bytearray(0x1C00)
     rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
                                clock_minutes=0)
@@ -298,3 +299,26 @@ def test_a_zombie_with_no_payload_or_the_wrong_side_reports_the_loss():
                                 payload=payload, party_slot=4,
                                 clock_minutes=0)
     assert any("side" in line for line in rep.losses)
+
+
+def test_an_animated_pool_character_with_no_node_reports_the_missing_row():
+    char = _dos_zombie(0, 0xB3, None)
+    char.set("granted_effects", [], "built here")
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=4,
+                               clock_minutes=0)
+    assert rec.get("roster_in_use") == 0x03
+    assert not _rows(payload, 32)
+    assert any("no Animate Dead node" in line for line in rep.losses)
+
+
+def test_a_full_effect_table_keeps_the_trait_slot_and_reports_the_lost_row():
+    payload = bytearray(0x1C00)
+    for slot in range(effects.EFFECT_SLOTS):
+        effects.write_effect(payload, slot, 1, 9, 5, 1)
+    rec, rep = c64_codec.write(_dos_zombie(0, 0xB3, None), payload=payload,
+                               party_slot=4, clock_minutes=0)
+    assert rec.get("item_effects")[9] == 32
+    assert not _rows(payload, 32)
+    assert any("Animate Dead row is not written" in line
+               for line in rep.losses)

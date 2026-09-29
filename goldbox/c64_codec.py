@@ -1685,7 +1685,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # levels give, the 23 that do not being ones this converter wrote.
     # `tools/records/turnsweep.py` is that sweep.
     use("turn_power")           # consumed here, by rule rather than by copy
-    if deltas is POOL_OF_RADIANCE_RECORD and status_value == "animated":
+    if pool_animated:
         # Animate Dead stores 0 here (`SPELLE04 $A9E9`) and the C64 temple
         # rebuilds it (`SQRPACI64 $059A`), so a former cleric's derived
         # value would be a byte the C64 zombie never holds.
@@ -1814,9 +1814,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 if row_slot is None:
                     rep.lost(
                         f"effect {node[0]}, which never expires: "
-                        + ("with no save payload to hold its row it takes a "
-                           "trait slot instead" if payload is None else
-                           "no free slot in the save's shared effect arrays"))
+                        + ("with no save payload to hold its row, the "
+                           "Animate Dead row is not written" if payload is None
+                           else "no free slot in the save's shared effect "
+                           "arrays, so the Animate Dead row is not written"))
                 else:
                     effects.write_effect(
                         payload, row_slot, ANIMATE_DEAD_ID,
@@ -2277,6 +2278,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 prefix + "a level of 31 with both side bits and the flag set "
                 "would make the row $FF, which Dispel Magic skips on both "
                 "ports, so the own-side bit is written 0")
+    if pool_animated and zombie_node_side is None:
+        rep.lost("effect 32: the character is animated but has no Animate "
+                 "Dead node, so the C64 zombie has no row for Dispel Magic "
+                 "to find and no caster level")
     if zombie_node_side is not None and zombie_node_side != side_bits & 1:
         rep.lost("effect 32: the side the DOS zombie is restored to, which "
                  "the C64 temple does not restore")
