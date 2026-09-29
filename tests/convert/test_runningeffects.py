@@ -303,9 +303,10 @@ def test_save_as_c64_keeps_a_slow_poisoned_dos_party_slow_poisoned(tmp_path):
     back = roster.Party(str(out))
     names = {m.index: m.name for m in back.members}
     assert {names[e.owner] for e in rows} == {"WISHFTR"}
-    owner = next(m for m in back.members if m.name == "WISHFTR")
-    slot = back.save0.characters[owner.index]
-    assert 55 in bytes(slot.record.get_raw("item_effects"))
+    holders = {m.name for m in back.members
+               if 55 in bytes(back.save0.characters[m.index]
+                              .record.get_raw("item_effects"))}
+    assert holders == {"WISHFTR"}
 
 
 def test_save_as_c64_keeps_a_curse_party_shielded_and_protected(tmp_path):

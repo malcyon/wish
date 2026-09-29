@@ -1019,7 +1019,7 @@ the only game-written source of either fear id. The conversion rule stands; a
 converted fear row is removed by the C64 at the end of its next fight.
 Confusion (`0x23`) and Fumble (`0x1B`) are on every end-of-fight list of both
 later titles on both ports, so a single node of either does not survive to a
-save on the C64. On DOS a second node of the same id does (next paragraph).
+save on the C64. On DOS a second node of the same id does (previous paragraph).
 
 **Fear's record state is simpler, because it is one byte each way, and it is
 built.** DOS's control byte is not the side: it is `0xB3`, the engine's own
