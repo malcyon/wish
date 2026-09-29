@@ -683,3 +683,20 @@ def test_the_control_byte_lands_at_each_titles_own_index(key, size, index):
     expected = bytearray(dos_codec.FIELD_83_87[size])
     expected[index + 1] = 0
     assert rest == [value for n, value in enumerate(expected) if n != index]
+
+
+@pytest.mark.parametrize("raw, pool, expected", [
+    (0x01, True, ("okay", True)),
+    (0x81, True, ("okay", False)),
+    (0x83, True, ("dead", False)),
+    (0x84, True, ("dying", False)),
+    (0x05, True, ("unconscious", True)),
+    (0x03, True, ("animated", True)),
+    (0x03, False, ("dead", True)),
+    (0x00, True, (None, None)),
+    (0x80, True, (None, None)),
+])
+def test_status_from_byte_unpacks_the_two_things_the_byte_holds(
+        raw, pool, expected):
+    assert c64_codec.status_from_byte(
+        raw, pool_of_radiance=pool) == expected

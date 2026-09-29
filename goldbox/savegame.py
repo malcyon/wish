@@ -163,6 +163,31 @@ ROSTER_ATTACK_FORMS = 2       # the pairs are primary, secondary
 ROSTER_HP_CURRENT = 0x19
 ROSTER_MOVEMENT = 0x1B
 
+#: Where the nine-byte tail (`goldbox/layout.py`'s `roster_tail`, +0x10 to
+#: +0x18) starts and ends inside a roster block.
+ROSTER_TAIL_AT = ROSTER_ARMOUR_BONUS
+ROSTER_TAIL_END = ROSTER_HP_CURRENT
+
+
+def tail_damage(tail: bytes) -> tuple[str, ...]:
+    """The damage each attack form rolls, read from the nine-byte roster tail.
+
+    The primary form is always listed, as `1d8` with `+N` when its bonus is
+    not 0; the secondary form only when its dice count is not 0. The bonus
+    stays unsigned, as the C64 block reads it.
+    """
+    if len(tail) != ROSTER_TAIL_END - ROSTER_TAIL_AT:
+        raise ValueError(f"the roster tail is 9 bytes, got {len(tail)}")
+    forms = []
+    for form in range(ROSTER_ATTACK_FORMS):
+        dice = tail[ROSTER_DAMAGE_DICE - ROSTER_TAIL_AT + form]
+        sides = tail[ROSTER_DAMAGE_DIE - ROSTER_TAIL_AT + form]
+        bonus = tail[ROSTER_DAMAGE_BONUS - ROSTER_TAIL_AT + form]
+        if form and not dice:
+            continue
+        forms.append(f"{dice}d{sides}" + (f"+{bonus}" if bonus else ""))
+    return tuple(forms)
+
 # THAC0 and armour class are both stored as (60 - value): lower armour class is
 # better, and the game keeps the byte rising as the character improves.
 # Re-exported from goldbox/encoding.py, which is now the one place these live.
@@ -678,9 +703,7 @@ class RosterBlock:
     @property
     def damage(self) -> str:
         """The primary attack's damage, as `1d8+5`."""
-        bonus = self.damage_bonus
-        return (f"{self.damage_dice}d{self.damage_die}"
-                + (f"+{bonus}" if bonus else ""))
+        return tail_damage(self.raw[ROSTER_TAIL_AT:ROSTER_TAIL_END])[0]
 
     @property
     def attacks(self) -> int:

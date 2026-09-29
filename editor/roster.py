@@ -32,6 +32,7 @@ from goldbox import (
     amiga_later,
     amiga_por,
     amiga_savegame,
+    c64_codec,
     c64_port,
     derive,
     dos_codec,
@@ -52,7 +53,14 @@ from goldbox.items import (
     repair_ring_of_fire_resistance,
 )
 from goldbox.record import CharacterRecord
-from goldbox.savegame import SaveGame0, SaveGame1, load_save, looks_occupied
+from goldbox.savegame import (
+    ROSTER_TAIL_AT,
+    ROSTER_TAIL_END,
+    SaveGame0,
+    SaveGame1,
+    load_save,
+    looks_occupied,
+)
 
 from .convert import Source
 from .inventory import Inventory
@@ -106,6 +114,14 @@ class Member:
     #: patch. None on the C64, whose `record` is the record. `record` and
     #: `record_original` stay the C64 record the sheet edits on every port.
     native: Any = None
+    #: The character's condition as `(neutral status name, in play)`, either
+    #: half None when the port's own reader does not set it. None as a whole
+    #: means the editor cannot read it (a Pool disk holding no SAVEDGAME1).
+    #: It is read from the port's own status, not the sheet's byte 0x100,
+    #: which `c64_codec.write` cannot make hold every DOS state.
+    condition: tuple[str | None, bool | None] | None = None
+    #: The nine bytes of `roster_tail`, from wherever the port keeps them.
+    roster_tail: bytes | None = None
 
     @property
     def is_npc(self) -> bool:
@@ -375,6 +391,12 @@ class Party:
                     member.armour_class = block.armour_class
                     member.hp_current = block.hit_points
                     member.hp_max = record.hp_max
+                    member.condition = c64_codec.status_from_byte(
+                        block.roster_in_use,
+                        pool_of_radiance=(c64_codec.deltas_for(self.game)
+                                          is c64_codec.POOL_OF_RADIANCE_RECORD))
+                    member.roster_tail = block.raw[
+                        ROSTER_TAIL_AT:ROSTER_TAIL_END]
             self.members.append(member)
 
     def _load_dos(self) -> None:
@@ -385,8 +407,9 @@ class Party:
         for number in dos_codec.party_numbers(folder, self.source.slot):
             path = folder / f"CHRDAT{self.source.slot}{number}.SAV"
             char = dos_codec.read_character(path)
-            record = _sheet_record(dos_codec.to_neutral(char))
-            self._append_converted(number, record, char)
+            neutral = dos_codec.to_neutral(char)
+            self._append_converted(number, _sheet_record(neutral), char,
+                                   neutral)
         if not self.members:
             raise dos_codec.DosRecordError(
                 f"no CHRDAT{self.source.slot}?.SAV in {folder}")
@@ -402,20 +425,22 @@ class Party:
         if self.source.title.key == dos_port.POOL_OF_RADIANCE.key:
             characters = amiga_savegame.read_por_characters(disk, slot)
             for number, char in enumerate(characters, start=1):
-                record = _sheet_record(dos_codec.to_neutral(
-                    amiga_por.to_dos_character(char)))
-                self._append_converted(number, record, char)
+                neutral = dos_codec.to_neutral(
+                    amiga_por.to_dos_character(char))
+                self._append_converted(number, _sheet_record(neutral), char,
+                                       neutral)
         else:
             save = amiga_savegame.read_slot(disk, slot, self.source.title.key)
             for number, char in enumerate(save.characters, start=1):
-                record = _sheet_record(amiga_later.to_neutral_later(char))
-                self._append_converted(number, record, char)
+                neutral = amiga_later.to_neutral_later(char)
+                self._append_converted(number, _sheet_record(neutral), char,
+                                       neutral)
         if not self.members:
             raise amiga_savegame.AmigaRecordError(
                 f"slot {slot} holds no characters")
 
     def _append_converted(self, number: int, record: CharacterRecord,
-                          native: Any) -> None:
+                          native: Any, neutral: Any) -> None:
         """One roster row for a character converted into `record`.
 
         The roster columns come off the converted record's own copies of the
@@ -432,7 +457,9 @@ class Party:
             inventory=Inventory.from_blocks(
                 [raw[_ITEMS_AT + n * ITEM_SIZE:_ITEMS_AT + (n + 1) * ITEM_SIZE]
                  for n in range(ITEMS_PER_CHARACTER)]),
-            record_original=raw, game=self.game, native=native)
+            record_original=raw, game=self.game, native=native,
+            condition=(neutral.get("status"), neutral.get("active")),
+            roster_tail=record.get_raw("roster_tail"))
         self.members.append(member)
 
     def _load_standalone(self) -> None:
@@ -480,7 +507,22 @@ class Party:
             self.members.append(
                 Member(i, record, record.name, source=entry.name,
                        record_original=record.to_bytes(), game=game,
-                       load_address=load_address))
+                       load_address=load_address,
+                       condition=self._stored_condition(record, game),
+                       roster_tail=(record.get_raw("roster_tail")
+                                    if record.is_stored("roster_tail")
+                                    else None)))
+
+    @staticmethod
+    def _stored_condition(record: CharacterRecord, game: Any):
+        """The condition a whole character record holds, or None for a
+        record too short to hold the byte."""
+        if not record.is_stored("roster_in_use"):
+            return None
+        return c64_codec.status_from_byte(
+            record.get("roster_in_use"),
+            pool_of_radiance=(c64_codec.deltas_for(game)
+                              is c64_codec.POOL_OF_RADIANCE_RECORD))
 
     # -- what the window asks ---------------------------------------------
 

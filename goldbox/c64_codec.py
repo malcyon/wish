@@ -54,6 +54,7 @@ __all__ = [
     "DROPPED",
     "STATUS_BITS",
     "STATUS_BY_BITS",
+    "status_from_byte",
     "OUT_OF_PLAY",
     "NO_C64_STATUS",
 ]
@@ -375,6 +376,23 @@ SILVER_BLADES_RECORD = C64Deltas(
 DELTAS_BY_KEY: dict[str, C64Deltas] = {
     s.key: s for s in (POOL_OF_RADIANCE_RECORD, CURSE_RECORD,
                        SILVER_BLADES_RECORD)}
+
+
+def status_from_byte(raw: int, *, pool_of_radiance: bool
+                     ) -> tuple[str | None, bool | None]:
+    """The neutral status name and in-play flag a roster status byte holds.
+
+    The low three bits index the game's seven status words; bit 7 is the
+    independent out-of-play flag. Pool of Radiance writes `$03` with bit 7
+    clear only for Animate Dead's zombie, so that one byte reads "animated"
+    there. Low bits of 0 are an empty roster slot and give `(None, None)`.
+    """
+    name = STATUS_BY_BITS.get(raw & 0x07)
+    if name is None:
+        return None, None
+    if pool_of_radiance and raw == ZOMBIE_STATUS:
+        name = "animated"
+    return name, not raw & OUT_OF_PLAY
 
 
 def deltas_for(game=None) -> C64Deltas:
@@ -3414,14 +3432,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # converts to DOS alive, because the reader never reads the four bytes
     # past 0x100).
     if raw is not None:
-        name = STATUS_BY_BITS.get(raw & 0x07)
-        zombie_byte = (deltas is POOL_OF_RADIANCE_RECORD
-                       and raw == ZOMBIE_STATUS)
-        if zombie_byte:
-            # `$03` with bit 7 clear is written only by Animate Dead
-            # (SPELLE04 $AA11 in camp, SPELLE00 $AB4F in combat); an
-            # ordinary death is `$83`.
-            name = "animated"
+        pool = deltas is POOL_OF_RADIANCE_RECORD
+        name, active = status_from_byte(raw, pool_of_radiance=pool)
+        zombie_byte = pool and raw == ZOMBIE_STATUS
         if name is not None:
             out.set("status", name,
                     (f"{roster_in_use_origin}, ${raw:02X}: Pool of Radiance "
@@ -3431,7 +3444,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                      f"${raw:02X}, indexed into the game's own seven status "
                      f"words"),
                     grade("roster_in_use"), Provenance.RESHAPED)
-            out.set("active", not raw & OUT_OF_PLAY,
+            out.set("active", active,
                     f"bit 7 of {roster_in_use_origin}, ${raw:02X} -- set "
                     f"means the party panel greys the name and the party's "
                     f"strength leaves the character out",

@@ -738,3 +738,45 @@ def test_the_retired_spell_names_and_amiga_aliases_are_gone():
     assert not hasattr(amiga_later, "AMIGA_LATER_ITEM_SHIFTS")
     assert not hasattr(amiga, "AmigaLayout")
     assert not hasattr(amiga, "LAYOUTS")
+
+
+def test_tail_damage_reads_dice_sides_and_bonus_of_the_primary_form():
+    from goldbox.savegame import tail_damage
+    assert tail_damage(bytes.fromhex("300100010008000400")) == ("1d8+4",)
+
+
+def test_tail_damage_lists_a_secondary_form_only_when_it_has_dice():
+    from goldbox.savegame import tail_damage
+    assert tail_damage(bytes.fromhex("300100010208060000")) == ("1d8", "2d6")
+    assert tail_damage(bytes.fromhex("300100010008060000")) == ("1d8",)
+
+
+def test_tail_damage_refuses_a_tail_of_the_wrong_length():
+    from goldbox.savegame import tail_damage
+    with pytest.raises(ValueError):
+        tail_damage(bytes(8))
+
+
+def test_the_block_damage_agrees_with_the_old_formula_on_every_specimen():
+    import pathlib
+
+    from goldbox.d64 import D64
+    disks = disk_dir()
+    if not disks:
+        pytest.skip("needs the player's save disks")
+    checked = 0
+    for path in sorted(pathlib.Path(disks).glob("*SAVE*.D64")):
+        try:
+            sg1 = SaveGame1.from_prg(D64.open(str(path)).read_file(b"SAVEDGAME1"))
+        except Exception:
+            continue
+        for block in sg1.roster_blocks:
+            if not block.occupied:
+                continue
+            bonus = block.damage_bonus
+            old = (f"{block.damage_dice}d{block.damage_die}"
+                   + (f"+{bonus}" if bonus else ""))
+            assert block.damage == old
+            checked += 1
+    if not checked:
+        pytest.skip("no occupied roster block on this machine")
