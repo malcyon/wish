@@ -553,6 +553,57 @@ def test_a_disk_prompt_is_answered_and_the_walk_resumes(monkeypatch, tmp_path):
     assert seen == [1, 2, 3]                        # a look after the swap
 
 
+class EncounterAfterDiskSess(DiskSess):
+    """Answering the prompt leaves `after` on row 24 instead of the grid."""
+
+    def __init__(self, side, after=ENCOUNTER, **kw):
+        super().__init__(side, **kw)
+        self.after = after
+
+    def handle_prompt(self, s=None):
+        answered = super().handle_prompt(s)
+        if answered:
+            self.row = self.after
+        return answered
+
+
+def test_an_encounter_after_a_disk_answer_is_fought_and_the_walk_resumes(monkeypatch, tmp_path):
+    fake_clock(monkeypatch)
+    side = tmp_path / "SIDE6.D64"
+    side.write_bytes(b"")
+    sess, log, seen = EncounterAfterDiskSess(side), Log(), []
+    a = args()
+    M.walk_moves(a, sess, log, "777", 0, seen.append)
+    assert not a.stopped and sess.answered == 1
+    assert len(sess.fights) == 1 and sess.fights[0][0] == 123.0
+    assert sess.presses == ["7", "7", "7"] and a.encounters == 1
+    assert log.of("disk_prompt")[0]["outcome"] == "encounter"
+    assert log.of("encounter")[0]["bar"] == ENCOUNTER
+    assert log.of("encounter_outcome")[0]["outcome"] == S.WON
+    assert log.of("encounter_grid")[0]["outcome"] == "world"
+    assert seen == [1, 2, 3]                        # a look once the walk resumes
+
+
+def test_a_stop_after_a_disk_answer_leaves_the_encounter_alone(monkeypatch, tmp_path):
+    fake_clock(monkeypatch)
+    side = tmp_path / "SIDE6.D64"
+    side.write_bytes(b"")
+    sess, a = EncounterAfterDiskSess(side), args(on_encounter="stop")
+    M.walk_moves(a, sess, Log(), "777", 0, lambda n: None)
+    assert sess.fights == [] and a.stopped == "--on-encounter stop"
+
+
+def test_another_stuck_row_after_a_disk_answer_still_stops_the_walk(monkeypatch, tmp_path):
+    fake_clock(monkeypatch)
+    side = tmp_path / "SIDE6.D64"
+    side.write_bytes(b"")
+    sess, log = EncounterAfterDiskSess(side, after="SOMETHING ELSE"), Log()
+    a = args()
+    M.walk_moves(a, sess, log, "777", 0, lambda n: None)
+    assert "no travel prompt after SIDE6.D64 (stuck)" in a.stopped
+    assert sess.fights == [] and sess.presses == ["7", "7"]
+
+
 def test_a_press_the_prompt_ate_is_pressed_once_more(monkeypatch, tmp_path):
     no_sleep(monkeypatch)
     side = tmp_path / "SIDE6.D64"

@@ -97,7 +97,8 @@ def status_row(sess) -> str:
 
 
 def clear_bars(sess, log: Log, answers=("STAY", "NO"), seconds: float = 180.0,
-               want_outdoors: bool | None = None) -> str:
+               want_outdoors: bool | None = None,
+               stop_on_encounter: bool = False) -> str:
     """Press through an arrival until the party can move again.
 
     **`savecheck.answer_bars` is not enough for the wilderness**, and that is
@@ -118,6 +119,10 @@ def clear_bars(sess, log: Log, answers=("STAY", "NO"), seconds: float = 180.0,
     and `$49E6` still says indoors -- and a loop that stopped at the first
     world bar stopped there, before the disk was even asked for.  With
     `want_outdoors` the world only counts once `$49E6` agrees.
+
+    With `stop_on_encounter`, an outdoor encounter's menu on row 24 ends the
+    wait at once with `"encounter"`, since nothing here answers it and the
+    wait would otherwise run out its whole budget in front of it.
     """
     deadline = time.time() + seconds
     while time.time() < deadline:
@@ -127,6 +132,8 @@ def clear_bars(sess, log: Log, answers=("STAY", "NO"), seconds: float = 180.0,
             continue
         if sess.handle_prompt(s):
             continue
+        if stop_on_encounter and encounter_row(sess, log) is not None:
+            return "encounter"
         row = s.row(24)
         if ("MOVE" in row and "ENCAMP" in row) or S.OUTDOOR_PROMPT in row:
             # `is (not want_outdoors)` rather than `is not want_outdoors`, so
@@ -561,9 +568,25 @@ def answer_disk_prompt(args, sess, log: Log, step: int,
         log.emit("disk_prompt", step=step, side=name, bar=row, moved=moved,
                  outcome="not-answered")
         return False, f"the prompt for {name} was not answered"
-    grid = clear_bars(sess, log, seconds=args.encounter_wait, want_outdoors=True)
+    grid = clear_bars(sess, log, seconds=args.encounter_wait, want_outdoors=True,
+                      stop_on_encounter=True)
     log.emit("disk_prompt", step=step, side=name, bar=row, moved=moved,
              outcome=grid)
+    if grid == "encounter":
+        # The step the prompt interrupted ended in an encounter; it is met as
+        # any other one is, and the walk resumes from the grid it leaves.
+        bar = encounter_bar(sess, log)
+        if bar is None:
+            return True, f"no travel prompt after {name} (the encounter bar went away)"
+        if args.on_encounter == "stop" or args.encounters >= MAX_ENCOUNTERS:
+            log.say(f"Encounter after {name}: |{bar}| -- stopping the walk")
+            log.emit("encounter", step=step, move=name, bar=bar,
+                     handled="stop", **press_state(sess))
+            return True, ("the encounter limit was reached"
+                          if args.on_encounter != "stop"
+                          else "--on-encounter stop")
+        args.encounters += 1
+        return True, fight_encounter(args, sess, log, bar, name, step)
     return True, None if grid == "world" else f"no travel prompt after {name} ({grid})"
 
 
