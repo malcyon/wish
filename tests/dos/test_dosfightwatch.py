@@ -320,3 +320,137 @@ def test_a_count_breakpoint_that_never_fires_says_why(monkeypatch):
         _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
         walk=lambda por, steps: {"met": True})
     assert "count breakpoint" in report["why"]
+
+
+POOL_SIZE = dos_savegame.SAVE_POOL_OF_RADIANCE.size
+
+
+def _donor(*, outdoors=False) -> bytes:
+    """A zero Pool save `retarget`ed to the Slums, standing at 14,4 facing east."""
+    save = bytearray(POOL_SIZE)
+    dos_savegame.retarget(save, area=20, dax=2, geo=20, wallset=(2, 4, 1),
+                          script=b"\0\0" + b"\x42" * 100)
+    dos_savegame.put_position(save, 14, 4, 1)
+    dos_savegame.put_word(save, dos_savegame.INDOORS, 0 if outdoors else 1)
+    return bytes(save)
+
+
+def _stage(tmp_path):
+    folder, save = tmp_path / "spec", tmp_path / "SAVE"
+    folder.mkdir()
+    save.mkdir()
+    hall = bytearray(POOL_SIZE)
+    dos_savegame.retarget(hall, area=11, dax=3, geo=0, wallset=(0, 0xFFFF, 0xFFFF),
+                          script=b"\0\0" + b"\x99" * 300)
+    (folder / "SAVGAME.DAT").write_bytes(bytes(hall))
+    (folder / "CHRDATE7.SAV").write_bytes(b"\x07" * 285)
+    return folder, save
+
+
+def test_a_folder_placed_like_a_donor_stands_where_the_donor_stands(tmp_path):
+    folder, save = _stage(tmp_path)
+    donor = _donor()
+    script = b"\0\0" + b"\x42" * 100
+    letter = dosfightwatch.install_folder(save, folder, place=(donor, script))
+    data = (save / f"SAVGAM{letter}.DAT").read_bytes()
+    for read in (dos_savegame.current_area, dos_savegame.geo_block,
+                 dos_savegame.dax_number, dos_savegame.wall_triple,
+                 dos_savegame.position):
+        assert read(data) == read(donor), read.__name__
+    for address in range(dos_savegame.WALLMAP, dos_savegame.WALLMAP + 3):
+        assert dos_savegame.word(data, address) == dos_savegame.word(donor, address)
+    assert dos_savegame.position(data) == (14, 4, 1)
+    start, end = dos_savegame.ECL_BUFFER
+    assert data[start:end] == donor[start:end]
+    assert not dos_savegame.outdoors(data)
+    assert (save / "CHRDATE7.SAV").read_bytes() == b"\x07" * 285
+
+
+def test_placing_refuses_an_outdoor_donor(tmp_path):
+    folder, save = _stage(tmp_path)
+    with pytest.raises(ValueError, match="overland"):
+        dosfightwatch.install_folder(save, folder, place=(_donor(outdoors=True), b"\0\0"))
+
+
+def test_a_changed_character_file_stops_the_run_before_it_boots(tmp_path, monkeypatch):
+    folder, save = _stage(tmp_path)
+    dosfightwatch.install_folder(save, folder)
+    assert dosfightwatch.check_records_unchanged(folder, save)["records_unchanged"]
+    (save / "CHRDATE7.SAV").write_bytes(b"\x08" * 285)
+    with pytest.raises(ValueError, match="CHRDATE7.SAV"):
+        dosfightwatch.check_records_unchanged(folder, save)
+
+    class Claimed:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class Session:
+        booted = False
+
+        def __init__(self, claimed, game):
+            self.save_dir = save
+
+        def stage(self, fresh):
+            pass
+
+        def boot(self, fresh):
+            Session.booted = True
+
+        def close(self):
+            pass
+
+    def alter(save_dir, folder, at, source, place):
+        (save_dir / "CHRDATE7.SAV").write_bytes(b"\x08" * 285)
+        return "E"
+
+    monkeypatch.setattr(dosbox, "find_game", lambda *a: tmp_path)
+    monkeypatch.setattr(dosboxx, "claim", lambda *a: Claimed())
+    monkeypatch.setattr(dosboxx, "XSession", Session)
+    monkeypatch.setattr(dosfightwatch, "install_folder", alter)
+    with pytest.raises(ValueError, match="CHRDATE7.SAV"):
+        dosfightwatch.pile(folder=folder, source=None, at=None, steps=1,
+                           out=tmp_path / "out", ds=None)
+    assert not Session.booted
+    assert "records_unchanged" not in (tmp_path / "out" / "report.json").read_text()
+
+
+def test_the_evoker_placed_in_the_slums_matches_the_engines_slums_save(tmp_path):
+    from gamedata import specimen
+    evoker = specimen("por-hireling-evoker-ff")
+    slums = specimen("por-amiga-slums-dos-resave")
+    from tools.dos import dosbox as db
+    try:
+        ecl = (db.find_game("POOLRAD") / "ECL2.DAX").read_bytes()
+    except (FileNotFoundError, OSError) as e:
+        pytest.skip(f"needs the DOS game files: {e}")
+    donor = (slums / "SAVGAMD.DAT").read_bytes()
+    script = dos_savegame.dax_block(ecl, 20, name="ECL2.DAX")
+    dosfightwatch.check_donor_script(donor, script)
+    save = tmp_path / "SAVE"
+    save.mkdir()
+    dosfightwatch.install_folder(save, evoker, place=(donor, script))
+    before = (evoker / "SAVGAME.DAT").read_bytes()
+    after = (save / "SAVGAME.DAT").read_bytes()
+    for read in (dos_savegame.current_area, dos_savegame.geo_block,
+                 dos_savegame.dax_number, dos_savegame.wall_triple,
+                 dos_savegame.position):
+        assert read(after) == read(donor), read.__name__
+    assert (dos_savegame.current_area(after), dos_savegame.dax_number(after),
+            dos_savegame.wall_triple(after)) == (20, 2, (2, 4, 1))
+    assert dos_savegame.position(after) == (14, 4, 1)
+    start, end = dos_savegame.ECL_BUFFER
+    assert after[start:end] == donor[start:end]
+    allowed = set(range(start, end)) | {0}
+    for address in (dos_savegame.AREA, dos_savegame.SCRIPT, dos_savegame.DISK,
+                    dos_savegame.INDOORS,
+                    *range(dos_savegame.WALLSET, dos_savegame.WALLSET + 3),
+                    *range(dos_savegame.WALLMAP, dos_savegame.WALLMAP + 3)):
+        off = dos_savegame.word_offset(address, dos_savegame.SAVE_POOL_OF_RADIANCE)
+        allowed |= {off, off + 1}
+    allowed |= set(range(12801, 12808))
+    changed = {i for i in range(len(before)) if before[i] != after[i]}
+    assert changed <= allowed, sorted(changed - allowed)
+    assert dosfightwatch.check_records_unchanged(evoker, save)["records_unchanged"]

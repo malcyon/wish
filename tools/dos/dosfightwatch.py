@@ -44,12 +44,16 @@ a scratch directory (`--out`; by default `scratch.scratch_dir("dosfightwatch")`)
     tools/dos/dosfightwatch.py truth --c64 PORSAVE13.D64 --slot A --engine-slot B
 
     tools/dos/dosfightwatch.py pile --folder /mnt/specimens/por-dos/WISH-SPEC-por-hireling-evoker-ff \\
-        --at 7,2,W --steps 60
+        --place-like /mnt/specimens/por-dos/WISH-SPEC-por-amiga-slums-dos-resave/SAVGAMD.DAT --steps 60
 
 `pile` measures the treasure split.  It installs a DOS save folder as it stands
 (no conversion), walks to an encounter, watches the gold pile at `DS:0x67F4+12`
 through a fight and reads the companion and party parts `C` and `A` at the
-split's counting breakpoint in a second fight; see `measure_split`.
+split's counting breakpoint in a second fight; see `measure_split`.  A folder
+saved where no wandering encounter happens (the Training Hall) is moved to where
+a donor save the DOS game wrote stands by `--place-like`, which changes only
+`SAVGAM?.DAT`'s area fields and square; the run stops before booting if any
+character file then differs from the folder's.
 
 `truth` is the other half of the comparison: the same party saved back by the
 game's own `ENCAMP > SAVE` before it is walked anywhere, then reloaded and
@@ -65,6 +69,7 @@ are the ones to convert for this.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import pathlib
 import shutil
@@ -73,7 +78,10 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-from goldbox import dos_codec  # noqa: E402
+from goldbox import (
+    dos_codec,  # noqa: E402
+    dos_savegame,  # noqa: E402
+)
 from goldbox import dos_port as dl  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
@@ -859,17 +867,89 @@ def summarize(initial: bytes, hits: list[dict], ovr: bytes, base: int,
     return out
 
 
+def place_like(save: pathlib.Path, donor: bytes, script: bytes) -> dict:
+    """Move the staged `SAVGAM?.DAT` at `save` to where `donor` stands.
+
+    `donor` is a Pool of Radiance saved game the DOS engine wrote in an indoor
+    area with encounters, and `script` that area's `ECL` DAX block.  Every
+    area value comes from the donor, so nothing here is invented: the area,
+    resident map, DAX number, wallset, square and the script buffer.  Only
+    `SAVGAM?.DAT` is written; the character files are not touched.
+    """
+    for what, data in (("staged save", save.read_bytes()), ("donor", donor)):
+        try:
+            pool = (dos_savegame.container_for(len(data))
+                    is dos_savegame.SAVE_POOL_OF_RADIANCE)
+        except dos_savegame.DosSaveError:
+            pool = False
+        if not pool:
+            raise ValueError(f"The {what} is not a Pool of Radiance saved game")
+    if dos_savegame.outdoors(donor):
+        raise ValueError("The donor stands on the overland map; a wandering "
+                         "encounter there needs a different area's script")
+    out = bytearray(save.read_bytes())
+    start, end = dos_savegame.ECL_BUFFER
+    out[start:end] = bytes(end - start)
+    area, dax = dos_savegame.current_area(donor), dos_savegame.dax_number(donor)
+    geo, wallset = dos_savegame.geo_block(donor), dos_savegame.wall_triple(donor)
+    dos_savegame.retarget(out, area=area, dax=dax, wallset=wallset,
+                          script=script, geo=geo)
+    x, y, facing = dos_savegame.position(donor)
+    dos_savegame.put_word(out, dos_savegame.INDOORS, 1)
+    dos_savegame.put_position(out, x, y, facing)
+    dos_savegame.put_tail_state(out, indoors=True)
+    save.write_bytes(bytes(out))
+    return {"area": area, "geo": geo, "dax": dax, "position": [x, y, facing],
+            "wallset": list(wallset)}
+
+
+def check_donor_script(donor: bytes, script: bytes) -> None:
+    """Refuse a script that is not the one the donor's own buffer holds.
+
+    The engine stages the area's `ECL` block into the save with the rest of
+    the buffer zero, so a mismatch means the wrong DAX block was read.
+    """
+    start, end = dos_savegame.ECL_BUFFER
+    body = script[dos_savegame.ECL_HEADER:]
+    if donor[start:end] != body + bytes(end - start - len(body)):
+        raise ValueError("The donor's script buffer is not the given area "
+                         "script followed by zeros")
+
+
+def check_records_unchanged(folder: pathlib.Path, save_dir: pathlib.Path) -> dict:
+    """SHA-256 of each staged `CHRDAT*` against the folder's file of that name.
+
+    Raises `ValueError` naming every file that differs or is missing, so a run
+    that claims the game's own characters cannot start on altered ones.
+    """
+    def digests(directory: pathlib.Path) -> dict[str, str]:
+        return {p.name.upper(): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in directory.iterdir()
+                if p.is_file() and p.name.upper().startswith("CHRDAT")}
+    want, got = digests(folder), digests(save_dir)
+    bad = sorted(n for n in want.keys() | got.keys() if want.get(n) != got.get(n))
+    if bad:
+        raise ValueError("Character files differ from the folder's: "
+                         + ", ".join(bad))
+    return {"records_unchanged": True, "record_hashes": got}
+
+
 def install_folder(save_dir: pathlib.Path, folder: pathlib.Path,
-                   at: str | None = None, source: str | None = None) -> str:
+                   at: str | None = None, source: str | None = None,
+                   place: tuple[bytes, bytes] | None = None) -> str:
     """Put a DOS-native save folder into a staged `SAVE` tree, unconverted.
 
-    Returns the slot letter.  `at` pokes the party's square as
-    `tools/dos/dostrain.py --at` does; the area is not changed, so the folder
-    has to stand where fights happen already.
+    Returns the slot letter.  `place` is `(donor, script)` for `place_like`,
+    applied before `at`, which pokes the party's square as
+    `tools/dos/dostrain.py --at` does within the area it then stands in.
+    Without `place` the area is not changed, so the folder has to stand where
+    fights happen already.
     """
     wipe_roster(save_dir)
     took = staging.install(folder, save_dir, staging.source_slot(folder, source))
     letter = took["as_slot"]
+    if place is not None:
+        place_like(save_dir / f"SAVGAM{letter}.DAT", *place)
     if at:
         move_to(save_dir / f"SAVGAM{letter}.DAT", at)
     return letter
@@ -1006,16 +1086,30 @@ def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
 
 
 def pile(*, folder: pathlib.Path, source: str | None, at: str | None,
-         steps: int, out: pathlib.Path, ds: int | None) -> dict:
+         steps: int, out: pathlib.Path, ds: int | None,
+         place_like_path: pathlib.Path | None = None) -> dict:
     """`measure_split` on a folder installed into a fresh DOSBox-X."""
     out.mkdir(parents=True, exist_ok=True)
     game = dosbox.find_game()
     report: dict = {"mode": "pile", "folder": str(folder)}
+    place = None
+    if place_like_path is not None:
+        donor = place_like_path.read_bytes()
+        dax = dos_savegame.dax_number(donor)
+        name = f"ECL{dax}.DAX"
+        script = dos_savegame.dax_block(
+            (game / name).read_bytes(), dos_savegame.current_area(donor), name=name)
+        check_donor_script(donor, script)
+        place = (donor, script)
+        report["place_like"] = str(place_like_path)
     with dosboxx.claim("issue743 treasure split") as claimed:
         s = dosboxx.XSession(claimed, game)
         try:
             s.stage(fresh=True)
-            letter = install_folder(s.save_dir, folder, at, source)
+            letter = install_folder(s.save_dir, folder, at, source, place)
+            if place is not None:
+                report["placed"] = dos_savegame_summary(s.save_dir, letter)
+            report.update(check_records_unchanged(folder, s.save_dir))
             s.boot(fresh=False)
             por = dosbox.PoolOfRadiance(s)
             por.to_main_menu()
@@ -1027,6 +1121,16 @@ def pile(*, folder: pathlib.Path, source: str | None, at: str | None,
                                                        default=str))
             s.close()
     return report
+
+
+def dos_savegame_summary(save_dir: pathlib.Path, letter: str) -> dict:
+    """Where the staged save stands, for the report."""
+    data = (save_dir / f"SAVGAM{letter}.DAT").read_bytes()
+    return {"area": dos_savegame.current_area(data),
+            "geo": dos_savegame.geo_block(data),
+            "dax": dos_savegame.dax_number(data),
+            "position": list(dos_savegame.position(data)),
+            "wallset": list(dos_savegame.wall_triple(data))}
 
 
 def _counts(hits: list[dict]) -> dict:
@@ -1061,6 +1165,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="`pile`: the DOS save folder to install as it stands")
     ap.add_argument("--from-slot", default=None,
                     help="`pile`: which slot of the folder, when it holds several")
+    ap.add_argument("--place-like", type=pathlib.Path, default=None,
+                    help="`pile`: a `SAVGAM?.DAT` the DOS game wrote in an "
+                         "indoor area; the party is moved to where it stands")
     ap.add_argument("--at", default=None, metavar="X,Y,FACING",
                     help="`pile`: poke the party's square before loading")
     ap.add_argument("--ds", type=lambda x: int(x, 16), default=None,
@@ -1075,7 +1182,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.folder is None:
             ap.error("pile needs --folder")
         report = pile(folder=args.folder, source=args.from_slot, at=args.at,
-                      steps=args.steps, out=out, ds=args.ds)
+                      steps=args.steps, out=out, ds=args.ds,
+                      place_like_path=args.place_like)
     elif args.command == "truth":
         report = truth(c64=args.c64, slot=args.slot,
                        engine_slot=args.engine_slot, steps=args.steps,
