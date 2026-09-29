@@ -509,6 +509,9 @@ ENCOUNTER_DRAW_SECONDS = 30.0
 #: How long `walk-fight` waits for a fight to open after it has answered an
 #: encounter menu or a `YES NO`.
 FIGHT_OPENS_SECONDS = 60.0
+#: Passes at one move that sent no key because the square's text came up at
+#: `MOVE`, before the move is failed.
+MOVE_UNSENT_PASSES = 3
 
 #: How long a warp waits for the engine to settle into its key-wait loop.
 WARP_IDLE_SECONDS = 300.0
@@ -2623,20 +2626,37 @@ class PoolRun:
             self.refuse_prompt(route, last, "was up before the next move")
             before = last[2]
             resent = False
-            for attempt in (0, 1):
+            sends = unsent = 0
+            while True:
                 # A key is sent again only when the party is where it was and
                 # either a fight took the key or the game read nothing: the
                 # position can lag a real move, and a second key would then
-                # take a second step.
+                # take a second step.  A pass that sent no key (the square's
+                # text came up at `MOVE`) does not use up that one resend.
                 again = self._walk_fight_key(
                     route, n, move, before, last,
                     answer if n == len(route) - 1 else None, fights,
                     word, flees)
                 after = self.position()
-                if after == before and again and attempt == 0:
+                if getattr(self.sess, "walk_unsent_press_bar", False):
+                    unsent += 1
+                    self.log.emit("move-unsent", n=n, move=move,
+                                  row24=self.bar().strip())
+                    if after == before and again:
+                        if unsent > MOVE_UNSENT_PASSES:
+                            raise self.fail(
+                                self.walk_verb,
+                                f"{self.walk_verb} {route}: move {n} ({move}) "
+                                f"was never sent: the square's text came up "
+                                f"at MOVE each time")
+                        continue
+                    break
+                sends += 1
+                if after == before and again and sends == 1:
                     resent = True
                     continue
                 break
+            never_sent = sends == 0
             if flees and flees[-1]["at_move"] == n:
                 flees[-1].update(before=before, after=after)
             if flees and flees[-1]["at_move"] == n and flees[-1]["escaped"]:
@@ -2649,7 +2669,8 @@ class PoolRun:
                         f"be judged, the facing was not read: {before} to "
                         f"{after}")
             else:
-                self._judge_walk_fight(route, n, move, before, after, resent)
+                self._judge_walk_fight(route, n, move, before, after, resent,
+                                       never_sent)
             self.log.emit("move", move=move, n=n, before=before, after=after,
                           resent=resent, row24=self.bar().strip())
             moves.append({"move": move, "before": before, "after": after,
@@ -2749,7 +2770,8 @@ class PoolRun:
                 return False
             # An ambush that left the world bar on the same square is sent
             # again by the caller, once, rather than judged as a wrong square.
-            return unread or (ambush and self.took_nothing(
+            unsent = getattr(sess, "walk_unsent_press_bar", False)
+            return unread or unsent or (ambush and self.took_nothing(
                 before, before_rows, screens))
         number = len(fights)
         self.capture(f"fight-{number}-start")
@@ -2860,12 +2882,20 @@ class PoolRun:
         return True
 
     def _look_for_fight(self, route, last) -> None:
-        """Watch `LOOK_SECONDS` for a fight to open."""
-        look_until = self.clock() + LOOK_SECONDS
+        """Watch `LOOK_SECONDS` for a fight to open, and as long as
+        `FIGHT_OPENS_SECONDS` while the game is preparing one (mode 4)."""
+        start = self.clock()
+        look_until = start + LOOK_SECONDS
         while not self.sess.in_combat():
             self.budget(1, f"{self.walk_verb} {route}")
             self.refuse_prompt(route, last, "ran the square's event")
-            if self.clock() >= look_until:
+            preparing = getattr(self.sess, "mode", lambda: None)() == COMBAT_PREP
+            if preparing and self.clock() >= start + FIGHT_OPENS_SECONDS:
+                raise self.fail(
+                    self.walk_verb, f"{self.walk_verb} {route}: no fight opened "
+                                  f"in {int(FIGHT_OPENS_SECONDS)} seconds, the "
+                                  f"game is still preparing combat (mode 4)")
+            if not preparing and self.clock() >= look_until:
                 break
             time.sleep(0.3)
 
@@ -2939,7 +2969,7 @@ class PoolRun:
         return True
 
     def _judge_walk_fight(self, route, n, move, before, after,
-                          resent: bool = False) -> None:
+                          resent: bool = False, never_sent: bool = False) -> None:
         if before[2] is None or after[2] is None:
             raise self.fail(self.walk_verb, f"{self.walk_verb} {route}: move {n} ({move}) "
                                           f"cannot be judged, the facing was not "
@@ -2951,8 +2981,9 @@ class PoolRun:
             if after[:2] == before[:2]:
                 raise self.fail(self.walk_verb, f"{self.walk_verb} {route}: move {n} (I) "
                                               f"left the party on {before} "
-                                              f"after it was sent "
-                                              f"{'twice' if resent else 'once'}")
+                                              f"after it was "
+                                              + ("never sent" if never_sent else
+                                                 f"sent {'twice' if resent else 'once'}"))
             raise self.fail(
                 self.walk_verb, f"{self.walk_verb} {route}: move {n} moved from {before} "
                               f"to {after}, not one square ahead: an exit or a "

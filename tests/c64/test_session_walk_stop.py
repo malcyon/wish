@@ -599,11 +599,22 @@ def test_a_walk_that_fights_leaves_an_ambush_press_bar_for_its_caller(monkeypatc
     assert sess.walk_one("I", tries=1, encounters=True) is False
     assert sess.walk_refused is None and sess.walk_stop_screen is None
     assert sess.keys == [] and sess.left == 0
+    assert sess.walk_unsent_press_bar is True
+
+
+def test_the_unsent_press_bar_flag_is_reset_by_the_next_walk_one(monkeypatch):
+    sess = Ambush(monkeypatch)
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    sess.walk_one("I", tries=1, encounters=True)
+    sess.walk_encounter = None
+    sess.walk_one("I", tries=1, encounters=True)
+    assert sess.walk_unsent_press_bar is False
 
 
 def test_a_plain_walk_still_reports_a_press_bar(monkeypatch):
     sess = Ambush(monkeypatch)
     assert sess.walk_one("I", tries=1) is False
+    assert sess.walk_unsent_press_bar is False
     assert "never brought up" in sess.walk_refused
 
 

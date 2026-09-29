@@ -7229,10 +7229,11 @@ class RefusalFreeAmbush(AmbushWalk):
     def walk_one(self, move, *a, **k):
         if self.calls == 0:
             self.calls += 1
-            self.pressed.append(move)
             self.state, self.opens_fight = "press", True
             self.walk_refused = self.walk_stop_screen = None
+            self.walk_unsent_press_bar = True
             return False
+        self.walk_unsent_press_bar = False
         return super().walk_one(move, *a, **k)
 
 
@@ -7244,5 +7245,103 @@ def test_walk_fight_answers_a_press_bar_walk_one_left_fights_and_resends_once(
     log.close()
     assert sess.sent == [("key", 0x0D)]
     assert [f["at_move"] for f in got["fights"]] == [0]
-    assert sess.pressed == ["I", "I"]
-    assert got["moves"][0]["resent"] is True and got["position"] == [5, 4, 0]
+    assert sess.pressed == ["I"]
+    assert got["moves"][0]["resent"] is False and got["position"] == [5, 4, 0]
+
+
+class UnsentPressBar(AmbushWalk):
+    """The square's text comes up at `MOVE` before the direction key is sent
+    (drain boot 7, key 31).  Its `PRESS` bar is answered by one Return; row 24
+    is then blank for `prep_seconds` of the run's clock with the mode byte at
+    4, and the mode byte then reads 2 (`fight` True) or the world bar returns.
+    `unsent_calls` says which `walk_one` calls send nothing."""
+
+    TEXT = {17: "DARK, BENT CREATURES RUSH SWIFTLY AT", 18: "YOU."}
+
+    def __init__(self, script=None, fight=True, unsent_calls=(0,),
+                 prep_seconds=21.0, **kw):
+        super().__init__(script or {}, **kw)
+        self.screens["press"] = _window(self.TEXT, ARRIVAL_BAR)
+        self.screens["prep"] = _window(self.TEXT, "")
+        self.moves[("press", ("key", 0x0D))] = "prep" if fight else "world"
+        self.fight_follows, self.unsent_calls = fight, set(unsent_calls)
+        self.prep_seconds = prep_seconds
+        self.now = lambda: 0.0
+        self.returned_at = None
+
+    def walk_one(self, move, *a, **k):
+        self.walk_screens = self.walk_stop_screen = self.walk_refused = None
+        if self.calls in self.unsent_calls or "all" in self.unsent_calls:
+            self.calls += 1
+            self.state = "press"
+            self.walk_unsent_press_bar = True
+            return False
+        self.walk_unsent_press_bar = False
+        return WalkSession.walk_one(self, move, *a, **k)
+
+    def press_kernal(self, code):
+        FakeSession.press_kernal(self, code)
+        if self.state == "prep":
+            self.returned_at = self.now()
+
+    def mode(self):
+        if self.returned_at is None:
+            return A.S.DUNGEON
+        return A.S.COMBAT if self.in_combat() else A.COMBAT_PREP
+
+    def in_combat(self):
+        return (self.returned_at is not None
+                and self.now() >= self.returned_at + self.prep_seconds)
+
+    def fight(self, budget, tactic):
+        self.returned_at, self.state = None, "world"
+        self.fought = getattr(self, "fought", 0) + 1
+        return A.S.FightResult(self.outcome, 3, 1.0, [], [])
+
+
+def test_walk_fight_answers_a_press_bar_that_came_up_at_move_waits_out_combat_prep_and_sends_the_key(
+        tmp_path, monkeypatch):
+    sess = UnsentPressBar()
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    sess.now = run.clock
+    got = run.walk_fight("I")
+    log.close()
+    assert sess.sent == [("key", 0x0D)]
+    assert [f["at_move"] for f in got["fights"]] == [0]
+    assert sess.pressed == ["I"]
+    assert got["moves"][0]["resent"] is False and got["position"] == [5, 4, 0]
+
+
+def test_walk_fight_with_an_unsent_press_bar_and_no_fight_sends_the_key(
+        tmp_path, monkeypatch):
+    sess = UnsentPressBar(fight=False)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    sess.now = run.clock
+    got = run.walk_fight("I")
+    log.close()
+    assert sess.sent == [("key", 0x0D)] and got["fights"] == []
+    assert sess.pressed == ["I"] and got["position"] == [5, 4, 0]
+
+
+def test_walk_fight_fails_when_combat_prep_never_opens_a_fight(tmp_path, monkeypatch):
+    sess = UnsentPressBar(prep_seconds=1000.0)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    sess.now = run.clock
+    with pytest.raises(A.StepFailed, match="no fight opened in 60 seconds"):
+        run.walk_fight("I")
+    log.close()
+    assert sess.pressed == []
+
+
+def test_walk_fight_fails_naming_a_key_that_was_never_sent_after_three_unsent_passes(
+        tmp_path, monkeypatch):
+    sess = UnsentPressBar(fight=False, unsent_calls=("all",))
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    sess.now = run.clock
+    with pytest.raises(A.StepFailed, match="move 0 .I. was never sent"):
+        run.walk_fight("I")
+    log.close()
+    assert sess.pressed == [] and sess.calls == 4
+    events = [json.loads(line) for line in
+              (tmp_path / "run.jsonl").read_text().splitlines()]
+    assert [e["kind"] for e in events].count("move-unsent") == 4

@@ -2433,6 +2433,7 @@ class Session:
         self.walked_outdoors = False
         self.walk_screens = None
         self.walk_stop_screen = None
+        self.walk_unsent_press_bar = False
         self.walk_encounter_started = False
         self.walk_encounter_age = 0.0
         key_at = time.monotonic()
@@ -2562,6 +2563,7 @@ class Session:
             # bar is read again because `last` predates the 8 s `MOVE` wait.
             _log_line(self, "  A PRESS bar is up instead of the move bar: "
                             "leaving it for the caller to answer")
+            self.walk_unsent_press_bar = True
             return False
         self._leave_move(answer_prompts)
         if not sent and self._walk_expired():
@@ -2629,6 +2631,10 @@ class Session:
 
     #: The 25 rows of the screen the last `walk_one` stopped at, or None.
     walk_stop_screen = None
+
+    #: Set by `walk_one` when it returned at a `PRESS` bar without sending the
+    #: direction key, so the caller knows the key may still be sent.
+    walk_unsent_press_bar = False
 
     def walk_stop(self, s=None, wait: float = 0.0):
         """None for a screen a walk answers or waits on, else its 25 rows.
