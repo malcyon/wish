@@ -909,6 +909,9 @@ def write_disk(built: list[Built], base: pathlib.Path, out: pathlib.Path,
     """
     from goldbox import icons, items
 
+    if icon is not None and len(icon) != icons.ICON_SIZE:
+        raise ValueError(f"a combat icon is {icons.ICON_SIZE} bytes, "
+                         f"not {len(icon)}")
     if len(built) > savegame.ROSTER_COUNT:
         raise SystemExit(f"a party holds at most {savegame.ROSTER_COUNT}")
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -946,9 +949,6 @@ def write_disk(built: list[Built], base: pathlib.Path, out: pathlib.Path,
             record.slice(0x120, items.ITEM_BLOCK_STRIDE) if record
             else bytes(items.ITEM_BLOCK_STRIDE))
         if icon is not None:
-            if len(icon) != icons.ICON_SIZE:
-                raise ValueError(f"a combat icon is {icons.ICON_SIZE} bytes, "
-                                 f"not {len(icon)}")
             at = icon_base + index * icons.ICON_SIZE
             payload[at:at + icons.ICON_SIZE] = icon
 
@@ -1050,10 +1050,13 @@ def main(argv: "list[str] | None" = None) -> int:
         base = args.base or base_save_disk()
         icon = None
         if not args.keep_icons:
+            from goldbox.d64 import D64Error
             from tools.pool_of_radiance import dirtenicon
             try:
                 icon = dirtenicon.native_default().icon
-            except dirtenicon.RepairError as error:
+            except (OSError, ValueError, D64Error) as error:
+                # `RepairError` is a `ValueError`; the others are a disk that
+                # cannot be read or is damaged.
                 raise SystemExit(f"cannot read the creation-default combat "
                                  f"icon: {error}")
         where = write_disk(built, base, args.disk, icon)

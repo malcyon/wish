@@ -417,6 +417,37 @@ def test_no_icon_leaves_the_base_disks_icon_bytes_unchanged(tmp_path):
     assert _icons_on(out) == [marked] * savegame.ROSTER_COUNT
 
 
+@pytest.mark.parametrize("error", ["repair", "os"])
+def test_an_unreadable_default_icon_stops_main_and_writes_no_disk(
+        tmp_path, monkeypatch, error):
+    """Zeros draw as hooks, so a default that cannot be read is a stop."""
+    from tools.pool_of_radiance import dirtenicon
+
+    base = _synthetic_save_disk(tmp_path / "base.d64")
+    before = hashlib.sha256(base.read_bytes()).hexdigest()
+    raised = (dirtenicon.RepairError("no default") if error == "repair"
+              else OSError("unreadable"))
+
+    def refuse():
+        raise raised
+
+    monkeypatch.setattr(dirtenicon, "native_default", refuse)
+    out = tmp_path / "TESTPARTY.D64"
+    with pytest.raises(SystemExit):
+        testparty.main(["--no-items", "--disk", str(out),
+                        "--base", str(base)])
+    assert not out.exists()
+    assert hashlib.sha256(base.read_bytes()).hexdigest() == before
+
+
+def test_a_wrong_length_icon_is_refused_before_anything_is_written(tmp_path):
+    base = _synthetic_save_disk(tmp_path / "base.d64")
+    out = tmp_path / "TESTPARTY.D64"
+    with pytest.raises(ValueError):
+        testparty.write_disk([], base, out, icon=b"\x01\x02")
+    assert not out.exists()
+
+
 # --- the loadouts, and the sixteen-item ceiling ------------------------------
 
 @pytest.fixture(scope="module")
