@@ -276,9 +276,11 @@ def standing_by_side(blocks: bytes) -> dict[int, int]:
 class SidedBattle(Battle):
     """A `Battle` whose enemies leave out combatants on the party's side.
 
-    `automap.combat.Combatant.is_party` is `index < 8`, so the brawl's 13
-    allies at indices 41-53 read as enemies and `Session.melee_turn` walks
-    into the nearest of them, which the game answers `ATTACK ALLY: YES NO`.
+    `automap.combat.Combatant.is_party` follows the side byte, so the brawl's
+    13 allies at indices 41-53 are already off `enemies`; this is a second
+    guard that also drops the ids found by `party_side`, so a step into an ally
+    (which the game answers `ATTACK ALLY: YES NO`) stays unlikely if the reader
+    ever regresses.
     """
 
     friends: frozenset[int] = frozenset()
@@ -895,7 +897,8 @@ class Tactic:
         """`Session.melee_turn` against the monster side only; refuse an ally attack.
 
         `melee_turn` picks its target from `battle().enemies`, so `battle` is
-        wrapped for the one call.  `SidedBattle` makes a step into an ally
+        wrapped for the one call, as a second guard: `is_party` already follows
+        the side byte.  `SidedBattle` makes a step into an ally
         unlikely, since `step_towards` treats every square but the target's as
         blocked; it does not rule one out.  If the game asks `ATTACK ALLY`,
         the NO answered here is what keeps the party from striking its own

@@ -119,17 +119,41 @@ def test_an_ally_past_the_party_slots_is_on_the_party_side():
     assert b.at(27, 13).kind == "party"
 
 
-def test_a_charmed_party_member_is_on_the_other_side_but_still_a_character():
-    """A charm sets the side byte to `$C0`/`$C1`, and the top bit is not the
-    side."""
-    for byte in (0xC0, 0xC1):
-        target = MemoryTarget(synthetic_arena(sides={0: byte}))
-        b = combat.read_battle(target)
-        assert [c.index for c in b.party] == []
-        assert [c.index for c in b.enemies] == [0, 8]
-        assert [c.index for c in b.characters] == [0]
-        assert b.at(25, 13).kind == "enemy"
-        assert b.at(25, 13).is_player
+@pytest.mark.parametrize("byte, on_party_side", [
+    (0x80, True), (0x81, False), (0xC0, True), (0xC1, False),
+    (0x60, True), (0xE0, True)])
+def test_the_side_is_bit_zero_of_the_side_byte_whatever_a_charm_sets(
+        byte, on_party_side):
+    """`COMBAT` fights by `side AND 1`; a charm sets bit 7 and more."""
+    b = combat.read_battle(MemoryTarget(synthetic_arena(sides={0: byte})))
+    who = b.at(25, 13)
+    assert who.is_party is on_party_side
+    assert (who in b.party) is on_party_side
+    assert who.kind == ("party" if on_party_side else "enemy")
+    assert who.is_player and who in b.characters
+
+
+def test_a_combatant_with_no_side_read_falls_back_to_its_index():
+    assert _combatant(index=3).is_party
+    assert not _combatant(index=8).is_party
+    assert not _combatant(index=41).is_party
+    assert _combatant(index=41, side=0).is_party
+
+
+def test_a_charmed_party_member_shows_no_monster_experience_line():
+    """Given the ORC's record, so that only the index says it is no monster."""
+    orc = combat.read_battle(arena()).enemies[0]
+    charmed = dataclasses.replace(orc, index=0, side=0xC1)
+    assert not charmed.is_party and charmed.is_player
+    assert not any("experience" in t for t in charmed.lines())
+
+
+def test_an_ally_with_a_monster_record_still_shows_its_experience_line():
+    who = combat.read_battle(arena()).enemies[0]
+    ally = dataclasses.replace(who, index=41, side=0)
+    assert ally.is_party and not ally.is_player
+    assert "15 experience" in ally.lines()
+    assert "15 experience" in who.lines()
 
 
 def test_bit_seven_of_a_square_agrees_with_the_position_table(battle):
@@ -345,6 +369,14 @@ def test_the_battlefield_draws_a_bar_for_a_wounded_combatant():
     expect = combat.bar_for(
         combat.MARGIN + 2 * cell, combat.MARGIN + 2 * cell, cell, 0.25, "hp")
     assert bars[0] == expect
+
+
+def test_the_status_line_counts_an_index_41_ally_on_the_party_side():
+    from automap.window import AutomapBinding
+    b = combat.read_battle(MemoryTarget(synthetic_arena(
+        ((0, 25, 13), (8, 30, 13), (41, 27, 13)), sides={41: 0})))
+    note = AutomapBinding._battle_note(b)
+    assert "party 2/2" in note and "enemies 1/1" in note
 
 
 # --- the tab ----------------------------------------------------------------
