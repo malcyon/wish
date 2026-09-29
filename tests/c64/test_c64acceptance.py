@@ -8670,11 +8670,49 @@ def test_temple_probe_raise_classifies_the_outcome_from_the_last_screen_only(
 
     session.confirm_bar = confirm
     result = run.temple_probe("BRUTUS RAISE")
-    assert any("IS ALIVE" in "\n".join(rows) for rows in
-               [r for a, kw in events if a[0] == "temple-heal-frame"
-                for r in [kw["rows"]]])
+    # The fast post-YES sampling now sees the earlier frame first.
+    assert any("IS ALIVE" in "\n".join(kw["rows"]) for a, kw in events
+               if a[0] in ("temple-heal-frame", "temple-result-frame"))
     assert result["raise_result"]["rows"][12] == "BRUTUS FAILED"
     assert result["outcome"] == "failed"
+
+
+def test_temple_probe_raise_keeps_a_result_frame_that_gives_way_to_the_menu(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    real = session.confirm_bar
+
+    def reading():
+        value = _temple_reading()
+        paid = session.keys.count("YES") > 1
+        value["party"][0]["gold"] = 500 if paid else 6000
+        return value
+
+    def confirm(row, was):
+        real(row, was)
+        if session.phase == "result":
+            # The live run: the message stood under a second, then the menu.
+            shown = [0]
+            original = session.screen
+
+            def screen():
+                shown[0] += 1
+                if shown[0] > 5:
+                    session.phase = "temple"
+                return original()
+            session.screen = screen
+
+    session.confirm_bar = confirm
+    run.reading = reading
+    result = run.temple_probe("BRUTUS RAISE")
+    assert result["outcome"] == "alive"
+    assert any("BRUTUS IS ALIVE" in f["rows"][12]
+               for f in result["result_frames"])
+    assert not any(f["is_price"] for f in result["result_frames"])
+    assert result["raise_result"]["rows"][12] == ""
+    assert result["gold_before"] == {"5:BRUTUS": 6000}
+    assert result["gold_after"] == {"5:BRUTUS": 500}
+    assert session.keys[-1] == "YES" and session.keys.count("YES") == 2
 
 
 @pytest.mark.parametrize("unsafe,missing", [

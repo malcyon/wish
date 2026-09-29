@@ -399,6 +399,13 @@ HEAL_SCREEN_HOLD = 1.0
 #: drawn, before the wait ends; a later redraw restarts it.
 HEAL_SETTLE = 15.0
 
+#: After YES on the temple's price prompt, how long every distinct frame is
+#: kept, and the pause between reads. The result text (`IS ALIVE` and the
+#: like) can stand for under a second before the menu redraws, which the
+#: settled-frame wait never saw.
+TEMPLE_RESULT_WINDOW = 6.0
+TEMPLE_RESULT_POLL = 0.05
+
 #: What `temple-probe` accepts: the member; with `HEAL` the one screen past
 #: the temple bar's HEAL; with `RAISE` the purchase of RAISE DEAD for him.
 TEMPLE_PROBE_ARGS = ("BRUTUS", "BRUTUS HEAL", "BRUTUS RAISE")
@@ -942,6 +949,7 @@ def _party_reading(records: list[bytes], roster: bytes, stride: int) -> list[dic
                 rec, c64_port.POOL_OF_RADIANCE) if n],
             "cleric_level": record[0xCA], "fighter_level": record[0xCC],
             "movement": record[0x9F],
+            "gold": int.from_bytes(record[0xC1:0xC3], "little"),
             "traits": list(record[TRAIT_SLOT:TRAIT_SLOT + TRAIT_SLOTS]),
             "creature_type": record[CREATURE_TYPE_OFFSET],
             "record_bytes": {f"0x{offset:02X}": record[offset] for offset in raw},
@@ -2189,6 +2197,41 @@ class PoolRun:
                 "held": kept_held,
                 "steady": [rows for _, rows in steady]}
 
+    @staticmethod
+    def _temple_gold(reading: dict) -> dict:
+        """Each party member's gold, by slot and name, from a `reading()`;
+        the payer is the member at the temple bar, and the party is kept
+        whole so the payer need not be guessed."""
+        return {f"{p.get('slot')}:{p.get('name')}": p.get("gold")
+                for p in reading.get("party", [])}
+
+    def _temple_result_frames(self, price_rows: list[str]) -> list[dict]:
+        """Every distinct frame in the first `TEMPLE_RESULT_WINDOW` seconds
+        after YES, oldest first, at the fastest rate the monitor allows.
+        Sends nothing."""
+        frames: list[dict] = []
+        start = self.clock()
+        limit = min(start + TEMPLE_RESULT_WINDOW, self.temple_input_deadline)
+        while self.clock() < limit:
+            screen = self.temple_sample().screen
+            if screen is not None:
+                rows = [screen.row(r).rstrip() for r in range(25)]
+                if not frames or frames[-1]["rows"] != rows:
+                    frames.append({"at": round(self.clock() - start, 3),
+                                   "rows": rows,
+                                   "is_price": rows[:24] == price_rows[:24]})
+                    self.log.emit("temple-result-frame", **frames[-1])
+            time.sleep(TEMPLE_RESULT_POLL)
+        return frames
+
+    @staticmethod
+    def _temple_outcome(text: str) -> str:
+        text = text.upper()
+        return ("alive" if "IS ALIVE" in text else
+                "failed" if "FAILED" in text else
+                "no-money" if "NOT ENOUGH MONEY" in text else
+                "unknown")
+
     def temple_probe(self, who: str) -> dict:
         """Capture the temple arrival screen and stop; with `HEAL`, select it
         once and capture the last settled screen after it; with `RAISE`,
@@ -2270,19 +2313,26 @@ class PoolRun:
             if missing:
                 self._temple_stop("price", "no RAISE DEAD price screen, "
                                   "missing " + ", ".join(missing), priced)
+            gold_before = self._temple_gold(self.reading())
             self._temple_select_bar("YES", "payment")
+            frames = self._temple_result_frames(price["rows"])
             done = self._temple_heal_screen(
                 price["rows"][:24], tag="raise-result", stop="result",
                 what="YES")
-            text = "\n".join(done["rows"]).upper()
-            outcome = ("alive" if "IS ALIVE" in text else
-                       "failed" if "FAILED" in text else
-                       "no-money" if "NOT ENOUGH MONEY" in text else
-                       "unknown")
+            gold_after = self._temple_gold(self.reading())
+            kept = [f for f in frames if not f["is_price"]]
+            outcome = "unknown"
+            for rows in reversed([f["rows"] for f in kept] + [done["rows"]]):
+                outcome = self._temple_outcome("\n".join(rows))
+                if outcome != "unknown":
+                    break
             result["raise_result"] = {"stem": done["stem"],
                                       "rows": done["rows"],
                                       "settled": done["settled"],
                                       "held": done["held"]}
+            result["result_frames"] = kept
+            result["gold_before"] = gold_before
+            result["gold_after"] = gold_after
             result["outcome"] = outcome
         result["checkpoints"] = len(self.temple_checkpoints)
         return result
