@@ -330,11 +330,16 @@ def _status_line(sess):
 
     Never `sess.position()`: with no coordinates on the line (the Slums) it
     retries for seconds and then falls back to the memory copy, which lags a
-    move.  Either part is None when the line does not show it.
+    move.  Both come from the last screen row that shows a facing letter and a
+    clock, because the status row sits below the message rows and a message such
+    as `... E 1:30` must not be taken for it.  Either part is None when the line
+    does not show it.
     """
     text = sess.screen_text() or ""
-    m = RE_FACING.search(text)
-    at = S.parse_status(text)
+    rows = [r for r in text.split(" / ") if RE_FACING.search(r)]
+    row = rows[-1] if rows else text
+    m = RE_FACING.search(row)
+    at = S.parse_status(row)
     return (S.FACING[m.group(1)] if m else None,
             (at.x, at.y) if at else None)
 

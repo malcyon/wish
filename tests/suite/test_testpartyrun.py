@@ -306,14 +306,24 @@ def test_the_edge_turn_desyncs_as_turn_not_seen(monkeypatch):
 
 def test_a_status_line_without_coordinates_still_gives_the_facing(monkeypatch):
     # The Slums' line reads `S 8:07`; the memory copy behind `position()` lags,
-    # so the check must not ask it.
+    # so the check must not ask it, in the walk or after it.
+    def refuse():
+        raise AssertionError("position() is the lagging copy")
+
+    monkeypatch.setattr(WalkSession, "position", lambda self: refuse())
     sess, got = _turning_walk(monkeypatch, turns_move=False, coords=False)
     assert sess.keys == ["K", "K", "I"] and got == (2, None, None)
-    monkeypatch.setattr(sess, "position", lambda: (_ for _ in ()).throw(
-        AssertionError("position() is the lagging copy")))
     log = RecordingLog()
     assert T._turn_key(sess, log, "k", (sess.facing + 1) % 4, "slums",
                        (9, 13), (9, 14)) is None
+
+
+def test_the_status_row_wins_over_an_earlier_message_row_that_looks_like_it():
+    class Sess:
+        def screen_text(self):
+            return "A E 1:30 / HERE / S 8:07 4,9"
+
+    assert T._status_line(Sess()) == (2, (4, 9))
 
 
 def test_a_status_line_with_no_facing_is_logged_as_none(monkeypatch):
