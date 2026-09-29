@@ -778,17 +778,21 @@ def test_an_injected_answerer_needs_no_journal_interpreter_for_the_preflight(
 
 
 class DrawGuest(AcceptGuest):
-    """A camp save to slot D asks its question when the helper has staged one, then needs staging again."""
+    """A camp save asks its question at once, before the slot picker, when the helper has staged one."""
 
     def __init__(self, clock, helper, *, questions=None):
         super().__init__(clock)
         self.helper, self.pending, self.questions, self.log = helper, False, questions, []
+        self.pressed_while_asked = []
 
     def press(self, holder, key, timeout=None):
+        if self.pending:
+            self.pressed_while_asked.append(key)
         super().press(holder, key, timeout)
         if key == "S" and self.helper.calls:
             self.log.append("S")
-        if key == "D" and self.helper.armed and self.questions != 0:
+        # The menu's own save (`S` before slot B is written) never asks.
+        if key == "S" and self.written_b and self.helper.armed and self.questions != 0:
             self.pending, self.helper.armed = True, False
             self.questions = None if self.questions is None else self.questions - 1
 
@@ -801,8 +805,10 @@ def _draws(tmp_path, clock, monkeypatch, draws, *, questions=None, memory=None, 
     monkeypatch.setattr(route_silver_blades, "_load_savecount", lambda: helper)
     guest = DrawGuest(clock, helper, questions=questions)
     guest.log = log
-    asked = lambda p: p.stem.endswith("exit_game") and guest.pending  # noqa: E731
+    asked = lambda p: p.stem.endswith("camp_save_picker") and guest.pending  # noqa: E731
     guard = MapGuard(on={"journal": lambda p: p.name == "10-journal.png" or asked(p),
+                         "camp_save_picker": lambda p: (p.stem.endswith("camp_save_picker")
+                                                        and not guest.pending),
                          "exit_game": lambda p: p.stem.endswith("exit_game") and not guest.pending})
 
     class Answered(Answer):
@@ -828,6 +834,16 @@ def test_each_further_draw_stages_the_question_and_camp_saves_again(
     assert run.result["rulebook"] == [
         {"draw": n, "asked": True, "answer": "answered", "exit_game": True} for n in (2, 3)]
     assert run.result["error"] == "" and run.result["success"] is True
+
+
+def test_the_question_is_answered_after_s_and_before_any_slot_letter(
+        tmp_path, clock, readings, monkeypatch):
+    run = _draws(tmp_path, clock, monkeypatch, 2)
+    assert run.guest.pressed_while_asked == []
+    keys = _keys(run.guest)
+    at_answer = run.answer.calls[-1][0]  # keys pressed when the camp save's question was answered
+    assert keys[at_answer - 1] == "S" and keys[at_answer] == "D"
+    assert run.result["success"] is True
 
 
 def test_staging_comes_after_a_lane_check_and_before_s(tmp_path, clock, readings, monkeypatch):
@@ -941,10 +957,10 @@ def test_an_answered_screen_is_kept_under_its_own_name_in_a_draw_run(
         tmp_path, clock, readings, monkeypatch):
     _draws(tmp_path, clock, monkeypatch, 2)
     shots = tmp_path / "recon1" / "shots"
-    kept = shots / "16-exit_game-journal-1.png"
+    kept = shots / "15-camp_save_picker-journal-1.png"
     assert kept.read_bytes().startswith(b"frame")
-    assert kept.with_name("16-exit_game-journal-1.raw.png").read_bytes().startswith(b"grab")
-    assert (shots / "19-exit_game-journal-1.png").exists()
+    assert kept.with_name("15-camp_save_picker-journal-1.raw.png").read_bytes().startswith(b"grab")
+    assert (shots / "18-camp_save_picker-journal-1.png").exists()
 
 
 def test_a_run_without_draws_keeps_no_interstitial_copies(tmp_path, clock, readings):
