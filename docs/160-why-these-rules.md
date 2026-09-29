@@ -977,8 +977,9 @@ another batch is pushed on top of it. The gate once also held back every new
 ticket until CI finished, which kept a Codex orchestrator to one ticket at a
 time; it was narrowed so independent tickets start while CI runs.
 `suiterun.py` stays as a diagnostic for when somebody asks for a whole-suite
-run. The hook's file stays as a retired entry point that checks nothing, so a
-session with the old wiring cached does not fail on every command.
+run. The hook's file was kept as an entry point that checks nothing until no
+running session predated its retirement, so a session with the old wiring
+cached would not fail on every command; it was then deleted.
 
 ### What the rule files said before they dropped their history
 
