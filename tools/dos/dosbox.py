@@ -1495,22 +1495,21 @@ class PoolOfRadiance:
     # combat-only spell asks `LOSE IT? YES NO`.  `e` leaves the list for the
     # Magic bar and the Magic bar for camp.  Bars by `screens.bar_signature`.
     #
-    # How each signature below was measured, all on DOSBox 0.74-3,
-    # `machine=vga`, `cycles=fixed 20000`, from the Forgotten Realms Archives
-    # Collection Two copy of `POOLRAD`, casting for SIMON, the second roster
-    # line of the party read:
-    #   CAMP_BAR, MAGIC_BAR, SPELL_LIST_BAR: three boots, the Magic bar and
-    #     the list each reached by `m` and `c`; the third boot was `cast`
-    #     itself.
-    #   TARGET_BAR: one boot, at Cure Light Wounds' `CAST SPELL ON WHOM`,
-    #     reached by a scratch driver rather than by `cast`.
-    #   LOSE_IT_BAR: one boot, the list's last row cast, which was a
-    #     combat-only spell; `cast` has not reached it.
-    #   SPELL_LIST_POSSESSIVE: read off SIMON's list title, and checked
-    #     against it by `cast` in the third boot.
-    #   CAST_SPELLS rows: BLESS was seen live in all three boots, and cast by
-    #     `cast` in the third; CURE-LIGHT-WOUNDS in one boot, through the
-    #     scratch driver, and never by `cast`.
+    # What each signature below was verified against.  All were read off live
+    # captures on DOSBox 0.74-3, `machine=vga`, `cycles=fixed 20000`, from the
+    # Forgotten Realms Archives Collection Two copy of `POOLRAD`, for SIMON,
+    # the second roster line of the party read:
+    #   CAMP_BAR, MAGIC_BAR, SPELL_LIST_BAR: the camp bar, the Magic bar and
+    #     the list bar as `cast` reaches them by `m` and `c`.
+    #   TARGET_BAR: the `CAST SPELL ON WHOM` screen of Cure Light Wounds; not
+    #     yet exercised by `cast`.
+    #   LOSE_IT_BAR: the screen after casting the list's last row, a
+    #     combat-only spell; not yet exercised by `cast`.
+    #   SPELL_LIST_POSSESSIVE: SIMON's list title, the `'S` after the name;
+    #     checked against it by `cast`.
+    #   CAST_SPELLS rows: BLESS as it shows in the list, and as `cast` casts
+    #     it; CURE-LIGHT-WOUNDS as it shows in the list; not yet exercised by
+    #     `cast`.
     CAMP_BAR = "e229a5f1da0130ed"
     MAGIC_BAR = "062aa229ea7afd11"
     SPELL_LIST_BAR = "756a9b74819cebd5"
@@ -1674,9 +1673,24 @@ class PoolOfRadiance:
             shots.append(snap("cast-target"))
             self.s.key("Return")
         settle_on("cast")
-        screen = self.s.settle(quiet=1.0, timeout=20.0)
-        if outcome(screen) != "cast":
-            raise TimeoutError("the spell list changed again after the cast")
+        # The Bless message window covers the row, so one frame with a row
+        # fewer proves nothing: believed only when two captures a second
+        # apart show the same bar and the same rows.
+        deadline = time.time() + 20.0
+        anchor = None
+        while True:
+            screen = self.s.capture()
+            now = time.time()
+            seen = ((bar(screen), tuple(self.spell_rows(screen)))
+                    if outcome(screen) == "cast" else None)
+            if seen is None or anchor is None or anchor[0] != seen:
+                anchor = (seen, now) if seen else None
+            elif now - anchor[1] >= 1.0:
+                break
+            if now >= deadline:
+                raise TimeoutError("the spell list did not settle one "
+                                   f"{spell} shorter after the cast")
+            time.sleep(0.15)
         shots.append(snap("cast-done"))
         after = self.spell_rows(screen).count(sig)
 

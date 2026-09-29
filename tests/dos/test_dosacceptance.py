@@ -459,23 +459,30 @@ class CastPool(FakePool):
         else:
             super().key(k, gap)
 
-    def _list_frame(self, highlight: bool) -> dosbox.Screen:
+    def _list_frame(self, highlight: bool, hide: bytes | None = None) -> dosbox.Screen:
         px = bytearray(_screen(self.BARS["list"], b"").px)
         who = 1 if self.failure == "wrong_title" else self.line
         _draw_name(px, 8, 8, _pod_name(who).rstrip(b"\x00") + _POSSESSIVE, _WHITE)
         for i, row in enumerate(self.rows):
+            if row == hide:
+                continue
             _draw_name(px, 8, 40 + 8 * i, row, _WHITE if highlight and i == self.hl
                        and self.spell_rows() else _GREEN)
         return dosbox.Screen(W, H, bytes(px))
 
     def capture(self):
         if self.mode == "message":
+            hide = None
             if self.message:
                 self.message -= 1
+                # The message window hides the row, then the full list comes
+                # back: nothing was cast.
+                hide = self.pending if self.failure == "hidden_row" else None
                 if not self.message:
-                    del self.rows[self.rows.index(self.pending)]
+                    if self.failure != "hidden_row":
+                        del self.rows[self.rows.index(self.pending)]
                     self.mode, self.hl = "list", len(self.rows) - 1
-            return self._list_frame(highlight=False)
+            return self._list_frame(highlight=False, hide=hide)
         if self.mode in ("list", "target"):
             here = self.hl if self.mode == "list" else self.line
             if self.flip_at and self.flip_at[:2] == (self.mode, here):
@@ -503,6 +510,15 @@ def _cast_measured(monkeypatch):
                       ("LOSE_IT_BAR", "lose")):
         monkeypatch.setattr(game, attr, screens.bar_signature(
             _screen(CastPool.BARS[bar], b"")))
+    now = [0.0]
+
+    def tick():
+        now[0] += 1.0
+        return now[0]
+
+    # Time moves a second per look, so the settling check needs no waiting.
+    monkeypatch.setattr(dosbox, "time", type("T", (), {
+        "time": staticmethod(tick), "sleep": staticmethod(lambda s: None)}))
     px = bytearray(W * H * 3)
     for i, row in enumerate((_BLESS, _CLW)):
         _draw_name(px, 8, 40 + 8 * i, row, _GREEN)
@@ -555,6 +571,7 @@ def test_pool_cast_a_targeted_spell_picks_the_target_with_end_and_return(
     ("", [_HEADER, _CLW, _HEADER, _HOLD], "BLESS is not in"),
     ("unknown", None, "a screen it does not know"),
     ("no_return", None, "never came back"),
+    ("hidden_row", None, "did not settle"),
 ])
 def test_pool_cast_stops_at_an_unexpected_screen_before_any_save(
         tmp_path, _cast_measured, failure, rows, why):
@@ -602,7 +619,7 @@ def test_pool_cast_an_unreachable_target_line_stops_at_the_bound(
     with pytest.raises(da.StepFailed, match="never brought the target highlight to line 8"):
         d.cast(2, "CURE-LIGHT-WOUNDS", 8)
     assert "Return" not in game.keys
-    assert game.keys[game.keys.index("c", game.keys.index("c") + 1):].count("End") <= 13
+    assert game.keys[game.keys.index("c", game.keys.index("c") + 1):].count("End") == 13
 
 
 def test_pool_cast_stops_when_exit_never_reaches_camp(tmp_path, _cast_measured):
