@@ -556,6 +556,39 @@ def test_a_magic_user_who_was_a_ranger_reads_back_as_class_bits_129():
     amiga_pod.write_pod(char)
 
 
+def _dual_class_magic_user(former_cleric: int) -> "amiga_pod.PodWriter":
+    slots = amiga_pod.CLASS_LEVEL_SLOTS
+    levels = [0] * len(slots)
+    levels[slots.index("MAGIC-USER")] = 12
+    former = [0] * len(slots)
+    former[slots.index("CLERIC")] = former_cleric
+    raw = amiga_pod.PodWriter(
+        name="DUAL", hit_points_max=30, level=12,
+        character_class=amiga_pod.CLASSES.index("MAGIC-USER"),
+        class_levels=tuple(levels), former_class_levels=tuple(former),
+        class_bits=3 if former_cleric < 12 else 1).to_bytes()
+    return amiga_pod.write_pod(amiga_pod.pod_to_neutral(raw))[0]
+
+
+def test_a_class_passed_in_level_keeps_its_bit_and_one_not_yet_passed_does_not():
+    assert _dual_class_magic_user(11).class_bits == 3
+    assert _dual_class_magic_user(13).class_bits == 1
+
+
+def test_pending_memorised_spells_keep_the_order_they_were_saved_in():
+    saved = bytes((129, 1, 1, 1, 186, 186, 58, 58))
+    raw = bytearray(amiga_pod.PodWriter(
+        name="MAGE", hit_points_max=9, level=3,
+        character_class=amiga_pod.CLASSES.index("MAGIC-USER"),
+        class_levels=(0, 0, 0, 0, 0, 3, 0),
+        class_bits=amiga_pod.CLASS_BIT["magic-user"]).to_bytes())
+    at = amiga_pod.SPELLS_MEMORISED
+    raw[at:at + len(saved)] = saved
+    char = amiga_pod.pod_to_neutral(bytes(raw))
+    rebuilt = amiga_pod.write_pod(char)[0].to_bytes()
+    assert rebuilt[at:at + len(saved)] == saved
+
+
 def test_write_pod_accepts_every_block_of_every_played_slot():
     for label, blob in _pod_amiga_slots():
         for block in amiga_savegame.pod_parse(blob).blocks:
@@ -609,7 +642,7 @@ def _rebuilt_characters(blob: bytes):
     return zip(save.blocks, amiga_savegame.pod_parse(built).blocks)
 
 
-def _neutral_diffs(blob: bytes, fields=None) -> list[tuple[int, str]]:
+def _neutral_diffs(blob: bytes) -> list[tuple[int, str]]:
     out = []
     for i, (was, now) in enumerate(_rebuilt_characters(blob)):
         a, b = amiga_pod.pod_to_neutral(was), amiga_pod.pod_to_neutral(now)
@@ -617,32 +650,14 @@ def _neutral_diffs(blob: bytes, fields=None) -> list[tuple[int, str]]:
         for name in set(a.keys()) | set(b.keys()):
             if name in _REBUILD_DIFFERS:
                 continue
-            if fields is not None and name not in fields:
-                continue
-            if fields is None and name in _KNOWN_REBUILD_DIFFS:
-                continue
             if a.get(name) != b.get(name):
                 out.append((i, name))
     return out
 
 
-#: Two fields that do change on a rebuild, tracked on #735.
-_KNOWN_REBUILD_DIFFS = ("class_bits", "spells_memorised")
-
-
 def test_pod_new_savegame_keeps_every_played_character_field():
     for label, blob in _pod_amiga_slots():
         assert _neutral_diffs(blob) == [], label
-
-
-@pytest.mark.xfail(strict=True, reason="#735: class_bits and the order of "
-                   "spells_memorised change on a rebuild")
-def test_pod_new_savegame_keeps_class_bits_and_spell_order():
-    diffs = []
-    for label, blob in _pod_amiga_slots():
-        diffs += [(label, *d) for d in
-                  _neutral_diffs(blob, fields=_KNOWN_REBUILD_DIFFS)]
-    assert diffs == []
 
 
 def test_pod_new_savegame_rebuilds_every_dos_specimen():

@@ -1680,7 +1680,7 @@ class PodWriter:
         # the engine's own tidy pass leaves the region in, and from the front,
         # which is the end the MEMORIZE screen fills from.
         if self.spells_memorised:
-            ids = sorted(self.spells_memorised,
+            ids = sorted(reversed(self.spells_memorised),
                          key=lambda i: i & ~SPELLS_MEMORISED_PENDING
                          )[:SPELLS_MEMORISED_LENGTH]
             out[SPELLS_MEMORISED:SPELLS_MEMORISED + len(ids)] = bytes(ids)
@@ -1792,6 +1792,26 @@ CLASS_BIT: dict[str, int] = {
     "magic-user": 1, "cleric": 2, "thief": 4, "fighter": 8,
     "paladin": 64, "ranger": 64,
 }
+
+#: What the engine adds to the mask at 0x0B7 for each class-level slot, in
+#: :data:`CLASS_LEVEL_SLOTS` order (`g1e7a`, read by the recompute at
+#: 0x03C320).
+CLASS_MASK_BY_SLOT = (0x02, 0x10, 0x08, 0x40, 0x40, 0x01, 0x04)
+
+
+def _class_mask(levels: Sequence[int], former: Sequence[int] | None,
+                level: int) -> int:
+    """The class mask the engine's own recompute leaves for these levels.
+
+    A slot counts when its current level is non-zero, or when its former level
+    is non-zero and below the character's level: a dual-classed character who
+    has passed his old class's level has its abilities back. The class code at
+    0x059 names the current class only, so this is not derived from it.
+    """
+    former = former or (0,) * len(levels)
+    return sum(bit for bit, now, was in zip(CLASS_MASK_BY_SLOT, levels, former)
+               if now or (was and was < level))
+
 
 #: Class combinations -> PoD's class code. Only the combinations both ports
 #: have; a combination PoD's table has no entry for is refused rather than
@@ -3093,6 +3113,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
                 f"{scalar}: {int(held)} does not fit the Amiga's field, which "
                 f"holds up to {top}; clamped")
 
+    character_level = num("level") or max(slots)
     writer = PodWriter(
         name=name[:NAME_LENGTH],
         race=RACES.index(race_name),
@@ -3112,10 +3133,10 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         class_levels=tuple(slots),
         damage=UNARMED_DAMAGE,
         armour_class=COMBAT_BIAS - stored_base,
-        level=num("level") or max(slots),
+        level=character_level,
         saving_throws=tuple(num(k) for k in SAVE_KEYS),
         thief_skills=tuple(num(k) for k in THIEF_KEYS),
-        class_bits=sum(CLASS_BIT[c] for c in set(classes)),
+        class_bits=_class_mask(slots, former_slots, character_level),
         treasure_share=(None if treasure_share is None
                         else int(treasure_share.value)),
         status=status,
