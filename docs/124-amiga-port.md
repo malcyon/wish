@@ -1748,8 +1748,8 @@ experience longword at `0x048` and the maximum hit points at `0x0B6` — and
 drain that matters keeps instead of the earlier titles' `levels_drained` and
 `hp_lost_to_drain`, and it names the same two runs in the **DOS** record:
 `goldbox.dos_port.POOLS_OF_DARKNESS` puts `highest_class_levels` at `0x15F`
-already, and its five-byte `gap_176` is highest experience at `0x176`-`0x179`
-and highest hit points at `0x17A` (PROBABLE, from the Amiga's own three and
+already, and the five bytes after it are `highest_experience` at `0x176` (a
+little-endian u32) and `highest_hp_max` at `0x17A` (PROBABLE, from the Amiga's own three and
 from both being zero in 12 of 12 DOS records).
 
 #### The map
@@ -1764,7 +1764,7 @@ name `goldbox.dos_port.POOLS_OF_DARKNESS` gives the field.
 | `0x008` | 4 | item chain head, and **the item count in a file** | §1.16; the tail is exactly consumed in 19 of 19 |
 | `0x040` | 4 | `heap_104[4:8]` | importer |
 | `0x044` | 4 | `experience` | probe (§2.3) |
-| `0x048` | 4 | highest experience (DOS `gap_176[0:4]`) | `0x015FA4`, `0x03315E` |
+| `0x048` | 4 | highest experience (DOS `highest_experience`, `0x176`) | `0x015FA4`, `0x03315E` |
 | `0x04C` | 6 | `platinum`, `gems`, `jewelry` | probe |
 | `0x052` | 2 | `age` | probe |
 | `0x054` | 2 | `experience_award` | importer |
@@ -1795,7 +1795,7 @@ name `goldbox.dos_port.POOLS_OF_DARKNESS` gives the field.
 | `0x0AB` | 8 | `attack_forms` | importer. `0x0AB` is attacks in halves and `0x0AD`/`0x0AF`/`0x0B1` the damage triple |
 | `0x0B3` | 1 | `armour_class_base` | importer; 50 in 19 of 19, as DOS in 12 of 12. The writer now copies this byte through from the source rather than always writing 50 (#635 (Read what a Pools of Darkness armour-class base other than 50 means, so the Amiga conversion writes it instead of refusing)) |
 | `0x0B4`, `0x0B5` | 1, 1 | `strength_bonus`, `unnamed_0ab` | importer |
-| `0x0B6` | 1 | **highest hit points** (DOS `gap_176[4]`) | `0x015FB4` |
+| `0x0B6` | 1 | **highest hit points** (DOS `highest_hp_max`, `0x17A`) | `0x015FB4` |
 | `0x0B7` | 1 | `class_bits` | importer |
 | `0x0B8` | 1 | **`hp_rolled`** | importer, and the constitution arithmetic below |
 | `0x0B9`, `0x0BA` | 1, 1 | `portrait_head`, `portrait_body` | importer; zero in 19 of 19, and this title draws no sheet face |

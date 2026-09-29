@@ -606,10 +606,12 @@ LEFT_ZERO: tuple[tuple[int, int, str], ...] = (
                                      "DOS Pools of Darkness has no byte for "
                                      "it, so no same-title route can move it"),
     (UNNAMED_0CA, UNNAMED_0CA, "written only by the Silver Blades importer "
-                               "and an ECL field setter, read by two "
-                               "routines; UNKNOWN, and zero in 88 of 88 "
-                               "played records -- provisional until the ECL "
-                               "blocks are swept for a write that lands here"),
+                               "and an ECL field setter, read by three "
+                               "routines; a script could address it as "
+                               "character field `0x5EC`, but no area script "
+                               "in DOS `ECL1.DAX` or either Amiga `ECL.GLB` "
+                               "build does, and its DOS twin is `0x1EB`; "
+                               "zero in 88 of 88 played records"),
     (0x193, 0x193, "the record's last byte, which nothing reaches"),
 )
 
