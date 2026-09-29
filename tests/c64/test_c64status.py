@@ -111,21 +111,26 @@ def test_every_dos_status_with_a_c64_value_crosses_to_it(number, expected):
     assert rec.get("roster_in_use") == expected
 
 
-@pytest.mark.parametrize("number,name", [(1, "animated"),
-                                         (2, "temporarily gone")])
-def test_a_dos_state_the_c64_does_not_have_is_reported(number, name):
+def test_a_dos_temporarily_gone_state_is_reported():
     """The legitimate "the destination has no such field" case, and it is
     established rather than assumed: `LIBRARY $38BE` indexes seven words with
-    three bits and neither of these is among them.  `SPELLE04 $AA11` writes
-    `$03` beside creature type 4, undead, which is the nearest thing to
-    Animated and is a **dead** character with bit 7 clear on something the
-    same routine marks as not a player character -- so it is not the same
-    thing and is not used."""
-    char = _dos_record(bytes([number, 1, 0, 0]))
-    assert dos_codec.to_neutral(char).get("status") == name
+    three bits and this state is not among them."""
+    char = _dos_record(bytes([2, 1, 0, 0]))
+    assert dos_codec.to_neutral(char).get("status") == "temporarily gone"
     rec, rep = c64_codec.write(dos_codec.to_neutral(char))
     assert rec.get("roster_in_use") == 0x01
-    assert c64_codec.NO_C64_STATUS[name] in rep.dropped, rep.dropped
+    assert c64_codec.NO_C64_STATUS["temporarily gone"] in rep.dropped, \
+        rep.dropped
+
+
+def test_a_dos_animated_pool_character_is_written_as_the_c64_writes_a_zombie():
+    """Animate Dead's own write (`SPELLE04 $AA11`) is `$03`, dead with bit 7
+    clear, so the state has a C64 value and no drop line."""
+    char = _dos_record(bytes([1, 1, 0, 0]))
+    assert dos_codec.to_neutral(char).get("status") == "animated"
+    rec, rep = c64_codec.write(dos_codec.to_neutral(char))
+    assert rec.get("roster_in_use") == 0x03
+    assert c64_codec.NO_C64_STATUS["animated"] not in rep.dropped, rep.dropped
 
 
 def test_a_dos_status_past_the_end_of_the_table_is_reported_not_guessed():

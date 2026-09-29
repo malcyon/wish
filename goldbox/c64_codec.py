@@ -599,6 +599,13 @@ OUT_OF_PLAY = 0x80
 #: companion.
 DOS_PC_TAKEN_OVER = 0xB3
 
+#: Animate Dead's effect id, the id its trait slot and its row both hold.
+ANIMATE_DEAD_ID = 32
+
+#: The roster status a Pool of Radiance camp Animate Dead writes over the
+#: raised character (`SPELLE04 $AA11`): dead, bit 7 clear.
+ZOMBIE_STATUS = 0x03
+
 #: What a player is told when the source's status has no C64 value.
 #:
 #: **PROPOSED, not yet approved.** `.claude/rules/gui-text.md` makes every
@@ -938,6 +945,12 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         and control_value is not None and int(control_value) & 0x80
         and int(control_value) != DOS_PC_TAKEN_OVER
         and status_value != "animated")
+    # Animate Dead's zombie is stored by the C64's own cast as roster status
+    # $03, a trait-32 slot and an id-32 row, and a turning byte of 0
+    # (`SPELLE04 $A9E9`-`$AA30`); the same three writes apply here.
+    pool_animated = bool(deltas is POOL_OF_RADIANCE_RECORD
+                         and status_value == "animated")
+    zombie_node_side: int | None = None
     charm_row_written = False
     # A later charm row, kept apart from Pool's: its `0x10C` and 0x0B8 arms
     # differ. `later_charm_last` is the last node written, whose row wins
@@ -1672,11 +1685,21 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # levels give, the 23 that do not being ones this converter wrote.
     # `tools/records/turnsweep.py` is that sweep.
     use("turn_power")           # consumed here, by rule rather than by copy
-    turning = derive.turn_power(char.game, w.get("levels") or {})
-    rec.set("turn_power", turning)
-    rep.note(0x0A4, 1,
-             f"turn_power: computed from the cleric and paladin levels, the "
-             f"way this title's own GEN writes it; {port} keeps no such byte")
+    if deltas is POOL_OF_RADIANCE_RECORD and status_value == "animated":
+        # Animate Dead stores 0 here (`SPELLE04 $A9E9`) and the C64 temple
+        # rebuilds it (`SQRPACI64 $059A`), so a former cleric's derived
+        # value would be a byte the C64 zombie never holds.
+        rec.set("turn_power", 0)
+        rep.note(0x0A4, 1,
+                 "turn_power: 0, what the C64's own Animate Dead stores for "
+                 "a zombie (SPELLE04 $A9E9)")
+    else:
+        turning = derive.turn_power(char.game, w.get("levels") or {})
+        rec.set("turn_power", turning)
+        rep.note(0x0A4, 1,
+                 f"turn_power: computed from the cleric and paladin levels, "
+                 f"the way this title's own GEN writes it; {port} keeps no "
+                 f"such byte")
 
     # -- attack forms: eight bytes -------------------------------------------
     forms = use("attack_forms")
@@ -1776,6 +1799,30 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                         payload, int(node[0]), 0, int(node[3]), clock):
                     rep.lost(f"effect {node[0]}, which never expires: no "
                              "free slot in the save's shared effect arrays")
+                continue
+            if pool_animated and int(node[0]) == ANIMATE_DEAD_ID:
+                # The C64 keeps the id in a trait slot filled from slot 9
+                # down (`SPELLE04 $AA18`-`$AA22`) and also in a row the
+                # zombie's own slot owns, with duration 0 and the caster's
+                # level as magnitude (`SPELLE04 $AA28`, `$A79F`, `$A825`).
+                # Its temple restore keys on the trait slot alone
+                # (`SQRPACI64 $059A`), so node byte 4, DOS's removal flag,
+                # has no C64 byte and loses nothing.
+                zombie_node_side = int(node[3]) >> 4
+                row_slot = (effects.free_slot(payload)
+                            if payload is not None else None)
+                if row_slot is None:
+                    rep.lost(
+                        f"effect {node[0]}, which never expires: "
+                        + ("with no save payload to hold its row it takes a "
+                           "trait slot instead" if payload is None else
+                           "no free slot in the save's shared effect arrays"))
+                else:
+                    effects.write_effect(
+                        payload, row_slot, ANIMATE_DEAD_ID,
+                        party_slot if party_slot is not None else 0,
+                        0, int(node[3]) & 0x0F)
+                granted_ids.append(int(node[0]))
                 continue
             spell_row = effects.never_expiring_spell_row(
                 title_key, bytes(node))
@@ -2085,11 +2132,18 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # Animate Dead on a thing the same routine marks as not a player
     # character.
     status, active = use("status"), use("active")
+    zombie_status = pool_animated and status is not None
     bits = STATUS_BITS["okay"]
     where = ["1 (OK), the state a character with no source for one is in"]
     if status is not None:
         found = STATUS_BITS.get(status.value)
-        if found is None:
+        if zombie_status:
+            # `SPELLE04 $AA11` writes $03 whatever the character was.
+            bits = ZOMBIE_STATUS
+            where = [f"${ZOMBIE_STATUS:02X} (dead, bit 7 clear) <- "
+                     f"{status.origin}: Animate Dead's own write "
+                     "(SPELLE04 $AA11)"]
+        elif found is None:
             rep.dropped.append(
                 NO_C64_STATUS.get(
                     status.value,
@@ -2101,8 +2155,13 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             bits = found
             where = [f"{found} ({status.value}) <- {status.origin}"]
         rep.dropped.extend(status.dropped)
-    in_play = active.value if active is not None else bits == STATUS_BITS["okay"]
-    if active is not None:
+    in_play = (True if zombie_status else active.value
+               if active is not None else bits == STATUS_BITS["okay"])
+    if zombie_status:
+        where.append("bit 7 clear whatever active says")
+        if active is not None:
+            rep.dropped.extend(active.dropped)
+    elif active is not None:
         where.append(f"bit 7 {'clear' if in_play else 'set'} <- {active.origin}")
         rep.dropped.extend(active.dropped)
     else:
@@ -2218,6 +2277,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 prefix + "a level of 31 with both side bits and the flag set "
                 "would make the row $FF, which Dispel Magic skips on both "
                 "ports, so the own-side bit is written 0")
+    if zombie_node_side is not None and zombie_node_side != side_bits & 1:
+        rep.lost("effect 32: the side the DOS zombie is restored to, which "
+                 "the C64 temple does not restore")
     rec.set("combat_side", side_bits)
     rep.note(0x10C, 1, f"combat side ${side_bits:02X}: " +
              (", ".join(side_where) if side_where else
@@ -2322,7 +2384,9 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                    "cleric and paladin levels, because no port a conversion "
                    "reads keeps the value -- DOS works it out when Turn is "
                    "pressed and stores nothing, and a copied zero costs a "
-                   "cleric the word TURN on the combat bar (#288)"),
+                   "cleric the word TURN on the combat bar (#288); a Pool of "
+                   "Radiance character with status animated is written 0, "
+                   "what the C64's own Animate Dead stores"),
     ("attack_forms", "copied as a block to 0x0D9"),
     ("innate_effects", "the first ten ids, into the C64's trait slots; the "
                        "rest are warned about"),
@@ -2351,7 +2415,11 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "give back as this name, because a trait slot the "
                         "converter filled and one READY filled are the same "
                         "byte to the engine's own compare, except those "
-                        "rows"),
+                        "rows; a Pool of Radiance node of id 32 with status "
+                        "animated also becomes a row owned by the "
+                        "character's save slot, duration 0, magnitude the "
+                        "node's data low nibble, beside its trait slot, as "
+                        "the C64's own Animate Dead writes it"),
     ("inventory", "the first sixteen items, into the C64's fixed slots; the "
                   "rest are warned about"),
     ("scroll_bundles", "a joined scroll's scrolls are already in inventory, "
@@ -2405,9 +2473,12 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                        "0x0FA (#639)"),
     ("status", "the name indexed into the C64's own seven-value table, into "
                "the low three bits of record 0x100; a state the C64 does not "
-               "have is reported and the character arrives OK"),
+               "have is reported and the character arrives OK; a Pool of "
+               "Radiance animated character is written $03, dead with bit 7 "
+               "clear, as the C64's own Animate Dead writes it"),
     ("active", "bit 7 of that same byte, set when the character is out of "
-               "play -- the opposite polarity to DOS's own flag"),
+               "play -- the opposite polarity to DOS's own flag; clear for a "
+               "Pool of Radiance animated character whatever this says"),
     ("hostile", "bit 0 of record 0x10C -- 0 the party's side, 1 the enemy's; "
                 "with a charm row, bit 0 is the charmed character's own side "
                 "from the node's data bit 6, and hostile is the charmer's "

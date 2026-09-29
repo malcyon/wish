@@ -217,3 +217,84 @@ def test_a_charmed_dos_zombie_still_writes_the_zombie_byte_and_the_charm_row(
     # which is noted on the warnings and does not refuse the save.
     assert not rep.losses
     assert len([w for w in rep.warnings if "low bit" in w]) == 1
+
+
+def _dos_zombie(flag, control, active, side=0):
+    char = _pool_dos_character("animated", True, control, flag)
+    char.set("creature_type", 4, "built here")
+    char.set("turn_class", 2, "built here")
+    char.set("movement", 6, "built here")
+    char.set("hostile", False, "built here")
+    char.set("quickfight", True, "built here")
+    char.set("levels", {"cleric": 6}, "built here")
+    if active is not None:
+        char.set("active", active, "built here")
+    char.set("granted_effects",
+             [bytes((32, 0, 0, 5 | side << 4, 1))], "built here")
+    return char
+
+
+def _rows(payload, ident):
+    ids = payload[effects.EFFECT_ID_OFFSET:
+                  effects.EFFECT_ID_OFFSET + effects.EFFECT_SLOTS]
+    return [i for i, v in enumerate(ids) if v == ident]
+
+
+@pytest.mark.parametrize("active", [None, False, True])
+@pytest.mark.parametrize("flag, control, stored",
+                         [(0, 0xB3, 0xFE), (1, 0xB3, 0xFF), (0, 0xB2, 0xB2)])
+def test_a_dos_zombie_is_written_as_the_c64s_own_animate_dead_writes_it(
+        flag, control, stored, active):
+    char = _dos_zombie(flag, control, active)
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=4,
+                               clock_minutes=0)
+    assert rec.get("roster_in_use") == 0x03
+    assert rec.get("flags_0b8") == stored
+    assert rec.get("item_effects")[9] == 32
+    rows = _rows(payload, 32)
+    assert len(rows) == 1
+    row = rows[0]
+    assert payload[effects.EFFECT_OWNER_OFFSET + row] == 4
+    assert payload[effects.EFFECT_DURATION_OFFSET + row] == 0
+    assert payload[effects.EFFECT_MAGNITUDE_OFFSET + row] == 5
+    assert (rec.get("creature_type"), rec.get("turn_class"),
+            rec.get("movement"), rec.get("combat_side")) == (4, 2, 6, 0x80)
+    assert rec.get("turn_power") == 0
+    assert not [d for d in rep.dropped if "Animated by a spell" in d]
+    assert not rep.losses
+
+
+def test_a_zombie_that_was_dead_is_not_written_with_a_row():
+    char = _pool_dos_character("dead", False, 0)
+    payload = bytearray(0x1C00)
+    rec, _rep = c64_codec.write(char, payload=payload, party_slot=4,
+                                clock_minutes=0)
+    assert rec.get("roster_in_use") == 0x83
+    assert not _rows(payload, 32)
+
+
+def test_a_living_cleric_still_gets_a_derived_turn_power():
+    char = _pool_dos_character("okay", False, 0)
+    char.set("levels", {"cleric": 6}, "built here")
+    rec, _rep = c64_codec.write(char)
+    assert rec.get("turn_power") != 0
+
+
+def test_a_later_title_animated_status_still_carries_the_drop_line():
+    char = neutral.NeutralCharacter(
+        "DOS", source="built here", game=c64_port.CURSE_OF_THE_AZURE_BONDS)
+    char.set("name", "BRUTUS", "built here")
+    char.set("status", "animated", "built here")
+    _rec, rep = c64_codec.write(char)
+    assert any("Animated by a spell" in d for d in rep.dropped)
+
+
+def test_a_zombie_with_no_payload_or_the_wrong_side_reports_the_loss():
+    _rec, rep = c64_codec.write(_dos_zombie(0, 0xB3, None))
+    assert any("effect 32" in line for line in rep.losses)
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(_dos_zombie(0, 0xB3, None, side=1),
+                                payload=payload, party_slot=4,
+                                clock_minutes=0)
+    assert any("side" in line for line in rep.losses)
