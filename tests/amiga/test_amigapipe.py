@@ -858,3 +858,17 @@ def test_a_fail_line_from_a_non_zero_exit_is_a_refusal_and_any_other_error_is_no
     with pytest.raises(amiga.FloppyError) as caught:
         amiga.WinuaePipe(runner=LaneGuest(error=other)).refused_verb("insert", HOLDER, ["0", DISK_B, SHA_B])
     assert not isinstance(caught.value, amiga.GuestRefusal)
+
+
+def test_the_dump_directory_is_made_once_before_the_first_dump():
+    """`S` cannot create the directory it writes into, so a guest without one
+    answers every dump with a file it could not open."""
+    p, guest = pipe({0xC00000: bytes(range(32))})
+    t = amiga.AmigaTarget(p, CURSE, BASE)
+    t.read(0xC00000, 4)
+    t.read(0xC00010, 4)
+    made = [i for i, s in enumerate(guest.scripts) if "New-Item" in s]
+    assert made == [0], made
+    script = guest.scripts[0]
+    assert amiga.GUEST_DUMP in script
+    assert script.index("New-Item") < script.index("$cmds=@(")
