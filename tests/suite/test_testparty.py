@@ -516,3 +516,26 @@ def test_the_attacks_left_bytes_are_written_zero_with_a_weapon_readied(armed):
     for one in built:
         tail = one.record.get_raw("roster_tail")
         assert tail[1] == 0 and tail[2] == 0, str(one.record.name)
+
+
+# --- movement -----------------------------------------------------------------
+
+def test_every_generated_character_holds_three_movement_without_items(built):
+    """5000 coins each is far over every allowance, so the coins alone decide
+    it and `--no-items` gets the same 3 (`LIBRARY $3B39`)."""
+    assert [one.record.get("roster_movement") for one in built] == [3] * 6
+
+
+def test_every_armed_character_holds_three_movement(armed):
+    built, _tables = armed
+    assert [one.record.get("roster_movement") for one in built] == [3] * 6
+
+
+def test_without_the_gold_armour_decides_the_movement(armed):
+    """Plate mail 6, leather 12 twice, banded or chain 9 three times; BULWARK's
+    plate +2 gives 6 and its plus adds 3."""
+    _built, tables = armed
+    poor = tuple(dataclasses.replace(s, gold=0) for s in testparty.PARTY)
+    got = testparty.party(rolls="max", specs=poor, tables=tables)
+    assert [one.record.get("roster_movement") for one in got] == \
+        [6, 12, 12, 9, 9, 9]

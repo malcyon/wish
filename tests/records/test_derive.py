@@ -14,7 +14,7 @@ than counted.
 """
 
 import pytest
-from gamedata import needs_disks, save_disks
+from gamedata import game_disk, needs_disks, save_disks
 
 from goldbox import derive
 from goldbox.d64 import D64
@@ -313,3 +313,123 @@ def test_a_character_with_darts_readied_is_not_reported_as_stale():
     if not seen:
         pytest.skip("neither PORSAVE2 nor PORSAVE11 is here")
     assert seen == 2
+
+
+# --- movement -----------------------------------------------------------------
+
+def a_body_armour(weight: int, bonus: int = 0, readied: bool = True) -> bytes:
+    """An item record of type 1 (which the tests below give location 2)."""
+    raw = bytearray(16)
+    raw[0] = 1
+    raw[4] = bonus & 0xFF
+    raw[6] = 0x80 if readied else 0
+    raw[8], raw[9] = weight & 0xFF, weight >> 8
+    return bytes(raw)
+
+
+#: Type 1 is body armour: its location byte, `+0`, is 2.
+ARMOUR_TYPES = {1: ItemType(1, bytes([2]) + bytes(15))}
+
+
+def a_walker(*, strength_index: int = 30, gold: int = 0) -> CharacterRecord:
+    rec = CharacterRecord.blank()
+    rec.set("movement", 12)
+    rec.set("strength_index", strength_index)
+    rec.set("gold", gold)
+    return rec
+
+
+def test_the_allowance_table_is_the_bytes_at_library_3ac1_and_3ae0():
+    """The 32-byte halves of the game's own table, `LIBRARY` loading at $2C48."""
+    from gamedata import game_file
+
+    library = game_file("LIBRARY")
+    low = 0x3AC1 - 0x2C48
+    high = 0x3AE0 - 0x2C48
+    stored = tuple(library[low + n] | library[high + n] << 8
+                   for n in range(len(derive.ALLOWANCE)))
+    assert stored == derive.ALLOWANCE
+
+
+@pytest.mark.parametrize("weight, bonus, want", [
+    (150, 0, 12), (150, 4, 12),     # up to 150 is base, and skips the +3
+    (151, 0, 9), (399, 0, 9), (400, 0, 6),
+    (151, 2, 12), (399, 2, 12), (400, 2, 9),
+])
+def test_body_armour_sets_movement_from_its_weight_and_plus(weight, bonus, want):
+    rec = a_walker()
+    raws = [a_body_armour(weight, bonus)]
+    assert derive.expected_movement(rec, raws, ARMOUR_TYPES) == want
+
+
+def test_armour_that_is_not_readied_does_not_slow_the_character():
+    rec = a_walker()
+    raws = [a_body_armour(350, readied=False)]
+    assert derive.expected_movement(rec, raws, ARMOUR_TYPES) == 12
+
+
+@pytest.mark.parametrize("carried, want", [
+    (511, 12), (512, 9), (767, 9), (768, 6), (1023, 6), (1024, 3),
+])
+def test_encumbrance_bands_over_the_allowance(carried, want):
+    """Strength index 14 allows 200; the gold is one unit of weight a coin."""
+    rec = a_walker(strength_index=14, gold=200 + carried)
+    assert derive.expected_movement(rec, [], {}) == want
+
+
+def test_encumbrance_only_lowers_what_armour_left():
+    rec = a_walker(strength_index=14, gold=200 + 512)
+    raws = [a_body_armour(400)]            # 6 from the armour, 9 from the load
+    assert derive.expected_movement(rec, raws, ARMOUR_TYPES) == 6
+
+
+def test_a_stack_weighs_its_low_weight_byte_times_the_quantity():
+    rec = a_walker(strength_index=0)
+    raw = bytearray(16)
+    raw[0], raw[8], raw[9], raw[10] = 2, 2, 1, 200    # weight 258, but 2 * 200
+    assert derive.expected_movement(rec, [bytes(raw)], {}) == 12   # 400 < 512
+    raw[10] = 0                                       # unstacked: 258, still 12
+    assert derive.expected_movement(rec, [bytes(raw)], {}) == 12
+    raw[10] = 255                                     # 510 + 0 coins
+    assert derive.expected_movement(rec, [bytes(raw)], {}) == 12
+    rec.set("gold", 2)
+    assert derive.expected_movement(rec, [bytes(raw)], {}) == 9
+
+
+def test_an_item_with_no_type_byte_weighs_nothing():
+    rec = a_walker(strength_index=0)
+    raw = bytearray(16)
+    raw[8], raw[9] = 0xFF, 0xFF
+    assert derive.expected_movement(rec, [bytes(raw)], {}) == 12
+
+
+#: The one slot in the game's own saves the rule does not reproduce: her
+#: silver went up by 34 without a rebuild, so the stored 6 is a stale value
+#: the game wrote and the rule gives 3.
+STALE = ("PORSAVE14.D64", "LADY KATHERINE")
+
+
+@needs_disks
+def test_the_rule_gives_the_stored_movement_on_77_of_78_engine_written_slots():
+    types = load_item_types(str(game_disk("POOL1")))
+    engine = [p for p in save_disks()
+              if p.stem.upper() in {"PORSAVE", "PORSAVE2", "PORSAVE3",
+                                    "PORSAVE4", "PORSAVE5", "PORSAVE6",
+                                    "PORSAVE7", "PORSAVE8", "PORSAVE9",
+                                    "PORSAVE11", "PORSAVE12", "PORSAVE13",
+                                    "PORSAVE14"}]
+    if len(engine) < 13:
+        pytest.skip("needs all thirteen engine-written PORSAVE disks")
+    misses, slots = [], 0
+    for path in engine:
+        image = D64.open(str(path))
+        save0 = SaveGame0.from_prg(image.read_file(b"SAVEDGAME0"))
+        save1 = SaveGame1.from_prg(image.read_file(b"SAVEDGAME1"))
+        for slot in save0.characters:
+            slots += 1
+            raws = [i.raw for i in items_for_slot(save0.to_bytes(), slot.index)]
+            want = derive.expected_movement(slot.record, raws, types)
+            if want != save1.roster(slot.index).movement:
+                misses.append((path.name, str(slot.record.name)))
+    assert slots == 78
+    assert misses == [STALE]

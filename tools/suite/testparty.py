@@ -794,6 +794,13 @@ def build(spec: Spec, game=None, rolls: str = "max", seed: int = 0,
             f"wounded to {out.record.get('hp_current')} of {maximum} after "
             f"the last training, because the trainer heals to the maximum "
             f"and cannot leave a character hurt")
+
+    # Last, and with or without items: the coins alone decide it for this
+    # party, and the game's own rebuild is what the first READY would store.
+    inventory = bytes(out.record.get_raw("inventory"))
+    raws = [inventory[n * 16:(n + 1) * 16] for n in range(len(inventory) // 16)]
+    out.record.set("roster_movement", derive.expected_movement(
+        out.record, raws, tables[1] if tables is not None else {}))
     return out
 
 

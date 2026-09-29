@@ -33,7 +33,12 @@ from __future__ import annotations
 
 from typing import Mapping
 
-from .items import TYPE_DAMAGE_MEDIUM, WEAPON_ADDS_STRENGTH, ItemType
+from .items import (
+    TYPE_DAMAGE_MEDIUM,
+    TYPE_LOCATION,
+    WEAPON_ADDS_STRENGTH,
+    ItemType,
+)
 
 # The third byte of a damage expression is its flat bonus: a mace is 1d6+1, so
 # its type record carries 1 here and readying it is worth a point of damage.
@@ -304,6 +309,58 @@ def expected_damage_bonus(record, readied: list[tuple[object, ItemType]]) -> int
             strength = damage if kind.weapon_flags & WEAPON_ADDS_STRENGTH else 0
             return strength + bonus + (getattr(item, "bonus", 0) or 0)
     return damage
+
+
+#: The weight a character carries free, by `strength_index` (record `0x0E2`),
+#: 0 for the rows the AD&D table makes negative. The game keeps it as two
+#: 32-byte halves, the low bytes at `LIBRARY $3AC1` and the high bytes at
+#: `$3AE0`; entry 31 of that block is the start of other data, so only the
+#: thirty-one real rows are here.
+ALLOWANCE = (0,) * 12 + (100, 100, 200, 200, 350, 500, 750, 1000, 1250, 1500,
+                         2000, 3000, 4500, 5000, 6000, 7500, 9000, 12000, 15000)
+
+_PURSES = ("copper", "silver", "electrum", "gold", "platinum", "gems",
+           "jewelry")
+
+
+def expected_movement(record, raws, types) -> int:
+    """The movement the game's roster rebuild at `LIBRARY $3729` stores.
+
+    `raws` is the character's sixteen-byte item records and `types` the ITEMS
+    type table by type index. The base is record `0x09F`; a readied body armour
+    (type `+0` of 2) then *overwrites* it from the armour's weight `w` -- base
+    up to 150, 9 up to 399, 6 above, plus 3 when the item's `+4` is set and `w`
+    is over 150 -- and the encumbrance step can only lower it: 9, 6 or 3 once
+    the total weight is 512, 768 or 1024 over the strength allowance.
+
+    The total counts every item with a type byte, readied or not, at its
+    16-bit weight, or at `raw[8] * quantity` when the quantity is set, plus
+    the seven purses at one unit a coin.
+    """
+    moves = record.get("movement")
+    total = 0
+    for raw in raws:
+        if not raw[0]:
+            continue
+        weight = raw[8] | raw[9] << 8
+        total += raw[8] * raw[10] if raw[10] else weight
+        kind = types.get(raw[0])
+        if raw[6] & 0x80 and kind is not None and kind.raw[TYPE_LOCATION] == 2:
+            if weight <= 150:
+                moves = record.get("movement")
+            else:
+                moves = 9 if weight < 400 else 6
+                if raw[4]:
+                    moves += 3
+    total += sum(record.get(n) for n in _PURSES)
+    excess = total - ALLOWANCE[record.get("strength_index")]
+    if excess >= 1024:
+        moves = min(moves, 3)
+    elif excess >= 768:
+        moves = min(moves, 6)
+    elif excess >= 512:
+        moves = min(moves, 9)
+    return moves
 
 
 def turn_power(game, class_levels: Mapping[str, int] | None) -> int:
