@@ -310,7 +310,8 @@ def _slot(tmp_path, name: str, effects: list[bytes], clock_minutes: int):
         bytes(record), container.deltas, effects=effects)
     data = bytearray(amiga_savegame.rebuild(base, [char]))
     digits = (0, clock_minutes % 10, clock_minutes // 10 % 6,
-              clock_minutes // 60 % 24, 0, 0)
+              clock_minutes // 60 % 24, clock_minutes // 1440 % 30,
+              clock_minutes // 43200 % 12)
     for i, digit in enumerate(digits):
         at = container.vm_offset(dos_savegame.CLOCK + i)
         data[at:at + 2] = digit.to_bytes(2, "big")
@@ -325,9 +326,9 @@ def _synthetic_save(container) -> bytes:
 
 
 def _diff(tmp_path, capsys, before: list[bytes], after: list[bytes],
-          elapsed: int) -> tuple[int, str]:
-    a = _slot(tmp_path, "ours.dat", before, 10)
-    b = _slot(tmp_path, "theirs.dat", after, 10 + elapsed)
+          elapsed: int, start: int = 10) -> tuple[int, str]:
+    a = _slot(tmp_path, "ours.dat", before, start)
+    b = _slot(tmp_path, "theirs.dat", after, start + elapsed)
     code = proof.main(["diff", "--ours", str(a), "--theirs", str(b)])
     return code, capsys.readouterr().out
 
@@ -374,3 +375,38 @@ def test_a_removed_effect_with_no_time_elapsed_is_undeclared(
 def test_a_duration_zero_effect_that_is_gone_is_undeclared(tmp_path, capsys):
     code, _out = _diff(tmp_path, capsys, [_effect(75, 0)], [], 5)
     assert code == 1
+
+
+def test_a_clock_that_rolls_over_midnight_still_expires_the_effect(
+        tmp_path, capsys):
+    code, out = _diff(tmp_path, capsys, [_effect(17, 2)], [], 2,
+                      start=23 * 60 + 59)
+    assert code == 0
+    assert "effect id 17, 2 minutes left, expired" in out
+
+
+def test_a_clock_that_ran_backwards_is_undeclared_and_does_not_crash(
+        tmp_path, capsys):
+    code, out = _diff(tmp_path, capsys, [_effect(45, 47)],
+                      [_effect(45, 49)], -2)
+    assert code == 1
+    assert "-2 minutes" in out
+
+
+def test_a_large_elapsed_time_expires_every_timed_effect(tmp_path, capsys):
+    code, out = _diff(tmp_path, capsys,
+                      [_effect(75, 0), _effect(45, 47), _effect(17, 2)],
+                      [_effect(75, 0)], 500)
+    assert code == 0
+    assert out.count("expired") >= 2
+
+
+def test_an_effect_the_engine_kept_past_its_time_is_named_and_the_next_still_lines_up(
+        tmp_path, capsys):
+    code, out = _diff(tmp_path, capsys,
+                      [_effect(17, 2), _effect(134, 0)],
+                      [_effect(17, 2), _effect(134, 0)], 2)
+    assert code == 1
+    assert "kept by the engine" in out
+    assert "\n1 differences outside the declared lists" in out
+    assert "effect 1" not in out            # the follower was not misaligned

@@ -248,12 +248,17 @@ def compare_effects(name: str, ours: tuple[bytes, ...],
     expired: list[str] = []
     declared = 0
     j = 0
+    mask = _effect_masked()
     for n, mine in enumerate(ours):
         left = _effect_duration(mine)
         label = f"effect {n} (id {mine[0]}, {left} minutes left)"
         if 0 < left <= elapsed:
             expired.append(f"{name}: effect id {mine[0]}, {left} minutes left, "
                            f"expired ({elapsed} minutes elapsed)")
+            if j < len(theirs) and theirs[j][0] == mine[0]:
+                bad.append(f"{name}: {label} was kept by the engine; it "
+                           f"should have run out")
+                j += 1
             continue
         want = bytearray(mine)
         if left:
@@ -262,7 +267,6 @@ def compare_effects(name: str, ours: tuple[bytes, ...],
             bad.append(f"{name}: {label} is missing from the engine's list")
             continue
         got = theirs[j]
-        mask = _effect_masked()
         wrong = [at for at in range(min(len(want), len(got)))
                  if want[at] != got[at] and at not in mask]
         if len(want) != len(got) or wrong:
@@ -348,13 +352,16 @@ def do_diff(args) -> int:
     print(f"ours   {ours_where}: {len(ours)} characters")
     print(f"theirs {theirs_where}: {len(theirs)} characters")
     print(f"clock  {elapsed} minutes from ours to theirs")
+    if elapsed < 0:
+        print("  their clock is earlier than ours; effect durations are not "
+              "compared")
     if [c.name for c in ours] != [c.name for c in theirs]:
         print("  the two parties are not the same people in the same order:")
         print(f"    ours   {[c.name.strip() for c in ours]}")
         print(f"    theirs {[c.name.strip() for c in theirs]}")
 
     by_name = {c.name.strip().upper(): c for c in theirs}
-    undeclared = 0
+    undeclared = 1 if elapsed < 0 else 0
     for mine in ours:
         twin = by_name.get(mine.name.strip().upper())
         if twin is None:
@@ -393,6 +400,8 @@ def do_diff(args) -> int:
             print(f"    ... and {len(loose) - 40} more")
         undeclared += len(loose)
 
+        if elapsed < 0:
+            continue
         bad, expired, in_lists = compare_effects(
             mine.name.strip(), mine.effects, twin.effects, elapsed)
         for line in expired:
