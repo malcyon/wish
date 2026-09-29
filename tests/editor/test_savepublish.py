@@ -46,7 +46,7 @@ from editor.roster import Party
 from editor.window import EditorBinding
 from goldbox import amiga_pod, amiga_port, amiga_savegame, dos_codec, dos_port
 from goldbox.amiga_adf import AmigaDisk
-from goldbox.d64 import D64
+from goldbox.d64 import D64, D64Error
 from goldbox.layout import LAYOUT, NAME_SIZE
 from goldbox.record import RECORD_SIZE, CharacterRecord
 from goldbox.savegame import SLOT_STRIDE, load_save, store_save
@@ -2386,8 +2386,6 @@ def test_an_amiga_disk_holding_no_saved_game_is_refused_not_guessed_at(
 def test_a_d64_that_cannot_be_read_is_refused_by_the_c64_reader(tmp_path):
     """The `.adf` branch is chosen by suffix and must not take a `.d64`: a
     file of the wrong size is refused as a C64 disk, by both routes in."""
-    from goldbox.d64 import D64Error
-
     path = tmp_path / "notadisk.d64"
     path.write_bytes(b"\x00" * 64)
 
@@ -2418,7 +2416,11 @@ def test_every_title_the_amiga_writer_covers_is_offered_an_amiga_destination(
 
 def test_a_dos_party_saved_as_c64_is_the_party_the_editor_adopts(app, tmp_path):
     """After a DOS to C64 Save As the editor has the written disk open, a
-    Pool of Radiance C64 save, and points its next Save at it."""
+    Pool of Radiance C64 save, and points its next Save at it.
+
+    It calls `editor._adopt` directly with a published party, so it does not
+    cover the Save As button, the flush of the sheet, the confirmation, or
+    the editor's own choice of what to adopt after a publish."""
     folder = dos_folder(tmp_path / "save", deltas=dos_port.POOL_OF_RADIANCE)
     party = Party(str(folder))
     out = tmp_path / "out.d64"
@@ -2458,6 +2460,38 @@ def test_an_edit_typed_on_the_sheet_and_never_saved_reaches_the_save_as_copy(
     assert editor.path == out
     assert editor.party.members[0].record.get("gold") == 9999
     reopened = Party(str(out))
+    assert reopened.members[0].record.get("gold") == 9999
+
+
+def test_an_edit_typed_on_the_sheet_reaches_a_dos_save_as_copy(
+        app, tmp_path, monkeypatch):
+    """The DOS-destination twin of the native C64 test above: a conversion
+    writer, not a byte copy, reads the value the sheet flushed. Skips where
+    this machine has no Pool of Radiance C64 save disk, C64 game disks or DOS
+    game folder."""
+    from test_saveasui import _confirm
+
+    saves = [path for path in _c64_pool_saves()
+             if saveplan.prepare(Party(str(path))) is not None]
+    files = _registry_game_files(POOL_OF_RADIANCE)
+    game_folder = _dos_game_folder()
+    if not saves or files is None or game_folder is None:
+        pytest.skip("needs the Pool of Radiance C64 disks and DOS game folder")
+    editor = EditorBinding(make_root(), str(saves[0]))
+    monkeypatch.setattr(editor, "game_files_for", lambda _game: files)
+    editor.roster.selectRow(0)
+    editor._widgets["gold"].setValue(9999)
+    editor.begin_save_as("dos")
+    editor._child("destination_dos_folder").setText(str(game_folder))
+    out = tmp_path / "copy"
+
+    said = _confirm(editor, monkeypatch, out)
+
+    assert said == []
+    assert editor.party.port == "dos"
+    assert editor.party.members[0].record.get("gold") == 9999
+    reopened = Party(str(out))
+    assert reopened.port == "dos"
     assert reopened.members[0].record.get("gold") == 9999
 
 

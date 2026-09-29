@@ -839,6 +839,9 @@ def test_a_c64_party_with_a_companion_saves_as_dos(app, tmp_path, disk_name):
 # ---------------------------------------------------------------------------
 
 SEVEN_MEMBERS = 7
+# The seventh member of `TEST_DOS_IMPORT9.D64`; DIRTEN is the seventh only in
+# the DOS specimen.
+SEVENTH_C64 = "SILAS"
 
 
 def test_a_seven_member_dos_party_saves_as_c64_with_all_seven(app, tmp_path):
@@ -906,9 +909,14 @@ def test_a_seven_member_c64_party_saves_as_dos_with_all_seven(app, tmp_path):
                   and name.upper().endswith(".SAV")]
     assert len(characters) == SEVEN_MEMBERS, sorted(plan.files)
     # The seventh member arrives in the seventh file, under his own name,
-    # rather than any seven files being present.
+    # rather than any seven files being present. SILAS is named outright:
+    # reading the names back off `party.members` would reflect the party at
+    # itself and pass for any seventh member.
+    assert party.members[SEVEN_MEMBERS - 1].record.get("name") == SEVENTH_C64
     for number, member in enumerate(party.members, start=1):
         record = tmp_path / f"CHRDATA{number}.SAV"
         record.write_bytes(plan.files[f"CHRDATA{number}.SAV"])
         assert dos_codec.read_character(record).name == member.record.get(
             "name")
+    seventh = tmp_path / f"CHRDATA{SEVEN_MEMBERS}.SAV"
+    assert dos_codec.read_character(seventh).name == SEVENTH_C64
