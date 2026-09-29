@@ -2108,7 +2108,7 @@ class _Pool:
 
 def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=None,
            pool=_Pool, title="pool", catch=lambda: None, stage_only=False,
-           capture_ready=False, preserve_specimen=False):
+           capture_ready=False, preserve_specimen=False, read_at=()):
     import types
     slot = slot or _Slot(tmp_path)
     _Pool.clock = [0.0]
@@ -2125,7 +2125,8 @@ def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=Non
         issue="703" if capture_ready else "700" if preserve_specimen else "i",
         run="r", disks=None,
         walk="I", walk_steps=1, max_seconds=max_seconds,
-        capture_ready=capture_ready, preserve_specimen=preserve_specimen)
+        capture_ready=capture_ready, preserve_specimen=preserve_specimen,
+        read_at=list(read_at))
     out = tmp_path / "out"
     rc = A.run(args, A.parse_steps(steps), out, _fixture_disk(tmp_path),
                clock=lambda: _Pool.clock[0])
@@ -6240,7 +6241,7 @@ class FightWalk(WalkSession):
             self.x, self.y = event[1:]
         return True
 
-    def fight(self, budget, tactic):
+    def fight(self, budget, tactic, stop=None):
         self.combat = False
         self.tactics.append((budget, tactic))
         return A.S.FightResult(self.outcome, 3, 1.0, [], [])
@@ -6479,7 +6480,7 @@ def test_walk_flee_a_caught_flee_is_judged_as_walk_fight_judges_it(
     sess = FightWalk({0: "encounter"})
     sess.flee_fails = True
 
-    def fight(budget, tactic):
+    def fight(budget, tactic, stop=None):
         sess.combat = False
         sess.x, sess.y = 9, 9
         return A.S.FightResult(A.S.WON, 3, 1.0, [], [])
@@ -6930,7 +6931,7 @@ class EncounterWalk(WalkSession):
             return True
         return False
 
-    def fight(self, budget, tactic):
+    def fight(self, budget, tactic, stop=None):
         self.tactics.append(budget)
         self.x, self.y = self.new
         self.done = True
@@ -7184,7 +7185,7 @@ class LateMenuWalk(RealWalk):
     def in_combat(self):
         return self.combat
 
-    def fight(self, budget, tactic):
+    def fight(self, budget, tactic, stop=None):
         self.tactics.append(tactic)
         self.combat, self.bar = False, WORLD_BAR
         self.y -= 1
@@ -7293,7 +7294,7 @@ class UnsentPressBar(AmbushWalk):
         return (self.returned_at is not None
                 and self.now() >= self.returned_at + self.prep_seconds)
 
-    def fight(self, budget, tactic):
+    def fight(self, budget, tactic, stop=None):
         self.returned_at, self.state = None, "world"
         self.fought = getattr(self, "fought", 0) + 1
         return A.S.FightResult(self.outcome, 3, 1.0, [], [])
@@ -7345,3 +7346,222 @@ def test_walk_fight_fails_naming_a_key_that_was_never_sent_after_three_unsent_pa
     events = [json.loads(line) for line in
               (tmp_path / "run.jsonl").read_text().splitlines()]
     assert [e["kind"] for e in events].count("move-unsent") == 4
+
+
+# --- --read-at and the treasure capture -----------------------------------------
+
+class _ReadMachine:
+    """One fake C64 behind every `_ReadMon`: memory, the checkpoints set on it, and
+    the stops the test raises with `hit`."""
+
+    def __init__(self):
+        self.mem = bytearray(0x10000)
+        self.checkpoints = {}
+        self.hits = {}
+        self.next_cp = 1
+        self.pc = 0
+        self.resumes = 0
+
+    def hit(self, pc):
+        self.pc = pc
+        for n, cp in self.checkpoints.items():
+            if cp == pc:
+                self.hits[n] = self.hits.get(n, 0) + 1
+
+
+class _ReadMon:
+    def __init__(self, machine):
+        self.m = machine
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, start, length, bank=0):
+        return bytes(self.m.mem[start:start + length])
+
+    def registers(self):
+        return {0: 0x12, 1: 0x34, 2: 0x56, 3: self.m.pc}
+
+    def checkpoint_set(self, start, end=None, *, load=False, store=False,
+                       exec_=False, stop=True, temporary=False):
+        n = self.m.next_cp
+        self.m.next_cp += 1
+        self.m.checkpoints[n] = start
+        return n
+
+    def checkpoint_delete(self, n):
+        self.m.checkpoints.pop(n, None)
+
+    def checkpoint_hits(self, n):
+        return self.m.hits.get(n, 0)
+
+    def resume(self):
+        self.m.resumes += 1
+
+
+class _ReadSess:
+    def __init__(self, machine):
+        self.machine = machine
+
+    def mon(self, timeout=5.0):
+        return _ReadMon(self.machine)
+
+
+class _EventLog:
+    def __init__(self):
+        self.events = []
+
+    def emit(self, kind, **kw):
+        self.events.append((kind, kw))
+
+    def say(self, text):
+        pass
+
+    def of(self, kind):
+        return [kw for k, kw in self.events if k == kind]
+
+
+def _read_at_run(tmp_path, specs):
+    machine = _ReadMachine()
+    machine.mem[0x09DD:0x09E0] = bytes.fromhex("CD782B")
+    machine.mem[0x2B78:0x2B7A] = b"\x03\x05"
+    machine.mem[0x6E3E] = 7
+    run = A.PoolRun.__new__(A.PoolRun)
+    run.sess, run.log, run.out = _ReadSess(machine), _EventLog(), tmp_path
+    run.read_ats = tuple(A.parse_read_at(specs))
+    run.arm_read_at()
+    machine.resumes = 0         # arming resumes once; count only the stops'
+    return run, machine
+
+
+def _connect(run):
+    with run.sess.mon(5):
+        pass
+
+
+def test_read_at_parses_the_plans_option_and_refuses_a_malformed_one():
+    got, = A.parse_read_at(["09DD=CD782B:2B78:2,6E3E:1,6BBB:14"])
+    assert (got.pc, got.guard, got.reads) == (
+        0x09DD, bytes.fromhex("CD782B"), ((0x2B78, 2), (0x6E3E, 1), (0x6BBB, 0x14)))
+    for bad in ("09DD", "09DD=CD782B", "09DD=:2B78:2", "09DD=CD78:2B78", "GG=CD:2B78:2",
+                "09DD=CD:FFFF:2"):
+        with pytest.raises(ValueError, match="read-at"):
+            A.parse_read_at([bad])
+
+
+def test_read_at_with_a_matching_guard_logs_the_reads_and_resumes(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2,6E3E:1"])
+    machine.hit(0x09DD)
+    _connect(run)
+    got, = run.log.of("read-at")
+    assert got["guard_matched"] is True and got["hit"] == 1 and got["pc"] == 0x09DD
+    assert got["reads"] == {"2B78": "0305", "6E3E": "07"}
+    assert (got["a"], got["x"], got["y"]) == (0x12, 0x34, 0x56)
+    assert machine.resumes == 1
+    assert run.read_at_counts["read-at-09DD"] == {"hits": 1, "foreign": 0}
+
+
+def test_read_at_with_another_overlay_at_the_pc_reads_nothing_and_resumes(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+    machine.mem[0x09DD:0x09E0] = b"\xA9\x00\x8D"
+    machine.hit(0x09DD)
+    _connect(run)
+    assert run.log.of("read-at") == []
+    assert len(run.log.of("read-at-foreign")) == 1
+    assert machine.resumes == 1
+    assert run.read_at_counts["read-at-09DD"] == {"hits": 0, "foreign": 1}
+
+
+def test_release_read_at_deletes_every_stop(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2", "0C8C=20:6BBB:14"])
+    assert len(machine.checkpoints) == 2
+    counts = run.release_read_at()
+    assert machine.checkpoints == {} and set(counts) == {"read-at-09DD", "read-at-0C8C"}
+
+
+def test_release_read_at_does_not_raise_when_the_emulator_is_gone(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+
+    def dead(timeout=5.0):
+        raise ConnectionError("gone")
+
+    run.sess.mon = dead
+    run.traps._mon = dead
+    run.release_read_at()
+    assert run.log.of("read-at-release-failed")
+
+
+def _read_at_pool(machine):
+    class Pool(A.PoolRun):
+        def __init__(self, sess, log, out, game, points):
+            self.sess, self.log, self.out = _ReadSess(machine), log, out
+            self.explode = False
+
+        def load(self):
+            self.arm_read_at()
+            return {}
+
+        def peek(self, arg):
+            raise RuntimeError("the step broke")
+
+        def reading(self):
+            return {}
+
+        def capture(self, *a):
+            pass
+    return Pool
+
+
+def test_the_run_deletes_its_read_at_stops_on_a_normal_exit(tmp_path, monkeypatch):
+    machine = _ReadMachine()
+    rc, _, out = _drive(tmp_path, monkeypatch, ["load"], pool=_read_at_pool(machine),
+                        read_at=["09DD=CD782B:2B78:2"])
+    assert rc == 0 and machine.checkpoints == {}
+    assert json.loads((out / "summary.json").read_text())["read_at"] == {
+        "read-at-09DD": {"hits": 0, "foreign": 0}}
+
+
+def test_the_run_deletes_its_read_at_stops_when_a_step_raises(tmp_path, monkeypatch):
+    machine = _ReadMachine()
+    rc, _, out = _drive(tmp_path, monkeypatch, ["load", "peek 2B78 2"],
+                        pool=_read_at_pool(machine), read_at=["09DD=CD782B:2B78:2"])
+    assert rc == 1 and machine.checkpoints == {}
+    assert "the step broke" in json.loads((out / "summary.json").read_text())["lost"]
+
+
+def test_read_at_is_refused_outside_pool(tmp_path, capsys):
+    with pytest.raises(SystemExit):
+        A.main(["--title", "curse", "--save", str(_fixture_disk(tmp_path)),
+                "--disks", str(tmp_path), "--read-at", "09DD=CD:2B78:2",
+                "--steps", "load", "--out", str(tmp_path / "out")])
+    assert "Pool of Radiance only" in capsys.readouterr().err
+
+
+TREASURE_BAR = "VIEW  TAKE  POOL  SHARE  EXIT"
+
+
+def test_walk_fight_keeps_the_treasure_screen_before_the_fight_answers_it(
+        tmp_path, monkeypatch):
+    sess = FightWalk({0: "fight"})
+    shown = []
+
+    def fight(budget, tactic, stop=None):
+        sess.combat = False
+        for bar in ("COMBAT SPEED", TREASURE_BAR, TREASURE_BAR):
+            rows = ["THERE IS TREASURE"] + [""] * 23 + [bar]
+            shown.append(stop(sess, FakeScreen(rows)))
+        return A.S.FightResult(A.S.WON, 3, 1.0, [], [])
+
+    sess.fight = fight
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    taken = []
+    run.capture = lambda tag, rows=None: taken.append((tag, rows)) or []
+    run.walk_fight("I")
+    log.close()
+    assert shown == [False, False, False]
+    treasure = [(t, r) for t, r in taken if t == "treasure"]
+    assert len(treasure) == 1 and treasure[0][1][24] == TREASURE_BAR
+    assert sess.pressed == ["I"]

@@ -28,6 +28,13 @@ Staging is an input, written before the boot and never after the load:
 SLOT is the save slot, 0 first.  Every option repeats, and each is logged in
 bytes with what it replaced.
 
+`--read-at PC=GUARD:ADDR:N[,ADDR:N...]` (hex, Pool only, repeatable) is a
+stopping exec checkpoint armed at `load`: at PC it checks the code bytes there
+equal GUARD, so a hit in another overlay loaded at the same address is counted
+as `foreign` and skipped, reads each ADDR:N and A, X, Y, logs a `read-at`
+record to `run.jsonl`, and resumes.  Every stop is deleted on the way out of the
+run, and the hit counts go to `summary.json` as `read_at`.
+
 | step | what it does and reads |
 |---|---|
 | `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint` |
@@ -41,7 +48,7 @@ bytes with what it replaced.
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown |
-| `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
+| `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
 | `warp AREA` | Pool only: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
@@ -134,6 +141,7 @@ from tools.c64 import (  # noqa: E402
 )
 from tools.c64 import session as S  # noqa: E402
 from tools.pool_of_radiance.koboldnpc import SessTarget  # noqa: E402
+from tools.pool_of_radiance.tavernbrawl import Traps  # noqa: E402
 from tools.registry import evidence, scratch, specimens  # noqa: E402
 
 TITLES = {"pool": "pool-of-radiance", "curse": "curse-of-the-azure-bonds",
@@ -621,6 +629,13 @@ def pool_specimen_mode(steps: list[Step]) -> str | None:
     return None
 
 
+#: The treasure bar `VIEW TAKE POOL SHARE EXIT`, which `Session.fight` then
+#: answers with EXIT and LEAVE TREASURE.
+TREASURE_WORDS = ("VIEW", "TAKE", "EXIT")
+#: VICE's register ids for A, X, Y and PC on the 6510.
+READ_AT_A, READ_AT_X, READ_AT_Y, READ_AT_PC = 0, 1, 2, 3
+
+
 def parse_checkpoints(texts) -> dict[str, int]:
     """`ADDR[=NAME]`, hex; the name defaults to the address."""
     out = {}
@@ -630,6 +645,51 @@ def parse_checkpoints(texts) -> dict[str, int]:
         if not 0 <= value <= 0xFFFF:
             raise ValueError(f"checkpoint {text!r}: out of range")
         out[name or f"${value:04X}"] = value
+    return out
+
+
+@dataclasses.dataclass(frozen=True)
+class ReadAt:
+    """One `--read-at`: at `pc`, if the code bytes there are `guard`, read `reads`."""
+    pc: int
+    guard: bytes
+    reads: tuple[tuple[int, int], ...]
+
+    @property
+    def name(self) -> str:
+        return f"read-at-{self.pc:04X}"
+
+
+def parse_read_at(texts) -> list[ReadAt]:
+    """`PC=GUARD:ADDR:N[,ADDR:N...]`, all hex.
+
+    The guard is the code bytes expected at PC: an overlay other than the one
+    meant loads at the same addresses, and a stop there must read nothing.
+    """
+    out = []
+    for text in texts:
+        pc_text, eq, rest = text.partition("=")
+        guard_text, colon, reads_text = rest.partition(":")
+        if not (eq and colon and guard_text and reads_text):
+            raise ValueError(f"read-at {text!r}: want PC=GUARD:ADDR:N[,ADDR:N...]")
+        try:
+            pc = int(pc_text.lstrip("$"), 16)
+            guard = bytes.fromhex(guard_text)
+            reads = []
+            for item in reads_text.split(","):
+                addr_text, sep, count_text = item.partition(":")
+                if not sep:
+                    raise ValueError("a read is ADDR:N")
+                reads.append((int(addr_text.lstrip("$"), 16), int(count_text, 16)))
+        except ValueError as e:
+            raise ValueError(f"read-at {text!r}: {e}") from None
+        if not 0 <= pc <= 0xFFFF or not guard:
+            raise ValueError(f"read-at {text!r}: PC out of range or empty guard")
+        for addr, count in reads:
+            if not 0 <= addr <= 0xFFFF or not 1 <= count <= 0x100 or addr + count > 0x10000:
+                raise ValueError(f"read-at {text!r}: {addr:X}:{count:X} is not a read "
+                                 "of 1 to 256 bytes inside memory")
+        out.append(ReadAt(pc, guard, tuple(reads)))
     return out
 
 
@@ -1075,6 +1135,11 @@ class PoolRun:
     #: mode byte at `MODE_FLAG_LATER` with no such measurement.
     walk_encounters = True
 
+    #: The `--read-at` stops to arm at `load`, and the trap that handles them.
+    read_ats: tuple = ()
+    traps = None
+    read_at_counts: dict = {}
+
     #: The run's own deadline on `clock`, and the clock; `run` sets both.  A
     #: wait that would outlast the deadline ends there, with the screen kept,
     #: rather than at whatever moment an outer `timeout` kills the process.
@@ -1313,9 +1378,60 @@ class PoolRun:
             for name, addr in self.points.items():
                 self.armed[name] = m.checkpoint_set(addr, exec_=True, stop=False)
             m.resume()
+        self.arm_read_at()
         self.capture("world")
         return {"position": self.position(),
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
+
+    # -- `--read-at`: stop at a PC, read memory, resume --------------------------
+    def arm_read_at(self) -> None:
+        """Arm each `--read-at` as a stopping exec checkpoint handled by `Traps`.
+
+        `Traps` wraps `sess.mon`, so the next monitor connection after a stop
+        reads and resumes on the connection VICE stopped for.
+        """
+        if not self.read_ats:
+            return
+        self.traps = Traps(self.sess, self.log, self.out, None)
+        self.traps.install()
+        self.read_at_counts = {}
+        for spec in self.read_ats:
+            self.read_at_counts[spec.name] = {"hits": 0, "foreign": 0}
+            self.traps.arm(spec.name, spec.pc, self._read_at_handler(spec), once=False)
+
+    def _read_at_handler(self, spec: ReadAt):
+        counts_for = lambda: self.read_at_counts[spec.name]   # noqa: E731
+
+        def handle(m) -> None:
+            counts = counts_for()
+            regs = m.registers()
+            pc = regs.get(READ_AT_PC)
+            code = bytes(m.read(spec.pc, len(spec.guard)))
+            if code != spec.guard:
+                counts["foreign"] += 1
+                self.log.emit("read-at-foreign", name=spec.name, pc=pc,
+                              code=code.hex(), foreign=counts["foreign"])
+                return
+            counts["hits"] += 1
+            self.log.emit(
+                "read-at", name=spec.name, pc=pc, guard_matched=True,
+                hit=counts["hits"],
+                reads={f"{a:04X}": bytes(m.read(a, n)).hex() for a, n in spec.reads},
+                a=regs.get(READ_AT_A), x=regs.get(READ_AT_X), y=regs.get(READ_AT_Y),
+                registers={str(k): v for k, v in regs.items()})
+        return handle
+
+    def release_read_at(self) -> dict:
+        """Delete every armed `--read-at` stop and return the counts.  Never raises:
+        it runs on every way out of the run, and a dead emulator is one of them."""
+        traps, self.traps = self.traps, None
+        if traps is not None and traps.stops:
+            names = tuple(s.name for s in traps.stops)
+            try:
+                traps.drop(*names)
+            except Exception as e:                  # noqa: BLE001
+                self.log.emit("read-at-release-failed", error=repr(e))
+        return self.read_at_counts
 
     # -- one bounded New Phlan temple observation ------------------------------
     def temple_sample(self) -> TempleSample:
@@ -2775,7 +2891,8 @@ class PoolRun:
                 before, before_rows, screens))
         number = len(fights)
         self.capture(f"fight-{number}-start")
-        result = sess.fight(budget=self.walk_fight_seconds, tactic=S.Session.melee_turn)
+        result = sess.fight(budget=self.walk_fight_seconds, tactic=S.Session.melee_turn,
+                            stop=self._treasure_capture())
         self.capture(f"fight-{number}-end")
         if result.outcome == S.LOST:
             raise self.fight_lost(result)
@@ -2794,6 +2911,21 @@ class PoolRun:
                           "fight": fights[-1]})
             self.log.emit("flee", at_move=n, escaped=False, ambush=True)
         return True
+
+    def _treasure_capture(self):
+        """A `Session.fight` stop hook that saves the treasure screen once and
+        never ends the fight, so the keys `fight` presses are unchanged."""
+        taken = []
+
+        def hook(sess, screen) -> bool:
+            if taken or screen is None:
+                return False
+            bar = screen.row(24)
+            if all(S.word_column(bar, w) >= 0 for w in TREASURE_WORDS):
+                taken.append(True)
+                self.capture("treasure", [screen.row(r) for r in range(25)])
+            return False
+        return hook
 
     def _await_encounter(self, route, last, word, key_age=0.0):
         """Wait for the screen an encounter starts, pressing nothing at the
@@ -4181,6 +4313,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         pool.deadline, pool.clock = deadline, clock
         if hasattr(args, "walk_fight_seconds"):
             pool.walk_fight_seconds = args.walk_fight_seconds
+        pool.read_ats = tuple(parse_read_at(getattr(args, "read_at", [])))
         if temple_mode:
             pool.temple_input_deadline = deadline - 100
         if args.title == "pool":
@@ -4275,6 +4408,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             with contextlib.suppress(Exception):
                 pool.capture("lost-error")
     finally:
+        if pool is not None and getattr(pool, "read_ats", ()):
+            summary["read_at"] = pool.release_read_at()
         if temple_mode and pool is not None:
             summary["temple_checkpoints"] = pool.temple_checkpoints
         capture_ready = getattr(args, "capture_ready", False)
@@ -4410,6 +4545,12 @@ def main(argv: list[str] | None = None) -> int:
                     metavar="ADDR[=NAME]",
                     help="hex; a non-stopping exec checkpoint armed after the "
                          "load and counted after every step")
+    ap.add_argument("--read-at", action="append", default=[], metavar="PC=GUARD:ADDR:N,...",
+                    help="hex; a stopping exec checkpoint armed after the load: at PC, "
+                         "if the code bytes there are GUARD, read each ADDR:N and the "
+                         "registers into run.jsonl and resume (a hit in another overlay "
+                         "at the same address is counted and skipped); repeatable, Pool "
+                         "only, e.g. 09DD=CD782B:2B78:2,6E3E:1")
     ap.add_argument("--walk", default="I", help="the move `fight` repeats")
     ap.add_argument("--attack-by", default="",
                     help="record the named fighter's first confirmed melee attack")
@@ -4458,8 +4599,11 @@ def main(argv: list[str] | None = None) -> int:
         parse_record_bytes(args.stage_record)
         parse_statuses(args.stage_status)
         parse_checkpoints(args.checkpoint)
+        parse_read_at(args.read_at)
     except ValueError as e:
         ap.error(str(e))
+    if args.read_at and args.title != "pool":
+        ap.error("--read-at: Pool of Radiance only")
     if any(x.verb == "warp" for x in steps) and args.title != "pool":
         ap.error("the warp step: Pool of Radiance only")
     if any(x.verb == "walk-fight" for x in steps) and args.title != "pool":
@@ -4473,7 +4617,8 @@ def main(argv: list[str] | None = None) -> int:
         if (steps != [Step("load"), Step("temple-probe", "BRUTUS")]
                 or args.title != "pool" or args.issue != "700"
                 or any((args.stage_row, args.stage_trait, args.stage_item,
-                        args.stage_record, args.stage_status, args.checkpoint))
+                        args.stage_record, args.stage_status, args.checkpoint,
+                        args.read_at))
                 or args.stage_only or args.preserve_specimen or args.capture_ready
                 or args.probe_step or args.joy or args.pool is not None
                 or args.attack_by or args.quit_nonattacking
