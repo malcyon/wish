@@ -874,6 +874,11 @@ def read_combat(window: bytes, base: int, layout: CombatLayout) -> dict:
             "party_head": list(far_pointer(at(layout.party_at, 4)))}
 
 
+def c_record(read_now: dict, known: dict, ptr: tuple[int, int]) -> dict:
+    """A combatant's record as just read, or as read at an earlier bar."""
+    return read_now[ptr] if ptr in read_now else known[ptr]
+
+
 def combatant_record(record: bytes, layout: CombatLayout) -> dict:
     """A combatant record's name and the bytes that say whose side it fights on.
 
@@ -3188,6 +3193,10 @@ class Driver:
         glyphs = screen.glyphs(dosbox.BAR)
         self._first_sight(kind, glyphs, screen, state)
         if kind in (None, "blank"):
+            if kind == "blank":
+                # A monster's turn or an animation between two bars: the
+                # next command bar is a new turn even if it looks the same.
+                state["last_bar"] = None
             if kind is None:
                 state["unknown_since"] = state["unknown_since"] or time.time()
                 if time.time() - state["unknown_since"] >= FIGHT_PATIENCE:
@@ -3365,8 +3374,10 @@ class Driver:
         party list, then resumes it.  Without `records` only a combatant not
         in `known` (record pointer to its decoded record, which this fills)
         is read.  The `DS` a halt reports is the game's only if the window
-        reads as a fight (a count and a record pointer per combatant,
-        `read_combat`), so a window that does not, or a read the debugger
+        reads as a fight: a count and a record pointer per combatant
+        (`read_combat`), at least one record holding a name, and a party
+        member among them or the acting record one of them.  A window that
+        does not, or a read the debugger
         refuses, is read again after a fresh halt with the `DS` read afresh,
         `FIGHT_PRESSES` times at most; a `DS` that read true once is kept.
         A record whose name is not a name is logged (`fight-odd-record`)
@@ -3393,14 +3404,16 @@ class Driver:
                         raw[ptr] = self.s.read(ptr, size)
                     return raw[ptr]
 
+                # Decoded here and kept in `known` only once the window has
+                # read as a fight, so a wrong DS leaves nothing behind.
+                read_now: dict[tuple[int, int], dict] = {}
                 for c in snap["combatants"]:
                     ptr = tuple(c["pointer"])
                     if records or ptr not in known:
-                        known[ptr] = combatant_record(record(ptr), layout)
-                        if known[ptr]["name"] is None:
-                            self.note(event="fight-odd-record", pointer=list(ptr),
-                                      raw_name=known[ptr]["raw_name"])
-                    c.update(known[ptr])
+                        read_now[ptr] = combatant_record(record(ptr), layout)
+                    c.update(read_now.get(ptr) or known[ptr])
+                if not any(c["name"] is not None for c in snap["combatants"]):
+                    raise CombatUnread("no combatant's record holds a name")
                 if records:
                     party: list[tuple[int, int]] = []
                     ptr = tuple(snap["party_head"])
@@ -3411,8 +3424,17 @@ class Driver:
                         ptr = tuple(c["pointer"])
                         c["party"] = ptr in party
                         c["slot"] = party.index(ptr) if ptr in party else None
-                        known[ptr] = {**known[ptr], "party": c["party"],
-                                      "slot": c["slot"]}
+                        read_now[ptr] = {**c_record(read_now, known, ptr),
+                                         "party": c["party"], "slot": c["slot"]}
+                if snap["selected"] is None and not any(
+                        c.get("party") for c in snap["combatants"]):
+                    raise CombatUnread("no combatant is in the party and none is "
+                                       "the one acting")
+                for ptr, rec in read_now.items():
+                    if rec["name"] is None and ptr not in known:
+                        self.note(event="fight-odd-record", pointer=list(ptr),
+                                  raw_name=rec["raw_name"])
+                known.update(read_now)
             except (CombatUnread, dosboxx.NotHalted, RuntimeError, ValueError) as e:
                 # A wrong DS reads garbage pointers, which the debugger may
                 # refuse (`NotHalted`, a short dump) as well as misread.

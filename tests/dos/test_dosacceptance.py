@@ -6829,7 +6829,7 @@ class FakeFight:
               "encounter": "COMBAT WAIT FLEE ADVANCE",
               "bar": "MOVE VIEW AIM USE CAST QUICK DONE",
               "treasure": "VIEW TAKE POOL SHARE EXIT", "left": "YES NO",
-              "archway": "YES NO"}
+              "archway": "YES NO", "blank1": ""}
 
     def __init__(self, tmp_path, archway=False, endless=False, odd=False,
                  swallow=False):
@@ -6839,6 +6839,9 @@ class FakeFight:
         #: the first step shows a bar nobody classifies, drawn differently on
         #: every look; with `swallow` the first `q` at GUY's bar is lost.
         self.archway, self.endless, self.odd, self.swallow = archway, endless, odd, swallow
+        #: With `twice`, GUY's first `QUICK` is followed by a monster's turn
+        #: (a blank bar) and then GUY's own bar again: a second turn.
+        self.twice = False
         self.looks = 0
         self.fought = False
         self.map_after = 0
@@ -6882,6 +6885,11 @@ class FakeFight:
             if self.map_after == self.flicker:
                 # The question comes back once, after the map showed briefly.
                 self.state, self.flicker = "left", 0
+        if self.state == "blank1":
+            # One look at a monster's turn, and GUY's bar is back.
+            frame = self.frame()
+            self.state = "bar1"
+            return frame
         return self.frame()
 
     def grab(self):
@@ -6930,6 +6938,8 @@ class FakeFight:
                 self.state, self.actor, self.fought = "bar1", "GUY", True
             elif s == "bar1" and k == "q" and self.swallow:
                 self.swallow = False
+            elif s == "bar1" and k == "q" and self.twice:
+                self.state, self.twice = "blank1", False
             elif s.startswith("bar") and k == "space":
                 for rec in self.records.values():
                     if rec[_ssb().control_at] < 0x80 and rec[_ssb().status_at + 2] == 0:
@@ -7201,3 +7211,36 @@ def test_y_is_refused_as_the_first_bar_key():
     for key in ("y", "Y"):
         with pytest.raises(ValueError, match="YES"):
             da.parse_key(key)
+
+
+def test_a_window_with_no_named_record_is_not_a_fight(tmp_path):
+    game, d = _fighter(tmp_path)
+    game.state = "bar1"
+    _select(game.ds, game.ptrs["GUY"])
+    for rec in game.records.values():
+        rec[0:3] = b"\x1f\x01\xfe"
+    with pytest.raises(da.StepFailed,
+                       match="DS 1F00: CombatUnread: no combatant's record holds a name"):
+        d.combat_memory(True, {})
+    assert game.halts == da.FIGHT_PRESSES and d.combat_ds is None
+    assert _events(d, "fight-odd-record") == []
+
+
+def test_a_window_with_no_party_member_and_no_one_acting_is_not_a_fight(tmp_path):
+    game, d = _fighter(tmp_path)
+    game.state = "bar1"
+    _select(game.ds, (0x5555, 0x5555))
+    game.ds[_ssb().party_at:_ssb().party_at + 4] = bytes(4)
+    known: dict = {}
+    with pytest.raises(da.StepFailed, match="none is the one acting"):
+        d.combat_memory(True, known)
+    assert known == {}
+
+
+def test_a_member_acting_again_after_a_monsters_turn_is_a_new_bar(tmp_path, fight_now):
+    game, d = _fighter(tmp_path)
+    game.twice = True
+    got = d.fight()
+    assert [e["actor"]["name"] for e in _events(d, "bar")] == ["GUY", "GUY", "PAINE"]
+    assert got["repeated_bars"] == 0
+    assert game.keys == ["m", "Up", "Up", "c", "q", "q", "q", "e", "n"]
