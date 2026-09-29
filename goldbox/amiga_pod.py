@@ -2506,7 +2506,8 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
     # disambiguation applies, out of the level array (#292 for the later
     # titles, and `goldbox.dos_codec.neutral_class_bits_from` is where it lives).
     out.set("class_bits",
-            _dos.neutral_class_bits_from(char.class_bits, char.class_levels),
+            _dos.neutral_class_bits_from(char.class_bits, char.class_levels,
+                                         char.former_class_levels),
             f"Amiga .pc class mask @{CLASS_BITS:#05x}, with bit 6 reread "
             f"from the level array because this port gives the paladin and "
             f"the ranger one bit between them",

@@ -531,3 +531,113 @@ def test_the_pod_amiga_to_dos_row_end_to_end(tmp_path, monkeypatch):
     assert "VAULTA.DAT" in rehearsal.files
     assert any(name.startswith("CHRDATA") and name.endswith(".SAV")
               for name in rehearsal.files)
+
+
+# ---------------------------------------------------------------------------
+# Commit 2: the class bits of a former ranger, and `pod_new_savegame`
+# ---------------------------------------------------------------------------
+
+def test_a_magic_user_who_was_a_ranger_reads_back_as_class_bits_129():
+    """DOS reads the same character as 129; without the former levels the
+    ranger's bit 6 reads as a paladin and `write_pod` refuses him."""
+    slots = amiga_pod.CLASS_LEVEL_SLOTS
+    levels = [0] * len(slots)
+    levels[slots.index("MAGIC-USER")] = 13
+    former = [0] * len(slots)
+    former[slots.index("RANGER")] = 9
+    raw = amiga_pod.PodWriter(
+        name="DUAL", hit_points_max=30, level=13,
+        character_class=amiga_pod.CLASSES.index("MAGIC-USER"),
+        class_levels=tuple(levels), former_class_levels=tuple(former),
+        class_bits=amiga_pod.CLASS_BIT["magic-user"]
+        | amiga_pod.CLASS_BIT["ranger"]).to_bytes()
+    char = amiga_pod.pod_to_neutral(raw)
+    assert char.get("class_bits") == 129
+    amiga_pod.write_pod(char)
+
+
+def test_write_pod_accepts_every_block_of_every_played_slot():
+    for label, blob in _pod_amiga_slots():
+        for block in amiga_savegame.pod_parse(blob).blocks:
+            try:
+                amiga_pod.write_pod(amiga_pod.pod_to_neutral(block))
+            except ValueError as error:
+                pytest.fail(f"{label}: {error}")
+
+
+def _round_trip_new_savegame(blob: bytes):
+    save = amiga_savegame.pod_parse(blob)
+    state = amiga_savegame.pod_from_amiga(blob)
+    characters = [amiga_pod.pod_to_neutral(b) for b in save.blocks]
+    built, report = amiga_savegame.pod_new_savegame(state, characters)
+    return save, state, built, report
+
+
+def test_pod_new_savegame_rebuilds_every_played_amiga_slot():
+    for label, blob in _pod_amiga_slots():
+        save, state, built, report = _round_trip_new_savegame(blob)
+        at = amiga_savegame.POD_PARTY_AT
+        assert built[:at] == blob[:at], label
+        rebuilt = amiga_savegame.pod_parse(built)
+        # A scroll case converts to its own scrolls (#650), so a block that
+        # held one comes back with no bundle and a different size.
+        for was, now in zip(save.characters, rebuilt.characters):
+            if was.bundled:
+                assert now.bundled == 0, (label, was.name)
+            else:
+                assert now.size == was.size, (label, was.name)
+        assert amiga_savegame.pod_from_amiga(built) == state, label
+        assert len(built) == amiga_savegame.POD_SAVEGAME_SIZE, label
+        assert report.unwritten == []
+        assert [c.name.strip() for c in rebuilt.characters] == \
+            [c.name.strip() for c in save.characters], label
+
+
+def test_pod_new_savegame_rebuilds_every_dos_specimen():
+    folder = _pod_dos_dir()
+    found = sorted(folder.glob("SAVGAM?.PTY"))
+    if not found:
+        pytest.skip("no Pools of Darkness SAVGAM?.PTY in the archive")
+    for path in found:
+        letter = path.stem[-1]
+        state = world_state.pod_from_dos(path.read_bytes())
+        party = dos_codec.read_party(folder, letter)
+        characters = [dos_codec.to_neutral(c) for c in party]
+        state = dataclasses.replace(state, count=len(characters))
+        built, _report = amiga_savegame.pod_new_savegame(state, characters)
+        assert len(built) == amiga_savegame.POD_SAVEGAME_SIZE
+        assert amiga_savegame.pod_from_amiga(built) == dataclasses.replace(
+            state, source="")
+
+
+def _synthetic_state(count: int) -> world_state.PodWorldState:
+    return amiga_savegame.pod_from_amiga(_synthetic_amiga_pod_save(count))
+
+
+def _synthetic_fighter(name: str) -> bytes:
+    return amiga_pod.PodWriter(
+        name=name, hit_points_max=9,
+        character_class=amiga_pod.CLASSES.index("FIGHTER"),
+        class_levels=(0, 0, 3, 0, 0, 0, 0),
+        class_bits=amiga_pod.CLASS_BIT["fighter"]).to_bytes()
+
+
+def test_pod_new_savegame_builds_one_synthetic_character():
+    state = _synthetic_state(1)
+    char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
+    built, report = amiga_savegame.pod_new_savegame(state, [char])
+    assert len(built) == amiga_savegame.POD_SAVEGAME_SIZE
+    assert amiga_savegame.pod_from_amiga(built) == state
+    assert amiga_savegame.pod_parse(built).characters[0].name == "ONE"
+    assert report.unwritten == []
+
+
+def test_pod_new_savegame_refuses_a_party_the_state_does_not_count():
+    state = _synthetic_state(2)
+    char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
+    with pytest.raises(amiga_savegame.AmigaSaveError):
+        amiga_savegame.pod_new_savegame(state, [char])
+    with pytest.raises(amiga_savegame.AmigaSaveError):
+        amiga_savegame.pod_new_savegame(state, [])
+    with pytest.raises(amiga_savegame.AmigaSaveError):
+        amiga_savegame.pod_new_savegame(state, [char] * 9)

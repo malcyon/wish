@@ -1882,6 +1882,40 @@ def _pod_u32(data: bytes, at: int) -> int:
     return struct.unpack_from(">I", data, at)[0]
 
 
+def _pod_walk(data: bytes, start: int) -> PodCharacterBlock:
+    """One character's block starting at *start*, walked the way the loader does."""
+    at = start
+    record = data[at:at + POD_RECORD_BYTES]
+    if len(record) < POD_RECORD_BYTES:
+        raise PodSaveError(f"the record at {start} runs off the end")
+    at += POD_RECORD_BYTES
+    items = _pod_u32(record, POD_ITEM_COUNT_AT)
+    if items > 0xFF:
+        raise PodSaveError(f"an item count of {items} at {start}")
+    bundled = 0
+    for _item in range(items):
+        node = data[at:at + POD_ITEM_BYTES]
+        if len(node) < POD_ITEM_BYTES:
+            raise PodSaveError(f"an item node at {at} runs off the end")
+        at += POD_ITEM_BYTES
+        if node[0] == POD_BUNDLE_ID:
+            extra = node[POD_BUNDLE_COUNT]
+            bundled += extra
+            at += POD_ITEM_BYTES * extra
+    effects = 0
+    more = _pod_u32(record, POD_EFFECT_HEAD_AT)
+    while more:
+        node = data[at:at + POD_EFFECT_BYTES]
+        if len(node) < POD_EFFECT_BYTES:
+            raise PodSaveError(f"an effect node at {at} runs off the end")
+        at += POD_EFFECT_BYTES
+        more = _pod_u32(node, POD_EFFECT_NEXT_AT)
+        effects += 1
+    name = record[POD_NAME_AT:POD_NAME_AT + POD_NAME_BYTES].split(b"\x00")[0]
+    return PodCharacterBlock(
+        name.decode("latin1"), start, items, bundled, effects)
+
+
 def pod_parse(data: bytes) -> PodSavegame:
     """One saved game, walked the way the loader walks it.
 
@@ -1900,36 +1934,9 @@ def pod_parse(data: bytes) -> PodSavegame:
     at = POD_PARTY_AT
     characters = []
     for _ in range(count):
-        start = at
-        record = data[at:at + POD_RECORD_BYTES]
-        if len(record) < POD_RECORD_BYTES:
-            raise PodSaveError(f"the record at {start} runs off the end")
-        at += POD_RECORD_BYTES
-        items = _pod_u32(record, POD_ITEM_COUNT_AT)
-        if items > 0xFF:
-            raise PodSaveError(f"an item count of {items} at {start}")
-        bundled = 0
-        for _item in range(items):
-            node = data[at:at + POD_ITEM_BYTES]
-            if len(node) < POD_ITEM_BYTES:
-                raise PodSaveError(f"an item node at {at} runs off the end")
-            at += POD_ITEM_BYTES
-            if node[0] == POD_BUNDLE_ID:
-                extra = node[POD_BUNDLE_COUNT]
-                bundled += extra
-                at += POD_ITEM_BYTES * extra
-        effects = 0
-        more = _pod_u32(record, POD_EFFECT_HEAD_AT)
-        while more:
-            node = data[at:at + POD_EFFECT_BYTES]
-            if len(node) < POD_EFFECT_BYTES:
-                raise PodSaveError(f"an effect node at {at} runs off the end")
-            at += POD_EFFECT_BYTES
-            more = _pod_u32(node, POD_EFFECT_NEXT_AT)
-            effects += 1
-        name = record[POD_NAME_AT:POD_NAME_AT + POD_NAME_BYTES].split(b"\x00")[0]
-        characters.append(PodCharacterBlock(
-            name.decode("latin1"), start, items, bundled, effects))
+        block = _pod_walk(data, at)
+        characters.append(block)
+        at += block.size
     if at > len(data):
         raise PodSaveError(f"the party ends at {at}, past {len(data)}")
     square = {name: data[POD_SQUARE_AT + i]
@@ -1983,6 +1990,84 @@ def pod_from_amiga(data: bytes,
         previous_mode=save.previous_mode, mode=save.mode,
         dungeon_map=save.dungeon_map, map_block=save.map_block,
         count=save.count, source=source)
+
+
+def pod_new_savegame(state: world_state.PodWorldState,
+                     characters: Sequence[neutral.NeutralCharacter],
+                     ) -> tuple[bytes, SaveReport]:
+    """Build one Amiga Pools of Darkness `SavGam<L>.pty` from zeroes.
+
+    The header is written from *state* in the order :func:`pod_rebuild`
+    reads it back, then each character as `amiga_pod.to_pc` writes it, cut
+    to the record, items and effects the loader walks: `to_pc` pads a loose
+    `.pc` to 484 bytes and that padding is not part of a saved game.
+    """
+    from . import amiga_pod
+
+    party = tuple(characters)
+    if not 1 <= len(party) <= POD_PARTY_MAX:
+        raise AmigaSaveError(
+            f"a Pools of Darkness party is 1 to {POD_PARTY_MAX} characters; "
+            f"got {len(party)}")
+    if len(party) != state.count:
+        raise AmigaSaveError(
+            f"the state counts {state.count} characters and {len(party)} "
+            f"were given")
+    if len(state.variables) != POD_VAR_BYTES:
+        raise AmigaSaveError(
+            f"{len(state.variables)} variable bytes is not {POD_VAR_BYTES}")
+
+    report = SaveReport()
+    out = bytearray(state.variables)
+    report.note(0, POD_VAR_BYTES, "the ECL variable array copied from the source save")
+    out += bytes((state.x, state.y, state.facing * dos_savegame.FACING_SCALE,
+                  state.wall_ahead, state.square_property, 0))
+    report.note(POD_SQUARE_AT, len(POD_SQUARE),
+                "the square struct copied from the source save, the facing "
+                "in the Amiga's doubled encoding, and a zero pad byte")
+    out += bytes((state.previous_mode, state.mode))
+    report.note(POD_PREVIOUS_MODE_AT, 2, "the two mode bytes copied from the source save")
+    out += struct.pack(">HHH", state.dungeon_map, state.map_block, len(party))
+    report.note(POD_MAP_AT, 4, "the dungeon map and map block copied from the source save")
+    report.note(POD_COUNT_AT, 2, "the number of converted characters")
+    for char in party:
+        pc, char_report = amiga_pod.to_pc(char)
+        size = _pod_walk(pc, 0).size
+        at = len(out)
+        out += pc[:size]
+        # `to_pc` credits only the bytes it wrote non-zero; the rest of the
+        # block is the zero its writer leaves for the loader to fill.
+        report.note(at, size, "character block byte the record writer leaves zero")
+        for offset, why in char_report.sources.items():
+            if offset < size:
+                report.sources[at + offset] = why
+        report.dropped.extend(char_report.dropped)
+        report.warnings.extend(char_report.warnings)
+        report.losses.extend(char_report.losses)
+    end = len(out)
+    if end > POD_SAVEGAME_SIZE:
+        raise AmigaSaveError(
+            f"the party ends at {end}, past the {POD_SAVEGAME_SIZE} of a saved game")
+    out += bytes(POD_SAVEGAME_SIZE - end)
+    report.note(end, POD_SAVEGAME_SIZE - end,
+                "zero fill to the fixed length: the loader stops at the "
+                "last character (docs/124-amiga-port.md section 1.20)")
+    report.total = len(out)
+    report.unwritten = [i for i in range(report.total) if i not in report.sources]
+    if report.unwritten:
+        raise AmigaSaveError(
+            f"{len(report.unwritten)} bytes of the Amiga save have no source; "
+            f"the first is {report.unwritten[0]:#x}")
+
+    landed = pod_from_amiga(bytes(out))
+    for f in dataclasses.fields(state):
+        if f.name == "source":
+            continue
+        if getattr(landed, f.name) != getattr(state, f.name):
+            raise AmigaSaveError(
+                f"the built save changed world-state field {f.name}")
+    report.converted.append(f"{len(party)} characters in marching order")
+    return bytes(out), report
 
 
 def pod_slot_path(slot: str) -> str:
