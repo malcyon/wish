@@ -64,7 +64,7 @@ RETIRED_NAMES = (
         "CLASS_BITS_CLASSIC", "CLASS_BITS_KRYNN",
         "CLASS_BITS_WITH_PALADIN_RANGER", "RACES_CURSE",
         "RACES_FORGOTTEN_REALMS", "RACES_KRYNN", "RACES_SILVER_BLADES",
-        "class_table", "race_table")),
+        "class_table", "classes_to_names", "race_table")),
 )
 
 

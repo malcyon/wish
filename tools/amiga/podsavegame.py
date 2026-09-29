@@ -44,30 +44,11 @@ from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from tools.amiga import amiga68k, amigasaves  # noqa: E402
 
 # The container map lives in `goldbox.amiga_savegame` under `POD_*` names; these
-# aliases drop the prefix, which is the spelling the tool's functions and its
-# tests use, so the tests can also reach the map through this module.
+# are the ones this tool's functions read.
 SAVEGAME_SIZE = amiga_savegame.POD_SAVEGAME_SIZE
 VAR_BYTES = amiga_savegame.POD_VAR_BYTES
 SQUARE = amiga_savegame.POD_SQUARE
-SQUARE_AT = amiga_savegame.POD_SQUARE_AT
-PREVIOUS_MODE_AT = amiga_savegame.POD_PREVIOUS_MODE_AT
-MODE_AT = amiga_savegame.POD_MODE_AT
-MAP_AT = amiga_savegame.POD_MAP_AT
-MAP_BLOCK_AT = amiga_savegame.POD_MAP_BLOCK_AT
-COUNT_AT = amiga_savegame.POD_COUNT_AT
-PARTY_AT = amiga_savegame.POD_PARTY_AT
-PARTY_MAX = amiga_savegame.POD_PARTY_MAX
-RECORD_BYTES = amiga_savegame.POD_RECORD_BYTES
-ITEM_BYTES = amiga_savegame.POD_ITEM_BYTES
-EFFECT_BYTES = amiga_savegame.POD_EFFECT_BYTES
-BUNDLE_ID = amiga_savegame.POD_BUNDLE_ID
-BUNDLE_COUNT = amiga_savegame.POD_BUNDLE_COUNT
-ITEM_COUNT_AT = amiga_savegame.POD_ITEM_COUNT_AT
-EFFECT_HEAD_AT = amiga_savegame.POD_EFFECT_HEAD_AT
-EFFECT_NEXT_AT = amiga_savegame.POD_EFFECT_NEXT_AT
-NAME_AT, NAME_BYTES = amiga_savegame.POD_NAME_AT, amiga_savegame.POD_NAME_BYTES
 PodSaveError = amiga_savegame.PodSaveError
-PodCharacter = amiga_savegame.PodCharacterBlock
 PodSavegame = amiga_savegame.PodSavegame
 parse = amiga_savegame.pod_parse
 rebuild = amiga_savegame.pod_rebuild
@@ -225,7 +206,7 @@ def _report(name: str, blob: bytes) -> tuple[bool, str]:
     square = " ".join(f"{k}={save.square[k]}" for k in SQUARE)
     line = (f"{name}  {len(blob)}  {square}  prev={save.previous_mode} "
             f"mode={save.mode} map={save.dungeon_map},{save.map_block}  "
-            f"n={save.count} party={PARTY_AT}-{save.end} pad={len(save.pad)}  "
+            f"n={save.count} party={amiga_savegame.POD_PARTY_AT}-{save.end} pad={len(save.pad)}  "
             f"clock={'.'.join(str(d) for d in save.clock)}")
     if problems:
         return False, line + "  <- " + "; ".join(problems)

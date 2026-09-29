@@ -36,7 +36,7 @@ import struct
 
 import pytest
 
-from goldbox import dos_savegame
+from goldbox import amiga_savegame, dos_savegame
 from tools.amiga import podsavegame
 
 POD = dos_savegame.SAVE_POOLS_OF_DARKNESS
@@ -68,28 +68,28 @@ def build(characters=((2, 0, 0),), square=(3, 4, 2, 5, 137, 0),
     out += bytes(square) + bytes((previous_mode, mode))
     out += struct.pack(">HHH", dungeon_map, map_block, len(characters))
     for number, (items, bundled, effects) in enumerate(characters):
-        record = bytearray(b"\x5A" * podsavegame.RECORD_BYTES)
-        struct.pack_into(">I", record, podsavegame.ITEM_COUNT_AT, items)
-        struct.pack_into(">I", record, podsavegame.EFFECT_HEAD_AT,
+        record = bytearray(b"\x5A" * amiga_savegame.POD_RECORD_BYTES)
+        struct.pack_into(">I", record, amiga_savegame.POD_ITEM_COUNT_AT, items)
+        struct.pack_into(">I", record, amiga_savegame.POD_EFFECT_HEAD_AT,
                          0x1234 if effects else 0)
         name = f"WHO{number}".encode()
-        record[podsavegame.NAME_AT:podsavegame.NAME_AT + len(name) + 1] = \
+        record[amiga_savegame.POD_NAME_AT:amiga_savegame.POD_NAME_AT + len(name) + 1] = \
             name + b"\x00"
         out += record
         left = bundled
         for item in range(items):
-            node = bytearray(b"\x11" * podsavegame.ITEM_BYTES)
+            node = bytearray(b"\x11" * amiga_savegame.POD_ITEM_BYTES)
             if left and item == 0:
-                node[0] = podsavegame.BUNDLE_ID
-                node[podsavegame.BUNDLE_COUNT] = left
-                out += node + b"\x22" * podsavegame.ITEM_BYTES * left
+                node[0] = amiga_savegame.POD_BUNDLE_ID
+                node[amiga_savegame.POD_BUNDLE_COUNT] = left
+                out += node + b"\x22" * amiga_savegame.POD_ITEM_BYTES * left
                 left = 0
                 continue
             out += node
         for effect in range(effects):
-            node = bytearray(b"\x33" * podsavegame.EFFECT_BYTES)
+            node = bytearray(b"\x33" * amiga_savegame.POD_EFFECT_BYTES)
             last = effect == effects - 1
-            struct.pack_into(">I", node, podsavegame.EFFECT_NEXT_AT,
+            struct.pack_into(">I", node, amiga_savegame.POD_EFFECT_NEXT_AT,
                              0 if last else 0x5678)
             out += node
     short = podsavegame.SAVEGAME_SIZE - len(out)
@@ -132,35 +132,35 @@ def test_a_variable_is_read_by_its_dos_number():
 
 def test_a_party_count_the_engine_would_not_write_is_refused():
     data = bytearray(build())
-    struct.pack_into(">H", data, podsavegame.COUNT_AT,
-                     podsavegame.PARTY_MAX + 1)
+    struct.pack_into(">H", data, amiga_savegame.POD_COUNT_AT,
+                     amiga_savegame.POD_PARTY_MAX + 1)
     with pytest.raises(podsavegame.PodSaveError):
         podsavegame.parse(bytes(data))
 
 
-@pytest.mark.parametrize("count", [0, podsavegame.PARTY_MAX + 1])
+@pytest.mark.parametrize("count", [0, amiga_savegame.POD_PARTY_MAX + 1])
 def test_a_party_count_outside_one_to_eight_is_refused_even_when_the_records_are_there(count):
     """Nine well-formed records must be refused for their count and not for
     the filler a one-character buffer would leave where they should be."""
     data = bytearray(build(characters=((0, 0, 0),) * 9))
-    struct.pack_into(">H", data, podsavegame.COUNT_AT, count)
+    struct.pack_into(">H", data, amiga_savegame.POD_COUNT_AT, count)
     with pytest.raises(podsavegame.PodSaveError, match="party count"):
         podsavegame.parse(bytes(data))
 
 
 def test_a_buffer_shorter_than_the_header_is_refused_for_its_length():
     with pytest.raises(podsavegame.PodSaveError, match="shorter than the header"):
-        podsavegame.parse(bytes(podsavegame.PARTY_AT - 1))
+        podsavegame.parse(bytes(amiga_savegame.POD_PARTY_AT - 1))
 
 
 def test_a_bundle_whose_count_overshoots_the_buffer_is_refused():
     """The bundle's sub-items are skipped by count, not read, so nothing
     slices past the end: only the final position check sees the overshoot."""
     data = build(characters=((1, 1, 0),))
-    node = podsavegame.PARTY_AT + podsavegame.RECORD_BYTES
-    cut = bytearray(data[:node + podsavegame.ITEM_BYTES])
-    cut[node] = podsavegame.BUNDLE_ID
-    cut[node + podsavegame.BUNDLE_COUNT] = 0xFF
+    node = amiga_savegame.POD_PARTY_AT + amiga_savegame.POD_RECORD_BYTES
+    cut = bytearray(data[:node + amiga_savegame.POD_ITEM_BYTES])
+    cut[node] = amiga_savegame.POD_BUNDLE_ID
+    cut[node + amiga_savegame.POD_BUNDLE_COUNT] = 0xFF
     with pytest.raises(podsavegame.PodSaveError, match="the party ends at"):
         podsavegame.parse(bytes(cut))
 
@@ -168,13 +168,13 @@ def test_a_bundle_whose_count_overshoots_the_buffer_is_refused():
 def test_an_effect_chain_that_never_ends_runs_off_the_file():
     """The chain is the file's own `next` longs, so a broken one is caught."""
     data = bytearray(build(characters=((0, 0, 1),)))
-    at = podsavegame.PARTY_AT + podsavegame.RECORD_BYTES
-    struct.pack_into(">I", data, at + podsavegame.EFFECT_NEXT_AT, 0x99)
+    at = amiga_savegame.POD_PARTY_AT + amiga_savegame.POD_RECORD_BYTES
+    struct.pack_into(">I", data, at + amiga_savegame.POD_EFFECT_NEXT_AT, 0x99)
     # Fill the rest with a chain that keeps saying "one more".
-    for off in range(at + podsavegame.EFFECT_BYTES,
-                     len(data) - podsavegame.EFFECT_BYTES,
-                     podsavegame.EFFECT_BYTES):
-        struct.pack_into(">I", data, off + podsavegame.EFFECT_NEXT_AT, 0x99)
+    for off in range(at + amiga_savegame.POD_EFFECT_BYTES,
+                     len(data) - amiga_savegame.POD_EFFECT_BYTES,
+                     amiga_savegame.POD_EFFECT_BYTES):
+        struct.pack_into(">I", data, off + amiga_savegame.POD_EFFECT_NEXT_AT, 0x99)
     with pytest.raises(podsavegame.PodSaveError):
         podsavegame.parse(bytes(data))
 
@@ -184,7 +184,7 @@ def test_an_effect_chain_that_never_ends_runs_off_the_file():
 # ---------------------------------------------------------------------------
 def test_the_variable_array_is_the_same_array_dos_writes():
     assert podsavegame.VAR_BYTES == POD.var_bytes == 1024
-    assert podsavegame.SQUARE_AT == POD.square == 1024
+    assert amiga_savegame.POD_SQUARE_AT == POD.square == 1024
 
 
 def test_the_square_block_is_dos_field_order_with_one_more_byte():
@@ -201,11 +201,11 @@ def test_the_square_block_is_dos_field_order_with_one_more_byte():
     assert dos_savegame.POD_PREVIOUS_MODE - POD.square == 5
     assert len(podsavegame.SQUARE) == 5 + 1
     assert podsavegame.SQUARE[-1] == "pad"
-    assert podsavegame.PREVIOUS_MODE_AT == dos_savegame.POD_PREVIOUS_MODE + 1
-    assert podsavegame.MODE_AT == dos_savegame.POD_MODE + 1
-    assert podsavegame.MAP_AT == dos_savegame.POD_MAP + 1
-    assert podsavegame.MAP_BLOCK_AT == dos_savegame.POD_MAP_BLOCK + 1
-    assert podsavegame.COUNT_AT == POD.party_size_byte + 1
+    assert amiga_savegame.POD_PREVIOUS_MODE_AT == dos_savegame.POD_PREVIOUS_MODE + 1
+    assert amiga_savegame.POD_MODE_AT == dos_savegame.POD_MODE + 1
+    assert amiga_savegame.POD_MAP_AT == dos_savegame.POD_MAP + 1
+    assert amiga_savegame.POD_MAP_BLOCK_AT == dos_savegame.POD_MAP_BLOCK + 1
+    assert amiga_savegame.POD_COUNT_AT == POD.party_size_byte + 1
 
 
 def test_the_vault_is_two_hundred_item_slots():
@@ -289,7 +289,7 @@ def dos_reads_a_party(blob: bytes) -> bool:
     """
     size = blob[POD.party_size_byte]
     length = blob[POD.party_table]
-    return (1 <= size <= podsavegame.PARTY_MAX
+    return (1 <= size <= amiga_savegame.POD_PARTY_MAX
             and 0 < length < dos_savegame.PARTY_NAME_LEN)
 
 
@@ -309,7 +309,7 @@ def test_dos_offsets_do_not_read_a_synthetic_party_either():
     """Not only because the map-block word is 0: a map block of 3 puts a legal
     count in DOS's count byte, and the entry length still refuses it."""
     blob = build(map_block=3, characters=((0, 0, 0),) * 3)
-    assert 1 <= blob[POD.party_size_byte] <= podsavegame.PARTY_MAX
+    assert 1 <= blob[POD.party_size_byte] <= amiga_savegame.POD_PARTY_MAX
     assert not dos_reads_a_party(blob)
 
 
@@ -360,8 +360,23 @@ def test_the_tool_reads_through_the_librarys_container_map():
     assert podsavegame.rebuild is amiga_savegame.pod_rebuild
     assert podsavegame.PodSaveError is amiga_savegame.PodSaveError
     assert podsavegame.SAVEGAME_SIZE == amiga_savegame.POD_SAVEGAME_SIZE == 0x2A4C
-    assert (podsavegame.SQUARE_AT, podsavegame.PREVIOUS_MODE_AT,
-            podsavegame.MODE_AT, podsavegame.MAP_AT,
-            podsavegame.MAP_BLOCK_AT, podsavegame.COUNT_AT) == (
+    assert (amiga_savegame.POD_SQUARE_AT, amiga_savegame.POD_PREVIOUS_MODE_AT,
+            amiga_savegame.POD_MODE_AT, amiga_savegame.POD_MAP_AT,
+            amiga_savegame.POD_MAP_BLOCK_AT, amiga_savegame.POD_COUNT_AT) == (
         1024, 1030, 1031, 1032, 1034, 1036)
-    assert podsavegame.PARTY_AT == 1038
+    assert amiga_savegame.POD_PARTY_AT == 1038
+
+
+RETIRED_ALIASES = (
+    "SQUARE_AT", "PREVIOUS_MODE_AT", "MODE_AT", "MAP_AT", "MAP_BLOCK_AT",
+    "COUNT_AT", "PARTY_AT", "PARTY_MAX", "RECORD_BYTES", "ITEM_BYTES",
+    "EFFECT_BYTES", "BUNDLE_ID", "BUNDLE_COUNT", "ITEM_COUNT_AT",
+    "EFFECT_HEAD_AT", "EFFECT_NEXT_AT", "NAME_AT", "NAME_BYTES",
+    "PodCharacter",
+)
+
+
+@pytest.mark.parametrize("name", RETIRED_ALIASES)
+def test_the_unread_aliases_are_gone(name):
+    """The tool reads the container map from `amiga_savegame.POD_*` itself."""
+    assert not hasattr(podsavegame, name)

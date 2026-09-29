@@ -29,12 +29,7 @@ from .c64_save import (
     SECRET_OF_THE_SILVER_BLADES,
     C64Container,
 )
-
-# Until tools/amiga/fromamigapor.py imports it from `goldbox.titles` (B9).
-from .titles import (
-    UnknownTitleError,
-    classes_to_names,  # noqa: F401
-)
+from .titles import UnknownTitleError
 
 GAMES: tuple[C64Container, ...] = (
     POOL_OF_RADIANCE,

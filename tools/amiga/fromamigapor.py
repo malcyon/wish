@@ -179,7 +179,7 @@ def sheet(party, state) -> list[str]:
     `goldbox.amiga_por.to_dos_character`, so the same reader and the same three
     display constants serve, imported from there rather than copied.
     """
-    from goldbox.c64_port import classes_to_names
+    from goldbox.titles import classes_to_names
 
     hour, minute = state.clock[3], state.clock[2] * 10 + state.clock[1]
     out = [f"Amiga {state.title}: "
