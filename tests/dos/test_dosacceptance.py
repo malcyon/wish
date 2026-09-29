@@ -7273,3 +7273,166 @@ def test_a_member_acting_again_after_a_monsters_turn_is_a_new_bar(tmp_path, figh
     assert [e["actor"]["name"] for e in _events(d, "bar")] == ["GUY", "GUY", "PAINE"]
     assert got["repeated_bars"] == 0
     assert game.keys == ["m", "Up", "Up", "c", "q", "q", "q", "e", "n"]
+
+
+# -- --stage-var: a script-variable word of SAVGAM -----------------------------
+
+_SSB_SPECIMEN = "WISH-SPEC-ssb-299-whole-engine-resave"
+
+
+def _ssb_specimen():
+    from tools.registry import specimens
+    folder = specimens.tree_root() / "por-dos" / _SSB_SPECIMEN
+    if not folder.is_dir():
+        pytest.skip(f"needs {_SSB_SPECIMEN}")
+    return folder
+
+
+def _ssb_copy(tmp_path):
+    import shutil
+    dest = tmp_path / "save"
+    shutil.copytree(_ssb_specimen(), dest)
+    for f in dest.iterdir():
+        f.chmod(0o644)
+    return dest
+
+
+def _synthetic_ssb_save(tmp_path):
+    (tmp_path / "SAVGAMD.DAT").write_bytes(bytes(5469))
+    (tmp_path / "CHRDATD1.SAV").write_bytes(b"record one")
+    (tmp_path / "CHRDATD2.SAV").write_bytes(b"record two")
+    (tmp_path / "CHRDATD2.SFX").write_bytes(b"effects")
+    return {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+
+
+def test_stage_var_changes_exactly_the_named_word(tmp_path):
+    from goldbox import dos_savegame
+    source = _synthetic_ssb_save(tmp_path)
+    got = staging.stage_var(tmp_path, "D", 0x4C2D, 1)
+    assert got["offset"] == "0x25b" and (got["before"], got["after"]) == ("0000", "0100")
+    after = (tmp_path / "SAVGAMD.DAT").read_bytes()
+    assert len(after) == 5469
+    assert [i for i in range(5469) if after[i] != source["SAVGAMD.DAT"][i]] == [0x25B]
+    container = dos_savegame.container_for(5469)
+    assert dos_savegame.word(after, dos_savegame.pool_address(0x4C2D, container),
+                             container) == 1
+    for name, data in source.items():
+        if name != "SAVGAMD.DAT":
+            assert (tmp_path / name).read_bytes() == data
+
+
+def test_stage_var_on_the_specimen_touches_only_the_gate_word(tmp_path):
+    save = _ssb_copy(tmp_path)
+    before = {p.name: p.read_bytes() for p in save.iterdir()}
+    staging.stage_var(save, "D", 0x4C2D, 1)
+    for p in save.iterdir():
+        if p.name == "SAVGAMD.DAT":
+            diff = [i for i, (a, b) in enumerate(zip(before[p.name], p.read_bytes()))
+                    if a != b]
+            assert diff and set(diff) <= {0x25B, 0x25C}
+        else:
+            assert p.read_bytes() == before[p.name]
+
+
+@pytest.mark.parametrize("bad", ["4C2D", "4C2D=", "=1", "zz=1", "4C2D=0x10000",
+                                 "4C2D=01", "4C2D=-1", "12345=1"])
+def test_a_bad_stage_var_line_is_refused(bad):
+    with pytest.raises(ValueError):
+        da.parse_var(bad)
+
+
+def test_a_stage_var_line_parses_hex_addresses_and_values():
+    assert da.parse_var("4C2D=1") == (0x4C2D, 1)
+    assert da.parse_var("$4c2d=0xFF") == (0x4C2D, 255)
+    assert da.parse_var("0x4C2D=65535") == (0x4C2D, 65535)
+
+
+def test_stage_var_refuses_an_address_outside_the_array_and_a_bad_value(tmp_path):
+    from goldbox import dos_savegame
+    _synthetic_ssb_save(tmp_path)
+    with pytest.raises(dos_savegame.DosSaveError):
+        staging.stage_var(tmp_path, "D", 0x1000, 1)
+    with pytest.raises(ValueError, match="one word"):
+        staging.stage_var(tmp_path, "D", 0x4C2D, 0x10000)
+    assert (tmp_path / "SAVGAMD.DAT").read_bytes() == bytes(5469)
+
+
+def test_stage_var_refuses_pools_of_darkness(tmp_path):
+    from goldbox import dos_savegame
+    (tmp_path / "SAVGAMD.DAT").write_bytes(bytes(1364))
+    with pytest.raises(dos_savegame.DosSaveError):
+        staging.stage_var(tmp_path, "D", 0x4C2D, 1)
+
+
+def test_the_command_line_wires_stage_var_after_stage_record(tmp_path):
+    _synthetic_ssb_save(tmp_path)
+    args = _run_args(tmp_path, [])
+    args.stage_record = []
+    args.stage_var = ["4C2D=1"]
+    done = da.stage(tmp_path, "D", args)
+    assert [d["stage"] for d in done] == ["var"]
+    assert (tmp_path / "SAVGAMD.DAT").read_bytes()[0x25B] == 1
+
+
+def test_main_refuses_a_bad_stage_var_before_a_slot_is_claimed(tmp_path, monkeypatch, capsys):
+    def claimed(*a, **k):
+        raise AssertionError("an emulator slot was claimed")
+
+    monkeypatch.setattr(da.dosbox, "claim", claimed)
+    with pytest.raises(SystemExit):
+        da.main(["--save", str(tmp_path), "--steps", "load", "--stage-var", "4C2D",
+                 "--out", str(tmp_path / "out")])
+    assert "4C2D" in capsys.readouterr().err
+
+
+def test_a_silver_blades_fight_in_area_16_is_refused_without_the_gate(
+        monkeypatch, tmp_path):
+    from goldbox import dos_savegame
+    save = _ssb_copy(tmp_path)
+    data = (save / "SAVGAMD.DAT").read_bytes()
+    assert dos_savegame.current_area(data) == 16
+    log = _fake_run(monkeypatch, tmp_path)
+    args = _run_args(tmp_path, ["load", "begin", "fight"])
+    args.title, args.slot, args.save, args.from_slot = "ssb", "D", str(save), "D"
+    with pytest.raises(ValueError, match="--stage-var 4C2D=1"):
+        da.check_staging(args, save, "D")
+    with pytest.raises(ValueError, match="--stage-var 4C2D=1"):
+        da.run(args)
+    assert "claim" not in log
+    args.stage_var = ["4C2D=1"]
+    da.check_staging(args, save, "D")
+    args.stage_var = ["4C2D=0"]
+    with pytest.raises(ValueError, match="--stage-var 4C2D=1"):
+        da.check_staging(args, save, "D")
+    args.steps, args.stage_var = ["load", "begin"], []
+    da.check_staging(args, save, "D")
+
+
+def test_read_reports_each_staged_word_as_the_saved_slot_holds_it(tmp_path, monkeypatch):
+    _synthetic_ssb_save(tmp_path)
+    save = tmp_path / "SAVE"
+    save.mkdir()
+    (save / "SAVGAME.DAT").write_bytes(bytes(5469))
+    staging.stage_var(save, "E", 0x4C2D, 1)
+    monkeypatch.setattr(da, "read_slot", lambda *a: {"clock_minutes": 0, "nodes": [], "characters": []})
+    got = da.read_step(save, tmp_path / "out", "D", ["E"], [], [], [(0x4C2D, 1)])
+    assert got["staged_vars"] == {"4C2D": {"slot": "E", "staged": 1, "saved": 1}}
+
+
+def test_the_dos_new_verdigris_script_is_the_c64_one():
+    """Area 16's DOS script is `ECL10` on the C64, so the gate `$4C2D` its
+    wandering roll reads is a DOS fact and not a C64 one carried across."""
+    from automap import paths
+    from goldbox import c64_port, dos_savegame
+    from tools.c64 import coldread
+    disks = paths.tool_disks(c64_port.SECRET_OF_THE_SILVER_BLADES)
+    if disks is None:
+        pytest.skip("needs the Silver Blades C64 disks")
+    try:
+        game = dosbox.find_game("SECRET")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS archives ($FR_ARCHIVES)")
+    c64 = coldread.every_file(c64_port.SECRET_OF_THE_SILVER_BLADES, str(disks))["ECL10"]
+    dos = dos_savegame.dax_block((game / "ECL1.DAX").read_bytes(), 16)
+    assert dos[2:] == c64
+    assert c64[0x592:0x594] == c64[0x5AE:0x5B0] == bytes((0x2D, 0x4C))

@@ -72,7 +72,7 @@ a source whose title does not match `--title`:
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
 | `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
-| `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
+| `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is refused unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement, record byte 0x130 (spell id 126's book byte, `book_0x130`) and items |
 
 **Pools of Darkness' screens are read off its `GAME.EXE` strings, not off a
@@ -144,7 +144,8 @@ CHARACTER` in the party menu wherever the party stands for every class
 (`docs/194-the-dos-training-ladder.md`); `--xp N=VALUE` sets roster line N's
 experience; `--add-node N=ID:MINUTES:DATA:FLAG` appends one effect node to
 line N's effect file (`.SPC`, `.FX` or `.SFX`); `--stage-record
-LINE:OFFSET=VALUE` sets one byte of line N's `CHRDAT` record below its length.
+LINE:OFFSET=VALUE` sets one byte of line N's `CHRDAT` record below its length; `--stage-var
+ADDRESS=VALUE` sets one script-variable word of `SAVGAM` (`read` reports it as the last saved slot holds it).
 
 **The rest-time keys are read from each title's `GAME.OVR`**, because nobody
 had captured the screen.  Pool of Radiance's rest menu is `Rest daYs Hours
@@ -205,7 +206,7 @@ import traceback
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos_codec, world_state  # noqa: E402
+from goldbox import dos_codec, dos_savegame, world_state  # noqa: E402
 from tools.dos import dosbox, dosboxx, dospod, route_silver_blades  # noqa: E402
 from tools.dos.screens import (  # noqa: E402
     BLANK_NAME,
@@ -237,6 +238,7 @@ from tools.dos.staging import (  # noqa: E402
     stage_hall,
     stage_node,
     stage_record,
+    stage_var,
     stage_xp,
 )
 from tools.registry import evidence, scratch  # noqa: E402
@@ -1626,6 +1628,23 @@ def parse_record_bytes(texts) -> list[tuple[int, int, int]]:
     return out
 
 
+def parse_var(text: str) -> tuple[int, int]:
+    """`ADDRESS=VALUE`: a script-variable word, the address hex with or without
+    `$` or `0x`, the value decimal or `0x` hex.  Whether the address lies in the
+    title's array is `check_staging`'s and `stage_var`'s to say."""
+    where, sep, value = text.partition("=")
+    where = where.strip().removeprefix("$").removeprefix("0x").removeprefix("0X")
+    value = value.strip()
+    if (not sep or not re.fullmatch(r"[0-9A-Fa-f]{1,4}", where)
+            or not _RECORD_NUMBER.fullmatch(value)):
+        raise ValueError(f"{text!r}: a variable is ADDRESS=VALUE (address hex, "
+                         "value decimal without a leading zero, or 0x hex)")
+    number = int(value, 0)
+    if not 0 <= number <= 0xFFFF:
+        raise ValueError(f"{text!r}: the value is one word, 0 to 0xFFFF")
+    return int(where, 16), number
+
+
 def parse_node(text: str) -> tuple[int, bytes]:
     """`LINE=ID:MINUTES:DATA:FLAG`, numbers decimal or `0x` hex: a node's five bytes."""
     line, sep, rest = text.partition("=")
@@ -1923,7 +1942,7 @@ def staged_disk(base: pathlib.Path, title: str,
     (`effects.remaining_minutes`), which is what the conversion turns into a
     node's minutes.
     """
-    from goldbox import c64_save, dos_savegame, effects
+    from goldbox import c64_save, effects
     from goldbox.d64 import D64, attach_load_address, split_load_address
     container = {"curse": c64_save.CURSE_OF_THE_AZURE_BONDS,
                  "ssb": c64_save.SECRET_OF_THE_SILVER_BLADES,
@@ -4585,7 +4604,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                 elif step.kind == "press":
                     r = d.press(step.key)
                 else:
-                    r = read_step(session.save_dir, out, letter, saved, steps, expects)
+                    r = read_step(session.save_dir, out, letter, saved, steps, expects,
+                                  [parse_var(v) for v in getattr(args, "stage_var", []) or []])
                     summary["read"] = r
                 results.append({"step": step.text, **r})
                 note(event="done", step=step.text,
@@ -4629,6 +4649,41 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
     return 0 if summary["completed"] else 1
 
 
+#: Silver Blades' wandering-fight gate and the area whose script (`ECL10`) reads it.
+WANDER_GATE = 0x4C2D
+GATE_AREA = 16
+
+
+def check_gate(args, save: pathlib.Path, from_slot: str | None) -> None:
+    """Refuse a `--stage-var` outside the title's array, and a Silver Blades
+    `fight` in area 16 whose gate word would not be 1: a successful roll there
+    is a compliment, never a fight."""
+    staged = [parse_var(t) for t in getattr(args, "stage_var", []) or []]
+    if not staged and not (args.title == "ssb" and any(
+            parse_step(s).kind == "fight" for s in getattr(args, "steps", []))):
+        return
+    savgam = save / f"SAVGAM{from_slot}.DAT"
+    if not savgam.is_file():
+        return
+    data = savgam.read_bytes()
+    container = dos_savegame.container_for(len(data))
+    for address, _ in staged:
+        dos_savegame.word_offset(dos_savegame.pool_address(address, container), container)
+    if args.title != "ssb" or not any(parse_step(s).kind == "fight" for s in getattr(args, "steps", [])):
+        return
+    if dos_savegame.current_area(data) != GATE_AREA:
+        return
+    gate = dos_savegame.word(data, dos_savegame.pool_address(WANDER_GATE, container),
+                             container)
+    for address, value in staged:
+        if address == WANDER_GATE:
+            gate = value
+    if gate != 1:
+        raise ValueError(f"a Silver Blades fight in area {GATE_AREA} needs "
+                         f"--stage-var {WANDER_GATE:04X}=1: with the gate at "
+                         f"{gate} a wandering roll there gives no fight")
+
+
 def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
     """Refuse a stage the installed save cannot take, before a slot is claimed.
 
@@ -4645,6 +4700,7 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
         if word.is_file() and word.stat().st_size < HALL_WORD + 2:
             raise ValueError(f"{word.name} is {word.stat().st_size} bytes, too "
                              f"short for the hall word at {HALL_WORD:#x}")
+    check_gate(args, save, from_slot)
     names = {p.name.upper() for p in save.iterdir()}
     records = parse_record_bytes(getattr(args, "stage_record", []) or [])
     lines = ([parse_xp(t)[0] for t in getattr(args, "xp", []) or []]
@@ -4664,8 +4720,8 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
 
 
 def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
-    """The `--hall`, `--xp`, `--add-node`, `--stage-control` and `--stage-record`
-    stages, in that order."""
+    """The `--hall`, `--xp`, `--add-node`, `--stage-control`, `--stage-record` and
+    `--stage-var` stages, in that order."""
     done = []
     if getattr(args, "hall", False):
         done.append(stage_hall(save_dir, letter))
@@ -4677,6 +4733,8 @@ def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
         done.append(stage_control(save_dir, letter, *parse_control(text)))
     for line, offset, value in parse_record_bytes(getattr(args, "stage_record", []) or []):
         done.append(stage_record(save_dir, letter, line, offset, value))
+    for text in getattr(args, "stage_var", []) or []:
+        done.append(stage_var(save_dir, letter, *parse_var(text)))
     return done
 
 
@@ -4753,8 +4811,10 @@ def walk_verdict(steps: list[Step], read: dict | None) -> str | None:
 
 
 def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
-              saved: list[str], steps: list[Step], expects: list[Expect]) -> dict:
-    """Copy `SAVE/` out and decode the installed slot against each saved one."""
+              saved: list[str], steps: list[Step], expects: list[Expect],
+              staged_vars: list[tuple[int, int]] | None = None) -> dict:
+    """Copy `SAVE/` out and decode the installed slot against each saved one,
+    and report each `--stage-var` word as the last saved slot holds it."""
     resave = out / "resave"
     shutil.rmtree(resave, ignore_errors=True)
     shutil.copytree(save_dir, resave)
@@ -4778,6 +4838,15 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
         if any(st.kind in ("walk", "turn") for st in steps):
             result["slots"][x]["place_changed"] = place_changed(before, after)
         previous = after
+    if saved and staged_vars:
+        data = (resave / f"SAVGAM{saved[-1]}.DAT").read_bytes()
+        container = dos_savegame.container_for(len(data))
+        result["staged_vars"] = {
+            f"{address:04X}": {"slot": saved[-1], "staged": value,
+                               "saved": dos_savegame.word(
+                                   data, dos_savegame.pool_address(address, container),
+                                   container)}
+            for address, value in staged_vars}
     if saved and expects:
         result["verdicts"] = [judge(e, result["slots"][saved[-1]]) for e in expects]
     for line in describe(result):
@@ -4893,6 +4962,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="stage one byte of roster line LINE's CHRDAT record "
                          "(decimal or 0x hex, comma-separated or repeated), "
                          "after --stage-control, before the boot")
+    ap.add_argument("--stage-var", action="append", default=[], metavar="ADDRESS=VALUE",
+                    help="stage one script-variable word of SAVGAM (the title's own "
+                         "hex address, decimal or 0x hex value), after "
+                         "--stage-record, before the boot; a Silver Blades fight in "
+                         "area 16 needs 4C2D=1")
     ap.add_argument("--first-bar-key", default=None, metavar="KEY",
                     help="SPACE or one letter or digit, pressed once at the "
                          "first command bar of the first fight instead of "
@@ -4926,10 +5000,12 @@ def main(argv: list[str] | None = None) -> int:
         for c in args.stage_control:
             parse_control(c)
         parse_record_bytes(args.stage_record)
+        for v in args.stage_var:
+            parse_var(v)
         validate_steps([parse_step(s) for s in args.steps], args.title)
         if args.first_bar_key is not None:
             parse_key(args.first_bar_key)
-            if not any(parse_step(s).kind == "fight" for s in args.steps):
+            if not any(parse_step(s).kind == "fight" for s in getattr(args, "steps", [])):
                 raise ValueError("--first-bar-key is pressed in a fight: add a "
                                  "fight step")
         if args.hall and args.title not in HALL_TITLES:

@@ -1,7 +1,7 @@
 """Puts a saved game, and the inputs an acceptance run stages, into a DOS save folder.
 
 `install` copies one slot of a Wish-written save into a staged `SAVE` tree, and
-`stage_hall`, `stage_xp`, `stage_record` and `stage_node` edit the installed records before the
+`stage_hall`, `stage_var`, `stage_xp`, `stage_record` and `stage_node` edit the installed records before the
 game boots.
 """
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 import pathlib
 import re
 
-from goldbox import dos_codec
+from goldbox import dos_codec, dos_savegame
 
 #: `SAVGAM<slot>.DAT`'s training-hall word and the value `--hall` writes:
 #: every class bit, so every character's school is open
@@ -109,6 +109,27 @@ def stage_hall(save_dir: pathlib.Path, letter: str) -> dict:
     path.write_bytes(bytes(data))
     return {"stage": "hall", "file": path.name, "offset": hex(HALL_WORD),
             "before": before.hex(), "after": data[HALL_WORD:HALL_WORD + 2].hex()}
+
+
+def stage_var(save_dir: pathlib.Path, letter: str, address: int, value: int) -> dict:
+    """Write `value` into the script-variable word at `address` of `SAVGAM<letter>.DAT`.
+
+    `address` is the title's own ECL address (`$4C2D` in Silver Blades), which
+    `dos_savegame.pool_address` turns into the word index the file is laid out by.
+    """
+    path = save_dir / f"SAVGAM{letter.upper()}.DAT"
+    data = bytearray(path.read_bytes())
+    if not 0 <= value <= 0xFFFF:
+        raise ValueError(f"value {value} is not one word")
+    container = dos_savegame.container_for(len(data))
+    index = dos_savegame.pool_address(address, container)
+    offset = dos_savegame.word_offset(index, container)
+    before = bytes(data[offset:offset + 2])
+    dos_savegame.put_word(data, index, value, container)
+    path.write_bytes(bytes(data))
+    return {"stage": "var", "file": path.name, "address": f"{address:#06x}",
+            "offset": hex(offset), "before": before.hex(),
+            "after": bytes(data[offset:offset + 2]).hex()}
 
 
 def stage_xp(save_dir: pathlib.Path, letter: str, line: int, xp: int) -> dict:
