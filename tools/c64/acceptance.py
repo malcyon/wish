@@ -54,7 +54,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest) |
 | `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk |
-| `fight [SECONDS]` | walk `--walk` until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary |
+| `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep; Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
@@ -83,8 +83,8 @@ whose bonus byte is not zero when `$6DD9` is set, and choosing ITEMS sets
 owner `$FF` and so matches only a row owned by the whole party.  Its hit is
 `$408F`, the checkpoint in the example above.
 
-Pool of Radiance, Curse and Silver Blades are driven; Silver Blades has no
-`fight`.  Curse and Silver Blades `view` and `save` take the routes
+Pool of Radiance, Curse and Silver Blades are driven.  Curse and Silver
+Blades `view` and `save` take the routes
 `tools/c64/curedrive.py` measured: the sheet is `VIEW` from camp with `EXIT` on
 row 24 and the member's name on row 1, and a save waits for `SAVING GAME` to
 come up and go and the camp bar to return.  Pool's save keeps
@@ -4169,9 +4169,37 @@ class CurseRun(PoolRun):
                 **dataclasses.asdict(result)}
 
 
+#: Silver Blades' `fight` walks New Verdigris, where a party sets out.
+#: `ECL10` entry 1 rolls for a wandering monster on each forward or backward
+#: key onto a square of attribute `$00`, from the tenth such key on, and the
+#: roll starts a fight only while `$4C2D` (`SAVEDBASH` offset `$12D`) is
+#: exactly 1 (#334).  Column 12 of `GEO10` is `$00` from row 0 to row 15, and
+#: the way there from the specimens' 3,5 crosses no square with a script.
+SILVER_FIGHT_AREA = "GEO10"
+SILVER_FIGHT_TOUR = ((12, 0), (12, 15))
+SILVER_WANDER_GATE = 0x4C2D
+
+#: How long the encounter may take, once its message is answered, to reach
+#: `COM.PREP`; and how long `COM.PREP` may take to reach COMBAT (33 s seen).
+SILVER_COMMIT_SECONDS = 15.0
+SILVER_PREP_SECONDS = 120.0
+
+#: How long a walk waits for the move bar to come back before the next key,
+#: so that no key reaches an encounter still loading.
+SILVER_MOVE_READY_SECONDS = 20.0
+
+#: LINKER's dispatch byte at the party menu, where the game goes when the
+#: whole party falls in a fight (`docs/121`: `0` `GEN` at the roster menu).
+SILVER_GEN = 0
+
+
 class SilverRun(CurseRun):
     """Silver Blades on `ssbsession.SSBSession`: Curse's camp, sheet and save routes,
-    its own load, and no fight (its route to a fight is Curse's tavern)."""
+    its own load, and a fight met by walking New Verdigris with the wandering
+    roll's fight gate on."""
+
+    #: `ssbsession.Addresses`, which `load` reads off the disks.
+    silver_addr = None
 
     def __init__(self, sess, log, out, game, points, disks, staged_disk):
         PoolRun.__init__(self, sess, log, out, game, points)
@@ -4194,7 +4222,7 @@ class SilverRun(CurseRun):
             raise StepFailed(self.sess.boot_failure or "boot failed")
         if not ssbsession.load_party(self.sess):
             raise self.fail("load", "the game did not load the party")
-        addr = ssbsession.Addresses(self.sess.game, self.disks)
+        addr = self.silver_addr = ssbsession.Addresses(self.sess.game, self.disks)
         if not ssbsession.enter_world(self.sess, addr, timeout=240):
             raise self.fail("world", "Silver Blades never reached the world")
         ssbsession.clear_messages(self.sess)
@@ -4220,6 +4248,164 @@ class SilverRun(CurseRun):
         self.capture("world")
         return {"position": self.position(),
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
+
+    # -- the fight: a wandering monster in New Verdigris ---------------------------
+    def fight_committed(self) -> bool:
+        """COMBAT, or `COM.PREP` building it: no move key may be sent after either."""
+        return self.sess.mode() in (S.COMBAT, COMBAT_PREP)
+
+    def wander_gate(self, value: int | None = None) -> int | None:
+        """`$4C2D` as read, after writing VALUE when one is given and the party
+        is in the world (mode 1).  None when the machine did not answer or was
+        not in the world."""
+        if value is not None and self.sess.mode() != S.DUNGEON:
+            return None
+        with self.sess.mon(8) as m:
+            if value is not None:
+                m.write(SILVER_WANDER_GATE, bytes([value]))
+            got = m.read(SILVER_WANDER_GATE, 1)[0]
+            m.resume()
+        return got
+
+    def await_mode(self, want, seconds: float, what: str) -> int | None:
+        """Poll the mode byte until it is in WANT, pressing nothing; the last
+        value read either way, each change logged as `silver-mode`."""
+        end = self.clock() + self.budget(seconds, what)
+        last = self.sess.mode()
+        while last not in want and self.clock() < end:
+            self.sess.settle(1.0)
+            now = self.sess.mode()
+            if now != last:
+                self.log.emit("silver-mode", mode=now, was=last, what=what,
+                              row24=self.bar())
+            last = now
+        return last
+
+    def key_idle(self) -> bool:
+        """`DUNGEON`'s key wait (`$104C`, which the move prompt calls) or the
+        `LIBRARY` fetcher under it, on three samples with the screen still."""
+        from tools.secret_of_the_silver_blades import ssbsession
+
+        return ssbsession.idle_in_key_window(self.sess, self.silver_addr,
+                                             samples=3, gap=0.5) is not None
+
+    def ready_to_move(self, route) -> bool:
+        """Whether a move key may go: the move or world bar is up and the
+        engine is waiting for a key.  The move bar stays drawn while an
+        encounter's `SETUPMON` loads, so the bar alone would let a key into the
+        encounter.  A `PRESS` bar is answered on the way; a committed fight, or
+        no idle bar within `SILVER_MOVE_READY_SECONDS`, says no."""
+        end = self.clock() + self.budget(SILVER_MOVE_READY_SECONDS, "move bar")
+        while True:
+            if self.fight_committed():
+                return False
+            bar = self.bar()
+            if ("I,J,K,M" in bar or self.at_world(bar)) and self.key_idle():
+                return True
+            if self.clock() >= end:
+                self.log.emit("silver-no-move-bar", row24=bar)
+                return False
+            route.clear_bar()
+            self.sess.settle(1.0)
+
+    def world_again(self, sess, screen) -> bool:
+        """`Session.fight`'s stop: DUNGEON with the world bar on row 24, which
+        does not wait on a status line eleven Silver Blades areas never draw;
+        or the party menu, where the game goes when the whole party falls
+        without `Session.fight` reading its line."""
+        mode = sess.mode()
+        return mode == SILVER_GEN or (
+            screen is not None and self.at_world(screen.row(24))
+            and mode == S.DUNGEON)
+
+    def fight(self, arg: str, walk: str, steps: int) -> dict:
+        """Walk `SILVER_FIGHT_TOUR` with the wandering gate at 1 until a fight
+        is committed, then fight it; the gate goes back to what it read before
+        the walk once the party is in the world again.  WALK is Pool's and
+        unused; STEPS bounds the forward keys and turns the tour may take."""
+        from tools.curse_of_the_azure_bonds import cursethac0
+
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        area, geo = cursethac0.area_geo(str(self.staged_disk), self.disks)
+        if str(area) != SILVER_FIGHT_AREA or geo is None:
+            raise self.fail("geo", f"the party is in {area}; the Silver Blades "
+                                   f"fight walks {SILVER_FIGHT_AREA}")
+        was = self.wander_gate()
+        gate = {"address": f"${SILVER_WANDER_GATE:04X}", "was": was,
+                "now": was if was == 1 else self.wander_gate(1)}
+        self.log.emit("wander-gate", **gate)
+        if gate["now"] != 1:
+            raise self.fail("wander-gate", f"$4C2D reads {gate['now']}, not 1")
+        try:
+            walked, result = self._silver_walk_and_fight(arg, steps, geo)
+        finally:
+            with contextlib.suppress(Exception):
+                gate["restored"] = self.wander_gate(was)
+            self.log.emit("wander-gate", **gate)
+        return {"walked": walked, "area": str(area), "wander_gate": gate,
+                "acted": result.acted, **dataclasses.asdict(result)}
+
+    def _silver_walk_and_fight(self, arg: str, steps: int, geo):
+        from tools.c64 import laterbattle
+        from tools.curse_of_the_azure_bonds import cursethac0
+
+        owner = self
+
+        class Route(laterbattle.Battle):
+            def in_combat(self):
+                return owner.fight_committed()
+
+            def press(self, key):
+                return owner.ready_to_move(self) and super().press(key)
+
+        route = Route(self.out, True)
+        walked = 0
+        try:
+            route.sess = self.sess
+            try:
+                while (walked < steps and not self.spent()
+                       and not self.fight_committed()):
+                    for stop in SILVER_FIGHT_TOUR:
+                        if walked >= steps or self.fight_committed():
+                            break
+                        route.goto(stop, steps - walked, geo=geo)
+                        walked += route.last_goto_steps
+            except cursethac0.Unsettled:
+                if not self.fight_committed():
+                    raise self.fail("square", "the party's square did not settle")
+        finally:
+            route.file.close()
+        self.capture("fight-route")
+        if self.await_mode((S.COMBAT, COMBAT_PREP), SILVER_COMMIT_SECONDS,
+                           "an encounter") not in (S.COMBAT, COMBAT_PREP):
+            raise self.fail("fight", f"no fight in {walked} steps of "
+                                     f"{SILVER_FIGHT_AREA}")
+        if self.await_mode((S.COMBAT,), SILVER_PREP_SECONDS,
+                           "COM.PREP") != S.COMBAT:
+            raise self.fail("fight", "Silver Blades never entered combat mode")
+        self.capture("fight-start")
+        self.sess.await_bar((S.BAR_COMMAND,), timeout=60, interval=2.0)
+        result = self.sess.fight(budget=float(arg or 120),
+                                 tactic=(self.bar_tactic() if self.log_bars
+                                         else S.Session.melee_turn),
+                                 stop=self.world_again)
+        self.capture("fight-end")
+        wiped = self.sess.mode() == SILVER_GEN
+        self.log.emit("silver-fight", outcome=result.outcome, wiped=wiped,
+                      turns=result.turns, blows=result.blows,
+                      seconds=round(result.seconds, 1), bars=result.bars[-12:],
+                      lines=result.lines[-20:])
+        if wiped:
+            self.keep_fight_reading()
+            raise self.fail("fight", f"the party lost the fight after "
+                                     f"{result.turns} turns: the game went "
+                                     f"back to the party menu")
+        if result.outcome == S.BUDGET:
+            raise self.fight_over_budget(arg, result)
+        if result.outcome == S.LOST:
+            raise self.fight_lost(result)
+        return walked, result
 
 
 # --- the run ---------------------------------------------------------------------
@@ -4965,8 +5151,6 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("the walk-fight step: Pool of Radiance only")
     if any(x.verb == "walk-flee" for x in steps) and args.title != "pool":
         ap.error("the walk-flee step: Pool of Radiance only")
-    if any(x.verb == "fight" for x in steps) and args.title == "ssb":
-        ap.error("the fight step needs --title pool or curse")
     temple_mode = any(step.verb == "temple-probe" for step in steps)
     if temple_mode:
         if (steps not in ([Step("load"), Step("temple-probe", "BRUTUS")],
@@ -4998,12 +5182,8 @@ def main(argv: list[str] | None = None) -> int:
                  "cast CASTER:DISPEL MAGIC>BRUTUS/view BRUTUS/save")
     if args.attack_by and args.title != "curse":
         ap.error("--attack-by requires --title curse")
-    if args.first_bar_key is not None:
-        if args.title == "ssb":
-            ap.error("--first-bar-key: the fight step needs --title pool or curse, "
-                     "and Silver Blades has none yet")
-        if not any(x.verb == "fight" for x in steps):
-            ap.error("--first-bar-key needs a fight step")
+    if args.first_bar_key is not None and not any(x.verb == "fight" for x in steps):
+        ap.error("--first-bar-key needs a fight step")
     if args.stage_side and args.title == "pool":
         ap.error("--stage-side: Curse and Silver Blades only "
                  "(Pool's turndrive.py stages sides)")

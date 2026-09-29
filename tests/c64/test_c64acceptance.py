@@ -5434,12 +5434,16 @@ def test_a_silver_blades_run_names_the_party_in_slot_order(tmp_path, monkeypatch
     assert run.attack_by == "" and run.deadline is None
 
 
-def test_the_fight_step_is_refused_for_silver_blades(tmp_path):
-    with pytest.raises(SystemExit) as info:
-        A.main(["--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
-                "--disks", str(tmp_path), "--steps", "load", "fight",
-                "--out", str(tmp_path / "out")])
-    assert info.value.code == 2
+@pytest.mark.parametrize("key", [[], ["--first-bar-key", "SPACE"]])
+def test_the_fight_step_and_its_first_bar_key_are_accepted_for_silver_blades(
+        tmp_path, monkeypatch, key):
+    ran = []
+    monkeypatch.setattr(A, "run", lambda args, steps, out, source: ran.append(
+        (args.title, [s.text for s in steps], args.first_bar_key)) or 0)
+    assert A.main(["--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
+                   "--disks", str(tmp_path), "--steps", "load", "fight 600",
+                   *key, "--out", str(tmp_path / "out")]) == 0
+    assert ran == [("ssb", ["load", "fight 600"], "SPACE" if key else None)]
 
 
 def test_the_one_retry_does_not_answer_a_prompt_the_key_raised(
@@ -8197,3 +8201,208 @@ def test_a_plain_fight_uses_the_logging_tactic_only_when_asked(monkeypatch, tmp_
         run.fight("10", "I", 5)
     assert tactics[0] is A.S.Session.melee_turn
     assert tactics[1] is not A.S.Session.melee_turn
+
+
+# --- Silver Blades' fight: a wandering monster in New Verdigris -------------------
+
+class _SilverFight(_BarFight):
+    """A New Verdigris walk that commits to a fight after COMMIT move keys,
+    then three command bars read the way `Session.fight` reads them."""
+
+    MOVE_BAR = "I,J,K,M, RETURN OR BUTTON"
+
+    def __init__(self, commit=5, prep_reads=2, outcome=A.S.WON, loading=0,
+                 wiped=False):
+        super().__init__(["K", "J", "K"])
+        self.memory = {A.SILVER_WANDER_GATE: 0}
+        self.gate_writes = []
+        self.moves = []
+        self.moves_at_commit = None
+        self.commit, self.prep_reads, self.outcome = commit, prep_reads, outcome
+        #: Readings, after the move that starts the encounter, for which the
+        #: move bar stays drawn while `SETUPMON` loads and no key is waited on.
+        self.loading, self.wiped = loading, wiped
+        self.fought = []
+
+    def mode(self):
+        if len(self.moves) < self.commit or self.loading:
+            return A.S.DUNGEON
+        if self.moves_at_commit is None:
+            self.moves_at_commit = len(self.moves)
+        if self.prep_reads:
+            self.prep_reads -= 1
+            return A.COMBAT_PREP
+        if self.fought:
+            return A.SILVER_GEN if self.wiped else A.S.DUNGEON
+        return A.S.COMBAT
+
+    def key_idle(self):
+        if len(self.moves) >= self.commit and self.loading:
+            self.loading -= 1
+            return False
+        return True
+
+    def screen(self):
+        return FakeScreen([""] * 24 + [self.MOVE_BAR if self.mode() == 1 else ""])
+
+    def mon(self, timeout):
+        sess = self
+
+        class Mon:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self, addr, n):
+                return bytes([sess.memory.get(addr, 0)])
+
+            def write(self, addr, data):
+                sess.gate_writes.append((addr, data[0], sess.mode()))
+                sess.memory[addr] = data[0]
+
+            def resume(self):
+                pass
+
+        return Mon()
+
+    def await_bar(self, *a, **k):
+        return None
+
+    def fight(self, *, budget, tactic, stop=None):
+        self.fought.append((tactic, stop))
+        for _ in range(3):
+            self.turns.append(1)
+            tactic(self, SimpleNamespace(text="MOVE VIEW AIM TURN QUICK DONE"))
+        return A.S.FightResult(self.outcome, 3, 1.0, [], [])
+
+
+def _silver_run(monkeypatch, tmp_path, sess, key=None, area="GEO10"):
+    from tools.c64 import laterbattle
+    from tools.curse_of_the_azure_bonds import cursethac0
+
+    class Route:
+        """`laterbattle.Battle`'s walk: one forward key a square, asking
+        `in_combat` before each, as `goto` does."""
+
+        def __init__(self, out, quiet):
+            self.file = SimpleNamespace(close=lambda: None)
+            self.last_goto_steps = 0
+
+        def goto(self, target, budget, geo=None, accept=False):
+            took = 0
+            for _ in range(budget):
+                took += 1
+                if self.in_combat():
+                    break
+                self.press("I")
+            self.last_goto_steps = took
+            return self.in_combat()
+
+        def press(self, key):
+            self.sess.moves.append(key)
+            return True
+
+        def clear_bar(self, accept=False):
+            return None
+
+    monkeypatch.setattr(laterbattle, "Battle", Route)
+    monkeypatch.setattr(cursethac0, "area_geo", lambda *a: (area, object()))
+    monkeypatch.setattr(A.S.Session, "melee_turn",
+                        lambda sess, bar: sess.pressed.append("melee") or "MOVE")
+    events, captures = [], []
+    run = A.SilverRun.__new__(A.SilverRun)
+    run.sess, run.out = sess, tmp_path
+    run.staged_disk, run.disks = tmp_path / "s.D64", "unused"
+    run.log = SimpleNamespace(emit=lambda kind, **kw: events.append((kind, kw)))
+    run.capture = lambda tag, rows=None: captures.append(tag)
+    run.to_world = lambda: True
+    run.key_idle = sess.key_idle
+    run.log_bars, run.first_bar_key = True, key
+    return run, events, captures
+
+
+def test_a_silver_blades_fight_walks_with_the_gate_on_and_logs_every_bar(
+        monkeypatch, tmp_path):
+    sess = _SilverFight()
+    run, events, captures = _silver_run(monkeypatch, tmp_path, sess)
+    got = run.fight("600", "I", 40)
+    assert sess.moves == ["I"] * 5 and got["walked"] == 6
+    assert sess.gate_writes == [(A.SILVER_WANDER_GATE, 1, A.S.DUNGEON),
+                                (A.SILVER_WANDER_GATE, 0, A.S.DUNGEON)]
+    assert got["wander_gate"] == {"address": "$4C2D", "was": 0, "now": 1,
+                                  "restored": 0}
+    assert [kw["actor"]["name"] for kind, kw in events if kind == "bar"] == \
+        ["K", "J", "K"]
+    assert [k for k, _ in events].count("placement") == 1
+    assert sess.pressed == ["melee"] * 3
+    assert sess.fought[0][1] == run.world_again
+    assert captures == ["fight-route", "fight-start", "fight-end"]
+
+
+def test_a_silver_blades_first_bar_key_is_pressed_once_and_no_move_key_follows_the_commit(
+        monkeypatch, tmp_path):
+    sess = _SilverFight()
+    run, events, captures = _silver_run(monkeypatch, tmp_path, sess, key=0x20)
+    run.fight("600", "I", 40)
+    assert sess.moves_at_commit == 5 and len(sess.moves) == 5
+    assert sess.pressed == [0x20, "melee", "melee"]
+    assert "first-bar-key" in captures
+    assert [k for k, _ in events].count("first-bar-key") == 1
+
+
+def test_a_silver_blades_walk_with_no_fight_fails_and_puts_the_gate_back(
+        monkeypatch, tmp_path):
+    sess = _SilverFight(commit=10_000)
+    run, _, captures = _silver_run(monkeypatch, tmp_path, sess)
+    run.clock = iter(range(0, 10_000, 5)).__next__
+    run.deadline = None
+    with pytest.raises(A.StepFailed, match="no fight in 12 steps of GEO10"):
+        run.fight("600", "I", 12)
+    assert len(sess.moves) == 12
+    assert sess.memory[A.SILVER_WANDER_GATE] == 0
+    assert "lost-fight" in captures and not sess.fought
+
+
+def test_a_silver_blades_fight_outside_new_verdigris_is_refused_before_the_gate(
+        monkeypatch, tmp_path):
+    sess = _SilverFight()
+    run, _, _ = _silver_run(monkeypatch, tmp_path, sess, area="GEO11")
+    run.capture = lambda tag, rows=None: None
+    with pytest.raises(A.StepFailed, match="the party is in GEO11"):
+        run.fight("600", "I", 40)
+    assert sess.gate_writes == [] and sess.moves == []
+
+
+def test_a_lost_silver_blades_fight_fails_the_step_and_still_puts_the_gate_back(
+        monkeypatch, tmp_path):
+    sess = _SilverFight(outcome=A.S.LOST)
+    run, _, _ = _silver_run(monkeypatch, tmp_path, sess)
+    run.reading = lambda: {}
+    with pytest.raises(A.StepFailed, match="lost the fight"):
+        run.fight("600", "I", 40)
+    assert sess.memory[A.SILVER_WANDER_GATE] == 0
+
+
+def test_a_silver_blades_walk_sends_no_key_while_an_encounter_loads_under_the_move_bar(
+        monkeypatch, tmp_path):
+    sess = _SilverFight(loading=4)
+    run, _, _ = _silver_run(monkeypatch, tmp_path, sess)
+    run.clock = iter(range(0, 10_000)).__next__
+    run.fight("600", "I", 40)
+    assert sess.moves == ["I"] * 5 and sess.moves_at_commit == 5
+
+
+def test_a_silver_blades_party_wiped_to_the_party_menu_fails_the_fight_at_once(
+        monkeypatch, tmp_path):
+    sess = _SilverFight(wiped=True)
+    run, events, captures = _silver_run(monkeypatch, tmp_path, sess)
+    run.reading = lambda: {}
+    assert run.world_again(sess, None) is False
+    with pytest.raises(A.StepFailed, match="went back to the party menu"):
+        run.fight("600", "I", 40)
+    assert run.world_again(sess, None) is True
+    assert [kw["wiped"] for kind, kw in events if kind == "silver-fight"] == [True]
+    assert "restored" in [kw for kind, kw in events if kind == "wander-gate"][-1]
+    assert sess.memory[A.SILVER_WANDER_GATE] == 1
