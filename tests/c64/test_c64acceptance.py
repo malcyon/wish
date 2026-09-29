@@ -379,17 +379,20 @@ class _TempleSession:
             self.heal_blank_reads -= 1
             return _TempleScreen([""] * 25)
         if self.phase == "heal" and self.unsafe == "heal-glitch":
-            # One mid-redraw bar, seen once, before the list is steady.
+            # One half-drawn frame, seen once, before the list is steady.
             self.unsafe = None
             rows = [""] * 25
-            rows[24] = "INSERT DISK"
+            rows[2] = "BRUTUS"
+            rows[3] = "WELCOME TO THE TEMPLE,"
             return _TempleScreen(rows)
         if self.phase == "heal" and self.heal_old_bar_reads:
-            # The temple bar lingers for a few reads after the key.
+            # The arrival screen lingers for a few reads after the key.
             self.heal_old_bar_reads -= 1
-            rows = [""] * 25
-            rows[24] = "HEAL VIEW POOL APPRAISE EXIT"
-            return _TempleScreen(rows)
+            self.phase = "temple"
+            try:
+                return self.screen()
+            finally:
+                self.phase = "heal"
         if self.crossing_lag:
             place, phase = self._pre_crossing_place, "move"
             self.crossing_lag -= 1
@@ -457,12 +460,18 @@ class _TempleSession:
                 # must never treat this as settled if it appears.
                 rows[14] = "N 00:00 99,99"
         elif phase == "heal-blank":
-            pass  # The bar is cleared while the next screen loads.
+            rows[14] = ""  # Cleared while the next screen loads.
         elif phase == "heal":
-            # Invented list: the real one has never been seen.
-            rows[3] = " " * A.S.PARTY_COLUMN + "NAME        AC HP"
-            rows[4] = " " * A.S.PARTY_COLUMN + "BRUTUS"
-            rows[24] = "SERVICE ONE TWO EXIT"
+            rows[14] = ""
+            # The HEAL list as `8e1934def7-temple-route-g` frame 11 drew it,
+            # cut down: row 24 is blank.
+            rows[2] = "BRUTUS"
+            rows[3] = "WELCOME TO THE TEMPLE,"
+            rows[4] = "HOW MAY WE HELP YOU"
+            for row, text in zip((9, 10, 15, 18),
+                                 ("CURE BLINDNESS", "CURE DISEASE",
+                                  "RAISE DEAD", "EXIT")):
+                rows[row] = " " + text
         else:
             raise AssertionError(phase)
         if phase == "question":
@@ -681,9 +690,13 @@ def test_temple_probe_heal_selects_it_once_and_keeps_the_next_drawn_screen(
     assert session.keys == ["side3", "YES", "HEAL"]
     assert session.phase == "heal"
     assert run.temple_checkpoints[-1]["tag"] == "heal-first-screen"
-    assert result["heal_first_screen"] == run.temple_checkpoints[-1]["stem"]
-    assert result["arrival"] != result["heal_first_screen"]
-    assert (tmp_path / f"{result['heal_first_screen']}.png").is_file()
+    got = result["heal_first_screen"]
+    assert got["stem"] == run.temple_checkpoints[-1]["stem"]
+    assert result["arrival"] != got["stem"]
+    assert (tmp_path / f"{got['stem']}.png").is_file()
+    assert got["rows"][4] == "HOW MAY WE HELP YOU"
+    assert got["rows"][15] == " RAISE DEAD"
+    assert got["rows"][24] == ""
 
 
 def test_temple_probe_heal_stops_at_ninety_seconds_keeping_the_blank_frame(
@@ -725,9 +738,10 @@ def test_temple_probe_heal_keeps_only_a_bar_seen_twice_running(
     kept = []
     real = run.temple_checkpoint
     run.temple_checkpoint = lambda tag, sample=None: (
-        kept.append((tag, sample and sample.screen.row(24))) or real(tag, sample))
+        kept.append((tag, sample and sample.screen.text())) or real(tag, sample))
     run.temple_probe("BRUTUS HEAL")
-    assert kept[-1] == ("heal-first-screen", "SERVICE ONE TWO EXIT".ljust(40))
+    assert kept[-1][0] == "heal-first-screen"
+    assert "HOW MAY WE HELP YOU" in kept[-1][1]
 
 
 def test_temple_probe_heal_stops_at_the_input_deadline_not_ninety_seconds(

@@ -1968,11 +1968,19 @@ class PoolRun:
                 and screen.colours[top * 40 + S.PARTY_COLUMN] == 1
                 and screen.row(top)[S.PARTY_COLUMN:].split()[:1] == [name])
 
-    def _temple_heal_screen(self, bar: str) -> dict:
-        """Wait out blank bars after HEAL and keep the first drawn, new one.
+    def _temple_heal_screen(self, arrival) -> dict:
+        """Keep the first steady screen after HEAL that is not the arrival screen.
 
-        BAR is the temple bar HEAL was chosen from; it stays on screen until
-        the game redraws, so it is not the answer. Nothing is sent here."""
+        ARRIVAL is the temple screen HEAL was chosen from; it stays up until
+        the game redraws. The HEAL list leaves row 24 blank
+        (`8e1934def7-temple-route-g`, `11-temple-lost-heal`), so the screen is
+        judged by rows 0-23 and a blank frame while it loads is skipped. Two
+        identical reads in a row are required, so a frame caught mid-redraw
+        is not kept. Nothing is sent here."""
+        def body(screen) -> list[str]:
+            return [screen.row(r).rstrip() for r in range(24)]
+
+        before = body(arrival)
         start = self.clock()
         limit = min(start + 90, self.temple_input_deadline)
         prior = last = None
@@ -1980,13 +1988,14 @@ class PoolRun:
             sample = self.temple_sample()
             prior, last = last, sample
             screen = sample.screen
-            bar_now = "" if screen is None else screen.row(24)
-            # Two identical drawn reads, so a bar caught mid-redraw or a
-            # transient prompt is not what gets kept.
-            if (bar_now.strip() and bar_now != bar
+            if (screen is not None and any(body(screen))
+                    and body(screen) != before
                     and prior is not None and prior.screen is not None
-                    and prior.screen.row(24) == bar_now):
-                return self.temple_checkpoint("heal-first-screen", sample)
+                    and [prior.screen.row(r) for r in range(25)]
+                    == [screen.row(r) for r in range(25)]):
+                kept = self.temple_checkpoint("heal-first-screen", sample)
+                return {**kept, "rows": [screen.row(r).rstrip()
+                                         for r in range(25)]}
             time.sleep(0.3)
         cut = ("temple input deadline" if limit < start + 90
                else "90 second limit")
@@ -2001,7 +2010,9 @@ class PoolRun:
         The HEAL service list -- its text, its bar, whether RAISE DEAD
         appears, and the resident byte there -- has never been seen live
         (#700). Recognising it would be a guess, so the probe sends HEAL
-        once, keeps what is drawn next, and sends nothing further."""
+        once, keeps the first steady screen that is not the arrival screen
+        and sends nothing further. The source is the registered specimen's
+        own path; the run stages its own copy, so none is made by hand."""
         if who not in TEMPLE_PROBE_ARGS or self.game.key != "pool-of-radiance":
             raise StepFailed("temple probe requires Pool BRUTUS")
         heal = who.endswith(" HEAL")
@@ -2044,9 +2055,10 @@ class PoolRun:
                     or not self._temple_top_row_is(at_arrival.screen, "BRUTUS")):
                 self._temple_stop("member", "BRUTUS is not the highlighted "
                                   "top row of the party panel", at_arrival)
-            bar = at_arrival.screen.row(24)
             self._temple_select_bar("HEAL", "temple")
-            result["heal_first_screen"] = self._temple_heal_screen(bar)["stem"]
+            kept = self._temple_heal_screen(at_arrival.screen)
+            result["heal_first_screen"] = {"stem": kept["stem"],
+                                           "rows": kept["rows"]}
         result["checkpoints"] = len(self.temple_checkpoints)
         return result
 
@@ -4808,7 +4820,10 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--title", choices=sorted(TITLES), default="pool")
-    ap.add_argument("--save", help="the save disk: a path, or a name inside --disks")
+    ap.add_argument("--save", help="the save disk: a path, or a name inside --disks. "
+                         "temple-probe takes only the registered specimen's "
+                         "own path (its hash and registry entry are checked) "
+                         "and stages its own copy; a copy is refused")
     ap.add_argument("--disks", default=None,
                     help="the player's disks; read, never written")
     ap.add_argument("--stage-row", action="append", default=[],
