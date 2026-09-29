@@ -54,6 +54,7 @@ from goldbox import (  # noqa: E402
     amiga_savegame,
     dos_codec,
     dos_port,
+    dos_savegame,
 )
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from tools.amiga import amigalaterwrite  # noqa: E402
@@ -192,12 +193,92 @@ def slot_bytes(path: pathlib.Path, letter: str | None) -> tuple[bytes, str]:
     raise SystemExit(f"{path}: no savgam{letter or '*'} in /{SAVE_DRAWER}")
 
 
-def party_of(data: bytes, source: str) -> list[amiga_later.AmigaCharacter]:
+def save_of(data: bytes, source: str) -> amiga_savegame.AmigaSavegame:
     save = amiga_savegame.parse(data, source=source)
     if save.container.party != "records":
         raise SystemExit(f"{source}: {save.container.title} keeps its party in "
                          f"files beside the saved game")
-    return list(save.characters)
+    return save
+
+
+def party_of(data: bytes, source: str) -> list[amiga_later.AmigaCharacter]:
+    return list(save_of(data, source).characters)
+
+
+def clock_minutes(save: amiga_savegame.AmigaSavegame) -> int:
+    """The saved game's clock in minutes, from the six digit words at
+    `dos_savegame.CLOCK` (sub-minute, minute units, minute tens, hour, day,
+    month; limits 10 10 6 24 30 12)."""
+    _sub, units, tens, hour, day, month = (
+        save.word(dos_savegame.CLOCK + i)
+        for i in range(dos_savegame.CLOCK_DIGITS))
+    return units + 10 * tens + 60 * (hour + 24 * (day + 30 * month))
+
+
+# ---------------------------------------------------------------------------
+# Effects, compared as effects rather than as bytes
+# ---------------------------------------------------------------------------
+
+_EFFECT_DURATION = slice(2, 4)      # u16 big-endian
+
+
+def _effect_duration(node: bytes) -> int:
+    return int.from_bytes(node[_EFFECT_DURATION], "big")
+
+
+def _effect_masked() -> set[int]:
+    out: set[int] = set()
+    for offset, size, _why in amiga_later.LATER_EFFECT_WRITE_UNSOURCED:
+        out.update(range(offset, offset + size))
+    return out
+
+
+def compare_effects(name: str, ours: tuple[bytes, ...],
+                    theirs: tuple[bytes, ...], elapsed: int
+                    ) -> tuple[list[str], list[str], int]:
+    """One member's effect list against the engine's, `elapsed` minutes on.
+
+    A duration-0 effect must survive unchanged, one with more than `elapsed`
+    minutes left must survive with exactly `elapsed` fewer, and one with
+    `elapsed` or fewer must be gone, the effects after it moved up.  Returns
+    (undeclared lines, expired lines, byte differences the declared lists
+    cover).
+    """
+    bad: list[str] = []
+    expired: list[str] = []
+    declared = 0
+    j = 0
+    for n, mine in enumerate(ours):
+        left = _effect_duration(mine)
+        label = f"effect {n} (id {mine[0]}, {left} minutes left)"
+        if 0 < left <= elapsed:
+            expired.append(f"{name}: effect id {mine[0]}, {left} minutes left, "
+                           f"expired ({elapsed} minutes elapsed)")
+            continue
+        want = bytearray(mine)
+        if left:
+            want[_EFFECT_DURATION] = (left - elapsed).to_bytes(2, "big")
+        if j >= len(theirs):
+            bad.append(f"{name}: {label} is missing from the engine's list")
+            continue
+        got = theirs[j]
+        mask = _effect_masked()
+        wrong = [at for at in range(min(len(want), len(got)))
+                 if want[at] != got[at] and at not in mask]
+        if len(want) != len(got) or wrong:
+            bad.append(f"{name}: {label} should read "
+                       f"{bytes(want)[:6].hex(' ')} and reads "
+                       f"{got[:6].hex(' ')}")
+            if got[0] == mine[0]:
+                j += 1
+            continue
+        declared += sum(1 for at in range(len(want))
+                        if want[at] != got[at])
+        j += 1
+    for extra in theirs[j:]:
+        bad.append(f"{name}: the engine's list has an effect ours does not "
+                   f"(id {extra[0]}, {_effect_duration(extra)} minutes left)")
+    return bad, expired, declared
 
 
 # ---------------------------------------------------------------------------
@@ -260,10 +341,13 @@ def do_build(args) -> int:
 def do_diff(args) -> int:
     ours_data, ours_where = slot_bytes(args.ours, args.ours_slot)
     theirs_data, theirs_where = slot_bytes(args.theirs, args.theirs_slot)
-    ours = party_of(ours_data, ours_where)
-    theirs = party_of(theirs_data, theirs_where)
+    ours_save = save_of(ours_data, ours_where)
+    theirs_save = save_of(theirs_data, theirs_where)
+    ours, theirs = list(ours_save.characters), list(theirs_save.characters)
+    elapsed = clock_minutes(theirs_save) - clock_minutes(ours_save)
     print(f"ours   {ours_where}: {len(ours)} characters")
     print(f"theirs {theirs_where}: {len(theirs)} characters")
+    print(f"clock  {elapsed} minutes from ours to theirs")
     if [c.name for c in ours] != [c.name for c in theirs]:
         print("  the two parties are not the same people in the same order:")
         print(f"    ours   {[c.name.strip() for c in ours]}")
@@ -282,9 +366,15 @@ def do_diff(args) -> int:
               f"theirs {len(b)} bytes, "
               f"items {len(mine.items)}/{len(twin.items)}, "
               f"effects {len(mine.effects)}/{len(twin.effects)}")
-        if len(a) != len(b):
-            print("  the blocks are different lengths; comparing the shorter")
+        # The effect nodes are compared as effects below; only the record and
+        # the items in front of them are compared byte by byte.
+        a_end = len(a) - len(mine.effects) * mine.deltas.effect_size
+        b_end = len(b) - len(twin.effects) * twin.deltas.effect_size
+        if a_end != b_end:
+            print("  the record and items are different lengths; "
+                  "comparing the shorter")
             undeclared += 1
+        a, b = a[:a_end], b[:b_end]
         mask = declared_block_mask(mine)
         declared, loose = 0, []
         for at in range(min(len(a), len(b))):
@@ -302,6 +392,16 @@ def do_diff(args) -> int:
         if len(loose) > 40:
             print(f"    ... and {len(loose) - 40} more")
         undeclared += len(loose)
+
+        bad, expired, in_lists = compare_effects(
+            mine.name.strip(), mine.effects, twin.effects, elapsed)
+        for line in expired:
+            print(f"  {line}")
+        for line in bad:
+            print(f"  {line}")
+        print(f"  {in_lists} effect bytes differ inside the declared lists, "
+              f"{len(bad)} effect differences outside them")
+        undeclared += len(bad)
 
     print(f"\n{undeclared} differences outside the declared lists")
     return 1 if undeclared else 0

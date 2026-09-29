@@ -284,3 +284,93 @@ def test_silver_blades_names_its_re_encoded_spellbook():
     shape = amiga_port.SILVER_BLADES_DELTAS
     assert proof.field_at(shape, amiga_later.AMIGA_SSB_SPELLBOOK_AT + 3) \
         == "spellbook+3"
+
+
+# ---------------------------------------------------------------------------
+# Effects that time ran out on
+# ---------------------------------------------------------------------------
+
+def _effect(effect_id: int, minutes: int, value: int = 0x0b, flag: int = 0
+            ) -> bytes:
+    """One ten-byte node: id, pad, duration u16 big-endian, value, flag, next."""
+    return (bytes((effect_id, 0)) + minutes.to_bytes(2, "big")
+            + bytes((value, flag)) + bytes(4))
+
+
+def _slot(tmp_path, name: str, effects: list[bytes], clock_minutes: int):
+    """A synthetic Curse saved game, one member, on a given clock."""
+    from goldbox import amiga_savegame, dos_savegame
+    container = amiga_savegame.CURSE
+    record = bytearray(container.deltas.record_size)
+    record[:5] = b"ALPHA"
+    for i in range(6):
+        record[0x10 + 2 * i] = record[0x11 + 2 * i] = 12
+    base = amiga_savegame.parse(_synthetic_save(container), container)
+    char = amiga_later.AmigaCharacter.from_bytes(
+        bytes(record), container.deltas, effects=effects)
+    data = bytearray(amiga_savegame.rebuild(base, [char]))
+    digits = (0, clock_minutes % 10, clock_minutes // 10 % 6,
+              clock_minutes // 60 % 24, 0, 0)
+    for i, digit in enumerate(digits):
+        at = container.vm_offset(dos_savegame.CLOCK + i)
+        data[at:at + 2] = digit.to_bytes(2, "big")
+    path = tmp_path / name
+    path.write_bytes(bytes(data))
+    return path
+
+
+def _synthetic_save(container) -> bytes:
+    from tests.amiga.test_amiga_savegame import _synthetic
+    return _synthetic(container, ("ALPHA",))
+
+
+def _diff(tmp_path, capsys, before: list[bytes], after: list[bytes],
+          elapsed: int) -> tuple[int, str]:
+    a = _slot(tmp_path, "ours.dat", before, 10)
+    b = _slot(tmp_path, "theirs.dat", after, 10 + elapsed)
+    code = proof.main(["diff", "--ours", str(a), "--theirs", str(b)])
+    return code, capsys.readouterr().out
+
+
+def test_a_two_minute_shield_that_ran_out_is_named_and_not_undeclared(
+        tmp_path, capsys):
+    code, out = _diff(tmp_path, capsys,
+                      [_effect(75, 0), _effect(17, 2), _effect(134, 0)],
+                      [_effect(75, 0), _effect(134, 0)], 2)
+    assert code == 0
+    assert "ALPHA: effect id 17, 2 minutes left, expired" in out
+    assert "0 differences outside the declared lists" in out
+
+
+def test_a_long_effect_ages_by_exactly_the_minutes_that_passed(
+        tmp_path, capsys):
+    code, out = _diff(tmp_path, capsys, [_effect(45, 47)], [_effect(45, 45)], 2)
+    assert code == 0
+    assert "0 differences outside the declared lists" in out
+
+
+@pytest.mark.parametrize("after", [
+    [],                                          # gone with time left
+    [_effect(45, 46)],                           # aged by 1, not 2
+    [_effect(45, 47)],                           # did not age
+    [_effect(46, 45)],                           # id changed
+    [_effect(45, 45, value=0x0c)],               # value changed
+    [_effect(45, 45), _effect(9, 5)],            # one the party never had
+], ids=["vanished", "wrong-age", "no-age", "id", "value", "extra"])
+def test_anything_else_in_the_effect_list_is_undeclared(
+        tmp_path, capsys, after):
+    code, out = _diff(tmp_path, capsys, [_effect(45, 47)], after, 2)
+    assert code == 1
+    assert "0 differences outside the declared lists" not in out
+
+
+def test_a_removed_effect_with_no_time_elapsed_is_undeclared(
+        tmp_path, capsys):
+    code, out = _diff(tmp_path, capsys, [_effect(17, 2)], [], 0)
+    assert code == 1
+    assert "expired" not in out
+
+
+def test_a_duration_zero_effect_that_is_gone_is_undeclared(tmp_path, capsys):
+    code, _out = _diff(tmp_path, capsys, [_effect(75, 0)], [], 5)
+    assert code == 1
