@@ -823,7 +823,6 @@ def test_the_bar_makes_a_pending_second_hop_on_the_poll_and_attach_none_clears_i
 
     from automap import fasttravel
 
-    monkeypatch.delenv(actions.TWO_HOP_ENV, raising=False)
     addr = fasttravel.POOL_OF_RADIANCE
 
     said = []
@@ -853,7 +852,6 @@ def test_a_party_that_went_through_and_came_back_says_nothing(app, monkeypatch):
     brings the party back into the starting area."""
     import time
 
-    monkeypatch.delenv(actions.TWO_HOP_ENV, raising=False)
     said = []
     ft = actions.FastTravel()
     ft.pending = actions.PendingHop(13, 27, area(0), None,

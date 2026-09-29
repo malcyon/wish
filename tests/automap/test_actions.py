@@ -1099,13 +1099,6 @@ def two_hop_machine(area: int = 13, indoors: int = 1,
     })
 
 
-@pytest.fixture(autouse=True)
-def _two_hop_off_unless_asked(monkeypatch):
-    """A `WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL` exported in the shell that
-    runs the suite must not change what the tests in this file mean."""
-    monkeypatch.delenv(actions.TWO_HOP_ENV, raising=False)
-
-
 def test_fasttravel_runs_the_kobold_caves_handler_instead_of_the_tail_jump():
     """The case `#207`'s whole ticket is about: fast-travelling out of the
     Kobold Caves used to enter `NEWECL` at its tail and skip `ECL0D $9A9D`,
@@ -1168,7 +1161,6 @@ def test_fasttravel_falls_back_to_the_tail_jump_off_the_direct_exit_table(
     """A departure with no row in `EXIT_ROUTES` at all -- Valhingen Graveyard
     (10) has no scripted exit -- still enters `NEWECL` at its tail, with the
     two-hop flag on as well: there is no door to walk through."""
-    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     target = two_hop_machine(10)
     addr = fasttravel.POOL_OF_RADIANCE
     assert fasttravel.exits_from(10) == ()
@@ -1241,7 +1233,6 @@ def test_the_two_hop_runs_the_one_door_the_area_has(monkeypatch):
     """Kobold Caves to New Phlan: the caves' only door leads to the East
     Window, so the party is walked out of it and the trip is finished from the
     poll -- the handler that drops Princess Fatima runs on the way."""
-    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     target = two_hop_machine(13)
     addr = fasttravel.POOL_OF_RADIANCE
     ft = actions.FastTravel()
@@ -1257,29 +1248,6 @@ def test_the_two_hop_runs_the_one_door_the_area_has(monkeypatch):
         "Walking out of this area on foot -- answer whatever the game asks, "
         f"and Wish will take the party on to {ft.pending.area.name} once "
         "they are through the door")
-
-
-def test_the_two_hop_is_off_without_the_flag_and_a_forgotten_zero_is_off(
-        monkeypatch):
-    """Forgotten values -- an empty string, `0`, `off` -- must not turn an
-    unfinished feature on."""
-    addr = fasttravel.POOL_OF_RADIANCE
-    for value in (None, "", "0", "off", "no", "false"):
-        if value is None:
-            monkeypatch.delenv(actions.TWO_HOP_ENV, raising=False)
-        else:
-            monkeypatch.setenv(actions.TWO_HOP_ENV, value)
-        assert not actions.two_hop_enabled(), value
-        target = two_hop_machine(13)
-        ft = actions.FastTravel()
-        outcome = ft.run(target, area=actions.area_by_id(0))
-        assert outcome.ok, outcome.message
-        assert target.jumps == [addr.tail], value
-        assert target.reenters == [], value
-        assert ft.pending is None, value
-    for value in ("1", "true", "yes", "on", "ON"):
-        monkeypatch.setenv(actions.TWO_HOP_ENV, value)
-        assert actions.two_hop_enabled(), value
 
 
 #: The destination each area with more than one known exit is walked out
@@ -1360,7 +1328,6 @@ def test_the_areas_whose_every_door_can_fight_are_1_and_28():
 
 @pytest.mark.parametrize("here", sorted(MULTI_DOOR_CHOICE))
 def test_the_two_hop_walks_out_of_the_door_the_rule_chooses(monkeypatch, here):
-    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     target = two_hop_machine(here)
     addr = fasttravel.POOL_OF_RADIANCE
     ft = actions.FastTravel()
@@ -1383,7 +1350,6 @@ def test_the_eight_one_door_areas_whose_door_cannot_fight_walk_out(
         monkeypatch, here):
     """A one-door area walks out of its only door when that door cannot start
     a fight."""
-    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     target = two_hop_machine(here)
     ft = actions.FastTravel()
     (through, route), = fasttravel.exits_from(here)
@@ -1401,7 +1367,6 @@ def test_the_two_one_door_areas_whose_door_can_fight_refuse_and_write_nothing(
     """Buccaneer Base (1) and the Zhentil Keep Outpost (28): the only door
     can start a fight, so the trip is refused with the every-door-fights
     outcome and the machine is left exactly as it was."""
-    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     (_, route), = fasttravel.exits_from(here)
     assert route.combat
     target = two_hop_machine(here)
@@ -1415,52 +1380,9 @@ def test_the_two_one_door_areas_whose_door_can_fight_refuse_and_write_nothing(
     assert ft.pending is None
 
 
-@pytest.mark.parametrize("here", ONE_DOOR_FIGHTS)
-def test_the_flag_gates_the_refusal_in_a_one_door_area_that_can_fight(
-        monkeypatch, here):
-    """Off, a forgotten `0` and `off` included, the trip tail-jumps as it
-    always did: the refusal belongs to the flagged feature."""
-    addr = fasttravel.POOL_OF_RADIANCE
-    dest = _a_destination_off_every_door(here)
-    for value in (None, "", "0", "off"):
-        if value is None:
-            monkeypatch.delenv(actions.TWO_HOP_ENV, raising=False)
-        else:
-            monkeypatch.setenv(actions.TWO_HOP_ENV, value)
-        target = two_hop_machine(here)
-        ft = actions.FastTravel()
-        outcome = ft.run(target, area=dest)
-        assert outcome.ok, outcome.message
-        assert target.jumps == [addr.tail], value
-        assert target.reenters == [], value
-        assert ft.pending is None, value
-
-
-@pytest.mark.parametrize("here", sorted(MULTI_DOOR_CHOICE))
-def test_the_flag_gates_the_door_choice_in_every_multi_door_area(
-        monkeypatch, here):
-    """Off, a forgotten `0` and `off` included, an area with several doors
-    tail-jumps rather than choosing a door."""
-    addr = fasttravel.POOL_OF_RADIANCE
-    dest = _a_destination_off_every_door(here)
-    for value in (None, "", "0", "off"):
-        if value is None:
-            monkeypatch.delenv(actions.TWO_HOP_ENV, raising=False)
-        else:
-            monkeypatch.setenv(actions.TWO_HOP_ENV, value)
-        target = two_hop_machine(here)
-        ft = actions.FastTravel()
-        outcome = ft.run(target, area=dest)
-        assert outcome.ok, outcome.message
-        assert target.jumps == [addr.tail], value
-        assert target.reenters == [], value
-        assert ft.pending is None, value
-
-
 def test_the_two_hop_refuses_when_every_door_can_start_a_fight(monkeypatch):
     """No data has an area like this, so the rows are made here: the trip is
     refused, nothing is written and no fight route is chosen."""
-    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     fight = fasttravel.ExitRoute(1, (0, 0), combat=True)
     monkeypatch.setattr(fasttravel, "EXIT_ROUTES", {(13, 25): fight,
                                                     (13, 26): fight})
@@ -1473,17 +1395,12 @@ def test_the_two_hop_refuses_when_every_door_can_start_a_fight(monkeypatch):
     assert target.memory == before
     assert target.reenters == [] and target.jumps == []
     assert ft.pending is None
-    # The flag off: the same rows do not refuse anything.
-    monkeypatch.delenv(actions.TWO_HOP_ENV)
-    assert ft.run(target, area=actions.area_by_id(0)).ok
-    assert target.jumps == [fasttravel.POOL_OF_RADIANCE.tail]
 
 
 def test_leaving_by_another_door_cancels_the_hop_and_says_so(monkeypatch):
     """New Phlan (0)'s chosen door is area 8, and the party walks out by area
     11 instead: the hop is cancelled at once, nothing is written, and the
     party is not told it never left."""
-    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     target = two_hop_machine(0)
     addr = fasttravel.POOL_OF_RADIANCE
     ft = actions.FastTravel()
@@ -1508,7 +1425,6 @@ def test_leaving_by_another_door_forgets_the_start_so_back_is_not_offered(
         monkeypatch):
     """The first hop remembered the start square; the trip never happens, so
     Fast Travel Back has nowhere to go until the next real Fast Travel."""
-    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     target = two_hop_machine(0)
     ft = actions.FastTravel()
     assert ft.run(target, area=_a_destination_off_every_door(0)).ok
@@ -1520,7 +1436,6 @@ def test_leaving_by_another_door_forgets_the_start_so_back_is_not_offered(
 
 
 def test_leaving_by_the_awaited_door_is_still_the_second_hop(monkeypatch):
-    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     target = two_hop_machine(0)
     addr = fasttravel.POOL_OF_RADIANCE
     ft = actions.FastTravel()
@@ -1535,7 +1450,6 @@ def test_an_area_that_is_no_door_of_the_start_is_still_dropped_silently(
         monkeypatch):
     """Not a known exit of area 0, so nothing says the party left another
     way -- only the log does."""
-    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     target = two_hop_machine(0)
     addr = fasttravel.POOL_OF_RADIANCE
     ft = actions.FastTravel()
@@ -1547,7 +1461,6 @@ def test_an_area_that_is_no_door_of_the_start_is_still_dropped_silently(
 
 
 def test_a_backend_that_cannot_reenter_never_starts_a_two_hop(monkeypatch):
-    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     addr = fasttravel.POOL_OF_RADIANCE
 
     class NoReentryTarget(TwoHopTarget):
@@ -1565,7 +1478,6 @@ def test_a_backend_that_cannot_reenter_never_starts_a_two_hop(monkeypatch):
 
 
 def test_a_failed_first_hop_leaves_nothing_pending(monkeypatch):
-    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     monkeypatch.setattr(actions, "reenter", lambda *a, **k: False)
     target = two_hop_machine(13)
     ft = actions.FastTravel()
@@ -1575,7 +1487,6 @@ def test_a_failed_first_hop_leaves_nothing_pending(monkeypatch):
 
 
 def _first_hop(monkeypatch, area_id: int = 0, indoors: int = 1):
-    monkeypatch.setenv(actions.TWO_HOP_ENV, "1")
     target = two_hop_machine(13, indoors=indoors)
     ft = actions.FastTravel()
     assert ft.run(target, area=actions.area_by_id(area_id)).ok

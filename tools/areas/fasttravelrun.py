@@ -21,13 +21,11 @@ the NPC -- `npc_party.d64` -- and has actually been driven this way.
 
     tools/areas/fasttravelrun.py --disks $POR_DISKS --out DIR
 
-The two-hop case (`WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL`) is the Kobold Caves
-to New Phlan (area 0) and is driven with the flag exported and a wait long
-enough to show the 120 s deadline. `--to-area 27` is a one-exit route and never
-reaches the two-hop branch:
+The two-hop case is the Kobold Caves to New Phlan (area 0) and is driven with
+a wait long enough to show the 120 s deadline. `--to-area 27` is a one-exit
+route and never reaches the two-hop branch:
 
-    WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL=1 .venv/bin/python \\
-        tools/areas/fasttravelrun.py --from-area 13 --to-area 0 \\
+    .venv/bin/python tools/areas/fasttravelrun.py --from-area 13 --to-area 0 \\
         --answer-timeout 150 --out DIR
 
 `--arrival-choice LARGE` or `SMALL` picks the arrival menu's entry that
@@ -801,7 +799,7 @@ def run(args) -> int:
                       "screenshots": shots}
             return 1
 
-        # A two-hop trip (`WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL`) has walked
+        # A two-hop trip has walked
         # the party out through the area's one door and is waiting on the
         # poll to make its second hop, so this loop is that poll.
         choice = getattr(args, "arrival_choice", "LEAVE")

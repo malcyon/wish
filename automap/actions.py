@@ -46,7 +46,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import struct
 import time
 from dataclasses import dataclass
@@ -1692,35 +1691,11 @@ def reenter(target, addr: fasttravel.FastTravelAddresses, entry: int) -> bool:
     return True
 
 
-#: **`WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL`**: a fast travel out of an area
-#: whose door does not lead to the destination walks the party out of a door
-#: that cannot start a fight first and finishes the trip from the poll
-#: afterwards, and refuses when every door can start a fight. It is
-#: behind a flag because it writes to a running machine minutes after the
-#: click, and one of its writes is the one `FastTravel.OUTDOORS_TRAP` exists
-#: to refuse everywhere else.
-#:
-#: **It comes off when one two-hop trip has been driven through
-#: `tools/areas/fasttravelrun.py` by somebody other than the agent that built
-#: it, and the party has walked afterwards.** Then the flag, `two_hop_enabled`
-#: and the tests that force it are deleted and the branch runs always.
-TWO_HOP_ENV = "WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL"
-
-#: Anything else -- including an empty string, `0` and `off` -- is off. The
-#: same tuple as `wish/debugmode.py`'s, which `automap/` must not import
-#: (`automap/actionbar.py` keeps that boundary), so it is copied.
-TRUE = ("1", "true", "yes", "on")
-
 #: How long a two-hop trip waits for the party to leave the first area. This
 #: waits on a person answering a menu in another window, not on the machine,
 #: so it is longer than `FastTravelBar.check_arrival`'s 30 seconds -- and it
 #: is a guess rather than a measurement.
 SECOND_HOP_SECONDS = 120.0
-
-
-def two_hop_enabled() -> bool:
-    """Whether `TWO_HOP_ENV` asks for two-hop fast travel."""
-    return os.environ.get(TWO_HOP_ENV, "").strip().lower() in TRUE
 
 
 def leave_travel_grid_writes(addr: fasttravel.FastTravelAddresses
@@ -1952,7 +1927,7 @@ class FastTravel(Action):
                 return self._run_via_exit(target, addr, area, here, to, route)
             # The destination is not one of this area's doors: walk out of the
             # one `choose_door` names and finish from the poll.
-            doors = fasttravel.exits_from(here) if two_hop_enabled() else ()
+            doors = fasttravel.exits_from(here)
             if doors:
                 chosen = fasttravel.choose_door(doors)
                 if chosen is None:
