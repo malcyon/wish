@@ -1359,6 +1359,340 @@ def _counts(hits: list[dict]) -> dict:
     return out
 
 
+# -- Prayer's combat handlers, caught in a live fight ------------------------
+#
+# Pool's id-49 handler, its bonus test, the +1 helper (also id 35's handler)
+# and the penalty live in one overlay unit that is **not in memory at the
+# encounter menu**: the handler table points at a stub that reads `INT 3Fh`
+# until the first call loads the unit, and `EA off seg`, a far jump into it,
+# afterwards.  So the addresses are read at run time, from the table and then
+# from the stub's jump, never written down.
+
+#: `START.EXE` data-segment offsets: the far-pointer table of check-list
+#: handlers (four bytes an id), and the head of the party's record list.
+HANDLER_TABLE = 0x6828
+PARTY_LIST = 0x5D96
+#: Offsets inside a combatant record: the next record, the head of its effect
+#: nodes, and its side (0 the party's).  A node is five bytes: id, minutes
+#: (word), data, flag; the next-node pointer follows.
+NEXT_RECORD = 0x104
+NODE_LIST = 0x7F
+SIDE = 0x10E
+#: `DS` words the attack roll keeps: the saving-throw roll and the attack roll,
+#: which the +1 helper raises together.
+ROLL_WORDS = 0x6816
+ATTACK_ROLL = 0x6822
+#: The unit's stub segment relative to the image base, the stub entries of the
+#: id-49 and id-35 handlers inside it, and where the unit's code sits in
+#: `GAME.OVR`.
+PRAYER_UNIT = 0x41
+STUB_ID_49 = 0xED
+STUB_ID_35 = 0xB6
+PRAYER_UNIT_FILE = 0xEC5B
+#: The four routines `GAME.OVR` offsets, by what they are.
+PRAYER_ROUTINES = {"handler": 0xFF0D, "bonus": 0xFF30,
+                   "penalty": 0xFF48, "helper": 0xF861}
+#: The check list the attack roll walks, and the offset in its overlay unit
+#: the list walker returns to (`GAME.OVR` 0x2BBE2 less that unit's 0x2AEEA).
+ATTACK_LIST = 10
+ATTACK_RETURN = 0x0CF8
+#: How many frames of the `BP` chain are read, and how many bytes of each.
+CHAIN_FRAMES = 4
+FRAME_BYTES = 0x14
+CODE_BYTES = 8
+#: The most records the party list is followed through; a list that loops
+#: stops here.
+MAX_RECORDS = 24
+MAX_NODES = 24
+
+
+class PrayerWatchError(RuntimeError):
+    """The debugger's view of the game is not the one this watch was measured on."""
+
+
+def _w16(data: bytes, at: int) -> int:
+    return int.from_bytes(data[at:at + 2], "little")
+
+
+def _far(data: bytes, at: int) -> tuple[int, int]:
+    """`(segment, offset)` of the far pointer at `at`."""
+    return _w16(data, at + 2), _w16(data, at)
+
+
+class PrayerWatch:
+    """Break on Prayer's two stubs, follow the unit to where it loads, and log
+    every halt with the registers, the stack and the combatant.
+
+    `s` is a halted `dosboxx.XSession`; `ovr` is `GAME.OVR` and `image` the
+    unpacked `START.EXE`, which the live bytes are checked against.
+    """
+
+    def __init__(self, s, ovr: bytes, image: bytes, note=None,
+                 clock=time.time):
+        self.s, self.ovr, self.image = s, ovr, image
+        self.note = note or (lambda **kw: None)
+        self.clock = clock
+        self.ds: int | None = None
+        self.stub: int | None = None
+        #: Where the overlay is now, or None while it is out of memory.
+        self.load: int | None = None
+        #: The load segment the four routines are armed at, or None.
+        self.armed_at: int | None = None
+        self.halts: list[dict] = []
+        #: Routines whose code did not match `GAME.OVR` at the resolved segment.
+        self.mismatched: list[str] = []
+        self.party_attack = False
+        self.began = clock()
+
+    def rd(self, seg: int, off: int, n: int) -> bytes:
+        return self.s.read((seg, off & 0xFFFF), n)
+
+    # -- the handler table, stubs and the unit's load segment ------------------
+
+    def resolve(self, ds: int) -> dict:
+        """The table's id-49 and id-35 entries and the stub bytes behind them;
+        `table_ok` is False unless both name the unit's two stubs."""
+        e49 = _far(self.rd(ds, HANDLER_TABLE + 49 * 4, 4), 0)
+        e35 = _far(self.rd(ds, HANDLER_TABLE + 35 * 4, 4), 0)
+        out = {"ds": f"{ds:04X}", "table49": f"{e49[0]:04X}:{e49[1]:04X}",
+               "table35": f"{e35[0]:04X}:{e35[1]:04X}"}
+        ok = e49[0] == e35[0] and (e49[1], e35[1]) == (STUB_ID_49, STUB_ID_35)
+        out["table_ok"] = ok
+        if not ok:
+            return out
+        seg = e49[0]
+        want = self.image[PRAYER_UNIT * 16:PRAYER_UNIT * 16 + 12]
+        out["descriptor_matches_image"] = self.rd(seg, 0, 12) == want
+        out["stub49_bytes"] = self.rd(seg, STUB_ID_49, 5).hex()
+        out["stub35_bytes"] = self.rd(seg, STUB_ID_35, 5).hex()
+        self.ds, self.stub = ds, seg
+        return out
+
+    def stub_load(self) -> int | None:
+        """The segment in the id-49 stub's far jump, or None while the stub
+        still reads `INT 3Fh`; anything else is refused."""
+        entry = self.rd(self.stub, STUB_ID_49, 5)
+        if entry[0] == 0xEA:
+            return _w16(entry, 3)
+        if entry[:2] != b"\xcd\x3f":
+            raise PrayerWatchError(
+                f"the id-49 stub reads {entry.hex()}, neither INT 3Fh nor a far jump")
+        return None
+
+    def attach(self, tries: int = 6) -> dict:
+        """Halt the running game and find a `DS` whose handler table reads
+        right, running on between tries; raises when none does."""
+        last: dict = {}
+        for _ in range(tries):
+            if not self.s.halted(timeout=1.0) and not self.s.attach():
+                continue
+            ds = self.ds if self.ds is not None else self.s.regs("DS")["DS"]
+            last = self.resolve(ds)
+            if last["table_ok"]:
+                if not last["descriptor_matches_image"]:
+                    raise PrayerWatchError(
+                        "the unit's stub descriptor is not the one in START.EXE: "
+                        f"{last}")
+                return last
+            self.s.run()
+            time.sleep(0.7)
+        raise PrayerWatchError(f"no data segment held Prayer's handler table: {last}")
+
+    # -- the party and its nodes ----------------------------------------------
+
+    def record_brief(self, seg: int, off: int) -> dict:
+        rec = self.rd(seg, off, SIDE + 1)
+        return {"at": f"{seg:04X}:{off:04X}",
+                "name": rec[1:1 + min(rec[0], 15)].decode("latin-1", "replace"),
+                "side": rec[SIDE]}
+
+    def party(self) -> list[dict]:
+        """Every record on the party list with its effect nodes."""
+        rows: list[dict] = []
+        seg, off = _far(self.rd(self.ds, PARTY_LIST, 4), 0)
+        seen: set[tuple[int, int]] = set()
+        while (seg, off) != (0, 0) and (seg, off) not in seen and len(rows) < MAX_RECORDS:
+            seen.add((seg, off))
+            rec = self.rd(seg, off, SIDE + 1)
+            nodes: list[dict] = []
+            nseg, noff = _far(rec, NODE_LIST)
+            while (nseg, noff) != (0, 0) and len(nodes) < MAX_NODES:
+                nd = self.rd(nseg, noff, 9)
+                nodes.append({"at": f"{nseg:04X}:{noff:04X}", "id": nd[0],
+                              "minutes": _w16(nd, 1), "data": nd[3], "flag": nd[4]})
+                nseg, noff = _far(nd, 5)
+            rows.append({"at": f"{seg:04X}:{off:04X}",
+                         "name": rec[1:1 + min(rec[0], 15)].decode("latin-1", "replace"),
+                         "side": rec[SIDE], "nodes": nodes})
+            seg, off = _far(rec, NEXT_RECORD)
+        return rows
+
+    @staticmethod
+    def holders(party: list[dict], node_id: int) -> list[str]:
+        """Names of the party members carrying a node with this id."""
+        return [m["name"] for m in party
+                if m["side"] == 0 and any(n["id"] == node_id for n in m["nodes"])]
+
+    # -- breakpoints ------------------------------------------------------------
+
+    def arm(self) -> dict:
+        """Break on both stubs and, once the unit has a load segment, on the
+        four routines in it whose code matches `GAME.OVR`."""
+        self.s.clear_breakpoints()
+        self.s.brk((self.stub, STUB_ID_49))
+        self.s.brk((self.stub, STUB_ID_35))
+        armed = [f"{self.stub:04X}:{STUB_ID_49:04X} stub49",
+                 f"{self.stub:04X}:{STUB_ID_35:04X} stub35"]
+        self.mismatched = []
+        if self.load is not None:
+            for name, at in PRAYER_ROUTINES.items():
+                off = at - PRAYER_UNIT_FILE
+                if self.rd(self.load, off, CODE_BYTES) == self.ovr[at:at + CODE_BYTES]:
+                    self.s.brk((self.load, off))
+                    armed.append(f"{self.load:04X}:{off:04X} {name}")
+                else:
+                    self.mismatched.append(name)
+        self.armed_at = self.load
+        return {"armed": armed, "mismatched": list(self.mismatched),
+                "bplist": self.s.breakpoints()}
+
+    def routine_at(self, cs: int, ip: int) -> str | None:
+        if self.armed_at is None or cs != self.armed_at:
+            return None
+        for name, at in PRAYER_ROUTINES.items():
+            if ip == at - PRAYER_UNIT_FILE:
+                return name
+        return None
+
+    # -- one halt -----------------------------------------------------------------
+
+    def chain(self, ss: int, bp: int) -> list[dict]:
+        out = []
+        for _ in range(CHAIN_FRAMES):
+            fr = self.rd(ss, bp, FRAME_BYTES)
+            out.append({"bp": f"{bp:04X}", "frame": fr.hex(),
+                        "ret": f"{_w16(fr, 4):04X}:{_w16(fr, 2):04X}"})
+            nxt = _w16(fr, 0)
+            if nxt <= bp:
+                break
+            bp = nxt
+        return out
+
+    def handle(self) -> dict:
+        """Read and log the halt the emulator is stopped at."""
+        r = self.s.regs("CS", "IP", "SS", "SP", "BP", "ES", "DI", "AX", "ZF")
+        cs, ip, ss, sp, bp = r["CS"], r["IP"], r["SS"], r["SP"], r["BP"]
+        stack = self.rd(ss, sp, 16)
+        routine = self.routine_at(cs, ip)
+        stub = ip if cs == self.stub and ip in (STUB_ID_49, STUB_ID_35) else None
+        h: dict = {"n": len(self.halts), "t": round(self.clock() - self.began, 2),
+                   "cs_ip": f"{cs:04X}:{ip:04X}", "ss_sp": f"{ss:04X}:{sp:04X}",
+                   "bp": f"{bp:04X}", "es_di": f"{r['ES']:04X}:{r['DI']:04X}",
+                   "ax": f"{r['AX']:04X}", "zf": r["ZF"], "stack": stack.hex(),
+                   "kind": ("stub49" if stub == STUB_ID_49 else "stub35" if stub
+                            else routine or "other")}
+        h["chain"] = ch = self.chain(ss, bp)
+        # A far Pascal call: the combatant is asked about first and the node
+        # second, so at an entry they sit at SP+0Ah and SP+6; inside the
+        # handler, after its prologue, at BP+0Ch and BP+8.
+        if stub or routine in ("handler", "helper"):
+            cseg, coff, nseg, noff = _w16(stack, 12), _w16(stack, 10), _w16(stack, 8), _w16(stack, 6)
+        elif routine in ("bonus", "penalty"):
+            fr = self.rd(ss, bp, 0x10)
+            cseg, coff, nseg, noff = _w16(fr, 0xE), _w16(fr, 0xC), _w16(fr, 0xA), _w16(fr, 8)
+            h["node_data_bit4"] = self.rd(ss, bp - 1, 1)[0]
+            h["es_di_combatant"] = self.record_brief(r["ES"], r["DI"])
+        else:
+            cseg = None
+        if cseg is not None:
+            h["combatant"] = self.record_brief(cseg, coff)
+            h["node"] = {"at": f"{nseg:04X}:{noff:04X}",
+                         "bytes": self.rd(nseg, noff, 5).hex()}
+        h["ds_6816_6822"] = {"6816": self.rd(self.ds, ROLL_WORDS, 1).hex(),
+                             "6822": self.rd(self.ds, ATTACK_ROLL, 1).hex()}
+        if routine:
+            at = PRAYER_ROUTINES[routine]
+            h["code_matches"] = self.rd(cs, ip, CODE_BYTES) == self.ovr[at:at + CODE_BYTES]
+        if stub:
+            # Frames: the dispatcher (id at BP+10h), the query, the list walker
+            # (list at BP+0Ah) and the attack roll (attacker at BP+0Ch).
+            try:
+                frames = [bytes.fromhex(f["frame"]) for f in ch]
+                h["id"] = frames[0][0x10]
+                h["list"] = frames[2][0x0A]
+                ret = int(ch[2]["ret"].split(":")[1], 16)
+                h["walker_returns_to_unit_offset"] = f"{ret:04X}"
+                attacker = self.record_brief(_w16(frames[3], 0xE), _w16(frames[3], 0xC))
+                h["attacker"] = attacker
+                if (h["list"] == ATTACK_LIST and ret == ATTACK_RETURN
+                        and attacker["side"] == 0):
+                    self.party_attack = True
+                    h["party_attack"] = True
+            except (IndexError, ValueError) as e:
+                h["chain_error"] = f"{type(e).__name__}: {e}"
+            entry = self.rd(self.stub, STUB_ID_49, 5)
+            h["stub49_bytes_now"] = entry.hex()
+            now = self.stub_load()
+            h["load_now"] = None if now is None else f"{now:04X}"
+            if now is not None and now != self.armed_at:
+                self.load = now
+                h["rearmed"] = self.arm()
+        self.halts.append(h)
+        self.note(event="prayer-halt", **h)
+        return h
+
+    def round_done(self, h: dict) -> bool:
+        """A party attack was opened at a stub and its helper or penalty ran."""
+        return self.party_attack and h["kind"] in ("helper", "penalty")
+
+    # -- the fight ------------------------------------------------------------------
+
+    def run_fight(self, seconds: float, idle) -> str:
+        """Resume and log halts until one attack round has run, the fight is
+        over (`idle()` returns True) or `seconds` have passed; returns why."""
+        end = self.clock() + seconds
+        self.s.run()
+        while self.clock() < end:
+            if self.s.halted(timeout=1.0):
+                h = self.handle()
+                if self.round_done(h):
+                    return "one attack round"
+                self.s.run()
+            elif idle():
+                return "fight over"
+        return "budget"
+
+    def summary(self, node_id: int, at_encounter: list[dict],
+                at_stop: list[dict] | None) -> dict:
+        """What the run shows, and whether it may be called conclusive.
+
+        A run is inconclusive when no member carried the tested node at the
+        encounter menu, when one that did no longer does at the stop (a
+        Prayer lasts ten minutes and every square walked costs one), or when
+        an armed routine's code did not match `GAME.OVR`.
+        """
+        why = []
+        carriers = self.holders(at_encounter, node_id)
+        if not carriers:
+            why.append(f"no party member carried a node with id {node_id} at the "
+                       "encounter menu, so it expired or was never there")
+        elif at_stop is not None:
+            lost = [n for n in carriers if n not in self.holders(at_stop, node_id)]
+            if lost:
+                why.append(f"{', '.join(lost)} carried the id-{node_id} node at "
+                           "the encounter menu and not at the stop")
+        if self.mismatched:
+            why.append("the code at the resolved segment did not match GAME.OVR for "
+                       + ", ".join(self.mismatched))
+        kinds = [h["kind"] for h in self.halts]
+        return {"node": node_id, "conclusive": not why, "why": why,
+                "carriers": carriers, "halts": len(self.halts),
+                "party_attack": self.party_attack,
+                "helper_hits": kinds.count("helper"),
+                "penalty_hits": kinds.count("penalty"),
+                "load_segment": None if self.load is None else f"{self.load:04X}"}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("command", choices=("locate", "watch", "truth", "pile"))

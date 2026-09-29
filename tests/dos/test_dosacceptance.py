@@ -7453,3 +7453,74 @@ def test_the_dos_new_verdigris_script_is_the_c64_one():
     dos = dos_savegame.dax_block((game / "ECL1.DAX").read_bytes(), 16)
     assert dos[2:] == c64
     assert c64[0x592:0x594] == c64[0x5AE:0x5B0] == bytes((0x2D, 0x4C))
+
+
+def test_the_prayer_watch_step_parses_for_the_two_prayer_ids_in_pool_only():
+    assert da.parse_step("prayer-watch 49").node == 49
+    assert da.parse_step("prayer-watch 35").node == 35
+    for bad in ("prayer-watch", "prayer-watch 5", "prayer-watch 49 49", "prayer-watch x"):
+        with pytest.raises(ValueError):
+            da.parse_step(bad)
+    steps = [da.parse_step(s) for s in ("load", "prayer-watch 49", "shot end", "read")]
+    da.validate_steps(steps, "pool")
+    with pytest.raises(ValueError, match="pool only"):
+        da.validate_steps(steps, "curse")
+    with pytest.raises(ValueError, match="needs the map"):
+        da.validate_steps([da.parse_step(s) for s in ("load", "camp", "prayer-watch 49")],
+                          "pool")
+    with pytest.raises(ValueError, match="only press, shot and read"):
+        da.validate_steps([da.parse_step(s) for s in
+                           ("load", "prayer-watch 49", "camp")], "pool")
+
+
+def test_a_prayer_watch_run_boots_dosbox_x_and_ends_inconclusive_not_lost(monkeypatch,
+                                                                         tmp_path):
+    _fake_run(monkeypatch, tmp_path)
+    x_log: list[str] = []
+    monkeypatch.setattr(da.dosboxx, "claim", lambda note="": _Slot(x_log))
+    monkeypatch.setattr(da.dosboxx, "XSession",
+                        lambda slot, game: _Session(tmp_path, x_log))
+    base = da.Driver
+
+    class Watching(base):
+        def load(self):
+            return {}
+
+        def prayer_watch(self, node):
+            return {"node": node, "conclusive": False,
+                    "why": ["no party member carried a node with id 49"]}
+
+    monkeypatch.setattr(da, "Driver", Watching)
+    args = _run_args(tmp_path, ["load", "prayer-watch 49"])
+    assert da.run(args) == 2
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
+    assert summary["completed"] is False and "lost" not in summary
+    assert "id 49" in summary["inconclusive"]
+
+    class Passing(Watching):
+        def prayer_watch(self, node):
+            return {"node": node, "conclusive": True, "why": []}
+
+    monkeypatch.setattr(da, "Driver", Passing)
+    assert da.run(_run_args(tmp_path, ["load", "prayer-watch 49"])) == 0
+
+
+def test_inconclusive_watch_names_only_the_watches_that_say_so():
+    assert da.inconclusive_watch([{"step": "load"}, {"step": "fight", "conclusive": True}]) is None
+    said = da.inconclusive_watch([{"step": "prayer-watch 35", "conclusive": False,
+                                   "why": ["a", "b"]}])
+    assert said == "prayer-watch 35: a; b"
+
+
+def test_the_prayer_watch_needs_pool_the_map_and_the_debugger(tmp_path, monkeypatch):
+    game, d = _fighter(tmp_path)
+    with pytest.raises(da.StepFailed, match="pool only"):
+        d.prayer_watch(49)
+    d.title = da.TITLES["pool"]
+    d.where = "camp"
+    with pytest.raises(da.StepFailed, match="needs the map"):
+        d.prayer_watch(49)
+    d.where = "map"
+    monkeypatch.delattr(FakeFight, "attach")
+    with pytest.raises(da.StepFailed, match="DOSBox-X debugger"):
+        d.prayer_watch(49)

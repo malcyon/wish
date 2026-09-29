@@ -73,6 +73,7 @@ a source whose title does not match `--title`:
 | `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
 | `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is refused unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
+| `prayer-watch 49`, `prayer-watch 35` | Pool, from the map, `load` first: walk to an encounter (`walk_to_encounter`), read every member's effect nodes and Prayer's handler table at the encounter menu, break on the id-49 and id-35 stubs, arm the handler, bonus test, +1 helper and penalty at the overlay segment the stub's far jump names once it loads, answer each bar by `COMBAT_KEYS`, and log each halt as `prayer-halt`: registers, 16 bytes at `SS:SP`, the four-frame `BP` chain, combatant name and side, the node's five bytes and `DS:0x6816` and `DS:0x6822`.  It stops after one party attack round (a stub halt whose list walker returns to the attack roll's list-10 call for a side-0 attacker, then a helper or penalty halt), when the map has held `FIGHT_SETTLED` seconds, or after `PRAYER_FIGHT_SECONDS`; the boot to the menu is capped at `PRAYER_BOOT_SECONDS`.  The result is `conclusive: False`, and the run exits 2 with `inconclusive` in `summary.json` rather than `lost` or `completed`, when no member carried the node at the menu or at the stop, or an armed routine's code did not match `GAME.OVR`.  The attack roll's own list-10 call is not armed: its unit's stub entry is unmeasured.  Only `shot`, `press` and `read` may follow |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement, record byte 0x130 (spell id 126's book byte, `book_0x130`) and items |
 
 **Pools of Darkness' screens are read off its `GAME.EXE` strings, not off a
@@ -207,7 +208,14 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec, dos_savegame, world_state  # noqa: E402
-from tools.dos import dosbox, dosboxx, dospod, route_silver_blades  # noqa: E402
+from tools.dos import (  # noqa: E402
+    dosbox,
+    dosboxx,
+    dosfightwatch,
+    dospod,
+    route_silver_blades,
+    unexepack,
+)
 from tools.dos.screens import (  # noqa: E402
     BLANK_NAME,
     CELL,
@@ -767,6 +775,16 @@ FIGHT_KEYS = {"command": "q", "encounter": "c", "continue": "Return",
               "treasure": "e", "treasure_left": "n", "yes_no": "n"}
 #: The titles `fight` drives.
 FIGHT_TITLES = frozenset({"curse", "ssb"})
+#: The Prayer node ids `prayer-watch` tests: 49 is DOS's own Prayer (the
+#: control), 35 the id a C64 camp Prayer converts to.
+PRAYER_NODES = (35, 49)
+#: `prayer-watch`'s budgets, seconds: the fight work after the encounter menu,
+#: and the whole run from the driver's creation to that menu.  A run's
+#: `--deadline` has to hold both and the cleanup.
+PRAYER_FIGHT_SECONDS = 600
+PRAYER_BOOT_SECONDS = 1500
+#: Steps `prayer-watch` tries before giving up on a fight.
+PRAYER_WALK_STEPS = 40
 #: The step's default budget, seconds, walk and fight together.
 FIGHT_SECONDS = 600
 #: Seconds the map bar must hold after a fight before the step believes it over.
@@ -1316,6 +1334,7 @@ class Step:
     key: str = ""
     row: int = 0
     seconds: int = 0
+    node: int = 0
 
 
 _DURATION = re.compile(r"^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?$")
@@ -1347,7 +1366,7 @@ STEP_HELP = ("load, begin, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, displa
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
              "'halve 1 1', 'join 4 15', 'view 1', 'memorize 5', 'cast 2 BLESS', "
              "'cast 2 CURE-LIGHT-WOUNDS 4', 'shot NAME', "
-             "'press KEY', 'fight', 'fight 900', read")
+             "'press KEY', 'fight', 'fight 900', 'prayer-watch 49', read")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
 #: 0x0CB8), upper case.
 CHANGE_CLASSES = ("CLERIC", "DRUID", "FIGHTER", "PALADIN", "RANGER", "MAGIC-USER",
@@ -1406,6 +1425,9 @@ def parse_step(text: str) -> Step:
     if kind == "fight" and (len(words) == 1 or (
             len(words) == 2 and re.fullmatch(r"[1-9]\d*", words[1]))):
         return Step(kind, text, seconds=int(words[1]) if len(words) == 2 else 0)
+    if kind == "prayer-watch" and len(words) == 2 and words[1] in (
+            str(n) for n in PRAYER_NODES):
+        return Step(kind, text, node=int(words[1]))
     if kind == "press" and len(words) == 2 and re.fullmatch(r"\w+", words[1]):
         if words[1].lower() in ("e", "escape"):
             raise ValueError(f"press {words[1]} is refused: E is exit to DOS at "
@@ -1517,6 +1539,13 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                                  f"{', '.join(sorted(FIGHT_TITLES))} only, not {title}")
             if where != "map":
                 raise ValueError(f"fight needs the map: {step.text!r}")
+        elif k == "prayer-watch":
+            if title != "pool":
+                raise ValueError(f"prayer-watch is driven in pool only, not {title}")
+            if where != "map":
+                raise ValueError(f"prayer-watch needs the map: {step.text!r}")
+            # The emulator is left halted-or-running mid-fight.
+            where = "pressed"
         elif k == "train":
             if not t.trains:
                 raise ValueError(f"train is driven in curse only; {title}'s "
@@ -2281,6 +2310,8 @@ class Driver:
         self.first_bar_key: str | None = None
         #: The game's data segment, once a fight's combatants have read true.
         self.combat_ds: int | None = None
+        #: When the driver was made, which is when the boot was over.
+        self.began = time.time()
 
     # -- evidence ----------------------------------------------------------
 
@@ -3174,6 +3205,86 @@ class Driver:
                 "torn_frames": state["torn"], "loose_frames": state["loose"],
                 "repeated_bars": state["repeats"],
                 "screens": state["kinds"]}
+
+    # -- Prayer's combat handlers, in Pool ---------------------------------------
+
+    def prayer_watch(self, node: int) -> dict:
+        """Walk to a fight and log Prayer's handlers as the first attack rolls.
+
+        `node` is the effect id under test, 49 or 35.  At the encounter menu
+        the debugger reads every member's nodes and Prayer's handler table,
+        then breaks on both stubs; once the stub's far jump names the overlay
+        segment the four routines are armed there (`dosfightwatch.PrayerWatch`).
+        Each halt is logged as a `prayer-halt` event.  The step ends after one
+        attack round or `PRAYER_FIGHT_SECONDS` of fight, and the run is
+        `conclusive: False` when no member carried the node at the menu or at
+        the stop.  The emulator is left running mid-fight, so only `shot`,
+        `press` and `read` may follow.
+        """
+        if self.title.key != "pool":
+            raise StepFailed(f"prayer-watch is driven in pool only, not {self.title.key}")
+        if self.where != "map":
+            raise StepFailed("prayer-watch needs the map")
+        if not hasattr(self.s, "attach"):
+            raise StepFailed("prayer-watch reads the game through the DOSBox-X "
+                             "debugger, and this session has none")
+        source = pathlib.Path(self.s.source)
+        image, _ = unexepack.unpack((source / "START.EXE").read_bytes())
+        watch = dosfightwatch.PrayerWatch(self.s, (source / "GAME.OVR").read_bytes(),
+                                          image, note=self.note)
+        walk = dosfightwatch.walk_to_encounter(self.game, PRAYER_WALK_STEPS)
+        self.note(event="prayer-walk", **walk)
+        if not walk["met"]:
+            raise self.fail("prayer-walk", f"no encounter: {walk.get('why')}")
+        self.shot("prayer-encounter")
+        if time.time() - self.began > PRAYER_BOOT_SECONDS:
+            raise self.fail("prayer-boot", f"the encounter menu came after "
+                            f"{PRAYER_BOOT_SECONDS} s")
+        try:
+            resolved = watch.attach()
+            self.note(event="prayer-table", **resolved)
+            at_encounter = watch.party()
+            self.note(event="prayer-party", where="encounter", party=at_encounter)
+            watch.load = watch.stub_load()
+            armed = watch.arm()
+            self.note(event="prayer-armed", **armed)
+        except (dosboxx.NotHalted, dosfightwatch.PrayerWatchError) as e:
+            raise self.fail("prayer-arm", str(e)) from e
+        fight_end = time.time() + self.bounded(PRAYER_FIGHT_SECONDS, "prayer-watch")
+        world_since: list[float | None] = [None]
+
+        def idle() -> bool:
+            """Answer the fight's bar; True once the map has held `FIGHT_SETTLED`."""
+            screen, kind = dosfightwatch._grab(self.game)
+            if screen is None:
+                return False
+            if screen.glyphs(dosbox.BAR) == self.game.world_glyphs:
+                world_since[0] = world_since[0] or time.time()
+                return time.time() - world_since[0] > FIGHT_SETTLED
+            world_since[0] = None
+            key = self.game.COMBAT_KEYS.get(kind or "")
+            if key:
+                self.s.key(key)
+                time.sleep(0.6)
+            return False
+
+        began = time.time()
+        stop = watch.run_fight(max(1.0, fight_end - began), idle)
+        self.where = "pressed"
+        at_stop = None
+        try:
+            if self.s.halted(timeout=1.0) or self.s.attach():
+                at_stop = watch.party()
+                self.note(event="prayer-party", where="stop", party=at_stop)
+                self.s.clear_breakpoints()
+                self.s.run()
+        except dosboxx.NotHalted:
+            pass
+        self.shot("prayer-stop")
+        result = watch.summary(node, at_encounter, at_stop)
+        return {**result, "stop": stop, "walk": walk,
+                "fight_seconds": round(time.time() - began, 1),
+                "arm": armed["armed"]}
 
     def _look(self, state: dict) -> dosbox.Screen:
         """The screen, halved by `loose_halve` when DOSBox-X's grab is torn.
@@ -4499,7 +4610,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         # A `fight` reads the combatants through the debugger, so its run
         # boots DOSBox-X from that pool, whose captures `XSession` halves back
         # to DOSBox 0.74's 320x200.
-        debugger = any(s.kind == "fight" for s in steps)
+        debugger = any(s.kind in ("fight", "prayer-watch") for s in steps)
         with deferred_sigterm():
             slot = (dosboxx.claim if debugger else dosbox.claim)(args.note)
             stack.callback(slot.release)
@@ -4601,6 +4712,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = {"shot": d.shot(step.name)}
                 elif step.kind == "fight":
                     r = d.fight(step.seconds)
+                elif step.kind == "prayer-watch":
+                    r = d.prayer_watch(step.node)
                 elif step.kind == "press":
                     r = d.press(step.key)
                 else:
@@ -4614,9 +4727,13 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             unproved = (walk_verdict(steps, summary.get("read"))
                        or share_verdict(summary.get("read"))
                        or expect_verdict(summary.get("read")))
+            doubtful = inconclusive_watch(results)
             if unproved:
                 summary["lost"] = unproved
                 note(event="lost", why=unproved)
+            elif doubtful:
+                summary["inconclusive"] = doubtful
+                note(event="inconclusive", why=doubtful)
             else:
                 summary["completed"] = True
         except (StepFailed, route_silver_blades.RouteLost) as e:
@@ -4646,7 +4763,9 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             note(event="lost", why=why)
         if d is not None and getattr(d, "capture_error", None):
             summary["failure_capture_error"] = d.capture_error
-    return 0 if summary["completed"] else 1
+    if summary["completed"]:
+        return 0
+    return 2 if summary.get("inconclusive") and "lost" not in summary else 1
 
 
 #: Silver Blades' wandering-fight gate and the area whose script (`ECL10`) reads it.
@@ -4746,6 +4865,17 @@ def place_changed(before: dict, after: dict) -> bool:
     a, b = before.get("place") or {}, after.get("place") or {}
     keys = ("x", "y", "area") if "area" in a else ("x", "y", "dungeon_map")
     return any(a.get(k) != b.get(k) for k in keys)
+
+
+def inconclusive_watch(results: list[dict]) -> str | None:
+    """Why a `prayer-watch` in the results cannot be called a pass or a fail, or None.
+
+    The run is neither: its tested node was gone before the fight, so what the
+    handlers did says nothing about a converted Prayer.
+    """
+    why = [f"{r['step']}: {'; '.join(r['why'])}" for r in results
+           if r.get("conclusive") is False]
+    return " | ".join(why) or None
 
 
 def share_verdict(read: dict | None) -> str | None:
