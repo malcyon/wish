@@ -1017,3 +1017,28 @@ def test_a_refused_key_at_a_choice_keeps_its_refusal_and_names_the_choice(
     assert got[2]["reason"] == "not_pressed" and got[2]["after"] == "choice"
     assert got[2]["row24"] == "LEAVE TALK ATTACK"
     assert dumps == ["slums-choice-5-7"]
+
+
+def test_a_press_bar_that_return_never_clears_is_given_up_on(monkeypatch):
+    sess, log, got, dumps, clock = _script_walk(
+        monkeypatch, ["", PRESS], on_press=[PRESS])
+    assert got[1] is None and got[2]["reason"] == "unsettled"
+    assert sess.pressed == [0x0D] * T.MAX_PRESSES
+    assert clock.now < T.STEP_SETTLE_WAIT + 5
+
+
+def test_the_last_steps_encounter_behind_a_stale_bar_is_the_fight(monkeypatch):
+    # The bar from before the script stays up for 1.5 s (three reads) and the
+    # last step's encounter menu opens behind it.
+    sess, log, got, dumps, _ = _script_walk(
+        monkeypatch, [WORLD] * 3 + [ENCOUNTER] * 3, after_key=3)
+    assert sess.asked == ["COMBAT"] and sess.keys == ["I", "I", "I"]
+    assert got == (2, (5, 8), None)
+
+
+def test_an_encounter_menu_that_outlasts_combat_is_a_choice(monkeypatch):
+    sess, log, got, dumps, clock = _script_walk(
+        monkeypatch, ["", ENCOUNTER], on_combat=[ENCOUNTER])
+    assert sess.asked == ["COMBAT"] and sess.pressed == []
+    assert got[1] is None and got[2]["reason"] == "choice"
+    assert clock.now < T.STEP_SETTLE_WAIT

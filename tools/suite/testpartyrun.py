@@ -455,17 +455,31 @@ SETTLE_POLL = 0.5
 WALKABLE_READS = 2
 CHOICE_READS = 4
 
+#: Returns `settle_step` sends at one unchanged `PRESS` bar before it gives
+#: up on it.
+MAX_PRESSES = 3
+
+#: Seconds the walkable bar must hold, with the combat icon and the menu
+#: read again, before the last step of a route counts as having met no fight:
+#: the bar left over from before a square's script is indistinguishable from
+#: the live one until the script has had time to blank it.
+FINAL_QUIET = 3.0
+
 
 def settle_step(sess, log: Log, key: str, there,
                 timeout: float = STEP_SETTLE_WAIT,
-                taken: bool = False) -> tuple[str, str]:
+                taken: bool = False, quiet: float = 0.0) -> tuple[str, str]:
     """Wait until what a square's script put up after `key` has cleared.
 
     Returns `(outcome, row24)`: `"ready"` once the world bar or the move
     sub-bar has held for `WALKABLE_READS` reads, `"fight"` once the combat
     icon is up, `"choice"` for a bar the walk does not answer that held for
     `CHOICE_READS` reads (nothing is pressed at it), and `"unsettled"` when
-    `timeout` runs out first.
+    `timeout` runs out first.  A `PRESS` bar that `MAX_PRESSES` Returns did not
+    clear is `"unsettled"`, and an encounter menu still up after the word was
+    taken counts toward the `"choice"` hold.  With `quiet` set, `"ready"` also
+    needs the walkable bar to have held that many seconds, so a stale bar
+    cannot be taken for the end of a script.
 
     A Slums script rolls a wandering encounter on every unscripted square
     (`ECL14` entry 1, id 0).  Row 24 goes blank while its monster loads; a
@@ -480,12 +494,15 @@ def settle_step(sess, log: Log, key: str, there,
     """
     word = getattr(sess, "walk_encounter", None)
     seen = None
-    walkable = held = 0
+    walkable = held = presses = 0
     row = ""
     next_combat = 0.0
+    ready_since = None
     deadline = time.monotonic() + timeout
     while True:
         now = time.monotonic()
+        if now >= deadline:
+            return "unsettled", row
         if now >= next_combat:
             next_combat = now + COMBAT_POLL
             if sess.in_combat():
@@ -499,20 +516,31 @@ def settle_step(sess, log: Log, key: str, there,
         if S.MOVE_SUBBAR in row or _world_bar(row):
             walkable += 1
             if walkable >= WALKABLE_READS:
-                return "ready", row
+                if ready_since is None:
+                    ready_since = now
+                if now - ready_since >= quiet:
+                    return ("fight" if quiet and sess.in_combat()
+                            else "ready"), row
         else:
             walkable = 0
+            ready_since = None
             state = sess.combat_state(s) if s is not None else None
             kind = state.kind if state is not None else S.BAR_BLANK
             if kind == S.BAR_DISK:
                 sess.handle_prompt(s)
             elif kind == S.BAR_PRESS:
+                if held > 1 and presses >= MAX_PRESSES:
+                    return "unsettled", row
+                presses = presses + 1 if held > 1 else 1
                 log.emit("step_press", key=key, to=list(there), row24=row)
                 sess.press_kernal(0x0D)
                 sess.await_change(state.text, timeout=6)
                 continue
             elif row and word and S.word_column(row, word) >= 0:
-                if not taken:
+                if taken:
+                    if held >= CHOICE_READS:
+                        return "choice", row
+                else:
                     log.say(f"  an encounter after {key} at {tuple(there)}: "
                             f"{row!r}; taking {word}")
                     log.emit("step_encounter", key=key, to=list(there),
@@ -521,8 +549,6 @@ def settle_step(sess, log: Log, key: str, there,
                     taken = True
             elif row and held >= CHOICE_READS:
                 return "choice", row
-        if time.monotonic() >= deadline:
-            return "unsettled", row
         time.sleep(SETTLE_POLL)
 
 
@@ -574,10 +600,11 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None):
     after a refused key, `reason` stays `not_pressed` and `after` names
     which of the two held.
     """
-    for here, there in zip(path, path[1:]):
+    steps = list(zip(path, path[1:]))
+    for number, (here, there) in enumerate(steps, 1):
         keys = geowalk.keys_for([here, there], facing, reverse="turn")
         want = geowalk.STEP.index((there[0] - here[0], there[1] - here[1]))
-        for key in keys:
+        for index, key in enumerate(keys):
             turn = key != "i"
             if turn:
                 facing = (facing + (1 if key == "k" else -1)) % 4
@@ -620,7 +647,9 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None):
                 log.emit("route_retry", leg=leg, key=key, to=list(there),
                          refused=bad["refused"])
             landed = here if turn else there
-            outcome, row = settle_step(sess, log, key, landed)
+            last = number == len(steps) and index == len(keys) - 1
+            outcome, row = settle_step(sess, log, key, landed,
+                                       quiet=FINAL_QUIET if last else 0.0)
             if outcome == "fight":
                 return want, landed, None
             if outcome != "ready":
