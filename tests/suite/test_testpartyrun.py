@@ -1134,8 +1134,10 @@ class FightScreen(PatrolSession):
     PRESS bar stays up for `fade` more polls unless `await_change` is called,
     as the real prompt does; `disk` is the wanted-disk answer."""
 
-    def __init__(self, monkeypatch, kinds, party=(), fade=0, disk=None):
+    def __init__(self, monkeypatch, kinds, party=(), fade=0, disk=None,
+                 acting="PARTY", camera=(1, 2)):
         super().__init__(monkeypatch)
+        self.acting_name, self.camera = acting, camera
         self.kinds, self.polls, self.pressed = list(kinds), 0, []
         self.party, self.fade, self.disk = party, fade, disk
         self.fading, self.handled, self.waited = 0, [], 0
@@ -1174,10 +1176,29 @@ class FightScreen(PatrolSession):
             def __init__(self, name, square):
                 self.name, self.square = name, square
 
+        camera = self.camera
+
         class _Battle:
             party = tuple(_Who(n, q) for n, q in self.party)
 
+        _Battle.camera = camera
         return _Battle()
+
+    def acting(self, battle, s=None):
+        """The side pane's name: `PARTY` is a party member (the first, or a
+        made-up one when the party is empty), a monster's name is nobody in
+        the party, as `Session.acting` answers it."""
+        if self.acting_name != "PARTY":
+            return None
+        return battle.party[0] if battle.party else object()
+
+
+@pytest.fixture(autouse=True)
+def _no_game_disks_for_the_icon_score(monkeypatch):
+    """The icon score reads the player's disks; these tests are fakes."""
+    def refuse():
+        raise T.dirtenicon.RepairError("no disks in a fake")
+    monkeypatch.setattr(T.dirtenicon, "native_default", refuse)
 
 
 def _photograph(monkeypatch, kinds, **kw):
@@ -1198,9 +1219,14 @@ def test_the_combat_shot_waits_for_the_command_bar(monkeypatch):
     assert got is True
     assert seen == [("combat-icon", 3)]
     assert clock.now < T.FIGHT_WAIT
-    assert ("fight_screen", {"battlefield": True, "presses": 0, "party": [
-        {"name": "BULWARK", "square": [3, 4]},
-        {"name": "PILFER", "square": [4, 4]}]}) in log.events
+    (kind, what), = [e for e in log.events if e[0] == "fight_screen"]
+    assert what["battlefield"] is True and what["presses"] == 0
+    assert what["camera"] == [1, 2]
+    assert what["party"] == [
+        {"name": "BULWARK", "square": [3, 4], "cell": [7, 7],
+         "in_window": True},
+        {"name": "PILFER", "square": [4, 4], "cell": [7, 10],
+         "in_window": True}]
 
 
 def test_a_press_prompt_on_the_way_gets_a_return(monkeypatch):
@@ -1232,10 +1258,88 @@ def test_a_fight_already_up_is_photographed_only_once_its_command_bar_is(
     assert seen == [("combat-icon", 3)]
 
 
-def test_a_monsters_turn_does_not_count_as_the_battlefield(monkeypatch):
+def test_a_blank_row_does_not_count_as_the_battlefield(monkeypatch):
     sess, log, seen, clock, got = _photograph(
         monkeypatch, [S.BAR_BLANK, S.BAR_BLANK, S.BAR_MOVE])
     assert got is True and seen == [("combat-icon", 3)]
+
+
+def test_a_monsters_move_bar_does_not_count_as_the_partys_turn(monkeypatch):
+    # `MOVE/ATTACK, MOVE LEFT = n` is drawn while a monster moves too, with
+    # the monster named in the side pane (`full19`, a goblin guard).
+    sess, log, seen, clock, got = _photograph(
+        monkeypatch, [S.BAR_MOVE], party=[("BULWARK", (3, 4))],
+        acting="GOBLIN GUARD")
+    assert got is False
+    assert T.FIGHT_WAIT <= clock.now < T.FIGHT_WAIT + 5
+    (kind, what), = [e for e in log.events if e[0] == "fight_screen"]
+    assert what["battlefield"] is False
+
+
+def test_the_wait_goes_on_past_a_monsters_move_to_the_command_bar(
+        monkeypatch):
+    sess, log, seen, clock, got = _photograph(
+        monkeypatch, [S.BAR_MOVE, S.BAR_MOVE, S.BAR_COMMAND],
+        party=[("BULWARK", (3, 4))], acting="GOBLIN GUARD")
+    assert got is True and seen == [("combat-icon", 3)]
+
+
+def test_a_move_bar_the_pane_names_a_party_member_for_counts(monkeypatch):
+    sess, log, seen, clock, got = _photograph(
+        monkeypatch, [S.BAR_BLANK, S.BAR_MOVE], party=[("BULWARK", (3, 4))])
+    assert got is True and clock.now < T.FIGHT_WAIT
+
+
+def test_a_party_square_outside_the_window_is_logged_as_outside(monkeypatch):
+    sess, log, seen, clock, got = _photograph(
+        monkeypatch, [S.BAR_COMMAND],
+        party=[("BULWARK", (3, 4)), ("PILFER", (30, 4))])
+    (kind, what), = [e for e in log.events if e[0] == "fight_screen"]
+    assert [m["in_window"] for m in what["party"]] == [True, False]
+
+
+def test_the_drawn_party_figures_are_scored_against_the_creation_default(
+        monkeypatch):
+    icon = bytes(range(36))
+    given = {}
+
+    class Default:
+        pass
+
+    Default.icon = icon
+    monkeypatch.setattr(T.dirtenicon, "native_default", lambda: Default)
+    monkeypatch.setattr(T.savecheck, "icon_charset", lambda disks: b"CS")
+    monkeypatch.setattr(T.savecheck, "roll_call", lambda sess: {"roll": 1})
+
+    def evidence(sess, icon_, slots=None, charset=None, roll=None):
+        given.update(icon=icon_, slots=slots, charset=charset, roll=roll)
+        return {"figures": [
+            {"who": "BULWARK", "row": 7, "col": 7, "best": 9,
+             "exact": [(0, 0, "plain")], "exact_colours": [(0, 0, "plain")]},
+            {"who": None, "row": 1, "col": 1, "best": 3, "exact": [],
+             "exact_colours": []}]}
+
+    monkeypatch.setattr(T.savecheck, "icon_evidence", evidence)
+    sess, log, seen, clock, got = _photograph(
+        monkeypatch, [S.BAR_COMMAND],
+        party=[("BULWARK", (3, 4)), ("PILFER", (4, 4))])
+    (kind, what), = [e for e in log.events if e[0] == "icon_score"]
+    assert what["figures"] == [{"name": "BULWARK", "row": 7, "col": 7,
+                                "best": 9, "exact": True,
+                                "exact_colours": True}]
+    assert what["not_drawn"] == ["PILFER"]
+    assert given["icon"] == icon and given["charset"] == b"CS"
+    assert len(given["slots"]) == 8
+    assert given["slots"][3]["shape"] == icon[:18].hex()
+    assert given["slots"][3]["colours"] == icon[18:].hex()
+
+
+def test_an_icon_score_that_cannot_be_read_is_logged_not_raised(monkeypatch):
+    sess, log, seen, clock, got = _photograph(
+        monkeypatch, [S.BAR_COMMAND], party=[("BULWARK", (3, 4))])
+    (kind, what), = [e for e in log.events
+                     if e[0] == "icon_score_unavailable"]
+    assert "no disks in a fake" in what["why"] and got is True
 
 
 def test_return_is_pressed_at_most_the_limit_and_the_shot_still_comes(

@@ -297,7 +297,7 @@ hold 18 distinct bars, and every one of them is one of these:
 | kind | what it looks like | what to do |
 |---|---|---|
 | command | `MOVE VIEW AIM USE [CAST] QUICK DONE`, and `MOVE` drops off once the character has no squares left | one character's turn |
-| move | `MOVE/ATTACK, MOVE LEFT = 9` | a direction, **not** a menu |
+| move | `MOVE/ATTACK, MOVE LEFT = 9` | a direction, **not** a menu; a monster moving under the game's control shows it too, with the monster named in the side pane, so `acting()` says whose it is |
 | continue | `CONTINUE BATTLE : YES NO` | `NO` ends the fight |
 | press | `PRESS <RETURN> OR BUTTON TO CONTINUE` | inject `$0D` |
 | done | `GUARD DELAY QUIT SPEED EXIT` — what `DONE` opens | `GUARD` ends the turn, and so does `QUIT` when GUARD is not offered |
@@ -305,7 +305,7 @@ hold 18 distinct bars, and every one of them is one of these:
 | leave | `GO BACK LEAVE TREASURE` | take `LEAVE TREASURE`; `GO BACK` only returns to the treasure bar |
 | yesno | `ATTACK ALLY: YES NO`, and `FLEE: YES NO` when a step would leave the map | answer `NO` |
 | message | `GUARDING`, `YOUR TEAMMATE IS DYING` | wait |
-| blank | empty | a monster's turn; wait |
+| blank | empty | nothing to answer; wait |
 | none | no readable screen at all | not the same as an empty bar |
 
 **A half-redrawn bar reads as a message, and must not be forced into a kind.**

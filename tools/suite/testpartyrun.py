@@ -59,16 +59,19 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
+from automap.combat import VIEW  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import SLOT_AREA_BASE, SLOT_STRIDE  # noqa: E402
 from tools.areas import geowalk  # noqa: E402
+from tools.c64 import savecheck  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.c64addprobe import answer as answer_yn  # noqa: E402
 from tools.c64.c64nametable import character_files  # noqa: E402
 from tools.c64.hallmenu import area as resident_area  # noqa: E402
 from tools.c64.route_pool import leave_items, open_items, toggle_item  # noqa: E402
 from tools.c64.traitask import ROSTER_STRIDE, SAVE1_LOAD  # noqa: E402
+from tools.pool_of_radiance import dirtenicon  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 DISKS: pathlib.Path | None = tool_disks()
@@ -920,24 +923,72 @@ FIGHT_POLL = 0.5
 FIGHT_PRESS_LIMIT = 3
 
 
+def score_party_icons(sess, log: Log, disks=None) -> None:
+    """Log how each drawn party figure scores against the creation default.
+
+    Each figure the roll call puts on a party member's square is compared, by
+    `savecheck.icon_evidence`, with both poses (plain and mirrored) of
+    `dirtenicon.native_default().icon`, which the generator writes into all
+    eight icon entries.  `exact` is whether some pose matched all nine glyphs
+    and `exact_colours` whether its colours matched too; a member with no
+    figure in the window is listed under `not_drawn`.  Logs
+    `icon_score_unavailable` and returns when there is no battle to read or
+    the game's own default or glyphs cannot be read.
+    """
+    if sess.battle() is None:
+        log.emit("icon_score_unavailable", why="no battle could be read")
+        return
+    try:
+        icon = dirtenicon.native_default().icon
+        charset = savecheck.icon_charset(pathlib.Path(disks or DISKS))
+        slots = [{"slot": n, "occupied": True, "shape": icon[:18].hex(),
+                  "colours": icon[18:].hex()} for n in range(8)]
+        evidence = savecheck.icon_evidence(
+            sess, icon, slots=slots, charset=charset,
+            roll=savecheck.roll_call(sess))
+    except (Exception, SystemExit) as error:
+        log.emit("icon_score_unavailable", why=repr(error))
+        return
+    figures = [{"name": f["who"], "row": f["row"], "col": f["col"],
+                "best": f["best"], "exact": bool(f["exact"]),
+                "exact_colours": bool(f["exact_colours"])}
+               for f in evidence.get("figures", []) if f["who"] is not None]
+    drawn = {f["name"] for f in figures}
+    party = [c.name for c in sess.battle().party]
+    log.emit("icon_score", figures=figures,
+             not_drawn=[n for n in party if n not in drawn])
+    for f in figures:
+        log.say(f"  {f['name']}: best {f['best']} of 9 glyphs against the "
+                f"creation default, exact {f['exact']}")
+
+
 def photograph_fight(sess, out: pathlib.Path, log: Log,
                      timeout: float = FIGHT_WAIT) -> bool:
     """Wait for a party member's turn, then take the `combat-icon` screenshot.
 
     The battlefield and every figure are drawn only once a party member has a
-    command or move bar; a shot taken when `in_combat` first answers shows two
-    empty panes.  A PRESS bar on the way gets a Return, at most
-    `FIGHT_PRESS_LIMIT` times, and is waited out before the next read; a disk
-    prompt goes to `handle_prompt`.  At the limit the screenshot is taken anyway
-    and `fight_screen` records `battlefield: false`, so a missing bar is a finding
-    and not a crash.  Returns whether the bar appeared.
+    command bar, or a move bar the side pane names a party member for: the
+    game shows the same `MOVE/ATTACK, MOVE LEFT = n` bar while a monster moves,
+    with the monster in the pane, and the camera is then on the monster.  A
+    shot taken when `in_combat` first answers shows two empty panes.  A PRESS
+    bar on the way gets a Return, at most `FIGHT_PRESS_LIMIT` times, and is
+    waited out before the next read; a disk prompt goes to `handle_prompt`.  At
+    the limit the screenshot is taken anyway and `fight_screen` records
+    `battlefield: false`, so a missing bar is a finding and not a crash.
+    `fight_screen` also carries the camera and each member's screen cell, and
+    `icon_score` follows the shot.  Returns whether the party's turn appeared.
     """
     deadline = time.monotonic() + timeout
-    presses, state = 0, None
+    presses, state, ready = 0, None, False
     while True:
         screen = sess.screen()
         state = sess.combat_state(screen)
-        if state.kind in (S.BAR_COMMAND, S.BAR_MOVE):
+        if state.kind == S.BAR_COMMAND:
+            ready = True
+            break
+        if state.kind == S.BAR_MOVE and sess.acting(sess.battle(),
+                                                    screen) is not None:
+            ready = True
             break
         if screen is not None and sess.wanted_disk(screen) is not None:
             # A disk prompt is answered by the disk handler; Return would not do.
@@ -951,19 +1002,27 @@ def photograph_fight(sess, out: pathlib.Path, log: Log,
         if time.monotonic() >= deadline:
             break
         time.sleep(FIGHT_POLL)
-    ready = state.kind in (S.BAR_COMMAND, S.BAR_MOVE)
     party = []
     battle = sess.battle()
+    what = {"battlefield": ready, "presses": presses}
     if battle is not None:
-        party = [{"name": c.name, "square": list(c.square)}
-                 for c in battle.party]
-    what = {"battlefield": ready, "party": party, "presses": presses}
+        camera = tuple(battle.camera)
+        for c in battle.party:
+            x, y = c.square
+            row, col = savecheck.where_drawn(x, y, camera)
+            party.append({"name": c.name, "square": [x, y],
+                          "cell": [row, col],
+                          "in_window": (0 <= x - camera[0] < VIEW
+                                        and 0 <= y - camera[1] < VIEW)})
+        what["camera"] = list(camera)
+    what["party"] = party
     if not ready:
         what["row24"] = state.text
     log.emit("fight_screen", **what)
     log.say(f"  fight screen: battlefield {'drawn' if ready else 'not seen'}"
             f"; party {party}")
     dump(sess, out, log, "combat-icon")
+    score_party_icons(sess, log)
     return ready
 
 
