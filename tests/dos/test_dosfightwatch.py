@@ -377,6 +377,23 @@ def test_the_hireling_share_is_the_one_nonzero_share(tmp_path):
     assert dosfightwatch.hireling_share(tmp_path, "E") is None
 
 
+def _records(tmp_path, shares):
+    for n, share in enumerate(shares, 1):
+        rec = bytearray(285)
+        rec[dosfightwatch.SHARE_OFFSET] = share
+        (tmp_path / f"CHRDATD{n}.SAV").write_bytes(bytes(rec))
+
+
+def test_player_characters_at_one_do_not_hide_the_hireling(tmp_path):
+    _records(tmp_path, [1] * 6 + [0xFB])
+    assert dosfightwatch.hireling_share(tmp_path, "D") == 0xFB
+
+
+def test_two_records_with_the_same_ruled_share_give_no_verdict(tmp_path):
+    _records(tmp_path, [0, 0, 0, 0, 0, 0xFB, 0xFB])
+    assert dosfightwatch.hireling_share(tmp_path, "D") is None
+
+
 def test_at_with_a_numeric_facing_names_the_letters():
     with pytest.raises(ValueError, match="N, E, S or W"):
         dosfightwatch.check_at("7,3,1")
@@ -414,6 +431,14 @@ def test_a_locked_door_is_answered_exit_and_the_walk_turns():
     assert por.s.pressed == ["e"]
     assert result["met"] is True and result["at_step"] == 2
     assert result["blocked"] == 1
+
+
+def test_a_locked_door_that_does_not_clear_ends_the_walk():
+    por = _LockedDoorPoR()
+    por.s.wait_until_ink = lambda *a, **k: False
+    result = dosfightwatch.walk_to_encounter(por, steps=5, patience=1.0)
+    assert result["met"] is False
+    assert result["why"] == "locked door did not clear"
 
 
 def test_pile_mode_refuses_to_run_without_a_folder():

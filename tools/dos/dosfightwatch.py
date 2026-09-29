@@ -554,7 +554,11 @@ def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int, *,
             # A locked door is a wall that asks a question: EXIT leaves the
             # party unchanged, and the square is blocked like a bump.
             por.s.key(LOCKED_EXIT_KEY)
-            por.s.wait_until_ink(dosbox.BAR, por.world_bar or "", timeout=20.0)
+            if not por.s.wait_until_ink(dosbox.BAR, por.world_bar or "",
+                                        timeout=20.0):
+                return {"met": False, "why": "locked door did not clear",
+                        "at_step": i + 1, "walked": walked,
+                        "blocked": blocked, "prompts": prompts}
             blocked += 1
             por.turn_right()
             continue
@@ -903,17 +907,21 @@ SHARE_RULES = {0x03: (9, 3), 0xFB: (9, 3), 0xFF: (13, 7)}
 
 
 def hireling_share(save_dir: pathlib.Path, letter: str) -> int | None:
-    """The one nonzero treasure share among the slot's character records, or
-    None when there is none or several.  `records` stops at six, and the
-    hireling is the seventh file, so the directory is scanned here."""
-    shares = set()
+    """The share of the one record holding a value `SHARE_RULES` has a rule
+    for, or None when no record or several do.
+
+    Player characters carry other values here (`0x01` on most engine-written
+    saves), so only ruled values are counted, one per record.  `records` stops
+    at six and the hireling is the seventh file, so the directory is scanned.
+    """
+    ruled = []
     for p in save_dir.iterdir():
         name = p.name.upper()
         if name.startswith(f"CHRDAT{letter.upper()}") and name.endswith(".SAV"):
             data = p.read_bytes()
-            if len(data) > SHARE_OFFSET and data[SHARE_OFFSET]:
-                shares.add(data[SHARE_OFFSET])
-    return shares.pop() if len(shares) == 1 else None
+            if len(data) > SHARE_OFFSET and data[SHARE_OFFSET] in SHARE_RULES:
+                ruled.append(data[SHARE_OFFSET])
+    return ruled[0] if len(ruled) == 1 else None
 
 
 def expected_cut(pile: int, c: int, a: int) -> int:
