@@ -395,6 +395,10 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
 #: half-drawn frame that lingers for a few reads is not taken for the list.
 HEAL_SCREEN_HOLD = 1.0
 
+#: How long the last steady screen after HEAL must stand, with nothing else
+#: drawn, before the wait ends; a later redraw restarts it.
+HEAL_SETTLE = 15.0
+
 #: What `temple-probe` accepts: the member, and with `HEAL` the one screen
 #: past the temple bar's HEAL.
 TEMPLE_PROBE_ARGS = ("BRUTUS", "BRUTUS HEAL")
@@ -1973,14 +1977,16 @@ class PoolRun:
                 and screen.row(top)[S.PARTY_COLUMN:].split()[:1] == [name])
 
     def _temple_heal_screen(self, arrival) -> dict:
-        """Keep the first steady screen after HEAL that is not the arrival screen.
+        """Keep the last steady screen after HEAL, once nothing changes.
 
         ARRIVAL is the temple screen HEAL was chosen from; it stays up until
-        the game redraws. The HEAL list leaves row 24 blank
-        (`8e1934def7-temple-route-g`, `11-temple-lost-heal`), so the screen is
-        judged by rows 0-23 and a blank frame while it loads is skipped. Two
-        identical reads in a row are required, so a frame caught mid-redraw
-        is not kept. Nothing is sent here."""
+        the game redraws. The first screen after HEAL is the welcome alone
+        (`0546662ef7-temple-route-h`) and the list draws later
+        (`8e1934def7-temple-route-g`, `11-temple-lost-heal`, row 24 blank), so
+        a screen is steady after `HEAL_SCREEN_HOLD` seconds unchanged and the
+        wait ends only when the last steady screen has stood for
+        `HEAL_SETTLE`. Every steady screen is returned under `steady`.
+        Judged by rows 0-23; nothing is matched on text and nothing is sent."""
         def body(screen) -> list[str]:
             return [screen.row(r).rstrip() for r in range(24)]
 
@@ -1989,6 +1995,7 @@ class PoolRun:
         limit = min(start + 90, self.temple_input_deadline)
         prior = last = None
         seen: list[list[str]] = []
+        steady: list[tuple[TempleSample, list[str]]] = []
         since = start
         while self.clock() < limit:
             sample = self.temple_sample()
@@ -2005,16 +2012,24 @@ class PoolRun:
                 seen.append(body(screen))
                 self.log.emit("temple-heal-frame", at=self.clock() - start,
                               rows=body(screen))
+            held = self.clock() - since
             if (any(body(screen)) and body(screen) != before
-                    and self.clock() - since >= HEAL_SCREEN_HOLD):
-                kept = self.temple_checkpoint("heal-first-screen", sample)
-                return {**kept, "rows": [row.rstrip() for row in full]}
+                    and held >= HEAL_SCREEN_HOLD):
+                rows = [row.rstrip() for row in full]
+                if not steady or steady[-1][1] != rows:
+                    steady.append((sample, rows))
+                elif held >= HEAL_SETTLE:
+                    break
             time.sleep(0.3)
-        cut = ("temple input deadline" if limit < start + 90
-               else "90 second limit")
-        self._temple_stop("heal", f"no steady screen drawn after HEAL before "
-                          f"the {cut} ({self.clock() - start:.1f} s waited)",
-                          last)
+        if not steady:
+            cut = ("temple input deadline" if limit < start + 90
+                   else "90 second limit")
+            self._temple_stop("heal", f"no steady screen drawn after HEAL "
+                              f"before the {cut} "
+                              f"({self.clock() - start:.1f} s waited)", last)
+        kept = self.temple_checkpoint("heal-first-screen", steady[-1][0])
+        return {**kept, "rows": steady[-1][1],
+                "steady": [rows for _, rows in steady]}
 
     def temple_probe(self, who: str) -> dict:
         """Capture the temple arrival screen and stop; with `HEAL`, select it
@@ -2023,7 +2038,7 @@ class PoolRun:
         The HEAL service list -- its text, its bar, whether RAISE DEAD
         appears, and the resident byte there -- has never been seen live
         (#700). Recognising it would be a guess, so the probe sends HEAL
-        once, keeps the first steady screen that is not the arrival screen
+        once, keeps the last steady screen that is not the arrival screen
         and sends nothing further. The source is the registered specimen's
         own path; the run stages its own copy, so none is made by hand."""
         if who not in TEMPLE_PROBE_ARGS or self.game.key != "pool-of-radiance":
@@ -2072,6 +2087,7 @@ class PoolRun:
             kept = self._temple_heal_screen(at_arrival.screen)
             result["heal_first_screen"] = {"stem": kept["stem"],
                                            "rows": kept["rows"]}
+            result["heal_screens"] = kept["steady"]
         result["checkpoints"] = len(self.temple_checkpoints)
         return result
 

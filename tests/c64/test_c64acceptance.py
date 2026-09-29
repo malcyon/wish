@@ -339,6 +339,7 @@ class _TempleSession:
         self.heal_blank_reads = 0
         self.heal_old_bar_reads = 0
         self.glitch_reads = 0
+        self.heal_reads = 0
         self.paused = False
         # The live run crossing the area edge showed the memory triple
         # ahead of the redrawn screen for one poll; `crossing_lag` makes
@@ -468,15 +469,21 @@ class _TempleSession:
             rows[14] = ""  # Cleared while the next screen loads.
         elif phase == "heal":
             rows[14] = ""
-            # The HEAL list as `8e1934def7-temple-route-g` frame 11 drew it,
-            # cut down: row 24 is blank.
+            # `0546662ef7-temple-route-h`: the welcome alone is drawn at
+            # once and stands for a few seconds; then the list of
+            # `8e1934def7-temple-route-g` frame 11 appears. Row 24 is blank.
+            self.heal_reads += 1
             rows[2] = "BRUTUS"
             rows[3] = "WELCOME TO THE TEMPLE,"
             rows[4] = "HOW MAY WE HELP YOU"
-            for row, text in zip((9, 10, 15, 18),
-                                 ("CURE BLINDNESS", "CURE DISEASE",
-                                  "RAISE DEAD", "EXIT")):
-                rows[row] = " " + text
+            if self.heal_reads > 10:
+                for row, text in enumerate(
+                        ("CURE BLINDNESS", "CURE DISEASE",
+                         "CURE LIGHT WOUNDS", "CURE SERIOUS WOUNDS",
+                         "CURE CRITICAL WOUNDS", "NEUTRALIZE POISON",
+                         "RAISE DEAD", "REMOVE CURSE", "STONE TO FLESH",
+                         "EXIT"), 9):
+                    rows[row] = " " + text
         else:
             raise AssertionError(phase)
         if phase == "question":
@@ -702,6 +709,11 @@ def test_temple_probe_heal_selects_it_once_and_keeps_the_next_drawn_screen(
     assert got["rows"][4] == "HOW MAY WE HELP YOU"
     assert got["rows"][15] == " RAISE DEAD"
     assert got["rows"][24] == ""
+    welcome, listing = result["heal_screens"]
+    assert welcome[15] == "" and welcome[3] == "WELCOME TO THE TEMPLE,"
+    assert listing == got["rows"]
+    frames = [kw["rows"] for args, kw in events if args[0] == "temple-heal-frame"]
+    assert [f[15] for f in frames] == ["", "", " RAISE DEAD"]
 
 
 def test_temple_probe_heal_stops_at_ninety_seconds_keeping_the_blank_frame(
@@ -751,8 +763,10 @@ def test_temple_probe_heal_keeps_only_a_bar_seen_twice_running(
         text for tag, text in kept[:-1] if text)
     assert [k for k in kept if k[0] == "heal-first-screen"] == [kept[-1]]
     frames = [kw["rows"] for args, kw in events if args[0] == "temple-heal-frame"]
-    assert len(frames) == 3 and not any(frames[0])
+    assert len(frames) == 4 and not any(frames[0])
     assert frames[1][4] == "" and frames[2][4] == "HOW MAY WE HELP YOU"
+    assert frames[2][15] == "" and frames[3][15] == " RAISE DEAD"
+    assert "RAISE DEAD" in kept[-1][1]
 
 
 def test_temple_probe_heal_stops_at_the_input_deadline_not_ninety_seconds(
