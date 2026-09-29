@@ -78,7 +78,6 @@ __all__ = [
     "NAMES_LOAD_ADDRESS_LATER",
     "POSITION_OFFSET",
     "SHOWN_CLOCK_OFFSET",
-    "CLOCK_OFFSET",
     "INDOORS_FLAG_OFFSET",
     "TRAVEL_POSITION_OFFSET",
     "POOL_OF_RADIANCE",
@@ -131,9 +130,6 @@ POSITION_OFFSET = 0x0C0        # x, y, facing -- the copy the game *saves*
 # (`docs/30-savegame-layout.md`); the name says which of the two facts it is,
 # which is why the name says "shown".
 SHOWN_CLOCK_OFFSET = 0x0C7
-
-#: Alias of :data:`SHOWN_CLOCK_OFFSET` for importers of the older name.
-CLOCK_OFFSET = SHOWN_CLOCK_OFFSET
 
 # The travel grid's own two facts, both inside the save image and both
 # Pool of Radiance measurements (`docs/113-world-map.md`,
@@ -482,18 +478,6 @@ class C64Container:
         if self.roster_file is None:
             return self.save_load_address + self.roster_offset
         return self.roster_load_address + self.roster_offset
-
-    # -- aliases for the older names ---------------------------------------
-    @property
-    def game(self) -> "C64Container":
-        """This row itself, so `container.game.key` and `container.key` are
-        the same string off the same object."""
-        return self
-
-    @property
-    def slot_count(self) -> int:
-        """Alias of `party_slots`."""
-        return self.party_slots
 
 
 #: What every entry of Pool of Radiance's zeroing list was measured by, said

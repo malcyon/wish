@@ -387,7 +387,7 @@ def test_the_container_is_curses_geometry_under_a_different_name():
                   "roster_offset", "cache", "cache_bit7", "disk_hint"):
         assert getattr(ssb, field) == getattr(curse, field), field
     assert ssb.payload_size == 0x1D00
-    assert ssb.game.save_file == b"SAVEDBASH"
+    assert ssb.save_file == b"SAVEDBASH"
 
 
 def test_the_disk_hint_is_plus_ee_and_not_pool_of_radiances_plus_ea():

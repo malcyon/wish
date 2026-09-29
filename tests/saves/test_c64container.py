@@ -38,10 +38,7 @@ UNMEASURED = ("champions-of-krynn", "death-knights-of-krynn",
 # --- the registry -----------------------------------------------------------
 
 def test_the_six_rows_are_one_class_and_one_object_per_title():
-    """The registry holds six `C64Container` objects, one per title.
-
-    `container.game` answers `container` because there is one class.
-    """
+    """The registry holds six `C64Container` objects, one per title."""
     assert len(c64_port.GAMES) == 6
     assert all(isinstance(g, C64Container) for g in c64_port.GAMES)
     assert c64_port.POOL_OF_RADIANCE is c64_save.POOL_OF_RADIANCE
@@ -55,6 +52,9 @@ RETIRED_NAMES = (
     (c64_save, "Container"),
     (c64_codec, "RECORD_SHAPES"),
     (convert, "DROPPED_HEADING"),
+    (c64_save, "CLOCK_OFFSET"),
+    (C64Container, "game"),
+    (C64Container, "slot_count"),
     (dosimport, "DROPPED_HEADING"),
     *((c64_port, name) for name in (
         "CLOCK_OFFSET", "HEADER_SIZE", "ICON_TABLE_OFFSET",
@@ -87,10 +87,9 @@ def test_pool_of_radiance_and_curse_are_still_the_first_two():
     assert [g.key for g in c64_port.GAMES] == list(MEASURED) + list(UNMEASURED)
 
 
-def test_a_row_is_its_own_game_and_answers_both_slot_counts():
+def test_a_row_answers_its_party_slots():
     for game in c64_port.GAMES:
-        assert game.game is game
-        assert game.slot_count == game.party_slots == 8
+        assert game.party_slots == 8
 
 
 def test_a_game_descriptor_is_still_hashable():

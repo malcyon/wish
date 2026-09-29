@@ -64,7 +64,7 @@ def _hide_all_but(disk_path: pathlib.Path, keep_index: int,
 
     load_address, payload = split_load_address(disk.read_file(game.save_file))
     payload = bytearray(payload)
-    for index in range(game.slot_count):
+    for index in range(game.party_slots):
         if index == keep_index:
             continue
         payload[HEADER_SIZE + index * SLOT_STRIDE] = 0

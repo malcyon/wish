@@ -162,7 +162,7 @@ def test_engine_written_zombie_fields_read_and_node32_stays_protected():
         source = convert.Source.detect(image)
         chars, _ = dos_codec.c64_party(source.save0, source.save1,
                                        game=c64_port.POOL_OF_RADIANCE)
-        game = c64_save.container_for(c64_port.POOL_OF_RADIANCE).game
+        game = c64_save.container_for(c64_port.POOL_OF_RADIANCE)
         slots = SaveGame0.from_bytes(source.save0, game).characters
         raw = {slot.record.name: slot.record_bytes for slot in slots}
         return {char.get("name"): char for char in chars}, raw

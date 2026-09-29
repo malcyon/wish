@@ -275,7 +275,7 @@ def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
     first, width = container.quest_flags
     area = save0[container.current_script]
     return WorldState(
-        title=container.game.title,
+        title=container.title,
         area=area,
         geo=save0[container.current_geo],
         x=save0[container.position],
@@ -289,7 +289,7 @@ def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
         outdoors=not save0[container.indoors],
         travel=(save0[container.travel_position],
                 save0[container.travel_position + 1]),
-        set_out=not is_pre_adventure_area(container.game.title, area),
+        set_out=not is_pre_adventure_area(container.title, area),
         header={a: save0[a - base] for a in HEADER_ADDRESSES},
         source=source)
 

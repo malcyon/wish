@@ -844,7 +844,7 @@ def _synthetic_c64_party_payload(game, members: int, *rows) -> bytearray:
     staged, built from zeroed bytes: a capital letter and six ability scores
     are what `looks_occupied` asks of a slot, so no game file is read."""
     from goldbox import c64_save, savegame
-    payload = bytearray(c64_save.container_for(game).game.save_size)
+    payload = bytearray(c64_save.container_for(game).save_size)
     for slot in range(members):
         at = savegame.HEADER_SIZE + slot * savegame.SLOT_STRIDE
         payload[at:at + 2] = b"AB"

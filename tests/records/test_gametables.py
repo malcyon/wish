@@ -371,7 +371,7 @@ def _characters(key: str) -> list[bytes]:
     for payload in payloads(key, game.save_file):
         if len(payload) != game.save_size:
             continue
-        for slot in range(game.slot_count):
+        for slot in range(game.party_slots):
             base = c64_save.HEADER_SIZE + slot * c64_save.SLOT_STRIDE
             record = payload[base:base + c64_save.SLOT_STRIDE]
             if record[0] and record[0] != 0xFF:

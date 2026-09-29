@@ -420,7 +420,7 @@ def test_dos_icon_tables_with_no_title_reads_the_base_table():
     """No `title` means no override, whatever the section holds.
 
     The contract every caller with no title relies on. `goldbox.dos_codec.
-    write_c64_save` builds `tables=dos_icon_tables(title=container.game.key,
+    write_c64_save` builds `tables=dos_icon_tables(title=container.key,
     size=which)` once per size and passes it through `_icon_for` to
     `IconParts.dos_icon`, so a converted Silver Blades character now gets
     Donald's own head 9/2 split (`#335 (Two combat-figure rows describe Pool
@@ -741,7 +741,7 @@ def test_a_staged_silver_blades_party_arrives_holding_what_it_held(
     container = c64_save.container_for(game)
     save0 = bytearray(container.payload_size)
     save1 = (bytearray() if container.roster_in_payload
-             else bytearray(container.game.roster_size))
+             else bytearray(container.roster_size))
     dos_codec.convert_save(folder, "D", save0, save1 or None,
                      icon=silver_blades_parts, game=game)
 
@@ -915,7 +915,7 @@ def test_a_silver_blades_figure_composed_with_the_title_survives_the_round_trip(
     `title` argument for the *forward* half is not this gap: `write_c64_save`
     has passed it since `bb16ee3`, so the icon this test decodes is already
     the one a real conversion composes. `c64_party` now passes `title` too,
-    reading `c64_save.container_for(game).game.key`; this test still reaches
+    reading `c64_save.container_for(game).key`; this test still reaches
     `c64_icon_tables()` and `dos_icon_from_c64` directly, on the option
     tables rather than through a saved file, so it is a check on the tables
     that agrees with `c64_party`'s wiring rather than a test of the wiring

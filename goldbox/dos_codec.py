@@ -7341,7 +7341,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     #: large one scaled, so a few rows name a different C64 option there
     #: (#335).
     icon_tables = {
-        which: dos_icon_tables(title=container.game.key, size=which)
+        which: dos_icon_tables(title=container.key, size=which)
         for which in ("small", "large")
     } if isinstance(icon, IconParts) else {}
     #: What an unoccupied future NPC slot gets -- the same 36 bytes creation
@@ -7476,7 +7476,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
 
     at = container.portrait_switch
     faces = bool(party) and all_faced
-    if container.game.key == c64_port.POOL_OF_RADIANCE.key:
+    if container.key == c64_port.POOL_OF_RADIANCE.key:
         save0[at] = PORTRAIT_ON if faces else PORTRAIT_OFF
         report.note(at, 1, f"${save0[at]:02X}: {PORTRAIT_SWITCH_WHY}"
                     + ("" if faces else ". Written with bit 7 clear "
@@ -7664,7 +7664,7 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     `tools/`, the whole of `tests/convert/test_dosconvert.py` -- already gives it.
     """
     container = c64_save.container_for(game)
-    shape = dos_savegame.container_for(container.game.key)
+    shape = dos_savegame.container_for(container.key)
     party = read_party(folder, slot)
     savgam_path = pathlib.Path(folder).joinpath(
         f"SAVGAM{slot}{shape.suffix}")
@@ -7690,7 +7690,7 @@ def new_save_from(state: "world_state.WorldState",
     container = c64_save.container_for(game)
     save0 = bytearray(container.payload_size)
     save1 = (bytearray() if container.roster_in_payload
-             else bytearray(container.game.roster_size))
+             else bytearray(container.roster_size))
     report = write_c64_save(save0, save1 or None, state, party,
                             icon=icon, animate=animate, portraits=portraits,
                             game=container, leave=leave)
@@ -7716,7 +7716,7 @@ def new_save_from_neutral(
     container = c64_save.container_for(game)
     save0 = bytearray(container.payload_size)
     save1 = (bytearray() if container.roster_in_payload
-             else bytearray(container.game.roster_size))
+             else bytearray(container.roster_size))
     report = write_c64_save(
         save0, save1 or None, state, party, icon=icon, animate=animate,
         neutral_icons=party_icons, game=container, leave=leave)
@@ -7757,7 +7757,7 @@ def new_save(folder: str | pathlib.Path, slot: str,
     Returns the two payloads and the report, whose `unwritten` is empty.
     """
     container = c64_save.container_for(game)
-    shape = dos_savegame.container_for(container.game.key)
+    shape = dos_savegame.container_for(container.key)
     party = read_party(folder, slot)
     savgam_path = pathlib.Path(folder).joinpath(
         f"SAVGAM{slot}{shape.suffix}")
@@ -8744,7 +8744,7 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     from .savegame import SaveGame0, SaveGame1
 
     container = c64_save.container_for(game)
-    c64 = container.game
+    c64 = container
     sg = SaveGame0.from_bytes(bytes(save0), c64)
     if c64.roster_in_payload:
         # Every later title keeps the roster inside the one payload, and

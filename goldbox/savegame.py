@@ -438,7 +438,7 @@ class SaveGame0:
         return bytes(self._data[:HEADER_SIZE])
 
     def _window_offset(self, index: int) -> int:
-        count = self.game.slot_count
+        count = self.game.party_slots
         if not 0 <= index < count:
             raise IndexError(f"slot index {index} out of range 0..{count - 1}")
         return HEADER_SIZE + index * SLOT_STRIDE
@@ -455,7 +455,7 @@ class SaveGame0:
 
     @property
     def slots(self) -> list[Slot]:
-        return [self.slot(i) for i in range(self.game.slot_count)]
+        return [self.slot(i) for i in range(self.game.party_slots)]
 
     # -- the roster, for titles that keep it in this payload ---------------
     def roster_page(self) -> bytes:
@@ -525,7 +525,7 @@ class SaveGame0:
             f"${base + size - 1:04X}  ({size} bytes)",
             f"  header  ${base:04X}-${g.slot_area_base - 1:04X}"
             f"  ({sum(1 for b in self.header if b)} non-zero of {HEADER_SIZE})",
-            f"  slots   {g.slot_count} x ${SLOT_STRIDE:04X} from "
+            f"  slots   {g.party_slots} x ${SLOT_STRIDE:04X} from "
             f"${g.slot_area_base:04X}  (record head only)",
         ]
         for s in self.slots:

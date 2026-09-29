@@ -1151,7 +1151,7 @@ def test_an_all_zero_icon_entry_under_a_later_title_is_not_seeded(tmp_path):
     parts = IconParts(game_file("SPELLE64"), game_file("SPELLN64"))
     save0, save1 = _fixture_payloads()
     container = c64_save.container_for("curse-of-the-azure-bonds")
-    poked = bytearray(save0.ljust(container.game.save_size, b"\0"))
+    poked = bytearray(save0.ljust(container.save_size, b"\0"))
     poked[container.icon(0):container.icon(0) + container.icon_size] = (
         bytes(container.icon_size))
     _, icons = dos_codec.c64_party(bytes(poked), None,
@@ -2251,7 +2251,7 @@ def test_a_c64_party_with_dirten_in_slot_seven_converts_with_its_siblings(
     slot_base = game.slot_area_base - game.save_load_address
     item_base = items.ITEM_AREA_BASE - game.save_load_address
 
-    for target in range(game.slot_count):
+    for target in range(game.party_slots):
         record_at = slot_base + target * SLOT_STRIDE
         item_at = item_base + target * items.ITEM_BLOCK_STRIDE
         icon_at = game.icon(target)

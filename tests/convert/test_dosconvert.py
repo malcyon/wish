@@ -2218,7 +2218,7 @@ def test_a_converted_party_keeps_its_own_combat_figures():
                               dos_size(char.get("size")),
                               bytes(char.get("icon_colours")),
                               tables=dos_codec.dos_icon_tables(
-                                  title=c64_save.POOL_OF_RADIANCE.game.key,
+                                  title=c64_save.POOL_OF_RADIANCE.key,
                                   size=dos_size(char.get("size"))))
         assert icons[place] == want, char.name
     assert len(set(icons.values())) > 1, "every figure came out the same"

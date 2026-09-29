@@ -131,7 +131,7 @@ def arrivals(folder: pathlib.Path, slot: str, title: str,
     container = c64_save.container_for(game)
     save0 = bytearray(container.payload_size)
     save1 = (bytearray() if container.roster_in_payload
-             else bytearray(container.game.roster_size))
+             else bytearray(container.roster_size))
     dos_codec.convert_save(folder, slot, save0, save1 or None, icon=parts, game=game)
     out = []
     party = dos_codec.read_party(folder, slot)

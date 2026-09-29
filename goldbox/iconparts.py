@@ -245,7 +245,7 @@ def dos_icon_tables(path: "pathlib.Path | str | None" = None,
     with no arguments meaning exactly what it has always meant.
 
     **The conversion passes both.** `goldbox.dos_codec.write_c64_save` builds
-    `dos_icon_tables(title=container.game.key, size=which)` once per size
+    `dos_icon_tables(title=container.key, size=which)` once per size
     and threads it through `_icon_for` into :meth:`IconParts.dos_icon`, so
     a converted character reaches the rows his own title and size name:
     Silver Blades' head 10 to C64 head 9 small and 2 large, and its small
@@ -341,8 +341,8 @@ def c64_icon_tables(path: "pathlib.Path | str | None" = None,
 
     With no `title`, this is exactly the base table every reader before
     `#452` used. `goldbox.dos_codec.c64_party` now passes `title=c64.key` -- the
-    C64 title being read, `c64_save.container_for(game).game.key`, the
-    mirror of `write_c64_save`'s own `container.game.key` -- so a Silver
+    C64 title being read, `c64_save.container_for(game).key`, the
+    mirror of `write_c64_save`'s own `container.key` -- so a Silver
     Blades character converted to the C64 and home again comes back reading
     its own title's rows.
     """
