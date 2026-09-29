@@ -184,7 +184,7 @@ def square_region(regions: list[Region]) -> "Region | None":
 def title_of(regions: list[Region]) -> "sg.DosContainer | None":
     """The shape whose size the chain's widths add up to, or None."""
     total = sum(r.total for r in regions)
-    return sg.SAVE_SHAPES_BY_SIZE.get(total)
+    return sg.CONTAINERS_BY_SIZE.get(total)
 
 
 def save_chain(image: bytes) -> tuple[list[Region], "sg.DosContainer | None"]:

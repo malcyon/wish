@@ -520,13 +520,6 @@ CONTAINERS: "tuple[DosContainer, ...]" = (
 CONTAINERS_BY_KEY = {s.key: s for s in CONTAINERS}
 CONTAINERS_BY_SIZE = {s.size: s for s in CONTAINERS}
 
-#: The pre-#470 names, kept as aliases (`#470 (Give the project a neutral
-#: title beside its neutral character record, with one port per platform a
-#: title shipped on)`'s stage 3b).  Gone in stage 9.
-SAVE_SHAPES = CONTAINERS
-SAVE_SHAPES_BY_KEY = CONTAINERS_BY_KEY
-SAVE_SHAPES_BY_SIZE = CONTAINERS_BY_SIZE
-
 
 def container_for(what: "int | str | DosContainer") -> DosContainer:
     """The container for a size, a title key, or a container already in hand.
@@ -773,7 +766,7 @@ def geo_block(save: bytes) -> int:
 
     `$49C5`, and the only thing that reads it is the `GEO` loader.  The number
     equals the area id for an area that loads its own map, which is most of
-    them, and that coincidence is what `area_id` was named for.
+    them, and that coincidence is what the old name `area_id` was chosen for.
 
     Two kinds of place break it, and both read 0 here:
 
@@ -785,11 +778,6 @@ def geo_block(save: bytes) -> int:
       Phlan's `GEO00` and leaves `$49C5` at 0 while `$49F2` says 11 (#257).
     """
     return word(save, AREA)
-
-
-#: The old name for `geo_block`, kept because twenty call sites use it.  It
-#: never meant the area: see `geo_block` and `AREA` above.
-area_id = geo_block
 
 
 def current_area(save: bytes) -> int:

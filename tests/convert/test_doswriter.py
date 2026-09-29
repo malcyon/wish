@@ -2156,7 +2156,7 @@ def test_write_dos_save_writes_a_readable_party(tmp_path):
         assert sg.word(savgam, addr) == save0[addr - dos_codec.SAVE0_BASE], \
             hex(addr)
     # Both parties stand in area 0, so the square converts too.
-    assert sg.area_id(savgam) == save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE]
+    assert sg.geo_block(savgam) == save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE]
     x, y, facing = sg.position(savgam)
     assert (x, y) == (save0[0x49C0 - 0x4900], save0[0x49C1 - 0x4900])
     # `sg.position` halves the facing back to the C64's 0-3; the stored
@@ -2211,7 +2211,7 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
     # This C64 party stands in New Phlan and the template's slot B in Sokol
     # Keep, so the save is retargeted -- with the empty wallset triple the
     # C64 carries for New Phlan, which draws it correctly.
-    assert sg.area_id(savgam) == save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] == 0
+    assert sg.geo_block(savgam) == save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] == 0
     assert sg.wall_triple(savgam) == (sg.EMPTY,) * 3
     assert sg.position(savgam) == (save0[0x49C0 - 0x4900],
                                    save0[0x49C1 - 0x4900],
@@ -2477,7 +2477,7 @@ def test_a_party_from_another_area_lands_in_its_own_area(tmp_path):
     save0 = _c64_in_the_slums()
     report = dos_codec.write_dos_save(save0, None, _save_dir(), tmp_path, "A")
     savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
-    assert sg.area_id(savgam) == 20
+    assert sg.geo_block(savgam) == 20
     assert sg.word(savgam, sg.SCRIPT) == 20
     assert sg.dax_number(savgam) == 2 == sg.word(savgam, sg.DISK)
     assert sg.wall_triple(savgam) == (2, 4, 1)
@@ -2544,7 +2544,7 @@ def test_savgam_writes_reads_the_resident_geo_from_the_c64_saves_own_word():
     report = dos_codec.SaveReport(total=sg.SAVGAM_SIZE)
     dos_codec.savgam_writes(savgam, report, state, "A", 1, script)
     assert sg.word(bytes(savgam), sg.SCRIPT) == 11
-    assert sg.area_id(bytes(savgam)) == 0
+    assert sg.geo_block(bytes(savgam)) == 0
 
 
 @pytest.mark.parametrize("area, wanted", [
@@ -2721,7 +2721,7 @@ def test_a_saved_game_built_from_nothing_accounts_for_every_byte(tmp_path):
     # And it is the party's own save rather than a plausible-looking one.
     assert sg.character_files(savgam) == [f"CHRDATA{n}" for n in range(1, 9)]
     assert sg.party_size(savgam) == 1
-    assert sg.area_id(savgam) == save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE]
+    assert sg.geo_block(savgam) == save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE]
     for i in range(sg.CLOCK_DIGITS):
         assert sg.word(savgam, sg.CLOCK + i) == \
             save0[sg.CLOCK + i - dos_codec.SAVE0_BASE], i

@@ -117,7 +117,7 @@ def test_pool_of_radiance_has_no_wall_block():
         sg.put_wall_block(bytearray(POOL.size), (1, 2, 3))
 
 
-@pytest.mark.parametrize("shape", sg.SAVE_SHAPES[:3], ids=lambda s: s.key)
+@pytest.mark.parametrize("shape", sg.CONTAINERS[:3], ids=lambda s: s.key)
 def test_the_party_size_and_names_land_at_the_containers_own_offsets(shape):
     save = bytearray(shape.size)
     sg.put_party_size(save, 4, shape)

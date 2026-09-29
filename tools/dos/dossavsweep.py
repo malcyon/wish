@@ -275,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="Extra files or directories to sweep")
     ap.add_argument("--title", default="pool-of-radiance",
                     help="Which title's containers to sweep: "
-                         + ", ".join(s.key for s in sg.SAVE_SHAPES))
+                         + ", ".join(s.key for s in sg.CONTAINERS))
     ap.add_argument("--include-never-adventured", action="store_true",
                     help="Keep parties saved before BEGIN ADVENTURING in "
                          "the counts")

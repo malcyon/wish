@@ -70,12 +70,8 @@ __all__ = [
     "deltas_for",
     "layout_for",
     "DosDeltasError",
-    # Pre-#470 names, kept as aliases so nothing importing this module by its
-    # old spelling has to change -- `goldbox/dos_layout.py` re-exported these
-    # too, as a shim (`#470 (Give the project a neutral title beside its
-    # neutral character record, with one port per platform a title shipped
-    # on)`, stage 3, and stage 3b for the two below), until stage 9 deleted
-    # the shim.
+    # Definitions in this module that the other DOS files import by these
+    # names; they are not aliases of anything.
     "NAME_SIZE",
     "ITEM_SIZE",
     "EFFECT_SIZE",

@@ -144,7 +144,6 @@ __all__ = [
     "CLASS_BIT_FOR_SLOT",
     "class_bits_for",
     "neutral_class_bits_from",
-    "INFRAVISION",
     "to_neutral",
     "DosCharacter",
     "DosItem",
@@ -270,13 +269,6 @@ class WrongTitleError(DosRecordError):
         nothing naming the game.  Found in the code review of #176.
         """
         return f"{self.title} imports not yet supported."
-
-
-#: Race -> infravision range.  The table lives with the C64 writer, which is
-#: the only port that stores infravision at all; it is re-exported here
-#: because this module is where it was first written down.
-INFRAVISION = c64_codec.INFRAVISION
-
 
 # ---------------------------------------------------------------------------
 # Decoding one record
@@ -1566,15 +1558,6 @@ def dos_class_bits(neutral_bits: int) -> int:
     if not neutral_bits & RANGER_BIT_NEUTRAL:
         return neutral_bits
     return (neutral_bits & ~RANGER_BIT_NEUTRAL) | RANGER_BIT_DOS
-
-
-#: The class code table Curse of the Azure Bonds' C64 `GEN` walks at `$1951`,
-#: and its inverse -- moved to `goldbox/classcode.py` (#310), which both this
-#: module and `goldbox/c64_codec.py` can reach, and re-exported here so
-#: nothing that already imported them by name has to change.
-#: `docs/187-the-class-code-byte.md` has the reading.
-CLASS_CODE_TABLE = classcode.CLASS_CODE_TABLE
-CLASS_CODE_FOR_BITS = classcode.CLASS_CODE_FOR_BITS
 
 
 def class_bits_for(char: "DosCharacter") -> int:

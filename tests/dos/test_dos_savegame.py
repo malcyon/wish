@@ -314,7 +314,7 @@ def test_a_retarget_writes_the_place_and_stages_the_script():
     sg.retarget(save, area=20, dax=2, wallset=(2, 4, 1), script=script)
     save = bytes(save)
     assert save[0] == 2
-    assert sg.area_id(save) == 20
+    assert sg.geo_block(save) == 20
     assert sg.word(save, sg.SCRIPT) == 20
     assert sg.word(save, sg.DISK) == 2
     assert sg.wall_triple(save) == (2, 4, 1)
@@ -344,7 +344,7 @@ def test_retarget_writes_the_resident_geo_from_its_own_argument():
                 geo=0)
     save = bytes(save)
     assert sg.word(save, sg.SCRIPT) == 11
-    assert sg.area_id(save) == 0
+    assert sg.geo_block(save) == 0
 
 
 def test_retarget_defaults_the_resident_geo_to_the_area():
@@ -353,7 +353,7 @@ def test_retarget_defaults_the_resident_geo_to_the_area():
     save = blank()
     script = bytes([0x88, 0x13]) + bytes(range(256)) * 4
     sg.retarget(save, area=20, dax=2, wallset=(2, 4, 1), script=script)
-    assert sg.area_id(bytes(save)) == 20
+    assert sg.geo_block(bytes(save)) == 20
 
 
 def test_retarget_geo_is_ignored_outdoors():
@@ -364,7 +364,7 @@ def test_retarget_geo_is_ignored_outdoors():
     sg.put_word(save, sg.INDOORS, 1)
     sg.retarget(save, area=26, dax=7, wallset=sg.OUTDOOR_WALLSET,
                 script=script, outdoors=True, geo=26)
-    assert sg.area_id(bytes(save)) == 0
+    assert sg.geo_block(bytes(save)) == 0
 
 
 # --- the .DAX container ------------------------------------------------------
@@ -602,7 +602,7 @@ def _of(key):
 
 
 _ALL_SHAPES = pytest.mark.parametrize(
-    "key", [s.key for s in sg.SAVE_SHAPES])
+    "key", [s.key for s in sg.CONTAINERS])
 
 
 def test_a_container_whose_widths_do_not_add_up_is_refused_at_import():
@@ -640,7 +640,7 @@ def test_every_container_reaches_its_own_end_from_the_front():
     `party_table` and the count byte off the end of the character table, and
     the shipped containers stop naming six files.
     """
-    for shape in sg.SAVE_SHAPES:
+    for shape in sg.CONTAINERS:
         assert (shape.party_table + sg.PARTY_ENTRIES * sg.PARTY_ENTRY
                 + sg.UI_SCRATCH) == shape.size, shape.key
         assert shape.square + shape.unnamed + shape.square_bytes == \
@@ -652,7 +652,7 @@ def test_every_container_reaches_its_own_end_from_the_front():
 def test_no_two_containers_collide_on_the_size_that_selects_them():
     """`container_for` picks a title by the file's size, so two titles of the
     same size would make one of them unreachable."""
-    assert len(sg.SAVE_SHAPES_BY_SIZE) == len(sg.SAVE_SHAPES)
+    assert len(sg.CONTAINERS_BY_SIZE) == len(sg.CONTAINERS)
 
 
 def test_the_pool_of_radiance_container_is_the_offsets_the_module_was_built_on():
@@ -867,7 +867,7 @@ def test_the_character_table_is_eight_slots_in_every_title():
                                               + sg.UI_SCRATCH)
     silver = sg.container_for("secret-of-the-silver-blades")
     assert silver.party_table - 1 == 5140
-    for shape in sg.SAVE_SHAPES:
+    for shape in sg.CONTAINERS:
         assert shape.size - shape.party_table == sg.NAME_SLOTS * sg.PARTY_ENTRY
 
 
@@ -1158,3 +1158,10 @@ def test_the_hall_saves_carry_the_hall_script_and_the_street_save_does_not():
         buffer = _savgam(name, slot)[start:end]
         assert buffer[:len(body)] == body, name
         assert set(buffer[len(body):]) <= {0}, name
+
+
+@pytest.mark.parametrize("name", [
+    "SAVE_SHAPES", "SAVE_SHAPES_BY_KEY", "SAVE_SHAPES_BY_SIZE", "area_id"])
+def test_the_retired_names_are_gone(name):
+    """`CONTAINERS*` and `geo_block` are the only names; no alias survives."""
+    assert not hasattr(sg, name)

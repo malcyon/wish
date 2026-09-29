@@ -16,7 +16,7 @@ it reads the player's own archives; nothing it prints is committed.
 The anchor is the party table: six length-prefixed `CHRDAT<letter><n>` names
 41 bytes apart, which every title writes and which `--runs` finds without
 being told where to look.  Everything else in `goldbox.dos_savegame`'s
-`SAVE_SHAPES` is measured backwards from it.
+`CONTAINERS` is measured backwards from it.
 """
 
 import argparse
@@ -44,7 +44,7 @@ def containers(roots=None) -> list[pathlib.Path]:
     are byte-identical, so a survey that counted both would double every
     sample size it reported.  Deduplicate on the bytes, not on the path.
     """
-    suffixes = {s.suffix.lower() for s in sg.SAVE_SHAPES}
+    suffixes = {s.suffix.lower() for s in sg.CONTAINERS}
     seen: dict[bytes, pathlib.Path] = {}
     for root in roots or archive_roots():
         if not root.is_dir():
@@ -52,7 +52,7 @@ def containers(roots=None) -> list[pathlib.Path]:
         for path in sorted(root.rglob("SAVGAM*")):
             if path.suffix.lower() not in suffixes or not path.is_file():
                 continue
-            if path.stat().st_size not in sg.SAVE_SHAPES_BY_SIZE:
+            if path.stat().st_size not in sg.CONTAINERS_BY_SIZE:
                 continue
             seen.setdefault(path.read_bytes(), path)
     return list(seen.values())

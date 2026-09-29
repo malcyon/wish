@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import pytest
 
-from goldbox import dos_codec, dos_port, neutral
+from goldbox import classcode, dos_codec, dos_port, neutral
 
 
 def _code_in(rec: bytes, key: str = "curse-of-the-azure-bonds") -> int:
@@ -132,5 +132,12 @@ def test_the_class_table_is_the_games_own(bits, code):
     """`CLASS_CODE_TABLE` is Curse's C64 `GEN $1951` byte for byte, and the
     codes it is indexed by are the standard Gold Box order every title's
     front end lists its classes in."""
-    assert dos_codec.CLASS_CODE_FOR_BITS[bits] == code
-    assert dos_codec.CLASS_CODE_TABLE[code] == bits
+    assert classcode.CLASS_CODE_FOR_BITS[bits] == code
+    assert classcode.CLASS_CODE_TABLE[code] == bits
+
+
+@pytest.mark.parametrize("name", [
+    "INFRAVISION", "CLASS_CODE_TABLE", "CLASS_CODE_FOR_BITS"])
+def test_dos_codec_keeps_no_alias_for_names_that_moved(name):
+    """The tables live in `goldbox/classcode.py` and `goldbox/c64_codec.py`."""
+    assert not hasattr(dos_codec, name)

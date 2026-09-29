@@ -250,9 +250,8 @@ FIELD_COMMENTS = {
 # Codes are the game's own, from the table the 1989 BASIC editor displays,
 # which agrees with all four multi-class codes derived from the bitmask.
 #
-# Moved to `goldbox/classcode.py` (#310), which both this module and
-# `goldbox/c64_codec.py` can reach, and re-exported here so nothing that
-# already imported this name has to change.
+# The table lives in `goldbox/classcode.py`, which both this module and
+# `goldbox/c64_codec.py` can reach; this name is the default table below.
 CLASS_CODES = classcode.POOL_OF_RADIANCE_CLASS_CODES
 
 

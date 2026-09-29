@@ -9,10 +9,8 @@ what the code *should* be from a record's own classes.
 `goldbox/c64_codec.py` cannot import `goldbox/dos_codec.py` and `goldbox/dos_codec.py`
 imports `goldbox/c64_codec.py` -- neither may import the other, `goldbox/dos_codec.py`
 says so beside `WRITES` -- so this table lives in the middle, where both
-codecs can reach it.  `goldbox.dos_codec.CLASS_CODE_TABLE` and
-`goldbox.dos_codec.CLASS_CODE_FOR_BITS` re-export the two tables below, and
-`goldbox.yaml_io.CLASS_CODES` re-exports :data:`POOL_OF_RADIANCE_CLASS_CODES`,
-so nothing that already imports them by name has to change.
+codecs can reach it.  `goldbox.yaml_io.CLASS_CODES` is
+:data:`POOL_OF_RADIANCE_CLASS_CODES` under the name `yaml_io` reads it by.
 """
 
 from __future__ import annotations
@@ -56,8 +54,8 @@ CLASS_CODE_FOR_BITS: dict[int, int] = {
     if bits}
 
 #: Pool of Radiance's own table, from the game's 1989 BASIC editor, which
-#: agrees with all four multi-class codes derived from the bitmask.  Moved
-#: here from `goldbox/yaml_io.py`'s `CLASS_CODES`, which re-exports it.
+#: agrees with all four multi-class codes derived from the bitmask.
+#: `goldbox/yaml_io.py`'s `CLASS_CODES` is this table.
 POOL_OF_RADIANCE_CLASS_CODES: dict[int, int] = {
     2: 0,            # cleric
     8: 2,            # fighter

@@ -144,7 +144,7 @@ def test_source_detect_identifies_each_dos_title(tmp_path, shape):
     the case `#52`'s plan calls out by name."""
     folder = tmp_path / shape.key
     folder.mkdir()
-    suffix = dos_savegame.SAVE_SHAPES_BY_KEY[shape.key].suffix
+    suffix = dos_savegame.CONTAINERS_BY_KEY[shape.key].suffix
     (folder / f"SAVGAMA{suffix}").write_bytes(b"\x00")
     (folder / "CHRDATA1.SAV").write_bytes(b"\x00" * shape.record_size)
 
