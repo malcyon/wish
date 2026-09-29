@@ -499,6 +499,9 @@ def walk_route(sess, log: Log, path, facing: int, leg: str):
 #: exit with no fight, and a fight's menu at 64 s; a limit, not a measurement.
 SLUMS_ARRIVAL_WAIT = 180.0
 
+#: Seconds between `await_slums`' reads of the combat icon.
+COMBAT_POLL = 2.0
+
 
 def _world_bar(row: str) -> bool:
     """The world's command bar, not camp's `ENCAMP:` header bar."""
@@ -514,8 +517,8 @@ def await_slums(sess, log: Log, out: pathlib.Path, area_before,
     last view and status line (`0,4`) with row 24 blank, while the area byte
     already reads the Slums, so neither the byte nor a world bar alone says
     the Slums are up.  The load counts as started once row 24 has gone blank
-    or a disk prompt has been seen, or when the area has changed from
-    `area_before` and the status line has left the exit; only then is a bar
+    or a disk prompt has been seen, or when, on two polls running, the area has changed from
+    `area_before` and the status line parses and has left the exit; only then is a bar
     taken as the Slums'.  With no fight the load ends on the move sub-bar
     (`I,J,K,M, RETURN OR BUTTON`, `"move"`), because the edge was a step
     taken from it, and the world bar never shows; `walk_one` steps from the
@@ -526,13 +529,19 @@ def await_slums(sess, log: Log, out: pathlib.Path, area_before,
     does.  Each change of row 24 is logged with the area; at the limit a
     screenshot is taken and `RuntimeError` names row 24 and the area.
     """
-    started = taken = False
+    started = taken = pressed = False
     seen = None
     row, area = "", None
+    slums_polls = 0
+    next_combat = 0.0
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if sess.in_combat():
-            return "fight"
+        # The combat icon is a memory read; twice a second is more than a
+        # fight needs, and the screen poll below stays at 0.5 s.
+        if time.monotonic() >= next_combat:
+            next_combat = time.monotonic() + COMBAT_POLL
+            if sess.in_combat():
+                return "fight"
         s = sess.screen()
         row = "" if s is None else s.row(24).strip()
         area = resident_area(sess, log)
@@ -542,9 +551,19 @@ def await_slums(sess, log: Log, out: pathlib.Path, area_before,
         if s is not None:
             if not row or sess.wanted_disk(s) is not None:
                 started = True
-            elif (area == SLUMS_AREA and area_before != SLUMS_AREA
-                  and _status_line(sess)[1] != NEW_PHLAN_EXIT):
-                started = True
+            else:
+                # The stale New Phlan view keeps its status line at the exit
+                # while the area byte already reads the Slums, so the route
+                # needs two consecutive polls with a status line that parses
+                # (a facing) and has left the exit.
+                face, square = _status_line(sess)
+                if (area == SLUMS_AREA and area_before != SLUMS_AREA
+                        and face is not None and square != NEW_PHLAN_EXIT):
+                    slums_polls += 1
+                    if slums_polls >= 2:
+                        started = True
+                else:
+                    slums_polls = 0
             state = sess.combat_state(s)
             if state.kind == S.BAR_DISK:
                 sess.handle_prompt(s)
@@ -561,7 +580,7 @@ def await_slums(sess, log: Log, out: pathlib.Path, area_before,
                 log.say(f"  a fight on arrival: {row!r}; taking "
                         f"{S.ENCOUNTER_FIGHT}")
                 log.emit("slums_arrival_fight", row24=row)
-                sess.select_bar(S.ENCOUNTER_FIGHT, timeout=8)
+                pressed = bool(sess.select_bar(S.ENCOUNTER_FIGHT, timeout=8))
                 taken = True
             else:
                 sess.handle_prompt(s)
@@ -573,7 +592,8 @@ def await_slums(sess, log: Log, out: pathlib.Path, area_before,
         f"the Slums never came up after the step off the edge: row 24 reads "
         f"{row!r}, area {area}; the load was "
         f"{'seen' if started else 'never seen'} starting"
-        + ("; COMBAT was taken and no fight came up" if taken else ""))
+        + ("; COMBAT was pressed and no fight came up" if pressed else
+           "; COMBAT was attempted and did not land" if taken else ""))
 
 
 def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,

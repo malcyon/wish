@@ -176,17 +176,6 @@ class WalkSession(PatrolSession):
     def _arrival_row(self):
         return self.arrival[0] if self.arriving else WORLD
 
-    def wait_for_world(self, timeout=240.0, interval=0.35):
-        # The real loop's decisions, over this fake's screens: `ENCAMP`
-        # anywhere ends it, and a `PRESS` bar is answered.
-        for _ in range(50):
-            s = self.screen()
-            if s.contains("ENCAMP"):
-                return True
-            if "PRESS" in s.bar:
-                self.press_kernal(0x0D)
-        return False
-
     def screen(self):
         if self.camp:
             return Screen("ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT")
@@ -197,6 +186,8 @@ class WalkSession(PatrolSession):
             self.arrival.pop(0)
         if row == "COMBAT WAIT FLEE ADVANCE" and self.fighting:
             row = ""
+        if row == "STALE_SUBBAR":
+            return Screen(SUBBAR)
         return Screen(WORLD if row == "STALE" else row)
 
     def press_kernal(self, code):
@@ -241,7 +232,7 @@ class WalkSession(PatrolSession):
     def screen_text(self):
         if self.camp:
             return "HERE / "
-        if self.arriving and self.arrival[0] == "STALE":
+        if self.arriving and self.arrival[0] in ("STALE", "STALE_SUBBAR"):
             return "HERE / W 0:47 0,4"
         line = "8:07"
         if self.facing_known:
@@ -721,6 +712,96 @@ def test_the_stale_bar_is_not_accepted_on_the_area_byte_alone(monkeypatch):
         T.walk_to_fight(sess, RecordingLog(), pathlib.Path("."), (12, 4),
                         _geo(), _geo())
     assert sess.blank_keys == [] and dumps == ["slums-arrival-failed"]
+
+
+def test_the_stale_move_sub_bar_is_not_accepted_on_the_area_byte_alone(
+        monkeypatch):
+    dumps = []
+    monkeypatch.setattr(T, "dump", lambda sess, out, log, tag: dumps.append(tag))
+    monkeypatch.setattr(T, "resident_area", lambda sess, log=None: sess.area)
+    first, _ = T.plan_fight_route(_geo(), _geo(), (3, 4), (12, 4))
+    sess = WalkSession(monkeypatch, None, 20, (), (3, 4, 3),
+                       len(geowalk.keys_for(first, 3)),
+                       arrival=["STALE_SUBBAR"], area_before=0)
+    Clock(monkeypatch)
+    with pytest.raises(RuntimeError, match="never seen"):
+        T.walk_to_fight(sess, RecordingLog(), pathlib.Path("."), (12, 4),
+                        _geo(), _geo())
+    assert sess.blank_keys == [] and dumps == ["slums-arrival-failed"]
+
+
+def test_an_unparsed_status_line_does_not_start_the_load_on_the_area_byte(
+        monkeypatch):
+    # The area reads the Slums and a stale New Phlan sub-bar is on row 24,
+    # but the status line does not parse: nothing says the Slums are up.
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    monkeypatch.setattr(T, "resident_area", lambda sess, log=None: 20)
+    sess = WalkSession(monkeypatch, None, 20, (), (3, 4, 3), None,
+                       arrival=[SUBBAR], facing_known=False)
+    sess.arriving = True
+    Clock(monkeypatch)
+    with pytest.raises(RuntimeError, match="never seen"):
+        T.await_slums(sess, RecordingLog(), pathlib.Path("."), 0, timeout=20)
+
+
+def test_one_parsed_poll_is_not_enough_to_start_the_load(monkeypatch):
+    # The status line parses on the first poll and not on the second, then
+    # parses again: only two parsed polls running count.
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    monkeypatch.setattr(T, "resident_area", lambda sess, log=None: 20)
+    reads = iter([("N", (5, 5)), (None, None), ("N", (5, 5)),
+                  ("N", (5, 5))])
+    monkeypatch.setattr(T, "_status_line", lambda sess: next(reads))
+    sess = WalkSession(monkeypatch, None, 20, (), (3, 4, 3), None,
+                       arrival=[SUBBAR])
+    sess.arriving = True
+    Clock(monkeypatch)
+    polls = []
+    real = sess.screen
+    sess.screen = lambda: polls.append(1) or real()
+    assert T.await_slums(sess, RecordingLog(), pathlib.Path("."), 0) == "move"
+    assert len(polls) == 4
+
+
+class CombatIgnored(WalkSession):
+    """`select_bar` answers `landed` but the fight never comes up."""
+
+    landed = True
+
+    def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
+        self.asked.append(label)
+        return self.landed
+
+
+@pytest.mark.parametrize("landed, words", [
+    (True, "COMBAT was pressed"),
+    (False, "COMBAT was attempted and did not land")])
+def test_combat_is_pressed_at_most_once_however_long_the_bar_stays(
+        monkeypatch, landed, words):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    monkeypatch.setattr(T, "resident_area", lambda sess, log=None: 20)
+    sess = CombatIgnored(monkeypatch, None, 20, (), (3, 4, 3), None,
+                         arrival=["", "COMBAT WAIT FLEE ADVANCE"])
+    sess.landed = landed
+    sess.arriving = True
+    Clock(monkeypatch)
+    with pytest.raises(RuntimeError, match=words):
+        T.await_slums(sess, RecordingLog(), pathlib.Path("."), 0, timeout=20)
+    assert sess.asked == ["COMBAT"]
+
+
+def test_the_combat_icon_is_read_every_two_seconds_not_every_poll(monkeypatch):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    monkeypatch.setattr(T, "resident_area", lambda sess, log=None: 20)
+    sess = WalkSession(monkeypatch, None, 20, (), (3, 4, 3), None,
+                       arrival=[""])
+    sess.arriving = True
+    reads = []
+    sess.in_combat = lambda: reads.append(1) or False
+    clock = Clock(monkeypatch)
+    with pytest.raises(RuntimeError):
+        T.await_slums(sess, RecordingLog(), pathlib.Path("."), 0, timeout=20)
+    assert clock.now >= 20 and len(reads) == 10
 
 
 def test_an_area_load_that_never_ends_is_refused_with_a_screenshot(
