@@ -2470,8 +2470,13 @@ class Session:
                 if not answer_prompts and self._prompt_up(self.screen()):
                     return False
                 up = None
-                for look in range(self.ENCOUNTER_MENU_LOOKS if encounters
-                                  else self.MOVE_SUBBAR_LOOKS):
+                # The long wait is for a caller that answers an encounter
+                # menu (`walk_encounter`); one that only opted in to detect
+                # encounters has nothing to answer with.
+                for look in range(
+                        self.ENCOUNTER_MENU_LOOKS
+                        if encounters and self.walk_encounter
+                        else self.MOVE_SUBBAR_LOOKS):
                     if look:
                         if self._walk_expired():
                             break
@@ -2534,7 +2539,8 @@ class Session:
             if moved:
                 self._leave_move(answer_prompts)
                 return True
-        if encounters and (rows := self._encounter_menu(self.screen())):
+        if (encounters and not self._walk_expired()
+                and (rows := self._encounter_menu(self.screen()))):
             return self._stop_walk(move, rows)
         self._leave_move(answer_prompts)
         if not sent and self._walk_expired():
@@ -3729,7 +3735,9 @@ def _report_fight(sess, started: float, turns: int) -> None:
                 if c.is_party and c.hp is not None)
     except Exception as e:  # a log line must not end a fight
         hp = f", party hp unread ({e})"
-    sess.log(f"  fight: {int(time.time() - started)} s, {turns} turns{hp}")
+    log = getattr(sess, "log", None)
+    if log is not None:
+        log(f"  fight: {int(time.time() - started)} s, {turns} turns{hp}")
 
 
 # -- claiming a slot, and putting the player's disks in it ------------------

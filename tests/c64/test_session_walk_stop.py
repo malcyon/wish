@@ -478,3 +478,22 @@ def test_without_the_opt_in_the_sub_bar_wait_is_the_usual_length(monkeypatch):
     sess = LateMenu(monkeypatch, draws_at=10 ** 6)
     assert sess.walk_one("I", tries=1) is False
     assert sess.looks == S.Session.MOVE_SUBBAR_LOOKS
+
+
+def test_a_menu_after_the_callers_time_ran_out_is_not_answered(monkeypatch):
+    sess = LateMenu(monkeypatch, draws_at=2)
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    expired = iter([False])
+    sess.walk_expired = lambda: next(expired, True)
+    assert sess.walk_one("I", tries=1, encounters=True) is False
+    assert sess.asked == ["MOVE"] and sess.keys == []
+    assert sess.walk_stop_screen is None
+    assert "time ran out" in sess.walk_refused
+
+
+def test_a_fight_on_an_object_without_a_log_still_reports_nothing_and_runs(
+        monkeypatch):
+    sess = Fighting(monkeypatch)
+    sess.log = None
+    assert sess.fight(budget=100.0).outcome == S.BUDGET
+    assert sess.reads == 1
