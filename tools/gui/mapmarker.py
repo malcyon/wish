@@ -49,6 +49,8 @@ from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.runlog import Log  # noqa: E402
 from tools.c64.savecheck import answer_bars  # noqa: E402
+from tools.gui.livecheck import SessionTarget  # noqa: E402
+from tools.pool_of_radiance.fleedrive import Flight  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: Where the player keeps the C64 disks.  Read, never written -- the sides are
@@ -70,61 +72,6 @@ PROBES = {
     "live_C04B": (0xC04B, 3),
     "area_6E1B": (0x6E1B, 1),
 }
-
-
-class SessionTarget:
-    """A `Target` over a `Session`'s monitor, opened per burst.
-
-    `ViceTarget` holds one connection for a whole session, which is right for
-    the shipped window and wrong here: `Session` needs the monitor too, for
-    the screen reads that drive the menus, and VICE serves exactly one
-    binary-monitor connection.  Opening per burst is what lets one process do
-    both.
-
-    `fix` is the method `read_fix` prefers, and it is deliberately the same
-    call `ViceTarget.fix` makes -- `party_fix` over a monitor `read`, inside
-    one stop/resume.  If that is wrong out here, it is wrong in the shipped
-    window in exactly the same way.
-    """
-
-    def __init__(self, sess):
-        self.sess = sess
-
-    def read(self, addr: int, length: int) -> bytes:
-        with self.sess.mon(5) as m:
-            return m.read(addr, length)
-
-    def write(self, addr: int, data: bytes) -> None:
-        with self.sess.mon(5) as m:
-            m.write(addr, data)
-
-    def read_blocks(self, blocks):
-        with self.sess.mon(5) as m:
-            return [m.read(addr, length) for addr, length in blocks]
-
-    def fix(self, game=None):
-        from automap.target import party_fix
-        with self.sess.mon(5) as m:
-            return party_fix(m.read, game)
-
-    def close(self) -> None:
-        pass
-
-    # -- what Fast Travel asks for, and only that -------------------------
-    # `automap.actions` reaches the CPU either through a target's own `pc` and
-    # `set_pc` or through a `ViceTarget`'s held monitor.  This target has no
-    # held monitor, so it offers the pair -- the same two monitor commands,
-    # made on a connection that is opened and closed around them.
-
-    def pc(self):
-        from automap.actions import pc_register
-        with self.sess.mon(5) as m:
-            return m.registers().get(pc_register(m))
-
-    def set_pc(self, address: int) -> None:
-        from automap.actions import pc_register
-        with self.sess.mon(5) as m:
-            m.set_registers({pc_register(m): address})
 
 
 def probes(sess, names=None) -> dict:
@@ -518,14 +465,26 @@ def fight_encounter(args, sess, log: Log, bar: str, move: str,
     log.say(f"Encounter at step {step} (after {move}): |{bar}|")
     log.emit("encounter", step=step, move=move, bar=bar,
              **press_state(sess))
-    if not sess.select_bar(S.ENCOUNTER_FIGHT, timeout=8):
-        log.say("  COMBAT could not be selected")
-        log.emit("encounter_outcome", step=step, outcome="not-selected")
-        return "COMBAT could not be selected"
-    deadline = time.time() + 20.0
-    while not sess.in_combat() and time.time() < deadline:
-        time.sleep(1.0)
-    result = sess.fight(budget=args.fight_budget, tactic=S.Session.melee_turn)
+    if args.on_encounter == "flee" and sess.select_bar("FLEE", timeout=8):
+        log.say("  FLEE selected")
+        log.emit("encounter_choice", step=step, choice="flee")
+        tactic = Flight(log)
+        if not _fight_began(sess):
+            # The bar's own FLEE got the party away without a fight.
+            log.emit("encounter_outcome", step=step, outcome=S.RAN, turns=0)
+            return _wait_for_grid(args, sess, log, step)
+    else:
+        choice = "fight" if args.on_encounter == "fight" else "flee-unavailable"
+        log.emit("encounter_choice", step=step, choice=choice)
+        if not sess.select_bar(S.ENCOUNTER_FIGHT, timeout=8):
+            log.say("  COMBAT could not be selected")
+            log.emit("encounter_outcome", step=step, outcome="not-selected")
+            return "COMBAT could not be selected"
+        # Flight is the tactic that steps off the combat map, so a run asked
+        # to flee that has to fight still tries to.
+        tactic = S.Session.melee_turn if args.on_encounter == "fight" else Flight(log)
+        _fight_began(sess)
+    result = sess.fight(budget=args.fight_budget, tactic=tactic)
     log.say(f"  fight: {result.outcome} in {result.turns} turns, "
             f"{result.seconds:.0f}s")
     log.emit("encounter_outcome", step=step, outcome=result.outcome,
@@ -533,6 +492,21 @@ def fight_encounter(args, sess, log: Log, bar: str, move: str,
              seconds=round(result.seconds, 1), bars=result.bars[-12:])
     if result.outcome in (S.NOT_FIGHTING, S.LOST, S.BUDGET):
         return f"the fight ended {result.outcome}"
+    return _wait_for_grid(args, sess, log, step)
+
+
+def _fight_began(sess) -> bool:
+    """Wait up to 20 s for the combat grid; False when the game never drew it."""
+    deadline = time.time() + 20.0
+    while not sess.in_combat():
+        if time.time() >= deadline:
+            return False
+        time.sleep(1.0)
+    return True
+
+
+def _wait_for_grid(args, sess, log: Log, step: int) -> str | None:
+    """None once the travel prompt is back, else why the walk cannot go on."""
     grid = clear_bars(sess, log, seconds=args.encounter_wait, want_outdoors=True)
     log.emit("encounter_grid", step=step, outcome=grid)
     return None if grid == "world" else f"no travel prompt after the fight ({grid})"
@@ -616,7 +590,7 @@ def run(args, log: Log) -> int:
         log.say(f"Status line: {'none' if where is None else where.where()}")
         log.emit("arrived", status=None if where is None else where.where())
 
-        target = SessionTarget(sess)
+        target = SessionTarget(sess, timeout=5.0)
         app, root, binding, maps = build_window(target, args.disks, out)
         log.say(f"the map window has {len(maps)} maps loaded")
         look(app, binding, f"{args.tag}-step0", out, log, sess)
@@ -719,10 +693,12 @@ def main(argv=None) -> int:
                         "changes while the square does not")
     p.add_argument("--turns", type=int, default=1,
                    help="How many times --turn is pressed")
-    p.add_argument("--on-encounter", choices=("fight", "stop"), default="fight",
+    p.add_argument("--on-encounter", choices=("fight", "stop", "flee"), default="fight",
                    help="What to do when a press lands on an outdoor "
                         "encounter: fight it out with melee and resume the "
-                        "walk, or log it and stop the walk; a fight can "
+                        "walk, log it and stop the walk, or take FLEE "
+                        "(fighting with the flee tactic when the bar does "
+                        "not offer it or the party is caught); a fight can "
                         "take --fight-budget seconds and a run fights up to "
                         f"{MAX_ENCOUNTERS} encounters, so the worst case is "
                         "that many budgets plus the waits after each")

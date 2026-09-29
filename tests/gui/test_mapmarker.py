@@ -15,9 +15,20 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from support.automapbanks import CHIPS_OUT, a_machine
 
 from tools.c64 import session as S
 from tools.gui import mapmarker as M
+
+
+@pytest.fixture(autouse=True)
+def _forget_banks():
+    """Bank ids are cached per monitor; each test gets its own machine."""
+    from automap import vice
+    vice._BANKS.clear()
+    yield
+    vice._BANKS.clear()
+
 
 ENCOUNTER = "COMBAT WAIT FLEE PARLAY"
 GRID = "1-8, RETURN OR BUTTON"
@@ -338,7 +349,7 @@ def test_a_stopped_walk_skips_travel_after_home_and_linger(monkeypatch, tmp_path
     monkeypatch.setattr(M.S, "stage_writable", lambda *a, **k: None)
     monkeypatch.setattr(M.S, "Session", lambda *a, **k: sess)
     monkeypatch.setattr(M, "answer_bars", lambda *a, **k: "world")
-    monkeypatch.setattr(M, "SessionTarget", lambda s: MagicMock())
+    monkeypatch.setattr(M, "SessionTarget", lambda s, **k: MagicMock())
     monkeypatch.setattr(M, "build_window",
                         lambda *a: (MagicMock(), MagicMock(), MagicMock(), []))
     monkeypatch.setattr(M, "look", lambda app, b, tag, *a: looks.append(tag))
@@ -364,7 +375,7 @@ def test_a_stop_during_the_after_walk_ends_the_run_before_home(monkeypatch, tmp_
     monkeypatch.setattr(M.S, "Session", lambda *a, **k: sess)
     monkeypatch.setattr(M, "answer_bars", lambda *a, **k: "world")
     monkeypatch.setattr(M, "clear_bars", lambda *a, **k: "world")
-    monkeypatch.setattr(M, "SessionTarget", lambda s: MagicMock())
+    monkeypatch.setattr(M, "SessionTarget", lambda s, **k: MagicMock())
     monkeypatch.setattr(M, "build_window",
                         lambda *a: (MagicMock(), MagicMock(), MagicMock(), []))
     monkeypatch.setattr(M, "look", lambda app, b, tag, *a: looks.append(tag))
@@ -381,3 +392,80 @@ def test_a_stop_during_the_after_walk_ends_the_run_before_home(monkeypatch, tmp_
     assert sess.presses == ["1"]
     assert log.of("walk_stopped")[0]["reason"] == "--on-encounter stop"
     assert looks[-1] == "t-step3"        # step0, the trip's look, the press, then the stop
+
+
+class FleeSess(Sess):
+    """An outdoor bar that offers FLEE; `flee_works` says whether the bar's own FLEE escapes."""
+
+    def __init__(self, offers_flee=True, flee_works=True, **kw):
+        super().__init__(**kw)
+        self.offers_flee, self.flee_works = offers_flee, flee_works
+        self.combat = False
+
+    def select_bar(self, label, timeout=8):
+        self.selected.append(label)
+        if label == "FLEE" and not self.offers_flee:
+            return False
+        self.combat = label != "FLEE" or not self.flee_works
+        self.row = GRID if not self.combat else "COMBAT"
+        return True
+
+    def in_combat(self):
+        return self.combat
+
+
+def test_flee_is_selected_when_the_bar_offers_it_and_the_walk_resumes(monkeypatch):
+    no_sleep(monkeypatch)
+    sess, log, seen = FleeSess(encounter_on={2}), Log(), []
+    a = args(on_encounter="flee")
+    M.walk_moves(a, sess, log, "7777", 0, seen.append)
+    assert sess.selected == ["FLEE"] and sess.fights == []
+    assert sess.presses == ["7", "7", "7", "7"] and not a.stopped
+    assert log.of("encounter_choice")[0]["choice"] == "flee"
+    assert log.of("encounter_outcome")[0]["outcome"] == S.RAN
+
+
+def test_a_flee_that_fails_fights_with_flight_in_budget_and_a_lost_one_stops(monkeypatch):
+    no_sleep(monkeypatch)
+    sess = FleeSess(flee_works=False, encounter_on={1}, fight_outcome=S.BUDGET)
+    a = args(on_encounter="flee")
+    M.walk_moves(a, sess, Log(), "777", 0, lambda n: None)
+    assert sess.presses == ["7"] and S.BUDGET in a.stopped
+    budget, tactic = sess.fights[0]
+    assert budget == 123.0 and isinstance(tactic, M.Flight)
+
+
+def test_flee_falls_back_to_a_flight_fight_when_the_bar_has_no_flee(monkeypatch):
+    no_sleep(monkeypatch)
+    sess, log = FleeSess(offers_flee=False, encounter_on={1}, fight_outcome=S.RAN), Log()
+    a = args(on_encounter="flee")
+    M.walk_moves(a, sess, log, "777", 0, lambda n: None)
+    assert sess.selected == ["FLEE", S.ENCOUNTER_FIGHT]
+    assert isinstance(sess.fights[0][1], M.Flight)
+    assert log.of("encounter_choice")[0]["choice"] == "flee-unavailable"
+    assert sess.presses == ["7", "7", "7"] and not a.stopped
+
+
+def test_the_default_encounter_answer_is_still_fight(monkeypatch, tmp_path):
+    monkeypatch.setattr("sys.argv", ["x", "--disk", "a.d64", "--disks", str(tmp_path)])
+    seen = {}
+    monkeypatch.setattr(M, "run", lambda a, log: seen.update(v=a.on_encounter) or 0)
+    M.main(["--disk", "a.d64", "--disks", str(tmp_path), "--out", str(tmp_path)])
+    assert seen["v"] == "fight"
+
+
+class BankSession:
+    def __init__(self, mon):
+        self._mon = mon
+
+    def mon(self, timeout=5.0):
+        return self._mon
+
+
+def test_read_blocks_reads_the_bank_a_block_names():
+    mon = a_machine(port1=CHIPS_OUT)
+    target = M.SessionTarget(BankSession(mon))
+    out = target.read_blocks([(0xD018, 1, "io"), (0xD018, 1, "ram"), (0x0400, 1)])
+    assert out[0] != out[1]
+    banks = [bank for addr, _n, bank in mon.asked if addr == 0xD018]
+    assert 3 in banks and 1 in banks
