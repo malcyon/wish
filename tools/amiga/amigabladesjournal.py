@@ -40,8 +40,11 @@ a bare RETURN, and Amiga Curse asks a code wheel that
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -83,6 +86,9 @@ MIN_BANDS = 3
 #: measured from the fitted origin.  40x25 is the whole 320x200 display and the
 #: extra cell each way keeps a glyph that overhangs its own row.
 COLUMNS, LINES, MARGIN = 40, 25, 1
+
+#: The file in a `keep` directory that says what each kept capture read as.
+TALLY = "tally.jsonl"
 
 
 def reader_pitch(target_pitch: float) -> float:
@@ -338,9 +344,83 @@ def tables(adf: pathlib.Path):
     return amiga_tables.tables(disk.read_file("Secret"))
 
 
+def _record_of(match, table) -> int | None:
+    """Where `match` sits in `table`, or None when it is not one of its entries."""
+    return next((i for i, entry in enumerate(table) if entry is match), None)
+
+
+def _keep(directory: pathlib.Path, shot: pathlib.Path, challenge: dict, match,
+          table) -> None:
+    """Copy the raw grab into `directory` and append its tally line."""
+    directory.mkdir(parents=True, exist_ok=True)
+    number = len(list(directory.glob("challenge-*.png"))) + 1
+    name = f"challenge-{number:02d}.png"
+    shutil.copyfile(shot, directory / name)
+    kind = getattr(match, "kind", None) or challenge.get("kind")
+    line = {"capture": name,
+            "sha256": hashlib.sha256((directory / name).read_bytes()).hexdigest(),
+            "kind": kind,
+            "record": None if match is None else _record_of(match, table)}
+    with (directory / TALLY).open("a", encoding="utf-8") as tally:
+        tally.write(json.dumps(line, sort_keys=True) + "\n")
+
+
+def replay(directory: pathlib.Path, adf: pathlib.Path) -> tuple[int, int, list[str]]:
+    """Re-read every capture `answer(keep=...)` kept; `(agreeing, total, disagreeing names)`.
+
+    A capture agrees when its file is present with its recorded digest and the
+    reader now names the same kind and record as the tally line did.  A missing
+    tally is no captures at all, not an error.
+    """
+    tally = directory / TALLY
+    if not tally.is_file():
+        return 0, 0, []
+    screen, amiga_tables = _blades_modules()
+    table = tables(adf)
+    rows = [json.loads(line) for line in tally.read_text(encoding="utf-8").splitlines()
+            if line.strip()]
+    bad: list[str] = []
+    for row in rows:
+        path = directory / row["capture"]
+        if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != row["sha256"]:
+            bad.append(row["capture"])
+            continue
+        if _reread(path, screen, amiga_tables, table) != (row["kind"], row["record"]):
+            bad.append(row["capture"])
+    return len(rows) - len(bad), len(rows), bad
+
+
+def _reread(shot: pathlib.Path, screen, amiga_tables, table):
+    """`(kind, record)` the reader gives `shot` now, or None when it reads no challenge."""
+    handle = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    handle.close()
+    scaled = pathlib.Path(handle.name)
+    try:
+        geometry = to_reader_scale(shot, scaled)
+        if geometry is None:
+            return None
+        screen.X0, screen.Y0, screen.PITCH = geometry
+        try:
+            challenge = screen.read_challenge(scaled)
+            match = amiga_tables.answer_for(challenge, table)
+        except ValueError:
+            return None
+        return (getattr(match, "kind", None) or challenge.get("kind"),
+                _record_of(match, table))
+    finally:
+        scaled.unlink(missing_ok=True)
+
+
 def answer(holder: str, settle: float, adf: pathlib.Path,
-           shot: pathlib.Path | None = None, capture=None, press=None) -> bool:
+           shot: pathlib.Path | None = None, capture=None, press=None,
+           keep: pathlib.Path | None = None) -> bool:
     """Read the prompt on screen and type its answer.  True when it did.
+
+    `keep` is a directory: when a challenge was read, the raw grab is copied to
+    `keep/challenge-NN.png` and one line naming it, its digest, its kind and the
+    matched record's index in `tables()` is appended to `keep/tally.jsonl`, so a
+    later change to the reader can be checked against it by `replay`.  Nothing
+    is kept for a screen with no challenge on it.
 
     `capture` takes a path and puts the emulator's screen in it; `press` takes
     one character and sends it.  Both default to WinUAE's -- `winvm shot` and
@@ -391,13 +471,18 @@ def answer(holder: str, settle: float, adf: pathlib.Path,
             print("no challenge on screen")
             return False
         try:
-            word = amiga_tables.answer_for(challenge, table).answer
+            match = amiga_tables.answer_for(challenge, table)
         except ValueError:
+            if keep is not None:
+                _keep(keep, shot, challenge, None, None)
             # Deliberately not the exception's own message: it quotes the
             # challenge, and neither side of the exchange belongs here.
             raise SystemExit(
                 "the challenge on screen is not in this disk's tables") \
                 from None
+        if keep is not None:
+            _keep(keep, shot, challenge, match, table)
+        word = match.answer
     finally:
         if scaled is not None and scaled.exists():
             scaled.unlink()
@@ -414,16 +499,31 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse
                                      .RawDescriptionHelpFormatter)
-    parser.add_argument("--holder", required=True,
-                        help="the winuae.ps1 lane claim this run holds")
+    parser.add_argument("--holder", default=None,
+                        help="the winuae.ps1 lane claim this run holds "
+                             "(required unless --replay)")
     parser.add_argument("--adf", default=None,
                         help="the Silver Blades side-A image; found through "
                              "gamedisks.yaml when not given")
     parser.add_argument("--settle", type=float, default=1.0,
                         help="seconds to wait after each key (default 1)")
+    parser.add_argument("--keep", type=pathlib.Path, default=None,
+                        help="a directory to keep each challenge capture and "
+                             "its tally line in")
+    parser.add_argument("--replay", type=pathlib.Path, default=None,
+                        help="re-read every capture kept in this directory "
+                             "and check it against its tally line")
     args = parser.parse_args(argv)
-    return 0 if answer(args.holder, args.settle,
-                       find_disk(args.adf)) else 1
+    if args.replay is None and args.holder is None:
+        parser.error("--holder is required unless --replay is given")
+    if args.replay is not None:
+        agreeing, total, bad = replay(args.replay, find_disk(args.adf))
+        print(f"{agreeing} of {total} agree")
+        for name in bad:
+            print(name)
+        return 0 if not bad else 1
+    return 0 if answer(args.holder, args.settle, find_disk(args.adf),
+                       keep=args.keep) else 1
 
 
 if __name__ == "__main__":

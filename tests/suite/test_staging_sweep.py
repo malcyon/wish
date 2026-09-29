@@ -118,12 +118,6 @@ REUSED_PARAMS = {"out", "outdir", "out_dir", "staging", "staging_dir",
 #: what is copied, where it came from, and why it cannot be a read-only
 #: specimen.  Read the module docstring before adding one.
 ARTEFACT_COPIES: dict[tuple[str, str], str] = {
-    # -- a screenshot the run's own emulator took, seconds earlier.  `shot()`
-    # writes the PNG through `import` into the instance's `shots/`, so it
-    # arrives with the default mode and nothing downstream reads it as a save.
-    ("amiga/amigacampsave.py", "preserved"):
-        "the save-attempt screenshot `settle_fn` just wrote to the same "
-        "run's own output directory, renamed to flag it as the challenge",
     ("convert/convertrun.py", 'out / "items.png"'): "the inventory screen this run shot",
     ("convert/convertrun.py", 'out / "loaded.png"'): "the load screen this run shot",
     ("convert/convertrun.py", 'out / "sheet.png"'): "the character sheet this run shot",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import pathlib
@@ -114,11 +115,29 @@ def _staged_rows(source: pathlib.Path, staged_from: pathlib.Path) -> list[list[i
             for row in effects.active_effects(payload)]
 
 
+def _load_savecount():
+    """The private repository's `savecount` module, loaded by path so nothing lands on `sys.path`."""
+    path = amigabladesjournal.wheel_repo() / "ssb" / "analysis" / "savecount.py"
+    if not path.is_file():
+        raise RouteError(f"{path} is missing; ${amigabladesjournal.ENV} names the "
+                         "private repository that holds it")
+    spec = importlib.util.spec_from_file_location("savecount", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | None = None,
-            issue: str = "672") -> pathlib.Path:
-    """Publish the C64 JOIN party as an immutable ADF and stage a private DF0."""
+            issue: str = "672", save_count: int | None = None) -> pathlib.Path:
+    """Publish the C64 JOIN party as an immutable ADF and stage a private DF0.
+
+    `save_count`, when given, is written into the staged slot only, through the
+    private `with_count`; the published disk and every other byte stay as they
+    were, and `slot_sha256` is the digest of the edited slot.
+    """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
+    savecount = _load_savecount() if save_count is not None else None
     source = source.expanduser().resolve()
     staged_from = staged_from.expanduser().resolve() if staged_from is not None else None
     source_sha = sha256(source)
@@ -174,6 +193,11 @@ def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | No
     inventory = _inventory(save)
     state = amiga_savegame.state_from_savegame(save)
     slot = disk.read_file("/SAVE/savgamA.sav")
+    if savecount is not None:
+        try:
+            slot = savecount.with_count(slot, save_count)
+        except savecount.SaveCountError as exc:
+            raise RouteError(f"save count {save_count!r} refused: {exc}") from exc
     stage = staging.stage_embedded_boot_disk(boot_source, slot, SLOT_LETTER, df0)
     df1 = run / "disk-b-working.adf"
     with disk_b_source.open("rb") as reader, df1.open("xb") as writer:
@@ -197,6 +221,8 @@ def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | No
                     "facing": state.facing},
         "dropped": list(plan.report.dropped), "losses": list(plan.report.losses),
     }
+    if save_count is not None:
+        manifest["save_count"] = save_count
     if staged_from is not None:
         manifest["staged_from"] = _entry(staged_from)
         manifest["active_rows"] = rows
@@ -242,6 +268,8 @@ ACCEPT_MIN_WAITS = {
     "camp": 10.0, "camp_save_picker": 10.0, "exit_game": 20.0,
 }
 JOURNAL_SCRIPT = pathlib.Path(__file__).with_name("amigabladesjournal.py")
+#: A permanent diagnostic switch, not an experimental flag: a directory the answerer keeps its captures in.
+KEEP_ENV = "WISH_JOURNAL_KEEP"
 
 
 def default_min_waits(route=ROUTE) -> dict[str, float]:
@@ -378,9 +406,12 @@ def run_journal_answer(journal_python: str, holder: str, adf: pathlib.Path,
     A subprocess, because numpy and Pillow live in `journal_python` and this
     driver imports neither. Nothing else it prints is kept.
     """
+    command = [journal_python, str(script), "--holder", holder, "--adf", str(adf)]
+    if os.environ.get(KEEP_ENV):
+        command += ["--keep", os.environ[KEEP_ENV]]
     try:
         proc = subprocess.run(
-            [journal_python, str(script), "--holder", holder, "--adf", str(adf)],
+            command,
             capture_output=True, text=True, errors="replace", timeout=timeout,
             env=dict(os.environ, SSH_ASKPASS_REQUIRE="never"))
     except subprocess.TimeoutExpired as exc:

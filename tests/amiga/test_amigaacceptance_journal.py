@@ -105,3 +105,22 @@ def test_the_silver_blades_route_imports_without_the_generic_runners():
     done = subprocess.run([sys.executable, "-c", program],
                           cwd=pathlib.Path(__file__).resolve().parents[2])
     assert done.returncode == 0
+
+
+def _argv_of(tmp_path, monkeypatch, keep):
+    script = tmp_path / "fake_answerer.py"
+    script.write_text(
+        "import sys, pathlib\n"
+        f"pathlib.Path({str(tmp_path / 'argv.txt')!r}).write_text(' '.join(sys.argv[1:]))\n"
+        "print('answered')\n")
+    monkeypatch.delenv(route_silver_blades.KEEP_ENV, raising=False)
+    if keep is not None:
+        monkeypatch.setenv(route_silver_blades.KEEP_ENV, keep)
+    route_silver_blades.run_journal_answer(sys.executable, "h", tmp_path / "a", 60, script=script)
+    return (tmp_path / "argv.txt").read_text()
+
+
+def test_the_keep_directory_is_passed_on_only_when_the_variable_is_set(tmp_path, monkeypatch):
+    assert "--keep" not in _argv_of(tmp_path, monkeypatch, None)
+    assert "--keep" not in _argv_of(tmp_path, monkeypatch, "")
+    assert _argv_of(tmp_path, monkeypatch, "/where/kept").endswith("--keep /where/kept")

@@ -18,6 +18,8 @@ screen`, and never either side of the exchange.
 from __future__ import annotations
 
 import builtins
+import hashlib
+import json
 import pathlib
 import sys
 import types
@@ -567,3 +569,152 @@ def test_the_old_whole_crop_rescale_lost_a_digit_the_fix_keeps(tmp_path):
     old_geometry = (x0 - left) * factor, (y0 - top) * factor, pitch * factor
     got_old = _read_cell(crop, 6, journal.LEFT_MARGIN, *old_geometry)
     assert min(templates, key=lambda k: _l1(got_old, templates[k])) == "0"
+
+
+def _lines_frame(path, lines, *, x0=58.0, y0=59.0, pitch=16, size=(1920, 1080)):
+    """A capture with a solid stripe per `(row, first, last)` in `lines`, in cell units.
+
+    `first` and `last` are cell positions, and may be halves: a stripe from
+    4.5 to 9 is inked from the middle of cell 4 up to the end of cell 8.
+    """
+    Image = pytest.importorskip("PIL.Image")
+    image = Image.new("RGB", size, (0, 0, 0))
+    pixels = image.load()
+    for row, first, last in lines:
+        top = int(y0 + row * pitch)
+        for y in range(top, top + int(pitch) - 2):
+            for x in range(int(x0 + first * pitch), int(x0 + last * pitch)):
+                pixels[x, y] = journal.GREEN
+    image.save(path)
+    return path
+
+
+def test_a_fourth_line_starting_mid_cell_does_not_move_the_grid(tmp_path):
+    # A four-line challenge has a quoted line on row 6 whose first glyph is inked
+    # only in the right half of its cell. Only the leftmost ink of the whole
+    # screen may name the margin, so that line must not decide the origin.
+    PIL_Image = pytest.importorskip("PIL.Image")
+    three = _lines_frame(tmp_path / "three.png", [(2, 4, 20), (4, 4, 20), (6, 4, 20)])
+    four = _lines_frame(tmp_path / "four.png",
+                        [(2, 4, 20), (4, 4, 20), (6, 4.5, 20), (8, 4, 20)])
+    fitted = [journal.fit_grid(journal.text_bands(PIL_Image.open(path)))
+              for path in (three, four)]
+    assert fitted[0] == (58, 59, 16)
+    assert fitted[1] == fitted[0]
+
+
+@pytest.mark.parametrize("x0", [58, 58.25, 58.5, 58.75])
+def test_a_line_inked_from_mid_cell_keeps_its_first_and_last_cells(tmp_path, x0):
+    # Inked from the middle of column 4 to the middle of column 4+L+1, so that
+    # its first and last cells are each half ink. Rescaling must keep both, for
+    # every length a heading line can have.
+    PIL_Image = pytest.importorskip("PIL.Image")
+    for length in range(1, 35):
+        path = _lines_frame(tmp_path / "in.png",
+                            [(2, 4, 20), (4, 4, 20), (6, 4.5, 4 + length + 1.5)],
+                            x0=x0)
+        scaled = tmp_path / "out.png"
+        x0_out, y0_out, pitch = journal.to_reader_scale(path, scaled, target_pitch=30.64)
+        image = PIL_Image.open(scaled).convert("RGB")
+        row_y = int(y0_out + 6 * pitch + pitch // 2)
+        inked = [x for x in range(image.size[0])
+                 if image.getpixel((x, row_y)) == journal.GREEN]
+        first = int((inked[0] - x0_out) // pitch)
+        last = int((inked[-1] - x0_out) // pitch)
+        assert (first, last) == (4, 4 + length + 1), (x0, length)
+
+
+def _fake_savecount(directory, *, refuse=False):
+    """A `savecount.py` in `directory/ssb/analysis` that marks a slot with its count."""
+    analysis = directory / "ssb" / "analysis"
+    analysis.mkdir(parents=True)
+    (analysis / "savecount.py").write_text(
+        "class SaveCountError(ValueError):\n    pass\n\n"
+        "def with_count(slot, n):\n"
+        f"    if {refuse!r}:\n        raise SaveCountError('refused')\n"
+        "    return slot + b'|count=' + str(n).encode()\n")
+
+
+def _keeping(monkeypatch, tmp_path, challenge, *, record=3):
+    """`_wire`, with a table whose entry `record` is the one every read matches."""
+    pressed = _wire(monkeypatch, tmp_path, challenge, "TESTWORD")
+    entries = [types.SimpleNamespace(kind="k", answer="X") for _ in range(record + 1)]
+    entries[record] = types.SimpleNamespace(kind="rulebook", answer="TESTWORD")
+    monkeypatch.setattr(journal, "tables", lambda adf: entries)
+    tables = types.SimpleNamespace(answer_for=lambda challenge, table: table[record])
+    screen = _Screen(challenge)
+    monkeypatch.setattr(journal, "_blades_modules", lambda: (screen, tables))
+    return pressed, screen, tables
+
+
+def _grab(path):
+    path.write_bytes(b"one capture")
+
+
+def test_keep_writes_one_capture_and_one_tally_line_and_prints_only_answered(
+        monkeypatch, tmp_path, capsys):
+    pressed, _, _ = _keeping(monkeypatch, tmp_path, {"kind": "x"})
+    keep = tmp_path / "kept"
+    assert journal.answer("h", 0.0, tmp_path / "d.adf", capture=_grab, keep=keep) is True
+    assert capsys.readouterr().out == "answered\n"
+    assert sorted(path.name for path in keep.iterdir()) == ["challenge-01.png", "tally.jsonl"]
+    assert (keep / "challenge-01.png").read_bytes() == b"one capture"
+    lines = (keep / "tally.jsonl").read_text().splitlines()
+    assert [json.loads(line) for line in lines] == [
+        {"capture": "challenge-01.png", "kind": "rulebook", "record": 3,
+         "sha256": hashlib.sha256(b"one capture").hexdigest()}]
+    assert pressed == list("TESTWORD") + ["RET"]
+
+
+def test_a_second_kept_capture_gets_the_next_number(monkeypatch, tmp_path):
+    _keeping(monkeypatch, tmp_path, {"kind": "x"})
+    keep = tmp_path / "kept"
+    for _ in range(2):
+        journal.answer("h", 0.0, tmp_path / "d.adf", capture=_grab, keep=keep)
+    assert (keep / "challenge-02.png").is_file()
+    assert len((keep / "tally.jsonl").read_text().splitlines()) == 2
+
+
+def test_nothing_is_kept_when_no_challenge_was_read(monkeypatch, tmp_path):
+    _wire(monkeypatch, tmp_path, None, None)
+    keep = tmp_path / "kept"
+    assert journal.answer("h", 0.0, tmp_path / "d.adf", capture=_grab, keep=keep) is False
+    assert not keep.exists()
+
+
+def _kept_two(monkeypatch, tmp_path):
+    _keeping(monkeypatch, tmp_path, {"kind": "x"})
+    keep = tmp_path / "kept"
+    for _ in range(2):
+        journal.answer("h", 0.0, tmp_path / "d.adf", capture=_grab, keep=keep)
+    return keep
+
+
+def test_replay_of_captures_that_still_read_the_same_all_agree(monkeypatch, tmp_path):
+    keep = _kept_two(monkeypatch, tmp_path)
+    assert journal.replay(keep, tmp_path / "d.adf") == (2, 2, [])
+
+
+def test_replay_names_a_capture_the_reader_now_reads_differently(monkeypatch, tmp_path):
+    keep = _kept_two(monkeypatch, tmp_path)
+    _keeping(monkeypatch, tmp_path, {"kind": "x"}, record=5)
+    assert journal.replay(keep, tmp_path / "d.adf") == (
+        0, 2, ["challenge-01.png", "challenge-02.png"])
+
+
+def test_replay_names_a_capture_that_is_missing(monkeypatch, tmp_path):
+    keep = _kept_two(monkeypatch, tmp_path)
+    (keep / "challenge-02.png").unlink()
+    assert journal.replay(keep, tmp_path / "d.adf") == (1, 2, ["challenge-02.png"])
+
+
+def test_the_command_line_replay_prints_the_count_and_fails_on_a_disagreement(
+        monkeypatch, tmp_path, capsys):
+    keep = _kept_two(monkeypatch, tmp_path)
+    monkeypatch.setattr(journal, "find_disk", lambda named=None: tmp_path / "d.adf")
+    capsys.readouterr()
+    assert journal.main(["--replay", str(keep)]) == 0
+    assert capsys.readouterr().out == "2 of 2 agree\n"
+    (keep / "challenge-01.png").unlink()
+    assert journal.main(["--replay", str(keep)]) == 1
+    assert capsys.readouterr().out == "1 of 2 agree\nchallenge-01.png\n"
