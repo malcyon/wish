@@ -926,7 +926,7 @@ narrower than it was written as: no record can be 5000 below *for this reason*.
 
 ## Not yet confirmed
 
-Three findings that a player *would* notice, and that are kept out of
+Four findings that a player *would* notice, and that are kept out of
 [`../goldbox-bugs.md`](../goldbox-bugs.md) only because they are not CONFIRMED.
 Each says what would promote it. Move it across when that is done, rather than
 lowering the bar over there.
@@ -972,6 +972,48 @@ observation is certain, but this disk has been handled by other tools and the
 count could in principle have been zeroed after the game wrote it.
 
 ---
+
+## U5. A fight the party's charmed ally wins alone is reported as lost
+
+**How a player gets there.** A magic-user casts CHARM PERSON on a party member.
+The rest of the party falls or flees, and the charmed character kills the last
+monster.
+
+**What the player sees.** `THE PARTY RUNS AWAY` if anyone fled, with the
+charmed character gone from the party; otherwise `THE PARTY HAS LOST`, and the
+machine locks as after any defeat.
+
+**What the game does.** `POST.COM` counts the party's side by `0x10C AND $7F`,
+which puts a `$C0` or `$C1` member in neither the standing nor the running
+tally, and `COMBAT` ends the fight on `0x10C AND 1`, which counts him as
+standing on his side. So the fight can end on his last blow while the outcome
+counts nobody standing. CONFIRMED from code (`POST.COM $088E`-`$0906`, `COMBAT
+$181F`); `docs/110-combat-log.md` has the addresses.
+
+**Version.** Pool of Radiance, Commodore 64. The mechanism is CONFIRMED;
+whether a player can reach it is PROBABLE, resting on the aim offering an ally
+(`docs/226-the-c64-running-effect-crosswalk.md`). What promotes it: casting
+Charm Person at a party member in any fight, then a driven fight whose last
+blow the charmed ally lands.
+
+---
+
+## U6. Running from the tavern brawl or the city watch can put the party at (11, 40)
+
+**How a player gets there.** In New Phlan, a party in a tavern fight or facing
+the city watch chooses to run.
+
+**What the game does.** `ECL00 $AEF4` rolls `RANDOM 4`, five values, into
+`$9802`, and indexes four-entry tables at `$B617` (x) and `$B61B` (y) with it.
+Index 4 reads `$B61B` as x and `$B61F`, the first monster type, as y, giving
+(11, 40) on a 16 x 16 map. The other four destinations are on the map.
+
+**What the player sees.** Unknown. Grade: PROBABLE that the destination is
+off the map; SPECULATIVE what the game then does. What promotes it: stop at
+the `$AEFA` store to `$9802`, write 4, then read `$C04B`/`$C04C` and take a
+screenshot.
+
+**Version.** Pool of Radiance, Commodore 64.
 
 ---
 
@@ -1113,13 +1155,15 @@ ever read what the game prints when the party loses a fight)` has the two
 runs; `docs/110-combat-log.md` has the addresses.
 
 **Open note, not a claim against the ruling.** The spin is reached three ways;
-one of them is `$6DE6` reading zero, and `$6DE6` is written only by `INIT
-$091A` and `POST.COM $14D2`, both to zero -- so it reads like a "losing is
-survivable here" flag nothing on this disk ever sets to make it so. `ECL00`,
-New Phlan's script, is the only one of the thirty area scripts carrying the
-bytes `E6 6D`. Whether a scripted fight sets it, whether every defeat spins or
-only an unscripted one, and whether the DOS build's own overlay does the same,
-are all still unmeasured.
+one of them is `$6DE6` reading zero, and `$6DE6` is written by `INIT $091A` and
+`POST.COM $14D2`, both to zero, and by `ECL00 $A76A`, which writes 1 -- so it is
+a "losing is survivable here" flag, set by the New Phlan tavern brawl and by
+nothing else. `ECL00`, New Phlan's script, is the only one of the thirty area
+scripts carrying the bytes `E6 6D`. A brawl the party loses goes to the city
+watch arm `ECL00 $A7DE`, not to the lock. This note said no fight sets the
+byte; the brawl's setup does (CONFIRMED from code). Whether every other defeat
+spins, and whether the DOS build's own overlay does the same, are still
+unmeasured.
 
 ---
 

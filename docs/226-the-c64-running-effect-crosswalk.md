@@ -754,8 +754,17 @@ Static reads; nothing was booted. `tools/c64/overlay.py` and
   The combat removal `SQRPACI01 $07E4` runs the handler's expiry path when
   magnitude bit 7 is set, and a combatant who goes out of the fight has every
   row not on a twenty-id exception list removed that way (`COMBAT $0DC7` →
-  `$29C4`; 11 is not on the list; PROBABLE that every way of going down or
-  fleeing reaches `$0DC7`). The monster's row, bit 7 clear, is removed
+  `$29C4`; 11 is not on the list). **Fleeing does not reach it (CONFIRMED
+  from code):** `COMBAT $1719` → `$1732` stores `$86` and ends `JMP $181F`.
+  `JSR $29C4` exists only at `COMBAT $0DC7`, which is reached from `COMBAT`
+  and `SPELLE01 $AC57`. Going down through `COMBAT`'s damage path removes the
+  row; the status writes at `$2113`, `$2A78`, `$24E7`, `$0C4B` and `$2161` do
+  not go through `$0DC7`, and whether any of them can happen to a charmed
+  party member is SPECULATIVE. A charmed member cannot become `$86`
+  (PROBABLE): the only `$86` writers are the player's FLEE YES, gaseous form
+  (id 103) and `COM.PREP`'s unplaced combatants. The earlier reading that every
+  way of going down or fleeing reaches `$0DC7` changed because the code shows
+  the flee path skips it. The monster's row, bit 7 clear, is removed
   without the expiry path, so its target keeps `$C1`. CONFIRMED from code: bit
   7 is the computer commanding him, bit 6 the charm being set up, bit 5 = 0
   his own side being the party's, and bit 0 = 1 his now fighting for the
@@ -798,6 +807,24 @@ Static reads; nothing was booted. `tools/c64/overlay.py` and
   the party or a monster is missing. Evidence:
   https://github.com/malcyon/wish/issues/667#issuecomment-5881008971.
 
+**Monster charmers, CONFIRMED from bytes.** Every copy of every `MON*` file on
+the eight sides (116 names) was read, with the offsets checked against BASILISK
+and MEDUSA, which hold id 83. No record carries id 84, so the id-84 path and the
+hazard below are unreachable in Pool play: no player can reach them. The only
+Pool monster that casts Charm Person is `MON59` (5TH LVL MU, `POOL2`,
+memorised twice). It fights at Stojanow Gate, `ECL09 $A29E`, where mercy is off.
+Whether its AI aims the spell at a party member is SPECULATIVE. Its row's
+magnitude is `$87` (PROBABLE: `SPELLE00 $A937` gives `$80 OR (($06 OR caster
+0x10C) AND $0F)`, and a hostile caster's `0x10C` was not read here). The
+brawl's monsters carry no trait id and no memorised spell.
+
+**The player's aim for Charm Person.** The aim path (`SPELLE00 $A700` →
+`$A798` → `COMBAT $0F61`) reads only the spell row's range and target kind
+(byte 3 = `$04`, one target, the same as Cure Light Wounds), so it offers an
+ally: PROBABLE, since the candidate-list builder behind `COMBAT $0F61` was not
+read. The target gets a saving throw: row byte 4 = `$11`, save index 4, the
+spell save (CONFIRMED from code, `ECL64 $9974`-`$99C8`).
+
 **The id-84 hazard.** A party member charmed by the monster ability id 84 and
 then knocked out keeps `0x10C` = `$C1`, and `POST.COM`
 takes him for a slain enemy after a win (both CONFIRMED from code, above). That is the C64 game's own behaviour and
@@ -813,14 +840,24 @@ status `$6C00` and the name byte `$6B00` are zeroed and written back
 `0x10C` or `0x0B8`, and never writes `0x10C`. A slot with no row and status
 `$86` or `$81` gets status 1 (`$0E36`), and anyone else is removed unless `$6DE6` is
 non-zero. CONFIRMED from code; it is Curse's `$0DF2`. It runs when the outcome
-`$6DC7` is `$81` (`$0930`), which is PROBABLE as the flee outcome: `$6DC7` is
-built at `$0903`-`$091A` from `$2B09`, `$2B05` and `$2B06`, whose writers were
-not traced, and the grade rests on the loop keeping `$86` and `$81` members
-and on Curse's `$7EC7` = `$81` being its fled outcome. The loss case is an
-inference from the game's rules, not a read. A charmed ally a player converts
-from DOS Pool is therefore removed from the party if the player flees his first
-C64 fight; what DOS Pool does to a party-side charmed ally in the same flight
-is UNKNOWN, because `0x5C2B`-`0x5C68` was read only for a monster's charm.
+`$6DC7` is `$81` (`$0930`), and `$81` as the flee outcome is CONFIRMED from
+code: `$6DC7` is built at `$0903`-`$091A` from `$2B09`, `$2B05` and `$2B06`,
+and their only writers are the `INC abs,X` in `POST.COM $088E`-`$0900`, indexed
+by X = `0x10C AND $7F`. A charmed member is `$C0` (X = `$40`) or `$C1`
+(X = `$41`), so he is in neither the standing tally nor the running one. The
+earlier grade rested on those writers not having been traced. The loss case is
+an inference from the game's rules, not a read. A charmed ally a player
+converts from DOS Pool is removed from the party if the player flees his first
+C64 fight, but the clause is usually not why. He is `$C0`, so the fight does
+not end when the rest flee, and the computer goes on fighting him for the
+party. If he falls through `$0DC7`, his row expires and he is dropped as an
+ordinary left-behind character (kept with mercy). The clause drops him only
+if the monsters are all beaten first while everyone else on the party's side
+is down or ran. The sentence changed because the fight-end count and the
+outcome count differ in what they take as the party's side
+(`docs/110-combat-log.md`). What DOS Pool does to a party-side charmed ally in
+the same flight is UNKNOWN, because `0x5C2B`-`0x5C68` was read only for a
+monster's charm.
 
 **Which saves can hold a charm on a party member.** A player can save only
 between fights, so this is a question about what survives the end of one.

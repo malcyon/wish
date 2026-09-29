@@ -189,7 +189,19 @@ pointer table (lo `$2A8D`, hi `$2AC5`, at overlay base `$0800` and not the
 |---|---|---|
 | `$80` | `THE PARTY HAS LOST` | nobody on the party's side is standing and nobody ran |
 | `$81` | `THE PARTY RUNS AWAY` | nobody standing, and at least one character's status is `RUNNING` |
-| `$00`, `$01` | `THE PARTY HAS WON !` | somebody is still standing |
+| `$00`, `$01` | `THE PARTY HAS WON !` | somebody is still standing; `$01` is a win in which a monster ran |
+
+**"The party's side" is every combatant whose side byte `0x10C AND $7F` is 0.**
+That takes in a script's allies, so the tavern brawl's 13 computer-run
+combatants count as the party standing, and it leaves out a party member who is
+charmed (`$C0` by his own party, `$C1` by a monster), whose index is `$40` or
+`$41`. The only writers of `$2B05`, `$2B06` and `$2B09`, the counts the result
+is built from, are the `INC abs,X` in `POST.COM $088E`-`$0900`, indexed by that
+value. **CONFIRMED from code.** `COMBAT` ends the fight on a different count:
+`$181F` tallies standing combatants by `0x10C AND 1` into `$A4FD` (party) and
+`$A4FE` (monsters), so a charmed ally can win a fight the outcome then reports
+as lost or fled ([`125-bug-notes.md`](125-bug-notes.md), U5). This corrects an
+earlier reading in which the two counts were taken to agree.
 
 **The winning line has an exclamation mark and the other two do not.**
 `THE PARTY HAS LOST` was read off two driven defeats
@@ -266,7 +278,7 @@ The two runs are one party and one save, so what is CONFIRMED is that *this*
 defeat locks the machine; that every defeat does rests on the branch, where
 both remaining exits also reach `$0957` — `$2B70 >= $6E3E` is the whole party
 `GONE` or `DEAD`, and `$6DE6` is written zero by `INIT $091A` and
-`POST.COM $14D2` and by nothing else on the side. The one escape left is
+`POST.COM $14D2` and set to 1 only by `ECL00 $A76A`, the tavern brawl. The one escape left is
 `$2B5D`, the party's count of statuses with bit 4 set, and no instruction on
 POOL1 sets that bit on a character's status.
 
@@ -332,7 +344,12 @@ file, so it runs on the fleeing arm and nowhere else:
   the effect cleared and is dropped;
 * anybody else is dropped: `$00` into the status byte, which is the
   empty-slot value `DROP CHARACTER` writes, and `$6B00` cleared too;
-* unless `$6DE6` is nonzero, which spares the lot.
+* unless `$6DE6` is nonzero, which spares everyone else. Mercy does not spare
+  the charmed character: `$0E0C  A9 00 9D 00 49 F0 10` is `LDA #$00 / STA
+  $4900,X / BEQ $0E23`, always taken, so it jumps past the mercy test at `$0E1E`
+  and drops him. **CONFIRMED from the bytes.** The earlier listing left out the
+  branch and so read as falling into the status test, which is why this bullet
+  changed.
 
 Measured on 2026-09-08, six slots of six, in both driven flights: one
 character got away and the party came back to the world as **one name on the
@@ -342,10 +359,13 @@ written, so they are lost from the party in memory and not from the disk: a
 player who reloads gets them back.
 
 **`$6DE6` is the same byte that decides whether a defeat reaches the `$0957`
-spin**, and it is written zero by `INIT $091A` and `POST.COM $14D2` and by
-nothing else on the side. `ECL00` is the only one of the thirty scripts
-carrying the bytes `E6 6D`. Whether a scripted fight sets it is still
-unmeasured, and it now has two consequences rather than one.
+spin**, and it is written by `INIT $091A` and `POST.COM $14D2` (both to zero)
+and by `ECL00 $A76A`, which writes 1. `ECL00` is the only one of the thirty
+scripts carrying the bytes `E6 6D`, and the New Phlan tavern brawl is the only
+fight that sets it. **CONFIRMED from code.** A brawl the party loses (`$80`)
+goes to the city watch arm `ECL00 $A7DE`, not to the lock. The byte has two
+consequences: it keeps the characters a flight leaves behind and it lets a
+defeat past the spin.
 
 **The fleeing arm does not lock the machine and does not delay.** `$0929`
 prints, calls `$0DF8`, and does `LDA #$01 / JMP $14AC`; the `JMP $0957` spin
@@ -356,6 +376,66 @@ world. There is no message delay on the way, where the losing arm calls
 for under half a second**: it took one reading of the 240 distinct screens in
 the run, at a 0.12 s poll, and a 1 s poll read the frame either side of it and
 saw neither.
+
+## What a tavern brawl does not pay
+
+**CONFIRMED from code; PROBABLE in play until a won brawl is driven with and
+without the flag.** `$6DE3` is set to 1 by `ECL00 $A764` (the brawl) and by
+`ECL0B $9CFF` (a fight in the Training Hall), and is zeroed by `INIT` and by
+`POST.COM $14CF`. `POST.COM` reads it twice:
+
+* at `$0A48` it empties the treasure pile (`$2B28` = 0), so the treasure menu
+  offers no items;
+* at `$15B1` it skips the magic-item tally, which pays plus x 400 experience
+  per item with a plus of 1 to 127.
+
+Monster experience and coin experience are paid as usual: `$6DE3` gates
+neither. The total is divided by `$2B09`, the count of standing combatants on
+the party's side, and that count includes a script's allies, while the award
+loop at `$0C35` pays slots 0-7 only. So each ally's share goes to nobody. A
+character's live experience is at `$4DE8 + $100 x slot`, three bytes
+little-endian.
+
+## What the flee line looked like on a Curse and a Silver Blades screen
+
+**Curse of the Azure Bonds: SEEN.** `POST.COM` prints the line once, when the
+fight ends, and not on each escape (an escape gets `COMBAT`'s own `GOT AWAY` on
+row 24). The result byte is `$7EC7` and the drop loop's spare flag is `$7EE6`;
+the rule is the same as Pool's. In the Tilverton tavern brawl, five of six
+characters escaped and one was down: `$7EC7` was written `$81` once, the party
+status bytes at that moment were `86 84 86 86 86 86`, and the screen read where
+the drop loop is entered (`$091C`) held `THE PARTY RUNS AWAY` on row 10. After
+the fight `$7EE6` read 0 and the status bytes read `01 00 01 01 01 01`: the one
+who did not escape was dropped. The two runs before it, polling the screen,
+never caught the line. In one of them the driver logged 2 of the 5 escapes
+from `GOT AWAY`, because three characters' messages went by unread, so the
+escape count comes from the status bytes and not from row 24. Why the polling
+missed the line is PROBABLE: the flee arm has no delay call, so the line may
+live for tens of milliseconds only, which is SPECULATIVE until measured.
+Evidence: run output on the agent VM, `~/.cache/wish/648-curseflee/run3/`
+(`ran-line.txt`, `run.jsonl`) and `run2/` for the two polled runs.
+
+**Secret of the Silver Blades: SEEN.** In the assassin fight at 15,12 the flee
+routine got five characters away over 20 turns; the fight's end screen, read by
+the driver's 0.12 s poll, holds `THE PARTY RUNS AWAY`, with `YOUR TEAMMATE IS
+DYING` among the bars, so a character was down when the rest went. No
+screenshot of that frame exists, because that driver polls and does not trap
+the branch. So a character can leave that combat map, which was not known.
+Evidence: `~/.cache/wish/648-ssbflee/run2/` (`battle.jsonl`, `fight-result`
+with `outcome` `ran`).
+
+## What the mercy byte did on the losing side of a fight
+
+**Pool of Radiance: the outcome the heal predicts was SEEN; that the routine at
+`$1544` wrote it is not traced.** The party, wounded to 1 hit point each and
+with `$6DE6` staged to 1, was ambushed and lost: `THE PARTY HAS LOST` was
+printed, `$6DC7` read `$80`, and `$6DE6` still read 1. All six were `DYING`
+(`$84`) at 0 hit points at the outcome. After EXIT at `VIEW POOL EXIT`, the
+answer at `GO BACK LEAVE TREASURE`, and the return to the world (mode byte 5,
+then 1), all six read `UNCONSIOUS` (`$85`) at 1 hit point, and the roster
+screen showed HP 1 for each. The machine did not spin. The write was not traced
+to a record and `$0957` was never among the 83 program-counter samples.
+Evidence: `~/.cache/wish/648-defeat/run1/` on the agent VM.
 
 ## Cost
 
