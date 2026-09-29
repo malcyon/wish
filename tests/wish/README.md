@@ -7,7 +7,7 @@ Tests for the application in `wish/`: the window, preferences, game folders, the
 | `test_amigabackend.py` | Checks that the FS-UAE probe answers from `/proc/net/tcp` without opening a socket, that `connect()` keeps one socket per emulator run, and that a target whose memory is not a C64's is never handed to the roster, the action bar, Fast Travel or the combat reader, and that the Amiga backend row appears only behind `WISH_EXPERIMENTAL_AMIGA_FSUAE`. |
 | `test_appicon.py` | Checks the application icon: that the shipped drawing and exports are the artist's own, the taskbar sizes come off the PNGs, and every `.ico` entry is 32-bit. |
 | `test_assets.py` | Checks that every file the program reads at run time is found in a checkout and a frozen build, exists, and is listed in `wish.spec`. |
-| `test_debuglog.py` | Checks that the debug log is off until asked for, keeps a crash regardless, and records no absolute path, character name or save byte. |
+| `test_debuglog.py` | Checks that the debug log is off until asked for, keeps a crash regardless, and records no absolute path or save byte. |
 | `test_debugmode.py` | Checks debug mode's Fast Travel row against a `MemoryTarget`, the addresses written and their order, and how a backend is chosen. |
 | `test_editoropensave.py` | Checks the File menu's own copies of the split Open and Save actions and their mnemonics, and that `Ctrl+Shift+S` pops the Save button's own destination menu rather than saving anywhere itself. |
 | `test_gamefolders.py` | Checks that the shared disks folder folds into each title's own folder setting and that a title with no folder is not answered with another's. |

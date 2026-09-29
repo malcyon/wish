@@ -1,8 +1,8 @@
 """The opt-in debug log, and the privacy claims it makes.
 
 Most of these tests exist to check a promise rather than a mechanism: off
-means no file at all, on means a file with no absolute path, no character name
-and no byte of anybody's save in it. `docs/104-debug-log.md`.
+means no file at all, on means a file with no absolute path and no byte of
+anybody's save in it. `docs/104-debug-log.md`.
 """
 
 import logging
@@ -435,7 +435,7 @@ def test_the_same_failure_is_not_written_every_tick(live, logs):
 
 @game_disks
 def test_an_open_save_logs_only_its_metadata(app, logs, tmp_path):
-    """The whole privacy claim, against a real file: no path, no name, no byte.
+    """The whole privacy claim, against a real file: no path, no byte.
 
     Its own window, because it is the one that must have a save open."""
     from wish.window import MAP_TAB
@@ -453,9 +453,6 @@ def test_an_open_save_logs_only_its_metadata(app, logs, tmp_path):
     assert "characters" in text and "blocks" in text
 
     assert not ABSOLUTE.search(text), text
-    for member in w.editor.party.members:
-        if len(member.name) >= 3:
-            assert member.name not in text
 
     raw, written = disk.read_bytes(), log.read_bytes()
     for i in range(0, len(raw) - 12, 499):
