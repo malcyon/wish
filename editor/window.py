@@ -2264,8 +2264,12 @@ class EditorBinding(QObject):
         from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
 
         folder = pathlib.Path(self.party.source.path).parent
-        for image in sorted(p for p in folder.iterdir()
-                            if p.suffix.lower() == ".adf"):
+        try:
+            images = sorted(p for p in folder.iterdir()
+                            if p.suffix.lower() == ".adf")
+        except OSError:
+            return False
+        for image in images:
             try:
                 table = amiga_savegame.item_type_table(
                     AmigaDisk.open(str(image)))

@@ -401,6 +401,7 @@ class AmigaDisk:
         size = self._u32(block, _HDR_BYTE_SIZE)
         out = bytearray()
         current = block
+        seen = {header}
         while True:
             count = self._u32(current, _HDR_HIGH_SEQ)
             for index in range(count):
@@ -415,6 +416,11 @@ class AmigaDisk:
             extension = self._u32(current, _HDR_EXTENSION)
             if not extension:
                 break
+            if extension in seen:
+                raise AmigaDiskError(
+                    f"the extension chain of block {header} returns to "
+                    f"block {extension}")
+            seen.add(extension)
             current = self.block(extension)
         if len(out) < size:
             raise AmigaDiskError(

@@ -6209,6 +6209,29 @@ def test_an_items_file_of_the_wrong_size_beside_an_amiga_pool_party_is_ignored(
     assert sum("No disk with ITEMS found" in m for m in seen) == 1
 
 
+def test_a_file_that_is_not_an_adf_beside_an_amiga_pool_party_is_ignored(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr("editor.window.EditorBinding._find_disk",
+                        lambda self, *a, **k: None)
+    (tmp_path / "AAA-notes.adf").write_bytes(b"not a disk")
+    with _window_warnings() as seen:
+        w = _amiga_pool_editor(tmp_path)
+    assert not w.party.item_types
+    assert sum("No disk with ITEMS found" in m for m in seen) == 1
+
+
+def test_a_bad_image_beside_an_amiga_pool_party_does_not_hide_a_good_one(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr("editor.window.EditorBinding._find_disk",
+                        lambda self, *a, **k: None)
+    (tmp_path / "AAA-notes.adf").write_bytes(b"not a disk")
+    _amiga_items_disk(tmp_path, 2 + 128 * 16)
+    with _window_warnings() as seen:
+        w = _amiga_pool_editor(tmp_path)
+    assert not any("No disk with ITEMS found" in m for m in seen)
+    assert w.party.item_types is not None
+
+
 def _shipped_amiga_pool_disks():
     """The shipped Pool of Radiance disk 1 (with its saved game) and disk 2
     (with `/items`) as `(bytes, bytes)`, or a skip. Shipped, not watched: the

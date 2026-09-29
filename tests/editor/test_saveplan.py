@@ -1005,7 +1005,7 @@ def _amiga_por_sav(disk):
         amiga_por.por_filename("A", 1, "") + ".sav", drawer)
 
 
-def _amiga_movement_party(tmp_path, types="armour"):
+def _amiga_movement_party(tmp_path, types="armour", stored=12):
     """An Amiga party whose first character has base movement 12 and nothing
     readied, so the stored byte and the rule agree until something is edited."""
     path = amiga_por_disk(tmp_path)
@@ -1020,9 +1020,10 @@ def _amiga_movement_party(tmp_path, types="armour"):
     for slot in range(len(seed.members[0].inventory.raws)):
         seed.members[0].inventory.set_raw(slot, bytes(16))
     disk = saveplan.write_amiga(seed, AmigaDisk.open(str(path)))
-    # The byte the game itself stores for base movement 12 and no burden.
+    # The byte the game itself stores for base movement 12 and no burden,
+    # unless a test wants one the rule would not give.
     sav = bytearray(disk.read_file(_amiga_por_sav(disk)))
-    sav[_AMIGA_MOVEMENT_AT] = 12
+    sav[_AMIGA_MOVEMENT_AT] = stored
     disk.write_file(_amiga_por_sav(disk), bytes(sav))
     disk.save(str(path))
     party = Party(str(path))
@@ -1079,7 +1080,9 @@ def test_a_typed_amiga_movement_survives_coins_in_the_same_save(tmp_path):
 
 
 def test_an_untouched_amiga_party_with_a_table_is_byte_identical(tmp_path):
-    party, _member, path = _amiga_movement_party(tmp_path)
+    """The stored 9 is not what the rule gives (12), so a save that always
+    wrote the rule's value would change it."""
+    party, _member, path = _amiga_movement_party(tmp_path, stored=9)
     # File dates differ between two writes of one disk, so compare the
     # character's files rather than the image.
     def files(disk):
@@ -1093,8 +1096,9 @@ def test_an_untouched_amiga_party_with_a_table_is_byte_identical(tmp_path):
         return out
 
     before = files(AmigaDisk.open(str(path)))
-    assert files(saveplan.write_amiga(
-        party, AmigaDisk.open(str(path)))) == before
+    after = files(saveplan.write_amiga(party, AmigaDisk.open(str(path))))
+    assert after == before
+    assert after[".sav"][_AMIGA_MOVEMENT_AT] == 9
 
 
 @pytest.mark.parametrize("types", [None, {}])

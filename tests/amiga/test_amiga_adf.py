@@ -169,6 +169,21 @@ def test_a_file_longer_than_one_header_can_index_still_round_trips():
     assert disk.read_file("BIG.BIN") == payload
 
 
+def test_an_extension_chain_that_loops_is_refused_rather_than_followed_forever():
+    """A crafted image whose extension block names itself would otherwise be
+    walked for ever."""
+    disk = AmigaDisk.blank()
+    disk.write_file("BIG.BIN", bytes(range(256)) * 200, when=WHEN)
+    header = disk.lookup("BIG.BIN").block
+    extension = struct.unpack_from(">I", disk.block(header),
+                                   BLOCK_SIZE - 8)[0]
+    assert extension
+    struct.pack_into(">I", disk._data, extension * BLOCK_SIZE + BLOCK_SIZE - 8,
+                     extension)
+    with pytest.raises(AmigaDiskError, match="extension chain"):
+        disk.read_file("BIG.BIN")
+
+
 def test_an_empty_file_round_trips():
     disk = AmigaDisk.blank()
     disk.write_file("EMPTY", b"", when=WHEN)
