@@ -413,7 +413,9 @@ TEMPLE_RAISE_STAGING = ((5, 0x018, 18), (5, 0x0C1, 0x70), (5, 0x0C2, 0x17))
 #: text; a price screen missing any of them is not answered.
 TEMPLE_LIST_ROWS = range(9, 19)
 TEMPLE_LIST_COLUMN = 2
-TEMPLE_PRICE_NEEDLES = (r"WILL COST", r"\b5,?500\b", r"PAY FOR CURE")
+TEMPLE_PRICE_NEEDLES = (("WILL COST", r"WILL COST"),
+                        ("the 5500 price", r"\b5,?500\b"),
+                        ("PAY FOR CURE", r"PAY FOR CURE"))
 
 #: How long a walk keeps watching for a disk prompt after a move (seconds).
 LOOK_SECONDS = 2.0
@@ -624,6 +626,50 @@ def temple_source_guard(source: pathlib.Path) -> str:
                 and entry.get("sha256", {}).get(source.name) == digest):
             return digest
     raise ValueError(f"{source} is not a registered Pool C64 specimen")
+
+
+def temple_staging_check(source: pathlib.Path, staged: pathlib.Path,
+                         records=()) -> None:
+    """Refuse a staged temple disk that differs from SOURCE by anything but
+    the sanctioned RECORDS (`TEMPLE_RAISE_STAGING`).
+
+    With no RECORDS the copy must be byte-identical. Otherwise every file
+    must match except the save file, whose payload may differ only at those
+    record bytes, each holding its staged value; nothing else the staging
+    helper rewrites carries a checksum."""
+    if not records:
+        if specimens.sha256_file(staged) != specimens.sha256_file(source):
+            raise ValueError("temple staging changed the source bytes")
+        return
+    if sorted(records) != sorted(TEMPLE_RAISE_STAGING):
+        raise ValueError(f"temple staging {sorted(records)} is not "
+                         f"{sorted(TEMPLE_RAISE_STAGING)}")
+    was, now = D64.open(str(source)), D64.open(str(staged))
+    game = c64_port.detect(now)
+    if game is None or game.key != "pool-of-radiance":
+        raise ValueError("staged temple disk is not a Pool save")
+    box = c64_save.CONTAINERS[game.key]
+    names = [entry.name for entry in was.iter_directory()]
+    if names != [entry.name for entry in now.iter_directory()]:
+        raise ValueError("temple staging changed the disk's directory")
+    for name in names:
+        if name != game.save_file and was.read_file(name) != now.read_file(name):
+            raise ValueError(f"temple staging changed file {name!r}")
+    _, before = _payload(was, game)
+    _, after = _payload(now, game)
+    allowed = {box.slot(slot) + offset: value
+               for slot, offset, value in TEMPLE_RAISE_STAGING}
+    if len(before) != len(after):
+        raise ValueError("temple staging changed the save's length")
+    for at in range(len(before)):
+        if before[at] != after[at] and at not in allowed:
+            raise ValueError(f"temple staging changed payload byte "
+                             f"${at:04X} ({before[at]:#04x} to "
+                             f"{after[at]:#04x})")
+    for at, value in allowed.items():
+        if after[at] != value:
+            raise ValueError(f"staged payload byte ${at:04X} is "
+                             f"{after[at]:#04x}, not {value:#04x}")
 
 
 def guard_temple_input(sess, clock, deadline):
@@ -1740,14 +1786,20 @@ class PoolRun:
                 and S.word_column(bar, "NO") >= 0)
 
     @staticmethod
-    def _temple_raise_price(screen) -> bool:
-        """The RAISE DEAD price screen: the cost and PAY FOR CURE, with YES
-        and NO on row 24 (`SQRPACI64 $04C3`)."""
+    def _temple_price_missing(screen) -> list[str]:
+        """What the RAISE DEAD price screen lacks: the cost and PAY FOR CURE,
+        with YES and NO on row 24 (`SQRPACI64 $04C3`). Empty when it is one."""
         text = screen.text().upper()
         bar = screen.row(24)
-        return (all(re.search(n, text) for n in TEMPLE_PRICE_NEEDLES)
-                and S.word_column(bar, "YES") >= 0
-                and S.word_column(bar, "NO") >= 0)
+        missing = [name for name, needle in TEMPLE_PRICE_NEEDLES
+                   if not re.search(needle, text)]
+        missing += [f"{word} on row 24" for word in ("YES", "NO")
+                    if S.word_column(bar, word) < 0]
+        return missing
+
+    @classmethod
+    def _temple_raise_price(cls, screen) -> bool:
+        return not cls._temple_price_missing(screen)
 
     @classmethod
     def _temple_list(cls, screen) -> list[str]:
@@ -2070,7 +2122,9 @@ class PoolRun:
 
         ARRIVAL is the screen the key was sent from, as a screen or as its
         rows 0-23; it stays up until the game redraws. TAG names the kept
-        checkpoint, and STOP and WHAT the stop if none is drawn. The first screen after HEAL is the welcome alone
+        checkpoint, and STOP and WHAT the stop if none is drawn.
+
+        The first screen after HEAL is the welcome alone
         (`0546662ef7-temple-route-h`) and the list draws later
         (`8e1934def7-temple-route-g`, `11-temple-lost-heal`, row 24 blank), so
         a screen is steady after `HEAL_SCREEN_HOLD` seconds unchanged and the
@@ -2210,15 +2264,16 @@ class PoolRun:
                                      "settled": price["settled"],
                                      "held": price["held"]}
             priced = self.temple_sample()
-            if priced.screen is None or not self._temple_raise_price(
-                    priced.screen):
-                self._temple_stop("price", "no RAISE DEAD price screen",
-                                  priced)
+            missing = (["a readable screen"] if priced.screen is None
+                       else self._temple_price_missing(priced.screen))
+            if missing:
+                self._temple_stop("price", "no RAISE DEAD price screen, "
+                                  "missing " + ", ".join(missing), priced)
             self._temple_select_bar("YES", "payment")
             done = self._temple_heal_screen(
                 price["rows"][:24], tag="raise-result", stop="result",
                 what="YES")
-            text = "\n".join("\n".join(rows) for rows in done["steady"]).upper()
+            text = "\n".join(done["rows"]).upper()
             outcome = ("alive" if "IS ALIVE" in text else
                        "failed" if "FAILED" in text else
                        "no-money" if "NOT ENOUGH MONEY" in text else
@@ -4930,9 +4985,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
     summary["staged"] = staged
     if temple_mode:
         summary["staged_sha256"] = specimens.sha256_file(staged_disk)
-        if (not getattr(args, "stage_record", [])
-                and summary["staged_sha256"] != summary["source_sha256"]):
-            summary["lost"] = "temple staging changed the source bytes"
+        try:
+            temple_staging_check(source, staged_disk, parse_record_bytes(
+                getattr(args, "stage_record", [])))
+        except ValueError as e:
+            summary["lost"] = str(e)
             write_summary()
             log.close()
             return 1

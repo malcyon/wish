@@ -566,6 +566,8 @@ class _TempleSession:
             rows[11] = "IT WILL COST 5500 GOLD PIECES"
             rows[13] = ("PAY FOR CURE" if self.unsafe != "price-wrong"
                         else "SOMETHING ELSE")
+            if self.unsafe == "price-no-cost":
+                rows[11] = "IT WILL COST 4000 GOLD PIECES"
             rows[24] = "YES NO"
         elif phase == "result":
             rows[12] = self.result_text
@@ -8638,3 +8640,129 @@ def test_temple_probe_raise_refuses_a_member_other_than_the_top_row(
         run.temple_probe("BRUTUS RAISE")
     assert session.keys == ["side3", "YES"]
     assert run.temple_checkpoints[-1]["tag"] == "lost-member"
+
+
+def test_temple_probe_raise_classifies_the_outcome_from_the_last_screen_only(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    real = session.confirm_bar
+
+    def confirm(row, was):
+        real(row, was)
+        if session.phase == "result":
+            # An earlier steady screen says IS ALIVE; the last says FAILED.
+            session.result_text = "BRUTUS IS ALIVE"
+            reads = [0]
+            original = session.screen
+
+            def screen():
+                reads[0] += 1
+                if reads[0] > 12:
+                    session.result_text = "BRUTUS FAILED"
+                return original()
+            session.screen = screen
+
+    session.confirm_bar = confirm
+    result = run.temple_probe("BRUTUS RAISE")
+    assert any("IS ALIVE" in "\n".join(rows) for rows in
+               [r for a, kw in events if a[0] == "temple-heal-frame"
+                for r in [kw["rows"]]])
+    assert result["raise_result"]["rows"][12] == "BRUTUS FAILED"
+    assert result["outcome"] == "failed"
+
+
+@pytest.mark.parametrize("unsafe,missing", [
+    ("price-wrong", "PAY FOR CURE"), ("price-no-cost", "the 5500 price")])
+def test_temple_probe_raise_price_stop_names_the_missing_text(
+        tmp_path, monkeypatch, unsafe, missing):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            unsafe=unsafe)
+    with pytest.raises(A.StepFailed, match=f"missing {missing}$"):
+        run.temple_probe("BRUTUS RAISE")
+
+
+def _staged_temple_pair(tmp_path, records):
+    source = _fixture_disk(tmp_path)
+    staged = tmp_path / "staged.D64"
+    A.stage(source, staged, "pool-of-radiance", record_bytes=records)
+    return source, staged
+
+
+def test_temple_staging_check_takes_the_sanctioned_records_only(tmp_path):
+    source, staged = _staged_temple_pair(
+        tmp_path, list(A.TEMPLE_RAISE_STAGING))
+    A.temple_staging_check(source, staged, list(A.TEMPLE_RAISE_STAGING))
+    extra, staged2 = _staged_temple_pair(
+        tmp_path, [*A.TEMPLE_RAISE_STAGING, (5, 0x20, 41)])
+    with pytest.raises(ValueError, match="changed payload byte"):
+        A.temple_staging_check(extra, staged2, list(A.TEMPLE_RAISE_STAGING))
+    with pytest.raises(ValueError, match="is not"):
+        A.temple_staging_check(source, staged, [(5, 0x18, 18)])
+
+
+def test_temple_staging_check_refuses_a_wrong_value_and_a_changed_hash(
+        tmp_path):
+    source, staged = _staged_temple_pair(
+        tmp_path, [(5, 0x018, 17), (5, 0x0C1, 0x70), (5, 0x0C2, 0x17)])
+    with pytest.raises(ValueError, match="not 0x12"):
+        A.temple_staging_check(source, staged, list(A.TEMPLE_RAISE_STAGING))
+    source2, staged2 = _staged_temple_pair(tmp_path, [(5, 0x20, 41)])
+    with pytest.raises(ValueError, match="changed the source bytes"):
+        A.temple_staging_check(source2, staged2)
+    same = tmp_path / "same.D64"
+    same.write_bytes(source2.read_bytes())
+    A.temple_staging_check(source2, same)
+
+
+class _Claimed(Exception):
+    pass
+
+
+def _run_raise(tmp_path, monkeypatch, extra_byte=None, staging=True):
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    real = A.stage
+
+    def stage(*args, **kwargs):
+        got = real(*args, **kwargs)
+        if extra_byte is not None:
+            image = D64.open(str(args[1]))
+            addr, payload = A._payload(image, A.c64_port.POOL_OF_RADIANCE)
+            payload[extra_byte] ^= 0xFF
+            image.write_file_inplace(
+                A.c64_port.POOL_OF_RADIANCE.save_file,
+                addr.to_bytes(2, "little") + bytes(payload))
+            image.save(str(args[1]))
+        return got
+    monkeypatch.setattr(A, "stage", stage)
+
+    def claim(*a, **k):
+        raise _Claimed
+    monkeypatch.setattr(A.S, "claim_slot", claim)
+    out = tmp_path / "out"
+    argv = _raise_argv(tmp_path, *(_RAISE_STAGING if staging else []),
+                       step="temple-probe BRUTUS " + ("RAISE" if staging
+                                                       else "HEAL"))
+    return A.main(argv), out
+
+
+def test_temple_run_proceeds_to_the_claim_with_the_sanctioned_records(
+        tmp_path, monkeypatch):
+    with pytest.raises(_Claimed):
+        _run_raise(tmp_path, monkeypatch)
+
+
+def test_temple_run_refuses_an_extra_differing_byte_before_the_claim(
+        tmp_path, monkeypatch):
+    code, out = _run_raise(tmp_path, monkeypatch, extra_byte=0x400)
+    assert code == 1
+    assert "changed payload byte" in json.loads(
+        (out / "summary.json").read_text())["lost"]
+
+
+def test_temple_run_with_no_records_still_refuses_a_changed_hash(
+        tmp_path, monkeypatch):
+    code, out = _run_raise(tmp_path, monkeypatch, extra_byte=0x400,
+                           staging=False)
+    assert code == 1
+    assert "changed the source bytes" in json.loads(
+        (out / "summary.json").read_text())["lost"]
