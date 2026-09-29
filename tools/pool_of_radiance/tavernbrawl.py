@@ -10,6 +10,7 @@ checkpoints inside `POST.COM` read what the game does with the result.
     tavernbrawl.py code [--disks DIR]
     POR_HEADLESS=1 tavernbrawl.py run --save SAVE.D64 --mode win|flee ...
     POR_HEADLESS=1 tavernbrawl.py run --save SAVE.D64 --mode win --budget 3600
+    POR_HEADLESS=1 tavernbrawl.py run --save SAVE.D64 --mode win --stage-dying 1
 
 The default `--budget` of 900 s is too short for the brawl.  A party turn
 took about 19 s of wall time in `648-allycheck` (48 turns in 900 s), because
@@ -17,7 +18,7 @@ the 13 allies and the monsters act between them, and five monsters were
 still standing when the budget ran out.  3600 s allows about 190 party
 turns; that figure is an estimate, not a measured fight length.
 
-`code` reads seven byte runs off the player's own disks and refuses if any
+`code` reads ten byte runs off the player's own disks and refuses if any
 differs from what the driver was written against; `main` runs the same check
 before it calls `run`, so a mismatch never claims a slot.  `run` boots an
 emulator through the instance pool and writes `run.jsonl`, `readings.json`,
@@ -115,6 +116,15 @@ TALLIES = 0xA4FD
 GAMBLE_ROLL, DESTINATION = 0x9803, 0x9802
 #: The PC after `DUNGEON $17DA STA ($4C),Y`, the store every script `RANDOM` ends in.
 RANDOM_STORE_NEXT = 0x17DC
+#: The world's y coordinate, `$C04B` + 1: the destination table's y lands here.
+SQUARE_Y = 0xC04C
+#: Hits of the `$C04C` store log before it is deleted.
+SQUARE_STORE_HITS = 3
+#: Flee destination index 4 lands on (11, 8), a dead end whose only open side
+#: is west, onto (10, 8); facing 3 is west.
+DESTINATION_SQUARE, DESTINATION_EXIT, WEST = (11, 8), (10, 8), 3
+#: Status of a character at 0 hit points, and of one the status pass has healed.
+DYING = 0x84
 #: The PC after `POST.COM $091A STA $6DC7`. It is the only store to `$6DC7`
 #: found on the eight sides (`$18A7` skips the result), so a hit at any other PC
 #: is not the fight's result.
@@ -142,6 +152,12 @@ ITEM_TALLY_CALL, ITEM_TALLY_BACK = 0x0A02, 0x0A05
 SHARE, EMPTY_PILE, TREASURE = 0x0BD2, 0x0A48, 0x0A52
 NO_ITEMS_SKIP, ITEM_LOOP = 0x15B1, 0x15B6
 LINE_DRAWN, AFTER_DROP = 0x0930, 0x0933
+#: The flee arm's status pass (`$14FB`) and its return at `$14B2`, after the
+#: `JSR $14FB` at `$14AF` and before `$14CF` and `$14D2` clear the flags.
+STATUS_PASS, STATUS_DONE, STATUS_CALL = 0x14FB, 0x14B2, 0x14AF
+#: `LDA #$01 / STA $6C19`, the mercy heal, and the `LDA #$00` that only runs
+#: once `$6DE3` is non-zero at `$0A48`, i.e. the pile was emptied.
+MERCY_HEAL, MERCY_TEST, PILE_EMPTIED = 0x1549, 0x1544, 0x0A4D
 
 #: What the driver was written against: (file, run-time address, bytes).
 CODE_ROWS = (
@@ -150,6 +166,9 @@ CODE_ROWS = (
     ("POST.COM", ITEM_TALLY_CALL, "20 A7 15"),             # JSR $15A7, the item tally
     ("POST.COM", EMPTY_PILE, "AD E3 6D F0 05 A9 00 8D 28 2B"),   # $6DE3 empties the pile
     ("POST.COM", 0x0E0C, "A9 00 9D 00 49 F0 10"),          # the charm row is deleted and the slot dropped
+    ("POST.COM", STATUS_CALL, "20 FB 14"),                 # JSR $14FB, the status pass
+    ("POST.COM", MERCY_TEST, "AD E6 6D F0 05 A9 01 8D 19 6C"),   # $6DE6 gates the one hit point
+    ("POST.COM", PILE_EMPTIED, "A9 00 8D 28 2B"),          # the pile count is zeroed
     ("POST.COM", NO_ITEMS_SKIP, "AD E3 6D"),               # $6DE3 skips the tally loop
     ("DUNGEON", 0x17DA, "91 4C"),                          # STA ($4C),Y, the RANDOM store
 )
@@ -402,12 +421,19 @@ def charm_rows(m) -> list[dict]:
             if ids[x] == CHARM and owners[x] < 8]
 
 
+def hp_of(m, slot: int) -> int:
+    """Combatant SLOT's 16-bit little-endian current hit points."""
+    low, high = m.read(COMBATANTS + STRIDE * slot + HP_AT, 2)
+    return low | high << 8
+
+
 def party_readings(m) -> list[dict]:
-    """Status, name byte, experience, `0x0B8`, class code and abilities for slots 0-7."""
+    """Status, hit points, name byte, experience, `0x0B8`, class code and abilities for slots 0-7."""
     out = []
     for slot in range(8):
         base = MASTER + 0x100 * slot
         out.append({"slot": slot, "status": m.peek(COMBATANTS + STRIDE * slot),
+                    "hp": hp_of(m, slot),
                     "name_byte": m.peek(base),
                     "experience": le24(m.read(base + EXPERIENCE, 3)),
                     "flags": m.peek(base + HALF_SHARE),
@@ -426,9 +452,9 @@ def counters_now(m) -> dict:
 
 
 class Stop:
-    def __init__(self, name, address, handler, cp, once):
+    def __init__(self, name, address, handler, cp, once, store=False):
         self.name, self.address, self.handler = name, address, handler
-        self.cp, self.once, self.hits = cp, once, 0
+        self.cp, self.once, self.hits, self.store = cp, once, 0, store
 
 
 class Traps:
@@ -451,6 +477,8 @@ class Traps:
         self.ignored_stores = 0
         self.destination_at: float | None = None
         self.tap = None
+        self.square_hits = 0
+        self._at = None
         self._mon = None
         self._busy = False
 
@@ -473,7 +501,7 @@ class Traps:
             return
         def go(mm):
             cp = mm.checkpoint_set(address, store=store, exec_=not store, stop=True)
-            self.stops.append(Stop(name, address, handler, cp, once))
+            self.stops.append(Stop(name, address, handler, cp, once, store))
             return cp
         if m is not None:
             go(m)
@@ -498,6 +526,14 @@ class Traps:
     # -- handling -------------------------------------------------------------
 
     def note(self, name: str, **fields) -> None:
+        if self._at is not None:
+            # A handler can run on a later connection than the stop that fired
+            # it, so every reading says where the machine was and, for an exec
+            # stop, whether that was somewhere else than the stop's address.
+            pc, stop = self._at
+            fields.setdefault("pc", pc)
+            if not stop.store:
+                fields.setdefault("late", pc != stop.address)
         self.readings.setdefault(name, []).append(fields)
         self.log.emit("reading", name=name, **fields)
 
@@ -541,6 +577,16 @@ class Traps:
                 self.log.emit("trap_retry", name=s.name, attempt=attempt, error=repr(exc))
         return m.checkpoint_hits(s.cp)
 
+    def _handle(self, m, s, pc=None) -> None:
+        """Run S's handler with the PC it ran at, read first, so `note` can stamp it."""
+        if pc is None:
+            pc = m.registers().get(A.pc_register(m))
+        self._at = (pc, s)
+        try:
+            s.handler(m)
+        finally:
+            self._at = None
+
     def _scan(self, m, only=None) -> bool:
         fired = False
         for s in list(self.stops):
@@ -555,7 +601,7 @@ class Traps:
                 m.checkpoint_delete(s.cp)
                 if s in self.stops:
                     self.stops.remove(s)
-            s.handler(m)
+            self._handle(m, s)
         return fired
 
     # -- the trigger phase ----------------------------------------------------
@@ -609,10 +655,12 @@ class Traps:
         fields = counters_now(m)
         fields.update(pc=pc, result=m.peek(RESULT), predicted=predicted_result(blocks),
                       no_items=m.peek(NO_ITEMS), mercy=m.peek(MERCY),
-                      blocks_standing=[n for n in range(BLOCKS) if 0 < blocks[n * STRIDE] < 0x80])
+                      blocks_standing=[n for n in range(BLOCKS) if 0 < blocks[n * STRIDE] < 0x80],
+                      party=party_readings(m))
         self.note("result", **fields)
         self.log.say(f"  result ${fields['result']:02X}, predicted "
                      f"${fields['predicted']:02X}")
+        self._stage_result(m)
         armed = self._arm_post(m)
         self.arm("destination", DESTINATION, self.on_destination, store=True,
                  once=False, m=m)
@@ -629,29 +677,54 @@ class Traps:
             hit = [s for s in self.stops if s.address == pc and s.name in armed]
             if not hit:
                 self.log.emit("wrong_stop", pc=pc, waiting=sorted(armed))
-                self._scan(m, only=("destination",))
+                self._scan(m, only=("destination", "square_store"))
                 continue
             s = hit[0]
             s.hits = m.checkpoint_hits(s.cp)
             m.checkpoint_delete(s.cp)
             self.stops.remove(s)
             armed.discard(s.name)
-            s.handler(m)
+            self._handle(m, s, pc)
+
+    def _stage_result(self, m) -> None:
+        """`--stage-dying` and `--stage-mercy`, applied at the held result stop and read back."""
+        if self.args.stage_dying is not None:
+            slot = self.args.stage_dying
+            acting = m.peek(ACTING)
+            write_combatant(m, slot, 0, bytes([DYING]), acting)
+            write_combatant(m, slot, HP_AT, bytes([0, 0]), acting)
+            self.note("dying_staged", slot=slot, acting=acting,
+                      status=m.peek(COMBATANTS + STRIDE * slot), hp=hp_of(m, slot))
+        if self.args.stage_mercy is not None:
+            m.write(MERCY, bytes([self.args.stage_mercy]))
+            self.note("mercy_staged", staged=self.args.stage_mercy, read_back=m.peek(MERCY))
 
     def _arm_post(self, m) -> set[str]:
-        """The `POST.COM` stops for this mode, armed only now: `COMBAT` runs at the same addresses."""
+        """The `POST.COM` stops for the stored result, armed only now: `COMBAT` runs at the same addresses.
+
+        The table follows the result byte, not `--mode`: below `$80` is a win,
+        `$81` the flight, and `$80` (a loss) gets the counters alone.
+        """
         names = set()
-        if self.args.mode == "win":
+        result = m.peek(RESULT)
+        if result < 0x80:
             table = (("item_tally_call", ITEM_TALLY_CALL, self.on_item_tally_call),
                      ("item_tally_back", ITEM_TALLY_BACK, self.on_item_tally_back),
                      ("share", SHARE, self.on_share),
                      ("empty_pile", EMPTY_PILE, self.on_empty_pile),
                      ("treasure", TREASURE, self.on_treasure))
+        elif result == 0x81:
+            table = (("line_drawn", LINE_DRAWN, self.on_line_drawn),
+                     ("after_drop", AFTER_DROP, self.on_after_drop),
+                     ("status_pass", STATUS_PASS, self.on_status_pass),
+                     ("status_done", STATUS_DONE, self.on_status_done))
+        else:
+            table = ()
+        if result != 0x81:
             self.arm_counter("no_items_skip", NO_ITEMS_SKIP, m)
             self.arm_counter("item_loop", ITEM_LOOP, m)
-        else:
-            table = (("line_drawn", LINE_DRAWN, self.on_line_drawn),
-                     ("after_drop", AFTER_DROP, self.on_after_drop))
+        self.arm_counter("mercy_heal", MERCY_HEAL, m)
+        self.arm_counter("pile_emptied", PILE_EMPTIED, m)
         for name, address, handler in table:
             self.arm(name, address, handler, m=m)
             names.add(name)
@@ -675,7 +748,7 @@ class Traps:
         self.note("item_tally_back", xp_total=le24(m.read(XP_TOTAL, 3)))
 
     def on_share(self, m) -> None:
-        self.note("share", standing=m.peek(STANDING),
+        self.note("share", standing=m.peek(STANDING), pile_count=m.peek(PILE_COUNT),
                   xp_total=le24(m.read(XP_TOTAL, 3)),
                   paid=list(m.read(PAID_AT, PAID_LEN)))
 
@@ -698,6 +771,25 @@ class Traps:
     def on_after_drop(self, m) -> None:
         self._line_reading(m, "after_drop")
 
+    def _status_reading(self, m, name: str) -> None:
+        self.note(name, party=party_readings(m), mercy=m.peek(MERCY),
+                  no_items=m.peek(NO_ITEMS))
+
+    def on_status_pass(self, m) -> None:
+        self._status_reading(m, "status_pass")
+
+    def on_status_done(self, m) -> None:
+        self._status_reading(m, "status_done")
+
+    def on_square_store(self, m) -> None:
+        self.square_hits += 1
+        pc = m.registers().get(A.pc_register(m))
+        self.note("square_store", value=m.peek(SQUARE_Y), pc=pc, hit=self.square_hits)
+        if self.square_hits >= SQUARE_STORE_HITS:
+            for s in [s for s in self.stops if s.name == "square_store"]:
+                m.checkpoint_delete(s.cp)
+                self.stops.remove(s)
+
     def on_destination(self, m) -> None:
         pc = m.registers().get(A.pc_register(m))
         fields = {"value": m.peek(DESTINATION), "pc": pc}
@@ -708,6 +800,10 @@ class Traps:
             m.checkpoint_delete(next(s.cp for s in self.stops if s.name == "destination"))
             self.stops = [s for s in self.stops if s.name != "destination"]
         self.note("destination_store", **fields)
+        if pc == RANDOM_STORE_NEXT and not any(s.name == "square_store" for s in self.stops) \
+                and not self.square_hits:
+            self.arm("square_store", SQUARE_Y, self.on_square_store, store=True,
+                     once=False, m=m)
 
     # -- after the fight ------------------------------------------------------
 
@@ -723,7 +819,7 @@ class Traps:
                         m.checkpoint_delete(cp)
                     self.counters.clear()
                     for s in [s for s in self.stops
-                              if s.name not in ("mercy", "gamble", "destination")]:
+                              if s.name not in ("mercy", "gamble", "destination", "square_store")]:
                         m.checkpoint_delete(s.cp)
                         self.stops.remove(s)
                     m.resume()
@@ -1021,6 +1117,10 @@ class Tactic:
             staged = stage_charm(m, self.args.charm, self.args.charm_form, acting)
             self.charm_row = staged["row"]
             self.log.emit("charm_staged", **staged)
+        written = sorted(set((allies if self.args.wound_allies else [])
+                             + ([self.args.stay] if self.args.stay is not None else [])))
+        self.log.emit("first_bar", no_items=m.peek(NO_ITEMS), mercy=m.peek(MERCY),
+                      hp_read_back={n: hp_of(m, n) for n in written})
 
 
 # -- the run ------------------------------------------------------------------
@@ -1037,10 +1137,13 @@ def check_args(args) -> str | None:
             if given:
                 return f"{flag} is refused with --mode win"
     if args.mode == "flee":
-        for flag, value in (("--stage-6de3", args.stage_6de3), ("--stage-item", args.stage_item)):
+        for flag, value in (("--stage-6de3", args.stage_6de3), ("--stage-item", args.stage_item),
+                            ("--stage-dying", args.stage_dying),
+                            ("--stage-mercy", args.stage_mercy)):
             if value is not None:
                 return f"{flag} is refused with --mode flee"
-    for flag, value in (("--charm", args.charm), ("--stay", args.stay)):
+    for flag, value in (("--charm", args.charm), ("--stay", args.stay),
+                        ("--stage-dying", args.stage_dying)):
         if value is not None and not 0 <= value <= 5:
             return f"{flag} takes a slot from 0 to 5"
     if args.charm is not None and args.charm == args.stay:
@@ -1112,6 +1215,7 @@ def after_fight(sess, traps: Traps, log, out: pathlib.Path, args, before: list) 
                  predicted=predicted_award(share.get("xp_total", 0),
                                            share.get("standing", 0), b,
                                            None if paid is None else paid[a["slot"]]),
+                 hp_before=b["hp"], hp_after=a["hp"],
                  status=a["status"], name_byte=a["name_byte"], **fields_)
     if sess.in_combat():
         # A fight that ran out its budget is still on a turn's bars, which
@@ -1136,8 +1240,15 @@ def after_fight(sess, traps: Traps, log, out: pathlib.Path, args, before: list) 
         log.emit("sheet", slot=slot, lines=lines)
     if traps.destination_at is not None:
         timed_captures(sess, log, out, traps.destination_at)
-        log.emit("forward_step",
-                 **step_on(sess, square_now(sess), out, "after-destination"))
+        x, y, _ = square_now(sess)
+        stepped = step_on(sess, (x, y, WEST), out, "destination-west")
+        s = sess.screen()
+        row = "" if s is None else s.row(24).strip()
+        got = tuple(stepped["square"][:2]) if stepped.get("square") else None
+        log.emit("destination_exit", at=[x, y], at_expected=(x, y) == DESTINATION_SQUARE,
+                 stepped=stepped, square=stepped.get("square"),
+                 square_expected=got == DESTINATION_EXIT, row24=row,
+                 tavern_seen=tavern_seen([row]))
 
 
 #: Seconds `record_stall` gives the screenshot, so a hung `import` cannot hold the slot.
@@ -1331,7 +1442,7 @@ def _run(args, out: pathlib.Path, log) -> int:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="what", required=True)
-    c = sub.add_parser("code", help="check the seven byte runs against the player's disks")
+    c = sub.add_parser("code", help="check the ten byte runs against the player's disks")
     c.add_argument("--disks", default=None, help="the directory of the player's disks")
     r = sub.add_parser("run", help="drive a party into the brawl")
     r.add_argument("--save", required=True, help="a save disk with the party in New Phlan")
@@ -1348,6 +1459,10 @@ def main(argv=None) -> int:
                    help="write $6DE3 = 0 when the brawl sets it")
     r.add_argument("--stage-item", default=None, metavar="NAME",
                    help="put this item in the treasure pile before the item tally")
+    r.add_argument("--stage-dying", type=int, default=None, metavar="SLOT",
+                   help="win mode: write $84 and 0 hit points to SLOT at the held result stop")
+    r.add_argument("--stage-mercy", type=int, choices=(0, 1), default=None,
+                   help="win mode: write $6DE6 at the held result stop")
     r.add_argument("--stay", type=int, default=None, help="a slot to leave wounded behind")
     r.add_argument("--charm", type=int, default=None, help="a slot to charm before the flight")
     r.add_argument("--charm-form", choices=tuple(CHARM_FORMS), default="monster")

@@ -998,20 +998,23 @@ blow the charmed ally lands.
 
 ---
 
-## U6. Running from the tavern brawl or the city watch can put the party at (11, 40)
+## U6. Running from the tavern brawl or the city watch can put the party on (11, 8), a dead end
 
 **How a player gets there.** In New Phlan, a party in a tavern fight or facing
 the city watch chooses to run.
 
 **What the game does.** `ECL00 $AEF4` rolls `RANDOM 4`, five values, into
 `$9802`, and indexes four-entry tables at `$B617` (x) and `$B61B` (y) with it.
-Index 4 reads `$B61B` as x and `$B61F`, the first monster type, as y, giving
-(11, 40) on a 16 x 16 map. The other four destinations are on the map.
+Index 4 reads `$B61B` as x and `$B61F`, the first monster type (`$28`), as y:
+x = 11 and y = `$28` = 40, and 40 AND 15 = 8, so the party lands on (11, 8).
+The other four destinations are on the map as tabulated.
 
-**What the player sees.** Unknown. Grade: PROBABLE that the destination is
-off the map; SPECULATIVE what the game then does. What promotes it: stop at
-the `$AEFA` store to `$9802`, write 4, then read `$C04B`/`$C04C` and take a
-screenshot.
+**What the player sees.** (11, 8) has attribute 0 and a wall on the north, east
+and south sides; its only open side is west, onto (10, 8), the other tavern's
+square. Grade: CONFIRMED that index 4 lands on (11, 8) (two runs); PROBABLE
+for the walls, from `GEO00` and one blocked step. Which instruction reduces 40
+to 8 is not identified; a store log on `$C04C` after the `$AF0A` fetch would
+name it.
 
 **Version.** Pool of Radiance, Commodore 64.
 

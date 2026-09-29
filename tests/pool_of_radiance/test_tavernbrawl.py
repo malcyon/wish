@@ -244,6 +244,7 @@ def args(**kw):
     base = dict(mode="win", stay=None, charm=None, charm_form="monster",
                 wound_allies=False, stage_6de3=None, stage_item=None,
                 force_roll=False, force_destination=None, max_entries=3,
+                stage_dying=None, stage_mercy=None,
                 budget=1.0, slot=None, quiet=True, disks="/nonexistent-disks",
                 save="/nonexistent/save.d64")
     base.update(kw)
@@ -298,10 +299,13 @@ def test_the_byte_check_accepts_a_disk_that_holds_every_row():
 
 
 @pytest.mark.parametrize("name,at", [(n, a) for n, a, _ in tb.CODE_ROWS])
-def test_the_byte_check_refuses_a_disk_that_differs_at_any_of_the_seven_addresses(name, at):
+def test_the_byte_check_refuses_a_disk_that_differs_at_any_of_the_addresses(name, at):
     lines = []
     assert tb.check_code("root", load=fake_loader((name, at)), out=lines.append) == 1
-    assert sum("DIFFERS" in line for line in lines) == 1
+    # A row inside another row's bytes (`$0A4D` lies in `$0A48`'s) turns both red.
+    differing = [row for row, line in zip(tb.CODE_ROWS, lines) if "DIFFERS" in line]
+    assert (name, at) in [(n, a) for n, a, _ in differing]
+    assert all(n == name and a <= at < a + len(bytes.fromhex(w)) for n, a, w in differing)
 
 
 def test_the_byte_check_matches_the_players_own_disks():
@@ -449,9 +453,10 @@ def test_the_post_stops_are_armed_only_inside_the_result_handler_and_deleted_aft
     assert len(stopped) == 5
     assert len(traps.readings["item_tally_call"]) == 1
     assert len(traps.readings["treasure"]) == 1
-    # Each armed stop was deleted once handled; only the two hit counters remain.
+    # Each armed stop was deleted once handled; only the four hit counters remain.
     left = machine.exec_checkpoints()
-    assert sorted(cp["start"] for cp in left) == [tb.NO_ITEMS_SKIP, tb.ITEM_LOOP]
+    assert sorted(cp["start"] for cp in left) == sorted(
+        [tb.NO_ITEMS_SKIP, tb.ITEM_LOOP, tb.MERCY_HEAL, tb.PILE_EMPTIED])
     assert all(not cp["stop"] for cp in left)
 
 
@@ -805,7 +810,7 @@ def after(monkeypatch, tmp_path, square):
     log = FakeLog()
     traps = tb.Traps(sess, log, tmp_path, args())
     tb.after_fight(sess, traps, log, tmp_path, args(), [
-        {"slot": i, "experience": 0, "flags": 0} for i in range(8)])
+        {"slot": i, "experience": 0, "flags": 0, "hp": 0} for i in range(8)])
     return sess, log
 
 
@@ -1288,7 +1293,7 @@ def still_after(monkeypatch, tmp_path, row24):
     monkeypatch.setattr(tb, "answer_until", answer)
     log = FakeLog()
     tb.after_fight(sess, tb.Traps(sess, log, tmp_path, args()), log, tmp_path, args(), [
-        {"slot": i, "experience": 0, "flags": 0} for i in range(8)])
+        {"slot": i, "experience": 0, "flags": 0, "hp": 0} for i in range(8)])
     return sess, log, answered
 
 
@@ -1495,9 +1500,9 @@ def test_a_failed_trap_does_not_end_a_fight_with_both_sides_standing():
 # -- the per-character award ---------------------------------------------------
 
 
-def person(code, abilities=(10, 10, 10, 10), flags=0, name_byte=65):
+def person(code, abilities=(10, 10, 10, 10), flags=0, name_byte=65, hp=0):
     return {"name_byte": name_byte, "flags": flags, "class_code": code,
-            "abilities": list(abilities)}
+            "abilities": list(abilities), "hp": hp}
 
 
 T1F_PARTY = [
@@ -1628,3 +1633,256 @@ def test_an_unknown_class_code_and_an_empty_slot_say_different_things(monkeypatc
     assert deltas[0]["predicted"] is None and deltas[0]["predicted_why"] == "unknown class code 17"
     assert deltas[1]["predicted"] is None and deltas[1]["predicted_why"] == "empty slot"
     assert "predicted_why" not in deltas[2]
+
+
+# -- #648: hit points, the result-chosen table, the counters and the staging ---
+
+
+def put_hp(machine, slot, hp):
+    at = tb.COMBATANTS + tb.STRIDE * slot + tb.HP_AT
+    machine.mem[at:at + 2] = bytes([hp & 0xFF, hp >> 8])
+
+
+def result_hit(machine, sess, result, stops=()):
+    """Store RESULT = `result` at the result store's PC and let the handler run."""
+    machine.mem[tb.RESULT] = result
+    machine.stops = list(stops)
+    machine.store(tb.RESULT, pc=tb.RESULT_STORE_NEXT)
+    connect(sess)
+
+
+def exec_starts(machine):
+    return sorted(cp["start"] for cp in machine.exec_checkpoints())
+
+
+def test_party_readings_carry_each_slots_sixteen_bit_hit_points():
+    machine = Machine()
+    put_hp(machine, 1, 0x0123)
+    put_hp(machine, 5, 7)
+    with FakeMon(machine) as m:
+        party = tb.party_readings(m)
+    assert [p["hp"] for p in party] == [0, 0x123, 0, 0, 0, 7, 0, 0]
+
+
+def test_the_result_reading_carries_the_party_with_hit_points():
+    machine = Machine()
+    put_hp(machine, 2, 55)
+    sess, traps = installed(machine)
+    traps.arm_result()
+    result_hit(machine, sess, 0x01)
+    assert traps.readings["result"][0]["party"][2]["hp"] == 55
+
+
+def test_an_experience_delta_carries_the_hit_points_before_and_after(monkeypatch, tmp_path):
+    machine = Machine()
+    machine.mem[SQUARE:SQUARE + 3] = bytes((7, 3, 0))
+    put_hp(machine, 1, 1)
+    sess = FakeSession(machine)
+    monkeypatch.setattr(tb, "answer_until", lambda *a, **k: {"outcome": "quiet", "rows": []})
+    log = FakeLog()
+    traps = tb.Traps(sess, log, tmp_path, args())
+    before = [{"slot": i, "experience": 0, "flags": 0, "hp": 0, "name_byte": 0,
+               "class_code": 0} for i in range(8)]
+    tb.after_fight(sess, traps, log, tmp_path, args(), before)
+    row = log.kinds("experience_delta")[1]
+    assert (row["hp_before"], row["hp_after"]) == (0, 1)
+
+
+def test_the_first_bar_reads_the_flags_and_the_written_hit_points_back():
+    machine = Machine()
+    machine.mem[tb.NO_ITEMS], machine.mem[tb.MERCY] = 1, 1
+    sess = FakeSession(machine)
+    log = FakeLog()
+    tactic = tb.Tactic(sess, log, args(mode="flee", stay=1), Flee())
+    tactic(sess, None)
+    got = log.kinds("first_bar")[0]
+    assert (got["no_items"], got["mercy"], got["hp_read_back"]) == (1, 1, {1: 1})
+
+
+def test_a_flee_run_whose_result_is_a_win_gets_the_win_table_and_its_share():
+    machine = Machine()
+    sess, traps = installed(machine, mode="flee", stay=1)
+    traps.arm_result()
+    result_hit(machine, sess, 0x01, [tb.ITEM_TALLY_CALL, tb.ITEM_TALLY_BACK, tb.SHARE,
+                                     tb.EMPTY_PILE, tb.TREASURE])
+    assert len(traps.readings["share"]) == 1
+    assert "line_drawn" not in traps.readings
+
+
+def test_a_win_run_whose_result_is_the_flight_gets_the_flee_table():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm_result()
+    result_hit(machine, sess, 0x81, [tb.LINE_DRAWN, tb.AFTER_DROP])
+    assert len(traps.readings["line_drawn"]) == 1
+    assert "share" not in traps.readings
+
+
+def test_a_lost_fight_arms_counters_and_no_stop():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm_result()
+    result_hit(machine, sess, 0x80)
+    assert exec_starts(machine) == sorted(
+        [tb.NO_ITEMS_SKIP, tb.ITEM_LOOP, tb.MERCY_HEAL, tb.PILE_EMPTIED])
+    assert all(not cp["stop"] for cp in machine.exec_checkpoints())
+
+
+@pytest.mark.parametrize("result", [0x01, 0x81, 0x80])
+def test_the_heal_and_pile_counters_are_armed_only_after_the_result_hit(result):
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm_result()
+    assert exec_starts(machine) == []
+    result_hit(machine, sess, result)
+    counters = [cp for cp in machine.exec_checkpoints() if not cp["stop"]]
+    assert {tb.MERCY_HEAL, tb.PILE_EMPTIED} <= {cp["start"] for cp in counters}
+    assert set(traps.counters) >= {"mercy_heal", "pile_emptied"}
+
+
+def test_the_flee_stops_at_the_status_pass_are_armed_read_and_deleted():
+    machine = Machine()
+    machine.mem[tb.MERCY], machine.mem[tb.NO_ITEMS] = 1, 1
+    put_hp(machine, 1, 0)
+    sess, traps = installed(machine)
+    traps.arm_result()
+    result_hit(machine, sess, 0x81, [tb.LINE_DRAWN, tb.AFTER_DROP, tb.STATUS_PASS, tb.STATUS_DONE])
+    for name in ("status_pass", "status_done"):
+        got = traps.readings[name]
+        assert len(got) == 1 and got[0]["mercy"] == 1 and got[0]["no_items"] == 1
+        assert got[0]["party"][1]["hp"] == 0
+    assert not [cp for cp in machine.exec_checkpoints() if cp["stop"]]
+
+
+def test_a_handler_run_at_another_pc_is_logged_late_and_one_at_its_address_is_not():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm("share", tb.SHARE, traps.on_share, once=True)
+    machine.exec_at(tb.SHARE)
+    machine.pc = 0x1234
+    connect(sess)
+    assert (traps.readings["share"][0]["pc"], traps.readings["share"][0]["late"]) == (0x1234, True)
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm_result()
+    result_hit(machine, sess, 0x01, [tb.SHARE])
+    got = traps.readings["share"][0]
+    assert (got["pc"], got["late"]) == (tb.SHARE, False)
+
+
+def test_stage_dying_writes_status_and_zero_hit_points_at_the_result_stop_only():
+    machine = Machine()
+    put_hp(machine, 1, 40)
+    machine.mem[tb.ACTING] = 1
+    sess, traps = installed(machine, stage_dying=1)
+    traps.arm_trigger()
+    machine.store(tb.MERCY)
+    connect(sess)
+    assert machine.mem[tb.COMBATANTS + tb.STRIDE] == 0            # not at the mercy store
+    traps.arm_result()
+    result_hit(machine, sess, 0x01)
+    assert machine.mem[tb.COMBATANTS + tb.STRIDE] == tb.DYING
+    assert machine.mem[tb.WORK] == tb.DYING                       # the acting copy too
+    assert (machine.mem[tb.COMBATANTS + tb.STRIDE + tb.HP_AT], machine.mem[tb.WORK + tb.HP_AT]) == (0, 0)
+    got = traps.readings["dying_staged"][0]
+    assert (got["slot"], got["status"], got["hp"]) == (1, tb.DYING, 0)
+    assert traps.readings["result"][0]["party"][1]["hp"] == 40   # the "before" is read first
+
+
+def test_without_stage_dying_or_stage_mercy_the_result_stop_writes_nothing():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm_result()
+    result_hit(machine, sess, 0x01)
+    assert machine.writes == []
+    assert "dying_staged" not in traps.readings and "mercy_staged" not in traps.readings
+
+
+@pytest.mark.parametrize("value", [0, 1])
+def test_stage_mercy_writes_the_flag_at_the_result_stop_and_reads_it_back(value):
+    machine = Machine()
+    machine.mem[tb.MERCY] = 1 - value
+    sess, traps = installed(machine, stage_mercy=value)
+    traps.arm_result()
+    result_hit(machine, sess, 0x01)
+    got = traps.readings["mercy_staged"][0]
+    assert (got["staged"], got["read_back"]) == (value, value)
+    assert machine.mem[tb.MERCY] == value
+
+
+@pytest.mark.parametrize("kw", [dict(mode="flee", stay=1, stage_dying=0),
+                                dict(mode="flee", stay=1, stage_mercy=0),
+                                dict(stage_dying=6)])
+def test_the_staging_options_are_refused_in_flee_mode_and_out_of_range(kw):
+    assert tb.check_args(args(**kw)) is not None
+
+
+def test_the_staging_options_are_accepted_in_win_mode():
+    assert tb.check_args(args(stage_dying=1, stage_mercy=0)) is None
+
+
+def test_the_square_store_log_is_armed_only_by_a_destination_hit_at_the_random_store():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm("destination", tb.DESTINATION, traps.on_destination, store=True, once=False)
+    machine.store(tb.DESTINATION, pc=0x1234)
+    connect(sess)
+    assert tb.SQUARE_Y not in [cp["start"] for cp in machine.checkpoints.values()]
+    machine.store(tb.DESTINATION, pc=tb.RANDOM_STORE_NEXT)
+    connect(sess)
+    assert tb.SQUARE_Y in [cp["start"] for cp in machine.checkpoints.values()]
+
+
+def test_the_square_store_log_records_value_and_pc_and_is_deleted_after_three_hits():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm("destination", tb.DESTINATION, traps.on_destination, store=True, once=False)
+    machine.store(tb.DESTINATION, pc=tb.RANDOM_STORE_NEXT)
+    connect(sess)
+    for value, pc in ((40, 0xAF0D), (8, 0xAF20), (8, 0xAF30)):
+        machine.mem[tb.SQUARE_Y] = value
+        machine.store(tb.SQUARE_Y, pc=pc)
+        connect(sess)
+    got = traps.readings["square_store"]
+    assert [(g["value"], g["pc"]) for g in got] == [(40, 0xAF0D), (8, 0xAF20), (8, 0xAF30)]
+    assert tb.SQUARE_Y not in [cp["start"] for cp in machine.checkpoints.values()]
+
+
+def test_the_forced_destination_is_left_by_a_step_west_and_checked_against_10_8(monkeypatch, tmp_path):
+    machine = Machine()
+    machine.mem[SQUARE:SQUARE + 3] = bytes((11, 8, 1))
+    sess = FakeSession(machine)
+    monkeypatch.setattr(tb, "answer_until", lambda *a, **k: {"outcome": "quiet", "rows": []})
+    monkeypatch.setattr(tb, "timed_captures", lambda *a, **k: None)
+    steps = []
+
+    def step(sess_, where, out, label):
+        steps.append((where, label))
+        return {"placed": list(where), "square": [10, 8, 3], "moved": True}
+
+    monkeypatch.setattr(tb, "step_on", step)
+    sess.script = ["THE TAVERN GAMBLE YES NO"]
+    log = FakeLog()
+    traps = tb.Traps(sess, log, tmp_path, args())
+    traps.destination_at = 1.0
+    tb.after_fight(sess, traps, log, tmp_path, args(), [
+        {"slot": i, "experience": 0, "flags": 0, "hp": 0} for i in range(8)])
+    assert steps == [((11, 8, 3), "destination-west")]
+    got = log.kinds("destination_exit")[0]
+    assert (got["at_expected"], got["square_expected"], got["tavern_seen"]) == (True, True, True)
+
+
+def test_the_byte_check_holds_the_status_pass_the_heal_and_the_pile_rows():
+    rows = {(n, a): w for n, a, w in tb.CODE_ROWS}
+    assert rows[("POST.COM", 0x14AF)] == "20 FB 14"
+    assert rows[("POST.COM", 0x1544)] == "AD E6 6D F0 05 A9 01 8D 19 6C"
+    assert rows[("POST.COM", 0x0A4D)] == "A9 00 8D 28 2B"
+
+
+def test_the_share_reading_carries_the_pile_count():
+    machine = Machine()
+    machine.mem[tb.PILE_COUNT] = 26
+    sess, traps = installed(machine)
+    with FakeMon(machine) as m:
+        traps.on_share(m)
+    assert traps.readings["share"][0]["pile_count"] == 26

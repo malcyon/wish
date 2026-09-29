@@ -120,3 +120,51 @@ def test_a_leave_that_never_reached_the_world_has_its_own_exit_status():
 def test_a_leave_that_reached_the_world_exits_zero():
     sess = Script([(5, S.BAR_BLANK, ""), (1, S.BAR_BLANK, "")])
     assert defeatdrive.leave_status(sess, Says(), 5.0, 0.0) == 0
+
+
+class Counting(Script):
+    """A `Script` whose monitor records the checkpoint calls."""
+
+    def __init__(self, readings, hits=6):
+        super().__init__(readings)
+        self.calls = []
+        self.hits = hits
+
+    def mon(self, timeout=5.0):
+        return Mon(self)
+
+
+class Mon:
+    def __init__(self, owner):
+        self.owner = owner
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def checkpoint_set(self, address, *, exec_=False, stop=True, **kw):
+        self.owner.calls.append(("set", address, exec_, stop))
+        return 7
+
+    def checkpoint_hits(self, cp):
+        self.owner.calls.append(("hits", cp))
+        return self.owner.hits
+
+    def checkpoint_delete(self, cp):
+        self.owner.calls.append(("delete", cp))
+
+
+def test_a_heal_counter_is_armed_at_mode_five_read_at_mode_one_and_deleted():
+    sess = Counting([(5, S.BAR_BLANK, ""), (1, S.BAR_BLANK, "")])
+    log = Log()
+    assert defeatdrive.leave_after(sess, log, 5.0, 0.0) is True
+    assert sess.calls == [("set", 0x1549, True, False), ("hits", 7), ("delete", 7)]
+    assert [kw for k, kw in log.events if k == "mercy_heal"] == [{"hits": 6}]
+
+
+def test_no_heal_counter_is_armed_before_the_post_combat_mode():
+    sess = Counting([(1, S.BAR_BLANK, "")])
+    assert defeatdrive.leave_after(sess, Log(), 0.05, 0.0) is False
+    assert sess.calls == []
