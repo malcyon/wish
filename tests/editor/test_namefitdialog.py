@@ -1,4 +1,4 @@
-"""The window that asks for shorter character names (#619).
+"""The window that asks for shorter character names.
 
 Every row is built from the `(position, name)` entries a `NamesDoNotFit`
 carries, so no game data is needed. No test calls a real `exec()`: each one

@@ -19,6 +19,8 @@ The character editor's logic and dialogs, opened from `wish/window.py`; it impor
 | `inventory.ui` | The Qt Designer form for the "Add an item" dialog. Compiled to `ui_inventory.py` by `tools/generate/genui.py`. |
 | `leavebehind.py` | The window that asks which items and scrolls stay behind when a character's pack needs more C64 slots than the record has: one window for every character who does not fit. |
 | `leavebehind.ui` | The Qt Designer form for `LeaveBehindDialog`. Compiled to `ui_leavebehind.py` by `tools/generate/genui.py`. |
+| `namefit.py` | The window that asks for a shorter name for every character whose name is too long for the destination: one row for each, with the full name beside a box that starts with the cut name selected. |
+| `namefit.ui` | The Qt Designer form for `NameFitDialog`. Compiled to `ui_namefit.py` by `tools/generate/genui.py`. |
 | `palette.py` | The sixteen colours a C64 has, and no others. |
 | `partspicker.py` | Pick an icon the way the game's own ICON menu does — a weapon and a head — with each option rendered as the icon you would end up with, so you choose a result rather than a number. |
 | `partspicker.ui` | The Qt Designer form for the icon parts picker. Compiled to `ui_partspicker.py` by `tools/generate/genui.py`. |
@@ -32,6 +34,7 @@ The character editor's logic and dialogs, opened from `wish/window.py`; it impor
 | `ui_convert.py` | Generated from `convert.ui` by `tools/generate/genui.py`; never edit it. |
 | `ui_inventory.py` | Generated from `inventory.ui` by `tools/generate/genui.py`; never edit it. |
 | `ui_leavebehind.py` | Generated from `leavebehind.ui` by `tools/generate/genui.py`; never edit it. |
+| `ui_namefit.py` | Generated from `namefit.ui` by `tools/generate/genui.py`; never edit it. |
 | `ui_partspicker.py` | Generated from `partspicker.ui` by `tools/generate/genui.py`; never edit it. |
 | `ui_slotpicker.py` | Generated from `slotpicker.ui` by `tools/generate/genui.py`; never edit it. |
 | `ui_traitpicker.py` | Generated from `traitpicker.ui` by `tools/generate/genui.py`; never edit it. |

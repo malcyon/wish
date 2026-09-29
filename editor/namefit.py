@@ -1,16 +1,13 @@
 """Shorten the character names a destination cannot hold.
 
 One row for every character whose name is over the destination's width, built
-from `editor.saveplan.NamesDoNotFit.unfit` (`#619 (A name cut to the
-destination's width and a value clamped into a narrower field reach
-report.warnings only, so no caller can see the loss)`). Each row shows the
-character's full name and a box that starts with that name cut to the width,
-selected for editing. Nothing is written until the player confirms, and two
-characters sharing one long name get a box each.
+from `editor.saveplan.NamesDoNotFit.unfit`. Each row shows the character's full
+name and a box that starts with that name cut to the width, selected for
+editing. Nothing is written until the player confirms, and two characters
+sharing one long name get a box each.
 
-**Approved by Donald, and exactly these:** `TITLE` and `LENGTH_SENTENCE`. The
-accept button's label is the caller's: the existing Convert or Save As label.
-No column header, hint or count is approved, so none is shown.
+The accept button's label is the caller's: the Convert or Save As label. The
+window shows no column header, hint or count.
 """
 
 from __future__ import annotations

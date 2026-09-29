@@ -703,8 +703,7 @@ def test_a_choice_the_writer_still_refuses_shows_the_existing_sentence(
 
 
 # ---------------------------------------------------------------------------
-# A name the destination cannot hold (#619): Save As asks, and the choice is
-# prepared
+# A name the destination cannot hold: Save As asks, and the choice is prepared
 # ---------------------------------------------------------------------------
 
 LONG_NAME = "ABCDEFGHIJKLMNOPQR"
