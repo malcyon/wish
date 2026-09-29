@@ -301,20 +301,32 @@ def absorb_spurious(w: Watcher, expected: int, timeout: float = 40.0) -> list:
     return got
 
 
-def _grab(por: dosbox.PoolOfRadiance):
+def _grab(por: dosbox.PoolOfRadiance, tries: int | None = None):
     """`(screen, bar kind)` of a fresh capture, or `(None, None)` for a frame
     the grab could not read.
 
     The debugger halts the emulator on a watchpoint between two blits, and a
     frame captured then is torn; `dosboxx.halve` refuses it, and it stays
     torn until the emulator runs again.  That is a frame to skip, not the end
-    of the run, so the caller keeps polling.
+    of the run, so the caller keeps polling.  `tries` replaces the session's
+    `CAPTURE_TRIES` for this one grab: a grab retried while the emulator is
+    still halted sees the same torn frame every time, so the caller that is
+    halted asks for one.
     """
+    had = por.s.__dict__.get("CAPTURE_TRIES")
+    if tries is not None:
+        por.s.CAPTURE_TRIES = tries
     try:
         screen = por.s.capture()
     except dosboxx.NotLineDoubled as e:
         print(f"unreadable frame ({e}); polling on")
         return None, None
+    finally:
+        if tries is not None:
+            if had is None:
+                del por.s.CAPTURE_TRIES
+            else:
+                por.s.CAPTURE_TRIES = had
     return screen, por.bar_kind(screen)
 
 
@@ -348,11 +360,16 @@ def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
     unknown_since: float | None = None
     resumes = 0
     last_bar = "?"
+    unreadable_since: float | None = None
     while time.time() < deadline:
         fresh = w.drain()
         if fresh:
-            bar = _grab(por)[1] or "?"
-            last_bar = bar
+            # The emulator is halted, so a torn frame here stays torn: one
+            # try, and the last bar read stands in for the one not seen.
+            screen, kind = _grab(por, tries=1)
+            if screen is not None:
+                last_bar = kind or "?"
+            bar = last_bar
             rows = [w.note(hit, bar=bar, t=round(time.time() - started, 2),
                            cs_ip=None) for hit in fresh]
             if on_hit is not None or len(w.hits) <= 40:
@@ -383,8 +400,15 @@ def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
             screen = s.capture()
         except dosboxx.NotLineDoubled as e:
             print(f"unreadable frame ({e}); polling on")
+            unreadable_since = unreadable_since or time.time()
+            if time.time() - unreadable_since >= patience:
+                _shot(s, "watch_unreadable_screen", evidence)
+                return {"result": False, "why": "unreadable screen",
+                        "resumes": resumes,
+                        "seconds": round(time.time() - started, 1)}
             time.sleep(0.25)
             continue
+        unreadable_since = None
         bar = screen.glyphs(dosbox.BAR)
         if bar == por.world_glyphs:
             world_since = world_since or time.time()
@@ -434,6 +458,7 @@ def _await_bar(por: dosbox.PoolOfRadiance, patience: float,
     once the bar resolves into one the walk can act on, `(kind, False)`, with
     a screenshot named for the digest already taken, once `patience` seconds
     pass with it still unresolved.
+    A frame still unreadable when `patience` runs out gives `("unreadable", False)`.
     """
     deadline = time.time() + patience
     first_sight = True
@@ -449,7 +474,8 @@ def _await_bar(por: dosbox.PoolOfRadiance, patience: float,
             first_sight = False
         if time.time() >= deadline:
             if screen is None:
-                return None, False
+                _shot(por.s, "walk_unreadable_screen", evidence)
+                return "unreadable", False
             # The shot is named for **this** capture's bar, the one the walk
             # actually gave up on.  Capturing again here to name it would let
             # the emulator redraw in between and save a picture of some other
@@ -507,7 +533,8 @@ def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int, *,
         kind, resolved = _await_bar(por, patience, evidence)
         if not resolved:
             return {"met": False,
-                    "why": f"a bar nobody has labelled ({kind})",
+                    "why": ("unreadable screen" if kind == "unreadable"
+                            else f"a bar nobody has labelled ({kind})"),
                     "at_step": i + 1, "walked": walked,
                     "blocked": blocked, "prompts": prompts}
         if kind in FIGHT_BARS:

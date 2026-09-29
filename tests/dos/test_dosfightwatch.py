@@ -717,6 +717,7 @@ class _TornThenWorld:
     def __init__(self, torn):
         self.torn = torn
         self.calls = 0
+        self.shots: list[str] = []
 
     def capture(self):
         self.calls += 1
@@ -728,6 +729,7 @@ class _TornThenWorld:
         pass
 
     def shot(self, name, allow_blank=False):
+        self.shots.append(name)
         return None
 
 
@@ -782,3 +784,66 @@ def test_a_torn_frame_while_waiting_for_the_bar_is_retried():
     kind, resolved = dosfightwatch._await_bar(por, patience=5.0)
     assert (kind, resolved) == ("encounter", True)
     assert por.s.calls == 3
+
+
+def test_a_torn_hit_frame_keeps_the_previous_bar_and_asks_for_one_try():
+    tries = []
+
+    class Session(_TornThenWorld):
+        def __init__(self):
+            super().__init__(0)
+            self.mode = ["ok", "torn", "world"]
+
+        def capture(self):
+            tries.append(self.CAPTURE_TRIES if "CAPTURE_TRIES" in self.__dict__ else None)
+            m = self.mode.pop(0)
+            if m == "torn":
+                raise dosboxx.NotLineDoubled("torn")
+            return _WorldScreen() if m == "world" else _Screen()
+
+        def regs(self, *names):
+            return {}
+
+        def run(self):
+            pass
+
+    class Hits:
+        def __init__(self):
+            self.queue = [[object()], [object()], []]
+            self.seen = []
+            self.hits = []
+
+        def drain(self):
+            return self.queue.pop(0) if self.queue else []
+
+        def note(self, hit, **kw):
+            self.seen.append(kw["bar"])
+            return dict(kw)
+
+    por = _FakePoR(["command"])
+    por.s = Session()
+    por.world_glyphs = "the-world"
+    w = Hits()
+    result = dosfightwatch.fight_watching(por, w, settled=0.0)
+    assert w.seen == ["command", "command"]
+    assert result["last_bar"] == "command"
+    assert tries[:2] == [1, 1]
+    assert "CAPTURE_TRIES" not in por.s.__dict__
+
+
+def test_a_screen_that_stays_torn_gives_up_as_unreadable(tmp_path):
+    por = _FakePoR([None])
+    por.s = _TornThenWorld(10 ** 9)
+    por.world_glyphs = "the-world"
+    result = dosfightwatch.fight_watching(por, _NoHits(), patience=0.0)
+    assert result["result"] is False
+    assert result["why"] == "unreadable screen"
+
+
+def test_a_walk_on_a_screen_that_stays_torn_reports_it_and_takes_the_shot():
+    por = _FakePoR([None])
+    por.s = _TornThenWorld(10 ** 9)
+    result = dosfightwatch.walk_to_encounter(por, steps=5, patience=0.0)
+    assert result["met"] is False
+    assert result["why"] == "unreadable screen"
+    assert por.s.shots == ["walk_unreadable_screen"]
