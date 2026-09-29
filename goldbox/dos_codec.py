@@ -1751,8 +1751,11 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     shipped archives dividing evenly, which is the same check Silver Blades
     would have passed while being wrong.
 
-    No sibling item file at all is quiet -- an export normally has none.  A
-    sibling that **is** present and does not reconcile with the record's own
+    No sibling item file at all is quiet only when the record's `item_count`
+    is zero, which is what an export carries.  A record that counts items and
+    has no item file beside it is an incomplete copy, and raises
+    `DosRecordError` naming the character and the missing file rather than
+    reading as an empty pack.  A sibling that **is** present and does not reconcile with the record's own
     item count, because it is short of a whole number of items or short of
     the count, raises `DosRecordError` naming the file, the stride and both
     counts (#221) rather than silently handing back fewer items than the
@@ -1779,14 +1782,19 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     # items it does not carry -- which is exactly what the archives hold.
     count = data[FIELDS_BY_NAME_FOR[shape.key]["item_count"].offset]
     stride = shape.item_size
-    # No sibling item file at all is deliberate and documented above -- an
-    # export normally has none, and that case stays silent. A file that is
+    # No sibling item file with a zero count is an export and stays silent;
+    # a count above zero with no file is a folder copied without its item
+    # files, which would otherwise convert to an empty pack. A file that is
     # *present* and the wrong shape is not: `min()` used to paper over a
     # truncated or short `.ITM`/`.SWG`/`.STF`/`.THG`, which is exactly what a
     # 63-byte `.ITM` did to every Curse and Silver Blades character (#113).
     # `item_count` counts head items, and a Silver Blades joined scroll's
     # scrolls are extra records straight after its head, so the file is read
     # the way the engine's loader reads it rather than sliced by the count.
+    if count and not item_file_present:
+        raise DosRecordError(
+            f"{path.name}: item_count says {count}, but its item file "
+            f"{item_path.name} is missing")
     try:
         items = item_nodes(itm, stride, heads=count)
     except DosRecordError as e:
@@ -1797,8 +1805,11 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
             f"is {len(items)} items, but {path.name}'s item_count "
             f"says {count}"
         )
-    effects = [spc[i:i + EFFECT_SIZE] for i in range(0, len(spc), EFFECT_SIZE)
-               if len(spc[i:i + EFFECT_SIZE]) == EFFECT_SIZE]
+    if len(spc) % EFFECT_SIZE:
+        raise DosRecordError(
+            f"{path.with_suffix(shape.effect_suffix).name}: {len(spc)} bytes "
+            f"is not a whole number of {EFFECT_SIZE}-byte effect nodes")
+    effects = [spc[i:i + EFFECT_SIZE] for i in range(0, len(spc), EFFECT_SIZE)]
     return DosCharacter(data, items, effects, source=str(path), deltas=shape)
 
 

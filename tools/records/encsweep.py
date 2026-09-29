@@ -106,11 +106,12 @@ class Row:
     def readable(self) -> bool:
         """Can the identity even be evaluated on this record?
 
-        Only if every item the record says it owns was found.  A DOS export
-        carries `item_count` and no `.ITM` beside it, and `read_character`
-        gives it no items rather than failing -- so its money alone is
-        compared against a stored total that includes items, and it "fails"
-        by the whole weight of an inventory nobody can see.  Six Amiga `.cha`
+        Only if every item the record says it owns was found.  A DOS record
+        that counts items with no `.ITM` beside it is refused by
+        `read_character` and never becomes a row; an Amiga export is not, so
+        its money alone would be compared against a stored total that
+        includes items, and it "fails" by the whole weight of an inventory
+        nobody can see.  Six Amiga `.cha`
         exports on the Curse save disk do exactly that, declaring 6 to 16
         items each; they are not evidence of anything and are counted apart.
         """

@@ -71,18 +71,22 @@ def test_a_record_in_the_played_directory_and_the_archives_grades_edited():
         == "spec"
 
 
-def test_a_record_whose_item_file_is_missing_is_not_called_a_failure(tmp_path):
-    """It declares three items nobody can weigh, so neither side of the sum
-    is known.  Counting it as a miss is what put six Amiga exports into
-    `#323`'s first headline number."""
+def test_a_record_whose_item_file_is_missing_is_refused_with_the_readers_reason(
+        tmp_path):
+    """It declares three items nobody can weigh, and `read_character` now
+    refuses it.  It is reported among the refused with that reason, neither
+    counted as a failure of the sum nor dropped without a word."""
     _record(tmp_path / "EXPORT.CHA", gold=100, encumbrance=900, items=3)
 
-    rows, _skipped = encsweep.dos_rows([tmp_path])
+    rows, skipped = encsweep.dos_rows([tmp_path])
 
-    assert len(rows) == 1
-    assert rows[0].declared == 3 and rows[0].items == 0
-    assert not rows[0].readable
-    assert rows[0].delta == 800          # what it would have been reported as
+    assert rows == []
+    assert len(skipped) == 1
+    (reason, count), = skipped.items()
+    assert count == 1
+    assert reason.startswith("unreadable: ")
+    assert "EXPORT.CHA" in reason and "item_count says 3" in reason
+    assert "EXPORT.ITM" in reason and "missing" in reason
 
 
 def test_a_record_with_no_items_is_judged_on_its_money_alone(tmp_path):

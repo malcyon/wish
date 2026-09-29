@@ -879,9 +879,10 @@ def test_a_curse_item_file_under_the_old_name_is_not_read(tmp_path):
     record.write_bytes(_synthetic_curse_character(1))
     (tmp_path / "CHRDATC1.ITM").write_bytes(_synthetic_battle_axe())
 
-    character = dos_codec.read_character(record)
-    assert character.get("item_count") == 1
-    assert not character.items, "an .ITM beside a Curse record was read"
+    # Not read as the item file, so the record's count of one has no item
+    # file beside it and is refused rather than read as an empty pack.
+    with pytest.raises(dos_codec.DosRecordError, match=r"CHRDATC1\.SWG"):
+        dos_codec.read_character(record)
 
 
 # --- and Silver Blades', which are a different length in a different file ------
@@ -1049,13 +1050,37 @@ def test_an_item_file_short_of_the_records_own_count_is_refused(tmp_path):
         dos_codec.read_character(record)
 
 
-def test_an_absent_item_file_is_still_read_quietly(tmp_path):
-    """No sibling at all is the documented, deliberate case: an export."""
+def test_an_absent_item_file_is_still_read_quietly_when_the_record_counts_none(
+        tmp_path):
+    """No sibling at all with a zero item count is an export."""
+    from goldbox import dos_codec
+
+    record = tmp_path / "CHRDATC1.SAV"
+    record.write_bytes(_synthetic_curse_character(0))
+
+    character = dos_codec.read_character(record)
+    assert not character.items
+
+
+def test_a_record_that_counts_items_with_no_item_file_is_refused(tmp_path):
+    """A folder copied without its item files must not read as an empty pack."""
     from goldbox import dos_codec
 
     record = tmp_path / "CHRDATC1.SAV"
     record.write_bytes(_synthetic_curse_character(1))
 
-    character = dos_codec.read_character(record)
-    assert character.get("item_count") == 1
-    assert not character.items
+    with pytest.raises(dos_codec.DosRecordError,
+                       match=r"CHRDATC1\.SAV.*CHRDATC1\.SWG.*missing"):
+        dos_codec.read_character(record)
+
+
+def test_a_partial_trailing_effect_node_is_refused(tmp_path):
+    """Nine-byte nodes: ten bytes leaves one stray byte, which was dropped."""
+    from goldbox import dos_codec
+
+    record = tmp_path / "CHRDATC1.SAV"
+    record.write_bytes(_synthetic_curse_character(0))
+    (tmp_path / "CHRDATC1.FX").write_bytes(bytes(dos_codec.EFFECT_SIZE + 1))
+
+    with pytest.raises(dos_codec.DosRecordError, match=r"CHRDATC1\.FX.*10"):
+        dos_codec.read_character(record)

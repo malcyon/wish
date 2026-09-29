@@ -913,9 +913,12 @@ def test_a_seven_member_c64_party_saves_as_dos_with_all_seven(app, tmp_path):
     # reading the names back off `party.members` would reflect the party at
     # itself and pass for any seventh member.
     assert party.members[SEVEN_MEMBERS - 1].record.get("name") == SEVENTH_C64
+    # The item files are part of the converted party; a record that counts
+    # items is refused without the file beside it.
+    for filename, data in plan.files.items():
+        (tmp_path / filename).write_bytes(data)
     for number, member in enumerate(party.members, start=1):
         record = tmp_path / f"CHRDATA{number}.SAV"
-        record.write_bytes(plan.files[f"CHRDATA{number}.SAV"])
         assert dos_codec.read_character(record).name == member.record.get(
             "name")
     seventh = tmp_path / f"CHRDATA{SEVEN_MEMBERS}.SAV"
