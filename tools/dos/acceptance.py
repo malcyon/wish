@@ -806,15 +806,17 @@ class CombatLayout:
     record pointer and then its map entry (Curse 0xF166, Silver Blades
     0xFE1C: `mov [array+4i], offset / segment`, `mov al, es:[di+side]`,
     `mov [map+4i+2], index`, `mov [map+4i+3], size`), and from the `SPACE`
-    handler of the combat menu, which walks the party list from `party_at`
-    through `next_at` and clears `quick_at` wherever `control_at` is below
-    0x80 (Curse 0xAADF, Silver Blades 0xBF84).  `selected_at` is the pointer
+    handler of the combat menu, which walks the combatant list (the party
+    first) from `party_at` through `next_at` and clears `quick_at` wherever
+    `control_at` is below 0x80 (Curse 0xAADF, Silver Blades 0xBF84).  `selected_at` is the pointer
     the overlays load most (`les di, [selected_at]`: Curse 288 sites, Silver
     Blades 315); Curse's is `player_ptr` in the reconstruction's listing.
     """
 
     #: Four bytes per combatant, from entry 1: x, y, index, size.  Entry 0's
-    #: fourth byte is the count.
+    #: fourth byte is one more than the count: the setup sets it to 1 and adds
+    #: one after storing each combatant (Curse 0xF11B, 0xF2A7, 0xF31C; Silver
+    #: Blades 0xFDD4, 0xFF7A, 0xFFEC), so it names the next free entry.
     map_at: int
     #: A far pointer (offset, segment) per combatant to its record, from entry 1.
     array_at: int
@@ -845,8 +847,6 @@ PLACEMENT_FIELDS = ("name", "index", "slot", "position", "size", "on_map", "hp",
 #: Shots of bars nobody has classified, per fight: an animation can show a
 #: new digest on every look.
 FIGHT_UNKNOWN_SHOTS = 5
-#: Party records followed from `party_at` before the list is called a loop.
-MAX_PARTY = 8
 
 
 class CombatUnread(ValueError):
@@ -869,15 +869,17 @@ def far_pointer(raw: bytes) -> tuple[int, int]:
 def read_combat(window: bytes, base: int, layout: CombatLayout) -> dict:
     """The combatants in a `combat_window` read from `base`.
 
-    Raises `CombatUnread` for a count of 0 or a combatant with no record,
-    which is what the window holds under a `DS` that is not the game's.
+    Entry 0's fourth byte is one more than the count (`CombatLayout.map_at`),
+    so the combatants are entries 1 to that byte less one.  Raises
+    `CombatUnread` for a byte that leaves no combatant or a combatant with no
+    record, which is what the window holds under a `DS` that is not the game's.
     """
     def at(offset: int, n: int) -> bytes:
         return window[offset - base:offset - base + n]
 
-    count = at(layout.map_at + 3, 1)[0]
-    if count == 0:
-        raise CombatUnread("the combat map's count is 0")
+    count = at(layout.map_at + 3, 1)[0] - 1
+    if count < 1:
+        raise CombatUnread(f"the combat map's count is {max(count, 0)}")
     combatants = []
     for i in range(1, count + 1):
         x, y, index, size = at(layout.map_at + 4 * i, 4)
@@ -3512,16 +3514,18 @@ class Driver:
         does not, or a read the debugger
         refuses, is read again after a fresh halt with the `DS` read afresh,
         `FIGHT_PRESSES` times at most; a `DS` that read true once is kept.
+        Each refused read is logged (`fight-memory-unread`) and named when
+        the run stops, since a halt can land where `DS` is not the game's.
         A record whose name is not a name is logged (`fight-odd-record`)
         and kept with `name` None.
         """
         layout = COMBAT_LAYOUTS[self.title.key]
         lo, n = combat_window(layout)
         known = known if known is not None else {}
-        why = "the debugger never halted"
+        whys: list[str] = []
         for _ in range(FIGHT_PRESSES):
             if not self.s.attach():
-                why = "the debugger did not answer Alt+Pause"
+                whys.append("the debugger did not answer Alt+Pause")
                 continue
             ds = None
             try:
@@ -3547,9 +3551,14 @@ class Driver:
                 if not any(c["name"] is not None for c in snap["combatants"]):
                     raise CombatUnread("no combatant's record holds a name")
                 if records:
+                    # The list from `party_at` holds every combatant, the
+                    # party's first: the setup walks it through `next_at`
+                    # giving entry i to the i-th record (Silver Blades
+                    # 0xFDF1-0x10000), allies and monsters after the party.
                     party: list[tuple[int, int]] = []
                     ptr = tuple(snap["party_head"])
-                    while ptr != (0, 0) and ptr not in party and len(party) < MAX_PARTY:
+                    while (ptr != (0, 0) and ptr not in party
+                           and len(party) < self.party_size):
                         party.append(ptr)
                         ptr = far_pointer(record(ptr)[layout.next_at:layout.next_at + 4])
                     for c in snap["combatants"]:
@@ -3570,8 +3579,9 @@ class Driver:
             except (CombatUnread, dosboxx.NotHalted, RuntimeError, ValueError) as e:
                 # A wrong DS reads garbage pointers, which the debugger may
                 # refuse (`NotHalted`, a short dump) as well as misread.
-                why = (f"DS {'unread' if ds is None else f'{ds:04X}'}: "
-                       f"{type(e).__name__}: {e}")
+                whys.append(f"DS {'unread' if ds is None else f'{ds:04X}'}: "
+                            f"{type(e).__name__}: {e}")
+                self.note(event="fight-memory-unread", why=whys[-1])
                 self.combat_ds = None
                 continue
             finally:
@@ -3580,7 +3590,7 @@ class Driver:
             snap["ds"] = ds
             return snap
         raise self.fail("fight-memory", f"the combatants never read as a fight "
-                        f"({why})")
+                        f"({'; '.join(whys) or 'the debugger never halted'})")
 
     def pick_line(self, line: int, where: str, label: str,
                   next_key: str = POD_ROSTER_NEXT) -> dict:

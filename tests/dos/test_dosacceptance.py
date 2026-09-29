@@ -6773,18 +6773,20 @@ def _record(name: str, side: int, quick: int, control: int, hp: int,
 
 def _fight_memory() -> tuple[bytearray, dict]:
     """Three party members and one monster: GUY and PAINE the player's,
-    EPONA under the computer (control 0xB3, quickfight 1), an ORC on side 1."""
+    EPONA under the computer (control 0xB3, quickfight 1), an ORC on side 1.
+    The list from the party head runs on into the ORC, as the game's does."""
     ptrs = {"GUY": (0x3000, 0x10), "PAINE": (0x3000, 0x200),
             "EPONA": (0x3000, 0x400), "ORC": (0x3100, 0x10)}
     records = {
         ptrs["GUY"]: _record("GUY", 0, 0, 0, 30, ptrs["PAINE"]),
         ptrs["PAINE"]: _record("PAINE", 0, 1, 0, 25, ptrs["EPONA"]),
-        ptrs["EPONA"]: _record("EPONA", 0, 1, 0xB3, 20),
+        ptrs["EPONA"]: _record("EPONA", 0, 1, 0xB3, 20, ptrs["ORC"]),
         ptrs["ORC"]: _record("ORC", 1, 1, 0xB2, 8),
     }
     ds = bytearray(0x10000)
     order = ("GUY", "PAINE", "EPONA", "ORC")
-    ds[_ssb().map_at + 3] = len(order)
+    # One more than the count, as the game's setup leaves it.
+    ds[_ssb().map_at + 3] = len(order) + 1
     for i, who in enumerate(order, 1):
         x, y = (5 + i, 7) if who != "ORC" else (6, 2)
         ds[_ssb().map_at + 4 * i:_ssb().map_at + 4 * i + 4] = bytes((x, y, i, 1))
@@ -6825,6 +6827,74 @@ def test_a_window_that_is_not_a_fight_is_refused():
         da.read_combat(bytes(ds[lo:lo + n]), lo, _ssb())
     odd = da.combatant_record(bytes(_record_size()), _ssb())
     assert odd["name"] is None and odd["raw_name"] == "00" * 16
+
+
+#: The Silver Blades fight in New Verdigris as a debugger read it at the
+#: first command bar (`DS` 1604): each combatant's name, square, record
+#: pointer, side, quickfight, control and hit points, in map order.  Six
+#: party members, six townsmen fighting beside them, and six monsters.
+_VERDIGRIS = (
+    ("Guy de Valois", 27, 13, (0x5E98, 0x0E), 0, 0, 0x00, 95),
+    ("PAINE", 28, 13, (0x5EEA, 0x0C), 0, 0, 0x00, 74),
+    ("EPONA", 26, 13, (0x6027, 0x06), 0, 0, 0x00, 91),
+    ("MALACHITE", 29, 13, (0x6042, 0x0D), 0, 1, 0xB3, 58),
+    ("DOMINIC", 25, 13, (0x605E, 0x04), 0, 0, 0x00, 78),
+    ("MORGAINE", 30, 13, (0x6079, 0x0B), 0, 0, 0x00, 35),
+    ("TOWNSMAN", 28, 14, (0x6713, 0x0E), 0, 1, 0xB2, 24),
+    ("TOWNSMAN", 29, 14, (0x67B0, 0x09), 0, 1, 0xB2, 24),
+    ("TOWNSMAN", 27, 14, (0x67D4, 0x06), 0, 1, 0xB2, 24),
+    ("TOWNSMAN", 30, 14, (0x63C6, 0x02), 0, 1, 0xB2, 24),
+    ("TOWNSMAN", 26, 14, (0x63E1, 0x09), 0, 1, 0xB2, 24),
+    ("TOWNSMAN", 31, 14, (0x63FD, 0x00), 0, 1, 0xB2, 24),
+    ("BC LORD", 27, 12, (0x6418, 0x07), 1, 1, 0x80, 78),
+    ("MEDUSA", 26, 12, (0x653D, 0x02), 1, 1, 0x80, 27),
+    ("MEDUSA", 28, 12, (0x68FA, 0x0B), 1, 1, 0x80, 27),
+    ("MEDUSA", 26, 11, (0x6916, 0x02), 1, 1, 0x80, 27),
+    ("MEDUSA", 25, 11, (0x6931, 0x09), 1, 1, 0x80, 27),
+    ("MEDUSA", 27, 11, (0x694D, 0x00), 1, 1, 0x80, 27),
+)
+
+
+def _verdigris(game: "FakeFight") -> None:
+    """Put the New Verdigris fight in a fake session's memory.
+
+    Entry 0's fourth byte held 0x13, one more than the 18 combatants, and
+    entry 19 was all zeros; the list from the party head ran through all 18
+    in map order; the selected pointer was MORGAINE's.
+    """
+    game.ds[:] = bytes(len(game.ds))
+    game.records = {}
+    ptrs = [row[3] for row in _VERDIGRIS]
+    for i, (name, x, y, ptr, side, quick, control, hp) in enumerate(_VERDIGRIS, 1):
+        after = ptrs[i] if i < len(ptrs) else (0, 0)
+        game.records[ptr] = _record(name, side, quick, control, hp, after)
+        at = _ssb().map_at + 4 * i
+        game.ds[at:at + 4] = bytes((x, y, i, 1))
+        seg, off = ptr
+        at = _ssb().array_at + 4 * i
+        game.ds[at:at + 4] = off.to_bytes(2, "little") + seg.to_bytes(2, "little")
+    game.ds[_ssb().map_at + 3] = 0x13
+    seg, off = ptrs[0]
+    game.ds[_ssb().party_at:_ssb().party_at + 4] = (off.to_bytes(2, "little")
+                                                   + seg.to_bytes(2, "little"))
+    _select(game.ds, ptrs[5])
+
+
+def test_the_new_verdigris_fight_reads_as_its_eighteen_combatants(tmp_path):
+    game, d = _fighter(tmp_path)
+    d.party_size = 6
+    game.state = "bar1"
+    _verdigris(game)
+    snap = d.combat_memory(True, {})
+    assert snap["count"] == 18 and snap["selected"] == 6 and game.halts == 1
+    got = [(c["name"], *c["position"], c["side"], c["control"], c["hp"])
+           for c in snap["combatants"]]
+    assert got == [(n, x, y, side, control, hp)
+                   for n, x, y, _, side, _, control, hp in _VERDIGRIS]
+    # The six members are the party, in their order; the townsmen after
+    # them in the same list fight on the party's side but are not in it.
+    assert [c["slot"] for c in snap["combatants"]] == [0, 1, 2, 3, 4, 5] + [None] * 12
+    assert [c["party"] for c in snap["combatants"]] == [True] * 6 + [False] * 12
 
 
 def test_the_explorer_leaves_a_dead_end_for_a_square_it_has_not_stood_on():
@@ -7014,7 +7084,7 @@ def fight_now(monkeypatch):
 
 def _fighter(tmp_path, key=None, archway=False):
     game = FakeFight(tmp_path, archway)
-    d = da.Driver(game, lambda **k: None, "D", "ssb")
+    d = da.Driver(game, lambda **k: None, "D", "ssb", party_size=3)
     d.logged = []
     d.note = lambda **k: d.logged.append(k)
     d.record_world(game.capture())
