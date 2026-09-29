@@ -5,12 +5,9 @@ differs between them is a handful of *numbers* -- the save file's name, where
 it loads, and whether the party roster is a second file or the last page of
 the first -- so the descriptor is a table, not a class hierarchy.
 
-**The table itself is `goldbox/c64_save.py`.** `#470 (Give the project a
-neutral title beside its neutral character record, with one port per platform
-a title shipped on)`'s stage 7 merged this module's `Game` into that module's
-`C64Container`, because a reader asking *"where does this save load?"* and
-*"what is at `+$C7`?"* was going to two different classes about one file and
-each kept its own copy of the same offsets.
+**The table itself is `goldbox/c64_save.py`.** Each row is a `C64Container`,
+which answers both *"where does this save load?"* and *"what is at `+$C7`?"*
+from one set of offsets.
 
 What is left here is the registry -- the six rows in order, the three lookup
 dictionaries, and `detect`, which is how a disk in a drive turns into a title.

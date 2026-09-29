@@ -6,20 +6,16 @@ which are items, where the names and the roster are, which header bytes a
 conversion computes and which it writes as a measured zero.  A table, not a
 class hierarchy: what differs between the titles is a handful of numbers.
 
-**The two halves were two classes until `#470 (Give the project a neutral
-title beside its neutral character record, with one port per platform a title
-shipped on)`'s stage 7.**  `goldbox.games.Game` held the disk geometry for six
-titles and `Container` held the payload map for three, so a reader asking
-*"where does this save load?"* and *"what is at `+$C7`?"* went to two
-different classes about one file, and the two kept their own copies of the
-same offsets.  They are one class now, with six rows; `goldbox.c64_port` holds the six rows.
+**One class carries both halves, with six rows**: the disk geometry for every
+title and the payload map for the measured ones, so *"where does this save
+load?"* and *"what is at `+$C7`?"* are answered from the same offsets.
+`goldbox.c64_port` holds the registry of the six rows.
 
 **Three of the six rows have no measured payload map**, and that is the point
 of `measured` rather than an oversight.  Champions of Krynn, Death Knights of
 Krynn and Gateway to the Savage Frontier have their geometry from one shipped
 pre-generated party each and nobody here has read a save of them, so
-:func:`container_for` refuses them exactly as it did when they had no row at
-all.  A title answering with another title's offsets is the defect
+:func:`container_for` refuses them.  A title answering with another title's offsets is the defect
 `#460 (goldbox/games.py has no Pools of Darkness entry, so every lookup
 answers with Pool of Radiance's tables for it)` names, one class over.
 
@@ -102,8 +98,7 @@ Region = tuple[int, int, str]
 
 # --- the offsets every measured title agrees on -----------------------------
 # Each is the default of the field named beside it, and the field is what a
-# row may move; these are the names the rest of the tree reads, re-exported
-# by `goldbox/c64_port.py` so that `games.HEADER_SIZE` still answers.  The
+# row may move; these are the names the rest of the tree reads.  The
 # one that is not obvious is the icon table: 8 icons of 36 bytes from $2E0
 # end exactly at $400, the start of the slot area, in both games where it has
 # been read.
@@ -134,12 +129,10 @@ POSITION_OFFSET = 0x0C0        # x, y, facing -- the copy the game *saves*
 # `+$C6` that is minute tens times sixty.  Read out of the tick loop and the
 # status-line printer in all three titles by `tools/c64/c64clock.py`
 # (`docs/30-savegame-layout.md`); the name says which of the two facts it is,
-# which is what `#470` renamed it for.
+# which is why the name says "shown".
 SHOWN_CLOCK_OFFSET = 0x0C7
 
-#: Pre-#470 name, kept so nothing importing it breaks before stage 9. `#470
-#: (Give the project a neutral title beside its neutral character record, with
-#: one port per platform a title shipped on)`.
+#: Alias of :data:`SHOWN_CLOCK_OFFSET` for importers of the older name.
 CLOCK_OFFSET = SHOWN_CLOCK_OFFSET
 
 # The travel grid's own two facts, both inside the save image and both
@@ -164,7 +157,7 @@ TRAVEL_POSITION_OFFSET = 0x0C3  # C64Container.travel_position
 
 #: What a row built outside the registry gets before `__post_init__` looks up
 #: its key: a `Title` with nothing in it, which is never the answer a row
-#: keeps.  The lookup mirrors `automap.c64._machine`, which gives a `Game`
+#: keeps.  The lookup mirrors `automap.c64._machine`, which gives a row
 #: whose key `goldbox/titles.py` does not know a `Title` of its own with no
 #: tables in it.
 _UNKNOWN_RULES = Title(key="", title="")
@@ -215,12 +208,12 @@ class C64Container:
     #: The title whose C64 release this is -- the rules, apart from any
     #: machine.  `races` and `class_bits` below are its own tuples, passed in
     #: rather than read through so that `dataclasses.replace(row, races=None)`
-    #: still means what it meant when this was `goldbox.games.Game`; a row
-    #: built outside the registry resolves this from `key` in `__post_init__`.
+    #: clears the row's own table; a row built outside the registry resolves
+    #: this from `key` in `__post_init__`.
     #:
-    #: It is spelled `rules` rather than `title` because `title` is taken:
-    #: `#470`'s D1 settled the display name as `.title` on both classes, and
-    #: about 125 sites read it off a container expecting the string.
+    #: It is spelled `rules` rather than `title` because `title` is the
+    #: display name, and about 125 sites read it off a container expecting the
+    #: string.
     rules: Title = _UNKNOWN_RULES
 
     # Pairs rather than dicts so the descriptor stays hashable and frozen.
@@ -281,10 +274,7 @@ class C64Container:
     #: How far apart the roster blocks sit.  Where they *are* is
     #: `roster_offset` above, which is an offset into this payload unless
     #: `roster_file` names a second file, and then it is an offset into that.
-    #: The two were separate fields, `Game.roster_offset` and a
-    #: `Container.roster_offset` that was None wherever the first was a real
-    #: number, until `#470`'s stage 7 merged them; `roster_in_payload` is the
-    #: question every caller was actually asking and it now has one answer.
+    #: `roster_in_payload` says which of the two `roster_offset` is.
     roster_stride: int = 0x20
 
     # -- the header --------------------------------------------------------
@@ -336,7 +326,7 @@ class C64Container:
         builds by hand -- a test's made-up title, or `dataclasses.replace` of
         one of the six -- gets the registry's `Title` if its key names one and
         a tables-free `Title` of its own if it does not, which is the same
-        answer `automap.c64._machine` has given such a row since stage 6.
+        answer `automap.c64._machine` gives such a row.
         """
         if self.rules is _UNKNOWN_RULES:
             object.__setattr__(
@@ -459,8 +449,7 @@ class C64Container:
     def clock_base(self) -> int:
         """The three clock digits the status line draws, live.
 
-        `automap.c64.C64Machine.shown_clock_base` under its pre-#470 name --
-        and it is **not** the whole clock, which is six digits from `clock` at
+        The same address as `automap.c64.C64Machine.shown_clock_base` -- and it is **not** the whole clock, which is six digits from `clock` at
         `+$C6`.  See :data:`SHOWN_CLOCK_OFFSET` above, which is this one past
         that one and is what the machine computes from.
         """
@@ -494,20 +483,16 @@ class C64Container:
             return self.save_load_address + self.roster_offset
         return self.roster_load_address + self.roster_offset
 
-    # -- pre-#470 spellings, kept until stage 9 ----------------------------
+    # -- aliases for the older names ---------------------------------------
     @property
     def game(self) -> "C64Container":
-        """This row, under the name `Container.game` used to answer by.
-
-        The disk geometry was a `goldbox.games.Game` the container pointed at
-        until stage 7 merged the two, so `container.game.key` and
-        `container.key` are now the same string off the same object.
-        """
+        """This row itself, so `container.game.key` and `container.key` are
+        the same string off the same object."""
         return self
 
     @property
     def slot_count(self) -> int:
-        """`party_slots`, under the name `goldbox.games.Game` gave it."""
+        """Alias of `party_slots`."""
         return self.party_slots
 
 
@@ -829,9 +814,8 @@ def container_for(game=None) -> C64Container:
 
     **A row is not enough; `measured` is what this asks.**  Champions of
     Krynn, Death Knights of Krynn and Gateway to the Savage Frontier are
-    `C64Container`s now -- they were `goldbox.games.Game`s and nothing else
-    before `#470`'s stage 7 -- and passing one in raises exactly as passing
-    its key always has.  `zeroed == ()` would have served as the discriminator
+    `C64Container`s, and passing one in raises exactly as passing its key
+    does.  `zeroed == ()` would have served as the discriminator
     today and is not the question being asked: a measured title is allowed an
     empty zeroing list, and Pool of Radiance's `copied` is empty already.
     """
