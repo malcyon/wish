@@ -2190,6 +2190,76 @@ def test_convert_refuses_darkness():
         da.main(["--title", "darkness", "--convert", "X"])
 
 
+def test_name_options_parse_into_positions():
+    assert da.parse_names(["0=Wren", "3=A B"], "pool") == {0: "Wren", 3: "A B"}
+
+
+@pytest.mark.parametrize("names", [
+    ["Wren"], ["x=Wren"], ["0="], ["-1=Wren"], ["0=Wr\u00e9n"],
+    ["0=Wren", "0=Bran"], ["1=" + "W" * 16]])
+def test_a_bad_name_option_is_refused_before_any_boot(names, tmp_path, monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("reached the conversion")
+    monkeypatch.setattr(da, "build_saveas_source", boom)
+    argv = ["--title", "pool", "--convert", "X", "--out", str(tmp_path / "o")]
+    for n in names:
+        argv += ["--name", n]
+    with pytest.raises(SystemExit):
+        da.main(argv)
+
+
+def test_name_needs_convert():
+    with pytest.raises(SystemExit):
+        da.main(["--title", "pool", "--save", ".", "--name", "0=Wren"])
+
+
+def test_main_hands_the_chosen_names_to_the_conversion(tmp_path, monkeypatch):
+    calls = []
+
+    def fake(path, slot, out, title, names=None):
+        calls.append(names)
+        return {"refused": "stop here"}
+
+    monkeypatch.setattr(da, "build_saveas_source", fake)
+    rc = da.main(["--title", "pool", "--convert", "X", "--name", "0=Wren",
+                  "--name", "2=Bran", "--out", str(tmp_path / "out"),
+                  "--issue", "1", "--run", "t"])
+    assert rc == 1
+    assert calls == [{0: "Wren", 2: "Bran"}]
+
+
+def test_save_as_dos_passes_names_to_prepare_save_as_only_when_given(
+        tmp_path, monkeypatch):
+    """A fake `prepare_save_as` records `names`; a SaveAsError from a bad
+    position is a `refused` report, and a NamesDoNotFit with no names still
+    raises."""
+    from editor import saveplan
+    from editor.convert import Source
+    from tools.convert import convertdrops
+    seen = []
+
+    def fake_prepare(party, port, dest, assets, **kw):
+        seen.append(kw)
+        if kw.get("names") == {9: "X"}:
+            raise saveplan.SaveAsError("position 9 is not a character")
+        raise saveplan.NamesDoNotFit(((0, "L" * 18),), 15)
+
+    monkeypatch.setattr(saveplan, "prepare", lambda party: None)
+    monkeypatch.setattr(Source, "of_snapshot", staticmethod(lambda snap: None))
+    monkeypatch.setattr(saveplan, "resolve_assets", lambda *a, **k: None)
+    monkeypatch.setattr(convertdrops, "game_files", None, raising=False)
+    monkeypatch.setattr(da.dosbox, "find_game", lambda stem: None)
+    monkeypatch.setattr(saveplan, "prepare_save_as", fake_prepare)
+    with pytest.raises(saveplan.NamesDoNotFit):
+        da._save_as_dos(None, tmp_path, "pool", {})
+    assert seen == [{}]
+    built = da._save_as_dos(None, tmp_path, "pool", {}, {9: "X"})
+    assert "refused" in built and seen[1] == {"names": {9: "X"}}
+    with pytest.raises(saveplan.NamesDoNotFit):
+        da._save_as_dos(None, tmp_path, "pool", {}, {0: "Wren"})
+    assert seen[2] == {"names": {0: "Wren"}}
+
+
 def test_build_saveas_source_refuses_a_title_mismatch(tmp_path):
     """A Pool of Radiance disk built the way `build_source`'s fallback builds
     one, offered to `--convert` for curse, is refused rather than converted."""

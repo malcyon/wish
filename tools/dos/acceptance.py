@@ -1517,7 +1517,37 @@ def staged_disk(base: pathlib.Path, title: str,
         "minutes_left": [effects.remaining_minutes(r[3], minutes) for r in rows]}
 
 
-def _save_as_dos(party, out: pathlib.Path, title: str, report: dict) -> dict:
+def parse_name(text: str) -> tuple[int, str]:
+    """`POSITION=NAME` as `(position, name)`: the name the player would type
+    into the Shorten window's box for the party member at that position."""
+    position, sep, name = text.partition("=")
+    if not sep or not re.fullmatch(r"\d+", position):
+        raise ValueError(f"not POSITION=NAME: {text!r} (say 0=Wren)")
+    if not name or any(not 0x20 <= ord(ch) <= 0x7E for ch in name):
+        raise ValueError(f"--name {text!r}: a name is one or more printable "
+                         "ASCII characters")
+    return int(position), name
+
+
+def parse_names(texts: list[str], title: str) -> dict[int, str]:
+    """`--name` values as the `{position: name}` `prepare_save_as` takes,
+    refusing a repeated position or a name over the DOS field's width."""
+    from editor import saveplan
+    width = saveplan.name_width("dos", CONVERT_TITLE_KEYS[title])
+    names: dict[int, str] = {}
+    for text in texts:
+        position, name = parse_name(text)
+        if position in names:
+            raise ValueError(f"--name gives position {position} twice")
+        if len(name) > width:
+            raise ValueError(f"--name {text!r}: {len(name)} characters, over "
+                             f"the {width} the DOS {title} name field holds")
+        names[position] = name
+    return names
+
+
+def _save_as_dos(party, out: pathlib.Path, title: str, report: dict,
+                 names: dict[int, str] | None = None) -> dict:
     """Save As DOS of `party` into `out/source`, filling in `report`.
 
     The route is the editor's own, `prepare_save_as` then `publish`, as
@@ -1538,8 +1568,15 @@ def _save_as_dos(party, out: pathlib.Path, title: str, report: dict) -> dict:
                                      dos_folder=dosbox.find_game(TITLES[title].stem))
     dest = out / "source"
     try:
-        plan = saveplan.prepare_save_as(party, "dos", dest, assets)
+        plan = saveplan.prepare_save_as(party, "dos", dest, assets,
+                                        **({"names": names} if names else {}))
     except saveplan.DroppedFields as e:
+        return {**report, "refused": str(e)}
+    except saveplan.NamesDoNotFit:
+        raise
+    except saveplan.SaveAsError as e:
+        if not names:
+            raise
         return {**report, "refused": str(e)}
     report["dropped"] = list(plan.report.dropped)
     report["losses"] = list(plan.report.losses)
@@ -1593,7 +1630,7 @@ CONVERT_TITLE_KEYS = {"pool": "pool-of-radiance",
 
 
 def build_saveas_source(path: str | pathlib.Path, slot: str, out: pathlib.Path,
-                        title: str) -> dict:
+                        title: str, names: dict[int, str] | None = None) -> dict:
     """Copy `path` into `out` and Save As DOS whatever save `Source.detect`
     finds there at `slot`, refusing a source whose title is not `title`.
 
@@ -1601,7 +1638,9 @@ def build_saveas_source(path: str | pathlib.Path, slot: str, out: pathlib.Path,
     `editor.convert.Source.detect` reads -- a Curse or Silver Blades save from
     either port, or an Amiga Pool of Radiance one.  A Pools of Darkness source
     is refused: `--amiga-slot` converts it through the Convert window's own
-    route.
+    route.  `names` maps a party position to the name chosen for that member,
+    as the Shorten window hands them to `prepare_save_as`; without one, a name
+    too long for DOS raises `saveplan.NamesDoNotFit`.
     """
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from editor import roster
@@ -1620,7 +1659,7 @@ def build_saveas_source(path: str | pathlib.Path, slot: str, out: pathlib.Path,
         return {**report, "refused": f"{path} holds {source.key!r}, not "
                 f"{title}'s {key!r}"}
     party = roster.Party(source)
-    return _save_as_dos(party, out, title, report)
+    return _save_as_dos(party, out, title, report, names)
 
 
 # --------------------------------------------------------------------------
@@ -3540,7 +3579,11 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         save = out / "source"
     elif getattr(args, "convert", None):
         shutil.rmtree(out / "source", ignore_errors=True)
-        built = build_saveas_source(args.convert, args.convert_slot.upper(), out, args.title)
+        chosen = parse_names(args.name, args.title) if args.name else None
+        built = (build_saveas_source(args.convert, args.convert_slot.upper(), out,
+                                     args.title, chosen) if chosen else
+                 build_saveas_source(args.convert, args.convert_slot.upper(), out,
+                                     args.title))
         summary["source"] = built
         note(event="converted", **{k: v for k, v in built.items() if k != "read"})
         if "refused" in built or built["dropped"] or built["losses"]:
@@ -3916,6 +3959,10 @@ def main(argv: list[str] | None = None) -> int:
                      help="a C64 .D64 or Amiga .adf holding a pool, curse or "
                           "ssb save; convert it with Save As DOS first "
                           "(not darkness: use --amiga-slot)")
+    ap.add_argument("--name", action="append", default=[], metavar="POSITION=NAME",
+                    help="with --convert: the name for the party member at "
+                         "POSITION (0 is the first), as the Shorten window "
+                         "would give it; repeatable")
     ap.add_argument("--amiga-disk", default=None,
                     help="with --amiga-slot: an .adf path, or the end of one "
                          "Amiga disk label ('Pools Of Darkness.zip!Pools of "
@@ -3990,6 +4037,9 @@ def main(argv: list[str] | None = None) -> int:
                                  "--amiga-slot")
             if not re.fullmatch(r"[A-Ja-j]", args.convert_slot):
                 raise ValueError("--convert-slot is one letter, A to J")
+            parse_names(args.name, args.title)
+        elif args.name:
+            raise ValueError("--name goes with --convert")
     except ValueError as e:
         ap.error(str(e))
     if not re.fullmatch(r"[A-Ja-j]", args.slot):
