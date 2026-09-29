@@ -1007,13 +1007,16 @@ def test_status_displays_prints_a_state_and_a_pid_column(monkeypatch):
 def _listen_and_pid_file(sock_path: Path, pid_file: Path) -> str:
     """A Python source string: bind *sock_path*, print `ready`, then write the
     accepting process's own pid to *pid_file* right before blocking in
-    `accept()` -- so a caller can tell the socket is up before connecting."""
+    `accept()` -- so a caller can tell the socket is up before connecting.
+    The pid is written to a temporary name and renamed into place, so the file
+    is never visible empty."""
     return (
         "import socket, os, sys\n"
         f"s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n"
         f"s.bind({str(sock_path)!r})\n"
         "s.listen(1)\n"
-        f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\n"
+        f"open({str(pid_file) + '.tmp'!r}, 'w').write(str(os.getpid()))\n"
+        f"os.replace({str(pid_file) + '.tmp'!r}, {str(pid_file)!r})\n"
         "print('ready', flush=True)\n"
         "conn, _ = s.accept()\n"
         "import time; time.sleep(30)\n"
