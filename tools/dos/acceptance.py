@@ -1203,11 +1203,13 @@ class Expect:
 
 
 def parse_expect(text: str) -> Expect:
-    """`NAME:ID:MINUTES[:DATA]`, numbers decimal or `0x` hex."""
+    """`NAME:ID:MINUTES[:DATA]`, numbers decimal (a leading zero, as in `05`,
+    is still decimal) or `0x` hex."""
     parts = text.split(":")
     if len(parts) not in (3, 4) or not parts[0]:
         raise ValueError(f"not an expectation: {text!r} (NAME:ID:MINUTES[:DATA])")
-    nums = [int(p, 0) for p in parts[1:]]
+    nums = [int(p, 10) if re.fullmatch(r"[0-9]+", p) else int(p, 0)
+            for p in parts[1:]]
     return Expect(parts[0].upper(), nums[0], nums[1],
                   nums[2] if len(nums) == 3 else None)
 

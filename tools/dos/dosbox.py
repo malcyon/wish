@@ -1698,8 +1698,12 @@ class PoolOfRadiance:
         while True:
             screen = self.s.capture()
             now = time.time()
-            seen = ((bar(screen), tuple(self.spell_rows(screen)))
-                    if outcome(screen) == "cast" else None)
+            # The Magic bar's screen has the camp fire in the list's region, so
+            # its rows change from one capture to the next: only the bar is
+            # compared there.
+            seen = (None if outcome(screen) != "cast" else
+                    (bar(screen),) if bar(screen) == self.MAGIC_BAR else
+                    (bar(screen), tuple(self.spell_rows(screen))))
             if seen is None or anchor is None or anchor[0] != seen:
                 anchor = (seen, now) if seen else None
             elif now - anchor[1] >= 1.0:

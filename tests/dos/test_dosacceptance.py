@@ -403,6 +403,10 @@ class CastPool(FakePool):
     #: The measured Animate Dead cast: from a list holding nothing else, the
     #: game returns to the Magic bar and not to an empty list.
     EMPTY_TO_MAGIC = False
+    #: The Magic bar's screen shows the animated camp fire, which lies in the
+    #: spell list's region: each capture of it differs there.
+    FIRE = False
+    _fire = 0
 
     def __init__(self, *a, failure: str = "", rows=None, flip_at=None, **k):
         super().__init__(*a, **k)
@@ -474,7 +478,17 @@ class CastPool(FakePool):
                        and self.spell_rows() else _GREEN)
         return dosbox.Screen(W, H, bytes(px))
 
+    def _magic_frame(self) -> dosbox.Screen:
+        if not self.FIRE:
+            return _screen(self.BARS["magic"], b"")
+        CastPool._fire += 1
+        px = bytearray(_screen(self.BARS["magic"], b"").px)
+        _draw_name(px, 40, 48 + 8 * (self._fire % 5), _HOLD, _WHITE)
+        return dosbox.Screen(W, H, bytes(px))
+
     def capture(self):
+        if self.mode == "magic" and self.FIRE:
+            return self._magic_frame()
         if self.mode == "message":
             hide = None
             if self.message:
@@ -489,7 +503,7 @@ class CastPool(FakePool):
                     if self.EMPTY_TO_MAGIC and not self.spell_rows():
                         self.mode = "magic"
             if self.mode == "magic":
-                return _screen(self.BARS["magic"], b"")
+                return self._magic_frame()
             return self._list_frame(highlight=False, hide=hide)
         if self.mode in ("list", "target"):
             here = self.hl if self.mode == "list" else self.line
@@ -639,6 +653,33 @@ def test_pool_cast_animate_dead_sends_no_target_and_returns_to_camp(
     assert "rows_after" not in got
     assert game.keys[game.keys.index("c", game.keys.index("c") + 1):].count("Return") == 0
     assert game.mode == "camp"
+
+
+def test_pool_cast_animate_dead_settles_although_the_camp_fire_moves_in_the_list_region(
+        tmp_path, _cast_measured, monkeypatch):
+    _animate_dead_measured(monkeypatch)
+    monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
+    monkeypatch.setattr(CastPool, "FIRE", True)
+    game, d = _cast_camp(tmp_path, rows=[_HEADER, _ANIMATE])
+    assert d.cast(2, "ANIMATE-DEAD")["confirmed"] == "magic-bar"
+    assert game.mode == "camp"
+
+
+def test_the_measured_magic_bar_screen_has_picture_in_the_spell_list_region():
+    """`5bd423dc82-run2-animate/010-lost-cast-2`: the Magic bar after the cast
+    shows the camp fire where the list's rows are read, so its rows are not
+    blank and a run comparing them from one capture to the next never settles."""
+    screen = _capture("5bd423dc82-run2-animate", "010-lost-cast-2", "700")
+    game = dosbox.PoolOfRadiance
+    assert screens.bar_signature(screen) == game.MAGIC_BAR
+    assert "2059c47509794761" != game.spell_rows(screen)[0]
+    assert game.spell_rows(screen).count(game.CAST_SPELLS["ANIMATE-DEAD"][0]) == 0
+
+
+def test_expect_accepts_a_decimal_with_a_leading_zero():
+    assert da.parse_expect("WISHFTR:32:0:05") == da.Expect("WISHFTR", 32, 0, 5)
+    assert da.parse_expect("WISHFTR:32:0:010").data == 10
+    assert da.parse_expect("WISHFTR:32:0:0xB3").data == 0xB3
 
 
 def test_pool_cast_a_lone_bless_is_not_accepted_through_the_magic_bar(
