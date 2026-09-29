@@ -1985,8 +1985,12 @@ class PoolRun:
         (`8e1934def7-temple-route-g`, `11-temple-lost-heal`, row 24 blank), so
         a screen is steady after `HEAL_SCREEN_HOLD` seconds unchanged and the
         wait ends only when the last steady screen has stood for
-        `HEAL_SETTLE`. Every steady screen is returned under `steady`.
-        Judged by rows 0-23; nothing is matched on text and nothing is sent."""
+        `HEAL_SETTLE`. Every steady screen is returned under `steady`, and
+        `settled` says whether the kept one stood that long or the 90 s or
+        input-deadline cut ended the wait first (`held` is how long it had
+        stood). Its PNG is taken only if the screen still reads as the kept
+        rows; otherwise `stem` is None. Judged by rows 0-23; nothing is
+        matched on text and nothing is sent."""
         def body(screen) -> list[str]:
             return [screen.row(r).rstrip() for r in range(24)]
 
@@ -1997,6 +2001,9 @@ class PoolRun:
         seen: list[list[str]] = []
         steady: list[tuple[TempleSample, list[str]]] = []
         since = start
+        held = 0.0
+        kept_held = 0.0
+        settled = False
         while self.clock() < limit:
             sample = self.temple_sample()
             prior, last = last, sample
@@ -2018,7 +2025,9 @@ class PoolRun:
                 rows = [row.rstrip() for row in full]
                 if not steady or steady[-1][1] != rows:
                     steady.append((sample, rows))
-                elif held >= HEAL_SETTLE:
+                kept_held = held
+                if held >= HEAL_SETTLE:
+                    settled = True
                     break
             time.sleep(0.3)
         if not steady:
@@ -2027,13 +2036,18 @@ class PoolRun:
             self._temple_stop("heal", f"no steady screen drawn after HEAL "
                               f"before the {cut} "
                               f"({self.clock() - start:.1f} s waited)", last)
-        kept = self.temple_checkpoint("heal-first-screen", steady[-1][0])
-        return {**kept, "rows": steady[-1][1],
+        rows = steady[-1][1]
+        now = (None if last is None or last.screen is None else
+               [last.screen.row(r).rstrip() for r in range(25)])
+        kept = (self.temple_checkpoint("heal-screen", last) if now == rows
+                else {"stem": None})
+        return {**kept, "rows": rows, "settled": settled,
+                "held": kept_held,
                 "steady": [rows for _, rows in steady]}
 
     def temple_probe(self, who: str) -> dict:
         """Capture the temple arrival screen and stop; with `HEAL`, select it
-        once and capture the next drawn screen.
+        once and capture the last settled screen after it.
 
         The HEAL service list -- its text, its bar, whether RAISE DEAD
         appears, and the resident byte there -- has never been seen live
@@ -2085,8 +2099,10 @@ class PoolRun:
                                   "top row of the party panel", at_arrival)
             self._temple_select_bar("HEAL", "temple")
             kept = self._temple_heal_screen(at_arrival.screen)
-            result["heal_first_screen"] = {"stem": kept["stem"],
-                                           "rows": kept["rows"]}
+            result["heal_screen"] = {"stem": kept["stem"],
+                                     "rows": kept["rows"],
+                                     "settled": kept["settled"],
+                                     "held": kept["held"]}
             result["heal_screens"] = kept["steady"]
         result["checkpoints"] = len(self.temple_checkpoints)
         return result

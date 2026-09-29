@@ -340,6 +340,9 @@ class _TempleSession:
         self.heal_old_bar_reads = 0
         self.glitch_reads = 0
         self.heal_reads = 0
+        # Reads (0.3 s apart in the fakes) the welcome stands alone for.
+        self.list_after_reads = {"heal-late-list": 40, "heal-cut": 10**9
+                                 }.get(unsafe, 10)
         self.paused = False
         # The live run crossing the area edge showed the memory triple
         # ahead of the redrawn screen for one poll; `crossing_lag` makes
@@ -476,7 +479,7 @@ class _TempleSession:
             rows[2] = "BRUTUS"
             rows[3] = "WELCOME TO THE TEMPLE,"
             rows[4] = "HOW MAY WE HELP YOU"
-            if self.heal_reads > 10:
+            if self.heal_reads > self.list_after_reads:
                 for row, text in enumerate(
                         ("CURE BLINDNESS", "CURE DISEASE",
                          "CURE LIGHT WOUNDS", "CURE SERIOUS WOUNDS",
@@ -701,14 +704,15 @@ def test_temple_probe_heal_selects_it_once_and_keeps_the_next_drawn_screen(
     result = run.temple_probe("BRUTUS HEAL")
     assert session.keys == ["side3", "YES", "HEAL"]
     assert session.phase == "heal"
-    assert run.temple_checkpoints[-1]["tag"] == "heal-first-screen"
-    got = result["heal_first_screen"]
+    assert run.temple_checkpoints[-1]["tag"] == "heal-screen"
+    got = result["heal_screen"]
     assert got["stem"] == run.temple_checkpoints[-1]["stem"]
     assert result["arrival"] != got["stem"]
     assert (tmp_path / f"{got['stem']}.png").is_file()
     assert got["rows"][4] == "HOW MAY WE HELP YOU"
     assert got["rows"][15] == " RAISE DEAD"
     assert got["rows"][24] == ""
+    assert got["settled"] is True and got["held"] >= A.HEAL_SETTLE
     welcome, listing = result["heal_screens"]
     assert welcome[15] == "" and welcome[3] == "WELCOME TO THE TEMPLE,"
     assert listing == got["rows"]
@@ -743,7 +747,7 @@ def test_temple_probe_heal_does_not_keep_the_lingering_temple_bar(
                                             unsafe="heal-slow")
     run.temple_probe("BRUTUS HEAL")
     kept = run.temple_checkpoints[-1]
-    assert kept["tag"] == "heal-first-screen"
+    assert kept["tag"] == "heal-screen"
     assert (tmp_path / f"{kept['stem']}.json").is_file()
     assert session.phase == "heal" and session.heal_old_bar_reads == 0
 
@@ -757,16 +761,59 @@ def test_temple_probe_heal_keeps_only_a_bar_seen_twice_running(
     run.temple_checkpoint = lambda tag, sample=None: (
         kept.append((tag, sample and sample.screen.text())) or real(tag, sample))
     run.temple_probe("BRUTUS HEAL")
-    assert kept[-1][0] == "heal-first-screen"
+    assert kept[-1][0] == "heal-screen"
     assert "HOW MAY WE HELP YOU" in kept[-1][1]
     assert "HELP" not in "".join(
         text for tag, text in kept[:-1] if text)
-    assert [k for k in kept if k[0] == "heal-first-screen"] == [kept[-1]]
+    assert [k for k in kept if k[0] == "heal-screen"] == [kept[-1]]
     frames = [kw["rows"] for args, kw in events if args[0] == "temple-heal-frame"]
     assert len(frames) == 4 and not any(frames[0])
     assert frames[1][4] == "" and frames[2][4] == "HOW MAY WE HELP YOU"
     assert frames[2][15] == "" and frames[3][15] == " RAISE DEAD"
     assert "RAISE DEAD" in kept[-1][1]
+
+
+def test_temple_probe_heal_settle_is_fifteen_seconds():
+    assert A.HEAL_SETTLE == 15.0
+
+
+def test_temple_probe_heal_waits_out_a_list_that_draws_after_twelve_seconds(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            unsafe="heal-late-list")
+    result = run.temple_probe("BRUTUS HEAL")
+    got = result["heal_screen"]
+    assert got["rows"][15] == " RAISE DEAD"
+    assert got["settled"] is True and got["held"] >= A.HEAL_SETTLE
+    assert len(result["heal_screens"]) == 2
+    assert got["stem"] == run.temple_checkpoints[-1]["stem"]
+
+
+def test_temple_probe_heal_cut_after_a_steady_welcome_keeps_it_unsettled(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            unsafe="heal-cut")
+    original = session.confirm_bar
+    fake_now = run.clock
+    offset = [0.0]
+    run.clock = lambda: fake_now() + offset[0]
+
+    def late(row, was):
+        heal = session.phase == "temple"
+        original(row, was)
+        if heal:
+            offset[0] = 1385.0 - fake_now()
+
+    session.confirm_bar = late
+    result = run.temple_probe("BRUTUS HEAL")
+    got = result["heal_screen"]
+    assert got["settled"] is False and 1 <= got["held"] < A.HEAL_SETTLE
+    assert got["rows"][3] == "WELCOME TO THE TEMPLE,"
+    assert got["rows"][15] == ""
+    assert not [c for c in run.temple_checkpoints
+                if c["tag"].startswith("lost-")]
+    assert run.temple_checkpoints[-1]["tag"] == "heal-screen"
+    assert run.clock() < 1450
 
 
 def test_temple_probe_heal_stops_at_the_input_deadline_not_ninety_seconds(
