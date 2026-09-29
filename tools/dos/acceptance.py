@@ -743,6 +743,8 @@ def fight_bar_kind(screen: dosbox.Screen) -> str | None:
     if known in FIGHT_KEYS:
         return known
     words = bar_words(screen)
+    # Only an exact digest is safe against a torn bar row; a torn row could
+    # in principle repeat cells in the pattern a matcher below looks for.
     if command_words(words):
         return "command"
     if encounter_words(words):
@@ -817,7 +819,11 @@ MAX_COMBATANTS = 255
 #: What `placement` logs of each combatant, as the C64 driver's event does,
 #: with the record's own status, active, quickfight and control bytes.
 PLACEMENT_FIELDS = ("name", "index", "slot", "position", "size", "on_map", "hp",
-                    "status", "active", "side", "quickfight", "control", "party")
+                    "status", "active", "side", "quickfight", "control", "party",
+                    "raw_name")
+#: Shots of bars nobody has classified, per fight: an animation can show a
+#: new digest on every look.
+FIGHT_UNKNOWN_SHOTS = 5
 #: Party records followed from `party_at` before the list is called a loop.
 MAX_PARTY = 8
 
@@ -869,15 +875,21 @@ def read_combat(window: bytes, base: int, layout: CombatLayout) -> dict:
 
 
 def combatant_record(record: bytes, layout: CombatLayout) -> dict:
-    """A combatant record's name and the bytes that say whose side it fights on."""
+    """A combatant record's name and the bytes that say whose side it fights on.
+
+    A name that is not a Pascal string of 1 to 15 printable bytes (a monster
+    record laid out otherwise) gives `name` None and the record's first 16
+    bytes as `raw_name`, so one odd record never ends a fight's reading.
+    """
     n = record[0] if record else 0
     name = record[1:1 + n]
-    if not 1 <= n <= 15 or not all(0x20 <= b < 0x7F for b in name):
-        raise CombatUnread(f"a record's name is not a name: {record[:16].hex()}")
     status, active, side, quick = record[layout.status_at:layout.status_at + 4]
-    return {"name": name.decode("latin-1"), "status": status, "active": active,
-            "side": side, "quickfight": quick,
-            "control": record[layout.control_at], "hp": record[layout.hp_at]}
+    out = {"name": name.decode("latin-1"), "status": status, "active": active,
+           "side": side, "quickfight": quick,
+           "control": record[layout.control_at], "hp": record[layout.hp_at]}
+    if not 1 <= n <= 15 or not all(0x20 <= b < 0x7F for b in name):
+        out.update(name=None, raw_name=record[:16].hex())
+    return out
 
 
 def loose_halve(screen: dosbox.Screen) -> dosbox.Screen:
@@ -1566,9 +1578,14 @@ _RECORD_NUMBER = re.compile(r"0|[1-9][0-9]*|0[xX][0-9a-fA-F]+")
 
 
 def parse_key(text: str) -> str:
-    """`SPACE` or one letter or digit, as the X keysym `fight` presses."""
+    """`SPACE` or one letter or digit, as the X keysym `fight` presses.
+
+    `Y` is refused: it answers `YES`, which the step never answers.
+    """
     if text.upper() == "SPACE":
         return "space"
+    if text.upper() == "Y":
+        raise ValueError(f"{text!r}: Y answers YES, which the fight step never does")
     if len(text) == 1 and text.isascii() and text.isalnum():
         return text.lower()
     raise ValueError(f"{text!r}: a key is SPACE or one letter or digit")
@@ -3089,6 +3106,7 @@ class Driver:
                        "placement": None, "after_key": None, "records": {},
                        "kinds": {}, "encounters": 0, "presses": 0,
                        "key_pressed": False, "ds": None, "torn": 0, "loose": 0,
+                       "last_bar": None, "repeats": 0, "unknown_shots": 0,
                        "back_since": None, "unknown_since": None,
                        "walking": None if enter else self.world_sig}
         try:
@@ -3127,6 +3145,7 @@ class Driver:
                 "after_first_bar_key": state["after_key"],
                 "ds": None if state["ds"] is None else f"{state['ds']:04X}",
                 "torn_frames": state["torn"], "loose_frames": state["loose"],
+                "repeated_bars": state["repeats"],
                 "screens": state["kinds"]}
 
     def _look(self, state: dict) -> dosbox.Screen:
@@ -3187,6 +3206,7 @@ class Driver:
             return False
         if kind == "encounter":
             state["encounters"] += 1
+        state["last_bar"] = None
         self._answer(FIGHT_KEYS[kind], glyphs, kind, state)
         return False
 
@@ -3213,6 +3233,7 @@ class Driver:
             raise self.fail("fight-move", f"the map bar came back after {enter}")
         if fight_bar_kind(settled) is not None and fight_bar_kind(settled) != "blank":
             return
+        # Any settled bar nothing classifies is taken as move mode's.
         state["walking"] = bar_signature(settled)
         self.game.record_map(settled)
 
@@ -3252,14 +3273,18 @@ class Driver:
                       squares=len(walker.visits), bumps=walker.bumps)
 
     def _first_sight(self, kind: str | None, glyphs: str, screen, state: dict) -> None:
-        """Shoot and log a bar the first time its digest shows in this fight."""
+        """Log a bar the first time its digest shows in this fight, and shoot
+        it, except past `FIGHT_UNKNOWN_SHOTS` unclassified ones."""
         if glyphs in state["kinds"]:
             return
         state["kinds"][glyphs] = kind
+        shot = None
+        if kind is not None or state["unknown_shots"] < FIGHT_UNKNOWN_SHOTS:
+            state["unknown_shots"] += kind is None
+            shot = self._fight_shot("fight-" + (kind or "unknown"))
         self.note(event="fight-screen", kind=kind, glyphs=glyphs,
                   signature=bar_signature(screen),
-                  words=[len(w) for w in bar_words(screen)],
-                  shot=self._fight_shot("fight-" + (kind or "unknown")))
+                  words=[len(w) for w in bar_words(screen)], shot=shot)
 
     def _fight_shot(self, label: str) -> str | None:
         """`shot`, or None when DOSBox-X's grab of the frame tore: a picture
@@ -3283,9 +3308,12 @@ class Driver:
         """Log who acts, and at the first bar where everyone stands; then press
         `QUICK`, or the first-bar key once.
 
-        `QUICK` is pressed once and not repeated: the next member's bar can
-        look the same as this one, so a bar that has not changed is read
-        again rather than pressed again.
+        Every look at a command bar reads who acts.  The same bar digest with
+        the same acting record as the last one logged is the same turn, whose
+        `QUICK` the game did not take: it is pressed again and counted in
+        `repeats`, and no second `bar` is logged.  The next member's bar can
+        look the same, and its acting record tells it apart.  The bar after
+        the first-bar key is logged again, since a key was pressed at it.
         """
         first = not state["bars"]
         after_key = state["key_pressed"] and state["after_key"] is None
@@ -3295,6 +3323,14 @@ class Driver:
         state["ds"] = snap["ds"]
         actor = next((c for c in snap["combatants"] if c["index"] == snap["selected"]),
                      None)
+        turn = (glyphs, tuple(snap["selected_pointer"]))
+        if turn == state["last_bar"]:
+            state["repeats"] += 1
+            self.s.key(FIGHT_KEYS["command"])
+            state["presses"] += 1
+            self.s.wait_while_glyphs(dosbox.BAR, glyphs, timeout=FIGHT_DWELL)
+            return
+        state["last_bar"] = turn
         bar = {"bar": glyphs, "actor": None if actor is None else {
             "name": actor["name"], "index": actor["index"],
             "position": actor["position"], "party": actor.get("party")}}
@@ -3309,6 +3345,7 @@ class Driver:
                 self.s.key(self.first_bar_key)
                 state["presses"] += 1
                 state["key_pressed"] = True
+                state["last_bar"] = None
                 time.sleep(1.0)
                 self.note(event="first-bar-key", key=self.first_bar_key,
                           shot=self._fight_shot("first-bar-key"))
@@ -3328,9 +3365,12 @@ class Driver:
         party list, then resumes it.  Without `records` only a combatant not
         in `known` (record pointer to its decoded record, which this fills)
         is read.  The `DS` a halt reports is the game's only if the window
-        reads as a fight, so a window that does not is read again after a
-        fresh halt, `FIGHT_PRESSES` times at most, and a `DS` that read true
-        once is kept.
+        reads as a fight (a count and a record pointer per combatant,
+        `read_combat`), so a window that does not, or a read the debugger
+        refuses, is read again after a fresh halt with the `DS` read afresh,
+        `FIGHT_PRESSES` times at most; a `DS` that read true once is kept.
+        A record whose name is not a name is logged (`fight-odd-record`)
+        and kept with `name` None.
         """
         layout = COMBAT_LAYOUTS[self.title.key]
         lo, n = combat_window(layout)
@@ -3338,6 +3378,7 @@ class Driver:
         why = "the debugger never halted"
         for _ in range(FIGHT_PRESSES):
             if not self.s.attach():
+                why = "the debugger did not answer Alt+Pause"
                 continue
             ds = None
             try:
@@ -3356,6 +3397,9 @@ class Driver:
                     ptr = tuple(c["pointer"])
                     if records or ptr not in known:
                         known[ptr] = combatant_record(record(ptr), layout)
+                        if known[ptr]["name"] is None:
+                            self.note(event="fight-odd-record", pointer=list(ptr),
+                                      raw_name=known[ptr]["raw_name"])
                     c.update(known[ptr])
                 if records:
                     party: list[tuple[int, int]] = []
@@ -3369,8 +3413,11 @@ class Driver:
                         c["slot"] = party.index(ptr) if ptr in party else None
                         known[ptr] = {**known[ptr], "party": c["party"],
                                       "slot": c["slot"]}
-            except CombatUnread as e:
-                why = f"DS {ds if ds is None else f'{ds:04X}'}: {e}"
+            except (CombatUnread, dosboxx.NotHalted, RuntimeError, ValueError) as e:
+                # A wrong DS reads garbage pointers, which the debugger may
+                # refuse (`NotHalted`, a short dump) as well as misread.
+                why = (f"DS {'unread' if ds is None else f'{ds:04X}'}: "
+                       f"{type(e).__name__}: {e}")
                 self.combat_ds = None
                 continue
             finally:

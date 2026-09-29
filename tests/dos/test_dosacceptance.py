@@ -6794,8 +6794,8 @@ def test_a_window_that_is_not_a_fight_is_refused():
     ds[_ssb().array_at + 8:_ssb().array_at + 12] = bytes(4)
     with pytest.raises(da.CombatUnread, match="no record"):
         da.read_combat(bytes(ds[lo:lo + n]), lo, _ssb())
-    with pytest.raises(da.CombatUnread, match="not a name"):
-        da.combatant_record(bytes(_record_size()), _ssb())
+    odd = da.combatant_record(bytes(_record_size()), _ssb())
+    assert odd["name"] is None and odd["raw_name"] == "00" * 16
 
 
 def test_the_explorer_leaves_a_dead_end_for_a_square_it_has_not_stood_on():
@@ -6831,10 +6831,21 @@ class FakeFight:
               "treasure": "VIEW TAKE POOL SHARE EXIT", "left": "YES NO",
               "archway": "YES NO"}
 
-    def __init__(self, tmp_path, archway=False):
+    def __init__(self, tmp_path, archway=False, endless=False, odd=False,
+                 swallow=False):
         #: With `archway`, the first step lands on square 5 under a `YES NO`
         #: question whose picture animates, so every `capture` of it tears.
-        self.archway = archway
+        #: With `endless` every step moves and none meets a fight; with `odd`
+        #: the first step shows a bar nobody classifies, drawn differently on
+        #: every look; with `swallow` the first `q` at GUY's bar is lost.
+        self.archway, self.endless, self.odd, self.swallow = archway, endless, odd, swallow
+        self.looks = 0
+        self.fought = False
+        self.map_after = 0
+        #: With `flicker` N, the N-th look at the map after the fight shows
+        #: the `YES NO` question again instead.
+        self.flicker = 0
+        self.dses: list[int] = []
         self.dir = tmp_path / "session"
         (self.dir / "shots").mkdir(parents=True)
         self.save_dir = self.dir / "SAVE"
@@ -6845,7 +6856,11 @@ class FakeFight:
         self.records, self.ptrs = mem["records"], mem["ptrs"]
 
     def frame(self) -> dosbox.Screen:
-        bar = _bar(self.FRAMES["bar" if self.state.startswith("bar") else self.state])
+        if self.state == "odd":
+            self.looks += 1
+            bar = bytes((self.looks % 250 + 1, 0x03, 0x05, 0x09))
+        else:
+            bar = _bar(self.FRAMES["bar" if self.state.startswith("bar") else self.state])
         screen = _screen(bar, b"")
         if self.state in ("map", "move"):
             px = bytearray(screen.px)
@@ -6862,6 +6877,11 @@ class FakeFight:
     def capture(self):
         if self.state == "archway":
             raise da.dosboxx.NotLineDoubled("block at (80,100) is not one pixel")
+        if self.state == "map" and self.fought:
+            self.map_after += 1
+            if self.map_after == self.flicker:
+                # The question comes back once, after the map showed briefly.
+                self.state, self.flicker = "left", 0
         return self.frame()
 
     def grab(self):
@@ -6893,6 +6913,10 @@ class FakeFight:
             s = self.state
             if s == "map" and k == "m":
                 self.state = "move"
+            elif s == "move" and k == "Up" and self.endless:
+                self.square = 4 - self.square
+            elif s == "move" and k == "Up" and self.odd:
+                self.state = "odd"
             elif s == "move" and k == "Up":
                 if self.square == 1 and self.archway:
                     self.square, self.state = 5, "archway"
@@ -6903,7 +6927,9 @@ class FakeFight:
             elif s == "archway" and k == "n":
                 self.state = "move"
             elif s == "encounter" and k == "c":
-                self.state, self.actor = "bar1", "GUY"
+                self.state, self.actor, self.fought = "bar1", "GUY", True
+            elif s == "bar1" and k == "q" and self.swallow:
+                self.swallow = False
             elif s.startswith("bar") and k == "space":
                 for rec in self.records.values():
                     if rec[_ssb().control_at] < 0x80 and rec[_ssb().status_at + 2] == 0:
@@ -6930,8 +6956,12 @@ class FakeFight:
 
     def read(self, addr, n):
         seg, off = addr
+        self.dses.append(seg)
         if seg == _DS:
             return bytes(self.ds[off:off + n])
+        if (seg, off) not in self.records:
+            # The debugger's answer to a dump it could not take.
+            raise da.dosboxx.NotHalted(f"MEMDUMPBIN {seg:04X}:{off:04X} answered ''")
         return bytes(self.records[(seg, off)][:n])
 
     def run(self):
@@ -7073,3 +7103,101 @@ def test_a_torn_dosbox_x_grab_halves_loosely_to_the_frame_it_doubled():
         da.dosboxx.halve(big)
     assert da.loose_halve(big).px == small.px
     assert da.loose_halve(small) is small
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """A clock that moves a second each time the step reads it."""
+    now = [1000.0]
+
+    def tick():
+        now[0] += 1.0
+        return now[0]
+
+    monkeypatch.setattr(da.time, "time", tick)
+
+
+def test_a_monster_record_with_no_name_still_reaches_the_first_bar(tmp_path, fight_now):
+    game, d = _fighter(tmp_path)
+    orc = game.records[game.ptrs["ORC"]]
+    orc[0:4] = b"\x1f\x01\xfe\x00"
+    got = d.fight()
+    rows = {c["index"]: c for c in _events(d, "placement")[0]["combatants"]}
+    assert rows[4]["name"] is None and rows[4]["raw_name"].startswith("1f01fe00")
+    assert rows[4]["side"] == 1
+    assert [e["pointer"] for e in _events(d, "fight-odd-record")] == [[0x3100, 0x10]]
+    assert got["bars"] == 2
+
+
+def test_a_wrong_cached_ds_is_dropped_and_the_halt_reads_it_afresh(tmp_path):
+    game, d = _fighter(tmp_path)
+    game.state = "bar1"
+    _select(game.ds, game.ptrs["GUY"])
+    d.combat_ds = 0xBEEF
+    snap = d.combat_memory(True, {})
+    assert snap["ds"] == _DS and d.combat_ds == _DS
+    assert game.halts == 2 and game.dses[0] == 0xBEEF
+
+
+def test_a_ds_that_never_reads_as_a_fight_is_named_when_the_run_stops(tmp_path,
+                                                                    monkeypatch):
+    game, d = _fighter(tmp_path)
+    game.state = "bar1"
+    monkeypatch.setattr(game, "regs", lambda *n: {"DS": 0xBEEF})
+    with pytest.raises(da.StepFailed, match="DS BEEF: NotHalted"):
+        d.combat_memory(True, {})
+    assert game.halts == da.FIGHT_PRESSES
+
+
+def test_a_walk_that_never_meets_a_fight_ends_at_the_budget(tmp_path, clock):
+    game, d = _fighter(tmp_path)
+    game.endless = True
+    with pytest.raises(da.StepFailed, match=r"no fight in 30 s: \d+ steps"):
+        d.fight(30)
+    assert game.keys.count("Up") > 1 and "c" not in game.keys
+
+
+def test_a_bar_nobody_classifies_stops_the_run_after_the_patience(tmp_path, clock):
+    game, d = _fighter(tmp_path)
+    game.odd = True
+    with pytest.raises(da.StepFailed, match=f"stayed {da.FIGHT_PATIENCE:.0f} s"):
+        d.fight(600)
+    assert game.looks > da.FIGHT_PATIENCE / 4
+    # A new unclassified digest on every look, and only the first few shot.
+    unknown = [e for e in _events(d, "fight-screen") if e["kind"] is None]
+    assert len(unknown) > da.FIGHT_UNKNOWN_SHOTS
+    assert sum(e["shot"] is not None for e in unknown) == da.FIGHT_UNKNOWN_SHOTS
+
+
+def test_the_step_waits_for_the_map_bar_to_hold_after_the_fight(tmp_path, clock):
+    game, d = _fighter(tmp_path)
+    game.flicker = 3
+    d.fight()
+    # The map showed for less than FIGHT_SETTLED before the question came
+    # back, so the step answered it again rather than ending at the map.
+    assert game.keys[-3:] == ["e", "n", "n"] and game.state == "map"
+
+
+def test_a_walled_in_walk_stops_the_run():
+    walker = da.Explorer()
+    walker.at("A")
+    for d in range(4):
+        walker.edges[("A", d)] = da.Explorer.BLOCKED
+    with pytest.raises(da.StepFailed, match="walled in"):
+        walker.choose()
+
+
+def test_a_quick_the_game_did_not_take_is_pressed_again_and_logged_once(
+        tmp_path, fight_now):
+    game, d = _fighter(tmp_path)
+    game.swallow = True
+    got = d.fight()
+    assert [e["actor"]["name"] for e in _events(d, "bar")] == ["GUY", "PAINE"]
+    assert got["repeated_bars"] == 1
+    assert game.keys == ["m", "Up", "Up", "c", "q", "q", "q", "e", "n"]
+
+
+def test_y_is_refused_as_the_first_bar_key():
+    for key in ("y", "Y"):
+        with pytest.raises(ValueError, match="YES"):
+            da.parse_key(key)
