@@ -274,6 +274,7 @@ _GROUPS_SILVER_BLADES = (
     # `spell_group` called a spell the game itself grants no spell.
     (96, 96, "druid", 2),
     (98, 98, "druid", 2),
+    (100, 100, "magic-user", 4),
     (109, 114, "magic-user", 6),
     (115, 117, "magic-user", 7),
 )
@@ -284,18 +285,22 @@ _GROUPS_SILVER_BLADES = (
 #: duplicates a real entry's, so they read back as a spell that is already
 #: somewhere else. 101-108 are eight consecutive slots all reading `TRIP`.
 #: 98 is deliberately **not** here: the ranger grant sets it, so it is the
-#: druid's own `CURE LIGHT WOUNDS` and not a duplicate of id 3.
-_NOT_A_SPELL_SILVER_BLADES = (57, 59, 60, 61, 62, 63, 64, 65, 95, 97, 99, 100,
+#: druid's own `CURE LIGHT WOUNDS` and not a duplicate of id 3. Nor is 100:
+#: it is `BESTOW CURSE`, magic-user 4 (DOS `DS:4ADD`, C64 `$953A+100`).
+_NOT_A_SPELL_SILVER_BLADES = (57, 59, 60, 61, 62, 63, 64, 65, 95, 97, 99,
                               101, 102, 103, 104, 105, 106, 107, 108)
 
-#: The one id inside a group that the trainer's menu never offers. 109 and 110
-#: are both `DEATH SPELL` -- a duplicate the way 105-108 are all `TRIP` -- and
+#: The ids inside a group that the trainer's menu never offers. 100 is a real
+#: magic-user 4 spell that the DOS hall's level-4 row offers, but the C64 hall's
+#: row at `GEN $1896` stops at 89, and Wish's level-up models the C64 menu.
+#: 109 and 110 are both `DEATH SPELL` -- a duplicate the way 105-108 are all
+#: `TRIP` -- and
 #: `GEN $1896` builds its candidate mask out of `$1936`/`$1942`, whose
 #: sixth-level row is byte 13 mask `$C0` and byte 14 mask `$07`: ids 110-114
 #: and not 109. So a Silver Blades magic-user reaching level 12 is offered
 #: five sixth-level spells rather than six. CONFIRMED,
 #: `tools/c64/trainerspells.py --check` (#89).
-_NOT_GRANTED_SILVER_BLADES = (109,)
+_NOT_GRANTED_SILVER_BLADES = (100, 109)
 
 #: How wide the spellbook bitmask at record `0x078` is, per title. **Measured
 #: in each game's own code, not carried across from another one.**

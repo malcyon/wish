@@ -305,7 +305,7 @@ def test_a_shared_spell_name_usually_means_one_spell_at_two_levels():
         assert any(s not in grouped for s in rows)
     assert sorted(set(range(1, descriptor.last_spell + 1)) - grouped) == [
         57, 59, 60, 61, 62, 63, 64, 65, 95, 97,
-        99, 100, 101, 102, 103, 104, 105, 106, 107, 108]
+        99, 101, 102, 103, 104, 105, 106, 107, 108]
 
 
 def test_the_three_codes_positional_agreement_got_wrong():

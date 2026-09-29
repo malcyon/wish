@@ -189,7 +189,7 @@ def test_the_menu_never_offers_the_duplicate_death_spell():
     assert 109 in {i for low, high, who, lv in
                    spells.SECRET_OF_THE_SILVER_BLADES.groups
                    if who == "magic-user" for i in range(low, high + 1)}
-    assert spells.SECRET_OF_THE_SILVER_BLADES.not_granted == (109,)
+    assert spells.SECRET_OF_THE_SILVER_BLADES.not_granted == (100, 109)
     rec = _caster("level_magic_user", 14)
     offered = levelup.learnable(rec, SSB, level=14)
     assert 110 in offered and 109 not in offered
