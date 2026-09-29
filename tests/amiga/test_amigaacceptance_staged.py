@@ -243,8 +243,9 @@ def test_a_save_count_the_helper_refuses_is_a_route_error(tmp_path, monkeypatch)
     wheel = tmp_path / "wheel"
     fake_savecount(wheel, refuse=True)
     monkeypatch.setattr(route.amigabladesjournal, "wheel_repo", lambda: wheel)
-    with pytest.raises(RouteError, match="save count 30 refused"):
+    with pytest.raises(RouteError, match="save count 30 refused: SaveCountError") as info:
         _prepared(tmp_path, monkeypatch, save_count=30)
+    assert "private-detail" not in str(info.value)
 
 
 def test_a_save_count_without_the_private_repository_is_a_route_error(tmp_path, monkeypatch):
@@ -263,7 +264,7 @@ def test_a_savecount_that_imports_a_sibling_module_loads(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("body", ["def broken(:\n", "import no_such_module_here\n",
-                                  "raise KeyError('secret')\n"])
+                                  "raise KeyError('secret')\n", "raise SystemExit('secret')\n"])
 def test_a_savecount_that_fails_to_load_is_a_route_error_naming_only_the_type(
         tmp_path, monkeypatch, body):
     analysis = tmp_path / "wheel" / "ssb" / "analysis"
@@ -271,7 +272,8 @@ def test_a_savecount_that_fails_to_load_is_a_route_error_naming_only_the_type(
     (analysis / "savecount.py").write_text(body)
     monkeypatch.setattr(route.amigabladesjournal, "wheel_repo", lambda: tmp_path / "wheel")
     with pytest.raises(RouteError,
-                       match="failed to load: (SyntaxError|ModuleNotFoundError|KeyError)") as info:
+                       match="failed to load: (SyntaxError|ModuleNotFoundError|KeyError|SystemExit)") as info:
         _prepared(tmp_path, monkeypatch, save_count=1)
     assert "secret" not in str(info.value)
     assert "no_such_module_here" not in str(info.value)
+    assert str(analysis) not in route.sys.path

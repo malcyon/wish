@@ -354,7 +354,7 @@ def refuse_keep_inside_repository(directory: pathlib.Path) -> None:
 def _next_number(directory: pathlib.Path) -> int:
     """One more than the highest number among the captures already kept."""
     numbers = [int(path.stem.rsplit("-", 1)[1]) for path in directory.glob("challenge-*.png")
-               if path.stem.rsplit("-", 1)[1].isdigit()]
+               if path.stem.rsplit("-", 1)[1].isdecimal()]
     return max(numbers, default=0) + 1
 
 

@@ -136,7 +136,7 @@ def _load_savecount():
         spec.loader.exec_module(module)
     except RouteError:
         raise
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
         raise RouteError(f"{path} failed to load: {type(exc).__name__}") from None
     finally:
         sys.path.remove(str(path.parent))
@@ -215,7 +215,8 @@ def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | No
         try:
             slot = savecount.with_count(slot, save_count)
         except savecount.SaveCountError as exc:
-            raise RouteError(f"save count {save_count!r} refused: {exc}") from exc
+            raise RouteError(f"save count {save_count!r} refused: "
+                             f"{type(exc).__name__}") from None
     stage = staging.stage_embedded_boot_disk(boot_source, slot, SLOT_LETTER, df0)
     df1 = run / "disk-b-working.adf"
     with disk_b_source.open("rb") as reader, df1.open("xb") as writer:

@@ -20,7 +20,7 @@ def fake_savecount_builder():
         (analysis / "savecount.py").write_text(
             head + "class SaveCountError(ValueError):\n    pass\n\n"
             "def with_count(slot, n):\n"
-            f"    if {refuse!r}:\n        raise SaveCountError('refused')\n"
+            f"    if {refuse!r}:\n        raise SaveCountError('private-detail')\n"
             f"    return slot + {suffix} + str(n).encode()\n")
     return build
 

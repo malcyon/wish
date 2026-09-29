@@ -377,12 +377,12 @@ def test_a_challenge_the_tables_do_not_hold_is_reported_without_quoting_it(
     # The matcher's own ValueError quotes the challenge in its message, and
     # `#108`'s ruling is that neither side of the exchange reaches this
     # repository -- an exception string included.
-    challenge = {"kind": "journal", "word": 1, "entry": 40, "page": 35}
+    challenge = {"kind": "kind-a", "alpha": 7001, "beta": 7002, "gamma": 7003}
     pressed = _wire(monkeypatch, tmp_path, challenge, None)
     with pytest.raises(SystemExit) as raised:
         journal.answer("holder", 0.0, tmp_path / "disk.adf")
     assert "not in this disk's tables" in str(raised.value)
-    for leak in ("40", "35", "entry", "word"):
+    for leak in ("7001", "7002", "7003", "alpha", "beta", "gamma"):
         assert leak not in str(raised.value)
     assert pressed == []
 
@@ -750,3 +750,12 @@ def test_a_keep_directory_inside_the_repository_is_refused(monkeypatch, tmp_path
     with pytest.raises(SystemExit, match="inside the repository"):
         journal.answer("h", 0.0, tmp_path / "d.adf", capture=_grab, keep=inside)
     assert not inside.exists()
+
+
+def test_a_stray_digit_like_file_name_does_not_break_numbering(monkeypatch, tmp_path):
+    _keeping(monkeypatch, tmp_path, {"kind": "x"})
+    keep = tmp_path / "kept"
+    keep.mkdir()
+    (keep / "challenge-\u00b2.png").write_bytes(b"stray")
+    journal.answer("h", 0.0, tmp_path / "d.adf", capture=_grab, keep=keep)
+    assert (keep / "challenge-01.png").is_file()
