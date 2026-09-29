@@ -1156,11 +1156,10 @@ def test_fasttravel_exit_failure_message_does_not_claim_the_party_stood_still(
         "ERROR: Unable to Fast Travel. The party is back where it started.")
 
 
-def test_fasttravel_falls_back_to_the_tail_jump_off_the_direct_exit_table(
-        monkeypatch):
+def test_fasttravel_falls_back_to_the_tail_jump_off_the_direct_exit_table():
     """A departure with no row in `EXIT_ROUTES` at all -- Valhingen Graveyard
-    (10) has no scripted exit -- still enters `NEWECL` at its tail, with the
-    two-hop flag on as well: there is no door to walk through."""
+    (10) has no scripted exit -- still enters `NEWECL` at its tail: there is
+    no door to walk through."""
     target = two_hop_machine(10)
     addr = fasttravel.POOL_OF_RADIANCE
     assert fasttravel.exits_from(10) == ()
@@ -1206,7 +1205,7 @@ def test_fasttravel_falls_back_to_the_tail_jump_when_the_backend_cannot_reenter(
         "check happens before any write, not after a failed one")
 
 
-def test_a_one_door_area_is_the_only_kind_that_is_walked_out_of(monkeypatch):
+def test_a_one_door_area_is_the_only_kind_that_is_walked_out_of():
     """Ten areas have exactly one exit once the ones that come back into the
     same area are dropped; whether the party is walked out of it depends on
     whether that door can start a fight."""
@@ -1229,7 +1228,7 @@ def test_the_leave_the_travel_grid_writes_are_only_where_the_row_has_read_them()
         assert actions.leave_travel_grid_writes(other) == ()
 
 
-def test_the_two_hop_runs_the_one_door_the_area_has(monkeypatch):
+def test_the_two_hop_runs_the_one_door_the_area_has():
     """Kobold Caves to New Phlan: the caves' only door leads to the East
     Window, so the party is walked out of it and the trip is finished from the
     poll -- the handler that drops Princess Fatima runs on the way."""
@@ -1327,7 +1326,7 @@ def test_the_areas_whose_every_door_can_fight_are_1_and_28():
 
 
 @pytest.mark.parametrize("here", sorted(MULTI_DOOR_CHOICE))
-def test_the_two_hop_walks_out_of_the_door_the_rule_chooses(monkeypatch, here):
+def test_the_two_hop_walks_out_of_the_door_the_rule_chooses(here):
     target = two_hop_machine(here)
     addr = fasttravel.POOL_OF_RADIANCE
     ft = actions.FastTravel()
@@ -1346,8 +1345,7 @@ def test_the_two_hop_walks_out_of_the_door_the_rule_chooses(monkeypatch, here):
 
 
 @pytest.mark.parametrize("here", ONE_DOOR_WALKS)
-def test_the_eight_one_door_areas_whose_door_cannot_fight_walk_out(
-        monkeypatch, here):
+def test_the_eight_one_door_areas_whose_door_cannot_fight_walk_out(here):
     """A one-door area walks out of its only door when that door cannot start
     a fight."""
     target = two_hop_machine(here)
@@ -1363,7 +1361,7 @@ def test_the_eight_one_door_areas_whose_door_cannot_fight_walk_out(
 
 @pytest.mark.parametrize("here", ONE_DOOR_FIGHTS)
 def test_the_two_one_door_areas_whose_door_can_fight_refuse_and_write_nothing(
-        monkeypatch, here):
+        here):
     """Buccaneer Base (1) and the Zhentil Keep Outpost (28): the only door
     can start a fight, so the trip is refused with the every-door-fights
     outcome and the machine is left exactly as it was."""
@@ -1397,7 +1395,7 @@ def test_the_two_hop_refuses_when_every_door_can_start_a_fight(monkeypatch):
     assert ft.pending is None
 
 
-def test_leaving_by_another_door_cancels_the_hop_and_says_so(monkeypatch):
+def test_leaving_by_another_door_cancels_the_hop_and_says_so():
     """New Phlan (0)'s chosen door is area 8, and the party walks out by area
     11 instead: the hop is cancelled at once, nothing is written, and the
     party is not told it never left."""
@@ -1421,8 +1419,7 @@ def test_leaving_by_another_door_cancels_the_hop_and_says_so(monkeypatch):
     assert outcome.writes == ()
 
 
-def test_leaving_by_another_door_forgets_the_start_so_back_is_not_offered(
-        monkeypatch):
+def test_leaving_by_another_door_forgets_the_start_so_back_is_not_offered():
     """The first hop remembered the start square; the trip never happens, so
     Fast Travel Back has nowhere to go until the next real Fast Travel."""
     target = two_hop_machine(0)
@@ -1435,7 +1432,7 @@ def test_leaving_by_another_door_forgets_the_start_so_back_is_not_offered(
     assert not ft.back_verdict(target)
 
 
-def test_leaving_by_the_awaited_door_is_still_the_second_hop(monkeypatch):
+def test_leaving_by_the_awaited_door_is_still_the_second_hop():
     target = two_hop_machine(0)
     addr = fasttravel.POOL_OF_RADIANCE
     ft = actions.FastTravel()
@@ -1446,8 +1443,7 @@ def test_leaving_by_the_awaited_door_is_still_the_second_hop(monkeypatch):
     assert target.jumps == [addr.tail]
 
 
-def test_an_area_that_is_no_door_of_the_start_is_still_dropped_silently(
-        monkeypatch):
+def test_an_area_that_is_no_door_of_the_start_is_still_dropped_silently():
     """Not a known exit of area 0, so nothing says the party left another
     way -- only the log does."""
     target = two_hop_machine(0)
@@ -1460,7 +1456,7 @@ def test_an_area_that_is_no_door_of_the_start_is_still_dropped_silently(
     assert ft.pending is None
 
 
-def test_a_backend_that_cannot_reenter_never_starts_a_two_hop(monkeypatch):
+def test_a_backend_that_cannot_reenter_never_starts_a_two_hop():
     addr = fasttravel.POOL_OF_RADIANCE
 
     class NoReentryTarget(TwoHopTarget):

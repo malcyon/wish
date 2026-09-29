@@ -815,7 +815,7 @@ def test_the_row_travels_on_the_click_with_nothing_to_dismiss(app):
 
 
 def test_the_bar_makes_a_pending_second_hop_on_the_poll_and_attach_none_clears_it(
-        app, monkeypatch):
+        app):
     """The poll that already calls `attach` is what makes the second hop of a
     two-hop trip, and puts one line in the Messages panel; a target that goes
     away takes the pending hop with it."""
@@ -847,7 +847,7 @@ def test_the_bar_makes_a_pending_second_hop_on_the_poll_and_attach_none_clears_i
     assert target2.jumps == []
 
 
-def test_a_party_that_went_through_and_came_back_says_nothing(app, monkeypatch):
+def test_a_party_that_went_through_and_came_back_says_nothing(app):
     """The Messages panel stays empty when the arrival menu's LARGE or SMALL
     brings the party back into the starting area."""
     import time

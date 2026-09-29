@@ -799,9 +799,9 @@ def run(args) -> int:
                       "screenshots": shots}
             return 1
 
-        # A two-hop trip has walked
-        # the party out through the area's one door and is waiting on the
-        # poll to make its second hop, so this loop is that poll.
+        # A two-hop trip has walked the party out through the area's one door
+        # and is waiting on the poll to make its second hop, so this loop is
+        # that poll.
         choice = getattr(args, "arrival_choice", "LEAVE")
         if choice != "LEAVE":
             # LARGE and SMALL take the party back into the starting area, so
