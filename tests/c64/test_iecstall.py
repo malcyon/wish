@@ -15,6 +15,7 @@ Session = base.Session
 FakeScreen = base.FakeScreen
 
 PC_ID, SP_ID = 3, 4
+DRIVE_PC_ID = 7
 
 
 class State:
@@ -28,6 +29,8 @@ class State:
         self.secondary = 0x60
         self.writes = []
         self.reads = 0
+        #: A write of the drive PC moves the C64 here, or nowhere when None.
+        self.write_frees_c64 = None
 
 
 class FakeMonitor:
@@ -43,22 +46,26 @@ class FakeMonitor:
     def command(self, cmd, body=b""):
         st = self.st
         if cmd == CMD_REGISTERS_AVAILABLE:
-            names = [(PC_ID, b"PC")] + ([(SP_ID, b"SP")] if body[0] == 0 else [])
+            names = ([(PC_ID, b"PC"), (SP_ID, b"SP")] if body[0] == 0
+                     else [(DRIVE_PC_ID, b"PC")])
             out = struct.pack("<H", len(names))
             for rid, name in names:
                 out += bytes([3 + len(name), rid, 16, len(name)]) + name
             return out
         if cmd == CMD_REGISTERS_GET:
             regs = ([(PC_ID, st.c64_pc), (SP_ID, st.sp)] if body[0] == 0
-                    else [(PC_ID, st.drive_pc)])
+                    else [(DRIVE_PC_ID, st.drive_pc)])
             out = struct.pack("<H", len(regs))
             for rid, val in regs:
                 out += bytes([3, rid]) + struct.pack("<H", val)
             return out
         if cmd == CMD_REGISTERS_SET:
             space, count = struct.unpack("<BH", body[:3])
-            _size, rid, val = struct.unpack("<BBH", body[3:7])
+            size, rid, val = struct.unpack("<BBH", body[3:7])
+            assert size == 3 and space == 1 and count == 1
             st.writes.append((space, rid, val))
+            if st.write_frees_c64 is not None:
+                st.c64_pc = st.write_frees_c64
             return b""
         raise AssertionError(cmd)
 
@@ -114,7 +121,7 @@ def test_a_stall_seen_twice_a_hold_apart_is_nudged_once():
     assert look(sess, 1) is False
     assert sess.st.writes == []
     assert look(sess, 1) is False
-    assert sess.st.writes == [(1, PC_ID, 0xE8F1)]
+    assert sess.st.writes == [(1, DRIVE_PC_ID, 0xE8F1)]
     assert len(sess.logged) == 1
 
 
@@ -130,7 +137,7 @@ def test_the_return_from_the_debpia_wait_is_a_stall_inside_the_loop_body():
     sess = Fake()
     sess.st.c64_pc = 0xEEAC
     look(sess, 2)
-    assert sess.st.writes == [(1, PC_ID, 0xE8F1)]
+    assert sess.st.writes == [(1, DRIVE_PC_ID, 0xE8F1)]
 
 
 def test_an_isour_wait_is_not_a_stall():
@@ -187,3 +194,38 @@ def test_a_wait_gives_up_at_once_on_a_persistent_stall():
     assert sess.wait_for_world(timeout=30.0, interval=0.005) is False
     assert sess.wait_text("NEVER", timeout=30.0, interval=0.005) == (None, None)
     assert len(sess.st.writes) == 2
+
+
+def test_a_nudge_that_frees_the_c64_ends_the_stall_and_the_wait_reaches_its_text():
+    sess = Fake()
+    sess.st.write_frees_c64 = 0x2E4E
+    screens = [FakeScreen("")]
+    sess.screen = lambda: screens[0] if not sess.st.writes else FakeScreen("HELLO")
+    hit, _ = sess.wait_text("HELLO", timeout=30.0, interval=0.005)
+    assert hit == "HELLO"
+    assert len(sess.st.writes) == 1
+
+
+def test_a_nudge_is_skipped_when_the_drive_left_its_idle_loop():
+    sess = Fake()
+    look(sess, 1)
+    real = sess._iec_stalled
+    sess._iec_stalled = lambda: (real(), setattr(sess.st, "drive_pc", 0xFE70))[0]
+    look(sess, 1)
+    assert sess.st.writes == []
+    assert "skipped" in sess.logged[-1]
+    sess.st.drive_pc = 0xEC12
+    sess._iec_stalled = real
+    look(sess, 1)
+    assert sess.st.writes == [(1, DRIVE_PC_ID, 0xE8F1)]
+
+
+def test_a_look_from_an_earlier_wait_does_not_count_towards_a_nudge():
+    import time
+    sess = Fake()
+    look(sess, 1)
+    time.sleep(sess.IEC_HOLD * 2.5)
+    assert sess.iec_stall_check() is False
+    assert sess.st.writes == []
+    look(sess, 1)
+    assert len(sess.st.writes) == 1

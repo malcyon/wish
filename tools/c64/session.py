@@ -1281,10 +1281,21 @@ class Session:
         except (OSError, MonitorError, IndexError, struct.error):
             return False
 
-    def _iec_nudge(self) -> None:
-        """Run drive 8's talker turnaround again by setting its PC."""
+    def _iec_nudge(self) -> bool:
+        """Run drive 8's talker turnaround again by setting its PC.
+
+        The drive's PC is read in the same connection, just before the write:
+        detection accepts four idle samples of six, and a PC put in while the
+        drive is in its IRQ handler would abandon an RTI.  False means it was
+        not in the idle loop and nothing was written.
+        """
         with self.mon(3) as m:
-            _set_reg(m, 1, _pc_id_of(m, 1), IEC_TALKER_TURNAROUND)
+            drive_pc = _pc_id_of(m, 1)
+            pc = _reg_of(m, 1, drive_pc)
+            if pc is None or not IEC_DRIVE_IDLE[0] <= pc <= IEC_DRIVE_IDLE[1]:
+                return False
+            _set_reg(m, 1, drive_pc, IEC_TALKER_TURNAROUND)
+        return True
 
     def iec_stall_check(self) -> bool:
         """Answer a missed talker turnaround; True when the run must give up.
@@ -1299,6 +1310,10 @@ class Session:
         now = time.time()
         if now - self._iec_checked < self.IEC_HOLD:
             return False
+        if now - self._iec_checked > 2 * self.IEC_HOLD:
+            # A look from an earlier wait says nothing about this one.
+            self._iec_first = None
+            self._iec_nudges = 0
         self._iec_checked = now
         if not self._iec_stalled():
             self._iec_first = None
@@ -1309,21 +1324,27 @@ class Session:
             return False
         if now - self._iec_first < self.IEC_HOLD:
             return False
-        self._iec_first = None
         if self._iec_nudges >= IEC_MAX_NUDGES:
+            self._iec_first = None
             self.log("  the C64 is still waiting in the KERNAL talker "
                      f"turnaround after {IEC_MAX_NUDGES} nudges of drive 8 "
                      f"(idle, LOAD); giving up.  {self.stall_capture()}")
             return True
+        try:
+            nudged = self._iec_nudge()
+        except (OSError, MonitorError, TypeError, struct.error) as e:
+            self.log(f"  the nudge failed: {e}")
+            return False
+        if not nudged:
+            self.log("  drive 8 was not in its idle loop when the nudge was "
+                     "due; skipped, the next check retries")
+            return False
+        self._iec_first = None
         self._iec_nudges += 1
         self.log("  the C64 is waiting in the KERNAL talker turnaround with "
                  "drive 8 idle on a LOAD (the drive's CLK pulse was missed); "
-                 f"setting drive 8 PC to ${IEC_TALKER_TURNAROUND:04X} "
+                 f"set drive 8 PC to ${IEC_TALKER_TURNAROUND:04X} "
                  f"({self._iec_nudges} of {IEC_MAX_NUDGES})")
-        try:
-            self._iec_nudge()
-        except (OSError, MonitorError, TypeError, struct.error) as e:
-            self.log(f"  the nudge failed: {e}")
         return False
 
     def wait_text(self, needle, timeout=180.0, interval=0.35):
