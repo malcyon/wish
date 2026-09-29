@@ -190,12 +190,19 @@ class FakeSession:
             None if b is None else [c.index for c in b.enemies]]
         return "melee"
 
+    no_taken = True
+
     def combat_bar(self, label, timeout=30.0):
         self.picked.append(label)
-        return True
+        return self.no_taken
 
     def await_bar(self, kinds, timeout=6.0, interval=0.4):
-        return None
+        return self.bar_after_no
+
+    bar_after_no = None
+
+    def combat_state(self, s=None):
+        return S.Session.combat_state(self, s)
 
     def combat_turn(self):
         self.turns.append("combat_turn")
@@ -1265,20 +1272,95 @@ def test_an_experience_delta_with_no_share_reading_says_why(monkeypatch, tmp_pat
     assert all(d["predicted_why"].startswith("no share reading") for d in deltas)
 
 
-def test_a_party_still_fighting_is_not_read_as_off_the_map(monkeypatch, tmp_path):
+def still_after(monkeypatch, tmp_path, row24):
     machine = Machine()
     machine.mem[SQUARE:SQUARE + 3] = bytes((76, 47, 197))
     sess = FakeSession(machine)
     sess.combat = True
-    sess.script = ["VIEW AIM USE QUICK DONE"]
+    sess.script = [row24]
     answered = []
-    monkeypatch.setattr(tb, "answer_until", lambda *a, **k: answered.append(1) or {
-        "outcome": "unknown", "rows": []})
+
+    def answer(*a, **k):
+        answered.append(1)
+        sess.combat = False
+        return {"outcome": "quiet", "rows": [row24]}
+
+    monkeypatch.setattr(tb, "answer_until", answer)
     log = FakeLog()
     tb.after_fight(sess, tb.Traps(sess, log, tmp_path, args()), log, tmp_path, args(), [
         {"slot": i, "experience": 0, "flags": 0} for i in range(8)])
+    return sess, log, answered
+
+
+@pytest.mark.parametrize("row24,kind", [
+    ("VIEW AIM USE QUICK DONE", S.BAR_COMMAND),
+    ("MOVE/ATTACK, MOVE LEFT = 3", S.BAR_MOVE),
+    ("GUARD DELAY QUIT SPEED EXIT", S.BAR_DONE)])
+def test_a_party_still_on_a_turn_bar_is_not_read_as_off_the_map(
+        monkeypatch, tmp_path, row24, kind):
+    sess, log, answered = still_after(monkeypatch, tmp_path, row24)
     assert answered == []                  # its unknown-row exit would end the run with 5
     assert not log.kinds("off_map")
-    assert log.kinds("still_fighting") == [{"row24": "VIEW AIM USE QUICK DONE"}]
+    assert log.kinds("still_fighting") == [{"row24": row24, "bar": kind}]
     assert len(log.kinds("experience_delta")) == 8
     assert sess.shots == []
+
+
+@pytest.mark.parametrize("row24", ["VIEW TAKE POOL SHARE EXIT", "GO BACK LEAVE TREASURE"])
+def test_the_treasure_bars_in_combat_mode_are_still_walked(monkeypatch, tmp_path, row24):
+    sess, log, answered = still_after(monkeypatch, tmp_path, row24)
+    assert answered == [1]
+    assert not log.kinds("still_fighting")
+    assert log.kinds("after_fight")
+
+
+def test_battle_is_put_back_when_melee_turn_raises():
+    sess = FakeSession(brawl_machine())
+    sess.fight_battle = brawl_battle()
+
+    def boom(state):
+        raise OSError("the monitor went away")
+
+    sess.melee_turn = boom
+    tactic = tb.Tactic(sess, FakeLog(), args())
+    with pytest.raises(OSError):
+        tactic(sess, None)
+    assert "battle" not in vars(sess)
+    assert sess.battle() is sess.fight_battle
+
+
+def test_a_no_that_cannot_be_selected_leaves_the_prompt_to_the_fight_loop():
+    sess = FakeSession(brawl_machine())
+    sess.fight_battle = brawl_battle()
+    sess.no_taken = False
+    log = FakeLog()
+    sess.script = ["ATTACK ALLY: YES NO"]
+    assert tb.Tactic(sess, log, args())(sess, None) == ""
+    assert sess.picked == ["NO"]
+    assert sess.turns == ["melee"] and sess.returns == 0
+    assert log.kinds("attack_ally_refused")[0]["answered"] is False
+
+
+def test_after_no_the_move_sub_bar_is_backed_out_of_before_the_turn_is_passed():
+    sess = FakeSession(brawl_machine())
+    sess.fight_battle = brawl_battle()
+    sess.bar_after_no = S.CombatBar(S.BAR_MOVE, "MOVE/ATTACK, MOVE LEFT = 3", 3)
+    sess.script = ["ATTACK ALLY: YES NO"]
+    assert tb.Tactic(sess, FakeLog(), args())(sess, None) == "done"
+    assert sess.returns == 1
+    assert sess.turns == ["melee", "combat_turn"]
+
+
+def test_flee_mode_reads_no_combatant_blocks_for_sides():
+    machine = brawl_machine()
+    sess = FakeSession(machine)
+    tactic = tb.Tactic(sess, FakeLog(), args(mode="flee", stay=1), Flee())
+    tactic.calls = 1
+    reads = []
+    real = FakeMon.read
+    FakeMon.read = lambda self, a, n: reads.append((a, n)) or real(self, a, n)
+    try:
+        tactic(sess, None)
+    finally:
+        FakeMon.read = real
+    assert (tb.COMBATANTS, tb.BLOCKS * tb.STRIDE) not in reads

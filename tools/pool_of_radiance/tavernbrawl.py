@@ -9,6 +9,13 @@ checkpoints inside `POST.COM` read what the game does with the result.
 
     tavernbrawl.py code [--disks DIR]
     POR_HEADLESS=1 tavernbrawl.py run --save SAVE.D64 --mode win|flee ...
+    POR_HEADLESS=1 tavernbrawl.py run --save SAVE.D64 --mode win --budget 3600
+
+The default `--budget` of 900 s is too short for the brawl.  A party turn
+took about 19 s of wall time in `648-allycheck` (48 turns in 900 s), because
+the 13 allies and the monsters act between them, and five monsters were
+still standing when the budget ran out.  3600 s allows about 190 party
+turns; that figure is an estimate, not a measured fight length.
 
 `code` reads seven byte runs off the player's own disks and refuses if any
 differs from what the driver was written against; `main` runs the same check
@@ -875,7 +882,8 @@ class Tactic:
                 self.log.emit("charm_readback", call=self.calls,
                               **charm_state(m, self.args.charm, self.charm_row),
                               tallies=list(m.read(TALLIES, 2)))
-            friends = party_side(m.read(COMBATANTS, BLOCKS * STRIDE))
+            friends = (party_side(m.read(COMBATANTS, BLOCKS * STRIDE))
+                       if self.args.mode == "win" else frozenset())
         self.log.emit("party_status", call=self.calls, status=statuses(page), acting=acting)
         if self.args.mode == "win":
             return self.melee(sess, state, friends)
@@ -887,9 +895,13 @@ class Tactic:
         """`Session.melee_turn` against the monster side only; refuse an ally attack.
 
         `melee_turn` picks its target from `battle().enemies`, so `battle` is
-        wrapped for the one call.  Should the game still ask `ATTACK ALLY`, the
-        answer is NO and the turn is passed, so the same bar cannot come back
-        to the same character with the same target.
+        wrapped for the one call.  `SidedBattle` makes a step into an ally
+        unlikely, since `step_towards` treats every square but the target's as
+        blocked; it does not rule one out.  If the game asks `ATTACK ALLY`,
+        the NO answered here is what keeps the party from striking its own
+        side.  The turn is then passed, so the same bar cannot come back to
+        the same character with the same target.  If NO cannot be selected,
+        the prompt is left for `Session.fight`, whose yes/no branch answers NO.
         """
         own = "battle" in vars(sess)
         real = sess.battle
@@ -908,8 +920,10 @@ class Tactic:
                 del sess.battle
         s = sess.screen()
         if s is not None and "ATTACK ALLY" in s.row(24):
-            self.log.emit("attack_ally_refused", call=self.calls)
-            sess.combat_bar("NO", timeout=12)
+            answered = bool(sess.combat_bar("NO", timeout=12))
+            self.log.emit("attack_ally_refused", call=self.calls, answered=answered)
+            if not answered:
+                return ""
             if sess.await_bar((S.BAR_MOVE,), timeout=6) is not None:
                 sess.press_kernal(0x0D)         # back out of move mode
             return sess.combat_turn()
@@ -989,6 +1003,10 @@ def timed_captures(sess, log, out: pathlib.Path, since: float, marks=(5, 60)) ->
                  square=list(square_now(sess)))
 
 
+#: Row-24 kinds that mean a party member's turn is still in progress.
+TURN_BARS = (S.BAR_COMMAND, S.BAR_MOVE, S.BAR_DONE)
+
+
 def after_fight(sess, traps: Traps, log, out: pathlib.Path, args, before: list) -> None:
     traps.retire_exec()
     with sess.mon(5) as m:
@@ -1009,12 +1027,15 @@ def after_fight(sess, traps: Traps, log, out: pathlib.Path, args, before: list) 
                                            share.get("standing", 0), b["flags"]),
                  status=a["status"], name_byte=a["name_byte"], **fields_)
     if sess.in_combat():
-        # A fight that ran out its budget is still on its command bars, which
+        # A fight that ran out its budget is still on a turn's bars, which
         # `answer_until` does not know, and `$C04B`-`$C04D` is the world's
-        # square only in the world.
+        # square only in the world.  The treasure bars also come up with
+        # the mode byte at COMBAT, and `answer_until` walks those.
         s = sess.screen()
-        log.emit("still_fighting", row24=None if s is None else s.row(24).strip())
-        return
+        bar = sess.combat_state(s)
+        if bar.kind in TURN_BARS:
+            log.emit("still_fighting", row24=bar.text, bar=bar.kind)
+            return
     met = answer_until(sess, log, out, "after", stop_on_combat=False,
                        quiet_reads=6, quiet_seconds=3.0)
     log.emit("after_fight", outcome=met["outcome"], rows=met["rows"])
