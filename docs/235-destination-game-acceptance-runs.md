@@ -185,7 +185,7 @@ each is built for:
 | `sheet N` | Member N's sheet: from the map in Pool, from camp with the roster line highlighted by `Down` in Pools of Darkness | Pool, Pools of Darkness |
 | `items N` | Member N's `ITEMS` list, page by page with `NEXT`, from camp | Pools of Darkness |
 | `halve N I`, `join N I` | `ITEMS` row I of member N, `h` or `j` pressed once, the rows counted before and after | Pools of Darkness |
-| `walk MI`, `walk 1` | One square, judged by the status token and never by the clock beside it or a picture digest, and by the place decoded from the game-written save. `MI` is two turns and a step at the map bar; `1` presses `m`, steps turning past a wall, and leaves move mode | `MI` in Pool and Curse; `1` in Silver Blades and Pools of Darkness |
+| `walk MI`, `walk I`, `walk 1` | One square, judged by the status token and never by the clock beside it or a picture digest, and by the place decoded from the game-written save. `MI` is two turns and a step at the map bar; `I` is one forward step with no turns; `1` presses `m`, steps turning past a wall, and leaves move mode | `MI` in Pool and Curse; `I` in Pool only; `1` in Silver Blades and Pools of Darkness |
 | `turn N` | The control: N right turns (1 to 4), each reading the square, which a turn must leave alone; a run with `turn` and no `walk` fails unless `read` shows the saved place unchanged and prints "did not move" | All four |
 | `camp` | `ENCAMP`; records the camp bar | All four |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | Camp `REST` for that long; Pools of Darkness' rest menu is read from `GAME.EXE` and is PROBABLE until a run reaches it | All four |
@@ -424,7 +424,7 @@ the same SHA, and the two passing boots must still be consecutive.
 
 | platform | the walk | the control |
 |---|---|---|
-| DOS | `walk MI` (Pool, Curse) or `walk 1` (Silver Blades, Pools of Darkness), judged by the status token and by the place in the game-written save | `turn N` in place of the walk: `read` prints "did not move" |
+| DOS | `walk MI` (Pool, Curse), `walk I` (Pool only: one forward step, no turns) or `walk 1` (Silver Blades, Pools of Darkness), judged by the status token and by the place in the game-written save | `turn N` in place of the walk: `read` prints "did not move" |
 | C64 | `walk KI` (Pool) or `walk JI` (Curse, Silver Blades): a turn, then a step; the place is decoded from the game's own resave | `walk K` or `walk J` alone: the party turns, the saved square is unchanged (`place_changed` false) |
 | Amiga | The route's two saves around a walk: the control slot before it, the after slot after it, both decoded from the fetched disk | The control slot: "did not move" |
 

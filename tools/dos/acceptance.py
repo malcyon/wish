@@ -2815,7 +2815,8 @@ class Driver:
             return self._walk_one()
         if self.title.key not in ("pool", "curse") or self.where != "map" \
                 or route not in WALKS[self.title.key]:
-            raise StepFailed("walk MI needs Pool's or Curse's map, walk I Pool's")
+            raise StepFailed("walk MI needs a Pool of Radiance or Curse map; "
+                            "walk I needs Pool of Radiance")
 
         screens: list[dict] = []
 

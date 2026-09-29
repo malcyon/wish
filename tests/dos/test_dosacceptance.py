@@ -1678,12 +1678,12 @@ def test_pool_walk_i_that_hits_a_wall_fails_the_walk(tmp_path):
 
 def test_walk_i_is_pool_only(tmp_path):
     game, d = _pool_walker(tmp_path, title="curse")
-    with pytest.raises(da.StepFailed, match="walk"):
+    with pytest.raises(da.StepFailed, match="walk I needs Pool of Radiance"):
         d.walk("I")
     da.validate_steps(_steps("load", "walk I"), "pool")
-    with pytest.raises(ValueError, match="walk"):
+    with pytest.raises(ValueError, match=r"curse's walk is 'walk MI', not 'walk I'"):
         da.validate_steps(_steps("load", "walk I"), "curse")
-    with pytest.raises(ValueError, match="walk"):
+    with pytest.raises(ValueError, match=r"pool's walk is 'walk MI' or 'walk I', not 'walk 1'"):
         da.validate_steps(_steps("load", "walk 1"), "pool")
 
 
