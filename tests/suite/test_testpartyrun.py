@@ -1425,13 +1425,14 @@ def test_a_bar_missing_a_door_word_is_not_answered_with_quit(monkeypatch):
 
 
 class EncounterAfterKey(WalkSession):
-    """The first `I` is sent and the square's script puts up an encounter menu
-    that `walk_one` had already left: it says the party did not move and
-    refuses nothing (`full18`, (14,4))."""
+    """The first `I` is sent and the square's script puts up `bar` after
+    `walk_one` has left: it says the party did not move and refuses nothing
+    (`full18`, (14,4)).  `triple` is what the live square reads."""
 
-    def __init__(self, monkeypatch):
+    def __init__(self, monkeypatch, bar=ENCOUNTER, triple=(5, 5, 2)):
         super().__init__(monkeypatch, None, 20, (), (5, 5, 2), None)
         self.coords, self.encounter = False, False
+        self.bar, self.triple = bar, triple
 
     def walk_one(self, key, *a, **k):
         self.walk_refused = None
@@ -1439,18 +1440,75 @@ class EncounterAfterKey(WalkSession):
         self.encounter = True
         return False
 
+    def steady_triple(self, seconds=None):
+        if isinstance(self.triple, Exception):
+            raise self.triple
+        return self.triple
+
     def screen(self):
         if self.encounter and not self.fighting:
-            return Screen(ENCOUNTER)
+            return Screen(self.bar)
         return super().screen()
+
+
+def _unmoved(monkeypatch, **fake):
+    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
+    sess = EncounterAfterKey(monkeypatch, **fake)
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    clock = Clock(monkeypatch)
+    log = RecordingLog()
+    return sess, log, T.walk_route(sess, log, SOUTH, 2, "slums"), clock
 
 
 def test_an_encounter_menu_after_a_key_that_did_not_move_is_the_fight(
         monkeypatch):
-    monkeypatch.setattr(T, "dump", lambda *a, **k: None)
-    sess = EncounterAfterKey(monkeypatch)
-    sess.walk_encounter = S.ENCOUNTER_FIGHT
-    Clock(monkeypatch)
-    got = T.walk_route(sess, RecordingLog(), SOUTH, 2, "slums")
+    sess, log, got, _ = _unmoved(monkeypatch)
     assert got == (2, (5, 5), None)
     assert sess.asked == ["COMBAT"] and sess.keys == ["I"]
+
+
+def test_the_fight_after_an_unmoved_key_is_on_the_live_square(monkeypatch):
+    # An encounter rolled on arrival: the status did not change, but the
+    # party stands on the next square.
+    sess, log, got, _ = _unmoved(monkeypatch, triple=(5, 6, 2))
+    assert got == (2, (5, 6), None)
+    assert not [k for k, _ in log.events if k == "fight_square_assumed"]
+
+
+def test_an_unreadable_live_square_is_assumed_and_logged(monkeypatch):
+    for triple in (None, OSError("monitor gone")):
+        sess, log, got, _ = _unmoved(monkeypatch, triple=triple)
+        assert got == (2, (5, 5), None)
+        assumed = [w for k, w in log.events if k == "fight_square_assumed"]
+        assert len(assumed) == 1 and assumed[0]["square"] == [5, 5]
+
+
+def test_a_wall_after_a_sent_key_keeps_its_desync_and_presses_nothing(
+        monkeypatch):
+    sess, log, got, _ = _unmoved(monkeypatch, bar=WORLD)
+    assert got == (2, None, {"leg": "slums", "key": "i", "from": [5, 5],
+                             "to": [5, 6]})
+    assert sess.asked == [] and sess.pressed == []
+
+
+def test_a_choice_after_an_unmoved_key_is_left_alone(monkeypatch):
+    sess, log, got, _ = _unmoved(monkeypatch, bar="LEAVE TALK ATTACK")
+    assert got[1] is None and got[2]["key"] == "i" and "reason" not in got[2]
+    assert sess.asked == [] and sess.pressed == []
+
+
+def test_a_press_bar_after_an_unmoved_key_is_left_to_the_wait(monkeypatch):
+    # A PRESS bar is answered by the wait, as after any key; a bar that stays
+    # gives up with the desync once the short limit runs out.
+    sess, log, got, clock = _unmoved(monkeypatch, bar=PRESS)
+    assert got[1] is None and "reason" not in got[2]
+    assert sess.asked == []
+    assert clock.now < T.UNMOVED_SETTLE_WAIT + 5
+
+
+def test_an_unsettled_unmoved_key_gives_up_within_the_short_limit(monkeypatch):
+    sess, log, got, clock = _unmoved(monkeypatch, bar="")
+    assert got[1] is None and "reason" not in got[2]
+    assert clock.now < T.UNMOVED_SETTLE_WAIT + 5 < T.STEP_SETTLE_WAIT
+    logged = [w for k, w in log.events if k == "unmoved_key_unsettled"]
+    assert len(logged) == 1 and logged[0]["outcome"] == "unsettled"

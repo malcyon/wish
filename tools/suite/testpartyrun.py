@@ -592,6 +592,30 @@ def _encounter_taken(sess) -> bool:
     return bool(word and rows and S.word_column(rows[24], word) >= 0)
 
 
+#: Seconds `walk_route` waits after a key that was sent and did not move the
+#: party, for an encounter menu.  A limit, not a measurement: a wall answers
+#: with the world bar at once, so only an encounter or a script uses it.
+UNMOVED_SETTLE_WAIT = 10.0
+
+
+def _fight_square(sess, log: Log, here) -> tuple:
+    """The square a fight found after an unmoved key belongs to: the live
+    square read as `walk_one` reads it on a line with no square, else `here`,
+    logged as assumed.  A Slums encounter can be rolled on arrival, so `here`
+    is not always right."""
+    try:
+        triple = sess.steady_triple()
+    except (OSError, S.MonitorError) as error:
+        triple = None
+        why = str(error)
+    else:
+        why = "the live square never steadied"
+    if triple is None:
+        log.emit("fight_square_assumed", square=list(here), why=why)
+        return tuple(here)
+    return tuple(triple[:2])
+
+
 def _stopped(sess, log: Log, out, leg: str, key: str, here, there,
              outcome: str, row: str) -> dict:
     """The desync for a `settle_step` that did not hand the game back."""
@@ -667,11 +691,14 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None,
     (`not_pressed`) is followed by the same wait and sent once more when a
     walkable bar comes back.  Either wait can find a fight, which stops the
     walk on the square the party stands on.  A key that was sent but did not
-    move the party gets the same wait, because a square's script can put up an
-    encounter menu after `walk_one` has stopped looking; the wait takes the
-    word and the fight is returned as for any fight.  A choice it offers, or a
-    screen that never clears, stops the walk with a screenshot under `out` when one
-    is given: after a key that took, `reason` is `choice` or `unsettled`;
+    move the party gets the same wait, for `UNMOVED_SETTLE_WAIT` seconds,
+    because a square's script can put up an encounter menu after `walk_one`
+    has stopped looking; the wait takes the word and the fight is returned
+    with the live square, or the planned one when it cannot be read.  Any
+    other outcome leaves the desync as it was.  A choice it offers, or a
+    screen that never clears, stops the walk with a screenshot under `out`
+    when one is given: after a key that took, `reason` is `choice` or
+    `unsettled`;
     after a refused key, `reason` stays `not_pressed` and `after` names
     which of the two held.
 
@@ -716,14 +743,18 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None,
                     break
                 if "reason" not in bad:
                     # The key was sent and the status did not change: a wall,
-                    # or a square whose script put up an encounter menu that
-                    # `walk_one` had already left.  The wait takes the menu's
-                    # `walk_encounter` word once and finds the fight; a bar it
-                    # finds nothing to answer on leaves the desync as it was.
-                    outcome, _ = settle_step(sess, log, key, here,
-                                             taken=_encounter_taken(sess))
+                    # or a square whose script put up an encounter menu after
+                    # `walk_one` stopped looking.  The wait takes the menu's
+                    # `walk_encounter` word once and finds the fight; on
+                    # anything else the desync stands as it was.
+                    outcome, row = settle_step(sess, log, key, here,
+                                               timeout=UNMOVED_SETTLE_WAIT,
+                                               taken=False)
                     if outcome == "fight":
-                        return want, here, None
+                        return want, _fight_square(sess, log, here), None
+                    if outcome != "ready":
+                        log.emit("unmoved_key_unsettled", leg=leg, key=key,
+                                 to=list(there), outcome=outcome, row24=row)
                 if bad.get("reason") != "not_pressed" or attempt:
                     return want, None, bad
                 # Nothing was pressed: wait out whatever is up, and send the
