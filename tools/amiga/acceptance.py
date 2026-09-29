@@ -1642,7 +1642,11 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
     if name == "ssb":
         recorded = title.read_slot(
             _verified_disk(_input(manifest["registered"], "published")), letter)
-        if "inventory" not in recorded or items_screen != _items_screen(name, recorded):
+        if "inventory" not in recorded:
+            cause = ("is missing" if recorded.get("missing") else
+                     f"does not decode: {recorded.get('decode_error', 'no inventory')}")
+            raise RouteError(f"the published slot {cause}, so items_screen cannot be checked")
+        if items_screen != _items_screen(name, recorded):
             raise RouteError("the manifest items_screen disagrees with the published slot")
     disk1_pin, disk2_pin, executable, volume = PUBLISHED_DISKS[name]
     if (manifest["registered"]["disk_one"]["sha256"] != disk1_pin or

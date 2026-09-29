@@ -195,6 +195,29 @@ def test_published_silver_refuses_an_items_screen_the_slot_contradicts(
         foundation._published_manifest(path, "ssb")
 
 
+def test_published_silver_refuses_a_manifest_without_items_screen_for_an_itemless_slot(
+        tmp_path, monkeypatch):
+    path = _prepared_published(tmp_path, monkeypatch, members_items=0)
+    manifest = json.loads(path.read_text())
+    del manifest["items_screen"]
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(winuaesession.RouteError, match="items_screen disagrees"):
+        foundation._published_manifest(path, "ssb")
+
+
+@pytest.mark.parametrize("reading,cause", [
+    ({"missing": True, "sha256": None}, "is missing"),
+    ({"sha256": "0", "decode_error": "ValueError: bad"}, "does not decode: ValueError: bad"),
+])
+def test_published_silver_names_why_the_slot_cannot_be_read(
+        tmp_path, monkeypatch, reading, cause):
+    path = _prepared_published(tmp_path, monkeypatch, members_items=1)
+    monkeypatch.setattr(foundation.route_silver_blades, "_slot_reading",
+                        lambda _disk, _letter: reading)
+    with pytest.raises(winuaesession.RouteError, match=f"published slot {cause}"):
+        foundation._published_manifest(path, "ssb")
+
+
 def test_published_curse_refuses_an_items_screen_record(tmp_path, monkeypatch):
     path = _prepared_published(tmp_path, monkeypatch, name="curse")
     manifest = json.loads(path.read_text())
