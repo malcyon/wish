@@ -571,16 +571,16 @@ def test_the_old_whole_crop_rescale_lost_a_digit_the_fix_keeps(tmp_path):
     assert min(templates, key=lambda k: _l1(got_old, templates[k])) == "0"
 
 
-def _lines_frame(path, lines, *, x0=58.0, y0=59.0, pitch=16, size=(1920, 1080)):
-    """A capture with a solid stripe per `(row, first, last)` in `lines`, in cell units.
+def _stripes_frame(path, stripes, *, x0=58.0, y0=59.0, pitch=16, size=(1920, 1080)):
+    """A capture with a solid stripe per `(row, first, last)` in `stripes`, in cell units.
 
-    `first` and `last` are cell positions, and may be halves: a stripe from
-    4.5 to 9 is inked from the middle of cell 4 up to the end of cell 8.
+    `first` and `last` may be halves: a stripe from 4.5 to 9 is inked from the
+    middle of cell 4 up to the end of cell 8.
     """
     Image = pytest.importorskip("PIL.Image")
     image = Image.new("RGB", size, (0, 0, 0))
     pixels = image.load()
-    for row, first, last in lines:
+    for row, first, last in stripes:
         top = int(y0 + row * pitch)
         for y in range(top, top + int(pitch) - 2):
             for x in range(int(x0 + first * pitch), int(x0 + last * pitch)):
@@ -589,30 +589,28 @@ def _lines_frame(path, lines, *, x0=58.0, y0=59.0, pitch=16, size=(1920, 1080)):
     return path
 
 
-def test_a_fourth_line_starting_mid_cell_does_not_move_the_grid(tmp_path):
-    # A four-line challenge has a quoted line on row 6 whose first glyph is inked
-    # only in the right half of its cell. Only the leftmost ink of the whole
-    # screen may name the margin, so that line must not decide the origin.
+def test_a_stripe_starting_mid_cell_does_not_move_the_grid(tmp_path):
+    # Only the leftmost ink on the whole frame names the margin, so a stripe
+    # inked from the middle of its first cell must not decide the origin, and
+    # extra stripes must not change the fit.
     PIL_Image = pytest.importorskip("PIL.Image")
-    three = _lines_frame(tmp_path / "three.png", [(2, 4, 20), (4, 4, 20), (6, 4, 20)])
-    four = _lines_frame(tmp_path / "four.png",
-                        [(2, 4, 20), (4, 4, 20), (6, 4.5, 20), (8, 4, 20)])
+    base = _stripes_frame(tmp_path / "base.png", [(2, 4, 20), (4, 4, 20), (6, 4, 20)])
+    more = _stripes_frame(tmp_path / "more.png",
+                          [(2, 4, 20), (4, 4, 20), (6, 4.5, 20), (8, 4, 20), (10, 4, 20)])
     fitted = [journal.fit_grid(journal.text_bands(PIL_Image.open(path)))
-              for path in (three, four)]
+              for path in (base, more)]
     assert fitted[0] == (58, 59, 16)
     assert fitted[1] == fitted[0]
 
 
 @pytest.mark.parametrize("x0", [58, 58.25, 58.5, 58.75])
-def test_a_line_inked_from_mid_cell_keeps_its_first_and_last_cells(tmp_path, x0):
-    # Inked from the middle of column 4 to the middle of column 4+L+1, so that
-    # its first and last cells are each half ink. Rescaling must keep both, for
-    # every length a heading line can have.
+def test_a_stripe_inked_from_mid_cell_keeps_its_first_and_last_cells(tmp_path, x0):
+    # Inked from the middle of cell 4 to the middle of cell 4+n+1, so its first
+    # and last cells are each half ink. Rescaling must keep both, at any width.
     PIL_Image = pytest.importorskip("PIL.Image")
-    for length in range(1, 35):
-        path = _lines_frame(tmp_path / "in.png",
-                            [(2, 4, 20), (4, 4, 20), (6, 4.5, 4 + length + 1.5)],
-                            x0=x0)
+    for width in range(1, 35):
+        path = _stripes_frame(tmp_path / "in.png",
+                              [(2, 4, 20), (4, 4, 20), (6, 4.5, 4 + width + 1.5)], x0=x0)
         scaled = tmp_path / "out.png"
         x0_out, y0_out, pitch = journal.to_reader_scale(path, scaled, target_pitch=30.64)
         image = PIL_Image.open(scaled).convert("RGB")
@@ -621,25 +619,14 @@ def test_a_line_inked_from_mid_cell_keeps_its_first_and_last_cells(tmp_path, x0)
                  if image.getpixel((x, row_y)) == journal.GREEN]
         first = int((inked[0] - x0_out) // pitch)
         last = int((inked[-1] - x0_out) // pitch)
-        assert (first, last) == (4, 4 + length + 1), (x0, length)
-
-
-def _fake_savecount(directory, *, refuse=False):
-    """A `savecount.py` in `directory/ssb/analysis` that marks a slot with its count."""
-    analysis = directory / "ssb" / "analysis"
-    analysis.mkdir(parents=True)
-    (analysis / "savecount.py").write_text(
-        "class SaveCountError(ValueError):\n    pass\n\n"
-        "def with_count(slot, n):\n"
-        f"    if {refuse!r}:\n        raise SaveCountError('refused')\n"
-        "    return slot + b'|count=' + str(n).encode()\n")
+        assert (first, last) == (4, 4 + width + 1), (x0, width)
 
 
 def _keeping(monkeypatch, tmp_path, challenge, *, record=3):
     """`_wire`, with a table whose entry `record` is the one every read matches."""
     pressed = _wire(monkeypatch, tmp_path, challenge, "TESTWORD")
     entries = [types.SimpleNamespace(kind="k", answer="X") for _ in range(record + 1)]
-    entries[record] = types.SimpleNamespace(kind="rulebook", answer="TESTWORD")
+    entries[record] = types.SimpleNamespace(kind="kind-b", answer="TESTWORD")
     monkeypatch.setattr(journal, "tables", lambda adf: entries)
     tables = types.SimpleNamespace(answer_for=lambda challenge, table: table[record])
     screen = _Screen(challenge)
@@ -661,7 +648,7 @@ def test_keep_writes_one_capture_and_one_tally_line_and_prints_only_answered(
     assert (keep / "challenge-01.png").read_bytes() == b"one capture"
     lines = (keep / "tally.jsonl").read_text().splitlines()
     assert [json.loads(line) for line in lines] == [
-        {"capture": "challenge-01.png", "kind": "rulebook", "record": 3,
+        {"capture": "challenge-01.png", "kind": "kind-b", "record": 3,
          "sha256": hashlib.sha256(b"one capture").hexdigest()}]
     assert pressed == list("TESTWORD") + ["RET"]
 
@@ -718,3 +705,48 @@ def test_the_command_line_replay_prints_the_count_and_fails_on_a_disagreement(
     (keep / "challenge-01.png").unlink()
     assert journal.main(["--replay", str(keep)]) == 1
     assert capsys.readouterr().out == "1 of 2 agree\nchallenge-01.png\n"
+
+
+def test_replay_agrees_on_a_challenge_that_was_not_in_the_tables(monkeypatch, tmp_path):
+    _keeping(monkeypatch, tmp_path, {"kind": "x"})
+
+    def unknown(challenge, table):
+        raise ValueError("no such record")
+
+    screen = _Screen({"kind": "x"})
+    monkeypatch.setattr(journal, "_blades_modules",
+                        lambda: (screen, types.SimpleNamespace(answer_for=unknown)))
+    keep = tmp_path / "kept"
+    with pytest.raises(SystemExit):
+        journal.answer("h", 0.0, tmp_path / "d.adf", capture=_grab, keep=keep)
+    assert json.loads((keep / "tally.jsonl").read_text())["record"] is None
+    assert journal.replay(keep, tmp_path / "d.adf") == (1, 1, [])
+
+
+def test_a_kept_capture_is_numbered_after_the_highest_one_already_there(monkeypatch, tmp_path):
+    _keeping(monkeypatch, tmp_path, {"kind": "x"})
+    keep = tmp_path / "kept"
+    keep.mkdir()
+    (keep / "challenge-05.png").write_bytes(b"old")
+    journal.answer("h", 0.0, tmp_path / "d.adf", capture=_grab, keep=keep)
+    assert (keep / "challenge-06.png").is_file()
+    (keep / "challenge-05.png").unlink()
+    journal.answer("h", 0.0, tmp_path / "d.adf", capture=_grab, keep=keep)
+    assert (keep / "challenge-07.png").is_file()
+
+
+@pytest.mark.parametrize("bad_line", ['{"capture": "challenge-01.png", "sha2',
+                                      '{"capture": "challenge-01.png"}', "[1]"])
+def test_replay_reports_a_damaged_tally_line_instead_of_crashing(monkeypatch, tmp_path, bad_line):
+    keep = _kept_two(monkeypatch, tmp_path)
+    with (keep / "tally.jsonl").open("a") as tally:
+        tally.write(bad_line + "\n")
+    assert journal.replay(keep, tmp_path / "d.adf") == (2, 3, ["tally.jsonl line 3"])
+
+
+def test_a_keep_directory_inside_the_repository_is_refused(monkeypatch, tmp_path):
+    _keeping(monkeypatch, tmp_path, {"kind": "x"})
+    inside = pathlib.Path(journal.__file__).resolve().parent / "kept-here"
+    with pytest.raises(SystemExit, match="inside the repository"):
+        journal.answer("h", 0.0, tmp_path / "d.adf", capture=_grab, keep=inside)
+    assert not inside.exists()

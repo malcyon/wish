@@ -9,6 +9,7 @@ import pytest
 
 from goldbox import d64, effects
 from goldbox.amiga_adf import AmigaDisk
+from tests.amiga.fakes import fake_savecount
 from tools.amiga import acceptance
 from tools.amiga import route_silver_blades as route
 from tools.amiga.winuaesession import RouteError
@@ -227,10 +228,8 @@ def test_prepare_without_a_save_count_stages_the_slot_untouched(tmp_path, monkey
 
 
 def test_prepare_with_a_save_count_stages_the_edited_slot(tmp_path, monkeypatch):
-    from tests.amiga.test_amigabladesjournal import _fake_savecount
-
     wheel = tmp_path / "wheel"
-    _fake_savecount(wheel)
+    fake_savecount(wheel)
     monkeypatch.setattr(route.amigabladesjournal, "wheel_repo", lambda: wheel)
     manifest, staged = _prepared(tmp_path, monkeypatch, save_count=29)
     assert staged == [b"slot|count=29"]
@@ -241,10 +240,8 @@ def test_prepare_with_a_save_count_stages_the_edited_slot(tmp_path, monkeypatch)
 
 
 def test_a_save_count_the_helper_refuses_is_a_route_error(tmp_path, monkeypatch):
-    from tests.amiga.test_amigabladesjournal import _fake_savecount
-
     wheel = tmp_path / "wheel"
-    _fake_savecount(wheel, refuse=True)
+    fake_savecount(wheel, refuse=True)
     monkeypatch.setattr(route.amigabladesjournal, "wheel_repo", lambda: wheel)
     with pytest.raises(RouteError, match="save count 30 refused"):
         _prepared(tmp_path, monkeypatch, save_count=30)
@@ -254,3 +251,27 @@ def test_a_save_count_without_the_private_repository_is_a_route_error(tmp_path, 
     monkeypatch.setattr(route.amigabladesjournal, "wheel_repo", lambda: tmp_path / "absent")
     with pytest.raises(RouteError, match="WISH_CODEWHEEL"):
         _prepared(tmp_path, monkeypatch, save_count=29)
+
+
+def test_a_savecount_that_imports_a_sibling_module_loads(tmp_path, monkeypatch):
+    wheel = tmp_path / "wheel"
+    fake_savecount(wheel, sibling=True)
+    monkeypatch.setattr(route.amigabladesjournal, "wheel_repo", lambda: wheel)
+    manifest, staged = _prepared(tmp_path, monkeypatch, save_count=7)
+    assert staged == [b"slot|count=7"]
+    assert str(wheel / "ssb" / "analysis") not in route.sys.path
+
+
+@pytest.mark.parametrize("body", ["def broken(:\n", "import no_such_module_here\n",
+                                  "raise KeyError('secret')\n"])
+def test_a_savecount_that_fails_to_load_is_a_route_error_naming_only_the_type(
+        tmp_path, monkeypatch, body):
+    analysis = tmp_path / "wheel" / "ssb" / "analysis"
+    analysis.mkdir(parents=True)
+    (analysis / "savecount.py").write_text(body)
+    monkeypatch.setattr(route.amigabladesjournal, "wheel_repo", lambda: tmp_path / "wheel")
+    with pytest.raises(RouteError,
+                       match="failed to load: (SyntaxError|ModuleNotFoundError|KeyError)") as info:
+        _prepared(tmp_path, monkeypatch, save_count=1)
+    assert "secret" not in str(info.value)
+    assert "no_such_module_here" not in str(info.value)

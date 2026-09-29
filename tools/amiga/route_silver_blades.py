@@ -10,6 +10,7 @@ import pathlib
 import shutil
 import stat
 import subprocess
+import sys
 from typing import Any
 
 from automap import gamedisks
@@ -116,14 +117,31 @@ def _staged_rows(source: pathlib.Path, staged_from: pathlib.Path) -> list[list[i
 
 
 def _load_savecount():
-    """The private repository's `savecount` module, loaded by path so nothing lands on `sys.path`."""
+    """The private repository's `savecount` module, loaded by path.
+
+    Its own directory is on `sys.path` only while it loads, so a sibling module
+    it imports resolves without anything staying on the path.  Any failure is a
+    `RouteError` naming the path and the exception type, never the message.
+    """
     path = amigabladesjournal.wheel_repo() / "ssb" / "analysis" / "savecount.py"
     if not path.is_file():
         raise RouteError(f"{path} is missing; ${amigabladesjournal.ENV} names the "
                          "private repository that holds it")
-    spec = importlib.util.spec_from_file_location("savecount", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.path.insert(0, str(path.parent))
+    try:
+        spec = importlib.util.spec_from_file_location("savecount", path)
+        if spec is None or spec.loader is None:
+            raise RouteError(f"{path} cannot be loaded as a module")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except RouteError:
+        raise
+    except Exception as exc:
+        raise RouteError(f"{path} failed to load: {type(exc).__name__}") from None
+    finally:
+        sys.path.remove(str(path.parent))
+    if not (hasattr(module, "with_count") and hasattr(module, "SaveCountError")):
+        raise RouteError(f"{path} lacks with_count or SaveCountError")
     return module
 
 
@@ -408,6 +426,10 @@ def run_journal_answer(journal_python: str, holder: str, adf: pathlib.Path,
     """
     command = [journal_python, str(script), "--holder", holder, "--adf", str(adf)]
     if os.environ.get(KEEP_ENV):
+        try:
+            amigabladesjournal.refuse_keep_inside_repository(pathlib.Path(os.environ[KEEP_ENV]))
+        except SystemExit as exc:
+            raise RouteError(f"{KEEP_ENV}: {exc}") from None
         command += ["--keep", os.environ[KEEP_ENV]]
     try:
         proc = subprocess.run(

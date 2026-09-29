@@ -124,3 +124,9 @@ def test_the_keep_directory_is_passed_on_only_when_the_variable_is_set(tmp_path,
     assert "--keep" not in _argv_of(tmp_path, monkeypatch, None)
     assert "--keep" not in _argv_of(tmp_path, monkeypatch, "")
     assert _argv_of(tmp_path, monkeypatch, "/where/kept").endswith("--keep /where/kept")
+
+
+def test_a_keep_variable_inside_the_repository_is_a_route_error(tmp_path, monkeypatch):
+    inside = pathlib.Path(route_silver_blades.__file__).resolve().parent / "kept-here"
+    with pytest.raises(winuaesession.RouteError, match="inside the repository"):
+        _argv_of(tmp_path, monkeypatch, str(inside))

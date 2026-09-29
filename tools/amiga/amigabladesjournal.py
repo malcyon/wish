@@ -344,6 +344,20 @@ def tables(adf: pathlib.Path):
     return amiga_tables.tables(disk.read_file("Secret"))
 
 
+def refuse_keep_inside_repository(directory: pathlib.Path) -> None:
+    """`SystemExit` when `directory` is inside this repository's tree."""
+    root = HERE.parent.parent.resolve()
+    if directory.resolve().is_relative_to(root):
+        raise SystemExit(f"{directory} is inside the repository; keep captures outside it")
+
+
+def _next_number(directory: pathlib.Path) -> int:
+    """One more than the highest number among the captures already kept."""
+    numbers = [int(path.stem.rsplit("-", 1)[1]) for path in directory.glob("challenge-*.png")
+               if path.stem.rsplit("-", 1)[1].isdigit()]
+    return max(numbers, default=0) + 1
+
+
 def _record_of(match, table) -> int | None:
     """Where `match` sits in `table`, or None when it is not one of its entries."""
     return next((i for i, entry in enumerate(table) if entry is match), None)
@@ -353,8 +367,7 @@ def _keep(directory: pathlib.Path, shot: pathlib.Path, challenge: dict, match,
           table) -> None:
     """Copy the raw grab into `directory` and append its tally line."""
     directory.mkdir(parents=True, exist_ok=True)
-    number = len(list(directory.glob("challenge-*.png"))) + 1
-    name = f"challenge-{number:02d}.png"
+    name = f"challenge-{_next_number(directory):02d}.png"
     shutil.copyfile(shot, directory / name)
     kind = getattr(match, "kind", None) or challenge.get("kind")
     line = {"capture": name,
@@ -377,17 +390,24 @@ def replay(directory: pathlib.Path, adf: pathlib.Path) -> tuple[int, int, list[s
         return 0, 0, []
     screen, amiga_tables = _blades_modules()
     table = tables(adf)
-    rows = [json.loads(line) for line in tally.read_text(encoding="utf-8").splitlines()
-            if line.strip()]
+    lines = [line for line in tally.read_text(encoding="utf-8").splitlines() if line.strip()]
     bad: list[str] = []
-    for row in rows:
-        path = directory / row["capture"]
-        if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != row["sha256"]:
-            bad.append(row["capture"])
+    for number, line in enumerate(lines, 1):
+        try:
+            row = json.loads(line)
+            name, digest = row["capture"], row["sha256"]
+            expected = (row["kind"], row["record"])
+        except (ValueError, KeyError, TypeError):
+            # A truncated or incomplete line is a disagreement to report, not a crash.
+            bad.append(f"{TALLY} line {number}")
             continue
-        if _reread(path, screen, amiga_tables, table) != (row["kind"], row["record"]):
-            bad.append(row["capture"])
-    return len(rows) - len(bad), len(rows), bad
+        path = directory / str(name)
+        if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            bad.append(str(name))
+            continue
+        if _reread(path, screen, amiga_tables, table) != expected:
+            bad.append(str(name))
+    return len(lines) - len(bad), len(lines), bad
 
 
 def _reread(shot: pathlib.Path, screen, amiga_tables, table):
@@ -402,9 +422,12 @@ def _reread(shot: pathlib.Path, screen, amiga_tables, table):
         screen.X0, screen.Y0, screen.PITCH = geometry
         try:
             challenge = screen.read_challenge(scaled)
-            match = amiga_tables.answer_for(challenge, table)
         except ValueError:
             return None
+        try:
+            match = amiga_tables.answer_for(challenge, table)
+        except ValueError:
+            return (challenge.get("kind"), None)
         return (getattr(match, "kind", None) or challenge.get("kind"),
                 _record_of(match, table))
     finally:
@@ -420,7 +443,9 @@ def answer(holder: str, settle: float, adf: pathlib.Path,
     `keep/challenge-NN.png` and one line naming it, its digest, its kind and the
     matched record's index in `tables()` is appended to `keep/tally.jsonl`, so a
     later change to the reader can be checked against it by `replay`.  Nothing
-    is kept for a screen with no challenge on it.
+    is kept for a screen with no challenge on it.  `keep` must lie outside this
+    repository, whose tree must never hold a capture; a directory inside it is
+    refused before anything is grabbed.
 
     `capture` takes a path and puts the emulator's screen in it; `press` takes
     one character and sends it.  Both default to WinUAE's -- `winvm shot` and
@@ -442,6 +467,8 @@ def answer(holder: str, settle: float, adf: pathlib.Path,
         def press(key):
             amigadrive.press(holder, key, settle)
 
+    if keep is not None:
+        refuse_keep_inside_repository(keep)
     screen, amiga_tables = _blades_modules()
     table = tables(adf)
     tidy = shot is None
