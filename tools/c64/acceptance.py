@@ -1803,8 +1803,9 @@ class PoolRun:
 
     @classmethod
     def _temple_list(cls, screen) -> list[str]:
-        """The service list's ten names."""
-        return [screen.row(r).strip() for r in TEMPLE_LIST_ROWS]
+        """The service list's ten names, read inside the `$` frame that
+        stands in columns 0 and 39 of every live row."""
+        return [screen.row(r)[1:-1].strip() for r in TEMPLE_LIST_ROWS]
 
     def _temple_select_row(self, label: str):
         """Move the service list's highlight to LABEL with Down and press

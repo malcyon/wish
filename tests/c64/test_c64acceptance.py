@@ -298,6 +298,11 @@ def test_temple_source_guard_requires_registry_path_and_recorded_hash(
         A.temple_source_guard(source)
 
 
+def _framed(text):
+    """A service-list row as the live screen draws it."""
+    return "$" + (" " + text).ljust(38) + "$"
+
+
 class _TempleScreen:
     def __init__(self, rows, bar_highlight=None, party_highlight=None,
                  list_highlight=None):
@@ -559,7 +564,8 @@ class _TempleSession:
                          else "RESURRECT",
                          "REMOVE CURSE", "STONE TO FLESH",
                          "EXIT"), 9):
-                    rows[row] = " " + text
+                    # The live rows carry the frame glyph at both ends.
+                    rows[row] = _framed(text)
         elif phase == "price":
             # Invented text holding the needles the probe reads; the price
             # screen has not been seen live.
@@ -803,14 +809,14 @@ def test_temple_probe_heal_selects_it_once_and_keeps_the_next_drawn_screen(
     assert result["arrival"] != got["stem"]
     assert (tmp_path / f"{got['stem']}.png").is_file()
     assert got["rows"][4] == "HOW MAY WE HELP YOU"
-    assert got["rows"][15] == " RAISE DEAD"
+    assert got["rows"][15] == _framed("RAISE DEAD")
     assert got["rows"][24] == ""
     assert got["settled"] is True and got["held"] >= A.HEAL_SETTLE
     welcome, listing = result["heal_screens"]
     assert welcome[15] == "" and welcome[3] == "WELCOME TO THE TEMPLE,"
     assert listing == got["rows"]
     frames = [kw["rows"] for args, kw in events if args[0] == "temple-heal-frame"]
-    assert [f[15] for f in frames] == ["", "", " RAISE DEAD"]
+    assert [f[15] for f in frames] == ["", "", _framed("RAISE DEAD")]
 
 
 def test_temple_probe_heal_stops_at_ninety_seconds_keeping_the_blank_frame(
@@ -862,7 +868,7 @@ def test_temple_probe_heal_keeps_only_a_bar_seen_twice_running(
     frames = [kw["rows"] for args, kw in events if args[0] == "temple-heal-frame"]
     assert len(frames) == 4 and not any(frames[0])
     assert frames[1][4] == "" and frames[2][4] == "HOW MAY WE HELP YOU"
-    assert frames[2][15] == "" and frames[3][15] == " RAISE DEAD"
+    assert frames[2][15] == "" and frames[3][15] == _framed("RAISE DEAD")
     assert "RAISE DEAD" in kept[-1][1]
 
 
@@ -876,7 +882,7 @@ def test_temple_probe_heal_waits_out_a_list_that_draws_after_twelve_seconds(
                                             unsafe="heal-late-list")
     result = run.temple_probe("BRUTUS HEAL")
     got = result["heal_screen"]
-    assert got["rows"][15] == " RAISE DEAD"
+    assert got["rows"][15] == _framed("RAISE DEAD")
     assert got["settled"] is True and got["held"] >= A.HEAL_SETTLE
     assert len(result["heal_screens"]) == 2
     assert got["stem"] == run.temple_checkpoints[-1]["stem"]
@@ -8576,7 +8582,7 @@ def test_temple_probe_raise_buys_raise_dead_and_records_the_result(
     assert result["raise_result"]["rows"][12] == "BRUTUS IS ALIVE"
     assert result["raise_result"]["settled"] is True
     assert result["outcome"] == "alive"
-    assert result["heal_screen"]["rows"][15] == " RAISE DEAD"
+    assert result["heal_screen"]["rows"][15] == _framed("RAISE DEAD")
     assert session.phase == "result"
 
 
