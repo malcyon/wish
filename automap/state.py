@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 from goldbox import areas, c64_port
 from goldbox.areas import POOL_OF_RADIANCE
 from goldbox.geo import DIRECTIONS, GRID, STEP, Geo
-from goldbox.world import ROWS, STRIDE
 
 from . import notes as notemod
 from .area import (
@@ -241,10 +240,6 @@ class AutomapState:
     window: int | None = None
     #: The travel grid's heading byte, 0-7, or None. Set only while `outdoors`.
     heading: int | None = None
-    #: World square -> `(window, terrain code)` for every square the party has
-    #: seen outdoors. The world x is the window-local x plus 13 per window.
-    wilderness: dict[tuple[int, int], tuple[int, int]] = field(
-        default_factory=dict)
     candidates: Candidates | None = None
     reveal: bool = False
     exploration: Exploration = field(default_factory=Exploration)
@@ -309,46 +304,6 @@ class AutomapState:
             "seen": sorted(f"{x},{y}" for x, y in self.exploration.seen),
         }
         path.write_text(json.dumps(payload, indent=1), encoding="utf-8")
-
-    def wilderness_path(self) -> pathlib.Path:
-        """`{data dir}/maps/{title}/wilderness.json`.
-
-        Keyed `"seen"` like the notes files, so `automap.maps.forget` and the
-        Preferences button that blank `"seen"` in every file blank this one.
-        """
-        return data_dir() / title_dir(self.title) / "wilderness.json"
-
-    def save_wilderness(self, clear: bool = False) -> None:
-        """Write the squares; an empty dict writes only when `clear` is set.
-
-        A state that never loaded the file (the disks moved, the world did not
-        load) holds nothing, and writing that would wipe what the file has.
-        `clear` is the deliberate blanking.
-        """
-        if not self.wilderness and not clear:
-            return
-        path = self.wilderness_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"seen": [[wx, wy, window, code] for (wx, wy), (window, code)
-                            in sorted(self.wilderness.items())]}
-        path.write_text(json.dumps(payload, indent=1), encoding="utf-8")
-
-    def load_wilderness(self) -> None:
-        """Merge the saved squares in; a missing or unreadable file adds none."""
-        try:
-            payload = json.loads(self.wilderness_path().read_text(
-                encoding="utf-8"))
-        except (OSError, ValueError):
-            return
-        rows = payload.get("seen") if isinstance(payload, dict) else None
-        if not isinstance(rows, list):
-            return
-        for row in rows:
-            try:
-                wx, wy, window, code = row
-                self.wilderness[(int(wx), int(wy))] = (int(window), int(code))
-            except (ValueError, TypeError):
-                continue
 
     def load_notes(self) -> None:
         migrate_flat_notes()
@@ -492,13 +447,10 @@ class Automapper:
     def use_world(self, world) -> None:
         """The wilderness windows to identify the resident block against.
 
-        Ignored unless `WISH_EXPERIMENTAL_WILDERNESS_MAP` is on. The saved
-        squares are loaded here because this is where the title is settled.
+        Ignored unless `WISH_EXPERIMENTAL_WILDERNESS_MAP` is on.
         """
         self._world = world if wilderness_enabled() else None
         self._block = None
-        if self._world is not None:
-            self.state.load_wilderness()
 
     def _read_window(self) -> tuple[bytes, tuple[int, int] | None] | None:
         """The block at `$8C00` and what `World.identify` says of it.
@@ -619,8 +571,6 @@ class Automapper:
             self.state.outdoors = False
             self.state.window = None
             self.state.heading = None
-            if wilderness_enabled():
-                self.state.save_wilderness()
             changed_area = self._check_resident()
 
         moved = (fix.x, fix.y) != (self.state.x, self.state.y)
@@ -690,15 +640,19 @@ class Automapper:
         to, or a second opinion to wait for.
         """
         moved = not self.state.outdoors or (fix.x, fix.y) != (self.state.x, self.state.y)
-        recorded = False
+        changed_heading = False
         if not moved:
             # Back on the square the hold was waiting to leave: a later jump
             # to the held coordinates is a new jump and is held again.
             self._outdoor_pending = None
+            if self.state.window is not None:
+                # A turn in place changes the heading and not the square, so
+                # the one byte is read on a standing tick too.
+                changed_heading = self._read_heading()
         if moved:
             read = self._read_window()
             if read is not None:
-                block, found = read
+                _, found = read
                 if found is not None:
                     jumped = (self.state.outdoors
                               and abs(fix.x - self.state.x)
@@ -715,16 +669,15 @@ class Automapper:
                         self._outdoor_pending = (fix.x, fix.y)
                         return False
                     self._outdoor_pending = None
-                    recorded = self._record_pane(fix, found[0], block)
                     self.state.window = found[0]
-                    recorded = self._read_heading() or recorded
+                    changed_heading = self._read_heading()
         self.state.outdoors = True
         self.state.x, self.state.y = fix.x, fix.y
         self.state.source = fix.source
         self._started = False
         self._last = None
         self._pending = None
-        return moved or recorded
+        return moved or changed_heading
 
     def _read_heading(self) -> bool:
         """Read the travel grid's heading byte into `state.heading`. True if
@@ -738,19 +691,6 @@ class Automapper:
         changed = heading != self.state.heading
         self.state.heading = heading
         return changed
-
-    def _record_pane(self, fix: Fix, window: int, block: bytes) -> bool:
-        """Record the 5 x 5 squares around the party. True if any is new."""
-        before = len(self.state.wilderness)
-        changed = False
-        for ly in range(max(fix.y - 2, 0), min(fix.y + 2, ROWS - 1) + 1):
-            for lx in range(max(fix.x - 2, 0), min(fix.x + 2, STRIDE - 1) + 1):
-                seen = (window, block[ly * STRIDE + lx])
-                key = (lx + 13 * window, ly)
-                if self.state.wilderness.get(key) != seen:
-                    self.state.wilderness[key] = seen
-                    changed = True
-        return changed or len(self.state.wilderness) != before
 
     def _new_connection(self) -> None:
         """A new target, which is a new machine until it proves otherwise.

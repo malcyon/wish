@@ -1012,13 +1012,18 @@ class AutomapBinding(QObject):
         self._sync_controls()
 
     def _sync_controls(self) -> None:
-        """Fog of war indoors, the two view radios on the wilderness page."""
+        """Fog of war indoors, the two view radios on the wilderness page.
+
+        The radios go while a fight is on: the fight's own canvas is showing,
+        and they would change a view nobody can see.
+        """
         if self._controls_shown is None:
             return
         world = self.world_page_shown()
         self.fog_box.setVisible(self._controls_shown and not world)
         for button in self.view_buttons:
-            button.setVisible(self._controls_shown and world)
+            button.setVisible(self._controls_shown and world
+                              and self.battle is None)
 
     def _apply_title(self) -> None:
         """Tell the per-title controls which game this is.
@@ -1155,6 +1160,7 @@ class AutomapBinding(QObject):
             return False
         self.battle_canvas.show_battle(self.battle)
         self.stack.setCurrentWidget(self.battle_canvas)
+        self._sync_controls()
         self.poll_live()
         self.poll_combat_log()
         self._say(self._battle_note(self.battle))
@@ -1593,9 +1599,6 @@ class AutomapBinding(QObject):
         """
         self.settings.save()
         self.state.save_notes()
-        from .state import wilderness_enabled
-        if wilderness_enabled():
-            self.state.save_wilderness()
 
     def closeEvent(self, event):
         self.shutdown()

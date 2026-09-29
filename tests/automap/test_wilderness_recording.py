@@ -1,21 +1,17 @@
-"""Recording where the party has been on the travel grid, behind
-`WISH_EXPERIMENTAL_WILDERNESS_MAP`. No disks and no emulator: the windows are
-synthetic and `ReplayTarget` answers `$8C00`."""
-
-import json
+"""Reading the travel grid's window, behind `WISH_EXPERIMENTAL_WILDERNESS_MAP`.
+No disks and no emulator: the windows are synthetic and `ReplayTarget` answers
+`$8C00`."""
 
 import pytest
-from support.automapwindow import make_window
 
 from automap import c64
 from automap.state import (
     WILDERNESS_ENV,
     Automapper,
-    AutomapState,
     wilderness_enabled,
 )
 from automap.target import Fix, ReplayTarget
-from goldbox.world import GRID_SIZE, MIN_FILE_SIZE, STRIDE, Window, World
+from goldbox.world import GRID_SIZE, MIN_FILE_SIZE, Window, World
 
 BASE = c64.RESIDENT_WINDOW
 
@@ -69,28 +65,16 @@ def out(x, y, source="status"):
     return Fix(x, y, None, source, 1000, outdoors=True)
 
 
-def test_one_tick_records_the_pane_in_world_coordinates(on):
-    block = _window(1)
-    mapper, _ = mapper_for([out(8, 20)], block)
+def test_one_tick_names_the_window(on):
+    mapper, _ = mapper_for([out(8, 20)], _window(1))
     assert mapper.poll() is True
     assert mapper.state.window == 1
-    want = {(lx + 13, ly): (1, block[ly * STRIDE + lx])
-            for ly in range(18, 23) for lx in range(6, 11)}
-    assert mapper.state.wilderness == want
 
 
-def test_the_pane_is_clipped_at_the_window_edges(on):
-    mapper, _ = mapper_for([out(0, 0)], _window(2))
-    mapper.poll()
-    assert len(mapper.state.wilderness) == 9
-    assert min(mapper.state.wilderness) == (26, 0)
-
-
-def test_a_block_that_names_no_window_records_nothing(on):
+def test_a_block_that_names_no_window_leaves_the_window(on):
     mapper, _ = mapper_for([out(8, 20)], bytes(GRID_SIZE))
     mapper.state.window = 2
     mapper.poll()
-    assert mapper.state.wilderness == {}
     assert mapper.state.window == 2
 
 
@@ -116,10 +100,8 @@ def test_a_jump_under_the_old_window_is_held_for_one_poll(on):
     mapper.poll()
     assert mapper.poll() is False
     assert (mapper.state.x, mapper.state.y) == (8, 20)
-    assert (3 + 13, 20) not in mapper.state.wilderness
     mapper.poll()
     assert (mapper.state.x, mapper.state.y) == (3, 20)
-    assert (3 + 13, 20) in mapper.state.wilderness
 
 
 def test_a_jump_into_a_new_window_is_not_held(on):
@@ -128,7 +110,6 @@ def test_a_jump_into_a_new_window_is_not_held(on):
     target.block = _window(2)
     mapper.poll()
     assert mapper.state.window == 2
-    assert (3 + 26, 27) in mapper.state.wilderness
 
 
 def test_a_camped_party_is_believed_when_the_window_identifies(on):
@@ -148,57 +129,6 @@ def test_a_target_that_is_not_a_c64_is_never_read(on):
     target.c64_memory = False
     mapper.poll()
     assert target.reads == []
-    assert mapper.state.wilderness == {}
-
-
-def test_the_recorded_squares_survive_a_save_and_a_load(on):
-    mapper, _ = mapper_for([out(8, 20)], _window(1))
-    mapper.poll()
-    mapper.state.save_wilderness()
-    payload = json.loads(mapper.state.wilderness_path().read_text())
-    assert len(payload["seen"]) == 25
-    fresh = AutomapState()
-    fresh.load_wilderness()
-    assert fresh.wilderness == mapper.state.wilderness
-
-
-def test_forget_blanks_the_wilderness_file(on):
-    from automap.maps import forget
-    mapper, _ = mapper_for([out(8, 20)], _window(1))
-    mapper.poll()
-    mapper.state.save_wilderness()
-    forget("wilderness")
-    fresh = AutomapState()
-    fresh.load_wilderness()
-    assert fresh.wilderness == {}
-
-
-def test_coming_back_indoors_saves_the_squares(on):
-    mapper, _ = mapper_for([out(8, 20), Fix(3, 3, 0, "status", 1001)],
-                           _window(1))
-    mapper.poll()
-    assert not mapper.state.wilderness_path().exists()
-    mapper.poll()
-    assert mapper.state.wilderness_path().exists()
-
-
-def test_clear_automap_empties_memory_and_file(app, on, tmp_path, monkeypatch):
-    from wish.preferences import PreferencesDialog
-    target = Target([out(8, 20)], _window(1))
-    win = make_window(app, tmp_path, monkeypatch, target)
-    win.mapper.use_world(_world())
-    win.mapper.poll()
-    win.state.save_wilderness()
-
-    class Fake:
-        pass
-    fake = Fake()
-    fake.win = Fake()
-    fake.win.mapper = win.mapper
-    fake.win.map = None
-    PreferencesDialog._clear_automap(fake)
-    assert win.state.wilderness == {}
-    assert json.loads(win.state.wilderness_path().read_text())["seen"] == []
 
 
 # -- the flag ----------------------------------------------------------------
@@ -220,13 +150,12 @@ def test_the_flag_turns_it_on(monkeypatch, value):
     assert wilderness_enabled() is True
 
 
-def test_with_the_flag_off_nothing_is_recorded_or_read(monkeypatch, tmp_path):
+def test_with_the_flag_off_nothing_is_read(monkeypatch, tmp_path):
     monkeypatch.delenv(WILDERNESS_ENV, raising=False)
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     mapper, target = mapper_for([out(8, 20, "memory")], _window(1))
     assert mapper.poll() is False           # no proof, as before
     assert target.reads == []
-    assert mapper.state.wilderness == {}
 
 
 # -- the addresses and the loader --------------------------------------------
@@ -246,52 +175,6 @@ def test_load_world_is_none_without_disks(tmp_path):
     assert load_world(str(tmp_path), c64_port.POOL_OF_RADIANCE) is None
     assert load_world(None, c64_port.POOL_OF_RADIANCE) is None
     assert load_world(str(tmp_path), None) is None
-
-
-# -- the file is not lost -----------------------------------------------------
-
-def _write_file(state, payload):
-    path = state.wilderness_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload))
-    return path
-
-
-def test_a_state_that_never_loaded_the_file_does_not_overwrite_it(on):
-    state = AutomapState()
-    path = _write_file(state, {"seen": [[1, 2, 0, 5]]})
-    state.save_wilderness()
-    assert json.loads(path.read_text()) == {"seen": [[1, 2, 0, 5]]}
-
-
-def test_recorded_squares_are_written(on):
-    state = AutomapState()
-    state.wilderness[(3, 4)] = (0, 7)
-    state.save_wilderness()
-    assert json.loads(state.wilderness_path().read_text())["seen"] == [[3, 4, 0, 7]]
-
-
-def test_an_explicit_clear_writes_the_file_empty(on):
-    state = AutomapState()
-    path = _write_file(state, {"seen": [[1, 2, 0, 5]]})
-    state.save_wilderness(clear=True)
-    assert json.loads(path.read_text()) == {"seen": []}
-
-
-@pytest.mark.parametrize("payload", [[], "x", {"seen": 3}, {"seen": [[1, 2]]},
-                                     {"seen": [[1, 2, "a", 4]]}, 5])
-def test_a_corrupt_file_loads_as_empty(on, payload):
-    state = AutomapState()
-    _write_file(state, payload)
-    state.load_wilderness()
-    assert state.wilderness == {}
-
-
-def test_a_bad_row_is_skipped_and_the_good_ones_kept(on):
-    state = AutomapState()
-    _write_file(state, {"seen": [[1, 2], [3, 4, 1, 9]]})
-    state.load_wilderness()
-    assert state.wilderness == {(3, 4): (1, 9)}
 
 
 def test_returning_to_the_old_square_drops_the_hold(on):

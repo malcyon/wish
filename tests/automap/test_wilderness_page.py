@@ -210,6 +210,28 @@ def test_the_radios_show_outdoors_and_fog_of_war_indoors(
     assert shown() == (False, (False, False))
 
 
+def test_the_radios_are_hidden_during_a_fight_on_the_grid(
+        app, tmp_path, monkeypatch):
+    from gamedata import synthetic_arena
+    from PyQt6.QtWidgets import QStatusBar
+
+    from automap import combat
+    from automap.target import MemoryTarget
+    win, _ = _window_on(app, tmp_path, monkeypatch, [out(8, 27)])
+    bar = QStatusBar()
+    for widget in (*win.view_buttons, win.fog_box):
+        bar.addPermanentWidget(widget)
+    win.show_controls(True)
+    _step(win)
+    assert all(b.isVisibleTo(bar) for b in win.view_buttons)
+    win.battle = combat.read_battle(MemoryTarget(synthetic_arena()))
+    win._sync_controls()
+    assert not any(b.isVisibleTo(bar) for b in win.view_buttons)
+    win.battle = None
+    win._sync_controls()
+    assert all(b.isVisibleTo(bar) for b in win.view_buttons)
+
+
 # -- the choice of view --------------------------------------------------------
 
 def test_full_view_is_the_default(app, tmp_path, monkeypatch):
@@ -355,3 +377,13 @@ def test_a_new_heading_is_seen_on_the_next_move(app, tmp_path, monkeypatch):
     target.heading = 3
     assert win.mapper.poll() is True
     assert win.state.heading == 3
+
+
+def test_a_turn_in_place_is_seen_without_a_move(app, tmp_path, monkeypatch):
+    win, target = _window_on(app, tmp_path, monkeypatch,
+                             [out(8, 27)], heading=2)
+    win.mapper.poll()
+    target.heading = 4
+    assert win.mapper.poll() is True
+    assert win.state.heading == 4
+    assert win.mapper.poll() is False
