@@ -660,8 +660,9 @@ def thac0_current_byte(base_byte: int, hit_bonus: int, bonus_flag: bool) -> int:
 
 #: `COM.PREP $1682`, indexed by dexterity 3-21: what dexterity is worth to hit
 #: at range, which `COM.PREP $1633` caches at record `0x0EC` and the roster
-#: rebuild adds for a ranged weapon.  Dexterity 22 and over is clamped to the
-#: last row, and 3 is the first (CONFIRMED for Pool of Radiance only).
+#: rebuild adds for a ranged weapon.  CONFIRMED for 3-21 in Pool of Radiance;
+#: the table beyond 21 is unread, so 22 and over, and anything under 3, take
+#: the nearest read row as a fallback and nothing more.
 _MISSILE_BY_DEX = (-3, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 3, 3, 4)
 
 #: The item types whose readied plus a launcher adds to the roster THAC0 in
@@ -698,6 +699,8 @@ def pool_thac0_current_byte(base_byte: int, hit_bonus: int, missile: int,
     def readied_plus(type_index: int) -> int:
         return next((_signed_plus(r) for r in readied if r[0] == type_index), 0)
 
+    # With two readied body-place-0 items the choice is unread: no specimen
+    # holds two.
     weapon = next((r for r in readied
                    if r[0] in item_types
                    and item_types[r[0]].raw[TYPE_LOCATION] == 0), None)
@@ -847,7 +850,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     rep = Report()
     port = char.port
     deltas = deltas_for(char.game)
-    computes_movement = (deltas.key == "pool-of-radiance"
+    pool_item_table = (deltas.key == "pool-of-radiance"
                          and item_types is not None)
     w = neutral.Writer(
         char, rep, into="C64",
@@ -879,7 +882,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         # stored byte is exactly what a reader should hand back.
         if field in ("thac0_base", "thac0_current"):
             continue
-        if field == "movement_current" and computes_movement:
+        if field == "movement_current" and pool_item_table:
             continue
         v = use(field)
         if v is None:
@@ -1802,13 +1805,16 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # copied byte can show a number the C64's own tables would never
     # produce -- a low-level magic-user or thief is THAC0 20 on DOS and 21
     # on the C64 (#318) -- until the first fight silently overwrites it.
+    # Pool of Radiance with the item-type table takes the later block, after
+    # the inventory, which adds the readied weapon; every other case is
+    # computed here.
     # Recomputed instead from this record's own `thac0_base` (set above)
     # and the AD&D strength to-hit bonus, gated on `strength_bonus_flag`
     # (set just above, always 1 here), the way `LIBRARY $3918` (`$3729` in
     # Pool of Radiance) rebuilds it -- CONFIRMED in the running game,
     # `docs/205-the-c64-thac0-rebuild.md` (#368).
     current = use("thac0_current")
-    if current is not None and not computes_movement:
+    if current is not None and not pool_item_table:
         dst = _field("thac0")
         hit, _ = derive.strength_bonuses(w.get("strength", 0),
                                          w.get("exceptional_strength", 0))
@@ -1995,7 +2001,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # value), and the encounter menu's FLEE reads it before any fight
     # rebuilds it.  Placed after the inventory, base movement, purses and
     # strength index, which the rule reads from `rec`.
-    if computes_movement:
+    if pool_item_table:
         moved = use("movement_current")
         if moved is not None:
             dst = _field("roster_movement")
@@ -2023,11 +2029,16 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # so that is written too, from the same dexterity table `COM.PREP $1633`
     # uses; otherwise a dart thrower would drop back to the strength-only
     # number.  `docs/205-the-c64-thac0-rebuild.md`.
-    if computes_movement and current is not None:
+    if pool_item_table:
         dst = _field("thac0")
         dex_dst = _field("missile_attack_adjustment")
         missile = pool_missile_adjustment(rec.get("dexterity"))
         rec.set("missile_attack_adjustment", missile)
+        rep.note(dex_dst.offset, dex_dst.size,
+                 "missile_attack_adjustment: what dexterity is worth at "
+                 "range, from the table COM.PREP writes at the start of "
+                 "every fight")
+    if pool_item_table and current is not None:
         raw_inv = rec.get_raw("inventory")
         hit, _ = derive.strength_bonuses(w.get("strength", 0),
                                          w.get("exceptional_strength", 0))
@@ -2036,10 +2047,6 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             hit if rec.get("strength_bonus_flag") else 0, missile,
             [raw_inv[n * ITEM_SIZE:(n + 1) * ITEM_SIZE]
              for n in range(ITEM_SLOTS)], item_types))
-        rep.note(dex_dst.offset, dex_dst.size,
-                 "missile_attack_adjustment: what dexterity is worth at "
-                 "range, from the table COM.PREP writes at the start of "
-                 "every fight")
         rep.note(dst.offset, dst.size,
                  "thac0: computed by the C64 roster rebuild's rule "
                  "(LIBRARY $3729) from this record's thac0_base, strength, "

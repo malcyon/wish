@@ -21,10 +21,11 @@ engine's own is checked rather than assumed.
 from __future__ import annotations
 
 import gamedata
+import pytest
 from gamedata import needs_disks
 from support.dossave import _save_dir, needs_dos_saves
 
-from goldbox import c64_codec, derive, dos_codec
+from goldbox import c64_codec, derive, dos_codec, dos_port
 from goldbox import levels as level_tables
 from goldbox.encoding import COMBAT_BIAS, combat_value
 from goldbox.items import TYPE_LOCATION, TYPE_WEAPON_FLAGS, ItemType, load_item_types
@@ -266,3 +267,57 @@ def test_dos_pool_slot_a_arrives_with_the_engines_own_thac0_and_dex_term():
     assert got == {"SILAS": (0x2F, 3), "ASTRID": (0x2A, 3),
                    "GILES": (0x2A, 3), "ROLAND": (0x2A, 1),
                    "MAGNUS": (0x2F, 3), "BRUTUS": (0x2E, 3)}
+
+
+def test_a_type_49_ammunition_plus_is_taken_for_a_bit_0_weapon_only():
+    types = dict(_TYPES)
+    types[7] = _type(0x03)          # bit 0 and bit 1, not bit 7
+    rec, _ = c64_codec.write(
+        _pool_char([_item(7), _item(0x49, plus=2), _item(0x1C, plus=5)]),
+        item_types=types)
+    assert rec.get("thac0") == rec.get("thac0_base") + 3 + 2
+
+
+def test_the_byte_wraps_mod_256_like_the_engines_adc():
+    types = {1: _type(0x04)}
+    raws = [_item(1, plus=10)]
+    assert c64_codec.pool_thac0_current_byte(250, 2, 0, raws, types) == 6
+
+
+def test_a_dexterity_below_3_takes_the_lowest_read_row():
+    assert c64_codec.pool_missile_adjustment(1) == -3
+
+
+def test_a_readied_weapon_of_an_unknown_type_counts_as_no_weapon():
+    rec, hit = _pool([_item(99, plus=4)])
+    assert rec.get("thac0") == rec.get("thac0_base") + hit
+
+
+def test_the_dex_term_is_written_even_when_the_source_has_no_thac0():
+    char = _pool_char([_item(2)])
+    char.fields.pop("thac0_current", None)
+    rec, _ = c64_codec.write(char, item_types=_TYPES)
+    assert rec.get("missile_attack_adjustment") == 3
+
+
+@needs_dos_saves
+@needs_disks
+def test_the_c64_dex_term_does_not_leak_back_into_dos():
+    """DOS -> C64 -> DOS leaves the DOS THAC0 byte where the direct DOS write
+    puts it: the DOS writer recomputes it through its own rule."""
+    from tools.dos import dosbox
+
+    types = load_item_types(gamedata.game_disk("POOL1"))
+    try:
+        dos_types = dos_codec.item_type_table(dosbox.find_game("POOLRAD"))
+    except FileNotFoundError as exc:
+        pytest.skip(f"needs the player's DOS Pool of Radiance: {exc}")
+    assert dos_types is not None
+    at = dos_port.FIELDS_BY_NAME["thac0_current"].offset
+    for char in dos_codec.read_party(_save_dir(), "A"):
+        direct, _, _, _ = dos_codec.write(dos_codec.to_neutral(char),
+                                          item_types=dos_types)
+        c64, _ = dos_codec.to_c64_record(char, item_types=types)
+        back = c64_codec.read(c64, source="round trip")
+        via, _, _, _ = dos_codec.write(back, item_types=dos_types)
+        assert via[at] == direct[at], char.name

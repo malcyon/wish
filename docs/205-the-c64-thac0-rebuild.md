@@ -3,8 +3,8 @@
 **Status: settled, in the code and in the running game.** `thac0_current` at
 record offset `0x10E` -- the roster block's `+0x0E` -- is an **output** of the
 engine's arithmetic and never an input to it. The fight rebuilds it from
-`thac0_base` at `0x071` plus the AD&D strength tables before any command bar
-is drawn, so whatever the byte held beforehand makes no difference to a single
+`thac0_base` at `0x071` plus the AD&D strength tables (and, in Pool of
+Radiance, the readied weapon; see below) before any command bar is drawn, so whatever the byte held beforehand makes no difference to a single
 attack roll.
 
 This is `#368 (Does the C64 Curse engine read thac0_current in a fight, since
@@ -186,7 +186,7 @@ weapon's terms to `thac0_base`: the strength to-hit row when no weapon is
 readied or the type's `+14` bit 2 is set, record `0x0EC` when bit 1 is set, the
 item's own plus always, and the plus of a readied type-`$1C` (bit 7) or
 type-`$49` (bit 0) item. `0x0EC` is `COM.PREP $1682[dexterity]`, and the
-converter writes both bytes, so a READY before the first fight leaves the
+converter writes `0x0EC` whenever it has the item-type table and `thac0_current` too when the source has one, so a READY before the first fight leaves the
 number unchanged. The rule reproduces the byte in all 124 engine-written
 slots checked; Curse and Silver Blades' weapon block (`$387E`) is unread, so
 their converted byte stays base plus strength.
