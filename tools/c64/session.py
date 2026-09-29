@@ -2313,21 +2313,33 @@ class Session:
                 at = parse_status(s.text())
                 if at is not None:
                     return at.x, at.y, at.facing
+                # A status line of facing and time with no square (a Pool
+                # area such as area 7) will never parse, so waiting on the
+                # screen only delays the answer; the live triple is it.
+                if (RE_SQUARELESS_STATUS.search(s.row(14))
+                        and self.machine.live_position is not None):
+                    return self._steady_or_unknown()
             time.sleep(0.3)
         if not self.machine.title.travel_grid:
-            try:
-                steady = self.steady_triple()
-            except (OSError, MonitorError):
-                return 0, 0, None
-            return (0, 0, None) if steady is None else steady
+            return self._steady_or_unknown()
         here = self.square_and_world()   # fallback: the lagging memory copy
         if here is None:
             return 0, 0, None
         x, y, inside = here
         if not inside:
             return x, y, None
-        with self.mon(5) as mon:
-            return x, y, mon.read(DUNGEON_XY + 2, 1)[0]
+        # `$49C0`-`$49C2` is the save-time copy and does not change while the
+        # party walks, so indoors the live triple is read instead.
+        return self._steady_or_unknown()
+
+    def _steady_or_unknown(self) -> tuple[int, int, int | None]:
+        """`steady_triple()`, or `(0, 0, None)` when it is unreadable or
+        never settles."""
+        try:
+            steady = self.steady_triple()
+        except (OSError, MonitorError):
+            return 0, 0, None
+        return (0, 0, None) if steady is None else steady
 
     def walk(self, moves: str, hold=0.15, gap=0.30) -> None:
         """One move per character of `moves`.

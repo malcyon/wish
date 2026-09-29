@@ -248,12 +248,16 @@ def test_position_returns_unknown_when_the_live_triple_cannot_be_read(monkeypatc
         assert sess.position() == (0, 0, None)
 
 
-def test_position_keeps_pools_dungeon_facing_without_a_status_line(monkeypatch):
+def test_position_reads_pools_live_triple_without_a_status_line(monkeypatch):
     monkeypatch.setattr(session.time, "sleep", lambda _: None)
     sess = FakeSession(line="LOAD SAVED GAME", indoors=True, square=(5, 2))
     sess.game = games.POOL_OF_RADIANCE
     sess.memory[DUNGEON_XY + 2] = 3
-    assert sess.position() == (5, 2, 3)
+    # The save-time copy above never moves while the party walks; the answer
+    # is the live triple, which differs from it here.
+    sess.put(sess.machine.live_position, (6, 4))
+    sess.memory[sess.machine.live_position + 2] = 2
+    assert sess.position() == (6, 4, 2)
 
 
 # -- which of the two worlds -----------------------------------------------

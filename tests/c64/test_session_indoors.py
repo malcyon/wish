@@ -217,3 +217,61 @@ def test_steady_triple_logs_each_disagreeing_read_and_nothing_when_steady(
     calm = StrayReadSession([(3, 12, 2), (3, 12, 2)])
     assert calm.steady_triple() == (3, 12, 2)
     assert calm.messages == []
+
+
+# -- position() in a Pool area whose status line has no square ----------------
+
+
+class PoolPositionSession(FakeSession):
+    """A Pool party whose screen row 14 is `row14`."""
+
+    def __init__(self, row14, memory):
+        super().__init__(game=G.POOL_OF_RADIANCE, memory=memory)
+        self.row14 = row14
+
+    def screen(self):
+        row14 = self.row14
+
+        class Screen:
+            def row(self, r):
+                return row14 if r == 14 else ""
+
+            def text(self):
+                return row14
+        return Screen()
+
+
+def _pool_memory(indoors):
+    m = machines.machine_for(G.POOL_OF_RADIANCE)
+    mem = {INDOORS_AT: 1 if indoors else 0,
+           S.DUNGEON_XY: 2, S.DUNGEON_XY + 1: 2, S.DUNGEON_XY + 2: 1,
+           S.TRAVEL_XY: 5, S.TRAVEL_XY + 1: 6}
+    mem.update({m.live_position + i: v for i, v in enumerate((2, 2, 2))})
+    return mem
+
+
+def test_a_squareless_pool_status_line_is_read_from_the_live_triple(monkeypatch):
+    monkeypatch.setattr(S.time, "sleep", lambda _: None)
+    sess = PoolPositionSession("S 0:05", _pool_memory(True))
+    assert sess.position() == (2, 2, 2)
+    assert S.DUNGEON_XY not in sess.asked
+
+
+def test_a_pool_status_line_with_a_square_is_read_from_the_screen(monkeypatch):
+    monkeypatch.setattr(S.time, "sleep", lambda _: None)
+    sess = PoolPositionSession("E 0:52 8,5", _pool_memory(True))
+    assert sess.position() == (8, 5, 1)
+    assert sess.asked == []
+
+
+def test_outdoors_with_no_status_line_still_reads_the_travel_pair(monkeypatch):
+    monkeypatch.setattr(S.time, "sleep", lambda _: None)
+    sess = PoolPositionSession("", _pool_memory(False))
+    assert sess.position() == (5, 6, None)
+
+
+def test_indoors_with_no_status_line_reads_the_live_triple_not_the_save_copy(
+        monkeypatch):
+    monkeypatch.setattr(S.time, "sleep", lambda _: None)
+    sess = PoolPositionSession("", _pool_memory(True))
+    assert sess.position() == (2, 2, 2)
