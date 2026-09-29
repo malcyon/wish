@@ -180,25 +180,22 @@ as a placeholder "until we find a real one", and never a Font Awesome path
 nudged until it fits.** A hills symbol is two arcs; it is exactly the kind of
 thing a person draws in a minute and an assistant must not draw at all. The
 honest interim is to ship the terrain classes the renderer *can* mark —
-water, forest, mountain, settlement — and leave hills and marsh as plain
+water, forest, mountain, settlement — and leave hills and marsh as bare
 squares with the class in the tooltip until a human draws two marks.
 
 ## 4. What `automap/render.py` needs
 
-**One module, a second generator — not a second renderer and not a mode flag
-on the existing one.** The precedent is already in the tree:
-`automap/combat.py` reads a byte-per-square map of exactly this shape and emits
-`Rect`, `Hatch`, `Line` and `Label` from `render.py`, and `window.py` paints
-them by `kind` without knowing which map it is looking at.
+**A separate canvas, not a mode flag on the existing one.** Drawing the game's
+own tiles (`docs/217-drawing-the-wilderness.md` §1) needs no primitives at all,
+so `map_primitives` and `combat.py`'s generator are not involved.
 
-| what | why |
+| what | how it is built |
 |---|---|
 | `map_primitives` stays as it is | it loops `range(GRID)` twice and merges wall edges from both sides; none of that means anything outdoors |
-| a new `world_primitives(world, visible, cell, margin)` | one `Rect` per square for the terrain class, a `Glyph` for the mark, and nothing else. No walls, no doors, no edge merging, no reciprocity |
-| new `kind` values and `SVG_STYLE` rows | `terrain-water`, `terrain-forest`, … one line each, and the Qt painter picks them up through the same dispatch |
-| the party marker | `party_marker` already takes a facing; **travel is eight-way** (`$033D`), so it needs eight positions rather than four |
-| the canvas | 40 × 32, not 16 × 16. `CELL` and `MARGIN` are already parameters; `GRID` is imported from `goldbox.geo` and is the one hard 16 in the file |
-| a third page in the `QStackedWidget` | only one of area / combat / world is ever true |
+| the picture | `goldbox.world.world_indices` builds one picture of the whole 44 × 36 wilderness from the disks' glyphs and tile entries; `WorldCanvas` in `automap/window.py` scales it by nearest neighbour |
+| the party marker | `render.travel_marker` turns the `party_marker` triangle to one of eight headings (`$033D`), drawn yellow with a black outline |
+| the canvas | Full View, 44 × 36, or Area View, 16 × 16 centred on the party, chosen by two radios beside **Fog of war** |
+| a third page in the `QStackedWidget` | `AutomapBinding._page` shows it when the party is outdoors with a window identified, and only one of area / combat / world is ever true |
 
 `goldbox/world.py` is the reading half and is specified in
 [`113-world-map.md`](113-world-map.md) §"The work, in order" step 2. It is
@@ -211,23 +208,29 @@ it.
 |---|---|
 | **which colour bucket is which terrain** | a screenshot of the travel screen, next to a rendering of the tile table's colours. The screenshot no longer has to be taken -- `cited/178` has three -- but a rendering to put beside them does not exist yet. This is still the blocker on everything downstream |
 | whether the buckets are even the right partition | render all 120 tiles of one window as coloured 3 × 3 blocks, offscreen, and look at them as a sheet. Same rig as `tools/icons/iconsheet.py`. **The sheet is a working file and is not committed** — it is the game's art |
-| the eight-way facing encoding | `$033D` is page 3 and is not in the save; W2/W3 proved the travel facing is not saved at all. A live read while turning |
 | whether the impassable lists are per-window complete | `ECL19`/`1A`/`1B` each carry one; map `1B` reserves a stamp for a site that does not exist |
-| what a `SECSET0n` glyph looks like | **needed after all**, if look 1 is chosen (the game's own tiles, reopened `docs/217-drawing-the-wilderness.md` §1) -- rendering it is measurement A there, not built yet |
+| what a `SECSET0n` glyph looks like | answered: the game's own tiles are drawn (`docs/217-drawing-the-wilderness.md` §1), by `goldbox.world.tile_pixels` |
 
 **Do not start drawing before the first row is answered.** A map that calls the
 hills mountains is worse than no map, because it looks right.
 
-## 6. What not to do
+## 6. What the drawing does and does not do
 
-Carried forward from [`113-world-map.md`](113-world-map.md), because they apply
-to the drawing as much as the reading:
+What the drawing does and does not do, from
+[`113-world-map.md`](113-world-map.md) and
+[`217-drawing-the-wilderness.md`](217-drawing-the-wilderness.md):
 
-* **Do not draw the unvisited world.** The whole 40 × 32 is sitting on the disk;
-  showing it hands the player the map the game sold in its box. Terrain is drawn
-  where `Exploration` says the party has been, exactly as a `GEO` is.
+* **The unvisited world is drawn.** `WorldCanvas` paints every square the disks
+  hold, with no fog and no record of where the party has been: Full View shows
+  the whole 44 × 36, Area View a 16 × 16 piece centred on the party, and the
+  party's marker is the only sign of where it is. This reverses the rule this
+  list used to carry, because Donald chose Full View for
+  `#11 (Draw the wilderness on the automapper)` and the code keeps no seen-square
+  record.
 * **Do not read a terrain code against another window's table.**
 * **Do not reuse `GEO` passability logic.** One byte, one terrain, one lookup —
   there are no walls, no doors and no per-square attribute byte out here.
-* **Do not draw a site the flags say is still hidden.** The game paints plain
-  terrain over it, and the map should show what the player has been shown.
+* **A hidden site is drawn.** The canvas reads the disk's grid, not the block
+  resident at `$8C00`, so the four squares the game paints ordinary terrain over
+  until their site is found (`tests/areas/test_p3.py` `PAINTED`) show the
+  site's own art. Whether to paint them over is not decided.

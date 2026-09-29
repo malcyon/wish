@@ -4,8 +4,9 @@ The situation: the automapper draws every dungeon and every city block, and
 the moment the party takes the boat out of Phlan the map tab goes to a bare
 lattice. Since `#205 (A party that walks out onto the travel grid leaves the
 automapper's marker behind)` the tab at least says `Outdoors (7,29)` and
-`Wilderness` and stops drawing a stale indoor marker; it still draws no
-terrain, no party, and nothing the party has seen out there.
+`Wilderness` and stops drawing a stale indoor marker. With
+`WISH_EXPERIMENTAL_WILDERNESS_MAP` on it also draws the game's own wilderness
+tiles and the party's marker; with the flag off it draws neither.
 
 This is the plan another agent executes for
 `#11 (Draw the wilderness on the automapper)`. Two earlier documents planned
@@ -48,9 +49,11 @@ work that was already finished, so §0 comes first.
 | The high nibble of an attribute byte takes fourteen distinct values. Colour RAM is four bits wide | UNKNOWN what it is | measurement B compares the live `$D800` against the table |
 | `SQRPACI00` (640 bytes, identical on POOL6/7/8) is 385 zero bytes, the identity tile remap `01`-`7F`, and then the `$0600` parameter block: `+2` = `$8C00` (`P_MAP`), `+4` = `$8B00`, `+7` = 20 (`P_STRIDE`, not the row stride), `+$12` = 17, `+$13` = 35 | CONFIRMED by matching the tail against `automap/combat.py`'s own offsets | corrects the "structured tail" in the 2026-09-04 comment on `#11 (Draw the wilderness on the automapper)` |
 | Travel is eight-way, the compass 1 N, 2 NE, 3 E, 4 SE, 5 S, 6 SW, 7 W, 8 NW; the heading is at `$033D`, outside the save image | CONFIRMED that it is eight-way and unsaved | `docs/113`, `docs/90` (W2 and W3), `tools/areas/windowsquare.py`, `tools/c64/c64outdoor.py` |
-| Which value of `$033D` is which direction | UNKNOWN | measurement B |
+| Which value of `$033D` is which direction: clockwise from north, 0 N, 1 NE, 2 E, 3 SE, 4 S, 5 SW, 6 W, 7 NW, all eight. The game stores compass digit - 1 (`DUNGEON $0ADD`-`$0AF5`), its joystick table (`$0B34`) gives the same values, and its step table (`GDRIVE00 $C41E`) moves the party the matching way | CONFIRMED, from the game's code; the earlier PROBABLE rested on two live readings, digit 1 leaving 0 and digit 3 setting 2 | `automap/render.py` `TRAVEL_HEADINGS`; the stage E comment on `#11 (Draw the wilderness on the automapper)` |
+| A refused step still turns the party: every direction press writes `$033D` before the step is tried | PROBABLE -- the loop after the step, which holds the encounter checks, was not traced | a blocked step on the live walk shows it |
+| `$033D` is also scratch outside travel: `COMBAT` and `SECSET64` store to it, and `GDRIVE00`'s `$C021` entry leaves it at 8 | CONFIRMED that the writers exist; whether the marker then points a stale direction after an outdoor fight is SPECULATIVE | `automap/state.py` reads 8 or more as no heading |
 | The game's travel view is a window of squares around the party whose top-left is `CAMERA` `$037E`; the combat view is 7 across | PROBABLE for combat, UNKNOWN for travel -- the screenshots look narrower than seven tiles | measurement B reads `$037E` and the screen |
-| A site is hidden by painting plain terrain over its square until its flag is set; four are known: `1A` (12,11) nomad camp, `1B` (11,8) lizardman keep, (6,15) kobold caves, (7,23) a site that was cut | CONFIRMED | `tests/areas/test_p3.py` `PAINTED`, `docs/90` |
+| A site is hidden by painting ordinary terrain over its square until its flag is set; four are known: `1A` (12,11) nomad camp, `1B` (11,8) lizardman keep, (6,15) kobold caves, (7,23) a site that was cut | CONFIRMED | `tests/areas/test_p3.py` `PAINTED`, `docs/90` |
 | The full site list (46) and the impassable-terrain tables, including `ECL1A`'s swap when `$4AB3` reaches 254, are in the scripts' own bytecode; their offsets were lost (`#136 (Thirty-two cited write-ups are gone, because the knowledge base pointed into gitignored scratch)`) | UNKNOWN, and closed research | `docs/115-review-the-scripts.md`; `goldbox/world.py`'s docstring |
 | `$4A9E` is 0 on the grid and 255 in a random cave, which is `GEO19`/`1A`/`1B` and draws with the existing code | CONFIRMED | `docs/113` |
 | Only Pool of Radiance has a travel grid: Curse and Silver Blades ship no `SQRDATA` or `SQRPACI` | CONFIRMED | `goldbox/titles.py` `Title.travel_grid`, `docs/121-silver-blades.md` |
@@ -102,7 +105,7 @@ Boot `p190/C64OUT1.D64` (scratch, deleted) (middle window, (8,27)) the way
 | screen RAM and `$D800` colour RAM over the map pane, with `$037E` | the view size, and whether the attribute high nibble reaches the chip at all: colour RAM at a cell should read the table's low nibble and nothing else |
 | `$6E13`-`$6E2B`, `$49C5` | the live cache: slot 4 and slot 8 against the save's `$4BC4`/`$4BC8` |
 | `$8C00`-`$8E87` | a fourth resident-window match, and the baseline for the tolerance in piece 2 |
-| `$033D`, then after pressing each of `1`-`8` in turn and returning | the eight-way encoding. `outdoorstep.py` already presses the digit and reads `$49C3`/`$49C4` around it; add the one byte |
+| `$033D`, then after pressing each of `1`-`8` in turn and returning | a live check of the eight headings (settled from the game's code, §1) and of whether a blocked step still turns the party. `outdoorstep.py` already presses the digit and reads `$49C3`/`$49C4` around it; add the one byte |
 
 Then a screenshot standing on a `$A` tile if the sheet has not already said
 what one is. `tools/pool_of_radiance/outdoorstep.py` and `tools/c64/c64outdoor.py` have the
@@ -112,11 +115,10 @@ disks; the save is copied into the slot.
 
 ### What is not a measurement
 
-The site list and passability are not measured here. Drawing needs neither
-(§4, piece 3): the resident block at `$8C00` is the map **as the game has
-painted it**, hidden sites and all, so a mapper that records what was resident
-when the party saw a square shows exactly what the game showed and consults
-no flag.
+The site list and passability are not measured here, and drawing needs
+neither. The resident block at `$8C00` is the map **as the game has painted
+it**, hidden sites and all, but the canvas draws the disk's grid rather than
+that block, so the four hidden sites show (§7).
 
 ### What measurement B read, and what it cannot be re-taken from
 
@@ -141,11 +143,8 @@ reading on another window is taken.
 
 **Donald's**, because a player reads it:
 
-1. **The look** -- the game's tiles at run time, or icons. Not chosen by the
-   implementer. The useful form is measurement A's renderer drawing the same
-   piece of map both ways at 34 and 20 pixels a square, under `$TMPDIR`,
-   linked from the issue, and asked. Until it is chosen the world canvas
-   draws flat squares in the classes the sheet named, or nothing.
+1. **The look** -- decided: the game's own tiles, read off the player's disk at
+   run time. The icons were the alternative and are not built.
 2. **Every string.** The strip already says `Outdoors (x,y)` in the game's
    own window-local pair; whether the canvas's world coordinate should appear
    anywhere is his. A tooltip naming a square's terrain ("Forest", "Sea"), a
@@ -161,18 +160,15 @@ reading on another window is taken.
 
 **Ours**, because it is how the code is arranged:
 
-* reading the resident block live rather than only the disk; storing the
-  tile code seen with each explored square; the reveal rule (what the game's
-  own view showed, measured in B); the module split (§4); the identification
-  tolerance and plausibility clauses, provided each is measured and written
-  beside its constant the way `automap/area.py` does; a `Cells` primitive in
-  `render.py` for look 1, if look 1 is chosen.
+* reading the resident block live to name the window; the module split (§4);
+  the identification tolerance and plausibility clauses, provided each is
+  measured and written beside its constant the way `automap/area.py` does.
 
 ## 4. The order of work
 
 Each piece is one reviewable commit with a test that goes red without it.
-Pieces 1 and 2 need no emulator and can start now; 3 to 5 need measurement
-B's answers only where marked; 6 waits on Donald.
+Pieces 1 to 6 are built behind `WISH_EXPERIMENTAL_WILDERNESS_MAP`; 7 waits on
+Donald's decision 3.
 
 **1. `tools/pool_of_radiance/worldtiles.py`, measurement A.** `sheet` writes the three
 sheets; `view WINDOW X Y` writes the game's own pane around a square; `sample
@@ -205,66 +201,60 @@ inside any tolerance of nothing -- it differs in every non-zero byte, so this
 clause is what refuses a *sparse* impostor; measure it rather than trust this
 sentence).
 
-**3. Identify and record outdoors, in `automap/state.py`.** `_poll_outdoors`
-gains a resident check on the `RESIDENT_EVERY` cadence and on the first
-outdoor tick: read `$8C00` through `Target.read` (one resume; the cost is the
-round trip, not the 648 bytes), `World.identify`, and set `state.window`. The
-fix becomes a world coordinate, `fix.x + 13 * window`, and the square is
-recorded into a world exploration keyed by world `(x, y)` holding `(window,
-code)` -- the code from the resident block, which is the painted form the
-game showed. The world is loaded beside the maps in `automap/maps.py`
-(`World.from_disks` over the same disk globs; absent disks mean no world, not
-an error). This also closes the residual from `#205 (A party that walks out
-onto the travel grid leaves the automapper's marker behind)`: a window opened
-on a camped outdoor party stops reading `identifying...`, because the
-resident window is the proof a game is running. *Test:* `ReplayTarget` whose
-`read` answers a disk window's bytes at `$8C00` -- the mapper sets `window`,
-records world squares, and a step from `1A` (15,y) to `1B` (3,y) records
-world x 28 then 29, adjacent. A target answering zeroes records nothing. Fails
-without the identify, and the seam test fails without the `13 * window`
-shift. Reveal only the square itself until measurement B gives the view
-size; then the view.
+**3. Identify the window outdoors, in `automap/state.py`.** `_poll_outdoors`
+reads `$8C00` through `Target.read` on the first outdoor tick and on every tick
+where the square changed (one resume; the cost is the round trip, not the 648
+bytes), `World.identify` names the window, and `state.window` is set. A jump of
+more than one square within the same window waits for a second identical fix.
+The world square is `fix.x + 13 * window` (`WorldCanvas.party_square`). The
+heading byte `$033D` is read on those ticks too, and on a standing tick only
+once every `RESIDENT_EVERY` polls, about two seconds, so a turn in place shows
+within that time; every read freezes a C64 Ultimate's processor and a freeze
+during a disk load hangs the game, so it is not read every tick. Nothing is
+recorded: there is no set of seen squares. The world is loaded beside the maps
+in `automap/maps.py` (`World.from_disks` over the same disk globs; absent disks
+mean no world, not an error). This also closes the residual from `#205 (A party
+that walks out onto the travel grid leaves the automapper's marker behind)`: a
+window opened on a camped outdoor party stops reading `identifying...`, because
+the resident window is the proof a game is running. *Test:* `ReplayTarget`
+whose `read` answers a disk window's bytes at `$8C00` -- the mapper sets
+`window`, holds a jump for one poll, and a block that names no window leaves it
+unset (`tests/automap/test_wilderness_recording.py`); the heading is read once
+per cadence on a standing tick and not at all in a fight
+(`tests/automap/test_wilderness_page.py`).
 
-**4. Persist it.** `save_notes`/`load_notes` write the world set under a
-fixed name beside the per-area files, `{data dir}/maps/{title}/wilderness.json`,
-each entry `"28,10": [1, 34]`. *Test:* round trip; a file from before this
-piece (no `world` key) loads with an empty world set.
+**4. Nothing is persisted.** A record of seen squares kept in
+`{data dir}/maps/{title}/wilderness.json` was built and then removed, because
+Full View draws the whole wilderness from the disks and nothing reads such a
+record. The party's window and heading are read afresh whenever the window
+opens.
 
-**5. Draw it.** `world_primitives(world_seen, cell, margin)` in
-`automap/render.py`, Qt-free like everything else there: one `Rect` per
-recorded square with `kind` `terrain-<class>` (flat, until the look is
-chosen), the party marker, and nothing else -- no walls, no doors, no edge
-merging. `party_marker` takes eight facings, and a facing of None draws no
-nose; the heading itself comes from `$033D` once B has the encoding, read in
-`read_fix` for a `travel_grid` title only. A `WorldCanvas` is the third page
-of `map_stack`, 40 x 32 with the same `cell`/`origin` arithmetic as
-`MapCanvas`, and `poll` picks the page: outdoors with a window drawn, outdoors
-without one bare, indoors as today. *Tests:* primitive count equals recorded
-squares; no primitive is emitted for a square the party has not seen (the
-"do not draw the unvisited world" rule, as an assertion); `to_svg` of a world
-renders; eight facings give eight distinct polygons; an offscreen binding
-handed outdoor fixes shows the world page and, back indoors, the map page.
-Fails without the page switch, and the unvisited-world test fails the moment
-somebody draws the disk instead of the record.
+**5. Draw it.** `travel_marker(x, y, heading, cell, margin)` in
+`automap/render.py` turns the `party_marker` triangle to one of eight headings.
+`WorldCanvas` in `automap/window.py` is the third page of `map_stack`: it
+paints `goldbox.world.world_indices`, the whole 44 x 36 wilderness read off the
+disks, and the marker at the party's world square. Full View fits all of it;
+Area View shows 16 x 16 centred on the party and kept inside the world.
+`AutomapBinding._page` picks the page: outdoors with a window identified, the
+world page; otherwise the map page. Every square is drawn whether the party has
+seen it or not (§7). *Tests:* `tests/automap/test_wilderness_page.py` -- the
+page switch both ways, the squares each view shows, the marker at the party's
+world square and in each window, and no marker without a heading. Fails without
+the page switch.
 
-**6. The look, once chosen.** Look 1: a `Cells` primitive (a small colour
-grid) painted by `QImage` in the canvas and as `<rect>`s in SVG, filled from
-`SECSET0n` and the tile entry at draw time, off the player's own disk;
-nothing committed. Look 2: a per-window `tile -> class` table proposed from
-the sheet and confirmed by a human, six or seven `kind` rows in `SVG_STYLE`,
-the icons Donald named through `wish/licenses.py`'s attribution, and hills
-and marsh left as plain squares until a person draws two marks
-(`.claude/rules/art.md`: nothing generated, nothing nudged). *Test:* look 1 --
-a synthetic tile round-trips to known pixels; look 2 -- every class in the
-table has a style row, and every tile a window's grid uses has a class.
+**6. The look.** The game's own tiles: `goldbox.world.tile_pixels` builds each
+tile from the `SECSET0n` glyphs and the tile entry at draw time, off the
+player's own disk; nothing is committed. *Tests:* `tests/areas/test_world.py`
+-- the world picture's size and each window's colour at the seams, and, on the
+player's disks only, that one square's pixels equal `tile_pixels` of its tile.
 
 **7. Sites, the river and the disk line.** Waits on decision 3. If reopened:
 `tools/areas/eclwalk.py` already decodes 98% of every script by walking from the
 five entry points and reports the data tables it stops at -- the site tables
 and the impassable list are those tables, so the offsets are a matter of
 reading `eclwalk.py list`'s unreached ranges for `ECL19`/`1A`/`1B`, not of
-rebuilding a decoder. Until then, sites appear exactly when the game paints
-them, which piece 3 already gives.
+rebuilding a decoder. Until then the four sites the game hides are drawn
+(§7).
 
 ## 5. What this shares with the other map work
 
@@ -319,13 +309,20 @@ For whoever next edits them; this document does not.
   structured tail"; it is the `$0600` parameter block, and the "DOS names
   transfer" refutation stands.
 
-## 7. Kept from the earlier plans
+## 7. What the earlier plans' rules became
 
-* **Do not draw the unvisited world.** Piece 5 asserts it.
-* **Do not read a tile code against another window's table.** The record
-  stores the window with the code; `goldbox/world.py` already has no path
-  that takes a bare code.
+* **The unvisited world is drawn.** The earlier plans said not to, because the
+  disk holds the map the game sold in its box. It is drawn now because Donald
+  chose Full View, the whole wilderness at once, and the code keeps no record
+  of seen squares to draw from.
+* **Do not read a tile code against another window's table.** `goldbox/world.py`
+  has no path that takes a bare code; each square is looked up in its own
+  window.
 * **Do not reuse `GEO` passability or sight.** One byte, one picture, no
-  edges; the reveal rule is the game's own view, not corridor sight.
-* **Do not draw a site the game has not drawn.** Recording the resident block
-  does this without a flag table.
+  edges.
+* **A hidden site is drawn.** The earlier plans said not to draw a site the game
+  has not drawn, and expected the resident block to give that without a flag
+  table. The canvas reads the disk's grid, so the four squares the game paints
+  ordinary terrain over until their site is found (`tests/areas/test_p3.py`
+  `PAINTED`) show the site's own art. Whether to paint them over is not
+  decided.

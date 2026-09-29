@@ -290,10 +290,11 @@ def party_marker(x: int, y: int, facing: int, cell: int = CELL,
     return Poly(pts, "party")
 
 
-#: The eight compass headings the travel grid's heading byte is thought to
-#: hold, clockwise from north: 0 N, 1 NE, 2 E, 3 SE, 4 S, 5 SW, 6 W, 7 NW.
-#: PROBABLE, 2 of 8 measured: compass digit 1 (north) left 0 and digit 3 (east)
-#: set 2, so heading = digit - 1. The other six are inferred.
+#: The eight compass headings the travel grid's heading byte holds, clockwise
+#: from north: 0 N, 1 NE, 2 E, 3 SE, 4 S, 5 SW, 6 W, 7 NW. CONFIRMED, all
+#: eight, from the game's code: it stores compass digit - 1 (DUNGEON
+#: `$0ADD`-`$0AF5`), and the joystick table (`$0B34`) and the step table
+#: (GDRIVE00 `$C41E`) agree with it.
 TRAVEL_HEADINGS = 8
 
 #: The smallest radius, in pixels, `travel_marker` draws. At the whole
