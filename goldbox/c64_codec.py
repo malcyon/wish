@@ -171,6 +171,25 @@ POOL_FIELDS_UNMEASURED: tuple[tuple[str, str], ...] = (
     ("turn_class", "this title's undead turning row has not been measured"),
 )
 
+#: The titles whose turning row is measured: Pool of Radiance and Curse of the
+#: Azure Bonds both look the target's row up in the same table.  Only Pool's
+#: creature-type byte is measured, so `creature_type` stays Pool-only.
+TURN_CLASS_TITLES = frozenset({"pool-of-radiance",
+                               "curse-of-the-azure-bonds"})
+
+
+def undead_direct(key: str) -> tuple[tuple[str, str], ...]:
+    """The :data:`POOL_DIRECT` rows this title's engine is measured to use."""
+    return tuple((n, c) for n, c in POOL_DIRECT
+                 if key == "pool-of-radiance"
+                 or (n == "turn_class" and key in TURN_CLASS_TITLES))
+
+
+def undead_unmeasured(key: str) -> tuple[tuple[str, str], ...]:
+    """The :data:`POOL_FIELDS_UNMEASURED` rows :func:`undead_direct` leaves out."""
+    taken = {n for n, _ in undead_direct(key)}
+    return tuple((n, w) for n, w in POOL_FIELDS_UNMEASURED if n not in taken)
+
 #: The five saving-throw columns, neutral name to C64 name, in the order
 #: `goldbox.levels.Level.saves` stores them -- paralysis, petrification,
 #: wands, breath, spell.  `DIRECT` above copies these like anything else;
@@ -854,8 +873,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                        and item_types is not None)
     w = neutral.Writer(
         char, rep, into="C64",
-        dropped=DROPPED + (POOL_FIELDS_UNMEASURED
-                           if deltas.key != "pool-of-radiance" else ()),
+        dropped=DROPPED + undead_unmeasured(deltas.key),
         derived=DERIVED)
     use, emit = w.use, w.emit
 
@@ -875,8 +893,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     granted = use("granted_effects")
     former = use("former_levels")
 
-    for field, c64_name in DIRECT + (POOL_DIRECT if deltas.key ==
-                                     "pool-of-radiance" else ()):
+    for field, c64_name in DIRECT + undead_direct(deltas.key):
         # Recomputed below rather than copied (#366, #405): `DIRECT` still
         # carries both pairs because `read` shares this table and the raw
         # stored byte is exactly what a reader should hand back.
@@ -2712,10 +2729,10 @@ def field_disposition(game=None) -> dict[str, str]:
     never been taught, which is the failure that rots silently -- a field
     added to `goldbox/neutral.py`'s `FIELDS` and never wired up here.
     """
-    pool = deltas_for(game).key == "pool-of-radiance"
-    return neutral.disposition(DIRECT + (POOL_DIRECT if pool else ()),
+    key = deltas_for(game).key
+    return neutral.disposition(DIRECT + undead_direct(key),
                                TRANSFORMED,
-                               DROPPED + (() if pool else POOL_FIELDS_UNMEASURED),
+                               DROPPED + undead_unmeasured(key),
                                "the C64 record's", derived=DERIVED)
 
 
@@ -2844,7 +2861,9 @@ READ_DERIVED: tuple[tuple[str, str, str], ...] = (
 #: checks it against `goldbox/layout.py`'s named fields.
 READ_TARGETS: dict[str, str] = (
     {c64_name: f"read as neutral {n}" for n, c64_name in DIRECT}
-    | {c64_name: f"read as neutral {n} for Pool of Radiance"
+    | {c64_name: f"read as neutral {n} for "
+                 + ("Pool of Radiance and Curse of the Azure Bonds"
+                    if n == "turn_class" else "Pool of Radiance")
        for n, c64_name in POOL_DIRECT}
     | {"name": "read as neutral name",
        "paladin_cures": "read as neutral paladin_cures, directly rather "
@@ -3196,8 +3215,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 if heal_minutes else ""),
             grade("lay_on_hands_uses"))
 
-    for neutral_name, c64_name in DIRECT + (POOL_DIRECT if deltas.key ==
-                                           "pool-of-radiance" else ()):
+    for neutral_name, c64_name in DIRECT + undead_direct(deltas.key):
         # A companion's drain pair holds his template's 0xFF fill, on both
         # ports; both games' energy drain, Restoration and level gain read
         # the byte the same way, so a destination must hold what is stored.

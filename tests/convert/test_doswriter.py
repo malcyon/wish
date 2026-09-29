@@ -221,7 +221,6 @@ def test_a_converted_cleric_does_not_claim_an_undead_s_turning_row():
 
 
 @pytest.mark.parametrize("deltas", (
-    dos_port.CURSE_OF_THE_AZURE_BONDS,
     dos_port.SECRET_OF_THE_SILVER_BLADES,
     dos_port.POOLS_OF_DARKNESS,
 ), ids=lambda deltas: deltas.key)

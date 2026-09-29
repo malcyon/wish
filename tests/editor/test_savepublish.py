@@ -636,9 +636,12 @@ def test_every_kept_field_is_a_refusal_when_it_changes(field):
 
 @pytest.mark.parametrize("field,value", (("creature_type", 4),
                                           ("turn_class", 2)))
-def test_undead_fields_are_compared_only_for_the_measured_pool_title(
+def test_undead_fields_are_compared_only_for_the_measured_titles(
         tmp_path, field, value):
-    """A changed Pool zombie byte is refused; later-title meanings are unknown."""
+    """A changed zombie byte is refused where its meaning is measured.
+
+    Pool has both bytes; Curse has the turning row only.
+    """
     from goldbox import c64_port
 
     before = CharacterRecord.from_bytes(bytes(RECORD_SIZE))
@@ -647,7 +650,7 @@ def test_undead_fields_are_compared_only_for_the_measured_pool_title(
     after.set(field, value)
     for title, measured in (
         (c64_port.POOL_OF_RADIANCE, True),
-        ("curse-of-the-azure-bonds", False),
+        ("curse-of-the-azure-bonds", field == "turn_class"),
         ("secret-of-the-silver-blades", False),
         ("pools-of-darkness", False),
     ):

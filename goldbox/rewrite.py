@@ -694,13 +694,12 @@ _ALWAYS_UNWRITABLE = frozenset({
     "char_class", "infravision", "item_effects",
 })
 
-#: Pool of Radiance has measured native bytes for `turn_class`. The later
-#: titles' mapping for it is unmeasured, so their native writers cannot carry
-#: an edit to that field through the shared character sheet.
+#: Pool of Radiance and Curse of the Azure Bonds have measured native bytes
+#: for `turn_class`. Silver Blades' mapping for it is unmeasured, so its native
+#: writers cannot carry an edit to that field through the shared character
+#: sheet.
 _LATER_SPECIAL_UNWRITABLE_FOR = frozenset({
-    ("dos", "curse-of-the-azure-bonds"),
     ("dos", "secret-of-the-silver-blades"),
-    ("amiga", "curse-of-the-azure-bonds"),
     ("amiga", "secret-of-the-silver-blades"),
 })
 
@@ -758,7 +757,7 @@ _TAIL_UNWRITABLE_FOR = frozenset({
 def unwritable_fields(port: str, title_key: str) -> frozenset[str]:
     """Fields the sheet must grey because this port's writer cannot take an
     edit to them back -- either the field has nowhere to go
-    (`infravision`, and `turn_class` on later titles), the
+    (`infravision`, and `turn_class` on Silver Blades), the
     writer rebuilds it from other fields
     regardless of what is asked (`char_class`, the eight thief skills on a
     thief of these three port and title pairs, and the five saving throws on

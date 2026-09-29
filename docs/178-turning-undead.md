@@ -189,6 +189,17 @@ for Pools of Darkness, the latter two PROBABLE rather than CONFIRMED --
 paladin on this machine converts to 0 at their title's offset, and so does
 every game-written save this has been checked against.
 
+**Curse's `0x0E9` is converted on DOS and the Amiga**, and copied to the C64's
+`0x0A3`. Curse's DOS Animate Dead (`GAME.OVR:0x30E90`) writes 2 there, and the
+Amiga's (`/Curse 0x31BCE`) writes the same 2 at the same offset. The Amiga's
+target finder is `/Curse 0x7D48` (`moveq #$d,d4` limit, `tst.b $e9(a2)` skips a
+row of 0 and `cmp.b d4,d0` keeps the lowest of rows 1 to 12) and its lookup is
+`0x7C40`, `($e9 - 1) * 10 + column`. Curse's own import of a Pool character
+copies the row (DOS `0x1D1DA`, Amiga `/Curse 0x25644`) and clears spellbook
+entry 36 (DOS `0x1D123`). The C64 Curse TURN never reads the byte, so the copy
+is there to give it back on a return trip. Silver Blades and Pools of Darkness
+stay unmeasured.
+
 **Nobody has watched a converted cleric turn actual undead.** The bar is the
 gate and the bar is measured; the roll that follows is not. `GAME.OVR:0x13A38`
 reads the matrix at `DS:0x447 + turn_class * 10 + band` and compares a 1d20

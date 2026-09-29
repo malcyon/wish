@@ -889,6 +889,20 @@ LATER_EFFECT_SPLIT_UNKNOWN = (
     "only ever been read for Pool of Radiance")
 
 
+def _later_dropped(deltas: AmigaDeltas) -> tuple[tuple[str, str], ...]:
+    """:data:`LATER_DROPPED` less the rows this title's reader converts."""
+    taken = {n for n, _ in _undead_read(deltas)}
+    return tuple((n, why) for n, why in LATER_DROPPED if n not in taken)
+
+
+def _undead_read(deltas: AmigaDeltas) -> tuple[tuple[str, str], ...]:
+    """The undead-byte rows the reader copies for this title (Curse's turning
+    row); Pool of Radiance is not served by this reader."""
+    from . import dos_codec as _dos
+
+    return _dos.undead_direct(deltas.key)
+
+
 def later_field_disposition(deltas: AmigaDeltas) -> dict[str, str]:
     """Every field of this title's DOS table, and what the read does with it.
 
@@ -912,7 +926,9 @@ def later_field_disposition(deltas: AmigaDeltas) -> dict[str, str]:
     if "unnamed_0ab" in declared:
         direct.append(("unnamed_0ab", "unnamed_0ab"))
     transformed = [(n, why) for n, why in LATER_TRANSFORMED if n in declared]
-    dropped = [(n, why) for n, why in LATER_DROPPED if n in declared]
+    direct += [(n, n) for n, _ in _dos.undead_direct(deltas.key)
+               if n in declared]
+    dropped = [(n, why) for n, why in _later_dropped(deltas) if n in declared]
     dropped += [(n, "bytes no field of the DOS table for this title claims")
                 for n in sorted(declared) if n.startswith("gap_")]
     derived = [(n, why) for n, why in LATER_DERIVED if n in declared]
@@ -971,6 +987,15 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
                 f"number: it needs the same kind of exception the abilities "
                 f"got, not a straight copy")
         out.set(name, value,
+                f"Amiga {deltas.title} {name} @{deltas.offset(f.offset):#05x} "
+                f"({f.confidence}), read big-endian through the DOS table",
+                f.confidence)
+
+    # The turning row Curse's engine reads off the target; Silver Blades keeps
+    # it on `LATER_DROPPED`.
+    for name, _ in _undead_read(deltas):
+        f = table[name]
+        out.set(name, char.get(name),
                 f"Amiga {deltas.title} {name} @{deltas.offset(f.offset):#05x} "
                 f"({f.confidence}), read big-endian through the DOS table",
                 f.confidence)
@@ -1245,7 +1270,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
     _dos.set_window_source(out, control_raw)
 
     declared ={f.name for f in dos_port.layout_for(deltas.dos)}
-    for name, _why in LATER_DROPPED:
+    for name, _why in _later_dropped(deltas):
         if name in declared and name in LATER_DROPPED_PLAYER_TEXT:
             out.drop(LATER_DROPPED_PLAYER_TEXT[name])
     return out

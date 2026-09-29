@@ -77,7 +77,7 @@ def scalars(game: str | None = None) -> list[Scalar]:
     the two Pool-only bytes must not become a claim about later titles.
     """
     out = []
-    direct = c64_codec.DIRECT + (c64_codec.POOL_DIRECT if game == POOL else ())
+    direct = c64_codec.DIRECT + c64_codec.undead_direct(game or "")
     for neutral, c64 in direct:
         f = layout.FIELDS_BY_NAME[c64]
         span = value_range(f.kind, f.size)

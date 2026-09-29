@@ -888,21 +888,25 @@ def kept(record: CharacterRecord) -> "dict[str, Any]":
 
 
 _POOL_ONLY_KEPT = frozenset(("creature_type", "turn_class"))
+_CURSE_KEPT = frozenset(("turn_class",))
 
 
 def _compared_fields(destination: "Destination | None") -> tuple[str, ...]:
     """The measured fields for this title's read-back comparison.
 
     A comparison without a destination uses Pool of Radiance's full layout.
-    Later titles have no measured mapping for these two bytes, so a
-    matching raw C64 offset would not establish that the native field held.
+    Only Pool of Radiance has a measured mapping for the creature-type byte,
+    and Curse of the Azure Bonds joins it for the turning row, so a matching
+    raw C64 offset would not establish that another native field held.
     """
     if destination is None:
         return KEPT_FIELDS
     title_key = getattr(destination.title, "key", destination.title)
     if title_key == "pool-of-radiance":
         return KEPT_FIELDS
-    return tuple(name for name in KEPT_FIELDS if name not in _POOL_ONLY_KEPT)
+    measured = _CURSE_KEPT if title_key in c64_codec.TURN_CLASS_TITLES else ()
+    return tuple(name for name in KEPT_FIELDS
+                 if name not in _POOL_ONLY_KEPT or name in measured)
 
 
 def c64_slot_records(at: pathlib.Path) -> "list[CharacterRecord]":

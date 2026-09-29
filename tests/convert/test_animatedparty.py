@@ -6,6 +6,7 @@ import gamedata
 import pytest
 
 from goldbox import (
+    amiga_later,
     amiga_pod,
     amiga_por,
     c64_codec,
@@ -58,27 +59,65 @@ def test_pool_writer_dispositions_account_for_both_fields_as_copies():
         assert dos_codec.write_targets()[name].startswith("from neutral")
 
 
-def test_the_pool_mapping_does_not_claim_a_later_title():
+def test_the_pool_mapping_claims_only_the_turning_row_of_curse():
     source = CharacterRecord.blank()
     source.set("creature_type", 4)
     source.set("turn_class", 2)
     later = c64_codec.read(source, game=c64_port.CURSE_OF_THE_AZURE_BONDS)
     assert "creature_type" not in later
-    assert "turn_class" not in later
+    assert later.get("turn_class") == 2
 
-    raw = bytes(dos_port.CURSE_OF_THE_AZURE_BONDS.record_size)
+    raw = bytearray(dos_port.CURSE_OF_THE_AZURE_BONDS.record_size)
+    raw[_CURSE_TURN] = 2
     later = dos_codec.to_neutral(dos_codec.DosCharacter(
-        raw, deltas=dos_port.CURSE_OF_THE_AZURE_BONDS))
+        bytes(raw), deltas=dos_port.CURSE_OF_THE_AZURE_BONDS))
     assert "creature_type" not in later
-    assert "turn_class" not in later
+    assert later.get("turn_class") == 2
+
+    curse_c64 = c64_codec.field_disposition(c64_port.CURSE_OF_THE_AZURE_BONDS)
+    curse_dos = dos_codec.write_field_disposition(
+        dos_port.CURSE_OF_THE_AZURE_BONDS)
+    assert curse_c64["creature_type"].startswith("dropped:")
+    assert curse_dos["creature_type"].startswith("dropped:")
+    assert not curse_c64["turn_class"].startswith("dropped:")
+    assert not curse_dos["turn_class"].startswith("dropped:")
+
+    # Silver Blades neither reads nor writes either byte.
+    silver = c64_codec.read(source, game=c64_port.SECRET_OF_THE_SILVER_BLADES)
+    assert "turn_class" not in silver
     for name in ("creature_type", "turn_class"):
         assert c64_codec.field_disposition(
-            c64_port.CURSE_OF_THE_AZURE_BONDS)[name].startswith("dropped:")
+            c64_port.SECRET_OF_THE_SILVER_BLADES)[name].startswith("dropped:")
         assert dos_codec.write_field_disposition(
-            dos_port.CURSE_OF_THE_AZURE_BONDS)[name].startswith("dropped:")
+            dos_port.SECRET_OF_THE_SILVER_BLADES)[name].startswith("dropped:")
+    for name in ("creature_type", "turn_class"):
         assert amiga_pod.pod_write_field_disposition()[name].startswith(
             "dropped:")
         assert amiga_pod.pod_field_disposition()[name].startswith("dropped:")
+
+
+_CURSE_TURN = dos_port.FIELDS_BY_NAME_FOR[
+    dos_port.CURSE_OF_THE_AZURE_BONDS.key]["turn_class"].offset
+
+
+def test_a_curse_turning_row_converts_between_dos_and_the_amiga():
+    deltas = dos_port.CURSE_OF_THE_AZURE_BONDS
+    key = "curse-of-the-azure-bonds"
+    raw = bytearray(deltas.record_size)
+    raw[_CURSE_TURN] = 2
+    neutral_dos = dos_codec.to_neutral(
+        dos_codec.DosCharacter(bytes(raw), deltas=deltas))
+    assert neutral_dos.get("turn_class") == 2
+
+    amiga, report = amiga_later.write_later(neutral_dos, key)
+    assert amiga.raw[_CURSE_TURN] == 2
+    assert not any(line.startswith("turn_class") for line in report.dropped)
+    back = amiga_later.to_neutral_later(amiga)
+    assert back.get("turn_class") == 2
+
+    dos, _i, _s, report = dos_codec.write(back, deltas=deltas)
+    assert dos[_CURSE_TURN] == 2
+    assert not any(line.startswith("turn_class") for line in report.dropped)
 
 
 def _pool_c64(control: int, status: int) -> CharacterRecord:
