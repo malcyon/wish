@@ -1466,6 +1466,18 @@ PRAYER_ROUTINES = {"handler": 0xFF0D, "bonus": 0xFF30,
 #: the list walker returns to (`GAME.OVR` 0x2BBE2 less that unit's 0x2AEEA).
 ATTACK_LIST = 10
 ATTACK_RETURN = 0x0CF8
+#: The attack roll's own unit: its stub segment relative to the image base, the
+#: entry of the roll in that stub (a fixed address, not a `DS` table entry), where
+#: the unit's code sits in `GAME.OVR`, and the offset of the roll's list-10 call.
+ATTACK_UNIT = 0xB0
+STUB_ATTACK = 0x3E
+ATTACK_UNIT_FILE = 0x2AEEA
+ATTACK_LIST_CALL = 0x0CF5
+#: The two points armed inside the loaded attack unit, by name.
+ATTACK_POINTS = {"attack_call": ATTACK_LIST_CALL, "attack_return": ATTACK_RETURN}
+#: Party attacks that ran list 10 without any Prayer stub halt inside them
+#: after which an id-35 run stops: the code never reaches the handler.
+QUIET_PAIRS = 3
 #: How many frames of the `BP` chain are read, and how many bytes of each.
 CHAIN_FRAMES = 4
 FRAME_BYTES = 0x14
@@ -1498,8 +1510,21 @@ class PrayerWatch:
     """
 
     def __init__(self, s, ovr: bytes, image: bytes, note=None,
-                 clock=time.time):
+                 clock=time.time, node_id: int | None = None):
         self.s, self.ovr, self.image = s, ovr, image
+        #: The id under test; an id-35 run ends after `QUIET_PAIRS` quiet pairs.
+        self.node_id = node_id
+        #: The attack unit's stub segment, and the load segment its stub entry
+        #: named when the points inside were armed (None while out of memory).
+        #: The unit loads and moves independently of Prayer's.
+        self.attack_stub: int | None = None
+        self.attack_armed_at: int | None = None
+        #: The party attack in progress, from the roll's list-10 call to its
+        #: return: attacker, party, and how many Prayer stub halts fell inside.
+        self.pair: dict | None = None
+        #: Every closed pair, and those with no Prayer stub halt inside.
+        self.pairs: list[dict] = []
+        self.quiet_pairs: list[dict] = []
         self.note = note or (lambda **kw: None)
         self.clock = clock
         self.ds: int | None = None
@@ -1544,7 +1569,12 @@ class PrayerWatch:
         out["descriptor_matches_image"] = self.rd(seg, 0, 12) == want
         out["stub49_bytes"] = self.rd(seg, STUB_ID_49, 5).hex()
         out["stub35_bytes"] = self.rd(seg, STUB_ID_35, 5).hex()
-        self.ds, self.stub = ds, seg
+        aseg = (seg - PRAYER_UNIT + ATTACK_UNIT) & 0xFFFF
+        awant = self.image[ATTACK_UNIT * 16:ATTACK_UNIT * 16 + 12]
+        out["attack_stub"] = f"{aseg:04X}:{STUB_ATTACK:04X}"
+        out["attack_descriptor_matches_image"] = self.rd(aseg, 0, 12) == awant
+        out["attack_stub_bytes"] = self.rd(aseg, STUB_ATTACK, 5).hex()
+        self.ds, self.stub, self.attack_stub = ds, seg, aseg
         return out
 
     def stub_load(self) -> int | None:
@@ -1572,10 +1602,25 @@ class PrayerWatch:
                     raise PrayerWatchError(
                         "the unit's stub descriptor is not the one in START.EXE: "
                         f"{last}")
+                if not last["attack_descriptor_matches_image"]:
+                    raise PrayerWatchError(
+                        "the attack unit's stub descriptor is not the one in "
+                        f"START.EXE: {last}")
                 return last
             self.s.run()
             time.sleep(0.7)
         raise PrayerWatchError(f"no data segment held Prayer's handler table: {last}")
+
+    def attack_load(self) -> int | None:
+        """The segment in the attack roll's stub far jump, or None while the
+        stub still reads `INT 3Fh`; anything else is refused."""
+        entry = self.rd(self.attack_stub, STUB_ATTACK, 5)
+        if entry[0] == 0xEA:
+            return _w16(entry, 3)
+        if entry[:2] != b"\xcd\x3f":
+            raise PrayerWatchError(
+                f"the attack stub reads {entry.hex()}, neither INT 3Fh nor a far jump")
+        return None
 
     # -- the party and its nodes ----------------------------------------------
 
@@ -1615,13 +1660,16 @@ class PrayerWatch:
     # -- breakpoints ------------------------------------------------------------
 
     def arm(self) -> dict:
-        """Break on both stubs and, once the unit has a load segment, on the
-        four routines in it whose code matches `GAME.OVR`."""
+        """Break on both Prayer stubs and the attack roll's stub and, once a
+        unit has a load segment, on the routines in it whose code matches
+        `GAME.OVR`: Prayer's four, and the attack roll's list-10 call and return."""
         self.s.clear_breakpoints()
         self.s.brk((self.stub, STUB_ID_49))
         self.s.brk((self.stub, STUB_ID_35))
+        self.s.brk((self.attack_stub, STUB_ATTACK))
         armed = [f"{self.stub:04X}:{STUB_ID_49:04X} stub49",
-                 f"{self.stub:04X}:{STUB_ID_35:04X} stub35"]
+                 f"{self.stub:04X}:{STUB_ID_35:04X} stub35",
+                 f"{self.attack_stub:04X}:{STUB_ATTACK:04X} attack_stub"]
         if self.load is not None:
             for name, at in PRAYER_ROUTINES.items():
                 off = at - PRAYER_UNIT_FILE
@@ -1631,6 +1679,16 @@ class PrayerWatch:
                 elif name not in self.mismatched:
                     self.mismatched.append(name)
         self.armed_at = self.load
+        self.attack_armed_at = self.attack_load()
+        if self.attack_armed_at is not None:
+            for name, off in ATTACK_POINTS.items():
+                at = ATTACK_UNIT_FILE + off
+                if (self.rd(self.attack_armed_at, off, CODE_BYTES)
+                        == self.ovr[at:at + CODE_BYTES]):
+                    self.s.brk((self.attack_armed_at, off))
+                    armed.append(f"{self.attack_armed_at:04X}:{off:04X} {name}")
+                elif name not in self.mismatched:
+                    self.mismatched.append(name)
         return {"armed": armed, "mismatched": list(self.mismatched),
                 "bplist": self.s.breakpoints()}
 
@@ -1639,6 +1697,14 @@ class PrayerWatch:
             return None
         for name, at in PRAYER_ROUTINES.items():
             if ip == at - PRAYER_UNIT_FILE:
+                return name
+        return None
+
+    def attack_point_at(self, cs: int, ip: int) -> str | None:
+        if self.attack_armed_at is None or cs != self.attack_armed_at:
+            return None
+        for name, off in ATTACK_POINTS.items():
+            if ip == off:
                 return name
         return None
 
@@ -1666,6 +1732,12 @@ class PrayerWatch:
         if routine:
             at = PRAYER_ROUTINES[routine]
             matches = self.rd(cs, ip, CODE_BYTES) == self.ovr[at:at + CODE_BYTES]
+        point = self.attack_point_at(cs, ip)
+        point_ok = None
+        if point:
+            at = ATTACK_UNIT_FILE + ATTACK_POINTS[point]
+            point_ok = self.rd(cs, ip, CODE_BYTES) == self.ovr[at:at + CODE_BYTES]
+        attack_stub = cs == self.attack_stub and ip == STUB_ATTACK
         was_armed = self.armed_at is not None
         stub = ip if cs == self.stub and ip in (STUB_ID_49, STUB_ID_35) else None
         h: dict = {"n": len(self.halts), "t": round(self.clock() - self.began, 2),
@@ -1673,7 +1745,14 @@ class PrayerWatch:
                    "bp": f"{bp:04X}", "es_di": f"{r['ES']:04X}:{r['DI']:04X}",
                    "ax": f"{r['AX']:04X}", "zf": r["ZF"], "stack": stack.hex(),
                    "kind": ("stub49" if stub == STUB_ID_49 else "stub35" if stub
-                            else routine or "other")}
+                            else "attack_stub" if attack_stub
+                            else routine or point or "other")}
+        if point and not point_ok:
+            h["code_matches"] = False
+            h["kind"] = "other"
+            if point not in self.mismatched:
+                self.mismatched.append(point)
+            point = None
         if routine and not matches:
             # Not the routine this address was armed for: never a hit.
             h["code_matches"] = False
@@ -1694,16 +1773,53 @@ class PrayerWatch:
             h["es_di_combatant"] = self.record_brief(r["ES"], r["DI"])
         else:
             cseg = None
+        if attack_stub:
+            # The roll is `retf 0Ah`: attacker at SP+0Ah, defender at SP+6, the
+            # rolled die's byte at SP+4.
+            h["attacker"] = self.record_brief(_w16(stack, 12), _w16(stack, 10))
+            h["defender"] = self.record_brief(_w16(stack, 8), _w16(stack, 6))
+            h["roll"] = stack[4]
+        elif point:
+            fr = self.rd(ss, bp, 0x10)
+            h["attacker"] = self.record_brief(_w16(fr, 0xE), _w16(fr, 0xC))
+            h["defender"] = self.record_brief(_w16(fr, 0xA), _w16(fr, 8))
         if cseg is not None:
             h["combatant"] = self.record_brief(cseg, coff)
             h["node"] = {"at": f"{nseg:04X}:{noff:04X}",
                          "bytes": self.rd(nseg, noff, 5).hex()}
         h["ds_6816_6822"] = {"6816": self.rd(self.ds, ROLL_WORDS, 1).hex(),
                              "6822": self.rd(self.ds, ATTACK_ROLL, 1).hex()}
-        if routine:
+        if routine or point:
             h["code_matches"] = True
+        if attack_stub:
+            # A roll begins, so any pair still open never closed.  A roll of 1
+            # stops here and never reaches the list-10 call: it is no pair.
+            self.pair = None
+            now = self.attack_load()
+            h["attack_load_now"] = None if now is None else f"{now:04X}"
+            if now != self.attack_armed_at:
+                # First load, or the unit moved: points at the old segment
+                # would halt in whatever is there now.
+                h["rearmed"] = self.arm()
+        elif point == "attack_call":
+            self.pair = None
+            if h["attacker"]["side"] == 0:
+                party = self.party()
+                mine = next((m for m in party if m["at"] == h["attacker"]["at"]), None)
+                self.party_attack = True
+                self.pair = {"attacker": h["attacker"]["at"], "party": party,
+                             "attacker_nodes": None if mine is None else mine["nodes"],
+                             "prayer_stubs": 0}
+        elif point == "attack_return":
+            if self.pair and self.pair["attacker"] == h["attacker"]["at"]:
+                self.pairs.append(self.pair)
+                if not self.pair["prayer_stubs"]:
+                    self.quiet_pairs.append(self.pair)
+                self.pair = None
         if stub:
             self.round = None
+            if self.pair:
+                self.pair["prayer_stubs"] += 1
             # Frames: the dispatcher (id at BP+10h), the query, the list walker
             # (list at BP+0Ah) and the attack roll (attacker at BP+0Ch).
             try:
@@ -1714,16 +1830,13 @@ class PrayerWatch:
                 h["walker_returns_to_unit_offset"] = f"{ret:04X}"
                 attacker = self.record_brief(_w16(frames[3], 0xE), _w16(frames[3], 0xC))
                 h["attacker"] = attacker
-                if (h["list"] == ATTACK_LIST and ret == ATTACK_RETURN
-                        and attacker["side"] == 0):
-                    self.party_attack = True
+                if self.pair and self.pair["attacker"] == attacker["at"]:
                     h["party_attack"] = True
                     h["routines_armed"] = was_armed
                     if was_armed:
-                        party = self.party()
-                        mine = next((m for m in party if m["at"] == attacker["at"]), None)
-                        h["attacker_nodes"] = None if mine is None else mine["nodes"]
-                        self.round = {"attacker": attacker["at"], "party": party,
+                        h["attacker_nodes"] = self.pair["attacker_nodes"]
+                        self.round = {"attacker": attacker["at"],
+                                      "party": self.pair["party"],
                                       "attacker_nodes": h["attacker_nodes"]}
             except (IndexError, ValueError) as e:
                 h["chain_error"] = f"{type(e).__name__}: {e}"
@@ -1741,10 +1854,12 @@ class PrayerWatch:
         return h
 
     def round_done(self, h: dict) -> bool:
-        """The counted party attack's own helper or penalty ran, before any
-        other stub halt: a monster's helper halt is somebody else's roll."""
+        """The counted party attack's own helper or penalty ran inside its
+        list-10 pair and before any other stub halt: a monster's helper halt is
+        somebody else's roll."""
         if (self.round is None or h["kind"] not in ("helper", "penalty")
-                or h.get("combatant", {}).get("at") != self.round["attacker"]):
+                or h.get("combatant", {}).get("at") != self.round["attacker"]
+                or self.pair is None or self.pair["attacker"] != self.round["attacker"]):
             return False
         self.completed = self.round
         return True
@@ -1761,6 +1876,8 @@ class PrayerWatch:
                 h = self.handle()
                 if self.round_done(h):
                     return "one attack round"
+                if self.node_id == 35 and len(self.quiet_pairs) >= QUIET_PAIRS:
+                    return "quiet pairs"
                 self.s.run()
             elif idle():
                 return "fight over"
@@ -1809,7 +1926,14 @@ class PrayerWatch:
             if lost:
                 why.append(f"{', '.join(lost)} carried the id-{node_id} node at "
                            "the encounter menu and not at the stop")
-        if self.completed is None:
+        # Id 35 is on none of the check lists the attack walks, so a party
+        # attack that walked list 10 and dispatched no Prayer handler is the
+        # answer for it, not a missing one.
+        quiet = ([p for p in self.quiet_pairs if self.holders(p["party"], 35)]
+                 if node_id == 35 else [])
+        if quiet:
+            pass
+        elif self.completed is None:
             why.append("no party attack armed at the stubs ran its helper or "
                        "penalty: the first call loads the overlay before its "
                        "routines are armed, so a round needs a later attack")
@@ -1831,9 +1955,12 @@ class PrayerWatch:
                 "carriers": carriers, "halts": len(self.halts),
                 "party_attack": self.party_attack,
                 "round_completed": self.completed is not None,
+                "pairs": len(self.pairs), "quiet_pairs": len(quiet),
                 "helper_hits": kinds.count("helper"),
                 "penalty_hits": kinds.count("penalty"),
-                "load_segment": None if self.load is None else f"{self.load:04X}"}
+                "load_segment": None if self.load is None else f"{self.load:04X}",
+                "attack_load_segment": (None if self.attack_armed_at is None
+                                        else f"{self.attack_armed_at:04X}")}
 
 
 def main(argv: list[str] | None = None) -> int:

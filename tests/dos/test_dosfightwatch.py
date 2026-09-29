@@ -957,6 +957,9 @@ def test_a_walk_on_a_screen_that_stays_torn_reports_it_and_takes_the_shot():
 DS = 0x149E
 STUB = 0x0863
 LOAD = 0x2C33
+ASTUB = STUB - dosfightwatch.PRAYER_UNIT + dosfightwatch.ATTACK_UNIT
+ATT_L = 0x33AE
+ATT_L2 = 0x34C0
 SS = 0x5000
 PARTY_SEG = 0x4000
 OVR_SIZE = 0x40000
@@ -1033,6 +1036,7 @@ def _world(dbg: FakeDebugger, *, side_of_attacker: int = 0,
     dbg.put(STUB, 0, DESCRIPTOR)
     dbg.put(STUB, 0xED, CD3F)
     dbg.put(STUB, 0xB6, CD3F)
+    dbg.put(ASTUB, dosfightwatch.STUB_ATTACK, CD3F)
     # The party list: records at PARTY_SEG:0x1000 * i, each with one node.
     dbg.put(DS, dosfightwatch.PARTY_LIST, _le(0) + _le(PARTY_SEG))
     for i, name in enumerate(party):
@@ -1088,6 +1092,12 @@ def _overlay(dbg, ovr: bytearray) -> None:
     for name, at in dosfightwatch.PRAYER_ROUTINES.items():
         ovr[at:at + 8] = CODE[name]
         dbg.put(LOAD, at - dosfightwatch.PRAYER_UNIT_FILE, CODE[name])
+    for name, off in dosfightwatch.ATTACK_POINTS.items():
+        at = dosfightwatch.ATTACK_UNIT_FILE + off
+        code = bytes((0x70 + 0x10 * off + j) & 0xFF for j in range(8))
+        ovr[at:at + 8] = code
+        for seg in (ATT_L, ATT_L2):
+            dbg.put(seg, off, code)
 
 
 def _watch(dbg, notes):
@@ -1132,17 +1142,46 @@ def _both(dbg, first, second):
     return go
 
 
+def _attack_load(dbg, seg):
+    dbg.put(ASTUB, dosfightwatch.STUB_ATTACK, b"\xea" + _le(0x0CB7) + _le(seg))
+
+
+def _aroll(dbg, who=PARTY_SEG, load=ATT_L, roll=12):
+    """The attack roll's stub halt, with the attack unit loaded at `load`."""
+    def go():
+        _attack_load(dbg, load)
+        dbg.put(SS, 0x100 + 4, bytes((roll,)))
+        _at(dbg, ASTUB, dosfightwatch.STUB_ATTACK, who)()
+    return go
+
+
+def _pt(dbg, off, who=PARTY_SEG, seg=ATT_L):
+    """A halt at the roll's list-10 call (0CF5) or its return (0CF8); the
+    attacker is at BP+0Ch and the defender at BP+8."""
+    base = _at(dbg, seg, off, who, BP=0x2C0)
+
+    def go():
+        dbg.put(SS, 0x2C0 + 8, _le(0) + _le(0x4900) + _le(0) + _le(who))
+        base()
+    return go
+
+
+def _pair(dbg, *inside, who=PARTY_SEG):
+    """A party attack's halts: the roll's stub, the list-10 call, `inside`, the return."""
+    return [_aroll(dbg, who), _pt(dbg, 0x0CF5, who), *inside, _pt(dbg, 0x0CF8, who)]
+
+
 def _one_attack(dbg, who=PARTY_SEG):
-    return [_at(dbg, STUB, 0xED, who), _at(dbg, LOAD, 0x12B2, who),
-            _at(dbg, LOAD, 0x12D5, who), _at(dbg, LOAD, 0x0C06, who)]
+    return _pair(dbg, _at(dbg, STUB, 0xED, who), _at(dbg, LOAD, 0x12B2, who),
+                 _at(dbg, LOAD, 0x12D5, who), _at(dbg, LOAD, 0x0C06, who), who=who)
 
 
 def _first_call_then(dbg, second_call):
     """The first call, which loads the overlay under the stub, then `second_call`."""
-    return [_at(dbg, STUB, 0xED),
-            _both(dbg, lambda: _load(dbg), _at(dbg, STUB, 0xED)),
-            _at(dbg, LOAD, 0x12B2), _at(dbg, LOAD, 0x12D5),
-            _at(dbg, LOAD, 0x0C06), *second_call]
+    return [*_pair(dbg, _at(dbg, STUB, 0xED),
+                   _both(dbg, lambda: _load(dbg), _at(dbg, STUB, 0xED)),
+                   _at(dbg, LOAD, 0x12B2), _at(dbg, LOAD, 0x12D5),
+                   _at(dbg, LOAD, 0x0C06)), *second_call]
 
 
 def test_the_overlay_segment_is_read_from_the_stub_and_the_four_routines_armed():
@@ -1150,15 +1189,22 @@ def test_the_overlay_segment_is_read_from_the_stub_and_the_four_routines_armed()
     assert watch.stub == STUB and watch.stub_load() is None
     assert [m["name"] for m in at_menu] == ["MALCYON", "ROXY"]
     assert watch.holders(at_menu, 49) == ["MALCYON", "ROXY"]
-    assert dbg.armed == [(STUB, 0xED), (STUB, 0xB6)]
+    assert dbg.armed == [(STUB, 0xED), (STUB, 0xB6), (ASTUB, 0x3E)]
     dbg.pending = _first_call_then(dbg, _one_attack(dbg))
 
     stop = watch.run_fight(600, idle=lambda: False)
 
     assert stop == "one attack round"
     kinds = [h["kind"] for h in watch.halts]
-    assert kinds == ["stub49", "stub49", "handler", "bonus", "helper",
-                     "stub49", "handler", "bonus", "helper"]
+    call, ret = "attack_call", "attack_return"
+    assert kinds == ["attack_stub", call, "stub49", "stub49", "handler", "bonus",
+                     "helper", ret, "attack_stub", call, "stub49", "handler",
+                     "bonus", "helper"]
+    watch.halts = [h for h in watch.halts if h["kind"] not in
+                   ("attack_stub", call, ret)]
+    assert [h["kind"] for h in watch.halts] == [
+        "stub49", "stub49", "handler", "bonus", "helper",
+        "stub49", "handler", "bonus", "helper"]
     want = {(LOAD, dosfightwatch.PRAYER_ROUTINES[n] - dosfightwatch.PRAYER_UNIT_FILE)
             for n in dosfightwatch.PRAYER_ROUTINES}
     assert want <= set(dbg.armed) and (STUB, 0xED) in dbg.armed
@@ -1176,7 +1222,7 @@ def test_the_overlay_segment_is_read_from_the_stub_and_the_four_routines_armed()
     assert bonus["zf"] == 1 and bonus["es_di_combatant"]["name"] == "MALCYON"
     assert all(h["code_matches"] for h in watch.halts if "code_matches" in h)
     logged = [n for n in notes if n["event"] == "prayer-halt"]
-    assert len(logged) == 9 and logged[2]["cs_ip"] == f"{LOAD:04X}:12B2"
+    assert len(logged) == 14 and logged[4]["cs_ip"] == f"{LOAD:04X}:12B2"
     assert watch.summary(49, at_menu, at_menu)["conclusive"] is True
 
 
@@ -1214,8 +1260,8 @@ def test_a_monsters_helper_halt_does_not_end_the_party_attack_round():
     watch.arm()
     dbg.put(0x4900, 0, bytes((3,)) + b"ORC")
     dbg.put(0x4900, dosfightwatch.SIDE, b"\x01")
-    dbg.pending = [_at(dbg, STUB, 0xED), _at(dbg, LOAD, 0x0C06, 0x4900),
-                   _at(dbg, LOAD, 0x0C06)]
+    dbg.pending = [_aroll(dbg), _pt(dbg, 0x0CF5), _at(dbg, STUB, 0xED),
+                   _at(dbg, LOAD, 0x0C06, 0x4900), _at(dbg, LOAD, 0x0C06)]
     seen = []
 
     def idle():
@@ -1223,7 +1269,7 @@ def test_a_monsters_helper_halt_does_not_end_the_party_attack_round():
         return True
     # The second helper halt is the attacker's own, and the only one that ends it.
     assert watch.run_fight(600, idle=idle) == "one attack round"
-    assert [h["combatant"]["name"] for h in watch.halts[1:]] == ["ORC", "MALCYON"]
+    assert [h["combatant"]["name"] for h in watch.halts[3:]] == ["ORC", "MALCYON"]
     assert watch.summary(49, at_menu, at_menu)["conclusive"] is True
 
 
@@ -1239,7 +1285,8 @@ def test_another_stub_halt_drops_the_round_before_its_helper_runs():
         # The attack roll's frame now names the ORC as the attacker.
         dbg.put(SS, 0x200 + 0x40 * 3 + 0xE, _le(0x4900))
         _at(dbg, STUB, 0xB6)()
-    dbg.pending = [_at(dbg, STUB, 0xED), monster_asks, _at(dbg, LOAD, 0x0C06)]
+    dbg.pending = [_aroll(dbg), _pt(dbg, 0x0CF5), _at(dbg, STUB, 0xED),
+                   monster_asks, _at(dbg, LOAD, 0x0C06)]
     assert watch.run_fight(600, idle=lambda: True) == "fight over"
     assert watch.completed is None
 
@@ -1249,11 +1296,11 @@ def test_a_stub_that_reads_int_3f_again_takes_the_routine_breakpoints_off():
     _load(dbg)
     watch.load = LOAD
     watch.arm()
-    assert len(dbg.armed) == 6 and watch.armed_at == LOAD
+    assert len(dbg.armed) == 7 and watch.armed_at == LOAD
     _unload(dbg)
     dbg.pending = [_at(dbg, STUB, 0xED)]
     watch.run_fight(600, idle=lambda: True)
-    assert dbg.armed == [(STUB, 0xED), (STUB, 0xB6)]
+    assert dbg.armed == [(STUB, 0xED), (STUB, 0xB6), (ASTUB, 0x3E)]
     assert watch.load is None and watch.armed_at is None
     assert watch.halts[0]["load_now"] is None
 
@@ -1264,9 +1311,10 @@ def test_a_halt_whose_code_does_not_match_is_not_a_hit_and_spoils_the_run():
     watch.load = LOAD
     watch.arm()
     dbg.put(LOAD, 0x0C06, b"\xff" * 8)          # what is there now is not the helper
-    dbg.pending = [_at(dbg, STUB, 0xED), _at(dbg, LOAD, 0x0C06)]
+    dbg.pending = [_aroll(dbg), _pt(dbg, 0x0CF5), _at(dbg, STUB, 0xED),
+                   _at(dbg, LOAD, 0x0C06)]
     assert watch.run_fight(600, idle=lambda: True) == "fight over"
-    bad = watch.halts[1]
+    bad = watch.halts[3]
     assert bad["kind"] == "other" and bad["code_matches"] is False
     assert watch.completed is None and "helper" in watch.mismatched
     result = watch.summary(49, at_menu, at_menu)
@@ -1297,7 +1345,8 @@ def test_a_party_that_was_not_read_at_the_stop_is_not_conclusive():
 
 def test_an_attacker_without_the_tested_node_at_its_stub_halt_is_not_conclusive():
     dbg, watch, _, at_menu = _ready()
-    dbg.pending = _first_call_then(dbg, [_at(dbg, STUB, 0xED)])
+    dbg.pending = _first_call_then(dbg, [_aroll(dbg), _pt(dbg, 0x0CF5),
+                                         _at(dbg, STUB, 0xED)])
     # The attacker's node list is emptied between the menu and its attack.
     dbg.put(PARTY_SEG, dosfightwatch.NODE_LIST, _le(0) + _le(0))
     dbg.pending += [_at(dbg, LOAD, 0x0C06)]
@@ -1367,3 +1416,134 @@ def test_code_that_does_not_match_game_ovr_at_the_resolved_segment_is_not_armed(
     assert "handler" in armed["mismatched"]
     assert (LOAD, 0x12B2) not in dbg.armed
     assert watch.summary(49, watch.party(), None)["conclusive"] is False
+
+
+# -- the attack roll's own stub, and the pair it brackets ------------------------
+
+def _attack_armed(dbg, seg):
+    return {(seg, 0x0CF5), (seg, 0x0CF8)} <= set(dbg.armed)
+
+
+def test_the_attack_stub_is_armed_and_the_unit_segment_is_read_at_its_halt():
+    dbg, watch, _, _ = _ready()
+    assert (ASTUB, 0x3E) in dbg.armed and ASTUB == 0x08D2
+    assert not any(cs == ATT_L for cs, _ in dbg.armed)
+    dbg.pending = [_aroll(dbg)]
+    watch.run_fight(600, idle=lambda: True)
+    h = watch.halts[0]
+    assert h["kind"] == "attack_stub" and h["attack_load_now"] == f"{ATT_L:04X}"
+    assert h["attacker"]["name"] == "MALCYON" and h["roll"] == 12 and "defender" in h
+    assert watch.attack_armed_at == ATT_L and _attack_armed(dbg, ATT_L)
+    assert (ASTUB, 0x3E) in dbg.armed and watch.mismatched == []
+
+
+def test_the_attack_unit_moving_between_halts_rearms_the_points():
+    dbg, watch, _, _ = _ready()
+    dbg.pending = [_aroll(dbg), _aroll(dbg, load=ATT_L2)]
+    watch.run_fight(600, idle=lambda: True)
+    assert watch.attack_armed_at == ATT_L2
+    assert _attack_armed(dbg, ATT_L2) and not any(cs == ATT_L for cs, _ in dbg.armed)
+    assert watch.halts[1]["rearmed"]["armed"][-2:] == [
+        f"{ATT_L2:04X}:0CF5 attack_call", f"{ATT_L2:04X}:0CF8 attack_return"]
+
+
+def test_attack_code_that_does_not_match_game_ovr_is_not_armed_and_spoils_the_run():
+    dbg, watch, _, at_menu = _ready()
+    dbg.put(ATT_L, 0x0CF5, b"\xff" * 3)
+    dbg.pending = [_aroll(dbg)]
+    watch.run_fight(600, idle=lambda: True)
+    assert (ATT_L, 0x0CF5) not in dbg.armed and (ATT_L, 0x0CF8) in dbg.armed
+    assert watch.mismatched == ["attack_call"]
+    assert watch.summary(49, at_menu, at_menu)["conclusive"] is False
+
+
+def test_an_id_35_run_with_three_pairs_and_no_prayer_stub_halt_is_conclusive():
+    dbg, watch, _, at_menu = _ready(node_id=35)
+    watch.node_id = 35
+    for _ in range(4):
+        dbg.pending += _pair(dbg)
+    stop = watch.run_fight(600, idle=lambda: True)
+    assert stop == "quiet pairs" and len(dbg.pending) == 3
+    assert [h["kind"] for h in watch.halts].count("attack_call") == 3
+    result = watch.summary(35, at_menu, at_menu)
+    assert result["conclusive"] is True and result["why"] == []
+    assert result["pairs"] == 3 and result["quiet_pairs"] == 3
+    assert result["round_completed"] is False and result["party_attack"] is True
+    assert result["attack_load_segment"] == f"{ATT_L:04X}"
+
+
+def test_quiet_pairs_do_not_stop_or_complete_an_id_49_run():
+    dbg, watch, _, at_menu = _ready()
+    watch.node_id = 49
+    for _ in range(3):
+        dbg.pending += _pair(dbg)
+    assert watch.run_fight(600, idle=lambda: True) == "fight over"
+    result = watch.summary(49, at_menu, at_menu)
+    assert result["pairs"] == 3 and result["conclusive"] is False
+
+
+def test_a_pair_with_a_prayer_stub_halt_inside_it_is_not_quiet():
+    dbg, watch, _, at_menu = _ready(node_id=35)
+    watch.node_id = 35
+    dbg.pending = _pair(dbg, _at(dbg, STUB, 0xB6))
+    watch.run_fight(600, idle=lambda: True)
+    assert watch.pairs[0]["prayer_stubs"] == 1 and watch.quiet_pairs == []
+    assert watch.summary(35, at_menu, at_menu)["conclusive"] is False
+
+
+def test_a_roll_of_1_reaches_the_stub_and_is_not_a_pair():
+    dbg, watch, _, at_menu = _ready(node_id=35)
+    watch.node_id = 35
+    dbg.pending = [_aroll(dbg, roll=1)]
+    watch.run_fight(600, idle=lambda: True)
+    assert watch.halts[0]["roll"] == 1
+    assert watch.pairs == [] and watch.party_attack is False and watch.pair is None
+    assert watch.summary(35, at_menu, at_menu)["conclusive"] is False
+
+
+def test_a_pair_cut_off_by_a_roll_of_1_is_not_counted_when_the_return_comes():
+    dbg, watch, _, _ = _ready(node_id=35)
+    dbg.pending = [_aroll(dbg), _pt(dbg, 0x0CF5), _aroll(dbg, roll=1),
+                   _pt(dbg, 0x0CF8)]
+    watch.run_fight(600, idle=lambda: True)
+    assert watch.pairs == [] and watch.quiet_pairs == []
+
+
+def test_a_monsters_list_10_call_opens_no_pair():
+    dbg, watch, _, _ = _ready(node_id=35)
+    dbg.put(0x4900, 0, bytes((3,)) + b"ORC")
+    dbg.put(0x4900, dosfightwatch.SIDE, b"\x01")
+    dbg.pending = _pair(dbg, who=0x4900)
+    watch.run_fight(600, idle=lambda: True)
+    assert watch.pairs == [] and watch.party_attack is False
+
+
+def test_id_49_needs_its_helper_inside_the_pair_not_after_it():
+    dbg, watch, _, at_menu = _ready()
+    _load(dbg)
+    watch.load = LOAD
+    watch.arm()
+    dbg.pending = [*_pair(dbg, _at(dbg, STUB, 0xED)), _at(dbg, LOAD, 0x0C06)]
+    assert watch.run_fight(600, idle=lambda: True) == "fight over"
+    assert watch.completed is None and len(watch.pairs) == 1
+    result = watch.summary(49, at_menu, at_menu)
+    assert result["conclusive"] is False and result["round_completed"] is False
+
+
+def test_an_attack_stub_that_is_neither_int_3f_nor_a_far_jump_is_refused():
+    dbg = FakeDebugger()
+    _world(dbg)
+    dbg.put(ASTUB, dosfightwatch.STUB_ATTACK, bytes.fromhex("9090909090"))
+    watch, _ = _watch(dbg, [])
+    watch.attach()
+    with pytest.raises(dosfightwatch.PrayerWatchError, match="attack stub"):
+        watch.arm()
+
+
+def test_an_attack_unit_descriptor_that_is_not_start_exes_is_refused():
+    dbg = FakeDebugger()
+    _world(dbg)
+    dbg.put(ASTUB, 0, b"\x01" * 12)
+    watch, _ = _watch(dbg, [])
+    with pytest.raises(dosfightwatch.PrayerWatchError, match="attack unit"):
+        watch.attach(tries=1)
