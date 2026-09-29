@@ -181,16 +181,21 @@ def dos_files(party: Any) -> dict[str, bytes | None]:
     """
     slot = party.source.slot
     written: dict[str, bytes | None] = {}
+    unrebuilt: list[str] = []
     for member in party.members:
         result = rewrite.rewrite_dos(member.native, original_record(member),
                                      edited_record(member))
         deltas = member.native.deltas
         stem = f"CHRDAT{slot}{member.index}"
-        record = party.dos_movement(member, result.record, result.items)
+        record = party.dos_movement(member, result.record, result.items,
+                                    unrebuilt)
         for suffix, data in ((".SAV", record),
                              (deltas.item_suffix, result.items),
                              (deltas.effect_suffix, result.effects)):
             written[stem + suffix] = data or None
+    if unrebuilt:
+        _log.warning("Movement of %s not rebuilt: no item type table",
+                     ", ".join(unrebuilt))
     return written
 
 

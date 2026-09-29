@@ -2237,6 +2237,9 @@ class EditorBinding(QObject):
                 or game.key != por_games.POOL_OF_RADIANCE.key):
             return
         if party.port == "dos":
+            # The C64 disk's table below is valid for DOS too: its location
+            # column, the only one the movement rule reads, is identical to
+            # the DOS `ITEMS` (#741, comment 5896318375).
             here = pathlib.Path(party.source.path)
             for folder in (here, here.parent):
                 table = dos_codec.item_type_table(folder)

@@ -577,7 +577,8 @@ class Party:
             if movement != block.movement:
                 block.movement = movement
 
-    def dos_movement(self, member: Any, record: bytes, items: bytes) -> bytes:
+    def dos_movement(self, member: Any, record: bytes, items: bytes,
+                     unrebuilt: list[str]) -> bytes:
         """`record` with the movement the game's rule gives, if the edit moved it.
 
         `rewrite.rewrite_dos` renders with no item type table, so for a
@@ -586,7 +587,8 @@ class Party:
         rebuilding it. Here the rule runs on the loaded record and on the
         written one, and only a difference between the two is written, so an
         untouched character stays byte-identical. With no table an armed
-        character keeps the stored byte.
+        character keeps the stored byte and his name goes on `unrebuilt`, for
+        the caller to log once per save.
         """
         if (self.port != "dos"
                 or self.game.key != c64_port.POOL_OF_RADIANCE.key):
@@ -594,6 +596,7 @@ class Party:
         types = None
         if self.item_types:
             table = self.item_types
+            # A type the table skips as all zero is a zero row in the game's.
             types = b"".join(
                 table[i].raw if i in table else bytes(ITEM_TYPE_SIZE)
                 for i in range(ITEM_TYPE_COUNT))
@@ -605,8 +608,7 @@ class Party:
         after = dos_codec.dos_combat_rebuild(record, items, types, deltas)
         if before is None or after is None:
             if record != native.to_bytes() or items != loaded_items:
-                _log.warning("Movement of %s left as it was: no item type "
-                             "table", member.name)
+                unrebuilt.append(member.name)
             return record
         if before.movement_current == after.movement_current:
             return record

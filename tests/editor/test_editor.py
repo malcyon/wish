@@ -6061,6 +6061,17 @@ def test_a_dos_pool_party_with_the_games_items_beside_it_needs_no_items_disk(
     assert w.party.item_types is not None
 
 
+def test_an_items_file_of_the_wrong_size_beside_a_dos_pool_party_is_ignored(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr("editor.window.EditorBinding._find_disk",
+                        lambda self, *a, **k: None)
+    (tmp_path / "ITEMS").write_bytes(bytes(2 + 128 * 16 - 1))
+    with _window_warnings() as seen:
+        w = _dos_pool_editor(tmp_path)
+    assert not w.party.item_types
+    assert sum("No disk with ITEMS found" in m for m in seen) == 1
+
+
 def test_a_dos_pool_party_with_no_items_anywhere_logs_it(
         tmp_path, monkeypatch):
     monkeypatch.setattr("editor.window.EditorBinding._find_disk",

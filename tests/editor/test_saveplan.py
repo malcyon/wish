@@ -972,10 +972,11 @@ def test_no_item_table_leaves_a_dos_armed_characters_movement_and_logs_it(
         tmp_path, types, caplog):
     party, member, _folder = _dos_movement_party(tmp_path, types=types)
     _ready(member, 450)
-    with caplog.at_level("WARNING", logger="wish.editor.roster"):
+    with caplog.at_level("WARNING", logger="wish.editor.saveplan"):
         assert _dos_stored(party, member) == 12
     lines = [r.getMessage() for r in caplog.records]
     assert len(lines) == 1 and member.name in lines[0]
+    assert "not rebuilt" in lines[0]
 
 
 def test_dos_curse_movement_is_written_as_it_was(tmp_path):
