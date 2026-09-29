@@ -322,3 +322,14 @@ def test_a_full_effect_table_keeps_the_trait_slot_and_reports_the_lost_row():
     assert not _rows(payload, 32)
     assert any("Animate Dead row is not written" in line
                for line in rep.losses)
+
+
+@pytest.mark.parametrize("charm", [0x21, 0x20, 0x61, 0x60])
+def test_a_charmed_zombie_is_not_refused_for_the_charms_side(charm):
+    char = _dos_zombie(0, 0xB3, None)
+    char.set("granted_effects",
+             [bytes((32, 0, 0, 5, 1)),
+              bytes((effects.CHARM_ID, 0, 0, charm, 1))], "built here")
+    _rec, rep = c64_codec.write(char, payload=bytearray(0x1C00),
+                                party_slot=2, clock_minutes=0)
+    assert not rep.losses

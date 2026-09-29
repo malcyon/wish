@@ -2282,7 +2282,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         rep.lost("effect 32: the character is animated but has no Animate "
                  "Dead node, so the C64 zombie has no row for Dispel Magic "
                  "to find and no caster level")
-    if zombie_node_side is not None and zombie_node_side != side_bits & 1:
+    # With a charm row, bit 0 holds the charm's own side and not the side the
+    # zombie would be restored to, so the two are not comparable.
+    if (zombie_node_side is not None and not charm_row_written
+            and zombie_node_side != side_bits & 1):
         rep.lost("effect 32: the side the DOS zombie is restored to, which "
                  "the C64 temple does not restore")
     rec.set("combat_side", side_bits)
