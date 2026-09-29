@@ -851,7 +851,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     port = char.port
     deltas = deltas_for(char.game)
     pool_item_table = (deltas.key == "pool-of-radiance"
-                         and item_types is not None)
+                       and item_types is not None)
     w = neutral.Writer(
         char, rep, into="C64",
         dropped=DROPPED + (POOL_FIELDS_UNMEASURED

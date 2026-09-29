@@ -295,9 +295,11 @@ def test_a_readied_weapon_of_an_unknown_type_counts_as_no_weapon():
 
 def test_the_dex_term_is_written_even_when_the_source_has_no_thac0():
     char = _pool_char([_item(2)])
-    char.fields.pop("thac0_current", None)
+    assert "thac0_current" in char.fields
+    del char.fields["thac0_current"]
     rec, _ = c64_codec.write(char, item_types=_TYPES)
     assert rec.get("missile_attack_adjustment") == 3
+    assert rec.get("thac0") == 0        # no source byte, so none is written
 
 
 @needs_dos_saves
