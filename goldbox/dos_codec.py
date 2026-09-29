@@ -77,6 +77,7 @@ from . import (
 )
 from . import levels as level_tables
 from .c64_codec import Report
+from .c64_codec import c64_share_from_dos as c64_share_from_dos
 from .dos_port import (
     CLASS_NUMBERS,
     CURSE_OF_THE_AZURE_BONDS,

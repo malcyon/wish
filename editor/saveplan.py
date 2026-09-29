@@ -1076,16 +1076,24 @@ def _expected_dual_class(destination: "Destination") -> "int | None":
 def _expected_treasure_share(record: CharacterRecord,
                              destination: "Destination",
                              source_port: "str | None") -> "int | None":
-    """The share a C64 sheet's byte is written as on DOS or the Amiga.
+    """The share a Pool of Radiance companion's sheet byte is written as.
 
-    Those engines count bit 2 as a part and the C64 does not, so the writer
-    clears it (`goldbox.dos_codec.dos_share_from_c64`). `None` for a source
-    that is not the C64 (a DOS or Amiga byte is copied as it is), for a
-    native or C64 destination, for a title other than Pool of Radiance, for a
+    From the C64 to DOS or the Amiga, those engines count bit 2 as a part and
+    the C64 does not, so the writer clears it
+    (`goldbox.dos_codec.dos_share_from_c64`).  From DOS or the Amiga to the
+    C64, a byte with bit 2 set holds more parts than the C64 gives, so the
+    writer raises it to the most it holds
+    (`goldbox.dos_codec.c64_share_from_dos`).  `None` for any other pairing,
+    for a native destination, for a title other than Pool of Radiance, for a
     player character, and for a byte with bit 2 clear.
     """
-    if (source_port != "c64" or destination.native
-            or destination.port not in ("dos", "amiga")):
+    if destination.native:
+        return None
+    if source_port == "c64" and destination.port in ("dos", "amiga"):
+        convert = dos_codec.dos_share_from_c64
+    elif source_port in ("dos", "amiga") and destination.port == "c64":
+        convert = dos_codec.c64_share_from_dos
+    else:
         return None
     # Only a Pool of Radiance companion is rewritten; a player character's
     # byte and the other titles' stay refused by the writer.
@@ -1093,7 +1101,7 @@ def _expected_treasure_share(record: CharacterRecord,
             != dos_codec.POOL_OF_RADIANCE.key
             or not int(record.get("flags_0b8")) & 0x80):
         return None
-    return dos_codec.dos_share_from_c64(int(record.get("treasure_share")))
+    return convert(int(record.get("treasure_share")))
 
 
 def _signature(record: CharacterRecord,
@@ -1113,7 +1121,7 @@ def _signature(record: CharacterRecord,
     name as `stored_name` reads it, rather than the sheet's own C64-folded
     `record.get("name")` (#638). `fields` is the same title-filtered list on
     both sides of a comparison. `source_port` is the port the sheet was read
-    from; only a C64 source has its treasure share rewritten.
+    from; a C64, DOS or Amiga source has its treasure share rewritten.
     """
     values = []
     for field in fields:

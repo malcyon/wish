@@ -657,6 +657,54 @@ def test_a_c64_hireling_is_expected_with_bit_2_cleared_and_no_other_byte(port):
     assert any("treasure_share" in line for line in lines)
 
 
+@pytest.mark.parametrize("source", ["dos", "amiga"])
+@pytest.mark.parametrize("share,written", [(0xFF, 0xFF), (0x84, 0x87),
+                                           (0x04, 0x07), (0x05, 0x07),
+                                           (0x03, 0x03), (0x01, 0x01)])
+def test_a_dos_or_amiga_hireling_is_expected_with_bit_2_raised_to_three_parts(
+        source, share, written):
+    destination = _destination("c64", c64_port.POOL_OF_RADIANCE)
+    assert saveplan.compare([_hireling(share)], [_hireling(written)],
+                            destination, source_port=source) == []
+    if written != share:
+        lines = saveplan.compare([_hireling(share)], [_hireling(share)],
+                                 destination, source_port=source)
+        assert any("treasure_share" in line for line in lines)
+
+
+def test_a_dos_share_is_expected_rewritten_for_the_c64_only_for_a_pool_companion():
+    destination = _destination("c64", c64_port.POOL_OF_RADIANCE)
+    player = _hireling(0x84)
+    player.set("flags_0b8", 0)
+    lines = saveplan.compare([player], [_hireling(0x87)],
+                             destination, source_port="dos")
+    assert any("treasure_share" in line for line in lines)
+    other = _destination("c64", c64_port.CURSE_OF_THE_AZURE_BONDS)
+    lines = saveplan.compare([_hireling(0x84)], [_hireling(0x87)],
+                             other, source_port="dos")
+    assert any("treasure_share" in line for line in lines)
+
+
+@pytest.mark.parametrize("share", [0xFF, 0x84, 0x04, 0x05])
+def test_a_dos_hireling_prepares_for_the_c64(tmp_path, share):
+    """The Training Hall's shares of 4 to 7 parts used to refuse the whole
+    party; they now arrive as the C64's three."""
+    from tests.editor.test_hirelingopen import _folder
+    from tools.convert import convertdrops
+    folder = tmp_path / "save"
+    folder.mkdir()
+    party = Party(str(_folder(folder, share)))
+    source = convert.Source.detect(party.path)
+    try:
+        assets = saveplan.resolve_assets(
+            source, "c64", game_files=convertdrops.game_files)
+    except (saveplan.MissingAssets, FileNotFoundError):
+        pytest.skip("needs Pool of Radiance's own C64 disks")
+    plan = saveplan.prepare_save_as(party, "c64", tmp_path / "out" / "out.d64",
+                                  assets)
+    assert isinstance(plan, saveplan.SavePlan)
+
+
 def test_a_c64_share_with_bit_2_is_expected_rewritten_only_for_a_pool_companion():
     """A player character's byte and another title's companion keep the
     writer's refusal, so the check expects them unchanged."""

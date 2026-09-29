@@ -724,6 +724,28 @@ EXPERIENCE_CLAMPED = (
     "bytes; written as {top}, the most they hold")
 
 
+#: The warning for a companion's treasure share the C64's mask of 3 cannot hold.
+SHARE_PARTS_REDUCED = (
+    "treasure_share: {port} holds {value:#04x}, {parts} parts of the treasure "
+    "split; written as {written:#04x}, {kept} parts, the most the C64 gives")
+
+
+def c64_share_from_dos(raw: int) -> int:
+    """The C64 treasure share that comes closest to DOS or Amiga `raw`.
+
+    Lives here so the writer needs no import from `dos_codec`, which imports
+    this module; `goldbox.dos_codec.c64_share_from_dos` is the same function.
+    For a Pool of Radiance companion only.  The C64 skips a companion whose raw
+    byte is zero and otherwise gives him `raw & 3` parts (`POST.COM $194A`),
+    where DOS and the Amiga give `raw & 7` (`GAME.OVR 0x0068AC`).  A byte with
+    bit 2 clear gives the same parts on both and is returned as it is.  One
+    with bit 2 set holds 4 to 7 parts, which no C64 byte can, so it becomes
+    `raw | 3`: never zero, and the 3 parts that are the most the C64 gives.
+    """
+    raw &= 0xFF
+    return raw | 0x03 if raw & 0x04 else raw
+
+
 def _max_stored(size: int) -> int:
     """The largest unsigned value `size` bytes hold."""
     return (1 << (8 * size)) - 1
@@ -1017,6 +1039,22 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                  "byte no engine reads and no C64 file writes; the byte's "
                  "player-character meaning is the ability-altered flag and "
                  "it goes to flags_0b8 bit 0")
+    elif (share is not None and char.port != "C64"
+            and int(share.value) & 0x04
+            and deltas is POOL_OF_RADIANCE_RECORD
+            and is_npc and not (pool_charmed or pool_zombie_pc)):
+        # A Pool of Radiance companion holding 4 to 7 parts, which no C64
+        # byte can.  Written as the most it holds, and reported on `warnings`
+        # only: on `losses` a Save As would refuse the whole party.
+        written = c64_share_from_dos(int(share.value))
+        parts = int(share.value) & 7
+        rec.set("treasure_share", written)
+        rep.warnings.append(SHARE_PARTS_REDUCED.format(
+            port=char.port, value=int(share.value), parts=parts,
+            written=written, kept=written & 3))
+        emit(share, "treasure_share", 0x0FA, 1,
+             f", {int(share.value):#04x} gives {parts} parts here and the "
+             f"C64 gives at most {written & 3}")
     elif share is not None:
         if char.port != "C64" and int(share.value) & 0x04:
             raise ValueError(

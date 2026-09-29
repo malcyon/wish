@@ -198,3 +198,76 @@ def test_a_c64_companions_share_with_bit_2_is_still_refused_outside_pool(
     rec = _c64_companion(share)
     with pytest.raises(ValueError, match="bit 2 set"):
         dos_codec.write(c64_codec.read(rec, game=game))
+
+
+# --- DOS or the Amiga to the C64 --------------------------------------------
+
+def _dos_companion(share: int) -> dos_codec.DosCharacter:
+    raw = bytearray(dos_port.RECORD_SIZE)
+    raw[DOS_CONTROL] = JOINED
+    raw[DOS_SHARE] = share
+    return dos_codec.DosCharacter(bytes(raw))
+
+
+def _dos_to_c64(share: int):
+    return c64_codec.write(dos_codec.to_neutral(_dos_companion(share)))
+
+
+@pytest.mark.parametrize("share", range(256))
+def test_every_dos_share_converts_to_the_c64_with_its_parts_capped_at_three(
+        share):
+    """All 256 DOS bytes: named exactly when DOS named him, and the C64 gives
+    him the parts DOS gave, or 3 where DOS gave more.  Before the fix the 128
+    with bit 2 set raised `ValueError`."""
+    rec, _rep = _dos_to_c64(share)
+    written = rec.get("treasure_share")
+    assert (written != 0) == (share != 0)
+    assert written & 3 == min(share & 7, 3)
+
+
+@pytest.mark.parametrize("share,expected", ((0xFF, 0xFF), (0x84, 0x87),
+                                            (0x04, 0x07), (0x05, 0x07),
+                                            (0x03, 0x03), (0x01, 0x01)))
+def test_the_c64_byte_for_a_dos_share(share, expected):
+    assert dos_codec.c64_share_from_dos(share) == expected
+    rec, _rep = _dos_to_c64(share)
+    assert rec.get("treasure_share") == expected
+
+
+@pytest.mark.parametrize("share,parts,written", ((0xFF, 7, 0xFF),
+                                                 (0x84, 4, 0x87),
+                                                 (0x05, 5, 0x07)))
+def test_the_parts_the_c64_cannot_give_are_on_the_warnings_not_the_losses(
+        share, parts, written):
+    """A loss would make Save As refuse the party; the warning is what a
+    caller can read."""
+    _rec, rep = _dos_to_c64(share)
+    lines = [w for w in rep.warnings if "treasure_share" in w]
+    assert len(lines) == 1
+    assert f"{parts} parts" in lines[0] and f"{written:#04x}" in lines[0]
+    assert not [w for w in rep.losses if "treasure_share" in w]
+
+
+@pytest.mark.parametrize("share", (0, 1, 2, 3, 0x80, 0xF8))
+def test_a_dos_share_within_the_c64s_parts_reports_nothing(share):
+    _rec, rep = _dos_to_c64(share)
+    assert not [w for w in rep.warnings if "treasure_share" in w]
+
+
+@pytest.mark.parametrize("share", (0x84, 0xFF, 0x05))
+def test_an_amiga_hireling_converts_to_the_c64_the_same_way(share):
+    record, itm, spc, _rep = _to_amiga(_c64_companion(0x03))
+    raw = bytearray(record)
+    raw[AMIGA_SHARE] = share
+    amiga = amiga_por.por_character(bytes(raw), itm, spc)
+    rec, rep = c64_codec.write(amiga_por.to_neutral(amiga))
+    assert rec.get("treasure_share") == dos_codec.c64_share_from_dos(share)
+    assert [w for w in rep.warnings if "treasure_share" in w]
+
+
+@pytest.mark.parametrize("share", (0x04, 0x84, 0xFF))
+def test_a_dos_player_characters_share_with_bit_2_is_still_refused(share):
+    raw = bytearray(dos_port.RECORD_SIZE)
+    raw[DOS_CONTROL], raw[DOS_SHARE] = 0x01, share
+    with pytest.raises(ValueError, match="bit 2 set"):
+        c64_codec.write(dos_codec.to_neutral(dos_codec.DosCharacter(bytes(raw))))
