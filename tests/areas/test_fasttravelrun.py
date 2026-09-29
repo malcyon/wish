@@ -1861,11 +1861,13 @@ def test_a_hidden_square_walk_carries_the_probable_note(tmp_path, fake_clock):
     result = {}
     FT.walk_after(sess, tmp_path, {}, result)
     assert result["memory_square"].startswith("PROBABLE")
+    assert "$C04B" in result["memory_square"]
+    assert "read the square from `$C04B`" in result["memory_square"]
+    assert "from `$49C0`" not in result["memory_square"]
 
 
 class CavesSession(HiddenSquareSession):
-    """The Kobold Caves as live run `737-large-3` and the step probe after it
-    saw them. The status line shows no square; `$49C0` keeps the arrival
+    """An area whose status line shows no square, as the Kobold Caves do. The status line shows no square; `$49C0` keeps the arrival
     square while the party steps and only `$C04B` moves; `walk_one` has no
     square to verify a key by, so it returns False after every key; and each
     `in_combat()` poll takes the next of *script*, a raw `$6E1B` value or
@@ -1903,9 +1905,9 @@ class CavesSession(HiddenSquareSession):
 
 def test_a_caves_step_that_starts_a_fight_is_waited_out_then_walked_on(
         monkeypatch):
-    """Run `737-large-3`: the step moved the party and started the kobold
-    fight, `$6E1B` read 100 (`ECL64`) under a stale command bar while the
-    fight loaded, and the retry key went into that load."""
+    """A step moves the party and starts a fight: `$6E1B` reads 100 (`ECL64`)
+    under a stale command bar while the fight loads, and the retry key must
+    not go into that load."""
     monkeypatch.setattr(FT.time, "sleep", lambda s: None)
     sess, m = make()
     sess = CavesSession(m)
@@ -1987,3 +1989,32 @@ def test_a_caves_turn_is_judged_by_the_facing_in_memory(monkeypatch):
     assert [c[0] for c in sess.calls] == ["I", "J", "I"]
     assert steps[0]["ok"] and steps[0]["off_route"]
     assert FT.walk_verdict(steps, sheet)[0]
+
+
+def test_a_caves_step_after_which_the_game_never_settles_is_not_a_move(
+        fake_clock):
+    """`world_ready` times out after the step (the area byte sticks with its
+    reload bit set, so the area itself is unchanged), so the step is
+    interrupted, not counted."""
+    sess, m = make()
+    sess = CavesSession(m)
+    sess.after_step = lambda s: s.m.mem.__setitem__(FT.AREA_BYTE, 0x80 | 13)
+    steps, sheet = FT.walk_afterwards(sess, timeout=20, stop_after_moves=1)
+    assert steps[0]["after"] != steps[0]["before"]
+    assert steps[0]["interrupted"] is True
+    assert not FT.walk_verdict(steps[:1], sheet)[0]
+
+
+def test_a_fight_still_going_is_not_reported_as_the_game_never_settling(
+        monkeypatch):
+    """`world_ready` finds a fight again after two fights were fought, so the
+    refusal says a fight is still going."""
+    sess, m = make()
+    sess = CavesSession(m)
+    monkeypatch.setattr(FT, "world_ready",
+                        lambda *a, **k: ("combat", 0x64, "MOVE VIEW"))
+    monkeypatch.setattr(FT, "fought", lambda *a, **k: True)
+    steps, sheet = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert sheet is False
+    assert "fight is still going" in steps[-1]["refused"]
+    assert "never settled" not in steps[-1]["refused"]

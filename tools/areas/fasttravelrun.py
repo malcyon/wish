@@ -609,11 +609,12 @@ def fought(sess, steps: list[dict], row: str) -> bool:
     return "refused" not in steps[-1]
 
 
-#: `ECL64`, the fight's script. The game loads it into the `ECL` slot of the
-#: loaded-files cache, which `AREA_BYTE` is, while it sets a fight up, so a
-#: reading of 100 there is a fight on its way and not an area
+#: `ECL64`, the fight's script. PROBABLE: the game loads it into the `ECL`
+#: slot of the loaded-files cache, which `AREA_BYTE` is, while it sets a fight
+#: up, so a reading of 100 there would be a fight on its way and not an area
 #: (`docs/140-loaded-files-cache.md`, and the `ECL64` row of the overlay
-#: table in `docs/50-experiments.md`).
+#: table in `docs/50-experiments.md`). A live read of `$6E1B` during a fight
+#: load would confirm it.
 COMBAT_ECL = 0x64
 
 #: Seconds between the two readings `world_ready` must find identical.
@@ -637,7 +638,8 @@ def world_ready(sess, timeout: float = 60.0,
     row)` once two readings `READY_GAP` apart agree on `AREA_BYTE` and the
     whole screen while row 24 is a bar the walk drives from, and `("timeout",
     raw, row)` with the last reading when *timeout* runs out. A reading with
-    the reload bit set, or of `COMBAT_ECL`, is a load and never ready: the
+    the reload bit set, or of `COMBAT_ECL` (PROBABLE, unconfirmed until a live
+    read of `$6E1B` during a fight load), is a load and never ready: the
     command bar stays on screen while the fight loads, so row 24 alone
     cannot tell. Each distinct raw `AREA_BYTE` is appended to *reads*."""
     clock, sleep = time.monotonic, time.sleep
@@ -710,9 +712,12 @@ def walk_afterwards(sess, timeout: float = 60.0,
       command bar; a game that never settles ends the walk with a refused step;
     * each step carries `area_before`, `area_after` (read once the game has
       settled or a fight is on), `area_reads` (every raw `AREA_BYTE` seen
-      while waiting) and `fight_after`. A step after which the area changed or
-      a fight began is marked `interrupted` and `walk_verdict` does not count
-      it as a move. A reading taken during a load is waited out, not compared.
+      while waiting) and `fight_after`. A step after which the area changed, a
+      fight began or the game did not settle is marked `interrupted` and
+      `walk_verdict` does not count it as a move. A reading taken during a
+      load is waited out, not compared. Reading `COMBAT_ECL` as a fight
+      loading is PROBABLE until a live read of `$6E1B` during a fight load
+      confirms it.
 
     Called before teardown, because the session is gone once `run` returns.
     """
@@ -763,7 +768,16 @@ def walk_afterwards(sess, timeout: float = 60.0,
         state, raw, row = world_ready(sess, timeout)
         if state == "ready":
             return True, row
-        unsettled(state, raw, row)
+        if state == "combat":
+            here = at()
+            steps.append({"move": "wait", "ok": False, "row": row,
+                          "before": here, "after": here,
+                          "refused": "a fight is still going after two "
+                                     "fights were fought"})
+            print("  walk: a fight is still going after two fights",
+                  flush=True)
+        else:
+            unsettled(state, raw, row)
         return False, row
 
     retry_used = moved = 0
@@ -869,12 +883,14 @@ def walk_afterwards(sess, timeout: float = 60.0,
         if from_memory:
             reads: list = []
             state, _, _ = world_ready(sess, timeout, reads)
+            timed_out = state == "timeout"
             step["square_from"] = "memory"
             step["area_before"] = area_before
             step["area_after"] = area_of(sess)
             step["area_reads"] = reads
             step["fight_after"] = state == "combat" or bool(sess.in_combat())
-            if step["area_after"] != area_before or step["fight_after"]:
+            if (step["area_after"] != area_before or step["fight_after"]
+                    or timed_out):
                 step["interrupted"] = True
         steps.append(step)
         print(f"  walk {last['move']}: ok={step['ok']} {before} -> {step['after']}"
@@ -989,9 +1005,9 @@ def walk_after(sess, out: pathlib.Path, shots: dict, result: dict,
         result["settle_answers"] = answered
     if any(s.get("square_from") == "memory" for s in steps):
         result["memory_square"] = (
-            "PROBABLE: the walk read the square from `$49C0` because the "
-            "status line shows none; that it changes only on a real step "
-            "awaits a live control")
+            "PROBABLE: the walk read the square from `$C04B` because the "
+            "status line shows none and `$49C0` keeps the arrival square; "
+            "that `$C04B` changes only on a real step awaits a live control")
     print(("PASS: walk: " if walk_ok else "FAIL: walk: ") + walk_message,
           flush=True)
     return 0 if walk_ok else 1
