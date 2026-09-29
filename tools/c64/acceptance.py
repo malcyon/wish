@@ -354,6 +354,10 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "temple-probe": "must", "warp": "must",
          "walk-fight": "must", "walk-flee": "must"}
 
+#: What `temple-probe` accepts: the member, and with `HEAL` the one screen
+#: past the temple bar's HEAL.
+TEMPLE_PROBE_ARGS = ("BRUTUS", "BRUTUS HEAL")
+
 #: How long a walk keeps watching for a disk prompt after a move (seconds).
 LOOK_SECONDS = 2.0
 
@@ -473,8 +477,9 @@ def parse_steps(texts) -> list[Step]:
             parse_cure(arg)
         elif verb == "ready":
             parse_ready(arg)
-        elif verb == "temple-probe" and arg != "BRUTUS":
-            raise ValueError("temple-probe requires BRUTUS")
+        elif verb == "temple-probe" and arg not in TEMPLE_PROBE_ARGS:
+            raise ValueError("temple-probe requires BRUTUS, optionally "
+                             "followed by HEAL")
         elif verb == "warp":
             parse_warp(arg)
         elif verb == "fight" and arg and not (arg.isdigit() and int(arg) > 0):
@@ -1896,16 +1901,53 @@ class PoolRun:
         self._temple_stop("transition", f"movement {n + 1} did not settle "
                           "within 90 seconds")
 
-    def temple_probe(self, who: str) -> dict:
-        """Capture the temple arrival screen and stop; go no further.
+    @staticmethod
+    def _temple_top_row_is(screen, name: str) -> bool:
+        """Whether the party panel's highlighted row is its first, and is NAME.
 
-        The HEAL service list beyond arrival -- its text, its bar, whether
-        RAISE DEAD appears, and the resident byte there -- has never been
-        seen live (#700). Recognising it would be a guess, so the route
-        ends here: reaching and capturing the arrival screen is itself the
-        result this probe exists to produce."""
-        if who != "BRUTUS" or self.game.key != "pool-of-radiance":
+        Read from the snapshot's own colour RAM, as `S.span_in` does for a
+        bar; the heading is drawn in the highlight colour too, so only the
+        rows under it count."""
+        head = next((r for r in S.PARTY_ROWS
+                     if S.PARTY_HEADER in screen.row(r)[S.PARTY_COLUMN:]), None)
+        if head is None:
+            return False
+        width = screen.row(head)[S.PARTY_COLUMN:].index(S.PARTY_HEADER)
+        top = next((r for r in S.PARTY_ROWS if r > head and screen.row(r)[
+            S.PARTY_COLUMN:S.PARTY_COLUMN + width].strip()), None)
+        return (top is not None
+                and screen.colours[top * 40 + S.PARTY_COLUMN] == 1
+                and screen.row(top)[S.PARTY_COLUMN:].split()[:1] == [name])
+
+    def _temple_heal_screen(self, bar: str) -> dict:
+        """Wait out blank bars after HEAL and keep the first drawn, new one.
+
+        BAR is the temple bar HEAL was chosen from; it stays on screen until
+        the game redraws, so it is not the answer. Nothing is sent here."""
+        limit = min(self.clock() + 90, self.temple_input_deadline)
+        last = None
+        while self.clock() < limit:
+            sample = self.temple_sample()
+            last = sample
+            screen = sample.screen
+            if (screen is not None and screen.row(24).strip()
+                    and screen.row(24) != bar):
+                return self.temple_checkpoint("heal-first-screen", sample)
+            time.sleep(0.3)
+        self._temple_stop("heal", "no screen drawn within 90 seconds of HEAL",
+                          last)
+
+    def temple_probe(self, who: str) -> dict:
+        """Capture the temple arrival screen and stop; with `HEAL`, select it
+        once and capture the next drawn screen.
+
+        The HEAL service list -- its text, its bar, whether RAISE DEAD
+        appears, and the resident byte there -- has never been seen live
+        (#700). Recognising it would be a guess, so the probe sends HEAL
+        once, keeps what is drawn next, and sends nothing further."""
+        if who not in TEMPLE_PROBE_ARGS or self.game.key != "pool-of-radiance":
             raise StepFailed("temple probe requires Pool BRUTUS")
+        heal = who.endswith(" HEAL")
         initial = self.temple_checkpoint(
             "loaded-source", self._temple_steady("in the loaded source"))
         place = self._temple_place(initial["state"])
@@ -1934,12 +1976,22 @@ class PoolRun:
         for n, (move, before, expected) in enumerate(TEMPLE_ROUTE):
             self._temple_move(move, before)
             arrival = self._temple_transition(n, before, expected, counters)
-        return {"route": "KKIIJI", "movement_keys": 6,
-                "side3_prompts": counters["disk"],
-                "continuations": counters["continuations"],
-                "questions": counters["questions"],
-                "arrival": arrival["stem"],
-                "checkpoints": len(self.temple_checkpoints)}
+        result = {"route": "KKIIJI", "movement_keys": 6,
+                  "side3_prompts": counters["disk"],
+                  "continuations": counters["continuations"],
+                  "questions": counters["questions"],
+                  "arrival": arrival["stem"]}
+        if heal:
+            at_arrival = self.temple_sample()
+            if (at_arrival.screen is None
+                    or not self._temple_top_row_is(at_arrival.screen, "BRUTUS")):
+                self._temple_stop("member", "BRUTUS is not the highlighted "
+                                  "top row of the party panel", at_arrival)
+            bar = at_arrival.screen.row(24)
+            self._temple_select_bar("HEAL", "temple")
+            result["heal_first_screen"] = self._temple_heal_screen(bar)["stem"]
+        result["checkpoints"] = len(self.temple_checkpoints)
+        return result
 
     @staticmethod
     def _list_bar(bar: str) -> bool:
@@ -4669,7 +4721,7 @@ def main(argv: list[str] | None = None) -> int:
                          "'rest 8h', 'walk I', 'fight [SECONDS]', 'peek ADDR N', "
                          "'cast CASTER:SPELL[>TARGET]', 'cure PALADIN>TARGET', "
                          "'ready WHO>LABEL' (Pool only), "
-                         "'temple-probe BRUTUS' (bounded Pool observation), save")
+                         "'temple-probe BRUTUS [HEAL]' (bounded Pool observation), save")
     ap.add_argument("--checkpoint", action="append", default=[],
                     metavar="ADDR[=NAME]",
                     help="hex; a non-stopping exec checkpoint armed after the "
@@ -4744,7 +4796,8 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("the fight step needs --title pool or curse")
     temple_mode = any(step.verb == "temple-probe" for step in steps)
     if temple_mode:
-        if (steps != [Step("load"), Step("temple-probe", "BRUTUS")]
+        if (steps not in ([Step("load"), Step("temple-probe", "BRUTUS")],
+                          [Step("load"), Step("temple-probe", "BRUTUS HEAL")])
                 or args.title != "pool" or args.issue != "700"
                 or any((args.stage_row, args.stage_trait, args.stage_item,
                         args.stage_record, args.stage_status, args.checkpoint,
@@ -4755,7 +4808,7 @@ def main(argv: list[str] | None = None) -> int:
                 or args.walk != "I" or args.walk_steps != 40
                 or not 100 < args.max_seconds <= 1500):
             ap.error("temple-probe requires exactly --title pool --issue 700 "
-                     "--steps load 'temple-probe BRUTUS', no staging, saving, "
+                     "--steps load 'temple-probe BRUTUS [HEAL]', no staging, saving, "
                      "checkpoint or other probe options, and a 1500-second "
                      "maximum with 100 seconds reserved for cleanup")
     if args.capture_ready and args.preserve_specimen:

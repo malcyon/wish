@@ -117,6 +117,15 @@ def test_the_steps_parse_and_keep_their_arguments():
     assert A.parse_peek("$4900 64") == (0x4900, 64)
 
 
+def test_temple_probe_step_takes_an_optional_heal():
+    assert A.parse_steps(["load", "temple-probe BRUTUS HEAL"])[1] == (
+        A.Step("temple-probe", "BRUTUS HEAL"))
+    for bad in ("temple-probe BRUTUS RAISE", "temple-probe HEAL",
+                "temple-probe BAKSHI HEAL", "temple-probe BRUTUS HEAL HEAL"):
+        with pytest.raises(ValueError):
+            A.parse_steps(["load", bad])
+
+
 def test_temple_probe_step_names_only_brutus():
     assert A.parse_steps(["load", "temple-probe BRUTUS"])[1] == (
         A.Step("temple-probe", "BRUTUS"))
@@ -174,6 +183,20 @@ def test_temple_probe_accepts_only_the_bounded_command(tmp_path, monkeypatch):
     assert args.max_seconds == 1500 and selected == source
     assert out == tmp_path / "out"
     assert "'temple-probe BRUTUS'" in args.command
+
+
+def test_temple_probe_main_accepts_the_heal_command(tmp_path, monkeypatch):
+    source = _fixture_disk(tmp_path)
+    observed = []
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    monkeypatch.setattr(A, "run", lambda args, steps, out, selected: observed.append(
+        steps) or 0)
+    assert A.main(["--title", "pool", "--save", str(source),
+                   "--disks", str(tmp_path), "--issue", "700",
+                   "--run", "temple-route-g", "--max-seconds", "1500",
+                   "--steps", "load", "temple-probe BRUTUS HEAL",
+                   "--out", str(tmp_path / "out")]) == 0
+    assert observed == [[A.Step("load"), A.Step("temple-probe", "BRUTUS HEAL")]]
 
 
 def test_temple_input_guard_stops_boot_and_prompt_keys_at_cleanup_reserve():
@@ -312,6 +335,8 @@ class _TempleSession:
         self.cursor_after_side3 = cursor_after_side3
         self.cursor_triple = (1, 4, 1)
         self.cursor_reads = 0
+        self.heal_never_draws = unsafe == "heal-never-draws"
+        self.heal_blank_reads = 0
         self.paused = False
         # The live run crossing the area edge showed the memory triple
         # ahead of the redrawn screen for one poll; `crossing_lag` makes
@@ -347,6 +372,11 @@ class _TempleSession:
         return _TempleMonitor(self)
 
     def screen(self):
+        if self.phase == "heal" and self.heal_blank_reads:
+            # Blank bar frames before the list draws, as the transition
+            # screens between temple and service do.
+            self.heal_blank_reads -= 1
+            return _TempleScreen([""] * 25)
         if self.crossing_lag:
             place, phase = self._pre_crossing_place, "move"
             self.crossing_lag -= 1
@@ -401,7 +431,9 @@ class _TempleSession:
             # POOL APPRAISE EXIT`.
             rows[14] = ""
             rows[3] = " " * A.S.PARTY_COLUMN + "NAME        AC HP"
-            names = ["ROLAND", "BAKSHI", "SHARA", "MARK", "PHILIPPE", "BRUTUS"]
+            names = ["BRUTUS", "BAKSHI", "SHARA", "MARK", "PHILIPPE", "ROLAND"]
+            if self.unsafe == "other-top":
+                names[0], names[5] = names[5], names[0]
             for offset, name in enumerate(names):
                 rows[4 + offset] = " " * A.S.PARTY_COLUMN + name
             rows[24] = ("HEAL VIEW POOL APPRAISE EXIT"
@@ -411,10 +443,19 @@ class _TempleSession:
                 # no live capture has shown one here, but the transition
                 # must never treat this as settled if it appears.
                 rows[14] = "N 00:00 99,99"
+        elif phase == "heal-blank":
+            pass  # The bar is cleared while the next screen loads.
+        elif phase == "heal":
+            # Invented list: the real one has never been seen.
+            rows[3] = " " * A.S.PARTY_COLUMN + "NAME        AC HP"
+            rows[4] = " " * A.S.PARTY_COLUMN + "BRUTUS"
+            rows[24] = "SERVICE ONE TWO EXIT"
         else:
             raise AssertionError(phase)
         if phase == "question":
             return _TempleScreen(rows, (0, 3))
+        if phase == "temple":
+            return _TempleScreen(rows, (0, 4), 4)
         return _TempleScreen(rows)
 
     def screenshot(self, path, timeout=None):
@@ -507,6 +548,13 @@ class _TempleSession:
         self.phase = "move"
 
     def confirm_bar(self, row, was):
+        if self.phase == "temple":
+            assert row == 24 and "HEAL" in was
+            self.keys.append("HEAL")
+            self.phase = "heal-blank" if self.heal_never_draws else "heal"
+            if not self.heal_never_draws:
+                self.heal_blank_reads = 3
+            return
         assert self.phase == "question" and row == 24 and "YES" in was
         self.keys.append("YES")
         if self.unsafe == "question-twice" and not self._question_answered_once:
@@ -609,6 +657,39 @@ def test_temple_probe_reaches_and_captures_arrival_then_stops(
     assert all((tmp_path / (x["stem"] + ext)).is_file()
                for x in run.temple_checkpoints for ext in (".txt", ".png", ".json"))
     assert any(args[0] == "temple-checkpoint" for args, _ in events)
+
+
+def test_temple_probe_heal_selects_it_once_and_keeps_the_next_drawn_screen(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    result = run.temple_probe("BRUTUS HEAL")
+    assert session.keys == ["side3", "YES", "HEAL"]
+    assert session.phase == "heal"
+    assert run.temple_checkpoints[-1]["tag"] == "heal-first-screen"
+    assert result["heal_first_screen"] == run.temple_checkpoints[-1]["stem"]
+    assert result["arrival"] != result["heal_first_screen"]
+    assert (tmp_path / f"{result['heal_first_screen']}.png").is_file()
+
+
+def test_temple_probe_heal_stops_at_ninety_seconds_keeping_the_blank_frame(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            unsafe="heal-never-draws")
+    with pytest.raises(A.StepFailed, match="90 seconds of HEAL"):
+        run.temple_probe("BRUTUS HEAL")
+    assert session.keys[-1] == "HEAL"
+    assert run.temple_checkpoints[-1]["tag"] == "lost-heal"
+    assert run.clock() >= 90
+
+
+def test_temple_probe_heal_stops_before_heal_when_another_member_is_on_top(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch,
+                                            unsafe="other-top")
+    with pytest.raises(A.StepFailed, match="highlighted top row"):
+        run.temple_probe("BRUTUS HEAL")
+    assert "HEAL" not in session.keys
+    assert run.temple_checkpoints[-1]["tag"] == "lost-member"
 
 
 @pytest.mark.parametrize("unsafe,maximum_moves", [
