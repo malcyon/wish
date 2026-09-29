@@ -836,6 +836,17 @@ def test_a_fight_rolled_on_arrival_is_the_fight(monkeypatch):
     assert edge["arrived"] == "fight"
 
 
+def test_a_fight_on_arrival_is_returned_although_the_area_reads_the_fights_script(
+        monkeypatch):
+    # During a fight the area slot reads 100, not the Slums' 20.
+    sess, log, got = _walk(monkeypatch, fight_after=None, area=100,
+                           arrival=["", "", "COMBAT WAIT FLEE ADVANCE"])
+    assert got == {"in_combat": True, "began_at": list(T.SLUMS_ENTRY),
+                   "at_target": False, "desynced": None}
+    edge = next(w for kind, w in log.events if kind == "edge")
+    assert edge["arrived"] == "fight" and edge["area"] == 100
+
+
 def test_a_press_bar_during_the_load_is_answered(monkeypatch):
     sess, log, got = _walk(monkeypatch, fight_after=None,
                            arrival=["", "PRESS RETURN OR BUTTON TO CONTINUE",

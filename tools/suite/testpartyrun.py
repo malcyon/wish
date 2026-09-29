@@ -852,7 +852,9 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
         area = resident_area(sess, log)
         log.emit("edge", moved=bool(moved), area=area, arrived=arrived)
         log.say(f"  stepped off the edge; area {area}; {arrived} up")
-        if area != SLUMS_AREA:
+        # A fight's own script is resident while it runs, so its area is not
+        # the Slums' and only a move or a world bar is checked against it.
+        if arrived != "fight" and area != SLUMS_AREA:
             raise RuntimeError(f"expected area {SLUMS_AREA} after the edge, "
                                f"read {area}")
         leg = "slums"
