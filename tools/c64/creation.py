@@ -57,7 +57,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from automap import gamedisks  # noqa: E402
-from goldbox import derive, savegame  # noqa: E402
+from goldbox import derive, levels, savegame  # noqa: E402
 from goldbox.classcode import CLASS_BIT_FOR_NAME  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
@@ -90,6 +90,17 @@ CLASSES_BY_RACE = {
     "HALFLING": ("FIGHTER", "THIEF", "FIGHTER/THIEF"),
     "HUMAN": ("CLERIC", "FIGHTER", "MAGIC-USER", "THIEF"),
 }
+
+#: The constitution each sturdy race's creation roll can give, as measured on
+#: the roll screen.  A band outside it is refused before any key is pressed.
+CON_LIMITS = {"DWARF": (12, 19), "GNOME": (8, 18), "HALFLING": (10, 19)}
+#: The saving throws in stored order, `0x09A` to `0x09E`.
+SAVE_FIELDS = ("save_paralysis", "save_petrification", "save_wands",
+               "save_breath", "save_spell")
+#: Rolls made looking for a constitution band before the run gives up.
+MAX_ROLLS = 2000
+#: How long a new roll is waited for after ROLL AGAIN.
+REROLL_WAIT = 3.0
 
 #: On-screen text, in the order of the code stored at `0x0D8`.
 ALIGNMENTS = tuple(a.upper() for a in ALIGNMENT_CODES)
@@ -182,6 +193,9 @@ class Spec:
     cls: str
     alignment: str
     classes: dict[str, int]
+    #: The constitution the roll must show, low and high, or None to keep the
+    #: first roll.
+    constitution: tuple[int, int] | None = None
 
     @classmethod
     def from_json(cls, d: dict) -> "Spec":
@@ -206,8 +220,21 @@ class Spec:
         if bad:
             raise ValueError(f"{name}: unknown class {bad} in {klass!r}")
         classes = d.get("classes") or {p: 1 for p in parts}
+        band = d.get("constitution")
+        if band is not None:
+            if len(band) != 2:
+                raise ValueError(f"{name}: constitution is [low, high]")
+            band = (int(band[0]), int(band[1]))
+            if band[0] > band[1]:
+                raise ValueError(f"{name}: constitution {list(band)} is "
+                                 f"empty: low is above high")
+            limits = CON_LIMITS.get(race)
+            if limits and (band[0] > limits[1] or band[1] < limits[0]):
+                raise ValueError(f"{name}: a {race} rolls constitution "
+                                 f"{limits[0]}-{limits[1]}, so {list(band)} "
+                                 f"can never be met")
         return cls(name, race, gender, klass, alignment,
-                   {str(k).lower(): int(v) for k, v in classes.items()})
+                   {str(k).lower(): int(v) for k, v in classes.items()}, band)
 
     @property
     def class_bits(self) -> int:
@@ -358,8 +385,9 @@ class Driver:
 
     def __init__(self, sess, out: pathlib.Path, log, *, clock=time.monotonic,
                  sleep=time.sleep, deadline: float | None = None,
-                 cleanup: float = CLEANUP_SECONDS):
+                 cleanup: float = CLEANUP_SECONDS, max_rolls: int = MAX_ROLLS):
         self.sess, self.out, self.log = sess, out, log
+        self.max_rolls = max_rolls
         self.clock, self.sleep = clock, sleep
         self.limit = None if deadline is None else deadline - cleanup
         self.unrecognised_seconds = UNRECOGNISED_SECONDS
@@ -367,6 +395,7 @@ class Driver:
         self.poll = POLL
         self.shots = 0
         self.rolls: dict[str, dict[str, int]] = {}
+        self.rolls_seen: dict[str, list[dict[str, int]]] = {}
         self.record_lines: list[str] = []
 
     # -- the clock ---------------------------------------------------------
@@ -537,6 +566,37 @@ class Driver:
                             f"{first} then {again}", "roll")
         return first
 
+    def roll_for(self, s, spec: Spec):
+        """Roll until the constitution is in SPEC's band; keep the first roll
+        when there is none.  Returns the ROLL screen the kept roll is on."""
+        seen = self.rolls_seen[spec.name] = []
+        roll = self.read_scores(s)
+        seen.append(roll)
+        self.log.emit("roll", name=spec.name, attempt=1, **roll)
+        band = spec.constitution
+        while band and not band[0] <= roll["constitution"] <= band[1]:
+            if len(seen) >= self.max_rolls:
+                low = min(r["constitution"] for r in seen)
+                raise self.lost(
+                    f"{spec.name}: no constitution in {list(band)} in "
+                    f"{len(seen)} rolls; the lowest was {low}", "rolls")
+            s = self.choose(s, ROLL, "ROLL AGAIN", ROLL, column=ROLL_COLUMN,
+                            tag=f"{spec.name}-reroll")
+            # The same roll twice is possible, so a screen still showing the
+            # last roll after the wait is taken as it is.
+            end = self.clock() + self.left(REROLL_WAIT)
+            while self.clock() < end:
+                now = self.sess.screen()
+                if now is not None and scores(now) not in ({}, roll):
+                    s = now
+                    break
+                self.sleep(self.poll)
+            roll = self.read_scores(s)
+            seen.append(roll)
+            self.log.emit("roll", name=spec.name, attempt=len(seen), **roll)
+        self.rolls[spec.name] = roll
+        return s
+
     # -- one character -----------------------------------------------------
 
     def to_pick_race(self):
@@ -576,8 +636,7 @@ class Driver:
                         column=RACE_COLUMN, tag=f"{spec.name}-race")
         s = self.choose(s, PICK_GENDER, spec.gender, ROLL,
                         column=GENDER_COLUMN, tag=f"{spec.name}-roll")
-        self.rolls[spec.name] = self.read_scores(s)
-        self.log.emit("roll", name=spec.name, **self.rolls[spec.name])
+        s = self.roll_for(s, spec)
         s = self.choose(s, ROLL, "KEEP", PICK_CLASS, column=ROLL_COLUMN,
                         tag=f"{spec.name}-kept")
         s = self.choose(s, PICK_CLASS, spec.cls, PICK_ALIGN,
@@ -771,13 +830,18 @@ def _expected(spec: Spec, roll: dict[str, int] | None) -> dict:
             "level": 1, "experience": 0}
     if roll:
         want.update(roll)
+        # The rule `GEN $1F44` applies at creation, from the roll's own
+        # constitution, so a sturdy race's bonus is checked as well.
+        saves = levels.saving_throws(spec.classes, RACES[spec.race],
+                                     roll["constitution"], "pool-of-radiance")
+        want.update(zip(SAVE_FIELDS, saves or ()))
     return want
 
 
 def _read(rec: CharacterRecord) -> dict:
     got = {"name": rec.name, "class_levels": derive.class_levels(rec)}
     for field in ("race", "sex", "alignment", "class_bits", "level",
-                  "experience", *ABILITIES):
+                  "experience", *ABILITIES, *SAVE_FIELDS):
         got[field] = rec.get(field)
     return got
 
@@ -863,7 +927,7 @@ def write_summary(out: pathlib.Path, summary: dict) -> None:
 def run(sess, out: pathlib.Path, *, lists: bool = False,
         specs: list[Spec] | None = None, enter_world: bool = False,
         world_budget: float = WORLD_BUDGET, max_seconds: float = 3600.0,
-        argv: list[str] | None = None, git: dict | None = None,
+        max_rolls: int = MAX_ROLLS, argv: list[str] | None = None, git: dict | None = None,
         clock=time.monotonic, sleep=time.sleep,
         deadline: float | None = None, summary: dict | None = None) -> int:
     """One pass on a booted session; always writes `summary.json`.
@@ -878,7 +942,8 @@ def run(sess, out: pathlib.Path, *, lists: bool = False,
     if summary is None:
         summary = new_summary(git, argv)
     drv = Driver(sess, out, log, clock=clock, sleep=sleep,
-                 deadline=clock() + max_seconds if deadline is None else deadline)
+                 deadline=clock() + max_seconds if deadline is None else deadline,
+                 max_rolls=max_rolls)
     try:
         if lists:
             drv.lists()
@@ -901,6 +966,11 @@ def run(sess, out: pathlib.Path, *, lists: bool = False,
             drv.capture("lost-error")
     finally:
         summary["rolls"] = drv.rolls
+        summary["roll_counts"] = {
+            name: {"count": len(seen),
+                   "lowest": min(r["constitution"] for r in seen),
+                   "highest": max(r["constitution"] for r in seen)}
+            for name, seen in drv.rolls_seen.items() if seen}
         try:
             write_summary(out, summary)
         finally:
@@ -929,6 +999,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--world-budget", type=float, default=WORLD_BUDGET,
                     help="seconds to wait for the world bar after BEGIN "
                          "ADVENTURING")
+    ap.add_argument("--max-rolls", type=int, default=MAX_ROLLS,
+                    help="rolls made looking for a spec's constitution band "
+                         "before the run gives up")
     args = ap.parse_args(argv)
 
     try:
@@ -966,7 +1039,8 @@ def main(argv: list[str] | None = None) -> int:
             return run(sess, out, lists=args.lists, specs=specs,
                        enter_world=args.enter_world,
                        world_budget=args.world_budget,
-                       max_seconds=args.max_seconds, argv=sys.argv[1:], git=git,
+                       max_seconds=args.max_seconds, max_rolls=args.max_rolls,
+                       argv=sys.argv[1:], git=git,
                        deadline=deadline, summary=summary)
     except SystemExit as e:
         summary["lost"] = summary["lost"] or str(e.code)

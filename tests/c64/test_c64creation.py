@@ -910,6 +910,92 @@ def test_a_summary_that_cannot_be_written_still_closes_the_log(tmp_path, monkeyp
     assert closed == [1]
 
 
+# -- a constitution band -----------------------------------------------------------
+
+
+def con_roll(con):
+    return dict(strength=12, intelligence=11, wisdom=10, dexterity=13,
+                constitution=con, charisma=9)
+
+
+def gnome(band):
+    return creation.Spec.from_json({
+        "name": "VICEGNO", "race": "GNOME", "gender": "MALE",
+        "class": "FIGHTER", "alignment": "LAWFUL GOOD", "constitution": band})
+
+
+def test_a_roll_outside_the_band_is_rerolled_and_the_first_inside_is_kept(
+        tmp_path):
+    game = FakeGame(tmp_path, rolls=[con_roll(c) for c in (14, 12, 9, 16)])
+    code, _sess, game, out, summary = drive(tmp_path, [gnome([8, 10])], game)
+    assert code == 0
+    chosen = [label for state, label in game.chosen if state == "roll"]
+    assert chosen == ["ROLL AGAIN", "ROLL AGAIN", "KEEP"]
+    assert summary["rolls"]["VICEGNO"]["constitution"] == 9
+    assert summary["roll_counts"]["VICEGNO"] == {"count": 3, "lowest": 9,
+                                                 "highest": 14}
+    assert (out / "records.txt").read_text().splitlines()[-1] == \
+        "all records match the spec"
+
+
+def test_a_roll_inside_the_band_stops_at_once(tmp_path):
+    game = FakeGame(tmp_path, rolls=[con_roll(9), con_roll(14)])
+    _code, _sess, game, _out, summary = drive(tmp_path, [gnome([8, 10])], game)
+    assert [label for state, label in game.chosen if state == "roll"] == ["KEEP"]
+    assert summary["roll_counts"]["VICEGNO"]["count"] == 1
+
+
+def test_a_spec_without_a_band_keeps_the_first_roll(tmp_path):
+    game = FakeGame(tmp_path, rolls=[con_roll(16), con_roll(9)])
+    _code, _sess, game, _out, summary = drive(tmp_path, PAIR[:1], game)
+    assert [label for state, label in game.chosen if state == "roll"] == ["KEEP"]
+
+
+def test_the_same_roll_twice_is_taken_as_it_is_and_rolled_on(tmp_path):
+    game = FakeGame(tmp_path, rolls=[con_roll(14), con_roll(14), con_roll(9)])
+    code, _sess, game, _out, _summary = drive(tmp_path, [gnome([8, 10])], game)
+    assert code == 0
+    assert [label for state, label in game.chosen if state == "roll"] == \
+        ["ROLL AGAIN", "ROLL AGAIN", "KEEP"]
+
+
+def test_a_band_never_met_ends_with_a_refusal_naming_the_rolls(tmp_path):
+    code, _sess, game, out, summary = drive(
+        tmp_path, [gnome([8, 10])], FakeGame(tmp_path, rolls=[con_roll(14)]),
+        max_rolls=5)
+    assert code == 1
+    assert "[8, 10]" in summary["lost"] and "5 rolls" in summary["lost"]
+    assert "lowest was 14" in summary["lost"]
+    assert [label for state, label in game.chosen if state == "roll"] == \
+        ["ROLL AGAIN"] * 4
+    logged = [json.loads(ln) for ln in
+              (out / "run.jsonl").read_text().splitlines()]
+    assert [r["attempt"] for r in logged if r.get("event") == "roll"
+            or r.get("kind") == "roll"] == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.parametrize("race, band", [
+    ("DWARF", [8, 10]), ("DWARF", [8, 11]), ("GNOME", [4, 6]),
+    ("GNOME", [19, 19]), ("HALFLING", [8, 9]), ("HUMAN", [10, 8])])
+def test_a_band_the_race_cannot_roll_is_refused_before_any_key(tmp_path, race,
+                                                               band):
+    with pytest.raises(ValueError):
+        creation.Spec.from_json({
+            "name": "VICE", "race": race, "gender": "MALE",
+            "class": "FIGHTER", "alignment": "LAWFUL GOOD",
+            "constitution": band})
+
+
+@pytest.mark.parametrize("race, band", [
+    ("GNOME", [8, 10]), ("HALFLING", [10, 10]), ("DWARF", [12, 13]),
+    ("HUMAN", [3, 5])])
+def test_a_band_the_race_can_roll_is_accepted(race, band):
+    got = creation.Spec.from_json({
+        "name": "VICE", "race": race, "gender": "MALE", "class": "FIGHTER",
+        "alignment": "LAWFUL GOOD", "constitution": band})
+    assert got.constitution == tuple(band)
+
+
 # -- check_records ------------------------------------------------------------------
 
 
@@ -940,6 +1026,8 @@ MUTATIONS = [
     ("class_bits", 1), ("level_fighter", 2), ("level", 2), ("experience", 5),
     ("strength", 16), ("intelligence", 3), ("wisdom", 3), ("dexterity", 3),
     ("constitution", 3), ("charisma", 3),
+    ("save_paralysis", 1), ("save_petrification", 1), ("save_wands", 1),
+    ("save_breath", 1), ("save_spell", 1),
 ]
 
 
@@ -1639,3 +1727,29 @@ def test_the_with_column_path_ignores_the_frame_rule():
     s = _framed_screen(" NO", {2: 1, 3: 1}, framed=True)
     assert s.highlighted_rows(column=2) == [5]
     assert s.highlighted_rows(column=10) == []
+
+
+def test_a_sturdy_races_saves_are_checked_against_its_constitution(tmp_path):
+    """A gnome with constitution 9 takes 9 * 2 // 7 = 2 off all five saves."""
+    sp = gnome([8, 10])
+    roll = con_roll(9)
+    plain = record(sp, roll)
+    tables = creation.levels.saving_throws(sp.classes, creation.RACES["GNOME"],
+                                           9, "pool-of-radiance")
+    without = creation.levels.saving_throws(sp.classes, 0, 9,
+                                            "pool-of-radiance")
+    assert [b - a for a, b in zip(tables, without)] == [2] * 5
+    assert [plain.get(f) for f in creation.SAVE_FIELDS] == list(tables)
+    disk([plain], names=[sp.name]).save(str(tmp_path / "rolled.D64"))
+    disk([plain], party=True, exports=False).save(str(tmp_path / "party.D64"))
+    args = (tmp_path / "rolled.D64", tmp_path / "party.D64", [sp])
+    assert creation.check_records(*args, {sp.name: roll})[-1] == \
+        "all records match the spec"
+    # The same record with the two points not taken off: only the saves differ.
+    for f, v in zip(creation.SAVE_FIELDS, without):
+        plain.set(f, v)
+    disk([plain], names=[sp.name]).save(str(tmp_path / "rolled.D64"))
+    lines = creation.check_records(*args, {sp.name: roll})
+    assert lines[-1] == "SPEC MISMATCH"
+    bad = [ln.split("MISMATCH: ")[1] for ln in lines if "export:" in ln]
+    assert all(m.startswith("save_") for m in bad[0].split("; "))
