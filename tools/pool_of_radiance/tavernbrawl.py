@@ -943,6 +943,10 @@ def after_fight(sess, traps: Traps, log, out: pathlib.Path, args, before: list) 
                  **step_on(sess, square_now(sess), out, "after-destination"))
 
 
+#: Seconds `record_stall` gives the screenshot, so a hung `import` cannot hold the slot.
+STALL_SHOT_TIMEOUT = 20.0
+
+
 def record_stall(sess, log, out: pathlib.Path, step: str) -> None:
     """Log what the machine showed when a setup step gave up, and take a PNG.
 
@@ -963,7 +967,7 @@ def record_stall(sess, log, out: pathlib.Path, step: str) -> None:
         stall = f"unreadable: {exc!r}"
     shot = out / f"{step}-failed.png"
     try:
-        took = bool(sess.kbd.screenshot(str(shot)))
+        took = bool(sess.kbd.screenshot(str(shot), timeout=STALL_SHOT_TIMEOUT))
     except Exception as exc:
         log.emit("shot_failed", label=f"{step}-failed", error=repr(exc))
         took = False

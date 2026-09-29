@@ -977,22 +977,70 @@ def test_a_terminate_that_fails_still_closes_the_log_and_tears_the_slot_down(mon
     assert log.closed
 
 
-def test_a_failed_setup_step_logs_the_screen_the_stall_and_a_picture(monkeypatch, tmp_path):
+def stalled_run(monkeypatch, tmp_path, screen=None, stall=None, shot=None):
+    """A run whose `begin_adventuring` fails, with the three readings replaceable."""
     torn, log = [], FakeLog()
     sess = FakeSession()
     sess.begin_adventuring = lambda: False
-    sess.screen = lambda: SimpleNamespace(rows=lambda: ["", " BEGIN ADVENTURING  "])
-    sess.stall_capture = lambda: "C64 PC 1234"
-    sess.kbd = SimpleNamespace(shots=[], screenshot=lambda p: sess.kbd.shots.append(p) or True)
+    sess.screen = screen or (lambda: SimpleNamespace(rows=lambda: ["", " BEGIN ADVENTURING  "]))
+    sess.stall_capture = stall or (lambda: "C64 PC 1234")
+    calls = []
+
+    def screenshot(path, **kw):
+        calls.append((path, kw))
+        return True if shot is None else shot()
+
+    sess.kbd = SimpleNamespace(screenshot=screenshot)
     patch_run(monkeypatch, torn, log, Session=lambda *a, **k: sess)
     assert tb.run(args(out=str(tmp_path / "o"))) == 2
+    assert torn == [] and sess.terminated and log.closed
     [failed] = log.kinds("step_failed")
     assert failed["step"] == "begin_adventuring"
+    return failed, calls, log
+
+
+def raises(*a, **k):
+    raise OSError("the monitor went away")
+
+
+def test_a_failed_setup_step_logs_the_screen_the_stall_and_a_picture(monkeypatch, tmp_path):
+    failed, calls, _ = stalled_run(monkeypatch, tmp_path)
     assert failed["rows"] == [" BEGIN ADVENTURING"]
     assert failed["stall"] == "C64 PC 1234"
-    assert [pathlib.Path(p).name for p in sess.kbd.shots] == ["begin_adventuring-failed.png"]
-    assert failed["shot"] == sess.kbd.shots[0]
-    assert torn == [] and sess.terminated
+    [(path, kw)] = calls
+    assert pathlib.Path(path).name == "begin_adventuring-failed.png"
+    assert kw == {"timeout": tb.STALL_SHOT_TIMEOUT}
+    assert failed["shot"] == path
+
+
+def test_a_failed_step_with_no_text_screen_says_so(monkeypatch, tmp_path):
+    failed, _, _ = stalled_run(monkeypatch, tmp_path, screen=lambda: None)
+    assert failed["rows"] == "no readable text screen"
+
+
+def test_a_failed_step_whose_screen_read_raises_still_ends_the_run(monkeypatch, tmp_path):
+    failed, _, _ = stalled_run(monkeypatch, tmp_path, screen=raises)
+    assert failed["rows"].startswith("unreadable: OSError")
+    assert failed["stall"] == "C64 PC 1234"
+
+
+def test_a_failed_step_whose_stall_capture_raises_still_ends_the_run(monkeypatch, tmp_path):
+    failed, _, _ = stalled_run(monkeypatch, tmp_path, stall=raises)
+    assert failed["stall"].startswith("unreadable: OSError")
+    assert failed["rows"] == [" BEGIN ADVENTURING"]
+
+
+def test_a_failed_step_whose_screenshot_raises_logs_shot_failed(monkeypatch, tmp_path):
+    failed, _, log = stalled_run(monkeypatch, tmp_path, shot=raises)
+    assert failed["shot"] is None
+    [bad] = log.kinds("shot_failed")
+    assert bad["label"] == "begin_adventuring-failed" and "OSError" in bad["error"]
+
+
+def test_a_failed_step_whose_screenshot_is_refused_names_no_picture(monkeypatch, tmp_path):
+    failed, _, log = stalled_run(monkeypatch, tmp_path, shot=lambda: False)
+    assert failed["shot"] is None
+    assert not log.kinds("shot_failed")
 
 
 def test_a_refused_argument_combination_closes_the_log(monkeypatch, tmp_path):
