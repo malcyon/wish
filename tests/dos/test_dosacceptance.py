@@ -635,9 +635,48 @@ def test_pool_cast_animate_dead_sends_no_target_and_returns_to_camp(
     game, d = _cast_camp(tmp_path, rows=[_HEADER, _ANIMATE])
     got = d.cast(2, "ANIMATE-DEAD")
     assert game.cast == [(_ANIMATE, None)] and got["target"] is None
-    assert got["rows_before"] == 1 and got["rows_after"] == 0
+    assert got["rows_before"] == 1 and got["confirmed"] == "magic-bar"
+    assert "rows_after" not in got
     assert game.keys[game.keys.index("c", game.keys.index("c") + 1):].count("Return") == 0
     assert game.mode == "camp"
+
+
+def test_pool_cast_a_lone_bless_is_not_accepted_through_the_magic_bar(
+        tmp_path, _cast_measured, monkeypatch):
+    monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
+    game, d = _cast_camp(tmp_path, rows=[_HEADER, _BLESS])
+    with pytest.raises(da.StepFailed, match="a screen it does not know"):
+        d.cast(2, "BLESS")
+
+
+def test_pool_cast_animate_dead_needs_a_lone_row_to_be_accepted_through_the_magic_bar(
+        tmp_path, _cast_measured, monkeypatch):
+    _animate_dead_measured(monkeypatch)
+    monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
+    game, d = _cast_camp(tmp_path, rows=[_HEADER, _ANIMATE, _ANIMATE])
+    got = d.cast(2, "ANIMATE-DEAD")
+    # One row is left, so the list comes back and the ordinary check applies.
+    assert got["rows_after"] == 1 and "confirmed" not in got
+
+
+def test_pool_cast_a_targeted_spell_is_not_accepted_through_the_magic_bar(
+        tmp_path, _cast_measured, monkeypatch):
+    monkeypatch.setattr(dosbox.PoolOfRadiance, "MAGIC_BAR_CASTS",
+                        frozenset({"CURE-LIGHT-WOUNDS"}))
+    monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
+    game, d = _cast_camp(tmp_path, rows=[_HEADER, _CLW])
+    with pytest.raises(da.StepFailed, match="a screen it does not know"):
+        d.cast(2, "CURE-LIGHT-WOUNDS", 4)
+
+
+def test_pool_cast_a_spell_not_measured_to_use_the_magic_bar_times_out_on_it(
+        tmp_path, _cast_measured, monkeypatch):
+    _animate_dead_measured(monkeypatch)
+    monkeypatch.setattr(dosbox.PoolOfRadiance, "MAGIC_BAR_CASTS", frozenset())
+    monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
+    game, d = _cast_camp(tmp_path, rows=[_HEADER, _ANIMATE])
+    with pytest.raises(da.StepFailed):
+        d.cast(2, "ANIMATE-DEAD")
 
 
 def test_pool_cast_animate_dead_step_parses_and_save_and_read_may_follow():

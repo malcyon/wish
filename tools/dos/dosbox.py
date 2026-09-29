@@ -1533,6 +1533,9 @@ class PoolOfRadiance:
         "CURE-LIGHT-WOUNDS": ("b039acb665601fe2", True),
         "ANIMATE-DEAD": ("dc4b635ec2d5df1c", False),
     }
+    #: The spells measured to return to the Magic bar, not to the list, when
+    #: cast as the caster's only spell.
+    MAGIC_BAR_CASTS = frozenset({"ANIMATE-DEAD"})
 
     @classmethod
     def spell_rows(cls, screen: Screen) -> list[str]:
@@ -1554,7 +1557,11 @@ class PoolOfRadiance:
         before the next key; any other screen raises `TimeoutError` with
         nothing more pressed, and `LOSE IT` is never answered.  The cast is
         believed only when the list comes back holding one row of `spell`
-        fewer.  `caster`, the roster name's cells, is checked against the
+        fewer.  A spell in `MAGIC_BAR_CASTS` cast from a list of one is
+        confirmed only by the Magic bar coming back (`confirmed: "magic-bar"`,
+        no `rows_after`): its consumption is not seen on screen, so a refusal
+        that also returns to that bar would be believed, and the run's `read`
+        of the resave is what proves the cast.  `caster`, the roster name's cells, is checked against the
         list's title.  `shot(label)` is called at each screen reached.
         """
         from tools.dos.screens import bar_signature, roster_line
@@ -1634,11 +1641,10 @@ class PoolOfRadiance:
             # with no row to highlight.
             if b == self.SPELL_LIST_BAR and self.spell_rows(sc).count(sig) == have - 1:
                 return "cast"
-            # A cast that empties the caster's list leaves the Magic bar, not
-            # an empty list; believed only when the spell was the sole row of
-            # its kind and no row of it is left.
-            if (b == self.MAGIC_BAR and have == 1 and not targeted
-                    and self.spell_rows(sc).count(sig) == 0):
+            # Only a spell measured to leave the Magic bar, not an empty list,
+            # when it is the caster's only one.
+            if (b == self.MAGIC_BAR and spell in self.MAGIC_BAR_CASTS
+                    and have == 1 and not targeted):
                 return "cast"
             return None
 
@@ -1703,9 +1709,10 @@ class PoolOfRadiance:
                                    f"{spell} shorter after the cast")
             time.sleep(0.15)
         shots.append(snap("cast-done"))
-        after = self.spell_rows(screen).count(sig)
+        by_magic_bar = bar(screen) == self.MAGIC_BAR
+        after = None if by_magic_bar else self.spell_rows(screen).count(sig)
 
-        if bar(screen) != self.MAGIC_BAR:
+        if not by_magic_bar:
             press_for("e", self.MAGIC_BAR, self.SPELL_LIST_BAR, "EXIT")
         for _ in range(2):
             if bar(self.s.capture()) != self.MAGIC_BAR:
@@ -1715,9 +1722,14 @@ class PoolOfRadiance:
                 break
         if not self.s.wait_for(lambda sc: bar(sc) == self.CAMP_BAR, 15.0):
             raise TimeoutError("the camp bar did not come back after EXIT")
-        return {"spell": spell, "target": picked, "rows_before": have,
-                "rows_after": after, "list_presses": presses,
-                "target_presses": target_presses, "shots": [s for s in shots if s]}
+        got = {"spell": spell, "target": picked, "rows_before": have,
+               "list_presses": presses, "target_presses": target_presses,
+               "shots": [s for s in shots if s]}
+        if by_magic_bar:
+            got["confirmed"] = "magic-bar"
+        else:
+            got["rows_after"] = after
+        return got
 
     # -- the fight ---------------------------------------------------------
     #
