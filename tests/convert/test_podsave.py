@@ -583,7 +583,11 @@ def test_pod_new_savegame_rebuilds_every_played_amiga_slot():
         # held one comes back with no bundle and a different size.
         for was, now in zip(save.characters, rebuilt.characters):
             if was.bundled:
+                # Every scroll of the case becomes an item of its own and the
+                # case itself goes: these four blocks each hold one case.
                 assert now.bundled == 0, (label, was.name)
+                assert now.items == was.items - 1 + was.bundled, (
+                    label, was.name)
             else:
                 assert now.size == was.size, (label, was.name)
         assert amiga_savegame.pod_from_amiga(built) == state, label
@@ -591,6 +595,54 @@ def test_pod_new_savegame_rebuilds_every_played_amiga_slot():
         assert report.unwritten == []
         assert [c.name.strip() for c in rebuilt.characters] == \
             [c.name.strip() for c in save.characters], label
+
+
+#: Neutral fields a rebuilt block legitimately reads back differently: the
+#: game recomputes the first five on load, and the icon is the engine's own
+#: default rather than the source's. `name` is compared stripped.
+_REBUILD_DIFFERS = {"armour_class", "roster_tail", "movement_current",
+                    "thac0_current", "encumbrance", "combat_figure", "name"}
+
+
+def _rebuilt_characters(blob: bytes):
+    save, _state, built, _report = _round_trip_new_savegame(blob)
+    return zip(save.blocks, amiga_savegame.pod_parse(built).blocks)
+
+
+def _neutral_diffs(blob: bytes, fields=None) -> list[tuple[int, str]]:
+    out = []
+    for i, (was, now) in enumerate(_rebuilt_characters(blob)):
+        a, b = amiga_pod.pod_to_neutral(was), amiga_pod.pod_to_neutral(now)
+        assert str(a.get("name")).strip() == str(b.get("name")).strip()
+        for name in set(a.keys()) | set(b.keys()):
+            if name in _REBUILD_DIFFERS:
+                continue
+            if fields is not None and name not in fields:
+                continue
+            if fields is None and name in _KNOWN_REBUILD_DIFFS:
+                continue
+            if a.get(name) != b.get(name):
+                out.append((i, name))
+    return out
+
+
+#: Two fields that do change on a rebuild, tracked on #735.
+_KNOWN_REBUILD_DIFFS = ("class_bits", "spells_memorised")
+
+
+def test_pod_new_savegame_keeps_every_played_character_field():
+    for label, blob in _pod_amiga_slots():
+        assert _neutral_diffs(blob) == [], label
+
+
+@pytest.mark.xfail(strict=True, reason="#735: class_bits and the order of "
+                   "spells_memorised change on a rebuild")
+def test_pod_new_savegame_keeps_class_bits_and_spell_order():
+    diffs = []
+    for label, blob in _pod_amiga_slots():
+        diffs += [(label, *d) for d in
+                  _neutral_diffs(blob, fields=_KNOWN_REBUILD_DIFFS)]
+    assert diffs == []
 
 
 def test_pod_new_savegame_rebuilds_every_dos_specimen():
@@ -641,3 +693,12 @@ def test_pod_new_savegame_refuses_a_party_the_state_does_not_count():
         amiga_savegame.pod_new_savegame(state, [])
     with pytest.raises(amiga_savegame.AmigaSaveError):
         amiga_savegame.pod_new_savegame(state, [char] * 9)
+
+
+@pytest.mark.parametrize("count", [0, 9])
+def test_pod_new_savegame_refuses_a_party_outside_one_to_eight(count):
+    # The state counts the same number, so only the range check can refuse.
+    state = dataclasses.replace(_synthetic_state(1), count=count)
+    char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="1 to"):
+        amiga_savegame.pod_new_savegame(state, [char] * count)

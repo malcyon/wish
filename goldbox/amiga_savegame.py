@@ -2002,8 +2002,6 @@ def pod_new_savegame(state: world_state.PodWorldState,
     to the record, items and effects the loader walks: `to_pc` pads a loose
     `.pc` to 484 bytes and that padding is not part of a saved game.
     """
-    from . import amiga_pod
-
     party = tuple(characters)
     if not 1 <= len(party) <= POD_PARTY_MAX:
         raise AmigaSaveError(
