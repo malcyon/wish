@@ -51,9 +51,12 @@ a scratch directory (`--out`; by default `scratch.scratch_dir("dosfightwatch")`)
 through a fight and reads the companion and party parts `C` and `A` at the
 split's counting breakpoint in a second fight; see `measure_split`.  A folder
 saved where no wandering encounter happens (the Training Hall) is moved to where
-a donor save the DOS game wrote stands by `--place-like`, which changes only
-`SAVGAM?.DAT`'s area fields and square; the run stops before booting if any
-character file then differs from the folder's.
+a donor save the DOS game wrote stands by `--place-like`, which rewrites the
+area, resident map, DAX number, wallset and wallmap, zeroes and restages the ECL
+buffer, and sets the square and the tail bytes, all in `SAVGAM?.DAT`; the report
+counts the bytes that still differ from the donor.  The run stops before
+booting if any character file of the installed slot then differs from the
+folder's.
 
 `truth` is the other half of the comparison: the same party saved back by the
 game's own `ENCAMP > SAVE` before it is walked anywhere, then reloaded and
@@ -867,6 +870,48 @@ def summarize(initial: bytes, hits: list[dict], ovr: bytes, base: int,
     return out
 
 
+def require_pool(data: bytes, what: str) -> None:
+    """`ValueError` unless `data` is a Pool of Radiance saved game."""
+    try:
+        pool = (dos_savegame.container_for(len(data))
+                is dos_savegame.SAVE_POOL_OF_RADIANCE)
+    except dos_savegame.DosSaveError:
+        pool = False
+    if not pool:
+        raise ValueError(f"The {what} is not a Pool of Radiance saved game")
+
+
+def rewritten_offsets() -> set[int]:
+    """Every `SAVGAM` byte `place_like` writes: the script buffer, the header
+    byte, the words `retarget` and `place_like` set, and the square and tail."""
+    container = dos_savegame.SAVE_POOL_OF_RADIANCE
+    start, end = dos_savegame.ECL_BUFFER
+    out = set(range(start, end)) | {container.head}
+    for address in (dos_savegame.AREA, dos_savegame.SCRIPT, dos_savegame.DISK,
+                    dos_savegame.INDOORS,
+                    *range(dos_savegame.WALLSET, dos_savegame.WALLSET + 3),
+                    *range(dos_savegame.WALLMAP, dos_savegame.WALLMAP + 3)):
+        offset = dos_savegame.word_offset(address, container)
+        out |= {offset, offset + 1}
+    return out | set(range(12801, 12808))
+
+
+def surviving_differences(placed: bytes, donor: bytes) -> dict:
+    """How many bytes of `placed` still differ from `donor` outside what
+    `place_like` rewrites, as `[first, last]` offset ranges, so a reader can
+    see how much of the original save's state came along."""
+    skip = rewritten_offsets()
+    offsets = [i for i in range(min(len(placed), len(donor)))
+               if i not in skip and placed[i] != donor[i]]
+    ranges: list[list[int]] = []
+    for i in offsets:
+        if ranges and ranges[-1][1] == i - 1:
+            ranges[-1][1] = i
+        else:
+            ranges.append([i, i])
+    return {"count": len(offsets), "ranges": ranges}
+
+
 def place_like(save: pathlib.Path, donor: bytes, script: bytes) -> dict:
     """Move the staged `SAVGAM?.DAT` at `save` to where `donor` stands.
 
@@ -876,14 +921,8 @@ def place_like(save: pathlib.Path, donor: bytes, script: bytes) -> dict:
     resident map, DAX number, wallset, square and the script buffer.  Only
     `SAVGAM?.DAT` is written; the character files are not touched.
     """
-    for what, data in (("staged save", save.read_bytes()), ("donor", donor)):
-        try:
-            pool = (dos_savegame.container_for(len(data))
-                    is dos_savegame.SAVE_POOL_OF_RADIANCE)
-        except dos_savegame.DosSaveError:
-            pool = False
-        if not pool:
-            raise ValueError(f"The {what} is not a Pool of Radiance saved game")
+    require_pool(save.read_bytes(), "staged save")
+    require_pool(donor, "donor")
     if dos_savegame.outdoors(donor):
         raise ValueError("The donor stands on the overland map; a wandering "
                          "encounter there needs a different area's script")
@@ -900,7 +939,8 @@ def place_like(save: pathlib.Path, donor: bytes, script: bytes) -> dict:
     dos_savegame.put_tail_state(out, indoors=True)
     save.write_bytes(bytes(out))
     return {"area": area, "geo": geo, "dax": dax, "position": [x, y, facing],
-            "wallset": list(wallset)}
+            "wallset": list(wallset),
+            "differs_from_donor": surviving_differences(bytes(out), donor)}
 
 
 def check_donor_script(donor: bytes, script: bytes) -> None:
@@ -916,8 +956,10 @@ def check_donor_script(donor: bytes, script: bytes) -> None:
                          "script followed by zeros")
 
 
-def check_records_unchanged(folder: pathlib.Path, save_dir: pathlib.Path) -> dict:
-    """SHA-256 of each staged `CHRDAT*` against the folder's file of that name.
+def check_records_unchanged(folder: pathlib.Path, save_dir: pathlib.Path,
+                            letter: str) -> dict:
+    """SHA-256 of each staged `CHRDAT<letter>*` against the folder's file of
+    that name; the folder's other slots are not installed and not compared.
 
     Raises `ValueError` naming every file that differs or is missing, so a run
     that claims the game's own characters cannot start on altered ones.
@@ -925,7 +967,8 @@ def check_records_unchanged(folder: pathlib.Path, save_dir: pathlib.Path) -> dic
     def digests(directory: pathlib.Path) -> dict[str, str]:
         return {p.name.upper(): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in directory.iterdir()
-                if p.is_file() and p.name.upper().startswith("CHRDAT")}
+                if p.is_file()
+                and p.name.upper().startswith(f"CHRDAT{letter.upper()}")}
     want, got = digests(folder), digests(save_dir)
     bad = sorted(n for n in want.keys() | got.keys() if want.get(n) != got.get(n))
     if bad:
@@ -946,7 +989,8 @@ def install_folder(save_dir: pathlib.Path, folder: pathlib.Path,
     fights happen already.
     """
     wipe_roster(save_dir)
-    took = staging.install(folder, save_dir, staging.source_slot(folder, source))
+    chosen = staging.source_slot(folder, source)
+    took = staging.install(folder, save_dir, chosen, chosen)
     letter = took["as_slot"]
     if place is not None:
         place_like(save_dir / f"SAVGAM{letter}.DAT", *place)
@@ -1095,6 +1139,7 @@ def pile(*, folder: pathlib.Path, source: str | None, at: str | None,
     place = None
     if place_like_path is not None:
         donor = place_like_path.read_bytes()
+        require_pool(donor, "donor")
         dax = dos_savegame.dax_number(donor)
         name = f"ECL{dax}.DAX"
         script = dos_savegame.dax_block(
@@ -1109,7 +1154,9 @@ def pile(*, folder: pathlib.Path, source: str | None, at: str | None,
             letter = install_folder(s.save_dir, folder, at, source, place)
             if place is not None:
                 report["placed"] = dos_savegame_summary(s.save_dir, letter)
-            report.update(check_records_unchanged(folder, s.save_dir))
+                report["placed"]["differs_from_donor"] = surviving_differences(
+                    (s.save_dir / f"SAVGAM{letter}.DAT").read_bytes(), donor)
+            report.update(check_records_unchanged(folder, s.save_dir, letter))
             s.boot(fresh=False)
             por = dosbox.PoolOfRadiance(s)
             por.to_main_menu()

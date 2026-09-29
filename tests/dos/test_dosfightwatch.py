@@ -375,10 +375,10 @@ def test_placing_refuses_an_outdoor_donor(tmp_path):
 def test_a_changed_character_file_stops_the_run_before_it_boots(tmp_path, monkeypatch):
     folder, save = _stage(tmp_path)
     dosfightwatch.install_folder(save, folder)
-    assert dosfightwatch.check_records_unchanged(folder, save)["records_unchanged"]
+    assert dosfightwatch.check_records_unchanged(folder, save, "E")["records_unchanged"]
     (save / "CHRDATE7.SAV").write_bytes(b"\x08" * 285)
     with pytest.raises(ValueError, match="CHRDATE7.SAV"):
-        dosfightwatch.check_records_unchanged(folder, save)
+        dosfightwatch.check_records_unchanged(folder, save, "E")
 
     class Claimed:
         def __enter__(self):
@@ -450,7 +450,27 @@ def test_the_evoker_placed_in_the_slums_matches_the_engines_slums_save(tmp_path)
                     *range(dos_savegame.WALLMAP, dos_savegame.WALLMAP + 3)):
         off = dos_savegame.word_offset(address, dos_savegame.SAVE_POOL_OF_RADIANCE)
         allowed |= {off, off + 1}
-    allowed |= set(range(12801, 12808))
+    allowed |= {12801, 12802, 12805}
     changed = {i for i in range(len(before)) if before[i] != after[i]}
     assert changed <= allowed, sorted(changed - allowed)
-    assert dosfightwatch.check_records_unchanged(evoker, save)["records_unchanged"]
+    assert dosfightwatch.check_records_unchanged(evoker, save, "E")["records_unchanged"]
+
+
+def test_only_the_installed_slots_character_files_are_compared(tmp_path):
+    folder, save = _stage(tmp_path)
+    (folder / "SAVGAMF.DAT").write_bytes(bytes(POOL_SIZE))
+    (folder / "CHRDATF1.SAV").write_bytes(b"\x01" * 285)
+    letter = dosfightwatch.install_folder(save, folder, source="E")
+    assert not (save / "CHRDATF1.SAV").exists()
+    assert dosfightwatch.check_records_unchanged(folder, save, letter)
+
+
+def test_the_placed_save_reports_what_still_differs_from_the_donor(tmp_path):
+    folder, save = _stage(tmp_path)
+    data = bytearray((folder / "SAVGAME.DAT").read_bytes())
+    data[100] = 9                       # state the hall save holds and the donor does not
+    (folder / "SAVGAME.DAT").write_bytes(bytes(data))
+    script = b"\0\0" + b"\x42" * 100
+    dosfightwatch.install_folder(save, folder, place=(_donor(), script))
+    report = dosfightwatch.place_like(save / "SAVGAME.DAT", _donor(), script)
+    assert report["differs_from_donor"] == {"count": 1, "ranges": [[100, 100]]}
