@@ -354,11 +354,15 @@ message band.
 the arm that prints it calls no delay where the losing arm calls the game's
 own combat-speed one. At a 1 s poll a run read the frame before it and the
 frame after and saw neither; at 0.12 s it took **one reading of 240** to catch
-it. So `fight()`'s `poll` is a real parameter rather than a formality, and a
-driver that expects to see a message on the way out of a fight should turn it
-down and photograph inside the branch that sees it, rather than after the loop
-has returned. `docs/110-combat-log.md` has the branch and what a flight costs
-the party.
+it. So `fight()`'s `poll` is a real parameter, but a shorter poll is not a
+reliable capture: Pool caught the line once in 240 readings at 0.12 s, Silver
+Blades read it at that poll in one run, and Curse's two polled runs never saw it.
+The reliable capture is a stop-on-store checkpoint on the result byte, then a
+one-shot stop inside the branch that prints the line, which reads the screen
+while the line is up; Curse's driver does this and saw it. See
+[what the flee line looked like on a Curse and a Silver Blades screen](110-combat-log.md#what-the-flee-line-looked-like-on-a-curse-and-a-silver-blades-screen)
+for the addresses and `docs/110-combat-log.md` for the branch and what a flight
+costs the party.
 
 **And it is still not over there: a won fight ends on the treasure screens.**
 Two boots of `PORSAVE13.D64` on the same route each won at about 150 seconds
