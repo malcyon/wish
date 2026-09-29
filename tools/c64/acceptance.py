@@ -819,11 +819,17 @@ def drain_fields(records: list[bytes]) -> list[dict]:
 def drain_verdict(before: list[dict] | None, after: list[dict]) -> dict:
     """Whether some character was drained one or two levels, and consistently.
 
-    A character passes when its level fell by 1 or 2, `levels_drained` (`0x0A1`)
-    equals the fall, `hp_lost_to_drain` (`0x0A2`) is not zero, exactly one entry
-    of its per-class level array fell by the same amount and `hp_max` fell by
-    `hp_lost_to_drain`.  A run in which nobody passes is a result to record,
-    not a driver failure, so this returns and never raises.
+    A character passes when exactly one entry of its per-class level array
+    fell, by 1 or 2, `levels_drained` (`0x0A1`) equals that fall,
+    `hp_lost_to_drain` (`0x0A2`) is not zero and `hp_max` fell by
+    `hp_lost_to_drain`.  `level` (`0x0A0`) is the highest class level, so it
+    must fall, by at least 1 and at most the drain, only when the drained class
+    was the single highest one; a multi-class character drained in a lower
+    class, or in one of two equal classes, keeps its `level`.  The `hp_max` and
+    `hp_lost_to_drain` rule rests on the SPELLE02 reading in
+    `goldbox/layout.py`, not on a save the game drained, and is what this run
+    is meant to test.  A run in which nobody passes is a result to record, not
+    a driver failure, so this returns and never raises.
     """
     if not before:
         return {"passed": None, "characters": [],
@@ -834,23 +840,31 @@ def drain_verdict(before: list[dict] | None, after: list[dict]) -> dict:
         old = was.get(now["slot"])
         if old is None or old["name"] != now["name"]:
             continue
-        drop = old["level"] - now["level"]
         classes = [a - b for a, b in zip(old["class_levels"], now["class_levels"])]
+        fell = [c for c in classes if c]
+        drop = fell[0] if len(fell) == 1 else 0
+        level_drop = old["level"] - now["level"]
         problems = []
-        if drop not in (1, 2):
-            problems.append(f"level fell by {drop}, not 1 or 2")
+        if len(fell) != 1 or drop not in (1, 2):
+            problems.append(f"class levels fell by {classes}, not exactly one "
+                            f"entry by 1 or 2")
         if now["levels_drained"] != drop:
             problems.append(f"levels_drained is {now['levels_drained']}, "
-                            f"level fell by {drop}")
+                            f"the drained class fell by {drop}")
         if not now["hp_lost_to_drain"]:
             problems.append("hp_lost_to_drain is zero")
-        if [c for c in classes if c] != [drop]:
-            problems.append(f"class levels fell by {classes}, not one entry by {drop}")
         if old["hp_max"] - now["hp_max"] != now["hp_lost_to_drain"]:
             problems.append(f"hp_max fell by {old['hp_max'] - now['hp_max']}, "
                             f"hp_lost_to_drain is {now['hp_lost_to_drain']}")
+        if drop:
+            top = max(old["class_levels"])
+            single_top = (old["class_levels"][classes.index(drop)] == top
+                          and old["class_levels"].count(top) == 1)
+            if single_top and not 1 <= level_drop <= drop:
+                problems.append(f"the drained class was the highest and level "
+                                f"fell by {level_drop}, not 1 to {drop}")
         characters.append({"slot": now["slot"], "name": now["name"],
-                           "level_drop": drop,
+                           "level_drop": level_drop,
                            "levels_drained": now["levels_drained"],
                            "hp_lost_to_drain": now["hp_lost_to_drain"],
                            "class_drops": classes,
@@ -858,6 +872,17 @@ def drain_verdict(before: list[dict] | None, after: list[dict]) -> dict:
                            "passed": not problems, "problems": problems})
     return {"passed": any(c["passed"] for c in characters),
             "characters": characters}
+
+
+def drain_summary(results: list[dict], staged: dict) -> dict:
+    """The drain verdict for the first `save` after the last `walk-fight`, or
+    `passed: None` with the reason when the run has none."""
+    fought = max(i for i, r in enumerate(results) if r["verb"] == "walk-fight")
+    saved = next((r for r in results[fought + 1:] if r["verb"] == "save"), None)
+    if saved is None:
+        return {"passed": None, "characters": [],
+                "why": "no save step after the last walk-fight"}
+    return drain_verdict(staged.get("drain_fields"), saved["drain_fields"])
 
 
 # --- the screens ---------------------------------------------------------------
@@ -2505,15 +2530,19 @@ class PoolRun:
             before = last[2]
             resent = False
             for attempt in (0, 1):
-                self._walk_fight_key(route, n, move, before, last,
-                                     answer if n == len(route) - 1 else None,
-                                     fights)
+                # A key is sent again only when the party is where it was and
+                # either a fight took the key or the game read nothing: the
+                # position can lag a real move, and a second key would then
+                # take a second step.
+                again = self._walk_fight_key(
+                    route, n, move, before, last,
+                    answer if n == len(route) - 1 else None, fights)
                 after = self.position()
-                if after == before and attempt == 0:
+                if after == before and again and attempt == 0:
                     resent = True
                     continue
                 break
-            self._judge_walk_fight(route, n, move, before, after)
+            self._judge_walk_fight(route, n, move, before, after, resent)
             self.log.emit("move", move=move, n=n, before=before, after=after,
                           resent=resent, row24=self.bar().strip())
             moves.append({"move": move, "before": before, "after": after,
@@ -2524,11 +2553,19 @@ class PoolRun:
         return {"route": route, "answer": answer, "position": self.position(),
                 "fights": fights, "moves": moves}
 
-    def _walk_fight_key(self, route, n, move, before, last, answer, fights) -> None:
+    def _walk_fight_key(self, route, n, move, before, last, answer, fights) -> bool:
         """One key, then whatever it started: an encounter menu, a `YES NO`,
-        a fight.  A fight is fought out and the world bar waited for."""
+        a fight.  A fight is fought out and the world bar waited for.
+
+        Returns whether the key may be sent again if the party is still where
+        it was: a fight was fought, or `walk_one` reported no move and the
+        screen agrees the game read nothing (the test `walk` uses)."""
         sess = self.sess
-        sess.walk_one(move, tries=1, answer_prompts=False)
+        before_rows = self.rows()
+        moved = sess.walk_one(move, tries=1, answer_prompts=False)
+        screens = getattr(sess, "walk_screens", None)
+        unread = (not moved and self.took_nothing(before, before_rows, screens)
+                  and not getattr(sess, "walked_outdoors", False))
         self.refuse_prompt(route, last, "ran the square's event")
         stop = getattr(sess, "walk_stop_screen", None)
         refused = getattr(sess, "walk_refused", None)
@@ -2554,7 +2591,7 @@ class PoolRun:
                                   f"no fight opened in "
                                   f"{int(FIGHT_OPENS_SECONDS)} seconds")
         if not sess.in_combat():
-            return
+            return unread
         number = len(fights)
         self.capture(f"fight-{number}-start")
         result = sess.fight(budget=WALK_FIGHT_SECONDS, tactic=S.Session.melee_turn)
@@ -2566,6 +2603,7 @@ class PoolRun:
         self.to_world()
         fights.append({"at_move": n, "square": self.position(),
                        **dataclasses.asdict(result)})
+        return True
 
     def _answer_stop(self, route, n, move, before, rows, pressed, answer) -> None:
         """Answer a screen a walk stops at, or fail the step pressing nothing.
@@ -2599,7 +2637,12 @@ class PoolRun:
             time.sleep(0.5)
         return True
 
-    def _judge_walk_fight(self, route, n, move, before, after) -> None:
+    def _judge_walk_fight(self, route, n, move, before, after,
+                          resent: bool = False) -> None:
+        if before[2] is None or after[2] is None:
+            raise self.fail("walk-fight", f"walk-fight {route}: move {n} ({move}) "
+                                          f"cannot be judged, the facing was not "
+                                          f"read: {before} to {after}")
         if move == "I":
             dx, dy = STEP[before[2]]
             if after[:2] == [before[0] + dx, before[1] + dy]:
@@ -2607,7 +2650,8 @@ class PoolRun:
             if after[:2] == before[:2]:
                 raise self.fail("walk-fight", f"walk-fight {route}: move {n} (I) "
                                               f"left the party on {before} "
-                                              f"after it was sent twice")
+                                              f"after it was sent "
+                                              f"{'twice' if resent else 'once'}")
             raise self.fail(
                 "walk-fight", f"walk-fight {route}: move {n} moved from {before} "
                               f"to {after}, not one square ahead: an exit or a "
@@ -3860,12 +3904,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 validate_curse_attack(summary["results"], attack, args.attack_by)
         validate_walks(summary["results"])
         if any(s.verb == "walk-fight" for s in steps):
-            saved = next((r for r in reversed(summary["results"])
-                          if r["verb"] == "save"), None)
-            summary["drain"] = (
-                drain_verdict(staged.get("drain_fields"), saved["drain_fields"])
-                if saved else {"passed": None, "characters": [],
-                               "why": "no save step after the walk-fight"})
+            summary["drain"] = drain_summary(summary["results"], staged)
         if args.title == "pool" and any(s.verb == "cast" for s in steps):
             if any(r.get("spell") in CAMP_PARTY_SPELLS for r in summary["results"]):
                 validate_pool_party_spells(summary["results"])

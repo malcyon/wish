@@ -6178,6 +6178,9 @@ class FightWalk(WalkSession):
         event = self.script.get(self.calls)
         self.calls += 1
         before = (self.x, self.y)
+        if event == "unread":
+            self.pressed.append(move)
+            return False
         super().walk_one(move)
         if event == "fight":
             self.combat = True
@@ -6230,12 +6233,54 @@ def test_walk_fight_resends_a_key_the_fight_left_unfinished_once(tmp_path, monke
 
 
 def test_walk_fight_that_stays_after_the_resend_fails(tmp_path, monkeypatch):
-    sess = FightWalk({}, walls={(5, 4)})
+    sess = FightWalk({0: "unread", 1: "unread"})
     run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
     with pytest.raises(A.StepFailed, match="sent twice"):
         run.walk_fight("I")
     log.close()
     assert sess.pressed == ["I", "I"]
+
+
+def test_walk_fight_resends_a_key_the_game_did_not_read(tmp_path, monkeypatch):
+    sess = FightWalk({0: "unread"})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_fight("I")
+    log.close()
+    assert sess.pressed == ["I", "I"] and got["position"] == [5, 4, 0]
+
+
+def test_walk_fight_does_not_resend_a_bump_the_game_read(tmp_path, monkeypatch):
+    sess = FightWalk({}, walls={(5, 4)})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    with pytest.raises(A.StepFailed, match="sent once"):
+        run.walk_fight("I")
+    log.close()
+    assert sess.pressed == ["I"]
+
+
+def test_walk_fight_does_not_resend_a_move_a_lagging_position_did_not_show(
+        tmp_path, monkeypatch):
+    """A squareless status line: `walk_one` saw the party move by the live
+    square, and `position()` still reads the old one."""
+    sess = FightWalk({})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    run.position = lambda: [5, 5, 0]
+    with pytest.raises(A.StepFailed, match="sent once"):
+        run.walk_fight("I")
+    log.close()
+    assert sess.pressed == ["I"], "a second step was taken"
+
+
+def test_walk_fight_with_no_facing_fails_the_step_and_does_not_crash(
+        tmp_path, monkeypatch):
+    for facing in ((None, 0), (0, None)):
+        sess = FightWalk({})
+        run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+        reads = iter([[5, 5, facing[0]]] + [[5, 4, facing[1]]] * 20)
+        run.position = lambda: next(reads)
+        with pytest.raises(A.StepFailed, match="facing was not read"):
+            run.walk_fight("I")
+        log.close()
 
 
 def test_walk_fight_takes_combat_on_an_encounter_menu_and_never_flee(
@@ -6333,7 +6378,8 @@ def test_the_drain_pass_line_accepts_a_drop_of_one_or_two_levels(drop):
 def test_the_drain_pass_line_refuses_no_drop():
     verdict = A.drain_verdict(_drain_fields(), _drain_fields())
     assert verdict["passed"] is False
-    assert "level fell by 0, not 1 or 2" in verdict["characters"][0]["problems"]
+    assert any("not exactly one entry by 1 or 2" in p
+               for p in verdict["characters"][0]["problems"])
 
 
 def test_the_drain_pass_line_refuses_a_drop_with_zero_drain_bytes():
@@ -6365,3 +6411,44 @@ def test_the_drain_fields_read_the_offsets_the_layout_names():
     assert got == [{"slot": 0, "name": "AVA", "level": 4, "levels_drained": 1,
                     "hp_lost_to_drain": 6, "hp_max": 300,
                     "class_levels": [0, 0, 0, 4, 0, 0, 0, 0]}]
+
+
+def test_the_drain_pass_line_accepts_a_lower_class_drained_with_the_level_unchanged():
+    before = _drain_fields(7, 0, 0, 60, (5, 0, 0, 7))
+    after = _drain_fields(7, 1, 6, 54, (4, 0, 0, 7))
+    assert A.drain_verdict(before, after)["passed"] is True
+
+
+def test_the_drain_pass_line_accepts_one_of_two_equal_classes_with_the_level_unchanged():
+    before = _drain_fields(6, 0, 0, 60, (6, 0, 0, 6))
+    after = _drain_fields(6, 1, 6, 54, (5, 0, 0, 6))
+    assert A.drain_verdict(before, after)["passed"] is True
+
+
+def test_the_drain_pass_line_needs_the_level_to_fall_when_the_top_class_drained():
+    before = _drain_fields(7, 0, 0, 60, (5, 0, 0, 7))
+    after = _drain_fields(7, 1, 6, 54, (5, 0, 0, 6))
+    verdict = A.drain_verdict(before, after)
+    assert verdict["passed"] is False
+    assert any("the drained class was the highest" in p
+               for p in verdict["characters"][0]["problems"])
+
+
+def test_the_drain_pass_line_refuses_two_classes_drained():
+    before = _drain_fields(7, 0, 0, 60, (5, 0, 0, 7))
+    after = _drain_fields(6, 2, 6, 54, (4, 0, 0, 6))
+    assert A.drain_verdict(before, after)["passed"] is False
+
+
+def test_the_drain_summary_takes_the_first_save_after_the_last_walk_fight():
+    staged = {"drain_fields": _drain_fields()}
+    good = _drain_fields(4, 1, 7, 33, (0, 0, 0, 4))
+    results = [{"verb": "save", "drain_fields": _drain_fields()},
+               {"verb": "walk-fight"},
+               {"verb": "save", "drain_fields": good},
+               {"verb": "save", "drain_fields": _drain_fields()}]
+    assert A.drain_summary(results, staged)["passed"] is True
+    got = A.drain_summary(results[:2], staged)
+    assert got["passed"] is None and "no save step" in got["why"]
+    assert A.drain_summary([{"verb": "walk-fight"}] + results[:1],
+                           staged)["passed"] is False
