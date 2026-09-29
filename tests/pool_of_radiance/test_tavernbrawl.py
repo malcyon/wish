@@ -1420,6 +1420,7 @@ def test_the_city_watch_row_before_the_result_is_stored_does_not_end_the_fight()
 
 def test_a_failed_trap_still_ends_the_fight_at_the_city_watch_row(monkeypatch, tmp_path):
     machine = brawl_machine()
+    machine.mem[tb.COMBATANTS + 20 * tb.STRIDE] = 0x90        # the monster side is down
     sess = WatchSession(machine)
     log = FakeLog()
     monkeypatch.setattr(tb, "Log", lambda out, quiet=False: log)
@@ -1480,3 +1481,12 @@ def test_a_persistent_timeout_reading_the_hit_count_degrades_the_trap():
         FakeMon.checkpoint_hits = real
     assert traps.degraded
     assert len(traps.log.kinds("trap_retry")) == tb.HITS_RETRIES - 1
+
+
+def test_a_failed_trap_does_not_end_a_fight_with_both_sides_standing():
+    sess = WatchSession(brawl_machine())
+    traps = tb.Traps(sess, FakeLog(), pathlib.Path("."), args())
+    traps.degraded = True
+    assert not tb.watch_prompt_up(traps, FakeScreen("STAY RUN"), sess)
+    sess.machine.mem[tb.COMBATANTS + 20 * tb.STRIDE] = 0x90
+    assert tb.watch_prompt_up(traps, FakeScreen("STAY RUN"), sess)

@@ -123,6 +123,8 @@ RESULT_STORE_NEXT = 0x091D
 IGNORED_LOGGED = 3
 #: How long `on_result` waits in all for the `POST.COM` stops, seconds.
 POST_WAIT = 60.0
+# Reads of a checkpoint's hit count tried before a timeout fails the trap.
+HITS_RETRIES = 3
 NEW_PHLAN = 0
 
 #: (x, y, facing) placements.  Entering from outside steps east onto (15,14);
@@ -496,14 +498,12 @@ class Traps:
 
     def _hits(self, m, s) -> int:
         """`checkpoint_hits`, retried on a monitor timeout: it only reads, so a repeat is safe."""
-        for attempt in range(1, HITS_RETRIES + 1):
+        for attempt in range(1, HITS_RETRIES):
             try:
                 return m.checkpoint_hits(s.cp)
             except TimeoutError as exc:
-                if attempt == HITS_RETRIES:
-                    raise
                 self.log.emit("trap_retry", name=s.name, attempt=attempt, error=repr(exc))
-        raise AssertionError("unreachable")
+        return m.checkpoint_hits(s.cp)
 
     def _scan(self, m, only=None) -> bool:
         fired = False
@@ -775,17 +775,31 @@ def classify(row: str) -> str:
     return "UNKNOWN"
 
 
-def watch_prompt_up(traps: "Traps", screen) -> bool:
+def one_side_left(sess) -> bool:
+    """True when the combatant blocks, read on a fresh connection, show fewer than two sides standing."""
+    try:
+        with sess.mon(5) as m:
+            blocks = m.read(COMBATANTS, BLOCKS * STRIDE)
+    except Exception:
+        return False
+    return len(standing_by_side(blocks)) < 2
+
+
+def watch_prompt_up(traps: "Traps", screen, sess=None) -> bool:
     """True once the result is stored and the city watch's `STAY` `RUN` row is up.
 
     The world does not come back until that row is answered, so `Session.fight`
     would poll it for the whole budget; `after_fight` answers it.  When the trap
     has failed the result store is never seen, and the row alone is the signal.
     """
-    # A dead trap never sets `result_done`, so the row alone ends the fight.
-    # STAY RUN is not a turn's bar and appears only after the result.
-    return ((traps.result_done or traps.degraded) and screen is not None
-            and classify(screen.row(24)) == "RUN")
+    if screen is None or classify(screen.row(24)) != "RUN":
+        return False
+    if traps.result_done:
+        return True
+    # A dead trap never sets `result_done`. Row 24 is also the turn bars' row,
+    # so the blocks say the brawl is over (T1d's stored result had 18 standing
+    # to 0; T1e's STAY RUN screen matched its HP), the mode byte being unmeasured there.
+    return traps.degraded and sess is not None and one_side_left(sess)
 
 
 def answer_until(sess, log, out: pathlib.Path, label: str, *, stop_on_combat: bool,
@@ -1084,8 +1098,6 @@ def after_fight(sess, traps: Traps, log, out: pathlib.Path, args, before: list) 
 
 #: Seconds `record_stall` gives the screenshot, so a hung `import` cannot hold the slot.
 STALL_SHOT_TIMEOUT = 20.0
-# Reads of a checkpoint's hit count tried before a timeout fails the trap.
-HITS_RETRIES = 3
 
 
 def fight_end(sess, log, out: pathlib.Path, outcome: str,
@@ -1216,7 +1228,7 @@ def _run(args, out: pathlib.Path, log) -> int:
         flight = Flight(log) if args.mode == "flee" else None
         tactic = Tactic(sess, log, args, flight)
         result = sess.fight(budget=args.budget, tactic=tactic, poll=0.12,
-                            stop=lambda _sess, s: watch_prompt_up(traps, s))
+                            stop=lambda sess_, s: watch_prompt_up(traps, s, sess_))
         tap.active = False
         log.emit("fight_result", outcome=result.outcome, turns=result.turns,
                  seconds=result.seconds)
