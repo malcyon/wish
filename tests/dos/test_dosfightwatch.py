@@ -597,3 +597,30 @@ def test_pile_keeps_the_loaded_screen_and_the_report_names_the_shots(
     assert report["screenshots"] == ["loaded.png", "encounter1.png"]
     assert (out / "loaded.png").exists()
     assert "loaded.png" in (out / "report.json").read_text()
+
+
+def test_a_shot_that_fails_does_not_stop_the_fight_and_is_reported(tmp_path):
+    import subprocess
+
+    class Failing(_PngSession):
+        def shot(self, name, allow_blank=False):
+            raise subprocess.CalledProcessError(1, "import")
+
+    por = _FakePoR([None])
+    por.s = Failing(tmp_path / "pool")
+    por.world_glyphs = "the-world"
+    evidence = dosfightwatch.Evidence(tmp_path / "out")
+    result = dosfightwatch.fight_watching(
+        por, _NoHits(), patience=0.0, evidence=evidence)
+    assert result["why"] == "unknown bar 01364f4c1cd47efa"
+    assert evidence.files == []
+    assert len(evidence.errors) == 2
+
+
+def test_a_blank_frame_is_not_kept_as_an_unknown_bar(tmp_path):
+    por = _FakePoR(["blank"])
+    por.s = _PngSession(tmp_path / "pool")
+    por.world_glyphs = "the-world"
+    evidence = dosfightwatch.Evidence(tmp_path / "out")
+    dosfightwatch.fight_watching(por, _NoHits(), patience=0.0, evidence=evidence)
+    assert not any(f.startswith("unknown_bar_") for f in evidence.files)

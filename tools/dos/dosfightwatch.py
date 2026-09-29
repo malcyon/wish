@@ -77,6 +77,7 @@ import hashlib
 import json
 import pathlib
 import shutil
+import subprocess
 import sys
 import time
 
@@ -134,13 +135,19 @@ class Evidence:
     def __init__(self, out: pathlib.Path):
         self.out = out
         self.files: list[str] = []
+        self.errors: list[str] = []
 
     def take(self, s, name: str) -> str | None:
-        path = s.shot(name, allow_blank=True)
-        if path is None:
+        """Keep one shot; a failed one is recorded and never stops the run."""
+        try:
+            path = s.shot(name, allow_blank=True)
+            if path is None:
+                return None
+            self.out.mkdir(parents=True, exist_ok=True)
+            shutil.copy(path, self.out / f"{name}.png")
+        except (OSError, subprocess.SubprocessError) as e:
+            self.errors.append(f"{name}: {e}")
             return None
-        self.out.mkdir(parents=True, exist_ok=True)
-        shutil.copy(path, self.out / f"{name}.png")
         if f"{name}.png" not in self.files:
             self.files.append(f"{name}.png")
         return f"{name}.png"
@@ -365,12 +372,15 @@ def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
             time.sleep(0.25)
             continue
         world_since = None
-        key = por.COMBAT_KEYS.get(por.bar_kind(screen) or "")
+        kind = por.bar_kind(screen)
+        key = por.COMBAT_KEYS.get(kind or "")
         if key is None:
-            if unknown_since is None and evidence is not None:
+            if unknown_since is None and evidence is not None and kind != "blank":
                 # Taken on first sight: the screen may change before
                 # `patience` runs out, and the first frame is the one that
-                # names what the fight asked.
+                # names what the fight asked.  It is a fresh grab, not the
+                # frame the bar was read from, and a mid-redraw `blank` is
+                # skipped as `_await_bar` skips it.
                 evidence.take(s, f"unknown_bar_{bar}")
             unknown_since = unknown_since or time.time()
             if time.time() - unknown_since >= patience:
@@ -1224,6 +1234,8 @@ def pile(*, folder: pathlib.Path, source: str | None, at: str | None,
                 walk=functools.partial(walk_to_encounter, evidence=evidence)))
         finally:
             report["screenshots"] = evidence.files
+            if evidence.errors:
+                report["evidence_errors"] = evidence.errors
             (out / "report.json").write_text(json.dumps(report, indent=1,
                                                        default=str))
             s.close()
