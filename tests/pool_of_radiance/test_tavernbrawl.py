@@ -1585,3 +1585,46 @@ def test_a_fight_end_after_the_result_store_reports_the_stored_result(tmp_path):
     tb.fight_end(sess, log, tmp_path, S.ENDED, traps)
     [end] = log.kinds("fight_end")
     assert end["predicted"] == 1 and end["predicted_from"] == "result store"
+
+
+def test_the_bonus_adds_the_high_byte_tenth_when_the_share_is_large():
+    # share 100 + 10 * 65535 = 655450: low16 90 -> 9, high8 10 -> 1 << 16
+    assert tb.predicted_award(655460, 1, person(0, (10, 10, 18, 10)), 1) == 655450 + 9 + 65536
+
+
+def test_a_large_total_is_halved_before_the_bonus():
+    half = 655450 >> 1                                 # 327725: low16 45, high8 5
+    assert tb.predicted_award(655460, 1, person(4, flags=0x80), 1) == half
+    assert tb.predicted_award(655460, 1, person(0, (10, 10, 18, 10), flags=0x80), 1) \
+        == half + 45 // 10
+
+
+def test_class_code_fifteen_divides_by_three():
+    assert tb.predicted_award(1220, 19, person(15), 1) == 64 // 3
+
+
+def test_a_class_code_above_sixteen_is_not_predicted():
+    assert tb.predicted_award(1220, 19, person(17), 1) is None
+
+
+def test_no_share_reading_gives_no_prediction_rather_than_zero():
+    assert tb.predicted_award(0, 0, person(0), None) is None
+    assert tb.predicted_award(1220, 19, person(0), None) is None
+
+
+def test_an_unknown_class_code_and_an_empty_slot_say_different_things(monkeypatch, tmp_path):
+    machine = Machine()
+    sess = FakeSession(machine)
+    monkeypatch.setattr(tb, "answer_until", lambda *a, **k: {"outcome": "quiet", "rows": []})
+    machine.mem[SQUARE:SQUARE + 3] = bytes((7, 3, 0))
+    log = FakeLog()
+    traps = tb.Traps(sess, log, tmp_path, args())
+    traps.readings["share"] = [{"standing": 19, "xp_total": 1220, "paid": [1] * 8}]
+    before = [dict(person(17), slot=0, experience=0),
+              dict(person(0, name_byte=0), slot=1, experience=0)]
+    before += [dict(person(4), slot=i, experience=0) for i in range(2, 8)]
+    tb.after_fight(sess, traps, log, tmp_path, args(), before)
+    deltas = log.kinds("experience_delta")
+    assert deltas[0]["predicted"] is None and deltas[0]["predicted_why"] == "unknown class code 17"
+    assert deltas[1]["predicted"] is None and deltas[1]["predicted_why"] == "empty slot"
+    assert "predicted_why" not in deltas[2]

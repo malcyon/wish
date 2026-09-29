@@ -312,15 +312,19 @@ CLASS_DIVISOR = [1] * 8 + [2, 3, 2, 2, 2, 2, 2, 3, 2]
 MAX_EXPERIENCE = 0xFFFFFF
 
 
-def predicted_award(total: int, standing: int, reading: dict, paid: int) -> int | None:
-    """What `POST.COM` adds to one character's experience, or None for an empty slot.
+def predicted_award(total: int, standing: int, reading: dict,
+                    paid: int | None) -> int | None:
+    """What `POST.COM` adds to one character's experience.
+
+    None means no prediction: nothing was read (`paid` is None or no one
+    stood), the slot is empty, or the class code is not one of 0-16.
 
     `$0BD2` splits the total as `low16 // n + high8 * (65535 // n)`; a slot
     whose `$2AFD` byte is 0 is not paid; `0x0B8` bit 7 halves the share;
     `$15E3` adds 10% for a prime requisite of 16 or more; `$123F` divides by
     the class code's divisor; the sum saturates at `$FFFFFF`.
     """
-    if not standing or not reading["name_byte"]:
+    if paid is None or not standing or not reading["name_byte"]:
         return None
     if not paid:
         return 0
@@ -1095,13 +1099,19 @@ def after_fight(sess, traps: Traps, log, out: pathlib.Path, args, before: list) 
         why = f"standing ${STANDING:04X} was 0 at the share"
     else:
         why = None
+    paid = share.get("paid")
     for b, a in zip(before, after):
-        fields_ = {"predicted_why": why} if why else {}
+        slot_why = why
+        if not slot_why and not b["name_byte"]:
+            slot_why = "empty slot"
+        elif not slot_why and b["class_code"] >= len(CLASS_DIVISOR):
+            slot_why = f"unknown class code {b['class_code']}"
+        fields_ = {"predicted_why": slot_why} if slot_why else {}
         log.emit("experience_delta", slot=a["slot"], before=b["experience"],
                  after=a["experience"], delta=a["experience"] - b["experience"],
                  predicted=predicted_award(share.get("xp_total", 0),
                                            share.get("standing", 0), b,
-                                           share.get("paid", [0] * PAID_LEN)[a["slot"]]),
+                                           None if paid is None else paid[a["slot"]]),
                  status=a["status"], name_byte=a["name_byte"], **fields_)
     if sess.in_combat():
         # A fight that ran out its budget is still on a turn's bars, which
