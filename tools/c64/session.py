@@ -1906,10 +1906,48 @@ class Session:
         return (f"code-word cells {shown}: no cursor, so the game took the "
                 f"Return and the prompt is left over from before")
 
-    def begin_adventuring(self) -> bool:
+    def _begin_menu_up(self, s) -> bool:
+        """True while the party menu is still on screen with BEGIN ADVENTURING
+        highlighted."""
+        hit = s.find("BEGIN ADVENTURING")
+        if hit is None:
+            return False
+        hot = s.highlighted_rows() or s.highlighted_rows(column=hit[1])
+        return hit[0] in hot
+
+    def begin_adventuring(self, resend_after: float = 6.0,
+                          max_resends: int = 3, interval: float = 0.35) -> bool:
+        """Choose BEGIN ADVENTURING and wait for the world.
+
+        The Return `select_row` sends is an XTEST key, and the game sometimes
+        drops it, leaving the party menu up with nothing loading.  Nothing
+        later answers a party menu, so a Return goes through the keyboard
+        buffer, which does not drop keys, after `resend_after` seconds of the
+        menu unchanged, at most `max_resends` times.  A disk prompt or any
+        other screen ends the resending: the game took the key.
+        """
         if not self.select_row("BEGIN ADVENTURING"):
             return False
-        return self.wait_for_world(240)
+        limit = 240.0
+        start = menu_since = time.time()
+        resends = 0
+        while resends < max_resends and time.time() - start < limit:
+            s = self.screen()
+            if (s is None or self.wanted_disk(s) is not None
+                    or not self._begin_menu_up(s)):
+                if s is not None:
+                    break
+                time.sleep(interval)
+                continue
+            if time.time() - menu_since >= resend_after:
+                resends += 1
+                self.log(f"  BEGIN ADVENTURING is still up after "
+                         f"{resend_after:.0f} s; resending Return through the "
+                         f"keyboard buffer ({resends} of {max_resends})")
+                self.press_kernal(0x0D)
+                menu_since = time.time()
+            time.sleep(interval)
+        return self.wait_for_world(max(1.0, limit - (time.time() - start)))
 
     def wait_for_world(self, timeout: float = 240.0, interval: float = 0.35) -> bool:
         """Wait for the world's command bar, answering a continue prompt on
