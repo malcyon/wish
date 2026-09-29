@@ -114,6 +114,9 @@ class Sess:
     def handle_prompt(self, s=None):
         return False
 
+    def wanted_disk(self, s):
+        return None
+
     def indoors(self):
         return self.inside
 
@@ -492,3 +495,86 @@ def test_read_blocks_reads_the_bank_a_block_names():
     assert out[0] != out[1]
     banks = [bank for addr, _n, bank in mon.asked if addr == 0xD018]
     assert 3 in banks and 1 in banks
+
+
+PROMPT = "INSERT SIDE # 6, AND PRESS ANY KEY."
+
+
+class DiskSess(Sess):
+    """The second press raises a disk prompt; `handle_prompt` swaps the side."""
+
+    def __init__(self, side, moves_on_prompt=True, attach_raises=False):
+        super().__init__()
+        self.side = side
+        self.moves_on_prompt = moves_on_prompt
+        self.attach_raises = attach_raises
+        self.answered = 0
+
+    def walk_one(self, move):
+        self.presses.append(move)
+        if len(self.presses) == 2 and self.answered == 0:
+            self.row = PROMPT
+            if self.moves_on_prompt:
+                self.mem[0x49C3] = 14
+            return True
+        self.mem[0x49C3] -= 1
+        self.row = GRID
+        return True
+
+    def wanted_disk(self, s):
+        return str(self.side) if PROMPT in s.row(24) else None
+
+    def handle_prompt(self, s=None):
+        if PROMPT not in self.row:
+            return False
+        if self.attach_raises:
+            raise AssertionError("refusing to attach")
+        self.answered += 1
+        self.row = GRID
+        return True
+
+
+def test_a_disk_prompt_is_answered_and_the_walk_resumes(monkeypatch, tmp_path):
+    no_sleep(monkeypatch)
+    side = tmp_path / "SIDE6.D64"
+    side.write_bytes(b"")
+    sess, log, seen = DiskSess(side), Log(), []
+    a = args()
+    M.walk_moves(a, sess, log, "777", 0, seen.append)
+    assert sess.answered == 1 and not a.stopped
+    assert sess.presses == ["7", "7", "7"]          # the party moved: no repeat
+    event = log.of("disk_prompt")[0]
+    assert event["side"] == "SIDE6.D64" and event["outcome"] == "world"
+    assert event["moved"] is True
+    assert seen == [1, 2, 3]                        # a look after the swap
+
+
+def test_a_press_the_prompt_ate_is_pressed_once_more(monkeypatch, tmp_path):
+    no_sleep(monkeypatch)
+    side = tmp_path / "SIDE6.D64"
+    side.write_bytes(b"")
+    sess, log = DiskSess(side, moves_on_prompt=False), Log()
+    M.walk_moves(args(), sess, log, "77", 0, lambda n: None)
+    assert sess.presses == ["7", "7", "7"]
+    assert log.of("walk_repeated")
+
+
+def test_a_side_that_is_not_in_the_slot_stops_the_walk(monkeypatch, tmp_path):
+    no_sleep(monkeypatch)
+    sess, log = DiskSess(tmp_path / "SIDE6.D64"), Log()
+    a = args()
+    M.walk_moves(a, sess, log, "777", 0, lambda n: None)
+    assert "SIDE6.D64" in a.stopped and sess.presses == ["7", "7"]
+    assert sess.answered == 0
+    assert log.of("disk_prompt")[0]["outcome"] == "no-such-disk"
+
+
+def test_a_side_that_cannot_be_attached_stops_the_walk(monkeypatch, tmp_path):
+    no_sleep(monkeypatch)
+    side = tmp_path / "SIDE6.D64"
+    side.write_bytes(b"")
+    sess, log = DiskSess(side, attach_raises=True), Log()
+    a = args()
+    M.walk_moves(a, sess, log, "777", 0, lambda n: None)
+    assert "could not be attached" in a.stopped and sess.presses == ["7", "7"]
+    assert log.of("disk_prompt")[0]["outcome"].startswith("attach-failed")

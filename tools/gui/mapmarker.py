@@ -506,8 +506,54 @@ def _fight_began(sess) -> bool:
     return True
 
 
+def answer_disk_prompt(args, sess, log: Log, step: int,
+                       moved: bool | None = None) -> tuple[bool, str | None]:
+    """Answer an `INSERT SIDE # n` prompt on row 24 and wait for the travel prompt.
+
+    Returns whether a prompt was answered and None when there was none or the
+    game is back on the grid, else why the walk cannot go on.  The side is attached and the key pressed
+    by `Session.handle_prompt`; a side the session has no image of ends the
+    walk rather than pressing a key at a drive with the wrong disk in it.
+    """
+    s = sess.screen()
+    want = None if s is None else sess.wanted_disk(s)
+    if want is None:
+        return False, None
+    name = os.path.basename(want)
+    row = s.row(24).strip()
+    log.say(f"Disk prompt at step {step}: |{row}| -> {name}")
+    if not os.path.exists(want):
+        log.emit("disk_prompt", step=step, side=name, bar=row, moved=moved,
+                 outcome="no-such-disk")
+        return False, f"the game asked for {name}, which is not in the slot"
+    answered = False
+    try:
+        # `handle_prompt` holds off for two seconds after an earlier answer.
+        for _ in range(3):
+            if sess.handle_prompt(s):
+                answered = True
+                break
+            time.sleep(2.1)
+            s = sess.screen() or s
+    except Exception as exc:                        # an attach that raised
+        log.emit("disk_prompt", step=step, side=name, bar=row, moved=moved,
+                 outcome=f"attach-failed: {type(exc).__name__}: {exc}")
+        return False, f"{name} could not be attached ({type(exc).__name__}: {exc})"
+    if not answered:
+        log.emit("disk_prompt", step=step, side=name, bar=row, moved=moved,
+                 outcome="not-answered")
+        return False, f"the prompt for {name} was not answered"
+    grid = clear_bars(sess, log, seconds=args.encounter_wait, want_outdoors=True)
+    log.emit("disk_prompt", step=step, side=name, bar=row, moved=moved,
+             outcome=grid)
+    return True, None if grid == "world" else f"no travel prompt after {name} ({grid})"
+
+
 def _wait_for_grid(args, sess, log: Log, step: int) -> str | None:
     """None once the travel prompt is back, else why the walk cannot go on."""
+    _, reason = answer_disk_prompt(args, sess, log, step)
+    if reason is not None:
+        return reason
     grid = clear_bars(sess, log, seconds=args.encounter_wait, want_outdoors=True)
     log.emit("encounter_grid", step=step, outcome=grid)
     return None if grid == "world" else f"no travel prompt after the fight ({grid})"
@@ -534,6 +580,17 @@ def walk_moves(args, sess, log: Log, moves: str, step: int, after_step) -> int:
         log.emit("walk", move=move, moved=moved,
                  before=before, after=after)
         time.sleep(1.0)
+        moved_square = before.get("travel_49C3") != after.get("travel_49C3")
+        answered, reason = answer_disk_prompt(args, sess, log, step,
+                                              moved=moved_square)
+        if reason is not None:
+            args.stopped = reason
+            after_step(step)
+            break
+        if answered and not moved_square:
+            # The prompt ate the press without moving the party: press it once more.
+            log.emit("walk_repeated", move=move, step=step)
+            sess.walk_one(move)
         bar = encounter_after_press(sess, log=log)
         if bar is None:
             after_step(step)
