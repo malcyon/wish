@@ -339,26 +339,29 @@ class AmigaDisk:
                 number = self._u32(entry, _HDR_NEXT_HASH)
         return out
 
-    def _enter_dir(self, header: int | None, seen: set[int] | None,
-                   block: int | None = None) -> set[int]:
-        """The visited-drawer set, refusing a drawer reached a second time."""
+    def _start_walk(self, header: int | None,
+                    seen: set[int] | None) -> set[int]:
+        """The visited-drawer set, started at the drawer being walked."""
         if seen is None:
             seen = {self.root if header is None else header}
-        if block is not None:
-            if block in seen:
-                raise AmigaDiskError(
-                    f"the directory tree returns to block {block}")
-            seen.add(block)
         return seen
+
+    @staticmethod
+    def _enter_dir(seen: set[int], block: int) -> None:
+        """Refuse a drawer reached a second time."""
+        if block in seen:
+            raise AmigaDiskError(
+                f"the directory tree returns to block {block}")
+        seen.add(block)
 
     def walk(self, header: int | None = None, path: str = "",
              _seen: set[int] | None = None) -> Iterator[tuple[str, DirEntry]]:
         """Every file on the disk, as `(path, entry)`, depth first."""
-        seen = self._enter_dir(header, _seen)
+        seen = self._start_walk(header, _seen)
         for entry in self.entries(header):
             here = f"{path}/{entry.name}"
             if entry.is_dir:
-                self._enter_dir(header, seen, entry.block)
+                self._enter_dir(seen, entry.block)
                 yield from self.walk(entry.block, here, seen)
             else:
                 yield here, entry
@@ -374,11 +377,11 @@ class AmigaDisk:
         module wrote was the root, which `verify()` checks by hand, so the
         gap was invisible: a drawer with a wrong checksum verified clean.
         """
-        seen = self._enter_dir(header, _seen)
+        seen = self._start_walk(header, _seen)
         for entry in self.entries(header):
             if not entry.is_dir:
                 continue
-            self._enter_dir(header, seen, entry.block)
+            self._enter_dir(seen, entry.block)
             here = f"{path}/{entry.name}"
             yield here, entry
             yield from self.walk_dirs(entry.block, here, seen)
@@ -673,8 +676,9 @@ class AmigaDisk:
         parent = self.root
         if len(parts) > 1:
             parent = self.lookup("/".join(parts[:-1])).block
+        blocks = self._file_blocks(entry.block)
         self._unlink(parent, entry)
-        self._free_file(entry.block)
+        self._free_blocks(blocks)
         self._touch(parent)
         self._fix(parent, _HDR_CHECKSUM)
         self._fix_bitmap()
@@ -902,14 +906,21 @@ class AmigaDisk:
                 problems.append(
                     f"block {known} is in use and marked free in the bitmap")
 
-        for where, entry in self.walk_dirs():
+        try:
+            drawers = list(self.walk_dirs())
+            files = list(self.walk())
+        except AmigaDiskError as exc:
+            problems.append(str(exc))
+            return problems
+
+        for where, entry in drawers:
             check(entry.block, _HDR_CHECKSUM, f"the drawer {where!r} at block")
             if self.is_free(entry.block):
                 problems.append(
                     f"block {entry.block} holds the drawer {where!r} and is "
                     f"marked free in the bitmap")
 
-        for _, entry in self.walk():
+        for _, entry in files:
             current = entry.block
             head = True
             chain = set()

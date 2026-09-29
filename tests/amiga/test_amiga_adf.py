@@ -502,27 +502,22 @@ def _looping_big_file(tmp_path):
     return AmigaDisk.open(str(path))
 
 
-def _bitmap_bytes(disk):
-    start = disk._bitmap_block() * BLOCK_SIZE
-    return bytes(disk._data[start:start + BLOCK_SIZE])
-
-
-def test_removing_a_file_whose_extension_chain_loops_is_refused_and_frees_nothing(
+def test_removing_a_file_whose_extension_chain_loops_is_refused_and_changes_nothing(
         tmp_path):
     disk = _looping_big_file(tmp_path)
-    before = _bitmap_bytes(disk)
+    before = bytes(disk._data)
     with pytest.raises(AmigaDiskError, match="extension chain"):
         disk.remove_file("BIG.BIN")
-    assert _bitmap_bytes(disk) == before
+    assert bytes(disk._data) == before
 
 
-def test_writing_over_a_file_whose_extension_chain_loops_is_refused_and_frees_nothing(
+def test_writing_over_a_file_whose_extension_chain_loops_is_refused_and_changes_nothing(
         tmp_path):
     disk = _looping_big_file(tmp_path)
-    before = _bitmap_bytes(disk)
+    before = bytes(disk._data)
     with pytest.raises(AmigaDiskError, match="extension chain"):
         disk.write_file("BIG.BIN", b"new", when=WHEN)
-    assert _bitmap_bytes(disk) == before
+    assert bytes(disk._data) == before
 
 
 def test_verify_reports_an_extension_chain_that_loops_and_returns(tmp_path):
@@ -541,3 +536,12 @@ def test_a_directory_tree_that_loops_is_refused_by_walk(tmp_path):
         list(disk.walk())
     with pytest.raises(AmigaDiskError, match="directory tree"):
         list(disk.walk_dirs())
+
+
+def test_verify_reports_a_directory_tree_that_loops_and_returns():
+    disk = AmigaDisk.blank()
+    disk.make_dir("SAVE")
+    drawer = disk.lookup("SAVE").block
+    struct.pack_into(">I", disk._data, drawer * BLOCK_SIZE + 24, disk.root)
+    problems = disk.verify()
+    assert sum("directory tree" in p for p in problems) == 1
