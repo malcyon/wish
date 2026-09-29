@@ -624,6 +624,19 @@ def test_a_wait_reads_indoors_once_a_pass_from_the_one_screen(monkeypatch):
     assert got == "encounter" and reads == {"screen": 1, "indoors": 1}
 
 
+def test_a_wait_whose_indoors_read_keeps_failing_is_stuck_and_logged(monkeypatch):
+    fake_clock(monkeypatch)
+    sess, log = Sess(), Log()
+    sess.row = "MOVE  ENCAMP"
+
+    def boom():
+        raise RuntimeError("monitor timeout")
+    sess.indoors = boom
+    got = M.clear_bars(sess, log, want_outdoors=True, seconds=5)
+    assert got == "stuck"
+    assert log.of("indoors_read_failed")
+
+
 def test_a_stop_after_a_disk_answer_leaves_the_encounter_alone(monkeypatch, tmp_path):
     fake_clock(monkeypatch)
     side = tmp_path / "SIDE6.D64"

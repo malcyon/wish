@@ -133,12 +133,14 @@ def clear_bars(sess, log: Log, answers=("STAY", "NO"), seconds: float = 180.0,
         if sess.handle_prompt(s):
             continue
         row = s.row(24)
-        indoors_read = []                   # one `$49E6` read per pass, if any
+        unread = object()
+        indoors_read = unread               # one `$49E6` read per pass, if any
 
         def indoors_now():
-            if not indoors_read:
-                indoors_read.append(_read_indoors(sess, log))
-            return indoors_read[0]
+            nonlocal indoors_read
+            if indoors_read is unread:
+                indoors_read = _read_indoors(sess, log)
+            return indoors_read
 
         if stop_on_encounter and encounter_menu(row, indoors_now()) is not None:
             return "encounter"
