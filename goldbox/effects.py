@@ -865,9 +865,7 @@ def dos_record(title_key: str, row: "Effect",
         # `c64_codec.read` calls `later_charm_record` itself, with the row's
         # `0x10C`; without one the row reads as the form with bit 2 clear.
         record = later_charm_record(title_key, row, None, clock_minutes)
-        if record is None:
-            return Unconverted("a charm row with time left, which no C64 "
-                               "cast of this title writes")
+        assert record is not None, "the branch gate is `later_charm_record`'s own"
         return RunningEffect.from_record(record)
     minutes = min(remaining_minutes(row.duration, clock_minutes),
                   DOS_MINUTES_MAX)
