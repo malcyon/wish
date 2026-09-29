@@ -22,6 +22,7 @@ title rather than only the party's, for a disk that mixes two (#553).
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import pathlib
 from dataclasses import dataclass
@@ -216,6 +217,28 @@ class Member:
         return f"{self.hp_current} / {self.hp_max}"
 
 
+def _sheet_record(neutral: Any) -> CharacterRecord:
+    """The sheet's record for one DOS or Amiga character, holding the port's
+    own raw treasure share.
+
+    The C64 writer refuses a share with bit 2 set, because a C64 masks it with
+    3. Whether that byte can go into a C64 save is the converter's question;
+    opening a save to show and edit the party is not. The writer is handed a
+    stand-in that takes the same branch (never bit 2, never 0 or 1) and the
+    raw byte is put back afterwards.
+    """
+    share = neutral.fields.get("treasure_share")
+    raw = None
+    if share is not None and int(share.value) & 0x04:
+        raw = int(share.value) & 0xFF
+        neutral.fields["treasure_share"] = dataclasses.replace(
+            share, value=(raw & ~0x04) | 0x08)
+    record, _report = dos_codec.neutral_to_c64_record(neutral, icon=None)
+    if raw is not None:
+        record.set("treasure_share", raw)
+    return record
+
+
 class Party:
     """Everything editable in one opened file.
 
@@ -351,7 +374,7 @@ class Party:
         for number in dos_codec.party_numbers(folder, self.source.slot):
             path = folder / f"CHRDAT{self.source.slot}{number}.SAV"
             char = dos_codec.read_character(path)
-            record, _report = dos_codec.to_c64_record(char, icon=None)
+            record = _sheet_record(dos_codec.to_neutral(char))
             self._append_converted(number, record, char)
         if not self.members:
             raise dos_codec.DosRecordError(
@@ -368,14 +391,13 @@ class Party:
         if self.source.title.key == dos_port.POOL_OF_RADIANCE.key:
             characters = amiga_savegame.read_por_characters(disk, slot)
             for number, char in enumerate(characters, start=1):
-                record, _report = dos_codec.to_c64_record(
-                    amiga_por.to_dos_character(char), icon=None)
+                record = _sheet_record(dos_codec.to_neutral(
+                    amiga_por.to_dos_character(char)))
                 self._append_converted(number, record, char)
         else:
             save = amiga_savegame.read_slot(disk, slot, self.source.title.key)
             for number, char in enumerate(save.characters, start=1):
-                record, _report = dos_codec.neutral_to_c64_record(
-                    amiga_later.to_neutral_later(char), icon=None)
+                record = _sheet_record(amiga_later.to_neutral_later(char))
                 self._append_converted(number, record, char)
         if not self.members:
             raise amiga_savegame.AmigaRecordError(
