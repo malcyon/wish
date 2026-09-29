@@ -97,6 +97,8 @@ SAVE_PROMPT = "SAVE GAME DISK"
 RE_STATUS = re.compile(r"(?<![A-Z])([NESW])(?![A-Z]) +(\d+):(\d+) +(\d+),(\d+)")
 RE_OUTDOOR_STATUS = re.compile(r"OUTDOORS +(\d+):(\d+) +(\d+),(\d+)")
 FACING = {"N": 0, "E": 1, "S": 2, "W": 3}
+# A status line that prints a facing and the time and no square (`N 4:00`).
+RE_SQUARELESS_STATUS = re.compile(r"(?<![A-Z])[NESW](?![A-Z]) +\d+:\d+(?! *\d)")
 
 # -- the two worlds ---------------------------------------------------------
 # `$49E6` is non-zero in a `GEO` area and zero on the travel grid
@@ -2194,6 +2196,12 @@ class Session:
             self.walked_outdoors = True
             return self.walk_outdoors(move, hold, gap)
         before = self.status()
+        # No square on the status line means only the live square at `$C04B`
+        # can say whether a key took, and a resent key would step again.
+        squareless = before is None and self._status_has_no_square()
+        if squareless:
+            tries = 1
+            before = self.steady_triple()
         sent = False
         for _ in range(tries):
             s = self.screen()
@@ -2245,7 +2253,12 @@ class Session:
             if not answer_prompts and self._prompt_up(after):
                 return False
             self.walk_screens = (self.walk_screens[0], self._rows(after))
-            if self.status() != before:
+            if squareless:
+                now = self.steady_triple()
+                moved = before is not None and now is not None and now != before
+            else:
+                moved = self.status() != before
+            if moved:
                 self._leave_move(answer_prompts)
                 return True
         self._leave_move(answer_prompts)
@@ -2258,6 +2271,11 @@ class Session:
                 f"the driver pressed nothing for {move}: taking MOVE never "
                 f"brought up {MOVE_SUBBAR}; this is a driver error, not a wall")
         return False
+
+    def _status_has_no_square(self) -> bool:
+        """True when the screen carries a facing and a time but no square."""
+        s = self.screen()
+        return s is not None and bool(RE_SQUARELESS_STATUS.search(s.text()))
 
     #: The word `walk_one` answers on an encounter menu it stopped at, or None
     #: to answer nothing.  An attribute, beside `walk_expired`, so a subclass's

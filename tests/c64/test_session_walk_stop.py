@@ -153,3 +153,31 @@ def test_a_blank_row_24_throughout_presses_no_return(monkeypatch):
     assert sess.walk_one("I", tries=2) is False
     assert not sess.pressed_return() and "i" not in sess.keys
     assert "never brought up" in sess.walk_refused
+
+
+class Squareless(Fake):
+    """A status line of facing and time only (`N 4:00`); `$C04B` is `triples`,
+    read in order, the last repeating, and advances when a key is sent."""
+
+    def __init__(self, monkeypatch, moves):
+        super().__init__(monkeypatch, (SUBBAR, ["N 4:00"]))
+        self.status = lambda: None
+        self.moves = moves
+        self.square = (5, 5, 0)
+
+    def steady_triple(self, seconds=1.0):
+        if self.ticks and self.moves:
+            return (5, 4, 0)
+        return self.square
+
+
+def test_a_squareless_status_line_judges_the_step_by_the_live_square(monkeypatch):
+    sess = Squareless(monkeypatch, moves=True)
+    assert sess.walk_one("I") is True
+    assert sess.keys.count("i") == 1
+
+
+def test_a_squareless_step_that_does_not_move_is_not_resent(monkeypatch):
+    sess = Squareless(monkeypatch, moves=False)
+    assert sess.walk_one("I") is False
+    assert sess.keys.count("i") == 1
