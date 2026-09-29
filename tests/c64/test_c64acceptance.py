@@ -8656,23 +8656,25 @@ def test_temple_probe_raise_classifies_the_outcome_from_the_last_screen_only(
     def confirm(row, was):
         real(row, was)
         if session.phase == "result":
-            # An earlier steady screen says IS ALIVE; the last says FAILED.
+            # The fast window (about 120 reads) and the first settled reads see
+            # IS ALIVE; the last screen says FAILED.
             session.result_text = "BRUTUS IS ALIVE"
             reads = [0]
             original = session.screen
 
             def screen():
                 reads[0] += 1
-                if reads[0] > 12:
+                if reads[0] > 140:
                     session.result_text = "BRUTUS FAILED"
                 return original()
             session.screen = screen
 
     session.confirm_bar = confirm
     result = run.temple_probe("BRUTUS RAISE")
-    # The fast post-YES sampling now sees the earlier frame first.
     assert any("IS ALIVE" in "\n".join(kw["rows"]) for a, kw in events
-               if a[0] in ("temple-heal-frame", "temple-result-frame"))
+               if a[0] == "temple-heal-frame")
+    assert any("IS ALIVE" in "\n".join(kw["rows"]) for a, kw in events
+               if a[0] == "temple-result-frame")
     assert result["raise_result"]["rows"][12] == "BRUTUS FAILED"
     assert result["outcome"] == "failed"
 
@@ -8713,6 +8715,54 @@ def test_temple_probe_raise_keeps_a_result_frame_that_gives_way_to_the_menu(
     assert result["gold_before"] == {"5:BRUTUS": 6000}
     assert result["gold_after"] == {"5:BRUTUS": 500}
     assert session.keys[-1] == "YES" and session.keys.count("YES") == 2
+
+
+def test_temple_probe_raise_says_when_the_deadline_cut_the_result_window(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    real = session.confirm_bar
+
+    def confirm(row, was):
+        real(row, was)
+        if session.phase == "result":
+            run.temple_input_deadline = run.clock() + 1.0
+
+    session.confirm_bar = confirm
+    with pytest.raises(A.StepFailed, match="no steady screen"):
+        run.temple_probe("BRUTUS RAISE")
+    window = run.temple_result_window
+    assert window["cut"] is True
+    assert window["end"] - window["start"] < A.TEMPLE_RESULT_WINDOW
+    assert [kw for a, kw in events if a[0] == "temple-result-window"] == [window]
+
+
+def test_temple_probe_raise_with_no_frame_in_the_window_reads_the_settled_screen(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    real = session.confirm_bar
+
+    def confirm(row, was):
+        real(row, was)
+        if session.phase == "result":
+            # The price screen stands for the whole window; the result
+            # arrives only afterwards.
+            session.phase = "price"
+            reads = [0]
+            original = session.screen
+
+            def screen():
+                reads[0] += 1
+                if reads[0] > 200:
+                    session.phase = "result"
+                return original()
+            session.screen = screen
+
+    session.confirm_bar = confirm
+    result = run.temple_probe("BRUTUS RAISE")
+    assert result["result_frames"] == []
+    assert result["result_window"]["cut"] is False
+    assert result["result_window"]["frames"] == 1
+    assert result["outcome"] == "alive"
 
 
 @pytest.mark.parametrize("unsafe,missing", [

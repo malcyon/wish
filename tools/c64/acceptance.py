@@ -400,9 +400,8 @@ HEAL_SCREEN_HOLD = 1.0
 HEAL_SETTLE = 15.0
 
 #: After YES on the temple's price prompt, how long every distinct frame is
-#: kept, and the pause between reads. The result text (`IS ALIVE` and the
-#: like) can stand for under a second before the menu redraws, which the
-#: settled-frame wait never saw.
+#: kept, and the pause between reads; result text can stand for under a
+#: second before the menu redraws.
 TEMPLE_RESULT_WINDOW = 6.0
 TEMPLE_RESULT_POLL = 0.05
 
@@ -1297,6 +1296,7 @@ class PoolRun:
         self.temple_checkpoints: list[dict] = []
         self.temple_input_deadline: float | None = None
         self.temple_pc_id: int | None = None
+        self.temple_result_window: dict | None = None
         self.read_at_counts: dict = {}
 
     # -- the screen ------------------------------------------------------------
@@ -2208,10 +2208,14 @@ class PoolRun:
     def _temple_result_frames(self, price_rows: list[str]) -> list[dict]:
         """Every distinct frame in the first `TEMPLE_RESULT_WINDOW` seconds
         after YES, oldest first, at the fastest rate the monitor allows.
-        Sends nothing."""
+        Sends nothing. The window actually sampled is left in
+        `temple_result_window`: `cut` is true when the input deadline ended
+        it before `TEMPLE_RESULT_WINDOW`, so a short or empty list can be told
+        from a window in which no result text appeared."""
         frames: list[dict] = []
         start = self.clock()
         limit = min(start + TEMPLE_RESULT_WINDOW, self.temple_input_deadline)
+        cut = limit < start + TEMPLE_RESULT_WINDOW
         while self.clock() < limit:
             screen = self.temple_sample().screen
             if screen is not None:
@@ -2222,6 +2226,9 @@ class PoolRun:
                                    "is_price": rows[:24] == price_rows[:24]})
                     self.log.emit("temple-result-frame", **frames[-1])
             time.sleep(TEMPLE_RESULT_POLL)
+        self.temple_result_window = {"start": start, "end": self.clock(),
+                                     "cut": cut, "frames": len(frames)}
+        self.log.emit("temple-result-window", **self.temple_result_window)
         return frames
 
     @staticmethod
@@ -2331,6 +2338,7 @@ class PoolRun:
                                       "settled": done["settled"],
                                       "held": done["held"]}
             result["result_frames"] = kept
+            result["result_window"] = self.temple_result_window
             result["gold_before"] = gold_before
             result["gold_after"] = gold_after
             result["outcome"] = outcome
@@ -5206,6 +5214,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             summary["read_at"] = pool.release_read_at()
         if temple_mode and pool is not None:
             summary["temple_checkpoints"] = pool.temple_checkpoints
+            summary["temple_result_window"] = getattr(
+                pool, "temple_result_window", None)
         capture_ready = getattr(args, "capture_ready", False)
         preserve_specimen = getattr(args, "preserve_specimen", False)
         if capture_ready or preserve_specimen:
