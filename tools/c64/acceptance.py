@@ -42,6 +42,7 @@ bytes with what it replaced.
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown |
 | `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
+| `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar came back) or with the `fight` that opened, which is fought out; a move that met a flee is not judged for where it left the party; a flee that ends in neither is a failure after 60 s |
 | `warp AREA` | Pool only: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`); Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
@@ -340,7 +341,7 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "rest": "must", "fight": "may", "peek": "must", "save": "never",
          "cast": "must", "cure": "must", "walk": "must", "ready": "must",
          "temple-probe": "must", "warp": "must",
-         "walk-fight": "must"}
+         "walk-fight": "must", "walk-flee": "must"}
 
 #: How long a walk keeps watching for a disk prompt after a move (seconds).
 LOOK_SECONDS = 2.0
@@ -453,7 +454,7 @@ def parse_steps(texts) -> list[Step]:
             parse_peek(arg)
         elif verb == "walk":
             parse_walk(arg)
-        elif verb == "walk-fight":
+        elif verb in ("walk-fight", "walk-flee"):
             parse_walk_fight(arg)
         elif verb == "cast":
             parse_cast(arg)
@@ -484,6 +485,10 @@ ARRIVAL_FACING = {10: 1}
 #: and how long it waits for each to give way.
 ARRIVAL_PRESSES = 3
 ARRIVAL_PAGE_SECONDS = 8.0
+
+#: The word `walk-flee` answers an encounter menu with; the menu reads
+#: `COMBAT WAIT FLEE ADVANCE` (`tools/c64/session.py`, `ENCOUNTER_FIGHT`).
+ENCOUNTER_FLEE = "FLEE"
 
 #: The budget for each fight a `walk-fight` takes; the run's own
 #: `--max-seconds` still bounds the whole.
@@ -2541,24 +2546,42 @@ class PoolRun:
         sent once more; a `YES NO` is answered NO on the route's last key when
         `/NO` was given and fails the step anywhere else, with nothing pressed.
         """
+        return self._walk_answering(arg, S.ENCOUNTER_FIGHT)
+
+    def walk_flee(self, arg: str) -> dict:
+        """`walk_fight`, but an encounter menu is answered FLEE.
+
+        Each flee is recorded in `flees`: whether the party got away and, if
+        not, the fight that opened, which is fought out as `walk_fight` does.
+        A move that met a flee is not judged for where it left the party: an
+        escape can leave it off the square ahead.
+        """
+        return self._walk_answering(arg, ENCOUNTER_FLEE)
+
+    #: The step's own name, in every failure it raises.
+    walk_verb = "walk-fight"
+
+    def _walk_answering(self, arg: str, word: str) -> dict:
+        self.walk_verb = "walk-flee" if word == ENCOUNTER_FLEE else "walk-fight"
         route, answer = parse_walk_fight(arg)
-        self.leave_arrival(f"walk-fight {route}")
+        self.leave_arrival(f"{self.walk_verb} {route}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
         # `Session._stop_walk` answers an encounter menu with this word and
         # presses nothing else; `walk_expired` bounds its waits by the run.
-        self.sess.walk_encounter = S.ENCOUNTER_FIGHT
+        self.sess.walk_encounter = word
         self.sess.walk_expired = self.spent
         try:
-            return self._walk_fight(route, answer)
+            return self._walk_fight(route, answer, word)
         finally:
             self.sess.walk_encounter = None
             self.sess.walk_expired = None
 
-    def _walk_fight(self, route: str, answer: str | None) -> dict:
-        moves, fights = [], []
+    def _walk_fight(self, route: str, answer: str | None,
+                    word: str = S.ENCOUNTER_FIGHT) -> dict:
+        moves, fights, flees = [], [], []
         for n, move in enumerate(route):
-            self.budget(1, f"walk-fight {route}")
+            self.budget(1, f"{self.walk_verb} {route}")
             last = (n, move, self.position())
             self.refuse_prompt(route, last, "was up before the next move")
             before = last[2]
@@ -2570,13 +2593,15 @@ class PoolRun:
                 # take a second step.
                 again = self._walk_fight_key(
                     route, n, move, before, last,
-                    answer if n == len(route) - 1 else None, fights)
+                    answer if n == len(route) - 1 else None, fights,
+                    word, flees)
                 after = self.position()
                 if after == before and again and attempt == 0:
                     resent = True
                     continue
                 break
-            self._judge_walk_fight(route, n, move, before, after, resent)
+            if not (flees and flees[-1]["at_move"] == n):
+                self._judge_walk_fight(route, n, move, before, after, resent)
             self.log.emit("move", move=move, n=n, before=before, after=after,
                           resent=resent, row24=self.bar().strip())
             moves.append({"move": move, "before": before, "after": after,
@@ -2584,10 +2609,14 @@ class PoolRun:
         self.refuse_prompt(route, (len(route) - 1, route[-1], self.position()),
                            "ran the square's event")
         self.capture(f"walked-{route}")
-        return {"route": route, "answer": answer, "position": self.position(),
-                "fights": fights, "moves": moves}
+        got = {"route": route, "answer": answer, "position": self.position(),
+               "fights": fights, "moves": moves}
+        if word == ENCOUNTER_FLEE:
+            got["flees"] = flees
+        return got
 
-    def _walk_fight_key(self, route, n, move, before, last, answer, fights) -> bool:
+    def _walk_fight_key(self, route, n, move, before, last, answer, fights,
+                        word=S.ENCOUNTER_FIGHT, flees=None) -> bool:
         """One key, then whatever it started: an encounter menu, a `YES NO`,
         a fight.  A fight is fought out and the world bar waited for.
 
@@ -2604,12 +2633,12 @@ class PoolRun:
         stop = getattr(sess, "walk_stop_screen", None)
         refused = getattr(sess, "walk_refused", None)
         if refused and stop is None:
-            raise self.fail("walk-fight", f"walk-fight {route}: {refused}")
+            raise self.fail(self.walk_verb, f"{self.walk_verb} {route}: {refused}")
         pressed = stop is not None
         if stop is None:
             look_until = self.clock() + LOOK_SECONDS
             while not sess.in_combat():
-                self.budget(1, f"walk-fight {route}")
+                self.budget(1, f"{self.walk_verb} {route}")
                 self.refuse_prompt(route, last, "ran the square's event")
                 if self.clock() >= look_until:
                     break
@@ -2617,10 +2646,27 @@ class PoolRun:
             if not sess.in_combat():
                 stop = sess.walk_stop(wait=12.0)
         if stop is not None:
-            self._answer_stop(route, n, move, before, stop, pressed, answer)
-            if not self._fight_opens():
+            self._answer_stop(route, n, move, before, stop, pressed, answer,
+                              word)
+            if (word == ENCOUNTER_FLEE and S.word_column(stop[24], word) >= 0
+                    and S.word_column(stop[24], "YES") < 0):
+                # The menu was answered FLEE: the party either got away or
+                # a fight opened, and both are results, not a hang.
+                if not self._flee_settles():
+                    raise self.fail(
+                        self.walk_verb,
+                        f"{self.walk_verb} {route}: move {n} ({move}) from "
+                        f"{before} answered FLEE and neither a fight nor the "
+                        f"world bar came back in {int(FIGHT_OPENS_SECONDS)} "
+                        f"seconds")
+                flees.append({"at_move": n, "escaped": not sess.in_combat(),
+                              "fight": None})
+                if flees[-1]["escaped"]:
+                    self.capture(f"flee-{len(flees) - 1}-escaped")
+                    return False
+            elif not self._fight_opens():
                 raise self.fail(
-                    "walk-fight", f"walk-fight {route}: move {n} ({move}) from "
+                    self.walk_verb, f"{self.walk_verb} {route}: move {n} ({move}) from "
                                   f"{before} answered {stop[24].strip()!r} and "
                                   f"no fight opened in "
                                   f"{int(FIGHT_OPENS_SECONDS)} seconds")
@@ -2637,30 +2683,45 @@ class PoolRun:
         self.to_world()
         fights.append({"at_move": n, "square": self.position(),
                        **dataclasses.asdict(result)})
+        if flees and flees[-1]["at_move"] == n and flees[-1]["fight"] is None:
+            flees[-1]["fight"] = fights[-1]
         return True
 
-    def _answer_stop(self, route, n, move, before, rows, pressed, answer) -> None:
+    def _answer_stop(self, route, n, move, before, rows, pressed, answer,
+                     word=S.ENCOUNTER_FIGHT) -> None:
         """Answer a screen a walk stops at, or fail the step pressing nothing.
 
-        COMBAT is the only encounter answer.  `pressed` is true when
+        `word` is the only encounter answer.  `pressed` is true when
         `walk_one` has already taken it."""
         row = rows[24]
         if S.word_column(row, "YES") >= 0 and S.word_column(row, "NO") >= 0:
             if answer != "NO":
                 raise self.fail(
-                    "walk-fight", f"walk-fight {route}: move {n} ({move}) from "
+                    self.walk_verb, f"{self.walk_verb} {route}: move {n} ({move}) from "
                                   f"{before} reached a question, "
                                   f"{row.strip()!r}, and only NO on the last "
                                   f"key is allowed; nothing was pressed")
             self.sess.select_bar("NO", timeout=8)
-        elif S.word_column(row, S.ENCOUNTER_FIGHT) >= 0:
+        elif S.word_column(row, word) >= 0:
             if not pressed:
-                self.sess.select_bar(S.ENCOUNTER_FIGHT, timeout=8)
+                self.sess.select_bar(word, timeout=8)
         else:
             raise self.fail(
-                "walk-fight", f"walk-fight {route}: move {n} ({move}) from "
+                self.walk_verb, f"{self.walk_verb} {route}: move {n} ({move}) from "
                               f"{before} ended on a screen the step does not "
                               f"answer: {row.strip()}")
+
+    def _flee_settles(self) -> bool:
+        """Whether a fight opened or the world bar came back after FLEE."""
+        limit = self.clock() + FIGHT_OPENS_SECONDS
+        while not self.sess.in_combat():
+            if self.at_world(self.bar()):
+                return True
+            if self.clock() >= limit:
+                return False
+            self.budget(1, "the answer to FLEE")
+            time.sleep(0.5)
+        return True
 
     def _fight_opens(self) -> bool:
         limit = self.clock() + FIGHT_OPENS_SECONDS
@@ -2674,7 +2735,7 @@ class PoolRun:
     def _judge_walk_fight(self, route, n, move, before, after,
                           resent: bool = False) -> None:
         if before[2] is None or after[2] is None:
-            raise self.fail("walk-fight", f"walk-fight {route}: move {n} ({move}) "
+            raise self.fail(self.walk_verb, f"{self.walk_verb} {route}: move {n} ({move}) "
                                           f"cannot be judged, the facing was not "
                                           f"read: {before} to {after}")
         if move == "I":
@@ -2682,19 +2743,19 @@ class PoolRun:
             if after[:2] == [before[0] + dx, before[1] + dy]:
                 return
             if after[:2] == before[:2]:
-                raise self.fail("walk-fight", f"walk-fight {route}: move {n} (I) "
+                raise self.fail(self.walk_verb, f"{self.walk_verb} {route}: move {n} (I) "
                                               f"left the party on {before} "
                                               f"after it was sent "
                                               f"{'twice' if resent else 'once'}")
             raise self.fail(
-                "walk-fight", f"walk-fight {route}: move {n} moved from {before} "
+                self.walk_verb, f"{self.walk_verb} {route}: move {n} moved from {before} "
                               f"to {after}, not one square ahead: an exit or a "
                               f"teleport")
         if move == "M":
             self._judge_about_turn(route, n, before, after)
         elif (after[:2] != before[:2]
               or after[2] != (before[2] + TURNS[move]) % 4):
-            raise self.fail("walk-fight", f"walk-fight {route}: move {n} "
+            raise self.fail(self.walk_verb, f"{self.walk_verb} {route}: move {n} "
                                           f"({move}) took {before} to {after}, "
                                           f"not a turn on the square")
 
@@ -3318,6 +3379,9 @@ class CurseRun(PoolRun):
     def walk_fight(self, arg: str) -> dict:
         raise self.fail("walk-fight", "Pool of Radiance only")
 
+    def walk_flee(self, arg: str) -> dict:
+        raise self.fail("walk-flee", "Pool of Radiance only")
+
     def fight(self, arg: str, walk: str, steps: int) -> dict:
         from tools.c64 import laterbattle
         from tools.curse_of_the_azure_bonds import cursethac0
@@ -3906,6 +3970,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.warp(step.arg)
             elif step.verb == "walk-fight":
                 got = pool.walk_fight(step.arg)
+            elif step.verb == "walk-flee":
+                got = pool.walk_flee(step.arg)
             elif step.verb == "peek":
                 got = pool.peek(step.arg)
             elif step.verb == "cast":
@@ -4151,6 +4217,8 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("the warp step: Pool of Radiance only")
     if any(x.verb == "walk-fight" for x in steps) and args.title != "pool":
         ap.error("the walk-fight step: Pool of Radiance only")
+    if any(x.verb == "walk-flee" for x in steps) and args.title != "pool":
+        ap.error("the walk-flee step: Pool of Radiance only")
     if any(x.verb == "fight" for x in steps) and args.title == "ssb":
         ap.error("the fight step needs --title pool or curse")
     temple_mode = any(step.verb == "temple-probe" for step in steps)

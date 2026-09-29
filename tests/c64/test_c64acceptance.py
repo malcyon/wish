@@ -6174,7 +6174,11 @@ class FightWalk(WalkSession):
             self.combat, self.pending = True, None
         elif label == "NO":
             self.combat, self.pending = True, None
+        elif label == "FLEE":
+            self.combat, self.pending = self.flee_fails, None
         return True
+
+    flee_fails = False
 
     def walk_one(self, move, *a, **k):
         self.encounter_words.append(self.walk_encounter)
@@ -6294,6 +6298,57 @@ def test_walk_fight_takes_combat_on_an_encounter_menu_and_never_flee(
     log.close()
     assert sess.selected == ["COMBAT"]
     assert len(got["fights"]) == 1 and got["position"] == [5, 3, 0]
+
+
+def test_walk_flee_answers_an_encounter_menu_with_flee_and_records_the_escape(
+        tmp_path, monkeypatch):
+    sess = FightWalk({0: "encounter"})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_flee("II")
+    log.close()
+    assert sess.selected == ["FLEE"]
+    assert got["flees"] == [{"at_move": 0, "escaped": True, "fight": None}]
+    assert got["fights"] == [] and sess.tactics == []
+    assert sess.encounter_words == [A.ENCOUNTER_FLEE] * 2
+    assert sess.walk_encounter is None
+
+
+def test_walk_flee_that_fails_opens_a_fight_and_reports_its_result(
+        tmp_path, monkeypatch):
+    sess = FightWalk({0: "encounter"})
+    sess.flee_fails = True
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_flee("II")
+    log.close()
+    assert sess.selected == ["FLEE"]
+    assert len(got["fights"]) == 1
+    assert got["flees"][0]["escaped"] is False
+    assert got["flees"][0]["fight"] == got["fights"][0]
+
+
+def test_walk_flee_that_ends_in_neither_fight_nor_world_bar_fails_not_hangs(
+        tmp_path, monkeypatch):
+    sess = FightWalk({0: "encounter"})
+    sess.flee_fails = False
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    world = run.at_world
+    run.at_world = lambda bar: not sess.selected and world(bar)
+    with pytest.raises(A.StepFailed, match="answered FLEE and neither a fight"):
+        run.walk_flee("I")
+    log.close()
+
+
+def test_walk_flee_parses_and_is_refused_for_curse_and_silver_blades(
+        tmp_path, capsys):
+    assert A.parse_steps(["load", "walk-flee IIK/NO"])[1] == A.Step(
+        "walk-flee", "IIK/NO")
+    with pytest.raises(ValueError):
+        A.parse_steps(["load", "walk-flee"])
+    for cls in (A.CurseRun, A.SilverRun):
+        run = cls.__new__(cls)
+        run.fail = lambda tag, why: A.StepFailed(why)
+        with pytest.raises(A.StepFailed, match="Pool of Radiance only"):
+            run.walk_flee("I")
 
 
 @pytest.mark.parametrize("outcome, match", [
