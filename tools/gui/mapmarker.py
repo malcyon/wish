@@ -685,10 +685,30 @@ def run(args, log: Log) -> int:
             # square it is after and give random encounters fewer steps to
             # happen in. The screen redraws only on a step, hence the look
             # after the first press rather than a claim about this one.
+            # The travel square means nothing indoors, where the same two
+            # bytes belong to something else, so a party that is not known to
+            # be on the grid is left where it is.
+            try:
+                inside = sess.indoors()
+            except Exception as e:  # noqa: BLE001 -- a failed read is a refusal
+                inside, why = None, f"the indoors read failed: {e}"
+            else:
+                why = "the party is indoors" if inside else "the indoors read gave no answer"
+            if inside is not False:
+                log.say(f"--start refused: {why}")
+                log.emit("start_refused", reason=why)
+                args.stopped = f"--start refused: {why}"
+                return stopped_run(args, app, binding, out, log, sess, step)
+            square = bytes(args.start[:2])
             write_square(target, args.start)
             back = target.read(fasttravel.POOL_OF_RADIANCE.travel_square, 2)
             log.say(f"started the party at {tuple(args.start)}; read back {back.hex()}")
             log.emit("start", x=args.start[0], y=args.start[1], read_back=back.hex())
+            if bytes(back) != square:
+                log.say(f"--start wrote {square.hex()} and read back {bytes(back).hex()}")
+                log.emit("start_mismatch", wrote=square.hex(), read_back=bytes(back).hex())
+                args.stopped = f"--start read back {bytes(back).hex()}, not {square.hex()}"
+                return stopped_run(args, app, binding, out, log, sess, step)
             step += 1
             look(app, binding, f"{args.tag}-step{step}", out, log, sess)
         if args.turn:

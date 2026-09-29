@@ -626,9 +626,9 @@ def test_a_prompt_that_vanishes_while_retrying_is_no_prompt(monkeypatch, tmp_pat
     assert len(tries) == 1 and not log.of("disk_prompt")
 
 
-def start_run(monkeypatch, tmp_path, events, **kw):
+def start_run(monkeypatch, tmp_path, events, code=0, sess=None, corrupt=False, **kw):
     no_sleep(monkeypatch)
-    sess = RunSess()
+    sess = sess or RunSess()
     real_press = sess.walk_one
     sess.walk_one = lambda m: events.append(("press", m)) or real_press(m)
     slot = MagicMock(n=1, display=":1", dir=str(tmp_path))
@@ -644,7 +644,7 @@ def start_run(monkeypatch, tmp_path, events, **kw):
             self.mem = bytes(data)
 
         def read(self, addr, n):
-            return self.mem
+            return bytes(b ^ 1 for b in self.mem) if corrupt else self.mem
 
     monkeypatch.setattr(M, "SessionTarget", lambda s, **k: Target())
     monkeypatch.setattr(M, "build_window",
@@ -653,7 +653,7 @@ def start_run(monkeypatch, tmp_path, events, **kw):
                         lambda app, b, tag, *a: events.append(("look", tag)))
     log = Log()
     a = run_args(tmp_path, travel=None, after="", home=None, linger=0, **kw)
-    assert M.run(a, log) == 0
+    assert M.run(a, log) == code
     return log
 
 
@@ -686,3 +686,32 @@ def test_start_parses_a_square(monkeypatch, tmp_path):
     M.main(["--disk", "x.d64", "--disks", "/d", "--out", str(tmp_path),
             "--start", "3,27"])
     assert seen == [(3, 27)]
+
+
+def test_start_indoors_writes_nothing_and_stops_the_run(monkeypatch, tmp_path):
+    events = []
+    sess = RunSess()
+    sess.inside = True
+    log = start_run(monkeypatch, tmp_path, events, code=1, sess=sess,
+                    start=(3, 27), walk="77")
+    assert not [e for e in events if e[0] in ("write", "press")]
+    assert "indoors" in log.of("start_refused")[0]["reason"]
+    assert not log.of("start")
+
+
+def test_start_with_an_unreadable_indoors_flag_writes_nothing(monkeypatch, tmp_path):
+    events = []
+    sess = RunSess()
+    sess.indoors = lambda: None
+    log = start_run(monkeypatch, tmp_path, events, code=1, sess=sess,
+                    start=(3, 27), walk="77")
+    assert not [e for e in events if e[0] in ("write", "press")]
+    assert log.of("start_refused")
+
+
+def test_start_read_back_mismatch_stops_the_run(monkeypatch, tmp_path):
+    events = []
+    log = start_run(monkeypatch, tmp_path, events, code=1, corrupt=True,
+                    start=(3, 27), walk="77")
+    assert log.of("start_mismatch") == [{"wrote": "031b", "read_back": "021a"}]
+    assert not [e for e in events if e[0] == "press"]
