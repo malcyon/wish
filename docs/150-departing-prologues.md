@@ -97,12 +97,16 @@ window, or the square the save was made on. Walking out of Sokol Keep instead
 puts you on the square its exit names.
 
 **Why.** Indoors the party's position is `$C04B`-`$C04D` and `newecl_writes`
-writes it. On the travel grid it is `$49C3`/`$49C4`, which ten exits across six
+writes it. Outdoors `$C04B`-`$C04D` is not the position, because `GDRIVE00` is
+not resident. On the travel grid it is `$49C3`/`$49C4`, two bytes, which ten exits across six
 scripts write on the way out. A fast travel writes neither, **and no arriving
 script repairs them**: the straight path out of entry 4 was walked for all
 thirty scripts and not one of them writes `$49C3` or `$49C4`. [`140`](140-loaded-files-cache.md) already
 records the same thing from the other side -- a fasttravel carrying `(0,0)`
 came up at `(0,0)` and one carrying `(5,2)` came up at `(5,2)`.
+
+The travel facing is `$033D`, page 3, unsaved and of unknown encoding
+([`113`](113-world-map.md), unknown 3), so it is not written.
 
 `FastTravel.warnings` says an arrival square is pointless outdoors, which is
 true and is not the same as saying the party lands somewhere arbitrary.
@@ -138,9 +142,9 @@ and clears the pins on only one of them: leaving south goes to area 9 with the
 pins cleared, and leaving any other way goes to area 3, which is another
 quarter of the same castle and wants the same wall art. It is an optimisation
 between areas that share a wall set, and a fast travel takes neither branch.
-`ECL06`'s Valjevo-to-Valjevo route is the one place the game leaves the pins
-set on purpose, so zeroing them costs one extra relocation pass there and
-nothing in the areas that never set them.
+The pin write is unconditional and zero. It costs nothing in the areas that
+never set the pins, and one extra relocation pass on `ECL06`'s
+Valjevo-to-Valjevo route, the one place the game leaves them set on purpose.
 
 **Curse and Silver Blades have the same array, and it transfers.** It is at
 `$4BE7`, `save_load_address` plus `$0200`. Each title's `DUNGEON` holds exactly
