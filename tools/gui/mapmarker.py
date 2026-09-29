@@ -60,11 +60,13 @@ DISKS: pathlib.Path | None = tool_disks()
 #: dungeon triple, which freezes outdoors at the square the party left the grid
 #: on; `$49C3` is the live travel square; `$C04B` is the machine's own
 #: `live_position`, the
-#: engine's own triple and what `party_fix` falls back to.
+#: engine's own triple and what `party_fix` falls back to; `$033D` is the travel
+#: heading the game stores before every step, and combat borrows the same byte.
 PROBES = {
     "indoors_49E6": (0x49E6, 1),
     "dungeon_49C0": (0x49C0, 3),
     "travel_49C3": (0x49C3, 2),
+    "heading_033D": (0x033D, 1),
     "live_C04B": (0xC04B, 3),
     "area_6E1B": (0x6E1B, 1),
 }
@@ -313,6 +315,11 @@ def look(app, binding, tag: str, out: pathlib.Path, log: Log, sess) -> dict:
         "messages": binding.messages.lines()[-6:],
         "row14": status_row(sess),
     }
+    # What the mapper concluded from those bytes, beside the bytes: a heading
+    # or window that disagrees with `$033D` and `$49C3` is the mapper's
+    # reading, not the game's.
+    seen["mapper_window"] = st.window
+    seen["mapper_heading"] = st.heading
     seen.update(probes(sess))
     log.emit("look", **seen)
     log.say(f"  [{tag}] map says {seen['where_label']!r} / {seen['area_strip']!r}"
@@ -320,6 +327,8 @@ def look(app, binding, tag: str, out: pathlib.Path, log: Log, sess) -> dict:
             f"  row14={seen['row14'].strip()!r}")
     log.say(f"        {seen['dungeon_49C0']=} {seen['travel_49C3']=} "
             f"{seen['live_C04B']=} {seen['indoors_49E6']=}")
+    log.say(f"        {seen['heading_033D']=} {seen['mapper_window']=} "
+            f"{seen['mapper_heading']=}")
     shot(app, binding.root, out / f"{tag}-window.png")
     shot(app, binding.canvas, out / f"{tag}-map.png")
     sess.kbd.screenshot(str(out / f"{tag}-game.png"))
@@ -421,6 +430,117 @@ def come_home(args, sess, target, app, binding, out, log, step: int) -> int:
     return step
 
 
+#: How many encounters a run fights before it stops answering them, so a party
+#: that keeps meeting monsters cannot hold a slot for ever.
+MAX_ENCOUNTERS = 5
+
+
+def encounter_bar(sess) -> str | None:
+    """Row 24 when it is an outdoor encounter's opening menu, else None.
+
+    The word is the session's own `ENCOUNTER_FIGHT`, the one `walk_one` takes
+    on a caller's behalf; the travel grid's direction prompt never carries it.
+    """
+    s = sess.screen()
+    if s is None:
+        return None
+    row = s.row(24)
+    if S.OUTDOOR_PROMPT not in row and S.word_column(row, S.ENCOUNTER_FIGHT) >= 0:
+        return row.strip()
+    return None
+
+
+def encounter_after_press(sess, looks: int = 3, gap: float = 1.0) -> str | None:
+    """The encounter bar, if one comes up just after a press.
+
+    Polled for a few seconds because a step that ends in an encounter draws
+    the menu after `walk_outdoors` has already seen the square change.
+    """
+    for n in range(looks):
+        row = encounter_bar(sess)
+        if row is not None:
+            return row
+        if n + 1 < looks:
+            time.sleep(gap)
+    return None
+
+
+def press_state(sess) -> dict:
+    """`$033D` and the travel square, in one stop, for a press's before and after."""
+    got = probes(sess)
+    return {"heading_033D": got.get("heading_033D"),
+            "travel_49C3": got.get("travel_49C3")}
+
+
+def fight_encounter(args, sess, log: Log, bar: str, move: str, step: int) -> str:
+    """Take an outdoor encounter's `COMBAT`, fight it out, wait for the grid.
+
+    Returns `fought` when the travel prompt is back, else `stuck` naming
+    nothing further -- the log carries the fight's own outcome.
+    """
+    log.say(f"Encounter at step {step} (after {move}): |{bar}|")
+    log.emit("encounter", step=step, move=move, bar=bar,
+             **press_state(sess))
+    if not sess.select_bar(S.ENCOUNTER_FIGHT, timeout=8):
+        log.say("  COMBAT could not be selected")
+        log.emit("encounter_outcome", step=step, outcome="not-selected")
+        return "stuck"
+    deadline = time.time() + 20.0
+    while not sess.in_combat() and time.time() < deadline:
+        time.sleep(1.0)
+    result = sess.fight(budget=args.fight_budget, tactic=S.Session.melee_turn)
+    log.say(f"  fight: {result.outcome} in {result.turns} turns, "
+            f"{result.seconds:.0f}s")
+    log.emit("encounter_outcome", step=step, outcome=result.outcome,
+             turns=result.turns, blows=result.blows,
+             seconds=round(result.seconds, 1), bars=result.bars[-12:])
+    if result.outcome == S.NOT_FIGHTING:
+        return "stuck"
+    grid = clear_bars(sess, log, seconds=args.encounter_wait, want_outdoors=True)
+    log.emit("encounter_grid", step=step, outcome=grid)
+    return "fought" if grid == "world" else "stuck"
+
+
+def walk_moves(args, sess, log: Log, moves: str, step: int, after_step) -> int:
+    """Press each of `moves`, answering an outdoor encounter as `--on-encounter` says.
+
+    `after_step(step)` photographs and logs the map after each press, and
+    after an encounter ends -- the first travel tick before any key, which is
+    where a stale combat heading in `$033D` would show.  Each press logs
+    `$033D` and `$49C3` before and after it, so a press into a blocked square
+    can be told from a step.  The interrupted press is not repeated.  Returns
+    the last step number used; `args.stopped` is set when the walk ended early.
+    """
+    for move in moves:
+        if args.stopped:
+            break
+        step += 1
+        before = press_state(sess)
+        moved = sess.walk_one(move)
+        after = press_state(sess)
+        log.say(f"Walk {move}: moved={moved}")
+        log.emit("walk", move=move, moved=moved,
+                 before=before, after=after)
+        time.sleep(1.0)
+        bar = encounter_after_press(sess)
+        if bar is None:
+            after_step(step)
+            continue
+        if args.on_encounter == "stop" or args.encounters >= MAX_ENCOUNTERS:
+            log.say(f"Encounter at step {step}: |{bar}| -- stopping the walk")
+            log.emit("encounter", step=step, move=move, bar=bar,
+                     handled="stop", **press_state(sess))
+            args.stopped = True
+            break
+        args.encounters += 1
+        outcome = fight_encounter(args, sess, log, bar, move, step)
+        step += 1
+        after_step(step)
+        if outcome != "fought":
+            args.stopped = True
+    return step
+
+
 def run(args, log: Log) -> int:
     out = pathlib.Path(args.out)
     slot = S.claim_slot(args.slot, f"mapmarker/{pathlib.Path(args.disk).name}")
@@ -449,14 +569,14 @@ def run(args, log: Log) -> int:
         log.say(f"the map window has {len(maps)} maps loaded")
         look(app, binding, f"{args.tag}-step0", out, log, sess)
 
+        def looker(n):
+            look(app, binding, f"{args.tag}-step{n}", out, log, sess)
+
         step = 0
-        for move in args.walk:
-            step += 1
-            moved = sess.walk_one(move)
-            log.say(f"Walk {move}: moved={moved}")
-            log.emit("walk", move=move, moved=moved)
-            time.sleep(1.0)
-            look(app, binding, f"{args.tag}-step{step}", out, log, sess)
+        if args.turn:
+            step = walk_moves(args, sess, log, args.turn * args.turns, step,
+                              looker)
+        step = walk_moves(args, sess, log, args.walk, step, looker)
 
         if args.travel is not None:
             # The window's own Fast Travel, which is how a party can be put on
@@ -499,13 +619,7 @@ def run(args, log: Log) -> int:
                              bytes(args.place[:2]))
                 log.say(f"placed the party at {tuple(args.place)} on the grid")
                 log.emit("place", x=args.place[0], y=args.place[1])
-            for move in args.after:
-                step += 1
-                moved = sess.walk_one(move)
-                log.say(f"Walk {move}: moved={moved}")
-                log.emit("walk", move=move, moved=moved)
-                time.sleep(1.0)
-                look(app, binding, f"{args.tag}-step{step}", out, log, sess)
+            step = walk_moves(args, sess, log, args.after, step, looker)
 
         if args.home is not None:
             step = come_home(args, sess, target, app, binding, out, log, step)
@@ -542,6 +656,21 @@ def main(argv=None) -> int:
     p.add_argument("--walk", default="",
                    help="Moves: I J K M in a dungeon, the compass digits 1-8 "
                         "on the travel grid")
+    p.add_argument("--turn", default="", metavar="DIGIT",
+                   help="Press this one compass digit at the start, before "
+                        "--walk, logging $033D and $49C3 around each press: "
+                        "into a blocked square it shows whether the heading "
+                        "changes while the square does not")
+    p.add_argument("--turns", type=int, default=1,
+                   help="How many times --turn is pressed")
+    p.add_argument("--on-encounter", choices=("fight", "stop"), default="fight",
+                   help="What to do when a press lands on an outdoor "
+                        "encounter: fight it out with melee and resume the "
+                        "walk, or log it and stop the walk")
+    p.add_argument("--fight-budget", type=float, default=300.0,
+                   help="Seconds --on-encounter fight gives one fight")
+    p.add_argument("--encounter-wait", type=float, default=120.0,
+                   help="Seconds to wait for the travel prompt after a fight")
     p.add_argument("--travel", type=int, default=None,
                    help="After the walk, Fast Travel to this area id -- 26 is "
                         "the wilderness's middle window, which is how a party "
@@ -575,6 +704,10 @@ def main(argv=None) -> int:
                    help="seconds to wait for the world bar after BEGIN "
                         "ADVENTURING")
     args = p.parse_args(argv)
+    if len(args.turn) > 1 or (args.turn and args.turn not in "12345678"):
+        p.error("--turn takes one compass digit, 1-8")
+    args.encounters = 0
+    args.stopped = False
     if args.disks is None:
         if DISKS is None:
             raise SystemExit("No game disks found. Set $POR_DISKS.")
