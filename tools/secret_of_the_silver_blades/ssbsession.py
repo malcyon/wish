@@ -491,6 +491,7 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
     deadline = time.time() + timeout
     seen, since = "", time.time()
     began = entered = False
+    chosen_at, answered = 0.0, False
     while time.time() < deadline:
         s = sess.screen()
         if s is None:
@@ -499,6 +500,12 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
         text = s.text()
         if "ENCAMP" in text:
             return True
+        if began and por.MOVE_SUBBAR in s.row(24):
+            # The move sub-bar is the world: Escape does not leave it, one
+            # Return does, back to the bar that carries ENCAMP.
+            sess.press_kernal(0x0D)
+            time.sleep(1.5)
+            continue
         if entered and stop_at_idle and not side_wanted(text)[1] \
                 and not save_disk_wanted(text):
             # Not while a disk prompt is up: that waits in `LIBRARY` too, at
@@ -513,6 +520,7 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             time.sleep(2.0)
             continue
         if sess.handle_prompt(s):
+            answered = True
             time.sleep(1.5)
             continue
         state = ("BEGIN" if "BEGIN ADVENTURING" in text
@@ -522,9 +530,16 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             sess.log(f"  world: {state!r}")
             seen, since = state, time.time()
         if state == "BEGIN":
-            began = True
-            sess.select_row("BEGIN ADVENTURING")
-            sess.press_kernal(0x0D)
+            # The party menu stays drawn for seconds while the area loads, so
+            # a menu seen after the choice is stale, not a fresh one. Choose
+            # again only when it has sat far longer than any load and no disk
+            # prompt was answered, i.e. the first choice never registered.
+            if not began or (not answered
+                             and time.time() - chosen_at > 90.0):
+                began, answered = True, False
+                chosen_at = time.time()
+                sess.select_row("BEGIN ADVENTURING")
+                sess.press_kernal(0x0D)
         elif began and not entered:
             # Past the formation menu and not a disk prompt: the party is in
             # the world and a script is running it. Only now is an idle PC

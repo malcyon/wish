@@ -211,3 +211,95 @@ def test_a_prompt_still_up_after_the_key_is_not_answered_again(monkeypatch):
     now[0] += 1.0
     assert sess.handle_prompt(screen)
     assert keys == ["space", "space"]
+
+
+class WorldSess:
+    """Plays a fixed list of (text, row 24) screens, one per `screen()` call,
+    repeating the last, and records every key `enter_world` sends."""
+
+    def __init__(self, screens, prompt_at=()):
+        self.screens = list(screens)
+        self.prompt_at = set(prompt_at)
+        self.calls = 0
+        self.selected: list[str] = []
+        self.kernal: list[int] = []
+        self.escapes = 0
+        self.kernal_after_world_bar = 0
+        self.world_bar_seen = False
+        outer = self
+
+        class Kbd:
+            def key(self, name):
+                if name == "Escape":
+                    outer.escapes += 1
+
+        self.kbd = Kbd()
+
+    def screen(self):
+        i = min(self.calls, len(self.screens) - 1)
+        self.calls += 1
+        self.current = i
+        text, bar = self.screens[i]
+        if "ENCAMP" in text:
+            self.world_bar_seen = True
+        return FakeScreen(text, bar=bar)
+
+    def handle_prompt(self, s=None):
+        return self.current in self.prompt_at
+
+    def select_row(self, label):
+        self.selected.append(label)
+
+    def press_kernal(self, code):
+        self.kernal.append(code)
+        if self.world_bar_seen:
+            self.kernal_after_world_bar += 1
+
+    def log(self, *a):
+        pass
+
+
+def _quiet(monkeypatch):
+    clock = FakeClock()
+    monkeypatch.setattr(SSB.time, "time", clock.time)
+    monkeypatch.setattr(SSB.time, "sleep", clock.sleep)
+    monkeypatch.setattr(SSB, "impossible_side", lambda *a, **k: None)
+    monkeypatch.setattr(SSB, "idle_in_key_window", lambda sess, addr: None)
+
+
+MENU = ("BEGIN ADVENTURING", "BEGIN ADVENTURING")
+PROMPT = ("INSERT SIDE A, AND PRESS ANY KEY.", "INSERT SIDE A, AND PRESS ANY KEY.")
+WORLD = ("MOVE VIEW CAST AREA ENCAMP SEARCH LOOK",
+         "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK")
+
+
+def test_a_menu_left_drawn_while_the_area_loads_is_not_chosen_again(
+        monkeypatch):
+    _quiet(monkeypatch)
+    sess = WorldSess([MENU, PROMPT] + [MENU] * 5 + [WORLD], prompt_at={1})
+    ok = SSB.enter_world(sess, Addr(), timeout=120.0, fix=False,
+                         stop_at_idle=False)
+    assert ok is True
+    assert sess.selected == ["BEGIN ADVENTURING"]
+    assert sess.kernal_after_world_bar == 0
+
+
+def test_the_move_subbar_after_begin_gets_one_return_and_no_escape(
+        monkeypatch):
+    _quiet(monkeypatch)
+    subbar = ("MOVE", "I,J,K,M, RETURN OR BUTTON")
+
+    class Sess(WorldSess):
+        def press_kernal(self, code):
+            super().press_kernal(code)
+            if self.calls and self.screens[-1] is subbar:
+                self.screens.append(WORLD)
+
+    sess = Sess([MENU, PROMPT, subbar], prompt_at={1})
+    sess.screens = [MENU, PROMPT, subbar]
+    ok = SSB.enter_world(sess, Addr(), timeout=120.0, fix=False,
+                         stop_at_idle=False)
+    assert ok is True
+    # One Return chose BEGIN; exactly one more left the sub-bar.
+    assert sess.kernal == [0x0D, 0x0D]
+    assert sess.escapes == 0
