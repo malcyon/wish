@@ -4771,6 +4771,23 @@ def test_the_turn_control_passes_when_the_square_is_the_same_and_fails_when_it_i
                           _saved(P, {**turned, "y": 4})])
 
 
+def test_a_walk_m_that_stepped_back_passes_the_save_check(tmp_path, monkeypatch):
+    sess = WalkSession(x=3, y=12, facing=3)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    walked = run.walk("M")
+    log.close()
+    before = {"area": 1, "x": 3, "y": 12, "facing": 3}
+    after = {**before, "x": walked["position"][0], "y": walked["position"][1]}
+    assert after["x"] == 4
+    A.validate_walks([{"verb": "walk", **walked}, _saved(before, after)])
+
+
+def test_a_walk_m_that_held_still_does_not_excuse_a_moved_save():
+    held = {**_walked("M", False, [5, 5, 2]), "back_moved": 0}
+    with pytest.raises(A.StepFailed, match="only turns were asked"):
+        A.validate_walks([held, _saved(P, {**P, "y": 4, "facing": 2})])
+
+
 def test_a_route_that_returns_to_its_start_passes_when_the_save_agrees():
     A.validate_walks([_walked("IMI", True, [5, 5, 0]), _saved(P, P)])
 

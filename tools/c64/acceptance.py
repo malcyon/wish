@@ -2533,6 +2533,8 @@ class PoolRun:
         return {"route": route, "start": start, "position": end, "moves": moves,
                 "asked_forward": route.count("I"),
                 "squares_moved": sum(m["moved"] for m in moves),
+                "back_moved": sum(m["moved"] for m in moves
+                                  if m["move"] == "M"),
                 "blocked": [i for i, m in enumerate(moves) if m["blocked"]],
                 "expected_facing": facing}
 
@@ -3837,7 +3839,10 @@ def validate_walks(results: list[dict]) -> None:
         raise StepFailed(f"did not move: {asked} forward move(s) asked, the saved "
                          f"square is still {got['place_after']['x']},"
                          f"{got['place_after']['y']} (blocked at moves {blocked})")
-    if not asked and got["place_changed"]:
+    # `M` is a step back where nothing stops it, so a save that differs after
+    # one that moved is a move and not a turn (`_judge_about_turn`).
+    back = sum(r.get("back_moved", 0) for _, r in walks)
+    if not asked and not back and got["place_changed"]:
         raise StepFailed("only turns were asked and the saved square changed from "
                          f"{got['place_before']} to {got['place_after']}")
     if any(r["verb"] == "fight" for r in results[last + 1:]):
