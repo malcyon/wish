@@ -476,8 +476,9 @@ def settle_step(sess, log: Log, key: str, there,
     icon is up, `"choice"` for a bar the walk does not answer that held for
     `CHOICE_READS` reads (nothing is pressed at it), and `"unsettled"` when
     `timeout` runs out first.  A `PRESS` bar that `MAX_PRESSES` Returns did not
-    clear is `"unsettled"`, and an encounter menu still up after the word was
-    taken counts toward the `"choice"` hold.  With `quiet` set, `"ready"` also
+    clear is `"unsettled"`.  An encounter menu still up after the word was
+    taken is a `"choice"` only once it has held `CHOICE_READS` reads counted
+    from the press and a combat poll has found no fight since.  With `quiet` set, `"ready"` also
     needs the walkable bar to have held that many seconds, so a stale bar
     cannot be taken for the end of a script.
 
@@ -498,6 +499,7 @@ def settle_step(sess, log: Log, key: str, there,
     row = ""
     next_combat = 0.0
     ready_since = None
+    polled = False
     deadline = time.monotonic() + timeout
     while True:
         now = time.monotonic()
@@ -507,6 +509,10 @@ def settle_step(sess, log: Log, key: str, there,
             next_combat = now + COMBAT_POLL
             if sess.in_combat():
                 return "fight", row
+            # A poll that finds no fight after the menu has held is what
+            # lets it be called a choice: a fight loading from disk leaves
+            # the menu drawn.
+            polled = polled or (taken and held >= CHOICE_READS)
         s = sess.screen()
         row = "" if s is None else s.row(24).strip()
         if seen is not None and row != seen:
@@ -538,7 +544,7 @@ def settle_step(sess, log: Log, key: str, there,
                 continue
             elif row and word and S.word_column(row, word) >= 0:
                 if taken:
-                    if held >= CHOICE_READS:
+                    if held >= CHOICE_READS and polled:
                         return "choice", row
                 else:
                     log.say(f"  an encounter after {key} at {tuple(there)}: "
@@ -547,6 +553,7 @@ def settle_step(sess, log: Log, key: str, there,
                              row24=row)
                     sess.select_bar(word, timeout=8)
                     taken = True
+                    held = 0
             elif row and held >= CHOICE_READS:
                 return "choice", row
         time.sleep(SETTLE_POLL)
@@ -608,6 +615,9 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None):
             turn = key != "i"
             if turn:
                 facing = (facing + (1 if key == "k" else -1)) % 4
+            landed = here if turn else there
+            last = number == len(steps) and index == len(keys) - 1
+            quiet = FINAL_QUIET if last else 0.0
             for attempt in range(2):
                 if turn:
                     bad = _turn_key(sess, log, key, facing, leg, here, there)
@@ -635,7 +645,8 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None):
                 # Nothing was pressed: wait out whatever is up, and send the
                 # key again only when a walkable bar comes back.
                 outcome, row = settle_step(sess, log, key, here,
-                                           taken=_encounter_taken(sess))
+                                           taken=_encounter_taken(sess),
+                                           quiet=quiet)
                 if outcome == "fight":
                     return want, here, None
                 if outcome != "ready":
@@ -646,10 +657,7 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None):
                     return want, None, bad
                 log.emit("route_retry", leg=leg, key=key, to=list(there),
                          refused=bad["refused"])
-            landed = here if turn else there
-            last = number == len(steps) and index == len(keys) - 1
-            outcome, row = settle_step(sess, log, key, landed,
-                                       quiet=FINAL_QUIET if last else 0.0)
+            outcome, row = settle_step(sess, log, key, landed, quiet=quiet)
             if outcome == "fight":
                 return want, landed, None
             if outcome != "ready":

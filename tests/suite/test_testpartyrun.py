@@ -1042,3 +1042,31 @@ def test_an_encounter_menu_that_outlasts_combat_is_a_choice(monkeypatch):
     assert sess.asked == ["COMBAT"] and sess.pressed == []
     assert got[1] is None and got[2]["reason"] == "choice"
     assert clock.now < T.STEP_SETTLE_WAIT
+
+
+def test_a_fight_loading_behind_the_drawn_menu_after_combat_is_the_fight(
+        monkeypatch):
+    dumps = []
+    monkeypatch.setattr(T, "dump", lambda sess, out, log, tag: dumps.append(tag))
+    sess = StepScript(monkeypatch, 1, ["", ENCOUNTER], None, [ENCOUNTER])
+    sess.walk_encounter = S.ENCOUNTER_FIGHT
+    clock = Clock(monkeypatch)
+    sess.in_combat = lambda: clock.now >= 3.0
+    got = T.walk_route(sess, RecordingLog(), SOUTH, 2, "slums")
+    assert sess.asked == ["COMBAT"]
+    assert got == (2, (5, 6), None)
+
+
+def test_the_retry_after_a_refused_key_keeps_the_last_steps_quiet_hold(
+        monkeypatch):
+    quiets = []
+    real = T.settle_step
+
+    def spy(sess, log, key, there, **kw):
+        quiets.append(kw.get("quiet"))
+        return real(sess, log, key, there, **kw)
+
+    monkeypatch.setattr(T, "settle_step", spy)
+    # The last step's key is refused behind a stale bar, then goes.
+    _script_walk(monkeypatch, [WORLD, WORLD, "", "", WORLD], after_key=2)
+    assert quiets[-2:] == [T.FINAL_QUIET, T.FINAL_QUIET]
