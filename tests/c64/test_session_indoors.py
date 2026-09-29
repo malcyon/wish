@@ -282,6 +282,7 @@ def test_a_squareless_line_with_no_steady_live_triple_is_unknown(monkeypatch):
     sess = PoolPositionSession("S 0:05", _pool_memory(True))
     sess.steady_triple = lambda *a, **k: None
     assert sess.position() == (0, 0, None)
+    assert S.DUNGEON_XY not in sess.asked
 
 
 def test_a_squareless_line_with_an_unreadable_live_triple_is_unknown(monkeypatch):
@@ -292,3 +293,4 @@ def test_a_squareless_line_with_an_unreadable_live_triple_is_unknown(monkeypatch
         raise S.MonitorError("unavailable")
     sess.live_triple = unreadable
     assert sess.position() == (0, 0, None)
+    assert S.DUNGEON_XY not in sess.asked

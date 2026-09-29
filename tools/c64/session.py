@@ -2299,7 +2299,8 @@ class Session:
         with facing and time but no square, and any indoor screen with no
         status line, is read from the live triple `$C04B`-`$C04D`
         (`steady_triple`), or `(0, 0, None)` if it cannot be read or never
-        settles.  Outdoors the memory pair `$49C3`/`$49C4` is read, with no
+        settles.  A title with no travel grid (Curse, Silver Blades) always
+        reads the live triple.  Outdoors the memory pair `$49C3`/`$49C4` is read, with no
         facing.  `$49C0`-`$49C2` is never read as the square, because it is
         the save-time copy and does not change while the party walks.
         """
