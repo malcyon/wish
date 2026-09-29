@@ -192,7 +192,8 @@ def test_the_curse_resave_diff_is_the_known_gap_and_old_thac0_base():
     `write_later` converted and wrote it back through `ENCAMP > SAVE`, and
     before the derived-field fix `thac0_current`, one `roster_tail` byte and
     `combat_figure` were the only bytes outside the declared lists.
-    `combat_figure` is the writer's own known gap; the other two are now on
+    `combat_figure` was then the writer's own gap and is written correctly
+    now; this specimen predates that fix.  The other two are now on
     `LATER_WRITE_DERIVED`.
 
     The reference specimen is `WISH-SPEC-coab-amiga-converted-resave-
