@@ -41,6 +41,7 @@ bytes with what it replaced.
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown |
+| `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
 | `warp AREA` | Pool only: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`); Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
@@ -338,7 +339,8 @@ class Step:
 VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "rest": "must", "fight": "may", "peek": "must", "save": "never",
          "cast": "must", "cure": "must", "walk": "must", "ready": "must",
-         "temple-probe": "must", "warp": "must"}
+         "temple-probe": "must", "warp": "must",
+         "walk-fight": "must"}
 
 #: How long a walk keeps watching for a disk prompt after a move (seconds).
 LOOK_SECONDS = 2.0
@@ -384,6 +386,16 @@ def parse_walk(arg: str) -> str:
         raise ValueError(f"walk {arg!r}: the moves are I forward, J left, "
                          f"K right, M about-turn")
     return route
+
+
+def parse_walk_fight(arg: str) -> tuple[str, str | None]:
+    """`IIK` or `IIK/NO`: the moves, and the one answer a `YES NO` on the last
+    square may be given.  NO is the only answer the step will press."""
+    keys, sep, answer = arg.strip().partition("/")
+    route = parse_walk(keys)
+    if sep and answer.strip().upper() != "NO":
+        raise ValueError(f"walk-fight {arg!r}: the only answer after / is NO")
+    return route, "NO" if sep else None
 
 
 def parse_cast(arg: str) -> tuple[str, str, str | None]:
@@ -441,6 +453,8 @@ def parse_steps(texts) -> list[Step]:
             parse_peek(arg)
         elif verb == "walk":
             parse_walk(arg)
+        elif verb == "walk-fight":
+            parse_walk_fight(arg)
         elif verb == "cast":
             parse_cast(arg)
         elif verb == "cure":
@@ -465,6 +479,14 @@ def parse_steps(texts) -> list[Step]:
 #: (`ECL0A` entry 4 writes `0, 4, 1` at `$C04B`-`$C04D` on every arrival), read
 #: after a warp.  Pool of Radiance only; an area not listed is not checked.
 ARRIVAL_FACING = {10: 1}
+
+#: The budget for each fight a `walk-fight` takes; the run's own
+#: `--max-seconds` still bounds the whole.
+WALK_FIGHT_SECONDS = 900.0
+
+#: How long `walk-fight` waits for a fight to open after it has answered an
+#: encounter menu or a `YES NO`.
+FIGHT_OPENS_SECONDS = 60.0
 
 #: How long a warp waits for the engine to settle into its key-wait loop.
 WARP_IDLE_SECONDS = 300.0
@@ -679,6 +701,10 @@ def stage(src: pathlib.Path, dest: pathlib.Path, title_key: str,
     took["effects"] = _effect_list(payload)
     took["magic_items"] = magic_items(payload, box)
     took["place"] = place_of(payload, game)
+    if game.key == "pool-of-radiance":
+        took["drain_fields"] = drain_fields(
+            [bytes(payload[box.slot(slot):box.slot(slot) + box.slot_stride])
+             for slot in range(PARTY_SLOTS)])
     return took
 
 
@@ -765,7 +791,73 @@ def decode_save(path: pathlib.Path, staged: dict) -> dict:
         out["party"] = _party_reading(records, roster[box.roster_offset:],
                                       box.roster_stride)
         out["record_sha256"] = _record_sha256(records)
+        out["drain_fields"] = drain_fields(records)
     return out
+
+
+#: The per-class level array: eight slots at `0x0C9`, indexed by class bit.
+CLASS_LEVELS = (0x0C9, 0x0D1)
+
+
+def drain_fields(records: list[bytes]) -> list[dict]:
+    """What a level drain changes, read off each occupied Pool record."""
+    out = []
+    for slot, record in enumerate(records):
+        rec = CharacterRecord(bytes(record).ljust(RECORD_SIZE, b"\0"),
+                              stored_size=len(record))
+        if not rec.name:
+            continue
+        out.append({"slot": slot, "name": rec.name,
+                    "level": rec.get("level"),
+                    "levels_drained": rec.get("levels_drained"),
+                    "hp_lost_to_drain": rec.get("hp_lost_to_drain"),
+                    "hp_max": rec.get("hp_max"),
+                    "class_levels": list(bytes(record)[CLASS_LEVELS[0]:CLASS_LEVELS[1]])})
+    return out
+
+
+def drain_verdict(before: list[dict] | None, after: list[dict]) -> dict:
+    """Whether some character was drained one or two levels, and consistently.
+
+    A character passes when its level fell by 1 or 2, `levels_drained` (`0x0A1`)
+    equals the fall, `hp_lost_to_drain` (`0x0A2`) is not zero, exactly one entry
+    of its per-class level array fell by the same amount and `hp_max` fell by
+    `hp_lost_to_drain`.  A run in which nobody passes is a result to record,
+    not a driver failure, so this returns and never raises.
+    """
+    if not before:
+        return {"passed": None, "characters": [],
+                "why": "the staged disk holds no records to compare"}
+    was = {c["slot"]: c for c in before}
+    characters = []
+    for now in after:
+        old = was.get(now["slot"])
+        if old is None or old["name"] != now["name"]:
+            continue
+        drop = old["level"] - now["level"]
+        classes = [a - b for a, b in zip(old["class_levels"], now["class_levels"])]
+        problems = []
+        if drop not in (1, 2):
+            problems.append(f"level fell by {drop}, not 1 or 2")
+        if now["levels_drained"] != drop:
+            problems.append(f"levels_drained is {now['levels_drained']}, "
+                            f"level fell by {drop}")
+        if not now["hp_lost_to_drain"]:
+            problems.append("hp_lost_to_drain is zero")
+        if [c for c in classes if c] != [drop]:
+            problems.append(f"class levels fell by {classes}, not one entry by {drop}")
+        if old["hp_max"] - now["hp_max"] != now["hp_lost_to_drain"]:
+            problems.append(f"hp_max fell by {old['hp_max'] - now['hp_max']}, "
+                            f"hp_lost_to_drain is {now['hp_lost_to_drain']}")
+        characters.append({"slot": now["slot"], "name": now["name"],
+                           "level_drop": drop,
+                           "levels_drained": now["levels_drained"],
+                           "hp_lost_to_drain": now["hp_lost_to_drain"],
+                           "class_drops": classes,
+                           "hp_max_drop": old["hp_max"] - now["hp_max"],
+                           "passed": not problems, "problems": problems})
+    return {"passed": any(c["passed"] for c in characters),
+            "characters": characters}
 
 
 # --- the screens ---------------------------------------------------------------
@@ -2238,6 +2330,36 @@ class PoolRun:
             return screens[0] == screens[1]
         return self.rows() == before_rows
 
+    def _judge_about_turn(self, route: str, n: int, before, after) -> None:
+        """Fail an `M` whose square and facing are not one of the two outcomes.
+
+        `M` turns about and tries the edge behind the original facing.  No wall
+        art there: one square back, facing kept.  An open door there: one
+        square back, facing reversed.  A solid wall there: no move, facing
+        reversed.
+        """
+        moved = after[:2] != before[:2]
+        reversed_facing = (before[2] + 2) % 4
+        if moved:
+            dx, dy = STEP[reversed_facing]
+            if after[:2] != [before[0] + dx, before[1] + dy]:
+                raise self.fail(
+                    "walk", f"walk {route}: move {n} moved from {before} "
+                            f"to {after}, not one square behind: an exit "
+                            f"or a teleport")
+            if after[2] is not None and after[2] not in (
+                    before[2], reversed_facing):
+                raise self.fail(
+                    "walk", f"walk {route}: move {n} (M) stepped back "
+                            f"from {before} to {after} so should face "
+                            f"{before[2]} or {reversed_facing}, it "
+                            f"faces {after[2]}")
+        elif after[2] is not None and after[2] != reversed_facing:
+            raise self.fail(
+                "walk", f"walk {route}: move {n} (M) stayed at "
+                        f"{before} so should reverse facing to "
+                        f"{reversed_facing}, it faces {after[2]}")
+
     def _walk(self, route: str) -> dict:
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
@@ -2327,32 +2449,7 @@ class PoolRun:
                                 f"to {after}, not one square ahead: an exit "
                                 f"or a teleport")
             if move == "M" and before[2] is not None:
-                # `M` turns about and tries the edge behind the original
-                # facing.  No wall art there: one square back, facing kept.
-                # An open door there: one square back, facing reversed.
-                # A solid wall there: no move, facing reversed.
-                moved = after[:2] != before[:2]
-                reversed_facing = (before[2] + 2) % 4
-                if moved:
-                    dx, dy = STEP[reversed_facing]
-                    if after[:2] != [before[0] + dx, before[1] + dy]:
-                        raise self.fail(
-                            "walk", f"walk {route}: move {n} moved from {before} "
-                                    f"to {after}, not one square behind: an exit "
-                                    f"or a teleport")
-                    if after[2] is not None and after[2] not in (
-                            before[2], reversed_facing):
-                        raise self.fail(
-                            "walk", f"walk {route}: move {n} (M) stepped back "
-                                    f"from {before} to {after} so should face "
-                                    f"{before[2]} or {reversed_facing}, it "
-                                    f"faces {after[2]}")
-                else:
-                    if after[2] is not None and after[2] != reversed_facing:
-                        raise self.fail(
-                            "walk", f"walk {route}: move {n} (M) stayed at "
-                                    f"{before} so should reverse facing to "
-                                    f"{reversed_facing}, it faces {after[2]}")
+                self._judge_about_turn(route, n, before, after)
                 if after[2] is not None:
                     facing = after[2]
             elif facing is not None:
@@ -2375,6 +2472,153 @@ class PoolRun:
                 "squares_moved": sum(m["moved"] for m in moves),
                 "blocked": [i for i, m in enumerate(moves) if m["blocked"]],
                 "expected_facing": facing}
+
+    def walk_fight(self, arg: str) -> dict:
+        """Walk a route, fighting every encounter the route meets, and resume.
+
+        An encounter menu is answered COMBAT and never FLEE, which would
+        teleport the party off its route.  Each fight is fought out with
+        `Session.melee_turn`, and the next key is judged from the square the
+        fight left the party on.  An `I` that left the party where it stood is
+        sent once more; a `YES NO` is answered NO on the route's last key when
+        `/NO` was given and fails the step anywhere else, with nothing pressed.
+        """
+        route, answer = parse_walk_fight(arg)
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        # `Session._stop_walk` answers an encounter menu with this word and
+        # presses nothing else; `walk_expired` bounds its waits by the run.
+        self.sess.walk_encounter = S.ENCOUNTER_FIGHT
+        self.sess.walk_expired = self.spent
+        try:
+            return self._walk_fight(route, answer)
+        finally:
+            self.sess.walk_encounter = None
+            self.sess.walk_expired = None
+
+    def _walk_fight(self, route: str, answer: str | None) -> dict:
+        moves, fights = [], []
+        for n, move in enumerate(route):
+            self.budget(1, f"walk-fight {route}")
+            last = (n, move, self.position())
+            self.refuse_prompt(route, last, "was up before the next move")
+            before = last[2]
+            resent = False
+            for attempt in (0, 1):
+                self._walk_fight_key(route, n, move, before, last,
+                                     answer if n == len(route) - 1 else None,
+                                     fights)
+                after = self.position()
+                if after == before and attempt == 0:
+                    resent = True
+                    continue
+                break
+            self._judge_walk_fight(route, n, move, before, after)
+            self.log.emit("move", move=move, n=n, before=before, after=after,
+                          resent=resent, row24=self.bar().strip())
+            moves.append({"move": move, "before": before, "after": after,
+                          "moved": before[:2] != after[:2], "resent": resent})
+        self.refuse_prompt(route, (len(route) - 1, route[-1], self.position()),
+                           "ran the square's event")
+        self.capture(f"walked-{route}")
+        return {"route": route, "answer": answer, "position": self.position(),
+                "fights": fights, "moves": moves}
+
+    def _walk_fight_key(self, route, n, move, before, last, answer, fights) -> None:
+        """One key, then whatever it started: an encounter menu, a `YES NO`,
+        a fight.  A fight is fought out and the world bar waited for."""
+        sess = self.sess
+        sess.walk_one(move, tries=1, answer_prompts=False)
+        self.refuse_prompt(route, last, "ran the square's event")
+        stop = getattr(sess, "walk_stop_screen", None)
+        refused = getattr(sess, "walk_refused", None)
+        if refused and stop is None:
+            raise self.fail("walk-fight", f"walk-fight {route}: {refused}")
+        pressed = stop is not None
+        if stop is None:
+            look_until = self.clock() + LOOK_SECONDS
+            while not sess.in_combat():
+                self.budget(1, f"walk-fight {route}")
+                self.refuse_prompt(route, last, "ran the square's event")
+                if self.clock() >= look_until:
+                    break
+                time.sleep(0.3)
+            if not sess.in_combat():
+                stop = sess.walk_stop(wait=12.0)
+        if stop is not None:
+            self._answer_stop(route, n, move, before, stop, pressed, answer)
+            if not self._fight_opens():
+                raise self.fail(
+                    "walk-fight", f"walk-fight {route}: move {n} ({move}) from "
+                                  f"{before} answered {stop[24].strip()!r} and "
+                                  f"no fight opened in "
+                                  f"{int(FIGHT_OPENS_SECONDS)} seconds")
+        if not sess.in_combat():
+            return
+        number = len(fights)
+        self.capture(f"fight-{number}-start")
+        result = sess.fight(budget=WALK_FIGHT_SECONDS, tactic=S.Session.melee_turn)
+        self.capture(f"fight-{number}-end")
+        if result.outcome == S.LOST:
+            raise self.fight_lost(result)
+        if result.outcome == S.BUDGET:
+            raise self.fight_over_budget(str(int(WALK_FIGHT_SECONDS)), result)
+        self.to_world()
+        fights.append({"at_move": n, "square": self.position(),
+                       **dataclasses.asdict(result)})
+
+    def _answer_stop(self, route, n, move, before, rows, pressed, answer) -> None:
+        """Answer a screen a walk stops at, or fail the step pressing nothing.
+
+        COMBAT is the only encounter answer.  `pressed` is true when
+        `walk_one` has already taken it."""
+        row = rows[24]
+        if S.word_column(row, "YES") >= 0 and S.word_column(row, "NO") >= 0:
+            if answer != "NO":
+                raise self.fail(
+                    "walk-fight", f"walk-fight {route}: move {n} ({move}) from "
+                                  f"{before} reached a question, "
+                                  f"{row.strip()!r}, and only NO on the last "
+                                  f"key is allowed; nothing was pressed")
+            self.sess.select_bar("NO", timeout=8)
+        elif S.word_column(row, S.ENCOUNTER_FIGHT) >= 0:
+            if not pressed:
+                self.sess.select_bar(S.ENCOUNTER_FIGHT, timeout=8)
+        else:
+            raise self.fail(
+                "walk-fight", f"walk-fight {route}: move {n} ({move}) from "
+                              f"{before} ended on a screen the step does not "
+                              f"answer: {row.strip()}")
+
+    def _fight_opens(self) -> bool:
+        limit = self.clock() + FIGHT_OPENS_SECONDS
+        while not self.sess.in_combat():
+            if self.clock() >= limit:
+                return False
+            self.budget(1, "a fight to open")
+            time.sleep(0.5)
+        return True
+
+    def _judge_walk_fight(self, route, n, move, before, after) -> None:
+        if move == "I":
+            dx, dy = STEP[before[2]]
+            if after[:2] == [before[0] + dx, before[1] + dy]:
+                return
+            if after[:2] == before[:2]:
+                raise self.fail("walk-fight", f"walk-fight {route}: move {n} (I) "
+                                              f"left the party on {before} "
+                                              f"after it was sent twice")
+            raise self.fail(
+                "walk-fight", f"walk-fight {route}: move {n} moved from {before} "
+                              f"to {after}, not one square ahead: an exit or a "
+                              f"teleport")
+        if move == "M":
+            self._judge_about_turn(route, n, before, after)
+        elif (after[:2] != before[:2]
+              or after[2] != (before[2] + TURNS[move]) % 4):
+            raise self.fail("walk-fight", f"walk-fight {route}: move {n} "
+                                          f"({move}) took {before} to {after}, "
+                                          f"not a turn on the square")
 
     def peek(self, arg: str) -> dict:
         addr, n = parse_peek(arg)
@@ -2993,6 +3237,9 @@ class CurseRun(PoolRun):
     def warp(self, arg: str) -> dict:
         raise self.fail("warp", "Pool of Radiance only")
 
+    def walk_fight(self, arg: str) -> dict:
+        raise self.fail("walk-fight", "Pool of Radiance only")
+
     def fight(self, arg: str, walk: str, steps: int) -> dict:
         from tools.c64 import laterbattle
         from tools.curse_of_the_azure_bonds import cursethac0
@@ -3579,6 +3826,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.fight(step.arg, args.walk, args.walk_steps)
             elif step.verb == "warp":
                 got = pool.warp(step.arg)
+            elif step.verb == "walk-fight":
+                got = pool.walk_fight(step.arg)
             elif step.verb == "peek":
                 got = pool.peek(step.arg)
             elif step.verb == "cast":
@@ -3610,6 +3859,13 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                                      + pool.first_effect_loss["phase"])
                 validate_curse_attack(summary["results"], attack, args.attack_by)
         validate_walks(summary["results"])
+        if any(s.verb == "walk-fight" for s in steps):
+            saved = next((r for r in reversed(summary["results"])
+                          if r["verb"] == "save"), None)
+            summary["drain"] = (
+                drain_verdict(staged.get("drain_fields"), saved["drain_fields"])
+                if saved else {"passed": None, "characters": [],
+                               "why": "no save step after the walk-fight"})
         if args.title == "pool" and any(s.verb == "cast" for s in steps):
             if any(r.get("spell") in CAMP_PARTY_SPELLS for r in summary["results"]):
                 validate_pool_party_spells(summary["results"])
@@ -3820,6 +4076,8 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(str(e))
     if any(x.verb == "warp" for x in steps) and args.title != "pool":
         ap.error("the warp step: Pool of Radiance only")
+    if any(x.verb == "walk-fight" for x in steps) and args.title != "pool":
+        ap.error("the walk-fight step: Pool of Radiance only")
     if any(x.verb == "fight" for x in steps) and args.title == "ssb":
         ap.error("the fight step needs --title pool or curse")
     temple_mode = any(step.verb == "temple-probe" for step in steps)

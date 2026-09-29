@@ -6131,3 +6131,237 @@ def test_the_warp_step_is_refused_for_curse_and_silver_blades(tmp_path, capsys):
         run.fail = lambda tag, why: A.StepFailed(why)
         with pytest.raises(A.StepFailed, match="Pool of Radiance only"):
             run.warp("10")
+
+
+# --- walk-fight ------------------------------------------------------------------
+
+def _stop_rows(bar):
+    return [""] * 24 + [bar]
+
+
+class FightWalk(WalkSession):
+    """A grid walk whose moves can raise an encounter menu, a `YES NO` or a
+    fight.  `script` maps the number of the `walk_one` call (from 0) to what
+    that key starts: "fight", "fight-stay" (the fight leaves the party where it
+    was), "encounter", "yesno" or ("teleport", x, y)."""
+
+    ENCOUNTER = "COMBAT WAIT FLEE ADVANCE"
+    YESNO = "YES NO"
+
+    def __init__(self, script, outcome=A.S.WON, **kw):
+        super().__init__(**kw)
+        self.script, self.outcome = script, outcome
+        self.calls = 0
+        self.combat = False
+        self.pending = None
+        self.walk_stop_screen = None
+        self.selected = []
+        self.tactics = []
+        self.encounter_words = []
+
+    def in_combat(self):
+        return self.combat
+
+    def walk_stop(self, s=None, wait=0.0):
+        return self.pending
+
+    def select_bar(self, label, row=24, timeout=0, **kw):
+        self.selected.append(label)
+        if label == "COMBAT":
+            self.combat, self.pending = True, None
+        elif label == "NO":
+            self.combat, self.pending = True, None
+        return True
+
+    def walk_one(self, move, *a, **k):
+        self.encounter_words.append(self.walk_encounter)
+        event = self.script.get(self.calls)
+        self.calls += 1
+        before = (self.x, self.y)
+        super().walk_one(move)
+        if event == "fight":
+            self.combat = True
+        elif event == "fight-stay":
+            self.combat = True
+            self.x, self.y = before
+        elif event == "encounter":
+            self.pending = _stop_rows(self.ENCOUNTER)
+        elif event == "yesno":
+            self.pending = _stop_rows(self.YESNO)
+        elif isinstance(event, tuple):
+            self.x, self.y = event[1:]
+        return True
+
+    def fight(self, budget, tactic):
+        self.combat = False
+        self.tactics.append((budget, tactic))
+        return A.S.FightResult(self.outcome, 3, 1.0, [], [])
+
+
+def _fight_walk_run(tmp_path, monkeypatch, sess):
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    run.capture = lambda tag, rows=None: []
+    run.reading = lambda: {}
+    run.position = lambda: list(sess.position())
+    return run, log
+
+
+def test_walk_fight_fights_an_encounter_mid_route_and_resumes(tmp_path, monkeypatch):
+    sess = FightWalk({1: "fight"})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_fight("III")
+    log.close()
+    assert sess.tactics == [(A.WALK_FIGHT_SECONDS, A.S.Session.melee_turn)]
+    assert sess.pressed == ["I", "I", "I"]
+    assert got["position"] == [5, 2, 0]
+    assert [f["at_move"] for f in got["fights"]] == [1]
+    assert got["fights"][0]["square"] == [5, 3, 0]
+    assert sess.encounter_words == [A.S.ENCOUNTER_FIGHT] * 3
+    assert sess.walk_encounter is None
+
+
+def test_walk_fight_resends_a_key_the_fight_left_unfinished_once(tmp_path, monkeypatch):
+    sess = FightWalk({0: "fight-stay"})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_fight("I")
+    log.close()
+    assert sess.pressed == ["I", "I"]
+    assert got["position"] == [5, 4, 0] and got["moves"][0]["resent"] is True
+
+
+def test_walk_fight_that_stays_after_the_resend_fails(tmp_path, monkeypatch):
+    sess = FightWalk({}, walls={(5, 4)})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    with pytest.raises(A.StepFailed, match="sent twice"):
+        run.walk_fight("I")
+    log.close()
+    assert sess.pressed == ["I", "I"]
+
+
+def test_walk_fight_takes_combat_on_an_encounter_menu_and_never_flee(
+        tmp_path, monkeypatch):
+    sess = FightWalk({0: "encounter"})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_fight("II")
+    log.close()
+    assert sess.selected == ["COMBAT"]
+    assert len(got["fights"]) == 1 and got["position"] == [5, 3, 0]
+
+
+@pytest.mark.parametrize("outcome, match", [
+    (A.S.LOST, "the party lost the fight after 3 turns"),
+    (A.S.BUDGET, "ran out of its 900 second budget")])
+def test_walk_fight_a_lost_or_overlong_fight_fails_the_step(
+        tmp_path, monkeypatch, outcome, match):
+    sess = FightWalk({0: "fight"}, outcome=outcome)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    with pytest.raises(A.StepFailed, match=match):
+        run.walk_fight("II")
+    log.close()
+    assert sess.walk_encounter is None
+
+
+def test_walk_fight_answers_no_only_on_the_last_key(tmp_path, monkeypatch):
+    sess = FightWalk({1: "yesno"})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_fight("II/NO")
+    log.close()
+    assert sess.selected == ["NO"] and len(got["fights"]) == 1
+    assert got["answer"] == "NO"
+
+
+@pytest.mark.parametrize("route, script", [("III/NO", {0: "yesno"}),
+                                           ("II", {1: "yesno"})])
+def test_walk_fight_refuses_a_yes_no_anywhere_else_and_presses_nothing(
+        tmp_path, monkeypatch, route, script):
+    sess = FightWalk(script)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    with pytest.raises(A.StepFailed, match="nothing was pressed"):
+        run.walk_fight(route)
+    log.close()
+    assert sess.selected == []
+
+
+def test_walk_fight_a_position_after_the_fight_that_is_not_ahead_is_a_teleport(
+        tmp_path, monkeypatch):
+    sess = FightWalk({0: ("teleport", 1, 6)})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    with pytest.raises(A.StepFailed, match="an exit or a teleport"):
+        run.walk_fight("I")
+    log.close()
+
+
+def test_walk_fight_parses_its_route_and_answer():
+    assert A.parse_steps(["load", "walk-fight IIK"])[1] == A.Step("walk-fight", "IIK")
+    assert A.parse_walk_fight("iik/no") == ("IIK", "NO")
+    assert A.parse_walk_fight("IIK") == ("IIK", None)
+    for bad in ("walk-fight", "walk-fight IIX", "walk-fight IIK/YES",
+                "walk-fight IIK/"):
+        with pytest.raises(ValueError):
+            A.parse_steps(["load", bad])
+
+
+def test_the_walk_fight_step_is_refused_for_curse_and_silver_blades(tmp_path, capsys):
+    for title in ("curse", "ssb"):
+        with pytest.raises(SystemExit) as info:
+            A.main(["--title", title, "--save", str(_fixture_disk(tmp_path)),
+                    "--disks", str(tmp_path), "--steps", "load", "walk-fight I",
+                    "--out", str(tmp_path / "out")])
+        assert info.value.code == 2
+        assert "walk-fight step: Pool of Radiance only" in capsys.readouterr().err
+    for cls in (A.CurseRun, A.SilverRun):
+        run = cls.__new__(cls)
+        run.fail = lambda tag, why: A.StepFailed(why)
+        with pytest.raises(A.StepFailed, match="Pool of Radiance only"):
+            run.walk_fight("I")
+
+
+def _drain_fields(level=5, drained=0, lost=0, hp=40, classes=(0, 0, 0, 5)):
+    return [{"slot": 0, "name": "AVA", "level": level, "levels_drained": drained,
+             "hp_lost_to_drain": lost, "hp_max": hp,
+             "class_levels": list(classes) + [0] * (8 - len(classes))}]
+
+
+@pytest.mark.parametrize("drop", [1, 2])
+def test_the_drain_pass_line_accepts_a_drop_of_one_or_two_levels(drop):
+    after = _drain_fields(5 - drop, drop, 7, 33, (0, 0, 0, 5 - drop))
+    verdict = A.drain_verdict(_drain_fields(), after)
+    assert verdict["passed"] is True
+    assert verdict["characters"][0]["problems"] == []
+
+
+def test_the_drain_pass_line_refuses_no_drop():
+    verdict = A.drain_verdict(_drain_fields(), _drain_fields())
+    assert verdict["passed"] is False
+    assert "level fell by 0, not 1 or 2" in verdict["characters"][0]["problems"]
+
+
+def test_the_drain_pass_line_refuses_a_drop_with_zero_drain_bytes():
+    after = _drain_fields(4, 0, 0, 40, (0, 0, 0, 4))
+    verdict = A.drain_verdict(_drain_fields(), after)
+    assert verdict["passed"] is False
+    problems = verdict["characters"][0]["problems"]
+    assert any("levels_drained is 0" in p for p in problems)
+    assert any("hp_lost_to_drain is zero" in p for p in problems)
+
+
+def test_the_drain_pass_line_refuses_a_drop_of_three_and_a_wrong_hit_point_fall():
+    assert A.drain_verdict(_drain_fields(),
+                           _drain_fields(2, 3, 9, 31, (0, 0, 0, 2)))["passed"] is False
+    assert A.drain_verdict(_drain_fields(),
+                           _drain_fields(4, 1, 7, 30, (0, 0, 0, 4)))["passed"] is False
+
+
+def test_the_drain_fields_read_the_offsets_the_layout_names():
+    rec = A.CharacterRecord.blank()
+    rec.set("name", "AVA")
+    rec.set("level", 4)
+    rec.set("levels_drained", 1)
+    rec.set("hp_lost_to_drain", 6)
+    rec.set("hp_max", 300)
+    data = bytearray(rec.to_bytes())
+    data[0xCC] = 4
+    got = A.drain_fields([bytes(data), bytes(len(data))])
+    assert got == [{"slot": 0, "name": "AVA", "level": 4, "levels_drained": 1,
+                    "hp_lost_to_drain": 6, "hp_max": 300,
+                    "class_levels": [0, 0, 0, 4, 0, 0, 0, 0]}]
