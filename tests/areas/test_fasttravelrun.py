@@ -767,6 +767,160 @@ def test_answer_and_wait_never_picks_large_or_small(monkeypatch):
     assert sess.chosen == ["LEAVE"]
 
 
+def test_choice_for_takes_the_arrival_pick_only_on_the_arrival_menu():
+    assert FT.choice_for("LARGE SMALL LEAVE", arrival="LARGE") == "LARGE"
+    assert FT.choice_for("YES NO", arrival="LARGE") == "YES"
+
+
+def test_answer_and_wait_without_land_after_returns_before_pressing_anything(
+        monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    m.write(FT.AREA_BYTE, bytes([13]))
+    sess = MenuSession(m, 13, rows=())     # no menu on screen yet
+    FT.answer_and_wait(sess, 13, deadline_s=30.0, arrival="LARGE",
+                       clock=lambda: 1.0)
+    assert sess.chosen == []
+
+
+def test_answer_and_wait_lands_only_after_the_arrival_pick(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    m.write(FT.AREA_BYTE, bytes([13]))
+    sess = MenuSession(m, 13)
+    FT.answer_and_wait(sess, 13, deadline_s=30.0, arrival="LARGE",
+                       land_after="LARGE", clock=lambda: 1.0)
+    assert sess.chosen == ["YES", "LARGE"]
+
+
+class _Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, s):
+        self.now += s
+
+
+def test_watch_cancelled_returns_nothing_for_a_silent_trip():
+    clock, polls = _Clock(), []
+
+    class Ft:
+        pending = object()
+
+        def continue_pending(self, target):
+            polls.append(clock.now)
+
+    got = FT.watch_cancelled(Ft(), _PollTarget_for_watch, 10, clock=clock,
+                             sleep=clock.sleep)
+    assert got == [] and len(polls) == 10
+
+
+def test_watch_cancelled_reports_an_outcome_it_is_given():
+    clock = _Clock()
+
+    class Ft:
+        pending = object()
+        given = False
+
+        def continue_pending(self, target):
+            if not self.given:
+                self.given = True
+                return types.SimpleNamespace(ok=False, message="never left")
+
+    got = FT.watch_cancelled(Ft(), _PollTarget_for_watch, 5, clock=clock,
+                             sleep=clock.sleep)
+    assert got == [(0.0, "never left")]
+
+
+def _PollTarget_for_watch():
+    return _PollTarget(13)
+
+
+def _returned(**over):
+    args = dict(before=[{"name": "FATIMA", "status": 1}], after=[],
+                area_before=13, area_after=13, from_area=13, member="FATIMA",
+                pending_after=False, outcomes=[])
+    args.update(over)
+    return FT.returned_verdict(**args)
+
+
+def test_returned_verdict_passes_a_silent_return():
+    assert _returned()[0] is True
+
+
+@pytest.mark.parametrize("over, words", [
+    ({"area_before": 20}, "not in area"),
+    ({"area_after": 27}, "did not come back"),
+    ({"before": []}, "not in the party to begin with"),
+    ({"after": [{"name": "FATIMA", "status": 1}]}, "never ran"),
+    ({"pending_after": True}, "still pending"),
+    ({"outcomes": [(3.0, "The party never left")]}, "The party never left"),
+])
+def test_returned_verdict_fails_each_way(over, words):
+    ok, message = _returned(**over)
+    assert ok is False and words in message
+
+
+def test_run_with_an_arrival_choice_records_the_watch(monkeypatch, tmp_path):
+    import json
+
+    slot = types.SimpleNamespace(
+        n=1, display=":1", dir=str(tmp_path),
+        teardown=lambda: None, release=lambda: None)
+    sess = _RunSession()
+    sess.settle = lambda n: None
+    monkeypatch.setattr(FT.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(FT.S, "stage_disks", lambda *a, **k: "boot")
+    monkeypatch.setattr(FT.S, "stage_writable", lambda *a, **k: None)
+    monkeypatch.setattr(FT.S, "Session", lambda *a, **k: sess)
+    rows = iter([[{"name": "FATIMA", "status": 1}], []] * 2)
+    monkeypatch.setattr(FT, "party", lambda s: next(rows))
+    monkeypatch.setattr(FT, "area_of", lambda s: 13)
+    monkeypatch.setattr(FT, "shoot", lambda *a, **k: None)
+    monkeypatch.setattr(FT, "watch_cancelled", lambda *a, **k: [])
+    monkeypatch.setattr(FT, "walk_after", lambda *a, **k: 0)
+    monkeypatch.setattr(FT, "ViceTarget", lambda **k: types.SimpleNamespace(
+        close=lambda: None))
+
+    class Trip:
+        pending = object()
+
+        def run(self, target, area):
+            return types.SimpleNamespace(ok=True, message="")
+
+    monkeypatch.setattr(FT, "A", types.SimpleNamespace(
+        FastTravel=Trip, area_by_id=lambda n: n, SECOND_HOP_SECONDS=120.0))
+    seen = {}
+
+    def answer(sess, to_area, **kw):
+        seen.update(kw, to_area=to_area)
+        return None
+
+    monkeypatch.setattr(FT, "answer_and_wait", answer)
+
+    class Gone(Trip):
+        pending = None
+
+    args = types.SimpleNamespace(
+        out=str(tmp_path / "out"), slot=None, disks=str(tmp_path),
+        save=str(tmp_path / "save.d64"), from_area=13, to_area=0,
+        member="FATIMA", arrive=1.0, answer_timeout=1.0,
+        arrival_choice="LARGE")
+    # `pending` is still set on the fake, so the verdict fails; the record
+    # must carry the watch either way.
+    FT.run(args)
+    result = json.loads((tmp_path / "out" / "result.json").read_text())
+    assert result["arrival_choice"] == "LARGE"
+    assert result["pending_after"] is True
+    assert result["outcomes_after"] == []
+    assert result["watch_seconds"] == 135.0
+    assert seen["arrival"] == "LARGE" and seen["land_after"] == "LARGE"
+    assert seen["to_area"] == 13
+
+
 class _PollTarget:
     def __init__(self, area_byte, pc=0x10C2):
         self.area_byte, self._pc = area_byte, pc

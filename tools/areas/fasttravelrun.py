@@ -30,6 +30,10 @@ reaches the two-hop branch:
         tools/areas/fasttravelrun.py --from-area 13 --to-area 0 \\
         --answer-timeout 150 --out DIR
 
+`--arrival-choice LARGE` or `SMALL` picks the arrival menu's entry that
+walks the party back into the starting area, then watches the trip's second hop
+for the deadline plus a margin and passes only when it said nothing.
+
 A run saves four screenshots under `--out` (`1-before.png`, `2-question.png`,
 `3-after-second-hop.png`, `4-after-walk.png`) and writes `result.json` with
 `second_hop_seconds` -- the seconds from the area byte first reading the area
@@ -246,24 +250,27 @@ def second_hop(ft, open_target, marks: dict | None = None,
 #: 24, and the word to select. `YES`/`NO` is the exit handler's own question.
 #: `LARGE SMALL LEAVE` is the wilderness square's arrival menu after a walk out
 #: of the Kobold Caves; `LARGE` and `SMALL` walk the party back into the caves,
-#: so only `LEAVE` keeps the trip going. A row matching no entry is not
+#: so only `LEAVE` keeps the trip going. Its entry here is the default pick,
+#: and `choice_for`'s *arrival* replaces it. A row matching no entry is not
 #: answered.
 MENUS = ((("YES", "NO"), "YES"), (("LARGE", "SMALL", "LEAVE"), "LEAVE"))
+ARRIVAL_CHOICES = ("LEAVE", "LARGE", "SMALL")
 
 
-def choice_for(row: str) -> str | None:
+def choice_for(row: str, arrival: str = "LEAVE") -> str | None:
     """The word to select on the command bar *row*, or None when it is not a
-    menu in `MENUS`."""
+    menu in `MENUS`. On the arrival menu that word is *arrival*."""
     words = row.split()
     for needed, pick in MENUS:
         if all(w in words for w in needed):
-            return pick
+            return arrival if "LEAVE" in needed else pick
     return None
 
 
 def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0,
                     between=None, on_question=None, marks: dict | None = None,
-                    clock=time.monotonic):
+                    clock=time.monotonic, arrival: str = "LEAVE",
+                    land_after: str | None = None):
     """Answer whatever the exit's handler puts on row 24, the way a player
     would, until the area byte says the warp landed.
 
@@ -277,6 +284,11 @@ def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0,
     `on_question` is called once, when the game's `YES`/`NO` is up and before it
     is answered; the arrival menu does not call it. `marks["landed"]` is set to `clock()` at the moment the area
     byte reads `to_area`, which is the end of the second-hop timing.
+
+    `arrival` is the word picked on the arrival menu. `land_after`, when given,
+    is a choice that must have been answered before the area byte reading
+    `to_area` counts as a landing: a trip that returns to the area it started
+    in reads `to_area` before it has moved at all.
     """
     deadline = time.time() + deadline_s
     answered: set[str] = set()
@@ -293,7 +305,7 @@ def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0,
         row = s.row(24).strip() if s is not None else ""
         if row:
             print(f"  row 24: {row!r}", flush=True)
-        pick = choice_for(row)
+        pick = choice_for(row, arrival)
         if pick is not None and pick not in answered:
             if pick == "YES" and on_question is not None:
                 on_question()
@@ -301,12 +313,53 @@ def answer_and_wait(sess, to_area: int, deadline_s: float = 60.0,
             answered.add(pick)
             time.sleep(1.0)
             continue
-        if area_of(sess) == to_area:
+        if area_of(sess) == to_area and (land_after is None
+                                         or land_after in answered):
             if marks is not None:
                 marks["landed"] = clock()
             return hop
         time.sleep(0.6)
     return hop
+
+
+def watch_cancelled(ft, open_target, seconds: float, interval: float = 1.0,
+                    clock=time.monotonic, sleep=time.sleep):
+    """Poll a two-hop trip's second hop every *interval* seconds for *seconds*
+    and return `(elapsed, message)` for every outcome it gives, which is none
+    when the trip was cancelled silently."""
+    start = clock()
+    seen = []
+    while clock() - start < seconds:
+        outcome = second_hop(ft, open_target)
+        if outcome is not None:
+            seen.append((round(clock() - start, 1), outcome.message))
+        sleep(interval)
+    return seen
+
+
+def returned_verdict(before: list[dict], after: list[dict], area_before: int,
+                     area_after: int, from_area: int, member: str,
+                     pending_after: bool, outcomes: list) -> tuple[bool, str]:
+    """The judgement for a trip whose party came back to the area it started
+    in: the handler ran, the party is back, and the trip was cancelled without
+    a word. Fails on the first of those that does not hold."""
+    if area_before != from_area:
+        return False, f"the save is not in area {from_area}: read {area_before}"
+    if area_after != from_area:
+        return False, (f"the party did not come back to area {from_area}: "
+                       f"read {area_after}")
+    if not has_member(before, member):
+        return False, f"{member!r} was not in the party to begin with"
+    if has_member(after, member):
+        return False, (f"the handler did not drop {member!r} -- "
+                       "the exit's own handler never ran")
+    if pending_after:
+        return False, "the trip is still pending after the party came back"
+    if outcomes:
+        return False, (f"the trip said something after the party came back: "
+                       f"{outcomes[0][1]!r}")
+    return True, (f"the party went through, came back to area {from_area} and "
+                  f"the trip was cancelled without a message")
 
 
 def shoot(sess, out: pathlib.Path, key: str, shots: dict) -> None:
@@ -658,6 +711,32 @@ def disks_of(args) -> pathlib.Path | None:
     return pathlib.Path(args.disks) if args.disks else DISKS
 
 
+def walk_after(sess, out: pathlib.Path, shots: dict, result: dict) -> int:
+    """The walk and sheet check after a passed trip, recorded into *result*;
+    0 when the party walks."""
+    # The walk is judged on its own: the trip's verdict above is already
+    # final, and a party that cannot walk afterwards is a second finding.
+    settle_rows: list[str] = []
+    try:
+        settled, why = settle_world(sess, out, shots, settle_rows)
+        if settled:
+            steps, sheet = walk_afterwards(sess, stop_after_moves=1)
+            walk_ok, walk_message = walk_verdict(steps, sheet)
+        else:
+            steps, sheet, walk_ok, walk_message = [], False, False, why
+    except Exception as e:                             # noqa: BLE001
+        steps, sheet = [], False
+        walk_ok, walk_message = False, f"the walk raised {e!r}"
+    if "after_walk" not in shots:
+        shoot(sess, out, "after_walk", shots)
+    result.update({"walk_ok": walk_ok, "walk_message": walk_message,
+                   "walk": steps, "sheet_opened": sheet,
+                   "settle_rows": settle_rows, "screenshots": shots})
+    print(("PASS: walk: " if walk_ok else "FAIL: walk: ") + walk_message,
+          flush=True)
+    return 0 if walk_ok else 1
+
+
 def run(args) -> int:
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -725,6 +804,40 @@ def run(args) -> int:
         # A two-hop trip (`WISH_EXPERIMENTAL_TWO_HOP_FAST_TRAVEL`) has walked
         # the party out through the area's one door and is waiting on the
         # poll to make its second hop, so this loop is that poll.
+        choice = getattr(args, "arrival_choice", "LEAVE")
+        if choice != "LEAVE":
+            # LARGE and SMALL take the party back into the starting area, so
+            # the wait is for that return and the trip's own outcomes are
+            # watched for as long as the deadline plus a margin.
+            hop = answer_and_wait(
+                sess, args.from_area, deadline_s=args.answer_timeout,
+                between=(lambda: second_hop(
+                    ft, lambda: ViceTarget(port=sess.mon_port), marks)),
+                on_question=lambda: shoot(sess, out, "question", shots),
+                marks=marks, arrival=choice, land_after=choice)
+            sess.settle(6)
+            shoot(sess, out, "after_hop", shots)
+            after = party(sess)
+            watch_seconds = A.SECOND_HOP_SECONDS + 15
+            outcomes = watch_cancelled(
+                ft, lambda: ViceTarget(port=sess.mon_port), watch_seconds)
+            area_after = area_of(sess)
+            if hop is not None:
+                outcomes.insert(0, (0.0, hop.message))
+            ok, message = returned_verdict(
+                before, after, area_before, area_after, args.from_area,
+                args.member, ft.pending is not None, outcomes)
+            result = {"ok": ok, "message": message, "before": before,
+                      "after": after, "area_before": area_before,
+                      "area_after": area_after, "screenshots": shots,
+                      "arrival_choice": choice,
+                      "pending_after": ft.pending is not None,
+                      "outcomes_after": outcomes,
+                      "watch_seconds": watch_seconds}
+            print(("PASS: " if ok else "FAIL: ") + message, flush=True)
+            if not ok:
+                return 1
+            return walk_after(sess, out, shots, result)
         hop = answer_and_wait(
             sess, args.to_area, deadline_s=args.answer_timeout,
             between=(lambda: second_hop(
@@ -769,27 +882,7 @@ def run(args) -> int:
         if not ok:
             return 1
 
-        # The walk is judged on its own: the trip's verdict above is already
-        # final, and a party that cannot walk afterwards is a second finding.
-        settle_rows: list[str] = []
-        try:
-            settled, why = settle_world(sess, out, shots, settle_rows)
-            if settled:
-                steps, sheet = walk_afterwards(sess, stop_after_moves=1)
-                walk_ok, walk_message = walk_verdict(steps, sheet)
-            else:
-                steps, sheet, walk_ok, walk_message = [], False, False, why
-        except Exception as e:                             # noqa: BLE001
-            steps, sheet = [], False
-            walk_ok, walk_message = False, f"the walk raised {e!r}"
-        if "after_walk" not in shots:
-            shoot(sess, out, "after_walk", shots)
-        result.update({"walk_ok": walk_ok, "walk_message": walk_message,
-                       "walk": steps, "sheet_opened": sheet,
-                       "settle_rows": settle_rows, "screenshots": shots})
-        print(("PASS: walk: " if walk_ok else "FAIL: walk: ") + walk_message,
-              flush=True)
-        return 0 if walk_ok else 1
+        return walk_after(sess, out, shots, result)
     except Exception as e:                                # noqa: BLE001
         result.update({"ok": False,
                        "message": f"{e}; {capture_failure(sess, out)}",
@@ -837,6 +930,11 @@ def main(argv=None) -> int:
     p.add_argument("--answer-timeout", type=float, default=60.0,
                     help="seconds to wait for the handler's own prompt "
                          "and the warp to land")
+    p.add_argument("--arrival-choice", choices=ARRIVAL_CHOICES,
+                   default="LEAVE",
+                   help="the pick on the two-hop trip's arrival menu; LARGE "
+                        "and SMALL return the party to the starting area, and "
+                        "the run then checks the trip was cancelled silently")
     args = p.parse_args(argv)
     enable_debug_logging()
     if disks_of(args) is None:
