@@ -2791,6 +2791,7 @@ class PoolRun:
                     self.log.emit("move-unsent", n=n, move=move,
                                   row24=self.bar().strip())
                     if after == before and again:
+                        self._refuse_blank_resend(route, n, move)
                         if unsent > MOVE_UNSENT_PASSES:
                             raise self.fail(
                                 self.walk_verb,
@@ -2831,6 +2832,21 @@ class PoolRun:
         if word == ENCOUNTER_FLEE:
             got["flees"] = flees
         return got
+
+    def _refuse_blank_resend(self, route, n, move) -> None:
+        """Fail rather than send `walk_one` into a screen with no move bar:
+        after an unsent pass the game may still be busy, and `walk_one` would
+        press nothing and blame the driver."""
+        if self.sess.in_combat():
+            return
+        row = self.bar()
+        if self.at_world(row) or S.MOVE_SUBBAR in row:
+            return
+        mode = getattr(self.sess, "mode", lambda: None)()
+        raise self.fail(
+            self.walk_verb,
+            f"{self.walk_verb} {route}: move {n} ({move}): the driver will "
+            f"not take MOVE while row 24 reads {row.strip()!r} (mode {mode})")
 
     def _walk_fight_key(self, route, n, move, before, last, answer, fights,
                         word=S.ENCOUNTER_FIGHT, flees=None) -> bool:
@@ -2875,14 +2891,19 @@ class PoolRun:
             # that opens behind it is fought below.
             ambush = self._answer_press_bar()
         if stop is None and not getattr(sess, "walk_encounter_started", False):
-            self._look_for_fight(route, last)
-            if not sess.in_combat():
+            if ambush:
+                stop = self._await_fight_after_press(
+                    route, last, n, move, before, word)
+            else:
+                self._look_for_fight(route, last)
+            if stop is None and not sess.in_combat():
                 stop = sess.walk_stop(wait=12.0)
             if stop is None and not sess.in_combat() and self._answer_press_bar():
                 # A bar that drew after the first look, which `walk_stop`
                 # counts as recognised.
                 ambush = True
-                self._look_for_fight(route, last)
+                stop = self._await_fight_after_press(
+                    route, last, n, move, before, word)
         if stop is not None:
             self._answer_stop(route, n, move, before, stop, pressed, answer,
                               word)
@@ -3044,6 +3065,65 @@ class PoolRun:
             return False
         self.leave_arrival(self.walk_verb)
         return True
+
+    def _await_fight_after_press(self, route, last, n, move, before, word):
+        """Wait out the game after a square's `PRESS` bar was answered.
+
+        A blank row 24 means the game is still busy whatever the mode byte
+        says, so only a screen ends the wait, never a timing window: a Return
+        leaves row 24 blank in mode 1, then mode 4, before combat opens.
+        Returns the rows of an encounter menu or `YES NO` for the caller to
+        answer, or None once a fight is open or the world bar is back.  Fails
+        after `FIGHT_OPENS_SECONDS`, naming row 24 and the mode.  Each change
+        of (mode, row 24) is logged as `fight-wait`.
+        """
+        sess = self.sess
+        start = self.clock()
+        limit = start + FIGHT_OPENS_SECONDS
+        presses = 0
+        subbar_since = None
+        seen = None
+        while True:
+            self.budget(1, f"{self.walk_verb} {route}")
+            self.refuse_prompt(route, last, "ran the square's event")
+            mode = getattr(sess, "mode", lambda: None)()
+            screen = sess.screen()
+            row = "" if screen is None else screen.row(24)
+            if (mode, row.strip()) != seen:
+                seen = (mode, row.strip())
+                self.log.emit("fight-wait", n=n, dt=round(self.clock() - start, 1),
+                              mode=mode, row24=row.strip())
+            if sess.in_combat():
+                return None
+            if screen is not None and sess.combat_state(screen).kind == S.BAR_PRESS:
+                presses += 1
+                if presses > ARRIVAL_PRESSES:
+                    raise self.fail(
+                        self.walk_verb,
+                        f"{self.walk_verb} {route}: move {n} ({move}) from "
+                        f"{before} met more than {ARRIVAL_PRESSES} PRESS "
+                        f"bars in a row, row 24 reads {row.strip()!r}")
+                self._answer_press_bar()
+            elif (S.word_column(row, "YES") >= 0 and S.word_column(row, "NO") >= 0
+                    or S.word_column(row, word) >= 0):
+                return self.rows()
+            elif self.at_world(row):
+                return None
+            elif S.MOVE_SUBBAR in row:
+                if subbar_since is None:
+                    subbar_since = self.clock()
+                elif self.clock() - subbar_since >= 1.0:
+                    return None
+            if S.MOVE_SUBBAR not in row:
+                subbar_since = None
+            if self.clock() >= limit:
+                raise self.fail(
+                    self.walk_verb,
+                    f"{self.walk_verb} {route}: move {n} ({move}) answered the "
+                    f"square's PRESS bar and neither a fight nor the world bar "
+                    f"came in {int(FIGHT_OPENS_SECONDS)} seconds; row 24 reads "
+                    f"{row.strip()!r}, mode {mode}")
+            time.sleep(0.3)
 
     def _look_for_fight(self, route, last) -> None:
         """Watch `LOOK_SECONDS` for a fight to open, and as long as
