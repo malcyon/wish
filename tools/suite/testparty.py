@@ -185,6 +185,11 @@ def rolls_for(mode: str, seed: int = 0):
     raise SystemExit(f"--rolls wants max, min or seeded, not {mode!r}")
 
 
+#: Item `+15` for a power applied on READY that checks the alignment in `+14`
+#: (`ECL65`'s table sends it to `SPELLE04 $AE5F`).
+ALIGNMENT_LOCKED = 0x84
+
+
 @dataclasses.dataclass(frozen=True)
 class Equip:
     """One line of a loadout: an item off the game's own disks.
@@ -299,7 +304,8 @@ PARTY: tuple[Spec, ...] = (
     Spec(name="BULWARK", race=7, sex=0, levels={"fighter": 8},
          abilities=dict(strength=18, intelligence=10, wisdom=10, dexterity=16,
                         constitution=18, charisma=12, exceptional_strength=76),
-         alignment=1, age=22, experience=130000, portrait=(0, 1), gold=5000,
+         # Lawful good, because his LONG SWORD +2 accepts only that alignment.
+         alignment=0, age=22, experience=130000, portrait=(0, 1), gold=5000,
          wound=40,
          equipment=(
              # Sixteen, which is every slot the C64 record has: the ceiling
@@ -423,13 +429,18 @@ def equip(one: Built, tables, game=None) -> None:
       (`goldbox/savegame.py`).  **No specimen carries magical armour**, so
       whether the item's own `+4` moves this byte is a guess; the loadout
       gives PILFER LEATHER ARMOR +4 precisely so one boot answers it.
-    * `+0x11`, the attack count, is the record's own `attack_forms[0]`.
-      `RosterBlock.attacks` calls the reading PROBABLE and names the
-      contradiction: a dart reads 3 and a two-handed weapon reads 0.
+    * `+0x11` and `+0x12`, the attacks left this turn, are written 0, as the
+      three unarmed exports hold.  `COMBAT` sets them at the start of each
+      turn and counts them down, and `LIBRARY`'s rebuild never writes them, so
+      a saved value is only what the last fight left.
 
-    The experiment that settles both is one boot: load the party, un-ready and
-    re-ready a weapon, and read `$8300 + slot * 0x20` for thirty-two bytes
-    before and after.  The engine's own rebuild is at `LIBRARY $36A0`.
+    One boot settles the armour byte: load the party, un-ready and re-ready
+    the armour, and read `$8300 + slot * 0x20` for thirty-two bytes before and
+    after.  The engine's own rebuild is at `LIBRARY $36A0`.
+
+    A readied item whose `+15` is `0x84` runs a power on READY that takes
+    `+14 >> 4` hit points and un-readies the item unless `+14 & 0x0F` is the
+    character's alignment, so `equip` refuses that loadout.
     """
     from goldbox import items as _items
 
@@ -462,6 +473,13 @@ def equip(one: Built, tables, game=None) -> None:
     worn: dict[int, str] = {}
     for raw in raws:
         item = _items.Item(raw, names)
+        if (item.readied and raw[15] == ALIGNMENT_LOCKED
+                and raw[14] & 0x0F != one.spec.alignment):
+            raise SystemExit(
+                f"{one.spec.name}: {item.name} is readied but accepts "
+                f"alignment {raw[14] & 0x0F} and he is alignment "
+                f"{one.spec.alignment}; the game refuses it on READY and "
+                f"takes {raw[14] >> 4} hit points")
         kind = types.get(item.type_index)
         if kind is None:
             continue
@@ -502,21 +520,15 @@ def equip(one: Built, tables, game=None) -> None:
                    if k.armour_class is not None and not k.is_shield), None)
     weapon = next(((i, k) for i, k in readied if k.is_weapon), None)
     dice, die = 1, UNARMED_DIE
-    attacks = 0
     if weapon is not None:
         count, sides, _ = weapon[1].raw[
             _items.TYPE_DAMAGE_MEDIUM:_items.TYPE_DAMAGE_MEDIUM + 3]
         dice, die = count or dice, sides or die
-        # `rate_of_fire` is in halves: a dart's 6 is three throws a round,
-        # which is the 3 MALCYON's roster holds, and a melee weapon's 0 or 2
-        # is one blow.
-        attacks = max(1, weapon[1].rate_of_fire // 2)
     tail = bytearray(9)
     tail[0] = encoding.armour_bonus_byte(
         0 if armour is None
         else derive.UNARMOURED_AC - armour[1].armour_class
         + (armour[0].bonus or 0))
-    tail[1] = attacks
     tail[3] = dice
     tail[5] = die
     tail[7] = derive.expected_damage_bonus(record, readied) & 0xFF

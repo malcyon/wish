@@ -683,15 +683,14 @@ class RosterBlock:
 
     @property
     def attacks(self) -> int:
-        """+0x11, the primary form's attack count. PROBABLE.
+        """+0x11, the primary form's attacks left this turn.
 
-        DOS calls it `ATK_1_Count_Current`. MALCYON reads 3 with a dart
-        readied, whose ITEMS rate of fire is 6 in halves -- three throws a
-        round -- and every character with a melee weapon reads 1. But the same
-        characters read 0 in the earlier saves and every DOS record on this
-        machine reads 0 for a character holding a two-handed weapon, so
-        whether the byte is the rate or what is left of it this round is not
-        settled.
+        `COMBAT` sets it at the top of each turn (`$0872`) and counts it down
+        once per swing (`$121F`); the roster rebuild in `LIBRARY` never writes
+        it, so a saved value is what the last fight left. MALCYON reads 3 with
+        a dart readied, whose rate of fire is 6 in halves. DOS records on this
+        machine read 0 for a character holding a two-handed weapon; whether
+        that is also a leftover is not settled.
 
         It was read once as "armour has cut the movement rate", because it was
         1 on the six banded-mail wearers and 0 on the leather. It is not that:

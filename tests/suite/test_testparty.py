@@ -19,6 +19,8 @@ checks here are in two groups, and only the second is evidence about the game.
 """
 from __future__ import annotations
 
+import copy
+import dataclasses
 import hashlib
 import shutil
 import stat
@@ -453,3 +455,48 @@ def test_an_unarmed_tail_is_the_byte_pattern_the_three_exports_hold():
             one.record.get("exceptional_strength") or 0)[1]
         assert tail == bytes((48, 0, 0, 1, 0, 2, 0, bonus & 0xFF, 0)), \
             str(one.record.name)
+
+
+# --- alignment-locked items, and the attacks-left bytes ----------------------
+
+def _one_with(alignment, template_raw):
+    """A built character carrying one readied item, with a fake item table."""
+    one = copy.deepcopy(_by_name(testparty.party(rolls="max"))["BULWARK"])
+    one.spec = dataclasses.replace(
+        one.spec, alignment=alignment,
+        equipment=(testparty.Equip("LOCKED SWORD", readied=True),),
+        inventory=())
+    tables = ({3: "SWORD"}, {}, {"LOCKED SWORD": template_raw})
+    return one, tables
+
+
+#: Item type 0, noun 3, `+14` = $F0 (damage 15, accepts alignment 0),
+#: `+15` = $84 (a power run on READY).
+_LOCKED = bytes([0x24, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xF0, 0x84])
+
+
+def test_an_alignment_locked_item_is_refused_for_the_wrong_alignment():
+    one, tables = _one_with(1, _LOCKED)
+    with pytest.raises(SystemExit) as why:
+        testparty.equip(one, tables)
+    text = str(why.value)
+    assert "SWORD" in text and "alignment 0" in text and "15 hit points" in text
+
+
+def test_an_alignment_locked_item_is_accepted_for_its_own_alignment():
+    one, tables = _one_with(0, _LOCKED)
+    testparty.equip(one, tables)
+    assert one.record.get_raw("inventory")[:16][15] == 0x84
+
+
+def test_bulwark_is_lawful_good_for_his_long_sword():
+    bulwark = _by_name(testparty.party(rolls="max"))["BULWARK"]
+    assert bulwark.spec.alignment == 0
+
+
+def test_the_attacks_left_bytes_are_written_zero_with_a_weapon_readied(armed):
+    """`+0x11` and `+0x12` belong to `COMBAT`; a dart's 3 was a leftover."""
+    built, _ = armed
+    for one in built:
+        tail = one.record.get_raw("roster_tail")
+        assert tail[1] == 0 and tail[2] == 0, str(one.record.name)
