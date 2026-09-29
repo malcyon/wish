@@ -2869,6 +2869,23 @@ entry (`WISH_EXPERIMENTAL_CONVERT` was lifted; the menu is built for
 everyone), so the sentence had become false. The rule now says "Build the menu
 entry inside the `if` that reads the flag."
 
+## Renames
+
+`#686 (Find and remove obsolete compatibility shims throughout the codebase)`
+swept `goldbox/`, `automap/`, `editor/` and `tools/` for aliases that earlier
+renames had left behind. Among them were `c64_port.Game` for the C64
+container, `SAVE_SHAPES` (now `dos_savegame.CONTAINERS`), `KEY_WAIT` and
+`KEY_FETCH` in `automap/actions.py`, and the `VAULT_*` aliases in
+`tools/amiga/podsavegame.py`. Three more in `goldbox/c64_save.py`
+(`CLOCK_OFFSET`, `C64Container.game` and `.slot_count`) were missed by the
+inventory itself. Removing them took nine batches (B1-B9) and a documentation
+pass, because the docs kept citing the old names long after the code moved.
+
+That is the reason for the rule: an old name that stays alive keeps a second
+spelling of the same thing in use, so readers and agents keep finding it and
+citing it. The convention was first written into `docs/architecture.md`; on
+2026-09-29 Donald made it a standing agent rule.
+
 ## Sessions
 
 **2026-09-03 lost its small hours.** The last turn said it was "running the

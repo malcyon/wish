@@ -109,4 +109,4 @@ The automapper relies on VICE's built-in binary monitor to peek into the Commodo
 
 ## Renaming a name
 
-A rename moves every maintained caller to the new name and removes the old name in the same effort. A module does not keep the old spelling as an alias or a re-export for callers that could simply change. A temporary exception names its consumer and its removal condition in a comment beside the alias, and is deleted when that condition holds.
+The rule is `.claude/rules/renames.md`.

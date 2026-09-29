@@ -142,7 +142,7 @@ somebody asks for one by name. Everything above still binds it: foreground,
 explicit timeout, never backgrounded. **Never start two.**
 
 **Say in the brief what `AGENTS.md` cannot say for you, because it does not
-know this task.** Claude loads its six unscoped rule files into each subagent
+know this task.** Claude loads its eight unscoped rule files into each subagent
 at launch. Codex agents must read applicable rules through `AGENTS.md`'s
 routing table. What a brief adds is specific to
 the task: which files the agent owns, any `paths:`-scoped rule it needs but

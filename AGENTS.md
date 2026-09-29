@@ -1,10 +1,10 @@
 # Working notes for this repository
 
-These rules bind every task. The fourteen `.claude/rules/` files are also
-available through `.agents/rules/`. Claude Code loads seven unscoped rules at
+These rules bind every task. The fifteen `.claude/rules/` files are also
+available through `.agents/rules/`. Claude Code loads eight unscoped rules at
 launch (`commits.md`, `delegating.md`, `feature-flags.md`, `issues.md`,
-`scratch.md`, `sessions.md`, `words.md`) and loads the other seven when their
-`paths:` match. Codex and other tools must read applicable rules themselves.
+`renames.md`, `scratch.md`, `sessions.md`, `words.md`) and loads the other
+seven when their `paths:` match. Codex and other tools must read applicable rules themselves.
 Each trigger below describes a situation, including discussion before an edit.
 
 | Before you | Read (all under `.claude/rules/`) |
@@ -15,6 +15,7 @@ Each trigger below describes a situation, including discussion before an edit.
 | End a turn, end a session, or plan an unattended run (Claude Code only -- describes its own re-invocation model) | `sessions.md` |
 | Put a major feature behind a flag | `feature-flags.md` |
 | Write a script, or leave a file on disk | `scratch.md` |
+| Rename a function, class, module, constant or file | `renames.md` |
 | Write any prose, name or identifier | `words.md` |
 | Show Donald anything about how the program looks, ask him to decide how it should look, or touch `wish/`, `editor/` or `automap/` | `gui-text.md` |
 | Add, change or propose any image, sprite or icon, or touch `ui/`, `assets/` or a `.svg` | `art.md` |

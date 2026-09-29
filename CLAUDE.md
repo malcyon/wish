@@ -8,11 +8,11 @@ The rules are in `AGENTS.md`, imported above, because Google's tools read that
 name and not this one. Everything there binds here. This file holds only what is
 true of Claude Code and of nothing else, so `AGENTS.md` stays honest for both.
 
-**Seven of the fourteen rule files load at launch and seven load when you read
+**Eight of the fifteen rule files load at launch and seven load when you read
 a file they cover**, so the routing table in `AGENTS.md` is mostly a formality
 here. It is not one for a reader that has no such mechanism.
 
-**A subagent inherits this file, `AGENTS.md`, and the same seven unscoped rule
+**A subagent inherits this file, `AGENTS.md`, and the same eight unscoped rule
 files, exactly as you do.** What it does not get until it touches a matching file is the seven
 `paths:`-scoped ones -- so a brief only needs to name one of those, when the
 agent's work will not itself touch a file that loads it.
