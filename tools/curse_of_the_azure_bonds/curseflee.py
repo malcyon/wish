@@ -104,10 +104,7 @@ class _Watched:
         return m
 
     def __exit__(self, *exc):
-        try:
-            return self.inner.__exit__(*exc)
-        finally:
-            self.trap.after()
+        return self.inner.__exit__(*exc)
 
 
 class Trap:
@@ -130,7 +127,6 @@ class Trap:
         self.status_at_write: list[int] | None = None
         self.seen = False              # the screen was read at $091C
         self.degraded = False          # the monitor stopped answering
-        self.shot_due = False
         self._mon = None
         self._busy = False
 
@@ -161,12 +157,19 @@ class Trap:
                           escaped=escaped(self.status_at_write))
             self.log.say(f"  ${RESULT:04X} written: ${self.result:02X}, "
                          f"party status {self.status_at_write}")
+            # Only here, on a hit of the store checkpoint: an `$81` sitting in
+            # `RESULT` from an earlier fight is not this fight's write.
             if self.result == RAN_AWAY:
                 self.capture(m)
+            # The machine is stopped at the store or at `$091C`; say so
+            # explicitly rather than leaving it to the connection's EXIT.
+            m.resume()
         except Exception as exc:
             self.degraded = True
             self.log.emit("trap_failed", error=repr(exc), hits=self.hits)
-            self.log.say(f"  the monitor stopped answering: {exc!r}")
+            self.log.say(f"  the monitor stopped answering: {exc!r}; the "
+                         f"store checkpoint stays armed until the run ends, "
+                         f"and the trap makes no further reads")
         finally:
             self._busy = False
 
@@ -176,6 +179,14 @@ class Trap:
         pc = m.wait_stopped(self.wait)
         if pc is None:
             raise TimeoutError(f"no stop at ${LINE_DRAWN:04X}")
+        if pc != LINE_DRAWN:
+            # Some other stop (the store checkpoint again, say): the line has
+            # not been drawn, so reading the screen would prove nothing.
+            self.log.emit("wrong_stop", pc=pc, want=LINE_DRAWN,
+                          result=self.result)
+            self.log.say(f"  stopped at ${pc:04X}, not ${LINE_DRAWN:04X}; "
+                         f"the screen was not read")
+            return
         rows = rows_of(read_screen(m))
         (self.out / "ran-line.txt").write_text("\n".join(rows) + "\n")
         self.seen = any("RUNS AWAY" in r for r in rows)
@@ -183,16 +194,19 @@ class Trap:
                       seen=self.seen, rows=rows)
         self.log.say(f"  stopped at ${pc:04X}; the line is "
                      f"{'on' if self.seen else 'NOT on'} the screen")
-        self.shot_due = True
-
-    def after(self) -> None:
-        if not self.shot_due:
-            return
-        self.shot_due = False
+        # The X grab is taken while the machine is stopped, so it can show a
+        # frozen frame buffer that VICE has not repainted; `ran-line.txt`,
+        # read from screen memory, is the evidence.
+        shot = self.out / "outcome-line.png"
         try:
-            self.sess.kbd.screenshot(str(self.out / "outcome-line.png"))
+            taken = self.sess.kbd.screenshot(str(shot), timeout=10)
         except Exception as exc:
+            taken = False
             self.log.emit("shot_failed", error=repr(exc))
+        if not taken:
+            self.log.emit("shot_failed", error="no screenshot taken")
+        self.log.say("  outcome-line.png was grabbed with the machine "
+                     "stopped and may show a frozen frame")
 
     def finish(self) -> None:
         """Say what the checkpoint proved, then clear every checkpoint."""
@@ -284,20 +298,26 @@ def run(args) -> int:
         if s is not None:
             (out / "final-screen.txt").write_text(
                 "\n".join(rows_of(s)) + "\n")
-        after = read_outcome(sess)
-        log.emit("outcome_bytes", **after)
-        log.say(f"  ${RESULT:04X}=${after['result']:02X} "
-                f"${MERCY:04X}=${after['mercy']:02X} "
-                f"party status {after['status']}")
+        try:
+            after = read_outcome(sess)
+        except Exception as exc:
+            after = None
+            log.emit("outcome_failed", error=repr(exc))
+            log.say(f"  the outcome read failed: {exc!r}")
+        if after is not None:
+            log.emit("outcome_bytes", **after)
+            log.say(f"  ${RESULT:04X}=${after['result']:02X} "
+                    f"${MERCY:04X}=${after['mercy']:02X} "
+                    f"party status {after['status']}")
         # The status byte, read at the write of the result when the trap saw
         # it: afterwards the drop loop has put `$86` back to `$01`.
         counted = (trap.status_at_write if trap.status_at_write is not None
-                   else after["status"])
+                   else after["status"] if after is not None else [])
         log.emit("flee", attempts=flight.attempts,
                   got_away=flight.got_away, failed=dict(flight.failed),
                   escaped=escaped(counted),
                   escaped_from="write" if trap.status_at_write is not None
-                  else "after")
+                  else "after" if after is not None else "none")
         log.say(f"  flee attempts {flight.attempts}, escaped "
                 f"{escaped(counted)} by status byte (Flight logged "
                 f"{sum(flight.got_away.values())}), failed "
