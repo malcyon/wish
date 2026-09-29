@@ -6606,3 +6606,470 @@ def test_main_refuses_a_bad_stage_value_before_anything_is_built(
                  "--out", str(tmp_path / "out")])
     err = capsys.readouterr().err
     assert bad.partition("=")[2] in err if option == "--stage-control" else repr(bad) in err
+
+
+# -- fight: Curse and Silver Blades, read through the debugger ---------------
+
+#: One cell pattern per letter, each a different byte of at most three bits,
+#: so `bar_words` reads a word's cells as distinct glyphs and a letter repeated
+#: across words as the same glyph.
+_LETTER = {c: b for c, b in zip(
+    "MOVEWIAUSCQKDNTBFLRXHPYG",
+    (0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x03, 0x05, 0x09, 0x11,
+     0x21, 0x41, 0x81, 0x06, 0x0A, 0x12, 0x22, 0x42, 0x82, 0x0C, 0x14, 0x24))}
+
+
+def _bar(text: str) -> bytes:
+    """`text` as bar cells, a flat cell between words."""
+    return bytes(0 if c == " " else _LETTER[c] for c in text)
+
+
+def _words(text: str) -> list[list[str]]:
+    return da.bar_words(_screen(_bar(text), b""))
+
+
+def test_the_command_bar_is_known_by_its_letters_whatever_the_member_is_offered():
+    for text in ("MOVE VIEW AIM USE CAST TURN QUICK DONE",   # Curse's, whole
+                 "MOVE VIEW AIM USE CAST QUICK DONE",        # Silver Blades'
+                 "MOVE VIEW AIM QUICK DONE"):                # nothing to use
+        assert da.command_words(_words(text)), text
+    for text in ("MOVE AREA CAST VIEW ENCAMP SEARCH LOOK",   # the map bar
+                 "MOVE VIEW ARM", "COMBAT WAIT FLEE ADVANCE", "EXIT"):
+        assert not da.command_words(_words(text)), text
+
+
+def test_the_encounter_and_treasure_bars_are_known_by_their_letters():
+    assert da.encounter_words(_words("COMBAT WAIT FLEE ADVANCE"))
+    assert da.encounter_words(_words("COMBAT WAIT FLEE PARLAY"))
+    assert not da.encounter_words(_words("MOVE VIEW AIM USE CAST QUICK DONE"))
+    assert not da.encounter_words(_words("CAMBOT WAIT FLEE"))
+    assert da.treasure_words(_words("VIEW TAKE POOL SHARE EXIT"))
+    assert not da.treasure_words(_words("VIEW TAKE POOL SHARE EXIT DONE"))
+    assert not da.treasure_words(_words("SAVE VIEW MAGIC REST EXIT"))
+
+
+def test_the_fight_step_parses_for_curse_and_silver_blades_only():
+    assert da.parse_step("fight").seconds == 0
+    assert da.parse_step("fight 900").seconds == 900
+    for bad in ("fight 0", "fight x", "fight 9 9"):
+        with pytest.raises(ValueError):
+            da.parse_step(bad)
+    for title in ("curse", "ssb"):
+        da.validate_steps([da.parse_step(s) for s in
+                           ("load", "begin", "fight", "camp", "save E", "read")], title)
+        with pytest.raises(ValueError, match="needs the map"):
+            da.validate_steps([da.parse_step(s) for s in ("load", "fight")], title)
+    for title, steps in (("pool", ("load", "fight")),
+                         ("darkness", ("load", "begin", "fight"))):
+        with pytest.raises(ValueError, match="curse, ssb only"):
+            da.validate_steps([da.parse_step(s) for s in steps], title)
+
+
+def test_the_first_bar_key_is_space_or_one_letter_or_digit():
+    assert da.parse_key("SPACE") == "space"
+    assert da.parse_key("space") == "space"
+    assert da.parse_key("Q") == "q"
+    assert da.parse_key("7") == "7"
+    for bad in ("", "QQ", "-", "Return"):
+        with pytest.raises(ValueError):
+            da.parse_key(bad)
+
+
+@pytest.mark.parametrize("extra, error", [
+    (["--first-bar-key", "SPACE"], "add a fight step"),
+    (["--first-bar-key", "QQ"], "SPACE or one letter"),
+])
+def test_main_refuses_a_first_bar_key_it_cannot_press(tmp_path, monkeypatch, capsys,
+                                                      extra, error):
+    def claimed(*a, **k):
+        raise AssertionError("an emulator slot was claimed")
+
+    monkeypatch.setattr(da.dosbox, "claim", claimed)
+    monkeypatch.setattr(da.dosboxx, "claim", claimed)
+    with pytest.raises(SystemExit):
+        da.main(["--title", "ssb", "--save", str(tmp_path), "--steps", "load",
+                 "begin", "camp", *extra, "--out", str(tmp_path / "out")])
+    assert error in capsys.readouterr().err
+
+
+def test_a_fight_run_boots_dosbox_x_and_a_run_without_one_does_not(monkeypatch,
+                                                                  tmp_path):
+    log = _fake_run(monkeypatch, tmp_path, menu_error=TimeoutError("x"))
+    x_log: list[str] = []
+
+    def x_claim(note=""):
+        x_log.append("x-claim")
+        return _Slot(x_log)
+
+    monkeypatch.setattr(da.dosboxx, "claim", x_claim)
+    monkeypatch.setattr(da.dosboxx, "XSession",
+                        lambda slot, game: _Session(tmp_path, x_log))
+    args = _run_args(tmp_path, ["load", "begin", "fight"])
+    args.title = "ssb"
+    da.run(args)
+    assert x_log[0] == "x-claim" and "claim" not in log
+    x_log.clear()
+    args = _run_args(tmp_path, ["load", "begin", "walk 1"])
+    args.title = "ssb"
+    da.run(args)
+    assert x_log == [] and log[0] == "claim"
+
+
+# The Silver Blades layout, and a fight held in fake memory.
+_DS = 0x1F00
+
+
+def _ssb():
+    """The Silver Blades layout, looked up when a test runs rather than at import."""
+    return da.COMBAT_LAYOUTS["ssb"]
+
+
+def _record_size() -> int:
+    return max(_ssb().hp_at, _ssb().next_at + 3) + 1
+
+
+def _record(name: str, side: int, quick: int, control: int, hp: int,
+            after: tuple[int, int] = (0, 0)) -> bytearray:
+    rec = bytearray(_record_size())
+    rec[0] = len(name)
+    rec[1:1 + len(name)] = name.encode()
+    rec[_ssb().status_at:_ssb().status_at + 4] = bytes((0, 1, side, quick))
+    rec[_ssb().control_at] = control
+    rec[_ssb().hp_at] = hp
+    seg, off = after
+    rec[_ssb().next_at:_ssb().next_at + 4] = (off.to_bytes(2, "little")
+                                          + seg.to_bytes(2, "little"))
+    return rec
+
+
+def _fight_memory() -> tuple[bytearray, dict]:
+    """Three party members and one monster: GUY and PAINE the player's,
+    EPONA under the computer (control 0xB3, quickfight 1), an ORC on side 1."""
+    ptrs = {"GUY": (0x3000, 0x10), "PAINE": (0x3000, 0x200),
+            "EPONA": (0x3000, 0x400), "ORC": (0x3100, 0x10)}
+    records = {
+        ptrs["GUY"]: _record("GUY", 0, 0, 0, 30, ptrs["PAINE"]),
+        ptrs["PAINE"]: _record("PAINE", 0, 1, 0, 25, ptrs["EPONA"]),
+        ptrs["EPONA"]: _record("EPONA", 0, 1, 0xB3, 20),
+        ptrs["ORC"]: _record("ORC", 1, 1, 0xB2, 8),
+    }
+    ds = bytearray(0x10000)
+    order = ("GUY", "PAINE", "EPONA", "ORC")
+    ds[_ssb().map_at + 3] = len(order)
+    for i, who in enumerate(order, 1):
+        x, y = (5 + i, 7) if who != "ORC" else (6, 2)
+        ds[_ssb().map_at + 4 * i:_ssb().map_at + 4 * i + 4] = bytes((x, y, i, 1))
+        seg, off = ptrs[who]
+        ds[_ssb().array_at + 4 * i:_ssb().array_at + 4 * i + 4] = (
+            off.to_bytes(2, "little") + seg.to_bytes(2, "little"))
+    seg, off = ptrs["GUY"]
+    ds[_ssb().party_at:_ssb().party_at + 4] = off.to_bytes(2, "little") + seg.to_bytes(2, "little")
+    return ds, {"records": records, "ptrs": ptrs}
+
+
+def _select(ds: bytearray, ptr: tuple[int, int]) -> None:
+    seg, off = ptr
+    ds[_ssb().selected_at:_ssb().selected_at + 4] = (off.to_bytes(2, "little")
+                                                 + seg.to_bytes(2, "little"))
+
+
+def test_the_combat_window_reads_every_combatant_and_who_is_selected():
+    ds, mem = _fight_memory()
+    _select(ds, mem["ptrs"]["PAINE"])
+    lo, n = da.combat_window(_ssb())
+    got = da.read_combat(bytes(ds[lo:lo + n]), lo, _ssb())
+    assert got["count"] == 4 and got["selected"] == 2
+    assert [c["position"] for c in got["combatants"]] == [[6, 7], [7, 7], [8, 7], [6, 2]]
+    assert got["party_head"] == [0x3000, 0x10]
+    orc = da.combatant_record(bytes(mem["records"][mem["ptrs"]["ORC"]]), _ssb())
+    assert (orc["name"], orc["side"], orc["quickfight"], orc["control"], orc["hp"]) \
+        == ("ORC", 1, 1, 0xB2, 8)
+
+
+def test_a_window_that_is_not_a_fight_is_refused():
+    lo, n = da.combat_window(_ssb())
+    with pytest.raises(da.CombatUnread, match="count is 0"):
+        da.read_combat(bytes(n), lo, _ssb())
+    ds, _ = _fight_memory()
+    ds[_ssb().array_at + 8:_ssb().array_at + 12] = bytes(4)
+    with pytest.raises(da.CombatUnread, match="no record"):
+        da.read_combat(bytes(ds[lo:lo + n]), lo, _ssb())
+    with pytest.raises(da.CombatUnread, match="not a name"):
+        da.combatant_record(bytes(_record_size()), _ssb())
+
+
+def test_the_explorer_leaves_a_dead_end_for_a_square_it_has_not_stood_on():
+    # A corridor A - B - C, walls everywhere else; the walk starts at A
+    # facing B and must end at C, never turning back while C is untried.
+    grid = {("A", 0): "B", ("B", 0): "C", ("B", 2): "A", ("C", 2): "B"}
+    walker = da.Explorer()
+    walker.at("A")
+    for _ in range(40):
+        d = walker.choose()
+        for k in walker.turn_keys(d):
+            walker.turned(k)
+        walker.stepped(grid.get((walker.square, walker.facing), walker.square))
+        if walker.square == "C":
+            break
+    assert walker.square == "C"
+    assert walker.steps == 2
+
+
+class FakeFight:
+    """A Silver Blades session from the map to a fight's end, with memory.
+
+    `m` opens move mode; `Up` steps twice and walks into an encounter; `c`
+    starts the fight at GUY's command bar; `space` there clears the
+    quickfight byte of every party member whose control is below 0x80, as
+    the menu's handler does, and leaves the bar showing; `q` moves on to
+    PAINE's bar and then to the treasure; `e` and `n` return to the map.
+    """
+
+    FRAMES = {"map": "MOVE AREA CAST VIEW ENCAMP SEARCH LOOK", "move": "EXIT",
+              "encounter": "COMBAT WAIT FLEE ADVANCE",
+              "bar": "MOVE VIEW AIM USE CAST QUICK DONE",
+              "treasure": "VIEW TAKE POOL SHARE EXIT", "left": "YES NO",
+              "archway": "YES NO"}
+
+    def __init__(self, tmp_path, archway=False):
+        #: With `archway`, the first step lands on square 5 under a `YES NO`
+        #: question whose picture animates, so every `capture` of it tears.
+        self.archway = archway
+        self.dir = tmp_path / "session"
+        (self.dir / "shots").mkdir(parents=True)
+        self.save_dir = self.dir / "SAVE"
+        self.state, self.square, self.actor = "map", 1, None
+        self.keys: list[str] = []
+        self.halts = 0
+        self.ds, mem = _fight_memory()
+        self.records, self.ptrs = mem["records"], mem["ptrs"]
+
+    def frame(self) -> dosbox.Screen:
+        bar = _bar(self.FRAMES["bar" if self.state.startswith("bar") else self.state])
+        screen = _screen(bar, b"")
+        if self.state in ("map", "move"):
+            px = bytearray(screen.px)
+            col = da.status_column("ssb")
+            y0 = dosbox.STATUS[1]
+            for dy in range(8):
+                for dx in range(8):
+                    if (self.square >> ((dx + dy) % 8)) & 1:
+                        at = ((y0 + dy) * W + col + dx) * 3
+                        px[at:at + 3] = b"\xff\xff\xff"
+            screen = dosbox.Screen(W, H, bytes(px))
+        return screen
+
+    def capture(self):
+        if self.state == "archway":
+            raise da.dosboxx.NotLineDoubled("block at (80,100) is not one pixel")
+        return self.frame()
+
+    def grab(self):
+        return self.frame()
+
+    def settle(self, quiet=0.6, timeout=30.0):
+        return self.frame()
+
+    def wait_for(self, pred, timeout=30.0):
+        return pred(self.frame())
+
+    def wait_until_ink(self, rect, want, timeout=30.0):
+        return self.frame().ink(rect) == want
+
+    def wait_while_ink(self, rect, same, timeout=30.0):
+        return self.frame().ink(rect) != same
+
+    def wait_while_glyphs(self, rect, same, timeout=30.0):
+        return self.frame().glyphs(rect) != same
+
+    def shot(self, name, allow_blank=False):
+        path = self.dir / "shots" / f"{name}.png"
+        path.write_bytes(b"x")
+        return path
+
+    def key(self, *keys, gap=0.35):
+        for k in keys:
+            self.keys.append(k)
+            s = self.state
+            if s == "map" and k == "m":
+                self.state = "move"
+            elif s == "move" and k == "Up":
+                if self.square == 1 and self.archway:
+                    self.square, self.state = 5, "archway"
+                elif self.square == 1:
+                    self.square = 3
+                else:
+                    self.state = "encounter"
+            elif s == "archway" and k == "n":
+                self.state = "move"
+            elif s == "encounter" and k == "c":
+                self.state, self.actor = "bar1", "GUY"
+            elif s.startswith("bar") and k == "space":
+                for rec in self.records.values():
+                    if rec[_ssb().control_at] < 0x80 and rec[_ssb().status_at + 2] == 0:
+                        rec[_ssb().status_at + 3] = 0
+            elif s == "bar1" and k == "q":
+                self.state, self.actor = "bar2", "PAINE"
+            elif s == "bar2" and k == "q":
+                self.state = "treasure"
+            elif s == "treasure" and k == "e":
+                self.state = "left"
+            elif s == "left" and k == "n":
+                self.state = "map"
+            if self.actor:
+                _select(self.ds, self.ptrs[self.actor])
+
+    # -- the debugger ------------------------------------------------------
+
+    def attach(self):
+        self.halts += 1
+        return True
+
+    def regs(self, *names):
+        return {"DS": _DS}
+
+    def read(self, addr, n):
+        seg, off = addr
+        if seg == _DS:
+            return bytes(self.ds[off:off + n])
+        return bytes(self.records[(seg, off)][:n])
+
+    def run(self):
+        pass
+
+
+@pytest.fixture
+def fight_now(monkeypatch):
+    monkeypatch.setattr(da, "FIGHT_SETTLED", 0.0)
+
+
+def _fighter(tmp_path, key=None, archway=False):
+    game = FakeFight(tmp_path, archway)
+    d = da.Driver(game, lambda **k: None, "D", "ssb")
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.record_world(game.capture())
+    d.where = "map"
+    d.first_bar_key = key
+    return game, d
+
+
+def _events(d, name):
+    return [e for e in d.logged if e.get("event") == name]
+
+
+def test_a_fight_logs_placement_and_who_acts_at_each_bar_and_ends_on_the_map(
+        tmp_path, fight_now):
+    game, d = _fighter(tmp_path)
+    got = d.fight()
+    assert d.where == "map" and game.state == "map"
+    assert game.keys == ["m", "Up", "Up", "c", "q", "q", "e", "n"]
+    assert [e["actor"]["name"] for e in _events(d, "bar")] == ["GUY", "PAINE"]
+    placement = _events(d, "placement")
+    assert len(placement) == 1
+    rows = {c["name"]: c for c in placement[0]["combatants"]}
+    assert (rows["EPONA"]["side"], rows["EPONA"]["control"],
+            rows["EPONA"]["quickfight"], rows["EPONA"]["slot"]) == (0, 0xB3, 1, 2)
+    assert (rows["ORC"]["side"], rows["ORC"]["party"], rows["ORC"]["slot"],
+            rows["ORC"]["position"]) == (1, False, None, [6, 2])
+    assert rows["GUY"]["position"] == [6, 7] and rows["GUY"]["party"]
+    assert _events(d, "first-bar-key") == []
+    assert (got["bars"], got["walked"], got["walked_before_fight"],
+            got["encounters"]) == (2, 1, 1, 1)
+    assert got["first_bar_key"] is None and got["ds"] == f"{_DS:04X}"
+
+
+def test_the_first_bar_key_is_pressed_once_and_the_bar_after_it_reads_every_record(
+        tmp_path, fight_now):
+    game, d = _fighter(tmp_path, key="space")
+    got = d.fight()
+    assert game.keys == ["m", "Up", "Up", "c", "space", "q", "q", "e", "n"]
+    assert game.keys.count("space") == 1
+    assert [e["actor"]["name"] for e in _events(d, "bar")] == ["GUY", "GUY", "PAINE"]
+    assert [e["key"] for e in _events(d, "first-bar-key")] == ["space"]
+    before = {c["name"]: c["quickfight"] for c in _events(d, "placement")[0]["combatants"]}
+    after = {c["name"]: c["quickfight"]
+             for c in _events(d, "after-first-bar-key")[0]["combatants"]}
+    # PAINE (control 0) is handed back; EPONA (0xB3) and the ORC are not.
+    assert before == {"GUY": 0, "PAINE": 1, "EPONA": 1, "ORC": 1}
+    assert after == {"GUY": 0, "PAINE": 0, "EPONA": 1, "ORC": 1}
+    assert got["first_bar_key"] == "space" and got["bars"] == 3
+
+
+def test_a_fight_needs_the_debugger_and_the_map(tmp_path, monkeypatch):
+    game, d = _fighter(tmp_path)
+    d.where = "camp"
+    with pytest.raises(da.StepFailed, match="needs the map"):
+        d.fight()
+    d.where = "map"
+    monkeypatch.delattr(FakeFight, "attach")
+    with pytest.raises(da.StepFailed, match="DOSBox-X debugger"):
+        d.fight()
+
+
+def test_a_fight_whose_combatants_never_read_true_stops_the_run(tmp_path, fight_now):
+    game, d = _fighter(tmp_path)
+    game.ds[_ssb().map_at + 3] = 0
+    with pytest.raises(da.StepFailed, match="never read as a fight"):
+        d.fight()
+    assert game.halts == da.FIGHT_PRESSES
+
+
+def test_a_torn_frame_during_the_walk_is_read_again_not_a_lost_run(tmp_path, fight_now):
+    game, d = _fighter(tmp_path)
+    real = game.capture
+    torn = []
+
+    def capture():
+        if game.state == "move" and not torn:
+            torn.append(1)
+            raise da.dosboxx.NotLineDoubled("block at (0,0) is not one pixel")
+        return real()
+
+    game.capture = capture
+    game.grab = lambda: None
+    got = d.fight()
+    assert torn and got["torn_frames"] == 1
+    assert [e["actor"]["name"] for e in _events(d, "bar")] == ["GUY", "PAINE"]
+
+
+def test_a_question_under_an_animated_picture_is_answered_through_torn_grabs(
+        tmp_path, fight_now):
+    game, d = _fighter(tmp_path, archway=True)
+    got = d.fight()
+    assert game.keys == ["m", "Up", "n", "Up", "c", "q", "q", "e", "n"]
+    assert got["loose_frames"] >= 1
+    assert got["walked"] == 1 and got["walked_before_fight"] == 1
+
+
+def test_a_step_that_showed_a_question_records_where_it_led():
+    walker = da.Explorer()
+    walker.at("A")
+    walker.stepping()
+    walker.square = None           # the step's bar did not come back
+    walker.at("B")                 # read again once the question was answered
+    assert walker.edges[("A", 0)] == "B" and walker.steps == 1
+    walker.stepping()
+    walker.square = None
+    walker.at("B")                 # a question that left the party where it stood
+    assert walker.edges[("B", 0)] == da.Explorer.BLOCKED
+    assert walker.choose() != 0
+
+
+def test_a_torn_dosbox_x_grab_halves_loosely_to_the_frame_it_doubled():
+    small = _screen(_bar("YES NO"), bytes(range(200)))
+    row = bytearray()
+    for y in range(H):
+        line = bytearray()
+        for x in range(W):
+            line += small.px[(y * W + x) * 3:(y * W + x) * 3 + 3] * 2
+        row += line + line
+    torn = bytearray(row)
+    # The second line of one pair, in the picture, from a later blit.
+    at = (2 * 50 + 1) * W * 2 * 3 + 80 * 2 * 3
+    torn[at:at + 6] = b"\x55\xff\x55" * 2
+    big = dosbox.Screen(2 * W, 2 * H, bytes(torn))
+    with pytest.raises(da.dosboxx.NotLineDoubled):
+        da.dosboxx.halve(big)
+    assert da.loose_halve(big).px == small.px
+    assert da.loose_halve(small) is small

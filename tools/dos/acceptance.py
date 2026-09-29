@@ -72,6 +72,7 @@ a source whose title does not match `--title`:
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
 | `walk MI`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
+| `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement, record byte 0x130 (spell id 126's book byte, `book_0x130`) and items |
 
 **Pools of Darkness' screens are read off its `GAME.EXE` strings, not off a
@@ -205,7 +206,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from goldbox import dos_codec, world_state  # noqa: E402
-from tools.dos import dosbox, dospod, route_silver_blades  # noqa: E402
+from tools.dos import dosbox, dosboxx, dospod, route_silver_blades  # noqa: E402
 from tools.dos.screens import (  # noqa: E402
     BLANK_NAME,
     CELL,
@@ -682,6 +683,306 @@ def yes_no_words(words: list[list[str]]) -> bool:
     return len(words) >= 2 and len(words[-2]) == 3 and len(words[-1]) == 2
 
 
+def _lengths(words: list[list[str]], *want: int) -> bool:
+    return len(words) >= len(want) and all(
+        len(w) == n for w, n in zip(words, want))
+
+
+def command_words(words: list[list[str]]) -> bool:
+    """A combat command bar: `MOVE VIEW AIM` first, whatever follows.
+
+    Curse's bar is `Move View Aim Use Cast Turn Quick Done` (`GAME.OVR`
+    0xAC73) and Silver Blades' `Move View Aim Use Cast Quick Done` (0xC0E5),
+    each word drawn only when the member may use it.  Read by which cells
+    repeat, not by a measured digest: `V` is `MOVE`'s third cell and `VIEW`'s
+    first, `E` `MOVE`'s fourth and `VIEW`'s third, `I` `VIEW`'s second and
+    `AIM`'s second, `M` `MOVE`'s first and `AIM`'s third, and `O` and `W`
+    are neither of those.
+    """
+    if not _lengths(words, 4, 4, 3):
+        return False
+    move, view, aim = words[:3]
+    m, o, v, e = move
+    return (view[0] == v and view[2] == e and aim[1] == view[1]
+            and aim[2] == m and view[3] not in (m, o, v, e)
+            and len({m, o, v, e, view[1], aim[0]}) == 6)
+
+
+def encounter_words(words: list[list[str]]) -> bool:
+    """An encounter menu that opens `COMBAT WAIT FLEE`: `A` and `T` are
+    `COMBAT`'s fifth and sixth cells and `WAIT`'s second and fourth, and
+    `FLEE` ends in two cells alike."""
+    if not _lengths(words, 6, 4, 4):
+        return False
+    combat, wait, flee = words[:3]
+    return (wait[1] == combat[4] and wait[3] == combat[5]
+            and flee[2] == flee[3] and len(set(combat)) == 6)
+
+
+def treasure_words(words: list[list[str]]) -> bool:
+    """`VIEW TAKE POOL SHARE EXIT`: `E` ends `VIEW`'s third cell, `TAKE`,
+    `SHARE` and opens `EXIT`, and `POOL` doubles its `O`."""
+    if not _lengths(words, 4, 4, 4, 5, 4) or len(words) != 5:
+        return False
+    view, take, pool, share, exit_ = words
+    return (view[2] == take[3] == share[4] == exit_[0]
+            and pool[1] == pool[2] and take[0] == exit_[3])
+
+
+def fight_bar_kind(screen: dosbox.Screen) -> str | None:
+    """What a Curse or Silver Blades screen's bar is during `fight`, or None.
+
+    `blank` is a bar row of one colour (a monster's turn, an animation);
+    `continue`, `treasure` and `treasure_left` are `route_silver_blades.BARS`'
+    measured digests, which Curse shares for its continue bar
+    (`CURSE_CONTINUE_BAR`); the rest are read from the bar's words.
+    """
+    if screen.flat(dosbox.BAR):
+        return "blank"
+    known = route_silver_blades.BARS.get(screen.glyphs(dosbox.BAR))
+    if known in FIGHT_KEYS:
+        return known
+    words = bar_words(screen)
+    if command_words(words):
+        return "command"
+    if encounter_words(words):
+        return "encounter"
+    if treasure_words(words):
+        return "treasure"
+    if yes_no_words(words):
+        return "yes_no"
+    return None
+
+
+#: What `fight` presses at each bar kind.  `QUICK` hands the member at the
+#: bar to the computer for the rest of the fight, so the fight runs itself to
+#: its end; `COMBAT` at the encounter menu; `EXIT` at the treasure, leaving
+#: it where it lies; `NO` at every `YES NO` (the treasure left behind, and
+#: any other question the walk meets).  A bar not listed is waited out.
+FIGHT_KEYS = {"command": "q", "encounter": "c", "continue": "Return",
+              "treasure": "e", "treasure_left": "n", "yes_no": "n"}
+#: The titles `fight` drives.
+FIGHT_TITLES = frozenset({"curse", "ssb"})
+#: The step's default budget, seconds, walk and fight together.
+FIGHT_SECONDS = 600
+#: Seconds the map bar must hold after a fight before the step believes it over.
+FIGHT_SETTLED = 4.0
+#: Seconds a bar nobody has classified may stay before the run stops.
+FIGHT_PATIENCE = 60.0
+#: Seconds to wait for a bar to change after its key, and presses before a
+#: key the bar never answered stops the run.
+FIGHT_DWELL = 8.0
+FIGHT_PRESSES = 3
+
+
+@dataclasses.dataclass(frozen=True)
+class CombatLayout:
+    """Where a title keeps a fight's combatants: `DS` offsets and record offsets.
+
+    Read from each `GAME.OVR`'s combat setup, which stores each combatant's
+    record pointer and then its map entry (Curse 0xF166, Silver Blades
+    0xFE1C: `mov [array+4i], offset / segment`, `mov al, es:[di+side]`,
+    `mov [map+4i+2], index`, `mov [map+4i+3], size`), and from the `SPACE`
+    handler of the combat menu, which walks the party list from `party_at`
+    through `next_at` and clears `quick_at` wherever `control_at` is below
+    0x80 (Curse 0xAADF, Silver Blades 0xBF84).  `selected_at` is the pointer
+    the overlays load most (`les di, [selected_at]`: Curse 288 sites, Silver
+    Blades 315); Curse's is `player_ptr` in the reconstruction's listing.
+    """
+
+    #: Four bytes per combatant, from entry 1: x, y, index, size.  Entry 0's
+    #: fourth byte is the count.
+    map_at: int
+    #: A far pointer (offset, segment) per combatant to its record, from entry 1.
+    array_at: int
+    selected_at: int
+    party_at: int
+    next_at: int
+    control_at: int
+    #: Status, active, side (0 the party's, 1 the enemy's), quickfight.
+    status_at: int
+    hp_at: int
+
+
+COMBAT_LAYOUTS = {
+    "curse": CombatLayout(map_at=0x66BD, array_at=0x6D4F, selected_at=0x6520,
+                          party_at=0x6524, next_at=0x189, control_at=0xF7,
+                          status_at=0x195, hp_at=0x1A4),
+    "ssb": CombatLayout(map_at=0x7EDF, array_at=0x8571, selected_at=0x7D38,
+                        party_at=0x7D3C, next_at=0x19D, control_at=0xFF,
+                        status_at=0x1A6, hp_at=0x1B5),
+}
+#: The most combatants a map holds: its count is one byte.
+MAX_COMBATANTS = 255
+#: What `placement` logs of each combatant, as the C64 driver's event does,
+#: with the record's own status, active, quickfight and control bytes.
+PLACEMENT_FIELDS = ("name", "index", "slot", "position", "size", "on_map", "hp",
+                    "status", "active", "side", "quickfight", "control", "party")
+#: Party records followed from `party_at` before the list is called a loop.
+MAX_PARTY = 8
+
+
+class CombatUnread(ValueError):
+    """The bytes read are not a live fight's combatants (a wrong `DS`)."""
+
+
+def combat_window(layout: CombatLayout) -> tuple[int, int]:
+    """The one `DS` range holding the map, the pointers, the selected member
+    and the party head: its start and length."""
+    lo = min(layout.map_at, layout.array_at, layout.selected_at, layout.party_at)
+    hi = max(layout.map_at, layout.array_at) + 4 * (MAX_COMBATANTS + 1)
+    return lo, hi - lo
+
+
+def far_pointer(raw: bytes) -> tuple[int, int]:
+    """(segment, offset) of a stored far pointer, offset first."""
+    return int.from_bytes(raw[2:4], "little"), int.from_bytes(raw[0:2], "little")
+
+
+def read_combat(window: bytes, base: int, layout: CombatLayout) -> dict:
+    """The combatants in a `combat_window` read from `base`.
+
+    Raises `CombatUnread` for a count of 0 or a combatant with no record,
+    which is what the window holds under a `DS` that is not the game's.
+    """
+    def at(offset: int, n: int) -> bytes:
+        return window[offset - base:offset - base + n]
+
+    count = at(layout.map_at + 3, 1)[0]
+    if count == 0:
+        raise CombatUnread("the combat map's count is 0")
+    combatants = []
+    for i in range(1, count + 1):
+        x, y, index, size = at(layout.map_at + 4 * i, 4)
+        pointer = far_pointer(at(layout.array_at + 4 * i, 4))
+        if pointer == (0, 0):
+            raise CombatUnread(f"combatant {i} of {count} has no record")
+        combatants.append({"index": i, "position": [x, y], "size": size,
+                           "on_map": size != 0, "map_index": index,
+                           "pointer": list(pointer)})
+    selected = far_pointer(at(layout.selected_at, 4))
+    return {"count": count, "combatants": combatants,
+            "selected": next((c["index"] for c in combatants
+                              if tuple(c["pointer"]) == selected), None),
+            "selected_pointer": list(selected),
+            "party_head": list(far_pointer(at(layout.party_at, 4)))}
+
+
+def combatant_record(record: bytes, layout: CombatLayout) -> dict:
+    """A combatant record's name and the bytes that say whose side it fights on."""
+    n = record[0] if record else 0
+    name = record[1:1 + n]
+    if not 1 <= n <= 15 or not all(0x20 <= b < 0x7F for b in name):
+        raise CombatUnread(f"a record's name is not a name: {record[:16].hex()}")
+    status, active, side, quick = record[layout.status_at:layout.status_at + 4]
+    return {"name": name.decode("latin-1"), "status": status, "active": active,
+            "side": side, "quickfight": quick,
+            "control": record[layout.control_at], "hp": record[layout.hp_at]}
+
+
+def loose_halve(screen: dosbox.Screen) -> dosbox.Screen:
+    """A DOSBox-X grab (640x400) as 320x200 by each block's top-left pixel.
+
+    `dosboxx.halve` refuses a grab torn between two blits; this takes it,
+    for the rows `fight` reads, which the tear does not reach while only the
+    picture moves.  A frame already 320 wide is returned as it is.
+    """
+    if screen.width < 640 or screen.width % 2 or screen.height % 2:
+        return screen
+    w, h = screen.width // 2, screen.height // 2
+    stride = screen.width * 3
+    out = bytearray(w * h * 3)
+    for y in range(h):
+        top = screen.px[2 * y * stride:(2 * y + 1) * stride]
+        row = bytearray(w * 3)
+        row[0::3], row[1::3], row[2::3] = top[0::6], top[1::6], top[2::6]
+        out[y * w * 3:(y + 1) * w * 3] = row
+    return dosbox.Screen(w, h, bytes(out))
+
+
+class Explorer:
+    """Where `fight` walks next, from the squares it has stood on.
+
+    The status line gives a square's identity (`status_square`, a digest)
+    and never its coordinates, so this keeps what each tried direction led
+    to and prefers, in order, a direction never tried from here, then the
+    neighbour stood on least, taking ahead, right, left and back in that
+    order among equals.  Directions are counted from the facing the walk
+    began at, a right turn adding one.
+    """
+
+    ORDER = (0, 1, 3, 2)
+    BLOCKED = "blocked"
+
+    def __init__(self) -> None:
+        self.facing = 0
+        self.square: str | None = None
+        self.edges: dict[tuple[str, int], str] = {}
+        self.visits: dict[str, int] = {}
+        self.steps = 0
+        self.bumps = 0
+        #: The square and direction of a step in flight: set before `Up`,
+        #: settled by `stepped`, or by `at` when the step showed a screen
+        #: (a message, a question) and the square had to be read again.
+        self.pending: tuple[str, int] | None = None
+
+    def at(self, square: str) -> None:
+        """Stand on `square`.  After a step that showed a screen, the
+        direction tried leads here, or is walled when the party never left,
+        so a prompt declined is not walked into again and again."""
+        if self.pending is not None:
+            start, d = self.pending
+            self.pending = None
+            if square == start:
+                self.edges[(start, d)] = self.BLOCKED
+                self.bumps += 1
+            else:
+                self.edges[(start, d)] = square
+                self.steps += 1
+        self.square = square
+        self.visits[square] = self.visits.get(square, 0) + 1
+
+    def stepping(self) -> None:
+        self.pending = None if self.square is None else (self.square, self.facing)
+
+    def choose(self) -> int:
+        best = None
+        for rel in self.ORDER:
+            d = (self.facing + rel) % 4
+            led = self.edges.get((self.square, d))
+            if led == self.BLOCKED:
+                continue
+            score = -1 if led is None else self.visits.get(led, 0)
+            if best is None or score < best[0]:
+                best = (score, d)
+        if best is None:
+            raise StepFailed("the walk is walled in on all four sides")
+        return best[1]
+
+    def turn_keys(self, d: int) -> list[str]:
+        return {0: [], 1: ["Right"], 2: ["Right", "Right"],
+                3: ["Left"]}[(d - self.facing) % 4]
+
+    def turned(self, key: str) -> None:
+        self.facing = (self.facing + (1 if key == "Right" else -1)) % 4
+
+    def stepped(self, square: str | None) -> bool:
+        """The square after `Up`; whether the party moved."""
+        self.pending = None
+        if square is None or self.square is None:
+            if square is not None:
+                self.at(square)
+            return False
+        if square == self.square:
+            self.edges[(self.square, self.facing)] = self.BLOCKED
+            self.bumps += 1
+            return False
+        self.edges[(self.square, self.facing)] = square
+        self.steps += 1
+        self.at(square)
+        return True
+
+
 def class_tables(start_exe: bytes) -> bytes:
     """The data segment of Curse's `START.EXE`, where 0x3BB4D's tables are."""
     from tools.dos import dosspellslots, unexepack
@@ -994,6 +1295,7 @@ class Step:
     line: int = 0
     key: str = ""
     row: int = 0
+    seconds: int = 0
 
 
 _DURATION = re.compile(r"^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?$")
@@ -1025,7 +1327,7 @@ STEP_HELP = ("load, begin, 'walk MI', 'walk 1', 'turn 4', camp, display, 'rest 5
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
              "'halve 1 1', 'join 4 15', 'view 1', 'memorize 5', 'cast 2 BLESS', "
              "'cast 2 CURE-LIGHT-WOUNDS 4', 'shot NAME', "
-             "'press KEY', read")
+             "'press KEY', 'fight', 'fight 900', read")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
 #: 0x0CB8), upper case.
 CHANGE_CLASSES = ("CLERIC", "DRUID", "FIGHTER", "PALADIN", "RANGER", "MAGIC-USER",
@@ -1080,6 +1382,9 @@ def parse_step(text: str) -> Step:
         return Step(kind, text, line=int(words[1]))
     if kind == "shot" and len(words) == 2 and re.fullmatch(r"[\w-]+", words[1]):
         return Step(kind, text, name=words[1])
+    if kind == "fight" and (len(words) == 1 or (
+            len(words) == 2 and re.fullmatch(r"[1-9]\d*", words[1]))):
+        return Step(kind, text, seconds=int(words[1]) if len(words) == 2 else 0)
     if kind == "press" and len(words) == 2 and re.fullmatch(r"\w+", words[1]):
         if words[1].lower() in ("e", "escape"):
             raise ValueError(f"press {words[1]} is refused: E is exit to DOS at "
@@ -1185,6 +1490,12 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "save":
             if where not in ("camp", "party"):
                 raise ValueError(f"save needs camp first: {step.text!r}")
+        elif k == "fight":
+            if title not in FIGHT_TITLES:
+                raise ValueError(f"fight is driven in "
+                                 f"{', '.join(sorted(FIGHT_TITLES))} only, not {title}")
+            if where != "map":
+                raise ValueError(f"fight needs the map: {step.text!r}")
         elif k == "train":
             if not t.trains:
                 raise ValueError(f"train is driven in curse only; {title}'s "
@@ -1252,6 +1563,15 @@ def parse_control(text: str) -> tuple[int, int, int | None]:
 
 
 _RECORD_NUMBER = re.compile(r"0|[1-9][0-9]*|0[xX][0-9a-fA-F]+")
+
+
+def parse_key(text: str) -> str:
+    """`SPACE` or one letter or digit, as the X keysym `fight` presses."""
+    if text.upper() == "SPACE":
+        return "space"
+    if len(text) == 1 and text.isascii() and text.isalnum():
+        return text.lower()
+    raise ValueError(f"{text!r}: a key is SPACE or one letter or digit")
 
 
 def parse_record_bytes(texts) -> list[tuple[int, int, int]]:
@@ -1913,6 +2233,11 @@ class Driver:
         self.sheets: dict[int, str] = {}
         #: Curse's `START.EXE` data segment, read once for `change`.
         self._class_ds: bytes | None = None
+        #: Set by `run`: the X keysym `fight` presses once at the first
+        #: command bar, or None.
+        self.first_bar_key: str | None = None
+        #: The game's data segment, once a fight's combatants have read true.
+        self.combat_ds: int | None = None
 
     # -- evidence ----------------------------------------------------------
 
@@ -2723,6 +3048,338 @@ class Driver:
                     "screens": screens}
         finally:
             self.game.record_map(map_screen)
+
+    # -- a fight, in Curse and Silver Blades ---------------------------------
+
+    def fight(self, seconds: int = 0) -> dict:
+        """Walk until a fight starts, and fight it to its end with `QUICK`.
+
+        The walk (`Explorer`) steps in move mode in Silver Blades and at the
+        map bar in Curse, and a step is believed only when the status line's
+        square changes.  Every bar the walk or the fight shows is answered by
+        `FIGHT_KEYS`, and each kind of bar is shot the first time it shows.
+        At each command bar the debugger reads who acts (`combat_memory`) and
+        the step logs a `bar` event; at the first it also logs `placement`,
+        every combatant's square, side, quickfight and control, and presses
+        `first_bar_key` once instead of `QUICK`, so the next reading of the
+        bar is logged as a bar of its own.  The bar after that key reads every
+        record again (`after-first-bar-key`), which is where a key that
+        changed a quickfight byte shows.  The step ends when the map bar has
+        held `FIGHT_SETTLED` seconds after the fight, with the party left on
+        the map; `seconds` bounds walk and fight together.
+        """
+        key = self.title.key
+        if key not in FIGHT_TITLES:
+            raise StepFailed(f"fight is driven in {', '.join(sorted(FIGHT_TITLES))} "
+                             f"only, not {key}")
+        if self.where != "map":
+            raise StepFailed("fight needs the map")
+        if not hasattr(self.s, "attach"):
+            raise StepFailed("fight reads the combatants through the DOSBox-X "
+                             "debugger, and this session has none")
+        map_screen = self.s.capture()
+        if not self.on_world(map_screen):
+            raise self.fail("fight-before", "the map bar is not showing")
+        budget = float(seconds or FIGHT_SECONDS)
+        end = time.time() + self.bounded(budget, "fight")
+        column = status_column(key)
+        enter, leave = MOVE_KEYS.get(key, (None, None))
+        walker = Explorer()
+        state: dict = {"met": False, "met_after": None, "bars": [],
+                       "placement": None, "after_key": None, "records": {},
+                       "kinds": {}, "encounters": 0, "presses": 0,
+                       "key_pressed": False, "ds": None, "torn": 0, "loose": 0,
+                       "back_since": None, "unknown_since": None,
+                       "walking": None if enter else self.world_sig}
+        try:
+            while True:
+                self.check_deadline("fight")
+                if time.time() > end:
+                    raise self.fail("fight-budget", self._fight_short(budget, walker, state))
+                try:
+                    if self._fight_tick(walker, column, enter, state):
+                        break
+                except dosboxx.NotLineDoubled:
+                    # A grab torn between two blits of an animation, in any
+                    # wait of the tick; the next one is whole.  Where the walk
+                    # stood is read again.
+                    state["torn"] += 1
+                    walker.square = None
+                    time.sleep(0.25)
+            last = self.s.capture()
+            if enter and bar_signature(last) == state["walking"]:
+                self.s.key(leave)
+                if not self.s.wait_until_ink(dosbox.BAR, self.world_ink, 15.0):
+                    raise self.fail("fight-back", f"{leave} did not return to "
+                                    "the map bar after the fight")
+        finally:
+            self.game.record_map(map_screen)
+        self.where = "map"
+        self._fight_shot("fight-end")
+        bars = state["bars"]
+        return {"walked": walker.steps, "walked_before_fight": state["met_after"],
+                "squares": len(walker.visits), "bumps": walker.bumps,
+                "presses": state["presses"], "encounters": state["encounters"],
+                "bars": len(bars),
+                "actors": [b["actor"]["name"] if b["actor"] else None for b in bars],
+                "placement": state["placement"],
+                "first_bar_key": self.first_bar_key if state["key_pressed"] else None,
+                "after_first_bar_key": state["after_key"],
+                "ds": None if state["ds"] is None else f"{state['ds']:04X}",
+                "torn_frames": state["torn"], "loose_frames": state["loose"],
+                "screens": state["kinds"]}
+
+    def _look(self, state: dict) -> dosbox.Screen:
+        """The screen, halved by `loose_halve` when DOSBox-X's grab is torn.
+
+        An animated picture (Silver Blades' archway at 3,0 of area 16) tears
+        every grab, and `XSession.capture` then refuses all of them, so the
+        bar under it would never be answered.  The rows `fight` reads are
+        still while the picture moves.
+        """
+        try:
+            return self.s.capture()
+        except dosboxx.NotLineDoubled:
+            raw = self.s.grab()
+            if raw is None:
+                raise
+            state["loose"] += 1
+            return loose_halve(raw)
+
+    def _fight_tick(self, walker: Explorer, column: int, enter: str | None,
+                    state: dict) -> bool:
+        """One look at the screen and one answer to it; True once the fight is over."""
+        screen = self._look(state)
+        walking = (state["walking"] is not None
+                   and bar_signature(screen) == state["walking"])
+        if walking or self.on_world(screen):
+            state["unknown_since"] = None
+            if state["met"]:
+                state["back_since"] = state["back_since"] or time.time()
+                if time.time() - state["back_since"] >= FIGHT_SETTLED:
+                    return True
+                time.sleep(0.25)
+            elif not walking:
+                self._enter_move(enter, state)
+            else:
+                self._explore(walker, column, state)
+            return False
+        state["back_since"] = None
+        kind = fight_bar_kind(screen)
+        glyphs = screen.glyphs(dosbox.BAR)
+        self._first_sight(kind, glyphs, screen, state)
+        if kind in (None, "blank"):
+            if kind is None:
+                state["unknown_since"] = state["unknown_since"] or time.time()
+                if time.time() - state["unknown_since"] >= FIGHT_PATIENCE:
+                    words = [len(w) for w in bar_words(screen)]
+                    raise self.fail(f"fight-unknown-{glyphs}",
+                                    f"a bar nobody has classified ({words} cells "
+                                    f"per word) stayed {FIGHT_PATIENCE:.0f} s")
+            time.sleep(0.25)
+            return False
+        state["unknown_since"] = None
+        if kind in ("command", "encounter") and not state["met"]:
+            state["met"] = True
+            state["met_after"] = walker.steps
+        if kind == "command":
+            self._command_bar(glyphs, state)
+            return False
+        if kind == "encounter":
+            state["encounters"] += 1
+        self._answer(FIGHT_KEYS[kind], glyphs, kind, state)
+        return False
+
+    def _fight_short(self, budget: float, walker: Explorer, state: dict) -> str:
+        if state["met"]:
+            return (f"the fight was still going after {budget:.0f} s "
+                    f"({len(state['bars'])} command bars)")
+        return (f"no fight in {budget:.0f} s: {walker.steps} steps over "
+                f"{len(walker.visits)} squares, {walker.bumps} into walls")
+
+    def _enter_move(self, enter: str | None, state: dict) -> None:
+        """Silver Blades: from the map bar into move mode, whose bar the walk
+        then steps at (`game.move` waits for it)."""
+        if enter is None:
+            raise self.fail("fight-walk", "the map bar showed but the walk has "
+                            "no bar recorded to step at")
+        self.s.key(enter)
+        state["presses"] += 1
+        if not self.s.wait_while_ink(dosbox.BAR, self.world_ink, 15.0):
+            raise self.fail("fight-move", f"the map bar did not change after "
+                            f"{enter} (no move mode)")
+        settled = self.s.settle(quiet=0.6, timeout=30.0)
+        if self.on_world(settled):
+            raise self.fail("fight-move", f"the map bar came back after {enter}")
+        if fight_bar_kind(settled) is not None and fight_bar_kind(settled) != "blank":
+            return
+        state["walking"] = bar_signature(settled)
+        self.game.record_map(settled)
+
+    def _explore(self, walker: Explorer, column: int, state: dict) -> None:
+        """One move of the walk: read the square, or turn and step once.
+
+        A turn or step whose bar does not come back leaves the square
+        unknown, so the next move reads it again; the loop in `fight` answers
+        whatever showed instead.
+        """
+        if walker.square is None:
+            square = status_square(self.s.settle(quiet=0.6, timeout=30.0), column)
+            if square is not None:
+                walker.at(square)
+                return
+            # Move mode draws no status line on entry; a turn draws it.
+            walker.turned("Right")
+            state["presses"] += 1
+            self.game.move("Right")
+            return
+        d = walker.choose()
+        for k in walker.turn_keys(d):
+            walker.turned(k)
+            state["presses"] += 1
+            if not self.game.move(k):
+                walker.square = None
+                return
+        state["presses"] += 1
+        walker.stepping()
+        if not self.game.move("Up"):
+            walker.square = None
+            return
+        moved = walker.stepped(status_square(self.s.settle(quiet=0.4, timeout=20.0),
+                                             column))
+        if moved and walker.steps % 25 == 0:
+            self.note(event="fight-walk", steps=walker.steps,
+                      squares=len(walker.visits), bumps=walker.bumps)
+
+    def _first_sight(self, kind: str | None, glyphs: str, screen, state: dict) -> None:
+        """Shoot and log a bar the first time its digest shows in this fight."""
+        if glyphs in state["kinds"]:
+            return
+        state["kinds"][glyphs] = kind
+        self.note(event="fight-screen", kind=kind, glyphs=glyphs,
+                  signature=bar_signature(screen),
+                  words=[len(w) for w in bar_words(screen)],
+                  shot=self._fight_shot("fight-" + (kind or "unknown")))
+
+    def _fight_shot(self, label: str) -> str | None:
+        """`shot`, or None when DOSBox-X's grab of the frame tore: a picture
+        is evidence, and a torn one must not stop the fight."""
+        try:
+            return f"{self.shot(label)}.png"
+        except dosboxx.NotLineDoubled:
+            return None
+
+    def _answer(self, key: str, glyphs: str, kind: str, state: dict) -> None:
+        """Press `key` until the bar changes, `FIGHT_PRESSES` times at most."""
+        for _ in range(FIGHT_PRESSES):
+            self.s.key(key)
+            state["presses"] += 1
+            if self.s.wait_while_glyphs(dosbox.BAR, glyphs, timeout=FIGHT_DWELL):
+                return
+        raise self.fail(f"fight-{kind}", f"{key} changed nothing at the {kind} "
+                        f"bar in {FIGHT_PRESSES} presses")
+
+    def _command_bar(self, glyphs: str, state: dict) -> None:
+        """Log who acts, and at the first bar where everyone stands; then press
+        `QUICK`, or the first-bar key once.
+
+        `QUICK` is pressed once and not repeated: the next member's bar can
+        look the same as this one, so a bar that has not changed is read
+        again rather than pressed again.
+        """
+        first = not state["bars"]
+        after_key = state["key_pressed"] and state["after_key"] is None
+        if first:
+            self._fight_shot("fight-first-bar")
+        snap = self.combat_memory(first or after_key, state["records"])
+        state["ds"] = snap["ds"]
+        actor = next((c for c in snap["combatants"] if c["index"] == snap["selected"]),
+                     None)
+        bar = {"bar": glyphs, "actor": None if actor is None else {
+            "name": actor["name"], "index": actor["index"],
+            "position": actor["position"], "party": actor.get("party")}}
+        self.note(event="bar", **bar)
+        state["bars"].append(bar)
+        public = [{k: c.get(k) for k in PLACEMENT_FIELDS} for c in snap["combatants"]]
+        if first:
+            state["placement"] = public
+            self.note(event="placement", combatants=public, ds=f"{snap['ds']:04X}",
+                      selected=snap["selected"])
+            if self.first_bar_key is not None:
+                self.s.key(self.first_bar_key)
+                state["presses"] += 1
+                state["key_pressed"] = True
+                time.sleep(1.0)
+                self.note(event="first-bar-key", key=self.first_bar_key,
+                          shot=self._fight_shot("first-bar-key"))
+                return
+        elif after_key:
+            state["after_key"] = public
+            self.note(event="after-first-bar-key", combatants=public)
+        self.s.key(FIGHT_KEYS["command"])
+        state["presses"] += 1
+        self.s.wait_while_glyphs(dosbox.BAR, glyphs, timeout=FIGHT_DWELL)
+
+    def combat_memory(self, records: bool, known: dict | None = None) -> dict:
+        """The fight's combatants, read through the debugger at a command bar.
+
+        Halts the emulator with Alt+Pause, reads `combat_window` from the
+        game's `DS` and, with `records`, every combatant's record and the
+        party list, then resumes it.  Without `records` only a combatant not
+        in `known` (record pointer to its decoded record, which this fills)
+        is read.  The `DS` a halt reports is the game's only if the window
+        reads as a fight, so a window that does not is read again after a
+        fresh halt, `FIGHT_PRESSES` times at most, and a `DS` that read true
+        once is kept.
+        """
+        layout = COMBAT_LAYOUTS[self.title.key]
+        lo, n = combat_window(layout)
+        known = known if known is not None else {}
+        why = "the debugger never halted"
+        for _ in range(FIGHT_PRESSES):
+            if not self.s.attach():
+                continue
+            ds = None
+            try:
+                ds = (self.combat_ds if self.combat_ds is not None
+                      else self.s.regs("DS")["DS"])
+                snap = read_combat(self.s.read((ds, lo), n), lo, layout)
+                raw: dict[tuple[int, int], bytes] = {}
+                size = max(layout.hp_at, layout.next_at + 3) + 1
+
+                def record(ptr: tuple[int, int]) -> bytes:
+                    if ptr not in raw:
+                        raw[ptr] = self.s.read(ptr, size)
+                    return raw[ptr]
+
+                for c in snap["combatants"]:
+                    ptr = tuple(c["pointer"])
+                    if records or ptr not in known:
+                        known[ptr] = combatant_record(record(ptr), layout)
+                    c.update(known[ptr])
+                if records:
+                    party: list[tuple[int, int]] = []
+                    ptr = tuple(snap["party_head"])
+                    while ptr != (0, 0) and ptr not in party and len(party) < MAX_PARTY:
+                        party.append(ptr)
+                        ptr = far_pointer(record(ptr)[layout.next_at:layout.next_at + 4])
+                    for c in snap["combatants"]:
+                        ptr = tuple(c["pointer"])
+                        c["party"] = ptr in party
+                        c["slot"] = party.index(ptr) if ptr in party else None
+                        known[ptr] = {**known[ptr], "party": c["party"],
+                                      "slot": c["slot"]}
+            except CombatUnread as e:
+                why = f"DS {ds if ds is None else f'{ds:04X}'}: {e}"
+                self.combat_ds = None
+                continue
+            finally:
+                self.s.run()
+            self.combat_ds = ds
+            snap["ds"] = ds
+            return snap
+        raise self.fail("fight-memory", f"the combatants never read as a fight "
+                        f"({why})")
 
     def pick_line(self, line: int, where: str, label: str,
                   next_key: str = POD_ROSTER_NEXT) -> dict:
@@ -3748,13 +4405,20 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         game = title.find_game()
         # A SIGTERM between the lease and its release callback would leave the
         # slot leased: hold it back until the callback is registered.
+        # A `fight` reads the combatants through the debugger, so its run
+        # boots DOSBox-X from that pool, whose captures `XSession` halves back
+        # to DOSBox 0.74's 320x200.
+        debugger = any(s.kind == "fight" for s in steps)
         with deferred_sigterm():
-            slot = dosbox.claim(args.note)
+            slot = (dosboxx.claim if debugger else dosbox.claim)(args.note)
             stack.callback(slot.release)
         # `START.EXE` is `Session`'s own default, so only another launcher
         # is named.
-        session = (dosbox.Session(slot, game) if title.exe == "START.EXE"
-                   else dosbox.Session(slot, game, exe=title.exe))
+        if debugger:
+            session = dosboxx.XSession(slot, game)
+        else:
+            session = (dosbox.Session(slot, game) if title.exe == "START.EXE"
+                       else dosbox.Session(slot, game, exe=title.exe))
         stack.callback(session.close)
 
         def keep_evidence():
@@ -3791,6 +4455,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             size = sum(1 for f in took.get("files", []) if f.endswith(".SAV")) or 6
             d = Driver(session, note, letter, args.title, party_size=size,
                        deadline=deadline)
+            if getattr(args, "first_bar_key", None) is not None:
+                d.first_bar_key = parse_key(args.first_bar_key)
             summary["events"] = getattr(d, "events", [])
             results = []
             for step in steps:
@@ -3842,6 +4508,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.memorize(step.line)
                 elif step.kind == "shot":
                     r = {"shot": d.shot(step.name)}
+                elif step.kind == "fight":
+                    r = d.fight(step.seconds)
                 elif step.kind == "press":
                     r = d.press(step.key)
                 else:
@@ -4153,6 +4821,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="stage one byte of roster line LINE's CHRDAT record "
                          "(decimal or 0x hex, comma-separated or repeated), "
                          "after --stage-control, before the boot")
+    ap.add_argument("--first-bar-key", default=None, metavar="KEY",
+                    help="SPACE or one letter or digit, pressed once at the "
+                         "first command bar of the first fight instead of "
+                         "QUICK (curse and ssb, with a fight step)")
     ap.add_argument("--expect", action="append", default=[],
                     metavar="NAME:ID:MINUTES[:DATA]",
                     help="a node the last saved slot must hold (repeatable)")
@@ -4183,6 +4855,11 @@ def main(argv: list[str] | None = None) -> int:
             parse_control(c)
         parse_record_bytes(args.stage_record)
         validate_steps([parse_step(s) for s in args.steps], args.title)
+        if args.first_bar_key is not None:
+            parse_key(args.first_bar_key)
+            if not any(parse_step(s).kind == "fight" for s in args.steps):
+                raise ValueError("--first-bar-key is pressed in a fight: add a "
+                                 "fight step")
         if args.hall and args.title not in HALL_TITLES:
             raise ValueError(f"--hall is measured for {', '.join(sorted(HALL_TITLES))} "
                              f"only, not {args.title}")
