@@ -396,6 +396,14 @@ def test_a_stack_weighs_its_low_weight_byte_times_the_quantity():
     assert derive.expected_movement(rec, [bytes(raw)], {}) == 9
 
 
+@pytest.mark.parametrize("index", [31, 255])
+def test_a_strength_index_past_the_allowance_table_is_refused(index):
+    rec = a_walker()
+    rec.set("strength_index", index)
+    with pytest.raises(ValueError, match=str(index)):
+        derive.expected_movement(rec, [], {})
+
+
 def test_an_item_with_no_type_byte_weighs_nothing():
     rec = a_walker(strength_index=0)
     raw = bytearray(16)

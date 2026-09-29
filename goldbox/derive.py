@@ -20,12 +20,15 @@ carrying magical weapons: the damage bonus was missing the item's own
 enchantment, which `LIBRARY $36E3` adds -- see `expected_damage_bonus`.
 See docs/30-savegame-layout.md.
 
-**One value here is written rather than only checked**, and it is the
-exception that proves the rest: :func:`turn_power`, the byte the C64 keeps at
-record `0x0A4`. DOS stores nothing a converter could copy -- it works the
+**Two values here are written rather than only checked**, and they are the
+exception that proves the rest. One is :func:`turn_power`, the byte the C64
+keeps at record `0x0A4`. DOS stores nothing a converter could copy -- it works the
 turning row out from the cleric level at the moment somebody presses Turn --
 so a conversion that copies has nothing to copy and leaves a cleric who cannot
 turn undead. `goldbox/c64_codec.py` calls this instead of copying (#288).
+The other is :func:`expected_movement`, which `tools/suite/testparty.py` stores
+for the Pool of Radiance C64 test party only; it is not derived for any other
+title.
 See docs/178-turning-undead.md.
 """
 
@@ -311,7 +314,8 @@ def expected_damage_bonus(record, readied: list[tuple[object, ItemType]]) -> int
     return damage
 
 
-#: The weight a character carries free, by `strength_index` (record `0x0E2`),
+#: Pool of Radiance, C64 only. The weight a character carries free, by
+#: `strength_index` (record `0x0E2`),
 #: 0 for the rows the AD&D table makes negative. The game keeps it as two
 #: 32-byte halves, the low bytes at `LIBRARY $3AC1` and the high bytes at
 #: `$3AE0`; entry 31 of that block is the start of other data, so only the
@@ -326,6 +330,9 @@ _PURSES = ("copper", "silver", "electrum", "gold", "platinum", "gems",
 def expected_movement(record, raws, types) -> int:
     """The movement the game's roster rebuild at `LIBRARY $3729` stores.
 
+    Pool of Radiance, C64 only: the addresses, the table and the rule were
+    read from that engine and are not established for any other title.
+
     `raws` is the character's sixteen-byte item records and `types` the ITEMS
     type table by type index. The base is record `0x09F`; a readied body armour
     (type `+0` of 2) then *overwrites* it from the armour's weight `w` -- base
@@ -335,8 +342,17 @@ def expected_movement(record, raws, types) -> int:
 
     The total counts every item with a type byte, readied or not, at its
     16-bit weight, or at `raw[8] * quantity` when the quantity is set, plus
-    the seven purses at one unit a coin.
+    the seven purses at one unit a coin. Empty slots (type byte 0) are skipped,
+    and an armour type missing from `types` is treated as non-armour. The sum
+    is not reduced to 16 bits: whether the game wraps a total past 65535 is
+    unverified. A `strength_index` of 31 or more raises `ValueError`, because
+    the table has only thirty-one real rows.
     """
+    index = record.get("strength_index")
+    if index >= len(ALLOWANCE):
+        raise ValueError(
+            f"strength_index {index} is outside the allowance table "
+            f"(0-{len(ALLOWANCE) - 1})")
     moves = record.get("movement")
     total = 0
     for raw in raws:
@@ -353,7 +369,7 @@ def expected_movement(record, raws, types) -> int:
                 if raw[4]:
                     moves += 3
     total += sum(record.get(n) for n in _PURSES)
-    excess = total - ALLOWANCE[record.get("strength_index")]
+    excess = total - ALLOWANCE[index]
     if excess >= 1024:
         moves = min(moves, 3)
     elif excess >= 768:

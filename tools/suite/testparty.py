@@ -797,10 +797,13 @@ def build(spec: Spec, game=None, rolls: str = "max", seed: int = 0,
 
     # Last, and with or without items: the coins alone decide it for this
     # party, and the game's own rebuild is what the first READY would store.
-    inventory = bytes(out.record.get_raw("inventory"))
-    raws = [inventory[n * 16:(n + 1) * 16] for n in range(len(inventory) // 16)]
-    out.record.set("roster_movement", derive.expected_movement(
-        out.record, raws, tables[1] if tables is not None else {}))
+    # The rule is Pool of Radiance C64's alone.
+    if game.key == "pool-of-radiance":
+        inventory = bytes(out.record.get_raw("inventory"))
+        raws = [inventory[n * 16:(n + 1) * 16]
+                for n in range(len(inventory) // 16)]
+        out.record.set("roster_movement", derive.expected_movement(
+            out.record, raws, tables[1] if tables is not None else {}))
     return out
 
 

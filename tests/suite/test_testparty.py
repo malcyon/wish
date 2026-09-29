@@ -539,3 +539,13 @@ def test_without_the_gold_armour_decides_the_movement(armed):
     got = testparty.party(rolls="max", specs=poor, tables=tables)
     assert [one.record.get("roster_movement") for one in got] == \
         [6, 12, 12, 9, 9, 9]
+
+
+def test_another_title_is_not_given_the_pool_movement_rule(monkeypatch):
+    calls = []
+    monkeypatch.setattr(derive, "expected_movement",
+                        lambda *a: calls.append(a) or 3)
+    testparty.build(testparty.PARTY[0], c64_port.by_key("curse-of-the-azure-bonds"))
+    assert calls == []
+    testparty.build(testparty.PARTY[0], GAME)
+    assert len(calls) == 1
