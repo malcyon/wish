@@ -94,7 +94,7 @@ String literals in the Amiga `Pools of Darkness` executable *(read today)*:
 | `pty`, `sav`, `SavGam` | `0x2706C` | one literal pool: party extension, **the extension it reads from the Silver Blades disk**, and the party stem |
 | `/Secret Drawer/SAVE`, `Place Secret save disk in DF0:`, `DF0:SAVE` | `0x254FA`, `0x2707F` | the Silver Blades import path — hard-disk drawer first, floppy second |
 | `Vault%c.DAT` | `0x274AC` | the vault |
-| `DF0:`, `SAVE`, `DISKA` | `0x3F868` | the save-disk path builder |
+| `DF0:`, `SAVE`, `DISKA` | `0x3F864`, `0x3F869`, `0x3F86E` | the literals of the save-disk path builder at `0x3F7D8` |
 | `No characters to load.` | `0x255D1` | the picker's empty case |
 
 So there are **two import routes**, and they want different files:
@@ -1640,7 +1640,10 @@ the engine's open-and-retry harness (`0x3F874`) with the disk code `$53`
 00025bd2  jsr     -$771c(a4)            ; open, retry, call back, close
 ```
 
-The harness builds `DF0:SAVE/<name>` (the literals at `0x3F868`), opens with
+The harness is the game's own routine, not a tool of ours. Its path builder at
+`0x3F7D8` (literals at `0x3F864`-`0x3F872`) writes `DF0:` or `DF1:` or no
+prefix, then `SAVE`, then `/<name>`; which prefix is used comes from a
+three-place search, not from the disk's name (§1.20). It opens the path with
 AmigaDOS `Open` and `MODE_OLDFILE` (`$3EE`) through the glue at `0x45AC2`, and
 calls the callback as `callback(word handle, char *path)`. Every read goes
 through `0x460CC` to dos.library `Read` at `-42(a6)`. So the `Open`/`Read`
@@ -3068,7 +3071,7 @@ name difference is the DOS length byte, which the Amiga drops for NUL padding.
 | Can we read one already? | Yes. `amiga/adf.py` (scratch, deleted) walks the hash chains, follows extension blocks and extracts every file. | CONFIRMED |
 | Can we **write** one? | Yes, for Pool of Radiance: `#36 (Write an Amiga disk image, not just the character files)` writes a fresh 880K `POOLSAVE.ADF` carrying a converted party and no game code, without `amitools` — `wish` ships as a PyInstaller binary and does not take dependencies lightly. `docs/191-the-amiga-save-disk.md` has the format and the WinUAE proof. Pools of Darkness, the subject of this table, is not built yet. | CONFIRMED for Pool of Radiance |
 | What does writing require? | An OFS writer: bootblock, root block with its hash table and checksum, bitmap block, one dir header, and per file a header block plus data blocks each carrying a 24-byte header and its own checksum. Perhaps 300 lines, and `goldbox/d64.py` is the precedent — this project already writes a container by hand. | PROBABLE |
-| Does PoD want its own save disk? | It prompts (`is your save disk in drive`, `Place Secret save disk in DF0:`), and the rip we read carries `Save/` on disk 3 itself. Whether an original demands a separately formatted disk is UNKNOWN and phase 2 answers it. | — |
+| Does PoD want its own save disk? | **No volume name is checked**, and the engine finds the `SAVE` drawer in its own directory, then `DF0:`, then `DF1:` (§1.20). Every request for the save disk says "Disk 3", and the rip we read carries `Save/` on disk 3 itself, so the engine expects the drawer there. A converted disk loading is untested, and `is your save disk in drive` has no direct reference in the executable. Write into a copy of the player's own disk 3, which already holds `SAVE/write.me` and `SAVE/spindisk`. | No volume check, search order: CONFIRMED. "Disk 3" in every request, and `write.me` and `spindisk` being needed: PROBABLE. Converted disk loads: PROBABLE until one driven run. `is your save disk in drive` dead: PROBABLE (an indexed read was not ruled out) |
 
 The one thing the container work does **not** need to touch: `dax.py`. Pools
 of Darkness's game data is in `GLIB`-magic `.TLB`/`.GLB` archives, a different
