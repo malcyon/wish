@@ -43,6 +43,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
+from automap import fasttravel  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -112,21 +113,21 @@ def wait_idle(sess, timeout: float = 300.0, need: int = 6) -> bool:
 def put(sess, square) -> None:
     """Stand the party on `square` by writing `$49C3`/`$49C4`."""
     with sess.mon(5) as m:
-        m.write(A.FASTTRAVEL_TRAVEL_X, bytes(square))
+        m.write(fasttravel.POOL_OF_RADIANCE.travel_square, bytes(square))
 
 
 def read_square(sess):
     with sess.mon(5) as m:
-        return tuple(m.read(A.FASTTRAVEL_TRAVEL_X, 2))
+        return tuple(m.read(fasttravel.POOL_OF_RADIANCE.travel_square, 2))
 
 
 def capture(sess, out: pathlib.Path, label: str, note: str = "") -> dict:
     meta = {"label": label, "note": note}
     with sess.mon(8) as m:
-        meta["49C3"] = list(m.read(A.FASTTRAVEL_TRAVEL_X, 2))
-        meta["49E6"] = m.read(A.FASTTRAVEL_INDOORS, 1)[0]
-        meta["6E1B"] = m.read(A.FASTTRAVEL_SLOT, 1)[0]
-        meta["6E12"] = m.read(A.FASTTRAVEL_DISK, 1)[0]
+        meta["49C3"] = list(m.read(fasttravel.POOL_OF_RADIANCE.travel_square, 2))
+        meta["49E6"] = m.read(fasttravel.POOL_OF_RADIANCE.indoors, 1)[0]
+        meta["6E1B"] = m.read(fasttravel.POOL_OF_RADIANCE.slot, 1)[0]
+        meta["6E12"] = m.read(fasttravel.POOL_OF_RADIANCE.disk, 1)[0]
         meta["C04B"] = list(m.read(A.FASTTRAVEL_X, 3))
     s = sess.screen()
     if s is not None:
@@ -186,7 +187,7 @@ def warp(sess, target, ft, out: pathlib.Path, area_id: int) -> dict:
     put(sess, WRONG_SQUARE)
     sess.settle(1)
     print(f"warp -> {row.name} overland={row.overland} "
-          f"(from ${A.FASTTRAVEL_TRAVEL_X:04X}={WRONG_SQUARE})", flush=True)
+          f"(from ${fasttravel.POOL_OF_RADIANCE.travel_square:04X}={WRONG_SQUARE})", flush=True)
     outcome = ft.apply(target, area=row)
     print(f"  {outcome.ok}: {outcome.message}", flush=True)
     for note in outcome.notes:

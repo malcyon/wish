@@ -24,7 +24,7 @@ import time
 
 import pytest
 
-from automap import actionbar, actions, c64
+from automap import actionbar, actions, c64, fasttravel
 from automap.target import MemoryTarget, NotConnected
 
 WORLD, COMBAT = 1, 2                    # $6E11: DUNGEON, COMBAT
@@ -79,9 +79,9 @@ def machine(mode: int = WORLD, area: int = 0, disk: int = 3,
             resting=IN_THE_LOOP, indoors: int = 1) -> Machine:
     """A party standing in an area, ready to be travelled out of."""
     return Machine({c64.MODE_FLAG_POOL: bytes([mode]),
-                    actions.FASTTRAVEL_SLOT: bytes([area]),
-                    actions.FASTTRAVEL_DISK: bytes([disk]),
-                    actions.FASTTRAVEL_INDOORS: bytes([indoors]),
+                    fasttravel.POOL_OF_RADIANCE.slot: bytes([area]),
+                    fasttravel.POOL_OF_RADIANCE.disk: bytes([disk]),
+                    fasttravel.POOL_OF_RADIANCE.indoors: bytes([indoors]),
                     actions.FASTTRAVEL_X: bytes([5, 6, 1])}, resting=resting)
 
 
@@ -176,7 +176,7 @@ def test_a_click_in_that_moment_waits_and_then_travels(app):
     target.looks = 0
     outcome = bar.run()
     assert outcome is not None and outcome.ok, outcome
-    assert target.jumps == [actions.NEWECL_TAIL]
+    assert target.jumps == [fasttravel.POOL_OF_RADIANCE.tail]
     assert target.looks >= 3, "the click did not wait for the PC"
 
 

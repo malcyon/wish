@@ -1205,109 +1205,20 @@ def actions(store: SpellStore | None = None,
 #
 # **Every address below is Pool of Radiance's, and is now one row of a table.**
 # `automap/fasttravel.py` holds the row for each title whose overlays have been
-# read, and the constants here are that row's fields under the names the rest
-# of the program already used -- `tools/areas/wallpins.py`, `tools/areas/windowsquare.py`,
-# `tools/areas/exitreentry.py` and `tests/areas/test_newecl.py` all import them, and every
-# one of those is Pool of Radiance's work. A `FastTravel` built for a title
-# reads its own row instead and never these (#15).
+# read, and the constants here are that row's fields. A `FastTravel` built for
+# a title reads its own row instead and never these (#15).
 
 #: Pool of Radiance's row, which is where the constants below come from. Named
 #: so that a reader who follows one of them arrives at the table rather than at
 #: another copy of the number.
 POOL_ADDRESSES = fasttravel.POOL_OF_RADIANCE
 
-#: Which `POOL` disk the arriving area lives on. `LIBRARY $43A4` reads it and
-#: prompts if that disk is not in the drive.
-FASTTRAVEL_DISK = POOL_ADDRESSES.disk
 #: The live party square inside `GDRIVE00`, of which `$49C0`-`$49C2` is a
 #: lagging copy: x, y, facing. `$1A3C`, called from `$2034`, copies these into
 #: the save's own bytes, which is why the arrival square is written before the
 #: jump and not after.
 FASTTRAVEL_X = POOL_ADDRESSES.live_square
 FASTTRAVEL_Y, FASTTRAVEL_FACING = FASTTRAVEL_X + 1, FASTTRAVEL_X + 2
-#: The live travel-grid square, window-local x then y. Outdoors `$C04B`-
-#: `$C04D` is not the party's position -- `GDRIVE00` is not resident -- and
-#: no arriving script places an outdoor party
-#: (`docs/140-loaded-files-cache.md`), so the departing script's write is
-#: the only thing that ever sets it, and a fast travel used to skip that
-#: (`#178 (Fast Travel to the wilderness leaves the party on whatever
-#: overland square it last stood on)`). Two bytes: the travel facing is
-#: `$033D`, page 3, unsaved and of unknown encoding (`docs/113-world-map.md`
-#: unknown 3), and is not written here.
-FASTTRAVEL_TRAVEL_X = POOL_ADDRESSES.travel_square
-#: Where the party came *from*: `$2011`-`$2016` sets it, and the arriving
-#: script's entry 4 compares it against its own id.
-#:
-#: **It survives the overlay restart, and the arriving script does read it.**
-#: P43 measured the opposite once and was wrong about why: `$19E1` --
-#: `LDX #3 / JSR $19FC / LDA $6E1B / AND #$7F / STA $49F2` -- rewrites it to
-#: the *arriving* id once the entry has run, so a snapshot taken after the
-#: area settles always shows the current area whatever was written here.
-#: Proved by fasttraveling into area 22 with `$49F2` = 23: `ECL16`'s
-#: `COMPARE [$49F2], 23 / IF= / EXIT` fired, the script left the square alone,
-#: and the party stood where the fasttravel had put it.
-FASTTRAVEL_FROM = POOL_ADDRESSES.came_from
-#: The `ECL` slot of the loaded-files cache. Bit 7 means "reload me".
-FASTTRAVEL_SLOT = POOL_ADDRESSES.slot
-#: Slot 9 of the loaded-files cache -- the resident `WALLS` file, which loads
-#: at `$ED50` under the KERNAL. `#156`: every area but New Phlan uses a
-#: `WALLDEF` triple instead: `LOADPIECES` (`DUNGEON $276E`) marks the three
-#: slots dirty, `$145C` reloads each into the `$8C00` staging buffer, and
-#: `$1485` unpacks them on to `$ED50`, `$F05C` and `$F368` -- never telling
-#: this slot its memory has been overwritten. A genuine exit empties it -- `ECL00 $9955`/`$9BDC`,
-#: `LOADFILES 255, 255, 127`, run on the way *out* of New Phlan -- but
-#: `FastTravel` enters `NEWECL` at its tail, past that statement, so a fast
-#: travel out of New Phlan never gives the slot back and the next arrival
-#: there finds it still saying `WALLS00` and skips the reload
-#: (`LIBRARY $4225`: masked `A` equal to the slot means no load).
-#: `$FF` is the value: it is the empty marker `docs/140-loaded-files-cache.md`
-#: names for this cache, it is what every engine-written save in a `WALLDEF`
-#: area carries in this slot, and it is the one value `LIBRARY $4225` leaves
-#: alone -- so the next `LOADFILES 0, 0, 0` in New Phlan reloads `WALLS00`
-#: rather than declining because the slot already says `00`.
-#:
-#: **Pool of Radiance is the only title with this bug, because it is the only
-#: one with a `WALLS` file.** A directory read of all nine Pool of Radiance
-#: sides, all six Curse sides and all six Silver Blades sides finds `WALLS00`
-#: on Pool of Radiance's alone; the other two carry `WALLDEF`/`WALLSET` pairs
-#: and nothing else. So `FastTravelAddresses.walls_slot` is None there and
-#: `newecl_writes` leaves the slot out rather than aiming `$FF` at a cache
-#: entry whose contents in those titles nobody has read.
-FASTTRAVEL_WALLS_SLOT = POOL_ADDRESSES.walls_slot
-#: `$49E7`-`$49E9`, one flag per wall piece -- `goldbox/memory.py` calls it
-#: "wall slot pinned". `DUNGEON $14CB` reads `$49E7,X` before unpacking piece
-#: `X` and returns at once when it is non-zero, so the piece keeps whatever
-#: screen codes the previous area's wall set left in it. Only `ECL06`
-#: (Valjevo Castle south-west), `ECL07` (the Inner Tower) and `ECL0A`
-#: (Valhingen Graveyard) ever set it, and each clears it only on the way out
-#: -- the part a fast travel skips (`#179`). Written unconditionally and
-#: zero, the same shape as `FASTTRAVEL_WALLS_SLOT` above: it costs nothing in
-#: the areas that never set it, and one extra relocation pass in `ECL06`'s
-#: Valjevo-to-Valjevo route, which is the one place the game left it set on
-#: purpose.
-#:
-#: **This one does transfer, and it was checked rather than assumed.** The
-#: array is at `$4BE7` in Curse and Silver Blades -- `save_load_address` plus
-#: `$0200`, like the other two save-relative writes -- and each title's
-#: `DUNGEON` holds exactly one reference to it, `LDA $4BE7,X / BNE` in front of
-#: the same unpack setup Pool of Radiance guards (`LDA #$0C / STA $B0 /
-#: LDA #$03 / STA $B1`, the piece geometry). One hit per overlay, three
-#: overlays, so there is no second array anywhere that could be the real one.
-#: Which of their scripts pin a piece is unmeasured, and zeroing costs a
-#: relocation pass in the ones that do.
-WALL_SLOT_PINNED = POOL_ADDRESSES.wall_slot_pinned
-WALL_SLOT_PINNED_LEN = POOL_ADDRESSES.wall_slot_pinned_len
-#: Zeroed by `$202A`-`$2032`: the origin of the scratch/persistent split.
-FASTTRAVEL_SCRATCH = POOL_ADDRESSES.scratch
-FASTTRAVEL_SCRATCH_LEN = POOL_ADDRESSES.scratch_len
-#: Non-zero indoors, zero on the overland map. Read, never written: it decides
-#: whether `LOADFILES` asks for a `GEO` or a `SQRDATA`. `$4BE6` in Curse and
-#: Silver Blades, read out of `NEWECL`'s own tail call rather than relocated by
-#: hand -- and in a running Curse this address is `LIBRARY` code (`#29`).
-FASTTRAVEL_INDOORS = POOL_ADDRESSES.indoors
-#: The tail of `NEWECL`'s handler, past the operand fetch. `$203A` reloads the
-#: stack pointer from `$03BF`, so the call depth we interrupt does not matter.
-NEWECL_TAIL = POOL_ADDRESSES.tail
 #: `$6E11`: DUNGEON is the resident overlay. `$2034` is some other overlay's
 #: code when it is not.
 DUNGEON = 1
@@ -1503,7 +1414,7 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     `overland` are mutually exclusive -- an area is one or the other, never
     both -- and passing both is a caller bug, not a choice between writes.
 
-    **Two writes here are not `NEWECL`'s own.** `FASTTRAVEL_WALLS_SLOT` is New
+    **Two writes here are not `NEWECL`'s own.** `walls_slot` is New
     Phlan's *departing* script, `ECL00 $9955`/`$9BDC`, run in front of
     `NEWECL` on a genuine exit and skipped by entering the handler at its
     tail (`#156`). Written unconditionally and first, before the writes that
@@ -1511,7 +1422,7 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     arrival, so setting it empty costs nothing but a reload of `WALLS00` in
     the one area that wants it, and it is the byte the whole bug turns on.
 
-    `WALL_SLOT_PINNED` is the same shape: three departing scripts --
+    `wall_slot_pinned` is the same shape: three departing scripts --
     `ECL06`, `ECL07`, `ECL0A` -- clear it only on the way out, which a fast
     travel skips, so a piece can keep the previous area's wall art
     (`#179`). Written unconditionally and zero.

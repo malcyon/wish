@@ -97,22 +97,34 @@ def test_a_row_can_be_looked_up_by_whatever_the_caller_is_holding():
     assert fasttravel.addresses_for("Pools of Darkness") is None
 
 
-def test_the_pool_of_radiance_constants_still_name_pool_of_radiance():
-    """The module constants are one row of the table now, and four tools and
-    two test files import them expecting Pool of Radiance's numbers."""
-    assert actions.NEWECL_TAIL == 0x2034
-    assert actions.KEY_WAIT == (0x10C2, 0x10EC)
-    assert actions.KEY_FETCH == (0x2E4E, 0x2E6B)
-    assert actions.FASTTRAVEL_SLOT == 0x6E1B
-    assert actions.FASTTRAVEL_DISK == 0x6E12
-    assert actions.FASTTRAVEL_FROM == 0x49F2
-    assert actions.FASTTRAVEL_SCRATCH == 0x4A00
-    assert actions.FASTTRAVEL_INDOORS == 0x49E6
-    assert actions.WALL_SLOT_PINNED == 0x49E7
-    assert actions.FASTTRAVEL_WALLS_SLOT == 0x6E1C
-    assert actions.FASTTRAVEL_TRAVEL_X == 0x49C3
+def test_the_pool_of_radiance_row_names_pool_of_radiance():
+    """The table's row holds Pool of Radiance's numbers."""
+    row = fasttravel.POOL_OF_RADIANCE
+    assert row.tail == 0x2034
+    assert row.key_wait == (0x10C2, 0x10EC)
+    assert row.key_fetch == (0x2E4E, 0x2E6B)
+    assert row.slot == 0x6E1B
+    assert row.disk == 0x6E12
+    assert row.came_from == 0x49F2
+    assert row.scratch == 0x4A00
+    assert row.indoors == 0x49E6
+    assert row.wall_slot_pinned == 0x49E7
+    assert row.walls_slot == 0x6E1C
+    assert row.travel_square == 0x49C3
     assert (actions.FASTTRAVEL_X, actions.FASTTRAVEL_Y,
             actions.FASTTRAVEL_FACING) == (0xC04B, 0xC04C, 0xC04D)
+
+
+def test_actions_holds_no_second_copy_of_pool_of_radiances_addresses():
+    """Callers read `fasttravel.POOL_OF_RADIANCE`, so `actions` keeps none of
+    the names it once forwarded from it."""
+    forwarded = [
+        "FASTTRAVEL_DISK", "FASTTRAVEL_TRAVEL_X", "FASTTRAVEL_FROM",
+        "FASTTRAVEL_SLOT", "FASTTRAVEL_WALLS_SLOT", "FASTTRAVEL_SCRATCH",
+        "FASTTRAVEL_SCRATCH_LEN", "FASTTRAVEL_INDOORS", "WALL_SLOT_PINNED",
+        "WALL_SLOT_PINNED_LEN", "NEWECL_TAIL",
+    ]
+    assert [n for n in forwarded if hasattr(actions, n)] == []
 
 
 # --- the writes --------------------------------------------------------------
@@ -179,7 +191,7 @@ def test_no_walls_slot_is_written_in_a_title_that_has_no_walls_file():
     in another game.
     """
     pool = dict(actions.newecl_writes(20, 18, addresses=None))
-    assert pool[actions.FASTTRAVEL_WALLS_SLOT] == b"\xff"
+    assert pool[fasttravel.POOL_OF_RADIANCE.walls_slot] == b"\xff"
     for game in (CURSE, SILVER):
         row = fasttravel.addresses_for(game)
         assert row.walls_slot is None
@@ -248,9 +260,9 @@ def test_pool_of_radiance_is_unchanged_by_any_of_this():
     ft = actions.FastTravel()
     outcome = ft.apply(target, area=Row(20, disk=4, arrival=(1, 14, 1)))
     assert outcome.ok, outcome.message
-    assert target.jumps == [actions.NEWECL_TAIL]
-    assert target.memory[actions.FASTTRAVEL_SLOT] == bytes([20 | 0x80])
-    assert target.memory[actions.FASTTRAVEL_WALLS_SLOT] == b"\xff"
+    assert target.jumps == [fasttravel.POOL_OF_RADIANCE.tail]
+    assert target.memory[fasttravel.POOL_OF_RADIANCE.slot] == bytes([20 | 0x80])
+    assert target.memory[fasttravel.POOL_OF_RADIANCE.walls_slot] == b"\xff"
 
 
 def test_the_key_wait_window_is_the_running_titles_own():

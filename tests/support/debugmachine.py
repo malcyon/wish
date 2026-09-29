@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from automap import actions, c64
+from automap import actions, c64, fasttravel
 from automap.target import MemoryTarget
 
 WORLD, COMBAT = 1, 2                    # $6E11: DUNGEON, COMBAT
@@ -35,9 +35,9 @@ def machine(mode: int = WORLD, area: int = 0, disk: int = 3,
             pc: int = IN_THE_LOOP, indoors: int = 1) -> Machine:
     """A machine standing in an area, ready to be fasttraveled out of."""
     return Machine({c64.MODE_FLAG_POOL: bytes([mode]),
-                    actions.FASTTRAVEL_SLOT: bytes([area]),
-                    actions.FASTTRAVEL_DISK: bytes([disk]),
-                    actions.FASTTRAVEL_INDOORS: bytes([indoors]),
+                    fasttravel.POOL_OF_RADIANCE.slot: bytes([area]),
+                    fasttravel.POOL_OF_RADIANCE.disk: bytes([disk]),
+                    fasttravel.POOL_OF_RADIANCE.indoors: bytes([indoors]),
                     actions.FASTTRAVEL_X: bytes([5, 6, 1])}, pc=pc)
 
 

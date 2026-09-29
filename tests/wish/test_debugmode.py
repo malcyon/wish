@@ -28,7 +28,7 @@ function.
 import pytest
 from support.debugmachine import COMBAT, IN_THE_LOOP, WORLD, Machine, area, machine
 
-from automap import actionbar, actions, c64
+from automap import actionbar, actions, c64, fasttravel
 from automap.target import MemoryTarget
 from goldbox import c64_port
 from wish import debugmode
@@ -111,8 +111,8 @@ def test_the_outgoing_id_loses_the_reload_bit():
     """`$2011`-`$2016` is `$49F2 = $6E1B & $7F`: where we came from, without
     the cache's reload flag."""
     writes = dict(actions.newecl_writes(0xFF, 1))
-    assert writes[actions.FASTTRAVEL_FROM] == bytes([0x7F])
-    assert writes[actions.FASTTRAVEL_SLOT] == bytes([1 | 0x80])
+    assert writes[fasttravel.POOL_OF_RADIANCE.came_from] == bytes([0x7F])
+    assert writes[fasttravel.POOL_OF_RADIANCE.slot] == bytes([1 | 0x80])
 
 
 def test_a_square_is_only_written_when_there_is_one():
@@ -131,12 +131,12 @@ def test_an_outdoor_target_writes_the_travel_square_and_not_the_geo_one():
     would: after `$6E12` (the disk) and before `$49F2` (where we came
     from)."""
     writes = actions.newecl_writes(0, 26, disk=7, overland=(7, 29))
-    assert (actions.FASTTRAVEL_TRAVEL_X, bytes([7, 29])) in writes
+    assert (fasttravel.POOL_OF_RADIANCE.travel_square, bytes([7, 29])) in writes
     assert actions.FASTTRAVEL_X not in dict(writes)
     addrs = [addr for addr, _ in writes]
-    assert (addrs.index(actions.FASTTRAVEL_DISK)
-            < addrs.index(actions.FASTTRAVEL_TRAVEL_X)
-            < addrs.index(actions.FASTTRAVEL_FROM))
+    assert (addrs.index(fasttravel.POOL_OF_RADIANCE.disk)
+            < addrs.index(fasttravel.POOL_OF_RADIANCE.travel_square)
+            < addrs.index(fasttravel.POOL_OF_RADIANCE.came_from))
 
 
 def test_newecl_writes_refuses_arrival_and_overland_together():
@@ -148,17 +148,17 @@ def test_newecl_writes_refuses_arrival_and_overland_together():
 
 def test_a_fasttravel_writes_then_jumps_into_the_tail_of_newecl():
     target = machine(area=0)
-    fasttravel = actions.FastTravel()
-    outcome = fasttravel.apply(target, area=area(13))     # the kobold caves
+    travel = actions.FastTravel()
+    outcome = travel.apply(target, area=area(13))     # the kobold caves
     assert outcome.ok
     assert [addr for addr, _ in outcome.writes] == [
-        actions.FASTTRAVEL_WALLS_SLOT, actions.WALL_SLOT_PINNED,
-        actions.FASTTRAVEL_DISK,
-        actions.FASTTRAVEL_X, actions.FASTTRAVEL_FROM,
-        actions.FASTTRAVEL_SLOT, actions.FASTTRAVEL_SCRATCH]
+        fasttravel.POOL_OF_RADIANCE.walls_slot, fasttravel.POOL_OF_RADIANCE.wall_slot_pinned,
+        fasttravel.POOL_OF_RADIANCE.disk,
+        actions.FASTTRAVEL_X, fasttravel.POOL_OF_RADIANCE.came_from,
+        fasttravel.POOL_OF_RADIANCE.slot, fasttravel.POOL_OF_RADIANCE.scratch]
     assert target.jumps == [0x2034]
-    assert target.memory[actions.FASTTRAVEL_SLOT] == bytes([13 | 0x80])
-    assert target.memory[actions.FASTTRAVEL_WALLS_SLOT] == b"\xff"
+    assert target.memory[fasttravel.POOL_OF_RADIANCE.slot] == bytes([13 | 0x80])
+    assert target.memory[fasttravel.POOL_OF_RADIANCE.walls_slot] == b"\xff"
 
 
 def test_a_fasttravel_to_a_window_puts_the_party_on_the_windows_square():
@@ -169,7 +169,7 @@ def test_a_fasttravel_to_a_window_puts_the_party_on_the_windows_square():
     target = machine(area=0)                       # New Phlan, indoors
     outcome = actions.FastTravel().apply(target, area=area(26))  # Middle Window
     assert outcome.ok
-    assert target.memory[actions.FASTTRAVEL_TRAVEL_X] == bytes([7, 29])
+    assert target.memory[fasttravel.POOL_OF_RADIANCE.travel_square] == bytes([7, 29])
     assert target.memory[actions.FASTTRAVEL_X] == bytes([5, 6, 1]), (
         "$C04B is not GDRIVE00's square outdoors and must be left alone")
 
@@ -190,7 +190,7 @@ def test_a_window_with_no_overland_square_says_so():
     target = machine(area=0)
     outcome = actions.FastTravel().apply(target, area=_NoOverlandWindow())
     assert outcome.ok
-    assert actions.FASTTRAVEL_TRAVEL_X not in dict(outcome.writes)
+    assert fasttravel.POOL_OF_RADIANCE.travel_square not in dict(outcome.writes)
     assert actions.FASTTRAVEL_X not in dict(outcome.writes)
     # #263: the note used to name `$49C3` as the square that held. It says
     # what the player sees instead, and the address moved to a comment beside
@@ -333,10 +333,10 @@ def test_fasttraveling_out_of_new_phlan_releases_the_walls_slot():
     warp into New Phlan followed by a warp back out: slot 9 claimed (`$00`)
     rather than the `$FF` a genuine exit leaves."""
     target = machine(area=0)                    # standing in New Phlan
-    target.memory[actions.FASTTRAVEL_WALLS_SLOT] = bytes([0x00])   # claimed
+    target.memory[fasttravel.POOL_OF_RADIANCE.walls_slot] = bytes([0x00])   # claimed
     outcome = actions.FastTravel().apply(target, area=area(20))    # the Slums
     assert outcome.ok
-    assert target.memory[actions.FASTTRAVEL_WALLS_SLOT] == b"\xff"
+    assert target.memory[fasttravel.POOL_OF_RADIANCE.walls_slot] == b"\xff"
 
 
 def test_the_walls_slot_is_released_leaving_anywhere_not_just_new_phlan():
@@ -353,7 +353,7 @@ def test_the_walls_slot_is_released_leaving_anywhere_not_just_new_phlan():
     `WALLS00` in the one area that wants it.
     """
     writes = actions.newecl_writes(from_area=20, to_area=18)   # Slums to Podol
-    assert writes[0] == (actions.FASTTRAVEL_WALLS_SLOT, b"\xff"), (
+    assert writes[0] == (fasttravel.POOL_OF_RADIANCE.walls_slot, b"\xff"), (
         "the walls slot is released on every fast travel, not only the ones "
         "leaving New Phlan")
 
@@ -364,11 +364,11 @@ def test_the_wall_pins_are_cleared_on_every_fast_travel():
     `DUNGEON $14CB` skips relocating that wall piece, and each clears its own
     pin only on the way out -- the part `FastTravel` skips by entering
     `NEWECL` at its tail (`#179`). Cleared unconditionally, the same shape as
-    `FASTTRAVEL_WALLS_SLOT` (`#156`): a piece nobody pinned is already zero,
+    `walls_slot` (`#156`): a piece nobody pinned is already zero,
     so the write costs nothing there."""
     writes = actions.newecl_writes(from_area=10, to_area=18)   # Graveyard to Podol
-    assert (actions.WALL_SLOT_PINNED,
-            bytes(actions.WALL_SLOT_PINNED_LEN)) in writes, (
+    assert (fasttravel.POOL_OF_RADIANCE.wall_slot_pinned,
+            bytes(fasttravel.POOL_OF_RADIANCE.wall_slot_pinned_len)) in writes, (
         "$49E7-$49E9 must be zeroed on every fast travel, or a piece pinned "
         "by the area left behind keeps its old wall art")
 
@@ -429,8 +429,8 @@ def test_nothing_is_written_by_a_refused_fasttravel():
 # --- going back --------------------------------------------------------------
 
 def test_fasttravel_back_is_refused_until_a_fasttravel_has_been_made():
-    fasttravel = actions.FastTravel()
-    verdict = fasttravel.back_verdict(machine())
+    travel = actions.FastTravel()
+    verdict = travel.back_verdict(machine())
     assert not verdict and "nothing to go back to" in verdict.reason
 
 
@@ -438,16 +438,16 @@ def test_fasttravel_back_returns_to_the_square_the_fasttravel_started_on():
     """The waypoint is read before the writes: the first two of them are the
     disk and the square, so one taken afterwards would record the destination."""
     target = machine(area=0, disk=3)
-    fasttravel = actions.FastTravel()
-    assert fasttravel.apply(target, area=area(20)).ok
-    assert fasttravel.back == actions.Waypoint(0, 3, (5, 6, 1))
-    target.memory[actions.FASTTRAVEL_SLOT] = bytes([20])       # the game arrived
+    travel = actions.FastTravel()
+    assert travel.apply(target, area=area(20)).ok
+    assert travel.back == actions.Waypoint(0, 3, (5, 6, 1))
+    target.memory[fasttravel.POOL_OF_RADIANCE.slot] = bytes([20])       # the game arrived
     target._pc = IN_THE_LOOP
-    outcome = fasttravel.apply_back(target)
+    outcome = travel.apply_back(target)
     assert outcome.ok
     assert dict(outcome.writes)[actions.FASTTRAVEL_X] == bytes([5, 6, 1])
-    assert dict(outcome.writes)[actions.FASTTRAVEL_SLOT] == bytes([0x80])
-    assert fasttravel.back is None                              # and no further back
+    assert dict(outcome.writes)[fasttravel.POOL_OF_RADIANCE.slot] == bytes([0x80])
+    assert travel.back is None                              # and no further back
 
 
 def test_fasttravel_back_from_a_window_returns_to_the_travel_square():
@@ -457,16 +457,16 @@ def test_fasttravel_back_from_a_window_returns_to_the_travel_square():
     (`#178 (Fast Travel to the wilderness leaves the party on whatever
     overland square it last stood on)`)."""
     target = machine(area=26, disk=7, indoors=0)
-    target.memory[actions.FASTTRAVEL_TRAVEL_X] = bytes([4, 20])
-    fasttravel = actions.FastTravel()
-    assert fasttravel.apply(target, area=area(27)).ok  # East Window
-    assert fasttravel.back.overland == (4, 20)
-    target.memory[actions.FASTTRAVEL_SLOT] = bytes([27])   # the game arrived
+    target.memory[fasttravel.POOL_OF_RADIANCE.travel_square] = bytes([4, 20])
+    travel = actions.FastTravel()
+    assert travel.apply(target, area=area(27)).ok  # East Window
+    assert travel.back.overland == (4, 20)
+    target.memory[fasttravel.POOL_OF_RADIANCE.slot] = bytes([27])   # the game arrived
     target._pc = IN_THE_LOOP
-    outcome = fasttravel.apply_back(target)
+    outcome = travel.apply_back(target)
     assert outcome.ok
     writes = dict(outcome.writes)
-    assert writes[actions.FASTTRAVEL_TRAVEL_X] == bytes([4, 20])
+    assert writes[fasttravel.POOL_OF_RADIANCE.travel_square] == bytes([4, 20])
     assert actions.FASTTRAVEL_X not in writes
 
 
@@ -475,25 +475,25 @@ def test_fast_travel_asks_nothing_and_names_no_disk():
     tested the feature and the game asks for the disk it wants itself, so the
     confirmation and the disk warning both went; what travelling does not
     guarantee is `HELP`, under the row's help icon."""
-    fasttravel = actions.FastTravel()
-    assert fasttravel.confirm == ""                      # nothing to ask
-    assert not hasattr(fasttravel, "question")
-    assert not hasattr(fasttravel, "disk_note")
-    assert "copy of your save disk" in fasttravel.HELP
-    assert "POOL" not in fasttravel.HELP
+    travel = actions.FastTravel()
+    assert travel.confirm == ""                      # nothing to ask
+    assert not hasattr(travel, "question")
+    assert not hasattr(travel, "disk_note")
+    assert "copy of your save disk" in travel.HELP
+    assert "POOL" not in travel.HELP
 
 
 def test_fast_travel_help_gives_no_count_of_areas():
     """A count of areas goes stale the moment another title's areas are added,
     so the sentence about where wish picks the square says only "the areas"."""
     import re
-    fasttravel = actions.FastTravel()
+    travel = actions.FastTravel()
     assert ("In the areas where the game does not place the party itself, "
             "wish picks a square in the largest open part of the map, which "
             "need not be where a player would normally walk in.") \
-        in fasttravel.HELP
+        in travel.HELP
     assert not re.search(r"\b(?:\d+|[a-z]+teen|twenty|thirty|forty)\s+areas\b",
-                         fasttravel.HELP)
+                         travel.HELP)
 
 
 # --- the area table ----------------------------------------------------------
@@ -786,9 +786,9 @@ def test_the_row_fasttravels_what_the_combo_box_is_showing(app):
     row.combo.setCurrentIndex(row.rows.index(area(13)))
     outcome = row.run()
     assert outcome.ok
-    assert target.memory[actions.FASTTRAVEL_SLOT] == bytes([13 | 0x80])
+    assert target.memory[fasttravel.POOL_OF_RADIANCE.slot] == bytes([13 | 0x80])
     assert target.memory[actions.FASTTRAVEL_X] == bytes([6, 15, 0])   # the table's
-    assert target.jumps == [actions.NEWECL_TAIL]
+    assert target.jumps == [fasttravel.POOL_OF_RADIANCE.tail]
 
 
 def test_the_row_travels_on_the_click_with_nothing_to_dismiss(app):
@@ -810,7 +810,7 @@ def test_the_row_travels_on_the_click_with_nothing_to_dismiss(app):
     row = bar(app, target)
     assert not hasattr(row, "ask")
     row.button.click()
-    assert target.jumps == [actions.NEWECL_TAIL]
+    assert target.jumps == [fasttravel.POOL_OF_RADIANCE.tail]
     assert not showing()
 
 

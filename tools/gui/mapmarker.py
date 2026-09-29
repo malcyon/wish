@@ -44,7 +44,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap import actions  # noqa: E402
+from automap import actions, fasttravel  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.runlog import Log  # noqa: E402
@@ -396,9 +396,9 @@ def come_home(args, sess, target, app, binding, out, log, step: int) -> int:
     """
     from goldbox.areas import AREAS_BY_ID
     area = AREAS_BY_ID[args.home]
-    before = target.read(actions.FASTTRAVEL_INDOORS, 1)
-    target.write(actions.FASTTRAVEL_INDOORS, b"\x01")
-    after = target.read(actions.FASTTRAVEL_INDOORS, 1)
+    before = target.read(fasttravel.POOL_OF_RADIANCE.indoors, 1)
+    target.write(fasttravel.POOL_OF_RADIANCE.indoors, b"\x01")
+    after = target.read(fasttravel.POOL_OF_RADIANCE.indoors, 1)
     log.say(f"$49E6 {before.hex()} -> {after.hex()}, so LOADFILES will ask for "
             f"a GEO rather than a SQRDATA")
     log.emit("indoors_poke", before=before.hex(), after=after.hex())
@@ -495,7 +495,7 @@ def run(args, log: Log) -> int:
                 # comes back to next door to the one it left from. The screen
                 # does not redraw until a step, so a `--place` is only useful
                 # with an `--after` move behind it.
-                target.write(actions.FASTTRAVEL_TRAVEL_X,
+                target.write(fasttravel.POOL_OF_RADIANCE.travel_square,
                              bytes(args.place[:2]))
                 log.say(f"placed the party at {tuple(args.place)} on the grid")
                 log.emit("place", x=args.place[0], y=args.place[1])

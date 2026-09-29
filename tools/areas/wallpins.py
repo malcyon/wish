@@ -47,6 +47,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
+from automap import fasttravel  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -107,7 +108,7 @@ class SessTarget:
 
 def pins(sess) -> list[int]:
     with sess.mon(5) as m:
-        return list(m.read(A.WALL_SLOT_PINNED, A.WALL_SLOT_PINNED_LEN))
+        return list(m.read(fasttravel.POOL_OF_RADIANCE.wall_slot_pinned, fasttravel.POOL_OF_RADIANCE.wall_slot_pinned_len))
 
 
 def wait_idle(sess, timeout: float = 300.0, need: int = 6) -> bool:
@@ -181,11 +182,11 @@ def warp(sess, target, ft, area_id: int, repair: bool):
     writes = A.newecl_writes(here or 0, area_id, getattr(row, "disk", None),
                              arrival)
     if not repair:
-        writes = tuple(w for w in writes if w[0] != A.WALL_SLOT_PINNED)
+        writes = tuple(w for w in writes if w[0] != fasttravel.POOL_OF_RADIANCE.wall_slot_pinned)
     print("  writes: " + ", ".join(f"${a:04X}={d.hex()}" for a, d in writes),
           flush=True)
     A._write_all(target, writes)
-    if not A.jump(target, A.NEWECL_TAIL):
+    if not A.jump(target, fasttravel.POOL_OF_RADIANCE.tail):
         raise RuntimeError("the program counter could not be set")
     wait_idle(sess)
     sess.settle(4)

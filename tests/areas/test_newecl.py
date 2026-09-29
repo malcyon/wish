@@ -37,7 +37,6 @@ import pytest
 # resolved for the whole process.
 import wish  # noqa: F401
 from automap import c64, fasttravel, gamedisks
-from automap.actions import KEY_FETCH, KEY_WAIT, NEWECL_TAIL
 from goldbox import c64_port
 
 TOOLS = pathlib.Path(__file__).resolve().parents[2] / "tools"
@@ -84,7 +83,7 @@ def _read(newecl, game, base=0x0800):
 
 
 def test_the_shipped_pool_of_radiance_addresses_are_what_the_disk_says(newecl):
-    """`NEWECL_TAIL`, `KEY_WAIT` and `KEY_FETCH` against the game's own bytes.
+    """Pool of Radiance's `tail`, `key_wait` and `key_fetch` against the game's own bytes.
 
     These three are what a fast travel jumps to and what it will accept a PC
     from, so a drift in any of them is the difference between a warp and a
@@ -94,9 +93,9 @@ def test_the_shipped_pool_of_radiance_addresses_are_what_the_disk_says(newecl):
     """
     at, tail, wait, fetch, _ = _read(newecl, c64_port.POOL_OF_RADIANCE)
     assert at == 0x2011                      # `docs/118-debug-mode.md` §3
-    assert tail == NEWECL_TAIL
-    assert wait == KEY_WAIT
-    assert fetch == KEY_FETCH
+    assert tail == fasttravel.POOL_OF_RADIANCE.tail
+    assert wait == fasttravel.POOL_OF_RADIANCE.key_wait
+    assert fetch == fasttravel.POOL_OF_RADIANCE.key_fetch
 
 
 def test_the_handler_is_the_routine_the_writes_were_copied_from(newecl):
@@ -107,18 +106,14 @@ def test_the_handler_is_the_routine_the_writes_were_copied_from(newecl):
     the copy is wrong and the tooltip that says the writes are the game's own
     is a lie, so the shape is asserted rather than the addresses alone.
     """
-    from automap.actions import (
-        FASTTRAVEL_FROM,
-        FASTTRAVEL_SCRATCH,
-        FASTTRAVEL_SLOT,
-    )
+    row = fasttravel.POOL_OF_RADIANCE
     _, _, _, _, lines = _read(newecl, c64_port.POOL_OF_RADIANCE)
     text = [t for _, _, t in lines]
-    assert text[0] == f"LDA ${FASTTRAVEL_SLOT:04X}"
+    assert text[0] == f"LDA ${row.slot:04X}"
     assert text[1] == "AND #$7F"
-    assert text[2] == f"STA ${FASTTRAVEL_FROM:04X}"
-    assert f"STA ${FASTTRAVEL_SCRATCH:04X},X" in text
-    assert f"STA ${FASTTRAVEL_SLOT:04X}" in text
+    assert text[2] == f"STA ${row.came_from:04X}"
+    assert f"STA ${row.scratch:04X},X" in text
+    assert f"STA ${row.slot:04X}" in text
     assert "JMP $0809" in text               # restart the overlay
 
 
