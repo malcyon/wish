@@ -47,18 +47,45 @@ DISAGREE = {
 
 #: The fewest records of each title the sweep must read, and the fewest of
 #: them that reproduce from the title's own table.  These are lower bounds
-#: against an empty or shrunken read: the specimens grow, so an exact count
-#: would fail on every new one.  A regained old class is part of the rule, so
-#: a magic-user who hit with the paladin 5 row they left reproduces.  Every
-#: miss left is one kind: a magic-user of level 1 to 5 storing THAC0 20 where
-#: the table says 21, the flat 40 creation and the class change write
-#: (`test_nothing_clamps_the_field_and_creation_writes_a_flat_40`, below) and
-#: that the engine's load and resave wrote back over our 39 in a `C64ToDos`
-#: resave of PHILIPPE.  Curse's are PHILIPPE, BRYTWYN, MATHEW and two unnamed
-#: mages, in the archives and in the specimens driven on from one another;
-#: Silver Blades' are PAINE, magic-user 1, in `ssb-234-dualclassed` and
-#: `ssb-234-party-pair`.
-RECORDS = {POOL: (202, 202), CURSE: (158, 138), SSB: (74, 72)}
+#: against an empty or shrunken read: the specimens grow.  A regained old
+#: class is part of the rule, so a magic-user who hit with the paladin 5 row
+#: they left reproduces.
+RECORDS = {POOL: (295, 295), CURSE: (158, 138), SSB: (116, 114)}
+
+#: The records the DOS engine itself wrote with THAC0 20 where the table gives
+#: 21: a magic-user of level 1 to 5, whose flat 40 at creation and class
+#: change the engine's load and resave never refreshed.  Keyed by
+#: `(source, name)` so that a record our own writers produce with 20 is not
+#: excused by the same rule; a new engine-written miss is one line here.
+ENGINE_MISSES = {
+    POOL: set(),
+    CURSE: {
+        ("Saves/CHRDATA6.SAV", "PHILIPPE"),
+        ("Saves/CHRDATB6.SAV", "BRYTWYN"),
+        ("SAVE/CHRDATA6.SAV", "PHILIPPE"),
+        ("SAVE/CHRDATB6.SAV", "BRYTWYN"),
+        ("WISH-SPEC-amigatodos-curse-resave/CHRDATA1.SAV", "MATHEW"),
+        ("WISH-SPEC-amigatodos-curse-resave/CHRDATA2.SAV", "PHILIPPE"),
+        ("WISH-SPEC-c64todos-curse-resave/CHRDATA6.SAV", "PHILIPPE"),
+        ("WISH-SPEC-curse-535-former-paladin-node-running/CHRDATE1.SAV", "MATHEW"),
+        ("WISH-SPEC-curse-535-former-paladin-node-running/CHRDATE6.SAV", "PHILIPPE"),
+        ("WISH-SPEC-curse-574-area2-spiritual-hammer-rest/CHRDATB2.SAV", "FEMALE MAGE"),
+        ("WISH-SPEC-curse-574-area2-spiritual-hammer-rest/CHRDATB6.SAV", "MALE ELF MAGE"),
+        ("WISH-SPEC-curse-597-experience-ceiling/CHRDATE6.SAV", "BRYTWYN"),
+        ("WISH-SPEC-curse-649-mark-regained-node-running/CHRDATF1.SAV", "MATHEW"),
+        ("WISH-SPEC-curse-649-mark-regained-node-running/CHRDATF6.SAV", "PHILIPPE"),
+        ("WISH-SPEC-curse-709-heal-node-after-class-change/CHRDATH1.SAV", "MATHEW"),
+        ("WISH-SPEC-curse-709-heal-node-after-class-change/CHRDATH6.SAV", "PHILIPPE"),
+        ("WISH-SPEC-curse-131-dualclassed-in-area-1/CHRDATJ1.SAV", "MATHEW"),
+        ("WISH-SPEC-curse-131-dualclassed-in-area-1/CHRDATJ6.SAV", "PHILIPPE"),
+        ("WISH-SPEC-curse-131-four-items-readied/CHRDATI6.SAV", "PHILIPPE"),
+        ("WISH-SPEC-curse-234-party-dualclassed/CHRDATD6.SAV", "BRYTWYN"),
+    },
+    SSB: {
+        ("WISH-SPEC-ssb-234-dualclassed/CHRDATD2.SAV", "PAINE"),
+        ("WISH-SPEC-ssb-234-party-pair/CHRDATD2.SAV", "PAINE"),
+    },
+}
 
 
 def _located(title: str):
@@ -115,11 +142,11 @@ def test_the_two_ports_disagree_where_they_are_known_to(title):
 @pytest.mark.parametrize("title", [POOL, CURSE, SSB])
 def test_every_record_reproduces_except_the_magic_users_the_dos_engine_stores_20_for(
         title):
-    """A miss is only a magic-user of level 1 to 5 storing 20 against 21.
+    """A miss is only a listed engine-written magic-user of level 1 to 5.
 
-    The rule is asserted and the counts are only lower bounds, so the
-    specimens may grow.  Every other record must reproduce, so a fixed known
-    miss alongside a new broken record fails.
+    The counts are lower bounds so the specimens may grow.  A miss must be an
+    `ENGINE_MISSES` record and also that one kind, so a record our own writer
+    stores with 20 fails, as does a new broken record beside a known one.
     """
     _located(title)
     agree, total, lines = laterthac0.sweep(title)
@@ -132,11 +159,17 @@ def test_every_record_reproduces_except_the_magic_users_the_dos_engine_stores_20
         f"{want_agree} of {want_total} when this was measured -- the "
         f"specimens do not shrink, so something stopped being read\n"
         + "\n".join(lines))
+    outcomes = list(laterthac0.outcomes(title))
+    sources = [source for source, *_ in outcomes]
+    assert any(s.startswith("WISH-SPEC-") for s in sources), (
+        "no specimen-tree record was read")
+    assert any(not s.startswith("WISH-SPEC-") for s in sources), (
+        "no archive record was read")
     unknown = [(source, name, held, stored, want)
-               for source, name, held, _, stored, want
-               in laterthac0.outcomes(title)
+               for source, name, held, _, stored, want in outcomes
                if stored != want
-               and not (set(held) == {"magic-user"}
+               and not ((source, name) in ENGINE_MISSES[title]
+                        and set(held) == {"magic-user"}
                         and 1 <= held["magic-user"] <= 5
                         and (stored, want) == (20, 21))]
     assert unknown == []
