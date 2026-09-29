@@ -2719,6 +2719,9 @@ class PoolRun:
                         f"seconds")
                 flees.append({"at_move": n, "escaped": not sess.in_combat(),
                               "fight": None})
+                # The list is returned only when the step succeeds, so a step
+                # that fails later would lose the record without this line.
+                self.log.emit("flee", at_move=n, escaped=flees[-1]["escaped"])
                 if flees[-1]["escaped"]:
                     self.capture(f"flee-{len(flees) - 1}-escaped")
                     return False
@@ -2754,6 +2757,7 @@ class PoolRun:
             # not be fled.
             flees.append({"at_move": n, "escaped": False, "ambush": True,
                           "fight": fights[-1]})
+            self.log.emit("flee", at_move=n, escaped=False, ambush=True)
         return True
 
     def _await_encounter(self, route, last, word, key_age=0.0):
@@ -2877,13 +2881,18 @@ class PoolRun:
                               f"answer: {row.strip()}")
 
     def _flee_settles(self) -> bool:
-        """Whether a fight opened or the world bar came back after FLEE."""
+        """Whether a fight opened or the party is back in movement after FLEE.
+
+        Back in movement is the world bar or the move key-wait bar
+        `I,J,K,M, RETURN OR BUTTON`, which the game leaves up after "THE PARTY
+        FLEES"; `walk_one` sends the next move key straight at that bar."""
         limit = self.clock() + FIGHT_OPENS_SECONDS
         while not self.sess.in_combat():
             # A narration page after the answer is acknowledged as an
             # arrival's is; a bar that outlasts its presses fails the step.
             self.leave_arrival(self.walk_verb)
-            if self.at_world(self.bar()):
+            bar = self.bar()
+            if self.at_world(bar) or S.MOVE_SUBBAR in bar:
                 return True
             if self.clock() >= limit:
                 return False

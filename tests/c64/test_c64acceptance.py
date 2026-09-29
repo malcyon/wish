@@ -6334,6 +6334,28 @@ def test_walk_flee_answers_an_encounter_menu_with_flee_and_records_the_escape(
     assert sess.walk_encounter is None
 
 
+def test_walk_flee_escape_that_leaves_the_move_key_wait_bar_is_an_escape(
+        tmp_path, monkeypatch):
+    """After "THE PARTY FLEES" the game shows `I,J,K,M, RETURN OR BUTTON`, not
+    the world bar; the route goes on and presses only its own move keys."""
+    sess = FightWalk({0: "encounter"})
+    select = sess.select_bar
+
+    def flee_leaves_subbar(label, *a, **k):
+        select(label, *a, **k)
+        if label == "FLEE":
+            sess.screens = {"world": _window({}, "I,J,K,M, RETURN OR BUTTON")}
+        return True
+
+    sess.select_bar = flee_leaves_subbar
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_flee("II")
+    log.close()
+    assert sess.selected == ["FLEE"]
+    assert got["flees"][0]["escaped"] is True
+    assert sess.pressed == ["I", "I"]
+
+
 def test_walk_flee_that_fails_opens_a_fight_and_reports_its_result(
         tmp_path, monkeypatch):
     sess = FightWalk({0: "encounter"})
