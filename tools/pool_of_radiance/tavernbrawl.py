@@ -299,12 +299,42 @@ class SidedBattle(Battle):
                      if not c.is_party and c.index not in self.friends)
 
 
-def predicted_share(total: int, standing: int, flags: int) -> int | None:
-    """One character's share of `total`: divided by `$2B09`, halved by `0x0B8` bit 7."""
-    if not standing:
+#: Record offsets read for the award: the class code, and STR, INT, WIS, DEX.
+CLASS_CODE, ABILITIES_AT = 0x73, 0x14
+#: `POST.COM $0C38`'s per-slot "standing at the share" bytes, slots 0-7.
+PAID_AT, PAID_LEN = 0x2AFD, 8
+#: Class code -> index into STR, INT, WIS, DEX of the prime requisite (`$163E`):
+#: cleric WIS, fighter STR, magic-user INT, thief DEX; every other code has none.
+PRIME_REQUISITE = {0: 2, 2: 0, 5: 1, 6: 3}
+PRIME_BONUS_FROM = 16
+#: Class code -> divisor of the share (`$128A`): the multi-class codes 8-16.
+CLASS_DIVISOR = [1] * 8 + [2, 3, 2, 2, 2, 2, 2, 3, 2]
+MAX_EXPERIENCE = 0xFFFFFF
+
+
+def predicted_award(total: int, standing: int, reading: dict, paid: int) -> int | None:
+    """What `POST.COM` adds to one character's experience, or None for an empty slot.
+
+    `$0BD2` splits the total as `low16 // n + high8 * (65535 // n)`; a slot
+    whose `$2AFD` byte is 0 is not paid; `0x0B8` bit 7 halves the share;
+    `$15E3` adds 10% for a prime requisite of 16 or more; `$123F` divides by
+    the class code's divisor; the sum saturates at `$FFFFFF`.
+    """
+    if not standing or not reading["name_byte"]:
         return None
-    share = total // standing
-    return share // 2 if flags & 0x80 else share
+    if not paid:
+        return 0
+    share = (total & 0xFFFF) // standing + (total >> 16) * (0xFFFF // standing)
+    if reading["flags"] & 0x80:
+        share >>= 1
+    code = reading["class_code"]
+    if code >= len(CLASS_DIVISOR):
+        return None
+    at = PRIME_REQUISITE.get(code)
+    if at is not None and reading["abilities"][at] >= PRIME_BONUS_FROM:
+        share = min(share + (share & 0xFFFF) // 10 + (((share >> 16) // 10) << 16),
+                    MAX_EXPERIENCE)
+    return min(share // CLASS_DIVISOR[code], MAX_EXPERIENCE)
 
 
 def le24(data: bytes) -> int:
@@ -369,14 +399,16 @@ def charm_rows(m) -> list[dict]:
 
 
 def party_readings(m) -> list[dict]:
-    """Status, name byte, experience and `0x0B8` for slots 0-7."""
+    """Status, name byte, experience, `0x0B8`, class code and abilities for slots 0-7."""
     out = []
     for slot in range(8):
         base = MASTER + 0x100 * slot
         out.append({"slot": slot, "status": m.peek(COMBATANTS + STRIDE * slot),
                     "name_byte": m.peek(base),
                     "experience": le24(m.read(base + EXPERIENCE, 3)),
-                    "flags": m.peek(base + HALF_SHARE)})
+                    "flags": m.peek(base + HALF_SHARE),
+                    "class_code": m.peek(base + CLASS_CODE),
+                    "abilities": list(m.read(base + ABILITIES_AT, 4))})
     return out
 
 
@@ -640,7 +672,8 @@ class Traps:
 
     def on_share(self, m) -> None:
         self.note("share", standing=m.peek(STANDING),
-                  xp_total=le24(m.read(XP_TOTAL, 3)))
+                  xp_total=le24(m.read(XP_TOTAL, 3)),
+                  paid=list(m.read(PAID_AT, PAID_LEN)))
 
     def on_empty_pile(self, m) -> None:
         self.note("empty_pile", count=m.peek(PILE_COUNT), no_items=m.peek(NO_ITEMS))
@@ -1066,8 +1099,9 @@ def after_fight(sess, traps: Traps, log, out: pathlib.Path, args, before: list) 
         fields_ = {"predicted_why": why} if why else {}
         log.emit("experience_delta", slot=a["slot"], before=b["experience"],
                  after=a["experience"], delta=a["experience"] - b["experience"],
-                 predicted=predicted_share(share.get("xp_total", 0),
-                                           share.get("standing", 0), b["flags"]),
+                 predicted=predicted_award(share.get("xp_total", 0),
+                                           share.get("standing", 0), b,
+                                           share.get("paid", [0] * PAID_LEN)[a["slot"]]),
                  status=a["status"], name_byte=a["name_byte"], **fields_)
     if sess.in_combat():
         # A fight that ran out its budget is still on a turn's bars, which
@@ -1102,10 +1136,11 @@ STALL_SHOT_TIMEOUT = 20.0
 
 def fight_end(sess, log, out: pathlib.Path, outcome: str,
               traps: "Traps | None" = None) -> None:
-    """A PNG, row 24 and the driver's prediction from the combatant blocks when the fight returns.
+    """A PNG, row 24 and the driver's prediction of the result when the fight returns.
 
-    It runs on every outcome, the budget included, because `on_result` only
-    predicts when `POST.COM` stores the result.
+    It runs on every outcome, the budget included. A fight whose result was
+    stored is predicted from that reading; only one that ended otherwise reads
+    the combatant blocks.
     """
     shot = out / "fight-end.png"
     try:
@@ -1119,13 +1154,23 @@ def fight_end(sess, log, out: pathlib.Path, outcome: str,
         got["row24"] = None if s is None else s.row(24).strip()
     except Exception as exc:
         got["row24"] = f"unreadable: {exc!r}"
-    try:
-        with sess.mon(5) as m:
-            blocks = m.read(COMBATANTS, BLOCKS * STRIDE)
-        got.update(predicted=predicted_result(blocks),
-                   standing=standing_by_side(blocks))
-    except Exception as exc:
-        got.update(predicted=None, predicted_why=f"combatant blocks unreadable: {exc!r}")
+    if traps is not None and traps.result_done:
+        # `POST.COM` reuses the combatant blocks once it has run, so the
+        # blocks no longer describe the fight; the result store's reading does.
+        stored = traps.readings.get("result")
+        got.update(predicted=stored[-1]["predicted"] if stored else None,
+                   predicted_from="result store")
+        if not stored:
+            got["predicted_why"] = "no result reading was logged"
+    else:
+        try:
+            with sess.mon(5) as m:
+                blocks = m.read(COMBATANTS, BLOCKS * STRIDE)
+            got.update(predicted=predicted_result(blocks),
+                       standing=standing_by_side(blocks))
+        except Exception as exc:
+            got.update(predicted=None,
+                       predicted_why=f"combatant blocks unreadable: {exc!r}")
     if traps is not None and traps.degraded and not traps.result_done:
         got["result_unread"] = "the trap failed before the result store, so no result was read"
     log.emit("fight_end", **got)

@@ -1490,3 +1490,98 @@ def test_a_failed_trap_does_not_end_a_fight_with_both_sides_standing():
     assert not tb.watch_prompt_up(traps, FakeScreen("STAY RUN"), sess)
     sess.machine.mem[tb.COMBATANTS + 20 * tb.STRIDE] = 0x90
     assert tb.watch_prompt_up(traps, FakeScreen("STAY RUN"), sess)
+
+
+# -- the per-character award ---------------------------------------------------
+
+
+def person(code, abilities=(10, 10, 10, 10), flags=0, name_byte=65):
+    return {"name_byte": name_byte, "flags": flags, "class_code": code,
+            "abilities": list(abilities)}
+
+
+T1F_PARTY = [
+    person(0, (10, 10, 18, 10)),          # cleric, WIS 18
+    person(5, (10, 17, 10, 10)),          # magic-user, INT 17
+    person(6, (10, 10, 10, 18)),          # thief, DEX 18
+    person(2, (18, 10, 10, 10)),          # fighter, STR 18
+    person(14, (16, 10, 10, 16)),         # fighter/thief
+    person(9, (16, 16, 16, 10)),          # cleric/fighter/magic-user
+]
+
+
+def test_the_award_for_the_six_characters_of_the_t1f_run():
+    got = [tb.predicted_award(1220, 19, p, 1) for p in T1F_PARTY]
+    assert got == [70, 70, 70, 70, 32, 21]
+
+
+def test_a_ranger_with_strength_eighteen_gets_no_bonus():
+    assert tb.predicted_award(1220, 19, person(4, (18, 10, 10, 10)), 1) == 64
+
+
+def test_a_half_share_is_halved_before_the_prime_requisite_bonus():
+    assert tb.predicted_award(1220, 19, person(0, (10, 10, 18, 10), flags=0x80), 1) == 35
+
+
+def test_a_total_of_seventy_thousand_over_seven_is_not_ten_thousand():
+    assert tb.predicted_award(70000, 7, person(4), 1) == 9999
+
+
+def test_the_award_saturates_at_the_experience_cap():
+    assert tb.predicted_award(0xFFFFFF, 1, person(0, (10, 10, 18, 10)), 1) == 0xFFFFFF
+
+
+def test_a_slot_not_counted_standing_gets_nothing():
+    assert tb.predicted_award(1220, 19, person(0, (10, 10, 18, 10)), 0) == 0
+
+
+def test_an_empty_slot_is_skipped():
+    assert tb.predicted_award(1220, 19, person(0, name_byte=0), 1) is None
+
+
+def test_party_readings_carry_the_class_code_and_abilities():
+    machine = Machine()
+    base = tb.MASTER + 0x100 * 3
+    machine.mem[base + tb.CLASS_CODE] = 5
+    machine.mem[base + tb.ABILITIES_AT:base + tb.ABILITIES_AT + 4] = bytes((9, 8, 7, 6))
+    got = tb.party_readings(FakeMon(machine))[3]
+    assert got["class_code"] == 5 and got["abilities"] == [9, 8, 7, 6]
+
+
+def test_the_share_stop_reads_who_is_paid(tmp_path):
+    machine = Machine()
+    machine.mem[tb.PAID_AT:tb.PAID_AT + 8] = bytes((1, 1, 0, 1, 0, 0, 0, 0))
+    traps = tb.Traps(FakeSession(machine), FakeLog(), tmp_path, args())
+    traps.on_share(FakeMon(machine))
+    assert traps.readings["share"][0]["paid"] == [1, 1, 0, 1, 0, 0, 0, 0]
+
+
+def test_an_experience_delta_skips_the_slot_nobody_is_paid_and_the_empty_ones(
+        monkeypatch, tmp_path):
+    machine = Machine()
+    sess = FakeSession(machine)
+    monkeypatch.setattr(tb, "answer_until", lambda *a, **k: {"outcome": "quiet", "rows": []})
+    machine.mem[SQUARE:SQUARE + 3] = bytes((7, 3, 0))
+    log = FakeLog()
+    traps = tb.Traps(sess, log, tmp_path, args())
+    traps.readings["share"] = [{"standing": 19, "xp_total": 1220,
+                                "paid": [1, 0, 0, 0, 0, 0, 0, 0]}]
+    before = [dict(person(4), slot=i, experience=0, name_byte=65 if i < 2 else 0)
+              for i in range(8)]
+    tb.after_fight(sess, traps, log, tmp_path, args(), before)
+    got = [d["predicted"] for d in log.kinds("experience_delta")]
+    assert got == [64, 0, None, None, None, None, None, None]
+
+
+def test_a_fight_end_after_the_result_store_reports_the_stored_result(tmp_path):
+    machine = Machine()
+    for n in range(tb.BLOCKS):                     # the blocks now hold other data
+        machine.mem[tb.COMBATANTS + tb.STRIDE * n] = 0x4C
+        machine.mem[tb.COMBATANTS + tb.STRIDE * n + tb.SIDE] = 0x50
+    sess, log = FakeSession(machine), FakeLog()
+    traps = tb.Traps(sess, log, tmp_path, args())
+    traps.result_done = True
+    traps.readings["result"] = [{"result": 1, "predicted": 1}]
+    tb.fight_end(sess, log, tmp_path, S.ENDED, traps)
+    [end] = log.kinds("fight_end")
+    assert end["predicted"] == 1 and end["predicted_from"] == "result store"
