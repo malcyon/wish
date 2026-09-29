@@ -1266,24 +1266,54 @@ DOOR = "BASH PICKLOCK QUIT"
 
 class DoorScript(StepScript):
     """`StepScript` whose script is a locked door until QUIT is taken, when the
-    world bar comes back.  `asked` lists every bar word selected."""
+    world bar comes back (or `after_quit`).  `asked` lists every bar word
+    selected.  With `doors`, the bar comes up instead after each of those
+    numbered keys (1-based) and QUIT clears it."""
+
+    def __init__(self, monkeypatch, rows, after_quit=None, doors=None,
+                 after_key=None):
+        super().__init__(monkeypatch,
+                         after_key if after_key is not None
+                         else 0 if doors else 1, rows)
+        self.after_quit = [WORLD] if after_quit is None else after_quit
+        self.doors, self.at_door = set(doors or ()), False
+
+    def _arrival_row(self):
+        if self.doors:
+            return DOOR if self.at_door else WORLD
+        return super()._arrival_row()
+
+    def screen(self):
+        if self.doors and not self.fighting:
+            return Screen(DOOR if self.at_door else WORLD)
+        return super().screen()
+
+    def walk_one(self, key, *a, **k):
+        moved = super().walk_one(key, *a, **k)
+        if self.doors and len(self.keys) in self.doors and \
+                key not in "JK" and moved:
+            self.at_door = True
+        return moved
 
     def select_bar(self, label, row=24, timeout=30.0, answer_prompts=True):
         if label == "QUIT":
             self.asked.append(label)
-            self.script = [WORLD]
+            self.at_door = False
+            self.script = list(self.after_quit)
             return True
         return super().select_bar(label, row, timeout, answer_prompts)
 
 
-def _door_walk(monkeypatch, replan):
+def _door_walk(monkeypatch, replan, rows=("", DOOR), path=SOUTH, facing=2,
+               **fake):
     monkeypatch.setattr(T, "dump", lambda *a, **k: None)
-    sess = DoorScript(monkeypatch, 1, ["", DOOR])
+    sess = DoorScript(monkeypatch, list(rows), **fake)
     sess.coords = False      # the Slums' status line has no square
+    sess.facing = facing
     sess.walk_encounter = S.ENCOUNTER_FIGHT
     Clock(monkeypatch)
     log = RecordingLog()
-    got = T.walk_route(sess, log, SOUTH, 2, "slums", pathlib.Path("."),
+    got = T.walk_route(sess, log, path, facing, "slums", pathlib.Path("."),
                        replan)
     return sess, log, got
 
@@ -1321,3 +1351,74 @@ def test_a_locked_door_with_no_route_round_it_records_the_refused_square(
     assert got[2]["square"] == [5, 6] and got[2]["from"] == [5, 5]
     assert "(5, 6)" in got[2]["refused"]
     assert sess.keys == ["I"]
+
+
+def test_the_keys_after_a_replan_match_the_partys_real_facing(monkeypatch):
+    # Facing south at the door; the detour goes east then south.
+    sess, log, got = _door_walk(
+        monkeypatch, lambda here, square: [here, (6, 5), (6, 6)])
+    assert sess.keys == ["I", "J", "I", "K", "I"]
+    assert sess.facing == 2 and got == (2, None, None)
+
+
+def test_a_fight_after_quit_is_the_fight_not_a_desync(monkeypatch):
+    sess, log, got = _door_walk(monkeypatch, lambda here, square: SOUTH,
+                                after_quit=["<fight>"])
+    assert sess.asked == ["QUIT"]
+    assert got == (2, (5, 5), None)
+
+
+def test_a_second_door_on_the_replanned_route_is_avoided_too(monkeypatch):
+    # Key 1 is the first door; key 3 is the first step of the detour.  The
+    # synthetic map has one way round, so the second replan finds none: what
+    # matters is that it ran once each, with both squares in `avoid`.
+    avoids = []
+    real = T.geowalk.route
+
+    def route(geo, start, goal, avoid=frozenset()):
+        avoids.append(set(avoid))
+        return real(geo, start, goal, avoid=avoid)
+
+    monkeypatch.setattr(T.geowalk, "route", route)
+    sess, log, got = _door_walk(
+        monkeypatch, T.slums_replanner(_geo(), (5, 8)), doors={1, 3})
+    assert sess.asked == ["QUIT", "QUIT"] and len(avoids) == 2
+    assert {(5, 6)} <= avoids[0] and not {(4, 5)} & avoids[0]
+    assert {(5, 6), (4, 5)} <= avoids[1]
+    assert got[2]["reason"] == "locked_door" and got[2]["square"] == [4, 5]
+
+
+def test_a_locked_target_square_has_no_route_and_is_refused(monkeypatch):
+    # The door is on the last step, onto the target itself.
+    sess, log, got = _door_walk(
+        monkeypatch, T.slums_replanner(_geo(), (5, 8)), doors={3})
+    assert sess.asked == ["QUIT"]
+    assert got[1] is None and got[2]["reason"] == "locked_door"
+    assert got[2]["square"] == [5, 8] and "(5, 8)" in got[2]["refused"]
+
+
+def test_a_locked_door_after_a_refused_key_is_answered_with_quit(
+        monkeypatch):
+    sess, log, got = _door_walk(
+        monkeypatch,
+        lambda here, square: [here, (here[0] + 1, here[1]),
+                              (here[0] + 1, here[1] + 1)],
+        rows=(WORLD, WORLD, "", DOOR))
+    assert sess.blank_keys == ["I"] and sess.asked == ["QUIT"]
+    assert got[1] is None and got[2] is None
+
+
+def test_a_door_bar_after_a_refused_turn_is_not_answered(monkeypatch):
+    # No turn was made, so the walk cannot plan from the facing it assumed.
+    sess, log, got = _door_walk(
+        monkeypatch, lambda here, square: [here, (6, 5)],
+        rows=(DOOR,), path=[(5, 5), (5, 6)], facing=3, after_key=0)
+    assert sess.asked == [] and sess.keys == []
+    assert got[2]["reason"] == "not_pressed" and got[2]["after"] == "choice"
+
+
+def test_a_bar_missing_a_door_word_is_not_answered_with_quit(monkeypatch):
+    sess, log, got = _door_walk(
+        monkeypatch, lambda here, square: [here, (6, 5)],
+        rows=("", "BASH QUIT"))
+    assert sess.asked == [] and got[2]["reason"] == "choice"
