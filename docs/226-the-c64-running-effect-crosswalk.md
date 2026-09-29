@@ -780,19 +780,23 @@ Static reads; nothing was booted. `tools/c64/overlay.py` and
   end of a fight, without the handler; it does nothing to a slot with no row.
   The later titles' copy of this loop runs on every outcome; that Pool's does
   is PROBABLE.
-* **PROBABLE, fight start with a stored charm.** `COM.PREP` places combatants
-  in groups by `0x10C & $7F`. The first pass (`$0E78`-`$0EA7`, then `$0F0B`)
-  places every value-0 combatant at the party's edge. The second (`$0F54`-
-  `$0F89`) takes the first unplaced non-zero value in combatant order, places
-  that group at the opposite edge, and stops. A party member saved with `$C0`
-  (value `$40`) is not placed with the party; being combatant 0-7 he is found
-  before the monsters (value 1), so he is placed alone at the enemy's edge, and
-  these two passes place no monster. With `$80` (value 0) he is placed with
-  the party, and the handler's first event 19 then writes `$C0`. What would
-  settle it: in VICE, stage a copy of a C64 Pool save with a charm row
+* **CONFIRMED from code, not run: fight start with a stored charm.**
+  `COM.PREP` places combatants in groups by `0x10C & $7F`. The first pass
+  (`$0E78`-`$0EA7`) places every value-0 combatant at the party's edge. The
+  second (`$0F54`-`$0F92`) places every combatant whose value is not 0 at the
+  opposite edge, going on to the next after each placement (`$0F84 BCS
+  $0F8A`). Only a failure, with no position left, reaches `$0F86 JSR $0F0B`
+  and returns. A party member saved with `$C0` (value `$40`) is therefore
+  placed at the head of the monsters' formation, being combatant 0-7, and the
+  monsters are placed after him as usual. With `$80` (value 0) he is placed
+  with the party, and the handler's first event 19 then writes `$C0`. What
+  would settle it: in VICE, stage a copy of a C64 Pool save with a charm row
   (`0B`, owner the slot, duration 0, magnitude `$86`) and `0x10C` = `$C0` on one
   member, walk into a fight and screenshot the first command prompt; repeat
-  with `$80` as the control.
+  with `$80` as the control. Confirmed if he stands at the head of the
+  monsters' formation and every monster is placed; refuted if he stands with
+  the party or a monster is missing. Evidence:
+  https://github.com/malcyon/wish/issues/667#issuecomment-5881008971.
 
 **The id-84 hazard.** A party member charmed by the monster ability id 84 and
 then knocked out keeps `0x10C` = `$C1`, and `POST.COM`
