@@ -81,7 +81,9 @@ class AmigaTitle:
     interstitial insert names drive 1, or drive 0 when its screen is a strict disk prompt and the
     disk differs from DF0's. The step before a `write` or `insert` step must be in
     `strict`. `strict` names the states whose guard must match or the run stops; any other
-    state falls back to a settled capture and marks the run as measuring.
+    state falls back to a settled capture and marks the run as measuring. `wait_limits` gives a
+    state its own limit in seconds for a guarded wait, where the default is too short for the
+    pages the game shows before that state.
     """
 
     issue: str
@@ -105,6 +107,7 @@ class AmigaTitle:
     kept_letters: tuple[str, ...] = ()
     turn: str | None = None
     plain_keys: tuple[tuple[str, str], ...] = ()
+    wait_limits: Mapping[str, float] = dataclasses.field(default_factory=dict)
 
     @property
     def disk_keys(self) -> tuple[str, ...]:
@@ -137,6 +140,8 @@ class AmigaTitle:
             refuse(f"save letters {letters} must be distinct capitals")
         if self.turn not in (None, "about"):
             refuse(f"turn {self.turn!r} is neither None nor 'about'")
+        if any(limit <= 0 for limit in self.wait_limits.values()):
+            refuse("every wait limit must be positive")
         if self.title_limit <= 0 or self.boot_span <= 0:
             refuse("the title limit and the boot span must be positive")
         if any(w < 0 for w in self.min_waits.values()):

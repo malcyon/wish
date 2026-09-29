@@ -2621,19 +2621,21 @@ def test_a_published_manifest_is_checked_against_its_own_issues_pins(tmp_path, m
         foundation.prepare_published("curse", "x", tmp_path / "report.json", "999")
 
 
-def test_the_silver_blades_continue_page_is_answered_up_to_three_times_in_one_wait(
+def test_the_silver_blades_continue_page_is_answered_up_to_the_published_limit_in_one_wait(
         tmp_path, clock):
     rows = foundation.route_silver_blades.published_title("A").interstitials
+    limit = foundation.route_silver_blades.PUBLISHED_CONTINUE_LIMIT
+    assert limit >= 9  # the opening scene's pages before the treasure screen
     looks = []
 
     def picker(_path):
         looks.append(1)
-        return len(looks) >= 6
+        return len(looks) >= limit + 5
 
     guard = MapGuard(states=("title", *TITLE_STATES, "continue"), on={
-        "load_picker": picker, "continue": lambda _path: 0 < len(looks) < 6})
+        "load_picker": picker, "continue": lambda _path: 0 < len(looks) < limit + 5})
     guest, _ = _title_run(tmp_path, clock, rows, guard)
-    assert _keys(guest).count("RET") == 3
+    assert _keys(guest).count("RET") == limit
 
 
 def _title_run(tmp_path, clock, rows, guard):
@@ -2651,3 +2653,232 @@ def test_a_640_manifest_registers_its_specimen_under_640(tmp_path, specimen_root
     assert "wish-640-curse-" in saved["path"]
     text = pathlib.Path(saved["provenance"]).read_text()
     assert "#640 (A Curse or Silver Blades party saved before BEGIN ADVENTURING" in text
+
+
+# ---- A Silver Blades party that has not set out: opening pages, a treasure screen, then the world.
+
+OPENING_TAIL = [
+    (None, "treasure_bar", "answer"), ("E", "treasure", "key"), ("N", "world", "key"),
+    ("NP8", "world", "move"), ("NP8", "world", "move"),
+    ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
+    ("F", "exit_game", "write"), ("N", "camp", "key"),
+]
+SSB_START = {"area": 16, "x": 3, "y": 3, "facing": geo.SOUTH}
+OPENING_KEYS = (["P", "L", "A", "V", "E", "S", "C", "B"] + ["RET"] * 9 + ["E", "N"]
+                + ["RET"] * 3 + ["NP8", "NP8", "E", "S", "F", "N"])
+# Screen after each (screen, key); RET on a page moves to the next page or, at the last, on.
+SSB_SCREENS = {
+    ("title", "P"): "party_menu", ("party_menu", "L"): "load_picker",
+    ("load_picker", "A"): "loaded_menu", ("loaded_menu", "V"): "sheet",
+    ("sheet", "E"): "loaded_menu", ("loaded_menu", "S"): "save_picker",
+    ("save_picker", "C"): "loaded_menu", ("loaded_menu", "B"): "journal",
+    ("treasure_bar", "E"): "treasure", ("world", "NP8"): "world", ("world", "E"): "camp",
+    ("camp", "S"): "camp_save_picker", ("camp_save_picker", "F"): "exit_game",
+    ("exit_game", "N"): "camp",
+}
+PAGE_SECONDS = 25.0  # a page is answered 16 to 25 seconds after the last one
+
+
+class OpeningGuest(TitleGuest):
+    """The game's screen after each key, with the opening scene's pages taking their time."""
+
+    def __init__(self, clock, *, unguarded_world=False):
+        super().__init__(clock, save_key="df0")
+        self.screen, self.pages, self.then = "title", 0, None
+        self.unguarded_world = unguarded_world
+
+    def pages_of(self, count, then):
+        self.screen, self.pages, self.then = "continue", count, then
+
+    def press(self, holder, key, timeout=None):
+        super().press(holder, key, timeout=timeout)
+        if key == "RET" and self.screen == "continue":
+            self.clock.now += PAGE_SECONDS
+            self.pages -= 1
+            if self.pages == 0:
+                self.screen = self.then
+        elif (self.screen, key) == ("treasure", "N"):
+            self.pages_of(3, "smudge" if self.unguarded_world else "world")
+        else:
+            self.screen = SSB_SCREENS.get((self.screen, key), self.screen)
+
+    def capture(self, state, raw, cropped, timeout=None):
+        raw.write_bytes(b"raw")
+        cropped.write_bytes(self.screen.encode())
+
+    def grab(self, state, raw, cropped, timeout=None):
+        self.calls.append(("grab", state))
+        self.capture(state, raw, cropped)
+        return True
+
+
+class ScreenNameGuard:
+    """A guard that recognises a screen by the name the fake guest wrote into its crop."""
+
+    states = {"title", "party_menu", "load_picker", "loaded_menu", "sheet", "save_picker",
+              "journal", "continue", "treasure_bar", "treasure", "world", "camp",
+              "camp_save_picker", "exit_game"}
+
+    def __contains__(self, state):
+        return state in self.states
+
+    def __call__(self, state, path):
+        return path.read_bytes() == state.encode()
+
+
+def _opening_accept(tmp_path, monkeypatch, clock, *, title=None, guest=None):
+    """Accept a party that has not set out, against the fake guest above."""
+    def read_slot(disk, letter):
+        return {**_read_slot(disk, letter), "clock": "00:01" if letter == "F" else "00:00"}
+
+    title = dataclasses.replace(
+        title or foundation.route_silver_blades.published_title(
+            "A", items_screen=False, opening_scene=True),
+        read_slot=read_slot, slot_letters=_letters, slot_files=_files)
+    slots = [("A", _slot(SSB_START))]
+    disks = {"df0": _adf(tmp_path / "df0.adf", "ONE", slots),
+             "df1": _adf(tmp_path / "df1.adf", "TWO")}
+    registered = {"source": _adf(tmp_path / "source.adf", "SOURCE"),
+                  "report": _adf(tmp_path / "report.adf", "REPORT"),
+                  "published": _adf(tmp_path / "published.adf", "ONE", slots),
+                  "disk_one": _adf(tmp_path / "disk-one.adf", "ONE", slots),
+                  "disk_two": _adf(tmp_path / "disk-two.adf", "TWO")}
+    (tmp_path / "published.adf").write_bytes((tmp_path / "df0.adf").read_bytes())
+    registered["published"]["sha256"] = disks["df0"]["sha256"]
+    (tmp_path / "disk-two.adf").write_bytes((tmp_path / "df1.adf").read_bytes())
+    registered["disk_two"]["sha256"] = disks["df1"]["sha256"]
+    manifest = {"mode": "published_disk_one", "issue": "640", "title": "ssb",
+                "source_port": "c64", "loaded_letter": "A", "state_a": SSB_START,
+                "names_a": NAMES, "clock_a": "00:00", "disks": disks,
+                "registered": registered, "expected_after": None}
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(foundation, "_published_manifest", lambda *_: (manifest, title))
+    guest = guest or OpeningGuest(clock)
+    guest.place = dict(SSB_START)
+    answers = []
+
+    def answer(_holder, _adf_path, _timeout):
+        answers.append(1)
+        guest.pages_of(9, "treasure_bar")
+        return 0, "answered"
+
+    original_press = guest.press
+
+    def press(holder, key, timeout=None):
+        original_press(holder, key, timeout=timeout)
+        if key == "F":
+            guest._write("F", guest.place)
+
+    guest.press = press
+    result = foundation.run_recon(
+        path, guest=guest, holder="wish640-test", audio_proof=_audio_proof(tmp_path),
+        title=title, guard=ScreenNameGuard(), identity=_IdentityMap(), accept=True,
+        published_disk_one=True, published_name="ssb", journal_python="/usr/bin/python3",
+        preflight=lambda _python: None, answer=answer)
+    return guest, result, answers
+
+
+def test_the_opening_scene_route_replaces_only_the_answer_wait_and_adds_no_turn():
+    blades = foundation.route_silver_blades
+    title = blades.published_title("A", items_screen=False, opening_scene=True)
+    at = title.route.index(("B", "journal", "key")) + 1
+    assert list(title.route[at:]) == OPENING_TAIL
+    assert title.turn is None
+    assert {"treasure_bar", "treasure", "world"} <= title.strict
+    assert title.wait_limits == {"treasure_bar": 300.0}
+    assert blades.PUBLISHED_CONTINUE_LIMIT >= 9
+    # Every other route keeps the answer wait for `world`, its two moves and no per-state limit.
+    plain = blades.published_title("A", items_screen=False)
+    assert (None, "world", "answer") in plain.route and plain.wait_limits == {}
+    assert "world" not in plain.strict
+    assert not any(kind == "turn" for _, _, kind in
+                   blades.published_title("D", opening_scene=True).route)
+
+
+def test_the_opening_route_is_chosen_by_the_start_place_alone():
+    start = areas.start_of(areas.SECRET_OF_THE_SILVER_BLADES)
+    place = {"area": start.area, "x": start.arrival.x, "y": start.arrival.y,
+             "facing": start.arrival.facing}
+    assert place == SSB_START
+    assert foundation._opening_scene("ssb", place) is True
+    assert foundation._opening_scene("ssb", dict(place, y=5)) is False
+    assert foundation._opening_scene("ssb", dict(place, facing=geo.NORTH)) is False
+    assert foundation._opening_scene("curse", place) is False
+    assert foundation._opening_scene("ssb", None) is False
+
+
+def test_a_prepared_party_records_and_uses_the_route_its_place_calls_for(
+        tmp_path, monkeypatch):
+    path = _prepared_published(tmp_path, monkeypatch, members_items=0)
+    manifest, title = foundation._published_manifest(path, "ssb")
+    expected = foundation._opening_scene("ssb", manifest["state_a"])
+    assert manifest["opening_scene"] is expected
+    assert bool(title.wait_limits) is expected
+    manifest["opening_scene"] = not expected
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(winuaesession.RouteError, match="opening_scene disagrees"):
+        foundation._published_manifest(path, "ssb")
+
+
+def test_the_opening_accept_presses_the_exact_keys_and_answers_twelve_pages(
+        tmp_path, monkeypatch, clock):
+    guest, result, answers = _opening_accept(tmp_path, monkeypatch, clock)
+    assert result["error"] == "" and result["success"] is True, result["read"]["verdicts"]
+    assert _keys(guest) == OPENING_KEYS
+    assert "Y" not in _keys(guest) and len(answers) == 1
+    events = [json.loads(line) for line in
+              (tmp_path / "recon1" / "run.jsonl").read_text().splitlines()]
+    assert sum(e.get("event") == "interstitial" and e.get("screen") == "continue"
+               for e in events) == 12
+    assert guest.place == {"area": 16, "x": 3, "y": 5, "facing": geo.SOUTH}
+
+
+def test_the_opening_accept_fails_with_the_old_limits(tmp_path, monkeypatch, clock):
+    blades = foundation.route_silver_blades
+    old = tuple((name, action, waiting_for, 3 if name == "continue" else limit)
+                for name, action, waiting_for, limit in blades.PUBLISHED_INTERSTITIALS)
+    base = blades.published_title("A", items_screen=False, opening_scene=True)
+    for at, title in enumerate((dataclasses.replace(base, interstitials=old),
+                                dataclasses.replace(base, wait_limits={}))):
+        folder = tmp_path / str(at)
+        folder.mkdir()
+        _, result, _ = _opening_accept(folder, monkeypatch, clock, title=title)
+        assert result["success"] is False, at
+        assert "treasure_bar screen was not recognized" in result["error"], at
+
+
+def test_a_strict_world_stops_on_an_unguarded_screen_instead_of_settling(
+        tmp_path, monkeypatch, clock):
+    guest = OpeningGuest(clock, unguarded_world=True)
+    _, result, _ = _opening_accept(tmp_path, monkeypatch, clock, guest=guest)
+    assert result["success"] is False
+    assert "world screen was not recognized" in result["error"]
+    assert "NP8" not in _keys(guest)
+
+
+def test_a_wait_limit_must_be_positive():
+    blades = foundation.route_silver_blades
+    with pytest.raises(winuaesession.RouteError, match="wait limit"):
+        dataclasses.replace(blades.published_title("A"), wait_limits={"world": 0})
+
+
+def test_the_walk_verdict_accepts_three_three_to_three_five_facing_south():
+    before = dict(SSB_START)
+    control = {"place": before}
+    after = {"place": {"area": 16, "x": 3, "y": 5, "facing": geo.SOUTH}}
+    verdict = foundation.walk_verdict(before, control, after, 2, turn=None)
+    assert verdict["b_ok"] and verdict["d_ok"]
+    blocked = foundation.walk_verdict(before, control, {"place": before}, 2, turn=None)
+    assert blocked["walk_blocked"] and not blocked["d_ok"]
+
+
+def test_the_start_map_lets_the_party_walk_south_twice_and_not_north_or_east():
+    from tests.secret_of_the_silver_blades import test_ssblive  # noqa: PLC0415
+
+    start = test_ssblive._first_map()  # skips without the Silver Blades disks
+    assert start.is_passable(3, 3, geo.SOUTH)
+    assert start.is_passable(3, 4, geo.SOUTH)
+    assert start.door(3, 4, geo.SOUTH) == geo.PASSABLE
+    assert not start.is_passable(3, 3, geo.EAST)
+    assert not start.is_passable(3, 3, geo.NORTH)

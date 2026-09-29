@@ -284,8 +284,16 @@ ACCEPT_ROUTE = (
 # The world bar is one state reached two ways, so its wait after a move has its own key.
 ACCEPT_MIN_WAITS = {
     "loaded_menu": 20.0, "journal": 45.0, "world": 20.0, "world_after_move": 5.0,
+    "treasure_bar": 20.0, "treasure": 5.0,
     "camp": 10.0, "camp_save_picker": 10.0, "exit_game": 20.0,
 }
+#: A party that has not set out: the game's opening pages, then the treasure screen (EXIT
+#: leaves the gems), then the offer to go back for them, then more pages before the world.
+OPENING_SCENE_STEPS = (
+    (None, "treasure_bar", "answer"), ("E", "treasure", "key"), ("N", "world", "key"),
+)
+#: Nine pages come before the treasure screen, each answered 16 to 25 seconds after the last.
+OPENING_WAIT_LIMITS = {"treasure_bar": 300.0}
 JOURNAL_SCRIPT = pathlib.Path(__file__).with_name("amigabladesjournal.py")
 #: A permanent diagnostic switch, not an experimental flag: a directory the answerer keeps its captures in.
 KEEP_ENV = "WISH_JOURNAL_KEEP"
@@ -333,12 +341,16 @@ def _slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, bytes]:
 
 def published_title(letter: str, *, issue: str = "677",
                     turn_about: bool | None = None,
-                    items_screen: bool = True) -> AmigaTitle:
+                    items_screen: bool = True,
+                    opening_scene: bool = False) -> AmigaTitle:
     """The two-drive route for an exact Save As image in DF0.
 
     `turn_about` None means the DOS letter D turns about. `items_screen` False
     leaves out the sheet's ITEMS visit, because the game shows no ITEMS button
-    for a character who carries nothing and `I` then does nothing.
+    for a character who carries nothing and `I` then does nothing. `opening_scene` is for a
+    party that has not set out: the game shows its opening pages and a treasure screen before
+    the world, so the route waits for that screen, leaves the gems and declines the offer to go
+    back for them, and the party walks from the start square with no turn.
     """
     if letter not in ("A", "D"):
         raise ValueError(f"published Silver Blades slot {letter!r} is neither A nor D")
@@ -348,10 +360,15 @@ def published_title(letter: str, *, issue: str = "677",
     route[2] = (letter, "loaded_menu", "key")
     route[len(keys)] = ("C", "loaded_menu", "write")
     route[-2] = ("F", "exit_game", "write")
-    move_at = next(i for i, step in enumerate(route) if step[2] == "move")
     if turn_about is None:
         turn_about = letter == "D"
+    if opening_scene:
+        answer_at = next(i for i, step in enumerate(route) if step[2] == "answer")
+        route[answer_at:answer_at + 1] = OPENING_SCENE_STEPS
+        # South is open from the start square, and north is a wall.
+        turn_about = False
     if turn_about:
+        move_at = next(i for i, step in enumerate(route) if step[2] == "move")
         route.insert(move_at, ("NP2", "world", "turn"))
     measured = tuple((key, state, "key") for key, state in
                      (*keys[:2], (letter, "loaded_menu"), *keys[3:]))
@@ -363,9 +380,11 @@ def published_title(letter: str, *, issue: str = "677",
         boot_span=120.0, control_letter="C", after_letter="F",
         kept_letters=() if letter == "A" else ("A",),
         strict=frozenset({"load_picker", "loaded_menu", "sheet", "save_picker",
-                          "camp_save_picker"}),
+                          "camp_save_picker",
+                          *(("treasure_bar", "treasure", "world") if opening_scene else ())}),
         min_waits={**default_min_waits(), **ACCEPT_MIN_WAITS},
         title_limit=300.0, interstitials=PUBLISHED_INTERSTITIALS,
+        wait_limits=OPENING_WAIT_LIMITS if opening_scene else {},
         turn="about" if turn_about else None)
 
 
@@ -480,8 +499,9 @@ SILVER_BLADES_INTERSTITIALS = (
     ("treasure", ("keys", "N"), frozenset({"camp", "camp_save_picker"}), 1),
 )
 
-#: The published route begins a party that has not set out, so its opening scene can show
-#: several pages inside one wait.
+#: The published route begins a party that has not set out, so its opening scene shows nine
+#: pages inside one wait, and three more after the treasure offer.
+PUBLISHED_CONTINUE_LIMIT = 12
 PUBLISHED_INTERSTITIALS = tuple(
-    (name, action, waiting_for, 3 if name == "continue" else limit)
+    (name, action, waiting_for, PUBLISHED_CONTINUE_LIMIT if name == "continue" else limit)
     for name, action, waiting_for, limit in SILVER_BLADES_INTERSTITIALS)

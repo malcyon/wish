@@ -1307,8 +1307,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
 
     def reach(state: str, name: str, first_wait: float, *, strict: bool) -> str:
         if _guards(guard, state):
-            return until_guard(state, name, first_wait, GUARD_POLL, GUARD_LIMIT,
-                               strict=strict)
+            limit = title.wait_limits.get(state, GUARD_LIMIT) if title else GUARD_LIMIT
+            return until_guard(state, name, first_wait, GUARD_POLL, limit, strict=strict)
         wait(first_wait)
         done: dict[str, int] = {}
         digest = settle_unguarded(state, name)
@@ -1728,13 +1728,15 @@ def _disk_files(disk: amiga_adf.AmigaDisk) -> dict[str, bytes]:
 
 def _published_title(name: str, letter: str, *, issue: str = PUBLISHED_ISSUE,
                      turn_about: bool | None = None,
-                     items_screen: bool = True) -> AmigaTitle:
+                     items_screen: bool = True,
+                     opening_scene: bool = False) -> AmigaTitle:
     if name == "curse":
         from tools.amiga.route_curse import published_title  # noqa: PLC0415
         return published_title(letter, issue=issue, turn_about=turn_about)
     if name == "ssb":
         return route_silver_blades.published_title(
-            letter, issue=issue, turn_about=turn_about, items_screen=items_screen)
+            letter, issue=issue, turn_about=turn_about, items_screen=items_screen,
+            opening_scene=opening_scene)
     raise RouteError("published disk one is only for Curse and Silver Blades")
 
 
@@ -1745,6 +1747,15 @@ def _items_screen(name: str, reading: dict) -> bool:
     opens is the party's first member, GUY DE VALOIS, first in the saved order too.
     """
     return name != "ssb" or reading["inventory"]["members"][0]["count"] > 0
+
+
+def _opening_scene(name: str, place: dict | None) -> bool:
+    """Whether the party has not set out, so the game shows its opening scene before the world."""
+    if name != "ssb":
+        return False
+    start = areas.start_of(areas.SECRET_OF_THE_SILVER_BLADES)
+    return place == {"area": start.area, "x": start.arrival.x, "y": start.arrival.y,
+                     "facing": start.arrival.facing}
 
 
 def _turn_about(name: str, letter: str, place: dict | None) -> bool:
@@ -1781,8 +1792,11 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
     items_screen = manifest.get("items_screen", True)
     if not isinstance(items_screen, bool):
         raise RouteError("the manifest items_screen is not a boolean")
+    opening_scene = _opening_scene(name, manifest.get("state_a"))
+    if manifest.get("opening_scene", opening_scene) != opening_scene:
+        raise RouteError("the manifest opening_scene disagrees with its recorded place")
     title = _published_title(name, letter, issue=manifest["issue"], turn_about=turn_about,
-                             items_screen=items_screen)
+                             items_screen=items_screen, opening_scene=opening_scene)
     for key in ("source", "report", "published", "disk_one", "disk_two"):
         _input(manifest["registered"], key)
     if name == "ssb":
@@ -1900,8 +1914,9 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     # Curse's party-menu square faces a wall to the east.
     turn_about = _turn_about(name, letter, reading["place"])
     items_screen = _items_screen(name, reading)
+    opening_scene = _opening_scene(name, reading["place"])
     title = _published_title(name, letter, issue=issue, turn_about=turn_about,
-                             items_screen=items_screen)
+                             items_screen=items_screen, opening_scene=opening_scene)
     original = _verified_disk(disk1)
     slot_path = f"/SAVE/savgam{letter}.{'dat' if name == 'curse' else 'sav'}".lower()
     old, new = _disk_files(original), _disk_files(disk)
@@ -1950,6 +1965,7 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     }
     if name == "ssb":
         manifest["items_screen"] = items_screen
+        manifest["opening_scene"] = opening_scene
     path = run / "prepare.json"
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     _published_manifest(path, name)

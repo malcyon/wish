@@ -265,3 +265,24 @@ def test_non_string_manifest_titles_leave_crops_unowned(tmp_path):
         shot = _run(root, '1', name, 'pool', 'title')
         (shot.parents[2] / 'prepare.json').write_text(json.dumps({'title': value}))
     assert {crop.title for crop in guardmaps.scan_crops(root)} == {None}
+
+
+def test_the_silver_blades_treasure_bar_and_world_guards_match_their_kept_crops():
+    """Reads crops kept from the live run, so it skips on a machine without them."""
+    from tools.amiga import screens
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance')
+    kept = {'treasure_bar': ('640/ssb2/accept1/shots/11-world.png',
+                             '640/ssb2/accept2/shots/11-world.png'),
+            'world': ('640/ssb2/accept2/shots/12-camp.png',)}
+    if not all((root / crop).is_file() for crops in kept.values() for crop in crops):
+        pytest.skip('the kept 640 Silver Blades crops are not on this machine')
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'ssb')
+    everything = [c for crops in kept.values() for c in crops]
+    for state, crops in kept.items():
+        rule = spec['guards'][state]
+        box = tuple(rule['box'])
+        for crop in everything:
+            digest = screens.box_digests(root / crop, {box})[box]
+            assert (digest == rule['sha256']) is (crop in crops), (state, crop)

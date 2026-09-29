@@ -154,6 +154,17 @@
       "example": "640/ssb2/accept1/shots/13-camp_save_picker.png",
       "sha256": "b9e5057a86e1d58e96a3245f5f8f3d6813ebb8c444e224f3d5ba8e0612146dbc"
     },
+    "treasure_bar": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        480,
+        426
+      ],
+      "example": "640/ssb2/accept2/shots/11-world.png",
+      "sha256": "605efa442147026c8e87487103e1fd24cfd16f148e522f6cbc0cbe83e8620367"
+    },
     "world": {
       "also": [],
       "box": [
@@ -191,6 +202,15 @@
     }
   },
   "labels": {
+    "640/ssb2/accept1/shots/11-world.png": [
+      "treasure_bar"
+    ],
+    "640/ssb2/accept2/shots/11-world.png": [
+      "treasure_bar"
+    ],
+    "640/ssb2/accept2/shots/12-camp.png": [
+      "world"
+    ],
     "amiga-grab-crops/28ssb__shots__05-begin.png": [
       "journal"
     ],
