@@ -59,7 +59,6 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.combat import VIEW  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import SLOT_AREA_BASE, SLOT_STRIDE  # noqa: E402
@@ -923,19 +922,22 @@ FIGHT_POLL = 0.5
 FIGHT_PRESS_LIMIT = 3
 
 
-def score_party_icons(sess, log: Log, disks=None) -> None:
+def score_party_icons(sess, log: Log, roll: dict, disks=None) -> None:
     """Log how each drawn party figure scores against the creation default.
 
-    Each figure the roll call puts on a party member's square is compared, by
-    `savecheck.icon_evidence`, with both poses (plain and mirrored) of
+    `roll` is the fight's `savecheck.roll_call`, read once by the caller.  Each
+    figure it puts on a party member's square is compared, by
+    `savecheck.icon_evidence`, with both poses (unmirrored and mirrored) of
     `dirtenicon.native_default().icon`, which the generator writes into all
     eight icon entries.  `exact` is whether some pose matched all nine glyphs
     and `exact_colours` whether its colours matched too; a member with no
-    figure in the window is listed under `not_drawn`.  Logs
-    `icon_score_unavailable` and returns when there is no battle to read or
-    the game's own default or glyphs cannot be read.
+    figure is listed under `not_drawn`.  `disks` is where `CHARPIC00` is read
+    from; `native_default` takes no path and reads `$POR_DISKS` or the
+    registry, so the two are the same directory only when the run was started
+    that way.  Logs `icon_score_unavailable` and returns when `roll` is empty
+    or the game's own default or glyphs cannot be read.
     """
-    if sess.battle() is None:
+    if not roll:
         log.emit("icon_score_unavailable", why="no battle could be read")
         return
     try:
@@ -943,9 +945,8 @@ def score_party_icons(sess, log: Log, disks=None) -> None:
         charset = savecheck.icon_charset(pathlib.Path(disks or DISKS))
         slots = [{"slot": n, "occupied": True, "shape": icon[:18].hex(),
                   "colours": icon[18:].hex()} for n in range(8)]
-        evidence = savecheck.icon_evidence(
-            sess, icon, slots=slots, charset=charset,
-            roll=savecheck.roll_call(sess))
+        evidence = savecheck.icon_evidence(sess, icon, slots=slots,
+                                           charset=charset, roll=roll)
     except (Exception, SystemExit) as error:
         log.emit("icon_score_unavailable", why=repr(error))
         return
@@ -954,16 +955,16 @@ def score_party_icons(sess, log: Log, disks=None) -> None:
                 "exact_colours": bool(f["exact_colours"])}
                for f in evidence.get("figures", []) if f["who"] is not None]
     drawn = {f["name"] for f in figures}
-    party = [c.name for c in sess.battle().party]
     log.emit("icon_score", figures=figures,
-             not_drawn=[n for n in party if n not in drawn])
+             not_drawn=[c["name"] for c in roll["party"]
+                        if c["name"] not in drawn])
     for f in figures:
         log.say(f"  {f['name']}: best {f['best']} of 9 glyphs against the "
                 f"creation default, exact {f['exact']}")
 
 
 def photograph_fight(sess, out: pathlib.Path, log: Log,
-                     timeout: float = FIGHT_WAIT) -> bool:
+                     timeout: float = FIGHT_WAIT, disks=None) -> bool:
     """Wait for a party member's turn, then take the `combat-icon` screenshot.
 
     The battlefield and every figure are drawn only once a party member has a
@@ -1002,18 +1003,20 @@ def photograph_fight(sess, out: pathlib.Path, log: Log,
         if time.monotonic() >= deadline:
             break
         time.sleep(FIGHT_POLL)
-    party = []
-    battle = sess.battle()
+    # One read of the combatant table serves the log and the icon score.  A
+    # member off the map (`$FF`) has no cell and is logged as off the map.
+    roll = savecheck.roll_call(sess)
     what = {"battlefield": ready, "presses": presses}
-    if battle is not None:
-        camera = tuple(battle.camera)
-        for c in battle.party:
-            x, y = c.square
-            row, col = savecheck.where_drawn(x, y, camera)
-            party.append({"name": c.name, "square": [x, y],
-                          "cell": [row, col],
-                          "in_window": (0 <= x - camera[0] < VIEW
-                                        and 0 <= y - camera[1] < VIEW)})
+    camera = tuple(roll["camera"]) if roll else None
+    party = []
+    for c in roll.get("party", ()):
+        member = {"name": c["name"], "square": [c["x"], c["y"]],
+                  "on_map": c["on_map"], "in_window": c["in_window"]}
+        if c["on_map"] and camera is not None:
+            member["cell"] = list(savecheck.where_drawn(c["x"], c["y"],
+                                                        camera))
+        party.append(member)
+    if camera is not None:
         what["camera"] = list(camera)
     what["party"] = party
     if not ready:
@@ -1022,12 +1025,12 @@ def photograph_fight(sess, out: pathlib.Path, log: Log,
     log.say(f"  fight screen: battlefield {'drawn' if ready else 'not seen'}"
             f"; party {party}")
     dump(sess, out, log, "combat-icon")
-    score_party_icons(sess, log)
+    score_party_icons(sess, log, roll, disks)
     return ready
 
 
 def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
-                  slums) -> dict:
+                  slums, disks=None) -> dict:
     """New Phlan to the Slums and on to `target`, stopping in combat.
 
     A fight found before `target` (the Slums roll a wandering fight on
@@ -1043,7 +1046,7 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
         log.emit("walked", leg="start", in_combat=True, began_at=began,
                  at_target=False, desynced=None)
         log.say(f"  a fight is already up at {began}; not walking")
-        photograph_fight(sess, out, log)
+        photograph_fight(sess, out, log, disks=disks)
         return {"in_combat": True, "began_at": began, "at_target": False,
                 "desynced": None}
     to_world(sess, log, need_square=True)
@@ -1132,13 +1135,13 @@ def walk_to_fight(sess, log: Log, out: pathlib.Path, target, new_phlan,
             f"{'the target' if at_target else 'not the target'}"
             + (f"; a key did not move the party: {desync}" if desync else ""))
     if fighting:
-        photograph_fight(sess, out, log)
+        photograph_fight(sess, out, log, disks=disks)
     return {"in_combat": fighting, "began_at": began, "at_target": at_target,
             "desynced": desync}
 
 
 def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150,
-                 fight_at=None, maps=None) -> dict:
+                 fight_at=None, maps=None, disks=None) -> dict:
     """Walk until the party is ambushed, and photograph the fight.
 
     Wall-following rather than a fixed pattern: go forward while it works,
@@ -1155,7 +1158,7 @@ def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150,
     the New Phlan and Slums `Geo` pair, loaded by the caller before the boot.
     """
     if fight_at is not None:
-        return walk_to_fight(sess, log, out, fight_at, *maps)
+        return walk_to_fight(sess, log, out, fight_at, *maps, disks=disks)
     # A fight already up (an encounter menu the last step opened) is the fight;
     # its bar is not the world's, so waiting for that would time out.
     if not sess.in_combat():
@@ -1177,7 +1180,7 @@ def pick_a_fight(sess, log: Log, out: pathlib.Path, steps: int = 150,
              position=list(sess.position()))
     log.say(f"  walked {taken} steps; in combat: {bool(fighting)}")
     if fighting:
-        photograph_fight(sess, out, log)
+        photograph_fight(sess, out, log, disks=disks)
     return {"steps": taken, "in_combat": bool(fighting)}
 
 
@@ -1303,7 +1306,7 @@ def main(argv=None) -> int:
         if args.full or args.fight_only or fight_at:
             log.say("picking a fight ...")
             findings["fight"] = pick_a_fight(sess, log, out, fight_at=fight_at,
-                                            maps=maps)
+                                            maps=maps, disks=disks)
             (out / "findings.json").write_text(json.dumps(findings, indent=1))
     except Exception as exc:                       # noqa: BLE001
         log.emit("error", why=repr(exc))

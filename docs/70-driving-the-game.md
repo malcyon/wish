@@ -297,7 +297,7 @@ hold 18 distinct bars, and every one of them is one of these:
 | kind | what it looks like | what to do |
 |---|---|---|
 | command | `MOVE VIEW AIM USE [CAST] QUICK DONE`, and `MOVE` drops off once the character has no squares left | one character's turn |
-| move | `MOVE/ATTACK, MOVE LEFT = 9` | a direction, **not** a menu; a monster moving under the game's control shows it too, with the monster named in the side pane, so `acting()` says whose it is |
+| move | `MOVE/ATTACK, MOVE LEFT = 9` | a direction, **not** a menu; a monster moving under the game's control shows it too, with the monster named in the side pane, so `acting()`, which names only party members and is None for anything else, is what tells them apart |
 | continue | `CONTINUE BATTLE : YES NO` | `NO` ends the fight |
 | press | `PRESS <RETURN> OR BUTTON TO CONTINUE` | inject `$0D` |
 | done | `GUARD DELAY QUIT SPEED EXIT` — what `DONE` opens | `GUARD` ends the turn, and so does `QUIT` when GUARD is not offered |

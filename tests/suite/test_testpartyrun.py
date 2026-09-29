@@ -7,6 +7,7 @@ walks for ever.  Only the screen, the keyboard and `select_bar` are scripted.
 
 import pathlib
 
+import gamedata
 import pytest
 from conftest import load_tools_module
 from gamedata import synthetic_geo
@@ -1135,9 +1136,11 @@ class FightScreen(PatrolSession):
     as the real prompt does; `disk` is the wanted-disk answer."""
 
     def __init__(self, monkeypatch, kinds, party=(), fade=0, disk=None,
-                 acting="PARTY", camera=(1, 2)):
+                 acting="PARTY", camera=(1, 2), off_map=(), battles=None):
         super().__init__(monkeypatch)
         self.acting_name, self.camera = acting, camera
+        # `battles` limits how many `battle()` reads answer before None.
+        self.off_map, self.battles = set(off_map), battles
         self.kinds, self.polls, self.pressed = list(kinds), 0, []
         self.party, self.fade, self.disk = party, fade, disk
         self.fading, self.handled, self.waited = 0, [], 0
@@ -1172,6 +1175,11 @@ class FightScreen(PatrolSession):
         self.fading = self.fade
 
     def battle(self):
+        if self.battles is not None:
+            if self.battles <= 0:
+                return None
+            self.battles -= 1
+
         class _Who:
             def __init__(self, name, square):
                 self.name, self.square = name, square
@@ -1199,6 +1207,23 @@ def _no_game_disks_for_the_icon_score(monkeypatch):
     def refuse():
         raise T.dirtenicon.RepairError("no disks in a fake")
     monkeypatch.setattr(T.dirtenicon, "native_default", refuse)
+    monkeypatch.setattr(T.savecheck, "roll_call", _fake_roll)
+
+
+def _fake_roll(sess):
+    """`savecheck.roll_call`'s party rows, from the fake's own battle."""
+    battle = sess.battle()
+    if battle is None:
+        return {}
+    x0, y0 = battle.camera
+    party = []
+    for c in battle.party:
+        x, y = c.square
+        on_map = c.name not in sess.off_map
+        party.append({"name": c.name, "x": x, "y": y, "on_map": on_map,
+                      "in_window": on_map and 0 <= x - x0 < 7
+                      and 0 <= y - y0 < 7})
+    return {"camera": [x0, y0], "party": party}
 
 
 def _photograph(monkeypatch, kinds, **kw):
@@ -1223,10 +1248,10 @@ def test_the_combat_shot_waits_for_the_command_bar(monkeypatch):
     assert what["battlefield"] is True and what["presses"] == 0
     assert what["camera"] == [1, 2]
     assert what["party"] == [
-        {"name": "BULWARK", "square": [3, 4], "cell": [7, 7],
-         "in_window": True},
-        {"name": "PILFER", "square": [4, 4], "cell": [7, 10],
-         "in_window": True}]
+        {"name": "BULWARK", "square": [3, 4], "on_map": True,
+         "in_window": True, "cell": [7, 7]},
+        {"name": "PILFER", "square": [4, 4], "on_map": True,
+         "in_window": True, "cell": [7, 10]}]
 
 
 def test_a_press_prompt_on_the_way_gets_a_return(monkeypatch):
@@ -1309,7 +1334,6 @@ def test_the_drawn_party_figures_are_scored_against_the_creation_default(
     Default.icon = icon
     monkeypatch.setattr(T.dirtenicon, "native_default", lambda: Default)
     monkeypatch.setattr(T.savecheck, "icon_charset", lambda disks: b"CS")
-    monkeypatch.setattr(T.savecheck, "roll_call", lambda sess: {"roll": 1})
 
     def evidence(sess, icon_, slots=None, charset=None, roll=None):
         given.update(icon=icon_, slots=slots, charset=charset, roll=roll)
@@ -1328,6 +1352,7 @@ def test_the_drawn_party_figures_are_scored_against_the_creation_default(
                                 "best": 9, "exact": True,
                                 "exact_colours": True}]
     assert what["not_drawn"] == ["PILFER"]
+    assert given["roll"]["party"][0]["name"] == "BULWARK"
     assert given["icon"] == icon and given["charset"] == b"CS"
     assert len(given["slots"]) == 8
     assert given["slots"][3]["shape"] == icon[:18].hex()
@@ -1616,3 +1641,61 @@ def test_an_unsettled_unmoved_key_gives_up_within_the_short_limit(monkeypatch):
     assert clock.now < T.UNMOVED_SETTLE_WAIT + 5 < T.STEP_SETTLE_WAIT
     logged = [w for k, w in log.events if k == "unmoved_key_unsettled"]
     assert len(logged) == 1 and logged[0]["outcome"] == "unsettled"
+
+
+def test_a_party_member_off_the_map_has_no_cell_and_is_logged_off_the_map(
+        monkeypatch):
+    sess, log, seen, clock, got = _photograph(
+        monkeypatch, [S.BAR_COMMAND],
+        party=[("BULWARK", (3, 4)), ("PILFER", (255, 255))],
+        off_map=("PILFER",))
+    (kind, what), = [e for e in log.events if e[0] == "fight_screen"]
+    assert what["party"][1] == {"name": "PILFER", "square": [255, 255],
+                                "on_map": False, "in_window": False}
+
+
+def test_the_icon_score_uses_the_read_it_was_given_not_another_battle(
+        monkeypatch):
+    # `battle()` answers once and then None, as it does when the monitor
+    # drops; the score must not read it again.
+    class Default:
+        icon = bytes(36)
+
+    monkeypatch.setattr(T.dirtenicon, "native_default", lambda: Default)
+    monkeypatch.setattr(T.savecheck, "icon_charset", lambda disks: b"")
+    monkeypatch.setattr(T.savecheck, "icon_evidence",
+                        lambda *a, **k: {"figures": []})
+    sess, log, seen, clock, got = _photograph(
+        monkeypatch, [S.BAR_COMMAND], party=[("BULWARK", (3, 4))],
+        battles=1)
+    (kind, what), = [e for e in log.events if e[0] == "icon_score"]
+    assert what["not_drawn"] == ["BULWARK"]
+
+
+def test_the_run_s_disks_are_where_the_glyphs_are_read(monkeypatch):
+    seen = []
+
+    class Default:
+        icon = bytes(36)
+
+    monkeypatch.setattr(T.dirtenicon, "native_default", lambda: Default)
+    monkeypatch.setattr(T.savecheck, "icon_charset",
+                        lambda disks: seen.append(disks) or b"")
+    monkeypatch.setattr(T.savecheck, "icon_evidence",
+                        lambda *a, **k: {"figures": []})
+    sess = FightScreen(monkeypatch, [S.BAR_COMMAND],
+                       party=[("BULWARK", (3, 4))])
+    monkeypatch.setattr(T, "dump", lambda *a: None)
+    Clock(monkeypatch)
+    T.photograph_fight(sess, pathlib.Path("."), RecordingLog(),
+                       disks="/somewhere")
+    assert seen == [pathlib.Path("/somewhere")]
+
+
+@gamedata.needs_disks
+def test_the_real_creation_default_is_read_from_the_players_disks(
+        monkeypatch):
+    # Read off the player's own POOL1 and POOL3; skips with no disks.
+    monkeypatch.undo()
+    icon = T.dirtenicon.native_default().icon
+    assert len(icon) == 36 and any(icon)
