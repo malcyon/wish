@@ -123,8 +123,8 @@ Consequences for the plan:
   (`m` enters it, `e` leaves it in Silver Blades and `Escape` in Pools of
   Darkness); Pool and Curse step at the map bar and have none.
 * **The C64 reads everything**, and its gap is coverage by title:
-  `acceptance.py` runs on Pool, Curse and Silver Blades, but `fight` is not
-  driven in Silver Blades and `cast` and `cure` are Curse's alone.
+  `acceptance.py` runs `fight` on Pool, Curse and Silver Blades, but `cast`
+  and `cure` are Curse's alone.
 * **The Amiga's driver of record is WinUAE**, because it runs four titles end
   to end, leaves Curse's code wheel with
   `ESC`, answers Silver Blades' journal question through a private helper, and

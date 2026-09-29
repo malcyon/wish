@@ -8207,24 +8207,40 @@ def test_a_plain_fight_uses_the_logging_tactic_only_when_asked(monkeypatch, tmp_
 
 class _SilverFight(_BarFight):
     """A New Verdigris walk that commits to a fight after COMMIT move keys,
-    then three command bars read the way `Session.fight` reads them."""
+    then three command bars read the way `Session.fight` reads them, then the
+    mode readings POLLS offered to the fight's stop, each once; the machine is
+    left in the mode the outcome leaves it in (the world after a win, the party
+    menu after a loss or a wipe, COMBAT when the budget ran out)."""
 
     MOVE_BAR = "I,J,K,M, RETURN OR BUTTON"
+    WORLD_BAR = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
+    AFTER = {A.S.WON: A.S.DUNGEON, A.S.LOST: A.SILVER_GEN, A.S.BUDGET: A.S.COMBAT,
+             A.S.ENDED: A.SILVER_GEN}
 
     def __init__(self, commit=5, prep_reads=2, outcome=A.S.WON, loading=0,
-                 wiped=False):
+                 wiped=False, polls=(), idle=True, sticky_gate=False):
         super().__init__(["K", "J", "K"])
         self.memory = {A.SILVER_WANDER_GATE: 0}
         self.gate_writes = []
         self.moves = []
         self.moves_at_commit = None
-        self.commit, self.prep_reads, self.outcome = commit, prep_reads, outcome
+        self.commit, self.prep_reads = commit, prep_reads
+        self.outcome = A.S.ENDED if wiped else outcome
+        self.after = self.AFTER[self.outcome]
+        self.polls = list(polls or ((A.SILVER_GEN, A.SILVER_GEN) if wiped else ()))
+        self.poll_mode = None
         #: Readings, after the move that starts the encounter, for which the
         #: move bar stays drawn while `SETUPMON` loads and no key is waited on.
-        self.loading, self.wiped = loading, wiped
+        self.loading, self.idle = loading, idle
+        #: A gate the monitor cannot write once the fight is over.
+        self.sticky_gate = sticky_gate
         self.fought = []
 
     def mode(self):
+        if self.poll_mode is not None:
+            return self.poll_mode
+        if self.fought:
+            return self.after
         if len(self.moves) < self.commit or self.loading:
             return A.S.DUNGEON
         if self.moves_at_commit is None:
@@ -8232,18 +8248,18 @@ class _SilverFight(_BarFight):
         if self.prep_reads:
             self.prep_reads -= 1
             return A.COMBAT_PREP
-        if self.fought:
-            return A.SILVER_GEN if self.wiped else A.S.DUNGEON
         return A.S.COMBAT
 
     def key_idle(self):
         if len(self.moves) >= self.commit and self.loading:
             self.loading -= 1
             return False
-        return True
+        return self.idle
 
     def screen(self):
-        return FakeScreen([""] * 24 + [self.MOVE_BAR if self.mode() == 1 else ""])
+        if self.mode() != A.S.DUNGEON:
+            return FakeScreen([""] * 25)
+        return FakeScreen([""] * 24 + [self.WORLD_BAR if self.fought else self.MOVE_BAR])
 
     def mon(self, timeout):
         sess = self
@@ -8260,7 +8276,8 @@ class _SilverFight(_BarFight):
 
             def write(self, addr, data):
                 sess.gate_writes.append((addr, data[0], sess.mode()))
-                sess.memory[addr] = data[0]
+                if not (sess.sticky_gate and sess.fought):
+                    sess.memory[addr] = data[0]
 
             def resume(self):
                 pass
@@ -8275,6 +8292,13 @@ class _SilverFight(_BarFight):
         for _ in range(3):
             self.turns.append(1)
             tactic(self, SimpleNamespace(text="MOVE VIEW AIM TURN QUICK DONE"))
+        self.stopped_at = None
+        for n, mode in enumerate(self.polls):
+            self.poll_mode = mode
+            if stop(self, self.screen()):
+                self.stopped_at = n
+                break
+        self.poll_mode = None
         return A.S.FightResult(self.outcome, 3, 1.0, [], [])
 
 
@@ -8332,7 +8356,7 @@ def test_a_silver_blades_fight_walks_with_the_gate_on_and_logs_every_bar(
     assert sess.gate_writes == [(A.SILVER_WANDER_GATE, 1, A.S.DUNGEON),
                                 (A.SILVER_WANDER_GATE, 0, A.S.DUNGEON)]
     assert got["wander_gate"] == {"address": "$4C2D", "was": 0, "now": 1,
-                                  "restored": 0}
+                                  "restored": 0, "mode": A.S.DUNGEON}
     assert [kw["actor"]["name"] for kind, kw in events if kind == "bar"] == \
         ["K", "J", "K"]
     assert [k for k, _ in events].count("placement") == 1
@@ -8375,14 +8399,20 @@ def test_a_silver_blades_fight_outside_new_verdigris_is_refused_before_the_gate(
     assert sess.gate_writes == [] and sess.moves == []
 
 
-def test_a_lost_silver_blades_fight_fails_the_step_and_still_puts_the_gate_back(
-        monkeypatch, tmp_path):
-    sess = _SilverFight(outcome=A.S.LOST)
-    run, _, _ = _silver_run(monkeypatch, tmp_path, sess)
+@pytest.mark.parametrize("outcome, match, mode", [
+    (A.S.LOST, "lost the fight", A.SILVER_GEN),
+    (A.S.BUDGET, "ran out of its 600 second budget", A.S.COMBAT)])
+def test_a_lost_or_overlong_silver_blades_fight_still_puts_the_gate_back(
+        monkeypatch, tmp_path, outcome, match, mode):
+    sess = _SilverFight(outcome=outcome)
+    run, events, _ = _silver_run(monkeypatch, tmp_path, sess)
     run.reading = lambda: {}
-    with pytest.raises(A.StepFailed, match="lost the fight"):
+    with pytest.raises(A.StepFailed, match=match):
         run.fight("600", "I", 40)
     assert sess.memory[A.SILVER_WANDER_GATE] == 0
+    assert sess.gate_writes[-1] == (A.SILVER_WANDER_GATE, 0, mode)
+    last = [kw for kind, kw in events if kind == "wander-gate"][-1]
+    assert last["restored"] == 0 and last["mode"] == mode
 
 
 def test_a_silver_blades_walk_sends_no_key_while_an_encounter_loads_under_the_move_bar(
@@ -8402,7 +8432,36 @@ def test_a_silver_blades_party_wiped_to_the_party_menu_fails_the_fight_at_once(
     assert run.world_again(sess, None) is False
     with pytest.raises(A.StepFailed, match="went back to the party menu"):
         run.fight("600", "I", 40)
-    assert run.world_again(sess, None) is True
     assert [kw["wiped"] for kind, kw in events if kind == "silver-fight"] == [True]
-    assert "restored" in [kw for kind, kw in events if kind == "wander-gate"][-1]
-    assert sess.memory[A.SILVER_WANDER_GATE] == 1
+    assert sess.memory[A.SILVER_WANDER_GATE] == 0
+    assert sess.gate_writes[-1] == (A.SILVER_WANDER_GATE, 0, A.SILVER_GEN)
+    assert [kw for kind, kw in events if kind == "wander-gate"][-1]["restored"] == 0
+
+
+def test_one_reading_of_the_party_menu_mode_while_a_won_fight_ends_is_not_a_wipe(
+        monkeypatch, tmp_path):
+    sess = _SilverFight(polls=(A.S.COMBAT, A.SILVER_GEN, A.S.DUNGEON))
+    run, events, _ = _silver_run(monkeypatch, tmp_path, sess)
+    got = run.fight("600", "I", 40)
+    assert sess.stopped_at == 2
+    assert got["outcome"] == A.S.WON and got["wander_gate"]["restored"] == 0
+    assert [kw["wiped"] for kind, kw in events if kind == "silver-fight"] == [False]
+
+
+def test_a_walk_that_finds_no_idle_move_bar_sends_nothing_and_does_not_call_it_a_wall(
+        monkeypatch, tmp_path):
+    sess = _SilverFight(idle=False)
+    run, _, captures = _silver_run(monkeypatch, tmp_path, sess)
+    run.clock = iter(range(0, 10_000)).__next__
+    with pytest.raises(A.NoMoveKeySent, match="no key was sent"):
+        run.fight("600", "I", 40)
+    assert sess.moves == [] and not sess.fought
+    assert sess.memory[A.SILVER_WANDER_GATE] == 0
+    assert "lost-move-bar" in captures
+
+
+def test_a_gate_that_will_not_go_back_fails_a_won_fight(monkeypatch, tmp_path):
+    sess = _SilverFight(sticky_gate=True)
+    run, _, _ = _silver_run(monkeypatch, tmp_path, sess)
+    with pytest.raises(A.StepFailed, match=r"\$4C2D was not put back to 0: it reads 1"):
+        run.fight("600", "I", 40)

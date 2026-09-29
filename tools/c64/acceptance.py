@@ -1163,6 +1163,11 @@ class StepFailed(RuntimeError):
     pass
 
 
+class NoMoveKeySent(StepFailed):
+    """A Silver Blades walk found no idle move bar in time and sent nothing;
+    unlike a key that went and moved nobody, it says nothing about the edge."""
+
+
 class _SavingChosen(Exception):
     """`SAVING GAME` was on row 24 while `write_save` waited for `SAVE GAME`."""
 
@@ -4200,6 +4205,8 @@ class SilverRun(CurseRun):
 
     #: `ssbsession.Addresses`, which `load` reads off the disks.
     silver_addr = None
+    #: Consecutive readings of mode 0 (the party menu) during a fight.
+    gen_reads = 0
 
     def __init__(self, sess, log, out, game, points, disks, staged_disk):
         PoolRun.__init__(self, sess, log, out, game, points)
@@ -4255,17 +4262,39 @@ class SilverRun(CurseRun):
         return self.sess.mode() in (S.COMBAT, COMBAT_PREP)
 
     def wander_gate(self, value: int | None = None) -> int | None:
-        """`$4C2D` as read, after writing VALUE when one is given and the party
-        is in the world (mode 1).  None when the machine did not answer or was
-        not in the world."""
-        if value is not None and self.sess.mode() != S.DUNGEON:
+        """`$4C2D` as read, after writing VALUE when one is given, in one
+        monitor stop; None when the machine did not answer.
+
+        It writes in whatever mode the machine is in.  `$4C2D` is a variable of
+        the saved-game block at `$4B00`, which the scripts keep across COMBAT
+        (`ECL10` arm 16 sets `$4C2E` before `COMBAT` and it reads back after
+        the fight, #334), and after a wipe the party menu's next load reads the
+        block from disk again; no mode is known to hold other code there."""
+        try:
+            with self.sess.mon(8) as m:
+                if value is not None:
+                    m.write(SILVER_WANDER_GATE, bytes([value]))
+                got = m.read(SILVER_WANDER_GATE, 1)[0]
+                m.resume()
+        except Exception:                   # noqa: BLE001
             return None
-        with self.sess.mon(8) as m:
-            if value is not None:
-                m.write(SILVER_WANDER_GATE, bytes([value]))
-            got = m.read(SILVER_WANDER_GATE, 1)[0]
-            m.resume()
         return got
+
+    def put_gate_back(self, gate: dict, was: int, failing: BaseException | None
+                      ) -> None:
+        """Write `$4C2D` back to WAS and log it; a read-back that is not WAS
+        fails the step, naming the failure already under way if there is one."""
+        gate["restored"] = self.wander_gate(was)
+        gate["mode"] = self.sess.mode()
+        self.log.emit("wander-gate", **gate)
+        if gate["restored"] == was:
+            return
+        why = (f"$4C2D was not put back to {was}: it reads {gate['restored']} "
+               f"in mode {gate['mode']}")
+        if failing is None:
+            raise self.fail("wander-gate", why)
+        if isinstance(failing, StepFailed):
+            raise StepFailed(f"{failing}; and {why}") from failing
 
     def await_mode(self, want, seconds: float, what: str) -> int | None:
         """Poll the mode byte until it is in WANT, pressing nothing; the last
@@ -4293,8 +4322,10 @@ class SilverRun(CurseRun):
         """Whether a move key may go: the move or world bar is up and the
         engine is waiting for a key.  The move bar stays drawn while an
         encounter's `SETUPMON` loads, so the bar alone would let a key into the
-        encounter.  A `PRESS` bar is answered on the way; a committed fight, or
-        no idle bar within `SILVER_MOVE_READY_SECONDS`, says no."""
+        encounter.  A `PRESS` bar is answered on the way.  A committed fight
+        says no, and the walk's next `in_combat` ends it; no idle bar within
+        `SILVER_MOVE_READY_SECONDS` raises `NoMoveKeySent`, because a False
+        from `press` would read to `goto` as a wall and ban a good edge."""
         end = self.clock() + self.budget(SILVER_MOVE_READY_SECONDS, "move bar")
         while True:
             if self.fight_committed():
@@ -4304,7 +4335,9 @@ class SilverRun(CurseRun):
                 return True
             if self.clock() >= end:
                 self.log.emit("silver-no-move-bar", row24=bar)
-                return False
+                raise NoMoveKeySent(str(self.fail(
+                    "move-bar", f"no idle move bar in {SILVER_MOVE_READY_SECONDS:g} s; "
+                                f"no key was sent")))
             route.clear_bar()
             self.sess.settle(1.0)
 
@@ -4312,9 +4345,12 @@ class SilverRun(CurseRun):
         """`Session.fight`'s stop: DUNGEON with the world bar on row 24, which
         does not wait on a status line eleven Silver Blades areas never draw;
         or the party menu, where the game goes when the whole party falls
-        without `Session.fight` reading its line."""
+        without `Session.fight` reading its line.  The party menu counts only
+        on two readings of mode 0 in a row, so one read taken while `LINKER`
+        passes between overlays is not a wipe."""
         mode = sess.mode()
-        return mode == SILVER_GEN or (
+        self.gen_reads = self.gen_reads + 1 if mode == SILVER_GEN else 0
+        return self.gen_reads >= 2 or (
             screen is not None and self.at_world(screen.row(24))
             and mode == S.DUNGEON)
 
@@ -4339,10 +4375,10 @@ class SilverRun(CurseRun):
             raise self.fail("wander-gate", f"$4C2D reads {gate['now']}, not 1")
         try:
             walked, result = self._silver_walk_and_fight(arg, steps, geo)
-        finally:
-            with contextlib.suppress(Exception):
-                gate["restored"] = self.wander_gate(was)
-            self.log.emit("wander-gate", **gate)
+        except BaseException as e:
+            self.put_gate_back(gate, was, e)
+            raise
+        self.put_gate_back(gate, was, None)
         return {"walked": walked, "area": str(area), "wander_gate": gate,
                 "acted": result.acted, **dataclasses.asdict(result)}
 
@@ -4386,12 +4422,13 @@ class SilverRun(CurseRun):
             raise self.fail("fight", "Silver Blades never entered combat mode")
         self.capture("fight-start")
         self.sess.await_bar((S.BAR_COMMAND,), timeout=60, interval=2.0)
+        self.gen_reads = 0
         result = self.sess.fight(budget=float(arg or 120),
                                  tactic=(self.bar_tactic() if self.log_bars
                                          else S.Session.melee_turn),
                                  stop=self.world_again)
         self.capture("fight-end")
-        wiped = self.sess.mode() == SILVER_GEN
+        wiped = self.gen_reads >= 2
         self.log.emit("silver-fight", outcome=result.outcome, wiped=wiped,
                       turns=result.turns, blows=result.blows,
                       seconds=round(result.seconds, 1), bars=result.bars[-12:],
