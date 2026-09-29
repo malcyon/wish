@@ -242,7 +242,7 @@ def test_the_pile_is_watched_and_the_split_read_from_scripted_hits():
     por = _por(dbg)
     report = dosfightwatch.measure_split(
         por, ovr, steps=5, fight_kw={"settled": 0.0},
-        walk=lambda por, steps: {"met": True})
+        walk=lambda por, steps: {"met": True}, share=0xFF)
     gold = dosboxx.linear((DS, dosfightwatch.GOLD_PILE))
     for i in range(4):
         seg, ofs = dosboxx.seg_off(gold + i)
@@ -264,7 +264,7 @@ def test_a_split_that_hits_only_the_silver_pile_is_measured_and_matched():
     dbg.pile = dosfightwatch.PILE_BASE + 4          # silver
     report = dosfightwatch.measure_split(
         _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
-        walk=lambda por, steps: {"met": True})
+        walk=lambda por, steps: {"met": True}, share=0xFF)
     base = dosboxx.linear((DS, dosfightwatch.PILE_BASE))
     for i in range(28):
         seg, ofs = dosboxx.seg_off(base + i)
@@ -289,7 +289,7 @@ def test_a_nonzero_pile_with_no_split_seen_keeps_matches_false():
     dbg.mem[gold:gold + 4] = (500).to_bytes(4, "little")   # gold never is
     report = dosfightwatch.measure_split(
         _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
-        walk=lambda por, steps: {"met": True})
+        walk=lambda por, steps: {"met": True}, share=0xFF)
     assert report["piles"]["silver"]["matches"] is True
     assert report["unmeasured_piles"] == ["gold"]
     assert report["gold_split_seen"] is False
@@ -321,7 +321,7 @@ def test_each_pile_is_reported_on_its_own_when_two_are_split():
     dbg.run = run
     report = dosfightwatch.measure_split(
         _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
-        walk=lambda por, steps: {"met": True})
+        walk=lambda por, steps: {"met": True}, share=0xFF)
     assert report["piles"]["gold"]["taken"] == 532
     assert report["piles"]["silver"]["before"] == 300
     assert report["piles"]["silver"]["taken"] == 100
@@ -333,9 +333,87 @@ def test_a_split_that_takes_less_than_the_rule_says_is_reported():
     dbg = _Debugger(ovr, _script(1000, 400), counts=(13, 7))
     report = dosfightwatch.measure_split(
         _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
-        walk=lambda por, steps: {"met": True})
+        walk=lambda por, steps: {"met": True}, share=0xFF)
     assert report["taken"] == 400 and report["expected_cut"] == 532
     assert report["matches"] is False
+
+
+def test_the_verdict_is_the_pile_arithmetic_and_not_the_count_read():
+    """The count read gave a = 12, c = 26 in a live fight, which the code cannot
+    produce; copper 64 -> 43 is `(64 div 9) * 3` for a `$FB` hireling."""
+    ovr = _ovr()
+    dbg = _Debugger(ovr, _script(64, 21), counts=(12, 26))
+    dbg.pile = dosfightwatch.PILE_BASE
+    report = dosfightwatch.measure_split(
+        _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
+        walk=lambda por, steps: {"met": True}, share=0xFB)
+    assert (report["counts"]["a"], report["counts"]["c"]) == (12, 26)
+    assert report["piles"]["copper"]["expected_cut"] == 21
+    assert report["matches"] is True
+    assert report["rule"] == {"a": 9, "c": 3}
+
+
+def test_a_share_with_no_rule_gives_no_verdict():
+    ovr = _ovr()
+    dbg = _Debugger(ovr, _script(64, 21), counts=(12, 26))
+    dbg.pile = dosfightwatch.PILE_BASE
+    report = dosfightwatch.measure_split(
+        _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
+        walk=lambda por, steps: {"met": True}, share=0x42)
+    assert "matches" not in report and report["rule"] is None
+
+
+def test_the_rules_by_share():
+    assert dosfightwatch.SHARE_RULES[0x03] == dosfightwatch.SHARE_RULES[0xFB] == (9, 3)
+    assert dosfightwatch.SHARE_RULES[0xFF] == (13, 7)
+
+
+def test_the_hireling_share_is_the_one_nonzero_share(tmp_path):
+    for n, share in ((1, 0), (7, 0xFB)):
+        rec = bytearray(285)
+        rec[dosfightwatch.SHARE_OFFSET] = share
+        (tmp_path / f"CHRDATD{n}.SAV").write_bytes(bytes(rec))
+    assert dosfightwatch.hireling_share(tmp_path, "D") == 0xFB
+    assert dosfightwatch.hireling_share(tmp_path, "E") is None
+
+
+def test_at_with_a_numeric_facing_names_the_letters():
+    with pytest.raises(ValueError, match="N, E, S or W"):
+        dosfightwatch.check_at("7,3,1")
+    dosfightwatch.check_at("7,3,e")
+
+
+class _LockedScreen:
+    def glyphs(self, rect=None) -> str:
+        return dosfightwatch.LOCKED_BAR
+
+
+class _LockedSession(_FakeSession):
+    """Shows the locked bar until a key is pressed, the world's bar after."""
+
+    def capture(self):
+        return _Screen() if self.pressed else _LockedScreen()
+
+
+class _LockedDoorPoR(_FakePoR):
+    """The first step meets a locked door, and EXIT then a turn is what the
+    walk must do; the next step is the encounter."""
+
+    def __init__(self):
+        super().__init__(["encounter"])
+        self.s = _LockedSession()
+        self.turns = 0
+
+    def step(self) -> bool:
+        return False
+
+
+def test_a_locked_door_is_answered_exit_and_the_walk_turns():
+    por = _LockedDoorPoR()
+    result = dosfightwatch.walk_to_encounter(por, steps=5, patience=1.0)
+    assert por.s.pressed == ["e"]
+    assert result["met"] is True and result["at_step"] == 2
+    assert result["blocked"] == 1
 
 
 def test_pile_mode_refuses_to_run_without_a_folder():
@@ -359,7 +437,7 @@ def test_two_bytes_tripped_by_one_word_write_are_both_classified():
     dbg.run = run
     report = dosfightwatch.measure_split(
         _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
-        walk=lambda por, steps: {"met": True})
+        walk=lambda por, steps: {"met": True}, share=0xFF)
     assert all(h["phase"] for h in report["hits"])
     assert report["pile"] == {"before": 1000, "after": 468}
     assert report["taken"] == 532 and report["matches"] is True
@@ -372,14 +450,14 @@ def test_a_ds_that_is_not_the_games_is_refused_and_the_override_skips_the_check(
     dbg.mem[base + 8:base + 12] = b"\x00\x00\x05\x00"      # a pile of 327,680
     report = dosfightwatch.measure_split(
         _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
-        walk=lambda por, steps: {"met": True})
+        walk=lambda por, steps: {"met": True}, share=0xFF)
     assert "not the game's data segment" in report["why"]
     assert not any(c.startswith("BPM") for c in dbg.commands)
     dbg2 = _Debugger(ovr, [], counts=(13, 7))
     dbg2.mem[base + 8:base + 12] = b"\x00\x00\x05\x00"
     dosfightwatch.measure_split(_por(dbg2), ovr, steps=5, ds=DS,
                                 fight_kw={"settled": 0.0},
-                                walk=lambda por, steps: {"met": True})
+                                walk=lambda por, steps: {"met": True}, share=0xFF)
     assert any(c.startswith("BPM") for c in dbg2.commands)
 
 
@@ -389,7 +467,7 @@ def test_a_count_breakpoint_that_never_fires_says_why(monkeypatch):
     monkeypatch.setattr(dosfightwatch, "count_fight", lambda por, brk: None)
     report = dosfightwatch.measure_split(
         _por(dbg), ovr, steps=5, fight_kw={"settled": 0.0},
-        walk=lambda por, steps: {"met": True})
+        walk=lambda por, steps: {"met": True}, share=0xFF)
     assert "count breakpoint" in report["why"]
 
 
@@ -652,7 +730,7 @@ def test_pile_keeps_the_loaded_screen_and_the_report_names_the_shots(
         def status(self):
             return "status"
 
-    def measure(por, ovr, *, steps, ds, evidence, walk):
+    def measure(por, ovr, *, steps, ds, evidence, walk, share):
         evidence.take(por.s, "encounter1")
         return {"walk": {"met": True}}
 

@@ -123,6 +123,14 @@ FIGHT_BARS = frozenset({"encounter", "message", "command",
                         "continue_battle", "treasure"})
 
 
+#: `BASH PICK EXIT`, the bar a locked door raises when the party steps into
+#: it; `PoolOfRadiance.COMBAT_BARS` has no label for it.  Digest of the bar
+#: row, as `screen.glyphs(dosbox.BAR)` gives it.  `e` is EXIT, which leaves
+#: the party where it was.
+LOCKED_BAR = "a0cec1d006a329cb"
+LOCKED_EXIT_KEY = "e"
+
+
 class Evidence:
     """Screenshots a run keeps in its `--out` folder, and their names.
 
@@ -465,6 +473,8 @@ def _await_bar(por: dosbox.PoolOfRadiance, patience: float,
     while True:
         screen, kind = _grab(por)
         if screen is not None:
+            if screen.glyphs(dosbox.BAR) == LOCKED_BAR:
+                return "locked", True
             if kind in FIGHT_BARS or por.COMBAT_KEYS.get(kind or "") is not None:
                 return kind, True
             if kind is None and first_sight and evidence is not None:
@@ -540,6 +550,14 @@ def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int, *,
         if kind in FIGHT_BARS:
             return {"met": True, "at_step": i + 1, "bar": kind, "walked": walked,
                     "blocked": blocked, "prompts": prompts}
+        if kind == "locked":
+            # A locked door is a wall that asks a question: EXIT leaves the
+            # party unchanged, and the square is blocked like a bump.
+            por.s.key(LOCKED_EXIT_KEY)
+            por.s.wait_until_ink(dosbox.BAR, por.world_bar or "", timeout=20.0)
+            blocked += 1
+            por.turn_right()
+            continue
         # Something answerable that is not the encounter menu: answer it and
         # keep walking.  `n` is the decline on every `YES NO` the map offers.
         # **Turn afterwards.**  Declining the inn's "IT WILL COST YOU 1
@@ -875,6 +893,29 @@ def find_ovr(game: pathlib.Path) -> bytes:
     raise FileNotFoundError(f"no GAME.OVR in {game}")
 
 
+#: Offset of the treasure share in a DOS `CHRDAT` record.
+SHARE_OFFSET = 0x085
+
+#: `(A, C)` the split divides and multiplies by, for the hireling's treasure
+#: share: `$03` and `$FB` take 3 parts of 9 (the C64 rule), `$FF` takes 7 of 13.
+#: A share not listed has no rule here, so no verdict is given for it.
+SHARE_RULES = {0x03: (9, 3), 0xFB: (9, 3), 0xFF: (13, 7)}
+
+
+def hireling_share(save_dir: pathlib.Path, letter: str) -> int | None:
+    """The one nonzero treasure share among the slot's character records, or
+    None when there is none or several.  `records` stops at six, and the
+    hireling is the seventh file, so the directory is scanned here."""
+    shares = set()
+    for p in save_dir.iterdir():
+        name = p.name.upper()
+        if name.startswith(f"CHRDAT{letter.upper()}") and name.endswith(".SAV"):
+            data = p.read_bytes()
+            if len(data) > SHARE_OFFSET and data[SHARE_OFFSET]:
+                shares.add(data[SHARE_OFFSET])
+    return shares.pop() if len(shares) == 1 else None
+
+
 def expected_cut(pile: int, c: int, a: int) -> int:
     """What the split takes from a pile: `cwd(((pile div A) & 0xFF) * C)`."""
     cut = ((pile // a) & 0xFF) * c
@@ -960,13 +1001,15 @@ def derive_bias(hits: list[dict]) -> dict:
 
 
 def summarize(initial: bytes, hits: list[dict], ovr: bytes, base: int,
-              counts: dict | None) -> dict:
+              counts: dict | None, share: int | None = None) -> dict:
     """The JSON report of a split measurement, from its raw hits and counts.
 
     `initial` is the 28 bytes of the seven piles at `base`.  `piles` has one
     entry per pile whose split was seen, with its `before`, `after`, `taken`
-    and, once `counts` is known, `expected_cut`, `expected_after` and
-    `matches`.  `pile`, `expected_cut`, `taken` and `expected_after` are the
+    and, once `share` names a rule in `SHARE_RULES`, `expected_cut`,
+    `expected_after` and `matches`.  `counts` is the count read at
+    `COUNT_OFFSET`, reported as data and not used: it has read values the code
+    cannot produce.  `pile`, `expected_cut`, `taken` and `expected_after` are the
     gold pile's own, and `matches` is true only if at least one pile was measured, none that
     held coins at the encounter is missing (`unmeasured_piles`) and every
     measured pile's split equals the rule's.  `gold_split_seen` says whether
@@ -975,6 +1018,7 @@ def summarize(initial: bytes, hits: list[dict], ovr: bytes, base: int,
     classified = [classify_hit(h, ovr) for h in hits]
     bias = derive_bias(classified)
     piles: dict[str, dict] = {}
+    rule = SHARE_RULES.get(share)
     for i, name in enumerate(PILE_NAMES):
         start = base + 4 * i
         own = [h for h in classified if 0 <= h["addr"] - start < 4]
@@ -982,8 +1026,8 @@ def summarize(initial: bytes, hits: list[dict], ovr: bytes, base: int,
         if change is None:
             continue
         row = {**change, "taken": change["before"] - (change["after"] or 0)}
-        if counts and counts.get("a"):
-            cut = expected_cut(change["before"], counts["c"], counts["a"])
+        if rule:
+            cut = expected_cut(change["before"], rule[1], rule[0])
             row["expected_cut"] = cut
             row["expected_after"] = change["before"] - cut
             row["matches"] = cut == row["taken"]
@@ -991,7 +1035,8 @@ def summarize(initial: bytes, hits: list[dict], ovr: bytes, base: int,
     gold = piles.get("gold")
     out: dict = {"hits": classified, **bias, "pile": (
         {"before": gold["before"], "after": gold["after"]} if gold else None),
-        "piles": piles, "counts": counts}
+        "piles": piles, "counts": counts, "share": share,
+        "rule": {"a": rule[0], "c": rule[1]} if rule else None}
     if bias["bias"] is not None:
         seg, ofs = dosboxx.seg_off(bias["bias"] + COUNT_OFFSET)
         out["count_break"] = f"{seg:04X}:{ofs:04X}"
@@ -1002,7 +1047,7 @@ def summarize(initial: bytes, hits: list[dict], ovr: bytes, base: int,
     out["unmeasured_piles"] = [
         name for i, name in enumerate(PILE_NAMES)
         if name not in piles and any(initial[4 * i:4 * i + 4])]
-    if counts and counts.get("a"):
+    if rule:
         out["matches"] = (bool(piles) and not out["unmeasured_piles"]
                           and all(p["matches"] for p in piles.values()))
         if not piles:
@@ -1120,6 +1165,16 @@ def check_records_unchanged(folder: pathlib.Path, save_dir: pathlib.Path,
     return {"records_unchanged": True, "record_hashes": got}
 
 
+def check_at(at: str) -> None:
+    """`ValueError` unless `at` is `X,Y,F` with `F` one of N, E, S, W."""
+    parts = at.split(",")
+    if (len(parts) != 3 or not parts[0].strip().isdigit()
+            or not parts[1].strip().isdigit()
+            or parts[2].strip().upper() not in ("N", "E", "S", "W")):
+        raise ValueError(f"--at {at!r} must be X,Y,F with F one of the letters "
+                         "N, E, S or W (a facing number is not accepted)")
+
+
 def install_folder(save_dir: pathlib.Path, folder: pathlib.Path,
                    at: str | None = None, source: str | None = None,
                    place: tuple[bytes, bytes] | None = None) -> str:
@@ -1131,6 +1186,8 @@ def install_folder(save_dir: pathlib.Path, folder: pathlib.Path,
     Without `place` the area is not changed, so the folder has to stand where
     fights happen already.
     """
+    if at:
+        check_at(at)
     wipe_roster(save_dir)
     chosen = staging.source_slot(folder, source)
     took = staging.install(folder, save_dir, chosen, chosen)
@@ -1215,7 +1272,7 @@ def count_fight(por: dosbox.PoolOfRadiance, brk_lin: int, *,
 
 def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
                   ds: int | None = None, fight_kw: dict | None = None,
-                  walk=walk_to_encounter,
+                  walk=walk_to_encounter, share: int | None = None,
                   evidence: Evidence | None = None) -> dict:
     """Watch the seven coin piles through one fight, then read `C` and `A` in another.
 
@@ -1225,7 +1282,9 @@ def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
     overlay's runtime base.  Fight two: the same walk with a `BP` at
     `COUNT_OFFSET` in that overlay, where `C` and `A` are read.  `ds` is read
     from the halted emulator unless given; it is the game's data segment only
-    if the emulator halted in game code.
+    if the emulator halted in game code.  `share` is the hireling's treasure
+    share, which picks the rule each pile's cut is judged against; the count
+    read is reported and not used.
     """
     s = por.s
     report: dict = {"mode": "pile"}
@@ -1256,7 +1315,7 @@ def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
     s.run()
     report["fight"] = fight_watching(por, w, on_hit=lambda row: read_code_before(s, row),
                                      evidence=evidence, **(fight_kw or {}))
-    report.update(summarize(initial, w.hits, ovr, base, None))
+    report.update(summarize(initial, w.hits, ovr, base, None, share))
     if report.get("bias") is None:
         report["why"] = "no unambiguous split hit, so no overlay base"
         return report
@@ -1283,7 +1342,7 @@ def measure_split(por: dosbox.PoolOfRadiance, ovr: bytes, *, steps: int,
     counts = count_fight(por, brk)
     if counts is None:
         report["why"] = "the count breakpoint was not reached in the second fight"
-    report.update(summarize(initial, w.hits, ovr, base, counts))
+    report.update(summarize(initial, w.hits, ovr, base, counts, share))
     return report
 
 
@@ -1291,6 +1350,8 @@ def pile(*, folder: pathlib.Path, source: str | None, at: str | None,
          steps: int, out: pathlib.Path, ds: int | None,
          place_like_path: pathlib.Path | None = None) -> dict:
     """`measure_split` on a folder installed into a fresh DOSBox-X."""
+    if at:
+        check_at(at)
     out.mkdir(parents=True, exist_ok=True)
     game = dosbox.find_game()
     evidence = Evidence(out)
@@ -1316,6 +1377,7 @@ def pile(*, folder: pathlib.Path, source: str | None, at: str | None,
                 report["placed"]["differs_from_donor"] = surviving_differences(
                     (s.save_dir / f"SAVGAM{letter}.DAT").read_bytes(), donor)
             report.update(check_records_unchanged(folder, s.save_dir, letter))
+            share = hireling_share(s.save_dir, letter)
             s.boot(fresh=False)
             por = dosbox.PoolOfRadiance(s)
             por.to_main_menu()
@@ -1323,7 +1385,7 @@ def pile(*, folder: pathlib.Path, source: str | None, at: str | None,
             evidence.take(s, "loaded")
             report["status_at_load"] = por.status()
             report.update(measure_split(
-                por, find_ovr(game), steps=steps, ds=ds, evidence=evidence,
+                por, find_ovr(game), steps=steps, ds=ds, evidence=evidence, share=share,
                 walk=functools.partial(walk_to_encounter, evidence=evidence)))
         finally:
             report["screenshots"] = evidence.files
