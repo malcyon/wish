@@ -6300,3 +6300,24 @@ def test_a_coins_edit_writes_an_amiga_pool_characters_movement(
             assert (old.raw[at], new.raw[at]) == (9, 3)
         else:
             assert new.raw == old.raw
+
+
+def test_an_unreadable_folder_beside_an_amiga_pool_party_still_reaches_the_c64_search(
+        tmp_path, monkeypatch):
+    """A folder that cannot be listed ends the Amiga search quietly; the C64
+    disk search still runs."""
+    import pathlib
+    real = pathlib.Path.iterdir
+
+    def iterdir(self):
+        if self == tmp_path:
+            raise OSError("unreadable")
+        return real(self)
+
+    monkeypatch.setattr("editor.window.EditorBinding._find_disk",
+                        lambda self, *a, **k: None)
+    monkeypatch.setattr(pathlib.Path, "iterdir", iterdir)
+    with _window_warnings() as seen:
+        w = _amiga_pool_editor(tmp_path)
+    assert not w.party.item_types
+    assert sum("No disk with ITEMS found" in m for m in seen) == 1
