@@ -2683,7 +2683,8 @@ class PoolRun:
             # while the status line and row 24 still show the step's start.
             # Nothing is pressed until a real screen is up, and the move is
             # never sent again.
-            stop, ambush, ended = self._await_encounter(route, last, word)
+            stop, ambush, ended = self._await_encounter(
+                route, last, word, getattr(sess, "walk_encounter_age", 0.0))
             if ended:
                 return False
             if stop is None and not self._fight_or_end(route, n, move, before):
@@ -2697,6 +2698,11 @@ class PoolRun:
             self._look_for_fight(route, last)
             if not sess.in_combat():
                 stop = sess.walk_stop(wait=12.0)
+            if stop is None and not sess.in_combat() and self._answer_press_bar():
+                # A bar that drew after the first look, which `walk_stop`
+                # counts as recognised.
+                ambush = True
+                self._look_for_fight(route, last)
         if stop is not None:
             self._answer_stop(route, n, move, before, stop, pressed, answer,
                               word)
@@ -2723,7 +2729,12 @@ class PoolRun:
                                   f"no fight opened in "
                                   f"{int(FIGHT_OPENS_SECONDS)} seconds")
         if not sess.in_combat():
-            return unread
+            if getattr(sess, "walk_encounter_started", False):
+                return False
+            # An ambush that left the world bar on the same square is sent
+            # again by the caller, once, rather than judged as a wrong square.
+            return unread or (ambush and self.took_nothing(
+                before, before_rows, screens))
         number = len(fights)
         self.capture(f"fight-{number}-start")
         result = sess.fight(budget=self.walk_fight_seconds, tactic=S.Session.melee_turn)
@@ -2745,7 +2756,7 @@ class PoolRun:
                           "fight": fights[-1]})
         return True
 
-    def _await_encounter(self, route, last, word):
+    def _await_encounter(self, route, last, word, key_age=0.0):
         """Wait for the screen an encounter starts, pressing nothing at the
         stale move bar or a blank row 24.
 
@@ -2758,7 +2769,9 @@ class PoolRun:
         """
         sess = self.sess
         limit = self.clock() + ENCOUNTER_DRAW_SECONDS
-        stale_until = self.clock() + ENCOUNTER_STALE_BAR_SECONDS
+        # Counted from the key press, not from this call: `walk_one` has
+        # already spent `key_age` seconds waiting after the key.
+        stale_until = self.clock() + ENCOUNTER_STALE_BAR_SECONDS - key_age
         while True:
             self.budget(1, f"{self.walk_verb} {route}")
             self.refuse_prompt(route, last, "started an encounter")
@@ -2779,6 +2792,8 @@ class PoolRun:
                 # Ordinary steps whose status line was only slow look the same
                 # as an encounter for a moment; a bar that outlasts the
                 # measured draw time is left and the step judged by position.
+                self.log.emit("encounter-stale-bar", row24=row.strip(),
+                              seconds=ENCOUNTER_STALE_BAR_SECONDS)
                 sess.leave_move(answer_prompts=False)
                 return None, False, True
             if self.clock() >= limit:

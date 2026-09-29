@@ -2425,6 +2425,8 @@ class Session:
         self.walk_screens = None
         self.walk_stop_screen = None
         self.walk_encounter_started = False
+        self.walk_encounter_age = 0.0
+        key_at = time.monotonic()
         if self.indoors() is False:
             self.walked_outdoors = True
             return self.walk_outdoors(move, hold, gap)
@@ -2458,6 +2460,7 @@ class Session:
                 self.walk_screens = (self._rows(s), None)
                 live_before = (self._live_square(True) if encounters else None)
                 self.move_key(move, hold, gap)
+                key_at = time.monotonic()
                 sent = True
             elif self._walk_expired():
                 break
@@ -2488,6 +2491,7 @@ class Session:
                 self.walk_screens = (self._rows(up), None)
                 live_before = (self._live_square(True) if encounters else None)
                 self.move_key(move, hold, gap)
+                key_at = time.monotonic()
                 sent = True
             else:
                 if not answer_prompts and self._prompt_up(self.screen()):
@@ -2520,6 +2524,7 @@ class Session:
                         # The step was taken: the caller waits for the
                         # encounter, and nothing is pressed here.
                         self.walk_encounter_started = True
+                        self.walk_encounter_age = time.monotonic() - key_at
                         return True
             if moved:
                 self._leave_move(answer_prompts)
@@ -2539,6 +2544,9 @@ class Session:
     #: line did not: an encounter has started, and row 24 is a stale move bar
     #: until its text is drawn.
     walk_encounter_started = False
+
+    #: Seconds between the key and the return that set `walk_encounter_started`.
+    walk_encounter_age = 0.0
 
     #: Seconds between the first and the second read of the status line that
     #: decide a step was an encounter and not a slow status line.

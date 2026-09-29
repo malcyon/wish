@@ -6433,8 +6433,10 @@ def test_walk_flee_an_encounter_menu_without_flee_fails_and_presses_nothing(
 
 class AmbushWalk(FightWalk):
     """A move key can bring up a `PRESS` page with no encounter menu:
-    "ambush" then a Return opens a fight; "ambush-menu" follows the Return
-    with an encounter menu."""
+    "ambush" then a Return opens a fight, "ambush-stay" leaves the party on
+    its square and a Return returns to the world bar, "late-ambush" draws the
+    bar only after several screen reads; "ambush-menu" follows the Return
+    with an encounter menu.  Runs are Curse's (`walk_encounters` False)."""
 
     def __init__(self, script, **kw):
         super().__init__(script, **kw)
@@ -6443,14 +6445,28 @@ class AmbushWalk(FightWalk):
         self.moves[("press", ("key", 0x0D))] = "world"
         self.opens_fight = False
         self.menu_after = False
+        self.late_reads = None
+
+    def screen(self):
+        if self.late_reads is not None:
+            self.late_reads -= 1
+            if self.late_reads <= 0:
+                self.late_reads, self.state = None, "press"
+        return super().screen()
 
     def walk_one(self, move, *a, **k):
         event = self.script.get(self.calls)
+        before = (self.x, self.y)
         moved = super().walk_one(move, *a, **k)
+        if event == "late-ambush":
+            self.late_reads, self.opens_fight = 9, True
         if event == "ambush-menu":
             self.state, self.menu_after = "press", True
-        if event == "ambush":
-            self.state, self.opens_fight = "press", True
+        if event in ("ambush", "ambush-stay"):
+            self.state = "press"
+            self.opens_fight = event == "ambush"
+            if event == "ambush-stay":
+                self.x, self.y = before
         return moved
 
     def press_kernal(self, code):
@@ -6474,6 +6490,54 @@ def test_an_ambush_press_bar_opens_a_fight_that_is_fought_and_the_route_goes_on(
     if verb == "walk_flee":
         assert [(f["at_move"], f["escaped"], f["ambush"], f["fight"])
                 for f in got["flees"]] == [(0, False, True, got["fights"][0])]
+
+
+@pytest.mark.parametrize("verb", ["walk_fight", "walk_flee"])
+def test_an_ambush_press_bar_that_returns_to_the_same_square_sends_the_move_again(
+        tmp_path, monkeypatch, verb):
+    sess = AmbushWalk({0: "ambush-stay"})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    run.walk_encounters = False
+    got = getattr(run, verb)("I")
+    log.close()
+    assert sess.pressed == ["I", "I"]
+    assert got["moves"][0]["resent"] is True
+    assert got["position"] == [5, 4, 0] and got["fights"] == []
+
+
+def test_a_press_bar_that_draws_after_the_first_look_is_answered_and_fought(
+        tmp_path, monkeypatch):
+    sess = AmbushWalk({0: "late-ambush"})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    run.walk_encounters = False
+    got = run.walk_fight("II")
+    log.close()
+    assert sess.sent == [("key", 0x0D)]
+    assert [f["at_move"] for f in got["fights"]] == [0]
+    assert sess.pressed == ["I", "I"]
+
+
+def test_an_ambush_page_on_a_square_the_party_entered_is_not_sent_again(
+        tmp_path, monkeypatch):
+    sess = AmbushWalk({0: "ambush-stay"})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    run.walk_encounters = False
+    run.took_nothing = lambda *a: False
+    with pytest.raises(A.StepFailed, match="left the party on"):
+        run.walk_fight("I")
+    log.close()
+    assert sess.pressed == ["I"]
+
+
+def test_curse_walk_fight_does_not_opt_in_and_keeps_the_ambush_handling(
+        tmp_path, monkeypatch):
+    assert A.CurseRun.walk_encounters is False
+    sess = AmbushWalk({0: "ambush-stay"})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    run.walk_encounters = A.CurseRun.walk_encounters
+    run.walk_fight("I")
+    log.close()
+    assert sess.pressed == ["I", "I"]
 
 
 def test_a_narration_page_then_a_flee_menu_records_one_flee_with_its_fight(
@@ -6866,6 +6930,18 @@ def test_a_move_bar_that_outlasts_the_draw_time_is_left_and_judged_by_position(
     assert sess.left == ["stale"] and sess.presses == []
     assert sess.pressed == ["I"] and got["fights"] == []
     assert got["position"] == [5, 4, 0]
+
+
+def test_the_stale_bar_cutoff_counts_from_the_key_and_the_fallback_is_logged(
+        tmp_path, monkeypatch):
+    sess, run, log = _encounter_run(tmp_path, monkeypatch, {0: "press"})
+    sess.DRAW = 1000.0
+    sess.walk_encounter_age = 15.0
+    start = run.clock()
+    run.walk_fight("I")
+    log.close()
+    assert run.clock() - start < 6.0
+    assert "encounter-stale-bar" in (tmp_path / "run.jsonl").read_text()
 
 
 def test_only_pool_asks_walk_one_to_detect_encounters(tmp_path, monkeypatch):
