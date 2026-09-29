@@ -859,6 +859,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # 2 to 7 are a share no engine writes for a player character and cross as
     # the raw byte they always did.
     #
+    # A Pool of Radiance **companion** from DOS or the Amiga whose share has
+    # bit 2 set holds 4 to 7 parts, and the C64 masks with 3.  He is written
+    # as `raw | 3`, never zero and the 3 parts that are the most the C64
+    # gives, and the reduction goes on `warnings`.
+    #
     # Curse of the Azure Bonds and Secret of the Silver Blades have no such
     # crossover (#639).  `POST.COM $1918` and `$199E` mask a player
     # character's own 0x0FA with 3 the same as a companion's, and their
@@ -2383,9 +2388,13 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                          "when a charm node converts, because DOS's charm "
                          "handler leaves it alone"),
     ("treasure_share", "written unchanged to 0x0FA for a companion, whose "
-                       "share the C64's own split reads there; a DOS or "
-                       "Amiga raw value with bit 2 set refuses because C64 "
-                       "masks with 3. For a Pool of Radiance player "
+                       "share the C64's own split reads there; a Pool of "
+                       "Radiance companion's DOS or Amiga value with bit 2 "
+                       "set holds more parts than the C64's mask of 3 gives, "
+                       "so it is written as the value with its low two bits "
+                       "set (c64_share_from_dos) and the reduction goes on "
+                       "warnings. "
+                       "For a Pool of Radiance player "
                        "character, whose share no engine reads, 0 and 1 are "
                        "the ability-altered flag the other ports keep in "
                        "that byte and go to bit 0 of 0x0B8 with 0x0FA left "

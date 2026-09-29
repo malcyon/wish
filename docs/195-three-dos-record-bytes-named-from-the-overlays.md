@@ -367,10 +367,13 @@ player character and every `1` above is the modify flag.
 
 Values `0` through `3` preserve the raw byte and engine behaviour across all
 three ports for a companion. DOS and Amiga preserve `4` through `7` between
-themselves. A value with bit 2 set refuses before output when crossing the C64
-two-bit family and the DOS/Amiga three-bit family: masking, clamping or
-defaulting would lose the raw-zero condition or change the engine-effective
-share.
+themselves, and a C64 companion's byte with bit 2 set crosses to them with that
+bit cleared (`$04` as `$08`). Going the other way, a Pool of Radiance companion
+holding `4` through `7` parts is written to the C64 as `raw | 3`: never zero,
+so he is still named, and the 3 parts that are the most the C64 gives. The
+reduction goes on the conversion report's warnings and reaches the debug log.
+A player character's byte with bit 2 set, and a Curse or Silver Blades
+companion's, refuses before output, because the other masks are not measured.
 
 One record reports a loss and no engine writes it: a C64 **Pool of Radiance
 player character** holding both bit 0 of `0x0B8` and a non-zero `0x0FA`. The

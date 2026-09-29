@@ -685,10 +685,7 @@ def test_a_dos_share_is_expected_rewritten_for_the_c64_only_for_a_pool_companion
     assert any("treasure_share" in line for line in lines)
 
 
-@pytest.mark.parametrize("share", [0xFF, 0x84, 0x04, 0x05])
-def test_a_dos_hireling_prepares_for_the_c64(tmp_path, share):
-    """The Training Hall's shares of 4 to 7 parts used to refuse the whole
-    party; they now arrive as the C64's three."""
+def _prepared_dos_hireling(tmp_path, share):
     from tests.editor.test_hirelingopen import _folder
     from tools.convert import convertdrops
     folder = tmp_path / "save"
@@ -700,8 +697,49 @@ def test_a_dos_hireling_prepares_for_the_c64(tmp_path, share):
             source, "c64", game_files=convertdrops.game_files)
     except (saveplan.MissingAssets, FileNotFoundError):
         pytest.skip("needs Pool of Radiance's own C64 disks")
-    plan = saveplan.prepare_save_as(party, "c64", tmp_path / "out" / "out.d64",
-                                  assets)
+    return saveplan.prepare_save_as(party, "c64",
+                                    tmp_path / "out" / "out.d64", assets)
+
+
+def test_a_dos_hirelings_reduced_share_reaches_the_debug_log(tmp_path):
+    import logging
+
+    from goldbox.c64_codec import SHARE_PARTS_REDUCED
+
+    lines = []
+
+    class Keep(logging.Handler):
+        def emit(self, record):
+            lines.append(record.getMessage())
+
+    log = logging.getLogger("wish.editor.saveplan")
+    handler, level = Keep(), log.level
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
+    try:
+        _prepared_dos_hireling(tmp_path, 0xFF)
+    finally:
+        log.removeHandler(handler)
+        log.setLevel(level)
+    expected = SHARE_PARTS_REDUCED.format(port="DOS", value=0xFF, parts=7,
+                                          written=0xFF, kept=3)
+    assert any(expected in line for line in lines), lines
+
+
+def test_an_animated_zombie_with_a_bit_2_share_is_expected_unchanged_for_the_c64():
+    destination = _destination("c64", c64_port.POOL_OF_RADIANCE)
+    zombie = _hireling(0x84)
+    zombie.set("flags_0b8", 0xFF)
+    lines = saveplan.compare([zombie], [_hireling(0x87)], destination,
+                             source_port="dos")
+    assert any("treasure_share" in line for line in lines)
+
+
+@pytest.mark.parametrize("share", [0xFF, 0x84, 0x04, 0x05])
+def test_a_dos_hireling_prepares_for_the_c64(tmp_path, share):
+    """The Training Hall's shares of 4 to 7 parts used to refuse the whole
+    party; they now arrive as the C64's three."""
+    plan = _prepared_dos_hireling(tmp_path, share)
     assert isinstance(plan, saveplan.SavePlan)
 
 

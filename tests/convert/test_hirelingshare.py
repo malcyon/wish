@@ -25,7 +25,7 @@ from __future__ import annotations
 import gamedata
 import pytest
 
-from goldbox import amiga_por, c64_codec, dos_codec, dos_port
+from goldbox import amiga_por, c64_codec, dos_codec, dos_port, neutral
 from goldbox.record import RECORD_SIZE, CharacterRecord
 
 F83 = dos_port.FIELDS_BY_NAME["field_83_87"]
@@ -271,3 +271,17 @@ def test_a_dos_player_characters_share_with_bit_2_is_still_refused(share):
     raw[DOS_CONTROL], raw[DOS_SHARE] = 0x01, share
     with pytest.raises(ValueError, match="bit 2 set"):
         c64_codec.write(dos_codec.to_neutral(dos_codec.DosCharacter(bytes(raw))))
+
+
+@pytest.mark.parametrize("share", (0x04, 0x84, 0xFF))
+def test_a_dos_zombie_with_a_bit_2_share_is_still_refused(share):
+    """Animate Dead's zombie is a player character to the C64, so its byte
+    is not a companion's share."""
+    raw = bytearray(dos_port.RECORD_SIZE)
+    raw[DOS_CONTROL], raw[DOS_SHARE] = c64_codec.DOS_PC_TAKEN_OVER, share
+    raw[dos_port.FIELDS_BY_NAME["field_10c_10f"].offset] = \
+        neutral.STATUS_NAMES.index("animated")
+    char = dos_codec.to_neutral(dos_codec.DosCharacter(bytes(raw)))
+    assert char.get("status") == "animated"
+    with pytest.raises(ValueError, match="bit 2 set"):
+        c64_codec.write(char)

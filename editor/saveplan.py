@@ -1097,9 +1097,12 @@ def _expected_treasure_share(record: CharacterRecord,
         return None
     # Only a Pool of Radiance companion is rewritten; a player character's
     # byte and the other titles' stay refused by the writer.
+    # An animated zombie is a player character to the C64, with 0x0B8 at
+    # $FE or $FF, and the writer refuses its share as it does any other's.
+    flags = int(record.get("flags_0b8"))
     if (getattr(destination.title, "key", destination.title)
             != dos_codec.POOL_OF_RADIANCE.key
-            or not int(record.get("flags_0b8")) & 0x80):
+            or not flags & 0x80 or flags in (0xFE, 0xFF)):
         return None
     return convert(int(record.get("treasure_share")))
 
@@ -1613,6 +1616,8 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
                 record.set("name", names[row])
     validate(destination, files, expected, accounted=losses(report),
              expected_names=expected_names, source_port=source.port)
+    if report is not None and report.warnings:
+        _log.info("Conversion warnings: %s", "; ".join(report.warnings))
     return SavePlan(source=source, destination=destination, files=files,
                     report=report, assets=assets,
                     key=plan_key(snapshot, port, path, assets),
