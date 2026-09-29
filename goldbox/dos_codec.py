@@ -3388,10 +3388,14 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                        "preserved. For a player character that byte is the "
                        "ability-altered flag MODIFY CHARACTER's KEEP writes "
                        "rather than a share, and a C64 source's own flag "
-                       "arrives in it. A C64 companion's byte with bit 2 set "
-                       "is written with that bit cleared ($04 as $08), "
-                       "because the C64 masks the share with 3 and this "
-                       "engine with 7 (dos_share_from_c64)"),
+                       "arrives in it. A C64 byte with bit 2 set is "
+                       "written with that bit cleared ($04 as $08): the "
+                       "C64 masks a companion's share with 3 in Pool of "
+                       "Radiance, Curse of the Azure Bonds and Secret of "
+                       "the Silver Blades, and this engine with 7. Measured "
+                       "for Pool of Radiance; the other two by the same "
+                       "code, and a title not measured is rewritten the "
+                       "same way (dos_share_from_c64)"),
 )
 
 #: Neutral fields the DOS writer takes nothing from, and why.  Reported by
@@ -4538,11 +4542,14 @@ def set_window_source(char: NeutralCharacter, raw: bytes) -> None:
 def dos_share_from_c64(raw: int) -> int:
     """The DOS or Amiga treasure share that splits treasure as C64 `raw` does.
 
-    Every engine skips a companion whose raw byte is zero and otherwise gives
-    him `raw & mask` parts: the C64 masks with 3 (`POST.COM $1954`), DOS with
-    7 (`GAME.OVR 0x0068AC`) and the Amiga with 7 (`/program 0x02DA38`).  Bit 2
-    is a part here and nothing on the C64, so it alone is cleared; `$04`,
-    which that would leave zero, becomes `$08`, not zero and no parts.
+    Pool of Radiance's engines skip a companion whose raw byte is zero and
+    otherwise give him `raw & mask` parts: the C64 masks with 3
+    (`POST.COM $194A`), DOS with 7 (`GAME.OVR 0x0068AC`) and the Amiga with 7
+    (`/program 0x02DA38`).  The C64 code is the same in Curse of the Azure
+    Bonds (`$1918`) and Secret of the Silver Blades (`$199E`); their DOS and
+    Amiga masks are not measured here.  Bit 2 is a part on DOS and the Amiga
+    and nothing on the C64, so it alone is cleared; `$04`, which that would
+    leave zero, becomes `$08`, not zero and no parts.
     """
     raw &= 0xFF
     if not raw & 0x04:

@@ -159,3 +159,13 @@ def test_a_shipped_hireling_converts_from_the_c64_to_dos_and_the_amiga(
     back, _rep = c64_codec.write(
         dos_codec.to_neutral(dos_codec.DosCharacter(bytes(out))))
     assert _parts(back.get("treasure_share"), 3) == _parts(share, 3), name
+
+
+@pytest.mark.parametrize("share", (0x84, 0xFF, 0x04, 0x07, 0x03))
+def test_the_amiga_writer_gives_the_byte_the_dos_writer_gives(share):
+    """`amiga_por.write_por` delegates to `dos_codec.write`, so both ports
+    take the share `dos_codec.dos_share_from_c64` makes of the C64 byte."""
+    dos, _itm, _spc, _rep = _to_dos(_c64_companion(share))
+    amiga, _itm, _spc, _rep = _to_amiga(_c64_companion(share))
+    assert dos[DOS_SHARE] == amiga[AMIGA_SHARE] == \
+        dos_codec.dos_share_from_c64(share)

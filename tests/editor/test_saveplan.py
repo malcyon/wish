@@ -620,3 +620,38 @@ def test_a_c64_hireling_with_bit_2_in_his_share_prepares_for_dos_and_amiga(
 
     plan = saveplan.prepare_save_as(party, port, out, assets)
     assert isinstance(plan, saveplan.SavePlan)
+
+
+def _hireling(share, written=False):
+    record = CharacterRecord.blank()
+    if written:
+        # The one field a non-native DOS or Amiga destination is expected to
+        # hold as a fixed value whatever the sheet says; not what these tests compare.
+        record.set("strength_bonus_flag", 1)
+    record.set("name", "HIRELING")
+    record.set("flags_0b8", 0x80 | 49)
+    record.set("treasure_share", share)
+    return record
+
+
+@pytest.mark.parametrize("source,port", [("dos", "amiga"), ("amiga", "dos")])
+def test_a_dos_or_amiga_hireling_keeps_his_share_between_those_two_ports(
+        source, port):
+    """Only a C64 byte is rewritten on the way out, so a `$FF` that DOS and
+    the Amiga both read as it stands is expected back as `$FF`."""
+    destination = _destination(port, c64_port.POOL_OF_RADIANCE)
+    assert saveplan.compare([_hireling(0xFF)], [_hireling(0xFF, True)],
+                            destination, source_port=source) == []
+    lines = saveplan.compare([_hireling(0xFF)], [_hireling(0xFB, True)],
+                             destination, source_port=source)
+    assert any("treasure_share" in line for line in lines)
+
+
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+def test_a_c64_hireling_is_expected_with_bit_2_cleared_and_no_other_byte(port):
+    destination = _destination(port, c64_port.POOL_OF_RADIANCE)
+    assert saveplan.compare([_hireling(0xFF)], [_hireling(0xFB, True)],
+                            destination, source_port="c64") == []
+    lines = saveplan.compare([_hireling(0xFF)], [_hireling(0xFF, True)],
+                             destination, source_port="c64")
+    assert any("treasure_share" in line for line in lines)

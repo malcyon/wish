@@ -1068,15 +1068,17 @@ def _expected_dual_class(destination: "Destination") -> "int | None":
 
 
 def _expected_treasure_share(record: CharacterRecord,
-                             destination: "Destination") -> "int | None":
+                             destination: "Destination",
+                             source_port: "str | None") -> "int | None":
     """The share a C64 sheet's byte is written as on DOS or the Amiga.
 
     Those engines count bit 2 as a part and the C64 does not, so the writer
-    clears it (`goldbox.dos_codec.dos_share_from_c64`). `None` for a native
-    or C64 destination, and for a byte with bit 2 clear, which arrives as it
-    is.
+    clears it (`goldbox.dos_codec.dos_share_from_c64`). `None` for a source
+    that is not the C64 (a DOS or Amiga byte is copied as it is), for a
+    native or C64 destination, and for a byte with bit 2 clear.
     """
-    if destination.native or destination.port not in ("dos", "amiga"):
+    if (source_port != "c64" or destination.native
+            or destination.port not in ("dos", "amiga")):
         return None
     return dos_codec.dos_share_from_c64(int(record.get("treasure_share")))
 
@@ -1084,7 +1086,8 @@ def _expected_treasure_share(record: CharacterRecord,
 def _signature(record: CharacterRecord,
                destination: "Destination | None" = None,
                name: "str | None" = None,
-               fields: "Sequence[str]" = KEPT_FIELDS) -> tuple[str, ...]:
+               fields: "Sequence[str]" = KEPT_FIELDS,
+               source_port: "str | None" = None) -> tuple[str, ...]:
     """One character as the comparison sees him: selected fields, in order.
 
     `destination` makes `char_class`, `turn_power` and `strength_bonus_flag`
@@ -1096,7 +1099,8 @@ def _signature(record: CharacterRecord,
     `name`, when given, replaces the `name` field's value outright -- the
     name as `stored_name` reads it, rather than the sheet's own C64-folded
     `record.get("name")` (#638). `fields` is the same title-filtered list on
-    both sides of a comparison.
+    both sides of a comparison. `source_port` is the port the sheet was read
+    from; only a C64 source has its treasure share rewritten.
     """
     values = []
     for field in fields:
@@ -1113,7 +1117,8 @@ def _signature(record: CharacterRecord,
             elif field in ("dual_class_slot", "dual_class_level"):
                 override = _expected_dual_class(destination)
             elif field == "treasure_share":
-                override = _expected_treasure_share(record, destination)
+                override = _expected_treasure_share(record, destination,
+                                                   source_port)
             else:
                 override = None
             if override is not None:
@@ -1126,7 +1131,8 @@ def compare(expected: "list[CharacterRecord]",
             written: "list[CharacterRecord]",
             destination: "Destination | None" = None,
             expected_names: "list[str] | None" = None,
-            written_name_list: "list[str] | None" = None) -> list[str]:
+            written_name_list: "list[str] | None" = None,
+            source_port: "str | None" = None) -> list[str]:
     """What the sheet holds and the written destination does not.
 
     **Whole characters are compared, as a multiset of characters.** A
@@ -1156,16 +1162,21 @@ def compare(expected: "list[CharacterRecord]",
     the two sides are sorted, so it only changes what `name` reads as for a
     given character, never which characters are matched against which
     (#638).
+
+    `source_port` is the port the sheet came from: the treasure share is
+    expected rewritten only for a C64 source, the one the writer rewrites.
     """
     if len(expected) != len(written):
         return [f"{len(expected)} character(s) went in and {len(written)} "
                 f"came back out"]
     fields = _compared_fields(destination)
     if expected_names is not None:
-        want = sorted(_signature(record, destination, name, fields)
+        want = sorted(_signature(record, destination, name, fields,
+                               source_port)
                       for record, name in zip(expected, expected_names))
     else:
-        want = sorted(_signature(record, destination, fields=fields)
+        want = sorted(_signature(record, destination, fields=fields,
+                               source_port=source_port)
                       for record in expected)
     if written_name_list is not None:
         got = sorted(_signature(record, name=name, fields=fields)
@@ -1581,7 +1592,7 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
             if old in names:
                 record.set("name", names[old])
     validate(destination, files, expected, accounted=losses(report),
-             expected_names=expected_names)
+             expected_names=expected_names, source_port=source.port)
     return SavePlan(source=source, destination=destination, files=files,
                     report=report, assets=assets,
                     key=plan_key(snapshot, port, path, assets),
@@ -1592,7 +1603,8 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
 def validate(destination: Destination, files: dict[str, bytes],
              expected: "list[CharacterRecord] | None" = None,
              accounted: "list[str] | tuple[str, ...]" = (),
-             expected_names: "list[str] | None" = None) -> None:
+             expected_names: "list[str] | None" = None,
+             source_port: "str | None" = None) -> None:
     """Open the prepared bytes as a saved game, somewhere else entirely.
 
     Two checks, both before a byte of the player's destination is touched.
@@ -1619,6 +1631,9 @@ def validate(destination: Destination, files: dict[str, bytes],
     Amiga save can hold as typed is never reported as arriving folded to
     capitals (#638). A C64 destination ignores it: there, both sides are C64
     records folded to capitals, which is the verified C64 rule.
+
+    `source_port` is the port the sheet was read from, which `compare` needs
+    to expect a C64 hireling's treasure share rewritten and no other's.
 
     **It does not check that the destination holds a party**, and the reason
     is that the editor's own occupancy test is stricter than the save format:
@@ -1662,7 +1677,8 @@ def validate(destination: Destination, files: dict[str, bytes],
             *(compare(expected, written, destination,
                       expected_names=(expected_names
                                       if destination.port != "c64" else None),
-                      written_name_list=got_names)
+                      written_name_list=got_names,
+                      source_port=source_port)
               if expected is not None else [])]
     if lost:
         # The accounting is the evidence for the defect each of these is, so
