@@ -73,7 +73,7 @@ a source whose title does not match `--title`:
 | `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
 | `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is refused unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
-| `prayer-watch 49`, `prayer-watch 35` | Pool, from the map, `load` first: walk to an encounter (`walk_to_encounter`), read every member's effect nodes and Prayer's handler table at the encounter menu, break on the id-49 and id-35 stubs, arm the handler, bonus test, +1 helper and penalty at the overlay segment the stub's far jump names once it loads, answer each bar by `COMBAT_KEYS`, and log each halt as `prayer-halt`: registers, 16 bytes at `SS:SP`, the four-frame `BP` chain, combatant name and side, the node's five bytes and `DS:0x6816` and `DS:0x6822`.  It stops after one party attack round (a stub halt whose list walker returns to the attack roll's list-10 call for a side-0 attacker, then a helper or penalty halt), when the map has held `FIGHT_SETTLED` seconds, or after `PRAYER_FIGHT_SECONDS`; the boot to the menu is capped at `PRAYER_BOOT_SECONDS`.  The result is `conclusive: False`, and the run exits 2 with `inconclusive` in `summary.json` rather than `lost` or `completed`, when no member carried the node at the menu or at the stop, or an armed routine's code did not match `GAME.OVR`.  The attack roll's own list-10 call is not armed: its unit's stub entry is unmeasured.  Only `shot`, `press` and `read` may follow |
+| `prayer-watch 49`, `prayer-watch 35` | Pool, from the map, `load` first: walk to an encounter (`walk_to_encounter`), read every member's effect nodes and Prayer's handler table at the encounter menu, break on the id-49 and id-35 stubs, arm the handler, bonus test, +1 helper and penalty at the overlay segment the stub's far jump names once it loads, answer each bar by `COMBAT_KEYS`, and log each halt as `prayer-halt`: registers, 16 bytes at `SS:SP`, the four-frame `BP` chain, combatant name and side, the node's five bytes and `DS:0x6816` and `DS:0x6822`.  It stops after one party attack round (a stub halt whose list walker returns to the attack roll's list-10 call for a side-0 attacker, then a helper or penalty halt), when the map has held `FIGHT_SETTLED` seconds, or after `PRAYER_FIGHT_SECONDS`; the step fails if the menu came more than `PRAYER_BOOT_SECONDS` after the driver was made (the walk itself is bounded by its 40 steps and the run's `--deadline`).  The result is `conclusive: False`, and the run exits 2 with `inconclusive` in `summary.json` rather than `lost` or `completed`, when no member carried the node at the menu or at the stop, an armed or halted routine's code did not match `GAME.OVR`, the stop-time party was not read, or no party attack armed at the stubs ran its helper or penalty (the first call loads the overlay before its routines are armed, so a round needs a later attack).  The attack roll's own list-10 call is not armed: its unit's stub entry is unmeasured.  Only `shot`, `press` and `read` may follow |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement, record byte 0x130 (spell id 126's book byte, `book_0x130`) and items |
 
 **Pools of Darkness' screens are read off its `GAME.EXE` strings, not off a
@@ -778,9 +778,10 @@ FIGHT_TITLES = frozenset({"curse", "ssb"})
 #: The Prayer node ids `prayer-watch` tests: 49 is DOS's own Prayer (the
 #: control), 35 the id a C64 camp Prayer converts to.
 PRAYER_NODES = (35, 49)
-#: `prayer-watch`'s budgets, seconds: the fight work after the encounter menu,
-#: and the whole run from the driver's creation to that menu.  A run's
-#: `--deadline` has to hold both and the cleanup.
+#: `prayer-watch`'s budgets, seconds: the fight work after the encounter menu
+#: (which bounds the fight), and the time from the driver's creation to that
+#: menu, which is checked once the walk has reached it and does not cut the
+#: walk short.  A run's `--deadline` has to hold both and the cleanup.
 PRAYER_FIGHT_SECONDS = 600
 PRAYER_BOOT_SECONDS = 1500
 #: Steps `prayer-watch` tries before giving up on a fight.
@@ -3232,6 +3233,9 @@ class Driver:
         image, _ = unexepack.unpack((source / "START.EXE").read_bytes())
         watch = dosfightwatch.PrayerWatch(self.s, (source / "GAME.OVR").read_bytes(),
                                           image, note=self.note)
+        # Keys are pressed from here on, so wherever the step ends the party's
+        # place is unknown to the steps after it.
+        self.where = "pressed"
         walk = dosfightwatch.walk_to_encounter(self.game, PRAYER_WALK_STEPS)
         self.note(event="prayer-walk", **walk)
         if not walk["met"]:
@@ -3240,16 +3244,6 @@ class Driver:
         if time.time() - self.began > PRAYER_BOOT_SECONDS:
             raise self.fail("prayer-boot", f"the encounter menu came after "
                             f"{PRAYER_BOOT_SECONDS} s")
-        try:
-            resolved = watch.attach()
-            self.note(event="prayer-table", **resolved)
-            at_encounter = watch.party()
-            self.note(event="prayer-party", where="encounter", party=at_encounter)
-            watch.load = watch.stub_load()
-            armed = watch.arm()
-            self.note(event="prayer-armed", **armed)
-        except (dosboxx.NotHalted, dosfightwatch.PrayerWatchError) as e:
-            raise self.fail("prayer-arm", str(e)) from e
         fight_end = time.time() + self.bounded(PRAYER_FIGHT_SECONDS, "prayer-watch")
         world_since: list[float | None] = [None]
 
@@ -3269,17 +3263,22 @@ class Driver:
             return False
 
         began = time.time()
-        stop = watch.run_fight(max(1.0, fight_end - began), idle)
-        self.where = "pressed"
-        at_stop = None
         try:
-            if self.s.halted(timeout=1.0) or self.s.attach():
-                at_stop = watch.party()
-                self.note(event="prayer-party", where="stop", party=at_stop)
-                self.s.clear_breakpoints()
-                self.s.run()
-        except dosboxx.NotHalted:
-            pass
+            resolved = watch.attach()
+            self.note(event="prayer-table", **resolved)
+            at_encounter = watch.party()
+            self.note(event="prayer-party", where="encounter", party=at_encounter)
+            watch.load = watch.stub_load()
+            armed = watch.arm()
+            self.note(event="prayer-armed", **armed)
+            stop = watch.run_fight(max(1.0, fight_end - began), idle)
+        except (dosboxx.NotHalted, dosfightwatch.PrayerWatchError) as e:
+            raise self.fail("prayer-arm", str(e)) from e
+        finally:
+            # Breakpoints left armed would halt the emulator with nobody
+            # driving it, so this runs on every exit.
+            at_stop = watch.finish()
+        self.note(event="prayer-party", where="stop", party=at_stop)
         self.shot("prayer-stop")
         result = watch.summary(node, at_encounter, at_stop)
         return {**result, "stop": stop, "walk": walk,

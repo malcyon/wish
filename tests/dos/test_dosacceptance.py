@@ -7524,3 +7524,49 @@ def test_the_prayer_watch_needs_pool_the_map_and_the_debugger(tmp_path, monkeypa
     monkeypatch.delattr(FakeFight, "attach")
     with pytest.raises(da.StepFailed, match="DOSBox-X debugger"):
         d.prayer_watch(49)
+
+
+def test_a_prayer_watch_that_fails_mid_fight_still_releases_the_debugger(tmp_path,
+                                                                        monkeypatch):
+    game, d = _fighter(tmp_path)
+    d.title = da.TITLES["pool"]
+    d.where = "map"
+    d.s.source = tmp_path
+    (tmp_path / "START.EXE").write_bytes(b"")
+    (tmp_path / "GAME.OVR").write_bytes(b"")
+    monkeypatch.setattr(da.unexepack, "unpack", lambda exe: (b"", {}))
+    monkeypatch.setattr(da.dosfightwatch, "walk_to_encounter",
+                        lambda por, steps: {"met": True})
+    calls: list[str] = []
+
+    class Watch:
+        def __init__(self, *a, **k):
+            pass
+
+        def attach(self):
+            calls.append("attach")
+            return {}
+
+        def party(self):
+            return []
+
+        def stub_load(self):
+            return None
+
+        def arm(self):
+            calls.append("arm")
+            return {"armed": []}
+
+        def run_fight(self, seconds, idle):
+            raise da.dosboxx.NotHalted("EV answered nothing")
+
+        def finish(self):
+            calls.append("finish")
+
+    monkeypatch.setattr(da.dosfightwatch, "PrayerWatch", Watch)
+    monkeypatch.setattr(d, "shot", lambda label: label)
+    with pytest.raises(da.StepFailed, match="EV answered nothing"):
+        d.prayer_watch(49)
+    assert calls == ["attach", "arm", "finish"]
+    # Keys were pressed, so the party's place is not known to later steps.
+    assert d.where == "pressed"
