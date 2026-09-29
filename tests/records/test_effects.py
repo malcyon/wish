@@ -2166,3 +2166,39 @@ def test_a_charm_nodes_count_bit_4_is_unconverted_not_dropped():
     assert isinstance(
         effects.pool_charm_row(_POOL, bytes((11, 0, 0, 0x36, 1))),
         effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", [_P, _C, _S])
+@pytest.mark.parametrize("eid", [15, 22])
+def test_slow_poison_and_its_companion_are_ff_on_both_ports(title, eid):
+    assert effects.c64_row(title, _RE(eid, 300, 0xFF, 1)) == (eid, 0xFF)
+    assert effects.dos_record(
+        title, effects.Effect(63, eid, 2, 0x5E, 0xFF), 0) \
+        == _RE(eid, effects.remaining_minutes(0x5E, 0), 0xFF, 1)
+    assert isinstance(effects.c64_row(title, _RE(eid, 300, 0xFF, 0)),
+                      effects.Unconverted)
+    if title != _P:
+        for data, flag in ((5, 1), (0, 1)):
+            assert isinstance(effects.c64_row(title, _RE(eid, 300, data, flag)),
+                              effects.Unconverted)
+
+
+def test_pools_own_slow_poison_row_keeps_its_level_and_its_flag():
+    for m, node in ((0x85, (5, 1)), (0x05, (5, 0))):
+        got = effects.dos_record(_P, effects.Effect(63, 22, 2, 0x5E, m), 0)
+        assert (got.data, got.flag) == node
+        _round_trip(_P, _RE(22, 1, *node))
+    for m in (0x80, 0x00):
+        assert isinstance(
+            effects.dos_record(_P, effects.Effect(63, 22, 2, 0x5E, m), 0),
+            effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", [_C, _S])
+def test_a_later_slow_poison_row_becomes_the_dos_node_dispel_cannot_touch(
+        title):
+    got = effects.dos_record(title, effects.Effect(63, 22, 2, 0x5E, 0x85), 0)
+    assert (got.data, got.flag) == (0xFF, 1)
+    assert isinstance(
+        effects.dos_record(title, effects.Effect(63, 22, 2, 0x5E, 0x05), 0),
+        effects.Unconverted)

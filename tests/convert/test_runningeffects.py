@@ -279,6 +279,30 @@ def test_save_as_c64_keeps_a_blessed_dos_party_blessed(tmp_path, where):
     assert owners == sorted(set(owners))
 
 
+def test_save_as_c64_keeps_a_slow_poisoned_dos_party_slow_poisoned(tmp_path):
+    """The Pool specimen written by the game after a camp cast of Slow Poison
+    on WISHFTR saves as a C64 save: rows 15 and 22 both carry magnitude `$FF`,
+    and WISHFTR keeps the poison node in a trait slot."""
+    from gamedata import specimen
+
+    from editor import roster, saveplan
+
+    party = roster.Party(str(specimen(
+        "pool-667-slow-poison-camp-cast-resave") / "SAVGAMD.DAT"))
+    try:
+        plan = _blessed_row_plan(party, tmp_path)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Pool of Radiance's own C64 disks")
+    assert isinstance(plan, saveplan.SavePlan)
+    (_name, data), = plan.files.items()
+    out = tmp_path / "written.d64"
+    out.write_bytes(data)
+    rows = effects.active_effects(roster.Party(str(out)).save0.to_bytes())
+    got = sorted((e.id, e.duration, e.magnitude) for e in rows)
+    assert got == [(15, 0x0A, 0xFF), (22, 0x5E, 0xFF)]
+    assert len({e.owner for e in rows}) == 1
+
+
 def test_save_as_c64_keeps_a_curse_party_shielded_and_protected(tmp_path):
     """The Curse specimen made by driving the game holds FLORENTZ under
     Protection from Evil 10' Radius (47 minutes) and Shield (2 minutes) and

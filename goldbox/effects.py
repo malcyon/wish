@@ -371,6 +371,18 @@ FLAGGED_CASTER_LEVEL_IDS = frozenset({23, 34})
 POOL_FF_CHAIN_IDS = frozenset({4, 7, 62})
 POOL_FF_CHAIN = (0xFF, 1)
 
+#: Slow Poison (22) and its companion damage node (15), all three titles. DOS
+#: writes `(22, 60 x level minutes, 0xFF, 1)` (Silver Blades: a fixed 3780
+#: minutes) and `(15, 10, 0xFF, 1)`; Dispel skips data `0xFF`. The C64 camp
+#: cast writes row 15 with magnitude `$FF` and row 22 with `level | $80` (Pool
+#: `SPELLE04 $AD2F`; Curse `$8519`; Silver Blades `$85A9`), and its Dispel skips
+#: magnitude `$FF` in Pool and never lists 22 in Curse and Silver Blades. So
+#: `$FF` is the row that keeps the DOS node's immunity, and Pool's own
+#: `level | $80` row stays dispellable at the same level on DOS.
+SLOW_POISON_ID = 22
+SLOW_POISON_DAMAGE_ID = 15
+SLOW_POISON_DOS = (0xFF, 1)
+
 #: Invisible (25) in the later titles. Every C64 row for it writes the caster's
 #: level (camp rows 19, 32, 36 and 55 reach `ECL65 $819C`; combat goes through
 #: the generic writer) and DOS's handler reads no node byte. Pool's list has
@@ -728,6 +740,19 @@ def _own_rule_row(title_key: str,
             return Unconverted("a node of Pool's disease chain other than "
                                "the one DOS writes")
         return node.id, 0xFF
+    if node.id == SLOW_POISON_DAMAGE_ID and _slowed_title(title_key):
+        if (node.data, node.flag) != SLOW_POISON_DOS:
+            return Unconverted("a Slow Poison damage node other than the "
+                               "one DOS writes")
+        return node.id, 0xFF
+    if node.id == SLOW_POISON_ID and _slowed_title(title_key):
+        if (node.data, node.flag) == SLOW_POISON_DOS:
+            return node.id, 0xFF
+        if (title_key == "pool-of-radiance" and node.flag in (0, 1)
+                and 1 <= node.data <= 0x7F
+                and node.data | node.flag << 7 != 0xFF):
+            return node.id, node.data | node.flag << 7
+        return Unconverted("a Slow Poison node no DOS cast writes")
     return None
 
 
@@ -775,6 +800,19 @@ def _own_rule_node(title_key: str, effect_id: int,
             return Unconverted("a magnitude of Pool's disease chain other "
                                "than the C64's own")
         return POOL_FF_CHAIN
+    if effect_id == SLOW_POISON_DAMAGE_ID and _slowed_title(title_key):
+        if m != 0xFF:
+            return Unconverted("a Slow Poison damage magnitude other than "
+                               "the C64's own")
+        return SLOW_POISON_DOS
+    if effect_id == SLOW_POISON_ID and _slowed_title(title_key):
+        if m == 0xFF:
+            return SLOW_POISON_DOS
+        if title_key == "pool-of-radiance" and m & 0x7F:
+            return m & 0x7F, m >> 7
+        if title_key != "pool-of-radiance" and m & 0x80:
+            return SLOW_POISON_DOS
+        return Unconverted("a Slow Poison magnitude no C64 cast writes")
     return None
 
 
