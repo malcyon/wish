@@ -47,10 +47,180 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
+from automap.vice import read_screen  # noqa: E402
+from goldbox import savegame  # noqa: E402
 from tools.c64 import laterbattle  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.pool_of_radiance.fleedrive import Flight, Log, rows_of  # noqa: E402
 from tools.registry import scratch  # noqa: E402
+
+#: `POST.COM $0906`, `STX $7EC7`: how the fight ended -- 0 and 1 won, `$80`
+#: lost, `$81` ran away.  The only absolute store to it on any Curse disk, and
+#: Pool of Radiance's `$6DC7` is a different byte.
+RESULT = 0x7EC7
+RAN_AWAY = 0x81
+
+#: `POST.COM $0E18`, the drop loop's spare flag, Pool's `$6DE6` here.
+MERCY = 0x7EE6
+
+#: `POST.COM $0909`, where the machine stops when `RESULT` is written, and
+#: `$091C`, the `JSR $0DF2` after the message call at `$0919`: the line has just
+#: been drawn and the drop loop has not yet touched the party.  An exec stop at
+#: `$091C` armed any earlier fires in `COMBAT`, which runs at the same address.
+LINE_DRAWN = 0x091C
+
+#: The combatant table, `automap/combat.py`'s Curse row; byte 0 of each
+#: `savegame.ROSTER_STRIDE` block is the status, and the party is the first six.
+ROSTER = 0x6700
+PARTY = 6
+RUNNING = 0x86
+
+
+def party_status(m) -> list[int]:
+    blob = m.read(ROSTER, PARTY * savegame.ROSTER_STRIDE)
+    return [blob[i * savegame.ROSTER_STRIDE] for i in range(PARTY)]
+
+
+def escaped(status: list[int]) -> int:
+    """Characters `COMBAT $1719` marked as running, which is what `POST.COM $08C6` counts.
+
+    `Flight` cannot say: `GOT AWAY` is on row 24 for a moment and it missed 3
+    of 5 in the run that first read this.  The drop loop sets `$86` back to
+    `$01` once the flee branch is taken, so the count is only good from before
+    `$091C`.
+    """
+    return sum(1 for v in status if v == RUNNING)
+
+
+class _Watched:
+    """A `Monitor` context that runs the trap's check on entry and exit."""
+
+    def __init__(self, trap, inner):
+        self.trap, self.inner = trap, inner
+
+    def __enter__(self):
+        m = self.inner.__enter__()
+        self.trap.check(m)
+        return m
+
+    def __exit__(self, *exc):
+        try:
+            return self.inner.__exit__(*exc)
+        finally:
+            self.trap.after()
+
+
+class Trap:
+    """Stop the machine when `POST.COM` stores the fight's result, and read the line then.
+
+    Polling cannot see THE PARTY RUNS AWAY: it is drawn and cleared in tens of
+    milliseconds.  So a stop-on-store checkpoint on `RESULT` holds the machine
+    at `$0909`; every monitor connection the fight opens is wrapped so the first
+    thing it does is ask whether that fired.  On `$81` a one-shot exec stop at
+    `$091C` is added *then* and the same connection waits for it, because VICE
+    talks only to the connection that was open when it stopped
+    (`automap/vice.py`'s `resume`).
+    """
+
+    def __init__(self, sess, log, out: pathlib.Path, wait: float = 10.0):
+        self.sess, self.log, self.out, self.wait = sess, log, out, wait
+        self.cp: int | None = None
+        self.hits = 0
+        self.result: int | None = None
+        self.status_at_write: list[int] | None = None
+        self.seen = False              # the screen was read at $091C
+        self.degraded = False          # the monitor stopped answering
+        self.shot_due = False
+        self._mon = None
+        self._busy = False
+
+    def arm(self) -> None:
+        self._mon = self.sess.mon
+        with self._mon(10) as m:
+            self.cp = m.checkpoint_set(RESULT, store=True, stop=True)
+            m.resume()
+        self.sess.mon = self.mon
+        self.log.say(f"armed a stop on the write to ${RESULT:04X}")
+
+    def mon(self, timeout: float = 5.0):
+        return _Watched(self, self._mon(timeout))
+
+    def check(self, m) -> None:
+        if self.cp is None or self._busy or self.degraded:
+            return
+        self._busy = True
+        try:
+            hits = m.checkpoint_hits(self.cp)
+            if hits <= self.hits:
+                return
+            self.hits = hits
+            self.result = m.peek(RESULT)
+            self.status_at_write = party_status(m)
+            self.log.emit("result_write", value=self.result, hits=hits,
+                          status=self.status_at_write,
+                          escaped=escaped(self.status_at_write))
+            self.log.say(f"  ${RESULT:04X} written: ${self.result:02X}, "
+                         f"party status {self.status_at_write}")
+            if self.result == RAN_AWAY:
+                self.capture(m)
+        except Exception as exc:
+            self.degraded = True
+            self.log.emit("trap_failed", error=repr(exc), hits=self.hits)
+            self.log.say(f"  the monitor stopped answering: {exc!r}")
+        finally:
+            self._busy = False
+
+    def capture(self, m) -> None:
+        m.checkpoint_set(LINE_DRAWN, exec_=True, stop=True, temporary=True)
+        m.resume()
+        pc = m.wait_stopped(self.wait)
+        if pc is None:
+            raise TimeoutError(f"no stop at ${LINE_DRAWN:04X}")
+        rows = rows_of(read_screen(m))
+        (self.out / "ran-line.txt").write_text("\n".join(rows) + "\n")
+        self.seen = any("RUNS AWAY" in r for r in rows)
+        self.log.emit("outcome_line", pc=pc, result=self.result,
+                      seen=self.seen, rows=rows)
+        self.log.say(f"  stopped at ${pc:04X}; the line is "
+                     f"{'on' if self.seen else 'NOT on'} the screen")
+        self.shot_due = True
+
+    def after(self) -> None:
+        if not self.shot_due:
+            return
+        self.shot_due = False
+        try:
+            self.sess.kbd.screenshot(str(self.out / "outcome-line.png"))
+        except Exception as exc:
+            self.log.emit("shot_failed", error=repr(exc))
+
+    def finish(self) -> None:
+        """Say what the checkpoint proved, then clear every checkpoint."""
+        if self._mon is None:
+            return
+        self.sess.mon = self._mon
+        try:
+            with self._mon(10) as m:
+                if self.cp is not None and not self.degraded:
+                    try:
+                        self.hits = max(self.hits, m.checkpoint_hits(self.cp))
+                    except Exception as exc:
+                        self.log.emit("hits_failed", error=repr(exc))
+                m.checkpoints_clear()
+                m.resume()
+        except Exception as exc:
+            self.log.emit("disarm_failed", error=repr(exc))
+        if self.hits and self.result == RAN_AWAY and not self.seen:
+            self.log.emit("line_printed_not_seen", hits=self.hits)
+            self.log.say(f"  ${RESULT:04X} was written {self.hits} time(s) "
+                         f"with $81: the line was printed, not seen")
+
+
+def read_outcome(sess) -> dict:
+    """`RESULT`, `MERCY` and the six status bytes, after the fight."""
+    with sess.mon(5) as m:
+        return {"result": m.peek(RESULT), "mercy": m.peek(MERCY),
+                "status": party_status(m)}
 
 
 def run(args) -> int:
@@ -61,7 +231,7 @@ def run(args) -> int:
     log.say(f"slot {slot.n} display {slot.display}  out {out}")
     battle = laterbattle.Battle(out, args.quiet)
     battle.slot = slot
-    rc, sess = 0, None
+    rc, sess, trap = 0, None, None
     try:
         fight_rc = laterbattle.curse_fight(battle, args, args.disks)
         battle.log("curse_fight", rc=fight_rc)
@@ -98,6 +268,8 @@ def run(args) -> int:
         else:
             log.say("  battle() returned None at combat start")
 
+        trap = Trap(sess, log, out)
+        trap.arm()
         result = sess.fight(args.budget, tactic=flight, poll=args.poll)
         log.say(f"fight ended: outcome={result.outcome!r} turns={result.turns}"
                 f" seconds={result.seconds:.1f}")
@@ -112,10 +284,24 @@ def run(args) -> int:
         if s is not None:
             (out / "final-screen.txt").write_text(
                 "\n".join(rows_of(s)) + "\n")
+        after = read_outcome(sess)
+        log.emit("outcome_bytes", **after)
+        log.say(f"  ${RESULT:04X}=${after['result']:02X} "
+                f"${MERCY:04X}=${after['mercy']:02X} "
+                f"party status {after['status']}")
+        # The status byte, read at the write of the result when the trap saw
+        # it: afterwards the drop loop has put `$86` back to `$01`.
+        counted = (trap.status_at_write if trap.status_at_write is not None
+                   else after["status"])
         log.emit("flee", attempts=flight.attempts,
-                  got_away=flight.got_away, failed=dict(flight.failed))
-        log.say(f"  flee attempts {flight.attempts}, got away "
-                f"{flight.got_away}, failed {dict(flight.failed)}")
+                  got_away=flight.got_away, failed=dict(flight.failed),
+                  escaped=escaped(counted),
+                  escaped_from="write" if trap.status_at_write is not None
+                  else "after")
+        log.say(f"  flee attempts {flight.attempts}, escaped "
+                f"{escaped(counted)} by status byte (Flight logged "
+                f"{sum(flight.got_away.values())}), failed "
+                f"{dict(flight.failed)}")
     except Exception as exc:
         import traceback
         try:
@@ -131,6 +317,8 @@ def run(args) -> int:
         traceback.print_exc()
         rc = 1
     finally:
+        if trap is not None:
+            trap.finish()
         for what, step in (("session close", lambda: sess and sess.close()),
                            ("slot teardown", slot.teardown),
                            ("slot release", slot.release)):

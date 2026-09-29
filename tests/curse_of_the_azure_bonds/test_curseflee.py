@@ -34,11 +34,108 @@ class FakeSlot:
         pass
 
 
+class Machine:
+    """The state behind every `FakeMon` connection of one run."""
+
+    def __init__(self):
+        self.mem = {curseflee.RESULT: 0, curseflee.MERCY: 0}
+        self.status = [1] * 6
+        self.checkpoints: dict[int, dict] = {}
+        self.hits: dict[int, int] = {}
+        self.next_cp = 1
+        self.stop_answers = True      # False: wait_stopped times out
+        self.stopped_pc = 0x0909
+        self.cleared = 0
+
+    def write_result(self, value):
+        """POST.COM's `STX $7EC7` under a stop-on-store checkpoint."""
+        self.mem[curseflee.RESULT] = value
+        for n, cp in self.checkpoints.items():
+            if cp["store"] and cp["start"] == curseflee.RESULT:
+                self.hits[n] = self.hits.get(n, 0) + 1
+
+
+class FakeMon:
+    def __init__(self, machine):
+        self.m = machine
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, start, length, bank=0):
+        if start == curseflee.ROSTER:
+            blob = bytearray(length)
+            for i, v in enumerate(self.m.status):
+                blob[i * 0x20] = v
+            return bytes(blob)
+        return bytes(self.m.mem.get(start + i, 0) for i in range(length))
+
+    def peek(self, addr, bank=0):
+        return self.read(addr, 1)[0]
+
+    def checkpoint_set(self, start, end=None, *, load=False, store=False,
+                       exec_=False, stop=True, temporary=False):
+        n = self.m.next_cp
+        self.m.next_cp += 1
+        self.m.checkpoints[n] = {"start": start, "store": store,
+                                 "exec": exec_, "stop": stop,
+                                 "temporary": temporary}
+        return n
+
+    def checkpoint_hits(self, n):
+        return self.m.hits.get(n, 0)
+
+    def checkpoints_clear(self):
+        self.m.cleared += 1
+        n = len(self.m.checkpoints)
+        self.m.checkpoints.clear()
+        return n
+
+    def resume(self):
+        pass
+
+    def wait_stopped(self, timeout=20.0):
+        return self.m.stopped_pc if self.m.stop_answers else None
+
+
+class FakeLog:
+    def __init__(self):
+        self.events = []
+        self.said = []
+
+    def emit(self, kind, **kw):
+        self.events.append((kind, kw))
+
+    def say(self, text):
+        self.said.append(text)
+
+    def kinds(self, kind):
+        return [kw for k, kw in self.events if k == kind]
+
+
+class FakeScreen:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def row(self, r):
+        return self.rows[r] if r < len(self.rows) else ""
+
+
 class FakeSession:
     """Enough of `CurseSession` for `curseflee.run` to drive without a machine."""
 
-    def __init__(self):
+    def __init__(self, machine=None):
         self.fight_calls: list[dict] = []
+        self.machine = machine or Machine()
+
+    def mon(self, timeout=5.0):
+        return FakeMon(self.machine)
+
+    def fight_hook(self):
+        pass
 
     def screen(self):
         return None
@@ -60,7 +157,10 @@ class FakeSession:
 
     def fight(self, budget, tactic=None, poll=1.0):
         self.fight_calls.append({"budget": budget, "tactic": tactic,
-                                 "poll": poll})
+                                 "poll": poll,
+                                 "armed": [dict(cp) for cp in
+                                          self.machine.checkpoints.values()]})
+        self.fight_hook()
         return S.FightResult("FLEE", 1, 1.0, {}, [], 0, [])
 
     class kbd:
@@ -171,3 +271,189 @@ def test_run_logs_each_wait_iteration_and_dumps_the_combat_floor(
     # the dump comes after the waits, matching `laterbattle.main`'s order
     assert calls.index(("dump", "combat-floor")) > calls.index(
         ("waiting-for-combat", waits[-1]))
+
+
+# -- the trap on the result byte (#648) --------------------------------------
+
+
+def stage(tmp_path, monkeypatch, hook=None, machine=None):
+    """Run `curseflee.run` on a fake session whose fight calls `hook`."""
+    sess = FakeSession(machine)
+    if hook is not None:
+        sess.fight_hook = lambda: hook(sess)
+
+    monkeypatch.setattr(laterbattle, "curse_fight",
+                        lambda battle, args, disks: setattr(
+                            battle, "sess", sess) or 0)
+    monkeypatch.setattr(laterbattle.Battle, "__init__",
+                        lambda self, out, quiet: None)
+    monkeypatch.setattr(laterbattle.Battle, "log", lambda self, *a, **k: None)
+    monkeypatch.setattr(laterbattle.Battle, "dump", lambda self, *a, **k: None)
+    monkeypatch.setattr(laterbattle.Battle, "in_combat", lambda self: True)
+    monkeypatch.setattr(S, "claim_slot", lambda *a, **k: FakeSlot())
+    events = []
+    monkeypatch.setattr(curseflee.Log, "emit",
+                        lambda self, kind, **kw: events.append((kind, kw)))
+    return sess, events
+
+
+def of(events, kind):
+    return [kw for k, kw in events if k == kind]
+
+
+def test_result_and_party_status_are_read_and_logged_after_the_fight(
+        tmp_path, monkeypatch):
+    m = Machine()
+    m.mem[curseflee.RESULT] = 0x80
+    m.status = [0x86, 1, 0, 0, 0, 0]
+    sess, events = stage(tmp_path, monkeypatch, machine=m)
+
+    assert curseflee.run(make_args(tmp_path)) == 0
+
+    (got,) = of(events, "outcome_bytes")
+    assert got == {"result": 0x80, "mercy": 0, "status": [0x86, 1, 0, 0, 0, 0]}
+
+
+def test_the_write_checkpoint_is_set_before_the_fight_and_cleared_in_finally(
+        tmp_path, monkeypatch):
+    sess, _ = stage(tmp_path, monkeypatch)
+
+    assert curseflee.run(make_args(tmp_path)) == 0
+
+    armed = sess.fight_calls[0]["armed"]
+    assert len(armed) == 1
+    assert armed[0]["start"] == curseflee.RESULT
+    assert armed[0]["store"] and armed[0]["stop"] and not armed[0]["exec"]
+    assert sess.machine.cleared == 1
+    assert sess.machine.checkpoints == {}
+    assert sess.mon.__func__ is FakeSession.mon      # the wrapper is gone too
+
+
+def test_the_checkpoint_is_cleared_when_the_fight_raises(tmp_path, monkeypatch):
+    def boom(sess):
+        raise RuntimeError("fight blew up")
+
+    sess, _ = stage(tmp_path, monkeypatch, hook=boom)
+
+    assert curseflee.run(make_args(tmp_path)) == 1
+    assert sess.machine.cleared == 1
+
+
+def test_a_ran_away_write_adds_the_line_drawn_stop_and_saves_the_screen(
+        tmp_path, monkeypatch):
+    seen_rows = [""] * 10 + ["   THE PARTY RUNS AWAY"]
+    monkeypatch.setattr(curseflee, "read_screen",
+                        lambda m: FakeScreen(seen_rows))
+    shots = []
+
+    def flee(sess):
+        sess.machine.status = [0x86, 0x86, 0x86, 0x86, 0x86, 0]
+        sess.machine.write_result(0x81)
+        with sess.mon(5):                    # the fight's next screen read
+            pass
+        sess.machine.status = [1, 1, 1, 1, 1, 0]      # the drop loop runs
+
+    sess, events = stage(tmp_path, monkeypatch, hook=flee)
+    sess.kbd = SimpleNamespace(screenshot=shots.append)
+    sess.machine.mem[curseflee.RESULT] = 0x81
+
+    assert curseflee.run(make_args(tmp_path)) == 0
+
+    out = tmp_path / "out"
+    assert "THE PARTY RUNS AWAY" in (out / "ran-line.txt").read_text()
+    (line,) = of(events, "outcome_line")
+    assert line["seen"] and line["pc"] == 0x0909
+    assert str(out / "outcome-line.png") in shots
+    (flee_ev,) = of(events, "flee")
+    assert flee_ev["escaped"] == 5 and flee_ev["escaped_from"] == "write"
+
+
+def test_the_line_drawn_stop_is_not_set_for_a_result_other_than_81(
+        tmp_path, monkeypatch):
+    def lose(sess):
+        sess.machine.write_result(0x80)
+        with sess.mon(5):
+            pass
+
+    sess, events = stage(tmp_path, monkeypatch, hook=lose)
+
+    assert curseflee.run(make_args(tmp_path)) == 0
+
+    assert of(events, "result_write")[0]["value"] == 0x80
+    assert of(events, "outcome_line") == []
+    assert not (tmp_path / "out" / "ran-line.txt").exists()
+
+
+def test_the_line_drawn_stop_is_not_armed_before_the_write(
+        tmp_path, monkeypatch):
+    """`$091C` is a `COMBAT` address as well; only a `$81` write may arm it."""
+    sess, _ = stage(tmp_path, monkeypatch)
+
+    curseflee.run(make_args(tmp_path))
+
+    assert not any(cp["exec"] for cp in sess.fight_calls[0]["armed"])
+
+
+def test_the_line_drawn_stop_is_one_shot_and_stops_the_machine(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(curseflee, "read_screen", lambda m: FakeScreen([]))
+    seen = {}
+
+    def flee(sess):
+        sess.machine.write_result(0x81)
+        with sess.mon(5):
+            seen.update(sess.machine.checkpoints)
+
+    sess, _ = stage(tmp_path, monkeypatch, hook=flee)
+    sess.machine.mem[curseflee.RESULT] = 0x81
+
+    curseflee.run(make_args(tmp_path))
+
+    (stop,) = [cp for cp in seen.values() if cp["exec"]]
+    assert stop["start"] == curseflee.LINE_DRAWN
+    assert stop["stop"] and stop["temporary"]
+
+
+def test_a_monitor_that_stops_answering_falls_back_to_the_hit_count(
+        tmp_path, monkeypatch):
+    def flee(sess):
+        sess.machine.stop_answers = False
+        sess.machine.status = [0x86, 0x86, 0, 0, 0, 0]
+        sess.machine.write_result(0x81)
+        with sess.mon(5):
+            pass
+
+    sess, events = stage(tmp_path, monkeypatch, hook=flee)
+    sess.machine.mem[curseflee.RESULT] = 0x81
+
+    assert curseflee.run(make_args(tmp_path)) == 0
+
+    assert not (tmp_path / "out" / "ran-line.txt").exists()
+    assert of(events, "trap_failed")
+    (proof,) = of(events, "line_printed_not_seen")
+    assert proof["hits"] == 1
+    assert of(events, "outcome_bytes")               # step 1 still ran
+
+
+def test_escapes_are_counted_from_the_status_byte_not_from_got_away(
+        tmp_path, monkeypatch):
+    def flee(sess):
+        sess.machine.status = [0x86, 0x86, 0x86, 0, 0, 0]
+        sess.machine.write_result(0x81)
+        with sess.mon(5):
+            pass
+        sess.machine.status = [1, 1, 1, 0, 0, 0]      # the drop loop
+
+    monkeypatch.setattr(curseflee, "read_screen", lambda m: FakeScreen([]))
+    sess, events = stage(tmp_path, monkeypatch, hook=flee)
+    sess.machine.mem[curseflee.RESULT] = 0x81
+    # Flight saw one `GOT AWAY`; the bytes say three.
+    monkeypatch.setattr(curseflee, "Flight",
+                        lambda log: SimpleNamespace(
+                            attempts=1, got_away={"MATHEW": 1},
+                            failed={}))
+
+    assert curseflee.run(make_args(tmp_path)) == 0
+
+    (ev,) = of(events, "flee")
+    assert ev["escaped"] == 3 and ev["got_away"] == {"MATHEW": 1}
