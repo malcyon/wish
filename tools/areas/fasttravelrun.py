@@ -30,7 +30,9 @@ route and never reaches the two-hop branch:
 
 `--arrival-choice LARGE` or `SMALL` picks the arrival menu's entry that
 walks the party back into the starting area, then watches the trip's second hop
-for the deadline plus a margin and passes only when it said nothing.
+for the deadline plus a margin and passes only when it said nothing. The party
+comes back onto the exit square, which asks `DO YOU WANT TO LEAVE?`; the walk
+answers `NO` first and records the question and answer as `settle_answers`.
 
 A run saves four screenshots under `--out` (`1-before.png`, `2-question.png`,
 `3-after-second-hop.png`, `4-after-walk.png`) and writes `result.json` with
@@ -56,6 +58,7 @@ import json
 import logging
 import os
 import pathlib
+import re
 import sys
 import threading
 import time
@@ -384,12 +387,44 @@ def indoor_bar(row: str) -> bool:
     return "ENCAMP" in row or S.MOVE_SUBBAR in row
 
 
+#: The question the Kobold Caves put to a party that an arrival choice has
+#: walked back onto the caves' exit square, and the answer that keeps it there:
+#: `YES` walks it out again, so `NO` is what leaves it standing in the caves.
+LEAVE_QUESTION = "DO YOU WANT TO LEAVE"
+STAY = "NO"
+
+
+def yes_no(row: str) -> bool:
+    """Whether *row* is a `YES`/`NO` bar."""
+    words = row.split()
+    return "YES" in words and "NO" in words
+
+
+def leave_question(sess) -> str | None:
+    """The screen line holding `LEAVE_QUESTION`, stripped, or None when no
+    line holds it."""
+    screen = sess.screen()
+    if screen is None:
+        return None
+    for line in screen.text().splitlines():
+        if LEAVE_QUESTION in line:
+            # `$` is the text reader's glyph for the message box's border.
+            return line.strip().strip("$").strip()
+    return None
+
+
 def settle_world(sess, out: pathlib.Path, shots: dict,
-                 rows: list | None = None) -> tuple[bool, str]:
+                 rows: list | None = None, stay: bool = False,
+                 answered: list | None = None) -> tuple[bool, str]:
     """Wait for the world's command bar before the walk, so the walk never
     starts on a disk prompt or a menu. On failure row 24 is recorded verbatim
     in the message and a screenshot is taken. Each distinct row 24 seen while
-    waiting indoors is appended to *rows*."""
+    waiting indoors is appended to *rows*.
+
+    With *stay*, a `YES`/`NO` bar under `LEAVE_QUESTION` indoors is answered
+    `STAY`, once, as a player who wants to stay would, and
+    `{"question": ..., "answer": ...}` is appended to *answered*. Any other
+    `YES`/`NO` question is left unanswered and fails the settle."""
     # A walked exit onto the travel grid lands on the direction prompt, which
     # `wait_for_world` never counts as the world and might press Return at;
     # `Session.outdoor_key` drives a step from it, so it is checked first and
@@ -402,7 +437,21 @@ def settle_world(sess, out: pathlib.Path, shots: dict,
     if sess.indoors() is True:
         # The move sub-bar is a resting state indoors, and `wait_for_world`
         # never counts it, so it is polled for through `settle_row`.
-        row = settle_row(sess, 60, accept=indoor_bar, seen=rows)
+        accept = ((lambda r: indoor_bar(r) or yes_no(r)) if stay
+                  else indoor_bar)
+        row = settle_row(sess, 60, accept=accept, seen=rows)
+        if stay and yes_no(row):
+            question = leave_question(sess)
+            if question is None:
+                print(f"  question not recognised under row 24 {row!r}; "
+                      "left unanswered", flush=True)
+            else:
+                print(f"  question: {question!r}; answering {STAY}",
+                      flush=True)
+                sess.select_bar(STAY, timeout=15)
+                if answered is not None:
+                    answered.append({"question": question, "answer": STAY})
+                row = settle_row(sess, 60, accept=indoor_bar, seen=rows)
         if indoor_bar(row):
             print(f"  settled: row 24 {row!r}", flush=True)
             return True, ""
@@ -512,6 +561,29 @@ def where(sess, indoors: bool):
     return None
 
 
+#: An indoor status line with a facing and a time but no square, as the
+#: Kobold Caves print it (`E 4:00`): an area that hides its map hides the
+#: party's square too.
+RE_NO_SQUARE = re.compile(
+    r"(?<![A-Z])[NESW](?![A-Z]) +\d+:\d\d(?!\d)(?! +\d+,\d+)")
+
+
+def square_hidden(sess, tries: int = 12) -> bool:
+    """Whether the indoor status line shows no square: True on the first read
+    that matches `RE_NO_SQUARE`, False on the first that `parse_status`
+    reads a square from, and False when *tries* reads find neither."""
+    for _ in range(tries):
+        screen = sess.screen()
+        if screen is not None:
+            text = screen.text()
+            if parse_status(text) is not None:
+                return False
+            if RE_NO_SQUARE.search(text):
+                return True
+        time.sleep(0.3)
+    return False
+
+
 def walk_afterwards(sess, timeout: float = 60.0,
                     stop_after_moves: int | None = None
                     ) -> tuple[list[dict], bool]:
@@ -542,13 +614,25 @@ def walk_afterwards(sess, timeout: float = 60.0,
     `Session.walk_one` kept for its key, whenever it kept any.
 
     Indoors, `before` and `after` come from the status line and
-    `shadow_before` and `shadow_after` from `square()`.
+    `shadow_before` and `shadow_after` from `square()`. In an area whose status
+    line shows no square (`square_hidden`) every `before` and `after` comes
+    from `square()` instead and each step carries `"square_from": "memory"`;
+    the choice is made once, so no step compares a status-line square with a
+    memory one. A memory copy left stale by a warp never changes, so it can
+    fail a walk but never pass one.
 
     Called before teardown, because the session is gone once `run` returns.
     """
     indoors = sess.indoors()
     if indoors is None:
         return [], False
+    from_memory = bool(indoors) and square_hidden(sess)
+    if from_memory:
+        print("  the status line shows no square; the walk reads square()",
+              flush=True)
+
+    def at():
+        return sess.square() if from_memory else where(sess, indoors)
     steps: list[dict] = []
     retry_used = moved = 0
     for move in (WALK_INDOORS if indoors else WALK_OUTDOORS):
@@ -564,14 +648,14 @@ def walk_afterwards(sess, timeout: float = 60.0,
                 return steps, False
             row = settle_row(sess, timeout)
         if not recognised(row):
-            here = where(sess, indoors)
+            here = at()
             steps.append({"move": move, "ok": False, "row": row,
                           "before": here, "after": here,
                           "refused": f"row 24 is not the world bar, the move "
                                      f"sub-bar or the direction prompt: {row!r}"})
             print(f"  walk {move}: stopped on row 24 {row!r}", flush=True)
             return steps, False
-        before = where(sess, indoors)
+        before = at()
         shadow_before = sess.square()
         attempts: list[dict] = []
         facing = 0          # quarter turns away from the facing the step began with
@@ -590,11 +674,11 @@ def walk_afterwards(sess, timeout: float = 60.0,
                     if sess.in_combat() or not recognised(row):
                         done = True   # the outer loop answers a fight; a prompt ends the walk
                         break
-                start = where(sess, indoors)
+                start = at()
                 ok = bool(sess.walk_one(key))
                 attempts.append({"move": key, "ok": ok, "row": row,
                                  "before": start,
-                                 "after": where(sess, indoors)})
+                                 "after": at()})
                 screens = getattr(sess, "walk_screens", None)
                 if screens is not None:
                     attempts[-1]["screens"] = screens
@@ -637,6 +721,8 @@ def walk_afterwards(sess, timeout: float = 60.0,
             step["facing_restored"] = facing % 4 == 0
         if capped:
             step["capped"] = True
+        if from_memory:
+            step["square_from"] = "memory"
         steps.append(step)
         print(f"  walk {last['move']}: ok={step['ok']} {before} -> {step['after']}"
               f" ({len(attempts)} attempt(s))", flush=True)
@@ -652,8 +738,21 @@ def walk_afterwards(sess, timeout: float = 60.0,
     # A step can end on a prompt without `walk_refused` being set, and the
     # sheet's keys must not be pressed into it.
     row = settle_row(sess, timeout)
+    if sess.in_combat():
+        # The walk's last step can start a fight, which the loop above only
+        # answers at the start of the next step; `VIEW` pressed into it
+        # opens the fight's own sheet rather than the world's.
+        result = sess.fight(budget=300, tactic=S.Session.melee_turn)
+        back = bool(sess.wait_for_world())
+        steps.append({"fight": getattr(result, "outcome", str(result)),
+                      "row": row, "world": back})
+        print(f"  fight: {steps[-1]['fight']} world={back}", flush=True)
+        if not back:
+            steps[-1]["refused"] = "the world did not come back after a fight"
+            return steps, False
+        row = settle_row(sess, timeout)
     if steps and not sess.in_combat() and not recognised(row):
-        here = where(sess, indoors)
+        here = at()
         steps.append({"move": "sheet", "ok": False, "row": row,
                       "before": here, "after": here,
                       "refused": f"row 24 is not the world bar, the move "
@@ -709,14 +808,18 @@ def disks_of(args) -> pathlib.Path | None:
     return pathlib.Path(args.disks) if args.disks else DISKS
 
 
-def walk_after(sess, out: pathlib.Path, shots: dict, result: dict) -> int:
+def walk_after(sess, out: pathlib.Path, shots: dict, result: dict,
+               stay: bool = False) -> int:
     """The walk and sheet check after a passed trip, recorded into *result*;
-    0 when the party walks."""
+    0 when the party walks. *stay* is `settle_world`'s: an arrival choice
+    leaves the party on the exit square, under the question it asks."""
     # The walk is judged on its own: the trip's verdict above is already
     # final, and a party that cannot walk afterwards is a second finding.
     settle_rows: list[str] = []
+    answered: list[dict] = []
     try:
-        settled, why = settle_world(sess, out, shots, settle_rows)
+        settled, why = settle_world(sess, out, shots, settle_rows,
+                                    stay=stay, answered=answered)
         if settled:
             steps, sheet = walk_afterwards(sess, stop_after_moves=1)
             walk_ok, walk_message = walk_verdict(steps, sheet)
@@ -730,6 +833,8 @@ def walk_after(sess, out: pathlib.Path, shots: dict, result: dict) -> int:
     result.update({"walk_ok": walk_ok, "walk_message": walk_message,
                    "walk": steps, "sheet_opened": sheet,
                    "settle_rows": settle_rows, "screenshots": shots})
+    if stay:
+        result["settle_answers"] = answered
     print(("PASS: walk: " if walk_ok else "FAIL: walk: ") + walk_message,
           flush=True)
     return 0 if walk_ok else 1
@@ -835,7 +940,7 @@ def run(args) -> int:
             print(("PASS: " if ok else "FAIL: ") + message, flush=True)
             if not ok:
                 return 1
-            return walk_after(sess, out, shots, result)
+            return walk_after(sess, out, shots, result, stay=True)
         hop = answer_and_wait(
             sess, args.to_area, deadline_s=args.answer_timeout,
             between=(lambda: second_hop(

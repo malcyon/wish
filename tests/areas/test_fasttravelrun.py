@@ -1518,12 +1518,16 @@ def test_run_passes_one_move_to_the_walk(monkeypatch, tmp_path):
         seen.update(k)
         return [], False
 
+    settle = {}
     monkeypatch.setattr(FT, "verdict", lambda *a, **k: (True, "landed"))
-    monkeypatch.setattr(FT, "settle_world", lambda *a: (True, ""))
+    monkeypatch.setattr(FT, "settle_world",
+                        lambda *a, **k: settle.update(k) or (True, ""))
     monkeypatch.setattr(FT, "walk_afterwards", walk)
     _run_with_marks(monkeypatch, tmp_path,
                     {"through": 213.4, "landed": 220.0}, area_after=27)
     assert seen == {"stop_after_moves": 1}
+    # The LEAVE path's party has walked on, so there is no question to answer.
+    assert settle["stay"] is False
 
 
 def test_settle_does_not_take_the_grid_prompt_when_indoors_is_unread(tmp_path):
@@ -1617,3 +1621,146 @@ def test_settle_indoors_records_a_stale_row_held_for_the_whole_wait(
     rows = []
     ok, _ = FT.settle_world(sess, tmp_path, {}, rows)
     assert not ok and rows == ["1-8, RETURN OR BUTTON"]
+
+
+COMMAND_BAR = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
+
+
+class ExitSquareSession(WalkSession):
+    """Indoors on the caves' exit square after an arrival choice: row 24 is
+    `YES NO` under *question* until a word is picked on it, and `NO` brings
+    the command bar back."""
+
+    def __init__(self, monitor, question="DO YOU WANT TO LEAVE?"):
+        super().__init__(monitor, indoors=True)
+        self.settled, self.row = False, "YES NO"
+        self.question = question
+        self.chosen = []
+
+    def screen(self):
+        # The question as the text reader gives it, border glyphs and all.
+        asked = f"${self.question:<38}$" if self.row == "YES NO" else ""
+        return FakeScreen(self.row, f"{asked}\nN 12:00 {self.x},5")
+
+    def select_bar(self, label, timeout=0):
+        self.chosen.append(label)
+        if label == "NO":
+            self.row = COMMAND_BAR
+        return True
+
+
+def test_settle_after_an_arrival_choice_answers_the_leave_question_no(
+        tmp_path, fake_clock):
+    sess, m = make()
+    sess = ExitSquareSession(m)
+    rows, answered = [], []
+    assert FT.settle_world(sess, tmp_path, {}, rows, stay=True,
+                           answered=answered) == (True, "")
+    assert sess.chosen == ["NO"]
+    assert answered == [{"question": "DO YOU WANT TO LEAVE?", "answer": "NO"}]
+    assert rows == ["YES NO", COMMAND_BAR]
+    assert sess.kbd.paths == []
+
+
+def test_settle_without_stay_leaves_the_leave_question_alone(
+        tmp_path, fake_clock):
+    sess, m = make()
+    sess = ExitSquareSession(m)
+    ok, message = FT.settle_world(sess, tmp_path, {})
+    assert not ok and "YES NO" in message and sess.chosen == []
+
+
+def test_settle_does_not_answer_a_yes_no_it_does_not_know(tmp_path,
+                                                          fake_clock):
+    sess, m = make()
+    sess = ExitSquareSession(m, question="DO YOU WANT TO FIGHT?")
+    answered = []
+    ok, message = FT.settle_world(sess, tmp_path, {}, stay=True,
+                                  answered=answered)
+    assert not ok and "YES NO" in message
+    assert sess.chosen == [] and answered == []
+
+
+def test_walk_after_an_arrival_choice_records_the_answer(tmp_path, fake_clock):
+    sess, m = make()
+    sess = ExitSquareSession(m)
+    result = {}
+    assert FT.walk_after(sess, tmp_path, {}, result, stay=True) == 0
+    assert result["settle_answers"] == [
+        {"question": "DO YOU WANT TO LEAVE?", "answer": "NO"}]
+    assert result["walk_ok"] and result["sheet_opened"]
+
+
+class HiddenSquareSession(WalkSession):
+    """Indoors in an area whose status line shows a facing and a time but no
+    square, as the Kobold Caves print it."""
+
+    def __init__(self, monitor, **kw):
+        super().__init__(monitor, indoors=True, **kw)
+        self.row = FT.S.MOVE_SUBBAR + ", RETURN OR BUTTON"
+
+    def screen(self):
+        return FakeScreen(self.row, "$ $...........$ $E 4:00                $")
+
+
+@pytest.mark.parametrize("line, hidden", [
+    ("$E 4:00                $", True),
+    ("$N 12:04 10,5          $", False),
+    ("$OUTDOORS 4:00 3,7     $", False),
+    ("$NAME            AC HP $", False),
+])
+def test_the_no_square_status_line_is_told_apart(line, hidden):
+    assert bool(FT.RE_NO_SQUARE.search(line)) is hidden
+
+
+def test_a_walk_where_the_square_is_hidden_reads_it_from_memory(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = HiddenSquareSession(m)
+    steps, sheet = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert steps[0]["before"] == (5, 5) and steps[0]["after"] == (6, 5)
+    assert steps[0]["square_from"] == "memory"
+    assert FT.walk_verdict(steps, sheet)[0]
+
+
+def test_a_hidden_square_that_never_changes_still_fails(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = HiddenSquareSession(m, blocked={"I"})
+    sess.walled = {0, 1, 2, 3}
+    steps, sheet = FT.walk_afterwards(sess)
+    ok, message = FT.walk_verdict(steps, sheet)
+    assert not ok and "did not move" in message
+
+
+def test_a_readable_square_is_never_read_from_memory():
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    steps, _ = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert "square_from" not in steps[0]
+
+
+def test_a_fight_on_the_last_step_is_fought_before_the_sheet(monkeypatch):
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    sess, m = make()
+    sess = WalkSession(m, indoors=True)
+    real = sess.walk_one
+
+    def walk_one(key):
+        moved = real(key)
+        sess.combat = True          # the step that moves starts a fight
+        return moved
+
+    sess.walk_one = walk_one
+    sheets_in_combat = []
+    real_sheet = sess.character_sheet
+
+    def sheet(index=None):
+        sheets_in_combat.append(sess.combat)
+        return real_sheet(index)
+
+    sess.character_sheet = sheet
+    steps, opened = FT.walk_afterwards(sess, stop_after_moves=1)
+    assert len(sess.fights) == 1 and steps[-1]["fight"] == "won"
+    assert sheets_in_combat == [False] and opened
+    assert FT.walk_verdict(steps, opened)[0]
