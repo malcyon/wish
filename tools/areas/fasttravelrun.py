@@ -705,8 +705,9 @@ def walk_afterwards(sess, timeout: float = 60.0,
       party steps on the move sub-bar;
     * each key is sent once (`walk_one(key, tries=1)`), and whether it took is
       read from the live triple -- the square for a step, the facing for a
-      turn -- because `walk_one` verifies a key by the status line's square,
-      finds none, and would otherwise send it again and report False;
+      turn -- because `walk_one` verifies a key by the status line's square
+      and finds none; `ok` is that judgement, and the attempt also records
+      `walk_one`, what `walk_one` itself returned, without using it;
     * before every key and before the sheet the walk waits for `world_ready`,
       so no key goes into a fight or an area still loading under a stale
       command bar; a game that never settles ends the walk with a refused step;
@@ -826,18 +827,22 @@ def walk_afterwards(sess, timeout: float = 60.0,
                 if from_memory:
                     start3 = triple()
                     start = None if start3 is None else start3[:2]
-                    sess.walk_one(key, tries=1)
+                    verdict = sess.walk_one(key, tries=1)
                     end3 = triple()
                     part = slice(0, 2) if kind == "step" else slice(2, 3)
                     ok = (start3 is not None and end3 is not None
                           and end3[part] != start3[part])
                     after = None if end3 is None else end3[:2]
+                    walk_one_said = bool(verdict)
                 else:
+                    walk_one_said = None
                     start = at()
                     ok = bool(sess.walk_one(key))
                     after = at()
                 attempts.append({"move": key, "ok": ok, "row": row,
                                  "before": start, "after": after})
+                if walk_one_said is not None:
+                    attempts[-1]["walk_one"] = walk_one_said
                 screens = getattr(sess, "walk_screens", None)
                 if screens is not None:
                     attempts[-1]["screens"] = screens
@@ -866,7 +871,7 @@ def walk_afterwards(sess, timeout: float = 60.0,
         step = {"move": last["move"], "ok": last["ok"], "row": last["row"],
                 "before": before, "after": last["after"], "refused": refused,
                 "shadow_before": shadow_before, "shadow_after": sess.square()}
-        for key in ("screens", "stop_screen"):
+        for key in ("screens", "stop_screen", "walk_one"):
             if key in last:
                 step[key] = last[key]
         if len(attempts) > 1:

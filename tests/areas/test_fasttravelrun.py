@@ -2018,3 +2018,24 @@ def test_a_fight_still_going_is_not_reported_as_the_game_never_settling(
     assert sheet is False
     assert "fight is still going" in steps[-1]["refused"]
     assert "never settled" not in steps[-1]["refused"]
+
+
+def test_a_caves_attempt_records_what_walk_one_returned(monkeypatch):
+    """`ok` stays the driver's verdict from `$C04B`; `walk_one` is the
+    session's own answer, recorded beside it."""
+    monkeypatch.setattr(FT.time, "sleep", lambda s: None)
+    for said in (False, True):
+        sess, m = make()
+        sess = CavesSession(m)
+        real = sess.walk_one
+
+        def walk_one(key, tries=4, real=real, said=said):
+            real(key, tries)
+            return said
+
+        sess.walk_one = walk_one
+        steps, _ = FT.walk_afterwards(sess, stop_after_moves=1)
+        attempts = [a for s in steps for a in s.get("attempts", [s])
+                    if "move" in a]
+        assert attempts and all(a["walk_one"] is said for a in attempts)
+        assert any(a["ok"] for a in attempts)
