@@ -492,6 +492,7 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
     seen, since = "", time.time()
     began = entered = False
     chosen_at, answered = 0.0, False
+    subbar_at, subbar_presses = 0.0, 0
     while time.time() < deadline:
         s = sess.screen()
         if s is None:
@@ -502,8 +503,15 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             return True
         if began and por.MOVE_SUBBAR in s.row(24):
             # The move sub-bar is the world: Escape does not leave it, one
-            # Return does, back to the bar that carries ENCAMP.
-            sess.press_kernal(0x0D)
+            # Return does, back to the bar that carries ENCAMP. The bar can
+            # stay drawn a while after the Return, so a second one waits out
+            # a long quiet spell and there are never more than two.
+            if subbar_presses < 2 and (
+                    subbar_presses == 0
+                    or time.time() - subbar_at > 5.0):
+                sess.press_kernal(0x0D)
+                subbar_at = time.time()
+                subbar_presses += 1
             time.sleep(1.5)
             continue
         if entered and stop_at_idle and not side_wanted(text)[1] \

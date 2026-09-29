@@ -292,7 +292,7 @@ def test_the_move_subbar_after_begin_gets_one_return_and_no_escape(
     class Sess(WorldSess):
         def press_kernal(self, code):
             super().press_kernal(code)
-            if self.calls and self.screens[-1] is subbar:
+            if self.screens[self.current] is subbar:
                 self.screens.append(WORLD)
 
     sess = Sess([MENU, PROMPT, subbar], prompt_at={1})
@@ -303,3 +303,54 @@ def test_the_move_subbar_after_begin_gets_one_return_and_no_escape(
     # One Return chose BEGIN; exactly one more left the sub-bar.
     assert sess.kernal == [0x0D, 0x0D]
     assert sess.escapes == 0
+
+
+def test_the_move_subbar_that_persists_gets_at_most_two_returns(monkeypatch):
+    _quiet(monkeypatch)
+    subbar = ("MOVE", "I,J,K,M, RETURN OR BUTTON")
+    sess = WorldSess([MENU, PROMPT, subbar], prompt_at={1})
+    ok = SSB.enter_world(sess, Addr(), timeout=60.0, fix=False,
+                         stop_at_idle=False)
+    assert ok is False
+    # One Return chose BEGIN; the sub-bar then got two, not one per pass.
+    assert sess.kernal == [0x0D] * 3
+    assert sess.escapes == 0
+
+
+def test_the_move_subbar_is_left_before_the_idle_exit(monkeypatch):
+    _quiet(monkeypatch)
+    # An idle PC would end the run from the fetcher if the sub-bar branch did
+    # not come first.
+    monkeypatch.setattr(SSB, "idle_in_key_window", lambda sess, addr: 0x1005)
+    subbar = ("MOVE", "I,J,K,M, RETURN OR BUTTON")
+    other = ("A SCREEN", "A SCREEN")
+
+    class Sess(WorldSess):
+        def press_kernal(self, code):
+            super().press_kernal(code)
+            if self.screens[self.current] is subbar:
+                self.screens.append(WORLD)
+
+    sess = Sess([MENU, PROMPT, other, subbar], prompt_at={1})
+    ok = SSB.enter_world(sess, Addr(), timeout=120.0, fix=False,
+                         stop_at_idle=True)
+    assert ok is True
+    assert sess.kernal == [0x0D, 0x0D]
+
+
+def test_a_menu_still_up_after_90_seconds_with_no_prompt_is_chosen_again(
+        monkeypatch):
+    _quiet(monkeypatch)
+    sess = WorldSess([MENU], prompt_at=())
+    SSB.enter_world(sess, Addr(), timeout=150.0, fix=False,
+                    stop_at_idle=False)
+    assert sess.selected == ["BEGIN ADVENTURING"] * 2
+
+
+def test_a_menu_still_up_after_90_seconds_is_not_chosen_again_once_a_prompt_was_answered(
+        monkeypatch):
+    _quiet(monkeypatch)
+    sess = WorldSess([MENU, PROMPT, MENU], prompt_at={1})
+    SSB.enter_world(sess, Addr(), timeout=150.0, fix=False,
+                    stop_at_idle=False)
+    assert sess.selected == ["BEGIN ADVENTURING"]
