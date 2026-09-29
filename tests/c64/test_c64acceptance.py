@@ -7220,3 +7220,29 @@ def _real_walk_with(cls, tmp_path, monkeypatch, **kw):
     run.capture = lambda tag, rows=None: []
     run.reading = lambda: {}
     return sess, run, log
+
+
+class RefusalFreeAmbush(AmbushWalk):
+    """`walk_one` returns False with no refusal and no stop screen while an
+    ambush's `PRESS` bar is up and the party has not moved."""
+
+    def walk_one(self, move, *a, **k):
+        if self.calls == 0:
+            self.calls += 1
+            self.pressed.append(move)
+            self.state, self.opens_fight = "press", True
+            self.walk_refused = self.walk_stop_screen = None
+            return False
+        return super().walk_one(move, *a, **k)
+
+
+def test_walk_fight_answers_a_press_bar_walk_one_left_fights_and_resends_once(
+        tmp_path, monkeypatch):
+    sess = RefusalFreeAmbush({})
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_fight("I")
+    log.close()
+    assert sess.sent == [("key", 0x0D)]
+    assert [f["at_move"] for f in got["fights"]] == [0]
+    assert sess.pressed == ["I", "I"]
+    assert got["moves"][0]["resent"] is True and got["position"] == [5, 4, 0]
