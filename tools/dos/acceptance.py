@@ -61,7 +61,8 @@ a source whose title does not match `--title`:
 | `change N CLASS` | Curse, at the party menu with the hall open (`--hall`): line N, `HUMAN CHANGE CLASSES`, the class list's row for CLASS as the engine's own test orders them (`class_choices`), checked against the rows the highlight reaches, `SELECT`, back to the party menu |
 | `halve N I`, `join N I` | Pools of Darkness, in camp: member N's `ITEMS`, the highlight moved to row I (from 1, at most 18) with `Down`, `h` or `j` pressed once, and the rows counted before and after; `halve` must add a row and keep the highlight or the run stops before any save, `join` only records; back to camp |
 | `memorize N` | Pools of Darkness, in camp: roster line N highlighted with `Down`, `MAGIC`, `MEMORIZE`; the grimoire's title checked against line N's name; every page shot and its eleven rows read, turning with `NEXT` until the bar stops offering it; `lists_126` says whether a page draws `MONSTER SUMMONING`, spell id 126; `EXIT` to the Magic bar and to camp.  Nothing is memorized |
-| `view N` | At the party menu, before `begin`.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar); a sheet that draws `(NPC)` two cells after the name (a control byte above 0x7F) is the member's too, read with the title's font, and the result's `header` names it.  `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
+| `add NAME` | Pool, first or after another `add`, with no `load`: the party menu (title screens pressed past as `load` does), `ADD CHARACTER TO PARTY` (`a`), the highlight walked with `End` onto the row reading NAME (several words, as `CHARLIST.TXT` lists it), `Return`, believed only when the row redraws as `* NAME`, then `EXIT` (`e`), and NAME required on the party menu's roster.  Each screen is read as text with the title's font before its key and an unknown one stops the run with nothing more pressed; a list longer than one screen is not paged.  Before the boot the save folder is emptied and every exported character of the title's own `SAVE` folder (`.CHA`, `.ITM`, `.SPC`) and its `CHARLIST.TXT` are staged into it, and a NAME that `CHARLIST.TXT` does not list is refused.  A run that begins with `add` takes no `--save`, and then no staging option, `--expect` or `read`; `view N` and `save X` may follow |
+| `view N` | At the party menu, before `begin`.  Pool, after `add`: `End` to line N, `VIEW CHARACTER` (`v`), the sheet read as text (its name row must read line N's name, `encumbrance` is the figure it draws), `ITEMS` when the sheet offers it, the list's title `<NAME>'S ITEMS` checked and each row read as `ready`, `marked` and `name`, and `Escape` twice back.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar); a sheet that draws `(NPC)` two cells after the name (a control byte above 0x7F) is the member's too, read with the title's font, and the result's `header` names it.  `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
 | `items N` | Pool, in camp: member N's `ITEMS` list, first screen only, from `End` to the line, `v`, `i`, and `Escape` twice back to camp; refuses a sheet with no `ITEMS`; records `rows` and `marked`, the rows (from 1) drawn with the Detect Magic `* ` |
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool, Curse and Silver Blades, in camp: `MAGIC`, `DISPLAY`, every page of the list of spells in effect read as text with the title's own font (`load_font`), turning with `n` while the bar is ` NEXT EXIT`; `members` is each member's name and the effect names under it, and the list must name every member (Pool's page also six name rows); `Return` or `e` back to the Magic bar (`DISPLAY_LEAVE`) and `e` to camp |
@@ -385,6 +386,51 @@ POOL_ITEM_MARK = "4590f6541a365c32"
 # Names start at x=8; effect lines are indented to x=17. Count the left
 # character cell across the page, allowing row spacing to change by effect.
 POOL_DISPLAY_NAME_ROWS = range(32, 184, 8)
+
+#: The titles whose party-menu `ADD CHARACTER TO PARTY` the `add` step drives.
+ADD_TITLES = frozenset({"pool"})
+#: Pool's party menu before any load, read as text with the title's font
+#: (`load_font`) in #791's probe boot: the bar `CHOOSE A FUNCTION`, the roster
+#: from text row 4 at column 1 (`POD_ROSTER["party"]`), and the functions at
+#: rows 12 to 22 from column 2, each keyed by its first letter.  `VIEW
+#: CHARACTER` is drawn only once the party has a member.
+PARTY_MENU_BAR = "CHOOSE A FUNCTION"
+PARTY_MENU_ROWS = range(12, 23)
+PARTY_ADD_ENTRY = "ADD CHARACTER TO PARTY"
+PARTY_VIEW_ENTRY = "VIEW CHARACTER"
+PARTY_ADD = "a"
+#: `ADD A CHARACTER: ADD EXIT` lists `CHARLIST.TXT`'s names from text row 2
+#: at column 1, one a row.  `End` moved the highlight a row down and `Home`
+#: back (measured, one press each); the arrow keys do nothing and any other
+#: key picks (`dosaddchar.py`).  `Return` picked ARRONEL and redrew his row
+#: as `* ARRONEL`; `e` left the list for the party menu.
+ADD_LIST_BAR = "ADD A CHARACTER: ADD EXIT"
+ADD_LIST = (8, 16, 304, 168)
+ADD_LIST_DOWN = dosbox.LIST_DOWN
+ADD_PICK = "Return"
+ADD_LEAVE = "e"
+ADD_MARK = "* "
+#: Seconds the list is given to star the picked row: the file is read first.
+ADD_PICK_SECONDS = 15.0
+#: The roster's lines at the party menu, at most.
+PARTY_ROSTER_LINES = 8
+#: What the `add` step stages from the title's own `SAVE` folder: every
+#: exported character (`<stem>.CHA` and its `.ITM` and `.SPC`) and the
+#: `CHARLIST.TXT` the list is built from.  The saved games' `CHRDAT` files
+#: are left out.
+EXPORT_SUFFIXES = (".CHA", ".ITM", ".SPC")
+CHARLIST = "CHARLIST.TXT"
+#: Pool's sheet bar opens `VIEW`; its `ITEMS` list's bar opens `READY` and
+#: its title is `<NAME>'S ITEMS`, the rows from text row 5 as ` YES  LONG
+#: SWORD`, a readied flag and the name (#791's probe boot, ARRONEL).
+POOL_SHEET_BAR_HEAD = "VIEW"
+POOL_ITEMS_BAR_HEAD = "READY"
+POOL_ITEMS_TITLE = "'S ITEMS"
+POOL_ITEM_FIRST_ROW = 5
+POOL_ITEM_ROW = re.compile(r"(YES|NO)\s+(\*\s*)?(\S.*)")
+#: The sheet's rows read as text, and the figure the `view` step reports.
+POOL_SHEET_ROWS = range(1, 23)
+POOL_ENCUMBRANCE = re.compile(r"ENCUMBRANCE\s+(\d+)")
 
 # Pool's rest menu is `Rest daYs Hours Mins Inc Dec Exit` (`GAME.OVR` 0x244A5).
 REST_DAYS = "y"
@@ -855,6 +901,59 @@ def roster_text(screen: dosbox.Screen, line: int, font: dict[bytes, str]) -> str
     x, y = POD_ROSTER["camp"]
     return "".join(read_cell(screen, x + CELL * i, y + CELL * (line - 1), font)
                    for i in range(POD_NAME_CELLS)).strip()
+
+
+def party_menu_entries(screen: dosbox.Screen, font: dict[bytes, str]) -> list[str] | None:
+    """Pool's party-menu functions, top down, or None off the party menu."""
+    if text_row(screen, BAR_ROW, font).strip() != PARTY_MENU_BAR:
+        return None
+    return [t for t in (text_row(screen, r, font, DISPLAY_COLUMNS).strip()
+                        for r in PARTY_MENU_ROWS) if t]
+
+
+def party_roster(screen: dosbox.Screen, font: dict[bytes, str]) -> list[str]:
+    """The party menu's roster names, top down, to the first blank line."""
+    x, y = POD_ROSTER["party"]
+    names = []
+    for line in range(PARTY_ROSTER_LINES):
+        name = "".join(read_cell(screen, x + CELL * i, y + CELL * line, font)
+                       for i in range(POD_NAME_CELLS)).strip()
+        if not name:
+            break
+        names.append(name)
+    return names
+
+
+def add_entries(screen: dosbox.Screen, font: dict[bytes, str]) -> list[str] | None:
+    """The `ADD A CHARACTER` list's rows as drawn (a picked one as `* NAME`),
+    to the first blank row, or None off the list."""
+    if text_row(screen, BAR_ROW, font).strip() != ADD_LIST_BAR:
+        return None
+    x, y, _, h = ADD_LIST
+    entries = []
+    for k in range(h // CELL):
+        text = text_row(screen, y // CELL + k, font, DISPLAY_COLUMNS).strip()
+        if not text:
+            break
+        entries.append(text)
+    return entries
+
+
+def pool_item_list(screen: dosbox.Screen, font: dict[bytes, str]) -> list[dict]:
+    """Pool's `ITEMS` rows, each `ready`, `marked` (Detect Magic's `*`) and
+    `name`, to the first blank row; a row that reads otherwise is a
+    ValueError naming it."""
+    items = []
+    for k in range(ITEM_ROWS):
+        text = text_row(screen, POOL_ITEM_FIRST_ROW + k, font, DISPLAY_COLUMNS).strip()
+        if not text:
+            break
+        m = POOL_ITEM_ROW.fullmatch(text)
+        if m is None:
+            raise ValueError(f"item row {k + 1} reads {text!r}")
+        items.append({"ready": m.group(1) == "YES", "marked": bool(m.group(2)),
+                      "name": m.group(3).strip()})
+    return items
 
 
 def changed_rows(before: dosbox.Screen, after: dosbox.Screen,
@@ -1552,8 +1651,9 @@ def ninth_level(rows: list[str]) -> list[int | str]:
 WALKS = {"pool": ("MI", "I"), "curse": ("MI",), "ssb": ("1",), "darkness": ("1",)}
 #: The titles whose `turn N` control is driven: those with a walk to check.
 TURNS = frozenset(WALKS)
-#: The titles whose party menu `view N` opens a sheet from.
-VIEWS = frozenset({"curse", "ssb", "darkness"})
+#: The titles whose party menu `view N` opens a sheet from.  Pool's party
+#: menu is reached by `add`, since its load puts the party on the map.
+VIEWS = frozenset({"curse", "ssb", "darkness", "pool"})
 #: The titles whose camp `leave` exits to the map, and its key.  The camp
 #: loop of Curse (`GAME.OVR` 0x1B41F-0x1B43B) runs until the menu returns a
 #: key in the set at 0x1B362, which holds only 0 and `E`.  Silver Blades
@@ -1774,7 +1874,7 @@ STEP_HELP = ("load, begin, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, leave,
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
              "'halve 1 1', 'join 4 15', 'view 1', 'memorize 5', 'cast 2 BLESS', "
              "'cast 2 CURE-LIGHT-WOUNDS 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
-             "'press KEY', 'fight', 'fight 900', 'prayer-watch 49', read")
+             "'press KEY', 'fight', 'fight 900', 'prayer-watch 49', 'add ARRONEL', read")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
 #: 0x0CB8), upper case.
 CHANGE_CLASSES = ("CLERIC", "DRUID", "FIGHTER", "PALADIN", "RANGER", "MAGIC-USER",
@@ -1842,6 +1942,13 @@ def parse_step(text: str) -> Step:
     if kind == "prayer-watch" and len(words) == 2 and words[1] in (
             str(n) for n in PRAYER_NODES):
         return Step(kind, text, node=int(words[1]))
+    if kind == "add" and len(words) >= 2:
+        name = " ".join(words[1:]).upper()
+        if len(name) > POD_NAME_CELLS or name.startswith("*"):
+            raise ValueError(f"add {name!r} is refused: a name is at most "
+                             f"{POD_NAME_CELLS} characters and is given without "
+                             "the * the list draws on one already picked")
+        return Step(kind, text, name=name)
     if kind == "press" and len(words) == 2 and re.fullmatch(r"\w+", words[1]):
         if words[1].lower() in ("e", "escape"):
             raise ValueError(f"press {words[1]} is refused: E is exit to DOS at "
@@ -1867,7 +1974,7 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         if where == "pressed" and k != "press":
             raise ValueError(f"only press, shot and read may come after a press: "
                              f"{step.text!r}")
-        if where == "boot" and k != "load":
+        if where == "boot" and k not in ("load", "add"):
             raise ValueError(f"{k} needs load first: {step.text!r}")
         if k == "press":
             where = "pressed"
@@ -1937,9 +2044,18 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                 raise ValueError(f"{k} is driven in darkness only, not {title}")
             if where != "camp":
                 raise ValueError(f"{k} needs camp first: {step.text!r}")
+        elif k == "add":
+            if title not in ADD_TITLES:
+                raise ValueError(f"add is driven in {', '.join(sorted(ADD_TITLES))} "
+                                 f"only, not {title}")
+            if where not in ("boot", "party"):
+                raise ValueError(f"add needs the party menu before any load, since "
+                                 f"{title}'s load puts the party on the map: "
+                                 f"{step.text!r}")
+            where = "party"
         elif k == "view":
             if title not in VIEWS:
-                raise ValueError("view is driven in curse, ssb and darkness only")
+                raise ValueError(f"view is driven in {', '.join(sorted(VIEWS))} only")
             if where != "party":
                 raise ValueError(f"view needs the party menu, before begin: "
                                  f"{step.text!r}")
@@ -4541,15 +4657,201 @@ class Driver:
         measured in this driver.  Nothing here writes a file.
         """
         if self.where != "party" or self.title.key not in VIEWS:
-            raise StepFailed("view is the party-menu command of Curse, Silver "
-                             "Blades and Pools of Darkness")
+            raise StepFailed("view is the party-menu command of Pool, Curse, "
+                             "Silver Blades and Pools of Darkness")
         if self.party_sig is None:
-            raise StepFailed("view needs the party menu learnt by load")
+            raise StepFailed("view needs the party menu learnt by load or add")
+        if self.title.key == "pool":
+            return self._view_pool(line)
         if self.title.key == "curse":
             return self._view_curse(line)
         if self.title.key == "ssb":
             return self._view_ssb(line)
         return self._view_pod(line)
+
+    def add(self, name: str) -> dict:
+        """Pool's party menu: `ADD CHARACTER TO PARTY`, the list's row that
+        reads `name` picked, and `EXIT` back to the party menu.
+
+        From the boot the title screens are pressed past first, as `load`
+        does.  Every screen is read as text with the title's font before a
+        key is pressed at it, and one that is not the screen the key belongs
+        to stops the run with nothing more pressed: the party menu must offer
+        `ADD CHARACTER TO PARTY`, and `a` must open `ADD A CHARACTER: ADD
+        EXIT` listing `name` unpicked.  The highlight is walked there with
+        `End`, reading it after each press, and `Return` is believed only
+        when the row redraws as `* NAME`, the game's mark that it read the
+        file; `name` is believed added only when the party menu's roster
+        draws it after `EXIT`, since a refused add is starred too.  A list
+        too long for one screen is not paged: `N` and `P` are unmeasured
+        here.
+        """
+        if self.title.key not in ADD_TITLES:
+            raise StepFailed(f"add is driven in {', '.join(sorted(ADD_TITLES))} only")
+        label = "add-" + re.sub(r"\W+", "-", name).strip("-")
+        font = self.display_font()
+        if self.where == "boot":
+            try:
+                self.game.to_main_menu()
+            except TimeoutError as e:
+                raise self.fail(label, str(e)) from None
+        elif self.where != "party":
+            raise StepFailed("add needs the party menu, before any load")
+        screen = self.s.settle(quiet=0.6, timeout=20.0)
+        menu = party_menu_entries(screen, font)
+        if menu is None or PARTY_ADD_ENTRY not in menu:
+            raise self.fail(f"{label}-menu", f"not the party menu offering "
+                            f"{PARTY_ADD_ENTRY}: the bar reads "
+                            f"{text_row(screen, BAR_ROW, font).strip()!r}, the "
+                            f"functions {menu}")
+        self.party_sig = bar_signature(screen)
+        self.where = "party"
+        menu_shot = self.shot(f"{label}-menu")
+        if not self.press_screen_changes(PARTY_ADD, tries=1, wait=15.0):
+            raise self.fail(f"{label}-list", f"{PARTY_ADD_ENTRY} changed nothing")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        entries = add_entries(screen, font)
+        if entries is None:
+            raise self.fail(f"{label}-list", f"{PARTY_ADD_ENTRY} put up a bar reading "
+                            f"{text_row(screen, BAR_ROW, font).strip()!r}, not "
+                            f"{ADD_LIST_BAR!r}")
+        list_shot = self.shot(f"{label}-list")
+        if name not in entries:
+            full = len(entries) >= ADD_LIST[3] // CELL
+            raise self.fail(f"{label}-absent", f"{name} is not on the list {entries}"
+                            + ("; the list fills its window and its other pages "
+                               "are not driven" if full else ""))
+        row = entries.index(name)
+        presses = self._add_walk(row, len(entries), label)
+        screen = self.s.capture()
+        now = add_entries(screen, font)
+        if now is None or screen.highlight_row(ADD_LIST) != row or now[row] != name:
+            raise self.fail(f"{label}-row", f"the list does not show {name} "
+                            "highlighted and unpicked before the pick")
+        self.s.key(ADD_PICK)
+        mark = ADD_MARK + name
+        if not self.s.wait_for(lambda sc: (add_entries(sc, font) or [])[row:row + 1]
+                               == [mark], ADD_PICK_SECONDS):
+            raise self.fail(f"{label}-pick", f"the row never redrew as {mark!r}: "
+                            "the game did not read the file")
+        picked = add_entries(self.s.settle(quiet=0.8, timeout=30.0), font)
+        picked_shot = self.shot(f"{label}-picked")
+        if picked is None:
+            raise self.fail(f"{label}-picked", "the list went away after the pick")
+        self.s.key(ADD_LEAVE)
+        if not self.wait_party_menu(15.0):
+            raise self.fail(f"{label}-back", "the party menu did not come back "
+                            "after EXIT")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        roster = party_roster(screen, font)
+        roster_shot = self.shot(f"{label}-roster")
+        if name not in roster:
+            raise self.fail(f"{label}-roster", f"the game read {name}'s file and "
+                            f"left him out of the party: the roster is {roster}")
+        self.party_size = len(roster)
+        self.line = roster_line(screen, "party", self.party_size) or 1
+        self.note(event="added", name=name, roster=roster)
+        return {"name": name, "list": entries, "row": row + 1, "presses": presses,
+                "picked": picked, "roster": roster, "party_menu": self.party_sig,
+                "menu_shot": menu_shot, "list_shot": list_shot,
+                "picked_shot": picked_shot, "roster_shot": roster_shot}
+
+    def _add_walk(self, row: int, rows: int, label: str) -> int:
+        """`ADD_LIST_DOWN` until the list's highlight is on `row`, reading it
+        after each press; two presses that leave it still, or more than two
+        rounds of the list, stop the run."""
+        here = self.s.capture().highlight_row(ADD_LIST)
+        presses = still = 0
+        while here != row:
+            if here is None:
+                raise self.fail(f"{label}-walk", "no list row is drawn highlighted")
+            if presses >= 2 * rows:
+                raise self.fail(f"{label}-walk", f"{presses} presses of "
+                                f"{ADD_LIST_DOWN} never reached row {row + 1}")
+            self.s.key(ADD_LIST_DOWN)
+            presses += 1
+            was = here
+            self.s.wait_for(lambda sc, was=was: sc.highlight_row(ADD_LIST) != was, 5.0)
+            here = self.s.capture().highlight_row(ADD_LIST)
+            still = still + 1 if here == was else 0
+            if still >= 2:
+                raise self.fail(f"{label}-walk", f"{ADD_LIST_DOWN} did not move the "
+                                f"highlight off row {here + 1}")
+        return presses
+
+    def _view_pool(self, line: int) -> dict:
+        """Pool's party menu: `End` to roster line `line`, `VIEW CHARACTER`,
+        the sheet read as text, then its `ITEMS` list when the sheet offers
+        it, and `Escape` back to the sheet and to the party menu.
+
+        The sheet is believed only when its name row reads line `line`'s name
+        (or that name and `(NPC)`), the list only when its title reads
+        `<NAME>'S ITEMS`; `encumbrance` is the figure the sheet draws.  A list
+        that fills its window stops the step, its next page being unmeasured.
+        """
+        font = self.display_font()
+        label = f"view-{line}"
+        screen = self.s.capture()
+        menu = party_menu_entries(screen, font)
+        if not self.on_party_menu(screen) or menu is None or PARTY_VIEW_ENTRY not in menu:
+            raise self.fail(f"{label}-menu", f"not the party menu offering "
+                            f"{PARTY_VIEW_ENTRY}: {menu}")
+        moved = self.pick_line(line, "party", f"{label}-select", POOL_ROSTER_NEXT)
+        roster = party_roster(self.s.capture(), font)
+        if len(roster) < line:
+            raise self.fail(f"{label}-name", f"roster line {line} has no name drawn")
+        want = roster[line - 1]
+        self.s.key(VIEW)
+
+        def bar_opens(sc, head):
+            return text_row(sc, BAR_ROW, font).strip().startswith(head)
+
+        if not self.s.wait_for(lambda sc: bar_opens(sc, POOL_SHEET_BAR_HEAD), 15.0):
+            raise self.fail(f"{label}-open", "VIEW CHARACTER did not open a sheet")
+        screen = self.s.settle(quiet=0.8, timeout=30.0)
+        got = text_row(screen, 1, font, range(1, 27)).strip()
+        if got not in (want, f"{want} {NPC_HEADER}"):
+            raise self.fail(f"{label}-name", f"the sheet's name is {got!r}, roster "
+                            f"line {line} is {want!r}")
+        checked = self.check_sheet(screen, line, want, f"{label}-name", got=want)
+        sheet_bar = text_row(screen, BAR_ROW, font).strip()
+        sheet_text = [text_row(screen, r, font, DISPLAY_COLUMNS) for r in POOL_SHEET_ROWS]
+        found = next((m for m in map(POOL_ENCUMBRANCE.search, sheet_text) if m), None)
+        sheet_shot = self.shot(f"{label}-sheet")
+        offered = "ITEMS" in re.split(r"[^A-Z]+", sheet_bar)
+        items = items_shot = None
+        if offered:
+            self.s.key(SHEET_ITEMS)
+            if not self.s.wait_for(lambda sc: bar_opens(sc, POOL_ITEMS_BAR_HEAD), 15.0):
+                raise self.fail(f"{label}-items", "ITEMS did not open the list")
+            listed = self.s.settle(quiet=0.8, timeout=30.0)
+            head = text_row(listed, 1, font, DISPLAY_COLUMNS).strip()
+            if head != want + POOL_ITEMS_TITLE:
+                raise self.fail(f"{label}-items", f"the list's title reads {head!r}")
+            try:
+                items = pool_item_list(listed, font)
+            except ValueError as e:
+                raise self.fail(f"{label}-items", str(e)) from None
+            items_shot = self.shot(f"{label}-items")
+            if len(items) >= ITEM_ROWS:
+                raise self.fail(f"{label}-items", f"the list fills its {ITEM_ROWS} "
+                                "rows and its next page is unmeasured")
+            self.s.key("Escape")
+            if not self.s.wait_for(lambda sc: bar_opens(sc, POOL_SHEET_BAR_HEAD), 15.0):
+                raise self.fail(f"{label}-sheet-back", "the sheet did not return "
+                                "after Escape")
+        self.s.key("Escape")
+        if not self.wait_party_menu(15.0):
+            raise self.fail(f"{label}-back", "the party menu did not return after "
+                            "Escape")
+        self.shot(f"{label}-back")
+        self.note(event="sheet", line=line, name=want,
+                  encumbrance=int(found.group(1)) if found else None,
+                  items=None if items is None else [i["name"] for i in items])
+        return {"line": line, **moved, **checked, "sheet": sheet_shot,
+                "sheet_bar_text": sheet_bar, "sheet_text": sheet_text,
+                "encumbrance": int(found.group(1)) if found else None,
+                "items_offered": offered, "items": items, "items_shot": items_shot}
 
     def _view_curse(self, line: int) -> dict:
         """No menu first: `End` moves the party menu's highlight and `v` opens
@@ -5739,6 +6041,9 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                          f"SAVGAM{from_slot}{title.suffix} {args.title} loads")
     if save is not None:
         check_staging(args, save, from_slot)
+    added = [s.name for s in steps if s.kind == "add"]
+    if added:
+        check_exports(title.find_game() / "SAVE", added)
     saved: list[str] = []
     with contextlib.ExitStack() as stack:
         # Every callback runs even when an earlier one raises: a failed close
@@ -5788,8 +6093,20 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             shots = session.dir / "shots"
             shutil.rmtree(shots, ignore_errors=True)
             shots.mkdir(parents=True)
-            took = install(save, session.save_dir, letter, from_slot)
+            if save is not None:
+                took = install(save, session.save_dir, letter, from_slot)
+            else:
+                # The staged tree's `SAVE` is the archives' play directory;
+                # a run with no save starts from an empty one, as `install` does.
+                for old in session.save_dir.glob("*"):
+                    if old.is_file():
+                        old.unlink()
+                took = {"from_slot": None, "as_slot": None, "files": []}
             staged = stage(session.save_dir, letter, args)
+            if added:
+                summary["exports"] = stage_exports(session.save_dir,
+                                                   game / "SAVE")
+                staged.append({"exports": summary["exports"]["files"]})
             installed = out / "installed"
             shutil.rmtree(installed, ignore_errors=True)
             shutil.copytree(session.save_dir, installed)
@@ -5855,6 +6172,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.join(step.line, step.row)
                 elif step.kind == "view":
                     r = d.view(step.line)
+                elif step.kind == "add":
+                    r = d.add(step.name)
                 elif step.kind == "memorize":
                     r = d.memorize(step.line)
                 elif step.kind == "shot":
@@ -6006,6 +6325,39 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
         if offset >= record.stat().st_size:
             raise ValueError(f"--stage-record offset {offset:#x} is outside "
                              f"{record.name}, which is {record.stat().st_size} bytes")
+
+
+def charlist_names(folder: pathlib.Path) -> list[str]:
+    """The names `folder`'s `CHARLIST.TXT` lists, upper case, or [] without one."""
+    path = next((p for p in folder.iterdir() if p.name.upper() == CHARLIST), None)
+    if path is None:
+        return []
+    return [line.strip().upper() for line in
+            path.read_bytes().decode("ascii", "replace").splitlines() if line.strip()]
+
+
+def check_exports(folder: pathlib.Path, names: list[str]) -> None:
+    """Refuse an `add` whose name `folder`'s `CHARLIST.TXT` does not list,
+    before a slot is claimed."""
+    listed = charlist_names(folder)
+    for name in names:
+        if name not in listed:
+            raise ValueError(f"add {name}: {folder / CHARLIST} lists "
+                             f"{listed or 'nothing'}")
+
+
+def stage_exports(save_dir: pathlib.Path, folder: pathlib.Path) -> dict:
+    """Copy every exported character of `folder` (`EXPORT_SUFFIXES`, not a
+    saved game's `CHRDAT` file) and its `CHARLIST.TXT` into `save_dir`."""
+    files = []
+    for p in sorted(folder.iterdir()):
+        name = p.name.upper()
+        if not p.is_file() or name.startswith("CHRDAT"):
+            continue
+        if name == CHARLIST or p.suffix.upper() in EXPORT_SUFFIXES:
+            (save_dir / name).write_bytes(p.read_bytes())
+            files.append(name)
+    return {"from": str(folder), "files": files, "listed": charlist_names(folder)}
 
 
 def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
@@ -6235,7 +6587,9 @@ def describe(result: dict) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--title", choices=sorted(TITLES), default="pool")
-    src = ap.add_mutually_exclusive_group(required=True)
+    # One source is required, except by a run whose first step is `add`,
+    # which drives the party menu before any load.
+    src = ap.add_mutually_exclusive_group()
     src.add_argument("--save", help="a DOS save folder Wish wrote, a SAVGAM?.DAT "
                                     "(or .PTY and VAULT?.DAT) and its CHRDAT files")
     src.add_argument("--fixture-row", action="append", default=[],
@@ -6345,6 +6699,19 @@ def main(argv: list[str] | None = None) -> int:
         if getattr(args, "stage_place", None):
             parse_place(args.stage_place)
         validate_steps([parse_step(s) for s in args.steps], args.title)
+        if not (args.save or args.fixture_row or args.amiga_slot or args.convert):
+            parsed = [parse_step(s) for s in args.steps]
+            if not parsed or parsed[0].kind != "add":
+                raise ValueError("one of --save, --fixture-row, --amiga-slot or "
+                                 "--convert is required, except by a run that "
+                                 "begins with add")
+            staging = ("hall", "xp", "add_node", "stage_control", "stage_side",
+                       "stage_record", "stage_var", "stage_place", "expect")
+            if any(getattr(args, a, None) for a in staging):
+                raise ValueError("a run with no save has nothing to stage or expect")
+            if any(p.kind == "read" for p in parsed):
+                raise ValueError("read compares the installed slot with the saved "
+                                 "one, and a run with no save installs none")
         if args.first_bar_key is not None:
             parse_key(args.first_bar_key)
             if not any(parse_step(s).kind == "fight" for s in getattr(args, "steps", [])):

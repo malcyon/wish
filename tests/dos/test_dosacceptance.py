@@ -4207,7 +4207,8 @@ def test_orders_with_view_allowed(steps):
     ("darkness", ("load", "begin", "view 1"), "view needs the party menu"),
     ("darkness", ("load", "begin", "camp", "view 1"), "view needs the party menu"),
     ("darkness", ("view 1",), "needs load first"),
-    ("pool", ("load", "view 1"), "curse, ssb and darkness only"),
+    # Pool's load puts the party on the map; its party menu is `add`'s.
+    ("pool", ("load", "view 1"), "view needs the party menu"),
 ])
 def test_orders_with_view_refused(title, steps, why):
     with pytest.raises(ValueError, match=why):
@@ -9360,3 +9361,304 @@ def test_a_list_key_that_moves_nothing_fails_naming_silver_blades_unmeasured_dow
         d.scribe(6, "PROTECTION FROM GOOD")
     assert ("may not wrap there" in str(failed.value)) is said
     assert "s" not in game.keys[7:]
+
+
+# -- Pool's ADD CHARACTER TO PARTY and the party menu's VIEW --------------------
+
+
+#: The shipped `CHARLIST.TXT`, as the list drew it in #791's probe boot.
+_ADD_LISTED = ("ARRONEL", "ARGORA", "KLYTUS RYTON", "FLORENTZ", "ORATISI NOMOON",
+               "BRYTWYN")
+_ADD_ITEMS = ("LONG SWORD", "SHIELD", "BANDED MAIL")
+
+
+class FakeAddPool(FakePool):
+    """Pool of Radiance from its title screens to the party menu and `ADD
+    CHARACTER TO PARTY`, as #791's probe boot drew them: `Return` past two
+    title screens; the menu over `CHOOSE A FUNCTION`, the roster from text row
+    4 at column 1 with the current member highlighted and `End` moving it on,
+    the functions from row 12 at column 2 (`VIEW CHARACTER` only with a
+    member), `a` opening `ADD A CHARACTER: ADD EXIT`, the names from row 2,
+    `End` and `Home` moving the highlight and wrapping, the arrows doing
+    nothing and any other key picking: a picked row redraws as `* NAME` and
+    the member joins unless named in `refuse`; `e` back to the menu.  `v`
+    opens the current member's sheet, its bar offering `ITEMS` when `items`
+    is not empty, `i` the list `<NAME>'S ITEMS` over `READY ...`, and
+    `Escape` goes back a screen each time.
+
+    `after_a` names a mode `a` opens instead of the list, `ignore_pick`
+    makes the pick change nothing, `no_add` draws a menu without `ADD
+    CHARACTER TO PARTY` and `sheet_of` draws another name on the sheet."""
+
+    EMPTY = ("CREATE NEW CHARACTER", "ADD CHARACTER TO PARTY", "LOAD SAVED GAME",
+             "EXIT TO DOS")
+    FULL = ("CREATE NEW CHARACTER", "DROP CHARACTER", "MODIFY CHARACTER",
+            "VIEW CHARACTER", "ADD CHARACTER TO PARTY", "REMOVE CHARACTER FROM PARTY",
+            "SAVE CURRENT GAME", "BEGIN ADVENTURING", "EXIT TO DOS")
+
+    def __init__(self, tmp, listed=_ADD_LISTED, refuse=(), ignore_pick=False,
+                 after_a=None, no_add=False, items=_ADD_ITEMS, sheet_of=None):
+        super().__init__(tmp)
+        self.mode, self.titles = "title", 2
+        self.listed, self.refuse, self.ignore_pick = list(listed), set(refuse), ignore_pick
+        self.after_a, self.no_add, self.items, self.sheet_of = after_a, no_add, items, sheet_of
+        self.starred: set[str] = set()
+        self.party: list[str] = []
+        self.hl, self.line = 0, 1
+
+    def key(self, k, gap=0.0):
+        self.keys.append(k)
+        m = self.mode
+        if m == "title" and k == "Return":
+            self.titles -= 1
+            if self.titles <= 0:
+                self.mode = "menu"
+        elif m == "menu" and k == "a" and not self.no_add:
+            self.mode, self.hl = self.after_a or "list", 0
+        elif m == "menu" and k == "End" and self.party:
+            self.line = self.line % len(self.party) + 1
+        elif m == "menu" and k == "v" and self.party:
+            self.mode = "sheet"
+        elif m == "list" and k in ("End", "Home"):
+            self.hl = (self.hl + (1 if k == "End" else -1)) % len(self.listed)
+        elif m == "list" and k == "e":
+            self.mode = "menu"
+        elif m == "list" and k not in ("Up", "Down", "Left", "Right"):
+            name = self.listed[self.hl]
+            if not self.ignore_pick and name not in self.starred:
+                self.starred.add(name)
+                if name not in self.refuse:
+                    self.party.append(name)
+        elif m == "sheet" and k == "i" and self.items:
+            self.mode = "items"
+        elif m == "sheet" and k == "Escape":
+            self.mode = "menu"
+        elif m == "items" and k == "Escape":
+            self.mode = "sheet"
+
+    def member(self) -> str:
+        return self.party[self.line - 1]
+
+    def capture(self):
+        px = bytearray(W * H * 3)
+        m = self.mode
+        if m == "title":
+            _text(px, 10, 10, "POOL OF RADIANCE")
+        elif m == "menu":
+            _text(px, da.BAR_ROW, 0, "CHOOSE A FUNCTION")
+            for n, name in enumerate(self.party, 1):
+                _text(px, 3 + n, 1, name, _CYAN,
+                      reverse=screens.POD_NAME_CELLS if n == self.line else 0)
+            menu = self.FULL if self.party else self.EMPTY
+            for r, entry in enumerate(e for e in menu
+                                      if not (self.no_add and e.startswith("ADD"))):
+                _text(px, 12 + r, 2, entry)
+        elif m == "list":
+            _text(px, da.BAR_ROW, 0, "ADD A CHARACTER: ADD EXIT")
+            for r, name in enumerate(self.listed):
+                text = ("* " if name in self.starred else "") + name
+                _text(px, 2 + r, 1, text, reverse=38 if r == self.hl else 0)
+        elif m == "sheet":
+            _text(px, da.BAR_ROW, 0, "VIEW:ITEMS TRADE DROP EXIT" if self.items
+                  else "VIEW:TRADE DROP EXIT")
+            _text(px, 1, 1, self.sheet_of or self.member())
+            _text(px, 7, 1, "STR 16         GOLD 83")
+            _text(px, 17, 1, "AC 0    THAC0 20     ENCUMBRANCE 593")
+        elif m == "items":
+            _text(px, da.BAR_ROW, 0, "READY TRADE DROP HALVE JOIN EXIT")
+            _text(px, 1, 1, f"{self.member()}'S ITEMS")
+            _text(px, 3, 1, "READY ITEM")
+            for r, item in enumerate(self.items):
+                _text(px, 5 + r, 2, f"YES  {item}")
+        else:
+            _text(px, da.BAR_ROW, 0, "PRESS ANY KEY TO CONTINUE")
+        return dosbox.Screen(W, H, bytes(px))
+
+
+@pytest.fixture
+def add_measured(monkeypatch, tmp_path):
+    """The stand-in font for Pool's own, found in a directory standing in for
+    the archives."""
+    monkeypatch.setattr(dosbox, "find_game", lambda stem="POOLRAD": tmp_path)
+    monkeypatch.setattr(da, "load_font", lambda game: _FONT)
+
+
+def _add_boot(tmp_path, **kw) -> tuple[FakeAddPool, da.Driver]:
+    (tmp_path / "game").mkdir()
+    game = FakeAddPool(tmp_path / "game", **kw)
+    d = da.Driver(game, lambda **k: None, "A", "pool")
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    return game, d
+
+
+def _after_menu(game: FakeAddPool) -> list[str]:
+    """The keys pressed after the title screens' `Return`s."""
+    keys = list(game.keys)
+    while keys and keys[0] == "Return":
+        keys.pop(0)
+    return keys
+
+
+def test_the_add_step_parses_a_name_of_several_words_and_refuses_a_bad_one():
+    step = da.parse_step("add klytus ryton")
+    assert (step.kind, step.name) == ("add", "KLYTUS RYTON")
+    for bad in ("add", "add *ARRONEL", "add ABCDEFGHIJKLMNOP"):
+        with pytest.raises(ValueError):
+            da.parse_step(bad)
+
+
+@pytest.mark.parametrize("title,steps,why", [
+    ("pool", ("load", "add ARRONEL"), "add needs the party menu before any load"),
+    ("pool", ("add ARRONEL", "begin"), "begin is for the titles"),
+    ("pool", ("add ARRONEL", "camp"), "camp needs begin first"),
+    ("pool", ("view 1",), "view needs load first"),
+    ("curse", ("add ARRONEL",), "add is driven in pool only"),
+])
+def test_add_is_the_first_step_of_a_pool_run_at_the_party_menu(title, steps, why):
+    da.validate_steps([da.parse_step(s) for s in
+                       ("add ARRONEL", "add ARGORA", "view 2", "save D")], "pool")
+    with pytest.raises(ValueError, match=why):
+        da.validate_steps([da.parse_step(s) for s in steps], title)
+
+
+def test_add_walks_to_the_named_row_picks_it_and_finds_him_on_the_roster(
+        tmp_path, add_measured):
+    game, d = _add_boot(tmp_path)
+    got = d.add("KLYTUS RYTON")
+    assert _after_menu(game) == ["a", "End", "End", "Return", "e"]
+    assert game.party == ["KLYTUS RYTON"] and game.mode == "menu"
+    assert got["list"] == list(_ADD_LISTED) and got["row"] == 3
+    assert got["picked"][2] == "* KLYTUS RYTON" and got["roster"] == ["KLYTUS RYTON"]
+    assert (d.where, d.party_size, d.line) == ("party", 1, 1)
+    assert d.on_party_menu()
+
+
+def test_a_second_add_starts_at_the_party_menu_and_the_view_reads_it(
+        tmp_path, add_measured):
+    game, d = _add_boot(tmp_path)
+    d.add("ARRONEL")
+    game.keys.clear()
+    got = d.add("ARGORA")
+    assert game.keys == ["a", "End", "Return", "e"]
+    assert got["roster"] == ["ARRONEL", "ARGORA"] and d.party_size == 2
+    game.keys.clear()
+    seen = d.view(2)
+    assert game.keys == ["End", "v", "i", "Escape", "Escape"]
+    assert seen["name"] == "ARGORA" and game.mode == "menu"
+
+
+@pytest.mark.parametrize("kw,why,last", [
+    ({"after_a": "wrong"}, "not 'ADD A CHARACTER: ADD EXIT'", "a"),
+    ({"listed": ("ARGORA", "BRYTWYN")}, "ARRONEL is not on the list", "a"),
+    ({"ignore_pick": True}, "never redrew as '\\* ARRONEL'", "Return"),
+    ({"refuse": ("ARRONEL",)}, "left him out of the party", "e"),
+    ({"no_add": True}, "not the party menu offering ADD CHARACTER TO PARTY", "Return"),
+])
+def test_add_stops_at_the_screen_that_is_not_the_one_its_key_belongs_to(
+        tmp_path, add_measured, kw, why, last):
+    game, d = _add_boot(tmp_path, **kw)
+    with pytest.raises(da.StepFailed, match=why):
+        d.add("ARRONEL")
+    assert game.keys[-1] == last
+    if last == "Return" and "no_add" in kw:
+        assert _after_menu(game) == []
+
+
+def test_pool_view_reads_the_sheet_and_the_items_and_returns_to_the_party_menu(
+        tmp_path, add_measured):
+    game, d = _add_boot(tmp_path)
+    d.add("ARRONEL")
+    game.keys.clear()
+    got = d.view(1)
+    assert game.keys == ["v", "i", "Escape", "Escape"]
+    assert got["encumbrance"] == 593 and got["items_offered"]
+    assert [i["name"] for i in got["items"]] == list(_ADD_ITEMS)
+    assert all(i["ready"] and not i["marked"] for i in got["items"])
+    assert game.mode == "menu" and d.where == "party"
+
+
+def test_pool_view_of_a_member_carrying_nothing_leaves_the_sheet_at_once(
+        tmp_path, add_measured):
+    game, d = _add_boot(tmp_path, items=())
+    d.add("ARRONEL")
+    game.keys.clear()
+    got = d.view(1)
+    assert game.keys == ["v", "Escape"]
+    assert got["items"] is None and not got["items_offered"]
+
+
+def test_pool_view_refuses_a_sheet_drawing_another_name(tmp_path, add_measured):
+    game, d = _add_boot(tmp_path, sheet_of="ARGORA")
+    d.add("ARRONEL")
+    game.keys.clear()
+    with pytest.raises(da.StepFailed, match="the sheet's name is 'ARGORA'"):
+        d.view(1)
+    assert game.keys == ["v"]
+
+
+def _shipped_save(folder: pathlib.Path) -> pathlib.Path:
+    folder.mkdir(parents=True)
+    for name in ("ARRONEL.CHA", "ARRONEL.ITM", "ARRONEL.SPC", "ARGORA.CHA",
+                 "CHRDATA1.SAV", "CHRDATA1.ITM", "SAVGAMA.DAT"):
+        (folder / name).write_bytes(name.encode())
+    (folder / "CHARLIST.TXT").write_bytes(b"ARRONEL\r\nARGORA\r\n")
+    return folder
+
+
+def test_the_exports_and_their_list_are_staged_without_the_saved_games(tmp_path):
+    shipped = _shipped_save(tmp_path / "shipped")
+    (tmp_path / "SAVE").mkdir()
+    got = da.stage_exports(tmp_path / "SAVE", shipped)
+    assert sorted(p.name for p in (tmp_path / "SAVE").iterdir()) == [
+        "ARGORA.CHA", "ARRONEL.CHA", "ARRONEL.ITM", "ARRONEL.SPC", "CHARLIST.TXT"]
+    assert got["listed"] == ["ARRONEL", "ARGORA"]
+    da.check_exports(shipped, ["ARRONEL"])
+    with pytest.raises(ValueError, match="lists \\['ARRONEL', 'ARGORA'\\]"):
+        da.check_exports(shipped, ["BRYTWYN"])
+
+
+def test_a_run_that_begins_with_add_stages_the_exports_into_an_emptied_save(
+        monkeypatch, tmp_path):
+    log = _fake_run(monkeypatch, tmp_path)
+    _shipped_save(tmp_path / "game" / "SAVE")
+    stale = tmp_path / "session" / "SAVE" / "SAVGAMB.DAT"
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"archives")
+    seen = {}
+
+    def add(self, name):
+        seen[name] = sorted(p.name for p in (tmp_path / "session" / "SAVE").iterdir())
+        return {"name": name}
+
+    monkeypatch.setattr(da.Driver, "add", add, raising=False)
+    assert da.run(_run_args(tmp_path, ["add ARRONEL"])) == 0
+    assert seen["ARRONEL"] == ["ARGORA.CHA", "ARRONEL.CHA", "ARRONEL.ITM",
+                               "ARRONEL.SPC", "CHARLIST.TXT"]
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
+    assert summary["exports"]["listed"] == ["ARRONEL", "ARGORA"]
+    assert log == ["claim", "close", "release"]
+
+
+def test_an_add_the_shipped_list_lacks_is_refused_before_a_slot_is_claimed(
+        monkeypatch, tmp_path):
+    log = _fake_run(monkeypatch, tmp_path)
+    _shipped_save(tmp_path / "game" / "SAVE")
+    with pytest.raises(ValueError, match="add BRYTWYN: .*CHARLIST.TXT lists"):
+        da.run(_run_args(tmp_path, ["add BRYTWYN"]))
+    assert log == []
+
+
+@pytest.mark.parametrize("argv,why", [
+    (["--steps", "load"], "one of --save"),
+    (["--steps", "add ARRONEL", "read"], "installs none"),
+    (["--xp", "1=5", "--steps", "add ARRONEL"], "nothing to stage"),
+])
+def test_only_a_run_that_begins_with_add_takes_no_save(monkeypatch, capsys, argv, why):
+    ran = []
+    monkeypatch.setattr(da, "run", lambda args: ran.append(args) or 0)
+    assert da.main(["--steps", "add ARRONEL", "view 1", "save D"]) == 0
+    assert len(ran) == 1
+    with pytest.raises(SystemExit):
+        da.main(argv)
+    assert why in capsys.readouterr().err and len(ran) == 1
