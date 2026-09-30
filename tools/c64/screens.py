@@ -38,6 +38,10 @@ def as_drawn(name: str) -> str:
     `WISH-SPEC-ssb-d-engine-resave` in `issue139-a13/ssb-run1` (scratch, deleted).  A save
     converted from DOS keeps DOS's mixed-case name, so a run that looks for
     the name it read out of the record finds nobody at all.
+
+    The rest of that block goes the same way: a backquote is drawn blank,
+    `{ | } ~` as `; < = >`, and a backslash as `\u00a3`.
     """
-    return "".join(chr(ord(c) - 0x40) if "a" <= c <= "z" else c
+    return "".join("\u00a3" if c == "\\"
+                   else chr(ord(c) - 0x40) if "`" <= c <= "~" else c
                    for c in name)

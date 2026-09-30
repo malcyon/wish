@@ -1412,6 +1412,7 @@ def test_a_run_with_no_save_is_refused_before_a_slot_is_claimed(tmp_path, monkey
 def test_a_run_with_no_game_disks_is_refused_before_a_slot_is_claimed(
         tmp_path, monkeypatch):
     monkeypatch.setattr(A, "tool_disks", lambda: None)
+    monkeypatch.setattr(A.gamedisks, "find", lambda name: None)
     _refused_before_a_slot(tmp_path, monkeypatch, [
         "--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
         "--steps", "load", "camp-list"])
@@ -10948,3 +10949,65 @@ def test_temple_probe_usage_error_lists_every_mode_and_its_staging(
     err = capsys.readouterr().err
     assert "WISHFTR RAISE POOL takes 0:0x0c1=0x70" in err.replace("0x0C1", "0x0c1")
     assert "BRUTUS RAISE CONTROL takes" in err
+
+
+def test_a_view_waits_for_punctuation_the_c64_draws_as_other_characters(
+        tmp_path, monkeypatch):
+    run, sess = _sheet_run(tmp_path, "A;B<C=D>E      STATUS OK", monkeypatch)
+    sess.moves[("camp", ("party", 0))] = "camp"
+    run.panel = ["A{B|C}D~E", "PAINE"]
+    try:
+        got = run.view("1")
+    finally:
+        run.log.close()
+    assert got["who"] == "1"
+
+
+def test_a_backslash_is_drawn_as_a_pound_sign_and_a_backquote_blank():
+    from tools.c64 import screens
+
+    assert screens.as_drawn("A\\B`C") == "A£B C"
+
+
+def _disks_given_to(monkeypatch, tmp_path, argv):
+    seen = {}
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: (_ for _ in ()).throw(
+        SystemExit("stop")))
+    monkeypatch.setattr(A, "tool_disks", lambda: "POOL-SEARCH")
+    monkeypatch.setattr(A.gamedisks, "find",
+                        lambda name: seen.setdefault("find", name) and "REGISTRY")
+    real_parse = A.argparse.ArgumentParser.parse_args
+
+    def capture(self, *a, **k):
+        ns = real_parse(self, *a, **k)
+        seen["ns"] = ns
+        return ns
+    monkeypatch.setattr(A.argparse.ArgumentParser, "parse_args", capture)
+    try:
+        A.main(argv + ["--out", str(tmp_path / "out")])
+    except SystemExit:
+        pass
+    return seen
+
+
+def test_a_curse_run_without_disks_takes_them_from_the_registry(
+        tmp_path, monkeypatch):
+    seen = _disks_given_to(monkeypatch, tmp_path, [
+        "--title", "curse", "--save", str(_fixture_disk(tmp_path)),
+        "--steps", "load"])
+    assert seen["find"] == "curse-of-the-azure-bonds"
+    assert seen["ns"].disks == "REGISTRY"
+
+
+def test_a_pool_run_without_disks_keeps_its_own_search(tmp_path, monkeypatch):
+    seen = _disks_given_to(monkeypatch, tmp_path, [
+        "--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+        "--steps", "load"])
+    assert "find" not in seen and seen["ns"].disks == "POOL-SEARCH"
+
+
+def test_the_registry_holds_the_curse_disks_the_driver_would_look_up():
+    disks = A.gamedisks.find(A.TITLES["curse"])
+    if disks is None:
+        pytest.skip("no Curse of the Azure Bonds disks in the registry")
+    assert disks.is_dir()

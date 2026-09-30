@@ -133,7 +133,7 @@ REPO = TOOLS.parent
 sys.path.insert(0, str(REPO))
 
 from automap import actions as auto_actions  # noqa: E402
-from automap import fasttravel  # noqa: E402
+from automap import fasttravel, gamedisks  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
 from goldbox import (  # noqa: E402
     c64_codec,
@@ -6503,8 +6503,10 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--probe-step requires --attack-by")
     if not re.fullmatch(r"[\w-]+", args.run) or not re.fullmatch(r"[\w-]+", args.issue):
         ap.error("--issue and --run are simple names")
-    if args.disks is None and args.title == "pool":
-        args.disks = tool_disks()
+    if args.disks is None:
+        # Pool keeps its older search; the later titles are found by the registry.
+        args.disks = (tool_disks() if args.title == "pool"
+                      else gamedisks.find(TITLES[args.title]))
     source = pathlib.Path(args.save)
     if not source.is_absolute() and not source.exists() and args.disks:
         source = pathlib.Path(args.disks) / args.save
