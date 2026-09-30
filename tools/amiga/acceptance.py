@@ -742,9 +742,13 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
     result["passed_except_walk"] = bool(result["substitute_walk_blocked"] and rest)
     if result["substitute_walk_blocked"] and result.get("read"):
         clause = "; every other check passed" if result["passed_except_walk"] else ""
-        result["read"]["verdicts"].append(
-            f"slot {title.after_letter}: the substituted party did not move from its own "
-            f"square, which may face a wall{clause}")
+        if walk.get("walk_partial"):
+            what = (f"the substituted party moved {walk['squares_moved']} of "
+                    f"{walk['squares_requested']} squares and then stopped, which may be a wall")
+        else:
+            what = ("the substituted party did not move from its own square, "
+                    "which may face a wall")
+        result["read"]["verdicts"].append(f"slot {title.after_letter}: {what}{clause}")
 
 
 def _place_text(place: dict[str, Any]) -> str:

@@ -416,6 +416,9 @@ def test_a_substituted_walk_that_gains_one_square_then_stops_is_passed_except_wa
     assert result["passed_except_walk"] is True
     assert result["walk"]["squares_moved"] == 1
     assert result["walk"]["squares_requested"] == 2
+    assert result["read"]["verdicts"][-1] == (
+        "slot D: the substituted party moved 1 of 2 squares and then stopped, which may be a "
+        "wall; every other check passed")
 
 
 def test_a_substituted_walk_off_the_planned_line_still_fails(tmp_path, clock):
@@ -426,6 +429,26 @@ def test_a_substituted_walk_off_the_planned_line_still_fails(tmp_path, clock):
                      guest=TitleGuest(clock, land=land), manifest=manifest)
     assert result["success"] is False
     assert result["passed_except_walk"] is False
+    assert "moved from 9,13 to 10,12, expected 9,11" in result["read"]["verdicts"][-1]
+
+
+@pytest.mark.parametrize("land, turn", [
+    (dict(START, y=START["y"] + 1), None),                       # backward
+    (dict(START, y=START["y"] + 1, facing=geo.SOUTH), "about"),   # turned walk, one square on
+    (dict(START, y=START["y"] - 1, facing=geo.EAST), None),       # facing changed
+    (dict(START, y=START["y"] - 1, area=3), None),                # another area
+], ids=["backward", "turned", "facing", "area"])
+def test_a_partial_walk_needs_the_planned_line_and_no_turn(land, turn):
+    control = {"place": dict(START)}
+    walk = acceptance.walk_verdict(START, control, {"place": land}, 2, turn=turn)
+    assert walk["walk_partial"] is False
+
+
+def test_a_partial_walk_on_the_planned_line_is_partial():
+    control = {"place": dict(START)}
+    land = dict(START, y=START["y"] - 1)
+    walk = acceptance.walk_verdict(START, control, {"place": land}, 2)
+    assert walk["walk_partial"] is True
 
 
 def test_a_substituted_stall_with_another_real_failure_is_not_passed_except_walk(
