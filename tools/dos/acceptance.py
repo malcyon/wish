@@ -2231,6 +2231,12 @@ def compare_members(before: dict, after: dict) -> list[dict]:
 ANIMATED_CONTROL = 0xB3
 
 
+#: The effect ids whose end the game answers by resetting control to 0: charm
+#: (11) and Fear (Curse 142, Silver Blades 111).  A slot does not say which
+#: title it is, so a Fear id is taken from either title.
+CONTROL_RESET_REASONS = {11: "charm ended", 142: "fear ended", 111: "fear ended"}
+
+
 def animated_members(steps: list["Step"], expects: list["Expect"],
                      slot: dict) -> set[str]:
     """The members this run raised, upper-cased: those whose id-32 `--expect`
@@ -2242,13 +2248,28 @@ def animated_members(steps: list["Step"], expects: list["Expect"],
             if e.id == 32 and judge(e, slot)["verdict"] == "accepts"}
 
 
+def _control_reset_reason(before: dict, after: dict) -> str | None:
+    """Why the game reset `before`'s 0xB3 control to 0 in `after`, when a charm
+    or Fear node it held has gone; None when the change is anything else."""
+    if before.get("control") != ANIMATED_CONTROL or after.get("control") != 0:
+        return None
+    held = {n["id"] for n in before.get("nodes", [])}
+    left = {n["id"] for n in after.get("nodes", [])}
+    for node_id, reason in CONTROL_RESET_REASONS.items():
+        if node_id in held and node_id not in left:
+            return reason
+    return None
+
+
 def compare_shares(before: dict, after: dict,
                    animated: frozenset[str] | set[str] = frozenset()) -> list[dict]:
     """Each character's `control` and `treasure_share` bytes in `before` and
     `after`, matched by name.  A row with either byte unequal fails the run
     (`read_step`/`describe`), except that a member in `animated` may change
     control to `ANIMATED_CONTROL` with its share unchanged; that row records
-    `control_changed`."""
+    `control_changed`.  A member that held `ANIMATED_CONTROL` and a charm or
+    Fear node in `before`, and holds control 0, that node's id absent and the
+    same share in `after`, matches too, recording why."""
     after_by = {c["name"]: c for c in after["characters"]}
     rows = []
     for c in before["characters"]:
@@ -2271,6 +2292,13 @@ def compare_shares(before: dict, after: dict,
             row["control_changed"] = {c["name"]: [row["control_before"],
                                                   row["control_after"]],
                                       "reason": "animated"}
+        if not row["matches"] and now is not None:
+            reason = _control_reset_reason(c, now)
+            if reason and row["share_before"] == row["share_after"]:
+                row["matches"] = True
+                row["control_changed"] = {c["name"]: [row["control_before"],
+                                                      row["control_after"]],
+                                          "reason": reason}
         rows.append(row)
     return rows
 

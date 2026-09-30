@@ -2345,6 +2345,37 @@ def test_the_raised_member_may_not_change_share_or_take_another_control():
     assert da.compare_shares(_RAISED_BEFORE, after, animated)[0]["matches"] is False
 
 
+def _charm_rows(before_nodes, after_nodes, before_control=179, after_control=0):
+    before = {"characters": [{"name": "RANGER", "control": before_control,
+                              "treasure_share": 1, "nodes": before_nodes}]}
+    after = {"characters": [{"name": "RANGER", "control": after_control,
+                             "treasure_share": 1, "nodes": after_nodes}]}
+    return da.compare_shares(before, after)[0]
+
+
+_CHARM = {"id": 11, "minutes": 0, "data": 0x26}
+
+
+def test_a_charm_the_game_ended_may_reset_control_to_0():
+    row = _charm_rows([_CHARM], [])
+    assert row["matches"] is True
+    assert row["control_changed"] == {"RANGER": [179, 0], "reason": "charm ended"}
+
+
+def test_a_fear_the_game_ended_may_reset_control_to_0():
+    row = _charm_rows([{"id": 142, "minutes": 0, "data": 0}], [])
+    assert row["matches"] is True
+    assert row["control_changed"]["reason"] == "fear ended"
+
+
+def test_a_control_reset_fails_while_the_charm_node_remains():
+    assert _charm_rows([_CHARM], [_CHARM])["matches"] is False
+
+
+def test_a_control_reset_fails_when_no_node_was_held_before():
+    assert _charm_rows([], [])["matches"] is False
+
+
 def test_read_step_exempts_the_raised_member_and_the_run_passes(monkeypatch, tmp_path):
     # The installed slot and the resave are the same mock, so the control
     # change is staged by giving read_slot a different answer per folder.
