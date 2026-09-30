@@ -90,7 +90,7 @@ nothing is broken; for the overland map `$0607` is 20 against a true stride of
 ## What the automapper shows
 
 The world, not the window. The game shows five squares across; the value the
-automapper adds outdoors is the shape of the whole place.
+automapper adds outdoors is the whole place at once.
 
 **Built:**
 

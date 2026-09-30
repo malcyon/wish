@@ -453,14 +453,18 @@ def _painted(window, square):
 def test_a_square_the_game_paints_is_drawn_as_the_game_paints_it(
         app, tmp_path, monkeypatch):
     win, target = _window_on(
-        app, tmp_path, monkeypatch, [out(8, 27), out(8, 26)])
+        app, tmp_path, monkeypatch,
+        [out(8, 27), out(8, 26), out(8, 25), out(8, 24), out(8, 23)])
     canvas = win.world_canvas
     canvas.resize(canvas.sizeHint())
+    _step(win)
     target.block = _painted(1, (5, 20))
     _step(win)
+    _step(win)                                      # a second read keeps it
     image = canvas.grab().toImage()
     assert _pixel_at_square(canvas, image, 18, 20) == _rgb(PAINT_COLOUR)
     target.block = _painted(1, (5, 21))
+    _step(win)
     _step(win)
     image = canvas.grab().toImage()
     assert _pixel_at_square(canvas, image, 18, 21) == _rgb(PAINT_COLOUR)
@@ -471,15 +475,19 @@ def test_the_picture_is_rebuilt_only_when_the_resident_block_changes(
         app, tmp_path, monkeypatch):
     from automap import window as window_module
     win, target = _window_on(
-        app, tmp_path, monkeypatch, [out(8, 27), out(8, 26), out(8, 25)])
+        app, tmp_path, monkeypatch,
+        [out(8, 27), out(8, 26), out(8, 25), out(8, 24), out(8, 23)])
+    _step(win)
     built = []
     real = window_module.world_indices
     monkeypatch.setattr(window_module, "world_indices",
                         lambda *a, **k: built.append(1) or real(*a, **k))
     target.block = _painted(1, (5, 20))
     _step(win)
+    _step(win)
     assert len(built) == 1
     target.block = _painted(1, (5, 21))
+    _step(win)
     _step(win)
     assert len(built) == 2
     _step(win)                                      # the same block again

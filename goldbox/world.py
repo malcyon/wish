@@ -155,6 +155,17 @@ SHARED = (0x00, 0x0F, 0x05)
 #: a full pane could cover.
 SITE_PAINT_TOLERANCE = 128
 
+#: `(window index, local x, local y, disk value, paint value)`: the four
+#: squares the live reads at `$8C00` found painted over while their site is
+#: undiscovered. What has been measured, not known to be complete; the site
+#: tables that would complete it are in the scripts (`docs/115`).
+UNDISCOVERED_PAINT = (
+    (1, 12, 11, 0x37, 0x39),   # the nomad camp
+    (2, 11, 8, 0x71, 0x22),    # the lizardman keep
+    (2, 6, 15, 0x49, 0x30),    # the kobold caves
+    (2, 7, 23, 0x6D, 0x11),    # the site that was cut
+)
+
 
 class WorldError(ValueError):
     """A `SQRDATA` payload too short to hold a grid and its glyph table."""
@@ -405,17 +416,6 @@ class World:
                 grid[y * STRIDE + x] = paint
         return bytes(grid)
 
-
-#: `(window index, local x, local y, disk value, paint value)`: the four
-#: squares the live reads at `$8C00` found painted over while their site is
-#: undiscovered. What has been measured, not known to be complete; the site
-#: tables that would complete it are in the scripts (`docs/115`).
-UNDISCOVERED_PAINT = (
-    (1, 12, 11, 0x37, 0x39),   # the nomad camp
-    (2, 11, 8, 0x71, 0x22),    # the lizardman keep
-    (2, 6, 15, 0x49, 0x30),    # the kobold caves
-    (2, 7, 23, 0x6D, 0x11),    # the site that was cut
-)
 
 #: The whole wilderness in squares, each window's two-square border included:
 #: three 18-wide windows 13 apart, by the 36 rows every window shares.

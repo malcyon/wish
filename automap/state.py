@@ -421,6 +421,9 @@ class Automapper:
         #: `_running` and `_poll_outdoors` share one read.
         self._block: tuple[int, bytes, tuple[int, int] | None] | None = None
         self._outdoor_pending: tuple[int, int] | None = None
+        #: The block the previous outdoor read named a window for; a block is
+        #: drawn only once two reads in a row agree on it.
+        self._previous_block: bytes | None = None
         if area:
             self.set_area(area)
 
@@ -456,6 +459,9 @@ class Automapper:
         """
         self._world = world if wilderness_enabled() else None
         self._block = None
+        self._previous_block = None
+        # Another disk set is another world, so its blocks are not these.
+        self.state.resident_grids.clear()
 
     def _read_window(self) -> tuple[bytes, tuple[int, int] | None] | None:
         """The block at `$8C00` and what `World.identify` says of it.
@@ -666,6 +672,8 @@ class Automapper:
             read = self._read_window()
             if read is not None:
                 _, found = read
+                previous, self._previous_block = (
+                    self._previous_block, read[0] if found is not None else None)
                 if found is not None:
                     jumped = (self.state.outdoors
                               and abs(fix.x - self.state.x)
@@ -683,7 +691,10 @@ class Automapper:
                         return False
                     self._outdoor_pending = None
                     self.state.window = found[0]
-                    self.state.resident_grids[found[0]] = read[0]
+                    # `identify` accepts a block a little off a window, so one
+                    # caught mid-load is drawn only if the next read repeats it.
+                    if read[0] == previous:
+                        self.state.resident_grids[found[0]] = read[0]
                     changed_heading = self._read_heading()
         self.state.outdoors = True
         self.state.x, self.state.y = fix.x, fix.y
@@ -725,6 +736,7 @@ class Automapper:
         self._attached = self.target
         self._proved = None
         self._block = None
+        self._previous_block = None
         self._outdoor_pending = None
         self._started = False
         self._pending = None

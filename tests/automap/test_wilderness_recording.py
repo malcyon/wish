@@ -131,28 +131,59 @@ def test_a_target_that_is_not_a_c64_is_never_read(on):
     assert target.reads == []
 
 
-def test_the_block_that_names_a_window_is_kept_for_it(on):
+def test_a_block_read_once_is_not_kept(on):
     mapper, _ = mapper_for([out(8, 20)], _window(1))
+    mapper.poll()
+    assert mapper.state.window == 1
+    assert mapper.state.resident_grids == {}
+
+
+def test_a_block_read_on_two_polls_in_a_row_is_kept_for_its_window(on):
+    mapper, _ = mapper_for([out(8, 20), out(8, 21)], _window(1))
+    mapper.poll()
     mapper.poll()
     assert mapper.state.resident_grids == {1: _window(1)}
 
 
+def test_a_block_that_changes_between_polls_is_not_kept(on):
+    mapper, target = mapper_for([out(8, 20), out(8, 21)], _window(1))
+    mapper.poll()
+    target.block = _window(1)[:5] + bytes([99]) + _window(1)[6:]
+    mapper.poll()
+    assert mapper.state.resident_grids == {}
+
+
 def test_a_zero_page_keeps_nothing(on):
-    mapper, _ = mapper_for([out(8, 20)], bytes(GRID_SIZE))
+    mapper, _ = mapper_for([out(8, 20), out(8, 21)], bytes(GRID_SIZE))
+    mapper.poll()
     mapper.poll()
     assert mapper.state.resident_grids == {}
 
 
 def test_a_held_jump_keeps_nothing(on):
-    mapper, target = mapper_for([out(8, 20), out(3, 20)], _window(1))
+    mapper, target = mapper_for(
+        [out(8, 20), out(8, 21), out(3, 21)], _window(1))
     mapper.poll()
-    target.block = _window(1)[:5] + bytes([99]) + _window(1)[6:]
+    mapper.poll()
+    odd = _window(1)[:5] + bytes([99]) + _window(1)[6:]
+    target.block = odd
     assert mapper.poll() is False
+    assert odd not in mapper.state.resident_grids.values()
     assert mapper.state.resident_grids == {1: _window(1)}
 
 
+def test_a_new_world_forgets_the_blocks(on):
+    mapper, _ = mapper_for([out(8, 20), out(8, 21)], _window(1))
+    mapper.poll()
+    mapper.poll()
+    assert mapper.state.resident_grids
+    mapper.use_world(_world())
+    assert mapper.state.resident_grids == {}
+
+
 def test_a_new_connection_forgets_the_blocks(on):
-    mapper, _ = mapper_for([out(8, 20)], _window(1))
+    mapper, _ = mapper_for([out(8, 20), out(8, 21)], _window(1))
+    mapper.poll()
     mapper.poll()
     assert mapper.state.resident_grids
     # A machine whose block names no window, so nothing is kept after the clear.
