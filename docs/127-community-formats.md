@@ -483,9 +483,9 @@ Two places, both caught by our own data.
 
 One place where they disagree with us and the answer is "different ports":
 their DOS `0x0AA` is `STR_Bonus`, a boolean, and it reads 1 in all 66 DOS
-records. The C64's `0x0E2` at the aligned offset is `strength_index` and holds
-15–22 — the exceptional-strength bands collapsed to one number. Two different
-fields; our name stands.
+records. The C64's `0x0E2` at the aligned offset is `strength_index`: below 18
+the score, 18 and the 18/xx bands 18–23, and 19 and above strength + 5, capped
+at 30. Two different fields; our name stands.
 
 ---
 

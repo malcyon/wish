@@ -658,12 +658,18 @@ _DECLARED: Sequence[Field] = (
            "shipped party. #258 (The C64 side of 0x0AB is unnamed, so the "
            "conversion drops it with no issue behind it), "
            "docs/170-c64-identity-pair.md"),
-    _field(0x0E2, 1, _U8, "strength_index", "Effective STR", _MAYBE,
-           "equals STR below 18; 18/80 and 18/81 give 21, 18/98 gives 22 -- the "
-           "AD&D exceptional-strength bands collapsed to one number. The DOS "
-           "record has a boolean STR_Bonus at the aligned offset, reading 1 in "
-           "all 66 DOS specimens; this byte holds 15-22 across ours, so they "
-           "are two different fields and this reading stands"),
+    _field(0x0E2, 1, _U8, "strength_index", "Effective STR", _OK,
+           "the row of the strength tables to hit, damage and carrying "
+           "allowance: STR below 18 is its own index; 18 is 18, and 18/01-50, "
+           "51-75, 76-90, 91-99 and 18/00 are 19-23; 19 and above is STR + 5, "
+           "capped at 30. CONFIRMED: one routine computes it from 0x014 and "
+           "0x01A in all three titles (Pool of Radiance LIBRARY $3ED2, Curse "
+           "$3FB6, Silver Blades $3804), and COM.PREP reruns it for every "
+           "combatant at the start of a fight -- read live in Silver Blades as "
+           "19, 20, 22, 23 and 26 for 18/05, 18/51, 18/91, 18/00 and 21. "
+           "Nothing reruns it on LOAD, VIEW or a camp save, so a save keeps "
+           "whatever was last written here. The DOS record's byte at the "
+           "aligned offset is a boolean STR_Bonus, a different field"),
     _field(0x0E8, 3, _UINT, "experience", "XP", _OK,
            "24-bit LE. After one orc fight the party holds 17 each and LADY "
            "KATHERINE 8 -- non-zero and differing, which is what confirms it"),

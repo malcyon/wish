@@ -5,8 +5,8 @@ the index at record `0x0E2`.  All three titles compute it with the same
 routine (Pool of Radiance `LIBRARY $3ED2`, Curse `$3FB6`, Silver Blades
 `$3804`): strength below 18 is its own index, 18 counts up one per
 percentile band from 18, and 19 or more is strength + 5, capped at 30.  So
-a strength-21 character is index 26 (+4 to hit, +9 damage), not 21 (+2,
-+4, the 18/76-90 row).
+a strength-21 character is index 26, the row giving +4 to hit and +9
+damage.
 
 The synthetic tests need no game files.  The last one reads each title's
 own routine off the player's disks and runs its arithmetic, and skips

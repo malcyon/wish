@@ -35,7 +35,7 @@ written back and confirmed in game.
 | infravision | `0x0D5` | CONFIRMED |
 | sex | `0x0D6` | CONFIRMED |
 | alignment | `0x0D8` | CONFIRMED |
-| effective strength | `0x0E2` | PROBABLE |
+| **strength index** | `0x0E2` | CONFIRMED — below 18 the score; 18 and the 18/xx bands 18–23; 19 and above strength + 5, capped at 30. One `LIBRARY` routine computes it in all three titles, and `COM.PREP` reruns it at the start of every fight |
 | **experience** (24-bit) | `0x0E8` | CONFIRMED |
 | **class bitmask** | `0x0EB` | CONFIRMED |
 | **spells castable per level** | `0x0EE`–`0x0F0` | CONFIRMED — one byte per spell level, **cleric in the high nibble, magic-user in the low**. Settled by multi-class specimens setting both nibbles at once: TANARAKIS, cleric 1 / magic-user 1 on SSI's own shipped party, reads `$31`. `0x0F1`–`0x0F3` are zero in all 79 records, as they must be in a game that stops at third-level spells |
@@ -391,7 +391,7 @@ seen the circumstance that separates them.
 | movement | `0x09F` base | roster `+0x1B` current | **Understood.** 12 and 9 in banded mail |
 | hit points | `0x076` max, `0x0ED` rolled | roster `+0x19` current | **Understood.** LADY KATHERINE is 5 and 4 |
 | spells | `0x078` known | `0x020` memorised | **Understood.** Different sets, different sizes |
-| strength | `0x014` plus `0x01A` percentile | `0x0E2` effective | **Understood.** The second collapses the exceptional bands to one number |
+| strength | `0x014` plus `0x01A` percentile | `0x0E2` index | **Understood.** The second is computed from the first: below 18 the score, 18 and the 18/xx bands 18–23, 19 and above strength + 5, capped at 30 |
 | armour class | roster `+0x0F` total | roster `+0x10` armour only | **Understood.** The second excludes the shield |
 | armour class again | `0x0E1` base | `0x10F` current (export only) | **Understood.** Base is 10 for every character; monsters carry a real one |
 | **class** | `0x073` single code | `0x0EB` bitmask | **Understood.** Separated by a constructed save and by the code: `0x073` is printed, `0x0EB` is enforced. Four shipped `MON*` records disagree on their own |

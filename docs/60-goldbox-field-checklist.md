@@ -341,7 +341,7 @@ demonstrably *used*. Every one has since been named:
 | `0xD8` | 03 | **alignment**, a 0-based index into the game's own table at `$32B3` |
 | `0xD9`, `0xDB`, `0xDD` | 02, 01, 02 | the **attack block** at `0xD9`–`0xE0` — one attack, 1d2 unarmed |
 | `0xE1` | 50 | **base armour class**, `60 - AC` = 10 |
-| `0xE2` | 22 | **effective strength** — the exceptional-strength bands collapsed to one number. (DOS spends the aligned byte on a boolean `STR_Bonus` instead; two different fields) |
+| `0xE2` | 22 | **strength index** — below 18 the score; 18 and the 18/xx bands are 18–23; 19 and above is strength + 5, capped at 30. (DOS spends the aligned byte on a boolean `STR_Bonus` instead; two different fields) |
 | `0xE6`–`0xE7` | 57 D1 | still **UNKNOWN**, and the one entry here that has not closed. Non-zero and high-entropy in every player character. The DOS record has a single high-entropy per-character byte immediately before experience, which its community documentation calls `MON_Index`, so both ports carry it |
 | `0xEB` | 08 | **`class_bits`** — magic-user 1, cleric 2, thief 4, fighter 8 |
 | `0x10D`–`0x11B` | — | the **roster block**, not item data: `0x10D` party order, `0x10E` current THAC0, `0x10F` current AC, `0x119` current hit points, `0x11B` encumbered movement |
