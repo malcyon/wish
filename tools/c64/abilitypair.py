@@ -130,10 +130,9 @@ def save_payload(image: bytes) -> tuple[bytes, int, bytes]:
 def slot_names(payload: bytes) -> list[str]:
     """Each slot's own name, read from the start of its record.
 
-    Not from the name table at `NAMES`: the game keeps that in party order and
-    rewrites it when the party is reordered, while the records stay where they
-    were, so on a resaved disk the table names a different character than the
-    record beside it.
+    Not from the name table at `NAMES`, which can disagree with the records:
+    Secret of the Silver Blades keeps it in reverse slot order, and Curse of
+    the Azure Bonds can hold one NPC name there after a fight.
     """
     out = []
     for n in range(SLOTS):

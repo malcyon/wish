@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox.d64 import D64  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.curse_of_the_azure_bonds import cursepaladin as cp  # noqa: E402
+from tools.registry import specimens  # noqa: E402
 
 #: `SAVEAZURE`'s payload length, from `goldbox/c64_save.py` by way of
 #: `tools/curse_of_the_azure_bonds/cursetrain.py`'s geometry: eight 256-byte slots at `$400` and the
@@ -44,11 +45,35 @@ def _blank_save(tmp_path: pathlib.Path, names: dict[int, str]) -> pathlib.Path:
             body[off + cp.ABILITY_COPY + i] = ability
         blob = name.encode("ascii").ljust(16, b"\0")
         body[0xC00 + slot * 16:0xC00 + (slot + 1) * 16] = blob
+        body[off:off + 16] = blob
     disk = D64.blank(b"CURSE SAVE")
     disk.write_file(b"SAVEAZURE", LOAD.to_bytes(2, "little") + bytes(body))
     path = tmp_path / "save.d64"
     disk.save(path)
     return path
+
+
+def test_slots_are_named_from_their_records_not_the_table(tmp_path):
+    """A table holding one NPC name must not hide the party."""
+    path = _blank_save(tmp_path, {0: "ALPHA", 1: "BETA"})
+    image = bytearray(path.read_bytes())
+    load, body = cp.payload_of(bytes(image))
+    body = bytearray(body)
+    body[0xC00:0xC00 + 16] = b"BAR PATRON".ljust(16, b"\0")
+    body[0xC10:0xC20] = bytes(16)
+    assert cp.slot_names(bytes(body))[:3] == ["ALPHA", "BETA", ""]
+
+
+_SPECIMEN = (specimens.tree_root() / "coab-c64" /
+             "WISH-SPEC-curse-671-invisibility-absent-before-attack.D64")
+
+
+@pytest.mark.skipif(not _SPECIMEN.is_file(),
+                    reason="needs WISH-SPEC-curse-671-invisibility-absent-before-attack")
+def test_the_curse_671_disk_names_its_whole_party():
+    _, body = cp.payload_of(_SPECIMEN.read_bytes())
+    assert cp.slot_names(body)[:6] == [
+        "PHILIPPE", "SHARA", "LEDERA", "TRAVIS", "MARK", "MATHEW"]
 
 
 class _Args:

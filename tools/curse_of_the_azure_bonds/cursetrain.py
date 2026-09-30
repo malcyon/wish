@@ -214,9 +214,15 @@ def payload_of(image: bytes) -> tuple[int, bytes]:
 
 
 def slot_names(payload: bytes) -> list[str]:
+    """Each slot's own name, read from the start of its record.
+
+    Not from the table at `NAMES`: after a fight it can hold one NPC name at
+    entry 0 and nothing after it, while the records still hold the party.
+    """
     out = []
     for n in range(SLOTS):
-        blob = payload[NAMES + n * NAME_SIZE:NAMES + (n + 1) * NAME_SIZE]
+        base = SLOT0 + n * SLOT_SIZE
+        blob = payload[base:base + NAME_SIZE]
         out.append(blob.split(b"\x00")[0].decode("latin1"))
     return out
 

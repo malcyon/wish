@@ -165,9 +165,14 @@ def payload(image: D64) -> tuple[int, bytearray]:
 
 
 def slot_names(body: bytes) -> list[str]:
+    """Each slot's own name, read from the start of its record.
+
+    Not from the table at `NAMES_AT`: after a fight it can hold one NPC name
+    at entry 0 and nothing after it, while the records still hold the party.
+    """
     out = []
     for i in range(SLOTS):
-        at = NAMES_AT + i * NAME_SIZE
+        at = SLOT0 + i * SLOT_STRIDE
         out.append(body[at:at + NAME_SIZE].split(b"\0")[0].decode("latin1"))
     return out
 

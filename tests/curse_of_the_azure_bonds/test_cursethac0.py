@@ -122,6 +122,7 @@ def a_payload() -> bytearray:
         body[rec + cursethac0.THAC0_BASE] = base
         body[rec + cursethac0.STRENGTH_INDEX] = index
         body[rec + cursethac0.STRENGTH_GATE_BYTE] = gate
+        body[rec:rec + len(name)] = name
         body[cursethac0.NAMES_AT + slot * cursethac0.NAME_SIZE:
              cursethac0.NAMES_AT + slot * cursethac0.NAME_SIZE + len(name)] = name
         ros = cursethac0.ROSTER_AT + slot * cursethac0.ROSTER_STRIDE
@@ -137,6 +138,14 @@ def test_the_names_come_off_curses_own_sixteen_byte_table():
     table's.
     """
     assert cursethac0.slot_names(a_payload())[:2] == ["MARK", "MATHEW"]
+
+
+def test_the_names_come_off_the_records_not_the_table():
+    """After a fight the table can hold one NPC name and nothing else."""
+    body = a_payload()
+    body[cursethac0.NAMES_AT:cursethac0.NAMES_AT + 16] = b"BAR PATRON".ljust(16, b"\0")
+    body[cursethac0.NAMES_AT + 16:cursethac0.NAMES_AT + 32] = bytes(16)
+    assert cursethac0.slot_names(body)[:3] == ["MARK", "MATHEW", ""]
 
 
 def test_spoiling_changes_the_roster_byte_and_leaves_the_record_alone():
