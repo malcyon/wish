@@ -17,7 +17,7 @@ import string
 import struct
 from typing import Any, Callable
 
-from goldbox import amiga_adf
+from goldbox import amiga_adf, amiga_savegame, dos_savegame
 from goldbox import amiga_adf as adf
 from tools.amiga import amigalaterslot, amigasaves
 from tools.amiga.route import AmigaTitle
@@ -54,6 +54,42 @@ def _verified_disk(path: pathlib.Path) -> amiga_adf.AmigaDisk:
 
 class StageError(ValueError):
     """The image or destination is not the bounded staging case."""
+
+
+def stage_place(data: bytes, container: str, x: int, y: int,
+                facing: int) -> tuple[bytes, dict[str, list[int]]]:
+    """A later-title Amiga saved game with the party put on `x`,`y` facing `facing` (0 N, 1 E, 2 S, 3 W).
+
+    Writes only the three square bytes that hold the place; the wall byte, the
+    area word and the rest are left for the engine to recompute on the first
+    step, as the DOS driver's `stage_place` leaves them. Refused, before
+    anything is written, for a value out of range, a file that is not a saved
+    game of `container`, and a party standing outdoors, where the square is the
+    last indoor one and the game does not read it, and a party that has not
+    set out, which the game starts at the first square. Returns the new bytes and
+    `{"before": [x, y, facing], "after": [x, y, facing]}`.
+    """
+    if not (0 <= x <= 15 and 0 <= y <= 15 and 0 <= facing <= 3):
+        raise StageError(f"place {x},{y},{facing}: x and y are 0 to 15, facing 0 to 3")
+    try:
+        save = amiga_savegame.parse(data, container)
+        # The indoors word is what the game reads; the world state refuses a save whose
+        # word and area disagree, which would hide this reason behind a decode error.
+        outdoors = save.word(dos_savegame.INDOORS) == 0
+        state = None if outdoors else amiga_savegame.state_from_savegame(save)
+    except Exception as exc:  # noqa: BLE001 - any reader failure means this is not a saved game to stage
+        raise StageError(f"not a readable {container} saved game: "
+                         f"{type(exc).__name__}: {exc}") from exc
+    if state is None:
+        raise StageError("the saved game was made outdoors, where the square is not "
+                         "read; a place can be staged in an indoor save only")
+    if not state.set_out:
+        raise StageError("the party has not set out, so the game starts it at the story's "
+                         "first square and never reads the saved one")
+    scale = dos_savegame.FACING_SCALE
+    staged = amiga_savegame.with_square(save, x=x, y=y, facing=facing * scale)
+    return staged, {"before": [save.x, save.y, save.facing // scale],
+                    "after": [x, y, facing]}
 
 
 def _posix_output_supported() -> bool:

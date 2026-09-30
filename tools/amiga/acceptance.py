@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""Prepare, measure and accept one Amiga title's load, inspect, move, save and read-back run under WinUAE."""
+"""Prepare, measure and accept one Amiga title's load, inspect, move, save and read-back run under WinUAE.
+
+`prepare --published-disk-one --stage-place X,Y,F` (Curse and Silver Blades)
+puts the party on square X,Y facing F (0 N, 1 E, 2 S, 3 W) in the loaded slot
+of working DF0 and nothing else: only the three square bytes change, the area
+and the wall byte are left for the engine to recompute on the first step. It
+is refused, before any run folder exists, for a value out of range (x and y 0 to
+15) or a slot saved outdoors. The manifest records the change as `staged_place`
+and expects that square on load; the registered published image and the source
+pins still describe the unstaged Save As output, and `measure` and `accept`
+re-derive the staged DF0 from it, refusing any other difference.
+"""
 
 from __future__ import annotations
 
@@ -39,6 +50,7 @@ from tools.amiga.route import (  # noqa: E402
 from tools.amiga.route_curse import (  # noqa: E402
     CURSE,
     CURSE_DISK_B_SHA256,
+    CURSE_KEY,
     CURSE_SOURCES,
     _prepare_curse,
 )
@@ -69,7 +81,13 @@ from tools.amiga.route_silver_blades import (  # noqa: E402
     run_journal_answer,
 )
 from tools.amiga.screens import PixelGuards, _guards, _has_rule  # noqa: E402
-from tools.amiga.staging import _entry, _verified_disk, sha256  # noqa: E402
+from tools.amiga.staging import (  # noqa: E402
+    StageError,
+    _entry,
+    _verified_disk,
+    sha256,
+    stage_place,
+)
 from tools.amiga.winuaesession import (  # noqa: E402
     HOLDER,
     SHOT_SECONDS,
@@ -1241,7 +1259,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         kept_before = {c: title.slot_files(save_before, c)
                        for c in (*title.kept_letters, letter)}
         if published_disk_one:
-            if sha256(disks["df0"]) != manifest["registered"]["published"]["sha256"]:
+            # A staged place changes working DF0, and `_published_manifest` has checked how.
+            df0_expected = (manifest["disks"]["df0"]["sha256"] if "staged_place" in manifest
+                            else manifest["registered"]["published"]["sha256"])
+            if sha256(disks["df0"]) != df0_expected:
                 raise RouteError("working DF0 differs from the exact published image")
             if sha256(disks["df1"]) != manifest["registered"]["disk_two"]["sha256"]:
                 raise RouteError("working DF1 differs from registered disk 2")
@@ -2085,6 +2106,39 @@ def _camp_title(name: str, title: AmigaTitle, camp: Any, names: list) -> AmigaTi
     return route_camp.camp_title(title, tokens, len(names), name=name)
 
 
+def _container_key(name: str) -> str:
+    return CURSE_KEY if name == "curse" else route_silver_blades.TITLE
+
+
+def _check_staged_place(name: str, letter: str, slot_path: str, staged: Any,
+                        published: amiga_adf.AmigaDisk, working: amiga_adf.AmigaDisk) -> None:
+    """Re-derive a `--stage-place` change from the published disk and compare it to working DF0.
+
+    Working DF0 must be the published image with the one slot's three square
+    bytes changed as the manifest records, and nothing else.
+    """
+    try:
+        after = staged["after"]
+        before = staged["before"]
+        if staged["slot"] != slot_path or len(after) != 3:
+            raise RouteError("the manifest's staged place names another slot")
+        derived, change = stage_place(published.read_file(slot_path), _container_key(name), *after)
+    except (KeyError, TypeError) as exc:
+        raise RouteError(f"the manifest's staged place is malformed: {exc!r}") from exc
+    except StageError as exc:
+        raise RouteError(f"the manifest's staged place: {exc}") from exc
+    if change["before"] != before or change["after"] != after:
+        raise RouteError("the manifest's staged place differs from the published slot")
+    old, new = _disk_files(published), _disk_files(working)
+    if (new.get(slot_path) != derived or set(new) != set(old) or
+            any(new[key] != value for key, value in old.items() if key != slot_path) or
+            set(p.lower() for p, _ in working.walk_dirs()) !=
+            set(p.lower() for p, _ in published.walk_dirs()) or
+            working.to_bytes()[:1024] != published.to_bytes()[:1024]):
+        raise RouteError("working DF0 differs from the published image by more than "
+                         "the staged place")
+
+
 def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle]:
     manifest = json.loads(path.read_text())
     if manifest.get("mode") != "published_disk_one" or manifest.get("issue") not in PUBLISHED_SOURCES_BY_ISSUE:
@@ -2129,7 +2183,9 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
     if (manifest["registered"]["disk_one"]["sha256"] != disk1_pin or
             manifest["registered"]["disk_two"]["sha256"] != disk2_pin):
         raise RouteError("the registered disks differ from the title's pins")
-    if manifest["disks"]["df0"]["sha256"] != manifest["registered"]["published"]["sha256"]:
+    staged = manifest.get("staged_place")
+    if staged is None and (manifest["disks"]["df0"]["sha256"]
+                           != manifest["registered"]["published"]["sha256"]):
         raise RouteError("working DF0 is not the exact published image")
     if manifest["disks"]["df1"]["sha256"] != disk2_pin:
         raise RouteError("working DF1 differs from the pinned disk 2")
@@ -2175,7 +2231,12 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
         raise RouteError("the published image differs from disk 1 outside the converted slot")
     if new[slot_path] == old.get(slot_path):
         raise RouteError("the published slot was not converted")
-    reading = title.read_slot(published, letter)
+    working = published
+    if staged is not None:
+        working = _verified_disk(_input(manifest["disks"], "df0"))
+        _check_staged_place(name, letter, slot_path, staged, published, working)
+    # A staged place is what the game loads, so it is the place the run expects.
+    reading = title.read_slot(working, letter)
     if (reading.get("place") != manifest["state_a"] or
             reading.get("names") != manifest["names_a"] or
             reading.get("clock") != manifest["clock_a"]):
@@ -2184,12 +2245,18 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
 
 
 def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
-                      issue: str = PUBLISHED_ISSUE, camp: tuple[str, ...] = ()) -> pathlib.Path:
+                      issue: str = PUBLISHED_ISSUE, camp: tuple[str, ...] = (),
+                      place: tuple[int, int, int] | None = None) -> pathlib.Path:
     """Preserve and check the exact Save As disk one before any guest run.
 
     `camp` is a list of camp steps (`route_camp.validate_steps`) the accept
     route drives between camping and the camp save; it is kept in the manifest
     in its normal form, so measure and accept both rebuild the same route.
+    `place` is `(x, y, facing)`: working DF0 holds the published image with only
+    the loaded slot's square changed, and the manifest records the change as
+    `staged_place` and expects that square on load. The registered published
+    image and the source pins are untouched. Refused before any run folder is
+    made when the values are out of range or the slot was saved outdoors.
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
@@ -2233,6 +2300,20 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     reading = _published_title(name, letter, issue=issue).read_slot(disk, letter)
     if "place" not in reading or "clock" not in reading:
         raise RouteError(f"published slot {letter} does not decode: {reading}")
+    slot_path = f"/SAVE/savgam{letter}.{'dat' if name == 'curse' else 'sav'}".lower()
+    staged = None
+    staged_disk = None
+    if place is not None:
+        try:
+            data, change = stage_place(disk.read_file(slot_path), _container_key(name), *place)
+        except (StageError, amiga_adf.AmigaDiskError) as exc:
+            raise RouteError(f"--stage-place: {exc}") from exc
+        staged = {"slot": slot_path, **change}
+        staged_disk = amiga_adf.AmigaDisk(disk.to_bytes())
+        staged_disk.write_file(slot_path, data)
+        reading = _published_title(name, letter, issue=issue).read_slot(staged_disk, letter)
+        if reading.get("place", {}).get("facing") != place[2]:
+            raise RouteError("--stage-place: the staged slot does not read back the place")
     # The way out of the start square depends on where the party stands, not on the port:
     # Curse's start square faces a wall to the east, and CURSE_WALLED_WEST faces one to the west.
     turn_about = _turn_about(name, letter, reading["place"])
@@ -2244,7 +2325,6 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
         camp = route_camp.normalise(tuple(camp))
         _camp_title(name, title, list(camp), reading["names"])
     original = _verified_disk(disk1)
-    slot_path = f"/SAVE/savgam{letter}.{'dat' if name == 'curse' else 'sav'}".lower()
     old, new = _disk_files(original), _disk_files(disk)
     executable, volume = PUBLISHED_DISKS[name][2:]
     if (disk.volume_name != volume or original.volume_name != volume or
@@ -2270,11 +2350,13 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     for src, dst in ((image, published), (image, df0), (disk2, df1)):
         with src.open("rb") as reader, dst.open("xb") as writer:
             shutil.copyfileobj(reader, writer)
+    if staged_disk is not None:
+        df0.write_bytes(staged_disk.to_bytes())
     report_copy.write_bytes(report_bytes)
     published.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
     report_copy.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
-    if (sha256(published) != image_sha or sha256(df0) != image_sha or
-            sha256(df1) != disk2_pin):
+    if (sha256(published) != image_sha or sha256(df1) != disk2_pin or
+            (staged is None and sha256(df0) != image_sha)):
         raise RouteError("a copied acceptance disk differs from its input")
     manifest = {
         "mode": "published_disk_one", "issue": issue,
@@ -2294,6 +2376,8 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
         manifest["opening_scene"] = opening_scene
     if camp:
         manifest["camp"] = list(camp)
+    if staged is not None:
+        manifest["staged_place"] = staged
     path = run / "prepare.json"
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     _published_manifest(path, name)
@@ -2373,6 +2457,17 @@ def _record_numbers(text: str) -> list[int]:
         raise argparse.ArgumentTypeError("record numbers are comma-separated integers") from None
 
 
+def parse_place(text: str) -> tuple[int, int, int]:
+    """`X,Y,FACING`: a square of 0 to 15 each way and a facing of 0 to 3 (N E S W)."""
+    parts = [p.strip() for p in text.split(",")]
+    if len(parts) != 3 or not all(re.fullmatch(r"(0[xX][0-9a-fA-F]+|\d+)", p) for p in parts):
+        raise RouteError(f"{text!r}: a place is X,Y,FACING (decimal or 0x hex)")
+    x, y, facing = (int(p, 0) for p in parts)
+    if not (0 <= x <= 15 and 0 <= y <= 15 and 0 <= facing <= 3):
+        raise RouteError(f"{text!r}: x and y are 0 to 15, facing 0 to 3 (N E S W)")
+    return x, y, facing
+
+
 def _camp_steps(text: str, name: str) -> tuple[str, ...]:
     """`--camp`'s steps for title `name`, in their normal form."""
     return route_camp.normalise(route_camp.parse_steps(text, name))
@@ -2422,6 +2517,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="published Silver Blades and Curse only: camp steps driven before the "
                         "camp save, as 'view;heal;rest 1h' (view, view N, heal, heal N, "
                         "rest DURATION)")
+    p.add_argument("--stage-place", default=None, metavar="X,Y,F",
+                   help="published Silver Blades and Curse only: put the party on square X,Y "
+                        "facing F (0 N, 1 E, 2 S, 3 W) in working DF0's loaded slot")
     p.add_argument("--source", type=pathlib.Path)
     p.add_argument("--staged-from", type=pathlib.Path)
     p.add_argument("--issue")
@@ -2490,12 +2588,13 @@ def main(argv: list[str] | None = None) -> int:
             if args.command == "prepare":
                 if args.saveas_report is None:
                     raise RouteError("published disk one needs --saveas-report")
+                place = parse_place(args.stage_place) if args.stage_place is not None else None
                 if any((args.source, args.staged_from, args.disk3,
                         args.disk3_sha256, args.accept_summary, args.substitute,
                         args.save_count is not None)):
                     raise RouteError("published disk one takes only a Save As report")
                 print(prepare_published(args.title, args.run_id, args.saveas_report,
-                                        args.issue or PUBLISHED_ISSUE, camp=args.camp))
+                                        args.issue or PUBLISHED_ISSUE, camp=args.camp, place=place))
                 return 0
             if args.title not in PUBLISHED_DISKS:
                 raise RouteError("published disk one is only for Curse and Silver Blades")
@@ -2505,6 +2604,8 @@ def main(argv: list[str] | None = None) -> int:
             raise RouteError("--saveas-report requires --published-disk-one")
         elif args.command == "prepare" and args.camp:
             raise RouteError("--camp requires --published-disk-one")
+        elif args.command == "prepare" and args.stage_place is not None:
+            raise RouteError("--stage-place requires --published-disk-one")
         if args.command == "reload" and silver_blades:
             raise RouteError("Silver Blades has no reload route")
         if args.title == "darkness-unstarted" and args.command in ("accept", "reload"):
