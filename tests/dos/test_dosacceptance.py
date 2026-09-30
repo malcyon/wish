@@ -322,45 +322,152 @@ def test_the_camp_save_is_believed_by_the_file_and_declines_the_quit(tmp_path):
     assert game.keys[-2:] == ["d", da.QUIT_NO]
 
 
+# -- camp MAGIC > DISPLAY, read as text -------------------------------------------
+
+#: A stand-in font: glyph i lights row 1 with i + 1 and row 2 with 0x81, so
+#: every glyph is sparse, distinct, and neither blank nor solid.
+_FONT_BLOCK = b"".join(bytes((0, i + 1, 0x81, 0, 0, 0, 0, 0)) for i in range(da.FONT_GLYPHS))
+_FONT = da.font_table(_FONT_BLOCK)
+_NAME_INK, _EFFECT_INK = b"\x55\xff\xff", b"\x55\xff\x55"
+_DISPLAY_KEYS = {"magic": b"\x12\x45\x78", "exit": b"\x13\x46\x79",
+                 "next": b"\x15\x48\x7b", "prev": b"\x16\x49\x7c", "wrong": b"\x14\x47\x7a"}
+
+
+def _draw(px: bytearray, block: bytes, row: int, col: int, text: str, ink: bytes) -> None:
+    for i, ch in enumerate(text):
+        glyph = block[(ord(ch.upper()) % 0x40) * 8:][:8]
+        for dy, bits in enumerate(glyph):
+            for dx in range(8):
+                if bits & (0x80 >> dx):
+                    at = (((row * 8) + dy) * W + (col + i) * 8 + dx) * 3
+                    px[at:at + 3] = ink
+
+
+def _party_lines(members: list[tuple[str, list[str]]], none: str) -> list[str]:
+    """The list the game builds: a blank line, then each member's name, an
+    indented line an effect (or `none`), and a blank line."""
+    lines = [""]
+    for name, effects in members:
+        lines += [name] + [" " + e for e in (effects or [none])] + [""]
+    return lines
+
+
+class FakeDisplay(FakePool):
+    """Camp, the Magic bar and the Display list as the three titles draw it:
+    rows 4 to 22 of the list at a time, ` NEXT EXIT` while more is below,
+    `n` scrolling a page on but never past the last full window, `p` back.
+    `Return` leaves a list only where `returns` says it does."""
+
+    BARS = {**FakePool.BARS, "magic": _DISPLAY_KEYS["magic"],
+            "wrong": _DISPLAY_KEYS["wrong"]}
+
+    def __init__(self, tmp, lines: list[str], *, returns: bool = True,
+                 pointer: bool = False, failure: str = "", **kw):
+        super().__init__(tmp, **kw)
+        self.lines, self.returns, self.pointer = lines, returns, pointer
+        self.failure = failure
+        self.top = 0
+
+    def window(self) -> int:
+        return len(da.DISPLAY_ROWS)
+
+    def page_bar(self) -> str:
+        if len(self.lines) <= self.window():
+            return "exit"
+        return "next" if self.top + self.window() < len(self.lines) else "prev"
+
+    def key(self, k, gap=0.0):
+        if self.mode == "camp" and k == "m":
+            self.keys.append(k)
+            self.mode = "wrong" if self.failure == "magic" else "magic"
+        elif self.mode == "magic" and k == "d":
+            self.keys.append(k)
+            self.mode = "wrong" if self.failure == "display" else "display"
+        elif self.mode == "display" and k == "n":
+            self.keys.append(k)
+            self.top = min(self.top + self.window(), len(self.lines) - self.window())
+        elif self.mode == "display" and k == "p":
+            self.keys.append(k)
+            self.top = max(0, self.top - self.window())
+        elif self.mode == "display" and (k == "e" or k == "Return" and self.returns):
+            self.keys.append(k)
+            self.mode = "wrong" if self.failure == "back_magic" else "magic"
+        elif self.mode == "display":
+            self.keys.append(k)
+        elif self.mode == "magic" and k == "e":
+            self.keys.append(k)
+            self.mode = "wrong" if self.failure == "back_camp" else "camp"
+        else:
+            super().key(k, gap)
+
+    def capture(self):
+        if self.mode != "display":
+            return super().capture()
+        frame = _screen(_DISPLAY_KEYS[self.page_bar()], b"")
+        px = bytearray(frame.px)
+        for i, line in enumerate(self.lines[self.top:self.top + self.window()]):
+            row = da.DISPLAY_ROWS[0] + i
+            if line.startswith(" "):
+                _draw(px, _FONT_BLOCK, row, 2, line[1:], _EFFECT_INK)
+            elif line:
+                _draw(px, _FONT_BLOCK, row, 1, line, _NAME_INK)
+        if self.pointer:
+            # Silver Blades' arrow: white, over paper, across a text cell and
+            # into two cells of its own.
+            for dy in range(14):
+                for dx in range(dy // 2 + 1):
+                    x, y = 8 * 12 + 1 + dx, 8 * 9 + 3 + dy
+                    at = (y * W + x) * 3
+                    if px[at:at + 3] == b"\x00\x00\x00":
+                        px[at:at + 3] = da.POINTER_INK
+        return dosbox.Screen(W, H, bytes(px))
+
+
+@pytest.fixture
+def display_measured(monkeypatch):
+    """The fakes' Magic and Display bars stand in for the measured ones, and
+    the stand-in font for the title's own."""
+    sig = {k: screens.bar_signature(_screen(v, b"")) for k, v in _DISPLAY_KEYS.items()}
+    monkeypatch.setattr(da, "POOL_MAGIC_BAR", sig["magic"])
+    monkeypatch.setattr(da, "POOL_DISPLAY_BAR", sig["exit"])
+    monkeypatch.setattr(da, "DISPLAY_NEXT_BAR", sig["next"])
+    monkeypatch.setattr(da, "DISPLAY_PREV_BAR", sig["prev"])
+    monkeypatch.setattr(da, "DISPLAY_BARS", {sig["exit"]: "exit", sig["next"]: "next",
+                                             sig["prev"]: "prev"})
+    monkeypatch.setattr(da, "load_font", lambda game: _FONT)
+    return sig
+
+
+_POOL_PARTY = [(f"WISH{n}", ["PRAYER"]) for n in ("FTR", "CLE", "MAG", "THI", "DWF", "HEL")]
+#: #666's `7080ae935c-curse-display-measure`, as the page read.
+_CURSE_PARTY = [("MATHEW", ["PROTECTION FROM EVIL"]), ("MARK", ["PROTECTION FROM EVIL"]),
+                ("TRAVIS", []), ("LEDERA", []), ("SHARA", ["ENLARGE"]), ("PHILIPPE", [])]
+#: #666's `7080ae935c-ssb-display-measure`: twenty lines, one more than the window.
+_SSB_PARTY = [("GUY DE VALOIS", ["PROTECTED FROM EVIL", "AFFECTED BY PRAYER"]),
+              ("PAINE", ["AFFECTED BY PRAYER"]), ("EPONA", ["AFFECTED BY PRAYER"]),
+              ("MALACHITE", ["AFFECTED BY PRAYER"]), ("DOMINIC", ["AFFECTED BY PRAYER"]),
+              ("MORGAINE", ["AFFECTED BY PRAYER"])]
+
+
+def _display_camp(tmp_path, title, party, none="<NO SPELL EFFECTS>", **kw):
+    game = FakeDisplay(tmp_path, _party_lines(party, none), keys=TITLE_KEYS[title], **kw)
+    d = da.Driver(game, lambda **k: None, "A", title, party_size=len(party))
+    d.camp()
+    game.keys.clear()
+    return game, d
+
+
+def _members(party):
+    return [{"name": n, "effects": list(e)} for n, e in party]
+
+
 @pytest.mark.parametrize("failure", ("", "magic", "display", "five", "back_magic",
                                           "back_camp"))
 def test_pool_display_captures_every_member_and_returns_to_camp_before_save(
-        tmp_path, monkeypatch, failure):
-    class DisplayPool(FakePool):
-        BARS = {**FakePool.BARS, "magic": b"\x12\x45\x78",
-                "display": b"\x13\x46\x79", "wrong": b"\x14\x47\x7a"}
-
-        def key(self, k, gap=0.0):
-            if self.mode == "camp" and k == "m":
-                self.keys.append(k)
-                self.mode = "wrong" if failure == "magic" else "magic"
-            elif self.mode == "magic" and k == "d":
-                self.keys.append(k)
-                self.mode = "wrong" if failure == "display" else "display"
-            elif self.mode == "display" and k == "Return":
-                self.keys.append(k)
-                self.mode = "wrong" if failure == "back_magic" else "magic"
-            elif self.mode == "magic" and k == "e":
-                self.keys.append(k)
-                self.mode = "wrong" if failure == "back_camp" else "camp"
-            else:
-                super().key(k, gap)
-
-        def capture(self):
-            frame = super().capture()
-            if self.mode != "display":
-                return frame
-            px = bytearray(frame.px)
-            for y in (40, 64, 88, 112, 136, 160)[:5 if failure == "five" else 6]:
-                at = (y * W + 8) * 3
-                px[at:at + 3] = b"\xff\xff\xff"
-            return dosbox.Screen(W, H, bytes(px))
-
-    monkeypatch.setattr(da, "POOL_MAGIC_BAR", screens.bar_signature(
-        _screen(DisplayPool.BARS["magic"], b"")))
-    monkeypatch.setattr(da, "POOL_DISPLAY_BAR", screens.bar_signature(
-        _screen(DisplayPool.BARS["display"], b"")))
-    game = DisplayPool(tmp_path)
+        tmp_path, display_measured, failure):
+    party = _POOL_PARTY[:5] if failure == "five" else _POOL_PARTY
+    game = FakeDisplay(tmp_path, _party_lines(party, "<NO SPELL EFFECTS>"),
+                       failure=failure)
     d = da.Driver(game, lambda **k: None, "A")
     d.camp()
     if failure:
@@ -370,10 +477,116 @@ def test_pool_display_captures_every_member_and_returns_to_camp_before_save(
         return
     got = d.display()
     assert got["visible_members"] == 6
+    assert got["members"] == _members(_POOL_PARTY)
     assert got["back_in_camp"] and game.mode == "camp"
     assert game.keys[-4:] == ["m", "d", "Return", "e"]
     d.save("D")
     assert game.save_file("D").is_file()
+
+
+def test_curse_display_names_each_members_effects_on_one_page(tmp_path, display_measured):
+    game, d = _display_camp(tmp_path, "curse", _CURSE_PARTY)
+    got = d.display()
+    assert got["members"] == _members(_CURSE_PARTY)
+    assert got["members"][4] == {"name": "SHARA", "effects": ["ENLARGE"]}
+    assert [p["bar"] for p in got["pages"]] == ["exit"] and got["unreadable"] == []
+    assert game.keys == ["m", "d", "Return", "e"] and game.mode == "camp"
+
+
+def test_silver_blades_display_pages_with_next_and_leaves_with_exit(tmp_path,
+                                                                   display_measured):
+    game, d = _display_camp(tmp_path, "ssb", _SSB_PARTY, "<NO MAGICAL EFFECTS>",
+                            returns=False, pointer=True)
+    got = d.display()
+    assert got["members"] == _members(_SSB_PARTY)
+    assert [p["bar"] for p in got["pages"]] == ["next", "prev"]
+    assert got["unreadable"] == []
+    # Return is not tried on a paged bar; `e` is the word's own key.
+    assert game.keys == ["m", "d", "n", "e", "e"] and game.mode == "camp"
+    assert got["left_with"] == "e"
+
+
+def test_a_list_of_three_pages_is_merged_without_losing_a_line(tmp_path, display_measured):
+    party = [(f"MEMBER{n}", [f"EFFECT {n}{k}" for k in range(n + 2)]) for n in range(6)]
+    game, d = _display_camp(tmp_path, "ssb", party, returns=False)
+    got = d.display()
+    assert len(got["pages"]) == 3 and got["pages"][-1]["bar"] == "prev"
+    assert got["members"] == _members(party)
+    assert got["lines"] == _party_lines(party, "<NO SPELL EFFECTS>")
+
+
+def test_a_return_that_leaves_nothing_is_followed_by_exit(tmp_path, display_measured):
+    game, d = _display_camp(tmp_path, "ssb", _CURSE_PARTY, returns=False)
+    got = d.display()
+    assert game.keys == ["m", "d", "Return", "e", "e"] and game.mode == "camp"
+    assert got["left_with"] == "e"
+
+
+def test_a_display_naming_fewer_members_than_the_party_stops_in_the_list(
+        tmp_path, display_measured):
+    game, d = _display_camp(tmp_path, "curse", _CURSE_PARTY)
+    d.party_size = 7
+    with pytest.raises(da.StepFailed, match="named 6 members, not the party's 7"):
+        d.display()
+    assert game.keys == ["m", "d"] and game.mode == "display"
+
+
+def test_display_is_refused_in_pools_of_darkness_before_any_key(tmp_path, display_measured):
+    game, d = _display_camp(tmp_path, "curse", _CURSE_PARTY)
+    d.title = da.TITLES["darkness"]
+    with pytest.raises(da.StepFailed, match="curse, pool, ssb only"):
+        d.display()
+    assert game.keys == []
+
+
+def test_a_cell_reads_heavy_glyphs_under_the_pointer_and_blank_when_only_pointer():
+    # A glyph with more ink than paper, as `H` is in the real font: the
+    # commonest colour is its ink, so it matches through its complement.
+    heavy = bytes((0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 0, 0))
+    font = {**_FONT, heavy: "H"}
+    block = bytearray(_FONT_BLOCK)
+    block[8 * 8:9 * 8] = heavy
+    px = bytearray(W * H * 3)
+    _draw(px, bytes(block), 4, 1, "ABH", _EFFECT_INK)
+    for y in range(32, 40):       # the pointer on B's paper, and alone in cell 5
+        for x in (17, 40, 41):
+            at = (y * W + x) * 3
+            if px[at:at + 3] == b"\x00\x00\x00":
+                px[at:at + 3] = da.POINTER_INK
+    screen = dosbox.Screen(W, H, bytes(px))
+    assert [da.read_cell(screen, c * 8, 32, font) for c in range(1, 7)] == \
+        ["A", "B", "H", " ", " ", " "]
+
+
+def test_a_member_line_after_an_effect_starts_a_new_member_and_an_orphan_effect_is_refused():
+    assert da.display_members(["", "A", " X", " Y", "", "B", " <NO MAGICAL EFFECTS>"]) == \
+        [{"name": "A", "effects": ["X", "Y"]}, {"name": "B", "effects": []}]
+    with pytest.raises(ValueError, match="before any name"):
+        da.display_members(["", " X"])
+
+
+def test_merged_pages_take_the_reading_without_a_question_mark():
+    assert da.merge_pages([["", "A", " X?Y"], [" XZY", "", "B"]]) == \
+        ["", "A", " XZY", "", "B"]
+
+
+@pytest.mark.parametrize("stem", ("POOLRAD", "CURSE", "SECRET"))
+def test_each_titles_font_reads_its_own_letters_back(stem):
+    try:
+        game = dosbox.find_game(stem)
+    except FileNotFoundError:
+        pytest.skip("needs the DOS archives ($FR_ARCHIVES)")
+    font = da.load_font(game)
+    assert set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<>-") <= set(font.values())
+    block = bytearray(8 * da.FONT_GLYPHS)
+    for bits, ch in font.items():
+        i = ord(ch) % 0x40
+        block[i * 8:i * 8 + 8] = bits
+    px = bytearray(W * H * 3)
+    _draw(px, bytes(block), 4, 1, "SHARA", _NAME_INK)
+    _draw(px, bytes(block), 5, 2, "AFFECTED BY PRAYER", _EFFECT_INK)
+    lines = da.display_lines(dosbox.Screen(W, H, bytes(px)), font)
+    assert lines[:2] == ["SHARA", " AFFECTED BY PRAYER"]
 
 
 # -- a camp cast in Pool ---------------------------------------------------------
@@ -1571,6 +1784,8 @@ def _steps(*texts):
 @pytest.mark.parametrize("title,steps", [
     ("pool", ("load", "walk MI", "camp", "rest 5m", "save D", "read")),
     ("pool", ("load", "camp", "display", "save D", "read")),
+    ("curse", ("load", "begin", "camp", "display", "save D", "read")),
+    ("ssb", ("load", "begin", "camp", "display", "rest 5m", "display")),
     ("curse", ("load", "save B", "train 1", "save C", "read")),
     ("curse", ("load", "begin", "camp", "rest 8d")),
     ("ssb", ("load", "begin", "camp", "rest 5m", "save D", "read")),
@@ -1778,7 +1993,7 @@ def test_a_blank_status_line_is_never_the_pool_walk_baseline(tmp_path):
     ("pool", ("load", "save D"), "needs camp first"),
     ("pool", ("load", "camp", "walk MI"), "walk needs the map"),
     ("pool", ("load", "display"), "display needs camp first"),
-    ("curse", ("load", "display"), "pool only"),
+    ("curse", ("load", "display"), "display needs camp first"),
     ("curse", ("load", "begin", "walk 1"), "walk MI"),
     ("ssb", ("load", "begin", "walk MI"), "walk 1"),
     ("curse", ("load", "camp"), "needs begin first"),
@@ -3054,7 +3269,7 @@ def test_orders_pools_of_darkness_allows(steps):
     ("darkness", ("load", "begin", "walk MI"), "walk 1"),
     ("darkness", ("load", "begin", "sheet 1"), "sheet needs camp first"),
     ("darkness", ("load", "items 1"), "items needs camp first"),
-    ("darkness", ("load", "begin", "camp", "display"), "pool only"),
+    ("darkness", ("load", "begin", "camp", "display"), "curse, pool, ssb only"),
     ("pool", ("load", "walk 1"), "walk MI"),
     ("pool", ("load", "camp", "sheet 1"), "loaded map"),
     ("curse", ("load", "begin", "camp", "items 2"), "darkness only"),

@@ -63,7 +63,7 @@ a source whose title does not match `--title`:
 | `view N` | At the party menu, before `begin`.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar), `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
 | `items N` | Pool, in camp: member N's `ITEMS` list, first screen only, from `End` to the line, `v`, `i`, and `Escape` twice back to camp; refuses a sheet with no `ITEMS`; records `rows` and `marked`, the rows (from 1) drawn with the Detect Magic `* ` |
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs either measured map bar of `POOL_MAP_BARS` back |
-| `display` | Pool camp `MAGIC > DISPLAY`; captures six member rows, then returns through Magic to camp |
+| `display` | Pool, Curse and Silver Blades, in camp: `MAGIC`, `DISPLAY`, every page of the list of spells in effect read as text with the title's own font (`load_font`), turning with `n` while the bar is ` NEXT EXIT`; `members` is each member's name and the effect names under it, and the list must name every member (Pool's page also six name rows); `Return` or `e` back to the Magic bar (`DISPLAY_LEAVE`) and `e` to camp |
 | `cast N SPELL [T]` | Pool, in camp: roster line N highlighted with `End`, `MAGIC`, `CAST`, the spell list's title checked against line N's name, the highlight moved with `End` to SPELL's row (`dosbox.PoolOfRadiance.CAST_SPELLS`: `BLESS`, `ANIMATE-DEAD`, `SLOW-POISON`, and `CURE-LIGHT-WOUNDS`, which needs target line T), `CAST`, T picked with `End` and `Return` at `CAST SPELL ON WHOM`, and believed only when the list comes back one SPELL row shorter, or the Magic bar comes back when SPELL was the caster's only row; `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below); in Curse a message over the continue bar that ends the rest (Tilverton's Royal Guards) gets `Return`, the map bar is required, and the party camps again, logged as `ended_by_message` |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
@@ -258,9 +258,46 @@ ENCAMP = "e"
 CAMP_SAVE = "s"
 CAMP_REST = "r"
 QUIT_NO = "n"
-# Pool's measured camp Magic and Display bars.
+# The camp Magic bar `CAST MEMORIZE SCRIBE DISPLAY REST EXIT` and the one-page
+# Display bar ` EXIT`, by `bar_signature`.  Measured in Pool first; Curse's
+# and Silver Blades' Magic bars and Curse's one-page Display bar give the same
+# values (#666's `7080ae935c-curse-display-measure` and
+# `7080ae935c-ssb-display-measure`).
 POOL_MAGIC_BAR = "062aa229ea7afd11"
 POOL_DISPLAY_BAR = "98286ceaa33edc12"
+#: A Display list longer than its window: ` NEXT EXIT` on the first page and
+#: ` PREV EXIT` on the last, by `bar_signature`, measured in Silver Blades,
+#: where `n` scrolled a 20-line list by one line and `p` scrolled it back.
+#: Curse's paged bars are unmeasured and read as these by the shared font.
+DISPLAY_NEXT_BAR = "392973724e8ad548"
+DISPLAY_PREV_BAR = "862edc20f753abcc"
+DISPLAY_BARS = {POOL_DISPLAY_BAR: "exit", DISPLAY_NEXT_BAR: "next",
+                DISPLAY_PREV_BAR: "prev"}
+#: The titles whose camp `MAGIC > DISPLAY` the `display` step drives.
+DISPLAY_TITLES = frozenset({"pool", "curse", "ssb"})
+#: The Display list's window, in text cells: rows 4 to 22, columns 1 to 38
+#: (Curse `GAME.OVR` 0x1A3DB-0x1A3ED passes rows 4-0x16, columns 1-0x26 to
+#: the list routine).  Each member is a line at column 1, each effect a line
+#: at column 2, and a blank line after each member.
+DISPLAY_ROWS = range(4, 23)
+DISPLAY_COLUMNS = range(1, 39)
+#: The line a member with no effect gets: Pool's and Curse's, Silver Blades'.
+NO_EFFECTS = ("<NO SPELL EFFECTS>", "<NO MAGICAL EFFECTS>")
+#: At most this many Display pages before the run stops.
+DISPLAY_PAGES = 8
+#: The keys that leave the Display list, the first tried first.  ` EXIT`
+#: alone answers `Return` in Pool and Curse (measured); on a paged bar
+#: `Return` changed nothing in Silver Blades, so `e`, the word's capital, as
+#: `n` and `p` are.  The second is pressed only while the list still shows.
+DISPLAY_LEAVE = {"exit": ("Return", "e"), "prev": ("e", "Return"),
+                 "next": ("e", "Return")}
+#: The text font: block 201 of the title's `8X8D*.DAX`, eight bytes a glyph,
+#: the high bit leftmost, indexed by the upper-cased character modulo 0x40.
+FONT_BLOCK = 201
+FONT_GLYPHS = 0x40
+#: Silver Blades draws its mouse pointer, a white arrow, over the Display
+#: list, whose text is cyan (names) and green (effects).
+POINTER_INK = b"\xff\xff\xff"
 #: Pool's map command bars and its character sheet's bar `VIEW: TRADE DROP
 #: EXIT`, by `bar_signature`, each measured off a real screen: `town` on the
 #: runs that already used the map (#666's `ca4bbff4fa-dos-pool-sheet-live`,
@@ -644,6 +681,119 @@ def bar_words(screen: dosbox.Screen) -> list[list[str]]:
     if word:
         words.append(word)
     return words
+
+
+def font_table(block: bytes) -> dict[bytes, str]:
+    """Each glyph's eight bytes to its character, from a font block.
+
+    Glyph i is the character whose upper case modulo 0x40 is i: 0 to 0x1F
+    are `@` to `_`, 0x20 to 0x3F are space to `?`.  The blank glyph and the
+    solid one (drawn for both `\\` and `%`) are left out, since neither can
+    be told from paper.
+    """
+    table: dict[bytes, str] = {}
+    for i in range(min(FONT_GLYPHS, len(block) // 8)):
+        bits = bytes(block[i * 8:i * 8 + 8])
+        if not any(bits) or bits == b"\xff" * 8:
+            continue
+        table.setdefault(bits, chr(i + 0x40) if i < 0x20 else chr(i))
+    return table
+
+
+def load_font(game: pathlib.Path) -> dict[bytes, str]:
+    """The title's text font, `FONT_BLOCK` of whichever `8X8D*.DAX` holds it
+    (`8X8D1` in Pool and Curse, `8X8D5` in Silver Blades)."""
+    for path in sorted(game.iterdir()):
+        if not re.fullmatch(r"8X8D\d*\.DAX", path.name, re.IGNORECASE):
+            continue
+        data = path.read_bytes()
+        if any(entry[0] == FONT_BLOCK for entry in dos_savegame.dax_index(data)):
+            return font_table(dos_savegame.dax_block(data, FONT_BLOCK, path.name))
+    raise FileNotFoundError(f"no 8X8D*.DAX in {game} holds block {FONT_BLOCK}")
+
+
+def read_cell(screen: dosbox.Screen, x: int, y: int, font: dict[bytes, str]) -> str:
+    """The character in the 8x8 cell at `x`, `y`, `?` when none matches.
+
+    Ink is whatever is not the cell's commonest colour; a glyph drawn
+    reversed matches through its complement.  When neither matches, each ink
+    colour is tried alone, which reads a letter under Silver Blades' white
+    pointer, and a cell whose only ink is the pointer's colour is blank.
+    """
+    px = screen.rows((x, y, CELL, CELL))
+    colours = [px[i:i + 3] for i in range(0, len(px), 3)]
+    counts: dict[bytes, int] = {}
+    for c in colours:
+        counts[c] = counts.get(c, 0) + 1
+    paper = max(counts, key=lambda k: counts[k])
+
+    def bits(lit) -> bytes:
+        return bytes(sum(0x80 >> dx for dx in range(CELL) if lit(colours[dy * CELL + dx]))
+                     for dy in range(CELL))
+
+    ink = bits(lambda c: c != paper)
+    if not any(ink):
+        return " "
+    for b in (ink, bytes(0xFF ^ v for v in ink)):
+        if b in font:
+            return font[b]
+    for colour in sorted(set(counts) - {paper}):
+        alone = bits(lambda c, colour=colour: c == colour)
+        if alone in font:
+            return font[alone]
+    if set(counts) == {paper, POINTER_INK}:
+        return " "
+    return "?"
+
+
+def display_lines(screen: dosbox.Screen, font: dict[bytes, str]) -> list[str]:
+    """The Display list's window as text, a line a row, right-stripped."""
+    return ["".join(read_cell(screen, col * CELL, row * CELL, font)
+                    for col in DISPLAY_COLUMNS).rstrip()
+            for row in DISPLAY_ROWS]
+
+
+def _same_line(a: str, b: str) -> bool:
+    """Two readings of one line, `?` matching any character."""
+    n = max(len(a), len(b))
+    return all(p == q or "?" in (p, q) for p, q in zip(a.ljust(n), b.ljust(n)))
+
+
+def merge_pages(pages: list[list[str]]) -> list[str]:
+    """One list from pages that scroll it, each page's head laid over the
+    longest tail of the list so far that it matches.  A line read with a `?`
+    on one page takes the other page's reading when that has none."""
+    lines = list(pages[0]) if pages else []
+    for page in pages[1:]:
+        overlap = 0
+        for k in range(min(len(lines), len(page)), 0, -1):
+            if all(_same_line(a, b) for a, b in zip(lines[-k:], page[:k])):
+                overlap = k
+                break
+        for i in range(overlap):
+            at = len(lines) - overlap + i
+            if "?" in lines[at] and "?" not in page[i]:
+                lines[at] = page[i]
+        lines.extend(page[overlap:])
+    return lines
+
+
+def display_members(lines: list[str]) -> list[dict]:
+    """Each member the Display list names, in order, with the effect lines
+    under it; `NO_EFFECTS` is an empty list.  A line at column 1 is a name,
+    one at column 2 an effect; blank lines separate members."""
+    members: list[dict] = []
+    for line in lines:
+        text = line.strip()
+        if not text:
+            continue
+        if not line.startswith(" "):
+            members.append({"name": text, "effects": []})
+        elif not members:
+            raise ValueError(f"an effect line before any name: {text!r}")
+        elif text not in NO_EFFECTS:
+            members[-1]["effects"].append(text)
+    return members
 
 
 def sheet_offers(words: list[list[str]], title: str) -> dict[str, bool] | None:
@@ -1573,11 +1723,17 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "rest":
             if where != "camp":
                 raise ValueError(f"rest needs camp first: {step.text!r}")
-        elif k in ("display", "cast"):
-            if title != "pool":
-                raise ValueError(f"{k} is driven in pool only, not {title}")
+        elif k == "display":
+            if title not in DISPLAY_TITLES:
+                raise ValueError(f"display is driven in "
+                                 f"{', '.join(sorted(DISPLAY_TITLES))} only, not {title}")
             if where != "camp":
-                raise ValueError(f"{k} needs camp first: {step.text!r}")
+                raise ValueError(f"display needs camp first: {step.text!r}")
+        elif k == "cast":
+            if title != "pool":
+                raise ValueError(f"cast is driven in pool only, not {title}")
+            if where != "camp":
+                raise ValueError(f"cast needs camp first: {step.text!r}")
         elif k == "save":
             if where not in ("camp", "party"):
                 raise ValueError(f"save needs camp first: {step.text!r}")
@@ -2360,6 +2516,8 @@ class Driver:
         self.intervene = False
         #: The game's data segment, once a fight's combatants have read true.
         self.combat_ds: int | None = None
+        #: The title's text font, once `display` has read it.
+        self._font: dict[bytes, str] | None = None
         #: When the driver was made, which is when the boot was over.
         self.began = time.time()
 
@@ -4349,35 +4507,94 @@ class Driver:
                             "message that ended the rest")
         self.camp()
 
+    def display_font(self) -> dict[bytes, str]:
+        """The title's text font, read from its archives once."""
+        if self._font is None:
+            self._font = load_font(self.title.find_game())
+        return self._font
+
     def display(self) -> dict:
-        """Capture Pool's single six-member Magic display page and return to camp."""
-        if self.title.key != "pool" or self.camp_sig is None:
-            raise StepFailed("display needs Pool camp first")
+        """Camp `MAGIC > DISPLAY`: every page of the list of spells in
+        effect read as text, and back through the Magic bar to camp.
+
+        `members` is each member's name with the effect names listed under
+        it, as the game draws them.  The list must name `party_size`
+        members, and Pool's must show six name rows on its one page.  `n`
+        turns a page while the bar is ` NEXT EXIT`; the pages are merged by
+        their overlap (`merge_pages`).  The list is left with
+        `DISPLAY_LEAVE`'s first key for its bar, and the second only while
+        the list still shows; `e` is pressed only on the Magic bar.
+        """
+        if self.title.key not in DISPLAY_TITLES:
+            raise StepFailed(f"display is driven in {', '.join(sorted(DISPLAY_TITLES))} "
+                             f"only, not {self.title.key}")
+        if self.camp_sig is None:
+            raise StepFailed("display needs camp first")
         self.ensure_camp()
+        font = self.display_font()
         self.s.key("m")
         if not self.s.wait_for(lambda sc: bar_signature(sc) == POOL_MAGIC_BAR, 15.0):
             raise self.fail("display-magic", "MAGIC bar did not open")
         magic = self.shot("display-magic")
         self.s.key("d")
-        if not self.s.wait_for(lambda sc: bar_signature(sc) == POOL_DISPLAY_BAR, 15.0):
+        if not self.s.wait_for(lambda sc: bar_signature(sc) in DISPLAY_BARS, 15.0):
             raise self.fail("display-page", "DISPLAY page did not open")
         screen = self.s.settle(quiet=0.6, timeout=20.0)
-        if bar_signature(screen) != POOL_DISPLAY_BAR:
+        if bar_signature(screen) not in DISPLAY_BARS:
             raise self.fail("display-page", "DISPLAY page changed unexpectedly")
-        visible = sum(not screen.flat((8, y, 8, 8)) for y in POOL_DISPLAY_NAME_ROWS)
-        if visible != 6:
-            raise self.fail("display-members", f"DISPLAY showed {visible} member rows, not six")
-        page = self.shot("display-page")
-        self.s.key("Return")
-        if not self.s.wait_for(lambda sc: bar_signature(sc) == POOL_MAGIC_BAR, 15.0):
+        visible = None
+        if self.title.key == "pool":
+            visible = sum(not screen.flat((8, y, 8, 8)) for y in POOL_DISPLAY_NAME_ROWS)
+            if visible != 6:
+                raise self.fail("display-members",
+                                f"DISPLAY showed {visible} member rows, not six")
+        pages = [{"shot": self.shot("display-page"), "bar": DISPLAY_BARS[bar_signature(screen)],
+                  "lines": display_lines(screen, font)}]
+        while pages[-1]["bar"] == "next":
+            if len(pages) >= DISPLAY_PAGES:
+                raise self.fail("display-pages", f"{DISPLAY_PAGES} pages and the bar "
+                                "still offers NEXT")
+            before = screen.digest()
+            self.s.key(dosbox.LIST_PAGE_DOWN)
+            if not self.s.wait_for(lambda sc: sc.digest() != before, 10.0):
+                raise self.fail("display-next", "NEXT changed nothing on a page whose "
+                                "bar offers it")
+            screen = self.s.settle(quiet=0.6, timeout=20.0)
+            bar = DISPLAY_BARS.get(bar_signature(screen))
+            if bar not in ("next", "prev"):
+                raise self.fail("display-next", "NEXT left the paged DISPLAY list")
+            pages.append({"shot": self.shot(f"display-page-{len(pages) + 1}"),
+                          "bar": bar, "lines": display_lines(screen, font)})
+        lines = merge_pages([p["lines"] for p in pages])
+        try:
+            members = display_members(lines)
+        except ValueError as e:
+            raise self.fail("display-read", str(e)) from None
+        if len(members) != self.party_size:
+            raise self.fail("display-members", f"DISPLAY named {len(members)} members, "
+                            f"not the party's {self.party_size}")
+        shown = bar_signature(screen)
+        for tried, key in enumerate(DISPLAY_LEAVE[pages[-1]["bar"]]):
+            if tried and bar_signature(self.s.capture()) != shown:
+                break
+            self.s.key(key)
+            if self.s.wait_for(lambda sc: bar_signature(sc) == POOL_MAGIC_BAR, 15.0):
+                break
+        else:
+            raise self.fail("display-back-magic", "Magic bar did not return after DISPLAY")
+        if bar_signature(self.s.capture()) != POOL_MAGIC_BAR:
             raise self.fail("display-back-magic", "Magic bar did not return after DISPLAY")
         self.shot("display-back-magic")
         self.s.key("e")
         if not self.wait_camp(timeout=15.0):
             raise self.fail("display-back-camp", "camp bar did not return after Magic")
         camp = self.shot("display-back-camp")
-        return {"magic_shot": magic, "display_shot": page, "camp_shot": camp,
-                "visible_members": visible, "back_in_camp": True}
+        return {"magic_shot": magic, "display_shot": pages[0]["shot"],
+                "pages": pages, "lines": lines, "members": members,
+                "unreadable": [line for line in lines if "?" in line],
+                "left_with": key, "camp_shot": camp,
+                "visible_members": visible if visible is not None else len(members),
+                "back_in_camp": True}
 
     def cast(self, line: int, spell: str, target: int | None = None) -> dict:
         """Roster line `line` casts `spell` in Pool's camp, on roster line
