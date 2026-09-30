@@ -362,10 +362,17 @@ LATER_REST_BAR = "SUBTRACT"
 #: $1F76` and Silver Blades `CAMP $1D73`; logged, never written.
 REST_INTERRUPT = 0x7ED2
 
-#: How long a later-title rest may show no movement of the clock or the field
-#: before it is taken as over: a finished rest is back on the camp bar at once,
-#: so this is only reached by a rest the game stopped.
-LATER_REST_STILL = 10
+#: How many one-second reads in a row a later-title rest may show no movement
+#: of the clock or the field before it is taken as stopped.  A finished rest is
+#: back on the camp bar at once and ends the wait without this; a live Silver
+#: Blades rest ran a week (2016 passes) in about 35 s, so a running rest moves
+#: the clock on every read and 30 s of stillness is not one.
+LATER_REST_STILL = 30
+
+#: The least time a later-title rest is given (`tools/c64/curedrive.py`'s own
+#: limit), and the extra seconds per five-minute pass above it.
+LATER_REST_DEADLINE = 900
+LATER_REST_PASS_SECONDS = 1.0
 
 
 def sample(m, base: int = SAVE0_LOAD) -> dict:
@@ -461,12 +468,30 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
     `REST ADD SUBTRACT EXIT`.  The time is written into the rest-time
     `field` (minutes, hours, days), with hours of 24 or more carried into
     days, rather than stepped with `ADD`, and the bar's own `REST` starts it.
-    No key is sent while it runs.  It is over when the field is back to zero
-    and the camp bar is up, or when neither the clock nor the field has moved
-    for `LATER_REST_STILL` seconds; the second is a rest the game stopped,
-    reported as `interrupted` with the time it had left in `rest_left` and
-    row 24 in `bar`.
+    No key is sent while it runs.  A rest of no time is refused before
+    anything is pressed.
+
+    `ended` in the result says how the wait stopped:
+
+    * `completed` -- the field read zero with the camp bar on row 24;
+    * `interrupted` -- neither the clock nor the field moved for
+      `LATER_REST_STILL` reads, and row 24 held something the game put up in
+      place of the rest: the camp bar with time still in the field, or any
+      other text (`curedrive.py` read an interruption as `CONTINUE`);
+    * `stalled` -- the same stillness with row 24 blank or still the rest-time
+      bar, which is no known ending;
+    * `deadline` -- the clock was still moving when the time allowed
+      (`LATER_REST_DEADLINE`, or one `LATER_REST_PASS_SECONDS` per pass when
+      that is more) ran out.
+
+    `interrupted` is true for the second alone; `rest_left` is the field and
+    `bar` row 24 when the wait stopped, and `still_reads` names the stillness
+    threshold when that is what stopped it.
     """
+    want = (minutes, hours % 24, hours // 24)
+    if want == (0, 0, 0):
+        log.say("  a rest of no time was asked for")
+        return {"failed": "a rest of no time"}
     press = getattr(sess, "press_bar", sess.select_bar)
     if not press("REST"):
         log.say("  REST was not on the camp bar")
@@ -474,7 +499,6 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
     if sess.wait_text(LATER_REST_BAR, timeout=30)[0] is None:
         log.say("  the rest-time bar never appeared")
         return {"failed": "no rest-time bar"}
-    want = (minutes, hours % 24, hours // 24)
     with sess.mon(10) as m:
         before = sample(m, LATER_LOAD)
         interrupt = list(m.read(REST_INTERRUPT, 2))
@@ -482,11 +506,16 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
         staged = tuple(m.read(field, 3))
         m.resume()
     if staged != want:
+        log.say(f"  the rest time read back {staged}, not {want}")
         return {"failed": f"rest time read back {staged}"}
     if not press("REST"):
+        log.say("  REST was not on the rest-time bar")
         return {"failed": "no REST on the rest-time bar"}
-    deadline, still, last, left = time.time() + 300, 0, None, bytes(want)
-    while time.time() < deadline and still < LATER_REST_STILL:
+    passes = -(-(hours * 60 + minutes) // 5)
+    allowed = max(LATER_REST_DEADLINE, passes * LATER_REST_PASS_SECONDS)
+    deadline, still, last, left = time.time() + allowed, 0, None, bytes(want)
+    ended = "deadline"
+    while time.time() < deadline:
         time.sleep(1.0)
         with sess.mon(10) as m:
             now = bytes(m.read(CLOCK - SAVE0_LOAD + LATER_LOAD, 6))
@@ -494,22 +523,30 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
             m.resume()
         s = sess.screen() if left == bytes(3) else None
         if s is not None and CAMP_BAR in s.row(24):
+            ended = "completed"
             break
         still = still + 1 if (now, left) == last else 0
         last = (now, left)
+        if still >= LATER_REST_STILL:
+            ended = "stopped"
+            break
     with sess.mon(10) as m:
         after = sample(m, LATER_LOAD)
         counts = {k: m.checkpoint_hits(v) for k, v in cp.items()}
         m.resume()
     s = sess.screen()
     bar = "" if s is None else s.row(24).rstrip()
-    interrupted = left != bytes(3)
+    extra = {}
+    if ended == "stopped":
+        extra["still_reads"] = LATER_REST_STILL
+        shown = bar.strip()
+        ended = ("stalled" if not shown or LATER_REST_BAR in shown
+                 else "interrupted")
     log.say(f"  rest {minutes}m {hours}h: clock {before['clock']} -> "
-            f"{after['clock']}, field left {list(left)}")
+            f"{after['clock']}, field left {list(left)}, {ended}")
     log.say(f"    ids {after['id'][:6]}  counts {counts}")
-    log.emit("screen", tag="rest-end", rows=sheet_rows(sess),
-             interrupted=interrupted, rest_left=list(left),
-             rest_interrupt=interrupt)
-    return {"before": before, "after": after, "interrupted": interrupted,
-            "rest_left": list(left), "bar": bar, "rest_interrupt": interrupt,
-            **counts}
+    log.emit("screen", tag="rest-end", rows=sheet_rows(sess), ended=ended,
+             rest_left=list(left), rest_interrupt=interrupt, **extra)
+    return {"before": before, "after": after, "ended": ended,
+            "interrupted": ended == "interrupted", "rest_left": list(left),
+            "bar": bar, "rest_interrupt": interrupt, **extra, **counts}

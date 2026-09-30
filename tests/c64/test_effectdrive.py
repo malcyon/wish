@@ -79,14 +79,17 @@ class FakeMon(FakeMemory):
 class RestingSession:
     """Camp bar, then the title's rest-time bar on REST, then a rest the
     fake game runs five minutes at a time out of the field `field` into the
-    clock at `base + $C6` -- up to `stop_after` passes, when it stops the
-    way an interrupted rest does."""
+    clock at `base + $C6` -- up to `stop_after` passes, when it stops and
+    puts `stop_bar` on row 24, zeroing the field first if `clear_on_stop`."""
 
     def __init__(self, game, field: int, base: int, rest_row: str,
-                 stop_after: int | None = None):
+                 stop_after: int | None = None,
+                 stop_bar: str = "THE PARTY IS ATTACKED",
+                 clear_on_stop: bool = False):
         self.game = game
         self.field, self.base, self.rest_row = field, base, rest_row
         self.stop_after = stop_after
+        self.stop_bar, self.clear_on_stop = stop_bar, clear_on_stop
         self.bar = CAMP_ROW
         self.m = FakeMon()
         self.pressed: list[str] = []
@@ -115,13 +118,17 @@ class RestingSession:
         return (s, 0) if needle in s.row(24) else (None, None)
 
     def _pass(self) -> None:
+        if self.bar == self.stop_bar:
+            return
         mins, hours, days = self.m.read(self.field, 3)
         left = (days * 24 + hours) * 60 + mins
         if not left:
             self.resting, self.bar = False, CAMP_ROW
             return
         if self.stop_after is not None and self.passes >= self.stop_after:
-            self.bar = "THE PARTY IS ATTACKED"
+            if self.clear_on_stop:
+                self.m.write(self.field, bytes(3))
+            self.bar = self.stop_bar
             return
         self.passes += 1
         left = max(0, left - 5)
@@ -176,8 +183,7 @@ def _rest(monkeypatch, sess, minutes: int, hours: int) -> dict:
 
 
 def test_a_silver_blades_rest_writes_its_own_field_and_runs_ten_hours(monkeypatch):
-    """The Silver Blades bar is `REST ADD SUBTRACT EXIT`, with no `INCREASE`:
-    the step used to stop at "no rest-time bar"."""
+    """The Silver Blades bar is `REST ADD SUBTRACT EXIT`, with no `INCREASE`."""
     sess = LaterPressSession(c64_port.SECRET_OF_THE_SILVER_BLADES, 0x2A8E,
                              E.LATER_LOAD, LATER_REST_ROW)
     got = _rest(monkeypatch, sess, 0, 10)
@@ -187,7 +193,8 @@ def test_a_silver_blades_rest_writes_its_own_field_and_runs_ten_hours(monkeypatc
     assert sess.passes == 120
     assert _clock_minutes(got["after"]["clock"]) - _clock_minutes(
         got["before"]["clock"]) == 600
-    assert got["interrupted"] is False and got["rest_left"] == [0, 0, 0]
+    assert got["ended"] == "completed" and got["interrupted"] is False
+    assert got["rest_left"] == [0, 0, 0] and "still_reads" not in got
     assert got["sweep"] == 7
     assert "staging_str" not in got["before"]
 
@@ -206,11 +213,78 @@ def test_a_later_rest_the_game_stops_is_reported_with_the_time_left(monkeypatch)
     sess = LaterPressSession(c64_port.SECRET_OF_THE_SILVER_BLADES, 0x2A8E,
                              E.LATER_LOAD, LATER_REST_ROW, stop_after=3)
     got = _rest(monkeypatch, sess, 0, 1)
-    assert got["interrupted"] is True
+    assert got["ended"] == "interrupted" and got["interrupted"] is True
+    assert got["still_reads"] == E.LATER_REST_STILL
     assert got["rest_left"] == [45, 0, 0]
     assert got["bar"] == "THE PARTY IS ATTACKED"
     assert _clock_minutes(got["after"]["clock"]) - _clock_minutes(
         got["before"]["clock"]) == 15
+
+
+def test_a_later_rest_that_clears_the_field_off_the_camp_bar_is_not_completed(
+        monkeypatch):
+    """A zero field is not the end of a rest unless the camp bar is back."""
+    sess = LaterPressSession(c64_port.SECRET_OF_THE_SILVER_BLADES, 0x2A8E,
+                             E.LATER_LOAD, LATER_REST_ROW, stop_after=3,
+                             stop_bar="PRESS RETURN TO CONTINUE",
+                             clear_on_stop=True)
+    got = _rest(monkeypatch, sess, 0, 1)
+    assert got["rest_left"] == [0, 0, 0]
+    assert got["ended"] == "interrupted" and got["interrupted"] is True
+    assert got["bar"] == "PRESS RETURN TO CONTINUE"
+
+
+def test_a_later_rest_that_stops_on_its_own_bar_is_stalled_not_interrupted(
+        monkeypatch):
+    sess = LaterPressSession(c64_port.SECRET_OF_THE_SILVER_BLADES, 0x2A8E,
+                             E.LATER_LOAD, LATER_REST_ROW, stop_after=3,
+                             stop_bar=LATER_REST_ROW)
+    got = _rest(monkeypatch, sess, 0, 1)
+    assert got["ended"] == "stalled" and got["interrupted"] is False
+    assert got["still_reads"] == E.LATER_REST_STILL
+
+
+def test_a_later_rest_that_outlasts_its_time_ends_at_the_deadline(monkeypatch):
+    """A 25 h rest is 300 passes; with 100 s going by per read the time runs
+    out first, and that is reported apart from anything the game did."""
+    sess = LaterPressSession(c64_port.CURSE_OF_THE_AZURE_BONDS, 0x2C1B,
+                             E.LATER_LOAD, LATER_REST_ROW)
+    now = [0.0]
+
+    def tick():
+        now[0] += 100.0
+        return now[0]
+
+    monkeypatch.setattr(E.time, "time", tick)
+    got = _rest(monkeypatch, sess, 0, 25)
+    assert got["ended"] == "deadline" and got["interrupted"] is False
+    assert got["rest_left"] != [0, 0, 0] and "still_reads" not in got
+    assert 0 < sess.passes < 300
+
+
+def test_a_long_later_rest_is_given_time_for_every_pass(monkeypatch):
+    """255 h is 3060 passes; at one pass per read and half a second a read it
+    needs about 1530 s, past `LATER_REST_DEADLINE`, and still completes."""
+    sess = LaterPressSession(c64_port.SECRET_OF_THE_SILVER_BLADES, 0x2A8E,
+                             E.LATER_LOAD, LATER_REST_ROW)
+    now = [0.0]
+
+    def tick():
+        now[0] += 0.5
+        return now[0]
+
+    monkeypatch.setattr(E.time, "time", tick)
+    got = _rest(monkeypatch, sess, 0, 255)
+    assert sess.written == bytes((0, 15, 10))
+    assert got["ended"] == "completed" and sess.passes == 3060
+
+
+def test_a_later_rest_of_no_time_is_refused_before_anything_is_pressed(
+        monkeypatch):
+    sess = LaterPressSession(c64_port.SECRET_OF_THE_SILVER_BLADES, 0x2A8E,
+                             E.LATER_LOAD, LATER_REST_ROW)
+    assert _rest(monkeypatch, sess, 0, 0) == {"failed": "a rest of no time"}
+    assert sess.pressed == []
 
 
 def test_a_later_rest_reads_the_arrays_at_4b00():
