@@ -1409,16 +1409,17 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         1 for n in (granted.value if granted is not None else ())
         if bytes(n)[0] in effects.STRENGTH_IDS)
 
-    # Pool and Curse rows 22 and 15 need `$7F` when the character holds no
-    # poison (55) and his 22 row is minute-unit; see
-    # `effects.SLOW_POISON_QUIET_C64`.
-    poisoned = any(n.id == 55 for n in other_nodes) or any(
-        bytes(n)[0] == 55
-        for n in (granted.value if granted is not None else ()))
+    # Pool and Curse rows 22 and 15 take `$7F` when the character's 22 row is
+    # minute-unit and the C64 record will hold no poison (55); see
+    # `effects.SLOW_POISON_QUIET_C64`. Whether it holds one is settled only
+    # once the trait slots are laid out below, so rows written as quiet are
+    # remembered and put back to `$FF` there if 55 landed in a slot. Row 15
+    # follows the character's own 22 row, so a 15 with no 22 stays `$FF`.
     node22 = next((n for n in other_nodes
                    if n.id == effects.SLOW_POISON_ID), None)
     quiet = node22 is not None and effects.slow_poison_quiet(
-        title_key, node22.minutes, clock, poisoned)
+        title_key, node22.minutes, clock, False)
+    quiet_slots: list[int] = []
 
     # Whether a Fear row (`effects.FEAR_IDS`) was actually written into the
     # payload, which the control byte and the combat-side bit below both key
@@ -1460,6 +1461,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                          "effect arrays")
             else:
                 c64_id, magnitude = row_for
+                if (quiet and magnitude == effects.SLOW_POISON_QUIET_C64
+                        and c64_id in (effects.SLOW_POISON_ID,
+                                       effects.SLOW_POISON_DAMAGE_ID)):
+                    quiet_slots.append(slot)
                 effects.write_effect(
                     payload, slot, c64_id,
                     party_slot if party_slot is not None else 0,
@@ -2023,6 +2028,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         for i, e in zip(free, granted_ids):
             slots[i] = e
         rec.set_raw("item_effects", bytes(slots))
+        if effects.POISON_ID in slots:
+            for quiet_slot in quiet_slots:
+                payload[effects.EFFECT_MAGNITUDE_OFFSET + quiet_slot] = 0xFF
         # Each field claims only the bytes it actually placed. Both used to
         # claim the whole ten, and `Report.note` assigns per offset, so the
         # second call erased the first: an elf wearing a ring came out with

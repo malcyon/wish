@@ -309,25 +309,98 @@ def test_save_as_c64_keeps_a_slow_poisoned_dos_party_slow_poisoned(tmp_path):
     assert holders == {"WISHFTR"}
 
 
-def test_save_as_c64_keeps_a_raised_pool_fighter_alive_when_slow_poison_ends():
+_SLOW = bytes((22, 30, 0, 0xFF, 1))
+_COMPANION = bytes((15, 10, 0, 0xFF, 1))
+_LONG_SLOW = bytes((22, 44, 1, 0xFF, 1))
+_POISON = bytes((55, 0, 0, 0xFF, 0))
+_TITLES = [c64_port.POOL_OF_RADIANCE, c64_port.CURSE_OF_THE_AZURE_BONDS]
+
+
+def _slow_poison_character(game, *nodes, granted=(), innate=(),
+                           ) -> neutral.NeutralCharacter:
+    char = neutral.NeutralCharacter("DOS", source="built here", game=game)
+    char.set("name", "RAISED", "built here")
+    char.set("running_effects", [n + NULL for n in nodes], "built here")
+    if granted:
+        char.set("granted_effects", [n + NULL for n in granted], "built here")
+    if innate:
+        char.set("innate_effects", list(innate), "built here")
+    return char
+
+
+def _written_slow_poison(char, clock=0):
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                               clock_minutes=clock)
+    return sorted((r[0], r[3]) for r in _rows(payload).values()
+                  if r[0] in (15, 22)), rec, rep, payload
+
+
+@pytest.mark.parametrize("game", _TITLES)
+def test_save_as_c64_keeps_a_raised_fighter_alive_when_slow_poison_ends(game):
     """No poison (55) and a minute-unit Slow Poison row: both rows are `$7F`,
-    which runs no C64 handler. With 55, or 300 minutes left, they stay `$FF`."""
-    slow = bytes((22, 30, 0, 0xFF, 1))
-    companion = bytes((15, 10, 0, 0xFF, 1))
-    long_slow = bytes((22, 44, 1, 0xFF, 1))
-    poison = bytes((55, 0, 0, 0xFF, 0))
+    which runs no C64 handler. With 55 held, or a ten-minute-unit row, they
+    stay `$FF`."""
+    quiet = [(15, 0x7F), (22, 0x7F)]
+    loud = [(15, 0xFF), (22, 0xFF)]
+    assert _written_slow_poison(
+        _slow_poison_character(game, _SLOW, _COMPANION))[0] == quiet
+    assert _written_slow_poison(_slow_poison_character(
+        game, _SLOW, _COMPANION, granted=(_POISON,)))[0] == loud
+    assert _written_slow_poison(
+        _slow_poison_character(game, _LONG_SLOW))[0] == [(22, 0xFF)]
 
-    def written(char):
-        payload = bytearray(0x1C00)
-        c64_codec.write(char, payload=payload, party_slot=2, clock_minutes=0)
-        return sorted((r[0], r[3]) for r in _rows(payload).values() if r[0])
 
-    assert written(_pool_character(slow, companion)) \
-        == [(15, 0x7F), (22, 0x7F)]
-    char = _pool_character(slow, companion)
-    char.set("granted_effects", [poison + NULL], "built here")
-    assert written(char) == [(15, 0xFF), (22, 0xFF)]
-    assert written(_pool_character(long_slow)) == [(22, 0xFF)]
+@pytest.mark.parametrize("game", _TITLES)
+def test_a_racial_poison_in_a_trait_slot_keeps_slow_poison_loud(game):
+    got, rec, _rep, _p = _written_slow_poison(_slow_poison_character(
+        game, _SLOW, _COMPANION, innate=(55,)))
+    assert got == [(15, 0xFF), (22, 0xFF)]
+    assert 55 in bytes(rec.get_raw("item_effects"))
+
+
+@pytest.mark.parametrize("game", _TITLES)
+def test_a_running_poison_the_conversion_drops_does_not_keep_slow_poison_loud(
+        game):
+    """A running 55 has no C64 row, so the save holds no poison and the rows
+    must be the quiet ones."""
+    got, rec, rep, _p = _written_slow_poison(_slow_poison_character(
+        game, _SLOW, _COMPANION, bytes((55, 5, 0, 0xFF, 0))))
+    assert 55 not in bytes(rec.get_raw("item_effects"))
+    assert got == [(15, 0x7F), (22, 0x7F)]
+
+
+@pytest.mark.parametrize("game", _TITLES)
+def test_the_companion_follows_its_own_characters_slow_poison_row(game):
+    assert _written_slow_poison(
+        _slow_poison_character(game, _COMPANION))[0] == [(15, 0xFF)]
+    assert _written_slow_poison(
+        _slow_poison_character(game, _SLOW))[0] == [(22, 0x7F)]
+
+
+@pytest.mark.parametrize("clock", [0, 725])
+@pytest.mark.parametrize("minutes", [64, 65, 66])
+def test_the_quiet_row_is_chosen_by_the_duration_unit_not_the_minutes(
+        minutes, clock):
+    """`closest_duration` gives a minute-unit byte for 64 minutes at both
+    clock phases, and at clock 725 turns to a ten-minute byte for 65 and 66,
+    where the row is left as DOS's `$FF`."""
+    node = bytes((22, minutes & 0xFF, minutes >> 8, 0xFF, 1))
+    got = _written_slow_poison(_slow_poison_character(
+        c64_port.POOL_OF_RADIANCE, node), clock)[0]
+    minute_unit = effects.closest_duration(minutes, clock) < 0x40
+    assert minute_unit == (minutes == 64 or clock == 0)
+    assert got == [(22, 0x7F if minute_unit else 0xFF)]
+
+
+@pytest.mark.parametrize("game", _TITLES)
+def test_a_quiet_slow_poison_row_reads_back_to_the_dos_nodes(game):
+    _got, _rec, _rep, payload = _written_slow_poison(
+        _slow_poison_character(game, _SLOW, _COMPANION))
+    back = _read(payload, 2, game)
+    nodes = sorted(bytes(r)[0:1] + bytes(r)[3:5]
+                   for r in back.get("running_effects"))
+    assert nodes == [bytes((15, 0xFF, 1)), bytes((22, 0xFF, 1))]
 
 
 def test_save_as_c64_keeps_a_silver_blades_survivor_alive_through_the_rest(

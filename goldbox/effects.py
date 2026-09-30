@@ -394,12 +394,13 @@ POOL_FF_CHAIN = (0xFF, 1)
 SLOW_POISON_ID = 22
 SLOW_POISON_DAMAGE_ID = 15
 SLOW_POISON_DOS = (0xFF, 1)
+POISON_ID = 55
 SLOW_POISON_BLADES_C64 = 0x7F
 
 #: The magnitude Pool and Curse give 22 and its companion 15 when the owner
-#: holds no poison (55) and the 22 row is in minute units (duration byte below
-#: `$40`). The C64's combat countdown ages such a row, and at zero the combat
-#: expiry runs handler 22 (Pool `$A889`, Curse `$2067`), which stores `$83`
+#: holds no poison (55) and the 22 row's written duration byte is minute-unit
+#: (below `$40`). The unit decides, not the minutes left. The C64's combat
+#: countdown ages such a row, and at zero the combat expiry runs handler 22 (Pool `$A889`, Curse `$2067`), which stores `$83`
 #: without testing 55, so the character dies (CONFIRMED live: a `$FF` row
 #: with no 55 left WISHFTR with no command bar from round 1, while a row of
 #: `$81` acted normally). Bit 7 clear runs no handler on any route, camp,
@@ -703,8 +704,9 @@ def _slow_poison_magnitude(title_key: str, quiet: bool = False) -> int:
 def slow_poison_quiet(title_key: str, minutes: int, clock: int,
                       poisoned: bool) -> bool:
     """Whether Pool's or Curse's Slow Poison rows take `SLOW_POISON_QUIET_C64`:
-    the owner holds no poison and the row's written duration is minute-unit,
-    the only case in which the C64's combat countdown can end it."""
+    the owner holds no poison and the duration byte `closest_duration` picks
+    is minute-unit (below `0x40`), the only rows the C64's combat countdown
+    ages. The unit, not the minutes left, decides."""
     if title_key not in (_CURSE, "pool-of-radiance") or poisoned:
         return False
     duration = closest_duration(minutes, clock)
