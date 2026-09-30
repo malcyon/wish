@@ -984,6 +984,13 @@ and both run the handler's remove mode:
 |---|---|---|---|
 | the holder leaves combat (knocked out, killed, fled), then the list | `0x370CD`, `0x371D1`: 14 ids at ds:`0xA9A` -- 03 0B 15 17 1B 1E 1F 33 34 35 5B 6A 6B 6F | `0x364C9`, `0x365CD`: 19 ids at ds:`0xA32` -- 07 0B 0D 15 17 1E 1F 20 33 34 35 3A 3B 5F 62 88 89 8B 90 | `0x2BDF0`, `0x2BEF4`: 16 ids at ds:`0xC14` -- 07 0B 1E 1F 20 33 34 35 36 3A 3B 5F 62 89 4A 4B |
 | end of every fight, every party member whatever his status | `0x6F90`, loop `0x711D`-`0x7147`: 11 ids at ds:`0x1B42` -- 03 0B 15 17 1B 23 28 1F 33 34 35 | `0x61D3`, loop `0x6369`-`0x6393`: 19 ids at ds:`0x2AA` -- 03 0B 0D 15 17 1B 23 28 33 34 35 3A 5B 88 89 8B 8E 90 1F | none: `0x5A47` calls no `remove_affect` |
+| end of every fight, every combatant, party included, whatever his status | the combat loop's teardown: `0xB508` leaves only through `0xB5F2`, which calls `0xB3EB` with no condition; `0xB461`-`0xB4CD` walks the list from `[0x7D3C]` in steps of `0x19D` and calls `0x371D1` for every record (`0xB4B8`), so the leaving-combat list above, 6F among it | not read | not read |
+
+`0x371D1` is therefore not only the leaving-combat remover in Silver Blades:
+the teardown row above is a second call site, found on #733 (A character still
+frightened when a DOS Curse or Silver Blades fight ends starts his next C64
+fight among the monsters) after this table had listed the routine for a member
+leaving combat alone. CONFIRMED from code.
 
 The end-of-fight routine runs before the experience award and before fled
 members are handled. It is skipped when `[0xA4BA]` and `[0x67E9]` are both
@@ -1011,15 +1018,81 @@ own fear past a fight, from `effectcrosswalk.c64_row_sweep`, which is a
 different list. It does not: both later-title sweeps list fear (Curse `0x8E`,
 Silver Blades `0x6F`), run its expiry handler, and clear `0x10C` bit 6, so no
 C64 save holds a fear row on a party member and the C64 → DOS direction has no
-game-written source. DOS Curse removes 142 at the end of every fight.
-DOS Silver Blades does not remove 111 then (only the leaving-combat list has
-it), so a Silver Blades party member still frightened when the fight ends keeps
-`(111, m, 0, 1)`, control `0xB3` and quickfight 1 into the save, and that is
-the only game-written source of either fear id. The conversion rule stands; a
-converted fear row is removed by the C64 at the end of its next fight.
-Confusion (`0x23`) and Fumble (`0x1B`) are on every end-of-fight list of both
-later titles on both ports, so a single node of either does not survive to a
-save on the C64. On DOS a second node of the same id does (previous paragraph).
+game-written source. No DOS save of either title holds one either. DOS Curse
+removes 142 at the end of every fight through its strip (`0x61D3`). DOS Silver
+Blades removes 111 through the combat loop's teardown, which runs `0x371D1` on
+every combatant whatever way the fight ends (the table above), and remove mode
+clears the control byte and quickfight with it (`0x144A0`). This paragraph used
+to say that Silver Blades keeps `(111, m, 0, 1)`, control `0xB3` and
+quickfight 1 into the save; that rested on reading `0x371D1` as the
+leaving-combat remover only. CONFIRMED from code, and in the running game: a
+Silver Blades party member staged with `(111, 600, 0, 1)`, control `0xB3` and
+quickfight 1 came out of a fight in the game-written save with control 0,
+quickfight 0 and no 111 node
+(https://github.com/malcyon/wish/issues/733#issuecomment-5901943377).
+
+The one-node removal (previous paragraph) is enough for fear, because no fear
+writer leaves two nodes. Silver Blades' writers, spell 84 (`0x3113A`) and
+Confusion's 1-10 (`0x11B53`), both call apply `0x37EB0`, which finds the id
+(`0x37F1F`), raises an existing node's duration (`0x37F2B`-`0x37F44`) and adds
+a node (`0x3701D`) only when none exists. CONFIRMED from code. Curse's writer
+(`0x32B4C`) calls apply `0x37303`; the Charm table above reads its `0x3737F` as
+removing an existing node of non-zero duration before adding, and a later
+plan (https://github.com/malcyon/wish/issues/733#issuecomment-5901996729)
+reads it as raising the duration. Either leaves one node, since both fear
+writes carry a non-zero duration (level minutes, and 10). PROBABLE: the two
+readings of `0x3737F` disagree, and the Amiga Curse apply (below) removes and
+re-adds.
+
+Wish's Fear block (`c64_codec.write`, `FEAR_IDS`) therefore converts only a
+save somebody edited by hand. The conversion rule stands; a converted fear row
+is removed by the C64 at the end of its next fight. Confusion (`0x23`) and
+Fumble (`0x1B`) are on every end-of-fight list of both later titles on both
+ports, so a single node of either does not survive to a save on the C64. On
+DOS a second node of the same id does (previous paragraphs).
+
+**Fear at the end of an Amiga fight.** Neither Amiga port keeps fear past a
+fight, so no game-written save on any port holds a fear node on a party
+member. Static reads of `/Secret` on `SecretOfTheSilverBlades_A.adf` and
+`/Curse` on `CurseOfTheAzureBonds_A.adf` (a cracked build, the only one on this
+machine), at file offsets into the executable as `tools/amiga/amiga68k.py`
+prints them; `gNNNN` is a small-data global as `tools/amiga/amigaglobal.py`
+names it. Nothing was booted.
+
+| | Amiga Silver Blades | Amiga Curse |
+|---|---|---|
+| Fear id; control, quickfight | 111; `0x9A` set to `0xB3`, `0x146` set to 1 | 142; `0xF7` set to `0xB3`, `0x19D` set to 1 |
+| The combat loop | `0x3BAE`, one caller (`0x1F640`). Its only exit is `0x3CAA`, taken when the done flag is set before the first round or by the end-of-round check (`0x42D6`); it calls the teardown `0x3730` with no condition | `0x2A66`, one caller (`0x1F176`). Its only exit is `0x2AF6` → `0x29E8`, which frees lists and removes no node; `0x1F17A`-`0x1F17E` then run `0x2CF58` and `0x2DDE2` with no condition |
+| What removes fear at the end of every fight | the teardown walks the record chain every party member is on (head `g5168`, link `0x13A`) and calls `0x12EFC` for every record: `remove_affect` (`0x11E46`) with a null node for 13 ids at `g0FC8` -- 03 0B 15 17 1B 1E 1F 33 34 35 6A 6B 6F. `0x12EFC` is also the leaving-combat remover (status change `0x11E16`, going down `0x8266`, swallowed `0x154D8`) | `0x2DDE2` calls the strip `0x2D24E` unless the demo flag `g3E33` is set (`0x2DDF6`); the strip walks the chain (head `g3CF8`, link `0x18E`) and, for each record before the first monster, calls `remove_affect` (`0xE274`) for 20 ids at `g1D32` -- 03 0B 0D 15 17 1B 23 28 33 34 35 3A 5B 88 89 8B 8E 90 1F 00. The leaving-combat list (`0xF2C6`, 19 ids at `g0E58`) lacks 142, as on DOS |
+| Remove mode | handler `0x16AA8`: control `0xB3` to 0 and quickfight to 0 | handler `0x1269A`: the same on `0xF7` and `0x19D` |
+| A second fear application | apply `0x13B98` finds the id and only raises a non-zero duration (`0x13C08`-`0x13C20`); it adds (`0x13C42`) only when none exists. Every constant-111 write goes through it: Confusion's "runs away" `0x14962`, id 82's "is terrified" `0x1605E` (skipped for a member already holding 111), spell 84 `0x365C6` | apply `0xFF70` removes an existing node of non-zero duration (`0xFFD8`-`0xFFEE`) and always adds (`0x10012`), so only a duration-0 node could stack. Both 142 writers use it with a non-zero duration: Confusion's "runs away" `0x10B04` (10) and spell 84 `0x33236` (caster level x 1 + 0, spell-table row at `g1EDE`) |
+
+Grades. Silver Blades: CONFIRMED from code for the loop, the teardown, the list
+and apply. Curse: CONFIRMED from code for the loop, the strip, its list and
+apply, and that `g3E33` is set only by answering D at the title menu's "Play
+Demo Transfer Quit" (`0x13F6A`-`0x13F76`). PROBABLE for three Curse details:
+that every party member precedes the first monster in the chain (combat set-up
+marks each record past the party count with combat byte `0x15` = 1 at
+`0x4B66`; monsters and the duel copy are appended at the chain's end,
+`0x1DF9E` and `0xDC0E`; the only reordering routines, `0xF56` and `0xFDA`,
+belong to the Party Order menu); that the combat block `0x192` the handler
+reads is still allocated at the strip (it is freed at `0x2DC40`, after it,
+but not every callee of `0x2CF58` was read); and that no caster computes a
+level of 0 for spell 84. Silver Blades' handler resets control only while the
+combat block `0x13E` is set, which it is at the teardown (it is freed in
+`0x30718`, called from the post-combat `0x30D1E`); PROBABLE on the same
+grounds.
+
+SPECULATIVE, on both Amiga ports: one route adds a node without the apply
+check. Readying an item whose item-node byte `0x40` (DOS's effect byte `0x3D`, by the
+Amiga item shift map) names an effect adds that id at duration 0 (Silver Blades `0x23578`, power byte `0x41` & `0x7F`
+= 0, → item handler `0x16B88`; Curse `0x124CA`), and unreadying removes one. An
+item naming 111 or 142 would give a frightened party member between fights.
+A sweep of each title's item templates and the saves we have for effect byte
+111 (Silver Blades) or 142 (Curse) with that power settles it: none found
+leaves fear unreachable, a hit names the item. Whether either Amiga port offers
+a save during a fight was not read: `/Secret`'s save routine (`0x2798E`) is
+called at `0x181F0` and `0x21772`, neither traced to the combat menu.
 
 **Fear's record state is simpler, because it is one byte each way, and it is
 built.** DOS's control byte is not the side: it is `0xB3`, the engine's own
