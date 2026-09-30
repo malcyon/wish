@@ -936,10 +936,12 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     granted = use("granted_effects")
     former = use("former_levels")
     # DOS and the Amiga hold Feeblemind's 3 in the score in force; the C64's
-    # Feeblemind leaves the score alone, so the permanent one is written.
+    # Feeblemind leaves the score alone, so the permanent one is written, but
+    # only once the 68 row that stands for the spell has landed (below).
     feeble = port != "C64" and effects.feebleminded(
         deltas.key, granted.value if granted else ())
     permanent_scores = char.get("abilities_second") or {}
+    feeble_fields = {}
 
     for field, c64_name in DIRECT + undead_direct(deltas.key):
         # Recomputed below rather than copied (#366, #405): `DIRECT` still
@@ -954,11 +956,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             continue
         dst = _field(c64_name)
         value, extra = v.value, ""
-        if feeble and field in ("intelligence", "wisdom") \
+        if feeble and field in effects.FEEBLEMIND_SCORES \
                 and field in permanent_scores:
-            value = permanent_scores[field]
-            extra = (", the permanent score: the C64's Feeblemind leaves the "
-                     "score in force alone")
+            feeble_fields[field] = (v, c64_name, dst)
         if field == "movement_current" and deltas.key == "pool-of-radiance":
             extra = ", copied rather than recomputed: no item-type table was given"
         top = _max_stored(dst.size)
@@ -1966,6 +1966,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             slots[i] = e
         granted_ids = []
         hold_written = False
+        feeble_row_written = False
         for node in (granted.value if granted is not None else ()):
             if int(node[0]) == effects.CHARM_ID:
                 # A charm is a row plus record bytes (side and control), so a
@@ -2074,6 +2075,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                         payload, row_slot, array_row[0],
                         party_slot if party_slot is not None else 0,
                         0, array_row[1])
+                    if array_row[0] == effects.FEEBLEMIND_ID:
+                        feeble_row_written = True
                 continue
             if array_row is not None:
                 rep.lost(f"effect {node[0]}, which never expires: with no "
@@ -2094,6 +2097,12 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         for i, e in zip(free, granted_ids):
             slots[i] = e
         rec.set_raw("item_effects", bytes(slots))
+        if feeble_row_written:
+            for field, (v, c64_name, dst) in feeble_fields.items():
+                rec.set(c64_name, permanent_scores[field])
+                rep.note(dst.offset, dst.size, v.line(
+                    c64_name, ", the permanent score: the C64's Feeblemind "
+                    "leaves the score in force alone"))
         if effects.POISON_ID in slots:
             for quiet_slot in quiet_slots:
                 payload[effects.EFFECT_MAGNITUDE_OFFSET + quiet_slot] = 0xFF

@@ -1125,6 +1125,7 @@ NEVER_EXPIRING_C64_BITS = {34: 1, 68: 1}
 # recompute replaces.
 FEEBLEMIND_ID = 68
 FEEBLEMIND_SCORE = 3
+FEEBLEMIND_SCORES = ("intelligence", "wisdom")
 
 
 def never_expiring_spell_row(title_key: str,

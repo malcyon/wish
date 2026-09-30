@@ -1842,13 +1842,80 @@ def test_a_feebleminded_c64_character_reaches_dos_and_the_amiga_at_int_and_wis_3
     assert back.get("abilities_second")["wisdom"] == 12
     assert [bytes(g)[0] for g in back.get("granted_effects")] == [68]
 
-    # Without the row nothing is lowered, and a score under 3's neighbours
-    # (INT 5) still lands on 3, which is what the recompute settles on.
+    # Without the row nothing is lowered. With it, an in-force INT of 5 is
+    # still put to 3, because the destination's recompute sets the score to 3
+    # whatever it was, higher or lower.
     plain, _i, _s, _r = dos_codec.write(_c64_feebleminded(game, row=False))
     assert _dos_pair(plain, game, "intelligence") == (14, 14)
     assert _dos_pair(plain, game, "wisdom") == (12, 12)
     low, _i, _s, _r = dos_codec.write(_c64_feebleminded(game, intelligence=5))
     assert _dos_pair(low, game, "intelligence") == (5, 3)
+
+
+def _foreign_feebleminded(game, port="DOS", permanent=True, node=True):
+    char = neutral.NeutralCharacter(port, source="built here", game=game)
+    char.set("name", "FEEBLE", "built here")
+    char.set("intelligence", 3, "built here")
+    char.set("wisdom", 3, "built here")
+    if permanent:
+        char.set("abilities_second", {"intelligence": 14, "wisdom": 12},
+                 "built here")
+    if node:
+        char.set("granted_effects", [_FEEBLE_NODE], "built here")
+    return char
+
+
+def _write_c64(char, payload):
+    return c64_codec.write(char, payload=payload, party_slot=2,
+                           clock_minutes=0)
+
+
+@pytest.mark.parametrize("game", _FEEBLE_TITLES, ids=lambda g: g.key)
+def test_the_permanent_scores_are_written_only_once_the_row_has_landed(game):
+    # Without a 68 row the C64 has nothing lowering the scores, so the in-force
+    # 3 stays rather than the character arriving at full INT and WIS with no
+    # Feeblemind anywhere.
+    full = bytearray(0x1C00)
+    while (slot := effects.free_slot(full)) is not None:
+        effects.write_effect(full, slot, 1, 2, 5, 1)
+    rec, rep = _write_c64(_foreign_feebleminded(game), full)
+    assert (rec.get("intelligence"), rec.get("wisdom")) == (3, 3)
+    assert any("no free slot" in line for line in rep.losses)
+    assert 68 not in [row[0] for row in _rows(full).values()]
+
+    rec, rep = _write_c64(_foreign_feebleminded(game), None)
+    assert (rec.get("intelligence"), rec.get("wisdom")) == (3, 3)
+    assert 68 in bytes(rec.get_raw("item_effects"))
+
+
+@pytest.mark.parametrize("game", _FEEBLE_TITLES, ids=lambda g: g.key)
+def test_an_amiga_feebleminded_character_reaches_the_c64_at_his_own_scores(
+        game):
+    payload = bytearray(0x1C00)
+    rec, _rep = _write_c64(_foreign_feebleminded(game, port="Amiga"), payload)
+    assert (rec.get("intelligence"), rec.get("wisdom")) == (14, 12)
+    assert _rows(payload).pop(63) == (68, 2, 0x00, 0x8A)
+
+
+@pytest.mark.parametrize("game", _FEEBLE_TITLES, ids=lambda g: g.key)
+def test_a_feeblemind_row_with_no_permanent_scores_keeps_the_scores_in_force(
+        game):
+    # Nothing says what the scores were before the spell, and inventing them
+    # would be a guess; the row still lands, and the 3 stays.
+    payload = bytearray(0x1C00)
+    rec, _rep = _write_c64(_foreign_feebleminded(game, permanent=False),
+                           payload)
+    assert (rec.get("intelligence"), rec.get("wisdom")) == (3, 3)
+    assert _rows(payload).pop(63) == (68, 2, 0x00, 0x8A)
+
+
+def test_pool_of_radiance_has_no_feeblemind_to_convert():
+    game = c64_port.POOL_OF_RADIANCE
+    assert not effects.feebleminded(game.key, [_FEEBLE_NODE])
+    payload = bytearray(0x1C00)
+    rec, _rep = _write_c64(_foreign_feebleminded(game), payload)
+    assert (rec.get("intelligence"), rec.get("wisdom")) == (3, 3)
+    assert 68 not in [row[0] for row in _rows(payload).values()]
 
 
 @pytest.mark.parametrize("game", _FEEBLE_TITLES, ids=lambda g: g.key)

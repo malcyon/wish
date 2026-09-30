@@ -5078,7 +5078,7 @@ def write(char: NeutralCharacter,
             permanent = int(seconds.get(dos_name, v.value))
             in_force = int(v.value)
             why = ""
-            if feeble and dos_name in ("intelligence", "wisdom"):
+            if feeble and dos_name in effects.FEEBLEMIND_SCORES:
                 in_force = effects.FEEBLEMIND_SCORE
                 why = (f", Feeblemind's {in_force}, which the destination's "
                        f"own recompute leaves it at")
