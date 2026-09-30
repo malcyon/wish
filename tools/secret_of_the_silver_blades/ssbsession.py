@@ -8,6 +8,7 @@ import re
 import time
 
 from automap.actions import pc_register
+from automap.screen import SCREEN_COLS
 from goldbox import c64_port
 from tools.areas import newecl
 from tools.c64 import session as por
@@ -474,15 +475,28 @@ def idle_in_key_window(sess, addr, samples: int = 4, gap: float = 0.8
 def load_started(s) -> bool:
     """True when the party menu is still drawn but the game has taken the choice.
 
-    A menu waiting for a key has its BEGIN ADVENTURING row highlighted; once
-    the game takes the Return the highlight goes and `ONWARD BOUND` is on row
-    24 while the area loads. A key sent then only walks towards whichever
-    white row is nearest.
+    A menu waiting for a key has one of its entries drawn white -- the cursor
+    starts on VIEW CHARACTER, not on BEGIN ADVENTURING -- and row 24 blank.
+    Once the game takes the Return the white entry goes and `ONWARD BOUND` is
+    on row 24 while the area loads; a key sent then only walks towards
+    whichever white row is nearest. Between the game taking the Return and
+    drawing `ONWARD BOUND` the menu still looks waiting, so a key sent in that
+    short window can still arrive.
+
+    The entries are the run of non-blank rows ending at BEGIN ADVENTURING,
+    read in the column the label starts in, because `highlighted_rows` with a
+    column skips a cell whose second neighbour to the left is also white, and
+    the window frame is white.
     """
     hit = s.find("BEGIN ADVENTURING")
     if hit is None or "ONWARD BOUND" not in s.row(24):
         return False
-    return hit[0] not in s.highlighted_rows(column=hit[1])
+    row, col = hit
+    while row >= 0 and s.row(row)[col:col + 1].strip():
+        if s.colours[row * SCREEN_COLS + col] == 1:
+            return False
+        row -= 1
+    return True
 
 
 def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,

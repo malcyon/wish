@@ -22,6 +22,7 @@ import os
 from contextlib import contextmanager
 
 from conftest import load_tools_module
+from support.partymenu import BEGIN_ROW, ENTRIES, menu_screen
 
 SSB = load_tools_module("ssbsession")
 
@@ -62,12 +63,6 @@ class FakeScreen:
 
     def row(self, n):
         return self._bar
-
-    def find(self, label):
-        return (21, 0) if label in self._text else None
-
-    def highlighted_rows(self, colour=1, column=None):
-        return getattr(self, "hot", [])
 
 
 class FakeSess:
@@ -254,9 +249,12 @@ class WorldSess:
         text, bar = self.screens[i]
         if "ENCAMP" in text:
             self.world_bar_seen = True
-        scr = FakeScreen(text, bar=bar)
-        scr.hot = [21] if (text, bar) == MENU else []
-        return scr
+        if text == "BEGIN ADVENTURING":
+            # The menu waiting for a key, or the same menu once the load has
+            # started: real screens, so `load_started` reads real colour.
+            return menu_screen(3 if bar == text else None,
+                               row24="" if bar == text else bar)
+        return FakeScreen(text, bar=bar)
 
     def handle_prompt(self, s=None):
         return self.current in self.prompt_at
@@ -399,3 +397,16 @@ def test_a_started_load_gets_no_further_walk_or_return_after_90_seconds(
     assert ok is False
     assert sess.selected == ["BEGIN ADVENTURING"]
     assert sess.kernal == [0x0D]
+
+
+def test_load_started_reads_a_real_screen_both_ways():
+    waiting = menu_screen(cursor=3)
+    assert waiting.find("BEGIN ADVENTURING") == (BEGIN_ROW, 2)
+    assert waiting.row(24).strip() == ""
+    assert SSB.load_started(waiting) is False
+    started = menu_screen(cursor=None, row24="ONWARD BOUND")
+    assert SSB.load_started(started) is True
+    # Row 24 alone is not enough: an entry still white is a menu waiting.
+    assert SSB.load_started(menu_screen(3, row24="ONWARD BOUND")) is False
+    assert SSB.load_started(menu_screen(len(ENTRIES) - 1)) is False
+    assert SSB.load_started(menu_screen(None)) is False

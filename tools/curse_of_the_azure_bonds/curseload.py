@@ -75,6 +75,7 @@ from automap.actions import pc_register  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 from tools.areas import newecl  # noqa: E402
 from tools.registry import scratch  # noqa: E402
+from tools.secret_of_the_silver_blades.ssbsession import load_started  # noqa: E402
 
 #: Every byte worth reading when the load has just failed, and why.
 PROBES = {
@@ -560,20 +561,6 @@ def idle_in_key_window(sess, addr: Addresses) -> int | None:
     if pc is None or not any(lo <= pc < hi for lo, hi in windows):
         return None
     return pc
-
-
-def load_started(s) -> bool:
-    """True when the party menu is still drawn but the game has taken the choice.
-
-    A menu waiting for a key has its BEGIN ADVENTURING row highlighted; once
-    the game takes the Return the highlight goes and `ONWARD BOUND` is on row
-    24 while the area loads, and a key sent then only walks towards whichever
-    white row is nearest.
-    """
-    hit = s.find("BEGIN ADVENTURING")
-    if hit is None or "ONWARD BOUND" not in s.row(24):
-        return False
-    return hit[0] not in s.highlighted_rows(column=hit[1])
 
 
 def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0

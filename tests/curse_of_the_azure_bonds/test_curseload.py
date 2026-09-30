@@ -18,6 +18,8 @@ import pytest
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
 
+from support.partymenu import menu_screen  # noqa: E402
+
 from goldbox.d64 import D64  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
 from tools.curse_of_the_azure_bonds import curseload  # noqa: E402
@@ -505,19 +507,8 @@ class WorldSess:
         return "captured"
 
     def screen(self):
-        return self
-
-    def text(self):
-        return "BEGIN ADVENTURING\n" + self.bar
-
-    def row(self, r):
-        return self.bar
-
-    def find(self, label):
-        return (21, 0)
-
-    def highlighted_rows(self, colour=1, column=None):
-        return self.hot
+        return menu_screen(3 if self.hot else None,
+                           row24="" if self.hot else self.bar)
 
     def handle_prompt(self, s):
         return False
@@ -556,6 +547,6 @@ def test_a_started_load_gets_no_walk_and_no_return(monkeypatch):
 
 def test_a_menu_waiting_for_a_key_is_still_chosen(monkeypatch):
     _clock(monkeypatch)
-    sess = WorldSess("ONWARD BOUND", hot=[21])
+    sess = WorldSess("ONWARD BOUND", hot=[3])
     curseload.enter_world(sess, timeout=5.0)
     assert sess.selected and sess.kernal
