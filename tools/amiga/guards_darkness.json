@@ -11,16 +11,73 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/14-camp.png",
       "sha256": "1efef6bdda92e22190e75c1df73f3d7cdd12378931d405650ba07d8f59618d5d"
     },
-    "camp_save_picker": {
-      "also": [],
+    "camp_save_picker": [
+      {
+        "also": [],
+        "box": [
+          74,
+          316,
+          322,
+          430
+        ],
+        "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/15-camp_save_picker.png",
+        "sha256": "efa81c223ca9a43ed344c4169b84bb2bc4491fdce3db31cb3ca58e697bad1670"
+      },
+      {
+        "also": [
+          "save_picker"
+        ],
+        "box": [
+          74,
+          404,
+          322,
+          430
+        ],
+        "example": "628/darkness-P1a/accept1/shots/30-camp_save_picker.png",
+        "sha256": "27301b4c59f31e160132ea379d29167b88251428a94892a8ab5a5a498b33b6a8"
+      }
+    ],
+    "camp_sheet": {
+      "also": [
+        "camp_sheet_heal",
+        "camp_sheet_spent",
+        "sheet"
+      ],
       "box": [
         74,
-        316,
-        322,
+        176,
+        124,
+        270
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
+      "sha256": "88cfdf2b2c24ed99731da4da20f8831b1c5d9e77e88e82c77049ac62d0d1ed67"
+    },
+    "camp_sheet_heal": {
+      "also": [
+        "camp_sheet",
+        "sheet"
+      ],
+      "box": [
+        58,
+        402,
+        698,
         430
       ],
-      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/15-camp_save_picker.png",
-      "sha256": "efa81c223ca9a43ed344c4169b84bb2bc4491fdce3db31cb3ca58e697bad1670"
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
+      "sha256": "3c4726824c12aa0031f5072173912612b736595eab51f01514f41b93df4fe583"
+    },
+    "camp_sheet_spent": {
+      "also": [
+        "camp_sheet"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "628/darkness-P1a/accept1/shots/19-camp_sheet_spent.png",
+      "sha256": "b869d36f4b5b849242eef848d7a555fc71957dc3f99eb6214b27c8b2a5b08e29"
     },
     "continue": {
       "also": [],
@@ -54,6 +111,17 @@
       ],
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/16-camp.png",
       "sha256": "cd8e839e2afa1fe0f8d1b838a43483a927c8e35e5766345b17571b4cb46bbedd"
+    },
+    "heal_whom": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "628/darkness-P1a/accept1/shots/18-heal_whom.png",
+      "sha256": "fc44343aed245f011a39a3db877400282b9f40cf1bbd6dfffa9398c60b727aae"
     },
     "journal": {
       "also": [
@@ -149,6 +217,17 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/13-world.png",
       "sha256": "7f7a66647d760ca8cdb99d4bf80142ada5459a13b263d659f3a14bb598543dbe"
     },
+    "rest_menu": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "628/darkness-P1a/accept1/shots/21-rest_menu.png",
+      "sha256": "57329e10dafb2df52b49220b2d023d92ac7731ac1792ef4f0da038cc67f01f96"
+    },
     "save_picker": {
       "also": [
         "camp_save_picker"
@@ -163,7 +242,11 @@
       "sha256": "27301b4c59f31e160132ea379d29167b88251428a94892a8ab5a5a498b33b6a8"
     },
     "sheet": {
-      "also": [],
+      "also": [
+        "camp_sheet",
+        "camp_sheet_heal",
+        "camp_sheet_spent"
+      ],
       "box": [
         58,
         402,
@@ -210,6 +293,51 @@
     }
   },
   "identity": {
+    "camp_sheet": {
+      "also": [
+        "camp_sheet_heal",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
+      "sha256": "f20f85d3f3b407e1c3151a01f4f19fb4db49f70d7112afd8d5b5d1aa227ae22e"
+    },
+    "camp_sheet_heal": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
+      "sha256": "f20f85d3f3b407e1c3151a01f4f19fb4db49f70d7112afd8d5b5d1aa227ae22e"
+    },
+    "camp_sheet_spent": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_heal",
+        "sheet"
+      ],
+      "box": [
+        74,
+        46,
+        330,
+        62
+      ],
+      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
+      "sha256": "f20f85d3f3b407e1c3151a01f4f19fb4db49f70d7112afd8d5b5d1aa227ae22e"
+    },
     "loaded_menu": {
       "also": [],
       "box": [
@@ -222,7 +350,11 @@
       "sha256": "8c258092c0599b4f5bcb5bf0d7dd2c67ec9c97ba7628ad1ed96c8d0eb9741450"
     },
     "sheet": {
-      "also": [],
+      "also": [
+        "camp_sheet",
+        "camp_sheet_heal",
+        "camp_sheet_spent"
+      ],
       "box": [
         74,
         46,

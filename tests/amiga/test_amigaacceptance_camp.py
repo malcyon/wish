@@ -1,4 +1,4 @@
-"""The Amiga camp steps: viewing a camp sheet, laying on hands and resting, on a published Silver Blades or Curse route."""
+"""The Amiga camp steps: viewing a camp sheet, laying on hands and resting, on a published Silver Blades or Curse route or Pools of Darkness' accept route."""
 
 from __future__ import annotations
 
@@ -23,10 +23,23 @@ from tests.amiga.test_amigaacceptance_title import (
     _read_slot,
     _slot,
 )
-from tests.amiga.test_amigaacceptance_titles import START
+from tests.amiga.test_amigaacceptance_titles import (
+    DARK_STATES,
+    START,
+    DarkGuest,
+    _dark_manifest,
+    _dark_title,
+    _darkness_registered,
+)
 from tests.support import amigasavegame as synthetic_amiga
 from tools.amiga import acceptance as foundation
-from tools.amiga import route_camp, route_curse, route_silver_blades, staging
+from tools.amiga import (
+    route_camp,
+    route_curse,
+    route_darkness,
+    route_silver_blades,
+    staging,
+)
 from tools.amiga.winuaesession import RouteError
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
@@ -103,8 +116,28 @@ def test_curse_camp_steps_reach_the_paladin_on_line_6():
 
 
 def test_a_title_without_camp_steps_is_refused():
-    with pytest.raises(RouteError, match="Silver Blades and Curse only"):
+    with pytest.raises(RouteError, match="Silver Blades, Curse and Pools of Darkness only"):
         route_camp.parse_steps("view", "pool")
+
+
+@pytest.mark.parametrize("text,why", [
+    ("view 2", "sheets for line 1 only"),
+    ("heal 2", "lay on hands for line 1 only"),
+    ("heal;heal", "second heal needs a rest"),
+])
+def test_darkness_camp_steps_name_only_line_1(text, why):
+    with pytest.raises(RouteError, match=why):
+        route_camp.parse_steps(text, "darkness")
+
+
+def test_darkness_lays_on_hands_with_l_and_picks_the_first_member_where_the_picker_opens():
+    # `Lay` is the sheet bar's word (`038022`), and saint eric on line 1 needs no move.
+    assert route_camp.steps_for(("heal",), "darkness", 6) == (
+        ("V", "camp_sheet_heal", "key"), ("L", "heal_whom", "key"),
+        ("S", "camp_sheet_spent", "key"), ("E", "camp", "key"))
+    assert route_camp.steps_for(("view", "rest 1h"), "darkness", 6) == (
+        ("V", "camp_sheet", "key"), ("E", "camp", "key"),
+        *route_camp.steps_for(("rest 1h",)))
 
 
 def test_heal_1_is_the_normal_form_heal_so_an_older_manifest_rebuilds_the_same_route():
@@ -218,7 +251,8 @@ def test_only_camp_sheets_are_observed(state, sheet):
     assert route_camp.is_sheet(state) is sheet
 
 
-GUARD_FILES = {"ssb": "guards_silver_blades.json", "curse": "guards_curse.json"}
+GUARD_FILES = {"ssb": "guards_silver_blades.json", "curse": "guards_curse.json",
+               "darkness": "guards_darkness.json"}
 
 
 def _maps(name):
@@ -306,7 +340,7 @@ def test_the_manifest_s_camp_steps_rebuild_the_route_for_either_title_and_no_oth
     curse = route_curse.published_title("D")
     title = foundation._camp_title("curse", curse, list(CURSE_STEPS), CURSE_NAMES)
     assert title.route == route_camp.camp_title(curse, CURSE_STEPS, 6, name="curse").route
-    with pytest.raises(RouteError, match="Silver Blades and Curse only"):
+    with pytest.raises(RouteError, match="Silver Blades, Curse and Pools of Darkness only"):
         foundation._camp_title("pool", base, list(STEPS), NAMES)
     with pytest.raises(RouteError, match="lines 1 and 6 only"):
         foundation._camp_title("curse", curse, ["view 2"], CURSE_NAMES)
@@ -338,7 +372,7 @@ def test_the_cli_reads_camp_steps_for_the_prepare_s_own_title(capsys):
     with pytest.raises(SystemExit):
         foundation.main(["prepare", "--title", "pool", "--run-id", "x",
                          "--published-disk-one", "--camp", "view"])
-    assert "Silver Blades and Curse only" in capsys.readouterr().err
+    assert "Silver Blades, Curse and Pools of Darkness only" in capsys.readouterr().err
 
 
 CAMP_STATES = ("camp_sheet", "camp_sheet_heal", "camp_sheet_spent", "heal_whom", "rest_menu")
@@ -702,3 +736,142 @@ def test_a_published_curse_prepare_refuses_a_line_the_party_does_not_have(tmp_pa
     report = _published_report(tmp_path, monkeypatch, "curse", "dos", names=CURSE_NAMES[:5])
     with pytest.raises(RouteError, match="sheets for line 1 only"):
         foundation.prepare_published("curse", "camp", report, "628", camp=("view 6",))
+
+
+DARK_CAMP = ("view 1", "heal", "rest 60m", "view 1")
+
+
+def test_darkness_camp_steps_go_between_its_camp_key_and_its_camp_save():
+    base = route_darkness.DARKNESS
+    title = route_camp.camp_title(base, DARK_CAMP, 6, name="darkness")
+    at = base.route.index(route_camp.CAMP_SAVE_STEP)
+    assert title.route == (*base.route[:at], *route_camp.steps_for(DARK_CAMP, "darkness", 6),
+                           *base.route[at:])
+    assert title.route[at - 1] == ("E", "camp", "key")
+    assert [key for key, _, kind in title.route if kind == "write"] == ["F", "G"]
+    # A, D and E are kept slots on disk 3, so the rest menu's Add and Days keys are plain there.
+    assert title.plain_keys == (*base.plain_keys, ("D", "rest_menu"), ("A", "rest_menu"))
+    assert title.wait_limits["camp"] == route_camp.REST_LIMIT
+    assert title.strict == base.strict
+
+
+class DarkCampGuest(DarkGuest):
+    """Spends HEAL on `S` at the picker `L` opens, and gets it back on the rest menu's own `R`."""
+
+    def __init__(self, clock, **kw):
+        super().__init__(clock, save_key="disk3", **kw)
+        self.healed = self.picking = self.resting = self.camped = False
+
+    def press(self, holder, key, timeout=None):
+        before = [c[2] for c in self.calls if c[0] == "press"][-1:]
+        super().press(holder, key, timeout)
+        if key == "E" and before == ["NP8"]:
+            self.camped = True
+        if key == "L" and self.camped:  # the party menu's `L` loads
+            self.picking = True
+        elif key == "S" and self.picking:
+            self.picking, self.healed = False, True
+        elif key == "R" and self.camped:
+            if self.resting:
+                self.healed = False
+            self.resting = not self.resting
+
+
+def _dark_camp_run(tmp_path, clock, *, manifest_title="darkness", accept=True,
+                   camp=DARK_CAMP, guard_states=CAMP_STATES):
+    path = _dark_manifest(tmp_path)
+    manifest = json.loads(path.read_text())
+    manifest.update(title=manifest_title, camp=list(camp))
+    path.write_text(json.dumps(manifest))
+    guest = DarkCampGuest(clock)
+    guest.place = {"area": 2, "x": 1, "y": 2, "facing": 1}
+
+    def sheet(p):
+        return MapGuard().shown(p).startswith("camp_sheet")
+
+    on = {"camp_sheet_heal": lambda p: not guest.healed and sheet(p),
+          "camp_sheet_spent": lambda p: guest.healed and sheet(p)}
+    guard = MapGuard(states=(*DARK_STATES, *guard_states), on=on)
+    kw = {"accept": True, "identity": CampIdentity()} if accept else {"measure": True}
+    result = foundation.run_recon(
+        path, guest=guest, guard=guard, holder="wish679-test",
+        audio_proof=_audio_proof(tmp_path), title=_dark_title(), **kw)
+    return guest, result
+
+
+def test_a_darkness_camp_run_views_lays_on_hands_rests_and_views_before_the_camp_save(
+        tmp_path, clock):
+    guest, result = _dark_camp_run(tmp_path, clock)
+    assert result["error"] == "" and result["unguarded"] == []
+    assert result["success"] is True, result["read"]
+    keys = _keys(guest)
+    camp = keys.index("NP8") + 1
+    assert keys[camp] == "E"
+    assert keys[camp + 1:keys.index("G") - 1] == [
+        key for key, _, _ in route_camp.steps_for(DARK_CAMP, "darkness", 6)]
+    assert [(e["state"], e["heal_offered"]) for e in result["camp_sheets"]] == [
+        ("camp_sheet", True), ("camp_sheet_heal", True), ("camp_sheet_spent", False),
+        ("camp_sheet", True)]
+    assert all(e["identity_checked"] for e in result["camp_sheets"])
+
+
+def test_a_darkness_camp_screen_the_guard_map_lacks_is_settled_and_fails_the_run(tmp_path, clock):
+    guest, result = _dark_camp_run(tmp_path, clock, guard_states=(
+        "camp_sheet", "camp_sheet_heal", "rest_menu"))
+    assert result["unguarded"] == ["heal_whom", "camp_sheet_spent"]
+    assert result["completed"] is True and result["success"] is False
+    assert _keys(guest).count("G") == 1
+
+
+@pytest.mark.parametrize("manifest_title,accept,why", [
+    ("curse", True, "Pools of Darkness accept only"),
+    (None, True, "Pools of Darkness accept only"),
+    ("darkness", False, "Pools of Darkness accept only"),
+])
+def test_camp_steps_in_a_manifest_that_is_not_a_darkness_accept_are_refused(
+        tmp_path, clock, manifest_title, accept, why):
+    with pytest.raises(RouteError, match=why):
+        _dark_camp_run(tmp_path, clock, manifest_title=manifest_title, accept=accept)
+
+
+def test_only_darkness_prepares_camp_steps_or_an_issue_outside_a_published_prepare(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    for kw in ({"camp": ("view",)}, {"issue": "628"}):
+        with pytest.raises(RouteError, match="only on a published prepare"):
+            foundation.prepare(foundation.CURSE, "camp-run", **kw)
+    with pytest.raises(RouteError, match="sheets for line 1 only"):
+        foundation.prepare(foundation.DARKNESS, "camp-run", camp=("view 2",))
+    with pytest.raises(RouteError, match="is a number"):
+        foundation.prepare(foundation.DARKNESS, "camp-run", issue="../628")
+    assert not (tmp_path / ".cache").exists()
+
+
+def test_a_darkness_prepare_keeps_its_camp_steps_under_the_issue_it_names(tmp_path, monkeypatch):
+    _darkness_registered()
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    path = foundation.prepare(foundation.DARKNESS, "camp-run", issue="628",
+                              camp=("view", "heal", "rest 1h", "view"))
+    assert path.parent.parent.name == "628"
+    manifest = json.loads(path.read_text())
+    assert manifest["camp"] == list(DARK_CAMP)
+    assert manifest["names_a"][0] == "saint eric"
+
+
+def test_the_cli_takes_camp_steps_and_an_issue_for_a_darkness_prepare(capsys, monkeypatch):
+    seen = {}
+
+    def fake(title, run_id, **kw):
+        seen.update(kw, title=title, run_id=run_id)
+        return pathlib.Path("prepare.json")
+
+    monkeypatch.setattr(foundation, "prepare", fake)
+    assert foundation.main(["prepare", "--title", "darkness", "--run-id", "x", "--issue",
+                            "628", "--camp", "view;heal;rest 1h;view"]) == 0
+    assert seen["title"] is foundation.DARKNESS
+    assert seen["camp"] == DARK_CAMP and seen["issue"] == "628"
+    assert foundation.main(["prepare", "--title", "curse", "--run-id", "x",
+                            "--issue", "628"]) == 2
+    assert "--issue requires --title ssb or darkness" in capsys.readouterr().err

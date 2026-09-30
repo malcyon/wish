@@ -1,7 +1,8 @@
-"""Camp steps for an Amiga published route: view a member's sheet, lay on hands, and rest.
+"""Camp steps for an Amiga route: view a member's sheet, lay on hands, and rest.
 
 A published route (`route_silver_blades.published_title` or
-`route_curse.published_title`) walks two squares, camps and saves.
+`route_curse.published_title`) walks two squares, camps and saves, and
+Pools of Darkness' accept route (`route_darkness.DARKNESS`) walks one.
 `camp_title` splices the steps a `--camp` list names into it, after the camp
 key and before the camp save, so the save that follows holds what the steps
 did. The two titles use the same letters. The keys come from Silver Blades'
@@ -65,6 +66,30 @@ Curse of the Azure Bonds' `/Curse` (file offsets) differs only where noted:
 highlight goes to his line, and the picker, which starts on the first member,
 is moved the same way. Both wrap at either end in Curse, so the last line is
 one press back from the first.
+
+Pools of Darkness' `/Pools of Darkness` (file offsets) has the same rest menu
+and the same kind of picker, with `Lay` where the other two say `Heal`:
+
+* **The camp bar** is `View Magic Rest Alt Fix Load Save Exit` (`038290`).
+* **The sheet bar** is `Items Spells Trade Deposit Drop Lay Cure Exit`
+  (`038022`), so the key is `L`. The gate `023CFA` passes for class 3 or a
+  paladin level, the game mode byte `g5B12` not 5, record `+0x5E` clear and
+  no node 140 (`find_affect` at `023D38`).
+* **The heal routine** `023DA0` asks `Heal whom? ` through the picker
+  `01AF4A`, whose highlight starts on `g57A4`, the head of the party list
+  (the picker's own "next" wraps to it), so on the first member. `RETURN` or
+  the bar's first word, `Select`, keeps the highlighted member; `$84`/`$85`
+  move it on and `$87`/`$88` back, wrapping (`01B084`). The healer, not the
+  target, gets node 140 for 1440 minutes (`023E62`), and the routine redraws
+  his sheet (`0209EC`).
+* **The rest menu** `002D02` opens on the minutes field and reads the same
+  seven words; its subtraction `002ABE` zeroes the whole time (`setmem` of
+  14 bytes at `g57B2`) when nothing above the field can be borrowed, so
+  `D S S` clears the preset here too.
+* The keypad translation is the same code (`04A0A0`): keypad 0 to 9 give
+  `$89 $85 $84 $83 $86 $80 $82 $87 $88 $81`. The camp highlight's own keys
+  are not read, so only line 1, where neither the highlight nor the picker
+  moves, is driven.
 """
 
 from __future__ import annotations
@@ -77,25 +102,28 @@ from tools.amiga.winuaesession import RouteError
 
 VIEW = "V"
 SHEET_EXIT = "E"
-HEAL = "H"
+#: The sheet's key for the heal routine, per title: `Heal` in Silver Blades and Curse, `Lay` in
+#: Pools of Darkness.
+HEAL_KEYS = {"ssb": "H", "curse": "H", "darkness": "L"}
 HEAL_SELECT = "S"
 CAMP_REST = "R"
 REST_DAYS, REST_HOURS, REST_MINS = "D", "H", "M"
 REST_ADD, REST_SUBTRACT, REST_GO = "A", "S", "R"
 #: The keys that move the camp's highlight and HEAL's picker to the next and the previous
 #: member, per title: Silver Blades takes `$84`/`$88` (NP2, NP8; measured), Curse only
-#: `$85`/`$87` (NP1, NP7; read from `0237CA` and `01BF8E`).
-MEMBER_KEYS = {"ssb": ("NP2", "NP8"), "curse": ("NP1", "NP7")}
+#: `$85`/`$87` (NP1, NP7; read from `0237CA` and `01BF8E`). Pools of Darkness' picker takes
+#: `$84`/`$88` (`01B084`); its camp highlight is not read, and no line it drives moves either.
+MEMBER_KEYS = {"ssb": ("NP2", "NP8"), "curse": ("NP1", "NP7"), "darkness": ("NP2", "NP8")}
 REST_STEP = 5
 REST_DAYS_MAX = 29
 #: The most members a Gold Box party holds.
 PARTY_MAX = 8
 #: The party lines whose camp sheet has an identity rule in the title's guard map, so the
 #: lines `view N` can name.
-SHEET_LINES = {"ssb": (1, 2), "curse": (1, 6)}
+SHEET_LINES = {"ssb": (1, 2), "curse": (1, 6), "darkness": (1,)}
 #: The party line of the paladin whose HEAL sheets the title's guard map holds, so the line
 #: `heal N` can name: the identity rule of `camp_sheet_heal` and `camp_sheet_spent` is his.
-HEAL_LINES = {"ssb": (1,), "curse": (6,)}
+HEAL_LINES = {"ssb": (1,), "curse": (6,), "darkness": (1,)}
 #: The titles whose camp highlight and HEAL picker are read to wrap from the first member to
 #: the last and back (Curse `0237CA` and `01BF56`-`01BF8A`), so a later line may be reached
 #: backwards.
@@ -160,7 +188,8 @@ def sheet_lines(name: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
     try:
         return SHEET_LINES[name], HEAL_LINES[name]
     except KeyError:
-        raise RouteError("camp steps are built for Silver Blades and Curse only") from None
+        raise RouteError("camp steps are built for Silver Blades, Curse and Pools of Darkness "
+                         "only") from None
 
 
 def _lines_text(lines: tuple[int, ...]) -> str:
@@ -293,7 +322,7 @@ def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None
             line = _step_line(words)
             there, back = _moves(line, name, party_size, CAMP)
             steps += there
-            steps += [(VIEW, SHEET_HEAL, "key"), (HEAL, HEAL_WHOM, "key")]
+            steps += [(VIEW, SHEET_HEAL, "key"), (HEAL_KEYS[name], HEAL_WHOM, "key")]
             # The picker starts on the first member, so it moves as far as the camp highlight did.
             steps += _moves(line, name, party_size, HEAL_WHOM)[0]
             steps += [(HEAL_SELECT, SHEET_SPENT, "key"), (SHEET_EXIT, CAMP, "key")]

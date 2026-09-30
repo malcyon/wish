@@ -1240,6 +1240,11 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("the selected title route differs from the published manifest")
     elif manifest.get("mode") == "published_disk_one":
         raise RouteError("a published disk-one manifest needs --published-disk-one")
+    elif "camp" in manifest:
+        if title is None or not accept or manifest.get("title") not in CAMP_TITLES:
+            raise RouteError("camp steps are driven on a published accept or a Pools of "
+                             "Darkness accept only")
+        title = _camp_title(manifest["title"], title, manifest["camp"], manifest["names_a"])
     if preserve_specimen and title is None and not published_disk_one:
         if "staged_from" not in manifest:
             raise RouteError(staged_message)
@@ -2022,9 +2027,14 @@ _SUBSTITUTABLE = frozenset(
     source.name for source in (POOL_SOURCES, CURSE_SOURCES) if source.import_slot is not None)
 
 
+#: The titles whose own accept route (not a published one) takes camp steps from its manifest.
+CAMP_TITLES = frozenset({"darkness"})
+
+
 def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = None,
             specimen_sha256: str | None = None, accept_summary: pathlib.Path | None = None,
             substitute: pathlib.Path | None = None, substitute_letter: str = "A",
+            camp: tuple[str, ...] = (), issue: str | None = None,
             ) -> pathlib.Path:
     """Copy the title's registered images and specimen into a run folder, write `prepare.json`, and return it.
 
@@ -2035,6 +2045,10 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     `substitute`, only on a title in `_SUBSTITUTABLE`, replaces the route's
     loaded slot with `substitute_letter`'s slot from that disk; every other
     file, and the specimen's own pin, are unaffected.
+    `camp` (a title in `CAMP_TITLES` only) is a list of camp steps
+    (`route_camp.validate_steps`) the accept route drives between camping and
+    the camp save, kept in the manifest; `issue` (the same titles) puts the run
+    folder under that issue's number rather than this module's.
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
@@ -2047,7 +2061,14 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
         raise RouteError(f"{name} takes no disk 3 hash or accept summary")
     if substitute is not None and name not in _SUBSTITUTABLE:
         raise RouteError(f"{name} takes no substitute slot")
-    run = scratch.cache_dir("acceptance", ISSUE, run_id)
+    if (camp or issue is not None) and name not in CAMP_TITLES:
+        raise RouteError(f"{name} takes camp steps and an issue only on a published prepare")
+    if issue is not None and not re.fullmatch(r"\d+", issue):
+        raise RouteError("the issue is a number")
+    if camp:
+        camp = route_camp.normalise(tuple(camp))
+        route_camp.validate_steps(camp, name=name)
+    run = scratch.cache_dir("acceptance", issue or ISSUE, run_id)
     if run.exists():
         raise RouteError(f"run folder already exists: {run}")
     if reload:
@@ -2057,6 +2078,9 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
                                   substitute_letter=substitute_letter)
     else:
         manifest = _PREPARE[name](run, specimen)
+    if camp:
+        _camp_title(name, title, list(camp), manifest["names_a"])
+        manifest["camp"] = list(camp)
     path = run / "prepare.json"
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return path
@@ -2118,7 +2142,10 @@ def _turn_about(name: str, letter: str, place: dict | None) -> bool:
 
 
 def _camp_title(name: str, title: AmigaTitle, camp: Any, names: list) -> AmigaTitle:
-    """The published route with a manifest's camp steps before its camp save; Silver Blades and Curse."""
+    """The route with a manifest's camp steps before its camp save.
+
+    A published Silver Blades or Curse route, or Pools of Darkness' own accept route.
+    """
     route_camp.sheet_lines(name)
     if not isinstance(camp, list) or not all(isinstance(t, str) for t in camp):
         raise RouteError("the manifest camp steps are not a list of strings")
@@ -2548,9 +2575,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--published-disk-one", action="store_true")
     p.add_argument("--saveas-report", type=pathlib.Path)
     p.add_argument("--camp", default="",
-                   help="published Silver Blades and Curse only: camp steps driven before the "
-                        "camp save, as 'view;heal;rest 1h' (view, view N, heal, heal N, "
-                        "rest DURATION)")
+                   help="published Silver Blades and Curse, or Pools of Darkness: camp steps "
+                        "driven before the camp save, as 'view;heal;rest 1h' (view, view N, "
+                        "heal, heal N, rest DURATION)")
     p.add_argument("--stage-place", default=None, metavar="X,Y,F",
                    help="published Silver Blades and Curse only: put the party on square X,Y "
                         "facing F (0 N, 1 E, 2 S, 3 W) in working DF0's loaded slot")
@@ -2636,8 +2663,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise RouteError("published disk one uses its source-specific route")
         elif args.command == "prepare" and args.saveas_report is not None:
             raise RouteError("--saveas-report requires --published-disk-one")
-        elif args.command == "prepare" and args.camp:
-            raise RouteError("--camp requires --published-disk-one")
+        elif args.command == "prepare" and args.camp and args.title not in CAMP_TITLES:
+            raise RouteError("--camp requires --published-disk-one or --title darkness")
         elif args.command == "prepare" and args.stage_place is not None:
             raise RouteError("--stage-place requires --published-disk-one")
         if args.command == "reload" and silver_blades:
@@ -2654,9 +2681,10 @@ def main(argv: list[str] | None = None) -> int:
                         or args.substitute_letter != "A"):
                     raise RouteError("Silver Blades prepare takes no title-only options")
             elif (args.source is not None or args.staged_from is not None
-                  or args.issue is not None or args.save_count is not None):
-                raise RouteError("--source, --staged-from, --issue and --save-count "
-                                 "require --title ssb")
+                  or args.save_count is not None):
+                raise RouteError("--source, --staged-from and --save-count require --title ssb")
+            elif args.issue is not None and args.title not in CAMP_TITLES:
+                raise RouteError("--issue requires --title ssb or darkness")
         elif not silver_blades and args.attempt is None:
             raise RouteError("--attempt is required for this title")
         if (args.command == "measure" and not silver_blades
@@ -2684,7 +2712,8 @@ def main(argv: list[str] | None = None) -> int:
                               specimen_sha256=args.disk3_sha256,
                               accept_summary=args.accept_summary,
                               substitute=args.substitute,
-                              substitute_letter=args.substitute_letter))
+                              substitute_letter=args.substitute_letter,
+                              camp=args.camp, issue=args.issue))
                 return 0
             if args.published_disk_one:
                 manifest, title = _published_manifest(args.manifest, args.title)
