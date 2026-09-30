@@ -3658,7 +3658,12 @@ class PoolRun:
                 lambda r: (self.rest_fight(r) or self.rest_page(r[24])
                            or CAMP_BAR in r[24] or self.at_world(r[24])),
                 REST_LEAVE_SECONDS, "the interrupted rest's next screen")
-            shown = " ".join(text or got.get("text", []))
+            # The pages answered so far, else the rest's own read, else the
+            # screen just read: a fight drawn over the event's page still
+            # names the event.
+            here = rows if rows is not None else self.rows()
+            page = [r.strip("$%& ") for r in here[17:23] if r.strip("$%& ")]
+            shown = " ".join(text or got.get("text", []) or page)
             event = f"an event ({shown!r})" if shown else "the game"
             if rows is None:
                 raise self.fail("rest", f"the rest was interrupted by {event} "
@@ -3674,7 +3679,6 @@ class PoolRun:
                 return prompts, text or list(got.get("text", []))
             if len(prompts) >= REST_LEAVE_PROMPTS:
                 break
-            page = [r.strip("$%& ") for r in rows[17:23] if r.strip("$%& ")]
             prompts.append(bar)
             text += page
             self.log.emit("rest_prompt", bar=bar, text=page)

@@ -10218,13 +10218,15 @@ class _LaterRestSession(_RestSession):
 
 
 def _later_rest(tmp_path, monkeypatch, *, end, later=None, moves=None,
-                ended="interrupted"):
+                ended="interrupted", with_text=True):
     """A Silver Blades rest whose `route_pool.rest_later` half ends on screen
     END with `ended` as given, 8 hours of a 10-hour rest run."""
     screens = {"world": _window({}, WORLD_BAR), "camp": _window({}, CAMP),
                "event": LATER_EVENT, "prep": _window({}, ""),
                "combat": _window({}, LATER_COMBAT_BAR),
-               "stuck": _window({}, "SOMETHING ELSE")}
+               "stuck": _window({}, "SOMETHING ELSE"),
+               "event2": _window({17: "THE TOWNSMEN FALL BACK."},
+                                 "PRESS BUTTON OR RETURN TO CONTINUE.")}
     table = {("world", ("bar", "ENCAMP")): "camp",
              ("camp", ("bar", "EXIT")): "world"}
     table.update(moves or {})
@@ -10239,7 +10241,7 @@ def _later_rest(tmp_path, monkeypatch, *, end, later=None, moves=None,
                "ended": ended, "interrupted": ended == "interrupted",
                "rest_left": [0, 2, 0] if ended == "interrupted" else [0, 0, 0],
                "bar": rows[24].rstrip(), "rest_interrupt": [96, 30]}
-        if ended == "interrupted":
+        if ended == "interrupted" and with_text:
             got["text"] = [r.strip("$%& ") for r in rows[17:23]
                            if r.strip("$%& ")]
         return got
@@ -10306,6 +10308,69 @@ def test_a_later_rest_interrupted_by_a_screen_it_cannot_answer_fails_naming_it(
         run.rest("10h")
     log.close()
     assert sess.sent == [("bar", "ENCAMP"), ("key", 0x0D)]
+
+
+def test_a_later_rest_with_more_pages_than_the_cap_fails_naming_them(
+        tmp_path, monkeypatch):
+    """Pages that keep coming are answered up to `REST_LEAVE_PROMPTS`, and the
+    next one fails the step rather than being answered."""
+    monkeypatch.setattr(A, "REST_LEAVE_SECONDS", 1)
+    run, log, sess = _later_rest(
+        tmp_path, monkeypatch, end="event",
+        moves={("event", ("key", 0x0D)): "event2",
+               ("event2", ("key", 0x0D)): "event"})
+    with pytest.raises(A.StepFailed,
+                       match=f"more than {A.REST_LEAVE_PROMPTS} pages"):
+        run.rest("10h")
+    log.close()
+    assert sess.sent.count(("key", 0x0D)) == A.REST_LEAVE_PROMPTS
+
+
+def test_a_later_rest_page_that_does_not_change_after_return_is_capped(
+        tmp_path, monkeypatch):
+    """A page the game does not take the Return for is pressed again once the
+    wait for it to change runs out, and the cap still ends the step."""
+    monkeypatch.setattr(A, "REST_LEAVE_SECONDS", 1)
+    monkeypatch.setattr(A, "ARRIVAL_PAGE_SECONDS", 0.2)
+    run, log, sess = _later_rest(
+        tmp_path, monkeypatch, end="event",
+        moves={("event", ("key", 0x0D)): "event"})
+    with pytest.raises(A.StepFailed,
+                       match=f"more than {A.REST_LEAVE_PROMPTS} pages"):
+        run.rest("10h")
+    log.close()
+    assert sess.sent == [("bar", "ENCAMP")] + [("key", 0x0D)] * A.REST_LEAVE_PROMPTS
+
+
+def test_a_later_rest_fight_over_the_event_page_names_the_event(
+        tmp_path, monkeypatch):
+    """With no text from the rest's own read, a fight found while the event's
+    page is still drawn is named from that page."""
+    monkeypatch.setattr(A, "REST_LEAVE_SECONDS", 1)
+    run, log, sess = _later_rest(tmp_path, monkeypatch, end="event",
+                                 with_text=False)
+    sess.combat_states = frozenset({"event"})
+    with pytest.raises(A.StepFailed, match="a fight") as caught:
+        run.rest("10h")
+    log.close()
+    assert "THE BLACK CIRCLE SENDS MONSTERS" in str(caught.value)
+    assert sess.sent == [("bar", "ENCAMP")]
+
+
+def test_rest_interrupted_on_the_combat_command_bar_fails_as_a_fight(
+        tmp_path, monkeypatch):
+    """A Pool interrupted rest that meets the fight's command bar is a fight
+    even when the mode byte does not read COMBAT."""
+    monkeypatch.setattr(A, "REST_LEAVE_SECONDS", 5)
+    run, log, sess = _watch_rest(
+        tmp_path, monkeypatch, end="restbar", marker=0x00,
+        later={"restbar": (2, "command")},
+        extra={"command": _window({}, LATER_COMBAT_BAR)})
+    assert not sess.in_combat()
+    with pytest.raises(A.StepFailed, match="a fight"):
+        run.rest("1h")
+    log.close()
+    assert sess.sent == [("bar", "ENCAMP")]
 
 
 def test_a_later_rest_that_completes_is_unchanged(tmp_path, monkeypatch):
