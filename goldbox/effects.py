@@ -349,8 +349,10 @@ COMBAT_CASTER_LEVEL_IDS = frozenset({2, 21, 29, 36, 52, 53, 71})
 #: Curse and Silver Blades), Curse's 7 (spell 79) and Silver Blades' 73
 #: (spell 95, which runs one minute a level there and never ends in Curse).
 #: Curse's 73 and 109 (item spells 95 and 96, `COMBAT $1DA9`, `$1DC2`; camp
-#: rows 53 and 54) run for minutes with the caster's level on the C64, while
-#: DOS never expires its own node, so a node with minutes left keeps them.
+#: rows 53 and 54) run for minutes with the item level 6, fixed, as their
+#: magnitude on the C64 (both item-use paths set it before the cast, and the
+#: handlers dice their own minutes), while DOS never expires its own node, so a
+#: node with minutes left keeps them. The byte is copied unchanged.
 #: Dispel Evil (spell 73) puts Curse's 145 and Silver Blades' 32 on its
 #: targets through the generic cast; the C64 writes the level (camp row 45,
 #: `ECL65 $83EE`; combat `COMBAT $1AB8`, `$1F96`). Silver Blades' 106 is Power
@@ -470,14 +472,17 @@ _REDUCE_ID = 13
 #: the combat row for 51 has duration 0 and `POST.COM` strips it.
 POOL_UNWRITTEN_ROW_IDS = frozenset({13, 51})
 
-#: Silver Blades' id 113, the effect of DOS spell 59 and C64 combat spell 59 and
-#: camp row 39: DOS writes `(113, minutes, 0x79, 1)` and the C64 writes
-#: magnitude `$BC` (upper nibble 3, strength 21) in every row it stores.
-GIANT_STRENGTH_ID = 113
-GIANT_STRENGTH_DOS = (0x79, 1)
-GIANT_STRENGTH_C64 = 0xBC
 _BLADES = "secret-of-the-silver-blades"
 _CURSE = "curse-of-the-azure-bonds"
+
+#: Giant Strength, the effect of DOS spell 59 and C64 combat spell 59: Silver
+#: Blades' id 113 (C64 camp row 39) and Curse's 146 (the Potion of Giant
+#: Strength; DOS writes the id as an immediate, `GAME.OVR:0x31FB8`). DOS writes
+#: `(id, minutes, 0x79, 1)` and the C64 writes magnitude `$BC` (upper nibble 3,
+#: strength 21) in every row it stores.
+GIANT_STRENGTH_IDS: dict[str, int] = {_CURSE: 146, _BLADES: 113}
+GIANT_STRENGTH_DOS = (0x79, 1)
+GIANT_STRENGTH_C64 = 0xBC
 
 #: Ids whose DOS cast stores data 0 where the C64 cast stores the caster's
 #: level, flag 0 on both, and whose handlers on neither port read the value:
@@ -485,11 +490,15 @@ _CURSE = "curse-of-the-azure-bonds"
 #: `GAME.OVR:0x32462`, Silver Blades `0x30C3F`; C64 camp row 45 and `COMBAT
 #: $1AB8`, `$1F96`), Confusion (35; spell 82, `0x328CB`, `0x30FF7`; C64
 #: `COMBAT $1B81`, `$204D` into the generic writer) and Curse's 136 (spell 78,
-#: `0x3270C`; C64 `$1AD7`). The byte is copied both ways, so Dispel Magic,
-#: the only reader, gets the source's own level.
+#: `0x3270C`; C64 `$1AD7`) and Fire Shield's pair (spell 85, Curse `0x32BF7`,
+#: Silver Blades `0x31214`): the shield node 143 or 112 and the 50 or 54 that
+#: says which damage it resists, each a call of its own, C64 `COMBAT $1C6C`
+#: and camp `ECL65 $8460`. A DOS 50 or 54 with no minutes is the monster
+#: trait, a granted record, and never reaches this rule. The byte is copied
+#: both ways, so Dispel Magic, the only reader, gets the source's own level.
 ZERO_LEVEL_IDS: dict[str, frozenset[int]] = {
-    _CURSE: frozenset({4, 35, 136}),
-    _BLADES: frozenset({4, 35}),
+    _CURSE: frozenset({4, 35, 136, 143, 50, 54}),
+    _BLADES: frozenset({4, 35, 112, 50, 54}),
 }
 
 #: Silver Blades' id-70 gaze writes Confusion as `(35, minutes, the monster's
@@ -813,9 +822,9 @@ def _own_rule_row(title_key: str, node: RunningEffect,
             return Unconverted("a Slowed duration DOS spell 55 does not "
                                "write")
         return node.id, node.data
-    if node.id == GIANT_STRENGTH_ID and title_key == _BLADES:
+    if node.id == GIANT_STRENGTH_IDS.get(title_key):
         if (node.data, node.flag) != GIANT_STRENGTH_DOS:
-            return Unconverted("an id-113 node other than the one DOS "
+            return Unconverted(f"an id-{node.id} node other than the one DOS "
                                "spell 59 writes")
         return node.id, GIANT_STRENGTH_C64
     if node.id in FLAGGED_CASTER_LEVEL_IDS and _slowed_title(title_key):
@@ -884,10 +893,10 @@ def _own_rule_node(title_key: str, effect_id: int,
             return Unconverted("a stinking-cloud magnitude other than the "
                                "C64's own")
         return STINKING_CLOUD_DOS
-    if effect_id == GIANT_STRENGTH_ID and title_key == _BLADES:
+    if effect_id == GIANT_STRENGTH_IDS.get(title_key):
         if m != GIANT_STRENGTH_C64:
-            return Unconverted("an id-113 magnitude other than the C64's "
-                               "own, which waits on strength 23")
+            return Unconverted(f"an id-{effect_id} magnitude other than the "
+                               "C64's own, which waits on strength 23")
         return GIANT_STRENGTH_DOS
     if effect_id in FLAGGED_CASTER_LEVEL_IDS and _slowed_title(title_key):
         if not m & MAGNITUDE_RESTORE_FLAG or not m & 0x7F:

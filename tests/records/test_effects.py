@@ -1126,6 +1126,7 @@ _ALL = ("pool-of-radiance", "curse-of-the-azure-bonds",
         "secret-of-the-silver-blades")
 _LATER = _ALL[1:]
 _BLADES = "secret-of-the-silver-blades"
+_CURSE = "curse-of-the-azure-bonds"
 
 
 @pytest.mark.parametrize("title", _ALL)
@@ -1510,6 +1511,50 @@ def test_an_id_113_magnitude_other_than_the_c64s_own_stays_unconverted(
 def test_id_113_is_a_silver_blades_id_only(title):
     assert isinstance(effects.c64_row(title, effects.RunningEffect(
         113, 10, 0x79, 1)), effects.Unconverted)
+
+
+def test_curse_id_146_is_the_potion_of_giant_strengths_node():
+    """DOS Curse writes `(146, minutes, 0x79, 1)`, the C64 `$BC`: Silver
+    Blades' 113 rule under Curse's id."""
+    node = effects.RunningEffect(146, 40, 0x79, 1)
+    assert effects.c64_row(_CURSE, node) == (146, 0xBC)
+    row = effects.Effect(63, 146, 0, 0x28, 0xBC)
+    assert effects.dos_record(_CURSE, row, 0) == node
+    assert isinstance(effects.c64_row(
+        _CURSE, effects.RunningEffect(146, 40, 0x79, 0)), effects.Unconverted)
+    assert isinstance(effects.dos_record(
+        _CURSE, effects.Effect(63, 146, 0, 0x28, 0xDB), 0),
+        effects.Unconverted)
+    assert isinstance(effects.c64_row(
+        _CURSE, effects.RunningEffect(113, 40, 0x79, 1)), effects.Unconverted)
+    assert isinstance(effects.c64_row(
+        _BLADES, effects.RunningEffect(146, 40, 0x79, 1)),
+        effects.Unconverted)
+
+
+@pytest.mark.parametrize("title, ids", [(_CURSE, (143, 50, 54)),
+                                        (_BLADES, (112, 50, 54))])
+def test_fire_shield_nodes_convert_with_the_caster_level_both_ways(title, ids):
+    """DOS writes `(id, minutes, 0, 0)` and the C64 the caster's level with
+    bit 7 clear, for the shield and for the 50 or 54 beside it."""
+    for effect_id in ids:
+        assert effects.c64_row(title, effects.RunningEffect(
+            effect_id, 7, 0, 0)) == (effect_id, 0)
+        row = effects.Effect(63, effect_id, 0, 0x07, 5)
+        assert effects.dos_record(title, row, 0) == effects.RunningEffect(
+            effect_id, 7, 5, 0)
+        assert isinstance(effects.c64_row(title, effects.RunningEffect(
+            effect_id, 7, 0, 1)), effects.Unconverted)
+        assert isinstance(effects.dos_record(
+            title, effects.Effect(63, effect_id, 0, 0x07, 0x85), 0),
+            effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", ["pool-of-radiance"])
+def test_fire_shield_ids_are_a_later_title_rule(title):
+    for effect_id in (143, 112, 50, 54):
+        assert isinstance(effects.c64_row(title, effects.RunningEffect(
+            effect_id, 7, 0, 0)), effects.Unconverted)
 
 
 @pytest.mark.parametrize("title", _ALL[:2])

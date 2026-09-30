@@ -1296,7 +1296,13 @@ by the caster-level rule in all three titles; the camp-row derivations above
 missed them because their C64 casts are combat-only
 (`effects.COMBAT_CASTER_LEVEL_IDS`). Silver Blades' id 113 converts as DOS
 `(113, minutes, 0x79, 1)` and C64 magnitude `$BC`, the pair each engine writes
-for its own cast of spell 59 (read 1). Id 13 is refused in Pool and Curse with a reason of
+for its own cast of spell 59 (read 1); Curse's Potion of Giant Strength writes
+the same pair under id 146 (`GAME.OVR:0x31FB8`, an immediate), and converts the
+same way. Fire Shield (spell 85) writes two nodes, the shield (Curse 143, Silver
+Blades 112) and the 50 or 54 that names its damage type, each `(id, minutes, 0,
+0)` on DOS and each the caster's level with bit 7 clear on the C64
+(`COMBAT $1C6C`, camp `ECL65 $8460`); they convert by the zero-level rule
+(`effects.ZERO_LEVEL_IDS`), each row on its own. Id 13 is refused in Pool and Curse with a reason of
 its own. In Pool no save a game wrote reaches it: DOS Reduce (spell 13) removes
 an id-12 node and writes no id-13 node in any title (read 3c). In Curse a C64
 save reaches it only when a fight has engulfed a party member (`COMBAT $1F40`)
@@ -1397,8 +1403,9 @@ assigned to those handlers.
 for every title:** Pool's id-51 row (spell 27) is 0 and 0, matching the
 "duration 0" that `POOL_UNWRITTEN_ROW_IDS` records, and its id 13 row is 0 and
 10. Curse's item-spell rows for ids 73 and 109 (spells 95 and 96, handlers
-`$1DA9`, `$1DC2`) are 0 and 0 as well, so the table gives them no duration; any
-minutes they run come from those handlers, not from the row.
+`$1DA9`, `$1DC2`) are 0 and 0 as well, so the table gives them no duration; the
+minutes come from the handlers' own dice (2d4 + 4 for 73; 10 x (1d4 + 1) for
+109), and their magnitude is the fixed item level 6, not the caster's level.
 
 **CONFIRMED additional writers:** All three `POST.COM` files create id 5,
 owner `$FF`, with the caller's duration and the free slot's unchanged
@@ -1434,15 +1441,14 @@ be a monster. Each id is listed with why its sample row has no rule.
 | Pool of Radiance | 33, 51 | A duration-0 row converts as a granted record; no C64 cast writes a running row. |
 | Pool of Radiance | 35, 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
 | Curse of the Azure Bonds | 13 | The C64 id is the engulf countdown, whose magnitude is a combatant index. |
-| Curse of the Azure Bonds | 55, 68, 128, 143 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
+| Curse of the Azure Bonds | 55, 68, 128 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
 | Curse of the Azure Bonds | 33 | A duration-0 row converts as a granted record; a running row has no rule. |
 | Curse of the Azure Bonds | 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
 | Curse of the Azure Bonds | 58, 144 | A literal `COMBAT` call writes it; what triggers the call is not read. |
 | Curse of the Azure Bonds | 137 | Confusion's outcome node, written by a literal `COMBAT` call; its record changes are not converted. |
-| Curse of the Azure Bonds | 146 | The id DOS's strength recompute names (`0x35263`); its combat table entry is not followed to a row write. |
 | Secret of the Silver Blades | 33, 51 | A duration-0 row converts as a granted record; a running row has no rule. |
 | Secret of the Silver Blades | 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
-| Secret of the Silver Blades | 55, 68, 112 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
+| Secret of the Silver Blades | 55, 68 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
 | Secret of the Silver Blades | 107 | Confusion's outcome node, written by a literal `COMBAT` call; its record changes are not converted. |
 
 | Refusal | Sweep evidence and limit |

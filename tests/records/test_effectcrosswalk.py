@@ -508,10 +508,10 @@ def test_the_later_title_command_prints_the_derived_ids(later_ids, capsys):
      {11, 32, 33, 35, 49}),
     ("curse-of-the-azure-bonds", (56, 39), (100, 61), 53, 8,
      (5, 13, 27, 45, 58, 137, 144), 24, 76,
-     {13, 33, 49, 55, 58, 68, 128, 137, 143, 144, 146}),
+     {13, 33, 49, 55, 58, 68, 128, 137, 144}),
     ("secret-of-the-silver-blades", (56, 40), (117, 64), 52, 0,
      (5, 12, 27, 45, 107), 27, 77,
-     {33, 49, 51, 55, 68, 107, 112, 128}),
+     {33, 49, 51, 55, 68, 107, 128}),
 ])
 def test_c64_row_sweep_counts_table_candidates_and_literal_writers(
         title, camp, combat, distinct, stripped, literal_ids,
