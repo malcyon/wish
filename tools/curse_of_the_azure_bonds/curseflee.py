@@ -47,7 +47,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.vice import read_screen  # noqa: E402
+from automap.vice import MonitorError, read_screen  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from tools.c64 import laterbattle  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
@@ -128,8 +128,16 @@ class _Watched:
         return _Resumes(self.trap, self._m)
 
     def __exit__(self, *exc):
-        self.trap.check(self._m, resume=False)
-        return self.inner.__exit__(*exc)
+        # A monitor that is gone would spend a full timeout on every read of
+        # the check; EXIT below must run whatever the check does.
+        gone = (exc[0] is not None and issubclass(exc[0], (OSError, MonitorError))
+                ) or getattr(self.inner, "sock", True) is None
+        try:
+            if not gone:
+                self.trap.check(self._m, resume=False)
+        finally:
+            result = self.inner.__exit__(*exc)
+        return result
 
 
 class Trap:

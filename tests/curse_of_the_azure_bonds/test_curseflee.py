@@ -636,3 +636,14 @@ def test_a_monitor_failure_after_the_fight_falls_back_to_the_write_status(
     assert of(events, "outcome_bytes") == []
     (ev,) = of(events, "flee")
     assert ev["escaped"] == 4 and ev["escaped_from"] == "write"
+
+
+def test_a_store_that_lands_during_a_connection_is_read_before_its_exit(tmp_path):
+    sess = FakeSession()
+    trap = curseflee.Trap(sess, FakeLog(), tmp_path)
+    trap.arm()
+    with sess.mon(5):
+        sess.machine.write_result(0x80)
+    assert trap.result == 0x80
+    # Handled with the machine still stopped: no resume between write and EXIT.
+    assert sess.machine.calls[-2:] == ["write", "exit"]

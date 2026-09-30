@@ -8236,9 +8236,11 @@ class _ReadMachine:
         self.next_cp = 1
         self.pc = 0
         self.resumes = 0
+        self.halted = False     # VICE halts at a stop until a resume or EXIT
 
     def hit(self, pc):
         self.pc = pc
+        self.halted = True
         for n, cp in self.checkpoints.items():
             if cp == pc:
                 self.hits[n] = self.hits.get(n, 0) + 1
@@ -8252,6 +8254,7 @@ class _ReadMon:
         return self
 
     def __exit__(self, *exc):
+        self.m.halted = False       # EXIT
         return False
 
     def read(self, start, length, bank=0):
@@ -8278,6 +8281,7 @@ class _ReadMon:
 
     def resume(self):
         self.m.resumes += 1
+        self.m.halted = False
 
 
 class _ReadSess:
@@ -8339,7 +8343,8 @@ def test_read_at_with_a_matching_guard_logs_the_reads_and_resumes(tmp_path):
     assert got["reads"] == {"2B78": "0305", "6E3E": "07"}
     assert (got["a"], got["x"], got["y"]) == (0x12, 0x34, 0x56)
     assert machine.resumes == 1
-    assert run.read_at_counts["read-at-09DD"] == {"hits": 1, "foreign": 0}
+    assert run.read_at_counts["read-at-09DD"] == {
+        "hits": 1, "foreign": 0, "late": 0, "merged": 0}
 
 
 def test_a_stop_that_fires_during_a_connection_is_read_by_that_connection(tmp_path):
@@ -8349,6 +8354,7 @@ def test_a_stop_that_fires_during_a_connection_is_read_by_that_connection(tmp_pa
     got, = run.log.of("read-at")
     assert got["pc"] == 0x09DD and got["late"] is False and got["fires"] == 1
     assert machine.resumes == 0     # EXIT resumes; the trap does not
+    assert not machine.halted
     machine.pc = 0x2E25
     _connect(run)
     assert len(run.log.of("read-at")) == 1
@@ -8361,6 +8367,65 @@ def test_a_stop_that_fires_before_the_callers_resume_is_read_before_it(tmp_path)
         m.resume()
         assert len(run.log.of("read-at")) == 1 and machine.resumes == 1
     assert run.log.of("read-at")[0]["pc"] == 0x09DD
+
+
+def test_a_stop_during_a_body_that_raises_is_still_read_and_the_machine_freed(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+    with pytest.raises(RuntimeError):
+        with run.sess.mon(5):
+            machine.hit(0x09DD)
+            raise RuntimeError("the caller broke")
+    assert run.log.of("read-at")[0]["pc"] == 0x09DD
+    assert not machine.halted
+
+
+def test_a_handler_that_raises_at_exit_still_frees_the_machine(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+    real = _ReadMon.read
+
+    def broken(self, start, length, bank=0):
+        raise RuntimeError("monitor broke")
+
+    try:
+        with run.sess.mon(5):
+            machine.hit(0x09DD)
+            _ReadMon.read = broken
+    finally:
+        _ReadMon.read = real
+    assert run.traps.degraded and not machine.halted
+
+
+def test_an_interrupt_in_the_exit_check_still_sends_exit(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+
+    def interrupted(m, resume=True):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        with run.sess.mon(5):
+            machine.hit(0x09DD)
+            run.traps.check = interrupted
+    assert not machine.halted
+
+
+@pytest.mark.parametrize("gone", [TimeoutError, OSError, A.S.MonitorError])
+def test_a_body_that_lost_the_monitor_skips_the_exit_check(tmp_path, gone):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+    with pytest.raises(gone):
+        with run.sess.mon(5):
+            machine.hit(0x09DD)
+            run.traps.check = lambda m, resume=True: pytest.fail("checked")
+            raise gone("gone")
+    assert not machine.halted
+
+
+def test_a_closed_socket_skips_the_exit_check(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+    with run.sess.mon(5) as m:
+        machine.hit(0x09DD)
+        m._m.sock = None
+        run.traps.check = lambda m, resume=True: pytest.fail("checked")
+    assert not machine.halted
 
 
 def test_a_read_at_another_pc_than_its_stop_is_marked_late(tmp_path):
@@ -8391,7 +8456,8 @@ def test_read_at_with_another_overlay_at_the_pc_reads_nothing_and_resumes(tmp_pa
     assert run.log.of("read-at") == []
     assert len(run.log.of("read-at-foreign")) == 1
     assert machine.resumes == 1
-    assert run.read_at_counts["read-at-09DD"] == {"hits": 0, "foreign": 1}
+    assert run.read_at_counts["read-at-09DD"] == {
+        "hits": 0, "foreign": 1, "late": 0, "merged": 0}
 
 
 def test_release_read_at_deletes_every_stop(tmp_path):
@@ -8489,7 +8555,8 @@ def test_the_run_deletes_its_read_at_stops_on_a_normal_exit(tmp_path, monkeypatc
                         read_at=["09DD=CD782B:2B78:2"])
     assert rc == 0 and machine.checkpoints == {}
     assert json.loads((out / "summary.json").read_text())["read_at"] == {
-        "stops": {"read-at-09DD": {"hits": 0, "foreign": 0}}, "degraded": False}
+        "stops": {"read-at-09DD": {
+            "hits": 0, "foreign": 0, "late": 0, "merged": 0}}, "degraded": False}
 
 
 def test_the_run_deletes_its_read_at_stops_when_a_step_raises(tmp_path, monkeypatch):

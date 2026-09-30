@@ -460,12 +460,13 @@ class Stop:
 
 
 class Traps:
-    """Stop checkpoints whose hits are handled by the next monitor connection.
+    """Stop checkpoints whose hits are handled on the monitor connection open at the stop.
 
     `curseflee.Trap`'s protocol: `sess.mon` is replaced by a wrapper whose
-    every connection first asks whether a stop fired, and the machine, stopped
-    at that point, is read and resumed on the same connection because VICE
-    talks only to the connection that was open when it stopped.
+    every connection asks whether a stop fired on entry (and resumes after
+    handling it), before any `resume()` the caller issues, and on exit before
+    EXIT, so the machine is read while still halted at the stop.  VICE talks
+    only to the connection that was open when it stopped.
     """
 
     def __init__(self, sess, log, out: pathlib.Path, args, item: bytes | None = None):
@@ -551,6 +552,10 @@ class Traps:
             self._release(m, exc)
         finally:
             self._busy = False
+
+    def current_fires(self) -> int:
+        """How many times the stop being handled fired since the last scan."""
+        return self._at[1].fires if self._at is not None else 1
 
     def _release(self, m, exc) -> None:
         """Give up: nothing is armed, the machine runs, and the run is marked incomplete.

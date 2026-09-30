@@ -1639,7 +1639,8 @@ class PoolRun:
         self.traps.install()
         self.read_at_counts = {}
         for spec in self.read_ats:
-            self.read_at_counts[spec.name] = {"hits": 0, "foreign": 0}
+            self.read_at_counts[spec.name] = {"hits": 0, "foreign": 0,
+                                              "late": 0, "merged": 0}
             self.traps.arm(spec.name, spec.pc, self._read_at_handler(spec, self.traps),
                            once=False)
             if not any(s.name == spec.name for s in self.traps.stops):
@@ -1673,12 +1674,10 @@ class PoolRun:
             counts["hits"] += 1
             # A stop that fired more than once between scans is one record; a
             # `pc` other than the stop's says the reading is from a later moment.
-            fires = traps._at[1].fires if traps._at else 1
+            fires = traps.current_fires()
             late = pc != spec.pc
-            if late:
-                counts["late"] = counts.get("late", 0) + 1
-            if fires > 1:
-                counts["merged"] = counts.get("merged", 0) + fires - 1
+            counts["late"] += late
+            counts["merged"] += fires - 1
             self.log.emit(
                 "read-at", name=spec.name, pc=pc, guard_matched=True,
                 hit=counts["hits"], late=late, fires=fires,
