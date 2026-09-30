@@ -368,6 +368,8 @@ class _TempleMonitor:
                 return bytes([A.TEMPLE_ARRIVAL_MODE])
             return bytes([A.S.DUNGEON])
         if address == A.TEMPLE_POOL_COINS:
+            if getattr(s, "pool_read_error", False):
+                raise OSError("monitor gone")
             return b"".join(w.to_bytes(2, "little") for w in s.pool_coins)
         if address == 0x49E6:
             return b"\x01"
@@ -9196,3 +9198,15 @@ def test_temple_probe_pool_keeps_the_pool_coins_before_yes_and_after(
     (tmp_path / "b").mkdir()
     plain = _temple_fake_run(tmp_path / "b", monkeypatch)
     assert "pool_before" not in plain[0].temple_probe("BRUTUS RAISE")
+
+
+def test_temple_probe_pool_records_an_unreadable_pool_and_still_finishes(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.pool_read_error = True
+    result = run.temple_probe("BRUTUS RAISE POOL")
+    assert list(result["pool_before"]) == ["error"]
+    assert "monitor gone" in result["pool_before"]["error"]
+    assert list(result["pool_after"]) == ["error"]
+    assert result["outcome"] == "alive"
+    assert session.keys == _POOL_KEYS

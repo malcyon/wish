@@ -2367,8 +2367,9 @@ class PoolRun:
         question with YES once, so the party's money pays for a member whose
         own purse the game emptied. `RAISE CONTROL` is `RAISE` on the no-cast
         specimen. It stops at the result screen with no
-        further key, and records `outcome` as alive, failed, no-money or
-        unknown; the last three are results, not faults.
+        further key, and records `outcome` as alive, cured, failed,
+        no-money, cannot-help or unknown; all but alive are results, not
+        faults.
 
         The HEAL service list -- its text, its bar, whether RAISE DEAD
         appears, and the resident byte there -- has never been seen live
