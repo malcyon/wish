@@ -776,23 +776,29 @@ def _diff_against(char, rec: bytes) -> tuple[set[int], bool]:
 
 def _stale_count_allowance(char) -> set[int]:
     """What a record whose stored `item_count` disagrees with its item file
-    may change on a round trip: the count itself, which the writer rewrites to
-    the true number, and the combat-tail bytes the engine derives from the
-    carried items -- THAC0, armour class, the armour bonus and attack forms, and
-    movement (`goldbox/dos_port.py`), and the encumbrance, which the game
-    rebuilds with the count when the sheet is viewed (so a stale-count record's
-    stored encumbrance is item-less).  An export stores count 0 beside items
-    the game gives the character, so its stored tail was never built from them.
-    A record whose count is true masks nothing."""
+    may change on a round trip: the count, which the writer rewrites to the
+    true number, and the encumbrance, which the game rebuilds together with
+    the count when the sheet is viewed, so a stale-count record stores it
+    without its items.  A record whose count is true masks nothing."""
     if char.get("item_count") == len(char.items):
         return set()
+    return {dos_port.FIELDS_BY_NAME["item_count"].offset,
+            *range(ENC.offset, ENC.end)}
+
+
+def _stale_count_c64_allowance(char) -> set[int]:
+    """The C64 round trip also recomputes the combat tail from the items the
+    game gives the character (`goldbox/dos_port.py`: THAC0 from the readied
+    weapon, armour class and the armour bonus and attack forms, movement), where
+    a stale-count record stored a tail built without them.  The direct DOS
+    round trip leaves those bytes alone, so only this test widens the mask."""
+    allowed = _stale_count_allowance(char)
+    if not allowed:
+        return allowed
     by = dos_port.FIELDS_BY_NAME
-    out = {by["item_count"].offset, by["thac0_current"].offset,
-           by["armour_class"].offset,
-           by["movement_current"].offset}
-    out |= set(range(by["roster_tail"].offset, by["roster_tail"].end))
-    out |= set(range(ENC.offset, ENC.end))
-    return out
+    return allowed | {by["thac0_current"].offset, by["armour_class"].offset,
+                      by["movement_current"].offset,
+                      *range(by["roster_tail"].offset, by["roster_tail"].end)}
 
 
 def _attack_level_allowance(char, rec: bytes) -> set[int]:
@@ -1979,7 +1985,7 @@ def test_a_record_round_trips_through_the_c64_record():
         rec, _, _, _ = dos_codec.write(back, item_types=types)
         outside, _ = _diff_against(char, rec)
         outside -= _attack_level_allowance(char, rec)
-        outside -= _stale_count_allowance(char)
+        outside -= _stale_count_c64_allowance(char)
         if char.name == _MOVEMENT_EXCEPTION[0]:
             outside.discard(_MOVEMENT_EXCEPTION[1])
         assert outside == set(), \

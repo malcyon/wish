@@ -1090,6 +1090,29 @@ def test_the_scribed_scroll_save_reads_its_fifteen_items():
         dos_codec.read_character(path)
 
 
+def test_the_scribed_scroll_save_converts_with_all_fifteen_items():
+    """XAVIER, whose stored count is one high, keeps his 15 items through a
+    DOS write and arrives on the C64 with 15 in his inventory."""
+    from goldbox import c64_codec, dos_codec
+
+    name = "por-790-scribe-complete-stale-count"
+    if not have_specimen(name):
+        pytest.skip(f"needs specimen WISH-SPEC-{name}")
+    character = dos_codec.read_character(
+        specimen(name) / "CHRDATE5.SAV")
+    neutral = dos_codec.to_neutral(character)
+    assert len(neutral.get("inventory")) == 15
+
+    record, itm, _, _ = dos_codec.write(neutral)
+    assert len(itm) // 63 == 15
+    assert record[dos_codec.FIELDS_BY_NAME_FOR[
+        character.deltas.key]["item_count"].offset] == 15
+
+    c64_record, _ = c64_codec.write(neutral)
+    assert len(c64_codec.read(c64_record, source="scribed").get(
+        "inventory")) == 15
+
+
 def test_the_shipped_slot_b_characters_read_their_item_files():
     """The Archives' `Default files/Saves` slot B stores item_count 0 beside
     3 to 7 whole records; the game shows ARRONEL a long sword, shield and
