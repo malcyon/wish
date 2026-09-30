@@ -27,7 +27,7 @@ import dataclasses
 import logging
 
 import pytest
-from support.doswriter import _portrait_tables
+from support.doswriter import _portrait_tables, spells_known_written
 
 from goldbox import c64_codec, dos_codec, dos_port, layout
 from tools.records import boundarychars, doswidths, laterchars
@@ -106,6 +106,8 @@ def test_a_boundary_character_writes_and_reads_back_whole(name, caplog):
             # a class the character does not hold; the case only names the
             # ones it does.
             got = {k: v for k, v in got.items() if v}
+        if field == "spells_known":
+            want = spells_known_written(char, got)
         assert got == want, (name, field, want, got)
 
 

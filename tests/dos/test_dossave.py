@@ -1214,6 +1214,8 @@ def test_the_scribed_scroll_save_converts_to_the_c64_with_no_drops():
     name = "por-790-scribe-complete-stale-count"
     if not have_specimen(name):
         pytest.skip(f"needs specimen WISH-SPEC-{name}")
+    dirten = dos_codec.read_character(specimen(name) / "CHRDATE7.SAV")
+    assert dirten.name == "DIRTEN" and 56 in dirten.spells_known
     for path in sorted(specimen(name).glob("CHRDATE*.SAV")):
         neutral = dos_codec.to_neutral(dos_codec.read_character(path))
         rep = c64_codec.write(neutral)[1]

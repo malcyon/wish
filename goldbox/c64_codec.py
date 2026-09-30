@@ -1434,12 +1434,16 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         converted = [i for i in known.value if i <= ceiling]
         # DOS Pool's own class rebuild sets id 56 on a cleric it reads past
         # the slot table for, and the C64 has no such spell and no need of it.
+        # `levels` is the DOS record's own here, as `dos_codec.write` judges
+        # it: DOS stores a regained former class as zero already, so zeroing
+        # it again changes nothing on a DOS source.
         engine_set = (
             char.game == POOL_OF_RADIANCE_RECORD.key and ceiling == 55
             and 56 in known.value
             and engine_grants_restoration(
                 w.get("levels"), w.get("experience_award")))
-        lost = len(known.value) - len(converted) - (1 if engine_set else 0)
+        excused = known.value.count(56) if engine_set else 0
+        lost = len(known.value) - len(converted) - excused
         if lost:
             rep.losses.append(
                 f"spells_known: {lost} ids above "

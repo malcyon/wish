@@ -24,6 +24,7 @@ and not a width.
 from __future__ import annotations
 
 import pytest
+from support.doswriter import spells_known_written
 
 from goldbox import amiga_later, amiga_por, dos_codec, dos_port
 from goldbox import items as items_mod
@@ -79,6 +80,8 @@ def _mismatches(char, back, game, skip=()) -> dict:
                 or char.get(field) is None):
             continue
         want, got = char.get(field), back.get(field)
+        if field == "spells_known":
+            want = spells_known_written(char, got)
         if field == "levels":
             want, got = _held(want), _held(got)
         if want != got:
@@ -186,7 +189,8 @@ def test_por_the_memorised_list_and_the_spellbook_come_back_whole(name):
     char = boundarychars.CASES[name]()
     *_, back = _por_readback(char)
     assert back.get("spells_memorised") == char.get("spells_memorised")
-    assert back.get("spells_known") == char.get("spells_known")
+    assert back.get("spells_known") == spells_known_written(
+        char, back.get("spells_known"))
 
 
 def test_por_the_deepest_caster_memorises_all_twenty():

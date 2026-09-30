@@ -54,3 +54,18 @@ def _portrait_tables():
             except portraits.PortraitError:
                 return None
     return None
+
+
+def spells_known_written(char, got: list[int]) -> list[int]:
+    """The spell ids a DOS record read back should hold for a C64-sourced
+    `char`: its own, plus id 56 exactly when DOS Pool's class rebuild would
+    set that byte.  The caller compares `got` to this, so a 56 without the
+    condition, or no 56 with it, fails."""
+    from goldbox import c64_codec
+
+    want = sorted(char.get("spells_known") or [])
+    if (char.game == c64_codec.POOL_OF_RADIANCE_RECORD.key
+            and c64_codec.engine_grants_restoration(
+                char.get("levels"), char.get("experience_award"))):
+        want.append(56)
+    return want
