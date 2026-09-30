@@ -48,7 +48,8 @@ from goldbox.spells import for_game as spell_table
 
 from .ui_inventory import Ui_AddItemDialog
 
-# The effect id Curse stores for its potion of speed.
+# Curse's potion of speed: the potion item type and the effect id it stores.
+CURSE_POTION_TYPE = 71
 CURSE_POTION_OF_SPEED = 57
 
 EMPTY = bytes(ITEM_SIZE)
@@ -535,16 +536,13 @@ class ItemTraitsModel(QAbstractTableModel):
         UNAPPROVED WORDING for the second line: the Pool of Radiance one is
         Donald's and is kept exactly, because RESTORATION is the name of its
         last spell and a number is worse. The later titles have no such
-        landmark, so they get the number. Donald approved one exception:
-        Curse's effect 57 is named "Potion of Speed".
+        landmark, so they get the number. The one exception, a Curse potion
+        with effect 57, is named in :meth:`_power_rows` where the item is known.
         """
         if sid <= self.spells.last_spell and sid not in self.spells.not_a_spell:
             return describe_spell(sid, self.spell_names, self.spells)
         if self.spells.last_spell == POOL_OF_RADIANCE.last_spell:
             return f"effect {sid} — the item-only range past RESTORATION"
-        if (self.spells.key == CURSE_OF_THE_AZURE_BONDS.key
-                and sid == CURSE_POTION_OF_SPEED):
-            return "Potion of Speed"
         return (f"effect {sid} — the item-only range past spell "
                 f"{self.spells.last_spell}")
 
@@ -612,7 +610,11 @@ class ItemTraitsModel(QAbstractTableModel):
             return [("Spells", ", ".join(spells) if spells else EMPTY_TEXT)]
         rows = [("Charges", str(charges) if charges else EMPTY_TEXT)]
         effect_id = item.effect_in(self.spells)
-        if effect_id is not None:
+        if (effect_id == CURSE_POTION_OF_SPEED
+                and self.spells.key == CURSE_OF_THE_AZURE_BONDS.key
+                and item.type_index == CURSE_POTION_TYPE):
+            rows.append(("Effect", "Potion of Speed"))
+        elif effect_id is not None:
             rows.append(("Effect", self._spell(effect_id)))
         elif effect:
             # +15 is set, so +14 is that handler's argument -- the gauntlets'

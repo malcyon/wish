@@ -153,3 +153,42 @@ def test_pool_of_radiance_potion_of_speed_stays_57(app):
     assert dict(traits.rows)["Effect"] == \
         "effect 57 — the item-only range past RESTORATION"
     assert "effect: spell 57" in InventoryModel()._tooltip(0, item)
+
+
+# --- "Potion of Speed" is scoped to a Curse potion (no disks needed) ---------
+
+def _synthetic(key, type_index, *, effect=57, charges=0, types=None):
+    from editor.inventory import ItemTraitsModel
+    raw = bytearray(16)
+    raw[0] = type_index
+    raw[13], raw[14] = charges, effect
+    m = ItemTraitsModel()
+    m.set_tables(types or {}, {}, spells.BY_KEY[key])
+    m.set_item(Item(bytes(raw)))
+    return dict(m.rows)
+
+
+def test_a_synthetic_curse_potion_of_speed_is_named(app):
+    from editor.inventory import CURSE_POTION_TYPE
+    assert _synthetic(CURSE, CURSE_POTION_TYPE)["Effect"] == "Potion of Speed"
+
+
+def test_silver_blades_effect_57_keeps_the_item_only_line(app):
+    from editor.inventory import CURSE_POTION_TYPE
+    row = _synthetic(SSB, CURSE_POTION_TYPE)["Effect"]
+    assert row.startswith("effect 57 ")
+
+
+def test_a_curse_non_potion_with_57_keeps_the_item_only_line(app):
+    from editor.inventory import CURSE_POTION_TYPE
+    row = _synthetic(CURSE, CURSE_POTION_TYPE + 8)["Effect"]
+    assert row.startswith("effect 57 ")
+
+
+def test_a_curse_scroll_spell_byte_57_keeps_its_text(app):
+    from goldbox.items import ItemType
+    scroll = 0x3D
+    types = {scroll: ItemType(scroll, bytes(16))}
+    row = _synthetic(CURSE, scroll, effect=57, types=types)["Spells"]
+    assert row.startswith("effect 57 ")
+    assert "Potion of Speed" not in row
