@@ -600,3 +600,18 @@ def test_a_party_the_engine_viewed_converts_to_its_own_resave():
         assert _stored(char) == _stored(resave[char.name]), char.name
         checked += 1
     assert checked == 6
+
+
+def test_a_hyphenated_ordinary_phrase_is_not_taken_as_a_parent(tmp_path):
+    """"hand-made" reads as a bare specimen name, but no specimen of that name
+    is in the set, so the entry naming it is not a descendant."""
+    def make(name, what):
+        d = tmp_path / "por-dos" / name
+        d.mkdir(parents=True)
+        (d / "provenance.toml").write_text(f'what = "{what}"\n')
+
+    make("WISH-SPEC-parent-one", "Wish's own resave")
+    make("WISH-SPEC-phrase", "A hand-made edit, typed in by hand")
+    got = _not_rebuilt_with_descendants(tmp_path,
+                                        {"por-dos/WISH-SPEC-parent-one"})
+    assert got == {"por-dos/WISH-SPEC-parent-one"}
