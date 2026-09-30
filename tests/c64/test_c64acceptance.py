@@ -10348,12 +10348,33 @@ def test_a_refused_write_is_answered_no_and_kept(tmp_path, monkeypatch):
              ("list", ("row", "EXIT")): "back"}
     sess = _RemoveSession(screens, moves, "menu", disk)
     run, log = _remove_run(tmp_path, monkeypatch, sess)
-    got = run.remove("1")
+    with pytest.raises(A.StepFailed, match="refused the write"):
+        run.remove("1")
     log.close()
     assert ("bar", "YES") not in sess.sent
     assert sess.sent[2:] == [("bar", "NO"), ("row", "EXIT")]
+    kept = [json.loads(line) for line in (tmp_path / "run.jsonl").read_text(
+        encoding="utf-8").splitlines()]
+    got = next(e for e in kept if e["kind"] == "remove-not-taken")
     assert got["refused"] == asked and got["left"] == _PANEL
     assert got["added"] == got["gone"] == got["changed"] == []
+    assert (tmp_path / "removed-1.D64").is_file()
+
+
+def test_the_disk_copy_tries_no_longer_than_the_run_has_left(tmp_path, monkeypatch):
+    sess = _RemoveSession({"w": _window({})}, {}, "w", _fixture_disk(tmp_path))
+    run, log = _remove_run(tmp_path, monkeypatch, sess)
+    run.deadline, run.clock = 4.5, lambda: 0.0
+    tries = []
+
+    def copy(src, dest, *, attempts, backoff):
+        tries.append(attempts)
+        raise RuntimeError("open directory entry 'SAVEAZURE'")
+
+    monkeypatch.setattr(A.S, "copy_closed_disk", copy)
+    got = run.keep_save_disk("removed-1.D64")
+    log.close()
+    assert tries == [4, 4] and not got["closed"]
 
 
 def test_the_drive_message_is_cut_where_the_stale_tail_of_an_older_one_begins():
@@ -10422,3 +10443,127 @@ def test_a_load_followed_by_remove_stops_on_the_party_menu_until_another_step(
     (tmp_path / "plain").mkdir()
     _drive(tmp_path / "plain", monkeypatch, ["load", "view 1"], pool=Menu)
     assert calls == ["load", "view 1"]
+
+
+class _LoadSession:
+    """Records the front-end calls a load makes, in order."""
+
+    def __init__(self):
+        self.calls = []
+        self.save_disk = "/nonexistent/SIDE0.D64"
+        self.game = None
+
+    def boot(self):
+        self.calls.append("boot")
+        return True
+
+    def load_save(self):
+        self.calls.append("load_save")
+        return True
+
+    def begin_adventuring(self):
+        self.calls.append("begin_adventuring")
+        return True
+
+    def patch_disk_prompt(self):
+        self.calls.append("patch_disk_prompt")
+        return True
+
+    def settle(self, seconds=0):
+        pass
+
+    def mon(self, timeout=0):
+        import contextlib
+
+        return contextlib.nullcontext(SimpleNamespace(
+            checkpoint_set=lambda *a, **k: 1, resume=lambda: None))
+
+
+def _load_run(cls, monkeypatch, sess):
+    reads = []
+    monkeypatch.setattr(A, "disk_directory", lambda path: reads.append(path) or [])
+    run = cls.__new__(cls)
+    run.sess, run.points, run.armed = sess, {}, {}
+    run.game, run.disks, run.attack_by, run.attack_owner = None, None, "", None
+    run.log = SimpleNamespace(emit=lambda *a, **k: None)
+    run.captures = []
+    run.capture = lambda tag, rows=None: run.captures.append(tag)
+    run.position = lambda: [1, 2, 3]
+    run.bar = lambda: "ENCAMP"
+    return run, reads
+
+
+def _later_front_ends(monkeypatch, sess):
+    from tools.curse_of_the_azure_bonds import curseload
+    from tools.secret_of_the_silver_blades import ssbsession
+
+    def note(name, result=True):
+        return lambda *a, **k: sess.calls.append(name) or result
+
+    monkeypatch.setattr(curseload, "load_saved_game", note("load_save", "loaded"))
+    monkeypatch.setattr(curseload, "Addresses", lambda *a, **k: None)
+    monkeypatch.setattr(curseload, "enter_world", note("begin_adventuring"))
+    monkeypatch.setattr(curseload, "clear_messages", lambda *a, **k: "")
+    monkeypatch.setattr(ssbsession, "load_party", note("load_save"))
+    monkeypatch.setattr(ssbsession, "Addresses", lambda *a, **k: None)
+    monkeypatch.setattr(ssbsession, "enter_world", note("begin_adventuring"))
+    monkeypatch.setattr(ssbsession, "clear_messages", lambda *a, **k: "")
+
+
+@pytest.mark.parametrize("cls", [A.PoolRun, A.CurseRun, A.SilverRun])
+def test_a_plain_load_boots_loads_and_enters_the_world_reading_no_directory(
+        monkeypatch, cls):
+    sess = _LoadSession()
+    _later_front_ends(monkeypatch, sess)
+    run, reads = _load_run(cls, monkeypatch, sess)
+    got = run.load()
+    front = [c for c in sess.calls if c != "patch_disk_prompt"]
+    assert front == ["boot", "load_save", "begin_adventuring"]
+    assert run.at_menu is False and got["position"] == [1, 2, 3]
+    assert reads == [] and run.captures == ["world"]
+
+
+@pytest.mark.parametrize("cls", [A.PoolRun, A.CurseRun, A.SilverRun])
+def test_load_party_stops_on_the_menu_and_enter_world_leaves_it(monkeypatch, cls):
+    sess = _LoadSession()
+    _later_front_ends(monkeypatch, sess)
+    run, reads = _load_run(cls, monkeypatch, sess)
+    assert run.load_party()["at"] == "party menu"
+    assert run.at_menu is True and "begin_adventuring" not in sess.calls
+    assert reads == [pathlib.Path(sess.save_disk)] and run.captures == ["party-menu"]
+    run.enter_world()
+    assert run.at_menu is False and sess.calls.count("begin_adventuring") == 1
+
+
+def test_a_run_with_removes_enters_the_world_once(tmp_path, monkeypatch):
+    calls = []
+
+    class Menu(_Pool):
+        at_menu = False
+
+        def load_party(self):
+            calls.append("load_party")
+            self.at_menu = True
+            return {}
+
+        def remove(self, who):
+            calls.append("remove")
+            return {}
+
+        def enter_world(self):
+            calls.append("enter_world")
+            self.at_menu = False
+            return {}
+
+        def view(self, who):
+            calls.append("view")
+            return {}
+
+        def save(self, staged):
+            calls.append("save")
+            return {}
+
+    rc, _, _ = _drive(tmp_path, monkeypatch,
+                      ["load", "remove 1", "view 1", "view 2", "save"], pool=Menu)
+    assert rc == 0 and calls.count("enter_world") == 1
+    assert calls == ["load_party", "remove", "enter_world", "view", "view", "save"]

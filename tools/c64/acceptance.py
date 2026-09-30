@@ -55,7 +55,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | step | what it does and reads |
 |---|---|
 | `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint`. Followed by `remove`, it stops on the party menu instead, and `BEGIN ADVENTURING` waits for the first step that is not a `remove` |
-| `remove WHO` | the party menu's `REMOVE CHARACTER FROM PARTY`, then WHO's row on the list it puts up; waits for the list to come back one name shorter, `EXIT`s to the party menu, then keeps the save disk as `removed-N.D64` (attaching the image again when VICE has left the directory open) with its directory (`added`, `gone` and `changed` against the directory before) and the 1541's error-message buffer (`$02D5` in the drive). Only straight after `load` or another `remove`. A `MAKE SAVE GAME DISK ? YES NO` in place of the shorter list is the game refusing the write: it is answered NO, never YES (YES formats a disk), and kept as `refused` |
+| `remove WHO` | the party menu's `REMOVE CHARACTER FROM PARTY`, then WHO's row on the list it puts up; waits for the list to come back one name shorter, `EXIT`s to the party menu, then keeps the save disk as `removed-N.D64` (attaching the image again when VICE has left the directory open) with its directory (`added`, `gone` and `changed` against the directory before) and the 1541's error-message buffer (`$02D5` in the drive). WHO is a panel number or a whole name, and a name picks the first row drawing it, so a duplicated name needs the number. Only straight after `load` or another `remove`. A `MAKE SAVE GAME DISK ? YES NO` in place of the shorter list is the game refusing the write: it is answered NO, never YES (YES formats a disk), the disk and the drive's buffer are kept, and the step fails unless the list then comes back without WHO |
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time |
@@ -1693,24 +1693,26 @@ class PoolRun:
     #: True from a `load_party` until `enter_world`: the party menu is up.
     at_menu = False
     #: The save disk's directory as last read, which each `remove` is diffed
-    #: against; `at_party_menu` reads it first.
+    #: against; `load_party` reads it first.
     directory: list[dict] | None = None
     #: How many `remove` steps have run, which names each kept disk.
     removes = 0
 
     def load(self) -> dict:
-        self.load_party()
+        self.boot_and_load()
         return self.enter_world()
 
-    def load_party(self) -> dict:
-        """Boot and `LOAD SAVED GAME`, stopping on the party menu."""
+    def boot_and_load(self) -> None:
+        """Boot and `LOAD SAVED GAME`, up to the party menu."""
         if not self.sess.boot():
             raise StepFailed(self.sess.boot_failure or "boot failed")
         if not self.sess.load_save():
             raise self.fail("load", "the game did not load the save")
-        return self.at_party_menu()
 
-    def at_party_menu(self) -> dict:
+    def load_party(self) -> dict:
+        """`boot_and_load`, then the party menu kept and the save disk's
+        directory read, which the `remove` steps after it are diffed against."""
+        self.boot_and_load()
         self.at_menu = True
         self.directory = disk_directory(pathlib.Path(self.sess.save_disk))
         self.capture("party-menu")
@@ -1734,7 +1736,7 @@ class PoolRun:
     # -- `remove`: the party menu's REMOVE CHARACTER FROM PARTY -------------------
     def _remove_index(self, who: str, listed: list[str]) -> int:
         """Which list row WHO is: a number counts from 1, a name must be the
-        whole name the row draws."""
+        whole name the row draws, and the first such row is taken."""
         if who.isdigit():
             index = int(who) - 1
             if 0 <= index < len(listed):
@@ -1762,7 +1764,9 @@ class PoolRun:
                 raw = bytes(curseload.drive_read(m, *curseload.DRIVE_ERROR_BUFFER))
                 m.resume()
         except Exception as e:                      # noqa: BLE001
-            return {"error": f"{type(e).__name__}: {e}"}
+            error = f"{type(e).__name__}: {e}"
+            self.log.emit("drive-error-unread", error=error)
+            return {"error": error}
         return {"text": drive_message(raw), "bytes": raw.hex(" ")}
 
     def keep_save_disk(self, name: str) -> dict:
@@ -1776,14 +1780,17 @@ class PoolRun:
         """
         disk = pathlib.Path(self.sess.save_disk)
         kept = self.out / name
+        # One try a second, as many seconds as the run has left.
         try:
-            S.copy_closed_disk(disk, kept, attempts=10, backoff=1.0)
+            S.copy_closed_disk(disk, kept, backoff=1.0,
+                               attempts=max(1, int(self.budget(10, "the disk copy"))))
             return {"kept": str(kept), "reattached": False, "closed": True}
         except RuntimeError as e:
             self.log.emit("remove-copy-refused", why=str(e))
         self.sess.attach(str(disk))
         try:
-            S.copy_closed_disk(disk, kept, attempts=30, backoff=1.0)
+            S.copy_closed_disk(disk, kept, backoff=1.0,
+                               attempts=max(1, int(self.budget(30, "the disk copy"))))
             return {"kept": str(kept), "reattached": True, "closed": True}
         except RuntimeError as e:
             kept.write_bytes(disk.read_bytes())
@@ -1844,9 +1851,16 @@ class PoolRun:
         directory = disk_directory(pathlib.Path(disk["kept"]))
         change = directory_change(self.directory or [], directory)
         self.directory = directory
-        return {"who": who, "row": row, "listed": listed, "left": left,
-                "refused": refused, "drive_error": drive, **disk,
-                "directory": directory, **change}
+        got = {"who": who, "row": row, "listed": listed, "left": left,
+               "refused": refused, "drive_error": drive, **disk,
+               "directory": directory, **change}
+        if refused is not None and (left is None or len(left) != len(listed) - 1):
+            # Every later step would run on a party that still holds WHO.
+            self.log.emit("remove-not-taken", **got)
+            raise self.fail("remove", f"the game refused the write ({refused!r}), "
+                                      f"NO was answered, and the list did not come "
+                                      f"back without {listed_name(row)}")
+        return got
 
     # -- `--read-at`: stop at a PC, read memory, resume --------------------------
     def arm_read_at(self) -> None:
@@ -4528,7 +4542,7 @@ class CurseRun(PoolRun):
         self.disks = disks
         self.staged_disk = staged_disk
 
-    def load_party(self) -> dict:
+    def boot_and_load(self) -> None:
         from tools.curse_of_the_azure_bonds import curseload
 
         if not self.sess.boot():
@@ -4539,7 +4553,6 @@ class CurseRun(PoolRun):
         if outcome != "loaded":
             raise self.fail("load", f"Curse load ended at {outcome}")
         self.sess.patch_disk_prompt()
-        return self.at_party_menu()
 
     def answer_no(self) -> None:
         """NO with one KERNAL Return, which this front end reads where it
@@ -5261,14 +5274,13 @@ class SilverRun(CurseRun):
         self.disks = disks
         self.staged_disk = staged_disk
 
-    def load_party(self) -> dict:
+    def boot_and_load(self) -> None:
         from tools.secret_of_the_silver_blades import ssbsession
 
         if not self.sess.boot():
             raise StepFailed(self.sess.boot_failure or "boot failed")
         if not ssbsession.load_party(self.sess):
             raise self.fail("load", "the game did not load the party")
-        return self.at_party_menu()
 
     def enter_world(self) -> dict:
         from tools.secret_of_the_silver_blades import ssbsession
