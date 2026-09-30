@@ -12191,7 +12191,7 @@ def test_curse_fight_flee_records_the_drop_and_reads_the_mercy_byte(
     got = run.fight("10", "I", 5, flee=True)
     assert isinstance(tactics[0], fleedrive.Flight)
     assert [m["name"] for m in got["left_behind"]] == ["B"]
-    assert got["mercy"] == 0
+    assert (got["mercy_before"], got["mercy_after"]) == (0, 0)
 
 
 def test_curse_fight_flee_is_refused_under_the_attack_diagnostic():
@@ -12225,5 +12225,22 @@ def test_silver_fight_flee_counts_the_world_bar_first_only_with_a_member_dropped
         return
     got = run.fight("600", "I", 40, flee=True)
     assert got["ran_line_seen"] is seen
+    assert got["outcome_seen"] == outcome
     assert got["outcome"] == A.S.RAN
     assert [m["name"] for m in got["left_behind"]] == (["B"] if dropped else [])
+
+
+@pytest.mark.parametrize("status", [0x83, 0x84, 3])
+def test_silver_fight_flee_does_not_count_a_dead_or_dying_member_as_a_run(
+        monkeypatch, tmp_path, status):
+    sess = _SilverFight()
+    sess.outcome, sess.after = A.S.ENDED, A.S.DUNGEON
+    run, events, captures = _silver_run(monkeypatch, tmp_path, sess)
+    run.game = SimpleNamespace(key="secret-of-the-silver-blades")
+    run.flight_tactic = lambda: lambda s, bar: "MOVE"
+    run.keep_fight_reading = lambda: None
+    run.spent = lambda: False
+    reads = iter([_slots(("A", 1), ("B", 1)), _slots(("A", 1), ("B", status))])
+    run.party_slots = lambda: next(reads)
+    with pytest.raises(A.StepFailed, match="fight-flee"):
+        run.fight("600", "I", 40, flee=True)

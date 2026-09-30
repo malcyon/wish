@@ -3998,8 +3998,9 @@ class PoolRun:
     def party_slots(self) -> list[dict]:
         """Each party slot's name and roster status byte, read live.
 
-        The flee drop clears a left-behind member's name and status, so the
-        name is what says a slot is still occupied."""
+        The flee drop writes 0 into a left-behind member's status, so the
+        status is what says a slot is still occupied; the name is kept for
+        the report only."""
         box = self.box
         with self.sess.mon(10) as m:
             records = [bytes(m.read(box.slot_area_base + slot * box.slot_stride,
@@ -4039,11 +4040,28 @@ class PoolRun:
     MERCY_ADDRESS = {"pool-of-radiance": 0x6DE6,
                      "curse-of-the-azure-bonds": 0x7EE6}
 
+    def mercy_byte(self) -> int | None:
+        """The drop's spare flag, or None where its address is not known."""
+        at = self.MERCY_ADDRESS.get(self.game.key)
+        if at is None:
+            return None
+        with self.sess.mon(5) as m:
+            return m.read(at, 1)[0]
+
+    def flee_before(self) -> list[dict]:
+        """The slots read before a flight, with the spare flag kept as
+        `mercy_before`: `POST.COM $14D2` zeroes it, and whether that comes
+        before the drop at `$0DF8` is unread, so only this reading says whether
+        the drop was spared."""
+        self.mercy_before = self.mercy_byte()
+        return self.party_slots()
+
     @staticmethod
     def dropped_slots(before: list[dict], after: list[dict]) -> list[dict]:
         """The slots occupied before the fight (a nonzero status) whose status
         the fight left at 0, the value `POST.COM $0DF8`'s drop writes.  A dead
-        member is dropped too; the record's name is not what says so."""
+        or dying member (status 3, `$83`, `$84`, `$85`) is not a drop unless
+        the game's drop wrote 0 over it."""
         return [now for was, now in zip(before, after)
                 if was["status"] != 0 and now["status"] == 0]
 
@@ -4051,9 +4069,10 @@ class PoolRun:
         """Who got away and who was left behind, from the slots read before
         the fight and after it, plus the drop's spare flag where it is known.
 
-        The drop runs only when the party ran, and `$6DE6`-style mercy, when
-        nonzero, spares everyone except a charmed member, so a run with mercy
-        set says nothing about who the game leaves behind."""
+        The drop runs only when the party ran, and the spare flag, when nonzero
+        before the fight (`mercy_before`), spares everyone except a charmed
+        member, so a run with it set says nothing about who the game leaves
+        behind.  `mercy_after` is recorded beside it."""
         got_away, left_behind = [], []
         for was, now in zip(before, after):
             if was["status"] == 0:
@@ -4063,22 +4082,21 @@ class PoolRun:
                       "status_after": now["status"]}
             (left_behind if now["status"] == 0 else got_away).append(member)
         out = {"got_away": got_away, "left_behind": left_behind}
-        at = self.MERCY_ADDRESS.get(self.game.key)
-        if at is not None:
-            with self.sess.mon(5) as m:
-                out["mercy"] = m.read(at, 1)[0]
+        if self.game.key in self.MERCY_ADDRESS:
+            out["mercy_before"] = self.mercy_before
+            out["mercy_after"] = self.mercy_byte()
         return out
 
-    def flee_settled(self, result, before: list[dict]):
-        """`result`, and whether the game's own `THE PARTY RUNS AWAY` line was
-        read.  A fight ended by a `stop` before the line was read reports
-        `ended`; a member dropped since is what only the flee arm does, so that
-        counts as the party having run."""
-        if result.outcome != S.ENDED:
-            return result, result.outcome == S.RAN
-        if not self.dropped_slots(before, self.party_slots()):
-            return result, False
-        return dataclasses.replace(result, outcome=S.RAN), False
+    def flee_settled(self, result: "S.FightResult",
+                     before: list[dict]) -> "S.FightResult":
+        """`result`, upgraded to `ran` when a `stop` ended the fight before the
+        game's `THE PARTY RUNS AWAY` line was read (outcome `ended`) and a
+        member's status has gone to 0, which only the flee arm writes.  A
+        member who is merely dead or dying is not a drop."""
+        if (result.outcome == S.ENDED
+                and self.dropped_slots(before, self.party_slots())):
+            return dataclasses.replace(result, outcome=S.RAN)
+        return result
 
     def fight_over_budget(self, arg: str, result) -> StepFailed:
         """The failure for a fight that ran out of SECONDS.
@@ -4119,7 +4137,7 @@ class PoolRun:
         if not self.sess.in_combat():
             raise self.fail("fight", f"no fight in {taken} steps of {walk}")
         self.capture("fight-start")
-        before = self.party_slots() if flee else None
+        before = self.flee_before() if flee else None
         result = self.sess.fight(budget=float(arg or 120),
                                  tactic=(self.flight_tactic() if flee
                                          else S.Session.melee_turn))
@@ -5956,7 +5974,7 @@ class CurseRun(PoolRun):
         if diagnostic:
             self.stop_at_first_loss()
         self.capture("fight-start")
-        before = self.party_slots() if flee else None
+        before = self.flee_before() if flee else None
         if diagnostic:
             self.first_command_bar()
             result = self.observed_fight(float(arg or 120))
@@ -6189,14 +6207,15 @@ class SilverRun(CurseRun):
         if gate["now"] != 1:
             raise self.fail("wander-gate", f"$4C2D reads {gate['now']}, not 1")
         try:
-            walked, result, before, ran_line = self._silver_walk_and_fight(
+            walked, result, before, seen = self._silver_walk_and_fight(
                 arg, steps, geo, flee)
         except BaseException as e:
             self.put_gate_back(gate, was, e)
             raise
         self.put_gate_back(gate, was, None)
         who = ({**self.flee_result(before, self.party_slots()),
-                "ran_line_seen": ran_line} if flee else {})
+                "ran_line_seen": seen == S.RAN,
+                "outcome_seen": seen} if flee else {})
         return {**who, "walked": walked, "area": str(area),
                 "wander_gate": gate, "acted": result.acted,
                 **dataclasses.asdict(result)}
@@ -6242,7 +6261,7 @@ class SilverRun(CurseRun):
         self.capture("fight-start")
         self.sess.await_bar((S.BAR_COMMAND,), timeout=60, interval=2.0)
         self.gen_reads = 0
-        before = self.party_slots() if flee else None
+        before = self.flee_before() if flee else None
         result = self.sess.fight(budget=float(arg or 120),
                                  tactic=(self.flight_tactic() if flee
                                          else self.bar_tactic() if self.log_bars
@@ -6259,18 +6278,18 @@ class SilverRun(CurseRun):
             raise self.fail("fight", f"the party lost the fight after "
                                      f"{result.turns} turns: the game went "
                                      f"back to the party menu")
-        ran_line = False
+        seen = result.outcome
         if flee:
             # `world_again` ends the fight when the world bar is back, which
             # can be before the flee line is read.
-            result, ran_line = self.flee_settled(result, before)
+            result = self.flee_settled(result, before)
             if (failed := self.flee_failure(arg, result)) is not None:
                 raise failed
         elif result.outcome == S.BUDGET:
             raise self.fight_over_budget(arg, result)
         elif result.outcome == S.LOST:
             raise self.fight_lost(result)
-        return walked, result, before, ran_line
+        return walked, result, before, seen
 
 
 # --- the run ---------------------------------------------------------------------
