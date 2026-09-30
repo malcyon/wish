@@ -12194,6 +12194,69 @@ def test_curse_fight_flee_records_the_drop_and_reads_the_mercy_byte(
     assert (got["mercy_before"], got["mercy_after"]) == (0, 0)
 
 
+def _ended_flee_run(cls, outcome, before, after):
+    """A Pool or Curse run whose flee fight reads `outcome`, with the slots
+    read before the fight, then `after` for every later read."""
+    run = _flee_run(outcome, before, after, [])
+    run.__class__ = cls
+    reads = iter([before])
+    run.party_slots = lambda: next(reads, after)
+    return run
+
+
+@pytest.mark.parametrize("dropped", [True, False])
+def test_pool_fight_flee_settles_an_ended_fight_only_when_a_member_was_dropped(
+        dropped):
+    run = _ended_flee_run(
+        A.PoolRun, A.S.ENDED, _slots(("A", 1), ("B", 1)),
+        _slots(("A", 1), ("B", 0 if dropped else 1)))
+    if not dropped:
+        with pytest.raises(A.StepFailed, match="fight-flee"):
+            run.fight("60", "I", 5, flee=True)
+        return
+    got = run.fight("60", "I", 5, flee=True)
+    assert got["outcome"] == A.S.RAN
+    assert (got["ran_line_seen"], got["outcome_seen"]) == (False, A.S.ENDED)
+    assert [m["name"] for m in got["left_behind"]] == ["B"]
+
+
+@pytest.mark.parametrize("dropped", [True, False])
+def test_curse_fight_flee_settles_an_ended_fight_only_when_a_member_was_dropped(
+        monkeypatch, tmp_path, dropped):
+    from tools.c64 import laterbattle
+    from tools.curse_of_the_azure_bonds import cursethac0
+
+    class Route:
+        last_goto_steps = 2
+
+        def __init__(self, out, quiet):
+            self.file = SimpleNamespace(close=lambda: None)
+
+        def goto(self, target, steps, geo):
+            return True
+
+    monkeypatch.setattr(laterbattle, "Battle", Route)
+    monkeypatch.setattr(cursethac0, "area_geo", lambda *a: ("GEO01", object()))
+    run = _ended_flee_run(
+        A.CurseRun, A.S.ENDED, _slots(("A", 1), ("B", 1)),
+        _slots(("A", 1), ("B", 0 if dropped else 1)))
+    run.attack_by, run.attack_owner = "", None
+    run.out = tmp_path
+    run.game = SimpleNamespace(key="unmeasured")
+    run.staged_disk, run.disks = tmp_path / "s.D64", "unused"
+    run.await_combat = lambda: True
+    run.flight_tactic = lambda: lambda s, bar: "MOVE"
+    run.sess.await_bar = lambda *a, **k: None
+    if not dropped:
+        with pytest.raises(A.StepFailed, match="fight-flee"):
+            run.fight("10", "I", 5, flee=True)
+        return
+    got = run.fight("10", "I", 5, flee=True)
+    assert got["outcome"] == A.S.RAN
+    assert (got["ran_line_seen"], got["outcome_seen"]) == (False, A.S.ENDED)
+    assert [m["name"] for m in got["left_behind"]] == ["B"]
+
+
 def test_curse_fight_flee_is_refused_under_the_attack_diagnostic():
     run = A.CurseRun.__new__(A.CurseRun)
     run.attack_by, run.attack_owner = "ROLAND", 0

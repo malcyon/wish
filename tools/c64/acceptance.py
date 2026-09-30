@@ -4143,10 +4143,15 @@ class PoolRun:
                                          else S.Session.melee_turn))
         self.capture("fight-end")
         if flee:
+            # The flee line is on screen for under half a second, so the poll
+            # can miss it and read `ended`; a status at 0 says the party ran.
+            seen = result.outcome
+            result = self.flee_settled(result, before)
             if (failed := self.flee_failure(arg, result)) is not None:
                 raise failed
             return {"walked": taken, "acted": result.acted,
                     **self.flee_result(before, self.party_slots()),
+                    "ran_line_seen": seen == S.RAN, "outcome_seen": seen,
                     **dataclasses.asdict(result)}
         if result.outcome == S.BUDGET:
             raise self.fight_over_budget(arg, result)
@@ -5987,10 +5992,15 @@ class CurseRun(PoolRun):
                         else S.Session.melee_turn))
         self.capture("fight-end")
         if flee:
+            # The flee line is on screen for under half a second, so the poll
+            # can miss it and read `ended`; a status at 0 says the party ran.
+            seen = result.outcome
+            result = self.flee_settled(result, before)
             if (failed := self.flee_failure(arg, result)) is not None:
                 raise failed
             return {"walked": walked, "area": str(area), "acted": result.acted,
                     **self.flee_result(before, self.party_slots()),
+                    "ran_line_seen": seen == S.RAN, "outcome_seen": seen,
                     **dataclasses.asdict(result)}
         if result.outcome == S.BUDGET:
             raise self.fight_over_budget(arg, result)
