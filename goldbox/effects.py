@@ -379,9 +379,18 @@ POOL_FF_CHAIN = (0xFF, 1)
 #: magnitude `$FF` in Pool and never lists 22 in Curse and Silver Blades. So
 #: `$FF` is the row that keeps the DOS node's immunity, and Pool's own
 #: `level | $80` row stays dispellable at the same level on DOS.
+#:
+#: Silver Blades is the exception. The C64 runs a row's handler only when
+#: magnitude bit 7 is set (`CAMP $1314`): handler 15 (`$858E`) drains HP while
+#: the party rests and handler 22 (`$85A9`) kills a character holding 55, but
+#: DOS runs neither, so its survivor keeps his HP and his life. A DOS node
+#: therefore becomes `$7F` there, a value no C64 routine writes for these ids
+#: and one whose bit 7 is clear. Pool and Curse keep `$FF` because both of
+#: their ports kill when the spell ends.
 SLOW_POISON_ID = 22
 SLOW_POISON_DAMAGE_ID = 15
 SLOW_POISON_DOS = (0xFF, 1)
+SLOW_POISON_BLADES_C64 = 0x7F
 
 #: Invisible (25) in the later titles. Every C64 row for it writes the caster's
 #: level (camp rows 19, 32, 36 and 55 reach `ECL65 $819C`; combat goes through
@@ -744,10 +753,12 @@ def _own_rule_row(title_key: str,
         if (node.data, node.flag) != SLOW_POISON_DOS:
             return Unconverted("a Slow Poison damage node other than the "
                                "one DOS writes")
-        return node.id, 0xFF
+        return node.id, (SLOW_POISON_BLADES_C64 if title_key == _BLADES
+                         else 0xFF)
     if node.id == SLOW_POISON_ID and _slowed_title(title_key):
         if (node.data, node.flag) == SLOW_POISON_DOS:
-            return node.id, 0xFF
+            return node.id, (SLOW_POISON_BLADES_C64 if title_key == _BLADES
+                             else 0xFF)
         if (title_key == "pool-of-radiance" and node.flag in (0, 1)
                 and 1 <= node.data <= 0x7F
                 and node.data | node.flag << 7 != 0xFF):
@@ -801,12 +812,14 @@ def _own_rule_node(title_key: str, effect_id: int,
                                "than the C64's own")
         return POOL_FF_CHAIN
     if effect_id == SLOW_POISON_DAMAGE_ID and _slowed_title(title_key):
-        if m != 0xFF:
+        if m != 0xFF and not (title_key == _BLADES
+                              and m == SLOW_POISON_BLADES_C64):
             return Unconverted("a Slow Poison damage magnitude other than "
                                "the C64's own")
         return SLOW_POISON_DOS
     if effect_id == SLOW_POISON_ID and _slowed_title(title_key):
-        if m == 0xFF:
+        if m == 0xFF or (title_key == _BLADES
+                         and m == SLOW_POISON_BLADES_C64):
             return SLOW_POISON_DOS
         if title_key == "pool-of-radiance" and m & 0x7F:
             return m & 0x7F, m >> 7

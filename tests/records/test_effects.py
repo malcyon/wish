@@ -2168,7 +2168,7 @@ def test_a_charm_nodes_count_bit_4_is_unconverted_not_dropped():
         effects.Unconverted)
 
 
-@pytest.mark.parametrize("title", [_P, _C, _S])
+@pytest.mark.parametrize("title", [_P, _C])
 @pytest.mark.parametrize("eid", [15, 22])
 def test_slow_poison_and_its_companion_are_ff_on_both_ports(title, eid):
     assert effects.c64_row(title, _RE(eid, 300, 0xFF, 1)) == (eid, 0xFF)
@@ -2181,6 +2181,22 @@ def test_slow_poison_and_its_companion_are_ff_on_both_ports(title, eid):
         for data, flag in ((5, 1), (0, 1)):
             assert isinstance(effects.c64_row(title, _RE(eid, 300, data, flag)),
                               effects.Unconverted)
+
+
+@pytest.mark.parametrize("eid", [15, 22])
+def test_a_silver_blades_slow_poison_is_a_c64_row_whose_handler_never_runs(eid):
+    # The C64 runs a handler only with magnitude bit 7 set; DOS runs neither.
+    assert effects.c64_row(_S, _RE(eid, 3780, 0xFF, 1)) == (eid, 0x7F)
+    for m in (0x7F, 0xFF if eid == 15 else 0x85):
+        got = effects.dos_record(_S, effects.Effect(63, eid, 2, 0x5E, m), 0)
+        assert (got.data, got.flag) == (0xFF, 1)
+    _round_trip(_S, _RE(eid, 60, 0xFF, 1))
+    for data, flag in ((0xFF, 0), (5, 1)):
+        assert isinstance(effects.c64_row(_S, _RE(eid, 300, data, flag)),
+                          effects.Unconverted)
+    assert isinstance(
+        effects.dos_record(_S, effects.Effect(63, eid, 2, 0x5E, 0x05), 0),
+        effects.Unconverted)
 
 
 def test_pools_own_slow_poison_row_keeps_its_level_and_its_flag():
@@ -2201,4 +2217,10 @@ def test_a_later_slow_poison_row_becomes_the_dos_node_dispel_cannot_touch(
     assert (got.data, got.flag) == (0xFF, 1)
     assert isinstance(
         effects.dos_record(title, effects.Effect(63, 22, 2, 0x5E, 0x05), 0),
+        effects.Unconverted)
+
+
+def test_curses_slow_poison_magnitude_7f_is_unconverted():
+    assert isinstance(
+        effects.dos_record(_C, effects.Effect(63, 22, 2, 0x5E, 0x7F), 0),
         effects.Unconverted)

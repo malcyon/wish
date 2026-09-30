@@ -309,6 +309,39 @@ def test_save_as_c64_keeps_a_slow_poisoned_dos_party_slow_poisoned(tmp_path):
     assert holders == {"WISHFTR"}
 
 
+def test_save_as_c64_keeps_a_silver_blades_survivor_alive_through_the_rest(
+        tmp_path):
+    """A Silver Blades DOS save with PAINE under Slow Poison (rows 22 and 15
+    still running) saves as a C64 save whose rows carry magnitude `$7F`, so the
+    C64 never runs its drain and kill handlers, and PAINE keeps 55 in a trait
+    slot. Expects the control resave of #667's live run, registered as
+    `WISH-SPEC-ssb-667-slow-poison-running-resave`."""
+    from gamedata import specimen
+
+    from editor import roster, saveplan
+
+    party = roster.Party(str(specimen(
+        "ssb-667-slow-poison-running-resave") / "SAVGAMD.DAT"))
+    try:
+        plan = _blessed_row_plan(party, tmp_path)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Silver Blades' own C64 disks")
+    assert isinstance(plan, saveplan.SavePlan)
+    (_name, data), = plan.files.items()
+    out = tmp_path / "written.d64"
+    out.write_bytes(data)
+    back = roster.Party(str(out))
+    names = {m.index: m.name for m in back.members}
+    rows = [e for e in effects.active_effects(back.save0.to_bytes())
+            if e.id in (15, 22)]
+    assert sorted((names[e.owner], e.id, e.magnitude) for e in rows) == [
+        ("PAINE", 15, 0x7F), ("PAINE", 22, 0x7F)]
+    holders = {m.name for m in back.members
+               if 55 in bytes(back.save0.characters[m.index]
+                              .record.get_raw("item_effects"))}
+    assert "PAINE" in holders
+
+
 def test_save_as_c64_keeps_a_curse_party_shielded_and_protected(tmp_path):
     """The Curse specimen made by driving the game holds FLORENTZ under
     Protection from Evil 10' Radius (47 minutes) and Shield (2 minutes) and

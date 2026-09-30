@@ -1324,6 +1324,21 @@ node or magnitude stays a loss. Not yet run in the game on either port, and
 that the C64 reads `$83`, the state 22 stores when 55 is present, as dead is
 PROBABLE.
 
+Silver Blades is the exception to the `$FF` rule. The C64 dispatches a row's
+handler only when magnitude bit 7 is set (`CAMP $1314`). Handler 15 (`$858E`)
+drains 1 HP per 10 minutes of rest while HP is 2 or more, and handler 22
+(`$85A9`) sets HP 0 and status `$83` when 55 is held. DOS guards both in mode 0
+(`GAME.OVR 0x1144B`), and the live run of a staged DOS survivor showed HP
+unchanged over 60 minutes and STATUS OKAY at expiry. So a DOS `(0xFF, 1)` node
+for id 15 or 22 in Silver Blades becomes magnitude `$7F`
+(`effects.SLOW_POISON_BLADES_C64`), a value no C64 routine writes for these
+ids and whose clear bit 7 keeps both handlers from running. Reading back, `$7F`
+gives `(0xFF, 1)` for those ids, as do the C64's own `$FF` (15) and
+`level | $80` (22); Curse's `(22, $7F)` stays a loss. Pool and Curse keep `$FF`
+because both of their ports kill when the spell ends. C64 to DOS is unchanged:
+a C64 survivor of the C64's own cast converts to the DOS node and keeps his
+life.
+
 Reproduce the static readings with `.venv/bin/python
 tools/c64/effectcrosswalk.py`; a later title's run prints its caster-level ids.
 Two of that derivation's four conditions, the DOS override of zero and the
