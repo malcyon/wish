@@ -2613,7 +2613,7 @@ def test_a_published_manifest_is_checked_against_its_own_issues_pins(tmp_path, m
         foundation._published_manifest(path, "curse")
     # And the real 677 pin does not pass under 640.
     manifest["issue"] = "640"
-    manifest["source_sha256"] = foundation.PUBLISHED_SOURCES[("curse", "c64")]
+    manifest["source_sha256"] = next(iter(foundation.PUBLISHED_SOURCES[("curse", "c64")]))
     path.write_text(json.dumps(manifest))
     with pytest.raises(winuaesession.RouteError, match="pinned specimen"):
         foundation._published_manifest(path, "curse")
@@ -2889,3 +2889,23 @@ def test_the_start_map_lets_the_party_walk_south_twice_and_not_north_or_east():
     assert start.door(3, 4, geo.SOUTH) == geo.PASSABLE
     assert not start.is_passable(3, 3, geo.EAST)
     assert not start.is_passable(3, 3, geo.NORTH)
+
+
+def test_the_real_silver_blades_c64_pins_include_the_share_one_specimen():
+    pins = foundation._source_pins(foundation.PUBLISHED_ISSUE, "ssb", "c64")
+    assert "bacfa0d95954aacaabfe61d871ef39d989d70a11f9b125ca6a2d51ee41519240" in pins
+    assert "0" * 64 not in pins
+    assert foundation._source_pins(foundation.PUBLISHED_ISSUE, "curse", "c64") <= (
+        foundation.PUBLISHED_SOURCES[("curse", "c64")])
+
+
+def test_a_source_in_the_pin_set_is_accepted_and_an_unlisted_one_is_refused(tmp_path, monkeypatch):
+    path = _prepared_published(tmp_path, monkeypatch)
+    manifest = json.loads(path.read_text())
+    pinned = manifest["source_sha256"]
+    other = "bacfa0d95954aacaabfe61d871ef39d989d70a11f9b125ca6a2d51ee41519240"
+    monkeypatch.setitem(foundation.PUBLISHED_SOURCES, ("ssb", "c64"), frozenset({other, pinned}))
+    foundation._published_manifest(path, "ssb")
+    monkeypatch.setitem(foundation.PUBLISHED_SOURCES, ("ssb", "c64"), frozenset({other}))
+    with pytest.raises(winuaesession.RouteError, match="differs from the pinned specimen"):
+        foundation._published_manifest(path, "ssb")

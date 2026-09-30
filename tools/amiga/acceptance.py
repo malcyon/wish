@@ -77,20 +77,33 @@ from tools.registry import evidence, scratch, specimens  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 PUBLISHED_ISSUE = "677"
+#: Pinned Save As sources a published disk-one run may start from, as a set of SHA-256 values per
+#: title and port. The Silver Blades pair holds one party of share 0 and one of share 1.
 PUBLISHED_SOURCES = {
-    ("ssb", "c64"): "38c11440e578227c1a240b740f362b1b69943d9897f42dc35ac39b17508872dc",
-    ("ssb", "dos"): "b3515793dada24b6a85061f5c2fdc5555a45df40381ee0009e9fd54ba381fb72",
-    ("curse", "c64"): "fdf74e5ff41fe0f90f8f9b150d966df276c4dc4e5ecd6829efee2fee9019acc1",
-    ("curse", "dos"): "4e911c12a449a4ff1694aab6d918f120c176df66483e32428cb50454db8b03df",
+    ("ssb", "c64"): frozenset({
+        "38c11440e578227c1a240b740f362b1b69943d9897f42dc35ac39b17508872dc",
+        "bacfa0d95954aacaabfe61d871ef39d989d70a11f9b125ca6a2d51ee41519240",
+    }),
+    ("ssb", "dos"): frozenset({"b3515793dada24b6a85061f5c2fdc5555a45df40381ee0009e9fd54ba381fb72"}),
+    ("curse", "c64"): frozenset({"fdf74e5ff41fe0f90f8f9b150d966df276c4dc4e5ecd6829efee2fee9019acc1"}),
+    ("curse", "dos"): frozenset({"4e911c12a449a4ff1694aab6d918f120c176df66483e32428cb50454db8b03df"}),
 }
 #: Pinned Save As sources per issue a published disk-one run may be filed under.
 PUBLISHED_SOURCES_BY_ISSUE = {
     PUBLISHED_ISSUE: PUBLISHED_SOURCES,
     "640": {
-        ("curse", "c64"): "97099201a9c77ae43ab7d4605fd7a9dab2864333a5239177a41c5658e997007b",
-        ("ssb", "c64"): "5bb68551effa8a0d37ebc5f103a664e71505a798190d14ba8efa7730dd30e8a9",
+        ("curse", "c64"): frozenset({"97099201a9c77ae43ab7d4605fd7a9dab2864333a5239177a41c5658e997007b"}),
+        ("ssb", "c64"): frozenset({"5bb68551effa8a0d37ebc5f103a664e71505a798190d14ba8efa7730dd30e8a9"}),
     },
 }
+
+
+def _source_pins(issue: str, name: str, port: str) -> frozenset:
+    """The allowed source hashes for a title and port; a bare string counts as a set of one."""
+    pins = PUBLISHED_SOURCES_BY_ISSUE[issue].get((name, port), frozenset())
+    return frozenset({pins}) if isinstance(pins, str) else frozenset(pins)
+
+
 PUBLISHED_ISSUE_TEXT = {
     PUBLISHED_ISSUE: (
         "#677 (Save As to the Amiga puts a Curse or Silver Blades party on a separate "
@@ -1906,8 +1919,7 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
     port, letter = manifest["source_port"], manifest["loaded_letter"]
     if port not in ("c64", "dos") or letter != ("A" if port == "c64" else "D"):
         raise RouteError("the published source port and slot letter disagree")
-    if manifest.get("source_sha256") != PUBLISHED_SOURCES_BY_ISSUE[manifest["issue"]].get(
-            (name, port)):
+    if manifest.get("source_sha256") not in _source_pins(manifest["issue"], name, port):
         raise RouteError("the manifest source differs from the pinned specimen")
     turn_about = manifest.get("turn_about", letter == "D")
     if not isinstance(turn_about, bool):
@@ -2020,12 +2032,13 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     image = pathlib.Path(report["written"][0])
     disk1 = pathlib.Path(report["amiga_disk1"])
     disk2 = pathlib.Path(report["amiga_disk2"])
-    source_pin = PUBLISHED_SOURCES_BY_ISSUE[issue].get((name, port))
-    if source_pin is None:
+    pins = _source_pins(issue, name, port)
+    if not pins:
         raise RouteError(f"issue {issue} pins no {port} source for {name}")
+    source_pin = report.get("specimen_sha256")
     disk1_pin, disk2_pin, _executable, _volume = PUBLISHED_DISKS[name]
     if (source != pathlib.Path(outcome.get("source", "")) or
-            report.get("specimen_sha256") != source_pin or sha256(source) != source_pin):
+            source_pin not in pins or sha256(source) != source_pin):
         raise RouteError("the Save As source differs from the pinned specimen")
     if sha256(disk1) != disk1_pin or sha256(disk2) != disk2_pin:
         raise RouteError("the Save As game disks differ from the registered pins")
