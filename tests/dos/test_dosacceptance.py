@@ -8036,11 +8036,15 @@ def test_inconclusive_watch_names_only_the_watches_that_say_so():
 
 def test_the_prayer_watch_needs_its_title_the_map_and_the_debugger(tmp_path, monkeypatch):
     game, d = _fighter(tmp_path)
-    with pytest.raises(da.StepFailed, match="pool only"):
+    with pytest.raises(da.StepFailed) as refused:
         d.prayer_watch(35)
+    assert str(refused.value) == ("prayer-watch 35 is driven in pool only: id 35 is "
+                                  "Prayer's +1 half there, and a ssb Prayer is id 49")
     d.title = da.TITLES["darkness"]
-    with pytest.raises(da.StepFailed, match="not darkness"):
+    with pytest.raises(da.StepFailed) as refused:
         d.prayer_watch(49)
+    assert str(refused.value) == ("prayer-watch is driven in curse, pool, ssb only, "
+                                  f"not {d.title.key}")
     d.title = da.TITLES["pool"]
     d.where = "camp"
     with pytest.raises(da.StepFailed, match="needs the map"):

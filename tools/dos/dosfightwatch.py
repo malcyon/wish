@@ -1880,7 +1880,16 @@ class PrayerWatch:
             for off in (lay.save_roll, lay.attack_roll)}
         if routine or point:
             h["code_matches"] = True
-        if routine == "penalty" and h["combatant"]["side"] != 0:
+        if routine == "penalty":
+            # Inside the handler the walker is one frame further down than at
+            # a stub halt: the handler's own frame comes first.  A saving
+            # throw walks list 12 and lowers the same byte.
+            try:
+                h["list"] = bytes.fromhex(ch[3]["frame"])[0x0A]
+            except (IndexError, ValueError):
+                h["list"] = None
+        if (routine == "penalty" and h["combatant"]["side"] != 0
+                and h.get("list") == ATTACK_LIST):
             self.penalties.append({"n": h["n"], "combatant": h["combatant"],
                                    "node": h["node"]})
         if attack_stub:
@@ -1954,9 +1963,21 @@ class PrayerWatch:
                 or h.get("combatant", {}).get("at") != self.round["attacker"]
                 or self.pair is None or self.pair["attacker"] != self.round["attacker"]):
             return False
-        if self.completed is None:
+        # An ally without the tested node can complete a round first; a later
+        # round replaces it until one that carries the node has completed.
+        if self.completed is None or not self.round_ok(self.completed):
             self.completed = self.round
-        return True
+        return self.round_ok(self.completed)
+
+    def round_ok(self, done: dict, node_id: int | None = None) -> bool:
+        """Whether a completed round had the tested node where it counts: on
+        the attacker (id 49) or anywhere in the party (id 35)."""
+        node_id = self.node_id if node_id is None else node_id
+        if node_id is None:
+            return True             # a watch with no tested node counts any round
+        if node_id == 49:
+            return any(n["id"] == 49 for n in done["attacker_nodes"] or [])
+        return bool(self.holders(done["party"], node_id))
 
     # -- the fight ------------------------------------------------------------------
 
@@ -2039,11 +2060,7 @@ class PrayerWatch:
                        "routines are armed, so a round needs a later attack")
         else:
             done = self.completed
-            if node_id == 49:
-                ok = any(n["id"] == 49 for n in done["attacker_nodes"] or [])
-            else:
-                ok = bool(self.holders(done["party"], node_id))
-            if not ok:
+            if not self.round_ok(done, node_id):
                 why.append(f"the id-{node_id} node was not "
                            f"{'on the attacker' if node_id == 49 else 'in the party'} "
                            "at the attack's stub halt")

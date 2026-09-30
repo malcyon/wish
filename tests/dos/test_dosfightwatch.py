@@ -1852,6 +1852,74 @@ def test_a_later_title_counts_the_party_helper_and_a_monsters_penalty(title):
     assert result["monster_penalties"] == 1 and result["helper_hits"] == 1
 
 
+def _ally_then_member(dbg, lay):
+    """The party's first record, at `PARTY_SEG`, holds no node; a second, at
+    `MEMBER_SEG`, holds the id-49 node."""
+    dbg.put(PARTY_SEG, lay.node_list, _le(0) + _le(0))
+    dbg.put(PARTY_SEG, lay.next_record, _le(0) + _le(MEMBER_SEG))
+    dbg.put(MEMBER_SEG, 0, bytes((6,)) + b"MEMBER")
+    dbg.put(MEMBER_SEG, lay.side, b"\x00")
+    dbg.put(MEMBER_SEG, lay.next_record, _le(0) + _le(MONSTER_SEG))
+    dbg.put(MEMBER_SEG, lay.node_list, _le(0x800) + _le(MEMBER_SEG))
+    dbg.put(MEMBER_SEG, 0x800, bytes((49,)) + _le(58) + b"\x03\x00")
+
+
+MEMBER_SEG = 0x4A00
+
+
+@pytest.mark.parametrize("title", LATER)
+def test_an_allys_round_without_the_node_does_not_keep_a_members_from_counting(title):
+    dbg, watch, lay, astub, _ = _later(title, party=("ALLY",))
+    _ally_then_member(dbg, lay)
+    at_menu = watch.party()
+    dbg.put(STUB, lay.stub_49, b"\xea" + _le(0x0100) + _le(LOAD))
+    dbg.pending = [
+        *_attack(dbg, lay, astub, PARTY_SEG, ["stub49"]),       # loads the unit
+        *_attack(dbg, lay, astub, PARTY_SEG, ["stub49", "handler", "bonus", "helper"]),
+        *_attack(dbg, lay, astub, MEMBER_SEG, ["stub49", "handler", "bonus", "helper"]),
+        *_attack(dbg, lay, astub, MONSTER_SEG, ["stub49", "handler", "penalty"])]
+    stop = watch.run_fight(600, idle=lambda: not dbg.pending)
+    assert stop == "attack round and penalty"
+    result = watch.summary(49, at_menu, watch.party())
+    assert result["conclusive"] is True and result["why"] == []
+
+
+@pytest.mark.parametrize("title", LATER)
+def test_an_allys_round_alone_never_passes_an_id_49_run(title):
+    dbg, watch, lay, astub, _ = _later(title, party=("ALLY",))
+    _ally_then_member(dbg, lay)
+    at_menu = watch.party()
+    dbg.put(STUB, lay.stub_49, b"\xea" + _le(0x0100) + _le(LOAD))
+    dbg.pending = [
+        *_attack(dbg, lay, astub, PARTY_SEG, ["stub49"]),
+        *_attack(dbg, lay, astub, PARTY_SEG, ["stub49", "handler", "bonus", "helper"]),
+        *_attack(dbg, lay, astub, MONSTER_SEG, ["stub49", "handler", "penalty"])]
+    watch.run_fight(600, idle=lambda: not dbg.pending)
+    result = watch.summary(49, at_menu, watch.party())
+    assert result["conclusive"] is False
+    assert any("not on the attacker" in w for w in result["why"])
+
+
+@pytest.mark.parametrize("title", LATER)
+def test_a_saving_throws_penalty_halt_is_not_a_monsters_attack(title):
+    dbg, watch, lay, astub, at_menu = _later(title)
+    dbg.put(STUB, lay.stub_49, b"\xea" + _le(0x0100) + _le(LOAD))
+    penalty = _halt(dbg, lay, LOAD, lay.routines["penalty"] - lay.prayer_unit_file,
+                    MONSTER_SEG, inner=True)
+
+    def list_12():
+        penalty()
+        dbg.put(SS, 0x200 + 0x40 * 2 + 0x0A, bytes((12,)))
+    dbg.pending = [
+        *_attack(dbg, lay, astub, PARTY_SEG, ["stub49"]),
+        *_attack(dbg, lay, astub, PARTY_SEG,
+                 ["stub49", "handler", "bonus", "helper"])[:-1], list_12]
+    watch.run_fight(600, idle=lambda: not dbg.pending)
+    halt = next(h for h in watch.halts if h["kind"] == "penalty")
+    assert halt["list"] == 12 and halt["combatant"]["side"] == 1
+    assert watch.penalties == []
+
+
 @pytest.mark.parametrize("title", LATER)
 def test_a_later_title_party_round_alone_does_not_stop_or_conclude_the_run(title):
     dbg, watch, lay, astub, at_menu = _later(title)
