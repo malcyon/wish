@@ -112,9 +112,10 @@ is the whole reason the tenth byte exists.
 `tools/amiga/amiganodefields.py fields` walks forward from **every** load of the
 record's chain-head field, marks the address registers that hold a node,
 runs to a fixed point, and prints each displacement anything touches through
-one. It over-approximates deliberately: it ignores control flow and keeps a
-register marked until something overwrites it, so a displacement it does
-*not* report is one no instruction downstream of a chain-head load can reach.
+one. It over-approximates deliberately: it follows every branch and absolute
+`jmp` to every return and keeps a register marked until something
+overwrites it, so a displacement it does *not* report is one no instruction
+downstream of a chain-head load can reach on a path it followed.
 
 | | `/Curse` | `/Secret` |
 |---|---|---|
@@ -123,7 +124,8 @@ register marked until something overwrites it, so a displacement it does
 | **offset 1** | **0 sites** | **0 sites** |
 | offset 2 | read 3, written 1 | read 5, written 1 |
 | offset 4 | read 4 | read 4 |
-| offset 6 | read 21, written 5 | read 25, written 6 |
+| offset 5 | read 1 | read 2 |
+| offset 6 | read 23, written 5 | read 29, written 6 |
 
 Three things the sweep does not cover, chased by hand:
 

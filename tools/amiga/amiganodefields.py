@@ -30,15 +30,16 @@ node's fields are `$1` to `$6`, and `$1(aN)` matches 81 instructions in
 `/Secret` of which none is a node.  Hence the walk.
 
 The register walk **over-approximates**: it keeps a register marked as
-holding a node until something overwrites it, and runs
-to a fixed point.  It follows every branch and `dbcc` to its target and to
-its fall-through, so code after an early return is scanned; it ends a path at
-`rts`, `rte`, `rtr` and `jmp`, and does not follow a computed jump or a
-`bsr`'s callee.  That is the safe direction for the question being asked.
-A displacement it does not report is one no instruction downstream of a
-chain-head load can reach, whatever path the game takes; a displacement it
-does report may be a coincidence of the over-approximation and has to be
-read.
+holding a node until something overwrites it, and runs to a fixed point.  It
+follows every branch and `dbcc` to its target and its fall-through, and an
+absolute `jmp` to its target, so code after an early return is scanned.  It
+ends a path at `rts`, `rte`, `rtr` and a computed `jmp`, and does not follow
+a `bsr`'s callee.  The set of registers marked as holding a node is shared by
+every path, so a read through a register another path overwrote may be
+over- or under-reported.  Even so, a displacement it does not report is one
+no instruction downstream of a chain-head load can reach on a path it
+followed; a displacement it does report may be a coincidence of the
+over-approximation and has to be read.
 
 Nothing is written, and both disk images are opened read-only.
 
@@ -76,6 +77,15 @@ LOAD_A = re.compile(r"^(.*),\s*(a[0-7])$")
 #: The absolute target capstone prints for a branch or `dbcc`, which may
 #: follow a data-register operand.
 BRANCH_TARGET = re.compile(r"(?:^|,\s*)\$([0-9a-f]+)$")
+
+#: `jmp $addr.l`, the only `jmp` whose target is known: a hunk-relative
+#: address, before the loader relocates it.
+JUMP_TARGET = re.compile(r"^\$([0-9a-f]+)\.l$")
+#: Mnemonics that end a path outright, and the conditional and unconditional
+#: branches whose target is followed (`bsr` is a call, not a branch).
+ENDS = ("rts", "rte", "rtr")
+BRANCHES = ("bra", "bhi", "bls", "bcc", "bhs", "bcs", "blo", "bne", "beq",
+            "bvc", "bvs", "bpl", "bmi", "bge", "blt", "bgt", "ble")
 
 #: How wide each mnemonic's memory operand is, for the report.
 WIDTH = {"b": 1, "w": 2, "l": 4}
@@ -205,14 +215,21 @@ def walk(exe: Executable, start_at: int, chain: int, node_next: int,
             if ins.mnemonic.split(".")[0] == "jsr" and held:
                 calls.setdefault(ins.address, set()).update(held)
             head = ins.mnemonic.split(".")[0]
-            if head in ("rts", "rte", "rtr", "jmp"):
+            if head in ENDS:
                 continue
-            target = BRANCH_TARGET.match(op)
-            if target and (head.startswith("db")
-                           or (head.startswith("b") and head != "bsr")):
+            if head == "jmp":
+                # An absolute target is followed; a computed one ends the path.
+                absolute = JUMP_TARGET.match(op)
+                if absolute:
+                    pending.append(base + int(absolute.group(1), 16))
+                continue
+            target = BRANCH_TARGET.search(op)
+            if target and (head in BRANCHES or head.startswith("db")):
                 pending.append(int(target.group(1), 16))
-                if head in ("bra", "jmp"):
+                if head == "bra":
                     continue
+            elif head == "bra":
+                continue
             pending.append(ins.address + ins.size)
         if len(found) == before:
             break

@@ -106,6 +106,19 @@ def early_return_program() -> bytes:
     ])
 
 
+def _program(code: bytes) -> Executable:
+    data = bytearray(b"\x4e\xf9" + u32(0))
+    data += b"\0" * (0x7FFE + 8 - len(data))
+    return Executable.parse(hunk_file([
+        (amiga68k.HUNK_CODE, pad4(code), []),
+        (amiga68k.HUNK_DATA, pad4(bytes(data)), [(0, [2])]),
+    ]))
+
+
+HEAD = b"\x24\x6e\x00\x96"                       # 0: movea.l $96(a6), a2
+READ5 = b"\x14\x2a\x00\x05"                      # move.b $5(a2), d2
+
+
 def sweep(exe: Executable, chain: int = CHAIN) -> dict[int, list]:
     """`{offset: [(width, writes, count)]}` from the tool's own report."""
     heads = amiganodefields.sites(
@@ -134,6 +147,46 @@ def test_every_node_byte_the_program_names_is_reported_at_its_width():
 def test_a_read_after_an_early_return_is_reported():
     found = sweep(Executable.parse(early_return_program()))
     assert sorted(found) == [5]
+
+
+def test_an_absolute_jmp_is_followed_and_ends_its_path():
+    # 4: jmp $c.l   10: rts   12: read $5
+    code = HEAD + b"\x4e\xf9\x00\x00\x00\x0c" + b"\x4e\x75" + READ5 \
+        + b"\x4e\x75"
+    assert sorted(sweep(_program(code))) == [5]
+    # The fall-through after `jmp` is not executed: a read there is not found.
+    code = HEAD + b"\x4e\xf9\x00\x00\x00\x10" + READ5 + b"\x4e\x75" \
+        + b"\x4e\x75"  # 4: jmp $10.l  10: read (dead)  14, 16: rts
+    assert sweep(_program(code)) == {}
+
+
+def test_a_computed_jmp_ends_its_path():
+    code = HEAD + b"\x4e\xd3" + READ5 + b"\x4e\x75"
+    assert sweep(_program(code)) == {}
+
+
+def test_bra_does_not_fall_through():
+    # 4: bra.b (to 10)  6: read $5 (dead)  10: rts
+    code = HEAD + b"\x60\x04" + READ5 + b"\x4e\x75"
+    assert sweep(_program(code)) == {}
+
+
+def test_dbra_follows_both_paths():
+    # 4: dbra d0, 12   8: rts   12: read $5
+    code = HEAD + b"\x51\xc8\x00\x06" + b"\x4e\x75" + b"\x4e\x75" + READ5 \
+        + b"\x4e\x75"
+    assert sorted(sweep(_program(code))) == [5]
+    # Fall-through side: read directly after the dbra, target is an rts.
+    code = HEAD + b"\x51\xc8\x00\x0a" + READ5 + b"\x4e\x75" + b"\x4e\x75"
+    assert sorted(sweep(_program(code))) == [5]
+
+
+def test_a_bit_test_with_an_absolute_operand_is_not_a_branch():
+    # btst.b #1, $10.w has the operand text of a target; the read at 12 is
+    # after an rts and must stay unreached.
+    code = HEAD + b"\x08\x38\x00\x01\x00\x0c" + b"\x4e\x75" + READ5 \
+        + b"\x4e\x75"
+    assert sweep(_program(code)) == {}
 
 
 def test_a_node_byte_nothing_names_is_reported_as_unreached():
