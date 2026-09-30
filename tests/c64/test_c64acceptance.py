@@ -10016,3 +10016,54 @@ def test_temple_probe_leave_share_timeout_names_the_bound_that_expired(
     session.press_line, session.after_share = True, "unknown"
     with pytest.raises(A.StepFailed, match="before the 30 second limit"):
         run.temple_probe("BRUTUS RAISE POOL", leave=True)
+
+
+# --- --stage-var -------------------------------------------------------------
+
+def test_a_staged_variable_lands_at_its_address_in_savedgame0(tmp_path):
+    src = _fixture_disk(tmp_path)
+    plain = A.stage(src, tmp_path / "plain.d64", "pool-of-radiance")
+    took = A.stage(src, tmp_path / "var.d64", "pool-of-radiance",
+                   variables=[(0x4A07, 1)])
+    was = _payload(tmp_path / "plain.d64")[0x107]
+    assert took["variables"] == [{"address": 0x4A07, "offset": 0x107,
+                                  "was": was, "now": 1}]
+    assert plain["variables"] == []
+    expect = bytearray(_payload(tmp_path / "plain.d64"))
+    expect[0x107] = 1
+    assert _payload(tmp_path / "var.d64") == bytes(expect)
+    assert _roster(tmp_path / "var.d64") == _roster(tmp_path / "plain.d64")
+
+
+@pytest.mark.parametrize("address", [0x6DD2, 0x48FF])
+def test_a_staged_variable_outside_savedgame0_is_refused(tmp_path, address):
+    with pytest.raises(ValueError, match="outside the save file"):
+        A.stage(_fixture_disk(tmp_path), tmp_path / "s.d64", "pool-of-radiance",
+                variables=[(address, 1)])
+
+
+def test_a_stage_var_line_parses_hex_and_refuses_bad_lines(tmp_path, capsys):
+    assert A.parse_vars(["4A07=01"]) == [(0x4A07, 1)]
+    assert A.parse_vars(["4A07=1,4AC5=ff"]) == [(0x4A07, 1), (0x4AC5, 0xFF)]
+    for bad in ("4A07=100", "4A07", "XYZ=1", "=1", "4A07="):
+        with pytest.raises(ValueError):
+            A.parse_vars([bad])
+        with pytest.raises(SystemExit) as e:
+            A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                    "--stage-var", bad, "--stage-only", "--steps", "load",
+                    "--out", str(tmp_path / "evidence")])
+        assert e.value.code == 2
+    capsys.readouterr()
+
+
+def test_stage_var_reaches_the_staged_disk_through_the_command_line(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed a slot"))
+    out = tmp_path / "evidence"
+    rc = A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                 "--stage-var", "4A07=1", "--stage-only", "--steps", "load",
+                 "--out", str(out)])
+    assert rc == 0
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert summary["staged"]["variables"][0]["offset"] == 0x107
+    assert _payload(out / "staged.D64")[0x107] == 1

@@ -28,6 +28,10 @@ Staging is an input, written before the boot and never after the load:
   same roster, for a title whose save slot stores only the record's first
   `0x100` bytes.
 
+* `--stage-var ADDR=BYTE`, one byte of the save file at its memory address
+  (hex, `4A07=01`), as the game loads it: only `$4900` to the end of the file
+  is reachable, so a byte the game rebuilds elsewhere (`$6DD2`) is refused.
+
 SLOT is the save slot, 0 first.  Every option repeats, and each is logged in
 bytes with what it replaced.
 
@@ -363,6 +367,18 @@ def parse_sides(texts) -> list[tuple[int, int]]:
             if not 0 <= index < PARTY_SLOTS:
                 raise ValueError(f"{item!r}: the slot is 0 to 7")
             out.append((index, _byte(value, "the side")))
+    return out
+
+
+def parse_vars(texts) -> list[tuple[int, int]]:
+    """`ADDR=BYTE`, both hex: one byte of the save file at its load address."""
+    out = []
+    for text in texts:
+        for item in text.split(","):
+            addr, sep, value = item.partition("=")
+            if not sep or not addr or not value:
+                raise ValueError(f"{item!r}: a variable is ADDR=BYTE, in hex")
+            out.append((int(addr, 16), _byte(value, "the variable", 16)))
     return out
 
 
@@ -926,7 +942,7 @@ def _effect_rows(payload: bytes) -> list[list[int]]:
 
 def stage(src: pathlib.Path, dest: pathlib.Path, title_key: str,
           rows=(), traits=(), items=(), record_bytes=(), statuses=(),
-          sides=()) -> dict:
+          sides=(), variables=()) -> dict:
     """Copy `src` to `dest` and write the named bytes into the copy's payload.
 
     Editing an input and then watching the engine compute from it is the
@@ -951,7 +967,7 @@ def stage(src: pathlib.Path, dest: pathlib.Path, title_key: str,
         roster = bytearray(body)
     took: dict = {"title": game.key, "source": str(src), "staged": str(dest),
                   "rows": [], "traits": [], "items": [],
-                  "record_bytes": [], "statuses": [], "sides": []}
+                  "record_bytes": [], "statuses": [], "sides": [], "variables": []}
     arrays = (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
               effects.EFFECT_DURATION_OFFSET, effects.EFFECT_MAGNITUDE_OFFSET)
     for slot, eid, owner, duration, magnitude in rows:
@@ -991,6 +1007,14 @@ def stage(src: pathlib.Path, dest: pathlib.Path, title_key: str,
                               "was": roster[at + ROSTER_COMBAT_SIDE],
                               "now": value})
         roster[at + ROSTER_COMBAT_SIDE] = value
+    for address, value in variables:
+        at = address - addr
+        if not 0 <= at < len(payload):
+            raise ValueError(f"${address:04X} is outside the save file "
+                             f"(${addr:04X} to ${addr + len(payload) - 1:04X})")
+        took["variables"].append({"address": address, "offset": at,
+                                  "was": payload[at], "now": value})
+        payload[at] = value
     image.write_file_inplace(game.save_file,
                              addr.to_bytes(2, "little") + bytes(payload))
     if box.roster_file is not None and (statuses or sides):
@@ -5572,7 +5596,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                        items=parse_items(args.stage_item),
                        record_bytes=parse_record_bytes(getattr(args, "stage_record", [])),
                        statuses=parse_statuses(getattr(args, "stage_status", [])),
-                       sides=parse_sides(getattr(args, "stage_side", [])))
+                       sides=parse_sides(getattr(args, "stage_side", [])),
+                       variables=parse_vars(getattr(args, "stage_var", [])))
     except ValueError as e:
         summary["lost"] = str(e)
         write_summary()
@@ -5887,6 +5912,8 @@ def main(argv: list[str] | None = None) -> int:
                     metavar="SLOT=BYTE")
     ap.add_argument("--stage-side", action="append", default=[],
                     metavar="SLOT=BYTE")
+    ap.add_argument("--stage-var", action="append", default=[],
+                    metavar="ADDR=BYTE")
     ap.add_argument("--first-bar-key", default=None, metavar="KEY",
                     help="SPACE or one character, pressed once at the first command "
                          "bar of the first fight (Curse and Silver Blades)")
@@ -5955,6 +5982,7 @@ def main(argv: list[str] | None = None) -> int:
         parse_record_bytes(args.stage_record)
         parse_statuses(args.stage_status)
         parse_sides(args.stage_side)
+        parse_vars(args.stage_var)
         if args.first_bar_key is not None:
             parse_key(args.first_bar_key)
         parse_checkpoints(args.checkpoint)
@@ -5979,7 +6007,7 @@ def main(argv: list[str] | None = None) -> int:
                 or sorted(parse_record_bytes(args.stage_record))
                 != sorted(TEMPLE_STAGING[steps[1].arg])
                 or any((args.stage_row, args.stage_trait, args.stage_item,
-                        args.stage_status, args.stage_side,
+                        args.stage_status, args.stage_side, args.stage_var,
                         args.first_bar_key, args.checkpoint,
                         args.read_at))
                 or args.stage_only or args.preserve_specimen or args.capture_ready
