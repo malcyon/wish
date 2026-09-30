@@ -9212,25 +9212,48 @@ def test_temple_probe_pool_records_an_unreadable_pool_and_still_finishes(
     assert session.keys == _POOL_KEYS
 
 
+
+WATCH_EVENT = _window({17: "YOU ARE ROUSTED BY THE CITY WATCH AND",
+                       18: "TOLD TO MOVE ALONG. WHAT DO YOU DO?"}, "GO STAY")
+
+
+class _RestSession(FakeSession):
+    """A party whose square is read from `squares`, one per call."""
+
+    squares = None
+
+    def position(self):
+        return self.squares.pop(0)
+
+
+def _watch_rest(tmp_path, monkeypatch, *, end="event", before=(0, 3, 0, 0, 0, 0),
+                after=(0, 8, 0, 0, 0, 0), arg="5h", moves=None, extra=None,
+                squares=([10, 4, 2], [11, 4, 2])):
+    """A rest whose route_pool half ends on screen END, driven by MOVES."""
+    screens = {"world": _window({}, WORLD_BAR), "camp": _window({}, CAMP),
+               "event": WATCH_EVENT, "event2": WATCH_EVENT,
+               "stuck": _window({}, "SOMETHING ELSE")}
+    screens.update(extra or {})
+    table = {("world", ("bar", "ENCAMP")): "camp",
+             ("event", ("bar", "GO")): "world"}
+    table.update(moves or {})
+    sess = _RestSession(screens, table, "world")
+    sess.squares = list(squares)
+
+    def fake_rest(s, log, minutes, hours, cp):
+        s.state = end
+        return {"before": {"clock": list(before)}, "after": {"clock": list(after)}}
+
+    monkeypatch.setattr(A.route_pool, "rest", fake_rest)
+    run, log = _pool_run(tmp_path, sess)
+    return run, log, sess
+
+
 def test_rest_answers_the_city_watch_go_stay_and_reports_the_unfinished_rest(
         tmp_path, monkeypatch):
     """A rest that ends on the watch's GO STAY bar is answered GO, the event is
     logged, the rest is reported short, and the world bar is found after it."""
-    event = _window({17: "YOU ARE ROUSTED BY THE CITY WATCH AND",
-                     18: "TOLD TO MOVE ALONG. WHAT DO YOU DO?"}, "GO STAY")
-    sess = FakeSession(
-        {"world": _window({}, WORLD_BAR), "camp": _window({}, CAMP),
-         "rested": _window({}, CAMP), "event": event},
-        {("world", ("bar", "ENCAMP")): "camp",
-         ("event", ("bar", "GO")): "world"}, "world")
-
-    def watch_rest(s, log, minutes, hours, cp):
-        s.state = "event"
-        return {"before": {"clock": [0, 3, 0, 0, 0, 0]},
-                "after": {"clock": [0, 8, 0, 0, 0, 0]}}
-
-    monkeypatch.setattr(A.route_pool, "rest", watch_rest)
-    run, log = _pool_run(tmp_path, sess)
+    run, log, sess = _watch_rest(tmp_path, monkeypatch)
     got = run.rest("5h")
     assert run.to_world()
     log.close()
@@ -9241,4 +9264,102 @@ def test_rest_answers_the_city_watch_go_stay_and_reports_the_unfinished_rest(
     assert [e["event"] for e in got["events"]] == ["go_stay"]
     assert got["events"][0]["text"][0].startswith("YOU ARE ROUSTED")
     assert '"random_event"' in (tmp_path / "run.jsonl").read_text()
+    assert got["position_before"] == [10, 4, 2]
+    assert got["position_after"] == [11, 4, 2]
     assert sess.state == "world"
+
+
+def test_rest_with_no_event_is_completed_and_the_party_has_not_moved(
+        tmp_path, monkeypatch):
+    run, log, sess = _watch_rest(
+        tmp_path, monkeypatch, end="world", arg="5m",
+        before=(0, 3, 0, 0, 0, 0), after=(0, 8, 0, 0, 0, 0))
+    sess.squares = [[10, 4, 2], [10, 4, 2]]
+    got = run.rest("5m")
+    log.close()
+    assert got["events"] == [] and got["rest_completed"] is True
+    assert got["position_before"] == got["position_after"] == [10, 4, 2]
+
+
+def test_rest_rounds_the_asked_time_up_to_the_five_minute_pass(
+        tmp_path, monkeypatch):
+    run, log, _ = _watch_rest(
+        tmp_path, monkeypatch, end="world",
+        before=(0, 0, 0, 0, 0, 0), after=(0, 5, 0, 0, 0, 0))
+    assert run.rest("7m")["rest_completed"] is False     # 7m runs to 10
+    run, log2, _ = _watch_rest(
+        tmp_path, monkeypatch, end="world",
+        before=(0, 0, 0, 0, 0, 0), after=(0, 0, 1, 0, 0, 0))
+    assert run.rest("7m")["rest_completed"] is True
+    log.close()
+    log2.close()
+
+
+def test_rest_measures_a_rest_across_midnight_by_hour_and_day(
+        tmp_path, monkeypatch):
+    # 23:00 on day 3 to 01:00 on day 4 is two hours.
+    run, log, _ = _watch_rest(
+        tmp_path, monkeypatch, end="world", arg="2h",
+        before=(0, 0, 0, 23, 3, 1), after=(0, 0, 0, 1, 4, 1))
+    got = run.rest("2h")
+    log.close()
+    assert got["elapsed_minutes"] == 120 and got["rest_completed"] is True
+
+
+def test_rest_across_a_month_wrap_does_not_say_whether_it_completed(
+        tmp_path, monkeypatch):
+    run, log, _ = _watch_rest(
+        tmp_path, monkeypatch, end="world", arg="2h",
+        before=(0, 0, 0, 23, 30, 1), after=(0, 0, 0, 1, 1, 2))
+    got = run.rest("2h")
+    log.close()
+    assert got["elapsed_minutes"] < 0 and got["rest_completed"] is None
+
+
+def test_rest_answers_two_events_and_fails_on_a_third(tmp_path, monkeypatch):
+    run, log, sess = _watch_rest(
+        tmp_path, monkeypatch,
+        moves={("event", ("bar", "GO")): "event2",
+               ("event2", ("bar", "GO")): "event"})
+    with pytest.raises(A.StepFailed, match="still up after 2 answers"):
+        run.rest("5h")
+    log.close()
+    assert sess.sent.count(("bar", "GO")) == 2
+
+
+def test_rest_two_events_then_the_map_is_answered_twice(tmp_path, monkeypatch):
+    run, log, sess = _watch_rest(
+        tmp_path, monkeypatch,
+        moves={("event", ("bar", "GO")): "event2",
+               ("event2", ("bar", "GO")): "world"})
+    got = run.rest("5h")
+    log.close()
+    assert len(got["events"]) == 2 and sess.state == "world"
+
+
+def test_rest_fails_when_go_cannot_be_chosen(tmp_path, monkeypatch):
+    run, log, sess = _watch_rest(tmp_path, monkeypatch)
+    sess.select_bar = lambda label, row=24, timeout=0: (
+        False if label == "GO" else FakeSession.select_bar(sess, label))
+    with pytest.raises(A.StepFailed, match="GO could not be chosen"):
+        run.rest("5h")
+    log.close()
+
+
+def test_rest_fails_when_the_world_bar_does_not_return_after_go(
+        tmp_path, monkeypatch):
+    run, log, sess = _watch_rest(
+        tmp_path, monkeypatch, moves={("event", ("bar", "GO")): "stuck"})
+    with pytest.raises(A.StepFailed, match="world bar never came back"):
+        run.rest("5h")
+    log.close()
+
+
+def test_rest_leaves_a_take_stay_bar_alone(tmp_path, monkeypatch):
+    other = _window({}, "TAKE STAY")
+    run, log, sess = _watch_rest(
+        tmp_path, monkeypatch, end="other", extra={"other": other},
+        moves={("other", ("key", 0x0D)): "world"})
+    got = run.rest("5h")
+    log.close()
+    assert got["events"] == [] and ("bar", "GO") not in sess.sent

@@ -475,6 +475,8 @@ TURNS = {"I": 0, "J": -1, "K": 1, "M": None}
 WATCH_BAR = ["GO", "STAY"]
 #: Watch events answered after one rest before the rest step stops looking.
 WATCH_EVENTS_MAX = 2
+#: Minutes the engine's rest counts down by per pass.
+REST_PASS_MINUTES = 5
 
 
 def clock_minutes(clock: list[int]) -> int:
@@ -2921,6 +2923,9 @@ class PoolRun:
 
     def rest(self, arg: str) -> dict:
         minutes, hours = parse_rest(arg)
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        square_before = self.position()
         if not self.to_camp():
             raise self.fail("camp", "ENCAMP never put up the camp bar")
         got = route_pool.rest(self.sess, self.log, minutes, hours, self.armed)
@@ -2928,33 +2933,49 @@ class PoolRun:
         if "failed" in got:
             raise self.fail("rest", got["failed"])
         events = self.answer_watch(f"rest {arg}")
-        self.to_world()
-        asked = hours * 60 + minutes
+        if not self.to_world() and events:
+            raise self.fail("rest", "the world bar never came back after the "
+                            "city watch's GO")
+        square_after = self.position()
+        # The engine counts a rest down in five-minute passes, so a rest asked
+        # for a time that is not a multiple of five runs to the next five.
+        asked = -(-(hours * 60 + minutes) // REST_PASS_MINUTES) * REST_PASS_MINUTES
         elapsed = clock_minutes(got["after"]["clock"]) - clock_minutes(
             got["before"]["clock"])
+        # A negative span is a month wrap the digits cannot measure.
+        completed = None if elapsed < 0 else elapsed >= asked
         return {"asked": [minutes, hours], "before_clock": got["before"]["clock"],
                 "after_clock": got["after"]["clock"],
-                "elapsed_minutes": elapsed, "rest_completed": elapsed >= asked,
-                "events": events}
+                "elapsed_minutes": elapsed, "rest_completed": completed,
+                "events": events, "position_before": square_before,
+                "position_after": square_after}
 
     def answer_watch(self, step: str) -> list[dict]:
         """Answer Pool's city-watch `GO STAY` event a rest ran into, with GO.
 
         The bar is the whole of row 24, so nothing but that event matches it;
         STAY would start a fight and is never chosen.  The rest is not
-        resumed: whether it ran its time is in the step's `rest_completed`."""
+        resumed: whether it ran its time is in the step's `rest_completed`.
+        The step fails when GO cannot be chosen or the bar is still up after
+        the cap, so an unanswered event is never reported as answered."""
         events = []
         for _ in range(WATCH_EVENTS_MAX):
             rows = self.rows()
             if not rows or rows[24].split() != WATCH_BAR:
-                break
+                return events
             event = {"event": "go_stay", "step": step, "answered": WATCH_BAR[0],
                      "text": [r.strip("$ ") for r in rows[17:23] if r.strip("$ ")]}
             events.append(event)
             self.log.emit("random_event", **event)
             self.capture("watch-event", rows)
-            self.choose_bar(WATCH_BAR[0], timeout=10)
+            if not self.choose_bar(WATCH_BAR[0], timeout=10):
+                raise self.fail("rest", "GO could not be chosen on the city "
+                                "watch's GO STAY bar")
             self.sess.settle(1.5)
+        rows = self.rows()
+        if rows and rows[24].split() == WATCH_BAR:
+            raise self.fail("rest", f"the GO STAY bar was still up after "
+                            f"{WATCH_EVENTS_MAX} answers")
         return events
 
     def fight_over_budget(self, arg: str, result) -> StepFailed:
