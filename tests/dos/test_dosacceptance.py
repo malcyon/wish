@@ -8160,3 +8160,332 @@ def test_silver_blades_gates_alt_x_on_its_second_argument():
     handler = ovr[0x18D17:0x18DEC]
     assert bytes.fromhex("2680BDA80101") in handler
     assert bytes.fromhex("26C685A60106") in handler
+
+
+# -- a Curse sheet headed `(NPC)` ----------------------------------------------
+
+#: Six members' names, drawn in the test font on the roster and the sheet.
+_FONT_NAMES = {1: "MATHEW", 2: "RANGER", 3: "TRAVIS", 4: "LEDERA", 5: "SHARA",
+               6: "PHIL"}
+_GREEN = b"\x55\xff\x55"
+
+
+class FakeCurseHeader(FakeCurseMenu):
+    """Curse's party menu with the names drawn in the test font, and a sheet
+    that draws `header` two cells after the name, where `GAME.OVR`
+    0x27112-0x27140 draws `(NPC)` for a control byte above 0x7F."""
+
+    def __init__(self, tmp, header="(NPC)", shows=None, **kw):
+        super().__init__(tmp, **kw)
+        self.header, self.shows = header, shows
+
+    def capture(self):
+        if self.mode not in ("party", "pick", "sheet"):
+            return super().capture()
+        text = b"" if self.mode == "sheet" else bytes((self.line,))
+        px = bytearray(_screen(self.BARS[self.mode], text).px)
+        if self.mode == "sheet":
+            name = _FONT_NAMES[self.shows or self.line]
+            x, y = screens.POD_SHEET_NAME
+            _draw(px, _FONT_BLOCK, y // 8, x // 8, name, _WHITE)
+            if self.header:
+                _draw(px, _FONT_BLOCK, y // 8, x // 8 + len(name) + 2, self.header,
+                      _GREEN)
+        else:
+            x, y = screens.POD_ROSTER["party"]
+            for n in range(1, self.size + 1):
+                _draw(px, _FONT_BLOCK, y // 8 + n - 1, x // 8, _FONT_NAMES[n],
+                      _WHITE if n == self.line else _CYAN)
+        return dosbox.Screen(W, H, bytes(px))
+
+
+def _curse_header(tmp_path, monkeypatch, **kw):
+    monkeypatch.setattr(dosbox, "find_game", lambda stem="CURSE": tmp_path)
+    monkeypatch.setattr(da, "load_font", lambda game: _FONT)
+    game = FakeCurseHeader(tmp_path, **kw)
+    d = da.Driver(game, lambda **k: None, "J", "curse", party_size=game.size)
+    d.game.to_main_menu = lambda timeout=120.0: None
+    d.load()
+    return game, d
+
+
+@pytest.mark.parametrize("header", ["(NPC)", None])
+def test_a_curse_sheet_is_the_members_with_or_without_an_npc_header(
+        tmp_path, monkeypatch, header):
+    game, d = _curse_header(tmp_path, monkeypatch, header=header)
+    got = d.view(2)
+    assert game.keys[2:] == ["End", "v", "e"]
+    assert got["name"] == screens.roster_name(game.capture(), "party", 2)
+    assert got["header"] == header
+    assert d.where == "party" and game.mode == "party"
+
+
+@pytest.mark.parametrize("kw", [{"header": "(XPC)"}, {"shows": 4}])
+def test_an_npc_header_does_not_excuse_another_name_or_another_header(
+        tmp_path, monkeypatch, kw):
+    game, d = _curse_header(tmp_path, monkeypatch, **kw)
+    with pytest.raises(da.StepFailed, match="not roster line 2"):
+        d.view(2)
+    assert "e" not in game.keys
+
+
+def test_the_captured_npc_sheet_is_the_rangers_with_its_header():
+    """#667's `1bf7cf2dad-l51-subject`: roster line 5, the Ranger staged with
+    control 0xB3, drew `(NPC)` after his name, and the name check refused it."""
+    try:
+        game = da.TITLES["curse"].find_game()
+    except (FileNotFoundError, OSError):
+        pytest.skip("needs the DOS Curse of the Azure Bonds archive")
+    font = da.load_font(game)
+    run = "1bf7cf2dad-l51-subject"
+    roster = da.dosboxx.halve(_capture(run, "004-view-line-5", issue="667"))
+    sheet = da.dosboxx.halve(_capture(run, "005-lost-view-5-name", issue="667"))
+    assert screens.roster_line(roster, "party", 6) == 5
+    assert screens.sheet_name(sheet) != screens.roster_name(roster, "party", 5)
+    assert da.sheet_header(sheet, da.name_cells(roster, "party", 5), font) == "(NPC)"
+    for other in (1, 2, 3, 4, 6):
+        assert da.sheet_header(sheet, da.name_cells(roster, "party", other), font) is None
+
+
+# -- the locked door the fight's walk meets ------------------------------------
+
+#: `.`, a cell pattern no letter of `_LETTER` uses.
+_DOT = 0x30
+
+
+def _locked(rest: str) -> bytes:
+    return _bar("LOCKED") + bytes((_DOT,)) + _bar(" " + rest)
+
+
+def test_the_locked_door_bar_is_known_by_its_letters_whatever_it_offers():
+    for rest in ("BASH PICK EXIT", "BASH PICK KNOCK EXIT", "BASH EXIT"):
+        words = da.bar_words(_screen(_locked(rest), b""))
+        assert da.locked_words(words), rest
+        assert da.fight_bar_kind(_screen(_locked(rest), b"")) == "locked"
+    for bar in (_locked("BASH PICK"), _bar("VIEW TAKE POOL SHARE EXIT"),
+                _bar("MOVE AREA CAST VIEW ENCAMP SEARCH LOOK"),
+                _bar("MOVE VIEW AIM USE CAST QUICK DONE"), _bar("LOCKED EXIT")):
+        assert not da.locked_words(da.bar_words(_screen(bar, b"")))
+    assert da.FIGHT_KEYS["locked"] == "e"
+
+
+def test_the_captured_locked_door_bar_is_classified():
+    """#667's `1bf7cf2dad-l51-subject2` stopped at `LOCKED. BASH PICK EXIT`."""
+    screen = da.dosboxx.halve(_capture("1bf7cf2dad-l51-subject2",
+                                       "007-lost-fight-unknown-8ae8d1b0c9a980bf",
+                                       issue="667"))
+    assert da.fight_bar_kind(screen) == "locked"
+
+
+class LockedFight(FakeFight):
+    """`FakeFight` whose first step from square 1 meets a locked door, which
+    `e` leaves with the party where it stood."""
+
+    def __init__(self, tmp_path):
+        super().__init__(tmp_path)
+        self.door = True
+
+    def frame(self):
+        if self.state == "locked":
+            return _screen(_locked("BASH PICK EXIT"), b"")
+        return super().frame()
+
+    def key(self, *keys, gap=0.35):
+        for k in keys:
+            if self.state == "move" and k == "Up" and self.square == 1 and self.door:
+                self.keys.append(k)
+                self.state, self.door = "locked", False
+            elif self.state == "locked":
+                self.keys.append(k)
+                if k == "e":
+                    self.state = "move"
+            else:
+                super().key(k, gap=gap)
+
+
+def test_a_locked_door_on_the_walk_is_left_with_exit_and_the_walk_goes_on(
+        tmp_path, clock):
+    game = LockedFight(tmp_path)
+    d = da.Driver(game, lambda **k: None, "D", "ssb", party_size=3)
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.record_world(game.capture())
+    d.where = "map"
+    got = d.fight()
+    assert game.keys == ["m", "Up", "e", "Right", "Up", "Up", "c", "q", "q", "e", "n"]
+    assert got["bumps"] == 1 and got["bars"] == 2 and d.where == "map"
+    assert "locked" in [e["kind"] for e in _events(d, "fight-screen")]
+
+
+# -- a second fight in one boot, after a camp save -----------------------------
+
+
+class CampFight(FakeFight):
+    """`FakeFight` with Silver Blades' camp: `e` on the map encamps, `s` and a
+    letter save and ask to quit, `n` declines, and `e` in camp leaves it, the
+    party then walking from square 1 again.  With `stuck`, `e` in camp does
+    nothing."""
+
+    FRAMES = {**FakeFight.FRAMES, "camp": "SAVE VIEW MAGIC REST ALTER FIX EXIT",
+              "which": "A B C D", "quit": "QUIT TO DOS YES NO"}
+
+    def __init__(self, tmp_path, stuck=False):
+        super().__init__(tmp_path)
+        self.save_dir.mkdir()
+        self.stuck = stuck
+
+    def save_file(self, letter):
+        return self.save_dir / f"SAVGAM{letter.upper()}.DAT"
+
+    def key(self, *keys, gap=0.35):
+        for k in keys:
+            s = self.state
+            if s == "map" and k == "e":
+                self.state = "camp"
+            elif s == "camp" and k == "s":
+                self.state = "which"
+            elif s == "which" and k.upper() in "ABCDEFGHIJ":
+                self.save_file(k).write_bytes(bytes((len(self.keys),)))
+                self.state = "quit"
+            elif s == "quit" and k == "n":
+                self.state = "camp"
+            elif s == "camp" and k == "e" and not self.stuck:
+                self.state, self.square = "map", 1
+            else:
+                super().key(k, gap=gap)
+                continue
+            self.keys.append(k)
+
+
+def test_two_fights_in_one_boot_with_a_camp_save_between(tmp_path, clock):
+    game = CampFight(tmp_path)
+    d = da.Driver(game, lambda **k: None, "D", "ssb", party_size=3)
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.record_world(game.capture())
+    d.where = "map"
+    d.first_bar_key = "space"
+    first = d.fight()
+    d.camp()
+    d.save("C")
+    left = d.leave()
+    second = d.fight()
+    fight = ["m", "Up", "Up", "c", "q", "q", "e", "n"]
+    assert game.keys == (fight[:4] + ["space"] + fight[4:] + ["e", "s", "c", "n", "e"]
+                         + fight)
+    assert (game.save_dir / "SAVGAMC.DAT").is_file()
+    assert (first["fight"], second["fight"]) == (1, 2)
+    # The first-bar key is the first fight's only.
+    assert first["first_bar_key"] == "space" and second["first_bar_key"] is None
+    assert second["bars"] == 2 and d.where == "map" and left["map_bar"] == d.world_sig
+    assert [e["actor"]["name"] for e in _events(d, "bar")] == [
+        "GUY", "GUY", "PAINE", "GUY", "PAINE"]
+    assert len(_events(d, "placement")) == 2
+
+
+def test_a_camp_exit_that_leaves_camp_showing_stops_the_run(tmp_path, clock):
+    game = CampFight(tmp_path, stuck=True)
+    d = da.Driver(game, lambda **k: None, "D", "ssb", party_size=3)
+    d.record_world(game.capture())
+    d.where = "map"
+    d.camp()
+    with pytest.raises(da.StepFailed, match="leave-camp"):
+        d.leave()
+    assert game.keys == ["e", "e", "e"] and d.where == "camp"
+
+
+def test_leave_parses_and_goes_from_camp_to_the_map_in_curse_and_silver_blades():
+    assert da.parse_step("leave").kind == "leave"
+    with pytest.raises(ValueError):
+        da.parse_step("leave 1")
+    steps = ("load", "begin", "fight", "camp", "save C", "leave", "fight", "camp",
+             "save D", "read")
+    for title in ("curse", "ssb"):
+        da.validate_steps([da.parse_step(s) for s in steps], title)
+        with pytest.raises(ValueError, match="leave needs camp first"):
+            da.validate_steps([da.parse_step(s) for s in ("load", "begin", "leave")],
+                              title)
+        with pytest.raises(ValueError, match="save needs camp first"):
+            da.validate_steps([da.parse_step(s) for s in
+                               ("load", "begin", "camp", "leave", "save C")], title)
+    with pytest.raises(ValueError, match="curse, ssb only, not pool"):
+        da.validate_steps([da.parse_step(s) for s in ("load", "camp", "leave")], "pool")
+
+
+# -- --stage-side: the combat side and quickfight bytes ------------------------
+
+
+def test_a_stage_side_line_parses_the_side_alone_or_with_quickfight():
+    assert da.parse_side("5=0") == (5, 0, None)
+    assert da.parse_side("5=1:1") == (5, 1, 1)
+    assert da.parse_side("1=0x01:0x00") == (1, 1, 0)
+
+
+@pytest.mark.parametrize("bad", ["0=1", "9=1", "5=256", "5=1:256", "5", "5=1:2:3",
+                                 "5=", "x"])
+def test_a_bad_stage_side_line_is_refused(bad):
+    with pytest.raises(ValueError):
+        da.parse_side(bad)
+
+
+@pytest.mark.parametrize("key,side_at", [
+    ("pool-of-radiance", 0x10E),
+    ("curse-of-the-azure-bonds", 0x197),
+    ("secret-of-the-silver-blades", 0x1A8),
+])
+def test_stage_side_writes_the_bytes_the_codec_reads_as_side_and_quickfight(
+        tmp_path, key, side_at):
+    from goldbox import dos_codec, dos_port
+    record = bytearray(dos_port.deltas_for(key).record_size)
+    record[0], record[1:6] = 5, b"GUARD"
+    path = tmp_path / "CHRDATJ5.SAV"
+    path.write_bytes(bytes(record))
+    got = da.stage_side(tmp_path, "J", 5, 1, 1)
+    data = path.read_bytes()
+    assert data[side_at:side_at + 2] == b"\x01\x01"
+    assert data[:side_at] == bytes(record[:side_at])
+    assert data[side_at + 2:] == bytes(record[side_at + 2:])
+    assert (got["side_offset"], got["quickfight_offset"]) == (hex(side_at),
+                                                              hex(side_at + 1))
+    assert (got["side_before"], got["side_after"]) == ("00", "01")
+    neutral = dos_codec.to_neutral(dos_codec.read_character(path))
+    assert neutral.get("hostile") is True and neutral.get("quickfight") is True
+
+
+def test_stage_side_leaves_quickfight_alone_when_not_given(tmp_path):
+    path = tmp_path / "CHRDATJ5.SAV"
+    path.write_bytes(_curse_record())
+    got = da.stage_side(tmp_path, "J", 5, 1)
+    assert path.read_bytes()[0x197:0x199] == b"\x01\x00"
+    assert "quickfight_after" not in got
+
+
+def test_the_command_line_stages_the_side_after_control_and_before_record(tmp_path):
+    (tmp_path / "CHRDATJ5.SAV").write_bytes(_curse_record())
+    args = _run_args(tmp_path, [])
+    args.stage_control = ["5=0xB3"]
+    args.stage_side = ["5=0:1"]
+    args.stage_record = ["5:0x197=1"]
+    done = da.stage(tmp_path, "J", args)
+    assert [s["stage"] for s in done] == ["control", "side", "record"]
+    assert (tmp_path / "CHRDATJ5.SAV").read_bytes()[0x197:0x199] == b"\x01\x01"
+
+
+def test_check_staging_refuses_a_stage_side_line_with_no_chrdat(tmp_path):
+    args = _run_args(tmp_path, [])
+    args.stage_side = ["3=1"]
+    with pytest.raises(ValueError, match="line 3"):
+        da.check_staging(args, tmp_path, "J")
+
+
+def test_main_refuses_a_bad_stage_side_before_any_slot(tmp_path, monkeypatch, capsys):
+    def claimed(*a, **k):
+        raise AssertionError("an emulator slot was claimed")
+
+    monkeypatch.setattr(da.dosbox, "claim", claimed)
+    monkeypatch.setattr(da.dosboxx, "claim", claimed)
+    with pytest.raises(SystemExit):
+        da.main(["--title", "curse", "--save", str(tmp_path), "--steps", "load",
+                 "--stage-side", "5=256", "--out", str(tmp_path / "out")])
+    err = capsys.readouterr().err
+    assert "5=256" in err and "LINE=SIDE[:QUICKFIGHT]" in err

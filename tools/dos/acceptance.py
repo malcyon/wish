@@ -54,13 +54,14 @@ a source whose title does not match `--title`:
 | `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P`.  Pool presses Return past each `PRESS <ENTER>/<RETURN> TO CONTINUE` bar first, when the loaded save is on an event square, so that screen is never recorded as the map (#701); a party that has not taken Rolf's opening tour meets eight (PROBABLE: one boot of one party), and the run stops at `POOL_LOAD_CONTINUE_ROUNDS` (#631) |
 | `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars and Pools of Darkness' journal question and `YES NO` bars (below), to the map; Pools of Darkness' map only by its measured bar |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
+| `leave` | Curse and Silver Blades, in camp: the camp bar's `Exit` (`CAMP_EXIT`), believed when the map bar is back, so a `fight` can follow a camp `save` in the same boot |
 | `sheet N`, `items N` | Curse, Silver Blades and Pools of Darkness (`items` Pools of Darkness only; Pool's is the next row), in camp: roster line N (from 1) highlighted (`End` in Curse, `Down` in the other two), `VIEW`, the sheet's name checked against line N's, the bar read for `heal_offered` and `cure_offered` (`sheet_offers`), and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
 | `heal N` | the same three, in camp: line N's sheet, `HEAL` (`LAY` in Pools of Darkness), `SELECT` at `HEAL WHOM?` on the member it opens on, and the sheet required back without the word; back to camp |
 | `cure N` | Curse, in camp: line N's sheet, `CURE`, `SELECT` at `CURE WHOM?`, `YES` to `CURE ANYWAY` if asked, the sheet required back; back to camp |
 | `change N CLASS` | Curse, at the party menu with the hall open (`--hall`): line N, `HUMAN CHANGE CLASSES`, the class list's row for CLASS as the engine's own test orders them (`class_choices`), checked against the rows the highlight reaches, `SELECT`, back to the party menu |
 | `halve N I`, `join N I` | Pools of Darkness, in camp: member N's `ITEMS`, the highlight moved to row I (from 1, at most 18) with `Down`, `h` or `j` pressed once, and the rows counted before and after; `halve` must add a row and keep the highlight or the run stops before any save, `join` only records; back to camp |
 | `memorize N` | Pools of Darkness, in camp: roster line N highlighted with `Down`, `MAGIC`, `MEMORIZE`; the grimoire's title checked against line N's name; every page shot and its eleven rows read, turning with `NEXT` until the bar stops offering it; `lists_126` says whether a page draws `MONSTER SUMMONING`, spell id 126; `EXIT` to the Magic bar and to camp.  Nothing is memorized |
-| `view N` | At the party menu, before `begin`.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar), `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
+| `view N` | At the party menu, before `begin`.  Pools of Darkness and Silver Blades: `VIEW CHARACTER`, line N at `PICK CHARACTER` with `Down`, `SELECT`.  Curse: `End` to line N on the party menu, then `v`.  The sheet is checked by its name as above (never by a bar); a sheet that draws `(NPC)` two cells after the name (a control byte above 0x7F) is the member's too, read with the title's font, and the result's `header` names it.  `EXIT` returns to the party menu, and only Pools of Darkness pages `ITEMS` |
 | `items N` | Pool, in camp: member N's `ITEMS` list, first screen only, from `End` to the line, `v`, `i`, and `Escape` twice back to camp; refuses a sheet with no `ITEMS`; records `rows` and `marked`, the rows (from 1) drawn with the Detect Magic `* ` |
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool, Curse and Silver Blades, in camp: `MAGIC`, `DISPLAY`, every page of the list of spells in effect read as text with the title's own font (`load_font`), turning with `n` while the bar is ` NEXT EXIT`; `members` is each member's name and the effect names under it, and the list must name every member (Pool's page also six name rows); `Return` or `e` back to the Magic bar (`DISPLAY_LEAVE`) and `e` to camp |
@@ -72,7 +73,7 @@ a source whose title does not match `--title`:
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
 | `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
-| `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is refused unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
+| `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure and at a locked door, which the walk then marks walled, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is refused unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A second `fight` in the boot follows `camp`, `save X` and `leave`, or another `fight`; the first-bar key and Alt+X are the first fight's only, and each result names its fight by number.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
 | `prayer-watch 49`, `prayer-watch 35` | Pool, from the map, `load` first: walk to an encounter (`walk_to_encounter`), read every member's effect nodes and Prayer's handler table at the encounter menu, break on the id-49 and id-35 stubs and the attack roll's stub (`08D2:003E`, the table's segment less `0x41` plus `0xB0`), arm the list-10 call and its return at the segment that stub's far jump names, re-arming when a stub hit shows a new one, arm the handler, bonus test, +1 helper and penalty at the overlay segment the stub's far jump names once it loads, answer each bar by `COMBAT_KEYS`, and log each halt as `prayer-halt`: registers, 16 bytes at `SS:SP`, the four-frame `BP` chain, combatant name and side, the node's five bytes and `DS:0x6816` and `DS:0x6822`.  A party attack is a list-10 call halt with a side-0 attacker, closed by that attacker's next return halt.  For id 49 the step stops after one party attack whose own helper or penalty halt fell inside it; for id 35 three completed pairs with no Prayer stub halt inside them are a conclusive result, and the step stops after the third.  It also stops when the map has held `FIGHT_SETTLED` seconds, or after `PRAYER_FIGHT_SECONDS`; the step fails if the menu came more than `PRAYER_BOOT_SECONDS` after the driver was made (the walk itself is bounded by its 40 steps and the run's `--deadline`).  The result is `conclusive: False`, and the run exits 2 with `inconclusive` in `summary.json` rather than `lost` or `completed`, when no member carried the node at the menu or at the stop, an armed or halted routine's code did not match `GAME.OVR`, the stop-time party was not read, or, for id 49, no party attack armed at the stubs ran its helper or penalty (the first call loads the overlay before its routines are armed, so a round needs a later attack).  Only `shot`, `press` and `read` may follow |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement, record byte 0x130 (spell id 126's book byte, `book_0x130`) and items |
 
@@ -144,7 +145,9 @@ bytes (`.claude/rules/testing.md`, "Poke a field before the boot"):
 CHARACTER` in the party menu wherever the party stands for every class
 (`docs/194-the-dos-training-ladder.md`); `--xp N=VALUE` sets roster line N's
 experience; `--add-node N=ID:MINUTES:DATA:FLAG` appends one effect node to
-line N's effect file (`.SPC`, `.FX` or `.SFX`); `--stage-record
+line N's effect file (`.SPC`, `.FX` or `.SFX`); `--stage-side
+LINE=SIDE[:QUICKFIGHT]` sets line N's combat side byte and optionally the
+quickfight byte after it (`stage_side`); `--stage-record
 LINE:OFFSET=VALUE` sets one byte of line N's `CHRDAT` record below its length; `--stage-var
 ADDRESS=VALUE` sets one script-variable word of `SAVGAM` (`read` reports it as the last saved slot holds it).
 
@@ -927,6 +930,23 @@ def treasure_words(words: list[list[str]]) -> bool:
             and pool[1] == pool[2] and take[0] == exit_[3])
 
 
+def locked_words(words: list[list[str]]) -> bool:
+    """A locked door: `LOCKED.` over `BASH PICK KNOCK EXIT`, whichever of
+    the first three the party is offered (Curse `GAME.OVR` 0x18B8C, Silver
+    Blades 0x19C6F).
+
+    `LOCKED.` is seven cells, all different, the `.` its last; its fifth,
+    `E`, opens `EXIT`, the last word, whose other three cells are not in
+    `LOCKED.`; the words between are four or five cells.
+    """
+    if not 2 <= len(words) <= 5 or len(words[0]) != 7 or len(words[-1]) != 4:
+        return False
+    locked, exit_ = words[0], words[-1]
+    return (len(set(locked)) == 7 and len(set(exit_)) == 4
+            and exit_[0] == locked[4] and not set(exit_[1:]) & set(locked)
+            and all(len(w) in (4, 5) for w in words[1:-1]))
+
+
 def fight_bar_kind(screen: dosbox.Screen) -> str | None:
     """What a Curse or Silver Blades screen's bar is during `fight`, or None.
 
@@ -951,6 +971,8 @@ def fight_bar_kind(screen: dosbox.Screen) -> str | None:
         return "treasure"
     if continue_battle_words(words):
         return "continue_battle"
+    if locked_words(words):
+        return "locked"
     if yes_no_words(words):
         return "yes_no"
     return None
@@ -961,11 +983,12 @@ def fight_bar_kind(screen: dosbox.Screen) -> str | None:
 #: its end; `COMBAT` at the encounter menu; `EXIT` at the treasure, leaving
 #: it where it lies; `NO` at every `YES NO` (the treasure left behind, and
 #: any other question the walk meets) and at `CONTINUE BATTLE`, where
-#: `Return` would answer YES and start another round.  A bar not listed is
-#: waited out.
+#: `Return` would answer YES and start another round; `EXIT` at a locked
+#: door, which leaves the party where it stood, so the walk marks that way
+#: walled (`Explorer.at`).  A bar not listed is waited out.
 FIGHT_KEYS = {"command": "q", "encounter": "c", "continue": "Return",
               "treasure": "e", "treasure_left": "n", "yes_no": "n",
-              "continue_battle": "n"}
+              "continue_battle": "n", "locked": "e"}
 #: What `--intervene` starts the game with, after `START.EXE`.  Silver Blades'
 #: Alt+X handler at the combat command bar (`GAME.OVR` 0xC06D, then 0x18D17)
 #: compares `ParamStr(2)` with the Pascal string `Gem` in `START.EXE`'s data
@@ -1315,13 +1338,40 @@ def _cell_digest(cells: list[str]) -> str:
     return hashlib.sha1("".join(cells).encode()).hexdigest()[:16]
 
 
-def roster_cells(screen: dosbox.Screen, line: int) -> list[str]:
-    """Camp roster line `line`'s name, cell by cell, without trailing blanks."""
-    x, y = POD_ROSTER["camp"]
+def name_cells(screen: dosbox.Screen, where: str, line: int) -> list[str]:
+    """Roster line `line`'s name at the party menu or in camp, cell by cell,
+    without trailing blanks."""
+    x, y = POD_ROSTER[where]
     cells = _cells(screen, x, y + CELL * (line - 1), POD_NAME_CELLS)
     while cells and cells[-1] == _BLANK_CELL:
         cells.pop()
     return cells
+
+
+def roster_cells(screen: dosbox.Screen, line: int) -> list[str]:
+    """Camp roster line `line`'s name, cell by cell, without trailing blanks."""
+    return name_cells(screen, "camp", line)
+
+
+def sheet_header(screen: dosbox.Screen, name: list[str],
+                 font: dict[bytes, str]) -> str | None:
+    """`NPC_HEADER` when the sheet on `screen` draws `name` (`name_cells`),
+    two blank cells and `(NPC)` read with the title's `font`, and nothing
+    else in the name's fifteen cells; otherwise None."""
+    if not name:
+        return None
+    x, y = POD_SHEET_NAME
+    cells = _cells(screen, x, y, POD_NAME_CELLS)
+    at = len(name) + NPC_HEADER_GAP
+    if cells[:len(name)] != name or any(c != _BLANK_CELL for c in cells[len(name):at]):
+        return None
+    text = "".join(read_cell(screen, x + CELL * (at + i), y, font)
+                   for i in range(len(NPC_HEADER)))
+    if text != NPC_HEADER:
+        return None
+    if any(c != _BLANK_CELL for c in cells[at + len(NPC_HEADER):]):
+        return None
+    return NPC_HEADER
 
 
 def grimoire_is_for(screen: dosbox.Screen, name: list[str]) -> bool:
@@ -1371,6 +1421,20 @@ WALKS = {"pool": ("MI", "I"), "curse": ("MI",), "ssb": ("1",), "darkness": ("1",
 TURNS = frozenset(WALKS)
 #: The titles whose party menu `view N` opens a sheet from.
 VIEWS = frozenset({"curse", "ssb", "darkness"})
+#: The titles whose camp `leave` exits to the map, and its key.  The camp
+#: loop of Curse (`GAME.OVR` 0x1B41F-0x1B43B) runs until the menu returns a
+#: key in the set at 0x1B362, which holds only 0 and `E`.  Silver Blades
+#: holds the same set at 0x1D113, after the same camp message; its loop is
+#: not read.
+#: Pool of Radiance's camp `Exit` is exit to DOS, and Pools of Darkness'
+#: camp loop is unread.
+LEAVE_TITLES = frozenset({"curse", "ssb"})
+CAMP_EXIT = "e"
+#: What a sheet draws two cells after the name of a character whose control
+#: byte is above 0x7F: Curse `GAME.OVR` 0x27112-0x27140 tests record 0xF7
+#: and draws `(NPC)` at text column name length + 3, the name starting at 1.
+NPC_HEADER = "(NPC)"
+NPC_HEADER_GAP = 2
 
 
 def pod_menu_after(savgam: bytes | None) -> dict[str, int]:
@@ -1572,7 +1636,8 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
     return days, hours, mins // REST_STEP
 
 
-STEP_HELP = ("load, begin, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, display, 'rest 5m', 'save D', "
+STEP_HELP = ("load, begin, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, leave, display, "
+             "'rest 5m', 'save D', "
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
              "'halve 1 1', 'join 4 15', 'view 1', 'memorize 5', 'cast 2 BLESS', "
              "'cast 2 CURE-LIGHT-WOUNDS 4', 'shot NAME', "
@@ -1588,7 +1653,7 @@ def parse_step(text: str) -> Step:
     if not words:
         raise ValueError("an empty step")
     kind = words[0].lower()
-    if kind in ("load", "begin", "camp", "display", "read") and len(words) == 1:
+    if kind in ("load", "begin", "camp", "leave", "display", "read") and len(words) == 1:
         return Step(kind, text)
     if kind == "rest" and len(words) == 2:
         minutes = parse_duration(words[1])
@@ -1686,6 +1751,13 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
             if where == "camp":
                 raise ValueError(f"already camped: {step.text!r}")
             where = "camp"
+        elif k == "leave":
+            if title not in LEAVE_TITLES:
+                raise ValueError(f"leave is driven in {', '.join(sorted(LEAVE_TITLES))} "
+                                 f"only, not {title}")
+            if where != "camp":
+                raise ValueError(f"leave needs camp first: {step.text!r}")
+            where = "map"
         elif k == "walk":
             if title not in WALKS:
                 raise ValueError(f"walk is not driven in {title}")
@@ -1829,6 +1901,47 @@ def parse_control(text: str) -> tuple[int, int, int | None]:
 
 
 _RECORD_NUMBER = re.compile(r"0|[1-9][0-9]*|0[xX][0-9a-fA-F]+")
+
+
+def parse_side(text: str) -> tuple[int, int, int | None]:
+    """`LINE=SIDE[:QUICKFIGHT]`, numbers decimal or `0x` hex, each one byte:
+    roster line 1-8's combat side byte, 1 for the enemy's, and optionally
+    the quickfight byte after it."""
+    line, sep, rest = text.partition("=")
+    parts = rest.split(":")
+    if (not sep or not re.fullmatch(r"[1-8]", line.strip()) or len(parts) not in (1, 2)
+            or not all(_RECORD_NUMBER.fullmatch(p.strip()) for p in parts)):
+        raise ValueError(f"not a side stage: {text!r} (LINE=SIDE[:QUICKFIGHT], "
+                         "decimal or 0x hex)")
+    side = int(parts[0], 0)
+    quick = int(parts[1], 0) if len(parts) == 2 else None
+    if side > 0xFF or (quick is not None and quick > 0xFF):
+        raise ValueError(f"side or quickfight out of range: {text!r} "
+                         "(LINE=SIDE[:QUICKFIGHT], one byte each)")
+    return int(line), side, quick
+
+
+def stage_side(save_dir: pathlib.Path, letter: str, line: int, side: int,
+               quickfight: int | None = None) -> dict:
+    """Write `side` into roster line `line`'s combat side byte, and
+    `quickfight` into the byte after it when given: the third and fourth
+    bytes of `field_10c_10f`, which `goldbox.dos_codec.to_neutral` reads as
+    `hostile` and `quickfight` (Pool 0x10E, Curse 0x197, Silver Blades
+    0x1A8)."""
+    path = save_dir / f"CHRDAT{letter.upper()}{line}.SAV"
+    c = dos_codec.read_character(path)
+    at = c.fields["field_10c_10f"].offset + 2
+    data = bytearray(path.read_bytes())
+    result = {"stage": "side", "file": path.name, "name": c.name,
+              "side_offset": hex(at), "side_before": f"{data[at]:02x}",
+              "side_after": f"{side:02x}", "quickfight_offset": hex(at + 1)}
+    data[at] = side
+    if quickfight is not None:
+        result.update(quickfight_before=f"{data[at + 1]:02x}",
+                      quickfight_after=f"{quickfight:02x}")
+        data[at + 1] = quickfight
+    path.write_bytes(bytes(data))
+    return result
 
 
 def parse_key(text: str) -> str:
@@ -2526,6 +2639,9 @@ class Driver:
         self.first_bar_key: str | None = None
         #: Set by `run` for `--intervene`: `fight` presses Alt+X once.
         self.intervene = False
+        #: The `fight` steps begun so far; the first-bar key and Alt+X are
+        #: the first fight's only.
+        self.fights = 0
         #: The game's data segment, once a fight's combatants have read true.
         self.combat_ds: int | None = None
         #: The title's text font, once `display` has read it.
@@ -3060,6 +3176,41 @@ class Driver:
         self.shot("camp")
         return {"camp_bar": self.camp_sig}
 
+    def leave(self) -> dict:
+        """Curse and Silver Blades: the camp bar's `Exit`, back to the map.
+
+        `CAMP_EXIT` is pressed only while the camp bar shows, twice at most,
+        and the step is believed when the map's bar is back (`on_world`, or
+        the map word `game.on_map` compares, which Curse's cursor leaves
+        alone).
+        """
+        if self.title.key not in LEAVE_TITLES:
+            raise StepFailed(f"leave is driven in {', '.join(sorted(LEAVE_TITLES))} "
+                             f"only, not {self.title.key}")
+        if self.where != "camp" or self.camp_sig is None:
+            raise StepFailed("leave needs camp first")
+        presses = 0
+        for _ in range(2):
+            screen = self.s.capture()
+            if not self.in_camp(screen):
+                break
+            self.s.key(CAMP_EXIT)
+            presses += 1
+            self.s.wait_while_ink(dosbox.BAR, screen.ink(dosbox.BAR),
+                                  self.bounded(15.0, "leave-camp"))
+        screen = self.s.settle(quiet=1.0, timeout=30.0)
+        if self.in_camp(screen):
+            raise self.fail("leave-camp", f"the camp bar still shows after "
+                            f"{presses} presses of Exit")
+        if not (self.on_world(screen) or self.game.on_map(screen)):
+            raise self.fail("leave-map", "Exit left camp for a screen that is "
+                            "not the map")
+        if not self.on_world(screen):
+            self.record_world(screen)
+        self.where = "map"
+        self.shot("left-camp")
+        return {"presses": presses, "map_bar": self.world_sig}
+
     def map_status(self, label: str, screens: list[dict]) -> tuple[str, str | None]:
         """The settled map's status line and its `x,y` square, with a shot,
         appended to `screens`; a screen that is not the map stops the run."""
@@ -3380,6 +3531,8 @@ class Driver:
             raise self.fail("fight-before", "the map bar is not showing")
         budget = float(seconds or FIGHT_SECONDS)
         end = time.time() + self.bounded(budget, "fight")
+        self.fights += 1
+        first_fight = self.fights == 1
         column = status_column(key)
         enter, leave = MOVE_KEYS.get(key, (None, None))
         walker = Explorer()
@@ -3390,7 +3543,9 @@ class Driver:
                        "ds": None, "torn": 0, "loose": 0,
                        "last_bar": None, "repeats": 0, "unknown_shots": 0,
                        "back_since": None, "unknown_since": None,
-                       "walking": None if enter else self.world_sig}
+                       "walking": None if enter else self.world_sig,
+                       "first_bar_key": self.first_bar_key if first_fight else None,
+                       "intervene": self.intervene and first_fight}
         try:
             while True:
                 self.check_deadline("fight")
@@ -3417,13 +3572,14 @@ class Driver:
         self.where = "map"
         self._fight_shot("fight-end")
         bars = state["bars"]
-        return {"walked": walker.steps, "walked_before_fight": state["met_after"],
+        return {"fight": self.fights,
+                "walked": walker.steps, "walked_before_fight": state["met_after"],
                 "squares": len(walker.visits), "bumps": walker.bumps,
                 "presses": state["presses"], "encounters": state["encounters"],
                 "bars": len(bars),
                 "actors": [b["actor"]["name"] if b["actor"] else None for b in bars],
                 "placement": state["placement"],
-                "first_bar_key": self.first_bar_key if state["key_pressed"] else None,
+                "first_bar_key": state["first_bar_key"] if state["key_pressed"] else None,
                 "intervened": state["intervened"],
                 "after_first_bar_key": state["after_key"],
                 "ds": None if state["ds"] is None else f"{state['ds']:04X}",
@@ -3728,19 +3884,19 @@ class Driver:
             state["placement"] = public
             self.note(event="placement", combatants=public, ds=f"{snap['ds']:04X}",
                       selected=snap["selected"])
-            if self.first_bar_key is not None:
-                self.s.key(self.first_bar_key)
+            if state["first_bar_key"] is not None:
+                self.s.key(state["first_bar_key"])
                 state["presses"] += 1
                 state["key_pressed"] = True
                 state["last_bar"] = None
                 time.sleep(1.0)
-                self.note(event="first-bar-key", key=self.first_bar_key,
+                self.note(event="first-bar-key", key=state["first_bar_key"],
                           shot=self._fight_shot("first-bar-key"))
                 return
         elif after_key:
             state["after_key"] = public
             self.note(event="after-first-bar-key", combatants=public)
-        if self.intervene:
+        if state["intervene"]:
             # Only the bar after the first-bar key, or the first bar without
             # one, gets here.
             self.s.key("alt+x")
@@ -3886,17 +4042,25 @@ class Driver:
         return {"presses": presses}
 
     def check_sheet(self, screen, line: int, want: str, label: str,
-                    got: str | None = None) -> dict:
+                    got: str | None = None, name: list[str] | None = None) -> dict:
         """The sheet on `screen` is roster line `line`'s: its name cells match
         the roster's, and no other line's sheet has had this frame.  `got` is
         the sheet's name when the caller read it over fewer cells than
-        `sheet_name` does."""
+        `sheet_name` does.  `name` is the roster's cells (`name_cells`): a
+        sheet that draws them followed by `(NPC)` (`sheet_header`) is the
+        member's too, and the result's `header` says so."""
         if want == BLANK_NAME:
             raise self.fail(label, f"roster line {line} has no name drawn")
         got = sheet_name(screen) if got is None else got
-        if got != want:
+        header, why = None, ""
+        if got != want and name:
+            try:
+                header = sheet_header(screen, name, self.display_font())
+            except StepFailed as e:
+                why = f"; its header was not read: {e}"
+        if got != want and header is None:
             raise self.fail(label, f"the sheet's name is not roster line {line}'s "
-                            f"(sheet {got}, roster {want})")
+                            f"(sheet {got}, roster {want}){why}")
         digest = screen.digest()
         other = next((n for n, d in self.sheets.items() if d == digest and n != line),
                      None)
@@ -3904,7 +4068,8 @@ class Driver:
             raise self.fail(label, f"line {line}'s sheet is the same frame as "
                             f"line {other}'s")
         self.sheets[line] = digest
-        return {"name": want, "digest": digest, "sheet_bar": bar_signature(screen)}
+        return {"name": want, "header": header, "digest": digest,
+                "sheet_bar": bar_signature(screen)}
 
     def open_sheet(self, line: int) -> dict:
         """Camp: roster line `line` highlighted, `VIEW`, and the sheet checked.
@@ -3918,7 +4083,8 @@ class Driver:
         self.ensure_camp()
         moved = self.pick_line(line, "camp", f"select-{line}",
                                CAMP_ROSTER_NEXT[self.title.key])
-        want = roster_name(self.s.capture(), "camp", line)
+        roster = self.s.capture()
+        want, name = roster_name(roster, "camp", line), name_cells(roster, "camp", line)
         self.shot(f"line-{line}")
         # `V` is keyed by nothing on the sheet's bar, so a second one is inert.
         for _ in range(2):
@@ -3929,7 +4095,8 @@ class Driver:
             raise self.fail(f"sheet-{line}", "the camp bar is still showing "
                             "after VIEW")
         screen = self.s.settle(quiet=0.8, timeout=30.0)
-        checked = self.check_sheet(screen, line, want, f"sheet-{line}-name")
+        checked = self.check_sheet(screen, line, want, f"sheet-{line}-name",
+                                   name=name)
         words = bar_words(screen)
         offers = sheet_offers(words, self.title.key)
         shot = self.shot(f"sheet-{line}")
@@ -4004,12 +4171,13 @@ class Driver:
         the sheet, one press each, in three foundation boots.  The
         key back, `e`, is `dossheetread`'s default and unmeasured here."""
         moved = self.pick_line(line, "party", f"view-{line}-select", ROSTER_NEXT)
-        want = roster_name(self.s.capture(), "party", line)
+        roster = self.s.capture()
+        want, name = roster_name(roster, "party", line), name_cells(roster, "party", line)
         self.shot(f"view-line-{line}")
         if not self.press_screen_changes(VIEW, tries=1, wait=15.0):
             raise self.fail(f"view-{line}", "VIEW changed nothing on the party menu")
         screen = self.s.settle(quiet=0.8, timeout=30.0)
-        checked = self.check_sheet(screen, line, want, f"view-{line}-name")
+        checked = self.check_sheet(screen, line, want, f"view-{line}-name", name=name)
         sheet = self.shot(f"view-{line}-sheet")
         self.back_to_party(f"view-{line}-back")
         self.shot(f"view-{line}-back")
@@ -4025,12 +4193,13 @@ class Driver:
         self.ssb.wait_bar("pick_character", 20.0)
         pick = self.shot(f"pick-{line}")
         moved = self.pick_line(line, "party", f"pick-{line}-select", POD_ROSTER_NEXT)
-        want = roster_name(self.s.capture(), "party", line)
+        roster = self.s.capture()
+        want, name = roster_name(roster, "party", line), name_cells(roster, "party", line)
         self.shot(f"view-line-{line}")
         if not self.press_screen_changes(POD_PICK, tries=2, wait=15.0):
             raise self.fail(f"view-{line}", "SELECT at PICK CHARACTER changed nothing")
         screen = self.s.settle(quiet=0.8, timeout=30.0)
-        checked = self.check_sheet(screen, line, want, f"view-{line}-name")
+        checked = self.check_sheet(screen, line, want, f"view-{line}-name", name=name)
         sheet = self.shot(f"view-{line}-sheet")
         self.back_to_party(f"view-{line}-back")
         self.shot(f"view-{line}-back")
@@ -4052,7 +4221,8 @@ class Driver:
                             "with a highlighted line (PICK CHARACTER)")
         pick = self.shot(f"pick-{line}")
         moved = self.pick_line(line, "party", f"pick-{line}-select")
-        want = roster_name(self.s.capture(), "party", line)
+        roster = self.s.capture()
+        want, name = roster_name(roster, "party", line), name_cells(roster, "party", line)
         self.shot(f"view-line-{line}")
         # A second `S` goes out only if the first changed nothing in its 15
         # seconds, since the first key after a redraw can be dropped; on a
@@ -4060,7 +4230,7 @@ class Driver:
         if not self.press_screen_changes(POD_PICK, tries=2, wait=15.0):
             raise self.fail(f"view-{line}", "SELECT at PICK CHARACTER changed nothing")
         screen = self.s.settle(quiet=0.8, timeout=30.0)
-        checked = self.check_sheet(screen, line, want, f"view-{line}-name")
+        checked = self.check_sheet(screen, line, want, f"view-{line}-name", name=name)
         sheet = self.shot(f"view-{line}-sheet")
         pages = self.item_pages(f"view-{line}-items")
         self.back_to_party(f"view-{line}-back")
@@ -4526,7 +4696,7 @@ class Driver:
             try:
                 self._font = load_font(self.title.find_game())
             except (OSError, dos_savegame.DosSaveError) as e:
-                raise StepFailed(f"display cannot read {self.title.key}'s text font "
+                raise StepFailed(f"the driver cannot read {self.title.key}'s text font "
                                  f"(block {FONT_BLOCK} of 8X8D*.DAX): {e}") from None
         return self._font
 
@@ -5054,6 +5224,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.begin()
                 elif step.kind == "camp":
                     r = d.camp()
+                elif step.kind == "leave":
+                    r = d.leave()
                 elif step.kind == "walk":
                     r = d.walk(step.key)
                 elif step.kind == "turn":
@@ -5207,6 +5379,7 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
     lines = ([parse_xp(t)[0] for t in getattr(args, "xp", []) or []]
              + [parse_node(t)[0] for t in getattr(args, "add_node", []) or []]
              + [parse_control(t)[0] for t in getattr(args, "stage_control", []) or []]
+             + [parse_side(t)[0] for t in getattr(args, "stage_side", []) or []]
              + [r[0] for r in records])
     for line in lines:
         want = f"CHRDAT{from_slot}{line}.SAV"
@@ -5221,8 +5394,8 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
 
 
 def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
-    """The `--hall`, `--xp`, `--add-node`, `--stage-control`, `--stage-record` and
-    `--stage-var` stages, in that order."""
+    """The `--hall`, `--xp`, `--add-node`, `--stage-control`, `--stage-side`,
+    `--stage-record` and `--stage-var` stages, in that order."""
     done = []
     if getattr(args, "hall", False):
         done.append(stage_hall(save_dir, letter))
@@ -5232,6 +5405,8 @@ def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
         done.append(stage_node(save_dir, letter, *parse_node(text)))
     for text in getattr(args, "stage_control", []) or []:
         done.append(stage_control(save_dir, letter, *parse_control(text)))
+    for text in getattr(args, "stage_side", []) or []:
+        done.append(stage_side(save_dir, letter, *parse_side(text)))
     for line, offset, value in parse_record_bytes(getattr(args, "stage_record", []) or []):
         done.append(stage_record(save_dir, letter, line, offset, value))
     for text in getattr(args, "stage_var", []) or []:
@@ -5475,11 +5650,16 @@ def main(argv: list[str] | None = None) -> int:
                     help="stage roster line LINE's field_83_87 control byte, "
                          "and optionally the treasure-share byte after it, "
                          "before the boot")
+    ap.add_argument("--stage-side", action="append", default=[],
+                    metavar="LINE=SIDE[:QUICKFIGHT]",
+                    help="stage roster line LINE's combat side byte (1 is the "
+                         "enemy's) and optionally the quickfight byte after it, "
+                         "after --stage-control, before the boot")
     ap.add_argument("--stage-record", action="append", default=[],
                     metavar="LINE:OFFSET=VALUE",
                     help="stage one byte of roster line LINE's CHRDAT record "
                          "(decimal or 0x hex, comma-separated or repeated), "
-                         "after --stage-control, before the boot")
+                         "after --stage-side, before the boot")
     ap.add_argument("--stage-var", action="append", default=[], metavar="ADDRESS=VALUE",
                     help="stage one script-variable word of SAVGAM (the title's own "
                          "hex address, decimal or 0x hex value), after "
@@ -5523,6 +5703,8 @@ def main(argv: list[str] | None = None) -> int:
             parse_node(n)
         for c in args.stage_control:
             parse_control(c)
+        for c in args.stage_side:
+            parse_side(c)
         parse_record_bytes(args.stage_record)
         for v in args.stage_var:
             parse_var(v)
