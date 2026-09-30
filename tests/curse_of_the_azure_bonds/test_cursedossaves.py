@@ -64,11 +64,12 @@ def test_dos_engine_saving_throws_answers_none_with_no_class():
     assert levels.dos_engine_saving_throws({}, 7, 16, False, CURSE) is None
 
 
-def test_dos_strength_hit_bonus_agrees_with_strength_bonuses_8_to_18():
-    for strength in range(8, 19):
-        for pct in (0, 25, 50, 60, 75, 80, 90, 95, 99, 100):
+def test_dos_strength_hit_bonus_agrees_with_strength_bonuses_3_to_25():
+    for strength in range(3, 26):
+        for pct in range(0, 101):
             want, _damage = derive.strength_bonuses(strength, pct)
-            assert derive.dos_strength_hit_bonus(strength, pct) == want
+            assert derive.dos_strength_hit_bonus(strength, pct) == want, (
+                strength, pct)
 
 
 # --- the specimen sweep ------------------------------------------------------

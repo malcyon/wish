@@ -290,7 +290,6 @@ def test_the_thac0_base_comes_from_the_per_class_array():
         rec.get("strength"), rec.get("exceptional_strength"))[0]
 
 
-
 @pytest.mark.parametrize("strength, step", [(3, -3), (5, -2), (7, -1),
                                             (19, 3), (21, 4), (25, 7)])
 def test_the_consistency_check_takes_the_c64_strength_step_outside_8_to_18(
@@ -305,6 +304,7 @@ def test_the_consistency_check_takes_the_c64_strength_step_outside_8_to_18(
                             armour_class=derive.expected_armour_class(rec, []),
                             damage_bonus=derive.expected_damage_bonus(rec, []))
     assert not [w for w in derive.check(rec, block, []) if "THAC0" in w]
+
 
 @needs_disks
 def test_a_character_with_darts_readied_is_not_reported_as_stale():

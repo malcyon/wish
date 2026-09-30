@@ -120,9 +120,8 @@ def dos_strength_hit_bonus(strength: int, percentile: int = 0) -> int:
     4-5 -2, 6-7 -1, 17-19 +1, 20-22 +2, 23-25 +3, 26-27 +4, and 28-30 is the
     index less 23. Everything else is 0.
 
-    Agrees with :func:`strength_bonuses`'s to-hit half from strength 8 to 18
-    -- below 8 or above 18 is this table alone, since no specimen on this
-    machine reaches either.
+    Agrees with :func:`strength_bonuses`'s to-hit half for strength 3 to 25,
+    and for 18 at every percentile.
     """
     strength = int(strength or 0)
     if strength <= 17:
