@@ -1910,6 +1910,9 @@ class EditorBinding(QObject):
         while True:
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return "cancelled"
+            #: The names chosen so far, which the rehearsal after the
+            #: left-behind choice has to be given again.
+            names = None
             if dialog.rehearsal is None and dialog.unfit_names is not None:
                 # A name is too long for the destination: ask for shorter
                 # ones, now that Convert has been pressed.
@@ -1921,14 +1924,19 @@ class EditorBinding(QObject):
                     # Back to the Convert window with its rows as they were,
                     # the way Save As stays open.
                     continue
+                names = choice
                 try:
                     dialog.rehearse_naming(choice)
+                except dos_codec.JoinedScrollsDoNotFit as exc:
+                    # The names were the first thing in the way; the pack is
+                    # next, asked for below with these names kept.
+                    dialog.pack_overflow = exc.overflow
                 except Exception:
                     _log.exception("could not convert with the names %s",
                                    choice)
                     dialog.refuse(convert_mod.CANNOT_CONVERT)
                     continue
-                if dialog.rehearsal is None:
+                if dialog.rehearsal is None and not dialog.pack_overflow:
                     dialog.refuse(convert_mod.CANNOT_CONVERT)
                     continue
             if dialog.rehearsal is None and dialog.pack_overflow:
@@ -1942,7 +1950,7 @@ class EditorBinding(QObject):
                     # the way Save As stays open.
                     continue
                 try:
-                    dialog.rehearse_leaving(choice)
+                    dialog.rehearse_leaving(choice, names=names)
                 except Exception:
                     _log.exception("could not convert with %s left behind",
                                    choice)

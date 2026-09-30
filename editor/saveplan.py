@@ -713,17 +713,19 @@ _AMIGA_POOL_DELETES = frozenset(".*,?/:;")
 #: Per destination, `(port, title key)`: the characters it draws as the
 #: player typed them. Each row's evidence is in #619's comments.
 NAME_SHOWN: dict[tuple[str, str], frozenset[str]] = {
-    # DOS draws `[ \ ] ^ _` as other symbols, the backquote blank and
-    # `{ | } ~` as other glyphs (Pool and Curse measured). The three later
-    # titles are excluded the same way until measured.
+    # Measured on DOS Pool of Radiance: `[ \ ] ^ _` drawn as other symbols,
+    # and the backquote blank. Measured on DOS Curse: the backquote blank and
+    # `{ | } ~` as other glyphs. Nothing else is measured, so all four titles
+    # share one set and may open the window for a name that would show.
     **{("dos", key): _BASE_SHOWN for key in (
         "pool-of-radiance", "curse-of-the-azure-bonds",
         "secret-of-the-silver-blades", "pools-of-darkness")},
     # C64 Pool draws `\` as a pound sign, `{ } ~` as `; = >` and the
     # backquote blank.
     ("c64", "pool-of-radiance"): _BASE_SHOWN,
-    # C64 Curse draws `{ | } ~` as other glyphs, and a comma cuts a removed
-    # character's file name; Silver Blades shares the engine.
+    # Measured on C64 Curse: `{ | } ~` drawn as other glyphs, and a comma
+    # cuts a removed character's file name. Silver Blades is unmeasured and
+    # assumed to match.
     ("c64", "curse-of-the-azure-bonds"): _BASE_SHOWN - {","},
     ("c64", "secret-of-the-silver-blades"): _BASE_SHOWN - {","},
     # Amiga Pool keeps and draws `[ \ ] ^ _`, the backquote and `{ } ~` as
@@ -732,9 +734,10 @@ NAME_SHOWN: dict[tuple[str, str], frozenset[str]] = {
     ("amiga", "pool-of-radiance"): (
         (_BASE_SHOWN - _AMIGA_POOL_DELETES) | _UPPER_PUNCTUATION
         | frozenset("`{}~")),
-    # Amiga Curse draws the backquote and `{ | } ~` as other glyphs; its
-    # creation entry types `0x20`-`0x5F`, so `[ \ ] ^ _` is expected to show.
-    # Silver Blades and Pools of Darkness are taken to match.
+    # Measured on Amiga Curse: the backquote and `{ | } ~` drawn as other
+    # glyphs. `[ \ ] ^ _` showing is inferred from its creation entry typing
+    # `0x20`-`0x5F`, not seen drawn. Silver Blades and Pools of Darkness are
+    # unmeasured and assumed to match.
     **{("amiga", key): _BASE_SHOWN | _UPPER_PUNCTUATION for key in (
         "curse-of-the-azure-bonds", "secret-of-the-silver-blades",
         "pools-of-darkness")},

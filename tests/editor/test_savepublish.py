@@ -2851,3 +2851,37 @@ def test_a_c64_cleric_written_to_dos_is_not_refused_for_the_engines_byte():
     written = dos_codec.neutral_to_c64_record(back, icon=None)[0]
     lost = saveplan.compare([sheet], [written])
     assert not [line for line in lost if line.startswith("spells_known")]
+
+
+def test_an_amiga_pool_party_with_punctuation_the_c64_draws_differently_asks_for_names(
+        tmp_path):
+    """The Amiga Pool party a game saved holds `A[B\\C]D^E_F` with a backquote
+    and `X{Y}Z~W`, which the C64 draws as other glyphs. That route reads
+    `DosCharacter`s rather than a neutral party, so its own check asks for
+    exactly those two, and the disk it writes holds the names chosen. The
+    third punctuated name, `A.B*C,D?E/F:G;H`, shows on the C64 and is not
+    asked for."""
+    path = _wish619_specimen(
+        "por-amiga", "WISH-SPEC-wish619-pool-punct-fetched-save") / (
+        "fetched-save.adf")
+    files_for = _registry_game_files(POOL_OF_RADIANCE)
+    if files_for is None:
+        pytest.skip("needs the Pool of Radiance C64 disks")
+    assets = saveplan.Assets(game_files=files_for)
+    party = Party(convert.Source.detect(path))
+    out = tmp_path / "WISHSAVE.D64"
+
+    with pytest.raises(saveplan.NamesDoNotFit) as caught:
+        saveplan.prepare_save_as(party, "c64", out, assets)
+    assert sorted(name for _p, name in caught.value.unfit) == [
+        "A[B\\C]D^E_F`", "X{Y}Z~W"]
+    assert not out.exists()
+
+    chosen = {position: "ABC" + str(n)
+              for n, (position, _name) in enumerate(caught.value.unfit)}
+    plan = saveplan.prepare_save_as(party, "c64", out, assets, names=chosen)
+    assert saveplan.losses(plan.report) == []
+    saveplan.publish(plan, party, assets=assets, backups=tmp_path / "backups")
+
+    written = {m.record.get("name") for m in Party(str(out)).members}
+    assert {"ABC0", "ABC1", "A.B*C,D?E/F:G;H"} <= written

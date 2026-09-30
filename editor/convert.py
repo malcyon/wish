@@ -2230,14 +2230,17 @@ class ConvertDialog(QDialog):
         self.ui.convert_destination_line.setText(_destination_text(preview))
         return True
 
-    def rehearse_leaving(self, leave: "Mapping[int, Collection[int]]") -> None:
-        """Rehearse again with what the player chose to leave behind.
+    def rehearse_leaving(self, leave: "Mapping[int, Collection[int]]",
+                         names: "Mapping[int, str] | None" = None) -> None:
+        """Rehearse again with what the player chose to leave behind, and the
+        names already chosen when there are any.
 
         Raises what the writer raises, so a caller can refuse the write; a
         rehearsal that comes out with a loss is left `None`, as `replan` does.
         """
         self.rehearsal, self.slot = saveplan.rehearse(
-            self.direction, self.source, self._assets, leave=leave)
+            self.direction, self.source, self._assets, leave=leave,
+            names=names)
         self._finish_rehearsal()
 
     def rehearse_naming(self, names: "Mapping[int, str]") -> None:

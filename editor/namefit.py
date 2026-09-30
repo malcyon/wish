@@ -3,9 +3,10 @@
 One row for every character whose name is over the destination's width or
 holds a character it does not show as typed, built from
 `editor.saveplan.NamesDoNotFit.unfit`. Each row shows the character's full
-name and a box that starts with that name cut to the width and without those
-characters, selected for editing, and the box takes none of them. Nothing is written until the player confirms, and two characters
-sharing one long name get a box each.
+name and a box that starts with that name, without those characters and cut to
+the width, selected for editing; the box takes none of those characters.
+Nothing is written until the player confirms, and two characters sharing one
+long name get a box each.
 
 The accept button's label is the caller's: the Convert or Save As label. The
 window shows no column header, hint or count.

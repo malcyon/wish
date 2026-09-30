@@ -3997,6 +3997,50 @@ def test_pressing_convert_asks_and_the_names_reach_the_writer_by_position(
     assert outcome == convert.CONVERTED_DOS.format(slot="A", folder=written)
 
 
+def test_unfit_names_and_an_overflowing_pack_are_asked_in_turn_and_both_reach_the_writer(
+        tmp_path, monkeypatch):
+    """A party with a name the destination cannot show and a pack it cannot
+    hold answers the name window, then the left-behind window, and converts
+    with both choices; it does not ask for the names again."""
+    from support import packoverflow
+
+    dialog, _seen, out = _name_overflowing_dialog(tmp_path, monkeypatch)
+    dialog.close()
+    overflow = packoverflow.overflow()
+    seen = []
+
+    def rehearse(direction, source, assets, names=None, leave=None):
+        seen.append((names, leave))
+        if len(seen) > 6:
+            pytest.fail("Convert keeps rehearsing without converting")
+        if not names:
+            raise convert.saveplan.NamesDoNotFit(((0, LONG_NAME),), 15)
+        if not leave:
+            raise convert.dos_codec.JoinedScrollsDoNotFit(overflow)
+        return (convert.Rehearsal(convert.neutral.Report(),
+                                  {"SAVGAMA.DAT": b"a save"}), "A")
+
+    monkeypatch.setattr(convert.saveplan, "rehearse", rehearse)
+    window, _loaded = _window_for_pack_overflow(monkeypatch)
+    names_asked = []
+
+    def choose_names(unfit, width, accept_label, shown=None):
+        names_asked.append(unfit)
+        return {0: "FIRST"}
+
+    monkeypatch.setattr(window, "_choose_names", choose_names)
+    monkeypatch.setattr(window, "_choose_left_behind",
+                        lambda *a, **k: {1: frozenset({16})})
+    try:
+        outcome = _convert_c64_to_dos(window, tmp_path, out)
+    finally:
+        window.close()
+
+    assert len(names_asked) == 1
+    assert seen[-1] == ({0: "FIRST"}, {1: frozenset({16})})
+    assert outcome.startswith("Converted to DOS")
+
+
 def test_cancelling_the_name_window_writes_nothing(tmp_path, monkeypatch):
     dialog, seen, out = _name_overflowing_dialog(tmp_path, monkeypatch)
     dialog.close()
