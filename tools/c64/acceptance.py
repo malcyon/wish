@@ -2426,9 +2426,7 @@ class PoolRun:
         answered = disk_visible = False
         for attempt in range(2):
             if pool:
-                shared = self._temple_share()
-                if attempt == 0:
-                    result["share"] = shared
+                result.setdefault("share", []).append(self._temple_share())
             self._temple_select_bar("EXIT", "temple")
             start = self.clock()
             limit = min(start + 90, self.temple_input_deadline)
@@ -2497,7 +2495,7 @@ class PoolRun:
         The screen after SHARE has not been seen live, so any prompt, and
         any screen that is not the bar within `TEMPLE_POOL_WAIT`, stops as
         `lost-exit` with the frame kept. The pool's coin words are kept
-        before and after."""
+        before and after, one entry per SHARE in `result["leave"]["share"]`."""
         before = self._temple_pool_coins()
         self._temple_select_bar("SHARE", "temple")
         time.sleep(TEMPLE_SHARE_SETTLE)
@@ -2507,7 +2505,8 @@ class PoolRun:
                     "leave-share", self._temple_steady("after SHARE"))["stem"]}
 
     def _temple_await_bar(self, what: str) -> None:
-        limit = min(self.clock() + TEMPLE_POOL_WAIT, self.temple_input_deadline)
+        start = self.clock()
+        limit = min(start + TEMPLE_POOL_WAIT, self.temple_input_deadline)
         sample = None
         while self.clock() < limit:
             sample = self.temple_sample()
@@ -2523,8 +2522,11 @@ class PoolRun:
                 self._temple_stop("exit", f"unexpected prompt after {what}",
                                   sample)
             time.sleep(0.25)
-        self._temple_stop("exit", f"temple bar did not return after {what}",
-                          sample)
+        cut = ("temple input deadline"
+               if limit < start + TEMPLE_POOL_WAIT
+               else f"{TEMPLE_POOL_WAIT:.0f} second limit")
+        self._temple_stop("exit", f"temple bar did not return before the "
+                          f"{cut} after {what}", sample)
 
     @staticmethod
     def _temple_treasure(screen) -> bool:

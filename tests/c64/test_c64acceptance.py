@@ -301,7 +301,8 @@ def test_temple_source_guard_requires_registry_path_and_recorded_hash(
 _BAR_WORDS = [(0, 4), (5, 4), (10, 4), (15, 8), (24, 4)]
 #: The bar once the party's money is pooled: the live frame 17 of the D3b
 #: POOL boot carried SHARE between POOL and APPRAISE.
-_POOLED_BAR_WORDS = [(0, 4), (5, 4), (10, 4), (15, 5), (21, 8), (30, 4)]
+_POOLED_BAR_WORDS = [(0, 4), (5, 4), (10, 4), (15, 4), (20, 5), (26, 8),
+                     (35, 4)]
 
 
 def _framed(text):
@@ -597,7 +598,7 @@ class _TempleSession:
             rows[24] = ("HEAL VIEW POOL APPRAISE EXIT"
                         if self.unsafe != "wrong-menu" else "EXIT GIVE")
             if "pool-YES" in self.keys and self.unsafe != "wrong-menu":
-                rows[24] = "HEAL VIEW POOL SHARE APPRAISE EXIT"
+                rows[24] = "HEAL VIEW TAKE POOL SHARE APPRAISE EXIT"
             # The row 24 highlight is where the last key left it; the party
             # panel's own rows are read from the same snapshot.
             self.bar_span = self._bar_words()[self.bar_at]
@@ -784,10 +785,12 @@ class _TempleSession:
             self.phase = "temple"
             return
         if (self.phase == "temple" and "pool-YES" in self.keys
-                and self.bar_at == 3):
+                and self.bar_at == 4):
             assert row == 24 and "SHARE" in was
             self.keys.append("SHARE")
-            self.phase = "yes-no" if self.after_share == "prompt" else "temple"
+            self.pool_coins = [0] * 5
+            self.phase = {"prompt": "yes-no", "unknown": "unknown"}.get(
+                self.after_share, "temple")
             return
         if self.phase == "temple" and self.bar_at == len(self._bar_words()) - 1:
             assert row == 24 and "EXIT" in was
@@ -9479,6 +9482,12 @@ def test_temple_probe_main_still_refuses_anything_else_after_the_probe(
         tmp_path, arg, *steps)[:-2])
 
 
+def _result_before_continued(run):
+    tags = _raise_tags(run)
+    assert "raise-result" in tags and (
+        tags.index("raise-result") < tags.index("raise-continued"))
+
+
 @pytest.mark.parametrize("who", ["BRUTUS RAISE POOL", "BRUTUS RAISE CONTROL"])
 def test_temple_probe_leave_walks_the_list_and_the_bar_out_to_the_world(
         tmp_path, monkeypatch, who):
@@ -9487,7 +9496,7 @@ def test_temple_probe_leave_walks_the_list_and_the_bar_out_to_the_world(
     if who.endswith("CONTROL"):
         run.reading = _control_reading
     result = run.temple_probe(who, leave=True)
-    tail = (["Right"] * 3 + ["SHARE"] + ["Right"] * 2 if who.endswith("POOL")
+    tail = (["Right"] * 4 + ["SHARE"] + ["Right"] * 2 if who.endswith("POOL")
             else ["Right"] * 4)
     assert session.keys[-(13 + len(tail)):] == (
         ["YES", "Return"] + ["Down"] * 9 + ["Return"] + tail + ["EXIT"])
@@ -9496,6 +9505,7 @@ def test_temple_probe_leave_walks_the_list_and_the_bar_out_to_the_world(
         ["raise-continued", "list-exit", "leave-share", "outside"]
         if who.endswith("POOL")
         else ["raise-result", "raise-continued", "list-exit", "outside"])
+    _result_before_continued(run)
     assert result["leave"]["stem"] and result["outcome"] == "alive"
 
 
@@ -9504,10 +9514,11 @@ def test_temple_probe_leave_takes_the_temple_bar_when_return_shows_it(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line, session.after_continue = True, "bar"
     run.temple_probe("BRUTUS RAISE POOL", leave=True)
-    assert session.keys[-9:] == (["YES", "Return"] + ["Right"] * 3
+    assert session.keys[-10:] == (["YES", "Return"] + ["Right"] * 4
                                   + ["SHARE"] + ["Right"] * 2 + ["EXIT"])
     assert _raise_tags(run)[-3:] == ["raise-continued", "leave-share",
                                      "outside"]
+    _result_before_continued(run)
 
 
 def test_temple_probe_without_leave_sends_nothing_after_the_result(
@@ -9661,7 +9672,10 @@ def test_temple_probe_leave_shares_the_pool_before_exit_and_reaches_outside(
     assert session.keys.index("SHARE") < session.keys.index("EXIT")
     assert session.keys.count("SHARE") == 1 and "GO BACK" not in session.keys
     assert _raise_tags(run)[-3:] == ["list-exit", "leave-share", "outside"]
-    assert result["leave"]["stem"] and result["leave"]["share"]["stem"]
+    _result_before_continued(run)
+    (share,) = result["leave"]["share"]
+    assert share["stem"] and share["pool_before"]["words"][3] == 500
+    assert share["pool_after"]["words"] == [0] * 5
 
 
 def test_temple_probe_control_leave_never_chooses_share(tmp_path, monkeypatch):
@@ -9678,12 +9692,18 @@ def test_temple_probe_leave_answers_the_treasure_prompt_with_go_back_once(
     session.press_line, session.treasure_prompts = True, 1
     result = run.temple_probe("BRUTUS RAISE POOL", leave=True)
     assert session.keys[session.keys.index("EXIT"):] == (
-        ["EXIT", "GO BACK"] + ["Right"] * 3 + ["SHARE"] + ["Right"] * 2
+        ["EXIT", "GO BACK"] + ["Right"] * 4 + ["SHARE"] + ["Right"] * 2
         + ["EXIT"])
     assert "LEAVE TREASURE" not in session.keys
     assert _raise_tags(run)[-4:] == ["leave-share", "leave-treasure",
                                      "leave-share", "outside"]
     assert result["leave"]["treasure"]
+    first, second = result["leave"]["share"]
+    assert first["pool_before"]["words"][3] == 500
+    assert first["pool_after"]["words"] == [0] * 5
+    assert second["pool_before"]["words"] == [0] * 5
+    assert second["pool_after"]["words"] == [0] * 5
+    assert first["stem"] != second["stem"]
 
 
 def test_temple_probe_leave_stops_when_the_treasure_prompt_comes_back(
@@ -9705,3 +9725,11 @@ def test_temple_probe_leave_stops_when_share_shows_a_prompt(
         run.temple_probe("BRUTUS RAISE POOL", leave=True)
     assert "EXIT" not in session.keys
     assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
+
+
+def test_temple_probe_leave_share_timeout_names_the_bound_that_expired(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.press_line, session.after_share = True, "unknown"
+    with pytest.raises(A.StepFailed, match="before the 30 second limit"):
+        run.temple_probe("BRUTUS RAISE POOL", leave=True)
