@@ -39,6 +39,23 @@ ITEMS_BAR_HEAD_CELLS = 5
 #: item the highlight was on.  Its head is not `ITEMS_BAR_HEAD`.
 POOL_ITEMS_BAR = "0a653b8b1d7793d7"
 
+#: Pool of Radiance's `ITEMS` bar words, in the order the game draws them.  The
+#: game leaves words out by member and item (`TRADE` on 2 captures, `HALVE` on
+#: 2), so a list shows `READY`, then some of the rest in this order, then `EXIT`.
+POOL_ITEMS_WORDS = ("READY", "USE", "TRADE", "DROP", "HALVE", "JOIN", "EXIT")
+
+#: One bar cell's `Screen.glyphs` digest to its letter, read off the two lists
+#: missing `TRADE` and `HALVE` and checked on 15 full-bar captures: 17 letters
+#: and the blank, which between them spell every word above.
+BAR_LETTERS = {
+    "9438e360f578e12c": " ", "61d526bdf060e4d9": "A", "d2010e88777efb2d": "D",
+    "3c4e0a6ef6df68d8": "E", "6c3f96b5a5c86a50": "H", "6963fe05b95f59e2": "I",
+    "b99bc1cff9722066": "J", "2c37990702770f67": "L", "6fb6dfe89e0e1771": "N",
+    "0ebdd6919269dab4": "O", "4d53ed56ade1ed6e": "P", "e0cd04fc8849b16a": "R",
+    "8a64d5cbd1632147": "S", "974a3a83590c13c9": "T", "88e88c986ceefa26": "U",
+    "e683c5b140b929c2": "V", "0ad63b5b828025a6": "X", "afbc7d76cbef0794": "Y",
+}
+
 #: Text column 17, where the status line's text starts; the cell at x 128 is
 #: the viewport's frame.
 STATUS_TEXT_X = 136
@@ -143,12 +160,37 @@ def bar_signature(screen: dosbox.Screen, cells: int | None = None) -> str:
     return sha.hexdigest()[:16]
 
 
+def bar_words(screen: dosbox.Screen) -> list[str] | None:
+    """The command bar's words, or None when a cell is not a letter of
+    `BAR_LETTERS`.  Read cell by cell like `bar_signature`, so the highlighted
+    word reads the same as the others."""
+    x0, y, w, h = dosbox.BAR
+    text = []
+    for x in range(x0, x0 + w, CELL):
+        letter = BAR_LETTERS.get(screen.glyphs((x, y, CELL, h)))
+        if letter is None:
+            return None
+        text.append(letter)
+    return "".join(text).split()
+
+
+def is_pool_items_bar(screen: dosbox.Screen) -> bool:
+    """Whether the bar is Pool's `ITEMS` bar in any of its forms: `READY`, an
+    in-order subset of the middle words, `EXIT`."""
+    words = bar_words(screen)
+    if not words or words[0] != POOL_ITEMS_WORDS[0] or words[-1] != POOL_ITEMS_WORDS[-1]:
+        return False
+    rest = iter(POOL_ITEMS_WORDS)
+    return all(word in rest for word in words)
+
+
 def on_items_list(screen: dosbox.Screen) -> bool:
     """Whether `screen` is an `ITEMS` list, Pools of Darkness' or Pool of
     Radiance's.  A sheet reads as a one-row list with its highlight on band 12,
     so the readers below ask this first."""
     return (bar_signature(screen, ITEMS_BAR_HEAD_CELLS) == ITEMS_BAR_HEAD
-            or bar_signature(screen) == POOL_ITEMS_BAR)
+            or bar_signature(screen) == POOL_ITEMS_BAR
+            or is_pool_items_bar(screen))
 
 
 def item_rows(screen: dosbox.Screen) -> int | None:

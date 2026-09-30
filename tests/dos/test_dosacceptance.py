@@ -9709,3 +9709,70 @@ def test_a_run_with_no_save_refuses_a_slot_or_a_fight_key(monkeypatch, capsys, e
     with pytest.raises(SystemExit):
         da.main([*extra, "--steps", "add ARRONEL", "view 1"])
     assert "a run with no save has neither" in capsys.readouterr().err
+
+
+# -- Pool's ITEMS list bar, in each of the forms the game draws --------------
+
+def _lettered_bar(text: str, monkeypatch) -> dosbox.Screen:
+    """A frame whose bar spells `text`, each letter its own synthetic cell,
+    with `BAR_LETTERS` pointed at those cells."""
+    pattern = {c: 0 if c == " " else 0x11 + 7 * i
+               for i, c in enumerate(sorted(set(" ABCDEFGHIJKLMNOPQRSTUVWXYZ")))}
+    bar = bytes(pattern[c] for c in text)
+    cells = {pattern[c]: c for c in pattern}
+    letters = {}
+    for p, c in cells.items():
+        sample = _screen(bytes([p]), b"")
+        letters[sample.glyphs((0, dosbox.BAR[1], screens.CELL, dosbox.BAR[3]))] = c
+    monkeypatch.setattr(screens, "BAR_LETTERS", letters)
+    return _screen(bar, b"")
+
+
+@pytest.mark.parametrize("bar", [
+    "READY USE TRADE DROP HALVE JOIN EXIT",
+    "READY USE TRADE DROP JOIN EXIT",
+    "READY USE DROP HALVE JOIN EXIT",
+])
+def test_every_pool_items_bar_form_is_an_items_list(bar, monkeypatch):
+    screen = _lettered_bar(bar, monkeypatch)
+    assert screens.bar_words(screen) == bar.split()
+    assert screens.on_items_list(screen)
+
+
+@pytest.mark.parametrize("bar", [
+    "ITEMS TRADE DROP EXIT",               # a sheet's bar
+    "READY USE TRADE DROP HALVE JOIN",     # no EXIT
+    "USE TRADE DROP JOIN EXIT",            # no READY
+    "READY DROP USE EXIT",                 # out of order
+    "READY USE SHOP EXIT",                 # a word Pool's list never draws
+    "",
+])
+def test_other_bars_are_not_pool_items_lists(bar, monkeypatch):
+    screen = _lettered_bar(bar.ljust(3), monkeypatch)
+    assert not screens.on_items_list(screen)
+
+
+def test_an_unread_cell_is_not_an_items_list(monkeypatch):
+    screen = _lettered_bar("READY USE EXIT", monkeypatch)
+    monkeypatch.setattr(screens, "BAR_LETTERS", {})
+    assert screens.bar_words(screen) is None and not screens.on_items_list(screen)
+
+
+@pytest.mark.parametrize("run,name,issue", [
+    ("type0", "005-lost-items-2-list", "790"),
+    ("type0b", "008-fatima-items", "790"),
+    ("df335e745f-pool-dm-permanent", "005-items-2-list", "666"),
+])
+def test_the_captured_pool_items_lists_are_recognised(run, name, issue):
+    screen = _capture(run, name, issue)
+    assert screens.on_items_list(screen)
+    assert screens.is_pool_items_bar(screen)
+
+
+@pytest.mark.parametrize("run,name,issue", [
+    ("type0", "004-items-2-sheet", "790"),
+    ("type0", "003-camp", "790"),
+    ("type0", "001-menu", "790"),
+])
+def test_a_captured_pool_sheet_camp_and_menu_are_not_items_lists(run, name, issue):
+    assert not screens.on_items_list(_capture(run, name, issue))
