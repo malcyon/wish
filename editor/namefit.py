@@ -30,7 +30,7 @@ from . import saveplan
 from .ui_namefit import Ui_NameFitDialog
 
 #: Donald's approved window title and sentence, verbatim.
-TITLE = "Shorten character names"
+TITLE = "Choose character names"
 LENGTH_SENTENCE = ("The target platform cannot store character names this "
                    "long. Please shorten them to {X} characters.")
 

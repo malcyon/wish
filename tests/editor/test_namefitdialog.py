@@ -43,7 +43,7 @@ def _ok(dialog):
 
 def test_the_window_carries_the_approved_title_and_sentence(app):
     dialog = _dialog(app)
-    assert dialog.windowTitle() == "Shorten character names"
+    assert dialog.windowTitle() == "Choose character names"
     assert dialog.ui.explanation_label.text() == (
         "The target platform cannot store character names this long. "
         "Please shorten them to 15 characters.")
