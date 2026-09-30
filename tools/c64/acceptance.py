@@ -52,7 +52,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint` |
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
-| `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest) |
+| `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time |
 | `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk |
 | `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep; Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
@@ -468,6 +468,21 @@ LOOK_SECONDS = 2.0
 #: turned about, stepping through an open door or holding at a solid or locked
 #: one, where there is).
 TURNS = {"I": 0, "J": -1, "K": 1, "M": None}
+
+
+#: Pool's city-watch random event ends a camp rest with these two words on
+#: row 24; the first is the answer, as the DOS driver's `WATCH_GO`.
+WATCH_BAR = ["GO", "STAY"]
+#: Watch events answered after one rest before the rest step stops looking.
+WATCH_EVENTS_MAX = 2
+
+
+def clock_minutes(clock: list[int]) -> int:
+    """The game clock's six digits as minutes since the month began: minute
+    units, tens of minutes, hour, day (`docs/30-savegame-layout.md`).  The
+    month is left out; a rest of days does not cross one in a run."""
+    _, units, tens, hour, day, _ = clock
+    return ((day * 24 + hour) * 60) + tens * 10 + units
 
 
 def parse_rest(arg: str) -> tuple[int, int]:
@@ -2912,9 +2927,35 @@ class PoolRun:
         self.capture(f"rested-{arg}")
         if "failed" in got:
             raise self.fail("rest", got["failed"])
+        events = self.answer_watch(f"rest {arg}")
         self.to_world()
+        asked = hours * 60 + minutes
+        elapsed = clock_minutes(got["after"]["clock"]) - clock_minutes(
+            got["before"]["clock"])
         return {"asked": [minutes, hours], "before_clock": got["before"]["clock"],
-                "after_clock": got["after"]["clock"]}
+                "after_clock": got["after"]["clock"],
+                "elapsed_minutes": elapsed, "rest_completed": elapsed >= asked,
+                "events": events}
+
+    def answer_watch(self, step: str) -> list[dict]:
+        """Answer Pool's city-watch `GO STAY` event a rest ran into, with GO.
+
+        The bar is the whole of row 24, so nothing but that event matches it;
+        STAY would start a fight and is never chosen.  The rest is not
+        resumed: whether it ran its time is in the step's `rest_completed`."""
+        events = []
+        for _ in range(WATCH_EVENTS_MAX):
+            rows = self.rows()
+            if not rows or rows[24].split() != WATCH_BAR:
+                break
+            event = {"event": "go_stay", "step": step, "answered": WATCH_BAR[0],
+                     "text": [r.strip("$ ") for r in rows[17:23] if r.strip("$ ")]}
+            events.append(event)
+            self.log.emit("random_event", **event)
+            self.capture("watch-event", rows)
+            self.choose_bar(WATCH_BAR[0], timeout=10)
+            self.sess.settle(1.5)
+        return events
 
     def fight_over_budget(self, arg: str, result) -> StepFailed:
         """The failure for a fight that ran out of SECONDS.

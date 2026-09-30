@@ -9210,3 +9210,35 @@ def test_temple_probe_pool_records_an_unreadable_pool_and_still_finishes(
     assert list(result["pool_after"]) == ["error"]
     assert result["outcome"] == "alive"
     assert session.keys == _POOL_KEYS
+
+
+def test_rest_answers_the_city_watch_go_stay_and_reports_the_unfinished_rest(
+        tmp_path, monkeypatch):
+    """A rest that ends on the watch's GO STAY bar is answered GO, the event is
+    logged, the rest is reported short, and the world bar is found after it."""
+    event = _window({17: "YOU ARE ROUSTED BY THE CITY WATCH AND",
+                     18: "TOLD TO MOVE ALONG. WHAT DO YOU DO?"}, "GO STAY")
+    sess = FakeSession(
+        {"world": _window({}, WORLD_BAR), "camp": _window({}, CAMP),
+         "rested": _window({}, CAMP), "event": event},
+        {("world", ("bar", "ENCAMP")): "camp",
+         ("event", ("bar", "GO")): "world"}, "world")
+
+    def watch_rest(s, log, minutes, hours, cp):
+        s.state = "event"
+        return {"before": {"clock": [0, 3, 0, 0, 0, 0]},
+                "after": {"clock": [0, 8, 0, 0, 0, 0]}}
+
+    monkeypatch.setattr(A.route_pool, "rest", watch_rest)
+    run, log = _pool_run(tmp_path, sess)
+    got = run.rest("5h")
+    assert run.to_world()
+    log.close()
+
+    assert sess.sent[-1] == ("bar", "GO")
+    assert ("bar", "STAY") not in sess.sent
+    assert got["rest_completed"] is False and got["elapsed_minutes"] == 5
+    assert [e["event"] for e in got["events"]] == ["go_stay"]
+    assert got["events"][0]["text"][0].startswith("YOU ARE ROUSTED")
+    assert '"random_event"' in (tmp_path / "run.jsonl").read_text()
+    assert sess.state == "world"
