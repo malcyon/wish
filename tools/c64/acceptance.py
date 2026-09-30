@@ -57,7 +57,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint`. Followed by `remove`, it stops on the party menu instead, and `BEGIN ADVENTURING` waits for the first step that is not a `remove`; `--checkpoint` and `--read-at` are refused when no such step follows, and no reading is logged after a step that ends on the party menu |
 | `remove WHO` | the party menu's `REMOVE CHARACTER FROM PARTY`, then WHO's row on the list it puts up; waits for the list to come back one name shorter, `EXIT`s to the party menu, then keeps the save disk as `removed-N.D64` (attaching the image again when VICE has left the directory open) with its directory (`added`, `gone` and `changed` against the directory before) and the 1541's error-message buffer (`$02D5` in the drive). WHO is a panel number, counted on the list as it stands, so a second `remove 1` takes the member who was second; or a whole name, and a name picks the first row drawing it, so a duplicated name needs the number. Only straight after `load` or another `remove`. A `MAKE SAVE GAME DISK ? YES NO` in place of the shorter list is the game refusing the write: it is answered NO, never YES (YES formats a disk), the disk and the drive's buffer are kept, and the step fails unless the list then comes back without WHO |
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page. Curse first shows the list of the member under the panel highlight and asks on whom only after its last page; that list is logged as `camp-list-highlighted` and the whom menu is then read the same way |
-| `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
+| `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark; on Curse and Silver Blades it then leaves through the list's `EXIT`, the sheet's `EXIT` and the camp's `EXIT`, so the next step starts in the world |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); straight after a `scribe` it rests in the camp the scribe left open, since every camp exit cancels the scribe queue, and adds `stayed_in_camp`; a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time.  A rest the area's check interrupted (`$6DD3` = `$FF`, or `CAMP` already gone) waits for the prompt the area puts up sending no key apart from disk-swap answers, answers it, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `watch_seen`, which only an interrupted rest carries.  Whenever a watch was answered, interrupted or not, the result has `state_cleared` (the bytes `GO` clears).  A fight fails the step at once, and any other prompt fails it naming row 24.  A Curse or Silver Blades rest the game stopped (`rest_later`'s `interrupted`) answers each `PRESS ... TO CONTINUE` page with Return, keeps its text, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `text`; a fight after the event fails the step at once naming the event's text |
 | `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk |
 | `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep; Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
@@ -282,7 +282,7 @@ CAMP_PARTY_SPELLS = {"ANIMATE DEAD": 36}
 POOL_TARGET_SPELLS = {"DISPEL MAGIC": 41}
 DISEASE_CURE = (34, "DISEASE")
 
-#: `MAGIC > SCRIBE`'s screens, read in Silver Blades (#745): the scroll list,
+#: `MAGIC > SCRIBE`'s screens, read in Silver Blades: the scroll list,
 #: headed `<NAME>'S SCROLL SPELLS` over `SCRIBE EXIT`; its `SCRIBE` puts up the
 #: pick prompt with an `EXIT` row under the spells; leaving it shows
 #: `<NAME>'S CHOSEN SPELLS` over `EXIT`, then the confirmation bar.  A spell
@@ -302,7 +302,7 @@ SCRIBE_PICK_SECONDS = 6.0
 
 @dataclasses.dataclass(frozen=True)
 class ScribeAddresses:
-    """Where `CAMP` keeps a scribe in progress (#745, 09:12 comment): the
+    """Where `CAMP` keeps a scribe in progress: the
     selected member's working record, its roster block, whose `+0x01`/`+0x02`
     are his slice of the queue, and the queue itself, one byte an entry."""
     record: int
@@ -3407,6 +3407,8 @@ class PoolRun:
     #: only a rest taken without leaving camp can finish it, because every
     #: camp exit cancels the whole queue (Silver Blades `CAMP $087B`).
     scribing = False
+    #: The square the `scribe` step read before it entered camp.
+    scribe_square: list | None = None
 
     def scribe_bytes(self, count: int = 0) -> dict:
         """The selected member's name from the working record, his roster
@@ -3446,9 +3448,13 @@ class PoolRun:
 
     def _scribe_pick(self, spell: str, before: dict) -> tuple[str, dict]:
         """Pick SPELL, judged by the roster count, since the list is not
-        redrawn: the key ladder moves on only while the count stands and no
-        refusal was drawn."""
+        redrawn: the second key goes out only while the count stands, no
+        refusal was seen in any poll, and the highlight is still on SPELL's
+        row, because a refusal flash shorter than a poll moves the highlight
+        to `EXIT`."""
         for key in ("xtest-return", "kernal-return"):
+            if key == "kernal-return":
+                self._scribe_untouched(spell)
             self._send_pick(key)
             limit = self.clock() + self.budget(SCRIBE_PICK_SECONDS, "the pick")
             while self.clock() < limit:
@@ -3464,6 +3470,18 @@ class PoolRun:
                 time.sleep(0.3)
         raise self.fail("scribe-pick", "neither Return raised the queue count "
                         f"for {spell}")
+
+    def _scribe_untouched(self, spell: str) -> None:
+        """Fail, with the screen kept, unless the pick prompt still has SPELL
+        highlighted: the count did not rise and the game may have refused."""
+        screen = self.sess.screen()
+        rows = [screen.row(r) for r in range(25)] if screen is not None else []
+        if rows and scribe_highlight(screen, rows) == scribe_row(rows, spell):
+            return
+        self.capture("scribe-pick-moved", rows or None)
+        raise self.fail("scribe-pick", f"the count did not rise for {spell} and "
+                        "the highlight left its row, so the game may have "
+                        "refused it")
 
     def _scribe_leave_pick(self) -> None:
         """The pick prompt's `EXIT` row, back to the list's `SCRIBE EXIT`."""
@@ -3483,6 +3501,8 @@ class PoolRun:
         pick and at the end; a count that is zero at the end fails the step.
         The party stays in camp so a `rest` next can finish the scribe."""
         who, spell = parse_scribe(arg)
+        # Read before camp: the camp screen's square is unmeasured on Pool.
+        self.scribe_square = self.position()
         if not self.to_camp():
             raise self.fail("camp", "ENCAMP never put up the camp bar")
         if not self.sess.select_party(self.panel_index(who)):
@@ -3740,7 +3760,7 @@ class PoolRun:
         in_camp = self.scribing and CAMP_BAR in self.bar()
         self.scribing = False
         if in_camp:
-            square_before = self.position()
+            square_before = self.scribe_square
         else:
             if not self.to_world():
                 raise self.fail("world", "the world bar never came back")
@@ -6548,6 +6568,9 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             log.emit("step", step=step.text)
             log.say(f"-- {step.text}")
             entered = None
+            # Only a `rest` taken straight after the scribe can finish it.
+            if step.verb not in ("rest", "scribe"):
+                pool.scribing = False
             if step.verb not in ("load", "remove") and getattr(pool, "at_menu", False):
                 entered = pool.enter_world()
             if step.verb == "load":

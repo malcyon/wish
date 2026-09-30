@@ -11470,6 +11470,9 @@ class _ScribeFake(_CurseFake):
     def mon(self, timeout=0):
         return _ScribeMon(self)
 
+    def steady_triple(self):
+        return (3, 4, 2)
+
     def memory(self, addr, n):
         mem = {0x7C00: self.name.ljust(15, b"\0"),
                0x7D00: bytes([1, 0, 1 if self.state in self.scribed else 0]),
@@ -11536,7 +11539,7 @@ def test_scribe_walks_to_the_spell_picks_it_confirms_and_ends_on_the_camp_bar(tm
     assert (got["queue_before"], got["queue_after_pick"], got["queue_after"]) == (
         [0, 0], [0, 1], [0, 1])
     assert got["queue_entries"] == [0x10] and got["record_name"] == "MORGAINE"
-    assert run.scribing
+    assert run.scribing and run.scribe_square == [3, 4, 2]
 
 
 def test_scribe_tries_the_kernal_return_when_the_first_key_left_the_count(
@@ -11615,6 +11618,7 @@ def _camp_rest(tmp_path, monkeypatch, scribing):
     sess.squares = [[3, 4, 2], [3, 4, 2]]
     run, log = _pool_run(tmp_path, sess)
     run.scribing = scribing
+    run.scribe_square = [3, 4, 2]
     try:
         got = run.rest("8h")
     finally:
@@ -11626,6 +11630,7 @@ def test_rest_after_a_scribe_rests_in_the_same_camp(tmp_path, monkeypatch):
     got, seen, run = _camp_rest(tmp_path, monkeypatch, scribing=True)
     assert seen == {"state": "camp", "sent": []}
     assert got["stayed_in_camp"] is True and got["rest_completed"] is True
+    assert got["position_before"] == [3, 4, 2]
     assert not run.scribing
 
 
@@ -11633,6 +11638,116 @@ def test_rest_without_a_scribe_still_leaves_camp_first(tmp_path, monkeypatch):
     got, seen, _ = _camp_rest(tmp_path, monkeypatch, scribing=False)
     assert seen["sent"] == [("bar", "EXIT"), ("bar", "ENCAMP")]
     assert "stayed_in_camp" not in got
+
+
+def test_scribe_does_not_send_the_second_key_after_a_refusal_flash_between_polls(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "SCRIBE_PICK_SECONDS", 0.5)
+
+    class Flash(_ScribeFake):
+        def _go(self, what):
+            if self.state == "pick" and what == ("key", "Return"):
+                self.hot = 10  # the refusal moved the highlight to EXIT
+            return super()._go(what)
+
+    sess = Flash({("pick", ("key", "Return")): "pick"})
+    run = _scribe_run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="may have refused"):
+        run.scribe("MORGAINE>STONE TO FLESH")
+    run.log.close()
+    assert ("key", 0x0D) not in sess.sent
+    assert list(tmp_path.glob("*lost-scribe-pick.txt"))
+
+
+def test_scribe_refuses_a_list_with_next_or_prev(tmp_path):
+    screens = {**SCRIBE_SCREENS, "list": _window(_SCROLL, "SCRIBE NEXT EXIT")}
+    sess = _ScribeFake()
+    sess.screens = screens
+    run = _scribe_run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="more than one page"):
+        run.scribe("MORGAINE>PROTECTION FROM GOOD")
+    run.log.close()
+    assert ("bar", "SCRIBE") in sess.sent and ("key", "Return") not in sess.sent
+
+
+def test_scribe_addresses_of_each_title():
+    got = {k: (v.record, v.roster, v.queue) for k, v in A.SCRIBE_ADDRESSES.items()}
+    assert got == {
+        "pool-of-radiance": (0x6B00, 0x6C00, 0x2939),
+        "curse-of-the-azure-bonds": (0x7C00, 0x7D00, 0xA945),
+        "secret-of-the-silver-blades": (0x7C00, 0x7D00, 0xA945)}
+
+
+def test_a_scribe_pending_is_dropped_by_any_step_but_rest(tmp_path, monkeypatch):
+    import contextlib
+    from types import SimpleNamespace
+
+    from tools.curse_of_the_azure_bonds import curserun
+
+    source = _fixture_disk(tmp_path)
+    slot = _Slot(tmp_path)
+    monkeypatch.setattr(A.runlog, "catch_signals", lambda: None)
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: slot)
+    monkeypatch.setattr(A, "stage", lambda *a, **k: {"effects": [],
+                                                    "magic_items": []})
+    monkeypatch.setattr(curserun, "stage", lambda *a, **k: "first")
+
+    class Session:
+        save_disk = "disk"
+
+        def __init__(self, *a, **k):
+            pass
+
+        def watching_dialogs(self):
+            return contextlib.nullcontext()
+
+        def terminate(self):
+            pass
+
+    monkeypatch.setattr(curserun, "CurseSession", Session)
+    seen = []
+
+    class Run:
+        scribing = False
+
+        def __init__(self, *args):
+            pass
+
+        def load(self):
+            return {}
+
+        def scribe(self, arg):
+            self.scribing = True
+            return {}
+
+        def camp_list(self, arg):
+            return {}
+
+        def rest(self, arg):
+            seen.append(self.scribing)
+            return {}
+
+        def reading(self):
+            return {}
+
+        def capture(self, tag):
+            pass
+
+    monkeypatch.setattr(A, "CurseRun", Run)
+
+    def go(steps, run_name):
+        args = SimpleNamespace(title="curse", max_seconds=120, stage_row=[],
+                               stage_trait=[], stage_item=[], stage_only=False,
+                               checkpoint=[], pool=None, issue="745", run=run_name,
+                               disks="unused", attack_by="", walk="I",
+                               walk_steps=60, quit_nonattacking=False,
+                               probe_step=False)
+        return A.run(args, A.parse_steps(steps), tmp_path / run_name, source)
+
+    assert go(["load", "scribe MORGAINE>DISINTEGRATE", "camp-list", "rest 8h"],
+              "apart") == 0
+    assert go(["load", "scribe MORGAINE>DISINTEGRATE", "rest 8h"], "straight") == 0
+    assert seen == [False, True]
 
 
 class _LaterItemsFake(_CurseFake):
