@@ -2704,6 +2704,57 @@ def test_an_in_place_amiga_edit_leaves_a_native_flag_one_companion_alone():
     assert _flags(out.character) == {22: 1, 15: 1}
 
 
+def test_save_as_amiga_keeps_a_slow_poisoned_silver_blades_party_harmless(
+        tmp_path):
+    """PAINE, in the control resave of a live DOS run, holds nodes 55, 22 (120
+    minutes) and 15 (10 minutes).  Saved as an Amiga save the companion 15 has
+    its handler flag clear and 22 keeps its own, and read back to DOS node 15
+    is the source's bytes again."""
+    from gamedata import specimen
+
+    from editor import roster, saveplan
+    from tools.convert import convertdrops
+
+    ssb = c64_port.SECRET_OF_THE_SILVER_BLADES
+    party = roster.Party(str(specimen(
+        "ssb-667-slow-poison-companion-running-resave") / "SAVGAMD.DAT"))
+    amiga = convertdrops.amiga_game_disks(tmp_path).get(ssb.key)
+    disk_one = convertdrops.amiga_disks_one(tmp_path).get(ssb.key)
+    if amiga is None or disk_one is None:
+        pytest.skip(f"needs {ssb.key}'s own Amiga disks")
+    try:
+        assets = saveplan.resolve_assets(party.source, "amiga",
+                                         game_files=convertdrops.game_files,
+                                         amiga_disk=amiga,
+                                         amiga_disk_one=disk_one)
+    except saveplan.MissingAssets:
+        pytest.skip(f"needs {ssb.key}'s own C64 disks")
+    plan = saveplan.prepare_save_as(party, "amiga", tmp_path / "out.adf",
+                                    assets)
+    (image,) = plan.files
+    # The slot letter is the source's own (`SAVGAMD.DAT` gives `D`), where a
+    # C64 source is written to `A`.
+    from goldbox.amiga_adf import AmigaDisk
+    written = AmigaDisk(bytearray(plan.files[image]))
+    char = next(c for c in amiga_savegame.read_slot(
+        written, party.source.slot, ssb.key).characters if c.name == "PAINE")
+    flags = {bytes(n)[0]: bytes(n)[5] for n in char.effects}
+    assert flags[15] == 0 and flags[22] == 1 and 55 in flags
+    assert bytes(next(n for n in char.effects if n[0] == 15))[4] == 0xFF
+
+    source = next(m for m in party.members if m.name == "PAINE").native
+    want = {bytes(r)[0]: bytes(r) for r in
+            dos_codec.to_neutral(source).get("running_effects")}
+    assert bytes(want[15])[1:5] == bytes((10, 0, 0xFF, 1))
+    back = amiga_later.to_neutral_later(char)
+    got = {bytes(r)[0]: bytes(r) for r in back.get("running_effects")}
+    assert got[15] == want[15] and got[22] == want[22]
+    _rec, _itm, spc, _ = dos_codec.write(
+        back, deltas=dos_port.SECRET_OF_THE_SILVER_BLADES)
+    nodes = {spc[i]: spc[i:i + 9] for i in range(0, len(spc), 9)}
+    assert nodes[15] == want[15] and nodes[22] == want[22]
+
+
 def _write_members(game, members_granted, order=1):
     payload = bytearray(0x1C00)
     pairs = list(enumerate(members_granted))[::order]
