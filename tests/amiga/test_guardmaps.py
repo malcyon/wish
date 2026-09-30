@@ -57,17 +57,19 @@ def test_missing_unreadable_manifest_and_aliases(tmp_path):
     assert owners[legacy.relative_to(root).as_posix()] == 'ssb'
 
 
-def test_export_loads_as_pixel_guards(tmp_path):
-    from tools.amiga.screens import PixelGuards
+@pytest.mark.parametrize('title', ['pool', 'ssb'])
+def test_export_loads_as_pixel_guards(tmp_path, title):
+    from tools.amiga.screens import PixelGuards, rules_of
 
     out = tmp_path / 'export'
-    assert guardmaps.main(['export', '--title', 'pool', '--out', str(out)]) == 0
+    assert guardmaps.main(['export', '--title', title, '--out', str(out)]) == 0
     for kind in ('guards', 'identity'):
         exported = json.loads((out / f'{kind}.json').read_text())
         assert exported
-        assert all(set(rule) == {'box', 'sha256'} for rule in exported.values())
+        assert all(set(rule) == {'box', 'sha256'}
+                   for value in exported.values() for rule in rules_of(value))
         assert PixelGuards(out / f'{kind}.json').rules == exported
-    assert guardmaps.main(['export', '--title', 'pool', '--out', str(out)]) == 2
+    assert guardmaps.main(['export', '--title', title, '--out', str(out)]) == 2
 
 
 def test_also_admits_a_trusted_state(tmp_path, capsys):
@@ -365,7 +367,9 @@ def test_alternative_rule_matches_either_crop_and_single_rule_json_loads(tmp_pat
     assert isinstance(single, dict)
     assert guardmaps.main([*base, '--crop', str(second)]) == 2
     assert guardmaps.main([*base, '--crop', str(second), '--alternative', '--replace']) == 2
+    assert guardmaps.main([*base, '--crop', str(first), '--alternative']) == 2
     assert guardmaps.main([*base, '--crop', str(second), '--alternative']) == 0
+    assert guardmaps.main([*base, '--crop', str(second), '--alternative']) == 2
     stored = json.loads((maps / 'guards_pool.json').read_text())['guards']['sheet']
     assert isinstance(stored, list) and stored[0] == single and len(stored) == 2
     assert guardmaps._load(maps, 'pool')

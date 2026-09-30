@@ -155,24 +155,30 @@ def _check(args, crops: list[Crop]) -> int:
         for kind in ('guards', 'identity'):
             for state, value in spec[kind].items():
                 alternatives = screens.rules_of(value)
+                hits = [0] * len(alternatives)
+                misses = 0
+                for crop in crops:
+                    shown = _shown(crop, title, spec)
+                    matched = False
+                    for index, rule in enumerate(alternatives):
+                        name = state if len(alternatives) == 1 else f'{state}[{index}]'
+                        if digests[crop.relative][tuple(rule['box'])] != rule['sha256']:
+                            continue
+                        matched = True
+                        hits[index] += 1
+                        if not _owned(crop, title, spec) or shown and state not in shown and not shown.intersection(rule['also']):
+                            print(f'{title} {kind}/{name} collision {crop.relative}')
+                            problems += 1
+                    if not matched and _owned(crop, title, spec) and state in shown:
+                        misses += 1
                 for index, rule in enumerate(alternatives):
                     name = state if len(alternatives) == 1 else f'{state}[{index}]'
-                    hits = misses = 0
-                    for crop in crops:
-                        shown = _shown(crop, title, spec)
-                        match = digests[crop.relative][tuple(rule['box'])] == rule['sha256']
-                        if match:
-                            hits += 1
-                            if not _owned(crop, title, spec) or shown and state not in shown and not shown.intersection(rule['also']):
-                                print(f'{title} {kind}/{name} collision {crop.relative}')
-                                problems += 1
-                        elif _owned(crop, title, spec) and state in shown:
-                            misses += 1
                     example = rule['example']
                     if example and (example not in digests or digests[example][tuple(rule['box'])] != rule['sha256']):
                         print(f'{title} {kind}/{name} stale {example}')
                         problems += 1
-                    print(f"{title} {kind}/{name} {rule['box']} hits {hits} misses {misses}")
+                    suffix = f' misses {misses}' if index == len(alternatives) - 1 else ''
+                    print(f"{title} {kind}/{name} {rule['box']} hits {hits[index]}{suffix}")
         print(f'{title}: {problems} problems' if problems else f'{title}: clean')
         failed |= problems != 0
     return int(failed)
@@ -200,6 +206,9 @@ def _add(args, crops: list[Crop]) -> int:
     rule = screens.checked_rule(crop, box, args.state, negatives)
     rule = {**rule, 'example': selected.relative, 'also': sorted(args.also)}
     if args.alternative:
+        if any((r['box'], r['sha256']) == (rule['box'], rule['sha256'])
+               for r in screens.rules_of(spec[args.map][args.state])):
+            raise ValueError(f'{args.state} already has this box and picture')
         spec[args.map][args.state] = [*screens.rules_of(spec[args.map][args.state]), rule]
     else:
         spec[args.map][args.state] = rule
