@@ -485,3 +485,77 @@ def test_a_closed_base_still_stages(tmp_path, name):
         ["stage", "--base", str(base), "--out", str(out)]) == 0
 
     assert D64.open(out).entry(b"SAVEAZURE").is_closed
+
+
+class WorldSess:
+    """Plays one screen for `enter_world`, and records every key it sends."""
+
+    def __init__(self, bar: str, hot: list[int], stall_after: int = 10**9):
+        self.bar, self.hot, self.stall_after = bar, hot, stall_after
+        self.stall_checks = 0
+        self.selected: list[str] = []
+        self.kernal: list[int] = []
+        self.logged: list[str] = []
+
+    def iec_stall_check(self):
+        self.stall_checks += 1
+        return self.stall_checks > self.stall_after
+
+    def stall_capture(self):
+        return "captured"
+
+    def screen(self):
+        return self
+
+    def text(self):
+        return "BEGIN ADVENTURING\n" + self.bar
+
+    def row(self, r):
+        return self.bar
+
+    def find(self, label):
+        return (21, 0)
+
+    def highlighted_rows(self, colour=1, column=None):
+        return self.hot
+
+    def handle_prompt(self, s):
+        return False
+
+    def select_row(self, label):
+        self.selected.append(label)
+
+    def press_kernal(self, code):
+        self.kernal.append(code)
+
+    def log(self, *a):
+        self.logged.append(" ".join(str(x) for x in a))
+
+
+def _clock(monkeypatch):
+    t = [0.0]
+    monkeypatch.setattr(curseload.time, "time", lambda: t[0])
+    monkeypatch.setattr(curseload.time, "sleep",
+                        lambda s: t.__setitem__(0, t[0] + s))
+
+
+def test_a_stalled_load_makes_enter_world_give_up_at_once(monkeypatch):
+    _clock(monkeypatch)
+    sess = WorldSess("ONWARD BOUND", hot=[], stall_after=3)
+    assert curseload.enter_world(sess, timeout=300.0) is False
+    assert sess.stall_checks == 4
+
+
+def test_a_started_load_gets_no_walk_and_no_return(monkeypatch):
+    _clock(monkeypatch)
+    sess = WorldSess("ONWARD BOUND", hot=[])
+    assert curseload.enter_world(sess, timeout=30.0) is False
+    assert sess.selected == [] and sess.kernal == []
+    assert "captured" in sess.logged[-1]
+
+
+def test_a_menu_waiting_for_a_key_is_still_chosen(monkeypatch):
+    _clock(monkeypatch)
+    sess = WorldSess("ONWARD BOUND", hot=[21])
+    curseload.enter_world(sess, timeout=5.0)
+    assert sess.selected and sess.kernal

@@ -110,6 +110,12 @@ class StuckSess:
     def screen(self):
         return FakeScreen("SOME MENU", bar="SOME MENU")
 
+    def iec_stall_check(self):
+        return False
+
+    def stall_capture(self):
+        return "captured"
+
     def handle_prompt(self, s=None):
         return False
 
@@ -175,6 +181,12 @@ class PressContinueSess:
             return FakeScreen("ENCAMP", bar="ENCAMP")
         return FakeScreen("SOME SCENE\nPRESS BUTTON OR RETURN TO CONTINUE.",
                           bar="PRESS BUTTON OR RETURN TO CONTINUE.")
+
+    def iec_stall_check(self):
+        return False
+
+    def stall_capture(self):
+        return "captured"
 
     def handle_prompt(self, s=None):
         return False

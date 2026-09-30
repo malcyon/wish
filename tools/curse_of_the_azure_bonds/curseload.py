@@ -562,6 +562,20 @@ def idle_in_key_window(sess, addr: Addresses) -> int | None:
     return pc
 
 
+def load_started(s) -> bool:
+    """True when the party menu is still drawn but the game has taken the choice.
+
+    A menu waiting for a key has its BEGIN ADVENTURING row highlighted; once
+    the game takes the Return the highlight goes and `ONWARD BOUND` is on row
+    24 while the area loads, and a key sent then only walks towards whichever
+    white row is nearest.
+    """
+    hit = s.find("BEGIN ADVENTURING")
+    if hit is None or "ONWARD BOUND" not in s.row(24):
+        return False
+    return hit[0] not in s.highlighted_rows(column=hit[1])
+
+
 def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
                 ) -> bool:
     """Take a loaded party from the formation menu into the world.
@@ -595,6 +609,10 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
     deadline = time.time() + timeout
     seen, since = "", time.time()
     while time.time() < deadline:
+        if sess.iec_stall_check():
+            # It has logged where the machine was; the rest of the timeout
+            # would only wait on a drive the C64 has stopped listening to.
+            return False
         s = sess.screen()
         if s is None:
             time.sleep(0.5)
@@ -611,8 +629,9 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
             sess.log(f"  world: {state!r}")
             seen, since = state, time.time()
         if state == "BEGIN":
-            sess.select_row("BEGIN ADVENTURING")
-            sess.press_kernal(0x0D)
+            if not load_started(s):
+                sess.select_row("BEGIN ADVENTURING")
+                sess.press_kernal(0x0D)
         elif any(w in state for w in ("CONTINUE", "MORE", "PRESS")):
             # Curse's own opening page -- row 24 reads "PRESS BUTTON OR
             # RETURN TO CONTINUE." -- is a one-option menu behind which the
@@ -639,6 +658,8 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
                 sess.log("  world: screen stuck but not idle in a key "
                          "window; assuming a slow load and waiting")
         time.sleep(1.5)
+    sess.log(f"  world: never reached; where the machine was: "
+             f"{sess.stall_capture()}")
     return False
 
 

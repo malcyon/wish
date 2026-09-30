@@ -471,6 +471,20 @@ def idle_in_key_window(sess, addr, samples: int = 4, gap: float = 0.8
     return pc
 
 
+def load_started(s) -> bool:
+    """True when the party menu is still drawn but the game has taken the choice.
+
+    A menu waiting for a key has its BEGIN ADVENTURING row highlighted; once
+    the game takes the Return the highlight goes and `ONWARD BOUND` is on row
+    24 while the area loads. A key sent then only walks towards whichever
+    white row is nearest.
+    """
+    hit = s.find("BEGIN ADVENTURING")
+    if hit is None or "ONWARD BOUND" not in s.row(24):
+        return False
+    return hit[0] not in s.highlighted_rows(column=hit[1])
+
+
 def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
                 stop_at_idle: bool = True) -> bool:
     """Take a loaded party from the formation menu into somewhere warpable.
@@ -494,6 +508,10 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
     chosen_at, answered = 0.0, False
     subbar_at, subbar_presses = 0.0, 0
     while time.time() < deadline:
+        if sess.iec_stall_check():
+            # It has logged where the machine was; the rest of the timeout
+            # would only wait on a drive the C64 has stopped listening to.
+            return False
         s = sess.screen()
         if s is None:
             time.sleep(0.5)
@@ -543,7 +561,8 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             # again only when it has sat far longer than any load and no disk
             # prompt was answered, i.e. the first choice never registered.
             if not began or (not answered
-                             and time.time() - chosen_at > 90.0):
+                             and time.time() - chosen_at > 90.0
+                             and not load_started(s)):
                 began, answered = True, False
                 chosen_at = time.time()
                 sess.select_row("BEGIN ADVENTURING")
@@ -595,6 +614,8 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
                 sess.log("  world: screen stuck but not idle in a key "
                          "window; assuming a slow load and waiting")
         time.sleep(1.5)
+    sess.log(f"  world: never reached; where the machine was: "
+             f"{sess.stall_capture()}")
     return False
 
 

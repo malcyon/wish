@@ -63,6 +63,12 @@ class FakeScreen:
     def row(self, n):
         return self._bar
 
+    def find(self, label):
+        return (21, 0) if label in self._text else None
+
+    def highlighted_rows(self, colour=1, column=None):
+        return getattr(self, "hot", [])
+
 
 class FakeSess:
     """Just enough of `Session` for `idle_in_key_window`: a monitor context
@@ -138,6 +144,12 @@ class StuckSess:
 
     def handle_prompt(self, s=None):
         return False
+
+    def iec_stall_check(self):
+        return False
+
+    def stall_capture(self):
+        return "captured"
 
     def log(self, *a):
         self.logged.append(" ".join(str(x) for x in a))
@@ -242,10 +254,19 @@ class WorldSess:
         text, bar = self.screens[i]
         if "ENCAMP" in text:
             self.world_bar_seen = True
-        return FakeScreen(text, bar=bar)
+        scr = FakeScreen(text, bar=bar)
+        scr.hot = [21] if (text, bar) == MENU else []
+        return scr
 
     def handle_prompt(self, s=None):
         return self.current in self.prompt_at
+
+    def iec_stall_check(self):
+        self.stall_checks = getattr(self, "stall_checks", 0) + 1
+        return self.stall_checks > getattr(self, "stall_after", 10**9)
+
+    def stall_capture(self):
+        return "captured"
 
     def select_row(self, label):
         self.selected.append(label)
@@ -354,3 +375,27 @@ def test_a_menu_still_up_after_90_seconds_is_not_chosen_again_once_a_prompt_was_
     SSB.enter_world(sess, Addr(), timeout=150.0, fix=False,
                     stop_at_idle=False)
     assert sess.selected == ["BEGIN ADVENTURING"]
+
+
+def test_a_load_that_stalls_gives_up_at_once_instead_of_running_out_the_clock(
+        monkeypatch):
+    _quiet(monkeypatch)
+    sess = WorldSess([MENU, PROMPT, MENU], prompt_at={1})
+    sess.stall_after = 3
+    ok = SSB.enter_world(sess, Addr(), timeout=600.0, fix=False,
+                         stop_at_idle=False)
+    assert ok is False
+    assert sess.stall_checks == 4
+    assert sess.kernal == [0x0D]
+
+
+def test_a_started_load_gets_no_further_walk_or_return_after_90_seconds(
+        monkeypatch):
+    _quiet(monkeypatch)
+    started = ("BEGIN ADVENTURING", "ONWARD BOUND")
+    sess = WorldSess([MENU, started], prompt_at=())
+    ok = SSB.enter_world(sess, Addr(), timeout=150.0, fix=False,
+                         stop_at_idle=False)
+    assert ok is False
+    assert sess.selected == ["BEGIN ADVENTURING"]
+    assert sess.kernal == [0x0D]
