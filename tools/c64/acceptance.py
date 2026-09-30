@@ -3474,9 +3474,19 @@ class PoolRun:
     def _scribe_untouched(self, spell: str) -> None:
         """Fail, with the screen kept, unless the pick prompt still has SPELL
         highlighted: the count did not rise and the game may have refused."""
-        screen = self.sess.screen()
+        # A monitor that did not answer reads as no screen; ask again before
+        # calling the highlight lost.
+        for attempt in range(3):
+            screen = self.sess.screen()
+            if screen is not None:
+                break
+            if attempt < 2:
+                time.sleep(0.3)
         rows = [screen.row(r) for r in range(25)] if screen is not None else []
-        if rows and scribe_highlight(screen, rows) == scribe_row(rows, spell):
+        # No row for the spell is not a highlight on it: both being None
+        # means the prompt was replaced, not that it is untouched.
+        want = scribe_row(rows, spell) if rows else None
+        if want is not None and scribe_highlight(screen, rows) == want:
             return
         self.capture("scribe-pick-moved", rows or None)
         raise self.fail("scribe-pick", f"the count did not rise for {spell} and "

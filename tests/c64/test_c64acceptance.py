@@ -11659,6 +11659,49 @@ def test_scribe_does_not_send_the_second_key_after_a_refusal_flash_between_polls
     assert list(tmp_path.glob("*lost-scribe-pick.txt"))
 
 
+def test_scribe_does_not_send_the_second_key_when_the_prompt_was_replaced(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "SCRIBE_PICK_SECONDS", 0.5)
+    # The first key replaced the pick prompt: no spell row, no highlight.
+    sess = _ScribeFake({("pick", ("key", "Return")): "chosen"}, scribed=set())
+    run = _scribe_run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="may have refused"):
+        run.scribe("MORGAINE>PROTECTION FROM GOOD")
+    run.log.close()
+    assert ("key", 0x0D) not in sess.sent
+
+
+def test_scribe_asks_again_when_the_monitor_did_not_answer(tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "SCRIBE_PICK_SECONDS", 0.5)
+    monkeypatch.setattr(A.time, "sleep", lambda s: None)
+
+    class Silent(_ScribeFake):
+        silent = False
+
+        def screen(self):
+            if self.silent:
+                self.silent = False
+                return None
+            return super().screen()
+
+    sess = Silent({("pick", ("key", "Return")): "pick",
+                   ("pick", ("key", 0x0D)): "picked"})
+    run = _scribe_run(tmp_path, sess)
+    real = run._scribe_untouched
+
+    def arm(spell):
+        sess.silent = True
+        real(spell)
+
+    run._scribe_untouched = arm
+    try:
+        got = run.scribe("MORGAINE>PROTECTION FROM GOOD")
+    finally:
+        run.log.close()
+    assert got["key"] == "kernal-return"
+    assert ("key", 0x0D) in sess.sent
+
+
 def test_scribe_refuses_a_list_with_next_or_prev(tmp_path):
     screens = {**SCRIBE_SCREENS, "list": _window(_SCROLL, "SCRIBE NEXT EXIT")}
     sess = _ScribeFake()
