@@ -11011,3 +11011,21 @@ def test_the_registry_holds_the_curse_disks_the_driver_would_look_up():
     if disks is None:
         pytest.skip("no Curse of the Azure Bonds disks in the registry")
     assert disks.is_dir()
+
+
+def test_the_no_disks_refusal_names_the_variable_of_the_title(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(A, "tool_disks", lambda: None)
+    monkeypatch.setattr(A.gamedisks, "find", lambda name: None)
+    monkeypatch.setattr(A.gamedisks, "entry", lambda name: {"env": "CURSE_DISKS"})
+    for title, wanted in (("pool", "$POR_DISKS"), ("curse", "$CURSE_DISKS")):
+        _refused_before_a_slot(tmp_path, monkeypatch, [
+            "--title", title, "--save", str(_fixture_disk(tmp_path)),
+            "--steps", "load", "camp-list"])
+        err = capsys.readouterr().err
+        assert f"set {wanted} or pass --disks" in err
+    monkeypatch.setattr(A.gamedisks, "entry", lambda name: {})
+    _refused_before_a_slot(tmp_path, monkeypatch, [
+        "--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
+        "--steps", "load", "camp-list"])
+    assert "found; pass --disks" in capsys.readouterr().err

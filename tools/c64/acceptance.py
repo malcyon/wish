@@ -6518,7 +6518,10 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             ap.error(str(exc))
     if not args.stage_only and args.disks is None:
-        ap.error("no game disks found; set $POR_DISKS or pass --disks")
+        env = ("POR_DISKS" if args.title == "pool"
+               else gamedisks.entry(TITLES[args.title]).get("env"))
+        ap.error(f"no game disks found; {f'set ${env} or pass' if env else 'pass'}"
+                 " --disks")
     out = (pathlib.Path(args.out) if args.out
            else evidence.default_out(args.issue, args.run,
                                      evidence.git_state(REPO)["sha"]))
