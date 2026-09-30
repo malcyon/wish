@@ -122,3 +122,46 @@ def test_run_recon_selects_the_forward_route_for_a_manifest_that_says_so(tmp_pat
                              audio_proof=tmp_path / "mute.json", title=acceptance.POOL, measure=True)
     assert seen == [route_pool.POOL_FORWARD]
     assert ("NP2", "world", "turn") not in seen[0].route and seen[0].turn is None
+
+
+TOUR_START = {"area": 0, "x": 15, "y": 1, "facing": geo.WEST}
+
+
+@pytest.mark.parametrize("title", [route_pool.POOL, route_pool.POOL_FORWARD])
+def test_the_route_presses_return_on_the_continue_bar_only_while_waiting_for_the_world(title):
+    rows = [row for row in title.interstitials if row[0] == "continue"]
+    assert rows == [("continue", ("keys", "RET"), frozenset({"world"}), route_pool.POOL_CONTINUE_PAGES)]
+    assert route_pool.POOL_CONTINUE_PAGES > 8  # the eight pages of Rolf's tour, and a stuck one stops
+
+
+def test_the_committed_guard_map_recognises_the_continue_bar_on_the_command_bar_row():
+    guards = json.loads((acceptance.REPO / "tools" / "amiga" / "guards_pool.json").read_text())["guards"]
+    bar, world = guards["continue"], guards["world"]
+    assert bar["box"][1:4:2] == world["box"][1:4:2]  # the same row, so a map bar never reads as it
+    assert bar["sha256"] != world["sha256"]
+
+
+def _prepared(monkeypatch, place, clock):
+    monkeypatch.setattr(route_pool, "_prepare_from", lambda *a, **k: {
+        "state_a": dict(place), "loaded_letter": "A", "disks": {"save": {"path": "save.adf"}}})
+    monkeypatch.setattr(route_pool, "_pool_loaded_clock", lambda manifest: clock)
+    monkeypatch.setattr(route_pool, "pool_turns_about", lambda place: True)
+    return route_pool._prepare_pool(None, None)
+
+
+def test_a_party_that_has_not_taken_the_tour_is_judged_from_where_the_tour_leaves_it(monkeypatch):
+    manifest = _prepared(monkeypatch, TOUR_START, (0, 0, 0, 0, 0, 0))
+    assert manifest["opening_tour"] is True
+    assert manifest["loaded_place"] == TOUR_START
+    assert manifest["state_a"] == route_pool.POOL_TOUR_END == {"area": 0, "x": 0, "y": 4,
+                                                               "facing": geo.WEST}
+
+
+@pytest.mark.parametrize("place, clock", [
+    (TOUR_START, (0, 5, 0, 0, 0, 0)),  # played, and back on New Phlan's arrival square
+    ({"area": 0, "x": 0, "y": 4, "facing": geo.WEST}, (0, 0, 0, 0, 0, 0)),  # the tour is over
+])
+def test_a_party_past_the_tour_keeps_its_own_place(monkeypatch, place, clock):
+    manifest = _prepared(monkeypatch, place, clock)
+    assert manifest["state_a"] == place
+    assert "opening_tour" not in manifest and "loaded_place" not in manifest

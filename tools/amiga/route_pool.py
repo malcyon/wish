@@ -93,6 +93,14 @@ def _pool_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, bytes]
             for entry in disk.entries() if not entry.is_dir and mine.fullmatch(entry.name)}
 
 
+#: Pages of `PRESS <RETURN> OR BUTTON TO CONTINUE` answered while waiting for the map: the
+#: eight of Rolf's opening tour, which a party that has not taken it meets after the load, and
+#: two more, so that a page that never turns still stops the run.
+POOL_CONTINUE_PAGES = 10
+#: Where Rolf's tour leaves the party: the DOS game's own save after it reads area 0, 0,4
+#: facing west, as the C64 game's does.
+POOL_TOUR_END = {"area": 0, "x": 0, "y": 4, "facing": geo.WEST}
+
 # Section 3 of the plan for Pool of Radiance. `RET` at the first screen is the
 # `wheel` interstitial below, which takes RETURN on this image. No route step
 # presses RET after C or D, and none presses Y.
@@ -130,6 +138,7 @@ POOL = AmigaTitle(
     interstitials=(
         ("wheel", ("keys", "RET"), frozenset({"title"}), 1),
         ("save_path", ("keys", "RET"), frozenset({"camp_save_picker"}), 1),
+        ("continue", ("keys", "RET"), frozenset({"world"}), POOL_CONTINUE_PAGES),
     ),
     # ECL14 $994F-$995D: COMPARE [$C04D], 1 then NEWECL 0, with no write to the party's square,
     # so a step east off the Slums lands in New Phlan on the wrapped square, still facing east.
@@ -221,10 +230,34 @@ POOL_SOURCES = _Sources("pool", POOL, POOL_SPECIMEN, POOL_SPECIMEN_SHA256, POOL_
                         amigaporslot.import_slot)
 
 
+def _pool_loaded_clock(manifest: dict) -> tuple[int, ...]:
+    """The clock digits of the slot the run loads, read from the prepared save disk."""
+    disk = amiga_adf.AmigaDisk.open(pathlib.Path(manifest["disks"]["save"]["path"]))
+    raw = disk.read_file(f"/savgam{manifest['loaded_letter']}.dat")
+    return tuple(amiga_savegame.por_state_from_amiga(raw).clock)
+
+
+def _tour_pending(manifest: dict) -> bool:
+    """Whether the loaded party stands on New Phlan's arrival square at clock zero, so the game plays Rolf's tour."""
+    start = areas.start_of(areas.POOL_OF_RADIANCE)
+    arrival = {"area": start.area, "x": start.arrival.x, "y": start.arrival.y,
+               "facing": start.arrival.facing}
+    return manifest["state_a"] == arrival and not any(_pool_loaded_clock(manifest))
+
+
 def _prepare_pool(run: pathlib.Path, specimen: pathlib.Path | None, *,
                   substitute: pathlib.Path | None = None, substitute_letter: str = "A"
                   ) -> dict[str, Any]:
+    """The run folder's manifest; a party that has not taken Rolf's tour is judged from where it ends.
+
+    The route answers the tour's pages before the map, so the menu save and the walk start at
+    `POOL_TOUR_END`; `loaded_place` keeps the slot's own square.
+    """
     manifest = _prepare_from(POOL_SOURCES, run, specimen,
                              substitute=substitute, substitute_letter=substitute_letter)
+    if _tour_pending(manifest):
+        manifest["opening_tour"] = True
+        manifest["loaded_place"] = manifest["state_a"]
+        manifest["state_a"] = dict(POOL_TOUR_END)
     manifest["turn_about"] = pool_turns_about(manifest["state_a"])
     return manifest

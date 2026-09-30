@@ -22,6 +22,17 @@
       "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/08-camp_save_picker.png",
       "sha256": "1fe574ec349643251e596530106ad79aa8faa8bac655168d46f20228f0112457"
     },
+    "continue": {
+      "also": [],
+      "box": [
+        54,
+        418,
+        634,
+        432
+      ],
+      "example": "679/619-l3-pool-jrsmith/measure1/shots/05-world.png",
+      "sha256": "c4c5d70e18210d1267c28b11d9d972626a6c63cb39c49e26a23fe72e10230132"
+    },
     "load_picker": {
       "also": [],
       "box": [
