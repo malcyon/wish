@@ -19,12 +19,15 @@ import pytest
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
 
 from support.partymenu import (  # noqa: E402
+    ENTRIES,
     MODIFY,
     ONWARD,
+    PARTY,
     SIDE_2,
     WORLD_BAR,
     bar_screen,
     menu_screen,
+    picker_screen,
 )
 
 from goldbox.d64 import D64  # noqa: E402
@@ -499,12 +502,17 @@ def test_a_closed_base_still_stages(tmp_path, name):
 class WorldSess:
     """Plays one screen for `enter_world`, and records every key it sends."""
 
-    def __init__(self, bar: str, hot: list[int], stall_after: int = 10**9):
+    def __init__(self, bar: str, hot: list[int], stall_after: int = 10**9,
+                 walk_ok: bool = True):
         self.bar, self.hot, self.stall_after = bar, hot, stall_after
+        self.walk_ok = walk_ok
+        self.walked: str | None = None
         self.stall_checks = 0
         self.selected: list[str] = []
         self.kernal: list[int] = []
         self.logged: list[str] = []
+        self.returned_at: list = []
+        self.shown = None
 
     def iec_stall_check(self):
         self.stall_checks += 1
@@ -514,17 +522,32 @@ class WorldSess:
         return "captured"
 
     def screen(self):
+        if self.walked is not None:
+            # The read straight after a walk that reached its row: the same
+            # screen with the highlight moved there, the script not advanced.
+            label, self.walked = self.walked, None
+            self.shown = (picker_screen(len(PARTY)) if label == "EXIT"
+                          else menu_screen(ENTRIES.index(label)))
+        else:
+            self.shown = self.next_screen()
+        return self.shown
+
+    def next_screen(self):
         return menu_screen(3 if self.hot else None,
                            row24="" if self.hot else self.bar)
 
     def handle_prompt(self, s):
         return False
 
-    def select_row(self, label):
+    def select_row(self, label, **walk):
         self.selected.append(label)
+        if self.walk_ok:
+            self.walked = label
+        return self.walk_ok
 
     def press_kernal(self, code):
         self.kernal.append(code)
+        self.returned_at.append(self.shown)
 
     def log(self, *a):
         self.logged.append(" ".join(str(x) for x in a))
@@ -570,7 +593,7 @@ class LoadSess(WorldSess):
         super().__init__("", hot=[])
         self.passes, self.answered_on, self.at = passes, answered_on, -1
 
-    def screen(self):
+    def next_screen(self):
         self.at = min(self.at + 1, len(self.passes) - 1)
         return self.passes[self.at]
 
@@ -592,9 +615,9 @@ def test_nothing_is_sent_into_a_load_after_its_disk_prompt(monkeypatch):
 def test_an_uncoloured_first_pass_delays_the_choice_and_does_not_lose_it(
         monkeypatch):
     class Recording(LoadSess):
-        def select_row(self, label):
-            super().select_row(label)
+        def select_row(self, label, **walk):
             self.chosen_on = self.at
+            return super().select_row(label, **walk)
 
     _clock(monkeypatch)
     passes = ([menu_screen(None)] + [menu_screen(MODIFY)]
@@ -604,3 +627,30 @@ def test_an_uncoloured_first_pass_delays_the_choice_and_does_not_lose_it(
     assert sess.selected == ["BEGIN ADVENTURING"]
     assert sess.chosen_on > 0
     assert sess.kernal == [0x0D]
+
+
+def test_a_failed_walk_sends_curse_no_return(monkeypatch):
+    """#796: with the walk failing, a Return would choose whichever entry is
+    white -- MODIFY CHARACTER here."""
+    _clock(monkeypatch)
+    sess = WorldSess("", hot=[3], walk_ok=False)
+    assert curseload.enter_world(sess, timeout=300.0) is False
+    assert sess.kernal == []
+    assert sess.selected == ["BEGIN ADVENTURING"] * 3
+    assert "giving up" in sess.logged[-1]
+
+
+def test_curse_leaves_modify_which_character_through_exit(monkeypatch):
+    """#796: a party list over the menu is left through its EXIT row, and
+    every keyboard-buffer Return went to a screen whose highlight was read
+    first: BEGIN ADVENTURING, or EXIT."""
+    _clock(monkeypatch)
+    passes = ([menu_screen(MODIFY), picker_screen(0), menu_screen(MODIFY)]
+              + [menu_screen(None, ONWARD)] * 2 + [bar_screen(WORLD_BAR)])
+    sess = LoadSess(passes, answered_on=-1)
+    assert curseload.enter_world(sess, timeout=300.0) is True
+    assert sess.selected == ["BEGIN ADVENTURING", "EXIT", "BEGIN ADVENTURING"]
+    begin = menu_screen(len(ENTRIES) - 1)
+    leave = picker_screen(len(PARTY))
+    assert [s.colours for s in sess.returned_at] == [
+        begin.colours, leave.colours, begin.colours]

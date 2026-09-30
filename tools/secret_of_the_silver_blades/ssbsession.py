@@ -492,15 +492,106 @@ def load_started(s) -> bool:
     column skips a cell whose second neighbour to the left is also white, and
     the window frame is white.
     """
+    return s.find("BEGIN ADVENTURING") is not None and menu_cursor(s) is None
+
+
+def menu_cursor(s) -> int | None:
+    """The screen row of the party-menu entry drawn white, or None.
+
+    Read the way `load_started` explains: up the run of entries ending at
+    BEGIN ADVENTURING, in the column the labels start in.
+    """
     hit = s.find("BEGIN ADVENTURING")
     if hit is None:
-        return False
+        return None
     row, col = hit
     while row >= 0 and s.row(row)[col:col + 1].strip():
         if s.colours[row * SCREEN_COLS + col] == 1:
-            return False
+            return row
         row -= 1
+    return None
+
+
+def cursor_on_begin(s) -> bool:
+    """True only when BEGIN ADVENTURING is the white party-menu entry."""
+    hit = s.find("BEGIN ADVENTURING")
+    return hit is not None and menu_cursor(s) == hit[0]
+
+
+#: Row 24 of every list the party menu opens on the party itself --
+#: `MODIFY WHICH CHARACTER?`, `VIEW WHICH CHARACTER?` and the like: the
+#: party's names with `EXIT` under them. Not the world, in either later title.
+PICKER = "WHICH CHARACTER"
+
+
+def at_picker(s) -> bool:
+    """A party-menu list of the party is on the screen."""
+    return PICKER in s.row(24).upper()
+
+
+def picker_on_exit(s) -> bool:
+    """The party-menu list is up and its highlight is on `EXIT`."""
+    if not at_picker(s):
+        return False
+    hit = s.find("EXIT")
+    return hit is not None and hit[0] in s.highlighted_rows(column=hit[1])
+
+
+def leave_picker(sess, s) -> bool:
+    """Choose the list's `EXIT` row, read in the column the names start in.
+
+    The column matters: a row holding nothing but the window frame counts
+    as white in a whole-row reading, and the nearest such row is the one
+    `select_row` would walk towards.
+    """
+    hit = s.find("EXIT")
+    if hit is None:
+        return False
+    return choose_verified(sess, "EXIT", picker_on_exit, column=hit[1])
+
+
+def disk_prompt_up(text: str) -> bool:
+    """Either title's side prompt or save-disk prompt is in *text*."""
+    return bool(side_wanted(text)[1]) or save_disk_wanted(text)
+
+
+def choose_verified(sess, label: str, verified, settle: float = 0.5,
+                    **walk) -> bool:
+    """Walk the highlight onto *label* and choose it, or send no Return at all.
+
+    `select_row` presses an XTEST Return only once the highlight is on
+    *label*, and returns False when it could not get it there. The keyboard
+    buffer Return that backs it up (an XTEST Return can be dropped) goes only
+    to a screen `verified` still accepts with no disk prompt drawn: a Return
+    sent after a failed walk chooses whichever entry is white, which is how a
+    load reached `MODIFY WHICH CHARACTER?`.
+    """
+    if not sess.select_row(label, **walk):
+        return False
+    time.sleep(settle)
+    s = sess.screen()
+    if s is not None and verified(s) and not disk_prompt_up(s.text()):
+        sess.press_kernal(0x0D)
     return True
+
+
+#: LINKER's dispatch byte (`Addresses.mode`, `$7F11`): `0` while GEN runs the
+#: party menu and its lists, `1` while DUNGEON runs the world (docs/121).
+GEN, DUNGEON = 0, 1
+
+#: Failed walks onto BEGIN ADVENTURING, and backings-out of a party-menu
+#: list, before `enter_world` gives up rather than keep pressing.
+MAX_WALKS = 3
+MAX_BACKOUTS = 3
+
+
+def overlay_mode(sess, addr) -> int | None:
+    """LINKER's dispatch byte, or None when the read failed."""
+    try:
+        with sess.mon(5) as m:
+            return m.read(addr.mode, 1)[0]
+    except Exception:
+        return None
 
 
 def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
@@ -518,6 +609,12 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
     warp made from the fetcher the menu is waiting in is the same six writes
     and the same jump. So the first moment the machine is demonstrably idle
     is the moment to leave from, whatever menu happens to be on screen.
+
+    **That fetcher also serves the party menu**, so the world is claimed only
+    while LINKER's mode byte reads DUNGEON. A list the party menu opens on
+    the party (`MODIFY WHICH CHARACTER?`) is left through its own EXIT row,
+    and a failed walk onto BEGIN ADVENTURING sends no Return at all, since a
+    Return then chooses whichever entry is white.
     """
     STUCK = 15.0
     deadline = time.time() + timeout
@@ -525,6 +622,7 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
     began = entered = False
     chosen_at, answered = 0.0, False
     subbar_at, subbar_presses = 0.0, 0
+    walk_failures = backouts = 0
     while time.time() < deadline:
         if sess.iec_stall_check():
             # It has logged where the machine was; the rest of the timeout
@@ -550,14 +648,34 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
                 subbar_presses += 1
             time.sleep(1.5)
             continue
+        if at_picker(s) and overlay_mode(sess, addr) != DUNGEON:
+            # A list the party menu opens on the party, which a Return on
+            # MODIFY, VIEW, DROP or REMOVE puts up. GEN is still running it,
+            # so it is not the world, and it waits in the same fetcher the
+            # world does. Leave it through its own EXIT row and choose the
+            # menu again from scratch.
+            bar = s.row(24).strip()
+            if backouts >= MAX_BACKOUTS:
+                sess.log(f"  world: still at {bar!r} after {backouts} tries "
+                         f"to leave it through EXIT; giving up")
+                return False
+            backouts += 1
+            sess.log(f"  world: {bar!r} is a party-menu list, not the "
+                     f"world; leaving it through EXIT")
+            leave_picker(sess, s)
+            began = entered = False
+            seen, since = "", time.time()
+            time.sleep(1.5)
+            continue
         if entered and stop_at_idle and not side_wanted(text)[1] \
                 and not save_disk_wanted(text):
             # Not while a disk prompt is up: that waits in `LIBRARY` too, at
             # its own loop rather than in the fetcher, and a warp made with
             # the drive half-way through a file is the one thing the PC guard
-            # exists to prevent.
+            # exists to prevent. And only while DUNGEON runs: the fetcher is
+            # shared with GEN's menus and with a fight.
             pc = idle_in_key_window(sess, addr)
-            if pc is not None:
+            if pc is not None and overlay_mode(sess, addr) == DUNGEON:
                 sess.log(f"  world: idle at ${pc:04X}, which is warpable")
                 return True
         if impossible_side(sess, addr, text, fix) is not None:
@@ -581,15 +699,24 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             if not began or (not answered
                              and time.time() - chosen_at > 90.0
                              and not load_started(s)):
-                began, answered = True, False
                 chosen_at = time.time()
-                sess.select_row("BEGIN ADVENTURING")
-                sess.press_kernal(0x0D)
-        elif began and not entered:
-            # Past the formation menu and not a disk prompt: the party is in
-            # the world and a script is running it. Only now is an idle PC
-            # worth anything -- before it, the same fetcher is what the menus
-            # of the front end wait in.
+                if choose_verified(sess, "BEGIN ADVENTURING",
+                                   cursor_on_begin):
+                    began, answered = True, False
+                else:
+                    walk_failures += 1
+                    sess.log(f"  world: no Return sent, because the "
+                             f"highlight is not on BEGIN ADVENTURING "
+                             f"({walk_failures} of {MAX_WALKS})")
+                    if walk_failures >= MAX_WALKS:
+                        sess.log("  world: giving up rather than choose "
+                                 "whichever entry is highlighted")
+                        return False
+        elif began and not entered and overlay_mode(sess, addr) == DUNGEON:
+            # Past the formation menu, not a disk prompt, and DUNGEON is the
+            # overlay running: the party is in the world and a script is
+            # running it. Only now is an idle PC worth anything -- before it,
+            # the same fetcher is what the menus of the front end wait in.
             entered = True
             sess.log("  world: the party is in the world")
         elif "EXIT" in state and state != "ENCAMP":
@@ -617,6 +744,12 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             # `enter_world`'s own idle branch above applies -- before sending
             # Escape (#568).
             pc = idle_in_key_window(sess, addr)
+            if pc is not None and overlay_mode(sess, addr) == GEN:
+                # A party-menu screen this loop has no key for. Nothing
+                # pressed at it is known to lead back to the menu.
+                sess.log(f"  world: {state!r} is a party-menu screen with no "
+                         f"known way out (idle at ${pc:04X}); giving up")
+                return False
             if pc is not None:
                 sess.log(f"  world: backing out with Escape (idle at "
                          f"${pc:04X})")

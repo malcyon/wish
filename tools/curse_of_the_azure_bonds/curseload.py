@@ -75,7 +75,15 @@ from automap.actions import pc_register  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 from tools.areas import newecl  # noqa: E402
 from tools.registry import scratch  # noqa: E402
-from tools.secret_of_the_silver_blades.ssbsession import load_started  # noqa: E402
+from tools.secret_of_the_silver_blades.ssbsession import (  # noqa: E402
+    MAX_BACKOUTS,
+    MAX_WALKS,
+    at_picker,
+    choose_verified,
+    cursor_on_begin,
+    leave_picker,
+    load_started,
+)
 
 #: Every byte worth reading when the load has just failed, and why.
 PROBES = {
@@ -586,6 +594,10 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
     can sit unchanged for `STUCK` seconds either because a menu is waiting or
     because a disk load has not finished drawing anything yet.
 
+    A failed walk onto BEGIN ADVENTURING sends no Return, because one then
+    chooses whichever entry is white; a list the menu opens on the party is
+    left through its own EXIT row.
+
     **`addr` is optional only for the callers that do not yet pass one** --
     `tools/gui/livecheck.py`, `tools/c64/inventorycheck.py` and `tools/curse_of_the_azure_bonds/cursecheck.py`
     all call this without an `Addresses`, and giving `addr` no default would
@@ -595,6 +607,7 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
     STUCK = 15.0
     deadline = time.time() + timeout
     seen, since = "", time.time()
+    walk_failures = backouts = 0
     while time.time() < deadline:
         if sess.iec_stall_check():
             # It has logged where the machine was; the rest of the timeout
@@ -607,6 +620,22 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
         text = s.text()
         if "ENCAMP" in text:
             return True
+        if at_picker(s):
+            # `MODIFY WHICH CHARACTER?` and the other lists the party menu
+            # opens on the party: left through their own EXIT row, never with
+            # the Escape the STUCK branch below would send.
+            bar = s.row(24).strip()
+            if backouts >= MAX_BACKOUTS:
+                sess.log(f"  world: still at {bar!r} after {backouts} tries "
+                         f"to leave it through EXIT; giving up")
+                return False
+            backouts += 1
+            sess.log(f"  world: {bar!r} is a party-menu list, not the "
+                     f"world; leaving it through EXIT")
+            leave_picker(sess, s)
+            seen, since = "", time.time()
+            time.sleep(1.5)
+            continue
         if sess.handle_prompt(s):
             time.sleep(1.5)
             continue
@@ -619,9 +648,16 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
             # The menu stays drawn through the load and the side 2 prompt
             # that interrupts it; only a menu with an entry still white is
             # waiting for a key.
-            if not load_started(s):
-                sess.select_row("BEGIN ADVENTURING")
-                sess.press_kernal(0x0D)
+            if not load_started(s) and not choose_verified(
+                    sess, "BEGIN ADVENTURING", cursor_on_begin):
+                walk_failures += 1
+                sess.log(f"  world: no Return sent, because the highlight "
+                         f"is not on BEGIN ADVENTURING "
+                         f"({walk_failures} of {MAX_WALKS})")
+                if walk_failures >= MAX_WALKS:
+                    sess.log("  world: giving up rather than choose "
+                             "whichever entry is highlighted")
+                    return False
         elif any(w in state for w in ("CONTINUE", "MORE", "PRESS")):
             # Curse's own opening page -- row 24 reads "PRESS BUTTON OR
             # RETURN TO CONTINUE." -- is a one-option menu behind which the

@@ -22,7 +22,15 @@ import os
 from contextlib import contextmanager
 
 from conftest import load_tools_module
-from support.partymenu import BEGIN_ROW, ENTRIES, SIDE_2, menu_screen
+from support.partymenu import (
+    BEGIN_ROW,
+    ENTRIES,
+    MODIFY,
+    PARTY,
+    SIDE_2,
+    menu_screen,
+    picker_screen,
+)
 
 SSB = load_tools_module("ssbsession")
 
@@ -224,12 +232,18 @@ class WorldSess:
     """Plays a fixed list of (text, row 24) screens, one per `screen()` call,
     repeating the last, and records every key `enter_world` sends."""
 
-    def __init__(self, screens, prompt_at=()):
+    def __init__(self, screens, prompt_at=(), walk_ok=True):
         self.screens = list(screens)
         self.prompt_at = set(prompt_at)
+        self.walk_ok = walk_ok
+        self.walked: str | None = None
         self.calls = 0
         self.selected: list[str] = []
         self.kernal: list[int] = []
+        #: The screen up at each keyboard-buffer Return, and every line logged.
+        self.returned_at: list = []
+        self.logged: list[str] = []
+        self.shown = None
         self.escapes = 0
         self.kernal_after_world_bar = 0
         self.world_bar_seen = False
@@ -243,10 +257,24 @@ class WorldSess:
         self.kbd = Kbd()
 
     def screen(self):
+        self.shown = self._screen()
+        return self.shown
+
+    def _screen(self):
+        if self.walked is not None:
+            # The read straight after a walk that reached its row: the same
+            # screen with the highlight moved there, the script not advanced.
+            label, self.walked = self.walked, None
+            if label == "EXIT":
+                return picker_screen(len(PARTY))
+            return menu_screen(ENTRIES.index(label))
         i = min(self.calls, len(self.screens) - 1)
         self.calls += 1
         self.current = i
-        text, bar = self.screens[i]
+        item = self.screens[i]
+        if not isinstance(item, tuple):
+            return item                 # a real `Screen`
+        text, bar = item
         if "ENCAMP" in text:
             self.world_bar_seen = True
         if text == "BEGIN ADVENTURING":
@@ -266,24 +294,31 @@ class WorldSess:
     def stall_capture(self):
         return "captured"
 
-    def select_row(self, label):
+    def select_row(self, label, **walk):
         self.selected.append(label)
+        if self.walk_ok:
+            self.walked = label
+        return self.walk_ok
 
     def press_kernal(self, code):
         self.kernal.append(code)
+        self.returned_at.append(self.shown)
         if self.world_bar_seen:
             self.kernal_after_world_bar += 1
 
     def log(self, *a):
-        pass
+        self.logged.append(" ".join(str(x) for x in a))
 
 
-def _quiet(monkeypatch):
+def _quiet(monkeypatch, mode=1):
     clock = FakeClock()
     monkeypatch.setattr(SSB.time, "time", clock.time)
     monkeypatch.setattr(SSB.time, "sleep", clock.sleep)
     monkeypatch.setattr(SSB, "impossible_side", lambda *a, **k: None)
     monkeypatch.setattr(SSB, "idle_in_key_window", lambda sess, addr: None)
+    # LINKER's mode byte: 1 is DUNGEON, the world; 0 is GEN, the party menu.
+    monkeypatch.setattr(SSB, "overlay_mode", lambda sess, addr: mode,
+                        raising=False)
 
 
 MENU = ("BEGIN ADVENTURING", "BEGIN ADVENTURING")
@@ -397,6 +432,96 @@ def test_a_started_load_gets_no_further_walk_or_return_after_90_seconds(
     assert ok is False
     assert sess.selected == ["BEGIN ADVENTURING"]
     assert sess.kernal == [0x0D]
+
+
+def _verified(screen) -> bool:
+    """A keyboard-buffer Return went to a screen whose highlight was checked:
+    BEGIN ADVENTURING on the menu, or EXIT on a party list."""
+    return (screen is not None and hasattr(screen, "colours")
+            and (menu_cursor_is_begin(screen) or picker_exit_hot(screen)))
+
+
+def menu_cursor_is_begin(screen) -> bool:
+    hit = screen.find("BEGIN ADVENTURING")
+    return hit is not None and screen.colours[hit[0] * 40 + hit[1]] == 1 \
+        and all(screen.colours[(hit[0] - i) * 40 + hit[1]] != 1
+                for i in range(1, len(ENTRIES)))
+
+
+def picker_exit_hot(screen) -> bool:
+    hit = screen.find("EXIT")
+    return (hit is not None and "WHICH CHARACTER" in screen.row(24)
+            and screen.colours[hit[0] * 40 + hit[1]] == 1)
+
+
+def test_a_walk_that_fails_sends_no_return_and_gives_up_saying_why(
+        monkeypatch):
+    """#796: the highlight sits on MODIFY CHARACTER and every walk fails --
+    a dialog took the arrow keys. A Return then would choose MODIFY."""
+    _quiet(monkeypatch)
+    sess = WorldSess([menu_screen(MODIFY)], walk_ok=False)
+    ok = SSB.enter_world(sess, Addr(), timeout=600.0, fix=False,
+                         stop_at_idle=True)
+    assert ok is False
+    assert sess.kernal == []
+    assert sess.selected == ["BEGIN ADVENTURING"] * SSB.MAX_WALKS
+    assert any("giving up" in line for line in sess.logged)
+
+
+def test_modify_which_character_is_not_the_world_and_is_left_through_exit(
+        monkeypatch):
+    """#796: the stray Return opened `MODIFY WHICH CHARACTER?`, GEN is still
+    the running overlay and the PC waits in the shared fetcher. The list is
+    left through EXIT, BEGIN ADVENTURING is chosen again, and True comes only
+    from the world bar."""
+    _quiet(monkeypatch, mode=0)
+    monkeypatch.setattr(SSB, "idle_in_key_window", lambda sess, addr: 0x410B)
+    sess = WorldSess([menu_screen(MODIFY), picker_screen(0),
+                      menu_screen(MODIFY), WORLD])
+    ok = SSB.enter_world(sess, Addr(), timeout=240.0, fix=False,
+                         stop_at_idle=True)
+    assert ok is True
+    assert sess.world_bar_seen
+    assert sess.selected == ["BEGIN ADVENTURING", "EXIT", "BEGIN ADVENTURING"]
+    assert sess.kernal == [0x0D] * 3
+    assert all(_verified(s) for s in sess.returned_at)
+
+
+def test_a_party_list_that_will_not_close_is_never_the_world(monkeypatch):
+    _quiet(monkeypatch, mode=0)
+    monkeypatch.setattr(SSB, "idle_in_key_window", lambda sess, addr: 0x410B)
+    sess = WorldSess([menu_screen(MODIFY), picker_screen(0)])
+    ok = SSB.enter_world(sess, Addr(), timeout=240.0, fix=False,
+                         stop_at_idle=True)
+    assert ok is False
+    assert sess.selected.count("EXIT") == SSB.MAX_BACKOUTS
+    assert all(_verified(s) for s in sess.returned_at)
+
+
+def test_a_screen_past_the_menu_with_gen_still_running_is_not_the_world(
+        monkeypatch):
+    """No list, no bar this loop knows, and the PC idle in the fetcher: with
+    LINKER's byte at 0 it is still the front end, so no True and no Escape."""
+    _quiet(monkeypatch, mode=0)
+    monkeypatch.setattr(SSB, "idle_in_key_window", lambda sess, addr: 0x410B)
+    escapes = []
+    sess = WorldSess([MENU, ("A SCREEN", "A SCREEN")])
+    sess.kbd = type("Kbd", (), {"key": lambda k, name: escapes.append(name)})()
+    ok = SSB.enter_world(sess, Addr(), timeout=240.0, fix=False,
+                         stop_at_idle=True)
+    assert ok is False
+    assert escapes == []
+    assert any("no known way out" in line for line in sess.logged)
+
+
+def test_the_highlight_readers_on_real_screens():
+    assert SSB.cursor_on_begin(menu_screen(len(ENTRIES) - 1))
+    assert not SSB.cursor_on_begin(menu_screen(MODIFY))
+    assert not SSB.cursor_on_begin(menu_screen(None))
+    assert SSB.at_picker(picker_screen(0))
+    assert not SSB.at_picker(menu_screen(MODIFY))
+    assert SSB.picker_on_exit(picker_screen(len(PARTY)))
+    assert not SSB.picker_on_exit(picker_screen(0))
 
 
 def test_load_started_reads_a_real_screen_both_ways():
