@@ -24,7 +24,11 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox import amiga_adf, areas, geo  # noqa: E402
-from tools.amiga import amigabladesjournal, route_silver_blades  # noqa: E402
+from tools.amiga import (  # noqa: E402
+    amigabladesjournal,
+    route_camp,
+    route_silver_blades,
+)
 from tools.amiga.route import (  # noqa: E402
     ISSUE,
     TITLE_LIMIT,
@@ -100,6 +104,8 @@ PUBLISHED_SOURCES_BY_ISSUE = {
         ("curse", "c64"): frozenset({"97099201a9c77ae43ab7d4605fd7a9dab2864333a5239177a41c5658e997007b"}),
         ("ssb", "c64"): frozenset({"5bb68551effa8a0d37ebc5f103a664e71505a798190d14ba8efa7730dd30e8a9"}),
     },
+    # The joined C64 party: Guy de Valois is a paladin whose HEAL is unspent.
+    "628": {("ssb", "c64"): frozenset({route_silver_blades.JOIN_SHA256})},
 }
 
 
@@ -115,6 +121,8 @@ PUBLISHED_ISSUE_TEXT = {
         "save disk that the game never reads while its own disk A is in DF0)"),
     "640": ("#640 (A Curse or Silver Blades party saved before BEGIN ADVENTURING "
             "cannot be converted at all)"),
+    "628": ("#628 (The neutral vocabulary has no field for a paladin's lay-on-hands uses, "
+            "so a converted paladin loses them)"),
 }
 PUBLISHED_DISKS = {
     "ssb": ("2f9ae86494561231dd1d70b350ae07b959c9f62642b64e9d4b57ffd23686ace4",
@@ -648,8 +656,11 @@ def menu_save_verdict(result: dict[str, Any], originals: tuple[str, ...]) -> boo
         and result.get("df0_unchanged") is False)
 
 
-def _clock_advanced(before: str, after: str) -> bool:
-    """Accept a short forward interval, including a midnight rollover."""
+def _clock_advanced(before: str, after: str, rest: int = 0) -> bool:
+    """Accept a short forward interval beyond `rest` minutes, including a midnight rollover.
+
+    The saved clock shows no day, so a rest is judged modulo one day.
+    """
     try:
         start_h, start_m = (int(part) for part in before.split(":"))
         end_h, end_m = (int(part) for part in after.split(":"))
@@ -658,7 +669,7 @@ def _clock_advanced(before: str, after: str) -> bool:
     if not all(0 <= h < 24 and 0 <= m < 60 for h, m in ((start_h, start_m),
                                                       (end_h, end_m))):
         return False
-    elapsed = ((end_h * 60 + end_m) - (start_h * 60 + start_m)) % (24 * 60)
+    elapsed = ((end_h * 60 + end_m) - (start_h * 60 + start_m) - rest) % (24 * 60)
     return 0 < elapsed <= 120
 
 
@@ -732,7 +743,8 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                             if path not in writable))
                     result["control_clock_matches"] = control.get("clock") == manifest["clock_a"]
                     result["after_clock_advanced"] = _clock_advanced(
-                        manifest["clock_a"], after.get("clock"))
+                        manifest["clock_a"], after.get("clock"),
+                        route_camp.rest_minutes(tuple(manifest.get("camp", ()))))
         except BaseException as exc:
             result["fetched_save_error"] = f"{type(exc).__name__}: {exc}"
     every_disk_fetched = set(result["fetched"]) == set(title.disk_keys)
@@ -766,6 +778,12 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
         rest = bool(rest and result.get("published_files_preserved")
                     and result.get("control_clock_matches")
                     and result.get("after_clock_advanced"))
+    if "camp" in manifest:
+        sheets = result.get("camp_sheets", [])
+        result["read"]["verdicts"].extend(_camp_verdicts(sheets))
+        # A sheet with neither bar is a member with no HEAL to show, such as a ranger; a
+        # `heal` step's own sheets are states that must match, so HEAL is never read that way.
+        rest = bool(rest and all(entry["identity_checked"] for entry in sheets))
     d_ok = bool(result.get("walk", {}).get("d_ok"))
     result["success"] = rest and d_ok
     walk = result.get("walk", {})
@@ -781,6 +799,18 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
             what = ("the substituted party did not move from its own square, "
                     "which may face a wall")
         result["read"]["verdicts"].append(f"slot {title.after_letter}: {what}{clause}")
+
+
+def _camp_verdicts(sheets: list[dict[str, Any]]) -> list[str]:
+    """One line per camp sheet the run reached: whether its bar offered HEAL."""
+    lines = []
+    for entry in sheets:
+        offered = {True: "offers HEAL", False: "does not offer HEAL",
+                   None: "shows neither the HEAL bar nor the spent bar the guard map holds"
+                   }[entry["heal_offered"]]
+        checked = "" if entry["identity_checked"] else "; no identity rule checked whose sheet it is"
+        lines.append(f"{entry['shot']}: the sheet {offered}{checked}")
+    return lines
 
 
 def _place_text(place: dict[str, Any]) -> str:
@@ -1322,6 +1352,20 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError(IDENTITY_MESSAGES.get(
                 state, f"{state} shows a party other than the prepared party"))
 
+    def observe(state: str, name: str, crop: pathlib.Path) -> None:
+        """Record whether a camp sheet's bar offers HEAL, and whether its identity was checked."""
+        if not route_camp.is_sheet(state):
+            return
+        offered = None
+        if _has_rule(guard, route_camp.SHEET_HEAL) and guard(route_camp.SHEET_HEAL, crop):
+            offered = True
+        elif _has_rule(guard, route_camp.SHEET_SPENT) and guard(route_camp.SHEET_SPENT, crop):
+            offered = False
+        entry = {"state": state, "shot": name, "heal_offered": offered,
+                 "identity_checked": _has_rule(identity, state)}
+        result.setdefault("camp_sheets", []).append(entry)
+        log("camp_sheet", **entry)
+
     def run_title_answer() -> None:
         """Answer a challenge screen with X and RET while its guard matches, three rounds at most."""
         if not _has_rule(guard, "journal"):
@@ -1468,6 +1512,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 hit = recognise(state, crop, done)
                 if hit:
                     check_identity(hit, crop)
+                    observe(hit, name, crop)
                     landed["state"] = hit
                     result["events"][-1]["recognized"] = hit
                     log("recognized", state=hit, name=name)
@@ -1995,6 +2040,18 @@ def _turn_about(name: str, letter: str, place: dict | None) -> bool:
                       "facing": start.arrival.facing}, CURSE_WALLED_WEST)
 
 
+def _camp_title(name: str, title: AmigaTitle, camp: Any, names: list) -> AmigaTitle:
+    """The published route with a manifest's camp steps before its camp save; Silver Blades only."""
+    if name != "ssb":
+        raise RouteError("camp steps are built for Silver Blades only")
+    if not isinstance(camp, list) or not all(isinstance(t, str) for t in camp):
+        raise RouteError("the manifest camp steps are not a list of strings")
+    tokens = tuple(camp)
+    if route_camp.normalise(tokens) != tokens:
+        raise RouteError("the manifest camp steps are not in their normal form")
+    return route_camp.camp_title(title, tokens, len(names))
+
+
 def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle]:
     manifest = json.loads(path.read_text())
     if manifest.get("mode") != "published_disk_one" or manifest.get("issue") not in PUBLISHED_SOURCES_BY_ISSUE:
@@ -2022,6 +2079,8 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
         raise RouteError("the manifest opening_scene disagrees with its recorded place")
     title = _published_title(name, letter, issue=manifest["issue"], turn_about=turn_about,
                              items_screen=items_screen, opening_scene=opening_scene)
+    if "camp" in manifest:
+        title = _camp_title(name, title, manifest["camp"], manifest["names_a"])
     for key in ("source", "report", "published", "disk_one", "disk_two"):
         _input(manifest["registered"], key)
     if name == "ssb":
@@ -2092,8 +2151,13 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
 
 
 def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
-                      issue: str = PUBLISHED_ISSUE) -> pathlib.Path:
-    """Preserve and check the exact Save As disk one before any guest run."""
+                      issue: str = PUBLISHED_ISSUE, camp: tuple[str, ...] = ()) -> pathlib.Path:
+    """Preserve and check the exact Save As disk one before any guest run.
+
+    `camp` is a list of camp steps (`route_camp.validate_steps`) the accept
+    route drives between camping and the camp save; it is kept in the manifest
+    in its normal form, so measure and accept both rebuild the same route.
+    """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
     if name not in PUBLISHED_DISKS:
@@ -2143,6 +2207,9 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     opening_scene = _opening_scene(name, reading["place"])
     title = _published_title(name, letter, issue=issue, turn_about=turn_about,
                              items_screen=items_screen, opening_scene=opening_scene)
+    if camp:
+        camp = route_camp.normalise(tuple(camp))
+        _camp_title(name, title, list(camp), reading["names"])
     original = _verified_disk(disk1)
     slot_path = f"/SAVE/savgam{letter}.{'dat' if name == 'curse' else 'sav'}".lower()
     old, new = _disk_files(original), _disk_files(disk)
@@ -2192,6 +2259,8 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     if name == "ssb":
         manifest["items_screen"] = items_screen
         manifest["opening_scene"] = opening_scene
+    if camp:
+        manifest["camp"] = list(camp)
     path = run / "prepare.json"
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     _published_manifest(path, name)
@@ -2271,6 +2340,13 @@ def _record_numbers(text: str) -> list[int]:
         raise argparse.ArgumentTypeError("record numbers are comma-separated integers") from None
 
 
+def _camp_steps(text: str) -> tuple[str, ...]:
+    try:
+        return route_camp.normalise(route_camp.parse_steps(text))
+    except RouteError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+
+
 def _draw_options(args: argparse.Namespace, holder: str) -> dict[str, Any]:
     """`run_recon`'s rulebook keywords, with the memory target only when there is more than one draw."""
     draws = getattr(args, "rulebook_draws", None)
@@ -2311,6 +2387,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--run-id", required=True)
     p.add_argument("--published-disk-one", action="store_true")
     p.add_argument("--saveas-report", type=pathlib.Path)
+    p.add_argument("--camp", type=_camp_steps, default=(),
+                   help="published Silver Blades only: camp steps driven before the camp save, "
+                        "as 'view;heal;rest 1h' (view, view N, heal, rest DURATION)")
     p.add_argument("--source", type=pathlib.Path)
     p.add_argument("--staged-from", type=pathlib.Path)
     p.add_argument("--issue")
@@ -2379,7 +2458,7 @@ def main(argv: list[str] | None = None) -> int:
                         args.save_count is not None)):
                     raise RouteError("published disk one takes only a Save As report")
                 print(prepare_published(args.title, args.run_id, args.saveas_report,
-                                        args.issue or PUBLISHED_ISSUE))
+                                        args.issue or PUBLISHED_ISSUE, camp=args.camp))
                 return 0
             if args.title not in PUBLISHED_DISKS:
                 raise RouteError("published disk one is only for Curse and Silver Blades")
@@ -2387,6 +2466,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise RouteError("published disk one uses its source-specific route")
         elif args.command == "prepare" and args.saveas_report is not None:
             raise RouteError("--saveas-report requires --published-disk-one")
+        elif args.command == "prepare" and args.camp:
+            raise RouteError("--camp requires --published-disk-one")
         if args.command == "reload" and silver_blades:
             raise RouteError("Silver Blades has no reload route")
         if args.title == "darkness-unstarted" and args.command in ("accept", "reload"):

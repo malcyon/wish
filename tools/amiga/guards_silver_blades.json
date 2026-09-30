@@ -22,6 +22,66 @@
       "example": "449/rb449-4/accept1/shots/15-camp_save_picker.png",
       "sha256": "7f73e04cb8ac9bc8d3dae5ad13a9b1792b3b8a00fdeddd5f787ff191d5867490"
     },
+    "camp_sheet": {
+      "also": [
+        "camp_sheet_2",
+        "camp_sheet_heal",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        74,
+        302,
+        250,
+        352
+      ],
+      "example": "628/amiga-camp-1/accept1/shots/15-camp_sheet.png",
+      "sha256": "24ba38da2b74091f4fa0ff374ebf408b8b8a977b99d799e5c4297d81a7110621"
+    },
+    "camp_sheet_2": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_heal",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        74,
+        302,
+        250,
+        352
+      ],
+      "example": "628/amiga-camp-1/accept1/shots/31-camp_sheet_2.png",
+      "sha256": "24ba38da2b74091f4fa0ff374ebf408b8b8a977b99d799e5c4297d81a7110621"
+    },
+    "camp_sheet_heal": {
+      "also": [
+        "camp_sheet",
+        "sheet"
+      ],
+      "box": [
+        72,
+        404,
+        320,
+        426
+      ],
+      "example": "628/amiga-camp-1/accept1/shots/17-camp_sheet_heal.png",
+      "sha256": "4d76d3368739bb55a533b662c282c38adbb0ce5989caaf9589710fc2b0cb8d3b"
+    },
+    "camp_sheet_spent": {
+      "also": [
+        "camp_sheet",
+        "sheet"
+      ],
+      "box": [
+        72,
+        404,
+        320,
+        426
+      ],
+      "example": "628/amiga-camp-1/accept1/shots/19-camp_sheet_spent.png",
+      "sha256": "c92b6ab34f9181e38cc1e5855973404b48b5393529a143f6fec4564529c5cf35"
+    },
     "continue": {
       "also": [],
       "box": [
@@ -54,6 +114,17 @@
       ],
       "example": "672/26293716ee-amiga-accept1b/accept1b/shots/16-exit_game.png",
       "sha256": "064bd9daefcf323f6930d88d56f03b24a92c6f020e1b17267d390ccd4f24b3de"
+    },
+    "heal_whom": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        430,
+        426
+      ],
+      "example": "628/amiga-camp-1/accept1/shots/18-heal_whom.png",
+      "sha256": "8ffc1506103f441a855fff67341e323391e85804d6b7a0cc885353f188465166"
     },
     "items": {
       "also": [],
@@ -109,6 +180,17 @@
       ],
       "example": "672/26293716ee-amiga-accept1b/accept1b/shots/01-party_menu.png",
       "sha256": "e1e6258b84898170189e8f17531705699d8b50cb1beda9fadd706370b034f091"
+    },
+    "rest_menu": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        422
+      ],
+      "example": "628/amiga-camp-1/accept1/shots/23-rest_menu.png",
+      "sha256": "cf58e869b7d02ab46074460c17a305f005135529a6f4f39ac47373ecae164461"
     },
     "save_picker": {
       "also": [],
@@ -178,6 +260,62 @@
     }
   },
   "identity": {
+    "camp_sheet": {
+      "also": [
+        "camp_sheet_heal",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        74,
+        46,
+        318,
+        62
+      ],
+      "example": "628/amiga-camp-1/accept1/shots/15-camp_sheet.png",
+      "sha256": "3c036cfe6011db64c8153a3ac321ad24b06295a74f501d5d262680ed2d77440c"
+    },
+    "camp_sheet_2": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        318,
+        62
+      ],
+      "example": "628/amiga-camp-1/accept1/shots/31-camp_sheet_2.png",
+      "sha256": "418235792ad4c245d0065239b52f5b29bbe502ac636d383876680fca1dcca319"
+    },
+    "camp_sheet_heal": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        74,
+        46,
+        318,
+        62
+      ],
+      "example": "628/amiga-camp-1/accept1/shots/17-camp_sheet_heal.png",
+      "sha256": "3c036cfe6011db64c8153a3ac321ad24b06295a74f501d5d262680ed2d77440c"
+    },
+    "camp_sheet_spent": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_heal",
+        "sheet"
+      ],
+      "box": [
+        74,
+        46,
+        318,
+        62
+      ],
+      "example": "628/amiga-camp-1/accept1/shots/19-camp_sheet_spent.png",
+      "sha256": "3c036cfe6011db64c8153a3ac321ad24b06295a74f501d5d262680ed2d77440c"
+    },
     "loaded_menu": {
       "also": [],
       "box": [
