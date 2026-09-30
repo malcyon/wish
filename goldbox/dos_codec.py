@@ -5035,9 +5035,10 @@ def write(char: NeutralCharacter,
     second = use("abilities_second")
     seconds = dict(second.value) if second is not None else {}
     # DOS and the Amiga recompute INT and WIS in force to 3 while the node is
-    # present, so a C64 source's are written as that recompute leaves them.
-    # The C64 lowers INT in both titles and WIS only in Silver Blades, so a
-    # Curse source's WIS in force is still its permanent score.
+    # present, so a C64 source's are written as that recompute leaves them:
+    # DOS holds 3 for both scores.  On the C64 side, Feeblemind lowers INT in
+    # both titles and WIS only in Silver Blades, so a Curse C64 cast leaves
+    # WIS at its permanent score.
     feeble = (char.port == "C64" and effects.feebleminded(
         deltas.key, char.get("granted_effects") or ()))
     for neutral_name, dos_name in (WRITE_DIRECT + DARKNESS_WRITE_DIRECT +

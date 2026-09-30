@@ -1157,7 +1157,10 @@ def feeblemind_scores(record: CharacterRecord, neutral: NeutralCharacter,
     left, the written character is read back as a C64 sheet, which holds
     `effects.c64_feeblemind_scores`: 3 for the scores the C64's Feeblemind
     lowers and the permanent ones, from `abilities_second`, for the rest.
-    `{}` for any other character or route.
+    `{}` for any other character or route. A Curse C64 source whose WIS in
+    force already differed from its permanent score, from a potion say, is not
+    flagged: the DOS record holds only 3 and the permanent score, so the
+    readback cannot see the difference.
     """
     if not _feeblemind_route(source_port, destination):
         return {}
