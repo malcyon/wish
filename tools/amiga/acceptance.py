@@ -915,7 +915,8 @@ def _preserve_staged(manifest_path: pathlib.Path, manifest: dict, attempt: str,
         f"{CAMP_SAVE_LETTER}. Slot {manifest['slot_letter']} was written by Wish from the "
         f"Wish-staged C64 source {source['path']} (SHA-256 {source['sha256']}), an "
         f"effect-array derivative of the JOIN disk {joined['path']} (SHA-256 "
-        f"{joined['sha256']}) with active rows {manifest['active_rows']}, converted by Save As "
+        f"{joined['sha256']} as recorded when `prepare --staged-from` read it; the run did not "
+        f"hash it again) with active rows {manifest['active_rows']}, converted by Save As "
         f"and staged into DF0 as {json.dumps(manifest['stage'], sort_keys=True)} "
         f"(slot SHA-256 {manifest['slot_sha256']}"
         + (f", save count {manifest['save_count']}" if "save_count" in manifest else "")
@@ -1003,6 +1004,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     reader's kept-capture index; a draw that is not the staged record, no single kept capture,
     or a reader index other than the helper's `reader_index` for `drawn`, fails the run.
 
+    `preserve_specimen` registers the fetched save disk of a run that succeeded by its own
+    verdict, before `--expect` is judged, so a run that later fails `--expect` still leaves its
+    specimen behind.
+
     `reload` runs a title with no save letters: it loads the manifest's `loaded_letter`, walks
     the route, then waits for the screen to show that slot's place (`place_state` of `state_a`)
     and not the other slot's (`other_place`), and writes nothing.
@@ -1020,7 +1025,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     if preserve_specimen and not accept:
         raise RouteError(preserve_message)
     if specimen_issue is not None and (not preserve_specimen or published_disk_one):
-        raise RouteError("--specimen-issue goes with a substituted --preserve-specimen only")
+        raise RouteError("--specimen-issue goes with a substituted or staged --preserve-specimen only")
     if title is not None:
         if not isinstance(title, AmigaTitle):
             raise RouteError("title must be an AmigaTitle")
@@ -2341,10 +2346,11 @@ def main(argv: list[str] | None = None) -> int:
                    help="Silver Blades only: comma-separated rule-book record numbers, one per "
                         "camp save after the first, staged before each")
     a.add_argument("--preserve-specimen", action="store_true",
-                   help="register and check a successful published or substituted game's fetched "
-                        "save disk before release")
+                   help="register and check a successful published, substituted or staged game's "
+                        "fetched save disk before release; it follows the run's own success "
+                        "verdict, not --expect")
     a.add_argument("--specimen-issue", default=None,
-                   help='a substituted --preserve-specimen: the issue the specimen is for, as '
+                   help='a substituted or staged --preserve-specimen: the issue the specimen is for, as '
                         '"#N (title)"')
     r = sub.add_parser("reload", help="guarded load of a game-written slot and a check of the place "
                                       "on screen; writes nothing")

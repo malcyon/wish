@@ -1272,3 +1272,46 @@ def test_a_staged_accept_needs_a_cited_issue_before_any_guest_call(tmp_path, clo
         _accept(tmp_path, clock, guest=guest, manifest=_staged_manifest(tmp_path),
                 preserve_specimen=True, specimen_issue="661")
     assert guest.calls == []
+
+
+def _staged_preserve(tmp_path, clock, guest):
+    return _accept(tmp_path, clock, guest=guest, manifest=_staged_manifest(tmp_path),
+                   preserve_specimen=True, specimen_issue=ISSUE)
+
+
+def _nothing_registered(root):
+    return not root.exists() or list(root.rglob("WISH-SPEC-*")) == []
+
+
+def test_a_staged_accept_whose_release_fails_registers_nothing(
+        tmp_path, clock, readings, specimen_tree):
+    class Guest(AcceptGuest):
+        def release(self, holder, timeout=None):
+            raise RuntimeError("lane gone")
+
+    _, result = _staged_preserve(tmp_path, clock, Guest(clock))
+    assert result["success"] is False and "lane gone" in result["release_error"]
+    assert "specimen" not in result and _nothing_registered(specimen_tree)
+
+
+def test_a_staged_accept_whose_registration_fails_is_a_failed_run(
+        tmp_path, clock, readings, specimen_tree, monkeypatch):
+    def refuse(*args, **kwargs):
+        raise winuaesession.RouteError("specimen name collision")
+
+    monkeypatch.setattr(acceptance, "_register_fetched", refuse)
+    _, result = _staged_preserve(tmp_path, clock, AcceptGuest(clock))
+    assert result["success"] is False and "name collision" in result["specimen_error"]
+    assert "specimen" not in result and _nothing_registered(specimen_tree)
+
+
+def test_a_staged_accept_whose_guest_did_not_stop_registers_nothing(
+        tmp_path, clock, readings, specimen_tree):
+    class Guest(AcceptGuest):
+        def stop(self, holder, timeout=None):
+            raise RuntimeError("would not stop")
+
+    _, result = _staged_preserve(tmp_path, clock, Guest(clock))
+    assert result["success"] is False
+    assert "did not stop" in result["specimen_error"]
+    assert "specimen" not in result and _nothing_registered(specimen_tree)
