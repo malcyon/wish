@@ -257,6 +257,24 @@ def test_the_curse_resave_diff_is_the_known_gap_and_old_thac0_base():
         "MATHEW": (40, 39),
         "PHILIPPE": (40, 39),
     }
+    # The specimen's items are in the order the earlier writer put them, and
+    # the Amiga shows the stored order top first, so today's writer is the
+    # reverse of it.  That is named and checked here, and the item nodes are
+    # then left out of the byte comparison, whose offsets it would scramble.
+    def types(char):
+        return [it.get("type_index") for it in char.items]
+
+    item_nodes: dict[str, range] = {}
+    for name, mine in ours_by_name.items():
+        twin = theirs_by_name.get(name)
+        if twin is None:
+            continue
+        assert types(twin) == types(mine)[::-1], name
+        assert [it.get("quantity") for it in twin.items] == \
+            [it.get("quantity") for it in mine.items][::-1], name
+        start = mine.deltas.record_size
+        item_nodes[name] = range(
+            start, start + len(mine.items) * mine.deltas.item_size)
     loose: set[str] = set()
     for name, mine in ours_by_name.items():
         twin = theirs_by_name.get(name)
@@ -265,6 +283,8 @@ def test_the_curse_resave_diff_is_the_known_gap_and_old_thac0_base():
         a, b = mine.block_bytes(), twin.block_bytes()
         mask = proof.declared_block_mask(mine)
         for at in range(min(len(a), len(b))):
+            if at in item_nodes[name]:
+                continue
             if a[at] != b[at] and at not in mask:
                 loose.add(proof.field_at(mine.deltas, at))
     assert loose == {"combat_figure+0", "thac0_base+0"}

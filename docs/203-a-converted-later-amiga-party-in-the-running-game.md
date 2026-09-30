@@ -45,7 +45,8 @@ chain and four characters behind a four-node one drew their own names and their
 own numbers**, which is what a desynchronised loader could not do.
 
 **The ITEMS screen names every item.** Guy de Valois' twelve, in the order the
-C64 record keeps them and with the C64's own names beside them:
+Amiga showed them, which is the stored order top first and so the reverse of the
+C64 screen's, with the C64's own names beside them:
 
 | the Amiga drew | the C64 record holds |
 |---|---|

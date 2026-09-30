@@ -292,7 +292,9 @@ def _item_edits(before: CharacterRecord, after: CharacterRecord,
     A slot's position is what ties a C64 item to the port's own item, because
     the C64's sixteen slots are fixed where the port's list is packed: an
     item deleted out of the middle shifts every item after it in the file and
-    not one of them in the record.
+    not one of them in the record.  The sheet shows slot 15 first, so the
+    highest filled slot is the port's item 0 and the slots are taken from
+    there down.
 
     **A character carrying more than sixteen items keeps the rest.** The C64
     record has sixteen slots and the DOS and Amiga files have no such limit,
