@@ -1907,3 +1907,12 @@ def test_stage_dying_on_an_empty_block_writes_nothing_and_logs_what_it_found():
 def test_the_mercy_heal_address_is_defined_once():
     from tools.pool_of_radiance import defeatdrive
     assert tb.MERCY_HEAL is defeatdrive.MERCY_HEAL
+
+
+def test_retiring_the_post_stops_leaves_the_connection_by_hanging_up_not_resuming():
+    machine = Machine()
+    sess, traps = installed(machine)
+    traps.arm("line_drawn", tb.LINE_DRAWN, traps.on_line_drawn)
+    machine.calls.clear()
+    traps.retire_exec()
+    assert "resume" not in machine.calls and machine.calls[-1] == "hang_up"

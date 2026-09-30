@@ -1,6 +1,7 @@
 """`Monitor.checkpoint_hits`, the one place a checkpoint's hit count is read."""
 import ast
 import pathlib
+import socket
 import struct
 
 from automap.vice import CMD_CHECKPOINT_GET, Monitor
@@ -44,3 +45,16 @@ def test_no_module_but_the_monitor_defines_checkpoint_hits():
                    and n.name == "checkpoint_hits" for n in ast.walk(tree)):
                 found.append(path.relative_to(ROOT).as_posix())
     assert found == ["automap/vice.py"]
+
+
+def test_hang_up_closes_the_socket_without_sending_exit_and_is_idempotent():
+    mine, peer = socket.socketpair()
+    peer.settimeout(2)
+    mon = Monitor()
+    mon.sock = mine
+    mon.hang_up()
+    assert mon.sock is None
+    mon.hang_up()
+    assert mon.sock is None
+    assert peer.recv(16) == b""     # end of stream, with no EXIT before it
+    peer.close()

@@ -188,9 +188,9 @@ class Monitor:
 
         Needed whenever a checkpoint is armed: VICE re-enters the monitor on
         a hit and talks to **the connection that was open when it stopped**.
-        Closing the socket and reconnecting after the hit leaves VICE wedged
-        with the old half-closed socket -- the emulator freezes and the new
-        connection is never read.  Verified the hard way.
+        Closing that connection while halted resumes the machine (see
+        `hang_up`); a stop that fires afterwards waits, halted, for the next
+        connection.
         """
         self._send(CMD_EXIT, b"")
 

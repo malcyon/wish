@@ -651,3 +651,15 @@ def test_a_store_that_lands_during_a_connection_is_read_before_its_exit(tmp_path
     assert trap.result == 0x80
     # Handled with the machine still stopped: no resume between write and the hang-up.
     assert sess.machine.calls[-2:] == ["write", "hang_up"]
+
+
+def test_a_check_that_fails_resumes_the_machine_before_the_hang_up(tmp_path):
+    sess = FakeSession()
+    trap = curseflee.Trap(sess, FakeLog(), tmp_path)
+    trap.arm()
+    sess.machine.mon_fails = sess.machine.fight_over = True
+    sess.machine.write_result(0x80)
+    with sess.mon(5):
+        pass
+    assert trap.degraded
+    assert sess.machine.calls[-2:] == ["resume", "hang_up"]

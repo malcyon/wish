@@ -80,7 +80,7 @@ send.
 | **capitals via `xdotool key W`** | arrives as Shift+w, PETSCII `$D7`; the name prompt rejects any byte ≥ `$5B` and silently re-prompts. Type lowercase |
 | XTEST `Return` at the code-word prompt | letters arrive, Return does not. Inject it instead |
 | a single self-contained boot disk | impossible: the game demands side 3 the moment the copy protection passes, and other sides later |
-| closing the binary monitor while a checkpoint is armed | VICE re-enters the monitor on the connection that was live when it stopped; with that socket closed the emulator freezes and no new connection is read. Only a kill recovers it |
+| closing the binary monitor while halted at a checkpoint hit | VICE resumes with that connection gone; a stop that fires afterwards halts with no connection open and waits for the next one, which reads it. A stop that fires between EXIT and the close halts on the closing connection and the close resumes it unread, so end a connection that must not lose a stop with `Monitor.hang_up()` and no EXIT |
 | closing the text-monitor connection | wedges the binary monitor too — VICE serves one text-monitor connection per run |
 | connecting to the text monitor first | it never breaks in on connect and sends no banner; it answers only while the machine is already stopped |
 | a **second** binary-monitor connection while one is open | VICE accepts the TCP connection and then never answers it — the read times out with zero bytes. One binary monitor client at a time, so `automap` and `tools/c64/session.py` cannot both be live |

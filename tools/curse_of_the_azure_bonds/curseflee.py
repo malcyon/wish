@@ -220,6 +220,13 @@ class Trap:
         except Exception as exc:
             self.degraded = True
             self.log.emit("trap_failed", error=repr(exc), hits=self.hits)
+            if resume:
+                # The machine may be halted at the stop; the caller's body
+                # goes on, and a dead monitor cannot be told anything.
+                try:
+                    m.resume()
+                except Exception:
+                    pass
             self.log.say(f"  the monitor stopped answering: {exc!r}; the "
                          f"store checkpoint stays armed until the run ends, "
                          f"and the trap makes no further reads")

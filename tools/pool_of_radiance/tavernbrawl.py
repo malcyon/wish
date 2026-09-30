@@ -836,7 +836,7 @@ class Traps:
                               if s.name not in ("mercy", "gamble", "destination", "square_store")]:
                         m.checkpoint_delete(s.cp)
                         self.stops.remove(s)
-                    m.resume()
+                    m.hang_up()
                 except Exception as exc:
                     self.log.emit("retire_failed", error=repr(exc))
                     self._release(m, exc)
