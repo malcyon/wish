@@ -73,7 +73,7 @@ a source whose title does not match `--title`:
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
 | `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
-| `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure and at a locked door, which the walk then marks walled, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is refused unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A second `fight` in the boot follows `camp`, `save X` and `leave`, or another `fight`; the first-bar key and Alt+X are the first fight's only, each result names its fight by number, and every later fight presses `SPACE` once at its first combat screen (`HAND_BACK`), because `QUICK` survives into the next fight, recording `handed_back` and `handed_back_to`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
+| `fight`, `fight 900` | Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure and at a locked door, which the walk then marks walled, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is refused unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A second `fight` in the boot follows `camp`, `save X` and `leave`, or another `fight`; the first-bar key and Alt+X are the first fight's only, each result names its fight by number, and every later fight presses `SPACE` once at its first combat screen (`HAND_BACK`: a command bar, or a blank or unclassified bar once combat has begun -- the encounter menu answered, the placement read, or the combat window changed from what the last fight left and reading as a fight, probed at most every `COMBAT_PROBE_SECONDS`), because `QUICK` survives into the next fight, logging every combatant's quickfight just before it (`before-hand-back`) and recording `handed_back`, `handed_back_to` and `before_hand_back`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
 | `prayer-watch 49`, `prayer-watch 35` | Pool, from the map, `load` first: walk to an encounter (`walk_to_encounter`), read every member's effect nodes and Prayer's handler table at the encounter menu, break on the id-49 and id-35 stubs and the attack roll's stub (`08D2:003E`, the table's segment less `0x41` plus `0xB0`), arm the list-10 call and its return at the segment that stub's far jump names, re-arming when a stub hit shows a new one, arm the handler, bonus test, +1 helper and penalty at the overlay segment the stub's far jump names once it loads, answer each bar by `COMBAT_KEYS`, and log each halt as `prayer-halt`: registers, 16 bytes at `SS:SP`, the four-frame `BP` chain, combatant name and side, the node's five bytes and `DS:0x6816` and `DS:0x6822`.  A party attack is a list-10 call halt with a side-0 attacker, closed by that attacker's next return halt.  For id 49 the step stops after one party attack whose own helper or penalty halt fell inside it; for id 35 three completed pairs with no Prayer stub halt inside them are a conclusive result, and the step stops after the third.  It also stops when the map has held `FIGHT_SETTLED` seconds, or after `PRAYER_FIGHT_SECONDS`; the step fails if the menu came more than `PRAYER_BOOT_SECONDS` after the driver was made (the walk itself is bounded by its 40 steps and the run's `--deadline`).  The result is `conclusive: False`, and the run exits 2 with `inconclusive` in `summary.json` rather than `lost` or `completed`, when no member carried the node at the menu or at the stop, an armed or halted routine's code did not match `GAME.OVR`, the stop-time party was not read, or, for id 49, no party attack armed at the stubs ran its helper or penalty (the first call loads the overlay before its routines are armed, so a round needs a later attack).  Only `shot`, `press` and `read` may follow |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement, record byte 0x130 (spell id 126's book byte, `book_0x130`) and items |
 
@@ -990,8 +990,11 @@ FIGHT_KEYS = {"command": "q", "encounter": "c", "continue": "Return",
               "treasure": "e", "treasure_left": "n", "yes_no": "n",
               "continue_battle": "n", "locked": "e"}
 #: What a fight after the first in one boot presses once, at its first
-#: combat screen (a command bar, a blank bar or one nobody has classified),
-#: before answering it.  `QUICK` survives the end of a fight and goes into
+#: combat screen, before answering it: a command bar, or a blank bar or one
+#: nobody has classified once combat has begun -- the encounter menu was
+#: answered, the placement was read, or the combat window (`combat_window`)
+#: no longer holds what the last fight left in it and reads as a fight
+#: (`_combat_begun`).  Before that, those screens are the walk's own.  `QUICK` survives the end of a fight and goes into
 #: the save (every member `QUICK` was pressed for read quickfight 1 in
 #: #667's `1c9ea1d9d3-l51-driver-check` save C), so without it the next
 #: fight offers nobody a bar.  SPACE at the combat menu or during a QUICK
@@ -1000,7 +1003,11 @@ FIGHT_KEYS = {"command": "q", "encounter": "c", "continue": "Return",
 #: and 0xE18F); the encounter menu comes before the fight and is answered
 #: first.
 HAND_BACK = "space"
-HAND_BACK_KINDS = frozenset({"command", "blank", None})
+#: The kinds that are a combat screen only once combat has begun.
+HAND_BACK_AFTER_ENCOUNTER = frozenset({"blank", None})
+#: Seconds between two reads of the combat window while a later fight waits
+#: to know that combat has begun.
+COMBAT_PROBE_SECONDS = 3.0
 #: What `--intervene` starts the game with, after `START.EXE`.  Silver Blades'
 #: Alt+X handler at the combat command bar (`GAME.OVR` 0xC06D, then 0x18D17)
 #: compares `ParamStr(2)` with the Pascal string `Gem` in `START.EXE`'s data
@@ -3558,7 +3565,13 @@ class Driver:
                        "walking": None if enter else self.world_sig,
                        "first_bar_key": self.first_bar_key if first_fight else None,
                        "intervene": self.intervene and first_fight,
-                       "hand_back": not first_fight, "handed_back": False}
+                       "hand_back": not first_fight, "handed_back": False,
+                       "before_hand_back": None, "begun": False,
+                       "stale_window": None, "probed_at": None, "probes": 0}
+        if not first_fight:
+            # What the last fight left in the combat window, so that a fight
+            # with no encounter menu and no command bar is still seen to begin.
+            state["stale_window"] = self._combat_window_raw()
         try:
             while True:
                 self.check_deadline("fight")
@@ -3595,12 +3608,77 @@ class Driver:
                 "first_bar_key": state["first_bar_key"] if state["key_pressed"] else None,
                 "handed_back": state["handed_back"],
                 "handed_back_to": self._handed_back_to(state),
+                "before_hand_back": state["before_hand_back"],
+                "combat_probes": state["probes"],
                 "intervened": state["intervened"],
                 "after_first_bar_key": state["after_key"],
                 "ds": None if state["ds"] is None else f"{state['ds']:04X}",
                 "torn_frames": state["torn"], "loose_frames": state["loose"],
                 "repeated_bars": state["repeats"],
                 "screens": state["kinds"]}
+
+    def _combat_window_raw(self) -> bytes | None:
+        """`combat_window`'s bytes under the `DS` an earlier fight read true,
+        in one halt, or None when there is none or the read is refused."""
+        if self.combat_ds is None:
+            return None
+        lo, n = combat_window(COMBAT_LAYOUTS[self.title.key])
+        if not self.s.attach():
+            return None
+        try:
+            return self.s.read((self.combat_ds, lo), n)
+        except (dosboxx.NotHalted, RuntimeError, ValueError):
+            return None
+        finally:
+            self.s.run()
+
+    def _combat_begun(self, state: dict) -> bool:
+        """Whether this fight's combat has begun: the encounter menu was
+        answered, the placement was read, or the combat window differs from
+        what the last fight left (`stale_window`) and reads as a fight.  The
+        window is read at most every `COMBAT_PROBE_SECONDS`, each read logged
+        as `combat-probe`; a fight with no window to compare never probes."""
+        if state["begun"] or state["encounters"] > 0 or state["placement"] is not None:
+            return True
+        if state["stale_window"] is None:
+            return False
+        now = time.time()
+        if state["probed_at"] is not None and now - state["probed_at"] < COMBAT_PROBE_SECONDS:
+            return False
+        state["probed_at"] = now
+        state["probes"] += 1
+        raw = self._combat_window_raw()
+        why = None
+        if raw is None:
+            why = "unread"
+        elif raw == state["stale_window"]:
+            why = "unchanged"
+        else:
+            lo, _ = combat_window(COMBAT_LAYOUTS[self.title.key])
+            try:
+                read_combat(raw, lo, COMBAT_LAYOUTS[self.title.key])
+            except CombatUnread as e:
+                why = f"not a fight: {e}"
+        state["begun"] = why is None
+        self.note(event="combat-probe", begun=state["begun"], why=why)
+        return state["begun"]
+
+    def _before_hand_back(self, kind: str | None, state: dict) -> None:
+        """Every combatant's side, quickfight and control as they stand before
+        `HAND_BACK`, logged as `before-hand-back` and kept for the result.  A
+        read that fails is logged as `before-hand-back-unread` and the fight
+        goes on."""
+        try:
+            snap = self.combat_memory(True, state["records"])
+        except StepFailed as e:
+            state["before_hand_back"] = None
+            self.note(event="before-hand-back-unread", kind=kind, why=str(e))
+            return
+        state["ds"] = snap["ds"]
+        state["before_hand_back"] = [{k: c.get(k) for k in PLACEMENT_FIELDS}
+                                     for c in snap["combatants"]]
+        self.note(event="before-hand-back", kind=kind,
+                  combatants=state["before_hand_back"])
 
     @staticmethod
     def _handed_back_to(state: dict) -> list[str] | None:
@@ -3730,8 +3808,12 @@ class Driver:
         kind = fight_bar_kind(screen)
         glyphs = screen.glyphs(dosbox.BAR)
         self._first_sight(kind, glyphs, screen, state)
-        if (state["hand_back"] and not state["handed_back"] and kind in HAND_BACK_KINDS
+        combat = kind == "command" or (
+            state["hand_back"] and not state["handed_back"]
+            and kind in HAND_BACK_AFTER_ENCOUNTER and self._combat_begun(state))
+        if (state["hand_back"] and not state["handed_back"] and combat
                 and (glyphs, screen.glyphs(PARTY_DESTROYED_LINE)) != PARTY_DESTROYED):
+            self._before_hand_back(kind, state)
             self.s.key(HAND_BACK)
             state["presses"] += 1
             state["handed_back"] = True

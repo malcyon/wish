@@ -8523,3 +8523,116 @@ def test_only_a_fight_after_the_first_hands_the_party_back_before_its_first_bar(
     assert second["handed_back_to"] == ["GUY", "PAINE"]
     after = {c["name"]: c["quickfight"] for c in second["placement"]}
     assert after["PAINE"] == 0 and after["EPONA"] == 1
+
+
+class LaterFight(CampFight):
+    """`CampFight` whose second walk shows, with `detour`, an unclassified
+    screen and then a blank bar on its first step, each for two captures (a
+    shot captures too), before the party stands on square 3; and whose second fight, with `quick`,
+    opens on a blank bar (a computer turn) before GUY's command bar.  With
+    `straight` the second fight has no encounter menu: the step from square
+    3 starts it at once, the combat setup moves GUY in the combat map, and
+    with QUICK carried over only an unclassified message bar shows until
+    `space` hands GUY back at his command bar."""
+
+    def __init__(self, tmp_path, detour=False, quick=False, straight=False):
+        super().__init__(tmp_path)
+        self.detour, self.quick, self.second = detour, quick, False
+        self.straight = straight
+
+    def frame(self):
+        if self.state == "all_quick":
+            return _screen(_bar("GUY HIT ORC"), b"")
+        if self.state == "pre_unknown":
+            return _screen(_bar("DOOR"), b"")
+        if self.state == "pre_blank":
+            return _screen(b"", b"")
+        return super().frame()
+
+    def capture(self):
+        if self.state.startswith("pre_"):
+            frame = self.frame()
+            self.state = self.pre.pop(0)
+            return frame
+        return super().capture()
+
+    def key(self, *keys, gap=0.35):
+        for k in keys:
+            s = self.state
+            if s == "camp" and k == "e":
+                self.second = True
+            if (self.second and self.detour and s == "move" and k == "Up"
+                    and self.square == 1):
+                self.keys.append(k)
+                self.state, self.square, self.detour = "pre_unknown", 3, False
+                self.pre = ["pre_unknown", "pre_blank", "pre_blank", "move"]
+            elif (self.second and self.straight and s == "move" and k == "Up"
+                  and self.square == 3):
+                self.keys.append(k)
+                self.state = "all_quick"
+                layout = _ssb()
+                self.ds[layout.map_at + 4] += 1
+            elif s == "all_quick" and k == "space":
+                self.state, self.actor, self.fought = "bar1", "GUY", True
+                _select(self.ds, self.ptrs["GUY"])
+                super().key(k, gap=gap)
+            elif self.second and self.quick and s == "encounter" and k == "c":
+                self.keys.append(k)
+                self.state, self.actor, self.fought = "blank1", "GUY", True
+                _select(self.ds, self.ptrs["GUY"])
+            else:
+                super().key(k, gap=gap)
+
+
+def _later(tmp_path, **kw):
+    game = LaterFight(tmp_path, **kw)
+    d = da.Driver(game, lambda **k: None, "D", "ssb", party_size=3)
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.record_world(game.capture())
+    d.where = "map"
+    d.fight()
+    d.camp()
+    d.save("C")
+    d.leave()
+    at = len(game.keys)
+    return game, d, d.fight(), game.keys[at:]
+
+
+def test_no_hand_back_on_a_walk_screen_before_the_encounter(tmp_path, clock):
+    game, d, got, keys = _later(tmp_path, detour=True)
+    kinds = [e["kind"] for e in _events(d, "fight-screen")]
+    assert None in kinds and "blank" in kinds
+    assert keys == ["m", "Up", "Up", "c", "space", "q", "q", "e", "n"]
+    assert [e["kind"] for e in _events(d, "hand-back")] == ["command"]
+    assert got["handed_back"] is True
+
+
+def test_the_hand_back_goes_out_at_the_first_combat_screen_after_the_encounter(
+        tmp_path, clock):
+    game, d, got, keys = _later(tmp_path, quick=True)
+    assert keys == ["m", "Up", "Up", "c", "space", "q", "q", "e", "n"]
+    assert [e["kind"] for e in _events(d, "hand-back")] == ["blank"]
+    # The state before SPACE is logged: PAINE (control 0) still on the
+    # computer, and handed back by the time the placement is read.
+    before = {c["name"]: c["quickfight"] for c in _events(d, "before-hand-back")[0][
+        "combatants"]}
+    assert before["PAINE"] == 1 and before["EPONA"] == 1
+    assert {c["name"]: c["quickfight"] for c in got["before_hand_back"]} == before
+    after = {c["name"]: c["quickfight"] for c in got["placement"]}
+    assert after["PAINE"] == 0 and after["EPONA"] == 1
+    assert got["handed_back_to"] == ["GUY", "PAINE"]
+
+
+def test_a_later_fight_with_no_encounter_menu_gets_its_hand_back_once_combat_begins(
+        tmp_path, clock):
+    game, d, got, keys = _later(tmp_path, detour=True, straight=True)
+    # The walk's own screens come first and are left alone; the message bar
+    # of the all-computer fight gets SPACE once the combat window changed.
+    assert keys == ["m", "Up", "Up", "space", "q", "q", "e", "n"]
+    assert [e["kind"] for e in _events(d, "hand-back")] == [None]
+    probes = _events(d, "combat-probe")
+    assert [p["begun"] for p in probes][-1] is True
+    assert any(p["why"] == "unchanged" for p in probes)
+    assert got["encounters"] == 0 and got["handed_back"] is True
+    assert got["handed_back_to"] == ["GUY", "PAINE"]
