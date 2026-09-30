@@ -5,8 +5,12 @@ import json
 import pytest
 
 from goldbox import geo
+from tests.amiga import test_amigaacceptance_measure as measure
+from tests.amiga import test_amigaacceptance_title as title_run
 from tools.amiga import acceptance, route_pool
 from tools.amiga.route import RouteError
+
+clock = measure.clock  # the fixture that replaces the driver's time and sleep
 
 SOLID_WALL = 1
 
@@ -127,18 +131,91 @@ def test_run_recon_selects_the_forward_route_for_a_manifest_that_says_so(tmp_pat
 TOUR_START = {"area": 0, "x": 15, "y": 1, "facing": geo.WEST}
 
 
-@pytest.mark.parametrize("title", [route_pool.POOL, route_pool.POOL_FORWARD])
-def test_the_route_presses_return_on_the_continue_bar_only_while_waiting_for_the_world(title):
-    rows = [row for row in title.interstitials if row[0] == "continue"]
-    assert rows == [("continue", ("keys", "RET"), frozenset({"world"}), route_pool.POOL_CONTINUE_PAGES)]
+OPEN_AT_TOUR_END = _loader(_map(x=0, y=4))
+TOUR_MANIFEST = {"state_a": route_pool.POOL_TOUR_END, "turn_about": True, "opening_tour": True}
+
+
+def _continue_rows(title):
+    return [row for row in title.interstitials if row[0] == "continue"]
+
+
+@pytest.mark.parametrize("tour, closed, wanted", [
+    (True, (), "POOL_TOUR"), (True, (geo.EAST,), "POOL_FORWARD_TOUR"),
+    (False, (geo.NORTH,), "POOL"), (False, (geo.SOUTH,), "POOL_FORWARD"),
+])
+def test_only_an_opening_tour_manifest_gets_the_continue_row(tour, closed, wanted):
+    place = route_pool.POOL_TOUR_END if tour else KOBOLD_CAVES
+    walls = _loader(_map(x=place["x"], y=place["y"], closed=closed))
+    manifest = {"state_a": place, "turn_about": wanted in ("POOL", "POOL_TOUR"),
+                "opening_tour": tour}
+    title = route_pool.pool_title_for(manifest, load_geo=walls)
+    assert title is getattr(route_pool, wanted)
+    rows = _continue_rows(title)
+    assert rows == ([("continue", ("keys", "RET"), frozenset({"world"}),
+                      route_pool.POOL_CONTINUE_PAGES)] if tour else [])
     assert route_pool.POOL_CONTINUE_PAGES > 8  # the eight pages of Rolf's tour, and a stuck one stops
 
 
-def test_the_committed_guard_map_recognises_the_continue_bar_on_the_command_bar_row():
+def test_an_opening_tour_manifest_must_start_at_the_tour_end_and_record_its_turn():
+    with pytest.raises(RouteError, match="opening_tour is not a boolean"):
+        route_pool.pool_title_for(dict(TOUR_MANIFEST, opening_tour="yes"))
+    with pytest.raises(RouteError, match="opening_tour disagrees"):
+        route_pool.pool_title_for(dict(TOUR_MANIFEST, state_a=KOBOLD_CAVES))
+    with pytest.raises(RouteError, match="no turn_about"):
+        route_pool.pool_title_for({"state_a": route_pool.POOL_TOUR_END, "opening_tour": True})
+
+
+def test_the_committed_continue_guard_reads_the_world_bar_row_as_a_different_picture():
     guards = json.loads((acceptance.REPO / "tools" / "amiga" / "guards_pool.json").read_text())["guards"]
     bar, world = guards["continue"], guards["world"]
     assert bar["box"][1:4:2] == world["box"][1:4:2]  # the same row, so a map bar never reads as it
     assert bar["sha256"] != world["sha256"]
+
+
+def _from_look(n):
+    """A guard rule that matches from its `n`-th look onward."""
+    looks = []
+
+    def on(_path):
+        looks.append(1)
+        return len(looks) >= n
+
+    return on
+
+
+def _drive(tmp_path, clock, pool_title, on):
+    """Run the synthetic route with `pool_title`'s interstitial table and a continue bar always shown."""
+    guard = title_run.MapGuard(states=("title", *title_run.STATES, "continue"),
+                               on={"continue": lambda _path: True, **on})
+    guest, result = title_run._run(tmp_path, clock,
+                                   title=title_run.make_title(interstitials=pool_title.interstitials),
+                                   guard=guard)
+    return title_run._keys(guest), result
+
+
+def test_a_tour_manifest_presses_return_on_each_continue_page_while_waiting_for_the_world(
+        tmp_path, clock):
+    title = route_pool.pool_title_for(TOUR_MANIFEST, load_geo=OPEN_AT_TOUR_END)
+    keys, result = _drive(tmp_path, clock, title, {"world": _from_look(4)})
+    assert result["success"], result["error"]
+    assert keys.count("RET") == 3  # three looks at the page before the map shows
+    assert [e["key"] for e in result["events"] if e.get("interstitial") == "continue"] == ["RET"] * 3
+
+
+def test_a_manifest_without_the_tour_never_presses_return_on_a_continue_page(tmp_path, clock):
+    title = route_pool.pool_title_for({"state_a": KOBOLD_CAVES, "turn_about": True},
+                                      load_geo=_loader(_map(x=6, y=5, closed=(geo.NORTH,))))
+    keys, result = _drive(tmp_path, clock, title, {"world": _from_look(4)})
+    assert result["success"], result["error"]
+    assert "RET" not in keys
+
+
+def test_a_tour_manifest_leaves_a_continue_page_alone_while_waiting_for_another_screen(
+        tmp_path, clock):
+    title = route_pool.pool_title_for(TOUR_MANIFEST, load_geo=OPEN_AT_TOUR_END)
+    keys, result = _drive(tmp_path, clock, title, {"load_picker": _from_look(6)})
+    assert result["success"], result["error"]
+    assert "RET" not in keys
 
 
 def _prepared(monkeypatch, place, clock):

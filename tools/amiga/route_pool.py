@@ -138,7 +138,6 @@ POOL = AmigaTitle(
     interstitials=(
         ("wheel", ("keys", "RET"), frozenset({"title"}), 1),
         ("save_path", ("keys", "RET"), frozenset({"camp_save_picker"}), 1),
-        ("continue", ("keys", "RET"), frozenset({"world"}), POOL_CONTINUE_PAGES),
     ),
     # ECL14 $994F-$995D: COMPARE [$C04D], 1 then NEWECL 0, with no write to the party's square,
     # so a step east off the Slums lands in New Phlan on the wrapped square, still facing east.
@@ -157,6 +156,20 @@ def _without_turn(route: tuple) -> tuple:
 POOL_FORWARD = dataclasses.replace(
     POOL, route=_without_turn(POOL.route), measure_route=_without_turn(POOL.measure_route),
     turn=None)
+
+#: RETURN on a `PRESS <RETURN> OR BUTTON TO CONTINUE` page while waiting for the map, for a
+#: manifest whose party meets Rolf's tour; no other run presses it, so a page met anywhere
+#: else stops the run rather than being answered.
+_TOUR_CONTINUE = ("continue", ("keys", "RET"), frozenset({"world"}), POOL_CONTINUE_PAGES)
+
+
+def _with_tour(title: AmigaTitle) -> AmigaTitle:
+    return dataclasses.replace(title, interstitials=(*title.interstitials, _TOUR_CONTINUE))
+
+
+#: `POOL` and `POOL_FORWARD` for a party that plays Rolf's tour before the map.
+POOL_TOUR = _with_tour(POOL)
+POOL_FORWARD_TOUR = _with_tour(POOL_FORWARD)
 
 
 def _walkable(walls: geo.Geo, x: int, y: int, direction: int) -> bool:
@@ -210,9 +223,18 @@ def pool_title_for(manifest: dict, *,
                    load_geo: Callable[[str], geo.Geo] | None = None) -> AmigaTitle:
     """The route this manifest's start square needs, refusing a recorded `turn_about` its walls contradict.
 
-    A manifest with no `turn_about` predates the choice and keeps the turn about.
+    A manifest with no `turn_about` predates the choice and keeps the turn about. An
+    `opening_tour` manifest gets the route that answers the tour's pages, and must start at
+    `POOL_TOUR_END`.
     """
+    tour = manifest.get("opening_tour", False)
+    if not isinstance(tour, bool):
+        raise RouteError("the manifest opening_tour is not a boolean")
+    if tour and manifest.get("state_a") != POOL_TOUR_END:
+        raise RouteError("the manifest opening_tour disagrees with its recorded place")
     if "turn_about" not in manifest:
+        if tour:
+            raise RouteError("the manifest has an opening_tour but no turn_about")
         return POOL
     turn_about = manifest["turn_about"]
     if not isinstance(turn_about, bool):
@@ -221,6 +243,8 @@ def pool_title_for(manifest: dict, *,
         raise RouteError("the manifest has a turn_about but no state_a to check it against")
     if turn_about != pool_turns_about(manifest["state_a"], load_geo=load_geo):
         raise RouteError("the manifest turn_about disagrees with its recorded place")
+    if tour:
+        return POOL_TOUR if turn_about else POOL_FORWARD_TOUR
     return POOL if turn_about else POOL_FORWARD
 
 
@@ -238,7 +262,13 @@ def _pool_loaded_clock(manifest: dict) -> tuple[int, ...]:
 
 
 def _tour_pending(manifest: dict) -> bool:
-    """Whether the loaded party stands on New Phlan's arrival square at clock zero, so the game plays Rolf's tour."""
+    """Whether the loaded party stands on New Phlan's arrival square at clock zero, so the game plays Rolf's tour.
+
+    Untested for a never-played slot whose party has already taken the tour, such as a
+    converted save: the game would show no tour, the menu save would stand on the arrival
+    square rather than `POOL_TOUR_END`, and the place check would fail the run rather than
+    pass it wrongly.
+    """
     start = areas.start_of(areas.POOL_OF_RADIANCE)
     arrival = {"area": start.area, "x": start.arrival.x, "y": start.arrival.y,
                "facing": start.arrival.facing}
