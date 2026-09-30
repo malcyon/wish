@@ -494,6 +494,13 @@ def test_a_record_is_handed_back_unchanged():
     assert checked >= 24
 
 
+def _never_rebuilt(char) -> bool:
+    """A record whose stored item count disagrees with its item file was never
+    rebuilt by the game, which rewrites count and encumbrance together when the
+    sheet is viewed; its stored encumbrance holds the money alone."""
+    return char.get("item_count") != len(char.items)
+
+
 @needs_dos_saves
 def test_the_encumbrance_identity_balances():
     """`encumbrance = money + sum(weight x quantity)`, through the reader.
@@ -519,24 +526,35 @@ def test_the_encumbrance_identity_balances():
     unexplained = []
     for path in paths:
         char = dos_codec.read_character(path)
-        if char.get("encumbrance") != char.expected_encumbrance() \
+        if _never_rebuilt(char):
+            # The game rebuilds count and encumbrance together when the
+            # sheet is viewed, so this record's stored value is money only.
+            assert char.get("encumbrance") == sum(char.money.values()), path
+        elif char.get("encumbrance") != char.expected_encumbrance() \
                 and path.name not in known_misses:
             unexplained.append((path.name, char.name))
     assert unexplained == [], f"unexplained miss: {unexplained}"
 
 
 @needs_dos_saves
-def test_an_export_carries_no_items():
-    """An export zeroes the item count, which is the one systematic
-    difference between a save slot and a `.CHA`. A stale `.ITM` sitting beside
-    it must not be read as the character's inventory -- and the archives hold
-    exactly that."""
+def test_an_export_carries_the_items_of_the_item_file_beside_it():
+    """An export zeroes the item count, but the game's loader reads the
+    `.ITM` beside it to its end and gives the character those items, so the
+    reader does too.  ARRONEL carries a long sword, a shield and banded mail,
+    and the game shows his encumbrance as 593.  The export still stores only
+    his money there (83), because the game rebuilds the field when the sheet
+    is viewed."""
     where = _save_dir()
     checked = 0
     for path in sorted(where.glob("*.CHA")):
         char = dos_codec.read_character(path)
-        assert char.items == ()
-        assert char.get("encumbrance") == char.expected_encumbrance()
+        assert char.get("encumbrance") == sum(char.money.values())
+        if char.name == "ARRONEL":
+            lines = [it.display_line.upper() for it in char.items]
+            assert len(lines) == 3
+            for want in ("LONG SWORD", "SHIELD", "BANDED MAIL"):
+                assert any(want in line for line in lines), lines
+            assert char.expected_encumbrance() == 593
         checked += 1
     assert checked >= 6
 
@@ -1817,6 +1835,11 @@ def test_the_encumbrance_identity_balances_in_every_title(shape):
     **three** coin slots where every earlier title keeps seven.
     """
     for char in _title_records(shape):
+        if _never_rebuilt(char):
+            # Rebuilt with the count on VIEW, so stored is money only.
+            assert char.get("encumbrance") == sum(char.money.values()), \
+                (shape.key, char.name)
+            continue
         assert char.expected_encumbrance() == char.get("encumbrance"), \
             (shape.key, char.name)
 

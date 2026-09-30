@@ -774,6 +774,27 @@ def _diff_against(char, rec: bytes) -> tuple[set[int], bool]:
     return differs - mask - set(range(ENC.offset, ENC.end)), enc
 
 
+def _stale_count_allowance(char) -> set[int]:
+    """What a record whose stored `item_count` disagrees with its item file
+    may change on a round trip: the count itself, which the writer rewrites to
+    the true number, and the combat-tail bytes the engine derives from the
+    carried items -- THAC0, armour class, the armour bonus and attack forms, and
+    movement (`goldbox/dos_port.py`), and the encumbrance, which the game
+    rebuilds with the count when the sheet is viewed (so a stale-count record's
+    stored encumbrance is item-less).  An export stores count 0 beside items
+    the game gives the character, so its stored tail was never built from them.
+    A record whose count is true masks nothing."""
+    if char.get("item_count") == len(char.items):
+        return set()
+    by = dos_port.FIELDS_BY_NAME
+    out = {by["item_count"].offset, by["thac0_current"].offset,
+           by["armour_class"].offset,
+           by["movement_current"].offset}
+    out |= set(range(by["roster_tail"].offset, by["roster_tail"].end))
+    out |= set(range(ENC.offset, ENC.end))
+    return out
+
+
 def _attack_level_allowance(char, rec: bytes) -> set[int]:
     """The one offset a round trip may lose, and only for a record whose own
     byte is not one its engine ever wrote (#527).
@@ -1872,8 +1893,9 @@ def test_a_record_round_trips_through_the_neutral_middle():
         rec, itm, spc, _ = dos_codec.write(dos_codec.to_neutral(char))
         outside, enc = _diff_against(char, rec)
         outside -= _attack_level_allowance(char, rec)
+        outside -= _stale_count_allowance(char)
         assert outside == set(), (char.name, sorted(hex(i) for i in outside))
-        enc_misses += enc
+        enc_misses += enc and not _stale_count_allowance(char)
         total += 1
         # The item tails are the original's, record for record.
         for n, item in enumerate(char.items):
@@ -1957,6 +1979,7 @@ def test_a_record_round_trips_through_the_c64_record():
         rec, _, _, _ = dos_codec.write(back, item_types=types)
         outside, _ = _diff_against(char, rec)
         outside -= _attack_level_allowance(char, rec)
+        outside -= _stale_count_allowance(char)
         if char.name == _MOVEMENT_EXCEPTION[0]:
             outside.discard(_MOVEMENT_EXCEPTION[1])
         assert outside == set(), \

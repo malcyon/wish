@@ -1781,17 +1781,18 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     shipped archives dividing evenly, which is the same check Silver Blades
     would have passed while being wrong.
 
-    No sibling item file at all is quiet only when the record's `item_count`
-    is zero, which is what an export carries.  A record that counts items and
-    has no item file beside it is an incomplete copy, and raises
-    `DosRecordError` naming the character and the missing file rather than
-    reading as an empty pack.  A sibling that **is** present and does not
-    reconcile with the record's own item count, because it is short of a whole
-    number of items or short of the count, raises `DosRecordError` naming the file, the stride and both
-    counts (#221) rather than silently handing back fewer items than the
-    record says it has.
+    **The items are the whole item file, not `item_count`.**  The engine's
+    loader reads the file to its end and ignores the count byte, so a count
+    that is stale (a scribed scroll leaves it one high) or zero (an export)
+    changes nothing.  No sibling item file at all is quiet only when the
+    record's `item_count` is zero.  A record that counts items and has no
+    item file beside it is an incomplete copy, and raises `DosRecordError`
+    naming the character and the missing file.  A sibling that is present
+    and is short of a whole number of items, or is empty while the record
+    counts items, raises `DosRecordError` naming the file, the stride and the
+    count.
 
-    **`items` is the head items, `item_count` of them.**  A Silver Blades
+    **`items` is the head items.**  A Silver Blades
     joined scroll is one of them, with its scrolls in its `subnodes`: the
     file holds them straight after it and the count does not include them
     (:func:`item_nodes`, #432).
@@ -1806,30 +1807,27 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     item_file_present = item_path.exists()
     itm = item_path.read_bytes() if item_file_present else b""
     spc = _sibling(path, shape.effect_suffix)
-    # The record's own item count is what says how many of the item file
-    # belong to this character. It is zeroed in an export, and an export that
-    # sits beside a stale `.ITM` from an earlier save would otherwise be given
-    # items it does not carry -- which is exactly what the archives hold.
+    # The engine's loader reads the item file to its end and never looks at
+    # the record's `item_count`, so this does too: a stale count (a scribed
+    # scroll leaves it one high, an export leaves it zero) neither refuses the
+    # save nor hides items the game gives the character.
     count = data[FIELDS_BY_NAME_FOR[shape.key]["item_count"].offset]
     stride = shape.item_size
-    # No sibling item file with a zero count is an export and stays silent;
-    # a count above zero with no file is a folder copied without its item
-    # files, which would otherwise convert to an empty pack. A file that is
-    # *present* and the wrong shape is not: `min()` used to paper over a
-    # truncated or short `.ITM`/`.SWG`/`.STF`/`.THG`, which is exactly what a
-    # 63-byte `.ITM` did to every Curse and Silver Blades character (#113).
-    # `item_count` counts head items, and a Silver Blades joined scroll's
-    # scrolls are extra records straight after its head, so the file is read
-    # the way the engine's loader reads it rather than sliced by the count.
+    # A record that counts items with no item file beside it is a folder copied
+    # without its item files, which would otherwise convert to an empty pack;
+    # no file with a zero count is an export and stays silent.  A file that is
+    # *present* and not a whole number of items, or empty beside a record that
+    # counts items, is a defect rather than a gap.
     if required_item_suffix(data) and not item_file_present:
         raise DosRecordError(
             f"{path.name}: item_count says {count}, but its item file "
             f"{item_path.name} is missing")
     try:
-        items = item_nodes(itm, stride, heads=count)
+        items = item_nodes(itm, stride)
     except DosRecordError as e:
         raise DosRecordError(f"{item_path.name}: {e}") from None
-    if item_file_present and (len(itm) % stride != 0 or len(items) < count):
+    if item_file_present and (len(itm) % stride != 0
+                              or (count and not items)):
         raise DosRecordError(
             f"{item_path.name}: {len(itm)} bytes at a {stride}-byte stride "
             f"is {len(items)} items, but {path.name}'s item_count "

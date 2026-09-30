@@ -1038,16 +1038,79 @@ def test_an_item_file_that_is_present_and_empty_is_refused(tmp_path):
         dos_codec.read_character(record)
 
 
-def test_an_item_file_short_of_the_records_own_count_is_refused(tmp_path):
-    """The record claims two items; the sibling file only holds one."""
+def test_an_item_file_short_of_the_records_own_count_reads_the_file(tmp_path):
+    """The record claims two items; the file holds one, and the game loads one.
+
+    The engine's loader reads the item file to its end and ignores the count
+    byte, so the count stays as written and the item is not refused.
+    """
     from goldbox import dos_codec
 
     record = tmp_path / "CHRDATC1.SAV"
     record.write_bytes(_synthetic_curse_character(2))
     (tmp_path / "CHRDATC1.SWG").write_bytes(_synthetic_battle_axe())
 
-    with pytest.raises(dos_codec.DosRecordError, match=r"CHRDATC1\.SWG.*1.*2"):
-        dos_codec.read_character(record)
+    character = dos_codec.read_character(record)
+    assert len(character.items) == 1
+    assert character.to_bytes()[dos_codec.FIELDS_BY_NAME_FOR[
+        character.deltas.key]["item_count"].offset] == 2
+
+
+def test_an_item_file_beside_a_record_that_counts_none_is_read(tmp_path):
+    """Count 0 beside three whole records: the game gives the character all three."""
+    from goldbox import dos_codec
+
+    record = tmp_path / "CHRDATC1.SAV"
+    record.write_bytes(_synthetic_curse_character(0))
+    (tmp_path / "CHRDATC1.SWG").write_bytes(bytes(_synthetic_battle_axe()) * 3)
+
+    character = dos_codec.read_character(record)
+    assert len(character.items) == 3
+
+
+def test_the_scribed_scroll_save_reads_its_fifteen_items():
+    """`WISH-SPEC-por-790-scribe-complete-stale-count`: a game-written save
+    whose `CHRDATE5.SAV` says 16 items beside a 15-record `.ITM`."""
+    from goldbox import dos_codec
+
+    if not have_specimen("por-790-scribe-complete-stale-count"):
+        pytest.skip("needs specimen WISH-SPEC-por-790-scribe-complete-stale-count")
+    where = specimen("por-790-scribe-complete-stale-count")
+    character = dos_codec.read_character(where / "CHRDATE5.SAV")
+    assert len(character.items) == 15
+    # The game leaves the cached name lines blank in this save, so the items
+    # are told apart by type and name bytes: the necklace of missiles first
+    # (type 70), the scribed-from scroll's neighbour, a mage scroll last
+    # (type 61, name bytes 0 212 209).
+    first, last = character.items[0], character.items[-1]
+    assert first.get("type_index") == 70
+    assert (last.get("type_index"), last.get("name1"), last.get("name2"),
+            last.get("name3")) == (61, 0, 212, 209)
+    for path in sorted(where.glob("CHRDAT*.SAV")):
+        dos_codec.read_character(path)
+
+
+def test_the_shipped_slot_b_characters_read_their_item_files():
+    """The Archives' `Default files/Saves` slot B stores item_count 0 beside
+    3 to 7 whole records; the game shows ARRONEL a long sword, shield and
+    banded mail.  A download, so this is the game's loader read live rather
+    than provenance of the bytes."""
+    from goldbox import dos_codec
+    from tools.dos import dosxpaward as xp
+
+    try:
+        game = xp.find_game("POOLRAD")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS POOLRAD archive; set FR_ARCHIVES")
+    saves = game.parent.parent / "Default files" / "Saves"
+    path = saves / "CHRDATB1.SAV"
+    if not path.is_file():
+        pytest.skip(f"no {path}")
+    lines = [it.display_line.upper() for it in
+             dos_codec.read_character(path).items]
+    assert len(lines) == 3
+    for want in ("LONG SWORD", "SHIELD", "BANDED MAIL"):
+        assert any(want in line for line in lines), lines
 
 
 def test_an_absent_item_file_is_still_read_quietly_when_the_record_counts_none(

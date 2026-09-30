@@ -150,9 +150,12 @@ def test_a_joined_scroll_whose_scrolls_run_off_the_file_is_named(tmp_path):
         _read(tmp_path, itm, 3)
 
 
-def test_an_export_beside_a_stale_file_holding_a_joined_scroll_has_no_items(
-        tmp_path):
-    assert _read(tmp_path, _pack_file(), 0).items == ()
+def test_an_export_beside_a_file_holding_a_joined_scroll_reads_it(tmp_path):
+    """The engine's loader reads the item file to its end whatever the count,
+    so a count of 0 still gives the sword, the joined scroll and the plate."""
+    char = _read(tmp_path, _pack_file(), 0)
+    assert len(char.items) == 3
+    assert [s.get("type_index") for s in char.items[1].subnodes] == [0x27, 0x27]
 
 
 # --- DOS to the neutral record, and back -------------------------------------
