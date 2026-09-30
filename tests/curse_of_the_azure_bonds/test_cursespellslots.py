@@ -539,7 +539,7 @@ def test_the_c64_ranger_stops_one_short_of_the_dos_table_at_eleven():
 #: count, which is what this pins.
 COUNTS = {
     CURSE: {"cleric": (16, 2), "magic-user": (29, 2)},
-    POOL: {"cleric": (72, 2), "magic-user": (90, 1)},
+    POOL: {"cleric": (72, 3), "magic-user": (90, 3)},
 }
 
 #: The five known misses, all this project's own pre-fix output sitting in
@@ -553,11 +553,16 @@ COUNTS = {
 #: GENHEERIS, a C64 companion (magic-user 7) whose authored 4/2/2 the writer
 #: copies rather than recomputes for a Pool of Radiance source, and which
 #: DOS Pool of Radiance keeps unchanged through a load and resave
-#: (`WISH-SPEC-issue641-dirten-seven-resave`, added for #641).
+#: (`WISH-SPEC-issue641-dirten-seven-resave`, added for #641).. GENHEERIS
+#: also reads `0 0 0` in the two camp-scribe resaves of that party
+#: (`WISH-SPEC-dos-pool-745-mid-scribe`, `WISH-SPEC-por-790-scribe-complete-stale-count`),
+#: and ROLAND (cleric 5) reads `3 0 0` in slot A of
+#: `WISH-SPEC-por-700-c64-zombie-dos-resave`, Save As output, where its DOS
+#: resave D holds the table's `5 5 1`.
 KNOWN_MISSES = {
     (CURSE, "magic-user"): {"LEDERA"},
     (CURSE, "cleric"): {"SHARA"},
-    (POOL, "cleric"): {"HALFE8", "HUMAN7"},
+    (POOL, "cleric"): {"HALFE8", "HUMAN7", "ROLAND"},
     (POOL, "magic-user"): {"GENHEERIS"},
 }
 

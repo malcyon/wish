@@ -243,7 +243,11 @@ def _weight_sum(rec: bytes, itm: bytes) -> int:
 #:   followed (`tools/dos/dostrain.py`);
 #: * `issue641-dirten-seven-resave`, where every record came back as our
 #:   writer wrote it bar the portrait bytes although the run viewed all seven
-#:   sheets -- the unexplained case part 2 of #634 named for the saves.
+#:   sheets -- the unexplained case part 2 of #634 named for the saves;
+#: * `por-790-scribe-complete-stale-count`, slot E of the run staged from a
+#:   copy of that party's slot B: its `provenance.toml` names no parent, so
+#:   `_not_rebuilt_with_descendants` cannot find it, and its rest and camp
+#:   save ran no rebuild on SIMON, PRINCESS FATIMA and MAD MAN.
 #:
 #: A specimen whose `provenance.toml` (`what` or `made_by`) names one of these,
 #: or one of its own descendants, as the copy it was staged from is excluded
@@ -259,6 +263,7 @@ _NOT_REBUILT = {
     "por-dos/WISH-SPEC-por-party-trained-c2",
     "por-dos/WISH-SPEC-por-train-clamp",
     "por-dos/WISH-SPEC-issue641-dirten-seven-resave",
+    "por-dos/WISH-SPEC-por-790-scribe-complete-stale-count",
 }
 
 #: The one character in `_NOT_REBUILT` whose sheet the run drew with VIEW,
@@ -278,6 +283,7 @@ _EXPECTED_DESCENDANTS = {
     "por-dos/WISH-SPEC-pool-667-slow-poison-camp-cast-resave",
     "por-dos/WISH-SPEC-pool-667-slow-poison-inn-rest-resave",
     "por-dos/WISH-SPEC-pool-700-animate-dead-camp-cast-resave",
+    "por-dos/WISH-SPEC-dos-pool-745-mid-scribe",
 }
 
 
