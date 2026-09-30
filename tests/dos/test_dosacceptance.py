@@ -264,6 +264,15 @@ def _pod_map_measured(monkeypatch):
         "dungeon": screens.bar_signature(_screen(FakePool.BARS["map"], b""))})
 
 
+@pytest.fixture(autouse=True)
+def _pool_map_measured(monkeypatch):
+    """The fakes' map bar stands in for the measured `town` one of
+    `POOL_MAP_BARS`, the only bars Pool's `load` and `camp` take for the map;
+    the capture tests check the real values."""
+    monkeypatch.setattr(da, "POOL_MAP_BARS", {
+        "town": screens.bar_signature(_screen(FakePool.BARS["map"], b""))})
+
+
 def _camped(tmp_path, title="pool", **kw) -> tuple[FakePool, da.Driver]:
     game = FakePool(tmp_path, keys=TITLE_KEYS[title], **kw)
     d = da.Driver(game, lambda **k: None, "A", title)
@@ -2254,7 +2263,7 @@ def test_a_blank_status_line_is_never_the_pool_walk_baseline(tmp_path):
 
 @pytest.mark.parametrize("title,steps,why", [
     ("pool", ("load", "rest 5m"), "needs camp first"),
-    ("pool", ("load", "begin"), "puts the party on the map"),
+    ("pool", ("load", "camp", "begin"), "puts the party on the map"),
     ("pool", ("load", "save D"), "needs camp first"),
     ("pool", ("load", "camp", "walk MI"), "walk needs the map"),
     ("pool", ("load", "display"), "display needs camp first"),
@@ -9950,3 +9959,160 @@ def test_a_captured_drop_prompt_is_not_an_items_list():
         ["convert", str(shot), "-depth", "8", "ppm:-"], check=True,
         capture_output=True).stdout)
     assert not screens.on_items_list(screen)
+
+
+# -- Pool's load onto the party menu ------------------------------------------
+
+
+_POOL_LADDER = ("WISHFTR", "WISHCLE", "WISHMAG", "WISHTHI", "WISHDWF", "WISHHEL")
+
+
+class FakePartyLoadPool(FakeAddPool):
+    """Pool of Radiance whose `LOAD SAVED GAME` puts the party back on the
+    party menu, as #736's cast boot 1 drew it for a save made there: `l` opens
+    `LOAD WHICH GAME`, the slot letter fills the roster and leaves `CHOOSE A
+    FUNCTION` up, `b` (`BEGIN ADVENTURING`) opens the map, and `e` at the
+    menu (`EXIT TO DOS`) asks `QUIT TO DOS YES NO`.  `lands` names what the
+    slot letter opens instead of the menu, and `begins` what `b` opens
+    instead of the map."""
+
+    MAP = "AREA CAST VIEW ENCAMP SEARCH LOOK"
+
+    def __init__(self, tmp, lands="menu", begins="map"):
+        super().__init__(tmp)
+        self.mode, self.titles = "menu", 0
+        self.lands, self.begins = lands, begins
+
+    def key(self, k, gap=0.0):
+        m = self.mode
+        if m == "menu" and k == "l":
+            self.keys.append(k)
+            self.mode = "which"
+        elif m == "which" and k == "d":
+            self.keys.append(k)
+            self.party = list(_POOL_LADDER)
+            self.mode = self.lands
+        elif m == "menu" and k == "b" and self.party:
+            self.keys.append(k)
+            self.mode = self.begins
+        elif m == "menu" and k == "e":
+            self.keys.append(k)
+            self.mode = "quit"
+        elif m == "map" and k == "e":
+            self.keys.append(k)
+            self.mode = "camp"
+        elif m in ("which", "quit", "map", "camp", "other"):
+            self.keys.append(k)
+        else:
+            super().key(k, gap)
+
+    def capture(self):
+        bars = {"which": "LOAD WHICH GAME: D", "quit": "QUIT TO DOS YES NO",
+                "map": self.MAP, "camp": "CAMP: SAVE VIEW MAGIC REST ALTER EXIT",
+                "other": "PRESS ANY KEY TO CONTINUE"}
+        if self.mode not in bars:
+            return super().capture()
+        px = bytearray(W * H * 3)
+        _text(px, da.BAR_ROW, 0, bars[self.mode])
+        return dosbox.Screen(W, H, bytes(px))
+
+
+def _map_sig() -> str:
+    px = bytearray(W * H * 3)
+    _text(px, da.BAR_ROW, 0, FakePartyLoadPool.MAP)
+    return screens.bar_signature(dosbox.Screen(W, H, bytes(px)))
+
+
+def _party_load(tmp_path, monkeypatch, **kw) -> tuple[FakePartyLoadPool, da.Driver]:
+    monkeypatch.setattr(da, "POOL_MAP_BARS", {"town": _map_sig()})
+    (tmp_path / "game").mkdir()
+    game = FakePartyLoadPool(tmp_path / "game", **kw)
+    d = da.Driver(game, lambda **k: None, "D", "pool")
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.game.to_main_menu = lambda timeout=120.0: None
+    return game, d
+
+
+def test_a_pool_load_onto_the_party_menu_is_not_the_map_and_camp_presses_nothing(
+        tmp_path, monkeypatch, add_measured):
+    """#736's cast boot 1: slot D loaded onto the party menu, the load took
+    it for the map, and `camp` pressed `e`, which there is EXIT TO DOS."""
+    game, d = _party_load(tmp_path, monkeypatch)
+    got = d.load()
+    assert game.mode == "menu" and game.keys == ["l", "d"]
+    assert got["landed"] == "party" and d.where == "party"
+    assert got["roster"] == list(_POOL_LADDER)
+    assert "BEGIN ADVENTURING" in got["functions"]
+    assert "map_bar" not in got and d.world_sig is None
+    with pytest.raises(da.StepFailed, match="party menu is showing, not the map"):
+        d.camp()
+    assert game.keys == ["l", "d"] and game.mode == "menu"
+
+
+def test_pool_begin_after_a_party_menu_load_reaches_the_map_and_camps(
+        tmp_path, monkeypatch, add_measured):
+    game, d = _party_load(tmp_path, monkeypatch)
+    d.load()
+    got = d.begin()
+    assert game.keys == ["l", "d", "b"] and game.mode == "map"
+    assert d.where == "map" and got["map_kind"] == "town"
+    assert got["map_bar"] == _map_sig()
+    d.camp()
+    assert game.mode == "camp" and game.keys[-1] == da.ENCAMP
+
+
+def test_pool_begin_stops_on_a_screen_that_is_not_a_measured_map(
+        tmp_path, monkeypatch, add_measured):
+    game, d = _party_load(tmp_path, monkeypatch, begins="quit")
+    d.load()
+    with pytest.raises(da.StepFailed, match="'QUIT TO DOS YES NO'.*lost-begin-screen"):
+        d.begin()
+    assert game.keys == ["l", "d", "b"]
+
+
+def test_a_pool_load_onto_an_unknown_screen_stops_naming_its_bar(
+        tmp_path, monkeypatch, add_measured):
+    game, d = _party_load(tmp_path, monkeypatch, lands="other")
+    with pytest.raises(da.StepFailed, match="neither a measured map bar.*"
+                       "'PRESS ANY KEY TO CONTINUE'.*lost-load-screen"):
+        d.load()
+    assert game.keys == ["l", "d"] and d.where == "boot"
+
+
+def test_pool_camp_presses_nothing_off_a_measured_map_bar(
+        tmp_path, monkeypatch, add_measured):
+    """Whatever the step before claimed, ENCAMP goes out only on a bar of
+    `POOL_MAP_BARS`: the quit prompt here is where the party menu's `e` led."""
+    game, d = _party_load(tmp_path, monkeypatch)
+    game.mode, d.where = "quit", "map"
+    with pytest.raises(da.StepFailed, match="'QUIT TO DOS YES NO'.*lost-camp"):
+        d.camp()
+    assert game.keys == []
+
+
+def test_pool_begin_is_accepted_only_straight_after_load():
+    ok = [da.parse_step(s) for s in ("load", "shot party", "begin", "camp", "save D", "read")]
+    da.validate_steps(ok, "pool")
+    for steps in (("load", "camp", "begin"), ("load", "turn 1", "begin"),
+                  ("add ARRONEL", "begin")):
+        with pytest.raises(ValueError, match="begin is for the titles"):
+            da.validate_steps([da.parse_step(s) for s in steps], "pool")
+
+
+def test_the_captured_party_menu_load_reads_as_the_party_menu(monkeypatch):
+    """#736's cast boot 1 shots, read with Pool's own font: the loaded screen
+    is the party menu offering BEGIN ADVENTURING, on no map bar, and the
+    screen its `e` opened is the quit prompt.  Skips without the captures or
+    the archives."""
+    monkeypatch.undo()
+    loaded = _capture("cast", "002-loaded", issue="736", sub=("boot1",))
+    quit_prompt = _capture("cast", "003-camp", issue="736", sub=("boot1",))
+    try:
+        font = da.load_font(dosbox.find_game("POOLRAD"))
+    except (OSError, LookupError) as e:
+        pytest.skip(f"Pool of Radiance's archives are not on this machine: {e}")
+    assert screens.bar_signature(loaded) not in da.POOL_MAP_BARS.values()
+    assert "BEGIN ADVENTURING" in da.party_menu_entries(loaded, font)
+    assert da.party_roster(loaded, font) == list(_POOL_LADDER)
+    assert da.text_row(quit_prompt, da.BAR_ROW, font).strip() == "QUIT TO DOS YES NO"

@@ -51,8 +51,9 @@ a source whose title does not match `--title`:
 
 | step | what it does |
 |---|---|
-| `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P`.  Pool presses Return past each `PRESS <ENTER>/<RETURN> TO CONTINUE` bar first, when the loaded save is on an event square, so that screen is never recorded as the map (#701); a party that has not taken Rolf's opening tour meets eight (PROBABLE: one boot of one party), and the run stops at `POOL_LOAD_CONTINUE_ROUNDS` (#631) |
-| `begin` | Curse, Silver Blades and Pools of Darkness: `BEGIN ADVENTURING`, through Silver Blades' intro bars and Pools of Darkness' journal question and `YES NO` bars (below), to the map; Pools of Darkness' map only by its measured bar |
+| `load` | title screens, `LOAD SAVED GAME`, the `--slot` letter; Pool lands on the map, the other three on the party menu.  Pools of Darkness asks `LOAD FROM WHERE? POOLS SECRET EXIT` first and gets `P`.  Pool presses Return past each `PRESS <ENTER>/<RETURN> TO CONTINUE` bar first, when the loaded save is on an event square, so that screen is never recorded as the map (#701); a party that has not taken Rolf's opening tour meets eight (PROBABLE: one boot of one party), and the run stops at `POOL_LOAD_CONTINUE_ROUNDS` (#631).  Pool's map is believed only on a measured bar of `POOL_MAP_BARS`; a save made at the party menu loads back onto it, which is read as text with the title's font and left for `begin`, and any other screen stops the run naming its bar's words (#797) |
+| `begin` | Curse, Silver Blades and Pools of Darkness, and Pool straight after a `load` onto its party menu: `BEGIN ADVENTURING`, through Silver Blades' intro bars, Pools of Darkness' journal question and `YES NO` bars (below), and Pool's continue screens, to the map; Pool's party menu must read `BEGIN ADVENTURING` before `b` goes out, and Pool's and Pools of Darkness' map is believed only by a measured bar |
+| `camp` guard | Pool presses `ENCAMP` only on a measured map bar of `POOL_MAP_BARS`, and no title presses it on the party menu, where `e` is EXIT TO DOS |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature` |
 | `leave` | Curse and Silver Blades, in camp: the camp bar's `Exit` (`CAMP_EXIT`), believed when the map bar is back, so a `fight` can follow a camp `save` in the same boot.  Curse's has left camp in one boot; Silver Blades' is read from its key set only and is not yet verified live |
 | `sheet N`, `items N` | Curse, Silver Blades and Pools of Darkness (`items` Pools of Darkness only; Pool's is the next row), in camp: roster line N (from 1) highlighted (`End` in Curse, `Down` in the other two), `VIEW`, the sheet's name checked against line N's, the bar read for `heal_offered` and `cure_offered` (`sheet_offers`), and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
@@ -356,7 +357,13 @@ SCRIBE_KEEPS = frozenset({"scribe", "rest", "save", "shot", "read"})
 #: for example), `overland` on #634's `ca4bbff4fa-dos-pool-rebuild`.  On the
 #: map `End` moves the roster highlight a member on and wraps; `v` opens the
 #: sheet, and `Escape` (never `d`, which the sheet's bar offers as DROP)
-#: returns to the map with the highlight where it was.
+#: returns to the map with the highlight where it was.  Read as text with
+#: the title's font, `town` is `AREA CAST VIEW ENCAMP SEARCH LOOK` and
+#: `overland` `CAST VIEW ENCAMP SEARCH LOOK`, the only two map bars among the
+#: Pool runs' shots in the acceptance cache (173 and 18 shots).  `load`,
+#: `begin` and `camp` take a screen for the map only on one of these, so an
+#: unmeasured map bar (a dungeon's, if it differs) stops the run naming its
+#: words rather than being guessed at.
 POOL_MAP_BARS: dict[str, str] = {"town": "809e2e1cc9504b5b",
                                  "overland": "f379c606cadd4484"}
 #: The character sheet's bar, by `bar_signature`, one entry per kind of sheet,
@@ -398,6 +405,10 @@ PARTY_MENU_BAR = "CHOOSE A FUNCTION"
 PARTY_MENU_ROWS = range(12, 23)
 PARTY_ADD_ENTRY = "ADD CHARACTER TO PARTY"
 PARTY_VIEW_ENTRY = "VIEW CHARACTER"
+#: A Pool save made at the party menu (`SAVE CURRENT GAME`) loads back onto it,
+#: not the map (#736's cast boot 1, `WISH-SPEC-por-party-ladder` slot D); its
+#: `BEGIN ADVENTURING`, keyed `PARTY_BEGIN`, is what `begin` presses there.
+PARTY_BEGIN_ENTRY = "BEGIN ADVENTURING"
 PARTY_ADD = "a"
 #: `ADD A CHARACTER: ADD EXIT` lists `CHARLIST.TXT`'s names from text row 2
 #: at column 1, one a row.  `End` moved the highlight a row down and `Home`
@@ -932,6 +943,12 @@ def party_roster(screen: dosbox.Screen, font: dict[bytes, str]) -> list[str]:
             break
         names.append(name)
     return names
+
+
+def pool_map_kind(screen: dosbox.Screen) -> str | None:
+    """Which measured Pool map bar of `POOL_MAP_BARS` is showing, or None."""
+    sig = bar_signature(screen)
+    return next((k for k, bar in POOL_MAP_BARS.items() if bar == sig), None)
 
 
 def add_entries(screen: dosbox.Screen, font: dict[bytes, str]) -> list[str] | None:
@@ -1973,10 +1990,15 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
     """
     t = TITLES[title]
     where = "boot"
+    last = None
     for step in steps:
         k = step.kind
         if k in ("shot", "read"):
             continue
+        # Pool's load lands on the map, or on the party menu for a save made
+        # there; `begin` straight after it is for the second.
+        pool_after_load = title == "pool" and last == "load"
+        last = k
         if where == "pressed" and k != "press":
             raise ValueError(f"only press, shot and read may come after a press: "
                              f"{step.text!r}")
@@ -1990,10 +2012,14 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                 raise ValueError("load is one step, the first")
             where = t.loads_to
         elif k == "begin":
+            if pool_after_load:
+                where = "map"
+                continue
             if t.loads_to == "map":
                 raise ValueError(f"{title}'s load puts the party on the map; "
                                  "begin is for the titles that load to the "
-                                 "party menu")
+                                 "party menu, and for Pool straight after a "
+                                 "load onto the party menu")
             if where != "party":
                 raise ValueError(f"begin needs the party menu: {step.text!r}")
             where = "map"
@@ -3306,6 +3332,44 @@ class Driver:
         self.world_sig = bar_signature(screen)
         self.world_ink = screen.ink(dosbox.BAR)
 
+    def bar_named(self, screen) -> str:
+        """The command bar for a failure message: its words, read with the
+        title's font when that can be read, and its `bar_signature`."""
+        sig = bar_signature(screen)
+        try:
+            words = text_row(screen, BAR_ROW, self.display_font()).strip()
+        except StepFailed:
+            return f"the bar is {sig}"
+        return f"the bar reads {words!r} ({sig})"
+
+    def _pool_landed(self, screen) -> dict:
+        """Pool's load when the screen past the continue prompts is no measured
+        map bar: the party menu, read as text, is where a save made there
+        loads, and the party is left on it for `begin`; anything else stops
+        the run naming its bar.  Nothing is pressed either way, and the map
+        `PoolOfRadiance.load_game` recorded off this screen is forgotten, so
+        no later wait compares with it."""
+        self.game.world_bar = self.game.world_glyphs = self.game.world_word = None
+        font = self.display_font()
+        menu = party_menu_entries(screen, font)
+        if menu is None:
+            raise self.fail("load-screen", f"slot {self.slot} loaded onto a screen "
+                            "that is neither a measured map bar of POOL_MAP_BARS "
+                            f"nor the party menu: {self.bar_named(screen)}")
+        roster = party_roster(screen, font)
+        if not roster:
+            raise self.fail("load", f"slot {self.slot} loaded no party: the "
+                            "party menu draws no roster")
+        self.party_sig = bar_signature(screen)
+        self.party_size = len(roster)
+        self.line = 1
+        self.where = "party"
+        self.shot("loaded-party-menu")
+        self.note(event="landed", step="load", where="party", functions=menu,
+                  roster=roster)
+        return {"slot": self.slot, "landed": "party", "party_menu": self.party_sig,
+                "functions": menu, "roster": roster}
+
     # -- the steps ---------------------------------------------------------
 
     def load(self) -> dict:
@@ -3322,11 +3386,14 @@ class Driver:
                 raise self.fail("load", str(e)) from None
             screen = self.press_continue_screens(self.s.capture(), POOL_CONTINUE_BAR, "load",
                                                  POOL_LOAD_CONTINUE_ROUNDS)
+            kind = pool_map_kind(screen)
+            if kind is None:
+                return self._pool_landed(screen)
             self.record_world(screen)
             self.shot("loaded")
             self.where = "map"
-            return {"slot": self.slot, "status": self.game.status(),
-                    "map_bar": self.world_sig}
+            return {"slot": self.slot, "landed": "map", "status": self.game.status(),
+                    "map_bar": self.world_sig, "map_kind": kind}
         self.s.settle(quiet=0.6, timeout=20.0)
         if not self.press_screen_changes(PARTY_LOAD):
             raise self.fail("load", "LOAD SAVED GAME did not open the slot list")
@@ -3402,17 +3469,31 @@ class Driver:
 
     def begin(self) -> dict:
         if self.where != "party":
+            if self.title.key == "pool" and self.where == "map":
+                raise StepFailed("begin needs the party menu, and this load put "
+                                 "the party on the map")
             raise StepFailed("begin needs the party menu")
         if self.title.key == "ssb":
             self.ssb.menu(self.ssb_rows["begin"], "begin")
             self.ssb.intro(deadline=self.deadline)
         elif self.title.key == "darkness":
             self.pod_menu(self.pod_rows["begin"], "begin")
-        elif not self.press_screen_changes(PARTY_BEGIN, tries=1, wait=30.0):
-            raise self.fail("begin", "BEGIN ADVENTURING did not leave the party menu")
+        else:
+            if self.title.key == "pool":
+                screen = self.s.settle(quiet=0.6, timeout=20.0)
+                menu = party_menu_entries(screen, self.display_font())
+                if menu is None or PARTY_BEGIN_ENTRY not in menu:
+                    raise self.fail("begin-menu", f"not the party menu offering "
+                                    f"{PARTY_BEGIN_ENTRY}: {self.bar_named(screen)}, "
+                                    f"the functions {menu}")
+            if not self.press_screen_changes(PARTY_BEGIN, tries=1, wait=30.0):
+                raise self.fail("begin", "BEGIN ADVENTURING did not leave the party menu")
         screen = self.s.settle(quiet=1.0, timeout=60.0)
         if self.title.key == "curse":
             screen = self.press_continue_screens(screen, CURSE_CONTINUE_BAR, "begin")
+        elif self.title.key == "pool":
+            screen = self.press_continue_screens(screen, POOL_CONTINUE_BAR, "begin",
+                                                 POOL_LOAD_CONTINUE_ROUNDS)
         # Pools of Darkness asks its journal question between the party menu
         # and the map, every time the party begins, and its arrival may ask a
         # YES NO question after that.
@@ -3458,15 +3539,29 @@ class Driver:
                                 "a measured map bar of POD_MAP_BARS (a story "
                                 "screen or a message this driver does not know)")
             self.note(event="map_bar", map=kind, bar=POD_MAP_BARS[kind])
+        elif self.title.key == "pool":
+            kind = pool_map_kind(screen)
+            if kind is None:
+                raise self.fail("begin-screen", "the screen BEGIN ADVENTURING "
+                                "reached is not a measured map bar of "
+                                f"POOL_MAP_BARS: {self.bar_named(screen)}")
+            self.note(event="map_bar", map=kind, bar=POOL_MAP_BARS[kind])
         self.record_world(screen)
         self.shot("map")
         self.where = "map"
         return {"map_bar": self.world_sig, "map_kind": kind}
 
     def camp(self) -> dict:
-        # `E` at Curse's party menu is exit to DOS, so it is never pressed there.
-        if self.on_party_menu():
-            raise self.fail("camp", "the party menu is showing, not the map")
+        # `E` at Curse's and Pool's party menu is exit to DOS, so it is never
+        # pressed there; in Pool it goes out only on a measured map bar.
+        screen = self.s.capture()
+        if self.on_party_menu(screen):
+            hint = ("; a Pool save made at the party menu loads there, and "
+                    "`begin` after `load` leaves it" if self.title.key == "pool" else "")
+            raise self.fail("camp", f"the party menu is showing, not the map{hint}")
+        if self.title.key == "pool" and pool_map_kind(screen) is None:
+            raise self.fail("camp", "ENCAMP is pressed only on a measured map bar "
+                            f"of POOL_MAP_BARS: {self.bar_named(screen)}")
         world = self.game.world_bar or self.game.bar()
         for _ in range(2):
             self.s.key(ENCAMP)
