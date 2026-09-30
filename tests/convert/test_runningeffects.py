@@ -696,7 +696,7 @@ _AMIGA_BLESS_CASES = [
 
 
 def _amiga_bless_disk(tmp_path, title, magnitude, refuse=False,
-                      refuse_id=13):
+                      refuse_id=13, first_id=1):
     """A C64 party with a 47-minute Bless staged on slot 0, as a `.d64`
     `roster.Party` can open. `refuse=True` also stages an id-13 row, no rule
     converts (`refuse_id`), the way `test_save_as_dos_keeps_a_blessed_c64_character_blessed`
@@ -704,7 +704,7 @@ def _amiga_bless_disk(tmp_path, title, magnitude, refuse=False,
     engine-resave specimen `tools/dos/acceptance.py` stages for the same run.
     `None` when the later title's specimen is not on this machine.
     """
-    rows = [(0x3F, 1, 0, 0x2F, magnitude)]
+    rows = [(0x3F, first_id, 0, 0x2F, magnitude)]
     if refuse:
         rows.append((0x3E, refuse_id, 0, 0x2F, magnitude))
     disk = tmp_path / f"{title}-{'refused' if refuse else 'source'}.d64"
@@ -781,8 +781,9 @@ def test_save_as_amiga_keeps_a_blessed_c64_character_blessed(
     assert [bytes(r)[:5] for r in running] == [
         bytes((1, 0x2F, 0x00, magnitude, 0x00))]
 
-    # Silver Blades converts id 13 as Barkskin, so its refusal uses id 55.
-    refuse_id = 55 if title == "ssb" else 13
+    # Silver Blades converts id 13 as Barkskin, so its refusal uses id 65, one
+    # no DOS engine writes.
+    refuse_id = 65 if title == "ssb" else 13
     refused = _amiga_bless_disk(tmp_path, title, magnitude, refuse=True,
                                 refuse_id=refuse_id)
     if refused is None:
@@ -792,6 +793,61 @@ def test_save_as_amiga_keeps_a_blessed_c64_character_blessed(
     with pytest.raises(saveplan.DroppedFields) as err:
         saveplan.prepare_save_as(party, "amiga", tmp_path / "out2.adf", assets)
     assert f"effect {refuse_id}" in str(err.value)
+
+
+def test_save_as_amiga_keeps_a_silver_blades_barkskin_row(tmp_path):
+    """A C64 Silver Blades Barkskin row (id 13, level 5) reaches the Amiga
+    character as the node `0d 00 00 2f 05` with nothing dropped."""
+    from editor import convert, roster, saveplan
+    from tools.convert import convertdrops
+
+    game = c64_port.SECRET_OF_THE_SILVER_BLADES
+    disk = _amiga_bless_disk(tmp_path, "ssb", 0x05, first_id=13)
+    if disk is None:
+        pytest.skip("needs the ssb C64 specimen")
+    party = roster.Party(str(disk))
+    amiga = convertdrops.amiga_game_disks(tmp_path).get(game.key)
+    if amiga is None:
+        pytest.skip(f"needs {game.key}'s own Amiga game disk")
+    disk_one = convertdrops.amiga_disks_one(tmp_path).get(game.key)
+    if disk_one is None:
+        pytest.skip(f"needs {game.key}'s own Amiga disk 1")
+    source = party.source or convert.Source.detect(party.path)
+    try:
+        assets = saveplan.resolve_assets(source, "amiga",
+                                         game_files=convertdrops.game_files,
+                                         amiga_disk=amiga,
+                                         amiga_disk_one=disk_one)
+    except saveplan.MissingAssets:
+        pytest.skip(f"needs {game.key}'s own C64 disks")
+    plan = saveplan.prepare_save_as(party, "amiga", tmp_path / "out.adf", assets)
+    assert plan.report.dropped == []
+    (image,) = plan.files
+    char = _amiga_bless_character(plan.files[image], "ssb", game, "MORGAINE")
+    assert bytes(char.effects[0])[:5] == bytes.fromhex("0d0000 2f05".replace(" ", ""))
+
+
+@pytest.mark.parametrize("name", ["ssb-d-engine-resave"])
+def test_a_silver_blades_barkskin_row_reaches_the_dos_character_as_a_node(name):
+    """The DOS twin: the row is staged here into a copy of the specimen's
+    payload, as `test_a_later_title_party_wide_detect_magic_row_reaches_the_
+    lowest_slot` does."""
+    from test_convertmatrix import _c64_specimen
+
+    from editor import convert
+    disk = _c64_specimen(name)
+    if disk is None:
+        pytest.skip(f"needs the {name} specimen")
+    source = convert.Source.detect(disk)
+    payload = bytearray(source.save0)
+    effects.write_effect(payload, effects.free_slot(payload), 13, 0, 0x2F, 0x05)
+    party, _ = dos_codec.c64_party(
+        bytes(payload), source.save1,
+        game=c64_port.SECRET_OF_THE_SILVER_BLADES)
+    nodes = [bytes(r)[:5] for c in party for r in c.get("running_effects") or ()
+             if bytes(r)[0] == 13]
+    assert len(nodes) == 1 and nodes[0][0] == 13 and nodes[0][3:] == b"\x05\x00"
+    assert not [d for c in party for d in c.dropped if "effect 13" in d]
 
 
 # --- Detect Magic, the party-wide row -----------------------------------------

@@ -1297,15 +1297,20 @@ missed them because their C64 casts are combat-only
 (`effects.COMBAT_CASTER_LEVEL_IDS`). Silver Blades' id 113 converts as DOS
 `(113, minutes, 0x79, 1)` and C64 magnitude `$BC`, the pair each engine writes
 for its own cast of spell 59 (read 1). Id 13 is refused in Pool and Curse with a reason of
-its own, and no save a game wrote reaches it: DOS Reduce (spell 13) removes an
-id-12 node and writes no id-13 node in any title (read 3c). Silver Blades'
-id 13 is Barkskin and converts as a caster-level id: a C64 row becomes
-`(13, remaining minutes, magnitude, 0)`, and a node Wish wrote converts back.
-DOS and the Amiga never write that node themselves, because their Barkskin
-(spell 90) runs the Heal routine (`GAME.OVR:0x2F699`, shared with spell 36),
-and both engines' id-13 handler gives the C64's -1 to the attacker's roll and
-+1 to saves. Curse's C64 id 13 is the engulf countdown, whose magnitude is a
-combatant index, so it stays refused. Dispel Evil (4
+its own. In Pool no save a game wrote reaches it: DOS Reduce (spell 13) removes
+an id-12 node and writes no id-13 node in any title (read 3c). In Curse a C64
+save reaches it only when a fight has engulfed a party member (`COMBAT $1F40`)
+and its row is still on the character at the save; a DOS or Amiga Curse save
+never holds one. Silver Blades' id 13 is Barkskin and converts as a
+caster-level id: a C64 row becomes `(13, remaining minutes, magnitude, 0)`, and
+a node Wish wrote converts back. DOS and the Amiga never write that node
+themselves, because their Barkskin (spell 90) runs the Heal routine
+(`GAME.OVR:0x2F699`, shared with spell 36), and both engines' id-13 handler
+gives the C64's -1 to the attacker's roll and +1 to saves. The camp writer is
+row 26 at `ECL65 $93B6`, which goes to `$819C` with the generic level
+magnitude and count `4 + level`; `POST.COM` does not strip it. Curse's C64
+id 13 is the engulf countdown, whose magnitude is a combatant index, so it
+stays refused. Dispel Evil (4
 and Curse's 145 or Silver Blades' 32), Confusion (35), Fumble (27, and 42 with
 data 0), Stinking Cloud (30, 31), Curse's 136 and Silver Blades' Power Word
 Stun (106) convert both ways by the rules in "Combat-cast ids and their
@@ -1422,7 +1427,6 @@ may be a monster, and party-wide ids 35 and 49 have a separate converter.
 
 | Refusal | Sweep evidence and limit |
 |---|---|
-| Silver Blades id 13 (Barkskin; converts, see "Combat-cast ids" above) | **CONFIRMED static writer:** camp row 26 at `ECL65 $93B6` goes to `$819C`, with the generic level magnitude and count `4 + level`; `POST.COM` does not strip it. A game-written save after Barkskin must establish the player state. |
 | Curse id 13 | **CONFIRMED combat path:** `COMBAT $1F40` sets id 13 and `$1F50` calls the row writer with a roll and bit 7. Cleanup does not strip 13. Survival of its target to save is unmeasured. |
 | Later 12, 14, 38 without bit 7; Mirror Image above 4 | **UNRESOLVED:** the combat handler pointers and their values remain to be followed. |
 | Pool Mirror Image with bit 7 | **UNRESOLVED:** its combat handler pointer remains to be followed. |
