@@ -1437,6 +1437,23 @@ def test_a_mismatch_from_a_superseded_arm_does_not_spoil_the_run_once_a_rearm_ma
                    for w in watch.summary(49, at_menu, at_menu)["why"])
 
 
+def test_a_halt_time_mismatch_survives_a_clean_rearm_at_a_later_stub_halt():
+    dbg, watch, _, at_menu = _ready()
+    _load(dbg)
+    watch.load = LOAD
+    watch.arm()
+    dbg.put(LOAD, 0x0C06, b"\xff" * 8)          # not the helper
+    dbg.pending = [_aroll(dbg), _pt(dbg, 0x0CF5), _at(dbg, STUB, 0xED),
+                   _at(dbg, LOAD, 0x0C06),
+                   _both(dbg, lambda: _unload(dbg), _at(dbg, STUB, 0xED))]
+    watch.run_fight(600, idle=lambda: True)
+    assert watch.halts[3]["code_matches"] is False
+    assert watch.arm_mismatched == [] and "helper" in watch.halt_mismatched
+    result = watch.summary(49, at_menu, at_menu)
+    assert result["conclusive"] is False
+    assert any("did not match" in w for w in result["why"])
+
+
 def test_a_mismatch_on_the_arm_in_force_still_spoils_the_run():
     dbg, watch, _, at_menu = _ready()
     _load(dbg)

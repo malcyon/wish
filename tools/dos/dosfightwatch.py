@@ -1604,9 +1604,12 @@ class PrayerWatch:
         #: The load segment the four routines are armed at, or None.
         self.armed_at: int | None = None
         self.halts: list[dict] = []
-        #: Routines whose code did not match `GAME.OVR`, where they were armed
-        #: or where a halt claimed one.
-        self.mismatched: list[str] = []
+        #: Routines whose code did not match `GAME.OVR` where the latest arm
+        #: looked; each arm replaces this list.
+        self.arm_mismatched: list[str] = []
+        #: Routines a halt claimed whose code did not match; a re-arm never
+        #: clears these, since the halt really happened.
+        self.halt_mismatched: list[str] = []
         #: Whether any party attack reached a stub, counted or not.
         self.party_attack = False
         #: The party attack whose routines are being followed: set at a stub
@@ -1748,9 +1751,10 @@ class PrayerWatch:
         `GAME.OVR`: Prayer's four, and the attack roll's list-10 call and return."""
         lay = self.layout
         self.s.clear_breakpoints()
-        # Every arm re-checks every routine, so a mismatch left by a superseded
-        # arm must not outlive the one now in force.
-        self.mismatched.clear()
+        # Every arm re-checks every routine, so an arm-time mismatch from a
+        # superseded arm must not outlive the one now in force; halt-time
+        # mismatches are kept apart and survive.
+        self.arm_mismatched.clear()
         armed = []
         for kind, entry in lay.stubs.items():
             self.s.brk((self.stub, entry))
@@ -1763,8 +1767,8 @@ class PrayerWatch:
                 if self.rd(self.load, off, CODE_BYTES) == self.ovr[at:at + CODE_BYTES]:
                     self.s.brk((self.load, off))
                     armed.append(f"{self.load:04X}:{off:04X} {name}")
-                elif name not in self.mismatched:
-                    self.mismatched.append(name)
+                elif name not in self.arm_mismatched:
+                    self.arm_mismatched.append(name)
         self.armed_at = self.load
         self.attack_armed_at = self.attack_load()
         if self.attack_armed_at is not None:
@@ -1774,10 +1778,16 @@ class PrayerWatch:
                         == self.ovr[at:at + CODE_BYTES]):
                     self.s.brk((self.attack_armed_at, off))
                     armed.append(f"{self.attack_armed_at:04X}:{off:04X} {name}")
-                elif name not in self.mismatched:
-                    self.mismatched.append(name)
-        return {"armed": armed, "mismatched": list(self.mismatched),
+                elif name not in self.arm_mismatched:
+                    self.arm_mismatched.append(name)
+        return {"armed": armed, "mismatched": list(self.arm_mismatched),
                 "bplist": self.s.breakpoints()}
+
+    @property
+    def mismatched(self) -> list[str]:
+        """Halt-time mismatches plus those of the latest arm."""
+        return self.halt_mismatched + [n for n in self.arm_mismatched
+                                       if n not in self.halt_mismatched]
 
     def routine_at(self, cs: int, ip: int) -> str | None:
         if self.armed_at is None or cs != self.armed_at:
@@ -1839,15 +1849,15 @@ class PrayerWatch:
         if point and not point_ok:
             h["code_matches"] = False
             h["kind"] = "other"
-            if point not in self.mismatched:
-                self.mismatched.append(point)
+            if point not in self.halt_mismatched:
+                self.halt_mismatched.append(point)
             point = None
         if routine and not matches:
             # Not the routine this address was armed for: never a hit.
             h["code_matches"] = False
             h["kind"] = "other"
-            if routine not in self.mismatched:
-                self.mismatched.append(routine)
+            if routine not in self.halt_mismatched:
+                self.halt_mismatched.append(routine)
             routine = None
         h["chain"] = ch = self.chain(ss, bp)
         # A far Pascal call: the combatant is asked about first and the node
