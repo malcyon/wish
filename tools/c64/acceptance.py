@@ -647,9 +647,9 @@ ENCOUNTER_DRAW_SECONDS = 30.0
 #: How long `walk-fight` waits for a fight to open after it has answered an
 #: encounter menu or a `YES NO`.
 FIGHT_OPENS_SECONDS = 60.0
-#: The game sides `walk-fight` answers a disk prompt for; the boot side is
-#: never asked for mid-walk, and any other prompt stops the step.
-WALK_SIDES = ("2", "3", "4")
+#: The game sides `walk-fight` answers a disk prompt for: side 2 is the only
+#: one seen loading a fight; any other prompt stops the step.
+WALK_SIDES = ("2",)
 
 #: How long an answered disk prompt may stay up before the step stops; it
 #: lingers about a second while the game reads the directory.
@@ -3278,8 +3278,10 @@ class PoolRun:
             "walk", f"walk {route}: move {n} ({move}) from {before} {why}, "
                     f"not a step: {row}")
 
-    def answer_side_prompt(self, route: str, last, why: str) -> None:
+    def answer_side_prompt(self, route: str, last, why: str) -> bool:
         """`refuse_prompt`, except that `INSERT SIDE # N` is answered once.
+        Returns whether a prompt was answered, which means the move key was
+        read.
 
         The Pool encounter loads its monsters from side 2, so a move that
         starts one puts the prompt up in front of it.  The frame is kept, the
@@ -3290,16 +3292,21 @@ class PoolRun:
         sess = self.sess
         screen = sess.screen()
         if screen is None or not sess.wanted_disk(screen):
-            return
+            return False
         text = screen.text().upper()
         sides = S.RE_GAME_SIDE.findall(text)
-        if (S.SAVE_PROMPT in text or len(sides) != 1
-                or sides[0] not in WALK_SIDES):
-            self.refuse_prompt(route, last, why)
-            return
-        side, row = sides[0], screen.row(24).strip()
         n, move, before = last
-        if side in self.walk_sides_answered:
+        if S.SAVE_PROMPT in text or len(sides) != 1:
+            self.refuse_prompt(route, last, why)
+            return False
+        side, row = sides[0], screen.row(24).strip()
+        if side not in WALK_SIDES:
+            raise self.fail(
+                "walk", f"{self.walk_verb} {route}: move {n} ({move}) from "
+                        f"{before}: the game asks for side {side} mid-walk, "
+                        f"which the step does not answer (only side 2, the "
+                        f"encounter's, is): {row}")
+        if any(a["side"] == side for a in self.walk_side_prompts):
             raise self.fail(
                 "walk", f"{self.walk_verb} {route}: move {n} ({move}) from "
                         f"{before}: the side {side} prompt came back after "
@@ -3310,14 +3317,14 @@ class PoolRun:
                 "walk", f"{self.walk_verb} {route}: move {n} ({move}) from "
                         f"{before}: the side {side} prompt was not answered: "
                         f"{row}")
-        self.walk_sides_answered.add(side)
+        self.walk_side_prompts.append({"side": side, "at_move": n, "fight": False})
         self.log.emit("walk-side-answered", side=side, n=n, move=move)
         limit = self.clock() + SIDE_LINGER_SECONDS
         while self.clock() < limit:
             time.sleep(0.3)
             after = sess.screen()
             if after is None or not sess.wanted_disk(after):
-                return
+                return True
         raise self.fail(
             "walk", f"{self.walk_verb} {route}: move {n} ({move}) from "
                     f"{before}: the side {side} prompt stayed up "
@@ -3594,7 +3601,7 @@ class PoolRun:
     def _walk_answering(self, arg: str, word: str) -> dict:
         self.walk_verb = "walk-flee" if word == ENCOUNTER_FLEE else "walk-fight"
         route, answer = parse_walk_fight(arg)
-        self.walk_sides_answered = set()
+        self.walk_side_prompts = []
         self.leave_arrival(f"{self.walk_verb} {route}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
@@ -3672,7 +3679,8 @@ class PoolRun:
             "ran the square's event")
         self.capture(f"walked-{route}")
         got = {"route": route, "answer": answer, "position": self.position(),
-               "fights": fights, "moves": moves}
+               "fights": fights, "moves": moves,
+               "side_prompts": self.walk_side_prompts}
         if word == ENCOUNTER_FLEE:
             got["flees"] = flees
         return got
@@ -3693,6 +3701,41 @@ class PoolRun:
             f"{self.walk_verb} {route}: move {n} ({move}): the driver will "
             f"not take MOVE while row 24 reads {row.strip()!r} (mode {mode})")
 
+    def _await_side_encounter(self, route, n, move, before):
+        """After an answered side prompt, wait for the encounter it loads
+        before the move is judged: an encounter menu (returned as its rows),
+        a fight (None), or the party on another square (None).  The load has
+        `ENCOUNTER_DRAW_SECONDS` to reach mode 4 or a menu, and mode 4 then
+        has `FIGHT_OPENS_SECONDS`, as `_look_for_fight` allows; neither
+        arriving fails the step naming the side-2 answer."""
+        sess = self.sess
+        start = self.clock()
+        prep_since = None
+        while True:
+            self.budget(1, f"{self.walk_verb} {route}")
+            if sess.in_combat():
+                return None
+            stop = sess.walk_stop(wait=0.0)
+            if stop is not None:
+                return stop
+            if self.position() != before:
+                return None
+            if getattr(sess, "mode", lambda: None)() == COMBAT_PREP:
+                if prep_since is None:
+                    prep_since = self.clock()
+            now = self.clock()
+            if (prep_since is not None and now >= prep_since + FIGHT_OPENS_SECONDS
+                    or prep_since is None and now >= start + ENCOUNTER_DRAW_SECONDS):
+                raise self.fail(
+                    self.walk_verb,
+                    f"{self.walk_verb} {route}: move {n} ({move}) from {before} "
+                    f"answered the side 2 prompt and no fight, encounter menu "
+                    f"or new square came in {int(now - start)} seconds")
+            time.sleep(0.3)
+
+    def side_answered_since(self, mark: int) -> bool:
+        return len(self.walk_side_prompts) > mark
+
     def _walk_fight_key(self, route, n, move, before, last, answer, fights,
                         word=S.ENCOUNTER_FIGHT, flees=None) -> bool:
         """One key, then whatever it started: an encounter menu, a `YES NO`,
@@ -3703,6 +3746,7 @@ class PoolRun:
         screen agrees the game read nothing (the test `walk` uses)."""
         sess = self.sess
         self.returns_sent = 0
+        mark = len(self.walk_side_prompts)
         before_rows = self.rows()
         # Encounter detection is measured on Pool of Radiance only.
         extra = {"encounters": True} if self.walk_encounters else {}
@@ -3713,7 +3757,11 @@ class PoolRun:
         unread = (not moved and not getattr(sess, "walk_encounter_started", False)
                   and self.took_nothing(before, before_rows, screens)
                   and not getattr(sess, "walked_outdoors", False))
-        self.answer_side_prompt(route, last, "ran the square's event")
+        # `walk_one` returns at a disk prompt with the encounter flag unset;
+        # an answered prompt means the game read the key, so it is not sent
+        # again into the encounter that is loading.
+        answered = self.answer_side_prompt(route, last, "ran the square's event")
+        unread = unread and not answered
         stop = getattr(sess, "walk_stop_screen", None)
         refused = getattr(sess, "walk_refused", None)
         if refused and stop is None:
@@ -3753,6 +3801,9 @@ class PoolRun:
                 ambush = True
                 stop = self._await_fight_after_press(
                     route, last, n, move, before, word)
+        if (stop is None and not sess.in_combat()
+                and self.side_answered_since(mark)):
+            stop = self._await_side_encounter(route, n, move, before)
         if stop is not None:
             self._answer_stop(route, n, move, before, stop, pressed, answer,
                               word)
@@ -3789,6 +3840,8 @@ class PoolRun:
             # An ambush that left the world bar on the same square is sent
             # again by the caller, once, rather than judged as a wrong square.
             unsent = getattr(sess, "walk_unsent_press_bar", False)
+            if answered or self.side_answered_since(mark):
+                return False
             return unread or unsent or (ambush and self.took_nothing(
                 before, before_rows, screens))
         number = len(fights)
@@ -3803,6 +3856,9 @@ class PoolRun:
         self.to_world()
         fights.append({"at_move": n, "square": self.position(),
                        **dataclasses.asdict(result)})
+        for prompt in self.walk_side_prompts:
+            if prompt["at_move"] == n:
+                prompt["fight"] = True
         if flees and flees[-1]["at_move"] == n:
             if flees[-1]["fight"] is None:
                 flees[-1]["fight"] = fights[-1]
@@ -3939,7 +3995,7 @@ class PoolRun:
         seen = None
         while True:
             self.budget(1, f"{self.walk_verb} {route}")
-            self.refuse_prompt(route, last, "ran the square's event")
+            self.answer_side_prompt(route, last, "ran the square's event")
             mode = getattr(sess, "mode", lambda: None)()
             screen = sess.screen()
             row = "" if screen is None else screen.row(24)
@@ -3987,7 +4043,7 @@ class PoolRun:
         look_until = start + LOOK_SECONDS
         while not self.sess.in_combat():
             self.budget(1, f"{self.walk_verb} {route}")
-            self.refuse_prompt(route, last, "ran the square's event")
+            self.answer_side_prompt(route, last, "ran the square's event")
             preparing = getattr(self.sess, "mode", lambda: None)() == COMBAT_PREP
             if preparing and self.clock() >= start + FIGHT_OPENS_SECONDS:
                 raise self.fail(
