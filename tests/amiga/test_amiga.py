@@ -2517,9 +2517,9 @@ def test_the_record_signature_finds_the_party_and_nothing_else():
     """A scan, not a parse -- so what it does not find matters too.
 
     16 bytes of NUL-padded printable ASCII and six legal ability pairs,
-    whose two bytes need not be equal. Across 22 454 bytes of two saved games it hits ten times, which is
-    the four Curse characters and the six Silver Blades ones, and no eleventh
-    time.
+    whose two bytes need not be equal. Across 22 454 bytes of two saved
+    games it hits ten times, which is the four Curse characters and the six
+    Silver Blades ones, and no eleventh time.
     """
     for path in _later_files():
         if not path.name.endswith((".dat", ".sav")):

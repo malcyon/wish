@@ -182,7 +182,7 @@ def _bare(shape: amiga_port.AmigaDeltas) -> neutral.NeutralCharacter:
 
     Both are here because the saved game's party is found by scanning for
     the record signature -- 16 bytes of NUL-terminated printable ASCII and
-    six equal, legal ability pairs -- so a character with neither is one
+    six legal ability pairs -- so a character with neither is one
     `party_in_savegame` cannot find, whatever the writer did with it.
     """
     char = neutral.NeutralCharacter("test", game=c64_port.by_key(shape.key))

@@ -389,8 +389,9 @@ class AmigaCharacter:
 
     @property
     def abilities(self) -> list[int]:
-        """The six scores.  Both later titles store `(current, maximum)`
-        pairs where Pool of Radiance stores one byte; this is the current."""
+        """The six permanent scores.  Both later titles store a pair where
+        Pool of Radiance stores one byte: byte 0 is the permanent score and
+        byte 1 the score in force.  This returns byte 0 of each pair."""
         return [self.get(k)[0] for k in ABILITY_KEYS]
 
     @property

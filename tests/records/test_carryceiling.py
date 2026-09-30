@@ -141,7 +141,7 @@ def _silver_blades_savegame() -> bytes:
     shape = amiga_port.SILVER_BLADES_DELTAS
     record = bytearray(shape.record_size)
     record[0:6] = b"MALACH"
-    for i in range(6):                    # six equal (current, maximum) pairs
+    for i in range(6):                    # six equal (permanent, in force) pairs
         record[0x10 + 2 * i] = record[0x11 + 2 * i] = 12
     data = bytearray(at + 700)
     data[at:at + shape.record_size] = record
