@@ -2427,6 +2427,38 @@ def test_read_step_exempts_the_raised_member_and_the_run_passes(monkeypatch, tmp
     assert da.share_verdict(got) is None and da.expect_verdict(got) is None
 
 
+def test_read_step_passes_its_title_to_the_share_check(monkeypatch, tmp_path):
+    fear = {"id": 111, "minutes": 0, "data": 0}
+    member = {"name": "RANGER", "treasure_share": 1}
+    slots = {"installed": {"characters": [dict(member, control=0xB3, nodes=[fear])]},
+             "resave": {"characters": [dict(member, control=0, nodes=[])]}}
+    (tmp_path / "save").mkdir()
+    monkeypatch.setattr(da, "read_slot", lambda folder, letter: {
+        "slot": letter, "clock": [0] * 6, "clock_minutes": 0,
+        **slots["installed" if folder.name == "installed" else "resave"]})
+    got = da.read_step(tmp_path / "save", tmp_path / "out", "A", ["D"], [], [],
+                       title="ssb")
+    assert da.share_verdict(got) is None
+
+
+def test_the_run_passes_its_title_to_read_step(monkeypatch, tmp_path):
+    seen = []
+    _walk_run(monkeypatch, tmp_path, _read())
+    monkeypatch.setattr(da, "read_step",
+                        lambda *a, **k: seen.append((a, k)) or _read())
+    args = _run_args(tmp_path, _WALK_STEPS)
+    args.title = "ssb"
+    da.run(args)
+    (a, k), = seen
+    assert k.get("title", a[7] if len(a) > 7 else None) == "ssb"
+
+
+def test_no_title_or_the_pool_title_grants_no_fear_exception():
+    node = [{"id": 111, "minutes": 0, "data": 0}]
+    assert _charm_rows(node, [], title=None)["matches"] is False
+    assert _charm_rows(node, [], title="pool")["matches"] is False
+
+
 def test_a_refuted_expectation_fails_the_run_and_exempts_nobody(monkeypatch, tmp_path):
     slots = {"installed": {"characters": [dict(c, nodes=[]) for c in
                                           _RAISED_BEFORE["characters"]]},
