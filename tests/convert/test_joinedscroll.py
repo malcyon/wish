@@ -113,8 +113,10 @@ def _spells(block: bytes) -> tuple[int, int, int]:
 
 
 def _slots(rec) -> list[bytes]:
+    """The occupied slots in the order the C64 screen draws them, slot 15
+    first."""
     raw = rec.get_raw("inventory")
-    return [raw[n * 16:(n + 1) * 16] for n in range(16)
+    return [raw[n * 16:(n + 1) * 16] for n in reversed(range(16))
             if any(raw[n * 16:(n + 1) * 16])]
 
 
@@ -348,7 +350,7 @@ def test_deleting_a_scroll_on_the_sheet_leaves_the_other_one_whole(tmp_path):
     char = _read(tmp_path, _pack_file(), 3)
     rec, _ = dos_codec.to_c64_record(char)
     raw = bytearray(rec.get_raw("inventory"))
-    raw[16:32] = bytes(16)                          # the first scroll
+    raw[32:48] = bytes(16)        # the first scroll, in slot 2 of 0 to 3
     after = c64_codec.CharacterRecord(rec.to_bytes(), rec.stored_size)
     after.set_raw("inventory", bytes(raw))
     out = rewrite.rewrite_dos(char, rec, after, GAME)
@@ -400,7 +402,7 @@ def test_deleting_a_scroll_of_an_amiga_joined_scroll_leaves_the_other_alone(
     first scroll on the sheet leaves a scroll with no next and no chain."""
     char, rec = _amiga_char(tmp_path, live_in_scrolls=True)
     raw = bytearray(rec.get_raw("inventory"))
-    raw[16:32] = bytes(16)
+    raw[32:48] = bytes(16)        # the first scroll, in slot 2 of 0 to 3
     after = c64_codec.CharacterRecord(rec.to_bytes(), rec.stored_size)
     after.set_raw("inventory", bytes(raw))
     out = rewrite.rewrite_amiga_later(char, rec, after, GAME)
@@ -536,7 +538,7 @@ def _slots_by_name(save0, cont, name: str) -> list[bytes]:
         if bytes(save0[at:at + len(name)]) == name.encode():
             at = cont.items(place)
             return [bytes(save0[at + n * 16:at + n * 16 + 16])
-                    for n in range(16)]
+                    for n in reversed(range(16))]
     raise AssertionError(f"no slot holds {name}")
 
 
@@ -624,7 +626,7 @@ def test_leaving_the_whole_pair_leaves_the_sixteenth_slot_empty(tmp_path):
     save0, cont, report = _write_save([_over_by_one(tmp_path)],
                                       leave={0: {15, 16}})
     assert _slots_by_name(save0, cont, "ROUNDTRIP") == \
-        [_plain(n) for n in range(15)] + [bytes(16)]
+        [bytes(16)] + [_plain(n) for n in range(15)]
     assert len(report.left_behind) == 2
 
 

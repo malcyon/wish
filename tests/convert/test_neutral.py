@@ -348,7 +348,8 @@ def test_more_items_than_slots_is_silent():
     rec, rep = c64_codec.write(char)
     assert not any("carry only sixteen" in w for w in rep.warnings)
     raw = rec.get_raw("inventory")
-    assert [raw[n * 16] for n in range(16)] == list(range(1, 17))
+    # The first sixteen, top row first, which is slot 15 down to slot 0.
+    assert [raw[n * 16] for n in reversed(range(16))] == list(range(1, 17))
 
 
 def test_zero_type_stale_slot_is_not_converted():

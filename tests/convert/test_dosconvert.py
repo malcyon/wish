@@ -653,8 +653,10 @@ def test_the_converted_items_are_the_dos_items():
     for char in _records():
         rec, _ = dos_codec.to_c64_record(char)
         inv = rec.get_raw("inventory")
-        for n, item in enumerate(char.items[:16]):
-            assert inv[n * C64_ITEM_SIZE:(n + 1) * C64_ITEM_SIZE] \
+        kept = char.items[:16]
+        for n, item in enumerate(kept):
+            slot = len(kept) - 1 - n       # the screen draws slot 15 first
+            assert inv[slot * C64_ITEM_SIZE:(slot + 1) * C64_ITEM_SIZE] \
                 == item.to_c64()
             converted += 1
         # Nothing past the last item.

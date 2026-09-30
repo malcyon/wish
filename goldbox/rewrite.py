@@ -313,10 +313,11 @@ def _item_edits(before: CharacterRecord, after: CharacterRecord,
             f"sixteen C64 slots and the character it came from holds "
             f"{original_count}; there is no way to say which is which")
     out = []
-    for n in range(c64_codec.ITEM_SLOTS):
+    for n in reversed(range(c64_codec.ITEM_SLOTS)):
         if not any(now[n]):
             continue
-        index = filled.index(n) if any(was[n]) else None
+        # The writer packs the port's first item into the highest filled slot.
+        index = (len(filled) - 1 - filled.index(n)) if any(was[n]) else None
         out.append(_ItemEdit(index, was[n], now[n]))
     return out
 

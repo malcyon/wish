@@ -2359,8 +2359,13 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 f"inventory: {len(converted) - ITEM_SLOTS} items past the "
                 f"{ITEM_SLOTS} slots the C64 record holds")
         inv = bytearray(ITEM_SLOTS * ITEM_SIZE)
-        for n, item in enumerate(converted[:ITEM_SLOTS]):
-            inv[n * ITEM_SIZE:(n + 1) * ITEM_SIZE] = item
+        # The C64's ITEMS screen draws slot 15 first and slot 0 last, and the
+        # neutral list is in screen order, top row first.  The slots stay
+        # packed from 0, where the engine takes its lowest free slot.
+        kept = converted[:ITEM_SLOTS]
+        for n, item in enumerate(kept):
+            slot = len(kept) - 1 - n
+            inv[slot * ITEM_SIZE:(slot + 1) * ITEM_SIZE] = item
         rec.set_raw("inventory", bytes(inv))
         emit(inventory, "inventory", 0x120, 256)
         # No sentence past `ITEM_SLOTS` either (#399, A conversion that runs
@@ -4075,18 +4080,20 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             "do not say which is which", grade("item_effects"))
 
     if inventory is not None:
-        out.set("inventory", [bytes(i) for i in inventory
+        out.set("inventory", [bytes(i) for i in reversed(list(inventory))
                               if not Item(i).is_empty],
-                "the save's item page, one sixteen-byte record each",
+                "the save's item page, one sixteen-byte record each, slot 15 "
+                "first: the order the C64 screen draws them",
                 grade("inventory"))
     elif rec.is_stored("inventory"):
         raw = rec.get_raw("inventory")
         out.set("inventory",
                 [raw[n * ITEM_SIZE:(n + 1) * ITEM_SIZE]
-                 for n in range(ITEM_SLOTS)
+                 for n in reversed(range(ITEM_SLOTS))
                  if not Item(raw[n * ITEM_SIZE:(n + 1) * ITEM_SIZE]).is_empty],
-                "the C64's sixteen fixed slots @0x120, the empty ones "
-                "stripped", grade("inventory"))
+                "the C64's sixteen fixed slots @0x120, slot 15 first (the "
+                "order the C64 screen draws them), the empty ones stripped",
+                grade("inventory"))
 
     if rec.is_stored("roster_tail") and "roster_tail" not in out:
         out.set("roster_tail", rec.get_raw("roster_tail"),

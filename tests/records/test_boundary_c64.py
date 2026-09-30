@@ -246,7 +246,7 @@ def test_b_a_joined_scroll_is_written_as_separate_scrolls_in_separate_slots():
              "composed")
     rec, rep, back = _write(char)
     raw = rec.get_raw("inventory")
-    slots = [raw[n * 16:(n + 1) * 16] for n in range(16)
+    slots = [raw[n * 16:(n + 1) * 16] for n in reversed(range(16))
              if any(raw[n * 16:(n + 1) * 16])]
     assert [(s[0], tuple(s[13:16])) for s in slots] == \
         [(0x27, (1, 2, 3)), (0x27, (4, 0, 0))]

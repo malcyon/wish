@@ -409,13 +409,15 @@ def test_an_item_quantity_edit_changes_one_byte_of_the_item_file(deltas):
 def test_an_added_item_grows_the_file_by_one_stride_and_the_count(deltas):
     char, before = _synthetic_dos(deltas)
     added = bytes(range(1, 17))
+    # The C64 draws slot 15 first, so a block in a slot above the packed one
+    # is a new top row, which is the port's first item.
     after = _with_item(before, 1, added)
 
     out = rewrite.rewrite_dos(char, before, after, _game(deltas))
     stride = deltas.item_size
     assert len(out.items) == len(char.items) * stride + stride
-    assert out.items[:stride] == rewrite.node_bytes(char.items[0])
-    assert out.items[stride:] == dos_codec.item_from_c64(added, stride)
+    assert out.items[:stride] == dos_codec.item_from_c64(added, stride)
+    assert out.items[stride:] == rewrite.node_bytes(char.items[0])
 
     count = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["item_count"].offset
     assert out.record[count] == char.get("item_count") + 1
@@ -571,8 +573,9 @@ def test_five_items_take_a_delete_a_swap_a_replace_and_an_add(port, tmp_path):
         "swap": (_with_item(_with_item(before, 1, _slot(before, 3)),
                             3, _slot(before, 1)),
                  [10, 13, 12, 11, 14]),
-        "replace": (_with_item(before, 0, other), [18, 11, 12, 13, 14]),
-        "add": (_with_item(before, 5, other), [10, 11, 12, 13, 14, 18]),
+        # Item 0 is the top row, which is the highest occupied slot.
+        "replace": (_with_item(before, 4, other), [18, 11, 12, 13, 14]),
+        "add": (_with_item(before, 5, other), [18, 10, 11, 12, 13, 14]),
     }
     for name, (after, expected) in cases.items():
         written = _read_back(port, _rewrite(port, char, before, after),
@@ -598,7 +601,7 @@ def test_a_twenty_item_character_keeps_the_four_the_sheet_never_saw(
     assert len(char.items) == 20
     hidden = [rewrite.node_bytes(i) for i in char.items[16:]]
 
-    after = _with_item(before, 0, bytes(c64_codec.ITEM_SIZE))
+    after = _with_item(before, 15, bytes(c64_codec.ITEM_SIZE))
     out = _rewrite(port, char, before, after)
     written = _read_back(port, out, tmp_path)
 
@@ -670,10 +673,10 @@ def test_an_item_edit_alone_is_not_taken_for_an_edit_that_vanished(port,
     record that moves nowhere is the right answer here -- the refusal above
     must not fire on it."""
     char, before = _make(port, 2)
-    block = bytearray(_slot(before, 1))
+    block = bytearray(_slot(before, 0))               # the port's item 1
     block[11] = (block[11] + 7) & 0xFF                   # the value word
     written = _read_back(port, _rewrite(port, char, before,
-                                        _with_item(before, 1, bytes(block))),
+                                        _with_item(before, 0, bytes(block))),
                          tmp_path)
     assert written.items[1].get("value") == char.items[1].get("value") + 7
 
@@ -695,7 +698,7 @@ def test_a_replaced_item_does_not_keep_the_old_items_cached_line():
     assert engine.items[0].display_line == "LONG SWORD"
 
     other = _blocks(9)[8]
-    out = rewrite.rewrite_dos(engine, before, _with_item(before, 0, other))
+    out = rewrite.rewrite_dos(engine, before, _with_item(before, 1, other))
     written = dos_codec.DosItem(out.items[:stride], stride)
     assert written.get("type_index") == other[0]
     assert written.display_line == ""
