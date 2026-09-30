@@ -2462,9 +2462,8 @@ def test_curse_camp_list_exits_whom_and_reaches_world_or_fails(
 
 
 class _CurseCampFake(FakeSession):
-    """Curse's camp, as the #775 boot captured it: DISPLAY first puts up the
-    list of the member under the panel highlight (`04-camp-list-display-1`),
-    and a key there brings up the whom menu (`05-lost-camp-list`)."""
+    """Curse's camp: DISPLAY first puts up the list of the member under the
+    panel highlight, and a key on its last page brings up the whom menu."""
 
     def press_bar(self, label, row=24, timeout=0):
         return self._go(("bar", label))
@@ -2477,8 +2476,8 @@ CURSE_PANEL = ("MATHEW", "MARK", "TRAVIS", "LEDERA", "SHARA", "PHILIPPE")
 
 
 def _curse_page(lines):
-    """A Curse list page: its window border is a mixed run of glyphs, as
-    `12-camp-list-SHARA-1.txt` of the #775 boot draws it on rows 0 and 23."""
+    """A Curse list page, whose window border on rows 0 and 23 is a mixed
+    run of glyphs rather than one repeated."""
     rows = _window(lines, A.CONTINUE)
     rows[0] = "@;[[[[[[;[[[[&[[[;[[[[[[[=[[[[[[[&[[[;[$"
     rows[23] = "[=;[[[[[[[[&[[[[[;=[[[[[[[[[[;[[[[[[[[&%"
@@ -2545,6 +2544,27 @@ def test_curse_camp_list_pages_the_highlighted_list_to_its_end(tmp_path):
     assert [(e["who"], e["spells"]) for e in events
             if e["kind"] == "camp-list-highlighted"] == [
         ("TRAVIS", ["BLESS", "INVISIBILITY"])]
+
+
+def test_curse_camp_list_fails_when_display_puts_up_neither_screen(tmp_path, monkeypatch):
+    screens = {"world": _window({}, WORLD_BAR), "camp": _window({}, CAMP),
+               "magic": _window({}, MAGIC), "other": _window({}, "SOMETHING ELSE")}
+    moves = {("world", ("bar", "ENCAMP")): "camp", ("camp", ("bar", "MAGIC")): "magic",
+             ("magic", ("bar", "DISPLAY")): "other"}
+    sess = _CurseCampFake(screens, moves, "world")
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.sess, run.out, run.shots = sess, tmp_path, 0
+    run.log = A.Log(tmp_path)
+    monkeypatch.setattr(A.time, "sleep", lambda s: None)
+    ticks = iter(range(0, 10_000))
+    run.clock = lambda: next(ticks)
+    try:
+        with pytest.raises(A.StepFailed,
+                           match="DISPLAY put up neither a whom menu nor a list"):
+            run.camp_list("MATHEW")
+    finally:
+        run.log.close()
+    assert sess.state == "other"
 
 
 def test_items_reads_the_list_of_the_member_asked_for_and_leaves_it(tmp_path):

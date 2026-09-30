@@ -3358,7 +3358,10 @@ class PoolRun:
         self.sess.kbd.key("Return")
         return True
 
-    def _pages(self, target: str, limit: int = 8) -> list[str]:
+    def _pages(self, target: str, limit: int = 8,
+               heads: list[str] | None = None) -> list[str]:
+        """The spells on every page of TARGET's list, Return after each, until
+        the whom menu comes back; each page's header name goes into HEADS."""
         spells: list[str] = []
         for n in range(1, limit + 1):
             rows = self.wait_rows(lambda r: _has(r, AFFECTED) and CONTINUE in r[24], 30)
@@ -3368,6 +3371,8 @@ class PoolRun:
             rows = self.capture(f"camp-list-{target}-{n}")
             page = camp_list_page(rows)
             spells += page.spells if page else []
+            if page and heads is not None:
+                heads.append(page.who)
             self.sess.press_kernal(0x0D)
             after = self.wait_rows(
                 lambda r, was=rows: r != was and (
@@ -4826,9 +4831,10 @@ class CurseRun(PoolRun):
             lambda r: WHOM in r[24] or _list_page(r),
             "DISPLAY put up neither a whom menu nor a list")
         if WHOM not in rows[24]:
-            page = camp_list_page(rows)
-            self.log.emit("camp-list-highlighted", who=page.who if page else "",
-                          spells=self._pages("highlighted"))
+            heads: list[str] = []
+            spells = self._pages("highlighted", heads=heads)
+            self.log.emit("camp-list-highlighted", who=heads[0] if heads else "",
+                          spells=spells)
         return self.whom_lists(who)
 
     SAVING = "SAVING GAME"
