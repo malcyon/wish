@@ -7,7 +7,7 @@ import pathlib
 
 import pytest
 
-from goldbox import amiga_savegame
+from goldbox import amiga_adf, amiga_savegame
 from goldbox.amiga_adf import AmigaDisk
 from tests.amiga.test_amigaacceptance_camp import CURSE_NAMES, _published_report
 from tests.support import amigasavegame as synthetic_amiga
@@ -217,3 +217,67 @@ def test_the_preserved_specimen_says_the_loaded_slot_was_staged(tmp_path, monkey
     assert "staged the loaded slot /save/savgamd.dat" in seen[0]
     assert "[3, 14, 1] to [6, 14, 0]" in seen[0]
     assert "staged" not in seen[1]
+
+
+def test_an_in_place_overwrite_refuses_a_missing_path_and_a_drawer():
+    disk = AmigaDisk(amiga_savegame.make_save_disk(KEY, "D", _curse()).to_bytes())
+    with pytest.raises(staging.StageError, match="not on the disk"):
+        staging.replace_file_in_place(disk, "/save/savgamZ.dat", b"x")
+    with pytest.raises(staging.StageError, match="drawer"):
+        staging.replace_file_in_place(disk, "/save", b"x")
+
+
+def test_a_prepare_whose_slot_is_missing_is_a_route_error(tmp_path, monkeypatch):
+    real = AmigaDisk.read_file
+
+    def missing(self, path):
+        if path == "/save/savgamd.dat" and getattr(missing, "on", False):
+            raise amiga_adf.AmigaDiskError("no such file")
+        return real(self, path)
+
+    save = _curse()
+    monkeypatch.setattr(AmigaDisk, "read_file", missing)
+    monkeypatch.setattr(synthetic_amiga, "synthetic_curse", lambda names=(): save)
+    report = _published_report(tmp_path, monkeypatch, "curse", "dos", names=CURSE_NAMES)
+    missing.on = True
+    with pytest.raises(RouteError, match="--stage-place"):
+        foundation.prepare_published("curse", "staged", report, "628", place=(6, 14, 0))
+
+
+def test_the_slack_after_the_files_end_is_zeroed_and_a_mutation_there_is_refused(
+        tmp_path, monkeypatch):
+    path, manifest = _staged(tmp_path, monkeypatch)
+    df0 = pathlib.Path(manifest["disks"]["df0"]["path"])
+    image = AmigaDisk.open(df0)
+    blocks = image._file_blocks(image.lookup("/save/savgamd.dat").block)
+    last = blocks[-2]
+    size = len(image.read_file("/save/savgamd.dat"))
+    slack = size % 488
+    assert slack, "the synthetic slot fills its last block exactly"
+    raw = bytearray(image.to_bytes())
+    at = last * 512 + 24 + slack
+    assert raw[at:last * 512 + 512] == bytes(488 - slack)
+    # Put the byte in the slack and keep the checksum right, so only the rebuild can see it.
+    raw[at] = 0x5A
+    image = AmigaDisk(bytes(raw))
+    image._fix(last, 20)
+    df0.write_bytes(image.to_bytes())
+    manifest["disks"]["df0"]["sha256"] = foundation.sha256(df0)
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(RouteError, match="byte for byte"):
+        foundation._published_manifest(path, "curse")
+
+
+def test_read_title_finds_a_staged_runs_published_files_preserved(tmp_path, monkeypatch):
+    path, manifest = _staged(tmp_path, monkeypatch)
+    _, title = foundation._published_manifest(path, "curse")
+    out = tmp_path / "out"
+    out.mkdir()
+    _fetched_after_a_run(manifest).save(out / f"fetched-{title.save_disk}.adf")
+    disks, registered, letter = foundation._title_inputs(manifest, title)
+    result = {"fetched": {title.save_disk: {"sha256": "0" * 64}}, "error": "",
+              "completed": True, "unguarded": []}
+    foundation._read_title(title, manifest, result, out, disks, registered, {}, letter,
+                           True, False, (), False)
+    assert "fetched_save_error" not in result
+    assert result["published_files_preserved"] is True

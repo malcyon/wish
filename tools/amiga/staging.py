@@ -57,16 +57,24 @@ class StageError(ValueError):
 
 
 def replace_file_in_place(disk: amiga_adf.AmigaDisk, path: str, data: bytes) -> None:
-    """Overwrite a same-length file's data blocks where they lie, leaving every other byte of the image alone.
+    """Overwrite a same-length file's data blocks where they lie.
 
-    `AmigaDisk.write_file` reallocates blocks and stamps the current time on the
-    drawer and root, so two runs of it never give the same image; this gives a
-    staged image that can be rebuilt byte for byte from the original and checked
-    by hash. Only a single-header OFS file the same length as `data` is handled.
+    Nothing outside those blocks changes, and the slack after the file's end in
+    its last block is zeroed. `AmigaDisk.write_file` reallocates blocks and
+    stamps the current time on the drawer and root, so two runs of it never give
+    the same image; this gives a staged image that can be rebuilt byte for byte
+    from the original and checked by hash. Only a single-header OFS file the
+    same length as `data` is handled.
     """
     if disk.ffs:
         raise StageError("in-place staging needs an OFS image")
-    header = disk.lookup(path).block
+    try:
+        entry = disk.lookup(path)
+    except amiga_adf.AmigaDiskError as exc:
+        raise StageError(f"{path} is not on the disk: {exc}") from exc
+    if entry.is_dir:
+        raise StageError(f"{path} is a drawer, not a file")
+    header = entry.block
     blocks = disk._file_blocks(header)
     data_blocks = blocks[:-1]
     if (blocks[-1] != header or len(disk.read_file(path)) != len(data)

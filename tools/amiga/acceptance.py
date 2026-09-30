@@ -2341,7 +2341,10 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
             raise RouteError(f"--stage-place: {exc}") from exc
         staged = {"slot": slot_path, **change}
         staged_disk = amiga_adf.AmigaDisk(disk.to_bytes())
-        replace_file_in_place(staged_disk, slot_path, data)
+        try:
+            replace_file_in_place(staged_disk, slot_path, data)
+        except StageError as exc:
+            raise RouteError(f"--stage-place: {exc}") from exc
         reading = _published_title(name, letter, issue=issue).read_slot(staged_disk, letter)
         if reading.get("place", {}).get("facing") != place[2]:
             raise RouteError("--stage-place: the staged slot does not read back the place")
