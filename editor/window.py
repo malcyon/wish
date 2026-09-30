@@ -1930,6 +1930,8 @@ class EditorBinding(QObject):
                 except dos_codec.JoinedScrollsDoNotFit as exc:
                     # The names were the first thing in the way; the pack is
                     # next, asked for below with these names kept.
+                    _log.info("The pack does not fit the %s destination: %s",
+                              dialog.direction.destination_port, exc)
                     dialog.pack_overflow = exc.overflow
                 except Exception:
                     _log.exception("could not convert with the names %s",

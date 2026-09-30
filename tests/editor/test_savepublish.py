@@ -2883,5 +2883,7 @@ def test_an_amiga_pool_party_with_punctuation_the_c64_draws_differently_asks_for
     assert saveplan.losses(plan.report) == []
     saveplan.publish(plan, party, assets=assets, backups=tmp_path / "backups")
 
-    written = {m.record.get("name") for m in Party(str(out)).members}
-    assert {"ABC0", "ABC1", "A.B*C,D?E/F:G;H"} <= written
+    written = Party(str(out)).members
+    for position, name in chosen.items():
+        assert written[position].record.get("name") == name
+    assert "A.B*C,D?E/F:G;H" in {m.record.get("name") for m in written}
