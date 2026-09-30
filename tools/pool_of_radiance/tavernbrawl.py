@@ -511,7 +511,7 @@ class Traps:
             return
         with self._mon(10) as mm:
             go(mm)
-            mm.resume()
+            mm.hang_up()
 
     def arm_counter(self, name, address, m) -> None:
         self.counters[name] = m.checkpoint_set(address, exec_=True, stop=False)
@@ -524,7 +524,7 @@ class Traps:
             for s in [s for s in self.stops if s.name in names]:
                 m.checkpoint_delete(s.cp)
                 self.stops.remove(s)
-            m.resume()
+            m.hang_up()
 
     # -- handling -------------------------------------------------------------
 

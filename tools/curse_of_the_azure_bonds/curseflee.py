@@ -127,7 +127,7 @@ class _Watched:
         try:
             self.trap.check(self._m)
         except BaseException:
-            self.inner.__exit__(*sys.exc_info())
+            self.inner.hang_up()
             raise
         return _Resumes(self.trap, self._m)
 
@@ -146,7 +146,7 @@ class _Watched:
 
     def __exit__(self, *exc):
         # A monitor that is gone would spend a full timeout on every read of
-        # the check; EXIT below must run whatever the check does.
+        # the check; the hang-up below must run whatever the check does.
         try:
             if self._gone():
                 self.trap.log.emit("exit_check_skipped",
@@ -155,8 +155,8 @@ class _Watched:
             else:
                 self.trap.check(self._m, resume=False)
         finally:
-            result = self.inner.__exit__(*exc)
-        return result
+            self.inner.hang_up()
+        return False
 
 
 class Trap:
@@ -186,7 +186,7 @@ class Trap:
         self._mon = self.sess.mon
         with self._mon(10) as m:
             self.cp = m.checkpoint_set(RESULT, store=True, stop=True)
-            m.resume()
+            m.hang_up()
         self.sess.mon = self.mon
         self.log.say(f"armed a stop on the write to ${RESULT:04X}")
 

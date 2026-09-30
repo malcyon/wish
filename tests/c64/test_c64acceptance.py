@@ -8434,6 +8434,14 @@ class _ReadMachine:
         self.pc = 0
         self.resumes = 0
         self.halted = False     # VICE halts at a stop until a resume or EXIT
+        # Stops that fire once the machine runs again, in the gap between a
+        # connection's EXIT and VICE seeing its socket close.
+        self.after_exit = []
+
+    def fire_after_exit(self):
+        """The next queued stop fires; the machine is then halted, so the rest wait."""
+        if self.after_exit:
+            self.hit(self.after_exit.pop(0))
 
     def hit(self, pc):
         self.pc = pc
@@ -8452,7 +8460,18 @@ class _ReadMon:
 
     def __exit__(self, *exc):
         self.m.halted = False       # EXIT
+        self.m.fire_after_exit()
+        if self.m.halted:
+            # The dying connection's close resumes a stop that halted on it.
+            self.m.halted = False
+            self.m.pc = 0x2E25
         return False
+
+    def hang_up(self):
+        # Closed while halted: VICE resumes with the connection already gone,
+        # so a stop after that halts with no connection open.
+        self.m.halted = False
+        self.m.fire_after_exit()
 
     def read(self, start, length, bank=0):
         return bytes(self.m.mem[start:start + length])
@@ -8555,6 +8574,33 @@ def test_a_stop_that_fires_during_a_connection_is_read_by_that_connection(tmp_pa
     machine.pc = 0x2E25
     _connect(run)
     assert len(run.log.of("read-at")) == 1
+
+
+def test_a_stop_that_fires_as_a_connection_closes_is_read_at_its_stop(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["0764=CD782B:2B78:2"])
+    machine.mem[0x0764:0x0767] = bytes.fromhex("CD782B")
+    machine.hit(0x0764)
+    machine.after_exit = [0x0764]
+    _connect(run)
+    _connect(run)
+    first, second = run.log.of("read-at")
+    assert (first["pc"], second["pc"]) == (0x0764, 0x0764)
+    assert (second["late"], second["fires"]) == (False, 1)
+    assert run.read_at_counts["read-at-0764"]["late"] == 0
+
+
+def test_a_second_stop_that_fires_as_a_connection_closes_is_not_merged_into_the_first(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["0764=CD782B:2B78:2", "076D=CD782B:2B78:2"])
+    machine.mem[0x0764:0x0767] = machine.mem[0x076D:0x0770] = bytes.fromhex("CD782B")
+    machine.hit(0x0764)
+    machine.after_exit = [0x076D]
+    _connect(run)
+    _connect(run)
+    records = run.log.of("read-at")
+    assert [(r["pc"], r["late"]) for r in records] == [
+        (0x0764, False), (0x076D, False)]
+    assert run.read_at_counts["read-at-076D"]["hits"] == 1
+    assert run.read_at_counts["read-at-076D"]["late"] == 0
 
 
 def test_a_stop_that_fires_before_the_callers_resume_is_read_before_it(tmp_path):

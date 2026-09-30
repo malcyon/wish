@@ -98,6 +98,9 @@ class FakeMon:
     def resume(self):
         self.m.calls.append("resume")
 
+    def hang_up(self):
+        self.m.calls.append("hang_up")
+
     def wait_stopped(self, timeout=20.0):
         if not self.m.stops:
             return None
@@ -781,7 +784,7 @@ def test_a_handled_store_stop_is_followed_by_a_resume():
     machine.store(tb.MERCY)
     machine.calls.clear()
     connect(sess)
-    assert machine.calls[-1] == "resume"
+    assert machine.calls[-1] == "hang_up"
 
 
 def test_every_stop_the_result_handler_waits_for_is_preceded_by_a_resume():
@@ -796,7 +799,7 @@ def test_every_stop_the_result_handler_waits_for_is_preceded_by_a_resume():
     for i, call in enumerate(calls):
         if call.startswith("stopped"):
             assert calls[i - 1] == "resume"
-    assert calls[-1] == "resume"
+    assert calls[-1] == "hang_up"
 
 
 # -- 13. off the map ----------------------------------------------------------
@@ -908,7 +911,7 @@ def test_a_handler_that_raises_leaves_nothing_armed_and_lets_the_machine_run():
     connect(sess)
     assert traps.degraded
     assert machine.checkpoints == {}
-    assert machine.calls[-1] == "resume"
+    assert machine.calls[-1] == "hang_up"
 
 
 def test_the_post_stop_wait_has_an_overall_deadline(monkeypatch):

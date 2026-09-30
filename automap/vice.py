@@ -118,6 +118,21 @@ class Monitor:
                 self.sock.close()
                 self.sock = None
 
+    def hang_up(self) -> None:
+        """Close the socket without EXIT, for a connection that ends while halted.
+
+        VICE is blocked reading a halted connection, so it sees the close at
+        once and resumes with the connection already gone; a stop after that
+        halts with no connection open and waits for the next one.  EXIT and then
+        close leaves a gap in which a stop halts on this connection and the
+        close resumes it unread.  Idempotent.
+        """
+        if self.sock is not None:
+            try:
+                self.sock.close()
+            finally:
+                self.sock = None
+
     # -- wire -------------------------------------------------------------
 
     def _recv_exactly(self, n: int) -> bytes:

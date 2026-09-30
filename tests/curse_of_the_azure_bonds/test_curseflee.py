@@ -105,6 +105,9 @@ class FakeMon:
     def resume(self):
         self.m.calls.append("resume")
 
+    def hang_up(self):
+        self.m.calls.append("hang_up")
+
     def wait_stopped(self, timeout=20.0):
         return self.m.stopped_pc if self.m.stop_answers else None
 
@@ -491,7 +494,7 @@ def test_the_screenshot_is_grabbed_inside_capture_with_a_timeout(
     assert curseflee.run(make_args(tmp_path)) == 0
 
     after = calls_after_write(sess.machine)
-    assert after.index("shot") < after.index("exit")   # not after EXIT
+    assert after.index("shot") < after.index("hang_up")   # not after the hang-up
     assert grabs[0] == 10          # the capture grab; outcome.png follows
     assert of(events, "shot_failed") == []
 
@@ -552,14 +555,15 @@ def test_every_checkpoint_set_and_every_stop_is_followed_by_a_resume(
 
     assert curseflee.run(make_args(tmp_path)) == 0
 
-    calls = [c for c in sess.machine.calls if c in ("checkpoint_set", "resume")]
-    # arm: set, resume.  the `$81` hit: set the `$091C` stop, resume, then
+    calls = [c for c in sess.machine.calls
+             if c in ("checkpoint_set", "resume", "hang_up")]
+    # arm: set, hang up.  the `$81` hit: set the `$091C` stop, resume, then
     # (stopped there) resume again.
-    assert calls[:2] == ["checkpoint_set", "resume"]
+    assert calls[:2] == ["checkpoint_set", "hang_up"]
     after = calls_after_write(sess.machine)
     # stopped at `$091C`: a resume is issued before the connection closes
-    assert after[:4] == ["checkpoint_set", "resume", "resume", "exit"]
-    for i, c in enumerate(calls):
+    assert after[:4] == ["checkpoint_set", "resume", "resume", "hang_up"]
+    for i, c in enumerate(calls[2:], 2):
         if c == "checkpoint_set":
             assert calls[i + 1] == "resume"
 
@@ -575,7 +579,7 @@ def test_a_store_hit_that_is_not_81_resumes_the_machine(tmp_path, monkeypatch):
     assert curseflee.run(make_args(tmp_path)) == 0
 
     after = calls_after_write(sess.machine)
-    assert after.index("resume") < after.index("exit")
+    assert after.index("resume") < after.index("hang_up")
 
 
 def test_an_81_already_in_the_byte_without_a_store_hit_does_not_capture(
@@ -645,5 +649,5 @@ def test_a_store_that_lands_during_a_connection_is_read_before_its_exit(tmp_path
     with sess.mon(5):
         sess.machine.write_result(0x80)
     assert trap.result == 0x80
-    # Handled with the machine still stopped: no resume between write and EXIT.
-    assert sess.machine.calls[-2:] == ["write", "exit"]
+    # Handled with the machine still stopped: no resume between write and the hang-up.
+    assert sess.machine.calls[-2:] == ["write", "hang_up"]
