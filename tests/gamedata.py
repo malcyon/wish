@@ -800,8 +800,8 @@ def _specimen_path(name: str, platform: str = "dos"):
     root = specimen_root()
     if root is None:
         return None
-    # Silver Blades specimens registered later live under `ssb-<platform>`;
-    # the older ones stay under `por-<platform>`.
+    # Silver Blades specimens live under `ssb-<platform>`, and Pool's and the
+    # older Silver Blades ones under `por-<platform>`.
     for folder in (f"por-{platform}", f"ssb-{platform}"):
         where = root / folder / f"WISH-SPEC-{name}"
         if where.is_dir():

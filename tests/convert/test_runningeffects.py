@@ -313,8 +313,9 @@ def test_save_as_c64_keeps_a_silver_blades_survivor_alive_through_the_rest(
         tmp_path):
     """A Silver Blades DOS save with PAINE under Slow Poison (row 22 still
     running) saves as a C64 save whose row carries magnitude `$7F`, which has
-    bit 7 clear, and PAINE keeps 55 in a trait slot. Expects the control resave of #667's live run, registered as
-    `WISH-SPEC-ssb-667-slow-poison-running-resave`."""
+    bit 7 clear, and PAINE keeps 55 in a trait slot. The specimen is the
+    control resave of a live DOS run, `WISH-SPEC-ssb-667-slow-poison-running-
+    resave`."""
     from gamedata import specimen
 
     from editor import roster, saveplan
