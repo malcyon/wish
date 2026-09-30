@@ -4564,7 +4564,7 @@ class Driver:
         `members` is each member's name with the effect names listed under
         it, as the game draws them.  In Curse and Silver Blades the list must
         name `party_size` members.  In Pool the pass is its six name rows on
-        its one page, as before, and the text is a report: a missing font
+        its one page, and the text is a report: a missing font
         leaves `members` None with `font_error` set.  `n` turns a page while
         the bar is ` NEXT EXIT`, until a page adds no line to the merged list
         (`merge_pages`).  The list is left by `leave_display`, and `e` is

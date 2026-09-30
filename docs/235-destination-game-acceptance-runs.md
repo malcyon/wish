@@ -189,7 +189,7 @@ each is built for:
 | `turn N` | The control: N right turns (1 to 4), each reading the square, which a turn must leave alone; a run with `turn` and no `walk` fails unless `read` shows the saved place unchanged and prints "did not move" | All four |
 | `camp` | `ENCAMP`; records the camp bar | All four |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | Camp `REST` for that long; Pools of Darkness' rest menu is read from `GAME.EXE` and is PROBABLE until a run reaches it | All four |
-| `display` | Camp `MAGIC > DISPLAY`, six member rows | Pool |
+| `display` | Camp `MAGIC > DISPLAY`: every page of the list of spells in effect read as text with the title's own font, returning each member's name and effect names; Pool also requires six member rows | Pool, Curse, Silver Blades |
 | `train N` | The party menu's `TRAIN CHARACTER` for roster line N | Curse |
 | `save X` | Camp `SAVE` to slot X and decline the quit, or `SAVE CURRENT GAME` at the party menu; believed when the file changes | All four |
 | `read` | Copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one | All four |
