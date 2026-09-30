@@ -51,11 +51,14 @@ def test_a_wand_names_its_own_spell(app, key, name, sid):
     assert "CAUSE SERIOUS WOUNDS" not in rows["Effect"]
 
 
-@pytest.mark.parametrize("name, sid", [("POTION OF SPEED", 57),
-                                       ("POTION EXTRA HEALING", 99)])
-def test_a_curse_potion_shows_the_item_only_line(app, name, sid):
-    rows, _names, _table = _rows(app, CURSE, name)
-    assert rows["Effect"].startswith(f"effect {sid} ")
+def test_a_curse_potion_of_speed_is_named(app):
+    rows, _names, _table = _rows(app, CURSE, "POTION OF SPEED")
+    assert rows["Effect"] == "Potion of Speed"
+
+
+def test_another_unmapped_curse_effect_keeps_the_item_only_line(app):
+    rows, _names, _table = _rows(app, CURSE, "POTION EXTRA HEALING")
+    assert rows["Effect"].startswith("effect 99 ")
     assert "argument to the power" not in rows["Effect"]
 
 

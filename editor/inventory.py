@@ -42,11 +42,14 @@ from goldbox.items import (
     repair_ring_of_fire_resistance,
 )
 from goldbox.savegame import SAVE0_LOAD_ADDRESS
-from goldbox.spells import POOL_OF_RADIANCE, SpellTable
+from goldbox.spells import CURSE_OF_THE_AZURE_BONDS, POOL_OF_RADIANCE, SpellTable
 from goldbox.spells import describe as describe_spell
 from goldbox.spells import for_game as spell_table
 
 from .ui_inventory import Ui_AddItemDialog
+
+# The effect id Curse stores for its potion of speed.
+CURSE_POTION_OF_SPEED = 57
 
 EMPTY = bytes(ITEM_SIZE)
 
@@ -532,12 +535,16 @@ class ItemTraitsModel(QAbstractTableModel):
         UNAPPROVED WORDING for the second line: the Pool of Radiance one is
         Donald's and is kept exactly, because RESTORATION is the name of its
         last spell and a number is worse. The later titles have no such
-        landmark, so they get the number.
+        landmark, so they get the number. Donald approved one exception:
+        Curse's effect 57 is named "Potion of Speed".
         """
         if sid <= self.spells.last_spell and sid not in self.spells.not_a_spell:
             return describe_spell(sid, self.spell_names, self.spells)
         if self.spells.last_spell == POOL_OF_RADIANCE.last_spell:
             return f"effect {sid} — the item-only range past RESTORATION"
+        if (self.spells.key == CURSE_OF_THE_AZURE_BONDS.key
+                and sid == CURSE_POTION_OF_SPEED):
+            return "Potion of Speed"
         return (f"effect {sid} — the item-only range past spell "
                 f"{self.spells.last_spell}")
 
