@@ -1827,7 +1827,7 @@ def c64_later_strength_in_force(
         title_key: str, permanent: tuple[int, int],
         in_force: tuple[int, int], nodes: "Iterable[RunningEffect]",
         granted: "Iterable[bytes]", warrior: bool) -> tuple[int, int] | None:
-    """The score in force the C64's own Strength gives, for a DOS or Amiga
+    """The score in force the C64's own Strength gives, for a DOS
     character whose only strength source is one Strength node, or `None`.
 
     The C64 recalculation (`ECL65 $9160`) climbs the permanent score by the

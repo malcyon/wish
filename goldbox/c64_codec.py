@@ -963,10 +963,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     deltas = deltas_for(char.game)
     # A running Strength keeps its roll, and the score in force is the one the
     # C64's own recalculation gives for it, so a camp visit here does not move
-    # it. Every later read of the strength, the `DIRECT` copy included, then
+    # it. Only a DOS source: the Amiga's recalculation has not been read, so
+    # its score is copied. Every later read of the strength, the `DIRECT` copy included, then
     # sees that score.
     native = (_native_strength(char, deltas.key)
-              if port != "C64" and deltas.key in effects.LATER_CAST_FLAGS
+              if port == "DOS" and deltas.key in effects.LATER_CAST_FLAGS
               else None)
     if native is not None:
         char = copy.copy(char)

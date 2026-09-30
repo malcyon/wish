@@ -317,7 +317,7 @@ gives the same 101, which is the one collision in the byte.
 
 **A running Strength converts with its roll, at the destination's own score.**
 Data 101 to 108 converts both ways, a roll of 1 included. The score in force is
-not copied: a DOS or Amiga source arrives on the C64 at
+not copied: a DOS source arrives on the C64 at
 `effects.raise_strength(permanent, roll)`, the score the C64's recompute gives
 and never changes; a C64 source arrives on DOS at
 `effects.dos_later_strength(permanent, permanent, data, warrior)`, the score a
@@ -326,7 +326,7 @@ warrior's percentile. Both apply only when the one Strength node explains the
 source score; another strength source leaves the score copied. C64 to DOS
 writes the low nibble a DOS cast carries, so the C64 caster's level is lost; the
 Amiga's recompute has not been read, so a C64 roll of 1 is dropped on that
-route. `confirm_later_strength_arm` pins the DOS arm the model rests on.
+route, and an Amiga source's score is copied to the C64 for the same reason. `confirm_later_strength_arm` pins the DOS arm the model rests on.
 
 **PROBABLE, and it is why a converted character's percentile may not match:**
 the recompute's exceptional-strength arithmetic reads the **in-force**

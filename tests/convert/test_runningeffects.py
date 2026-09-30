@@ -3665,6 +3665,15 @@ def test_another_strength_source_leaves_the_c64_score_copied(port):
     assert _c64_strength(char)[0] == (18, 0)
 
 
+def test_an_amiga_source_strength_is_copied_to_the_c64_unchanged():
+    """The state is one DOS's model explains (native would be 18/70), but the
+    Amiga's own recalculation is unread, so the score is copied."""
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    char = _strength_character("Amiga", game, 8, (17, 0), (18, 0),
+                               {"cleric": 5})
+    assert _c64_strength(char)[0] == (18, 0)
+
+
 def test_a_c64_source_is_written_to_c64_as_it_was_given():
     game = c64_port.CURSE_OF_THE_AZURE_BONDS
     char = _strength_character("C64", game, 8, (17, 0), (18, 70),
