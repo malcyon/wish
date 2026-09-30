@@ -1609,6 +1609,12 @@ def test_a_camp_list_page_names_who_and_what():
     assert page == A.CampPage("THE WHOLE PARTY", ["DETECT MAGIC", "BLESS"], True)
 
 
+def test_a_curse_list_page_leaves_its_bottom_border_out():
+    rows = _window({1: "SHARA IS AFFECTED BY:", 3: "ENLARGE"}, A.CONTINUE)
+    rows[23] = "[=;[[[[[[[[&[[[[[;=[[[[[[[[[[;[[[[[[[[&%"
+    assert A.camp_list_page(rows) == A.CampPage("SHARA", ["ENLARGE"], True)
+
+
 def test_an_empty_camp_list_page_lists_nothing():
     rows = _window({1: "MALCYON IS AFFECTED BY:"},
                    bar="PRESS ANY KEY TO CONTINUE")
@@ -2453,6 +2459,92 @@ def test_curse_camp_list_exits_whom_and_reaches_world_or_fails(
                            for p in tmp_path.glob("*lost-world-route.txt"))
     finally:
         run.log.close()
+
+
+class _CurseCampFake(FakeSession):
+    """Curse's camp, as the #775 boot captured it: DISPLAY first puts up the
+    list of the member under the panel highlight (`04-camp-list-display-1`),
+    and a key there brings up the whom menu (`05-lost-camp-list`)."""
+
+    def press_bar(self, label, row=24, timeout=0):
+        return self._go(("bar", label))
+
+    def to_world_bar(self, timeout=0):
+        return self.state == "world"
+
+
+CURSE_PANEL = ("MATHEW", "MARK", "TRAVIS", "LEDERA", "SHARA", "PHILIPPE")
+
+
+def _curse_page(lines):
+    """A Curse list page: its window border is a mixed run of glyphs, as
+    `12-camp-list-SHARA-1.txt` of the #775 boot draws it on rows 0 and 23."""
+    rows = _window(lines, A.CONTINUE)
+    rows[0] = "@;[[[[[[;[[[[&[[[;[[[[[[[=[[[[[[[&[[[;[$"
+    rows[23] = "[=;[[[[[[[[&[[[[[;=[[[[[[[[[[;[[[[[[[[&%"
+    return rows
+
+
+def _curse_camp_list(tmp_path, first_pages, who):
+    """DISPLAY's first list as FIRST_PAGES, then the whom menu, where MATHEW
+    and SHARA each have one page; returns the result, the session and the
+    events logged."""
+    whom = _whom_screen(CURSE_PANEL)
+    screens = {"world": _window({}, WORLD_BAR), "camp": _window({}, CAMP),
+               "magic": _window({}, MAGIC), "whom": whom,
+               "on-m": whom, "on-s": whom, "on-x": whom,
+               "m": _curse_page({1: "MATHEW IS AFFECTED BY:", 3: "HASTE",
+                                 4: "PROTECTION FROM EVIL"}),
+               "s": _curse_page({1: "SHARA IS AFFECTED BY:", 3: "ENLARGE"})}
+    moves = {("world", ("bar", "ENCAMP")): "camp", ("camp", ("bar", "MAGIC")): "magic",
+             ("magic", ("bar", "DISPLAY")): "first-1",
+             ("whom", ("party", 0)): "on-m", ("on-m", ("key", "Return")): "m",
+             ("m", ("key", 0x0D)): "whom",
+             ("whom", ("party", 4)): "on-s", ("on-s", ("key", "Return")): "s",
+             ("s", ("key", 0x0D)): "whom",
+             ("whom", ("party", 7)): "on-x", ("on-x", ("key", "Return")): "magic",
+             ("magic", ("bar", "EXIT")): "camp", ("camp", ("bar", "EXIT")): "world"}
+    for n, page in enumerate(first_pages, 1):
+        screens[f"first-{n}"] = page
+        moves[(f"first-{n}", ("key", 0x0D))] = (
+            f"first-{n + 1}" if n < len(first_pages) else "whom")
+    sess = _CurseCampFake(screens, moves, "world")
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.sess, run.out, run.shots = sess, tmp_path, 0
+    run.log = A.Log(tmp_path)
+    try:
+        got = run.camp_list(who)
+    finally:
+        run.log.close()
+    events = [json.loads(line) for line in
+              (tmp_path / "run.jsonl").read_text(encoding="utf-8").splitlines()]
+    return got, sess, events
+
+
+def test_curse_camp_list_reads_the_highlighted_list_then_the_whom_menu(tmp_path):
+    first = _curse_page({1: "MATHEW IS AFFECTED BY:", 3: "HASTE",
+                         4: "PROTECTION FROM EVIL"})
+    got, sess, events = _curse_camp_list(tmp_path, [first], "MATHEW,SHARA")
+    assert got == {"offered": [*CURSE_PANEL, "THE WHOLE PARTY"],
+                   "lists": {"MATHEW": ["HASTE", "PROTECTION FROM EVIL"],
+                             "SHARA": ["ENLARGE"]}}
+    assert sess.state == "world"
+    assert sess.sent[:4] == [("bar", "ENCAMP"), ("bar", "MAGIC"),
+                             ("bar", "DISPLAY"), ("key", 0x0D)]
+    assert [(e["who"], e["spells"]) for e in events
+            if e["kind"] == "camp-list-highlighted"] == [
+        ("MATHEW", ["HASTE", "PROTECTION FROM EVIL"])]
+
+
+def test_curse_camp_list_pages_the_highlighted_list_to_its_end(tmp_path):
+    pages = [_curse_page({1: "TRAVIS IS AFFECTED BY:", 3: "BLESS"}),
+             _curse_page({1: "TRAVIS IS AFFECTED BY:", 3: "INVISIBILITY"})]
+    got, sess, events = _curse_camp_list(tmp_path, pages, "SHARA")
+    assert got["lists"] == {"SHARA": ["ENLARGE"]}
+    assert sess.sent[3:5] == [("key", 0x0D), ("key", 0x0D)]
+    assert [(e["who"], e["spells"]) for e in events
+            if e["kind"] == "camp-list-highlighted"] == [
+        ("TRAVIS", ["BLESS", "INVISIBILITY"])]
 
 
 def test_items_reads_the_list_of_the_member_asked_for_and_leaves_it(tmp_path):

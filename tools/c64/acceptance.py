@@ -56,7 +56,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 |---|---|
 | `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint`. Followed by `remove`, it stops on the party menu instead, and `BEGIN ADVENTURING` waits for the first step that is not a `remove`; `--checkpoint` and `--read-at` are refused when no such step follows, and no reading is logged after a step that ends on the party menu |
 | `remove WHO` | the party menu's `REMOVE CHARACTER FROM PARTY`, then WHO's row on the list it puts up; waits for the list to come back one name shorter, `EXIT`s to the party menu, then keeps the save disk as `removed-N.D64` (attaching the image again when VICE has left the directory open) with its directory (`added`, `gone` and `changed` against the directory before) and the 1541's error-message buffer (`$02D5` in the drive). WHO is a panel number, counted on the list as it stands, so a second `remove 1` takes the member who was second; or a whole name, and a name picks the first row drawing it, so a duplicated name needs the number. Only straight after `load` or another `remove`. A `MAKE SAVE GAME DISK ? YES NO` in place of the shorter list is the game refusing the write: it is answered NO, never YES (YES formats a disk), the disk and the drive's buffer are kept, and the step fails unless the list then comes back without WHO |
-| `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page |
+| `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page. Curse first shows the list of the member under the panel highlight and asks on whom only after its last page; that list is logged as `camp-list-highlighted` and the whom menu is then read the same way |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time |
 | `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk |
@@ -82,7 +82,8 @@ with `THE WHOLE PARTY` and `EXIT` under the names and the question on row 24;
 a character's list asks the effect query with that
 character as the owner, so a row owned by the whole party is listed for every
 member; each page ends in `PRESS ANY KEY TO CONTINUE` on row 24, and the whom
-menu comes back after the last.  The later titles carry the same strings.  In
+menu comes back after the last.  The later titles carry the same strings;
+Curse's DISPLAY puts up the highlighted member's list before its whom menu.  In
 the ITEMS list `LIBRARY $39B7`-`$39C3` prints `*` before the name of an item
 whose bonus byte is not zero when `$6DD9` is set, and choosing ITEMS sets
 `$6DD9` from the query at `$4081`, which asks for Detect Magic (id 5) with the
@@ -1341,8 +1342,10 @@ class CampPage:
 def camp_list_page(rows: list[str]) -> CampPage | None:
     """One page of the camp list of spells in effect, or None.
 
-    The header is `<NAME> IS AFFECTED BY:`, one spell name to a row follows,
-    and row 24 holds `PRESS ANY KEY TO CONTINUE` once the page is drawn.
+    The header is `<NAME> IS AFFECTED BY:`, one spell name to a row follows
+    down to row 22, above the window's bottom border on row 23 (in Curse a
+    mixed run of border glyphs, not one repeated), and row 24 holds `PRESS
+    ANY KEY TO CONTINUE` once the page is drawn.
     """
     if len(rows) < 25:
         return None
@@ -1350,9 +1353,14 @@ def camp_list_page(rows: list[str]) -> CampPage | None:
     if head is None:
         return None
     who = _inner(rows[head]).split(AFFECTED)[0].strip()
-    spells = [t for t in (_inner(r) for r in rows[head + 1:24])
+    spells = [t for t in (_inner(r) for r in rows[head + 1:23])
               if t and not _is_frame(t)]
     return CampPage(who, spells, CONTINUE in rows[24])
+
+
+def _list_page(rows: list[str]) -> bool:
+    """A camp-list page, drawn to the end: the header and the key prompt."""
+    return len(rows) > 24 and _has(rows[:24], AFFECTED) and CONTINUE in rows[24]
 
 
 def whom_entries(rows: list[str], question: str = WHOM) -> list[str]:
@@ -3295,14 +3303,26 @@ class PoolRun:
                              spell=spell, messages=messages, key=key)
 
     def camp_list(self, who: str) -> dict:
+        self.open_display(lambda r: WHOM in r[24], "DISPLAY never asked on whom")
+        return self.whom_lists(who)
+
+    def open_display(self, ok, why: str) -> list[str]:
+        """`ENCAMP > MAGIC > DISPLAY`, waited on until OK holds of the screen;
+        fails with WHY when it never does."""
         if not self.to_camp():
             raise self.fail("camp", "ENCAMP never put up the camp bar")
         if not self.choose_bar("MAGIC", timeout=20) or self.wait_rows(
                 lambda r: MAGIC_BAR in r[24], 30) is None:
             raise self.fail("magic", "MAGIC never put up its bar")
-        if not self.choose_bar("DISPLAY", timeout=20) or self.wait_rows(
-                lambda r: WHOM in r[24], 30) is None:
-            raise self.fail("display", "DISPLAY never asked on whom")
+        rows = (self.wait_rows(ok, 30)
+                if self.choose_bar("DISPLAY", timeout=20) else None)
+        if rows is None:
+            raise self.fail("display", why)
+        return rows
+
+    def whom_lists(self, who: str) -> dict:
+        """The camp list from the whom menu DISPLAY put up: each name WHO
+        gives, or every name the menu offers, then back to the world."""
         self.sess.settle(1)
         offered = whom_entries(self.capture("camp-whom"))
         named = [n.strip() for n in who.split(",") if n.strip()]
@@ -4795,6 +4815,21 @@ class CurseRun(PoolRun):
         self.close_sheet()
         self.to_world()
         return {"who": who, "sheet": [r.rstrip() for r in rows if r.strip()]}
+
+    # -- the camp list: Curse shows one list before it asks on whom ------------
+    def camp_list(self, who: str) -> dict:
+        """Silver Blades' DISPLAY asks on whom at once, as Pool's does.
+        Curse's first puts up the list of the member under the panel
+        highlight, and asks on whom after its last page; that list is logged
+        as `camp-list-highlighted` and the whom menu is then read as Pool's."""
+        rows = self.open_display(
+            lambda r: WHOM in r[24] or _list_page(r),
+            "DISPLAY put up neither a whom menu nor a list")
+        if WHOM not in rows[24]:
+            page = camp_list_page(rows)
+            self.log.emit("camp-list-highlighted", who=page.who if page else "",
+                          spells=self._pages("highlighted"))
+        return self.whom_lists(who)
 
     SAVING = "SAVING GAME"
 
