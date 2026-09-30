@@ -79,12 +79,13 @@ from tools.secret_of_the_silver_blades.ssbsession import (  # noqa: E402
     GEN,
     MAX_BACKOUTS,
     MAX_WALKS,
+    ModeReader,
     at_picker,
     choose_verified,
     cursor_on_begin,
+    disk_prompt_up,
     leave_picker,
     load_started,
-    overlay_mode,
 )
 
 #: Every byte worth reading when the load has just failed, and why.
@@ -610,7 +611,16 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
     deadline = time.time() + timeout
     seen, since = "", time.time()
     walk_failures = backouts = 0
+    modes = ModeReader(sess, addr) if addr is not None else None
     while time.time() < deadline:
+        if modes is not None:
+            if modes.dead:
+                sess.log(f"  world: LINKER's mode byte ${addr.mode:04X} "
+                         f"could not be read {modes.failures} times running; "
+                         f"giving up rather than guess which overlay is "
+                         f"running")
+                return False
+            modes.new_pass()
         if sess.iec_stall_check():
             # It has logged where the machine was; the rest of the timeout
             # would only wait on a drive the C64 has stopped listening to.
@@ -622,8 +632,15 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
         text = s.text()
         if "ENCAMP" in text:
             return True
-        if at_picker(s) and (addr is None
-                             or overlay_mode(sess, addr) == GEN):
+        picker_mode = (GEN if modes is None else modes()) \
+            if at_picker(s) else None
+        if at_picker(s) and picker_mode is None:
+            # The words are up but the mode byte could not be read: press
+            # nothing, neither the EXIT walk nor the STUCK branch's Escape,
+            # until a read says whose screen it is.
+            time.sleep(1.5)
+            continue
+        if picker_mode == GEN:
             # `MODIFY WHICH CHARACTER?` and `VIEW WHICH CHARACTER?`, the
             # lists the party menu opens on the party: left through their own
             # EXIT row, never with the Escape the STUCK branch below would
@@ -663,7 +680,10 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
                     sess.log("  world: giving up rather than choose "
                              "whichever entry is highlighted")
                     return False
-        elif any(w in state for w in ("CONTINUE", "MORE", "PRESS")):
+        elif any(w in state for w in ("CONTINUE", "MORE", "PRESS")) \
+                and not disk_prompt_up(text):
+            # Not a disk prompt `handle_prompt` is holding back from
+            # answering twice: its PRESS ANY KEY wants a disk first.
             # Curse's own opening page -- row 24 reads "PRESS BUTTON OR
             # RETURN TO CONTINUE." -- is a one-option menu behind which the
             # world has already loaded, the same kind of screen

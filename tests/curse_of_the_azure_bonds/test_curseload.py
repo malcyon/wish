@@ -33,6 +33,7 @@ from support.partymenu import (  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
 from tools.curse_of_the_azure_bonds import curseload  # noqa: E402
+from tools.secret_of_the_silver_blades import ssbsession  # noqa: E402
 
 
 class FakeMonitor:
@@ -661,7 +662,7 @@ def test_a_which_character_bar_outside_gen_is_not_taken_for_the_list(
     """Only GEN carries the words on Curse's disks, so with the mode byte
     reading DUNGEON the bar is somebody else's and gets no EXIT walk."""
     _clock(monkeypatch)
-    monkeypatch.setattr(curseload, "overlay_mode",
+    monkeypatch.setattr(ssbsession, "overlay_mode",
                         lambda sess, addr, errors=None: 1)
     monkeypatch.setattr(curseload, "idle_in_key_window",
                         lambda sess, addr: None)
@@ -674,3 +675,42 @@ def test_a_which_character_bar_outside_gen_is_not_taken_for_the_list(
     sess = LoadSess(passes, answered_on=-1)
     assert curseload.enter_world(sess, Addr(), timeout=300.0) is True
     assert "EXIT" not in sess.selected
+
+
+def test_an_unreadable_mode_at_a_party_list_presses_nothing_and_stops(
+        monkeypatch):
+    """With the mode byte unreadable nobody can say whose list it is: no
+    EXIT walk, no Escape from the STUCK branch, and a stop that says why
+    after five failed reads rather than the whole timeout."""
+    _clock(monkeypatch)
+
+    def unreadable(sess, addr, errors=None):
+        if errors is not None:
+            errors.append(OSError("monitor did not answer"))
+        return None
+
+    monkeypatch.setattr(ssbsession, "overlay_mode", unreadable)
+    monkeypatch.setattr(curseload, "idle_in_key_window",
+                        lambda sess, addr: 0x410B)
+    escapes: list[str] = []
+
+    class Addr:
+        mode = 0x7F11
+
+    sess = LoadSess([picker_screen(0)], answered_on=-1)
+    sess.kbd = type("Kbd", (), {"key": lambda k, name: escapes.append(name)})()
+    assert curseload.enter_world(sess, Addr(), timeout=300.0) is False
+    assert sess.selected == [] and sess.kernal == [] and escapes == []
+    first = [line for line in sess.logged if "could not read" in line]
+    assert len(first) == 1 and "monitor did not answer" in first[0]
+    assert "times running" in sess.logged[-1]
+
+
+def test_a_held_disk_prompt_gets_no_return(monkeypatch):
+    """A side prompt `handle_prompt` will not answer twice carries PRESS on
+    row 24; a Return there sends the game to a drive holding the wrong side."""
+    _clock(monkeypatch)
+    passes = [bar_screen(SIDE_2)] * 5 + [bar_screen(WORLD_BAR)]
+    sess = LoadSess(passes, answered_on=-1)
+    assert curseload.enter_world(sess, timeout=300.0) is True
+    assert sess.kernal == []

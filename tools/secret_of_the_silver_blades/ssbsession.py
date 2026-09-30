@@ -757,9 +757,14 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             # exists to prevent. And only while DUNGEON runs: the fetcher is
             # shared with GEN's menus and with a fight.
             pc = idle_in_key_window(sess, addr)
-            if pc is not None and mode_now() == DUNGEON:
-                sess.log(f"  world: idle at ${pc:04X}, which is warpable")
-                return True
+            if pc is not None:
+                # Read afresh: the idle samples took seconds, and a value
+                # read earlier in this pass may predate them.
+                mode_now.new_pass()
+                if mode_now() == DUNGEON:
+                    sess.log(f"  world: idle at ${pc:04X}, which is "
+                             f"warpable")
+                    return True
         if impossible_side(sess, addr, text, fix) is not None:
             time.sleep(2.0)
             continue
@@ -815,7 +820,10 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             sess.select_bar("EXIT", timeout=10)
             sess.press_kernal(0x0D)
             since = time.time()
-        elif any(w in state for w in ("CONTINUE", "MORE", "PRESS")):
+        elif any(w in state for w in ("CONTINUE", "MORE", "PRESS")) \
+                and not disk_prompt_up(text):
+            # Not a disk prompt `handle_prompt` is holding back from
+            # answering twice: its PRESS ANY KEY wants a disk first.
             # **The party arrives inside a script, not at a command bar.**
             # `ECL11` -- where the shipped save starts -- is four screens of
             # prologue, each closed by a one-option menu, and then

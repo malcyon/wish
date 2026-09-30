@@ -657,3 +657,77 @@ def test_a_mode_byte_that_cannot_be_read_stops_the_load_saying_why(
     first = [line for line in sess.logged if "could not read" in line]
     assert len(first) == 1 and "monitor did not answer" in first[0]
     assert "times running" in sess.logged[-1]
+
+
+class StallSess(WorldSess):
+    """A drive stall under an unchanged screen: `iec_stall_check` sees it
+    once the screen has sat for more than 15 s. With `recover` it nudges the
+    drive and the load goes on; without, it gives up, as the real check
+    does after its nudges fail."""
+
+    def __init__(self, screens, clock, recover):
+        super().__init__(screens)
+        self.clock, self.recover = clock, recover
+        self.still_since: float | None = None
+        self.nudges = 0
+        self.stalled = False
+
+    def iec_stall_check(self):
+        if (self.still_since is not None and not self.nudges
+                and self.clock.t - self.still_since > 15.0):
+            self.nudges += 1
+            if not self.recover:
+                return True
+            self.screens.append(WORLD)
+            self.calls = len(self.screens) - 1
+        return False
+
+    def _screen(self):
+        got = super()._screen()
+        if getattr(got, "_text", None) == "A SCREEN" \
+                and self.still_since is None:
+            self.still_since = self.clock.t
+        return got
+
+
+def _stall_case(monkeypatch, recover):
+    modes = _quiet(monkeypatch, mode=0)
+    clock = FakeClock()
+    monkeypatch.setattr(SSB.time, "time", clock.time)
+    monkeypatch.setattr(SSB.time, "sleep", clock.sleep)
+    # The worst case for the order of the checks: an idle PC on offer too.
+    monkeypatch.setattr(SSB, "idle_in_key_window", lambda sess, addr: 0x410B)
+    sess = StallSess([MENU] + [("A SCREEN", "A SCREEN")] * 40, clock,
+                     recover)
+    if recover:
+        modes.values = [0] * 12 + [1]
+    return sess
+
+
+def test_a_drive_stall_under_gen_is_nudged_before_any_give_up(monkeypatch):
+    sess = _stall_case(monkeypatch, recover=True)
+    assert SSB.enter_world(sess, Addr(), timeout=240.0, fix=False,
+                           stop_at_idle=False) is True
+    assert sess.nudges == 1
+    assert not any("no known way out" in line for line in sess.logged)
+
+
+def test_a_drive_stall_that_gives_up_is_the_reason_given(monkeypatch):
+    sess = _stall_case(monkeypatch, recover=False)
+    assert SSB.enter_world(sess, Addr(), timeout=240.0, fix=False,
+                           stop_at_idle=False) is False
+    assert sess.nudges == 1
+    assert not any("no known way out" in line for line in sess.logged)
+
+
+def test_an_idle_pc_under_a_disk_prompt_with_gen_running_is_no_give_up(
+        monkeypatch):
+    """A side prompt `handle_prompt` holds back from answering again sits
+    unchanged, GEN's mode byte and a PC in LIBRARY: waited out, not ended."""
+    _quiet(monkeypatch, mode=[0] * 25 + [1])
+    monkeypatch.setattr(SSB, "idle_in_key_window", lambda sess, addr: 0x410B)
+    sess = WorldSess([MENU] + [PROMPT] * 30 + [WORLD])
+    assert SSB.enter_world(sess, Addr(), timeout=240.0, fix=False,
+                           stop_at_idle=False) is True
+    assert not any("giving up" in line for line in sess.logged)
+    assert sess.kernal == [0x0D]
