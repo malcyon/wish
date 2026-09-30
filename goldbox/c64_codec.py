@@ -679,16 +679,18 @@ NO_C64_STATUS: dict[str, str] = {
 
 
 def strength_index(strength: int, percentile: int) -> int:
-    """The C64's `strength_index`: STR below 18, else 18 plus the band.
+    """The record `0x0E2` index the C64 fight tables are read by.
 
-    Equals strength below 18; 18/01-18/50 give 19 and 20, 18/80 and 18/81 give
-    21, 18/98 gives 22 -- the AD&D exceptional-strength bands collapsed to one
-    number.  PROBABLE, and it is computed rather than copied because no source
-    port has been found to store it.
+    The routine is the same in all three titles (Pool of Radiance `LIBRARY
+    $3ED2`, Curse `$3FB6`, Silver Blades `$3804`): strength below 18 is its
+    own index; 18 is 18, and 18/01-50, 51-75, 76-90, 91-99 and 18/00
+    (percentile 100) are 19-23; 19 and over is strength + 5, capped at 30.
     """
-    if strength != 18 or not percentile:
+    if strength < 18:
         return strength
-    for bound, value in ((50, 19), (75, 20), (90, 21), (99, 22)):
+    if strength > 18:
+        return min(strength + 5, 30)
+    for bound, value in ((0, 18), (50, 19), (75, 20), (90, 21), (99, 22)):
         if percentile <= bound:
             return value
     return 23

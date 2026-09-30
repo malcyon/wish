@@ -15,6 +15,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 | `test_c64identity.py` | Checks that the DOS identity byte crosses into the C64 identity pair and back. |
 | `test_c64noportrait.py` | Checks that a C64 character with no sheet portrait is read as having none rather than as the menu's first head. |
 | `test_c64strengthflag.py` | Checks that a converted character keeps the C64 strength-bonus flag its bonus to hit and damage depends on. |
+| `test_c64strengthindex.py` | Checks that a converted character's C64 strength index is the one each title's own routine computes, including strength above 18. |
 | `test_c64thac0.py` | Checks that a converted character's THAC0 on the C64 sheet is computed from the C64's own tables rather than copied. |
 | `test_c64traitslots.py` | Checks which effects from both neutral effect lists reach the C64's ten trait slots. |
 | `test_convert.py` | Checks `editor.convert`'s registry: which directions the library can write whole, as round trips, and the dialog built on it. |
