@@ -10825,3 +10825,14 @@ def test_temple_probe_on_an_unknown_hash_is_refused_before_a_slot_is_claimed(
     _refused_before_a_slot(tmp_path, monkeypatch, _raise_argv(
         tmp_path, "--stage-record", "0:0x0C1=0x70,0:0x0C2=0x17,5:0x018=18",
         step="temple-probe WISHFTR RAISE POOL")[:-2])
+
+
+def test_temple_probe_usage_error_lists_every_mode_and_its_staging(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(A, "temple_source_guard",
+                        lambda path: A.TEMPLE_BRUTUS_SHA256)
+    with pytest.raises(SystemExit):
+        A.main(_raise_argv(tmp_path)[:-2] + ["--out", str(tmp_path / "out")])
+    err = capsys.readouterr().err
+    assert "WISHFTR RAISE POOL takes 0:0x0c1=0x70" in err.replace("0x0C1", "0x0c1")
+    assert "BRUTUS RAISE CONTROL takes" in err

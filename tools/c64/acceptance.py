@@ -529,6 +529,16 @@ TEMPLE_STAGING = {f"{src.name}{mode}": staging
                   for mode, staging in src.staging.items()}
 
 
+def temple_usage() -> str:
+    """Each `temple-probe` argument with the `--stage-record` bytes it takes,
+    read from `TEMPLE_STAGING`."""
+    return "; ".join(
+        f"{arg} takes " + (",".join(f"{slot}:{off:#05x}={val:#x}"
+                                    for slot, off, val in staging)
+                           or "none")
+        for arg, staging in TEMPLE_STAGING.items())
+
+
 def temple_source_named(who: str) -> TempleSource:
     """The source whose member the `temple-probe` argument WHO names."""
     name = who.split(" ", 1)[0]
@@ -6303,7 +6313,8 @@ def main(argv: list[str] | None = None) -> int:
                          "'rest 8h', 'walk I', 'fight [SECONDS]', 'peek ADDR N', "
                          "'cast CASTER:SPELL[>TARGET]', 'cure PALADIN>TARGET', "
                          "'ready WHO>LABEL' (Pool only), "
-                         "'temple-probe NAME [HEAL|RAISE]' (bounded Pool observation), save")
+                         f"'temple-probe ARG' (bounded Pool observation; ARG is one of "
+                         f"{', '.join(TEMPLE_PROBE_ARGS)}), save")
     ap.add_argument("--checkpoint", action="append", default=[],
                     metavar="ADDR[=NAME]",
                     help="hex; a non-stopping exec checkpoint armed after the "
@@ -6401,14 +6412,12 @@ def main(argv: list[str] | None = None) -> int:
                 or args.walk != "I" or args.walk_steps != 40
                 or not 100 < args.max_seconds <= 1500):
             ap.error("temple-probe requires exactly --title pool --issue 700 "
-                     "--steps load 'temple-probe NAME [HEAL|RAISE [POOL|CONTROL]]' "
-                     "[save, after RAISE POOL or RAISE CONTROL only], "
-                     "no staging (RAISE takes exactly BRUTUS's constitution "
-                     "18 and 6,000 gold; RAISE POOL, 6,000 gold on MALCYON "
-                     "and BRUTUS's constitution 18; RAISE CONTROL, the RAISE "
-                     "bytes), saving, "
-                     "checkpoint or other probe options, and a 1500-second "
-                     "maximum with 100 seconds reserved for cleanup")
+                     "--steps load 'temple-probe ARG' [save, after an ARG "
+                     "ending POOL or CONTROL only], one ARG and its "
+                     f"--stage-record bytes being {temple_usage()}; no "
+                     "other staging, saving, checkpoint or probe options, "
+                     "and a 1500-second maximum with 100 seconds reserved "
+                     "for cleanup")
     if args.capture_ready and args.preserve_specimen:
         ap.error("--capture-ready and --preserve-specimen are separate run modes")
     if args.capture_ready and (args.issue != "703" or args.title != "pool"
