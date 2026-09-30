@@ -1994,7 +1994,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # else, and for every item power that uses a trait slot the id is the
     # whole effect -- the handler holds the magnitude, not the record.
     innate = use("innate_effects")
-    if innate is not None or granted is not None:
+    animate_dead_marker_due = bool(
+        deltas is POOL_OF_RADIANCE_RECORD and not pool_animated
+        and char.get("turn_class") == 2)
+    if innate is not None or granted is not None or animate_dead_marker_due:
         slots = [0] * 10
         innate_ids = list(innate.value) if innate is not None else []
         for i, e in enumerate(innate_ids[:10]):
@@ -2123,6 +2126,16 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                          "save payload to hold a party-wide row it takes "
                          "a trait slot instead")
             granted_ids.append(int(node[0]))
+        # A raised character's marker, derived because the C64 sets `0x0A3`
+        # to 2 only in Animate Dead (`$6BA3`) and nothing clears it, so a
+        # living Pool character with 2 there was raised by it.  It is the
+        # trait slot Animate Dead scans for from 9 down and an owned row.
+        marker_wanted = bool(
+            animate_dead_marker_due
+            and ANIMATE_DEAD_ID not in innate_ids
+            and ANIMATE_DEAD_ID not in granted_ids)
+        if marker_wanted:
+            granted_ids.append(ANIMATE_DEAD_ID)
         free = [i for i in range(9, -1, -1) if slots[i] == 0]
         if len(innate_ids) > 10 or len(granted_ids) > len(free):
             rep.losses.append(
@@ -2132,6 +2145,18 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         for i, e in zip(free, granted_ids):
             slots[i] = e
         rec.set_raw("item_effects", bytes(slots))
+        if marker_wanted and ANIMATE_DEAD_ID in slots:
+            marker_row = (effects.free_slot(payload)
+                          if payload is not None else None)
+            if marker_row is not None:
+                # Magnitude 5 is a chosen value: DOS and the Amiga keep no
+                # caster level without a node, and the native raised saves
+                # show a memorised cast's 5.  Only a camp Dispel Magic on him
+                # reads it.  A character whose marker was cleared on the C64
+                # gets it back here, because turn_class 2 is all that is left.
+                effects.write_effect(
+                    payload, marker_row, ANIMATE_DEAD_ID,
+                    party_slot if party_slot is not None else 0, 0, 5)
         if feeble_fields:
             landed = feeble_row_written or effects.FEEBLEMIND_ID in slots
             if landed:
@@ -2175,6 +2200,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                  "the removal flag the other ports keep beside it have no "
                  "C64 counterpart, because the C64 removes by id alone and "
                  "its handler holds the magnitude")
+        if marker_wanted and ANIMATE_DEAD_ID in slots:
+            rep.note(0x0AD + slots.index(ANIMATE_DEAD_ID), 1,
+                     "trait 32: Animate Dead's marker, derived from turn_class "
+                     "2 on a living Pool of Radiance character, the way the "
+                     "C64's own Animate Dead writes it (SPELLE04 $AA16)")
         # No sentence for either ceiling (#399, A conversion that runs out
         # of item or trait slots tells the player nothing, because the pane
         # never shows a warning).  #399's own sweep swept 950 characters --

@@ -684,13 +684,12 @@ def test_a_running_id_32_row_keeps_the_trait_beside_it(trait):
     assert (32 in char.get("innate_effects")) == bool(trait)
 
 
-@pytest.mark.parametrize("second_trait", [False, True])
-def test_a_raised_character_round_trips_c64_dos_c64_but_for_the_inert_marker(
-        second_trait):
-    ids = set(c64_codec.INERT_MARKER_IDS.values())
+def test_a_raised_character_round_trips_c64_dos_c64_fully():
     assert set(c64_codec.INERT_MARKER_IDS) == {n for n, *_ in
                                                c64_codec.READ_INERT}
-    rec, payload = _residue(0x01, second_trait=second_trait)
+    rec, payload = _residue(0x01)
+    # What Animate Dead leaves beside the marker.
+    rec.set("turn_class", 2)
     char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
                           payload=payload, party_slot=4)
     dos, _itm, spc, report = dos_codec.write(char)
@@ -701,11 +700,35 @@ def test_a_raised_character_round_trips_c64_dos_c64_but_for_the_inert_marker(
                                 payload=back_payload, party_slot=4,
                                 clock_minutes=0)
     assert not rep.losses
-    # Masked by the declared entry: every trait slot holding a marker id and
-    # every effect row with one.
-    want = bytes(0 if b in ids else b for b in rec.get_raw("item_effects"))
-    assert bytes(back.get_raw("item_effects")) == want
-    assert not [r for r in effects.active_effects(bytes(back_payload))
-                if r.id in ids]
+    # The writer derives the marker back from turn_class 2, so the trait slots
+    # and the id-32 row come back as the source held them.
+    assert bytes(back.get_raw("item_effects")) == bytes(
+        rec.get_raw("item_effects"))
+    rows = [r for r in effects.active_effects(bytes(back_payload))
+            if r.id == 32]
+    assert len(rows) == 1
     for name in ("roster_in_use", "flags_0b8", "turn_class", "creature_type"):
         assert back.get(name) == rec.get(name), name
+
+
+def test_a_living_character_with_turn_class_zero_gets_no_marker():
+    rec, payload = _residue(0x01, trait=0, row=False)
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                          payload=payload, party_slot=4)
+    assert char.get("turn_class") == 0
+    out = bytearray(0x1C00)
+    back, rep = c64_codec.write(char, payload=out, party_slot=4,
+                                clock_minutes=0)
+    assert 32 not in bytes(back.get_raw("item_effects"))
+    assert not [r for r in effects.active_effects(bytes(out)) if r.id == 32]
+
+
+def test_a_c64_raised_specimen_keeps_its_marker_through_a_c64_write():
+    char = _raised_party(_RAISED)
+    out = bytearray(0x1C00)
+    back, rep = c64_codec.write(char, payload=out, party_slot=4,
+                                clock_minutes=0)
+    assert not rep.losses
+    assert bytes(back.get_raw("item_effects"))[9] == 32
+    rows = [r for r in effects.active_effects(bytes(out)) if r.id == 32]
+    assert len(rows) == 1
