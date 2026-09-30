@@ -672,3 +672,20 @@ def test_no_pool_monster_memorises_or_carries_dispel_magic():
                 assert (e - 0x17 if e > 0x38 else e) not in (41, 46), f.name
     assert records == 172
     assert items == 301
+
+
+def test_an_id_the_title_does_not_have_is_split_out_not_indexed():
+    known = {1: "a", 2: "b"}
+    assert reads.split_ids("2,126,1", known) == ([2, 1], [126])
+    assert reads.split_ids(None, known) == ([1, 2], [])
+
+
+def test_silver_blades_asked_for_an_id_past_its_table_reports_it(capsys):
+    try:
+        game = dosbox.find_game(reads.TITLES["silver-blades"])
+    except FileNotFoundError:
+        pytest.skip("needs DOS silver-blades in the archives")
+    reads.main(["--title", "silver-blades", "--game-dir", str(game), "--ids", "97,126"])
+    out = capsys.readouterr().out
+    assert "126 not present in silver-blades" in out
+    assert "  97 handler" in out

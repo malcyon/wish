@@ -1027,6 +1027,14 @@ def _fmt(s: set) -> str:
     return ",".join(str(b) for b in sorted(s)) or "-"
 
 
+def split_ids(ids: str | None, known: dict) -> tuple[list[int], list[int]]:
+    """The requested ids the title has, and those outside its table (all ids if none asked)."""
+    if not ids:
+        return sorted(known), []
+    asked = [int(x) for x in ids.split(",")]
+    return [e for e in asked if e in known], [e for e in asked if e not in known]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--title", choices=sorted(TITLES), action="append")
@@ -1053,7 +1061,7 @@ def main(argv: list[str] | None = None) -> int:
               f" chain at record 0x{eng.chain:x}; remove_affect GAME.OVR:0x"
               f"{eng.remove_affect_at:x} tests byte 4 at 0x{eng.remove_flag_test:x}")
         v = verdicts(eng)
-        want = [int(x) for x in a.ids.split(",")] if a.ids else sorted(v)
+        want, absent = split_ids(a.ids, v)
         clean = [e for e in sorted(v) if not v[e].value_read]
         print(f"   {len(clean)} of {len(v)} ids: nothing reads byte 3 or 4 of the node")
         print(f"   computed-id find_affect callers read bytes {_fmt(computed_reads(eng))}")
@@ -1061,6 +1069,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"   every node: byte 4 at remove_affect, byte 3 at the dispel walk "
               f"{dsp['file']}:0x{dsp['routine']:x} (0xFF test at 0x{dsp['test']:x},"
               f" also tests ids {dsp['compares']})")
+        for e in absent:
+            print(f"   {e:3d} not present in {title} (ids 1-{max(eng.handlers)})")
         for e in want:
             x = v[e]
             print(f"   {e:3d} handler 0x{x.handler:05x} reads {_fmt(x.handler_reads):8s}"
