@@ -4851,7 +4851,7 @@ class Driver:
 
         `members` is each member's name with the effect names listed under
         it, as the game draws them.  In Curse and Silver Blades the list must
-        name `party_size` members.  In Pool the pass is its six name rows on
+        name `party_size` members.  In Pool the pass is its `party_size` name rows on
         its one page, and the text is a report: a missing font
         leaves `members` None with `font_error` set.  `n` turns a page while
         the bar is ` NEXT EXIT`, until a page adds no line to the merged list
@@ -4885,9 +4885,10 @@ class Driver:
         visible = None
         if pool:
             visible = sum(not screen.flat((8, y, 8, 8)) for y in POOL_DISPLAY_NAME_ROWS)
-            if visible != 6:
-                raise self.display_failed("display-members",
-                                          f"DISPLAY showed {visible} member rows, not six")
+            if visible != self.party_size:
+                raise self.display_failed(
+                    "display-members", f"DISPLAY showed {visible} member rows, not "
+                    f"{self.party_size}")
 
         def read(sc) -> list[str]:
             return display_lines(sc, font) if font is not None else []

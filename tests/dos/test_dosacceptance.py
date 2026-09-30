@@ -501,6 +501,26 @@ def test_pool_display_captures_every_member_and_returns_to_camp_before_save(
     assert game.save_file("D").is_file()
 
 
+def test_pool_display_of_a_one_member_party_passes_with_one_name_row(
+        tmp_path, display_measured):
+    party = _POOL_PARTY[:1]
+    game = FakeDisplay(tmp_path, _party_lines(party, "<NO SPELL EFFECTS>"))
+    d = da.Driver(game, lambda **k: None, "A", party_size=1)
+    d.camp()
+    got = d.display()
+    assert got["visible_members"] == 1
+    assert got["members"] == _members(party)
+
+
+def test_pool_display_of_a_six_member_party_showing_five_rows_still_fails(
+        tmp_path, display_measured):
+    game = FakeDisplay(tmp_path, _party_lines(_POOL_PARTY[:5], "<NO SPELL EFFECTS>"))
+    d = da.Driver(game, lambda **k: None, "A", party_size=6)
+    d.camp()
+    with pytest.raises(da.StepFailed, match="showed 5 member rows"):
+        d.display()
+
+
 def test_curse_display_names_each_members_effects_on_one_page(tmp_path, display_measured):
     game, d = _display_camp(tmp_path, "curse", _CURSE_PARTY)
     got = d.display()
@@ -551,7 +571,7 @@ def test_a_display_naming_fewer_members_than_the_party_fails_back_in_camp(
 
 def test_pool_passes_on_six_rows_and_only_reports_the_names(tmp_path, display_measured):
     game = FakeDisplay(tmp_path, _party_lines(_POOL_PARTY, "<NO SPELL EFFECTS>"))
-    d = da.Driver(game, lambda **k: None, "A", party_size=4)
+    d = da.Driver(game, lambda **k: None, "A", party_size=6)
     d.camp()
     got = d.display()
     assert got["visible_members"] == 6 and got["members"] == _members(_POOL_PARTY)
