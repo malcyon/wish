@@ -2254,6 +2254,18 @@ _PAIRED_ABILITY = ("the score in force; the permanent score goes to the "
                    "pair.md)")
 
 
+def engine_grants_restoration(levels, experience_award) -> bool:
+    """Whether Pool of Radiance's own class rebuild sets spellbook byte 56.
+
+    For a cleric above level 1 it walks spell ids 1-56, and id 56's cleric
+    level 7 indexes `0x0B1 + 7`, which is `0x0B8`: the low byte of
+    `experience_award`.  A nonzero byte counts as a slot, so the engine grants
+    the spell; it is never listed in MEMORIZE, so no player sees it.
+    """
+    return (int((levels or {}).get("cleric", 0)) > 1
+            and int(experience_award or 0) & 0xFF != 0)
+
+
 def field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
                       ) -> dict[str, str]:
     """Every field one title declares and what the conversion does with it.
@@ -5250,6 +5262,12 @@ def write(char: NeutralCharacter,
                     "spells_known: id %s is outside the %s book's 1-%s, so "
                     "the source record is not this title's (#509)",
                     sid, deltas.title, spells_in_book)
+        # A C64 source has no id 56, so the byte Pool of Radiance's own
+        # class rebuild would set is set here; see the helper.
+        if (char.port == "C64" and deltas.key == POOL_OF_RADIANCE.key
+                and spells_in_book == 56 and engine_grants_restoration(
+                    w.get("levels"), w.get("experience_award"))):
+            book[55] = 1
         put(known, "spellbook", ", unpacked to one byte per spell",
             value=bytes(book))
 

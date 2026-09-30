@@ -3161,3 +3161,28 @@ def test_the_party_writer_still_writes_each_supported_title(
     dos_codec.write_dos_save_from(
         _bare_state(title), [_filled()], None, tmp_path, "A")
     assert list(tmp_path.glob("CHRDATA1*"))
+
+
+# --- spellbook byte 56, which the DOS Pool engine grants to some clerics ----
+
+
+@pytest.mark.parametrize("cleric,award,expected", [
+    (5, 150, 1),    # DIRTEN's condition
+    (5, 0, 0),      # a player character: award zero
+    (5, 256, 0),    # only the low byte counts
+    (1, 150, 0),    # level 1 is not rebuilt
+])
+def test_a_c64_cleric_gets_the_restoration_byte_the_dos_engine_would_set(
+        cleric, award, expected):
+    """DOS Pool's class rebuild sets `0x06A` for a cleric above level 1 whose
+    `experience_award` low byte (`0x0B8`) is nonzero, so a C64 record written
+    for DOS holds what the engine writes after its first load."""
+    char = _filled()
+    char.port = "C64"
+    made_up = "made up: the DIRTEN condition"
+    char.set("levels", {"cleric": cleric}, made_up)
+    char.set("experience_award", award, made_up)
+    char.set("spells_known", [1, 2, 3], made_up)
+    rec, _, _, _ = dos_codec.write(char)
+    assert rec[0x06A] == expected
+    assert list(rec[0x033:0x036]) == [1, 1, 1]
