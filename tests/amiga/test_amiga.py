@@ -3250,11 +3250,11 @@ def _charmed_neutral():
 
     char = sample(name="CHARMED")
     char.game = c64_port.POOL_OF_RADIANCE
-    char.set("granted_effects", [_pool_charm_node()], "built here")
-    char.set("npc", True, "built here")
-    char.set("npc_control_byte", c64_codec.DOS_PC_TAKEN_OVER, "built here")
-    char.set("quickfight", True, "built here")
-    char.set("hostile", False, "built here")
+    char.set("granted_effects", [_pool_charm_node()], "a charmed Pool character built for the Amiga charm tests")
+    char.set("npc", True, "a charmed Pool character built for the Amiga charm tests")
+    char.set("npc_control_byte", c64_codec.DOS_PC_TAKEN_OVER, "a charmed Pool character built for the Amiga charm tests")
+    char.set("quickfight", True, "a charmed Pool character built for the Amiga charm tests")
+    char.set("hostile", False, "a charmed Pool character built for the Amiga charm tests")
     dos_codec.set_window_source(char, b"\x00\x00\x01\x00\x00")
     return char
 
@@ -3270,6 +3270,7 @@ def test_a_charm_survives_dos_to_amiga_to_dos():
     record, itm, spc = _amiga_charmed_files()
     # The Amiga node: id, pad, duration high, duration low, data, flag, NULL.
     assert spc[:6] == bytes((effects.CHARM_ID, 0, 0, 0, 0x26, 1))
+    assert record[0x085] == c64_codec.DOS_PC_TAKEN_OVER
     back = amiga_por.to_neutral(amiga_por.por_character(record, itm, spc))
     assert [bytes(n)[:5] for n in back.get("granted_effects")] == \
         [bytes((effects.CHARM_ID, 0, 0, 0x26, 1))]
@@ -3309,8 +3310,9 @@ def test_a_c64_pool_charm_row_writes_the_amiga_node_and_control_byte():
     rec.set("combat_side", 0x80)
     neutral = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
                              payload=payload, party_slot=2, clock_minutes=1,
-                             source="built here")
+                             source="a C64 Pool charm row built for the Amiga charm tests")
     record, itm, spc, _rep = amiga_por.write_por(neutral)
+    assert record[0x085] == c64_codec.DOS_PC_TAKEN_OVER
     assert spc[:6] == bytes((effects.CHARM_ID, 0, 0, 0, 0x26, 1))
     back = amiga_por.to_neutral(amiga_por.por_character(record, itm, spc))
     assert back.get("npc") is True
