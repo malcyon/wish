@@ -898,6 +898,34 @@ def _preserve_substituted(manifest_path: pathlib.Path, manifest: dict, attempt: 
         _FULL_TITLES[manifest["title"]], issue, what, fetched)
 
 
+def _preserve_staged(manifest_path: pathlib.Path, manifest: dict, attempt: str,
+                     issue: str, fetched: pathlib.Path) -> dict[str, str]:
+    """Register the boot disk of a successful Silver Blades accept staged with `--staged-from`.
+
+    Wish built the input and staged its slot; the game wrote slots B and D. Only claims the
+    run's success test checks: the staged slot is unchanged and no other save letter appeared.
+    """
+    run_id = manifest_path.parent.name
+    number = SPECIMEN_ISSUE.fullmatch(issue).group(1)
+    source, joined = manifest["source"], manifest["staged_from"]
+    what = (
+        f"Run {run_id!r}, attempt {attempt!r}: the boot disk fetched after the game loaded "
+        f"slot {manifest['slot_letter']}, saved slot {MENU_SAVE_LETTER}, walked and saved "
+        f"slot {CAMP_SAVE_LETTER}. The game wrote slots {MENU_SAVE_LETTER} and "
+        f"{CAMP_SAVE_LETTER}. Slot {manifest['slot_letter']} was written by Wish from the "
+        f"Wish-staged C64 source {source['path']} (SHA-256 {source['sha256']}), an "
+        f"effect-array derivative of the JOIN disk {joined['path']} (SHA-256 "
+        f"{joined['sha256']}) with active rows {manifest['active_rows']}, converted by Save As "
+        f"and staged into DF0 as {json.dumps(manifest['stage'], sort_keys=True)} "
+        f"(slot SHA-256 {manifest['slot_sha256']}"
+        + (f", save count {manifest['save_count']}" if "save_count" in manifest else "")
+        + f"). The run found slot {manifest['slot_letter']} unchanged and no other save "
+        "letter. Files outside the slots were not checked.")
+    return _register_fetched(
+        f"wish-{number}-ssb-{_slug(run_id)}-{_slug(attempt)}", _FULL_TITLES["ssb"], issue,
+        what, fetched)
+
+
 class _LaneWatch:
     """Wraps the lane so that an error can be tied to the call `route_limit` cut short."""
 
@@ -988,7 +1016,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     if guard is None and not measure:
         raise RouteError("a screen guard is required unless measuring")
     preserve_message = "specimen preservation requires a published disk-one or substituted accept"
-    if preserve_specimen and not (accept and (published_disk_one or title is not None)):
+    staged_message = preserve_message + " or a Silver Blades accept staged with --staged-from"
+    if preserve_specimen and not accept:
         raise RouteError(preserve_message)
     if specimen_issue is not None and (not preserve_specimen or published_disk_one):
         raise RouteError("--specimen-issue goes with a substituted --preserve-specimen only")
@@ -1109,7 +1138,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("the selected title route differs from the published manifest")
     elif manifest.get("mode") == "published_disk_one":
         raise RouteError("a published disk-one manifest needs --published-disk-one")
-    if preserve_specimen and not published_disk_one:
+    if preserve_specimen and title is None and not published_disk_one:
+        if "staged_from" not in manifest:
+            raise RouteError(staged_message)
+        if specimen_issue is None or not SPECIMEN_ISSUE.fullmatch(specimen_issue):
+            raise RouteError(staged_message + ', and a staged one needs --specimen-issue '
+                             '"#N (title)" naming its issue')
+    elif preserve_specimen and not published_disk_one:
         if ("substitute" not in manifest or manifest.get("title") not in _FULL_TITLES
                 or "specimen" not in manifest.get("registered", {})
                 or specimen_issue is None or not SPECIMEN_ISSUE.fullmatch(specimen_issue)):
@@ -1704,7 +1739,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     log("fetch", disk=name, **result["fetched"][name])
                 except BaseException as exc:
                     result[f"fetch_{name}_error"] = f"{type(exc).__name__}: {exc}"
-        if preserve_specimen:
+        if preserve_specimen and title is not None:
             try:
                 _read_title(title, manifest, result, out, disks, registered,
                             kept_before, letter, accept, measure, steps, reload)
@@ -1813,6 +1848,24 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         elif not preserve_specimen:
             _read_title(title, manifest, result, out, disks, registered,
                         kept_before, letter, accept, measure, steps, reload)
+        if preserve_specimen and title is None:
+            try:
+                if result["success"] and "release_error" not in result:
+                    if not stopped:
+                        raise RouteError("guest did not stop before specimen preservation")
+                    result["specimen"] = _preserve_staged(
+                        manifest_path, manifest, attempt, specimen_issue,
+                        out / "fetched-df0.adf")
+                    problems = specimens.check_specimens(specimens.tree_root())
+                    if problems:
+                        raise RouteError("specimen check failed: " + "; ".join(problems))
+                    log("specimen", **result["specimen"])
+                elif result["success"]:
+                    result["success"] = False
+            except BaseException as exc:
+                result["specimen_error"] = f"{type(exc).__name__}: {exc}"
+                result["success"] = False
+                log("specimen_error", error=result["specimen_error"])
         result["elapsed_seconds"] = time.monotonic() - begun
         (out / "summary.json").write_text(json.dumps(result, indent=2,
                                                      sort_keys=True) + "\n")

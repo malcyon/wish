@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import signal
 import subprocess
 import sys
@@ -1202,3 +1203,72 @@ def test_silver_blades_accept_forwards_the_records(monkeypatch):
     assert seen[0][1]["rulebook_records"] == [3, 7]
     assert acceptance.main([*argv, "--rulebook-draws", "3"]) == 0
     assert "rulebook_records" not in seen[1][1]
+
+
+ISSUE = "#661 (a C64 party under a running spell)"
+
+
+def _staged_manifest(tmp_path):
+    manifest = _manifest(tmp_path)
+    data = json.loads(manifest.read_text())
+    staged = tmp_path / "staged.d64"
+    staged.write_bytes(b"staged c64 source")
+    data["source"] = {"path": str(staged), "sha256": _sha(staged)}
+    data["staged_from"] = {"path": "/join.d64", "sha256": "a" * 64}
+    data["active_rows"] = [[63, 1, 0, 0x2F, 5]]
+    data["stage"] = {"letter": "C"}
+    manifest.write_text(json.dumps(data))
+    return manifest
+
+
+@pytest.fixture
+def specimen_tree(tmp_path, monkeypatch):
+    from tests.registry.test_specimens import _unlock
+    from tools.registry import specimens
+    root = tmp_path / "specimens"
+    monkeypatch.setattr(specimens, "tree_root", lambda: root)
+    yield root
+    if root.is_dir():
+        _unlock(root)
+
+
+def test_a_staged_accept_registers_its_fetched_disk_and_names_the_staged_source(
+        tmp_path, clock, readings, specimen_tree):
+    from tools.registry import specimens
+    _, result = _accept(tmp_path, clock, manifest=_staged_manifest(tmp_path),
+                        preserve_specimen=True, specimen_issue=ISSUE)
+    assert result["success"] is True, result.get("specimen_error")
+    fetched = tmp_path / "recon1" / "fetched-df0.adf"
+    assert result["specimen"]["sha256"] == _sha(fetched)
+    assert specimens.check_specimens(specimen_tree) == []
+    provenance = specimens.read_provenance(pathlib.Path(result["specimen"]["provenance"]))
+    assert provenance["issue"] == ISSUE
+    what = provenance["what"]
+    assert "The game wrote slots B and D." in what
+    assert "Wish-staged C64 source" in what and "a" * 64 in what and "/join.d64" in what
+    assert str(tmp_path / "staged.d64") in what and _sha(tmp_path / "staged.d64") in what
+    assert "[[63, 1, 0, 47, 5]]" in what and '{"letter": "C"}' in what
+
+
+def test_a_staged_accept_that_fails_registers_nothing(
+        tmp_path, clock, readings, specimen_tree):
+    readings["D"] = _reading(y=5)
+    _, result = _accept(tmp_path, clock, manifest=_staged_manifest(tmp_path),
+                        preserve_specimen=True, specimen_issue=ISSUE)
+    assert result["success"] is False and "specimen" not in result
+    assert not specimen_tree.exists() or list(specimen_tree.rglob("WISH-SPEC-*")) == []
+
+
+def test_an_unstaged_silver_blades_accept_still_refuses_preservation(tmp_path, clock, specimen_tree):
+    guest = AcceptGuest(clock)
+    with pytest.raises(winuaesession.RouteError, match="published disk-one or substituted"):
+        _accept(tmp_path, clock, guest=guest, preserve_specimen=True, specimen_issue=ISSUE)
+    assert guest.calls == []
+
+
+def test_a_staged_accept_needs_a_cited_issue_before_any_guest_call(tmp_path, clock):
+    guest = AcceptGuest(clock)
+    with pytest.raises(winuaesession.RouteError, match="--specimen-issue"):
+        _accept(tmp_path, clock, guest=guest, manifest=_staged_manifest(tmp_path),
+                preserve_specimen=True, specimen_issue="661")
+    assert guest.calls == []
