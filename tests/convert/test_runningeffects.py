@@ -2713,6 +2713,7 @@ def test_save_as_amiga_keeps_a_slow_poisoned_silver_blades_party_harmless(
     from gamedata import specimen
 
     from editor import roster, saveplan
+    from goldbox.amiga_adf import AmigaDisk
     from tools.convert import convertdrops
 
     ssb = c64_port.SECRET_OF_THE_SILVER_BLADES
@@ -2734,10 +2735,10 @@ def test_save_as_amiga_keeps_a_slow_poisoned_silver_blades_party_harmless(
     (image,) = plan.files
     # The slot letter is the source's own (`SAVGAMD.DAT` gives `D`), where a
     # C64 source is written to `A`.
-    from goldbox.amiga_adf import AmigaDisk
     written = AmigaDisk(bytearray(plan.files[image]))
     char = next(c for c in amiga_savegame.read_slot(
         written, party.source.slot, ssb.key).characters if c.name == "PAINE")
+    assert len(char.effects) == 3
     flags = {bytes(n)[0]: bytes(n)[5] for n in char.effects}
     assert flags[15] == 0 and flags[22] == 1 and 55 in flags
     assert bytes(next(n for n in char.effects if n[0] == 15))[4] == 0xFF
@@ -2751,6 +2752,7 @@ def test_save_as_amiga_keeps_a_slow_poisoned_silver_blades_party_harmless(
     assert got[15] == want[15] and got[22] == want[22]
     _rec, _itm, spc, _ = dos_codec.write(
         back, deltas=dos_port.SECRET_OF_THE_SILVER_BLADES)
+    assert len(spc) % 9 == 0
     nodes = {spc[i]: spc[i:i + 9] for i in range(0, len(spc), 9)}
     assert nodes[15] == want[15] and nodes[22] == want[22]
 
