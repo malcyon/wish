@@ -104,8 +104,18 @@ PUBLISHED_SOURCES_BY_ISSUE = {
         ("curse", "c64"): frozenset({"97099201a9c77ae43ab7d4605fd7a9dab2864333a5239177a41c5658e997007b"}),
         ("ssb", "c64"): frozenset({"5bb68551effa8a0d37ebc5f103a664e71505a798190d14ba8efa7730dd30e8a9"}),
     },
-    # The joined C64 party: Guy de Valois is a paladin whose HEAL is unspent.
-    "628": {("ssb", "c64"): frozenset({route_silver_blades.JOIN_SHA256})},
+    # The joined C64 party (Guy de Valois, a paladin whose HEAL is unspent) and the game-written
+    # spent or healed saves of both titles: the Silver Blades C64 save after his HEAL expired,
+    # and the DOS slot D and C64 saves each route starts from.
+    "628": {
+        ("ssb", "c64"): frozenset({
+            route_silver_blades.JOIN_SHA256,
+            "8246b96031f6c89e24ca5b096608b779b361e0413be85647d68c27b0ffa61a62",
+        }),
+        ("ssb", "dos"): frozenset({"73bf301c77280eb39218fc7f6e9176cee15560585e7d20016adfd756a52b9269"}),
+        ("curse", "dos"): frozenset({"28cacbb27d4aff5bfef4c3e11a94e35d5d0bac2aa6180c394d784f7ec97e8789"}),
+        ("curse", "c64"): frozenset({"e99bb2be9c1a1a2c5f815f4fac436d7cc0a4ac3c511e7ad0a9ae1e5e7436684a"}),
+    },
 }
 
 

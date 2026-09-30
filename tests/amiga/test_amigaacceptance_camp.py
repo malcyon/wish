@@ -6,6 +6,7 @@ import dataclasses
 import json
 import pathlib
 
+import gamedata
 import pytest
 
 from goldbox.amiga_adf import AmigaDisk
@@ -158,8 +159,33 @@ def test_the_after_clock_allows_for_the_rest(after, rest, ok):
 
 
 def test_this_issue_pins_the_joined_party():
-    assert foundation._source_pins("628", "ssb", "c64") == {route_silver_blades.JOIN_SHA256}
+    assert route_silver_blades.JOIN_SHA256 in foundation._source_pins("628", "ssb", "c64")
     assert foundation.PUBLISHED_ISSUE_TEXT["628"].startswith("#628 (")
+
+
+#: The game-written sources the published Amiga runs start from, by pin and specimen path.
+PINNED_628_SOURCES = (
+    ("ssb", "c64", "ssb-c64/WISH-SPEC-ssb-628-guy-healed-after-expiry.D64"),
+    ("ssb", "dos", "ssb-dos/WISH-SPEC-ssb-628-c64-to-dos-guy-rest-heal/SAVGAMD.DAT"),
+    ("curse", "dos", "coab-dos/WISH-SPEC-curse-628-c2b-slot-d/SAVGAMD.DAT"),
+    ("curse", "c64", "coab-c64/WISH-SPEC-curse-628-paladin-spent-lay-on-hands.D64"),
+)
+
+
+@pytest.mark.parametrize("name,port,relative", PINNED_628_SOURCES)
+def test_each_pinned_628_source_is_the_specimen_on_disk(name, port, relative):
+    root = gamedata.specimen_root()
+    if root is None or not (root / relative).is_file():
+        pytest.skip(f"needs the specimen {relative}")
+    assert staging.sha256(root / relative) in foundation._source_pins("628", name, port)
+
+
+def test_every_pinned_628_source_has_a_well_formed_hash_and_a_distinct_key():
+    """Each title and port pins at least one lower-case SHA-256, and no key is listed twice."""
+    for name, port, _ in PINNED_628_SOURCES:
+        pins = foundation._source_pins("628", name, port)
+        assert pins and all(len(p) == 64 and p == p.lower() for p in pins)
+    assert len({(n, p) for n, p, _ in PINNED_628_SOURCES}) == len(PINNED_628_SOURCES)
 
 
 def test_the_manifest_s_camp_steps_rebuild_the_route_and_curse_refuses_them():
@@ -359,8 +385,11 @@ def test_a_heal_whose_sheet_does_not_offer_heal_fails_the_run_there(tmp_path, cl
     assert result["success"] is False
 
 
-def _published_report(tmp_path, monkeypatch, name="ssb"):
-    """A synthetic Save As of a C64 party to disk one's slot A, pinned for this issue."""
+def _published_report(tmp_path, monkeypatch, name="ssb", port="c64", pinned=None):
+    """A synthetic Save As of a party to disk one's slot, pinned for this issue.
+
+    With `pinned` the issue's own entries stay in force and the synthetic source is reported
+    under that hash; without it the source's real hash is pinned in their place."""
     key, exe, make = {
         "ssb": (route_silver_blades.TITLE, "/Secret", synthetic_amiga.synthetic_silver_blades),
         "curse": (route_curse.CURSE_KEY, "/Curse", synthetic_amiga.synthetic_curse)}[name]
@@ -372,18 +401,27 @@ def _published_report(tmp_path, monkeypatch, name="ssb"):
     disk1.write_bytes(one.to_bytes())
     disk2.write_bytes(AmigaDisk.blank("Disk2").to_bytes())
     converted = AmigaDisk(one.to_bytes())
-    converted.write_file(f"/SAVE/savgamA.{ext}", make(("GUY DE VALOIS",)))
+    letter = "A" if port == "c64" else "D"
+    converted.write_file(f"/SAVE/savgam{letter}.{ext}", make(("GUY DE VALOIS",)))
     published.write_bytes(converted.to_bytes())
-    monkeypatch.setitem(foundation.PUBLISHED_SOURCES_BY_ISSUE, "628",
-                        {(name, "c64"): frozenset({staging.sha256(source)})})
+    if pinned is None:
+        monkeypatch.setitem(foundation.PUBLISHED_SOURCES_BY_ISSUE, "628",
+                            {(name, port): frozenset({staging.sha256(source)})})
+    else:
+        real = foundation.sha256
+        # The manifest hashes the source in staging and checks it again here, so both must agree.
+        for module in (foundation, staging):
+            monkeypatch.setattr(module, "sha256", lambda path, real=real: (
+                pinned if pathlib.Path(path) == source else real(path)))
     monkeypatch.setitem(foundation.PUBLISHED_DISKS, name, (
         staging.sha256(disk1), staging.sha256(disk2), exe, "Disk1"))
     monkeypatch.setattr(foundation.scratch, "cache_dir",
                         lambda *parts: tmp_path.joinpath("cache", *map(str, parts)))
     report = {
-        "specimen": str(source), "specimen_sha256": staging.sha256(source),
-        "amiga_disk1": str(disk1), "amiga_disk2": str(disk2), "c64_disks_dir": str(tmp_path),
-        "save_as": {"source": str(source), "to": "amiga", "slot": "A",
+        "specimen": str(source), "specimen_sha256": pinned or staging.sha256(source),
+        "amiga_disk1": str(disk1), "amiga_disk2": str(disk2),
+        **({"c64_disks_dir": str(tmp_path)} if port == "c64" else {}),
+        "save_as": {"source": str(source), "to": "amiga", "slot": letter,
                     "destination": str(published), "written": [str(published)],
                     "losses": [], "dropped": []},
         "written": [str(published)],
@@ -392,6 +430,38 @@ def _published_report(tmp_path, monkeypatch, name="ssb"):
     path = tmp_path / "report.json"
     path.write_text(json.dumps(report))
     return path
+
+
+def _pinned_628_hashes():
+    """Each pinned (title, port, hash) triple of this issue, read from the table itself."""
+    return [(name, port, sha) for (name, port), shas
+            in sorted(foundation.PUBLISHED_SOURCES_BY_ISSUE["628"].items()) for sha in sorted(shas)]
+
+
+#: The hashes item 3 of the plan names, spelled out so that dropping an entry fails a case.
+EXPECTED_628_PINS = (
+    ("ssb", "c64", "8246b96031f6c89e24ca5b096608b779b361e0413be85647d68c27b0ffa61a62"),
+    ("ssb", "dos", "73bf301c77280eb39218fc7f6e9176cee15560585e7d20016adfd756a52b9269"),
+    ("curse", "dos", "28cacbb27d4aff5bfef4c3e11a94e35d5d0bac2aa6180c394d784f7ec97e8789"),
+    ("curse", "c64", "e99bb2be9c1a1a2c5f815f4fac436d7cc0a4ac3c511e7ad0a9ae1e5e7436684a"),
+)
+
+
+@pytest.mark.parametrize("name,port,sha", EXPECTED_628_PINS)
+def test_a_published_prepare_for_628_accepts_each_pinned_source_and_refuses_another(
+        tmp_path, monkeypatch, name, port, sha):
+    report = _published_report(tmp_path, monkeypatch, name, port, pinned=sha)
+    assert foundation.prepare_published(name, "pinned", report, "628").is_file()
+    data = json.loads(report.read_text())
+    data["specimen_sha256"] = "0" * 64
+    report.write_text(json.dumps(data))
+    with pytest.raises(RouteError, match="differs from the pinned specimen"):
+        foundation.prepare_published(name, "unpinned", report, "628")
+
+
+def test_628_pins_one_source_for_each_title_and_port_the_amiga_routes_start_from():
+    assert sorted((n, p) for n, p, _ in _pinned_628_hashes()) == [
+        ("curse", "c64"), ("curse", "dos"), ("ssb", "c64"), ("ssb", "c64"), ("ssb", "dos")]
 
 
 def test_a_published_prepare_keeps_its_camp_steps_and_the_accept_route_has_them(
