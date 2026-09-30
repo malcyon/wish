@@ -58,7 +58,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `remove WHO` | the party menu's `REMOVE CHARACTER FROM PARTY`, then WHO's row on the list it puts up; waits for the list to come back one name shorter, `EXIT`s to the party menu, then keeps the save disk as `removed-N.D64` (attaching the image again when VICE has left the directory open) with its directory (`added`, `gone` and `changed` against the directory before) and the 1541's error-message buffer (`$02D5` in the drive). WHO is a panel number, counted on the list as it stands, so a second `remove 1` takes the member who was second; or a whole name, and a name picks the first row drawing it, so a duplicated name needs the number. Only straight after `load` or another `remove`. A `MAKE SAVE GAME DISK ? YES NO` in place of the shorter list is the game refusing the write: it is answered NO, never YES (YES formats a disk), the disk and the drive's buffer are kept, and the step fails unless the list then comes back without WHO |
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page. Curse first shows the list of the member under the panel highlight and asks on whom only after its last page; that list is logged as `camp-list-highlighted` and the whom menu is then read the same way |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
-| `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time.  A rest the area's check interrupted (`$6DD3` = `$FF`, or `CAMP` already gone) waits for the prompt the area puts up sending no key apart from disk-swap answers, answers it, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `watch_seen`, which only an interrupted rest carries.  Whenever a watch was answered, interrupted or not, the result has `state_cleared` (the bytes `GO` clears).  A fight fails the step at once, and any other prompt fails it naming row 24 |
+| `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time.  A rest the area's check interrupted (`$6DD3` = `$FF`, or `CAMP` already gone) waits for the prompt the area puts up sending no key apart from disk-swap answers, answers it, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `watch_seen`, which only an interrupted rest carries.  Whenever a watch was answered, interrupted or not, the result has `state_cleared` (the bytes `GO` clears).  A fight fails the step at once, and any other prompt fails it naming row 24.  A Curse or Silver Blades rest the game stopped (`rest_later`'s `interrupted`) answers each `PRESS ... TO CONTINUE` page with Return, keeps its text, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `text`; a fight after the event fails the step at once naming the event's text |
 | `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk |
 | `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep; Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
@@ -3510,9 +3510,17 @@ class PoolRun:
         if "failed" in got:
             raise self.fail("rest", got["failed"])
         interrupted = "rest_marker" in got and got.get("interrupted") is True
-        prompts = self.leave_interrupted_rest(got) if interrupted else []
+        # Curse and Silver Blades (`route_pool.rest_later`) report a rest the
+        # game stopped with no marker.
+        later = "rest_marker" not in got and got.get("interrupted") is True
+        prompts: list[str] = []
+        text: list[str] = []
+        if interrupted:
+            prompts = self.leave_interrupted_rest(got)
+        elif later:
+            prompts, text = self.leave_later_interrupted_rest(got)
         events = self.answer_watch(f"rest {arg}")
-        if not self.to_world() and (events or interrupted):
+        if not self.to_world() and (events or interrupted or later):
             after = "the city watch's GO" if events else "the interrupted rest"
             raise self.fail("rest", f"the world bar never came back after {after}")
         if interrupted:
@@ -3545,15 +3553,24 @@ class PoolRun:
                 ended="interrupted", interrupted=True,
                 bar=watch if watch in prompts else (prompts[0] if prompts else ""),
                 prompts=prompts, watch_seen=bool(events))
+        elif later:
+            result.update(
+                ended="interrupted", interrupted=True,
+                bar=prompts[0] if prompts else got.get("bar", ""),
+                prompts=prompts, text=text)
         if events:
             result["state_cleared"] = list(WATCH_GO_CLEARS)
         return result
 
     def rest_fight(self, rows: list[str]) -> bool:
         """True when an interrupted rest has run into a fight: the encounter
-        menu's `COMBAT` opening row 24, or LINKER's mode byte reading COMBAT."""
+        menu's `COMBAT` opening row 24, the fight's own command bar (`MOVE
+        VIEW AIM USE QUICK DONE`, `S.BAR_COMMAND`), or LINKER's mode byte
+        reading COMBAT."""
         words = rows[24].split() if rows else []
         if words[:1] == [S.ENCOUNTER_FIGHT]:
+            return True
+        if {"AIM", "DONE"} <= set(words):
             return True
         return bool(getattr(self.sess, "in_combat", lambda: False)())
 
@@ -3607,6 +3624,67 @@ class PoolRun:
                 return prompts
         raise self.fail("rest", f"the interrupted rest put up more than "
                         f"{REST_LEAVE_PROMPTS} prompts: {prompts}")
+
+    @staticmethod
+    def rest_page(bar: str) -> bool:
+        """True for a script's `PRESS ... TO CONTINUE` page: Silver Blades
+        draws `PRESS BUTTON OR RETURN TO CONTINUE.`, Pool `PRESS ANY KEY TO
+        CONTINUE`.  A disk prompt says PRESS and never CONTINUE."""
+        words = bar.upper().replace(".", " ").split()
+        return "PRESS" in words and "CONTINUE" in words
+
+    def leave_later_interrupted_rest(self, got: dict) -> tuple[list[str], list[str]]:
+        """Follow a Curse or Silver Blades rest the game stopped
+        (`route_pool.rest_later`'s `interrupted`) to the camp bar, the world
+        bar or a fight.
+
+        A scripted event stops the rest with its text over a `PRESS ... TO
+        CONTINUE` bar -- in Silver Blades' area 16, THE BLACK CIRCLE
+        SENDS MONSTERS AGAINST THE TOWN over `PRESS BUTTON OR RETURN TO
+        CONTINUE.`, and after Return a fight.  Each page is answered with
+        Return and its text kept.  A fight (`rest_fight`) fails the step at
+        once naming the event: the rest step does not fight, and `fight`
+        starts from the world bar.  The camp bar or the world bar ends the
+        wait.  Anything else, or more than `REST_LEAVE_PROMPTS` pages, fails
+        the step naming row 24.  Returns row 24 of each page answered and the
+        event's text, page after page."""
+        self.log.emit("rest_interrupted", bar=got.get("bar", ""),
+                      text=got.get("text", []),
+                      rest_left=got.get("rest_left"))
+        prompts: list[str] = []
+        text: list[str] = []
+        for _ in range(REST_LEAVE_PROMPTS + 1):
+            rows = self.wait_rows(
+                lambda r: (self.rest_fight(r) or self.rest_page(r[24])
+                           or CAMP_BAR in r[24] or self.at_world(r[24])),
+                REST_LEAVE_SECONDS, "the interrupted rest's next screen")
+            shown = " ".join(text or got.get("text", []))
+            event = f"an event ({shown!r})" if shown else "the game"
+            if rows is None:
+                raise self.fail("rest", f"the rest was interrupted by {event} "
+                                f"and row 24 held {self.bar().strip()!r}, "
+                                "which the rest step does not answer")
+            bar = rows[24].strip()
+            if self.rest_fight(rows):
+                self.log.emit("rest_fight", bar=bar, text=text)
+                raise self.fail("rest", f"the rest was interrupted by {event} "
+                                f"and then a fight (row 24 {bar!r}), which the "
+                                "rest step does not fight")
+            if CAMP_BAR in bar or self.at_world(bar):
+                return prompts, text or list(got.get("text", []))
+            if len(prompts) >= REST_LEAVE_PROMPTS:
+                break
+            page = [r.strip("$%& ") for r in rows[17:23] if r.strip("$%& ")]
+            prompts.append(bar)
+            text += page
+            self.log.emit("rest_prompt", bar=bar, text=page)
+            self.sess.press_kernal(0x0D)
+            # The page stays drawn until the game takes the key; one read of
+            # it after the key would be answered a second time.
+            self.wait_rows(lambda r, was=rows[17:25]: r[17:25] != was,
+                           ARRIVAL_PAGE_SECONDS, "the next page")
+        raise self.fail("rest", f"the interrupted rest put up more than "
+                        f"{REST_LEAVE_PROMPTS} pages: {prompts}")
 
     def answer_watch(self, step: str) -> list[dict]:
         """Answer Pool's city-watch `GO STAY` event a rest ran into, with GO.

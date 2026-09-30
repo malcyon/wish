@@ -10194,6 +10194,133 @@ def test_rest_leaves_a_take_stay_bar_alone(tmp_path, monkeypatch):
     assert got["events"] == [] and ("bar", "GO") not in sess.sent
 
 
+LATER_EVENT = _window({17: "THE BLACK CIRCLE SENDS MONSTERS",
+                       18: "AGAINST THE TOWN. TOWNSMEN RUSH TO",
+                       19: "YOUR AID."}, "PRESS BUTTON OR RETURN TO CONTINUE.")
+LATER_COMBAT_BAR = "MOVE VIEW AIM USE QUICK DONE"
+
+
+class _LaterRestSession(_RestSession):
+    """`_RestSession` with the later titles' `press_bar`, `to_world_bar`
+    answering a PRESS bar with Return as the real one does, and a square that
+    never moves."""
+
+    def press_bar(self, label, row=24, timeout=0):
+        return self._go(("bar", label))
+
+    def to_world_bar(self, timeout=0):
+        if "PRESS" in self.screens[self.state][24]:
+            self._go(("key", 0x0D))
+        return A.PoolRun.at_world(self.screens[self.state][24])
+
+    def steady_triple(self):
+        return (0, 5, 3)
+
+
+def _later_rest(tmp_path, monkeypatch, *, end, later=None, moves=None,
+                ended="interrupted"):
+    """A Silver Blades rest whose `route_pool.rest_later` half ends on screen
+    END with `ended` as given, 8 hours of a 10-hour rest run."""
+    screens = {"world": _window({}, WORLD_BAR), "camp": _window({}, CAMP),
+               "event": LATER_EVENT, "prep": _window({}, ""),
+               "combat": _window({}, LATER_COMBAT_BAR),
+               "stuck": _window({}, "SOMETHING ELSE")}
+    table = {("world", ("bar", "ENCAMP")): "camp",
+             ("camp", ("bar", "EXIT")): "world"}
+    table.update(moves or {})
+    sess = _LaterRestSession(screens, table, "world")
+    sess.later = dict(later or {})
+
+    def fake_rest(s, log, minutes, hours, cp):
+        s.state = end
+        rows = screens[end]
+        got = {"before": {"clock": [0, 7, 2, 5, 0, 0]},
+               "after": {"clock": [0, 7, 2, 13, 0, 0]},
+               "ended": ended, "interrupted": ended == "interrupted",
+               "rest_left": [0, 2, 0] if ended == "interrupted" else [0, 0, 0],
+               "bar": rows[24].rstrip(), "rest_interrupt": [96, 30]}
+        if ended == "interrupted":
+            got["text"] = [r.strip("$%& ") for r in rows[17:23]
+                           if r.strip("$%& ")]
+        return got
+
+    monkeypatch.setattr(A.route_pool, "rest", fake_rest)
+    run = A.SilverRun.__new__(A.SilverRun)
+    run.sess, run.out, run.log = sess, tmp_path, A.Log(tmp_path)
+    run.shots, run.armed, run.attack_by = 0, {}, ""
+    run.game = SimpleNamespace(key="secret-of-the-silver-blades")
+    return run, run.log, sess
+
+
+@pytest.mark.parametrize("combat", [(), ("prep",)])
+def test_a_later_rest_an_event_turns_into_a_fight_fails_at_once_naming_it(
+        tmp_path, monkeypatch, combat):
+    """The live Silver Blades rest: at 8 hours of 10 the Black Circle's text
+    comes up over `PRESS BUTTON OR RETURN TO CONTINUE.`, and after Return a
+    fight begins -- the combat command bar, or a blank row 24 with the mode
+    byte reading COMBAT.  The step answers the page, then stops at once
+    naming the event, rather than returning into a step that cannot work."""
+    monkeypatch.setattr(A, "REST_LEAVE_SECONDS", 5)
+    run, log, sess = _later_rest(
+        tmp_path, monkeypatch, end="event", later={"prep": (2, "combat")},
+        moves={("event", ("key", 0x0D)): "prep"})
+    sess.combat_states = frozenset(combat)
+    started = time.monotonic()
+    with pytest.raises(A.StepFailed, match="a fight") as caught:
+        run.rest("10h")
+    log.close()
+    assert time.monotonic() - started < 4
+    assert "THE BLACK CIRCLE SENDS MONSTERS" in str(caught.value)
+    assert sess.sent == [("bar", "ENCAMP"), ("key", 0x0D)]
+    logged = (tmp_path / "run.jsonl").read_text()
+    assert '"rest_interrupted"' in logged and '"rest_prompt"' in logged
+
+
+def test_a_later_rest_an_event_ends_back_in_camp_is_reported_and_left(
+        tmp_path, monkeypatch):
+    """An event page that gives way to the camp bar, not a fight, is answered
+    and reported with its text, and the step goes on to the world."""
+    run, log, sess = _later_rest(
+        tmp_path, monkeypatch, end="event",
+        moves={("event", ("key", 0x0D)): "camp"})
+    got = run.rest("10h")
+    log.close()
+    assert sess.sent == [("bar", "ENCAMP"), ("key", 0x0D), ("bar", "EXIT")]
+    assert sess.state == "world"
+    assert got["ended"] == "interrupted" and got["interrupted"] is True
+    assert got["bar"] == "PRESS BUTTON OR RETURN TO CONTINUE."
+    assert got["prompts"] == ["PRESS BUTTON OR RETURN TO CONTINUE."]
+    assert got["text"] == ["THE BLACK CIRCLE SENDS MONSTERS",
+                           "AGAINST THE TOWN. TOWNSMEN RUSH TO", "YOUR AID."]
+    assert got["rest_completed"] is False and got["elapsed_minutes"] == 480
+    assert "watch_seen" not in got and "state_cleared" not in got
+
+
+def test_a_later_rest_interrupted_by_a_screen_it_cannot_answer_fails_naming_it(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "REST_LEAVE_SECONDS", 0.5)
+    run, log, sess = _later_rest(
+        tmp_path, monkeypatch, end="event",
+        moves={("event", ("key", 0x0D)): "stuck"})
+    with pytest.raises(A.StepFailed, match=re.escape(repr("SOMETHING ELSE"))):
+        run.rest("10h")
+    log.close()
+    assert sess.sent == [("bar", "ENCAMP"), ("key", 0x0D)]
+
+
+def test_a_later_rest_that_completes_is_unchanged(tmp_path, monkeypatch):
+    """A later-title rest that ran its time returns the keys and fields a
+    Pool rest with no event does, and sends nothing but ENCAMP and EXIT."""
+    run, log, sess = _later_rest(tmp_path, monkeypatch, end="camp",
+                                 ended="completed")
+    got = run.rest("8h")
+    log.close()
+    assert sess.sent == [("bar", "ENCAMP"), ("bar", "EXIT")]
+    assert set(got) == {"asked", "before_clock", "after_clock",
+                        "elapsed_minutes", "rest_completed", "events",
+                        "position_before", "position_after"}
+
+
 _LEAVE_STEPS = [["load", "temple-probe BRUTUS RAISE POOL", "save"],
                 ["load", "temple-probe BRUTUS RAISE CONTROL", "save"]]
 

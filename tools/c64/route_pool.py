@@ -517,7 +517,11 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
 
     `interrupted` is true for the second alone; `rest_left` is the field and
     `bar` row 24 when the wait stopped, and `still_reads` names the stillness
-    threshold when that is what stopped it.
+    threshold when that is what stopped it.  An interrupted rest also returns
+    `text`, the message rows 17-22 without their frame: a scripted event's
+    words, such as Silver Blades' THE BLACK CIRCLE SENDS MONSTERS AGAINST
+    THE TOWN over `PRESS BUTTON OR RETURN TO CONTINUE.`, before the fight
+    it starts.
     """
     want = (minutes, hours % 24, hours // 24)
     if want == (0, 0, 0):
@@ -576,6 +580,9 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
         shown = bar.strip()
         ended = ("stalled" if not shown or LATER_REST_BAR in shown
                  else "interrupted")
+    if ended == "interrupted" and s is not None:
+        extra["text"] = [t for t in (s.row(r).strip("$%& ")
+                                     for r in range(17, 23)) if t]
     log.say(f"  rest {minutes}m {hours}h: clock {before['clock']} -> "
             f"{after['clock']}, field left {list(left)}, {ended}")
     log.say(f"    ids {after['id'][:6]}  counts {counts}")

@@ -99,6 +99,8 @@ class RestingSession:
         self.written: bytes | None = None
         self.resting = False
         self.passes = 0
+        #: Rows the stopping screen draws above `stop_bar`, by row number.
+        self.stop_text: dict[int, str] = {}
 
     def _select(self, label: str, **_) -> bool:
         self.pressed.append(label)
@@ -114,7 +116,11 @@ class RestingSession:
     select_bar = _select
 
     def screen(self):
-        return FakeScreen(self.bar)
+        screen = FakeScreen(self.bar)
+        if self.bar == self.stop_bar:
+            for row, line in self.stop_text.items():
+                screen._rows[row] = line
+        return screen
 
     def wait_text(self, needle: str, timeout: float = 0):
         s = self.screen()
@@ -222,6 +228,24 @@ def test_a_later_rest_the_game_stops_is_reported_with_the_time_left(monkeypatch)
     assert got["bar"] == "THE PARTY IS ATTACKED"
     assert _clock_minutes(got["after"]["clock"]) - _clock_minutes(
         got["before"]["clock"]) == 15
+
+
+def test_a_later_rest_an_event_stops_reports_the_events_text(monkeypatch):
+    """Silver Blades' Black Circle event stops a rest over its PRESS bar; the
+    result carries the words, without the frame, and the bar."""
+    sess = LaterPressSession(c64_port.SECRET_OF_THE_SILVER_BLADES, 0x2A8E,
+                             E.LATER_LOAD, LATER_REST_ROW, stop_after=96,
+                             stop_bar="PRESS BUTTON OR RETURN TO CONTINUE.")
+    sess.stop_text = {17: "$THE BLACK CIRCLE SENDS MONSTERS       $",
+                      18: "%AGAINST THE TOWN. TOWNSMEN RUSH TO    %",
+                      19: "%YOUR AID.                             %",
+                      20: "%                                      %"}
+    got = _rest(monkeypatch, sess, 0, 10)
+    assert got["ended"] == "interrupted" and got["interrupted"] is True
+    assert got["bar"] == "PRESS BUTTON OR RETURN TO CONTINUE."
+    assert got["text"] == ["THE BLACK CIRCLE SENDS MONSTERS",
+                           "AGAINST THE TOWN. TOWNSMEN RUSH TO", "YOUR AID."]
+    assert got["rest_left"] == [0, 2, 0]
 
 
 def test_a_later_rest_that_clears_the_field_off_the_camp_bar_is_not_completed(
