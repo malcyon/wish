@@ -3001,3 +3001,29 @@ def test_curse_invisibility_nodes_make_one_c64_row():
     assert not [d for d in rep.dropped + rep.losses
                 if "running_effects" in d or "effect 25" in d]
     assert len([w for w in rep.warnings if "merged" in w]) == 1
+
+
+def test_a_refused_caster_level_25_node_does_not_hide_the_monster_row():
+    """Merging only the `(25, n, 0xFF, 0)` nodes: a refused `(25, .., 0x0C,
+    1)` beside a monster node still writes the monster's row, and no merge
+    line claims otherwise."""
+    char = _slow_poison_character(
+        c64_port.CURSE_OF_THE_AZURE_BONDS,
+        bytes((25, 150, 0, 0x0C, 1)), bytes((25, 200, 0, 0xFF, 0)))
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                                clock_minutes=0)
+    assert [r[3] for r in _rows(payload).values() if r[0] == 25] == [0]
+    assert not [w for w in rep.warnings if "merged" in w]
+
+
+def test_two_caster_level_25_nodes_stay_two_rows():
+    char = _slow_poison_character(
+        c64_port.CURSE_OF_THE_AZURE_BONDS,
+        bytes((25, 150, 0, 0x0C, 0)), bytes((25, 200, 0, 0x0D, 0)))
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                                clock_minutes=0)
+    assert sorted(r[3] for r in _rows(payload).values() if r[0] == 25) \
+        == [0x0C, 0x0D]
+    assert not [w for w in rep.warnings if "merged" in w]

@@ -1403,15 +1403,17 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                     other_nodes.append(row)
 
     # The C64 writes one Invisible (25) row per holder and its attack removes
-    # only the first it finds, while DOS removes every node; so several 25
-    # nodes become the one that runs longest.
+    # only the first it finds, while DOS removes every node; so several of
+    # Curse's monster nodes (`LATER_INVISIBLE_MONSTER`) become the one that
+    # runs longest. Caster-level 25 nodes convert one row each, as before.
     if title_key == "curse-of-the-azure-bonds":
         invisible = [n for n in other_nodes
-                     if n.id == effects.LATER_INVISIBLE_ID]
+                     if n.id == effects.LATER_INVISIBLE_ID
+                     and (n.data, n.flag) == effects.LATER_INVISIBLE_MONSTER]
         if len(invisible) > 1:
             kept = max(invisible, key=lambda n: n.minutes)
             other_nodes = [n for n in other_nodes
-                           if n is kept or n.id != effects.LATER_INVISIBLE_ID]
+                           if n is kept or not any(n is m for m in invisible)]
             for n in invisible:
                 if n is not kept:
                     rep.warnings.append(

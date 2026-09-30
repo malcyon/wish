@@ -773,7 +773,9 @@ def _own_rule_row(title_key: str, node: RunningEffect,
                                "stinking-cloud caster node")
         if node.data <= _CLOUD_CASTER_INERT:
             return node.id, node.data
-        # A cloud index of 8 or more: cap the index at 7, keep the level nibble.
+        # A cloud index of 8 or more: cap it at 7 and keep the level nibble.
+        # The index's high bits are lost, which is harmless: the row is inert,
+        # and the index only feeds DOS's early-vanish quirk the C64 lacks.
         return node.id, 0x70 | node.data & 0x0F
     if node.id in STINKING_CLOUD_IDS and _slowed_title(title_key):
         if (node.data, node.flag) != STINKING_CLOUD_DOS:
