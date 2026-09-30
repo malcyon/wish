@@ -138,9 +138,8 @@ def test_the_count_byte_and_the_arrays_own_word_agree(corpus):
 
 
 #: `$4FE1` is what a conversion writes (255) but not what the game leaves
-#: there: played DOS containers hold 255, 16 or 8 (`docs/185`), and an Amiga
-#: save the engine wrote after Rolf's opening tour holds 8.  Never 0 once the
-#: party has been in the world.  The other two constants do not move.
+#: there: played containers hold 255, 16 or 8 (`docs/185`).  Never 0 once the party
+#: has been in the world.  The other two constants do not move.
 _CONSTANT_READINGS = {0x4FE1: (255, 16, 8), 0x506D: (16,), 0x50F6: (1,)}
 
 

@@ -79,14 +79,9 @@ WORDS = (("$49C5 map", 0x49C5), ("$49E6 indoors", 0x49E6),
          ("$49F2 area", 0x49F2), ("$49FD", 0x49FD), ("$49FE", 0x49FE),
          ("$4FE1", 0x4FE1), ("$5012 disk", 0x5012), ("$503E party", 0x503E))
 
-#: `$4FE1` = 0 is the never-adventured reading.  `goldbox/dos_savegame.py`'s
-#: `SAVGAM_CONSTANTS` says "255 in every specimen" of this address, measured
-#: over four Pool of Radiance containers; this sweep saw 255 in 57 played
-#: containers, 16 in 41 and 8 in 3 on 2026-09-06, and 255 in 19, 16 in 13, 42
-#: in 2 and 8 in 1 on 2026-09-18 over the narrower corpus #575 left it.  So
-#: the constant is what a conversion writes rather than what every save holds.
-#: What survives that correction is the part used here: it is never 0 once the
-#: party has been in the world, in both sweeps.
+#: `$4FE1` = 0 is the never-adventured reading: played containers hold 255,
+#: 16, 8 or another nonzero value, and never 0.  A conversion writes 255, as
+#: `goldbox/dos_savegame.py`'s `SAVGAM_CONSTANTS` records.
 NEVER_ADVENTURED_WORD = 0x4FE1
 
 

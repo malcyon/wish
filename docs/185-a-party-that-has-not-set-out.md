@@ -285,11 +285,10 @@ were open only until the live runs. Silver Blades' start is measured (area
 refuses. The C64 runs began the game's own party-menu saves, so the C64 does
 play its own opening from one.
 
-**`dos_savegame.SAVGAM_CONSTANTS` still calls `$4FE1` "255 in every
-specimen".** The sweep reads 255 in 57 played containers, 16 in 41 and 8 in
-3, so the constant is what a conversion writes rather than what every save
-holds; the part the discriminator rests on -- never 0 once the party has been
-in the world -- is unaffected.
+**`$4FE1` is what a conversion writes, not a value every save holds.**
+The sweep reads 255 in 57 played containers, 16 in 41 and 8 in 3, so the game
+changes it during play; the part the discriminator rests on -- never 0 once
+the party has been in the world -- holds throughout.
 
 ## Tools
 
