@@ -2079,7 +2079,13 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     else:
         manifest = _PREPARE[name](run, specimen)
     if camp:
-        _camp_title(name, title, list(camp), manifest["names_a"])
+        try:
+            _camp_title(name, title, list(camp), manifest["names_a"])
+        except RouteError:
+            # The party is read only once the disks are copied, so a refusal takes the folder
+            # with it and a corrected retry can use the same run id.
+            shutil.rmtree(run)
+            raise
         manifest["camp"] = list(camp)
     path = run / "prepare.json"
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")

@@ -71,6 +71,10 @@ def _darkness_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, by
 # camp save picker, before any save letter. The accept route answers the same question the same
 # way, with explicit keys and no answerer, between the control save and the walk.
 # The game answers the camp save with its quit question, which the accept route answers `N`.
+# `camp_save_picker`'s second guard rule is deliberately weak: once camp steps have cleared the
+# text window it sees only the `SAVE WHICH GAME` strip, which is pixel-identical to the party
+# menu's `save_picker`. G is still pressed only there, because the route reaches that state only
+# by `S` from a recognised `camp` bar, and the party menu's picker is never one step from camp.
 # `SPACE` answers `INSERT DISK 2 AND PRESS A KEY` after the DF0 insert: both accept boots then
 # recognised the loaded menu 24 to 25 s after the key.
 DISK2_INSERT = ((0, "disk2", "SPACE"), "loaded_menu", "insert")

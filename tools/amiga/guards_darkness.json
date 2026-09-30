@@ -206,7 +206,9 @@
       "also": [
         "camp",
         "camp_save_picker",
-        "exit_game"
+        "exit_game",
+        "heal_whom",
+        "rest_menu"
       ],
       "box": [
         330,
@@ -366,6 +368,12 @@
     }
   },
   "labels": {
+    "628/darkness-P1a/accept2/shots/12-world.png": [
+      "place_x1_y2_f1"
+    ],
+    "628/darkness-P1a/accept2/shots/13-world.png": [
+      "place_x2_y2_f1"
+    ],
     "679/6b17ee420c-amiga-darkness-accept-A/acceptA/shots/12-world.png": [
       "place_x1_y2_f1"
     ],

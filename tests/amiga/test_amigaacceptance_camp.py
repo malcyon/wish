@@ -875,3 +875,25 @@ def test_the_cli_takes_camp_steps_and_an_issue_for_a_darkness_prepare(capsys, mo
     assert foundation.main(["prepare", "--title", "curse", "--run-id", "x",
                             "--issue", "628"]) == 2
     assert "--issue requires --title ssb or darkness" in capsys.readouterr().err
+
+
+def test_a_darkness_prepare_the_party_refuses_leaves_no_run_folder_so_a_retry_can_run(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+    def copied(run, _specimen, names=()):
+        # Stands in for `_prepare_darkness`: the folder and its disks exist before the party is read.
+        foundation.scratch.ensure(run)
+        (run / "disk3.adf").write_bytes(b"copied")
+        return {"names_a": list(names)}
+
+    monkeypatch.setitem(foundation._PREPARE, "darkness", copied)
+    run = foundation.scratch.cache_dir("acceptance", "628", "camp-run")
+    with pytest.raises(RouteError, match="no line the camp route can read sheets for"):
+        foundation.prepare(foundation.DARKNESS, "camp-run", issue="628", camp=("view",))
+    assert not run.exists()
+    monkeypatch.setitem(foundation._PREPARE, "darkness",
+                        lambda r, s: copied(r, s, names=("saint eric",)))
+    path = foundation.prepare(foundation.DARKNESS, "camp-run", issue="628", camp=("view",))
+    assert json.loads(path.read_text())["camp"] == ["view 1"]
