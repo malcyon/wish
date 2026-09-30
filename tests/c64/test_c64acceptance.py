@@ -12036,6 +12036,7 @@ def _flee_run(outcome, slots_before, slots_after, tactics):
     run = A.PoolRun.__new__(A.PoolRun)
     run.sess = Session()
     run.log = object()
+    run.game = SimpleNamespace(key="unmeasured")
     run.to_world = lambda: True
     run.spent = lambda: False
     run.captured = []
@@ -12061,11 +12062,11 @@ def test_fight_flee_step_parses_with_an_optional_budget():
 def test_fight_flee_records_who_got_away_and_who_was_left_behind():
     tactics = []
     run = _flee_run(A.S.RAN,
-                    _slots(("ROLAND", 0), ("BRUTUS", 0x85), ("", 0)),
-                    _slots(("ROLAND", 0), ("", 0), ("", 0)), tactics)
+                    _slots(("ROLAND", 1), ("BRUTUS", 0x85), ("", 0)),
+                    _slots(("ROLAND", 1), ("BRUTUS", 0), ("", 0)), tactics)
     got = run.fight("900", "I", 5, flee=True)
     assert got["got_away"] == [
-        {"slot": 0, "name": "ROLAND", "status_before": 0, "status_after": 0}]
+        {"slot": 0, "name": "ROLAND", "status_before": 1, "status_after": 1}]
     assert got["left_behind"] == [
         {"slot": 1, "name": "BRUTUS", "status_before": 0x85,
          "status_after": 0}]
@@ -12082,3 +12083,147 @@ def test_fight_flee_that_does_not_run_away_fails_naming_the_step(outcome):
     if outcome == A.S.BUDGET:
         assert "60 second budget" in str(err.value)
     assert run.captured[-1] == "lost-fight-flee"
+
+
+def test_fight_flee_leaves_behind_a_member_whose_status_the_drop_zeroed_though_the_name_stays():
+    """`POST.COM $0DF8` writes 0 into the roster status; the record's name is
+    not what marks the slot, and a dead member is dropped like any other."""
+    run = _flee_run(A.S.RAN,
+                    _slots(("ROLAND", 1), ("BRUTUS", 0x83), ("LADY", 1)),
+                    _slots(("ROLAND", 1), ("BRUTUS", 0), ("LADY", 0)), [])
+    got = run.fight("60", "I", 5, flee=True)
+    assert [m["name"] for m in got["got_away"]] == ["ROLAND"]
+    assert [(m["name"], m["status_before"]) for m in got["left_behind"]] == [
+        ("BRUTUS", 0x83), ("LADY", 1)]
+
+
+def test_fight_flee_party_slots_reads_names_and_statuses_from_a_monitor():
+    box = A.c64_save.CONTAINERS["pool-of-radiance"]
+    memory = {}
+    for slot, (name, status) in enumerate([("ROLAND", 1), ("", 0x83)]):
+        record = bytearray(box.slot_stride)
+        record[1:1 + len(name)] = name.encode()
+        memory[box.slot_area_base + slot * box.slot_stride] = bytes(record)
+        memory[box.roster_base + slot * box.roster_stride] = bytes([status])
+
+    class Mon:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, addr, n):
+            out = bytearray(n)
+            for at, blob in memory.items():
+                for i, b in enumerate(blob):
+                    if 0 <= at + i - addr < n:
+                        out[at + i - addr] = b
+            return bytes(out)
+
+        def resume(self):
+            pass
+
+    run = A.PoolRun.__new__(A.PoolRun)
+    run.box = box
+    run.sess = SimpleNamespace(mon=lambda timeout: Mon())
+    got = run.party_slots()
+    assert [s["status"] for s in got[:3]] == [1, 0x83, 0]
+    assert [s["slot"] for s in got] == list(range(A.PARTY_SLOTS))
+    rec = memory[box.slot_area_base]
+    assert got[0]["name"] == A.CharacterRecord(
+        rec.ljust(A.RECORD_SIZE, b"\0"), stored_size=len(rec)).name
+
+
+def test_curse_fight_flee_records_the_drop_and_reads_the_mercy_byte(
+        monkeypatch, tmp_path):
+    from tools.c64 import laterbattle
+    from tools.curse_of_the_azure_bonds import cursethac0
+
+    tactics = []
+
+    class Route:
+        last_goto_steps = 2
+
+        def __init__(self, out, quiet):
+            self.file = SimpleNamespace(close=lambda: None)
+
+        def goto(self, target, steps, geo):
+            return True
+
+    class Mon:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, addr, n):
+            assert addr == 0x7EE6
+            return bytes([0])
+
+    class Session:
+        def in_combat(self):
+            return True
+
+        def await_bar(self, *a, **k):
+            return None
+
+        def mon(self, timeout):
+            return Mon()
+
+        def fight(self, *, budget, tactic):
+            tactics.append(tactic)
+            return A.S.FightResult(A.S.RAN, 2, 1.0, [], [])
+
+    monkeypatch.setattr(laterbattle, "Battle", Route)
+    monkeypatch.setattr(cursethac0, "area_geo", lambda *a: ("GEO01", object()))
+    reads = iter([_slots(("A", 1), ("B", 1)), _slots(("A", 1), ("B", 0))])
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.attack_by, run.attack_owner = "", None
+    run.sess, run.out, run.log = Session(), tmp_path, object()
+    run.game = SimpleNamespace(key="curse-of-the-azure-bonds")
+    run.staged_disk, run.disks = tmp_path / "s.D64", "unused"
+    run.to_world = lambda: True
+    run.await_combat = lambda: True
+    run.capture = lambda tag: None
+    run.party_slots = lambda: next(reads)
+    got = run.fight("10", "I", 5, flee=True)
+    assert isinstance(tactics[0], fleedrive.Flight)
+    assert [m["name"] for m in got["left_behind"]] == ["B"]
+    assert got["mercy"] == 0
+
+
+def test_curse_fight_flee_is_refused_under_the_attack_diagnostic():
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.attack_by, run.attack_owner = "ROLAND", 0
+    run.capture = lambda tag: None
+    run.spent = lambda: False
+    with pytest.raises(A.StepFailed, match="fight-flee"):
+        run.fight("10", "I", 5, flee=True)
+
+
+@pytest.mark.parametrize("outcome, dropped, ok, seen", [
+    (A.S.RAN, False, True, True),
+    (A.S.ENDED, True, True, False),
+    (A.S.ENDED, False, False, False)])
+def test_silver_fight_flee_counts_the_world_bar_first_only_with_a_member_dropped(
+        monkeypatch, tmp_path, outcome, dropped, ok, seen):
+    sess = _SilverFight()
+    sess.outcome, sess.after = outcome, A.S.DUNGEON
+    run, events, captures = _silver_run(monkeypatch, tmp_path, sess)
+    run.game = SimpleNamespace(key="secret-of-the-silver-blades")
+    run.flight_tactic = lambda: lambda s, bar: "MOVE"
+    run.keep_fight_reading = lambda: None
+    run.spent = lambda: False
+    after = _slots(("A", 1), ("B", 0 if dropped else 1))
+    reads = iter([_slots(("A", 1), ("B", 1)), after, after])
+    run.party_slots = lambda: next(reads)
+    if not ok:
+        with pytest.raises(A.StepFailed, match="fight-flee"):
+            run.fight("600", "I", 40, flee=True)
+        return
+    got = run.fight("600", "I", 40, flee=True)
+    assert got["ran_line_seen"] is seen
+    assert got["outcome"] == A.S.RAN
+    assert [m["name"] for m in got["left_behind"]] == (["B"] if dropped else [])

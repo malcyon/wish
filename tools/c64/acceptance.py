@@ -4034,19 +4034,51 @@ class PoolRun:
                    f"turns, not in the party running away")
         return self.fail("fight-flee", f"fight-flee: {why}")
 
+    #: `POST.COM`'s drop-loop spare flag (`docs/110-combat-log.md`, "A party
+    #: that runs away loses every character it leaves behind"), where known.
+    MERCY_ADDRESS = {"pool-of-radiance": 0x6DE6,
+                     "curse-of-the-azure-bonds": 0x7EE6}
+
+    @staticmethod
+    def dropped_slots(before: list[dict], after: list[dict]) -> list[dict]:
+        """The slots occupied before the fight (a nonzero status) whose status
+        the fight left at 0, the value `POST.COM $0DF8`'s drop writes.  A dead
+        member is dropped too; the record's name is not what says so."""
+        return [now for was, now in zip(before, after)
+                if was["status"] != 0 and now["status"] == 0]
+
     def flee_result(self, before: list[dict], after: list[dict]) -> dict:
         """Who got away and who was left behind, from the slots read before
-        the fight and after it.  A slot with a name before and none after is
-        the game's drop of a member the party left."""
+        the fight and after it, plus the drop's spare flag where it is known.
+
+        The drop runs only when the party ran, and `$6DE6`-style mercy, when
+        nonzero, spares everyone except a charmed member, so a run with mercy
+        set says nothing about who the game leaves behind."""
         got_away, left_behind = [], []
         for was, now in zip(before, after):
-            if not was["name"]:
+            if was["status"] == 0:
                 continue
             member = {"slot": was["slot"], "name": was["name"],
                       "status_before": was["status"],
                       "status_after": now["status"]}
-            (got_away if now["name"] else left_behind).append(member)
-        return {"got_away": got_away, "left_behind": left_behind}
+            (left_behind if now["status"] == 0 else got_away).append(member)
+        out = {"got_away": got_away, "left_behind": left_behind}
+        at = self.MERCY_ADDRESS.get(self.game.key)
+        if at is not None:
+            with self.sess.mon(5) as m:
+                out["mercy"] = m.read(at, 1)[0]
+        return out
+
+    def flee_settled(self, result, before: list[dict]):
+        """`result`, and whether the game's own `THE PARTY RUNS AWAY` line was
+        read.  A fight ended by a `stop` before the line was read reports
+        `ended`; a member dropped since is what only the flee arm does, so that
+        counts as the party having run."""
+        if result.outcome != S.ENDED:
+            return result, result.outcome == S.RAN
+        if not self.dropped_slots(before, self.party_slots()):
+            return result, False
+        return dataclasses.replace(result, outcome=S.RAN), False
 
     def fight_over_budget(self, arg: str, result) -> StepFailed:
         """The failure for a fight that ran out of SECONDS.
@@ -5857,9 +5889,17 @@ class CurseRun(PoolRun):
         raise self.fail("walk-flee", "Pool of Radiance only")
 
     def fight(self, arg: str, walk: str, steps: int, flee: bool = False) -> dict:
+        """The tavern brawl.  With `flee` the party runs from it under
+        `fleedrive.Flight`; the drop of the members left behind is spared when
+        the spare flag `$7EE6` is nonzero, so the result records it as `mercy`
+        and a run with it set proves nothing about who is dropped.  `--attack-by`
+        watches a melee, so it refuses `flee`."""
         from tools.c64 import laterbattle
         from tools.curse_of_the_azure_bonds import cursethac0
 
+        if flee and self.attack_by:
+            raise self.fail("fight-flee", "fight-flee: --attack-by watches a "
+                                          "melee and cannot flee")
         if self.attack_by and self.attack_owner is None:
             raise self.fail("fighter", f"{self.attack_by} is absent from save slots")
         if not self.to_world():
@@ -5916,12 +5956,12 @@ class CurseRun(PoolRun):
         if diagnostic:
             self.stop_at_first_loss()
         self.capture("fight-start")
+        before = self.party_slots() if flee else None
         if diagnostic:
             self.first_command_bar()
             result = self.observed_fight(float(arg or 120))
         else:
             self.sess.await_bar((S.BAR_COMMAND,), timeout=60, interval=2.0)
-            before = self.party_slots() if flee else None
             result = self.sess.fight(
                 budget=float(arg or 120),
                 tactic=(self.flight_tactic() if flee
@@ -6149,16 +6189,17 @@ class SilverRun(CurseRun):
         if gate["now"] != 1:
             raise self.fail("wander-gate", f"$4C2D reads {gate['now']}, not 1")
         try:
-            walked, result, slots = self._silver_walk_and_fight(
+            walked, result, before, ran_line = self._silver_walk_and_fight(
                 arg, steps, geo, flee)
         except BaseException as e:
             self.put_gate_back(gate, was, e)
             raise
         self.put_gate_back(gate, was, None)
-        if flee:
-            slots = self.flee_result(slots, self.party_slots())
-        return {**(slots if flee else {}), "walked": walked, "area": str(area), "wander_gate": gate,
-                "acted": result.acted, **dataclasses.asdict(result)}
+        who = ({**self.flee_result(before, self.party_slots()),
+                "ran_line_seen": ran_line} if flee else {})
+        return {**who, "walked": walked, "area": str(area),
+                "wander_gate": gate, "acted": result.acted,
+                **dataclasses.asdict(result)}
 
     def _silver_walk_and_fight(self, arg: str, steps: int, geo, flee: bool = False):
         from tools.c64 import laterbattle
@@ -6218,14 +6259,18 @@ class SilverRun(CurseRun):
             raise self.fail("fight", f"the party lost the fight after "
                                      f"{result.turns} turns: the game went "
                                      f"back to the party menu")
+        ran_line = False
         if flee:
+            # `world_again` ends the fight when the world bar is back, which
+            # can be before the flee line is read.
+            result, ran_line = self.flee_settled(result, before)
             if (failed := self.flee_failure(arg, result)) is not None:
                 raise failed
         elif result.outcome == S.BUDGET:
             raise self.fight_over_budget(arg, result)
         elif result.outcome == S.LOST:
             raise self.fight_lost(result)
-        return walked, result, before
+        return walked, result, before, ran_line
 
 
 # --- the run ---------------------------------------------------------------------
