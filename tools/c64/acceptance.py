@@ -4843,7 +4843,9 @@ class PoolRun:
                 return False
             treasure_word = self._walk_treasure_word(mode, bar)
             if treasure_word is None:
-                left_treasure = None
+                # A blank row is a redraw between identical bars.
+                if bar.strip():
+                    left_treasure = None
             else:
                 left_treasure = self._leave_walk_treasure(
                     route, n, move, mode, bar, treasure_word, left_treasure)
@@ -4893,7 +4895,7 @@ class PoolRun:
             screen = sess.screen()
             row = "" if screen is None else screen.row(24)
             treasure_word = self._walk_treasure_word(mode, row)
-            if treasure_word is None:
+            if treasure_word is None and row.strip():
                 left_treasure = None
             if (mode, row.strip()) != seen:
                 seen = (mode, row.strip())
@@ -4946,7 +4948,8 @@ class PoolRun:
         if mode == TREASURE_MODE and S.word_column(row, "EXIT") >= 0:
             return "EXIT"
         if (S.word_column(row, "GO") >= 0 and S.word_column(row, "BACK") >= 0
-                and S.word_column(row, "LEAVE") >= 0):
+                and S.word_column(row, "LEAVE") >= 0
+                and S.word_column(row, "TREASURE") >= 0):
             # GO BACK only returns to the treasure bar it came from.
             return "LEAVE"
         return None

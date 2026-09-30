@@ -7937,9 +7937,12 @@ class EncounterTreasureWalk(EncounterWalk):
     TREASURE = "VIEW TAKE POOL SHARE EXIT"
     LEAVE = "GO BACK LEAVE TREASURE"
 
-    def __init__(self, script, clock, leave_prompt=False, **kw):
+    def __init__(self, script, clock, leave_prompt=False, refuse=None,
+                 sticky=False, blink=False, **kw):
         super().__init__(script, clock, **kw)
         self.leave_prompt = leave_prompt
+        self.refuse, self.sticky, self.blink = refuse, sticky, blink
+        self.reads = 0
         self.stage = None
         self.chosen = []
 
@@ -7957,13 +7960,20 @@ class EncounterTreasureWalk(EncounterWalk):
     def screen(self):
         phase = self.phase()
         if phase in ("treasure", "leave"):
+            self.reads += 1
             bar = self.TREASURE if phase == "treasure" else self.LEAVE
+            if self.blink and self.reads % 2:
+                bar = ""
             return FakeScreen(_window({3: "THE ROOM HOLDS GOLD."}, bar))
         return super().screen()
 
     def select_bar(self, label, row=24, timeout=0, **kw):
         phase = self.phase()
         self.chosen.append((label, phase))
+        if label == self.refuse:
+            return False
+        if self.sticky and phase in ("treasure", "leave"):
+            return True
         if phase == "treasure" and label == "EXIT":
             if self.leave_prompt:
                 self.stage = "leave"
@@ -8010,6 +8020,68 @@ def test_exit_that_opens_the_leave_treasure_prompt_is_answered_with_leave(
     assert [t["bar"] for t in got["treasure_screens"]] == [
         sess.TREASURE, sess.LEAVE]
     assert got["position"] == [5, 3, 0]
+
+
+@pytest.mark.parametrize("mode, row", [
+    (4, "COMBAT WAIT FLEE PARLAY"),
+    (5, "COMBAT WAIT FLEE PARLAY"),
+    (1, "PRESS <RETURN> OR BUTTON TO CONTINUE"),
+    (5, ""),
+    (1, "GO BACK LEAVE"),
+    (4, "VIEW TAKE POOL SHARE EXIT"),
+])
+def test_only_a_treasure_bar_is_taken_for_one(mode, row):
+    assert A.PoolRun._walk_treasure_word(mode, row) is None
+
+
+def test_the_treasure_words_are_told_apart():
+    word = A.PoolRun._walk_treasure_word
+    assert word(5, "VIEW TAKE POOL SHARE EXIT") == "EXIT"
+    assert word(1, "GO BACK LEAVE TREASURE") == "LEAVE"
+
+
+@pytest.mark.parametrize("refuse, leave_prompt, bar, word", [
+    ("EXIT", False, "VIEW TAKE POOL SHARE EXIT", "EXIT"),
+    ("LEAVE", True, "GO BACK LEAVE TREASURE", "LEAVE"),
+])
+def test_an_unchoosable_treasure_word_fails_naming_the_bar_and_the_word(
+        tmp_path, monkeypatch, refuse, leave_prompt, bar, word):
+    sess, run, log = _treasure_encounter_run(
+        tmp_path, monkeypatch, refuse=refuse, leave_prompt=leave_prompt)
+    with pytest.raises(A.StepFailed,
+                       match=rf"treasure screen '{bar}' and {word} could not"):
+        run.walk_fight("II")
+    log.close()
+
+
+@pytest.mark.parametrize("blink", [False, True])
+def test_a_treasure_bar_that_stays_up_is_chosen_once_even_across_blank_redraws(
+        tmp_path, monkeypatch, blink):
+    sess, run, log = _treasure_encounter_run(
+        tmp_path, monkeypatch, sticky=True, blink=blink)
+    with pytest.raises(A.StepFailed, match="no fight opened"):
+        run.walk_fight("II")
+    log.close()
+    assert sess.chosen == [("EXIT", "treasure")]
+    assert sess.reads > 5
+    assert len(run.walk_treasures) == 1
+
+
+def test_walk_fight_answers_the_leave_treasure_prompt_met_after_a_press_bar(
+        tmp_path, monkeypatch):
+    class Leaving(TreasureAfterFightWalk):
+        def select_bar(self, label, row=24, timeout=0, **kw):
+            if label == "LEAVE" and self.state == "treasure2":
+                self.state = "world"
+            return super().select_bar(label, row, timeout, **kw)
+
+    sess = Leaving(then="GO BACK LEAVE TREASURE")
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_fight("II")
+    log.close()
+    assert sess.selected[-2:] == ["EXIT", "LEAVE"] and sess.state == "world"
+    assert [t["bar"] for t in got["treasure_screens"]] == [
+        "VIEW POOL EXIT", "GO BACK LEAVE TREASURE"]
 
 
 def test_a_route_goes_on_after_an_encounter_step(tmp_path, monkeypatch):
