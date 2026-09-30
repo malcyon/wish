@@ -54,8 +54,8 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 
 | step | what it does and reads |
 |---|---|
-| `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint`. Followed by `remove`, it stops on the party menu instead, and `BEGIN ADVENTURING` waits for the first step that is not a `remove` |
-| `remove WHO` | the party menu's `REMOVE CHARACTER FROM PARTY`, then WHO's row on the list it puts up; waits for the list to come back one name shorter, `EXIT`s to the party menu, then keeps the save disk as `removed-N.D64` (attaching the image again when VICE has left the directory open) with its directory (`added`, `gone` and `changed` against the directory before) and the 1541's error-message buffer (`$02D5` in the drive). WHO is a panel number or a whole name, and a name picks the first row drawing it, so a duplicated name needs the number. Only straight after `load` or another `remove`. A `MAKE SAVE GAME DISK ? YES NO` in place of the shorter list is the game refusing the write: it is answered NO, never YES (YES formats a disk), the disk and the drive's buffer are kept, and the step fails unless the list then comes back without WHO |
+| `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint`. Followed by `remove`, it stops on the party menu instead, and `BEGIN ADVENTURING` waits for the first step that is not a `remove`; `--checkpoint` and `--read-at` are refused when no such step follows, and no reading is logged after a step that ends on the party menu |
+| `remove WHO` | the party menu's `REMOVE CHARACTER FROM PARTY`, then WHO's row on the list it puts up; waits for the list to come back one name shorter, `EXIT`s to the party menu, then keeps the save disk as `removed-N.D64` (attaching the image again when VICE has left the directory open) with its directory (`added`, `gone` and `changed` against the directory before) and the 1541's error-message buffer (`$02D5` in the drive). WHO is a panel number, counted on the list as it stands, so a second `remove 1` takes the member who was second; or a whole name, and a name picks the first row drawing it, so a duplicated name needs the number. Only straight after `load` or another `remove`. A `MAKE SAVE GAME DISK ? YES NO` in place of the shorter list is the game refusing the write: it is answered NO, never YES (YES formats a disk), the disk and the drive's buffer are kept, and the step fails unless the list then comes back without WHO |
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time |
@@ -73,8 +73,8 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`); Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
 WHO is a name as the party panel draws it, or a number counting from 1 at
-the top of the panel.  After every step all live effect rows, the clock and
-each checkpoint's hit count are logged.
+the top of the panel.  After every step in the world all live effect rows,
+the clock and each checkpoint's hit count are logged.
 
 **What the screens say, and where it was read.**  The camp list is
 `CAMP $16C3`-`$1797` in Pool of Radiance: the whom menu is the party panel,
@@ -650,6 +650,12 @@ def parse_steps(texts) -> list[Step]:
             raise ValueError(f"{step.text!r}: remove runs on the party menu, "
                              "so it comes straight after load or another remove")
     return steps
+
+
+def ends_on_party_menu(steps: list[Step]) -> bool:
+    """True when every step after `load` is a `remove`, so the party never
+    enters the world and nothing armed there is ever armed."""
+    return len(steps) > 1 and all(s.verb == "remove" for s in steps[1:])
 
 
 #: The facing `$C04D` an area's arrival script writes over any arrival square
@@ -6002,8 +6008,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                        else pool.temple_probe(step.arg))
             else:
                 got = pool.save(staged)
-            got = {"step": step.text, "verb": step.verb, **got,
-                   "after": pool.reading()}
+            got = {"step": step.text, "verb": step.verb, **got}
+            # The readings are world memory; on the party menu nothing says
+            # they hold the party, so none is taken there.
+            if not getattr(pool, "at_menu", False):
+                got["after"] = pool.reading()
             if entered is not None:
                 got["entered_world"] = entered
             summary["results"].append(got)
@@ -6264,6 +6273,10 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(str(e))
     if args.read_at and args.title != "pool":
         ap.error("--read-at: Pool of Radiance only")
+    if (args.checkpoint or args.read_at) and ends_on_party_menu(steps):
+        ap.error("--checkpoint and --read-at are armed when the party enters the "
+                 "world, and every step after load is a remove, so the run never "
+                 "does; add a step after the removes")
     if any(x.verb == "warp" for x in steps) and args.title != "pool":
         ap.error("the warp step: Pool of Radiance only")
     if any(x.verb == "walk-fight" for x in steps) and args.title != "pool":

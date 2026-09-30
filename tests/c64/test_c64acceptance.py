@@ -10567,3 +10567,57 @@ def test_a_run_with_removes_enters_the_world_once(tmp_path, monkeypatch):
                       ["load", "remove 1", "view 1", "view 2", "save"], pool=Menu)
     assert rc == 0 and calls.count("enter_world") == 1
     assert calls == ["load_party", "remove", "enter_world", "view", "view", "save"]
+
+
+@pytest.mark.parametrize("probe", [["--checkpoint", "408F"],
+                                   ["--read-at", "09DD=CD:2B78:2"]])
+def test_a_probe_armed_in_the_world_is_refused_when_the_run_ends_on_the_party_menu(
+        tmp_path, monkeypatch, probe):
+    _refused_before_a_slot(tmp_path, monkeypatch, [
+        "--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+        "--disks", str(tmp_path), *probe, "--steps", "load", "remove 2", "remove 1"])
+
+
+def test_a_probe_is_accepted_when_a_step_after_the_removes_enters_the_world(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed a slot"))
+    rc = A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                 "--disks", str(tmp_path), "--checkpoint", "408F", "--stage-only",
+                 "--steps", "load", "remove 2", "view 1",
+                 "--out", str(tmp_path / "evidence")])
+    assert rc == 0
+
+
+def test_no_reading_is_taken_on_the_party_menu_and_the_world_step_takes_one(
+        tmp_path, monkeypatch):
+    readings = []
+
+    class Menu(_Pool):
+        at_menu = False
+
+        def load_party(self):
+            self.at_menu = True
+            return {}
+
+        def remove(self, who):
+            return {}
+
+        def enter_world(self):
+            self.at_menu = False
+            return {}
+
+        def view(self, who):
+            return {}
+
+        def reading(self):
+            assert not self.at_menu, "a reading was taken on the party menu"
+            readings.append(True)
+            return {"clock": [0] * 6}
+
+    rc, _, out = _drive(tmp_path, monkeypatch, ["load", "remove 2", "view 1"],
+                        pool=Menu)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc == 0, summary.get("lost")
+    assert ["after" in r for r in summary["results"]] == [False, False, True]
+    assert summary["results"][-1]["after"] == {"clock": [0] * 6}
+    assert readings == [True]
