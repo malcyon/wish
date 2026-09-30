@@ -54,7 +54,8 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 
 | step | what it does and reads |
 |---|---|
-| `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint` |
+| `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint`. Followed by `remove`, it stops on the party menu instead, and `BEGIN ADVENTURING` waits for the first step that is not a `remove` |
+| `remove WHO` | the party menu's `REMOVE CHARACTER FROM PARTY`, then WHO's row on the list it puts up; waits for the list to come back one name shorter, `EXIT`s to the party menu, then keeps the save disk as `removed-N.D64` (attaching the image again when VICE has left the directory open) with its directory (`added`, `gone` and `changed` against the directory before) and the 1541's error-message buffer (`$02D5` in the drive). Only straight after `load` or another `remove`. A `MAKE SAVE GAME DISK ? YES NO` in place of the shorter list is the game refusing the write: it is answered NO, never YES (YES formats a disk), and kept as `refused` |
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time |
@@ -259,6 +260,20 @@ MAX_SECONDS = 1500
 SAVE_BAR = "SAVE GAME"
 SAVE_ERROR = "TRY AGAIN"
 
+#: The party menu, known by its last choice; its `REMOVE` row; the bar the
+#: list under it puts up (`REMOVE CHARACTER ?` in Pool of Radiance, `REMOVE
+#: CHARACTER FROM PARTY` in Curse and Silver Blades: the captures kept under
+#: `cited/258`, `cited/439` and `cited/435`); and the question the game asks
+#: in place of the write when the drive refuses it (a write-protected image,
+#: `cited/439/readd1`).
+PARTY_MENU = "BEGIN ADVENTURING"
+REMOVE_ROW = "REMOVE CHARACTER FROM PARTY"
+REMOVE_BAR = "REMOVE CHARACTER"
+MAKE_SAVE_DISK = "MAKE SAVE GAME DISK"
+#: How long a removal may take to write the member out and redraw the list
+#: one row shorter (seconds); Pool's took more than 12 in `cited/258/run3`.
+REMOVE_WAIT = 120
+
 #: The effect query Detect Magic's mark rests on, in `LIBRARY`: asked at
 #: `$4086`, matched at `$408F`, and the mark drawn at `$39C1`.
 DETECT_POINTS = {"detect-asked": 0x4086, "detect-matched": 0x408F,
@@ -411,7 +426,7 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "rest": "must", "fight": "may", "peek": "must", "save": "never",
          "cast": "must", "cure": "must", "walk": "must", "ready": "must",
          "temple-probe": "must", "warp": "must",
-         "walk-fight": "must", "walk-flee": "must"}
+         "walk-fight": "must", "walk-flee": "must", "remove": "must"}
 
 #: How long the screen after HEAL must stay unchanged before it is kept, so a
 #: half-drawn frame that lingers for a few reads is not taken for the list.
@@ -623,11 +638,17 @@ def parse_steps(texts) -> list[Step]:
             parse_warp(arg)
         elif verb == "fight" and arg and not (arg.isdigit() and int(arg) > 0):
             raise ValueError(f"fight {arg!r}: seconds, more than zero")
+        elif verb == "remove" and arg.isdigit() and not 0 < int(arg) <= PARTY_SLOTS:
+            raise ValueError(f"remove {arg!r}: a panel number is 1 to {PARTY_SLOTS}")
         steps.append(Step(verb, arg))
     if not steps or steps[0].verb != "load":
         raise ValueError("the first step is load")
     if any(s.verb == "load" for s in steps[1:]):
         raise ValueError("one boot, one load")
+    for before, step in zip(steps, steps[1:]):
+        if step.verb == "remove" and before.verb not in ("load", "remove"):
+            raise ValueError(f"{step.text!r}: remove runs on the party menu, "
+                             "so it comes straight after load or another remove")
     return steps
 
 
@@ -1278,6 +1299,66 @@ def whom_entries(rows: list[str], question: str = WHOM) -> list[str]:
     return out
 
 
+def remove_list(rows: list[str]) -> list[str] | None:
+    """The rows a `REMOVE CHARACTER FROM PARTY` list offers, top first, each
+    as the screen draws it (name, AC and HP), or None when it is not up.
+
+    The list is the party panel with `EXIT` under the last member, under the
+    panel's `NAME ... AC HP` heading, and its bar on row 24; the party menu
+    carries the same words as a choice, so a screen still showing `BEGIN
+    ADVENTURING` is the menu and not the list.  A blank row 24 is the game
+    writing the member out, with the old list still drawn.
+    """
+    if len(rows) < 25 or REMOVE_BAR not in rows[24] or _has(rows[:24], PARTY_MENU):
+        return None
+    head = next((r for r in range(24) if "NAME" in rows[r] and "AC HP" in rows[r]),
+                None)
+    if head is None:
+        return None
+    end = next((r for r in range(head + 1, 24) if _inner(rows[r]) == "EXIT"), None)
+    if end is None:
+        return None
+    return [_inner(rows[r]) for r in range(head + 1, end) if _inner(rows[r])]
+
+
+def listed_name(row: str) -> str:
+    """The name on a `remove_list` row: everything before the AC column."""
+    return re.split(r"\s{2,}", row.strip())[0]
+
+
+def drive_message(raw: bytes) -> str:
+    """The message at the head of the 1541's error buffer, `NN, TEXT,TT,SS`.
+
+    The buffer is not cleared between messages, so a short one is followed by
+    the tail of a longer one before it (`00, OK,00,00RATCHED,00,00` after a
+    remove on Curse); the whole buffer is returned when no message leads it.
+    """
+    text = raw.decode("latin-1")
+    found = re.match(r"\d\d, ?[^,]*,\d\d,\d\d", text)
+    if found:
+        return found.group(0)
+    return "".join(c if " " <= c <= "~" else "." for c in text)
+
+
+def disk_directory(path: pathlib.Path) -> list[dict]:
+    """Every used directory entry of a disk image: the raw name in hex, as
+    shown, its type, its size and whether it was closed."""
+    return [{"name": e.name.hex(), "shown": e.display_name, "type": e.type_name,
+             "blocks": e.block_count, "closed": e.is_closed}
+            for e in D64.open(str(path)).iter_directory() if not e.is_empty]
+
+
+def directory_change(before: list[dict], after: list[dict]) -> dict:
+    """The entries AFTER has that BEFORE had not, the ones it lost, and the
+    ones kept under the same name with another size, type or closed state."""
+    was = {e["name"]: e for e in before}
+    now = {e["name"]: e for e in after}
+    return {"added": [e["shown"] for n, e in now.items() if n not in was],
+            "gone": [e["shown"] for n, e in was.items() if n not in now],
+            "changed": [e["shown"] for n, e in now.items()
+                        if n in was and was[n] != e]}
+
+
 def item_entries(rows: list[str]) -> list[dict]:
     """The item list's rows: readied or not, the rest of the row, and whether
     Detect Magic marked it."""
@@ -1609,13 +1690,37 @@ class PoolRun:
         return out
 
     # -- the steps ---------------------------------------------------------------
+    #: True from a `load_party` until `enter_world`: the party menu is up.
+    at_menu = False
+    #: The save disk's directory as last read, which each `remove` is diffed
+    #: against; `at_party_menu` reads it first.
+    directory: list[dict] | None = None
+    #: How many `remove` steps have run, which names each kept disk.
+    removes = 0
+
     def load(self) -> dict:
+        self.load_party()
+        return self.enter_world()
+
+    def load_party(self) -> dict:
+        """Boot and `LOAD SAVED GAME`, stopping on the party menu."""
         if not self.sess.boot():
             raise StepFailed(self.sess.boot_failure or "boot failed")
         if not self.sess.load_save():
             raise self.fail("load", "the game did not load the save")
+        return self.at_party_menu()
+
+    def at_party_menu(self) -> dict:
+        self.at_menu = True
+        self.directory = disk_directory(pathlib.Path(self.sess.save_disk))
+        self.capture("party-menu")
+        return {"at": "party menu", "directory": self.directory}
+
+    def enter_world(self) -> dict:
+        """`BEGIN ADVENTURING` from the party menu, then arm the checkpoints."""
         if not self.sess.begin_adventuring():
             raise self.fail("begin", "BEGIN ADVENTURING never reached the world")
+        self.at_menu = False
         self.sess.settle(3)
         with self.sess.mon(10) as m:
             for name, addr in self.points.items():
@@ -1625,6 +1730,123 @@ class PoolRun:
         self.capture("world")
         return {"position": self.position(),
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
+
+    # -- `remove`: the party menu's REMOVE CHARACTER FROM PARTY -------------------
+    def _remove_index(self, who: str, listed: list[str]) -> int:
+        """Which list row WHO is: a number counts from 1, a name must be the
+        whole name the row draws."""
+        if who.isdigit():
+            index = int(who) - 1
+            if 0 <= index < len(listed):
+                return index
+        else:
+            wanted = (who.upper(), screens.as_drawn(who).upper())
+            for index, row in enumerate(listed):
+                if listed_name(row).upper() in wanted:
+                    return index
+        raise self.fail("remove", f"{who} is not on the remove list: {listed}")
+
+    def answer_no(self) -> None:
+        """NO on a `YES NO` bar, which is how `MAKE SAVE GAME DISK` is
+        declined; YES would format the disk in the drive."""
+        if not self.sess.select_bar("NO", timeout=self.budget(20, "NO")):
+            raise self.fail("remove", f"NO could not be chosen on {self.bar().strip()!r}")
+
+    def drive_error(self) -> dict:
+        """The 1541's error-message buffer, what its command channel would
+        send, read out of the drive's own memory so the game is not disturbed."""
+        from tools.curse_of_the_azure_bonds import curseload
+
+        try:
+            with self.sess.mon(5) as m:
+                raw = bytes(curseload.drive_read(m, *curseload.DRIVE_ERROR_BUFFER))
+                m.resume()
+        except Exception as e:                      # noqa: BLE001
+            return {"error": f"{type(e).__name__}: {e}"}
+        return {"text": drive_message(raw), "bytes": raw.hex(" ")}
+
+    def keep_save_disk(self, name: str) -> dict:
+        """The save disk copied out once its files are closed.
+
+        After a party-menu write VICE can hold the directory track back until
+        the image is attached again, so one refusal is followed by an attach of
+        the same image and a second, longer try.  A disk that still has an open
+        file after that is kept as it stands, because an unclosed entry is
+        what a failed write leaves.
+        """
+        disk = pathlib.Path(self.sess.save_disk)
+        kept = self.out / name
+        try:
+            S.copy_closed_disk(disk, kept, attempts=10, backoff=1.0)
+            return {"kept": str(kept), "reattached": False, "closed": True}
+        except RuntimeError as e:
+            self.log.emit("remove-copy-refused", why=str(e))
+        self.sess.attach(str(disk))
+        try:
+            S.copy_closed_disk(disk, kept, attempts=30, backoff=1.0)
+            return {"kept": str(kept), "reattached": True, "closed": True}
+        except RuntimeError as e:
+            kept.write_bytes(disk.read_bytes())
+            return {"kept": str(kept), "reattached": True, "closed": False,
+                    "unclosed": str(e)}
+
+    def remove(self, who: str) -> dict:
+        """`REMOVE CHARACTER FROM PARTY`, WHO, `EXIT`, then the disk."""
+        if not self.at_menu:
+            raise self.fail("remove", "remove runs on the party menu, straight after load")
+        self.removes += 1
+        tag = f"remove-{self.removes}"
+        if not self.sess.select_row(REMOVE_ROW, timeout=self.budget(30, REMOVE_ROW)):
+            raise self.fail("remove", f"{REMOVE_ROW} could not be chosen")
+        rows = self.wait_rows(lambda r: remove_list(r) is not None,
+                              self.budget(30, "the remove list"), "the remove list")
+        if rows is None:
+            raise self.fail("remove", "the remove list never came up")
+        self.capture(f"{tag}-list", rows)
+        listed = remove_list(rows)
+        row = listed[self._remove_index(who, listed)]
+        if not self.sess.select_row(row, timeout=self.budget(30, row)):
+            raise self.fail("remove", f"the highlight would not go onto {row}")
+
+        def shorter(r):
+            now = remove_list(r)
+            return now is not None and len(now) == len(listed) - 1
+
+        rows = self.wait_rows(lambda r: MAKE_SAVE_DISK in r[24] or shorter(r),
+                              self.budget(REMOVE_WAIT, "the removal"), "the removal")
+        if rows is None:
+            raise self.fail("remove", f"the list still offered {listed_name(row)} "
+                                      f"after {REMOVE_WAIT} s")
+        refused = drive = None
+        if MAKE_SAVE_DISK in rows[24]:
+            refused = rows[24].strip()
+            self.capture(f"{tag}-refused", rows)
+            drive = self.drive_error()
+            self.log.emit("remove-refused", bar=refused, drive_error=drive)
+            self.answer_no()
+            rows = self.wait_rows(
+                lambda r: MAKE_SAVE_DISK not in r[24]
+                and (remove_list(r) is not None or _has(r, PARTY_MENU)),
+                self.budget(60, "the list after NO"), "the list after NO")
+            if rows is None:
+                raise self.fail("remove", f"nothing came back after NO on {refused!r}")
+        self.capture(f"{tag}-done", rows)
+        left = remove_list(rows)
+        if left is not None and not self.sess.select_row(
+                "EXIT", timeout=self.budget(30, "EXIT")):
+            raise self.fail("remove", "EXIT could not be chosen on the remove list")
+        if self.wait_rows(lambda r: _has(r, PARTY_MENU),
+                          self.budget(60, "the party menu"), "the party menu") is None:
+            raise self.fail("remove", "the party menu never came back after the list")
+        if drive is None:
+            drive = self.drive_error()
+        disk = self.keep_save_disk(f"removed-{self.removes}.D64")
+        directory = disk_directory(pathlib.Path(disk["kept"]))
+        change = directory_change(self.directory or [], directory)
+        self.directory = directory
+        return {"who": who, "row": row, "listed": listed, "left": left,
+                "refused": refused, "drive_error": drive, **disk,
+                "directory": directory, **change}
 
     # -- `--read-at`: stop at a PC, read memory, resume --------------------------
     def arm_read_at(self) -> None:
@@ -4306,7 +4528,7 @@ class CurseRun(PoolRun):
         self.disks = disks
         self.staged_disk = staged_disk
 
-    def load(self) -> dict:
+    def load_party(self) -> dict:
         from tools.curse_of_the_azure_bonds import curseload
 
         if not self.sess.boot():
@@ -4317,9 +4539,24 @@ class CurseRun(PoolRun):
         if outcome != "loaded":
             raise self.fail("load", f"Curse load ended at {outcome}")
         self.sess.patch_disk_prompt()
+        return self.at_party_menu()
+
+    def answer_no(self) -> None:
+        """NO with one KERNAL Return, which this front end reads where it
+        does not read an XTEST one (`curseload.answer_yes`)."""
+        from tools.curse_of_the_azure_bonds import curseload
+
+        if not curseload.answer_yes(self.sess, "NO",
+                                    timeout=self.budget(25, "NO")):
+            raise self.fail("remove", f"NO could not be chosen on {self.bar().strip()!r}")
+
+    def enter_world(self) -> dict:
+        from tools.curse_of_the_azure_bonds import curseload
+
         addr = curseload.Addresses(self.game, self.disks)
         if not curseload.enter_world(self.sess, addr, timeout=240):
             raise self.fail("world", "Curse never reached the world bar")
+        self.at_menu = False
         curseload.clear_messages(self.sess)
         with self.sess.mon(10) as m:
             for name, point in self.points.items():
@@ -5024,16 +5261,22 @@ class SilverRun(CurseRun):
         self.disks = disks
         self.staged_disk = staged_disk
 
-    def load(self) -> dict:
+    def load_party(self) -> dict:
         from tools.secret_of_the_silver_blades import ssbsession
 
         if not self.sess.boot():
             raise StepFailed(self.sess.boot_failure or "boot failed")
         if not ssbsession.load_party(self.sess):
             raise self.fail("load", "the game did not load the party")
+        return self.at_party_menu()
+
+    def enter_world(self) -> dict:
+        from tools.secret_of_the_silver_blades import ssbsession
+
         addr = self.silver_addr = ssbsession.Addresses(self.sess.game, self.disks)
         if not ssbsession.enter_world(self.sess, addr, timeout=240):
             raise self.fail("world", "Silver Blades never reached the world")
+        self.at_menu = False
         ssbsession.clear_messages(self.sess)
         # A loaded party can arrive on the starting-treasure bar or a sheet it
         # opens, and `to_world_bar` answers neither (`curedrive._enter_silver`).
@@ -5696,16 +5939,24 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         if args.title == "curse":
             pool.probe_step = getattr(args, "probe_step", False)
             pool.joy = getattr(args, "joy", False)
+        # A `remove` runs on the party menu, so a load followed by one stops
+        # there, and the world is entered before the first other step.
+        menu_first = len(steps) > 1 and steps[1].verb == "remove"
         for step in steps:
             if clock() >= deadline:
                 raise StepFailed(f"the run's {args.max_seconds:g} seconds were "
                                  f"spent before '{step.text}'")
             log.emit("step", step=step.text)
             log.say(f"-- {step.text}")
+            entered = None
+            if step.verb not in ("load", "remove") and getattr(pool, "at_menu", False):
+                entered = pool.enter_world()
             if step.verb == "load":
                 if temple_mode and clock() >= deadline - 100:
                     raise StepFailed("temple input deadline before boot")
-                got = pool.load()
+                got = pool.load_party() if menu_first else pool.load()
+            elif step.verb == "remove":
+                got = pool.remove(step.arg)
             elif step.verb == "camp-list":
                 got = pool.camp_list(step.arg)
             elif step.verb == "items":
@@ -5741,6 +5992,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.save(staged)
             got = {"step": step.text, "verb": step.verb, **got,
                    "after": pool.reading()}
+            if entered is not None:
+                got["entered_world"] = entered
             summary["results"].append(got)
             log.emit("done", **got)
             write_summary()

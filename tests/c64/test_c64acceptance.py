@@ -10207,3 +10207,218 @@ def test_stage_var_reaches_the_staged_disk_through_the_command_line(
     summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
     assert summary["staged"]["variables"][0]["offset"] == 0x107
     assert _payload(out / "staged.D64")[0x107] == 1
+
+
+# --- remove: the party menu's REMOVE CHARACTER FROM PARTY ----------------------
+#
+# The screens are composed from the Pool of Radiance captures kept under
+# `cited/258/run3` (the list is the panel with `EXIT` under it, `REMOVE
+# CHARACTER ?` on row 24, a blank row 24 while the member is written out) and
+# `cited/439/readd1` (`MAKE SAVE GAME DISK ? YES NO` when the write is refused).
+
+_PANEL = ["BRUTUS                           9 11", "MAGNUS                           9 9",
+          "SILAS                           10 9", "ROLAND                          10 7",
+          "LADY KATHERINE                   8 5", "MALCYON                          8 4"]
+_HEAD = "NAME                            AC HP"
+_MENU_ROWS = (" CREATE NEW CHARACTER", " VIEW CHARACTER", " ADD CHARACTER TO PARTY",
+              " REMOVE CHARACTER FROM PARTY", " SAVE CURRENT GAME",
+              " BEGIN ADVENTURING")
+
+
+def _party_menu(panel):
+    lines = {2: _HEAD, **{4 + i: name for i, name in enumerate(panel)}}
+    lines.update({13 + i: row for i, row in enumerate(_MENU_ROWS)})
+    return _window(lines)
+
+
+def _remove_screen(panel, bar="REMOVE CHARACTER ?"):
+    lines = {2: _HEAD, **{4 + i: name for i, name in enumerate(panel)}}
+    lines[4 + len(panel)] = "EXIT"
+    return _window(lines, bar)
+
+
+class _RemoveSession(FakeSession):
+    """`FakeSession` whose AUTO states give way to the next on their own after
+    one read, as the game's list does once the drive has finished, writing
+    WRITES' file to the save disk as it does."""
+
+    def __init__(self, screens, moves, start, disk, auto=(), writes=()):
+        super().__init__(screens, moves, start)
+        self.save_disk = str(disk)
+        self.auto, self.writes = dict(auto), dict(writes)
+
+    def screen(self):
+        shown = FakeScreen(self.screens[self.state])
+        if self.state in self.auto:
+            self.state = self.auto[self.state]
+            if self.state in self.writes:
+                image = D64.open(self.save_disk)
+                image.write_file(self.writes[self.state], b"\x00\x6b" + bytes(580))
+                image.save(self.save_disk)
+        return shown
+
+
+def _remove_run(tmp_path, monkeypatch, sess):
+    monkeypatch.setattr(A.time, "sleep", lambda s: None)
+    run, log = _pool_run(tmp_path, sess)
+    run.drive_error = lambda: {"text": "00, OK,00,00"}
+    run.at_menu = True
+    run.directory = A.disk_directory(pathlib.Path(sess.save_disk))
+    return run, log
+
+
+def test_the_remove_step_parses_after_load_or_another_remove():
+    steps = A.parse_steps(["load", "remove 3", "remove J,R",
+                           "remove LADY KATHERINE", "view 1"])
+    assert [(s.verb, s.arg) for s in steps][1:4] == [
+        ("remove", "3"), ("remove", "J,R"), ("remove", "LADY KATHERINE")]
+
+
+@pytest.mark.parametrize("steps", [
+    ["load", "remove"],                   # whom?
+    ["load", "remove 0"],                 # panel numbers count from 1
+    ["load", "remove 9"],                 # and stop at eight
+    ["load", "view 1", "remove 2"],       # the party menu is behind the world
+])
+def test_a_remove_the_party_menu_cannot_take_is_refused(steps):
+    with pytest.raises(ValueError):
+        A.parse_steps(steps)
+
+
+def test_the_remove_list_is_read_under_the_heading_down_to_exit():
+    assert A.remove_list(_remove_screen(_PANEL)) == _PANEL
+    assert A.remove_list(_remove_screen(_PANEL[:2], A.REMOVE_ROW)) == _PANEL[:2]
+    assert A.listed_name(_PANEL[4]) == "LADY KATHERINE"
+    # The menu offers the same words; the drive writing leaves row 24 blank.
+    assert A.remove_list(_party_menu(_PANEL)) is None
+    assert A.remove_list(_remove_screen(_PANEL, "")) is None
+
+
+def test_remove_picks_the_numbered_row_waits_for_the_write_and_keeps_the_disk(
+        tmp_path, monkeypatch):
+    disk = _fixture_disk(tmp_path)
+    left = _PANEL[:2] + _PANEL[3:]
+    screens = {"menu": _party_menu(_PANEL), "list": _remove_screen(_PANEL),
+               "writing": _remove_screen(_PANEL, ""), "shorter": _remove_screen(left),
+               "back": _party_menu(left)}
+    moves = {("menu", ("row", A.REMOVE_ROW)): "list",
+             ("list", ("row", _PANEL[2])): "writing",
+             ("shorter", ("row", "EXIT")): "back"}
+    sess = _RemoveSession(screens, moves, "menu", disk, auto={"writing": "shorter"},
+                          writes={"shorter": b"\x01SILAS"})
+    run, log = _remove_run(tmp_path, monkeypatch, sess)
+    got = run.remove("3")
+    log.close()
+    assert sess.sent == [("row", A.REMOVE_ROW), ("row", _PANEL[2]), ("row", "EXIT")]
+    assert got["row"] == _PANEL[2] and got["left"] == left
+    assert got["refused"] is None
+    assert got["added"] == ["\\x01SILAS"] and got["gone"] == []
+    assert got["closed"] and not got["reattached"]
+    assert pathlib.Path(got["kept"]).name == "removed-1.D64"
+    assert D64.open(got["kept"]).find(b"\x01SILAS") is not None
+    assert got["drive_error"] == {"text": "00, OK,00,00"}
+    assert run.at_menu and sess.state == "back"
+
+
+def test_remove_finds_a_member_by_the_whole_name_the_row_draws(tmp_path, monkeypatch):
+    disk = _fixture_disk(tmp_path)
+    left = _PANEL[:4] + _PANEL[5:]
+    screens = {"menu": _party_menu(_PANEL), "list": _remove_screen(_PANEL),
+               "shorter": _remove_screen(left), "back": _party_menu(left)}
+    moves = {("menu", ("row", A.REMOVE_ROW)): "list",
+             ("list", ("row", _PANEL[4])): "shorter",
+             ("shorter", ("row", "EXIT")): "back",
+             ("back", ("row", A.REMOVE_ROW)): "shorter"}
+    sess = _RemoveSession(screens, moves, "menu", disk)
+    run, log = _remove_run(tmp_path, monkeypatch, sess)
+    assert run.remove("LADY KATHERINE")["row"] == _PANEL[4]
+    with pytest.raises(A.StepFailed):
+        run.remove("LADY")              # not a whole name
+    log.close()
+
+
+def test_a_refused_write_is_answered_no_and_kept(tmp_path, monkeypatch):
+    disk = _fixture_disk(tmp_path)
+    asked = A.MAKE_SAVE_DISK + " ? YES NO"
+    screens = {"menu": _party_menu(_PANEL), "list": _remove_screen(_PANEL),
+               "asked": _remove_screen(_PANEL, asked), "back": _party_menu(_PANEL)}
+    moves = {("menu", ("row", A.REMOVE_ROW)): "list",
+             ("list", ("row", _PANEL[0])): "asked",
+             ("asked", ("bar", "NO")): "list",
+             ("list", ("row", "EXIT")): "back"}
+    sess = _RemoveSession(screens, moves, "menu", disk)
+    run, log = _remove_run(tmp_path, monkeypatch, sess)
+    got = run.remove("1")
+    log.close()
+    assert ("bar", "YES") not in sess.sent
+    assert sess.sent[2:] == [("bar", "NO"), ("row", "EXIT")]
+    assert got["refused"] == asked and got["left"] == _PANEL
+    assert got["added"] == got["gone"] == got["changed"] == []
+
+
+def test_the_drive_message_is_cut_where_the_stale_tail_of_an_older_one_begins():
+    # The buffer a Curse remove left: `00, OK` over the end of `FILES SCRATCHED`.
+    raw = b"00, OK,00,00RATCHED,00,000" + bytes(11) + b"w\x00\x02"
+    assert A.drive_message(raw) == "00, OK,00,00"
+    assert A.drive_message(b"26,WRITE PROTECT ON,18,00\r") == "26,WRITE PROTECT ON,18,00"
+    assert A.drive_message(bytes(4)) == "...."
+
+
+def test_a_disk_still_open_after_a_menu_write_is_attached_again_before_the_copy(
+        tmp_path, monkeypatch):
+    sess = _RemoveSession({"w": _window({})}, {}, "w", _fixture_disk(tmp_path))
+    run, log = _remove_run(tmp_path, monkeypatch, sess)
+    tries = []
+
+    def copy(src, dest, **kw):
+        tries.append(len(sess.attaches))
+        if not sess.attaches:
+            raise RuntimeError("open directory entry 'SAVEAZURE'")
+        pathlib.Path(dest).write_bytes(pathlib.Path(src).read_bytes())
+
+    monkeypatch.setattr(A.S, "copy_closed_disk", copy)
+    got = run.keep_save_disk("removed-1.D64")
+    log.close()
+    assert tries == [0, 1] and sess.attaches == [sess.save_disk]
+    assert got["reattached"] and got["closed"]
+
+
+def test_a_load_followed_by_remove_stops_on_the_party_menu_until_another_step(
+        tmp_path, monkeypatch):
+    calls = []
+
+    class Menu(_Pool):
+        at_menu = False
+
+        def load(self):
+            calls.append("load")
+            return {}
+
+        def load_party(self):
+            calls.append("load_party")
+            self.at_menu = True
+            return {"at": "party menu"}
+
+        def remove(self, who):
+            calls.append(f"remove {who}")
+            return {"who": who}
+
+        def enter_world(self):
+            calls.append("enter_world")
+            self.at_menu = False
+            return {"position": [1, 2, 3]}
+
+        def view(self, who):
+            calls.append(f"view {who}")
+            return {}
+
+    rc, _, out = _drive(tmp_path, monkeypatch,
+                        ["load", "remove 2", "remove 1", "view 1"], pool=Menu)
+    assert rc == 0
+    assert calls == ["load_party", "remove 2", "remove 1", "enter_world", "view 1"]
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert summary["results"][-1]["entered_world"] == {"position": [1, 2, 3]}
+    calls.clear()
+    (tmp_path / "plain").mkdir()
+    _drive(tmp_path / "plain", monkeypatch, ["load", "view 1"], pool=Menu)
+    assert calls == ["load", "view 1"]
