@@ -2129,13 +2129,24 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         # A raised character's marker, derived because the C64 sets `0x0A3`
         # to 2 only in Animate Dead (`$6BA3`) and nothing clears it, so a
         # living Pool character with 2 there was raised by it.  It is the
-        # trait slot Animate Dead scans for from 9 down and an owned row.
+        # trait slot Animate Dead scans for from 9 down and an owned row.  A
+        # hand-edited turn_class 2 on a living Pool character gets it too,
+        # which is intended: the byte is all the writer has to go on.
         marker_wanted = bool(
             animate_dead_marker_due
             and ANIMATE_DEAD_ID not in innate_ids
             and ANIMATE_DEAD_ID not in granted_ids)
         if marker_wanted:
-            granted_ids.append(ANIMATE_DEAD_ID)
+            # Not counted with the granted ids: it was never in the source, so
+            # a full set of slots is no loss of the character's own effects.
+            if (sum(1 for b in slots if b == 0)
+                    > len(granted_ids)):
+                granted_ids.append(ANIMATE_DEAD_ID)
+            else:
+                marker_wanted = False
+                rep.warnings.append(
+                    f"effect {ANIMATE_DEAD_ID}: the marker derived from "
+                    "turn_class 2 did not fit, all ten trait slots are taken")
         free = [i for i in range(9, -1, -1) if slots[i] == 0]
         if len(innate_ids) > 10 or len(granted_ids) > len(free):
             rep.losses.append(
@@ -2148,7 +2159,19 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         if marker_wanted and ANIMATE_DEAD_ID in slots:
             marker_row = (effects.free_slot(payload)
                           if payload is not None else None)
-            if marker_row is not None:
+            if marker_row is None:
+                # The trait slot alone is a state the game itself leaves
+                # (a camp Dispel removes the row and not the slot), and the
+                # temple keys on the slot, so it is written and only the row
+                # is reported lost.
+                rep.lost(
+                    f"effect {ANIMATE_DEAD_ID}, which never expires: "
+                    + ("with no save payload to hold its row, the derived "
+                       "Animate Dead row is not written" if payload is None
+                       else "no free slot in the save's shared effect "
+                       "arrays, so the derived Animate Dead row is not "
+                       "written"))
+            else:
                 # Magnitude 5 is a chosen value: DOS and the Amiga keep no
                 # caster level without a node, and the native raised saves
                 # show a memorised cast's 5.  Only a camp Dispel Magic on him
@@ -3917,6 +3940,12 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
 
     out.set("attack_forms", rec.get_raw("attack_forms"),
             origin("attack_forms"), grade("attack_forms"))
+    if (animate_dead_residue and not running_marker_row
+            and list(rec.get_raw("item_effects")).count(ANIMATE_DEAD_ID) > 1):
+        # A character raised twice holds two; the writer derives one.
+        out.warnings.append(
+            "effect 32: a second trait slot holding Animate Dead's marker "
+            "is not reproduced, the writer derives one")
     slot_ids = [b for b in rec.get_raw("item_effects") if b
                 and not ((zombie_node_converted
                           or (animate_dead_residue
