@@ -1116,10 +1116,10 @@ def test_a_later_title_caster_level_effect_becomes_id_and_level(title, eid):
     assert effects.c64_row(title, node) == (eid, 10)
 
 
-def test_silver_blades_has_one_caster_level_id_curse_lacks():
+def test_silver_blades_has_two_caster_level_ids_curse_lacks():
     curse = effects.LATER_CASTER_LEVEL_IDS["curse-of-the-azure-bonds"]
     blades = effects.LATER_CASTER_LEVEL_IDS["secret-of-the-silver-blades"]
-    assert blades - curse == {57} and curse < blades
+    assert blades - curse == {13, 57} and curse < blades
 
 
 _ALL = ("pool-of-radiance", "curse-of-the-azure-bonds",
@@ -1511,10 +1511,11 @@ def test_id_113_is_a_silver_blades_id_only(title):
         113, 10, 0x79, 1)), effects.Unconverted)
 
 
-@pytest.mark.parametrize("title", _ALL)
+@pytest.mark.parametrize("title", _ALL[:2])
 def test_id_13_stays_refused_and_the_reason_says_no_dos_engine_writes_it(title):
-    """DOS Reduce removes id 12 and writes no id-13 node, in any title, so no
-    save a game wrote reaches this refusal (`docs/226`)."""
+    """DOS Reduce removes id 12 and writes no id-13 node, so no save a game
+    wrote reaches this refusal; Silver Blades converts it as Barkskin
+    (`docs/226`)."""
     got = effects.c64_row(title, effects.RunningEffect(13, 2, 1, 0))
     assert isinstance(got, effects.Unconverted)
     assert got.reason == "no DOS engine writes a running id-13 node"
@@ -2318,3 +2319,17 @@ def test_other_hold_forms_are_not_the_curse_row(title, node):
 def test_only_curse_reads_a_hold_row_as_the_node(title):
     assert effects.curse_hold_record(
         title, effects.Effect(63, 52, 2, 0, 0)) is None
+
+
+@pytest.mark.parametrize("level", [1, 2, 0x7F])
+def test_a_silver_blades_barkskin_node_round_trips_through_the_c64_row(level):
+    node = effects.RunningEffect(13, 42, level, 0)
+    assert effects.c64_row(_S, node) == (13, level)
+    row = effects.Effect(63, 13, 0, 0x2A, level)
+    assert effects.dos_record(_S, row, 0) == node
+
+
+@pytest.mark.parametrize("title", [_P, _C])
+def test_a_c64_id_13_row_is_refused_outside_silver_blades(title):
+    row = effects.Effect(63, 13, 0, 0x2A, 9)
+    assert isinstance(effects.dos_record(title, row, 0), effects.Unconverted)

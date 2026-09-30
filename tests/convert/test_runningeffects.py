@@ -695,17 +695,18 @@ _AMIGA_BLESS_CASES = [
 ]
 
 
-def _amiga_bless_disk(tmp_path, title, magnitude, refuse=False):
+def _amiga_bless_disk(tmp_path, title, magnitude, refuse=False,
+                      refuse_id=13):
     """A C64 party with a 47-minute Bless staged on slot 0, as a `.d64`
     `roster.Party` can open. `refuse=True` also stages an id-13 row, no rule
-    converts, the way `test_save_as_dos_keeps_a_blessed_c64_character_blessed`
+    converts (`refuse_id`), the way `test_save_as_dos_keeps_a_blessed_c64_character_blessed`
     does. Pool uses the committed fixture; the later titles use the
     engine-resave specimen `tools/dos/acceptance.py` stages for the same run.
     `None` when the later title's specimen is not on this machine.
     """
     rows = [(0x3F, 1, 0, 0x2F, magnitude)]
     if refuse:
-        rows.append((0x3E, 13, 0, 0x2F, magnitude))
+        rows.append((0x3E, refuse_id, 0, 0x2F, magnitude))
     disk = tmp_path / f"{title}-{'refused' if refuse else 'source'}.d64"
     if title == "pool":
         payload, save1 = _fixture_payload()
@@ -780,14 +781,17 @@ def test_save_as_amiga_keeps_a_blessed_c64_character_blessed(
     assert [bytes(r)[:5] for r in running] == [
         bytes((1, 0x2F, 0x00, magnitude, 0x00))]
 
-    refused = _amiga_bless_disk(tmp_path, title, magnitude, refuse=True)
+    # Silver Blades converts id 13 as Barkskin, so its refusal uses id 55.
+    refuse_id = 55 if title == "ssb" else 13
+    refused = _amiga_bless_disk(tmp_path, title, magnitude, refuse=True,
+                                refuse_id=refuse_id)
     if refused is None:
         pytest.skip(f"needs the {title} C64 specimen")
     party = roster.Party(str(refused))
     source = party.source or convert.Source.detect(party.path)
     with pytest.raises(saveplan.DroppedFields) as err:
         saveplan.prepare_save_as(party, "amiga", tmp_path / "out2.adf", assets)
-    assert "effect 13" in str(err.value)
+    assert f"effect {refuse_id}" in str(err.value)
 
 
 # --- Detect Magic, the party-wide row -----------------------------------------
@@ -1690,7 +1694,7 @@ def test_such_a_row_reads_back_as_the_node_DOS_wrote(game, node, row):
 def test_id_13_is_still_refused_with_a_line_and_writes_no_row():
     payload = bytearray(0x1C00)
     _rec, rep = c64_codec.write(
-        _title_character(_SILVER_G, bytes((13, 10, 0, 5, 0))),
+        _title_character(_CURSE_G, bytes((13, 10, 0, 5, 0))),
         payload=payload, party_slot=2, clock_minutes=0)
     assert set(_rows(payload).values()) == {(0, 0, 0, 0)}
     lines = [d for d in rep.dropped if "effect 13" in d]

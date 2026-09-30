@@ -470,7 +470,9 @@ def test_the_later_caster_level_ids_are_the_paired_rows(later_ids):
         "secret-of-the-silver-blades":
             (1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 37, 41, 45, 46, 57, 63, 69),
     }[title]
-    assert got == tuple(sorted(effects.LATER_CASTER_LEVEL_IDS[title]))
+    # Silver Blades' id 13 is Barkskin: no DOS route writes it, so the paired
+    # rows do not list it, and the rule converts a C64 row and a node Wish wrote.
+    assert got == tuple(sorted(effects.LATER_CASTER_LEVEL_IDS[title] - {13}))
 
 
 @pytest.mark.parametrize("eid", [25, 49, 12, 14, 28, 38])
@@ -509,7 +511,7 @@ def test_the_later_title_command_prints_the_derived_ids(later_ids, capsys):
      {13, 18, 33, 49, 55, 58, 68, 73, 109, 137, 143, 144, 146}),
     ("secret-of-the-silver-blades", (56, 39), (117, 64), 51, 0,
      (5, 12, 27, 45, 107), 27, 76,
-     {13, 33, 49, 51, 55, 68, 107, 112}),
+     {33, 49, 51, 55, 68, 107, 112}),
 ])
 def test_c64_row_sweep_counts_table_candidates_and_literal_writers(
         title, camp, combat, distinct, stripped, literal_ids,
@@ -523,4 +525,5 @@ def test_c64_row_sweep_counts_table_candidates_and_literal_writers(
     assert sum(row.effect_id != 0 and row.generic_writer for row in sweep.camp_rows) == generic
     assert len(sweep.unresolved_pointer_rows) == unresolved
     assert sweep.candidate_no_dos_rule_ids == no_rule
-    assert 13 in sweep.candidate_no_dos_rule_ids
+    assert (13 in sweep.candidate_no_dos_rule_ids) == (
+        title != "secret-of-the-silver-blades")

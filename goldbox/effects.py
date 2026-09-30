@@ -325,7 +325,8 @@ LATER_CASTER_LEVEL_IDS = {
     "curse-of-the-azure-bonds": frozenset(
         {1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 37, 41, 45, 46, 63, 69}),
     "secret-of-the-silver-blades": frozenset(
-        {1, 5, 8, 9, 10, 16, 17, 19, 20, 24, 37, 41, 45, 46, 57, 63, 69}),
+        {1, 5, 8, 9, 10, 13, 16, 17, 19, 20, 24, 37, 41, 45, 46, 57, 63,
+         69}),
 }
 
 #: The ids whose ordinary cast is a combat spell in every title: the reversed
@@ -453,8 +454,12 @@ SLOWED_MAX_LEVEL = 15
 SLOWED_MAX_MINUTES = 63
 
 #: Id 13: DOS spell 13 (Reduce) removes an id-12 node and writes none, and no
-#: other DOS routine adds a running id-13 node, so `c64_row` never meets one in
-#: a save a game wrote (`docs/226`).
+#: other DOS routine adds a running id-13 node, so in Pool and Curse `c64_row`
+#: never meets one in a save a game wrote, and Curse's C64 id 13 is the engulf
+#: countdown, whose magnitude is a combatant index. Silver Blades converts it
+#: as Barkskin, a caster-level id: DOS never writes one either (its Barkskin
+#: runs Heal), but its handler matches the C64's, so a node Wish wrote must
+#: come back (`docs/226`).
 _REDUCE_ID = 13
 
 #: Silver Blades' id 113, the effect of DOS spell 59 and C64 combat spell 59 and
@@ -737,7 +742,8 @@ def _own_rule_row(title_key: str, node: RunningEffect,
     """`c64_row` for id 13, Haste, Slowed, Silver Blades' id 113, Fear, the
     flagged caster-level ids, Pool's disease chain, the zero-level ids,
     Fumble and Stinking Cloud, or `None`."""
-    if node.id == _REDUCE_ID or node.id in _UNWRITTEN_IDS.get(title_key, ()):
+    if ((node.id == _REDUCE_ID and title_key != _BLADES)
+            or node.id in _UNWRITTEN_IDS.get(title_key, ())):
         return Unconverted(f"no DOS engine writes a running id-{node.id} "
                            "node")
     if node.id in _RECORD_STATE_IDS.get(title_key, ()):
