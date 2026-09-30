@@ -527,3 +527,21 @@ def test_c64_row_sweep_counts_table_candidates_and_literal_writers(
     assert sweep.candidate_no_dos_rule_ids == no_rule
     assert (13 in sweep.candidate_no_dos_rule_ids) == (
         title == "curse-of-the-azure-bonds")
+
+
+@pytest.mark.parametrize("title, effect_id, fixed, per_level", [
+    # Pool's id-51 row has duration 0 (POOL_UNWRITTEN_ROW_IDS), and id 13 is
+    # 0 fixed and 10 per level.
+    ("pool-of-radiance", 51, 0, 0),
+    ("pool-of-radiance", 13, 0, 10),
+    # Curse's item-spell row for id 73 (spell 95) holds no duration in the
+    # table; reading the id byte as a duration would give 73.
+    ("curse-of-the-azure-bonds", 73, 0, 0),
+    ("secret-of-the-silver-blades", 73, 0, 0),
+])
+def test_combat_rows_read_their_durations_at_plus_one_and_plus_two(
+        title, effect_id, fixed, per_level):
+    rows = [row for row in cross.c64_row_sweep(title, _root(title)).combat_rows
+            if row.effect_id == effect_id]
+    assert [(row.fixed_duration, row.per_level_duration) for row in rows] == [
+        (fixed, per_level)]

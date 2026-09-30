@@ -1393,6 +1393,13 @@ at 64 through the duration units above. The magnitude is a nonzero override
 for every remaining nonzero table entry. No value or owner formula is
 assigned to those handlers.
 
+**CONFIRMED combat-row durations, read at `+1` (fixed) and `+2` (per level)
+for every title:** Pool's id-51 row (spell 27) is 0 and 0, matching the
+"duration 0" that `POOL_UNWRITTEN_ROW_IDS` records, and its id 13 row is 0 and
+10. Curse's item-spell rows for ids 73 and 109 (spells 95 and 96, handlers
+`$1DA9`, `$1DC2`) are 0 and 0 as well, so the table gives them no duration; any
+minutes they run come from those handlers, not from the row.
+
 **CONFIRMED additional writers:** All three `POST.COM` files create id 5,
 owner `$FF`, with the caller's duration and the free slot's unchanged
 magnitude (Pool `$18E3`, Curse `$18AC`, Silver Blades `$192F`). Both later
@@ -1453,6 +1460,8 @@ Curse `COMBAT $0DFC`-`$0E16` building the pointer as `$EAA7 + 9 x (spell - 1)`.
 Pool's 65 rows start at `SPELLE65 $D81B`; the two nine-byte steps after them
 are the handler table at `$DA63`, not spells. Later camp ids use the whole row
 byte: Curse camp row 39 writes 146 and row 49 writes 143, and row 51's `$80`
-reaches no row writer. Curse `COMBAT $11C4` stores the owner inside the writer
+reaches no row writer (UNVERIFIED by disassembly: the row's handlers are Curse
+`$82E9` and Silver Blades `$8337`, and neither is in `LATER_CAST_HANDLERS`).
+Curse `COMBAT $11C4` stores the owner inside the writer
 at `$11AE`; Pool `COMBAT $29F7` starts combat setup, while the combat row
 stores are at `ECL64 $9A34`-`$9A46`.

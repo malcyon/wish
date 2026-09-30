@@ -1219,8 +1219,7 @@ def _sweep_rows(title: str, camp: bytes, combat: bytes
             "combat", index + 1, address, row[effect_at] &
             (0x7F if title == "pool-of-radiance" else 0xFF),
             int.from_bytes(row[handler_at:handler_at + 2], "little"),
-            row[0 if title == "pool-of-radiance" else 4],
-            row[1 if title == "pool-of-radiance" else 5], False))
+            row[1], row[2], False))
     return tuple(camp_rows), tuple(combat_rows)
 
 
