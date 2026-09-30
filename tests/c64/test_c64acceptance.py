@@ -11366,3 +11366,297 @@ def test_the_no_disks_refusal_names_the_variable_of_the_title(
         "--title", "ssb", "--save", str(_fixture_disk(tmp_path)),
         "--steps", "load", "camp-list"])
     assert "found; pass --disks" in capsys.readouterr().err
+
+
+# --- scribe (#745) ----------------------------------------------------------------
+# The Silver Blades screens `MAGIC > SCRIBE` put up, as captured in the
+# measuring boot (`~/.cache/wish/745-c64scribe/measure1`, 09- to 14-).
+SSB_CAMP = "SAVE VIEW MAGIC REST ALTER FIX EXIT"
+_SCROLL = {2: "MORGAINE'S SCROLL SPELLS", 4: "1ST LEVEL",
+           5: "  PROTECTION FROM GOOD", 7: "6TH LEVEL", 8: "  DISINTEGRATE",
+           9: "  STONE TO FLESH"}
+SCRIBE_SCREENS = {
+    "camp": _window({}, SSB_CAMP), "magic": _window({}, MAGIC),
+    "list": _window(_SCROLL, "SCRIBE EXIT"),
+    "pick": _window({**_SCROLL, 10: "  EXIT"}, A.PICK_SCRIBE),
+    "picked": _window({**_SCROLL, 10: "  EXIT"}, A.PICK_SCRIBE),
+    "refused": _window({**_SCROLL, 10: "  EXIT", 18: "MORGAINE CAN'T SCRIBE",
+                        19: "STONE TO FLESH"}, A.PICK_SCRIBE),
+    "listexit": _window({**_SCROLL, 10: "  EXIT"}, "SCRIBE EXIT"),
+    "chosen": _window({2: "MORGAINE'S CHOSEN SPELLS", 7: "6TH LEVEL",
+                       8: "  DISINTEGRATE"}, "EXIT"),
+    "confirm": _window({2: "MORGAINE'S CHOSEN SPELLS", 7: "6TH LEVEL",
+                        8: "  DISINTEGRATE", 18: "ARE YOU SURE ABOUT",
+                        19: "YOUR CHOICE OF SPELLS?"}, "CONFIRM: OKAY  CANCEL"),
+    "magic2": _window({}, MAGIC), "camp2": _window({}, SSB_CAMP),
+}
+SCRIBE_MOVES = {
+    ("camp", ("party", 5)): "camp", ("camp", ("bar", "MAGIC")): "magic",
+    ("magic", ("bar", "SCRIBE")): "list", ("list", ("bar", "SCRIBE")): "pick",
+    ("pick", ("key", "Return")): "picked",
+    ("picked", ("key", "Return")): "listexit",
+    ("listexit", ("bar", "EXIT")): "chosen", ("chosen", ("bar", "EXIT")): "confirm",
+    ("confirm", ("bar", "OKAY")): "magic2", ("magic2", ("bar", "EXIT")): "camp2",
+}
+#: The queue count `$7D02` in each state: the pick raises it to 1.
+SCRIBED = {"picked", "listexit", "chosen", "confirm", "magic2", "camp2"}
+
+
+class _ColourScreen(FakeScreen):
+    """A screen whose list highlight is white at column 3 of row HOT, the
+    other cells green, and column 1 white on every row, as the pick prompt
+    after a refusal draws the `EXIT` row."""
+
+    def __init__(self, rows, hot):
+        super().__init__(rows)
+        self.colours = bytearray([5] * 1000)
+        for r in range(25):
+            self.colours[r * 40 + 1] = 1
+        if hot is not None:
+            self.colours[hot * 40 + 3] = 1
+
+
+class _ScribeMon:
+    def __init__(self, sess):
+        self.sess = sess
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, addr, n):
+        return self.sess.memory(addr, n)
+
+    def resume(self):
+        pass
+
+
+class _ScribeFake(_CurseFake):
+    """The scribe screens moved by keys; Down and Up move the highlight over
+    the list's entry rows on the pick prompt, and a Return there is asserted
+    to land on the row the move table expects."""
+
+    def __init__(self, moves=None, start="camp", scribed=SCRIBED, name=b"MORGAINE"):
+        super().__init__(SCRIBE_SCREENS, {**SCRIBE_MOVES, **(moves or {})}, start)
+        self.hot = 5
+        self.scribed = scribed
+        self.name = name
+        self.picked_on = None
+
+    def _entries(self):
+        rows = self.screens[self.state]
+        return [r for r in range(3, 23)
+                if rows[r][1:39].startswith("  ") and rows[r][1:39].strip()]
+
+    def _go(self, what):
+        if self.state in ("pick", "picked") and what in (("key", "Down"), ("key", "Up")):
+            self.sent.append(what)
+            rows = self._entries()
+            at = rows.index(self.hot) + (1 if what[1] == "Down" else -1)
+            self.hot = rows[max(0, min(at, len(rows) - 1))]
+            return True
+        if self.state == "pick" and what == ("key", "Return"):
+            self.picked_on = self.hot
+        if self.state == "picked" and what == ("key", "Return"):
+            assert self.hot == 10, "EXIT was chosen off the EXIT row"
+        return super()._go(what)
+
+    def screen(self):
+        hot = self.hot if self.state in ("pick", "picked", "refused") else None
+        return _ColourScreen(self.screens[self.state], hot)
+
+    def mon(self, timeout=0):
+        return _ScribeMon(self)
+
+    def memory(self, addr, n):
+        mem = {0x7C00: self.name.ljust(15, b"\0"),
+               0x7D00: bytes([1, 0, 1 if self.state in self.scribed else 0]),
+               0xA945: bytes([0x10])}
+        return mem[addr][:n]
+
+
+def _scribe_run(tmp_path, sess):
+    from goldbox import c64_port
+
+    run = A.SilverRun.__new__(A.SilverRun)
+    run.sess, run.out, run.log, run.shots = sess, tmp_path, A.Log(tmp_path), 0
+    run.game = c64_port.by_key("secret-of-the-silver-blades")
+    run.panel_index = lambda who: {"MORGAINE": 5}[who]
+    return run
+
+
+@pytest.mark.parametrize("step", ["scribe MORGAINE>PROTECTION FROM GOOD",
+                                  "scribe 6>stone to flesh"])
+def test_scribe_step_parses_who_and_the_spell(step):
+    steps = A.parse_steps(["load", step, "rest 8h", "save"])
+    who, spell = A.parse_scribe(steps[1].arg)
+    assert steps[1].verb == "scribe"
+    assert spell == spell.upper() and ">" not in who + spell
+
+
+@pytest.mark.parametrize("step", ["scribe MORGAINE", "scribe", "scribe >FOO",
+                                  "scribe MORGAINE>"])
+def test_scribe_step_without_who_and_spell_is_refused(step):
+    with pytest.raises(ValueError):
+        A.parse_steps(["load", step])
+
+
+def test_scribe_list_reads_the_spells_under_their_levels_without_the_exit_row():
+    assert A.scribe_list(SCRIBE_SCREENS["pick"]) == [
+        {"level": "1ST LEVEL", "spell": "PROTECTION FROM GOOD"},
+        {"level": "6TH LEVEL", "spell": "DISINTEGRATE"},
+        {"level": "6TH LEVEL", "spell": "STONE TO FLESH"}]
+
+
+def test_scribe_highlight_reads_the_list_column_even_when_column_one_is_white():
+    rows = SCRIBE_SCREENS["pick"]
+    assert A.scribe_highlight(_ColourScreen(rows, 10), rows) == 10
+    assert A.scribe_row(rows, "EXIT") == 10
+    assert A.scribe_highlight(_ColourScreen(rows, None), rows) is None
+
+
+def test_scribe_walks_to_the_spell_picks_it_confirms_and_ends_on_the_camp_bar(tmp_path):
+    sess = _ScribeFake()
+    run = _scribe_run(tmp_path, sess)
+    try:
+        got = run.scribe("MORGAINE>DISINTEGRATE")
+    finally:
+        run.log.close()
+    assert sess.picked_on == 8 and sess.state == "camp2"
+    assert sess.sent == [("party", 5), ("bar", "MAGIC"), ("bar", "SCRIBE"),
+                         ("bar", "SCRIBE"), ("key", "Down"), ("key", "Return"),
+                         ("key", "Down"), ("key", "Down"), ("key", "Return"),
+                         ("bar", "EXIT"), ("bar", "EXIT"), ("bar", "OKAY"),
+                         ("bar", "EXIT")]
+    assert [s["spell"] for s in got["list"]] == [
+        "PROTECTION FROM GOOD", "DISINTEGRATE", "STONE TO FLESH"]
+    assert got["chosen"] == ["DISINTEGRATE"] and got["key"] == "xtest-return"
+    assert (got["queue_before"], got["queue_after_pick"], got["queue_after"]) == (
+        [0, 0], [0, 1], [0, 1])
+    assert got["queue_entries"] == [0x10] and got["record_name"] == "MORGAINE"
+    assert run.scribing
+
+
+def test_scribe_tries_the_kernal_return_when_the_first_key_left_the_count(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "SCRIBE_PICK_SECONDS", 0.5)
+    sess = _ScribeFake({("pick", ("key", "Return")): "pick",
+                        ("pick", ("key", 0x0D)): "picked"})
+    run = _scribe_run(tmp_path, sess)
+    try:
+        got = run.scribe("MORGAINE>PROTECTION FROM GOOD")
+    finally:
+        run.log.close()
+    assert got["key"] == "kernal-return"
+    assert sess.sent[4:6] == [("key", "Return"), ("key", 0x0D)]
+
+
+def test_scribe_fails_when_no_key_raises_the_queue_count(tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "SCRIBE_PICK_SECONDS", 0.5)
+    sess = _ScribeFake({("pick", ("key", "Return")): "pick",
+                        ("pick", ("key", 0x0D)): "pick"})
+    run = _scribe_run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="raised the queue count"):
+        run.scribe("MORGAINE>PROTECTION FROM GOOD")
+    run.log.close()
+    assert not run.scribing
+    assert list(tmp_path.glob("*lost-scribe-pick.txt"))
+
+
+def test_scribe_fails_on_the_games_refusal_without_a_second_key(tmp_path):
+    sess = _ScribeFake({("pick", ("key", "Return")): "refused"})
+    run = _scribe_run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="CAN'T SCRIBE STONE TO FLESH"):
+        run.scribe("MORGAINE>STONE TO FLESH")
+    run.log.close()
+    assert sess.sent[-1] == ("key", "Return") and ("key", 0x0D) not in sess.sent
+
+
+def test_scribe_fails_when_the_count_is_zero_at_the_end(tmp_path):
+    sess = _ScribeFake(scribed={"picked", "listexit", "chosen", "confirm"})
+    run = _scribe_run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="zero at the end"):
+        run.scribe("MORGAINE>PROTECTION FROM GOOD")
+    run.log.close()
+
+
+def test_scribe_refuses_a_spell_that_is_not_on_the_scroll(tmp_path):
+    sess = _ScribeFake()
+    run = _scribe_run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="FIREBALL is not on the scroll list"):
+        run.scribe("MORGAINE>FIREBALL")
+    run.log.close()
+    assert sess.state == "list"
+
+
+def test_scribe_refuses_when_the_working_record_is_someone_else(tmp_path):
+    sess = _ScribeFake(name=b"DOMINIC")
+    run = _scribe_run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="'DOMINIC', not MORGAINE"):
+        run.scribe("MORGAINE>PROTECTION FROM GOOD")
+    run.log.close()
+    assert sess.state == "magic"
+
+
+def _camp_rest(tmp_path, monkeypatch, scribing):
+    seen = {}
+
+    def fake_rest(s, log, minutes, hours, cp):
+        seen["state"], seen["sent"] = s.state, list(s.sent)
+        return {"before": {"clock": [0, 0, 0, 4, 0, 0]},
+                "after": {"clock": [0, 0, 0, 12, 0, 0]}}
+
+    monkeypatch.setattr(A.route_pool, "rest", fake_rest)
+    sess = _RestSession({"world": _window({}, WORLD_BAR), "camp": _window({}, CAMP)},
+                        {("camp", ("bar", "EXIT")): "world",
+                         ("world", ("bar", "ENCAMP")): "camp"}, "camp")
+    sess.squares = [[3, 4, 2], [3, 4, 2]]
+    run, log = _pool_run(tmp_path, sess)
+    run.scribing = scribing
+    try:
+        got = run.rest("8h")
+    finally:
+        log.close()
+    return got, seen, run
+
+
+def test_rest_after_a_scribe_rests_in_the_same_camp(tmp_path, monkeypatch):
+    got, seen, run = _camp_rest(tmp_path, monkeypatch, scribing=True)
+    assert seen == {"state": "camp", "sent": []}
+    assert got["stayed_in_camp"] is True and got["rest_completed"] is True
+    assert not run.scribing
+
+
+def test_rest_without_a_scribe_still_leaves_camp_first(tmp_path, monkeypatch):
+    got, seen, _ = _camp_rest(tmp_path, monkeypatch, scribing=False)
+    assert seen["sent"] == [("bar", "EXIT"), ("bar", "ENCAMP")]
+    assert "stayed_in_camp" not in got
+
+
+class _LaterItemsFake(_CurseFake):
+    def wait_bar(self, word, timeout=0):
+        return word in self.screens[self.state][24]
+
+
+def test_later_title_items_leave_the_list_and_the_sheet_for_the_world(tmp_path):
+    screens = {
+        "camp": _window({}, SSB_CAMP), "world": _window({}, WORLD_BAR),
+        "sheet": _window({1: "MORGAINE           STATUS OK"}, "ITEMS EXIT"),
+        "items": _window({1: "MORGAINE", 5: " NO  MAGE SCROLL 3 SPELLS"},
+                         "READY USE TRADE DROP HALVE JOIN EXIT"),
+    }
+    moves = {("camp", ("party", 5)): "camp", ("camp", ("bar", "VIEW")): "sheet",
+             ("sheet", ("bar", "ITEMS")): "items", ("items", ("bar", "EXIT")): "sheet",
+             ("sheet", ("bar", "EXIT")): "camp", ("camp", ("bar", "EXIT")): "world"}
+    sess = _LaterItemsFake(screens, moves, "camp")
+    run = _scribe_run(tmp_path, sess)
+    run.panel = ["GUY DE VALOIS", "PAINE", "EPONA", "MALACHITE", "DOMINIC", "MORGAINE"]
+    try:
+        got = run.items("MORGAINE")
+    finally:
+        run.log.close()
+    assert [e["row"] for e in got["entries"]] == ["NO  MAGE SCROLL 3 SPELLS"]
+    assert sess.state == "world"
+    assert not list(tmp_path.glob("*lost-world-route.txt"))
