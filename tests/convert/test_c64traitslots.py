@@ -30,7 +30,7 @@ from __future__ import annotations
 import pytest
 from gamedata import needs_specimens, specimen, specimen_root
 
-from goldbox import c64_codec, dos_codec, dos_port, neutral
+from goldbox import c64_codec, dos_codec, dos_port, effects, neutral
 
 CURSE = dos_port.CURSE_OF_THE_AZURE_BONDS
 POOL = dos_port.POOL_OF_RADIANCE
@@ -145,9 +145,12 @@ def test_a_grant_with_no_free_slot_left_is_dropped_silently_too():
 def _permanent_ids(char: dos_codec.DosCharacter) -> list[int]:
     """The effect ids the engine's expiry pass never removes -- duration zero
     at bytes 1-2, `docs/162-spc-permanence.md`.  A running spell counting down
-    is deliberately not converted and is not one of these."""
+    is deliberately not converted and is not one of these, and neither is
+    Curse's never-ending hold node, which crosses as a C64 effect row rather
+    than as a trait slot (`effects.curse_hold_row`)."""
     return [e[0] for e in char.effects
-            if int.from_bytes(e[1:3], "little") == 0]
+            if int.from_bytes(e[1:3], "little") == 0
+            and effects.curse_hold_row(char.deltas.key, bytes(e)) is None]
 
 
 def _has_c64_port(char: dos_codec.DosCharacter) -> bool:
