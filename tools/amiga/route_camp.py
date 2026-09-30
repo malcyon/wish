@@ -159,8 +159,8 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX) -> None
         if not any(t.split()[0] in ("view", "heal") for t in tokens[last_rest + 1:]):
             raise RouteError(
                 f"rests totalling {CLOCK_BLIND_REST} minutes or more need a view or heal "
-                f"after them: the clock cannot prove such a rest, so the run needs a sheet "
-                f"to show it")
+                f"after the last rest: the clock cannot prove such a rest, so the run needs "
+                f"a sheet to show it")
 
 
 def normalise(tokens: tuple[str, ...]) -> tuple[str, ...]:

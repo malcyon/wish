@@ -746,13 +746,13 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                             if path not in writable))
                     result["control_clock_matches"] = control.get("clock") == manifest["clock_a"]
                     rested = route_camp.rest_minutes(tuple(manifest.get("camp", ())))
+                    # A rest of r leaves the clock at r plus a short walk, modulo a day, so this
+                    # stays necessary when the rest is too long for the clock to prove it.
+                    result["after_clock_advanced"] = _clock_advanced(
+                        manifest["clock_a"], after.get("clock"), rested)
                     if rested >= route_camp.CLOCK_BLIND_REST:
-                        # The saved clock has no day, so it cannot say the rest happened.
                         result["clock_check"] = CLOCK_UNPROVABLE
-                        result["after_clock_advanced"] = None
                     else:
-                        result["after_clock_advanced"] = _clock_advanced(
-                            manifest["clock_a"], after.get("clock"), rested)
                         result["clock_check"] = ("advanced" if result["after_clock_advanced"]
                                                  else "not advanced")
         except BaseException as exc:
@@ -787,14 +787,21 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
     if manifest.get("mode") == "published_disk_one":
         rest = bool(rest and result.get("published_files_preserved")
                     and result.get("control_clock_matches")
-                    and (result.get("after_clock_advanced")
-                         or result.get("clock_check") == CLOCK_UNPROVABLE))
+                    and result.get("after_clock_advanced"))
     if "camp" in manifest:
         sheets = result.get("camp_sheets", [])
         result["read"]["verdicts"].extend(_camp_verdicts(sheets))
         # A sheet with neither bar is a member with no HEAL to show, such as a ranger; a
         # `heal` step's own sheets are states that must match, so HEAL is never read that way.
         rest = bool(rest and all(entry["identity_checked"] for entry in sheets))
+        if result.get("clock_check") == CLOCK_UNPROVABLE:
+            # The clock only rules a rest out, so a sheet after the last rest must show it.
+            shown = len(sheets) - result.get("sheets_before_last_rest", len(sheets))
+            result["read"]["verdicts"].append(
+                "the clock cannot prove this rest; " + (
+                    f"{shown} sheet(s) recorded after the last rest" if shown > 0
+                    else "no sheet was recorded after the last rest, so the rest is unproven"))
+            rest = bool(rest and shown > 0)
     d_ok = bool(result.get("walk", {}).get("d_ok"))
     result["success"] = rest and d_ok
     walk = result.get("walk", {})
@@ -1725,6 +1732,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             # Leaving the credits with ESC can land on the party menu, which `P` opens.
             skip_first = landed["state"] == "party_menu" and steps[0][1] == "party_menu"
             previous_world = ""
+            previous_state = ""
             for n, (key, state, kind) in enumerate(steps, 1):
                 if n == 1 and skip_first:
                     result["events"].append({"skipped": key, "step": n})
@@ -1743,6 +1751,11 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     first_wait = min_waits.get(state, 0)
                 digest = reach(state, name, first_wait,
                                strict=not accept or state in strict_states)
+                if (key, state, previous_state) == (
+                        route_camp.REST_GO, route_camp.CAMP, route_camp.REST_MENU):
+                    # A sheet counts as showing a rest's result only if it comes after it.
+                    result["sheets_before_last_rest"] = len(result.get("camp_sheets", []))
+                previous_state = state
                 if kind == "move":
                     # Evidence only: the two saves judge the walk, never the picture.
                     result["events"][-1]["crop_changed"] = digest != previous_world

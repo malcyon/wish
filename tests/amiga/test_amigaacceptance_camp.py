@@ -49,7 +49,7 @@ def test_camp_steps_parse(text, tokens):
     ("view 3", "sheets for lines 1 to 2 only"),
     ("view 0", "sheets for lines 1 to 2 only"),
     ("rest 1d", "need a view or heal"),
-    ("rest 1d;rest 1h", "need a view or heal"),
+    ("rest 1d;rest 1h", "after the last rest"),
     ("view;rest 22h", "need a view or heal"),
     ("heal;heal", "second heal needs a rest"),
     ("heal;view;heal", "second heal needs a rest"),
@@ -295,19 +295,35 @@ def test_a_camp_run_fails_when_the_clock_did_not_move_by_the_rest(tmp_path, cloc
     assert result["success"] is False
 
 
-@pytest.mark.parametrize("rest,clock_f,check", [
-    ("rest 1d", "04:20", foundation.CLOCK_UNPROVABLE),
-    ("rest 22h", "04:20", foundation.CLOCK_UNPROVABLE),
-    ("rest 1h", "05:22", "advanced"),
-    ("rest 1h", "04:22", "not advanced"),
+@pytest.mark.parametrize("steps,clock_f,check,success", [
+    # Before 04:20; a rest of r shows as r plus the 2 minutes the walk takes, modulo a day.
+    (("heal", "rest 1315m", "view"), "02:17", "advanced", True),
+    (("heal", "rest 1320m", "view"), "02:22", foundation.CLOCK_UNPROVABLE, True),
+    (("heal", "rest 1d", "view"), "04:22", foundation.CLOCK_UNPROVABLE, True),
+    (("rest 11h", "rest 11h", "view"), "02:22", foundation.CLOCK_UNPROVABLE, True),
+    (("heal", "rest 1h", "view"), "05:22", "advanced", True),
+    (("heal", "rest 1h", "view"), "04:22", "not advanced", False),
+    # The clock still rules out a rest that cannot have happened.
+    (("heal", "rest 1d", "view"), "04:20", foundation.CLOCK_UNPROVABLE, False),
+    (("heal", "rest 1d", "view"), "garbage", foundation.CLOCK_UNPROVABLE, False),
+    (("heal", "rest 1d", "view"), None, foundation.CLOCK_UNPROVABLE, False),
 ])
-def test_a_rest_the_clock_cannot_see_is_recorded_as_unprovable(
-        tmp_path, clock, monkeypatch, rest, clock_f, check):
-    _, result = _camp_run(tmp_path, clock, monkeypatch, clock_f=clock_f,
-                          steps=("heal", rest, "view"))
+def test_a_rest_the_clock_cannot_prove_still_needs_a_clock_it_could_have_made(
+        tmp_path, clock, monkeypatch, steps, clock_f, check, success):
+    _, result = _camp_run(tmp_path, clock, monkeypatch, clock_f=clock_f, steps=steps)
     assert result["clock_check"] == check
-    unproven = check == foundation.CLOCK_UNPROVABLE
-    assert result["after_clock_advanced"] is (None if unproven else check == "advanced")
+    assert result["success"] is success
+
+
+def test_an_unprovable_rest_fails_the_run_when_no_sheet_follows_it(tmp_path, clock, monkeypatch):
+    monkeypatch.setattr(route_camp, "validate_steps", lambda *_, **__: None)
+    _, result = _camp_run(tmp_path, clock, monkeypatch, clock_f="04:22",
+                          steps=("view", "rest 1d"))
+    assert result["clock_check"] == foundation.CLOCK_UNPROVABLE
+    assert result["after_clock_advanced"] is True
+    assert result["success"] is False
+    assert any("no sheet was recorded after the last rest" in line
+               for line in result["read"]["verdicts"])
 
 
 def test_a_camp_sheet_with_no_identity_rule_fails_the_run(tmp_path, clock, monkeypatch):
