@@ -1200,9 +1200,13 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
             Confidence.CONFIRMED)
     running = [e for e in recut if int.from_bytes(e[1:3], "little") != 0
               and e[0] != LAY_ON_HANDS_AMIGA_ID]
-    if deltas is SILVER_BLADES_DELTAS:
-        # Only this converter writes the node with the flag off
-        # (:data:`SILVER_BLADES_SLOW_POISON_COMPANION`), so it is DOS's own.
+    if deltas.key == SILVER_BLADES_DELTAS.key:
+        # The Amiga's own Slow Poison cast writes this node with flag 1
+        # (`/Secret 0x34898`, CONFIRMED), so a flag of 0 comes only from this
+        # converter (:data:`SILVER_BLADES_SLOW_POISON_COMPANION`) and is DOS's
+        # own node.  An in-place edit keeps the nodes it read
+        # (`goldbox.rewrite.rewrite_amiga_later`), so it never reaches this
+        # rule's writer half.
         running = [
             e[:4] + bytes((1,)) + e[5:]
             if e[0] == SILVER_BLADES_SLOW_POISON_COMPANION[0]

@@ -2632,3 +2632,53 @@ def test_a_curse_flag_zero_node_15_is_not_rewritten_on_the_way_back():
     back = amiga_later.to_neutral_later(built)
     assert bytes(back.get("running_effects")[0])[:5] == bytes(
         (15, 10, 0, 0xFF, 0))
+
+
+def _companion_flag(built) -> int:
+    return next(bytes(n)[5] for n in built.effects if n[0] == 15)
+
+
+def test_an_amiga_native_flag_one_companion_stays_flag_one_through_the_reader():
+    ssb = c64_port.SECRET_OF_THE_SILVER_BLADES
+    built, _rep = amiga_later.write_later(_slow_poisoned(ssb, "Amiga"))
+    assert _companion_flag(built) == 1
+    back = amiga_later.to_neutral_later(built)
+    assert {bytes(r)[0]: bytes(r)[4] for r in back.get("running_effects")} == {
+        22: 1, 15: 1}
+
+
+def test_a_silver_blades_node_15_with_other_data_is_left_alone_both_ways():
+    ssb = c64_port.SECRET_OF_THE_SILVER_BLADES
+    char = _slow_poisoned(ssb)
+    char.set("running_effects", [bytes((15, 10, 0, 0x7F, 1)) + NULL],
+             "built here")
+    built, _rep = amiga_later.write_later(char)
+    assert _companion_flag(built) == 1
+    char.set("running_effects", [bytes((15, 10, 0, 0x7F, 0)) + NULL],
+             "built here")
+    built, _rep = amiga_later.write_later(char)
+    assert _companion_flag(built) == 0
+    back = amiga_later.to_neutral_later(built)
+    assert bytes(back.get("running_effects")[0])[3:5] == bytes((0x7F, 0))
+
+
+def test_a_c64_source_silver_blades_companion_is_written_with_flag_zero():
+    ssb = c64_port.SECRET_OF_THE_SILVER_BLADES
+    built, _rep = amiga_later.write_later(_slow_poisoned(ssb, "C64"))
+    assert _flags(built) == {22: 1, 15: 0}
+
+
+def test_an_in_place_amiga_edit_leaves_a_native_flag_one_companion_alone():
+    """`rewrite_amiga_later` renders only the record and keeps the chain it
+    read, so an edit in Wish must not turn a native node 15 into flag 0."""
+    from goldbox import rewrite
+    ssb = c64_port.SECRET_OF_THE_SILVER_BLADES
+    deltas = amiga_port.SILVER_BLADES_DELTAS
+    built, _rep = amiga_later.write_later(_slow_poisoned(ssb, "Amiga"),
+                                          deltas=deltas)
+    rec, _ = dos_codec.neutral_to_c64_record(
+        amiga_later.to_neutral_later(built))
+    after = c64_codec.CharacterRecord(rec.to_bytes(), rec.stored_size)
+    after.gold = 4321
+    out = rewrite.rewrite_amiga_later(built, rec, after, ssb)
+    assert _flags(out.character) == {22: 1, 15: 1}
