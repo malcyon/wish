@@ -869,11 +869,33 @@ class EffectsDoNotFit(DosRecordError):
             f"C64's shared effect table, and it holds {overflow.limit}")
 
 
+def _with_whole_bless_group(held: Sequence, indices: Collection[int]
+                            ) -> set[int]:
+    """`indices`, plus every other Bless node of the character if any of them
+    is one.
+
+    The C64 writes one Bless row however many nodes a character holds, so the
+    one Bless the chooser offers stands for the whole group: leaving it out
+    frees a row only when no copy is left to be written in its place.
+    """
+    gone = set(indices)
+    if any(0 <= n < len(held)
+           and bytes(held[n])[0] == effects.BLESS_ID for n in gone):
+        gone |= {n for n, raw in enumerate(held)
+                 if bytes(raw)[0] == effects.BLESS_ID}
+    return gone
+
+
 def _without_left_effects(char: NeutralCharacter,
                           indices: Collection[int]) -> NeutralCharacter:
     """A copy of `char` with the running effects at `indices` removed."""
     held = list(char.get("running_effects") or ())
-    gone = set(indices)
+    for n in indices:
+        if not 0 <= n < len(held):
+            raise DosRecordError(
+                f"cannot leave running effect {n} out: the character holds "
+                f"{len(held)}")
+    gone = _with_whole_bless_group(held, indices)
     for n in gone:
         if not 0 <= n < len(held):
             raise DosRecordError(
@@ -7595,6 +7617,7 @@ def _fit_effects(report: Report, save0: bytearray,
         if not left and not one.own_effect_rows:
             continue
         held, game = nodes(index)
+        left = _with_whole_bless_group(held, left)
         kept = [n for n in range(len(held)) if n not in left]
         for j in one.own_effect_rows:
             node = effects.RunningEffect.from_record(

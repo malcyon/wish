@@ -1555,9 +1555,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # one that runs longest, whole: its caster level (data) and flag go with
     # it, and a tie on time goes to the higher level.  The different Dispel
     # Magic odds that follow are accepted.  Merged copies are not losses.
+    # This applies to every source port on purpose: a C64 save holds at most
+    # one Bless per holder.  Only a copy `effects.c64_row` can convert may
+    # stand for the rest; with none, every copy is left to report as before.
     blessings = [n for n in other_nodes if n.id == effects.BLESS_ID]
-    if len(blessings) > 1:
-        kept = max(blessings, key=lambda n: (n.minutes, n.data))
+    convertible = [n for n in blessings
+                   if not isinstance(effects.c64_row(title_key, n),
+                                     effects.Unconverted)]
+    if len(blessings) > 1 and convertible:
+        kept = max(convertible, key=lambda n: (n.minutes, n.data))
         other_nodes = [n for n in other_nodes
                        if n.id != effects.BLESS_ID or n is kept]
         _log.info("%s: %d repeated Bless node%s not written as rows, the "

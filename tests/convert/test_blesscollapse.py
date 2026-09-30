@@ -22,8 +22,8 @@ from test_leaveeffects import (
 from goldbox import c64_codec, dos_codec, effects
 
 
-def _bless(minutes: int, data: int = 6) -> bytes:
-    return (bytes((1, minutes & 0xFF, minutes >> 8, data, 0))
+def _bless(minutes: int, data: int = 6, flag: int = 0) -> bytes:
+    return (bytes((1, minutes & 0xFF, minutes >> 8, data, flag))
             + dos_codec.EFFECT_NEXT_NULL)
 
 
@@ -116,3 +116,46 @@ def test_one_c64_bless_row_reads_back_as_one_dos_node():
     nodes = [effects.RunningEffect.from_record(bytes(r))
              for r in back.get("running_effects")]
     assert [n.id for n in nodes] == [1]
+
+
+def _crowded() -> list:
+    """Six members, three Bless and ten Protection from Evil each: 66 rows."""
+    return [_pool_character([_bless(2 + n) for n in range(3)]
+                            + [PROTECTION] * 10, f"MEMBER{n}")
+            for n in range(MEMBERS)]
+
+
+def test_the_offered_bless_stands_for_the_members_whole_group():
+    with pytest.raises(dos_codec.EffectsDoNotFit) as caught:
+        _save(_crowded())
+    overflow = caught.value.overflow
+    assert (overflow.needed, overflow.over) == (66, 2)
+    offered = {e.member: e.index for e in overflow.entries
+               if e.effect_id == 1}
+    assert len(offered) == MEMBERS
+
+    save0, _save1, report = _save(
+        _crowded(), leave_effects={0: {offered[0]}, 1: {offered[1]}})
+    assert len(report.left_behind) == 6
+    assert all("Bless" in x or "BLESS" in x.upper()
+               for x in report.left_behind)
+    assert [x for x in report.losses if "running_effects" in x] == []
+    owners = [owner for _id, owner in _id_rows(save0) if _id == 1]
+    assert len(owners) == MEMBERS - 2
+    assert not {dos_codec.marching_slot(0, MEMBERS),
+                dos_codec.marching_slot(1, MEMBERS)} & set(owners)
+
+
+def test_a_copy_the_c64_cannot_hold_does_not_stand_for_the_rest():
+    # The longest copy has a flag byte no caster-level row carries; the
+    # next-longest convertible copy is the row.
+    save0, _save1, _report = _save([_pool_character(
+        [_bless(50, flag=1), _bless(10, data=4), _bless(5, data=9)])])
+    assert _bless_row_magnitudes(save0) == [4]
+
+
+def test_with_no_convertible_copy_every_copy_reports_as_before():
+    save0, _save1, report = _save([_pool_character(
+        [_bless(50, flag=1), _bless(10, flag=2)])])
+    assert _bless_row_magnitudes(save0) == []
+    assert len([x for x in report.dropped if "running_effects" in x]) == 2
