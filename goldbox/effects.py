@@ -379,6 +379,9 @@ FLAGGED_CASTER_LEVEL_IDS = frozenset({23, 34})
 POOL_FF_CHAIN_IDS = frozenset({4, 7, 62})
 POOL_FF_CHAIN = (0xFF, 1)
 
+#: Bless, the same id in every title's effect table.
+BLESS_ID = 1
+
 #: Slow Poison (22) and its companion damage node (15), all three titles. DOS
 #: writes `(22, 60 x level minutes, 0xFF, 1)` (Silver Blades: a fixed 3780
 #: minutes) and `(15, 10, 0xFF, 1)`; Dispel skips data `0xFF`. The C64 camp

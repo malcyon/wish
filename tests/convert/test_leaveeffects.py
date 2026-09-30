@@ -3,9 +3,9 @@ writer.
 
 The C64 holds every character's running effects in one shared table of 64
 rows, and DOS keeps them in a list per character with no count limit, so six
-members with eleven Bless nodes each need 66.  The writer raises
-`EffectsDoNotFit` naming every effect the player can leave out; the choice
-comes back as `leave_effects` and each effect left out is a line of
+members with eleven Protection from Evil nodes each need 66.  The writer
+raises `EffectsDoNotFit` naming every effect the player can leave out; the
+choice comes back as `leave_effects` and each effect left out is a line of
 `Report.left_behind`, never a loss, so Save As does not refuse it.  No game
 data is read: every character is built here.
 """
@@ -21,6 +21,10 @@ BLESS = bytes((1, 2, 0, 1, 0)) + dos_codec.EFFECT_NEXT_NULL
 #: Effect 49 (Prayer) is the id the C64 keeps as one party-wide row.
 PRAYER = bytes((49, 30, 0, 1, 0)) + dos_codec.EFFECT_NEXT_NULL
 
+#: Effect 8 (Protection from Evil), two minutes left, caster level 1: a node
+#: the C64 keeps as its own row, unlike a repeated Bless.
+PROTECTION = bytes((8, 2, 0, 1, 0)) + dos_codec.EFFECT_NEXT_NULL
+
 MEMBERS = 6
 
 
@@ -33,8 +37,8 @@ def _pool_character(nodes: list[bytes], name: str = "BLESSED"
     return char
 
 
-def _party(blesses: int, extra: list[bytes] = ()) -> list:
-    return [_pool_character([BLESS] * blesses + list(extra), f"MEMBER{n}")
+def _party(count: int, extra: list[bytes] = ()) -> list:
+    return [_pool_character([PROTECTION] * count + list(extra), f"MEMBER{n}")
             for n in range(MEMBERS)]
 
 
@@ -55,16 +59,16 @@ def _id_rows(save0) -> list[tuple[int, int]]:
             if save0[at + effects.EFFECT_ID_OFFSET + i]]
 
 
-def test_eleven_blesses_each_ask_the_player_what_to_leave_out():
+def test_eleven_nodes_each_ask_the_player_what_to_leave_out():
     with pytest.raises(dos_codec.EffectsDoNotFit) as caught:
         _save(_party(11))
     overflow = caught.value.overflow
     assert (overflow.limit, overflow.needed, overflow.over) == (64, 66, 2)
     assert len(overflow.entries) == 66
-    assert {e.effect_id for e in overflow.entries} == {1}
+    assert {e.effect_id for e in overflow.entries} == {8}
     assert overflow.names == tuple(f"MEMBER{n}" for n in range(MEMBERS))
-    assert overflow.entries[0] == dos_codec.EffectEntry(0, 0, 1, 2)
-    assert overflow.entries[11] == dos_codec.EffectEntry(1, 0, 1, 2)
+    assert overflow.entries[0] == dos_codec.EffectEntry(0, 0, 8, 2)
+    assert overflow.entries[11] == dos_codec.EffectEntry(1, 0, 8, 2)
 
 
 def test_leaving_out_two_nodes_converts_and_is_not_a_loss():
@@ -89,7 +93,7 @@ def test_leaving_out_too_few_asks_again():
     assert overflow.over == 1
     # The node already left out is not offered again.
     assert len(overflow.entries) == 65
-    assert dos_codec.EffectEntry(0, 0, 1, 2) not in overflow.entries
+    assert dos_codec.EffectEntry(0, 0, 8, 2) not in overflow.entries
 
 
 def test_a_party_row_counts_once_and_is_not_offered():
@@ -114,10 +118,10 @@ def test_sixty_nodes_fit_and_ask_nothing():
     assert not [x for x in report.losses if "running_effects" in x]
 
 
-def _dos_party(blesses: int) -> list[dos_codec.DosCharacter]:
+def _dos_party(count: int) -> list[dos_codec.DosCharacter]:
     raw = bytearray(dos_port.RECORD_SIZE)
     raw[dos_port.FIELDS_BY_NAME["size"].offset] = 1
-    return [dos_codec.DosCharacter(bytes(raw), effects=[BLESS] * blesses)
+    return [dos_codec.DosCharacter(bytes(raw), effects=[PROTECTION] * count)
             for _ in range(MEMBERS)]
 
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import logging
 from collections.abc import Mapping
 
 from . import (
@@ -40,6 +41,8 @@ from .layout import RECORD_SIZE, Confidence, Field
 from .neutral import NeutralCharacter, Provenance
 from .portraits import draws_sheet_portrait
 from .record import CharacterRecord
+
+_log = logging.getLogger("wish.goldbox.c64_codec")
 
 __all__ = [
     "Report",
@@ -1546,6 +1549,21 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                         f": merged into the invisibility node with "
                         f"{kept.minutes} minutes left, as the C64 keeps "
                         "one row per holder")
+
+    # DOS gives one +1 bonus however many Bless (1) nodes a character holds,
+    # and the C64 replaces a Bless row on recast, so repeated nodes become the
+    # one that runs longest, whole: its caster level (data) and flag go with
+    # it, and a tie on time goes to the higher level.  The different Dispel
+    # Magic odds that follow are accepted.  Merged copies are not losses.
+    blessings = [n for n in other_nodes if n.id == effects.BLESS_ID]
+    if len(blessings) > 1:
+        kept = max(blessings, key=lambda n: (n.minutes, n.data))
+        other_nodes = [n for n in other_nodes
+                       if n.id != effects.BLESS_ID or n is kept]
+        _log.info("%s: %d repeated Bless node%s not written as rows, the "
+                  "one with %d minutes left stands for them",
+                  char.get("name") or "a character", len(blessings) - 1,
+                  "" if len(blessings) == 2 else "s", kept.minutes)
 
     # C64 Pool restores one old strength per character, so a second strength
     # node, running or granted, has no row to take it.

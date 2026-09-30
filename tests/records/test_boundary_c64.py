@@ -153,8 +153,8 @@ def test_a_reachable_character_writes_to_the_c64_and_reads_back_whole(
 
 
 def test_a_running_effect_is_written_as_a_row_and_reported_nowhere():
-    """The caster's two Blesses become rows 63 and 62 of the shared arrays,
-    with no line on any list."""
+    """The caster's two Blesses become the one row 63 of the shared arrays,
+    carrying the longer time, with no line on any list."""
     char = boundarywidths.case("caster")
     assert char.get("running_effects"), "the boundary caster carries none"
     payload = bytearray(0x1C00)
@@ -168,11 +168,11 @@ def test_a_running_effect_is_written_as_a_row_and_reported_nowhere():
              payload[effects.EFFECT_DURATION_OFFSET + i],
              payload[effects.EFFECT_MAGNITUDE_OFFSET + i])
             for i in (63, 62)]
-    assert rows == [(1, 0, 0xEE, 0x01), (1, 0, 0x01, 0x01)]
+    assert rows == [(1, 0, 0xEE, 0x01), (0, 0, 0, 0)]
     back = c64_codec.read(rec, game=char.game, payload=bytes(payload),
                           party_slot=0, clock_minutes=0)
     assert [effects.RunningEffect.from_record(bytes(r)).minutes
-            for r in back.get("running_effects")] == [65535, 1]
+            for r in back.get("running_effects")] == [65535]
 
 
 def test_a_bare_write_reports_the_combat_icon_fields_by_name():
