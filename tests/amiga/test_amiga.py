@@ -3225,3 +3225,94 @@ def test_taking_the_items_away_clears_the_head_the_loader_tests():
     assert stripped.item_chain == 0
     assert stripped.effect_chain == 0
     assert stripped.get("item_count") == 0
+
+
+# ---------------------------------------------------------------------------
+# A charm on an Amiga Pool of Radiance character
+# ---------------------------------------------------------------------------
+#
+# The Amiga engine's charm handler and its list of effects cleared when a
+# fight ends match DOS's, so the charm node and the taken-over control byte
+# travel as they do on DOS: the node through the `.spc` record, the byte
+# through the record's control field.
+
+
+def _pool_charm_node() -> bytes:
+    """DOS's charm node as its handler writes it: data `0x26`, flag 1."""
+    from goldbox import effects
+    from goldbox.dos_codec import EFFECT_NEXT_NULL
+
+    return bytes((effects.CHARM_ID, 0, 0, 0x26, 1)) + EFFECT_NEXT_NULL
+
+
+def _charmed_neutral():
+    from goldbox import c64_codec, c64_port, dos_codec
+
+    char = sample(name="CHARMED")
+    char.game = c64_port.POOL_OF_RADIANCE
+    char.set("granted_effects", [_pool_charm_node()], "built here")
+    char.set("npc", True, "built here")
+    char.set("npc_control_byte", c64_codec.DOS_PC_TAKEN_OVER, "built here")
+    char.set("quickfight", True, "built here")
+    char.set("hostile", False, "built here")
+    dos_codec.set_window_source(char, b"\x00\x00\x01\x00\x00")
+    return char
+
+
+def _amiga_charmed_files():
+    record, itm, spc, _rep = amiga_por.write_por(_charmed_neutral())
+    return record, itm, spc
+
+
+def test_a_charm_survives_dos_to_amiga_to_dos():
+    from goldbox import c64_codec, effects
+
+    record, itm, spc = _amiga_charmed_files()
+    # The Amiga node: id, pad, duration high, duration low, data, flag, NULL.
+    assert spc[:6] == bytes((effects.CHARM_ID, 0, 0, 0, 0x26, 1))
+    back = amiga_por.to_neutral(amiga_por.por_character(record, itm, spc))
+    assert [bytes(n)[:5] for n in back.get("granted_effects")] == \
+        [bytes((effects.CHARM_ID, 0, 0, 0x26, 1))]
+    assert back.get("npc") is True
+    assert back.get("npc_control_byte") == c64_codec.DOS_PC_TAKEN_OVER
+    assert back.get("quickfight") is True
+    assert back.get("hostile") is False
+
+
+def test_an_amiga_pool_charm_writes_the_c64_charm_row():
+    from goldbox import c64_codec, c64_port, effects
+
+    record, itm, spc = _amiga_charmed_files()
+    neutral = amiga_por.to_neutral(amiga_por.por_character(record, itm, spc))
+    neutral.game = c64_port.POOL_OF_RADIANCE
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(neutral, payload=payload, party_slot=2,
+                               clock_minutes=0)
+    rows = [(payload[effects.EFFECT_ID_OFFSET + i],
+             payload[effects.EFFECT_OWNER_OFFSET + i],
+             payload[effects.EFFECT_DURATION_OFFSET + i],
+             payload[effects.EFFECT_MAGNITUDE_OFFSET + i])
+            for i in range(effects.EFFECT_SLOTS)]
+    assert [r for r in rows if r != (0, 0, 0, 0)] == \
+        [(effects.CHARM_ID, 2, 0, 0x86)]
+    assert rec.get("combat_side") == 0x80
+    assert not rep.losses
+
+
+def test_a_c64_pool_charm_row_writes_the_amiga_node_and_control_byte():
+    from goldbox import c64_codec, c64_port, effects
+    from goldbox.record import CharacterRecord
+
+    payload = bytearray(0x1C00)
+    effects.write_effect(payload, 0, effects.CHARM_ID, 2, 0, 0x86)
+    rec = CharacterRecord.blank()
+    rec.set("combat_side", 0x80)
+    neutral = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                             payload=payload, party_slot=2, clock_minutes=1,
+                             source="built here")
+    record, itm, spc, _rep = amiga_por.write_por(neutral)
+    assert spc[:6] == bytes((effects.CHARM_ID, 0, 0, 0, 0x26, 1))
+    back = amiga_por.to_neutral(amiga_por.por_character(record, itm, spc))
+    assert back.get("npc") is True
+    assert back.get("npc_control_byte") == c64_codec.DOS_PC_TAKEN_OVER
+    assert back.get("quickfight") is True
