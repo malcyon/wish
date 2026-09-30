@@ -547,9 +547,12 @@ def test_ecl14s_east_edge_exit_to_area_0_keeps_the_party_square_and_facing():
     side, body = every["ECL14"]
     script = W.Script(W.Machine(), "ECL14", side, body)
     (exit_, block), = [(s, b) for s, b in script.exits() if s.operands[0] == (0, 0)]
-    lines = [str(s) for s in block]
-    assert "COMPARE [$C04D], 1" in lines
-    position = [f"[${a:04X}]" for a in (0xC04B, 0xC04C, 0xC04D)]
-    writes = [line for line in lines if line.startswith("SAVE")
-              and any(line.endswith(f", {p}") for p in position)]
-    assert writes == []
+    assert int("ECL14"[3:], 16) == 20  # the script file for area 0x14 is the Slums
+    assert "COMPARE [$C04D], 1" in [str(s) for s in block]
+    # Any opcode might write memory and most have no name here, so no operand of any statement
+    # in the block may address the position bytes, apart from the COMPARE that only reads them.
+    position = {0xC04B, 0xC04C, 0xC04D}
+    touching = [str(s) for s in block if s.op != 0x03
+                and any(kind not in (0x00, 0x02, 0x80) and value in position
+                        for kind, value in s.operands)]
+    assert touching == []
