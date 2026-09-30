@@ -38,7 +38,9 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
+from automap import gamedisks  # noqa: E402
 from automap.paths import disk_globs, tool_disks  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools.c64 import d6502  # noqa: E402
 
@@ -46,18 +48,46 @@ from tools.c64 import d6502  # noqa: E402
 LINKER_BASE = 0x0800
 
 
-def game_disks(root: str) -> list[str]:
-    """Every game disk under `root`, each of them once."""
+#: Short names for `--title`; a full `c64_port` key works as well.
+TITLE_ALIASES = {"pool": "pool-of-radiance", "curse": "curse-of-the-azure-bonds",
+                 "ssb": "secret-of-the-silver-blades"}
+
+
+def title_game(name: str) -> c64_port.C64Container:
+    """The title `--title` names, by short alias or full key."""
+    game = c64_port.BY_KEY.get(TITLE_ALIASES.get(name, name))
+    if game is None:
+        raise SystemExit(f"No title called {name}; try one of "
+                         f"{', '.join([*TITLE_ALIASES, *c64_port.BY_KEY])}.")
+    return game
+
+
+def title_root(game: c64_port.C64Container, given: str | None):
+    """Where a title's disks are: `--disks`, else the registry.
+
+    Pool of Radiance keeps its older search (`$POR_DISKS`, then wherever the
+    program looks), so a Pool lookup behaves as it always did.
+    """
+    if given:
+        return given
+    if game is c64_port.DEFAULT:
+        return tool_disks()
+    return gamedisks.find(game.key)
+
+
+def game_disks(root: str, game: c64_port.C64Container | None = None) -> list[str]:
+    """Every disk of one title under `root`, each of them once."""
     seen: dict[str, str] = {}
-    for pattern in disk_globs():
+    for pattern in disk_globs(game):
         for path in glob.glob(os.path.join(root, pattern)):
             seen.setdefault(os.path.normcase(os.path.abspath(path)), path)
     return sorted(seen.values())
 
 
-def load(name: str, root: str) -> tuple[int, bytes]:
+def load(name: str, root: str,
+         game: c64_port.C64Container | None = None) -> tuple[int, bytes]:
     """The named file's declared load address and its bytes, off any side."""
-    for path in game_disks(root):
+    for path in game_disks(root, game):
         try:
             image = D64.open(path)
         except Exception as exc:
@@ -97,20 +127,26 @@ def main(argv: list[str]) -> int:
                     help="the address the file runs at (default: "
                          "%(default)s, where LINKER puts an overlay), or "
                          "'header' to believe the PRG's own load address")
-    ap.add_argument("--disks", default=os.environ.get("POR_DISKS"),
-                    metavar="DIR", help="where the game disks are (default: "
-                                        "$POR_DISKS, then wherever the "
-                                        "program looks)")
+    ap.add_argument("--title", default="pool", metavar="TITLE",
+                    help="which title's disks to search: pool, curse, ssb or "
+                         "a full key (default: %(default)s)")
+    ap.add_argument("--disks", default=None, metavar="DIR",
+                    help="where the title's disks are (default: for pool, "
+                         "$POR_DISKS then wherever the program looks; for "
+                         "the others, the registry)")
     args = ap.parse_args(argv[1:])
 
-    root = args.disks or tool_disks()
+    game = title_game(args.title)
+    root = title_root(game, args.disks)
     if root is None or not os.path.isdir(str(root)):
-        print("No game disks. Set $POR_DISKS or pass --disks.",
+        env = gamedisks.entry(game.key).get("env")
+        print(f"No {game.title} disks. "
+              f"{f'Set ${env} or pass' if env else 'Pass'} --disks.",
               file=sys.stderr)
         return 2
     root = str(root)
 
-    declared, body = load(args.file, root)
+    declared, body = load(args.file, root, game)
     base = declared if args.base == "header" else number(args.base)
 
     if args.what == "refs":

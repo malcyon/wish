@@ -26,6 +26,7 @@ Tests for the C64 side: the driven-session code under `tools/c64/`, the memory m
 | `test_laterthac0.py` | Checks that `tools/c64/laterthac0.py` locates the THAC0 tables of the later DOS titles and that every record reproduces from them. |
 | `test_launch.py` | Checks, with stub `Xvfb`, `Xephyr`, `xdotool` and `flatpak` programs, that `launch.sh` execs the whole emulator command under the caller's PID, dies with its process group and refuses a missing disk. |
 | `test_memory.py` | Checks that the C64 memory map has sane, uniquely named regions that agree with the constants the decoders use and the save-file ranges. |
+| `test_overlay.py` | Checks that `tools/c64/overlay.py` finds an overlay on the disks of the title it is asked for, and that a Pool lookup behaves as before. |
 | `test_outdoor_boat.py` | Checks that the driver names a boat landing's question instead of pressing at it as if it were a wall. |
 | `test_outdoordrive.py` | Checks that the session driver reads the travel grid's status line and walks a party there, on a fake session that records its keys. |
 | `test_partysheets.py` | Checks that a driven session reaches and reads every character's sheet, on a fake screen that behaves as measured. |
