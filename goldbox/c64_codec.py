@@ -1409,6 +1409,17 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         1 for n in (granted.value if granted is not None else ())
         if bytes(n)[0] in effects.STRENGTH_IDS)
 
+    # Pool and Curse rows 22 and 15 need `$7F` when the character holds no
+    # poison (55) and his 22 row is minute-unit; see
+    # `effects.SLOW_POISON_QUIET_C64`.
+    poisoned = any(n.id == 55 for n in other_nodes) or any(
+        bytes(n)[0] == 55
+        for n in (granted.value if granted is not None else ()))
+    node22 = next((n for n in other_nodes
+                   if n.id == effects.SLOW_POISON_ID), None)
+    quiet = node22 is not None and effects.slow_poison_quiet(
+        title_key, node22.minutes, clock, poisoned)
+
     # Whether a Fear row (`effects.FEAR_IDS`) was actually written into the
     # payload, which the control byte and the combat-side bit below both key
     # off of.
@@ -1435,7 +1446,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                          "effect arrays")
             continue
         row_for = effects.c64_row(title_key, node,
-                                  strength_nodes=strength_nodes)
+                                  strength_nodes=strength_nodes,
+                                  slow_poison_quiet=quiet)
         if isinstance(row_for, effects.Unconverted):
             rep.dropped.append(f"{which}: {row_for.reason}")
         elif payload is None:

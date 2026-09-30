@@ -2193,6 +2193,30 @@ def test_slow_poison_and_its_companion_are_ff_on_both_ports(title, eid):
                               effects.Unconverted)
 
 
+@pytest.mark.parametrize("title", [_P, _C])
+@pytest.mark.parametrize("eid", [15, 22])
+def test_a_raised_pool_or_curse_slow_poison_row_never_kills(title, eid):
+    node = _RE(eid, 30, 0xFF, 1)
+    assert effects.c64_row(title, node, slow_poison_quiet=True) == (eid, 0x7F)
+    assert effects.c64_row(title, node) == (eid, 0xFF)
+    got = effects.dos_record(title, effects.Effect(63, eid, 2, 0x1E, 0x7F), 0)
+    assert (got.data, got.flag) == (0xFF, 1)
+    if title == _P and eid == 22:
+        got = effects.dos_record(title, effects.Effect(63, 22, 2, 0x1E, 0x85), 0)
+        assert (got.data, got.flag) == (5, 1)
+        got = effects.dos_record(title, effects.Effect(63, 22, 2, 0x1E, 0x06), 0)
+        assert (got.data, got.flag) == (6, 0)
+    _round_trip(title, node)
+
+
+def test_slow_poison_quiet_only_below_the_minute_unit_and_without_poison():
+    assert effects.slow_poison_quiet(_P, 30, 0, False)
+    assert effects.slow_poison_quiet(_C, 30, 0, False)
+    assert not effects.slow_poison_quiet(_P, 30, 0, True)
+    assert not effects.slow_poison_quiet(_P, 300, 0, False)
+    assert not effects.slow_poison_quiet(_S, 30, 0, False)
+
+
 @pytest.mark.parametrize("eid", [15, 22])
 def test_a_silver_blades_slow_poison_is_a_c64_row_whose_handler_never_runs(eid):
     # The C64 runs a handler only with magnitude bit 7 set; DOS runs neither.
@@ -2230,7 +2254,11 @@ def test_a_later_slow_poison_row_becomes_the_dos_node_dispel_cannot_touch(
         effects.Unconverted)
 
 
-def test_curses_slow_poison_magnitude_7f_is_unconverted():
+def test_curses_slow_poison_magnitude_7f_reads_back_as_the_dos_node():
+    # No C64 Curse routine writes `$7F` for 22, so it can only be the
+    # converter's own quiet row.
+    got = effects.dos_record(_C, effects.Effect(63, 22, 2, 0x5E, 0x7F), 0)
+    assert (got.data, got.flag) == (0xFF, 1)
     assert isinstance(
-        effects.dos_record(_C, effects.Effect(63, 22, 2, 0x5E, 0x7F), 0),
+        effects.dos_record(_C, effects.Effect(63, 22, 2, 0x5E, 0x05), 0),
         effects.Unconverted)

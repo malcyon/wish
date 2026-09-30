@@ -396,6 +396,16 @@ SLOW_POISON_DAMAGE_ID = 15
 SLOW_POISON_DOS = (0xFF, 1)
 SLOW_POISON_BLADES_C64 = 0x7F
 
+#: The magnitude Pool and Curse give 22 and its companion 15 when the owner
+#: holds no poison (55) and the 22 row is in minute units (duration byte below
+#: `$40`). The C64's combat countdown ages such a row, and at zero the combat
+#: expiry runs handler 22 (Pool `$A889`, Curse `$2067`), which stores `$83`
+#: without testing 55, so the character dies (CONFIRMED live: a `$FF` row
+#: with no 55 left WISHFTR with no command bar from round 1, while a row of
+#: `$81` acted normally). Bit 7 clear runs no handler on any route, camp,
+#: combat or recast. DOS never kills without 55.
+SLOW_POISON_QUIET_C64 = 0x7F
+
 #: Invisible (25) in the later titles. Every C64 row for it writes the caster's
 #: level (camp rows 19, 32, 36 and 55 reach `ECL65 $819C`; combat goes through
 #: the generic writer) and DOS's handler reads no node byte. Pool's list has
@@ -683,19 +693,34 @@ def _slowed_min(title_key: str) -> int:
     return 0 if title_key in LATER_CAST_FLAGS else 1
 
 
-def _slow_poison_magnitude(title_key: str) -> int:
+def _slow_poison_magnitude(title_key: str, quiet: bool = False) -> int:
     """The C64 magnitude a DOS `(0xFF, 1)` Slow Poison node becomes."""
-    return SLOW_POISON_BLADES_C64 if title_key == _BLADES else 0xFF
+    if title_key == _BLADES:
+        return SLOW_POISON_BLADES_C64
+    return SLOW_POISON_QUIET_C64 if quiet else 0xFF
+
+
+def slow_poison_quiet(title_key: str, minutes: int, clock: int,
+                      poisoned: bool) -> bool:
+    """Whether Pool's or Curse's Slow Poison rows take `SLOW_POISON_QUIET_C64`:
+    the owner holds no poison and the row's written duration is minute-unit,
+    the only case in which the C64's combat countdown can end it."""
+    if title_key not in (_CURSE, "pool-of-radiance") or poisoned:
+        return False
+    duration = closest_duration(minutes, clock)
+    return duration is not None and duration < 0x40
 
 
 def _is_slow_poison_magnitude(title_key: str, m: int) -> bool:
-    """Whether `m` is a magnitude that reads back as the DOS node: the one
+    """Whether `m` is a magnitude that reads back as the DOS node: the ones
     written above, or the C64's own `$FF`."""
-    return m in (0xFF, _slow_poison_magnitude(title_key))
+    return m in (0xFF, _slow_poison_magnitude(title_key),
+                 SLOW_POISON_QUIET_C64)
 
 
-def _own_rule_row(title_key: str,
-                  node: RunningEffect) -> tuple[int, int] | Unconverted | None:
+def _own_rule_row(title_key: str, node: RunningEffect,
+                  slow_poison_quiet: bool = False,
+                  ) -> tuple[int, int] | Unconverted | None:
     """`c64_row` for id 13, Haste, Slowed, Silver Blades' id 113, Fear, the
     flagged caster-level ids, Pool's disease chain, the zero-level ids,
     Fumble and Stinking Cloud, or `None`."""
@@ -768,10 +793,11 @@ def _own_rule_row(title_key: str,
         if (node.data, node.flag) != SLOW_POISON_DOS:
             return Unconverted("a Slow Poison damage node other than the "
                                "one DOS writes")
-        return node.id, _slow_poison_magnitude(title_key)
+        return node.id, _slow_poison_magnitude(title_key, slow_poison_quiet)
     if node.id == SLOW_POISON_ID and _slowed_title(title_key):
         if (node.data, node.flag) == SLOW_POISON_DOS:
-            return node.id, _slow_poison_magnitude(title_key)
+            return node.id, _slow_poison_magnitude(title_key,
+                                                   slow_poison_quiet)
         if (title_key == "pool-of-radiance" and node.flag in (0, 1)
                 and 1 <= node.data <= 0x7F
                 and node.data | node.flag << 7 != 0xFF):
@@ -851,18 +877,20 @@ def enlarge_capped(title_key: str, node: RunningEffect) -> bool:
 
 
 def c64_row(title_key: str, node: RunningEffect, *,
-            strength_nodes: int = 1) -> tuple[int, int] | Unconverted:
+            strength_nodes: int = 1,
+            slow_poison_quiet: bool = False) -> tuple[int, int] | Unconverted:
     """The C64 id and magnitude for a DOS running effect, or why there is none.
 
     A title's caster-level ids (`POOL_CASTER_LEVEL_IDS`,
     `LATER_CASTER_LEVEL_IDS`) convert with flag 0 and a caster level as the
     data byte. Enlarge, Friends, Mirror Image and Strength (12, 14, 28, 38)
     take their title's rule from `docs/226`; `strength_nodes` counts the
-    nodes on this character that set strength. The other ids with a rule of
+    nodes on this character that set strength; `slow_poison_quiet` is
+    `slow_poison_quiet()` for this character. The other ids with a rule of
     their own are listed at `_own_rule_row`. A state refused as one "no DOS
     engine writes" is unreachable in play.
     """
-    own = _own_rule_row(title_key, node)
+    own = _own_rule_row(title_key, node, slow_poison_quiet)
     if own is not None:
         return own
     if node.id not in _caster_level_ids(title_key):

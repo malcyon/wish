@@ -309,6 +309,27 @@ def test_save_as_c64_keeps_a_slow_poisoned_dos_party_slow_poisoned(tmp_path):
     assert holders == {"WISHFTR"}
 
 
+def test_save_as_c64_keeps_a_raised_pool_fighter_alive_when_slow_poison_ends():
+    """No poison (55) and a minute-unit Slow Poison row: both rows are `$7F`,
+    which runs no C64 handler. With 55, or 300 minutes left, they stay `$FF`."""
+    slow = bytes((22, 30, 0, 0xFF, 1))
+    companion = bytes((15, 10, 0, 0xFF, 1))
+    long_slow = bytes((22, 44, 1, 0xFF, 1))
+    poison = bytes((55, 0, 0, 0xFF, 0))
+
+    def written(char):
+        payload = bytearray(0x1C00)
+        c64_codec.write(char, payload=payload, party_slot=2, clock_minutes=0)
+        return sorted((r[0], r[3]) for r in _rows(payload).values() if r[0])
+
+    assert written(_pool_character(slow, companion)) \
+        == [(15, 0x7F), (22, 0x7F)]
+    char = _pool_character(slow, companion)
+    char.set("granted_effects", [poison + NULL], "built here")
+    assert written(char) == [(15, 0xFF), (22, 0xFF)]
+    assert written(_pool_character(long_slow)) == [(22, 0xFF)]
+
+
 def test_save_as_c64_keeps_a_silver_blades_survivor_alive_through_the_rest(
         tmp_path):
     """A Silver Blades DOS save with PAINE under Slow Poison (row 22 still
