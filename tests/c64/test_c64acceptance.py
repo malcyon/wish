@@ -457,6 +457,13 @@ class _TempleSession:
         # the last stands; None shows `result_text` throughout.
         self.result_frames = None
         self._result_reads = 0
+        # The result frame's `PRESS <RETURN> OR BUTTON TO CONTINUE` line, and
+        # how many blank frames the temple bar's EXIT shows before the world
+        # bar. The screen after that Return is invented; `after_continue`
+        # names it: "list", "bar" or "unknown".
+        self.press_line = False
+        self.after_continue = "list"
+        self.leaving_reads = 3
 
     def key(self, name, *timing):
         if self.phase == "temple":
@@ -465,18 +472,33 @@ class _TempleSession:
             self.keys.append(name)
             self.bar_at += 1 if name == "Right" else -1
             return
+        if self.phase == "result":
+            assert name == "Return" and self.press_line, (self.phase, name)
+            self.keys.append(name)
+            self.bar_at = 0
+            self.list_cursor = 0
+            self.heal_reads = 0
+            self.phase = {"list": "heal", "bar": "temple",
+                          "unknown": "unknown"}[self.after_continue]
+            return
         assert self.phase == "heal", self.phase
         self.keys.append(name)
         if name == "Down" and self.unsafe != "list-stuck":
             self.list_cursor += 1
         elif name == "Return":
             self.phase = ("price" if 9 + self.list_cursor == 15
+                          else "temple" if 9 + self.list_cursor == 18
                           else "heal-blank")
 
     def mon(self, _timeout):
         return _TempleMonitor(self)
 
     def screen(self):
+        if self.phase == "leaving":
+            if self.leaving_reads:
+                self.leaving_reads -= 1
+                return _TempleScreen([""] * 25)
+            self.phase = "world"
         if self.phase == "heal" and self.heal_blank_reads:
             # Blank bar frames before the list draws, as the transition
             # screens between temple and service do.
@@ -570,6 +592,8 @@ class _TempleSession:
                 # no live capture has shown one here, but the transition
                 # must never treat this as settled if it appears.
                 rows[14] = "N 00:00 99,99"
+        elif phase == "world":
+            rows[24] = "MOVE VIEW ENCAMP"
         elif phase == "heal-blank":
             rows[14] = ""  # Cleared while the next screen loads.
         elif phase == "heal":
@@ -618,6 +642,8 @@ class _TempleSession:
                 rows[12] = self.result_frames[at]
             else:
                 rows[12] = self.result_text
+            if self.press_line:
+                rows[22] = "PRESS <RETURN> OR BUTTON TO CONTINUE"
         else:
             raise AssertionError(phase)
         if phase == "question":
@@ -730,6 +756,12 @@ class _TempleSession:
             assert row == 24 and "YES" in was
             self.keys.append("pool-YES")
             self.phase = "temple"
+            return
+        if self.phase == "temple" and self.bar_at == 4:
+            assert row == 24 and "EXIT" in was
+            self.keys.append("EXIT")
+            self.leaving_reads = 3
+            self.phase = "leaving"
             return
         if self.phase == "temple":
             assert row == 24 and "HEAL" in was and self.bar_at == 0
@@ -9363,3 +9395,101 @@ def test_rest_leaves_a_take_stay_bar_alone(tmp_path, monkeypatch):
     got = run.rest("5h")
     log.close()
     assert got["events"] == [] and ("bar", "GO") not in sess.sent
+
+
+_LEAVE_STEPS = [["load", "temple-probe BRUTUS RAISE POOL", "save"],
+                ["load", "temple-probe BRUTUS RAISE CONTROL", "save"]]
+
+
+def _leave_argv(tmp_path, arg, *steps):
+    staging = ("0:0x0C1=0x70,0:0x0C2=0x17,5:0x018=18" if arg.endswith("POOL")
+               else "5:0x018=18,5:0x0C1=0x70,5:0x0C2=0x17")
+    return ["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+            "--disks", str(tmp_path), "--issue", "700",
+            "--run", "temple-raise-save", "--max-seconds", "1500",
+            "--stage-record", staging, "--steps", *steps,
+            "--out", str(tmp_path / "out")]
+
+
+@pytest.mark.parametrize("steps", _LEAVE_STEPS)
+def test_temple_probe_main_accepts_a_save_after_a_pool_or_control_raise(
+        tmp_path, monkeypatch, steps):
+    observed = []
+    monkeypatch.setattr(A, "temple_source_guard", lambda *a: "checked")
+    monkeypatch.setattr(A, "run", lambda args, got, out, source: observed.append(
+        got) or 0)
+    assert A.main(_leave_argv(tmp_path, steps[1], *steps)) == 0
+    assert observed == [[A.Step("load"), A.Step("temple-probe", steps[1][13:]),
+                         A.Step("save")]]
+
+
+@pytest.mark.parametrize("steps", [
+    ["load", "temple-probe BRUTUS", "save"],
+    ["load", "temple-probe BRUTUS HEAL", "save"],
+    ["load", "temple-probe BRUTUS RAISE", "save"],
+    ["load", "temple-probe BRUTUS RAISE POOL", "peek 0", "save"],
+    ["load", "temple-probe BRUTUS RAISE POOL", "save", "save"],
+    ["load", "save", "temple-probe BRUTUS RAISE POOL"],
+    ["load", "temple-probe BRUTUS RAISE CONTROL", "rest 1"],
+])
+def test_temple_probe_main_still_refuses_anything_else_after_the_probe(
+        tmp_path, monkeypatch, steps):
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    arg = "BRUTUS RAISE POOL" if "POOL" in " ".join(steps) else (
+        "BRUTUS RAISE CONTROL")
+    _refused_before_a_slot(tmp_path, monkeypatch, _leave_argv(
+        tmp_path, arg, *steps)[:-2])
+
+
+@pytest.mark.parametrize("who", ["BRUTUS RAISE POOL", "BRUTUS RAISE CONTROL"])
+def test_temple_probe_leave_walks_the_list_and_the_bar_out_to_the_world(
+        tmp_path, monkeypatch, who):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.press_line = True
+    if who.endswith("CONTROL"):
+        run.reading = _control_reading
+    result = run.temple_probe(who, leave=True)
+    assert session.keys[-16:] == (["YES", "Return"] + ["Down"] * 9
+                                  + ["Return"] + ["Right"] * 4 + ["EXIT"])[-16:]
+    assert session.keys[-1] == "EXIT" and session.phase == "world"
+    assert _raise_tags(run)[-4:] == ["raise-result", "raise-continued",
+                                     "list-exit", "outside"]
+    assert result["leave"]["stem"] and result["outcome"] == "alive"
+
+
+def test_temple_probe_leave_takes_the_temple_bar_when_return_shows_it(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.press_line, session.after_continue = True, "bar"
+    run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    assert session.keys[-6:] == ["YES", "Return"] + ["Right"] * 3 + ["EXIT"] or (
+        session.keys[-7:] == ["YES", "Return"] + ["Right"] * 4 + ["EXIT"])
+    assert _raise_tags(run)[-3:] == ["raise-result", "raise-continued",
+                                     "outside"]
+
+
+def test_temple_probe_without_leave_sends_nothing_after_the_result(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.press_line = True
+    run.temple_probe("BRUTUS RAISE POOL")
+    assert session.keys[-1] == "YES" and "EXIT" not in session.keys
+
+
+def test_temple_probe_leave_stops_and_keeps_the_frame_on_an_unknown_screen(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.press_line, session.after_continue = True, "unknown"
+    with pytest.raises(A.StepFailed, match="neither the service list"):
+        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
+    assert session.keys[-1] == "Return" and "EXIT" not in session.keys
+
+
+def test_temple_probe_leave_sends_no_key_without_the_continue_frame(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    with pytest.raises(A.StepFailed, match="no PRESS"):
+        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    assert session.keys[-1] == "YES"
+    assert run.temple_checkpoints[-1]["tag"] == "lost-exit"

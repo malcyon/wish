@@ -419,6 +419,10 @@ TEMPLE_RESULT_POLL = 0.05
 TEMPLE_PROBE_ARGS = ("BRUTUS", "BRUTUS HEAL", "BRUTUS RAISE",
                      "BRUTUS RAISE POOL", "BRUTUS RAISE CONTROL")
 
+#: The `temple-probe` arguments a `save` step may follow, which then leaves
+#: the temple after an `alive` raise so the save runs from the world bar.
+TEMPLE_SAVE_ARGS = ("BRUTUS RAISE POOL", "BRUTUS RAISE CONTROL")
+
 #: The only `--stage-record` bytes a `RAISE` run takes, all on BRUTUS's slot:
 #: constitution 18 (the temple's roll then always succeeds) and 6,000 gold
 #: (`0x0C1`/`0x0C2`, little-endian `$1770`), so the 5,500 gold price is paid
@@ -2374,7 +2378,60 @@ class PoolRun:
                 "cured" if re.search(r"\bCURED\b", text) else
                 "unknown")
 
-    def temple_probe(self, who: str) -> dict:
+    def _temple_leave(self) -> dict:
+        """Leave the temple after a raise result, back to the world bar.
+
+        It presses Return once at the `PRESS <RETURN> OR BUTTON TO CONTINUE`
+        frame, through the keyboard and never `handle_prompt`, then settles
+        and acts on what it finds: the service list takes its EXIT row, the
+        temple bar takes EXIT, and the world bar ends it. The screen after
+        that Return has not been seen live, so any other screen stops as
+        `lost-exit` with the frame kept."""
+        sample = self.temple_sample()
+        screen = sample.screen
+        text = "" if screen is None else screen.text().upper()
+        if not (re.search(r"\bPRESS\b", text) and "CONTINUE" in text):
+            self._temple_stop("exit", "no PRESS ... TO CONTINUE frame after "
+                              "the raise result", sample)
+        self._temple_input_budget("leaving the temple")
+        self.sess.kbd.key("Return")
+        tag, arrival = "raise-continued", screen
+        for _ in range(2):
+            kept = self._temple_heal_screen(arrival, tag=tag, stop="exit",
+                                            what="RETURN after the result")
+            sample = self.temple_sample()
+            screen = sample.screen
+            if screen is None:
+                self._temple_stop("exit", "screen unreadable after RETURN",
+                                  sample)
+            if self._temple_is_greeting(screen):
+                break
+            names = self._temple_list(screen)
+            if names.count("EXIT") != 1 or "RAISE DEAD" not in names:
+                self._temple_stop("exit", "neither the service list nor the "
+                                  "temple bar after RETURN", sample)
+            arrival = self._temple_body(self._temple_select_row("EXIT"))
+            tag = "list-exit"
+        else:
+            self._temple_stop("exit", "the temple bar never came up after "
+                              "the service list's EXIT", sample)
+        self._temple_select_bar("EXIT", "temple")
+        limit = min(self.clock() + 90, self.temple_input_deadline)
+        while self.clock() < limit:
+            sample = self.temple_sample()
+            screen = sample.screen
+            if screen is None or not screen.row(24).strip():
+                time.sleep(0.4)
+                continue
+            if self.at_world(screen.row(24)):
+                outside = self.temple_checkpoint("outside", sample)
+                return {"stem": outside["stem"], "continued": kept["stem"]}
+            self._temple_stop("exit", "unexpected screen after the temple "
+                              "bar's EXIT", sample)
+        self._temple_stop("exit", "the world bar did not return within 90 "
+                          "seconds after the temple bar's EXIT")
+
+    def temple_probe(self, who: str, leave: bool = False) -> dict:
         """Capture the temple arrival screen and stop; with `HEAL`, select it
         once and capture the last settled screen after it; with `RAISE`,
         go on to buy RAISE DEAD for the highlighted member.
@@ -2393,7 +2450,11 @@ class PoolRun:
         (#700). Recognising it would be a guess, so the probe sends HEAL
         once, keeps the last steady screen that is not the arrival screen
         and sends nothing further. The source is the registered specimen's
-        own path; the run stages its own copy, so none is made by hand."""
+        own path; the run stages its own copy, so none is made by hand.
+
+        LEAVE, for `RAISE POOL` and `RAISE CONTROL` that ended `alive`,
+        goes on to `_temple_leave`, so a `save` step can run from the world
+        bar."""
         if who not in TEMPLE_PROBE_ARGS or self.game.key != "pool-of-radiance":
             raise StepFailed("temple probe requires Pool BRUTUS")
         raising = who.startswith("BRUTUS RAISE")
@@ -2504,6 +2565,8 @@ class PoolRun:
                 result["pool_before"] = pool_before
                 result["pool_after"] = pool_after
             result["outcome"] = outcome
+            if leave and outcome == "alive":
+                result["leave"] = self._temple_leave()
         result["checkpoints"] = len(self.temple_checkpoints)
         return result
 
@@ -5370,7 +5433,10 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             elif step.verb == "ready":
                 got = pool.ready(step.arg)
             elif step.verb == "temple-probe":
-                got = pool.temple_probe(step.arg)
+                leaves = (step.arg in TEMPLE_SAVE_ARGS
+                          and steps[-1].verb == "save")
+                got = (pool.temple_probe(step.arg, leave=True) if leaves
+                       else pool.temple_probe(step.arg))
             else:
                 got = pool.save(staged)
             got = {"step": step.text, "verb": step.verb, **got,
@@ -5640,6 +5706,8 @@ def main(argv: list[str] | None = None) -> int:
     if temple_mode:
         if (steps not in [[Step("load"), Step("temple-probe", arg)]
                           for arg in TEMPLE_PROBE_ARGS]
+                + [[Step("load"), Step("temple-probe", arg), Step("save")]
+                   for arg in TEMPLE_SAVE_ARGS]
                 or args.title != "pool" or args.issue != "700"
                 or sorted(parse_record_bytes(args.stage_record))
                 != sorted(TEMPLE_STAGING[steps[1].arg])
@@ -5653,7 +5721,8 @@ def main(argv: list[str] | None = None) -> int:
                 or args.walk != "I" or args.walk_steps != 40
                 or not 100 < args.max_seconds <= 1500):
             ap.error("temple-probe requires exactly --title pool --issue 700 "
-                     "--steps load 'temple-probe BRUTUS [HEAL|RAISE [POOL|CONTROL]]', "
+                     "--steps load 'temple-probe BRUTUS [HEAL|RAISE [POOL|CONTROL]]' "
+                     "[save, after RAISE POOL or RAISE CONTROL only], "
                      "no staging (RAISE takes exactly BRUTUS's constitution "
                      "18 and 6,000 gold; RAISE POOL, 6,000 gold on MALCYON "
                      "and BRUTUS's constitution 18; RAISE CONTROL, the RAISE "
