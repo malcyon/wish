@@ -2156,6 +2156,7 @@ graph LR
   amiga_later --> amiga_por
   amiga_later --> amiga_port
   amiga_later --> amiga_shared
+  amiga_later -.->|deferred| c64_codec
   amiga_later --> c64_port
   amiga_later -.->|deferred| dos_codec
   amiga_later --> dos_port
