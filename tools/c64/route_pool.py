@@ -343,9 +343,9 @@ REST_TIME = 0x2898
 #: here when the area's check stops a rest, and `CAMP $0886` then leaves camp
 #: with no key; `DUNGEON $19D9` runs the area script's entry 3, which zeroes
 #: it again -- in New Phlan (`ECL00 $9A93`) before the city watch's `GO STAY`
-#: (`docs/207-c64-rest-interruption.md`).  A live New Phlan rest had already
-#: left camp, with the marker back at 0, ten seconds after its clock stopped,
-#: so `CAMP_TICK_BYTES` missing is the other sign of the same interruption.
+#: (`docs/207-c64-rest-interruption.md`).  The camp code is gone, and the
+#: marker back at 0, within about ten seconds of the clock stopping, so
+#: `CAMP_TICK_BYTES` missing is the other sign of the same interruption.
 REST_MARKER = 0x6DD3
 REST_INTERRUPTED = 0xFF
 #: `CAMP $1E0F`, `LDA $6DD2 / BEQ`: the rest loop's first bytes, there only

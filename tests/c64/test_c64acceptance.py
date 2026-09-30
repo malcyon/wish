@@ -10084,7 +10084,7 @@ def test_rest_interrupted_waits_without_a_key_and_answers_the_watch(
         tmp_path, monkeypatch):
     """The live New Phlan rest: the check stops it after one pass and the game
     leaves camp by itself, with the rest-time bar still drawn while it loads;
-    the watch's GO STAY follows with no key, is answered GO, and the step
+    the watch's GO STAY comes up with no key, is answered GO, and the step
     says the rest was cut short."""
     run, log, sess = _watch_rest(
         tmp_path, monkeypatch, end="restbar", marker=0x00, arg="1h",
@@ -10142,7 +10142,8 @@ def test_rest_interrupted_answers_a_watch_drawn_after_the_world_bar_held(
     log.close()
     assert sess.sent == [("bar", "ENCAMP"), ("bar", "GO")]
     assert sess.state == "world"
-    assert got["watch_seen"] is True and got["prompts"] == []
+    assert got["watch_seen"] is True
+    assert got["bar"] == "GO STAY" and got["prompts"] == ["GO STAY"]
     assert [e["event"] for e in got["events"]] == ["go_stay"]
     assert got["state_cleared"] == ["$4A07", "$4A0F", "$4A10", "$4A11"]
 
