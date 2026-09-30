@@ -8,6 +8,8 @@ an empty party even while an effect is running.
 
 from __future__ import annotations
 
+import pytest
+
 from goldbox import c64_port, effects
 from tools.c64 import route_pool as E
 
@@ -92,6 +94,7 @@ class RestingSession:
         self.stop_bar, self.clear_on_stop = stop_bar, clear_on_stop
         self.bar = CAMP_ROW
         self.m = FakeMon()
+        self.m.write(E.CAMP_TICK, E.CAMP_TICK_BYTES)
         self.pressed: list[str] = []
         self.written: bytes | None = None
         self.resting = False
@@ -320,6 +323,41 @@ def test_a_pool_rest_still_waits_for_increase_and_writes_2898(monkeypatch):
         got["before"]["clock"]) == 90
     assert "staging_str" in got["before"] and "records" in got
     assert "interrupted" not in got
+
+
+class PoolInterruptedSession(RestingSession):
+    """Pool's rest stopped by the area's check.  `left_camp` false: `$FF` in
+    `$6DD3` with `CAMP` still at `$0800`.  True: the live New Phlan reading,
+    `CAMP` replaced and `$6DD3` back at 0 while the rest-time bar is still
+    drawn."""
+
+    left_camp = False
+
+    def _pass(self) -> None:
+        super()._pass()
+        if self.bar == self.stop_bar:
+            if self.left_camp:
+                self.m.write(E.CAMP_TICK, bytes((0xA8, 0x03, 0xCA, 0x10, 0xFA)))
+                self.m.write(E.REST_MARKER, bytes(1))
+            else:
+                self.m.write(E.REST_MARKER, bytes((E.REST_INTERRUPTED,)))
+
+
+@pytest.mark.parametrize("left_camp", [False, True])
+def test_a_pool_rest_the_check_interrupts_is_reported_with_its_bar(
+        monkeypatch, left_camp):
+    sess = PoolInterruptedSession(c64_port.POOL_OF_RADIANCE, E.REST_TIME,
+                                  E.SAVE0_LOAD, POOL_REST_ROW, stop_after=1,
+                                  stop_bar=POOL_REST_ROW)
+    sess.left_camp = left_camp
+    got = _rest(monkeypatch, sess, 0, 1)
+    assert got["ended"] == "interrupted" and got["interrupted"] is True
+    assert got["bar"] == POOL_REST_ROW
+    assert got["rest_marker"] == (0 if left_camp else E.REST_INTERRUPTED)
+    assert got["camp_resident"] is (not left_camp)
+    assert sess.pressed == ["REST", "REST"]
+    assert _clock_minutes(got["after"]["clock"]) - _clock_minutes(
+        got["before"]["clock"]) == 5
 
 
 def test_a_pool_rest_refuses_the_later_titles_bar(monkeypatch):

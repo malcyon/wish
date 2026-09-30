@@ -339,6 +339,20 @@ REC_CHA = 0x019
 #: at a time -- `tools/c64/c64restinterrupt.py`.
 REST_TIME = 0x2898
 
+#: Pool's rest-interrupted marker: `CAMP $1E29` stores `REST_INTERRUPTED`
+#: here when the area's check stops a rest, and `CAMP $0886` then leaves camp
+#: with no key; `DUNGEON $19D9` runs the area script's entry 3, which zeroes
+#: it again -- in New Phlan (`ECL00 $9A93`) before the city watch's `GO STAY`
+#: (`docs/207-c64-rest-interruption.md`).  A live New Phlan rest had already
+#: left camp, with the marker back at 0, ten seconds after its clock stopped,
+#: so `CAMP_TICK_BYTES` missing is the other sign of the same interruption.
+REST_MARKER = 0x6DD3
+REST_INTERRUPTED = 0xFF
+#: `CAMP $1E0F`, `LDA $6DD2 / BEQ`: the rest loop's first bytes, there only
+#: while `CAMP` is the overlay at `$0800` (`tools/c64/c64restinterrupt.py`).
+CAMP_TICK = 0x1E0F
+CAMP_TICK_BYTES = bytes((0xAD, 0xD2, 0x6D, 0xF0, 0x20))
+
 
 #: Curse and Silver Blades load the save payload at `$4B00`, so their four
 #: effect arrays and the clock sit `$200` above Pool's, at the same offsets
@@ -417,6 +431,12 @@ def rest(sess, log, minutes: int, hours: int, cp: dict) -> dict:
     five minutes at a time, and each five-minute pass is one call of the
     expiry sweep.
 
+    A Pool rest the area's check interrupted -- `REST_MARKER` still
+    `REST_INTERRUPTED`, or `CAMP` already gone from `$0800` -- also returns
+    `ended` (`interrupted`), `interrupted`, `bar` (row 24 as read, which can
+    still be the rest-time bar after camp has closed), `rest_marker` and
+    `camp_resident`; an uninterrupted one returns none of them.
+
     A Curse or Silver Blades session (`sess.game`) goes to `rest_later`.
     """
     game = getattr(sess, "game", c64_port.POOL_OF_RADIANCE)
@@ -451,13 +471,24 @@ def rest(sess, log, minutes: int, hours: int, cp: dict) -> dict:
         after = sample(m)
         counts = {k: m.checkpoint_hits(v) for k, v in cp.items()}
         records = live_records(m)
+        marker = m.read(REST_MARKER, 1)[0]
+        in_camp = bytes(m.read(CAMP_TICK, len(CAMP_TICK_BYTES))) == CAMP_TICK_BYTES
         m.resume()
     log.say(f"  rest {minutes}m {hours}h: clock {before['clock']} -> "
             f"{after['clock']}")
     log.say(f"    durations {before['duration'][:6]} -> "
             f"{after['duration'][:6]}")
     log.say(f"    ids {after['id'][:6]}  counts {counts}")
-    return {"before": before, "after": after, "records": records, **counts}
+    got = {"before": before, "after": after, "records": records, **counts}
+    if marker == REST_INTERRUPTED or not in_camp:
+        s = sess.screen()
+        bar = "" if s is None else s.row(24).rstrip()
+        log.say(f"    interrupted: ${REST_MARKER:04X} = ${marker:02X}, CAMP "
+                f"{'still' if in_camp else 'no longer'} at $0800, "
+                f"row 24 {bar!r}")
+        got.update(ended="interrupted", interrupted=True, bar=bar,
+                   rest_marker=marker, camp_resident=in_camp)
+    return got
 
 
 def rest_later(sess, log, minutes: int, hours: int, cp: dict,

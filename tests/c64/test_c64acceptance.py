@@ -21,6 +21,7 @@ import dataclasses
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -9899,23 +9900,44 @@ def test_temple_probe_pool_records_an_unreadable_pool_and_still_finishes(
 
 WATCH_EVENT = _window({17: "YOU ARE ROUSTED BY THE CITY WATCH AND",
                        18: "TOLD TO MOVE ALONG. WHAT DO YOU DO?"}, "GO STAY")
+POOL_REST_BAR = "REST  INCREASE  DECREASE  EXIT"
 
 
 class _RestSession(FakeSession):
-    """A party whose square is read from `squares`, one per call."""
+    """A party whose square is read from `squares`, one per call, and whose
+    screens in `later` are replaced by the game itself after that many reads,
+    with no key: `{state: (reads, next state)}`."""
 
     squares = None
+    later: dict = {}
+    reads = 0
 
     def position(self):
         return self.squares.pop(0)
 
+    def screen(self):
+        if self.state in self.later:
+            reads, following = self.later[self.state]
+            self.reads += 1
+            if self.reads > reads:
+                self.state, self.reads = following, 0
+        return super().screen()
+
 
 def _watch_rest(tmp_path, monkeypatch, *, end="event", before=(0, 3, 0, 0, 0, 0),
                 after=(0, 8, 0, 0, 0, 0), arg="5h", moves=None, extra=None,
-                squares=([10, 4, 2], [11, 4, 2])):
-    """A rest whose route_pool half ends on screen END, driven by MOVES."""
+                squares=([10, 4, 2], [11, 4, 2]), marker=None, later=None):
+    """A rest whose route_pool half ends on screen END, driven by MOVES and
+    replaced by the game as LATER says.
+
+    MARKER, when given, is the `$6DD3` value the Pool rest read after an
+    interrupted rest, returned the way `route_pool.rest` returns one; 0 is
+    the live New Phlan reading, with `CAMP` already gone from `$0800`."""
     screens = {"world": _window({}, WORLD_BAR), "camp": _window({}, CAMP),
                "event": WATCH_EVENT, "event2": WATCH_EVENT,
+               "restbar": _window({}, POOL_REST_BAR),
+               "rudely": _window({18: "YOUR REST IS RUDELY INTERRUPTED!"},
+                                 A.CONTINUE),
                "stuck": _window({}, "SOMETHING ELSE")}
     screens.update(extra or {})
     table = {("world", ("bar", "ENCAMP")): "camp",
@@ -9923,10 +9945,16 @@ def _watch_rest(tmp_path, monkeypatch, *, end="event", before=(0, 3, 0, 0, 0, 0)
     table.update(moves or {})
     sess = _RestSession(screens, table, "world")
     sess.squares = list(squares)
+    sess.later = dict(later or {})
 
     def fake_rest(s, log, minutes, hours, cp):
         s.state = end
-        return {"before": {"clock": list(before)}, "after": {"clock": list(after)}}
+        got = {"before": {"clock": list(before)}, "after": {"clock": list(after)}}
+        if marker is not None:
+            got.update(ended="interrupted", interrupted=True,
+                       bar=POOL_REST_BAR, rest_marker=marker,
+                       camp_resident=marker == 0xFF)
+        return got
 
     monkeypatch.setattr(A.route_pool, "rest", fake_rest)
     run, log = _pool_run(tmp_path, sess)
@@ -9963,6 +9991,9 @@ def test_rest_with_no_event_is_completed_and_the_party_has_not_moved(
     log.close()
     assert got["events"] == [] and got["rest_completed"] is True
     assert got["position_before"] == got["position_after"] == [10, 4, 2]
+    assert set(got) == {"asked", "before_clock", "after_clock",
+                        "elapsed_minutes", "rest_completed", "events",
+                        "position_before", "position_after"}
 
 
 def test_rest_rounds_the_asked_time_up_to_the_five_minute_pass(
@@ -10037,6 +10068,71 @@ def test_rest_fails_when_the_world_bar_does_not_return_after_go(
     with pytest.raises(A.StepFailed, match="world bar never came back"):
         run.rest("5h")
     log.close()
+
+
+def test_rest_interrupted_waits_without_a_key_and_answers_the_watch(
+        tmp_path, monkeypatch):
+    """The live New Phlan rest: the check stops it after one pass and the game
+    leaves camp by itself, with the rest-time bar still drawn while it loads;
+    the watch's GO STAY follows with no key, is answered GO, and the step
+    says the rest was cut short."""
+    run, log, sess = _watch_rest(
+        tmp_path, monkeypatch, end="restbar", marker=0x00, arg="1h",
+        before=(0, 2, 0, 0, 0, 0), after=(0, 7, 0, 0, 0, 0),
+        later={"restbar": (3, "event")})
+    got = run.rest("1h")
+    log.close()
+    assert sess.sent == [("bar", "ENCAMP"), ("bar", "GO")]
+    assert sess.state == "world"
+    assert got["ended"] == "interrupted" and got["interrupted"] is True
+    assert got["bar"] == "GO STAY" and got["prompts"] == ["GO STAY"]
+    assert got["rest_completed"] is False and got["elapsed_minutes"] == 5
+    assert [e["event"] for e in got["events"]] == ["go_stay"]
+    assert got["events"][0]["text"][0].startswith("YOU ARE ROUSTED")
+    logged = (tmp_path / "run.jsonl").read_text()
+    assert '"rest_interrupted"' in logged and '"random_event"' in logged
+
+
+def test_rest_interrupted_answers_a_press_bar_before_the_watch(
+        tmp_path, monkeypatch):
+    run, log, sess = _watch_rest(
+        tmp_path, monkeypatch, end="restbar", marker=0xFF,
+        later={"restbar": (2, "rudely")},
+        moves={("rudely", ("key", 0x0D)): "event"})
+    got = run.rest("1h")
+    log.close()
+    assert sess.sent == [("bar", "ENCAMP"), ("key", 0x0D), ("bar", "GO")]
+    assert got["prompts"] == [A.CONTINUE, "GO STAY"]
+    assert got["bar"] == "GO STAY" and sess.state == "world"
+
+
+def test_rest_interrupted_with_no_prompt_is_reported_once_the_world_is_back(
+        tmp_path, monkeypatch):
+    run, log, sess = _watch_rest(
+        tmp_path, monkeypatch, end="restbar", marker=0x00,
+        later={"restbar": (2, "world")})
+    got = run.rest("1h")
+    log.close()
+    assert got["interrupted"] is True and got["events"] == []
+    assert got["bar"] == "" and got["prompts"] == []
+    assert sess.sent == [("bar", "ENCAMP")] and sess.state == "world"
+
+
+@pytest.mark.parametrize("later, named", [
+    ({"restbar": (2, "stuck")}, "SOMETHING ELSE"),
+    ({}, "REST  INCREASE  DECREASE  EXIT"),
+])
+def test_rest_interrupted_by_a_screen_it_cannot_answer_fails_naming_it(
+        tmp_path, monkeypatch, later, named):
+    """A prompt the step does not know, or the rest-time bar never giving way,
+    stops the run naming row 24, and no key is sent at either."""
+    monkeypatch.setattr(A, "REST_LEAVE_SECONDS", 0.5)
+    run, log, sess = _watch_rest(
+        tmp_path, monkeypatch, end="restbar", marker=0x00, later=later)
+    with pytest.raises(A.StepFailed, match=re.escape(repr(named))):
+        run.rest("1h")
+    log.close()
+    assert sess.sent == [("bar", "ENCAMP")]
 
 
 def test_rest_leaves_a_take_stay_bar_alone(tmp_path, monkeypatch):
