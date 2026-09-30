@@ -130,3 +130,90 @@ def test_the_cli_refuses_a_bad_place_and_a_place_without_published_disk_one(tmp_
                          "--stage-place", "6,14"], "a place is X,Y,FACING")):
         foundation.main(["prepare", "--title", "curse", "--run-id", "r", *extra])
         assert why in capsys.readouterr().err
+
+
+def _silver_blades() -> bytes:
+    """The synthetic Silver Blades save, made a party that has set out in area 4."""
+    shape = amiga_savegame.SILVER_BLADES
+    data = bytearray(synthetic_amiga.synthetic_silver_blades(("ALPHA",)))
+    for address, value in ((0x49F2, 4), (0x49E6, 1), (0x49C5, 16), (0x4FE1, 255)):
+        at = shape.vm_offset(address)
+        data[at:at + 2] = value.to_bytes(2, "big")
+    return bytes(data)
+
+
+def test_a_silver_blades_place_changes_one_byte_each_for_x_y_and_facing():
+    data = _silver_blades()
+    staged, change = staging.stage_place(data, "secret-of-the-silver-blades", 6, 14, 1)
+    assert change == {"before": [7, 13, 0], "after": [6, 14, 1]}
+    at = amiga_savegame.SILVER_BLADES.square_at
+    assert [i for i in range(len(data)) if data[i] != staged[i]] == [at, at + 1, at + 2]
+    assert list(staged[at:at + 3]) == [6, 14, 2]
+
+
+def _staged(tmp_path, monkeypatch):
+    path, _report = _prepare(tmp_path, monkeypatch, _curse(), place=(6, 14, 0))
+    return path, json.loads(path.read_text())
+
+
+def test_a_staged_df0_with_a_changed_free_sector_is_refused(tmp_path, monkeypatch):
+    path, manifest = _staged(tmp_path, monkeypatch)
+    df0 = pathlib.Path(manifest["disks"]["df0"]["path"])
+    image = AmigaDisk.open(df0)
+    free = next(n for n in range(image.block_count - 1, 2, -1) if image.is_free(n))
+    raw = bytearray(image.to_bytes())
+    raw[free * 512] ^= 0xFF
+    df0.write_bytes(bytes(raw))
+    manifest["disks"]["df0"]["sha256"] = foundation.sha256(df0)
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(RouteError, match="byte for byte"):
+        foundation._published_manifest(path, "curse")
+
+
+def test_the_staged_image_is_the_same_bytes_every_time_it_is_built(tmp_path, monkeypatch):
+    _path, manifest = _staged(tmp_path, monkeypatch)
+    published = AmigaDisk.open(manifest["registered"]["published"]["path"])
+    built = AmigaDisk(published.to_bytes())
+    staging.replace_file_in_place(
+        built, "/save/savgamd.dat",
+        staging.stage_place(published.read_file("/save/savgamd.dat"), KEY, 6, 14, 0)[0])
+    assert built.to_bytes() == pathlib.Path(manifest["disks"]["df0"]["path"]).read_bytes()
+
+
+def _fetched_after_a_run(manifest):
+    """The fetched DF0 of a run: the loaded DF0 plus the game's two saves."""
+    disk = AmigaDisk.open(manifest["disks"]["df0"]["path"])
+    disk.write_file("/save/savgamC.dat", _curse())
+    disk.write_file("/save/savgamF.dat", _curse())
+    return disk
+
+
+def test_a_staged_run_finds_the_published_files_preserved(tmp_path, monkeypatch):
+    path, manifest = _staged(tmp_path, monkeypatch)
+    _, title = foundation._published_manifest(path, "curse")
+    fetched = _fetched_after_a_run(manifest)
+    assert foundation._published_files_preserved(manifest, title, fetched) is True
+    # The same disk against an unstaged manifest differs in the loaded slot, as a real change would.
+    unstaged = {k: v for k, v in manifest.items() if k != "staged_place"}
+    assert foundation._published_files_preserved(unstaged, title, fetched) is False
+
+
+def test_a_staged_run_whose_loaded_slot_is_overwritten_is_not_preserved(tmp_path, monkeypatch):
+    path, manifest = _staged(tmp_path, monkeypatch)
+    _, title = foundation._published_manifest(path, "curse")
+    fetched = _fetched_after_a_run(manifest)
+    fetched.write_file("/save/savgamD.dat", _curse())
+    assert foundation._published_files_preserved(manifest, title, fetched) is False
+
+
+def test_the_preserved_specimen_says_the_loaded_slot_was_staged(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(foundation, "_register_fetched",
+                        lambda *args: seen.append(args[3]) or {})
+    run = tmp_path / "run1" / "prepare.json"
+    staged = {"slot": "/save/savgamd.dat", "before": [3, 14, 1], "after": [6, 14, 0]}
+    foundation._preserve_published(run, "accept1", "curse", tmp_path / "f.adf", "628", staged)
+    foundation._preserve_published(run, "accept1", "curse", tmp_path / "f.adf", "628")
+    assert "staged the loaded slot /save/savgamd.dat" in seen[0]
+    assert "[3, 14, 1] to [6, 14, 0]" in seen[0]
+    assert "staged" not in seen[1]

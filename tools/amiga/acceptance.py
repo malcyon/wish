@@ -85,6 +85,7 @@ from tools.amiga.staging import (  # noqa: E402
     StageError,
     _entry,
     _verified_disk,
+    replace_file_in_place,
     sha256,
     stage_place,
 )
@@ -525,6 +526,24 @@ def _input(manifest: dict, name: str) -> pathlib.Path:
     return path
 
 
+def _published_files_preserved(manifest: dict, title: AmigaTitle, fetched: amiga_adf.AmigaDisk) -> bool:
+    """Whether the fetched DF0 holds every file it started with, the game having added only its two saves.
+
+    What it started with is the published image, or working DF0 when a place was staged
+    into its loaded slot.
+    """
+    start = (manifest["disks"]["df0"] if "staged_place" in manifest
+             else manifest["registered"]["published"])
+    before_files = _disk_files(_verified_disk(pathlib.Path(start["path"])))
+    after_files = _disk_files(fetched)
+    extension = "dat" if manifest["title"] == "curse" else "sav"
+    writable = {f"/save/savgam{c}.{extension}".lower()
+                for c in (title.control_letter, title.after_letter)}
+    return (set(after_files) == set(before_files) | writable and
+            all(after_files.get(path) == data for path, data in before_files.items()
+                if path not in writable))
+
+
 def _no_problems(reading: dict[str, Any], slot: str) -> list[str]:
     return []
 
@@ -762,16 +781,8 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                 allowed = {*kept_before, title.control_letter, title.after_letter}
                 result["extra_saves"] = sorted(set(title.slot_letters(fetched)) - allowed)
                 if manifest.get("mode") == "published_disk_one":
-                    published = _verified_disk(pathlib.Path(
-                        manifest["registered"]["published"]["path"]))
-                    before_files, after_files = _disk_files(published), _disk_files(fetched)
-                    extension = "dat" if manifest["title"] == "curse" else "sav"
-                    writable = {f"/save/savgam{c}.{extension}".lower()
-                                for c in (title.control_letter, title.after_letter)}
-                    result["published_files_preserved"] = (
-                        set(after_files) == set(before_files) | writable and
-                        all(after_files.get(path) == data for path, data in before_files.items()
-                            if path not in writable))
+                    result["published_files_preserved"] = _published_files_preserved(
+                        manifest, title, fetched)
                     result["control_clock_matches"] = control.get("clock") == manifest["clock_a"]
                     rested = route_camp.rest_minutes(tuple(manifest.get("camp", ())))
                     # A rest of r leaves the clock at r plus a short walk, modulo a day, so this
@@ -937,14 +948,24 @@ def _register_fetched(specimen_name: str, full_title: str, issue: str, what: str
 
 
 def _preserve_published(manifest_path: pathlib.Path, attempt: str, name: str,
-                        fetched: pathlib.Path, issue: str = PUBLISHED_ISSUE) -> dict[str, str]:
-    """Register a successful game's fetched DF0 before its lane is released."""
+                        fetched: pathlib.Path, issue: str = PUBLISHED_ISSUE,
+                        staged: dict[str, Any] | None = None) -> dict[str, str]:
+    """Register a successful game's fetched DF0 before its lane is released.
+
+    `staged` is the manifest's `staged_place`; the provenance then says Wish changed the
+    loaded slot's square before the game loaded it.
+    """
     run_id = manifest_path.parent.name
+    what = (f"Run {run_id!r}, attempt {attempt!r}: loaded the published disk-one "
+            "party, walked and saved slots C and F in game")
+    if staged is not None:
+        what += (f". Before the run Wish staged the loaded slot {staged['slot']} with "
+                 f"`prepare --stage-place`: the party's x,y,facing went from "
+                 f"{staged['before']} to {staged['after']} and nothing else in the image "
+                 "changed")
     return _register_fetched(
         f"wish-{issue}-{name}-{_slug(run_id)}-{_slug(attempt)}", _FULL_TITLES[name],
-        PUBLISHED_ISSUE_TEXT[issue],
-        f"Run {run_id!r}, attempt {attempt!r}: loaded the published disk-one "
-        "party, walked and saved slots C and F in game", fetched)
+        PUBLISHED_ISSUE_TEXT[issue], what, fetched)
 
 
 def _preserve_substituted(manifest_path: pathlib.Path, manifest: dict, attempt: str,
@@ -1854,7 +1875,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     fetched = out / f"fetched-{title.save_disk}.adf"
                     result["specimen"] = (
                         _preserve_published(manifest_path, attempt, published_name, fetched,
-                                            manifest.get("issue", PUBLISHED_ISSUE))
+                                            manifest.get("issue", PUBLISHED_ISSUE),
+                                            manifest.get("staged_place"))
                         if published_disk_one else _preserve_substituted(
                             manifest_path, manifest, attempt, title, specimen_issue, fetched))
                     problems = specimens.check_specimens(specimens.tree_root())
@@ -2111,7 +2133,7 @@ def _container_key(name: str) -> str:
 
 
 def _check_staged_place(name: str, letter: str, slot_path: str, staged: Any,
-                        published: amiga_adf.AmigaDisk, working: amiga_adf.AmigaDisk) -> None:
+                        published: amiga_adf.AmigaDisk, working_path: pathlib.Path) -> None:
     """Re-derive a `--stage-place` change from the published disk and compare it to working DF0.
 
     Working DF0 must be the published image with the one slot's three square
@@ -2129,6 +2151,7 @@ def _check_staged_place(name: str, letter: str, slot_path: str, staged: Any,
         raise RouteError(f"the manifest's staged place: {exc}") from exc
     if change["before"] != before or change["after"] != after:
         raise RouteError("the manifest's staged place differs from the published slot")
+    working = _verified_disk(working_path)
     old, new = _disk_files(published), _disk_files(working)
     if (new.get(slot_path) != derived or set(new) != set(old) or
             any(new[key] != value for key, value in old.items() if key != slot_path) or
@@ -2137,6 +2160,13 @@ def _check_staged_place(name: str, letter: str, slot_path: str, staged: Any,
             working.to_bytes()[:1024] != published.to_bytes()[:1024]):
         raise RouteError("working DF0 differs from the published image by more than "
                          "the staged place")
+    # The per-file check above gives the reason; this one also covers the bytes outside
+    # any file, such as a free sector, that only a rebuild of the whole image can see.
+    rebuilt = amiga_adf.AmigaDisk(published.to_bytes())
+    replace_file_in_place(rebuilt, slot_path, derived)
+    if hashlib.sha256(rebuilt.to_bytes()).hexdigest() != sha256(working_path):
+        raise RouteError("working DF0 is not the published image with the staged place "
+                         "and nothing else, byte for byte")
 
 
 def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle]:
@@ -2233,8 +2263,9 @@ def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle
         raise RouteError("the published slot was not converted")
     working = published
     if staged is not None:
-        working = _verified_disk(_input(manifest["disks"], "df0"))
-        _check_staged_place(name, letter, slot_path, staged, published, working)
+        working_path = _input(manifest["disks"], "df0")
+        _check_staged_place(name, letter, slot_path, staged, published, working_path)
+        working = _verified_disk(working_path)
     # A staged place is what the game loads, so it is the place the run expects.
     reading = title.read_slot(working, letter)
     if (reading.get("place") != manifest["state_a"] or
@@ -2310,7 +2341,7 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
             raise RouteError(f"--stage-place: {exc}") from exc
         staged = {"slot": slot_path, **change}
         staged_disk = amiga_adf.AmigaDisk(disk.to_bytes())
-        staged_disk.write_file(slot_path, data)
+        replace_file_in_place(staged_disk, slot_path, data)
         reading = _published_title(name, letter, issue=issue).read_slot(staged_disk, letter)
         if reading.get("place", {}).get("facing") != place[2]:
             raise RouteError("--stage-place: the staged slot does not read back the place")

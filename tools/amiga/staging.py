@@ -56,6 +56,25 @@ class StageError(ValueError):
     """The image or destination is not the bounded staging case."""
 
 
+def replace_file_in_place(disk: amiga_adf.AmigaDisk, path: str, data: bytes) -> None:
+    """Overwrite a same-length file's data blocks where they lie, leaving every other byte of the image alone.
+
+    `AmigaDisk.write_file` reallocates blocks and stamps the current time on the
+    drawer and root, so two runs of it never give the same image; this gives a
+    staged image that can be rebuilt byte for byte from the original and checked
+    by hash. Only a single-header OFS file the same length as `data` is handled.
+    """
+    if disk.ffs:
+        raise StageError("in-place staging needs an OFS image")
+    header = disk.lookup(path).block
+    blocks = disk._file_blocks(header)
+    data_blocks = blocks[:-1]
+    if (blocks[-1] != header or len(disk.read_file(path)) != len(data)
+            or len(data_blocks) != max(1, -(-len(data) // amiga_adf.OFS_DATA_SIZE))):
+        raise StageError(f"{path} is not a same-length single-header file to overwrite in place")
+    disk._write_data_chain(header, data, data_blocks)
+
+
 def stage_place(data: bytes, container: str, x: int, y: int,
                 facing: int) -> tuple[bytes, dict[str, list[int]]]:
     """A later-title Amiga saved game with the party put on `x`,`y` facing `facing` (0 N, 1 E, 2 S, 3 W).
