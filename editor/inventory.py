@@ -236,6 +236,12 @@ class InventoryModel(QAbstractTableModel):
 
     Showing the empty slots is the point: it is how many more the character can
     carry, and it is where an added item lands.
+
+    **Row and slot are different things.**  The game draws its item list from
+    the highest filled slot down to slot 0, so the filled slots come first in
+    that order and the empty ones after them, lowest first; the `#` column keeps the slot's
+    own number.  Every method that acts on an item takes the row the player
+    sees and maps it with :meth:`slot_of`.
     """
 
     edited = pyqtSignal()
@@ -256,6 +262,14 @@ class InventoryModel(QAbstractTableModel):
 
     # -- shape ------------------------------------------------------------
 
+    def slot_of(self, row: int) -> int:
+        """The item slot drawn on `row`: the filled slots from the highest
+        down, then the empty ones from the lowest up."""
+        slots = range(len(self.inventory))
+        order = ([n for n in reversed(slots) if not self.inventory.is_empty(n)]
+                 + [n for n in slots if self.inventory.is_empty(n)])
+        return order[row]
+
     def rowCount(self, _parent=QModelIndex()) -> int:
         return len(self.inventory) if self.inventory else 0
 
@@ -270,7 +284,8 @@ class InventoryModel(QAbstractTableModel):
 
     def flags(self, index):
         base = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
-        if self.inventory is None or self.inventory.is_empty(index.row()):
+        if (self.inventory is None
+                or self.inventory.is_empty(self.slot_of(index.row()))):
             return base
         if index.column() in EDITABLE:
             return base | Qt.ItemFlag.ItemIsEditable
@@ -281,7 +296,7 @@ class InventoryModel(QAbstractTableModel):
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid() or self.inventory is None:
             return None
-        row, col = index.row(), index.column()
+        row, col = self.slot_of(index.row()), index.column()
         empty = self.inventory.is_empty(row)
         item = self.inventory.item(row)
 
@@ -340,9 +355,10 @@ class InventoryModel(QAbstractTableModel):
     # -- editing ----------------------------------------------------------
 
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole) -> bool:
-        if self.inventory is None or self.inventory.is_empty(index.row()):
+        if (self.inventory is None
+                or self.inventory.is_empty(self.slot_of(index.row()))):
             return False
-        row, col = index.row(), index.column()
+        row, col = self.slot_of(index.row()), index.column()
         if role == Qt.ItemDataRole.CheckStateRole and col in CHECKABLE:
             on = Qt.CheckState(value) == Qt.CheckState.Checked
             if col == READIED_COL:
@@ -392,10 +408,13 @@ class InventoryModel(QAbstractTableModel):
         return where
 
     def delete(self, row: int) -> bool:
-        if self.inventory is None or self.inventory.is_empty(row):
+        """Delete the item drawn on `row`."""
+        if (self.inventory is None
+                or self.inventory.is_empty(self.slot_of(row))):
             return False
+        slot = self.slot_of(row)
         self.beginResetModel()
-        self.inventory.delete(row)
+        self.inventory.delete(slot)
         self.endResetModel()
         self.edited.emit()
         return True

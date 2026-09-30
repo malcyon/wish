@@ -1209,6 +1209,13 @@ def test_the_field_label_falls_back_for_a_field_with_no_label(app, save):
 GAME_DISK = f"{DISKS}/POOL1.D64"
 
 
+def _row(model, slot: int) -> int:
+    """The row the Items table draws `slot` on: the game's own order puts the
+    highest filled slot first."""
+    return next(r for r in range(len(model.inventory))
+                if model.slot_of(r) == slot)
+
+
 @pytest.fixture
 def editor(app, save):
     """A window with a game disk, so items have names and templates exist."""
@@ -1220,7 +1227,8 @@ def editor(app, save):
 def test_items_are_shown_by_name_not_by_number(editor):
     editor.roster.selectRow(3)                    # ROLAND -- row 3, #160
     names = [editor.items.data(editor.items.index(r, 1)) for r in range(16)]
-    assert names[:2] == ["BANDED MAIL", "MACE"]
+    assert names[:2] == ["MACE", "BANDED MAIL"]       # the game's order: top is
+                                                      # the highest filled slot
     assert names[2] == "—"                           # a free slot, shown as one
 
 
@@ -1229,7 +1237,7 @@ def test_without_a_game_disk_the_tab_says_why_items_are_numbers(app, save):
     from editor.window import EditorBinding
     w = EditorBinding(make_root(), str(save))                      # no game disk beside it
     w.roster.selectRow(2)
-    assert "word 57/48" == w.items.data(w.items.index(0, 1))
+    assert "word 57/48" == w.items.data(w.items.index(_row(w.items, 0), 1))
     assert "No game disk" in w.root.findChild(QLabel, "label_inventory").text()
     assert not w.root.findChild(QWidget, "button_item_add").isEnabled()
 
@@ -1241,10 +1249,11 @@ def test_editing_quantity_and_readied_reaches_the_disk(editor, save):
     from editor.window import EditorBinding
     editor.roster.selectRow(0)                    # MALCYON, six darts
     model = editor.items
-    assert model.setData(model.index(1, 2), 9)                       # quantity
-    assert model.setData(model.index(1, 3), Qt.CheckState.Checked.value,
+    row = _row(model, 1)
+    assert model.setData(model.index(row, 2), 9)                     # quantity
+    assert model.setData(model.index(row, 3), Qt.CheckState.Checked.value,
                          Qt.ItemDataRole.CheckStateRole)             # readied
-    assert model.setData(model.index(1, 5), -2)                      # bonus
+    assert model.setData(model.index(row, 5), -2)                    # bonus
     assert "wrote" in editor.save(interactive=False)
 
     again = EditorBinding(make_root(), str(save), GAME_DISK)
@@ -1260,7 +1269,7 @@ def test_editing_weight_writes_tenths_of_a_pound_to_the_disk(editor, save):
     from editor.window import EditorBinding
     editor.roster.selectRow(0)                    # MALCYON, six darts
     model = editor.items
-    assert model.setData(model.index(1, 6), 12)                       # lb
+    assert model.setData(model.index(_row(model, 1), 6), 12)          # lb
     assert "wrote" in editor.save(interactive=False)
 
     again = EditorBinding(make_root(), str(save), GAME_DISK)
@@ -1276,9 +1285,10 @@ def test_a_fractional_weight_edits_to_the_nearest_tenth(editor):
     conversion this task is actually about."""
     editor.roster.selectRow(0)
     model = editor.items
-    assert model.setData(model.index(1, 6), 3.5)
+    row = _row(model, 1)
+    assert model.setData(model.index(row, 6), 3.5)
     assert model.inventory.item(1).weight_tenths == 35
-    assert model.data(model.index(1, 6)) == "3.5"
+    assert model.data(model.index(row, 6)) == "3.5"
 
     # A value finer than a tenth rounds to the nearest one.
     assert model.setData(model.index(1, 6), 3.54)
@@ -1419,7 +1429,7 @@ def test_the_ring_of_fire_resistance_is_repaired_on_an_editor_save(save):
 @game_disks
 def test_deleting_closes_the_gap(editor):
     editor.roster.selectRow(3)                    # ROLAND -- row 3, #160; BANDED MAIL, MACE
-    assert "slot 0" in editor.delete_item(0)
+    assert "slot 0" in editor.delete_item(_row(editor.items, 0))
     assert editor.items.inventory.item(0).name == "MACE"
     assert editor.items.inventory.is_empty(1)
 
@@ -2165,7 +2175,7 @@ def test_preview_lists_fields_items_and_the_icon(editor):
     editor.roster.selectRow(5)                    # MALCYON -- row 5, #160; slot 0
     editor._widgets["gold"].setValue(999)
     # The engine treats slots 1-5 as retired; slot 6 holds the live DART.
-    editor.items.setData(editor.items.index(6, 2), 9)
+    editor.items.setData(editor.items.index(_row(editor.items, 6), 2), 9)
     editor.add_item("POTION OF HEALING")
     editor._widgets["icon"].set_cell_colour(0, 7)
     text = editor.preview_text()
@@ -3670,12 +3680,12 @@ def test_the_item_column_fits_the_longest_name_the_disks_hold(editor):
 @game_disks
 def test_the_traits_of_the_selected_item_are_shown(editor):
     editor.roster.selectRow(3)                     # ROLAND -- row 3, #160
-    editor._child("inventory").selectRow(0)           # BANDED MAIL
+    editor._child("inventory").selectRow(1)           # BANDED MAIL, slot 0
     assert editor._show_traits() == "BANDED MAIL"
     traits = dict(editor.traits.rows)
     assert traits["Protection"] == "AC 4"
     assert traits["Usable by"] == "cleric, fighter"
-    editor._child("inventory").selectRow(1)           # MACE
+    editor._child("inventory").selectRow(0)           # MACE, slot 1, the top row
     assert dict(editor.traits.rows)["Damage vs medium"] == "1d6+1"
 
 
@@ -5751,9 +5761,10 @@ def test_zero_type_stale_slot_is_empty_and_untouched_bytes_survive():
     model = InventoryModel(inventory)
     assert inventory.used == 1
     assert inventory.is_empty(0)
-    assert model.data(model.index(0, NAME)) != model.data(model.index(1, NAME))
-    assert not model.flags(model.index(0, QTY)) & Qt.ItemFlag.ItemIsEditable
-    assert not model.setData(model.index(0, QTY), 7)
+    assert model.slot_of(0) == 1 and model.slot_of(1) == 0
+    assert model.data(model.index(1, NAME)) != model.data(model.index(0, NAME))
+    assert not model.flags(model.index(1, QTY)) & Qt.ItemFlag.ItemIsEditable
+    assert not model.setData(model.index(1, QTY), 7)
     assert not inventory.changed
     inventory.write_into(payload)
     assert bytes(payload) == original

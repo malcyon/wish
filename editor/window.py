@@ -3504,8 +3504,10 @@ class EditorBinding(QObject):
         item = None
         if table is not None and self.items.inventory is not None:
             index = table.currentIndex()
-            if index.isValid() and not self.items.inventory.is_empty(index.row()):
-                item = self.items.inventory.item(index.row())
+            if index.isValid():
+                slot = self.items.slot_of(index.row())
+                if not self.items.inventory.is_empty(slot):
+                    item = self.items.inventory.item(slot)
         self.traits.set_item(item)
         traits = self._child("traits")
         if traits is not None:
@@ -3577,10 +3579,11 @@ class EditorBinding(QObject):
             if index is None or not index.isValid():
                 return "nothing selected"
             row = index.row()
+        slot = self.items.slot_of(row)
         if not self.items.delete(row):
             return "that slot is empty"
         self._describe_inventory(self.party.member(self.current_row))
-        note = f"deleted the item in slot {row}"
+        note = f"deleted the item in slot {slot}"
         self.status(note)
         return note
 

@@ -226,7 +226,9 @@ def test_an_item_row_reads_as_it_does_on_the_items_tab(app):
         for theirs, ours in ((leavebehind.NAME_COLUMN, ITEMS_NAME),
                              (leavebehind.QTY_COLUMN, ITEMS_QTY),
                              (leavebehind.READIED_COLUMN, ITEMS_READIED)):
-            assert row.text(theirs) == model.data(model.index(slot, ours)), \
+            # The table draws the higher of the two filled slots first.
+            assert row.text(theirs) == model.data(
+                model.index(1 - slot, ours)), \
                 (slot, ours)
     assert _picks(dialog)[(0, 0)].text(leavebehind.QTY_COLUMN) == "7"
     assert _picks(dialog)[(0, 0)].text(leavebehind.READIED_COLUMN) == "Yes"
