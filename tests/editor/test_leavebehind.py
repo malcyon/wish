@@ -192,6 +192,23 @@ def test_a_scroll_carried_loose_is_a_row_with_its_spells_too(app):
     assert "HASTE" in loose.child(0).text(NAME)
 
 
+def test_a_pool_trident_gets_no_spells_line_and_a_pool_scroll_still_does(app):
+    """Type 0x27 is a scroll in Silver Blades and a trident in Pool of
+    Radiance, whose own scrolls are 0x3D; the window reads the title's."""
+    pool = c64_port.POOL_OF_RADIANCE
+    trident = bytearray(_scroll(5))
+    trident[0] = dos_codec.SCROLL_TYPES[0]
+    pool_scroll = bytearray(_scroll(6))
+    pool_scroll[0] = dos_codec.C64_SCROLL_TYPES[pool.key][0]
+    char = _member("ALPHA", 15, _scroll(5), _scroll(6))
+    char.get("inventory").extend((bytes(trident), bytes(pool_scroll)))
+    dialog = LeaveBehindDialog(dos_codec.pack_overflow([char]), ITEM_NAMES,
+                               SPELL_NAMES, for_game(pool), ACCEPT)
+    picks = _picks(dialog)
+    assert picks[(0, 17)].childCount() == 0
+    assert "FIREBALL" in picks[(0, 18)].child(0).text(NAME)
+
+
 def test_an_item_row_reads_as_it_does_on_the_items_tab(app):
     """Name, quantity and readied come out of `InventoryModel` itself, for an
     item with a quantity and readied and for one with neither."""

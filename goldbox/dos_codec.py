@@ -7579,11 +7579,12 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
         who = f"slot {place}: {name}, {index + 1} in the source marching order"
         if left:
             held = pack_of(char)[0]
+            scrolls = C64_SCROLL_TYPES[c64_codec.deltas_for(container).key]
             needed = next(o.needed for o in before if o.members == (index,))
             for n in sorted(left):
                 block = held[n]
                 spells = (f", spells {block[13]} {block[14]} {block[15]}"
-                          if block[0] in SCROLL_TYPES else "")
+                          if block[0] in scrolls else "")
                 report.left_behind.append(
                     f"{who} -- inventory item {n}, type {block[0]}{spells}, "
                     f"left behind by the player's choice: the C64 record "

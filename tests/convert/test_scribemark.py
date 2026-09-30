@@ -191,3 +191,7 @@ def test_saving_the_mid_scribe_save_in_place_keeps_the_file_the_game_wrote():
     assert edited.record[REST_COUNTDOWN_AT] == 4
     assert scroll_bytes(edited.items) == bytes((0x71, 0x6F, 0x91))
 
+
+
+def test_every_title_with_c64_deltas_has_a_scroll_type_row():
+    assert set(dos_codec.C64_SCROLL_TYPES) == set(c64_codec.DELTAS_BY_KEY)

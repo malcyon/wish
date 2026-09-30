@@ -32,7 +32,7 @@ from PyQt6.QtWidgets import (
     QTreeWidgetItem,
 )
 
-from goldbox.dos_codec import SCROLL_TYPES, PackOverflow
+from goldbox.dos_codec import C64_SCROLL_TYPES, PackOverflow
 from goldbox.items import Item
 from goldbox.spells import SpellTable
 
@@ -81,6 +81,9 @@ class LeaveBehindDialog(QDialog):
         # one form for a scroll's spells.
         self._spell_reader = ItemTraitsModel()
         self._spell_reader.set_tables({}, spell_names or {}, spells)
+        # A scroll's type id is the title's own: 0x27 is a trident in Pool of
+        # Radiance and Curse.
+        self._scroll_types = C64_SCROLL_TYPES.get(spells.key, ())
 
         self.tree = self.ui.pack_tree
         self.tree.setHeaderLabels(
@@ -132,7 +135,7 @@ class LeaveBehindDialog(QDialog):
             index = unit.indices[0]
             raw = raws[index]
             row = self._pick_row(parent, member, index, raw)
-            if unit.kind == "scroll" or raw[0] in SCROLL_TYPES:
+            if unit.kind == "scroll" or raw[0] in self._scroll_types:
                 self._spell_line(row, raw)
 
     def _pick_row(self, parent: QTreeWidgetItem, member: int, index: int,
