@@ -519,6 +519,29 @@ def test_an_unsaved_amiga_pool_of_radiance_edit_is_in_the_snapshot(tmp_path):
     assert path.read_bytes() == before
 
 
+@pytest.mark.parametrize("typed", [b"X\xe5Y", b"X\x01Y"])
+def test_an_amiga_pool_name_with_an_alt_or_ctrl_byte_opens_and_saves_back(
+        tmp_path, typed):
+    """The Name span holds `0xE5` or `0x01`: the editor opens the save, shows
+    the save's own name, and a same-port Save gives every byte back."""
+    path = amiga_por_disk(tmp_path)
+    disk = AmigaDisk.open(str(path))
+    sav = bytearray(disk.read_file(_amiga_por_sav(disk)))
+    sav[0:3] = typed
+    disk.write_file(_amiga_por_sav(disk), bytes(sav))
+    disk.save(str(path))
+
+    party = Party(str(path))
+    assert party.members[0].shown_name == typed.decode("latin1") + "HA"
+
+    before = amiga_savegame.read_por_characters(
+        AmigaDisk.open(str(path)), "A")
+    written = saveplan.write_amiga(party, AmigaDisk.open(str(path)))
+    after = amiga_savegame.read_por_characters(written, "A")
+    assert after[0].raw == before[0].raw
+    assert written.read_file(_amiga_por_sav(written))[0:3] == typed
+
+
 def test_an_edit_that_reaches_no_byte_of_the_save_is_refused(tmp_path):
     """`turn_power` is a C64 field no DOS record holds, so the rewrite raises
     rather than returning a snapshot that quietly lost the edit -- through

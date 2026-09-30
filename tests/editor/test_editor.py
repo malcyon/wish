@@ -6321,3 +6321,24 @@ def test_an_unreadable_folder_beside_an_amiga_pool_party_still_reaches_the_c64_s
         w = _amiga_pool_editor(tmp_path)
     assert not w.party.item_types
     assert sum("No disk with ITEMS found" in m for m in seen) == 1
+
+
+def test_an_amiga_pool_name_with_an_alt_byte_shows_in_the_box_and_roster(
+        tmp_path):
+    from test_saveplan import _amiga_por_sav, amiga_por_disk
+
+    from editor.window import EditorBinding
+    from goldbox.amiga_adf import AmigaDisk
+
+    path = amiga_por_disk(tmp_path)
+    disk = AmigaDisk.open(str(path))
+    sav = bytearray(disk.read_file(_amiga_por_sav(disk)))
+    sav[0:3] = b"X\xe5Y"
+    disk.write_file(_amiga_por_sav(disk), bytes(sav))
+    disk.save(str(path))
+
+    w = EditorBinding(make_root(), str(path))
+    shown = "X\xe5YHA"
+    assert w.model.data(w.model.index(0, 0)) == shown
+    w.roster.selectRow(0)
+    assert w._widgets["name"].text() == shown

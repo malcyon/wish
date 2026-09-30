@@ -21,7 +21,17 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Mapping
 
-from . import classcode, derive, effects, neutral, paladin, spells, titles, traits
+from . import (
+    classcode,
+    derive,
+    effects,
+    neutral,
+    paladin,
+    petscii,
+    spells,
+    titles,
+    traits,
+)
 from . import levels as level_tables
 from .encoding import COMBAT_BIAS
 from .items import TYPE_LOCATION, Item, ItemType
@@ -903,7 +913,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # -- the name: 18 NUL-padded bytes ---------------------------------------
     name = use("name")
     if name is not None:
-        rec.set("name", name.value)
+        text = str(name.value)
+        odd = "".join(dict.fromkeys(c for c in text if not " " <= c <= "~"))
+        if odd:
+            rep.lost(
+                f"Name {text!r} holds {odd!r}, which a C64 record name "
+                f"cannot hold; each written as {petscii.SUBSTITUTE!r}")
+            text = "".join(c if " " <= c <= "~" else petscii.SUBSTITUTE
+                           for c in text)
+        rec.set("name", text)
         emit(name, "name", 0x000, _field("name").size,
              ", re-padded to the C64's 18 NUL-padded bytes")
     # 0x012 and 0x013, freed from the old 20-byte name field, are the

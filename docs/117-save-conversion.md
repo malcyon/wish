@@ -2206,6 +2206,7 @@ graph LR
   c64_codec --> levels
   c64_codec --> neutral
   c64_codec --> paladin
+  c64_codec --> petscii
   c64_codec --> portraits
   c64_codec --> record
   c64_codec --> spells

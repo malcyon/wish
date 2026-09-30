@@ -1664,7 +1664,9 @@ class DosCharacter(_Fielded):
             # with a space in his name converts as MARY?SUE, because the
             # reader decodes the game's $FF as a replacement character)`.
             raw = raw.replace(b"\xff", b" ")
-        return raw.decode("ascii", "replace")
+        # Latin-1 is one-to-one over every byte, and it is what the Amiga
+        # keymap types for an Alt or Ctrl key in a name.
+        return raw.decode("latin1")
 
     @property
     def spells_known(self) -> list[int]:
@@ -4997,7 +4999,13 @@ def write(char: NeutralCharacter,
     name = use("name")
     if name is not None:
         width = table["name_text"].size
-        text = str(name.value)[:width].encode("ascii", "replace")
+        text = str(name.value)[:width].encode("latin1", "replace")
+        odd = "".join(dict.fromkeys(
+            c for c in str(name.value)[:width] if not " " <= c <= "~"))
+        if odd:
+            rep.lost(
+                f"Name {str(name.value)!r} holds {odd!r}, which the DOS name "
+                f"entry cannot type")
         if len(str(name.value)) > width:
             rep.lost(
                 f"Name {str(name.value)!r} is longer than the DOS {width} "

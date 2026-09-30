@@ -123,6 +123,14 @@ class Member:
     condition: tuple[str | None, bool | None] | None = None
     #: The nine bytes of `roster_tail`, from wherever the port keeps them.
     roster_tail: bytes | None = None
+    #: The save's own name, set only when it holds a character outside
+    #: `0x20`-`0x7E` that the sheet's C64 record cannot hold and shows as `.`.
+    port_name: str | None = None
+
+    @property
+    def shown_name(self) -> str:
+        """The name as the save spells it, else the sheet's own."""
+        return self.port_name if self.port_name is not None else self.name
 
     @property
     def is_npc(self) -> bool:
@@ -450,6 +458,7 @@ class Party:
         disk's row would.
         """
         raw = record.to_bytes()
+        port_name = str(neutral.get("name") or "")
         member = Member(
             number, record, record.name,
             armour_class=combat_value(record.get("armour_class")),
@@ -460,7 +469,9 @@ class Party:
                  for n in range(ITEMS_PER_CHARACTER)]),
             record_original=raw, game=self.game, native=native,
             condition=(neutral.get("status"), neutral.get("active")),
-            roster_tail=record.get_raw("roster_tail"))
+            roster_tail=record.get_raw("roster_tail"),
+            port_name=(port_name if any(not " " <= c <= "~"
+                                        for c in port_name) else None))
         self.members.append(member)
 
     def _load_standalone(self) -> None:

@@ -800,7 +800,7 @@ class RosterModel(QAbstractTableModel):
             return None
         m = self.party.member(index.row())
         if role == Qt.ItemDataRole.DisplayRole:
-            return (m.name, m.race_name, m.class_name,
+            return (m.shown_name, m.race_name, m.class_name,
                     "" if m.armour_class is None else str(m.armour_class),
                     m.hp_text)[index.column()]
         if role == Qt.ItemDataRole.ForegroundRole:
@@ -3144,7 +3144,7 @@ class EditorBinding(QObject):
                     w.setValue(low - 1)
             elif isinstance(w, QLineEdit):
                 if name == "name":
-                    w.setText(record.name)
+                    w.setText(member.shown_name)
                 elif isinstance(value, (bytes, bytearray)):
                     w.setText(value.hex(" "))
                 else:
