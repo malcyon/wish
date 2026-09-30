@@ -180,12 +180,10 @@ def test_each_pinned_628_source_is_the_specimen_on_disk(name, port, relative):
     assert staging.sha256(root / relative) in foundation._source_pins("628", name, port)
 
 
-def test_every_pinned_628_source_has_a_well_formed_hash_and_a_distinct_key():
-    """Each title and port pins at least one lower-case SHA-256, and no key is listed twice."""
-    for name, port, _ in PINNED_628_SOURCES:
-        pins = foundation._source_pins("628", name, port)
-        assert pins and all(len(p) == 64 and p == p.lower() for p in pins)
-    assert len({(n, p) for n, p, _ in PINNED_628_SOURCES}) == len(PINNED_628_SOURCES)
+def test_628_pins_exactly_the_titles_and_ports_the_specimen_list_names_and_each_hash_is_well_formed():
+    table = foundation.PUBLISHED_SOURCES_BY_ISSUE["628"]
+    assert set(table) == {(n, p) for n, p, _ in PINNED_628_SOURCES}
+    assert all(len(h) == 64 and h == h.lower() for pins in table.values() for h in pins)
 
 
 def test_the_manifest_s_camp_steps_rebuild_the_route_and_curse_refuses_them():
@@ -440,6 +438,7 @@ def _pinned_628_hashes():
 
 #: The hashes item 3 of the plan names, spelled out so that dropping an entry fails a case.
 EXPECTED_628_PINS = (
+    ("ssb", "c64", route_silver_blades.JOIN_SHA256),
     ("ssb", "c64", "8246b96031f6c89e24ca5b096608b779b361e0413be85647d68c27b0ffa61a62"),
     ("ssb", "dos", "73bf301c77280eb39218fc7f6e9176cee15560585e7d20016adfd756a52b9269"),
     ("curse", "dos", "28cacbb27d4aff5bfef4c3e11a94e35d5d0bac2aa6180c394d784f7ec97e8789"),
@@ -459,9 +458,8 @@ def test_a_published_prepare_for_628_accepts_each_pinned_source_and_refuses_anot
         foundation.prepare_published(name, "unpinned", report, "628")
 
 
-def test_628_pins_one_source_for_each_title_and_port_the_amiga_routes_start_from():
-    assert sorted((n, p) for n, p, _ in _pinned_628_hashes()) == [
-        ("curse", "c64"), ("curse", "dos"), ("ssb", "c64"), ("ssb", "c64"), ("ssb", "dos")]
+def test_628_pins_exactly_the_expected_hashes_two_for_ssb_c64_and_one_for_each_other_key():
+    assert sorted(_pinned_628_hashes()) == sorted(EXPECTED_628_PINS)
 
 
 def test_a_published_prepare_keeps_its_camp_steps_and_the_accept_route_has_them(
