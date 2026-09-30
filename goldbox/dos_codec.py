@@ -9100,18 +9100,21 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
         # or on every member for an id in `PARTY_ROW_ON_EVERY_MEMBER`; a
         # duration-0 row becomes the granted record on the same members.
         # A row owned by an empty party slot is what a member left behind
-        # by a flight or a dismissal leaves in his old slot; DOS and the
-        # Amiga free a departed member's effects with him, so it converts
-        # to nothing and goes to the debug log (docs/226, "A row whose owner
-        # has left the party"). Every other such row is reported on the
-        # first character.
+        # by a flight leaves in his old slot; DOS and the Amiga free a
+        # departed member's effects with him, so it converts to nothing and
+        # goes to the debug log (docs/226, "A row whose owner has left the
+        # party"). The game's own test for an emptied slot is a roster status
+        # of 0, so a slot with a nonzero status that `looks_occupied`
+        # rejects is not empty and keeps the drop line, as does every other
+        # such row, reported on the first character.
         occupied = {s.index for s in party}
         party_nodes: dict[int, effects.RunningEffect] = {}
         party_granted: dict[int, bytes] = {}
         for row in effects.active_effects(bytes(save0)):
             if row.owner in occupied:
                 continue
-            if row.owner < 8:
+            if row.owner < 8 and (sg1 is None
+                                  or sg1.roster(row.owner).roster_in_use == 0):
                 _log.debug("c64_party: effect row in slot %d (id %d) is "
                            "owned by party slot %d, which holds no "
                            "character; not converted", row.slot, row.id,
@@ -9135,8 +9138,10 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
                     continue
             if row.owner & 0x80:
                 who = "the whole party"
-            else:
+            elif row.owner >= 8:
                 who = f"monster {row.owner}"
+            else:
+                who = f"party slot {row.owner}, which holds no character"
             if row.duration == 0:
                 label = f"effect {row.id}, which never expires"
             else:

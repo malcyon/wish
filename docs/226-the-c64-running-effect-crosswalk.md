@@ -1174,25 +1174,28 @@ Haste from spell 57, held from spell 61 and Pool's 4 are all running nodes.
 
 ## A row whose owner has left the party
 
-**A row owned by an empty party slot (owner 0 to 7, no character in that slot)
-converts to nothing, and it is not a loss.** A member left behind by a flight
-or dismissed by a script keeps his slot's rows on the C64; the engine clears
-his status and name and leaves the rest. DOS and the Amiga free a departed
-member's effects with him and have no store for an effect owned by somebody
-outside the party, so the destination game holds the same state after the
-same play. `goldbox.dos_codec.c64_party` skips such a row and logs it at debug
-level; a monster's row (owner 8 to `$7F`) and a party-wide row (bit 7 set)
-keep their own rules above.
+**A row owned by an empty party slot (owner 0 to 7) converts to nothing, and
+it is not a loss.** A slot counts as empty when the save has no character in
+it and its roster status is 0, which is what the C64's flight drop leaves: the
+engine clears the member's status and name and keeps the rest, rows included.
+DOS and the Amiga free a departed member's effects with him and have no store
+for an effect owned by somebody outside the party, so the destination game
+holds the same state after the same play. `goldbox.dos_codec.c64_party` skips
+such a row and logs it at debug level. A slot with a nonzero roster status that
+the reader cannot read as a character is not empty, so its row keeps the drop
+line. A monster's row (owner 8 to `$7F`) and a party-wide row (bit 7 set) keep
+their own rules above.
 
 **Evidence, from #666 (A C64 party under a camp Prayer loses it on the way to
 DOS or the Amiga, because nothing converts the save's party-wide effect
-rows).** The DOS and Amiga side is the static read of comment 5914964343. On
-the C64, game-written saves after a flight
-(`WISH-SPEC-por-666-e1-flee-orphan-rows` and
-`WISH-SPEC-ssb-666-e1-flee-orphan-rows`) keep the orphan rows with their owners
-unchanged. After a reload no remaining member lists them and the party is not
-closed up: Pool's survivors keep slots 0, 1, 3 and 5. Curse has no such
-save yet, so its close-up behaviour is unmeasured.
+rows).** The rule rests on game-written saves after a flight in Pool of
+Radiance and Silver Blades (`WISH-SPEC-por-666-e1-flee-orphan-rows` and
+`WISH-SPEC-ssb-666-e1-flee-orphan-rows`): the orphan rows survive with their
+owners unchanged, no remaining member lists them after a reload, and the party
+is not closed up (Pool's survivors keep slots 0, 1, 3 and 5). The DOS and
+Amiga side is the static read of comment 5914964343. **Unmeasured:** a script
+dismissal of an NPC on any title, and a flight on Curse, which has no such
+save yet.
 
 ## Negative results and remaining work
 

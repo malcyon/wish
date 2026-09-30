@@ -716,13 +716,39 @@ def test_every_title_converts_a_row_owned_by_an_empty_slot_to_nothing(
     and, as the control, one owned by slot 1, which still converts."""
     bare = _synthetic_c64_party_payload(game, 2)
     plain, _ = dos_codec.c64_party(bytes(bare), None, game=game)
+    # The later titles need bit 7 on an Enlarge magnitude (#667's open limit).
+    magnitude = 0x03 if game is POOL_OF_RADIANCE else 0x83
     payload = _synthetic_c64_party_payload(
-        game, 2, (row_id, 2, 0x3F, 0x03), (row_id, 5, 0x3F, 0x03))
+        game, 2, (row_id, 2, 0x3F, magnitude), (row_id, 5, 0x3F, magnitude),
+        (row_id, 1, 0x3F, magnitude))
     party, _ = dos_codec.c64_party(bytes(payload), None, game=game)
     assert len(party) == 2
     assert not [d for c in party for d in c.dropped
                 if d.startswith("running_effects:")]
-    assert _party_facts(party) == _party_facts(plain)
+    # `c64_party` hands the party back reversed, so slot 1 is first.
+    assert len(party[0].get("running_effects") or ()) == 1
+    assert _party_facts(party[1:]) == _party_facts(plain[1:])
+
+
+def _roster_status(payload: bytearray, game, slot: int, value: int) -> None:
+    from goldbox import c64_save, savegame
+    at = (c64_save.container_for(game).roster_offset
+          + slot * savegame.ROSTER_STRIDE + savegame.ROSTER_IN_USE)
+    payload[at] = value
+
+
+def test_a_row_owned_by_a_slot_the_game_still_lists_keeps_its_drop_line():
+    """Slot 2 has a nonzero roster status but a record `looks_occupied`
+    rejects: it is not an emptied slot, so the row is reported, not logged
+    away."""
+    game = CURSE_OF_THE_AZURE_BONDS
+    payload = _synthetic_c64_party_payload(game, 2, (12, 2, 0x3F, 0x83),
+                                           (12, 5, 0x3F, 0x83))
+    _roster_status(payload, game, 2, 1)
+    party, _ = dos_codec.c64_party(bytes(payload), None, game=game)
+    lines = [d for c in party for d in c.dropped
+             if d.startswith("running_effects:")]
+    assert len(lines) == 1 and "party slot 2" in lines[0]
 
 
 def test_an_orphan_row_is_logged_at_debug_not_dropped(caplog):
@@ -787,6 +813,9 @@ def test_a_game_written_flight_save_converts_its_orphan_rows_to_nothing(
         assert lines == []
         assert all(len(c.get("running_effects")) == 1 for c in party)
     else:
+        # The survivors' own staged rows are refused by #667's open
+        # limitation (`effects.py`, "a magnitude without bit 7"); this
+        # count changes when it is lifted.
         assert len(lines) == survivors
 
 
