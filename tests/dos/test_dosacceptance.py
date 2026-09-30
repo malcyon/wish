@@ -7971,7 +7971,7 @@ def test_the_dos_new_verdigris_script_is_the_c64_one():
     assert c64[0x592:0x594] == c64[0x5AE:0x5B0] == bytes((0x2D, 0x4C))
 
 
-def test_the_prayer_watch_step_parses_for_the_two_prayer_ids_in_pool_only():
+def test_the_prayer_watch_step_parses_its_two_ids_and_takes_49_in_three_titles():
     assert da.parse_step("prayer-watch 49").node == 49
     assert da.parse_step("prayer-watch 35").node == 35
     for bad in ("prayer-watch", "prayer-watch 5", "prayer-watch 49 49", "prayer-watch x"):
@@ -7979,8 +7979,14 @@ def test_the_prayer_watch_step_parses_for_the_two_prayer_ids_in_pool_only():
             da.parse_step(bad)
     steps = [da.parse_step(s) for s in ("load", "prayer-watch 49", "shot end", "read")]
     da.validate_steps(steps, "pool")
-    with pytest.raises(ValueError, match="pool only"):
-        da.validate_steps(steps, "curse")
+    for title in ("curse", "ssb"):
+        later = [da.parse_step(s) for s in ("load", "begin", "prayer-watch 49", "read")]
+        da.validate_steps(later, title)
+        with pytest.raises(ValueError, match="prayer-watch 35 is driven in pool only"):
+            da.validate_steps([da.parse_step(s) for s in
+                               ("load", "begin", "prayer-watch 35")], title)
+    with pytest.raises(ValueError, match="curse, pool, ssb only, not darkness"):
+        da.validate_steps(steps, "darkness")
     with pytest.raises(ValueError, match="needs the map"):
         da.validate_steps([da.parse_step(s) for s in ("load", "camp", "prayer-watch 49")],
                           "pool")
@@ -8028,9 +8034,12 @@ def test_inconclusive_watch_names_only_the_watches_that_say_so():
     assert said == "prayer-watch 35: a; b"
 
 
-def test_the_prayer_watch_needs_pool_the_map_and_the_debugger(tmp_path, monkeypatch):
+def test_the_prayer_watch_needs_its_title_the_map_and_the_debugger(tmp_path, monkeypatch):
     game, d = _fighter(tmp_path)
     with pytest.raises(da.StepFailed, match="pool only"):
+        d.prayer_watch(35)
+    d.title = da.TITLES["darkness"]
+    with pytest.raises(da.StepFailed, match="not darkness"):
         d.prayer_watch(49)
     d.title = da.TITLES["pool"]
     d.where = "camp"
@@ -8086,6 +8095,108 @@ def test_a_prayer_watch_that_fails_mid_fight_still_releases_the_debugger(tmp_pat
     assert calls == ["attach", "arm", "finish"]
     # Keys were pressed, so the party's place is not known to later steps.
     assert d.where == "pressed"
+
+
+class _LaterWatch:
+    """`dosfightwatch.PrayerWatch` as the step drives it: what it was made
+    with, the order of its calls, and a fight `idle` answers to the end."""
+
+    made: list[dict] = []
+
+    def __init__(self, s, ovr, image, note=None, node_id=None, **kw):
+        self.calls: list[str] = []
+        self.ds = None
+        _LaterWatch.made.append({"node_id": node_id, **kw, "watch": self})
+
+    def attach(self):
+        self.calls.append(f"attach {self.ds:04X}")
+        return {"table_ok": True}
+
+    def party(self):
+        return [{"name": "GUY", "side": 0, "nodes": []}]
+
+    def stub_load(self):
+        return None
+
+    def arm(self):
+        self.calls.append("arm")
+        return {"armed": ["stub49"]}
+
+    def run_fight(self, seconds, idle):
+        self.calls.append("run")
+        for _ in range(20):
+            if idle():
+                return "fight over"
+        return "budget"
+
+    def finish(self):
+        self.calls.append("finish")
+        return []
+
+    def summary(self, node, at_encounter, at_stop):
+        return {"node": node, "conclusive": False, "why": ["x"]}
+
+
+def test_a_later_prayer_watch_walks_as_fight_does_and_arms_at_the_first_command_bar(
+        tmp_path, monkeypatch, fight_now):
+    game, d = _fighter(tmp_path)
+    d.s.source = tmp_path
+    (tmp_path / "START.EXE").write_bytes(b"")
+    (tmp_path / "GAME.OVR").write_bytes(b"")
+    monkeypatch.setattr(da.unexepack, "unpack", lambda exe: (b"", {}))
+    monkeypatch.setattr(da.dosfightwatch, "walk_to_encounter",
+                        lambda *a, **k: pytest.fail("Pool's walk"))
+    _LaterWatch.made = []
+    monkeypatch.setattr(da.dosfightwatch, "PrayerWatch", _LaterWatch)
+    monkeypatch.setattr(da.time, "sleep", lambda s: None)
+    got = d.prayer_watch(49)
+    made = _LaterWatch.made[0]
+    assert made["title"] == "ssb" and made["until_penalty"] is True
+    assert made["node_id"] == 49
+    watch = made["watch"]
+    # Armed on the DS the placement read true, after it, and only once.
+    assert d.combat_ds == _DS
+    assert watch.calls == [f"attach {_DS:04X}", "arm", "run", "finish"]
+    events = [e["event"] for e in d.logged]
+    assert events.index("placement") < events.index("prayer-table")
+    assert events.index("prayer-walk") < events.index("prayer-table")
+    party = next(e for e in d.logged if e["event"] == "prayer-party")
+    assert party["where"] == "first-bar"
+    # The walk and the first bar are fight's own; the rest of the bars are
+    # answered by the idle look: QUICK, then the treasure's EXIT and NO.
+    assert game.keys == ["m", "Up", "Up", "c", "q", "q", "e", "n"]
+    assert got["walk"]["walked"] == 1 and got["walk"]["encounters"] == 1
+    assert got["stop"] == "fight over" and d.where == "pressed"
+    assert d.fights == 1
+
+
+def test_a_later_prayer_watch_fails_when_no_fight_comes_in_its_budget(
+        tmp_path, monkeypatch):
+    game, d = _fighter(tmp_path)
+    game.endless = True
+    d.s.source = tmp_path
+    (tmp_path / "START.EXE").write_bytes(b"")
+    (tmp_path / "GAME.OVR").write_bytes(b"")
+    monkeypatch.setattr(da.unexepack, "unpack", lambda exe: (b"", {}))
+    _LaterWatch.made = []
+    monkeypatch.setattr(da.dosfightwatch, "PrayerWatch", _LaterWatch)
+    monkeypatch.setattr(da, "FIGHT_SECONDS", 0.2)
+    monkeypatch.setattr(d, "shot", lambda label: label)
+    with pytest.raises(da.StepFailed, match="no fight in"):
+        d.prayer_watch(49)
+    assert _LaterWatch.made[0]["watch"].calls == []
+
+
+def test_a_silver_blades_prayer_watch_in_area_16_is_refused_without_the_gate(
+        monkeypatch, tmp_path):
+    save = _ssb_copy(tmp_path)
+    _fake_run(monkeypatch, tmp_path)
+    args = _run_args(tmp_path, ["load", "begin", "prayer-watch 49"])
+    args.title, args.slot, args.save, args.from_slot = "ssb", "D", str(save), "D"
+    with pytest.raises(ValueError, match="--stage-var 4C2D=1"):
+        da.check_staging(args, save, "D")
+    args.stage_var = ["4C2D=1"]
+    da.check_staging(args, save, "D")
 
 
 def test_intervene_boots_silver_blades_with_its_cheat_arguments(monkeypatch, tmp_path):

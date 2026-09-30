@@ -10,6 +10,7 @@ become something it knows.  No emulator is needed: `walk_to_encounter` and
 
 from __future__ import annotations
 
+import collections
 import pathlib
 import sys
 
@@ -954,17 +955,18 @@ def test_a_walk_on_a_screen_that_stays_torn_reports_it_and_takes_the_shot():
 
 # -- PrayerWatch, on a debugger that is a dictionary of bytes -----------------
 
+P = dosfightwatch.PRAYER_LAYOUTS["pool"]
 DS = 0x149E
 STUB = 0x0863
 LOAD = 0x2C33
-ASTUB = STUB - dosfightwatch.PRAYER_UNIT + dosfightwatch.ATTACK_UNIT
+ASTUB = STUB - P.prayer_unit + P.attack_unit
 ATT_L = 0x33AE
 ATT_L2 = 0x34C0
 SS = 0x5000
 PARTY_SEG = 0x4000
 OVR_SIZE = 0x40000
 CODE = {name: bytes((0x10 * (i + 1) + j) & 0xFF for j in range(8))
-        for i, name in enumerate(dosfightwatch.PRAYER_ROUTINES)}
+        for i, name in enumerate(P.routines)}
 DESCRIPTOR = bytes(range(0xA0, 0xAC))
 CD3F = bytes.fromhex("cd3fb21200")
 
@@ -1031,27 +1033,27 @@ def _world(dbg: FakeDebugger, *, side_of_attacker: int = 0,
            minutes: int = 8) -> None:
     """Prayer's table and stubs, a party carrying `node_id`, and the frames
     of a party attack under the dispatcher."""
-    dbg.put(DS, dosfightwatch.HANDLER_TABLE + 49 * 4, _le(0xED) + _le(STUB))
-    dbg.put(DS, dosfightwatch.HANDLER_TABLE + 35 * 4, _le(0xB6) + _le(STUB))
+    dbg.put(DS, P.handler_table + 49 * 4, _le(0xED) + _le(STUB))
+    dbg.put(DS, P.handler_table + 35 * 4, _le(0xB6) + _le(STUB))
     dbg.put(STUB, 0, DESCRIPTOR)
     dbg.put(STUB, 0xED, CD3F)
     dbg.put(STUB, 0xB6, CD3F)
-    dbg.put(ASTUB, dosfightwatch.STUB_ATTACK, CD3F)
+    dbg.put(ASTUB, P.stub_attack, CD3F)
     # The party list: records at PARTY_SEG:0x1000 * i, each with one node.
-    dbg.put(DS, dosfightwatch.PARTY_LIST, _le(0) + _le(PARTY_SEG))
+    dbg.put(DS, P.party_list, _le(0) + _le(PARTY_SEG))
     for i, name in enumerate(party):
         rec = 0x1000 * i
         dbg.put(PARTY_SEG, rec, bytes((len(name),)) + name.encode())
-        dbg.put(PARTY_SEG, rec + dosfightwatch.SIDE, b"\x00")
+        dbg.put(PARTY_SEG, rec + P.side, b"\x00")
         if i + 1 < len(party):
-            dbg.put(PARTY_SEG, rec + dosfightwatch.NEXT_RECORD,
+            dbg.put(PARTY_SEG, rec + P.next_record,
                     _le(0x1000 * (i + 1)) + _le(PARTY_SEG))
         node = 0x800 + rec
-        dbg.put(PARTY_SEG, rec + dosfightwatch.NODE_LIST, _le(node) + _le(PARTY_SEG))
+        dbg.put(PARTY_SEG, rec + P.node_list, _le(node) + _le(PARTY_SEG))
         dbg.put(PARTY_SEG, node, bytes((node_id,)) + _le(minutes) + b"\x03\x00")
     # The attacker's record, on `side_of_attacker`.
     dbg.put(PARTY_SEG, 0, bytes((7,)) + b"MALCYON")
-    dbg.put(PARTY_SEG, dosfightwatch.SIDE, bytes((side_of_attacker,)))
+    dbg.put(PARTY_SEG, P.side, bytes((side_of_attacker,)))
     # Four frames: dispatcher (id at +10h), query, walker (list at +0Ah,
     # returning to the attack roll's list-10 call) and the attack roll.
     rets = [(0x1111, 0x2222), (0x1111, 0x3333), (0x33AE, 0x0CF8), (0x1111, 0x4444)]
@@ -1089,11 +1091,11 @@ def _at(dbg, cs, ip, who=PARTY_SEG, **more):
 
 
 def _overlay(dbg, ovr: bytearray) -> None:
-    for name, at in dosfightwatch.PRAYER_ROUTINES.items():
+    for name, at in P.routines.items():
         ovr[at:at + 8] = CODE[name]
-        dbg.put(LOAD, at - dosfightwatch.PRAYER_UNIT_FILE, CODE[name])
-    for name, off in dosfightwatch.ATTACK_POINTS.items():
-        at = dosfightwatch.ATTACK_UNIT_FILE + off
+        dbg.put(LOAD, at - P.prayer_unit_file, CODE[name])
+    for name, off in P.attack_points.items():
+        at = P.attack_unit_file + off
         code = bytes((0x70 + 0x10 * off + j) & 0xFF for j in range(8))
         ovr[at:at + 8] = code
         for seg in (ATT_L, ATT_L2):
@@ -1102,11 +1104,12 @@ def _overlay(dbg, ovr: bytearray) -> None:
 
 def _watch(dbg, notes):
     image = bytearray(0x1000)
-    at = dosfightwatch.PRAYER_UNIT * 16
+    at = P.prayer_unit * 16
     image[at:at + 12] = DESCRIPTOR
     ovr = bytearray(OVR_SIZE)
     return dosfightwatch.PrayerWatch(dbg, bytes(ovr), bytes(image),
-                                     note=lambda **kw: notes.append(kw)), ovr
+                                     note=lambda **kw: notes.append(kw),
+                                     title="pool"), ovr
 
 
 def _ready(*, side_of_attacker: int = 0, node_id: int = 49):
@@ -1143,7 +1146,7 @@ def _both(dbg, first, second):
 
 
 def _attack_load(dbg, seg):
-    dbg.put(ASTUB, dosfightwatch.STUB_ATTACK, b"\xea" + _le(0x0CB7) + _le(seg))
+    dbg.put(ASTUB, P.stub_attack, b"\xea" + _le(0x0CB7) + _le(seg))
 
 
 def _aroll(dbg, who=PARTY_SEG, load=ATT_L, roll=12):
@@ -1151,7 +1154,7 @@ def _aroll(dbg, who=PARTY_SEG, load=ATT_L, roll=12):
     def go():
         _attack_load(dbg, load)
         dbg.put(SS, 0x100 + 4, bytes((roll,)))
-        _at(dbg, ASTUB, dosfightwatch.STUB_ATTACK, who)()
+        _at(dbg, ASTUB, P.stub_attack, who)()
     return go
 
 
@@ -1205,8 +1208,8 @@ def test_the_overlay_segment_is_read_from_the_stub_and_the_four_routines_armed()
     assert [h["kind"] for h in watch.halts] == [
         "stub49", "stub49", "handler", "bonus", "helper",
         "stub49", "handler", "bonus", "helper"]
-    want = {(LOAD, dosfightwatch.PRAYER_ROUTINES[n] - dosfightwatch.PRAYER_UNIT_FILE)
-            for n in dosfightwatch.PRAYER_ROUTINES}
+    want = {(LOAD, P.routines[n] - P.prayer_unit_file)
+            for n in P.routines}
     assert want <= set(dbg.armed) and (STUB, 0xED) in dbg.armed
     first, second, counted = watch.halts[0], watch.halts[1], watch.halts[5]
     assert first["id"] == 49 and first["list"] == 10 and first["party_attack"]
@@ -1259,7 +1262,7 @@ def test_a_monsters_helper_halt_does_not_end_the_party_attack_round():
     watch.load = LOAD
     watch.arm()
     dbg.put(0x4900, 0, bytes((3,)) + b"ORC")
-    dbg.put(0x4900, dosfightwatch.SIDE, b"\x01")
+    dbg.put(0x4900, P.side, b"\x01")
     dbg.pending = [_aroll(dbg), _pt(dbg, 0x0CF5), _at(dbg, STUB, 0xED),
                    _at(dbg, LOAD, 0x0C06, 0x4900), _at(dbg, LOAD, 0x0C06)]
     seen = []
@@ -1279,7 +1282,7 @@ def test_another_stub_halt_drops_the_round_before_its_helper_runs():
     watch.load = LOAD
     watch.arm()
     dbg.put(0x4900, 0, bytes((3,)) + b"ORC")
-    dbg.put(0x4900, dosfightwatch.SIDE, b"\x01")
+    dbg.put(0x4900, P.side, b"\x01")
 
     def monster_asks():
         # The attack roll's frame now names the ORC as the attacker.
@@ -1348,7 +1351,7 @@ def test_an_attacker_without_the_tested_node_at_its_stub_halt_is_not_conclusive(
     dbg.pending = _first_call_then(dbg, [_aroll(dbg), _pt(dbg, 0x0CF5),
                                          _at(dbg, STUB, 0xED)])
     # The attacker's node list is emptied between the menu and its attack.
-    dbg.put(PARTY_SEG, dosfightwatch.NODE_LIST, _le(0) + _le(0))
+    dbg.put(PARTY_SEG, P.node_list, _le(0) + _le(0))
     dbg.pending += [_at(dbg, LOAD, 0x0C06)]
     watch.run_fight(600, idle=lambda: False)
     result = watch.summary(49, at_menu, at_menu)
@@ -1389,7 +1392,7 @@ def test_a_table_that_is_not_prayers_is_refused(monkeypatch):
     monkeypatch.setattr(dosfightwatch.time, "sleep", lambda s: None)
     dbg = FakeDebugger()
     _world(dbg)
-    dbg.put(DS, dosfightwatch.HANDLER_TABLE + 49 * 4, _le(0x00ED) + _le(0x0999))
+    dbg.put(DS, P.handler_table + 49 * 4, _le(0x00ED) + _le(0x0999))
     watch, _ = _watch(dbg, [])
     with pytest.raises(dosfightwatch.PrayerWatchError, match="handler table"):
         watch.attach(tries=2)
@@ -1512,7 +1515,7 @@ def test_a_pair_cut_off_by_a_roll_of_1_is_not_counted_when_the_return_comes():
 def test_a_monsters_list_10_call_opens_no_pair():
     dbg, watch, _, _ = _ready(node_id=35)
     dbg.put(0x4900, 0, bytes((3,)) + b"ORC")
-    dbg.put(0x4900, dosfightwatch.SIDE, b"\x01")
+    dbg.put(0x4900, P.side, b"\x01")
     dbg.pending = _pair(dbg, who=0x4900)
     watch.run_fight(600, idle=lambda: True)
     assert watch.pairs == [] and watch.party_attack is False
@@ -1533,7 +1536,7 @@ def test_id_49_needs_its_helper_inside_the_pair_not_after_it():
 def test_an_attack_stub_that_is_neither_int_3f_nor_a_far_jump_is_refused():
     dbg = FakeDebugger()
     _world(dbg)
-    dbg.put(ASTUB, dosfightwatch.STUB_ATTACK, bytes.fromhex("9090909090"))
+    dbg.put(ASTUB, P.stub_attack, bytes.fromhex("9090909090"))
     watch, _ = _watch(dbg, [])
     watch.attach()
     with pytest.raises(dosfightwatch.PrayerWatchError, match="attack stub"):
@@ -1553,7 +1556,7 @@ def test_pairs_after_the_party_lost_node_35_are_not_conclusive():
     dbg, watch, _, at_menu = _ready(node_id=35)
     watch.node_id = 35
     for m in range(len(at_menu)):
-        dbg.put(PARTY_SEG, 0x1000 * m + dosfightwatch.NODE_LIST, _le(0) + _le(0))
+        dbg.put(PARTY_SEG, 0x1000 * m + P.node_list, _le(0) + _le(0))
     for _ in range(3):
         dbg.pending += _pair(dbg)
     assert watch.run_fight(600, idle=lambda: True) == "quiet pairs"
@@ -1565,7 +1568,7 @@ def test_pairs_after_the_party_lost_node_35_are_not_conclusive():
 def test_a_return_for_another_attacker_does_not_close_the_pair():
     dbg, watch, _, _ = _ready(node_id=35)
     dbg.put(0x4900, 0, bytes((3,)) + b"ORC")
-    dbg.put(0x4900, dosfightwatch.SIDE, b"\x01")
+    dbg.put(0x4900, P.side, b"\x01")
     dbg.pending = [_aroll(dbg), _pt(dbg, 0x0CF5), _pt(dbg, 0x0CF8, who=0x4900)]
     watch.run_fight(600, idle=lambda: True)
     assert watch.pairs == [] and watch.quiet_pairs == []
@@ -1589,3 +1592,288 @@ def test_a_prayer_stub_whose_walker_is_not_list_10_does_not_count_the_round():
     dbg.pending = _pair(dbg, _at(dbg, STUB, 0xED), _at(dbg, LOAD, 0x0C06))
     assert watch.run_fight(600, idle=lambda: True) == "fight over"
     assert watch.round is None and watch.completed is None
+
+
+# -- Curse and Silver Blades: the same watch on each title's own addresses -------
+
+#: The titles `prayer-watch` drives, as `PRAYER_LAYOUTS` keys them, and the
+#: names `dosaffectreads` finds their games by.
+PRAYER_GAMES = {"pool": "pool", "curse": "curse", "ssb": "silver-blades"}
+MONSTER_SEG = 0x4900
+#: The attack roll's frame, fourth in the chain from the dispatcher's.
+ROLL_BP = 0x200 + 0x40 * 3
+#: The handler's own frame at the bonus test and the penalty.
+INNER_BP = 0x180
+
+
+def test_pools_addresses_are_the_ones_measured_in_the_live_fight():
+    assert (P.handler_table, P.party_list, P.next_record, P.node_list, P.side) == (
+        0x6828, 0x5D96, 0x104, 0x7F, 0x10E)
+    assert (P.save_roll, P.attack_roll) == (0x6816, 0x6822)
+    assert (P.prayer_unit, P.stub_49, P.stub_35, P.prayer_unit_file) == (
+        0x41, 0xED, 0xB6, 0xEC5B)
+    assert P.routines == {"handler": 0xFF0D, "bonus": 0xFF30,
+                          "penalty": 0xFF48, "helper": 0xF861}
+    assert (P.attack_unit, P.stub_attack, P.attack_unit_file) == (0xB0, 0x3E, 0x2AEEA)
+    assert P.attack_points == {"attack_call": 0x0CF5, "attack_return": 0x0CF8}
+    assert P.indirect is False
+
+
+def _engine(title):
+    from tools.dos import dosaffectreads as reads
+    name = PRAYER_GAMES[title]
+    try:
+        game = dosbox.find_game(reads.TITLES[name])
+    except FileNotFoundError:
+        pytest.skip(f"needs DOS {reads.TITLES[name]} in the archives")
+    return reads, reads.load(game, name)
+
+
+@pytest.mark.parametrize("title", sorted(PRAYER_GAMES))
+def test_each_titles_layout_is_what_its_own_game_holds(title):
+    """Every address in the table, found again in the player's `GAME.OVR` and
+    `START.EXE` by what the code does rather than where it is."""
+    reads, eng = _engine(title)
+    from tools.dos import dosovrmap
+    lay = dosfightwatch.PRAYER_LAYOUTS[title]
+    ovr = eng.ovr
+    assert eng.table == lay.handler_table
+    where, handler = eng.handlers[49]
+    assert (where, handler) == ("GAME.OVR", lay.routines["handler"])
+    unit = dosovrmap.unit_of(eng.units, handler)
+    assert (unit["seg"], unit["fileoff"]) == (lay.prayer_unit, lay.prayer_unit_file)
+    assert (lay.stub_49, handler - unit["fileoff"]) in unit["ents"]
+    if lay.stub_35 is not None:
+        assert (lay.stub_35, lay.routines["helper"] - unit["fileoff"]) in unit["ents"]
+    body = reads.body(ovr, handler)
+    text = [f"{i.mnemonic} {i.op_str}" for i in body]
+    side = next(i for i in body if i.op_str.endswith(f"es:[di + {lay.side:#x}]"))
+    jne = body[body.index(side) + 2]
+    assert (jne.mnemonic, jne.address) == ("jne", lay.routines["bonus"])
+    assert int(jne.op_str, 0) == lay.routines["penalty"]
+    assert f"dec byte ptr [{lay.attack_roll:#x}]" in text
+    assert f"dec byte ptr [{lay.save_roll:#x}]" in text
+    call = next(i for i in body if i.mnemonic == "call")
+    assert int(call.op_str, 0) == lay.routines["helper"]
+    assert unit["fileoff"] <= lay.routines["helper"] < unit["fileoff"] + unit["code"]
+    helper = [f"{i.mnemonic} {i.op_str}" for i in reads.body(ovr, lay.routines["helper"])]
+    assert f"inc byte ptr [{lay.attack_roll:#x}]" in helper
+    assert f"inc byte ptr [{lay.save_roll:#x}]" in helper
+    # Silver Blades reads the side through the pointer it is handed.
+    assert ("les di, ptr es:[di]" in text) == lay.indirect
+    # The attack roll: the one list-10 walk, its d20 kept in the attack roll byte.
+    walker = reads.apply_walk(eng)["walker"]
+    sites = [(site, start) for site, start in reads.routine_callers(eng, walker)
+             if any(i.op_str == "al, 0xa"
+                    for i in dosovrmap.window(ovr, site, 40)[-7:])]
+    assert len(sites) == 1
+    site, roll = sites[0]
+    aunit = dosovrmap.unit_of(eng.units, roll)
+    assert (aunit["seg"], aunit["fileoff"]) == (lay.attack_unit, lay.attack_unit_file)
+    assert (lay.stub_attack, roll - aunit["fileoff"]) in aunit["ents"]
+    assert site - aunit["fileoff"] == lay.attack_call
+    assert site + 3 - aunit["fileoff"] == lay.attack_return
+    assert any(f"mov byte ptr [{lay.attack_roll:#x}], al" == f"{i.mnemonic} {i.op_str}"
+               for i in reads.body(ovr, roll, 0x3000) if i.address < site)
+    assert f"byte ptr [{lay.save_roll:#x}], al" in [
+        i.op_str for i in reads.body(ovr, reads.saving_throw(eng)["routine"], 0x3000)]
+    # The query the walker asks with starts from the combatants' list head.
+    walk = reads.body(ovr, walker, 0x3000)
+    ask = collections.Counter(i.op_str for i in walk if i.mnemonic == "call")
+    query = reads.body(ovr, int(ask.most_common(1)[0][0], 0), 0x3000)
+    assert f"ptr [{lay.party_list:#x}]" in query[4].op_str
+    assert eng.chain == lay.node_list
+
+
+def _later(title, *, party=("GUY DE VALOIS", "MORGAINE"), node_id=49):
+    """A watch on `title`'s addresses: the table's id-49 entry, the party list
+    with a node on each member, an ORC on side 1 after them, and the
+    attack roll's frames under the dispatcher's."""
+    lay = dosfightwatch.PRAYER_LAYOUTS[title]
+    dbg, notes = FakeDebugger(), []
+    astub = STUB - lay.prayer_unit + lay.attack_unit
+    dbg.put(DS, lay.handler_table + 49 * 4, _le(lay.stub_49) + _le(STUB))
+    dbg.put(STUB, 0, DESCRIPTOR)
+    dbg.put(STUB, lay.stub_49, CD3F)
+    dbg.put(astub, lay.stub_attack, CD3F)
+    dbg.put(DS, lay.party_list, _le(0) + _le(PARTY_SEG))
+    for i, name in enumerate(party):
+        rec = 0x1000 * i
+        dbg.put(PARTY_SEG, rec, bytes((len(name),)) + name.encode())
+        dbg.put(PARTY_SEG, rec + lay.side, b"\x00")
+        nxt = (0x1000 * (i + 1), PARTY_SEG) if i + 1 < len(party) else (0, MONSTER_SEG)
+        dbg.put(PARTY_SEG, rec + lay.next_record, _le(nxt[0]) + _le(nxt[1]))
+        node = 0x800 + rec
+        dbg.put(PARTY_SEG, rec + lay.node_list, _le(node) + _le(PARTY_SEG))
+        dbg.put(PARTY_SEG, node, bytes((node_id,)) + _le(58) + b"\x03\x00")
+    dbg.put(MONSTER_SEG, 0, bytes((3,)) + b"ORC")
+    dbg.put(MONSTER_SEG, lay.side, b"\x01")
+    for k in range(4):
+        frame = bytearray(0x14)
+        frame[0:2] = _le(0x200 + 0x40 * (k + 1))
+        frame[2:6] = _le(0x1111) + _le(0x1111)
+        if k == 0:
+            frame[0x10] = 49
+        if k == 2:
+            frame[0x0A] = dosfightwatch.ATTACK_LIST
+            frame[2:6] = _le(lay.attack_return) + _le(ATT_L)
+        dbg.put(SS, 0x200 + 0x40 * k, bytes(frame))
+    image = bytearray(0x2000)
+    image[lay.prayer_unit * 16:lay.prayer_unit * 16 + 12] = DESCRIPTOR
+    ovr = bytearray(OVR_SIZE)
+    for name, at in lay.routines.items():
+        ovr[at:at + 8] = CODE[name]
+        dbg.put(LOAD, at - lay.prayer_unit_file, CODE[name])
+    for name, off in lay.attack_points.items():
+        code = bytes((0x70 + 0x10 * off + j) & 0xFF for j in range(8))
+        ovr[lay.attack_unit_file + off:lay.attack_unit_file + off + 8] = code
+        dbg.put(ATT_L, off, code)
+    watch = dosfightwatch.PrayerWatch(dbg, bytes(ovr), bytes(image),
+                                      note=lambda **kw: notes.append(kw),
+                                      node_id=node_id, title=title,
+                                      until_penalty=True)
+    watch.attach()
+    at_menu = watch.party()
+    watch.arm()
+    return dbg, watch, lay, astub, at_menu
+
+
+#: Silver Blades' handler reads `les di, [bp+0Ch]` / `les di, es:[di]`: it
+#: is handed the attack roll's own argument slot, not the record.
+THROUGH_A_POINTER = {"ssb"}
+
+
+def _asked(dbg, lay, who):
+    """The combatant argument a handler, helper or query is handed: the record
+    itself, or in Silver Blades the attack roll's own slot holding it."""
+    dbg.put(SS, ROLL_BP + 0x0C, _le(0) + _le(who))
+    title = next(k for k, v in dosfightwatch.PRAYER_LAYOUTS.items() if v is lay)
+    if title in THROUGH_A_POINTER:
+        return ROLL_BP + 0x0C, SS
+    return 0, who
+
+
+def _halt(dbg, lay, cs, ip, who, *, node=(0x800, PARTY_SEG), inner=False):
+    """A halt at `cs:ip` asking about `who` and `node`: at an entry the
+    arguments are on the stack, at the bonus test and the penalty in the
+    handler's frame with `ES:DI` the record."""
+    def go():
+        off, seg = _asked(dbg, lay, who)
+        args = _le(node[0]) + _le(node[1]) + _le(off) + _le(seg)
+        stack = bytearray(16)
+        stack[6:14] = args
+        dbg.put(SS, 0x100, bytes(stack))
+        bp = 0x200
+        if inner:
+            bp = INNER_BP
+            dbg.put(SS, INNER_BP, _le(0x200) + bytes(6) + args)
+            dbg.put(SS, INNER_BP - 1, b"\x00")
+        dbg.registers.update({"CS": cs, "IP": ip, "SS": SS, "SP": 0x100, "BP": bp,
+                              "ES": who, "DI": 0, "AX": 0, "ZF": 1})
+    return go
+
+
+def _roll_halts(dbg, lay, astub, who):
+    """The attack roll's stub halt (unit loaded) and its list-10 call."""
+    def stub():
+        dbg.put(astub, lay.stub_attack, b"\xea" + _le(0x0100) + _le(ATT_L))
+        stack = bytearray(16)
+        stack[4] = 12
+        stack[6:14] = _le(0) + _le(MONSTER_SEG if who != MONSTER_SEG else PARTY_SEG) \
+            + _le(0) + _le(who)
+        dbg.put(SS, 0x100, bytes(stack))
+        dbg.registers.update({"CS": astub, "IP": lay.stub_attack, "SS": SS,
+                              "SP": 0x100, "BP": 0x200, "ES": 0, "DI": 0,
+                              "AX": 0, "ZF": 0})
+
+    def call(off):
+        def go():
+            dbg.put(SS, ROLL_BP + 8, _le(0) + _le(PARTY_SEG if who == MONSTER_SEG
+                                                  else MONSTER_SEG))
+            dbg.put(SS, ROLL_BP + 0x0C, _le(0) + _le(who))
+            dbg.registers.update({"CS": ATT_L, "IP": off, "SS": SS, "SP": 0x100,
+                                  "BP": ROLL_BP, "ES": 0, "DI": 0, "AX": 0, "ZF": 0})
+        return go
+    return stub, call(lay.attack_call), call(lay.attack_return)
+
+
+def _attack(dbg, lay, astub, who, prayer):
+    """One attack by `who`: the roll, its list-10 call, the Prayer halts
+    `prayer` names (`stub49`, `handler`, `bonus`, `helper`, `penalty`), and the
+    walker's return."""
+    stub, call, ret = _roll_halts(dbg, lay, astub, who)
+    unit = lay.prayer_unit_file
+    at = {"stub49": (STUB, lay.stub_49, False),
+          "handler": (LOAD, lay.routines["handler"] - unit, False),
+          "bonus": (LOAD, lay.routines["bonus"] - unit, True),
+          "penalty": (LOAD, lay.routines["penalty"] - unit, True),
+          "helper": (LOAD, lay.routines["helper"] - unit, False)}
+    return [stub, call, *(_halt(dbg, lay, *at[k][:2], who, inner=at[k][2])
+                          for k in prayer), ret]
+
+
+LATER = ("curse", "ssb")
+
+
+@pytest.mark.parametrize("title", LATER)
+def test_a_later_title_arms_only_its_id_49_stub_and_the_attack_stub(title):
+    dbg, watch, lay, astub, at_menu = _later(title)
+    assert lay.stub_35 is None
+    assert dbg.armed == [(STUB, lay.stub_49), (astub, lay.stub_attack)]
+    assert watch.stub == STUB and watch.attack_stub == astub
+    assert watch.holders(at_menu, 49) == ["GUY DE VALOIS", "MORGAINE"]
+    assert [m["side"] for m in at_menu] == [0, 0, 1]
+
+
+@pytest.mark.parametrize("title", LATER)
+def test_a_later_title_counts_the_party_helper_and_a_monsters_penalty(title):
+    dbg, watch, lay, astub, at_menu = _later(title)
+    dbg.put(STUB, lay.stub_49, b"\xea" + _le(0x0100) + _le(LOAD))
+    dbg.pending = [
+        *_attack(dbg, lay, astub, PARTY_SEG, ["stub49"]),       # loads the unit
+        *_attack(dbg, lay, astub, PARTY_SEG,
+                 ["stub49", "handler", "bonus", "helper"]),
+        *_attack(dbg, lay, astub, MONSTER_SEG, ["stub49", "handler", "penalty"])]
+    stop = watch.run_fight(600, idle=lambda: not dbg.pending)
+    assert stop == "attack round and penalty"
+    assert len(dbg.pending) == 1              # the monster's return is never reached
+    kinds = [h["kind"] for h in watch.halts]
+    assert kinds.count("helper") == 1 and kinds.count("penalty") == 1
+    helper = next(h for h in watch.halts if h["kind"] == "helper")
+    assert helper["combatant"]["name"] == "GUY DE VALOIS"
+    penalty = next(h for h in watch.halts if h["kind"] == "penalty")
+    assert penalty["combatant"] == {"at": f"{MONSTER_SEG:04X}:0000", "name": "ORC",
+                                    "side": 1}
+    assert penalty["es_di_combatant"]["name"] == "ORC"
+    rolls = f"ds_{lay.save_roll:04x}_{lay.attack_roll:04x}"
+    assert set(helper[rolls]) == {f"{lay.save_roll:04x}", f"{lay.attack_roll:04x}"}
+    result = watch.summary(49, at_menu, watch.party())
+    assert result["conclusive"] is True and result["why"] == []
+    assert result["monster_penalties"] == 1 and result["helper_hits"] == 1
+
+
+@pytest.mark.parametrize("title", LATER)
+def test_a_later_title_party_round_alone_does_not_stop_or_conclude_the_run(title):
+    dbg, watch, lay, astub, at_menu = _later(title)
+    dbg.put(STUB, lay.stub_49, b"\xea" + _le(0x0100) + _le(LOAD))
+    dbg.pending = [
+        *_attack(dbg, lay, astub, PARTY_SEG, ["stub49"]),
+        *_attack(dbg, lay, astub, PARTY_SEG, ["stub49", "handler", "bonus", "helper"])]
+    assert watch.run_fight(600, idle=lambda: True) == "fight over"
+    result = watch.summary(49, at_menu, watch.party())
+    assert result["round_completed"] is True and result["conclusive"] is False
+    assert any("penalty" in w for w in result["why"])
+
+
+@pytest.mark.parametrize("title", LATER)
+def test_a_later_title_whose_table_names_another_stub_is_refused(title, monkeypatch):
+    monkeypatch.setattr(dosfightwatch.time, "sleep", lambda s: None)
+    dbg, watch, lay, _, _ = _later(title)
+    dbg.put(DS, lay.handler_table + 49 * 4, _le(lay.stub_49 + 5) + _le(STUB))
+    watch.ds = None
+    with pytest.raises(dosfightwatch.PrayerWatchError, match="handler table"):
+        watch.attach(tries=2)
+
+
+def test_only_silver_blades_hands_the_combatant_over_through_a_pointer():
+    assert [t for t, lay in dosfightwatch.PRAYER_LAYOUTS.items() if lay.indirect] == ["ssb"]
