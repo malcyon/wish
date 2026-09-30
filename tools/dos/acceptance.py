@@ -357,13 +357,10 @@ SCRIBE_KEEPS = frozenset({"scribe", "rest", "save", "shot", "read"})
 #: for example), `overland` on #634's `ca4bbff4fa-dos-pool-rebuild`.  On the
 #: map `End` moves the roster highlight a member on and wraps; `v` opens the
 #: sheet, and `Escape` (never `d`, which the sheet's bar offers as DROP)
-#: returns to the map with the highlight where it was.  Read as text with
-#: the title's font, `town` is `AREA CAST VIEW ENCAMP SEARCH LOOK` and
-#: `overland` `CAST VIEW ENCAMP SEARCH LOOK`, the only two map bars among the
-#: Pool runs' shots in the acceptance cache (173 and 18 shots).  `load`,
-#: `begin` and `camp` take a screen for the map only on one of these, so an
-#: unmeasured map bar (a dungeon's, if it differs) stops the run naming its
-#: words rather than being guessed at.
+#: returns to the map with the highlight where it was.  `town` reads `AREA
+#: CAST VIEW ENCAMP SEARCH LOOK` and `overland` `CAST VIEW ENCAMP SEARCH
+#: LOOK`.  `load`, `begin` and `camp` take a screen for the map only on one
+#: of these; any other bar stops the run, naming its words.
 POOL_MAP_BARS: dict[str, str] = {"town": "809e2e1cc9504b5b",
                                  "overland": "f379c606cadd4484"}
 #: The character sheet's bar, by `bar_signature`, one entry per kind of sheet,
@@ -405,10 +402,13 @@ PARTY_MENU_BAR = "CHOOSE A FUNCTION"
 PARTY_MENU_ROWS = range(12, 23)
 PARTY_ADD_ENTRY = "ADD CHARACTER TO PARTY"
 PARTY_VIEW_ENTRY = "VIEW CHARACTER"
-#: A Pool save made at the party menu (`SAVE CURRENT GAME`) loads back onto it,
-#: not the map (#736's cast boot 1, `WISH-SPEC-por-party-ladder` slot D); its
-#: `BEGIN ADVENTURING`, keyed `PARTY_BEGIN`, is what `begin` presses there.
+#: A Pool save made at the party menu (`SAVE CURRENT GAME`) loads back onto
+#: it, not the map; its `BEGIN ADVENTURING`, keyed `PARTY_BEGIN`, is what
+#: `begin` presses there.
 PARTY_BEGIN_ENTRY = "BEGIN ADVENTURING"
+#: Seconds Pool's `camp` waits for a measured map bar on a settled screen
+#: that shows none, before it stops the run with nothing pressed.
+CAMP_MAP_WAIT = 10.0
 PARTY_ADD = "a"
 #: `ADD A CHARACTER: ADD EXIT` lists `CHARLIST.TXT`'s names from text row 2
 #: at column 1, one a row.  `End` moved the highlight a row down and `Home`
@@ -3553,8 +3553,15 @@ class Driver:
 
     def camp(self) -> dict:
         # `E` at Curse's and Pool's party menu is exit to DOS, so it is never
-        # pressed there; in Pool it goes out only on a measured map bar.
-        screen = self.s.capture()
+        # pressed there; in Pool it goes out only on a measured map bar.  The
+        # screen is judged once settled, and Pool's is given `CAMP_MAP_WAIT`
+        # for its map bar, so a frame caught mid-redraw does not stop the run.
+        screen = self.s.settle(quiet=0.6, timeout=self.bounded(30.0, "camp-settle"))
+        if (self.title.key == "pool" and pool_map_kind(screen) is None
+                and not self.on_party_menu(screen)
+                and self.s.wait_for(lambda sc: pool_map_kind(sc) is not None,
+                                    self.bounded(CAMP_MAP_WAIT, "camp-map"))):
+            screen = self.s.settle(quiet=0.6, timeout=self.bounded(30.0, "camp-settle"))
         if self.on_party_menu(screen):
             hint = ("; a Pool save made at the party menu loads there, and "
                     "`begin` after `load` leaves it" if self.title.key == "pool" else "")

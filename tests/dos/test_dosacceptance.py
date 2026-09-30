@@ -264,11 +264,12 @@ def _pod_map_measured(monkeypatch):
         "dungeon": screens.bar_signature(_screen(FakePool.BARS["map"], b""))})
 
 
-@pytest.fixture(autouse=True)
-def _pool_map_measured(monkeypatch):
+@pytest.fixture
+def pool_map_measured(monkeypatch):
     """The fakes' map bar stands in for the measured `town` one of
-    `POOL_MAP_BARS`, the only bars Pool's `load` and `camp` take for the map;
-    the capture tests check the real values."""
+    `POOL_MAP_BARS`, the only bars Pool's `load` and `camp` take for the map,
+    for the tests that camp or load a Pool fake from its map; the capture
+    tests check the real values."""
     monkeypatch.setattr(da, "POOL_MAP_BARS", {
         "town": screens.bar_signature(_screen(FakePool.BARS["map"], b""))})
 
@@ -285,6 +286,7 @@ def _camped(tmp_path, title="pool", **kw) -> tuple[FakePool, da.Driver]:
 @pytest.mark.parametrize("title", sorted(da.TITLES))
 @pytest.mark.parametrize("preset", [0, 7, 4 * 60 + 30, 1440 + 65, 3 * 1440])
 @pytest.mark.parametrize("asked", [5, 90, 1445])
+@pytest.mark.usefixtures("pool_map_measured")
 def test_the_rest_keys_set_the_asked_time_from_any_preset(tmp_path, title, preset,
                                                           asked):
     game, d = _camped(tmp_path, title, preset=preset)
@@ -294,12 +296,14 @@ def test_the_rest_keys_set_the_asked_time_from_any_preset(tmp_path, title, prese
     assert game.mode == "camp"
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_a_swallowed_key_after_each_redraw_is_pressed_again(tmp_path):
     game, d = _camped(tmp_path, preset=4 * 60 + 30, swallow=True)
     d.rest(5)
     assert game.rested == [5]
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_nothing_is_pressed_while_the_party_rests(tmp_path):
     # Any key during a rest asks `Stop Resting?`: the last key before camp
     # returns is the rest key itself.
@@ -308,6 +312,7 @@ def test_nothing_is_pressed_while_the_party_rests(tmp_path):
     assert game.keys[-1] == da.REST_GO
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_a_key_that_changes_nothing_stops_the_run(tmp_path):
     game, d = _camped(tmp_path, dead=da.REST_INC)
     with pytest.raises(da.StepFailed, match="Inc on minutes"):
@@ -323,6 +328,7 @@ def test_rest_and_save_refuse_before_camp(tmp_path):
         d.save("D")
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_the_camp_save_is_believed_by_the_file_and_declines_the_quit(tmp_path):
     game, d = _camped(tmp_path)
     got = d.save("D")
@@ -489,6 +495,7 @@ def _members(party):
 
 @pytest.mark.parametrize("failure", ("", "magic", "display", "five", "back_magic",
                                           "back_camp"))
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_display_captures_every_member_and_returns_to_camp_before_save(
         tmp_path, display_measured, failure):
     party = _POOL_PARTY[:5] if failure == "five" else _POOL_PARTY
@@ -510,6 +517,7 @@ def test_pool_display_captures_every_member_and_returns_to_camp_before_save(
     assert game.save_file("D").is_file()
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_display_of_a_one_member_party_passes_with_one_name_row(
         tmp_path, display_measured):
     party = _POOL_PARTY[:1]
@@ -521,6 +529,7 @@ def test_pool_display_of_a_one_member_party_passes_with_one_name_row(
     assert got["members"] == _members(party)
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_display_of_a_six_member_party_showing_five_rows_still_fails(
         tmp_path, display_measured):
     game = FakeDisplay(tmp_path, _party_lines(_POOL_PARTY[:5], "<NO SPELL EFFECTS>"))
@@ -578,6 +587,7 @@ def test_a_display_naming_fewer_members_than_the_party_fails_back_in_camp(
     assert game.keys == ["m", "d", "Return", "e"] and game.mode == "camp"
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_passes_on_six_rows_and_only_reports_the_names(tmp_path, display_measured):
     game = FakeDisplay(tmp_path, _party_lines(_POOL_PARTY, "<NO SPELL EFFECTS>"))
     d = da.Driver(game, lambda **k: None, "A", party_size=6)
@@ -588,6 +598,7 @@ def test_pool_passes_on_six_rows_and_only_reports_the_names(tmp_path, display_me
 
 
 @pytest.mark.parametrize("title", ("pool", "curse"))
+@pytest.mark.usefixtures("pool_map_measured")
 def test_a_missing_font_is_a_report_in_pool_and_a_failure_before_any_key_elsewhere(
         tmp_path, display_measured, monkeypatch, title):
     def nowhere(stem="POOLRAD"):
@@ -938,6 +949,7 @@ def _cast_camp(tmp_path, **kw) -> tuple[CastPool, da.Driver]:
     return game, d
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_bless_picks_the_caster_casts_once_and_returns_to_camp(
         tmp_path, _cast_measured):
     game, d = _cast_camp(tmp_path)
@@ -954,6 +966,7 @@ def test_pool_cast_bless_picks_the_caster_casts_once_and_returns_to_camp(
     assert game.save_file("D").is_file()
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_a_targeted_spell_picks_the_target_with_end_and_return(
         tmp_path, _cast_measured):
     game, d = _cast_camp(tmp_path)
@@ -974,6 +987,7 @@ def test_pool_cast_a_targeted_spell_picks_the_target_with_end_and_return(
     ("cast 2 DETECT-MAGIC", ("DETECT MAGIC", None)),
     ("cast 2 PROTECTION FROM EVIL 10' RADIUS", ("PROTECTION FROM EVIL 10' RADIUS", None)),
 ])
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_takes_any_spell_on_the_list_and_the_target_only_when_asked(
         tmp_path, _cast_measured, text, cast):
     rows = _cast_rows("DETECT MAGIC", "RESIST COLD", "PROTECTION FROM EVIL 10' RADIUS",
@@ -996,6 +1010,7 @@ def test_pool_cast_takes_any_spell_on_the_list_and_the_target_only_when_asked(
     ("no_return", None, "never came back"),
     ("hidden_row", None, "did not settle"),
 ])
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_stops_at_an_unexpected_screen_before_any_save(
         tmp_path, _cast_measured, failure, rows, why):
     game, d = _cast_camp(tmp_path, failure=failure, rows=rows)
@@ -1007,6 +1022,7 @@ def test_pool_cast_stops_at_an_unexpected_screen_before_any_save(
     assert "e" not in game.keys[1:]             # never pressed Exit anywhere
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_the_message_window_naming_the_spell_is_not_a_row(
         tmp_path, _cast_measured, monkeypatch):
     # The window draws the spell's name at column 3, where a row would be:
@@ -1039,6 +1055,7 @@ def test_pool_cast_the_message_window_naming_the_spell_is_not_a_row(
     ("CURE-LIGHT-WOUNDS", 4, ("target", 4, 1)),
     ("CURE-LIGHT-WOUNDS", 4, ("target", 4, 2)),
 ])
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_rechecks_the_screen_before_every_key_after_the_first(
         tmp_path, _cast_measured, spell, target, at):
     game, d = _cast_camp(tmp_path, flip_at=at)
@@ -1049,6 +1066,7 @@ def test_pool_cast_rechecks_the_screen_before_every_key_after_the_first(
     assert game.cast == []
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_a_target_prompt_with_no_target_named_presses_nothing_more(
         tmp_path, _cast_measured):
     game, d = _cast_camp(tmp_path)
@@ -1058,6 +1076,7 @@ def test_pool_cast_a_target_prompt_with_no_target_named_presses_nothing_more(
     assert game.mode == "target" and game.keys[-1] == "c" and game.cast == []
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_a_target_named_for_a_spell_that_asks_none_fails_after_it(
         tmp_path, _cast_measured):
     game, d = _cast_camp(tmp_path)
@@ -1067,6 +1086,7 @@ def test_pool_cast_a_target_named_for_a_spell_that_asks_none_fails_after_it(
     assert "Return" not in game.keys and "e" not in game.keys[1:]
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_a_target_prompt_on_another_bar_is_named_and_not_answered(
         tmp_path, _cast_measured):
     game, d = _cast_camp(tmp_path, failure="prompt")
@@ -1076,6 +1096,7 @@ def test_pool_cast_a_target_prompt_on_another_bar_is_named_and_not_answered(
     assert game.mode == "prompt" and game.keys[-1] == "c"
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_the_last_memorised_spell_needs_no_highlight_to_be_believed(
         tmp_path, _cast_measured):
     game, d = _cast_camp(tmp_path, rows=_cast_rows("BLESS"))
@@ -1085,6 +1106,7 @@ def test_pool_cast_the_last_memorised_spell_needs_no_highlight_to_be_believed(
 
 
 @pytest.mark.parametrize("spell,target", [("ANIMATE-DEAD", None), ("SLOW-POISON", 1)])
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_the_only_spell_back_at_the_magic_bar_is_checked_by_cast_again(
         tmp_path, _cast_measured, monkeypatch, spell, target):
     monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
@@ -1097,6 +1119,7 @@ def test_pool_cast_the_only_spell_back_at_the_magic_bar_is_checked_by_cast_again
     assert game.mode == "camp"
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_settles_although_the_camp_fire_moves_in_the_list_region(
         tmp_path, _cast_measured, monkeypatch):
     monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
@@ -1106,6 +1129,7 @@ def test_pool_cast_settles_although_the_camp_fire_moves_in_the_list_region(
     assert game.mode == "camp"
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_a_refusal_back_at_the_magic_bar_fails_on_the_reopened_list(
         tmp_path, _cast_measured, monkeypatch):
     monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
@@ -1115,6 +1139,7 @@ def test_pool_cast_a_refusal_back_at_the_magic_bar_fails_on_the_reopened_list(
     assert game.mode == "list" and game.keys[-1] == "c"
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_an_unreadable_row_after_the_cast_is_never_counted_as_one_fewer(
         tmp_path, _cast_measured):
     # The game keeps both rows, one of them unreadable: counting only the rows
@@ -1126,6 +1151,7 @@ def test_pool_cast_an_unreadable_row_after_the_cast_is_never_counted_as_one_fewe
     assert game.keys[-1] == "Return"
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_an_unreadable_row_on_the_reopened_list_is_refused(
         tmp_path, _cast_measured, monkeypatch):
     monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
@@ -1136,6 +1162,7 @@ def test_pool_cast_an_unreadable_row_on_the_reopened_list_is_refused(
     assert game.mode == "list" and game.keys[-1] == "c"
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_a_reopened_list_under_another_title_is_refused(
         tmp_path, _cast_measured, monkeypatch):
     monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
@@ -1157,6 +1184,7 @@ def test_pool_cast_a_reopened_list_under_another_title_is_refused(
         d.cast(2, "BLESS")
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_a_reopen_that_opens_no_list_stops_there(
         tmp_path, _cast_measured, monkeypatch):
     monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
@@ -1167,6 +1195,7 @@ def test_pool_cast_a_reopen_that_opens_no_list_stops_there(
     assert game.mode == "wrong" and game.keys[-1] == "c"
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_with_rows_left_is_never_believed_through_the_magic_bar(
         tmp_path, _cast_measured, monkeypatch):
     monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
@@ -1219,6 +1248,7 @@ def test_pool_cast_animate_dead_step_parses_and_save_and_read_may_follow():
                              "save D", "read"), "pool")
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_a_target_line_outside_the_party_is_refused_before_any_key(
         tmp_path, _cast_measured):
     game, d = _cast_camp(tmp_path)
@@ -1230,6 +1260,7 @@ def test_pool_cast_a_target_line_outside_the_party_is_refused_before_any_key(
     assert game.keys == ["e"]
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_stops_when_exit_never_reaches_camp(tmp_path, _cast_measured):
     game, d = _cast_camp(tmp_path, failure="exit")
     with pytest.raises(da.StepFailed, match="camp bar did not come back"):
@@ -1237,6 +1268,7 @@ def test_pool_cast_stops_when_exit_never_reaches_camp(tmp_path, _cast_measured):
     assert game.mode == "magic" and not game.save_file("D").exists()
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_cast_never_answers_lose_it(tmp_path, _cast_measured):
     game, d = _cast_camp(tmp_path)
     with pytest.raises(da.StepFailed, match="LOSE IT"):
@@ -1446,6 +1478,7 @@ def _watch_and_clock(monkeypatch):
                                                    "sleep": staticmethod(lambda s: None)}))
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_the_watch_bar_is_answered_go_and_logged(tmp_path, _watch_and_clock):
     game, d = _camped(tmp_path, watches=1)
     got = d.rest(5)
@@ -1455,12 +1488,14 @@ def test_the_watch_bar_is_answered_go_and_logged(tmp_path, _watch_and_clock):
     assert [k["event"] for k in d.logged if k["event"] == "random"] == ["random"]
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_a_second_watch_is_answered_too(tmp_path, _watch_and_clock):
     game, d = _camped(tmp_path, watches=2)
     d.rest(5)
     assert game.answers == ["g", "g"] and len(d.events) == 2
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_a_third_watch_stops_the_run_without_pressing(tmp_path, _watch_and_clock):
     game, d = _camped(tmp_path, watches=3)
     with pytest.raises(da.StepFailed, match="lost-rest-events"):
@@ -1468,12 +1503,14 @@ def test_a_third_watch_stops_the_run_without_pressing(tmp_path, _watch_and_clock
     assert game.answers == ["g", "g"]
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_stay_is_never_pressed(tmp_path, _watch_and_clock):
     game, d = _camped(tmp_path, watches=2)
     d.rest(5)
     assert "s" not in game.keys[game.keys.index("g"):]
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_a_fight_after_the_rest_stops_the_run(tmp_path, _watch_and_clock):
     game, d = _camped(tmp_path, fight=True)
     with pytest.raises(da.StepFailed, match="lost-rest-end"):
@@ -1481,6 +1518,7 @@ def test_a_fight_after_the_rest_stops_the_run(tmp_path, _watch_and_clock):
     assert game.answers == []
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_save_camps_again_after_the_party_was_moved_along(tmp_path, _watch_and_clock):
     game, d = _camped(tmp_path, watches=1)
     d.rest(5)
@@ -2025,6 +2063,7 @@ def test_the_later_titles_rest_on_their_own_letters():
     assert TITLE_KEYS["pool"] == da.RestKeys("y", "h", "m", "i", "d", "r")
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_keys_do_not_rest_a_later_title(tmp_path):
     # The Curse menu driven with Pool's letters: `y` selects nothing, so the
     # first key of the zeroing changes nothing and the run stops there.
@@ -3252,6 +3291,7 @@ def _pool_continue_driver(tmp_path, monkeypatch, screens_up):
     return game, d
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_load_presses_return_past_a_continue_screen_then_camps(tmp_path, monkeypatch):
     game, d = _pool_continue_driver(tmp_path, monkeypatch, 1)
     d.load()
@@ -3262,6 +3302,7 @@ def test_pool_load_presses_return_past_a_continue_screen_then_camps(tmp_path, mo
     assert game.mode == "camp"
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_load_presses_through_rolfs_tour_to_the_map(tmp_path, monkeypatch):
     # A party that has never taken Rolf's opening tour (clock zero at area 0,
     # 15,1: any party freshly made in the Amiga or C64 game) loads into eight
@@ -7027,6 +7068,7 @@ def _pool_items(tmp_path, monkeypatch, **kw) -> tuple[PoolItems, da.Driver]:
     return game, d
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_items_reads_the_rows_and_which_are_marked_and_returns_to_camp(
         tmp_path, monkeypatch):
     game, d = _pool_items(tmp_path, monkeypatch, rows=(True, False, True))
@@ -7036,12 +7078,14 @@ def test_pool_items_reads_the_rows_and_which_are_marked_and_returns_to_camp(
     assert game.mode == "camp" and d.where == "camp"
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_items_reports_no_marked_row_on_an_unmarked_list(tmp_path, monkeypatch):
     game, d = _pool_items(tmp_path, monkeypatch, rows=(False, False))
     got = d.items(1)
     assert got["rows"] == 2 and got["marked"] == []
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_items_refuses_a_sheet_with_no_items_before_pressing_i(tmp_path, monkeypatch):
     game, d = _pool_items(tmp_path, monkeypatch, sheet="no_items")
     with pytest.raises(da.StepFailed, match="offers no ITEMS"):
@@ -7049,6 +7093,7 @@ def test_pool_items_refuses_a_sheet_with_no_items_before_pressing_i(tmp_path, mo
     assert "i" not in game.keys
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_items_stops_when_the_list_bar_is_not_showing(tmp_path, monkeypatch):
     game, d = _pool_items(tmp_path, monkeypatch, rows=(True,))
     monkeypatch.setattr(screens, "POOL_ITEMS_BAR", "0" * 16)
@@ -7057,6 +7102,7 @@ def test_pool_items_stops_when_the_list_bar_is_not_showing(tmp_path, monkeypatch
     assert "Escape" not in game.keys
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_items_stops_when_escape_does_not_reach_camp(tmp_path, monkeypatch):
     game, d = _pool_items(tmp_path, monkeypatch, back="sheet")
     with pytest.raises(da.StepFailed, match="camp bar did not return"):
@@ -7064,6 +7110,7 @@ def test_pool_items_stops_when_escape_does_not_reach_camp(tmp_path, monkeypatch)
     assert not game.save_file("D").exists()
 
 
+@pytest.mark.usefixtures("pool_map_measured")
 def test_pool_items_a_list_that_fills_the_readable_rows_stops(tmp_path, monkeypatch):
     game, d = _pool_items(tmp_path, monkeypatch, rows=(False,) * da.ITEM_ROWS)
     with pytest.raises(da.StepFailed, match="next page"):
@@ -10116,3 +10163,42 @@ def test_the_captured_party_menu_load_reads_as_the_party_menu(monkeypatch):
     assert "BEGIN ADVENTURING" in da.party_menu_entries(loaded, font)
     assert da.party_roster(loaded, font) == list(_POOL_LADDER)
     assert da.text_row(quit_prompt, da.BAR_ROW, font).strip() == "QUIT TO DOS YES NO"
+
+
+class _RedrawingPool(FakePool):
+    """Pool whose map is still being redrawn for the first `redraws`
+    captures: the bar row shows something else until then."""
+
+    BARS = {**FakePool.BARS, "redraw": b"\x42\x24\x18"}
+
+    def __init__(self, tmp, redraws=1):
+        super().__init__(tmp)
+        self.redraws = redraws
+
+    def capture(self):
+        if self.redraws > 0:
+            self.redraws -= 1
+            return _screen(self.BARS["redraw"], b"")
+        return super().capture()
+
+
+@pytest.mark.usefixtures("pool_map_measured")
+def test_pool_camp_waits_out_a_redraw_before_judging_the_map(tmp_path):
+    """A capture taken while the map is still being drawn is not the screen
+    camp judges: once the map bar is up, ENCAMP goes out."""
+    game = _RedrawingPool(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A", "pool")
+    d.where = "map"
+    got = d.camp()
+    assert game.keys == [da.ENCAMP] and game.mode == "camp"
+    assert got["camp_bar"] == screens.bar_signature(_screen(FakePool.BARS["camp"], b""))
+
+
+@pytest.mark.usefixtures("pool_map_measured")
+def test_pool_begin_after_a_load_onto_the_map_presses_nothing(tmp_path, monkeypatch):
+    game, d = _pool_continue_driver(tmp_path, monkeypatch, 0)
+    d.load()
+    assert d.where == "map"
+    with pytest.raises(da.StepFailed, match="this load put the party on the map"):
+        d.begin()
+    assert game.keys == []
