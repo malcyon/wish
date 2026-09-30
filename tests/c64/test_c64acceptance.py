@@ -9552,3 +9552,60 @@ def test_temple_probe_leave_stops_on_another_disk_prompt_keeping_the_frame(
         run.temple_probe("BRUTUS RAISE POOL", leave=True)
     assert session.keys[-1] == "EXIT"
     assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
+
+
+def _leave_with_scripted_reads(tmp_path, monkeypatch, script):
+    """After the side 3 answer, each screen read shows the next item of
+    SCRIPT ("side3", "blank" or "world"); "world" stands once it is reached."""
+    run, session = _leave_with_disk_prompt(tmp_path, monkeypatch, "side3")
+    answered_at = {}
+    original = session.handle_prompt
+
+    def handle_prompt(screen):
+        got = original(screen)
+        if "EXIT" in session.keys:
+            answered_at["yes"] = True
+            session.phase = "world"
+        return got
+    session.handle_prompt = handle_prompt
+    read = session.screen
+    queue = list(script)
+
+    def screen():
+        if answered_at and queue:
+            shown = queue.pop(0)
+            if shown == "blank":
+                return _TempleScreen([""] * 25)
+            session.phase = shown
+        return read()
+    session.screen = screen
+    return run, session
+
+
+def test_temple_probe_leave_waits_out_a_side_3_prompt_that_lingers_after_the_answer(
+        tmp_path, monkeypatch):
+    run, session = _leave_with_scripted_reads(
+        tmp_path, monkeypatch, ["side3", "side3", "world"])
+    result = run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    assert session.keys.count("leave-side3") == 1
+    assert _raise_tags(run)[-1] == "outside" and result["leave"]["stem"]
+
+
+def test_temple_probe_leave_stops_on_a_side_3_prompt_that_returns_after_another_screen(
+        tmp_path, monkeypatch):
+    run, session = _leave_with_scripted_reads(
+        tmp_path, monkeypatch, ["side3", "blank", "side3"])
+    with pytest.raises(A.StepFailed, match="repeated disk prompt"):
+        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    assert session.keys.count("leave-side3") == 1
+    assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
+
+
+def test_temple_probe_leave_timeout_names_the_bound_that_expired(
+        tmp_path, monkeypatch):
+    run, session = _leave_with_scripted_reads(tmp_path, monkeypatch, [])
+    read = session.screen
+    session.screen = lambda: (_TempleScreen([""] * 25)
+                              if "EXIT" in session.keys else read())
+    with pytest.raises(A.StepFailed, match="before the 90 second limit"):
+        run.temple_probe("BRUTUS RAISE POOL", leave=True)

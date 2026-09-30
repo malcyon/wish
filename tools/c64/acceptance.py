@@ -2418,15 +2418,24 @@ class PoolRun:
             self._temple_stop("exit", "the temple bar never came up after "
                               "the service list's EXIT", sample)
         self._temple_select_bar("EXIT", "temple")
-        limit = min(self.clock() + 90, self.temple_input_deadline)
-        answered = False
+        start = self.clock()
+        limit = min(start + 90, self.temple_input_deadline)
+        answered = disk_visible = False
         while self.clock() < limit:
             sample = self.temple_sample()
             screen = sample.screen
+            if screen is None or not self._temple_disk(screen):
+                disk_visible = False
             if screen is None or not screen.row(24).strip():
                 time.sleep(0.4)
                 continue
             if self._temple_disk(screen):
+                # The answered prompt's text lingers for about a second, as
+                # in `_temple_transition`; it is a repeat only when it comes
+                # back after some other screen.
+                if disk_visible:
+                    time.sleep(0.3)
+                    continue
                 # The entry path answers one side 3 prompt and stops on any
                 # other or repeated disk prompt; leaving does the same.
                 if answered or not self._temple_side3(screen):
@@ -2437,7 +2446,7 @@ class PoolRun:
                 if not self.sess.handle_prompt(screen):
                     self._temple_stop("exit", "side 3 prompt was not "
                                       "answered while leaving", sample)
-                answered = True
+                answered = disk_visible = True
                 time.sleep(0.4)
                 continue
             if self.at_world(screen.row(24)):
@@ -2445,8 +2454,10 @@ class PoolRun:
                 return {"stem": outside["stem"], "continued": continued}
             self._temple_stop("exit", "unexpected screen after the temple "
                               "bar's EXIT", sample)
-        self._temple_stop("exit", "the world bar did not return within 90 "
-                          "seconds after the temple bar's EXIT")
+        cut = ("temple input deadline" if limit < start + 90
+               else "90 second limit")
+        self._temple_stop("exit", "the world bar did not return before the "
+                          f"{cut} after the temple bar's EXIT")
 
     def temple_probe(self, who: str, leave: bool = False) -> dict:
         """Capture the temple arrival screen and stop; with `HEAL`, select it
