@@ -1027,10 +1027,30 @@ def test_a_pool_combat_prayer_row_becomes_a_node_with_the_side_inverted(
     assert not [d for c in party for d in c.dropped if "effect 49" in d]
 
 
-def test_a_never_expiring_prayer_row_is_a_node_of_the_longest_time():
-    party = _staged_party((63, (49, 0xFF, 0x00, 0x43)))
-    assert [bytes(r) for r in _brutus(party).get("running_effects")] == \
-        [bytes((49, 0xFF, 0xFF, 0x03, 0)) + NULL]
+@pytest.mark.parametrize("game, row, record", [
+    (POOL_OF_RADIANCE, (35, 0xFF, 0x00, 0x03), (35, 0, 0, 0x03, 0)),
+    (POOL_OF_RADIANCE, (49, 0xFF, 0x00, 0x43), (49, 0, 0, 0x03, 0)),
+    (c64_port.CURSE_OF_THE_AZURE_BONDS, (49, 0xFF, 0x00, 0x03),
+     (49, 0, 0, 0x03, 0)),
+    (c64_port.SECRET_OF_THE_SILVER_BLADES, (49, 0xFF, 0x00, 0x43),
+     (49, 0, 0, 0x13, 0)),
+], ids=lambda v: v.key if hasattr(v, "key") else str(v))
+def test_a_never_expiring_prayer_row_is_a_granted_record_on_every_member(
+        game, row, record):
+    payload = _synthetic_c64_party_payload(game, 2, row)
+    party, _ = dos_codec.c64_party(bytes(payload), None, game=game)
+    assert len(party) == 2
+    for char in party:
+        assert [bytes(r) for r in char.get("granted_effects")] == \
+            [bytes(record) + NULL]
+        assert not [r for r in char.get("running_effects") or ()
+                    if bytes(r)[0] == row[0]]
+        assert not [d for d in char.dropped if f"effect {row[0]}" in d]
+    fresh = bytearray(len(payload))
+    for slot, char in enumerate(reversed(party)):
+        c64_codec.write(char, payload=fresh, party_slot=slot, clock_minutes=0)
+    assert [(e.id, e.owner, e.duration, e.magnitude)
+            for e in effects.active_effects(bytes(fresh))] == [row]
 
 
 def test_two_ids_at_once_keep_each_ids_own_node():

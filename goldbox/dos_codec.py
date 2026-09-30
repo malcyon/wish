@@ -9057,8 +9057,11 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
                 f"{label} "
                 f"in slot {row.slot}, owned by {who}: no party member owns "
                 "it, and no rule yet converts such a row")
-        for record in party_granted.values():
-            _add_party_granted(out[0], record)
+        for node_id, record in sorted(party_granted.items()):
+            targets = (out if node_id in effects.PARTY_ROW_ON_EVERY_MEMBER
+                       else out[:1])
+            for target in targets:
+                _add_party_granted(target, record)
         # One node per id, the longest: the C64 writer keeps one row per id.
         for node_id in sorted(party_nodes):
             targets = (out if node_id in effects.PARTY_ROW_ON_EVERY_MEMBER

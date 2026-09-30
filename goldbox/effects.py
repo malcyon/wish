@@ -952,17 +952,12 @@ def party_row_record(title_key: str, row: "Effect",
     """
     if row.id not in party_row_ids(title_key):
         return Unconverted("no rule yet for a party-wide row of this id")
-    if row.duration == 0 and row.id == DETECT_MAGIC_ID:
-        raise ValueError("a never-expiring Detect Magic row has no "
+    if row.duration == 0:
+        raise ValueError("a never-expiring party-wide row has no "
                          "running-effect node; see `party_row_granted`")
     data = row.magnitude
     if row.id == _PRAYER_ID:
         data = prayer_dos_data(title_key, row.magnitude)
-    if row.duration == 0:
-        # Only Detect Magic's never-expiring form is settled (a duration-0
-        # record, `party_row_granted`); the other ids keep the longest node
-        # a running record can hold until theirs is read.
-        return RunningEffect(row.id, DOS_MINUTES_MAX, data, 0)
     minutes = min(remaining_minutes(row.duration, clock_minutes),
                   DOS_MINUTES_MAX)
     return RunningEffect(row.id, minutes, data, 0)
@@ -971,19 +966,22 @@ def party_row_record(title_key: str, row: "Effect",
 def party_row_granted(title_key: str, row: "Effect") -> bytes | None:
     """The DOS granted record for a never-expiring party-wide row, or `None`.
 
-    Detect Magic only: DOS keeps duration 0 for good and its one id-5 query
-    matches by id, so the record `05 00 00 mm 00` (mm the row's magnitude)
-    on one member is the exact form. It is `granted_effects`, not a running
-    effect, because a running effect cannot have zero minutes.
+    DOS and the Amiga keep a duration-0 node for good (the expiry pass skips
+    it, a recast keeps it) and match every party-wide id by id, so the
+    record `id 00 00 data 00` is the exact form. The data byte is the row's
+    magnitude, or `prayer_dos_data` for Prayer. It is `granted_effects`, not
+    a running effect, because a running effect cannot have zero minutes.
     """
-    if (row.id != DETECT_MAGIC_ID or row.duration != 0
-            or row.id not in party_row_ids(title_key)):
+    if row.duration != 0 or row.id not in party_row_ids(title_key):
         return None
-    return bytes((row.id, 0, 0, row.magnitude, 0)) + _RUNNING_EFFECT_NEXT
+    data = row.magnitude
+    if row.id == _PRAYER_ID:
+        data = prayer_dos_data(title_key, row.magnitude)
+    return bytes((row.id, 0, 0, data, 0)) + _RUNNING_EFFECT_NEXT
 
 
 def is_party_granted_record(title_key: str, node: bytes) -> bool:
-    """Whether a DOS granted record is `party_row_granted`'s `05 00 00 mm 00`.
+    """Whether a DOS granted record is `party_row_granted`'s `id 00 00 data 00`.
 
     Flag 1 is an item's grant (removed when the item comes off) and data
     `0xFF` is a racial or trait-slot seed; neither is a party-wide row, and
@@ -993,10 +991,16 @@ def is_party_granted_record(title_key: str, node: bytes) -> bool:
     game wrote holds it, and keeping both forms (one `05 00 00 0C 00` per
     readied item with `0x3D` = 5, to a trait slot) is not built.
     """
-    return (node[0] == DETECT_MAGIC_ID
-            and node[0] in party_row_ids(title_key)
+    return (node[0] in party_row_ids(title_key)
             and node[1] == 0 and node[2] == 0
             and node[3] != 0xFF and node[4] == 0)
+
+
+def party_granted_magnitude(title_key: str, node: bytes) -> int:
+    """The C64 magnitude of a granted record `is_party_granted_record` took."""
+    if node[0] == _PRAYER_ID:
+        return prayer_c64_magnitude(title_key, node[3])
+    return int(node[3])
 
 
 # Spells DOS writes at duration 0 (the generic cast, data 0 meaning the

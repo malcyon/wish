@@ -1612,10 +1612,20 @@ def test_party_row_record_leaves_the_rest_unconverted(title, row):
                       effects.Unconverted)
 
 
-def test_a_never_expiring_prayer_row_still_becomes_the_longest_node():
-    row = effects.Effect(63, 49, 0xFF, 0x00, 0x03)
-    assert effects.party_row_record("pool-of-radiance", row, 0) == \
-        effects.RunningEffect(49, effects.DOS_MINUTES_MAX, 0x13, 0)
+def test_a_never_expiring_prayer_row_is_a_granted_record():
+    pool = effects.Effect(63, 49, 0xFF, 0x00, 0x43)
+    assert effects.party_row_granted(_POOL, pool) == \
+        bytes((49, 0, 0, 0x03, 0)) + bytes(4)
+    assert effects.party_row_granted(
+        _LATER[0], effects.Effect(63, 49, 0xFF, 0x00, 0x03)) == \
+        bytes((49, 0, 0, 0x03, 0)) + bytes(4)
+    assert effects.party_row_granted(
+        _POOL, effects.Effect(63, 35, 0xFF, 0x00, 0x03)) == \
+        bytes((35, 0, 0, 0x03, 0)) + bytes(4)
+    assert effects.party_row_granted(
+        _LATER[0], effects.Effect(63, 35, 0xFF, 0x00, 0x03)) is None
+    with pytest.raises(ValueError):
+        effects.party_row_record(_POOL, pool, 0)
 
 
 @pytest.mark.parametrize("title", _TITLES)
@@ -1628,7 +1638,7 @@ def test_a_never_expiring_detect_magic_row_is_a_granted_record(title):
     assert effects.party_row_granted(
         title, effects.Effect(63, 5, 0xFF, 0x0A, 0x03)) is None
     assert effects.party_row_granted(
-        title, effects.Effect(63, 49, 0xFF, 0x00, 0x03)) is None
+        title, effects.Effect(63, 1, 0xFF, 0x00, 0x03)) is None
 
 
 @pytest.mark.parametrize("title", _TITLES)

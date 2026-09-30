@@ -1916,12 +1916,14 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 continue
             if (effects.is_party_granted_record(title_key, node)
                     and payload is not None):
-                # DOS's permanent Detect Magic is party-wide; the C64 asks
-                # only for an owner-`$FF` row, never a trait slot. With no
+                # DOS's permanent Detect Magic or Prayer is party-wide; the C64
+                # asks only for an owner-`$FF` row, never a trait slot. With no
                 # payload there is no row to write, and the id keeps the
                 # trait slot it always had.
                 if not effects.write_party_row(
-                        payload, int(node[0]), 0, int(node[3]), clock):
+                        payload, int(node[0]), 0,
+                        effects.party_granted_magnitude(title_key, node),
+                        clock):
                     rep.lost(f"effect {node[0]}, which never expires: no "
                              "free slot in the save's shared effect arrays")
                 continue
