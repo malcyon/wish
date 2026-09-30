@@ -602,17 +602,15 @@ def looks_like_amiga_record(data: bytes, at: int, deltas: AmigaDeltas) -> bool:
     """Whether a character record plausibly starts here.
 
     Two things a saved game's other bytes do not do together: **16 bytes of
-    printable ASCII terminated and padded with NUL**, and **six
-    `(current, maximum)` ability pairs of equal, legal bytes** at `0x010`.
-    On the two saved games this project has, it finds the four Curse
-    characters at `0x3219`, `0x3453`, `0x36A1` and `0x391D` and the six
-    Silver Blades ones at `0x1417` onwards, and nothing else in 22 454 bytes.
+    printable ASCII terminated and padded with NUL**, and **six ability
+    pairs of legal bytes** (1 to 25) at `0x010`.  On the two saved games this
+    project has, it finds the four Curse characters at `0x3219`, `0x3453`,
+    `0x36A1` and `0x391D` and the six Silver Blades ones at `0x1417` onwards,
+    and nothing else in 22 454 bytes.
 
-    **It would miss a character whose abilities have been drained**, because
-    the pair test wants current and maximum equal and a drained score is
-    below its maximum.  Every specimen this project has is undrained, so the
-    looser test has never been needed; a saved game taken after a shadow or
-    a wight is what would need it.
+    **The two bytes of a pair are not required to match.**  Byte 0 is the
+    permanent score and byte 1 the score in force, so a character whose
+    strength has been drained or boosted has them apart.
     """
     if at < 0 or at + deltas.record_size > len(data):
         return False
@@ -623,9 +621,9 @@ def looks_like_amiga_record(data: bytes, at: int, deltas: AmigaDeltas) -> bool:
     if not all(0x20 <= b < 0x7F for b in name[:stop]):
         return False
     for i in range(6):
-        low, high = data[at + 0x10 + 2 * i], data[at + 0x11 + 2 * i]
-        if low != high or not 1 <= low <= 25:
-            return False
+        for byte in data[at + 0x10 + 2 * i:at + 0x12 + 2 * i]:
+            if not 1 <= byte <= 25:
+                return False
     return True
 
 

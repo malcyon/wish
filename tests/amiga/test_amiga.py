@@ -2516,8 +2516,8 @@ def test_the_curse_spellbook_is_still_one_byte_a_spell():
 def test_the_record_signature_finds_the_party_and_nothing_else():
     """A scan, not a parse -- so what it does not find matters too.
 
-    16 bytes of NUL-padded printable ASCII and six equal, legal ability
-    pairs. Across 22 454 bytes of two saved games it hits ten times, which is
+    16 bytes of NUL-padded printable ASCII and six legal ability pairs,
+    whose two bytes need not be equal. Across 22 454 bytes of two saved games it hits ten times, which is
     the four Curse characters and the six Silver Blades ones, and no eleventh
     time.
     """
@@ -2531,6 +2531,68 @@ def test_the_record_signature_finds_the_party_and_nothing_else():
                 if amiga_later.looks_like_amiga_record(data, at, shape)]
         assert len(hits) == len(amiga_later.party_in_savegame(data, shape))
         assert len(hits) in (4, 6)
+
+
+def _unequal_pair_save(shape, first_pair) -> tuple[bytes, list[int]]:
+    """Three item-less characters after a header, each with one unequal pair.
+
+    Built from nothing, so it runs with no disks.  Returns the bytes and the
+    offset each record starts at.
+    """
+    data, starts = bytearray(b"\0" * amiga_savegame.container_for(shape).party_at), []
+    for name, pair in (("ONE", first_pair), ("TWO", (18, 9)), ("THREE", (7, 15))):
+        record = bytearray(shape.record_size)
+        record[:len(name)] = name.encode()
+        for i in range(6):
+            record[0x10 + 2 * i:0x12 + 2 * i] = bytes((12, 12))
+        record[0x10:0x12] = bytes(pair)
+        starts.append(len(data))
+        data += record + b"\0" * 4
+    return bytes(data), starts
+
+
+def test_a_record_whose_ability_pairs_differ_is_found_and_detected():
+    """A drained or boosted character has permanent and in-force scores apart.
+
+    The first character's pair (9, 17) is what `detect` reads, and the scan
+    must find all three.
+    """
+    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        data, starts = _unequal_pair_save(shape, (9, 17))
+        assert [at for at in range(len(data))
+                if amiga_later.looks_like_amiga_record(data, at, shape)] \
+            == starts, shape.key
+        assert len(amiga_later.party_in_savegame(data, shape)) == 3, shape.key
+        assert amiga_savegame.detect(data).deltas is shape, shape.key
+
+
+def test_the_signature_still_refuses_an_illegal_ability_byte():
+    shape = amiga_port.CURSE_DELTAS
+    for bad in (0, 26):
+        data, starts = _unequal_pair_save(shape, (9, bad))
+        assert not amiga_later.looks_like_amiga_record(data, starts[0], shape)
+
+
+def test_a_specimen_with_unequal_ability_pairs_finds_all_six():
+    """The Curse party whose slots A, C and F hold six characters, four of
+    them with a pair apart, is found whole by the scan and the save checker.
+    """
+    from goldbox.amiga_adf import AmigaDisk
+    from tools.amiga import amigasavecheck
+    root = pathlib.Path("/mnt/specimens/coab-amiga")
+    image = next(iter(sorted(root.glob(
+        "WISH-SPEC-wish-677-curse-mn2xe43ffvzwqylsmu-*/fetched-df0.adf"))), None)
+    if image is None:
+        pytest.skip("no wish-677 Curse specimen under /mnt/specimens/coab-amiga")
+    saves = list(amigasavecheck.savegames_on(AmigaDisk.open(image)))
+    assert saves
+    for path, data in saves:
+        assert len(amiga_later.party_in_savegame(
+            data, amiga_port.CURSE_DELTAS)) == 6, path
+        save = amiga_savegame.parse(data, validate=False)
+        failed = [claim for claim, ok, _ in amigasavecheck.check(save)
+                  if not ok]
+        assert failed == [], path
 
 
 def test_the_amiga_curse_item_is_the_dos_one_with_the_weight_it_should_have():
