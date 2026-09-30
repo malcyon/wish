@@ -17,7 +17,7 @@ import pytest
 from support.dossave import _save_dir, needs_dos_saves
 from support.neutralrecords import _filled
 
-from goldbox import amiga_pod, c64_codec, c64_port, derive, dos_codec, dos_port, neutral
+from goldbox import amiga_pod, c64_codec, c64_port, dos_codec, dos_port, neutral
 from goldbox import levels as level_tables
 from goldbox.encoding import combat_value
 from goldbox.items import ITEM_AREA_BASE, ITEM_SIZE, Item, items_for_slot
@@ -230,15 +230,15 @@ def test_every_value_a_writer_takes_comes_back_out_of_the_record():
     # give 14 through the C64's own table.
     assert expected_thac0 != combat_value(char.get("thac0_base"))
     # `thac0_current`: this record's own recomputed `thac0_base` byte plus
-    # the strength-to-hit bonus for `char`'s made-up strength of 1 -- 0,
-    # since `derive.strength_bonuses` has no penalty below 17 -- gated on
+    # the C64 table's strength-to-hit step for `char`'s made-up strength of
+    # 1 (-3, the row 3 and under share) -- gated on
     # `strength_bonus_flag`, which `write` always sets to 1 (#277). Not a
     # round trip: `char`'s made-up `thac0_current` is discarded entirely.
     assert rec.get("strength_bonus_flag") == 1
-    hit, _ = derive.strength_bonuses(char.get("strength"),
-                                     char.get("exceptional_strength"))
-    assert hit == 0
-    assert rec.get("thac0") == rec.get("thac0_base")
+    hit = c64_codec.c64_strength_hit_step(char.get("strength"),
+                                          char.get("exceptional_strength"))
+    assert hit == -3
+    assert rec.get("thac0") == rec.get("thac0_base") + hit
     assert level_tables.racial_save_bonus_measured(char.game)
     expected_saves = level_tables.saving_throws(
         char.get("levels"), char.get("race"), char.get("constitution"),

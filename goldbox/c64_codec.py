@@ -696,6 +696,17 @@ def strength_index(strength: int, percentile: int) -> int:
     return 23
 
 
+def c64_strength_hit_step(strength: int, percentile: int) -> int:
+    """The row of the C64 to-hit table (`LIBRARY $3840` in Curse, `$3651` in
+    Pool of Radiance) that `strength_index` selects, as a signed step.
+
+    `derive.strength_bonuses` has rows only for 8 to 18, where the C64 table
+    also runs 3 to 7 and 19 to 25; `derive.dos_strength_hit_bonus` returns
+    the same 123 numbers as the C64 table.
+    """
+    return derive.dos_strength_hit_bonus(strength, percentile)
+
+
 def thac0_current_byte(base_byte: int, hit_bonus: int, bonus_flag: bool) -> int:
     """The byte `LIBRARY $3918` (`$3729` in Pool of Radiance) leaves in
     `thac0_current` -- `thac0_base` plus the AD&D strength to-hit bonus, and
@@ -1931,8 +1942,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     current = use("thac0_current")
     if current is not None and not pool_item_table:
         dst = _field("thac0")
-        hit, _ = derive.strength_bonuses(w.get("strength", 0),
-                                         w.get("exceptional_strength", 0))
+        hit = c64_strength_hit_step(w.get("strength", 0),
+                                    w.get("exceptional_strength", 0))
         rec.set("thac0", thac0_current_byte(
             rec.get("thac0_base"), hit, bool(rec.get("strength_bonus_flag"))))
         rep.note(dst.offset, dst.size,
@@ -2211,8 +2222,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                  "every fight")
     if pool_item_table and current is not None:
         raw_inv = rec.get_raw("inventory")
-        hit, _ = derive.strength_bonuses(w.get("strength", 0),
-                                         w.get("exceptional_strength", 0))
+        hit = c64_strength_hit_step(w.get("strength", 0),
+                                    w.get("exceptional_strength", 0))
         rec.set("thac0", pool_thac0_current_byte(
             rec.get("thac0_base"),
             hit if rec.get("strength_bonus_flag") else 0, missile,
