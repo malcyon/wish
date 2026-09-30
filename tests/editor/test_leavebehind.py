@@ -414,16 +414,42 @@ def test_effects_mode_writes_only_the_words_donald_approved(app):
     from editor import activeeffects
     dialog = _effects_dialog()
     assert dialog.ui.heading_label.text() == "Choose what to leave behind"
-    assert dialog.ui.explanation_label.text() == ""
+    assert dialog.ui.explanation_label.text() == (
+        "The C64 save has room for 64 running effects. "
+        "Choose at least 2 to leave behind.")
     assert dialog.windowTitle() == ""
     header = dialog.tree.headerItem()
     assert [header.text(c) for c in range(4)] == [
         activeeffects.HEADER_EFFECT, "", "", ""]
-    assert dialog.tree.isColumnHidden(leavebehind.READIED_COLUMN)
     assert _accept(dialog).text() == ACCEPT
     # No duration is shown on an effect row.
     for row in _picks(dialog).values():
         assert [row.text(c) for c in (1, 2, 3)] == ["", "", ""]
+
+
+def test_the_explanation_names_the_rows_the_window_opened_short(app):
+    one = _effects_dialog(_overflow(over=1))
+    assert one.ui.explanation_label.text() == (
+        "The C64 save has room for 64 running effects. "
+        "Choose at least 1 to leave behind.")
+    assert one.ui.remaining_label.text() == "1 more to leave behind"
+    # Ticking does not change what the window opened short by.
+    _tick(one, 0, 0)
+    assert one.ui.explanation_label.text().endswith(
+        "Choose at least 1 to leave behind.")
+    assert one.ui.remaining_label.text() == "0 more to leave behind"
+
+
+def test_effects_mode_hides_the_columns_with_no_text_and_items_mode_shows_them(
+        app):
+    effects = _effects_dialog()
+    hidden = {c: effects.tree.isColumnHidden(c) for c in range(4)}
+    assert hidden == {leavebehind.NAME_COLUMN: False,
+                      leavebehind.QTY_COLUMN: True,
+                      leavebehind.READIED_COLUMN: True,
+                      leavebehind.COUNT_COLUMN: True}
+    items = _dialog()
+    assert not any(items.tree.isColumnHidden(c) for c in range(4))
 
 
 def test_effects_mode_has_one_row_per_effect_repeats_included(app):
@@ -449,17 +475,17 @@ def test_a_member_with_nothing_to_leave_out_has_no_row(app):
 
 def test_effects_accept_waits_for_the_party_count_and_allows_more(app):
     dialog = _effects_dialog()
-    assert dialog.ui.remaining_label.text() == "2"
+    assert dialog.ui.remaining_label.text() == "2 more to leave behind"
     assert not _accept(dialog).isEnabled()
     _tick(dialog, 0, 0)
-    assert dialog.ui.remaining_label.text() == "1"
+    assert dialog.ui.remaining_label.text() == "1 more to leave behind"
     assert not _accept(dialog).isEnabled()
     # The count is the party's: a tick on another member counts.
     _tick(dialog, 1, 4)
-    assert dialog.ui.remaining_label.text() == "0"
+    assert dialog.ui.remaining_label.text() == "0 more to leave behind"
     assert _accept(dialog).isEnabled()
     _tick(dialog, 1, 5)
-    assert dialog.ui.remaining_label.text() == "0"
+    assert dialog.ui.remaining_label.text() == "0 more to leave behind"
     assert _accept(dialog).isEnabled()
     _tick(dialog, 1, 5, on=False)
     _tick(dialog, 1, 4, on=False)

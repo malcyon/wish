@@ -8,10 +8,11 @@ ticks, a joined scroll is a heading that is neither ticked nor selected, and
 each scroll inside it is a row the player ticks, with the spells it holds on a
 quieter line under it. Ticking more than the pack needs is allowed.
 
-**Approved by Donald, and exactly these:** `HEADING` and `EXPLANATION`. The
-window's own title, the joined scroll's heading and the words around each
-character's remaining count are not settled, so this module shows them blank
-rather than writing any (`.claude/rules/gui-text.md`). The accept button's
+**Approved by Donald, and exactly these:** `HEADING` and `EXPLANATION`, and
+for effects mode `EFFECTS_EXPLANATION` and `EFFECTS_REMAINING`. The window's own
+title, the joined scroll's heading and the words around each character's
+remaining count are not settled, so this module shows them blank rather than
+writing any (`.claude/rules/gui-text.md`). The accept button's
 label is the caller's: the existing Convert or Save As label.
 
 **A second mode lists running effects** (`effects=`), built from
@@ -19,8 +20,9 @@ label is the caller's: the existing Convert or Save As label.
 running effects is the whole party's, so there is one count for the party and
 not one per character. Each character who holds an effect the player can leave
 out is a row, with every such effect beneath it on a row of its own, repeats
-included. The heading and the effect names are Donald's approved ones; every
-other word of this mode is blank until he settles it.
+included. The heading, the explanation, the count beneath the list and the
+effect names are Donald's approved ones; every other word of this mode is blank
+until he settles it, and the columns that would hold no text are hidden.
 
 The item rows reuse the Items tab: its name (`editor.inventory.describe`), its
 `Qty` and `Readied` columns under their own headers, and the spell form its
@@ -55,6 +57,12 @@ EXPLANATION = (
     "The C64 has 16 item slots per character. A joined scroll becomes "
     "separate scrolls, each taking one slot. Choose items or scrolls to "
     "leave behind until each pack fits.")
+#: Effects mode: the explanation (`{n}` is how many rows the window opened
+#: short, and the 64 is the C64 table's fixed size) and the live count beneath
+#: the list (`{n}` is how many are still to leave).
+EFFECTS_EXPLANATION = ("The C64 save has room for 64 running effects. "
+                       "Choose at least {n} to leave behind.")
+EFFECTS_REMAINING = "{n} more to leave behind"
 
 #: The columns: the Items tab's own item, quantity and readied columns, and
 #: one more that holds a character's remaining count and nothing else.
@@ -85,9 +93,9 @@ class LeaveBehindDialog(QDialog):
         # Blank on purpose: the window's title is not settled.
         self.setWindowTitle("")
         self.ui.heading_label.setText(HEADING)
-        # Effects mode has no approved explanation, so its line is blank.
         self.ui.explanation_label.setText(
-            EXPLANATION if effects is None else "")
+            EXPLANATION if effects is None
+            else EFFECTS_EXPLANATION.format(n=max(0, effects.over)))
 
         self.overflow = tuple(overflow)
         self.effects = effects
@@ -124,8 +132,10 @@ class LeaveBehindDialog(QDialog):
             self._fill(entry)
         if effects is not None:
             self._fill_effects(effects)
-            # The Readied column has nothing to say about an effect.
-            self.tree.setColumnHidden(READIED_COLUMN, True)
+            # Quantity, Readied and the remaining count have nothing to say
+            # about an effect, and no time left is shown.
+            for column in (QTY_COLUMN, READIED_COLUMN, COUNT_COLUMN):
+                self.tree.setColumnHidden(column, True)
         # The party-wide count is only there in effects mode; pack mode keeps
         # its count on each character's row.
         self.ui.remaining_label.setVisible(effects is not None)
@@ -167,7 +177,7 @@ class LeaveBehindDialog(QDialog):
     def _fill_effects(self, effects: EffectOverflow) -> None:
         """One row per member who holds an effect that can be left out, and one
         checkable row beneath it for each such effect. The time-left column is
-        blank: whether and how to show it is not settled."""
+        not shown: no time left is approved."""
         parents: dict[int, QTreeWidgetItem] = {}
         for entry in effects.entries:
             parent = parents.get(entry.member)
@@ -256,8 +266,8 @@ class LeaveBehindDialog(QDialog):
     def _refresh(self) -> None:
         if self.effects is not None:
             remaining = self._effects_remaining()
-            # Only the number: the words around it are not settled.
-            self.ui.remaining_label.setText(str(remaining))
+            self.ui.remaining_label.setText(
+                EFFECTS_REMAINING.format(n=remaining))
             self.buttons.button(QDialogButtonBox.StandardButton.Ok
                                 ).setEnabled(remaining == 0)
             return
