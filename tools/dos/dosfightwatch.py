@@ -1886,8 +1886,9 @@ class PrayerWatch:
             # throw walks list 12 and lowers the same byte.
             try:
                 h["list"] = bytes.fromhex(ch[3]["frame"])[0x0A]
-            except (IndexError, ValueError):
+            except (IndexError, ValueError) as e:
                 h["list"] = None
+                h["chain_error"] = f"{type(e).__name__}: {e}"
         if (routine == "penalty" and h["combatant"]["side"] != 0
                 and h.get("list") == ATTACK_LIST):
             self.penalties.append({"n": h["n"], "combatant": h["combatant"],
@@ -1992,7 +1993,9 @@ class PrayerWatch:
                 h = self.handle()
                 if self.round_done(h) and not self.until_penalty:
                     return "one attack round"
-                if self.until_penalty and self.completed and self.penalties:
+                if (self.until_penalty and self.penalties
+                        and self.completed is not None
+                        and self.round_ok(self.completed)):
                     return "attack round and penalty"
                 if self.node_id == 35 and len(self.quiet_pairs) >= QUIET_PAIRS:
                     return "quiet pairs"

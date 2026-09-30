@@ -1901,6 +1901,71 @@ def test_an_allys_round_alone_never_passes_an_id_49_run(title):
 
 
 @pytest.mark.parametrize("title", LATER)
+def test_a_monsters_penalty_before_a_members_round_does_not_stop_the_run(title):
+    dbg, watch, lay, astub, _ = _later(title, party=("ALLY",))
+    _ally_then_member(dbg, lay)
+    at_menu = watch.party()
+    dbg.put(STUB, lay.stub_49, b"\xea" + _le(0x0100) + _le(LOAD))
+    dbg.pending = [
+        *_attack(dbg, lay, astub, PARTY_SEG, ["stub49"]),
+        *_attack(dbg, lay, astub, PARTY_SEG, ["stub49", "handler", "bonus", "helper"]),
+        *_attack(dbg, lay, astub, MONSTER_SEG, ["stub49", "handler", "penalty"]),
+        *_attack(dbg, lay, astub, MEMBER_SEG, ["stub49", "handler", "bonus", "helper"])]
+    stop = watch.run_fight(600, idle=lambda: not dbg.pending)
+    assert stop == "attack round and penalty"
+    assert len(dbg.pending) == 1              # the member's return is never reached
+    assert watch.completed["attacker"] == f"{MEMBER_SEG:04X}:0000"
+    assert watch.round_ok(watch.completed)
+    result = watch.summary(49, at_menu, watch.party())
+    assert result["conclusive"] is True and result["why"] == []
+
+
+@pytest.mark.parametrize("title", LATER)
+def test_a_watch_with_no_tested_node_counts_any_round(title):
+    _, watch, _, _, _ = _later(title)
+    watch.node_id = None
+    assert watch.round_ok({"attacker_nodes": None, "party": []})
+    assert watch.round_ok({"attacker_nodes": [], "party": []}, None)
+
+
+@pytest.mark.parametrize("title", LATER)
+def test_without_until_penalty_only_a_round_the_node_passes_returns(title):
+    dbg, watch, lay, astub, _ = _later(title, party=("ALLY",))
+    _ally_then_member(dbg, lay)
+    watch.until_penalty = False
+    dbg.put(STUB, lay.stub_49, b"\xea" + _le(0x0100) + _le(LOAD))
+    dbg.pending = [
+        *_attack(dbg, lay, astub, PARTY_SEG, ["stub49"]),
+        *_attack(dbg, lay, astub, PARTY_SEG, ["stub49", "handler", "bonus", "helper"]),
+        *_attack(dbg, lay, astub, MEMBER_SEG, ["stub49", "handler", "bonus", "helper"])]
+    stop = watch.run_fight(600, idle=lambda: not dbg.pending)
+    assert stop == "one attack round"
+    assert len(dbg.pending) == 1              # past the ally's round, at the member's
+    assert watch.completed["attacker"] == f"{MEMBER_SEG:04X}:0000"
+
+
+@pytest.mark.parametrize("title", LATER)
+def test_a_penalty_halt_with_a_short_chain_logs_the_error(title):
+    dbg, watch, lay, astub, _ = _later(title)
+    dbg.put(STUB, lay.stub_49, b"\xea" + _le(0x0100) + _le(LOAD))
+    penalty = _halt(dbg, lay, LOAD, lay.routines["penalty"] - lay.prayer_unit_file,
+                    MONSTER_SEG, inner=True)
+
+    def short():
+        penalty()
+        dbg.put(SS, 0x200 + 0x40, _le(0))     # the chain ends after two frames
+    dbg.pending = [
+        *_attack(dbg, lay, astub, PARTY_SEG, ["stub49"]),
+        *_attack(dbg, lay, astub, PARTY_SEG,
+                 ["stub49", "handler", "bonus", "helper"])[:-1], short]
+    watch.run_fight(600, idle=lambda: not dbg.pending)
+    halt = next(h for h in watch.halts if h["kind"] == "penalty")
+    assert halt["list"] is None
+    assert "IndexError" in halt["chain_error"]
+    assert watch.penalties == []
+
+
+@pytest.mark.parametrize("title", LATER)
 def test_a_saving_throws_penalty_halt_is_not_a_monsters_attack(title):
     dbg, watch, lay, astub, at_menu = _later(title)
     dbg.put(STUB, lay.stub_49, b"\xea" + _le(0x0100) + _le(LOAD))
