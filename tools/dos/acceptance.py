@@ -283,8 +283,10 @@ DISPLAY_ROWS = range(4, 23)
 DISPLAY_COLUMNS = range(1, 39)
 #: The line a member with no effect gets: Pool's and Curse's, Silver Blades'.
 NO_EFFECTS = ("<NO SPELL EFFECTS>", "<NO MAGICAL EFFECTS>")
-#: At most this many Display pages before the run stops.
-DISPLAY_PAGES = 8
+#: At most this many Display pages before the run stops.  Silver Blades'
+#: `n` scrolls one line, so a list of L lines takes L - 18 pages; paging
+#: stops earlier when a page adds no line to the merged list.
+DISPLAY_PAGES = 64
 #: The keys that leave the Display list, the first tried first.  ` EXIT`
 #: alone answers `Return` in Pool and Curse (measured); on a paged bar
 #: `Return` changed nothing in Silver Blades, so `e`, the word's capital, as
@@ -759,15 +761,25 @@ def _same_line(a: str, b: str) -> bool:
     return all(p == q or "?" in (p, q) for p, q in zip(a.ljust(n), b.ljust(n)))
 
 
+def _real(line: str) -> bool:
+    """Whether a line holds a character that was read, not only blanks and `?`."""
+    return any(c not in " ?" for c in line)
+
+
 def merge_pages(pages: list[list[str]]) -> list[str]:
     """One list from pages that scroll it, each page's head laid over the
-    longest tail of the list so far that it matches.  A line read with a `?`
-    on one page takes the other page's reading when that has none."""
+    longest tail of the list so far that it matches.  An overlap counts only
+    when at least one of its lines was read on both pages, so a blank or
+    unreadable page is appended rather than laid over real lines.  A line
+    read with a `?` on one page takes the other page's reading when that has
+    none."""
     lines = list(pages[0]) if pages else []
     for page in pages[1:]:
         overlap = 0
         for k in range(min(len(lines), len(page)), 0, -1):
-            if all(_same_line(a, b) for a, b in zip(lines[-k:], page[:k])):
+            pairs = list(zip(lines[-k:], page[:k]))
+            if (all(_same_line(a, b) for a, b in pairs)
+                    and any(_real(a) and _real(b) for a, b in pairs)):
                 overlap = k
                 break
         for i in range(overlap):
@@ -4508,30 +4520,70 @@ class Driver:
         self.camp()
 
     def display_font(self) -> dict[bytes, str]:
-        """The title's text font, read from its archives once."""
+        """The title's text font, read from its archives once; a title with
+        no archive or no font block is a `StepFailed`."""
         if self._font is None:
-            self._font = load_font(self.title.find_game())
+            try:
+                self._font = load_font(self.title.find_game())
+            except (OSError, dos_savegame.DosSaveError) as e:
+                raise StepFailed(f"display cannot read {self.title.key}'s text font "
+                                 f"(block {FONT_BLOCK} of 8X8D*.DAX): {e}") from None
         return self._font
+
+    def leave_display(self) -> str | None:
+        """From the Display list to the Magic bar: `DISPLAY_LEAVE`'s keys for
+        the bar showing, the second only while the list still shows.  The
+        key that brought the Magic bar back, or None; nothing is pressed on
+        a bar that is not a Display bar."""
+        shown = bar_signature(self.s.capture())
+        bar = DISPLAY_BARS.get(shown)
+        if bar is None:
+            return None
+        for tried, key in enumerate(DISPLAY_LEAVE[bar]):
+            if tried and bar_signature(self.s.capture()) != shown:
+                return None
+            self.s.key(key)
+            if self.s.wait_for(lambda sc: bar_signature(sc) == POOL_MAGIC_BAR, 15.0):
+                return key
+        return None
+
+    def display_failed(self, label: str, why: str) -> StepFailed:
+        """The failure `why`, shot where it happened, after which the list is
+        left for camp when a Display bar is still showing, so the run does
+        not stop on the list."""
+        failed = self.fail(label, why)
+        if self.leave_display() is not None:
+            self.s.key("e")
+            self.wait_camp(timeout=15.0)
+        return failed
 
     def display(self) -> dict:
         """Camp `MAGIC > DISPLAY`: every page of the list of spells in
         effect read as text, and back through the Magic bar to camp.
 
         `members` is each member's name with the effect names listed under
-        it, as the game draws them.  The list must name `party_size`
-        members, and Pool's must show six name rows on its one page.  `n`
-        turns a page while the bar is ` NEXT EXIT`; the pages are merged by
-        their overlap (`merge_pages`).  The list is left with
-        `DISPLAY_LEAVE`'s first key for its bar, and the second only while
-        the list still shows; `e` is pressed only on the Magic bar.
+        it, as the game draws them.  In Curse and Silver Blades the list must
+        name `party_size` members.  In Pool the pass is its six name rows on
+        its one page, as before, and the text is a report: a missing font
+        leaves `members` None with `font_error` set.  `n` turns a page while
+        the bar is ` NEXT EXIT`, until a page adds no line to the merged list
+        (`merge_pages`).  The list is left by `leave_display`, and `e` is
+        pressed only on the Magic bar.
         """
         if self.title.key not in DISPLAY_TITLES:
             raise StepFailed(f"display is driven in {', '.join(sorted(DISPLAY_TITLES))} "
                              f"only, not {self.title.key}")
         if self.camp_sig is None:
             raise StepFailed("display needs camp first")
+        pool = self.title.key == "pool"
+        font, font_error = None, None
+        try:
+            font = self.display_font()
+        except StepFailed as e:
+            if not pool:
+                raise
+            font_error = str(e)
         self.ensure_camp()
-        font = self.display_font()
         self.s.key("m")
         if not self.s.wait_for(lambda sc: bar_signature(sc) == POOL_MAGIC_BAR, 15.0):
             raise self.fail("display-magic", "MAGIC bar did not open")
@@ -4543,46 +4595,55 @@ class Driver:
         if bar_signature(screen) not in DISPLAY_BARS:
             raise self.fail("display-page", "DISPLAY page changed unexpectedly")
         visible = None
-        if self.title.key == "pool":
+        if pool:
             visible = sum(not screen.flat((8, y, 8, 8)) for y in POOL_DISPLAY_NAME_ROWS)
             if visible != 6:
-                raise self.fail("display-members",
-                                f"DISPLAY showed {visible} member rows, not six")
+                raise self.display_failed("display-members",
+                                          f"DISPLAY showed {visible} member rows, not six")
+
+        def read(sc) -> list[str]:
+            return display_lines(sc, font) if font is not None else []
+
         pages = [{"shot": self.shot("display-page"), "bar": DISPLAY_BARS[bar_signature(screen)],
-                  "lines": display_lines(screen, font)}]
+                  "lines": read(screen)}]
+        lines = merge_pages([p["lines"] for p in pages])
+        stopped = None
         while pages[-1]["bar"] == "next":
             if len(pages) >= DISPLAY_PAGES:
-                raise self.fail("display-pages", f"{DISPLAY_PAGES} pages and the bar "
-                                "still offers NEXT")
+                raise self.display_failed("display-pages", f"{DISPLAY_PAGES} pages and "
+                                          "the bar still offers NEXT")
             before = screen.digest()
             self.s.key(dosbox.LIST_PAGE_DOWN)
             if not self.s.wait_for(lambda sc: sc.digest() != before, 10.0):
-                raise self.fail("display-next", "NEXT changed nothing on a page whose "
-                                "bar offers it")
+                raise self.display_failed("display-next", "NEXT changed nothing on a "
+                                          "page whose bar offers it")
             screen = self.s.settle(quiet=0.6, timeout=20.0)
             bar = DISPLAY_BARS.get(bar_signature(screen))
             if bar not in ("next", "prev"):
-                raise self.fail("display-next", "NEXT left the paged DISPLAY list")
+                raise self.display_failed("display-next", "NEXT left the paged DISPLAY "
+                                          "list")
             pages.append({"shot": self.shot(f"display-page-{len(pages) + 1}"),
-                          "bar": bar, "lines": display_lines(screen, font)})
-        lines = merge_pages([p["lines"] for p in pages])
-        try:
-            members = display_members(lines)
-        except ValueError as e:
-            raise self.fail("display-read", str(e)) from None
-        if len(members) != self.party_size:
-            raise self.fail("display-members", f"DISPLAY named {len(members)} members, "
-                            f"not the party's {self.party_size}")
-        shown = bar_signature(screen)
-        for tried, key in enumerate(DISPLAY_LEAVE[pages[-1]["bar"]]):
-            if tried and bar_signature(self.s.capture()) != shown:
+                          "bar": bar, "lines": read(screen)})
+            merged = merge_pages([p["lines"] for p in pages])
+            if font is not None and len(merged) == len(lines):
+                stopped = "no new line"
+                lines = merged
                 break
-            self.s.key(key)
-            if self.s.wait_for(lambda sc: bar_signature(sc) == POOL_MAGIC_BAR, 15.0):
-                break
-        else:
-            raise self.fail("display-back-magic", "Magic bar did not return after DISPLAY")
-        if bar_signature(self.s.capture()) != POOL_MAGIC_BAR:
+            lines = merged
+        members, read_error = None, None
+        if font is not None:
+            try:
+                members = display_members(lines)
+            except ValueError as e:
+                if not pool:
+                    raise self.display_failed("display-read", str(e)) from None
+                read_error = str(e)
+            if not pool and len(members) != self.party_size:
+                raise self.display_failed("display-members", f"DISPLAY named "
+                                          f"{len(members)} members, not the party's "
+                                          f"{self.party_size}")
+        left_with = self.leave_display()
+        if left_with is None:
             raise self.fail("display-back-magic", "Magic bar did not return after DISPLAY")
         self.shot("display-back-magic")
         self.s.key("e")
@@ -4592,7 +4653,8 @@ class Driver:
         return {"magic_shot": magic, "display_shot": pages[0]["shot"],
                 "pages": pages, "lines": lines, "members": members,
                 "unreadable": [line for line in lines if "?" in line],
-                "left_with": key, "camp_shot": camp,
+                "stopped": stopped, "font_error": font_error, "read_error": read_error,
+                "left_with": left_with, "camp_shot": camp,
                 "visible_members": visible if visible is not None else len(members),
                 "back_in_camp": True}
 

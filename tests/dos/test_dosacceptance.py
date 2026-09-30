@@ -355,18 +355,24 @@ def _party_lines(members: list[tuple[str, list[str]]], none: str) -> list[str]:
 class FakeDisplay(FakePool):
     """Camp, the Magic bar and the Display list as the three titles draw it:
     rows 4 to 22 of the list at a time, ` NEXT EXIT` while more is below,
-    `n` scrolling a page on but never past the last full window, `p` back.
-    `Return` leaves a list only where `returns` says it does."""
+    `n` scrolling `scroll` lines on (a page by default, one in Silver
+    Blades) but never past the last full window, `p` back.  `Return` leaves
+    a list only where `returns` says it does.  `stuck` makes `n` change the
+    frame without scrolling, `n_leaves` makes it open an unknown screen."""
 
     BARS = {**FakePool.BARS, "magic": _DISPLAY_KEYS["magic"],
             "wrong": _DISPLAY_KEYS["wrong"]}
 
     def __init__(self, tmp, lines: list[str], *, returns: bool = True,
-                 pointer: bool = False, failure: str = "", **kw):
+                 pointer: bool = False, failure: str = "", scroll: int = 0,
+                 stuck: bool = False, n_leaves: bool = False, **kw):
         super().__init__(tmp, **kw)
         self.lines, self.returns, self.pointer = lines, returns, pointer
         self.failure = failure
+        self.scroll = scroll or self.window()
+        self.stuck, self.n_leaves = stuck, n_leaves
         self.top = 0
+        self.turned = 0
 
     def window(self) -> int:
         return len(da.DISPLAY_ROWS)
@@ -377,7 +383,9 @@ class FakeDisplay(FakePool):
         return "next" if self.top + self.window() < len(self.lines) else "prev"
 
     def key(self, k, gap=0.0):
-        if self.mode == "camp" and k == "m":
+        if self.mode == "display" and k == self.dead:
+            self.keys.append(k)
+        elif self.mode == "camp" and k == "m":
             self.keys.append(k)
             self.mode = "wrong" if self.failure == "magic" else "magic"
         elif self.mode == "magic" and k == "d":
@@ -385,7 +393,11 @@ class FakeDisplay(FakePool):
             self.mode = "wrong" if self.failure == "display" else "display"
         elif self.mode == "display" and k == "n":
             self.keys.append(k)
-            self.top = min(self.top + self.window(), len(self.lines) - self.window())
+            self.turned += 1
+            if self.n_leaves:
+                self.mode = "wrong"
+            elif not self.stuck:
+                self.top = min(self.top + self.scroll, len(self.lines) - self.window())
         elif self.mode == "display" and k == "p":
             self.keys.append(k)
             self.top = max(0, self.top - self.window())
@@ -405,6 +417,9 @@ class FakeDisplay(FakePool):
             return super().capture()
         frame = _screen(_DISPLAY_KEYS[self.page_bar()], b"")
         px = bytearray(frame.px)
+        # A pixel of the frame, above the list, that `n` changes when stuck.
+        at = (8 * W + self.turned % W) * 3
+        px[at:at + 3] = b"\x55\x55\x55"
         for i, line in enumerate(self.lines[self.top:self.top + self.window()]):
             row = da.DISPLAY_ROWS[0] + i
             if line.startswith(" "):
@@ -424,9 +439,10 @@ class FakeDisplay(FakePool):
 
 
 @pytest.fixture
-def display_measured(monkeypatch):
+def display_measured(monkeypatch, tmp_path):
     """The fakes' Magic and Display bars stand in for the measured ones, and
-    the stand-in font for the title's own."""
+    the stand-in font for the title's own, found in an empty directory in
+    place of the archives, so no test here needs them."""
     sig = {k: screens.bar_signature(_screen(v, b"")) for k, v in _DISPLAY_KEYS.items()}
     monkeypatch.setattr(da, "POOL_MAGIC_BAR", sig["magic"])
     monkeypatch.setattr(da, "POOL_DISPLAY_BAR", sig["exit"])
@@ -434,6 +450,7 @@ def display_measured(monkeypatch):
     monkeypatch.setattr(da, "DISPLAY_PREV_BAR", sig["prev"])
     monkeypatch.setattr(da, "DISPLAY_BARS", {sig["exit"]: "exit", sig["next"]: "next",
                                              sig["prev"]: "prev"})
+    monkeypatch.setattr(dosbox, "find_game", lambda stem="POOLRAD": tmp_path)
     monkeypatch.setattr(da, "load_font", lambda game: _FONT)
     return sig
 
@@ -491,6 +508,7 @@ def test_curse_display_names_each_members_effects_on_one_page(tmp_path, display_
     assert got["members"][4] == {"name": "SHARA", "effects": ["ENLARGE"]}
     assert [p["bar"] for p in got["pages"]] == ["exit"] and got["unreadable"] == []
     assert game.keys == ["m", "d", "Return", "e"] and game.mode == "camp"
+    assert got["left_with"] == "Return"
 
 
 def test_silver_blades_display_pages_with_next_and_leaves_with_exit(tmp_path,
@@ -522,13 +540,74 @@ def test_a_return_that_leaves_nothing_is_followed_by_exit(tmp_path, display_meas
     assert got["left_with"] == "e"
 
 
-def test_a_display_naming_fewer_members_than_the_party_stops_in_the_list(
+def test_a_display_naming_fewer_members_than_the_party_fails_back_in_camp(
         tmp_path, display_measured):
     game, d = _display_camp(tmp_path, "curse", _CURSE_PARTY)
     d.party_size = 7
     with pytest.raises(da.StepFailed, match="named 6 members, not the party's 7"):
         d.display()
-    assert game.keys == ["m", "d"] and game.mode == "display"
+    assert game.keys == ["m", "d", "Return", "e"] and game.mode == "camp"
+
+
+def test_pool_passes_on_six_rows_and_only_reports_the_names(tmp_path, display_measured):
+    game = FakeDisplay(tmp_path, _party_lines(_POOL_PARTY, "<NO SPELL EFFECTS>"))
+    d = da.Driver(game, lambda **k: None, "A", party_size=4)
+    d.camp()
+    got = d.display()
+    assert got["visible_members"] == 6 and got["members"] == _members(_POOL_PARTY)
+    assert game.mode == "camp"
+
+
+@pytest.mark.parametrize("title", ("pool", "curse"))
+def test_a_missing_font_is_a_report_in_pool_and_a_failure_before_any_key_elsewhere(
+        tmp_path, display_measured, monkeypatch, title):
+    def nowhere(stem="POOLRAD"):
+        raise FileNotFoundError(f"no DOS {stem}")
+    monkeypatch.setattr(dosbox, "find_game", nowhere)
+    party = _POOL_PARTY if title == "pool" else _CURSE_PARTY
+    game, d = _display_camp(tmp_path, title, party)
+    if title == "curse":
+        with pytest.raises(da.StepFailed, match="cannot read curse's text font"):
+            d.display()
+        assert game.keys == [] and game.mode == "camp"
+        return
+    got = d.display()
+    assert got["members"] is None and "no DOS POOLRAD" in got["font_error"]
+    assert got["visible_members"] == 6 and game.mode == "camp"
+
+
+def test_a_list_scrolled_a_line_at_a_time_reads_to_its_end_past_eight_pages(
+        tmp_path, display_measured):
+    # 31 lines, one `n` a line: 13 pages, as Silver Blades would draw them.
+    party = [(f"MEMBER{n}", [f"EFFECT {n}{k}" for k in range(3)]) for n in range(6)]
+    game, d = _display_camp(tmp_path, "ssb", party, returns=False, scroll=1)
+    got = d.display()
+    assert len(got["lines"]) == 31 and len(got["pages"]) == 13
+    assert got["members"] == _members(party) and got["stopped"] is None
+    assert game.keys == ["m", "d"] + ["n"] * 12 + ["e", "e"] and game.mode == "camp"
+
+
+def test_paging_stops_when_a_page_adds_no_line(tmp_path, display_measured):
+    game, d = _display_camp(tmp_path, "ssb", _SSB_PARTY, returns=False, stuck=True)
+    got = d.display()
+    assert got["stopped"] == "no new line" and len(got["pages"]) == 2
+    assert got["members"][0]["name"] == "GUY DE VALOIS"
+    assert game.keys == ["m", "d", "n", "e", "e"] and got["left_with"] == "e"
+
+
+def test_a_next_that_changes_nothing_fails_back_in_camp(tmp_path, display_measured):
+    game, d = _display_camp(tmp_path, "ssb", _SSB_PARTY, returns=False, dead="n")
+    with pytest.raises(da.StepFailed, match="NEXT changed nothing"):
+        d.display()
+    assert game.keys == ["m", "d", "n", "e", "e"] and game.mode == "camp"
+
+
+def test_a_next_that_opens_an_unknown_screen_presses_nothing_more(tmp_path,
+                                                                 display_measured):
+    game, d = _display_camp(tmp_path, "ssb", _SSB_PARTY, returns=False, n_leaves=True)
+    with pytest.raises(da.StepFailed, match="NEXT left the paged DISPLAY list"):
+        d.display()
+    assert game.keys == ["m", "d", "n"] and game.mode == "wrong"
 
 
 def test_display_is_refused_in_pools_of_darkness_before_any_key(tmp_path, display_measured):
@@ -568,6 +647,15 @@ def test_a_member_line_after_an_effect_starts_a_new_member_and_an_orphan_effect_
 def test_merged_pages_take_the_reading_without_a_question_mark():
     assert da.merge_pages([["", "A", " X?Y"], [" XZY", "", "B"]]) == \
         ["", "A", " XZY", "", "B"]
+
+
+def test_an_unreadable_or_blank_page_is_never_laid_over_real_lines():
+    # An unreadable page matches anything through its `?`s and would vanish.
+    assert da.merge_pages([["A", "B"], ["??", "??"]]) == ["A", "B", "??", "??"]
+    # Real lines must not replace unreadable ones on a blank-only match.
+    assert da.merge_pages([["A", "???", "???"], ["C", "D"]]) == \
+        ["A", "???", "???", "C", "D"]
+    assert da.merge_pages([["A", " X", ""], ["", "", "B"]]) == ["A", " X", "", "", "", "B"]
 
 
 @pytest.mark.parametrize("stem", ("POOLRAD", "CURSE", "SECRET"))
