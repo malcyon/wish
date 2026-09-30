@@ -62,6 +62,36 @@ def _add(root, sources, **kw):
 # --- add ---------------------------------------------------------------
 
 
+def _silver_blades_record(items: int) -> bytes:
+    from goldbox.dos_codec import FIELDS_BY_NAME_FOR  # noqa: PLC0415
+    from goldbox.dos_port import deltas_for  # noqa: PLC0415
+    record = bytearray(439)
+    record[FIELDS_BY_NAME_FOR[deltas_for(439).key]["item_count"].offset] = items
+    return bytes(record)
+
+
+def test_add_refuses_a_dos_character_that_counts_items_without_its_item_file(
+        tree, tmp_path):
+    sav = tmp_path / "CHRDATA1.SAV"
+    sav.write_bytes(_silver_blades_record(2))
+    with pytest.raises(ValueError, match=r"CHRDATA1\.STF"):
+        specimens.add("dos", "ssb-partial", [sav], root=tree,
+                      title="Secret of the Silver Blades", issue="#788 (test)",
+                      made_by="a test", what="a record with no item file")
+    assert not (tree / "ssb-dos").exists()
+
+
+def test_add_accepts_a_dos_character_beside_its_item_file(tree, tmp_path):
+    sav = tmp_path / "CHRDATA1.SAV"
+    sav.write_bytes(_silver_blades_record(2))
+    stf = tmp_path / "CHRDATA1.STF"
+    stf.write_bytes(bytes(2 * 67))
+    dest = specimens.add("dos", "ssb-whole", [sav, stf], root=tree,
+                         title="Secret of the Silver Blades", issue="#788 (test)",
+                         made_by="a test", what="a record with its item file")
+    assert (dest / "CHRDATA1.STF").is_file()
+
+
 def test_add_creates_a_directory_named_for_the_specimen(tree, one_source):
     dest = _add(tree, one_source)
     assert dest == tree / "por-dos" / "WISH-SPEC-gnomf1"

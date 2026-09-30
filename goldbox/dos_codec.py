@@ -1751,6 +1751,19 @@ def _sibling(path: pathlib.Path, suffix: str) -> bytes:
     return other.read_bytes() if other.exists() else b""
 
 
+def required_item_suffix(data: bytes) -> str | None:
+    """The item-file suffix a DOS character record cannot be read without,
+    or `None` when its `item_count` is zero, as an export's is.
+
+    Raises `DosDeltasError` for a length that is no known record.  The reader
+    and the specimen registry both ask this, so they refuse the same folder.
+    """
+    shape = deltas_for(len(data))
+    if data[FIELDS_BY_NAME_FOR[shape.key]["item_count"].offset]:
+        return shape.item_suffix
+    return None
+
+
 def read_character(path: str | pathlib.Path) -> DosCharacter:
     """One character from a `CHRDAT<slot><n>.SAV` or a `<NAME>.CHA`.
 
@@ -1808,7 +1821,7 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     # `item_count` counts head items, and a Silver Blades joined scroll's
     # scrolls are extra records straight after its head, so the file is read
     # the way the engine's loader reads it rather than sliced by the count.
-    if count and not item_file_present:
+    if required_item_suffix(data) and not item_file_present:
         raise DosRecordError(
             f"{path.name}: item_count says {count}, but its item file "
             f"{item_path.name} is missing")

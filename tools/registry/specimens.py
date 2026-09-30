@@ -258,6 +258,38 @@ def _unclosed_c64_entries(path: pathlib.Path) -> list:
     return [e for e in image.iter_directory() if not e.is_closed]
 
 
+def _refuse_character_without_items(sources: list[pathlib.Path]) -> None:
+    """Refuse a DOS `CHRDAT??.SAV` whose `item_count` is above zero when no
+    source is the item file beside it: `read_character` refuses that folder,
+    so registering it would leave a specimen every rewrite test trips on.
+
+    A length that is no known record is skipped, for the reason
+    `_unclosed_c64_entries` gives: `add` is not the first place to demand a
+    real record.
+    """
+    from goldbox.dos_codec import (  # noqa: PLC0415
+        FIELDS_BY_NAME_FOR,
+        DosDeltasError,
+        deltas_for,
+        required_item_suffix,
+    )
+    names = {s.name.upper() for s in sources}
+    for s in sources:
+        if not (s.name.upper().startswith("CHRDAT") and s.suffix.upper() == ".SAV"):
+            continue
+        data = s.read_bytes()
+        try:
+            suffix = required_item_suffix(data)
+        except DosDeltasError:
+            continue
+        count = data[FIELDS_BY_NAME_FOR[deltas_for(len(data)).key]["item_count"].offset]
+        if suffix and s.with_suffix(suffix).name.upper() not in names:
+            raise ValueError(
+                f"{s.name} counts items (item_count is {count}) "
+                f"but no source is its item file {s.with_suffix(suffix).name}; "
+                f"add the whole save, item file included")
+
+
 def add(platform: str, name: str, sources: list[pathlib.Path], *,
         title: str, issue: str, made_by: str, what: str,
         command: str | None = None, created: str | None = None,
@@ -282,6 +314,8 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
     for s in sources:
         if not s.is_file():
             raise ValueError(f"not a file: {s}")
+    if platform == "dos":
+        _refuse_character_without_items(sources)
     if platform == "c64":
         for s in sources:
             unclosed = _unclosed_c64_entries(s)
