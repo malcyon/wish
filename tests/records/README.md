@@ -53,6 +53,7 @@ Tests for the character record and the tables and rules around it: field layouts
 | `test_titles.py` | Checks `goldbox/titles.py`: that Pools of Darkness is a `Title` with no C64 `Game`, and that the DOS and C64 race tables agree except where a measured exception says otherwise. |
 | `test_titletables.py` | Checks the tables a title keeps outside the character record: level ceilings, experience thresholds, racial class limits, spell names and item names. |
 | `test_traitnames.py` | Checks that `tools/records/traitnames.py`'s headline numbers are what its own counting produces off Curse of the Azure Bonds' disks. |
+| `test_treasuresplit.py` | Checks `goldbox/treasuresplit.py` against the measured DOS fractions, the pile cut, two companions, the C64 chance, later-title share 0 and Silver Blades' skipped pile, with no game data. |
 | `test_turning.py` | Checks the C64's turning-undead byte and what a conversion writes for a DOS cleric or paladin that has none. |
 | `test_uascript.py` | Checks community decodes of monster and item fields against the C64 `MON*`, `ITEMS` and `SPELLN00` files. |
 | `test_windowfourthclass.py` | Checks that a C64 source's former class reaches `field_83_87`'s fourth byte, in the shared DOS class numbering, on every DOS and Amiga destination, and that a source with its own window keeps its own byte instead. |
