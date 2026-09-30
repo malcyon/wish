@@ -682,6 +682,149 @@ def test_save_as_dos_keeps_a_blessed_c64_character_blessed(tmp_path):
     assert "effect 13" in str(err.value)
 
 
+def _party_facts(party):
+    return [(c.get("name"), [bytes(r) for r in c.get("running_effects") or ()],
+             [bytes(g) for g in c.get("granted_effects") or ()])
+            for c in party]
+
+
+def test_a_row_owned_by_an_empty_party_slot_converts_to_nothing_and_is_no_loss():
+    """A member left behind by a flight leaves his row in his old slot;
+    DOS and the Amiga free a departed member's effects with him.
+    Provenance: the row is staged here into the committed fixture, whose
+    party is BRUTUS alone in slot 0."""
+    payload, save1 = _fixture_payload()
+    plain, _ = dos_codec.c64_party(bytes(payload), save1,
+                                   game=POOL_OF_RADIANCE)
+    effects.write_effect(payload, 63, 38, 3, 0x41, 0x12)
+    party, _ = dos_codec.c64_party(bytes(payload), save1,
+                                   game=POOL_OF_RADIANCE)
+    assert not [d for c in party for d in c.dropped if "effect 38" in d]
+    assert _party_facts(party) == _party_facts(plain)
+    record, _itm, _spc, _rep = amiga_por.write_por(_brutus(party))
+    assert record
+
+
+@pytest.mark.parametrize("game, row_id", [
+    (POOL_OF_RADIANCE, 38),
+    (CURSE_OF_THE_AZURE_BONDS, 12),
+    (c64_port.SECRET_OF_THE_SILVER_BLADES, 12)],
+    ids=lambda v: v.key if hasattr(v, "key") else str(v))
+def test_every_title_converts_a_row_owned_by_an_empty_slot_to_nothing(
+        game, row_id):
+    """Two members in slots 0 and 1; rows owned by the empty slots 2 and 5
+    and, as the control, one owned by slot 1, which still converts."""
+    bare = _synthetic_c64_party_payload(game, 2)
+    plain, _ = dos_codec.c64_party(bytes(bare), None, game=game)
+    payload = _synthetic_c64_party_payload(
+        game, 2, (row_id, 2, 0x3F, 0x03), (row_id, 5, 0x3F, 0x03))
+    party, _ = dos_codec.c64_party(bytes(payload), None, game=game)
+    assert len(party) == 2
+    assert not [d for c in party for d in c.dropped
+                if d.startswith("running_effects:")]
+    assert _party_facts(party) == _party_facts(plain)
+
+
+def test_an_orphan_row_is_logged_at_debug_not_dropped(caplog):
+    import logging
+    payload = _synthetic_c64_party_payload(
+        POOL_OF_RADIANCE, 2, (38, 4, 0x3F, 0x03))
+    with caplog.at_level(logging.DEBUG, logger="wish.goldbox.dos_codec"):
+        dos_codec.c64_party(bytes(payload), None, game=POOL_OF_RADIANCE)
+    assert [r for r in caplog.records if r.levelno == logging.DEBUG
+            and "owned by party slot 4" in r.getMessage()]
+
+
+def test_a_row_owned_by_a_monster_is_still_reported():
+    payload = _synthetic_c64_party_payload(
+        POOL_OF_RADIANCE, 2, (38, 9, 0x3F, 0x03))
+    party, _ = dos_codec.c64_party(bytes(payload), None, game=POOL_OF_RADIANCE)
+    assert [d for c in party for d in c.dropped if "monster 9" in d]
+
+
+def test_save_as_dos_accepts_a_row_owned_by_an_empty_party_slot(tmp_path):
+    """Provenance: staged here into the committed fixture; no game save is
+    read."""
+    from editor import saveplan
+
+    payload, save1 = _fixture_payload()
+    effects.write_effect(payload, 63, 38, 3, 0x41, 0x12)
+    plan = _dos_plan(tmp_path, payload, save1)
+    assert isinstance(plan, saveplan.SavePlan)
+
+
+_ORPHAN_SPECIMENS = [
+    pytest.param("por-666-e1-flee-orphan-rows", POOL_OF_RADIANCE, 4,
+                 id="pool"),
+    pytest.param("ssb-666-e1-flee-orphan-rows",
+                 c64_port.SECRET_OF_THE_SILVER_BLADES, 2, id="ssb")]
+
+
+@pytest.mark.parametrize("name, game, survivors", _ORPHAN_SPECIMENS)
+def test_a_game_written_flight_save_converts_its_orphan_rows_to_nothing(
+        name, game, survivors):
+    """Specimens the C64 engine wrote after a flight that left members behind
+    (`tools/registry/specimens.py`); the staged tracking rows owned by the
+    emptied slots survive in them. Silver Blades' survivors' own staged rows
+    carry a magnitude without bit 7, which is reported on its own line
+    and is not an orphan row."""
+    from test_convertmatrix import _c64_specimen
+
+    from editor import convert
+    disk = _c64_specimen(name)
+    if disk is None:
+        pytest.skip(f"needs the {name} specimen")
+    source = convert.Source.detect(disk)
+    rows = effects.active_effects(bytes(source.save0))
+    assert any(r.owner < 8 for r in rows)
+    party, _ = dos_codec.c64_party(bytes(source.save0), source.save1,
+                                   game=game)
+    assert len(party) == survivors
+    lines = [d for c in party for d in c.dropped
+             if d.startswith("running_effects:")]
+    assert not [d for d in lines if "holds no character" in d]
+    if game is POOL_OF_RADIANCE:
+        assert lines == []
+        assert all(len(c.get("running_effects")) == 1 for c in party)
+    else:
+        assert len(lines) == survivors
+
+
+def test_a_game_written_pool_flight_save_converts_to_dos_and_the_amiga(
+        tmp_path):
+    from test_convertmatrix import _c64_specimen
+
+    from editor import convert, roster, saveplan
+    from tools.convert import convertdrops
+    from tools.dos import dosbox
+
+    disk = _c64_specimen("por-666-e1-flee-orphan-rows")
+    if disk is None:
+        pytest.skip("needs the por-666-e1-flee-orphan-rows specimen")
+    try:
+        game_dir = dosbox.find_game("POOLRAD")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS Pool of Radiance archives ($FR_ARCHIVES)")
+    amiga = convertdrops.amiga_game_disks(tmp_path).get(POOL_OF_RADIANCE.key)
+    if amiga is None:
+        pytest.skip("needs Pool of Radiance's own Amiga game disk")
+    party = roster.Party(str(disk))
+    source = party.source or convert.Source.detect(party.path)
+    try:
+        dos_assets = saveplan.resolve_assets(
+            source, "dos", game_files=convertdrops.game_files,
+            dos_folder=game_dir)
+        amiga_assets = saveplan.resolve_assets(
+            source, "amiga", game_files=convertdrops.game_files,
+            amiga_disk=amiga)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Pool of Radiance's own C64 disks")
+    for port, where, assets in (("dos", tmp_path / "dos", dos_assets),
+                                ("amiga", tmp_path / "out.adf", amiga_assets)):
+        plan = saveplan.prepare_save_as(party, port, where, assets)
+        assert plan.report.dropped == [] and saveplan.losses(plan.report) == []
+
+
 # --- Save As Amiga keeps a running C64 spell ------------------------------------
 
 #: title, C64 game constant, the first character's name, and the C64

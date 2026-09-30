@@ -9099,12 +9099,23 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
         # slot, which is what DOS's ask-every-member query treats the same,
         # or on every member for an id in `PARTY_ROW_ON_EVERY_MEMBER`; a
         # duration-0 row becomes the granted record on the same members.
-        # Every other such row is reported on the first character.
+        # A row owned by an empty party slot is what a member left behind
+        # by a flight or a dismissal leaves in his old slot; DOS and the
+        # Amiga free a departed member's effects with him, so it converts
+        # to nothing and goes to the debug log (docs/226, "A row whose owner
+        # has left the party"). Every other such row is reported on the
+        # first character.
         occupied = {s.index for s in party}
         party_nodes: dict[int, effects.RunningEffect] = {}
         party_granted: dict[int, bytes] = {}
         for row in effects.active_effects(bytes(save0)):
             if row.owner in occupied:
+                continue
+            if row.owner < 8:
+                _log.debug("c64_party: effect row in slot %d (id %d) is "
+                           "owned by party slot %d, which holds no "
+                           "character; not converted", row.slot, row.id,
+                           row.owner)
                 continue
             if row.owner & 0x80:
                 record = effects.party_row_granted(c64.key, row)
@@ -9124,10 +9135,8 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
                     continue
             if row.owner & 0x80:
                 who = "the whole party"
-            elif row.owner >= 8:
-                who = f"monster {row.owner}"
             else:
-                who = f"party slot {row.owner}, which holds no character"
+                who = f"monster {row.owner}"
             if row.duration == 0:
                 label = f"effect {row.id}, which never expires"
             else:
