@@ -8262,9 +8262,13 @@ def test_the_locked_door_bar_is_known_by_its_letters_whatever_it_offers():
         words = da.bar_words(_screen(_locked(rest), b""))
         assert da.locked_words(words), rest
         assert da.fight_bar_kind(_screen(_locked(rest), b"")) == "locked"
+    # `LOCKAD.` has seven different cells, but its fifth is not `EXIT`'s `E`;
+    # a prompt and `EXIT` alone offer nothing to choose.
     for bar in (_locked("BASH PICK"), _bar("VIEW TAKE POOL SHARE EXIT"),
                 _bar("MOVE AREA CAST VIEW ENCAMP SEARCH LOOK"),
-                _bar("MOVE VIEW AIM USE CAST QUICK DONE"), _bar("LOCKED EXIT")):
+                _bar("MOVE VIEW AIM USE CAST QUICK DONE"), _bar("LOCKED EXIT"),
+                _bar("LOCKAD") + bytes((_DOT,)) + _bar(" BASH PICK EXIT"),
+                _locked("EXIT")):
         assert not da.locked_words(da.bar_words(_screen(bar, b"")))
     assert da.FIGHT_KEYS["locked"] == "e"
 
@@ -8371,8 +8375,10 @@ def test_two_fights_in_one_boot_with_a_camp_save_between(tmp_path, clock):
     left = d.leave()
     second = d.fight()
     fight = ["m", "Up", "Up", "c", "q", "q", "e", "n"]
+    # The first fight's `space` is the first-bar key; the second's is the
+    # hand-back, pressed at its first command bar before `QUICK`.
     assert game.keys == (fight[:4] + ["space"] + fight[4:] + ["e", "s", "c", "n", "e"]
-                         + fight)
+                         + fight[:4] + ["space"] + fight[4:])
     assert (game.save_dir / "SAVGAMC.DAT").is_file()
     assert (first["fight"], second["fight"]) == (1, 2)
     # The first-bar key is the first fight's only.
@@ -8489,3 +8495,31 @@ def test_main_refuses_a_bad_stage_side_before_any_slot(tmp_path, monkeypatch, ca
                  "--stage-side", "5=256", "--out", str(tmp_path / "out")])
     err = capsys.readouterr().err
     assert "5=256" in err and "LINE=SIDE[:QUICKFIGHT]" in err
+
+
+def test_only_a_fight_after_the_first_hands_the_party_back_before_its_first_bar(
+        tmp_path, clock):
+    game = CampFight(tmp_path)
+    d = da.Driver(game, lambda **k: None, "D", "ssb", party_size=3)
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.record_world(game.capture())
+    d.where = "map"
+    first = d.fight()
+    assert "space" not in game.keys
+    assert first["handed_back"] is False and first["handed_back_to"] is None
+    d.camp()
+    d.save("C")
+    d.leave()
+    at = len(game.keys)
+    second = d.fight()
+    fight2 = game.keys[at:]
+    assert fight2 == ["m", "Up", "Up", "c", "space", "q", "q", "e", "n"]
+    assert fight2.count("space") == 1
+    assert [e["kind"] for e in _events(d, "hand-back")] == ["command"]
+    # SPACE applies to the members whose control byte is below 0x80: EPONA,
+    # at 0xB3, stays under the computer.
+    assert second["handed_back"] is True
+    assert second["handed_back_to"] == ["GUY", "PAINE"]
+    after = {c["name"]: c["quickfight"] for c in second["placement"]}
+    assert after["PAINE"] == 0 and after["EPONA"] == 1
