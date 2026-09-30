@@ -34,3 +34,20 @@ def test_missing_overlay_is_reported_by_name():
 def test_unknown_title_is_refused():
     with pytest.raises(SystemExit, match="No title called nope"):
         overlay.title_game("nope")
+
+
+def test_cli_title_and_disks_select_the_curse_disks(capsys):
+    root = _root(CURSE)
+    assert overlay.main(["overlay.py", "--title", "curse", "--disks", root,
+                         "refs", "ECL65", "0x0800"]) in (0, None)
+    assert "mention" in capsys.readouterr().out
+
+
+def test_cli_bogus_title_is_refused():
+    with pytest.raises(SystemExit, match="No title called bogus"):
+        overlay.main(["overlay.py", "--title", "bogus", "hex", "X", "0"])
+
+
+def test_pool_without_disks_falls_back_to_the_environment(monkeypatch, tmp_path):
+    monkeypatch.setenv("POR_DISKS", str(tmp_path))
+    assert overlay.title_root(POOL, None) == tmp_path
