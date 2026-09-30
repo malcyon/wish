@@ -199,7 +199,7 @@ def test_the_look_logs_the_squares_the_game_painted_over_the_disk():
     binding = MagicMock()
     binding.LIVE_EVERY = 0
     binding.state.window, binding.state.heading = 1, 6
-    binding.state.resident_grids = {1: bytes(block)}
+    binding.mapper._block = (0, bytes(block), (1, 0))
     binding.mapper._world = world
     binding.status_text.return_value = ""
     sess.kbd = MagicMock()

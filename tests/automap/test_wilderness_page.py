@@ -450,7 +450,7 @@ def _painted(window, square):
     return bytes(grid)
 
 
-def test_a_square_the_game_paints_is_drawn_as_the_game_paints_it(
+def test_a_square_the_game_paints_over_keeps_its_disk_art(
         app, tmp_path, monkeypatch):
     win, target = _window_on(
         app, tmp_path, monkeypatch,
@@ -460,19 +460,13 @@ def test_a_square_the_game_paints_is_drawn_as_the_game_paints_it(
     _step(win)
     target.block = _painted(1, (5, 20))
     _step(win)
-    _step(win)                                      # a second read keeps it
-    image = canvas.grab().toImage()
-    assert _pixel_at_square(canvas, image, 18, 20) == _rgb(PAINT_COLOUR)
-    target.block = _painted(1, (5, 21))
-    _step(win)
     _step(win)
     image = canvas.grab().toImage()
-    assert _pixel_at_square(canvas, image, 18, 21) == _rgb(PAINT_COLOUR)
     assert _pixel_at_square(canvas, image, 18, 20) == _rgb(COLOUR + 1)
+    assert _pixel_at_square(canvas, image, 18, 20) != _rgb(PAINT_COLOUR)
 
 
-def test_the_picture_is_rebuilt_only_when_the_resident_block_changes(
-        app, tmp_path, monkeypatch):
+def test_the_picture_is_built_once_per_world(app, tmp_path, monkeypatch):
     from automap import window as window_module
     win, target = _window_on(
         app, tmp_path, monkeypatch,
@@ -485,10 +479,7 @@ def test_the_picture_is_rebuilt_only_when_the_resident_block_changes(
     target.block = _painted(1, (5, 20))
     _step(win)
     _step(win)
-    assert len(built) == 1
     target.block = _painted(1, (5, 21))
     _step(win)
     _step(win)
-    assert len(built) == 2
-    _step(win)                                      # the same block again
-    assert len(built) == 2
+    assert built == []

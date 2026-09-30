@@ -51,10 +51,10 @@ OUTDOORS_REGIONS = ("West of Phlan", "Stojanow Valley", "East of Phlan")
 #: front of them.
 #:
 #: **Comes off when `#11 (Draw the wilderness on the automapper)` closes**,
-#: which needs the undiscovered sites drawn as the game paints them, a
-#: `grab()` of the world page in both views retaken after that and posted on
-#: that issue as our own visual check, the live walk across a seam, and the
-#: live check of the resident block's paint, run and posted there.
+#: which needs a `grab()` of the world page in both views, posted on that
+#: issue as our own visual check, the live walk across a seam, and the live
+#: check that a site the game has painted over is drawn with its own art, run
+#: and posted there.
 WILDERNESS_ENV = "WISH_EXPERIMENTAL_WILDERNESS_MAP"
 _TRUE = ("1", "true", "yes", "on")
 
@@ -242,9 +242,6 @@ class AutomapState:
     window: int | None = None
     #: The travel grid's heading byte, 0-7, or None. Set only while `outdoors`.
     heading: int | None = None
-    #: Window index -> the last block the game had resident at `$8C00` for it
-    #: this session, which is the grid as the game painted it.
-    resident_grids: dict[int, bytes] = field(default_factory=dict)
     candidates: Candidates | None = None
     reveal: bool = False
     exploration: Exploration = field(default_factory=Exploration)
@@ -421,9 +418,6 @@ class Automapper:
         #: `_running` and `_poll_outdoors` share one read.
         self._block: tuple[int, bytes, tuple[int, int] | None] | None = None
         self._outdoor_pending: tuple[int, int] | None = None
-        #: The block the previous outdoor read named a window for; a block is
-        #: drawn only once two reads in a row agree on it.
-        self._previous_block: bytes | None = None
         if area:
             self.set_area(area)
 
@@ -459,9 +453,6 @@ class Automapper:
         """
         self._world = world if wilderness_enabled() else None
         self._block = None
-        self._previous_block = None
-        # Another disk set is another world, so its blocks are not these.
-        self.state.resident_grids.clear()
 
     def _read_window(self) -> tuple[bytes, tuple[int, int] | None] | None:
         """The block at `$8C00` and what `World.identify` says of it.
@@ -640,10 +631,7 @@ class Automapper:
         (`docs/140-loaded-files-cache.md`), so it could only ever answer
         `UNKNOWN` for the cost of a read. The window the game has resident
         and the heading are read into `state.window` and `state.heading`, and
-        the wilderness page draws from them. The block that identified the
-        window is kept in `state.resident_grids`, so the page draws a site the
-        way the game paints it; a held jump or an unidentified block keeps
-        nothing.
+        the wilderness page draws from them.
 
         `state.facing`, `area`, `geo`, `exploration`, `notes`, `candidates`
         and the fingerprint are the party's last indoor ones and are left
@@ -672,8 +660,6 @@ class Automapper:
             read = self._read_window()
             if read is not None:
                 _, found = read
-                previous, self._previous_block = (
-                    self._previous_block, read[0] if found is not None else None)
                 if found is not None:
                     jumped = (self.state.outdoors
                               and abs(fix.x - self.state.x)
@@ -691,10 +677,6 @@ class Automapper:
                         return False
                     self._outdoor_pending = None
                     self.state.window = found[0]
-                    # `identify` accepts a block a little off a window, so one
-                    # caught mid-load is drawn only if the next read repeats it.
-                    if read[0] == previous:
-                        self.state.resident_grids[found[0]] = read[0]
                     changed_heading = self._read_heading()
         self.state.outdoors = True
         self.state.x, self.state.y = fix.x, fix.y
@@ -736,16 +718,12 @@ class Automapper:
         self._attached = self.target
         self._proved = None
         self._block = None
-        self._previous_block = None
         self._outdoor_pending = None
         self._started = False
         self._pending = None
         self._last = None
         self.title_check = UNKNOWN
         self._contradictions = 0
-        # A new machine may hold a different save, so its blocks are not the
-        # old one's.
-        self.state.resident_grids.clear()
 
     def _running(self, fix: Fix) -> bool:
         """Is a Gold Box game actually in memory? Nothing is recorded until it is.

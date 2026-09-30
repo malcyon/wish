@@ -99,10 +99,9 @@ automapper adds outdoors is the whole place at once.
   drawn, and the party marked at (`$49C3` + 13 x k, `$49C4`). No fog and no
   record of where the party has been: the disks hold every square, and the
   marker is the only sign of where it is.
-* **Undiscovered sites drawn as the terrain the game paints over them**, which
-  is what the game itself shows until the site is found. The window the party
-  is in is drawn from the block resident at `$8C00`; the other two from the
-  four squares measured so far (`goldbox.world.UNDISCOVERED_PAINT`).
+* **Every site drawn with its own art**, read off the disk, whether or not the
+  party has found it; the game paints terrain over an undiscovered one, and the
+  map does not.
 
 **Waiting on the closed script read** (`docs/115-review-the-scripts.md`):
 
@@ -236,8 +235,7 @@ answers unknown 2 on its own.
 ## What not to do
 
 * **The map draws the whole world, visited or not.** It reads every square from
-  the disks, or from the block resident at `$8C00` where the game has painted an
-  undiscovered site over one, and keeps no record of where the party has been, so the party's
+  the disks and keeps no record of where the party has been, so the party's
   marker is the only sign of where it is; `137-wilderness-automap.md`, section
   6, has what that includes and what is undecided.
 * **Do not read a terrain code against another map's table.** `2E` is walkable

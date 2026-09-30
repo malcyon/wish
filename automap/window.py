@@ -615,9 +615,7 @@ class WorldCanvas(QWidget):
     black outline at its world square, pointing the way the heading byte says.
 
     The tiles are read off the player's disks when the window opens
-    (`goldbox.world.world_indices`) and are never stored. A site the game has
-    not painted is drawn as the terrain the game paints over it, from the
-    block last resident at `$8C00` for the window the party has been in.
+    (`goldbox.world.world_indices`) and are never stored.
     """
 
     def __init__(self, state, parent=None):
@@ -628,8 +626,6 @@ class WorldCanvas(QWidget):
         self.view = FULL_VIEW
         self._pixels = b""
         self._image: QImage | None = None
-        self._world = None
-        self._drawn: dict[int, bytes] = {}
         # The same minimum and size hint as `MapCanvas`, so the stack is no
         # taller when the party steps outside and no page raises the window's
         # floor (see `CombatCanvas._resize`).
@@ -646,17 +642,10 @@ class WorldCanvas(QWidget):
     def show_world(self, world) -> bool:
         """Build the picture from these windows. False, and no picture, when
         there is no world or its disks carried no glyphs."""
-        self._world = world
-        self._build()
-        self.update()
-        return self._image is not None
-
-    def _build(self) -> None:
         self._image = None
-        self._drawn = dict(self.state.resident_grids)
-        if self._world is not None:
+        if world is not None:
             try:
-                self._pixels = world_indices(self._world, self._drawn)
+                self._pixels = world_indices(world)
             except WorldError:
                 self._pixels = b""
             else:
@@ -665,15 +654,8 @@ class WorldCanvas(QWidget):
                                QImage.Format.Format_Indexed8)
                 image.setColorTable([QColor(c).rgb() for c in C64_PALETTE])
                 self._image = image
-
-    def sync_grids(self) -> None:
-        """Redraw, rebuilding the picture only when the blocks the game has
-        had resident differ from the ones it was last built from: the first
-        entry into a window, or the game repainting a site, and not every
-        step."""
-        if self._world is not None and self.state.resident_grids != self._drawn:
-            self._build()
         self.update()
+        return self._image is not None
 
     def set_view(self, view: str) -> None:
         self.view = AREA_VIEW if view == AREA_VIEW else FULL_VIEW
@@ -1369,7 +1351,7 @@ class AutomapBinding(QObject):
             self.stack.setCurrentWidget(self._page())
         self._sync_controls()
         if self.world_canvas is not None:
-            self.world_canvas.sync_grids()
+            self.world_canvas.update()
         if st.outdoors:
             # `window` is only ever set behind the wilderness flag, so this
             # branch needs no second check of it.

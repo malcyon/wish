@@ -236,16 +236,15 @@ def shot(app, widget, path: pathlib.Path) -> None:
 
 
 def resident_paint(binding) -> list[list[int]]:
-    """`[x, y, code]` for each square where the block last resident for the
-    party's window differs from that window's disk grid: what the game has
-    painted over the disk's art."""
+    """`[x, y, code]` for each square where the game's resident grid differs
+    from the disk's grid for the same window, which the map does not draw."""
     from goldbox.world import GRID_SIZE, STRIDE
-    st = binding.state
     world = binding.mapper._world
-    if st.window is None or world is None or st.window not in st.resident_grids:
+    read = binding.mapper._block
+    if world is None or read is None or read[2] is None:
         return []
-    disk = world.windows[st.window].to_bytes()[:GRID_SIZE]
-    block = st.resident_grids[st.window]
+    disk = world.windows[read[2][0]].to_bytes()[:GRID_SIZE]
+    block = read[1]
     return [[i % STRIDE, i // STRIDE, block[i]]
             for i in range(GRID_SIZE) if block[i] != disk[i]]
 
