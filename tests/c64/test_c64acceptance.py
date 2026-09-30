@@ -7259,6 +7259,45 @@ class AmbushWalk(FightWalk):
             self.pending, self.menu_after = _stop_rows(self.ENCOUNTER), False
 
 
+class TreasureAfterFightWalk(AmbushWalk):
+    """A won fight on the first move; the second move's `PRESS` page, once
+    answered, puts up a treasure screen (mode 5) whose bar is `bar`, and EXIT
+    puts the world bar back."""
+
+    def __init__(self, bar="VIEW POOL EXIT", **kw):
+        super().__init__({0: "fight"}, **kw)
+        self.screens["treasure"] = _window({3: "THE POOL HOLDS GOLD."}, bar)
+        self.moves[("press", ("key", 0x0D))] = "treasure"
+
+    def mode(self):
+        return A.TREASURE_MODE if self.state == "treasure" else A.S.DUNGEON
+
+    def walk_one(self, move, *a, **k):
+        moved = FightWalk.walk_one(self, move, *a, **k)
+        if self.calls == 2:
+            self.state = "press"
+        return moved
+
+    def select_bar(self, label, row=24, timeout=0, **kw):
+        if label == "EXIT" and self.state == "treasure":
+            self.state = "world"
+        return super().select_bar(label, row, timeout, **kw)
+
+
+@pytest.mark.parametrize("verb", ["walk_fight", "walk_flee"])
+def test_walk_fight_leaves_a_treasure_screen_met_on_the_walk_after_a_fight(
+        tmp_path, monkeypatch, verb):
+    sess = TreasureAfterFightWalk()
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = getattr(run, verb)("II")
+    log.close()
+    assert sess.selected[-1] == "EXIT" and sess.state == "world"
+    assert [f["at_move"] for f in got["fights"]] == [0]
+    assert got["treasure_screens"] == [
+        {"at_move": 1, "bar": "VIEW POOL EXIT", "mode": A.TREASURE_MODE}]
+    assert sess.pressed == ["I", "I"]
+
+
 def test_walk_fight_waits_out_a_slow_encounter_load_after_a_side_prompt_and_sends_one_key(
         tmp_path, monkeypatch):
     """The real `walk_one` returns False at the prompt with the party still
