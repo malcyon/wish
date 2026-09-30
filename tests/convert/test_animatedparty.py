@@ -666,9 +666,31 @@ def test_the_inert_entry_is_declared_and_is_not_a_drop():
         assert why and evidence
 
 
-def test_a_raised_character_round_trips_c64_dos_c64_but_for_the_inert_marker():
-    assert "animate_dead_marker" in {n for n, *_ in c64_codec.READ_INERT}
-    rec, payload = _residue(0x01)
+def test_trait_32_is_kept_when_the_roster_status_is_not_stored():
+    rec, payload = _residue(0x03)
+    slot = CharacterRecord(rec.to_bytes(), stored_size=256)
+    assert not slot.is_stored("roster_in_use")
+    char = c64_codec.read(slot, game=c64_port.POOL_OF_RADIANCE)
+    assert 32 in char.get("innate_effects")
+
+
+@pytest.mark.parametrize("trait", [1, 0])
+def test_a_running_id_32_row_keeps_the_trait_beside_it(trait):
+    rec, _payload = _residue(0x01, trait=trait, row=False)
+    payload = bytearray(0x1C00)
+    effects.write_effect(payload, 3, 32, 4, 60, 5)
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                          payload=bytes(payload), party_slot=4)
+    assert (32 in char.get("innate_effects")) == bool(trait)
+
+
+@pytest.mark.parametrize("second_trait", [False, True])
+def test_a_raised_character_round_trips_c64_dos_c64_but_for_the_inert_marker(
+        second_trait):
+    ids = set(c64_codec.INERT_MARKER_IDS.values())
+    assert set(c64_codec.INERT_MARKER_IDS) == {n for n, *_ in
+                                               c64_codec.READ_INERT}
+    rec, payload = _residue(0x01, second_trait=second_trait)
     char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
                           payload=payload, party_slot=4)
     dos, _itm, spc, report = dos_codec.write(char)
@@ -679,11 +701,11 @@ def test_a_raised_character_round_trips_c64_dos_c64_but_for_the_inert_marker():
                                 payload=back_payload, party_slot=4,
                                 clock_minutes=0)
     assert not rep.losses
-    # The declared masks: trait slot 9 and effect row 63.
-    want = bytearray(rec.get_raw("item_effects"))
-    want[9] = 0
-    assert bytes(back.get_raw("item_effects")) == bytes(want)
+    # Masked by the declared entry: every trait slot holding a marker id and
+    # every effect row with one.
+    want = bytes(0 if b in ids else b for b in rec.get_raw("item_effects"))
+    assert bytes(back.get_raw("item_effects")) == want
     assert not [r for r in effects.active_effects(bytes(back_payload))
-                if r.id == 32]
+                if r.id in ids]
     for name in ("roster_in_use", "flags_0b8", "turn_class", "creature_type"):
         assert back.get(name) == rec.get(name), name

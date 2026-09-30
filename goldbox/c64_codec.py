@@ -2919,6 +2919,13 @@ READ_INERT: tuple[tuple[str, str, str], ...] = (
      "raised-zombie and raised-control saves the game wrote"),
 )
 
+#: The effect id each :data:`READ_INERT` entry stands for, which `read` leaves
+#: out of a trait slot and out of the effect array's duration-zero rows.  Kept
+#: apart from :data:`READ_TARGETS` and `field_disposition`, which account for
+#: record fields: the marker is a value that can sit in any trait slot or
+#: effect row, not a field of its own.
+INERT_MARKER_IDS: dict[str, int] = {"animate_dead_marker": ANIMATE_DEAD_ID}
+
 #: What :func:`read` does with every named field of the C64 layout -- the
 #: layout-wide account the DOS writer of #26 called for, so a C64 field
 #: nothing reads cannot be dropped in silence.  `tests/convert/test_doswriter.py`
@@ -3138,10 +3145,18 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # living character.  The C64 reads it only in a second raise (see
     # `READ_INERT`), and every DOS and Amiga form of node 32 would add
     # behaviour this character does not have, so no node is written.
+    # With no roster status to read there is no telling a raised character
+    # from a zombie, so the id is left alone.  A running id-32 row is not the
+    # marker either (it never ages out at duration 0), so it and the trait
+    # keep to the paths that already handle them.
     animate_dead_residue = (deltas is POOL_OF_RADIANCE_RECORD
-                            and not zombie_read)
+                            and early_raw is not None and not zombie_read)
+    running_marker_row = False
     if payload is not None and party_slot is not None:
         rows = effects.active_effects(bytes(payload))
+        running_marker_row = any(
+            r.owner == party_slot and r.duration != 0
+            and r.id in INERT_MARKER_IDS.values() for r in rows)
         consumed: set[int] = set()
         if heal_entry is not None:
             heal_id = heal_entry[0]
@@ -3177,7 +3192,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             if row.owner != party_slot or row.slot in consumed:
                 continue
             if (animate_dead_residue and row.duration == 0
-                    and row.id == ANIMATE_DEAD_ID):
+                    and row.id in INERT_MARKER_IDS.values()):
                 continue
             if (row.duration == 0 and zombie_read
                     and row.id == ANIMATE_DEAD_ID and row.magnitude != 0xFF
@@ -3677,7 +3692,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     out.set("attack_forms", rec.get_raw("attack_forms"),
             origin("attack_forms"), grade("attack_forms"))
     slot_ids = [b for b in rec.get_raw("item_effects") if b
-                and not ((zombie_node_converted or animate_dead_residue)
+                and not ((zombie_node_converted
+                          or (animate_dead_residue
+                              and not running_marker_row))
                          and b == ANIMATE_DEAD_ID)]
     out.set("innate_effects",
             slot_ids + [i for i in permanent if i not in slot_ids],
