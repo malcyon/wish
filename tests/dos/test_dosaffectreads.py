@@ -676,7 +676,7 @@ def test_no_pool_monster_memorises_or_carries_dispel_magic():
 
 def test_an_id_the_title_does_not_have_is_split_out_not_indexed():
     known = {1: "a", 2: "b"}
-    assert reads.split_ids("2,126,1", known) == ([2, 1], [126])
+    assert reads.split_ids([2, 126, 1], known) == ([2, 1], [126])
     assert reads.split_ids(None, known) == ([1, 2], [])
 
 
@@ -689,3 +689,29 @@ def test_silver_blades_asked_for_an_id_past_its_table_reports_it(capsys):
     out = capsys.readouterr().out
     assert "126 not present in silver-blades" in out
     assert "  97 handler" in out
+
+
+def test_an_item_power_id_in_pool_is_named_as_one_not_as_out_of_range(capsys):
+    eng = _title("pool")
+    line = reads.not_present(eng, "pool", 130)
+    assert "effect ids" in line and "item powers" in line and "--items" in line
+    assert "1-139" not in line
+
+
+def test_spells_asked_for_an_id_past_the_table_reports_it(capsys):
+    try:
+        game = dosbox.find_game(reads.TITLES["silver-blades"])
+    except FileNotFoundError:
+        pytest.skip("needs DOS silver-blades in the archives")
+    reads.main(["--title", "silver-blades", "--game-dir", str(game), "--ids", "97",
+                "--spells", "126"])
+    out = capsys.readouterr().out
+    assert "126 not present in silver-blades" in out
+    assert "effect 126: on lists" not in out
+
+
+def test_a_malformed_id_list_is_an_argument_error(capsys):
+    with pytest.raises(SystemExit) as e:
+        reads.main(["--ids", "1,x"])
+    assert e.value.code == 2
+    assert "expected comma-separated integers" in capsys.readouterr().err

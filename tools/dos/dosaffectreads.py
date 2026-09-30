@@ -1027,23 +1027,39 @@ def _fmt(s: set) -> str:
     return ",".join(str(b) for b in sorted(s)) or "-"
 
 
-def split_ids(ids: str | None, known: dict) -> tuple[list[int], list[int]]:
+def id_list(text: str) -> list[int]:
+    """Parse a comma-separated id list, as an argparse type."""
+    try:
+        return [int(x) for x in text.split(",")]
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected comma-separated integers, got {text!r}")
+
+
+def split_ids(asked: list[int] | None, known: dict) -> tuple[list[int], list[int]]:
     """The requested ids the title has, and those outside its table (all ids if none asked)."""
-    if not ids:
+    if not asked:
         return sorted(known), []
-    asked = [int(x) for x in ids.split(",")]
     return [e for e in asked if e in known], [e for e in asked if e not in known]
+
+
+def not_present(eng: Engine, title: str, eid: int) -> str:
+    """One line saying `eid` is no effect of `title`, naming the ids it has."""
+    ids = eng.effect_ids
+    line = f"{eid:3d} not present in {title} (effect ids {min(ids)}-{max(ids)})"
+    if eng.hook is None and eid in eng.handlers:
+        line += f"; ids {min(e for e in eng.handlers if e not in ids)} and up are item powers, read with --items"
+    return line
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--title", choices=sorted(TITLES), action="append")
     ap.add_argument("--game-dir", help="a directory holding GAME.OVR and START.EXE")
-    ap.add_argument("--ids", help="comma-separated ids to print (default: all)")
+    ap.add_argument("--ids", type=id_list, help="comma-separated ids to print (default: all)")
     ap.add_argument("--items", action="store_true", help="print the item-power reading")
     ap.add_argument("--apply", action="store_true",
                     help="print check list 9 and what each handler cancels on application")
-    ap.add_argument("--spells", metavar="IDS",
+    ap.add_argument("--spells", metavar="IDS", type=id_list,
                     help="comma-separated effect ids: the spells that apply each, their save"
                          " and the class gate in their routine")
     a = ap.parse_args(argv)
@@ -1070,7 +1086,7 @@ def main(argv: list[str] | None = None) -> int:
               f"{dsp['file']}:0x{dsp['routine']:x} (0xFF test at 0x{dsp['test']:x},"
               f" also tests ids {dsp['compares']})")
         for e in absent:
-            print(f"   {e:3d} not present in {title} (ids 1-{max(eng.handlers)})")
+            print("   " + not_present(eng, title, e))
         for e in want:
             x = v[e]
             print(f"   {e:3d} handler 0x{x.handler:05x} reads {_fmt(x.handler_reads):8s}"
@@ -1108,7 +1124,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"   spell effect routine GAME.OVR:0x{sp['routine']:x}, spell table"
                   f" ds:0x{sp['base']:x} (16 bytes: level +1, save action +8, column +9,"
                   f" effect +10)")
-            for eid in [int(x) for x in a.spells.split(",")]:
+            asked, missing = split_ids(a.spells, dict.fromkeys(eng.effect_ids))
+            for eid in missing:
+                print("   " + not_present(eng, title, eid))
+            for eid in asked:
                 print(f"   effect {eid}: on lists {lists_holding(eng, eid) or 'none'}")
                 for sid in spells_applying(eng, eid):
                     row, (where, at) = rows[sid], routines[sid]
