@@ -2,7 +2,9 @@
 
 Everything here reads the screen and the machine of a running Pool session:
 open a character's item list from camp, toggle READY on an item, read the
-live records and effect arrays, and rest for a set time.
+live records and effect arrays, and rest for a set time.  `rest` also drives
+Curse of the Azure Bonds and Secret of the Silver Blades, whose rest-time bar
+and addresses differ.
 """
 
 from __future__ import annotations
@@ -10,7 +12,7 @@ from __future__ import annotations
 import os
 import time
 
-from goldbox import effects
+from goldbox import c64_port, effects
 from tools.c64 import session as S
 from tools.c64.runlog import Log
 
@@ -338,19 +340,56 @@ REC_CHA = 0x019
 REST_TIME = 0x2898
 
 
-def sample(m) -> dict:
-    """The four arrays and the clock, read in one pass."""
-    head = m.read(SAVE0_LOAD, 0x300)
-    mag = m.read(SAVE0_LOAD + effects.EFFECT_MAGNITUDE_OFFSET, 0x40)
-    rec = m.read(STAGING_PAGE, 0x40)
-    return {
+#: Curse and Silver Blades load the save payload at `$4B00`, so their four
+#: effect arrays and the clock sit `$200` above Pool's, at the same offsets
+#: (`docs/226-the-c64-running-effect-crosswalk.md`, `tools/c64/curedrive.py`).
+LATER_LOAD = 0x4B00
+
+#: Each later title's `CAMP` rest-time field: minutes, hours, days (zeroed at
+#: Curse `CAMP $1D54`, Silver Blades `$1B52`).  `tools/c64/curedrive.py` rested
+#: both titles through these bytes and the clock advanced by exactly the time
+#: written (`docs/234-a-paladins-cure-disease-across-dos-and-the-c64.md`).
+LATER_REST_TIME = {
+    c64_port.CURSE_OF_THE_AZURE_BONDS.key: 0x2C1B,
+    c64_port.SECRET_OF_THE_SILVER_BLADES.key: 0x2A8E,
+}
+
+#: The word only the later titles' rest-time bar carries: `REST ADD SUBTRACT
+#: EXIT`, under `REST TIME : 0 DAYS 0 HRS 0 MINS`, where Pool's says `INCREASE`.
+LATER_REST_BAR = "SUBTRACT"
+
+#: The area's rest-interruption interval and chance, read by Curse `CAMP
+#: $1F76` and Silver Blades `CAMP $1D73`; logged, never written.
+REST_INTERRUPT = 0x7ED2
+
+#: How long a later-title rest may show no movement of the clock or the field
+#: before it is taken as over: a finished rest is back on the camp bar at once,
+#: so this is only reached by a rest the game stopped.
+LATER_REST_STILL = 10
+
+
+def sample(m, base: int = SAVE0_LOAD) -> dict:
+    """The four arrays and the clock, read in one pass; for Pool, the
+    staging page's strength bytes as well.
+
+    `base` is where the title loads its save payload: `SAVE0_LOAD` for Pool,
+    `LATER_LOAD` for Curse and Silver Blades.  The staging page is Pool's
+    and is not read for another base.
+    """
+    head = m.read(base, 0x300)
+    mag = m.read(base + effects.EFFECT_MAGNITUDE_OFFSET, 0x40)
+    clock = CLOCK - SAVE0_LOAD
+    out = {
         "id": list(head[0x00:0x40]),
         "owner": list(head[0x40:0x80]),
         "duration": list(head[0x80:0xC0]),
         "magnitude": list(mag[0x00:0x40]),
-        "clock": list(head[CLOCK - SAVE0_LOAD:CLOCK - SAVE0_LOAD + 6]),
-        "staging_str": [rec[REC_STR], rec[REC_STR_PCT], rec[REC_CHA]],
+        "clock": list(head[clock:clock + 6]),
     }
+    if base == SAVE0_LOAD:
+        rec = m.read(STAGING_PAGE, 0x40)
+        out["staging_str"] = [rec[REC_STR], rec[REC_STR_PCT], rec[REC_CHA]]
+    return out
 
 def live_records(m) -> dict[int, list[int]]:
     block = m.read(SLOT_BASE, SLOT_STRIDE * 8)
@@ -370,7 +409,12 @@ def rest(sess, log, minutes: int, hours: int, cp: dict) -> dict:
     step grows while the key is held.  The engine then counts the field down
     five minutes at a time, and each five-minute pass is one call of the
     expiry sweep.
+
+    A Curse or Silver Blades session (`sess.game`) goes to `rest_later`.
     """
+    game = getattr(sess, "game", c64_port.POOL_OF_RADIANCE)
+    if game.key in LATER_REST_TIME:
+        return rest_later(sess, log, minutes, hours, cp, LATER_REST_TIME[game.key])
     if not sess.select_bar("REST"):
         log.say("  REST was not on the camp bar")
         return {"failed": "no REST on the camp bar"}
@@ -407,3 +451,65 @@ def rest(sess, log, minutes: int, hours: int, cp: dict) -> dict:
             f"{after['duration'][:6]}")
     log.say(f"    ids {after['id'][:6]}  counts {counts}")
     return {"before": before, "after": after, "records": records, **counts}
+
+
+def rest_later(sess, log, minutes: int, hours: int, cp: dict,
+               field: int) -> dict:
+    """Curse's or Silver Blades' `REST`, the same way `rest` drives Pool's.
+
+    The camp's `REST` puts up `REST TIME :  0 DAYS  0 HRS  0 MINS` over
+    `REST ADD SUBTRACT EXIT`.  The time is written into the rest-time
+    `field` (minutes, hours, days), with hours of 24 or more carried into
+    days, rather than stepped with `ADD`, and the bar's own `REST` starts it.
+    No key is sent while it runs.  It is over when the field is back to zero
+    and the camp bar is up, or when neither the clock nor the field has moved
+    for `LATER_REST_STILL` seconds; the second is a rest the game stopped,
+    reported as `interrupted` with the time it had left in `rest_left` and
+    row 24 in `bar`.
+    """
+    press = getattr(sess, "press_bar", sess.select_bar)
+    if not press("REST"):
+        log.say("  REST was not on the camp bar")
+        return {"failed": "no REST on the camp bar"}
+    if sess.wait_text(LATER_REST_BAR, timeout=30)[0] is None:
+        log.say("  the rest-time bar never appeared")
+        return {"failed": "no rest-time bar"}
+    want = (minutes, hours % 24, hours // 24)
+    with sess.mon(10) as m:
+        before = sample(m, LATER_LOAD)
+        interrupt = list(m.read(REST_INTERRUPT, 2))
+        m.write(field, bytes(want))
+        staged = tuple(m.read(field, 3))
+        m.resume()
+    if staged != want:
+        return {"failed": f"rest time read back {staged}"}
+    if not press("REST"):
+        return {"failed": "no REST on the rest-time bar"}
+    deadline, still, last, left = time.time() + 300, 0, None, bytes(want)
+    while time.time() < deadline and still < LATER_REST_STILL:
+        time.sleep(1.0)
+        with sess.mon(10) as m:
+            now = bytes(m.read(CLOCK - SAVE0_LOAD + LATER_LOAD, 6))
+            left = bytes(m.read(field, 3))
+            m.resume()
+        s = sess.screen() if left == bytes(3) else None
+        if s is not None and CAMP_BAR in s.row(24):
+            break
+        still = still + 1 if (now, left) == last else 0
+        last = (now, left)
+    with sess.mon(10) as m:
+        after = sample(m, LATER_LOAD)
+        counts = {k: m.checkpoint_hits(v) for k, v in cp.items()}
+        m.resume()
+    s = sess.screen()
+    bar = "" if s is None else s.row(24).rstrip()
+    interrupted = left != bytes(3)
+    log.say(f"  rest {minutes}m {hours}h: clock {before['clock']} -> "
+            f"{after['clock']}, field left {list(left)}")
+    log.say(f"    ids {after['id'][:6]}  counts {counts}")
+    log.emit("screen", tag="rest-end", rows=sheet_rows(sess),
+             interrupted=interrupted, rest_left=list(left),
+             rest_interrupt=interrupt)
+    return {"before": before, "after": after, "interrupted": interrupted,
+            "rest_left": list(left), "bar": bar, "rest_interrupt": interrupt,
+            **counts}

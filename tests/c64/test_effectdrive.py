@@ -1,4 +1,5 @@
-"""`route_pool.sample` reads all 64 slots of each running-effect array.
+"""`route_pool.sample` reads all 64 slots of each running-effect array, and
+`route_pool.rest` drives each title's own rest-time bar.
 
 A converted running effect can land in either of the last two slots (62/63),
 so a reader that only sees the first 16 bytes of a 64-byte array would report
@@ -7,7 +8,7 @@ an empty party even while an effect is running.
 
 from __future__ import annotations
 
-from goldbox import effects
+from goldbox import c64_port, effects
 from tools.c64 import route_pool as E
 
 
@@ -42,3 +43,201 @@ def test_sample_reads_a_converted_effect_in_the_last_two_slots():
         assert len(result["owner"]) == 0x40
         assert len(result["duration"]) == 0x40
         assert len(result["magnitude"]) == 0x40
+
+
+# -- `route_pool.rest` on each title's rest-time bar -------------------------
+
+CAMP_ROW = "SAVE VIEW MAGIC REST ALTER FIX EXIT"
+LATER_REST_ROW = "REST  ADD  SUBTRACT  EXIT"
+POOL_REST_ROW = "REST INCREASE DECREASE EXIT"
+
+
+class FakeScreen:
+    def __init__(self, bar: str):
+        self._rows = [""] * 24 + [bar]
+
+    def row(self, n: int) -> str:
+        return self._rows[n]
+
+    def rows(self) -> list[str]:
+        return list(self._rows)
+
+
+class FakeMon(FakeMemory):
+    """A 64K image with the monitor's write, resume and checkpoint count."""
+
+    def write(self, addr: int, data: bytes) -> None:
+        self.mem[addr:addr + len(data)] = data
+
+    def resume(self) -> None:
+        pass
+
+    def checkpoint_hits(self, number: int) -> int:
+        return number
+
+
+class RestingSession:
+    """Camp bar, then the title's rest-time bar on REST, then a rest the
+    fake game runs five minutes at a time out of the field `field` into the
+    clock at `base + $C6` -- up to `stop_after` passes, when it stops the
+    way an interrupted rest does."""
+
+    def __init__(self, game, field: int, base: int, rest_row: str,
+                 stop_after: int | None = None):
+        self.game = game
+        self.field, self.base, self.rest_row = field, base, rest_row
+        self.stop_after = stop_after
+        self.bar = CAMP_ROW
+        self.m = FakeMon()
+        self.pressed: list[str] = []
+        self.written: bytes | None = None
+        self.resting = False
+        self.passes = 0
+
+    def _select(self, label: str, **_) -> bool:
+        self.pressed.append(label)
+        if label != "REST" or "REST" not in self.bar:
+            return False
+        if self.bar == CAMP_ROW:
+            self.bar = self.rest_row
+        else:
+            self.written = bytes(self.m.read(self.field, 3))
+            self.resting, self.bar = True, ""
+        return True
+
+    select_bar = _select
+
+    def screen(self):
+        return FakeScreen(self.bar)
+
+    def wait_text(self, needle: str, timeout: float = 0):
+        s = self.screen()
+        return (s, 0) if needle in s.row(24) else (None, None)
+
+    def _pass(self) -> None:
+        mins, hours, days = self.m.read(self.field, 3)
+        left = (days * 24 + hours) * 60 + mins
+        if not left:
+            self.resting, self.bar = False, CAMP_ROW
+            return
+        if self.stop_after is not None and self.passes >= self.stop_after:
+            self.bar = "THE PARTY IS ATTACKED"
+            return
+        self.passes += 1
+        left = max(0, left - 5)
+        self.m.write(self.field, bytes((left % 60, left // 60 % 24, left // 1440)))
+        clock = self.base + E.CLOCK - E.SAVE0_LOAD
+        _, units, tens, hour, day, month = self.m.read(clock, 6)
+        now = (day * 24 + hour) * 60 + tens * 10 + units + 5
+        self.m.write(clock, bytes((0, now % 10, now % 60 // 10, now // 60 % 24,
+                                   now // 1440, month)))
+
+    def mon(self, timeout: float = 0):
+        sess = self
+
+        class Stop:
+            def __enter__(self):
+                if sess.resting:
+                    sess._pass()
+                return sess.m
+
+            def __exit__(self, *exc):
+                return False
+
+        return Stop()
+
+
+class LaterPressSession(RestingSession):
+    """A later title's session, which has `press_bar` as well."""
+
+    def press_bar(self, label: str, **kw) -> bool:
+        return self._select(label, **kw)
+
+
+class RestLog:
+    def __init__(self):
+        self.said, self.events = [], []
+
+    def say(self, text: str) -> None:
+        self.said.append(text)
+
+    def emit(self, kind: str, **kw) -> None:
+        self.events.append((kind, kw))
+
+
+def _clock_minutes(clock: list[int]) -> int:
+    _, units, tens, hour, day, _ = clock
+    return (day * 24 + hour) * 60 + tens * 10 + units
+
+
+def _rest(monkeypatch, sess, minutes: int, hours: int) -> dict:
+    monkeypatch.setattr(E.time, "sleep", lambda _: None)
+    return E.rest(sess, RestLog(), minutes, hours, {"sweep": 7})
+
+
+def test_a_silver_blades_rest_writes_its_own_field_and_runs_ten_hours(monkeypatch):
+    """The Silver Blades bar is `REST ADD SUBTRACT EXIT`, with no `INCREASE`:
+    the step used to stop at "no rest-time bar"."""
+    sess = LaterPressSession(c64_port.SECRET_OF_THE_SILVER_BLADES, 0x2A8E,
+                             E.LATER_LOAD, LATER_REST_ROW)
+    got = _rest(monkeypatch, sess, 0, 10)
+    assert "failed" not in got, got
+    assert sess.written == bytes((0, 10, 0))
+    assert sess.pressed == ["REST", "REST"]
+    assert sess.passes == 120
+    assert _clock_minutes(got["after"]["clock"]) - _clock_minutes(
+        got["before"]["clock"]) == 600
+    assert got["interrupted"] is False and got["rest_left"] == [0, 0, 0]
+    assert got["sweep"] == 7
+    assert "staging_str" not in got["before"]
+
+
+def test_a_curse_rest_carries_hours_past_a_day_into_the_days_byte(monkeypatch):
+    sess = LaterPressSession(c64_port.CURSE_OF_THE_AZURE_BONDS, 0x2C1B,
+                             E.LATER_LOAD, LATER_REST_ROW)
+    got = _rest(monkeypatch, sess, 30, 25)
+    assert sess.written == bytes((30, 1, 1))
+    assert _clock_minutes(got["after"]["clock"]) - _clock_minutes(
+        got["before"]["clock"]) == 25 * 60 + 30
+    assert got["interrupted"] is False
+
+
+def test_a_later_rest_the_game_stops_is_reported_with_the_time_left(monkeypatch):
+    sess = LaterPressSession(c64_port.SECRET_OF_THE_SILVER_BLADES, 0x2A8E,
+                             E.LATER_LOAD, LATER_REST_ROW, stop_after=3)
+    got = _rest(monkeypatch, sess, 0, 1)
+    assert got["interrupted"] is True
+    assert got["rest_left"] == [45, 0, 0]
+    assert got["bar"] == "THE PARTY IS ATTACKED"
+    assert _clock_minutes(got["after"]["clock"]) - _clock_minutes(
+        got["before"]["clock"]) == 15
+
+
+def test_a_later_rest_reads_the_arrays_at_4b00():
+    m = FakeMemory()
+    m.mem[E.LATER_LOAD + effects.EFFECT_ID_OFFSET + 63] = 22
+    m.mem[E.LATER_LOAD + effects.EFFECT_MAGNITUDE_OFFSET + 63] = 0x7F
+    m.mem[E.LATER_LOAD + 0xC6 + 3] = 9
+    got = E.sample(m, E.LATER_LOAD)
+    assert got["id"][63] == 22 and got["magnitude"][63] == 0x7F
+    assert got["clock"][3] == 9
+
+
+def test_a_pool_rest_still_waits_for_increase_and_writes_2898(monkeypatch):
+    """A Pool session keeps its own bar, field and third byte of zero, and
+    its sample keeps the staging page's strength bytes."""
+    sess = RestingSession(c64_port.POOL_OF_RADIANCE, E.REST_TIME,
+                          E.SAVE0_LOAD, POOL_REST_ROW)
+    got = _rest(monkeypatch, sess, 30, 1)
+    assert "failed" not in got, got
+    assert sess.written == bytes((30, 1, 0))
+    assert _clock_minutes(got["after"]["clock"]) - _clock_minutes(
+        got["before"]["clock"]) == 90
+    assert "staging_str" in got["before"] and "records" in got
+    assert "interrupted" not in got
+
+
+def test_a_pool_rest_refuses_the_later_titles_bar(monkeypatch):
+    sess = RestingSession(c64_port.POOL_OF_RADIANCE, E.REST_TIME,
+                          E.SAVE0_LOAD, LATER_REST_ROW)
+    assert _rest(monkeypatch, sess, 0, 1) == {"failed": "no rest-time bar"}
