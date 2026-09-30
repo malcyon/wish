@@ -4763,6 +4763,7 @@ class Driver:
         here = self.s.capture().highlight_row(ADD_LIST)
         presses = still = 0
         while here != row:
+            self.check_deadline(f"{label}-walk")
             if here is None:
                 raise self.fail(f"{label}-walk", "no list row is drawn highlighted")
             if presses >= 2 * rows:
@@ -4818,6 +4819,9 @@ class Driver:
         sheet_text = [text_row(screen, r, font, DISPLAY_COLUMNS) for r in POOL_SHEET_ROWS]
         found = next((m for m in map(POOL_ENCUMBRANCE.search, sheet_text) if m), None)
         sheet_shot = self.shot(f"{label}-sheet")
+        if found is None:
+            raise self.fail(f"{label}-sheet", "the sheet draws no ENCUMBRANCE row "
+                            "the step can read")
         offered = "ITEMS" in re.split(r"[^A-Z]+", sheet_bar)
         items = items_shot = None
         if offered:
@@ -4846,11 +4850,11 @@ class Driver:
                             "Escape")
         self.shot(f"{label}-back")
         self.note(event="sheet", line=line, name=want,
-                  encumbrance=int(found.group(1)) if found else None,
+                  encumbrance=int(found.group(1)),
                   items=None if items is None else [i["name"] for i in items])
         return {"line": line, **moved, **checked, "sheet": sheet_shot,
                 "sheet_bar_text": sheet_bar, "sheet_text": sheet_text,
-                "encumbrance": int(found.group(1)) if found else None,
+                "encumbrance": int(found.group(1)),
                 "items_offered": offered, "items": items, "items_shot": items_shot}
 
     def _view_curse(self, line: int) -> dict:
@@ -6328,7 +6332,11 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
 
 
 def charlist_names(folder: pathlib.Path) -> list[str]:
-    """The names `folder`'s `CHARLIST.TXT` lists, upper case, or [] without one."""
+    """The names `folder`'s `CHARLIST.TXT` lists, upper case, or [] without
+    one; a `folder` that is not a directory is a ValueError naming it."""
+    if not folder.is_dir():
+        raise ValueError(f"add needs the title's save folder, and {folder} is "
+                         "not a directory")
     path = next((p for p in folder.iterdir() if p.name.upper() == CHARLIST), None)
     if path is None:
         return []
@@ -6337,13 +6345,17 @@ def charlist_names(folder: pathlib.Path) -> list[str]:
 
 
 def check_exports(folder: pathlib.Path, names: list[str]) -> None:
-    """Refuse an `add` whose name `folder`'s `CHARLIST.TXT` does not list,
-    before a slot is claimed."""
+    """Refuse an `add` whose name `folder`'s `CHARLIST.TXT` does not list, or
+    lists more than once (the step would not know which row to pick), before
+    a slot is claimed."""
     listed = charlist_names(folder)
     for name in names:
         if name not in listed:
             raise ValueError(f"add {name}: {folder / CHARLIST} lists "
                              f"{listed or 'nothing'}")
+        if listed.count(name) > 1:
+            raise ValueError(f"add {name}: {folder / CHARLIST} lists it "
+                             f"{listed.count(name)} times")
 
 
 def stage_exports(save_dir: pathlib.Path, folder: pathlib.Path) -> dict:
@@ -6709,6 +6721,10 @@ def main(argv: list[str] | None = None) -> int:
                        "stage_record", "stage_var", "stage_place", "expect")
             if any(getattr(args, a, None) for a in staging):
                 raise ValueError("a run with no save has nothing to stage or expect")
+            if args.from_slot or args.first_bar_key is not None:
+                raise ValueError("--from-slot picks a slot of a save and "
+                                 "--first-bar-key is pressed in a fight; a run "
+                                 "with no save has neither")
             if any(p.kind == "read" for p in parsed):
                 raise ValueError("read compares the installed slot with the saved "
                                  "one, and a run with no save installs none")

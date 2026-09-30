@@ -9397,11 +9397,14 @@ class FakeAddPool(FakePool):
             "SAVE CURRENT GAME", "BEGIN ADVENTURING", "EXIT TO DOS")
 
     def __init__(self, tmp, listed=_ADD_LISTED, refuse=(), ignore_pick=False,
-                 after_a=None, no_add=False, items=_ADD_ITEMS, sheet_of=None):
+                 after_a=None, no_add=False, items=_ADD_ITEMS, sheet_of=None,
+                 encumbrance=True):
         super().__init__(tmp)
         self.mode, self.titles = "title", 2
         self.listed, self.refuse, self.ignore_pick = list(listed), set(refuse), ignore_pick
         self.after_a, self.no_add, self.items, self.sheet_of = after_a, no_add, items, sheet_of
+        #: False draws the sheet without its ENCUMBRANCE row.
+        self.encumbrance = encumbrance
         self.starred: set[str] = set()
         self.party: list[str] = []
         self.hl, self.line = 0, 1
@@ -9463,7 +9466,8 @@ class FakeAddPool(FakePool):
                   else "VIEW:TRADE DROP EXIT")
             _text(px, 1, 1, self.sheet_of or self.member())
             _text(px, 7, 1, "STR 16         GOLD 83")
-            _text(px, 17, 1, "AC 0    THAC0 20     ENCUMBRANCE 593")
+            _text(px, 17, 1, "AC 0    THAC0 20" + ("     ENCUMBRANCE 593"
+                                                    if self.encumbrance else ""))
         elif m == "items":
             _text(px, da.BAR_ROW, 0, "READY TRADE DROP HALVE JOIN EXIT")
             _text(px, 1, 1, f"{self.member()}'S ITEMS")
@@ -9662,3 +9666,46 @@ def test_only_a_run_that_begins_with_add_takes_no_save(monkeypatch, capsys, argv
     with pytest.raises(SystemExit):
         da.main(argv)
     assert why in capsys.readouterr().err and len(ran) == 1
+
+
+def test_an_add_is_refused_before_the_claim_when_the_save_folder_is_missing(
+        monkeypatch, tmp_path):
+    log = _fake_run(monkeypatch, tmp_path)
+    with pytest.raises(ValueError, match="SAVE is not a directory"):
+        da.run(_run_args(tmp_path, ["add ARRONEL"]))
+    assert log == []
+
+
+def test_an_add_is_refused_when_the_list_names_the_character_twice(tmp_path):
+    shipped = _shipped_save(tmp_path / "shipped")
+    (shipped / "CHARLIST.TXT").write_bytes(b"ARRONEL\r\nARGORA\r\nARRONEL\r\n")
+    da.check_exports(shipped, ["ARGORA"])
+    with pytest.raises(ValueError, match="lists it 2 times"):
+        da.check_exports(shipped, ["ARRONEL"])
+
+
+def test_pool_view_fails_on_a_sheet_with_no_encumbrance_row(tmp_path, add_measured):
+    game, d = _add_boot(tmp_path, encumbrance=False)
+    d.add("ARRONEL")
+    game.keys.clear()
+    with pytest.raises(da.StepFailed, match="no ENCUMBRANCE row"):
+        d.view(1)
+    assert game.keys == ["v"]
+
+
+def test_the_add_walk_stops_at_the_deadline_before_moving(tmp_path, add_measured):
+    now = [0.0]
+    game, d = _add_boot(tmp_path)
+    d.deadline = da.Deadline(lambda: now[0], 300)
+    now[0] = 1000.0
+    with pytest.raises(da.DeadlineReached, match="walk"):
+        d.add("KLYTUS RYTON")
+    assert _after_menu(game) == ["a"]
+
+
+@pytest.mark.parametrize("extra", [["--from-slot", "B"], ["--first-bar-key", "q"]])
+def test_a_run_with_no_save_refuses_a_slot_or_a_fight_key(monkeypatch, capsys, extra):
+    monkeypatch.setattr(da, "run", lambda args: 0)
+    with pytest.raises(SystemExit):
+        da.main([*extra, "--steps", "add ARRONEL", "view 1"])
+    assert "a run with no save has neither" in capsys.readouterr().err
