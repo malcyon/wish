@@ -2296,3 +2296,25 @@ def test_curses_monster_invisibility_is_the_c64s_own_row():
     assert effects.c64_row(_C, _RE(25, 200, 7, 0)) == (25, 7)
     assert isinstance(effects.c64_row(_S, _RE(25, 200, 0xFF, 0)),
                       effects.Unconverted)
+
+
+def test_curse_never_ending_hold_is_a_row_and_reads_back():
+    node = _node("34 00 00 FF 00")
+    assert effects.curse_hold_row(_C, node) == (52, 0)
+    assert effects.curse_hold_record(
+        _C, effects.Effect(63, 52, 2, 0, 0)) == \
+        node + effects._RUNNING_EFFECT_NEXT
+
+
+@pytest.mark.parametrize("title,node", [
+    (_P, "34 00 00 FF 00"), (_S, "34 00 00 FF 00"), (_C, "34 00 00 FF 01"),
+    (_C, "34 00 00 05 00"), (_C, "34 01 00 FF 00"), (_C, "35 00 00 FF 00"),
+])
+def test_other_hold_forms_are_not_the_curse_row(title, node):
+    assert effects.curse_hold_row(title, _node(node)) is None
+
+
+@pytest.mark.parametrize("title", [_P, _S])
+def test_only_curse_reads_a_hold_row_as_the_node(title):
+    assert effects.curse_hold_record(
+        title, effects.Effect(63, 52, 2, 0, 0)) is None

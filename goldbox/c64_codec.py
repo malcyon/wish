@@ -1953,6 +1953,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         for i, e in enumerate(innate_ids[:10]):
             slots[i] = e
         granted_ids = []
+        hold_written = False
         for node in (granted.value if granted is not None else ()):
             if int(node[0]) == effects.CHARM_ID:
                 # A charm is a row plus record bytes (side and control), so a
@@ -2012,6 +2013,23 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                         party_slot if party_slot is not None else 0,
                         0, int(node[3]) & 0x0F)
                 granted_ids.append(int(node[0]))
+                continue
+            hold_row = effects.curse_hold_row(title_key, bytes(node))
+            if hold_row is not None and payload is not None:
+                # The C64 keeps one hold row per member, so a second node
+                # writes nothing more.
+                if not hold_written:
+                    row_slot = effects.free_slot(payload)
+                    if row_slot is None:
+                        rep.lost(f"effect {node[0]}, which never expires: "
+                                 "no free slot in the save's shared effect "
+                                 "arrays")
+                    else:
+                        effects.write_effect(
+                            payload, row_slot, hold_row[0],
+                            party_slot if party_slot is not None else 0,
+                            0, hold_row[1])
+                        hold_written = True
                 continue
             spell_row = effects.never_expiring_spell_row(
                 title_key, bytes(node))
@@ -3293,6 +3311,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                     continue
                 spell_record = effects.never_expiring_spell_record(
                     title_key or "", row)
+                if spell_record is None:
+                    spell_record = effects.curse_hold_record(
+                        title_key or "", row)
                 strength_record = None
                 if spell_record is None and strength_rows <= 1:
                     strength_record = effects.never_expiring_strength_record(

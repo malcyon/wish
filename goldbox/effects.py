@@ -1115,6 +1115,31 @@ def never_expiring_spell_record(title_key: str, row: "Effect") -> bytes | None:
     return None
 
 
+#: Curse's dracolich touch (Hold Person's id 52) adds `(52, 0, 0xFF, 0)`, a hold
+#: that never runs out. The C64's own touch writes `(52, slot, duration 0,
+#: magnitude 0)`, which its fight-end list removes, as DOS's does.
+CURSE_HOLD_ID = 52
+CURSE_HOLD_NODE = (0xFF, 0)
+
+
+def curse_hold_row(title_key: str, node: bytes) -> tuple[int, int] | None:
+    """The C64 `(id, magnitude)` for Curse's never-ending hold node, or `None`."""
+    if (title_key == _CURSE and node[0] == CURSE_HOLD_ID
+            and node[1] == 0 and node[2] == 0
+            and (node[3], node[4]) == CURSE_HOLD_NODE):
+        return CURSE_HOLD_ID, 0
+    return None
+
+
+def curse_hold_record(title_key: str, row: "Effect") -> bytes | None:
+    """The DOS granted record for a C64 Curse hold row, or `None`."""
+    if (title_key == _CURSE and row.id == CURSE_HOLD_ID
+            and row.duration == 0 and row.magnitude == 0):
+        return bytes((CURSE_HOLD_ID, 0, 0) + CURSE_HOLD_NODE
+                     ) + _RUNNING_EFFECT_NEXT
+    return None
+
+
 def charm_magnitude(count: int, charmer: int) -> int:
     """The C64 charm row's magnitude that keeps a DOS charm's count.
 

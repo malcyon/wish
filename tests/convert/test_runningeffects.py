@@ -3027,3 +3027,47 @@ def test_two_caster_level_25_nodes_stay_two_rows():
     assert sorted(r[3] for r in _rows(payload).values() if r[0] == 25) \
         == [0x0C, 0x0D]
     assert not [w for w in rep.warnings if "merged" in w]
+
+
+_HOLD = bytes((52, 0, 0, 0xFF, 0))
+
+
+def _hold_write(game, *granted):
+    char = _slow_poison_character(game, granted=granted)
+    payload = bytearray(0x1C00)
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                               clock_minutes=0)
+    return rec, rep, payload
+
+
+def test_curse_never_ending_hold_is_the_c64s_own_row_and_no_trait_slot():
+    rec, rep, payload = _hold_write(c64_port.CURSE_OF_THE_AZURE_BONDS, _HOLD)
+    assert [r for r in _rows(payload).values() if r[0] == 52] == [
+        (52, 2, 0, 0)]
+    assert 52 not in bytes(rec.get_raw("item_effects"))
+    assert not rep.losses
+
+
+def test_two_curse_holds_make_one_row():
+    _rec, _rep, payload = _hold_write(
+        c64_port.CURSE_OF_THE_AZURE_BONDS, _HOLD, _HOLD)
+    assert [r for r in _rows(payload).values() if r[0] == 52] == [
+        (52, 2, 0, 0)]
+
+
+def test_curse_hold_row_reads_back_as_the_dos_node():
+    rec, _rep, payload = _hold_write(c64_port.CURSE_OF_THE_AZURE_BONDS, _HOLD)
+    out = c64_codec.read(rec, game=c64_port.CURSE_OF_THE_AZURE_BONDS,
+                         payload=bytes(payload), party_slot=2,
+                         clock_minutes=0, source="x")
+    assert [bytes(g)[:5] for g in out.get("granted_effects")] == [_HOLD]
+    assert 52 not in (out.get("innate_effects") or [])
+
+
+@pytest.mark.parametrize("game", [c64_port.POOL_OF_RADIANCE,
+                                  c64_port.SECRET_OF_THE_SILVER_BLADES],
+                         ids=lambda g: g.key)
+def test_other_titles_keep_a_hold_in_a_trait_slot(game):
+    rec, _rep, payload = _hold_write(game, _HOLD)
+    assert not [r for r in _rows(payload).values() if r[0] == 52]
+    assert 52 in bytes(rec.get_raw("item_effects"))
