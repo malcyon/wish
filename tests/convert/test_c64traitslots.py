@@ -149,10 +149,17 @@ def _permanent_ids(char: dos_codec.DosCharacter) -> list[int]:
     Curse's never-ending hold node, which crosses as a C64 effect row rather
     than as a trait slot (`effects.curse_hold_row`); the row is written and
     read back in `test_runningeffects.py::
-    test_curse_hold_row_reads_back_as_the_dos_node`."""
+    test_curse_hold_row_reads_back_as_the_dos_node`.  A charm node is a row
+    too, of any duration: `test_runningeffects.py::
+    test_a_later_dos_charm_writes_the_casts_row_and_0x10c_80` pins the row and
+    `test_a_later_charm_node_with_no_payload_is_a_loss` pins that the sweep,
+    which writes with no payload, loses it rather than giving it a slot."""
+    key = char.deltas.key
     return [e[0] for e in char.effects
             if int.from_bytes(e[1:3], "little") == 0
-            and effects.curse_hold_row(char.deltas.key, bytes(e)) is None]
+            and effects.curse_hold_row(key, bytes(e)) is None
+            and not isinstance(effects.later_charm_row(key, bytes(e)), tuple)
+            and not isinstance(effects.pool_charm_row(key, bytes(e)), tuple)]
 
 
 def _has_c64_port(char: dos_codec.DosCharacter) -> bool:
