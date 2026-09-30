@@ -137,14 +137,24 @@ def _moved(original: bytes, written: bytes, spans) -> set[str]:
             if original[s.at:s.at + s.size] != written[s.at:s.at + s.size]}
 
 
+# (specimen label, character name) pairs whose identity digest is the same
+# before and after the gold edit, so the span does not differ and the engine's
+# byte stays: MARK's digest is 122 both times.
+_DIGEST_COLLIDES = {
+    ("WISH-SPEC-curse-661-fml-l1-dos-resave/D", "MARK"),
+    ("WISH-SPEC-curse-661-fml-l2-cleric-dos-resave/D", "MARK"),
+}
+
+
 def _gold_moves(deltas, dos_only: bool = False) -> set[str]:
     """What a gold edit is expected to move, and why each one.
 
     `encumbrance` is money plus item weight times quantity, which the DOS
     engine itself rebuilds, so a coin edit moves it; `unnamed_0ab` is
     `goldbox.dos_codec.identity_byte`, a digest of every other byte of the
-    record, so any edit at all moves it -- on the two later titles, which
-    are the ones that write it.  Pool of Radiance declares the field and
+    record, so an edit moves it unless the digests before and after agree
+    (`_DIGEST_COLLIDES`) -- on the two later titles, which are the ones that
+    write it.  Pool of Radiance declares the field and
     drops it, writing zero, so no edit moves it there.
 
     **That the identity byte moves is a choice rather than a proof.**  The
@@ -813,6 +823,15 @@ def test_an_edit_lands_on_every_dos_specimen_and_moves_nothing_else():
             optional = ({"movement_current"}
                         if char.deltas.key in dos_codec._COMBAT_REBUILD_TITLES
                         else set())
+            collides = (label, char.name) in _DIGEST_COLLIDES
+            if collides:
+                optional = optional | {"unnamed_0ab"}
+                at = dos_codec.FIELDS_BY_NAME_FOR[char.deltas.key][
+                    "unnamed_0ab"].offset
+                assert "unnamed_0ab" not in out.moved, \
+                    f"{label} {char.name} no longer collides"
+                assert out.record[at] == char.to_bytes()[at], \
+                    f"{label} {char.name}"
             assert set(out.moved) - optional == expected - optional, \
                 f"{label} {char.name}"
             changed = _moved(char.to_bytes(), out.record, spans)

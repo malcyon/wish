@@ -251,8 +251,10 @@ identity).
 
 **`unnamed_0ab`, the identity byte, and it is the one to argue about.**
 `goldbox.dos_codec.identity_byte` digests every *other* byte of the record, so
-**any edit at all moves it** on the two later titles, which are the ones that
-write it. It differs from the engine's byte on 94 of 96 DOS Curse, 78 of 78 DOS
+**an edit moves it** on the two later titles, which are the ones that
+write it, unless the digests of the record before and after the edit agree,
+about one edit in 256, and then the engine's own byte is kept. One specimen
+showed this: Curse MARK's digest is 122 both before and after a gold edit. It differs from the engine's byte on 94 of 96 DOS Curse, 78 of 78 DOS
 Silver Blades, 42 of 52 Amiga Curse and 83 of 92 Amiga Silver Blades
 characters, because the engine drew its byte at random at creation and ours is
 a digest. The engine reads it for one thing: telling two characters of the same
