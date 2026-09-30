@@ -611,18 +611,13 @@ VM_SCRATCH = 0x5200          # byte 12805 is this word's low byte
 ECL_SHARED_LAST = FLAGS_LAST
 VAR_LAST = VAR_BASE + VAR_WORDS - 1          # $52FF
 
-#: Words that hold the same value in every genuine specimen, as
-#: `(address, value, why)`.  A conversion writes these rather than inheriting
-#: them: the value is the same wherever it was measured, so it is a fact about
-#: the file and not about the party the template belonged to.
-#:
-#: Measured over the four engine-written Pool of Radiance containers still on
-#: this machine -- Donald's played A, B and J, and the archives' own
-#: `Default files/Saves/SAVGAMA.DAT` -- and reported the same over twelve in
-#: #59, eight of which lived in scratch and are gone.  None of the three
-#: has a name; what is known is that the value does not move.
+#: Words a conversion writes at a fixed value, as `(address, value, why)`,
+#: rather than inheriting them from the template.  `$506D` and `$50F6` hold
+#: that value in every genuine specimen.  `$4FE1` does not: the game changes
+#: it during play (255, 16 or 8 in played containers, never 0), and 255 is
+#: what a conversion writes.  None of the three has a name.
 SAVGAM_CONSTANTS: tuple[tuple[int, int, str], ...] = (
-    (0x4FE1, 255, "255 in every specimen"),
+    (0x4FE1, 255, "what a conversion writes; the game later leaves 255, 16 or 8"),
     (0x506D, 16, "16 in every specimen"),
     (0x50F6, 1, "1 in every specimen"),
 )

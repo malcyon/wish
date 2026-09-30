@@ -137,22 +137,53 @@ def test_the_count_byte_and_the_arrays_own_word_agree(corpus):
     assert not disagree, f"{len(disagree)} of {len(corpus)}: {disagree}"
 
 
+#: `$4FE1` is what a conversion writes (255) but not what the game leaves
+#: there: played DOS containers hold 255, 16 or 8 (`docs/185`), and an Amiga
+#: save the engine wrote after Rolf's opening tour holds 8.  Never 0 once the
+#: party has been in the world.  The other two constants do not move.
+_CONSTANT_READINGS = {0x4FE1: (255, 16, 8), 0x506D: (16,), 0x50F6: (1,)}
+
+
+def _wrong_constants(name: str, data: bytes) -> list[tuple]:
+    wrong = []
+    for address, allowed in _CONSTANT_READINGS.items():
+        offset = amiga_savegame.por_word_offset(address)
+        got = data[offset] << 8 | data[offset + 1]
+        if got not in allowed:
+            wrong.append((name, f"${address:04X}", got, allowed))
+    return wrong
+
+
 def test_the_variable_arrays_documented_constants_are_where_they_should_be(
         corpus):
-    """`$4FE1` = 255, `$506D` = 16, `$50F6` = 1 -- the array's base and stride.
+    """`$4FE1` in (255, 16, 8), `$506D` = 16, `$50F6` = 1 -- base and stride.
 
     Three constants at three widely separated addresses land right only if
     the array starts at file offset 0 and each word is two big-endian bytes.
+    `$4FE1` is the one the game changes (see `_CONSTANT_READINGS`), so it is
+    accepted at any value the game writes and still fails at 0 or at a word
+    read from the wrong place.
     """
-    expected = {0x4FE1: 255, 0x506D: 16, 0x50F6: 1}
-    wrong = []
-    for name, data in corpus:
-        for address, value in expected.items():
-            offset = amiga_savegame.por_word_offset(address)
-            got = data[offset] << 8 | data[offset + 1]
-            if got != value:
-                wrong.append((name, f"${address:04X}", got, value))
+    wrong = [w for name, data in corpus for w in _wrong_constants(name, data)]
     assert not wrong, f"{len(wrong)} readings wrong: {wrong}"
+
+
+def _save_with(word_4fe1: int) -> bytes:
+    data = bytearray(amiga_savegame.POR_SAVEGAME_SIZE)
+    for address, value in ((0x4FE1, word_4fe1), (0x506D, 16), (0x50F6, 1)):
+        offset = amiga_savegame.por_word_offset(address)
+        data[offset:offset + 2] = value.to_bytes(2, "big")
+    return bytes(data)
+
+
+@pytest.mark.parametrize("value", [255, 16, 8])
+def test_the_constants_check_accepts_the_values_the_game_writes(value):
+    assert _wrong_constants("x", _save_with(value)) == []
+
+
+@pytest.mark.parametrize("value", [0, 1, 254])
+def test_the_constants_check_refuses_any_other_4fe1(value):
+    assert len(_wrong_constants("x", _save_with(value))) == 1
 
 
 def test_the_script_buffer_holds_an_unpacked_ecl_dax_block(corpus, ecl_dax):
