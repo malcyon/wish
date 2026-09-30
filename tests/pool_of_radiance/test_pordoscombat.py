@@ -269,32 +269,60 @@ _VIEWED_AFTER_A_CONVERSION = {
 
 
 _PARENT_NAME = re.compile(r"WISH-SPEC-[A-Za-z0-9._-]+")
+_IMAGE_SUFFIX = re.compile(r"\.(?:d64|adf)$", re.IGNORECASE)
+
+#: Specimens `_not_rebuilt_with_descendants` adds to `_NOT_REBUILT` today,
+#: staged copies of `c64todos-pool-52-walk-resave` whose staging changed a
+#: rebuild input.
+_EXPECTED_DESCENDANTS = {
+    "por-dos/WISH-SPEC-pool-667-slow-poison-camp-cast-resave",
+    "por-dos/WISH-SPEC-pool-667-slow-poison-inn-rest-resave",
+    "por-dos/WISH-SPEC-pool-700-animate-dead-camp-cast-resave",
+}
+
+
+def _parent_names(text):
+    """Every `WISH-SPEC-` name in `text`, without the sentence punctuation or
+    image extension that can trail one."""
+    names = []
+    for raw in _PARENT_NAME.findall(text):
+        name = raw.rstrip(".")
+        name = _IMAGE_SUFFIX.sub("", name).rstrip(".")
+        names.append(name)
+    return names
 
 
 def _not_rebuilt_with_descendants(root, seeds):
     """`seeds` plus every specimen under `root` whose provenance names a member
     of the set, repeated until nothing more joins, so a copy of a copy is
     caught. Entries are `<platform dir>/<specimen dir>`; a name is looked up
-    in the same platform dir."""
+    in the same platform dir. A `provenance.toml` that will not parse fails in
+    a platform dir a seed is in, since its parentage cannot be read."""
+    platforms = {seed.split("/")[0] for seed in seeds}
+    parents = {}
+    for prov in sorted(root.glob("*/*/provenance.toml")):
+        platform = prov.parent.parent.name
+        entry = f"{platform}/{prov.parent.name}"
+        try:
+            with open(prov, "rb") as fh:
+                data = tomllib.load(fh)
+        except (OSError, tomllib.TOMLDecodeError) as err:
+            if platform in platforms:
+                raise AssertionError(
+                    f"{entry}/provenance.toml cannot be read, so whether it is"
+                    f" a copy of an unrebuilt specimen is unknown: {err}")
+            continue
+        text = f"{data.get('what', '')} {data.get('made_by', '')}"
+        parents[entry] = {f"{platform}/{n}" for n in _parent_names(text)}
     excluded = set(seeds)
-    while True:
+    grew = True
+    while grew:
         grew = False
-        for prov in sorted(root.glob("*/*/provenance.toml")):
-            entry = f"{prov.parent.parent.name}/{prov.parent.name}"
-            if entry in excluded:
-                continue
-            try:
-                with open(prov, "rb") as fh:
-                    data = tomllib.load(fh)
-            except (OSError, tomllib.TOMLDecodeError):
-                continue
-            text = f"{data.get('what', '')} {data.get('made_by', '')}"
-            if any(f"{prov.parent.parent.name}/{name}" in excluded
-                   for name in _PARENT_NAME.findall(text)):
+        for entry, named in parents.items():
+            if entry not in excluded and named & excluded:
                 excluded.add(entry)
                 grew = True
-        if not grew:
-            return excluded
+    return excluded
 
 
 def _rebuilt_records():
@@ -334,12 +362,33 @@ def test_a_copy_of_a_copy_of_an_unrebuilt_specimen_is_excluded(tmp_path):
     make("por-dos", "WISH-SPEC-grandchild",
          made_by="staged copy of WISH-SPEC-child")
     make("por-dos", "WISH-SPEC-unrelated", what="Rolled in the game")
+    make("por-dos", "WISH-SPEC-full-stop",
+         what="Staged from WISH-SPEC-parent. Then saved.")
+    make("por-dos", "WISH-SPEC-image",
+         what="Written over WISH-SPEC-child.D64.")
+    make("por-dos", "WISH-SPEC-parent-bar", what="Rolled in the game")
+    make("por-dos", "WISH-SPEC-prefix", what="Copy of WISH-SPEC-parent-bar")
     make("por-amiga", "WISH-SPEC-other-platform",
          what="Copy of WISH-SPEC-parent")
     got = _not_rebuilt_with_descendants(tmp_path,
                                         {"por-dos/WISH-SPEC-parent"})
     assert got == {"por-dos/WISH-SPEC-parent", "por-dos/WISH-SPEC-child",
-                   "por-dos/WISH-SPEC-grandchild"}
+                   "por-dos/WISH-SPEC-grandchild",
+                   "por-dos/WISH-SPEC-full-stop", "por-dos/WISH-SPEC-image"}
+
+
+def test_an_unreadable_provenance_fails_rather_than_being_skipped(tmp_path):
+    d = tmp_path / "por-dos" / "WISH-SPEC-broken"
+    d.mkdir(parents=True)
+    (d / "provenance.toml").write_text("what = \n")
+    other = tmp_path / "por-amiga" / "WISH-SPEC-broken"
+    other.mkdir(parents=True)
+    (other / "provenance.toml").write_text("what = \n")
+    with pytest.raises(AssertionError, match="WISH-SPEC-broken"):
+        _not_rebuilt_with_descendants(tmp_path, {"por-dos/WISH-SPEC-parent"})
+    (d / "provenance.toml").unlink()
+    got = _not_rebuilt_with_descendants(tmp_path, {"por-dos/WISH-SPEC-parent"})
+    assert got == {"por-dos/WISH-SPEC-parent"}
 
 
 def _stored(char):
@@ -368,6 +417,12 @@ def test_the_rebuild_reproduces_every_rebuilt_engine_record():
     records = _rebuilt_records()
     if not records:
         pytest.skip("needs the specimen tree; see tools/registry/specimens.py")
+    added = (_not_rebuilt_with_descendants(_specimen_root(), _NOT_REBUILT)
+             - _NOT_REBUILT)
+    assert added == _EXPECTED_DESCENDANTS, (
+        "the specimens excluded as copies of an unrebuilt one changed; if a "
+        "new staged copy was registered, check it is one and update "
+        f"_EXPECTED_DESCENDANTS: {sorted(added ^ _EXPECTED_DESCENDANTS)}")
     armed, mismatched = 0, []
     for specimen_dir, name, char in records:
         got = dos_codec.dos_combat_rebuild(char.to_bytes(), _items_of(char),
