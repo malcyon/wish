@@ -1773,6 +1773,9 @@ _SPELL_CASES = [
      (33, 2, 0x00, 0x07)),
     (c64_port.POOL_OF_RADIANCE, "22 00 00 05 01", (34, 2, 0x00, 0x85)),
     (c64_port.POOL_OF_RADIANCE, "47 00 00 0C 00", (71, 2, 0x00, 0x0C)),
+    (c64_port.CURSE_OF_THE_AZURE_BONDS, "44 00 00 0A 00", (68, 2, 0x00, 0x8A)),
+    (c64_port.SECRET_OF_THE_SILVER_BLADES, "44 00 00 0A 00",
+     (68, 2, 0x00, 0x8A)),
 ]
 
 
@@ -1795,6 +1798,85 @@ def test_a_never_expiring_spell_is_a_row_the_character_owns(game, node, row):
     assert [bytes(r) for r in back.get("granted_effects")] == [node + NULL]
     assert node[0] not in (back.get("innate_effects") or ())
     assert not _lines(back)
+
+
+# --- Feeblemind (68): the row, and INT and WIS in force -----------------------
+
+_FEEBLE_TITLES = [c64_port.CURSE_OF_THE_AZURE_BONDS,
+                  c64_port.SECRET_OF_THE_SILVER_BLADES]
+_FEEBLE_NODE = bytes.fromhex("44 00 00 0A 00") + NULL
+
+
+def _c64_feebleminded(game, intelligence=14, wisdom=12, row=True):
+    payload = bytearray(0x1C00)
+    if row:
+        effects.write_effect(payload, 63, 68, 2, 0, 0x8A)
+    char = _read(payload, 2, game)
+    for name, score in (("intelligence", intelligence), ("wisdom", wisdom)):
+        char.set(name, score, "built here")
+    char.set("abilities_second", {"intelligence": intelligence,
+                                  "wisdom": wisdom}, "built here")
+    return char
+
+
+def _dos_pair(rec, game, name):
+    at = dos_port.FIELDS_BY_NAME_FOR[game.key][name].offset
+    return rec[at], rec[at + 1]
+
+
+@pytest.mark.parametrize("game", _FEEBLE_TITLES, ids=lambda g: g.key)
+def test_a_feebleminded_c64_character_reaches_dos_and_the_amiga_at_int_and_wis_3(
+        game):
+    char = _c64_feebleminded(game)
+    assert [bytes(g) for g in char.get("granted_effects")] == [_FEEBLE_NODE]
+    rec, _itm, spc, _rep = dos_codec.write(char)
+    assert _dos_pair(rec, game, "intelligence") == (14, 3)
+    assert _dos_pair(rec, game, "wisdom") == (12, 3)
+    assert spc[:5] == bytes.fromhex("44 00 00 0A 00")
+
+    built, _rep = amiga_later.write_later(char)
+    back = amiga_later.to_neutral_later(built)
+    assert back.get("intelligence") == 3
+    assert back.get("wisdom") == 3
+    assert back.get("abilities_second")["intelligence"] == 14
+    assert back.get("abilities_second")["wisdom"] == 12
+    assert [bytes(g)[0] for g in back.get("granted_effects")] == [68]
+
+    # Without the row nothing is lowered, and a score under 3's neighbours
+    # (INT 5) still lands on 3, which is what the recompute settles on.
+    plain, _i, _s, _r = dos_codec.write(_c64_feebleminded(game, row=False))
+    assert _dos_pair(plain, game, "intelligence") == (14, 14)
+    assert _dos_pair(plain, game, "wisdom") == (12, 12)
+    low, _i, _s, _r = dos_codec.write(_c64_feebleminded(game, intelligence=5))
+    assert _dos_pair(low, game, "intelligence") == (5, 3)
+
+
+@pytest.mark.parametrize("game", _FEEBLE_TITLES, ids=lambda g: g.key)
+@pytest.mark.parametrize("in_force", [3, 7])
+def test_a_feebleminded_dos_character_reaches_the_c64_at_his_own_scores(
+        game, in_force):
+    def dos_character(row):
+        char = neutral.NeutralCharacter("DOS", source="built here", game=game)
+        char.set("name", "FEEBLE", "built here")
+        char.set("intelligence", in_force, "built here")
+        char.set("wisdom", in_force, "built here")
+        char.set("abilities_second", {"intelligence": 14, "wisdom": 12},
+                 "built here")
+        if row:
+            char.set("granted_effects", [_FEEBLE_NODE], "built here")
+        return char
+
+    payload = bytearray(0x1C00)
+    rec, _rep = c64_codec.write(dos_character(True), payload=payload,
+                                party_slot=2, clock_minutes=0)
+    assert rec.get("intelligence") == 14
+    assert rec.get("wisdom") == 12
+    assert _rows(payload).pop(63) == (68, 2, 0x00, 0x8A)
+    assert bytes(rec.get_raw("item_effects")) == bytes(10)
+
+    kept, _rep = c64_codec.write(dos_character(False))
+    assert kept.get("intelligence") == in_force
+    assert kept.get("wisdom") == in_force
 
 
 @pytest.mark.parametrize("node", ["19 00 00 FF 00", "19 00 00 FF 01"])

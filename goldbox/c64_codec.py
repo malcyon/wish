@@ -935,6 +935,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     running = use("running_effects")
     granted = use("granted_effects")
     former = use("former_levels")
+    # DOS and the Amiga hold Feeblemind's 3 in the score in force; the C64's
+    # Feeblemind leaves the score alone, so the permanent one is written.
+    feeble = port != "C64" and effects.feebleminded(
+        deltas.key, granted.value if granted else ())
+    permanent_scores = char.get("abilities_second") or {}
 
     for field, c64_name in DIRECT + undead_direct(deltas.key):
         # Recomputed below rather than copied (#366, #405): `DIRECT` still
@@ -949,6 +954,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             continue
         dst = _field(c64_name)
         value, extra = v.value, ""
+        if feeble and field in ("intelligence", "wisdom") \
+                and field in permanent_scores:
+            value = permanent_scores[field]
+            extra = (", the permanent score: the C64's Feeblemind leaves the "
+                     "score in force alone")
         if field == "movement_current" and deltas.key == "pool-of-radiance":
             extra = ", copied rather than recomputed: no item-type table was given"
         top = _max_stored(dst.size)

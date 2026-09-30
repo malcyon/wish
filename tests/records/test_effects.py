@@ -1979,6 +1979,8 @@ def _node(hexstr):
     (_P, "47 00 00 0C 00", (71, 0x0C)),
     (_C, "6D 00 00 0C 00", (109, 0x0C)),
     (_S, "33 00 00 03 00", (51, 0x03)),
+    (_C, "44 00 00 0A 00", (68, 0x8A)),
+    (_S, "44 00 00 0A 00", (68, 0x8A)),
 ])
 def test_a_spell_written_at_duration_zero_is_a_row(title, node, row):
     assert effects.never_expiring_spell_row(title, _node(node)) == row
@@ -1987,7 +1989,8 @@ def test_a_spell_written_at_duration_zero_is_a_row(title, node, row):
 @pytest.mark.parametrize("title,node", [
     (_C, "19 00 00 FF 00"), (_C, "19 00 00 FF 01"), (_C, "19 00 00 05 01"),
     (_P, "22 00 00 05 00"), (_C, "19 00 00 00 00"), (_C, "19 01 00 05 00"),
-    (_S, "22 00 00 05 01"), (_C, "44 00 00 05 00"), (_P, "49 00 00 05 00"),
+    (_S, "22 00 00 05 01"), (_C, "44 00 00 05 01"), (_P, "44 00 00 05 00"),
+    (_P, "49 00 00 05 00"),
     (_P, "3D 00 00 0C 00"),
 ])
 def test_other_duration_zero_forms_stay_in_a_trait_slot(title, node):
@@ -2001,7 +2004,12 @@ def test_a_spell_row_reads_back_as_the_record_it_came_from():
     assert effects.never_expiring_spell_record(
         _P, effects.Effect(63, 34, 2, 0x00, 0x85)) == \
         _node("22 00 00 05 01") + effects._RUNNING_EFFECT_NEXT
+    for title in (_C, _S):
+        assert effects.never_expiring_spell_record(
+            title, effects.Effect(63, 68, 2, 0, 0x8A)) == \
+            _node("44 00 00 0A 00") + effects._RUNNING_EFFECT_NEXT
     for title, row in [
+            (_C, effects.Effect(63, 68, 2, 0, 0x0A)),
             (_C, effects.Effect(63, 25, 2, 0x0A, 0x05)),
             (_C, effects.Effect(63, 25, 2, 0x00, 0x85)),
             (_P, effects.Effect(63, 34, 2, 0x00, 0x05)),

@@ -1105,12 +1105,26 @@ def party_granted_magnitude(title_key: str, node: bytes) -> int:
 # target, never in a trait slot, so a row is where the C64's removals look.
 NEVER_EXPIRING_SPELL_IDS: dict[str, frozenset[int]] = {
     "pool-of-radiance": frozenset({25, 33, 34, 51, 71}),
-    "curse-of-the-azure-bonds": frozenset({25, 33, 34, 51, 71, 73, 109}),
-    "secret-of-the-silver-blades": frozenset({25, 33, 51}),
+    "curse-of-the-azure-bonds": frozenset({25, 33, 34, 51, 68, 71, 73, 109}),
+    "secret-of-the-silver-blades": frozenset({25, 33, 51, 68}),
 }
 
 # Every cast passes flag 0 but Cause Disease's (Pool 0x2938A, Curse 0x310D4).
 NEVER_EXPIRING_SPELL_FLAGS = {34: 1}
+
+# The bit 7 the C64 cast writes into the row's magnitude. It equals the DOS
+# flag for Cause Disease, but Feeblemind writes `level | $80` (Curse `COMBAT
+# $1D61`, Silver Blades `$2227`) where DOS writes flag 0 (Curse `0x2F0B7`).
+NEVER_EXPIRING_C64_BITS = {34: 1, 68: 1}
+
+# Feeblemind is also kept in the record's INT and WIS in force, which the C64
+# does not touch. DOS and the Amiga recompute both to 3 whenever a 68 node is
+# present (Curse `0x36E5C`, Silver Blades `0x379EC`-`0x379FC`, Amiga `/Curse`
+# `0xFC1A`-`0xFC7C`, `/Secret` `0x13812`-`0x13862`); Silver Blades' cast stores
+# 3 itself (`0x12E9C`) and Curse's stores 7 (`0x1147C`), which the next
+# recompute replaces.
+FEEBLEMIND_ID = 68
+FEEBLEMIND_SCORE = 3
 
 
 def never_expiring_spell_row(title_key: str,
@@ -1125,8 +1139,19 @@ def never_expiring_spell_row(title_key: str,
             and node[1] == 0 and node[2] == 0
             and 1 <= node[3] <= 0x7F
             and node[4] == NEVER_EXPIRING_SPELL_FLAGS.get(node[0], 0)):
-        return node[0], node[3] | node[4] << 7
+        return node[0], node[3] | NEVER_EXPIRING_C64_BITS.get(node[0], 0) << 7
     return None
+
+
+def feebleminded(title_key: str, granted) -> bool:
+    """Whether `granted` (DOS 10-byte records) holds a Feeblemind node."""
+    for record in granted:
+        record = bytes(record)
+        if len(record) >= 5:
+            row = never_expiring_spell_row(title_key, record)
+            if row is not None and row[0] == FEEBLEMIND_ID:
+                return True
+    return False
 
 
 def never_expiring_spell_record(title_key: str, row: "Effect") -> bytes | None:
@@ -1135,9 +1160,10 @@ def never_expiring_spell_record(title_key: str, row: "Effect") -> bytes | None:
             and row.id in NEVER_EXPIRING_SPELL_IDS.get(title_key, ())
             and row.magnitude & 0x7F
             and row.magnitude >> 7
-            == NEVER_EXPIRING_SPELL_FLAGS.get(row.id, 0)):
+            == NEVER_EXPIRING_C64_BITS.get(row.id, 0)):
         return bytes((row.id, 0, 0, row.magnitude & 0x7F,
-                      row.magnitude >> 7)) + _RUNNING_EFFECT_NEXT
+                      NEVER_EXPIRING_SPELL_FLAGS.get(row.id, 0))
+                     ) + _RUNNING_EFFECT_NEXT
     return None
 
 

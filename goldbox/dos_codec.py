@@ -5032,6 +5032,11 @@ def write(char: NeutralCharacter,
     # each crossed both ways (#401, docs/204-the-dos-ability-pair.md).
     second = use("abilities_second")
     seconds = dict(second.value) if second is not None else {}
+    # The C64's Feeblemind leaves the score in force alone, but DOS and the
+    # Amiga recompute INT and WIS in force to 3 while the node is present, so
+    # a C64 source's are written as that recompute leaves them.
+    feeble = (char.port == "C64" and effects.feebleminded(
+        deltas.key, char.get("granted_effects") or ()))
     for neutral_name, dos_name in (WRITE_DIRECT + DARKNESS_WRITE_DIRECT +
                                    undead_direct(deltas.key)):
         # A field this title's record does not have at all -- Pools of
@@ -5071,10 +5076,16 @@ def write(char: NeutralCharacter,
         f = table[dos_name]
         if dos_name in ABILITY_ORDER and f.size == 2:
             permanent = int(seconds.get(dos_name, v.value))
-            byte0, byte1 = _pair_bytes(dos_name, int(v.value), permanent)
+            in_force = int(v.value)
+            why = ""
+            if feeble and dos_name in ("intelligence", "wisdom"):
+                in_force = effects.FEEBLEMIND_SCORE
+                why = (f", Feeblemind's {in_force}, which the destination's "
+                       f"own recompute leaves it at")
+            byte0, byte1 = _pair_bytes(dos_name, in_force, permanent)
             put(v, dos_name,
-                f", the score in force; the permanent score behind it is "
-                f"{permanent}",
+                f", the score in force{why}; the permanent score behind it "
+                f"is {permanent}",
                 value=bytes((byte0 & 0xFF, byte1 & 0xFF)))
         else:
             put(v, dos_name)
