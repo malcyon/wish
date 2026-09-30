@@ -456,6 +456,7 @@ class Stop:
     def __init__(self, name, address, handler, cp, once, store=False):
         self.name, self.address, self.handler = name, address, handler
         self.cp, self.once, self.hits, self.store = cp, once, 0, store
+        self.fires = 0      # hits since the last scan, set by `Traps._scan`
 
 
 class Traps:
@@ -538,13 +539,13 @@ class Traps:
         self.readings.setdefault(name, []).append(fields)
         self.log.emit("reading", name=name, **fields)
 
-    def check(self, m) -> None:
+    def check(self, m, resume: bool = True) -> None:
         if not self.stops or self._busy or self.degraded:
             return
         self._busy = True
         try:
             fired = self._scan(m)
-            if fired:
+            if fired and resume:
                 m.resume()
         except Exception as exc:
             self._release(m, exc)
@@ -596,7 +597,7 @@ class Traps:
             hits = self._hits(m, s)
             if hits <= s.hits:
                 continue
-            s.hits = hits
+            s.fires, s.hits = hits - s.hits, hits
             fired = True
             if s.once:
                 m.checkpoint_delete(s.cp)

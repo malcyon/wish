@@ -92,18 +92,43 @@ def escaped(status: list[int]) -> int:
     return sum(1 for v in status if v == RUNNING)
 
 
+class _Resumes:
+    """The connection the caller sees: a `resume` first handles a stop that fired.
+
+    VICE halts at a stop that fires while a connection is open, and resuming
+    without asking would run the machine past it, so the handler would read a
+    later moment.
+    """
+
+    def __init__(self, trap, m):
+        self._trap, self._m = trap, m
+
+    def resume(self):
+        self._trap.check(self._m, resume=False)
+        return self._m.resume()
+
+    def __getattr__(self, name):
+        return getattr(self._m, name)
+
+
 class _Watched:
-    """A `Monitor` context that runs the trap's check on entry and exit."""
+    """A `Monitor` context that runs the trap's check on entry and exit.
+
+    The exit check does not resume: the machine is still at any stop that fired
+    during the body, and EXIT resumes it after the handler has read.
+    """
 
     def __init__(self, trap, inner):
         self.trap, self.inner = trap, inner
+        self._m = None
 
     def __enter__(self):
-        m = self.inner.__enter__()
-        self.trap.check(m)
-        return m
+        self._m = self.inner.__enter__()
+        self.trap.check(self._m)
+        return _Resumes(self.trap, self._m)
 
     def __exit__(self, *exc):
+        self.trap.check(self._m, resume=False)
         return self.inner.__exit__(*exc)
 
 
@@ -141,7 +166,7 @@ class Trap:
     def mon(self, timeout: float = 5.0):
         return _Watched(self, self._mon(timeout))
 
-    def check(self, m) -> None:
+    def check(self, m, resume: bool = True) -> None:
         if self.cp is None or self._busy or self.degraded:
             return
         self._busy = True
@@ -163,7 +188,8 @@ class Trap:
                 self.capture(m)
             # The machine is stopped at the store or at `$091C`; say so
             # explicitly rather than leaving it to the connection's EXIT.
-            m.resume()
+            if resume:
+                m.resume()
         except Exception as exc:
             self.degraded = True
             self.log.emit("trap_failed", error=repr(exc), hits=self.hits)

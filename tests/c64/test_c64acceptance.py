@@ -8342,6 +8342,47 @@ def test_read_at_with_a_matching_guard_logs_the_reads_and_resumes(tmp_path):
     assert run.read_at_counts["read-at-09DD"] == {"hits": 1, "foreign": 0}
 
 
+def test_a_stop_that_fires_during_a_connection_is_read_by_that_connection(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+    with run.sess.mon(5):
+        machine.hit(0x09DD)
+    got, = run.log.of("read-at")
+    assert got["pc"] == 0x09DD and got["late"] is False and got["fires"] == 1
+    assert machine.resumes == 0     # EXIT resumes; the trap does not
+    machine.pc = 0x2E25
+    _connect(run)
+    assert len(run.log.of("read-at")) == 1
+
+
+def test_a_stop_that_fires_before_the_callers_resume_is_read_before_it(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+    with run.sess.mon(5) as m:
+        machine.hit(0x09DD)
+        m.resume()
+        assert len(run.log.of("read-at")) == 1 and machine.resumes == 1
+    assert run.log.of("read-at")[0]["pc"] == 0x09DD
+
+
+def test_a_read_at_another_pc_than_its_stop_is_marked_late(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+    machine.hit(0x09DD)
+    machine.pc = 0x2E25
+    _connect(run)
+    got, = run.log.of("read-at")
+    assert got["late"] is True and got["pc"] == 0x2E25
+    assert run.read_at_counts["read-at-09DD"]["late"] == 1
+
+
+def test_two_fires_between_scans_log_a_count_of_two(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+    machine.hit(0x09DD)
+    machine.hit(0x09DD)
+    _connect(run)
+    got, = run.log.of("read-at")
+    assert got["fires"] == 2 and got["hit"] == 1
+    assert run.read_at_counts["read-at-09DD"]["merged"] == 1
+
+
 def test_read_at_with_another_overlay_at_the_pc_reads_nothing_and_resumes(tmp_path):
     run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
     machine.mem[0x09DD:0x09E0] = b"\xA9\x00\x8D"

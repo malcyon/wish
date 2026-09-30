@@ -1671,9 +1671,17 @@ class PoolRun:
                                   foreign=counts["foreign"])
                 return
             counts["hits"] += 1
+            # A stop that fired more than once between scans is one record; a
+            # `pc` other than the stop's says the reading is from a later moment.
+            fires = traps._at[1].fires if traps._at else 1
+            late = pc != spec.pc
+            if late:
+                counts["late"] = counts.get("late", 0) + 1
+            if fires > 1:
+                counts["merged"] = counts.get("merged", 0) + fires - 1
             self.log.emit(
                 "read-at", name=spec.name, pc=pc, guard_matched=True,
-                hit=counts["hits"],
+                hit=counts["hits"], late=late, fires=fires,
                 reads={f"{a:04X}": bytes(m.read(a, n)).hex() for a, n in spec.reads},
                 a=regs.get(READ_AT_A), x=regs.get(READ_AT_X), y=regs.get(READ_AT_Y),
                 registers={str(k): v for k, v in regs.items()})
