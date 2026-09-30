@@ -78,14 +78,18 @@ from tools.registry import evidence, scratch, specimens  # noqa: E402
 REPO = pathlib.Path(__file__).resolve().parents[2]
 PUBLISHED_ISSUE = "677"
 #: Pinned Save As sources a published disk-one run may start from, as a set of SHA-256 values per
-#: title and port. The Silver Blades pair holds one party of share 0 and one of share 1.
+#: title and port. The Silver Blades pair and the Curse C64 pair each hold one party of share 0 and
+#: one of share 1.
 PUBLISHED_SOURCES = {
     ("ssb", "c64"): frozenset({
         "38c11440e578227c1a240b740f362b1b69943d9897f42dc35ac39b17508872dc",
         "bacfa0d95954aacaabfe61d871ef39d989d70a11f9b125ca6a2d51ee41519240",
     }),
     ("ssb", "dos"): frozenset({"b3515793dada24b6a85061f5c2fdc5555a45df40381ee0009e9fd54ba381fb72"}),
-    ("curse", "c64"): frozenset({"fdf74e5ff41fe0f90f8f9b150d966df276c4dc4e5ecd6829efee2fee9019acc1"}),
+    ("curse", "c64"): frozenset({
+        "fdf74e5ff41fe0f90f8f9b150d966df276c4dc4e5ecd6829efee2fee9019acc1",
+        "8fefc9d73136b0db87e4996e5cc24855a4cb32e1c4db15a668814363d4bdb076",
+    }),
     ("curse", "dos"): frozenset({"4e911c12a449a4ff1694aab6d918f120c176df66483e32428cb50454db8b03df"}),
 }
 #: Pinned Save As sources per issue a published disk-one run may be filed under.
@@ -1899,15 +1903,23 @@ def _opening_scene(name: str, place: dict | None) -> bool:
                      "facing": start.arrival.facing}
 
 
+#: The published Curse C64 source's start: a wall stands ahead to the west, so the party turns and
+#: walks back east over (6,13) to (7,13).
+CURSE_WALLED_WEST = {"area": 1, "x": 5, "y": 13, "facing": 3}
+
+
 def _turn_about(name: str, letter: str, place: dict | None) -> bool:
-    """Whether the route turns the party about before walking out of the start square."""
+    """Whether the route turns the party about before walking out of its square.
+
+    That is the start square, or `CURSE_WALLED_WEST` for Curse, where a wall stands ahead.
+    """
     if letter == "D":
         return True
     if name != "curse":
         return False
     start = areas.start_of(areas.CURSE_OF_THE_AZURE_BONDS)
-    return place == {"area": start.area, "x": start.arrival.x, "y": start.arrival.y,
-                     "facing": start.arrival.facing}
+    return place in ({"area": start.area, "x": start.arrival.x, "y": start.arrival.y,
+                      "facing": start.arrival.facing}, CURSE_WALLED_WEST)
 
 
 def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle]:

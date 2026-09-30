@@ -14,6 +14,7 @@ import pytest
 
 from goldbox import areas, geo
 from goldbox.amiga_adf import AmigaDisk
+from tests import gamedata
 from tests.amiga import test_amigaacceptance_measure as measure
 from tests.amiga.test_amigaacceptance import _audio_proof
 from tests.amiga.test_amigaacceptance_accept import MapGuard, _IdentityMap
@@ -2897,6 +2898,52 @@ def test_the_real_silver_blades_c64_pins_include_the_share_one_specimen():
     assert "0" * 64 not in pins
     assert foundation._source_pins(foundation.PUBLISHED_ISSUE, "curse", "c64") <= (
         foundation.PUBLISHED_SOURCES[("curse", "c64")])
+
+
+CURSE_C64_SHARE_ONE = "8fefc9d73136b0db87e4996e5cc24855a4cb32e1c4db15a668814363d4bdb076"
+CURSE_WALLED_WEST = {"area": 1, "x": 5, "y": 13, "facing": geo.WEST}
+
+
+def test_the_real_curse_c64_pins_include_the_share_one_specimen():
+    pins = foundation._source_pins(foundation.PUBLISHED_ISSUE, "curse", "c64")
+    assert CURSE_C64_SHARE_ONE in pins
+    assert "fdf74e5ff41fe0f90f8f9b150d966df276c4dc4e5ecd6829efee2fee9019acc1" in pins
+
+
+def test_a_curse_party_facing_the_wall_west_of_five_thirteen_is_turned_about(tmp_path, monkeypatch):
+    report, _ = _published_report(tmp_path, monkeypatch, name="curse", issue="640",
+                                  place=CURSE_WALLED_WEST)
+    path = foundation.prepare_published("curse", "runwall", report, "640")
+    assert json.loads(path.read_text())["turn_about"] is True
+    _, title = foundation._published_manifest(path, "curse")
+    assert title.turn == "about"
+
+
+@pytest.mark.parametrize("place", [
+    {"area": 1, "x": 5, "y": 13, "facing": geo.EAST},
+    {"area": 1, "x": 4, "y": 13, "facing": geo.WEST},
+])
+def test_only_the_walled_square_turns_a_curse_party_about(tmp_path, monkeypatch, place):
+    report, _ = _published_report(tmp_path, monkeypatch, name="curse", issue="640", place=place)
+    path = foundation.prepare_published("curse", "runother", report, "640")
+    assert json.loads(path.read_text())["turn_about"] is False
+
+
+def test_the_curse_start_map_has_a_wall_west_of_five_thirteen_and_east_of_seven():
+    where = gamedata.curse_dir()
+    if where is None:
+        pytest.skip("no Curse of the Azure Bonds disks")
+    start = None
+    for side in sorted(where.glob("CURSE*.[dD]64")):
+        start = geo.load_geo_files(str(side)).get("GEO01")
+        if start is not None:
+            break
+    if start is None:
+        pytest.skip("no Curse disk side carries GEO01")
+    assert not start.is_passable(5, 13, geo.WEST)
+    assert not start.is_passable(7, 13, geo.EAST)
+    assert start.is_passable(5, 13, geo.EAST)
+    assert start.is_passable(6, 13, geo.EAST)
 
 
 def test_a_source_in_the_pin_set_is_accepted_and_an_unlisted_one_is_refused(tmp_path, monkeypatch):
