@@ -239,9 +239,10 @@ class InventoryModel(QAbstractTableModel):
 
     **Row and slot are different things.**  The game draws its item list from
     the highest filled slot down to slot 0, so the filled slots come first in
-    that order and the empty ones after them, lowest first; the `#` column keeps the slot's
-    own number.  Every method that acts on an item takes the row the player
-    sees and maps it with :meth:`slot_of`.
+    that order and the empty ones after them, lowest first; the `#` column
+    keeps the slot's own number.  Every method that acts on an item takes the
+    row the player sees and maps it with :meth:`slot_of`; :meth:`row_of` is
+    the inverse.
     """
 
     edited = pyqtSignal()
@@ -269,6 +270,11 @@ class InventoryModel(QAbstractTableModel):
         order = ([n for n in reversed(slots) if not self.inventory.is_empty(n)]
                  + [n for n in slots if self.inventory.is_empty(n)])
         return order[row]
+
+    def row_of(self, slot: int) -> int:
+        """The row `slot` is drawn on."""
+        return next(r for r in range(len(self.inventory))
+                    if self.slot_of(r) == slot)
 
     def rowCount(self, _parent=QModelIndex()) -> int:
         return len(self.inventory) if self.inventory else 0

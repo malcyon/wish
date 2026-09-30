@@ -159,10 +159,12 @@ def stage(base: str, out: str, who: str, delete: int, quantity: int | None,
     # and an ascending pass would shift every row after the first out from
     # under the numbers the caller gave.  `--delete N` takes them off the top
     # instead, where compaction makes row 0 a different item each pass.
+    # The options name slots; the Items table draws them in the game's order,
+    # so each is mapped to its row at the moment it is deleted.
     for n in sorted(delete_rows or (), reverse=True):
-        steps.append(editor.delete_item(n))
+        steps.append(editor.delete_item(editor.items.row_of(n)))
     for _ in range(delete):
-        steps.append(editor.delete_item(0))
+        steps.append(editor.delete_item(editor.items.row_of(0)))
 
     # edit: the quantity column, through the model a player types into.
     if quantity is not None:
@@ -177,8 +179,8 @@ def stage(base: str, out: str, who: str, delete: int, quantity: int | None,
                     break
         if quantity_row is None:
             raise SystemExit("no unreadied item to put a quantity on")
-        ok = model.setData(model.index(quantity_row, inv_mod.QTY), quantity,
-                           Qt.ItemDataRole.EditRole)
+        ok = model.setData(model.index(model.row_of(quantity_row), inv_mod.QTY),
+                           quantity, Qt.ItemDataRole.EditRole)
         steps.append(f"quantity of item {quantity_row} set to {quantity}: {ok}")
 
     # add: a record copied off the player's own game disks.
