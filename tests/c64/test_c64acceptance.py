@@ -6753,6 +6753,16 @@ class SideFightWalk(FightWalk):
         self.cleared_in = None
         self.opening = None
         self.landing = None
+        # Options: the prompt returns once, long after it clears (with the text
+        # `reprompt_text`); the party's live square moves at the answer; the
+        # status line `status` is drawn under the world bar; the answer does
+        # not start a fight by itself.
+        self.reprompt = False
+        self.polls = 0
+        self.reprompt_text = None
+        self.land_early = False
+        self.status = None
+        self.fight_on_answer = True
 
     def walk_one(self, move, *a, **k):
         if self.calls in self.prompts_at:
@@ -6769,9 +6779,12 @@ class SideFightWalk(FightWalk):
         if self.prompt_up and self.cleared_in is not None:
             if self.cleared_in <= 0:
                 self.prompt_up = False
-            self.cleared_in -= 1
+            else:
+                self.cleared_in -= 1
         if self.prompt_up:
             return _Text(_window({}, self.PROMPT))
+        if self.status and self.keys_sent:
+            return _Text(_window({14: self.status}, WORLD_BAR))
         return _Text(_window({}, WORLD_BAR))
 
     def handle_prompt(self, s=None):
@@ -6779,10 +6792,22 @@ class SideFightWalk(FightWalk):
         self.attaches.append(self.wanted_disk(s))
         self.keys_sent += 1
         self.cleared_in = self.linger
-        self.opening = self.fight_delay
+        if self.fight_on_answer:
+            self.opening = self.fight_delay
+        if self.land_early and self.landing is not None:
+            self.x, self.y = self.x, self.y - 1
+            self.landing = None
         return True
 
     def in_combat(self):
+        if self.reprompt and self.keys_sent:
+            # Long after the look for a fight has ended, so it is the wait
+            # for the load that sees the prompt.
+            self.polls += 1
+            if self.polls == 40:
+                self.reprompt, self.prompt_up, self.cleared_in = False, True, None
+                if self.reprompt_text:
+                    self.PROMPT = self.reprompt_text
         if self.opening is not None and not self.combat:
             self.opening -= 1
             if self.opening <= 0:
@@ -6808,18 +6833,104 @@ def test_walk_fight_answers_a_side_prompt_once_and_goes_on_to_the_fight(
     assert got["side_prompts"] == [{"side": "2", "at_move": 1, "fight": True}]
 
 
-def test_walk_fight_stops_on_a_side_prompt_that_comes_back_keeping_the_frame(
+def test_walk_fight_stops_on_a_side_prompt_that_comes_back_in_the_same_move_keeping_the_frame(
         tmp_path, monkeypatch):
-    sess = SideFightWalk({0, 1}, linger=1)
+    sess = SideFightWalk({0}, linger=1, fight_delay=10 ** 6)
+    sess.reprompt = True
     run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
     shots = []
     run.capture = lambda tag, rows=None: shots.append(tag) or []
     with pytest.raises(A.StepFailed, match="side 2 prompt came back"):
-        run.walk_fight("II")
+        run.walk_fight("I")
     log.close()
     assert sess.keys_sent == 1
-    assert shots == ["side2-before-answer", "fight-0-start", "fight-0-end",
-                     "lost-walk"]
+    assert shots == ["side2-before-answer", "lost-walk"]
+
+
+def test_walk_fight_answers_side_2_again_for_the_next_encounter(tmp_path, monkeypatch):
+    sess = SideFightWalk({0, 1}, linger=1)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_fight("II")
+    log.close()
+    assert sess.keys_sent == 2
+    assert [f["at_move"] for f in got["fights"]] == [0, 1]
+    assert [(p["at_move"], p["fight"]) for p in got["side_prompts"]] == [
+        (0, True), (1, True)]
+
+
+def test_walk_fight_names_a_different_disk_prompt_that_comes_up_while_the_load_waits(
+        tmp_path, monkeypatch):
+    sess = SideFightWalk({0}, linger=1, fight_delay=10 ** 6)
+    sess.reprompt, sess.reprompt_text = True, "INSERT SIDE # 3, AND PRESS ANY KEY."
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    with pytest.raises(A.StepFailed, match="asks for side 3 mid-walk"):
+        run.walk_fight("I")
+    log.close()
+    assert sess.keys_sent == 1
+
+
+def test_walk_fight_does_not_take_the_live_square_for_the_end_of_the_load(
+        tmp_path, monkeypatch):
+    """The game moves the live square before it draws the encounter, so with
+    no status line on screen a changed square is not a landing."""
+    sess = SideFightWalk({0}, fight_delay=int(A.LOOK_SECONDS / 0.3) + 20)
+    sess.land_early = True
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_fight("I")
+    log.close()
+    assert [f["at_move"] for f in got["fights"]] == [0]
+
+
+def test_walk_fight_takes_a_new_square_read_twice_under_the_world_bar_as_no_fight(
+        tmp_path, monkeypatch):
+    sess = SideFightWalk({0})
+    sess.fight_on_answer = False
+    sess.land_early, sess.status = True, "N 4:00 5,4"
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_fight("I")
+    log.close()
+    assert got["fights"] == [] and got["position"] == [5, 4, 0]
+    assert got["side_prompts"] == [{"side": "2", "at_move": 0, "fight": False}]
+
+
+def test_walk_fight_waits_out_and_fights_a_load_that_a_prompt_after_the_last_key_starts(
+        tmp_path, monkeypatch):
+    sess = SideFightWalk(set())
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    emit = log.emit
+
+    def late(tag, **kw):
+        emit(tag, **kw)
+        if tag == "move":
+            sess.prompt_up, sess.cleared_in, sess.landing = True, None, "I"
+
+    log.emit = late
+    got = run.walk_fight("I")
+    log.close()
+    assert sess.keys_sent == 1
+    assert [f["at_move"] for f in got["fights"]] == [0]
+    assert got["side_prompts"] == [{"side": "2", "at_move": 0, "fight": True}]
+
+
+def test_walk_fight_flags_only_the_prompts_answered_during_the_key_that_fought(
+        tmp_path, monkeypatch):
+    """A prompt up before move 1 is answered before its key; the fight that
+    key starts does not follow it."""
+    sess = SideFightWalk(set(), {1: "fight"})
+    sess.fight_on_answer = False
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    emit = log.emit
+
+    def late(tag, **kw):
+        emit(tag, **kw)
+        if tag == "move" and kw["n"] == 0:
+            sess.prompt_up, sess.cleared_in = True, None
+
+    log.emit = late
+    got = run.walk_fight("II")
+    log.close()
+    assert [f["at_move"] for f in got["fights"]] == [1]
+    assert got["side_prompts"] == [{"side": "2", "at_move": 1, "fight": False}]
 
 
 def test_walk_fight_stops_on_a_side_prompt_that_never_clears(tmp_path, monkeypatch):

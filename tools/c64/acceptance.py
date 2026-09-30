@@ -3306,7 +3306,7 @@ class PoolRun:
                         f"{before}: the game asks for side {side} mid-walk, "
                         f"which the step does not answer (only side 2, the "
                         f"encounter's, is): {row}")
-        if any(a["side"] == side for a in self.walk_side_prompts):
+        if side in self.walk_side_open:
             raise self.fail(
                 "walk", f"{self.walk_verb} {route}: move {n} ({move}) from "
                         f"{before}: the side {side} prompt came back after "
@@ -3317,6 +3317,7 @@ class PoolRun:
                 "walk", f"{self.walk_verb} {route}: move {n} ({move}) from "
                         f"{before}: the side {side} prompt was not answered: "
                         f"{row}")
+        self.walk_side_open.add(side)
         self.walk_side_prompts.append({"side": side, "at_move": n, "fight": False})
         self.log.emit("walk-side-answered", side=side, n=n, move=move)
         limit = self.clock() + SIDE_LINGER_SECONDS
@@ -3602,6 +3603,7 @@ class PoolRun:
         self.walk_verb = "walk-flee" if word == ENCOUNTER_FLEE else "walk-fight"
         route, answer = parse_walk_fight(arg)
         self.walk_side_prompts = []
+        self.walk_side_open = set()
         self.leave_arrival(f"{self.walk_verb} {route}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
@@ -3674,9 +3676,17 @@ class PoolRun:
                           resent=resent, row24=self.bar().strip())
             moves.append({"move": move, "before": before, "after": after,
                           "moved": before[:2] != after[:2], "resent": resent})
-        self.answer_side_prompt(
-            route, (len(route) - 1, route[-1], self.position()),
-            "ran the square's event")
+        last = (len(route) - 1, route[-1], self.position())
+        mark = len(self.walk_side_prompts)
+        if self.answer_side_prompt(route, last, "ran the square's event"):
+            # The load the answer started is the last key's, so it is waited
+            # out and fought as the key's own would be.
+            n, move, before = last
+            stop = self._await_side_encounter(route, n, move, before)
+            if not (stop is not None and self._take_stop(
+                    route, n, move, before, stop, False, answer, word, flees)):
+                if self.sess.in_combat():
+                    self._fight_out(n, fights, flees, False, word, mark)
         self.capture(f"walked-{route}")
         got = {"route": route, "answer": answer, "position": self.position(),
                "fights": fights, "moves": moves,
@@ -3707,19 +3717,39 @@ class PoolRun:
         a fight (None), or the party on another square (None).  The load has
         `ENCOUNTER_DRAW_SECONDS` to reach mode 4 or a menu, and mode 4 then
         has `FIGHT_OPENS_SECONDS`, as `_look_for_fight` allows; neither
-        arriving fails the step naming the side-2 answer."""
+        arriving fails the step naming the side-2 answer.
+
+        A new square counts only when the status line is on screen under the
+        world bar or the move sub-bar and two reads 0.3 s apart show the same
+        square: the live triple `Session.position` falls back to moves before
+        the encounter is drawn, and each call of it can block seconds.  A
+        disk prompt in the wait goes through `answer_side_prompt`."""
         sess = self.sess
         start = self.clock()
         prep_since = None
+        seen = None
         while True:
             self.budget(1, f"{self.walk_verb} {route}")
+            self.answer_side_prompt(route, (n, move, before),
+                                    "came up while the encounter loaded")
             if sess.in_combat():
                 return None
             stop = sess.walk_stop(wait=0.0)
             if stop is not None:
                 return stop
-            if self.position() != before:
-                return None
+            screen = sess.screen()
+            at = None
+            if screen is not None:
+                bar = screen.row(24)
+                if self.at_world(bar) or S.MOVE_SUBBAR in bar:
+                    at = S.parse_status(screen.text())
+            square = None if at is None else [at.x, at.y]
+            if square is not None and square != before[:2]:
+                if square == seen:
+                    return None
+                seen = square
+            else:
+                seen = None
             if getattr(sess, "mode", lambda: None)() == COMBAT_PREP:
                 if prep_since is None:
                     prep_since = self.clock()
@@ -3804,36 +3834,9 @@ class PoolRun:
         if (stop is None and not sess.in_combat()
                 and self.side_answered_since(mark)):
             stop = self._await_side_encounter(route, n, move, before)
-        if stop is not None:
-            self._answer_stop(route, n, move, before, stop, pressed, answer,
-                              word)
-            if (word == ENCOUNTER_FLEE and S.word_column(stop[24], word) >= 0
-                    and S.word_column(stop[24], "YES") < 0):
-                # The menu was answered FLEE: the party either got away or
-                # a fight opened, and both are results, not a hang.
-                self.flee_escaped = None
-                if not self._flee_settles():
-                    raise self.fail(
-                        self.walk_verb,
-                        f"{self.walk_verb} {route}: move {n} ({move}) from "
-                        f"{before} answered FLEE and neither a fight nor the "
-                        f"world bar or move prompt came back in {int(FIGHT_OPENS_SECONDS)} "
-                        f"seconds")
-                escaped = (self.flee_escaped if self.flee_escaped is not None
-                           else not sess.in_combat())
-                flees.append({"at_move": n, "escaped": escaped, "fight": None})
-                # The list is returned only when the step succeeds, so a step
-                # that fails later would lose the record without this line.
-                self.log.emit("flee", at_move=n, escaped=flees[-1]["escaped"])
-                if escaped:
-                    self.capture(f"flee-{len(flees) - 1}-escaped")
-                    return False
-            elif not self._fight_opens():
-                raise self.fail(
-                    self.walk_verb, f"{self.walk_verb} {route}: move {n} ({move}) from "
-                                  f"{before} answered {stop[24].strip()!r} and "
-                                  f"no fight opened in "
-                                  f"{int(FIGHT_OPENS_SECONDS)} seconds")
+        if stop is not None and self._take_stop(
+                route, n, move, before, stop, pressed, answer, word, flees):
+            return False
         if not sess.in_combat():
             if getattr(sess, "walk_encounter_started", False):
                 return False
@@ -3844,6 +3847,51 @@ class PoolRun:
                 return False
             return unread or unsent or (ambush and self.took_nothing(
                 before, before_rows, screens))
+        self._fight_out(n, fights, flees, ambush, word, mark)
+        return True
+
+    def _take_stop(self, route, n, move, before, stop, pressed, answer, word,
+                   flees) -> bool:
+        """Answer an encounter menu or `YES NO`.  Returns True when the party
+        fled the encounter, so no fight follows."""
+        sess = self.sess
+        self._answer_stop(route, n, move, before, stop, pressed, answer,
+                          word)
+        if (word == ENCOUNTER_FLEE and S.word_column(stop[24], word) >= 0
+                and S.word_column(stop[24], "YES") < 0):
+            # The menu was answered FLEE: the party either got away or
+            # a fight opened, and both are results, not a hang.
+            self.flee_escaped = None
+            if not self._flee_settles():
+                raise self.fail(
+                    self.walk_verb,
+                    f"{self.walk_verb} {route}: move {n} ({move}) from "
+                    f"{before} answered FLEE and neither a fight nor the "
+                    f"world bar or move prompt came back in {int(FIGHT_OPENS_SECONDS)} "
+                    f"seconds")
+            escaped = (self.flee_escaped if self.flee_escaped is not None
+                       else not sess.in_combat())
+            flees.append({"at_move": n, "escaped": escaped, "fight": None})
+            # The list is returned only when the step succeeds, so a step
+            # that fails later would lose the record without this line.
+            self.log.emit("flee", at_move=n, escaped=flees[-1]["escaped"])
+            if escaped:
+                self.capture(f"flee-{len(flees) - 1}-escaped")
+                self.walk_side_open.clear()
+                return True
+        elif not self._fight_opens():
+            raise self.fail(
+                self.walk_verb, f"{self.walk_verb} {route}: move {n} ({move}) from "
+                              f"{before} answered {stop[24].strip()!r} and "
+                              f"no fight opened in "
+                              f"{int(FIGHT_OPENS_SECONDS)} seconds")
+        return False
+
+    def _fight_out(self, n, fights, flees, ambush, word, mark) -> None:
+        """Fight the open fight out and record it; the side prompts answered
+        since `mark` were followed by it, and the next encounter may ask for
+        side 2 again."""
+        sess = self.sess
         number = len(fights)
         self.capture(f"fight-{number}-start")
         result = sess.fight(budget=self.walk_fight_seconds, tactic=S.Session.melee_turn,
@@ -3856,9 +3904,9 @@ class PoolRun:
         self.to_world()
         fights.append({"at_move": n, "square": self.position(),
                        **dataclasses.asdict(result)})
-        for prompt in self.walk_side_prompts:
-            if prompt["at_move"] == n:
-                prompt["fight"] = True
+        for prompt in self.walk_side_prompts[mark:]:
+            prompt["fight"] = True
+        self.walk_side_open.clear()
         if flees and flees[-1]["at_move"] == n:
             if flees[-1]["fight"] is None:
                 flees[-1]["fight"] = fights[-1]
@@ -3868,7 +3916,6 @@ class PoolRun:
             flees.append({"at_move": n, "escaped": False, "ambush": True,
                           "fight": fights[-1]})
             self.log.emit("flee", at_move=n, escaped=False, ambush=True)
-        return True
 
     def _treasure_capture(self):
         """A `Session.fight` stop hook that saves the treasure screen once and
