@@ -615,7 +615,8 @@ class WorldCanvas(QWidget):
     black outline at its world square, pointing the way the heading byte says.
 
     The tiles are read off the player's disks when the window opens
-    (`goldbox.world.world_indices`) and are never stored.
+    (`goldbox.world.world_indices`) and are never stored. Every site is drawn
+    with its own art, whether or not the party has found it.
     """
 
     def __init__(self, state, parent=None):

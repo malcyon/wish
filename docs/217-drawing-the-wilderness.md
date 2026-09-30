@@ -118,7 +118,7 @@ disks; the save is copied into the slot.
 The site list and passability are not measured here, and drawing needs
 neither. The resident block at `$8C00` is the map **as the game has painted
 it**, with each undiscovered site painted over as terrain; the canvas draws
-the disk's grid instead, so every site shows (§7).
+the disk's grid, so every site shows (§7).
 
 ### What measurement B read, and what it cannot be re-taken from
 
@@ -320,7 +320,6 @@ For whoever next edits them; this document does not.
   window.
 * **Do not reuse `GEO` passability or sight.** One byte, one picture, no
   edges.
-* **Every site is drawn.** Donald decided the automapper hides no location, so
-  the canvas draws the disk's grid and every site shows, including the four
-  squares the game paints ordinary terrain over until their site is found
-  (`tests/areas/test_p3.py` `PAINTED`).
+* **The automapper hides no location.** Every site is drawn with the disk's
+  art, including the four squares the game paints ordinary terrain over until
+  their site is found (`tests/areas/test_p3.py` `PAINTED`).

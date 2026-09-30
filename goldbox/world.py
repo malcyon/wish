@@ -419,6 +419,9 @@ def world_indices(world: World) -> bytes:
     """The whole wilderness as one picture of C64 colour indices, row-major,
     `WORLD_ACROSS * TILE_PIXELS` wide and `WORLD_DOWN * TILE_PIXELS` high.
 
+    Every site is drawn with its own art, whether or not the game has painted
+    terrain over it.
+
     Raises `WorldError` when the disks carried no `SECSET` to draw with.
     """
     if world.charsets is None:

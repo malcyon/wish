@@ -230,8 +230,7 @@ What the drawing does and does not do, from
 * **Do not read a terrain code against another window's table.**
 * **Do not reuse `GEO` passability logic.** One byte, one terrain, one lookup —
   there are no walls, no doors and no per-square attribute byte out here.
-* **Every site is drawn.** The canvas reads the disk's grid, which holds each
-  site's own art, so the four squares the game paints ordinary terrain over
-  until their site is found (`tests/areas/test_p3.py` `PAINTED`) show the site.
-  Donald decided the automapper hides no location, as the indoor map hides no
-  secret door.
+* **The automapper hides no location.** The canvas reads the disk's grid, which
+  holds each site's own art, so every site is drawn, including the four squares
+  the game paints ordinary terrain over until their site is found
+  (`tests/areas/test_p3.py` `PAINTED`).

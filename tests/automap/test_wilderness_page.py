@@ -468,18 +468,19 @@ def test_a_square_the_game_paints_over_keeps_its_disk_art(
 
 def test_the_picture_is_built_once_per_world(app, tmp_path, monkeypatch):
     from automap import window as window_module
-    win, target = _window_on(
-        app, tmp_path, monkeypatch,
-        [out(8, 27), out(8, 26), out(8, 25), out(8, 24), out(8, 23)])
-    _step(win)
     built = []
     real = window_module.world_indices
     monkeypatch.setattr(window_module, "world_indices",
                         lambda *a, **k: built.append(1) or real(*a, **k))
+    win, target = _window_on(
+        app, tmp_path, monkeypatch,
+        [out(8, 27), out(8, 26), out(8, 25), out(8, 24), out(8, 23)])
+    assert built == [1]                             # the initial build
+    _step(win)
     target.block = _painted(1, (5, 20))
     _step(win)
     _step(win)
     target.block = _painted(1, (5, 21))
     _step(win)
     _step(win)
-    assert built == []
+    assert built == [1]
