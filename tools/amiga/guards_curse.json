@@ -11,6 +11,28 @@
       "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/10-camp.png",
       "sha256": "169811582eab25c33345bf896ba31c9a03f5ffd7d726090330a039ec271eb0e5"
     },
+    "camp_display": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "666/666-flight-amiga-display/accept1/shots/12-camp_display.png",
+      "sha256": "f21a34b919165a3b7be66fc077dd4a23a07f5fda3d4b31142f54737171bf9e08"
+    },
+    "camp_magic": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "666/666-flight-amiga-display/accept1/shots/11-camp_magic.png",
+      "sha256": "c10706601457fdf23fd5db188de325fe036c425226d338c1d926138cf599f5d5"
+    },
     "camp_save_picker": {
       "also": [
         "save_picker"
@@ -148,17 +170,30 @@
       "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/01-load_picker.png",
       "sha256": "be7bf8d490b8f5f3c45f31dc555298cff6be58babdab6f90eebdfd64edc83bc8"
     },
-    "loaded_menu": {
-      "also": [],
-      "box": [
-        60,
-        250,
-        700,
-        430
-      ],
-      "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/02-loaded_menu.png",
-      "sha256": "2cb5c70090cd61c67ff04fc8bfaa16a3bba1bea245c6afb812ede2a75ef1aff0"
-    },
+    "loaded_menu": [
+      {
+        "also": [],
+        "box": [
+          60,
+          250,
+          700,
+          430
+        ],
+        "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/02-loaded_menu.png",
+        "sha256": "2cb5c70090cd61c67ff04fc8bfaa16a3bba1bea245c6afb812ede2a75ef1aff0"
+      },
+      {
+        "also": [],
+        "box": [
+          60,
+          250,
+          700,
+          430
+        ],
+        "example": "666/666-flight-amiga-display/measure1/shots/04-loaded_menu.png",
+        "sha256": "26f435eae341090b23cd4937369451d96200c513319b2d9333450b5ecabd09e2"
+      }
+    ],
     "rest_menu": {
       "also": [],
       "box": [

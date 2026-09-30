@@ -1,4 +1,4 @@
-"""Camp steps for an Amiga route: view a member's sheet, lay on hands, and rest.
+"""Camp steps for an Amiga route: view a member's sheet, lay on hands, rest, and show the effects list.
 
 A published route (`route_silver_blades.published_title` or
 `route_curse.published_title`) walks two squares, camps and saves, and
@@ -61,6 +61,17 @@ Curse of the Azure Bonds' `/Curse` (file offsets) differs only where noted:
 * **The rest menu** (`002328`) has the same letters and opens on the minutes
   field; its subtraction (`0020FE`) zeroes the whole time when nothing above the
   field can be borrowed, so `D S S` clears the preset here too.
+* **The effects list** is the camp bar's `Magic` (`M`, dispatched at `0018DE`
+  to the magic menu `000EA4`), whose bar is `Cast Memorize Scribe Display Rest
+  Exit` (`0455CE`); `D` runs `000AFE`. That routine walks the whole party from
+  `g3CF8` and, with no picker, builds one list: each member's name, then one
+  line per node whose id its jump table (`000D2E`, 90 entries) names through
+  the spell table, or ` <No Spell Effects>`, then a blank line. The list viewer
+  `029410` is called with no bar words of its own, so its bar is `Exit`, and
+  `E` returns to the magic menu, whose own `E` returns to the camp bar.
+
+`display` opens that list and leaves it again; it is built for Curse only,
+the one title whose magic menu and list viewer have been read.
 
 `heal N` has the member on line N lay on hands on himself: the camp
 highlight goes to his line, and the picker, which starts on the first member,
@@ -107,6 +118,7 @@ SHEET_EXIT = "E"
 HEAL_KEYS = {"ssb": "H", "curse": "H", "darkness": "L"}
 HEAL_SELECT = "S"
 CAMP_REST = "R"
+CAMP_MAGIC, MAGIC_DISPLAY, DISPLAY_EXIT, MAGIC_EXIT = "M", "D", "E", "E"
 REST_DAYS, REST_HOURS, REST_MINS = "D", "H", "M"
 REST_ADD, REST_SUBTRACT, REST_GO = "A", "S", "R"
 #: The keys that move the camp's highlight and HEAL's picker to the next and the previous
@@ -124,6 +136,8 @@ SHEET_LINES = {"ssb": (1, 2), "curse": (1, 6), "darkness": (1,)}
 #: The party line of the paladin whose HEAL sheets the title's guard map holds, so the line
 #: `heal N` can name: the identity rule of `camp_sheet_heal` and `camp_sheet_spent` is his.
 HEAL_LINES = {"ssb": (1,), "curse": (6,), "darkness": (1,)}
+#: The titles whose magic menu and effects list have been read, so `display` may name them.
+DISPLAY_TITLES = frozenset({"curse"})
 #: The titles whose camp highlight and HEAL picker are read to wrap from the first member to
 #: the last and back (Curse `0237CA` and `01BF56`-`01BF8A`), so a later line may be reached
 #: backwards.
@@ -136,11 +150,14 @@ SHEET_HEAL = "camp_sheet_heal"
 SHEET_SPENT = "camp_sheet_spent"
 HEAL_WHOM = "heal_whom"
 REST_MENU = "rest_menu"
+#: The magic menu reached from the camp bar, and the effects list its `Display` shows.
+MAGIC_MENU = "camp_magic"
+DISPLAY = "camp_display"
 #: The camp save the published route presses next, which the camp steps go before.
 CAMP_SAVE_STEP = ("S", "camp_save_picker", "key")
 
 MIN_WAITS = {SHEET: 10.0, SHEET_HEAL: 10.0, SHEET_SPENT: 15.0, HEAL_WHOM: 10.0,
-             REST_MENU: 5.0}
+             REST_MENU: 5.0, MAGIC_MENU: 5.0, DISPLAY: 10.0}
 #: Seconds the camp bar may take to come back after a rest, beyond the game's own pace.
 REST_LIMIT = 900.0
 #: A rest this long or longer can land on the clock a run with no rest would show.
@@ -158,6 +175,11 @@ def is_sheet(state: str) -> bool:
     """Whether `state` is a camp sheet, whose screen records whether HEAL is offered."""
     return (state in (SHEET, SHEET_HEAL, SHEET_SPENT)
             or re.fullmatch(rf"{SHEET}_[2-9]", state) is not None)
+
+
+def is_display(state: str) -> bool:
+    """Whether `state` is the camp effects list, whose screen is recorded like a camp sheet."""
+    return state == DISPLAY
 
 
 def parse_duration(text: str) -> int:
@@ -224,7 +246,8 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
     the lines in `SHEET_LINES` have an identity rule), `heal` or `heal N` has
     the member on line N lay on hands on himself (1 when left out; only the
     line in `HEAL_LINES`, whose HEAL sheets have identity rules), and
-    `rest DURATION` rests that long. A `heal` whose sheet does not offer HEAL
+    `rest DURATION` rests that long, and `display` shows the effects list (only
+    for a title in `DISPLAY_TITLES`). A `heal` whose sheet does not offer HEAL
     fails the run at that sheet, since its guard is the bar with the word on it.
     """
     view_lines, heal_lines = sheet_lines(name)
@@ -255,8 +278,12 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
         if words[0] == "rest" and len(words) == 2:
             parse_duration(words[1])
             continue
-        raise RouteError(f"camp step {token!r} is not view, view N, heal, heal N or "
-                         f"rest DURATION")
+        if words == ["display"]:
+            if name not in DISPLAY_TITLES:
+                raise RouteError("'display': the effects list is built for Curse only")
+            continue
+        raise RouteError(f"camp step {token!r} is not view, view N, heal, heal N, "
+                         f"rest DURATION or display")
     if rest_minutes(tokens) >= CLOCK_BLIND_REST:
         last_rest = max(i for i, t in enumerate(tokens) if t.startswith("rest "))
         if not any(t.split()[0] in ("view", "heal") for t in tokens[last_rest + 1:]):
@@ -327,6 +354,9 @@ def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None
             steps += _moves(line, name, party_size, HEAL_WHOM)[0]
             steps += [(HEAL_SELECT, SHEET_SPENT, "key"), (SHEET_EXIT, CAMP, "key")]
             steps += back
+        elif words[0] == "display":
+            steps += [(CAMP_MAGIC, MAGIC_MENU, "key"), (MAGIC_DISPLAY, DISPLAY, "key"),
+                      (DISPLAY_EXIT, MAGIC_MENU, "key"), (MAGIC_EXIT, CAMP, "key")]
         else:
             days, hours, fives = rest_presses(parse_duration(words[1]))
             steps += [(CAMP_REST, REST_MENU, "key"), (REST_DAYS, REST_MENU, "key"),

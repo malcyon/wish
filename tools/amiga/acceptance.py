@@ -135,6 +135,11 @@ PUBLISHED_SOURCES_BY_ISSUE = {
         ("curse", "dos"): frozenset({"28cacbb27d4aff5bfef4c3e11a94e35d5d0bac2aa6180c394d784f7ec97e8789"}),
         ("curse", "c64"): frozenset({"e99bb2be9c1a1a2c5f815f4fac436d7cc0a4ac3c511e7ad0a9ae1e5e7436684a"}),
     },
+    # The C64 Curse party that fled the tavern brawl under Bless, a camp Prayer and Detect
+    # Magic, reloaded and resaved by the game: TRAVIS and LEDERA, with four members left behind.
+    "666": {
+        ("curse", "c64"): frozenset({"9facc90c1f7cefdb909368b6db5b8135960631244ac259d21fab65d681352041"}),
+    },
 }
 
 
@@ -152,6 +157,8 @@ PUBLISHED_ISSUE_TEXT = {
             "cannot be converted at all)"),
     "628": ("#628 (The neutral vocabulary has no field for a paladin's lay-on-hands uses, "
             "so a converted paladin loses them)"),
+    "666": ("#666 (A C64 party under a camp Prayer loses it on the way to DOS or the Amiga, "
+            "because nothing converts the save's party-wide effect rows)"),
 }
 PUBLISHED_DISKS = {
     "ssb": ("2f9ae86494561231dd1d70b350ae07b959c9f62642b64e9d4b57ffd23686ace4",
@@ -829,10 +836,13 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                     and result.get("after_clock_advanced"))
     if "camp" in manifest:
         sheets = result.get("camp_sheets", [])
+        displays = result.get("camp_displays", [])
         result["read"]["verdicts"].extend(_camp_verdicts(sheets))
+        result["read"]["verdicts"].extend(_display_verdicts(displays))
         # A sheet with neither bar is a member with no HEAL to show, such as a ranger; a
         # `heal` step's own sheets are states that must match, so HEAL is never read that way.
-        rest = bool(rest and all(entry["identity_checked"] for entry in sheets))
+        # An effects list is read by its identity rule, so one without a rule reads nothing.
+        rest = bool(rest and all(entry["identity_checked"] for entry in (*sheets, *displays)))
         if result.get("clock_check") == CLOCK_UNPROVABLE:
             # The clock only rules a rest out, so a sheet after the last rest must show it.
             shown = len(sheets) - result.get("sheets_before_last_rest", len(sheets))
@@ -856,6 +866,14 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
             what = ("the substituted party did not move from its own square, "
                     "which may face a wall")
         result["read"]["verdicts"].append(f"slot {title.after_letter}: {what}{clause}")
+
+
+def _display_verdicts(displays: list[dict[str, Any]]) -> list[str]:
+    """One line per effects list the run reached: whether its identity rule was checked."""
+    return [f"{entry['shot']}: the effects list " + (
+        "matches the identity rule cut for this party" if entry["identity_checked"]
+        else "has no identity rule, so nothing checked what it lists")
+        for entry in displays]
 
 
 def _camp_verdicts(sheets: list[dict[str, Any]]) -> list[str]:
@@ -1428,7 +1446,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 state, f"{state} shows a party other than the prepared party"))
 
     def observe(state: str, name: str, crop: pathlib.Path) -> None:
-        """Record whether a camp sheet's bar offers HEAL, and whether its identity was checked."""
+        """Record whether a camp sheet's bar offers HEAL, and whether a sheet's or effects list's identity was checked."""
+        if route_camp.is_display(state):
+            entry = {"state": state, "shot": name, "identity_checked": _has_rule(identity, state)}
+            result.setdefault("camp_displays", []).append(entry)
+            log("camp_display", **entry)
+            return
         if not route_camp.is_sheet(state):
             return
         offered = None
@@ -2583,7 +2606,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--camp", default="",
                    help="published Silver Blades and Curse, or Pools of Darkness: camp steps "
                         "driven before the camp save, as 'view;heal;rest 1h' (view, view N, "
-                        "heal, heal N, rest DURATION)")
+                        "heal, heal N, rest DURATION, and for Curse display)")
     p.add_argument("--stage-place", default=None, metavar="X,Y,F",
                    help="published Silver Blades and Curse only: put the party on square X,Y "
                         "facing F (0 N, 1 E, 2 S, 3 W) in working DF0's loaded slot")

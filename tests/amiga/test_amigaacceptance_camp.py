@@ -1,4 +1,4 @@
-"""The Amiga camp steps: viewing a camp sheet, laying on hands and resting, on a published Silver Blades or Curse route or Pools of Darkness' accept route."""
+"""The Amiga camp steps: viewing a camp sheet, laying on hands, resting and showing Curse's effects list, on a published Silver Blades or Curse route or Pools of Darkness' accept route."""
 
 from __future__ import annotations
 
@@ -424,8 +424,8 @@ class CampIdentity(_IdentityMap):
         self.missing = set(missing)
 
     def __contains__(self, state):
-        return (super().__contains__(state) or route_camp.is_sheet(state)) and (
-            state not in self.missing)
+        return (super().__contains__(state) or route_camp.is_sheet(state)
+                or route_camp.is_display(state)) and state not in self.missing
 
 
 def _curse_adf(path, volume, slots=()):
@@ -897,3 +897,130 @@ def test_a_darkness_prepare_the_party_refuses_leaves_no_run_folder_so_a_retry_ca
                         lambda r, s: copied(r, s, names=("saint eric",)))
     path = foundation.prepare(foundation.DARKNESS, "camp-run", issue="628", camp=("view",))
     assert json.loads(path.read_text())["camp"] == ["view 1"]
+
+
+# The effects list: camp `M`, magic menu `D`, list viewer `E`, magic menu `E` (`/Curse`).
+
+DISPLAY_STEPS = (("M", "camp_magic", "key"), ("D", "camp_display", "key"),
+                 ("E", "camp_magic", "key"), ("E", "camp", "key"))
+
+
+def test_display_opens_the_curse_magic_menu_s_effects_list_and_comes_back_to_the_camp_bar():
+    assert route_camp.parse_steps("display; view 6", "curse") == ("display", "view 6")
+    assert route_camp.steps_for(("display",), "curse", 2) == DISPLAY_STEPS
+    assert route_camp.normalise(("display",)) == ("display",)
+    assert route_camp.is_display("camp_display") and not route_camp.is_display("camp_magic")
+    assert not route_camp.is_sheet("camp_display")
+
+
+@pytest.mark.parametrize("name", ["ssb", "darkness"])
+def test_display_is_refused_for_a_title_whose_magic_menu_is_unread(name):
+    with pytest.raises(RouteError, match="effects list is built for Curse only"):
+        route_camp.parse_steps("display", name)
+
+
+@pytest.mark.parametrize("text", ["display 2", "display all"])
+def test_display_takes_no_line(text):
+    with pytest.raises(RouteError, match="or display"):
+        route_camp.parse_steps(text, "curse")
+
+
+def test_a_curse_camp_display_goes_before_the_camp_save_for_a_slot_a_source():
+    base = route_curse.published_title("A")
+    title = route_camp.camp_title(base, ("display",), 2, name="curse")
+    at = base.route.index(route_camp.CAMP_SAVE_STEP)
+    assert title.route == (*base.route[:at], *DISPLAY_STEPS, *base.route[at:])
+    assert title.plain_keys == ()
+    assert "camp" not in title.wait_limits
+    assert {"camp_magic", "camp_display"} <= set(title.min_waits)
+
+
+DISPLAY_STATES = (*CAMP_STATES, "camp_sheet_6", "camp_magic", "camp_display")
+
+
+def test_a_curse_camp_run_shows_the_effects_list_and_records_its_identity(
+        tmp_path, clock, monkeypatch):
+    guest, result = _camp_run(tmp_path, clock, monkeypatch, name="curse",
+                              steps=("display",), guard_states=DISPLAY_STATES)
+    assert result["error"] == ""
+    assert result["success"] is True, {k: result.get(k) for k in (
+        "unguarded", "camp_displays", "menu_save_problems", "camp_save_problems", "walk")}
+    keys = _keys(guest)
+    camp = keys.index("NP8") + 2
+    assert keys[camp + 1:keys.index("F") - 1] == ["M", "D", "E", "E"]
+    assert [(e["state"], e["identity_checked"]) for e in result["camp_displays"]] == [
+        ("camp_display", True)]
+    assert any(line.endswith("-camp_display: the effects list matches the identity rule "
+                             "cut for this party") for line in result["read"]["verdicts"])
+
+
+def test_an_effects_list_with_no_identity_rule_fails_the_run(tmp_path, clock, monkeypatch):
+    _, result = _camp_run(tmp_path, clock, monkeypatch, name="curse", steps=("display",),
+                          guard_states=DISPLAY_STATES,
+                          identity=CampIdentity(missing=("camp_display",)))
+    assert [e["identity_checked"] for e in result["camp_displays"]] == [False]
+    assert result["completed"] is True and result["success"] is False
+    assert any("has no identity rule, so nothing checked what it lists" in line
+               for line in result["read"]["verdicts"])
+
+
+def test_an_effects_list_the_guard_map_lacks_is_settled_and_fails_the_run(
+        tmp_path, clock, monkeypatch):
+    guest, result = _camp_run(tmp_path, clock, monkeypatch, name="curse", steps=("display",),
+                              guard_states=(*CAMP_STATES, "camp_magic"))
+    assert result["unguarded"] == ["camp_display"]
+    assert "camp_displays" not in result
+    assert result["completed"] is True and result["success"] is False
+    assert _keys(guest).count("F") == 1
+
+
+def test_curse_s_guard_map_holds_the_magic_menu_and_the_effects_list():
+    guards = _maps("curse")["guards"]
+    assert {"camp_magic", "camp_display"} <= set(guards)
+    # Both are bar rules, so they say nothing about whose list it is: that is a per-run identity.
+    assert "camp_display" not in _maps("curse")["identity"]
+
+
+#: The game-written C64 Curse flight save, reloaded and resaved, that the #666 Amiga run starts from.
+FLIGHT_666 = ("coab-c64/WISH-SPEC-curse-666-e1-bless-flee-orphan-reload-resave.D64",
+              "9facc90c1f7cefdb909368b6db5b8135960631244ac259d21fab65d681352041")
+
+
+def test_666_pins_only_the_curse_flight_save_and_names_its_issue():
+    assert foundation.PUBLISHED_SOURCES_BY_ISSUE["666"] == {
+        ("curse", "c64"): frozenset({FLIGHT_666[1]})}
+    assert foundation.PUBLISHED_ISSUE_TEXT["666"].startswith("#666 (A C64 party under a camp")
+
+
+def test_the_pinned_666_source_is_the_specimen_on_disk():
+    root = gamedata.specimen_root()
+    if root is None or not (root / FLIGHT_666[0]).is_file():
+        pytest.skip(f"needs the specimen {FLIGHT_666[0]}")
+    assert staging.sha256(root / FLIGHT_666[0]) == FLIGHT_666[1]
+
+
+def test_a_published_prepare_for_666_keeps_its_display_and_refuses_another_source(
+        tmp_path, monkeypatch):
+    report = _published_report(tmp_path, monkeypatch, "curse", "c64", pinned=FLIGHT_666[1],
+                               names=("TRAVIS", "LEDERA"))
+    path = foundation.prepare_published("curse", "flight", report, "666", camp=("display",))
+    manifest, title = foundation._published_manifest(path, "curse")
+    assert manifest["issue"] == "666" and manifest["camp"] == ["display"]
+    assert manifest["names_a"] == ["TRAVIS", "LEDERA"]
+    assert title.route == route_camp.camp_title(
+        route_curse.published_title("A", issue="666", turn_about=manifest["turn_about"]),
+        ("display",), 2, name="curse").route
+    data = json.loads(report.read_text())
+    data["specimen_sha256"] = "0" * 64
+    report.write_text(json.dumps(data))
+    with pytest.raises(RouteError, match="differs from the pinned specimen"):
+        foundation.prepare_published("curse", "other", report, "666")
+
+
+def test_curse_s_party_menu_guard_matches_a_full_party_and_one_with_room_to_add():
+    # ADD CHARACTER is lit only while the party has room, so a party of two needs its own picture
+    # of the same button box beside the six-member one.
+    rules = _maps("curse")["guards"]["loaded_menu"]
+    assert isinstance(rules, list) and len(rules) == 2
+    assert {tuple(r["box"]) for r in rules} == {(60, 250, 700, 430)}
+    assert len({r["sha256"] for r in rules}) == 2
