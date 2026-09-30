@@ -72,6 +72,8 @@ MIN_WAITS = {SHEET: 10.0, SHEET_HEAL: 10.0, SHEET_SPENT: 15.0, HEAL_WHOM: 10.0,
              REST_MENU: 5.0}
 #: Seconds the camp bar may take to come back after a rest, beyond the game's own pace.
 REST_LIMIT = 900.0
+#: A rest this long or longer can land on the clock a run with no rest would show.
+CLOCK_BLIND_REST = 24 * 60 - 120
 
 _DURATION = re.compile(r"(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?")
 
@@ -128,8 +130,15 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX) -> None
     """
     if not tokens:
         raise RouteError("the camp step list is empty")
-    if sum(token == "heal" for token in tokens) > 1:
-        raise RouteError("only one heal: the sheet after it no longer offers HEAL")
+    healed = False
+    for token in tokens:
+        if token == "heal":
+            if healed:
+                raise RouteError("a second heal needs a rest before it: the sheet no longer "
+                                 "offers HEAL")
+            healed = True
+        elif token.startswith("rest "):
+            healed = False
     last_line = min(party_size, SHEET_LINES)
     for token in tokens:
         words = token.split()
@@ -138,12 +147,20 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX) -> None
         if words[0] == "view" and len(words) == 2 and words[1].isdigit():
             line = int(words[1])
             if not 1 <= line <= last_line:
-                raise RouteError(f"{token!r}: the party has lines 1 to {last_line}")
+                raise RouteError(f"{token!r}: the camp route can read sheets for lines 1 to "
+                                 f"{last_line} only")
             continue
         if words[0] == "rest" and len(words) == 2:
             parse_duration(words[1])
             continue
         raise RouteError(f"camp step {token!r} is not view, view N, heal or rest DURATION")
+    if rest_minutes(tokens) >= CLOCK_BLIND_REST:
+        last_rest = max(i for i, t in enumerate(tokens) if t.startswith("rest "))
+        if not any(t.split()[0] in ("view", "heal") for t in tokens[last_rest + 1:]):
+            raise RouteError(
+                f"rests totalling {CLOCK_BLIND_REST} minutes or more need a view or heal "
+                f"after them: the clock cannot prove such a rest, so the run needs a sheet "
+                f"to show it")
 
 
 def normalise(tokens: tuple[str, ...]) -> tuple[str, ...]:

@@ -656,6 +656,9 @@ def menu_save_verdict(result: dict[str, Any], originals: tuple[str, ...]) -> boo
         and result.get("df0_unchanged") is False)
 
 
+CLOCK_UNPROVABLE = "unprovable: rest wraps the day"
+
+
 def _clock_advanced(before: str, after: str, rest: int = 0) -> bool:
     """Accept a short forward interval beyond `rest` minutes, including a midnight rollover.
 
@@ -742,9 +745,16 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                         all(after_files.get(path) == data for path, data in before_files.items()
                             if path not in writable))
                     result["control_clock_matches"] = control.get("clock") == manifest["clock_a"]
-                    result["after_clock_advanced"] = _clock_advanced(
-                        manifest["clock_a"], after.get("clock"),
-                        route_camp.rest_minutes(tuple(manifest.get("camp", ()))))
+                    rested = route_camp.rest_minutes(tuple(manifest.get("camp", ())))
+                    if rested >= route_camp.CLOCK_BLIND_REST:
+                        # The saved clock has no day, so it cannot say the rest happened.
+                        result["clock_check"] = CLOCK_UNPROVABLE
+                        result["after_clock_advanced"] = None
+                    else:
+                        result["after_clock_advanced"] = _clock_advanced(
+                            manifest["clock_a"], after.get("clock"), rested)
+                        result["clock_check"] = ("advanced" if result["after_clock_advanced"]
+                                                 else "not advanced")
         except BaseException as exc:
             result["fetched_save_error"] = f"{type(exc).__name__}: {exc}"
     every_disk_fetched = set(result["fetched"]) == set(title.disk_keys)
@@ -777,7 +787,8 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
     if manifest.get("mode") == "published_disk_one":
         rest = bool(rest and result.get("published_files_preserved")
                     and result.get("control_clock_matches")
-                    and result.get("after_clock_advanced"))
+                    and (result.get("after_clock_advanced")
+                         or result.get("clock_check") == CLOCK_UNPROVABLE))
     if "camp" in manifest:
         sheets = result.get("camp_sheets", [])
         result["read"]["verdicts"].extend(_camp_verdicts(sheets))

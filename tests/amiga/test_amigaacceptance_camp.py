@@ -33,7 +33,7 @@ STEPS = ("view 1", "heal", "view 1", "rest 60m")
 
 @pytest.mark.parametrize("text,tokens", [
     ("view;heal;rest 1h", ("view", "heal", "rest 1h")),
-    (" view 2 ; rest 1d2h35m ", ("view 2", "rest 1d2h35m")),
+    (" rest 1d2h35m ; view 2 ", ("rest 1d2h35m", "view 2")),
 ])
 def test_camp_steps_parse(text, tokens):
     assert route_camp.parse_steps(text) == tokens
@@ -45,10 +45,14 @@ def test_camp_steps_parse(text, tokens):
     ("rest 0m", "longer than no time"),
     ("rest 30d", "shorter than 30 days"),
     ("rest soon", "not like"),
-    ("view 9", "lines 1 to 2"),
-    ("view 3", "lines 1 to 2"),
-    ("view 0", "lines 1 to 2"),
-    ("heal;heal", "only one heal"),
+    ("view 9", "sheets for lines 1 to 2 only"),
+    ("view 3", "sheets for lines 1 to 2 only"),
+    ("view 0", "sheets for lines 1 to 2 only"),
+    ("rest 1d", "need a view or heal"),
+    ("rest 1d;rest 1h", "need a view or heal"),
+    ("view;rest 22h", "need a view or heal"),
+    ("heal;heal", "second heal needs a rest"),
+    ("heal;view;heal", "second heal needs a rest"),
     ("fly", "not view"),
     ("heal 2", "not view"),
 ])
@@ -57,8 +61,19 @@ def test_camp_steps_refuse_what_the_route_cannot_drive(text, why):
         route_camp.parse_steps(text)
 
 
+def test_a_second_heal_is_allowed_after_a_rest():
+    route_camp.validate_steps(("heal", "rest 1h", "heal"))
+    route_camp.validate_steps(("heal", "rest 1d", "heal"))
+
+
+@pytest.mark.parametrize("steps", [("rest 1d", "view 1"), ("heal", "rest 1d", "heal"),
+                                   ("rest 1d", "rest 1h", "view"), ("rest 21h",)])
+def test_a_long_rest_is_allowed_when_a_sheet_follows_and_a_short_one_alone(steps):
+    route_camp.validate_steps(steps)
+
+
 def test_a_view_is_refused_past_the_party_s_last_line():
-    with pytest.raises(RouteError, match="lines 1 to 1"):
+    with pytest.raises(RouteError, match="sheets for lines 1 to 1 only"):
         route_camp.validate_steps(("view 2",), party_size=1)
 
 
@@ -278,6 +293,21 @@ def test_a_camp_run_fails_when_the_clock_did_not_move_by_the_rest(tmp_path, cloc
     _, result = _camp_run(tmp_path, clock, monkeypatch, clock_f="04:22")
     assert result["after_clock_advanced"] is False
     assert result["success"] is False
+
+
+@pytest.mark.parametrize("rest,clock_f,check", [
+    ("rest 1d", "04:20", foundation.CLOCK_UNPROVABLE),
+    ("rest 22h", "04:20", foundation.CLOCK_UNPROVABLE),
+    ("rest 1h", "05:22", "advanced"),
+    ("rest 1h", "04:22", "not advanced"),
+])
+def test_a_rest_the_clock_cannot_see_is_recorded_as_unprovable(
+        tmp_path, clock, monkeypatch, rest, clock_f, check):
+    _, result = _camp_run(tmp_path, clock, monkeypatch, clock_f=clock_f,
+                          steps=("heal", rest, "view"))
+    assert result["clock_check"] == check
+    unproven = check == foundation.CLOCK_UNPROVABLE
+    assert result["after_clock_advanced"] is (None if unproven else check == "advanced")
 
 
 def test_a_camp_sheet_with_no_identity_rule_fails_the_run(tmp_path, clock, monkeypatch):
