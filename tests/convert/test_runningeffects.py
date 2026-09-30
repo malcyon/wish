@@ -4121,3 +4121,9 @@ def test_a_written_pool_pair_survives_write_then_read():
     out = _read(p, 2)
     assert sorted(bytes(r)[:5] for r in out.get("running_effects")) == sorted(
         [_POOL_ACTIVE, _POOL_PARKED])
+
+
+def test_the_amiga_warrior_test_refuses_a_title_it_has_no_rule_for():
+    with pytest.raises(ValueError):
+        c64_codec.amiga_strength_warrior("pool-of-radiance",
+                                         {"fighter": 4}, {})

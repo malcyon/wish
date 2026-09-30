@@ -938,7 +938,9 @@ def amiga_strength_warrior(title_key: str, levels, former_levels) -> bool:
     if title_key == "secret-of-the-silver-blades":
         return any((levels or {}).get(name, 0) > 0
                    for name in effects.LATER_STRENGTH_WARRIOR_CLASSES)
-    return effects.later_strength_warrior(levels, former_levels)
+    if title_key == "curse-of-the-azure-bonds":
+        return effects.later_strength_warrior(levels, former_levels)
+    raise ValueError(f"no Amiga Strength recalculation for {title_key!r}")
 
 
 def _native_strength(char: NeutralCharacter,
