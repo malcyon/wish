@@ -253,8 +253,7 @@ player's disks only, that one square's pixels equal `tile_pixels` of its tile.
 five entry points and reports the data tables it stops at -- the site tables
 and the impassable list are those tables, so the offsets are a matter of
 reading `eclwalk.py list`'s unreached ranges for `ECL19`/`1A`/`1B`, not of
-rebuilding a decoder. Until then the four sites the game hides are drawn
-(§7).
+rebuilding a decoder. Every site is drawn regardless (§7).
 
 ## 5. What this shares with the other map work
 
