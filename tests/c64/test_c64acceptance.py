@@ -7928,6 +7928,90 @@ def test_an_encounter_that_ends_without_a_fight_is_not_resent(tmp_path, monkeypa
     assert got["fights"] == [] and got["position"] == [5, 4, 0]
 
 
+class EncounterTreasureWalk(EncounterWalk):
+    """An encounter square whose `PRESS` page, once answered, leads to a
+    treasure screen (mode 5) instead of a fight: `VIEW TAKE POOL SHARE EXIT`,
+    and with `leave_prompt` EXIT opens `GO BACK LEAVE TREASURE` before the
+    world comes back."""
+
+    TREASURE = "VIEW TAKE POOL SHARE EXIT"
+    LEAVE = "GO BACK LEAVE TREASURE"
+
+    def __init__(self, script, clock, leave_prompt=False, **kw):
+        super().__init__(script, clock, **kw)
+        self.leave_prompt = leave_prompt
+        self.stage = None
+        self.chosen = []
+
+    def phase(self):
+        if self.stage is not None and not self.done:
+            return self.stage
+        phase = super().phase()
+        if phase == "prep":
+            self.stage = "treasure"
+        return self.stage if self.stage and not self.done else phase
+
+    def mode(self):
+        return 5 if self.phase() == "treasure" else super().mode()
+
+    def screen(self):
+        phase = self.phase()
+        if phase in ("treasure", "leave"):
+            bar = self.TREASURE if phase == "treasure" else self.LEAVE
+            return FakeScreen(_window({3: "THE ROOM HOLDS GOLD."}, bar))
+        return super().screen()
+
+    def select_bar(self, label, row=24, timeout=0, **kw):
+        phase = self.phase()
+        self.chosen.append((label, phase))
+        if phase == "treasure" and label == "EXIT":
+            if self.leave_prompt:
+                self.stage = "leave"
+            else:
+                self._finish()
+            return True
+        if phase == "leave" and label == "LEAVE":
+            self._finish()
+            return True
+        return super().select_bar(label, row, timeout, **kw)
+
+    def _finish(self):
+        self.stage = None
+        self.x, self.y = self.new
+        self.done = True
+
+
+def _treasure_encounter_run(tmp_path, monkeypatch, **kw):
+    sess = EncounterTreasureWalk({0: "press"}, None, **kw)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    sess.timer = run.clock
+    return sess, run, log
+
+
+def test_a_treasure_screen_after_an_encounter_squares_press_bar_is_left_and_recorded(
+        tmp_path, monkeypatch):
+    sess, run, log = _treasure_encounter_run(tmp_path, monkeypatch)
+    got = run.walk_fight("II")
+    log.close()
+    assert sess.chosen == [("EXIT", "treasure")]
+    assert got["treasure_screens"] == [
+        {"at_move": 0, "bar": sess.TREASURE, "mode": A.TREASURE_MODE}]
+    assert got["fights"] == [] and sess.pressed == ["I", "I"]
+    assert got["position"] == [5, 3, 0]
+
+
+def test_exit_that_opens_the_leave_treasure_prompt_is_answered_with_leave(
+        tmp_path, monkeypatch):
+    sess, run, log = _treasure_encounter_run(tmp_path, monkeypatch,
+                                             leave_prompt=True)
+    got = run.walk_fight("II")
+    log.close()
+    assert sess.chosen == [("EXIT", "treasure"), ("LEAVE", "leave")]
+    assert [t["bar"] for t in got["treasure_screens"]] == [
+        sess.TREASURE, sess.LEAVE]
+    assert got["position"] == [5, 3, 0]
+
+
 def test_a_route_goes_on_after_an_encounter_step(tmp_path, monkeypatch):
     sess, run, log = _encounter_run(tmp_path, monkeypatch, {0: "press"})
     got = run.walk_fight("II")
