@@ -1905,7 +1905,7 @@ def _opening_scene(name: str, place: dict | None) -> bool:
 
 #: The published Curse C64 source's start: a wall stands ahead to the west, so the party turns and
 #: walks back east over (6,13) to (7,13).
-CURSE_WALLED_WEST = {"area": 1, "x": 5, "y": 13, "facing": 3}
+CURSE_WALLED_WEST = {"area": 1, "x": 5, "y": 13, "facing": geo.WEST}
 
 
 def _turn_about(name: str, letter: str, place: dict | None) -> bool:
@@ -2064,7 +2064,7 @@ def prepare_published(name: str, run_id: str, report_path: pathlib.Path,
     if "place" not in reading or "clock" not in reading:
         raise RouteError(f"published slot {letter} does not decode: {reading}")
     # The way out of the start square depends on where the party stands, not on the port:
-    # Curse's party-menu square faces a wall to the east.
+    # Curse's start square faces a wall to the east, and CURSE_WALLED_WEST faces one to the west.
     turn_about = _turn_about(name, letter, reading["place"])
     items_screen = _items_screen(name, reading)
     opening_scene = _opening_scene(name, reading["place"])
