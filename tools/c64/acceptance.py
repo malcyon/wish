@@ -60,7 +60,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown |
-| `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
+| `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
 | `warp AREA` | Pool only: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
@@ -647,6 +647,14 @@ ENCOUNTER_DRAW_SECONDS = 30.0
 #: How long `walk-fight` waits for a fight to open after it has answered an
 #: encounter menu or a `YES NO`.
 FIGHT_OPENS_SECONDS = 60.0
+#: The game sides `walk-fight` answers a disk prompt for; the boot side is
+#: never asked for mid-walk, and any other prompt stops the step.
+WALK_SIDES = ("2", "3", "4")
+
+#: How long an answered disk prompt may stay up before the step stops; it
+#: lingers about a second while the game reads the directory.
+SIDE_LINGER_SECONDS = 8.0
+
 #: Passes at one move that sent no key because the square's text came up at
 #: `MOVE`, before the move is failed.
 MOVE_UNSENT_PASSES = 3
@@ -3270,6 +3278,51 @@ class PoolRun:
             "walk", f"walk {route}: move {n} ({move}) from {before} {why}, "
                     f"not a step: {row}")
 
+    def answer_side_prompt(self, route: str, last, why: str) -> None:
+        """`refuse_prompt`, except that `INSERT SIDE # N` is answered once.
+
+        The Pool encounter loads its monsters from side 2, so a move that
+        starts one puts the prompt up in front of it.  The frame is kept, the
+        side's image attached and a key pressed, then the answered prompt's
+        lingering text is waited out.  A save-disk prompt, a side outside
+        `WALK_SIDES`, a side already answered in this step, or a prompt that
+        outlives `SIDE_LINGER_SECONDS` stops the step with the frame kept."""
+        sess = self.sess
+        screen = sess.screen()
+        if screen is None or not sess.wanted_disk(screen):
+            return
+        text = screen.text().upper()
+        sides = S.RE_GAME_SIDE.findall(text)
+        if (S.SAVE_PROMPT in text or len(sides) != 1
+                or sides[0] not in WALK_SIDES):
+            self.refuse_prompt(route, last, why)
+            return
+        side, row = sides[0], screen.row(24).strip()
+        n, move, before = last
+        if side in self.walk_sides_answered:
+            raise self.fail(
+                "walk", f"{self.walk_verb} {route}: move {n} ({move}) from "
+                        f"{before}: the side {side} prompt came back after "
+                        f"it was answered: {row}")
+        self.capture(f"side{side}-before-answer")
+        if not sess.handle_prompt(screen):
+            raise self.fail(
+                "walk", f"{self.walk_verb} {route}: move {n} ({move}) from "
+                        f"{before}: the side {side} prompt was not answered: "
+                        f"{row}")
+        self.walk_sides_answered.add(side)
+        self.log.emit("walk-side-answered", side=side, n=n, move=move)
+        limit = self.clock() + SIDE_LINGER_SECONDS
+        while self.clock() < limit:
+            time.sleep(0.3)
+            after = sess.screen()
+            if after is None or not sess.wanted_disk(after):
+                return
+        raise self.fail(
+            "walk", f"{self.walk_verb} {route}: move {n} ({move}) from "
+                    f"{before}: the side {side} prompt stayed up "
+                    f"{int(SIDE_LINGER_SECONDS)} seconds after its answer")
+
     def walk(self, arg: str) -> dict:
         """The moves in ARG, each judged by the square before and after.
 
@@ -3541,6 +3594,7 @@ class PoolRun:
     def _walk_answering(self, arg: str, word: str) -> dict:
         self.walk_verb = "walk-flee" if word == ENCOUNTER_FLEE else "walk-fight"
         route, answer = parse_walk_fight(arg)
+        self.walk_sides_answered = set()
         self.leave_arrival(f"{self.walk_verb} {route}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
@@ -3560,7 +3614,7 @@ class PoolRun:
         for n, move in enumerate(route):
             self.budget(1, f"{self.walk_verb} {route}")
             last = (n, move, self.position())
-            self.refuse_prompt(route, last, "was up before the next move")
+            self.answer_side_prompt(route, last, "was up before the next move")
             before = last[2]
             resent = False
             sends = unsent = 0
@@ -3613,8 +3667,9 @@ class PoolRun:
                           resent=resent, row24=self.bar().strip())
             moves.append({"move": move, "before": before, "after": after,
                           "moved": before[:2] != after[:2], "resent": resent})
-        self.refuse_prompt(route, (len(route) - 1, route[-1], self.position()),
-                           "ran the square's event")
+        self.answer_side_prompt(
+            route, (len(route) - 1, route[-1], self.position()),
+            "ran the square's event")
         self.capture(f"walked-{route}")
         got = {"route": route, "answer": answer, "position": self.position(),
                "fights": fights, "moves": moves}
@@ -3658,7 +3713,7 @@ class PoolRun:
         unread = (not moved and not getattr(sess, "walk_encounter_started", False)
                   and self.took_nothing(before, before_rows, screens)
                   and not getattr(sess, "walked_outdoors", False))
-        self.refuse_prompt(route, last, "ran the square's event")
+        self.answer_side_prompt(route, last, "ran the square's event")
         stop = getattr(sess, "walk_stop_screen", None)
         refused = getattr(sess, "walk_refused", None)
         if refused and stop is None:
@@ -3792,7 +3847,7 @@ class PoolRun:
         stale_until = self.clock() + ENCOUNTER_STALE_BAR_SECONDS - key_age
         while True:
             self.budget(1, f"{self.walk_verb} {route}")
-            self.refuse_prompt(route, last, "started an encounter")
+            self.answer_side_prompt(route, last, "started an encounter")
             if sess.mode() in (S.COMBAT, COMBAT_PREP):
                 return None, False, False
             screen = sess.screen()

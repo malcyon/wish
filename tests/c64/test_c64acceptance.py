@@ -6734,6 +6734,86 @@ def test_walk_fight_fights_an_encounter_mid_route_and_resumes(tmp_path, monkeypa
     assert sess.walk_encounter is None
 
 
+class SideFightWalk(FightWalk):
+    """A `FightWalk` whose moves in `prompts` (numbered from 0 by `walk_one`
+    call) put `INSERT SIDE # 2, AND PRESS ANY KEY.` up.  `handle_prompt`
+    attaches the side's image and presses a key; the text then stays for
+    `linger` more screen reads."""
+
+    PROMPT = "INSERT SIDE # 2, AND PRESS ANY KEY."
+
+    def __init__(self, prompts, script, linger=0, **kw):
+        super().__init__(script, **kw)
+        self.prompts_at, self.linger = set(prompts), linger
+        self.prompt_up, self.attaches, self.keys_sent = False, [], 0
+        self.cleared_in = None
+
+    def walk_one(self, move, *a, **k):
+        if self.calls in self.prompts_at:
+            self.prompt_up, self.cleared_in = True, None
+        return super().walk_one(move, *a, **k)
+
+    def screen(self):
+        if self.prompt_up and self.cleared_in is not None:
+            if self.cleared_in <= 0:
+                self.prompt_up = False
+            self.cleared_in -= 1
+        if self.prompt_up:
+            return _Text(_window({}, self.PROMPT))
+        return _Text(_window({}, WORLD_BAR))
+
+    def handle_prompt(self, s=None):
+        self.prompts += 1
+        self.attaches.append(self.wanted_disk(s))
+        self.keys_sent += 1
+        self.cleared_in = self.linger
+        return True
+
+
+def test_walk_fight_answers_a_side_prompt_once_and_goes_on_to_the_fight(
+        tmp_path, monkeypatch):
+    sess = SideFightWalk({1}, {1: "fight"}, linger=2)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_fight("III")
+    log.close()
+    assert sess.attaches == ["SIDE2.D64"] and sess.keys_sent == 1
+    assert sess.pressed == ["I", "I", "I"]
+    assert [f["at_move"] for f in got["fights"]] == [1]
+    assert got["position"] == [5, 2, 0]
+
+
+def test_walk_fight_stops_on_a_side_prompt_that_comes_back_keeping_the_frame(
+        tmp_path, monkeypatch):
+    sess = SideFightWalk({0, 1}, {}, linger=1)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    shots = []
+    run.capture = lambda tag, rows=None: shots.append(tag) or []
+    with pytest.raises(A.StepFailed, match="side 2 prompt came back"):
+        run.walk_fight("II")
+    log.close()
+    assert sess.keys_sent == 1
+    assert shots == ["side2-before-answer", "lost-walk"]
+
+
+def test_walk_fight_stops_on_a_side_prompt_that_never_clears(tmp_path, monkeypatch):
+    sess = SideFightWalk({0}, {}, linger=10 ** 6)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    with pytest.raises(A.StepFailed, match="stayed up"):
+        run.walk_fight("I")
+    log.close()
+    assert sess.keys_sent == 1
+
+
+def test_walk_fight_stops_on_a_side_it_does_not_know(tmp_path, monkeypatch):
+    sess = SideFightWalk({0}, {}, linger=0)
+    sess.PROMPT = "INSERT SIDE # 1, AND PRESS ANY KEY."
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    with pytest.raises(A.StepFailed, match="ran the square's event"):
+        run.walk_fight("I")
+    log.close()
+    assert sess.keys_sent == 0
+
+
 def test_walk_fight_resends_a_key_the_fight_left_unfinished_once(tmp_path, monkeypatch):
     sess = FightWalk({0: "fight-stay"})
     run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
