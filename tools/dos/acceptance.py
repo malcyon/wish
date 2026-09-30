@@ -66,6 +66,7 @@ a source whose title does not match `--title`:
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool, Curse and Silver Blades, in camp: `MAGIC`, `DISPLAY`, every page of the list of spells in effect read as text with the title's own font (`load_font`), turning with `n` while the bar is ` NEXT EXIT`; `members` is each member's name and the effect names under it, and the list must name every member (Pool's page also six name rows); `Return` or `e` back to the Magic bar (`DISPLAY_LEAVE`) and `e` to camp |
 | `cast N SPELL [T]` | Pool, in camp: roster line N highlighted with `End`, `MAGIC`, `CAST`, the spell list's title checked against line N's name, the highlight moved with `End` to SPELL's row (`dosbox.PoolOfRadiance.CAST_SPELLS`: `BLESS`, `ANIMATE-DEAD`, `SLOW-POISON`, and `CURE-LIGHT-WOUNDS`, which needs target line T), `CAST`, T picked with `End` and `Return` at `CAST SPELL ON WHOM`, and believed only when the list comes back one SPELL row shorter, or the Magic bar comes back when SPELL was the caster's only row; `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
+| `scribe N SPELL` | Pool, Curse and Silver Blades, in camp: roster line N highlighted (`End` in Pool and Curse, `Down` in Silver Blades), `MAGIC`, `SCRIBE`; the scroll list read as text with the title's font (`load_font`), its title checked against line N's name, and SPELL (several words; a hyphen reads as a space) required on it without the `*` of a spell being scribed; the highlight walked onto SPELL's row with `SCRIBE_LIST_DOWN`, reading it after each press, and `SCRIBE` believed only when that row redraws as `*SPELL`.  Each `SCRIBE` is sent only while the row is highlighted and unmarked, the second only when nothing on the screen changed after the first; a change without the mark is the game refusing, and the step fails with the words it drew.  Then the list's `EXIT`, the chosen spells read (SPELL must be listed `*`), their `EXIT`, `YES` at `SCRIBE THESE SPELLS?` and the Magic bar's `EXIT`, each pressed only at the screen it belongs to.  The party stays camped, so a camp `save` keeps the scribe pending and a `rest` finishes it; that rest's `scribe_pending` says a scribe was pending when it began, which any step outside `SCRIBE_KEEPS` forgets.  Driven in Pool of Radiance; Silver Blades' screens and keys are the hand-driven run's, and Curse's are its strings only |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below); in Curse a message over the continue bar that ends the rest (Tilverton's Royal Guards) gets `Return`, the map bar is required, and the party camps again, logged as `ended_by_message` |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
@@ -305,6 +306,49 @@ FONT_GLYPHS = 0x40
 #: Silver Blades draws its mouse pointer, a white arrow, over the Display
 #: list, whose text is cyan (names) and green (effects).
 POINTER_INK = b"\xff\xff\xff"
+#: The titles whose camp `MAGIC > SCRIBE` the `scribe` step drives.
+SCRIBE_TITLES = frozenset({"pool", "curse", "ssb"})
+#: `SCRIBE` on the Magic bar and on the scroll list's `CHOOSE SPELL: SCRIBE
+#: EXIT`, `EXIT` on the list and on the chosen spells, and `YES` at `SCRIBE
+#: THESE SPELLS? YES NO`: each word's capital, measured in Silver Blades and
+#: Pool of Radiance.
+MAGIC_SCRIBE = "s"
+SCRIBE_PICK = "s"
+SCRIBE_LEAVE = "e"
+SCRIBE_YES = "y"
+#: The key that moves the scroll list's highlight a row down, wrapping:
+#: `End` (`dosbox.LIST_DOWN`) in Pool, measured on this list, which opened on
+#: its last row, and in Curse, measured on its grimoire; in Silver Blades
+#: `Down`, the key its roster and party menu take, unmeasured here because its
+#: list opened on the one spell the measured run scribed.
+SCRIBE_LIST_DOWN = {"pool": dosbox.LIST_DOWN, "curse": dosbox.LIST_DOWN, "ssb": "Down"}
+#: The scroll list, the chosen spells and the text read off both: the list
+#: menu's rows are 8 pixels from y 40 (text row 5), the highlighted one found
+#: by `Screen.highlight_row`; the title is text row 1 and the bar row 24, each
+#: read with the title's font (`load_font`).  Pool and Silver Blades draw a
+#: level heading at column 1, a spell at column 3, and a spell being scribed
+#: as `*` at column 2 before its name.
+SCRIBE_LIST = (8, 40, 296, 128)
+SCRIBE_HEAD_ROW = 1
+BAR_ROW = dosbox.BAR[1] // 8
+SCRIBE_LEVEL = re.compile(r"\d+(ST|ND|RD|TH) LEVEL")
+SCRIBE_MARK = "*"
+#: What tells the three scribe screens apart: the list's bar opens `CHOOSE
+#: SPELL` and its title holds `ON SCROLL` (`<NAME>'S SPELLS ON SCROLLS`); the
+#: chosen spells' bar is `EXIT` alone under `<NAME>'S SPELLS TO SCRIBE` (Pool:
+#: `SPELLS TO BE SCRIBED`); the confirmation's bar holds `THESE SPELLS?`.
+#: Measured in Pool and Silver Blades; Curse's strings are the same
+#: (`GAME.OVR` 0x2A4A7, 0x2A4C8, 0x2E178), its screens undriven.
+SCRIBE_LIST_BAR = "CHOOSE SPELL"
+SCRIBE_LIST_HEAD = "ON SCROLL"
+SCRIBE_CHOSEN_HEAD = "SPELLS TO"
+SCRIBE_CONFIRM = "THESE SPELLS?"
+#: How long a pick is given to redraw its row as `*SPELL` before the next key.
+SCRIBE_PICK_SECONDS = 6.0
+#: The steps after which a scribe is still pending: none of them leaves camp.
+#: The camp save does not cancel it (Silver Blades, measured); camp exit and
+#: camp entry do (`GAME.OVR` 0x1D359 and 0x1D1B9 call the party clear).
+SCRIBE_KEEPS = frozenset({"scribe", "rest", "save", "shot", "read"})
 #: Pool's map command bars and its character sheet's bar `VIEW: TRADE DROP
 #: EXIT`, by `bar_signature`, each measured off a real screen: `town` on the
 #: runs that already used the map (#666's `ca4bbff4fa-dos-pool-sheet-live`,
@@ -758,6 +802,70 @@ def display_lines(screen: dosbox.Screen, font: dict[bytes, str]) -> list[str]:
     return ["".join(read_cell(screen, col * CELL, row * CELL, font)
                     for col in DISPLAY_COLUMNS).rstrip()
             for row in DISPLAY_ROWS]
+
+
+def text_row(screen: dosbox.Screen, row: int, font: dict[bytes, str],
+             columns=range(40)) -> str:
+    """Text row `row` over `columns`, read with the title's font, right-stripped."""
+    return "".join(read_cell(screen, col * CELL, row * CELL, font)
+                   for col in columns).rstrip()
+
+
+def spell_key(text: str) -> str:
+    """A spell's name for comparison: upper case, a hyphen read as a space,
+    runs of spaces as one."""
+    return " ".join(text.upper().replace("-", " ").split())
+
+
+def scribe_entries(screen: dosbox.Screen, font: dict[bytes, str]) -> list[dict]:
+    """The spells of the scroll list or of the chosen spells, each with its
+    list row (from 0, as `highlight_row` counts), the level heading above it,
+    and whether it is drawn `*`, being scribed."""
+    x, y, _, h = SCRIBE_LIST
+    out, level = [], None
+    for k in range(h // CELL):
+        line = text_row(screen, y // CELL + k, font, DISPLAY_COLUMNS)
+        text = line.strip()
+        if not text:
+            continue
+        if SCRIBE_LEVEL.fullmatch(text):
+            level = text
+        elif line.startswith(" "):
+            marked = text.startswith(SCRIBE_MARK)
+            out.append({"row": k, "level": level, "marked": marked,
+                        "spell": text[len(SCRIBE_MARK):].strip() if marked else text})
+    return out
+
+
+def scribe_screen(screen: dosbox.Screen, font: dict[bytes, str]) -> str | None:
+    """`list`, `chosen` or `confirm` for the three scribe screens, else None."""
+    bar = text_row(screen, BAR_ROW, font)
+    head = text_row(screen, SCRIBE_HEAD_ROW, font, DISPLAY_COLUMNS)
+    if bar.strip().startswith(SCRIBE_LIST_BAR) and SCRIBE_LIST_HEAD in head:
+        return "list"
+    if bar.strip() == "EXIT" and SCRIBE_CHOSEN_HEAD in head:
+        return "chosen"
+    if SCRIBE_CONFIRM in bar:
+        return "confirm"
+    return None
+
+
+def roster_text(screen: dosbox.Screen, line: int, font: dict[bytes, str]) -> str:
+    """Camp roster line `line`'s name, read with the title's font."""
+    x, y = POD_ROSTER["camp"]
+    return "".join(read_cell(screen, x + CELL * i, y + CELL * (line - 1), font)
+                   for i in range(POD_NAME_CELLS)).strip()
+
+
+def changed_rows(before: dosbox.Screen, after: dosbox.Screen,
+                 font: dict[bytes, str]) -> list[str]:
+    """The text rows that differ between two frames, as `after` draws them."""
+    out = []
+    for row in range(25):
+        now = text_row(after, row, font)
+        if now != text_row(before, row, font) and now.strip("? "):
+            out.append(now.strip("? "))
+    return out
 
 
 def _same_line(a: str, b: str) -> bool:
@@ -1665,7 +1773,7 @@ STEP_HELP = ("load, begin, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, leave,
              "'rest 5m', 'save D', "
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
              "'halve 1 1', 'join 4 15', 'view 1', 'memorize 5', 'cast 2 BLESS', "
-             "'cast 2 CURE-LIGHT-WOUNDS 4', 'shot NAME', "
+             "'cast 2 CURE-LIGHT-WOUNDS 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
              "'press KEY', 'fight', 'fight 900', 'prayer-watch 49', read")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
 #: 0x0CB8), upper case.
@@ -1702,6 +1810,12 @@ def parse_step(text: str) -> Step:
         if target and not known[spell][1]:
             raise ValueError(f"cast {spell} takes no target: {text!r}")
         return Step(kind, text, line=int(words[1]), name=spell, row=target)
+    if kind == "scribe" and len(words) >= 3 and re.fullmatch(r"[1-8]", words[1]):
+        spell = spell_key(" ".join(words[2:]))
+        if SCRIBE_MARK in spell:
+            raise ValueError(f"scribe {spell!r} is refused: name the spell without "
+                             f"the {SCRIBE_MARK} the list draws on one being scribed")
+        return Step(kind, text, line=int(words[1]), name=spell)
     if kind == "change" and len(words) == 3 and re.fullmatch(r"[1-8]", words[1]):
         if words[2].upper() not in CHANGE_CLASSES:
             raise ValueError(f"change to {words[2]!r} is refused: the class is one "
@@ -1838,6 +1952,12 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                                  f"{', '.join(sorted(DISPLAY_TITLES))} only, not {title}")
             if where != "camp":
                 raise ValueError(f"display needs camp first: {step.text!r}")
+        elif k == "scribe":
+            if title not in SCRIBE_TITLES:
+                raise ValueError(f"scribe is driven in "
+                                 f"{', '.join(sorted(SCRIBE_TITLES))} only, not {title}")
+            if where != "camp":
+                raise ValueError(f"scribe needs camp first: {step.text!r}")
         elif k == "cast":
             if title != "pool":
                 raise ValueError(f"cast is driven in pool only, not {title}")
@@ -2709,6 +2829,9 @@ class Driver:
         self.combat_ds: int | None = None
         #: The title's text font, once `display` has read it.
         self._font: dict[bytes, str] | None = None
+        #: True from a `scribe` until a step that is not in `SCRIBE_KEEPS`
+        #: begins, or a `rest` reports it: the scribe is still pending in camp.
+        self.scribing = False
         #: When the driver was made, which is when the boot was over.
         self.began = time.time()
 
@@ -4914,15 +5037,24 @@ class Driver:
                 raise self.fail("rest-inc-mins", "Inc on minutes changed nothing")
         return {"days": days, "hours": hours, "fives": fives}
 
+    def step_begins(self, kind: str) -> None:
+        """Forget a pending scribe when a step that may leave camp begins."""
+        if kind not in SCRIBE_KEEPS:
+            self.scribing = False
+
     def rest(self, minutes: int) -> dict:
         """Rest for `minutes`, or until an event ends it early.
 
         When the returned `ended_by_message` is true, `"asked"` is the
         minutes requested, not how long the party actually rested -- that
         duration is in the clock of the next save, per `rest_message`.
+        `scribe_pending` is whether a `scribe` was still pending in this camp
+        when the rest began, which is when the rest can finish it.
         """
         if self.camp_sig is None:
             raise StepFailed("rest needs camp first")
+        pending = self.scribing and not self.left_camp
+        self.scribing = False
         self.ensure_camp()
         if not self.press_changes(CAMP_REST, wait=10.0):
             raise self.fail("rest-menu", "REST did not open the rest menu")
@@ -4938,7 +5070,8 @@ class Driver:
             self.rest_message()
         self.shot("rested")
         return {"asked": minutes, "zero_presses": zeroed, **presses,
-                "left_camp": self.left_camp, "ended_by_message": ended == "message"}
+                "left_camp": self.left_camp, "ended_by_message": ended == "message",
+                "scribe_pending": pending}
 
     def rest_message(self) -> None:
         """Curse: `Return` past the continue screens that ended a rest, the map
@@ -5116,6 +5249,188 @@ class Driver:
         if not self.wait_camp(timeout=15.0):
             raise self.fail(f"{label}-back", "the camp bar did not stay after EXIT")
         return {"line": line, **moved, **got, "back": self.shot(f"{label}-back")}
+
+    def _scribe_state(self, screen, font: dict[bytes, str]) -> str | None:
+        """Which screen of the scribe route `screen` is: `list`, `chosen`,
+        `confirm`, `magic`, `camp`, or None for any other."""
+        kind = scribe_screen(screen, font)
+        if kind is not None:
+            return kind
+        if bar_signature(screen) == POOL_MAGIC_BAR:
+            return "magic"
+        if self.in_camp(screen):
+            return "camp"
+        return None
+
+    def _scribe_advance(self, key: str, here: str, want: tuple[str, ...],
+                        font: dict[bytes, str], label: str, what: str) -> str:
+        """Press `key` at the `here` screen until one of `want` shows.
+
+        Pressed a second time only while `here` still shows, since the first
+        key after a redraw can be lost; any other screen stops the run with
+        nothing more pressed.
+        """
+        for _ in range(2):
+            if self._scribe_state(self.s.capture(), font) != here:
+                raise self.fail(label, f"{what}: the {here} screen is not showing")
+            self.s.key(key)
+            if self.s.wait_for(lambda sc: self._scribe_state(sc, font) in want,
+                               self.bounded(15.0, label)):
+                return self._scribe_state(self.s.settle(quiet=0.6, timeout=20.0), font)
+            now = self._scribe_state(self.s.capture(), font)
+            if now != here:
+                raise self.fail(label, f"{what} put up a screen that is not "
+                                f"{' or '.join(want)} ({now or 'unknown'})")
+        raise self.fail(label, f"{what} changed nothing")
+
+    def _scribe_walk(self, row: int, font: dict[bytes, str], label: str) -> int:
+        """Move the scroll list's highlight onto list row `row`, reading it
+        after each press of the title's `SCRIBE_LIST_DOWN`, which wraps."""
+        key = SCRIBE_LIST_DOWN[self.title.key]
+        screen = self.s.capture()
+        here, presses, stuck = screen.highlight_row(SCRIBE_LIST), 0, 0
+        while here != row:
+            if here is None:
+                raise self.fail(label, "the scroll list shows no highlighted row")
+            if presses > SCRIBE_LIST[3] // CELL or stuck >= 2:
+                raise self.fail(label, f"{presses} presses of {key} never brought the "
+                                f"highlight to list row {row}")
+            was = here
+            self.s.key(key)
+            presses += 1
+            self.s.wait_for(lambda sc: sc.highlight_row(SCRIBE_LIST) != was, 5.0)
+            screen = self.s.capture()
+            if scribe_screen(screen, font) != "list":
+                raise self.fail(label, f"{key} left the scroll list")
+            here = screen.highlight_row(SCRIBE_LIST)
+            stuck = stuck + 1 if here == was else 0
+        return presses
+
+    def _scribe_pick(self, row: int, font: dict[bytes, str], label: str) -> int:
+        """`SCRIBE` on list row `row`, believed only when that row redraws as
+        `*SPELL`.  Each key is sent only while the list shows with that row
+        highlighted and unmarked; the second only when nothing on the screen
+        changed after the first, since any change without the mark is the
+        game refusing (`You already know that spell`, `You can not scribe
+        that spell`), whose words the failure carries.  Returns the keys sent.
+        """
+        def entry(sc) -> dict | None:
+            return next((e for e in scribe_entries(sc, font) if e["row"] == row), None)
+
+        def untouched(sc) -> bool:
+            e = entry(sc)
+            return (scribe_screen(sc, font) == "list" and e is not None
+                    and not e["marked"] and sc.highlight_row(SCRIBE_LIST) == row)
+
+        def marked(sc) -> bool:
+            e = entry(sc)
+            return scribe_screen(sc, font) == "list" and e is not None and e["marked"]
+
+        for sent in (1, 2):
+            before = self.s.capture()
+            if not untouched(before):
+                raise self.fail(label, "the spell's row is no longer highlighted and "
+                                "unmarked on the scroll list; nothing more is pressed")
+            changed: list = []
+
+            def seen(sc, before=before, changed=changed) -> bool:
+                if not changed and sc.digest() != before.digest():
+                    changed.append(sc)
+                return marked(sc)
+
+            self.s.key(SCRIBE_PICK)
+            if self.s.wait_for(seen, self.bounded(SCRIBE_PICK_SECONDS, label)):
+                return sent
+            if changed:
+                words = changed_rows(before, changed[0], font)
+                raise self.fail(f"{label}-refused", "SCRIBE did not mark the spell and "
+                                f"the screen changed: {' / '.join(words) or 'no text'}")
+        raise self.fail(label, "two presses of SCRIBE changed nothing")
+
+    def scribe(self, line: int, spell: str) -> dict:
+        """Roster line `line` picks `spell` from his scrolls in camp `MAGIC >
+        SCRIBE`, confirms it, and the party is back in camp, still camped, so
+        a `rest` next finishes the scribe and a camp `save` keeps it pending.
+
+        The scroll list is read as text with the title's font; its title must
+        be line `line`'s name, and `spell` must be on it unmarked.  The
+        highlight is walked onto the spell's row and `SCRIBE` pressed
+        (`_scribe_pick`); the list's `EXIT`, the chosen spells' `EXIT` (the
+        page is read and must list the spell marked), `YES` at `SCRIBE THESE
+        SPELLS?`, and the Magic bar's `EXIT`.  Every key is pressed at a screen
+        the step has recognised, and a second one only while that screen still
+        shows: `EXIT` is exit to DOS on Pool's camp bar.
+        """
+        if self.title.key not in SCRIBE_TITLES:
+            raise StepFailed(f"scribe is driven in {', '.join(sorted(SCRIBE_TITLES))} "
+                             f"only, not {self.title.key}")
+        if self.camp_sig is None:
+            raise StepFailed("scribe needs camp first")
+        font = self.display_font()
+        self.ensure_camp()
+        label = f"scribe-{line}"
+        moved = self.pick_line(line, "camp", f"{label}-select",
+                               CAMP_ROSTER_NEXT.get(self.title.key, POOL_ROSTER_NEXT))
+        name = roster_text(self.s.capture(), line, font)
+        self.shot(f"{label}-line")
+        for _ in range(2):
+            self.s.key(POD_MAGIC)
+            if self.s.wait_for(lambda sc: bar_signature(sc) == POOL_MAGIC_BAR, 15.0):
+                break
+            if not self.in_camp():
+                raise self.fail(f"{label}-magic", "MAGIC opened a screen that is not "
+                                "the Magic bar")
+        else:
+            raise self.fail(f"{label}-magic", "the camp bar is still showing after MAGIC")
+        magic = self.shot(f"{label}-magic")
+        self._scribe_advance(MAGIC_SCRIBE, "magic", ("list",), font, f"{label}-list",
+                             "SCRIBE")
+        screen = self.s.settle(quiet=0.8, timeout=20.0)
+        head = text_row(screen, SCRIBE_HEAD_ROW, font, DISPLAY_COLUMNS).strip()
+        listed = scribe_entries(screen, font)
+        list_shot = self.shot(f"{label}-list")
+        if not name or not head.startswith(f"{name}'S "):
+            raise self.fail(f"{label}-name", f"the scroll list is {head!r}, not roster "
+                            f"line {line}'s ({name!r})")
+        hits = [e for e in listed if spell_key(e["spell"]) == spell_key(spell)]
+        if not hits:
+            raise self.fail(f"{label}-spell", f"{spell} is not on the scroll list: "
+                            f"{[e['spell'] for e in listed]}")
+        entry = hits[0]
+        if entry["marked"]:
+            raise self.fail(f"{label}-spell", f"{spell} is already drawn "
+                            f"{SCRIBE_MARK}, being scribed; nothing is pressed")
+        walked = self._scribe_walk(entry["row"], font, f"{label}-walk")
+        picked = self._scribe_pick(entry["row"], font, f"{label}-pick")
+        marked = self.shot(f"{label}-marked")
+        after_list = scribe_entries(self.s.capture(), font)
+        chosen, chosen_shot = None, None
+        now = self._scribe_advance(SCRIBE_LEAVE, "list", ("chosen", "confirm"), font,
+                                   f"{label}-exit", "EXIT on the scroll list")
+        if now == "chosen":
+            chosen = scribe_entries(self.s.capture(), font)
+            chosen_shot = self.shot(f"{label}-chosen")
+            if not any(spell_key(e["spell"]) == spell_key(spell) and e["marked"]
+                       for e in chosen):
+                raise self.fail(f"{label}-chosen", f"the chosen spells do not list "
+                                f"{SCRIBE_MARK}{spell}: {chosen}")
+            self._scribe_advance(SCRIBE_LEAVE, "chosen", ("confirm",), font,
+                                 f"{label}-chosen-exit", "EXIT on the chosen spells")
+        confirm = self.shot(f"{label}-confirm")
+        self._scribe_advance(SCRIBE_YES, "confirm", ("magic",), font,
+                             f"{label}-yes", "YES")
+        back_magic = self.shot(f"{label}-back-magic")
+        self._scribe_advance(LEAVE, "magic", ("camp",), font, f"{label}-camp",
+                             "EXIT on the Magic bar")
+        if not self.wait_camp(timeout=15.0):
+            raise self.fail(f"{label}-camp", "the camp bar did not stay after EXIT")
+        self.scribing = True
+        return {"line": line, **moved, "name": name, "spell": spell,
+                "head": head, "list": listed, "list_after_pick": after_list,
+                "chosen": chosen, "walk_presses": walked, "pick_presses": picked,
+                "shots": {"magic": magic, "list": list_shot, "marked": marked,
+                          "chosen": chosen_shot, "confirm": confirm,
+                          "back_magic": back_magic, "camp": self.shot(f"{label}-back")}}
 
     def save(self, letter: str) -> dict:
         if self.where == "party":
@@ -5476,6 +5791,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             for step in steps:
                 deadline.check(step.text)
                 note(event="step", step=step.text)
+                if hasattr(d, "step_begins"):
+                    d.step_begins(step.kind)
                 # Before every step but a capture of what `press` left.
                 if d.where != "pressed":
                     d.journal(re.sub(r"\W+", "-", step.text))
@@ -5499,6 +5816,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.display()
                 elif step.kind == "cast":
                     r = d.cast(step.line, step.name, step.row or None)
+                elif step.kind == "scribe":
+                    r = d.scribe(step.line, step.name)
                 elif step.kind == "save":
                     r = d.save(step.letter)
                     saved.append(step.letter)

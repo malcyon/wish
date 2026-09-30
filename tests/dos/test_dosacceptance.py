@@ -8972,3 +8972,292 @@ def test_a_later_fight_with_no_encounter_menu_gets_its_hand_back_once_combat_beg
     assert any(p["why"] == "unchanged" for p in probes)
     assert got["encounters"] == 0 and got["handed_back"] is True
     assert got["handed_back_to"] == ["GUY", "PAINE"]
+
+
+# -- camp MAGIC > SCRIBE ---------------------------------------------------------
+
+_SCRIBE_NAMES = ("GUY DE VALOIS", "PAINE", "EPONA", "MALACHITE", "DOMINIC", "MORGAINE")
+#: MORGAINE's scroll as Silver Blades listed it (#745's boot 2): two sixth-level
+#: spells and the first-level one she scribed.
+_SCROLL = (("6TH LEVEL", ("STONE TO FLESH", "DISINTEGRATE")),
+           ("1ST LEVEL", ("PROTECTION FROM GOOD",)))
+_BLACK, _GREEN = b"\x00\x00\x00", b"\x55\xff\x55"
+
+
+def _text(px: bytearray, row: int, col: int, text: str, ink: bytes = _GREEN,
+          reverse: int = 0) -> None:
+    """`text` in the stand-in font at a text cell; `reverse` cells from `col`
+    filled white first and the text drawn black on them, as a highlight."""
+    if reverse:
+        for dy in range(8):
+            for x in range(col * 8, (col + reverse) * 8):
+                at = ((row * 8 + dy) * W + x) * 3
+                px[at:at + 3] = _WHITE
+        ink = _BLACK
+    _draw(px, _FONT_BLOCK, row, col, text, ink)
+
+
+class FakeScribe(FakePool):
+    """Camp, the Magic bar and `SCRIBE`, as Silver Blades drew them in #745's
+    boot 2: the roster with the current member highlighted, which the title's
+    camp key moves on; `MAGIC`'s `S` opens `<NAME>'S SPELLS ON SCROLLS` over
+    `CHOOSE SPELL: SCRIBE EXIT`, a heading per level at column 1 and each spell
+    at column 3, the highlight a white block the title's list key moves down
+    the spells and wraps; `S` there redraws the highlighted spell as `*SPELL`
+    at column 2, or, for a spell in `refuse`, shows a message for one capture
+    and changes nothing; `E` opens `<NAME>'S SPELLS TO SCRIBE` over `EXIT`
+    when a spell is marked, else goes back to the Magic bar; its `E` asks
+    `SCRIBE THESE SPELLS?YES NO`, whose `Y` scribes and returns to the Magic
+    bar.  `E` on the Magic bar returns to camp; on the camp bar it is Pool's
+    exit to DOS, recorded in `exited`.
+
+    `start` is the list row the highlight opens on (the first spell by
+    default), `swallow_pick` drops the first `S` on the list, `head` draws
+    another name on the list's title, and `marked` spells are drawn `*`
+    already."""
+
+    CAMP = "SAVE VIEW MAGIC REST ALTER FIX EXIT"
+    MAGIC = "CAST MEMORIZE SCRIBE DISPLAY REST EXIT"
+
+    def __init__(self, tmp, title="ssb", start=None, swallow_pick=False, refuse=(),
+                 marked=(), head=None):
+        super().__init__(tmp, keys=TITLE_KEYS[title])
+        self.title, self.mode, self.line, self.size = title, "camp", 1, 6
+        self.rows: list[tuple[str, str]] = []
+        for level, spells in _SCROLL:
+            self.rows.append(("level", level))
+            self.rows += [("spell", s) for s in spells]
+        self.spell_rows = [k for k, (kind, _) in enumerate(self.rows) if kind == "spell"]
+        self.start = self.spell_rows[0] if start is None else start
+        self.hl = self.start
+        self.swallow_pick, self.refuse, self.head = swallow_pick, set(refuse), head
+        self.marked = set(marked)
+        self.message = False
+        self.scribed: list[str] = []
+        self.exited = False
+
+    def key(self, k, gap=0.0):
+        m = self.mode
+        handled = True
+        if m == "camp" and k == da.CAMP_ROSTER_NEXT.get(self.title, da.POOL_ROSTER_NEXT):
+            self.line = self.line % self.size + 1
+        elif m == "camp" and k == "m":
+            self.mode = "magic"
+        elif m == "camp" and k == "e":
+            self.exited = True
+        elif m == "magic" and k == "s":
+            self.mode, self.hl = "list", self.start
+        elif m == "magic" and k == "e":
+            self.mode = "camp"
+        elif m == "list" and k == da.SCRIBE_LIST_DOWN[self.title]:
+            at = self.spell_rows.index(self.hl)
+            self.hl = self.spell_rows[(at + 1) % len(self.spell_rows)]
+        elif m == "list" and k == "s":
+            spell = self.rows[self.hl][1]
+            if self.swallow_pick:
+                self.swallow_pick = False
+            elif spell in self.refuse:
+                self.message = True
+            else:
+                self.marked.add(spell)
+        elif m == "list" and k == "e":
+            self.mode = "chosen" if self.marked else "magic"
+        elif m == "chosen" and k == "e":
+            self.mode = "confirm"
+        elif m == "confirm" and k == "y":
+            self.scribed += sorted(self.marked)
+            self.mode = "magic"
+        else:
+            handled = False
+        if handled:
+            self.keys.append(k)
+        else:
+            super().key(k, gap)
+
+    def name(self) -> str:
+        return self.head or _SCRIBE_NAMES[self.line - 1]
+
+    def capture(self):
+        if self.mode not in ("camp", "magic", "list", "chosen", "confirm"):
+            return super().capture()
+        px = bytearray(W * H * 3)
+        if self.mode in ("camp", "magic"):
+            _text(px, da.BAR_ROW, 0, self.CAMP if self.mode == "camp" else self.MAGIC)
+            x, y = screens.POD_ROSTER["camp"]
+            for n, name in enumerate(_SCRIBE_NAMES, 1):
+                _text(px, y // 8 + n - 1, x // 8, name, _CYAN,
+                      reverse=screens.POD_NAME_CELLS if n == self.line else 0)
+            return dosbox.Screen(W, H, bytes(px))
+        chosen = self.mode != "list"
+        _text(px, 1, 1, f"{self.name()}'S SPELLS {'TO SCRIBE' if chosen else 'ON SCROLLS'}")
+        _text(px, da.BAR_ROW, 0, {"list": "CHOOSE SPELL: SCRIBE EXIT", "chosen": "EXIT",
+                                  "confirm": "SCRIBE THESE SPELLS?YES NO"}[self.mode])
+        rows = self.rows if not chosen else [
+            r for r in self.rows if r[0] == "level" or r[1] in self.marked]
+        for k, (kind, text) in enumerate(rows):
+            row = da.SCRIBE_LIST[1] // 8 + k
+            if kind == "level":
+                _text(px, row, 1, text, b"\xaa\x55\xff")
+            elif text in self.marked:
+                _text(px, row, 2, "*" + text, reverse=30 if k == self.hl and not chosen
+                      else 0)
+            else:
+                _text(px, row, 3, text, reverse=30 if k == self.hl else 0)
+        if self.message:
+            self.message = False
+            _text(px, 20, 1, "YOU ALREADY KNOW THAT SPELL")
+        return dosbox.Screen(W, H, bytes(px))
+
+
+@pytest.fixture
+def scribe_measured(monkeypatch, tmp_path):
+    """The stand-in font for the title's own, and the fake's Magic bar for the
+    measured one."""
+    (tmp_path / "probe").mkdir()
+    probe = FakeScribe(tmp_path / "probe")
+    probe.mode = "magic"
+    monkeypatch.setattr(da, "POOL_MAGIC_BAR", screens.bar_signature(probe.capture()))
+    monkeypatch.setattr(dosbox, "find_game", lambda stem="POOLRAD": tmp_path)
+    monkeypatch.setattr(da, "load_font", lambda game: _FONT)
+
+
+def _scribe_camp(tmp_path, title="ssb", **kw) -> tuple[FakeScribe, da.Driver]:
+    (tmp_path / "game").mkdir()
+    game = FakeScribe(tmp_path / "game", title, **kw)
+    d = da.Driver(game, lambda **k: None, "D", title, party_size=game.size)
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.camp_sig = screens.bar_signature(game.capture())
+    d.where = "camp"
+    return game, d
+
+
+def test_the_scribe_step_parses_a_line_and_a_spell_of_several_words():
+    step = da.parse_step("scribe 5 Protection from good")
+    assert (step.kind, step.line, step.name) == ("scribe", 5, "PROTECTION FROM GOOD")
+    assert da.parse_step("scribe 6 CURE-LIGHT-WOUNDS").name == "CURE LIGHT WOUNDS"
+
+
+@pytest.mark.parametrize("text", ["scribe 5", "scribe 9 SLEEP", "scribe X SLEEP",
+                                  "scribe 5 *SLEEP"])
+def test_the_scribe_step_refuses_a_malformed_argument(text):
+    assert da.parse_step("scribe 5 SLEEP").name == "SLEEP"
+    with pytest.raises(ValueError):
+        da.parse_step(text)
+
+
+@pytest.mark.parametrize("title", ["pool", "curse", "ssb"])
+def test_scribe_is_taken_in_camp_in_the_three_titles(title):
+    begin = [] if title == "pool" else ["begin"]
+    steps = ["load", *begin, "camp", "scribe 6 SLEEP", "save D", "rest 8h", "save E",
+             "read"]
+    da.validate_steps([da.parse_step(s) for s in steps], title)
+    with pytest.raises(ValueError, match="scribe needs camp first"):
+        da.validate_steps([da.parse_step(s) for s in ["load", *begin, "scribe 6 SLEEP"]],
+                          title)
+
+
+def test_scribe_is_refused_in_pools_of_darkness():
+    steps = [da.parse_step(s) for s in ("load", "begin", "camp", "scribe 6 SLEEP")]
+    with pytest.raises(ValueError, match="scribe is driven in curse, pool, ssb only"):
+        da.validate_steps(steps, "darkness")
+
+
+@pytest.mark.parametrize("title,roster,down", [("pool", "End", "End"),
+                                               ("curse", "End", "End"),
+                                               ("ssb", "Down", "Down")])
+def test_scribe_picks_the_spell_confirms_it_and_ends_in_camp(
+        tmp_path, scribe_measured, title, roster, down):
+    game, d = _scribe_camp(tmp_path, title)
+    got = d.scribe(6, "PROTECTION FROM GOOD")
+    assert game.keys == [roster] * 5 + ["m", "s", down, down, "s", "e", "e", "y", "e"]
+    assert game.scribed == ["PROTECTION FROM GOOD"]
+    assert game.mode == "camp" and not game.exited
+    assert got["name"] == "MORGAINE" and got["head"] == "MORGAINE'S SPELLS ON SCROLLS"
+    assert [e["spell"] for e in got["list"]] == ["STONE TO FLESH", "DISINTEGRATE",
+                                                 "PROTECTION FROM GOOD"]
+    assert [e["level"] for e in got["list"]] == ["6TH LEVEL", "6TH LEVEL", "1ST LEVEL"]
+    assert [e["marked"] for e in got["list_after_pick"]] == [False, False, True]
+    assert [(e["spell"], e["marked"]) for e in got["chosen"]] == [
+        ("PROTECTION FROM GOOD", True)]
+    assert (got["walk_presses"], got["pick_presses"]) == (2, 1)
+    assert d.scribing
+
+
+def test_a_list_that_opens_on_the_spell_is_scribed_without_moving(tmp_path,
+                                                                    scribe_measured):
+    game, d = _scribe_camp(tmp_path, start=4)
+    d.scribe(6, "PROTECTION FROM GOOD")
+    assert game.keys == ["Down"] * 5 + ["m", "s", "s", "e", "e", "y", "e"]
+
+
+def test_a_swallowed_scribe_key_is_sent_once_more(tmp_path, scribe_measured):
+    game, d = _scribe_camp(tmp_path, start=4, swallow_pick=True)
+    got = d.scribe(6, "PROTECTION FROM GOOD")
+    assert game.keys[5:9] == ["m", "s", "s", "s"]
+    assert got["pick_presses"] == 2 and game.scribed == ["PROTECTION FROM GOOD"]
+
+
+def test_the_games_refusal_fails_the_step_after_one_key(tmp_path, scribe_measured):
+    game, d = _scribe_camp(tmp_path, start=4, refuse={"PROTECTION FROM GOOD"})
+    with pytest.raises(da.StepFailed, match="YOU ALREADY KNOW THAT SPELL"):
+        d.scribe(6, "PROTECTION FROM GOOD")
+    assert game.keys[5:] == ["m", "s", "s"]
+    assert game.scribed == [] and not d.scribing
+
+
+def test_a_spell_not_on_the_scroll_list_is_refused_before_any_pick(tmp_path,
+                                                                    scribe_measured):
+    game, d = _scribe_camp(tmp_path)
+    with pytest.raises(da.StepFailed, match="SLEEP is not on the scroll list"):
+        d.scribe(6, "SLEEP")
+    assert game.keys[5:] == ["m", "s"]
+
+
+def test_a_spell_already_being_scribed_is_refused_before_any_pick(tmp_path,
+                                                                   scribe_measured):
+    game, d = _scribe_camp(tmp_path, marked={"PROTECTION FROM GOOD"})
+    with pytest.raises(da.StepFailed, match="already drawn"):
+        d.scribe(6, "PROTECTION FROM GOOD")
+    assert game.keys[5:] == ["m", "s"]
+
+
+def test_another_members_scroll_list_is_refused_before_any_pick(tmp_path,
+                                                                 scribe_measured):
+    game, d = _scribe_camp(tmp_path, head="PAINE")
+    with pytest.raises(da.StepFailed, match="not roster line 6's"):
+        d.scribe(6, "PROTECTION FROM GOOD")
+    assert game.keys[5:] == ["m", "s"]
+
+
+def test_scribe_is_refused_outside_its_titles_and_before_camp(tmp_path, scribe_measured):
+    game, d = _scribe_camp(tmp_path, "darkness")
+    with pytest.raises(da.StepFailed, match="scribe is driven in"):
+        d.scribe(6, "SLEEP")
+    (tmp_path / "uncamped").mkdir()
+    d = da.Driver(FakeScribe(tmp_path / "uncamped"), lambda **k: None, "D", "ssb")
+    with pytest.raises(da.StepFailed, match="camp first"):
+        d.scribe(6, "SLEEP")
+    assert game.keys == []
+
+
+def test_a_rest_after_a_scribe_rests_in_the_same_camp_and_says_it_was_pending(
+        tmp_path, scribe_measured):
+    game, d = _scribe_camp(tmp_path)
+    d.scribe(6, "PROTECTION FROM GOOD")
+    done = len(game.keys)
+    d.step_begins("save")
+    d.save("D")
+    d.step_begins("rest")
+    got = d.rest(5)
+    assert got["scribe_pending"] is True and game.rested == [5]
+    # Nothing between the scribe and the rest leaves camp or camps again.
+    assert da.ENCAMP not in game.keys[done:] and game.mode == "camp" and not game.exited
+    assert d.rest(5)["scribe_pending"] is False
+
+
+def test_a_step_that_may_leave_camp_forgets_the_scribe(tmp_path, scribe_measured):
+    game, d = _scribe_camp(tmp_path)
+    d.scribe(6, "PROTECTION FROM GOOD")
+    d.step_begins("display")
+    assert d.rest(5)["scribe_pending"] is False
