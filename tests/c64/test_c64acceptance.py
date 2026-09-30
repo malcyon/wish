@@ -8408,23 +8408,48 @@ def test_an_interrupt_in_the_exit_check_still_sends_exit(tmp_path):
     assert not machine.halted
 
 
-@pytest.mark.parametrize("gone", [TimeoutError, OSError, A.S.MonitorError])
-def test_a_body_that_lost_the_monitor_skips_the_exit_check(tmp_path, gone):
+class _Sock:
+    def __init__(self, live):
+        self.live = live
+
+    def getpeername(self):
+        if not self.live:
+            raise OSError("not connected")
+        return ("127.0.0.1", 6510)
+
+
+def test_a_body_oserror_on_a_live_monitor_still_runs_the_exit_check(tmp_path):
     run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
-    with pytest.raises(gone):
-        with run.sess.mon(5):
+    with pytest.raises(OSError):
+        with run.sess.mon(5) as m:
+            m._m.sock = _Sock(True)
             machine.hit(0x09DD)
-            run.traps.check = lambda m, resume=True: pytest.fail("checked")
-            raise gone("gone")
-    assert not machine.halted
+            raise OSError("the caller's own")
+    assert run.log.of("read-at")[0]["pc"] == 0x09DD
+    assert run.log.of("exit_check_skipped") == [] and not machine.halted
 
 
-def test_a_closed_socket_skips_the_exit_check(tmp_path):
+@pytest.mark.parametrize("sock", [None, _Sock(False)])
+def test_a_gone_monitor_skips_the_exit_check_and_says_so(tmp_path, sock):
     run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
     with run.sess.mon(5) as m:
         machine.hit(0x09DD)
-        m._m.sock = None
+        m._m.sock = sock
         run.traps.check = lambda m, resume=True: pytest.fail("checked")
+    assert len(run.log.of("exit_check_skipped")) == 1
+    assert not machine.halted
+
+
+def test_an_entry_check_that_raises_still_sends_exit(tmp_path):
+    run, machine = _read_at_run(tmp_path, ["09DD=CD782B:2B78:2"])
+    machine.hit(0x09DD)
+
+    def interrupted(m, resume=True):
+        raise KeyboardInterrupt
+
+    run.traps.check = interrupted
+    with pytest.raises(KeyboardInterrupt):
+        run.sess.mon(5).__enter__()
     assert not machine.halted
 
 

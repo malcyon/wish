@@ -47,7 +47,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.vice import MonitorError, read_screen  # noqa: E402
+from automap.vice import read_screen  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from tools.c64 import laterbattle  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
@@ -124,16 +124,35 @@ class _Watched:
 
     def __enter__(self):
         self._m = self.inner.__enter__()
-        self.trap.check(self._m)
+        try:
+            self.trap.check(self._m)
+        except BaseException:
+            self.inner.__exit__(*sys.exc_info())
+            raise
         return _Resumes(self.trap, self._m)
+
+    def _gone(self) -> bool:
+        """Whether the monitor's socket is closed or no longer connected."""
+        sock = getattr(self.inner, "sock", True)
+        if sock is None:
+            return True
+        probe = getattr(sock, "getpeername", None)
+        try:
+            if probe is not None:
+                probe()
+        except OSError:
+            return True
+        return False
 
     def __exit__(self, *exc):
         # A monitor that is gone would spend a full timeout on every read of
         # the check; EXIT below must run whatever the check does.
-        gone = (exc[0] is not None and issubclass(exc[0], (OSError, MonitorError))
-                ) or getattr(self.inner, "sock", True) is None
         try:
-            if not gone:
+            if self._gone():
+                self.trap.log.emit("exit_check_skipped",
+                                   note="the monitor is gone; a stop that fired "
+                                        "is handled by the next connection")
+            else:
                 self.trap.check(self._m, resume=False)
         finally:
             result = self.inner.__exit__(*exc)
