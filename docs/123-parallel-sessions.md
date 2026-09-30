@@ -290,7 +290,7 @@ The two known ways an instance wedges:
 
 | symptom | cause | recovery |
 |---|---|---|
-| monitor accepts the connection and never answers the greeting | another client attached, **or** a checkpoint was left armed when a socket closed — VICE re-enters the monitor on a connection that no longer exists | only a kill |
+| monitor accepts the connection and never answers the greeting | another client attached, **or** the machine is halted at a checkpoint stop with no connection open, which waits for the next connection to read it (`docs/70-driving-the-game.md`) | connect and read the stop, or delete the checkpoints |
 | monitor refuses the connection but the pid is alive | X gone, or VICE crashed into a dialog | kill |
 
 `ViceTarget` already separates these: `NotConnected` on a failed connect,

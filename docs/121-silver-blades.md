@@ -490,7 +490,7 @@ see `docs/70-driving-the-game.md`.**
 
 | | |
 |---|---|
-| **Never leave a checkpoint armed when the socket closes** | VICE re-enters the monitor on a connection that is gone, freezes, and reads nothing new. Only a `pkill` recovers it. Delete every checkpoint at the end of every experiment |
+| **Leave a connection that has armed checkpoints with `Monitor.hang_up()`** | Closing a halted connection resumes the machine, and a later stop halts with no connection open until the next one reads it. EXIT then close lets a stop halt on the closing connection and the close resumes it unread (`docs/70-driving-the-game.md`). Delete every checkpoint at the end of every experiment |
 | **One binary-monitor client at a time** | A second connection is accepted and then never answered. `automap` and `tools/c64/session.py` cannot both be live |
 | **Connecting stops the machine; resuming costs ~14.3 ms of extra emulated time** | Per `resume()`, not per byte. Batch a poll into one resume; the interval is a speed dial |
 | **Match responses by request id** | VICE interleaves unsolicited `STOPPED` events; a naive reader silently returns the *previous* request's data |

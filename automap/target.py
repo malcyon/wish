@@ -19,9 +19,10 @@ resumes rare -- right advice, wrong reason.
 
 Two hazards from `docs/70-driving-the-game.md` shape what is *not* here:
 
-* **No checkpoints.** Closing a socket while one is armed leaves VICE re-entering
-  the monitor on a socket that no longer exists, and only a kill recovers it.
-  Polling needs none, so none are offered.
+* **No checkpoints.** A stop that fires with no connection open halts the
+  machine until the next connection reads it, and a connection must end with
+  `Monitor.hang_up()`, not EXIT, or a stop can be lost. Polling needs none, so
+  none are offered.
 * **Validate before trust.** The game is heavily overlaid, so an address means
   what we think only while its overlay is resident. `PartyFix` refuses a reading
   that cannot be true rather than drawing nonsense.
