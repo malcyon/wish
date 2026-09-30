@@ -2390,27 +2390,20 @@
                  </widget>
                 </item>
                 <item row="0" column="3">
-                 <widget class="QGroupBox" name="box_roster">
+                 <widget class="QGroupBox" name="box_misc">
                   <property name="title">
-                   <string>Roster</string>
+                   <string>Misc</string>
                   </property>
-                  <layout class="QFormLayout" name="form_roster">
+                  <layout class="QFormLayout" name="form_misc">
                    <item row="0" column="0">
-                    <widget class="QLabel" name="label_roster_in_use">
+                    <widget class="QLabel" name="label_condition">
                      <property name="text">
-                      <string>Roster in use</string>
+                      <string>Condition</string>
                      </property>
                     </widget>
                    </item>
                    <item row="0" column="1">
-                    <widget class="QSpinBox" name="field_roster_in_use">
-                     <property name="minimum">
-                      <number>0</number>
-                     </property>
-                     <property name="maximum">
-                      <number>255</number>
-                     </property>
-                    </widget>
+                    <widget class="QLabel" name="value_condition" />
                    </item>
                    <item row="1" column="0">
                     <widget class="QLabel" name="label_party_order">
@@ -2447,14 +2440,14 @@
                     </widget>
                    </item>
                    <item row="3" column="0">
-                    <widget class="QLabel" name="label_roster_tail">
+                    <widget class="QLabel" name="label_damage">
                      <property name="text">
-                      <string>Roster tail</string>
+                      <string>Damage</string>
                      </property>
                     </widget>
                    </item>
                    <item row="3" column="1">
-                    <widget class="QLineEdit" name="field_roster_tail" />
+                    <widget class="QLabel" name="value_damage" />
                    </item>
                    <item row="4" column="0">
                     <widget class="QLabel" name="label_turn_class">

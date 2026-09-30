@@ -54,7 +54,7 @@ from goldbox.items import (
     load_item_types,
 )
 from goldbox.layout import FIELDS_BY_NAME, LOAD_ADDRESS
-from goldbox.savegame import SaveGame0, SaveGame1, store_save
+from goldbox.savegame import SaveGame0, SaveGame1, store_save, tail_damage
 from goldbox.spells import capacity_by_class, load_spell_names
 from goldbox.spells import for_game as spell_table
 
@@ -198,6 +198,24 @@ RECOVERY_FAILED_NO_BACKUP = (
 #: ("no registered dos to amiga conversion for por") and never reaches a
 #: player.
 SAVE_AS_FAILED = "The save could not be written, and your saved game is unchanged."
+
+#: The word the Condition line shows for each neutral status name.
+#: `c64_codec.status_from_byte` and the DOS and Amiga readers name the states.
+CONDITION_WORDS = {
+    "okay": "OK",
+    "dying": "Dying",
+    "dead": "Dead",
+    "unconscious": "Unconscious",
+    "running": "Fled",
+    "stoned": "Stoned",
+    "gone": "Gone",
+    "animated": "Animated",
+    "temporarily gone": "Temporarily gone",
+}
+#: What follows the word when the character is out of play.
+CONDITION_OUT_OF_PLAY = "{word}, out of play"
+#: Between a character's two attack forms on the Damage line.
+DAMAGE_SEPARATOR = " / "
 
 # -- Control, Morale and Abilities altered: the three faces of `flags_0b8` --
 # (#623). Bit 7 says who drives the character; for an NPC the low seven bits
@@ -1543,15 +1561,15 @@ class EditorBinding(QObject):
             altered.setEnabled(False)
             altered.blockSignals(False)
 
-        self._resize_roster_box()
+        self._resize_misc_box()
 
-    def _resize_roster_box(self) -> None:
-        """Re-measure Roster after Morale or Abilities altered toggles.
+    def _resize_misc_box(self) -> None:
+        """Re-measure Misc after a row is shown or hidden.
 
         `_compact` clamps every box to its own `sizeHint` once, before any
         party is open and before either row has ever been hidden; a row that
         appears or disappears afterwards changes what that hint is."""
-        box = self._child("box_roster")
+        box = self._child("box_misc")
         if box is None:
             return
         box.setMaximumWidth(16777215)
@@ -3168,6 +3186,8 @@ class EditorBinding(QObject):
         self._show_control_fields(member)
         self._describe_spells(record)
         self._show_backstab(member)
+        self._show_condition(member)
+        self._show_damage(member)
         self.items.set_inventory(member.inventory)
         self._size_item_columns()
         self._show_traits()
@@ -3261,6 +3281,46 @@ class EditorBinding(QObject):
         memorised.set_capacity(
             capacity_by_class(class_levels, record.get("wisdom"), game),
             casts=bool(record.class_bits & caster_bits(game)))
+
+    def _show_condition(self, member) -> None:
+        """The Condition line of the Misc box: the character's condition in
+        words, with the out-of-play flag after it when that is set.
+
+        `member.condition` holds the port's own status, which the sheet's
+        byte cannot (`editor/roster.py`'s `Member.condition`). It is blank
+        when the editor cannot read the saved value, so no condition is
+        invented. The line is display only; a save never writes it."""
+        value = self._child("value_condition")
+        if value is None:
+            return
+        text = ""
+        condition = member.condition
+        if condition is not None and condition[0] is not None:
+            text = CONDITION_WORDS.get(condition[0], "")
+            if text and condition[1] is False:
+                text = CONDITION_OUT_OF_PLAY.format(word=text)
+        value.setText(text)
+
+    def _show_damage(self, member) -> None:
+        """The Damage line of the Misc box: what each of the character's
+        attack forms rolls, read from his roster tail.
+
+        Only Pool of Radiance's saved tail is known to be current, so the
+        line is hidden for the other titles, and for a member whose tail the
+        editor cannot read. The line is display only; a save leaves the tail
+        bytes as they were."""
+        label = self._child("label_damage")
+        value = self._child("value_damage")
+        if label is None or value is None:
+            return
+        game = getattr(self.party, "game", None)
+        tail = member.roster_tail
+        shown = (tail is not None
+                 and getattr(game, "key", None) == por_games.POOL_OF_RADIANCE.key)
+        value.setText(DAMAGE_SEPARATOR.join(tail_damage(tail)) if shown else "")
+        label.setVisible(shown)
+        value.setVisible(shown)
+        self._resize_misc_box()
 
     #: `Party.port` to the name `goldbox.backstab.RULES` keys its rules by.
     _BACKSTAB_PORTS = {"c64": "C64", "dos": "DOS", "amiga": "Amiga"}

@@ -261,6 +261,11 @@ NOT_ON_THE_SHEET = (
     # animation is undone: the game sets it, a player does not, and the sheet
     # has no widget for it. A save keeps the byte as read.
     "creature_type",
+    # The roster status byte and the nine-byte roster tail. The sheet shows
+    # them as decoded text (`value_condition`, `value_damage`) and never edits
+    # them; a save leaves their bytes as it found them.
+    "roster_in_use",
+    "roster_tail",
 )
 
 

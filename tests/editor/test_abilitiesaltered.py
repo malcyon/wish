@@ -1,4 +1,4 @@
-"""The Roster box's Abilities altered on the DOS and Amiga ports.
+"""The Misc box's Abilities altered on the DOS and Amiga ports.
 
 Curse and Silver Blades store 1 in the share byte (`treasure_share`) when
 MODIFY CHARACTER is left by KEEP, and Pool of Radiance does the same in

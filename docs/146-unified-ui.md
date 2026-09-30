@@ -173,7 +173,7 @@ QMainWindow "WishWindow"
                 │   └── spacer "header_slack"
                 └── QTabWidget "sheet_tabs"
                     ├── Tab "Stats" → QScrollArea → QGridLayout "sheet_columns"
-                    │   ├── box_abilities, box_levels, box_money, box_roster
+                    │   ├── box_abilities, box_levels, box_money, box_misc
                     │   ├── box_saves, box_thief_skills, box_combat, box_appearance
                     │   └── box_effects (EffectsView promoted, spans rows)
                     ├── Tab "Inventory" → QScrollArea

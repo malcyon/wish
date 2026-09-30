@@ -961,7 +961,7 @@ def test_typing_the_sheet_value_stores_the_biased_byte(app, newsave5):
 
 TRUNCATED_IN_SAVE = (
     "thac0", "armour_class", "hp_current",
-    "roster_in_use", "party_order", "roster_movement",
+    "party_order", "roster_movement",
 )
 
 
@@ -1009,7 +1009,6 @@ def test_the_same_fields_read_real_values_off_a_full_record(app, tmp_path):
     w = EditorBinding(make_root(), str(disk))
     w.roster.selectRow(0)
     assert w._widgets["hp_current"].value() == 9
-    assert w._widgets["roster_in_use"].value() == 1
     assert w._widgets["party_order"].value() == 3
     assert w._widgets["roster_movement"].value() == 9
     assert w._widgets["thac0"].value() == 21          # 60 - 39, sheet value
@@ -2212,7 +2211,7 @@ def test_a_roster_disk_still_opens_and_has_no_items(app, tmp_path):
 
 # --- the sheet is three tabs under the roster -------------------------------
 
-BOXES = ("box_identity", "box_combat", "box_roster", "box_abilities",
+BOXES = ("box_identity", "box_combat", "box_misc", "box_abilities",
          "box_saves", "box_levels", "box_thief_skills", "box_money",
          "box_appearance", "box_inventory", "box_spells", "box_traits",
          "box_effects")
@@ -2238,14 +2237,14 @@ HEADER_BOXES = ("box_identity",)
 #: Round seven dissolved `box_record` -- Miscellaneous -- which was thirteen
 #: unrelated fields and a title that admitted it. `box_combat` took the six
 #: that decide a fight, including the Armour class pair the header used to
-#: carry; `box_roster` took the six read-only housekeeping fields nobody
+#: carry; `box_misc` took the read-only housekeeping fields nobody
 #: edits.
 #:
 #: Round eight brought the combat icon down here, beside `Combat`: Donald's
 #: own proposal, on the grounds that the two belong together and that the
 #: header shrinks. Both are true -- see `HEADER_BOXES` above.
 TABS = {
-    "Stats": ("box_combat", "box_roster", "box_abilities", "box_money",
+    "Stats": ("box_combat", "box_misc", "box_abilities", "box_money",
               "box_saves", "box_thief_skills", "box_effects", "box_levels",
               "box_appearance"),
     "Inventory": ("box_inventory", "box_traits"),
@@ -2267,7 +2266,7 @@ TABS = {
 #: Round nine made the tab a `QGridLayout` rather than five `QVBoxLayout`s
 #: side by side, and that is the whole of what holds the arrangement below
 #: together. Five independent columns stack independently: `Money` is 232px
-#: tall and `Roster` 203, so `Combat` and the combat icon -- one in each -- sat
+#: tall and `Misc` 203, so `Combat` and the combat icon -- one in each -- sat
 #: 29px apart however they were ordered. A row of a grid has one top edge.
 #:
 #: Donald asked for three things at once and they are not separable: the icon
@@ -2275,7 +2274,7 @@ TABS = {
 #: left, and no blank space in the middle of the tab. Round eight satisfied
 #: the first and failed the second; pairing `Combat` and the icon in one row
 #: inside column three satisfied the second and opened a 218x232 hole between
-#: `Money` and `Roster`, which is the hole he then reported. The grid gives
+#: `Money` and `Misc`, which is the hole he then reported. The grid gives
 #: all three with no spacer, no fixed height and no computed offset anywhere:
 #: it holds nine boxes and not one spacer item.
 #:
@@ -2283,7 +2282,7 @@ TABS = {
 #: at the right of the top row and spans down through the second, because it
 #: is the only box on the tab that can read a wider window and so takes the
 #: one stretching column.
-STATS_GRID = (("box_abilities", "box_levels", "box_money", "box_roster",
+STATS_GRID = (("box_abilities", "box_levels", "box_money", "box_misc",
                "box_effects"),
               ("box_saves", "box_thief_skills", "box_combat",
                "box_appearance"))
@@ -2373,11 +2372,11 @@ def test_combat_and_the_combat_icon_start_on_the_same_line(app, save):
     the roster's column, its top has to meet `Combat`'s top, and there must be
     no blank space in the middle of the tab.
 
-    Round eight put the icon under `Roster` and the tops came out 29px apart,
-    because `Money` above `Combat` is 232px tall and `Roster` is 203 and each
+    Round eight put the icon under `Misc` and the tops came out 29px apart,
+    because `Money` above `Combat` is 232px tall and `Misc` is 203 and each
     column stacked on its own. Pairing the two in a row inside `Money`'s
     column lined them up and opened a 218x232 hole between `Money` and
-    `Roster` instead. A grid row has one top edge, so both hold at once.
+    `Misc` instead. A grid row has one top edge, so both hold at once.
 
     Asserted as geometry rather than as layout indices, because a grid
     position is what the form says and a top edge is what Donald sees. Equal
@@ -2398,16 +2397,16 @@ def test_combat_and_the_combat_icon_start_on_the_same_line(app, save):
 
     combat_x, combat_y, combat_w = corner("box_combat")
     icon_x, icon_y, _ = corner("box_appearance")
-    roster_x, roster_y, _ = corner("box_roster")
+    roster_x, roster_y, _ = corner("box_misc")
     money_x, money_y, money_w = corner("box_money")
 
     assert icon_y == combat_y, "the icon and Combat do not start on one line"
     assert icon_x == roster_x, "the icon is not in the roster's column"
     assert money_x == combat_x, "Combat is not in Money's column"
-    assert roster_y == money_y, "Roster and Money do not start on one line"
+    assert roster_y == money_y, "Misc and Money do not start on one line"
     assert combat_x + combat_w < roster_x, "Combat is not left of the roster"
     # And the hole he reported: between the right edge of Money and the left
-    # edge of Roster there is a column gutter and nothing else. It was 218px
+    # edge of Misc there is a column gutter and nothing else. It was 218px
     # when Money's column also had to hold the icon.
     assert roster_x - (money_x + money_w) < 60, "the hole is back"
 
@@ -2733,8 +2732,9 @@ IDENTITY_COLUMNS = (("name", "race", "char_class", "class_bits", "alignment"),
 #: `Miscellaneous`, which was neither.
 COMBAT_FIELDS = ("thac0_base", "thac0", "armour_class_base", "armour_class",
                  "movement", "infravision")
-ROSTER_FIELDS = ("roster_in_use", "party_order", "roster_movement",
-                 "roster_tail", "turn_class")
+#: `None` is a row that shows decoded text (Condition, Damage) rather than a
+#: bound field.
+MISC_FIELDS = (None, "party_order", "roster_movement", None, "turn_class")
 
 
 def _form_fields(form) -> tuple[str, ...]:
@@ -2787,7 +2787,7 @@ def _test_miscellaneous_is_gone_and_its_fields_are_grouped(app, save):
     w = EditorBinding(make_root(), str(save))
     assert w.root.findChild(QGroupBox, "box_record") is None
     assert _form_fields(w.form_combat) == COMBAT_FIELDS
-    assert _form_fields(w.form_roster) == ROSTER_FIELDS
+    assert _form_fields(w.form_misc) == MISC_FIELDS
 
 
 @game_disks

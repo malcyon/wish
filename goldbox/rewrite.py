@@ -746,13 +746,6 @@ _MOVEMENT_UNWRITABLE_FOR = frozenset({
     ("dos", "pool-of-radiance"),
 })
 
-#: The nine-byte roster tail, unwritable on a DOS Pool of Radiance save: the
-#: writer rebuilds its armour bonus and attack forms, and the game's rebuild
-#: at VIEW replaces the rest.
-_TAIL_UNWRITABLE_FOR = frozenset({
-    ("dos", "pool-of-radiance"),
-})
-
 
 def unwritable_fields(port: str, title_key: str) -> frozenset[str]:
     """Fields the sheet must grey because this port's writer cannot take an
@@ -776,6 +769,4 @@ def unwritable_fields(port: str, title_key: str) -> frozenset[str]:
         fields = fields | _SAVE_FIELDS
     if (port, title_key) in _MOVEMENT_UNWRITABLE_FOR:
         fields = fields | {"roster_movement"}
-    if (port, title_key) in _TAIL_UNWRITABLE_FOR:
-        fields = fields | {"roster_tail"}
     return fields
