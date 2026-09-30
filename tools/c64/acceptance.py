@@ -2395,10 +2395,12 @@ class PoolRun:
                               "the raise result", sample)
         self._temple_input_budget("leaving the temple")
         self.sess.kbd.key("Return")
-        tag, arrival = "raise-continued", screen
+        tag, arrival, continued = "raise-continued", screen, None
         for _ in range(2):
             kept = self._temple_heal_screen(arrival, tag=tag, stop="exit",
                                             what="RETURN after the result")
+            if continued is None:
+                continued = kept["stem"]
             sample = self.temple_sample()
             screen = sample.screen
             if screen is None:
@@ -2417,15 +2419,30 @@ class PoolRun:
                               "the service list's EXIT", sample)
         self._temple_select_bar("EXIT", "temple")
         limit = min(self.clock() + 90, self.temple_input_deadline)
+        answered = False
         while self.clock() < limit:
             sample = self.temple_sample()
             screen = sample.screen
             if screen is None or not screen.row(24).strip():
                 time.sleep(0.4)
                 continue
+            if self._temple_disk(screen):
+                # The entry path answers one side 3 prompt and stops on any
+                # other or repeated disk prompt; leaving does the same.
+                if answered or not self._temple_side3(screen):
+                    self._temple_stop("exit", "unexpected or repeated disk "
+                                      "prompt while leaving", sample)
+                self.temple_checkpoint("leave-side3-before-answer", sample)
+                self._temple_input_budget("side 3 prompt")
+                if not self.sess.handle_prompt(screen):
+                    self._temple_stop("exit", "side 3 prompt was not "
+                                      "answered while leaving", sample)
+                answered = True
+                time.sleep(0.4)
+                continue
             if self.at_world(screen.row(24)):
                 outside = self.temple_checkpoint("outside", sample)
-                return {"stem": outside["stem"], "continued": kept["stem"]}
+                return {"stem": outside["stem"], "continued": continued}
             self._temple_stop("exit", "unexpected screen after the temple "
                               "bar's EXIT", sample)
         self._temple_stop("exit", "the world bar did not return within 90 "
@@ -2565,7 +2582,10 @@ class PoolRun:
                 result["pool_before"] = pool_before
                 result["pool_after"] = pool_after
             result["outcome"] = outcome
-            if leave and outcome == "alive":
+            if leave and outcome != "alive":
+                self._temple_stop("exit", f"raise ended {outcome}, not "
+                                  "leaving")
+            if leave:
                 result["leave"] = self._temple_leave()
         result["checkpoints"] = len(self.temple_checkpoints)
         return result

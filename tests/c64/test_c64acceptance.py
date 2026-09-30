@@ -498,7 +498,7 @@ class _TempleSession:
             if self.leaving_reads:
                 self.leaving_reads -= 1
                 return _TempleScreen([""] * 25)
-            self.phase = "world"
+            self.phase = getattr(self, "after_leaving", "world")
         if self.phase == "heal" and self.heal_blank_reads:
             # Blank bar frames before the list draws, as the transition
             # screens between temple and service do.
@@ -762,6 +762,7 @@ class _TempleSession:
             self.keys.append("EXIT")
             self.leaving_reads = 3
             self.phase = "leaving"
+            self.after_leaving = getattr(self, "after_leaving", "world")
             return
         if self.phase == "temple":
             assert row == 24 and "HEAL" in was and self.bar_at == 0
@@ -9462,8 +9463,7 @@ def test_temple_probe_leave_takes_the_temple_bar_when_return_shows_it(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line, session.after_continue = True, "bar"
     run.temple_probe("BRUTUS RAISE POOL", leave=True)
-    assert session.keys[-6:] == ["YES", "Return"] + ["Right"] * 3 + ["EXIT"] or (
-        session.keys[-7:] == ["YES", "Return"] + ["Right"] * 4 + ["EXIT"])
+    assert session.keys[-7:] == ["YES", "Return"] + ["Right"] * 4 + ["EXIT"]
     assert _raise_tags(run)[-3:] == ["raise-result", "raise-continued",
                                      "outside"]
 
@@ -9492,4 +9492,63 @@ def test_temple_probe_leave_sends_no_key_without_the_continue_frame(
     with pytest.raises(A.StepFailed, match="no PRESS"):
         run.temple_probe("BRUTUS RAISE POOL", leave=True)
     assert session.keys[-1] == "YES"
+    assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
+
+
+def test_temple_probe_leave_keeps_the_first_frame_under_continued(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.press_line = True
+    result = run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    first = next(c for c in run.temple_checkpoints
+                 if c["tag"] == "raise-continued")
+    assert result["leave"]["continued"] == first["stem"]
+    assert result["leave"]["continued"] != next(
+        c for c in run.temple_checkpoints if c["tag"] == "list-exit")["stem"]
+
+
+@pytest.mark.parametrize("text", ["BRUTUS FAILED", "NOT ENOUGH MONEY !",
+                                  "SOMETHING UNSEEN"])
+def test_temple_probe_leave_stops_when_the_raise_did_not_end_alive(
+        tmp_path, monkeypatch, text):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.press_line, session.result_text = True, text
+    with pytest.raises(A.StepFailed, match="not leaving"):
+        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    assert session.keys[-1] == "YES"
+    assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
+
+
+def _leave_with_disk_prompt(tmp_path, monkeypatch, phase):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.press_line = True
+    session.after_leaving = phase
+
+    entry = session.handle_prompt
+
+    def handle_prompt(screen):
+        if "EXIT" not in session.keys:
+            return entry(screen)
+        session.keys.append("leave-side3")
+        session.after_leaving = session.phase = "world"
+        return True
+    session.handle_prompt = handle_prompt
+    return run, session
+
+
+def test_temple_probe_leave_answers_one_side_3_prompt_before_the_world_bar(
+        tmp_path, monkeypatch):
+    run, session = _leave_with_disk_prompt(tmp_path, monkeypatch, "side3")
+    result = run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    assert session.keys[-2:] == ["EXIT", "leave-side3"]
+    assert _raise_tags(run)[-2:] == ["leave-side3-before-answer", "outside"]
+    assert result["leave"]["stem"]
+
+
+def test_temple_probe_leave_stops_on_another_disk_prompt_keeping_the_frame(
+        tmp_path, monkeypatch):
+    run, session = _leave_with_disk_prompt(tmp_path, monkeypatch, "side4")
+    with pytest.raises(A.StepFailed, match="disk prompt"):
+        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    assert session.keys[-1] == "EXIT"
     assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
