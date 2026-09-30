@@ -44,7 +44,7 @@ def test_pile_arithmetic_cut_64_to_21_for_fb():
     s = ts.share_for(POOL, "DOS", party(companion(0xFB)), 6)
     assert (s.parts, s.denominator) == (3, 9)
     assert ts.pile_cut(64, s.denominator, s.companion_parts) == 21
-    assert ts.split_piles([64], s.denominator, s.companion_parts) == [43]
+    assert ts.split_piles([64], s.denominator, s.companion_parts, POOL) == [43]
 
 
 def test_pile_cut_wraps_on_the_byte_quotient_and_never_goes_negative():
@@ -116,12 +116,24 @@ def test_c64_downed_companion_and_zero_low_bits_add_nothing():
     assert zero.combined == 0 and zero.shares[6].value == 0
 
 
-def test_c64_curse_uses_the_same_rule_and_silver_blades_never_takes():
+def test_c64_curse_uses_the_same_rule_code_read_not_measured_and_silver_blades_never_takes():
+    """Curse's 3/11 is read from the code and has not been measured live."""
     assert ts.party_shares(CURSE, "C64", party(c64(0xFF), status=1)).combined == Fraction(3, 11)
     r = ts.party_shares(SILVER, "C64", party(c64(0xFF), status=1))
     assert r.combined == 0 and r.shares[6].value == 0
+    assert r.certain is False and r.shares[6].certain is False
+    assert ts.party_shares(POOL, "C64", party(c64(0xFF), status=1)).certain is True
+    assert ts.party_shares(SILVER, "DOS", party(companion(0xFF))).certain is True
+
+
+def test_c64_companion_with_status_zero_is_left_out_of_s_and_n():
+    """A dropped slot counts in neither; the code read leaves S open."""
+    r = ts.party_shares(POOL, "C64", party(c64(0xFF, 0), status=1))
+    assert r.combined == Fraction(0, 7) and r.shares[6].occupied_slots == 6
 
 
 def test_no_rule_gives_none():
     assert ts.party_shares("pools-of-darkness", "DOS", party(c64(0xFF))) is None
     assert ts.share_for(SILVER, "Amiga", party(c64(0xFF)), 6) is None
+    assert ts.share_for(CURSE, "Amiga", party(c64(0xFF)), 6) is None
+    assert ts.share_for(POOL, "Atari", party(c64(0xFF)), 6) is None

@@ -5,13 +5,21 @@ a won fight: each companion adds his share's low three bits to the companions'
 parts, and every member adds to the party's denominator.  Each pile of coins
 (and gems and jewellery) then loses a whole number of parts, so the answer is a
 fraction.  The C64 rolls once per defeated monster instead, so the answer is a
-chance, and the game never says which companion took a purse
-(`docs/195-three-dos-record-bytes-named-from-the-overlays.md`).
+chance, and the game never says which companion took a purse (the C64 reading
+is in the R1 comment on the issue for the Character Editor's treasure-share
+line).
 
 A member's ``status`` is the port's own status byte, and the two families read
 it in opposite senses.  On DOS and the Amiga a member counts as standing when it
 is 0.  On the C64 zero means an empty party slot, and a companion is up when
 bit 7 is clear.
+
+Two grades are not CONFIRMED.  A C64 companion whose status is 0 sits in an
+empty slot, so he is left out of both S and N; the code read only says bit 7
+must be clear, and `POST.COM $194A` would settle whether a zero status counts.
+C64 Silver Blades returns 0 because its counting pass skips companions while
+`$7EA0` is 0, and that flag being 0 in every played game is PROBABLE; its
+results carry ``certain=False``.
 
 Nothing here reads a file or a disk, and nothing is written.
 """
@@ -88,6 +96,8 @@ class MemberShare:
     #: The pile size at which the DOS byte quotient wraps and less is taken;
     #: None on the C64.
     wrap_at: int | None
+    #: False when the rule behind the value is PROBABLE rather than CONFIRMED.
+    certain: bool = True
 
 
 @dataclasses.dataclass(frozen=True)
@@ -100,6 +110,8 @@ class PartyShares:
     #: All companions together: `C / A` of each pile, or the C64's one roll
     #: against the combined `S`.
     combined: Fraction
+    #: False when the rule behind the figures is PROBABLE rather than CONFIRMED.
+    certain: bool = True
 
 
 def dos_shares(members: Sequence[Member]) -> PartyShares:
@@ -144,7 +156,7 @@ def c64_shares(members: Sequence[Member]) -> PartyShares:
     """
     occupied = sum(1 for m in members if m.status != 0)
     up = [
-        m.companion and m.share != 0 and not m.status & 0x80
+        m.companion and m.share != 0 and m.status != 0 and not m.status & 0x80
         for m in members
     ]
     parts = [(m.share & _C64_PARTS_MASK) if u else 0 for m, u in zip(members, up)]
@@ -173,15 +185,16 @@ def _c64_silver_blades(members: Sequence[Member]) -> PartyShares:
     """A played game's C64 Silver Blades skips its companions before counting."""
     occupied = sum(1 for m in members if m.status != 0)
     shares = tuple(
-        MemberShare(CHANCE, Fraction(0), 0, occupied + 1, 0, occupied, None)
+        MemberShare(CHANCE, Fraction(0), 0, occupied + 1, 0, occupied, None, False)
         if m.companion
         else None
         for m in members
     )
-    return PartyShares(CHANCE, shares, Fraction(0))
+    return PartyShares(CHANCE, shares, Fraction(0), False)
 
 
-#: One rule per (title key, port) whose code was read.
+#: One rule per (title key, port) whose code was read.  C64 Silver Blades is
+#: PROBABLE, not CONFIRMED: it rests on the demo flag `$7EA0` being 0 in play.
 RULES: dict[tuple[str, str], Callable[[Sequence[Member]], PartyShares]] = {
     (_POOL, "DOS"): dos_shares,
     (_POOL, "Amiga"): dos_shares,
@@ -218,8 +231,7 @@ def split_piles(
     piles: Sequence[int],
     denominator: int,
     companion_parts: int,
-    *,
-    title_key: str | None = None,
+    title_key: str,
 ) -> list[int]:
     """The piles after the DOS-family split; Silver Blades leaves pile 0 alone."""
     first = 1 if title_key == _SILVER else 0
