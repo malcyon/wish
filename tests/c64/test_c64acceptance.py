@@ -367,6 +367,8 @@ class _TempleMonitor:
             if s.phase == "temple":
                 return bytes([A.TEMPLE_ARRIVAL_MODE])
             return bytes([A.S.DUNGEON])
+        if address == A.TEMPLE_POOL_COINS:
+            return b"".join(w.to_bytes(2, "little") for w in s.pool_coins)
         if address == 0x49E6:
             return b"\x01"
         if address == 0x49C0:
@@ -447,6 +449,12 @@ class _TempleSession:
         # and what row 24 says over the unchanged price screen after YES.
         self.bar_at = 0
         self.result_bar = None
+        # The pool's five coin words; the price screen's YES takes the fee.
+        self.pool_coins = [0, 0, 0, 6000, 0]
+        # Frames the result phase shows in turn, one per screen read, before
+        # the last stands; None shows `result_text` throughout.
+        self.result_frames = None
+        self._result_reads = 0
 
     def key(self, name, *timing):
         if self.phase == "temple":
@@ -602,6 +610,10 @@ class _TempleSession:
                 rows[11] = "IT WILL COST 5500 GOLD PIECES"
                 rows[13] = "PAY FOR CURE"
                 rows[24] = self.result_bar
+            elif self.result_frames is not None:
+                at = min(self._result_reads // 3, len(self.result_frames) - 1)
+                self._result_reads += 1
+                rows[12] = self.result_frames[at]
             else:
                 rows[12] = self.result_text
         else:
@@ -729,6 +741,7 @@ class _TempleSession:
             assert row == 24 and "YES" in was
             self.keys.append("YES")
             self.phase = "result"
+            self.pool_coins[3] -= 5500 if "POOL" in self.keys else 0
             return
         assert self.phase == "question" and row == 24 and "YES" in was
         self.keys.append("YES")
@@ -8847,13 +8860,16 @@ def _staged_temple_pair(tmp_path, records):
 def test_temple_staging_check_takes_the_sanctioned_records_only(tmp_path):
     source, staged = _staged_temple_pair(
         tmp_path, list(A.TEMPLE_RAISE_STAGING))
-    A.temple_staging_check(source, staged, list(A.TEMPLE_RAISE_STAGING))
+    A.temple_staging_check(source, staged, list(A.TEMPLE_RAISE_STAGING),
+                           A.TEMPLE_RAISE_STAGING)
     extra, staged2 = _staged_temple_pair(
         tmp_path, [*A.TEMPLE_RAISE_STAGING, (5, 0x20, 41)])
     with pytest.raises(ValueError, match="changed payload byte"):
-        A.temple_staging_check(extra, staged2, list(A.TEMPLE_RAISE_STAGING))
+        A.temple_staging_check(extra, staged2, list(A.TEMPLE_RAISE_STAGING),
+                               A.TEMPLE_RAISE_STAGING)
     with pytest.raises(ValueError, match="is not"):
-        A.temple_staging_check(source, staged, [(5, 0x18, 18)])
+        A.temple_staging_check(source, staged, [(5, 0x18, 18)],
+                               A.TEMPLE_RAISE_STAGING)
 
 
 def test_temple_staging_check_refuses_a_wrong_value_and_a_changed_hash(
@@ -8861,13 +8877,14 @@ def test_temple_staging_check_refuses_a_wrong_value_and_a_changed_hash(
     source, staged = _staged_temple_pair(
         tmp_path, [(5, 0x018, 17), (5, 0x0C1, 0x70), (5, 0x0C2, 0x17)])
     with pytest.raises(ValueError, match="not 0x12"):
-        A.temple_staging_check(source, staged, list(A.TEMPLE_RAISE_STAGING))
+        A.temple_staging_check(source, staged, list(A.TEMPLE_RAISE_STAGING),
+                               A.TEMPLE_RAISE_STAGING)
     source2, staged2 = _staged_temple_pair(tmp_path, [(5, 0x20, 41)])
     with pytest.raises(ValueError, match="changed the source bytes"):
-        A.temple_staging_check(source2, staged2)
+        A.temple_staging_check(source2, staged2, (), A.TEMPLE_RAISE_STAGING)
     same = tmp_path / "same.D64"
     same.write_bytes(source2.read_bytes())
-    A.temple_staging_check(source2, same)
+    A.temple_staging_check(source2, same, (), A.TEMPLE_RAISE_STAGING)
 
 
 class _Claimed(Exception):
@@ -9107,9 +9124,75 @@ def test_temple_staging_check_takes_the_pool_records_only(tmp_path):
     A.temple_staging_check(source, staged, list(A.TEMPLE_POOL_STAGING),
                            A.TEMPLE_POOL_STAGING)
     with pytest.raises(ValueError, match="is not"):
-        A.temple_staging_check(source, staged, list(A.TEMPLE_POOL_STAGING))
+        A.temple_staging_check(source, staged, list(A.TEMPLE_POOL_STAGING),
+                               A.TEMPLE_RAISE_STAGING)
     extra, staged2 = _staged_temple_pair(
         tmp_path, [*A.TEMPLE_POOL_STAGING, (5, 0x20, 41)])
     with pytest.raises(ValueError, match="changed payload byte"):
         A.temple_staging_check(extra, staged2, list(A.TEMPLE_POOL_STAGING),
                                A.TEMPLE_POOL_STAGING)
+
+
+def test_guard_temple_source_passes_the_control_hash_only_for_a_control_step(
+        monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(A, "temple_source_guard",
+                        lambda path, expected=None: seen.append(expected)
+                        or "checked")
+    A._guard_temple_source(tmp_path, [A.Step("load"), A.Step(
+        "temple-probe", "BRUTUS RAISE CONTROL")])
+    A._guard_temple_source(tmp_path, [A.Step("load"), A.Step(
+        "temple-probe", "BRUTUS RAISE POOL")])
+    assert seen == [A.TEMPLE_CONTROL_SHA256, None]
+
+
+_CONTROL_STAGING = ["--stage-record", "5:0x018=18,5:0x0C1=0x70,5:0x0C2=0x17"]
+
+
+def test_temple_probe_main_accepts_control_with_exactly_its_staging(
+        tmp_path, monkeypatch):
+    observed = []
+    guards = []
+    monkeypatch.setattr(A, "temple_source_guard",
+                        lambda path, expected=None: guards.append(expected))
+    monkeypatch.setattr(A, "run", lambda args, steps, out, selected: observed.append(
+        (steps, args.stage_record)) or 0)
+    assert A.main(_raise_argv(tmp_path, *_CONTROL_STAGING,
+                              step="temple-probe BRUTUS RAISE CONTROL")) == 0
+    assert observed == [([A.Step("load"),
+                          A.Step("temple-probe", "BRUTUS RAISE CONTROL")],
+                         [_CONTROL_STAGING[1]])]
+    assert sorted(A.TEMPLE_CONTROL_STAGING) == [
+        (5, 0x018, 18), (5, 0x0C1, 0x70), (5, 0x0C2, 0x17)]
+
+
+@pytest.mark.parametrize("frames,outcome", [
+    (["CURED", "BRUTUS IS ALIVE"], "alive"),
+    (["CURED"], "cured")])
+def test_temple_probe_reads_the_cure_frames_into_an_outcome(
+        tmp_path, monkeypatch, frames, outcome):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.result_frames = frames
+    real = session.confirm_bar
+
+    def confirm(row, was):
+        real(row, was)
+        if session.phase == "result":
+            _menu_after(session, 10)
+
+    session.confirm_bar = confirm
+    result = run.temple_probe("BRUTUS RAISE")
+    seen = ["\n".join(f["rows"]) for f in result["result_frames"]]
+    assert any("CURED" in text for text in seen)
+    assert result["outcome"] == outcome
+
+
+def test_temple_probe_pool_keeps_the_pool_coins_before_yes_and_after(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    result = run.temple_probe("BRUTUS RAISE POOL")
+    assert result["pool_before"]["words"] == [0, 0, 0, 6000, 0]
+    assert result["pool_after"]["words"] == [0, 0, 0, 500, 0]
+    (tmp_path / "b").mkdir()
+    plain = _temple_fake_run(tmp_path / "b", monkeypatch)
+    assert "pool_before" not in plain[0].temple_probe("BRUTUS RAISE")

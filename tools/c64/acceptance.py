@@ -445,6 +445,8 @@ TEMPLE_STAGING = {"BRUTUS": (), "BRUTUS HEAL": (),
 #: for the temple bar to return after it is answered.
 TEMPLE_POOL_PROMPT = r"POOL MONEY"
 TEMPLE_POOL_WAIT = 30.0
+#: Where `POST.COM` keeps the party pool's five coin words (`$2B19`).
+TEMPLE_POOL_COINS = 0x2B19
 
 #: The service list's ten rows, where its names start, and the price screen's
 #: text; a price screen missing any of them is not answered.
@@ -678,7 +680,7 @@ def _guard_temple_source(source: pathlib.Path, steps: list[Step]) -> str:
 
 
 def temple_staging_check(source: pathlib.Path, staged: pathlib.Path,
-                         records=(), sanctioned=TEMPLE_RAISE_STAGING) -> None:
+                         records, sanctioned) -> None:
     """Refuse a staged temple disk that differs from SOURCE by anything but
     the sanctioned RECORDS (SANCTIONED, the mode's `TEMPLE_STAGING`).
 
@@ -2282,6 +2284,23 @@ class PoolRun:
                 "held": kept_held,
                 "steady": [rows for _, rows in steady]}
 
+    def _temple_pool_coins(self) -> dict:
+        """The party pool's five coin words, `POST.COM $2B19`, read while the
+        temple overlay is resident. The word order is not asserted; the raw
+        bytes are kept beside them."""
+        try:
+            with self.sess.mon(8) as m:
+                try:
+                    raw = bytes(m.read(TEMPLE_POOL_COINS, 10))
+                finally:
+                    m.resume()
+        except (OSError, S.MonitorError, ValueError, IndexError) as exc:
+            return {"error": repr(exc)}
+        if len(raw) != 10:
+            return {"error": f"short read of {len(raw)} bytes"}
+        return {"raw": raw.hex(),
+                "words": list(struct.unpack("<5H", raw))}
+
     @staticmethod
     def _temple_gold(reading: dict) -> dict:
         """Each party member's gold, by slot and name, from a `reading()`;
@@ -2438,12 +2457,14 @@ class PoolRun:
                 self._temple_stop("price", "no RAISE DEAD price screen, "
                                   "missing " + ", ".join(missing), priced)
             gold_before = self._temple_gold(self.reading())
+            pool_before = self._temple_pool_coins() if pooling else None
             self._temple_select_bar("YES", "payment")
             frames = self._temple_result_frames(price["rows"])
             done = self._temple_heal_screen(
                 price["rows"][:24], tag="raise-result", stop="result",
                 what="YES")
             gold_after = self._temple_gold(self.reading())
+            pool_after = self._temple_pool_coins() if pooling else None
             kept = [f for f in frames if not f["is_price"]]
             outcome = "unknown"
             for rows in reversed([f["rows"] for f in kept] + [done["rows"]]):
@@ -2458,6 +2479,12 @@ class PoolRun:
             result["result_window"] = self.temple_result_window
             result["gold_before"] = gold_before
             result["gold_after"] = gold_after
+            if pooling:
+                # Per-member gold cannot show a payment drawn from the pool,
+                # so the pool's own coin words are kept before YES and after
+                # the result; the CURED and IS ALIVE frames still decide it.
+                result["pool_before"] = pool_before
+                result["pool_after"] = pool_after
             result["outcome"] = outcome
         result["checkpoints"] = len(self.temple_checkpoints)
         return result
