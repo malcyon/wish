@@ -15,7 +15,7 @@ import dataclasses
 
 import pytest
 from support.dossave import _save_dir, needs_dos_saves
-from support.neutralrecords import _filled
+from support.neutralrecords import FILLED_ITEM, _filled
 
 from goldbox import amiga_pod, c64_codec, c64_port, dos_codec, dos_port, neutral
 from goldbox import levels as level_tables
@@ -275,7 +275,7 @@ def test_every_value_a_writer_takes_comes_back_out_of_the_record():
     assert rec.get("turn_power") == 0
     assert rec.get_raw("attack_forms") == bytes(range(1, 9))
     assert [b for b in rec.get_raw("item_effects") if b] == [18, 47]
-    assert rec.get_raw("inventory")[:16] == bytes(range(16))
+    assert rec.get_raw("inventory")[:16] == FILLED_ITEM
     assert rec.get_raw("roster_tail") == bytes(range(9))
     # And every one of the 580 bytes has a provenance, as `docs/117` asks.
     assert rep.unaccounted == []

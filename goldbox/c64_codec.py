@@ -2387,6 +2387,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         # neutral list is in screen order, top row first.  The slots stay
         # packed from 0, where the engine takes its lowest free slot.
         kept = converted[:ITEM_SLOTS]
+        # A type-0 record is written into its slot all the same, because the
+        # editor's Save pairs each DOS item with a C64 slot holding any
+        # nonzero byte and would refuse a party with one skipped; the C64
+        # counts such a slot empty, so the record is reported as dropped.
+        for n, item in enumerate(converted):
+            if Item(bytes(item)).is_empty:
+                rep.dropped.append(
+                    f"inventory: item {n} has type 0, which the C64 game "
+                    f"counts as an empty slot")
         for n, item in enumerate(kept):
             slot = len(kept) - 1 - n
             inv[slot * ITEM_SIZE:(slot + 1) * ITEM_SIZE] = item

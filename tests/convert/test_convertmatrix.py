@@ -839,19 +839,19 @@ def test_a_c64_party_with_a_companion_saves_as_dos(app, tmp_path, disk_name):
 # ---------------------------------------------------------------------------
 
 SEVEN_MEMBERS = 7
-# The seventh member of `TEST_DOS_IMPORT9.D64`; DIRTEN is the seventh only in
+# The seventh member of `TEST_DOS_IMPORT9.D64`; SWORDSMAN is the seventh only in
 # the DOS specimen.
 SEVENTH_C64 = "SILAS"
 
 
 def test_a_seven_member_dos_party_saves_as_c64_with_all_seven(app, tmp_path):
-    """`WISH-SPEC-issue641-dirten-seven-resave` (a seven-character DOS
-    Pool of Radiance save the engine re-saved, slot B): Save As to a C64
+    """`WISH-SPEC-por-hireling-swordsman-03` (a seven-character DOS
+    Pool of Radiance save the game wrote, slot E): Save As to a C64
     disk prepares a plan and the disk it writes holds all seven."""
-    folder = _dos_specimen("issue641-dirten-seven-resave")
+    folder = _dos_specimen("por-hireling-swordsman-03")
     if folder is None:
         pytest.skip("needs ~/wish-specimens/*-dos/"
-                    "WISH-SPEC-issue641-dirten-seven-resave "
+                    "WISH-SPEC-por-hireling-swordsman-03 "
                     "(tools/registry/specimens.py)")
     party = roster.Party(str(folder))
     assert len(party.members) == SEVEN_MEMBERS
@@ -875,9 +875,9 @@ def test_a_seven_member_dos_party_saves_as_c64_with_all_seven(app, tmp_path):
     # The C64 marches in the reverse of the DOS order, so the seven are
     # compared as a set: what this pins is that none is lost.
     assert sorted(written) == sorted(expected)
-    # DIRTEN is the seventh member, the one a six-file reader drops.
-    assert expected[SEVEN_MEMBERS - 1] == b"DIRTEN"
-    assert b"DIRTEN" in written
+    # SWORDSMAN is the seventh member, the one a six-file reader drops.
+    assert expected[SEVEN_MEMBERS - 1] == b"SWORDSMAN"
+    assert b"SWORDSMAN" in written
 
 
 def test_a_seven_member_c64_party_saves_as_dos_with_all_seven(app, tmp_path):

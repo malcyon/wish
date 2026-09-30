@@ -5,6 +5,10 @@ from goldbox import c64_codec
 from goldbox.layout import Confidence
 from goldbox.neutral import NeutralCharacter, Provenance
 
+# Byte 0 is the item type, and type 0 is an emptied C64 slot, so the made-up
+# item carries a real type in front of the same 15 ascending bytes.
+FILLED_ITEM = bytes((1,)) + bytes(range(1, 16))
+
 
 def _filled(game=None) -> NeutralCharacter:
     """A neutral character with a different value in every field, so a value
@@ -28,7 +32,7 @@ def _filled(game=None) -> NeutralCharacter:
     char.set("turn_power", 6, "made up")
     char.set("attack_forms", bytes(range(1, 9)), "made up")
     char.set("innate_effects", [18, 47], "made up")
-    char.set("inventory", [bytes(range(16))], "made up")
+    char.set("inventory", [FILLED_ITEM], "made up")
     char.set("roster_tail", bytes(range(9)), "made up")
     # A real choice, not zero: `0x00` is `HEAD00`, the menu's own first
     # entry, and a source that never set the field at all is a different

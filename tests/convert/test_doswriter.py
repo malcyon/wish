@@ -36,7 +36,7 @@ from support.dossave import (
 )
 from support.dossave import _records as _archive_records
 from support.doswriter import _item_granted_specimen, _portrait_tables
-from support.neutralrecords import _filled
+from support.neutralrecords import FILLED_ITEM, _filled
 
 from goldbox import (
     c64_codec,
@@ -498,13 +498,13 @@ def test_a_filled_character_lands_field_for_field():
     assert tail[0] == rebuilt.armour_bonus
     assert tail[3:9] == rebuilt.attack_forms
     assert back.get("item_count") == 1
-    # `_filled`'s item is bytes(range(16)), which is not a *legal* C64 item:
-    # +7 is cursed in bit 7 and nothing else, so its value 0x07 has no DOS
-    # home and comes back 0.  Everything that means something survives.
+    # `_filled`'s item is not a *legal* C64 item: +7 is cursed in bit 7 and
+    # nothing else, so its value 0x07 has no DOS home and comes back 0.
+    # Everything that means something survives.
     back_item = dos_codec.item_to_c64(itm[:63])
-    assert back_item[:7] == bytes(range(7))
+    assert back_item[:7] == FILLED_ITEM[:7]
     assert back_item[7] == 0
-    assert back_item[8:] == bytes(range(8, 16))
+    assert back_item[8:] == FILLED_ITEM[8:]
     # The identity the DOS engine itself computes: money + weight x quantity.
     weight = 0x0908 * 10
     assert back.get("encumbrance") == \
