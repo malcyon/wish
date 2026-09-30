@@ -997,9 +997,14 @@ def is_party_granted_record(title_key: str, node: bytes) -> bool:
             and node[3] != 0xFF and node[4] == 0)
 
 
+def is_prayer(effect_id: int) -> bool:
+    """Whether an effect id is Prayer's combat node, id 49."""
+    return effect_id == _PRAYER_ID
+
+
 def party_granted_magnitude(title_key: str, node: bytes) -> int:
     """The C64 magnitude of a granted record `is_party_granted_record` took."""
-    if node[0] == _PRAYER_ID:
+    if is_prayer(node[0]):
         return prayer_c64_magnitude(title_key, node[3])
     return int(node[3])
 

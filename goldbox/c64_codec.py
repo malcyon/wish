@@ -1928,7 +1928,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 if held is not None and not payload[
                         effects.EFFECT_DURATION_OFFSET + held]:
                     old = int(payload[effects.EFFECT_MAGNITUDE_OFFSET + held])
-                    if node[0] == 49:
+                    if effects.is_prayer(int(node[0])):
                         old = effects.prayer_dos_data(title_key, old)
                     if int(node[3]) <= old:
                         continue

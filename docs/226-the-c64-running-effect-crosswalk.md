@@ -1269,9 +1269,9 @@ become one `$FF` row with the longest time left. A duration-0 Prayer row
 becomes the granted record `id 00 00 data 00` on every member, on DOS and the
 Amiga, which keep and honour a duration-0 node; the writer turns such records
 back into one duration-0 `$FF` row, the higher data byte winning when members
-differ. Detect Magic's duration-0 record sits on the lowest slot only. Enlarge (12), Friends (14),
-Mirror Image (28) and Strength (38) convert both ways in all three titles
-through `effects.c64_row` and `effects.dos_record`, each title's value rule as
+differ. Detect Magic's duration-0 record sits on the lowest slot only.
+Enlarge (12), Friends (14), Mirror Image (28) and Strength (38) convert both
+ways in all three titles through `effects.c64_row` and `effects.dos_record`, each title's value rule as
 tabled above: Pool's restore-flag encoding, the later titles' bonus and level
 nibbles, the later Enlarge score read back off its own node, and a Mirror Image
 count in both. The flag byte each DOS cast writes is fixed by title and id
