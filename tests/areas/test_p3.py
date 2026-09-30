@@ -21,20 +21,15 @@ Nothing is committed: the bytes come off the player's own disks through
 import pytest
 from gamedata import game_file
 
+from goldbox.world import UNDISCOVERED_PAINT, WINDOW_NAMES
+
 #: The grid is 18 wide and 36 tall, one byte a square, indexed `y * 18 + x`.
 #: That is `$0612 + 1`, read off `GDRIVE00 $C3AF`, and *not* `$0607` = 20.
 STRIDE = 18
 GRID = STRIDE * 36
 
-#: `world-map.md` §7: file, square, what the disk holds, what the script paints
-#: over it while the site is undiscovered. The live reads at `$8C00` found the
-#: paint value at every one of these and the disk value at every other square.
-PAINTED = [
-    ("SQRDATA05", 12, 11, 0x37, 0x39),   # the nomad camp
-    ("SQRDATA06", 11, 8, 0x71, 0x22),    # the lizardman keep
-    ("SQRDATA06", 6, 15, 0x49, 0x30),    # the kobold caves
-    ("SQRDATA06", 7, 23, 0x6D, 0x11),    # the site that was cut
-]
+PAINTED = [(WINDOW_NAMES[window], x, y, disk, paint)
+           for window, x, y, disk, paint in UNDISCOVERED_PAINT]
 
 
 @pytest.mark.parametrize("name,x,y,disk,paint", PAINTED)

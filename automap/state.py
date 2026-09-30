@@ -51,9 +51,10 @@ OUTDOORS_REGIONS = ("West of Phlan", "Stojanow Valley", "East of Phlan")
 #: front of them.
 #:
 #: **Comes off when `#11 (Draw the wilderness on the automapper)` closes**,
-#: which needs a `grab()` of the world page in both views, posted on that
-#: issue as our own visual check, and the live walk across a seam, run and
-#: posted there.
+#: which needs the undiscovered sites drawn as the game paints them, a
+#: `grab()` of the world page in both views retaken after that and posted on
+#: that issue as our own visual check, the live walk across a seam, and the
+#: live check of the resident block's paint, run and posted there.
 WILDERNESS_ENV = "WISH_EXPERIMENTAL_WILDERNESS_MAP"
 _TRUE = ("1", "true", "yes", "on")
 
@@ -230,7 +231,8 @@ class AutomapState:
     y: int = 0
     facing: int = 0
     source: str = ""
-    #: True while the party is on the travel grid, where nothing here draws.
+    #: True while the party is on the travel grid, where the wilderness page
+    #: draws and the indoor map does not.
     #: `x`, `y` and `source` still track the fix while this is set; `facing`,
     #: `area`, `geo`, `exploration`, `notes`, `candidates` and the fingerprint
     #: are the last indoor ones and are left alone -- see `Automapper.poll`.
@@ -240,6 +242,9 @@ class AutomapState:
     window: int | None = None
     #: The travel grid's heading byte, 0-7, or None. Set only while `outdoors`.
     heading: int | None = None
+    #: Window index -> the last block the game had resident at `$8C00` for it
+    #: this session, which is the grid as the game painted it.
+    resident_grids: dict[int, bytes] = field(default_factory=dict)
     candidates: Candidates | None = None
     reveal: bool = False
     exploration: Exploration = field(default_factory=Exploration)
@@ -629,7 +634,10 @@ class Automapper:
         (`docs/140-loaded-files-cache.md`), so it could only ever answer
         `UNKNOWN` for the cost of a read. The window the game has resident
         and the heading are read into `state.window` and `state.heading`, and
-        the wilderness page draws from them.
+        the wilderness page draws from them. The block that identified the
+        window is kept in `state.resident_grids`, so the page draws a site the
+        way the game paints it; a held jump or an unidentified block keeps
+        nothing.
 
         `state.facing`, `area`, `geo`, `exploration`, `notes`, `candidates`
         and the fingerprint are the party's last indoor ones and are left
@@ -675,6 +683,7 @@ class Automapper:
                         return False
                     self._outdoor_pending = None
                     self.state.window = found[0]
+                    self.state.resident_grids[found[0]] = read[0]
                     changed_heading = self._read_heading()
         self.state.outdoors = True
         self.state.x, self.state.y = fix.x, fix.y
@@ -722,6 +731,9 @@ class Automapper:
         self._last = None
         self.title_check = UNKNOWN
         self._contradictions = 0
+        # A new machine may hold a different save, so its blocks are not the
+        # old one's.
+        self.state.resident_grids.clear()
 
     def _running(self, fix: Fix) -> bool:
         """Is a Gold Box game actually in memory? Nothing is recorded until it is.

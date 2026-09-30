@@ -131,6 +131,36 @@ def test_a_target_that_is_not_a_c64_is_never_read(on):
     assert target.reads == []
 
 
+def test_the_block_that_names_a_window_is_kept_for_it(on):
+    mapper, _ = mapper_for([out(8, 20)], _window(1))
+    mapper.poll()
+    assert mapper.state.resident_grids == {1: _window(1)}
+
+
+def test_a_zero_page_keeps_nothing(on):
+    mapper, _ = mapper_for([out(8, 20)], bytes(GRID_SIZE))
+    mapper.poll()
+    assert mapper.state.resident_grids == {}
+
+
+def test_a_held_jump_keeps_nothing(on):
+    mapper, target = mapper_for([out(8, 20), out(3, 20)], _window(1))
+    mapper.poll()
+    target.block = _window(1)[:5] + bytes([99]) + _window(1)[6:]
+    assert mapper.poll() is False
+    assert mapper.state.resident_grids == {1: _window(1)}
+
+
+def test_a_new_connection_forgets_the_blocks(on):
+    mapper, _ = mapper_for([out(8, 20)], _window(1))
+    mapper.poll()
+    assert mapper.state.resident_grids
+    # A machine whose block names no window, so nothing is kept after the clear.
+    mapper.target = Target([out(8, 20)], bytes(GRID_SIZE))
+    mapper.poll()
+    assert mapper.state.resident_grids == {}
+
+
 # -- the flag ----------------------------------------------------------------
 
 def test_the_flag_is_off_by_default(monkeypatch):

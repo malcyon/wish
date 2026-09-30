@@ -34,6 +34,9 @@ HEADING = c64.TRAVEL_HEADING
 #: Window `k` is drawn solid in colour `COLOUR + k`, so the picture says which
 #: window answered each square.
 COLOUR = 2
+#: A tile no `_grid` square names, in a colour no window uses, for a test that
+#: needs the game to paint one square differently.
+PAINT_CODE, PAINT_COLOUR = 100, 6
 
 
 def _grid(seed: int) -> bytes:
@@ -48,6 +51,8 @@ def _world() -> World:
             at = entry * 18
             tiles[at:at + 9] = bytes([0x40]) * 9             # glyph 0, all set
             tiles[at + 9:at + 18] = bytes([COLOUR + k]) * 9  # hi-res colour
+        at = PAINT_CODE * 18
+        tiles[at + 9:at + 18] = bytes([PAINT_COLOUR]) * 9
         windows.append(Window(_grid(k) + bytes(tiles)))
     glyphs = bytes([0xFF]) * (CHARSET_GLYPHS * GLYPH_BYTES)
     return World(tuple(windows), (glyphs,) * 3)
@@ -434,3 +439,48 @@ def test_no_heading_is_read_on_standing_ticks_in_a_battle(
     for _ in range(win.mapper.RESIDENT_EVERY):
         win.tick()
     assert reads == []
+
+
+# -- what the game has painted ---------------------------------------------------
+
+def _painted(window, square):
+    """Window `window`'s disk grid with the game's paint at local `square`."""
+    grid = bytearray(_grid(window))
+    grid[square[1] * 18 + square[0]] = PAINT_CODE
+    return bytes(grid)
+
+
+def test_a_square_the_game_paints_is_drawn_as_the_game_paints_it(
+        app, tmp_path, monkeypatch):
+    win, target = _window_on(
+        app, tmp_path, monkeypatch, [out(8, 27), out(8, 26)])
+    canvas = win.world_canvas
+    canvas.resize(canvas.sizeHint())
+    target.block = _painted(1, (5, 20))
+    _step(win)
+    image = canvas.grab().toImage()
+    assert _pixel_at_square(canvas, image, 18, 20) == _rgb(PAINT_COLOUR)
+    target.block = _painted(1, (5, 21))
+    _step(win)
+    image = canvas.grab().toImage()
+    assert _pixel_at_square(canvas, image, 18, 21) == _rgb(PAINT_COLOUR)
+    assert _pixel_at_square(canvas, image, 18, 20) == _rgb(COLOUR + 1)
+
+
+def test_the_picture_is_rebuilt_only_when_the_resident_block_changes(
+        app, tmp_path, monkeypatch):
+    from automap import window as window_module
+    win, target = _window_on(
+        app, tmp_path, monkeypatch, [out(8, 27), out(8, 26), out(8, 25)])
+    built = []
+    real = window_module.world_indices
+    monkeypatch.setattr(window_module, "world_indices",
+                        lambda *a, **k: built.append(1) or real(*a, **k))
+    target.block = _painted(1, (5, 20))
+    _step(win)
+    assert len(built) == 1
+    target.block = _painted(1, (5, 21))
+    _step(win)
+    assert len(built) == 2
+    _step(win)                                      # the same block again
+    assert len(built) == 2

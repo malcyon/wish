@@ -117,8 +117,9 @@ disks; the save is copied into the slot.
 
 The site list and passability are not measured here, and drawing needs
 neither. The resident block at `$8C00` is the map **as the game has painted
-it**, hidden sites and all, but the canvas draws the disk's grid rather than
-that block, so the four hidden sites show (§7).
+it**, with each undiscovered site painted over as terrain. The canvas draws
+that block for the window the party is in and the known paint list for the
+others (§7).
 
 ### What measurement B read, and what it cannot be re-taken from
 
@@ -320,9 +321,8 @@ For whoever next edits them; this document does not.
   window.
 * **Do not reuse `GEO` passability or sight.** One byte, one picture, no
   edges.
-* **A hidden site is drawn.** The earlier plans said not to draw a site the game
-  has not drawn, and expected the resident block to give that without a flag
-  table. The canvas reads the disk's grid, so the four squares the game paints
-  ordinary terrain over until their site is found (`tests/areas/test_p3.py`
-  `PAINTED`) show the site's own art. Whether to paint them over is not
-  decided.
+* **An undiscovered site is drawn as the terrain the game paints over it.** The
+  earlier plans said not to draw a site the game has not drawn, and expected the
+  resident block to give that without a flag table. It does for the window the
+  party is in; for the other two the canvas uses the four measured squares
+  (`goldbox.world.UNDISCOVERED_PAINT`), which are not known to be complete.

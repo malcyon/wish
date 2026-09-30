@@ -31,6 +31,7 @@ from goldbox.world import (
     TILE_COUNT,
     TILE_PIXELS,
     TILE_TABLE_SIZE,
+    UNDISCOVERED_PAINT,
     WINDOW_NAMES,
     WINDOW_STEP,
     WORLD_ACROSS,
@@ -367,3 +368,78 @@ def test_the_world_picture_off_the_disks_is_c64_colours_and_the_tiles_it_names()
     for py, row in enumerate(want):
         at = (27 * TILE_PIXELS + py) * width + 21 * TILE_PIXELS
         assert list(picture[at:at + TILE_PIXELS]) == list(row)
+
+
+def _marked_world() -> World:
+    """`_solid_world`, but tile 1 is colour 6 in every window."""
+    windows = []
+    for k in range(3):
+        tiles = bytearray(TILE_TABLE_SIZE)
+        tiles[0:9] = bytes([0x40]) * 9
+        tiles[9:18] = bytes([2 + k]) * 9
+        tiles[18:27] = bytes([0x40]) * 9
+        tiles[27:36] = bytes([6]) * 9
+        windows.append(Window(bytes(GRID_SIZE) + bytes(tiles)))
+    glyphs = bytes([0xFF]) * (CHARSET_GLYPHS * GLYPH_BYTES)
+    return World(tuple(windows), (glyphs,) * 3)
+
+
+def _colour_at(picture, square_x, square_y):
+    width = WORLD_ACROSS * TILE_PIXELS
+    return picture[square_y * TILE_PIXELS * width + square_x * TILE_PIXELS]
+
+
+def test_a_grid_the_game_painted_is_drawn_in_place_of_the_disks():
+    world = _marked_world()
+    grid = bytearray(GRID_SIZE)
+    grid[27 * STRIDE + 8] = 1                       # window 1, local (8, 27)
+    painted = world_indices(world, {1: bytes(grid)})
+    assert _colour_at(painted, 21, 27) == 6
+    assert _colour_at(painted, 22, 27) == 3
+    # No grid for the window: the disk's code is drawn there.
+    assert _colour_at(world_indices(world), 21, 27) == 3
+
+
+def test_a_grid_for_one_window_leaves_the_others_on_the_disks():
+    world = _marked_world()
+    grid = bytes([1]) * GRID_SIZE
+    painted = world_indices(world, {1: grid})
+    assert _colour_at(painted, 3, 5) == 2           # west window, untouched
+    assert _colour_at(painted, 30, 5) == 4          # east window, untouched
+    assert _colour_at(painted, 20, 5) == 6
+
+
+def test_the_undiscovered_grid_paints_only_the_listed_squares():
+    world = _marked_world()
+    for k in range(3):
+        grid = world.undiscovered_grid(k)
+        disk = world.windows[k].to_bytes()[:GRID_SIZE]
+        assert len(grid) == GRID_SIZE
+        listed = {(x, y): paint for w, x, y, _, paint in UNDISCOVERED_PAINT if w == k}
+        for i in range(GRID_SIZE):
+            at = (i % STRIDE, i // STRIDE)
+            assert grid[i] == listed.get(at, disk[i])
+
+
+@needs_disks
+@pytest.mark.parametrize("index,x,y,disk,paint", UNDISCOVERED_PAINT)
+def test_an_undiscovered_site_is_drawn_as_the_game_paints_it(index, x, y, disk, paint):
+    from goldbox.world import tile_pixels
+    world = World.from_disks(_pool_disks())
+    if world.charsets is None:
+        pytest.skip("these disks carry no SECSET glyphs")
+    window = world.windows[index]
+    assert window.square(x, y) == disk
+    width = WORLD_ACROSS * TILE_PIXELS
+    world_x = x + WINDOW_STEP * index
+
+    def block(picture):
+        return [list(picture[(y * TILE_PIXELS + py) * width + world_x * TILE_PIXELS:
+                             (y * TILE_PIXELS + py) * width + world_x * TILE_PIXELS
+                             + TILE_PIXELS]) for py in range(TILE_PIXELS)]
+    want_paint = [list(r) for r in tile_pixels(window.tile(paint), world.charsets[index])]
+    want_disk = [list(r) for r in tile_pixels(window.tile(disk), world.charsets[index])]
+    assert want_paint != want_disk
+    assert block(world_indices(world)) == want_paint
+    grids = {index: window.to_bytes()[:GRID_SIZE]}
+    assert block(world_indices(world, grids)) == want_disk

@@ -188,6 +188,25 @@ def test_the_look_records_033d_and_the_mappers_window_and_heading():
     assert log.of("look")[0]["mapper_heading"] == 6
 
 
+def test_the_look_logs_the_squares_the_game_painted_over_the_disk():
+    from goldbox.world import GRID_SIZE, MIN_FILE_SIZE, STRIDE, Window, World
+    disk = bytes(i % 100 for i in range(GRID_SIZE))
+    world = World(tuple(Window(disk + bytes(MIN_FILE_SIZE - GRID_SIZE))
+                        for _ in range(3)))
+    block = bytearray(disk)
+    block[27 * STRIDE + 8] = 111
+    log, sess = Log(), Sess()
+    binding = MagicMock()
+    binding.LIVE_EVERY = 0
+    binding.state.window, binding.state.heading = 1, 6
+    binding.state.resident_grids = {1: bytes(block)}
+    binding.mapper._world = world
+    binding.status_text.return_value = ""
+    sess.kbd = MagicMock()
+    M.look(MagicMock(), binding, "t", pathlib.Path("/nonexistent"), log, sess)
+    assert log.of("look")[0]["mapper_paint"] == [[8, 27, 111]]
+
+
 def test_turn_options_parse(monkeypatch, tmp_path):
     got = {}
 

@@ -395,6 +395,27 @@ class World:
         window, local_x = self.locate(world_x)
         return window.tile_at(local_x, y)
 
+    def undiscovered_grid(self, index: int) -> bytes:
+        """Window `index`'s 648-byte disk grid with `UNDISCOVERED_PAINT`'s
+        paint value written at each of its squares: the grid a party that has
+        found no site would see."""
+        grid = bytearray(self.windows[index].to_bytes()[:GRID_SIZE])
+        for window, x, y, _disk, paint in UNDISCOVERED_PAINT:
+            if window == index:
+                grid[y * STRIDE + x] = paint
+        return bytes(grid)
+
+
+#: `(window index, local x, local y, disk value, paint value)`: the four
+#: squares the live reads at `$8C00` found painted over while their site is
+#: undiscovered. What has been measured, not known to be complete; the site
+#: tables that would complete it are in the scripts (`docs/115`).
+UNDISCOVERED_PAINT = (
+    (1, 12, 11, 0x37, 0x39),   # the nomad camp
+    (2, 11, 8, 0x71, 0x22),    # the lizardman keep
+    (2, 6, 15, 0x49, 0x30),    # the kobold caves
+    (2, 7, 23, 0x6D, 0x11),    # the site that was cut
+)
 
 #: The whole wilderness in squares, each window's two-square border included:
 #: three 18-wide windows 13 apart, by the 36 rows every window shares.
@@ -415,9 +436,13 @@ def window_for_world_x(world_x: int) -> int:
     return 1 if world_x < SEAM_MIDDLE_EAST else 2
 
 
-def world_indices(world: World) -> bytes:
+def world_indices(world: World, grids: dict[int, bytes] | None = None) -> bytes:
     """The whole wilderness as one picture of C64 colour indices, row-major,
     `WORLD_ACROSS * TILE_PIXELS` wide and `WORLD_DOWN * TILE_PIXELS` high.
+
+    `grids` maps a window index to a 648-byte grid the game has painted. A
+    window it does not name is drawn from `World.undiscovered_grid`, and each
+    code is looked up in that window's own tile table.
 
     Raises `WorldError` when the disks carried no `SECSET` to draw with.
     """
@@ -425,10 +450,14 @@ def world_indices(world: World) -> bytes:
         raise WorldError("no disk here carries the SECSET glyphs")
     width = WORLD_ACROSS * TILE_PIXELS
     out = bytearray(width * WORLD_DOWN * TILE_PIXELS)
+    grids = grids or {}
+    used = [grids[k] if k in grids else world.undiscovered_grid(k)
+            for k in range(len(world.windows))]
     for y in range(WORLD_DOWN):
         for x in range(WORLD_ACROSS):
             index = window_for_world_x(x)
-            tile = world.windows[index].tile_at(x - WINDOW_STEP * index, y)
+            code = used[index][y * STRIDE + x - WINDOW_STEP * index]
+            tile = world.windows[index].tile(code)
             rows = tile_pixels(tile, world.charsets[index])
             for py, row in enumerate(rows):
                 at = (y * TILE_PIXELS + py) * width + x * TILE_PIXELS

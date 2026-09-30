@@ -235,6 +235,21 @@ def shot(app, widget, path: pathlib.Path) -> None:
     widget.grab().save(str(path))
 
 
+def resident_paint(binding) -> list[list[int]]:
+    """`[x, y, code]` for each square where the block last resident for the
+    party's window differs from that window's disk grid: what the game has
+    painted over the disk's art."""
+    from goldbox.world import GRID_SIZE, STRIDE
+    st = binding.state
+    world = binding.mapper._world
+    if st.window is None or world is None or st.window not in st.resident_grids:
+        return []
+    disk = world.windows[st.window].to_bytes()[:GRID_SIZE]
+    block = st.resident_grids[st.window]
+    return [[i % STRIDE, i // STRIDE, block[i]]
+            for i in range(GRID_SIZE) if block[i] != disk[i]]
+
+
 def look(app, binding, tag: str, out: pathlib.Path, log: Log, sess) -> dict:
     """Tick the map, photograph it, and write down what it says."""
     for _ in range(binding.LIVE_EVERY + 1):
@@ -283,6 +298,7 @@ def look(app, binding, tag: str, out: pathlib.Path, log: Log, sess) -> dict:
     # or window that disagrees with `$033D` and `$49C3` is the mapper's
     # reading, not the game's.
     seen["mapper_window"] = st.window
+    seen["mapper_paint"] = resident_paint(binding)
     seen["mapper_heading"] = st.heading
     seen.update(probes(sess))
     log.emit("look", **seen)

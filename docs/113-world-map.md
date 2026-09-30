@@ -87,30 +87,32 @@ nothing is broken; for the overland map `$0607` is 20 against a true stride of
 
 ---
 
-## What the automapper would show
+## What the automapper shows
 
-The world, not the window. The game shows seven squares; the value the
-automapper adds outdoors is the same one it adds in a dungeon — the shape of the
-whole place, and where you have been.
+The world, not the window. The game shows five squares across; the value the
+automapper adds outdoors is the shape of the whole place.
 
-* **One canvas, 40 x 32**, the three files stitched at world `x` 15 and 28, with
-  the party marked at (`$49C3` + 13 x k, `$49C4`). The seams should not be
-  visible; the player has no idea there are three files.
-* **Terrain drawn only where the party has been**, exactly as `Exploration`
-  does for a `GEO`. The whole world is sitting on the disk and drawing it
-  unvisited would hand the player the map the game sells in its box.
-* **Passable and impassable**, from the owning map's own table — so the
-  Stojanow shows solid until `$4AB3` says otherwise and then opens, which is a
-  thing the game itself never tells you.
+**Built:**
+
+* **Full View and Area View over the whole 44 x 36 wilderness**, the three
+  files stitched at world `x` 15 and 28 with each window's two-square border
+  drawn, and the party marked at (`$49C3` + 13 x k, `$49C4`). No fog and no
+  record of where the party has been: the disks hold every square, and the
+  marker is the only sign of where it is.
+* **Undiscovered sites drawn as the terrain the game paints over them**, which
+  is what the game itself shows until the site is found. The window the party
+  is in is drawn from the block resident at `$8C00`; the other two from the
+  four squares measured so far (`goldbox.world.UNDISCOVERED_PAINT`).
+
+**Waiting on the closed script read** (`docs/115-review-the-scripts.md`):
+
+* **Passable and impassable**, from the owning map's own table, so the Stojanow
+  shows solid until `$4AB3` says otherwise and then opens.
 * **Sites named where their flag says they are found**: Buccaneer Base, the
   Zhentil outpost, the Cave of Diogenes, the nomad camp, Yarash's pyramid, the
   lizardman keep, the kobold caves, the three ways into Phlan, the two boats.
-  Hidden ones drawn as plain terrain, because that is literally what the game
-  paints there.
-* **Eight-way movement**, so the facing marker needs eight positions, not four.
-* **Which disk the next area wants** — `$6E12` is the `POOL` number and is
-  CONFIRMED on eight transitions. A line saying "Buccaneer Base — disk 6" is
-  free and is the single most irritating thing about playing this game.
+* **Which disk the next area wants** -- `$6E12` is the `POOL` number and is
+  CONFIRMED on eight transitions.
 * **The cave**, when `$4A9E` is 255, is an ordinary `GEO` and the existing area
   map draws it with no new code at all. Only the label changes.
 
@@ -223,9 +225,8 @@ answers unknown 2 on its own.
    outdoor C64 save can be made again without playing to reach one. Steps 6
    onward are drawing, and drawing the wrong map is worse than drawing none.
 6. **The canvas.** A third page in the automapper's `QStackedWidget`, since
-   only one of area / combat / world is ever true. Reuse `Exploration` for the
-   visited set — its keys are already `(x, y)` and world coordinates are the
-   natural ones to store.
+   only one of area / combat / world is ever true. It keeps no visited set: the
+   whole world is drawn.
 7. **Site labels** from the five plot flags, and the disk number from `$6E12`'s
    table.
 8. **The river.** Re-read `passable()` when `$4AB3` crosses 254 and redraw.
@@ -235,7 +236,8 @@ answers unknown 2 on its own.
 ## What not to do
 
 * **The map draws the whole world, visited or not.** It reads every square from
-  the disks and keeps no record of where the party has been, so the party's
+  the disks, or from the block resident at `$8C00` where the game has painted an
+  undiscovered site over one, and keeps no record of where the party has been, so the party's
   marker is the only sign of where it is; `137-wilderness-automap.md`, section
   6, has what that includes and what is undecided.
 * **Do not read a terrain code against another map's table.** `2E` is walkable

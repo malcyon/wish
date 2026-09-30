@@ -230,7 +230,9 @@ What the drawing does and does not do, from
 * **Do not read a terrain code against another window's table.**
 * **Do not reuse `GEO` passability logic.** One byte, one terrain, one lookup —
   there are no walls, no doors and no per-square attribute byte out here.
-* **A hidden site is drawn.** The canvas reads the disk's grid, not the block
-  resident at `$8C00`, so the four squares the game paints ordinary terrain over
-  until their site is found (`tests/areas/test_p3.py` `PAINTED`) show the
-  site's own art. Whether to paint them over is not decided.
+* **An undiscovered site is drawn as the terrain the game paints over it.**
+  The four squares the game paints ordinary terrain over until their site is
+  found (`goldbox.world.UNDISCOVERED_PAINT`) are drawn from the block resident
+  at `$8C00` for the window the party is in, and from that list for the other
+  two windows, because Donald chose the game's own tiles as the game paints
+  them. The list is what has been measured and is not known to be complete.
