@@ -37,6 +37,8 @@ bytes are committed.
 from __future__ import annotations
 
 import pathlib
+import re
+import tomllib
 
 import pytest
 
@@ -242,6 +244,11 @@ def _weight_sum(rec: bytes, itm: bytes) -> int:
 #: * `issue641-dirten-seven-resave`, where every record came back as our
 #:   writer wrote it bar the portrait bytes although the run viewed all seven
 #:   sheets -- the unexplained case part 2 of #634 named for the saves.
+#:
+#: A specimen whose `provenance.toml` (`what` or `made_by`) names one of these,
+#: or one of its own descendants, as the copy it was staged from is excluded
+#: too, by `_not_rebuilt_with_descendants`: staging changes a rebuild input and
+#: the run need not have rebuilt the character afterwards.
 _NOT_REBUILT = {
     "por-dos/WISH-SPEC-amigatodos-por-resave",
     "por-dos/WISH-SPEC-por-amiga-slums-dos-resave",
@@ -261,17 +268,49 @@ _VIEWED_AFTER_A_CONVERSION = {
 }
 
 
+_PARENT_NAME = re.compile(r"WISH-SPEC-[A-Za-z0-9._-]+")
+
+
+def _not_rebuilt_with_descendants(root, seeds):
+    """`seeds` plus every specimen under `root` whose provenance names a member
+    of the set, repeated until nothing more joins, so a copy of a copy is
+    caught. Entries are `<platform dir>/<specimen dir>`; a name is looked up
+    in the same platform dir."""
+    excluded = set(seeds)
+    while True:
+        grew = False
+        for prov in sorted(root.glob("*/*/provenance.toml")):
+            entry = f"{prov.parent.parent.name}/{prov.parent.name}"
+            if entry in excluded:
+                continue
+            try:
+                with open(prov, "rb") as fh:
+                    data = tomllib.load(fh)
+            except (OSError, tomllib.TOMLDecodeError):
+                continue
+            text = f"{data.get('what', '')} {data.get('made_by', '')}"
+            if any(f"{prov.parent.parent.name}/{name}" in excluded
+                   for name in _PARENT_NAME.findall(text)):
+                excluded.add(entry)
+                grew = True
+        if not grew:
+            return excluded
+
+
 def _rebuilt_records():
     """Engine-written DOS Pool of Radiance records the DOS rebuild wrote last:
     stored encumbrance equal to the rebuild's own sum -- the rebuild writes it
     in the same pass, so a record that fails it has had its items or coins
-    move since the rebuild last ran -- and not in `_NOT_REBUILT`."""
+    move since the rebuild last ran -- and not in `_NOT_REBUILT` or copied from a specimen in it."""
     import test_pordossaves as saves
 
     out = []
-    for specimen_dir, name, char in saves._por_dos_records():
+    records = saves._por_dos_records()
+    excluded = (_not_rebuilt_with_descendants(_specimen_root(), _NOT_REBUILT)
+                if records else _NOT_REBUILT)
+    for specimen_dir, name, char in records:
         rec = char.to_bytes()
-        if (specimen_dir in _NOT_REBUILT
+        if (specimen_dir in excluded
                 and (specimen_dir, name) not in _VIEWED_AFTER_A_CONVERSION):
             continue
         if _weight_sum(rec, _items_of(char)) != int.from_bytes(
@@ -280,6 +319,27 @@ def _rebuilt_records():
             continue
         out.append((specimen_dir, name, char))
     return out
+
+
+def test_a_copy_of_a_copy_of_an_unrebuilt_specimen_is_excluded(tmp_path):
+    def make(platform_dir, name, **fields):
+        d = tmp_path / platform_dir / name
+        d.mkdir(parents=True)
+        body = "".join(f'{k} = "{v}"\n' for k, v in fields.items())
+        (d / "provenance.toml").write_text(body)
+
+    make("por-dos", "WISH-SPEC-parent", what="Wish's own resave")
+    make("por-dos", "WISH-SPEC-child",
+         what="Copy of WISH-SPEC-parent, slot D, staged before the boot")
+    make("por-dos", "WISH-SPEC-grandchild",
+         made_by="staged copy of WISH-SPEC-child")
+    make("por-dos", "WISH-SPEC-unrelated", what="Rolled in the game")
+    make("por-amiga", "WISH-SPEC-other-platform",
+         what="Copy of WISH-SPEC-parent")
+    got = _not_rebuilt_with_descendants(tmp_path,
+                                        {"por-dos/WISH-SPEC-parent"})
+    assert got == {"por-dos/WISH-SPEC-parent", "por-dos/WISH-SPEC-child",
+                   "por-dos/WISH-SPEC-grandchild"}
 
 
 def _stored(char):
