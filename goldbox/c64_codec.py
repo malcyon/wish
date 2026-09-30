@@ -18,6 +18,7 @@ Evidence for the fields themselves is in `goldbox/layout.py`; for the conversion
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 from collections.abc import Mapping
 
@@ -911,6 +912,27 @@ def _max_stored(size: int) -> int:
     return (1 << (8 * size)) - 1
 
 
+def _native_strength(char: NeutralCharacter,
+                     title_key: str) -> tuple[int, int] | None:
+    """The score in force the C64's Strength gives a DOS or Amiga character,
+    or `None` (`effects.c64_later_strength_in_force`)."""
+    second = char.get("abilities_second")
+    rows = char.get("running_effects")
+    if not second or not isinstance(rows, (list, tuple)):
+        return None
+    permanent = (second.get("strength"), second.get("exceptional_strength"))
+    if None in permanent or char.get("strength") is None:
+        return None
+    nodes = [effects.RunningEffect.from_record(
+        bytes(r)[:effects.RUNNING_EFFECT_SIZE]) for r in rows]
+    return effects.c64_later_strength_in_force(
+        title_key, permanent,
+        (char.get("strength"), char.get("exceptional_strength") or 0), nodes,
+        char.get("granted_effects") or (),
+        effects.later_strength_warrior(char.get("levels"),
+                                       char.get("former_levels")))
+
+
 def write(char: NeutralCharacter, icon: bytes | None = None, *,
           payload: bytearray | None = None, party_slot: int | None = None,
           clock_minutes: int | None = None,
@@ -939,6 +961,21 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     rep = Report()
     port = char.port
     deltas = deltas_for(char.game)
+    # A running Strength keeps its roll, and the score in force is the one the
+    # C64's own recalculation gives for it, so a camp visit here does not move
+    # it. Every later read of the strength, the `DIRECT` copy included, then
+    # sees that score.
+    native = (_native_strength(char, deltas.key)
+              if port != "C64" and deltas.key in effects.LATER_CAST_FLAGS
+              else None)
+    if native is not None:
+        char = copy.copy(char)
+        char.fields = dict(char.fields)
+        for field, score in zip(("strength", "exceptional_strength"), native):
+            char.set(field, score,
+                     "the C64's own Strength recalculation (ECL65 $9160) of "
+                     "the running Strength's roll, from the permanent score",
+                     Confidence.CONFIRMED, Provenance.COMPUTED)
     pool_item_table = (deltas.key == "pool-of-radiance"
                        and item_types is not None)
     w = neutral.Writer(

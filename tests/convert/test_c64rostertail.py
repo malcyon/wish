@@ -87,9 +87,15 @@ def test_pool_armour_alone_is_recomputed_and_a_weapon_is_copied():
 def test_the_c64_tail_agrees_with_the_dos_rebuild_on_every_unarmed_specimen():
     """DOS rebuilds these bytes with the same rule (`dos_combat_rebuild`), so
     on every specimen record where it applies the C64 writer must land on the
-    same six bytes, including the records whose DOS file stores a stale tail."""
+    same six bytes, including the records whose DOS file stores a stale tail.
+
+    A record whose running Strength the writer rewrote to the C64's own score
+    is left out: the DOS rebuild adds the damage step of the DOS score, and the
+    C64's first fight adds the step of the score the C64 holds, so the two
+    differ by design. It must be a specimen with a running Strength.
+    """
     root = specimen_root()
-    checked, disagree = 0, []
+    checked, disagree, rescored = 0, [], []
     for folder in sorted(p for p in root.rglob("*") if p.is_dir()):
         for path in (sorted(folder.glob("CHRDAT*.SAV"))
                      + sorted(folder.glob("*.CHA"))):
@@ -107,10 +113,17 @@ def test_the_c64_tail_agrees_with_the_dos_rebuild_on_every_unarmed_specimen():
             if rebuilt is None:
                 continue
             rec, _ = dos_codec.to_c64_record(char)
+            dos = dos_codec.to_neutral(char)
+            if ((rec.get("strength"), rec.get("exceptional_strength"))
+                    != (dos.get("strength"), dos.get("exceptional_strength"))):
+                rescored.append(f"{folder.name}/{path.name}")
+                continue
             checked += 1
             if rec.get_raw("roster_tail")[3:9] != rebuilt.attack_forms:
                 disagree.append(f"{folder.name}/{path.name}")
     assert disagree == []
+    assert {name.split("/")[0] for name in rescored} <= {
+        "WISH-SPEC-curse-667-strength-rebuild-dos-resave"}
     if checked < FULL_TREE:
         pytest.skip(f"only {checked} unarmed records found; a full specimen "
                     f"tree holds at least {FULL_TREE}")

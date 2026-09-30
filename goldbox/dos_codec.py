@@ -5052,6 +5052,24 @@ def write(char: NeutralCharacter,
     # WIS at its permanent score.
     feeble = (char.port == "C64" and effects.feebleminded(
         deltas.key, char.get("granted_effects") or ()))
+    # A C64 running Strength keeps its roll, and the score in force is what a
+    # DOS cast of that roll gives, so DOS's own recalculation starts from it.
+    # Only a DOS destination: the Amiga's recalculation has not been read.
+    strength_native = None
+    if (char.port == "C64" and into == "DOS"
+            and deltas.key in effects.LATER_CAST_FLAGS and seconds
+            and char.get("running_effects") is not None):
+        _perm = (seconds.get("strength"), seconds.get("exceptional_strength"))
+        if None not in _perm and char.get("strength") is not None:
+            strength_native = effects.dos_later_strength_in_force(
+                deltas.key, _perm,
+                (char.get("strength"), char.get("exceptional_strength") or 0),
+                [effects.RunningEffect.from_record(
+                    bytes(r)[:effects.RUNNING_EFFECT_SIZE])
+                 for r in char.get("running_effects")],
+                char.get("granted_effects") or (),
+                effects.later_strength_warrior(char.get("levels"),
+                                               char.get("former_levels")))
     for neutral_name, dos_name in (WRITE_DIRECT + DARKNESS_WRITE_DIRECT +
                                    undead_direct(deltas.key)):
         # A field this title's record does not have at all -- Pools of
@@ -5097,6 +5115,11 @@ def write(char: NeutralCharacter,
                 in_force = effects.FEEBLEMIND_SCORE
                 why = (f", Feeblemind's {in_force}, which the destination's "
                        f"own recompute leaves it at")
+            if strength_native is not None and dos_name in (
+                    "strength", "exceptional_strength"):
+                in_force = strength_native[dos_name == "exceptional_strength"]
+                why = (", what a DOS cast of the running Strength's roll "
+                       "gives from the permanent score")
             byte0, byte1 = _pair_bytes(dos_name, in_force, permanent)
             put(v, dos_name,
                 f", the score in force{why}; the permanent score behind it "

@@ -1814,6 +1814,7 @@ _VALUE_ROWS = [
     (_P, _RE(28, 10, 0x03, 0), (28, 0x03)),
     (_C, _RE(38, 10, 0x68, 1), (38, 0xB8)),
     (_C, _RE(38, 10, 0x66, 1), (38, 0x96)),
+    (_C, _RE(38, 10, 0x65, 1), (38, 0x85)),
     (_S, _RE(14, 10, 0x05, 1), (14, 0xC5)),
     (_S, _RE(14, 10, 0x05, 0), (14, 0xC5)),
     (_C, _RE(12, 10, 0x34, 1), (12, 0x83)),
@@ -1835,7 +1836,6 @@ def test_c64_row_converts_enlarge_friends_mirror_image_and_strength(
     (_P, _RE(28, 10, 3, 1), {}),
     (_P, _RE(38, 10, 0x73, 1), {"strength_nodes": 2}),
     (_P, _RE(12, 10, 0xE3, 1), {}),
-    (_C, _RE(38, 10, 0x65, 1), {}),
     (_C, _RE(12, 10, 0x70, 1), {}),
     (_C, _RE(28, 10, 0x50, 0), {}),
     (_S, _RE(28, 10, 0xFF, 0), {}),
@@ -1855,6 +1855,7 @@ _VALUE_NODES = [
     (_P, 14, 0x8C, (0x0C, 1)),
     (_P, 28, 0x03, (0x03, 0)),
     (_C, 38, 0xB8, (0x68, 1)),
+    (_C, 38, 0x85, (0x65, 1)),
     (_S, 14, 0xC5, (0x05, 1)),
     (_C, 12, 0x83, (0x34, 1)),
     (_S, 12, 0x83, (0x34, 0)),
@@ -1872,7 +1873,7 @@ def test_dos_record_converts_enlarge_friends_mirror_image_and_strength(
 
 
 @pytest.mark.parametrize("title, eid, m", [
-    (_P, 28, 0x83), (_C, 38, 0x85), (_C, 38, 0x38), (_C, 12, 0x80),
+    (_P, 28, 0x83), (_C, 38, 0x38), (_C, 12, 0x80),
     (_C, 28, 0x05), (_S, 28, 0x0F),
 ])
 def test_dos_record_leaves_only_what_waits_on_a_read_or_a_run(title, eid, m):
@@ -1904,7 +1905,7 @@ def test_pool_enlarge_strength_and_friends_survive_every_data_byte():
 
 def test_later_strength_and_friends_survive_every_bonus():
     for title in (_C, _S):
-        for data in range(102, 109):
+        for data in range(101, 109):
             _round_trip(title, _RE(38, 1, data, 1))
         for data in range(1, 9):
             _round_trip(title, _RE(14, 1, data, 1))
@@ -2407,3 +2408,179 @@ def test_c64_feeblemind_scores_per_title():
     assert effects.c64_feeblemind_scores(
         "curse-of-the-azure-bonds", {}) == {"intelligence": 3}
     assert effects.c64_feeblemind_scores("pool-of-radiance", permanent) == {}
+
+
+# --- a running Strength converts to the destination's own score -----------------
+
+#: Part 2's measured readings on the same party: `(permanent, data, warrior,
+#: score in force before the recalculation, DOS's answer, the C64's answer)`.
+_STRENGTH_READINGS = [
+    ((15, 0), 103, True, (15, 0), (18, 0), (18, 0)),
+    ((18, 12), 103, True, (18, 12), (18, 42), (18, 42)),
+    ((18, 12), 103, True, (18, 42), (18, 72), (18, 42)),
+    ((18, 25), 101, True, (18, 25), (18, 100), (18, 35)),
+    ((18, 25), 101, True, (18, 100), (18, 25), (18, 35)),
+    ((17, 0), 108, False, (17, 0), (18, 0), (18, 70)),
+    ((18, 0), 101, False, (18, 0), (18, 100), (18, 10)),
+]
+
+
+@pytest.mark.parametrize("permanent, data, warrior, before, dos, c64",
+                         _STRENGTH_READINGS)
+def test_the_two_engines_strength_readings_measured_on_one_party(
+        permanent, data, warrior, before, dos, c64):
+    assert effects.dos_later_strength(permanent, before, data, warrior) == dos
+    assert effects.raise_strength(*permanent, data - 100) == c64
+
+
+def test_a_warriors_score_climbs_at_each_dos_recalculation_and_wraps():
+    assert effects.dos_later_strength_states((18, 12), 103, True) == (
+        (18, 42), (18, 72), (18, 100))
+    assert effects.dos_later_strength_states((18, 25), 101, True) == (
+        (18, 100), (18, 25))
+
+def test_later_strength_warrior_reads_current_and_former_levels():
+    assert effects.later_strength_warrior({"fighter": 3}, {})
+    assert effects.later_strength_warrior({"cleric": 3}, {"ranger": 2})
+    assert effects.later_strength_warrior({"paladin": 1}, None)
+    assert not effects.later_strength_warrior({"cleric": 3, "thief": 4}, {})
+    assert not effects.later_strength_warrior(None, None)
+
+
+#: Each class group: its die, whether it is a warrior, the permanent scores a
+#: DOS cast starts from, and the ones a C64 cast starts from.
+_STRENGTH_SWEEP = {
+    "magic-user": (4, False, [(s, 0) for s in range(3, 18)]),
+    "cleric or thief": (6, False, [(s, 0) for s in range(3, 18)]),
+    "fighter": (8, True, [(s, 0) for s in range(3, 18)]
+                + [(18, p) for p in range(100)]),
+}
+
+
+def _c64_starts(name):
+    die, warrior, dos = _STRENGTH_SWEEP[name]
+    return die, warrior, dos if warrior else dos + [(18, 0)]
+
+
+def _dos_cast_states(name):
+    """`(permanent, roll, score after the cast)` for every state whose cast
+    adds a node: the candidate beats the permanent score. Counted over
+    permanent scores 3 to 17 for every class and 18/0 to 18/99 for a fighter,
+    rolls 1 to the class die."""
+    die, warrior, permanents = _STRENGTH_SWEEP[name]
+    return [(p, r, effects.dos_later_strength(p, p, 100 + r, warrior))
+            for p in permanents for r in range(1, die + 1)
+            if effects.dos_later_strength(p, p, 100 + r, warrior) > p]
+
+
+@pytest.mark.parametrize("name, total, differ", [
+    ("magic-user", 60, 21), ("cleric or thief", 90, 30), ("fighter", 896, 91)])
+def test_dos_to_c64_every_cast_state_converts_and_the_count_that_differs(
+        name, total, differ):
+    _die, warrior, _ = _STRENGTH_SWEEP[name]
+    states = _dos_cast_states(name)
+    assert len(states) == total
+    moved = 0
+    for permanent, roll, dos in states:
+        node = _RE(38, 10, 100 + roll, 1)
+        assert effects.c64_row(_C, node) == (
+            38, effects.later_ability_magnitude(roll, (100 + roll) & 0x0F))
+        want = effects.raise_strength(*permanent, roll)
+        assert effects.c64_later_strength_in_force(
+            _C, permanent, dos, [node], [], warrior) == want
+        moved += want != dos
+    assert moved == differ
+
+
+@pytest.mark.parametrize("name, total, differ, no_node", [
+    ("magic-user", 64, 25, 3), ("cleric or thief", 96, 36, 5),
+    ("fighter", 920, 115, 24)])
+def test_c64_to_dos_every_state_converts_and_the_counts_that_differ(
+        name, total, differ, no_node):
+    die, warrior, permanents = _c64_starts(name)
+    count = moved = silent = 0
+    for permanent in permanents:
+        for roll in range(1, die + 1):
+            count += 1
+            data = 100 + roll
+            row = effects.Effect(63, 38, 2, effects.closest_duration(10, 0),
+                                 effects.c64_row(_C, _RE(38, 10, data, 1))[1])
+            node = effects.dos_record(_C, row, 0)
+            assert (node.data, node.flag) == (data, 1)
+            c64 = effects.raise_strength(*permanent, roll)
+            got = effects.dos_later_strength_in_force(
+                _C, permanent, c64, [node], [], warrior)
+            assert got == effects.dos_later_strength(
+                permanent, permanent, data, warrior)
+            moved += got != c64
+            silent += got == permanent
+    assert (count, moved, silent) == (total, differ, no_node)
+
+
+@pytest.mark.parametrize("name, total", [
+    ("magic-user", 60), ("cleric or thief", 90), ("fighter", 896)])
+def test_a_dos_strength_round_trips_through_the_c64_and_back(name, total):
+    _die, warrior, _ = _STRENGTH_SWEEP[name]
+    states = _dos_cast_states(name)
+    assert len(states) == total
+    for permanent, roll, dos in states:
+        node = _RE(38, 10, 100 + roll, 1)
+        c64 = effects.c64_later_strength_in_force(
+            _C, permanent, dos, [node], [], warrior)
+        row = effects.Effect(63, 38, 2, effects.closest_duration(10, 0),
+                             effects.c64_row(_C, node)[1])
+        back = effects.dos_record(_C, row, 0)
+        assert (back.data, back.flag) == (node.data, node.flag)
+        assert effects.dos_later_strength_in_force(
+            _C, permanent, c64, [back], [], warrior) == dos
+
+
+@pytest.mark.parametrize("name, total", [
+    ("magic-user", 64), ("cleric or thief", 96), ("fighter", 920)])
+def test_a_c64_strength_round_trips_through_dos_and_back(name, total):
+    die, warrior, permanents = _c64_starts(name)
+    count = 0
+    for permanent in permanents:
+        for roll in range(1, die + 1):
+            count += 1
+            magnitude = effects.later_ability_magnitude(roll, 9)
+            node = effects.dos_record(
+                _C, effects.Effect(63, 38, 2, effects.closest_duration(10, 0),
+                                   magnitude), 0)
+            c64 = effects.raise_strength(*permanent, roll)
+            dos = effects.dos_later_strength_in_force(
+                _C, permanent, c64, [node], [], warrior)
+            assert effects.c64_later_strength_in_force(
+                _C, permanent, dos, [node], [], warrior) == c64
+            again = effects.c64_row(_C, node)[1]
+            # Bits 4-6 return; the low nibble is what a DOS cast of the roll
+            # carries, the C64 caster's level being lost.
+            assert again & 0xF0 == magnitude & 0xF0
+            assert again & 0x0F == (100 + roll) & 0x0F
+    assert count == total
+
+
+def test_the_native_strength_helpers_return_none_when_the_node_is_not_alone():
+    node = _RE(38, 10, 103, 1)
+    perm, warrior = (15, 0), False
+    want = effects.raise_strength(*perm, 3)
+    args = (_C, perm, (18, 0), [node], [])
+    assert effects.c64_later_strength_in_force(*args, warrior) == want
+    # Another strength source, running or granted, or a score the node does
+    # not explain.
+    assert effects.c64_later_strength_in_force(
+        _C, perm, (18, 0), [node, _RE(12, 10, 0x76, 1)], [], warrior) is None
+    assert effects.c64_later_strength_in_force(
+        _C, perm, (18, 0), [node], [bytes((146, 0, 0, 0, 0))], warrior) is None
+    assert effects.c64_later_strength_in_force(
+        _C, perm, (19, 0), [node], [], warrior) is None
+    assert effects.c64_later_strength_in_force(
+        _C, perm, (18, 0), [_RE(38, 10, 109, 1)], [], warrior) is None
+    assert effects.dos_later_strength_in_force(
+        _C, perm, want, [node], [], warrior) == (18, 0)
+    assert effects.dos_later_strength_in_force(
+        _C, perm, want, [node, _RE(12, 10, 0x76, 1)], [], warrior) is None
+    assert effects.dos_later_strength_in_force(
+        _C, perm, (16, 0), [node], [], warrior) is None
+    assert effects.dos_later_strength_in_force(
+        _C, perm, want, [_RE(38, 10, 103, 0)], [], warrior) is None

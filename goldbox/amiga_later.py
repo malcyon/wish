@@ -1720,10 +1720,12 @@ def _later_effect_nodes(
     needs a report rather than a `continue` (found by the review of
     `39ceb7a`, 2026-09-07).
     """
+    from . import c64_codec as _c64
     from . import dos_codec as _dos
 
     nodes: list[bytes] = []
     seen: set[int] = set()
+    dropped: list[str] = []
     for g in char.get("granted_effects", ()) or ():
         record = bytes(g)[:5].ljust(5, b"\0") + bytes(4)
         seen.add(record[0])
@@ -1732,6 +1734,15 @@ def _later_effect_nodes(
                             and char.port != "Amiga")
     for r in char.get("running_effects", ()) or ():
         record = bytes(r)[:5].ljust(5, b"\0") + bytes(4)
+        if (char.port == "C64" and record[0] == 38 and record[3] == 101
+                and record[4] == 1):
+            # A roll of 1 is DOS data 101, the one Strength the C64 row can
+            # hold that the Amiga's own recalculation has not been read for.
+            minutes = int.from_bytes(record[1:3], "little")
+            dropped.append(
+                f"{_c64.running_effect_label(38, minutes, char.game)}: the "
+                "Amiga's own Strength recalculation is not read")
+            continue
         seen.add(record[0])
         if (silver_blades_import
                 and record[0] == SILVER_BLADES_SLOW_POISON_COMPANION[0]
@@ -1751,14 +1762,14 @@ def _later_effect_nodes(
         seen.add(LAY_ON_HANDS_AMIGA_ID)
         nodes.append(amiga_por_effect_from_dos(record))
     innate = [int(e) for e in (char.get("innate_effects", ()) or ())]
-    dropped: list[str] = []
     if char.port == "C64":
         ids = _dos._from_c64_class_traits(
             dos_deltas.key, int(char.get("class_bits", 0) or 0), innate)
         race = int(char.get("race", 0) or 0)
         inventory = [bytes(i) for i in (char.get("inventory") or ())]
-        records, dropped = _dos.c64_trait_nodes(
+        records, trait_dropped = _dos.c64_trait_nodes(
             dos_deltas, race, ids, inventory)
+        dropped.extend(trait_dropped)
         for record, _rule in records:
             if record[0] in seen:
                 continue

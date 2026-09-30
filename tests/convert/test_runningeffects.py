@@ -3577,3 +3577,219 @@ def test_save_as_c64_refuses_a_feeblemind_row_with_no_free_slot(
         saveplan.prepare_save_as(back, "c64", tmp_path / "out.d64", assets)
     assert "effect 68" in str(err.value)
     assert f"intelligence: 3 arrived as {perm['intelligence']}" in str(err.value)
+
+
+# --- a running Strength converts to the destination's own score (#667) --------
+
+_CURSE_KEY = "curse-of-the-azure-bonds"
+_SSB_KEY = "secret-of-the-silver-blades"
+_NODE_101 = bytes((38, 10, 0, 101, 1))
+
+
+def _strength_character(port, game, roll, permanent, in_force, levels,
+                        *extra_nodes):
+    char = neutral.NeutralCharacter(port, source="built here", game=game)
+    char.set("name", "STRONG", "built here")
+    char.set("running_effects",
+             [bytes((38, 10, 0, 100 + roll, 1)) + NULL]
+             + [n + NULL for n in extra_nodes], "built here")
+    char.set("strength", in_force[0], "built here")
+    char.set("exceptional_strength", in_force[1], "built here")
+    char.set("abilities_second",
+             {**{n: 10 for n in neutral.ABILITIES},
+              "strength": permanent[0], "exceptional_strength": permanent[1]},
+             "built here")
+    char.set("levels", levels, "built here")
+    return char
+
+
+def _c64_strength(char):
+    rec, _rep = c64_codec.write(char, payload=bytearray(0x1C00), party_slot=2,
+                                clock_minutes=0)
+    return ((rec.get("strength"), rec.get("exceptional_strength")),
+            (rec.get_raw("abilities_second")[0],
+             rec.get_raw("abilities_second")[6]), rec)
+
+
+def _dos_strength(char, **kwargs):
+    rec, _itm, _spc, rep = dos_codec.write(char, **kwargs)
+    read = dos_codec.to_neutral(dos_codec.DosCharacter(rec))
+    return ((read.get("strength"), read.get("exceptional_strength")),
+            (read.get("abilities_second")["strength"],
+             read.get("abilities_second")["exceptional_strength"]), rep)
+
+
+@pytest.mark.parametrize("key", [_CURSE_KEY, _SSB_KEY])
+@pytest.mark.parametrize("roll, permanent, in_force, levels, want", [
+    (8, (17, 0), (18, 0), {"cleric": 5}, (18, 70)),
+    (3, (15, 0), (18, 0), {"paladin": 5}, (18, 0)),
+    (3, (18, 12), (18, 42), {"fighter": 4}, (18, 42)),
+    (3, (18, 12), (18, 72), {"fighter": 4}, (18, 42)),
+    (1, (18, 25), (18, 100), {"fighter": 4}, (18, 35)),
+    (1, (18, 0), (18, 100), {"magic-user": 5}, (18, 10)),
+])
+def test_a_dos_running_strength_arrives_at_the_c64s_own_score(
+        key, roll, permanent, in_force, levels, want):
+    game = c64_port.by_key(key)
+    char = _strength_character("DOS", game, roll, permanent, in_force, levels)
+    score, kept, rec = _c64_strength(char)
+    assert score == want
+    # The permanent score and the roll's row are untouched.
+    assert kept == permanent
+    assert rec.get("strength_index") == c64_codec.strength_index(*want)
+    payload = bytearray(0x1C00)
+    c64_codec.write(char, payload=payload, party_slot=2, clock_minutes=0)
+    assert [r[3] for r in _rows(payload).values() if r[0] == 38] == [
+        effects.later_ability_magnitude(roll, (100 + roll) & 0x0F)]
+
+
+def test_the_c64_strength_score_reaches_the_hit_step_and_the_report():
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    char = _strength_character("DOS", game, 8, (17, 0), (18, 0),
+                               {"cleric": 5})
+    rec, rep = c64_codec.write(char, payload=bytearray(0x1C00), party_slot=2,
+                               clock_minutes=0)
+    assert c64_codec.c64_strength_hit_step(18, 70) != \
+        c64_codec.c64_strength_hit_step(18, 0)
+    assert rec.get("strength_index") == c64_codec.strength_index(18, 70)
+    assert any("strength" in line and "ECL65 $9160" in line
+               for line in rep.sources.values())
+
+
+@pytest.mark.parametrize("port", ["DOS", "Amiga"])
+def test_another_strength_source_leaves_the_c64_score_copied(port):
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    enlarge = bytes((12, 10, 0, 0x76, 1))
+    char = _strength_character(port, game, 8, (17, 0), (18, 0),
+                               {"cleric": 5}, enlarge)
+    assert _c64_strength(char)[0] == (18, 0)
+
+
+def test_a_c64_source_is_written_to_c64_as_it_was_given():
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    char = _strength_character("C64", game, 8, (17, 0), (18, 70),
+                               {"cleric": 5})
+    assert _c64_strength(char)[0] == (18, 70)
+
+
+@pytest.mark.parametrize("key", [_CURSE_KEY, _SSB_KEY])
+@pytest.mark.parametrize("roll, permanent, levels, c64, want", [
+    (8, (17, 0), {"cleric": 5}, (18, 70), (18, 0)),
+    (3, (18, 12), {"fighter": 4}, (18, 42), (18, 42)),
+    (1, (18, 25), {"fighter": 4}, (18, 35), (18, 100)),
+    (1, (18, 0), {"magic-user": 5}, (18, 10), (18, 100)),
+])
+def test_a_c64_running_strength_arrives_at_what_a_dos_cast_gives(
+        key, roll, permanent, levels, c64, want):
+    game = c64_port.by_key(key)
+    char = _strength_character("C64", game, roll, permanent, c64, levels)
+    score, kept, _rep = _dos_strength(char)
+    assert score == want
+    assert kept == permanent
+
+
+def test_a_dos_or_amiga_source_keeps_its_score_in_force_on_a_dos_write():
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    for port in ("DOS", "Amiga"):
+        char = _strength_character(port, game, 3, (18, 12), (18, 72),
+                                   {"fighter": 4})
+        assert _dos_strength(char)[0] == (18, 72)
+
+
+def test_a_c64_strength_written_for_the_amiga_still_copies_the_c64_score():
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    char = _strength_character("C64", game, 8, (17, 0), (18, 70),
+                               {"cleric": 5})
+    assert _dos_strength(char, into="Amiga")[0] == (18, 70)
+
+
+def test_a_c64_roll_of_one_is_dropped_on_the_amiga_route_only():
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    from goldbox.amiga_later import CURSE_DELTAS
+
+    for roll, kept in ((1, 0), (2, 1)):
+        char = _strength_character("C64", game, roll, (18, 25), (18, 35),
+                                   {"fighter": 4})
+        nodes, dropped = amiga_later._later_effect_nodes(char, CURSE_DELTAS.dos)
+        assert len([n for n in nodes if n[0] == 38]) == kept
+        assert bool([d for d in dropped if "Amiga's own Strength" in d]) \
+            == (roll == 1)
+
+
+def _strength_specimen_party(name, platform):
+    if platform == "dos":
+        from gamedata import specimen
+
+        from editor import roster
+
+        return roster.Party(str(specimen(name) / "SAVGAMD.DAT"))
+    from editor import roster
+    from tests.c64.test_c64nametable import specimen_disk
+
+    return roster.Party(str(specimen_disk(name)))
+
+
+def test_save_as_c64_converts_the_whole_strength_rebuild_party(tmp_path):
+    """The Curse party the game saved with a Strength on five of six members:
+    each arrives with STRENGTH and the C64's own score for its roll."""
+    from editor import roster, saveplan
+
+    party = _strength_specimen_party(
+        "curse-667-strength-rebuild-dos-resave", "dos")
+    try:
+        plan = _blessed_row_plan(party, tmp_path)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Curse of the Azure Bonds' own C64 disks")
+    assert isinstance(plan, saveplan.SavePlan)
+    (_name, data), = plan.files.items()
+    out = tmp_path / "written.d64"
+    out.write_bytes(data)
+    back = roster.Party(str(out))
+    names = {m.index: m.name for m in back.members}
+    rows = effects.active_effects(back.save0.to_bytes())
+    assert sorted((names[e.owner], e.id, e.magnitude) for e in rows) == [
+        ("LEDERA", 38, 0x85), ("MARK", 38, 0xA7), ("PHILIPPE", 38, 0x85),
+        ("SHARA", 38, 0xFC), ("TRAVIS", 38, 0xA7)]
+    scores = {m.name: (m.record.get("strength"),
+                       m.record.get("exceptional_strength"),
+                       m.record.get("strength_index"))
+              for m in back.members}
+    want = {"MARK": (18, 0), "TRAVIS": (18, 42), "LEDERA": (18, 35),
+            "SHARA": (18, 70), "PHILIPPE": (18, 10)}
+    for name, score in want.items():
+        assert scores[name] == (*score, c64_codec.strength_index(*score))
+        # The permanent score behind it is the DOS one.
+    assert {m.name: m.record.get_raw("abilities_second")[0]
+            for m in back.members if m.name in want} == {
+        "MARK": 15, "TRAVIS": 18, "LEDERA": 18, "SHARA": 17, "PHILIPPE": 18}
+
+
+def test_save_as_dos_converts_the_whole_strength_ladder_party(tmp_path):
+    from editor import convert, saveplan
+    from tools.convert import convertdrops
+    from tools.dos import dosbox
+
+    party = _strength_specimen_party(
+        "curse-667-strength-ladder-c64-resave", "c64")
+    source = party.source or convert.Source.detect(party.path)
+    try:
+        game_dir = dosbox.find_game("CURSE")
+    except FileNotFoundError:
+        pytest.skip("needs the DOS Curse archives ($FR_ARCHIVES)")
+    try:
+        assets = saveplan.resolve_assets(
+            source, "dos", game_files=convertdrops.game_files,
+            dos_folder=game_dir)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Curse of the Azure Bonds' own C64 disks")
+    plan = saveplan.prepare_save_as(party, "dos", tmp_path / "dos", assets)
+    got = {}
+    for name in ("SHARA", "TRAVIS", "LEDERA", "PHILIPPE", "MARK"):
+        char = _dos_character(plan.files, name)
+        (node,) = [bytes(r) for r in char.get("running_effects")]
+        got[name] = (node[3], node[4], char.get("strength"),
+                     char.get("exceptional_strength"))
+    assert got == {
+        "SHARA": (108, 1, 18, 0), "TRAVIS": (103, 1, 18, 42),
+        "LEDERA": (101, 1, 18, 100), "PHILIPPE": (101, 1, 18, 100),
+        "MARK": (103, 1, 18, 0)}

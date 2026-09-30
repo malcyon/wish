@@ -315,6 +315,19 @@ nobody has cast the spell: casting Strength on a fighter at 15 under DOSBox
 until a 1 comes up and reading the sheet settles it. Encoding a strength of 1
 gives the same 101, which is the one collision in the byte.
 
+**A running Strength converts with its roll, at the destination's own score.**
+Data 101 to 108 converts both ways, a roll of 1 included. The score in force is
+not copied: a DOS or Amiga source arrives on the C64 at
+`effects.raise_strength(permanent, roll)`, the score the C64's recompute gives
+and never changes; a C64 source arrives on DOS at
+`effects.dos_later_strength(permanent, permanent, data, warrior)`, the score a
+DOS cast of that roll gives, from which DOS's own recompute then climbs a
+warrior's percentile. Both apply only when the one Strength node explains the
+source score; another strength source leaves the score copied. C64 to DOS
+writes the low nibble a DOS cast carries, so the C64 caster's level is lost; the
+Amiga's recompute has not been read, so a C64 roll of 1 is dropped on that
+route. `confirm_later_strength_arm` pins the DOS arm the model rests on.
+
 **PROBABLE, and it is why a converted character's percentile may not match:**
 the recompute's exceptional-strength arithmetic reads the **in-force**
 percentile it is about to overwrite, `mov al, byte ptr es:[di + 0x1c]` at Curse
@@ -1282,7 +1295,7 @@ loses it on the way to DOS or the Amiga, because nothing converts the save's
 party-wide effect rows)); a timeline conversion for Pool's overlapping strength
 nodes, which the destination does hold (a second strength node on one
 character, running or granted, is refused by `strength_nodes`); the later
-titles' Strength at data 101, which may decode as 18/100; a Curse or Silver Blades id-25 node of data `0xFF` (ids 138 and 108),
+titles' Strength beside another strength source; a Curse or Silver Blades id-25 node of data `0xFF` (ids 138 and 108),
 which needs its own read; a Giant Strength magnitude (Curse id 146, Silver Blades id 113) other than `$BC`
 (strength 23); the ids with no C64 spell row that still need a read; and the
 two ageing routes the camp formula does not describe.

@@ -331,6 +331,30 @@ def test_the_ability_pair_proof_rejects_a_changed_engine(later, part):
         cross.confirm_later_ability_pair(title, bytes(changed))
 
 
+def test_the_later_strength_arm_is_the_one_dos_later_strength_models(later):
+    title, _combat, _table, ovr, _image = later
+    assert cross.confirm_later_strength_arm(title, ovr) == (
+        "The seed is the permanent score",
+        "A warrior's percentile adds ten per point to the score in force",
+        "The merge keeps the higher score, or the higher percentile at 18")
+
+
+@pytest.mark.parametrize("part", [
+    "seed", "sum", "warrior", "times_ten", "byte_store", "eighteen", "merge"])
+def test_the_strength_arm_proof_rejects_a_changed_engine(later, part):
+    title, _combat, _table, ovr, _image = later
+    site = cross.STRENGTH_ARM[title]
+    at = {"seed": site["seed"][0] + 3, "sum": site["sum"][1] + 3,
+          "warrior": site["warrior"][3] + 3,
+          "times_ten": site["times_ten"][0] + 1,
+          "byte_store": site["byte_store"], "eighteen": site["eighteen"][1] + 3,
+          "merge": site["merge"][3] + 1}[part]
+    changed = bytearray(ovr)
+    changed[at] ^= 0xFF
+    with pytest.raises(ValueError):
+        cross.confirm_later_strength_arm(title, bytes(changed))
+
+
 @pytest.mark.parametrize("data, score", [
     (1, (18, 0)), (2, (18, 1)), (52, (18, 51)), (77, (18, 76)),
     (92, (18, 91)), (101, (18, 100)), (102, (2, 0)), (108, (8, 0)),

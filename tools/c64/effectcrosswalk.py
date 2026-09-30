@@ -1040,6 +1040,60 @@ def confirm_later_ability_pair(title: str, dos_ovr: bytes) -> tuple[str, ...]:
             "Expiry recomputes rather than restoring")
 
 
+#: The instructions of a later title's Strength arm of the DOS recompute that
+#: `effects.dos_later_strength` models: the seed test, the sum test, the six
+#: level bytes of the warrior test, the times-ten, the byte store, the 18 on
+#: both arms and the merge. The six warrior offsets are the current and former
+#: arrays of the fighter, paladin and ranger.
+STRENGTH_ARM = {
+    "curse-of-the-azure-bonds": {
+        "seed": (0x36B6B, 0x36B74), "sum": (0x36B8B, 0x36B8E),
+        "warrior": (0x36B97, 0x36BA2, 0x36BAD, 0x36BB8, 0x36BC3, 0x36BCE),
+        "warrior_offsets": (0x10B, 0x113, 0x10C, 0x114, 0x10D, 0x115),
+        "times_ten": (0x36BDE, 0x36BE1, "dx", "mul dx"),
+        "byte_store": 0x36BF0, "eighteen": (0x36BFD, 0x36C03),
+        "merge_call": 0x36C09, "merge": (0x36793, 0x367A0, 0x367A9, 0x367BA)},
+    "secret-of-the-silver-blades": {
+        "seed": (0x37722, 0x3772B), "sum": (0x37742, 0x37745),
+        "warrior": (0x3774E, 0x37759, 0x37764, 0x3776F, 0x3777A, 0x37785),
+        "warrior_offsets": (0x113, 0x11A, 0x114, 0x11B, 0x115, 0x11C),
+        "times_ten": (0x37795, 0x37798, "cx", "imul cx"),
+        "byte_store": 0x377A7, "eighteen": (0x377B4, 0x377BA),
+        "merge_call": 0x377C0, "merge": (0x37345, 0x37352, 0x3735B, 0x3736C)},
+}
+
+
+def confirm_later_strength_arm(title: str, dos_ovr: bytes) -> tuple[str, ...]:
+    """Check the operands of the Strength arm `effects.dos_later_strength`
+    models: a seed that is the permanent score, a warrior's percentile of the
+    score in force plus ten per point above 18 stored to a byte and clamped at
+    100, and a merge that keeps the higher score or the higher percentile at 18.
+    """
+    site = STRENGTH_ARM[title]
+    seed, seed_percentile = site["seed"]
+    _x86(dos_ovr, seed, "cmp", "byte ptr [bp - 1], 0x12")
+    _x86(dos_ovr, seed_percentile, "cmp", "byte ptr [bp - 3], 0x64")
+    total_store, total_test = site["sum"]
+    _x86(dos_ovr, total_store, "mov", "byte ptr [bp - 2], al")
+    _x86(dos_ovr, total_test, "cmp", "byte ptr [bp - 2], 0x12")
+    for at, offset in zip(site["warrior"], site["warrior_offsets"]):
+        _x86(dos_ovr, at, "cmp", f"byte ptr es:[di + {offset:#x}], 0")
+    load, multiply, register, text = site["times_ten"]
+    _x86(dos_ovr, load, "mov", f"{register}, 0xa")
+    _x86(dos_ovr, multiply, *text.split(" ", 1))
+    _x86(dos_ovr, site["byte_store"], "mov", "byte ptr [bp - 4], al")
+    for at in site["eighteen"]:
+        _x86(dos_ovr, at, "mov", "byte ptr [bp - 2], 0x12")
+    entry, higher, at_18, percentile = site["merge"]
+    _x86(dos_ovr, site["merge_call"], "call", f"{entry:#x}")
+    _x86(dos_ovr, higher, "cmp", "al, byte ptr ss:[di - 1]")
+    _x86(dos_ovr, at_18, "cmp", "byte ptr ss:[di - 2], 0x12")
+    _x86(dos_ovr, percentile, "cmp", "al, byte ptr ss:[di - 3]")
+    return ("The seed is the permanent score",
+            "A warrior's percentile adds ten per point to the score in force",
+            "The merge keeps the higher score, or the higher percentile at 18")
+
+
 def mirror_zero_roll(title: str, combat: bytes, library: bytes) -> int:
     """Check what a later title's Mirror Image does with a magnitude of zero.
 

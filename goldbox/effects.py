@@ -21,6 +21,7 @@ feeds.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from .d64 import D64, load_payload
@@ -688,10 +689,7 @@ def _value_row(title_key: str, node: RunningEffect,
         return node.id, value | MAGNITUDE_RESTORE_FLAG if flag else value
     if title_key in LATER_CAST_FLAGS and node.id in LATER_VALUE_IDS:
         if node.id == 38:
-            if data == 101:
-                return Unconverted("a Strength data byte of 101, which DOS "
-                                   "may read as 18/100 and not one step")
-            if not 102 <= data <= 108:
+            if not 101 <= data <= 108:
                 return Unconverted("a data byte no DOS engine writes for "
                                    "Strength")
             return node.id, later_ability_magnitude(data - 100, data & 0x0F)
@@ -992,9 +990,6 @@ def _value_node(title_key: str, effect_id: int,
                     LATER_CAST_FLAGS[title_key][12])
         bonus = later_ability_bonus(m)
         if effect_id == 38:
-            if bonus == 1:
-                return Unconverted("a Strength bonus of 1, which waits on "
-                                   "the run that reads DOS data 101")
             return 100 + bonus, 1
         return bonus, 1
     if title_key == "pool-of-radiance" and effect_id in POOL_UNWRITTEN_ROW_IDS:
@@ -1753,6 +1748,125 @@ def raise_strength(strength: int, percentile: int, steps: int) -> tuple[int, int
         else:
             percentile += 10
     return strength, percentile
+
+
+#: The ids DOS's Strength recalculation reads as strength sources in each
+#: later title: Strength (38), Enlarge (12) and the title's own third source
+#: (Curse 146, Silver Blades 113), read in that order (`0x26`, then `0x92` or
+#: `0x71`, then `0x0C` in `GAME.OVR`). A character with any of them beside the
+#: Strength being converted has a score no single rule explains.
+LATER_STRENGTH_SOURCE_IDS: dict[str, frozenset[int]] = {
+    "curse-of-the-azure-bonds": frozenset({12, 38, 146}),
+    "secret-of-the-silver-blades": frozenset({12, 38, 113}),
+}
+
+#: The classes whose level makes DOS's recalculation climb the percentile by
+#: tens; the six level bytes it tests are the current and former arrays of
+#: these three (Curse `GAME.OVR:0x36B97`-`0x36BCE`, Silver Blades
+#: `0x3774E`-`0x37785`).
+LATER_STRENGTH_WARRIOR_CLASSES = ("fighter", "paladin", "ranger")
+
+
+def later_strength_warrior(levels: "Mapping[str, int] | None",
+                           former_levels: "Mapping[str, int] | None") -> bool:
+    """Whether DOS's Strength recalculation treats this character as a warrior."""
+    return any((levels or {}).get(name, 0) > 0
+               or (former_levels or {}).get(name, 0) > 0
+               for name in LATER_STRENGTH_WARRIOR_CLASSES)
+
+
+def dos_later_strength(permanent: tuple[int, int], in_force: tuple[int, int],
+                       data: int, warrior: bool) -> tuple[int, int]:
+    """The score DOS Curse or Silver Blades leaves in force after one
+    recalculation with a Strength node of `data`.
+
+    The recalculation starts from the permanent score. A warrior's percentile
+    is the score in force *before* it plus ten per point above 18, stored to a
+    byte and clamped at 100, which is why a warrior's score climbs at every
+    recalculation and wraps (Curse `GAME.OVR:0x36B33`-`0x36C09`, Silver Blades
+    `0x376EA`-`0x377C0`). The merge at Curse `0x36793` then keeps the
+    candidate only if it is higher.
+    """
+    seed = permanent
+    if seed[0] > 18 or seed == STRENGTH_CAP:
+        return seed
+    decoded = later_node_score(data)
+    total = decoded[0] + seed[0]
+    if total <= 18:
+        candidate = (total, 0)
+    elif warrior:
+        candidate = (18, min((in_force[1] + 10 * (total - 18)) & 0xFF, 100))
+    else:
+        candidate = (18, decoded[1])
+    return candidate if candidate > seed else seed
+
+
+def dos_later_strength_states(permanent: tuple[int, int], data: int,
+                              warrior: bool) -> tuple[tuple[int, int], ...]:
+    """Every score DOS's recalculation leaves in force, in order, from the one
+    a cast gives until the sequence repeats."""
+    states = [dos_later_strength(permanent, permanent, data, warrior)]
+    while True:
+        nxt = dos_later_strength(permanent, states[-1], data, warrior)
+        if nxt in states:
+            return tuple(states)
+        states.append(nxt)
+
+
+def _later_strength_sources(title_key: str, nodes: "Iterable[RunningEffect]",
+                            granted: "Iterable[bytes]"
+                            ) -> tuple[list["RunningEffect"], int]:
+    """The running nodes whose id is a strength source, and how many granted
+    records are one."""
+    ids = LATER_STRENGTH_SOURCE_IDS[title_key]
+    return ([n for n in nodes if n.id in ids],
+            sum(1 for g in granted if bytes(g)[0] in ids))
+
+
+def c64_later_strength_in_force(
+        title_key: str, permanent: tuple[int, int],
+        in_force: tuple[int, int], nodes: "Iterable[RunningEffect]",
+        granted: "Iterable[bytes]", warrior: bool) -> tuple[int, int] | None:
+    """The score in force the C64's own Strength gives, for a DOS or Amiga
+    character whose only strength source is one Strength node, or `None`.
+
+    The C64 recalculation (`ECL65 $9160`) climbs the permanent score by the
+    node's roll and ignores the score in force, so no later recalculation
+    changes it. `None` when the source score is not one that node explains on
+    its own (gauntlets, a girdle, a drain), which the writer then copies.
+    """
+    running, granted_count = _later_strength_sources(title_key, nodes, granted)
+    if granted_count or len(running) != 1:
+        return None
+    node = running[0]
+    if node.id != 38 or not 101 <= node.data <= 108:
+        return None
+    if tuple(in_force) not in dos_later_strength_states(
+            tuple(permanent), node.data, warrior):
+        return None
+    return raise_strength(*permanent, node.data - 100)
+
+
+def dos_later_strength_in_force(
+        title_key: str, permanent: tuple[int, int],
+        in_force: tuple[int, int], nodes: "Iterable[RunningEffect]",
+        granted: "Iterable[bytes]", warrior: bool) -> tuple[int, int] | None:
+    """The score in force a DOS cast of the same roll gives, for a C64
+    character whose only strength source is one Strength node, or `None`.
+
+    `nodes` are the reader's DOS-form nodes. `None` when the C64 score is not
+    the one that roll gives from the permanent score.
+    """
+    running, granted_count = _later_strength_sources(title_key, nodes, granted)
+    if granted_count or len(running) != 1:
+        return None
+    node = running[0]
+    if node.id != 38 or node.flag != 1 or not 101 <= node.data <= 108:
+        return None
+    if tuple(in_force) != raise_strength(*permanent, node.data - 100):
+        return None
+    return dos_later_strength(tuple(permanent), tuple(permanent), node.data,
+                              warrior)
 
 
 def mirror_image_count(dos_data: int, *, later: bool) -> int:
