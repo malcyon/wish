@@ -393,6 +393,32 @@ def test_the_quiet_row_is_chosen_by_the_duration_unit_not_the_minutes(
     assert got == [(22, 0x7F if minute_unit else 0xFF)]
 
 
+def test_a_pool_own_row_with_data_7f_keeps_its_magnitude_beside_a_poison():
+    """Pool's own `(22, data 0x7F, flag 0)` node is `$7F` by its own rule and
+    is not the quiet row, so a granted 55 leaves it alone."""
+    own = bytes((22, 30, 0, 0x7F, 0))
+    got = _written_slow_poison(_slow_poison_character(
+        c64_port.POOL_OF_RADIANCE, own, granted=(_POISON,)))[0]
+    assert got == [(22, 0x7F)]
+
+
+@pytest.mark.parametrize("game", _TITLES)
+def test_each_slow_poison_row_is_judged_by_its_own_duration_unit(game):
+    minute_row = bytes((22, 30, 0, 0xFF, 1))
+    hour_row = bytes((22, 44, 1, 0xFF, 1))
+    got = _written_slow_poison(_slow_poison_character(
+        game, minute_row, hour_row))[0]
+    assert got == [(22, 0x7F), (22, 0xFF)]
+
+
+@pytest.mark.parametrize("granted", [(), (_POISON,)])
+def test_a_silver_blades_slow_poison_row_is_7f_with_or_without_poison(granted):
+    got = _written_slow_poison(_slow_poison_character(
+        c64_port.SECRET_OF_THE_SILVER_BLADES, _SLOW, _COMPANION,
+        granted=granted))[0]
+    assert got == [(15, 0x7F), (22, 0x7F)]
+
+
 @pytest.mark.parametrize("game", _TITLES)
 def test_a_quiet_slow_poison_row_reads_back_to_the_dos_nodes(game):
     _got, _rec, _rep, payload = _written_slow_poison(

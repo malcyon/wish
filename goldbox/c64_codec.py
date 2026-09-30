@@ -1446,9 +1446,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 rep.lost(f"{which}: no free slot in the save's shared "
                          "effect arrays")
             continue
+        # Each 22 row is judged by its own duration unit; every 15 follows the
+        # character's first 22 row (a character with two 22 rows has none in
+        # any game's own writes).
+        row_quiet = (effects.slow_poison_quiet(
+            title_key, node.minutes, clock, False)
+            if node.id == effects.SLOW_POISON_ID else quiet)
         row_for = effects.c64_row(title_key, node,
                                   strength_nodes=strength_nodes,
-                                  slow_poison_quiet=quiet)
+                                  slow_poison_quiet=row_quiet)
         if isinstance(row_for, effects.Unconverted):
             rep.dropped.append(f"{which}: {row_for.reason}")
         elif payload is None:
@@ -1461,7 +1467,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                          "effect arrays")
             else:
                 c64_id, magnitude = row_for
-                if (quiet and magnitude == effects.SLOW_POISON_QUIET_C64
+                if (row_quiet
+                        and (node.data, node.flag) == effects.SLOW_POISON_DOS
+                        and magnitude == effects.SLOW_POISON_QUIET_C64
                         and c64_id in (effects.SLOW_POISON_ID,
                                        effects.SLOW_POISON_DAMAGE_ID)):
                     quiet_slots.append(slot)
