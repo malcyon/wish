@@ -587,3 +587,20 @@ def test_nothing_is_sent_into_a_load_after_its_disk_prompt(monkeypatch):
     assert curseload.enter_world(sess, timeout=300.0) is True
     assert sess.selected == ["BEGIN ADVENTURING"]
     assert sess.kernal == [0x0D]
+
+
+def test_an_uncoloured_first_pass_delays_the_choice_and_does_not_lose_it(
+        monkeypatch):
+    class Recording(LoadSess):
+        def select_row(self, label):
+            super().select_row(label)
+            self.chosen_on = self.at
+
+    _clock(monkeypatch)
+    passes = ([menu_screen(None)] + [menu_screen(MODIFY)]
+              + [menu_screen(None, ONWARD)] * 4 + [bar_screen(WORLD_BAR)])
+    sess = Recording(passes, answered_on=-1)
+    assert curseload.enter_world(sess, timeout=300.0) is True
+    assert sess.selected == ["BEGIN ADVENTURING"]
+    assert sess.chosen_on > 0
+    assert sess.kernal == [0x0D]
