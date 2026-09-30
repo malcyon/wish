@@ -708,6 +708,16 @@ def c64_strength_hit_step(strength: int, percentile: int) -> int:
     return derive.strength_bonuses(min(int(strength or 0), 25), percentile)[0]
 
 
+def c64_strength_damage_step(strength: int, percentile: int) -> int:
+    """The row of the C64 damage table (`LIBRARY $385F` in Curse, `$3670` in
+    Pool of Radiance, `$33BB` in Silver Blades) that `strength_index`
+    selects, as a signed step.
+
+    Clamped to strength 25 for the reason `c64_strength_hit_step` gives.
+    """
+    return derive.strength_bonuses(min(int(strength or 0), 25), percentile)[1]
+
+
 def thac0_current_byte(base_byte: int, hit_bonus: int, bonus_flag: bool) -> int:
     """The byte `LIBRARY $3918` (`$3729` in Pool of Radiance) leaves in
     `thac0_current` -- `thac0_base` plus the AD&D strength to-hit bonus, and
@@ -747,6 +757,23 @@ def _signed_plus(raw: bytes) -> int:
     return raw[4] - 256 if raw[4] > 127 else raw[4]
 
 
+def _readied_items(raws: list[bytes]) -> list[bytes]:
+    return [r for r in raws if r[0] and r[6] & 0x80]
+
+
+def _readied_weapon(raws: list[bytes],
+                    item_types: Mapping[int, ItemType]) -> bytes | None:
+    """The readied item whose type has location 0, or None.
+
+    The lowest slot wins, as the game's downward scan leaves it; READY
+    refuses a second weapon, so only a save the game did not write has two.
+    An item whose type is missing from `item_types` is skipped.
+    """
+    return next((r for r in _readied_items(raws)
+                 if r[0] in item_types
+                 and item_types[r[0]].raw[TYPE_LOCATION] == 0), None)
+
+
 def pool_thac0_current_byte(base_byte: int, hit_bonus: int, missile: int,
                             raws: list[bytes],
                             item_types: Mapping[int, ItemType]) -> int:
@@ -760,16 +787,12 @@ def pool_thac0_current_byte(base_byte: int, hit_bonus: int, missile: int,
     closed), `missile` the value stored at `0x0EC`, `raws` the sixteen item
     records.  An item whose type is missing from `item_types` is skipped.
     """
-    readied = [r for r in raws if r[0] and r[6] & 0x80]
+    readied = _readied_items(raws)
 
     def readied_plus(type_index: int) -> int:
         return next((_signed_plus(r) for r in readied if r[0] == type_index), 0)
 
-    # The lowest slot wins, as the game's downward scan leaves it; READY
-    # refuses a second weapon, so only a save the game did not write has two.
-    weapon = next((r for r in readied
-                   if r[0] in item_types
-                   and item_types[r[0]].raw[TYPE_LOCATION] == 0), None)
+    weapon = _readied_weapon(raws, item_types)
     total = base_byte
     if weapon is None:
         return (total + hit_bonus) & 0xFF
@@ -2574,7 +2597,30 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     tail = use("roster_tail")
     if tail is not None:
         rec.set_raw("roster_tail", bytes(tail.value))
-        emit(tail, "roster_tail", 0x110, 9)
+        raw_inv = rec.get_raw("inventory")
+        raws = [raw_inv[n * ITEM_SIZE:(n + 1) * ITEM_SIZE]
+                for n in range(ITEM_SLOTS)]
+        # Without the type table a readied item cannot be told from armour,
+        # so it keeps the source's bytes, as the DOS combat rebuild does.
+        unarmed = (not _readied_items(raws) if item_types is None
+                   else _readied_weapon(raws, item_types) is None)
+        if unarmed:
+            # `LIBRARY $3918`'s unarmed rule, which the game applies at the
+            # first fight: the attack dice plus the strength damage step.
+            new = bytearray(tail.value)
+            new[3:9] = rec.get_raw("attack_forms")[2:8]
+            if rec.get("strength_bonus_flag"):
+                new[7] = (new[7] + c64_strength_damage_step(
+                    w.get("strength", 0),
+                    w.get("exceptional_strength", 0))) & 0xFF
+            rec.set_raw("roster_tail", bytes(new))
+            rep.note(0x113, 6,
+                     "roster_tail: bytes 3-8 rebuilt by LIBRARY $3918's "
+                     "unarmed rule from attack_forms and the strength damage "
+                     f"step, not copied -- {port} may have written a stale "
+                     "figure")
+        else:
+            emit(tail, "roster_tail", 0x110, 9)
 
     # -- the identity draw: a home instead of a drop --------------------------
     # GEN draws two bytes at 0x0E6-0x0E7 at creation and nothing on the C64
@@ -2717,7 +2763,9 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                        "JOIN merges only identical items with a quantity "
                        "(Silver Blades CAMP $2202) and it has no joined "
                        "scroll to write"),
-    ("roster_tail", "copied as a block into the C64's roster tail"),
+    ("roster_tail", "the C64's roster tail: bytes 3-8 rebuilt by LIBRARY "
+                    "$3918's unarmed rule when no weapon is readied, copied "
+                    "as a block otherwise"),
     ("npc", "bit 7 of 0x0B8, the byte the game itself counts player "
             "characters with; a Pool of Radiance player character gets bit 7 "
             "clear and bit 0 from the share byte's own ability-altered flag "

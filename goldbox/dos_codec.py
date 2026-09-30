@@ -2074,7 +2074,9 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("spells_castable_magic_user", "packed into the C64's low nibbles"),
     ("size", "1/2 on DOS becomes 0/1 on the C64"),
     ("attack_forms", "copied as a block"),
-    ("roster_tail", "copied as a block into the C64's roster tail"),
+    ("roster_tail", "the C64's roster tail: bytes 3-8 rebuilt by LIBRARY "
+                    "$3918's unarmed rule when no weapon is readied, copied "
+                    "as a block otherwise"),
     ("field_10c_10f", "the four bytes read apart: 0x10C indexed into the "
                       "neutral status, 0x10D into active, 0x10E into "
                       "hostile and 0x10F into quickfight (#235, "

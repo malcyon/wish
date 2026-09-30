@@ -16,7 +16,7 @@ than counted.
 import pytest
 from gamedata import game_disk, needs_disks, save_disks
 
-from goldbox import derive
+from goldbox import derive, dos_codec
 from goldbox.d64 import D64
 from goldbox.items import (
     WEAPON_ADDS_STRENGTH,
@@ -123,7 +123,7 @@ def test_a_readied_vial_of_holy_water_is_expected_to_subtract_one():
     """
     rec = a_character(strength=17)
     hit, damage = derive.strength_bonuses(17, 0)
-    assert damage == 2, "a strength-17 fighter has a damage bonus to lose"
+    assert damage == 1, "a strength-17 fighter has a damage bonus to lose"
     vial = [(FakeItem(), a_weapon(WEAPON_RANGED, bonus=0xFF))]
     assert derive.expected_damage_bonus(rec, vial) == -1
 
@@ -457,3 +457,13 @@ def test_the_rule_gives_the_stored_movement_on_77_of_78_engine_written_slots():
                 misses.append((path.name, str(slot.record.name)))
     assert slots == 78
     assert misses == [STALE]
+
+
+@pytest.mark.parametrize("strength, percentile", (
+    [(s, 0) for s in range(3, 26) if s != 18]
+    + [(18, p) for p in range(101)]))
+def test_the_damage_bonus_is_the_dos_and_c64_tables_row(strength, percentile):
+    """DOS's `dos_strength_damage_bonus` and the C64's `LIBRARY $385F` agree
+    at every index, and `strength_bonuses` is what the C64 writer wraps."""
+    assert (derive.strength_bonuses(strength, percentile)[1]
+            == dos_codec.dos_strength_damage_bonus(strength, percentile))

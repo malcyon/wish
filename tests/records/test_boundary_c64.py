@@ -63,6 +63,28 @@ def _changed(a, b):
     return [i for i in range(len(ra)) if ra[i] != rb[i]]
 
 
+def _check_roster_tail(char, rec, rep, back):
+    """Bytes 0-2 come back as handed over; bytes 3-8 are rebuilt for an
+    unarmed character (`LIBRARY $3918`), so they are checked against the
+    rebuild and not against the source's figure.
+
+    The rebuild is recognised by the writer's own note on the report, so a
+    character with a readied weapon, whose block is copied whole, is held to
+    the whole block instead.
+    """
+    want, got = bytes(char.get("roster_tail")), bytes(back.get("roster_tail"))
+    assert got[:3] == want[:3]
+    if not rep.sources.get(0x113, "").startswith("roster_tail: bytes 3-8"):
+        assert got == want
+        return
+    rebuilt = bytearray(bytes(char.get("attack_forms"))[2:8])
+    # The gate is one the writer settles itself, so read it off what it wrote.
+    if rec.get("strength_bonus_flag"):
+        rebuilt[4] = (rebuilt[4] + c64_codec.c64_strength_damage_step(
+            back.get("strength", 0), back.get("exceptional_strength", 0))) & 0xFF
+    assert got[3:9] == bytes(rebuilt)
+
+
 def _no_warnings(caplog):
     return [r.getMessage() for r in caplog.records
             if r.levelno >= logging.WARNING]
@@ -95,7 +117,7 @@ def test_a_reachable_character_writes_to_the_c64_and_reads_back_whole(
         name, caplog):
     char = boundarywidths.case(name)
     with caplog.at_level(logging.WARNING, logger="wish.goldbox"):
-        _, rep, back = _write(char)
+        rec, rep, back = _write(char)
 
     assert rep.warnings == [], (name, rep.warnings)
     assert _losses(rep) == [], (name, _losses(rep))
@@ -112,8 +134,11 @@ def test_a_reachable_character_writes_to_the_c64_and_reads_back_whole(
         assert [back.get(n) for n in _THIEF_COLUMNS] == list(wanted), name
         assert all(-128 <= v <= 127 for v in wanted), (name, wanted)
 
+    _check_roster_tail(char, rec, rep, back)
     for field in char.keys():
         if field in recomputed or field in _NOT_READ_BACK:
+            continue
+        if field == "roster_tail":
             continue
         want, got = char.get(field), back.get(field)
         if field == "levels":
@@ -445,7 +470,11 @@ def test_e_a_fixed_width_block_takes_exactly_its_width(field, width):
         for n in (width, width - 1, width + 1):
             char = boundarywidths.base(game)
             char.set(field, bytes(range(1, n + 1)), "boundary")
-            if n == width:
+            if n == width and field == "roster_tail":
+                rec, rep, back = _write(char)
+                assert len(back.get(field)) == width
+                _check_roster_tail(char, rec, rep, back)
+            elif n == width:
                 assert _write(char)[2].get(field) == bytes(range(1, n + 1))
             else:
                 with pytest.raises(ValueError, match=field):

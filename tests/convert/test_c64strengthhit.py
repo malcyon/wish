@@ -1,9 +1,10 @@
-"""The strength to-hit step the C64 writer adds to `thac0_base`, per title.
+"""The strength to-hit and damage steps the C64 writer applies, per title.
 
 The C64 rebuild reads its to-hit table by the strength index, and that table
 has rows for strength 3 to 7 and 19 to 25 as well as 8 to 18.  The disk-backed
 test reads Curse's and Pool of Radiance's own table; Silver Blades' table
-address is unread, so it is covered by the synthetic test only.
+address is unread, so it is covered by the synthetic test only.  The damage
+table follows the to-hit table in every title's `LIBRARY`, 31 bytes on.
 """
 
 from __future__ import annotations
@@ -59,3 +60,30 @@ def test_every_strength_step_matches_the_titles_own_table(game):
             row -= 256 if row > 127 else 0
             added = (rec.get("thac0") - rec.get("thac0_base") + 128) % 256 - 128
             assert added == row, (game, strength, percentile)
+
+
+SILVER = "secret-of-the-silver-blades"
+
+#: (title, `LIBRARY` base, damage table address); Silver Blades' `LIBRARY`
+#: holds the to-hit table at payload offset 0x5D4, so `$339C` with the `$2DC8`
+#: base, and the damage table at `$33BB`.
+DAMAGE_TABLES = {POOL: (0x2C48, 0x3670), CURSE: (0x2DC8, 0x385F),
+                 SILVER: (0x2DC8, 0x33BB)}
+
+
+@pytest.mark.parametrize("game", [POOL, CURSE, SILVER])
+def test_every_damage_step_matches_the_titles_own_table(game):
+    from support.coldread import _root
+
+    from tools.c64 import coldread
+    title = c64_port.by_key(game)
+    library = coldread.overlay(title, b"LIBRARY", _root(title))
+    base, table = DAMAGE_TABLES[game]
+    for strength in range(3, 26):
+        for percentile in (range(101) if strength == 18 else (0,)):
+            rec, _ = c64_codec.write(_char(game, strength, percentile),
+                                     item_types={})
+            row = library[table - base + rec.get("strength_index")]
+            row -= 256 if row > 127 else 0
+            assert c64_codec.c64_strength_damage_step(
+                strength, percentile) == row, (game, strength, percentile)
