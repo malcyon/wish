@@ -1,8 +1,9 @@
-"""The Amiga camp steps: viewing a camp sheet, laying on hands and resting, on a published Silver Blades route."""
+"""The Amiga camp steps: viewing a camp sheet, laying on hands and resting, on a published Silver Blades or Curse route."""
 
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 import pathlib
 
@@ -30,6 +31,7 @@ from tools.amiga.winuaesession import RouteError
 
 clock = measure.clock  # the fixture that replaces the driver's time and sleep
 STEPS = ("view 1", "heal", "view 1", "rest 60m")
+CURSE_NAMES = ["MALE ELF MAGE", "FEMALE MAGE", "CLERIC", "F/T", "RANGER", "PALADIN"]
 
 
 @pytest.mark.parametrize("text,tokens", [
@@ -55,7 +57,8 @@ def test_camp_steps_parse(text, tokens):
     ("heal;heal", "second heal needs a rest"),
     ("heal;view;heal", "second heal needs a rest"),
     ("fly", "not view"),
-    ("heal 2", "not view"),
+    ("heal 2", "lay on hands for line 1 only"),
+    ("heal x", "not view"),
 ])
 def test_camp_steps_refuse_what_the_route_cannot_drive(text, why):
     with pytest.raises(RouteError, match=why):
@@ -74,8 +77,39 @@ def test_a_long_rest_is_allowed_when_a_sheet_follows_and_a_short_one_alone(steps
 
 
 def test_a_view_is_refused_past_the_party_s_last_line():
-    with pytest.raises(RouteError, match="sheets for lines 1 to 1 only"):
+    with pytest.raises(RouteError, match="sheets for line 1 only"):
         route_camp.validate_steps(("view 2",), party_size=1)
+    with pytest.raises(RouteError, match="sheets for line 1 only"):
+        route_camp.validate_steps(("view 6",), party_size=5, name="curse")
+    with pytest.raises(RouteError, match="no line the camp route can lay on hands for"):
+        route_camp.validate_steps(("heal 6",), party_size=5, name="curse")
+
+
+@pytest.mark.parametrize("text,why", [
+    ("view 2", "sheets for lines 1 and 6 only"),
+    ("view 7", "sheets for lines 1 and 6 only"),
+    ("heal", "lay on hands for line 6 only"),
+    ("heal 1", "lay on hands for line 6 only"),
+    ("heal 6;heal 6", "second heal needs a rest"),
+])
+def test_curse_camp_steps_name_only_the_lines_its_guard_map_identifies(text, why):
+    with pytest.raises(RouteError, match=why):
+        route_camp.parse_steps(text, "curse")
+
+
+def test_curse_camp_steps_reach_the_paladin_on_line_6():
+    tokens = route_camp.parse_steps("view 6; rest 1d1h; view 6; heal 6", "curse")
+    assert route_camp.normalise(tokens) == ("view 6", "rest 1500m", "view 6", "heal 6")
+
+
+def test_a_title_without_camp_steps_is_refused():
+    with pytest.raises(RouteError, match="Silver Blades and Curse only"):
+        route_camp.parse_steps("view", "pool")
+
+
+def test_heal_1_is_the_normal_form_heal_so_an_older_manifest_rebuilds_the_same_route():
+    assert route_camp.normalise(("heal 1", "heal 6")) == ("heal", "heal 6")
+    assert route_camp.steps_for(("heal 1",)) == route_camp.steps_for(("heal",))
 
 
 def test_a_rest_zeroes_the_camp_preset_from_the_days_field_then_sets_each_field():
@@ -92,6 +126,45 @@ def test_heal_views_the_sheet_offering_heal_picks_the_first_member_and_expects_i
         ("S", "camp_sheet_spent", "key"), ("E", "camp", "key"))
 
 
+def test_heal_n_moves_the_camp_highlight_and_the_picker_to_line_n_and_back():
+    # The picker starts on the first member, not on the healer, so it moves as far again.
+    assert route_camp.steps_for(("heal 3",)) == (
+        ("NP2", "camp", "key"), ("NP2", "camp", "key"),
+        ("V", "camp_sheet_heal", "key"), ("H", "heal_whom", "key"),
+        ("NP2", "heal_whom", "key"), ("NP2", "heal_whom", "key"),
+        ("S", "camp_sheet_spent", "key"), ("E", "camp", "key"),
+        ("NP8", "camp", "key"), ("NP8", "camp", "key"))
+
+
+def test_curse_reaches_the_last_line_one_press_back_through_the_wrap():
+    # Curse's highlight and picker take NP1 (`$85`) and NP7 (`$87`), and wrap at either end.
+    assert route_camp.steps_for(("view 6",), "curse", 6) == (
+        ("NP7", "camp", "key"), ("V", "camp_sheet_6", "key"),
+        ("E", "camp", "key"), ("NP1", "camp", "key"))
+    assert route_camp.steps_for(("heal 6",), "curse", 6) == (
+        ("NP7", "camp", "key"), ("V", "camp_sheet_heal", "key"), ("H", "heal_whom", "key"),
+        ("NP7", "heal_whom", "key"), ("S", "camp_sheet_spent", "key"),
+        ("E", "camp", "key"), ("NP1", "camp", "key"))
+    # A tie, or a line nearer forwards, goes forwards.
+    assert route_camp.steps_for(("view 2",), "curse", 2) == (
+        ("NP1", "camp", "key"), ("V", "camp_sheet_2", "key"),
+        ("E", "camp", "key"), ("NP7", "camp", "key"))
+    assert route_camp.steps_for(("view 3",), "curse", 6)[:2] == (("NP1", "camp", "key"),) * 2
+    # Silver Blades is not read to wrap, so even a party of two goes forwards, on NP2.
+    assert route_camp.steps_for(("view 2",), "ssb", 2) == route_camp.steps_for(("view 2",))
+
+
+def test_only_a_title_read_to_wrap_is_driven_backwards():
+    base = route_silver_blades.published_title("A")
+    ssb = route_camp.camp_title(base, ("view 2",), 2, name="ssb")
+    assert ("NP8", "camp", "key") == ssb.route[ssb.route.index(("V", "camp_sheet_2", "key")) + 2]
+    curse = route_camp.camp_title(route_curse.published_title("D"), ("view 6",), 6,
+                                  name="curse")
+    at = curse.route.index(("V", "camp_sheet_6", "key"))
+    assert curse.route[at - 1] == ("NP7", "camp", "key")
+    assert curse.route[at + 2] == ("NP1", "camp", "key")
+
+
 def test_a_later_line_moves_the_highlight_there_and_back():
     assert route_camp.steps_for(("view 2",)) == (
         ("NP2", "camp", "key"), ("V", "camp_sheet_2", "key"),
@@ -101,7 +174,7 @@ def test_a_later_line_moves_the_highlight_there_and_back():
 @pytest.mark.parametrize("letter", ["A", "D"])
 def test_the_camp_steps_go_between_the_camp_key_and_the_camp_save(letter):
     base = route_silver_blades.published_title(letter)
-    title = route_camp.camp_title(base, STEPS, 6)
+    title = route_camp.camp_title(base, STEPS, 6, name="ssb")
     at = base.route.index(route_camp.CAMP_SAVE_STEP)
     added = route_camp.steps_for(STEPS)
     assert title.route == (*base.route[:at], *added, *base.route[at:])
@@ -118,7 +191,23 @@ def test_a_route_without_a_camp_save_takes_no_camp_steps():
     at = base.route.index(route_camp.CAMP_SAVE_STEP)
     cut = dataclasses.replace(base, route=base.route[:at])
     with pytest.raises(RouteError, match="no camp save"):
-        route_camp.camp_title(cut, STEPS)
+        route_camp.camp_title(cut, STEPS, name="ssb")
+
+
+CURSE_STEPS = ("view 6", "rest 1500m", "view 6", "heal 6")
+
+
+def test_the_curse_camp_steps_go_between_the_camp_key_and_the_camp_save():
+    base = route_curse.published_title("D")
+    title = route_camp.camp_title(base, CURSE_STEPS, 6, name="curse")
+    at = base.route.index(route_camp.CAMP_SAVE_STEP)
+    assert title.route == (*base.route[:at], *route_camp.steps_for(CURSE_STEPS, "curse", 6),
+                           *base.route[at:])
+    assert title.route[at - 1] == ("E", "camp", "key")
+    assert [key for key, _, kind in title.route if kind == "write"] == ["C", "F"]
+    # A slot-D source keeps slot A, so the rest menu's Add key is a plain key there only.
+    assert title.plain_keys == (("A", "rest_menu"),)
+    assert title.wait_limits["camp"] == route_camp.REST_LIMIT
 
 
 @pytest.mark.parametrize("state,sheet", [
@@ -129,25 +218,48 @@ def test_only_camp_sheets_are_observed(state, sheet):
     assert route_camp.is_sheet(state) is sheet
 
 
-def test_every_camp_sheet_rule_is_listed_by_the_party_menu_sheet_and_the_reverse():
-    maps = json.loads((pathlib.Path(route_silver_blades.__file__).parent
-                       / "guards_silver_blades.json").read_text())
-    camp = {route_camp.sheet_state(n) for n in range(1, route_camp.SHEET_LINES + 1)}
+GUARD_FILES = {"ssb": "guards_silver_blades.json", "curse": "guards_curse.json"}
+
+
+def _maps(name):
+    return json.loads((pathlib.Path(route_silver_blades.__file__).parent
+                       / GUARD_FILES[name]).read_text())
+
+
+@pytest.mark.parametrize("name", sorted(route_camp.SHEET_LINES))
+def test_every_camp_sheet_rule_is_listed_by_the_party_menu_sheet_and_the_reverse(name):
+    maps = _maps(name)
+    camp = {route_camp.sheet_state(n) for n in route_camp.SHEET_LINES[name]}
     camp |= {route_camp.SHEET_HEAL, route_camp.SHEET_SPENT}
+    # Every camp sheet shows the party menu's sheet frame, so the frame guard lists them all.
+    assert camp <= set(maps["guards"]["sheet"]["also"])
     for kind in ("guards", "identity"):
-        assert camp <= set(maps[kind]["sheet"]["also"]), kind
-        # Rules on the same box and picture as `sheet` (camp sheet 2 shows another name) collide.
+        # A rule on the same box and picture as `sheet` collides with it, and each lists the other.
+        # The identity rules name a member, so only a camp sheet of the party menu's first
+        # member (Silver Blades' paladin, Curse's line 1) collides there.
+        sheet = maps[kind]["sheet"]
         for state in camp & set(maps[kind]):
-            rule, sheet = maps[kind][state], maps[kind]["sheet"]
+            rule = maps[kind][state]
             if (rule["box"], rule["sha256"]) == (sheet["box"], sheet["sha256"]):
-                assert "sheet" in rule["also"], (kind, state)
+                assert "sheet" in rule["also"] and state in sheet["also"], (kind, state)
+    assert route_camp.sheet_state(1) in maps["identity"]["sheet"]["also"]
 
 
-def test_every_line_a_view_may_name_has_an_identity_rule():
-    maps = json.loads((pathlib.Path(route_silver_blades.__file__).parent
-                       / "guards_silver_blades.json").read_text())
-    for line in range(1, route_camp.SHEET_LINES + 1):
+@pytest.mark.parametrize("name", sorted(route_camp.SHEET_LINES))
+def test_every_line_a_view_may_name_has_an_identity_rule_and_every_camp_state_a_guard(name):
+    maps = _maps(name)
+    for line in route_camp.SHEET_LINES[name]:
         assert route_camp.sheet_state(line) in maps["identity"]
+        assert route_camp.sheet_state(line) in maps["guards"]
+    for state in (route_camp.SHEET_HEAL, route_camp.SHEET_SPENT):
+        assert state in maps["identity"] and state in maps["guards"]
+    assert {route_camp.HEAL_WHOM, route_camp.REST_MENU, route_camp.CAMP} <= set(maps["guards"])
+
+
+def test_each_title_heals_from_one_of_the_lines_it_can_view():
+    assert set(route_camp.HEAL_LINES) == set(route_camp.SHEET_LINES)
+    for name, lines in route_camp.HEAL_LINES.items():
+        assert len(lines) == 1 and set(lines) <= set(route_camp.SHEET_LINES[name])
 
 
 @pytest.mark.parametrize("after,rest,ok", [
@@ -186,12 +298,17 @@ def test_628_pins_exactly_the_titles_and_ports_the_specimen_list_names_and_each_
     assert all(len(h) == 64 and h == h.lower() for pins in table.values() for h in pins)
 
 
-def test_the_manifest_s_camp_steps_rebuild_the_route_and_curse_refuses_them():
+def test_the_manifest_s_camp_steps_rebuild_the_route_for_either_title_and_no_other():
     base = route_silver_blades.published_title("A")
     title = foundation._camp_title("ssb", base, list(STEPS), NAMES)
-    assert title.route == route_camp.camp_title(base, STEPS).route
-    with pytest.raises(RouteError, match="Silver Blades only"):
-        foundation._camp_title("curse", base, list(STEPS), NAMES)
+    assert title.route == route_camp.camp_title(base, STEPS, name="ssb").route
+    curse = route_curse.published_title("D")
+    title = foundation._camp_title("curse", curse, list(CURSE_STEPS), CURSE_NAMES)
+    assert title.route == route_camp.camp_title(curse, CURSE_STEPS, 6, name="curse").route
+    with pytest.raises(RouteError, match="Silver Blades and Curse only"):
+        foundation._camp_title("pool", base, list(STEPS), NAMES)
+    with pytest.raises(RouteError, match="lines 1 and 6 only"):
+        foundation._camp_title("curse", curse, ["view 2"], CURSE_NAMES)
     with pytest.raises(RouteError, match="normal form"):
         foundation._camp_title("ssb", base, ["view", "rest 1h"], NAMES)
     with pytest.raises(RouteError, match="lines 1 to 2"):
@@ -208,6 +325,21 @@ def test_the_cli_takes_camp_steps_only_for_a_published_prepare(capsys):
     assert "in fives" in capsys.readouterr().err
 
 
+def test_the_cli_reads_camp_steps_for_the_prepare_s_own_title(capsys):
+    # Curse's lines pass the parse and reach the next check; Silver Blades' refuse line 6.
+    assert foundation.main(["prepare", "--title", "curse", "--run-id", "x",
+                            "--camp", "view 6;heal 6"]) == 2
+    assert "--camp requires --published-disk-one" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        foundation.main(["prepare", "--title", "ssb", "--run-id", "x",
+                         "--published-disk-one", "--camp", "view 6"])
+    assert "lines 1 to 2 only" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        foundation.main(["prepare", "--title", "pool", "--run-id", "x",
+                         "--published-disk-one", "--camp", "view"])
+    assert "Silver Blades and Curse only" in capsys.readouterr().err
+
+
 CAMP_STATES = ("camp_sheet", "camp_sheet_heal", "camp_sheet_spent", "heal_whom", "rest_menu")
 
 
@@ -215,12 +347,21 @@ class CampGuest(TitleGuest):
     """Walks on the keypad until the party camps, saves C and F, and spends HEAL on `S` at the picker.
 
     In camp `D` is the rest menu's days field and the keypad moves the highlight, so neither
-    writes a slot or moves the party there.
+    writes a slot or moves the party there. `spent` starts the paladin with HEAL used; the
+    second `R` in camp (the rest menu's own) rests, which brings it back. Slots are written
+    with the title's file extension.
     """
 
-    def __init__(self, clock):
+    def __init__(self, clock, *, spent=False, ext="sav", names=NAMES):
         super().__init__(clock, save_key="df0")
-        self.healed = self.camped = False
+        self.healed, self.camped, self.ext, self.names = spent, False, ext, names
+        self.picking = self.resting = False
+
+    def _write(self, letter, place):
+        remote = next(r for r in self.mounted if r and r.endswith(f"-{self.save_key}.adf"))
+        disk = AmigaDisk(self.remote[remote])
+        disk.write_file(f"/SAVE/savgam{letter}.{self.ext}", _slot(place, self.names))
+        self.remote[remote] = disk.to_bytes()
 
     def press(self, holder, key, timeout=None):
         before = [c[2] for c in self.calls if c[0] == "press"][-1:]
@@ -232,8 +373,14 @@ class CampGuest(TitleGuest):
             self.camped = True
         if key == "F":
             self._write("F", self.place)
-        if key == "S" and before == ["H"]:
-            self.healed = True
+        if key == "H" and not self.resting:
+            self.picking = True
+        elif key == "S" and self.picking:
+            self.picking, self.healed = False, True
+        elif key == "R" and self.camped:
+            if self.resting:
+                self.healed = False
+            self.resting = not self.resting
 
 
 class CampIdentity(_IdentityMap):
@@ -246,30 +393,70 @@ class CampIdentity(_IdentityMap):
             state not in self.missing)
 
 
-def _camp_run(tmp_path, clock, monkeypatch, *, guard_states=CAMP_STATES, identity=None,
-              clock_f="05:22", steps=STEPS, bar=True):
-    def read_slot(disk, letter):
-        return {**_read_slot(disk, letter), "clock": clock_f if letter == "F" else "04:20"}
+def _curse_adf(path, volume, slots=()):
+    """`_adf` with Curse's `savgam?.dat` names."""
+    disk = AmigaDisk.blank(volume)
+    disk.make_dir("/SAVE")
+    for letter, raw in slots:
+        disk.write_file(f"/SAVE/savgam{letter}.dat", raw)
+    disk.save(path)
+    return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
-    base = dataclasses.replace(route_silver_blades.published_title("A"), read_slot=read_slot,
-                               slot_letters=_letters, slot_files=_files)
-    title = route_camp.camp_title(base, steps, len(NAMES))
-    slots = [("A", _slot(START))]
-    disks = {"df0": _adf(tmp_path / "df0.adf", "ONE", slots),
-             "df1": _adf(tmp_path / "df1.adf", "TWO")}
-    registered = {name: _adf(tmp_path / f"{name}.adf", name.upper(), slots)
-                  for name in ("source", "report", "published", "disk_one", "disk_two")}
+
+def _curse_read_slot(disk, letter):
+    try:
+        raw = disk.read_file(f"/SAVE/savgam{letter}.dat")
+    except Exception:
+        return {"missing": True, "sha256": None}
+    data = json.loads(raw)
+    return {"sha256": hashlib.sha256(raw).hexdigest(), "place": data["place"],
+            "names": data["names"]}
+
+
+def _curse_files(disk, letter):
+    """The slot's file, or nothing, as `route_curse._curse_slot_files` gives a slot not on the disk."""
+    name = f"savgam{letter}.dat"
+    return {e.name: disk.read_file(f"/SAVE/{e.name}")
+            for e in disk.entries(disk.lookup("/SAVE").block) if e.name.lower() == name.lower()}
+
+
+#: The published title, its slot readers, disk builder, loaded letter, source port and file
+#: extension, per title the fake camp runs cover.
+FAKE_TITLES = {
+    "ssb": (route_silver_blades.published_title("A"), _read_slot, _files, _adf, "A", "c64",
+            "sav"),
+    "curse": (route_curse.published_title("D"), _curse_read_slot, _curse_files, _curse_adf,
+              "D", "dos", "dat"),
+}
+
+
+def _camp_run(tmp_path, clock, monkeypatch, *, guard_states=CAMP_STATES, identity=None,
+              clock_f="05:22", steps=STEPS, bar=True, name="ssb", spent=False):
+    published, reader, files, adf, letter, port, ext = FAKE_TITLES[name]
+
+    def read_slot(disk, slot):
+        return {**reader(disk, slot), "clock": clock_f if slot == "F" else "04:20"}
+
+    base = dataclasses.replace(published, read_slot=read_slot,
+                               slot_letters=_letters, slot_files=files)
+    names = CURSE_NAMES if name == "curse" else NAMES
+    title = route_camp.camp_title(base, steps, len(names), name=name)
+    slots = [(letter, _slot(START, names))]
+    disks = {"df0": adf(tmp_path / "df0.adf", "ONE", slots),
+             "df1": adf(tmp_path / "df1.adf", "TWO")}
+    registered = {key: adf(tmp_path / f"{key}.adf", key.upper(), slots)
+                  for key in ("source", "report", "published", "disk_one", "disk_two")}
     (tmp_path / "published.adf").write_bytes((tmp_path / "df0.adf").read_bytes())
     registered["published"]["sha256"] = disks["df0"]["sha256"]
     (tmp_path / "disk_two.adf").write_bytes((tmp_path / "df1.adf").read_bytes())
     registered["disk_two"]["sha256"] = disks["df1"]["sha256"]
-    manifest = {"mode": "published_disk_one", "issue": "628", "title": "ssb",
-                "source_port": "c64", "loaded_letter": "A", "state_a": START,
-                "names_a": NAMES, "clock_a": "04:20", "disks": disks,
+    manifest = {"mode": "published_disk_one", "issue": "628", "title": name,
+                "source_port": port, "loaded_letter": letter, "state_a": START,
+                "names_a": names, "clock_a": "04:20", "disks": disks,
                 "registered": registered, "expected_after": None, "camp": list(steps)}
     path = tmp_path / "prepare.json"
     path.write_text(json.dumps(manifest))
-    guest = CampGuest(clock)
+    guest = CampGuest(clock, spent=spent, ext=ext, names=names)
     guest.place = dict(START)
     def sheet(p):
         return bar and MapGuard().shown(p).startswith("camp_sheet")
@@ -281,7 +468,7 @@ def _camp_run(tmp_path, clock, monkeypatch, *, guard_states=CAMP_STATES, identit
     result = foundation.run_recon(
         path, guest=guest, holder="wish628-test", audio_proof=_audio_proof(tmp_path),
         title=title, guard=guard, identity=identity or CampIdentity(), accept=True,
-        published_disk_one=True, published_name="ssb", journal_python="/usr/bin/python3",
+        published_disk_one=True, published_name=name, journal_python="/usr/bin/python3",
         preflight=lambda _python: None, answer=lambda *_: (0, "answered"))
     return guest, result
 
@@ -311,6 +498,28 @@ def test_a_camp_run_heals_rests_and_records_each_sheet_s_heal(tmp_path, clock, m
     assert any(line.endswith("-camp_sheet_spent: the sheet does not offer HEAL")
                for line in verdicts)
     assert result["after_clock_advanced"] is True
+
+
+def test_a_curse_camp_run_views_the_spent_paladin_rests_past_it_and_heals(
+        tmp_path, clock, monkeypatch):
+    guest, result = _camp_run(tmp_path, clock, monkeypatch, name="curse", spent=True,
+                              steps=CURSE_STEPS,
+                              guard_states=(*CAMP_STATES, "camp_sheet_6"))
+    assert result["error"] == ""
+    assert result["success"] is True, {k: result.get(k) for k in (
+        "unguarded", "menu_save_problems", "camp_save_problems", "walk", "kept_unchanged",
+        "extra_saves", "published_files_preserved", "control_clock_matches",
+        "after_clock_advanced", "clock_check")}
+    keys = _keys(guest)
+    camp = keys.index("NP8") + 2  # the second step's key, then the camp key
+    assert keys[camp - 3:camp + 1] == ["NP2", "NP8", "NP8", "E"]  # turn about, walk, camp
+    assert keys[camp + 1:keys.index("F") - 1] == [
+        key for key, _, _ in route_camp.steps_for(CURSE_STEPS, "curse", 6)]
+    assert [(e["state"], e["heal_offered"]) for e in result["camp_sheets"]] == [
+        ("camp_sheet_6", False), ("camp_sheet_6", True), ("camp_sheet_heal", True),
+        ("camp_sheet_spent", False)]
+    assert result["clock_check"] == foundation.CLOCK_UNPROVABLE
+    assert guest.healed is True
 
 
 def test_a_camp_run_fails_when_the_clock_did_not_move_by_the_rest(tmp_path, clock, monkeypatch):
@@ -383,7 +592,8 @@ def test_a_heal_whose_sheet_does_not_offer_heal_fails_the_run_there(tmp_path, cl
     assert result["success"] is False
 
 
-def _published_report(tmp_path, monkeypatch, name="ssb", port="c64", pinned=None):
+def _published_report(tmp_path, monkeypatch, name="ssb", port="c64", pinned=None,
+                      names=("GUY DE VALOIS",)):
     """A synthetic Save As of a party to disk one's slot, pinned for this issue.
 
     With `pinned` the issue's own entries stay in force and the synthetic source is reported
@@ -400,7 +610,7 @@ def _published_report(tmp_path, monkeypatch, name="ssb", port="c64", pinned=None
     disk2.write_bytes(AmigaDisk.blank("Disk2").to_bytes())
     converted = AmigaDisk(one.to_bytes())
     letter = "A" if port == "c64" else "D"
-    converted.write_file(f"/SAVE/savgam{letter}.{ext}", make(("GUY DE VALOIS",)))
+    converted.write_file(f"/SAVE/savgam{letter}.{ext}", make(names))
     published.write_bytes(converted.to_bytes())
     if pinned is None:
         monkeypatch.setitem(foundation.PUBLISHED_SOURCES_BY_ISSUE, "628",
@@ -476,7 +686,18 @@ def test_a_published_prepare_keeps_its_camp_steps_and_the_accept_route_has_them(
     assert all(state != "heal_whom" for _, state, _ in title.route)
 
 
-def test_a_published_curse_prepare_refuses_camp_steps(tmp_path, monkeypatch):
-    report = _published_report(tmp_path, monkeypatch, "curse")
-    with pytest.raises(RouteError, match="Silver Blades only"):
-        foundation.prepare_published("curse", "camp", report, "628", camp=("view",))
+def test_a_published_curse_prepare_keeps_its_camp_steps_and_the_accept_route_has_them(
+        tmp_path, monkeypatch):
+    report = _published_report(tmp_path, monkeypatch, "curse", "dos", names=CURSE_NAMES)
+    path = foundation.prepare_published("curse", "camp", report, "628",
+                                        camp=("view 6", "rest 1d1h", "view 6", "heal 6"))
+    manifest, title = foundation._published_manifest(path, "curse")
+    assert manifest["camp"] == list(CURSE_STEPS)
+    assert title.route == route_camp.camp_title(
+        route_curse.published_title("D"), CURSE_STEPS, 6, name="curse").route
+
+
+def test_a_published_curse_prepare_refuses_a_line_the_party_does_not_have(tmp_path, monkeypatch):
+    report = _published_report(tmp_path, monkeypatch, "curse", "dos", names=CURSE_NAMES[:5])
+    with pytest.raises(RouteError, match="sheets for line 1 only"):
+        foundation.prepare_published("curse", "camp", report, "628", camp=("view 6",))

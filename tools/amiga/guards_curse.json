@@ -24,6 +24,64 @@
       "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/05-save_picker.png",
       "sha256": "414355e907580d48d105d448d0cf1d36d16dff85627d1ea7f92f53876304f0b2"
     },
+    "camp_sheet": {
+      "also": [
+        "camp_sheet_6",
+        "camp_sheet_heal",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        74,
+        144,
+        124,
+        238
+      ],
+      "example": "628/amiga-curse-camp/accept1/shots/12-camp_sheet.png",
+      "sha256": "f46a0703486155b9bbdbef80f205e4388dbd2c6f3827d87f1dc56ae106b27b67"
+    },
+    "camp_sheet_6": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_heal",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        74,
+        144,
+        124,
+        238
+      ],
+      "example": "628/amiga-curse-camp/accept2/shots/15-camp_sheet_6.png",
+      "sha256": "f46a0703486155b9bbdbef80f205e4388dbd2c6f3827d87f1dc56ae106b27b67"
+    },
+    "camp_sheet_heal": {
+      "also": [
+        "camp_sheet_6"
+      ],
+      "box": [
+        72,
+        404,
+        482,
+        426
+      ],
+      "example": "628/amiga-curse-camp/accept2/shots/32-camp_sheet_heal.png",
+      "sha256": "61cb9cb714cb05111897327a2ce29d312cd7dfa20e64e1a579254f11b446e952"
+    },
+    "camp_sheet_spent": {
+      "also": [
+        "camp_sheet_6"
+      ],
+      "box": [
+        72,
+        404,
+        482,
+        426
+      ],
+      "example": "628/amiga-curse-camp/accept2/shots/15-camp_sheet_6.png",
+      "sha256": "1a1d5ab6912a11c94a989e0687a64a15a542a3e098b0afeacf07a29c03662101"
+    },
     "continue": {
       "also": [],
       "box": [
@@ -56,6 +114,17 @@
       ],
       "example": "679/a4c6f64a9b-amiga-curse-measure1/measure1/shots/01-front_end.png",
       "sha256": "f3e4a60e010705758869b1356803a72167cb4fe981df5fc719b3cda4a792bd0c"
+    },
+    "heal_whom": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        430,
+        426
+      ],
+      "example": "628/amiga-curse-camp/accept2/shots/33-heal_whom.png",
+      "sha256": "0f1a5445026c1479dbffca7f41d790ebbc75bbc1fa1840250fdb6988ba31ee94"
     },
     "intro": {
       "also": [],
@@ -90,6 +159,17 @@
       "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/02-loaded_menu.png",
       "sha256": "2cb5c70090cd61c67ff04fc8bfaa16a3bba1bea245c6afb812ede2a75ef1aff0"
     },
+    "rest_menu": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "628/amiga-curse-camp/accept1/shots/18-rest_menu.png",
+      "sha256": "b0ef4ad09f3eadc9b05d2bbfb6a11a46a81d7d99f26878f07215c9ee13ec8038"
+    },
     "save_picker": {
       "also": [
         "camp_save_picker"
@@ -104,7 +184,12 @@
       "sha256": "414355e907580d48d105d448d0cf1d36d16dff85627d1ea7f92f53876304f0b2"
     },
     "sheet": {
-      "also": [],
+      "also": [
+        "camp_sheet",
+        "camp_sheet_6",
+        "camp_sheet_heal",
+        "camp_sheet_spent"
+      ],
       "box": [
         74,
         144,
@@ -138,6 +223,61 @@
     }
   },
   "identity": {
+    "camp_sheet": {
+      "also": [
+        "sheet"
+      ],
+      "box": [
+        74,
+        48,
+        330,
+        62
+      ],
+      "example": "628/amiga-curse-camp/accept1/shots/12-camp_sheet.png",
+      "sha256": "b4340bbd30b187dccdf666453da213210f2d3dc87a15dde86fd8175d1fd22f6d"
+    },
+    "camp_sheet_6": {
+      "also": [
+        "camp_sheet_heal",
+        "camp_sheet_spent"
+      ],
+      "box": [
+        74,
+        48,
+        330,
+        62
+      ],
+      "example": "628/amiga-curse-camp/accept2/shots/15-camp_sheet_6.png",
+      "sha256": "48df3295bab11097176a2ee779713385e5619d3fabdad0e5d73c9bf3ffb31363"
+    },
+    "camp_sheet_heal": {
+      "also": [
+        "camp_sheet_6",
+        "camp_sheet_spent"
+      ],
+      "box": [
+        74,
+        48,
+        330,
+        62
+      ],
+      "example": "628/amiga-curse-camp/accept2/shots/32-camp_sheet_heal.png",
+      "sha256": "48df3295bab11097176a2ee779713385e5619d3fabdad0e5d73c9bf3ffb31363"
+    },
+    "camp_sheet_spent": {
+      "also": [
+        "camp_sheet_6",
+        "camp_sheet_heal"
+      ],
+      "box": [
+        74,
+        48,
+        330,
+        62
+      ],
+      "example": "628/amiga-curse-camp/accept2/shots/15-camp_sheet_6.png",
+      "sha256": "48df3295bab11097176a2ee779713385e5619d3fabdad0e5d73c9bf3ffb31363"
+    },
     "loaded_menu": {
       "also": [],
       "box": [
@@ -150,7 +290,9 @@
       "sha256": "832425340db648eb08540044936893742d2739cfd4c82b0d7a3ed391c8c67011"
     },
     "sheet": {
-      "also": [],
+      "also": [
+        "camp_sheet"
+      ],
       "box": [
         74,
         48,

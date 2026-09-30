@@ -1,9 +1,11 @@
 """Camp steps for an Amiga published route: view a member's sheet, lay on hands, and rest.
 
-A published route (`route_silver_blades.published_title`) walks two squares,
-camps and saves. `camp_title` splices the steps a `--camp` list names into it,
-after the camp key and before the camp save, so the save that follows holds
-what the steps did. The keys come from Silver Blades' `/Secret` (file offsets):
+A published route (`route_silver_blades.published_title` or
+`route_curse.published_title`) walks two squares, camps and saves.
+`camp_title` splices the steps a `--camp` list names into it, after the camp
+key and before the camp save, so the save that follows holds what the steps
+did. The two titles use the same letters. The keys come from Silver Blades'
+`/Secret` (file offsets):
 
 * **The camp bar** is `Save View Magic Rest Alt Fix Load Exit` (string
   `04D49D`); `V` shows the highlighted member's sheet and `R` opens the rest
@@ -26,11 +28,43 @@ what the steps did. The keys come from Silver Blades' `/Secret` (file offsets):
   at `002ABE`), so a rest here is shorter than 30 days.
 
 The party picker also moves its highlight on the game's internal codes
-`$84`/`$85` (next) and `$87`/`$88` (previous). Which WinUAE key the camp
-highlight answers to is measured, not read: `NEXT_MEMBER` and `PREV_MEMBER`.
+`$84`/`$85` (next) and `$87`/`$88` (previous). The keypad reaches those codes
+through the same translation in both executables (`/Secret` from `042AD0`,
+`/Curse` from `03E2AC`, jump table `03E2FC`): keypad 0 to 9 give
+`$89 $85 $84 $83 $86 $80 $82 $87 $88 $81`, and the cursor keys up and down
+`$88` and `$84`. So NP2 (`$84`) moves the camp highlight to the next member
+and NP8 (`$88`) back, as measured.
 
 The camp sheet is the party menu's sheet: the same frame, and a bar of
 `ITEMS HEAL EXIT` for a paladin who may heal and `ITEMS EXIT` once he has.
+
+Curse of the Azure Bonds' `/Curse` (file offsets) differs only where noted:
+
+* **The camp bar** is `Save View Magic Rest Alter Fix Exit` (`0455A5`). The
+  camp highlight is `g3CFC` and the party's first member `g3CF8`; `0237CA`
+  moves the highlight to the next member on the internal code `$85` only and to
+  the previous one on `$87` only, wrapping at either end. Those are NP1 and NP7:
+  NP2 and NP8 (`$84`, `$88`) leave the highlight where it is, as a boot showed.
+* **The sheet bar** is built at `022016`-`0220C6` from `Items`, `Spells`,
+  `Trade`, `Drop`, `Heal` (while the gate `0239F4` passes: class 3 or a
+  paladin level, the game mode byte `g3D56` not 5, record `+0x19A` clear and
+  no node 140), `Cure` and `Exit`; `H` runs the heal routine `023A9A` for the
+  highlighted member.
+* **HEAL's target** is chosen by the party picker `01BE98`, called with
+  `Heal Whom? ` (`0240BE`). It starts on the first member (`g3CF8`), not on
+  the healer; `$85` and `$87` move it, and the bar is `Select Exit`. `S` or
+  RETURN keeps the highlighted member and `E` leaves with none. `027F44` only
+  returns the member the picker left in `g337A`. The healer, not the target,
+  gets node 140 for 1440 minutes (`023B54`), and the routine redraws his sheet
+  (`0215BE`) without waiting for a key.
+* **The rest menu** (`002328`) has the same letters and opens on the minutes
+  field; its subtraction (`0020FE`) zeroes the whole time when nothing above the
+  field can be borrowed, so `D S S` clears the preset here too.
+
+`heal N` has the member on line N lay on hands on himself: the camp
+highlight goes to his line, and the picker, which starts on the first member,
+is moved the same way. Both wrap at either end in Curse, so the last line is
+one press back from the first.
 """
 
 from __future__ import annotations
@@ -48,15 +82,24 @@ HEAL_SELECT = "S"
 CAMP_REST = "R"
 REST_DAYS, REST_HOURS, REST_MINS = "D", "H", "M"
 REST_ADD, REST_SUBTRACT, REST_GO = "A", "S", "R"
-#: The keys that move the camp's highlight to the next and the previous member: measured,
-#: NP2 takes it from the first line to the second and NP8 back.
-NEXT_MEMBER, PREV_MEMBER = "NP2", "NP8"
+#: The keys that move the camp's highlight and HEAL's picker to the next and the previous
+#: member, per title: Silver Blades takes `$84`/`$88` (NP2, NP8; measured), Curse only
+#: `$85`/`$87` (NP1, NP7; read from `0237CA` and `01BF8E`).
+MEMBER_KEYS = {"ssb": ("NP2", "NP8"), "curse": ("NP1", "NP7")}
 REST_STEP = 5
 REST_DAYS_MAX = 29
 #: The most members a Gold Box party holds.
 PARTY_MAX = 8
-#: The party lines whose camp sheet has an identity rule, so the most `view N` can name.
-SHEET_LINES = 2
+#: The party lines whose camp sheet has an identity rule in the title's guard map, so the
+#: lines `view N` can name.
+SHEET_LINES = {"ssb": (1, 2), "curse": (1, 6)}
+#: The party line of the paladin whose HEAL sheets the title's guard map holds, so the line
+#: `heal N` can name: the identity rule of `camp_sheet_heal` and `camp_sheet_spent` is his.
+HEAL_LINES = {"ssb": (1,), "curse": (6,)}
+#: The titles whose camp highlight and HEAL picker are read to wrap from the first member to
+#: the last and back (Curse `0237CA` and `01BF56`-`01BF8A`), so a later line may be reached
+#: backwards.
+WRAPS = frozenset({"curse"})
 
 CAMP = "camp"
 SHEET = "camp_sheet"
@@ -112,48 +155,79 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
     return days, hours, mins // REST_STEP
 
 
-def parse_steps(text: str) -> tuple[str, ...]:
-    """Read `view;heal;rest 1h` into normalised tokens, each checked by `validate_steps`."""
+def sheet_lines(name: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """The party lines `view N` and `heal N` may name for title `name`."""
+    try:
+        return SHEET_LINES[name], HEAL_LINES[name]
+    except KeyError:
+        raise RouteError("camp steps are built for Silver Blades and Curse only") from None
+
+
+def _lines_text(lines: tuple[int, ...]) -> str:
+    if len(lines) == 1:
+        return f"line {lines[0]}"
+    if lines == tuple(range(lines[0], lines[-1] + 1)):
+        return f"lines {lines[0]} to {lines[-1]}"
+    return "lines " + ", ".join(map(str, lines[:-1])) + f" and {lines[-1]}"
+
+
+def parse_steps(text: str, name: str = "ssb") -> tuple[str, ...]:
+    """Read `view;heal;rest 1h` into tokens for title `name`, each checked by `validate_steps`."""
     tokens = tuple(" ".join(part.split()).lower() for part in text.split(";") if part.strip())
-    validate_steps(tokens)
+    validate_steps(tokens, name=name)
     return tokens
 
 
-def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX) -> None:
-    """Refuse a camp step list the route cannot drive.
+def _step_line(words: list[str]) -> int | None:
+    """The party line a `view` or `heal` token names (1 when left out), or None for another token."""
+    if words[0] not in ("view", "heal") or len(words) > 2:
+        return None
+    if len(words) == 1:
+        return 1
+    return int(words[1]) if words[1].isdigit() else None
+
+
+def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
+                   name: str = "ssb") -> None:
+    """Refuse a camp step list the route cannot drive for title `name`.
 
     `view` or `view N` shows the sheet of party line N (1 when left out; only
-    lines 1 and 2 have an identity rule),
-    `heal` has the first member lay on hands on himself, and `rest DURATION`
-    rests that long. A `heal` whose sheet does not offer HEAL fails the run at
-    that sheet, since its guard is the bar with the word on it.
+    the lines in `SHEET_LINES` have an identity rule), `heal` or `heal N` has
+    the member on line N lay on hands on himself (1 when left out; only the
+    line in `HEAL_LINES`, whose HEAL sheets have identity rules), and
+    `rest DURATION` rests that long. A `heal` whose sheet does not offer HEAL
+    fails the run at that sheet, since its guard is the bar with the word on it.
     """
+    view_lines, heal_lines = sheet_lines(name)
     if not tokens:
         raise RouteError("the camp step list is empty")
     healed = False
     for token in tokens:
-        if token == "heal":
+        if token.split()[0] == "heal":
             if healed:
                 raise RouteError("a second heal needs a rest before it: the sheet no longer "
                                  "offers HEAL")
             healed = True
         elif token.startswith("rest "):
             healed = False
-    last_line = min(party_size, SHEET_LINES)
     for token in tokens:
         words = token.split()
-        if words == ["view"] or words == ["heal"]:
-            continue
-        if words[0] == "view" and len(words) == 2 and words[1].isdigit():
-            line = int(words[1])
-            if not 1 <= line <= last_line:
-                raise RouteError(f"{token!r}: the camp route can read sheets for lines 1 to "
-                                 f"{last_line} only")
+        line = _step_line(words)
+        if line is not None:
+            lines = tuple(n for n in (view_lines if words[0] == "view" else heal_lines)
+                          if n <= party_size)
+            if line not in lines:
+                doing = "read sheets" if words[0] == "view" else "lay on hands"
+                raise RouteError(
+                    f"{token!r}: the camp route can {doing} for {_lines_text(lines)} only"
+                    if lines else f"{token!r}: the party has no line the camp route can "
+                                  f"{doing} for")
             continue
         if words[0] == "rest" and len(words) == 2:
             parse_duration(words[1])
             continue
-        raise RouteError(f"camp step {token!r} is not view, view N, heal or rest DURATION")
+        raise RouteError(f"camp step {token!r} is not view, view N, heal, heal N or "
+                         f"rest DURATION")
     if rest_minutes(tokens) >= CLOCK_BLIND_REST:
         last_rest = max(i for i, t in enumerate(tokens) if t.startswith("rest "))
         if not any(t.split()[0] in ("view", "heal") for t in tokens[last_rest + 1:]):
@@ -164,12 +238,14 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX) -> None
 
 
 def normalise(tokens: tuple[str, ...]) -> tuple[str, ...]:
-    """`view` as `view 1`, and a rest time as its minutes, so two spellings build one route."""
+    """`view` as `view 1`, `heal 1` as `heal`, and a rest time as its minutes, so two spellings build one route."""
     out = []
     for token in tokens:
         words = token.split()
         if words == ["view"]:
             out.append("view 1")
+        elif words == ["heal", "1"]:
+            out.append("heal")
         elif words[0] == "rest":
             out.append(f"rest {parse_duration(words[1])}m")
         else:
@@ -182,19 +258,46 @@ def rest_minutes(tokens: tuple[str, ...]) -> int:
     return sum(parse_duration(t.split()[1]) for t in tokens if t.startswith("rest "))
 
 
-def steps_for(tokens: tuple[str, ...]) -> tuple[tuple[str, str, str], ...]:
-    """The route steps, from the camp bar back to the camp bar, for each token in order."""
+def _moves(line: int, name: str, party_size: int | None, state: str) -> tuple[list, list]:
+    """The presses from the first member to party line `line` and back, in `state`.
+
+    Where title `name` wraps (`WRAPS`) and `party_size` is known, the highlight
+    goes the other way round, from the first member to the last, when that is shorter.
+    """
+    ahead, behind = MEMBER_KEYS[name]
+    forward = line - 1
+    if (name in WRAPS and party_size is not None and 1 <= line <= party_size
+            and party_size - forward < forward):
+        back = party_size - forward
+        return [(behind, state, "key")] * back, [(ahead, state, "key")] * back
+    return [(ahead, state, "key")] * forward, [(behind, state, "key")] * forward
+
+
+def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None = None
+              ) -> tuple[tuple[str, str, str], ...]:
+    """The route steps for title `name`, from the camp bar back to the camp bar, for each token in order.
+
+    `party_size` lets a title whose highlight wraps reach a later line backwards;
+    without it the highlight moves forward only.
+    """
     steps: list[tuple[str, str, str]] = []
     for token in normalise(tokens):
         words = token.split()
         if words[0] == "view":
             line = int(words[1])
-            steps += [(NEXT_MEMBER, CAMP, "key")] * (line - 1)
+            there, back = _moves(line, name, party_size, CAMP)
+            steps += there
             steps += [(VIEW, sheet_state(line), "key"), (SHEET_EXIT, CAMP, "key")]
-            steps += [(PREV_MEMBER, CAMP, "key")] * (line - 1)
+            steps += back
         elif words[0] == "heal":
-            steps += [(VIEW, SHEET_HEAL, "key"), (HEAL, HEAL_WHOM, "key"),
-                      (HEAL_SELECT, SHEET_SPENT, "key"), (SHEET_EXIT, CAMP, "key")]
+            line = _step_line(words)
+            there, back = _moves(line, name, party_size, CAMP)
+            steps += there
+            steps += [(VIEW, SHEET_HEAL, "key"), (HEAL, HEAL_WHOM, "key")]
+            # The picker starts on the first member, so it moves as far as the camp highlight did.
+            steps += _moves(line, name, party_size, HEAL_WHOM)[0]
+            steps += [(HEAL_SELECT, SHEET_SPENT, "key"), (SHEET_EXIT, CAMP, "key")]
+            steps += back
         else:
             days, hours, fives = rest_presses(parse_duration(words[1]))
             steps += [(CAMP_REST, REST_MENU, "key"), (REST_DAYS, REST_MENU, "key"),
@@ -207,9 +310,9 @@ def steps_for(tokens: tuple[str, ...]) -> tuple[tuple[str, str, str], ...]:
     return tuple(steps)
 
 
-def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PARTY_MAX
-               ) -> AmigaTitle:
-    """`title` with the camp steps before its camp save.
+def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PARTY_MAX, *,
+               name: str) -> AmigaTitle:
+    """`title`, the published route of title `name`, with the camp steps before its camp save.
 
     The camp states are not strict: a screen the guard map lacks is settled and
     marks the run as measuring, so one boot can capture them all, and the camp
@@ -217,7 +320,7 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     letter the rest menu uses as a key (`A`, for a source loaded from slot D)
     becomes a plain key on the rest menu only.
     """
-    validate_steps(tokens, party_size)
+    validate_steps(tokens, party_size, name=name)
     route = list(title.route)
     try:
         at = route.index(CAMP_SAVE_STEP)
@@ -225,7 +328,7 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
         raise RouteError("the route has no camp save to put the camp steps before") from None
     if at == 0 or route[at - 1][1] != CAMP:
         raise RouteError("the route's camp save does not follow the camp bar")
-    added = steps_for(tokens)
+    added = steps_for(tokens, name, party_size)
     route[at:at] = added
     plain = tuple(dict.fromkeys(
         (*title.plain_keys,

@@ -2075,15 +2075,14 @@ def _turn_about(name: str, letter: str, place: dict | None) -> bool:
 
 
 def _camp_title(name: str, title: AmigaTitle, camp: Any, names: list) -> AmigaTitle:
-    """The published route with a manifest's camp steps before its camp save; Silver Blades only."""
-    if name != "ssb":
-        raise RouteError("camp steps are built for Silver Blades only")
+    """The published route with a manifest's camp steps before its camp save; Silver Blades and Curse."""
+    route_camp.sheet_lines(name)
     if not isinstance(camp, list) or not all(isinstance(t, str) for t in camp):
         raise RouteError("the manifest camp steps are not a list of strings")
     tokens = tuple(camp)
     if route_camp.normalise(tokens) != tokens:
         raise RouteError("the manifest camp steps are not in their normal form")
-    return route_camp.camp_title(title, tokens, len(names))
+    return route_camp.camp_title(title, tokens, len(names), name=name)
 
 
 def _published_manifest(path: pathlib.Path, name: str) -> tuple[dict, AmigaTitle]:
@@ -2374,11 +2373,9 @@ def _record_numbers(text: str) -> list[int]:
         raise argparse.ArgumentTypeError("record numbers are comma-separated integers") from None
 
 
-def _camp_steps(text: str) -> tuple[str, ...]:
-    try:
-        return route_camp.normalise(route_camp.parse_steps(text))
-    except RouteError as exc:
-        raise argparse.ArgumentTypeError(str(exc)) from None
+def _camp_steps(text: str, name: str) -> tuple[str, ...]:
+    """`--camp`'s steps for title `name`, in their normal form."""
+    return route_camp.normalise(route_camp.parse_steps(text, name))
 
 
 def _draw_options(args: argparse.Namespace, holder: str) -> dict[str, Any]:
@@ -2421,9 +2418,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--run-id", required=True)
     p.add_argument("--published-disk-one", action="store_true")
     p.add_argument("--saveas-report", type=pathlib.Path)
-    p.add_argument("--camp", type=_camp_steps, default=(),
-                   help="published Silver Blades only: camp steps driven before the camp save, "
-                        "as 'view;heal;rest 1h' (view, view N, heal, rest DURATION)")
+    p.add_argument("--camp", default="",
+                   help="published Silver Blades and Curse only: camp steps driven before the "
+                        "camp save, as 'view;heal;rest 1h' (view, view N, heal, heal N, "
+                        "rest DURATION)")
     p.add_argument("--source", type=pathlib.Path)
     p.add_argument("--staged-from", type=pathlib.Path)
     p.add_argument("--issue")
@@ -2476,6 +2474,11 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--guards", required=True, type=pathlib.Path)
     d.add_argument("--boot-limit", type=float, default=300)
     args = parser.parse_args(argv)
+    if args.command == "prepare":
+        try:
+            args.camp = _camp_steps(args.camp, args.title) if args.camp else ()
+        except RouteError as exc:
+            parser.error(f"argument --camp: {exc}")
     try:
         silver_blades = args.title == "ssb"
         if args.command == "diagnose" and (not silver_blades or not args.published_disk_one
