@@ -7753,6 +7753,31 @@ def test_the_captured_continue_battle_bar_is_not_the_command_bar():
     assert da.fight_bar_kind(da.loose_halve(command)) == "command"
 
 
+def test_the_silver_blades_treasure_bar_is_known_by_its_letters():
+    assert da.treasure_words(_words("VIEW TAKE POOL EXIT"))
+    for text in ("VIEW TAKE POOL DONE", "VIEW TAKE POOL EXIT DONE",
+                 "VIEW TAKE POLL EXIT", "SAVE VIEW MAGIC EXIT",
+                 "VIEW TAKE POOL EXIS"):
+        assert not da.treasure_words(_words(text)), text
+    assert da.fight_bar_kind(_screen(_bar("VIEW TAKE POOL EXIT"), b"")) == "treasure"
+    assert da.FIGHT_KEYS["treasure"] == "e"
+
+
+def test_the_captured_silver_blades_treasure_bar_is_the_treasure():
+    shot = _capture("d7100643cb-f1-dos-won",
+                    "017-lost-fight-unknown-943e966bb706d247", issue="733")
+    assert da.fight_bar_kind(da.loose_halve(shot)) == "treasure"
+
+
+def test_no_at_continue_battle_then_the_silver_blades_treasure_is_left_and_the_step_ends(
+        tmp_path, fight_now):
+    game, d = _fighter(tmp_path, intervene=True)
+    game.prompt = True
+    game.FRAMES = {**game.FRAMES, "treasure": "VIEW TAKE POOL EXIT"}
+    d.fight()
+    assert game.keys[-3:] == ["n", "e", "n"] and d.where == "map"
+
+
 def test_continue_battle_after_intervene_is_answered_no_and_read_once(
         tmp_path, fight_now):
     game, d = _fighter(tmp_path, intervene=True)

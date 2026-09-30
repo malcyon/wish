@@ -747,8 +747,17 @@ def encounter_words(words: list[list[str]]) -> bool:
 
 
 def treasure_words(words: list[list[str]]) -> bool:
-    """`VIEW TAKE POOL SHARE EXIT`: `E` ends `VIEW`'s third cell, `TAKE`,
-    `SHARE` and opens `EXIT`, and `POOL` doubles its `O`."""
+    """The treasure bar: Curse's and Pool's `VIEW TAKE POOL SHARE EXIT`, or
+    Silver Blades' `VIEW TAKE POOL EXIT`.
+
+    `E` ends `VIEW`'s third cell, `TAKE` and `SHARE` and opens `EXIT`, and
+    `POOL` doubles its `O`.  Silver Blades has no `SHARE`, so `EXIT` is the
+    fourth word, and `I` is `VIEW`'s second cell and `EXIT`'s third.
+    """
+    if _lengths(words, 4, 4, 4, 4) and len(words) == 4:
+        view, take, pool, exit_ = words
+        return (view[2] == take[3] == exit_[0] and view[1] == exit_[2]
+                and pool[1] == pool[2] and take[0] == exit_[3])
     if not _lengths(words, 4, 4, 4, 5, 4) or len(words) != 5:
         return False
     view, take, pool, share, exit_ = words
