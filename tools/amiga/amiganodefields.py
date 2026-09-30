@@ -30,8 +30,11 @@ node's fields are `$1` to `$6`, and `$1(aN)` matches 81 instructions in
 `/Secret` of which none is a node.  Hence the walk.
 
 The register walk **over-approximates**: it keeps a register marked as
-holding a node until something overwrites it, ignores control flow, and runs
-to a fixed point.  That is the safe direction for the question being asked.
+holding a node until something overwrites it, and runs
+to a fixed point.  It follows every branch and `dbcc` to its target and to
+its fall-through, so code after an early return is scanned; it ends a path at
+`rts`, `rte`, `rtr` and `jmp`, and does not follow a computed jump or a
+`bsr`'s callee.  That is the safe direction for the question being asked.
 A displacement it does not report is one no instruction downstream of a
 chain-head load can reach, whatever path the game takes; a displacement it
 does report may be a coincidence of the over-approximation and has to be
@@ -69,6 +72,10 @@ DIRECT = re.compile(r"(?<![\w$)])\((a[0-7])\)")
 #: `movea.l <something>, aN` -- the only way an address register is loaded
 #: with a pointer on this compiler's output.
 LOAD_A = re.compile(r"^(.*),\s*(a[0-7])$")
+
+#: The absolute target capstone prints for a branch or `dbcc`, which may
+#: follow a data-register operand.
+BRANCH_TARGET = re.compile(r"(?:^|,\s*)\$([0-9a-f]+)$")
 
 #: How wide each mnemonic's memory operand is, for the report.
 WIDTH = {"b": 1, "w": 2, "l": 4}
@@ -165,11 +172,16 @@ def walk(exe: Executable, start_at: int, chain: int, node_next: int,
     calls: dict[int, set[str]] = {}
     for _ in range(passes):
         before = len(found)
-        at = start_at
-        while at < min(start_at + span, base + size):
+        pending, seen = [start_at], set()
+        while pending:
+            at = pending.pop()
+            if at in seen or not start_at <= at < min(start_at + span,
+                                                      base + size):
+                continue
+            seen.add(at)
             ins = _decode_one(md, code, base, at)
             if ins is None:
-                break
+                continue
             op = ins.op_str
             for register in sorted(held):
                 for hit in _touches(ins, register):
@@ -192,9 +204,16 @@ def walk(exe: Executable, start_at: int, chain: int, node_next: int,
                     held.discard(target)
             if ins.mnemonic.split(".")[0] == "jsr" and held:
                 calls.setdefault(ins.address, set()).update(held)
-            if ins.mnemonic.split(".")[0] in ("rts", "rte"):
-                break
-            at = ins.address + ins.size
+            head = ins.mnemonic.split(".")[0]
+            if head in ("rts", "rte", "rtr", "jmp"):
+                continue
+            target = BRANCH_TARGET.match(op)
+            if target and (head.startswith("db")
+                           or (head.startswith("b") and head != "bsr")):
+                pending.append(int(target.group(1), 16))
+                if head in ("bra", "jmp"):
+                    continue
+            pending.append(ins.address + ins.size)
         if len(found) == before:
             break
     return {"displacements": found, "calls": calls}

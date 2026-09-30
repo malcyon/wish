@@ -89,6 +89,23 @@ def chain_walk_program() -> bytes:
     ])
 
 
+def early_return_program() -> bytes:
+    """A node read that sits after an early `rts`, reached by a branch."""
+    code = bytearray()
+    code += b"\x24\x6e\x00\x96"                  # 0:  movea.l $96(a6), a2
+    code += b"\x66\x02"                          # 4:  bne.b +2 (to 8)
+    code += b"\x4e\x75"                          # 6:  rts
+    code += b"\x14\x2a\x00\x05"                  # 8:  move.b $5(a2), d2
+    code += b"\x4e\x75"                          # 12: rts
+    code = pad4(bytes(code))
+    data = bytearray(b"\x4e\xf9" + u32(0))
+    data += b"\0" * (0x7FFE + 8 - len(data))
+    return hunk_file([
+        (amiga68k.HUNK_CODE, code, []),
+        (amiga68k.HUNK_DATA, pad4(bytes(data)), [(0, [2])]),
+    ])
+
+
 def sweep(exe: Executable, chain: int = CHAIN) -> dict[int, list]:
     """`{offset: [(width, writes, count)]}` from the tool's own report."""
     heads = amiganodefields.sites(
@@ -112,6 +129,11 @@ def test_every_node_byte_the_program_names_is_reported_at_its_width():
     assert [w for w, _, _ in found[0]] == [1]
     assert [w for w, _, _ in found[2]] == [2]
     assert [w for w, _, _ in found[6]] == [4]
+
+
+def test_a_read_after_an_early_return_is_reported():
+    found = sweep(Executable.parse(early_return_program()))
+    assert sorted(found) == [5]
 
 
 def test_a_node_byte_nothing_names_is_reported_as_unreached():
