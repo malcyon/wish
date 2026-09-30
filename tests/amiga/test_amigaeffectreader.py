@@ -228,3 +228,30 @@ def test_amigaacceptance_expect_verdict_names_a_missing_fetched_disk(tmp_path):
         tmp_path / "prepare.json", "accept1", ("GUY DE VALOIS", 1, 47, 5))
     assert accepted is False
     assert line == "expect GUY DE VALOIS id 1 at 47 minutes: refutes (no fetched boot disk)"
+
+
+def test_pool_read_slot_reads_the_dos_member_keys_through_the_amiga_offsets(monkeypatch):
+    """Distinct bytes everywhere, so a key read at its DOS offset instead of the Amiga one shows."""
+    from goldbox import amiga_por
+
+    party = [sample(name="BRUTUS")]
+    disk = amiga_savegame.make_por_save_disk("A", party, synthetic_savegame("A"))
+    raw = bytearray(1 + i * 7 % 251 for i in range(amiga_por.AMIGA_POR_RECORD_SIZE))
+    raw[:8] = b"BRUTUS\0\0"
+    record = amiga_por.AmigaPorCharacter.from_bytes(bytes(raw))
+    monkeypatch.setattr(amiga_savegame, "read_por_characters",
+                        lambda *args, **kwargs: [record])
+
+    member = route_pool._pool_read_slot(disk, "A")["members"]["BRUTUS"]
+
+    assert member == {
+        "status_bytes": list(record.get("field_10c_10f")),
+        "control": record.get("field_83_87")[1],
+        "share": record.get("field_83_87")[2],
+        "creature_type": record.get("creature_type"),
+        "turn_class": record.get("turn_class"),
+        "movement": record.get("movement"),
+    }
+    assert member["status_bytes"] == list(raw[0x10E:0x112])
+    assert member["control"] == raw[0x85]
+    assert member["creature_type"] == raw[0xA1]

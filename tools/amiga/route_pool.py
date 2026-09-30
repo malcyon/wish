@@ -9,7 +9,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from goldbox import amiga_adf, amiga_savegame, areas, geo
+from goldbox import amiga_adf, amiga_por, amiga_savegame, areas, geo
 from goldbox.geo import load_geo_files
 from tools.amiga import amigaporslot
 from tools.amiga.route import ISSUE, AmigaTitle, RouteError, effect_fields
@@ -33,6 +33,22 @@ def _pool_name(name: str) -> str:
     return name.replace(" ", "")
 
 
+# The DOS `read_slot` keys, each at its DOS Pool record offset: the Amiga record
+# is read through `amiga_por_offset`, never at a copied number.
+_POOL_MEMBER_BYTES = (("control", 0x084), ("share", 0x085), ("creature_type", 0x09F),
+                      ("turn_class", 0x076), ("movement", 0x072))
+_POOL_STATUS_BYTES = 0x10C
+
+
+def _pool_member_bytes(raw: bytes) -> dict[str, Any]:
+    """The status, control, share, creature type, turn class and movement bytes of one Amiga record."""
+    at = amiga_por.amiga_por_offset(_POOL_STATUS_BYTES)
+    reading: dict[str, Any] = {"status_bytes": list(raw[at:at + 4])}
+    for key, dos_offset in _POOL_MEMBER_BYTES:
+        reading[key] = raw[amiga_por.amiga_por_offset(dos_offset)]
+    return reading
+
+
 def _pool_read_slot(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
     """One Pool save slot in the root of a fetched POOLSAVE disk: `missing`, `decode_error`, or place and names."""
     try:
@@ -48,12 +64,14 @@ def _pool_read_slot(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
         characters = amiga_savegame.read_por_characters(disk, letter, drawer="")
         effects = {_pool_name(char.name): [list(effect_fields(node)) for node in char.effects]
                   for char in characters}
+        members = {_pool_name(char.name): _pool_member_bytes(char.raw) for char in characters}
     except Exception as exc:  # noqa: BLE001 - every reader failure is the verdict's `decode_error`
         reading["decode_error"] = f"{type(exc).__name__}: {exc}"
         return reading
     reading["names"] = names
     reading["place"] = place
     reading["effects"] = effects
+    reading["members"] = members
     return reading
 
 
