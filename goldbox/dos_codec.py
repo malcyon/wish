@@ -477,15 +477,13 @@ def item_to_c64(record: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 # Silver Blades' joined scroll: a head item and the scrolls chained off it
 # ---------------------------------------------------------------------------
-def item_nodes(itm: bytes, stride: int,
-               heads: int | None = None) -> list[DosItem]:
+def item_nodes(itm: bytes, stride: int) -> list[DosItem]:
     """The item file as the engine's own loader reads it, one `DosItem` a head.
 
     `SECRET GAME.OVR` `0x258D5` reads a record, and when its type is
     :data:`SCROLL_BUNDLE_TYPE` reads `quantity` more straight after it as
     that item's scrolls; it stops at the end of the file and never reads
     `item_count`.  A 63-byte title has no chain, so every record is a head.
-    `heads` stops after that many head items; `None` reads to the end.
 
     A joined scroll whose scrolls run past the end of the file raises
     `DosRecordError`: the engine would read short records into those nodes.
@@ -495,7 +493,7 @@ def item_nodes(itm: bytes, stride: int,
     total = len(itm) // stride
     out: list[DosItem] = []
     i = 0
-    while i < total and (heads is None or len(out) < heads):
+    while i < total:
         head = itm[i * stride:(i + 1) * stride]
         i += 1
         scrolls: list[DosItem] = []
@@ -1755,6 +1753,11 @@ def required_item_suffix(data: bytes) -> str | None:
     """The item-file suffix a DOS character record cannot be read without,
     or `None` when its `item_count` is zero, as an export's is.
 
+    The count matters only to whether an item file must exist: the items
+    themselves are whatever the file holds, so a count above zero with a
+    missing or empty file is refused and a count of zero with no file reads
+    no items.
+
     Raises `DosDeltasError` for a length that is no known record.  The reader
     and the specimen registry both ask this, so they refuse the same folder.
     """
@@ -1781,8 +1784,11 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     shipped archives dividing evenly, which is the same check Silver Blades
     would have passed while being wrong.
 
-    **The items are the whole item file, not `item_count`.**  The engine's
-    loader reads the file to its end and ignores the count byte, so a count
+    **The items are the whole item file, not `item_count`.**  Pool of
+    Radiance's loader reads the file to its end and ignores the count byte
+    (proven from its code); Silver Blades and Pools of Darkness do the same
+    per `docs/215-the-dos-experience-award-and-the-scroll-bundle.md`, and Curse
+    is assumed to until its loader is read.  So a count
     that is stale (a scribed scroll leaves it one high) or zero (an export)
     changes nothing.  No sibling item file at all is quiet only when the
     record's `item_count` is zero.  A record that counts items and has no

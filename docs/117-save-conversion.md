@@ -1404,9 +1404,12 @@ checking was better than the question:
   in any save on the disks has a trait id at all, because the C64 works his
   out from the race byte. "The `.SPC` effects file" below is what that costs
   a conversion and what closes it;
-* **The item file, not `0x0C7`, says what a character carries.** The engine's
-  loader reads the `.ITM` file to its end and never reads the count byte, which
-  it rebuilds when the sheet is viewed. An export's zero count beside an `.ITM`
+* **The item file, not `0x0C7`, says what a character carries.** Pool of
+  Radiance's loader reads the `.ITM` file to its end and never reads the count
+  byte, which it rebuilds when the sheet is viewed (proven from its code);
+  Silver Blades and Pools of Darkness read to the end of the file too
+  (`docs/215-the-dos-experience-award-and-the-scroll-bundle.md`), and Curse is
+  assumed to until its loader is read. An export's zero count beside an `.ITM`
   of three to seven records is a character with those items, and a scribed
   scroll leaves the count one above the file's records.
 
