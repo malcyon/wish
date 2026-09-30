@@ -413,6 +413,19 @@ SCROLL_BUNDLE_TYPE = 0x49
 #: accepts beside a joined scroll itself (`0x293A6`-`0x293BA`).
 SCROLL_TYPES = (0x27, 0x28)
 
+#: Each title's scroll type ids as `neutral_to_c64_record` must mask them,
+#: keyed by the C64 deltas' key.  Silver Blades numbers its scrolls 0x27 and
+#: 0x28 (`MAGE SCROLL 3 SPELLS` and `CLER SCROLL 3 SPELLS` in the C64 templates,
+#: `SECRET/ITEM*.DAX`).  Pool of Radiance and Curse use 0x3D and 0x3E (C64
+#: `ITEMS` location 11 and 12 on `POOL1.D64` and `CURSE_A.D64`; every 0x3D or
+#: 0x3E record in `POOLRAD/ITEM1-8.DAX` and `CURSE/ITEM*.DAX` holds spell ids),
+#: and there 0x27 and 0x28 are a trident and a voulge.
+C64_SCROLL_TYPES = {
+    "pool-of-radiance": (0x3D, 0x3E),
+    "curse-of-the-azure-bonds": (0x3D, 0x3E),
+    "secret-of-the-silver-blades": SCROLL_TYPES,
+}
+
 
 def item_to_c64(record: bytes) -> bytes:
     """Project one DOS item onto the C64's sixteen bytes.
@@ -3051,7 +3064,9 @@ def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None, *,
                 field.confidence, Provenance.RESHAPED)
     field = out.fields.get("inventory")
     if field is not None:
-        cleared = [_scribe_mark_cleared(bytes(item)) for item in field.value]
+        scrolls = C64_SCROLL_TYPES[c64_codec.deltas_for(char.game).key]
+        cleared = [_scribe_mark_cleared(bytes(item), scrolls)
+                   for item in field.value]
         if cleared != [bytes(item) for item in field.value]:
             out.set("inventory", cleared,
                     field.origin + ", a scroll's scribe mark cleared for the "
@@ -3063,15 +3078,17 @@ def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None, *,
                            item_types=item_types)
 
 
-def _scribe_mark_cleared(item: bytes) -> bytes:
+def _scribe_mark_cleared(item: bytes, scroll_types: tuple[int, ...]) -> bytes:
     """A C64 item with bit 7 of a scroll's three spell bytes cleared.
 
     DOS and Amiga add 128 to a spell while it is being scribed and a camp save
     keeps it.  The C64 never writes that mark: it cancels the scribe before
     its own camp save, and it reads bit 7 of the third byte as an item-effect
-    code.  Only a scroll's bytes hold spells; any other item is left alone.
+    code.  Only a scroll's bytes hold spells; any other item is left alone,
+    and `scroll_types` is the title's own, since another title's scroll id can
+    be a trident.
     """
-    if len(item) != 16 or item[0] not in SCROLL_TYPES:
+    if len(item) != 16 or item[0] not in scroll_types:
         return item
     return item[:13] + bytes(b & 0x7F for b in item[13:16])
 

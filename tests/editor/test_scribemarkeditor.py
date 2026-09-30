@@ -88,3 +88,27 @@ def test_the_leave_behind_dialog_names_a_marked_spell(app):
         walk(view.topLevelItem(n))
     assert any(t.startswith(_model(game)._spell(5)) for t in texts)
     assert not any("effect" in t for t in texts)
+
+
+def _morgaine_scroll_rows(name):
+    from gamedata import specimen_root
+    from support.amigalaterwrite import _verified
+
+    from editor.roster import Party
+    root = specimen_root()
+    where = None if root is None else root / "ssb-dos" / f"WISH-SPEC-{name}"
+    if where is None or not where.is_dir():
+        pytest.skip(f"needs specimen ssb-dos/WISH-SPEC-{name}")
+    _verified(where)
+    party = Party(str(where))
+    member = next(m for m in party.members if m.name == "MORGAINE")
+    raw = member.record.get_raw("inventory")[:16]
+    model = _model(TITLES["Silver Blades"])
+    return model._power_rows(Item(bytes(raw), NAMES), _Kind(SCROLL_LOCATION))
+
+
+def test_a_game_written_mid_scribe_scroll_shows_the_rows_of_the_reloaded_one():
+    mid = _morgaine_scroll_rows("dos-ssb-745-mid-scribe")
+    after = _morgaine_scroll_rows("dos-ssb-745-after-reload")
+    assert mid == after
+    assert "effect" not in repr(mid)
