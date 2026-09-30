@@ -51,6 +51,9 @@ CURSE_EXCEPTIONS = {
     # CHRDATB2.SAV` above, so MARK's former paladin level folds the same way.
     "WISH-SPEC-dos-curse-foundation-walked/CHRDATB2.SAV": 16,
     "WISH-SPEC-dos-curse-foundation-walked/CHRDATD2.SAV": 16,
+    # DOS Curse's resave of that same slot D (`#758`), byte-identical to the
+    # foundation-walked `CHRDATD2.SAV` above, so the same fold applies.
+    "WISH-SPEC-dos-curse-758-staged-turn-row-resave/CHRDATD2.SAV": 16,
 }
 
 
