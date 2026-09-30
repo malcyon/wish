@@ -7999,6 +7999,19 @@ def test_stage_place_refuses_pools_of_darkness_before_a_slot_is_claimed(
     assert "claim" not in log
 
 
+@pytest.mark.parametrize("size, match", [(13149, "outdoors"),
+                                            (1234, "known saved-game size")])
+def test_stage_place_refuses_an_outdoor_or_unknown_save_before_a_slot_is_claimed(
+        monkeypatch, tmp_path, size, match):
+    log, args = _staged_run(monkeypatch, tmp_path, stage_place="6,14,0")
+    (tmp_path / "saves" / "SAVGAMA.DAT").write_bytes(bytes(size))
+    with pytest.raises(ValueError, match=match):
+        da.check_staging(args, tmp_path / "saves", "A")
+    with pytest.raises(ValueError, match=match):
+        da.run(args)
+    assert "claim" not in log
+
+
 def test_a_silver_blades_fight_in_area_16_is_refused_without_the_gate(
         monkeypatch, tmp_path):
     from goldbox import dos_savegame

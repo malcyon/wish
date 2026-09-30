@@ -5645,6 +5645,15 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
         if args.title == "darkness" or not savgam.is_file():
             raise ValueError(f"--stage-place needs a SAVGAM{from_slot}.DAT holding "
                              f"the square; {args.title} has none here")
+        data = savgam.read_bytes()
+        try:
+            dos_savegame.container_for(len(data))
+        except dos_savegame.DosSaveError as e:
+            raise ValueError(f"--stage-place: {savgam.name} is not a known saved-game "
+                             f"size ({e})") from e
+        if dos_savegame.outdoors(data):
+            raise ValueError(f"--stage-place: {savgam.name} was saved outdoors, where "
+                             "the square is not read")
     names = {p.name.upper() for p in save.iterdir()}
     records = parse_record_bytes(getattr(args, "stage_record", []) or [])
     lines = ([parse_xp(t)[0] for t in getattr(args, "xp", []) or []]

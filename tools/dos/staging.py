@@ -1,8 +1,8 @@
 """Puts a saved game, and the inputs an acceptance run stages, into a DOS save folder.
 
 `install` copies one slot of a Wish-written save into a staged `SAVE` tree, and
-`stage_hall`, `stage_var`, `stage_place`, `stage_xp`, `stage_record` and `stage_node` edit the installed records before the
-game boots.
+`stage_hall`, `stage_var`, `stage_place`, `stage_xp`, `stage_record` and
+`stage_node` edit the installed records before the game boots.
 """
 from __future__ import annotations
 
@@ -137,7 +137,10 @@ def stage_place(save_dir: pathlib.Path, letter: str, x: int, y: int,
     """Put the party on square `x`,`y` facing `facing` (0 N, 1 E, 2 S, 3 W) in `SAVGAM<letter>.DAT`.
 
     Refused for a save made outdoors, where the square bytes are frozen at the
-    last indoor square and the game does not read them.
+    last indoor square and the game does not read them.  The square must be a
+    valid, open square on the saved map: this writes only `pos_x`, `pos_y` and
+    `pos_facing`, and leaves the area word and the square scratch bytes for the
+    engine to recompute on the first step.
     """
     path = save_dir / f"SAVGAM{letter.upper()}.DAT"
     data = bytearray(path.read_bytes())
