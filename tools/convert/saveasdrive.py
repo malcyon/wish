@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import datetime
 import pathlib
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import Any
 
 #: The file a Save As writes for a destination that is a single image.
@@ -41,7 +41,9 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
             amiga_disk: "str | pathlib.Path | None" = None,
             amiga_disk_one: "str | pathlib.Path | None" = None,
             source_slot: "str | None" = None,
-            names: "Mapping[int, str] | None" = None) -> dict:
+            names: "Mapping[int, str] | None" = None,
+            leave_effects: "Mapping[int, Collection[int]] | None" = None
+            ) -> dict:
     """Open `source`, Save As it to `port` under `folder`, and say what landed.
 
     `window` is an `EditorBinding`, whose `game_files_for` finds the game data
@@ -59,10 +61,18 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
     with no choice for it is refused as `NamesDoNotFit`, and the report then
     also carries `unfit` (`[position, name]` for each) and `width`, so a caller
     can see which names needed a choice and not only that Save As refused.
+
+    `leave_effects` is the `{member: running-effect indices}` a player would
+    tick in the window that opens when the party's running effects need more
+    rows than the C64's shared table holds. A party still over is refused as
+    `EffectsDoNotFit`, and the report then also carries `effects_needed`,
+    `effects_limit` and `effect_entries` (`[member, index, effect id,
+    minutes]` for each effect that can be left out).
     """
     from editor import saveplan
     from editor.convert import Source
     from editor.roster import Party
+    from goldbox import dos_codec
 
     report: dict = {"source": str(source), "to": port, "folder": str(folder)}
     path = destination_path(port, pathlib.Path(folder))
@@ -77,7 +87,8 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
             amiga_disk_one=amiga_disk_one)
         plan = saveplan.prepare_save_as(
             party, port, path, assets,
-            **({"names": names} if names is not None else {}))
+            **({"names": names} if names is not None else {}),
+            **({"leave_effects": leave_effects} if leave_effects else {}))
         report["losses"] = saveplan.losses(plan.report) if plan.report else []
         report["dropped"] = list(getattr(plan.report, "dropped", []) or [])
         published = saveplan.publish(plan, party, assets=assets)
@@ -85,6 +96,11 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
         if isinstance(exc, saveplan.NamesDoNotFit):
             report["unfit"] = [[position, name] for position, name in exc.unfit]
             report["width"] = exc.width
+        if isinstance(exc, dos_codec.EffectsDoNotFit):
+            over = exc.overflow
+            report["effects_needed"] = over.needed
+            report["effects_limit"] = over.limit
+            report["effect_entries"] = [list(e) for e in over.entries]
         report["refused"] = [type(exc).__name__, str(exc)]
         report["error"] = f"{type(exc).__name__}: {exc}"
         return report

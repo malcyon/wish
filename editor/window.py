@@ -909,6 +909,11 @@ class EditorBinding(QObject):
         #: and the packs it was chosen against -- `(leave, packs)`, see
         #: `_packs_of`. Read only by a stale plan's re-preparation.
         self._left_behind: "tuple[dict, dict] | None" = None
+        #: The running effects the player chose to leave out for the Save As
+        #: in progress, and the entries they were chosen against --
+        #: `(leave_effects, entries)`. Read only by a stale plan's
+        #: re-preparation.
+        self._effects_left: "tuple[dict, tuple] | None" = None
         #: The names the player chose for the Save As in progress, and the
         #: `(position, name)` entries they were chosen against --
         #: `(names, unfit)`. Read only by a stale plan's re-preparation.
@@ -1933,12 +1938,19 @@ class EditorBinding(QObject):
                     _log.info("The pack does not fit the %s destination: %s",
                               dialog.direction.destination_port, exc)
                     dialog.pack_overflow = exc.overflow
+                except dos_codec.EffectsDoNotFit as exc:
+                    # Same again for the running effects, asked for below.
+                    _log.info("The running effects do not fit the %s "
+                              "destination: %s",
+                              dialog.direction.destination_port, exc)
+                    dialog.effect_overflow = exc.overflow
                 except Exception:
                     _log.exception("could not convert with the names %s",
                                    choice)
                     dialog.refuse(convert_mod.CANNOT_CONVERT)
                     continue
-                if dialog.rehearsal is None and not dialog.pack_overflow:
+                if (dialog.rehearsal is None and not dialog.pack_overflow
+                        and dialog.effect_overflow is None):
                     dialog.refuse(convert_mod.CANNOT_CONVERT)
                     continue
             if dialog.rehearsal is None and dialog.pack_overflow:
@@ -1956,6 +1968,26 @@ class EditorBinding(QObject):
                 except Exception:
                     _log.exception("could not convert with %s left behind",
                                    choice)
+                    dialog.refuse(convert_mod.CANNOT_CONVERT)
+                    continue
+                if (dialog.rehearsal is None
+                        and dialog.effect_overflow is None):
+                    dialog.refuse(convert_mod.CANNOT_CONVERT)
+                    continue
+            if dialog.rehearsal is None and dialog.effect_overflow is not None:
+                # The C64's shared effect table cannot hold the party's
+                # running effects: ask which are left out, with every choice
+                # made so far kept.
+                choice = self._choose_effects_left(
+                    dialog.effect_overflow, dialog.direction.destination_game,
+                    convert_mod.BUTTON_CONVERT)
+                if choice is None:
+                    continue
+                try:
+                    dialog.rehearse_leaving_effects(choice)
+                except Exception:
+                    _log.exception("could not convert with the running "
+                                   "effects %s left out", choice)
                     dialog.refuse(convert_mod.CANNOT_CONVERT)
                     continue
                 if dialog.rehearsal is None:
@@ -2045,6 +2077,20 @@ class EditorBinding(QObject):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
         return dialog.chosen()
+
+    def _choose_effects_left(self, overflow, game, accept_label: str
+                             ) -> "dict[int, frozenset[int]] | None":
+        """Ask which running effects are left out: one window for the whole
+        party, because the C64's shared effect table is the party's. `None`
+        when the player cancels."""
+        from .leavebehind import LeaveBehindDialog
+
+        dialog = LeaveBehindDialog((), None, None, spell_table(game),
+                                   accept_label, self.root,
+                                   effects=overflow, game=game)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return dialog.chosen_effects()
 
     def _size_roster(self) -> None:
         """Measure the roster: the height its rows need, and the width they
@@ -2812,6 +2858,7 @@ class EditorBinding(QObject):
                 return
         field.setText(str(path))
         self._left_behind = None
+        self._effects_left = None
         self._named = None
         self._report_flush_failures(self._flush())
         assets = self._resolve_destination_assets()
@@ -2857,19 +2904,24 @@ class EditorBinding(QObject):
 
     def _prepare_plan(self, source, port: str, path: pathlib.Path,
                       assets, leave=None, remembered=None, names=None,
-                      remembered_names=None) -> "saveplan.SavePlan | None":
+                      remembered_names=None, leave_effects=None,
+                      remembered_effects=None) -> "saveplan.SavePlan | None":
         """Prepare a Save As. `remembered` is an earlier choice of what to
         leave behind, `(leave, packs)`: it is reused only when the packs that
         overflow now are the ones it was chosen against, and otherwise the
         player is asked again, because an index names whatever item is there
         now. `remembered_names` is the same for shortened names, `(names,
-        unfit)`, and is reused only against the same characters and names."""
+        unfit)`, and is reused only against the same characters and names.
+        `remembered_effects` is the same for running effects left out,
+        `(leave_effects, entries)`, reused only against the same entries."""
         try:
             # Only a real choice is handed on: `prepare_save_as` treats none
             # and an empty one alike.
             chosen = {"leave": leave} if leave else {}
             if names:
                 chosen["names"] = names
+            if leave_effects:
+                chosen["leave_effects"] = leave_effects
             return saveplan.prepare_save_as(self.party, port, path, assets,
                                             **chosen)
         except saveplan.NamesDoNotFit as exc:
@@ -2891,7 +2943,9 @@ class EditorBinding(QObject):
                     return None
             self._named = (choice, exc.unfit)
             return self._prepare_plan(source, port, path, assets, leave=leave,
-                                      names=choice, remembered=remembered)
+                                      names=choice, remembered=remembered,
+                                      leave_effects=leave_effects,
+                                      remembered_effects=remembered_effects)
         except saveplan.DroppedFields as exc:
             _log.debug("Save As to %s refused: %s", path, exc)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
@@ -2922,7 +2976,33 @@ class EditorBinding(QObject):
                 {member: frozenset(kept) for member, kept in choice.items()},
                 packs)
             return self._prepare_plan(source, port, path, assets, leave=choice,
-                                      names=names)
+                                      names=names,
+                                      leave_effects=leave_effects,
+                                      remembered_effects=remembered_effects)
+        except dos_codec.EffectsDoNotFit as exc:
+            _log.info("The running effects do not fit the %s destination: %s",
+                      port, exc)
+            if leave_effects:
+                # The window lets nothing through that still does not fit, so
+                # this is a writer refusing what the player chose.
+                QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
+                return None
+            entries = exc.overflow.entries
+            if (remembered_effects is not None
+                    and remembered_effects[1] == entries):
+                choice = remembered_effects[0]
+            else:
+                choice = self._choose_effects_left(
+                    exc.overflow,
+                    saveplan.route(source, port).destination_game,
+                    self._save_as_label())
+                if choice is None:
+                    return None
+            self._effects_left = (
+                {member: frozenset(kept) for member, kept in choice.items()},
+                entries)
+            return self._prepare_plan(source, port, path, assets, leave=leave,
+                                      names=names, leave_effects=choice)
         except (dos_codec.DosRecordError, amiga_port.AmigaRecordError,
                 amiga_pod.ConversionError) as exc:
             # A writer refusing this particular party. Uncaught, PyQt6 aborts
@@ -2955,7 +3035,8 @@ class EditorBinding(QObject):
             fresh = self._prepare_plan(self._save_as_source, self._save_as_port,
                                        plan.destination.path, assets,
                                        remembered=self._left_behind,
-                                       remembered_names=self._named)
+                                       remembered_names=self._named,
+                                       remembered_effects=self._effects_left)
             if fresh is None:
                 return
             self._publish_plan(fresh, assets, _retried=True)

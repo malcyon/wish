@@ -14,6 +14,14 @@ character's remaining count are not settled, so this module shows them blank
 rather than writing any (`.claude/rules/gui-text.md`). The accept button's
 label is the caller's: the existing Convert or Save As label.
 
+**A second mode lists running effects** (`effects=`), built from
+`goldbox.dos_codec.EffectsDoNotFit.overflow`: the C64's 64-row table of
+running effects is the whole party's, so there is one count for the party and
+not one per character. Each character who holds an effect the player can leave
+out is a row, with every such effect beneath it on a row of its own, repeats
+included. The heading and the effect names are Donald's approved ones; every
+other word of this mode is blank until he settles it.
+
 The item rows reuse the Items tab: its name (`editor.inventory.describe`), its
 `Qty` and `Readied` columns under their own headers, and the spell form its
 detail pane draws for a scroll.
@@ -32,10 +40,12 @@ from PyQt6.QtWidgets import (
     QTreeWidgetItem,
 )
 
-from goldbox.dos_codec import C64_SCROLL_TYPES, PackOverflow
+from goldbox.dos_codec import C64_SCROLL_TYPES, EffectOverflow, PackOverflow
 from goldbox.items import Item
 from goldbox.spells import SpellTable
 
+from .activeeffects import HEADER_EFFECT
+from .activeeffects import label as effect_label
 from .inventory import HEADERS, NAME, QTY, READIED_COL, ItemTraitsModel, describe
 from .ui_leavebehind import Ui_LeaveBehindDialog
 
@@ -66,16 +76,22 @@ class LeaveBehindDialog(QDialog):
                  spell_names: dict[int, str] | None,
                  spells: SpellTable,
                  accept_label: str,
-                 parent=None):
+                 parent=None, *,
+                 effects: EffectOverflow | None = None,
+                 game=None):
         super().__init__(parent)
         self.ui = Ui_LeaveBehindDialog()
         self.ui.setupUi(self)
         # Blank on purpose: the window's title is not settled.
         self.setWindowTitle("")
         self.ui.heading_label.setText(HEADING)
-        self.ui.explanation_label.setText(EXPLANATION)
+        # Effects mode has no approved explanation, so its line is blank.
+        self.ui.explanation_label.setText(
+            EXPLANATION if effects is None else "")
 
         self.overflow = tuple(overflow)
+        self.effects = effects
+        self._game = game
         self.item_names = item_names or {}
         # The Items tab's own model reads a spell into words; reusing it keeps
         # one form for a scroll's spells.
@@ -87,7 +103,8 @@ class LeaveBehindDialog(QDialog):
 
         self.tree = self.ui.pack_tree
         self.tree.setHeaderLabels(
-            [HEADERS[NAME], HEADERS[QTY], HEADERS[READIED_COL], ""])
+            [HEADERS[NAME], HEADERS[QTY], HEADERS[READIED_COL], ""]
+            if effects is None else [HEADER_EFFECT, "", "", ""])
         header = self.tree.header()
         header.setSectionResizeMode(NAME_COLUMN,
                                     QHeaderView.ResizeMode.Stretch)
@@ -101,8 +118,17 @@ class LeaveBehindDialog(QDialog):
 
         #: One entry per character: the overflow, its row, what is ticked.
         self._entries: list[tuple[PackOverflow, QTreeWidgetItem, set[int]]] = []
+        #: Effects mode: what is ticked, `{member: indices}`.
+        self._ticked_effects: dict[int, set[int]] = {}
         for entry in self.overflow:
             self._fill(entry)
+        if effects is not None:
+            self._fill_effects(effects)
+            # The Readied column has nothing to say about an effect.
+            self.tree.setColumnHidden(READIED_COLUMN, True)
+        # The party-wide count is only there in effects mode; pack mode keeps
+        # its count on each character's row.
+        self.ui.remaining_label.setVisible(effects is not None)
         self.tree.expandAll()
         self.tree.itemChanged.connect(self._changed)
         self._refresh()
@@ -137,6 +163,29 @@ class LeaveBehindDialog(QDialog):
             row = self._pick_row(parent, member, index, raw)
             if unit.kind == "scroll" or raw[0] in self._scroll_types:
                 self._spell_line(row, raw)
+
+    def _fill_effects(self, effects: EffectOverflow) -> None:
+        """One row per member who holds an effect that can be left out, and one
+        checkable row beneath it for each such effect. The time-left column is
+        blank: whether and how to show it is not settled."""
+        parents: dict[int, QTreeWidgetItem] = {}
+        for entry in effects.entries:
+            parent = parents.get(entry.member)
+            if parent is None:
+                parent = QTreeWidgetItem(
+                    self.tree, [effects.names[entry.member]])
+                parent.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                font = parent.font(NAME_COLUMN)
+                font.setBold(True)
+                parent.setFont(NAME_COLUMN, font)
+                parents[entry.member] = parent
+            row = QTreeWidgetItem(
+                parent, [effect_label(entry.effect_id, self._game), "", "", ""])
+            row.setFlags(Qt.ItemFlag.ItemIsEnabled
+                         | Qt.ItemFlag.ItemIsSelectable
+                         | Qt.ItemFlag.ItemIsUserCheckable)
+            row.setCheckState(NAME_COLUMN, Qt.CheckState.Unchecked)
+            row.setData(NAME_COLUMN, PICK_ROLE, (entry.member, entry.index))
 
     def _pick_row(self, parent: QTreeWidgetItem, member: int, index: int,
                   raw: bytes) -> QTreeWidgetItem:
@@ -177,6 +226,14 @@ class LeaveBehindDialog(QDialog):
         if pick is None:
             return
         member, index = pick
+        if self.effects is not None:
+            ticked = self._ticked_effects.setdefault(member, set())
+            if row.checkState(NAME_COLUMN) == Qt.CheckState.Checked:
+                ticked.add(index)
+            else:
+                ticked.discard(index)
+            self._refresh()
+            return
         for entry, _character, ticked in self._entries:
             if entry.members[0] != member:
                 continue
@@ -191,7 +248,19 @@ class LeaveBehindDialog(QDialog):
         """How many more must be left before this pack fits."""
         return max(0, len(entry.items[0]) - len(ticked) - entry.limit)
 
+    def _effects_remaining(self) -> int:
+        """How many more effects must be left out before the party fits."""
+        ticked = sum(len(v) for v in self._ticked_effects.values())
+        return max(0, self.effects.over - ticked)
+
     def _refresh(self) -> None:
+        if self.effects is not None:
+            remaining = self._effects_remaining()
+            # Only the number: the words around it are not settled.
+            self.ui.remaining_label.setText(str(remaining))
+            self.buttons.button(QDialogButtonBox.StandardButton.Ok
+                                ).setEnabled(remaining == 0)
+            return
         for entry, character, ticked in self._entries:
             character.setText(COUNT_COLUMN,
                               str(self._remaining(entry, ticked)))
@@ -204,3 +273,9 @@ class LeaveBehindDialog(QDialog):
         is left out."""
         return {entry.members[0]: frozenset(ticked)
                 for entry, _character, ticked in self._entries if ticked}
+
+    def chosen_effects(self) -> dict[int, frozenset[int]]:
+        """Each member's ticked running-effect indices; one with nothing
+        ticked is left out."""
+        return {member: frozenset(ticked)
+                for member, ticked in self._ticked_effects.items() if ticked}

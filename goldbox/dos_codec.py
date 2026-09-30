@@ -816,6 +816,84 @@ def _without_left_behind(char: NeutralCharacter,
     return out
 
 
+class EffectEntry(NamedTuple):
+    """One running effect a player can leave out to free a row of the C64's
+    shared effect table."""
+
+    #: Index in the party list the writer was handed.
+    member: int
+    #: Into that member's neutral `running_effects`, as it was handed in.
+    index: int
+    effect_id: int
+    minutes: int
+
+
+@dataclasses.dataclass(frozen=True)
+class EffectOverflow:
+    """A party whose running effects need more rows than the C64's shared
+    effect table holds.
+
+    The limit is the whole party's and not each character's, so there is one
+    of these for the save.  `entries` lists every effect that takes a row of
+    its own, repeats included, in member order and then node order; a party
+    row, a charm, a hold and a never-expiring row count towards `needed` but
+    are not offered.  `needed` is after any choice the caller already made.
+    """
+
+    limit: int
+    needed: int
+    #: One per party member, using the name the player chose where there is one.
+    names: tuple[str, ...]
+    entries: tuple[EffectEntry, ...]
+
+    @property
+    def over(self) -> int:
+        return self.needed - self.limit
+
+
+class EffectsDoNotFit(DosRecordError):
+    """A party's running effects need more rows than the C64's shared table of
+    `effects.EFFECT_SLOTS`.
+
+    DOS keeps each character's effects in a list of his own with no count
+    limit, so a few camp casts reach it.  The player chooses which effects are
+    left out and `overflow` lists every one that can be.  Raised after the
+    payload has been written, so a caller that passed its own payload holds a
+    partly written one, as it does after any refused conversion.
+    """
+
+    def __init__(self, overflow: EffectOverflow) -> None:
+        self.overflow = overflow
+        super().__init__(
+            f"the party's running effects need {overflow.needed} rows of the "
+            f"C64's shared effect table, and it holds {overflow.limit}")
+
+
+def _without_left_effects(char: NeutralCharacter,
+                          indices: Collection[int]) -> NeutralCharacter:
+    """A copy of `char` with the running effects at `indices` removed."""
+    held = list(char.get("running_effects") or ())
+    gone = set(indices)
+    for n in gone:
+        if not 0 <= n < len(held):
+            raise DosRecordError(
+                f"cannot leave running effect {n} out: the character holds "
+                f"{len(held)}")
+    out = NeutralCharacter(char.port, source=char.source, game=char.game)
+    out.fields = dict(char.fields)
+    out.dropped = list(char.dropped)
+    out.warnings = list(char.warnings)
+    kept = [raw for n, raw in enumerate(held) if n not in gone]
+    if kept:
+        field = char.fields["running_effects"]
+        out.set("running_effects", kept,
+                field.origin + ", less the running effects the player left out",
+                field.confidence, Provenance.RESHAPED)
+    else:
+        out.fields.pop("running_effects", None)
+    return out
+
+
 #: Effect ids that are innate rather than temporary, and so belong in the
 #: C64's ten trait slots at `0x0AD` rather than being dropped with the running
 #: spells.  Seven of them are **Curse of the Azure Bonds' own filter**: its
@@ -3021,6 +3099,7 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
                   leave: Collection[int] = (),
                   item_types: "Mapping[int, ItemType] | None" = None,
                   name: str | None = None,
+                  leave_effects: Collection[int] = (),
                   ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a DOS one.
 
@@ -3043,6 +3122,9 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     neutral record before the C64 record is built, so the writer's own name
     checks see it and record no loss for the name it replaced.
 
+    `leave_effects` is the neutral `running_effects` indices the player chose
+    to leave out, applied after `leave` and before the C64 record is built.
+
     The report names no character: it is one character's provenance, and which
     character that is belongs to the caller, which is the only thing that
     knows the slot and the marching position.  `convert_save` prefixes each of
@@ -3060,6 +3142,8 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
             origin=f"{held.origin}, renamed to the name the player chose")
     if leave:
         out = _without_left_behind(out, leave)
+    if leave_effects:
+        out = _without_left_effects(out, leave_effects)
     return neutral_to_c64_record(out, icon=icon, payload=payload,
                                  party_slot=party_slot,
                                  clock_minutes=clock_minutes,
@@ -7478,6 +7562,66 @@ class C64SaveReport(Report):
         return f"SAVEDGAME1 ${SAVE1_BASE + offset - self.save0_size:04X}"
 
 
+def _fit_effects(report: Report, save0: bytearray,
+                 party: "list[DosCharacter] | list[NeutralCharacter]",
+                 members: "Sequence[tuple[int, str, str, Report]]",
+                 leave_effects: Mapping[int, Collection[int]],
+                 portraits: PortraitTables | None) -> None:
+    """Check the party's running effects fit the C64's shared effect table,
+    once every member is written, and report the ones the player left out.
+
+    Raises :class:`EffectsDoNotFit` when rows are short and at least that many
+    effects can still be left out; with fewer, the loss lines the writer
+    already made stay and the save is refused as before.  The short count is
+    the members' own rows that found no slot plus each party row once, since
+    a party row is one row however many members hold the node.
+    """
+    short = (sum(one.effect_rows_short for _i, _n, _w, one in members)
+             + len(set().union(*(one.party_rows_short
+                                 for _i, _n, _w, one in members))))
+    if not short and not leave_effects:
+        return
+
+    def nodes(index: int) -> tuple[list, Any]:
+        char = party[index]
+        neutral = (char if isinstance(char, NeutralCharacter)
+                   else to_neutral(char, portraits=portraits))
+        return list(neutral.get("running_effects") or ()), neutral.game
+
+    entries: list[EffectEntry] = []
+    lines: list[tuple[str, str]] = []
+    for index, _name, who, one in members:
+        left = leave_effects.get(index, ())
+        if not left and not one.own_effect_rows:
+            continue
+        held, game = nodes(index)
+        kept = [n for n in range(len(held)) if n not in left]
+        for j in one.own_effect_rows:
+            node = effects.RunningEffect.from_record(
+                bytes(held[kept[j]])[:effects.RUNNING_EFFECT_SIZE])
+            entries.append(EffectEntry(index, kept[j], node.id, node.minutes))
+        for n in sorted(left):
+            node = effects.RunningEffect.from_record(
+                bytes(held[n])[:effects.RUNNING_EFFECT_SIZE])
+            label = c64_codec.running_effect_label(
+                node.id, node.minutes, game).removeprefix("running_effects: ")
+            lines.append((who, f"running {label}"))
+    if short and len(entries) >= short:
+        raise EffectsDoNotFit(EffectOverflow(
+            effects.EFFECT_SLOTS, effects.EFFECT_SLOTS + short,
+            tuple(name for _i, name, _w, _o in members), tuple(entries)))
+    arrays_at = EFFECT_ARRAYS[0][0] - SAVE0_BASE
+    needed = len(lines) + sum(
+        1 for slot in range(effects.EFFECT_SLOTS)
+        if save0[arrays_at + effects.EFFECT_ID_OFFSET + slot])
+    for who, what in lines:
+        report.left_behind.append(
+            f"{who} -- {what}, left out by the player's choice: the C64's "
+            f"shared effect table holds {effects.EFFECT_SLOTS} rows and the "
+            f"party needed {needed}")
+        _log.info("Left out by the player's choice: %s", report.left_behind[-1])
+
+
 def write_c64_save(save0: bytearray, save1: bytearray | None,
                    state: "world_state.WorldState",
                    party: "list[DosCharacter] | list[NeutralCharacter]",
@@ -7489,6 +7633,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                    leave: "Mapping[int, Collection[int]] | None" = None,
                    item_types: "Mapping[int, ItemType] | None" = None,
                    names: "Mapping[int, str] | None" = None,
+                   leave_effects: "Mapping[int, Collection[int]] | None" = None,
                    ) -> C64SaveReport:
     """Write a DOS party into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
@@ -7539,6 +7684,14 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     player chose to leave behind, for a member whose joined scrolls do not fit
     the C64's sixteen slots (:func:`pack_overflow`).  Each is reported on
     `Report.left_behind`, not on `losses`.
+
+    `leave_effects` maps a member's index to the indices into his neutral
+    `running_effects` the player chose to leave out, for a party whose effects
+    need more rows than the C64's shared table holds.  The table is the whole
+    party's, so once every member is written a party still short raises
+    :class:`EffectsDoNotFit` naming every effect that can be left out, unless
+    fewer can be than rows are short, which is left as the loss lines.  Each
+    effect left out is reported on `Report.left_behind`, not on `losses`.
     """
     # A joined scroll takes a C64 slot for every scroll it holds (#432).  DOS
     # allows sixteen heads of up to ten scrolls each, the C64 has sixteen
@@ -7558,6 +7711,13 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     after = pack_overflow(party, leave=leave)
     if after:
         raise JoinedScrollsDoNotFit(after)
+    leave_effects = {m: frozenset(v)
+                     for m, v in (leave_effects or {}).items() if v}
+    for member in leave_effects:
+        if not 0 <= member < len(party):
+            raise DosRecordError(
+                f"cannot leave running effects out for member {member}: the "
+                f"party has {len(party)}")
 
     container = c64_save.container_for(game)
     save1_at = len(save0)
@@ -7621,15 +7781,22 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
 
     clock_mins = effects.clock_minutes(state.clock)
     all_faced = True
+    #: Per member: who he is in the report, his name, and what his writer
+    #: said about running effects, for the fit check after the loop.
+    effect_rows: list[tuple[int, str, str, Report]] = []
     for index, char in enumerate(party):
         place = marching_slot(index, len(party))
         left = leave.get(index, ())
+        left_effects = leave_effects.get(index, ())
         if isinstance(char, NeutralCharacter):
             source_icon = (neutral_icons[index]
                            if neutral_icons is not None else None)
             size = "large" if char.get("size_small") else "small"
+            kept = _without_left_behind(char, left) if left else char
+            if left_effects:
+                kept = _without_left_effects(kept, left_effects)
             rec, one = neutral_to_c64_record(
-                _without_left_behind(char, left) if left else char,
+                kept,
                 icon=_neutral_icon_for(
                     char, source_icon, icon, icon_tables.get(size)),
                 payload=save0, party_slot=place, clock_minutes=clock_mins,
@@ -7643,7 +7810,8 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                 portraits=portraits,
                 payload=save0, party_slot=place, clock_minutes=clock_mins,
                 leave=left, item_types=item_types,
-                name=(names or {}).get(index))
+                name=(names or {}).get(index),
+                leave_effects=left_effects)
             name = (names or {}).get(index, char.name)
         all_faced = all_faced and one.has_portrait
         # `party_order` in a roster block is the record's slot index, not the
@@ -7715,6 +7883,9 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
         # about its own source, which stay off `losses` (#619).
         report.warnings.extend(f"{name}: {w}" for w in one.warnings)
         report.losses.extend(f"{name}: {w}" for w in one.losses)
+        effect_rows.append((index, name, who, one))
+
+    _fit_effects(report, save0, party, effect_rows, leave_effects, portraits)
 
     # Rows the character loop wrote from running effects (and a paladin's
     # timers) replace the "zeroed" note above for their own four bytes.
@@ -7923,6 +8094,10 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     and what the report covers.  Kept as the folder-based entry point
     because that is what every existing caller -- the import dialog,
     `tools/`, the whole of `tests/convert/test_dosconvert.py` -- already gives it.
+
+    A party whose running effects do not fit raises :class:`EffectsDoNotFit`
+    with the caller's payloads partly written, the state a refused conversion
+    leaves; the routes that let a player choose pass fresh ones.
     """
     container = c64_save.container_for(game)
     shape = dos_savegame.container_for(container.key)
@@ -7944,12 +8119,14 @@ def new_save_from(state: "world_state.WorldState",
                   leave: "Mapping[int, Collection[int]] | None" = None,
                   item_types: "Mapping[int, ItemType] | None" = None,
                   names: "Mapping[int, str] | None" = None,
+                  leave_effects: "Mapping[int, Collection[int]] | None" = None,
                   ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a place and a party, owing nothing to another
     save (#118).  The engine `new_save` and #353's Amiga reader share; see
     :func:`write_c64_save` for `icon`, `animate` and `portraits`.
 
     `names` maps a position in `party` to the name the player chose for it.
+    `leave_effects` maps one to the running effects the player left out.
 
     Returns the two payloads and the report, whose `unwritten` is empty.
     """
@@ -7960,7 +8137,8 @@ def new_save_from(state: "world_state.WorldState",
     report = write_c64_save(save0, save1 or None, state, party,
                             icon=icon, animate=animate, portraits=portraits,
                             game=container, leave=leave,
-                            item_types=item_types, names=names)
+                            item_types=item_types, names=names,
+                            leave_effects=leave_effects)
     if report.unwritten:
         raise DosRecordError(
             f"{len(report.unwritten)} bytes of the save have no source and "
@@ -7975,6 +8153,7 @@ def new_save_from_neutral(
         animate: bytes, game=None, *,
         leave: "Mapping[int, Collection[int]] | None" = None,
         item_types: "Mapping[int, ItemType] | None" = None,
+        leave_effects: "Mapping[int, Collection[int]] | None" = None,
         ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a neutral party and its source combat icons."""
     if len(party_icons) != len(party):
@@ -7988,7 +8167,7 @@ def new_save_from_neutral(
     report = write_c64_save(
         save0, save1 or None, state, party, icon=icon, animate=animate,
         neutral_icons=party_icons, game=container, leave=leave,
-        item_types=item_types)
+        item_types=item_types, leave_effects=leave_effects)
     if report.unwritten:
         raise DosRecordError(
             f"{len(report.unwritten)} bytes of the save have no source and "
@@ -8004,6 +8183,7 @@ def new_save(folder: str | pathlib.Path, slot: str,
              leave: "Mapping[int, Collection[int]] | None" = None,
              item_types: "Mapping[int, ItemType] | None" = None,
              names: "Mapping[int, str] | None" = None,
+             leave_effects: "Mapping[int, Collection[int]] | None" = None,
              ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a DOS one, owing nothing to another save (#118).
 
@@ -8036,7 +8216,7 @@ def new_save(folder: str | pathlib.Path, slot: str,
                                   source=str(savgam_path))
     return new_save_from(state, party, icon, animate, portraits=portraits,
                          game=container, leave=leave, item_types=item_types,
-                         names=names)
+                         names=names, leave_effects=leave_effects)
 
 
 def save_disk(save0: bytes, save1: bytes, game=None):

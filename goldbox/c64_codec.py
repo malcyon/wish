@@ -90,6 +90,18 @@ class Report(neutral.Report):
     #: report can tell them apart (#57).
     has_portrait: bool = False
 
+    #: How many of this character's shared-table rows found no free slot. The
+    #: whole save's count is what `dos_codec.EffectsDoNotFit` reports.
+    effect_rows_short: int = 0
+
+    #: The index into `running_effects` of every node that took, or wanted, a
+    #: row of its own: the ones a player can leave out to free exactly one row.
+    own_effect_rows: list[int] = dataclasses.field(default_factory=list)
+
+    #: The ids of party rows (owner `$FF`) that found no slot. One row serves
+    #: the whole party, so the save counts each id once, not once per member.
+    party_rows_short: set[int] = dataclasses.field(default_factory=set)
+
     @property
     def unaccounted(self) -> list[int]:
         """C64 offsets this conversion cannot explain. Should be empty."""
@@ -1212,6 +1224,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         elif later_title:
             row_slot = effects.free_slot(payload)
             if row_slot is None:
+                rep.effect_rows_short += 1
                 rep.lost(f"{label}: a charm, with no free slot in the "
                          "save's shared effect arrays")
             else:
@@ -1240,6 +1253,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         else:
             row_slot = effects.free_slot(payload)
             if row_slot is None:
+                rep.effect_rows_short += 1
                 rep.lost(f"{label}: a charm, with no free slot in the "
                          "save's shared effect arrays")
             else:
@@ -1494,6 +1508,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # become rows of their own through `effects.c64_row`.
     cure_node = None
     other_nodes: list[effects.RunningEffect] = []
+    index_of: dict[int, int] = {}
     if running is not None:
         rows = running.value if isinstance(running.value, (list, tuple)) else None
         if rows is None:
@@ -1502,9 +1517,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             rep.dropped.append(
                 "running_effects: not a list of nine-byte effect records")
         else:
-            for raw in rows:
+            for position, raw in enumerate(rows):
                 row = effects.RunningEffect.from_record(
                     bytes(raw)[:effects.RUNNING_EFFECT_SIZE])
+                index_of[id(row)] = position
                 if (cure_entry is not None and row.id == cure_entry[0]
                         and cure_node is None):
                     cure_node = row
@@ -1587,6 +1603,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                     payload, party_row[0],
                     effects.closest_duration(node.minutes, clock),
                     party_row[1], clock):
+                rep.party_rows_short.add(party_row[0])
                 rep.lost(f"{which}: no free slot in the save's shared "
                          "effect arrays")
             continue
@@ -1608,8 +1625,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             rep.lost(f"{which}: no payload was given to write a row into "
                      "the save's shared effect arrays")
         else:
+            rep.own_effect_rows.append(index_of[id(node)])
             slot = effects.free_slot(payload)
             if slot is None:
+                rep.effect_rows_short += 1
                 rep.lost(f"{which}: no free slot in the save's shared "
                          "effect arrays")
             else:
@@ -1645,6 +1664,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             return False
         slot = effects.free_slot(payload)
         if slot is None:
+            rep.effect_rows_short += 1
             _row_lost(label, "no free slot in the save's shared effect "
                              "arrays")
             return False
@@ -2117,6 +2137,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                         payload, int(node[0]), 0,
                         effects.party_granted_magnitude(title_key, node),
                         clock):
+                    rep.party_rows_short.add(int(node[0]))
                     rep.lost(f"effect {node[0]}, which never expires: no "
                              "free slot in the save's shared effect arrays")
                 continue
@@ -2132,6 +2153,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 row_slot = (effects.free_slot(payload)
                             if payload is not None else None)
                 if row_slot is None:
+                    if payload is not None:
+                        rep.effect_rows_short += 1
                     rep.lost(
                         f"effect {node[0]}, which never expires: "
                         + ("with no save payload to hold its row, the "
@@ -2160,6 +2183,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 elif not hold_written:
                     row_slot = effects.free_slot(payload)
                     if row_slot is None:
+                        rep.effect_rows_short += 1
                         rep.lost(f"effect {node[0]}, which never expires: "
                                  "no free slot in the save's shared effect "
                                  "arrays")
@@ -2183,6 +2207,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 # un-readying the gauntlets look.
                 row_slot = effects.free_slot(payload)
                 if row_slot is None:
+                    rep.effect_rows_short += 1
                     rep.lost(f"effect {node[0]}, which never expires: no "
                              "free slot in the save's shared effect arrays")
                 else:
@@ -2240,6 +2265,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             marker_row = (effects.free_slot(payload)
                           if payload is not None else None)
             if marker_row is None:
+                if payload is not None:
+                    rep.effect_rows_short += 1
                 # The trait slot alone is a state the game itself leaves
                 # (a camp Dispel removes the row and not the slot), and the
                 # temple keys on the slot, so it is written and only the row

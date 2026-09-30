@@ -382,3 +382,122 @@ def test_enter_accepts_only_when_every_pack_fits(app):
         assert dialog.chosen() == {0: frozenset({3}), 2: frozenset({1, 2})}
     finally:
         dialog.close()
+
+
+# --- running effects -------------------------------------------------------------
+#
+# The second mode: the C64's 64 effect rows are the whole party's, so one count
+# for the party, one row per effect with repeats, and no word Donald has not
+# settled.
+
+def _overflow(per_member=(11, 11), ids=None, over=None):
+    entries = tuple(
+        dos_codec.EffectEntry(member, index,
+                              (ids or {}).get((member, index), 1), 6)
+        for member, held in enumerate(per_member) for index in range(held))
+    limit = 64
+    needed = limit + (over if over is not None else 2)
+    return dos_codec.EffectOverflow(
+        limit, needed, tuple(f"MEMBER{n}" for n in range(len(per_member))),
+        entries)
+
+
+def _effects_dialog(overflow=None, accept=ACCEPT):
+    return LeaveBehindDialog((), None, None, for_game(c64_port.POOL_OF_RADIANCE),
+                             accept, effects=overflow or _overflow(),
+                             game=c64_port.POOL_OF_RADIANCE)
+
+
+def test_effects_mode_writes_only_the_words_donald_approved(app):
+    from editor import activeeffects
+    dialog = _effects_dialog()
+    assert dialog.ui.heading_label.text() == "Choose what to leave behind"
+    assert dialog.ui.explanation_label.text() == ""
+    assert dialog.windowTitle() == ""
+    header = dialog.tree.headerItem()
+    assert [header.text(c) for c in range(4)] == [
+        activeeffects.HEADER_EFFECT, "", "", ""]
+    assert dialog.tree.isColumnHidden(leavebehind.READIED_COLUMN)
+    assert _accept(dialog).text() == ACCEPT
+    # No duration is shown on an effect row.
+    for row in _picks(dialog).values():
+        assert [row.text(c) for c in (1, 2, 3)] == ["", "", ""]
+
+
+def test_effects_mode_has_one_row_per_effect_repeats_included(app):
+    from editor import activeeffects
+    dialog = _effects_dialog(_overflow((11, 3), ids={(1, 2): 200}))
+    picks = _picks(dialog)
+    assert sorted(picks) == [(0, n) for n in range(11)] + [(1, n)
+                                                           for n in range(3)]
+    assert all(picks[(0, n)].text(NAME) == activeeffects.label(
+        1, c64_port.POOL_OF_RADIANCE) for n in range(11))
+    assert picks[(1, 2)].text(NAME) == activeeffects.UNNAMED_EFFECT
+    top = [dialog.tree.topLevelItem(n).text(NAME)
+           for n in range(dialog.tree.topLevelItemCount())]
+    assert top == ["MEMBER0", "MEMBER1"]
+    assert all(r.flags() & CHECKABLE for r in picks.values())
+
+
+def test_a_member_with_nothing_to_leave_out_has_no_row(app):
+    dialog = _effects_dialog(_overflow((0, 3)))
+    assert dialog.tree.topLevelItemCount() == 1
+    assert dialog.tree.topLevelItem(0).text(NAME) == "MEMBER1"
+
+
+def test_effects_accept_waits_for_the_party_count_and_allows_more(app):
+    dialog = _effects_dialog()
+    assert dialog.ui.remaining_label.text() == "2"
+    assert not _accept(dialog).isEnabled()
+    _tick(dialog, 0, 0)
+    assert dialog.ui.remaining_label.text() == "1"
+    assert not _accept(dialog).isEnabled()
+    # The count is the party's: a tick on another member counts.
+    _tick(dialog, 1, 4)
+    assert dialog.ui.remaining_label.text() == "0"
+    assert _accept(dialog).isEnabled()
+    _tick(dialog, 1, 5)
+    assert dialog.ui.remaining_label.text() == "0"
+    assert _accept(dialog).isEnabled()
+    _tick(dialog, 1, 5, on=False)
+    _tick(dialog, 1, 4, on=False)
+    assert not _accept(dialog).isEnabled()
+
+
+def test_pack_mode_shows_no_party_count(app):
+    dialog = _dialog()
+    assert not dialog.ui.remaining_label.isVisibleTo(dialog)
+    effects = _effects_dialog()
+    assert effects.ui.remaining_label.isVisibleTo(effects)
+
+
+def test_chosen_effects_is_exactly_what_is_ticked(app):
+    dialog = _effects_dialog(_overflow((11, 11, 11), over=3))
+    assert dialog.chosen_effects() == {}
+    _tick(dialog, 0, 0, 7)
+    _tick(dialog, 2, 10)
+    _tick(dialog, 0, 7, on=False)
+    assert dialog.chosen_effects() == {0: frozenset({0}), 2: frozenset({10})}
+
+
+def test_the_editor_asks_for_effects_and_returns_the_ticks(
+        app, tmp_path, monkeypatch):
+    binding = _binding(app, tmp_path)
+    seen = {}
+
+    def exec_(dialog):
+        seen["label"] = _accept(dialog).text()
+        _tick(dialog, 0, 3)
+        _tick(dialog, 1, 1)
+        return seen["result"]
+
+    monkeypatch.setattr(LeaveBehindDialog, "exec", exec_)
+    overflow = _overflow()
+    seen["result"] = QDialog.DialogCode.Rejected
+    assert binding._choose_effects_left(
+        overflow, c64_port.POOL_OF_RADIANCE, ACCEPT) is None
+    seen["result"] = QDialog.DialogCode.Accepted
+    assert binding._choose_effects_left(
+        overflow, c64_port.POOL_OF_RADIANCE, ACCEPT) == {
+        0: frozenset({3}), 1: frozenset({1})}
+    assert seen["label"] == ACCEPT

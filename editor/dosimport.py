@@ -184,7 +184,8 @@ class Conversion:
 def rehearse(folder: str | pathlib.Path, slot: str,
              files: GameFiles,
              leave: "Mapping[int, Collection[int]] | None" = None,
-             names: "Mapping[int, str] | None" = None
+             names: "Mapping[int, str] | None" = None,
+             leave_effects: "Mapping[int, Collection[int]] | None" = None
              ) -> Conversion:
     """Build the save and the disk in memory and report, writing nothing.
 
@@ -225,7 +226,8 @@ def rehearse(folder: str | pathlib.Path, slot: str,
                                               portraits=files.portraits,
                                               game=game, leave=leave,
                                               item_types=files.item_types,
-                                              names=chosen)
+                                              names=chosen,
+                                              leave_effects=leave_effects)
     sg0 = SaveGame0.from_bytes(bytes(payload0), game)
     sg1 = SaveGame1(bytes(payload1), game) if payload1 else None
     disk = dos_codec.save_disk(bytes(payload0), bytes(payload1), game)

@@ -85,14 +85,18 @@ def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
                       game: pathlib.Path | None,
                       disks: pathlib.Path,
                       source_slot: str | None = None,
-                      names: "dict[int, str] | None" = None) -> dict:
+                      names: "dict[int, str] | None" = None,
+                      leave_effects: "dict[int, set[int]] | None" = None
+                      ) -> dict:
     """Save As the source to `to` and say what landed.
 
     `to` is `"c64"` or `"dos"`, the destination port. `source_slot` picks
     which saved game a multi-slot DOS folder or Amiga disk holds, the same
     letter `editor.convert.Source.detect` takes; `None` keeps its default,
     the alphabetically first slot. `names` is `{position: name}`, what a
-    player would choose in the Shorten window. The report is `saveasdrive.save_as`'s:
+    player would choose in the Shorten window. `leave_effects` is
+    `{member: {running-effect index}}`, what a player would tick in the
+    window that asks which running effects to leave out. The report is `saveasdrive.save_as`'s:
     `written`, `slot`, `losses` and `dropped`, or `refused` and `error` when
     Save As would not publish it.
     """
@@ -111,7 +115,8 @@ def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
             window, source, to, folder,
             c64_folder=disks if to == "c64" else None,
             dos_folder=game if to == "dos" else None,
-            source_slot=source_slot, names=names)
+            source_slot=source_slot, names=names,
+            leave_effects=leave_effects)
     finally:
         window.close()
     return report
@@ -351,6 +356,11 @@ def main(argv: list[str] | None = None) -> int:
                    help="the name to give the character at POSITION in the "
                         "party the conversion builds; repeat for each "
                         "character a destination cannot show whole")
+    p.add_argument("--leave-effect", action="append", default=[],
+                   metavar="MEMBER:INDEX",
+                   help="a running effect to leave out of the C64 save: the "
+                        "party member's position and the effect's index in "
+                        "his running effects; repeat until the party fits")
     p.add_argument("--walk", default="II",
                    help="C64: the moves savecheck walks after arriving")
     p.add_argument("--steps", type=int, default=2,
@@ -390,13 +400,25 @@ def main(argv: list[str] | None = None) -> int:
                 p.error(f"--name gives position {position} twice")
             names[position] = name
 
+    leave_effects: dict[int, set[int]] = {}
+    for text in args.leave_effect:
+        member, colon, index = text.partition(":")
+        if not (colon and member.isdigit() and index.isdigit()):
+            p.error(f"--leave-effect takes MEMBER:INDEX, not {text!r}")
+        if int(index) in leave_effects.setdefault(int(member), set()):
+            p.error(f"--leave-effect gives {text} twice")
+        leave_effects[int(member)].add(int(index))
+
     report = {"direction": f"{args.source} -> {args.to}"}
+    if leave_effects:
+        report["leave_effects"] = {str(k): sorted(v)
+                                   for k, v in leave_effects.items()}
     if names:
         report["names"] = {str(k): v for k, v in names.items()}
     report["write"] = write_via_save_as(
         pathlib.Path(args.source).expanduser(), args.to, out, game, disks,
         source_slot=args.source_slot.upper() if args.source_slot else None,
-        names=names or None)
+        names=names or None, leave_effects=leave_effects or None)
     written = [pathlib.Path(p) for p in report["write"].get("written", [])]
     if not written:
         print(json.dumps(report, indent=2))

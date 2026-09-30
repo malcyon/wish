@@ -13,7 +13,7 @@
   <property name="windowTitle">
    <string></string>
   </property>
-  <layout class="QVBoxLayout" name="outer_layout" stretch="0,0,1,0">
+  <layout class="QVBoxLayout" name="outer_layout" stretch="0,0,1,0,0">
    <item>
     <widget class="QLabel" name="heading_label">
      <property name="font">
@@ -79,6 +79,16 @@
        <string notr="true">4</string>
       </property>
      </column>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="remaining_label">
+     <property name="text">
+      <string></string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignVCenter</set>
+     </property>
     </widget>
    </item>
    <item>

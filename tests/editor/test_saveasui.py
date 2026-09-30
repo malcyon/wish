@@ -703,6 +703,139 @@ def test_a_choice_the_writer_still_refuses_shows_the_existing_sentence(
 
 
 # ---------------------------------------------------------------------------
+# Running effects the C64's shared table cannot hold: Save As asks, and the
+# choice is prepared
+# ---------------------------------------------------------------------------
+
+def _effect_overflow(*members_and_indices):
+    from goldbox import dos_codec
+    entries = tuple(dos_codec.EffectEntry(m, n, 1, 6)
+                    for m, n in members_and_indices)
+    return dos_codec.EffectOverflow(64, 66, ("ALPHA", "BETA"), entries)
+
+
+class _EffectsSaveAs(_OverflowingSaveAs):
+    """`_OverflowingSaveAs`' twin for running effects: `prepare_save_as`
+    raises `EffectsDoNotFit` until it is handed `leave_effects`, and
+    `_choose_effects_left` is a double that records what it was opened with.
+
+    The writer is not run: `tests/convert/test_leaveeffects.py` covers what
+    `leave_effects` does there.
+    """
+
+    def __init__(self, app, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+
+        super().__init__(app, tmp_path, monkeypatch)
+        self.overflow = ()
+        self.effects = _effect_overflow((0, 0), (0, 1), (1, 0))
+        self.effects_before = self.effects
+        self.effects_prepared = []   # the `leave_effects` each was given
+        self.effects_asked = []
+        self.effects_answer = {0: frozenset({1}), 1: frozenset({0})}
+        self.effects_later_answers = []
+
+        def prepare(party, port, path, assets, names=None, leave=None,
+                    leave_effects=None):
+            self.effects_prepared.append(leave_effects)
+            if not leave_effects and self.effects:
+                raise ew.dos_codec.EffectsDoNotFit(self.effects)
+            return SimpleNamespace(destination=_StubDestination(path),
+                                   leave_effects=dict(leave_effects or {}))
+
+        def choose(overflow, game, accept_label):
+            self.effects_asked.append((overflow, game.key, accept_label))
+            return (self.effects_later_answers.pop(0)
+                    if self.effects_later_answers else self.effects_answer)
+
+        monkeypatch.setattr(ew.saveplan, "prepare_save_as", prepare)
+        monkeypatch.setattr(self.binding, "_choose_effects_left", choose)
+
+
+def test_save_as_asks_which_effects_to_leave_out_and_prepares_with_the_choice(
+        app, tmp_path, monkeypatch):
+    run = _EffectsSaveAs(app, tmp_path, monkeypatch)
+    run.press()
+
+    assert run.said == []
+    assert run.effects_prepared == [None, run.effects_answer]
+    (overflow, key, label), = run.effects_asked
+    assert overflow == run.effects
+    assert key == SILVER_BLADES.key
+    assert label == run.binding._child("button_destination_save_as").text()
+    assert run.published[0].leave_effects == run.effects_answer
+    assert run.binding._child("destination_section").isHidden()
+
+
+def test_cancelling_the_effects_window_leaves_save_as_open(
+        app, tmp_path, monkeypatch):
+    run = _EffectsSaveAs(app, tmp_path, monkeypatch)
+    run.effects_answer = None
+    run.press()
+
+    assert run.said == []
+    assert run.effects_prepared == [None]
+    assert run.published == []
+    assert not run.binding._child("destination_section").isHidden()
+
+
+def test_a_stale_plan_reuses_the_effects_choice_without_asking_twice(
+        app, tmp_path, monkeypatch):
+    run = _EffectsSaveAs(app, tmp_path, monkeypatch)
+    run.stale_once = True
+    run.press()
+
+    assert run.said == []
+    assert len(run.effects_asked) == 1
+    assert run.effects_prepared == [None, run.effects_answer, None,
+                                    run.effects_answer]
+    assert run.published[1].leave_effects == run.effects_answer
+
+
+def test_a_stale_plan_whose_effects_changed_asks_again(
+        app, tmp_path, monkeypatch):
+    """An index names whatever effect is there now, so an old tick on a
+    changed list would leave out an effect the player never chose."""
+    run = _EffectsSaveAs(app, tmp_path, monkeypatch)
+    run.stale_once = True
+    changed = _effect_overflow((0, 0), (0, 1), (0, 2), (1, 0))
+    first, second = {0: frozenset({1}), 1: frozenset({0})}, {0: frozenset({2})}
+    run.effects_later_answers = [first, second]
+    original = ew.saveplan.publish
+
+    def publish(plan, party, **kwargs):
+        if not run.published:
+            run.effects = changed
+        return original(plan, party, **kwargs)
+
+    monkeypatch.setattr(ew.saveplan, "publish", publish)
+    run.press()
+
+    assert run.said == []
+    assert [entry[0] for entry in run.effects_asked] == [
+        run.effects_before, changed]
+    assert run.effects_prepared == [None, first, None, second]
+    assert run.published[1].leave_effects == second
+
+
+def test_an_effects_choice_the_writer_still_refuses_shows_the_existing_sentence(
+        app, tmp_path, monkeypatch):
+    run = _EffectsSaveAs(app, tmp_path, monkeypatch)
+
+    def still_too_many(*_args, leave_effects=None, **_kwargs):
+        run.effects_prepared.append(leave_effects)
+        raise ew.dos_codec.EffectsDoNotFit(run.effects)
+
+    monkeypatch.setattr(ew.saveplan, "prepare_save_as", still_too_many)
+    run.press()
+
+    assert run.said == [(ew.CANNOT_SAVE_TITLE, ew.LOSS_REFUSED)]
+    assert run.effects_prepared == [None, run.effects_answer]
+    assert len(run.effects_asked) == 1
+    assert run.published == []
+
+
+# ---------------------------------------------------------------------------
 # A name the destination cannot hold: Save As asks, and the choice is prepared
 # ---------------------------------------------------------------------------
 

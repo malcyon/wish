@@ -557,7 +557,9 @@ class Direction:
 
     def rehearse(self, source: Source, slot: str, options: Any,
                 names: "Mapping[int, str] | None" = None,
-                leave: "Mapping[int, Collection[int]] | None" = None) -> Rehearsal:
+                leave: "Mapping[int, Collection[int]] | None" = None,
+                leave_effects: "Mapping[int, Collection[int]] | None" = None
+                ) -> Rehearsal:
         raise NotImplementedError
 
     def write(self, rehearsal: Rehearsal,
@@ -624,12 +626,16 @@ class DosToC64(Direction):
     def rehearse(self, source: Source, slot: str,
                 options: "dosimport.GameFiles",
                 names: "Mapping[int, str] | None" = None,
-                leave: "Mapping[int, Collection[int]] | None" = None) -> Rehearsal:
+                leave: "Mapping[int, Collection[int]] | None" = None,
+                leave_effects: "Mapping[int, Collection[int]] | None" = None
+                ) -> Rehearsal:
         with source.folder() as folder:
             # Sent only when the player chose something, as `leave` is.
             conversion = dosimport.rehearse(
                 folder, slot, options, leave=leave,
-                **({"names": names} if names else {}))
+                **({"names": names} if names else {}),
+                **({"leave_effects": leave_effects}
+                   if leave_effects else {}))
         name = self._name.format(slot=slot)
         return Rehearsal(conversion.report, {name: conversion.disk.to_bytes()})
 
@@ -673,7 +679,9 @@ class AmigaToC64(DosToC64):
     def rehearse(self, source: Source, slot: str,
                 options: "dosimport.GameFiles",
                 names: "Mapping[int, str] | None" = None,
-                leave: "Mapping[int, Collection[int]] | None" = None) -> Rehearsal:
+                leave: "Mapping[int, Collection[int]] | None" = None,
+                leave_effects: "Mapping[int, Collection[int]] | None" = None
+                ) -> Rehearsal:
         disk = source.amiga_disk()
         if self.shape is dos_port.POOL_OF_RADIANCE:
             party, savgam = amiga_savegame.read_por_slot(disk, slot)
@@ -704,12 +712,13 @@ class AmigaToC64(DosToC64):
             save0, save1, report = dos_codec.new_save_from(
                 state, characters, options.icon, options.animate,
                 portraits=options.portraits, game=self.destination_game,
-                leave=leave, item_types=options.item_types, names=chosen)
+                leave=leave, item_types=options.item_types, names=chosen,
+                leave_effects=leave_effects)
         else:
             save0, save1, report = dos_codec.new_save_from_neutral(
                 state, characters, party_icons, options.icon, options.animate,
                 game=self.destination_game, leave=leave,
-                item_types=options.item_types)
+                item_types=options.item_types, leave_effects=leave_effects)
         image = dos_codec.save_disk(bytes(save0), bytes(save1),
                               self.destination_game)
         name = self._name.format(slot=slot)
@@ -1884,6 +1893,14 @@ class ConvertDialog(QDialog):
         #: `EditorBinding.convert` asks the player what to leave behind once
         #: Convert is pressed. `_assets` is what that second rehearsal reads.
         self.pack_overflow: tuple = ()
+        #: Set when the party's running effects need more rows than the C64's
+        #: shared effect table holds (`EffectsDoNotFit.overflow`): the same
+        #: flow as `pack_overflow`, asked for once Convert is pressed.
+        self.effect_overflow: "dos_codec.EffectOverflow | None" = None
+        #: Every choice the player has made so far, which each later
+        #: rehearsal is given whole: `names`, `leave` and `leave_effects`,
+        #: each present only once chosen.
+        self._chosen: dict = {}
         #: Set when a name is too long for the destination
         #: (`saveplan.NamesDoNotFit`): no rehearsal exists yet, and
         #: `EditorBinding.convert` asks the player to shorten the names once
@@ -2043,6 +2060,8 @@ class ConvertDialog(QDialog):
         self.rehearsal = None
         self.slot = None
         self.pack_overflow = ()
+        self.effect_overflow = None
+        self._chosen = {}
         self.unfit_names = None
         self._assets = None
         #: Cleared on every plan and set only by `_rehearse_and_report`'s
@@ -2199,6 +2218,15 @@ class ConvertDialog(QDialog):
             self.pack_overflow = exc.overflow
             self._name_destination()
             return
+        except dos_codec.EffectsDoNotFit as exc:
+            # Not a refusal either: the player chooses which effects to leave
+            # out once Convert is pressed. Before `DosRecordError`, which it
+            # is a kind of.
+            _log.info("The running effects do not fit the %s destination: %s",
+                      direction.destination_port, exc)
+            self.effect_overflow = exc.overflow
+            self._name_destination()
+            return
         except saveplan.NamesDoNotFit as exc:
             # Not a refusal: the player shortens the names once Convert is
             # pressed (`EditorBinding.convert`), so nothing is shown now and
@@ -2238,10 +2266,16 @@ class ConvertDialog(QDialog):
         Raises what the writer raises, so a caller can refuse the write; a
         rehearsal that comes out with a loss is left `None`, as `replan` does.
         """
-        self.rehearsal, self.slot = saveplan.rehearse(
-            self.direction, self.source, self._assets, leave=leave,
-            names=names)
-        self._finish_rehearsal()
+        self._chosen["leave"] = leave
+        if names:
+            self._chosen["names"] = names
+        try:
+            self._rehearse_chosen()
+        except dos_codec.EffectsDoNotFit as exc:
+            # The pack is settled and the effects are next, so a party whose
+            # pack and effects both overflow is asked twice rather than
+            # refused.
+            self.effect_overflow = exc.overflow
 
     def rehearse_naming(self, names: "Mapping[int, str]") -> None:
         """Rehearse again with the names the player chose, keyed by position.
@@ -2249,8 +2283,23 @@ class ConvertDialog(QDialog):
         Raises what the writer raises, so a caller can refuse the write; a
         rehearsal that comes out with a loss is left `None`, as `replan` does.
         """
+        self._chosen["names"] = names
+        self._rehearse_chosen()
+
+    def rehearse_leaving_effects(
+            self, leave_effects: "Mapping[int, Collection[int]]") -> None:
+        """Rehearse again with the running effects the player chose to leave
+        out, keyed by member, and every earlier choice kept.
+
+        Raises what the writer raises, so a caller can refuse the write; a
+        rehearsal that comes out with a loss is left `None`, as `replan` does.
+        """
+        self._chosen["leave_effects"] = leave_effects
+        self._rehearse_chosen()
+
+    def _rehearse_chosen(self) -> None:
         self.rehearsal, self.slot = saveplan.rehearse(
-            self.direction, self.source, self._assets, names=names)
+            self.direction, self.source, self._assets, **self._chosen)
         self._finish_rehearsal()
 
     def _finish_rehearsal(self) -> None:
@@ -2386,5 +2435,6 @@ class ConvertDialog(QDialog):
         rather than the writes list (`_rehearse_and_report` above)."""
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
             (self.rehearsal is not None or bool(self.pack_overflow)
+             or self.effect_overflow is not None
              or self.unfit_names is not None)
             and bool(self._folder_path))

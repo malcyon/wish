@@ -634,7 +634,8 @@ def resolve_assets(source: Any, port: str, *, game_files: Any = None,
 
 def rehearse(direction: Any, source: Any, assets: Assets,
             names: "Mapping[int, str] | None" = None,
-            leave: "Mapping[int, Collection[int]] | None" = None
+            leave: "Mapping[int, Collection[int]] | None" = None,
+            leave_effects: "Mapping[int, Collection[int]] | None" = None
             ) -> tuple[Any, str]:
     """Run `direction` in memory, and say which slot it wrote.
 
@@ -648,6 +649,10 @@ def rehearse(direction: Any, source: Any, assets: Assets,
     player chose for it. It is passed straight to `direction.rehearse`, which
     calls `fit_names` on the neutral party it builds -- a name still too long
     raises `NamesDoNotFit` from in there.
+
+    `leave_effects` maps a position to the running effects the player chose to
+    leave out, for a party that needs more rows than the C64's shared effect
+    table holds; only the two directions that write a C64 save take it.
 
     Raises `MissingAssets` before running anything when `assets` does not
     cover what `requirements` names.
@@ -671,6 +676,8 @@ def rehearse(direction: Any, source: Any, assets: Assets,
     # Sent only when the player chose something, so a direction that never
     # has a pack to overflow is not handed an argument it has no use for.
     chosen = {"leave": leave} if leave else {}
+    if leave_effects:
+        chosen["leave_effects"] = leave_effects
     if port == "amiga":
         chosen["disk_one"] = assets.amiga_disk_one
     if direction.source_port == "c64" and port in ("dos", "amiga"):
@@ -1465,6 +1472,11 @@ class SavePlan:
     #: index -- empty when nothing was chosen. The caller supplies it; the
     #: writer reports each item left as a line of `Report.left_behind`.
     leave: "dict[int, frozenset[int]]" = dataclasses.field(default_factory=dict)
+    #: The running effects the player chose to leave out, keyed by member
+    #: index -- empty when nothing was chosen. The writer reports each one as a
+    #: line of `Report.left_behind`.
+    leave_effects: "dict[int, frozenset[int]]" = dataclasses.field(
+        default_factory=dict)
 
     def invalidate(self) -> None:
         """Mark this output as no longer the answer, so `publish` refuses it."""
@@ -1707,7 +1719,8 @@ def native_files(snapshot: Snapshot) -> dict[str, bytes]:
 def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
                     assets: "Assets | None" = None,
                     names: "Mapping[int, str] | None" = None,
-                    leave: "Mapping[int, Collection[int]] | None" = None
+                    leave: "Mapping[int, Collection[int]] | None" = None,
+                    leave_effects: "Mapping[int, Collection[int]] | None" = None
                     ) -> SavePlan:
     """Everything a Save As would write, in memory and validated.
 
@@ -1737,6 +1750,10 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
     raises `NamesDoNotFit`, propagated rather than caught here, so the
     caller can put up a chooser and try again.
 
+    `leave_effects` maps a member to the running effects the player chose to
+    leave out; a party still over the C64's shared effect table raises
+    `goldbox.dos_codec.EffectsDoNotFit`, propagated for the same reason.
+
     Raises `MissingAssets` for game data nothing answered for, `DroppedFields`
     for a conversion that loses something, `NamesDoNotFit` for a name over
     the destination's width nobody has chosen a replacement for yet, and
@@ -1761,7 +1778,12 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
         title = snapshot.title
     else:
         rehearsal, slot = rehearse(direction, source, assets or Assets(),
-                                   names=names, leave=leave)
+                                   names=names, leave=leave,
+                                   # Sent only with a choice, as `leave`
+                                   # is, so a caller that has no effects
+                                   # to choose about is not handed it.
+                                   **({"leave_effects": leave_effects}
+                                      if leave_effects else {}))
         files, report = dict(rehearsal.files), rehearsal.report
         title = direction.destination_game
     destination = Destination(port=port, path=pathlib.Path(path),
@@ -1818,7 +1840,9 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
                     report=report, assets=assets,
                     key=plan_key(snapshot, port, path, assets),
                     names=dict(names) if names else {},
-                    leave={k: frozenset(v) for k, v in (leave or {}).items()})
+                    leave={k: frozenset(v) for k, v in (leave or {}).items()},
+                    leave_effects={k: frozenset(v) for k, v
+                                   in (leave_effects or {}).items()})
 
 
 def validate(destination: Destination, files: dict[str, bytes],

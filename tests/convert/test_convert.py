@@ -3851,6 +3851,202 @@ def test_a_pack_that_fits_never_asks(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Running effects the C64's shared table cannot hold: held by the dialog, asked
+# at Convert
+# ---------------------------------------------------------------------------
+
+def _effects_overflowing_dialog(tmp_path, monkeypatch, *, pack=False):
+    """A `ConvertDialog` over a DOS Pool of Radiance folder whose rehearsal
+    reports running effects that do not fit, and the fake
+    `dosimport.rehearse` that took what it was handed.
+
+    With `pack` the pack overflows first and the effects only once a `leave`
+    has been chosen, as a writer that checks the pack before the effects does.
+    """
+    from support import packoverflow
+
+    pack_overflow = packoverflow.overflow() if pack else None
+    effects = dos_codec.EffectOverflow(
+        64, 66, ("ALPHA", "BETA"),
+        (dos_codec.EffectEntry(0, 0, 1, 6), dos_codec.EffectEntry(0, 1, 1, 6),
+         dos_codec.EffectEntry(1, 0, 1, 6)))
+    seen = []
+
+    def rehearse(_folder, _slot, _files, leave=None, names=None,
+                 leave_effects=None):
+        seen.append({"leave": leave, "leave_effects": leave_effects})
+        if pack and not leave:
+            raise dos_codec.JoinedScrollsDoNotFit(pack_overflow)
+        if not leave_effects:
+            raise dos_codec.EffectsDoNotFit(effects)
+        return SimpleNamespace(
+            report=convert.neutral.Report(),
+            disk=SimpleNamespace(to_bytes=lambda: b"a disk"))
+
+    monkeypatch.setattr(dosimport, "rehearse", rehearse)
+    source = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    out = tmp_path / "out"
+    out.mkdir()
+    dialog = convert.ConvertDialog(
+        str(source / "SAVGAMA.DAT"), None, _some_disks, destination="c64",
+        folder=str(out))
+    return dialog, effects, seen, out
+
+
+def test_effects_the_c64_cannot_hold_show_nothing_and_leave_convert_pressable(
+        tmp_path, monkeypatch, caplog):
+    import logging
+
+    shown = []
+    monkeypatch.setattr(convert.QMessageBox, "critical",
+                        lambda *a, **k: shown.append(a))
+    dialog, effects, _seen, _out = _effects_overflowing_dialog(tmp_path,
+                                                               monkeypatch)
+    try:
+        with caplog.at_level(logging.INFO, logger="wish"):
+            dialog._interactive = True
+            dialog.replan()
+        assert dialog._blocked is None
+        assert shown == []
+        assert dialog.effect_overflow == effects
+        assert dialog.rehearsal is None
+        assert dialog.ui.convert_destination_line.text()
+        assert dialog.buttons.button(
+            QDialogButtonBox.StandardButton.Ok).isEnabled()
+        assert any("running effects do not fit the c64 destination"
+                   in r.getMessage() for r in caplog.records)
+    finally:
+        dialog.close()
+
+
+def test_changing_a_row_forgets_the_effect_overflow_and_the_choices(
+        tmp_path, monkeypatch):
+    dialog, _effects, _seen, _out = _effects_overflowing_dialog(tmp_path,
+                                                                monkeypatch)
+    try:
+        dialog.rehearse_leaving_effects({0: frozenset({0})})
+        assert dialog._chosen == {"leave_effects": {0: frozenset({0})}}
+        dialog._source_path = ""
+        dialog.replan()
+        assert dialog.effect_overflow is None
+        assert dialog._chosen == {}
+    finally:
+        dialog.close()
+
+
+def test_rehearse_leaving_effects_hands_the_choice_to_the_writer(
+        tmp_path, monkeypatch):
+    dialog, _effects, seen, _out = _effects_overflowing_dialog(tmp_path,
+                                                               monkeypatch)
+    try:
+        dialog.rehearse_leaving_effects({0: frozenset({1})})
+        assert seen[-1]["leave_effects"] == {0: frozenset({1})}
+        assert dialog.rehearsal is not None
+    finally:
+        dialog.close()
+
+
+def test_pressing_convert_asks_and_the_choice_reaches_the_writer_as_leave_effects(
+        tmp_path, monkeypatch):
+    dialog, effects, seen, out = _effects_overflowing_dialog(tmp_path,
+                                                             monkeypatch)
+    dialog.close()
+    window, loaded = _window_for_pack_overflow(monkeypatch)
+    asked = []
+
+    def choose(overflow, game, accept_label):
+        asked.append((overflow, game.key, accept_label))
+        return {0: frozenset({1}), 1: frozenset({0})}
+
+    monkeypatch.setattr(window, "_choose_left_behind",
+                        lambda *a: pytest.fail("the pack chooser was opened"))
+    monkeypatch.setattr(window, "_choose_effects_left", choose)
+    try:
+        outcome = _convert_with(window, tmp_path, out)
+    finally:
+        window.close()
+
+    assert [(o, k, label) for o, k, label in asked] == [
+        (effects, dos_port.POOL_OF_RADIANCE.key, convert.BUTTON_CONVERT)]
+    assert seen[-1]["leave_effects"] == {0: frozenset({1}),
+                                         1: frozenset({0})}
+    today = datetime.date.today().isoformat()
+    written = out / f"wish-{today}"
+    assert [p.read_bytes() for p in written.iterdir()] == [b"a disk"]
+    assert loaded == [str(next(written.iterdir()))]
+    assert outcome == f"converted into {written}"
+
+
+def test_a_pack_and_effects_that_both_overflow_are_asked_one_after_the_other(
+        tmp_path, monkeypatch):
+    """The pack choice is kept when the effects are asked for, and both reach
+    the last rehearsal."""
+    dialog, _effects, seen, out = _effects_overflowing_dialog(
+        tmp_path, monkeypatch, pack=True)
+    dialog.close()
+    window, _loaded = _window_for_pack_overflow(monkeypatch)
+    monkeypatch.setattr(window, "_choose_left_behind",
+                        lambda *a: {1: frozenset({16})})
+    monkeypatch.setattr(window, "_choose_effects_left",
+                        lambda *a: {0: frozenset({0})})
+    try:
+        outcome = _convert_with(window, tmp_path, out)
+    finally:
+        window.close()
+
+    assert outcome.startswith("converted into ")
+    assert seen[-1] == {"leave": {1: frozenset({16})},
+                        "leave_effects": {0: frozenset({0})}}
+
+
+def test_cancelling_the_effects_chooser_writes_nothing(tmp_path, monkeypatch):
+    dialog, _effects, seen, out = _effects_overflowing_dialog(tmp_path,
+                                                              monkeypatch)
+    dialog.close()
+    window, loaded = _window_for_pack_overflow(monkeypatch,
+                                               presses=[True, False])
+    monkeypatch.setattr(window, "_choose_effects_left", lambda *a: None)
+    try:
+        outcome = _convert_with(window, tmp_path, out)
+    finally:
+        window.close()
+
+    assert outcome == "cancelled"
+    assert list(out.iterdir()) == []
+    assert loaded == []
+    assert all(not call["leave_effects"] for call in seen)
+
+
+def test_a_choice_the_writer_still_refuses_shows_the_existing_sentence(
+        tmp_path, monkeypatch):
+    dialog, effects, seen, out = _effects_overflowing_dialog(tmp_path,
+                                                             monkeypatch)
+    dialog.close()
+
+    def still_over(*_args, **_kwargs):
+        raise dos_codec.EffectsDoNotFit(effects)
+
+    monkeypatch.setattr(dosimport, "rehearse", still_over)
+    refusals = []
+    monkeypatch.setattr(convert.QMessageBox, "critical",
+                        lambda *a, **k: refusals.append(a))
+    window, _loaded = _window_for_pack_overflow(monkeypatch,
+                                                presses=[True, False])
+    # A choice the writer still turns away: Convert refuses.
+    monkeypatch.setattr(window, "_choose_effects_left",
+                        lambda *a: {0: frozenset({0})})
+    try:
+        outcome = _convert_with(window, tmp_path, out)
+    finally:
+        window.close()
+
+    assert outcome == "cancelled"
+    assert list(out.iterdir()) == []
+    assert len(refusals) == 1
+    assert refusals[0][2] == convert.CANNOT_CONVERT
+
+
+# ---------------------------------------------------------------------------
 # A name the destination cannot hold (#619): held by the dialog, asked at
 # Convert
 # ---------------------------------------------------------------------------

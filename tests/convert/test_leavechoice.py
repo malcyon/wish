@@ -128,3 +128,84 @@ def test_the_choice_reaches_the_dos_to_c64_direction(monkeypatch):
     with pytest.raises(RuntimeError):
         direction.rehearse(Source(), "A", _files(), leave={0: {3}})
     assert seen["leave"] == {0: {3}}
+
+
+def test_saveplan_rehearse_hands_the_effects_choice_to_the_direction(
+        monkeypatch):
+    monkeypatch.setattr(saveplan, "requirements", lambda *a: [])
+    seen = {}
+
+    class Fake:
+        destination_port = "c64"
+        source_port = "dos"
+
+        def rehearse(self, source, slot, options, names=None, leave=None,
+                     leave_effects=None):
+            seen["leave_effects"] = leave_effects
+            return "rehearsal"
+
+    class Source:
+        slot = "A"
+        path = "x"
+
+    class Assets:
+        game_files = object()
+
+        def has(self, need):
+            return True
+
+    got = saveplan.rehearse(Fake(), Source(), Assets(),
+                            leave_effects={0: frozenset({3})})
+    assert got == ("rehearsal", "A")
+    assert seen["leave_effects"] == {0: frozenset({3})}
+
+
+def test_saveplan_rehearse_sends_no_effects_argument_without_a_choice(
+        monkeypatch):
+    """A direction that has no effects to choose about is not handed the
+    argument."""
+    monkeypatch.setattr(saveplan, "requirements", lambda *a: [])
+
+    class Fake:
+        destination_port = "dos"
+        source_port = "c64"
+
+        def rehearse(self, source, slot, options, names=None, **chosen):
+            assert "leave_effects" not in chosen
+            return "rehearsal"
+
+    class Source:
+        slot = "A"
+        path = "x"
+
+    class Assets:
+        game_files = object()
+        source_files = type("F", (), {"icon": None})()
+        dos_folder = None
+
+        def has(self, need):
+            return True
+
+    saveplan.rehearse(Fake(), Source(), Assets(), leave_effects={})
+
+
+def test_the_effects_choice_reaches_the_dos_to_c64_direction(monkeypatch):
+    seen = {}
+
+    def fake(folder, slot, options, leave=None, leave_effects=None):
+        seen["leave_effects"] = leave_effects
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(dosimport, "rehearse", fake)
+    direction = convert.DosToC64.__new__(convert.DosToC64)
+    direction.source_port, direction.shape = "dos", SSB
+    direction._name = "N{slot}"
+
+    class Source:
+        def folder(self):
+            import contextlib
+            return contextlib.nullcontext("f")
+
+    with pytest.raises(RuntimeError):
+        direction.rehearse(Source(), "A", _files(), leave_effects={0: {3}})
+    assert seen["leave_effects"] == {0: {3}}
