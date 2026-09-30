@@ -5547,6 +5547,9 @@ class Driver:
         """
         if self.title.key != "pool" or self.camp_sig is None:
             raise StepFailed("cast needs Pool camp first")
+        if target and not 1 <= target <= self.party_size:
+            raise StepFailed(f"cast target line {target} is not in a party of "
+                             f"{self.party_size}; nothing is pressed")
         font = self.display_font()
         self.ensure_camp()
         label = f"cast-{line}"

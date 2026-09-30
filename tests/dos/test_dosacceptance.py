@@ -837,7 +837,11 @@ class CastPool(FakePool):
             if kind == "level":
                 _text(px, row, 1, text, _CAST_HEAD)
             elif text != hide:
-                shown = "BL?SS" if self.failure == "unreadable" and text == "BLESS" else text
+                shown = text
+                if (self.failure == "unreadable" and text == "BLESS") or (
+                        self.failure == "garbled_after" and self.cast
+                        and text == self.pending):
+                    shown = text[:2] + "?" + text[3:]
                 _text(px, row, 3, shown, _WHITE if highlight and i == self.hl
                       else _CAST_LIST_GREEN)
         if self.mode == "message":
@@ -864,12 +868,12 @@ class CastPool(FakePool):
                 # back: nothing was cast.
                 hide = self.pending if self.failure == "hidden_row" else None
                 if not self.message:
-                    if self.failure not in ("hidden_row", "refused"):
+                    if self.failure not in ("hidden_row", "refused", "garbled_after"):
                         del self.rows[next(i for i, r in enumerate(self.rows)
                                            if r == ("spell", self.pending))]
                     self.mode, self.hl = "list", self.last_spell()
-                    if self.EMPTY_TO_MAGIC and (not self.spell_rows()
-                                                or self.failure == "refused"):
+                    if self.EMPTY_TO_MAGIC and (not self.spell_rows() or self.failure
+                                                in ("refused", "garbled_after")):
                         self.mode = "magic"
             if self.mode == "magic":
                 return self._magic_frame()
@@ -1102,6 +1106,48 @@ def test_pool_cast_a_refusal_back_at_the_magic_bar_fails_on_the_reopened_list(
     assert game.mode == "list" and game.keys[-1] == "c"
 
 
+def test_pool_cast_an_unreadable_row_after_the_cast_is_never_counted_as_one_fewer(
+        tmp_path, _cast_measured):
+    # The game keeps both rows, one of them unreadable: counting only the rows
+    # that read would take it for a cast.
+    game, d = _cast_camp(tmp_path, failure="garbled_after")
+    with pytest.raises(da.StepFailed, match="the spell list after the cast has rows "
+                       "that do not read: \\['CU\\?E LIGHT WOUNDS'"):
+        d.cast(2, "CURE-LIGHT-WOUNDS", 3)
+    assert game.keys[-1] == "Return"
+
+
+def test_pool_cast_an_unreadable_row_on_the_reopened_list_is_refused(
+        tmp_path, _cast_measured, monkeypatch):
+    monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
+    game, d = _cast_camp(tmp_path, rows=_cast_rows("BLESS"), failure="garbled_after")
+    with pytest.raises(da.StepFailed, match="the spell list opened again has rows "
+                       "that do not read: \\['BL\\?SS'\\]"):
+        d.cast(2, "BLESS")
+    assert game.mode == "list" and game.keys[-1] == "c"
+
+
+def test_pool_cast_a_reopened_list_under_another_title_is_refused(
+        tmp_path, _cast_measured, monkeypatch):
+    monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
+    game, d = _cast_camp(tmp_path, rows=_cast_rows("BLESS"), failure="refused")
+    real = game._list_frame
+
+    def other_title(highlight, hide=None):
+        frame = real(highlight, hide)
+        if game.cast and game.mode == "list":
+            px = bytearray(frame.px)
+            for y in range(8, 16):
+                px[y * W * 3:(y + 1) * W * 3] = bytes(W * 3)
+            _text(px, 1, 1, "WISHCLE'S SPELLS ON SCROLLS")
+            frame = dosbox.Screen(W, H, bytes(px))
+        return frame
+    monkeypatch.setattr(game, "_list_frame", other_title)
+    with pytest.raises(da.StepFailed, match="the spell list opened again is titled "
+                       "\"WISHCLE'S SPELLS ON SCROLLS\""):
+        d.cast(2, "BLESS")
+
+
 def test_pool_cast_a_reopen_that_opens_no_list_stops_there(
         tmp_path, _cast_measured, monkeypatch):
     monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
@@ -1164,13 +1210,15 @@ def test_pool_cast_animate_dead_step_parses_and_save_and_read_may_follow():
                              "save D", "read"), "pool")
 
 
-def test_pool_cast_an_unreachable_target_line_stops_at_the_bound(
+def test_pool_cast_a_target_line_outside_the_party_is_refused_before_any_key(
         tmp_path, _cast_measured):
     game, d = _cast_camp(tmp_path)
-    with pytest.raises(da.StepFailed, match="never brought the target highlight to line 8"):
+    with pytest.raises(da.StepFailed, match="target line 8 is not in a party of 6"):
         d.cast(2, "CURE-LIGHT-WOUNDS", 8)
-    assert "Return" not in game.keys
-    assert game.keys[game.keys.index("c", game.keys.index("c") + 1):].count("End") == 13
+    assert game.keys == ["e"] and game.mode == "camp"     # only camp's ENCAMP
+    with pytest.raises(ValueError, match="target line 7 is not in a party of 6"):
+        d.game.cast("CURE LIGHT WOUNDS", 7, read=lambda sc: None)
+    assert game.keys == ["e"]
 
 
 def test_pool_cast_stops_when_exit_never_reaches_camp(tmp_path, _cast_measured):

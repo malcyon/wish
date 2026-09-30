@@ -1563,6 +1563,8 @@ class PoolOfRadiance:
         """
         from tools.dos.screens import bar_signature, roster_line
 
+        if target is not None and not 1 <= target <= party_size:
+            raise ValueError(f"target line {target} is not in a party of {party_size}")
         snap = shot or (lambda label: None)
         rect = self.SPELL_LIST
 
@@ -1586,23 +1588,35 @@ class PoolOfRadiance:
                                        f"{'Magic bar' if want == self.MAGIC_BAR else 'spell list'}")
             raise TimeoutError(f"{what} changed nothing")
 
+        def unread(got: SpellList) -> list[str]:
+            return [name for _, name in got.spells if "?" in name]
+
+        def checked(got: SpellList, what: str) -> SpellList:
+            # Every reading of the list that a count is taken from: the
+            # caster's title, and no row that fails to read, since an
+            # unreadable row could be the spell.
+            if caster is not None and not (got.head.startswith(f"{caster}'S ")
+                                           and self.SPELL_LIST_HEAD in got.head):
+                raise WrongCaster(f"{what} is titled {got.head!r}, not "
+                                  f"{caster}'S {self.SPELL_LIST_HEAD}")
+            if unread(got):
+                raise TimeoutError(f"{what} has rows that do not read: {unread(got)}")
+            return got
+
         def open_list(what: str) -> SpellList:
             press_for("c", self.SPELL_LIST_BAR, self.MAGIC_BAR, what)
             sc = self.s.settle(quiet=0.8, timeout=20.0)
             if bar(sc) != self.SPELL_LIST_BAR:
                 raise TimeoutError("the spell list did not stay up")
-            got = read(sc)
-            if caster is not None and not (got.head.startswith(f"{caster}'S ")
-                                           and self.SPELL_LIST_HEAD in got.head):
-                raise WrongCaster(f"the spell list's title is {got.head!r}, not "
-                                  f"{caster}'S {self.SPELL_LIST_HEAD}")
-            unread = [name for _, name in got.spells if "?" in name]
-            if unread:
-                raise TimeoutError(f"the spell list has rows that do not read: {unread}")
-            return got
+            return checked(read(sc), "the spell list")
 
         def names(sc: Screen) -> list[str]:
             return [name for _, name in read(sc).spells]
+
+        def count(sc: Screen) -> int | None:
+            # None while any row does not read: such a list is not judged.
+            got = read(sc)
+            return None if unread(got) else [n for _, n in got.spells].count(spell)
 
         if bar(self.s.capture()) != self.CAMP_BAR:
             raise TimeoutError("cast starts at the camp bar, which is not showing")
@@ -1644,10 +1658,12 @@ class PoolOfRadiance:
                 return "target"
             # No highlight is asked for: the caster's last spell leaves a list
             # with no row to highlight.
-            if b == self.SPELL_LIST_BAR and names(sc).count(spell) == have - 1:
+            if b == self.SPELL_LIST_BAR and count(sc) == have - 1:
                 return "cast"
             # The caster's only spell: the game may go back to the Magic bar
-            # rather than to an empty list, which `reopen` then checks.
+            # rather than to an empty list.  Believing the Magic bar here is
+            # safe only because the CAST-again check after the settle follows
+            # it: this alone would also take a refusal that went back there.
             if b == self.MAGIC_BAR and len(before) == 1:
                 return "cast"
             return None
@@ -1655,6 +1671,8 @@ class PoolOfRadiance:
         def settle_on(*want: str) -> Screen:
             if not self.s.wait_for(lambda sc: outcome(sc) in (*want, "lose"), timeout):
                 last = self.s.capture()
+                if bar(last) == self.SPELL_LIST_BAR:
+                    checked(read(last), "the spell list after the cast")
                 if bar(last) in (self.SPELL_LIST_BAR, self.MAGIC_BAR):
                     raise TimeoutError(f"the spell list never came back one {spell} "
                                        "shorter")
@@ -1745,10 +1763,7 @@ class PoolOfRadiance:
                 raise TimeoutError(f"CAST again reached a screen it does not know: "
                                    f"{read(sc).bar!r}")
             else:
-                reopened = read(sc)
-                if caster is not None and not reopened.head.startswith(f"{caster}'S "):
-                    raise WrongCaster(f"the spell list opened again is titled "
-                                      f"{reopened.head!r}")
+                reopened = checked(read(sc), "the spell list opened again")
                 confirmed = "reopened"
                 shots.append(snap("cast-reopened"))
                 after = [name for _, name in reopened.spells].count(spell)
@@ -1756,7 +1771,8 @@ class PoolOfRadiance:
                     raise TimeoutError(f"the list opened again still holds {after} "
                                        f"{spell}")
         else:
-            after = names(screen).count(spell)
+            after = [name for _, name in checked(
+                read(screen), "the spell list after the cast").spells].count(spell)
 
         if bar(self.s.capture()) == self.SPELL_LIST_BAR:
             press_for("e", self.MAGIC_BAR, self.SPELL_LIST_BAR, "EXIT")
