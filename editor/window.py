@@ -328,8 +328,12 @@ class _NoClassCode(int):
         return self
 
 
-def _select(combo: QComboBox, value) -> None:
+def _select(combo: QComboBox, value, bare: bool = False) -> None:
     """Show `value` in a dropdown, even when the table has no name for it.
+
+    With `bare`, a value the table does not name shows as its number alone,
+    and the number of an earlier member is dropped from the list, so the list
+    offers only what `_fill_combos` put there.
 
     A code outside the game's own table is real data -- monsters carry things
     player characters do not -- so it is added to the list rather than being
@@ -346,7 +350,11 @@ def _select(combo: QComboBox, value) -> None:
         text = value.label
         at = combo.findText(text)
     else:
-        text = f"{value}  — not in the game's table"
+        text = str(value) if bare else f"{value}  — not in the game's table"
+        offered = combo.property("offered")
+        if bare and isinstance(offered, int):
+            for extra in range(combo.count() - 1, offered - 1, -1):
+                combo.removeItem(extra)
         at = combo.findData(value)
     if at < 0:
         combo.addItem(text, int(value))
@@ -1201,18 +1209,21 @@ class EditorBinding(QObject):
             found["spells_memorised"] = self.root.findChild(QWidget, "field_spells_memorised")
         return found
 
-    def _fill_combos(self, game: por_games.C64Container | None = None) -> None:
+    def _fill_combos(self, game: por_games.C64Container | None = None,
+                     port: str | None = None) -> None:
         """Name the codes for the fields whose encoding is known, per title."""
-        tables = tables_for(game)
+        tables = tables_for(game, port)
         for name, w in self._widgets.items():
             if isinstance(w, QComboBox) and name in tables:
                 w.clear()
                 for code, label in sorted(tables[name].items()):
-                    if name in {"race", "char_class", "class_bits", "alignment"}:
+                    if name in {"race", "char_class", "class_bits", "alignment",
+                                "turn_class"}:
                         label = label[:1].upper() + label[1:]
                         w.addItem(label, code)
                     else:
                         w.addItem(f"{code}  {label}", code)
+                w.setProperty("offered", w.count())
                 _size_combo(w)
             elif hasattr(w, "set_game"):
                 # The Character Traits list, whose codes are per title too:
@@ -1762,7 +1773,7 @@ class EditorBinding(QObject):
         self.path = pathlib.Path(path) if path else None
         self.dirty = set(range(len(party))) if dirty else set()
         self.current_row = -1
-        self._fill_combos(party.game)
+        self._fill_combos(party.game, party.port)
         self._load_game_disk()
         self.model.beginResetModel()
         self.model.party = party
@@ -3268,7 +3279,7 @@ class EditorBinding(QObject):
             elif isinstance(w, QCheckBox):
                 w.setChecked(bool(value))
             elif isinstance(w, QComboBox):
-                _select(w, value)
+                _select(w, value, bare=name == "turn_class")
             elif hasattr(w, "set_bytes"):
                 if isinstance(w, SpellbookEditor):
                     w.set_bytes(self._spellbook_raw(record))

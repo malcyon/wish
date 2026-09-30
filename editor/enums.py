@@ -207,13 +207,58 @@ def caster_bits(game: C64Container | None = None) -> int:
                if name in CASTING_CLASSES)
 
 
-def tables_for(game: C64Container | None = None) -> dict[str, dict[int, str]]:
-    """Which field each table belongs to, for one title.
+#: 0x0A3 (C64), 0x076 (DOS and Amiga Pool), 0x0E9 (Curse). The value is the row of the
+#: turning table a cleric's TURN looks up, so each name is the row's and not a
+#: creature's. 4, 6, 11 and 13 have no name here on purpose: they are not
+#: offered, and a stored one shows as its number.
+TURN_CLASS_NAMES = {
+    0: "N/A", 1: "Skeleton", 2: "Zombie", 3: "Ghoul", 5: "Wight",
+    7: "Wraith", 8: "Mummy", 9: "Spectre", 10: "Vampire", 12: "Lich",
+}
+
+#: The rows each title and port can turn, by `(title key, port)`. A title and
+#: port with no entry never reads the byte, or has no mapped byte, so it
+#: offers N/A alone.
+#:
+#: * Pool C64: the three 13-byte tables at `SQRPACI01 $06F0` / `COMBAT $252B`
+#:   make rows 1-12 real.
+#: * Pool DOS: `GAME.OVR:0x13B52` searches 1-12 but the table has 10 rows, so
+#:   11 and 12 read text past its end.
+#: * Pool Amiga: the table at `/program` `0xFBBC` has 10 rows.
+#: * Curse DOS and Amiga: the table is the same 10 rows, `/Curse 0x7D48` on the
+#:   Amiga.
+#: * Curse on the C64 never reads the byte in TURN.
+TURN_CLASS_ROWS: dict[tuple[str, str], range] = {
+    ("pool-of-radiance", "c64"): range(1, 13),
+    ("pool-of-radiance", "dos"): range(1, 11),
+    ("pool-of-radiance", "amiga"): range(1, 11),
+    ("curse-of-the-azure-bonds", "dos"): range(1, 11),
+    ("curse-of-the-azure-bonds", "amiga"): range(1, 11),
+}
+
+
+def turn_class_names(game: C64Container | None = None,
+                     port: str | None = None) -> dict[int, str]:
+    """0x0A3 / 0x076 / 0x0E9. The turning-table rows one title and port offers.
+
+    `{0: "N/A"}` and every row that port turns and the game has a name for.
+    """
+    key = getattr(game, "key", None)
+    rows = TURN_CLASS_ROWS.get((key, port), ())
+    return {0: TURN_CLASS_NAMES[0],
+            **{row: TURN_CLASS_NAMES[row] for row in rows
+               if row in TURN_CLASS_NAMES}}
+
+
+def tables_for(game: C64Container | None = None,
+               port: str | None = None) -> dict[str, dict[int, str]]:
+    """Which field each table belongs to, for one title and port.
 
     A `field_*` QComboBox on the form is filled from here by name, like every
-    other binding.
+    other binding. Only the turning rows depend on the port.
     """
     return {
+        "turn_class": turn_class_names(game, port),
         "race": race_names(game),
         "char_class": char_class_names(game),
         "class_bits": class_bit_names(game),

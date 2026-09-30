@@ -2452,19 +2452,12 @@
                    <item row="4" column="0">
                     <widget class="QLabel" name="label_turn_class">
                      <property name="text">
-                      <string>Turn class</string>
+                      <string>Turns as:</string>
                      </property>
                     </widget>
                    </item>
                    <item row="4" column="1">
-                    <widget class="QSpinBox" name="field_turn_class">
-                     <property name="minimum">
-                      <number>0</number>
-                     </property>
-                     <property name="maximum">
-                      <number>255</number>
-                     </property>
-                    </widget>
+                    <widget class="QComboBox" name="field_turn_class" />
                    </item>
                    <item row="5" column="0">
                     <widget class="QLabel" name="label_control">

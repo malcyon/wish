@@ -31,7 +31,7 @@ import pytest
 
 from automap import live
 from editor.enums import class_bit_names, race_names, tables_for
-from goldbox import c64_port, c64_save
+from goldbox import c64_port, c64_save, dos_port
 
 POOL = c64_port.POOL_OF_RADIANCE
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
@@ -298,6 +298,161 @@ def test_filling_the_combos_is_not_an_edit(window):
     window._fill_combos(CURSE)
     window._fill_combos(POOL)
     assert window.dirty == set()
+
+
+# --- "Turns as:" ------------------------------------------------------------
+
+APPROVED_ROWS = {0: "N/A", 1: "Skeleton", 2: "Zombie", 3: "Ghoul", 5: "Wight",
+                 7: "Wraith", 8: "Mummy", 9: "Spectre", 10: "Vampire",
+                 12: "Lich"}
+#: The offered rows per title and port, as codes.
+ROWS_TO_ALL_BUT_LICH = [0, 1, 2, 3, 5, 7, 8, 9, 10]
+ROWS_TO_LICH = [*ROWS_TO_ALL_BUT_LICH, 12]
+
+
+@pytest.mark.parametrize("game, port, codes", [
+    (POOL, "c64", ROWS_TO_LICH),
+    (POOL, "dos", ROWS_TO_ALL_BUT_LICH),
+    (POOL, "amiga", ROWS_TO_ALL_BUT_LICH),
+    (CURSE, "dos", ROWS_TO_ALL_BUT_LICH),
+    (CURSE, "amiga", ROWS_TO_ALL_BUT_LICH),
+    (CURSE, "c64", [0]),
+    (SSB, "c64", [0]),
+    (SSB, "dos", [0]),
+    (SSB, "amiga", [0]),
+    (KRYNN, "c64", [0]),
+    (UNTABLED, None, [0]),
+    (None, None, [0]),
+])
+def test_the_turns_as_box_offers_the_rows_each_title_and_port_turns(
+        window, game, port, codes):
+    box = window._widgets["turn_class"]
+    window._fill_combos(game, port)
+    assert _codes(box) == codes
+    assert [box.itemText(i) for i in range(box.count())] == [
+        APPROVED_ROWS[code] for code in codes]
+
+
+def test_the_turns_as_box_shows_only_the_approved_names(window):
+    from editor.enums import TURN_CLASS_NAMES
+    assert TURN_CLASS_NAMES == APPROVED_ROWS
+    for game, port in ((POOL, "c64"), (POOL, "dos"), (CURSE, "amiga")):
+        window._fill_combos(game, port)
+        box = window._widgets["turn_class"]
+        shown = " ".join(box.itemText(i) for i in range(box.count()))
+        for unapproved in ("Shadow", "Ghast", "Ghost", "Special"):
+            assert unapproved not in shown
+
+
+def test_the_turns_as_label_and_box_are_a_name_with_no_code(window):
+    from PyQt6.QtWidgets import QComboBox
+    assert window._child("label_turn_class").text() == "Turns as:"
+    assert isinstance(window._widgets["turn_class"], QComboBox)
+    window._fill_combos(POOL, "c64")
+    assert _label(window._widgets["turn_class"], 2) == "Zombie"
+
+
+def test_refilling_the_turns_as_box_follows_the_port(window):
+    window._fill_combos(POOL, "c64")
+    window._fill_combos(POOL, "dos")
+    assert _codes(window._widgets["turn_class"]) == ROWS_TO_ALL_BUT_LICH
+
+
+def _shown(path):
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(path))
+    w.roster.selectRow(0)
+    return w
+
+
+def _dos_folder(tmp_path, deltas, **neutral_fields):
+    from support.neutralrecords import _filled
+
+    from goldbox import c64_codec, dos_codec, dos_savegame
+    from goldbox.layout import Confidence
+    char = _filled(c64_port.by_key(deltas.key))
+    char.set("name", "HERO1", "made up", Confidence.CONFIRMED,
+             c64_codec.Provenance.RESHAPED)
+    for field, value in neutral_fields.items():
+        char.set(field, value, "made up")
+    record, itm, spc, _report = dos_codec.write(char, deltas=deltas)
+    stem = tmp_path / "CHRDATA1"
+    stem.with_suffix(".SAV").write_bytes(record)
+    stem.with_suffix(deltas.item_suffix).write_bytes(itm)
+    stem.with_suffix(deltas.effect_suffix).write_bytes(spc)
+    container = dos_savegame.container_for(deltas.key)
+    (tmp_path / f"SAVGAMA{container.suffix}").write_bytes(
+        bytes(container.size))
+    return tmp_path
+
+
+def _c64_window(tmp_path, game, value):
+    from gamedata import synthetic_save
+
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(synthetic_save(tmp_path, game=game)))
+    w.roster.selectRow(0)
+    w.party.member(0).record.set("turn_class", value)
+    w._populate()
+    return w
+
+
+def _turns_as(w):
+    box = w._widgets["turn_class"]
+    return box.currentText(), box.currentData()
+
+
+def test_a_zombie_and_a_living_member_show_their_names(app, tmp_path):
+    w = _c64_window(tmp_path, POOL, 2)
+    assert _turns_as(w) == ("Zombie", 2)
+    w.party.member(0).record.set("turn_class", 0)
+    w._populate()
+    assert _turns_as(w) == ("N/A", 0)
+
+
+@pytest.mark.parametrize("game, value", [(POOL, 4), (CURSE, 2), (POOL, 13)])
+def test_a_c64_value_the_box_does_not_offer_shows_its_number_and_is_kept(
+        app, tmp_path, game, value):
+    w = _c64_window(tmp_path, game, value)
+    assert _turns_as(w) == (str(value), value)
+    assert w.dirty == set()
+    assert w._flush() == []
+    assert w.party.member(0).record.get("turn_class") == value
+
+
+def test_a_dos_pool_value_the_box_does_not_offer_shows_its_number_and_is_kept(
+        app, tmp_path):
+    w = _shown(_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE, turn_class=11))
+    assert w.party.port == "dos"
+    assert _turns_as(w) == ("11", 11)
+    assert _codes(w._widgets["turn_class"]) == ROWS_TO_ALL_BUT_LICH + [11]
+    assert w._flush() == []
+    assert w.party.member(0).record.get("turn_class") == 11
+
+
+def test_a_dos_curse_zombie_shows_its_name(app, tmp_path):
+    w = _shown(_dos_folder(tmp_path, dos_port.CURSE_OF_THE_AZURE_BONDS,
+                           turn_class=2))
+    assert _turns_as(w) == ("Zombie", 2)
+
+
+def test_an_unoffered_number_is_not_left_in_the_list_for_the_next_member(
+        app, tmp_path):
+    w = _c64_window(tmp_path, POOL, 4)
+    assert 4 in _codes(w._widgets["turn_class"])
+    w.party.member(0).record.set("turn_class", 1)
+    w._populate()
+    assert _codes(w._widgets["turn_class"]) == ROWS_TO_LICH
+    assert _turns_as(w) == ("Skeleton", 1)
+
+
+def test_choosing_a_name_writes_its_row(app, tmp_path):
+    w = _c64_window(tmp_path, POOL, 0)
+    box = w._widgets["turn_class"]
+    box.setCurrentIndex(box.findData(2))
+    assert w.dirty == {0}
+    assert w._flush() == []
+    assert w.party.member(0).record.get("turn_class") == 2
 
 
 # --- the disk globs ---------------------------------------------------------
