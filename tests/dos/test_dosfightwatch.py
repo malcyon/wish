@@ -1421,6 +1421,34 @@ def test_code_that_does_not_match_game_ovr_at_the_resolved_segment_is_not_armed(
     assert watch.summary(49, watch.party(), None)["conclusive"] is False
 
 
+def test_a_mismatch_from_a_superseded_arm_does_not_spoil_the_run_once_a_rearm_matches():
+    dbg, watch, _, at_menu = _ready()
+    _load(dbg)
+    watch.load = LOAD
+    dbg.put(LOAD, 0x12B2, b"\xff" * 8)
+    assert "handler" in watch.arm()["mismatched"]
+    _overlay(dbg, watch.ovr)                # the overlay is now loaded intact
+    assert watch.arm()["mismatched"] == [] and watch.mismatched == []
+    assert (LOAD, 0x12B2) in dbg.armed
+    dbg.pending = [_aroll(dbg), _pt(dbg, 0x0CF5), _at(dbg, STUB, 0xED)]
+    watch.run_fight(600, idle=lambda: True)
+    assert all(h.get("code_matches", True) for h in watch.halts)
+    assert not any("did not match" in w
+                   for w in watch.summary(49, at_menu, at_menu)["why"])
+
+
+def test_a_mismatch_on_the_arm_in_force_still_spoils_the_run():
+    dbg, watch, _, at_menu = _ready()
+    _load(dbg)
+    watch.load = LOAD
+    _overlay(dbg, watch.ovr)
+    assert watch.arm()["mismatched"] == []
+    dbg.put(LOAD, 0x12B2, b"\xff" * 8)
+    assert "handler" in watch.arm()["mismatched"]
+    assert any("did not match" in w
+               for w in watch.summary(49, at_menu, at_menu)["why"])
+
+
 # -- the attack roll's own stub, and the pair it brackets ------------------------
 
 def _attack_armed(dbg, seg):

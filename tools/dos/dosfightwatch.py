@@ -1748,6 +1748,9 @@ class PrayerWatch:
         `GAME.OVR`: Prayer's four, and the attack roll's list-10 call and return."""
         lay = self.layout
         self.s.clear_breakpoints()
+        # Every arm re-checks every routine, so a mismatch left by a superseded
+        # arm must not outlive the one now in force.
+        self.mismatched.clear()
         armed = []
         for kind, entry in lay.stubs.items():
             self.s.brk((self.stub, entry))
