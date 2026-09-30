@@ -32,7 +32,7 @@ from dataclasses import dataclass
 
 from .d64 import D64, load_payload, split_load_address
 from .savegame import SAVE0_LOAD_ADDRESS
-from .spells import LAST_SPELL
+from .spells import LAST_SPELL, POOL_OF_RADIANCE, SpellTable
 
 ITEM_AREA_BASE = 0x5900
 ITEM_BLOCK_STRIDE = 0x100
@@ -202,10 +202,14 @@ LOCATIONS = {0: "weapon", 1: "shield", 2: "body", 3: "hands", 5: "neck",
              11: "scroll", 12: "scroll"}
 LOCATION_USABLE_MAGIC = 14   # and above
 
-# Item byte +14 holds one namespace. Up to LAST_SPELL it is a real spell id;
-# from EFFECT_BASE it is an item-only effect stored EFFECT_BIAS above its real
-# id, continuing the spell list past RESTORATION (56) as a clean run 57-67.
-# Both CAMP and COMBAT do the SBC #$17 that recovers it.
+# On Pool of Radiance item byte +14 holds one namespace. Up to LAST_SPELL it is
+# a real spell id; from EFFECT_BASE it is an item-only effect stored EFFECT_BIAS
+# above its real id, continuing the spell list past RESTORATION (56) as a clean
+# run 57-67. CAMP ($114A, from 80) and COMBAT ($27AC, from 57) do the SBC #$17
+# that recovers it. The bias is Pool's alone: Curse of the Azure Bonds (CAMP
+# $12C9, COMBAT $0864) and Secret of the Silver Blades (CAMP $112C, COMBAT
+# $0868) pass +14 on as the spell id itself, and their item-only effects are
+# ids inside the spell range that `SpellTable.not_a_spell` lists.
 #
 # **It is not the same namespace as the record's effect list at 0x0AD**, though
 # the two share storage: SPELLE04 $ADD4 copies +14 verbatim into a free slot
@@ -494,15 +498,14 @@ class Item:
         is gone."""
         return self.raw[13]
 
-    @property
-    def effect(self) -> int | None:
-        """Byte +14 resolved to a spell id -- but only when +15 is zero.
+    def effect_in(self, spells: SpellTable) -> int | None:
+        """Byte +14 resolved to an effect id for a title -- only when +15 is zero.
 
-        One namespace, two ranges. At or below `LAST_SPELL` the byte is a real
-        spell id; from `EFFECT_BASE` it is an item-only effect stored
-        `EFFECT_BIAS` above its true id, so 80..90 mean 57..67 -- the SBC #$17
-        that both CAMP and COMBAT apply. POTION OF SPEED carries 80 and WAND OF
-        MAGIC MISSILES 88, giving 57 and 65.
+        Pool of Radiance: at or below `LAST_SPELL` the byte is a real spell id;
+        from `EFFECT_BASE` it is an item-only effect stored `EFFECT_BIAS` above
+        its true id, so 80..90 mean 57..67. POTION OF SPEED carries 80 and WAND
+        OF MAGIC MISSILES 88, giving 57 and 65. Every other title stores the id
+        itself, so the byte is returned as it is.
 
         **When +15 is non-zero, +14 is that handler's argument and not an
         effect at all**, so None is returned. GAUNTLETS OF OGRE POWER carries
@@ -515,6 +518,8 @@ class Item:
         v = self.raw[14]
         if v == 0:
             return None
+        if spells.key != POOL_OF_RADIANCE.key:
+            return v
         if v <= LAST_SPELL:
             return v
         return v - EFFECT_BIAS if v >= EFFECT_BASE else None

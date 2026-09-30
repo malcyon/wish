@@ -2290,6 +2290,7 @@ class EditorBinding(QObject):
         if found is None:
             self._apply_spell_table()
             self.traits.set_tables({}, {}, self._spell_table())
+            self.items.set_spells(self._spell_table())
             return
         game = self.party.game if self.party is not None else None
         for attr, read in (("charset", load_icon_charset),
@@ -2306,6 +2307,7 @@ class EditorBinding(QObject):
                 _log.exception("could not read %s off %s", attr, found)
         self.traits.set_tables(self.item_types, self.spell_names,
                                self._spell_table())
+        self.items.set_spells(self._spell_table())
         for member in (self.party.members if self.party else []):
             if member.inventory is not None:
                 member.inventory.names = self.item_names

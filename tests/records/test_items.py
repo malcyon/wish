@@ -8,6 +8,7 @@ from gamedata import disk_dir
 from goldbox.d64 import D64
 from goldbox.items import ITEM_AREA_BASE, ITEM_SIZE, items_for_slot, load_item_names
 from goldbox.savegame import SaveGame0
+from goldbox.spells import POOL_OF_RADIANCE
 
 # Wherever the player keeps them, not wherever one machine did.
 DISKS = str(disk_dir() or "no-disks-here")
@@ -194,8 +195,8 @@ def test_potions_and_wands_decode_to_item_only_effects():
     stored 23 above its true id."""
     from goldbox.items import Item, load_item_templates
     tpl = load_item_templates(f"{DISKS}/POOL1.D64")
-    assert Item(tpl["POTION OF SPEED"]).effect == 57
-    assert Item(tpl["WAND OF MAGIC MISSILES"]).effect == 65
+    assert Item(tpl["POTION OF SPEED"]).effect_in(POOL_OF_RADIANCE) == 57
+    assert Item(tpl["WAND OF MAGIC MISSILES"]).effect_in(POOL_OF_RADIANCE) == 65
     assert Item(tpl["WAND OF MAGIC MISSILES"]).charges == 20
 
 
@@ -207,7 +208,7 @@ def test_a_handler_argument_is_not_read_as_an_effect():
     tpl = load_item_templates(f"{DISKS}/POOL1.D64")
     sword = Item(tpl["TWO-HANDED SWORD +1 +3 VS UNDEAD"])
     assert sword.power == 0x88 and sword.is_passive
-    assert sword.effect is None
+    assert sword.effect_in(POOL_OF_RADIANCE) is None
 
 
 @game_disks
@@ -355,3 +356,45 @@ def test_only_the_holy_water_and_the_canary_take_a_bonus_off_the_roll():
         for index in negative:
             assert types[index].raw[TYPE_DAMAGE_LARGE + 2] == 0xFF
             assert types[index].raw[TYPE_DAMAGE_MEDIUM + 2] == 0xFF
+
+
+def _later_title(key):
+    """The title's disk, spell table and item templates, or a skip."""
+    from automap import gamedisks
+    from goldbox import spells
+    from goldbox.items import load_item_templates
+    where = gamedisks.find(key)
+    first = None if where is None else next(iter(sorted(
+        where.glob("*.[dD]64"))), None)
+    if first is None:
+        pytest.skip(f"needs the {key} disks")
+    from goldbox import c64_port
+    table = spells.BY_KEY[key]
+    return table, load_item_templates(str(first), game=c64_port.by_key(key))
+
+
+@pytest.mark.parametrize("key, name, expected", [
+    ("curse-of-the-azure-bonds", "POTION OF SPEED", 57),
+    ("curse-of-the-azure-bonds", "POTION EXTRA HEALING", 99),
+    ("curse-of-the-azure-bonds", "WAND OF ICE STORM", 87),
+    ("secret-of-the-silver-blades", "WAND OF ICE STORM", 87),
+    ("secret-of-the-silver-blades", "WAND OF MAGIC MISSILES", 65),
+])
+def test_a_later_title_stores_the_effect_id_itself(key, name, expected):
+    """Curse and Silver Blades do no SBC #$17: +14 is the id as it stands."""
+    from goldbox.items import Item
+    table, tpl = _later_title(key)
+    assert Item(tpl[name]).effect_in(table) == expected
+
+
+@pytest.mark.parametrize("key", ["curse-of-the-azure-bonds",
+                                 "secret-of-the-silver-blades"])
+def test_every_later_effect_id_is_a_spell_or_a_listed_item_only_id(key):
+    """An id in the name table's message tail would be named as a combat line."""
+    from goldbox.items import Item
+    table, tpl = _later_title(key)
+    ids = {Item(raw).effect_in(table) for raw in tpl.values()} - {None}
+    assert ids
+    stray = {i for i in ids
+             if not (1 <= i <= table.last_spell) and i not in table.not_a_spell}
+    assert not stray, stray

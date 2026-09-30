@@ -239,6 +239,11 @@ class InventoryModel(QAbstractTableModel):
     def __init__(self, inventory: Inventory | None = None):
         super().__init__()
         self.inventory = inventory
+        self.spells: SpellTable = spell_table(None)
+
+    def set_spells(self, spells: SpellTable) -> None:
+        """The open title's spell table, which decides how +14 reads."""
+        self.spells = spells
 
     def set_inventory(self, inventory: Inventory | None) -> None:
         self.beginResetModel()
@@ -320,8 +325,9 @@ class InventoryModel(QAbstractTableModel):
             lines.append(f"saving throws {item.saving_throw_bonus:+d}")
         if item.charges:
             lines.append(f"{item.charges} charges")
-        if item.effect is not None:
-            lines.append(f"effect: spell {item.effect}")
+        effect = item.effect_in(self.spells)
+        if effect is not None:
+            lines.append(f"effect: spell {effect}")
         if item.power:
             lines.append(f"power {item.power:#04x}"
                          + (" (applied while readied)" if item.is_passive else ""))
@@ -528,7 +534,7 @@ class ItemTraitsModel(QAbstractTableModel):
         last spell and a number is worse. The later titles have no such
         landmark, so they get the number.
         """
-        if sid <= self.spells.last_spell:
+        if sid <= self.spells.last_spell and sid not in self.spells.not_a_spell:
             return describe_spell(sid, self.spell_names, self.spells)
         if self.spells.last_spell == POOL_OF_RADIANCE.last_spell:
             return f"effect {sid} — the item-only range past RESTORATION"
@@ -598,8 +604,9 @@ class ItemTraitsModel(QAbstractTableModel):
             spells = [self._scroll_spell(s) for s in (charges, effect, power) if s]
             return [("Spells", ", ".join(spells) if spells else EMPTY_TEXT)]
         rows = [("Charges", str(charges) if charges else EMPTY_TEXT)]
-        if item.effect is not None:
-            rows.append(("Effect", self._spell(item.effect)))
+        effect_id = item.effect_in(self.spells)
+        if effect_id is not None:
+            rows.append(("Effect", self._spell(effect_id)))
         elif effect:
             # +15 is set, so +14 is that handler's argument -- the gauntlets'
             # 38, the undead sword's 3 -- and reading it as a spell is nonsense.
