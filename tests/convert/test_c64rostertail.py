@@ -14,7 +14,7 @@ import pytest
 from gamedata import needs_specimens, specimen_root
 from test_c64thac0 import _TYPES, _item
 
-from goldbox import c64_codec, dos_codec
+from goldbox import c64_codec, dos_codec, effects
 from goldbox.neutral import NeutralCharacter
 
 CURSE = "curse-of-the-azure-bonds"
@@ -83,6 +83,23 @@ def test_pool_armour_alone_is_recomputed_and_a_weapon_is_copied():
     assert weapon.get_raw("roster_tail") == STALE_TAIL
 
 
+def _native_strength_of(dos, title_key):
+    """The score the C64's own Strength gives this DOS record, or `None`."""
+    second = dos.get("abilities_second")
+    rows = dos.get("running_effects")
+    if not second or not rows:
+        return None
+    nodes = [effects.RunningEffect.from_record(
+        bytes(r)[:effects.RUNNING_EFFECT_SIZE]) for r in rows]
+    return effects.c64_later_strength_in_force(
+        title_key,
+        (second.get("strength"), second.get("exceptional_strength")),
+        (dos.get("strength"), dos.get("exceptional_strength") or 0), nodes,
+        dos.get("granted_effects") or (),
+        effects.later_strength_warrior(dos.get("levels"),
+                                       dos.get("former_levels")))
+
+
 @needs_specimens
 def test_the_c64_tail_agrees_with_the_dos_rebuild_on_every_unarmed_specimen():
     """DOS rebuilds these bytes with the same rule (`dos_combat_rebuild`), so
@@ -92,7 +109,8 @@ def test_the_c64_tail_agrees_with_the_dos_rebuild_on_every_unarmed_specimen():
     A record whose running Strength the writer rewrote to the C64's own score
     is left out: the DOS rebuild adds the damage step of the DOS score, and the
     C64's first fight adds the step of the score the C64 holds, so the two
-    differ by design. It must be a specimen with a running Strength.
+    differ by design. It must hold a running Strength node whose C64 cast is
+    what the writer's score equals.
     """
     root = specimen_root()
     checked, disagree, rescored = 0, [], []
@@ -117,13 +135,16 @@ def test_the_c64_tail_agrees_with_the_dos_rebuild_on_every_unarmed_specimen():
             if ((rec.get("strength"), rec.get("exceptional_strength"))
                     != (dos.get("strength"), dos.get("exceptional_strength"))):
                 rescored.append(f"{folder.name}/{path.name}")
+                assert (rec.get("strength"), rec.get("exceptional_strength")
+                        ) == _native_strength_of(dos, char.deltas.key), (
+                    f"{folder.name}/{path.name}: strength rewritten with no "
+                    f"running Strength to explain it")
                 continue
             checked += 1
             if rec.get_raw("roster_tail")[3:9] != rebuilt.attack_forms:
                 disagree.append(f"{folder.name}/{path.name}")
     assert disagree == []
-    assert {name.split("/")[0] for name in rescored} <= {
-        "WISH-SPEC-curse-667-strength-rebuild-dos-resave"}
+    assert rescored, "no specimen exercises the running-Strength skip"
     if checked < FULL_TREE:
         pytest.skip(f"only {checked} unarmed records found; a full specimen "
                     f"tree holds at least {FULL_TREE}")
