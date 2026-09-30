@@ -84,13 +84,15 @@ def disks_dir(named: str | None = None) -> pathlib.Path | None:
 def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
                       game: pathlib.Path | None,
                       disks: pathlib.Path,
-                      source_slot: str | None = None) -> dict:
+                      source_slot: str | None = None,
+                      names: "dict[int, str] | None" = None) -> dict:
     """Save As the source to `to` and say what landed.
 
     `to` is `"c64"` or `"dos"`, the destination port. `source_slot` picks
     which saved game a multi-slot DOS folder or Amiga disk holds, the same
     letter `editor.convert.Source.detect` takes; `None` keeps its default,
-    the alphabetically first slot. The report is `saveasdrive.save_as`'s:
+    the alphabetically first slot. `names` is `{position: name}`, what a
+    player would choose in the Shorten window. The report is `saveasdrive.save_as`'s:
     `written`, `slot`, `losses` and `dropped`, or `refused` and `error` when
     Save As would not publish it.
     """
@@ -109,7 +111,7 @@ def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
             window, source, to, folder,
             c64_folder=disks if to == "c64" else None,
             dos_folder=game if to == "dos" else None,
-            source_slot=source_slot)
+            source_slot=source_slot, names=names)
     finally:
         window.close()
     return report
@@ -344,6 +346,11 @@ def main(argv: list[str] | None = None) -> int:
                         "(default: tools.dos.dosbox.find_game())")
     p.add_argument("--disks", default=None,
                    help="the player's C64 game disks; read, never written")
+    p.add_argument("--name", action="append", default=[],
+                   metavar="POSITION=NAME",
+                   help="the name to give the character at POSITION in the "
+                        "party the conversion builds; repeat for each "
+                        "character a destination cannot show whole")
     p.add_argument("--walk", default="II",
                    help="C64: the moves savecheck walks after arriving")
     p.add_argument("--steps", type=int, default=2,
@@ -371,10 +378,25 @@ def main(argv: list[str] | None = None) -> int:
     game = pathlib.Path(args.game) if args.game else (
         dosbox.find_game() if args.to == "dos" else None)
 
+    names: dict[int, str] = {}
+    if args.name:
+        from tools.dos.acceptance import parse_name
+        for text in args.name:
+            try:
+                position, name = parse_name(text)
+            except ValueError as exc:
+                p.error(str(exc))
+            if position in names:
+                p.error(f"--name gives position {position} twice")
+            names[position] = name
+
     report = {"direction": f"{args.source} -> {args.to}"}
+    if names:
+        report["names"] = {str(k): v for k, v in names.items()}
     report["write"] = write_via_save_as(
         pathlib.Path(args.source).expanduser(), args.to, out, game, disks,
-        source_slot=args.source_slot.upper() if args.source_slot else None)
+        source_slot=args.source_slot.upper() if args.source_slot else None,
+        names=names or None)
     written = [pathlib.Path(p) for p in report["write"].get("written", [])]
     if not written:
         print(json.dumps(report, indent=2))

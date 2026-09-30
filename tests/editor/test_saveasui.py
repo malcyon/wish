@@ -736,7 +736,7 @@ class _UnfitSaveAs(_OverflowingSaveAs):
             return SimpleNamespace(destination=_StubDestination(path),
                                    names=dict(names or {}))
 
-        def choose(unfit, width, accept_label):
+        def choose(unfit, width, accept_label, shown=None):
             self.names_asked.append((unfit, width, accept_label))
             return (self.names_later_answers.pop(0)
                     if self.names_later_answers else self.names_answer)
@@ -891,3 +891,82 @@ def test_save_as_with_a_choice_reads_the_written_disk_back_without_a_false_misma
     (party, path), = adopted
     assert path == str(out)
     assert len(saveplan.c64_slot_records(out)) == 2
+
+
+class _RealNamesSaveAs:
+    """Save As to DOS of a real C64 Curse specimen through the real
+    `prepare_save_as`, with the name window and the publication replaced by
+    doubles that record what reached them."""
+
+    def __init__(self, app, tmp_path, monkeypatch, specimen):
+        from types import SimpleNamespace
+
+        from test_savepublish import (
+            CURSE_KEY,
+            _curse_dos_assets,
+            _registry_game_files,
+            _wish619_specimen,
+        )
+
+        path = _wish619_specimen("coab-c64", specimen)
+        assets = _curse_dos_assets()
+        assert _registry_game_files(CURSE_KEY) is not None
+        self.asked = []
+        self.published = []
+        self.said = []
+        self.target = tmp_path / "out"
+        self.binding = binding = EditorBinding(make_root(), str(path))
+        binding.begin_save_as("dos")
+        monkeypatch.setattr(binding, "_resolve_destination_assets",
+                            lambda: assets)
+        monkeypatch.setattr(ew.saveplan, "refuse_alias", lambda *a: None)
+        binding._child("button_destination_save_as").setEnabled(True)
+
+        def choose(unfit, width, accept_label, shown=None):
+            self.asked.append((unfit, width, shown))
+            return {position: "AB" + str(n)
+                    for n, (position, _name) in enumerate(unfit)}
+
+        def publish(plan, party, **_kwargs):
+            self.published.append(plan)
+            return SimpleNamespace(destination=plan.destination, backup=None,
+                                   party=party)
+
+        monkeypatch.setattr(ew.saveplan, "publish", publish)
+        monkeypatch.setattr(binding, "_adopt", lambda *a, **k: None)
+        monkeypatch.setattr(binding, "_choose_names", choose)
+        monkeypatch.setattr(
+            ew.QMessageBox, "critical",
+            lambda _parent, title, text: self.said.append((title, text)))
+
+    def press(self):
+        self.binding._child("destination_path").setText(str(self.target))
+        self.binding._child("button_destination_save_as").click()
+
+
+def test_the_name_window_opens_for_the_affected_characters_only(
+        app, tmp_path, monkeypatch):
+    run = _RealNamesSaveAs(
+        app, tmp_path, monkeypatch,
+        "WISH-SPEC-wish619-curse-punct-c64-resave.D64")
+    run.press()
+
+    assert run.said == []
+    (unfit, width, shown), = run.asked
+    assert sorted(name for _position, name in unfit) == ["A`B", "A{B|C}D~E"]
+    assert width == 15
+    assert shown == saveplan.shown_characters(
+        "dos", "curse-of-the-azure-bonds")
+    assert len(run.published) == 1
+
+
+def test_the_name_window_never_opens_for_names_that_show_as_typed(
+        app, tmp_path, monkeypatch):
+    run = _RealNamesSaveAs(
+        app, tmp_path, monkeypatch,
+        "WISH-SPEC-curse-551-paladin11-ranger11.D64")
+    run.press()
+
+    assert run.said == []
+    assert run.asked == []
+    assert len(run.published) == 1

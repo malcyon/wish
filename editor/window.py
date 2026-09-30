@@ -1915,7 +1915,8 @@ class EditorBinding(QObject):
                 # ones, now that Convert has been pressed.
                 choice = self._choose_names(
                     dialog.unfit_names.unfit, dialog.unfit_names.width,
-                    convert_mod.BUTTON_CONVERT)
+                    convert_mod.BUTTON_CONVERT,
+                    shown=dialog.unfit_names.shown)
                 if choice is None:
                     # Back to the Convert window with its rows as they were,
                     # the way Save As stays open.
@@ -1993,14 +1994,17 @@ class EditorBinding(QObject):
                 convert_mod.CONVERT_SUCCESS.format(folder=fresh))
             return result
 
-    def _choose_names(self, unfit, width: int, accept_label: str
+    def _choose_names(self, unfit, width: int, accept_label: str,
+                      shown: "frozenset[str] | None" = None
                       ) -> "dict[int, str] | None":
-        """Ask for a shorter name for every character whose name is over
-        `width`: one window, a box per character. `None` when the player
+        """Ask for another name for every character whose name is over
+        `width` or holds a character outside `shown`: one window, a box per
+        character. `None` when the player
         cancels; otherwise each character's name, keyed by its position."""
         from .namefit import NameFitDialog
 
-        dialog = NameFitDialog(unfit, width, accept_label, self.root)
+        dialog = NameFitDialog(unfit, width, accept_label, self.root,
+                                 shown=shown)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
         return dialog.chosen()
@@ -2871,7 +2875,8 @@ class EditorBinding(QObject):
                 choice = remembered_names[0]
             else:
                 choice = self._choose_names(exc.unfit, exc.width,
-                                            self._save_as_label())
+                                            self._save_as_label(),
+                                            shown=exc.shown)
                 if choice is None:
                     return None
             self._named = (choice, exc.unfit)

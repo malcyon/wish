@@ -625,14 +625,11 @@ class DosToC64(Direction):
                 options: "dosimport.GameFiles",
                 names: "Mapping[int, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None) -> Rehearsal:
-        if names:
-            # A DOS name is at most fifteen characters and the C64 field
-            # holds eighteen (`goldbox.layout.NAME_SIZE`, #626), so this
-            # direction never has a name to ask the player about.
-            raise saveplan.SaveAsError(
-                f"{self.source_port} to c64 never needs a chosen name")
         with source.folder() as folder:
-            conversion = dosimport.rehearse(folder, slot, options, leave=leave)
+            # Sent only when the player chose something, as `leave` is.
+            conversion = dosimport.rehearse(
+                folder, slot, options, leave=leave,
+                **({"names": names} if names else {}))
         name = self._name.format(slot=slot)
         return Rehearsal(conversion.report, {name: conversion.disk.to_bytes()})
 
@@ -683,13 +680,11 @@ class AmigaToC64(DosToC64):
             state = amiga_savegame.read_por_state(
                 savgam, source=f"{source.path} slot {slot}")
             # `read_por_slot` hands back `goldbox.dos_codec.DosCharacter`,
-            # not a neutral party -- `fit_names` cannot run against it, and
-            # a fifteen-character Pool of Radiance name never overflows the
-            # C64's eighteen, so this direction never has one to ask about.
-            if names:
-                raise saveplan.SaveAsError(
-                    f"{self.source_port} to c64 never needs a chosen name "
-                    f"for {self.shape.key}")
+            # not a neutral party -- `fit_names` cannot run against it, so
+            # the check runs on its names and the choice goes to the writer.
+            chosen = saveplan.check_names(
+                [c.name for c in party], self.destination_port,
+                self.shape.key, names)
             if leave:
                 raise saveplan.SaveAsError(
                     f"{self.source_port} to c64 has no joined scroll to "
@@ -702,17 +697,14 @@ class AmigaToC64(DosToC64):
             characters = [amiga_later.to_neutral_later(c)
                           for c in save.characters]
             party_icons = [amiga_combat_icon(c) for c in save.characters]
-            # Cannot fire today: an Amiga name is at most fifteen
-            # characters and the C64 field holds eighteen (#619's plan).
-            # Called anyway, so a direction added later does not have to
-            # remember to.
+            chosen = None
             characters = saveplan.fit_names(
                 characters, self.destination_port, self.shape.key, names)
         if party_icons is None:
             save0, save1, report = dos_codec.new_save_from(
                 state, characters, options.icon, options.animate,
                 portraits=options.portraits, game=self.destination_game,
-                leave=leave, item_types=options.item_types)
+                leave=leave, item_types=options.item_types, names=chosen)
         else:
             save0, save1, report = dos_codec.new_save_from_neutral(
                 state, characters, party_icons, options.icon, options.animate,

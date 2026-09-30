@@ -3032,6 +3032,7 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
                   clock_minutes: int | None = None,
                   leave: Collection[int] = (),
                   item_types: "Mapping[int, ItemType] | None" = None,
+                  name: str | None = None,
                   ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a DOS one.
 
@@ -3050,6 +3051,10 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     `leave` is the neutral inventory indices the player chose to leave
     behind, applied by :func:`leave_behind` before the C64 record is built.
 
+    `name` is the name the player chose for this character, put in the
+    neutral record before the C64 record is built, so the writer's own name
+    checks see it and record no loss for the name it replaced.
+
     The report names no character: it is one character's provenance, and which
     character that is belongs to the caller, which is the only thing that
     knows the slot and the marching position.  `convert_save` prefixes each of
@@ -3060,6 +3065,11 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     :func:`c64_name`.
     """
     out = to_neutral(dos, portraits=portraits)
+    if name is not None:
+        held = out.fields["name"]
+        out.fields["name"] = dataclasses.replace(
+            held, value=name,
+            origin=f"{held.origin}, renamed to the name the player chose")
     if leave:
         out = _without_left_behind(out, leave)
     return neutral_to_c64_record(out, icon=icon, payload=payload,
@@ -7490,6 +7500,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                    game=None,
                    leave: "Mapping[int, Collection[int]] | None" = None,
                    item_types: "Mapping[int, ItemType] | None" = None,
+                   names: "Mapping[int, str] | None" = None,
                    ) -> C64SaveReport:
     """Write a DOS party into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
@@ -7643,8 +7654,9 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                                icon_tables.get(dos_size(char.get("size")))),
                 portraits=portraits,
                 payload=save0, party_slot=place, clock_minutes=clock_mins,
-                leave=left, item_types=item_types)
-            name = char.name
+                leave=left, item_types=item_types,
+                name=(names or {}).get(index))
+            name = (names or {}).get(index, char.name)
         all_faced = all_faced and one.has_portrait
         # `party_order` in a roster block is the record's slot index, not the
         # marching position -- `goldbox/layout.py` 0x10D, and identity in every
@@ -7943,10 +7955,13 @@ def new_save_from(state: "world_state.WorldState",
                   game=None, *,
                   leave: "Mapping[int, Collection[int]] | None" = None,
                   item_types: "Mapping[int, ItemType] | None" = None,
+                  names: "Mapping[int, str] | None" = None,
                   ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a place and a party, owing nothing to another
     save (#118).  The engine `new_save` and #353's Amiga reader share; see
     :func:`write_c64_save` for `icon`, `animate` and `portraits`.
+
+    `names` maps a position in `party` to the name the player chose for it.
 
     Returns the two payloads and the report, whose `unwritten` is empty.
     """
@@ -7957,7 +7972,7 @@ def new_save_from(state: "world_state.WorldState",
     report = write_c64_save(save0, save1 or None, state, party,
                             icon=icon, animate=animate, portraits=portraits,
                             game=container, leave=leave,
-                            item_types=item_types)
+                            item_types=item_types, names=names)
     if report.unwritten:
         raise DosRecordError(
             f"{len(report.unwritten)} bytes of the save have no source and "
@@ -8000,6 +8015,7 @@ def new_save(folder: str | pathlib.Path, slot: str,
              game=None, *,
              leave: "Mapping[int, Collection[int]] | None" = None,
              item_types: "Mapping[int, ItemType] | None" = None,
+             names: "Mapping[int, str] | None" = None,
              ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a DOS one, owing nothing to another save (#118).
 
@@ -8031,7 +8047,8 @@ def new_save(folder: str | pathlib.Path, slot: str,
     state = world_state.from_dos(savgam_path.read_bytes(), shape,
                                   source=str(savgam_path))
     return new_save_from(state, party, icon, animate, portraits=portraits,
-                         game=container, leave=leave, item_types=item_types)
+                         game=container, leave=leave, item_types=item_types,
+                         names=names)
 
 
 def save_disk(save0: bytes, save1: bytes, game=None):

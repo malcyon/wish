@@ -197,3 +197,40 @@ def test_choose_names_gives_none_when_rejected_and_the_names_when_accepted(
         0: "FIRST", 1: LONG[:WIDTH]}
     assert seen["label"] == ACCEPT
     assert seen["title"] == namefit.TITLE
+
+
+# ---------------------------------------------------------------------------
+# A name the destination draws differently, and no name too long
+# ---------------------------------------------------------------------------
+
+def _shown_dialog(rows, shown=None):
+    from editor import saveplan
+
+    shown = shown or saveplan.shown_characters(
+        "dos", "curse-of-the-azure-bonds")
+    return NameFitDialog(rows, WIDTH, ACCEPT, shown=shown)
+
+
+def test_the_sentence_is_hidden_when_no_name_is_too_long(app):
+    dialog = _shown_dialog(((2, "A{B|C}D~E"),))
+    assert dialog.ui.explanation_label.isHidden()
+    assert dialog.windowTitle() == namefit.TITLE
+    assert _boxes(dialog)[0].text() == "ABCDE"
+
+
+def test_the_box_refuses_a_character_the_destination_draws_differently(app):
+    dialog = _shown_dialog(((2, "A{B|C}D~E"),))
+    validator = _boxes(dialog)[0].validator()
+    assert validator.validate("AB", 2)[0] == QValidator.State.Acceptable
+    assert validator.validate("A{", 2)[0] == QValidator.State.Invalid
+    # A lower-case letter is drawn as its capital, so it is not refused.
+    assert validator.validate("ab", 2)[0] == QValidator.State.Acceptable
+
+
+def test_the_sentence_shows_when_a_long_name_is_among_the_rows(app):
+    dialog = _shown_dialog(((0, LONG), (2, "A{B")))
+    assert not dialog.ui.explanation_label.isHidden()
+    assert dialog.ui.explanation_label.text() == (
+        namefit.LENGTH_SENTENCE.format(X=WIDTH))
+    assert _boxes(dialog)[0].text() == LONG[:WIDTH]
+    assert _boxes(dialog)[1].text() == "AB"

@@ -3978,7 +3978,7 @@ def test_pressing_convert_asks_and_the_names_reach_the_writer_by_position(
     window, _loaded = _window_for_pack_overflow(monkeypatch)
     asked = []
 
-    def choose(unfit, width, accept_label):
+    def choose(unfit, width, accept_label, shown=None):
         asked.append((unfit, width, accept_label))
         return {0: "FIRST", 1: "SECOND"}
 
@@ -4002,7 +4002,7 @@ def test_cancelling_the_name_window_writes_nothing(tmp_path, monkeypatch):
     dialog.close()
     window, loaded = _window_for_pack_overflow(monkeypatch,
                                                presses=[True, False])
-    monkeypatch.setattr(window, "_choose_names", lambda *a: None)
+    monkeypatch.setattr(window, "_choose_names", lambda *a, **k: None)
     try:
         outcome = _convert_c64_to_dos(window, tmp_path, out)
     finally:
@@ -4031,7 +4031,7 @@ def test_cancelling_the_name_window_returns_to_the_convert_window_and_asks_again
     answers = [None, {0: "FIRST", 1: "SECOND"}]
     asked = []
 
-    def choose(unfit, width, accept_label):
+    def choose(unfit, width, accept_label, shown=None):
         asked.append(unfit)
         return answers.pop(0)
 
@@ -4060,7 +4060,7 @@ def test_names_that_fit_never_ask(tmp_path, monkeypatch):
                                            {"SAVGAMA.DAT": b"a save"}), "A"))
     window, _loaded = _window_for_pack_overflow(monkeypatch)
     monkeypatch.setattr(window, "_choose_names",
-                        lambda *a: pytest.fail("the window was opened"))
+                        lambda *a, **k: pytest.fail("the window was opened"))
     try:
         assert _convert_c64_to_dos(window, tmp_path, out).startswith(
             "Converted to DOS")

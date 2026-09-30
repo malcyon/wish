@@ -376,7 +376,8 @@ class NamesDoNotFit(SaveAsError):
     to be asked for.
 
     `unfit` is `(position, name)` for every character whose name is over
-    `width`, in party order, so two characters sharing one long name are two
+    `width` or holds a character the destination does not show as typed
+    (`NAME_SHOWN`), in party order, so two characters sharing one long name are two
     entries -- the ones `fit_names` found nobody had a replacement for. The
     position is the character's place in the party the direction built, which
     for a C64 source is the character's row on the sheet. The message is for
@@ -384,9 +385,12 @@ class NamesDoNotFit(SaveAsError):
     """
 
     def __init__(self, unfit: "tuple[tuple[int, str], ...] | list[tuple[int, str]]",
-                 width: int):
+                 width: int, shown: "frozenset[str] | None" = None):
         self.unfit = tuple((position, name) for position, name in unfit)
         self.width = width
+        #: The characters the destination shows as typed, which the window
+        #: lets a name hold; every printable ASCII one when not given.
+        self.shown = ALL_PRINTABLE if shown is None else shown
         super().__init__(
             f"{len(self.unfit)} name(s) do not fit the {width}-character "
             f"field: " + "; ".join(f"{position}: {name}"
@@ -691,6 +695,111 @@ def name_width(port: str, title_key: str) -> int:
     return dos_port.FIELDS_BY_NAME_FOR[title_key]["name_text"].size
 
 
+#: Every printable ASCII character, what a name may hold when no destination
+#: narrows it.
+ALL_PRINTABLE = frozenset(chr(code) for code in range(0x20, 0x7F))
+
+#: Space and `!` to `Z`: what every port draws as typed, once a lower-case
+#: letter is read as its capital. A byte outside `0x20`-`0x7E` is in no set.
+_BASE_SHOWN = frozenset(chr(code) for code in range(0x20, 0x5B))
+
+#: The five punctuation characters between `Z` and the backquote.
+_UPPER_PUNCTUATION = frozenset("[\\]^_")
+
+#: Amiga Pool of Radiance deletes these at every save (the strip at
+#: `$1634C` in the program) and draws the rest of what it keeps as typed.
+_AMIGA_POOL_DELETES = frozenset(".*,?/:;")
+
+#: Per destination, `(port, title key)`: the characters it draws as the
+#: player typed them. Each row's evidence is in #619's comments.
+NAME_SHOWN: dict[tuple[str, str], frozenset[str]] = {
+    # DOS draws `[ \ ] ^ _` as other symbols, the backquote blank and
+    # `{ | } ~` as other glyphs (Pool and Curse measured). The three later
+    # titles are excluded the same way until measured.
+    **{("dos", key): _BASE_SHOWN for key in (
+        "pool-of-radiance", "curse-of-the-azure-bonds",
+        "secret-of-the-silver-blades", "pools-of-darkness")},
+    # C64 Pool draws `\` as a pound sign, `{ } ~` as `; = >` and the
+    # backquote blank.
+    ("c64", "pool-of-radiance"): _BASE_SHOWN,
+    # C64 Curse draws `{ | } ~` as other glyphs, and a comma cuts a removed
+    # character's file name; Silver Blades shares the engine.
+    ("c64", "curse-of-the-azure-bonds"): _BASE_SHOWN - {","},
+    ("c64", "secret-of-the-silver-blades"): _BASE_SHOWN - {","},
+    # Amiga Pool keeps and draws `[ \ ] ^ _`, the backquote and `{ } ~` as
+    # written, but deletes ` .*,?/:;` at its first save; the space is stored
+    # as $FF, which the strip leaves alone.
+    ("amiga", "pool-of-radiance"): (
+        (_BASE_SHOWN - _AMIGA_POOL_DELETES) | _UPPER_PUNCTUATION
+        | frozenset("`{}~")),
+    # Amiga Curse draws the backquote and `{ | } ~` as other glyphs; its
+    # creation entry types `0x20`-`0x5F`, so `[ \ ] ^ _` is expected to show.
+    # Silver Blades and Pools of Darkness are taken to match.
+    **{("amiga", key): _BASE_SHOWN | _UPPER_PUNCTUATION for key in (
+        "curse-of-the-azure-bonds", "secret-of-the-silver-blades",
+        "pools-of-darkness")},
+}
+
+
+def shown_characters(port: str, title_key: str) -> frozenset[str]:
+    """The characters this port and title draw as typed."""
+    return NAME_SHOWN[(port, title_key)]
+
+
+def shows_as_typed(ch: str, shown: frozenset[str]) -> bool:
+    """Whether `ch` is drawn as the player typed it. Every port draws a
+    lower-case letter as its capital, so that is the letter tested."""
+    return (ch.upper() if "a" <= ch <= "z" else ch) in shown
+
+
+def name_fits(name: str, port: str, title_key: str) -> bool:
+    """Whether the destination holds `name` whole and draws it as typed. A
+    trailing blank is not drawn, so it is not tested."""
+    shown = shown_characters(port, title_key)
+    return (len(name) <= name_width(port, title_key)
+            and all(shows_as_typed(ch, shown) for ch in name.rstrip()))
+
+
+def suggest_name(name: str, width: int, shown: frozenset[str]) -> str:
+    """`name` without the characters the destination does not show as typed,
+    cut to `width`."""
+    kept = "".join(ch for ch in name if shows_as_typed(ch, shown))
+    return kept[:width].rstrip()
+
+
+def check_names(current: "Sequence[str]", port: str, title_key: str,
+                names: "Mapping[int, str] | None" = None
+                ) -> dict[int, str]:
+    """The names to write, or `NamesDoNotFit` for the characters with none.
+
+    `current` is each character's name in party order and `names` maps a
+    position to the name the player chose. A chosen name that is empty, or
+    that the destination does not hold whole and show as typed, raises
+    `SaveAsError`, as does a position outside `current`.
+    """
+    width = name_width(port, title_key)
+    names = names or {}
+    for position in names:
+        if not 0 <= position < len(current):
+            raise SaveAsError(
+                f"position {position} is not a character in a party of "
+                f"{len(current)}")
+    unfit: list[tuple[int, str]] = []
+    for position, old in enumerate(current):
+        if position in names:
+            new = names[position]
+            if not new or not name_fits(new, port, title_key):
+                raise SaveAsError(
+                    f"{new!r} does not fit the {port} {width}-character "
+                    f"name field, or is not a name the {port} game shows "
+                    f"as typed")
+        elif not name_fits(old, port, title_key):
+            unfit.append((position, old))
+    if unfit:
+        raise NamesDoNotFit(unfit, width, shown_characters(port, title_key))
+    return dict(names)
+
+
 def fit_names(party: "Sequence[Any]", port: str, title_key: str,
              names: "Mapping[int, str] | None" = None) -> "list[Any]":
     """Give the destination a name it has nowhere to cut, or say who has none.
@@ -703,40 +812,32 @@ def fit_names(party: "Sequence[Any]", port: str, title_key: str,
     the characters in slot order and reverses them, and the sheet's marching
     order is that same reversal.
 
-    A chosen replacement that is empty, over `width`, or not printable
-    ASCII raises `SaveAsError`, as does a position that is not in `party` --
-    a caller's own mistake, never a player's typing reaching this far
-    unchecked. Every name still over `width` once the replacements are
-    applied is collected and raised as `NamesDoNotFit`, one entry per
-    character in party order, so a caller can put up one dialog rather than
-    refusing after the first.
+    A chosen replacement that is empty, over `width`, or holds a character
+    the destination does not show as typed raises `SaveAsError`, as does a
+    position that is not in `party` -- a caller's own mistake, never a
+    player's typing reaching this far unchecked. Every name the destination
+    would cut, delete characters from or draw differently, once the
+    replacements are applied, is collected and raised as `NamesDoNotFit`,
+    one entry per character in party order, so a caller can put up one
+    dialog rather than refusing after the first.
     """
     width = name_width(port, title_key)
-    names = names or {}
-    for position in names:
-        if not 0 <= position < len(party):
-            raise SaveAsError(
-                f"position {position} is not a character in a party of "
-                f"{len(party)}")
-    unfit: list[tuple[int, str]] = []
-    for position, char in enumerate(party):
-        held = char.value("name")
-        old = held.value
-        if position in names:
-            new = names[position]
-            if (not new or len(new) > width
-                    or any(not (0x20 <= ord(ch) <= 0x7E) for ch in new)):
-                raise SaveAsError(
-                    f"{new!r} does not fit the {port} {width}-character "
-                    f"name field, or is not printable ASCII")
-            char.fields["name"] = dataclasses.replace(
-                held, value=new,
-                origin=f"{held.origin}, renamed to fit the {port} {width}-"
-                      f"character name field")
-        elif len(old) > width:
-            unfit.append((position, old))
-    if unfit:
-        raise NamesDoNotFit(unfit, width)
+    unfit = None
+    try:
+        chosen = check_names([char.value("name").value for char in party],
+                             port, title_key, names)
+    except NamesDoNotFit as exc:
+        # The replacements that were given are applied before raising, so a
+        # caller that asks again for the rest still has them.
+        unfit, chosen = exc, dict(names or {})
+    for position, new in chosen.items():
+        held = party[position].value("name")
+        party[position].fields["name"] = dataclasses.replace(
+            held, value=new,
+            origin=f"{held.origin}, renamed to fit the {port} {width}-"
+                  f"character name field")
+    if unfit is not None:
+        raise unfit
     return list(party)
 
 

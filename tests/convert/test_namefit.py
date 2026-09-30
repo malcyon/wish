@@ -104,3 +104,111 @@ def test_name_width_per_port_and_title(key):
     assert saveplan.name_width("c64", key) == NAME_SIZE
     assert saveplan.name_width("dos", key) == 15
     assert saveplan.name_width("amiga", key) == 15
+
+
+# ---------------------------------------------------------------------------
+# What a destination shows as typed, not only how long a name it holds
+# ---------------------------------------------------------------------------
+
+POOL, CURSE, SILVER, DARKNESS = (
+    "pool-of-radiance", "curse-of-the-azure-bonds",
+    "secret-of-the-silver-blades", "pools-of-darkness")
+BACKQUOTE = "A`B"
+
+
+def _asks_for_a_name(port: str, title: str, name: str) -> bool:
+    try:
+        saveplan.check_names([name], port, title)
+    except saveplan.NamesDoNotFit as exc:
+        assert exc.unfit == ((0, name),)
+        return True
+    return False
+
+
+@pytest.mark.parametrize("port, title, name, unfit", [
+    # Amiga Pool deletes `. * , ? / : ;` at its first save and draws the
+    # rest as written.
+    ("amiga", POOL, "J.R", True),
+    ("amiga", POOL, "A|B", True),
+    ("amiga", POOL, "A[B", False),
+    ("amiga", POOL, "X{Y}Z~W", False),
+    ("amiga", POOL, "A B", False),
+    ("amiga", POOL, "Guy de Valois ", False),
+    # Amiga Curse and Silver Blades draw the backquote and `{ | } ~` as
+    # other glyphs.
+    ("amiga", CURSE, BACKQUOTE, True),
+    ("amiga", CURSE, "A{B", True),
+    ("amiga", CURSE, "F/T", False),
+    ("amiga", CURSE, "J,R", False),
+    ("amiga", CURSE, "A[B", False),
+    ("amiga", CURSE, "Guy de Valois ", False),
+    ("amiga", SILVER, BACKQUOTE, True),
+    ("amiga", SILVER, "A{B", True),
+    ("amiga", SILVER, "F/T", False),
+    ("amiga", SILVER, "Guy de Valois ", False),
+    # DOS draws `[ \ ] ^ _` and `{ | } ~` as other glyphs, and the backquote
+    # blank, on every title.
+    *[(port, title, name, True)
+      for port, title in (("dos", POOL), ("dos", CURSE), ("dos", SILVER),
+                          ("dos", DARKNESS))
+      for name in ("A[B", BACKQUOTE, "X~Y")],
+    *[(port, title, name, False)
+      for port, title in (("dos", POOL), ("dos", CURSE), ("dos", SILVER),
+                          ("dos", DARKNESS))
+      for name in ("J,R", "F/T", "Guy de Valois ")],
+    # The C64 draws the same characters differently, and Curse and Silver
+    # Blades cut a removed character's file name at a comma.
+    ("c64", POOL, "A[B", True),
+    ("c64", POOL, BACKQUOTE, True),
+    ("c64", POOL, "J,R", False),
+    ("c64", POOL, "F/T", False),
+    ("c64", CURSE, "J,R", True),
+    ("c64", CURSE, "F/T", False),
+    ("c64", CURSE, "Guy de Valois ", False),
+    ("c64", SILVER, "J,R", True),
+    ("c64", SILVER, "F/T", False),
+    ("c64", SILVER, "Guy de Valois ", False),
+    # A byte outside printable ASCII is drawn as something else everywhere.
+    *[(port, title, name, True)
+      for port, title in (("dos", CURSE), ("c64", POOL), ("amiga", CURSE),
+                          ("amiga", POOL))
+      for name in ("Xåy", "X\x01Y")],
+])
+def test_a_name_the_destination_cannot_show_is_named_as_unfit(
+        port, title, name, unfit):
+    assert _asks_for_a_name(port, title, name) is unfit
+    assert saveplan.name_fits(name, port, title) is (not unfit)
+
+
+def test_a_chosen_name_the_destination_cannot_show_is_refused():
+    with pytest.raises(saveplan.SaveAsError) as excinfo:
+        saveplan.check_names(["JR"], "dos", CURSE, {0: "A{B"})
+    assert not isinstance(excinfo.value, saveplan.NamesDoNotFit)
+
+
+def test_a_suggested_name_drops_what_the_destination_cannot_show_then_cuts():
+    shown = saveplan.shown_characters("dos", CURSE)
+    assert saveplan.suggest_name("A{B|C}D~E", 15, shown) == "ABCDE"
+    long_name = "ABCDEFGHIJKLMNOPQR"
+    assert saveplan.suggest_name(long_name, 15, shown) == long_name[:15]
+    assert saveplan.suggest_name("ABCDEFGHIJKLMN  PQR", 15, shown) == (
+        "ABCDEFGHIJKLMN")
+
+
+def test_check_names_names_the_same_characters_as_fit_names():
+    names = ["A{B", "SHORT", "ABCDEFGHIJKLMNOPQR"]
+    party = [_char(name) for name in names]
+    with pytest.raises(saveplan.NamesDoNotFit) as by_party:
+        saveplan.fit_names(party, "dos", boundarychars.GAME)
+    with pytest.raises(saveplan.NamesDoNotFit) as by_strings:
+        saveplan.check_names(names, "dos", boundarychars.GAME)
+    assert by_party.value.unfit == by_strings.value.unfit == (
+        (0, "A{B"), (2, "ABCDEFGHIJKLMNOPQR"))
+    assert by_strings.value.shown == saveplan.shown_characters(
+        "dos", boundarychars.GAME)
+
+
+def test_check_names_returns_the_choices_it_accepted():
+    assert saveplan.check_names(["A{B", "OK"], "dos", CURSE, {0: "AB"}) == {
+        0: "AB"}
+    assert saveplan.check_names(["OK"], "dos", CURSE) == {}

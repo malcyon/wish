@@ -98,6 +98,8 @@ from goldbox.iconparts import IconParts
 from goldbox.portraits import PortraitTables
 from goldbox.savegame import SaveGame0, SaveGame1
 
+from . import saveplan
+
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: whenever `WISH_DEBUG` is on -- the same pattern `editor/convert.py` and
 #: `editor/window.py` already use, rather than importing `wish.debuglog`
@@ -181,7 +183,8 @@ class Conversion:
 
 def rehearse(folder: str | pathlib.Path, slot: str,
              files: GameFiles,
-             leave: "Mapping[int, Collection[int]] | None" = None
+             leave: "Mapping[int, Collection[int]] | None" = None,
+             names: "Mapping[int, str] | None" = None
              ) -> Conversion:
     """Build the save and the disk in memory and report, writing nothing.
 
@@ -213,11 +216,16 @@ def rehearse(folder: str | pathlib.Path, slot: str,
             f"{party[0].deltas.title} has no C64 port to convert to, so "
             f"goldbox/c64_port.py has no entry for it (#176)",
             party[0].deltas.title) from None
+    # The records are `DosCharacter`s, not a neutral party, so the names are
+    # checked here and the player's choices go on to the writer.
+    chosen = saveplan.check_names([c.name for c in party], "c64", game.key,
+                                  names)
     payload0, payload1, report = dos_codec.new_save(folder, slot,
                                               files.icon, files.animate,
                                               portraits=files.portraits,
                                               game=game, leave=leave,
-                                              item_types=files.item_types)
+                                              item_types=files.item_types,
+                                              names=chosen)
     sg0 = SaveGame0.from_bytes(bytes(payload0), game)
     sg1 = SaveGame1(bytes(payload1), game) if payload1 else None
     disk = dos_codec.save_disk(bytes(payload0), bytes(payload1), game)

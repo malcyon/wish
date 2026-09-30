@@ -2687,3 +2687,142 @@ def test_a_silver_blades_dos_party_saved_as_amiga_is_a_copy_of_disk_one(
     assert {p: d for p, d in now.items() if p != slot_b} == was
     assert amiga_savegame.slots_present(
         written, amiga_savegame.SILVER_BLADES) == ["A", "B"]
+
+
+# ---------------------------------------------------------------------------
+# A name the destination draws differently is asked for, not written
+# ---------------------------------------------------------------------------
+
+CURSE_KEY = "curse-of-the-azure-bonds"
+
+
+def _wish619_specimen(platform_folder: str, name: str):
+    """A registered specimen a game wrote, or a skip."""
+    root = specimen_root()
+    where = None if root is None else root / platform_folder / name
+    if where is None or not where.exists():
+        pytest.skip(f"needs specimen {name} ({platform_folder}, "
+                    f"tools/registry/specimens.py)")
+    return where
+
+
+def _named(party, *names):
+    """The positions of the characters holding these names, in party order."""
+    return [i for i, m in enumerate(party.members)
+            if m.record.get("name") in names]
+
+
+def _curse_dos_assets():
+    from tools.dos import dosbox
+
+    files_for = _registry_game_files(CURSE_KEY)
+    try:
+        game_dir = dosbox.find_game("CURSE")
+    except FileNotFoundError:
+        game_dir = None
+    if files_for is None or game_dir is None:
+        pytest.skip("needs the Curse C64 disks and DOS game folder")
+    return saveplan.Assets(dos_folder=game_dir, source_files=files_for)
+
+
+def test_a_c64_curse_party_with_punctuation_dos_draws_differently_asks_for_names(
+        tmp_path):
+    """A player converts the C64 Curse party that a game saved holding
+    ``A`B`` and `A{B|C}D~E`. DOS draws the backquote blank and `{ | } ~` as
+    other glyphs, so exactly those two characters are asked for a name; the
+    names chosen are written and read back on the same characters."""
+    path = _wish619_specimen(
+        "coab-c64", "WISH-SPEC-wish619-curse-punct-c64-resave.D64")
+    assets = _curse_dos_assets()
+    party = Party(str(path))
+    affected = _named(party, "A`B", "A{B|C}D~E")
+    assert len(affected) == 2
+    out = tmp_path / "copy"
+
+    with pytest.raises(saveplan.NamesDoNotFit) as caught:
+        saveplan.prepare_save_as(party, "dos", out, assets)
+    assert [p for p, _name in caught.value.unfit] == affected
+    assert caught.value.shown == saveplan.shown_characters("dos", CURSE_KEY)
+    assert not out.exists()
+
+    chosen = dict(zip(affected, ("AB", "ABCDE")))
+    plan = saveplan.prepare_save_as(party, "dos", out, assets, names=chosen)
+    assert saveplan.losses(plan.report) == []
+    published = saveplan.publish(plan, party, assets=assets,
+                                 backups=tmp_path / "backups")
+
+    written = Party(convert.Source.detect(out, slot=published.destination.slot))
+    expected = [saveplan.edited_record(member) for member in party.members]
+    for position, name in chosen.items():
+        expected[position].set("name", name)
+    assert saveplan.compare(
+        expected, [member.record for member in written.members]) == []
+
+
+def test_a_dos_curse_party_with_punctuation_asks_for_names_before_the_c64(
+        tmp_path):
+    """The DOS Curse party a game saved holds ``A`B``, `A{B|C}D~E` and `J,R`;
+    the C64 draws the first two differently and cuts the third's file name at
+    the comma. Each is asked for, and the C64 disk holds the chosen names on
+    the characters that had them."""
+    folder = _wish619_specimen(
+        "coab-dos", "WISH-SPEC-wish619-curse-punct-dos-resave")
+    files_for = _registry_game_files(CURSE_KEY)
+    if files_for is None:
+        pytest.skip("needs the Curse C64 disks")
+    assets = saveplan.Assets(game_files=files_for)
+    party = Party(convert.Source.detect(folder, slot="B"))
+    affected = _named(party, "A`B", "A{B|C}D~E", "J,R")
+    assert len(affected) == 3
+    out = tmp_path / "WISHSAVE.D64"
+
+    with pytest.raises(saveplan.NamesDoNotFit) as caught:
+        saveplan.prepare_save_as(party, "c64", out, assets)
+    assert [p for p, _name in caught.value.unfit] == affected
+    assert not out.exists()
+
+    chosen = dict(zip(affected, ("AB", "ABCDE", "JR")))
+    plan = saveplan.prepare_save_as(party, "c64", out, assets, names=chosen)
+    assert saveplan.losses(plan.report) == []
+    saveplan.publish(plan, party, assets=assets, backups=tmp_path / "backups")
+
+    written = Party(str(out))
+    expected = [saveplan.edited_record(member) for member in party.members]
+    for position, name in chosen.items():
+        expected[position].set("name", name)
+    assert saveplan.compare(
+        expected, [member.record for member in written.members]) == []
+
+
+def test_a_dos_pool_party_with_punctuation_amiga_shows_as_typed_is_not_asked(
+        tmp_path):
+    """Amiga Pool of Radiance draws `[ \\ ] ^ _`, the backquote and `{ } ~` as
+    typed, so the party a DOS game saved with them converts with no question."""
+    from support.toamigapor import _por_disk_2
+
+    folder = _wish619_specimen(
+        "por-dos", "WISH-SPEC-wish619-pool-punct-dos-resave")
+    party = Party(convert.Source.detect(folder, slot="B"))
+    assets = saveplan.Assets(amiga_disk=_por_disk_2(tmp_path))
+    saveplan.prepare_save_as(party, "amiga", tmp_path / "copy.adf", assets)
+
+
+def test_ordinary_punctuation_and_lower_case_are_not_asked_for(tmp_path):
+    """`F/T`, a Curse character, and `Guy de Valois `, a Silver Blades one,
+    show correctly on every destination, so no name window opens for them."""
+    path = _wish619_specimen(
+        "coab-c64", "WISH-SPEC-curse-551-paladin11-ranger11.D64")
+    party = Party(str(path))
+    assert "F/T" in {m.record.get("name") for m in party.members}
+    assets = _curse_dos_assets()
+    saveplan.prepare_save_as(party, "dos", tmp_path / "copy", assets)
+
+    silver = _wish619_specimen("ssb-dos", "WISH-SPEC-ssb-628-c64-to-dos-guy-rest-heal")
+    folder_files = _registry_game_files("secret-of-the-silver-blades")
+    if folder_files is None:
+        pytest.skip("needs the Silver Blades C64 disks")
+    guy = Party(convert.Source.detect(silver))
+    assert any(m.record.get("name").startswith("GUY")
+               for m in guy.members)
+    saveplan.prepare_save_as(guy, "c64", tmp_path / "WISHSAVE.D64",
+                             saveplan.Assets(game_files=folder_files))
