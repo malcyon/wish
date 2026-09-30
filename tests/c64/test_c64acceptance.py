@@ -17,6 +17,7 @@ one. Two tests read the player's `PORSAVE13.D64` and skip without it.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import pathlib
@@ -149,7 +150,7 @@ def _raise_argv(tmp_path, *extra, step="temple-probe BRUTUS RAISE"):
 def test_temple_probe_main_accepts_raise_with_exactly_the_staging(
         tmp_path, monkeypatch):
     observed = []
-    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: A.TEMPLE_BRUTUS_SHA256)
     monkeypatch.setattr(A, "run", lambda args, steps, out, selected: observed.append(
         (steps, args.stage_record)) or 0)
     assert A.main(_raise_argv(tmp_path, *_RAISE_STAGING)) == 0
@@ -169,7 +170,7 @@ def test_temple_probe_main_accepts_raise_with_exactly_the_staging(
 ])
 def test_temple_probe_refuses_other_staging_before_a_slot_is_claimed(
         tmp_path, monkeypatch, extra, step):
-    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: A.TEMPLE_BRUTUS_SHA256)
     kwargs = {} if step is None else {"step": step}
     _refused_before_a_slot(tmp_path, monkeypatch, _raise_argv(
         tmp_path, *extra, **kwargs)[:-2])
@@ -197,7 +198,7 @@ def test_temple_probe_step_names_only_brutus():
 def test_temple_probe_rejects_other_modes_before_guest_claim(
         tmp_path, monkeypatch, extra):
     source = _fixture_disk(tmp_path)
-    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: A.TEMPLE_BRUTUS_SHA256)
     _refused_before_a_slot(tmp_path, monkeypatch, [
         "--save", str(source), "--disks", str(tmp_path), "--issue", "700",
         "--steps", "load", "temple-probe BRUTUS", *extra])
@@ -219,7 +220,7 @@ def test_temple_probe_refuses_unregistered_or_changed_source_before_guest_claim(
 def test_temple_probe_accepts_only_the_bounded_command(tmp_path, monkeypatch):
     source = _fixture_disk(tmp_path)
     observed = []
-    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: A.TEMPLE_BRUTUS_SHA256)
     monkeypatch.setattr(A, "run", lambda args, steps, out, selected: observed.append(
         (args, steps, out, selected)) or 0)
     assert A.main(["--title", "pool", "--save", str(source),
@@ -237,7 +238,7 @@ def test_temple_probe_accepts_only_the_bounded_command(tmp_path, monkeypatch):
 def test_temple_probe_main_accepts_the_heal_command(tmp_path, monkeypatch):
     source = _fixture_disk(tmp_path)
     observed = []
-    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: A.TEMPLE_BRUTUS_SHA256)
     monkeypatch.setattr(A, "run", lambda args, steps, out, selected: observed.append(
         steps) or 0)
     assert A.main(["--title", "pool", "--save", str(source),
@@ -284,7 +285,8 @@ def test_temple_source_guard_requires_registry_path_and_recorded_hash(
         tmp_path, monkeypatch):
     source = _fixture_disk(tmp_path)
     digest = A.specimens.sha256_file(source)
-    monkeypatch.setattr(A, "TEMPLE_SOURCE_SHA256", digest)
+    monkeypatch.setattr(A, "TEMPLE_SOURCES", {
+        digest: A.TEMPLE_SOURCES[A.TEMPLE_BRUTUS_SHA256]})
     entry = {"platform": "c64", "title": "Pool of Radiance",
              "_files": [source], "sha256": {source.name: digest}}
     monkeypatch.setattr(A.specimens, "list_specimens", lambda: [entry])
@@ -1106,7 +1108,7 @@ def test_temple_probe_pins_the_lost_stop_the_live_m_route_hit(
 
     This reconstructs the historical `M`-based route via monkeypatch to
     freeze that old failure message; it does not exercise the current
-    default `TEMPLE_ROUTE`. The happy-path test asserting
+    default BRUTUS route. The happy-path test asserting
     `session.moves == list("KKIIJI")` is what proves the current route."""
     old_route = (
         ("M", (0x14, 15, 4, 3), (0x14, 15, 4, 1)),
@@ -1115,7 +1117,9 @@ def test_temple_probe_pins_the_lost_stop_the_live_m_route_hit(
         ("J", (0, 1, 4, 1), (0, 1, 4, 0)),
         ("I", (0, 1, 4, 0), (0, 1, 3, 0)),
     )
-    monkeypatch.setattr(A, "TEMPLE_ROUTE", old_route)
+    monkeypatch.setattr(A, "TEMPLE_SOURCES", {
+        A.TEMPLE_BRUTUS_SHA256: dataclasses.replace(
+            A.TEMPLE_SOURCES[A.TEMPLE_BRUTUS_SHA256], route=old_route)})
     run, session, _ = _temple_fake_run(tmp_path, monkeypatch)
 
     def move_key(move):
@@ -2606,7 +2610,7 @@ def test_temple_probe_run_records_hashes_checkpoints_and_cleanup(
             assert self.temple_input_deadline == 1400
             return {"resident": {"slot": 5, "name": "BRUTUS"}}
 
-    monkeypatch.setattr(A, "temple_source_guard", lambda source: "checked")
+    monkeypatch.setattr(A, "temple_source_guard", lambda source: A.TEMPLE_BRUTUS_SHA256)
     rc, slot, out = _drive(tmp_path, monkeypatch,
                            ["load", "temple-probe BRUTUS"],
                            max_seconds=1500, pool=Probe)
@@ -2646,7 +2650,7 @@ def test_temple_cleanup_still_terminates_session_after_earlier_error(
             yield
             raise RuntimeError("watchers failed")
         monkeypatch.setattr(_Sess, "watching_dialogs", bad_watcher)
-    monkeypatch.setattr(A, "temple_source_guard", lambda source: "checked")
+    monkeypatch.setattr(A, "temple_source_guard", lambda source: A.TEMPLE_BRUTUS_SHA256)
     slot = _Slot(tmp_path)
     with pytest.raises(RuntimeError, match="restore failed|watchers failed"):
         _drive(tmp_path, monkeypatch, ["load", "temple-probe BRUTUS"],
@@ -9461,7 +9465,7 @@ class _Claimed(Exception):
 
 
 def _run_raise(tmp_path, monkeypatch, extra_byte=None, staging=True):
-    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: A.TEMPLE_BRUTUS_SHA256)
     real = A.stage
 
     def stage(*args, **kwargs):
@@ -9656,7 +9660,7 @@ def test_temple_probe_step_takes_pool_and_control_for_raise_only():
 def test_temple_probe_main_accepts_pool_with_exactly_its_staging(
         tmp_path, monkeypatch):
     observed = []
-    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: A.TEMPLE_BRUTUS_SHA256)
     monkeypatch.setattr(A, "run", lambda args, steps, out, selected: observed.append(
         (steps, args.stage_record)) or 0)
     assert A.main(_raise_argv(tmp_path, *_POOL_STAGING,
@@ -9682,7 +9686,7 @@ def test_temple_probe_main_accepts_pool_with_exactly_its_staging(
 ])
 def test_temple_probe_pool_refuses_other_staging_before_a_slot_is_claimed(
         tmp_path, monkeypatch, extra, step):
-    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: A.TEMPLE_BRUTUS_SHA256)
     _refused_before_a_slot(tmp_path, monkeypatch, _raise_argv(
         tmp_path, *extra, step=step)[:-2])
 
@@ -9707,7 +9711,7 @@ def test_guard_temple_source_passes_the_control_hash_only_for_a_control_step(
     seen = []
     monkeypatch.setattr(A, "temple_source_guard",
                         lambda path, expected=None: seen.append(expected)
-                        or "checked")
+                        or A.TEMPLE_BRUTUS_SHA256)
     A._guard_temple_source(tmp_path, [A.Step("load"), A.Step(
         "temple-probe", "BRUTUS RAISE CONTROL")])
     A._guard_temple_source(tmp_path, [A.Step("load"), A.Step(
@@ -9950,7 +9954,7 @@ def _leave_argv(tmp_path, arg, *steps):
 def test_temple_probe_main_accepts_a_save_after_a_pool_or_control_raise(
         tmp_path, monkeypatch, steps):
     observed = []
-    monkeypatch.setattr(A, "temple_source_guard", lambda *a: "checked")
+    monkeypatch.setattr(A, "temple_source_guard", lambda *a: A.TEMPLE_BRUTUS_SHA256)
     monkeypatch.setattr(A, "run", lambda args, got, out, source: observed.append(
         got) or 0)
     assert A.main(_leave_argv(tmp_path, steps[1], *steps)) == 0
@@ -9969,7 +9973,7 @@ def test_temple_probe_main_accepts_a_save_after_a_pool_or_control_raise(
 ])
 def test_temple_probe_main_still_refuses_anything_else_after_the_probe(
         tmp_path, monkeypatch, steps):
-    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: A.TEMPLE_BRUTUS_SHA256)
     arg = "BRUTUS RAISE POOL" if "POOL" in " ".join(steps) else (
         "BRUTUS RAISE CONTROL")
     _refused_before_a_slot(tmp_path, monkeypatch, _leave_argv(
@@ -10699,3 +10703,125 @@ def test_no_reading_is_taken_on_the_party_menu_and_the_world_step_takes_one(
     assert ["after" in r for r in summary["results"]] == [False, False, True]
     assert summary["results"][-1]["after"] == {"clock": [0] * 6}
     assert readings == [True]
+
+
+class _JISession(_TempleSession):
+    """WISHFTR's disk: two moves, `J` then `I`, from the square before the
+    temple, crossing no area. `side3` makes the last move draw a side-3
+    prompt, which nothing on this route approves."""
+
+    def __init__(self, out, *, side3=False, **kwargs):
+        super().__init__(out, **kwargs)
+        self.place = (0, 1, 4, 1)
+        self.side3 = side3
+
+    def move_key(self, move):
+        self.moves.append(move)
+        assert move == "JI"[len(self.moves) - 1]
+        self.window_text = ""
+        if len(self.moves) == 1:
+            self.place = (0, 1, 4, 0)
+            return
+        self.place = (0, 1, 3, 0)
+        if self.side3:
+            self.phase = "side3"
+        else:
+            self.typing = ["A PR", "A PRIESTESS GREETS YOU."]
+            self.phase = "question"
+
+
+def _ji_run(tmp_path, monkeypatch, *, side3=False):
+    run, _, events = _temple_fake_run(tmp_path, monkeypatch)
+    session = _JISession(tmp_path, side3=side3)
+    run.sess = session
+    reading = _temple_reading()
+    reading["party"][0]["name"] = "WISHFTR"
+    run.reading = lambda: reading
+    return run, session, events
+
+
+def test_temple_probe_wishftr_runs_two_moves_and_meets_no_side3_prompt(
+        tmp_path, monkeypatch):
+    run, session, _ = _ji_run(tmp_path, monkeypatch)
+    result = run.temple_probe("WISHFTR")
+    assert session.moves == list("JI")
+    assert result["route"] == "JI"
+    assert result["movement_keys"] == 2
+    assert result["side3_prompts"] == 0
+    assert result["questions"] == 1
+    assert session.keys == ["YES"]
+    assert run.temple_checkpoints[-1]["tag"] == "temple-arrival"
+
+
+def test_temple_probe_side3_prompt_on_a_route_with_no_crossing_stops(
+        tmp_path, monkeypatch):
+    run, session, _ = _ji_run(tmp_path, monkeypatch, side3=True)
+    with pytest.raises(A.StepFailed, match="unexpected or repeated disk"):
+        run.temple_probe("WISHFTR")
+    assert "side3" not in session.keys
+
+
+def test_temple_probe_refuses_a_member_the_source_does_not_hold(
+        tmp_path, monkeypatch):
+    run, _, _ = _ji_run(tmp_path, monkeypatch)
+    run.reading = _temple_reading  # BRUTUS is in the party, WISHFTR is not
+    with pytest.raises(A.StepFailed, match="loaded WISHFTR"):
+        run.temple_probe("WISHFTR")
+
+
+def test_temple_source_table_lists_each_route_and_its_crossing():
+    brutus = A.TEMPLE_SOURCES[A.TEMPLE_BRUTUS_SHA256]
+    wishftr = A.TEMPLE_SOURCES[A.TEMPLE_WISHFTR_SHA256]
+    assert brutus.route == A.TEMPLE_ROUTE
+    assert (brutus.crossing_index, brutus.last_index) == (2, 5)
+    assert wishftr.route == A.TEMPLE_ROUTE[4:]
+    assert (wishftr.crossing_index, wishftr.last_index) == (None, 1)
+    assert (wishftr.name, wishftr.slot, wishftr.row) == (
+        "WISHFTR", 5, (63, 32, 5, 0, 5))
+    assert A.TEMPLE_STAGING["WISHFTR RAISE POOL"] == A.TEMPLE_POOL_STAGING
+    assert "WISHFTR RAISE POOL" in A.TEMPLE_SAVE_ARGS
+    assert A.parse_steps(["load", "temple-probe WISHFTR RAISE POOL"])[1] == (
+        A.Step("temple-probe", "WISHFTR RAISE POOL"))
+
+
+def test_temple_route_with_two_crossings_is_refused():
+    two = (("I", (1, 0, 0, 0), (2, 0, 0, 0)), ("I", (2, 0, 0, 0), (3, 0, 0, 0)))
+    with pytest.raises(ValueError, match="at most one"):
+        A.temple_crossing_index(two)
+    assert A.temple_crossing_index(two[:1]) == 0
+
+
+def test_temple_source_guard_accepts_each_table_hash_and_refuses_others(
+        tmp_path, monkeypatch):
+    source = _fixture_disk(tmp_path)
+    digest = A.specimens.sha256_file(source)
+    entry = {"platform": "c64", "title": "Pool of Radiance",
+             "_files": [source], "sha256": {source.name: digest}}
+    monkeypatch.setattr(A.specimens, "list_specimens", lambda: [entry])
+    with pytest.raises(ValueError, match="SHA-256"):
+        A.temple_source_guard(source)
+    monkeypatch.setattr(A, "TEMPLE_SOURCES", {
+        digest: A.TEMPLE_SOURCES[A.TEMPLE_WISHFTR_SHA256]})
+    assert A.temple_source_guard(source) == digest
+    assert A._guard_temple_source(
+        source, [A.Step("load"), A.Step("temple-probe", "WISHFTR")]) == digest
+    with pytest.raises(ValueError, match="holds WISHFTR, not BRUTUS"):
+        A._guard_temple_source(
+            source, [A.Step("load"), A.Step("temple-probe", "BRUTUS")])
+
+
+def test_temple_probe_wishftr_argument_refused_before_a_slot_is_claimed(
+        tmp_path, monkeypatch):
+    """The disk is BRUTUS's, so a step naming WISHFTR stops at the guard."""
+    monkeypatch.setattr(A, "temple_source_guard",
+                        lambda path: A.TEMPLE_BRUTUS_SHA256)
+    _refused_before_a_slot(tmp_path, monkeypatch, _raise_argv(
+        tmp_path, "--stage-record", "0:0x0C1=0x70,0:0x0C2=0x17,5:0x018=18",
+        step="temple-probe WISHFTR RAISE POOL")[:-2])
+
+
+def test_temple_probe_on_an_unknown_hash_is_refused_before_a_slot_is_claimed(
+        tmp_path, monkeypatch):
+    _refused_before_a_slot(tmp_path, monkeypatch, _raise_argv(
+        tmp_path, "--stage-record", "0:0x0C1=0x70,0:0x0C2=0x17,5:0x018=18",
+        step="temple-probe WISHFTR RAISE POOL")[:-2])

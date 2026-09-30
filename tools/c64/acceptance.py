@@ -178,8 +178,13 @@ READY_SPECIMEN_ISSUE = (
 POOL_SPECIMEN_ISSUE = (
     "#700 (Converting a Pool of Radiance C64 party holding a camp-cast "
     "Animate Dead zombie needs more than fixing the refusal that blocks it)")
-TEMPLE_SOURCE_SHA256 = (
+TEMPLE_BRUTUS_SHA256 = (
     "7834be122f8a30c03f029d96b8ba39d0961545b998837e089e965e06a20edbe9")
+#: The registered specimen of a DOS-raised WISHFTR converted by Wish and
+#: saved by the C64 game: he is a zombie in slot 5 with his row 63, standing
+#: two moves from the temple.
+TEMPLE_WISHFTR_SHA256 = (
+    "7f6dc96080871104db147cd6d9392f1649cf0482f4d027ff70839ce075622dc8")
 #: The registered no-cast control specimen: the same party with BRUTUS at
 #: roster status `$83` and no Animate Dead applied, so his purse survives
 #: `DUNGEON`'s entry.
@@ -194,21 +199,43 @@ TEMPLE_ROUTE = (
     ("I", (0, 1, 4, 0), (0, 1, 3, 0)),
 )
 
-#: The route entry whose expected area differs from its before area (the
-#: only move allowed a side-3 disk prompt), and the route's last entry
-#: (temple arrival), computed from `TEMPLE_ROUTE` so a route-length change
-#: cannot silently strand these guards on a stale index. The assertion below
-#: makes a route with zero or two-or-more crossings fail import with a
-#: specific message, rather than a bare `StopIteration` or a second crossing
-#: silently misrouted as an unexpected disk prompt.
-_TEMPLE_CROSSINGS = [
-    i for i, (_, before, expected) in enumerate(TEMPLE_ROUTE)
-    if before[0] != expected[0]]
-assert len(_TEMPLE_CROSSINGS) == 1, (
-    "TEMPLE_ROUTE must cross exactly one area boundary, found "
-    f"{len(_TEMPLE_CROSSINGS)}")
-TEMPLE_CROSSING_INDEX = _TEMPLE_CROSSINGS[0]
-TEMPLE_LAST_INDEX = len(TEMPLE_ROUTE) - 1
+
+def temple_crossing_index(route) -> int | None:
+    """The route entry whose expected area differs from its before area: the
+    only move allowed a side-3 disk prompt. None for a route that crosses no
+    area, on which a side-3 prompt is unapproved. More than one crossing is
+    refused, or a second would be misrouted as an unexpected disk prompt."""
+    crossings = [i for i, (_, before, expected) in enumerate(route)
+                 if before[0] != expected[0]]
+    if len(crossings) > 1:
+        raise ValueError("a temple route crosses at most one area boundary, "
+                         f"found {len(crossings)}")
+    return crossings[0] if crossings else None
+
+
+@dataclasses.dataclass(frozen=True)
+class TempleSource:
+    """One registered disk the temple probe may start from: the walk to the
+    temple, the member it raises, his slot and effect row 63, and the
+    `--stage-record` bytes each `temple-probe` mode takes on it, keyed by the
+    argument's text after the name ('' for the bare name)."""
+    route: tuple
+    name: str
+    slot: int
+    row: tuple
+    staging: dict
+
+    def __post_init__(self):
+        temple_crossing_index(self.route)
+
+    @property
+    def crossing_index(self) -> int | None:
+        return temple_crossing_index(self.route)
+
+    @property
+    def last_index(self) -> int:
+        return len(self.route) - 1
+
 
 #: `$6E11` at the temple arrival screen, read live at `572b9ca0ee-temple-
 #: route-d` frame 10 (`docs/121-silver-blades.md`'s overlay name table calls
@@ -453,22 +480,17 @@ TEMPLE_RESULT_POLL = 0.05
 #: engine-controlled member's own purse is emptied on `DUNGEON` entry;
 #: `RAISE CONTROL` buys it on the no-cast specimen, where BRUTUS is an
 #: ordinary dead member (status `$83`) and needs no POOL.
-TEMPLE_PROBE_ARGS = ("BRUTUS", "BRUTUS HEAL", "BRUTUS RAISE",
-                     "BRUTUS RAISE POOL", "BRUTUS RAISE CONTROL")
 
-#: The `temple-probe` arguments a `save` step may follow, which then leaves
-#: the temple after an `alive` raise so the save runs from the world bar.
-TEMPLE_SAVE_ARGS = ("BRUTUS RAISE POOL", "BRUTUS RAISE CONTROL")
-
-#: The only `--stage-record` bytes a `RAISE` run takes, all on BRUTUS's slot:
-#: constitution 18 (the temple's roll then always succeeds) and 6,000 gold
-#: (`0x0C1`/`0x0C2`, little-endian `$1770`), so the 5,500 gold price is paid
-#: in the coin it is quoted in.
+#: The only `--stage-record` bytes a BRUTUS `RAISE` run takes, all on his
+#: slot: constitution 18 (the temple's roll then always succeeds) and 6,000
+#: gold (`0x0C1`/`0x0C2`, little-endian `$1770`), so the 5,500 gold price is
+#: paid in the coin it is quoted in.
 TEMPLE_RAISE_STAGING = ((5, 0x018, 18), (5, 0x0C1, 0x70), (5, 0x0C2, 0x17))
 
-#: The only bytes a `RAISE POOL` run takes: the same 6,000 gold, on MALCYON
-#: (slot 0, a player member whose purse survives), and constitution 18 on
-#: BRUTUS. POOL then moves the gold to the party's pool for the payment.
+#: The only bytes a `RAISE POOL` run takes: the same 6,000 gold, on the
+#: party member in slot 0 (a player member whose purse survives), and
+#: constitution 18 on the zombie in slot 5. POOL then moves the gold to the
+#: party's pool for the payment.
 TEMPLE_POOL_STAGING = ((0, 0x0C1, 0x70), (0, 0x0C2, 0x17), (5, 0x018, 18))
 
 #: The only bytes a `RAISE CONTROL` run takes: constitution 18 and 6,000 gold
@@ -476,11 +498,45 @@ TEMPLE_POOL_STAGING = ((0, 0x0C1, 0x70), (0, 0x0C2, 0x17), (5, 0x018, 18))
 TEMPLE_CONTROL_STAGING = ((5, 0x018, 18), (5, 0x0C1, 0x70),
                           (5, 0x0C2, 0x17))
 
+_TEMPLE_ROW = (63, 32, 5, 0, 5)
+
+#: The disks the probe starts from, by SHA-256. WISHFTR's disk stands two
+#: moves from the temple, so his route crosses no area; he takes no RAISE
+#: without POOL because his own purse is emptied at load.
+TEMPLE_SOURCES = {
+    TEMPLE_BRUTUS_SHA256: TempleSource(
+        TEMPLE_ROUTE, "BRUTUS", 5, _TEMPLE_ROW,
+        {"": (), " HEAL": (), " RAISE": TEMPLE_RAISE_STAGING,
+         " RAISE POOL": TEMPLE_POOL_STAGING,
+         " RAISE CONTROL": TEMPLE_CONTROL_STAGING}),
+    TEMPLE_WISHFTR_SHA256: TempleSource(
+        TEMPLE_ROUTE[4:], "WISHFTR", 5, _TEMPLE_ROW,
+        {"": (), " HEAL": (), " RAISE POOL": TEMPLE_POOL_STAGING}),
+}
+
+TEMPLE_PROBE_ARGS = tuple(f"{src.name}{mode}"
+                          for src in TEMPLE_SOURCES.values()
+                          for mode in src.staging)
+
+#: The `temple-probe` arguments a `save` step may follow, which then leaves
+#: the temple after an `alive` raise so the save runs from the world bar.
+TEMPLE_SAVE_ARGS = tuple(arg for arg in TEMPLE_PROBE_ARGS
+                         if arg.endswith((" POOL", " CONTROL")))
+
 #: The staging each `temple-probe` argument takes; none for the read-only ones.
-TEMPLE_STAGING = {"BRUTUS": (), "BRUTUS HEAL": (),
-                  "BRUTUS RAISE": TEMPLE_RAISE_STAGING,
-                  "BRUTUS RAISE POOL": TEMPLE_POOL_STAGING,
-                  "BRUTUS RAISE CONTROL": TEMPLE_CONTROL_STAGING}
+TEMPLE_STAGING = {f"{src.name}{mode}": staging
+                  for src in TEMPLE_SOURCES.values()
+                  for mode, staging in src.staging.items()}
+
+
+def temple_source_named(who: str) -> TempleSource:
+    """The source whose member the `temple-probe` argument WHO names."""
+    name = who.split(" ", 1)[0]
+    for src in TEMPLE_SOURCES.values():
+        if src.name == name:
+            return src
+    raise KeyError(name)
+
 
 #: The POOL prompt's text (`POST.COM $1AD8`), and how long to wait for it and
 #: for the temple bar to return after it is answered.
@@ -636,9 +692,8 @@ def parse_steps(texts) -> list[Step]:
         elif verb == "ready":
             parse_ready(arg)
         elif verb == "temple-probe" and arg not in TEMPLE_PROBE_ARGS:
-            raise ValueError("temple-probe requires BRUTUS, optionally "
-                             "followed by HEAL, RAISE, RAISE POOL or "
-                             "RAISE CONTROL")
+            raise ValueError("temple-probe requires one of: "
+                             + ", ".join(TEMPLE_PROBE_ARGS))
         elif verb == "warp":
             parse_warp(arg)
         elif verb == "fight" and arg and not (arg.isdigit() and int(arg) > 0):
@@ -734,14 +789,15 @@ def parse_warp(arg: str) -> int:
 
 def temple_source_guard(source: pathlib.Path,
                         expected: str | None = None) -> str:
-    """Require the exact registered, unchanged animated BRUTUS source, or
-    the control specimen when EXPECTED is `TEMPLE_CONTROL_SHA256`."""
+    """Require an exact registered, unchanged `TEMPLE_SOURCES` disk, or the
+    control specimen when EXPECTED is `TEMPLE_CONTROL_SHA256`. Returns the
+    SHA-256."""
     source = source.resolve()
     digest = specimens.sha256_file(source)
-    expected = expected or TEMPLE_SOURCE_SHA256
-    if digest != expected:
+    allowed = [expected] if expected else list(TEMPLE_SOURCES)
+    if digest not in allowed:
         raise ValueError(f"temple source SHA-256 {digest} is not "
-                         f"{expected}")
+                         + " or ".join(allowed))
     for entry in specimens.list_specimens():
         if (entry.get("platform") == "c64"
                 and entry.get("title") == "Pool of Radiance"
@@ -756,7 +812,13 @@ def _guard_temple_source(source: pathlib.Path, steps: list[Step]) -> str:
     if any(step.verb == "temple-probe" and step.arg.endswith(" CONTROL")
            for step in steps):
         return temple_source_guard(source, TEMPLE_CONTROL_SHA256)
-    return temple_source_guard(source)
+    digest = temple_source_guard(source)
+    name = next(step.arg for step in steps
+                if step.verb == "temple-probe").split(" ", 1)[0]
+    owner = TEMPLE_SOURCES[digest].name
+    if owner != name:
+        raise ValueError(f"temple source {digest} holds {owner}, not {name}")
+    return digest
 
 
 def temple_staging_check(source: pathlib.Path, staged: pathlib.Path,
@@ -2354,7 +2416,8 @@ class PoolRun:
         self.log.emit("temple-move", move=move, before=before)
 
     def _temple_transition(self, n: int, before: tuple[int, ...],
-                           expected: tuple[int, ...], counters: dict) -> dict:
+                           expected: tuple[int, ...], counters: dict,
+                           crossing_at: int | None, last_at: int) -> dict:
         limit = min(self.clock() + 90, self.temple_input_deadline)
         disk_visible = continuation_visible = question_visible = False
         question_since = None
@@ -2372,7 +2435,7 @@ class PoolRun:
                 if question_visible:
                     time.sleep(0.3)
                     continue
-                if not (n == TEMPLE_LAST_INDEX and counters["questions"] == 0
+                if not (n == last_at and counters["questions"] == 0
                         and self._temple_heal_question(screen)):
                     self._temple_stop("yes-no", "unapproved YES/NO prompt",
                                       sample)
@@ -2405,7 +2468,7 @@ class PoolRun:
                 if disk_visible:
                     time.sleep(0.3)
                     continue
-                if not (n == TEMPLE_CROSSING_INDEX and not counters["disk"]
+                if not (n == crossing_at and not counters["disk"]
                         and self._temple_side3(screen)):
                     self._temple_stop("disk", "unexpected or repeated disk prompt",
                                       sample)
@@ -2448,16 +2511,16 @@ class PoolRun:
                 continue
             if place == expected:
                 mode_ok = (sample.state["mode"] == S.DUNGEON
-                           or (n == TEMPLE_LAST_INDEX
+                           or (n == last_at
                                and sample.state["mode"] == TEMPLE_ARRIVAL_MODE))
                 if sample.state["area_pending"] or not mode_ok:
                     time.sleep(0.3)
                     continue
-                if n == TEMPLE_LAST_INDEX and self._temple_is_greeting(screen):
+                if n == last_at and self._temple_is_greeting(screen):
                     if S.word_column(screen.row(24), "HEAL") < 0:
                         self._temple_stop("menu", "HEAL absent from temple bar",
                                           sample)
-                elif n == TEMPLE_LAST_INDEX:
+                elif n == last_at:
                     if not (self._temple_is_world(screen)
                             or self._temple_is_move(screen)):
                         self._temple_stop("event", "unexpected temple arrival",
@@ -2469,7 +2532,7 @@ class PoolRun:
                     self._temple_stop("event", "unexpected screen after movement",
                                       sample)
                 status = S.parse_status(screen.text())
-                greeting = (n == TEMPLE_LAST_INDEX
+                greeting = (n == last_at
                             and self._temple_is_greeting(screen))
                 if status is None:
                     # A menu or picture screen (the temple greeting) can
@@ -2483,7 +2546,7 @@ class PoolRun:
                     continue
                 if (self._temple_agrees(prior, sample) and prior.screen is not None
                         and prior.screen.text() == screen.text()):
-                    tag = ("temple-arrival" if n == TEMPLE_LAST_INDEX
+                    tag = ("temple-arrival" if n == last_at
                            else f"move-{n + 1}-settled")
                     return self.temple_checkpoint(tag, sample)
             elif place != before:
@@ -2849,51 +2912,56 @@ class PoolRun:
         goes on to `_temple_leave`, so a `save` step can run from the world
         bar."""
         if who not in TEMPLE_PROBE_ARGS or self.game.key != "pool-of-radiance":
-            raise StepFailed("temple probe requires Pool BRUTUS")
-        raising = who.startswith("BRUTUS RAISE")
+            raise StepFailed("temple probe requires a Pool member it knows")
+        source = temple_source_named(who)
+        route = source.route
+        raising = " RAISE" in who
         pooling = who.endswith(" POOL")
         control = who.endswith(" CONTROL")
         heal = raising or who.endswith(" HEAL")
         initial = self.temple_checkpoint(
             "loaded-source", self._temple_steady("in the loaded source"))
         place = self._temple_place(initial["state"])
-        if (place != TEMPLE_ROUTE[0][1]
+        if (place != route[0][1]
                 or initial["state"]["mode"] != S.DUNGEON
                 or initial["state"]["area_pending"]):
             self._temple_stop("source-place", f"loaded place {place} is not "
-                              f"{TEMPLE_ROUTE[0][1]}")
+                              f"{route[0][1]}")
         reading = initial["reading"]
         party = reading.get("party", [])
-        named = [p for p in party if p.get("name") == "BRUTUS"]
+        named = [p for p in party if p.get("name") == source.name]
         member = named[0] if len(named) == 1 else None
         traits = [] if member is None else member.get("traits", [])
         effect_rows = reading.get("effect_rows", [])
         if control:
             # An ordinary dead member: roster status $83 and the engine-
             # controlled bit (0x0B8 bit 7) clear, so his purse is kept.
-            fits = (member is not None and member.get("slot") == 5
+            fits = (member is not None and member.get("slot") == source.slot
                     and member.get("status") == 0x83
                     and member.get("record_bytes", {}).get("0xB8", 0x80)
                     & 0x80 == 0)
-            what = "control BRUTUS is not an ordinary status $83 member"
+            what = f"control {source.name} is not an ordinary status $83 member"
         else:
-            fits = (member is not None and member.get("slot") == 5
+            fits = (member is not None and member.get("slot") == source.slot
                     and member.get("status") == 0x03
                     and len(traits) == 10 and traits[9] == 32
                     and member.get("creature_type") == 4
                     and member.get("record_bytes", {}).get("0xA3") == 2
                     and len(effect_rows) == 64
-                    and effect_rows[63] == [63, 32, 5, 0, 5])
-            what = ("loaded BRUTUS or row 63 does not match the registered "
-                    "animated source")
+                    and effect_rows[63] == list(source.row))
+            what = (f"loaded {source.name} or row 63 does not match the "
+                    "registered animated source")
         if not fits:
             self._temple_stop("source-identity", what)
         counters = {"disk": 0, "continuations": 0, "questions": 0}
         arrival = None
-        for n, (move, before, expected) in enumerate(TEMPLE_ROUTE):
+        for n, (move, before, expected) in enumerate(route):
             self._temple_move(move, before)
-            arrival = self._temple_transition(n, before, expected, counters)
-        result = {"route": "KKIIJI", "movement_keys": 6,
+            arrival = self._temple_transition(
+                n, before, expected, counters, source.crossing_index,
+                source.last_index)
+        result = {"route": "".join(step[0] for step in route),
+                  "movement_keys": len(route),
                   "side3_prompts": counters["disk"],
                   "continuations": counters["continuations"],
                   "questions": counters["questions"],
@@ -2903,9 +2971,11 @@ class PoolRun:
         if heal:
             at_arrival = self._temple_steady("before HEAL")
             if (at_arrival.screen is None
-                    or not self._temple_top_row_is(at_arrival.screen, "BRUTUS")):
-                self._temple_stop("member", "BRUTUS is not the highlighted "
-                                  "top row of the party panel", at_arrival)
+                    or not self._temple_top_row_is(at_arrival.screen,
+                                                   source.name)):
+                self._temple_stop("member", f"{source.name} is not the "
+                                  "highlighted top row of the party panel",
+                                  at_arrival)
             self._temple_select_bar("HEAL", "temple")
             kept = self._temple_heal_screen(at_arrival.screen)
             result["heal_screen"] = {"stem": kept["stem"],
@@ -6233,7 +6303,7 @@ def main(argv: list[str] | None = None) -> int:
                          "'rest 8h', 'walk I', 'fight [SECONDS]', 'peek ADDR N', "
                          "'cast CASTER:SPELL[>TARGET]', 'cure PALADIN>TARGET', "
                          "'ready WHO>LABEL' (Pool only), "
-                         "'temple-probe BRUTUS [HEAL|RAISE]' (bounded Pool observation), save")
+                         "'temple-probe NAME [HEAL|RAISE]' (bounded Pool observation), save")
     ap.add_argument("--checkpoint", action="append", default=[],
                     metavar="ADDR[=NAME]",
                     help="hex; a non-stopping exec checkpoint armed after the "
@@ -6331,7 +6401,7 @@ def main(argv: list[str] | None = None) -> int:
                 or args.walk != "I" or args.walk_steps != 40
                 or not 100 < args.max_seconds <= 1500):
             ap.error("temple-probe requires exactly --title pool --issue 700 "
-                     "--steps load 'temple-probe BRUTUS [HEAL|RAISE [POOL|CONTROL]]' "
+                     "--steps load 'temple-probe NAME [HEAL|RAISE [POOL|CONTROL]]' "
                      "[save, after RAISE POOL or RAISE CONTROL only], "
                      "no staging (RAISE takes exactly BRUTUS's constitution "
                      "18 and 6,000 gold; RAISE POOL, 6,000 gold on MALCYON "
