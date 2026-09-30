@@ -95,6 +95,7 @@ class Addr:
     """The two windows `idle_in_key_window` reads, nothing else."""
     key_wait = (0x1000, 0x1010)
     key_fetch = (0x2000, 0x2010)
+    mode = 0x7F11
 
 
 def test_idle_in_key_window_confirms_a_pc_genuinely_in_the_window():
@@ -237,6 +238,8 @@ class WorldSess:
         self.prompt_at = set(prompt_at)
         self.walk_ok = walk_ok
         self.walked: str | None = None
+        self.after_walk = None
+        self.bars: list[str] = []
         self.calls = 0
         self.selected: list[str] = []
         self.kernal: list[int] = []
@@ -263,8 +266,11 @@ class WorldSess:
     def _screen(self):
         if self.walked is not None:
             # The read straight after a walk that reached its row: the same
-            # screen with the highlight moved there, the script not advanced.
+            # screen with the highlight moved there, the script not advanced
+            # -- or whatever `after_walk` says the game had put up by then.
             label, self.walked = self.walked, None
+            if self.after_walk is not None:
+                return self.after_walk
             if label == "EXIT":
                 return picker_screen(len(PARTY))
             return menu_screen(ENTRIES.index(label))
@@ -300,6 +306,10 @@ class WorldSess:
             self.walked = label
         return self.walk_ok
 
+    def select_bar(self, label, **kw):
+        self.bars.append(label)
+        return True
+
     def press_kernal(self, code):
         self.kernal.append(code)
         self.returned_at.append(self.shown)
@@ -310,6 +320,25 @@ class WorldSess:
         self.logged.append(" ".join(str(x) for x in a))
 
 
+class Modes:
+    """LINKER's mode byte, one value per read, the last one repeating; None
+    is a failed read. Records how many reads were made."""
+
+    def __init__(self, values):
+        self.values = list(values) if isinstance(values, (list, tuple)) \
+            else [values]
+        self.reads = 0
+        self.last = "unread"
+
+    def __call__(self, sess, addr, errors=None):
+        v = self.values[min(self.reads, len(self.values) - 1)]
+        self.reads += 1
+        self.last = v
+        if v is None and errors is not None:
+            errors.append(OSError("monitor did not answer"))
+        return v
+
+
 def _quiet(monkeypatch, mode=1):
     clock = FakeClock()
     monkeypatch.setattr(SSB.time, "time", clock.time)
@@ -317,8 +346,9 @@ def _quiet(monkeypatch, mode=1):
     monkeypatch.setattr(SSB, "impossible_side", lambda *a, **k: None)
     monkeypatch.setattr(SSB, "idle_in_key_window", lambda sess, addr: None)
     # LINKER's mode byte: 1 is DUNGEON, the world; 0 is GEN, the party menu.
-    monkeypatch.setattr(SSB, "overlay_mode", lambda sess, addr: mode,
-                        raising=False)
+    modes = Modes(mode)
+    monkeypatch.setattr(SSB, "overlay_mode", modes, raising=False)
+    return modes
 
 
 MENU = ("BEGIN ADVENTURING", "BEGIN ADVENTURING")
@@ -538,3 +568,92 @@ def test_load_started_reads_a_real_screen_both_ways():
     # load, and once it is answered row 24 is blank under the same menu.
     assert SSB.load_started(menu_screen(None, row24=SIDE_2)) is True
     assert SSB.load_started(menu_screen(None)) is True
+
+
+
+def test_a_post_walk_screen_with_a_disk_prompt_gets_no_return(monkeypatch):
+    """The walk reached BEGIN and the game took its Return at once: the side
+    prompt is drawn when the screen is read again, and a Return there would
+    answer it with the wrong side in the drive."""
+    _quiet(monkeypatch)
+    sess = WorldSess([MENU, PROMPT, WORLD], prompt_at={1})
+    sess.after_walk = menu_screen(len(ENTRIES) - 1, row24=SIDE_2)
+    assert SSB.enter_world(sess, Addr(), timeout=120.0, fix=False,
+                           stop_at_idle=False) is True
+    assert sess.selected == ["BEGIN ADVENTURING"]
+    assert sess.kernal == []
+
+
+def test_a_post_walk_screen_with_no_entry_white_gets_no_return(monkeypatch):
+    """The game took the walk's own Return and cleared the highlight: the
+    load has started, and a second Return would go into it."""
+    _quiet(monkeypatch)
+    sess = WorldSess([MENU, WORLD])
+    sess.after_walk = menu_screen(None, row24="ONWARD BOUND")
+    assert SSB.enter_world(sess, Addr(), timeout=120.0, fix=False,
+                           stop_at_idle=False) is True
+    assert sess.kernal == []
+
+
+TREASURE = ("VIEW TAKE POOL SHARE EXIT", "VIEW TAKE POOL SHARE EXIT")
+
+
+def test_nothing_is_pressed_after_begin_until_the_mode_leaves_gen(
+        monkeypatch):
+    """A bar with EXIT on it while the mode byte still reads 0 gets nothing;
+    the same bar once DUNGEON runs gets its EXIT."""
+    modes = _quiet(monkeypatch, mode=[0] * 6 + [1])
+    pressed_at: list = []
+
+    class Sess(WorldSess):
+        def select_bar(self, label, **kw):
+            pressed_at.append(modes.last)
+            return super().select_bar(label, **kw)
+
+    sess = Sess([MENU] + [TREASURE] * 12 + [WORLD])
+    assert SSB.enter_world(sess, Addr(), timeout=240.0, fix=False,
+                           stop_at_idle=False) is True
+    # One read per pass: six passes at mode 0 with nothing pressed, then the
+    # read of 1, after which nothing more needs reading.
+    assert modes.reads == 7
+    assert pressed_at and set(pressed_at) == {1}
+    assert sess.kernal == [0x0D] + [0x0D] * len(sess.bars)
+
+
+def test_a_slow_load_out_of_gen_is_waited_for_not_given_up(monkeypatch):
+    """Mode 0 for a minute with the screen unchanged and the PC not in a key
+    window (the load of DUNGEON still running): no give-up, no key."""
+    _quiet(monkeypatch, mode=[0] * 40 + [1])
+    escapes = []
+    sess = WorldSess([MENU] + [("A SCREEN", "A SCREEN")] * 45 + [WORLD])
+    sess.kbd = type("Kbd", (), {"key": lambda k, name: escapes.append(name)})()
+    assert SSB.enter_world(sess, Addr(), timeout=600.0, fix=False,
+                           stop_at_idle=False) is True
+    assert escapes == [] and sess.kernal == [0x0D]
+    assert not any("giving up" in line for line in sess.logged)
+
+
+def test_post_com_is_the_world_but_not_a_place_to_warp_from(monkeypatch):
+    """Mode 5, POST.COM's treasure after a fight: past the party menu, so the
+    party is in the world, but the idle exit waits for DUNGEON."""
+    _quiet(monkeypatch, mode=[5] * 4 + [1])
+    monkeypatch.setattr(SSB, "idle_in_key_window", lambda sess, addr: 0x410B)
+    sess = WorldSess([MENU] + [("A SCREEN", "A SCREEN")] * 10)
+    assert SSB.enter_world(sess, Addr(), timeout=240.0, fix=False,
+                           stop_at_idle=True) is True
+    assert any("mode 5" in line for line in sess.logged)
+    assert any("warpable" in line for line in sess.logged)
+    assert SSB.overlay_mode.reads == 5
+
+
+def test_a_mode_byte_that_cannot_be_read_stops_the_load_saying_why(
+        monkeypatch):
+    modes = _quiet(monkeypatch, mode=None)
+    sess = WorldSess([MENU] + [("A SCREEN", "A SCREEN")])
+    assert SSB.enter_world(sess, Addr(), timeout=600.0, fix=False,
+                           stop_at_idle=True) is False
+    assert modes.reads == SSB.MAX_MODE_FAILURES
+    assert sess.kernal == [0x0D]
+    first = [line for line in sess.logged if "could not read" in line]
+    assert len(first) == 1 and "monitor did not answer" in first[0]
+    assert "times running" in sess.logged[-1]

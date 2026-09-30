@@ -654,3 +654,23 @@ def test_curse_leaves_modify_which_character_through_exit(monkeypatch):
     leave = picker_screen(len(PARTY))
     assert [s.colours for s in sess.returned_at] == [
         begin.colours, leave.colours, begin.colours]
+
+
+def test_a_which_character_bar_outside_gen_is_not_taken_for_the_list(
+        monkeypatch):
+    """Only GEN carries the words on Curse's disks, so with the mode byte
+    reading DUNGEON the bar is somebody else's and gets no EXIT walk."""
+    _clock(monkeypatch)
+    monkeypatch.setattr(curseload, "overlay_mode",
+                        lambda sess, addr, errors=None: 1)
+    monkeypatch.setattr(curseload, "idle_in_key_window",
+                        lambda sess, addr: None)
+
+    class Addr:
+        mode = 0x7F11
+
+    passes = [menu_screen(None, ONWARD), picker_screen(0),
+              bar_screen(WORLD_BAR)]
+    sess = LoadSess(passes, answered_on=-1)
+    assert curseload.enter_world(sess, Addr(), timeout=300.0) is True
+    assert "EXIT" not in sess.selected

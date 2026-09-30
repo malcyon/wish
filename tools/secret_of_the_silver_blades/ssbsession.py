@@ -576,7 +576,8 @@ def choose_verified(sess, label: str, verified, settle: float = 0.5,
 
 
 #: LINKER's dispatch byte (`Addresses.mode`, `$7F11`): `0` while GEN runs the
-#: party menu and its lists, `1` while DUNGEON runs the world (docs/121).
+#: party menu and its lists, `1` while DUNGEON runs the world, `5` while
+#: POST.COM puts up the treasure after a fight (docs/121).
 GEN, DUNGEON = 0, 1
 
 #: Failed walks onto BEGIN ADVENTURING, and backings-out of a party-menu
@@ -585,13 +586,81 @@ MAX_WALKS = 3
 MAX_BACKOUTS = 3
 
 
-def overlay_mode(sess, addr) -> int | None:
-    """LINKER's dispatch byte, or None when the read failed."""
+#: Failed reads of the mode byte in a row before `enter_world` stops.
+MAX_MODE_FAILURES = 5
+
+
+def overlay_mode(sess, addr, errors: list | None = None) -> int | None:
+    """LINKER's dispatch byte, or None when the read failed.
+
+    The exception of a failed read is appended to *errors* when given.
+    """
     try:
         with sess.mon(5) as m:
             return m.read(addr.mode, 1)[0]
-    except Exception:
+    except Exception as exc:
+        if errors is not None:
+            errors.append(exc)
         return None
+
+
+class ModeReader:
+    """The mode byte, read at most once per pass of a loop.
+
+    The first failed read is logged with its error, and `dead` turns True
+    after `MAX_MODE_FAILURES` failures in a row, so a monitor that has
+    stopped answering ends the loop with a reason instead of the timeout.
+    """
+
+    def __init__(self, sess, addr):
+        self.sess, self.addr = sess, addr
+        self.failures = 0
+        self.logged = False
+        self.value: int | None = None
+        self.fresh = False
+
+    def new_pass(self) -> None:
+        self.fresh = False
+
+    def __call__(self) -> int | None:
+        if not self.fresh:
+            errors: list = []
+            self.value = overlay_mode(self.sess, self.addr, errors)
+            self.fresh = True
+            if self.value is None:
+                self.failures += 1
+                if not self.logged:
+                    self.logged = True
+                    why = repr(errors[0]) if errors else "no value"
+                    self.sess.log(f"  world: could not read LINKER's mode "
+                                  f"byte ${self.addr.mode:04X}: {why}")
+            else:
+                self.failures = 0
+        return self.value
+
+    @property
+    def dead(self) -> bool:
+        return self.failures >= MAX_MODE_FAILURES
+
+
+def gen_screen_stuck(sess, addr, state: str, text: str, since: float,
+                     stuck: float) -> bool:
+    """True, having said so, when GEN is waiting for a key at a screen
+    `enter_world` has no key for.
+
+    Needs the screen unchanged for *stuck* seconds, no disk prompt, and the
+    PC confirmed in a key window by `idle_in_key_window` -- which a load
+    still running is not, so a slow GEN-to-DUNGEON load never ends here.
+    """
+    if (state == "(blank)" or time.time() - since <= stuck
+            or disk_prompt_up(text)):
+        return False
+    pc = idle_in_key_window(sess, addr)
+    if pc is None:
+        return False
+    sess.log(f"  world: {state!r} is a party-menu screen with no known way "
+             f"out (idle at ${pc:04X}); giving up")
+    return True
 
 
 def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
@@ -605,16 +674,22 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
     **`stop_at_idle` is what got past the prologue.** Eight earlier sessions
     tried to answer the starting-treasure bar `VIEW TAKE POOL SHARE EXIT` and
     ended on a character sheet instead. Nothing needed that bar answered: the
-    party is already in the world, `$7F11` reads 1 and `$4BE6` reads 1, and a
-    warp made from the fetcher the menu is waiting in is the same six writes
-    and the same jump. So the first moment the machine is demonstrably idle
-    is the moment to leave from, whatever menu happens to be on screen.
+    party is already in the world, `$7F11` reads 1 from `ONWARD BOUND`
+    through the prologue's pages, and a warp made from the fetcher a page is
+    waiting in is the same six writes and the same jump. So the first moment
+    the machine is demonstrably idle is the moment to leave from, whatever
+    menu happens to be on screen. The prologue's later screens -- the
+    experience share and the character sheet after it -- run under POST.COM
+    with `$7F11` at 5, where DUNGEON's tail is not resident, so the idle exit
+    waits for 1 (`~/.cache/wish/acceptance/796/prologue2`).
 
-    **That fetcher also serves the party menu**, so the world is claimed only
-    while LINKER's mode byte reads DUNGEON. A list the party menu opens on
-    the party (`MODIFY WHICH CHARACTER?`) is left through its own EXIT row,
-    and a failed walk onto BEGIN ADVENTURING sends no Return at all, since a
-    Return then chooses whichever entry is white.
+    **That fetcher also serves the party menu**, so after BEGIN ADVENTURING
+    nothing is pressed until LINKER's mode byte has left GEN, and the idle
+    exit is taken only while it reads DUNGEON -- the one overlay whose
+    `NEWECL` tail a warp jumps into. A list the party menu opens on the party
+    (`MODIFY WHICH CHARACTER?`) is left through its own EXIT row, and a
+    failed walk onto BEGIN ADVENTURING sends no Return at all, since a Return
+    then chooses whichever entry is white.
     """
     STUCK = 15.0
     deadline = time.time() + timeout
@@ -623,7 +698,14 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
     chosen_at, answered = 0.0, False
     subbar_at, subbar_presses = 0.0, 0
     walk_failures = backouts = 0
+    mode_now = ModeReader(sess, addr)
     while time.time() < deadline:
+        if mode_now.dead:
+            sess.log(f"  world: LINKER's mode byte ${addr.mode:04X} could not "
+                     f"be read {mode_now.failures} times running; giving up "
+                     f"rather than guess which overlay is running")
+            return False
+        mode_now.new_pass()
         if sess.iec_stall_check():
             # It has logged where the machine was; the rest of the timeout
             # would only wait on a drive the C64 has stopped listening to.
@@ -648,12 +730,12 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
                 subbar_presses += 1
             time.sleep(1.5)
             continue
-        if at_picker(s) and overlay_mode(sess, addr) != DUNGEON:
+        if at_picker(s) and mode_now() == GEN:
             # A list the party menu opens on the party, which a Return on
-            # MODIFY, VIEW, DROP or REMOVE puts up. GEN is still running it,
-            # so it is not the world, and it waits in the same fetcher the
-            # world does. Leave it through its own EXIT row and choose the
-            # menu again from scratch.
+            # MODIFY or VIEW puts up -- `GEN` is the only file on the six
+            # sides carrying the words. It is not the world, and it waits in
+            # the same fetcher the world does. Leave it through its own EXIT
+            # row and choose the menu again from scratch.
             bar = s.row(24).strip()
             if backouts >= MAX_BACKOUTS:
                 sess.log(f"  world: still at {bar!r} after {backouts} tries "
@@ -675,7 +757,7 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             # exists to prevent. And only while DUNGEON runs: the fetcher is
             # shared with GEN's menus and with a fight.
             pc = idle_in_key_window(sess, addr)
-            if pc is not None and overlay_mode(sess, addr) == DUNGEON:
+            if pc is not None and mode_now() == DUNGEON:
                 sess.log(f"  world: idle at ${pc:04X}, which is warpable")
                 return True
         if impossible_side(sess, addr, text, fix) is not None:
@@ -712,13 +794,20 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
                         sess.log("  world: giving up rather than choose "
                                  "whichever entry is highlighted")
                         return False
-        elif began and not entered and overlay_mode(sess, addr) == DUNGEON:
-            # Past the formation menu, not a disk prompt, and DUNGEON is the
-            # overlay running: the party is in the world and a script is
-            # running it. Only now is an idle PC worth anything -- before it,
-            # the same fetcher is what the menus of the front end wait in.
-            entered = True
-            sess.log("  world: the party is in the world")
+        elif began and not entered:
+            # Past the formation menu and not a disk prompt. Once the mode
+            # byte has left GEN the party is in the world and a script is
+            # running it; only then is an idle PC worth anything, because
+            # before it the same fetcher is what the front end's menus wait
+            # in. Until then nothing is pressed: GEN, a failed read, or the
+            # GEN-to-DUNGEON load still under way.
+            mode = mode_now()
+            if mode is not None and mode != GEN:
+                entered = True
+                sess.log(f"  world: the party is in the world (mode {mode})")
+            elif mode == GEN and gen_screen_stuck(sess, addr, state, text,
+                                                  since, STUCK):
+                return False
         elif "EXIT" in state and state != "ENCAMP":
             # The prologue hands the party its starting treasure and puts up
             # `VIEW TAKE POOL SHARE EXIT`. Nothing here wants the treasure --
@@ -743,13 +832,14 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             # DUNGEON's key-wait loop or LIBRARY's fetcher -- the same guard
             # `enter_world`'s own idle branch above applies -- before sending
             # Escape (#568).
+            if mode_now() == GEN:
+                # A party-menu screen gets no Escape: nothing pressed at one
+                # this loop does not know is known to lead back to the menu.
+                if gen_screen_stuck(sess, addr, state, text, since, STUCK):
+                    return False
+                time.sleep(1.5)
+                continue
             pc = idle_in_key_window(sess, addr)
-            if pc is not None and overlay_mode(sess, addr) == GEN:
-                # A party-menu screen this loop has no key for. Nothing
-                # pressed at it is known to lead back to the menu.
-                sess.log(f"  world: {state!r} is a party-menu screen with no "
-                         f"known way out (idle at ${pc:04X}); giving up")
-                return False
             if pc is not None:
                 sess.log(f"  world: backing out with Escape (idle at "
                          f"${pc:04X})")

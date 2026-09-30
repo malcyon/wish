@@ -76,6 +76,7 @@ from goldbox import c64_port  # noqa: E402
 from tools.areas import newecl  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 from tools.secret_of_the_silver_blades.ssbsession import (  # noqa: E402
+    GEN,
     MAX_BACKOUTS,
     MAX_WALKS,
     at_picker,
@@ -83,6 +84,7 @@ from tools.secret_of_the_silver_blades.ssbsession import (  # noqa: E402
     cursor_on_begin,
     leave_picker,
     load_started,
+    overlay_mode,
 )
 
 #: Every byte worth reading when the load has just failed, and why.
@@ -620,10 +622,13 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
         text = s.text()
         if "ENCAMP" in text:
             return True
-        if at_picker(s):
-            # `MODIFY WHICH CHARACTER?` and the other lists the party menu
-            # opens on the party: left through their own EXIT row, never with
-            # the Escape the STUCK branch below would send.
+        if at_picker(s) and (addr is None
+                             or overlay_mode(sess, addr) == GEN):
+            # `MODIFY WHICH CHARACTER?` and `VIEW WHICH CHARACTER?`, the
+            # lists the party menu opens on the party: left through their own
+            # EXIT row, never with the Escape the STUCK branch below would
+            # send. `GEN` is the only file on Curse's disks carrying the
+            # words; the mode byte, when `addr` gives it, confirms GEN runs.
             bar = s.row(24).strip()
             if backouts >= MAX_BACKOUTS:
                 sess.log(f"  world: still at {bar!r} after {backouts} tries "
