@@ -260,16 +260,27 @@ def test_the_curse_resave_diff_is_the_known_gap_and_old_thac0_base():
     # The specimen's items are in the order the earlier writer put them, and
     # the Amiga shows the stored order top first, so today's writer is the
     # reverse of it.  That is named and checked here, and the item nodes are
-    # then left out of the byte comparison, whose offsets it would scramble.
+    # then left out of the whole-block comparison, whose offsets it would
+    # scramble.
     def types(char):
         return [it.get("type_index") for it in char.items]
 
+    # Only MATHEW carries items (four); PHILIPPE holds none, so the reversed
+    # lists below would pass on him whatever the order.
+    assert len(ours_by_name["MATHEW"].items) == 4
     item_nodes: dict[str, range] = {}
     for name, mine in ours_by_name.items():
         twin = theirs_by_name.get(name)
         if twin is None:
             continue
         assert types(twin) == types(mine)[::-1], name
+        # Each item against its reversed twin, byte for byte, except the four
+        # bytes of the `next` pointer, which the engine rewrites with the
+        # address it holds the node at.
+        nxt = amiga_later.AMIGA_LATER_ITEM_NEXT
+        for x, y in zip(mine.items, twin.items[::-1]):
+            assert x.raw[:nxt] == y.raw[:nxt], name
+            assert x.raw[nxt + 4:] == y.raw[nxt + 4:], name
         assert [it.get("quantity") for it in twin.items] == \
             [it.get("quantity") for it in mine.items][::-1], name
         start = mine.deltas.record_size
