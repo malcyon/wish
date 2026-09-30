@@ -399,6 +399,35 @@ def test_a_substituted_stall_is_named_apart_from_a_real_failure(tmp_path, clock)
     assert "the substituted party did not move" in result["read"]["verdicts"][-1]
 
 
+def _two_square_title():
+    route = tuple(step for step in ROUTE if step[0] != "NP2")
+    route = route[:6] + (("NP8", "world", "move"),) + route[6:]
+    return make_title(route=route, measure_route=route, turn=None)
+
+
+def test_a_substituted_walk_that_gains_one_square_then_stops_is_passed_except_walk(
+        tmp_path, clock):
+    manifest = manifest_for(tmp_path, substitute={"path": "x.adf", "sha256": "0" * 64,
+                                                  "letter": "A"})
+    land = dict(START, y=START["y"] - 1)
+    _, result = _run(tmp_path, clock, title=_two_square_title(),
+                     guest=TitleGuest(clock, land=land), manifest=manifest)
+    assert result["success"] is False
+    assert result["passed_except_walk"] is True
+    assert result["walk"]["squares_moved"] == 1
+    assert result["walk"]["squares_requested"] == 2
+
+
+def test_a_substituted_walk_off_the_planned_line_still_fails(tmp_path, clock):
+    manifest = manifest_for(tmp_path, substitute={"path": "x.adf", "sha256": "0" * 64,
+                                                  "letter": "A"})
+    land = dict(START, x=START["x"] + 1, y=START["y"] - 1)
+    _, result = _run(tmp_path, clock, title=_two_square_title(),
+                     guest=TitleGuest(clock, land=land), manifest=manifest)
+    assert result["success"] is False
+    assert result["passed_except_walk"] is False
+
+
 def test_a_substituted_stall_with_another_real_failure_is_not_passed_except_walk(
         tmp_path, clock):
     def spoil(guest):

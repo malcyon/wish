@@ -524,7 +524,7 @@ def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
     """
     verdicts: list[str] = []
     b_place, d_place = b.get("place"), d.get("place")
-    b_ok = d_ok = walk_blocked = False
+    b_ok = d_ok = walk_blocked = walk_partial = False
     if b_place is None:
         verdicts.append(_unreadable(control, b))
     elif b_place == before:
@@ -567,9 +567,14 @@ def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
             verdicts.append(f"slot {after}: moved {squares} {unit} from "
                             f"{_span(base, d_place)}")
         else:
+            # Gaining some squares along the planned line and then stopping is a walk that
+            # happened and met a wall; any other landing is still a failure.
+            walk_partial = (turn is None and squares_moved is not None
+                            and 0 < squares_moved < squares)
             verdicts.append(f"slot {after}: moved from {_span(base, d_place)}, "
                             f"expected {expected['x']},{expected['y']}")
     return {"verdicts": verdicts, "b_ok": b_ok, "d_ok": d_ok, "walk_blocked": walk_blocked,
+            "walk_partial": walk_partial, "squares_requested": squares,
             "place_changed": None if d_place is None else d_place != base,
             "squares_moved": squares_moved}
 
@@ -731,8 +736,9 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                     and result.get("after_clock_advanced"))
     d_ok = bool(result.get("walk", {}).get("d_ok"))
     result["success"] = rest and d_ok
+    walk = result.get("walk", {})
     result["substitute_walk_blocked"] = bool(
-        "substitute" in manifest and result.get("walk", {}).get("walk_blocked"))
+        "substitute" in manifest and (walk.get("walk_blocked") or walk.get("walk_partial")))
     result["passed_except_walk"] = bool(result["substitute_walk_blocked"] and rest)
     if result["substitute_walk_blocked"] and result.get("read"):
         clause = "; every other check passed" if result["passed_except_walk"] else ""
