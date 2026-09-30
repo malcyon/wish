@@ -10035,11 +10035,18 @@ def test_a_staged_variable_lands_at_its_address_in_savedgame0(tmp_path):
     assert _roster(tmp_path / "var.d64") == _roster(tmp_path / "plain.d64")
 
 
-@pytest.mark.parametrize("address", [0x6DD2, 0x48FF])
+@pytest.mark.parametrize("address", [0x6DD2, 0x6500, 0x48FF])
 def test_a_staged_variable_outside_savedgame0_is_refused(tmp_path, address):
     with pytest.raises(ValueError, match="outside the save file"):
         A.stage(_fixture_disk(tmp_path), tmp_path / "s.d64", "pool-of-radiance",
                 variables=[(address, 1)])
+
+
+def test_a_staged_variable_at_the_last_byte_of_savedgame0_is_accepted(tmp_path):
+    took = A.stage(_fixture_disk(tmp_path), tmp_path / "s.d64",
+                   "pool-of-radiance", variables=[(0x64FF, 1)])
+    assert took["variables"][0]["offset"] == 0x1BFF
+    assert _payload(tmp_path / "s.d64")[0x1BFF] == 1
 
 
 def test_a_stage_var_line_parses_hex_and_refuses_bad_lines(tmp_path, capsys):

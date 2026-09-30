@@ -30,7 +30,8 @@ Staging is an input, written before the boot and never after the load:
 
 * `--stage-var ADDR=BYTE`, one byte of the save file at its memory address
   (hex, `4A07=01`), as the game loads it: only `$4900` to the end of the file
-  is reachable, so a byte the game rebuilds elsewhere (`$6DD2`) is refused.
+  is reachable, so a byte the game rebuilds elsewhere (`$6DD2`) is refused.  It is applied after the other payload staging
+  options and wins if they touch the same byte.
 
 SLOT is the save slot, 0 first.  Every option repeats, and each is logged in
 bytes with what it replaced.
