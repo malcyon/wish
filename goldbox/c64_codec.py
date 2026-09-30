@@ -2015,10 +2015,18 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 granted_ids.append(int(node[0]))
                 continue
             hold_row = effects.curse_hold_row(title_key, bytes(node))
-            if hold_row is not None and payload is not None:
+            if hold_row is not None:
                 # The C64 keeps one hold row per member, so a second node
-                # writes nothing more.
-                if not hold_written:
+                # writes nothing more. A timed 52 row beside this node is
+                # left as its own row: DOS holds two nodes then too and its
+                # fight-end strip removes one per fight.
+                if payload is None:
+                    # A trait slot never expires, which is the defect this
+                    # row exists to avoid, so there is no fallback.
+                    rep.lost(f"effect {node[0]}, which never expires: with "
+                             "no save payload to hold its row the hold is "
+                             "not written")
+                elif not hold_written:
                     row_slot = effects.free_slot(payload)
                     if row_slot is None:
                         rep.lost(f"effect {node[0]}, which never expires: "
@@ -3365,7 +3373,8 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             out.set("granted_effects", granted,
                     "the save's shared effect arrays: this character's own "
                     "rows at duration zero whose id is a spell DOS writes at "
-                    "duration zero, as effects.never_expiring_spell_record",
+                    "duration zero, as effects.never_expiring_spell_record or, for "
+                    "Curse's hold, effects.curse_hold_record",
                     grade("paladin_cures"))
     # 0x10C bits 1-6: bit 6 is the C64's own Fear bit, accounted for above
     # when a Fear row converted; bit 6 with no such row, and bits 1-5 in

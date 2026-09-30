@@ -3071,3 +3071,35 @@ def test_other_titles_keep_a_hold_in_a_trait_slot(game):
     rec, _rep, payload = _hold_write(game, _HOLD)
     assert not [r for r in _rows(payload).values() if r[0] == 52]
     assert 52 in bytes(rec.get_raw("item_effects"))
+
+
+def test_curse_hold_with_no_payload_is_reported_not_put_in_a_trait_slot():
+    char = _slow_poison_character(
+        c64_port.CURSE_OF_THE_AZURE_BONDS, granted=(_HOLD,))
+    rec, rep = c64_codec.write(char, payload=None, party_slot=2,
+                               clock_minutes=0)
+    assert 52 not in bytes(rec.get_raw("item_effects"))
+    assert any("effect 52" in m and "not written" in m for m in rep.losses)
+
+
+def test_curse_hold_with_every_slot_taken_is_reported_not_a_trait_slot():
+    char = _slow_poison_character(
+        c64_port.CURSE_OF_THE_AZURE_BONDS, granted=(_HOLD,))
+    payload = bytearray(0x1C00)
+    for i in range(effects.EFFECT_SLOTS):
+        effects.write_effect(payload, i, 63, 1, 5, 1)
+    rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                               clock_minutes=0)
+    assert 52 not in bytes(rec.get_raw("item_effects"))
+    assert not [r for r in _rows(payload).values() if r[0] == 52]
+    assert any("effect 52" in m and "no free slot" in m for m in rep.losses)
+
+
+def test_a_hand_built_c64_hold_row_reads_as_the_dos_hold_node():
+    payload = bytearray(0x1C00)
+    effects.write_effect(payload, 5, 52, 2, 0, 0)
+    out = c64_codec.read(CharacterRecord.blank(),
+                         game=c64_port.CURSE_OF_THE_AZURE_BONDS,
+                         payload=bytes(payload), party_slot=2,
+                         clock_minutes=0, source="x")
+    assert [bytes(g)[:5] for g in out.get("granted_effects")] == [_HOLD]
