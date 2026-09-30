@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import pytest
 
+from goldbox import levels
 from tools.c64 import laterthac0
 from tools.records import thac0sweep
 
@@ -51,42 +52,6 @@ DISAGREE = {
 #: class is part of the rule, so a magic-user who hit with the paladin 5 row
 #: they left reproduces.
 RECORDS = {POOL: (295, 295), CURSE: (158, 138), SSB: (116, 114)}
-
-#: The records the DOS engine itself wrote with THAC0 20 where the table gives
-#: 21: a magic-user of level 1 to 5, whose flat 40 at creation and class
-#: change the engine's load and resave never refreshed.  Keyed by
-#: `(source, name)` so that a record our own writers produce with 20 is not
-#: excused by the same rule; a new engine-written miss is one line here.
-ENGINE_MISSES = {
-    POOL: set(),
-    CURSE: {
-        ("Saves/CHRDATA6.SAV", "PHILIPPE"),
-        ("Saves/CHRDATB6.SAV", "BRYTWYN"),
-        ("SAVE/CHRDATA6.SAV", "PHILIPPE"),
-        ("SAVE/CHRDATB6.SAV", "BRYTWYN"),
-        ("WISH-SPEC-amigatodos-curse-resave/CHRDATA1.SAV", "MATHEW"),
-        ("WISH-SPEC-amigatodos-curse-resave/CHRDATA2.SAV", "PHILIPPE"),
-        ("WISH-SPEC-c64todos-curse-resave/CHRDATA6.SAV", "PHILIPPE"),
-        ("WISH-SPEC-curse-535-former-paladin-node-running/CHRDATE1.SAV", "MATHEW"),
-        ("WISH-SPEC-curse-535-former-paladin-node-running/CHRDATE6.SAV", "PHILIPPE"),
-        ("WISH-SPEC-curse-574-area2-spiritual-hammer-rest/CHRDATB2.SAV", "FEMALE MAGE"),
-        ("WISH-SPEC-curse-574-area2-spiritual-hammer-rest/CHRDATB6.SAV", "MALE ELF MAGE"),
-        ("WISH-SPEC-curse-597-experience-ceiling/CHRDATE6.SAV", "BRYTWYN"),
-        ("WISH-SPEC-curse-649-mark-regained-node-running/CHRDATF1.SAV", "MATHEW"),
-        ("WISH-SPEC-curse-649-mark-regained-node-running/CHRDATF6.SAV", "PHILIPPE"),
-        ("WISH-SPEC-curse-709-heal-node-after-class-change/CHRDATH1.SAV", "MATHEW"),
-        ("WISH-SPEC-curse-709-heal-node-after-class-change/CHRDATH6.SAV", "PHILIPPE"),
-        ("WISH-SPEC-curse-131-dualclassed-in-area-1/CHRDATJ1.SAV", "MATHEW"),
-        ("WISH-SPEC-curse-131-dualclassed-in-area-1/CHRDATJ6.SAV", "PHILIPPE"),
-        ("WISH-SPEC-curse-131-four-items-readied/CHRDATI6.SAV", "PHILIPPE"),
-        ("WISH-SPEC-curse-234-party-dualclassed/CHRDATD6.SAV", "BRYTWYN"),
-    },
-    SSB: {
-        ("WISH-SPEC-ssb-234-dualclassed/CHRDATD2.SAV", "PAINE"),
-        ("WISH-SPEC-ssb-234-party-pair/CHRDATD2.SAV", "PAINE"),
-    },
-}
-
 
 def _located(title: str):
     try:
@@ -142,11 +107,15 @@ def test_the_two_ports_disagree_where_they_are_known_to(title):
 @pytest.mark.parametrize("title", [POOL, CURSE, SSB])
 def test_every_record_reproduces_except_the_magic_users_the_dos_engine_stores_20_for(
         title):
-    """A miss is only a listed engine-written magic-user of level 1 to 5.
+    """A miss is only a magic-user of level 1 to 5 holding the engine's 20.
 
-    The counts are lower bounds so the specimens may grow.  A miss must be an
-    `ENGINE_MISSES` record and also that one kind, so a record our own writer
-    stores with 20 fails, as does a new broken record beside a known one.
+    The counts are lower bounds so the specimens may grow.  The table alone
+    gives a Curse or Silver Blades magic-user of level 1 to 5 THAC0 21, but
+    the DOS engine's load recompute also reads entry 0 of every class the
+    character lacks and stores 20 (`goldbox.levels.dos_engine_thac0`,
+    `docs/224-the-dos-thac0-floor.md`), and our DOS writer stores the same.
+    A miss must be that kind and hold what that rule gives, so any other
+    disagreement fails, whoever wrote the record.
     """
     _located(title)
     agree, total, lines = laterthac0.sweep(title)
@@ -168,7 +137,7 @@ def test_every_record_reproduces_except_the_magic_users_the_dos_engine_stores_20
     unknown = [(source, name, held, stored, want)
                for source, name, held, _, stored, want in outcomes
                if stored != want
-               and not ((source, name) in ENGINE_MISSES[title]
+               and not (stored == levels.dos_engine_thac0(held, title)
                         and set(held) == {"magic-user"}
                         and 1 <= held["magic-user"] <= 5
                         and (stored, want) == (20, 21))]
