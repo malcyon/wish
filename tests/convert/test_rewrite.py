@@ -154,8 +154,8 @@ def _gold_moves(deltas, dos_only: bool = False) -> set[str]:
     `goldbox.dos_codec.identity_byte`, a digest of every other byte of the
     record, so an edit moves it unless the digests before and after agree
     (`_DIGEST_COLLIDES`) -- on the two later titles, which are the ones that
-    write it.  Pool of Radiance declares the field and
-    drops it, writing zero, so no edit moves it there.
+    write it.  Pool of Radiance declares the field and drops it, writing
+    zero, so no edit moves it there.
 
     **That the identity byte moves is a choice rather than a proof.**  The
     engine drew its byte at random when the character was made and reads it
@@ -811,7 +811,10 @@ def test_an_edit_lands_on_every_dos_specimen_and_moves_nothing_else():
     changed are those spans or fewer, because the identity digest the
     rewrite copies can land on the byte the engine drew, the one chance in
     256 `_gold_moves` names. MALACHITE in `ssb-234-party-pair` slot C does:
-    his edited rendering's digest is 13, his stored byte."""
+    his edited rendering's digest is 13, his stored byte; that case is
+    tolerated by the `expected - {"unnamed_0ab"}` lower bound.  A character
+    whose digest is the same before and after the edit is listed in
+    `_DIGEST_COLLIDES` and asserted unmoved with its original byte kept."""
     for label, party, game in _dos_parties():
         for char in party:
             before, _ = dos_codec.to_c64_record(char)
@@ -833,7 +836,8 @@ def test_an_edit_lands_on_every_dos_specimen_and_moves_nothing_else():
                 assert out.record[at] == char.to_bytes()[at], \
                     f"{label} {char.name}"
             assert set(out.moved) - optional == expected - optional, \
-                f"{label} {char.name}"
+                f"{label} {char.name} (a digest that does not change on the " \
+                f"edit belongs in _DIGEST_COLLIDES)"
             changed = _moved(char.to_bytes(), out.record, spans)
             assert expected - {"unnamed_0ab"} - optional <= changed \
                 <= expected, \
