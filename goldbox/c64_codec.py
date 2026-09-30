@@ -1516,17 +1516,18 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
 
     # A Pool Strength and Enlarge running together are two rows timed from the
     # DOS park-and-promote timeline (`effects.pool_strength_chain_rows`); the
-    # earlier-ending node goes first, so it takes the higher slot.
+    # earlier-ending node goes first, so it takes the higher slot, and a tie
+    # goes parked first.
     chain_rows = None
     if title_key == "pool-of-radiance" and strength_nodes == 2:
         pair = [n for n in other_nodes if n.id in effects.STRENGTH_IDS]
         if len(pair) == 2:
-            made = effects.pool_strength_chain_rows(pair)
+            made = effects.pool_strength_chain_rows(pair, clock)
             if isinstance(made, dict):
                 chain_rows = made
-                ordered = iter(sorted(pair, key=lambda n: n.minutes))
-                other_nodes = [next(ordered) if n in pair else n
-                               for n in other_nodes]
+                ordered = iter(effects.pool_strength_chain_order(pair, clock))
+                other_nodes = [next(ordered) if any(n is p for p in pair)
+                               else n for n in other_nodes]
 
     # Pool and Curse rows 22 and 15 take `$7F` when the character's 22 row is
     # minute-unit and the C64 record will hold no poison (55); see

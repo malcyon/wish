@@ -2617,12 +2617,40 @@ def test_the_chain_input_order_does_not_matter_only_the_minutes_do():
     assert effects.pool_strength_chain_rows(nodes) == {38: 0x94, 12: 0xF1}
 
 
-def test_equal_minutes_take_the_chain_and_slot_order():
+@pytest.mark.parametrize("order", [0, 1])
+def test_equal_minutes_write_the_parked_node_first_whatever_the_list_order(
+        order):
+    """A tie is written with no intermediate restore: the parked row restores
+    nothing and the active node's base restore is the only one."""
     nodes = [_RE(38, 10, _ACTIVE, 1), _RE(12, 10, _PARKED, 1)]
-    assert effects.pool_strength_chain_rows(nodes) == {38: 0x94, 12: 0xF1}
+    if order:
+        nodes.reverse()
+    assert effects.pool_strength_chain_rows(nodes) == {12: 0x14, 38: 0xF1}
+    assert [n.id for n in effects.pool_strength_chain_order(nodes)] == [12, 38]
     back = effects.pool_strength_chain_nodes(
-        [_chain_row(3, 38, 10, 0x94), _chain_row(2, 12, 10, 0xF1)], 0)
-    assert back == {38: nodes[0], 12: nodes[1]}
+        [_chain_row(3, 12, 10, 0x14), _chain_row(2, 38, 10, 0xF1)], 0)
+    assert back == {38: _RE(38, 10, _ACTIVE, 1), 12: _RE(12, 10, _PARKED, 1)}
+
+
+@pytest.mark.parametrize("active_minutes, parked_minutes", [(63, 64), (64, 63),
+                                                            (70, 75), (75, 70)])
+def test_minutes_that_share_a_duration_byte_tie_like_equal_minutes(
+        active_minutes, parked_minutes):
+    assert effects.closest_duration(active_minutes, 0) == \
+        effects.closest_duration(parked_minutes, 0)
+    nodes = [_RE(38, active_minutes, _ACTIVE, 1),
+             _RE(12, parked_minutes, _PARKED, 1)]
+    assert effects.pool_strength_chain_rows(nodes, 0) == {12: 0x14, 38: 0xF1}
+    # Without the clock the two minutes are compared as they are.
+    without = effects.pool_strength_chain_rows(nodes)
+    assert without == ({12: 0x14, 38: 0xF1} if parked_minutes < active_minutes
+                       else {38: 0x94, 12: 0xF1})
+
+
+def test_both_restoring_rows_of_one_byte_are_refused_as_ambiguous():
+    got = effects.pool_strength_chain_nodes(
+        [_chain_row(3, 12, 10, 0xE2), _chain_row(2, 38, 10, 0xF3)], 0)
+    assert isinstance(got, effects.Unconverted)
 
 
 def test_every_two_node_timeline_round_trips_through_the_rows():
@@ -2670,3 +2698,97 @@ def test_other_strength_states_stay_refused(nodes):
 def test_strength_rows_no_timeline_produces_stay_refused(rows):
     got = effects.pool_strength_chain_nodes(rows, 0)
     assert isinstance(got, effects.Unconverted) and got.reason
+
+
+# --- an independent simulator of the two engines' expiry ------------------------
+#
+# The C64 restores per slot: each row that runs out puts its bit-7 value back,
+# rows expiring at the same time in slot order. DOS keeps one active node and
+# parks the other: the active node ending restores its base and promotes the
+# parked node, which puts its own boost in force and later restores the base;
+# a parked node ending first changes nothing. A score is a label here, so
+# nothing depends on which strengths the bytes stand for.
+
+
+def _c64_scores(rows, ascending):
+    """`[(time, score)]` after each distinct expiry; `rows` are
+    `(slot, minutes, magnitude)` and the score starts as the boost in force."""
+    score, out = "boost", []
+    for minutes in sorted({m for _s, m, _v in rows}):
+        for _slot, _m, value in sorted(
+                (r for r in rows if r[1] == minutes),
+                key=lambda r: r[0], reverse=not ascending):
+            if value & 0x80:
+                score = value & 0x7F
+        out.append((minutes, score))
+    return out
+
+
+def _dos_scores(nodes):
+    """The same list from the DOS chain, a tie ending the parked node first."""
+    active = next(n for n in nodes if not n.data & 0x80)
+    parked = next(n for n in nodes if n.data & 0x80)
+    events = sorted(((n.minutes, n is active) for n in nodes),
+                    key=lambda e: (e[0], e[1]))
+    score, active_gone, parked_gone, out = "boost", False, False, {}
+    for minutes, is_active in events:
+        if is_active:
+            active_gone = True
+            # The base is restored, then a parked node's boost put in force.
+            score = active.data if parked_gone else parked.data & 0x7F
+        else:
+            parked_gone = True
+            if active_gone:
+                # The promoted node ends and restores the base.
+                score = active.data
+        out[minutes] = score
+    return sorted(out.items())
+
+
+_SIM_MINUTES = [(10, 60), (60, 10), (10, 10), (63, 64), (64, 63), (70, 75),
+                (75, 70)]
+
+
+@pytest.mark.parametrize("ascending", [True, False])
+@pytest.mark.parametrize("clock", [0, 725])
+def test_the_c64_rows_and_the_dos_chain_leave_the_same_score_at_each_expiry(
+        ascending, clock):
+    """Every base and boost (1-127 in steps), every expiry order and the tied
+    and co-quantized minutes, in both slot directions. The DOS chain is
+    simulated on the minutes the C64 rows hold, so the two see one clock."""
+    count = 0
+    for base in range(1, 0x80, 7):
+        for boost in range(1, 0x80, 9):
+            for a_min, p_min in _SIM_MINUTES:
+                nodes = [_RE(38, a_min, base, 1),
+                         _RE(12, p_min, boost | 0x80, 1)]
+                rows = effects.pool_strength_chain_rows(nodes, clock)
+                assert isinstance(rows, dict)
+                ticks = {n.id: effects.remaining_minutes(
+                    effects.closest_duration(n.minutes, clock), clock)
+                    for n in nodes}
+                c64 = _c64_scores(
+                    [(3 - i, ticks[n.id], rows[n.id])
+                     for i, n in enumerate(
+                         effects.pool_strength_chain_order(nodes, clock))],
+                    ascending)
+                held = [_RE(n.id, ticks[n.id], n.data, 1) for n in nodes]
+                dos = _dos_scores(held)
+                # Compare in the C64's own value space.
+                dos = [(m, v if v == "boost" else
+                        effects._pool_strength_value(v)) for m, v in dos]
+                assert c64 == dos, (base, boost, a_min, p_min, ascending)
+                count += 1
+    assert count == 19 * 15 * len(_SIM_MINUTES)
+
+
+@pytest.mark.parametrize("ascending", [True, False])
+def test_a_tied_expiry_ends_on_the_base_in_either_slot_direction(ascending):
+    for a_min, p_min in ((10, 10), (63, 64), (75, 70)):
+        nodes = [_RE(38, a_min, _ACTIVE, 1), _RE(12, p_min, _PARKED, 1)]
+        rows = effects.pool_strength_chain_rows(nodes, 0)
+        held = {n.id: effects.remaining_minutes(
+            effects.closest_duration(n.minutes, 0), 0) for n in nodes}
+        got = _c64_scores([(2 + (n.id == 12), held[n.id], rows[n.id])
+                           for n in nodes], ascending)
+        assert got == [(held[38], effects._pool_strength_value(_ACTIVE))]

@@ -1038,8 +1038,29 @@ def _pool_strength_data(value: int) -> int:
     return value + 1 if value <= 100 else value
 
 
+def pool_strength_chain_order(
+        nodes: "Sequence[RunningEffect]",
+        clock_minutes: int | None = None) -> list[RunningEffect]:
+    """The nodes in the order the C64 rows expire, a tie broken parked first.
+
+    Two nodes tie when their time left is equal, or, with `clock_minutes`,
+    when they quantize to the same duration byte. The C64's per-slot sweep
+    order is unread, so a tie is written so that no order can leave a boost
+    in force: the parked node goes first and restores nothing, and the active
+    node's base restore is the only one.
+    """
+    def left(node: RunningEffect) -> int:
+        if clock_minutes is None:
+            return node.minutes
+        return remaining_minutes(
+            closest_duration(node.minutes, clock_minutes), clock_minutes)
+
+    return sorted(nodes, key=lambda n: (left(n), not n.data & 0x80))
+
+
 def pool_strength_chain_rows(
-        nodes: "Sequence[RunningEffect]") -> "dict[int, int] | Unconverted":
+        nodes: "Sequence[RunningEffect]",
+        clock_minutes: int | None = None) -> "dict[int, int] | Unconverted":
     """The two C64 magnitudes for a Pool character holding a Strength and an
     Enlarge node together, keyed by effect id (12 and 38), or why not.
 
@@ -1055,7 +1076,7 @@ def pool_strength_chain_rows(
 
     Only exactly one Strength and one Enlarge, both with flag 1 and one of them
     parked, is converted; the caller has already checked that no granted node
-    sets strength. Nodes are ordered by `(minutes, position)`.
+    sets strength. Nodes are ordered by `pool_strength_chain_order`.
     """
     if len(nodes) != 2 or sorted(n.id for n in nodes) != [12, 38]:
         return Unconverted("not exactly one Strength and one Enlarge node")
@@ -1067,9 +1088,7 @@ def pool_strength_chain_rows(
     parked = next(n for n in nodes if n.data & 0x80)
     if parked.data & 0x7F == 0:
         return Unconverted("a parked strength node with no boost")
-    first, second = sorted(
-        enumerate(nodes), key=lambda pair: (pair[1].minutes, pair[0]))
-    first, second = first[1], second[1]
+    first, second = pool_strength_chain_order(nodes, clock_minutes)
     base = active[0].data
     if first is active[0]:
         return {first.id: MAGNITUDE_RESTORE_FLAG
@@ -1117,7 +1136,8 @@ def pool_strength_chain_nodes(
     nodes = {r.id: RunningEffect(
         r.id, min(remaining_minutes(r.duration, clock_minutes),
                   DOS_MINUTES_MAX), data[r.id], 1) for r in ordered}
-    again = pool_strength_chain_rows([nodes[r.id] for r in ordered])
+    again = pool_strength_chain_rows([nodes[r.id] for r in ordered],
+                                     clock_minutes)
     if again != {r.id: r.magnitude for r in rows}:
         return Unconverted("strength rows no DOS timeline of two nodes "
                            "produces")
