@@ -3171,6 +3171,9 @@ def test_the_party_writer_still_writes_each_supported_title(
     (5, 0, 0),      # a player character: award zero
     (5, 256, 0),    # only the low byte counts
     (1, 150, 0),    # level 1 is not rebuilt
+    (2, 150, 1),    # the lowest level the rebuild reaches
+    (5, 255, 1),
+    (5, 257, 1),    # low byte 1
 ])
 def test_a_c64_cleric_gets_the_restoration_byte_the_dos_engine_would_set(
         cleric, award, expected):
@@ -3186,3 +3189,52 @@ def test_a_c64_cleric_gets_the_restoration_byte_the_dos_engine_would_set(
     rec, _, _, _ = dos_codec.write(char)
     assert rec[0x06A] == expected
     assert list(rec[0x033:0x036]) == [1, 1, 1]
+
+
+def test_a_regained_cleric_class_is_judged_on_the_level_written():
+    """A regained former class is zeroed before DOS stores it, so a cleric
+    whose old class came back is not a cleric the engine rebuilds."""
+    char = _filled()
+    char.port = "C64"
+    made_up = "made up: a regained cleric"
+    char.set("levels", {"cleric": 5, "fighter": 3}, made_up)
+    char.set("former_levels", {"cleric": 5}, made_up)
+    char.set("experience_award", 150, made_up)
+    char.set("spells_known", [1], made_up)
+    rec, _, _, _ = dos_codec.write(char)
+    assert rec[0x06A] == 0
+
+
+def test_a_multi_class_cleric_gets_the_restoration_byte():
+    char = _filled()
+    char.port = "C64"
+    made_up = "made up: a cleric/magic-user"
+    char.set("levels", {"cleric": 4, "magic-user": 4}, made_up)
+    char.set("experience_award", 150, made_up)
+    char.set("spells_known", [1], made_up)
+    assert dos_codec.write(char)[0][0x06A] == 1
+
+
+@pytest.mark.parametrize("port", ["DOS", "Amiga"])
+def test_a_dos_or_amiga_source_is_not_given_the_byte(port):
+    """Only a C64 source lacks id 56; another port's own record is copied."""
+    char = _filled()
+    char.port = port
+    made_up = "made up: the DIRTEN condition"
+    char.set("levels", {"cleric": 5}, made_up)
+    char.set("experience_award", 150, made_up)
+    char.set("spells_known", [1], made_up)
+    assert dos_codec.write(char)[0][0x06A] == 0
+
+
+@pytest.mark.parametrize("key", ["curse-of-the-azure-bonds",
+                                 "secret-of-the-silver-blades"])
+def test_a_later_title_is_not_given_pools_byte(key):
+    """Byte 56 is a real spell in the later titles, written only when known."""
+    char = _c64_source({"cleric": 5}, 0)
+    char.game = key
+    char.set("experience_award", 150, "made up: the DIRTEN condition")
+    char.set("spells_known", [1], "made up")
+    rec, _, _, _ = dos_codec.write(char, deltas=dos_port.deltas_for(key))
+    book = dos_codec.FIELDS_BY_NAME_FOR[key]["spellbook"]
+    assert rec[book.offset + 55] == 0

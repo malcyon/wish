@@ -933,6 +933,18 @@ def _native_strength(char: NeutralCharacter,
                                        char.get("former_levels")))
 
 
+def engine_grants_restoration(levels, experience_award) -> bool:
+    """Whether Pool of Radiance's own class rebuild sets spellbook byte 56.
+
+    For a cleric above level 1 it walks spell ids 1-56, and id 56's cleric
+    level 7 indexes `0x0B1 + 7`, which is `0x0B8`: the low byte of
+    `experience_award`.  A nonzero byte counts as a slot, so the engine grants
+    the spell; it is never listed in MEMORIZE, so no player sees it.
+    """
+    return (int((levels or {}).get("cleric", 0)) > 1
+            and int(experience_award or 0) & 0xFF != 0)
+
+
 def write(char: NeutralCharacter, icon: bytes | None = None, *,
           payload: bytearray | None = None, party_slot: int | None = None,
           clock_minutes: int | None = None,
@@ -1420,9 +1432,17 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         table = spells.for_game(char.game)
         ceiling = table.last_spellbook_spell
         converted = [i for i in known.value if i <= ceiling]
-        if len(converted) != len(known.value):
+        # DOS Pool's own class rebuild sets id 56 on a cleric it reads past
+        # the slot table for, and the C64 has no such spell and no need of it.
+        engine_set = (
+            char.game == POOL_OF_RADIANCE_RECORD.key and ceiling == 55
+            and 56 in known.value
+            and engine_grants_restoration(
+                w.get("levels"), w.get("experience_award")))
+        lost = len(known.value) - len(converted) - (1 if engine_set else 0)
+        if lost:
             rep.losses.append(
-                f"spells_known: {len(known.value) - len(converted)} ids above "
+                f"spells_known: {lost} ids above "
                 f"{ceiling}, the last spell this title's spellbook mask holds")
         spells.write_spellbook(rec, converted, char.game)
         emit(known, "spells_known", 0x078, table.spellbook_size,

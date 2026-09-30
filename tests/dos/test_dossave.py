@@ -1170,3 +1170,52 @@ def test_a_partial_trailing_effect_node_is_refused(tmp_path):
 
     with pytest.raises(dos_codec.DosRecordError, match=r"CHRDATC1\.FX.*10"):
         dos_codec.read_character(record)
+
+
+def _cleric_with(levels, award, known):
+    from support.neutralrecords import _filled
+
+    from goldbox import c64_codec
+
+    char = _filled()
+    char.port = "DOS"
+    char.game = "pool-of-radiance"
+    made_up = "made up: the DIRTEN condition"
+    char.set("levels", levels, made_up)
+    char.set("experience_award", award, made_up)
+    char.set("spells_known", known, made_up)
+    return c64_codec.write(char)[1]
+
+
+def test_restoration_on_the_engines_own_cleric_is_not_a_loss_to_the_c64():
+    """DOS Pool sets id 56 on a cleric above level 1 whose award low byte is
+    nonzero; the C64 has no such spell and needs none."""
+    assert _cleric_with({"cleric": 5}, 150, [1, 2, 56]).losses == []
+
+
+@pytest.mark.parametrize("levels,award", [
+    ({"cleric": 5}, 0), ({"cleric": 1}, 150), ({"fighter": 5}, 150)])
+def test_restoration_the_engine_does_not_explain_is_still_a_loss(
+        levels, award):
+    rep = _cleric_with(levels, award, [1, 2, 56])
+    assert rep.losses == ["spells_known: 1 ids above 55, the last spell "
+                          "this title's spellbook mask holds"]
+
+
+def test_a_second_id_above_the_mask_is_still_a_loss_beside_restoration():
+    rep = _cleric_with({"cleric": 5}, 150, [1, 56, 57])
+    assert len(rep.losses) == 1 and "1 ids above 55" in rep.losses[0]
+
+
+def test_the_scribed_scroll_save_converts_to_the_c64_with_no_drops():
+    """Slot E holds DIRTEN with the byte the DOS engine set on load."""
+    from goldbox import c64_codec, dos_codec
+
+    name = "por-790-scribe-complete-stale-count"
+    if not have_specimen(name):
+        pytest.skip(f"needs specimen WISH-SPEC-{name}")
+    for path in sorted(specimen(name).glob("CHRDATE*.SAV")):
+        neutral = dos_codec.to_neutral(dos_codec.read_character(path))
+        rep = c64_codec.write(neutral)[1]
+        assert rep.losses == [], (path.name, rep.losses)
+        assert not [d for d in rep.dropped if "spells_known" in d], rep.dropped

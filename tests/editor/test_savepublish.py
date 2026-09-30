@@ -2826,3 +2826,28 @@ def test_ordinary_punctuation_and_lower_case_are_not_asked_for(tmp_path):
                for m in guy.members)
     saveplan.prepare_save_as(guy, "c64", tmp_path / "WISHSAVE.D64",
                              saveplan.Assets(game_files=folder_files))
+
+
+def test_a_c64_cleric_written_to_dos_is_not_refused_for_the_engines_byte():
+    """DOS Pool sets spellbook byte 56 on a cleric above level 1 whose
+    `experience_award` low byte is nonzero, so a C64 cleric saved as DOS
+    reads back holding what the engine itself would write, and the
+    comparison must not call that a difference."""
+    from support.neutralrecords import _filled
+
+    from goldbox import c64_codec
+
+    char = _filled(dos_codec.POOL_OF_RADIANCE.key)
+    char.port = "C64"
+    made_up = "made up: the DIRTEN condition"
+    char.set("levels", {"cleric": 5}, made_up)
+    char.set("experience_award", 150, made_up)
+    char.set("spells_known", [1, 2, 3], made_up)
+    sheet = c64_codec.write(char)[0]
+    neutral = c64_codec.read(sheet, game=dos_codec.POOL_OF_RADIANCE.key)
+    dos_rec, _, _, _ = dos_codec.write(neutral)
+    assert dos_rec[0x06A] == 1
+    back = dos_codec.to_neutral(dos_codec.DosCharacter(dos_rec))
+    written = dos_codec.neutral_to_c64_record(back, icon=None)[0]
+    lost = saveplan.compare([sheet], [written])
+    assert not [line for line in lost if line.startswith("spells_known")]
