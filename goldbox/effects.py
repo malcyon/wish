@@ -756,9 +756,10 @@ def _is_slow_poison_magnitude(title_key: str, m: int) -> bool:
 def _own_rule_row(title_key: str, node: RunningEffect,
                   slow_poison_quiet: bool = False,
                   ) -> tuple[int, int] | Unconverted | None:
-    """`c64_row` for id 13, Haste, Slowed, Silver Blades' id 113, Fear, the
-    flagged caster-level ids, Pool's disease chain, the zero-level ids,
-    Fumble and Stinking Cloud, or `None`."""
+    """`c64_row` for id 13, Haste, Slowed, the Giant Strength id (Curse 146,
+    Silver Blades 113), Fear, the flagged caster-level ids, Pool's disease
+    chain, the zero-level ids (including Fire Shield's: Curse 143, 50, 54;
+    Silver Blades 112, 50, 54), Fumble and Stinking Cloud, or `None`."""
     if ((node.id == _REDUCE_ID and title_key != _BLADES)
             or node.id in _UNWRITTEN_IDS.get(title_key, ())):
         return Unconverted(f"no DOS engine writes a running id-{node.id} "

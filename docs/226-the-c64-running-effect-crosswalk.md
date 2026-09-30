@@ -1283,7 +1283,7 @@ party-wide effect rows)); a timeline conversion for Pool's overlapping strength
 nodes, which the destination does hold (a second strength node on one
 character, running or granted, is refused by `strength_nodes`); the later
 titles' Strength at data 101, which may decode as 18/100; a Curse or Silver Blades id-25 node of data `0xFF` (ids 138 and 108),
-which needs its own read; a Silver Blades id-113 magnitude other than `$BC`
+which needs its own read; a Giant Strength magnitude (Curse id 146, Silver Blades id 113) other than `$BC`
 (strength 23); the ids with no C64 spell row that still need a read; and the
 two ageing routes the camp formula does not describe.
 
@@ -1294,7 +1294,7 @@ Silver Blades' id 25 converts by the caster-level rule for data `0x01`-`0x7F`.
 Silence 15' Radius (21), Ray of Enfeeblement (29) and Bestow Curse (36) convert
 by the caster-level rule in all three titles; the camp-row derivations above
 missed them because their C64 casts are combat-only
-(`effects.COMBAT_CASTER_LEVEL_IDS`). Silver Blades' id 113 converts as DOS
+(`effects.COMBAT_CASTER_LEVEL_IDS`). The Giant Strength id (Curse 146, Silver Blades 113) converts as DOS
 `(113, minutes, 0x79, 1)` and C64 magnitude `$BC`, the pair each engine writes
 for its own cast of spell 59 (read 1); Curse's Potion of Giant Strength writes
 the same pair under id 146 (`GAME.OVR:0x31FB8`, an immediate), and converts the
@@ -1457,7 +1457,7 @@ be a monster. Each id is listed with why its sample row has no rule.
 | Later 12, 14, 38 without bit 7; Mirror Image above 4 | **UNRESOLVED:** the combat handler pointers and their values remain to be followed. |
 | Pool Mirror Image with bit 7 | **UNRESOLVED:** its combat handler pointer remains to be followed. |
 | Pool's stale `$2879` | **CONFIRMED writer mechanism:** a nonzero override reaches the generic camp row. A two-cast game run must establish whether one cast leaves it for the next. |
-| Haste outside `$01`–`$1F`, Slowed outside level 1–15 or 63 minutes, Silver Blades id 113 other than `$BC` | **UNRESOLVED across all writers:** the table inventory alone cannot prove these guards unreachable. |
+| Haste outside `$01`–`$1F`, Slowed outside level 1–15 or 63 minutes, the Giant Strength id (Curse 146, Silver Blades 113) other than `$BC` | **UNRESOLVED across all writers:** the table inventory alone cannot prove these guards unreachable. |
 
 Combat rows are nine bytes: the fixed minutes at `+1`, the minutes per level
 at `+2`, the id at `+5` and the handler at `+7`. **CONFIRMED** the later
