@@ -7908,6 +7908,97 @@ def test_main_refuses_a_bad_stage_var_before_a_slot_is_claimed(tmp_path, monkeyp
     assert "4C2D" in capsys.readouterr().err
 
 
+# -- --stage-place: the party's square in an indoor SAVGAM ---------------------
+
+def _synthetic_curse_save(tmp_path, indoors=True):
+    from goldbox import dos_savegame
+    data = bytearray(13149)
+    container = dos_savegame.container_for(13149)
+    dos_savegame.put_position(data, 3, 4, 3, container)
+    if indoors:
+        data[dos_savegame.word_offset(dos_savegame.INDOORS, container)] = 1
+    (tmp_path / "SAVGAMC.DAT").write_bytes(bytes(data))
+    return bytes(data)
+
+
+def test_stage_place_changes_exactly_the_square_and_facing(tmp_path):
+    from goldbox import dos_savegame
+    source = _synthetic_curse_save(tmp_path)
+    got = staging.stage_place(tmp_path, "C", 6, 14, 0)
+    assert got["before"] == [3, 4, 3] and got["after"] == [6, 14, 0]
+    after = (tmp_path / "SAVGAMC.DAT").read_bytes()
+    c = dos_savegame.container_for(13149)
+    assert [i for i in range(len(after)) if after[i] != source[i]] == sorted(
+        {c.pos_x, c.pos_y, c.pos_facing})
+    assert (after[c.pos_x], after[c.pos_y], after[c.pos_facing]) == (
+        6, 14, 0 * dos_savegame.FACING_SCALE)
+    staging.stage_place(tmp_path, "C", 5, 13, 3)
+    assert (tmp_path / "SAVGAMC.DAT").read_bytes()[c.pos_facing] == 3 * dos_savegame.FACING_SCALE
+
+
+@pytest.mark.parametrize("place", [(16, 14, 0), (6, 16, 0), (6, 14, 4), (-1, 14, 0)])
+def test_stage_place_refuses_a_square_or_facing_out_of_range(tmp_path, place):
+    source = _synthetic_curse_save(tmp_path)
+    with pytest.raises(ValueError, match="0 to 15"):
+        staging.stage_place(tmp_path, "C", *place)
+    assert (tmp_path / "SAVGAMC.DAT").read_bytes() == source
+
+
+def test_stage_place_refuses_an_outdoor_save(tmp_path):
+    source = _synthetic_curse_save(tmp_path, indoors=False)
+    with pytest.raises(ValueError, match="outdoors"):
+        staging.stage_place(tmp_path, "C", 6, 14, 0)
+    assert (tmp_path / "SAVGAMC.DAT").read_bytes() == source
+
+
+@pytest.mark.parametrize("bad", ["6,14", "6,14,0,1", "6;14;0", "a,14,0", "6,14,4",
+                                 "16,14,0", "6,14,-1", "6,014,0", ""])
+def test_a_bad_stage_place_is_refused(bad):
+    with pytest.raises(ValueError):
+        da.parse_place(bad)
+
+
+def test_a_stage_place_parses_decimal_and_hex():
+    assert da.parse_place("6,14,0") == (6, 14, 0)
+    assert da.parse_place(" 0x6 , 0xE,3 ") == (6, 14, 3)
+
+
+def test_the_command_line_stages_the_place_after_the_var_stages(tmp_path):
+    _synthetic_curse_save(tmp_path)
+    args = _run_args(tmp_path, [])
+    args.stage_record = []
+    args.stage_var = []
+    args.stage_place = "6,14,0"
+    done = da.stage(tmp_path, "C", args)
+    assert [d["stage"] for d in done] == ["place"]
+    assert done[0]["after"] == [6, 14, 0]
+
+
+def test_main_refuses_a_bad_stage_place_before_a_slot_is_claimed(tmp_path, monkeypatch, capsys):
+    def claimed(*a, **k):
+        raise AssertionError("an emulator slot was claimed")
+
+    monkeypatch.setattr(da.dosbox, "claim", claimed)
+    with pytest.raises(SystemExit):
+        da.main(["--save", str(tmp_path), "--steps", "load", "--stage-place", "6,14",
+                 "--out", str(tmp_path / "out")])
+    assert "6,14" in capsys.readouterr().err
+
+
+def test_stage_place_refuses_pools_of_darkness_before_a_slot_is_claimed(
+        monkeypatch, tmp_path):
+    log, args = _staged_run(monkeypatch, tmp_path, stage_place="6,14,0")
+    saves = tmp_path / "saves"
+    (saves / "SAVGAMA.DAT").unlink()
+    (saves / "SAVGAMA.PTY").write_bytes(bytes(1364))
+    args.title = "darkness"
+    with pytest.raises(ValueError, match="--stage-place"):
+        da.check_staging(args, saves, "A")
+    with pytest.raises(ValueError, match="--stage-place"):
+        da.run(args)
+    assert "claim" not in log
+
+
 def test_a_silver_blades_fight_in_area_16_is_refused_without_the_gate(
         monkeypatch, tmp_path):
     from goldbox import dos_savegame

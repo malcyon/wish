@@ -1,7 +1,7 @@
 """Puts a saved game, and the inputs an acceptance run stages, into a DOS save folder.
 
 `install` copies one slot of a Wish-written save into a staged `SAVE` tree, and
-`stage_hall`, `stage_var`, `stage_xp`, `stage_record` and `stage_node` edit the installed records before the
+`stage_hall`, `stage_var`, `stage_place`, `stage_xp`, `stage_record` and `stage_node` edit the installed records before the
 game boots.
 """
 from __future__ import annotations
@@ -130,6 +130,28 @@ def stage_var(save_dir: pathlib.Path, letter: str, address: int, value: int) -> 
     return {"stage": "var", "file": path.name, "address": f"{address:#06x}",
             "offset": hex(offset), "before": before.hex(),
             "after": bytes(data[offset:offset + 2]).hex()}
+
+
+def stage_place(save_dir: pathlib.Path, letter: str, x: int, y: int,
+                facing: int) -> dict:
+    """Put the party on square `x`,`y` facing `facing` (0 N, 1 E, 2 S, 3 W) in `SAVGAM<letter>.DAT`.
+
+    Refused for a save made outdoors, where the square bytes are frozen at the
+    last indoor square and the game does not read them.
+    """
+    path = save_dir / f"SAVGAM{letter.upper()}.DAT"
+    data = bytearray(path.read_bytes())
+    if not (0 <= x <= 15 and 0 <= y <= 15 and 0 <= facing <= 3):
+        raise ValueError(f"place {x},{y},{facing}: x and y are 0 to 15, facing 0 to 3")
+    if dos_savegame.outdoors(bytes(data)):
+        raise ValueError(f"{path.name} was saved outdoors, where the square is not "
+                         "read; a place can be staged in an indoor save only")
+    container = dos_savegame.container_for(len(data))
+    before = list(dos_savegame.position(bytes(data), container))
+    dos_savegame.put_position(data, x, y, facing, container)
+    path.write_bytes(bytes(data))
+    return {"stage": "place", "file": path.name, "before": before,
+            "after": [x, y, facing]}
 
 
 def stage_xp(save_dir: pathlib.Path, letter: str, line: int, xp: int) -> dict:

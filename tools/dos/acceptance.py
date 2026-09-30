@@ -149,7 +149,8 @@ line N's effect file (`.SPC`, `.FX` or `.SFX`); `--stage-side
 LINE=SIDE[:QUICKFIGHT]` sets line N's combat side byte and optionally the
 quickfight byte after it (`stage_side`); `--stage-record
 LINE:OFFSET=VALUE` sets one byte of line N's `CHRDAT` record below its length; `--stage-var
-ADDRESS=VALUE` sets one script-variable word of `SAVGAM` (`read` reports it as the last saved slot holds it).
+ADDRESS=VALUE` sets one script-variable word of `SAVGAM` (`read` reports it as the last saved slot holds it); `--stage-place
+X,Y,FACING` puts the party on a square of an indoor `SAVGAM` facing 0 to 3 (N E S W), last of the stages.
 
 **The rest-time keys are read from each title's `GAME.OVR`**, because nobody
 had captured the screen.  Pool of Radiance's rest menu is `Rest daYs Hours
@@ -248,6 +249,7 @@ from tools.dos.staging import (  # noqa: E402
     stage_control,
     stage_hall,
     stage_node,
+    stage_place,
     stage_record,
     stage_var,
     stage_xp,
@@ -2025,6 +2027,17 @@ def parse_var(text: str) -> tuple[int, int]:
     if not 0 <= number <= 0xFFFF:
         raise ValueError(f"{text!r}: the value is one word, 0 to 0xFFFF")
     return int(where, 16), number
+
+
+def parse_place(text: str) -> tuple[int, int, int]:
+    """`X,Y,FACING`: a square of 0 to 15 each way and a facing of 0 to 3 (N E S W)."""
+    parts = [p.strip() for p in text.split(",")]
+    if len(parts) != 3 or not all(_RECORD_NUMBER.fullmatch(p) for p in parts):
+        raise ValueError(f"{text!r}: a place is X,Y,FACING (decimal or 0x hex)")
+    x, y, facing = (int(p, 0) for p in parts)
+    if not (0 <= x <= 15 and 0 <= y <= 15 and 0 <= facing <= 3):
+        raise ValueError(f"{text!r}: x and y are 0 to 15, facing 0 to 3 (N E S W)")
+    return x, y, facing
 
 
 def parse_node(text: str) -> tuple[int, bytes]:
@@ -5626,6 +5639,12 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
             raise ValueError(f"{word.name} is {word.stat().st_size} bytes, too "
                              f"short for the hall word at {HALL_WORD:#x}")
     check_gate(args, save, from_slot)
+    if getattr(args, "stage_place", None):
+        parse_place(args.stage_place)
+        savgam = save / f"SAVGAM{from_slot}.DAT"
+        if args.title == "darkness" or not savgam.is_file():
+            raise ValueError(f"--stage-place needs a SAVGAM{from_slot}.DAT holding "
+                             f"the square; {args.title} has none here")
     names = {p.name.upper() for p in save.iterdir()}
     records = parse_record_bytes(getattr(args, "stage_record", []) or [])
     lines = ([parse_xp(t)[0] for t in getattr(args, "xp", []) or []]
@@ -5647,7 +5666,7 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
 
 def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
     """The `--hall`, `--xp`, `--add-node`, `--stage-control`, `--stage-side`,
-    `--stage-record` and `--stage-var` stages, in that order."""
+    `--stage-record`, `--stage-var` and `--stage-place` stages, in that order."""
     done = []
     if getattr(args, "hall", False):
         done.append(stage_hall(save_dir, letter))
@@ -5663,6 +5682,8 @@ def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
         done.append(stage_record(save_dir, letter, line, offset, value))
     for text in getattr(args, "stage_var", []) or []:
         done.append(stage_var(save_dir, letter, *parse_var(text)))
+    if getattr(args, "stage_place", None):
+        done.append(stage_place(save_dir, letter, *parse_place(args.stage_place)))
     return done
 
 
@@ -5930,6 +5951,10 @@ def main(argv: list[str] | None = None) -> int:
                          "hex address, decimal or 0x hex value), after "
                          "--stage-record, before the boot; a Silver Blades fight in "
                          "area 16 needs 4C2D=1")
+    ap.add_argument("--stage-place", default=None, metavar="X,Y,FACING",
+                    help="stage the party's square and facing (0 to 15, facing 0 "
+                         "to 3 = N E S W) in an indoor SAVGAM, after --stage-var, "
+                         "before the boot")
     ap.add_argument("--first-bar-key", default=None, metavar="KEY",
                     help="SPACE or one letter or digit, pressed once at the "
                          "first command bar of the first fight instead of "
@@ -5973,6 +5998,8 @@ def main(argv: list[str] | None = None) -> int:
         parse_record_bytes(args.stage_record)
         for v in args.stage_var:
             parse_var(v)
+        if getattr(args, "stage_place", None):
+            parse_place(args.stage_place)
         validate_steps([parse_step(s) for s in args.steps], args.title)
         if args.first_bar_key is not None:
             parse_key(args.first_bar_key)
