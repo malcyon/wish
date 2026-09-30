@@ -927,6 +927,20 @@ def _max_stored(size: int) -> int:
     return (1 << (8 * size)) - 1
 
 
+def amiga_strength_warrior(title_key: str, levels, former_levels) -> bool:
+    """Whether an Amiga engine's Strength recalculation treats this character
+    as a warrior.
+
+    Amiga Curse is DOS Curse. Amiga Silver Blades counts a former class only
+    above `former_level`, which no record we write satisfies, so there only a
+    current fighter, paladin or ranger level counts.
+    """
+    if title_key == "secret-of-the-silver-blades":
+        return any((levels or {}).get(name, 0) > 0
+                   for name in effects.LATER_STRENGTH_WARRIOR_CLASSES)
+    return effects.later_strength_warrior(levels, former_levels)
+
+
 def _native_strength(char: NeutralCharacter,
                      title_key: str) -> tuple[int, int] | None:
     """The score in force the C64's Strength gives a DOS or Amiga character,
@@ -944,8 +958,11 @@ def _native_strength(char: NeutralCharacter,
         title_key, permanent,
         (char.get("strength"), char.get("exceptional_strength") or 0), nodes,
         char.get("granted_effects") or (),
-        effects.later_strength_warrior(char.get("levels"),
-                                       char.get("former_levels")))
+        (amiga_strength_warrior(title_key, char.get("levels"),
+                                char.get("former_levels"))
+         if char.port == "Amiga"
+         else effects.later_strength_warrior(char.get("levels"),
+                                             char.get("former_levels"))))
 
 
 def engine_grants_restoration(levels, experience_award) -> bool:
@@ -990,11 +1007,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     deltas = deltas_for(char.game)
     # A running Strength keeps its roll, and the score in force is the one the
     # C64's own recalculation gives for it, so a camp visit here does not move
-    # it. Only a DOS source: the Amiga's recalculation has not been read, so
-    # its score is copied. Every later read of the strength, the `DIRECT` copy included, then
+    # it. Every later read of the strength, the `DIRECT` copy included, then
     # sees that score.
     native = (_native_strength(char, deltas.key)
-              if port == "DOS" and deltas.key in effects.LATER_CAST_FLAGS
+              if port in ("DOS", "Amiga") and deltas.key in effects.LATER_CAST_FLAGS
               else None)
     if native is not None:
         char = copy.copy(char)

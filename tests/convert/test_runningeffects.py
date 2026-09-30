@@ -3848,13 +3848,13 @@ def test_another_strength_source_leaves_the_c64_score_copied(port):
     assert _c64_strength(char)[0] == (18, 0)
 
 
-def test_an_amiga_source_strength_is_copied_to_the_c64_unchanged():
-    """The state is one DOS's model explains (native would be 18/70), but the
-    Amiga's own recalculation is unread, so the score is copied."""
+def test_an_amiga_source_strength_arrives_at_the_c64s_own_score():
+    """The state is one the model explains, so the Amiga source gets the C64's
+    own score for the roll (18/70), as a DOS source does."""
     game = c64_port.CURSE_OF_THE_AZURE_BONDS
     char = _strength_character("Amiga", game, 8, (17, 0), (18, 0),
                                {"cleric": 5})
-    assert _c64_strength(char)[0] == (18, 0)
+    assert _c64_strength(char)[0] == (18, 70)
 
 
 def test_a_c64_source_is_written_to_c64_as_it_was_given():
@@ -3888,24 +3888,54 @@ def test_a_dos_or_amiga_source_keeps_its_score_in_force_on_a_dos_write():
         assert _dos_strength(char)[0] == (18, 72)
 
 
-def test_a_c64_strength_written_for_the_amiga_still_copies_the_c64_score():
+def test_a_c64_strength_written_for_the_amiga_is_the_destinations_score():
     game = c64_port.CURSE_OF_THE_AZURE_BONDS
     char = _strength_character("C64", game, 8, (17, 0), (18, 70),
                                {"cleric": 5})
-    assert _dos_strength(char, into="Amiga")[0] == (18, 70)
+    assert _dos_strength(char, into="Amiga")[0] == (18, 0)
 
 
-def test_a_c64_roll_of_one_is_dropped_on_the_amiga_route_only():
+def test_a_c64_roll_of_one_is_written_to_the_amiga_with_its_score():
     game = c64_port.CURSE_OF_THE_AZURE_BONDS
     from goldbox.amiga_later import CURSE_DELTAS
 
-    for roll, kept in ((1, 0), (2, 1)):
+    for roll in (1, 2):
         char = _strength_character("C64", game, roll, (18, 25), (18, 35),
                                    {"fighter": 4})
         nodes, dropped = amiga_later._later_effect_nodes(char, CURSE_DELTAS.dos)
-        assert len([n for n in nodes if n[0] == 38]) == kept
-        assert bool([d for d in dropped if "Amiga's own Strength" in d]) \
-            == (roll == 1)
+        assert len([n for n in nodes if n[0] == 38]) == 1
+        assert not dropped
+    char = _strength_character("C64", game, 1, (18, 25), (18, 35),
+                               {"fighter": 4})
+    assert _dos_strength(char, into="Amiga")[0] == (18, 100)
+
+
+def test_a_dual_classed_ex_fighter_climbs_by_tens_on_dos_but_not_on_the_amiga():
+    """Silver Blades' Amiga warrior test counts a former class only above
+    `former_level`, which a record we write never satisfies; Curse's does."""
+    def character(key):
+        char = _strength_character(
+            "C64", c64_port.by_key(key), 3, (17, 0),
+            effects.raise_strength(17, 0, 3), {"thief": 5})
+        char.set("former_levels", {"fighter": 5}, "built here")
+        return char
+
+    assert _dos_strength(character(_SSB_KEY))[0] == (18, 20)
+    assert _dos_strength(character(_SSB_KEY), into="Amiga")[0] == (18, 0)
+    assert _dos_strength(character(_CURSE_KEY), into="Amiga")[0] == (18, 20)
+
+
+def test_an_amiga_silver_blades_source_uses_the_current_class_warrior_test():
+    """A climbed 18/72 is a state only a warrior's recalculation reaches, so
+    it is explained (and converted to 18/42) only where the ex-fighter counts."""
+    def score(key):
+        char = _strength_character("Amiga", c64_port.by_key(key), 3, (18, 12),
+                                   (18, 72), {"thief": 5})
+        char.set("former_levels", {"fighter": 5}, "built here")
+        return _c64_strength(char)[0]
+
+    assert score(_CURSE_KEY) == (18, 42)
+    assert score(_SSB_KEY) == (18, 72)
 
 
 def _strength_specimen_party(name, platform):

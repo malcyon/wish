@@ -5176,9 +5176,10 @@ def write(char: NeutralCharacter,
         deltas.key, char.get("granted_effects") or ()))
     # A C64 running Strength keeps its roll, and the score in force is what a
     # DOS cast of that roll gives, so DOS's own recalculation starts from it.
-    # Only a DOS destination: the Amiga's recalculation has not been read.
+    # The Amiga Curse and Silver Blades recalculations are DOS's, apart from
+    # Silver Blades' warrior test (`c64_codec.amiga_strength_warrior`).
     strength_native = None
-    if (char.port == "C64" and into == "DOS"
+    if (char.port == "C64" and into in ("DOS", "Amiga")
             and deltas.key in effects.LATER_CAST_FLAGS and seconds
             and char.get("running_effects") is not None):
         _perm = (seconds.get("strength"), seconds.get("exceptional_strength"))
@@ -5190,8 +5191,11 @@ def write(char: NeutralCharacter,
                     bytes(r)[:effects.RUNNING_EFFECT_SIZE])
                  for r in char.get("running_effects")],
                 char.get("granted_effects") or (),
-                effects.later_strength_warrior(char.get("levels"),
-                                               char.get("former_levels")))
+                (c64_codec.amiga_strength_warrior(
+                    deltas.key, char.get("levels"), char.get("former_levels"))
+                 if into == "Amiga"
+                 else effects.later_strength_warrior(
+                     char.get("levels"), char.get("former_levels"))))
     for neutral_name, dos_name in (WRITE_DIRECT + DARKNESS_WRITE_DIRECT +
                                    undead_direct(deltas.key)):
         # A field this title's record does not have at all -- Pools of

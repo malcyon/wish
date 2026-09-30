@@ -1676,10 +1676,6 @@ LATER_EFFECTS_FROM_NEUTRAL = (
 #: the flag back to 1 so the node round-trips and the C64 writer sees DOS's own.
 SILVER_BLADES_SLOW_POISON_COMPANION = (15, 0xFF)
 
-#: A running Strength's `(id, data, flag)` for a roll of 1, which the C64 row
-#: holds and the Amiga's own Strength recalculation has not been read for.
-STRENGTH_ROLL_ONE_NODE = (38, 101, 1)
-
 
 def _later_effect_nodes(
         char: NeutralCharacter,
@@ -1724,7 +1720,6 @@ def _later_effect_nodes(
     needs a report rather than a `continue` (found by the review of
     `39ceb7a`, 2026-09-07).
     """
-    from . import c64_codec as _c64
     from . import dos_codec as _dos
 
     nodes: list[bytes] = []
@@ -1738,15 +1733,6 @@ def _later_effect_nodes(
                             and char.port != "Amiga")
     for r in char.get("running_effects", ()) or ():
         record = bytes(r)[:5].ljust(5, b"\0") + bytes(4)
-        if (char.port == "C64" and (record[0], record[3], record[4])
-                == STRENGTH_ROLL_ONE_NODE):
-            # A roll of 1 is DOS data 101, the one Strength the C64 row can
-            # hold that the Amiga's own recalculation has not been read for.
-            minutes = int.from_bytes(record[1:3], "little")
-            dropped.append(
-                f"{_c64.running_effect_label(38, minutes, char.game)}: the "
-                "Amiga's own Strength recalculation is not read")
-            continue
         seen.add(record[0])
         if (silver_blades_import
                 and record[0] == SILVER_BLADES_SLOW_POISON_COMPANION[0]
