@@ -19,7 +19,7 @@ TITLES = {"Pool": c64_port.POOL_OF_RADIANCE,
           "Curse": c64_port.CURSE_OF_THE_AZURE_BONDS,
           "Silver Blades": c64_port.SECRET_OF_THE_SILVER_BLADES}
 NAMES = {n: f"SPELL{n}" for n in range(1, 60)}
-SCROLL_LOCATION = 11
+SCROLL_LOCATION = 10
 
 
 @pytest.fixture

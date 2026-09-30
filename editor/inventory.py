@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QDialog,
 )
 
+from goldbox.dos_codec import C64_SCROLL_TYPES
 from goldbox.items import (
     ITEM_AREA_BASE,
     ITEM_BLOCK_STRIDE,
@@ -434,10 +435,11 @@ class AddItemDialog(QDialog):
 
 # --- what the selected item actually does ------------------------------------
 
-# Which reading byte +13-+15 get. The ITEMS type table decides it, not the
-# bytes: on a scroll they are up to three spell ids, on everything else they
+# Which reading bytes +13-+15 get is decided by the item's type id against the
+# title's own scroll types (`C64_SCROLL_TYPES`), not by the bytes and not by
+# the type's location: Silver Blades' scrolls share location 10 with its
+# wands. On a scroll they are up to three spell ids, on everything else they
 # are charges, an effect and a dispatch byte.
-SCROLL_LOCATIONS = {11, 12}
 
 
 def _location_name(kind: ItemType | None) -> str:
@@ -585,13 +587,14 @@ class ItemTraitsModel(QAbstractTableModel):
         ]
 
     def _power_rows(self, item: Item, kind: ItemType | None) -> list[tuple[str, str]]:
-        """Bytes +13, +14 and +15, read the way the item's location says.
+        """Bytes +13, +14 and +15, read the way the item's type says.
 
         A scroll carries three spell ids in them; everything else carries
         charges, what the item does, and which handler does it.
         """
         charges, effect, power = item.effects
-        if kind is not None and kind.raw[TYPE_LOCATION] in SCROLL_LOCATIONS:
+        if (kind is not None
+                and item.type_index in C64_SCROLL_TYPES.get(self.spells.key, ())):
             spells = [self._scroll_spell(s) for s in (charges, effect, power) if s]
             return [("Spells", ", ".join(spells) if spells else EMPTY_TEXT)]
         rows = [("Charges", str(charges) if charges else EMPTY_TEXT)]

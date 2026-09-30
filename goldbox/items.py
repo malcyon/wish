@@ -482,8 +482,8 @@ class Item:
         table on every scroll in the game data.
 
         On everything else they are `charges`, `effect` and `power`. Which
-        reading applies is decided by the item's location in the ITEMS type
-        table, not by anything in these three bytes.
+        reading applies is decided by the item's type against the title's
+        scroll types (`goldbox.dos_codec.C64_SCROLL_TYPES`), not by anything in these three bytes.
         """
         return self.raw[13], self.raw[14], self.raw[15]
 

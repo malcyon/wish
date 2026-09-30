@@ -43,15 +43,17 @@ def test_the_c64_trainer_menu_never_offers_it():
 
 def test_a_scroll_holding_it_shows_its_class_and_level():
     from editor.inventory import ItemTraitsModel
+    from goldbox.dos_codec import C64_SCROLL_TYPES
     from goldbox.items import TYPE_LOCATION, Item, ItemType
 
     kind = bytearray(32)
-    kind[TYPE_LOCATION] = 11                       # a scroll's location
+    scroll = C64_SCROLL_TYPES["secret-of-the-silver-blades"][0]
+    kind[TYPE_LOCATION] = 10                       # where its scrolls sit
     raw = bytearray(16)
-    raw[0] = 1
+    raw[0] = scroll
     raw[13] = 100
     m = ItemTraitsModel()
-    m.set_tables({1: ItemType(1, bytes(kind))}, NAMES, SSB)
+    m.set_tables({scroll: ItemType(scroll, bytes(kind))}, NAMES, SSB)
     m.set_item(Item(bytes(raw), {}))
     assert dict(m.rows)["Spells"] == "BESTOW CURSE (magic-user 4)"
 
