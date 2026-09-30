@@ -1535,6 +1535,9 @@ def _fake_run(monkeypatch, tmp_path, *, find_game=None, session_fail=None,
             self.continued.append(label)
             return 0
 
+        def step_begins(self, kind):
+            pass
+
         def shot(self, name):
             (tmp_path / "session" / "shots").mkdir(parents=True, exist_ok=True)
             (tmp_path / "session" / "shots" / f"{name}.png").write_bytes(b"x")
@@ -9014,13 +9017,20 @@ class FakeScribe(FakePool):
     `start` is the list row the highlight opens on (the first spell by
     default), `swallow_pick` drops the first `S` on the list, `head` draws
     another name on the list's title, and `marked` spells are drawn `*`
-    already."""
+    already.  `flicker` changes one pixel outside the text on every capture,
+    as the camp picture and Silver Blades' pointer can; `unseen` refuses
+    without drawing anything a capture can see; `late` draws a refusal's
+    message only on the second capture after the key; `lag` keeps the
+    confirmation on screen for that many captures after `Y`; `after_yes`
+    puts up an unknown `PRESS ANY KEY TO CONTINUE` screen instead of the
+    Magic bar; `stuck_list` makes the list key move nothing."""
 
     CAMP = "SAVE VIEW MAGIC REST ALTER FIX EXIT"
     MAGIC = "CAST MEMORIZE SCRIBE DISPLAY REST EXIT"
 
     def __init__(self, tmp, title="ssb", start=None, swallow_pick=False, refuse=(),
-                 marked=(), head=None):
+                 marked=(), head=None, flicker=False, unseen=False, late=False,
+                 lag=0, after_yes=False, stuck_list=False):
         super().__init__(tmp, keys=TITLE_KEYS[title])
         self.title, self.mode, self.line, self.size = title, "camp", 1, 6
         self.rows: list[tuple[str, str]] = []
@@ -9035,6 +9045,9 @@ class FakeScribe(FakePool):
         self.message = False
         self.scribed: list[str] = []
         self.exited = False
+        self.flicker, self.unseen, self.late = flicker, unseen, late
+        self.lag, self.after_yes, self.stuck_list = lag, after_yes, stuck_list
+        self.delay, self.pending, self.captures = 0, None, 0
 
     def key(self, k, gap=0.0):
         m = self.mode
@@ -9049,6 +9062,8 @@ class FakeScribe(FakePool):
             self.mode, self.hl = "list", self.start
         elif m == "magic" and k == "e":
             self.mode = "camp"
+        elif m == "list" and k == da.SCRIBE_LIST_DOWN[self.title] and self.stuck_list:
+            pass
         elif m == "list" and k == da.SCRIBE_LIST_DOWN[self.title]:
             at = self.spell_rows.index(self.hl)
             self.hl = self.spell_rows[(at + 1) % len(self.spell_rows)]
@@ -9057,7 +9072,8 @@ class FakeScribe(FakePool):
             if self.swallow_pick:
                 self.swallow_pick = False
             elif spell in self.refuse:
-                self.message = True
+                self.message = not self.unseen
+                self.delay = 1 if self.late else 0
             else:
                 self.marked.add(spell)
         elif m == "list" and k == "e":
@@ -9066,7 +9082,12 @@ class FakeScribe(FakePool):
             self.mode = "confirm"
         elif m == "confirm" and k == "y":
             self.scribed += sorted(self.marked)
-            self.mode = "magic"
+            if self.after_yes:
+                self.mode = "unknown"
+            elif self.lag:
+                self.pending = "magic"
+            else:
+                self.mode = "magic"
         else:
             handled = False
         if handled:
@@ -9078,9 +9099,22 @@ class FakeScribe(FakePool):
         return self.head or _SCRIBE_NAMES[self.line - 1]
 
     def capture(self):
+        self.captures += 1
+        if self.pending is not None:
+            if self.lag:
+                self.lag -= 1
+            else:
+                self.mode, self.pending = self.pending, None
+        if self.mode == "unknown":
+            px = bytearray(W * H * 3)
+            _text(px, da.BAR_ROW, 0, "PRESS ANY KEY TO CONTINUE")
+            return dosbox.Screen(W, H, bytes(px))
         if self.mode not in ("camp", "magic", "list", "chosen", "confirm"):
             return super().capture()
         px = bytearray(W * H * 3)
+        if self.flicker:
+            at = ((22 * 8 + 3) * W + 30 * 8 + self.captures % 8) * 3
+            px[at:at + 3] = b"\x55\x55\x55"
         if self.mode in ("camp", "magic"):
             _text(px, da.BAR_ROW, 0, self.CAMP if self.mode == "camp" else self.MAGIC)
             x, y = screens.POD_ROSTER["camp"]
@@ -9103,7 +9137,9 @@ class FakeScribe(FakePool):
                       else 0)
             else:
                 _text(px, row, 3, text, reverse=30 if k == self.hl else 0)
-        if self.message:
+        if self.message and self.delay:
+            self.delay -= 1
+        elif self.message:
             self.message = False
             _text(px, 20, 1, "YOU ALREADY KNOW THAT SPELL")
         return dosbox.Screen(W, H, bytes(px))
@@ -9261,3 +9297,66 @@ def test_a_step_that_may_leave_camp_forgets_the_scribe(tmp_path, scribe_measured
     d.scribe(6, "PROTECTION FROM GOOD")
     d.step_begins("display")
     assert d.rest(5)["scribe_pending"] is False
+
+
+def test_a_frame_that_changes_outside_the_text_is_not_a_refusal(tmp_path,
+                                                                 scribe_measured):
+    game, d = _scribe_camp(tmp_path, start=4, swallow_pick=True, flicker=True)
+    got = d.scribe(6, "PROTECTION FROM GOOD")
+    assert got["pick_presses"] == 2 and game.scribed == ["PROTECTION FROM GOOD"]
+
+
+def test_a_refusal_no_capture_saw_fails_saying_it_may_be_one(tmp_path, scribe_measured):
+    game, d = _scribe_camp(tmp_path, start=4, refuse={"PROTECTION FROM GOOD"},
+                           unseen=True)
+    with pytest.raises(da.StepFailed, match="no mark and no change was seen, possibly "
+                       "a refusal"):
+        d.scribe(6, "PROTECTION FROM GOOD")
+    assert game.keys[5:] == ["m", "s", "s", "s"] and game.scribed == []
+
+
+def test_a_refusal_drawn_after_the_wait_is_read_before_a_second_key(tmp_path,
+                                                                     scribe_measured):
+    game, d = _scribe_camp(tmp_path, start=4, refuse={"PROTECTION FROM GOOD"},
+                           late=True)
+    with pytest.raises(da.StepFailed, match="YOU ALREADY KNOW THAT SPELL"):
+        d.scribe(6, "PROTECTION FROM GOOD")
+    assert game.keys[5:] == ["m", "s", "s"]
+
+
+def test_a_wanted_screen_that_comes_late_is_taken_without_another_key(
+        tmp_path, scribe_measured):
+    game, d = _scribe_camp(tmp_path, start=4, lag=1)
+    d.scribe(6, "PROTECTION FROM GOOD")
+    assert game.keys[5:] == ["m", "s", "s", "e", "e", "y", "e"]
+    assert game.mode == "camp" and game.scribed == ["PROTECTION FROM GOOD"]
+
+
+def test_an_unknown_screen_after_yes_stops_the_step_with_nothing_more_pressed(
+        tmp_path, scribe_measured):
+    game, d = _scribe_camp(tmp_path, start=4, after_yes=True)
+    with pytest.raises(da.StepFailed, match="YES put up a screen that is not magic"):
+        d.scribe(6, "PROTECTION FROM GOOD")
+    assert game.keys[-1] == "y" and not d.scribing
+
+
+@pytest.mark.parametrize("kind,pending", [
+    ("save", True), ("shot", True), ("read", True), ("scribe", True),
+    ("camp", False), ("leave", False), ("display", False), ("walk", False),
+    ("cast", False), ("press", False)])
+def test_only_the_steps_that_keep_camp_keep_a_scribe_pending(tmp_path, scribe_measured,
+                                                            kind, pending):
+    game, d = _scribe_camp(tmp_path)
+    d.scribing = True
+    d.step_begins(kind)
+    assert d.rest(5)["scribe_pending"] is pending
+
+
+@pytest.mark.parametrize("title,said", [("ssb", True), ("pool", False)])
+def test_a_list_key_that_moves_nothing_fails_naming_silver_blades_unmeasured_down(
+        tmp_path, scribe_measured, title, said):
+    game, d = _scribe_camp(tmp_path, title, stuck_list=True)
+    with pytest.raises(da.StepFailed) as failed:
+        d.scribe(6, "PROTECTION FROM GOOD")
+    assert ("may not wrap there" in str(failed.value)) is said
+    assert "s" not in game.keys[7:]
