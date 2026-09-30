@@ -29,7 +29,8 @@ run stopped at the code wheel ("What stays open").
 Every cell is CONFIRMED from the engine's own code, the Amiga duration unit
 included. That unit was PROBABLE minutes while the only evidence was the
 constants the Amiga pushes; the expiry routine read below makes it
-CONFIRMED from the bytecode. It has not been measured in the running game.
+CONFIRMED from the bytecode, and the running games agree ("What the running
+games showed").
 
 **In DOS and on the Amiga the spent state is only the node.** HEAL adds it,
 the character sheet offers HEAL only while the paladin has no node with that
@@ -235,31 +236,58 @@ happen.
 1440-minute `add_affect` call or a `Heal whom` prompt. The C64 side is
 `tools/c64/curedisease.py pool`.
 
+## What the running games showed
+
+Every converted route below was run in the destination game: the converted
+save loaded, the party walked, the camp sheet was read before and after a
+rest, and the game's own save was read back. In each one the paladin arrived
+spent (no HEAL on his sheet), his timer lost exactly the clock's advance over
+a known rest, HEAL came back once a rest outlasted it, and the game's own
+HEAL then wrote the same id, 1440 minutes, value 0 and flag 0 that Wish
+writes (the C64's row with `$C1`, and `0x013` = 0). CONFIRMED, one run per
+route.
+
+| title | directions run | the game's own saves, under the specimen root |
+|---|---|---|
+| Curse | C64 to DOS, DOS to C64, DOS to Amiga, C64 to Amiga, Amiga to C64, Amiga to DOS | `coab-c64/WISH-SPEC-curse-628-paladin-spent-lay-on-hands.D64`, `coab-c64/WISH-SPEC-curse-628-c7-healed-after-dos-c2.D64`, `coab-c64/WISH-SPEC-wish-628-c4-healed-after-amiga.D64`, `coab-dos/WISH-SPEC-curse-628-c2b-slot-d`, `coab-dos/WISH-SPEC-wish-628-c6-slots-c-d-after-amiga`, `coab-amiga/WISH-SPEC-wish-628-curse-gyzdqlkdgnra-mfrwgzlqoqyq`, `coab-amiga/WISH-SPEC-wish-628-curse-im2wiyq-mfrwgzlqoqyq` |
+| Silver Blades | C64 to DOS, DOS to C64, DOS to Amiga, C64 to Amiga, Amiga to C64, Amiga to DOS | `ssb-c64/WISH-SPEC-ssb-628-guy-healed-after-expiry.D64`, `ssb-c64/WISH-SPEC-ssb-628-amiga-to-c64-guy-healed.D64`, `ssb-dos/WISH-SPEC-ssb-628-c64-to-dos-guy-rest-heal`, `ssb-dos/WISH-SPEC-ssb-628-amiga-to-dos-guy-rest-heal`, `ssb-amiga/WISH-SPEC-wish-628-ssb-camp-heal-after-rest-s3b`, `ssb-amiga/WISH-SPEC-wish-628-ssb-camp-heal-after-rest-s5b` |
+| Pools of Darkness | Amiga to DOS | `pod-amiga/WISH-SPEC-pod-628-amiga-lay-then-rest-1h` (slot G: node `[140, 1380, 0, 0]` after an hour's rest), `pod-dos/WISH-SPEC-pod-628-amiga-to-dos-eric-rest-heal` (slot C: node 109 at 1310 after 70 minutes; slot D: `6D A0 05 00 00` after HEAL), `pod-dos/WISH-SPEC-pod-628-dos-lay-then-rest-1h` |
+
+* **The Amiga unit is minutes in the running game.** Over a 62-minute
+  camp (a one-hour rest and a two-square walk) node 140 lost exactly 62 in
+  Amiga Curse and Amiga Silver Blades, and over a one-hour rest it lost 60
+  in Amiga Pools of Darkness.
+* **The C64 duration byte is the nearest fit, not the exact figure.** No
+  byte holds every minute count at every clock time, so a converted C64
+  paladin's HEAL can come back up to about half an hour early or late
+  (`goldbox.effects.closest_duration`). The C64 game's own row always has
+  `1440 - clock` minutes left, so there the use returns when the day changes.
+* **The Amiga game appends its new node after the paladin's other nodes.**
+  Wish's Amiga writer puts it first. Nothing in the engine is known to
+  depend on the order.
+
 ## What stays open
 
-* **The Amiga duration unit has not been measured in the running game.** The
-  bytecode settles it (above). The driven check is still the one to run: in
-  Amiga Curse, GWYDION (the pregen paladin in `SAVE/` on disk A, class 3)
-  lays on hands, the party saves, rests a known number of hours and saves
-  again. The paladin's 140 node should drop from 1440 by 60 per hour.
-  `tools/amiga/fsuaepor.py curse-stage` and `serve --floppy curse1.adf
-  --floppy curse2.adf --window 704x556` boot Curse under FS-UAE to its code
-  wheel. There the private repository's reader, reached through
-  `fsuaepor.py wheel`, rejects the capture. At the best sampling offset its
-  rune matches score 0.905 and 0.986 against its 0.95 threshold, with
-  runners-up of 0.43 and 0.78. Its prompt fit scores 0.79 against 0.99. So
-  the reader needs tuning to FS-UAE's capture, in that repository, or the
-  run has to go through WinUAE with `tools/amiga/amigacursewheel.py`.
+* **DOS to Amiga Pools of Darkness has not been run in the games**, because
+  Wish has no route that writes an Amiga Pools of Darkness save from a DOS
+  one yet: #194 (Import and export a Pools of Darkness save between DOS and the Amiga). The
+  node the converter would write is in "What a converter needs".
+* **Amiga Pools of Darkness' camp is driven for party line 1 only.** Its
+  picker's keys are read (`01AF4A`: `$84`/`$85` next, `$87`/`$88` previous),
+  but the keys that move its camp highlight are not, so a paladin on another
+  line cannot yet be reached by `tools/amiga/route_camp.py`.
 * **When a C64 row expires away from camp** is #600 (The neutral record has no field for an effect's remaining duration or a paladin's cure-disease uses, so a converted character loses both)'s open question and
   applies to lay on hands unchanged. The one-row staging on `SSBC.D64` in
   #600 (The neutral record has no field for an effect's remaining duration or a paladin's cure-disease uses, so a converted character loses both)'s stage 7 comment settles it for both timers.
+* **Rest interruptions** were measured only on the squares the runs rested
+  on. A rest the game ends with a message (Tilverton's Royal Guards, where
+  x < 5 or y < 13 in Curse area 1) needs a staged square.
 
 ## Negative results
 
-* No save on the C64 or the Amiga has been found holding a paladin with a
-  lay-on-hands node or row. The Amiga readers' own sweep
-  (`docs/124-amiga-port.md`) found 11 of 11 nodes with duration 0. DOS is
-  different: `WISH-SPEC-ssb-234-party-pair` (slots C and D) has Guy de
+* No save shipped on the Amiga disks holds a lay-on-hands node: the Amiga
+  readers' own sweep (`docs/124-amiga-port.md`) found 11 of 11 nodes with
+  duration 0. `WISH-SPEC-ssb-234-party-pair` (slots C and D) has Guy de
   Valois, paladin 8, with a `.SFX` node `6D 97 05 00 00` -- id 109, 1431
   minutes, value 0, flag 0, HEAL's own node (`GAME.OVR:0x2AFF5`). CONFIRMED
   as game-written, from the specimen's own provenance: both slots were saved
