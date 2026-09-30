@@ -2600,10 +2600,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         raw_inv = rec.get_raw("inventory")
         raws = [raw_inv[n * ITEM_SIZE:(n + 1) * ITEM_SIZE]
                 for n in range(ITEM_SLOTS)]
-        # Without the type table a readied item cannot be told from armour,
-        # so it keeps the source's bytes, as the DOS combat rebuild does.
-        unarmed = (not _readied_items(raws) if item_types is None
-                   else _readied_weapon(raws, item_types) is None)
+        # A readied item cannot be told from armour without its type, whether
+        # the table is missing or only lacks that type, so it keeps the
+        # source's bytes, as the DOS combat rebuild does.  Without attack
+        # forms there is nothing to rebuild from.
+        readied = _readied_items(raws)
+        unarmed = forms is not None and (
+            not readied if item_types is None else
+            all(r[0] in item_types for r in readied)
+            and _readied_weapon(raws, item_types) is None)
         if unarmed:
             # `LIBRARY $3918`'s unarmed rule, which the game applies at the
             # first fight: the attack dice plus the strength damage step.

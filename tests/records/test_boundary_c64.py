@@ -461,6 +461,21 @@ def test_e_a_trait_id_past_a_byte_is_refused(game):
         c64_codec.write(char)
 
 
+@pytest.mark.parametrize("game", GAMES)
+def test_e_an_unarmed_tail_is_rebuilt_from_forms_that_differ_from_it(game):
+    """The base's tail already equals its forms, so only a pair that differs
+    tells a rebuild from a copy."""
+    char = boundarywidths.base(game)
+    tail = bytes(range(0x21, 0x2A))
+    forms = bytes([9, 9, 3, 1, 4, 1, 5, 9])
+    char.set("roster_tail", tail, "boundary")
+    char.set("attack_forms", forms, "boundary")
+    rec, rep, back = _write(char)
+    assert rep.sources.get(0x113, "").startswith("roster_tail: bytes 3-8")
+    assert bytes(back.get("roster_tail"))[3:9] != tail[3:9]
+    _check_roster_tail(char, rec, rep, back)
+
+
 @pytest.mark.parametrize("field,width", [("attack_forms", 8),
                                          ("roster_tail", 9)])
 def test_e_a_fixed_width_block_takes_exactly_its_width(field, width):
