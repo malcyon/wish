@@ -64,6 +64,7 @@ except ImportError:                 # pragma: no cover - Windows
     # findings about a DOS save that hold on any platform, and CI runs the
     # suite on Windows.
     fcntl = None
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -125,6 +126,17 @@ class PoolFull(RuntimeError):
 
 class WrongCaster(TimeoutError):
     """The camp spell list is titled with a name other than the caster's."""
+
+
+@dataclass(frozen=True)
+class SpellList:
+    """Pool's camp spell list read as text: its title, its bar, and each
+    memorised spell's list row (from 0, as `Screen.highlight_row` counts)
+    with its name."""
+
+    head: str
+    bar: str
+    spells: tuple[tuple[int, str], ...]
 
 
 class BlankCapture(RuntimeError):
@@ -1483,99 +1495,74 @@ class PoolOfRadiance:
     # Read off captures of a live camp cast.
     # `MAGIC` (`m`) on the camp bar opens `CAST MEMORIZE SCRIBE DISPLAY REST
     # EXIT` for the member the roster highlights; `CAST` (`c`) opens
-    # `<NAME>'S SPELLS IN MEMORY` over `CHOOSE SPELL: CAST EXIT`, a row a
-    # memorised spell under a header a level, the current row white and the
-    # list opening on its last row.  `End` moves it a spell on, skipping the
-    # headers, and wraps; `c` casts the white row.  A party spell (Bless)
-    # types `<CASTER> CASTS / BLESS` and `<MEMBER> IS BLESSED` for each
-    # member into a window over the list's foot, asking for no key, then
-    # redraws the list without that row.  A spell with a target first shows
-    # the camp roster over `CAST SPELL ON WHOM SELECT EXIT`, the caster
-    # highlighted; `End` moves the highlight and `Return` picks.  A
-    # combat-only spell asks `LOSE IT? YES NO`.  `e` leaves the list for the
-    # Magic bar and the Magic bar for camp.  Bars by `screens.bar_signature`.
+    # `<NAME>'S SPELLS IN MEMORY` over `CHOOSE SPELL: CAST EXIT`, a heading
+    # per spell level at text column 1 and a memorised spell a row at column
+    # 3, the current row white and the list opening on its last row.  `End`
+    # moves it a spell on, skipping the headers, and wraps; `c` casts the
+    # white row.  A party spell (Bless) types `<CASTER> CASTS / BLESS` and
+    # `<MEMBER> IS BLESSED` for each member into a window over the list's
+    # foot, asking for no key, then redraws the list without that row.  A
+    # spell with a target first shows the camp roster over `CAST SPELL ON
+    # WHOM SELECT EXIT`, the caster highlighted; `End` moves the highlight
+    # and `Return` picks.  A combat-only spell asks `LOSE IT? YES NO`.  `e`
+    # leaves the list for the Magic bar and the Magic bar for camp.  Bars by
+    # `screens.bar_signature`; the list itself is read as text by the
+    # caller's `read`, with the title's own font.
     #
     # What each signature below was verified against.  All were read off live
     # captures on DOSBox 0.74-3, `machine=vga`, `cycles=fixed 20000`, from the
-    # Forgotten Realms Archives Collection Two copy of `POOLRAD`, for SIMON,
-    # the second roster line of the party read:
+    # Forgotten Realms Archives Collection Two copy of `POOLRAD`:
     #   CAMP_BAR, MAGIC_BAR, SPELL_LIST_BAR: the camp bar, the Magic bar and
     #     the list bar as `cast` reaches them by `m` and `c`.
-    #   TARGET_BAR: the `CAST SPELL ON WHOM` screen of Cure Light Wounds; not
-    #     yet exercised by `cast`.
+    #   TARGET_BAR: the `CAST SPELL ON WHOM` screen of Cure Light Wounds and
+    #     of Slow Poison (`667/aed7e96fc4-sp1-list`).
     #   LOSE_IT_BAR: the screen after casting the list's last row, a
     #     combat-only spell; not yet exercised by `cast`.
-    #   SPELL_LIST_POSSESSIVE: SIMON's list title, the `'S` after the name;
-    #     checked against it by `cast`.
-    #   CAST_SPELLS rows: BLESS as it shows in the list, and as `cast` casts
-    #     it; CURE-LIGHT-WOUNDS as it shows in the list; not yet exercised by
-    #     `cast`; ANIMATE-DEAD as it shows in the list of a cleric holding it
-    #     alone (its `3RD LEVEL` header row is `1fb7b89c23f366c0`), read from
-    #     the `700/47e480c557-c3-animate-list` capture, which also shows it
-    #     asks for no target and, cast from a list with no other spell, comes
-    #     back to MAGIC_BAR and not to the list; SLOW-POISON as it shows in the
-    #     list of WISHCLE holding it alone (its `2ND LEVEL` header row is
-    #     `da676c4234ffee66`), read from the `667/aed7e96fc4-sp1-list`
-    #     capture, which also shows `c` on it opens TARGET_BAR and `Return`
-    #     there, from a list with no other spell, comes back to MAGIC_BAR.
     CAMP_BAR = "e229a5f1da0130ed"
     MAGIC_BAR = "062aa229ea7afd11"
     SPELL_LIST_BAR = "756a9b74819cebd5"
     TARGET_BAR = "aeccade3043c6871"
     LOSE_IT_BAR = "4c8baf710f38c28d"
     #: The list: sixteen 8-pixel rows from y = 40, the white row found by
-    #: `Screen.highlight_row`; each row read from x = 8 over 37 cells.
+    #: `Screen.highlight_row`.
     SPELL_LIST = (8, 40, 296, 128)
-    SPELL_ROW_CELLS = 37
-    #: The title's first cell, and the signature of the `'S` after the name.
-    SPELL_LIST_TITLE = (8, 8)
-    SPELL_LIST_POSSESSIVE = "4f07e6518e5ebf8d"
-    #: The spells `cast` knows, by `spell_rows` signature, and whether each
-    #: asks `CAST SPELL ON WHOM`.
-    CAST_SPELLS: dict[str, tuple[str, bool]] = {
-        "BLESS": ("e4d6baf46572e796", False),
-        "CURE-LIGHT-WOUNDS": ("b039acb665601fe2", True),
-        "ANIMATE-DEAD": ("dc4b635ec2d5df1c", False),
-        "SLOW-POISON": ("a06057763f5812ed", True),
-    }
-    #: The spells measured to return to the Magic bar, not to the list, when
-    #: cast as the caster's only spell.
-    MAGIC_BAR_CASTS = frozenset({"ANIMATE-DEAD"})
+    #: The end of the list's title after `<NAME>'S `.
+    SPELL_LIST_HEAD = "SPELLS IN MEMORY"
+    #: A word of the target prompt's bar, which tells a target prompt whose
+    #: bar is not `TARGET_BAR` from any other screen, so that it is named.
+    TARGET_WORD = "WHOM"
+    #: How long each `CAST` pressed again at the Magic bar is given to open
+    #: the list; with nothing memorised it opens nothing.
+    REOPEN_SECONDS = 8.0
 
-    @classmethod
-    def spell_rows(cls, screen: Screen) -> list[str]:
-        """Each list row as one signature of its cells, blind to the highlight."""
-        x, y, _, h = cls.SPELL_LIST
-        cell = 8
-        return [hashlib.sha1("".join(
-            screen.glyphs((x + cell * i, y + cell * k, cell, cell))
-            for i in range(cls.SPELL_ROW_CELLS)).encode()).hexdigest()[:16]
-            for k in range(h // cell)]
-
-    def cast(self, spell: str, target: int | None = None, *, party_size: int = 6,
-             caster: list[str] | None = None, shot=None,
-             timeout: float = 60.0) -> dict:
+    def cast(self, spell: str, target: int | None = None, *,
+             read: Callable[[Screen], SpellList], party_size: int = 6,
+             caster: str | None = None, shot=None, timeout: float = 60.0) -> dict:
         """Cast `spell` from camp for the member the roster highlights, on
-        roster line `target` when the spell asks for one, and return to camp.
+        roster line `target` when the game asks for one, and return to camp.
 
-        Starts and ends at the camp bar.  Each screen is known by its bar
-        before the next key; any other screen raises `TimeoutError` with
-        nothing more pressed, and `LOSE IT` is never answered.  The cast is
-        believed only when the list comes back holding one row of `spell`
-        fewer.  A spell in `MAGIC_BAR_CASTS` cast from a list of one is
-        confirmed only by the Magic bar coming back (`confirmed: "magic-bar"`,
-        no `rows_after`): its consumption is not seen on screen, so a refusal
-        that also returns to that bar would be believed, and the run's `read`
-        of the resave is what proves the cast.  `caster`, the roster name's cells, is checked against the
-        list's title.  `shot(label)` is called at each screen reached.
+        `read` gives the list as text (`SpellList`); `spell` is compared with
+        its names as they are, so the caller spells both the same way.
+        Starts and ends at the camp bar.  Each screen is known before the next
+        key; any other screen raises `TimeoutError` with nothing more pressed,
+        and `LOSE IT` is never answered.  The list's title must be `caster`'s
+        (`WrongCaster`), every row must read, and `spell` must be on it.
+
+        After `CAST` the game says whether the spell wants a target: a
+        `TARGET_BAR` with no `target` raises with nothing more pressed, a
+        prompt whose bar is not `TARGET_BAR` raises naming its bar, and a
+        spell that went off with no prompt when `target` was given raises
+        after the fact.  The cast is believed only when the list comes back
+        holding one row of `spell` fewer, or, when `spell` was the list's
+        only row and the Magic bar comes back instead, when `CAST` there
+        changes nothing twice (`confirmed: "memory-empty"`): measured, `CAST`
+        with nothing memorised leaves the Magic bar as it is, while a spell
+        still held would open the list, which then must not hold it
+        (`confirmed: "reopened"`).  `shot(label)` is called at each screen
+        reached.
         """
         from tools.dos.screens import bar_signature, roster_line
 
-        if spell not in self.CAST_SPELLS:
-            raise ValueError(f"{spell} is not one of {', '.join(self.CAST_SPELLS)}")
-        sig, targeted = self.CAST_SPELLS[spell]
-        if targeted != (target is not None):
-            raise ValueError(f"{spell} {'needs a' if targeted else 'takes no'} target")
         snap = shot or (lambda label: None)
         rect = self.SPELL_LIST
 
@@ -1599,30 +1586,43 @@ class PoolOfRadiance:
                                        f"{'Magic bar' if want == self.MAGIC_BAR else 'spell list'}")
             raise TimeoutError(f"{what} changed nothing")
 
+        def open_list(what: str) -> SpellList:
+            press_for("c", self.SPELL_LIST_BAR, self.MAGIC_BAR, what)
+            sc = self.s.settle(quiet=0.8, timeout=20.0)
+            if bar(sc) != self.SPELL_LIST_BAR:
+                raise TimeoutError("the spell list did not stay up")
+            got = read(sc)
+            if caster is not None and not (got.head.startswith(f"{caster}'S ")
+                                           and self.SPELL_LIST_HEAD in got.head):
+                raise WrongCaster(f"the spell list's title is {got.head!r}, not "
+                                  f"{caster}'S {self.SPELL_LIST_HEAD}")
+            unread = [name for _, name in got.spells if "?" in name]
+            if unread:
+                raise TimeoutError(f"the spell list has rows that do not read: {unread}")
+            return got
+
+        def names(sc: Screen) -> list[str]:
+            return [name for _, name in read(sc).spells]
+
         if bar(self.s.capture()) != self.CAMP_BAR:
             raise TimeoutError("cast starts at the camp bar, which is not showing")
         press_for("m", self.MAGIC_BAR, self.CAMP_BAR, "MAGIC")
         shots = [snap("cast-magic")]
-        press_for("c", self.SPELL_LIST_BAR, self.MAGIC_BAR, "CAST")
-        screen = self.s.settle(quiet=0.8, timeout=20.0)
-        if bar(screen) != self.SPELL_LIST_BAR:
-            raise TimeoutError("the spell list did not stay up")
+        listed = open_list("CAST")
         shots.append(snap("cast-list"))
-        if caster is not None:
-            x, y = self.SPELL_LIST_TITLE
-            title = [screen.glyphs((x + 8 * i, y, 8, 7)) for i in range(len(caster) + 2)]
-            if title[:len(caster)] != caster or hashlib.sha1("".join(
-                    title[len(caster):]).encode()).hexdigest()[:16] != self.SPELL_LIST_POSSESSIVE:
-                raise WrongCaster("the spell list's title is not the caster's name")
-        have = self.spell_rows(screen).count(sig)
+        before = [name for _, name in listed.spells]
+        have = before.count(spell)
         if not have:
-            raise TimeoutError(f"{spell} is not in the caster's memory")
+            raise TimeoutError(f"{spell} is not in the caster's memory, which lists "
+                               f"{before}")
+        rows = dict(listed.spells)
 
+        screen = self.s.capture()
         here, presses, stuck = screen.highlight_row(rect), 0, 0
-        while here is None or self.spell_rows(screen)[here] != sig:
+        while rows.get(here) != spell:
             if here is None:
                 raise TimeoutError("the spell list shows no highlighted row")
-            if presses > rect[3] // 8 or stuck >= 2:
+            if presses > len(rows) or stuck >= 2:
                 raise TimeoutError(f"{presses} presses of {LIST_DOWN} never "
                                    f"reached {spell}")
             was = here
@@ -1640,29 +1640,30 @@ class PoolOfRadiance:
             b = bar(sc)
             if b == self.LOSE_IT_BAR:
                 return "lose"
-            if b == self.TARGET_BAR and targeted:
+            if b == self.TARGET_BAR:
                 return "target"
             # No highlight is asked for: the caster's last spell leaves a list
             # with no row to highlight.
-            if b == self.SPELL_LIST_BAR and self.spell_rows(sc).count(sig) == have - 1:
+            if b == self.SPELL_LIST_BAR and names(sc).count(spell) == have - 1:
                 return "cast"
-            # Only a spell measured to leave the Magic bar, not an empty list,
-            # when it is the caster's only one.
-            if (b == self.MAGIC_BAR and spell in self.MAGIC_BAR_CASTS
-                    and have == 1 and not targeted):
+            # The caster's only spell: the game may go back to the Magic bar
+            # rather than to an empty list, which `reopen` then checks.
+            if b == self.MAGIC_BAR and len(before) == 1:
                 return "cast"
             return None
 
-        def settle_on(want: str) -> Screen:
-            if not self.s.wait_for(lambda sc: outcome(sc) in (want, "lose"), timeout):
-                last = bar(self.s.capture())
-                if last == self.TARGET_BAR and not targeted:
-                    raise TimeoutError(f"{spell} asks CAST SPELL ON WHOM, which "
-                                       "CAST_SPELLS says it does not")
-                if last in (self.SPELL_LIST_BAR, self.TARGET_BAR):
+        def settle_on(*want: str) -> Screen:
+            if not self.s.wait_for(lambda sc: outcome(sc) in (*want, "lose"), timeout):
+                last = self.s.capture()
+                if bar(last) in (self.SPELL_LIST_BAR, self.MAGIC_BAR):
                     raise TimeoutError(f"the spell list never came back one {spell} "
                                        "shorter")
-                raise TimeoutError("the cast reached a screen it does not know")
+                words = read(last).bar
+                if self.TARGET_WORD in words:
+                    raise TimeoutError(f"{spell} asks for a target on a screen it "
+                                       f"does not know: {words!r}")
+                raise TimeoutError(f"the cast reached a screen it does not know: "
+                                   f"{words!r}")
             sc = self.s.capture()
             if outcome(sc) == "lose":
                 raise TimeoutError("the game asks LOSE IT (a combat-only spell); it "
@@ -1671,8 +1672,13 @@ class PoolOfRadiance:
 
         self.s.key("c")
         picked, target_presses = None, 0
-        if targeted:
-            sc = settle_on("target")
+        asked = outcome(settle_on("target", "cast")) == "target"
+        if asked and target is None:
+            snap("cast-asked")
+            raise TimeoutError(f"{spell} asks CAST SPELL ON WHOM and the step names no "
+                               "target; nothing more is pressed")
+        if asked:
+            sc = self.s.capture()
             here, stuck = roster_line(sc, "camp", party_size), 0
             while here != target:
                 still(sc, self.TARGET_BAR, "target roster")
@@ -1694,7 +1700,7 @@ class PoolOfRadiance:
             picked = here
             shots.append(snap("cast-target"))
             self.s.key("Return")
-        settle_on("cast")
+            settle_on("cast")
         # The Bless message window covers the row, so one frame with a row
         # fewer proves nothing: believed only when two captures a second
         # apart show the same bar and the same rows.
@@ -1708,7 +1714,7 @@ class PoolOfRadiance:
             # compared there.
             seen = (None if outcome(screen) != "cast" else
                     (bar(screen),) if bar(screen) == self.MAGIC_BAR else
-                    (bar(screen), tuple(self.spell_rows(screen))))
+                    (bar(screen), tuple(names(screen))))
             if seen is None or anchor is None or anchor[0] != seen:
                 anchor = (seen, now) if seen else None
             elif now - anchor[1] >= 1.0:
@@ -1718,10 +1724,41 @@ class PoolOfRadiance:
                                    f"{spell} shorter after the cast")
             time.sleep(0.15)
         shots.append(snap("cast-done"))
-        by_magic_bar = bar(screen) == self.MAGIC_BAR
-        after = None if by_magic_bar else self.spell_rows(screen).count(sig)
+        if target is not None and not asked:
+            raise TimeoutError(f"{spell} went off without asking CAST SPELL ON WHOM, "
+                               f"but the step names target line {target}")
+        confirmed = None
+        if bar(screen) == self.MAGIC_BAR:
+            # Nothing on screen says the spell went: `CAST` is pressed again.
+            # With nothing memorised it changes nothing; a list that opens
+            # must be the caster's and must not hold the spell.
+            for _ in range(2):
+                self.s.key("c")
+                if self.s.wait_for(lambda sc: bar(sc) != self.MAGIC_BAR,
+                                   self.REOPEN_SECONDS):
+                    break
+            sc = self.s.settle(quiet=0.8, timeout=20.0)
+            if bar(sc) == self.MAGIC_BAR:
+                confirmed, after = "memory-empty", 0
+                shots.append(snap("cast-memory-empty"))
+            elif bar(sc) != self.SPELL_LIST_BAR:
+                raise TimeoutError(f"CAST again reached a screen it does not know: "
+                                   f"{read(sc).bar!r}")
+            else:
+                reopened = read(sc)
+                if caster is not None and not reopened.head.startswith(f"{caster}'S "):
+                    raise WrongCaster(f"the spell list opened again is titled "
+                                      f"{reopened.head!r}")
+                confirmed = "reopened"
+                shots.append(snap("cast-reopened"))
+                after = [name for _, name in reopened.spells].count(spell)
+                if after != have - 1:
+                    raise TimeoutError(f"the list opened again still holds {after} "
+                                       f"{spell}")
+        else:
+            after = names(screen).count(spell)
 
-        if not by_magic_bar:
+        if bar(self.s.capture()) == self.SPELL_LIST_BAR:
             press_for("e", self.MAGIC_BAR, self.SPELL_LIST_BAR, "EXIT")
         for _ in range(2):
             if bar(self.s.capture()) != self.MAGIC_BAR:
@@ -1731,13 +1768,12 @@ class PoolOfRadiance:
                 break
         if not self.s.wait_for(lambda sc: bar(sc) == self.CAMP_BAR, 15.0):
             raise TimeoutError("the camp bar did not come back after EXIT")
-        got = {"spell": spell, "target": picked, "rows_before": have,
+        got = {"spell": spell, "target": picked, "asked_target": asked,
+               "listed": before, "rows_before": have, "rows_after": after,
                "list_presses": presses, "target_presses": target_presses,
                "shots": [s for s in shots if s]}
-        if by_magic_bar:
-            got["confirmed"] = "magic-bar"
-        else:
-            got["rows_after"] = after
+        if confirmed:
+            got["confirmed"] = confirmed
         return got
 
     # -- the fight ---------------------------------------------------------

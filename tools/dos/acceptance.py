@@ -66,7 +66,7 @@ a source whose title does not match `--title`:
 | `items N` | Pool, in camp: member N's `ITEMS` list, first screen only, from `End` to the line, `v`, `i`, and `Escape` twice back to camp; refuses a sheet with no `ITEMS`; records `rows` and `marked`, the rows (from 1) drawn with the Detect Magic `* ` |
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool, Curse and Silver Blades, in camp: `MAGIC`, `DISPLAY`, every page of the list of spells in effect read as text with the title's own font (`load_font`), turning with `n` while the bar is ` NEXT EXIT`; `members` is each member's name and the effect names under it, and the list must name every member (Pool's page also six name rows); `Return` or `e` back to the Magic bar (`DISPLAY_LEAVE`) and `e` to camp |
-| `cast N SPELL [T]` | Pool, in camp: roster line N highlighted with `End`, `MAGIC`, `CAST`, the spell list's title checked against line N's name, the highlight moved with `End` to SPELL's row (`dosbox.PoolOfRadiance.CAST_SPELLS`: `BLESS`, `ANIMATE-DEAD`, `SLOW-POISON`, and `CURE-LIGHT-WOUNDS`, which needs target line T), `CAST`, T picked with `End` and `Return` at `CAST SPELL ON WHOM`, and believed only when the list comes back one SPELL row shorter, or the Magic bar comes back when SPELL was the caster's only row; `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
+| `cast N SPELL [T]` | Pool, in camp: roster line N highlighted with `End`, `MAGIC`, `CAST`; the caster's spell list read as text with the title's font (`load_font`), its title checked against line N's name, every row required to read, and SPELL (any memorised spell, as the list spells it; a hyphen reads as a space) required on it; the highlight moved with `End` to SPELL's row, reading it after each press, and `CAST`.  A spell that asks `CAST SPELL ON WHOM` gets T picked with `End` and `Return`; one that asks with no T given stops with nothing more pressed, a target prompt on any other bar stops naming it, and a spell that goes off without asking when T was given fails the step after the cast.  The cast is believed only when the list comes back one SPELL row shorter, or, for the caster's only row, when the Magic bar comes back and `CAST` pressed there twice opens nothing, which is what it does with nothing memorised (a list that does open must not hold SPELL); `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
 | `scribe N SPELL` | Pool, Curse and Silver Blades, in camp: roster line N highlighted (`End` in Pool and Curse, `Down` in Silver Blades), `MAGIC`, `SCRIBE`; the scroll list read as text with the title's font (`load_font`), its title checked against line N's name, and SPELL (several words; a hyphen reads as a space) required on it without the `*` of a spell being scribed; the highlight walked onto SPELL's row with `SCRIBE_LIST_DOWN`, reading it after each press, and `SCRIBE` believed only when that row redraws as `*SPELL`.  Each `SCRIBE` is sent only while the row is highlighted and unmarked, the second only when no text row changed after the first, while it was awaited or on a reading taken after; a changed text row without the mark is the game refusing, and the step fails with the words it drew, while a change outside the text (the camp picture, Silver Blades' pointer) is not one.  A refusal drawn and gone between two readings is not seen, so two presses with neither a mark nor a change fail saying it may have been one.  Then the list's `EXIT`, the chosen spells read (SPELL must be listed `*`), their `EXIT`, `YES` at `SCRIBE THESE SPELLS?` and the Magic bar's `EXIT`, each pressed only at the screen it belongs to.  The party stays camped, so a camp `save` keeps the scribe pending and a `rest` finishes it; that rest's `scribe_pending` says a scribe was pending when it began, which any step outside `SCRIBE_KEEPS` forgets.  Driven in Pool of Radiance; Silver Blades' screens and keys are the hand-driven run's, and Curse's are its strings only |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below); in Curse a message over the continue bar that ends the rest (Tilverton's Royal Guards) gets `Return`, the map bar is required, and the party camps again, logged as `ended_by_message` |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
@@ -894,6 +894,16 @@ def scribe_screen(screen: dosbox.Screen, font: dict[bytes, str]) -> str | None:
     if SCRIBE_CONFIRM in bar:
         return "confirm"
     return None
+
+
+def cast_list(screen: dosbox.Screen, font: dict[bytes, str]) -> dosbox.SpellList:
+    """Pool's camp spell list (`<NAME>'S SPELLS IN MEMORY`) read as text: the
+    same rows as the scroll list (`scribe_entries`), each name as `spell_key`
+    spells it."""
+    return dosbox.SpellList(
+        head=text_row(screen, SCRIBE_HEAD_ROW, font, DISPLAY_COLUMNS).strip(),
+        bar=text_row(screen, BAR_ROW, font).strip(),
+        spells=tuple((e["row"], spell_key(e["spell"])) for e in scribe_entries(screen, font)))
 
 
 def roster_text(screen: dosbox.Screen, line: int, font: dict[bytes, str]) -> str:
@@ -1873,7 +1883,7 @@ STEP_HELP = ("load, begin, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, leave,
              "'rest 5m', 'save D', "
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
              "'halve 1 1', 'join 4 15', 'view 1', 'memorize 5', 'cast 2 BLESS', "
-             "'cast 2 CURE-LIGHT-WOUNDS 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
+             "'cast 2 RESIST-COLD 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
              "'press KEY', 'fight', 'fight 900', 'prayer-watch 49', 'add ARRONEL', read")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
 #: 0x0CB8), upper case.
@@ -1897,18 +1907,14 @@ def parse_step(text: str) -> Step:
     if kind in ("train", "sheet", "items", "view", "memorize", "heal", "cure") and len(
             words) == 2 and re.fullmatch(r"[1-8]", words[1]):
         return Step(kind, text, line=int(words[1]))
-    if kind == "cast" and len(words) in (3, 4) and re.fullmatch(r"[1-8]", words[1]) and (
-            len(words) == 3 or re.fullmatch(r"[1-8]", words[3])):
-        spell = words[2].upper()
-        known = dosbox.PoolOfRadiance.CAST_SPELLS
-        if spell not in known:
-            raise ValueError(f"cast {words[2]!r} is refused: the spell is not one of "
-                             f"{', '.join(known)}, the rows measured")
-        target = int(words[3]) if len(words) == 4 else 0
-        if known[spell][1] and not target:
-            raise ValueError(f"cast {spell} needs a target line: {text!r}")
-        if target and not known[spell][1]:
-            raise ValueError(f"cast {spell} takes no target: {text!r}")
+    if kind == "cast" and len(words) >= 3 and re.fullmatch(r"[1-8]", words[1]):
+        name, target = words[2:], 0
+        if len(name) > 1 and re.fullmatch(r"\d+", name[-1]):
+            if not re.fullmatch(r"[1-8]", name[-1]):
+                raise ValueError(f"cast target line {name[-1]} is refused: the roster "
+                                 f"has lines 1 to 8: {text!r}")
+            target = int(name.pop())
+        spell = "-".join(spell_key(" ".join(name)).split())
         return Step(kind, text, line=int(words[1]), name=spell, row=target)
     if kind == "scribe" and len(words) >= 3 and re.fullmatch(r"[1-8]", words[1]):
         spell = spell_key(" ".join(words[2:]))
@@ -5532,29 +5538,35 @@ class Driver:
 
     def cast(self, line: int, spell: str, target: int | None = None) -> dict:
         """Roster line `line` casts `spell` in Pool's camp, on roster line
-        `target` when the spell asks for one, and the party is back in camp.
+        `target` when the game asks for one, and the party is back in camp.
 
-        The screens are `dosbox.PoolOfRadiance.cast`'s; any it does not know
-        stops the run with a `lost-cast-*` shot and nothing more pressed.
+        The screens are `dosbox.PoolOfRadiance.cast`'s, with the spell list
+        read as text with the title's font (`cast_list`); any screen it does
+        not know stops the run with a `lost-cast-*` shot and nothing more
+        pressed.
         """
         if self.title.key != "pool" or self.camp_sig is None:
             raise StepFailed("cast needs Pool camp first")
+        font = self.display_font()
         self.ensure_camp()
         label = f"cast-{line}"
         moved = self.pick_line(line, "camp", f"{label}-select", POOL_ROSTER_NEXT)
-        name = roster_cells(self.s.capture(), line)
+        name = roster_text(self.s.capture(), line, font)
         self.shot(f"{label}-line")
+        if not name or "?" in name:
+            raise self.fail(label, f"roster line {line}'s name does not read: {name!r}")
         try:
-            got = self.game.cast(spell, target or None, party_size=self.party_size,
-                                 caster=name, shot=self.shot)
-        except dosbox.WrongCaster:
-            raise self.fail(label, f"the spell list's title is not roster line "
-                                   f"{line}'s name") from None
+            got = self.game.cast(spell_key(spell), target or None,
+                                 read=lambda sc: cast_list(sc, font),
+                                 party_size=self.party_size, caster=name, shot=self.shot)
+        except dosbox.WrongCaster as e:
+            raise self.fail(label, f"roster line {line}'s list: {e}") from None
         except TimeoutError as e:
             raise self.fail(label, str(e)) from None
         if not self.wait_camp(timeout=15.0):
             raise self.fail(f"{label}-back", "the camp bar did not stay after EXIT")
-        return {"line": line, **moved, **got, "back": self.shot(f"{label}-back")}
+        return {"line": line, **moved, "name": name, **got,
+                "back": self.shot(f"{label}-back")}
 
     def _scribe_state(self, screen, font: dict[bytes, str]) -> str | None:
         """Which screen of the scribe route `screen` is: `list`, `chosen`,
