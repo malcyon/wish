@@ -59,21 +59,22 @@ def _title():
                                slot_files=_files)
 
 
-def _manifest(tmp_path):
-    slots = [("A", _slot(START)), ("B", _slot(LATER))]
+def _manifest(tmp_path, start=START, expected_after=LATER):
+    slots = [("A", _slot(start)), ("B", _slot(LATER))]
     disks = {"disk1": _adf(tmp_path / "disk1.adf", "ONE"),
              "disk2": _adf(tmp_path / "disk2.adf", "TWO"),
              "save": _adf(tmp_path / "save.adf", "POOLSAVE", slots)}
     data = {"disks": disks, "registered": {"specimen": _adf(tmp_path / "specimen.adf", "REG")},
-            "loaded_letter": "A", "state_a": START, "names_a": NAMES, "expected_after": LATER}
+            "loaded_letter": "A", "state_a": start, "names_a": NAMES,
+            "expected_after": expected_after}
     path = tmp_path / "prepare.json"
     path.write_text(json.dumps(data))
     return path
 
 
-def _run(tmp_path, clock, *, guest=None, **kw):
+def _run(tmp_path, clock, *, guest=None, start=START, expected_after=LATER, **kw):
     guest = guest or TitleGuest(clock, save_key="save")
-    guest.place = dict(START)
+    guest.place = dict(start)
     kw.setdefault("accept", True)
     if not kw["accept"]:
         kw.setdefault("guard", None)
@@ -81,7 +82,7 @@ def _run(tmp_path, clock, *, guest=None, **kw):
         kw.setdefault("guard", MapGuard(states=STATES, on=FIRST_SCREEN))
         kw.setdefault("identity", _IdentityMap())
     result = foundation.run_recon(
-        _manifest(tmp_path), guest=guest, holder="wish679-test",
+        _manifest(tmp_path, start, expected_after), guest=guest, holder="wish679-test",
         audio_proof=_audio_proof(tmp_path), title=_title(), **kw)
     return guest, result
 
@@ -2956,3 +2957,13 @@ def test_a_source_in_the_pin_set_is_accepted_and_an_unlisted_one_is_refused(tmp_
     monkeypatch.setitem(foundation.PUBLISHED_SOURCES, ("ssb", "c64"), frozenset({other}))
     with pytest.raises(winuaesession.RouteError, match="differs from the pinned specimen"):
         foundation._published_manifest(path, "ssb")
+
+
+def test_the_pool_walk_east_off_the_slums_is_judged_moved_into_new_phlan(tmp_path, clock):
+    start = {"area": 20, "x": 15, "y": 4, "facing": geo.WEST}
+    land = {"area": 0, "x": 0, "y": 4, "facing": geo.EAST}
+    guest = TitleGuest(clock, save_key="save", land=land)
+    _, result = _run(tmp_path, clock, guest=guest, start=start, expected_after=None)
+    assert result["error"] == "", result["read"]
+    assert result["walk"]["d_ok"] is True and result["success"] is True
+    assert result["walk"]["area_crossed"] == {"from": 20, "to": 0}

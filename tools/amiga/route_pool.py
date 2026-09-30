@@ -131,6 +131,9 @@ POOL = AmigaTitle(
         ("wheel", ("keys", "RET"), frozenset({"title"}), 1),
         ("save_path", ("keys", "RET"), frozenset({"camp_save_picker"}), 1),
     ),
+    # ECL14 $994F-$995D: COMPARE [$C04D], 1 then NEWECL 0, with no write to the party's square,
+    # so a step east off the Slums lands in New Phlan on the wrapped square, still facing east.
+    edge_exits={(20, geo.EAST): 0},
 )
 
 

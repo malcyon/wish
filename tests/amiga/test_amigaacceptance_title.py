@@ -1404,3 +1404,20 @@ def test_the_summary_carries_the_error_cause_when_there_is_one():
     assert json.loads(acceptance._summary(result, manifest, "a1"))["error_cause"] == "OSError: ssh"
     del result["error_cause"]
     assert "error_cause" not in json.loads(acceptance._summary(result, manifest, "a1"))
+
+
+def test_a_step_off_a_map_edge_lands_in_the_area_the_exit_row_names():
+    place = lambda area, x, facing=geo.EAST: {"place": {"area": area, "x": x, "y": 4,  # noqa: E731
+                                                        "facing": facing}}
+    before = {"area": 20, "x": 15, "y": 4, "facing": geo.WEST}
+    control = {"place": before}
+    rows = {(20, geo.EAST): 0}
+    walk = lambda landing, **kw: acceptance.walk_verdict(  # noqa: E731
+        before, control, landing, 1, turn="about", **kw)
+    crossed = walk(place(0, 0), edge_exits=rows)
+    assert crossed["d_ok"] and crossed["squares_moved"] == 1
+    assert crossed["area_crossed"] == {"from": 20, "to": 0}
+    assert not walk(place(0, 0))["d_ok"]
+    assert not walk(place(20, 0), edge_exits=rows)["d_ok"]
+    assert not walk(place(29, 0), edge_exits=rows)["d_ok"]
+    assert walk(place(20, 0))["d_ok"] and walk(place(20, 0))["area_crossed"] is None

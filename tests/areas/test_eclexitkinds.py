@@ -536,3 +536,20 @@ def test_ecl0bs_a20f_is_the_one_entry3_exit():
     assert len(entry3) == 1
     assert entry3[0]["at"] == 0xA20F
     assert entry3[0]["entries"] == [3]
+
+
+@needs_disks
+def test_ecl14s_east_edge_exit_to_area_0_keeps_the_party_square_and_facing():
+    """`route_pool.POOL.edge_exits` says a step east off the Slums lands in area 0 on the wrapped square."""
+    every = W.scripts()
+    if "ECL14" not in every:
+        pytest.skip("ECL14 not reachable on these disks")
+    side, body = every["ECL14"]
+    script = W.Script(W.Machine(), "ECL14", side, body)
+    (exit_, block), = [(s, b) for s, b in script.exits() if s.operands[0] == (0, 0)]
+    lines = [str(s) for s in block]
+    assert "COMPARE [$C04D], 1" in lines
+    position = [f"[${a:04X}]" for a in (0xC04B, 0xC04C, 0xC04D)]
+    writes = [line for line in lines if line.startswith("SAVE")
+              and any(line.endswith(f", {p}") for p in position)]
+    assert writes == []

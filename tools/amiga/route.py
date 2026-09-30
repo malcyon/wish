@@ -83,7 +83,8 @@ class AmigaTitle:
     `strict`. `strict` names the states whose guard must match or the run stops; any other
     state falls back to a settled capture and marks the run as measuring. `wait_limits` gives a
     state its own limit in seconds for a guarded wait, where the default is too short for the
-    pages the game shows before that state.
+    pages the game shows before that state. `edge_exits` maps `(area, walk facing)` to the area
+    a step off that area's 16x16 map enters, for an exit that keeps the party's wrapped square and facing.
     """
 
     issue: str
@@ -108,6 +109,7 @@ class AmigaTitle:
     turn: str | None = None
     plain_keys: tuple[tuple[str, str], ...] = ()
     wait_limits: Mapping[str, float] = dataclasses.field(default_factory=dict)
+    edge_exits: Mapping[tuple[int, int], int] = dataclasses.field(default_factory=dict)
 
     @property
     def disk_keys(self) -> tuple[str, ...]:

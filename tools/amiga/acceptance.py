@@ -17,6 +17,7 @@ import stat
 import sys
 import time
 import uuid
+from collections.abc import Mapping
 from typing import Any, Callable
 
 if __package__ in (None, ""):
@@ -532,12 +533,15 @@ def _unreadable(letter: str, reading: dict[str, Any]) -> str:
 
 def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
                  squares: int, *, control: str = "B", after: str = "D",
-                 turn: str | None = None) -> dict[str, Any]:
+                 turn: str | None = None,
+                 edge_exits: Mapping[tuple[int, int], int] | None = None) -> dict[str, Any]:
     """Judge the two saves: `control`, saved before the walk, must be `before`; `after` must be `squares` on.
 
     The step routine wraps at 0 and 15, so `after` is compared modulo 16 along the
     control's facing, or along the opposite facing when `turn` is "about". The
-    screen never judges movement.
+    screen never judges movement. A step off the 16x16 map enters the area `edge_exits` names for
+    the area and facing, on the wrapped square, and `area_crossed` records it; with no row
+    the prediction stays in the starting area.
     """
     verdicts: list[str] = []
     b_place, d_place = b.get("place"), d.get("place")
@@ -552,19 +556,29 @@ def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
                         f"expected the prepared place")
     base = b_place or before
     squares_moved = None
+    area_crossed = None
     if d_place is None:
         verdicts.append(_unreadable(after, d))
     else:
         facing = geo.OPPOSITE[base["facing"]] if turn == "about" else base["facing"]
         dx, dy = geo.STEP[facing]
-        expected = dict(base, facing=facing, x=(base["x"] + dx * squares) % 16,
-                        y=(base["y"] + dy * squares) % 16)
+        area, x, y = base["area"], base["x"], base["y"]
+        for _ in range(squares):
+            x, y = x + dx, y + dy
+            if not (0 <= x < 16 and 0 <= y < 16):
+                area = (edge_exits or {}).get((area, facing), area)
+            x, y = x % 16, y % 16
+        expected = dict(base, area=area, facing=facing, x=x, y=y)
+        crossed = area != base["area"]
         if d_place["area"] == base["area"] and d_place["facing"] == facing:
             along = (d_place["x"] - base["x"]) * dx + (d_place["y"] - base["y"]) * dy
             across = (d_place["x"] - base["x"]) * dy + (d_place["y"] - base["y"]) * dx
             # A wrapped step and a full lap cannot be told apart on 16 squares.
             if across == 0 or (across % 16 == 0):
                 squares_moved = along % 16
+        if crossed and d_place == expected:
+            squares_moved = squares
+            area_crossed = {"from": base["area"], "to": area}
         same_square = (d_place["area"], d_place["x"], d_place["y"]) == (
             base["area"], base["x"], base["y"])
         if turn == "about" and d_place == expected:
@@ -593,7 +607,8 @@ def walk_verdict(before: dict, b: dict[str, Any], d: dict[str, Any],
     return {"verdicts": verdicts, "b_ok": b_ok, "d_ok": d_ok, "walk_blocked": walk_blocked,
             "walk_partial": walk_partial, "squares_requested": squares,
             "place_changed": None if d_place is None else d_place != base,
-            "squares_moved": squares_moved}
+            "squares_moved": squares_moved,
+            "area_crossed": area_crossed}
 
 
 _ACCEPT_ONLY = frozenset({"continue", "journal"})
@@ -682,7 +697,7 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                 squares = sum(1 for *_, kind in steps if kind == "move")
                 walk = walk_verdict(manifest["state_a"], control, after, squares,
                                     control=title.control_letter, after=title.after_letter,
-                                    turn=title.turn)
+                                    turn=title.turn, edge_exits=title.edge_exits)
                 verdicts = list(walk["verdicts"])
                 expected = manifest.get("expected_after")
                 result["expected_after_matches"] = None
