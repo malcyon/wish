@@ -691,6 +691,41 @@ which this run is the measurement of, since `#252 (Does a C64 trait
 slot apply an item-granted effect id, or only the ones its own READY routine
 wrote?)`'s ids all sat in slot 9.
 
+## The marker a temple raise leaves on a living character
+
+Raising Animate Dead's zombie at the temple undoes the zombie but leaves
+its marker: trait slot 9 = 32 and an effect row (id 32, duration 0, so it
+never ages out). The registered raised save holds both, on a character the
+sheet shows as alive. Only three routines read id 32, and none changes
+anything a living character shows:
+
+* **Camp's Dispel** (`SPELLE04 $AA5B`-`$AA83`) finds the row, rolls against
+  the caster's level, and on success zeroes the row. Trait slot 9 stays.
+* **Being animated again** writes 32 into the next free trait slot, because
+  slot 9 already holds it, and clears his own row before writing a new one.
+* **A second raise at the temple** (`SQRPACI64 $059A`-`$05D0`) asks for id 32
+  again and undoes Animate Dead a second time. The array is searched before
+  the slots, so while row 63 is present the clear lands on the byte `$6BAD`
+  plus 63, which is `$6BEC`, the missile adjustment; with the row already
+  dispelled it clears the trait. Either way the same routine zeroes the
+  drained-levels byte, so levels drained since the first raise are no longer
+  restorable, and the THAC0 rebuild that follows runs on a zero missile
+  adjustment until the next fight rebuilds it (`COM.PREP $1633`). An
+  ordinary dead character's raise returns before this, and changes neither.
+
+That second raise is the one C64 behaviour the conversion does not
+reproduce, and it is declared as `goldbox.c64_codec.READ_INERT`. No DOS or
+Amiga temple has an equivalent: each removes only a node, and every form of
+node 32 adds behaviour the C64 character lacks, namely immunity to Stinking
+Cloud's effect 30, a handler that clears the turning class on removal, and,
+with removal flag 0, a temple removal that leaves control at `$B3`. So a
+raised character converts with no node 32, and his computer control in
+combat (`quickfight`) and turning row 2 convert through their own fields.
+Trait slot 9 does not come back on a return trip.
+
+None of the 354 item records on the eight Pool disks holds 32 at `+14`, so no
+readied item can be mistaken for the marker.
+
 ## What this means for a conversion
 
 For `#232 (An item-granted effect is dropped on the way through the neutral
@@ -737,11 +772,10 @@ reason that is now wrong on both clauses:
   predicate left**, and on an array match X is the array index, 0-63. An
   array match can therefore direct the clear up to 54 bytes past the trait
   block. The registered game-written BRUTUS specimen above has id 32 in row
-  63: `$059A` would clear `$6BEC` rather than trait slot 9 at `$6BB6`, while
-  the array id remains set. BRUTUS's saved byte corresponding to `$6BEC` is
-  already zero, and the successful temple branch has not been driven on this
-  specimen; what a player sees remains UNKNOWN. No specimen establishes the
-  outcome for ids 31 or 55.
+  63, so a second raise would clear `$6BEC` rather than trait slot 9 at
+  `$6BB6`; the effect is read from the code in "The marker a temple raise
+  leaves on a living character" and has not been driven. No specimen
+  establishes the outcome for ids 31 or 55.
 * **`CAMP $12EA`**, the "if he has it, dispatch it" entry, is named by no
   file. Its neighbour `$12F8` is the live one.
 * **The character sheet does not list a trait**, so the "boot, `VIEW`, confirm

@@ -162,6 +162,20 @@ is `WISH-SPEC-curse-trained-party`, where SHARA (cleric 6) and MATHEW (paladin
 train, is still on the conversion's zero -- the bug and its proof on one disk,
 written by the engine in one session.
 
+## Which side the C64's TURN finder keeps
+
+The C64's TURN does filter targets by side. `COMBAT $184D` runs the area
+search and then jumps to `$1CF5`, which keeps a candidate only when bit 0 of
+its side byte (`$6C0C`) differs from `$A4E2`, the side of the combatant whose
+turn it is (`COMBAT $0936`-`$0939`); a match is skipped. So the party's own
+cleric cannot pick a party member, and an enemy cleric can. That is the same
+rule as DOS (`START.EXE 0x2F57`) and the Amiga (`/program 0x2429C`). The
+finder reads the turning row and neither the status nor the creature type, so
+a raised Animate Dead character, whose row stays 2, is turned or destroyed by
+an enemy cleric as a zombie would be. That the party's own cleric then has no
+target is read from this filter; the other stores to `$A4E2` (`$1181`, `$14C5`,
+`$1533`) were not traced to TURN.
+
 ## What the conversion does now
 
 `goldbox/c64_codec.py` **computes** `turn_power` rather than copying it, from

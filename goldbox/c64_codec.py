@@ -2896,6 +2896,29 @@ READ_DERIVED: tuple[tuple[str, str, str], ...] = (
      "exceeds its own recompute"),
 )
 
+#: C64 state the reader accounts for and converts to nothing, because no
+#: destination form reproduces it without adding behaviour the C64 character
+#: does not have -- `(name, why, evidence)`, on the same terms as
+#: :data:`READ_DERIVED`.  Not a drop: the character loses nothing he can use.
+READ_INERT: tuple[tuple[str, str, str], ...] = (
+    ("animate_dead_marker",
+     "trait slot 9 and the never-expiring effect row (id 32) a temple raise "
+     "leaves on a living Pool of Radiance character.  Only the temple reads "
+     "it, on a second death and a second raise: it then undoes Animate Dead "
+     "again, so levels drained since are no longer restorable and the "
+     "missile adjustment is zero until the next fight rebuilds it.  That "
+     "one behaviour is not reproduced, because no destination temple has an "
+     "equivalent and every DOS and Amiga node 32 adds behaviour the C64 "
+     "character does not have: immunity to Stinking Cloud, the turning class "
+     "cleared on removal, and a temple removal that leaves the character "
+     "under the engine's control",
+     "the temple routine at SQRPACI64 $059A-$05D0, Camp's Dispel at "
+     "SPELLE04 $AA5B, a literal and check-list sweep of the Pool code that "
+     "finds no other reader of id 32, a sweep of the 354 item records on "
+     "the eight Pool disks in which none carries 32 at +14, and the "
+     "raised-zombie and raised-control saves the game wrote"),
+)
+
 #: What :func:`read` does with every named field of the C64 layout -- the
 #: layout-wide account the DOS writer of #26 called for, so a C64 field
 #: nothing reads cannot be dropped in silence.  `tests/convert/test_doswriter.py`
@@ -2931,7 +2954,10 @@ READ_TARGETS: dict[str, str] = (
                            "74 from 0x01B in Secret of the Silver Blades -- "
                            "and not the declared field's 69 (#268)",
        "spells_castable": "nibbles unpacked into neutral spells_castable",
-       "item_effects": "zeroes stripped into neutral innate_effects",
+       "item_effects": "zeroes stripped into neutral innate_effects; "
+                       "Animate Dead's id 32 on a Pool of Radiance "
+                       "character who is not its zombie is left out "
+                       "(READ_INERT)",
        "flags_0b8": "bit 7 read as neutral npc, and the whole byte read "
                     "again as neutral npc_control_byte when it is set; for "
                     "a Pool of Radiance player character bit 0, the "
@@ -3107,6 +3133,13 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                        and early_raw is not None
                        and early_raw == ZOMBIE_STATUS)
     zombie_node_converted = False
+    # Animate Dead's marker on a Pool character who is not the zombie: the
+    # temple raise leaves trait slot 9 and the never-expiring row behind on a
+    # living character.  The C64 reads it only in a second raise (see
+    # `READ_INERT`), and every DOS and Amiga form of node 32 would add
+    # behaviour this character does not have, so no node is written.
+    animate_dead_residue = (deltas is POOL_OF_RADIANCE_RECORD
+                            and not zombie_read)
     if payload is not None and party_slot is not None:
         rows = effects.active_effects(bytes(payload))
         consumed: set[int] = set()
@@ -3142,6 +3175,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         # trip keeps each character's node order.
         for row in sorted(rows, key=lambda r: -r.slot):
             if row.owner != party_slot or row.slot in consumed:
+                continue
+            if (animate_dead_residue and row.duration == 0
+                    and row.id == ANIMATE_DEAD_ID):
                 continue
             if (row.duration == 0 and zombie_read
                     and row.id == ANIMATE_DEAD_ID and row.magnitude != 0xFF
@@ -3641,7 +3677,8 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     out.set("attack_forms", rec.get_raw("attack_forms"),
             origin("attack_forms"), grade("attack_forms"))
     slot_ids = [b for b in rec.get_raw("item_effects") if b
-                and not (zombie_node_converted and b == ANIMATE_DEAD_ID)]
+                and not ((zombie_node_converted or animate_dead_residue)
+                         and b == ANIMATE_DEAD_ID)]
     out.set("innate_effects",
             slot_ids + [i for i in permanent if i not in slot_ids],
             "the C64's ten trait slots @0x0AD, zeroes stripped, then the "

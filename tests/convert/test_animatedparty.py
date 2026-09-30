@@ -505,3 +505,185 @@ def test_every_dos_account_of_turn_class_follows_the_one_gate(deltas):
     assert (not read.startswith("dropped:")) is measured
     assert (not write.startswith("dropped:")) is measured
     assert target.startswith("from neutral") is measured
+
+
+# --- Animate Dead's marker on a raised, living character --------------------
+#
+# The temple raise leaves trait slot 9 = 32 and a never-expiring id-32 row on a
+# character who is no longer a zombie.  It is recorded as accounted for
+# (`c64_codec.READ_INERT`), so it converts to no node 32 in either port.
+
+_RAISED = "por-700-raised-zombie-c64-save"
+_RAISED_CONTROL = "por-700-raised-control-c64-save"
+_DOS_WORDS = ("field_10c_10f", "field_83_87")
+
+
+def _raised_party(name):
+    from editor import convert
+    from tools.registry import specimens
+
+    root = gamedata.specimen_root()
+    if root is None:
+        pytest.skip("needs the registered C64 Pool specimens")
+    image = root / "por-c64" / f"WISH-SPEC-{name}.D64"
+    manifest = image.with_suffix(".provenance.toml")
+    if not image.is_file() or not manifest.is_file():
+        pytest.skip(f"needs registered specimen {name}")
+    recorded = specimens.read_provenance(manifest)["sha256"][image.name]
+    assert specimens.sha256_file(image) == recorded
+    source = convert.Source.detect(image)
+    chars, _ = dos_codec.c64_party(source.save0, source.save1,
+                                   game=c64_port.POOL_OF_RADIANCE)
+    return {char.get("name"): char for char in chars}["BRUTUS"]
+
+
+def _only_art_tables(dropped):
+    """No drop but the portrait and combat figure, which a test with no
+    creation-disk tables to hand cannot convert for any C64 character."""
+    return all(line.startswith(("portrait_", "Combat figure", "icon_"))
+               or "creation menu" in line for line in dropped)
+
+
+def _nodes(spc):
+    data = bytes(spc)
+    return [data[i:i + 9] for i in range(0, len(data), 9)]
+
+
+def _living_fields(record, at=lambda offset: offset):
+    """The bytes the raised character's sheet turns on, keyed by DOS offset."""
+    status = dos_port.FIELDS_BY_NAME["field_10c_10f"].offset
+    ctl = dos_port.FIELDS_BY_NAME["field_83_87"].offset
+    return {
+        "status": tuple(record[at(status + n)] for n in (0, 1, 3)),
+        "control": record[at(ctl + 1)],
+        "creature_type": record[at(0x09F)],
+        "turn_class": record[at(0x076)],
+        "movement": record[at(0x072)],
+    }
+
+
+def test_a_raised_zombie_converts_to_dos_and_the_amiga_with_no_node_32():
+    char = _raised_party(_RAISED)
+    assert char.get("status") == "okay"
+    assert 32 not in char.get("innate_effects")
+    assert not char.get("granted_effects")
+    dos, _itm, spc, report = dos_codec.write(char)
+    assert report.losses == [] and _only_art_tables(report.dropped)
+    assert _living_fields(dos) == {
+        "status": (0, 1, 1), "control": 0, "creature_type": 0,
+        "turn_class": 2, "movement": 12}
+    assert 32 not in [n[0] for n in _nodes(spc)]
+    amiga, _itm, aspc, areport = amiga_por.write_por(char)
+    assert areport.losses == [] and _only_art_tables(areport.dropped)
+    assert _living_fields(amiga, amiga_por.amiga_por_offset) \
+        == _living_fields(dos)
+    assert bytes((32, 0, 0)) not in bytes(aspc)
+
+
+def test_a_raised_control_converts_to_the_same_bytes_but_no_quickfight():
+    zombie, control = _raised_party(_RAISED), _raised_party(_RAISED_CONTROL)
+    z_dos, *_ = dos_codec.write(zombie)
+    c_dos, _itm, spc, report = dos_codec.write(control)
+    assert report.losses == [] and _only_art_tables(report.dropped)
+    assert 32 not in [n[0] for n in _nodes(spc)]
+    quick = dos_port.FIELDS_BY_NAME["field_10c_10f"].offset + 3
+    assert (z_dos[quick], z_dos[0x076]) == (1, 2)
+    assert (c_dos[quick], c_dos[0x076]) == (0, 0)
+    # The two saves were staged differently (gold, constitution), so only the
+    # living-character fields are compared, not the whole record.
+    assert {**_living_fields(z_dos), "turn_class": 0, "status": (0, 1, 0)} \
+        == _living_fields(c_dos)
+
+
+def _residue(status, *, trait=1, row=True, second_trait=False):
+    rec = _pool_c64(0x00, status)
+    slots = bytearray(rec.get_raw("item_effects"))
+    if trait:
+        slots[9] = 32
+    if second_trait:
+        slots[8] = 32
+    rec.set("item_effects", bytes(slots))
+    payload = bytearray(0x1C00)
+    if row:
+        effects.write_effect(payload, 63, 32, 4, 0, 5)
+    return rec, bytes(payload)
+
+
+_FORMS = {
+    "trait and row": {},
+    "trait only": {"row": False},
+    "row only": {"trait": 0},
+    "two traits and row": {"second_trait": True},
+    "two traits only": {"second_trait": True, "row": False},
+}
+
+
+@pytest.mark.parametrize("status", [0x01, 0x83])
+@pytest.mark.parametrize("form", _FORMS)
+def test_animate_dead_residue_on_a_pool_character_who_is_not_a_zombie_gives_no_32(
+        form, status):
+    rec, payload = _residue(status, **_FORMS[form])
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                          payload=payload, party_slot=4)
+    assert 32 not in (char.get("innate_effects") or [])
+    assert not char.get("granted_effects")
+    assert not any("32" in line for line in char.dropped), char.dropped
+    dos, _itm, spc, report = dos_codec.write(char)
+    assert not any("innate_effects" in line for line in report.dropped)
+    assert 32 not in [n[0] for n in _nodes(spc)]
+
+
+@pytest.mark.parametrize("form", ["trait and row", "trait only", "row only"])
+def test_the_same_residue_on_a_zombie_still_gives_the_node(form):
+    rec, payload = _residue(0x03, **_FORMS[form])
+    rec.set("flags_0b8", 0xFE)
+    rec.set("combat_side", 0)
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                          payload=payload, party_slot=4)
+    if form == "trait only":
+        # No row means no caster level to convert, so it still refuses.
+        assert 32 in char.get("innate_effects")
+        return
+    assert char.get("granted_effects") == [bytes((32, 0, 0, 5, 1))]
+    assert 32 not in char.get("innate_effects")
+
+
+def test_a_curse_record_holding_trait_32_is_left_alone():
+    rec = CharacterRecord.blank()
+    slots = bytearray(rec.get_raw("item_effects"))
+    slots[9] = 32
+    rec.set("item_effects", bytes(slots))
+    char = c64_codec.read(rec, game=c64_port.CURSE_OF_THE_AZURE_BONDS)
+    assert 32 in char.get("innate_effects")
+
+
+def test_the_inert_entry_is_declared_and_is_not_a_drop():
+    names = {name for name, *_ in c64_codec.READ_INERT}
+    assert names == {"animate_dead_marker"}
+    assert names.isdisjoint(dict(c64_codec.READ_DROPPED))
+    assert names.isdisjoint({n for n, *_ in c64_codec.READ_DERIVED})
+    for _name, why, evidence in c64_codec.READ_INERT:
+        assert why and evidence
+
+
+def test_a_raised_character_round_trips_c64_dos_c64_but_for_the_inert_marker():
+    assert "animate_dead_marker" in {n for n, *_ in c64_codec.READ_INERT}
+    rec, payload = _residue(0x01)
+    char = c64_codec.read(rec, game=c64_port.POOL_OF_RADIANCE,
+                          payload=payload, party_slot=4)
+    dos, _itm, spc, report = dos_codec.write(char)
+    assert report.losses == [] and _only_art_tables(report.dropped)
+    dos_char = dos_codec.DosCharacter(dos, effects=_nodes(spc))
+    back_payload = bytearray(0x1C00)
+    back, rep = c64_codec.write(dos_codec.to_neutral(dos_char),
+                                payload=back_payload, party_slot=4,
+                                clock_minutes=0)
+    assert not rep.losses
+    # The declared masks: trait slot 9 and effect row 63.
+    want = bytearray(rec.get_raw("item_effects"))
+    want[9] = 0
+    assert bytes(back.get_raw("item_effects")) == bytes(want)
+    assert not [r for r in effects.active_effects(bytes(back_payload))
+                if r.id == 32]
+    for name in ("roster_in_use", "flags_0b8", "turn_class", "creature_type"):
+        assert back.get(name) == rec.get(name), name
