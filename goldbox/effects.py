@@ -410,9 +410,20 @@ SLOW_POISON_QUIET_C64 = 0x7F
 #: Invisible (25) in the later titles. Every C64 row for it writes the caster's
 #: level (camp rows 19, 32, 36 and 55 reach `ECL65 $819C`; combat goes through
 #: the generic writer) and DOS's handler reads no node byte. Pool's list has
-#: it already. Data `0xFF` (Curse id 138, Silver Blades id 108) is a different
-#: node and stays refused.
+#: it already. Curse's `(25, n, 0xFF, 0)`, which its handler 138 (Alias,
+#: Dragonbait) writes, is a different node and converts to the C64's own row
+#: for that handler, magnitude 0 (`COMBAT $2902` writes it with Y = 0). Silver
+#: Blades' 108 form stays refused: no DOS play writes it.
 LATER_INVISIBLE_ID = 25
+LATER_INVISIBLE_MONSTER = (0xFF, 0)
+
+#: A second Stinking Cloud caster node, `(40, L + 16n, 1)`, Curse and Silver
+#: Blades: DOS's expiry handler clears that caster's cloud squares (Curse
+#: `GAME.OVR:0x10B04`, Silver Blades `0x11D61`). No C64 code writes or asks
+#: for id 40, and its handler slot runs only when magnitude bit 7 is set, so
+#: a row with bit 7 clear ages and is deleted with no effect.
+STINKING_CLOUD_CASTER_ID = 40
+_CLOUD_CASTER_INERT = 0x7F
 
 #: Charm. DOS Pool of Radiance writes it as a granted node at duration 0 that
 #: outlasts the fight, so only a DOS Pool source reaches it; the other two
@@ -752,6 +763,18 @@ def _own_rule_row(title_key: str, node: RunningEffect,
         if node.flag > 1 or node.data > 0x7F:
             return Unconverted("a Fumble node no DOS engine writes")
         return node.id, node.data | node.flag << 7
+    if (node.id == LATER_INVISIBLE_ID and title_key == _CURSE
+            and (node.data, node.flag) == LATER_INVISIBLE_MONSTER):
+        return node.id, 0
+    if (node.id == STINKING_CLOUD_CASTER_ID
+            and title_key in LATER_CAST_FLAGS):
+        if node.flag != 1:
+            return Unconverted("a flag byte other than 1 on a second "
+                               "stinking-cloud caster node")
+        if node.data <= _CLOUD_CASTER_INERT:
+            return node.id, node.data
+        # A cloud index of 8 or more: cap the index at 7, keep the level nibble.
+        return node.id, 0x70 | node.data & 0x0F
     if node.id in STINKING_CLOUD_IDS and _slowed_title(title_key):
         if (node.data, node.flag) != STINKING_CLOUD_DOS:
             return Unconverted("a stinking-cloud node other than the one DOS "
@@ -832,6 +855,14 @@ def _own_rule_node(title_key: str, effect_id: int,
         return m & 0x7F, 1
     if effect_id in FLAG_BIT_IDS.get(title_key, ()):
         return m & 0x7F, m >> 7
+    if effect_id == LATER_INVISIBLE_ID and title_key == _CURSE and m == 0:
+        return LATER_INVISIBLE_MONSTER
+    if (effect_id == STINKING_CLOUD_CASTER_ID
+            and title_key in LATER_CAST_FLAGS):
+        if m & 0x80:
+            return Unconverted("a second stinking-cloud magnitude with bit 7 "
+                               "set, which no C64 routine writes")
+        return m, 1
     if effect_id in STINKING_CLOUD_IDS and _slowed_title(title_key):
         if m != 0:
             return Unconverted("a stinking-cloud magnitude other than the "

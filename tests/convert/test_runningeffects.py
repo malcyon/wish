@@ -2960,3 +2960,44 @@ def test_a_granted_prayer_record_survives_the_pool_amiga_writer():
     rec, _itm, spc, _rep = amiga_por.write_por(char)
     read = amiga_por.to_neutral(amiga_por.por_character(rec, b"", spc))
     assert [bytes(g) for g in read.get("granted_effects")] == [record]
+
+
+def test_save_as_c64_converts_a_second_stinking_cloud(tmp_path):
+    """The Curse specimen the game wrote after a fight kept RANGER's second
+    Stinking Cloud node, `(40, 574, 0x1A, 1)`: Save As C64 gives a plan whose
+    RANGER holds one id-40 row with bit 7 of its magnitude clear."""
+    from gamedata import specimen
+
+    from editor import roster, saveplan
+
+    party = roster.Party(str(specimen(
+        "curse-667-fight-strip-second-node-kept") / "SAVGAMD.DAT"))
+    try:
+        plan = _blessed_row_plan(party, tmp_path)
+    except saveplan.MissingAssets:
+        pytest.skip("needs Curse of the Azure Bonds' own C64 disks")
+    assert isinstance(plan, saveplan.SavePlan)
+    (_name, data), = plan.files.items()
+    out = tmp_path / "written.d64"
+    out.write_bytes(data)
+    back = roster.Party(str(out))
+    names = {m.index: m.name for m in back.members}
+    rows = [e for e in effects.active_effects(back.save0.to_bytes())
+            if e.id == 40]
+    assert [(names[e.owner], e.magnitude) for e in rows] == [("RANGER", 0x1A)]
+
+
+def test_curse_invisibility_nodes_make_one_c64_row():
+    """Two `(25, n, 0xFF, 0)` nodes write one row of the longer, magnitude 0,
+    and the debug log says the other was merged."""
+    char = _slow_poison_character(
+        c64_port.CURSE_OF_THE_AZURE_BONDS,
+        bytes((25, 150, 0, 0xFF, 0)), bytes((25, 200, 0, 0xFF, 0)))
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                                clock_minutes=0)
+    rows = [r for r in _rows(payload).values() if r[0] == 25]
+    assert rows == [(25, 2, effects.closest_duration(200, 0), 0)]
+    assert not [d for d in rep.dropped + rep.losses
+                if "running_effects" in d or "effect 25" in d]
+    assert len([w for w in rep.warnings if "merged" in w]) == 1

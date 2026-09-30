@@ -1402,6 +1402,24 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 else:
                     other_nodes.append(row)
 
+    # The C64 writes one Invisible (25) row per holder and its attack removes
+    # only the first it finds, while DOS removes every node; so several 25
+    # nodes become the one that runs longest.
+    if title_key == "curse-of-the-azure-bonds":
+        invisible = [n for n in other_nodes
+                     if n.id == effects.LATER_INVISIBLE_ID]
+        if len(invisible) > 1:
+            kept = max(invisible, key=lambda n: n.minutes)
+            other_nodes = [n for n in other_nodes
+                           if n is kept or n.id != effects.LATER_INVISIBLE_ID]
+            for n in invisible:
+                if n is not kept:
+                    rep.warnings.append(
+                        f"{running_effect_label(n.id, n.minutes, char.game)}"
+                        f": merged into the invisibility node with "
+                        f"{kept.minutes} minutes left, as the C64 keeps "
+                        "one row per holder")
+
     # C64 Pool restores one old strength per character, so a second strength
     # node, running or granted, has no row to take it.
     strength_nodes = sum(

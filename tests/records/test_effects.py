@@ -1092,7 +1092,6 @@ def test_a_pool_caster_level_bless_becomes_id_and_level():
     ("pool-of-radiance", effects.RunningEffect(1, 2, 0x80, 0)),
     ("pool-of-radiance", effects.RunningEffect(13, 2, 1, 0)),
     ("pool-of-radiance", effects.RunningEffect(49, 2, 1, 0)),
-    ("curse-of-the-azure-bonds", effects.RunningEffect(25, 2, 0xFF, 0)),
     ("curse-of-the-azure-bonds", effects.RunningEffect(49, 2, 1, 0)),
     ("curse-of-the-azure-bonds", effects.RunningEffect(1, 2, 1, 1)),
     ("curse-of-the-azure-bonds", effects.RunningEffect(1, 2, 0x80, 0)),
@@ -1450,7 +1449,12 @@ def test_a_later_title_invisible_node_becomes_id_and_level(title):
         == (25, 0x0C)
     assert effects.c64_row(title, effects.RunningEffect(25, 1, 0x7F, 0)) \
         == (25, 0x7F)
-    for node in (effects.RunningEffect(25, 1, 0xFF, 0),
+    if title == _C:
+        # Curse's handler 138 writes (25, n, 0xFF, 0), which converts.
+        assert effects.c64_row(title, effects.RunningEffect(25, 1, 0xFF, 0)) \
+            == (25, 0)
+    for node in ((effects.RunningEffect(25, 1, 0xFF, 0),)
+                 if title != _C else ()) + (
                  effects.RunningEffect(25, 1, 0, 0),
                  effects.RunningEffect(25, 1, 0x0C, 1)):
         assert isinstance(effects.c64_row(title, node), effects.Unconverted)
@@ -2262,3 +2266,33 @@ def test_curses_slow_poison_magnitude_7f_reads_back_as_the_dos_node():
     assert isinstance(
         effects.dos_record(_C, effects.Effect(63, 22, 2, 0x5E, 0x05), 0),
         effects.Unconverted)
+
+
+@pytest.mark.parametrize("title", [_C, _S])
+def test_a_second_stinking_cloud_node_is_an_inert_c64_row(title):
+    """Curse's and Silver Blades' `(40, L + 16n, 1)` has no C64 writer, and
+    the row's bit-7-clear magnitude keeps its handler from ever running."""
+    assert effects.c64_row(title, _RE(40, 574, 0x1A, 1)) == (40, 0x1A)
+    assert effects.c64_row(title, _RE(40, 574, 0x9A, 1)) == (40, 0x7A)
+    assert isinstance(effects.c64_row(title, _RE(40, 574, 0x1A, 0)),
+                      effects.Unconverted)
+    back = effects.dos_record(title, effects.Effect(63, 40, 2, 0x0A, 0x1A), 0)
+    assert (back.data, back.flag) == (0x1A, 1)
+    assert isinstance(effects.dos_record(
+        title, effects.Effect(63, 40, 2, 0x0A, 0x9A), 0), effects.Unconverted)
+    for data in range(0, 0x80):
+        _round_trip(title, _RE(40, 1, data, 1))
+
+
+def test_pool_still_has_no_rule_for_id_40():
+    assert isinstance(effects.c64_row(_P, _RE(40, 574, 0x1A, 1)),
+                      effects.Unconverted)
+
+
+def test_curses_monster_invisibility_is_the_c64s_own_row():
+    assert effects.c64_row(_C, _RE(25, 200, 0xFF, 0)) == (25, 0)
+    back = effects.dos_record(_C, effects.Effect(63, 25, 2, 0x0A, 0), 0)
+    assert (back.data, back.flag) == (0xFF, 0)
+    assert effects.c64_row(_C, _RE(25, 200, 7, 0)) == (25, 7)
+    assert isinstance(effects.c64_row(_S, _RE(25, 200, 0xFF, 0)),
+                      effects.Unconverted)
