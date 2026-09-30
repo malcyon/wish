@@ -629,7 +629,7 @@ that said the C64 "reuses the magnitude as the level of a retaliation cast" and
 that DOS takes it from the record misread both: the record byte DOS uses is
 the side, and it goes into the id-137 node. A DOS character holding 35 has
 no Confusion byte in the record; the record changes belong to the 142 and 137
-nodes, which are refused. Silver Blades also writes Confusion from its id-70
+nodes; 142 converts with its record bytes and 137 is refused. Silver Blades also writes Confusion from its id-70
 gaze as `(35, 1d10 + 2, the monster's side, 1)` (`GAME.OVR:0x130CF`). Its
 handler returns at once in remove mode (`0x11AC4` to `0x11C7E`), so the flag
 does nothing there, and on the C64 bit 7 would run the Confusion roll a second
@@ -1411,19 +1411,32 @@ a nonnegative combatant owner of 8 or more. The disk-backed test pins the
 record counts, literal ids and strip-list sizes; it names each missing title
 when it skips.
 
-**CONFIRMED set difference as an upper bound:** The following ids occur in a
+**CONFIRMED set difference as an upper bound:** the following ids occur in a
 camp table record, a combat table record not stripped by `POST.COM`, or a
-literal path, but `dos_record` says “no rule yet” for a sample row. The
-post-combat strip applies only to combat-table candidates: a camp cast can
-be saved before combat, and a literal writer has its own path. An unresolved
-handler may write nothing, a combat owner
-may be a monster, and party-wide ids 35 and 49 have a separate converter.
+literal path, and `dos_record` says "no rule yet" for a sample running row
+owned by one character. The post-combat strip applies only to combat-table
+candidates: a camp cast can be saved before combat, and a literal writer has
+its own path. An unresolved handler may write nothing, and a combat owner may
+be a monster. Each id is listed with why its sample row has no rule.
 
-| Title | Candidate ids with no `dos_record` rule |
-|---|---|
-| Pool of Radiance | 11, 13, 32, 33, 35, 49, 51, 77, 108 |
-| Curse of the Azure Bonds | 11, 13, 18, 33, 49, 55, 58, 68, 73, 109, 137, 142–144, 146 |
-| Secret of the Silver Blades | 11, 13, 33, 49, 51, 55, 68, 107, 111, 112 |
+| Title | Id | Why the sample row has no rule |
+|---|---|---|
+| Pool of Radiance | 11 | Charm converts through `pool_charm_record` in `c64_codec`, not `dos_record`. |
+| Pool of Radiance | 13 | No DOS Pool engine writes a running id-13 node. |
+| Pool of Radiance | 32, 77, 108 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
+| Pool of Radiance | 33, 51 | A duration-0 row converts as a granted record; a running row has no rule. |
+| Pool of Radiance | 35, 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
+| Curse of the Azure Bonds | 13 | The C64 id is the engulf countdown, whose magnitude is a combatant index. |
+| Curse of the Azure Bonds | 18, 55, 68, 143 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
+| Curse of the Azure Bonds | 33, 73, 109 | A duration-0 row converts as a granted record; a running row has no rule. |
+| Curse of the Azure Bonds | 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
+| Curse of the Azure Bonds | 58, 144 | A literal `COMBAT` call writes it; what triggers the call is not read. |
+| Curse of the Azure Bonds | 137 | Confusion's outcome node, written by a literal `COMBAT` call; its record changes are not converted. |
+| Curse of the Azure Bonds | 146 | The id DOS's strength recompute names (`0x35263`); its combat table entry is not followed to a row write. |
+| Secret of the Silver Blades | 33, 51 | A duration-0 row converts as a granted record; a running row has no rule. |
+| Secret of the Silver Blades | 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
+| Secret of the Silver Blades | 55, 68, 112 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
+| Secret of the Silver Blades | 107 | Confusion's outcome node, written by a literal `COMBAT` call; its record changes are not converted. |
 
 | Refusal | Sweep evidence and limit |
 |---|---|
