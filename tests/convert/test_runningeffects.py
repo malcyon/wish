@@ -311,10 +311,9 @@ def test_save_as_c64_keeps_a_slow_poisoned_dos_party_slow_poisoned(tmp_path):
 
 def test_save_as_c64_keeps_a_silver_blades_survivor_alive_through_the_rest(
         tmp_path):
-    """A Silver Blades DOS save with PAINE under Slow Poison (rows 22 and 15
-    still running) saves as a C64 save whose rows carry magnitude `$7F`, so the
-    C64 never runs its drain and kill handlers, and PAINE keeps 55 in a trait
-    slot. Expects the control resave of #667's live run, registered as
+    """A Silver Blades DOS save with PAINE under Slow Poison (row 22 still
+    running) saves as a C64 save whose row carries magnitude `$7F`, which has
+    bit 7 clear, and PAINE keeps 55 in a trait slot. Expects the control resave of #667's live run, registered as
     `WISH-SPEC-ssb-667-slow-poison-running-resave`."""
     from gamedata import specimen
 
@@ -334,8 +333,10 @@ def test_save_as_c64_keeps_a_silver_blades_survivor_alive_through_the_rest(
     names = {m.index: m.name for m in back.members}
     rows = [e for e in effects.active_effects(back.save0.to_bytes())
             if e.id in (15, 22)]
-    assert sorted((names[e.owner], e.id, e.magnitude) for e in rows) == [
-        ("PAINE", 15, 0x7F), ("PAINE", 22, 0x7F)]
+    # The control resave's 10-minute damage node ran out during the rest, so
+    # only row 22 is left; every row that is there carries `$7F`.
+    assert [(names[e.owner], e.id, e.magnitude) for e in rows] == [
+        ("PAINE", 22, 0x7F)]
     holders = {m.name for m in back.members
                if 55 in bytes(back.save0.characters[m.index]
                               .record.get_raw("item_effects"))}

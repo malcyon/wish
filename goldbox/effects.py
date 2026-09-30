@@ -380,13 +380,16 @@ POOL_FF_CHAIN = (0xFF, 1)
 #: `$FF` is the row that keeps the DOS node's immunity, and Pool's own
 #: `level | $80` row stays dispellable at the same level on DOS.
 #:
-#: Silver Blades is the exception. The C64 runs a row's handler only when
-#: magnitude bit 7 is set (`CAMP $1314`): handler 15 (`$858E`) drains HP while
-#: the party rests and handler 22 (`$85A9`) kills a character holding 55, but
-#: DOS runs neither, so its survivor keeps his HP and his life. A DOS node
-#: therefore becomes `$7F` there, a value no C64 routine writes for these ids
-#: and one whose bit 7 is clear. Pool and Curse keep `$FF` because both of
-#: their ports kill when the spell ends.
+#: Silver Blades is the exception. DOS runs neither handler, so its survivor
+#: keeps his HP and his life (CONFIRMED live). The C64's camp dispatch runs a
+#: row's handler only when magnitude bit 7 is set (`CAMP $1314`, read): handler
+#: 15 (`$858E`) drains HP while the party rests and handler 22 (`$85A9`) kills
+#: a character holding 55. A DOS node therefore becomes `$7F`, a value no C64
+#: routine writes for these ids and one whose bit 7 is clear. That the C64
+#: then leaves him alone is PROBABLE: the combat expiry and other readers of
+#: the magnitude were not read, and a C64 rest past expiry would settle it.
+#: Pool and Curse keep `$FF` because both of their ports kill when the spell
+#: ends.
 SLOW_POISON_ID = 22
 SLOW_POISON_DAMAGE_ID = 15
 SLOW_POISON_DOS = (0xFF, 1)
@@ -679,6 +682,17 @@ def _slowed_min(title_key: str) -> int:
     return 0 if title_key in LATER_CAST_FLAGS else 1
 
 
+def _slow_poison_magnitude(title_key: str) -> int:
+    """The C64 magnitude a DOS `(0xFF, 1)` Slow Poison node becomes."""
+    return SLOW_POISON_BLADES_C64 if title_key == _BLADES else 0xFF
+
+
+def _is_slow_poison_magnitude(title_key: str, m: int) -> bool:
+    """Whether `m` is a magnitude that reads back as the DOS node: the one
+    written above, or the C64's own `$FF`."""
+    return m in (0xFF, _slow_poison_magnitude(title_key))
+
+
 def _own_rule_row(title_key: str,
                   node: RunningEffect) -> tuple[int, int] | Unconverted | None:
     """`c64_row` for id 13, Haste, Slowed, Silver Blades' id 113, Fear, the
@@ -753,12 +767,10 @@ def _own_rule_row(title_key: str,
         if (node.data, node.flag) != SLOW_POISON_DOS:
             return Unconverted("a Slow Poison damage node other than the "
                                "one DOS writes")
-        return node.id, (SLOW_POISON_BLADES_C64 if title_key == _BLADES
-                         else 0xFF)
+        return node.id, _slow_poison_magnitude(title_key)
     if node.id == SLOW_POISON_ID and _slowed_title(title_key):
         if (node.data, node.flag) == SLOW_POISON_DOS:
-            return node.id, (SLOW_POISON_BLADES_C64 if title_key == _BLADES
-                             else 0xFF)
+            return node.id, _slow_poison_magnitude(title_key)
         if (title_key == "pool-of-radiance" and node.flag in (0, 1)
                 and 1 <= node.data <= 0x7F
                 and node.data | node.flag << 7 != 0xFF):
@@ -812,14 +824,12 @@ def _own_rule_node(title_key: str, effect_id: int,
                                "than the C64's own")
         return POOL_FF_CHAIN
     if effect_id == SLOW_POISON_DAMAGE_ID and _slowed_title(title_key):
-        if m != 0xFF and not (title_key == _BLADES
-                              and m == SLOW_POISON_BLADES_C64):
+        if not _is_slow_poison_magnitude(title_key, m):
             return Unconverted("a Slow Poison damage magnitude other than "
                                "the C64's own")
         return SLOW_POISON_DOS
     if effect_id == SLOW_POISON_ID and _slowed_title(title_key):
-        if m == 0xFF or (title_key == _BLADES
-                         and m == SLOW_POISON_BLADES_C64):
+        if _is_slow_poison_magnitude(title_key, m):
             return SLOW_POISON_DOS
         if title_key == "pool-of-radiance" and m & 0x7F:
             return m & 0x7F, m >> 7
