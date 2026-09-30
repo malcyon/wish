@@ -49,12 +49,14 @@ CAMP_REST = "R"
 REST_DAYS, REST_HOURS, REST_MINS = "D", "H", "M"
 REST_ADD, REST_SUBTRACT, REST_GO = "A", "S", "R"
 #: The keys that move the camp's highlight to the next and the previous member: measured,
-#: NP2 took it from the first line to the second in the first camp run and NP8 back.
+#: NP2 takes it from the first line to the second and NP8 back.
 NEXT_MEMBER, PREV_MEMBER = "NP2", "NP8"
 REST_STEP = 5
 REST_DAYS_MAX = 29
-#: The most members a Gold Box party holds, so the most `view N` can name.
+#: The most members a Gold Box party holds.
 PARTY_MAX = 8
+#: The party lines whose camp sheet has an identity rule, so the most `view N` can name.
+SHEET_LINES = 2
 
 CAMP = "camp"
 SHEET = "camp_sheet"
@@ -118,21 +120,25 @@ def parse_steps(text: str) -> tuple[str, ...]:
 def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX) -> None:
     """Refuse a camp step list the route cannot drive.
 
-    `view` or `view N` shows the sheet of party line N (1 when left out),
+    `view` or `view N` shows the sheet of party line N (1 when left out; only
+    lines 1 and 2 have an identity rule),
     `heal` has the first member lay on hands on himself, and `rest DURATION`
     rests that long. A `heal` whose sheet does not offer HEAL fails the run at
     that sheet, since its guard is the bar with the word on it.
     """
     if not tokens:
         raise RouteError("the camp step list is empty")
+    if sum(token == "heal" for token in tokens) > 1:
+        raise RouteError("only one heal: the sheet after it no longer offers HEAL")
+    last_line = min(party_size, SHEET_LINES)
     for token in tokens:
         words = token.split()
         if words == ["view"] or words == ["heal"]:
             continue
         if words[0] == "view" and len(words) == 2 and words[1].isdigit():
             line = int(words[1])
-            if not 1 <= line <= party_size:
-                raise RouteError(f"{token!r}: the party has lines 1 to {party_size}")
+            if not 1 <= line <= last_line:
+                raise RouteError(f"{token!r}: the party has lines 1 to {last_line}")
             continue
         if words[0] == "rest" and len(words) == 2:
             parse_duration(words[1])

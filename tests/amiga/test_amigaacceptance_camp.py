@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import pathlib
 
 import pytest
 
@@ -32,7 +33,7 @@ STEPS = ("view 1", "heal", "view 1", "rest 60m")
 
 @pytest.mark.parametrize("text,tokens", [
     ("view;heal;rest 1h", ("view", "heal", "rest 1h")),
-    (" view 3 ; rest 1d2h35m ", ("view 3", "rest 1d2h35m")),
+    (" view 2 ; rest 1d2h35m ", ("view 2", "rest 1d2h35m")),
 ])
 def test_camp_steps_parse(text, tokens):
     assert route_camp.parse_steps(text) == tokens
@@ -44,8 +45,10 @@ def test_camp_steps_parse(text, tokens):
     ("rest 0m", "longer than no time"),
     ("rest 30d", "shorter than 30 days"),
     ("rest soon", "not like"),
-    ("view 9", "lines 1 to 8"),
-    ("view 0", "lines 1 to 8"),
+    ("view 9", "lines 1 to 2"),
+    ("view 3", "lines 1 to 2"),
+    ("view 0", "lines 1 to 2"),
+    ("heal;heal", "only one heal"),
     ("fly", "not view"),
     ("heal 2", "not view"),
 ])
@@ -55,8 +58,8 @@ def test_camp_steps_refuse_what_the_route_cannot_drive(text, why):
 
 
 def test_a_view_is_refused_past_the_party_s_last_line():
-    with pytest.raises(RouteError, match="lines 1 to 6"):
-        route_camp.validate_steps(("view 7",), party_size=6)
+    with pytest.raises(RouteError, match="lines 1 to 1"):
+        route_camp.validate_steps(("view 2",), party_size=1)
 
 
 def test_a_rest_zeroes_the_camp_preset_from_the_days_field_then_sets_each_field():
@@ -74,9 +77,9 @@ def test_heal_views_the_sheet_offering_heal_picks_the_first_member_and_expects_i
 
 
 def test_a_later_line_moves_the_highlight_there_and_back():
-    assert route_camp.steps_for(("view 3",)) == (
-        ("NP2", "camp", "key"), ("NP2", "camp", "key"), ("V", "camp_sheet_3", "key"),
-        ("E", "camp", "key"), ("NP8", "camp", "key"), ("NP8", "camp", "key"))
+    assert route_camp.steps_for(("view 2",)) == (
+        ("NP2", "camp", "key"), ("V", "camp_sheet_2", "key"),
+        ("E", "camp", "key"), ("NP8", "camp", "key"))
 
 
 @pytest.mark.parametrize("letter", ["A", "D"])
@@ -108,6 +111,27 @@ def test_a_route_without_a_camp_save_takes_no_camp_steps():
 ])
 def test_only_camp_sheets_are_observed(state, sheet):
     assert route_camp.is_sheet(state) is sheet
+
+
+def test_every_camp_sheet_rule_is_listed_by_the_party_menu_sheet_and_the_reverse():
+    maps = json.loads((pathlib.Path(route_silver_blades.__file__).parent
+                       / "guards_silver_blades.json").read_text())
+    camp = {route_camp.sheet_state(n) for n in range(1, route_camp.SHEET_LINES + 1)}
+    camp |= {route_camp.SHEET_HEAL, route_camp.SHEET_SPENT}
+    for kind in ("guards", "identity"):
+        assert camp <= set(maps[kind]["sheet"]["also"]), kind
+        # Rules on the same box and picture as `sheet` (camp sheet 2 shows another name) collide.
+        for state in camp & set(maps[kind]):
+            rule, sheet = maps[kind][state], maps[kind]["sheet"]
+            if (rule["box"], rule["sha256"]) == (sheet["box"], sheet["sha256"]):
+                assert "sheet" in rule["also"], (kind, state)
+
+
+def test_every_line_a_view_may_name_has_an_identity_rule():
+    maps = json.loads((pathlib.Path(route_silver_blades.__file__).parent
+                       / "guards_silver_blades.json").read_text())
+    for line in range(1, route_camp.SHEET_LINES + 1):
+        assert route_camp.sheet_state(line) in maps["identity"]
 
 
 @pytest.mark.parametrize("after,rest,ok", [

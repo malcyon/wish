@@ -204,7 +204,12 @@
       "sha256": "19f7120a6acfdfb6049ed60ab0741a26c3714bc7a60c7b1051597f5d2cbed813"
     },
     "sheet": {
-      "also": [],
+      "also": [
+        "camp_sheet",
+        "camp_sheet_2",
+        "camp_sheet_heal",
+        "camp_sheet_spent"
+      ],
       "box": [
         376,
         300,
@@ -328,7 +333,12 @@
       "sha256": "43c4b5bd44e0e1b9a1d3161afaaf2d348684bdafb3bd626e584e015800e0b4e2"
     },
     "sheet": {
-      "also": [],
+      "also": [
+        "camp_sheet",
+        "camp_sheet_2",
+        "camp_sheet_heal",
+        "camp_sheet_spent"
+      ],
       "box": [
         74,
         46,
