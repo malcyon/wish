@@ -720,10 +720,11 @@ _AMIGA_POOL_DELETES = frozenset(".*,?/:;")
 #: Per destination, `(port, title key)`: the characters it draws as the
 #: player typed them. Each row's evidence is in #619's comments.
 NAME_SHOWN: dict[tuple[str, str], frozenset[str]] = {
-    # Measured on DOS Pool of Radiance: `[ \ ] ^ _` drawn as other symbols,
-    # and the backquote blank. Measured on DOS Curse: the backquote blank and
-    # `{ | } ~` as other glyphs. Nothing else is measured, so all four titles
-    # share one set and may open the window for a name that would show.
+    # Measured on all four DOS titles: `[ \ ] ^ _` drawn as other glyphs.
+    # Measured on DOS Pool of Radiance and Curse: the backquote blank and
+    # `{ | } ~` as other glyphs. Still assumed: the backquote and `{ | } ~`
+    # on Silver Blades and Pools of Darkness. All four titles share one set
+    # and may open the window for a name that would show.
     **{("dos", key): _BASE_SHOWN for key in (
         "pool-of-radiance", "curse-of-the-azure-bonds",
         "secret-of-the-silver-blades", "pools-of-darkness")},
