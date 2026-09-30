@@ -128,9 +128,17 @@ def save_payload(image: bytes) -> tuple[bytes, int, bytes]:
 
 
 def slot_names(payload: bytes) -> list[str]:
+    """Each slot's own name, read from the start of its record.
+
+    Not from the name table at `NAMES`: the game keeps that in party order and
+    rewrites it when the party is reordered, while the records stay where they
+    were, so on a resaved disk the table names a different character than the
+    record beside it.
+    """
     out = []
     for n in range(SLOTS):
-        blob = payload[NAMES + n * NAME_SIZE:NAMES + (n + 1) * NAME_SIZE]
+        base = SLOT0 + n * SLOT_SIZE
+        blob = payload[base:base + NAME_SIZE]
         out.append(blob.split(b"\x00")[0].decode("latin1").strip())
     return out
 

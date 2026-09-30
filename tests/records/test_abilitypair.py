@@ -57,6 +57,19 @@ def test_the_index_below_and_above_eighteen(strength, expect):
     assert abilitypair.weight_index(strength, 0) == expect
 
 
+def test_a_slot_is_named_by_its_own_record_not_by_the_party_order_table():
+    """After a reorder the game rewrites the name table at `0xC00` and leaves
+    the records where they were, so the table's nth name is not slot n's."""
+    payload = bytearray(0xC00 + abilitypair.SLOTS * abilitypair.NAME_SIZE)
+    for n, name in enumerate((b"DOMINIC", b"PAINE")):
+        at = abilitypair.SLOT0 + n * abilitypair.SLOT_SIZE
+        payload[at:at + len(name)] = name
+    table = abilitypair.NAMES
+    payload[table:table + 5] = b"PAINE"
+    payload[table + 16:table + 23] = b"DOMINIC"
+    assert abilitypair.slot_names(bytes(payload))[:3] == ["DOMINIC", "PAINE", ""]
+
+
 # --- the same formula against bytes the engine wrote ------------------------
 
 def _later_c64_disks():
@@ -86,6 +99,21 @@ def _later_c64_disks():
     return sorted(set(found))
 
 
+def _written_by_wish(path: pathlib.Path) -> bool:
+    """Whether the disk was booted from a Wish conversion, by its provenance.
+
+    The registry has no structured field for it, so the text that says how the
+    specimen was made is read.  Such a disk can keep a byte our writer set,
+    which the game does not recompute until something reruns its routine, so
+    it is not the engine's own arithmetic."""
+    from tools.registry import specimens
+
+    fields = specimens.read_provenance(path.with_suffix(".provenance.toml"))
+    text = " ".join(str(fields.get(k, "")) for k in
+                    ("made_by", "what", "command")).lower()
+    return "converted" in text
+
+
 def _records(path: pathlib.Path):
     """`(who, current, base, stored 0x0E2)` for every occupied slot."""
     _, _, payload = abilitypair.save_payload(path.read_bytes())
@@ -110,6 +138,8 @@ def test_the_weight_index_reproduces_the_engines_byte_on_every_record():
     checked = wrong = 0
     failures = []
     for path in _later_c64_disks():
+        if _written_by_wish(path):
+            continue
         for who, cur, bas, stored in _records(path):
             checked += 1
             want = abilitypair.weight_index(cur[0], cur[6])
