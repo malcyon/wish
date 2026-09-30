@@ -24,7 +24,8 @@ POOL = "pool-of-radiance"
 STALE_TAIL = bytes.fromhex("30 00 00 01 00 08 00 06 00")
 FORMS = bytes.fromhex("02 00 01 00 02 00 00 00")
 
-#: Fewer records than this means the tree is empty or partial.
+#: Fewer records than this means the tree is empty or partial, so the sweep
+#: cannot claim full coverage; the agreement check still runs on what it found.
 FULL_TREE = 600
 
 
@@ -109,7 +110,7 @@ def test_the_c64_tail_agrees_with_the_dos_rebuild_on_every_unarmed_specimen():
             checked += 1
             if rec.get_raw("roster_tail")[3:9] != rebuilt.attack_forms:
                 disagree.append(f"{folder.name}/{path.name}")
+    assert disagree == []
     if checked < FULL_TREE:
         pytest.skip(f"only {checked} unarmed records found; a full specimen "
                     f"tree holds at least {FULL_TREE}")
-    assert disagree == []
