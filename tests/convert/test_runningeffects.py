@@ -2555,3 +2555,80 @@ def test_a_charm_with_own_side_1_and_a_fear_id_node_keeps_the_own_side():
     out = c64_codec.read(rec, game=POOL_OF_RADIANCE, payload=payload,
                          party_slot=2, clock_minutes=1, source="x")
     assert bytes(out.get("granted_effects")[0])[:5] == node
+
+
+# Silver Blades' Slow Poison companion (15) and the poison itself (22), as a
+# DOS save holds them: the second is the one the Amiga's removal routine
+# leaves alone, the first is the one it would run a damage handler for.
+_SSB_POISON = bytes((22, 120, 0, 0xFF, 1)) + NULL
+_SSB_COMPANION = bytes((15, 10, 0, 0xFF, 1)) + NULL
+
+
+def _slow_poisoned(game, port="DOS") -> neutral.NeutralCharacter:
+    char = neutral.NeutralCharacter(port, source="built here", game=game)
+    char.set("name", "PAINE", "built here")
+    for ability in neutral.ABILITIES:
+        char.set(ability, 12, "built here")
+    char.set("running_effects", [_SSB_POISON, _SSB_COMPANION], "built here")
+    return char
+
+
+def _flags(built) -> dict[int, int]:
+    return {bytes(n)[0]: bytes(n)[5] for n in built.effects}
+
+
+def test_a_dos_silver_blades_slow_poison_companion_reaches_the_amiga_with_no_handler():
+    """A DOS Silver Blades fighter saved within ten minutes of a Slow Poison
+    cast would lose a hit point on the Amiga when the companion ends, because
+    the Amiga's removal runs handler 15 for any non-zero flag byte."""
+    ssb = c64_port.SECRET_OF_THE_SILVER_BLADES
+    built, _rep = amiga_later.write_later(_slow_poisoned(ssb))
+    assert _flags(built) == {22: 1, 15: 0}
+    assert bytes(next(n for n in built.effects if n[0] == 15))[4] == 0xFF
+    # An Amiga source keeps its own bytes, and Curse is untouched.
+    amiga, _rep = amiga_later.write_later(_slow_poisoned(ssb, "Amiga"))
+    assert _flags(amiga) == {22: 1, 15: 1}
+    curse, _rep = amiga_later.write_later(
+        _slow_poisoned(c64_port.CURSE_OF_THE_AZURE_BONDS))
+    assert _flags(curse) == {22: 1, 15: 1}
+
+
+def test_an_amiga_flag_zero_companion_reads_back_as_the_dos_node():
+    """Amiga to C64 must not refuse the node the DOS writer made, and the
+    C64 row is the `$7F` one that never runs the drain."""
+    ssb = c64_port.SECRET_OF_THE_SILVER_BLADES
+    built, _rep = amiga_later.write_later(_slow_poisoned(ssb))
+    back = amiga_later.to_neutral_later(built)
+    got = {bytes(r)[0]: tuple(bytes(r)[1:5])
+           for r in back.get("running_effects")}
+    assert got[15] == (10, 0, 0xFF, 1)
+    raw = bytes(next(r for r in back.get("running_effects")
+                     if bytes(r)[0] == 15))
+    node = effects.RunningEffect(raw[0], int.from_bytes(raw[1:3], "little"),
+                                 raw[3], raw[4])
+    assert effects.c64_row(dos_port.SECRET_OF_THE_SILVER_BLADES.key,
+                           node) == (15, 0x7F)
+
+
+def test_a_dos_silver_blades_slow_poison_survives_the_amiga_and_back_byte_for_byte():
+    ssb = c64_port.SECRET_OF_THE_SILVER_BLADES
+    built, _rep = amiga_later.write_later(_slow_poisoned(ssb))
+    back = amiga_later.to_neutral_later(built)
+    assert sorted(bytes(r) for r in back.get("running_effects")) == sorted(
+        [_SSB_POISON, _SSB_COMPANION])
+    _rec, _itm, spc, _ = dos_codec.write(
+        back, deltas=dos_port.SECRET_OF_THE_SILVER_BLADES)
+    nodes = {spc[i]: spc[i:i + 9] for i in range(0, len(spc), 9)}
+    assert nodes[15] == _SSB_COMPANION and nodes[22] == _SSB_POISON
+
+
+def test_a_curse_flag_zero_node_15_is_not_rewritten_on_the_way_back():
+    """Only Silver Blades' node is read back with the flag on."""
+    curse = c64_port.CURSE_OF_THE_AZURE_BONDS
+    char = _slow_poisoned(curse)
+    char.set("running_effects", [bytes((15, 10, 0, 0xFF, 0)) + NULL],
+             "built here")
+    built, _rep = amiga_later.write_later(char)
+    back = amiga_later.to_neutral_later(built)
+    assert bytes(back.get("running_effects")[0])[:5] == bytes(
+        (15, 10, 0, 0xFF, 0))

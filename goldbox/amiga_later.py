@@ -1200,6 +1200,15 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
             Confidence.CONFIRMED)
     running = [e for e in recut if int.from_bytes(e[1:3], "little") != 0
               and e[0] != LAY_ON_HANDS_AMIGA_ID]
+    if deltas is SILVER_BLADES_DELTAS:
+        # Only this converter writes the node with the flag off
+        # (:data:`SILVER_BLADES_SLOW_POISON_COMPANION`), so it is DOS's own.
+        running = [
+            e[:4] + bytes((1,)) + e[5:]
+            if e[0] == SILVER_BLADES_SLOW_POISON_COMPANION[0]
+            and e[3] == SILVER_BLADES_SLOW_POISON_COMPANION[1]
+            and e[4] == 0 else e
+            for e in running]
     if running:
         # Every node on the Amiga Curse and Silver Blades disks is at
         # duration zero (29 of 29), but the big-endian order is CONFIRMED
@@ -1653,6 +1662,17 @@ LATER_EFFECTS_FROM_NEUTRAL = (
     "none is derived from the character's race")
 
 
+#: Silver Blades' Slow Poison companion node: id 15 with data byte `0xFF`.
+#: The Amiga's removal routine (`/Secret` `0x11E46`) runs the id's handler only
+#: when the node's flag byte is non-zero, and handler 15 (`0x142CE`) deals one
+#: point of damage, which DOS never does (its handler is guarded at
+#: `GAME.OVR 0x112A3`).  A node from another port is written with flag 0, so the
+#: removal runs no handler; nothing reachable from a chain-head load reads that
+#: byte (`tools/amiga/amiganodefields.py fields --chain 96`).  The reader turns
+#: the flag back to 1 so the node round-trips and the C64 writer sees DOS's own.
+SILVER_BLADES_SLOW_POISON_COMPANION = (15, 0xFF)
+
+
 def _later_effect_nodes(
         char: NeutralCharacter,
         dos_deltas: "dos_port.DosDeltas") -> tuple[list[bytes], list[str]]:
@@ -1704,9 +1724,16 @@ def _later_effect_nodes(
         record = bytes(g)[:5].ljust(5, b"\0") + bytes(4)
         seen.add(record[0])
         nodes.append(amiga_por_effect_from_dos(record))
+    silver_blades_import = (dos_deltas.key == SILVER_BLADES_DELTAS.key
+                            and char.port != "Amiga")
     for r in char.get("running_effects", ()) or ():
         record = bytes(r)[:5].ljust(5, b"\0") + bytes(4)
         seen.add(record[0])
+        if (silver_blades_import
+                and record[0] == SILVER_BLADES_SLOW_POISON_COMPANION[0]
+                and record[3] == SILVER_BLADES_SLOW_POISON_COMPANION[1]
+                and record[4] == 1):
+            record = record[:4] + bytes((0,)) + record[5:]
         nodes.append(amiga_por_effect_from_dos(record))
     # The paladin's lay-on-hands timer, id 140 on the Amiga rather than
     # DOS Silver Blades' 109 (docs/231-where-lay-on-hands-lives.md).  Zero
