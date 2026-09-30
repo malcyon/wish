@@ -54,34 +54,66 @@
       "example": "628/amiga-camp-1/accept1/shots/31-camp_sheet_2.png",
       "sha256": "24ba38da2b74091f4fa0ff374ebf408b8b8a977b99d799e5c4297d81a7110621"
     },
-    "camp_sheet_heal": {
-      "also": [
-        "camp_sheet",
-        "sheet"
-      ],
-      "box": [
-        72,
-        404,
-        320,
-        426
-      ],
-      "example": "628/amiga-camp-1/accept1/shots/17-camp_sheet_heal.png",
-      "sha256": "4d76d3368739bb55a533b662c282c38adbb0ce5989caaf9589710fc2b0cb8d3b"
-    },
-    "camp_sheet_spent": {
-      "also": [
-        "camp_sheet",
-        "sheet"
-      ],
-      "box": [
-        72,
-        404,
-        320,
-        426
-      ],
-      "example": "628/amiga-camp-1/accept1/shots/19-camp_sheet_spent.png",
-      "sha256": "c92b6ab34f9181e38cc1e5855973404b48b5393529a143f6fec4564529c5cf35"
-    },
+    "camp_sheet_heal": [
+      {
+        "also": [
+          "camp_sheet",
+          "sheet"
+        ],
+        "box": [
+          72,
+          404,
+          320,
+          426
+        ],
+        "example": "628/amiga-camp-1/accept1/shots/17-camp_sheet_heal.png",
+        "sha256": "4d76d3368739bb55a533b662c282c38adbb0ce5989caaf9589710fc2b0cb8d3b"
+      },
+      {
+        "also": [
+          "camp_sheet",
+          "sheet"
+        ],
+        "box": [
+          72,
+          404,
+          320,
+          426
+        ],
+        "example": "628/628-S3b/accept1/shots/27-camp_sheet_heal.png",
+        "sha256": "a9e5c3c3089a9d21817c368a783f41efa08047b34e0332ff0968ccfc115aed9a"
+      }
+    ],
+    "camp_sheet_spent": [
+      {
+        "also": [
+          "camp_sheet",
+          "sheet"
+        ],
+        "box": [
+          72,
+          404,
+          320,
+          426
+        ],
+        "example": "628/amiga-camp-1/accept1/shots/19-camp_sheet_spent.png",
+        "sha256": "c92b6ab34f9181e38cc1e5855973404b48b5393529a143f6fec4564529c5cf35"
+      },
+      {
+        "also": [
+          "camp_sheet",
+          "sheet"
+        ],
+        "box": [
+          72,
+          404,
+          320,
+          426
+        ],
+        "example": "628/628-S3b/accept1/shots/29-camp_sheet_spent.png",
+        "sha256": "c03df7368109b44da08e7295004b99268f79efe75455f474fe86f466efb93521"
+      }
+    ],
     "continue": {
       "also": [],
       "box": [

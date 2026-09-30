@@ -338,3 +338,73 @@ def test_the_silver_blades_camp_save_picker_guard_matches_only_the_camp_picker_c
             assert digest != rule['sha256'], crop.relative
         elif crop.states:
             assert digest != rule['sha256'], crop.relative
+
+
+def _second_crop(path):
+    _crop(path)
+    image = Image.open(path).copy()
+    for x in range(10, 20):
+        image.putpixel((x, 12), (0, 255, 0))
+    image.save(path)
+
+
+def test_alternative_rule_matches_either_crop_and_single_rule_json_loads(tmp_path):
+    from tools.amiga.screens import PixelGuards
+
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    first = _run(root, '1', 'pool-run', 'pool', 'sheet')
+    second = root / '2' / 'pool-run' / 'accept' / 'shots' / '01-sheet.png'
+    _second_crop(second)
+    (second.parents[1] / 'summary.json').write_text(json.dumps({'success': True, 'measure': False}))
+    (second.parents[2] / 'prepare.json').write_text(json.dumps({'title': 'pool'}))
+    base = ['--root', str(root), '--maps', str(maps), 'add', '--title', 'pool', '--map', 'guards',
+            '--state', 'sheet', '--box', '10,10,20,20']
+    assert guardmaps.main([*base, '--crop', str(first)]) == 0
+    single = json.loads((maps / 'guards_pool.json').read_text())['guards']['sheet']
+    assert isinstance(single, dict)
+    assert guardmaps.main([*base, '--crop', str(second)]) == 2
+    assert guardmaps.main([*base, '--crop', str(second), '--alternative', '--replace']) == 2
+    assert guardmaps.main([*base, '--crop', str(second), '--alternative']) == 0
+    stored = json.loads((maps / 'guards_pool.json').read_text())['guards']['sheet']
+    assert isinstance(stored, list) and stored[0] == single and len(stored) == 2
+    assert guardmaps._load(maps, 'pool')
+    out = tmp_path / 'out'
+    assert guardmaps.main(['--maps', str(maps), 'export', '--title', 'pool', '--out', str(out)]) == 0
+    guard = PixelGuards(out / 'guards.json')
+    assert guard('sheet', first) and guard('sheet', second)
+    other = tmp_path / 'other.png'
+    Image.new('RGB', (720, 568), 'black').save(other)
+    assert not guard('sheet', other)
+    (tmp_path / 'one.json').write_text(json.dumps({'sheet': single}))
+    lone = PixelGuards(tmp_path / 'one.json')
+    assert lone('sheet', first) and not lone('sheet', second)
+
+
+def test_alternative_needs_an_existing_state(tmp_path):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    crop = _run(root, '1', 'pool-run', 'pool', 'sheet')
+    assert guardmaps.main(['--root', str(root), '--maps', str(maps), 'add', '--title', 'pool',
+                           '--map', 'guards', '--state', 'sheet', '--crop', str(crop),
+                           '--box', '10,10,20,20', '--alternative']) == 2
+
+
+def test_committed_silver_blades_camp_sheets_match_itemless_crops(tmp_path):
+    """The camp sheet without an item row puts HEAL/CURE and EXIT at other x positions."""
+    from tools.amiga.screens import PixelGuards
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance') / '628'
+    shots = {'camp_sheet_heal': 'accept1/shots/27-camp_sheet_heal.png',
+             'camp_sheet_spent': 'accept1/shots/29-camp_sheet_spent.png'}
+    crops = {(run, state): root / run / name for run in ('628-S3b', '628-S5b')
+             for state, name in shots.items()}
+    crops[('628-S5b', 'camp_sheet_heal')] = root / '628-S5b/accept1/shots/26-camp_sheet_heal.png'
+    crops[('628-S5b', 'camp_sheet_spent')] = root / '628-S5b/accept1/shots/28-camp_sheet_spent.png'
+    if not all(path.exists() for path in crops.values()):
+        pytest.skip('the #628 itemless camp sheet crops are not on this machine')
+    assert guardmaps.main(['export', '--title', 'ssb', '--out', str(tmp_path)]) == 0
+    guard = PixelGuards(tmp_path / 'guards.json')
+    for (_, state), path in crops.items():
+        assert guard(state, path)

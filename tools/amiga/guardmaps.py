@@ -91,6 +91,17 @@ def _path(maps: pathlib.Path, title: str) -> pathlib.Path:
     return maps / f'guards_{FILES[title]}.json'
 
 
+def _valid_rule(rule) -> bool:
+    return (isinstance(rule, dict) and set(rule) == {'box', 'sha256', 'example', 'also'}
+            and isinstance(rule['box'], list) and len(rule['box']) == 4
+            and all(type(n) is int for n in rule['box'])
+            and isinstance(rule['sha256'], str)
+            and re.fullmatch('[0-9a-f]{64}', rule['sha256']) is not None
+            and (rule['example'] is None or isinstance(rule['example'], str))
+            and isinstance(rule['also'], list)
+            and all(isinstance(s, str) for s in rule['also']))
+
+
 def _load(maps: pathlib.Path, title: str) -> dict:
     path = _path(maps, title)
     data = json.loads(path.read_text())
@@ -104,16 +115,11 @@ def _load(maps: pathlib.Path, title: str) -> dict:
     for kind in ('guards', 'identity'):
         if not isinstance(data[kind], dict):
             raise ValueError(f'{path}: {kind} must be a map')
-        for state, rule in data[kind].items():
-            if (not isinstance(state, str) or not isinstance(rule, dict)
-                    or set(rule) != {'box', 'sha256', 'example', 'also'}
-                    or not isinstance(rule['box'], list) or len(rule['box']) != 4
-                    or not all(type(n) is int for n in rule['box'])
-                    or not isinstance(rule['sha256'], str)
-                    or not re.fullmatch('[0-9a-f]{64}', rule['sha256'])
-                    or rule['example'] is not None and not isinstance(rule['example'], str)
-                    or not isinstance(rule['also'], list)
-                    or not all(isinstance(s, str) for s in rule['also'])):
+        for state, value in data[kind].items():
+            alternatives = screens.rules_of(value)
+            if (not isinstance(state, str) or not alternatives
+                    or isinstance(value, list) and len(alternatives) < 2
+                    or not all(_valid_rule(rule) for rule in alternatives)):
                 raise ValueError(f'{path}: invalid {kind}/{state}')
     return data
 
@@ -141,29 +147,32 @@ def _check(args, crops: list[Crop]) -> int:
     failed = False
     specs = {title: _load(args.maps, title) for title in args.title or FILES}
     boxes = {tuple(rule['box']) for spec in specs.values() for kind in ('guards', 'identity')
-             for rule in spec[kind].values()}
+             for value in spec[kind].values() for rule in screens.rules_of(value)}
     digests = {crop.relative: screens.box_digests(crop.path, boxes) for crop in crops}
     for title in args.title or FILES:
         spec = specs[title]
         problems = 0
         for kind in ('guards', 'identity'):
-            for state, rule in spec[kind].items():
-                hits = misses = 0
-                for crop in crops:
-                    shown = _shown(crop, title, spec)
-                    match = digests[crop.relative][tuple(rule['box'])] == rule['sha256']
-                    if match:
-                        hits += 1
-                        if not _owned(crop, title, spec) or shown and state not in shown and not shown.intersection(rule['also']):
-                            print(f'{title} {kind}/{state} collision {crop.relative}')
-                            problems += 1
-                    elif _owned(crop, title, spec) and state in shown:
-                        misses += 1
-                example = rule['example']
-                if example and (example not in digests or digests[example][tuple(rule['box'])] != rule['sha256']):
-                    print(f'{title} {kind}/{state} stale {example}')
-                    problems += 1
-                print(f"{title} {kind}/{state} {rule['box']} hits {hits} misses {misses}")
+            for state, value in spec[kind].items():
+                alternatives = screens.rules_of(value)
+                for index, rule in enumerate(alternatives):
+                    name = state if len(alternatives) == 1 else f'{state}[{index}]'
+                    hits = misses = 0
+                    for crop in crops:
+                        shown = _shown(crop, title, spec)
+                        match = digests[crop.relative][tuple(rule['box'])] == rule['sha256']
+                        if match:
+                            hits += 1
+                            if not _owned(crop, title, spec) or shown and state not in shown and not shown.intersection(rule['also']):
+                                print(f'{title} {kind}/{name} collision {crop.relative}')
+                                problems += 1
+                        elif _owned(crop, title, spec) and state in shown:
+                            misses += 1
+                    example = rule['example']
+                    if example and (example not in digests or digests[example][tuple(rule['box'])] != rule['sha256']):
+                        print(f'{title} {kind}/{name} stale {example}')
+                        problems += 1
+                    print(f"{title} {kind}/{name} {rule['box']} hits {hits} misses {misses}")
         print(f'{title}: {problems} problems' if problems else f'{title}: clean')
         failed |= problems != 0
     return int(failed)
@@ -178,14 +187,22 @@ def _add(args, crops: list[Crop]) -> int:
     if not _owned(selected, args.title, spec):
         raise ValueError(f'{crop} does not belong to {args.title}')
     box = [int(n) for n in args.box.split(',')]
-    if args.state in spec[args.map] and not args.replace:
-        raise ValueError(f'{args.state} already exists; pass --replace')
+    if args.alternative and args.replace:
+        raise ValueError('--alternative and --replace are exclusive')
+    if args.state in spec[args.map] and not (args.replace or args.alternative):
+        raise ValueError(f'{args.state} already exists; pass --replace or --alternative')
+    if args.alternative and args.state not in spec[args.map]:
+        raise ValueError(f'{args.state} does not exist; --alternative adds to an existing state')
     negatives = [c.path for c in crops if c.path != crop and
                  (not _owned(c, args.title, spec) or
                   _shown(c, args.title, spec) and args.state not in _shown(c, args.title, spec)
                   and not _shown(c, args.title, spec).intersection(args.also))]
     rule = screens.checked_rule(crop, box, args.state, negatives)
-    spec[args.map][args.state] = {**rule, 'example': selected.relative, 'also': sorted(args.also)}
+    rule = {**rule, 'example': selected.relative, 'also': sorted(args.also)}
+    if args.alternative:
+        spec[args.map][args.state] = [*screens.rules_of(spec[args.map][args.state]), rule]
+    else:
+        spec[args.map][args.state] = rule
     _save(_path(args.maps, args.title), spec)
     print(json.dumps({args.state: spec[args.map][args.state]}, sort_keys=True))
     return 0
@@ -198,8 +215,11 @@ def _export(args) -> int:
         if (args.out / f'{kind}.json').exists():
             raise ValueError(f'{args.out / (kind + ".json")} exists')
     for kind in ('guards', 'identity'):
-        rules = {state: {'box': rule['box'], 'sha256': rule['sha256']}
-                 for state, rule in spec[kind].items()}
+        rules = {}
+        for state, value in spec[kind].items():
+            exported = [{'box': rule['box'], 'sha256': rule['sha256']}
+                        for rule in screens.rules_of(value)]
+            rules[state] = exported[0] if len(exported) == 1 else exported
         (args.out / f'{kind}.json').write_text(json.dumps(rules, indent=2, sort_keys=True) + '\n')
     return 0
 
@@ -264,6 +284,8 @@ def main(argv: list[str] | None = None) -> int:
     add.add_argument('--box', required=True)
     add.add_argument('--also', action='append', default=[])
     add.add_argument('--replace', action='store_true')
+    add.add_argument('--alternative', action='store_true',
+                     help='append a second rule to an existing state; either one matches')
     export = sub.add_parser('export')
     export.add_argument('--title', choices=FILES, required=True)
     export.add_argument('--out', required=True, type=pathlib.Path)

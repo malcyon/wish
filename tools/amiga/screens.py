@@ -69,24 +69,38 @@ def checked_rule(crop: pathlib.Path, box, state: str, unlike) -> dict[str, Any]:
     return rule
 
 
+def rules_of(value: Any) -> list:
+    """A state's alternative rules: a single rule stays one dict, several are a list."""
+    return list(value) if isinstance(value, list) else [value]
+
+
 class PixelGuards:
-    """Exact static regions from measured captures; an unknown screen fails closed."""
+    """Exact static regions from measured captures; an unknown screen fails closed.
+
+    A state holds one rule, or a list of alternatives when the same screen looks
+    different by party (a sheet with an item row and one without), and matches
+    when any of them does.
+    """
 
     def __init__(self, path: pathlib.Path):
         self.rules = json.loads(pathlib.Path(path).read_text())
-        for state, rule in self.rules.items():
-            if (not isinstance(rule, dict) or not isinstance(rule.get("box"), list)
-                    or not re.fullmatch(r"[0-9a-f]{64}", str(rule.get("sha256")))):
+        for state, value in self.rules.items():
+            alternatives = rules_of(value)
+            if not alternatives or any(
+                    not isinstance(rule, dict) or not isinstance(rule.get("box"), list)
+                    or not re.fullmatch(r"[0-9a-f]{64}", str(rule.get("sha256")))
+                    for rule in alternatives):
                 raise RouteError(f"screen guard for {state} needs a box and a sha256")
 
     def __contains__(self, state: str) -> bool:
         return state in self.rules
 
     def __call__(self, state: str, image_path: pathlib.Path) -> bool:
-        rule = self.rules.get(state)
-        if rule is None:
+        value = self.rules.get(state)
+        if value is None:
             return False
-        return _box_digest(image_path, rule["box"], state) == rule["sha256"]
+        return any(_box_digest(image_path, rule["box"], state) == rule["sha256"]
+                   for rule in rules_of(value))
 
 
 def _guards(guard: Any, state: str) -> bool:
