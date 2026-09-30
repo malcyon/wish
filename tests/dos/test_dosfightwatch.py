@@ -1547,3 +1547,45 @@ def test_an_attack_unit_descriptor_that_is_not_start_exes_is_refused():
     watch, _ = _watch(dbg, [])
     with pytest.raises(dosfightwatch.PrayerWatchError, match="attack unit"):
         watch.attach(tries=1)
+
+
+def test_pairs_after_the_party_lost_node_35_are_not_conclusive():
+    dbg, watch, _, at_menu = _ready(node_id=35)
+    watch.node_id = 35
+    for m in range(len(at_menu)):
+        dbg.put(PARTY_SEG, 0x1000 * m + dosfightwatch.NODE_LIST, _le(0) + _le(0))
+    for _ in range(3):
+        dbg.pending += _pair(dbg)
+    assert watch.run_fight(600, idle=lambda: True) == "quiet pairs"
+    result = watch.summary(35, at_menu, at_menu)
+    assert len(watch.quiet_pairs) == 3 and result["quiet_pairs"] == 0
+    assert result["conclusive"] is False
+
+
+def test_a_return_for_another_attacker_does_not_close_the_pair():
+    dbg, watch, _, _ = _ready(node_id=35)
+    dbg.put(0x4900, 0, bytes((3,)) + b"ORC")
+    dbg.put(0x4900, dosfightwatch.SIDE, b"\x01")
+    dbg.pending = [_aroll(dbg), _pt(dbg, 0x0CF5), _pt(dbg, 0x0CF8, who=0x4900)]
+    watch.run_fight(600, idle=lambda: True)
+    assert watch.pairs == [] and watch.quiet_pairs == []
+
+
+def test_one_quiet_pair_is_not_a_conclusive_id_35_run():
+    dbg, watch, _, at_menu = _ready(node_id=35)
+    watch.node_id = 35
+    dbg.pending = _pair(dbg)
+    assert watch.run_fight(600, idle=lambda: True) == "fight over"
+    result = watch.summary(35, at_menu, at_menu)
+    assert result["pairs"] == 1 and result["conclusive"] is False
+
+
+def test_a_prayer_stub_whose_walker_is_not_list_10_does_not_count_the_round():
+    dbg, watch, _, _ = _ready()
+    _load(dbg)
+    watch.load = LOAD
+    watch.arm()
+    dbg.put(SS, 0x200 + 0x40 * 2 + 0x0A, b"\x0c")
+    dbg.pending = _pair(dbg, _at(dbg, STUB, 0xED), _at(dbg, LOAD, 0x0C06))
+    assert watch.run_fight(600, idle=lambda: True) == "fight over"
+    assert watch.round is None and watch.completed is None

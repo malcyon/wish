@@ -1830,7 +1830,8 @@ class PrayerWatch:
                 h["walker_returns_to_unit_offset"] = f"{ret:04X}"
                 attacker = self.record_brief(_w16(frames[3], 0xE), _w16(frames[3], 0xC))
                 h["attacker"] = attacker
-                if self.pair and self.pair["attacker"] == attacker["at"]:
+                if (self.pair and self.pair["attacker"] == attacker["at"]
+                        and h["list"] == ATTACK_LIST):
                     h["party_attack"] = True
                     h["routines_armed"] = was_armed
                     if was_armed:
@@ -1929,8 +1930,9 @@ class PrayerWatch:
         # Id 35 is on none of the check lists the attack walks, so a party
         # attack that walked list 10 and dispatched no Prayer handler is the
         # answer for it, not a missing one.
-        quiet = ([p for p in self.quiet_pairs if self.holders(p["party"], 35)]
-                 if node_id == 35 else [])
+        held = ([p for p in self.quiet_pairs if self.holders(p["party"], 35)]
+                if node_id == 35 else [])
+        quiet = held if len(held) >= QUIET_PAIRS else []
         if quiet:
             pass
         elif self.completed is None:
