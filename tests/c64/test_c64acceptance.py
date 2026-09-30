@@ -24,6 +24,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import time
 from types import SimpleNamespace
 
 import gamedata
@@ -9911,9 +9912,14 @@ class _RestSession(FakeSession):
     squares = None
     later: dict = {}
     reads = 0
+    #: States in which LINKER's mode byte reads COMBAT.
+    combat_states: frozenset = frozenset()
 
     def position(self):
         return self.squares.pop(0)
+
+    def in_combat(self):
+        return self.state in self.combat_states
 
     def screen(self):
         if self.state in self.later:
@@ -9938,7 +9944,11 @@ def _watch_rest(tmp_path, monkeypatch, *, end="event", before=(0, 3, 0, 0, 0, 0)
                "restbar": _window({}, POOL_REST_BAR),
                "rudely": _window({18: "YOUR REST IS RUDELY INTERRUPTED!"},
                                  A.CONTINUE),
-               "stuck": _window({}, "SOMETHING ELSE")}
+               "stuck": _window({}, "SOMETHING ELSE"),
+               "world-late": _window({}, WORLD_BAR),
+               "patrol": _window({18: "A PATROL CONFRONTS YOU"},
+                                 "COMBAT WAIT FLEE ADVANCE"),
+               "blank": _window({}, "")}
     screens.update(extra or {})
     table = {("world", ("bar", "ENCAMP")): "camp",
              ("event", ("bar", "GO")): "world"}
@@ -10089,6 +10099,8 @@ def test_rest_interrupted_waits_without_a_key_and_answers_the_watch(
     assert got["rest_completed"] is False and got["elapsed_minutes"] == 5
     assert [e["event"] for e in got["events"]] == ["go_stay"]
     assert got["events"][0]["text"][0].startswith("YOU ARE ROUSTED")
+    assert got["watch_seen"] is True
+    assert got["state_cleared"] == ["$4A07", "$4A0F", "$4A10", "$4A11"]
     logged = (tmp_path / "run.jsonl").read_text()
     assert '"rest_interrupted"' in logged and '"random_event"' in logged
 
@@ -10115,7 +10127,43 @@ def test_rest_interrupted_with_no_prompt_is_reported_once_the_world_is_back(
     log.close()
     assert got["interrupted"] is True and got["events"] == []
     assert got["bar"] == "" and got["prompts"] == []
+    assert got["watch_seen"] is False and "state_cleared" not in got
     assert sess.sent == [("bar", "ENCAMP")] and sess.state == "world"
+
+
+def test_rest_interrupted_answers_a_watch_drawn_after_the_world_bar_held(
+        tmp_path, monkeypatch):
+    """The world bar holds through the wait and is found again, and only then
+    does GO STAY come up: the step's last read still sees and answers it."""
+    run, log, sess = _watch_rest(
+        tmp_path, monkeypatch, end="restbar", marker=0x00,
+        later={"restbar": (2, "world-late"), "world-late": (3, "event")})
+    got = run.rest("1h")
+    log.close()
+    assert sess.sent == [("bar", "ENCAMP"), ("bar", "GO")]
+    assert sess.state == "world"
+    assert got["watch_seen"] is True and got["prompts"] == []
+    assert [e["event"] for e in got["events"]] == ["go_stay"]
+    assert got["state_cleared"] == ["$4A07", "$4A0F", "$4A10", "$4A11"]
+
+
+@pytest.mark.parametrize("state, combat", [("patrol", ()), ("blank", ("blank",))])
+def test_rest_interrupted_by_a_fight_fails_at_once_and_sends_no_key(
+        tmp_path, monkeypatch, state, combat):
+    """An encounter's COMBAT menu on row 24, or the mode byte reading COMBAT,
+    stops the step at once: the rest step does not fight, and the fight step
+    cannot start from a fight already under way."""
+    monkeypatch.setattr(A, "REST_LEAVE_SECONDS", 5)
+    run, log, sess = _watch_rest(
+        tmp_path, monkeypatch, end="restbar", marker=0x00,
+        later={"restbar": (2, state)})
+    sess.combat_states = frozenset(combat)
+    started = time.monotonic()
+    with pytest.raises(A.StepFailed, match="a fight"):
+        run.rest("1h")
+    log.close()
+    assert time.monotonic() - started < 3
+    assert sess.sent == [("bar", "ENCAMP")]
 
 
 @pytest.mark.parametrize("later, named", [
