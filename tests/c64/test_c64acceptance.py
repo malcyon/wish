@@ -298,6 +298,9 @@ def test_temple_source_guard_requires_registry_path_and_recorded_hash(
         A.temple_source_guard(source)
 
 
+_BAR_WORDS = [(0, 4), (5, 4), (10, 4), (15, 8), (24, 4)]
+
+
 def _framed(text):
     """A service-list row as the live screen draws it."""
     return "$" + (" " + text).ljust(38) + "$"
@@ -440,8 +443,18 @@ class _TempleSession:
         # `result` phases.
         self.list_cursor = 0
         self.result_text = "BRUTUS IS ALIVE"
+        # The temple bar's highlighted word, as an index into `_BAR_WORDS`,
+        # and what row 24 says over the unchanged price screen after YES.
+        self.bar_at = 0
+        self.result_bar = None
 
     def key(self, name, *timing):
+        if self.phase == "temple":
+            # The bar's highlight: HEAL, VIEW, POOL, APPRAISE, EXIT.
+            assert name in ("Right", "Left"), name
+            self.keys.append(name)
+            self.bar_at += 1 if name == "Right" else -1
+            return
         assert self.phase == "heal", self.phase
         self.keys.append(name)
         if name == "Down" and self.unsafe != "list-stuck":
@@ -539,6 +552,9 @@ class _TempleSession:
                 rows[4 + offset] = " " * A.S.PARTY_COLUMN + name
             rows[24] = ("HEAL VIEW POOL APPRAISE EXIT"
                         if self.unsafe != "wrong-menu" else "EXIT GIVE")
+            # The row 24 highlight is where the last key left it; the party
+            # panel's own rows are read from the same snapshot.
+            self.bar_span = _BAR_WORDS[self.bar_at]
             if self.unsafe == "stale-greeting-status":
                 # A status line that is present but reads the wrong place:
                 # no live capture has shown one here, but the transition
@@ -575,16 +591,27 @@ class _TempleSession:
             if self.unsafe == "price-no-cost":
                 rows[11] = "IT WILL COST 4000 GOLD PIECES"
             rows[24] = "YES NO"
+        elif phase == "poolq":
+            # Invented text holding the needle the probe reads; the POOL
+            # question has not been seen live.
+            rows[11] = "POOL MONEY :"
+            rows[24] = "YES NO"
         elif phase == "result":
-            rows[12] = self.result_text
+            if self.result_bar is not None:
+                # The price screen left up, its bar row replaced.
+                rows[11] = "IT WILL COST 5500 GOLD PIECES"
+                rows[13] = "PAY FOR CURE"
+                rows[24] = self.result_bar
+            else:
+                rows[12] = self.result_text
         else:
             raise AssertionError(phase)
         if phase == "question":
             return _TempleScreen(rows, (0, 3))
         if phase == "temple":
-            return _TempleScreen(rows, (0, 4),
+            return _TempleScreen(rows, self.bar_span,
                                  5 if self.unsafe == "highlight-row-5" else 4)
-        if phase == "price":
+        if phase in ("price", "poolq"):
             return _TempleScreen(rows, (0, 3))
         if phase == "heal" and rows[15]:
             return _TempleScreen(rows, list_highlight=9 + self.list_cursor)
@@ -680,8 +707,18 @@ class _TempleSession:
         self.phase = "move"
 
     def confirm_bar(self, row, was):
+        if self.phase == "temple" and self.bar_at == 2:
+            assert row == 24 and "POOL" in was
+            self.keys.append("POOL")
+            self.phase = "poolq"
+            return
+        if self.phase == "poolq":
+            assert row == 24 and "YES" in was
+            self.keys.append("pool-YES")
+            self.phase = "temple"
+            return
         if self.phase == "temple":
-            assert row == 24 and "HEAL" in was
+            assert row == 24 and "HEAL" in was and self.bar_at == 0
             self.keys.append("HEAL")
             self.phase = "heal-blank" if self.heal_never_draws else "heal"
             if not self.heal_never_draws:
@@ -8885,3 +8922,194 @@ def test_temple_run_with_no_records_still_refuses_a_changed_hash(
     assert code == 1
     assert "changed the source bytes" in json.loads(
         (out / "summary.json").read_text())["lost"]
+
+
+def _menu_after(session, reads):
+    """Make the fake's result screen give way to the temple menu after READS
+    screen reads, as the live refusal did."""
+    original = session.screen
+    shown = [0]
+
+    def screen():
+        shown[0] += 1
+        if session.phase == "result" and shown[0] > reads:
+            session.phase = "temple"
+        return original()
+    session.screen = screen
+
+
+def test_temple_probe_keeps_a_refusal_drawn_on_row_24_over_the_price_screen(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.result_bar = "NOT ENOUGH MONEY !"
+    real = session.confirm_bar
+
+    def confirm(row, was):
+        real(row, was)
+        if session.phase == "result":
+            _menu_after(session, 5)
+
+    session.confirm_bar = confirm
+    result = run.temple_probe("BRUTUS RAISE")
+    refusal = [f for f in result["result_frames"]
+               if f["rows"][24] == "NOT ENOUGH MONEY !"]
+    assert len(refusal) == 1
+    assert refusal[0]["rows"][:24] == result["raise_price"]["rows"][:24]
+    assert result["outcome"] == "no-money"
+
+
+def test_temple_probe_still_drops_a_frame_that_is_the_price_screen_itself(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.result_bar = "YES NO"
+    real = session.confirm_bar
+
+    def confirm(row, was):
+        real(row, was)
+        if session.phase == "result":
+            _menu_after(session, 5)
+
+    session.confirm_bar = confirm
+    result = run.temple_probe("BRUTUS RAISE")
+    assert not any(f["is_price"] for f in result["result_frames"])
+    assert result["outcome"] == "unknown"
+
+
+@pytest.mark.parametrize("text,outcome", [
+    ("CURED", "cured"), ("BRUTUS IS ALIVE", "alive"),
+    ("CURED\nBRUTUS FAILED", "failed"),
+    ("THAT SPELL CAN NOT HELP YOU", "cannot-help")])
+def test_temple_outcome_reads_the_cure_and_refusal_texts(text, outcome):
+    assert A.PoolRun._temple_outcome(text) == outcome
+
+
+_POOL_KEYS = ["side3", "YES", "Right", "Right", "POOL", "pool-YES",
+              "Left", "Left", "HEAL"] + ["Down"] * 6 + ["Return", "YES"]
+
+
+def test_temple_probe_pools_the_money_then_raises_and_sends_nothing_after_yes(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    result = run.temple_probe("BRUTUS RAISE POOL")
+    assert session.keys == _POOL_KEYS
+    assert session.keys[-1] == "YES" and session.keys.count("YES") == 2
+    assert _raise_tags(run)[-5:] == ["pool-question", "pool-done",
+                                     "heal-screen", "raise-price",
+                                     "raise-result"]
+    assert result["pool"]["question"] and result["pool"]["done"]
+    assert result["outcome"] == "alive"
+
+
+def test_temple_probe_plain_raise_never_touches_pool(tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    run.temple_probe("BRUTUS RAISE")
+    assert "POOL" not in session.keys and "pool-YES" not in session.keys
+
+
+def test_temple_probe_stops_when_pool_asks_something_else(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    original = session.screen
+
+    def screen():
+        got = original()
+        if session.phase == "poolq":
+            rows = [got.row(n) for n in range(25)]
+            rows[11] = "SOMETHING ELSE"
+            return _TempleScreen(rows, (0, 3))
+        return got
+    session.screen = screen
+    with pytest.raises(A.StepFailed, match="no POOL question"):
+        run.temple_probe("BRUTUS RAISE POOL")
+    assert "pool-YES" not in session.keys and "HEAL" not in session.keys
+    assert run.temple_checkpoints[-1]["tag"] == "lost-pool"
+
+
+def _control_reading(status=0x83, flags=0x01):
+    return {"party": [{"slot": 5, "name": "BRUTUS", "status": status,
+                       "traits": [0] * 10, "creature_type": 0,
+                       "record_bytes": {"0xB8": flags}}],
+            "effect_rows": [None] * 64, "effects": []}
+
+
+def test_temple_probe_control_raises_an_ordinary_dead_member_without_pool(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    run.reading = _control_reading
+    result = run.temple_probe("BRUTUS RAISE CONTROL")
+    assert session.keys == (["side3", "YES", "HEAL"] + ["Down"] * 6
+                            + ["Return", "YES"])
+    assert "pool" not in result and result["outcome"] == "alive"
+
+
+@pytest.mark.parametrize("reading", [
+    _temple_reading(), _control_reading(status=3),
+    _control_reading(flags=0xFF)])
+def test_temple_probe_control_refuses_a_member_that_is_not_status_83(
+        tmp_path, monkeypatch, reading):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    run.reading = lambda: reading
+    with pytest.raises(A.StepFailed, match="control BRUTUS"):
+        run.temple_probe("BRUTUS RAISE CONTROL")
+    assert session.keys == []
+
+
+_POOL_STAGING = ["--stage-record", "0:0x0C1=0x70,0:0x0C2=0x17,5:0x018=18"]
+
+
+def test_temple_probe_step_takes_pool_and_control_for_raise_only():
+    for good in ("BRUTUS RAISE POOL", "BRUTUS RAISE CONTROL"):
+        assert A.parse_steps(["load", f"temple-probe {good}"])[1] == (
+            A.Step("temple-probe", good))
+    for bad in ("BRUTUS POOL", "BRUTUS HEAL POOL", "BRUTUS RAISE POOL POOL",
+                "BRUTUS RAISE POOL CONTROL"):
+        with pytest.raises(ValueError):
+            A.parse_steps(["load", f"temple-probe {bad}"])
+
+
+def test_temple_probe_main_accepts_pool_with_exactly_its_staging(
+        tmp_path, monkeypatch):
+    observed = []
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    monkeypatch.setattr(A, "run", lambda args, steps, out, selected: observed.append(
+        (steps, args.stage_record)) or 0)
+    assert A.main(_raise_argv(tmp_path, *_POOL_STAGING,
+                              step="temple-probe BRUTUS RAISE POOL")) == 0
+    assert observed == [([A.Step("load"),
+                          A.Step("temple-probe", "BRUTUS RAISE POOL")],
+                         [_POOL_STAGING[1]])]
+
+
+@pytest.mark.parametrize("extra,step", [
+    (_RAISE_STAGING, "temple-probe BRUTUS RAISE POOL"),
+    (["--stage-record", "0:0x0C1=0x70,0:0x0C2=0x17"], "temple-probe BRUTUS RAISE POOL"),
+    (["--stage-record", "0:0x0C1=0x70,0:0x0C2=0x17,5:0x018=17"],
+     "temple-probe BRUTUS RAISE POOL"),
+    (["--stage-record", "1:0x0C1=0x70,1:0x0C2=0x17,5:0x018=18"],
+     "temple-probe BRUTUS RAISE POOL"),
+    ([*_POOL_STAGING, "--stage-record", "5:0x20=1"],
+     "temple-probe BRUTUS RAISE POOL"),
+    ([], "temple-probe BRUTUS RAISE POOL"),
+    (_POOL_STAGING, "temple-probe BRUTUS RAISE"),
+    (_POOL_STAGING, "temple-probe BRUTUS RAISE CONTROL"),
+    (_POOL_STAGING, "temple-probe BRUTUS HEAL"),
+])
+def test_temple_probe_pool_refuses_other_staging_before_a_slot_is_claimed(
+        tmp_path, monkeypatch, extra, step):
+    monkeypatch.setattr(A, "temple_source_guard", lambda path: "checked")
+    _refused_before_a_slot(tmp_path, monkeypatch, _raise_argv(
+        tmp_path, *extra, step=step)[:-2])
+
+
+def test_temple_staging_check_takes_the_pool_records_only(tmp_path):
+    source, staged = _staged_temple_pair(
+        tmp_path, list(A.TEMPLE_POOL_STAGING))
+    A.temple_staging_check(source, staged, list(A.TEMPLE_POOL_STAGING),
+                           A.TEMPLE_POOL_STAGING)
+    with pytest.raises(ValueError, match="is not"):
+        A.temple_staging_check(source, staged, list(A.TEMPLE_POOL_STAGING))
+    extra, staged2 = _staged_temple_pair(
+        tmp_path, [*A.TEMPLE_POOL_STAGING, (5, 0x20, 41)])
+    with pytest.raises(ValueError, match="changed payload byte"):
+        A.temple_staging_check(extra, staged2, list(A.TEMPLE_POOL_STAGING),
+                               A.TEMPLE_POOL_STAGING)

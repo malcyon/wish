@@ -174,6 +174,11 @@ POOL_SPECIMEN_ISSUE = (
     "Animate Dead zombie needs more than fixing the refusal that blocks it)")
 TEMPLE_SOURCE_SHA256 = (
     "7834be122f8a30c03f029d96b8ba39d0961545b998837e089e965e06a20edbe9")
+#: The registered no-cast control specimen: the same party with BRUTUS at
+#: roster status `$83` and no Animate Dead applied, so his purse survives
+#: `DUNGEON`'s entry.
+TEMPLE_CONTROL_SHA256 = (
+    "ec1a531926ad50845af86af9a585b100cc6d7614c70e682731f2fadc0f11ef13")
 TEMPLE_ROUTE = (
     ("K", (0x14, 15, 4, 3), (0x14, 15, 4, 0)),
     ("K", (0x14, 15, 4, 0), (0x14, 15, 4, 1)),
@@ -406,14 +411,40 @@ TEMPLE_RESULT_WINDOW = 6.0
 TEMPLE_RESULT_POLL = 0.05
 
 #: What `temple-probe` accepts: the member; with `HEAL` the one screen past
-#: the temple bar's HEAL; with `RAISE` the purchase of RAISE DEAD for him.
-TEMPLE_PROBE_ARGS = ("BRUTUS", "BRUTUS HEAL", "BRUTUS RAISE")
+#: the temple bar's HEAL; with `RAISE` the purchase of RAISE DEAD for him;
+#: `RAISE POOL` first pools the party's money at the bar's POOL, since an
+#: engine-controlled member's own purse is emptied on `DUNGEON` entry;
+#: `RAISE CONTROL` buys it on the no-cast specimen, where BRUTUS is an
+#: ordinary dead member (status `$83`) and needs no POOL.
+TEMPLE_PROBE_ARGS = ("BRUTUS", "BRUTUS HEAL", "BRUTUS RAISE",
+                     "BRUTUS RAISE POOL", "BRUTUS RAISE CONTROL")
 
 #: The only `--stage-record` bytes a `RAISE` run takes, all on BRUTUS's slot:
 #: constitution 18 (the temple's roll then always succeeds) and 6,000 gold
 #: (`0x0C1`/`0x0C2`, little-endian `$1770`), so the 5,500 gold price is paid
 #: in the coin it is quoted in.
 TEMPLE_RAISE_STAGING = ((5, 0x018, 18), (5, 0x0C1, 0x70), (5, 0x0C2, 0x17))
+
+#: The only bytes a `RAISE POOL` run takes: the same 6,000 gold, on MALCYON
+#: (slot 0, a player member whose purse survives), and constitution 18 on
+#: BRUTUS. POOL then moves the gold to the party's pool for the payment.
+TEMPLE_POOL_STAGING = ((0, 0x0C1, 0x70), (0, 0x0C2, 0x17), (5, 0x018, 18))
+
+#: The only bytes a `RAISE CONTROL` run takes: constitution 18 and 6,000 gold
+#: on BRUTUS himself, an ordinary dead member on the control specimen.
+TEMPLE_CONTROL_STAGING = ((5, 0x018, 18), (5, 0x0C1, 0x70),
+                          (5, 0x0C2, 0x17))
+
+#: The staging each `temple-probe` argument takes; none for the read-only ones.
+TEMPLE_STAGING = {"BRUTUS": (), "BRUTUS HEAL": (),
+                  "BRUTUS RAISE": TEMPLE_RAISE_STAGING,
+                  "BRUTUS RAISE POOL": TEMPLE_POOL_STAGING,
+                  "BRUTUS RAISE CONTROL": TEMPLE_CONTROL_STAGING}
+
+#: The POOL prompt's text (`POST.COM $1AD8`), and how long to wait for it and
+#: for the temple bar to return after it is answered.
+TEMPLE_POOL_PROMPT = r"POOL MONEY"
+TEMPLE_POOL_WAIT = 30.0
 
 #: The service list's ten rows, where its names start, and the price screen's
 #: text; a price screen missing any of them is not answered.
@@ -544,7 +575,8 @@ def parse_steps(texts) -> list[Step]:
             parse_ready(arg)
         elif verb == "temple-probe" and arg not in TEMPLE_PROBE_ARGS:
             raise ValueError("temple-probe requires BRUTUS, optionally "
-                             "followed by HEAL or RAISE")
+                             "followed by HEAL, RAISE, RAISE POOL or "
+                             "RAISE CONTROL")
         elif verb == "warp":
             parse_warp(arg)
         elif verb == "fight" and arg and not (arg.isdigit() and int(arg) > 0):
@@ -618,13 +650,16 @@ def parse_warp(arg: str) -> int:
     return area
 
 
-def temple_source_guard(source: pathlib.Path) -> str:
-    """Require the exact registered, unchanged animated BRUTUS source."""
+def temple_source_guard(source: pathlib.Path,
+                        expected: str | None = None) -> str:
+    """Require the exact registered, unchanged animated BRUTUS source, or
+    the control specimen when EXPECTED is `TEMPLE_CONTROL_SHA256`."""
     source = source.resolve()
     digest = specimens.sha256_file(source)
-    if digest != TEMPLE_SOURCE_SHA256:
+    expected = expected or TEMPLE_SOURCE_SHA256
+    if digest != expected:
         raise ValueError(f"temple source SHA-256 {digest} is not "
-                         f"{TEMPLE_SOURCE_SHA256}")
+                         f"{expected}")
     for entry in specimens.list_specimens():
         if (entry.get("platform") == "c64"
                 and entry.get("title") == "Pool of Radiance"
@@ -634,10 +669,18 @@ def temple_source_guard(source: pathlib.Path) -> str:
     raise ValueError(f"{source} is not a registered Pool C64 specimen")
 
 
+def _guard_temple_source(source: pathlib.Path, steps: list[Step]) -> str:
+    """`temple_source_guard` with the specimen the probe's mode runs on."""
+    if any(step.verb == "temple-probe" and step.arg.endswith(" CONTROL")
+           for step in steps):
+        return temple_source_guard(source, TEMPLE_CONTROL_SHA256)
+    return temple_source_guard(source)
+
+
 def temple_staging_check(source: pathlib.Path, staged: pathlib.Path,
-                         records=()) -> None:
+                         records=(), sanctioned=TEMPLE_RAISE_STAGING) -> None:
     """Refuse a staged temple disk that differs from SOURCE by anything but
-    the sanctioned RECORDS (`TEMPLE_RAISE_STAGING`).
+    the sanctioned RECORDS (SANCTIONED, the mode's `TEMPLE_STAGING`).
 
     With no RECORDS the copy must be byte-identical. Otherwise every file
     must match except the save file, whose payload may differ only at those
@@ -647,9 +690,9 @@ def temple_staging_check(source: pathlib.Path, staged: pathlib.Path,
         if specimens.sha256_file(staged) != specimens.sha256_file(source):
             raise ValueError("temple staging changed the source bytes")
         return
-    if sorted(records) != sorted(TEMPLE_RAISE_STAGING):
+    if sorted(records) != sorted(sanctioned):
         raise ValueError(f"temple staging {sorted(records)} is not "
-                         f"{sorted(TEMPLE_RAISE_STAGING)}")
+                         f"{sorted(sanctioned)}")
     was, now = D64.open(str(source)), D64.open(str(staged))
     game = c64_port.detect(now)
     if game is None or game.key != "pool-of-radiance":
@@ -664,7 +707,7 @@ def temple_staging_check(source: pathlib.Path, staged: pathlib.Path,
     _, before = _payload(was, game)
     _, after = _payload(now, game)
     allowed = {box.slot(slot) + offset: value
-               for slot, offset, value in TEMPLE_RAISE_STAGING}
+               for slot, offset, value in sanctioned}
     if len(before) != len(after):
         raise ValueError("temple staging changed the save's length")
     for at in range(len(before)):
@@ -1809,6 +1852,46 @@ class PoolRun:
     def _temple_raise_price(cls, screen) -> bool:
         return not cls._temple_price_missing(screen)
 
+    @staticmethod
+    def _temple_pool_prompt(screen) -> bool:
+        """The POOL question, with YES and NO on row 24."""
+        bar = screen.row(24)
+        return (re.search(TEMPLE_POOL_PROMPT, screen.text().upper()) is not None
+                and S.word_column(bar, "YES") >= 0
+                and S.word_column(bar, "NO") >= 0)
+
+    def _temple_pool(self) -> dict:
+        """Choose POOL at the temple bar, answer YES to its question once, and
+        wait for the temple bar to come back. Any other prompt is a stop."""
+        self._temple_select_bar("POOL", "temple")
+        limit = min(self.clock() + TEMPLE_POOL_WAIT, self.temple_input_deadline)
+        while self.clock() < limit:
+            sample = self.temple_sample()
+            screen = sample.screen
+            if screen is not None and self._temple_disk(screen):
+                self._temple_stop("pool", "disk prompt after POOL", sample)
+            if screen is not None and self._temple_pool_prompt(screen):
+                break
+            time.sleep(0.25)
+        else:
+            self._temple_stop("pool", "no POOL question after POOL")
+        asked = self.temple_checkpoint("pool-question", sample)
+        self._temple_select_bar("YES", "pool")
+        limit = min(self.clock() + TEMPLE_POOL_WAIT, self.temple_input_deadline)
+        while self.clock() < limit:
+            sample = self.temple_sample()
+            screen = sample.screen
+            if screen is not None and (self._temple_disk(screen)
+                                       or self._temple_continuation(screen)):
+                self._temple_stop("pool", "unexpected prompt after POOL YES",
+                                  sample)
+            if screen is not None and self._temple_is_greeting(screen):
+                back = self._temple_steady("after POOL")
+                done = self.temple_checkpoint("pool-done", back)
+                return {"question": asked["stem"], "done": done["stem"]}
+            time.sleep(0.25)
+        self._temple_stop("pool", "temple bar did not return after POOL YES")
+
     @classmethod
     def _temple_list(cls, screen) -> list[str]:
         """The service list's ten names, read inside the `$` frame that
@@ -1880,7 +1963,7 @@ class PoolRun:
             if (screen is None or screen.row(24) != bar
                     or self._temple_disk(screen)
                     or self._temple_continuation(screen)
-                    or (kind not in ("question", "payment")
+                    or (kind not in ("question", "payment", "pool")
                         and re.search(r"\bYES\b.*\bNO\b", screen.text(),
                                       re.DOTALL))
                     or re.search(r"\bPRESS\b", screen.text())
@@ -1889,7 +1972,9 @@ class PoolRun:
                     or (kind == "question"
                         and not self._temple_heal_question(screen))
                     or (kind == "payment"
-                        and not self._temple_raise_price(screen))):
+                        and not self._temple_raise_price(screen))
+                    or (kind == "pool"
+                        and not self._temple_pool_prompt(screen))):
                 self._temple_stop("menu", f"{kind} bar changed before {word}",
                                   sample)
             span = S.span_in(screen, 24)
@@ -2211,7 +2296,9 @@ class PoolRun:
         Sends nothing. The window actually sampled is left in
         `temple_result_window`: `cut` is true when the input deadline ended
         it before `TEMPLE_RESULT_WINDOW`, so a short or empty list can be told
-        from a window in which no result text appeared."""
+        from a window in which no result text appeared. A frame is the
+        price screen only when all 25 rows match: a refusal is drawn on row 24
+        (`NOT ENOUGH MONEY !`) over an otherwise unchanged price screen."""
         self.temple_result_window = None
         frames: list[dict] = []
         start = self.clock()
@@ -2226,7 +2313,7 @@ class PoolRun:
                     if not frames or frames[-1]["rows"] != rows:
                         frames.append({"at": round(self.clock() - start, 3),
                                        "rows": rows,
-                                       "is_price": rows[:24] == price_rows[:24]})
+                                       "is_price": rows == price_rows})
                         self.log.emit("temple-result-frame", **frames[-1])
                 time.sleep(TEMPLE_RESULT_POLL)
         except Exception as exc:                    # noqa: BLE001
@@ -2247,6 +2334,8 @@ class PoolRun:
         return ("alive" if "IS ALIVE" in text else
                 "failed" if "FAILED" in text else
                 "no-money" if "NOT ENOUGH MONEY" in text else
+                "cannot-help" if "THAT SPELL CAN NOT HELP YOU" in text else
+                "cured" if re.search(r"\bCURED\b", text) else
                 "unknown")
 
     def temple_probe(self, who: str) -> dict:
@@ -2254,8 +2343,11 @@ class PoolRun:
         once and capture the last settled screen after it; with `RAISE`,
         go on to buy RAISE DEAD for the highlighted member.
 
-        `RAISE` is the one mode that answers a prompt: only the price
-        prompt, only with YES, once. It stops at the result screen with no
+        `RAISE` answers one prompt: the price prompt, with YES, once.
+        `RAISE POOL` first chooses POOL at the temple bar and answers its
+        question with YES once, so the party's money pays for a member whose
+        own purse the game emptied. `RAISE CONTROL` is `RAISE` on the no-cast
+        specimen. It stops at the result screen with no
         further key, and records `outcome` as alive, failed, no-money or
         unknown; the last three are results, not faults.
 
@@ -2267,7 +2359,9 @@ class PoolRun:
         own path; the run stages its own copy, so none is made by hand."""
         if who not in TEMPLE_PROBE_ARGS or self.game.key != "pool-of-radiance":
             raise StepFailed("temple probe requires Pool BRUTUS")
-        raising = who.endswith(" RAISE")
+        raising = who.startswith("BRUTUS RAISE")
+        pooling = who.endswith(" POOL")
+        control = who.endswith(" CONTROL")
         heal = raising or who.endswith(" HEAL")
         initial = self.temple_checkpoint(
             "loaded-source", self._temple_steady("in the loaded source"))
@@ -2283,15 +2377,26 @@ class PoolRun:
         member = named[0] if len(named) == 1 else None
         traits = [] if member is None else member.get("traits", [])
         effect_rows = reading.get("effect_rows", [])
-        if (member is None or member.get("slot") != 5
-                or member.get("status") != 0x03
-                or len(traits) != 10 or traits[9] != 32
-                or member.get("creature_type") != 4
-                or member.get("record_bytes", {}).get("0xA3") != 2
-                or len(effect_rows) != 64
-                or effect_rows[63] != [63, 32, 5, 0, 5]):
-            self._temple_stop("source-identity", "loaded BRUTUS or row 63 "
-                              "does not match the registered animated source")
+        if control:
+            # An ordinary dead member: roster status $83 and the engine-
+            # controlled bit (0x0B8 bit 7) clear, so his purse is kept.
+            fits = (member is not None and member.get("slot") == 5
+                    and member.get("status") == 0x83
+                    and member.get("record_bytes", {}).get("0xB8", 0x80)
+                    & 0x80 == 0)
+            what = "control BRUTUS is not an ordinary status $83 member"
+        else:
+            fits = (member is not None and member.get("slot") == 5
+                    and member.get("status") == 0x03
+                    and len(traits) == 10 and traits[9] == 32
+                    and member.get("creature_type") == 4
+                    and member.get("record_bytes", {}).get("0xA3") == 2
+                    and len(effect_rows) == 64
+                    and effect_rows[63] == [63, 32, 5, 0, 5])
+            what = ("loaded BRUTUS or row 63 does not match the registered "
+                    "animated source")
+        if not fits:
+            self._temple_stop("source-identity", what)
         counters = {"disk": 0, "continuations": 0, "questions": 0}
         arrival = None
         for n, (move, before, expected) in enumerate(TEMPLE_ROUTE):
@@ -2302,6 +2407,8 @@ class PoolRun:
                   "continuations": counters["continuations"],
                   "questions": counters["questions"],
                   "arrival": arrival["stem"]}
+        if pooling:
+            result["pool"] = self._temple_pool()
         if heal:
             at_arrival = self._temple_steady("before HEAL")
             if (at_arrival.screen is None
@@ -5020,7 +5127,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
     deadline = clock() + args.max_seconds
     temple_mode = any(step.verb == "temple-probe" for step in steps)
     if temple_mode:
-        temple_source_guard(source)
+        _guard_temple_source(source, steps)
     scratch.ensure(out)
     log = Log(out)
     git = evidence.git_state(REPO)
@@ -5055,8 +5162,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
     if temple_mode:
         summary["staged_sha256"] = specimens.sha256_file(staged_disk)
         try:
-            temple_staging_check(source, staged_disk, parse_record_bytes(
-                getattr(args, "stage_record", [])))
+            temple_staging_check(
+                source, staged_disk,
+                parse_record_bytes(getattr(args, "stage_record", [])),
+                TEMPLE_STAGING[next(step.arg for step in steps
+                                    if step.verb == "temple-probe")])
         except ValueError as e:
             summary["lost"] = str(e)
             write_summary()
@@ -5438,13 +5548,11 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("the walk-flee step: Pool of Radiance only")
     temple_mode = any(step.verb == "temple-probe" for step in steps)
     if temple_mode:
-        raising = steps == [Step("load"), Step("temple-probe", "BRUTUS RAISE")]
-        if (steps not in ([Step("load"), Step("temple-probe", "BRUTUS")],
-                          [Step("load"), Step("temple-probe", "BRUTUS HEAL")],
-                          [Step("load"), Step("temple-probe", "BRUTUS RAISE")])
+        if (steps not in [[Step("load"), Step("temple-probe", arg)]
+                          for arg in TEMPLE_PROBE_ARGS]
                 or args.title != "pool" or args.issue != "700"
                 or sorted(parse_record_bytes(args.stage_record))
-                != (sorted(TEMPLE_RAISE_STAGING) if raising else [])
+                != sorted(TEMPLE_STAGING[steps[1].arg])
                 or any((args.stage_row, args.stage_trait, args.stage_item,
                         args.stage_status, args.stage_side,
                         args.first_bar_key, args.checkpoint,
@@ -5455,9 +5563,11 @@ def main(argv: list[str] | None = None) -> int:
                 or args.walk != "I" or args.walk_steps != 40
                 or not 100 < args.max_seconds <= 1500):
             ap.error("temple-probe requires exactly --title pool --issue 700 "
-                     "--steps load 'temple-probe BRUTUS [HEAL|RAISE]', no staging "
-                     "(RAISE alone takes exactly BRUTUS's constitution 18 "
-                     "and 6,000 gold), saving, "
+                     "--steps load 'temple-probe BRUTUS [HEAL|RAISE [POOL|CONTROL]]', "
+                     "no staging (RAISE takes exactly BRUTUS's constitution "
+                     "18 and 6,000 gold; RAISE POOL, 6,000 gold on MALCYON "
+                     "and BRUTUS's constitution 18; RAISE CONTROL, the RAISE "
+                     "bytes), saving, "
                      "checkpoint or other probe options, and a 1500-second "
                      "maximum with 100 seconds reserved for cleanup")
     if args.capture_ready and args.preserve_specimen:
@@ -5513,7 +5623,7 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(f"no save disk at {source}")
     if temple_mode:
         try:
-            temple_source_guard(source)
+            _guard_temple_source(source, steps)
         except ValueError as exc:
             ap.error(str(exc))
     if not args.stage_only and args.disks is None:
