@@ -328,12 +328,12 @@ class _NoClassCode(int):
         return self
 
 
-def _select(combo: QComboBox, value, bare: bool = False) -> None:
+def _select(combo: QComboBox, value) -> None:
     """Show `value` in a dropdown, even when the table has no name for it.
 
-    With `bare`, a value the table does not name shows as its number alone,
-    and the number of an earlier member is dropped from the list, so the list
-    offers only what `_fill_combos` put there.
+    A combo `_fill_combos` marked `bare` shows a value the table does not name
+    as its number alone, and first drops the number of an earlier member, so
+    its list offers only what `_fill_combos` put there.
 
     A code outside the game's own table is real data -- monsters carry things
     player characters do not -- so it is added to the list rather than being
@@ -344,6 +344,11 @@ def _select(combo: QComboBox, value, bare: bool = False) -> None:
     coincidental match to a real entry (the byte is `dual_class_level`, not a
     class code) is exactly what it exists to avoid.
     """
+    bare = bool(combo.property("bare"))
+    offered = combo.property("offered")
+    if bare and isinstance(offered, int):
+        for extra in range(combo.count() - 1, offered - 1, -1):
+            combo.removeItem(extra)
     if not isinstance(value, int):
         return
     if isinstance(value, _NoClassCode):
@@ -351,10 +356,6 @@ def _select(combo: QComboBox, value, bare: bool = False) -> None:
         at = combo.findText(text)
     else:
         text = str(value) if bare else f"{value}  — not in the game's table"
-        offered = combo.property("offered")
-        if bare and isinstance(offered, int):
-            for extra in range(combo.count() - 1, offered - 1, -1):
-                combo.removeItem(extra)
         at = combo.findData(value)
     if at < 0:
         combo.addItem(text, int(value))
@@ -1224,6 +1225,7 @@ class EditorBinding(QObject):
                     else:
                         w.addItem(f"{code}  {label}", code)
                 w.setProperty("offered", w.count())
+                w.setProperty("bare", name == "turn_class")
                 _size_combo(w)
             elif hasattr(w, "set_game"):
                 # The Character Traits list, whose codes are per title too:
@@ -3279,7 +3281,7 @@ class EditorBinding(QObject):
             elif isinstance(w, QCheckBox):
                 w.setChecked(bool(value))
             elif isinstance(w, QComboBox):
-                _select(w, value, bare=name == "turn_class")
+                _select(w, value)
             elif hasattr(w, "set_bytes"):
                 if isinstance(w, SpellbookEditor):
                     w.set_bytes(self._spellbook_raw(record))

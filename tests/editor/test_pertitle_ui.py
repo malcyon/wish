@@ -386,6 +386,79 @@ def _dos_folder(tmp_path, deltas, **neutral_fields):
     return tmp_path
 
 
+def _amiga_disk(tmp_path, key, value):
+    """A one-member Amiga save of Pool or Curse whose turning byte is `value`."""
+    from support.amigasavegame import synthetic_curse
+    from support.neutralrecords import _filled
+
+    from goldbox import amiga_savegame, c64_codec
+    from goldbox.layout import Confidence
+    path = tmp_path / f"{key}.adf"
+    if key == "pool-of-radiance":
+        char = _filled(c64_port.by_key(key))
+        char.set("name", "ALPHA", "made up", Confidence.CONFIRMED,
+                 c64_codec.Provenance.RESHAPED)
+        char.set("turn_class", value, "made up")
+        savgam = bytearray(amiga_savegame.POR_SAVEGAME_SIZE)
+        at = amiga_savegame.POOL_OF_RADIANCE.party_at
+        savgam[at:at + 8] = b"CHRDATA1"
+        disk = amiga_savegame.make_por_save_disk("A", [char], bytes(savgam))
+    else:
+        savgam = bytearray(synthetic_curse(("ALPHA",)))
+        savgam[savgam.index(b"ALPHA") + 0xE9] = value
+        disk = amiga_savegame.make_save_disk(amiga_savegame.CURSE, "A",
+                                             bytes(savgam))
+    disk.save(str(path))
+    return path
+
+
+def _amiga_turn_byte(disk, key):
+    from goldbox import amiga_savegame
+    if key == "pool-of-radiance":
+        return amiga_savegame.read_por_characters(disk, "A")[0].raw[0x76]
+    return amiga_savegame.read_slot(
+        disk, "A", amiga_savegame.CURSE).characters[0].raw[0xE9]
+
+
+AMIGA_TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds")
+
+
+@pytest.mark.parametrize("key", AMIGA_TITLES)
+def test_an_amiga_party_offers_the_rows_its_port_turns(app, tmp_path, key):
+    w = _shown(_amiga_disk(tmp_path, key, 0))
+    assert (w.party.port, w.party.game.key) == ("amiga", key)
+    assert _codes(w._widgets["turn_class"]) == ROWS_TO_ALL_BUT_LICH
+    assert _turns_as(w) == ("N/A", 0)
+
+
+@pytest.mark.parametrize("key", AMIGA_TITLES)
+def test_an_amiga_zombie_shows_its_name_and_saves_back_unchanged(
+        app, tmp_path, key):
+    from editor import saveplan
+    from goldbox.amiga_adf import AmigaDisk
+    path = _amiga_disk(tmp_path, key, 2)
+    w = _shown(path)
+    assert _turns_as(w) == ("Zombie", 2)
+    assert w._flush() == []
+    written = saveplan.write_amiga(w.party, AmigaDisk.open(str(path)))
+    assert _amiga_turn_byte(written, key) == 2
+
+
+@pytest.mark.parametrize("key, value", [("pool-of-radiance", 11),
+                                        ("curse-of-the-azure-bonds", 12)])
+def test_an_amiga_value_the_box_does_not_offer_shows_its_number_and_is_kept(
+        app, tmp_path, key, value):
+    from editor import saveplan
+    from goldbox.amiga_adf import AmigaDisk
+    path = _amiga_disk(tmp_path, key, value)
+    w = _shown(path)
+    assert _turns_as(w) == (str(value), value)
+    assert w.dirty == set()
+    assert w._flush() == []
+    written = saveplan.write_amiga(w.party, AmigaDisk.open(str(path)))
+    assert _amiga_turn_byte(written, key) == value
+
+
 def _c64_window(tmp_path, game, value):
     from gamedata import synthetic_save
 
@@ -430,6 +503,18 @@ def test_a_dos_pool_value_the_box_does_not_offer_shows_its_number_and_is_kept(
     assert w.party.member(0).record.get("turn_class") == 11
 
 
+def test_a_dos_curse_value_the_box_does_not_offer_shows_its_number_and_is_kept(
+        app, tmp_path):
+    w = _shown(_dos_folder(tmp_path, dos_port.CURSE_OF_THE_AZURE_BONDS,
+                           turn_class=12))
+    assert (w.party.port, w.party.game.key) == (
+        "dos", "curse-of-the-azure-bonds")
+    assert _turns_as(w) == ("12", 12)
+    assert _codes(w._widgets["turn_class"]) == ROWS_TO_ALL_BUT_LICH + [12]
+    assert w._flush() == []
+    assert w.party.member(0).record.get("turn_class") == 12
+
+
 def test_a_dos_curse_zombie_shows_its_name(app, tmp_path):
     w = _shown(_dos_folder(tmp_path, dos_port.CURSE_OF_THE_AZURE_BONDS,
                            turn_class=2))
@@ -444,6 +529,16 @@ def test_an_unoffered_number_is_not_left_in_the_list_for_the_next_member(
     w._populate()
     assert _codes(w._widgets["turn_class"]) == ROWS_TO_LICH
     assert _turns_as(w) == ("Skeleton", 1)
+
+
+def test_a_member_with_no_turning_byte_leaves_no_stale_number_behind(
+        app, tmp_path):
+    from editor.window import _select
+    w = _c64_window(tmp_path, POOL, 4)
+    box = w._widgets["turn_class"]
+    assert 4 in _codes(box)
+    _select(box, None)
+    assert _codes(box) == ROWS_TO_LICH
 
 
 def test_choosing_a_name_writes_its_row(app, tmp_path):
