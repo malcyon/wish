@@ -18,7 +18,14 @@ import pytest
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
 
-from support.partymenu import menu_screen  # noqa: E402
+from support.partymenu import (  # noqa: E402
+    MODIFY,
+    ONWARD,
+    SIDE_2,
+    WORLD_BAR,
+    bar_screen,
+    menu_screen,
+)
 
 from goldbox.d64 import D64  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
@@ -550,3 +557,33 @@ def test_a_menu_waiting_for_a_key_is_still_chosen(monkeypatch):
     sess = WorldSess("ONWARD BOUND", hot=[3])
     curseload.enter_world(sess, timeout=5.0)
     assert sess.selected and sess.kernal
+
+
+class LoadSess(WorldSess):
+    """Plays a Curse load pass by pass, as a live boot drew it: the menu
+    waiting with MODIFY CHARACTER white, `ONWARD BOUND` under a menu with no
+    entry white, the side 2 prompt drawn over row 24 and answered, the prompt
+    still drawn on the next pass, row 24 blank under the same menu, then the
+    world's bar."""
+
+    def __init__(self, passes, answered_on):
+        super().__init__("", hot=[])
+        self.passes, self.answered_on, self.at = passes, answered_on, -1
+
+    def screen(self):
+        self.at = min(self.at + 1, len(self.passes) - 1)
+        return self.passes[self.at]
+
+    def handle_prompt(self, s):
+        return self.at == self.answered_on
+
+
+def test_nothing_is_sent_into_a_load_after_its_disk_prompt(monkeypatch):
+    _clock(monkeypatch)
+    passes = ([menu_screen(MODIFY)] + [menu_screen(None, ONWARD)] * 4
+              + [menu_screen(None, SIDE_2)] * 2 + [menu_screen(None)] * 6
+              + [bar_screen(WORLD_BAR)])
+    sess = LoadSess(passes, answered_on=5)
+    assert curseload.enter_world(sess, timeout=300.0) is True
+    assert sess.selected == ["BEGIN ADVENTURING"]
+    assert sess.kernal == [0x0D]

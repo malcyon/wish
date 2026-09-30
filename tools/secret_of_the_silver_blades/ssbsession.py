@@ -476,12 +476,16 @@ def load_started(s) -> bool:
     """True when the party menu is still drawn but the game has taken the choice.
 
     A menu waiting for a key has one of its entries drawn white -- the cursor
-    starts on VIEW CHARACTER, not on BEGIN ADVENTURING -- and row 24 blank.
-    Once the game takes the Return the white entry goes and `ONWARD BOUND` is
-    on row 24 while the area loads; a key sent then only walks towards
-    whichever white row is nearest. Between the game taking the Return and
-    drawing `ONWARD BOUND` the menu still looks waiting, so a key sent in that
-    short window can still arrive.
+    starts on MODIFY CHARACTER in Curse and VIEW CHARACTER in Silver Blades,
+    not on BEGIN ADVENTURING. Once the game takes the Return no entry is
+    white, and the menu stays drawn while the area loads; a key sent then only
+    walks towards whichever white row is nearest. Between the game taking the
+    Return and clearing the white entry the menu still looks waiting, so a key
+    sent in that short window can still arrive.
+
+    Row 24 does not decide it. It reads `ONWARD BOUND` while the load starts,
+    but a disk prompt drawn there during the load replaces it, and once the
+    prompt is answered row 24 is blank again with no entry white.
 
     The entries are the run of non-blank rows ending at BEGIN ADVENTURING,
     read in the column the label starts in, because `highlighted_rows` with a
@@ -489,7 +493,7 @@ def load_started(s) -> bool:
     the window frame is white.
     """
     hit = s.find("BEGIN ADVENTURING")
-    if hit is None or "ONWARD BOUND" not in s.row(24):
+    if hit is None:
         return False
     row, col = hit
     while row >= 0 and s.row(row)[col:col + 1].strip():

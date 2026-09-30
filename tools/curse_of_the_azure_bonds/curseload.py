@@ -616,6 +616,9 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
             sess.log(f"  world: {state!r}")
             seen, since = state, time.time()
         if state == "BEGIN":
+            # The menu stays drawn through the load and the side 2 prompt
+            # that interrupts it; only a menu with an entry still white is
+            # waiting for a key.
             if not load_started(s):
                 sess.select_row("BEGIN ADVENTURING")
                 sess.press_kernal(0x0D)

@@ -2,9 +2,10 @@
 
 Only the cells the reading depends on are drawn: the menu entries, the window
 frame, the white heading row above them and row 24. On a healthy menu waiting
-for a key one entry is white in the column the labels start in (the cursor
-starts on VIEW CHARACTER, not on BEGIN ADVENTURING); once the game has taken
-the choice none is, and row 24 reads `ONWARD BOUND`.
+for a key one entry is white from the column the labels start in (the cursor
+starts on MODIFY CHARACTER in Curse and VIEW CHARACTER in Silver Blades, not
+on BEGIN ADVENTURING); once the game has taken the choice none is, and row 24
+reads `ONWARD BOUND`, then a disk prompt, then nothing.
 """
 
 from __future__ import annotations
@@ -18,6 +19,10 @@ ENTRIES = ("CREATE NEW CHARACTER", "DROP CHARACTER", "MODIFY CHARACTER",
 FIRST_ROW = 13
 BEGIN_ROW = FIRST_ROW + len(ENTRIES) - 1
 COLUMN = 2
+MODIFY, VIEW = 2, 3
+ONWARD = "ONWARD BOUND ..."
+SIDE_2 = "INSERT SIDE # 2, AND PRESS ANY KEY."
+WORLD_BAR = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
 
 _TO_CODE = {" ": 0x20, "@": 0x00}
 
@@ -46,6 +51,14 @@ def menu_screen(cursor: int | None, row24: str = "") -> Screen:
         put(r, 0, "$")
         colours[r * SCREEN_COLS] = 1
     if cursor is not None:
-        colours[(FIRST_ROW + cursor) * SCREEN_COLS + COLUMN] = 1
+        at = (FIRST_ROW + cursor) * SCREEN_COLS + COLUMN
+        colours[at:at + len(ENTRIES[cursor])] = [1] * len(ENTRIES[cursor])
     put(24, 0, row24)
     return Screen(bytes(codes), bytes(colours), 0x0400)
+
+
+def bar_screen(row24: str) -> Screen:
+    """A blank screen with only row 24 drawn: the world's command bar."""
+    codes = [0x20] * (SCREEN_COLS * SCREEN_ROWS)
+    codes[24 * SCREEN_COLS:24 * SCREEN_COLS + len(row24)] = _codes(row24)
+    return Screen(bytes(codes), bytes([5] * len(codes)), 0x0400)

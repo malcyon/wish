@@ -22,7 +22,7 @@ import os
 from contextlib import contextmanager
 
 from conftest import load_tools_module
-from support.partymenu import BEGIN_ROW, ENTRIES, menu_screen
+from support.partymenu import BEGIN_ROW, ENTRIES, SIDE_2, menu_screen
 
 SSB = load_tools_module("ssbsession")
 
@@ -409,4 +409,7 @@ def test_load_started_reads_a_real_screen_both_ways():
     # Row 24 alone is not enough: an entry still white is a menu waiting.
     assert SSB.load_started(menu_screen(3, row24="ONWARD BOUND")) is False
     assert SSB.load_started(menu_screen(len(ENTRIES) - 1)) is False
-    assert SSB.load_started(menu_screen(None)) is False
+    # Nor is row 24 needed: a disk prompt replaces `ONWARD BOUND` during the
+    # load, and once it is answered row 24 is blank under the same menu.
+    assert SSB.load_started(menu_screen(None, row24=SIDE_2)) is True
+    assert SSB.load_started(menu_screen(None)) is True
