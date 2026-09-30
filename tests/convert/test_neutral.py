@@ -230,15 +230,19 @@ def test_every_value_a_writer_takes_comes_back_out_of_the_record():
     # give 14 through the C64's own table.
     assert expected_thac0 != combat_value(char.get("thac0_base"))
     # `thac0_current`: this record's own recomputed `thac0_base` byte plus
-    # the C64 table's strength-to-hit step for `char`'s made-up strength of
-    # 1 (-3, the row 3 and under share) -- gated on
+    # the C64 table's strength-to-hit step -- gated on
     # `strength_bonus_flag`, which `write` always sets to 1 (#277). Not a
     # round trip: `char`'s made-up `thac0_current` is discarded entirely.
+    # `char`'s made-up strength of 1 has no confirmed C64 row (the table is
+    # read for 3 to 25), so the step is checked on a second character whose
+    # strength is inside that range.
     assert rec.get("strength_bonus_flag") == 1
-    hit = c64_codec.c64_strength_hit_step(char.get("strength"),
-                                          char.get("exceptional_strength"))
-    assert hit == -3
-    assert rec.get("thac0") == rec.get("thac0_base") + hit
+    in_range = _filled()
+    in_range.set("strength", 5, "made up: a row the C64 table confirms")
+    in_rec, _ = c64_codec.write(in_range)
+    hit = c64_codec.c64_strength_hit_step(in_range.get("strength"),
+                                          in_range.get("exceptional_strength"))
+    assert in_rec.get("thac0") == in_rec.get("thac0_base") + hit
     assert level_tables.racial_save_bonus_measured(char.game)
     expected_saves = level_tables.saving_throws(
         char.get("levels"), char.get("race"), char.get("constitution"),

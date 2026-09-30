@@ -32,7 +32,7 @@ def _char(game: str, strength: int, percentile: int = 0) -> NeutralCharacter:
 
 
 @pytest.mark.parametrize("game", [POOL, CURSE])
-@pytest.mark.parametrize("strength, step", [(21, 4), (25, 7), (5, -2)])
+@pytest.mark.parametrize("strength, step", [(21, 4), (25, 7), (26, 7), (5, -2)])
 def test_a_strength_outside_8_to_18_gets_the_c64_tables_step(game, strength, step):
     # An empty type table selects Pool's own block; Curse ignores it.
     rec, _ = c64_codec.write(_char(game, strength), item_types={})
