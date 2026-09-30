@@ -210,7 +210,7 @@ import traceback
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos_codec, dos_savegame, world_state  # noqa: E402
+from goldbox import dos_codec, dos_savegame, effects, world_state  # noqa: E402
 from tools.dos import (  # noqa: E402
     dosbox,
     dosboxx,
@@ -2231,12 +2231,6 @@ def compare_members(before: dict, after: dict) -> list[dict]:
 ANIMATED_CONTROL = 0xB3
 
 
-#: The effect ids whose end the game answers by resetting control to 0: charm
-#: (11) and Fear (Curse 142, Silver Blades 111).  A slot does not say which
-#: title it is, so a Fear id is taken from either title.
-CONTROL_RESET_REASONS = {11: "charm ended", 142: "fear ended", 111: "fear ended"}
-
-
 def animated_members(steps: list["Step"], expects: list["Expect"],
                      slot: dict) -> set[str]:
     """The members this run raised, upper-cased: those whose id-32 `--expect`
@@ -2248,27 +2242,30 @@ def animated_members(steps: list["Step"], expects: list["Expect"],
             if e.id == 32 and judge(e, slot)["verdict"] == "accepts"}
 
 
-def _control_reset_reason(before: dict, after: dict) -> str | None:
+def _control_reset_reason(before: dict, after: dict, title: str | None) -> str | None:
     """Why the game reset `before`'s 0xB3 control to 0 in `after`, when a charm
-    or Fear node it held has gone; None when the change is anything else."""
+    or `title`'s Fear node it held has gone; None when the change is anything else."""
     if before.get("control") != ANIMATED_CONTROL or after.get("control") != 0:
         return None
     held = {n["id"] for n in before.get("nodes", [])}
     left = {n["id"] for n in after.get("nodes", [])}
-    for node_id, reason in CONTROL_RESET_REASONS.items():
+    fear = effects.FEAR_IDS.get(CONVERT_TITLE_KEYS.get(title), frozenset())
+    for node_id, reason in [(effects.CHARM_ID, "charm ended"),
+                            *((i, "fear ended") for i in sorted(fear))]:
         if node_id in held and node_id not in left:
             return reason
     return None
 
 
 def compare_shares(before: dict, after: dict,
-                   animated: frozenset[str] | set[str] = frozenset()) -> list[dict]:
+                   animated: frozenset[str] | set[str] = frozenset(),
+                   title: str | None = None) -> list[dict]:
     """Each character's `control` and `treasure_share` bytes in `before` and
     `after`, matched by name.  A row with either byte unequal fails the run
     (`read_step`/`describe`), except that a member in `animated` may change
     control to `ANIMATED_CONTROL` with its share unchanged; that row records
     `control_changed`.  A member that held `ANIMATED_CONTROL` and a charm or
-    Fear node in `before`, and holds control 0, that node's id absent and the
+    `title` Fear node in `before`, and holds control 0, that node's id absent and the
     same share in `after`, matches too, recording why."""
     after_by = {c["name"]: c for c in after["characters"]}
     rows = []
@@ -2292,8 +2289,9 @@ def compare_shares(before: dict, after: dict,
             row["control_changed"] = {c["name"]: [row["control_before"],
                                                   row["control_after"]],
                                       "reason": "animated"}
-        if not row["matches"] and now is not None:
-            reason = _control_reset_reason(c, now)
+        if (not row["matches"] and now is not None
+                and c["name"].upper() not in animated):
+            reason = _control_reset_reason(c, now, title)
             if reason and row["share_before"] == row["share_after"]:
                 row["matches"] = True
                 row["control_changed"] = {c["name"]: [row["control_before"],
@@ -5416,7 +5414,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.press(step.key)
                 else:
                     r = read_step(session.save_dir, out, letter, saved, steps, expects,
-                                  [parse_var(v) for v in getattr(args, "stage_var", []) or []])
+                                  [parse_var(v) for v in getattr(args, "stage_var", []) or []],
+                                  args.title)
                     summary["read"] = r
                 results.append({"step": step.text, **r})
                 note(event="done", step=step.text,
@@ -5646,7 +5645,8 @@ def walk_verdict(steps: list[Step], read: dict | None) -> str | None:
 
 def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
               saved: list[str], steps: list[Step], expects: list[Expect],
-              staged_vars: list[tuple[int, int]] | None = None) -> dict:
+              staged_vars: list[tuple[int, int]] | None = None,
+              title: str | None = None) -> dict:
     """Copy `SAVE/` out and decode the installed slot against each saved one,
     and report each `--stage-var` word as the last saved slot holds it."""
     resave = out / "resave"
@@ -5667,7 +5667,7 @@ def read_step(save_dir: pathlib.Path, out: pathlib.Path, letter: str,
             "compare": compare_nodes(before, after),
             "experience": compare_experience(before, after),
             "members": compare_members(before, after),
-            "shares": compare_shares(before, after, animated),
+            "shares": compare_shares(before, after, animated, title),
         }
         if any(st.kind in ("walk", "turn") for st in steps):
             result["slots"][x]["place_changed"] = place_changed(before, after)
