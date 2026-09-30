@@ -2577,13 +2577,17 @@ def test_a_specimen_with_unequal_ability_pairs_finds_all_six():
     """The Curse party whose slots A, C and F hold six characters, four of
     them with a pair apart, is found whole by the scan and the save checker.
     """
+    from gamedata import specimen_root
+
     from goldbox.amiga_adf import AmigaDisk
     from tools.amiga import amigasavecheck
-    root = pathlib.Path("/mnt/specimens/coab-amiga")
+    root = specimen_root()
     image = next(iter(sorted(root.glob(
-        "WISH-SPEC-wish-677-curse-mn2xe43ffvzwqylsmu-*/fetched-df0.adf"))), None)
+        "coab-amiga/WISH-SPEC-wish-677-curse-mn2xe43ffvzwqylsmu-*/"
+        "fetched-df0.adf"))), None) if root else None
     if image is None:
-        pytest.skip("no wish-677 Curse specimen under /mnt/specimens/coab-amiga")
+        pytest.skip("needs specimen WISH-SPEC-wish-677-curse-mn2xe43ffvzwqylsmu"
+                    "-...; see tools/registry/specimens.py and $WISH_SPECIMENS")
     saves = list(amigasavecheck.savegames_on(AmigaDisk.open(image)))
     assert saves
     for path, data in saves:
