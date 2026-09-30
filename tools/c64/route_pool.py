@@ -468,8 +468,8 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
     `REST ADD SUBTRACT EXIT`.  The time is written into the rest-time
     `field` (minutes, hours, days), with hours of 24 or more carried into
     days, rather than stepped with `ADD`, and the bar's own `REST` starts it.
-    No key is sent while it runs.  A rest of no time is refused before
-    anything is pressed.
+    No key is sent while it runs.  A rest of no time, or one whose minutes
+    or days do not fit a byte, is refused before anything is pressed.
 
     `ended` in the result says how the wait stopped:
 
@@ -492,6 +492,9 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
     if want == (0, 0, 0):
         log.say("  a rest of no time was asked for")
         return {"failed": "a rest of no time"}
+    if not all(0 <= b <= 0xFF for b in want):
+        log.say(f"  the rest time {want} does not fit the field's three bytes")
+        return {"failed": f"rest time {want} does not fit the rest-time field"}
     press = getattr(sess, "press_bar", sess.select_bar)
     if not press("REST"):
         log.say("  REST was not on the camp bar")

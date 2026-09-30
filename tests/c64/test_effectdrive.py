@@ -287,6 +287,17 @@ def test_a_later_rest_of_no_time_is_refused_before_anything_is_pressed(
     assert sess.pressed == []
 
 
+def test_a_later_rest_too_long_for_the_field_is_refused_before_anything_is_pressed(
+        monkeypatch):
+    """Minutes or days past a byte cannot be written, so nothing is pressed."""
+    for minutes, hours in ((300, 0), (0, 256 * 24)):
+        sess = LaterPressSession(c64_port.SECRET_OF_THE_SILVER_BLADES, 0x2A8E,
+                                 E.LATER_LOAD, LATER_REST_ROW)
+        got = _rest(monkeypatch, sess, minutes, hours)
+        assert "does not fit" in got["failed"]
+        assert sess.pressed == []
+
+
 def test_a_later_rest_reads_the_arrays_at_4b00():
     m = FakeMemory()
     m.mem[E.LATER_LOAD + effects.EFFECT_ID_OFFSET + 63] = 22
