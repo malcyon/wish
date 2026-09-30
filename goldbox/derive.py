@@ -79,7 +79,10 @@ CLASS_BITS = ((1, "magic-user"), (2, "cleric"), (4, "thief"), (8, "fighter"))
 # are wrong too, and nothing we hold would show it.
 _DEX_AC = {3: -4, 4: -3, 5: -2, 6: -1, 14: 1, 15: 1, 16: 2, 17: 3, 18: 4}
 # Strength's to-hit and damage bonuses. Exceptional strength splits 18.
-_STR_HIT = {17: 1, 18: 1}
+# The to-hit half also holds the rows below 8 and above 18, which are the
+# C64 table's (`LIBRARY $3840`, Pool `$3651`) and `dos_strength_hit_bonus`'s.
+_STR_HIT = {3: -3, 4: -2, 5: -2, 6: -1, 7: -1, 17: 1, 18: 1,
+            19: 3, 20: 3, 21: 4, 22: 4, 23: 5, 24: 6, 25: 7}
 _STR_DAMAGE = {16: 1, 17: 2, 18: 2}
 
 UNARMOURED_AC = 10

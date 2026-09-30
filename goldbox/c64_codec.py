@@ -700,16 +700,12 @@ def c64_strength_hit_step(strength: int, percentile: int) -> int:
     """The row of the C64 to-hit table (`LIBRARY $3840` in Curse, `$3651` in
     Pool of Radiance) that `strength_index` selects, as a signed step.
 
-    `derive.strength_bonuses` has rows only for 8 to 18, where the C64 table
-    also runs 3 to 7 and 19 to 25; `derive.dos_strength_hit_bonus` returns
-    the same numbers as the C64 table for strength 3 to 25 and 18 at every
-    percentile (all 123 cases read from the Curse and Pool tables). Above 25
-    the C64's `strength_index` clamps at 30, the row for 25, while DOS's
-    function returns 0, so the strength is clamped to 25 here. Below 3 no
-    C64 row has been read.
+    `derive.strength_bonuses` holds that table for strength 3 to 25 and 18 at
+    every percentile (all 123 cases read from the Curse and Pool tables).
+    Above 25 the C64's `strength_index` clamps at 30, the row for 25, so the
+    strength is clamped to 25 here. Below 3 no C64 row has been read.
     """
-    return derive.dos_strength_hit_bonus(min(int(strength or 0), 25),
-                                         percentile)
+    return derive.strength_bonuses(min(int(strength or 0), 25), percentile)[0]
 
 
 def thac0_current_byte(base_byte: int, hit_bonus: int, bonus_flag: bool) -> int:

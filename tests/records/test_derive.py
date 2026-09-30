@@ -290,6 +290,22 @@ def test_the_thac0_base_comes_from_the_per_class_array():
         rec.get("strength"), rec.get("exceptional_strength"))[0]
 
 
+
+@pytest.mark.parametrize("strength, step", [(3, -3), (5, -2), (7, -1),
+                                            (19, 3), (21, 4), (25, 7)])
+def test_the_consistency_check_takes_the_c64_strength_step_outside_8_to_18(
+        strength, step):
+    """The C64 writer stores THAC0 as base minus the strength step (`LIBRARY
+    $3918`), which reaches strengths 3 to 7 and 19 to 25 too; the check must
+    not call that stored byte stale."""
+    from types import SimpleNamespace
+    rec = a_character(strength=strength, percentile=0)
+    base = derive.base_thac0(FIGHTER, LEVEL_1)
+    block = SimpleNamespace(thac0=base - step,
+                            armour_class=derive.expected_armour_class(rec, []),
+                            damage_bonus=derive.expected_damage_bonus(rec, []))
+    assert not [w for w in derive.check(rec, block, []) if "THAC0" in w]
+
 @needs_disks
 def test_a_character_with_darts_readied_is_not_reported_as_stale():
     """MALCYON, whose THAC0 improved by one when he bought darts. His record
