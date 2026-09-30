@@ -39,14 +39,14 @@ ITEMS_BAR_HEAD_CELLS = 5
 #: item the highlight was on.  Its head is not `ITEMS_BAR_HEAD`.
 POOL_ITEMS_BAR = "0a653b8b1d7793d7"
 
-#: Pool of Radiance's `ITEMS` bar words, in the order the game draws them.  The
-#: game leaves words out by member and item (`TRADE` on 2 captures, `HALVE` on
-#: 2), so a list shows `READY`, then some of the rest in this order, then `EXIT`.
+#: The `ITEMS` bar's words in the order the game draws them.  The game leaves
+#: words out by member and item, so a list shows `READY`, then some of the rest
+#: in this order, then `EXIT`.
 POOL_ITEMS_WORDS = ("READY", "USE", "TRADE", "DROP", "HALVE", "JOIN", "EXIT")
 
-#: One bar cell's `Screen.glyphs` digest to its letter, read off the two lists
-#: missing `TRADE` and `HALVE` and checked on 15 full-bar captures: 17 letters
-#: and the blank, which between them spell every word above.
+#: One bar cell's `Screen.glyphs` digest to its letter, read from DOSBox
+#: captures.  A glyph not in the table refuses the whole bar, on purpose: an
+#: unknown screen fails closed rather than being read as some other word.
 BAR_LETTERS = {
     "9438e360f578e12c": " ", "61d526bdf060e4d9": "A", "d2010e88777efb2d": "D",
     "3c4e0a6ef6df68d8": "E", "6c3f96b5a5c86a50": "H", "6963fe05b95f59e2": "I",
@@ -185,8 +185,9 @@ def is_pool_items_bar(screen: dosbox.Screen) -> bool:
 
 
 def on_items_list(screen: dosbox.Screen) -> bool:
-    """Whether `screen` is an `ITEMS` list, Pools of Darkness' or Pool of
-    Radiance's.  A sheet reads as a one-row list with its highlight on band 12,
+    """Whether `screen` is a DOS `ITEMS` list: Pools of Darkness' by its bar
+    head, and the `READY ... EXIT` bar (whole, or by its words) that Pool of
+    Radiance, Silver Blades and Curse of the Azure Bonds draw.  A sheet reads as a one-row list with its highlight on band 12,
     so the readers below ask this first."""
     return (bar_signature(screen, ITEMS_BAR_HEAD_CELLS) == ITEMS_BAR_HEAD
             or bar_signature(screen) == POOL_ITEMS_BAR

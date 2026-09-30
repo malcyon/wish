@@ -9776,3 +9776,23 @@ def test_the_captured_pool_items_lists_are_recognised(run, name, issue):
 ])
 def test_a_captured_pool_sheet_camp_and_menu_are_not_items_lists(run, name, issue):
     assert not screens.on_items_list(_capture(run, name, issue))
+
+
+def test_every_items_bar_word_is_spelled_by_the_real_letter_table():
+    letters = set(screens.BAR_LETTERS.values())
+    for word in screens.POOL_ITEMS_WORDS:
+        assert set(word) <= letters, word
+
+
+def test_a_captured_drop_prompt_is_not_an_items_list():
+    import shutil
+    import subprocess
+
+    from tools.registry.scratch import cache_dir
+    shot = cache_dir("790", "drop-in-camp", "shots", "009-after-d.png")
+    if not shot.exists() or shutil.which("convert") is None:
+        pytest.skip("the captured drop prompt is not on this machine")
+    screen = dosbox.Screen.from_ppm(subprocess.run(
+        ["convert", str(shot), "-depth", "8", "ppm:-"], check=True,
+        capture_output=True).stdout)
+    assert not screens.on_items_list(screen)
