@@ -66,7 +66,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown |
-| `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
+| `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
 | `warp AREA` | Pool only: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
@@ -4321,13 +4321,17 @@ class PoolRun:
         limit = start + FIGHT_OPENS_SECONDS
         subbar_since = None
         seen = None
-        left_treasure = False
+        left_treasure = None
         while True:
             self.budget(1, f"{self.walk_verb} {route}")
             self.answer_side_prompt(route, last, "ran the square's event")
             mode = getattr(sess, "mode", lambda: None)()
             screen = sess.screen()
             row = "" if screen is None else screen.row(24)
+            treasure_up = (mode == TREASURE_MODE
+                           and S.word_column(row, "EXIT") >= 0)
+            if not treasure_up:
+                left_treasure = None
             if (mode, row.strip()) != seen:
                 seen = (mode, row.strip())
                 self.log.emit("fight-wait", n=n, dt=round(self.clock() - start, 1),
@@ -4347,16 +4351,23 @@ class PoolRun:
             elif (S.word_column(row, "YES") >= 0 and S.word_column(row, "NO") >= 0
                     or S.word_column(row, word) >= 0):
                 return self.rows()
-            elif mode == TREASURE_MODE and S.word_column(row, "EXIT") >= 0:
-                # A treasure screen met on the walk after a fight, such as
-                # `VIEW POOL EXIT`, is left with EXIT as the end-of-fight one
-                # is, once; the route then goes on.
-                if not left_treasure:
-                    left_treasure = True
+            elif treasure_up:
+                # After the encounter-word check, so an encounter menu is
+                # never taken for a treasure bar.  A treasure screen met on
+                # the walk after a fight, such as `VIEW POOL EXIT`, is left
+                # with EXIT as the end-of-fight one is, once for each bar it
+                # shows; the route then goes on.
+                if left_treasure != row.strip():
+                    if not self.choose_bar("EXIT", timeout=10):
+                        raise self.fail(
+                            self.walk_verb,
+                            f"{self.walk_verb} {route}: move {n} ({move}) met "
+                            f"the treasure screen {row.strip()!r} and EXIT "
+                            f"could not be chosen")
+                    left_treasure = row.strip()
                     self.walk_treasures.append(
                         {"at_move": n, "bar": row.strip(), "mode": mode})
                     self.log.emit("treasure-screen", n=n, row24=row.strip())
-                    self.choose_bar("EXIT", timeout=10)
             elif self.at_world(row):
                 return None
             elif S.MOVE_SUBBAR in row:

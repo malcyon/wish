@@ -7264,13 +7264,17 @@ class TreasureAfterFightWalk(AmbushWalk):
     answered, puts up a treasure screen (mode 5) whose bar is `bar`, and EXIT
     puts the world bar back."""
 
-    def __init__(self, bar="VIEW POOL EXIT", **kw):
+    def __init__(self, bar="VIEW POOL EXIT", then=None, exit_works=True,
+                 exit_clears=True, **kw):
         super().__init__({0: "fight"}, **kw)
         self.screens["treasure"] = _window({3: "THE POOL HOLDS GOLD."}, bar)
+        self.screens["treasure2"] = _window({3: "MORE GOLD."}, then or "")
+        self.then, self.exit_works, self.exit_clears = then, exit_works, exit_clears
         self.moves[("press", ("key", 0x0D))] = "treasure"
 
     def mode(self):
-        return A.TREASURE_MODE if self.state == "treasure" else A.S.DUNGEON
+        return (A.TREASURE_MODE if self.state in ("treasure", "treasure2")
+                else A.S.DUNGEON)
 
     def walk_one(self, move, *a, **k):
         moved = FightWalk.walk_one(self, move, *a, **k)
@@ -7279,9 +7283,13 @@ class TreasureAfterFightWalk(AmbushWalk):
         return moved
 
     def select_bar(self, label, row=24, timeout=0, **kw):
-        if label == "EXIT" and self.state == "treasure":
-            self.state = "world"
-        return super().select_bar(label, row, timeout, **kw)
+        if label == "EXIT" and self.exit_works and self.exit_clears:
+            if self.state == "treasure" and self.then:
+                self.state = "treasure2"
+            elif self.state in ("treasure", "treasure2"):
+                self.state = "world"
+        super().select_bar(label, row, timeout, **kw)
+        return self.exit_works
 
 
 @pytest.mark.parametrize("verb", ["walk_fight", "walk_flee"])
@@ -7296,6 +7304,37 @@ def test_walk_fight_leaves_a_treasure_screen_met_on_the_walk_after_a_fight(
     assert got["treasure_screens"] == [
         {"at_move": 1, "bar": "VIEW POOL EXIT", "mode": A.TREASURE_MODE}]
     assert sess.pressed == ["I", "I"]
+
+
+def test_walk_fight_leaves_a_second_treasure_screen_in_the_same_key(
+        tmp_path, monkeypatch):
+    sess = TreasureAfterFightWalk(then="VIEW TAKE POOL SHARE EXIT")
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    got = run.walk_fight("II")
+    log.close()
+    assert [t["bar"] for t in got["treasure_screens"]] == [
+        "VIEW POOL EXIT", "VIEW TAKE POOL SHARE EXIT"]
+    assert sess.state == "world"
+
+
+def test_walk_fight_fails_naming_the_treasure_bar_when_exit_cannot_be_chosen(
+        tmp_path, monkeypatch):
+    sess = TreasureAfterFightWalk(exit_works=False)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    with pytest.raises(A.StepFailed, match=r"'VIEW POOL EXIT' and EXIT could not"):
+        run.walk_fight("II")
+    log.close()
+    assert run.walk_treasures == []
+
+
+def test_walk_fight_fails_naming_the_treasure_bar_that_exit_does_not_clear(
+        tmp_path, monkeypatch):
+    sess = TreasureAfterFightWalk(exit_clears=False)
+    run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
+    with pytest.raises(A.StepFailed, match="row 24 reads 'VIEW POOL EXIT', mode 5"):
+        run.walk_fight("II")
+    log.close()
+    assert sess.selected.count("EXIT") == 1
 
 
 def test_walk_fight_waits_out_a_slow_encounter_load_after_a_side_prompt_and_sends_one_key(
