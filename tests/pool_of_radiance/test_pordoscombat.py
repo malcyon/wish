@@ -273,7 +273,11 @@ _VIEWED_AFTER_A_CONVERSION = {
 }
 
 
-_PARENT_NAME = re.compile(r"WISH-SPEC-[A-Za-z0-9._-]+")
+_SPEC_PREFIX = "WISH-SPEC-"
+#: A specimen named by its directory (`WISH-SPEC-x`) or by its registry name
+#: (`x`); registered provenance uses both. A bare name needs a hyphen so that
+#: an ordinary word cannot match a specimen.
+_PARENT_NAME = re.compile(r"(?:WISH-SPEC-)?[A-Za-z0-9._]+(?:-[A-Za-z0-9._]+)*")
 _IMAGE_SUFFIX = re.compile(r"\.(?:d64|adf)$", re.IGNORECASE)
 
 #: Specimens `_not_rebuilt_with_descendants` adds to `_NOT_REBUILT` today,
@@ -284,17 +288,28 @@ _EXPECTED_DESCENDANTS = {
     "por-dos/WISH-SPEC-pool-667-slow-poison-inn-rest-resave",
     "por-dos/WISH-SPEC-pool-700-animate-dead-camp-cast-resave",
     "por-dos/WISH-SPEC-dos-pool-745-mid-scribe",
+    # Staged copies of the slow-poison camp-cast resave: strength and level
+    # were staged, and the Strength node expired in the rests with no rebuild.
+    "por-dos/WISH-SPEC-pool-667-strength-enlarge-pair-dos-engine-saves",
+    "por-dos/WISH-SPEC-pool-667-strength-short-enlarge-pair-dos-engine-saves",
+    "por-dos/WISH-SPEC-pool-667-strength-short-enlarge-pair-dos-later-engine-saves",
+    # Names its parent, por-52-dialog-converted-resave, without the prefix.
+    "por-dos/WISH-SPEC-por-667-slow-poison-no-poison-running-resave",
 }
 
 
 def _parent_names(text):
-    """Every `WISH-SPEC-` name in `text`, without the sentence punctuation or
-    image extension that can trail one."""
+    """Every specimen directory name `text` could mean, without the sentence
+    punctuation or image extension that can trail one: a `WISH-SPEC-` name as
+    written, and a hyphenated bare name with the prefix added."""
     names = []
     for raw in _PARENT_NAME.findall(text):
         name = raw.rstrip(".")
         name = _IMAGE_SUFFIX.sub("", name).rstrip(".")
-        names.append(name)
+        if name.startswith(_SPEC_PREFIX):
+            names.append(name)
+        elif "-" in name:
+            names.append(_SPEC_PREFIX + name)
     return names
 
 
@@ -381,6 +396,23 @@ def test_a_copy_of_a_copy_of_an_unrebuilt_specimen_is_excluded(tmp_path):
     assert got == {"por-dos/WISH-SPEC-parent", "por-dos/WISH-SPEC-child",
                    "por-dos/WISH-SPEC-grandchild",
                    "por-dos/WISH-SPEC-full-stop", "por-dos/WISH-SPEC-image"}
+
+
+def test_a_parent_named_without_the_prefix_is_found(tmp_path):
+    def make(name, what):
+        d = tmp_path / "por-dos" / name
+        d.mkdir(parents=True)
+        (d / "provenance.toml").write_text(f'what = "{what}"\n')
+
+    make("WISH-SPEC-parent-one", "Wish's own resave")
+    make("WISH-SPEC-bare-child", "From slot G of parent-one, staged")
+    make("WISH-SPEC-bare-grandchild", "From slot H of bare-child.")
+    make("WISH-SPEC-word", "Rolled in the game, one parent")
+    got = _not_rebuilt_with_descendants(tmp_path,
+                                        {"por-dos/WISH-SPEC-parent-one"})
+    assert got == {"por-dos/WISH-SPEC-parent-one",
+                   "por-dos/WISH-SPEC-bare-child",
+                   "por-dos/WISH-SPEC-bare-grandchild"}
 
 
 def test_an_unreadable_provenance_fails_rather_than_being_skipped(tmp_path):
