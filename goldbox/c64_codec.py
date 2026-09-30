@@ -1920,6 +1920,22 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                 # asks only for an owner-`$FF` row, never a trait slot. With no
                 # payload there is no row to write, and the id keeps the
                 # trait slot it always had.
+                # Members may carry different data for one id; the higher
+                # data byte wins, as in `dos_codec.c64_party`, so the row
+                # does not depend on the order the members are written.
+                held = effects.slot_for(payload, int(node[0]),
+                                        effects.PARTY_WIDE)
+                if held is not None and not payload[
+                        effects.EFFECT_DURATION_OFFSET + held]:
+                    old = int(payload[effects.EFFECT_MAGNITUDE_OFFSET + held])
+                    if node[0] == 49:
+                        old = effects.prayer_dos_data(title_key, old)
+                    if int(node[3]) <= old:
+                        continue
+                    effects.write_effect(
+                        payload, held, int(node[0]), effects.PARTY_WIDE, 0,
+                        effects.party_granted_magnitude(title_key, node))
+                    continue
                 if not effects.write_party_row(
                         payload, int(node[0]), 0,
                         effects.party_granted_magnitude(title_key, node),

@@ -2702,3 +2702,88 @@ def test_an_in_place_amiga_edit_leaves_a_native_flag_one_companion_alone():
     after.gold = 4321
     out = rewrite.rewrite_amiga_later(built, rec, after, ssb)
     assert _flags(out.character) == {22: 1, 15: 1}
+
+
+def _write_members(game, members_granted, order=1):
+    payload = bytearray(0x1C00)
+    pairs = list(enumerate(members_granted))[::order]
+    for slot, records in pairs:
+        char = _title_character(game)
+        if records:
+            char.set("granted_effects", [r + NULL for r in records],
+                     "built here")
+        c64_codec.write(char, payload=payload, party_slot=slot,
+                        clock_minutes=0)
+    return payload
+
+
+@pytest.mark.parametrize("order", [1, -1])
+def test_members_with_different_granted_prayer_data_write_the_higher_data(
+        order):
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    payload = _write_members(game, [[bytes((49, 0, 0, 0x03, 0))],
+                                    [bytes((49, 0, 0, 0x13, 0))]], order)
+    rows = _rows(payload)
+    assert rows[63] == (49, 0xFF, 0, 0x43)
+    assert rows[62] == (0, 0, 0, 0)
+
+
+@pytest.mark.parametrize("order", [1, -1])
+def test_pool_prayer_data_is_compared_as_data_not_as_the_c64_magnitude(order):
+    # Pool inverts the side: data 0x13 is magnitude 0x03, data 0x03 is 0x43.
+    payload = _write_members(POOL_OF_RADIANCE,
+                             [[bytes((49, 0, 0, 0x03, 0))],
+                              [bytes((49, 0, 0, 0x13, 0))]], order)
+    assert _rows(payload)[63] == (49, 0xFF, 0, 0x03)
+
+
+def test_a_permanent_and_a_finite_row_of_one_id_write_back_only_the_permanent():
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    payload = _synthetic_c64_party_payload(
+        game, 2, (49, 0xFF, 0x0A, 0x03), (49, 0xFF, 0x00, 0x03))
+    party, _ = dos_codec.c64_party(bytes(payload), None, game=game)
+    fresh = bytearray(len(payload))
+    for slot, char in enumerate(reversed(party)):
+        c64_codec.write(char, payload=fresh, party_slot=slot, clock_minutes=0)
+    assert [(e.id, e.owner, e.duration, e.magnitude)
+            for e in effects.active_effects(bytes(fresh))] == \
+        [(49, 0xFF, 0, 0x03)]
+
+
+def test_a_granted_record_on_one_member_reads_back_as_one_party_row():
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
+    payload = _write_members(game, [[], [bytes((49, 0, 0, 0x03, 0))], []])
+    assert [(e.id, e.owner, e.duration, e.magnitude)
+            for e in effects.active_effects(bytes(payload))] == \
+        [(49, 0xFF, 0, 0x03)]
+
+
+@pytest.mark.parametrize("game", [POOL_OF_RADIANCE,
+                                  c64_port.CURSE_OF_THE_AZURE_BONDS],
+                         ids=lambda g: g.key)
+@pytest.mark.parametrize("node_id", [35, 49])
+def test_a_granted_record_with_data_ff_is_not_a_party_row(game, node_id):
+    record = bytes((node_id, 0, 0, 0xFF, 0))
+    assert not effects.is_party_granted_record(game.key, record)
+
+
+def test_party_granted_magnitude_undoes_the_prayer_data_only_for_49():
+    assert effects.party_granted_magnitude(
+        "pool-of-radiance", bytes((49, 0, 0, 0x03, 0))) == 0x43
+    assert effects.party_granted_magnitude(
+        "pool-of-radiance", bytes((49, 0, 0, 0x13, 0))) == 0x03
+    assert effects.party_granted_magnitude(
+        "curse-of-the-azure-bonds", bytes((49, 0, 0, 0x13, 0))) == 0x43
+    assert effects.party_granted_magnitude(
+        "pool-of-radiance", bytes((35, 0, 0, 0x13, 0))) == 0x13
+    assert effects.party_granted_magnitude(
+        "pool-of-radiance", bytes((5, 0, 0, 0x0C, 0))) == 0x0C
+
+
+def test_a_granted_prayer_record_survives_the_pool_amiga_writer():
+    record = bytes((49, 0, 0, 0x13, 0)) + NULL
+    char = _pool_character()
+    char.set("granted_effects", [record], "built here")
+    rec, _itm, spc, _rep = amiga_por.write_por(char)
+    read = amiga_por.to_neutral(amiga_por.por_character(rec, b"", spc))
+    assert [bytes(g) for g in read.get("granted_effects")] == [record]

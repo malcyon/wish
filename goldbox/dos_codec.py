@@ -9017,8 +9017,9 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
         # is handled here. A party-wide row whose id the title converts
         # (`effects.PARTY_ROW_IDS`) becomes one node on the lowest occupied
         # slot, which is what DOS's ask-every-member query treats the same,
-        # or on every member for an id in `PARTY_ROW_ON_EVERY_MEMBER`;
-        # every other such row is reported on the first character.
+        # or on every member for an id in `PARTY_ROW_ON_EVERY_MEMBER`; a
+        # duration-0 row becomes the granted record on the same members.
+        # Every other such row is reported on the first character.
         occupied = {s.index for s in party}
         party_nodes: dict[int, effects.RunningEffect] = {}
         party_granted: dict[int, bytes] = {}

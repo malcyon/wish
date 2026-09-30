@@ -260,8 +260,9 @@ def closest_duration(minutes: int, clock_minutes: int) -> int | None:
 # and Amiga hold it literally, and a C64 slot's magnitude is a per-title,
 # per-id function of it rather than a copy. The owner is implicit -- the
 # record's own character. An id in `PARTY_ROW_IDS` converts a party-wide
-# row to a node on one member, or to a node on every member for an id in
-# `PARTY_ROW_ON_EVERY_MEMBER`; no other party-wide row converts yet.
+# row to a node on the lowest occupied slot, or to a node on every member for
+# an id in `PARTY_ROW_ON_EVERY_MEMBER`; a duration-0 row is the granted record
+# `id 00 00 data 00` in either case. No other party-wide row converts yet.
 RUNNING_EFFECT_SIZE = 9
 _RUNNING_EFFECT_NEXT = bytes(4)
 
