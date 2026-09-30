@@ -1,4 +1,8 @@
-"""The Silver Blades route accepts only effect-array derivatives of its JOIN disk."""
+"""The Silver Blades route accepts only effect-array derivatives of its JOIN disk.
+
+The C64 Silver Blades save is one file, `SAVEDBASH` at `$4B00`, and its four
+effect arrays sit at the same payload offsets as Pool of Radiance's.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +22,7 @@ from tools.amiga.winuaesession import RouteError
 def _sources(tmp_path, monkeypatch):
     original = d64.D64.blank()
     payload = bytearray(0x300)
-    original.write_file("SAVEDGAME0", d64.attach_load_address(0x4900, payload))
+    original.write_file("SAVEDBASH", d64.attach_load_address(0x4B00, payload))
     original.write_file("OTHER", b"other file")
     join = tmp_path / "join.d64"
     original.save(join)
@@ -35,10 +39,10 @@ def _stage(tmp_path, original, change):
 
 
 def _effect(staged):
-    address, payload = d64.split_load_address(staged.read_file("SAVEDGAME0"))
+    address, payload = d64.split_load_address(staged.read_file("SAVEDBASH"))
     body = bytearray(payload)
     effects.write_effect(body, 63, 1, 0, 0x2F, 5)
-    staged.write_file_inplace("SAVEDGAME0", d64.attach_load_address(address, body))
+    staged.write_file_inplace("SAVEDBASH", d64.attach_load_address(address, body))
 
 
 def test_staged_source_records_rows_in_prepare_manifest(tmp_path, monkeypatch):
@@ -100,7 +104,7 @@ def test_staged_source_records_rows_in_prepare_manifest(tmp_path, monkeypatch):
     assert manifest["inventory_a"]["joined_inventory_expected"] is True
 
 
-@pytest.mark.parametrize("target", ["SAVEDGAME0", "OTHER"])
+@pytest.mark.parametrize("target", ["SAVEDBASH", "OTHER"])
 def test_staged_source_refuses_other_file_changes(tmp_path, monkeypatch, target):
     original, join = _sources(tmp_path, monkeypatch)
 
@@ -119,14 +123,35 @@ def test_staged_source_refuses_changes_between_effect_arrays(tmp_path, monkeypat
     original, join = _sources(tmp_path, monkeypatch)
 
     def change(staged):
-        address, payload = d64.split_load_address(staged.read_file("SAVEDGAME0"))
+        address, payload = d64.split_load_address(staged.read_file("SAVEDBASH"))
         body = bytearray(payload)
         body[offset] ^= 1
-        staged.write_file_inplace("SAVEDGAME0", d64.attach_load_address(address, body))
+        staged.write_file_inplace("SAVEDBASH", d64.attach_load_address(address, body))
 
     source = _stage(tmp_path, original, change)
-    with pytest.raises(RouteError, match="outside effect arrays in SAVEDGAME0"):
+    with pytest.raises(RouteError, match="outside effect arrays in SAVEDBASH"):
         route._staged_rows(source, join)
+
+
+def test_a_disk_staged_by_the_dos_driver_passes_the_gate(tmp_path):
+    """`tools.dos.acceptance.staged_disk` on the real JOIN disk is what the gate
+    must accept: the row lands in `SAVEDBASH`'s id, duration and magnitude
+    slots 63 and nowhere else, and the gate reads it back."""
+    from tests.c64.test_c64nametable import specimen_disk
+    from tools.dos.acceptance import staged_disk
+
+    join = specimen_disk("ssb-joined-arrow-c64-672")
+    if route.sha256(join) != route.JOIN_SHA256:
+        pytest.skip("the JOIN specimen here is not the pinned one")
+    staged, _ = staged_disk(join, "ssb", [(0x3F, 1, 0, 0x2F, 0x05)])
+    source = tmp_path / "staged.d64"
+    source.write_bytes(staged)
+    before = d64.D64.open(join).read_file("SAVEDBASH")
+    after = d64.D64.open(source).read_file("SAVEDBASH")
+    assert [i for i, (a, b) in enumerate(zip(before, after)) if a != b] == [
+        2 + effects.EFFECT_ID_OFFSET + 63, 2 + effects.EFFECT_DURATION_OFFSET + 63,
+        2 + effects.EFFECT_MAGNITUDE_OFFSET + 63]
+    assert route._staged_rows(source, join) == [[63, 1, 0, 0x2F, 5]]
 
 
 def test_staged_from_must_be_join(tmp_path, monkeypatch):

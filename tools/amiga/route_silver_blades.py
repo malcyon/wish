@@ -14,7 +14,7 @@ import sys
 from typing import Any
 
 from automap import gamedisks
-from goldbox import amiga_adf, amiga_savegame, d64, effects
+from goldbox import amiga_adf, amiga_savegame, c64_save, d64, effects
 from tools.amiga import amigabladesjournal, staging
 from tools.amiga.route import AmigaTitle, check_expect, effect_fields
 from tools.amiga.staging import _entry, _verified_disk, sha256
@@ -26,6 +26,8 @@ DISK_B_SHA256 = "d7caf68c3333b44a4ca2951b8d51f388e4bfd7a8bafa4fd8a7fca37aa639b46
 SLOT_LETTER = "C"
 JOIN_SHA256 = "38c11440e578227c1a240b740f362b1b69943d9897f42dc35ac39b17508872dc"
 TITLE = "secret-of-the-silver-blades"
+# The C64 save's one file, which `CAMP` scratches and rewrites and `GEN` loads.
+SAVE_FILE = c64_save.SECRET_OF_THE_SILVER_BLADES.save_file
 
 
 def expect_verdict(manifest_path: pathlib.Path, attempt: str,
@@ -84,7 +86,7 @@ def find_disk_b() -> pathlib.Path:
 
 
 def _staged_rows(source: pathlib.Path, staged_from: pathlib.Path) -> list[list[int]]:
-    """Accept only effect-array changes to the pinned JOIN save."""
+    """Accept only changes to the four effect arrays of the pinned JOIN save's `SAVEDBASH`."""
     if sha256(staged_from) != JOIN_SHA256:
         raise RouteError(f"JOIN staged-from SHA-256 differs: {sha256(staged_from)}")
     original = d64.D64.open(staged_from)
@@ -97,7 +99,7 @@ def _staged_rows(source: pathlib.Path, staged_from: pathlib.Path) -> list[list[i
     for name in sorted(original_names):
         before = original.read_file(name)
         after = staged.read_file(name)
-        if name == b"SAVEDGAME0":
+        if name == SAVE_FILE:
             offsets = (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
                        effects.EFFECT_DURATION_OFFSET, effects.EFFECT_MAGNITUDE_OFFSET)
             cursor = 0
@@ -108,10 +110,11 @@ def _staged_rows(source: pathlib.Path, staged_from: pathlib.Path) -> list[list[i
                 cursor = start + effects.EFFECT_SLOTS
             outside_changed |= before[cursor:] != after[cursor:]
             if outside_changed:
-                raise RouteError("staged source differs outside effect arrays in SAVEDGAME0")
+                raise RouteError("staged source differs outside effect arrays in "
+                                 + SAVE_FILE.decode("ascii"))
         elif before != after:
             raise RouteError(f"staged source file differs: {name.decode('ascii', errors='replace')}")
-    payload = d64.load_payload(staged, "SAVEDGAME0")
+    payload = d64.load_payload(staged, SAVE_FILE.decode("ascii"))
     return [[row.slot, row.id, row.owner, row.duration, row.magnitude]
             for row in effects.active_effects(payload)]
 
