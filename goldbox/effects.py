@@ -21,7 +21,7 @@ feeds.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from .d64 import D64, load_payload
@@ -1025,6 +1025,103 @@ def dos_record(title_key: str, row: "Effect",
     if not 1 <= row.magnitude <= 0x7F:
         return Unconverted("a magnitude that is not a caster level")
     return RunningEffect(row.id, minutes, row.magnitude, 0)
+
+
+def _pool_strength_value(data: int) -> int:
+    """`_value_row`'s Pool value for a DOS restore byte: the percentile at 18/xx,
+    else the byte."""
+    return data - 1 if data <= 101 else data
+
+
+def _pool_strength_data(value: int) -> int:
+    """The DOS byte for a `_pool_strength_value`, its inverse."""
+    return value + 1 if value <= 100 else value
+
+
+def pool_strength_chain_rows(
+        nodes: "Sequence[RunningEffect]") -> "dict[int, int] | Unconverted":
+    """The two C64 magnitudes for a Pool character holding a Strength and an
+    Enlarge node together, keyed by effect id (12 and 38), or why not.
+
+    DOS Pool keeps one active node, whose data is the score to restore, and
+    parks a weaker or later one with its own boost in the data byte and bit 7
+    set (apply routine `GAME.OVR:0x2C046`). When the active node ends its base
+    is restored and the strongest parked node takes the base as its data and
+    puts its own boost in force (`0xF115`). The C64 row of a node holds the
+    score to put in force when it ends, so the rows are written from that
+    timeline: the active node's row holds the parked boost when a parked node
+    outlasts it, and the parked node's row then holds the base. A parked node
+    that ends first restores nothing, so its row has bit 7 clear.
+
+    Only exactly one Strength and one Enlarge, both with flag 1 and one of them
+    parked, is converted; the caller has already checked that no granted node
+    sets strength. Nodes are ordered by `(minutes, position)`.
+    """
+    if len(nodes) != 2 or sorted(n.id for n in nodes) != [12, 38]:
+        return Unconverted("not exactly one Strength and one Enlarge node")
+    if any(n.flag != 1 for n in nodes):
+        return Unconverted("a strength node with a flag byte other than 1")
+    active = [n for n in nodes if not n.data & 0x80]
+    if len(active) != 1 or not 1 <= active[0].data <= 0x7F:
+        return Unconverted("not exactly one active strength node")
+    parked = next(n for n in nodes if n.data & 0x80)
+    if parked.data & 0x7F == 0:
+        return Unconverted("a parked strength node with no boost")
+    first, second = sorted(
+        enumerate(nodes), key=lambda pair: (pair[1].minutes, pair[0]))
+    first, second = first[1], second[1]
+    base = active[0].data
+    if first is active[0]:
+        return {first.id: MAGNITUDE_RESTORE_FLAG
+                | _pool_strength_value(parked.data & 0x7F),
+                second.id: MAGNITUDE_RESTORE_FLAG | _pool_strength_value(base)}
+    return {first.id: _pool_strength_value(parked.data & 0x7F),
+            second.id: MAGNITUDE_RESTORE_FLAG | _pool_strength_value(base)}
+
+
+def pool_strength_chain_nodes(
+        rows: "Sequence[Effect]",
+        clock_minutes: int) -> "dict[int, RunningEffect] | Unconverted":
+    """The two DOS nodes for one Pool character's Strength and Enlarge rows,
+    keyed by effect id, or why not; the inverse of `pool_strength_chain_rows`.
+
+    `rows` is every strength row (ids 12 and 38) the character owns. The rows
+    are sorted by `(time left, -slot)`, the order the writer puts the earlier
+    ending one in the higher slot. The first row with bit 7 set is the active
+    node, whose data is the base the last such row restores; a later one is
+    parked, holding the previous row's value with bit 7 set; a row with bit 7
+    clear is a parked node that ended first. The result must reproduce the rows
+    through `pool_strength_chain_rows`, or it is refused.
+    """
+    if len(rows) != 2 or sorted(r.id for r in rows) != [12, 38]:
+        return Unconverted("not exactly one Strength and one Enlarge row")
+    if any(r.duration == 0 for r in rows):
+        return Unconverted("a never-expiring strength row beside a running "
+                           "one")
+    ordered = sorted(rows, key=lambda r: (
+        remaining_minutes(r.duration, clock_minutes), -r.slot))
+    lit = [r for r in ordered if r.magnitude & MAGNITUDE_RESTORE_FLAG]
+    if not lit:
+        return Unconverted("no strength row restores a score")
+    data: dict[int, int] = {}
+    for row in ordered:
+        value = row.magnitude & 0x7F
+        if row is lit[0]:
+            data[row.id] = _pool_strength_data(lit[-1].magnitude & 0x7F)
+        elif row in lit:
+            data[row.id] = (_pool_strength_data(
+                lit[lit.index(row) - 1].magnitude & 0x7F)
+                | MAGNITUDE_RESTORE_FLAG)
+        else:
+            data[row.id] = _pool_strength_data(value) | MAGNITUDE_RESTORE_FLAG
+    nodes = {r.id: RunningEffect(
+        r.id, min(remaining_minutes(r.duration, clock_minutes),
+                  DOS_MINUTES_MAX), data[r.id], 1) for r in ordered}
+    again = pool_strength_chain_rows([nodes[r.id] for r in ordered])
+    if again != {r.id: r.magnitude for r in rows}:
+        return Unconverted("strength rows no DOS timeline of two nodes "
+                           "produces")
+    return nodes
 
 
 def party_row_record(title_key: str, row: "Effect",

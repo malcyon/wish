@@ -1514,6 +1514,20 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         1 for n in (granted.value if granted is not None else ())
         if bytes(n)[0] in effects.STRENGTH_IDS)
 
+    # A Pool Strength and Enlarge running together are two rows timed from the
+    # DOS park-and-promote timeline (`effects.pool_strength_chain_rows`); the
+    # earlier-ending node goes first, so it takes the higher slot.
+    chain_rows = None
+    if title_key == "pool-of-radiance" and strength_nodes == 2:
+        pair = [n for n in other_nodes if n.id in effects.STRENGTH_IDS]
+        if len(pair) == 2:
+            made = effects.pool_strength_chain_rows(pair)
+            if isinstance(made, dict):
+                chain_rows = made
+                ordered = iter(sorted(pair, key=lambda n: n.minutes))
+                other_nodes = [next(ordered) if n in pair else n
+                               for n in other_nodes]
+
     # Pool and Curse rows 22 and 15 take `$7F` when the character's 22 row is
     # minute-unit and the C64 record will hold no poison (55); see
     # `effects.SLOW_POISON_QUIET_C64`. Whether it holds one is settled only
@@ -1557,9 +1571,12 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         row_quiet = (effects.slow_poison_quiet(
             title_key, node.minutes, clock, False)
             if node.id == effects.SLOW_POISON_ID else quiet)
-        row_for = effects.c64_row(title_key, node,
-                                  strength_nodes=strength_nodes,
-                                  slow_poison_quiet=row_quiet)
+        if chain_rows is not None and node.id in chain_rows:
+            row_for = (node.id, chain_rows[node.id])
+        else:
+            row_for = effects.c64_row(title_key, node,
+                                      strength_nodes=strength_nodes,
+                                      slow_poison_quiet=row_quiet)
         if isinstance(row_for, effects.Unconverted):
             rep.dropped.append(f"{which}: {row_for.reason}")
         elif payload is None:
@@ -3468,6 +3485,13 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             and (r.duration != 0
                  or effects.never_expiring_strength_record(title_key, r)
                  is not None))
+        chain_nodes = None
+        if strength_rows == 2:
+            made = effects.pool_strength_chain_nodes(
+                [r for r in rows if r.owner == party_slot
+                 and r.id in effects.STRENGTH_IDS], clock)
+            if not isinstance(made, effects.Unconverted):
+                chain_nodes = made
         granted: list[bytes] = []
         # Highest slot first, the order the writer allocates in, so a round
         # trip keeps each character's node order.
@@ -3541,7 +3565,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 charm_row_converted = later_charm_converted = True
                 charm_charmer_side = charm_record[3] >> 7
                 continue
-            if strength_rows > 1 and row.id in effects.STRENGTH_IDS:
+            if chain_nodes is not None and row.id in chain_nodes:
+                node = chain_nodes[row.id]
+            elif strength_rows > 1 and row.id in effects.STRENGTH_IDS:
                 node = effects.Unconverted(
                     "more than one strength row on one character, and "
                     "DOS Pool holds one strength score")

@@ -1595,10 +1595,20 @@ def test_a_running_and_a_granted_pool_strength_node_write_no_row():
     assert len(_lines(rep)) == 1 and "effect 38" in _lines(rep)[0]
 
 
-def test_two_pool_strength_rows_of_one_owner_read_back_as_two_lines():
+def test_a_pool_enlarge_and_strength_row_pair_of_equal_minutes_reads_as_two_nodes():
     p = bytearray(0x1C00)
     effects.write_effect(p, 63, 12, 2, 0x0A, 0xE2)
     effects.write_effect(p, 62, 38, 2, 0x0A, 0xF3)
+    got = _read(p, 2)
+    assert not _lines(got)
+    assert sorted(bytes(r)[:5] for r in got.get("running_effects")) == [
+        bytes((12, 10, 0, 0x73, 1)), bytes((38, 10, 0, 0xE3, 1))]
+
+
+def test_pool_strength_rows_no_timeline_produces_read_back_as_two_lines():
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 38, 2, 0x0A, 0x94)
+    effects.write_effect(p, 62, 12, 2, 0x0A, 0x71)
     got = _read(p, 2)
     assert got.get("running_effects") is None
     assert len(_lines(got)) == 2
@@ -3802,3 +3812,85 @@ def test_save_as_dos_converts_the_whole_strength_ladder_party(tmp_path):
         "SHARA": (108, 1, 18, 0), "TRAVIS": (103, 1, 18, 42),
         "LEDERA": (101, 1, 18, 100), "PHILIPPE": (101, 1, 18, 100),
         "MARK": (103, 1, 18, 0)}
+
+
+# --- a Pool Strength and Enlarge together (#667) ---------------------------------
+
+_POOL_ACTIVE = bytes((38, 10, 0, 0x71, 1))
+_POOL_PARKED = bytes((12, 60, 0, 0x95, 1))
+
+
+def _pool_pair_rows(*nodes, granted=()):
+    char = _pool_character(*nodes)
+    if granted:
+        char.set("granted_effects", [g + NULL for g in granted], "built here")
+    payload = bytearray(0x1C00)
+    _rec, rep = c64_codec.write(char, payload=payload, party_slot=2,
+                                clock_minutes=0)
+    rows = {s: r for s, r in _rows(payload).items() if r[0]}
+    return rows, rep
+
+
+def test_a_pool_strength_and_enlarge_pair_becomes_two_timed_rows():
+    rows, rep = _pool_pair_rows(_POOL_ACTIVE, _POOL_PARKED)
+    ten, sixty = effects.closest_duration(10, 0), effects.closest_duration(60, 0)
+    # The earlier-ending node takes the higher slot.
+    assert rows == {63: (38, 2, ten, 0x94), 62: (12, 2, sixty, 0xF1)}
+    assert not [d for d in rep.dropped + rep.losses if "running_effects" in d]
+
+
+def test_a_pool_pair_written_in_the_other_order_takes_slots_by_expiry():
+    rows, _rep = _pool_pair_rows(_POOL_PARKED, _POOL_ACTIVE)
+    assert rows == {
+        63: (38, 2, effects.closest_duration(10, 0), 0x94),
+        62: (12, 2, effects.closest_duration(60, 0), 0xF1)}
+
+
+def test_a_parked_pool_node_ending_first_is_a_row_with_bit_7_clear():
+    rows, _rep = _pool_pair_rows(bytes((38, 60, 0, 0x71, 1)),
+                                 bytes((12, 10, 0, 0x95, 1)))
+    assert sorted(r[3] for r in rows.values()) == [0x14, 0xF1]
+
+
+@pytest.mark.parametrize("nodes, granted", [
+    ((_POOL_ACTIVE, _POOL_PARKED, bytes((12, 5, 0, 0x66, 1))), ()),
+    ((_POOL_ACTIVE, bytes((38, 60, 0, 0x95, 1))), ()),
+    ((_POOL_ACTIVE, _POOL_PARKED), (bytes((38, 0, 0, 0x73, 1)),)),
+    ((_POOL_ACTIVE,), (bytes((38, 0, 0, 0x73, 1)),)),
+])
+def test_other_pool_strength_states_are_still_refused(nodes, granted):
+    rows, rep = _pool_pair_rows(*nodes, granted=granted)
+    assert not [r for r in rows.values() if r[0] in (12, 38) and r[3] & 0x80
+                and len(nodes) + len(granted) > 1
+                and r[3] in (0x94, 0xF1)]
+    assert [d for d in rep.dropped if "more than one strength" in d]
+
+
+def test_the_two_pool_rows_read_back_as_the_same_two_nodes():
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 38, 2, effects.closest_duration(10, 0), 0x94)
+    effects.write_effect(p, 62, 12, 2, effects.closest_duration(60, 0), 0xF1)
+    out = _read(p, 2)
+    assert not _lines(out)
+    got = sorted(bytes(r)[:5] for r in out.get("running_effects"))
+    assert got == sorted([_POOL_ACTIVE, _POOL_PARKED])
+    _r, _i, spc, _rep = dos_codec.write(out)
+    assert sorted(spc[i:i + 5] for i in range(0, len(spc), 9)) == got
+
+
+def test_pool_rows_no_two_node_timeline_makes_are_still_refused():
+    p = bytearray(0x1C00)
+    effects.write_effect(p, 63, 38, 2, effects.closest_duration(10, 0), 0x94)
+    effects.write_effect(p, 62, 12, 2, effects.closest_duration(60, 0), 0x71)
+    out = _read(p, 2)
+    assert len(_lines(out)) == 2 and not out.get("running_effects")
+
+
+def test_a_written_pool_pair_survives_write_then_read():
+    p = bytearray(0x1C00)
+    _rec, _rep = c64_codec.write(
+        _pool_character(_POOL_ACTIVE, _POOL_PARKED), payload=p, party_slot=2,
+        clock_minutes=0)
+    out = _read(p, 2)
+    assert sorted(bytes(r)[:5] for r in out.get("running_effects")) == sorted(
+        [_POOL_ACTIVE, _POOL_PARKED])

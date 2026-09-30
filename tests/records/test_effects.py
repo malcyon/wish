@@ -2584,3 +2584,89 @@ def test_the_native_strength_helpers_return_none_when_the_node_is_not_alone():
         _C, perm, (16, 0), [node], [], warrior) is None
     assert effects.dos_later_strength_in_force(
         _C, perm, want, [_RE(38, 10, 103, 0)], [], warrior) is None
+
+
+# --- a Pool Strength and Enlarge together ----------------------------------------
+
+_ACTIVE, _PARKED = 0x71, 0x95
+
+
+def _chain_row(slot, eid, minutes, magnitude):
+    return effects.Effect(slot, eid, 2, effects.closest_duration(minutes, 0),
+                          magnitude)
+
+
+def test_the_active_node_ending_first_hands_the_parked_boost_on():
+    nodes = [_RE(38, 10, _ACTIVE, 1), _RE(12, 60, _PARKED, 1)]
+    assert effects.pool_strength_chain_rows(nodes) == {38: 0x94, 12: 0xF1}
+    back = effects.pool_strength_chain_nodes(
+        [_chain_row(3, 38, 10, 0x94), _chain_row(2, 12, 60, 0xF1)], 0)
+    assert back == {38: nodes[0], 12: nodes[1]}
+
+
+def test_a_parked_node_ending_first_restores_nothing():
+    nodes = [_RE(12, 10, _PARKED, 1), _RE(38, 60, _ACTIVE, 1)]
+    assert effects.pool_strength_chain_rows(nodes) == {12: 0x14, 38: 0xF1}
+    back = effects.pool_strength_chain_nodes(
+        [_chain_row(3, 12, 10, 0x14), _chain_row(2, 38, 60, 0xF1)], 0)
+    assert back == {12: nodes[0], 38: nodes[1]}
+
+
+def test_the_chain_input_order_does_not_matter_only_the_minutes_do():
+    nodes = [_RE(12, 60, _PARKED, 1), _RE(38, 10, _ACTIVE, 1)]
+    assert effects.pool_strength_chain_rows(nodes) == {38: 0x94, 12: 0xF1}
+
+
+def test_equal_minutes_take_the_chain_and_slot_order():
+    nodes = [_RE(38, 10, _ACTIVE, 1), _RE(12, 10, _PARKED, 1)]
+    assert effects.pool_strength_chain_rows(nodes) == {38: 0x94, 12: 0xF1}
+    back = effects.pool_strength_chain_nodes(
+        [_chain_row(3, 38, 10, 0x94), _chain_row(2, 12, 10, 0xF1)], 0)
+    assert back == {38: nodes[0], 12: nodes[1]}
+
+
+def test_every_two_node_timeline_round_trips_through_the_rows():
+    """Active base 1-127 and parked boost 1-127, in both expiry orders."""
+    count = 0
+    for base in range(1, 0x80):
+        for boost in range(1, 0x80):
+            for a_id, p_id, a_min, p_min in ((38, 12, 10, 60),
+                                             (12, 38, 60, 10)):
+                nodes = [_RE(a_id, a_min, base, 1),
+                         _RE(p_id, p_min, boost | 0x80, 1)]
+                nodes.sort(key=lambda n: n.minutes)
+                rows = effects.pool_strength_chain_rows(nodes)
+                assert isinstance(rows, dict)
+                back = effects.pool_strength_chain_nodes(
+                    [_chain_row(3 - i, n.id, n.minutes, rows[n.id])
+                     for i, n in enumerate(nodes)], 0)
+                assert back == {n.id: n for n in nodes}, (base, boost)
+                count += 1
+    assert count == 127 * 127 * 2
+
+
+@pytest.mark.parametrize("nodes", [
+    [_RE(38, 10, _ACTIVE, 1), _RE(38, 60, _PARKED, 1)],
+    [_RE(38, 10, _ACTIVE, 1), _RE(12, 60, 0x72, 1)],
+    [_RE(38, 10, _PARKED, 1), _RE(12, 60, _PARKED, 1)],
+    [_RE(38, 10, _ACTIVE, 0), _RE(12, 60, _PARKED, 1)],
+    [_RE(38, 10, _ACTIVE, 1), _RE(12, 60, 0x80, 1)],
+    [_RE(38, 10, _ACTIVE, 1)],
+    [_RE(38, 10, _ACTIVE, 1), _RE(12, 60, _PARKED, 1), _RE(12, 5, 0x66, 1)],
+])
+def test_other_strength_states_stay_refused(nodes):
+    got = effects.pool_strength_chain_rows(nodes)
+    assert isinstance(got, effects.Unconverted) and got.reason
+
+
+@pytest.mark.parametrize("rows", [
+    [_chain_row(3, 38, 10, 0x94)],
+    [_chain_row(3, 38, 10, 0x94), _chain_row(2, 12, 60, 0x71)],
+    [_chain_row(3, 38, 10, 0x14), _chain_row(2, 12, 60, 0x14)],
+    [_chain_row(3, 38, 60, 0x14), _chain_row(2, 12, 10, 0xF1)],
+    [_chain_row(3, 38, 10, 0x94), effects.Effect(2, 12, 2, 0, 0xF1)],
+    [_chain_row(3, 38, 10, 0x94), _chain_row(2, 38, 60, 0xF1)],
+])
+def test_strength_rows_no_timeline_produces_stay_refused(rows):
+    got = effects.pool_strength_chain_nodes(rows, 0)
+    assert isinstance(got, effects.Unconverted) and got.reason
