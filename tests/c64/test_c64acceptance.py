@@ -299,6 +299,9 @@ def test_temple_source_guard_requires_registry_path_and_recorded_hash(
 
 
 _BAR_WORDS = [(0, 4), (5, 4), (10, 4), (15, 8), (24, 4)]
+#: The bar once the party's money is pooled: the live frame 17 of the D3b
+#: POOL boot carried SHARE between POOL and APPRAISE.
+_POOLED_BAR_WORDS = [(0, 4), (5, 4), (10, 4), (15, 5), (21, 8), (30, 4)]
 
 
 def _framed(text):
@@ -464,6 +467,12 @@ class _TempleSession:
         self.press_line = False
         self.after_continue = "list"
         self.leaving_reads = 3
+        # How many times EXIT on the pooled bar shows the treasure prompt
+        # before the world bar (the live boot showed it once), what SHARE
+        # shows ("bar", or "prompt" for a question), and how many shares
+        # have been made.
+        self.treasure_prompts = 0
+        self.after_share = "bar"
 
     def key(self, name, *timing):
         if self.phase == "temple":
@@ -489,6 +498,9 @@ class _TempleSession:
             self.phase = ("price" if 9 + self.list_cursor == 15
                           else "temple" if 9 + self.list_cursor == 18
                           else "heal-blank")
+
+    def _bar_words(self):
+        return _POOLED_BAR_WORDS if "pool-YES" in self.keys else _BAR_WORDS
 
     def mon(self, _timeout):
         return _TempleMonitor(self)
@@ -584,9 +596,11 @@ class _TempleSession:
                 rows[4 + offset] = " " * A.S.PARTY_COLUMN + name
             rows[24] = ("HEAL VIEW POOL APPRAISE EXIT"
                         if self.unsafe != "wrong-menu" else "EXIT GIVE")
+            if "pool-YES" in self.keys and self.unsafe != "wrong-menu":
+                rows[24] = "HEAL VIEW POOL SHARE APPRAISE EXIT"
             # The row 24 highlight is where the last key left it; the party
             # panel's own rows are read from the same snapshot.
-            self.bar_span = _BAR_WORDS[self.bar_at]
+            self.bar_span = self._bar_words()[self.bar_at]
             if self.unsafe == "stale-greeting-status":
                 # A status line that is present but reads the wrong place:
                 # no live capture has shown one here, but the transition
@@ -594,6 +608,10 @@ class _TempleSession:
                 rows[14] = "N 00:00 99,99"
         elif phase == "world":
             rows[24] = "MOVE VIEW ENCAMP"
+        elif phase == "treasure":
+            # Frame 18 of the D3b POOL boot.
+            rows[10] = "$THERE IS STILL TREASURE LEFT".ljust(39) + "$"
+            rows[24] = "GO BACK LEAVE TREASURE"
         elif phase == "heal-blank":
             rows[14] = ""  # Cleared while the next screen loads.
         elif phase == "heal":
@@ -653,6 +671,8 @@ class _TempleSession:
                                  5 if self.unsafe == "highlight-row-5" else 4)
         if phase in ("price", "poolq"):
             return _TempleScreen(rows, (0, 3))
+        if phase == "treasure":
+            return _TempleScreen(rows, (0, 7))
         if phase == "heal" and rows[15]:
             return _TempleScreen(rows, list_highlight=9 + self.list_cursor)
         return _TempleScreen(rows)
@@ -757,12 +777,29 @@ class _TempleSession:
             self.keys.append("pool-YES")
             self.phase = "temple"
             return
-        if self.phase == "temple" and self.bar_at == 4:
+        if self.phase == "treasure":
+            assert row == 24 and "GO BACK" in was
+            self.keys.append("GO BACK")
+            self.bar_at = 0
+            self.phase = "temple"
+            return
+        if (self.phase == "temple" and "pool-YES" in self.keys
+                and self.bar_at == 3):
+            assert row == 24 and "SHARE" in was
+            self.keys.append("SHARE")
+            self.phase = "yes-no" if self.after_share == "prompt" else "temple"
+            return
+        if self.phase == "temple" and self.bar_at == len(self._bar_words()) - 1:
             assert row == 24 and "EXIT" in was
             self.keys.append("EXIT")
             self.leaving_reads = 3
             self.phase = "leaving"
             self.after_leaving = getattr(self, "after_leaving", "world")
+            if self.treasure_prompts and "pool-YES" in self.keys:
+                self.treasure_prompts -= 1
+                self.after_leaving = "treasure"
+            elif self.after_leaving == "treasure":
+                self.after_leaving = "world"
             return
         if self.phase == "temple":
             assert row == 24 and "HEAL" in was and self.bar_at == 0
@@ -9450,11 +9487,15 @@ def test_temple_probe_leave_walks_the_list_and_the_bar_out_to_the_world(
     if who.endswith("CONTROL"):
         run.reading = _control_reading
     result = run.temple_probe(who, leave=True)
-    assert session.keys[-16:] == (["YES", "Return"] + ["Down"] * 9
-                                  + ["Return"] + ["Right"] * 4 + ["EXIT"])[-16:]
+    tail = (["Right"] * 3 + ["SHARE"] + ["Right"] * 2 if who.endswith("POOL")
+            else ["Right"] * 4)
+    assert session.keys[-(13 + len(tail)):] == (
+        ["YES", "Return"] + ["Down"] * 9 + ["Return"] + tail + ["EXIT"])
     assert session.keys[-1] == "EXIT" and session.phase == "world"
-    assert _raise_tags(run)[-4:] == ["raise-result", "raise-continued",
-                                     "list-exit", "outside"]
+    assert _raise_tags(run)[-4:] == (
+        ["raise-continued", "list-exit", "leave-share", "outside"]
+        if who.endswith("POOL")
+        else ["raise-result", "raise-continued", "list-exit", "outside"])
     assert result["leave"]["stem"] and result["outcome"] == "alive"
 
 
@@ -9463,8 +9504,9 @@ def test_temple_probe_leave_takes_the_temple_bar_when_return_shows_it(
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.press_line, session.after_continue = True, "bar"
     run.temple_probe("BRUTUS RAISE POOL", leave=True)
-    assert session.keys[-7:] == ["YES", "Return"] + ["Right"] * 4 + ["EXIT"]
-    assert _raise_tags(run)[-3:] == ["raise-result", "raise-continued",
+    assert session.keys[-9:] == (["YES", "Return"] + ["Right"] * 3
+                                  + ["SHARE"] + ["Right"] * 2 + ["EXIT"])
+    assert _raise_tags(run)[-3:] == ["raise-continued", "leave-share",
                                      "outside"]
 
 
@@ -9609,3 +9651,57 @@ def test_temple_probe_leave_timeout_names_the_bound_that_expired(
                               if "EXIT" in session.keys else read())
     with pytest.raises(A.StepFailed, match="before the 90 second limit"):
         run.temple_probe("BRUTUS RAISE POOL", leave=True)
+
+
+def test_temple_probe_leave_shares_the_pool_before_exit_and_reaches_outside(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.press_line = True
+    result = run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    assert session.keys.index("SHARE") < session.keys.index("EXIT")
+    assert session.keys.count("SHARE") == 1 and "GO BACK" not in session.keys
+    assert _raise_tags(run)[-3:] == ["list-exit", "leave-share", "outside"]
+    assert result["leave"]["stem"] and result["leave"]["share"]["stem"]
+
+
+def test_temple_probe_control_leave_never_chooses_share(tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.press_line = True
+    run.reading = _control_reading
+    result = run.temple_probe("BRUTUS RAISE CONTROL", leave=True)
+    assert "SHARE" not in session.keys and "share" not in result["leave"]
+
+
+def test_temple_probe_leave_answers_the_treasure_prompt_with_go_back_once(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.press_line, session.treasure_prompts = True, 1
+    result = run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    assert session.keys[session.keys.index("EXIT"):] == (
+        ["EXIT", "GO BACK"] + ["Right"] * 3 + ["SHARE"] + ["Right"] * 2
+        + ["EXIT"])
+    assert "LEAVE TREASURE" not in session.keys
+    assert _raise_tags(run)[-4:] == ["leave-share", "leave-treasure",
+                                     "leave-share", "outside"]
+    assert result["leave"]["treasure"]
+
+
+def test_temple_probe_leave_stops_when_the_treasure_prompt_comes_back(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.press_line, session.treasure_prompts = True, 2
+    with pytest.raises(A.StepFailed, match="again after GO BACK and SHARE"):
+        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    assert session.keys.count("GO BACK") == 1
+    assert session.keys.count("EXIT") == 2
+    assert run.temple_checkpoints[-1]["tag"] == "lost-exit"
+
+
+def test_temple_probe_leave_stops_when_share_shows_a_prompt(
+        tmp_path, monkeypatch):
+    run, session, events = _temple_fake_run(tmp_path, monkeypatch)
+    session.press_line, session.after_share = True, "prompt"
+    with pytest.raises(A.StepFailed, match="unexpected prompt after SHARE"):
+        run.temple_probe("BRUTUS RAISE POOL", leave=True)
+    assert "EXIT" not in session.keys
+    assert run.temple_checkpoints[-1]["tag"] == "lost-exit"

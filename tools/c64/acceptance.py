@@ -449,6 +449,8 @@ TEMPLE_STAGING = {"BRUTUS": (), "BRUTUS HEAL": (),
 #: for the temple bar to return after it is answered.
 TEMPLE_POOL_PROMPT = r"POOL MONEY"
 TEMPLE_POOL_WAIT = 30.0
+#: How long SHARE is left to draw before the bar is read again (seconds).
+TEMPLE_SHARE_SETTLE = 1.0
 #: Where `POST.COM` keeps the party pool's five coin words (`$2B19`).
 TEMPLE_POOL_COINS = 0x2B19
 
@@ -2378,13 +2380,15 @@ class PoolRun:
                 "cured" if re.search(r"\bCURED\b", text) else
                 "unknown")
 
-    def _temple_leave(self) -> dict:
+    def _temple_leave(self, pool: bool = False) -> dict:
         """Leave the temple after a raise result, back to the world bar.
 
         It presses Return once at the `PRESS <RETURN> OR BUTTON TO CONTINUE`
         frame, through the keyboard and never `handle_prompt`, then settles
         and acts on what it finds: the service list takes its EXIT row, the
-        temple bar takes EXIT, and the world bar ends it. The screen after
+        temple bar takes EXIT, and the world bar ends it. A run that pooled
+        its money chooses SHARE before each EXIT, and answers the treasure
+        prompt with GO BACK once. The screen after
         that Return has not been seen live, so any other screen stops as
         `lost-exit` with the frame kept."""
         sample = self.temple_sample()
@@ -2396,6 +2400,7 @@ class PoolRun:
         self._temple_input_budget("leaving the temple")
         self.sess.kbd.key("Return")
         tag, arrival, continued = "raise-continued", screen, None
+        result: dict = {}
         for _ in range(2):
             kept = self._temple_heal_screen(arrival, tag=tag, stop="exit",
                                             what="RETURN after the result")
@@ -2417,47 +2422,118 @@ class PoolRun:
         else:
             self._temple_stop("exit", "the temple bar never came up after "
                               "the service list's EXIT", sample)
-        self._temple_select_bar("EXIT", "temple")
-        start = self.clock()
-        limit = min(start + 90, self.temple_input_deadline)
+        result["continued"] = continued
         answered = disk_visible = False
+        for attempt in range(2):
+            if pool:
+                shared = self._temple_share()
+                if attempt == 0:
+                    result["share"] = shared
+            self._temple_select_bar("EXIT", "temple")
+            start = self.clock()
+            limit = min(start + 90, self.temple_input_deadline)
+            treasure = None
+            while self.clock() < limit:
+                sample = self.temple_sample()
+                screen = sample.screen
+                if screen is None or not self._temple_disk(screen):
+                    disk_visible = False
+                if screen is None or not screen.row(24).strip():
+                    time.sleep(0.4)
+                    continue
+                if self._temple_disk(screen):
+                    # The answered prompt's text lingers for about a second,
+                    # as in `_temple_transition`; it is a repeat only when it
+                    # comes back after some other screen.
+                    if disk_visible:
+                        time.sleep(0.3)
+                        continue
+                    # The entry path answers one side 3 prompt and stops on
+                    # any other or repeated disk prompt; leaving does the
+                    # same.
+                    if answered or not self._temple_side3(screen):
+                        self._temple_stop("exit", "unexpected or repeated "
+                                          "disk prompt while leaving", sample)
+                    self.temple_checkpoint("leave-side3-before-answer", sample)
+                    self._temple_input_budget("side 3 prompt")
+                    if not self.sess.handle_prompt(screen):
+                        self._temple_stop("exit", "side 3 prompt was not "
+                                          "answered while leaving", sample)
+                    answered = disk_visible = True
+                    time.sleep(0.4)
+                    continue
+                if self.at_world(screen.row(24)):
+                    outside = self.temple_checkpoint("outside", sample)
+                    result["stem"] = outside["stem"]
+                    return result
+                if self._temple_treasure(screen):
+                    treasure = sample
+                    break
+                self._temple_stop("exit", "unexpected screen after the temple "
+                                  "bar's EXIT", sample)
+            else:
+                cut = ("temple input deadline" if limit < start + 90
+                       else "90 second limit")
+                self._temple_stop("exit", "the world bar did not return "
+                                  f"before the {cut} after the temple bar's "
+                                  "EXIT")
+            # The game asks about treasure left in the pool. Only a run that
+            # pooled its money can answer: SHARE again after GO BACK. LEAVE
+            # TREASURE would drop the party's money, so it is never chosen.
+            if not pool or attempt:
+                self._temple_stop("exit", "the treasure prompt appeared "
+                                  + ("again after GO BACK and SHARE" if pool
+                                     else "on a run that did not pool"),
+                                  treasure)
+            result["treasure"] = self.temple_checkpoint(
+                "leave-treasure", treasure)["stem"]
+            self._temple_select_bar("GO", "treasure")
+            self._temple_await_bar("GO BACK")
+        self._temple_stop("exit", "leaving did not finish")
+
+    def _temple_share(self) -> dict:
+        """Choose SHARE on the temple bar and wait for the bar to come back.
+
+        The screen after SHARE has not been seen live, so any prompt, and
+        any screen that is not the bar within `TEMPLE_POOL_WAIT`, stops as
+        `lost-exit` with the frame kept. The pool's coin words are kept
+        before and after."""
+        before = self._temple_pool_coins()
+        self._temple_select_bar("SHARE", "temple")
+        time.sleep(TEMPLE_SHARE_SETTLE)
+        self._temple_await_bar("SHARE")
+        return {"pool_before": before, "pool_after": self._temple_pool_coins(),
+                "stem": self.temple_checkpoint(
+                    "leave-share", self._temple_steady("after SHARE"))["stem"]}
+
+    def _temple_await_bar(self, what: str) -> None:
+        limit = min(self.clock() + TEMPLE_POOL_WAIT, self.temple_input_deadline)
+        sample = None
         while self.clock() < limit:
             sample = self.temple_sample()
             screen = sample.screen
-            if screen is None or not self._temple_disk(screen):
-                disk_visible = False
-            if screen is None or not screen.row(24).strip():
-                time.sleep(0.4)
-                continue
-            if self._temple_disk(screen):
-                # The answered prompt's text lingers for about a second, as
-                # in `_temple_transition`; it is a repeat only when it comes
-                # back after some other screen.
-                if disk_visible:
-                    time.sleep(0.3)
-                    continue
-                # The entry path answers one side 3 prompt and stops on any
-                # other or repeated disk prompt; leaving does the same.
-                if answered or not self._temple_side3(screen):
-                    self._temple_stop("exit", "unexpected or repeated disk "
-                                      "prompt while leaving", sample)
-                self.temple_checkpoint("leave-side3-before-answer", sample)
-                self._temple_input_budget("side 3 prompt")
-                if not self.sess.handle_prompt(screen):
-                    self._temple_stop("exit", "side 3 prompt was not "
-                                      "answered while leaving", sample)
-                answered = disk_visible = True
-                time.sleep(0.4)
-                continue
-            if self.at_world(screen.row(24)):
-                outside = self.temple_checkpoint("outside", sample)
-                return {"stem": outside["stem"], "continued": continued}
-            self._temple_stop("exit", "unexpected screen after the temple "
-                              "bar's EXIT", sample)
-        cut = ("temple input deadline" if limit < start + 90
-               else "90 second limit")
-        self._temple_stop("exit", "the world bar did not return before the "
-                          f"{cut} after the temple bar's EXIT")
+            if screen is not None and self._temple_is_greeting(screen):
+                return
+            if screen is not None and (
+                    self._temple_disk(screen)
+                    or self._temple_continuation(screen)
+                    or re.search(r"\bPRESS\b", screen.text())
+                    or re.search(r"\bYES\b.*\bNO\b", screen.text(),
+                                 re.DOTALL)):
+                self._temple_stop("exit", f"unexpected prompt after {what}",
+                                  sample)
+            time.sleep(0.25)
+        self._temple_stop("exit", f"temple bar did not return after {what}",
+                          sample)
+
+    @staticmethod
+    def _temple_treasure(screen) -> bool:
+        """The screen the game shows on leaving with treasure in the pool:
+        `THERE IS STILL TREASURE LEFT` over `GO BACK LEAVE TREASURE`."""
+        bar = screen.row(24)
+        return ("STILL TREASURE LEFT" in screen.text().upper()
+                and S.word_column(bar, "GO") >= 0
+                and S.word_column(bar, "LEAVE") >= 0)
 
     def temple_probe(self, who: str, leave: bool = False) -> dict:
         """Capture the temple arrival screen and stop; with `HEAL`, select it
@@ -2597,7 +2673,7 @@ class PoolRun:
                 self._temple_stop("exit", f"raise ended {outcome}, not "
                                   "leaving")
             if leave:
-                result["leave"] = self._temple_leave()
+                result["leave"] = self._temple_leave(pooling)
         result["checkpoints"] = len(self.temple_checkpoints)
         return result
 
