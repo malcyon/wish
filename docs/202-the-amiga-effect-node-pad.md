@@ -115,7 +115,9 @@ runs to a fixed point, and prints each displacement anything touches through
 one. It over-approximates deliberately: it follows every branch and absolute
 `jmp` to every return and keeps a register marked until something
 overwrites it, so a displacement it does *not* report is one no instruction
-downstream of a chain-head load can reach on a path it followed.
+downstream of a chain-head load can reach on a path it followed. The walk
+ends a path at a computed `jmp` and at `--span` bytes (0x400 by default) from
+the load, so nothing beyond either is followed.
 
 | | `/Curse` | `/Secret` |
 |---|---|---|
@@ -249,5 +251,5 @@ tools/amiga/amiganodefields.py --adf <curse-1.adf> --exe /Curse \
 
 `tests/amiga/test_amiganodefields.py` runs all of it, plus the tool's own logic
 against a program built in the test so it can be shown to fail, plus the
-specimen shape in §5 and the control in §6. 14 tests, and they skip rather
+specimen shape in §5 and the control in §6. They skip rather
 than fail on a machine with no Amiga disks.

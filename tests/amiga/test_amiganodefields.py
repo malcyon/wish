@@ -160,6 +160,13 @@ def test_an_absolute_jmp_is_followed_and_ends_its_path():
     assert sweep(_program(code)) == {}
 
 
+def test_a_register_overwritten_on_another_path_does_not_hide_a_read():
+    # 4: bne.b to 10   6: movea.l a0, a2   8: rts   10: read $1(a2)
+    code = HEAD + b"\x66\x04" + b"\x24\x48" + b"\x4e\x75" \
+        + b"\x16\x2a\x00\x01" + b"\x4e\x75"
+    assert sorted(sweep(_program(code))) == [1]
+
+
 def test_a_computed_jmp_ends_its_path():
     code = HEAD + b"\x4e\xd3" + READ5 + b"\x4e\x75"
     assert sweep(_program(code)) == {}

@@ -30,15 +30,16 @@ node's fields are `$1` to `$6`, and `$1(aN)` matches 81 instructions in
 `/Secret` of which none is a node.  Hence the walk.
 
 The register walk **over-approximates**: it keeps a register marked as
-holding a node until something overwrites it, and runs to a fixed point.  It
-follows every branch and `dbcc` to its target and its fall-through, and an
-absolute `jmp` to its target, so code after an early return is scanned.  It
-ends a path at `rts`, `rte`, `rtr` and a computed `jmp`, and does not follow
-a `bsr`'s callee.  The set of registers marked as holding a node is shared by
-every path, so a read through a register another path overwrote may be
-over- or under-reported.  Even so, a displacement it does not report is one
-no instruction downstream of a chain-head load can reach on a path it
-followed; a displacement it does report may be a coincidence of the
+holding a node until something overwrites it, separately on each path, and
+runs to a fixed point.  It follows every branch and `dbcc` to its target and
+its fall-through, and an absolute `jmp $addr.l` to its target, so code after
+an early return is scanned.  It ends a path at `rts`, `rte`, `rtr` and any
+other `jmp` (`jmp (aN)`, `jmp $x(pc)`, `jmp $x.w`), does not follow a
+`bsr`'s callee, and stops at `--span` bytes from the load, so a target beyond
+that is not followed.  The `.l` target is taken as a hunk-relative address,
+which holds for an executable with one code hunk.  A displacement it does not
+report is one no instruction downstream of a chain-head load can reach on a
+path it followed; a displacement it does report may be a coincidence of the
 over-approximation and has to be read.
 
 Nothing is written, and both disk images are opened read-only.
@@ -177,18 +178,18 @@ def walk(exe: Executable, start_at: int, chain: int, node_next: int,
     base, size = code_range(exe)
     code = exe.data[base:base + size]
     md = _md()
-    held: set[str] = set()
     found: dict[tuple[int, int | None, bool], list[int]] = {}
     calls: dict[int, set[str]] = {}
     for _ in range(passes):
         before = len(found)
-        pending, seen = [start_at], set()
+        pending, seen = [(start_at, frozenset())], set()
         while pending:
-            at = pending.pop()
-            if at in seen or not start_at <= at < min(start_at + span,
-                                                      base + size):
+            at, marked = pending.pop()
+            if (at, marked) in seen or not start_at <= at < min(
+                    start_at + span, base + size):
                 continue
-            seen.add(at)
+            seen.add((at, marked))
+            held = set(marked)
             ins = _decode_one(md, code, base, at)
             if ins is None:
                 continue
@@ -221,16 +222,17 @@ def walk(exe: Executable, start_at: int, chain: int, node_next: int,
                 # An absolute target is followed; a computed one ends the path.
                 absolute = JUMP_TARGET.match(op)
                 if absolute:
-                    pending.append(base + int(absolute.group(1), 16))
+                    pending.append((base + int(absolute.group(1), 16),
+                                    frozenset(held)))
                 continue
             target = BRANCH_TARGET.search(op)
             if target and (head in BRANCHES or head.startswith("db")):
-                pending.append(int(target.group(1), 16))
+                pending.append((int(target.group(1), 16), frozenset(held)))
                 if head == "bra":
                     continue
             elif head == "bra":
                 continue
-            pending.append(ins.address + ins.size)
+            pending.append((ins.address + ins.size, frozenset(held)))
         if len(found) == before:
             break
     return {"displacements": found, "calls": calls}
