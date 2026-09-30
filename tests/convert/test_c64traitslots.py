@@ -147,7 +147,9 @@ def _permanent_ids(char: dos_codec.DosCharacter) -> list[int]:
     at bytes 1-2, `docs/162-spc-permanence.md`.  A running spell counting down
     is deliberately not converted and is not one of these, and neither is
     Curse's never-ending hold node, which crosses as a C64 effect row rather
-    than as a trait slot (`effects.curse_hold_row`)."""
+    than as a trait slot (`effects.curse_hold_row`); the row is written and
+    read back in `test_runningeffects.py::
+    test_curse_hold_row_reads_back_as_the_dos_node`."""
     return [e[0] for e in char.effects
             if int.from_bytes(e[1:3], "little") == 0
             and effects.curse_hold_row(char.deltas.key, bytes(e)) is None]

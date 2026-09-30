@@ -99,19 +99,13 @@ def _later_c64_disks():
     return sorted(set(found))
 
 
-def _written_by_wish(path: pathlib.Path) -> bool:
-    """Whether the disk was booted from a Wish conversion, by its provenance.
-
-    The registry has no structured field for it, so the text that says how the
-    specimen was made is read.  Such a disk can keep a byte our writer set,
-    which the game does not recompute until something reruns its routine, so
-    it is not the engine's own arithmetic."""
-    from tools.registry import specimens
-
-    fields = specimens.read_provenance(path.with_suffix(".provenance.toml"))
-    text = " ".join(str(fields.get(k, "")) for k in
-                    ("made_by", "what", "command")).lower()
-    return "converted" in text
+#: Records whose `0x0E2` our own C64 writer set and the game kept, because the
+#: game only recomputes it when something reruns its routine.  The writer gave
+#: strengths 19-25 the index 19-25 where the game computes 24-30.  Each is
+#: asserted to still disagree, so an entry goes when its specimen does.
+STALE_FROM_OUR_WRITER = {
+    "WISH-SPEC-ssb-667-item4-value-speed-rows-resave.D64": ["DOMINIC"],
+}
 
 
 def _records(path: pathlib.Path):
@@ -132,23 +126,32 @@ def test_the_weight_index_reproduces_the_engines_byte_on_every_record():
 
     The identity is `0x0E2 == weight_index(0x014, 0x01A)`, and it is a claim
     about a routine rather than about any one save: a wrong bracket table or a
-    wrong branch at 18 would break it somewhere in the corpus.  84 records
-    over fourteen disks on 2026-09-07, 84 agreeing.
+    wrong branch at 18 would break it somewhere in the specimens.  The only
+    records exempt are the named ones in `STALE_FROM_OUR_WRITER`.
     """
-    checked = wrong = 0
+    checked = 0
     failures = []
+    stale_seen = set()
     for path in _later_c64_disks():
-        if _written_by_wish(path):
-            continue
         for who, cur, bas, stored in _records(path):
-            checked += 1
             want = abilitypair.weight_index(cur[0], cur[6])
+            name = who.split(":", 1)[1]
+            if name in STALE_FROM_OUR_WRITER.get(path.name, ()):
+                assert stored != want, (
+                    f"{who} now agrees with the engine's formula; "
+                    f"remove it from STALE_FROM_OUR_WRITER")
+                stale_seen.add((path.name, name))
+                continue
+            checked += 1
             if stored != want:
-                wrong += 1
                 failures.append(f"{who}: 0x0E2 {stored}, expected {want} "
                                 f"from str {cur[0]}({cur[6]})")
+    listed = {(d, w) for d, ws in STALE_FROM_OUR_WRITER.items() for w in ws}
+    assert stale_seen == listed, (
+        f"STALE_FROM_OUR_WRITER names records not found: "
+        f"{sorted(listed - stale_seen)}")
     assert checked >= 6, f"only {checked} records were read"
-    assert not failures, f"{wrong} of {checked} disagree: " + "; ".join(
+    assert not failures, f"{len(failures)} of {checked} disagree: " + "; ".join(
         failures[:5])
 
 
