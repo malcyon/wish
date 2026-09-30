@@ -37,6 +37,7 @@ from goldbox.items import ITEM_AREA_BASE, ITEM_BLOCK_STRIDE, ITEM_SIZE
 from goldbox.savegame import SaveGame0, SaveGame1
 from tools.c64 import acceptance as A
 from tools.c64 import drive
+from tools.pool_of_radiance import fleedrive
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[1] / "fixtures"
 
@@ -12020,3 +12021,64 @@ def test_later_title_items_leave_the_list_and_the_sheet_for_the_world(tmp_path):
     assert [e["row"] for e in got["entries"]] == ["NO  MAGE SCROLL 3 SPELLS"]
     assert sess.state == "world"
     assert not list(tmp_path.glob("*lost-world-route.txt"))
+
+
+def _flee_run(outcome, slots_before, slots_after, tactics):
+    class Session:
+        def in_combat(self):
+            return True
+
+        def fight(self, *, budget, tactic):
+            tactics.append(tactic)
+            return A.S.FightResult(outcome, 4, 1.0, [], [])
+
+    reads = iter([slots_before, slots_after])
+    run = A.PoolRun.__new__(A.PoolRun)
+    run.sess = Session()
+    run.log = object()
+    run.to_world = lambda: True
+    run.spent = lambda: False
+    run.captured = []
+    run.capture = run.captured.append
+    run.reading = lambda: {"counts": {"x": 1}}
+    run.party_slots = lambda: next(reads)
+    return run
+
+
+def _slots(*named):
+    return [{"slot": i, "name": name, "status": status}
+            for i, (name, status) in enumerate(named)]
+
+
+def test_fight_flee_step_parses_with_an_optional_budget():
+    steps = A.parse_steps(["load", "fight-flee", "fight-flee 900"])
+    assert [(s.verb, s.arg) for s in steps[1:]] == [
+        ("fight-flee", ""), ("fight-flee", "900")]
+    with pytest.raises(ValueError, match="seconds"):
+        A.parse_steps(["load", "fight-flee 0"])
+
+
+def test_fight_flee_records_who_got_away_and_who_was_left_behind():
+    tactics = []
+    run = _flee_run(A.S.RAN,
+                    _slots(("ROLAND", 0), ("BRUTUS", 0x85), ("", 0)),
+                    _slots(("ROLAND", 0), ("", 0), ("", 0)), tactics)
+    got = run.fight("900", "I", 5, flee=True)
+    assert got["got_away"] == [
+        {"slot": 0, "name": "ROLAND", "status_before": 0, "status_after": 0}]
+    assert got["left_behind"] == [
+        {"slot": 1, "name": "BRUTUS", "status_before": 0x85,
+         "status_after": 0}]
+    assert got["outcome"] == A.S.RAN
+    assert isinstance(tactics[0], fleedrive.Flight)
+    assert run.captured == ["fight-start", "fight-end"]
+
+
+@pytest.mark.parametrize("outcome", [A.S.BUDGET, A.S.WON, A.S.LOST])
+def test_fight_flee_that_does_not_run_away_fails_naming_the_step(outcome):
+    run = _flee_run(outcome, _slots(("ROLAND", 0)), _slots(("ROLAND", 0)), [])
+    with pytest.raises(A.StepFailed, match="fight-flee") as err:
+        run.fight("60", "I", 5, flee=True)
+    if outcome == A.S.BUDGET:
+        assert "60 second budget" in str(err.value)
+    assert run.captured[-1] == "lost-fight-flee"

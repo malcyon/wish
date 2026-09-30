@@ -67,6 +67,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `scribe WHO>SPELL` | camp `MAGIC > SCRIBE` for WHO: the scroll list kept as text, SPELL's row highlighted and picked (Return, then a KERNAL Return while the count stands), the pick prompt's `EXIT` row, the list's `EXIT`, the `CHOSEN SPELLS` page kept, `OKAY` at the confirmation, and back to the camp bar. WHO's roster slice of the scribe queue (`+0x01` first entry, `+0x02` count: Pool `$6C01`, Curse and Silver Blades `$7D01`) is read before, after the pick and at the end, with its queue entries; a refusal (`CAN'T SCRIBE`), a spell not on the list, a list of more than one page, or a count of zero at the end fails the step. Measured on Silver Blades |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown |
+| `fight-flee [SECONDS]` | `fight`'s route into a fight, then `fleedrive.Flight` as the tactic with no wound patch, for at most SECONDS (120): the members who run stay alive and the game's own drop of a member left behind runs, which `walk-flee`'s menu FLEE never reaches. The result records `got_away` and `left_behind` (each member's slot, name and status before and after, a member left behind being one whose name the drop cleared); a fight that does not end on `THE PARTY RUNS AWAY` (won, lost, or still going at SECONDS) fails the step naming `fight-flee` |
 | `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows (a `GO BACK LEAVE TREASURE` bar that EXIT opens is answered LEAVE), on the encounter path as well as after a `PRESS` bar, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
 | `warp AREA` | Pool only: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D` |
@@ -499,7 +500,8 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "rest": "must", "fight": "may", "peek": "must", "save": "never",
          "cast": "must", "cure": "must", "walk": "must", "ready": "must",
          "scribe": "must", "temple-probe": "must", "warp": "must",
-         "walk-fight": "must", "walk-flee": "must", "remove": "must"}
+         "walk-fight": "must", "walk-flee": "must", "remove": "must",
+         "fight-flee": "may"}
 
 #: How long the screen after HEAL must stay unchanged before it is kept, so a
 #: half-drawn frame that lingers for a few reads is not taken for the list.
@@ -808,8 +810,9 @@ def parse_steps(texts) -> list[Step]:
                              + ", ".join(TEMPLE_PROBE_ARGS))
         elif verb == "warp":
             parse_warp(arg)
-        elif verb == "fight" and arg and not (arg.isdigit() and int(arg) > 0):
-            raise ValueError(f"fight {arg!r}: seconds, more than zero")
+        elif verb in ("fight", "fight-flee") and arg and not (
+                arg.isdigit() and int(arg) > 0):
+            raise ValueError(f"{verb} {arg!r}: seconds, more than zero")
         elif verb == "remove" and arg.isdigit() and not 0 < int(arg) <= PARTY_SLOTS:
             raise ValueError(f"remove {arg!r}: a panel number is 1 to {PARTY_SLOTS}")
         steps.append(Step(verb, arg))
@@ -3992,6 +3995,59 @@ class PoolRun:
                             f"{WATCH_EVENTS_MAX} answers")
         return events
 
+    def party_slots(self) -> list[dict]:
+        """Each party slot's name and roster status byte, read live.
+
+        The flee drop clears a left-behind member's name and status, so the
+        name is what says a slot is still occupied."""
+        box = self.box
+        with self.sess.mon(10) as m:
+            records = [bytes(m.read(box.slot_area_base + slot * box.slot_stride,
+                                    box.slot_stride))
+                       for slot in range(PARTY_SLOTS)]
+            roster = bytes(m.read(box.roster_base,
+                                  box.roster_stride * PARTY_SLOTS))
+            m.resume()
+        return [{"slot": slot,
+                 "name": CharacterRecord(record.ljust(RECORD_SIZE, b"\0"),
+                                         stored_size=len(record)).name,
+                 "status": roster[slot * box.roster_stride]}
+                for slot, record in enumerate(records)]
+
+    def flight_tactic(self):
+        """`fleedrive.Flight`, which the later titles' `Session`s take as it
+        stands (`tools/curse_of_the_azure_bonds/curseflee.py`)."""
+        from tools.pool_of_radiance import fleedrive
+        return fleedrive.Flight(self.log)
+
+    def flee_failure(self, arg: str, result) -> StepFailed | None:
+        """The failure for a `fight-flee` that did not end on the party
+        running away, or None."""
+        if result.outcome == S.RAN:
+            return None
+        self.keep_fight_reading()
+        if result.outcome == S.BUDGET:
+            why = (f"the flight did not finish in its {arg or 120} second "
+                   f"budget after {result.turns} turns")
+        else:
+            why = (f"the fight ended {result.outcome!r} after {result.turns} "
+                   f"turns, not in the party running away")
+        return self.fail("fight-flee", f"fight-flee: {why}")
+
+    def flee_result(self, before: list[dict], after: list[dict]) -> dict:
+        """Who got away and who was left behind, from the slots read before
+        the fight and after it.  A slot with a name before and none after is
+        the game's drop of a member the party left."""
+        got_away, left_behind = [], []
+        for was, now in zip(before, after):
+            if not was["name"]:
+                continue
+            member = {"slot": was["slot"], "name": was["name"],
+                      "status_before": was["status"],
+                      "status_after": now["status"]}
+            (got_away if now["name"] else left_behind).append(member)
+        return {"got_away": got_away, "left_behind": left_behind}
+
     def fight_over_budget(self, arg: str, result) -> StepFailed:
         """The failure for a fight that ran out of SECONDS.
 
@@ -4015,7 +4071,7 @@ class PoolRun:
         with contextlib.suppress(Exception):
             self.lost_reading = {"step": "fight", "after": self.reading()}
 
-    def fight(self, arg: str, walk: str, steps: int) -> dict:
+    def fight(self, arg: str, walk: str, steps: int, flee: bool = False) -> dict:
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
         taken = 0
@@ -4031,9 +4087,17 @@ class PoolRun:
         if not self.sess.in_combat():
             raise self.fail("fight", f"no fight in {taken} steps of {walk}")
         self.capture("fight-start")
+        before = self.party_slots() if flee else None
         result = self.sess.fight(budget=float(arg or 120),
-                                 tactic=S.Session.melee_turn)
+                                 tactic=(self.flight_tactic() if flee
+                                         else S.Session.melee_turn))
         self.capture("fight-end")
+        if flee:
+            if (failed := self.flee_failure(arg, result)) is not None:
+                raise failed
+            return {"walked": taken, "acted": result.acted,
+                    **self.flee_result(before, self.party_slots()),
+                    **dataclasses.asdict(result)}
         if result.outcome == S.BUDGET:
             raise self.fight_over_budget(arg, result)
         if result.outcome == S.LOST:
@@ -5792,7 +5856,7 @@ class CurseRun(PoolRun):
     def walk_flee(self, arg: str) -> dict:
         raise self.fail("walk-flee", "Pool of Radiance only")
 
-    def fight(self, arg: str, walk: str, steps: int) -> dict:
+    def fight(self, arg: str, walk: str, steps: int, flee: bool = False) -> dict:
         from tools.c64 import laterbattle
         from tools.curse_of_the_azure_bonds import cursethac0
 
@@ -5857,10 +5921,19 @@ class CurseRun(PoolRun):
             result = self.observed_fight(float(arg or 120))
         else:
             self.sess.await_bar((S.BAR_COMMAND,), timeout=60, interval=2.0)
-            result = self.sess.fight(budget=float(arg or 120),
-                                     tactic=(self.bar_tactic() if self.log_bars
-                                             else S.Session.melee_turn))
+            before = self.party_slots() if flee else None
+            result = self.sess.fight(
+                budget=float(arg or 120),
+                tactic=(self.flight_tactic() if flee
+                        else self.bar_tactic() if self.log_bars
+                        else S.Session.melee_turn))
         self.capture("fight-end")
+        if flee:
+            if (failed := self.flee_failure(arg, result)) is not None:
+                raise failed
+            return {"walked": walked, "area": str(area), "acted": result.acted,
+                    **self.flee_result(before, self.party_slots()),
+                    **dataclasses.asdict(result)}
         if result.outcome == S.BUDGET:
             raise self.fight_over_budget(arg, result)
         if result.outcome == S.LOST:
@@ -6056,7 +6129,7 @@ class SilverRun(CurseRun):
             screen is not None and self.at_world(screen.row(24))
             and mode == S.DUNGEON)
 
-    def fight(self, arg: str, walk: str, steps: int) -> dict:
+    def fight(self, arg: str, walk: str, steps: int, flee: bool = False) -> dict:
         """Walk `SILVER_FIGHT_TOUR` with the wandering gate at 1 until a fight
         is committed, then fight it; the gate goes back to what it read before
         the walk once the party is in the world again.  WALK is Pool's and
@@ -6076,15 +6149,18 @@ class SilverRun(CurseRun):
         if gate["now"] != 1:
             raise self.fail("wander-gate", f"$4C2D reads {gate['now']}, not 1")
         try:
-            walked, result = self._silver_walk_and_fight(arg, steps, geo)
+            walked, result, slots = self._silver_walk_and_fight(
+                arg, steps, geo, flee)
         except BaseException as e:
             self.put_gate_back(gate, was, e)
             raise
         self.put_gate_back(gate, was, None)
-        return {"walked": walked, "area": str(area), "wander_gate": gate,
+        if flee:
+            slots = self.flee_result(slots, self.party_slots())
+        return {**(slots if flee else {}), "walked": walked, "area": str(area), "wander_gate": gate,
                 "acted": result.acted, **dataclasses.asdict(result)}
 
-    def _silver_walk_and_fight(self, arg: str, steps: int, geo):
+    def _silver_walk_and_fight(self, arg: str, steps: int, geo, flee: bool = False):
         from tools.c64 import laterbattle
         from tools.curse_of_the_azure_bonds import cursethac0
 
@@ -6125,8 +6201,10 @@ class SilverRun(CurseRun):
         self.capture("fight-start")
         self.sess.await_bar((S.BAR_COMMAND,), timeout=60, interval=2.0)
         self.gen_reads = 0
+        before = self.party_slots() if flee else None
         result = self.sess.fight(budget=float(arg or 120),
-                                 tactic=(self.bar_tactic() if self.log_bars
+                                 tactic=(self.flight_tactic() if flee
+                                         else self.bar_tactic() if self.log_bars
                                          else S.Session.melee_turn),
                                  stop=self.world_again)
         self.capture("fight-end")
@@ -6140,11 +6218,14 @@ class SilverRun(CurseRun):
             raise self.fail("fight", f"the party lost the fight after "
                                      f"{result.turns} turns: the game went "
                                      f"back to the party menu")
-        if result.outcome == S.BUDGET:
+        if flee:
+            if (failed := self.flee_failure(arg, result)) is not None:
+                raise failed
+        elif result.outcome == S.BUDGET:
             raise self.fight_over_budget(arg, result)
-        if result.outcome == S.LOST:
+        elif result.outcome == S.LOST:
             raise self.fight_lost(result)
-        return walked, result
+        return walked, result, before
 
 
 # --- the run ---------------------------------------------------------------------
@@ -6629,6 +6710,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.walk(step.arg)
             elif step.verb == "fight":
                 got = pool.fight(step.arg, args.walk, args.walk_steps)
+            elif step.verb == "fight-flee":
+                got = pool.fight(step.arg, args.walk, args.walk_steps, flee=True)
             elif step.verb == "warp":
                 got = pool.warp(step.arg)
             elif step.verb == "walk-fight":
