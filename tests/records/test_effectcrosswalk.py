@@ -538,6 +538,10 @@ def test_c64_row_sweep_counts_table_candidates_and_literal_writers(
     # table; reading the id byte as a duration would give 73.
     ("curse-of-the-azure-bonds", 73, 0, 0),
     ("secret-of-the-silver-blades", 73, 0, 0),
+    ("curse-of-the-azure-bonds", 109, 0, 0),
+    # The one row whose two duration fields differ and are both non-zero
+    # besides Pool's id 13, so it is what catches them being swapped.
+    ("secret-of-the-silver-blades", 13, 4, 1),
 ])
 def test_combat_rows_read_their_durations_at_plus_one_and_plus_two(
         title, effect_id, fixed, per_level):
