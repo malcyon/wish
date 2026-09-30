@@ -348,13 +348,16 @@ COMBAT_CASTER_LEVEL_IDS = frozenset({2, 21, 29, 36, 52, 53, 71})
 #: The same rule for ids only one later title casts this way: 3 (spell 70,
 #: Curse and Silver Blades), Curse's 7 (spell 79) and Silver Blades' 73
 #: (spell 95, which runs one minute a level there and never ends in Curse).
+#: Curse's 73 and 109 (item spells 95 and 96, `COMBAT $1DA9`, `$1DC2`; camp
+#: rows 53 and 54) run for minutes with the caster's level on the C64, while
+#: DOS never expires its own node, so a node with minutes left keeps them.
 #: Dispel Evil (spell 73) puts Curse's 145 and Silver Blades' 32 on its
 #: targets through the generic cast; the C64 writes the level (camp row 45,
 #: `ECL65 $83EE`; combat `COMBAT $1AB8`, `$1F96`). Silver Blades' 106 is Power
 #: Word Stun (spell 117, `GAME.OVR:0x327DC`; C64 `COMBAT $2389` into the
 #: generic writer).
 TITLE_COMBAT_CASTER_LEVEL_IDS: dict[str, frozenset[int]] = {
-    "curse-of-the-azure-bonds": frozenset({3, 7, 145}),
+    "curse-of-the-azure-bonds": frozenset({3, 7, 73, 109, 145}),
     "secret-of-the-silver-blades": frozenset({3, 32, 73, 106}),
 }
 
@@ -461,6 +464,11 @@ SLOWED_MAX_MINUTES = 63
 #: runs Heal), but its handler matches the C64's, so a node Wish wrote must
 #: come back (`docs/226`).
 _REDUCE_ID = 13
+
+#: Pool ids whose C64 rows never run: Reduce writes no id 13 (camp
+#: `SPELLE04 $A912`, combat `SPELLE00 $A9B7` only expire an Enlarge row), and
+#: the combat row for 51 has duration 0 and `POST.COM` strips it.
+POOL_UNWRITTEN_ROW_IDS = frozenset({13, 51})
 
 #: Silver Blades' id 113, the effect of DOS spell 59 and C64 combat spell 59 and
 #: camp row 39: DOS writes `(113, minutes, 0x79, 1)` and the C64 writes
@@ -979,6 +987,8 @@ def _value_node(title_key: str, effect_id: int,
                                    "the run that reads DOS data 101")
             return 100 + bonus, 1
         return bonus, 1
+    if title_key == "pool-of-radiance" and effect_id in POOL_UNWRITTEN_ROW_IDS:
+        return Unconverted(f"no C64 cast writes a running id-{effect_id} row")
     return Unconverted("no rule yet for this id in this title")
 
 

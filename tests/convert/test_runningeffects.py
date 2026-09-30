@@ -1719,6 +1719,8 @@ _OWN_WRITES = (
     + [(g, "19 0A 00 0C 00", (25, 2, 0x0A, 0x0C))
        for g in (_CURSE_G, _SILVER_G)]
     + [(_SILVER_G, "71 0A 00 79 01", (113, 2, 0x0A, 0xBC))]
+    + [(_CURSE_G, "49 0A 00 05 00", (73, 2, 0x0A, 0x05)),
+       (_CURSE_G, "6D 0A 00 0F 00", (109, 2, 0x0A, 0x0F))]
 )
 _OWN_IDS = [f"{g.key}-{n[:2]}-{n[9:11]}" for g, n, _ in _OWN_WRITES]
 

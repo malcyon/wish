@@ -1157,6 +1157,7 @@ def test_reversed_bless_hold_sleep_and_71_become_id_and_level(title, eid):
 @pytest.mark.parametrize("title, eid", [
     ("curse-of-the-azure-bonds", 3), ("curse-of-the-azure-bonds", 7),
     ("secret-of-the-silver-blades", 3), ("secret-of-the-silver-blades", 73),
+    ("curse-of-the-azure-bonds", 73), ("curse-of-the-azure-bonds", 109),
 ])
 def test_a_later_title_combat_caster_level_id_becomes_id_and_level(title, eid):
     node = effects.RunningEffect(eid, 12, 6, 0)
@@ -1167,7 +1168,7 @@ def test_a_later_title_combat_caster_level_id_becomes_id_and_level(title, eid):
 
 @pytest.mark.parametrize("title, eid", [
     ("pool-of-radiance", 3), ("pool-of-radiance", 73),
-    ("curse-of-the-azure-bonds", 73), ("secret-of-the-silver-blades", 7),
+    ("secret-of-the-silver-blades", 109), ("secret-of-the-silver-blades", 7),
 ])
 def test_a_combat_caster_level_id_of_another_title_stays_unconverted(
         title, eid):
@@ -2333,3 +2334,10 @@ def test_a_silver_blades_barkskin_node_round_trips_through_the_c64_row(level):
 def test_a_c64_id_13_row_is_refused_outside_silver_blades(title):
     row = effects.Effect(63, 13, 0, 0x2A, 9)
     assert isinstance(effects.dos_record(title, row, 0), effects.Unconverted)
+
+
+@pytest.mark.parametrize("eid", [13, 51])
+def test_pool_ids_no_c64_cast_runs_say_so(eid):
+    got = effects.dos_record("pool-of-radiance", effects.Effect(0, eid, 0, 1, 1), 0)
+    assert got == effects.Unconverted(
+        f"no C64 cast writes a running id-{eid} row")

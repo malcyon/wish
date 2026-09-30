@@ -504,14 +504,14 @@ def test_the_later_title_command_prints_the_derived_ids(later_ids, capsys):
 
 @pytest.mark.parametrize("title, camp, combat, distinct, stripped, literal_ids, "
                          "generic, unresolved, no_rule", [
-    ("pool-of-radiance", (67, 46), (67, 45), 42, 11, (5,), 20, 71,
-     {11, 13, 32, 33, 35, 49, 51, 77, 108}),
-    ("curse-of-the-azure-bonds", (56, 38), (100, 61), 54, 8,
-     (5, 13, 27, 45, 58, 137, 144), 24, 75,
-     {13, 18, 33, 49, 55, 58, 68, 73, 109, 137, 143, 144, 146}),
-    ("secret-of-the-silver-blades", (56, 39), (117, 64), 51, 0,
-     (5, 12, 27, 45, 107), 27, 76,
-     {33, 49, 51, 55, 68, 107, 112}),
+    ("pool-of-radiance", (67, 46), (65, 43), 40, 11, (5,), 20, 69,
+     {11, 32, 33, 35, 49}),
+    ("curse-of-the-azure-bonds", (56, 39), (100, 61), 53, 8,
+     (5, 13, 27, 45, 58, 137, 144), 24, 76,
+     {13, 33, 49, 55, 58, 68, 128, 137, 143, 144, 146}),
+    ("secret-of-the-silver-blades", (56, 40), (117, 64), 52, 0,
+     (5, 12, 27, 45, 107), 27, 77,
+     {33, 49, 51, 55, 68, 107, 112, 128}),
 ])
 def test_c64_row_sweep_counts_table_candidates_and_literal_writers(
         title, camp, combat, distinct, stripped, literal_ids,
@@ -526,4 +526,4 @@ def test_c64_row_sweep_counts_table_candidates_and_literal_writers(
     assert len(sweep.unresolved_pointer_rows) == unresolved
     assert sweep.candidate_no_dos_rule_ids == no_rule
     assert (13 in sweep.candidate_no_dos_rule_ids) == (
-        title != "secret-of-the-silver-blades")
+        title == "curse-of-the-azure-bonds")

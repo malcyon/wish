@@ -561,7 +561,7 @@ each C64 cast down to its row writer. Static reads only; none has been booted.
 | Rule | Titles and ids | DOS node | C64 row | Code |
 |---|---|---|---|---|
 | magnitude = data, flag 0 | all: 2, 52, 53, 71 | `(id, minutes, level, 0)` | `level & $0F` from the generic combat writer | 2: the Bless area routine into the generic cast, Pool `GAME.OVR:0x28013`, Curse `0x2FD01`, Silver Blades `0x2E54F`; C64 `SPELLE00 $A8A1`, `COMBAT $15E7`, `$188B`. 52: Hold Person's own apply, Pool `0x287DD` (level from `START:0x3262`), Curse `0x2FC41`, Silver Blades `0x2E48F`; C64 `$AA45`, `$17E7`, `$1B84`. 53: spell 21 into the generic cast; C64 `$A9F8`, `$177C`, `$1AF8`. 71: Pool and Curse spell 63 and Silver Blades spell 79; Silver Blades casts 79 through the shared custom cast `0x2E313`, which tests for spell 79 at `0x2E3CA`; C64 Pool `SPELLE00 $AD54` and Curse `COMBAT $1A71` double the level first, and Silver Blades' `COMBAT2` row `04 1C 00 47 41 BF 1F`, Curse's id-7 row with the id changed, runs `COMBAT $1FBF` |
-| magnitude = data, flag 0 | Curse and Silver Blades: 3; Curse: 7, 145; Silver Blades: 32, 73, 106 | the same | the same (73: `COMBAT $2283` writes the level through `$1223`) | 3: spell 70, handler reads data as a counter it drains (Curse `0xFFC3`); C64 `$1A85`, `$1F6D`. 7: Curse spell 79, Faerie Fire ("is highlighted"), through the shared custom cast `0x2FAD9`, which tests for spell 79 at `0x2FB92` and holds 52's apply call; C64 `COMBAT2` row `04 1C 00 07 41 EC 1A` runs `COMBAT $1AEC`. 73: Silver Blades spell 95; C64 `COMBAT2` row `00 F0 00 49 3A 83 22` runs `$2283`, which loads `LDX #$49`. 145 and Silver Blades' 32: Dispel Evil (spell 73), below. 106: Silver Blades' Power Word Stun (spell 117, `0x327DC`, data from the level routine `0x3AFD7`); C64 `COMBAT $2389` rolls the same 4, 2 or 1 d4 by hit points and jumps to the generic writer `$0F70` |
+| magnitude = data, flag 0 | Curse and Silver Blades: 3; Curse: 7, 73, 109, 145; Silver Blades: 32, 73, 106 | the same | the same (73: `COMBAT $2283` writes the level through `$1223`) | 3: spell 70, handler reads data as a counter it drains (Curse `0xFFC3`); C64 `$1A85`, `$1F6D`. 7: Curse spell 79, Faerie Fire ("is highlighted"), through the shared custom cast `0x2FAD9`, which tests for spell 79 at `0x2FB92` and holds 52's apply call; C64 `COMBAT2` row `04 1C 00 07 41 EC 1A` runs `COMBAT $1AEC`. 73: Silver Blades spell 95; C64 `COMBAT2` row `00 F0 00 49 3A 83 22` runs `$2283`, which loads `LDX #$49`. 145 and Silver Blades' 32: Dispel Evil (spell 73), below. 106: Silver Blades' Power Word Stun (spell 117, `0x327DC`, data from the level routine `0x3AFD7`); C64 `COMBAT $2389` rolls the same 4, 2 or 1 d4 by hit points and jumps to the generic writer `$0F70` |
 | magnitude = data \| `$80`, flag 1 | all: 23, 34 | `(id, minutes, level, 1)` | `level \| $80` | 23 Spiritual Hammer: generic cast flag 1, Pool `0x28A01`; C64 `SPELLE00 $AABF`, `COMBAT $1845`, `$1BF4`. 34 Cause Disease: generic cast flag 1, Pool `0x2938A`; C64 `$ABB9`, `$18A8`, `$1C63` |
 | `(0xFF, 1)` = `$FF` | Pool: 4, 7, 62 | `(4, 1440, FF, 1)`, `(7, 43200, FF, 1)`, `(62, 60, FF, 1)` | `$FF` | DOS spell 67 (generic cast `0x2A0E0`, data `FF`, flag 1), then handlers 4 (`0xEE13`) and 7 (`0xEED8`); C64 camp row 67 `SPELLE04 $ACC6`, expiry `$ACCE` and `$ACD7` through `$ADF3` |
 | magnitude = data, 0 allowed, flag 0 | Curse: 4, 35, 136; Silver Blades: 4, 35 | `(id, minutes, 0, 0)` | the caster's level | 4: Dispel Evil's node on its caster, spell 73's own apply (Curse `0x32462`, Silver Blades `0x30C3F`); C64 camp row 45 (`ECL65 $83EE`, `$8463`) and `COMBAT $1AB8`, `$1F96`. 35: Confusion, spell 82 (`0x328CB`, `0x30FF7`); C64 `COMBAT $1B81`, `$204D` into the generic writer. 136: Curse spell 78 (`0x3270C`, 10 minutes); C64 `$1AD7` into `$0F9B` |
@@ -1422,13 +1422,13 @@ be a monster. Each id is listed with why its sample row has no rule.
 | Title | Id | Why the sample row has no rule |
 |---|---|---|
 | Pool of Radiance | 11 | Charm converts through `pool_charm_record` in `c64_codec`, not `dos_record`. |
-| Pool of Radiance | 13 | No DOS Pool engine writes a running id-13 node. |
-| Pool of Radiance | 32, 77, 108 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
-| Pool of Radiance | 33, 51 | A duration-0 row converts as a granted record; a running row has no rule. |
+| Pool of Radiance | 13 | No DOS Pool engine writes a running id-13 node, and no C64 cast writes a running id-13 row. |
+| Pool of Radiance | 32 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
+| Pool of Radiance | 33, 51 | A duration-0 row converts as a granted record; no C64 cast writes a running row. |
 | Pool of Radiance | 35, 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
 | Curse of the Azure Bonds | 13 | The C64 id is the engulf countdown, whose magnitude is a combatant index. |
-| Curse of the Azure Bonds | 18, 55, 68, 143 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
-| Curse of the Azure Bonds | 33, 73, 109 | A duration-0 row converts as a granted record; a running row has no rule. |
+| Curse of the Azure Bonds | 55, 68, 128, 143 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
+| Curse of the Azure Bonds | 33 | A duration-0 row converts as a granted record; a running row has no rule. |
 | Curse of the Azure Bonds | 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
 | Curse of the Azure Bonds | 58, 144 | A literal `COMBAT` call writes it; what triggers the call is not read. |
 | Curse of the Azure Bonds | 137 | Confusion's outcome node, written by a literal `COMBAT` call; its record changes are not converted. |
@@ -1446,8 +1446,13 @@ be a monster. Each id is listed with why its sample row has no rule.
 | Pool's stale `$2879` | **CONFIRMED writer mechanism:** a nonzero override reaches the generic camp row. A two-cast game run must establish whether one cast leaves it for the next. |
 | Haste outside `$01`–`$1F`, Slowed outside level 1–15 or 63 minutes, Silver Blades id 113 other than `$BC` | **UNRESOLVED across all writers:** the table inventory alone cannot prove these guards unreachable. |
 
-The proposed later combat row starts `$EAA7/$EB74` were five bytes early:
-**CONFIRMED** nine-byte rows start at `COMBAT2 $EAAC/$EB79`. Curse
-`COMBAT $11C4` stores the owner inside the writer at `$11AE`; Pool
-`COMBAT $29F7` starts combat setup, while the combat row stores are at
-`ECL64 $9A34`–`$9A46`. These corrections replace the proposed anchors.
+Combat rows are nine bytes: the fixed minutes at `+1`, the minutes per level
+at `+2`, the id at `+5` and the handler at `+7`. **CONFIRMED** the later
+titles' tables start at `COMBAT2 $EAA7` (Curse) and `$EB74` (Silver Blades),
+Curse `COMBAT $0DFC`-`$0E16` building the pointer as `$EAA7 + 9 x (spell - 1)`.
+Pool's 65 rows start at `SPELLE65 $D81B`; the two nine-byte steps after them
+are the handler table at `$DA63`, not spells. Later camp ids use the whole row
+byte: Curse camp row 39 writes 146 and row 49 writes 143, and row 51's `$80`
+reaches no row writer. Curse `COMBAT $11C4` stores the owner inside the writer
+at `$11AE`; Pool `COMBAT $29F7` starts combat setup, while the combat row
+stores are at `ECL64 $9A34`-`$9A46`.

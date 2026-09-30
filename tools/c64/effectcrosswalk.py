@@ -1172,10 +1172,13 @@ class C64RowSweep:
         return frozenset(out)
 
 
+# Every combat row is nine bytes: the id at +5, the handler at +7, the fixed
+# and per-level minutes at +1 and +2. Pool's table has 65 rows; the two after
+# them are the handler table at SPELLE65 $DA63.
 _COMBAT_TABLE = {
-    "pool-of-radiance": ("SPELLE65", 0xD60A, 0xD81B, 67, 5, 7),
-    "curse-of-the-azure-bonds": ("COMBAT2", 0xE000, 0xEAAC, 100, 0, 2),
-    "secret-of-the-silver-blades": ("COMBAT2", 0xE000, 0xEB79, 117, 0, 2),
+    "pool-of-radiance": ("SPELLE65", 0xD60A, 0xD81B, 65, 5, 7),
+    "curse-of-the-azure-bonds": ("COMBAT2", 0xE000, 0xEAA7, 100, 5, 7),
+    "secret-of-the-silver-blades": ("COMBAT2", 0xE000, 0xEB74, 117, 5, 7),
 }
 _CAMP_TABLE = {
     "pool-of-radiance": (0x9900, 0x9900, 67),
@@ -1201,7 +1204,8 @@ def _sweep_rows(title: str, camp: bytes, combat: bytes
         row = camp[address - base:address - base + 7]
         handler = int.from_bytes(row[5:7], "little")
         camp_rows.append(C64EffectTableRow(
-            "camp", index + 1, address, row[3] & 0x7F, handler,
+            "camp", index + 1, address,
+            row[3] & (0x7F if title == "pool-of-radiance" else 0xFF), handler,
             row[0], row[1], handler in ordinary))
 
     name, base, start, count, effect_at, handler_at = _COMBAT_TABLE[title]
@@ -1335,7 +1339,7 @@ def c64_row_sweep(title: str, root: str | None = None) -> C64RowSweep:
             raise ValueError("Different Silver Blades post-combat owner sweep")
         strip = frozenset()
     if len(combat) != spells.for_game(title).last_spell + (
-            11 if title == "pool-of-radiance" else 0):
+            9 if title == "pool-of-radiance" else 0):
         raise ValueError("Combat spell table no longer matches the title's spell list")
     return C64RowSweep(title, camp, combat, _literal_rows(title, read), strip)
 
