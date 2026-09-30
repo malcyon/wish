@@ -21,7 +21,7 @@ from tools.amiga.winuaesession import RouteError
 
 def _sources(tmp_path, monkeypatch):
     original = d64.D64.blank()
-    payload = bytearray(0x300)
+    payload = bytearray(0x800)
     original.write_file("SAVEDBASH", d64.attach_load_address(0x4B00, payload))
     original.write_file("OTHER", b"other file")
     join = tmp_path / "join.d64"
@@ -101,6 +101,7 @@ def test_staged_source_records_rows_in_prepare_manifest(tmp_path, monkeypatch):
     assert manifest["source"]["path"] == str(source)
     assert manifest["staged_from"]["path"] == str(join)
     assert manifest["active_rows"] == [[63, 1, 0, 0x2F, 5]]
+    assert manifest["staged_record_bytes"] == []
     assert manifest["inventory_a"]["joined_inventory_expected"] is True
 
 
@@ -118,7 +119,7 @@ def test_staged_source_refuses_other_file_changes(tmp_path, monkeypatch, target)
         route.prepare(source, "run", staged_from=join)
 
 
-@pytest.mark.parametrize("offset", [0x0C0, 0x27F])
+@pytest.mark.parametrize("offset", [0x0C0, 0x27F, 0x417])
 def test_staged_source_refuses_changes_between_effect_arrays(tmp_path, monkeypatch, offset):
     original, join = _sources(tmp_path, monkeypatch)
 
@@ -131,6 +132,23 @@ def test_staged_source_refuses_changes_between_effect_arrays(tmp_path, monkeypat
     source = _stage(tmp_path, original, change)
     with pytest.raises(RouteError, match="outside effect arrays in SAVEDBASH"):
         route._staged_rows(source, join)
+
+
+def test_staged_source_accepts_int_and_wis_in_force_of_a_party_record(
+        tmp_path, monkeypatch):
+    """A Feeblemind cast leaves INT and WIS at 3, so the gate takes those two
+    bytes of a party record and reports them beside the effect rows."""
+    original, join = _sources(tmp_path, monkeypatch)
+
+    def change(staged):
+        address, payload = d64.split_load_address(staged.read_file("SAVEDBASH"))
+        body = bytearray(payload)
+        body[0x415] = body[0x416] = 3
+        staged.write_file_inplace("SAVEDBASH", d64.attach_load_address(address, body))
+
+    source = _stage(tmp_path, original, change)
+    assert route._staged_rows(source, join) == (
+        [], [[0, 0x15, 0, 3], [0, 0x16, 0, 3]])
 
 
 def test_a_disk_staged_by_the_dos_driver_passes_the_gate(tmp_path):
@@ -151,7 +169,7 @@ def test_a_disk_staged_by_the_dos_driver_passes_the_gate(tmp_path):
     assert [i for i, (a, b) in enumerate(zip(before, after)) if a != b] == [
         2 + effects.EFFECT_ID_OFFSET + 63, 2 + effects.EFFECT_DURATION_OFFSET + 63,
         2 + effects.EFFECT_MAGNITUDE_OFFSET + 63]
-    assert route._staged_rows(source, join) == [[63, 1, 0, 0x2F, 5]]
+    assert route._staged_rows(source, join) == ([[63, 1, 0, 0x2F, 5]], [])
 
 
 def test_staged_from_must_be_join(tmp_path, monkeypatch):

@@ -5034,9 +5034,10 @@ def write(char: NeutralCharacter,
     # each crossed both ways (#401, docs/204-the-dos-ability-pair.md).
     second = use("abilities_second")
     seconds = dict(second.value) if second is not None else {}
-    # The C64's Feeblemind leaves the score in force alone, but DOS and the
-    # Amiga recompute INT and WIS in force to 3 while the node is present, so
-    # a C64 source's are written as that recompute leaves them.
+    # DOS and the Amiga recompute INT and WIS in force to 3 while the node is
+    # present, so a C64 source's are written as that recompute leaves them.
+    # The C64 lowers INT in both titles and WIS only in Silver Blades, so a
+    # Curse source's WIS in force is still its permanent score.
     feeble = (char.port == "C64" and effects.feebleminded(
         deltas.key, char.get("granted_effects") or ()))
     for neutral_name, dos_name in (WRITE_DIRECT + DARKNESS_WRITE_DIRECT +
@@ -5559,7 +5560,9 @@ def write(char: NeutralCharacter,
     if (port in _SPELL_SLOT_RECOMPUTE_FROM_PORTS
             and not level_tables.for_game(deltas.key).stores_spell_capacity):
         computed_slots = spells.capacity_by_class(
-            w.get("levels", {}) or {}, w.get("wisdom", 0), deltas.key)
+            w.get("levels", {}) or {},
+            effects.FEEBLEMIND_SCORE if feeble else w.get("wisdom", 0),
+            deltas.key)
     castable = use("spells_castable")
     if castable is not None:
         for school, dos_name in (("cleric", "spells_castable_cleric"),

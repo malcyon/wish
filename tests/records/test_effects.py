@@ -2394,3 +2394,16 @@ def test_pool_ids_no_c64_cast_runs_say_so(eid):
     got = effects.dos_record("pool-of-radiance", effects.Effect(0, eid, 0, 1, 1), 0)
     assert got == effects.Unconverted(
         f"no C64 cast writes a running id-{eid} row")
+
+
+def test_c64_feeblemind_scores_per_title():
+    permanent = {"intelligence": 14, "wisdom": 12}
+    assert effects.c64_feeblemind_scores(
+        "curse-of-the-azure-bonds", permanent) == {
+            "intelligence": 3, "wisdom": 12}
+    assert effects.c64_feeblemind_scores(
+        "secret-of-the-silver-blades", permanent) == {
+            "intelligence": 3, "wisdom": 3}
+    assert effects.c64_feeblemind_scores(
+        "curse-of-the-azure-bonds", {}) == {"intelligence": 3}
+    assert effects.c64_feeblemind_scores("pool-of-radiance", permanent) == {}

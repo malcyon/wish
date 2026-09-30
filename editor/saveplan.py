@@ -50,10 +50,13 @@ from goldbox import (
     derive,
     dos_codec,
     dos_port,
+    effects,
     layout,
     rewrite,
 )
 from goldbox.d64 import D64
+from goldbox.neutral import ABILITIES as NEUTRAL_ABILITIES
+from goldbox.neutral import NeutralCharacter
 from goldbox.record import RECORD_SIZE, CharacterRecord
 from goldbox.savegame import SaveGame0, SaveGame1, load_save, store_save
 
@@ -1126,6 +1129,63 @@ def _expected_treasure_share(record: CharacterRecord,
     return convert(int(record.get("treasure_share")))
 
 
+def _feeblemind_route(source_port: "str | None",
+                      destination: "Destination") -> bool:
+    """Whether Feeblemind's scores are converted on this pairing and title.
+
+    True for the C64 to DOS or the Amiga and for DOS or the Amiga to the C64,
+    in a title whose 68 is a never-expiring Feeblemind. DOS and the Amiga
+    both keep 3 in force, so a pairing between them converts nothing.
+    """
+    if destination.native:
+        return False
+    title_key = getattr(destination.title, "key", destination.title)
+    if effects.FEEBLEMIND_ID not in effects.NEVER_EXPIRING_SPELL_IDS.get(
+            title_key, ()):
+        return False
+    return ((source_port == "c64" and destination.port in ("dos", "amiga"))
+            or (source_port in ("dos", "amiga") and destination.port == "c64"))
+
+
+def feeblemind_scores(record: CharacterRecord, neutral: NeutralCharacter,
+                      source_port: "str | None",
+                      destination: "Destination") -> dict[str, int]:
+    """The INT and WIS a destination should hold for one feebleminded character.
+
+    `neutral` is the character as his source save holds him; the sheet record
+    carries no effect node, so the flag comes from there. Whichever port he
+    left, the written character is read back as a C64 sheet, which holds
+    `effects.c64_feeblemind_scores`: 3 for the scores the C64's Feeblemind
+    lowers and the permanent ones, from `abilities_second`, for the rest.
+    `{}` for any other character or route.
+    """
+    if not _feeblemind_route(source_port, destination):
+        return {}
+    title_key = getattr(destination.title, "key", destination.title)
+    if not effects.feebleminded(title_key,
+                                neutral.get("granted_effects") or ()):
+        return {}
+    # The writer's own condition: the permanent scores are the source's
+    # `abilities_second`, and a source without it leaves the other score to
+    # the copy.
+    permanent = {}
+    if neutral.get("abilities_second") is not None:
+        permanent = dict(zip(NEUTRAL_ABILITIES,
+                             record.get_raw("abilities_second")))
+    return effects.c64_feeblemind_scores(title_key, permanent)
+
+
+def source_neutral(member: Any, snapshot: Any, title: Any) -> NeutralCharacter:
+    """One source member, read the way the conversion reads him."""
+    if snapshot.port == "c64":
+        return c64_codec.read(member.record, game=title,
+                              payload=snapshot.save0, party_slot=member.index)
+    if snapshot.port == "dos":
+        return dos_codec.to_neutral(member.native)
+    from goldbox import amiga_later
+    return amiga_later.to_neutral_later(member.native)
+
+
 def _signature(record: CharacterRecord,
                destination: "Destination | None" = None,
                name: "str | None" = None,
@@ -1633,6 +1693,16 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
         for row, record in enumerate(expected):
             if row in names:
                 record.set("name", names[row])
+    if _feeblemind_route(source.port, destination):
+        # A feebleminded character arrives with INT and WIS at the scores the
+        # destination's Feeblemind leaves on purpose; the flag is a fact about
+        # the source, so each copy is set here or `compare` calls it a loss.
+        for member, record in zip(party.members, expected):
+            scores = feeblemind_scores(
+                record, source_neutral(member, snapshot, snapshot.title),
+                source.port, destination)
+            for name, score in scores.items():
+                record.set(name, score)
     validate(destination, files, expected, accounted=losses(report),
              expected_names=expected_names, source_port=source.port)
     if report is not None and report.warnings:
@@ -1678,6 +1748,8 @@ def validate(destination: Destination, files: dict[str, bytes],
 
     `source_port` is the port the sheet was read from, which `compare` needs
     to expect a C64 hireling's treasure share rewritten and no other's.
+    `prepare_save_as` has already put Feeblemind's INT and WIS into the
+    `expected` copies of a feebleminded character.
 
     **It does not check that the destination holds a party**, and the reason
     is that the editor's own occupancy test is stricter than the save format:

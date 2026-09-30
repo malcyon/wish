@@ -1117,15 +1117,43 @@ NEVER_EXPIRING_SPELL_FLAGS = {34: 1}
 # $1D61`, Silver Blades `$2227`) where DOS writes flag 0 (Curse `0x2F0B7`).
 NEVER_EXPIRING_C64_BITS = {34: 1, 68: 1}
 
-# Feeblemind is also kept in the record's INT and WIS in force, which the C64
-# does not touch. DOS and the Amiga recompute both to 3 whenever a 68 node is
-# present (Curse `0x36E5C`, Silver Blades `0x379EC`-`0x379FC`, Amiga `/Curse`
-# `0xFC1A`-`0xFC7C`, `/Secret` `0x13812`-`0x13862`); Silver Blades' cast stores
-# 3 itself (`0x12E9C`) and Curse's stores 7 (`0x1147C`), which the next
-# recompute replaces.
+# Feeblemind is also kept in the record's INT and WIS in force. DOS and the
+# Amiga recompute both to 3 whenever a 68 node is present (Curse `0x36E5C`,
+# Silver Blades `0x379EC`-`0x379FC`, Amiga `/Curse` `0xFC1A`-`0xFC7C`,
+# `/Secret` `0x13812`-`0x13862`); Silver Blades' cast stores 3 itself
+# (`0x12E9C`) and Curse's stores 7 (`0x1147C`), which the next recompute
+# replaces. The C64 lowers only the scores in `C64_FEEBLEMIND_LOWERS`.
 FEEBLEMIND_ID = 68
 FEEBLEMIND_SCORE = 3
 FEEBLEMIND_SCORES = ("intelligence", "wisdom")
+
+# The scores the C64's Feeblemind lowers to 3 in the record, per title. Silver
+# Blades `COMBAT $2262`-`$2267` stores 3 into both; Curse `COMBAT2 $F2A2` and
+# `$F825` lower INT only, and a live Curse cast left INT 3 and WIS at its
+# permanent score, through the fight, a camp save, a reload and a rest.
+C64_FEEBLEMIND_LOWERS = {
+    "curse-of-the-azure-bonds": ("intelligence",),
+    "secret-of-the-silver-blades": ("intelligence", "wisdom"),
+}
+
+
+def c64_feeblemind_scores(title_key: str, permanent) -> dict[str, int]:
+    """The INT and WIS a feebleminded C64 character holds in force.
+
+    3 for each score the title's Feeblemind lowers, and the permanent score
+    for the other one when `permanent` (a name to score mapping) has it. A
+    title with no entry in `C64_FEEBLEMIND_LOWERS` gets `{}`.
+    """
+    lowers = C64_FEEBLEMIND_LOWERS.get(title_key)
+    if lowers is None:
+        return {}
+    scores = {}
+    for name in FEEBLEMIND_SCORES:
+        if name in lowers:
+            scores[name] = FEEBLEMIND_SCORE
+        elif name in permanent:
+            scores[name] = permanent[name]
+    return scores
 
 
 def never_expiring_spell_row(title_key: str,

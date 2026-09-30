@@ -85,8 +85,19 @@ def find_disk_b() -> pathlib.Path:
     raise RouteError("registered Silver Blades disk B was not found by its SHA-256")
 
 
-def _staged_rows(source: pathlib.Path, staged_from: pathlib.Path) -> list[list[int]]:
-    """Accept only changes to the four effect arrays of the pinned JOIN save's `SAVEDBASH`."""
+#: The record bytes a staged source may change: INT and WIS in force, which a
+#: Feeblemind row's cast leaves lowered on the C64.
+_STAGED_RECORD_OFFSETS = (0x15, 0x16)
+
+
+def _staged_rows(source: pathlib.Path, staged_from: pathlib.Path
+                 ) -> tuple[list[list[int]], list[list[int]]]:
+    """Accept only changes to the four effect arrays and to each character's INT and WIS in force.
+
+    Returns the active effect rows as `[slot, id, owner, duration, magnitude]`
+    and the changed record bytes as `[slot, offset, before, after]`, both of
+    the pinned JOIN save's `SAVEDBASH`.
+    """
     if sha256(staged_from) != JOIN_SHA256:
         raise RouteError(f"JOIN staged-from SHA-256 differs: {sha256(staged_from)}")
     original = d64.D64.open(staged_from)
@@ -96,27 +107,39 @@ def _staged_rows(source: pathlib.Path, staged_from: pathlib.Path) -> list[list[i
     if original_names != staged_names:
         names = sorted(original_names ^ staged_names)
         raise RouteError(f"staged source file list differs: {names!r}")
+    record_bytes: list[list[int]] = []
+    container = c64_save.CONTAINERS[TITLE]
     for name in sorted(original_names):
         before = original.read_file(name)
         after = staged.read_file(name)
         if name == SAVE_FILE:
             offsets = (effects.EFFECT_ID_OFFSET, effects.EFFECT_OWNER_OFFSET,
                        effects.EFFECT_DURATION_OFFSET, effects.EFFECT_MAGNITUDE_OFFSET)
+            # A record byte is compared apart from the rest: it is reported,
+            # and then read as unchanged so the check below stays whole.
+            compared = bytearray(after)
+            for slot in range(6):
+                for offset in _STAGED_RECORD_OFFSETS:
+                    at = 2 + container.slot(slot) + offset
+                    if at < min(len(before), len(after)) and before[at] != after[at]:
+                        record_bytes.append([slot, offset, before[at], after[at]])
+                        compared[at] = before[at]
             cursor = 0
             outside_changed = len(before) != len(after)
             for offset in offsets:
                 start = 2 + offset
-                outside_changed |= before[cursor:start] != after[cursor:start]
+                outside_changed |= before[cursor:start] != compared[cursor:start]
                 cursor = start + effects.EFFECT_SLOTS
-            outside_changed |= before[cursor:] != after[cursor:]
+            outside_changed |= before[cursor:] != compared[cursor:]
             if outside_changed:
                 raise RouteError("staged source differs outside effect arrays in "
                                  + SAVE_FILE.decode("ascii"))
         elif before != after:
             raise RouteError(f"staged source file differs: {name.decode('ascii', errors='replace')}")
     payload = d64.load_payload(staged, SAVE_FILE.decode("ascii"))
-    return [[row.slot, row.id, row.owner, row.duration, row.magnitude]
+    rows = [[row.slot, row.id, row.owner, row.duration, row.magnitude]
             for row in effects.active_effects(payload)]
+    return rows, record_bytes
 
 
 def _load_savecount():
@@ -163,7 +186,8 @@ def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | No
     source = source.expanduser().resolve()
     staged_from = staged_from.expanduser().resolve() if staged_from is not None else None
     source_sha = sha256(source)
-    rows = (_staged_rows(source, staged_from) if staged_from is not None else None)
+    rows, record_bytes = (_staged_rows(source, staged_from) if staged_from is not None
+                          else (None, None))
     if staged_from is None and source_sha != JOIN_SHA256:
         raise RouteError(f"JOIN source SHA-256 differs: {source_sha}")
     boot_source = amigabladesjournal.find_disk()
@@ -251,6 +275,7 @@ def prepare(source: pathlib.Path, run_id: str, *, staged_from: pathlib.Path | No
     if staged_from is not None:
         manifest["staged_from"] = _entry(staged_from)
         manifest["active_rows"] = rows
+        manifest["staged_record_bytes"] = record_bytes
     manifest_path = run / "prepare.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return manifest_path

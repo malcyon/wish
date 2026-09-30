@@ -1154,3 +1154,96 @@ def test_amiga_curse_movement_is_written_as_it_was(tmp_path):
         saveplan.edited_record(member)).character
     slot = amiga_savegame.slot_path(party.source.title, "A")
     assert with_hook.read_file(slot) == amiga_savegame.rebuild(save, [raw])
+
+
+def _feebleminded_neutral(feebleminded):
+    from goldbox import neutral
+
+    char = neutral.NeutralCharacter("C64", source="built here",
+                                    game=c64_port.CURSE_OF_THE_AZURE_BONDS)
+    char.set("abilities_second", {"intelligence": 16, "wisdom": 14},
+             "built here")
+    if feebleminded:
+        char.set("granted_effects",
+                 [bytes.fromhex("44 00 00 0A 00") + dos_codec.EFFECT_NEXT_NULL],
+                 "built here")
+    return char
+
+
+def test_a_written_int_of_3_without_feeblemind_is_refused():
+    """Feeblemind's 3 is expected only for the character whose source holds
+    the node; the same 3 on another character is still a loss."""
+    def sheet():
+        record = CharacterRecord.blank()
+        record.set("intelligence", 16)
+        record.set("wisdom", 14)
+        record.set_raw("abilities_second", bytes((0, 16, 14, 0, 0, 0, 0)))
+        return record
+
+    def written(intelligence, wisdom):
+        record = sheet()
+        record.set("intelligence", intelligence)
+        record.set("wisdom", wisdom)
+        return record
+
+    curse = _destination("dos", c64_port.CURSE_OF_THE_AZURE_BONDS)
+    first, second = sheet(), sheet()
+    for name, score in saveplan.feeblemind_scores(
+            first, _feebleminded_neutral(True), "c64", curse).items():
+        first.set(name, score)
+    assert saveplan.feeblemind_scores(
+        second, _feebleminded_neutral(False), "c64", curse) == {}
+
+    lines = saveplan.compare([first, second],
+                             [written(3, 14), written(3, 14)], curse,
+                             source_port="c64")
+    # A blank record's strength-bonus flag is refused for its own reason
+    # here, so only the two scores are read.
+    scores = [line for line in lines if line.split(":")[0] in
+              ("intelligence", "wisdom")]
+    assert scores == ["intelligence: 16 arrived as 3"], lines
+    assert [line for line in saveplan.compare(
+        [first, second], [written(3, 14), written(16, 14)], curse,
+        source_port="c64") if "intelligence" in line or "wisdom" in line] == []
+    # Curse's Feeblemind leaves WIS alone, so a written 3 is a loss.
+    assert [line for line in saveplan.compare(
+        [first, second], [written(3, 3), written(16, 14)], curse,
+        source_port="c64") if "wisdom" in line] == ["wisdom: 14 arrived as 3"]
+
+    flagged = _feebleminded_neutral(True)
+    assert saveplan.feeblemind_scores(
+        first, flagged, "c64",
+        _destination("dos", c64_port.CURSE_OF_THE_AZURE_BONDS,
+                     native=True)) == {}
+    assert saveplan.feeblemind_scores(
+        first, flagged, "c64",
+        _destination("dos", c64_port.POOL_OF_RADIANCE)) == {}
+    assert saveplan.feeblemind_scores(
+        first, flagged, "dos",
+        _destination("amiga", c64_port.CURSE_OF_THE_AZURE_BONDS)) == {}
+
+
+def _dos_feebleminded_neutral():
+    from goldbox import neutral
+
+    char = neutral.NeutralCharacter("DOS", source="built here")
+    char.set("granted_effects",
+             [bytes.fromhex("44 00 00 0A 00") + dos_codec.EFFECT_NEXT_NULL],
+             "built here")
+    char.set("abilities_second", {"intelligence": 16, "wisdom": 14},
+             "built here")
+    return char
+
+
+@pytest.mark.parametrize("title, expected", [
+    (c64_port.CURSE_OF_THE_AZURE_BONDS, {"intelligence": 3, "wisdom": 14}),
+    (c64_port.SECRET_OF_THE_SILVER_BLADES, {"intelligence": 3, "wisdom": 3}),
+])
+def test_a_feebleminded_dos_character_is_expected_at_the_c64s_feeblemind_scores(
+        title, expected):
+    record = CharacterRecord.blank()
+    record.set_raw("abilities_second", bytes((0, 16, 14, 0, 0, 0, 0)))
+    scores = saveplan.feeblemind_scores(
+        record, _dos_feebleminded_neutral(), "dos",
+        _destination("c64", title))
+    assert scores == expected

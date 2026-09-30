@@ -12,6 +12,7 @@ without them.
 from __future__ import annotations
 
 import pathlib
+import shutil
 
 import pytest
 from support.dossave import _save_dir
@@ -28,6 +29,7 @@ from goldbox import (
     dos_port,
     effects,
     neutral,
+    spells,
 )
 from goldbox.layout import Confidence
 
@@ -1808,11 +1810,16 @@ _FEEBLE_NODE = bytes.fromhex("44 00 00 0A 00") + NULL
 
 
 def _c64_feebleminded(game, intelligence=14, wisdom=12, row=True):
+    """A C64 character as the C64 holds him: permanent scores `intelligence`
+    and `wisdom`, and with the row the scores its Feeblemind leaves in force."""
     payload = bytearray(0x1C00)
     if row:
         effects.write_effect(payload, 63, 68, 2, 0, 0x8A)
     char = _read(payload, 2, game)
-    for name, score in (("intelligence", intelligence), ("wisdom", wisdom)):
+    in_force = {"intelligence": intelligence, "wisdom": wisdom}
+    if row:
+        in_force.update(effects.c64_feeblemind_scores(game.key, in_force))
+    for name, score in in_force.items():
         char.set(name, score, "built here")
     char.set("abilities_second", {"intelligence": intelligence,
                                   "wisdom": wisdom}, "built here")
@@ -1852,6 +1859,48 @@ def test_a_feebleminded_c64_character_reaches_dos_and_the_amiga_at_int_and_wis_3
     assert _dos_pair(low, game, "intelligence") == (5, 3)
 
 
+def _c64_feeble_cleric(game, row=True):
+    """A level 5 cleric in the state the C64 leaves a cast in: WIS 17 permanent,
+    and in force 17 in Curse and 3 in Silver Blades."""
+    char = _c64_feebleminded(game, intelligence=14, wisdom=17, row=row)
+    char.set("levels", {"cleric": 5}, "built here")
+    char.set("spells_castable", {"cleric": (0, 0, 0, 0, 0)}, "built here")
+    return char
+
+
+@pytest.mark.parametrize("game", _FEEBLE_TITLES, ids=lambda g: g.key)
+def test_a_feebleminded_c64_cleric_gets_no_wisdom_bonus_spells_on_dos_or_the_amiga(
+        game):
+    """The cleric's slots are computed from the WIS 3 the file holds, so DOS's
+    load rebuild has nothing to take away and the Amiga, which does not
+    rebuild, keeps no slot he should not have."""
+    def slots(wisdom):
+        return spells.capacity_by_class({"cleric": 5}, wisdom,
+                                        game.key)["cleric"]
+
+    def dos_slots(rec):
+        field = dos_port.FIELDS_BY_NAME_FOR[game.key]["spells_castable_cleric"]
+        return tuple(rec[field.offset:field.offset + field.size])
+
+    def fit(run, depth):
+        return (tuple(run) + (0,) * depth)[:depth]
+
+    char = _c64_feeble_cleric(game)
+    rec, _itm, _spc, _rep = dos_codec.write(char)
+    depth = len(dos_slots(rec))
+    assert dos_slots(rec) == fit(slots(3), depth)
+    built, _rep = amiga_later.write_later(char)
+    back = amiga_later.to_neutral_later(built)
+    assert tuple(back.get("spells_castable")["cleric"])[:depth] == fit(
+        slots(3), depth)
+
+    # Control: with no row nothing lowered his WIS, so his bonus stays.
+    plain, _itm, _spc, _rep = dos_codec.write(
+        _c64_feeble_cleric(game, row=False))
+    assert dos_slots(plain) == fit(slots(17), depth)
+    assert slots(17) != slots(3)
+
+
 def _foreign_feebleminded(game, port="DOS", permanent=True, node=True):
     char = neutral.NeutralCharacter(port, source="built here", game=game)
     char.set("name", "FEEBLE", "built here")
@@ -1870,30 +1919,40 @@ def _write_c64(char, payload):
                            clock_minutes=0)
 
 
+_C64_FEEBLE_IN_FORCE = {"curse-of-the-azure-bonds": (3, 12),
+                        "secret-of-the-silver-blades": (3, 3)}
+
+
 @pytest.mark.parametrize("game", _FEEBLE_TITLES, ids=lambda g: g.key)
-def test_the_permanent_scores_are_written_only_once_the_row_has_landed(game):
-    # Without a 68 row the C64 has nothing lowering the scores, so the in-force
-    # 3 stays rather than the character arriving at full INT and WIS with no
-    # Feeblemind anywhere.
+def test_where_the_68_lands_decides_the_c64_scores(game):
+    # A 68 written nowhere leaves nothing on the C64 to restore a lowered
+    # score, so the character arrives with his permanent scores and no
+    # Feeblemind, as the loss line says.
     full = bytearray(0x1C00)
     while (slot := effects.free_slot(full)) is not None:
         effects.write_effect(full, slot, 1, 2, 5, 1)
     rec, rep = _write_c64(_foreign_feebleminded(game), full)
-    assert (rec.get("intelligence"), rec.get("wisdom")) == (3, 3)
+    assert (rec.get("intelligence"), rec.get("wisdom")) == (14, 12)
     assert any("no free slot" in line for line in rep.losses)
     assert 68 not in [row[0] for row in _rows(full).values()]
+    assert 68 not in bytes(rec.get_raw("item_effects"))
 
+    # A trait slot is a 68 on the character, which Silver Blades' cure
+    # restores from, so the title's Feeblemind scores apply.
     rec, rep = _write_c64(_foreign_feebleminded(game), None)
-    assert (rec.get("intelligence"), rec.get("wisdom")) == (3, 3)
+    assert ((rec.get("intelligence"), rec.get("wisdom"))
+            == _C64_FEEBLE_IN_FORCE[game.key])
     assert 68 in bytes(rec.get_raw("item_effects"))
+    assert any("trait slot" in line for line in rep.losses)
 
 
 @pytest.mark.parametrize("game", _FEEBLE_TITLES, ids=lambda g: g.key)
-def test_an_amiga_feebleminded_character_reaches_the_c64_at_his_own_scores(
+def test_an_amiga_feebleminded_character_reaches_the_c64_at_the_c64s_feeblemind_scores(
         game):
     payload = bytearray(0x1C00)
     rec, _rep = _write_c64(_foreign_feebleminded(game, port="Amiga"), payload)
-    assert (rec.get("intelligence"), rec.get("wisdom")) == (14, 12)
+    assert ((rec.get("intelligence"), rec.get("wisdom"))
+            == _C64_FEEBLE_IN_FORCE[game.key])
     assert _rows(payload).pop(63) == (68, 2, 0x00, 0x8A)
 
 
@@ -1920,7 +1979,7 @@ def test_pool_of_radiance_has_no_feeblemind_to_convert():
 
 @pytest.mark.parametrize("game", _FEEBLE_TITLES, ids=lambda g: g.key)
 @pytest.mark.parametrize("in_force", [3, 7])
-def test_a_feebleminded_dos_character_reaches_the_c64_at_his_own_scores(
+def test_a_feebleminded_dos_character_reaches_the_c64_at_the_c64s_feeblemind_scores(
         game, in_force):
     def dos_character(row):
         char = neutral.NeutralCharacter("DOS", source="built here", game=game)
@@ -1936,8 +1995,8 @@ def test_a_feebleminded_dos_character_reaches_the_c64_at_his_own_scores(
     payload = bytearray(0x1C00)
     rec, _rep = c64_codec.write(dos_character(True), payload=payload,
                                 party_slot=2, clock_minutes=0)
-    assert rec.get("intelligence") == 14
-    assert rec.get("wisdom") == 12
+    assert ((rec.get("intelligence"), rec.get("wisdom"))
+            == _C64_FEEBLE_IN_FORCE[game.key])
     assert _rows(payload).pop(63) == (68, 2, 0x00, 0x8A)
     assert bytes(rec.get_raw("item_effects")) == bytes(10)
 
@@ -3319,3 +3378,202 @@ def test_a_hand_built_c64_hold_row_reads_as_the_dos_hold_node():
                          payload=bytes(payload), party_slot=2,
                          clock_minutes=0, source="x")
     assert [bytes(g)[:5] for g in out.get("granted_effects")] == [_HOLD]
+
+
+# --- Save As keeps a feebleminded character feebleminded ---------------------
+
+#: title, C64 game, DOS archive stem, and the first character's name.
+_FEEBLE_SAVE_AS = [
+    pytest.param("curse", c64_port.CURSE_OF_THE_AZURE_BONDS, "CURSE",
+                 "MATHEW", id="curse"),
+    pytest.param("ssb", c64_port.SECRET_OF_THE_SILVER_BLADES, "SECRET",
+                 "MORGAINE", id="ssb"),
+]
+
+
+def _feeble_c64_party(tmp_path, title):
+    """The title's feebleminded C64 party as an open party, and the feebleminded
+    character's permanent INT and WIS.
+
+    Curse's is the game's own save of a real Feeblemind cast (MATHEW at INT 3,
+    WIS 16 in force). Silver Blades' is the engine-resave party with the cast's
+    row and INT and WIS 3 staged onto slot 0, since no cast of it was saved.
+    """
+    from support.doslatertitles import _c64_party
+
+    from editor import roster
+    from tests.c64.test_c64nametable import specimen_disk
+    from tools.c64 import acceptance as c64acceptance
+    from tools.dos import acceptance as dosacceptance
+
+    disk = tmp_path / f"{title}-feeble.d64"
+    if title == "curse":
+        shutil.copyfile(specimen_disk("curse-661-feeblemind-cast-resave"), disk)
+    else:
+        base = dosacceptance.c64_base(title)
+        if base is None or not base.is_file():
+            pytest.skip(f"needs the {title} C64 specimen")
+        c64acceptance.stage(base, disk, c64_port.by_key(_FEEBLE_KEYS[title]).key,
+                            rows=[(0x3D, 68, 0, 0, 0x8A)],
+                            record_bytes=[(0, 0x15, 3), (0, 0x16, 3)])
+    _game, chars = _c64_party(disk)
+    (mine,) = [c for c in chars if c.get("name") == _FEEBLE_NAMES[title]]
+    # The permanent scores are `abilities_second`: the scores in force are 3
+    # for a real cast.
+    perm = {n: mine.get("abilities_second")[n]
+            for n in effects.FEEBLEMIND_SCORES}
+    return roster.Party(str(disk)), perm
+
+
+_FEEBLE_KEYS = {"curse": "curse-of-the-azure-bonds",
+                "ssb": "secret-of-the-silver-blades"}
+_FEEBLE_NAMES = {"curse": "MATHEW", "ssb": "MORGAINE"}
+#: The node and the row magnitude each title's source holds: Curse's is the
+#: game's own cast, at level 1, and Silver Blades' is staged at level 10.
+_FEEBLE_SOURCE_NODES = {"curse": "44 00 00 01 00", "ssb": "44 00 00 0A 00"}
+_FEEBLE_MAGNITUDES = {"curse": 0x81, "ssb": 0x8A}
+
+
+def _feeble_dos_plan(tmp_path, title, game, stem):
+    from editor import convert, saveplan
+    from tools.convert import convertdrops
+    from tools.dos import dosbox
+
+    party, perm = _feeble_c64_party(tmp_path, title)
+    source = party.source or convert.Source.detect(party.path)
+    try:
+        game_dir = dosbox.find_game(stem)
+    except FileNotFoundError:
+        pytest.skip(f"needs the DOS {game.title} archives ($FR_ARCHIVES)")
+    try:
+        assets = saveplan.resolve_assets(source, "dos",
+                                         game_files=convertdrops.game_files,
+                                         dos_folder=game_dir)
+    except saveplan.MissingAssets:
+        pytest.skip(f"needs {game.key}'s own C64 disks")
+    plan = saveplan.prepare_save_as(party, "dos", tmp_path / "dos", assets)
+    return plan, perm
+
+
+def _dos_character(files, name):
+    """The named character out of a written DOS save's files, neutral."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as scratch:
+        folder = pathlib.Path(scratch)
+        for fname, data in files.items():
+            (folder / fname).write_bytes(data)
+        for path in sorted(folder.glob("CHRDATA*.SAV")):
+            char = dos_codec.to_neutral(dos_codec.read_character(path))
+            if char.get("name") == name:
+                return char
+    raise AssertionError(f"{name} is not in the written files")
+
+
+@pytest.mark.parametrize("destination", ["dos", "amiga"])
+@pytest.mark.parametrize("title, game, stem, name", _FEEBLE_SAVE_AS)
+def test_save_as_dos_keeps_a_feebleminded_c64_character_feebleminded(
+        tmp_path, destination, title, game, stem, name):
+    from editor import saveplan
+
+    if destination == "dos":
+        plan, perm = _feeble_dos_plan(tmp_path, title, game, stem)
+        assert isinstance(plan, saveplan.SavePlan)
+        assert saveplan.losses(plan.report) == []
+        char = _dos_character(plan.files, name)
+    else:
+        from tools.convert import convertdrops
+
+        party, perm = _feeble_c64_party(tmp_path, title)
+        amiga = convertdrops.amiga_game_disks(tmp_path).get(game.key)
+        if amiga is None:
+            pytest.skip(f"needs {game.key}'s own Amiga game disk")
+        disk_one = convertdrops.amiga_disks_one(tmp_path).get(game.key)
+        if disk_one is None:
+            pytest.skip(f"needs {game.key}'s own Amiga disk 1")
+        from editor import convert
+        source = party.source or convert.Source.detect(party.path)
+        try:
+            assets = saveplan.resolve_assets(
+                source, "amiga", game_files=convertdrops.game_files,
+                amiga_disk=amiga, amiga_disk_one=disk_one)
+        except saveplan.MissingAssets:
+            pytest.skip(f"needs {game.key}'s own C64 disks")
+        plan = saveplan.prepare_save_as(party, "amiga", tmp_path / "out.adf",
+                                        assets)
+        assert saveplan.losses(plan.report) == []
+        (image,) = plan.files
+        char = amiga_later.to_neutral_later(
+            _amiga_bless_character(plan.files[image], title, game, name))
+    assert (char.get("intelligence"), char.get("wisdom")) == (3, 3)
+    second = char.get("abilities_second")
+    assert {n: second[n] for n in effects.FEEBLEMIND_SCORES} == perm
+    assert bytes.fromhex(_FEEBLE_SOURCE_NODES[title]) in [
+        bytes(g)[:5] for g in char.get("granted_effects")]
+    # His cleric slots come from the WIS 3 the file holds, so DOS's load
+    # rebuild has nothing to take away.
+    want = spells.capacity_by_class(dict(char.get("levels")), 3,
+                                    game.key).get("cleric", ())
+    got = tuple(char.get("spells_castable").get("cleric", ()))
+    assert got == (tuple(want) + (0,) * len(got))[:len(got)]
+
+
+def _feeble_c64_plan(tmp_path, title, game, stem):
+    """Save As C64 of the DOS folder the first plan wrote."""
+    from editor import roster, saveplan
+
+    plan, perm = _feeble_dos_plan(tmp_path, title, game, stem)
+    folder = tmp_path / "dos"
+    folder.mkdir()
+    for fname, data in plan.files.items():
+        (folder / fname).write_bytes(data)
+    back = roster.Party(str(folder))
+    from editor import convert
+    from tools.convert import convertdrops
+    source = back.source or convert.Source.detect(back.path)
+    assets = saveplan.resolve_assets(source, "c64",
+                                     game_files=convertdrops.game_files)
+    return back, assets, perm
+
+
+@pytest.mark.parametrize("title, game, stem, name", _FEEBLE_SAVE_AS)
+def test_save_as_c64_keeps_a_feebleminded_dos_character_feebleminded(
+        tmp_path, title, game, stem, name):
+    from support.doslatertitles import _c64_party
+
+    from editor import roster, saveplan
+
+    try:
+        back, assets, perm = _feeble_c64_plan(tmp_path, title, game, stem)
+    except saveplan.MissingAssets:
+        pytest.skip(f"needs {game.key}'s own C64 disks")
+    plan = saveplan.prepare_save_as(back, "c64", tmp_path / "out.d64", assets)
+    assert saveplan.losses(plan.report) == []
+    (image,) = plan.files
+    written = tmp_path / "read-back.d64"
+    written.write_bytes(plan.files[image])
+    _game, chars = _c64_party(written)
+    (char,) = [c for c in chars if c.get("name") == name]
+    assert ({n: char.get(n) for n in effects.FEEBLEMIND_SCORES}
+            == effects.c64_feeblemind_scores(game.key, perm))
+    rows = effects.active_effects(roster.Party(str(written)).save0.to_bytes())
+    mine = [(e.id, e.duration, e.magnitude) for e in rows if e.id == 68]
+    assert mine == [(68, 0, _FEEBLE_MAGNITUDES[title])]
+
+
+@pytest.mark.parametrize("title, game, stem, name", _FEEBLE_SAVE_AS)
+def test_save_as_c64_refuses_a_feeblemind_row_with_no_free_slot(
+        tmp_path, monkeypatch, title, game, stem, name):
+    """A row that cannot land leaves the character with his permanent scores
+    and no Feeblemind, so the 3s his source held are reported lost."""
+    from editor import saveplan
+
+    try:
+        back, assets, perm = _feeble_c64_plan(tmp_path, title, game, stem)
+    except saveplan.MissingAssets:
+        pytest.skip(f"needs {game.key}'s own C64 disks")
+    monkeypatch.setattr(effects, "free_slot", lambda payload: None)
+    with pytest.raises(saveplan.DroppedFields) as err:
+        saveplan.prepare_save_as(back, "c64", tmp_path / "out.d64", assets)
+    assert "effect 68" in str(err.value)
+    assert f"intelligence: 3 arrived as {perm['intelligence']}" in str(err.value)

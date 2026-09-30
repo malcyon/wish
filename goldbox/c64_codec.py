@@ -970,9 +970,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     running = use("running_effects")
     granted = use("granted_effects")
     former = use("former_levels")
-    # DOS and the Amiga hold Feeblemind's 3 in the score in force; the C64's
-    # Feeblemind leaves the score alone, so the permanent one is written, but
-    # only once the 68 row that stands for the spell has landed (below).
+    # DOS and the Amiga hold Feeblemind's 3 in both scores in force; the C64
+    # lowers the ones in `effects.C64_FEEBLEMIND_LOWERS` and keeps the other
+    # permanent. That applies once the 68 has landed as a row or a trait slot;
+    # a 68 written nowhere leaves the permanent scores (below).
     feeble = port != "C64" and effects.feebleminded(
         deltas.key, granted.value if granted else ())
     permanent_scores = char.get("abilities_second") or {}
@@ -991,8 +992,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             continue
         dst = _field(c64_name)
         value, extra = v.value, ""
-        if feeble and field in effects.FEEBLEMIND_SCORES \
-                and field in permanent_scores:
+        if feeble and field in effects.FEEBLEMIND_SCORES:
             feeble_fields[field] = (v, c64_name, dst)
         if field == "movement_current" and deltas.key == "pool-of-radiance":
             extra = ", copied rather than recomputed: no item-type table was given"
@@ -2132,12 +2132,26 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         for i, e in zip(free, granted_ids):
             slots[i] = e
         rec.set_raw("item_effects", bytes(slots))
-        if feeble_row_written:
+        if feeble_fields:
+            landed = feeble_row_written or effects.FEEBLEMIND_ID in slots
+            if landed:
+                target = effects.c64_feeblemind_scores(
+                    deltas.key, permanent_scores)
+                why = (", the C64's Feeblemind score for this title: it "
+                       "lowers only some of the scores in force")
+            else:
+                # Every effect row was full, so he arrives without the spell
+                # and nothing on the C64 would restore a written 3.
+                target = {n: permanent_scores[n]
+                          for n in effects.FEEBLEMIND_SCORES
+                          if n in permanent_scores}
+                why = (", the permanent score: no 68 was written, so nothing "
+                       "on the C64 would restore a lowered one")
             for field, (v, c64_name, dst) in feeble_fields.items():
-                rec.set(c64_name, permanent_scores[field])
-                rep.note(dst.offset, dst.size, v.line(
-                    c64_name, ", the permanent score: the C64's Feeblemind "
-                    "leaves the score in force alone"))
+                if field not in target:
+                    continue
+                rec.set(c64_name, target[field])
+                rep.note(dst.offset, dst.size, v.line(c64_name, why))
         if effects.POISON_ID in slots:
             for quiet_slot in quiet_slots:
                 payload[effects.EFFECT_MAGNITUDE_OFFSET + quiet_slot] = 0xFF

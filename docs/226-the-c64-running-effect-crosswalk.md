@@ -1442,7 +1442,7 @@ be a monster. Each id is listed with why its sample row has no rule.
 | Pool of Radiance | 35, 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
 | Curse of the Azure Bonds | 13 | The C64 id is the engulf countdown, whose magnitude is a combatant index. |
 | Curse of the Azure Bonds | 55, 128 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
-| Curse of the Azure Bonds | 68 | Feeblemind's duration-0 row converts as a granted record, with INT and WIS in force at 3; a timed row has no rule, because no C64 cast writes one. |
+| Curse of the Azure Bonds | 68 | Feeblemind's duration-0 row converts as a granted record; the C64 holds INT at 3 and WIS at its permanent score, and DOS and the Amiga hold both at 3. A timed row has no rule, because no C64 cast writes one. |
 | Curse of the Azure Bonds | 33 | A duration-0 row converts as a granted record; a running row has no rule. |
 | Curse of the Azure Bonds | 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
 | Curse of the Azure Bonds | 58, 144 | A literal `COMBAT` call writes it; what triggers the call is not read. |
@@ -1450,20 +1450,28 @@ be a monster. Each id is listed with why its sample row has no rule.
 | Secret of the Silver Blades | 33, 51 | A duration-0 row converts as a granted record; a running row has no rule. |
 | Secret of the Silver Blades | 49 | Prayer converts only as a party-wide row; an owned row has no rule. |
 | Secret of the Silver Blades | 55 | A table entry whose handler is not followed to a row write, and no DOS writer is read for it. |
-| Secret of the Silver Blades | 68 | Feeblemind's duration-0 row converts as a granted record, with INT and WIS in force at 3; a timed row has no rule, because no C64 cast writes one. |
+| Secret of the Silver Blades | 68 | Feeblemind's duration-0 row converts as a granted record; the C64, DOS and the Amiga hold INT and WIS at 3. A timed row has no rule, because no C64 cast writes one. |
 | Secret of the Silver Blades | 107 | Confusion's outcome node, written by a literal `COMBAT` call; its record changes are not converted. |
 
 **Feeblemind (68), Curse and Silver Blades.** The C64 writes `level | $80` at
-duration 0 (`COMBAT $1D61`, Silver Blades `$2227`) and leaves the ability
-scores alone. DOS writes flag 0 (`0x2F0B7`) and keeps the effect in INT and WIS
-in force. The recompute tests an override that a 68 node sets to `0xFF`, not
-the score, so it always lands on 3 (Curse `0x36E5C`, Silver Blades
+duration 0 (`COMBAT $1D61`, Silver Blades `$2227`) and lowers the scores in
+force by title: Silver Blades stores 3 into INT and WIS (`COMBAT
+$2262`-`$2267`), and Curse lowers INT only (`COMBAT2 $F2A2`, `$F825`). A live
+Curse cast left INT 3 and WIS at its permanent score through the fight, a camp
+save, a reload and a rest. DOS writes flag 0 (`0x2F0B7`) and keeps the effect
+in INT and WIS in force. The recompute tests an override that a 68 node sets to
+`0xFF`, not the score, so it always lands on 3 (Curse `0x36E5C`, Silver Blades
 `0x379EC`-`0x379FC`, and the Amiga titles' equivalents); Silver Blades' cast
 stores 3 and Curse's stores 7, which the next recompute replaces. A C64 source
-therefore writes 3 into the DOS and Amiga in-force bytes, keeping the C64
-score as the permanent one, and a DOS or Amiga source writes the permanent
-score into the C64's single byte. `effects.NEVER_EXPIRING_C64_BITS` holds the
-bit 7 each C64 cast writes, apart from the DOS flag.
+therefore writes 3 into both DOS and Amiga in-force bytes, keeping the C64
+score as the permanent one, and computes the cleric spell array from that 3,
+so a feebleminded Curse cleric gets no wisdom bonus slots that DOS's load
+rebuild would take away. A DOS or Amiga source writes
+`effects.c64_feeblemind_scores` into the C64 record: 3 for each score the
+title lowers and the permanent score for the other. When the 68 lands nowhere,
+because every effect row is full, the permanent scores are written and the
+character arrives without the spell. `effects.NEVER_EXPIRING_C64_BITS` holds
+the bit 7 each C64 cast writes, apart from the DOS flag.
 
 | Refusal | Sweep evidence and limit |
 |---|---|
