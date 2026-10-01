@@ -906,6 +906,8 @@ class Session:
         # a Curse or Silver Blades party in a dungeon, because it reads Pool
         # of Radiance's indoors flag)`.
         self.walk_refused: str | None = None
+        self.walk_retries = 0
+        self._restored_unattached = False
         # The process group `launch()` started.  Teardown kills this and nothing
         # else -- never a process by name.
         self.pgid: int | None = None
@@ -1113,6 +1115,7 @@ class Session:
             with contextlib.suppress(TimeoutError, socket.timeout):
                 self.text.recv(65536)  # drained; it is only prompt echo
         self.attached = path
+        self._restored_unattached = False
         self.log(f"  attached {os.path.basename(path)}")
         # **Out here, and not in the block above.**  The machine is stopped
         # for as long as a monitor connection is open, so the half second
@@ -1135,6 +1138,14 @@ class Session:
     #: same leg and meets the same encounter.
     RETRY_SETTLE = 0.7
 
+    #: A snapshot's path goes on the wire behind a one-byte length.
+    SNAPSHOT_PATH_MAX = 255
+
+    #: Seconds the leg's end waits before its last look for an encounter: the
+    #: game draws a square's encounter menu long after the key that stepped
+    #: onto it, and the per-move looks come too soon to see it.
+    LEG_END_SETTLE = 1.5
+
     def snapshot_path(self, name: str) -> str:
         """The file `snapshot(name)` writes, under this run's own directory.
 
@@ -1143,7 +1154,16 @@ class Session:
         """
         if not self.SNAPSHOT_NAME.match(name):
             raise ValueError(f"a snapshot name is letters, digits, - and _: {name!r}")
-        return os.path.join(self.here, "snapshots", f"{name}.vsf")
+        path = os.path.join(self.here, "snapshots", f"{name}.vsf")
+        if len(path.encode()) > self.SNAPSHOT_PATH_MAX:
+            raise ValueError(
+                f"the snapshot path is longer than the monitor's "
+                f"{self.SNAPSHOT_PATH_MAX} bytes: {path}")
+        return path
+
+    def _attached_record(self, name: str) -> str:
+        """The sidecar that remembers which disk was in the drive."""
+        return self.snapshot_path(name) + ".attached"
 
     def snapshot(self, name: str) -> str:
         """Save the whole machine -- memory, CPU, chips **and the 1541 with its
@@ -1154,7 +1174,7 @@ class Session:
         VICE completes after the restore (measured on Curse: a load snapshotted
         a second in finished with the party on screen).  The disk image goes in
         as a copy; `restore` sees to it that the drive's host file is the one
-        that was in it.
+        that was in it, and records which in a file beside the snapshot.
 
         The machine runs on after the file is written.
         """
@@ -1164,9 +1184,16 @@ class Session:
         # save_roms 0, save_disks 1, then the name.
         with self.mon(self.SNAPSHOT_TIMEOUT) as m:
             m.command(CMD_DUMP, struct.pack("<BBB", 0, 1, len(wire)) + wire)
-        self._snapshot_attached = {**self._snapshot_attached, name: self.attached}
+        with open(self._attached_record(name), "w") as f:
+            f.write(str(self.attached))
         self.log(f"  snapshot {name}")
         return path
+
+    def discard_snapshot(self, name: str) -> None:
+        """Delete a snapshot and its record of the attached disk."""
+        for path in (self.snapshot_path(name), self._attached_record(name)):
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(path)
 
     def restore(self, name: str) -> None:
         """Put the machine back as `snapshot(name)` left it, drive included.
@@ -1174,6 +1201,12 @@ class Session:
         Raises `FileNotFoundError` for a name never saved and `MonitorError`
         if VICE refuses the file.  The machine runs on from the snapshot's
         instant when this returns.
+
+        **The disk recorded at the snapshot is always attached again**, so the
+        drive and its host file agree.  That resets the drive; a load in
+        flight still finishes (measured).  The drive holds the snapshot's copy
+        of the disk all the same, so `save_game` raises until a disk is
+        attached on purpose.
         """
         path = self.snapshot_path(name)
         if not os.path.exists(path):
@@ -1181,13 +1214,17 @@ class Session:
         wire = path.encode()
         with self.mon(self.SNAPSHOT_TIMEOUT) as m:
             m.command(CMD_UNDUMP, struct.pack("<B", len(wire)) + wire)
-        # VICE puts back the drive's contents from the snapshot but leaves its
-        # host file as it was at restore time, so after a swap the drive would
-        # hold one disk and write to another's file.  Attaching the recorded
-        # image resets the drive; a load in flight still finishes (measured).
-        was = self._snapshot_attached.get(name)
-        if was is not None and os.path.abspath(was) != os.path.abspath(self.attached):
+        try:
+            with open(self._attached_record(name)) as f:
+                was = f.read().strip()
+        except OSError:
+            was = ""
+        if was:
             self.attach(was)
+        else:
+            self.log(f"  restored {name}, but which disk it had is unknown; "
+                     f"the drive's host file may not match")
+        self._restored_unattached = True
         self.log(f"  restored {name}")
 
     def walk_with_retry(self, moves: str, retries: int = 3,
@@ -1195,23 +1232,31 @@ class Session:
         """Walk `moves` from a snapshot; if an encounter starts, roll back and
         walk them again, up to `retries` more times.
 
-        True when no encounter began, with the party where the leg left it.
-        False when the retries ran out, **with the machine restored to the
-        start of the leg**, so the caller is never left standing in a fight it
-        asked not to have; `walk_refused` and `walk_retries` say what happened.
+        True when no encounter began, with the party where the leg left it and
+        the snapshot deleted.  False when the retries ran out, **with the
+        machine restored to the start of the leg**, so the caller is never left
+        standing in a fight it asked not to have; `walk_refused` and
+        `walk_retries` say what happened.  False at once, with nothing
+        snapshotted, when the game is already in combat.
         A move a wall stops is not an encounter and is not retried: as in
         `walk`, the leg goes on to its next move.
 
         An encounter is `walk_one` seeing the live square move under a status
         line that does not (`walk_encounter_started`), stopping at an
         encounter menu or other screen it does not answer, or the game's mode
-        byte reading COMBAT afterwards.
+        byte reading COMBAT afterwards -- after each move, and once more after
+        the last.
         """
         self.walk_retries = 0
+        if self.in_combat():
+            self.walk_refused = ("the game is already in combat, so there is "
+                                 "no encounter-free state to snapshot")
+            return False
         self.snapshot(name)
         for attempt in range(retries + 1):
             met = self._walk_leg(moves, hold, gap)
             if met is None:
+                self.discard_snapshot(name)
                 return True
             self.log(f"  walk_with_retry: {met} on attempt {attempt + 1} of "
                      f"{retries + 1}; restoring")
@@ -1250,9 +1295,14 @@ class Session:
                 s = self.screen()
                 if s is not None and ENCOUNTER_FIGHT in s.row(24):
                     return f"{ch} met an encounter menu"
+        time.sleep(self.LEG_END_SETTLE)
+        if self.in_combat():
+            return "the game is in combat at the end of the leg"
+        s = self.screen()
+        if s is not None and (ENCOUNTER_FIGHT in s.row(24)
+                              or self._encounter_menu(s)):
+            return "an encounter menu is up at the end of the leg"
         return None
-
-    _snapshot_attached: dict[str, str] = {}
 
     # -- screen -----------------------------------------------------------
 
@@ -3094,6 +3144,12 @@ class Session:
         return False
 
     def save_game(self, to: str | None = None) -> bool:
+        if self._restored_unattached:
+            raise RuntimeError(
+                "a snapshot was restored and no disk has been attached since; "
+                "the drive holds the snapshot's copy of its disk, so a save "
+                "now is not written to the slot's file.  Call attach() with "
+                "the disk to save to first")
         if to:
             self.save_disk = os.path.abspath(to)
         s = self.screen()

@@ -32,6 +32,14 @@ class FakeMonitor:
         return b""
 
 
+class TextStub:
+    def sendall(self, data):
+        pass
+
+    def recv(self, n):
+        return b""
+
+
 class Fake(S.Session):
     """A `Session` whose monitor is the fake and whose walk is scripted:
     `legs` is one entry per attempt, the move at which an encounter starts
@@ -39,7 +47,11 @@ class Fake(S.Session):
 
     def __init__(self, tmp_path, legs=()):
         self.here = str(tmp_path)
-        self.attached = "/slot/SIDE1.D64"
+        self.attached = str(tmp_path / "SIDE1.D64")
+        self.text = TextStub()
+        self._restored_unattached = False
+        self.walk_retries = 0
+        self.sleeps = []
         self.wire = []
         self.legs = list(legs)
         self.restores = 0
@@ -51,9 +63,11 @@ class Fake(S.Session):
         self.lines = []
         self.attaches = []
 
+    LEG_END_SETTLE = 0.123
+
     def attach(self, path, unit=8, settle=None):
         self.attaches.append(path)
-        self.attached = path
+        super().attach(path, unit, settle)
 
     def mon(self, timeout=5.0):
         return FakeMonitor(self.wire)
@@ -81,9 +95,13 @@ class Fake(S.Session):
         return self.menu
 
 
+SLEPT = []
+
+
 @pytest.fixture(autouse=True)
 def no_sleep(monkeypatch):
-    monkeypatch.setattr(S.time, "sleep", lambda s: None)
+    SLEPT.clear()
+    monkeypatch.setattr(S.time, "sleep", SLEPT.append)
 
 
 def test_snapshot_dumps_machine_and_drive_under_the_run_directory(tmp_path):
@@ -106,20 +124,13 @@ def test_a_snapshot_name_is_a_word_and_not_a_path(tmp_path, name):
 def test_restore_undumps_the_file_and_puts_the_attached_disk_back(tmp_path):
     s = Fake(tmp_path)
     s.snapshot("a")
-    s.attached = "/slot/SIDE3.D64"
+    s.attached = str(tmp_path / "SIDE3.D64")
     s.restore("a")
     cmd, body = s.wire[-1]
     assert cmd == S.CMD_UNDUMP
     assert body[1:1 + body[0]].decode() == s.snapshot_path("a")
-    assert s.attaches == ["/slot/SIDE1.D64"]
-    assert s.attached == "/slot/SIDE1.D64"
-
-
-def test_restore_without_a_swap_leaves_the_drive_alone(tmp_path):
-    s = Fake(tmp_path)
-    s.snapshot("a")
-    s.restore("a")
-    assert s.attaches == []
+    assert s.attaches == [str(tmp_path / "SIDE1.D64")]
+    assert s.attached == str(tmp_path / "SIDE1.D64")
 
 
 def test_restore_of_a_name_never_saved_says_so_and_sends_nothing(tmp_path):
@@ -146,7 +157,7 @@ def test_an_encounter_restores_and_walks_the_leg_again(tmp_path):
 
 def test_combat_after_a_move_is_an_encounter_too(tmp_path):
     s = Fake(tmp_path)
-    flips = iter([True, False, False])
+    flips = iter([False, True, False, False, False])
     s.in_combat = lambda: next(flips)
     assert s.walk_with_retry("i") is True
     assert s.restores == 1
@@ -199,3 +210,118 @@ def test_a_stale_stop_screen_from_an_earlier_move_is_not_this_moves(tmp_path):
     s.walk_stop_screen = ["old"] * 25
     assert s.walk_with_retry("i") is True
     assert s.restores == 0
+
+
+def retry_pauses():
+    return [x for x in SLEPT if x not in (Fake.LEG_END_SETTLE, 0.5, 3.0)]
+
+
+def test_the_pause_before_each_retry_grows_and_the_last_failure_has_none(tmp_path):
+    s = Fake(tmp_path, legs=["I"] * 3)
+    s.walk_with_retry("i", retries=2)
+    assert retry_pauses() == [S.Session.RETRY_SETTLE, 2 * S.Session.RETRY_SETTLE]
+
+
+def test_a_deliberate_swap_before_a_restore_is_reverted_to_the_snapshots_disk(tmp_path):
+    s = Fake(tmp_path)
+    s.snapshot("a")
+    s.attach(str(tmp_path / "SIDE3.D64"))
+    s.restore("a")
+    assert s.attaches[-1] == str(tmp_path / "SIDE1.D64")
+    assert s.attached == str(tmp_path / "SIDE1.D64")
+
+
+def test_restore_always_attaches_the_recorded_disk_even_when_it_looks_unchanged(tmp_path):
+    s = Fake(tmp_path)
+    s.snapshot("a")
+    s.restore("a")
+    assert s.attaches == [str(tmp_path / "SIDE1.D64")]
+
+
+def test_save_game_is_refused_after_a_restore_until_a_disk_is_attached(tmp_path):
+    s = Fake(tmp_path)
+    s.snapshot("a")
+    s.restore("a")
+    with pytest.raises(RuntimeError, match="attach"):
+        s.save_game()
+    s.attach(str(tmp_path / "SIDE0.D64"))
+    s.screen = lambda: None
+    s.select_bar = lambda *a, **k: False
+    assert s.save_game() is False
+
+
+def test_the_attached_disk_is_recorded_beside_the_snapshot_and_used(tmp_path):
+    s = Fake(tmp_path)
+    s.snapshot("a")
+    assert open(s.snapshot_path("a") + ".attached").read() == s.attached
+    s.attached = str(tmp_path / "SIDE2.D64")
+    s.restore("a")
+    assert s.attaches == [str(tmp_path / "SIDE1.D64")]
+
+
+def test_a_snapshot_with_no_record_is_restored_with_a_log_line_and_no_attach(tmp_path):
+    s = Fake(tmp_path)
+    s.snapshot("a")
+    import os
+    os.remove(s.snapshot_path("a") + ".attached")
+    s.restore("a")
+    assert s.attaches == []
+    assert any("unknown" in line for line in s.lines)
+
+
+def test_an_encounter_that_shows_only_after_the_last_move_is_caught(tmp_path):
+    s = Fake(tmp_path)
+    calls = []
+
+    def late():
+        calls.append(1)
+        # Clear before the walk and after the move; combat at the leg's end.
+        return len(calls) == 3
+
+    s.in_combat = late
+    assert s.walk_with_retry("i") is True
+    assert s.restores == 1
+    assert Fake.LEG_END_SETTLE in SLEPT
+
+
+def test_a_late_encounter_menu_on_row_24_is_caught_at_the_end(tmp_path):
+    class Row24:
+        def row(self, r):
+            return "COMBAT WAIT FLEE ADVANCE" if r == 24 else ""
+
+    s = Fake(tmp_path)
+    shown = iter([Row24()])
+    s.screen = lambda: next(shown, None)
+    assert s.walk_with_retry("i") is True
+    assert s.restores == 1
+
+
+def test_a_party_already_in_combat_is_refused_before_any_snapshot(tmp_path):
+    s = Fake(tmp_path)
+    s.combat = True
+    assert s.walk_with_retry("i") is False
+    assert s.wire == [] and s.walked == []
+    assert "already in combat" in s.walk_refused
+
+
+def test_a_snapshot_path_too_long_for_the_monitor_is_refused(tmp_path):
+    s = Fake(tmp_path / ("d" * 260))
+    with pytest.raises(ValueError, match="longer"):
+        s.snapshot("a")
+    assert s.wire == []
+
+
+def test_a_clean_leg_deletes_its_snapshot_and_a_failed_one_keeps_it(tmp_path):
+    import os
+    s = Fake(tmp_path)
+    s.walk_with_retry("i")
+    assert not os.path.exists(s.snapshot_path("walk-retry"))
+    assert not os.path.exists(s.snapshot_path("walk-retry") + ".attached")
+    f = Fake(tmp_path, legs=["I"])
+    f.walk_with_retry("i", retries=0)
+    assert os.path.exists(f.snapshot_path("walk-retry"))
+
+
+def test_a_new_session_starts_with_no_retries_and_no_restore_pending():
+    s = S.Session("/slot/SIDE1.D64")
+    assert s.walk_retries == 0 and s._restored_unattached is False
