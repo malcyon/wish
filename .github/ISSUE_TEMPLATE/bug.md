@@ -16,7 +16,7 @@ The mechanism. Addresses and code paths belong here, not above.
 
 ## What would fix it
 
-Not a patch — what the fix must do.
+What the fix must do.
 
 ## Testing
 
