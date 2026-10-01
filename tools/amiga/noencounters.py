@@ -173,9 +173,12 @@ class EncounterSwitch:
                 for offset, value in row.changes:
                     changed[offset] = value
                 span = max(offset for offset, _ in row.changes) + 1
+                # Recorded first: a transport error mid-write leaves the
+                # address restorable.
+                self.patched[address] = (now, bytes(changed))
                 result = self._checked_write(address, now, bytes(changed[:span]))
-                if "error" not in result:
-                    self.patched[address] = (now, bytes(changed))
+                if "error" in result:
+                    del self.patched[address]
             else:
                 if not self.inside(address, len(row.new)):
                     if address not in self.refused:
@@ -227,6 +230,11 @@ class EncounterSwitch:
                 result = {"error": f"{type(exc).__name__}: {exc}"}
             done.append({"row": row.spec, "grade": row.grade, **result})
         return done
+
+    @property
+    def pending(self) -> bool:
+        """Whether a changed byte is still waiting to be put back."""
+        return bool(self.patched or self.held)
 
     def off(self) -> list[dict]:
         done = self.release()

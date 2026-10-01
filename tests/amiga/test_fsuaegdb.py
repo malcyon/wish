@@ -2945,3 +2945,35 @@ def test_no_encounters_with_a_bad_argument_is_an_error_row(scripted, tmp_path):
 def test_allow_save_is_no_longer_an_argument(scripted, tmp_path):
     events, _ = run_session(tmp_path, ["locate", "no_encounters on allow-save"])
     assert "no_encounters wants" in events["no_encounters"]["error"]
+
+
+def test_a_failed_off_keeps_the_switch_and_the_session_end_restores_it(
+        scripted, tmp_path, monkeypatch):
+    guest, _ = scripted
+    real = fsuaegdb.poke_row
+    restore = f"{GATE_AT:#x} {POD_GATE[:1].hex()}"
+    fails = []
+
+    def flaky(gdb, tgt, rest):
+        if rest == restore and not fails:
+            fails.append(rest)
+            raise TimeoutError("no reply")
+        return real(gdb, tgt, rest)
+    monkeypatch.setattr(fsuaegdb, "poke_row", flaky)
+    _, rows = run_session(tmp_path, ["locate", "no_encounters on",
+                                     "no_encounters off"])
+    offs = [r for r in rows if r.get("action") == "off"]
+    assert fails and "error" in offs[0]
+    assert gate_bytes(guest) == POD_GATE
+
+
+def test_a_write_that_dies_midway_leaves_the_original_restorable():
+    memory = Memory({0x3000: bytes([0x08, 1, 2, 3, 4, 5])})
+    switch = _with_digest(__import__("tools.amiga.noencounters",
+                                     fromlist=["x"]),
+                          bytes([0x08, 1, 2, 3, 4, 5]), memory)
+    switch.write = lambda address, data: (_ for _ in ()).throw(
+        TimeoutError("mid-write"))
+    with pytest.raises(TimeoutError):
+        switch.apply()
+    assert switch.pending

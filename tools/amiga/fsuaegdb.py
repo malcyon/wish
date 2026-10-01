@@ -839,6 +839,15 @@ def session(args) -> int:
                 if words == ["off"]:
                     switch = enc["switch"]
                     done = [] if switch is None else switch.off()
+                    # A switch that could not put every row back stays, off,
+                    # so the next `off` and the end of the session retry it.
+                    if switch is not None and switch.pending:
+                        error = ("no_encounters off did not restore every row; "
+                                 "the script is still changed")
+                        print(f"           {error}")
+                        note(event="no_encounters", action="off", at=now,
+                             rows=done, error=error)
+                        return
                     enc["switch"] = None
                     note(event="no_encounters", action="off", at=now, rows=done)
                     return
@@ -851,6 +860,9 @@ def session(args) -> int:
                     # A second `on` starts from the game's own bytes, so the
                     # originals it keeps are never ones this switch wrote.
                     done = enc["switch"].off()
+                    if enc["switch"].pending:
+                        raise ValueError("the earlier no_encounters did not "
+                                         "restore every row; `off` first")
                     enc["switch"] = None
                     note(event="no_encounters", action="off", at=now, rows=done)
                 key = next(k for k, v in amiga.MACHINES.items() if v is layout)
@@ -868,7 +880,8 @@ def session(args) -> int:
                      rows=done, held=[r.spec for r in enc["switch"].rows])
             except (ValueError, StopIteration, OSError, TimeoutError,
                     amiga.GuestError, amiga.FsuaeError) as exc:
-                enc["switch"] = None
+                if enc["switch"] is not None and not enc["switch"].pending:
+                    enc["switch"] = None
                 print(f"           {exc}")
                 note(event="no_encounters", at=now,
                      error=f"{type(exc).__name__}: {exc}")
