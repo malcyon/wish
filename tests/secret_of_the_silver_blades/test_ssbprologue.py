@@ -29,7 +29,14 @@ BARS = {
     "sheet": (["ITEMS", "EXIT"], "ITEMS"),
     "leave": (["GO BACK", "LEAVE TREASURE"], "GO BACK"),
     "items": (["READY", "DROP", "EXIT"], "READY"),
+    # A sheet whose bar has no ITEMS on it, and one that never closes.
+    "sheet_bare": (["VIEW:EXIT"], "VIEW:EXIT"),
+    "stuck_sheet": (["ITEMS", "EXIT"], "ITEMS"),
+    # A bar with EXIT on it that is none of the treasure screens.
+    "shop": (["BUY", "VIEW", "APPRAISE", "EXIT"], "BUY"),
 }
+SHEETS = ("sheet", "sheet_bare", "stuck_sheet")
+SHEET_BODY = "GUY DE VALOIS  HIT POINTS 95/95  ARMOR CLASS 6"
 
 
 class Screen:
@@ -58,11 +65,19 @@ class PrologueGame:
     """The scene's close; `where` is the screen the game is really on."""
 
     def __init__(self, start="page", pages_before=3, pages_after=3, lag=2,
-                 partial_share=0):
+                 partial_share=0, opening=True, then="share",
+                 walk_fails=False):
         self.pages_before, self.pages_after = pages_before, pages_after
         self.lag = lag
         #: How many reads of the share page catch it half drawn.
         self.partial_share = partial_share
+        #: What `enter_world` would have read off the save: the opening
+        #: scene is due. False is a party already in the world.
+        self.opening_scene = opening
+        #: The screen the first run of pages leads to.
+        self.then = then
+        self.walk_fails = walk_fails
+        self.bars: list[str] = []
         self.where, self.page, self.hl = start, 0, None
         if start in BARS:
             self.hl = BARS[start][1]
@@ -99,7 +114,8 @@ class PrologueGame:
         if w == "unknown":
             return Screen("SOMETHING", "NOBODY KNOWS THIS BAR")
         words, _ = BARS[w]
-        return Screen(f"{w} hl={self.hl}", " ".join(words))
+        body = SHEET_BODY if w in SHEETS else w
+        return Screen(f"{body} hl={self.hl}", " ".join(words))
 
     def screen(self):
         if self.stale is not None and self.shown_for < self.lag:
@@ -124,7 +140,7 @@ class PrologueGame:
             if self.page + 1 < self.pages_before:
                 self._go("page", page=self.page + 1)
             else:
-                self._go("share")
+                self._go(self.then, BARS.get(self.then, (None, None))[1])
         elif w == "share":
             self._go("treasure", "VIEW")
         elif w == "treasure":
@@ -134,6 +150,10 @@ class PrologueGame:
                 self._go("leave", "GO BACK")
             else:
                 self.took.append(hl)
+        elif w == "sheet_bare":
+            self._go("treasure", "VIEW")
+        elif w == "shop":
+            self.took.append(f"shop {hl}")
         elif w == "sheet":
             if hl == "ITEMS":
                 self._go("items", "READY")
@@ -158,7 +178,9 @@ class PrologueGame:
             self.choose()
 
     def select_bar(self, label, **kw):
-        if self.where not in BARS or label not in BARS[self.where][0]:
+        self.bars.append(label)
+        if self.walk_fails or self.where not in BARS \
+                or label not in " ".join(BARS[self.where][0]):
             return False
         self.hl = label
         self.kbd.key("Return")
@@ -225,16 +247,66 @@ def test_an_unknown_bar_gets_no_key(clock):
     assert game.kernal == [] and game.xtest == []
 
 
-@pytest.mark.parametrize("bar, kind", [
-    ("VIEW TAKE POOL SHARE EXIT", "treasure"),
-    ("GO BACK LEAVE TREASURE", "leave"),
-    ("ITEMS EXIT", "sheet"),
-    (WORLD, None),
-    ("READY TRADE DROP EXIT", None),
-    (PAGE, None),
+@pytest.mark.parametrize("body, bar, kind", [
+    ("", "VIEW TAKE POOL SHARE EXIT", "treasure"),
+    ("", "GO BACK LEAVE TREASURE", "leave"),
+    (SHEET_BODY, "ITEMS EXIT", "sheet"),
+    (SHEET_BODY, "EXIT", "sheet"),
+    (SHEET_BODY, "VIEW:ITEMS EXIT", "sheet"),
+    (SHEET_BODY, "VIEW:EXIT", "sheet"),
+    ("", "ITEMS EXIT", None),
+    ("", WORLD, None),
+    ("", "READY TRADE DROP EXIT", None),
+    ("", "BUY VIEW APPRAISE EXIT", None),
+    ("", PAGE, None),
 ])
-def test_closing_screen_reads_the_measured_bars(bar, kind):
-    assert SSB.closing_screen(Screen("", bar)) == kind
+def test_closing_screen_reads_the_measured_bars(body, bar, kind):
+    assert SSB.closing_screen(Screen(body, bar)) == kind
+
+
+def test_a_treasure_bar_outside_the_opening_scene_is_not_left(clock):
+    """A won fight's treasure: leaving it would discard what the party has
+    not taken, so nothing is pressed and the call says why."""
+    game = PrologueGame(start="treasure", opening=False)
+    out = SSB.clear_messages(game)
+    assert out.startswith("(stopped at 'VIEW TAKE POOL SHARE EXIT'")
+    assert "discard" in out
+    assert game.visited == ["treasure"]
+    assert game.bars == [] and game.kernal == [] and game.xtest == []
+
+
+def test_the_leave_question_outside_the_opening_scene_goes_back(clock):
+    game = PrologueGame(start="leave", opening=False)
+    out = SSB.clear_messages(game)
+    assert game.bars == ["GO BACK"]
+    assert game.visited == ["leave", "treasure"]
+    assert out.startswith("(stopped at 'VIEW TAKE POOL SHARE EXIT'")
+
+
+def test_the_opening_is_spent_once_its_treasure_is_left(clock):
+    game = PrologueGame(start="treasure", lag=1)
+    SSB.clear_messages(game)
+    assert game.opening_scene is False
+
+
+def test_a_sheet_with_no_items_on_its_bar_is_left_through_exit(clock):
+    game = PrologueGame(start="sheet_bare", lag=1)
+    assert "ENCAMP" in SSB.clear_messages(game)
+    assert game.visited[:3] == ["sheet_bare", "treasure", "leave"]
+
+
+def test_a_sheet_that_never_closes_stops_after_a_few_tries(clock):
+    game = PrologueGame(start="stuck_sheet", lag=0)
+    out = SSB.clear_messages(game)
+    assert game.bars == ["EXIT"] * SSB.MAX_CLOSING_TRIES
+    assert out.startswith("(stopped at 'ITEMS EXIT'")
+
+
+def test_a_bar_that_cannot_be_walked_stops_after_a_few_tries(clock):
+    game = PrologueGame(start="treasure", walk_fails=True)
+    out = SSB.clear_messages(game)
+    assert game.bars == ["EXIT"] * SSB.MAX_CLOSING_TRIES
+    assert out.startswith("(stopped at")
 
 
 class MenuGame(PrologueGame):
@@ -266,7 +338,8 @@ class MenuGame(PrologueGame):
     def mode(self):
         if self.where == "menu":
             return 0
-        return 5 if self.where in BARS or self.where == "share" else 1
+        return 5 if self.where in ("share", "treasure", "leave", *SHEETS) \
+            else 1
 
     def iec_stall_check(self):
         return False
@@ -275,16 +348,65 @@ class MenuGame(PrologueGame):
         return "captured"
 
 
-def test_enter_world_without_the_idle_exit_takes_the_scene_to_the_world(
-        clock, monkeypatch):
-    game = MenuGame(lag=2)
+def _menu_game(monkeypatch, due: bool, **kw) -> MenuGame:
+    game = MenuGame(**kw)
     monkeypatch.setattr(SSB, "overlay_mode",
                         lambda sess, addr, errors=None: game.mode())
     monkeypatch.setattr(SSB, "impossible_side", lambda *a, **k: None)
     monkeypatch.setattr(SSB, "idle_in_key_window", lambda sess, addr: None)
+    monkeypatch.setattr(SSB, "opening_scene_due", lambda sess: due,
+                        raising=False)
+    return game
+
+
+def test_enter_world_without_the_idle_exit_takes_the_scene_to_the_world(
+        clock, monkeypatch):
+    game = _menu_game(monkeypatch, True, lag=2)
     assert SSB.enter_world(game, object(), timeout=600.0, fix=False,
                            stop_at_idle=False) is True
     assert "sheet" not in game.visited and game.took == []
+    assert "after" in game.visited
+
+
+def test_enter_world_stops_at_treasure_when_no_opening_is_due(
+        clock, monkeypatch):
+    game = _menu_game(monkeypatch, False, lag=2)
+    assert SSB.enter_world(game, object(), timeout=600.0, fix=False,
+                           stop_at_idle=False) is False
+    assert "leave" not in game.visited and "after" not in game.visited
+    assert any("discard" in line for line in game.logged)
+
+
+def test_enter_world_presses_nothing_at_an_unrecognised_exit_bar(
+        clock, monkeypatch):
+    """A shop or camp bar in the world carries EXIT too; it is not one of
+    the screens `enter_world` knows, so no EXIT is chosen there."""
+    game = _menu_game(monkeypatch, True, then="shop")
+    SSB.enter_world(game, object(), timeout=120.0, fix=False,
+                    stop_at_idle=False)
+    assert game.where == "shop"
+    assert game.bars == [] and game.took == []
+
+
+def test_opening_scene_due_reads_the_save_in_the_drive(tmp_path):
+    from support.silverblades import _save_disk
+    shipped = _save_disk()          # SSI's own party, not yet set out
+    sess = type("S", (), {"save_disk": str(shipped)})()
+    assert SSB.opening_scene_due(sess) is True
+    sess.save_disk = str(tmp_path / "missing.D64")
+    assert SSB.opening_scene_due(sess) is False
+
+
+def test_opening_scene_due_is_false_for_a_party_already_out(tmp_path):
+    import gamedata
+    root = gamedata.specimen_root()
+    found = sorted((root / "por-c64").glob(
+        "WISH-SPEC-ssb-d-engine-resave-walked.[dD]64")) if root else []
+    if not found:
+        pytest.skip("needs the C64 specimen WISH-SPEC-ssb-d-engine-resave-"
+                    "walked (a party the engine saved after walking)")
+    sess = type("S", (), {"save_disk": str(found[0])})()
+    assert SSB.opening_scene_due(sess) is False
 
 
 def test_the_resave_walk_arrives_through_the_opening_scene(clock,

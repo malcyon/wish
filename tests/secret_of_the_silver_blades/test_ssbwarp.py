@@ -601,8 +601,10 @@ TREASURE = ("VIEW TAKE POOL SHARE EXIT", "VIEW TAKE POOL SHARE EXIT")
 def test_nothing_is_pressed_after_begin_until_the_mode_leaves_gen(
         monkeypatch):
     """A bar with EXIT on it while the mode byte still reads 0 gets nothing;
-    the same bar once DUNGEON runs gets its EXIT."""
+    the same bar once DUNGEON runs gets its EXIT. The opening scene is due,
+    the one place a treasure bar is left behind (#801)."""
     modes = _quiet(monkeypatch, mode=[0] * 6 + [1])
+    monkeypatch.setattr(SSB, "opening_scene_due", lambda sess: True)
     pressed_at: list = []
 
     class Sess(WorldSess):

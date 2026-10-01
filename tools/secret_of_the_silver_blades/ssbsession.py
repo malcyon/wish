@@ -683,7 +683,9 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
     bar's VIEW opens -- run under POST.COM with `$7F11` at 5, where DUNGEON's
     tail is not resident, so the idle exit waits for 1
     (`~/.cache/wish/acceptance/796/prologue2`). `clear_messages` takes the
-    party on from there to the command bar.
+    party on from there to the command bar. Whether the opening scene is
+    due is read off the save before anything is pressed and kept in
+    `sess.opening_scene`, so the treasure is left behind only there.
 
     **That fetcher also serves the party menu**, so after BEGIN ADVENTURING
     nothing is pressed until LINKER's mode byte has left GEN, and the idle
@@ -701,6 +703,8 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
     subbar_at, subbar_presses = 0.0, 0
     walk_failures = backouts = 0
     mode_now = ModeReader(sess, addr)
+    sess.opening_scene = opening_scene_due(sess)
+    closing = ClosingScreens(sess)
     while time.time() < deadline:
         if mode_now.dead:
             sess.log(f"  world: LINKER's mode byte ${addr.mode:04X} could not "
@@ -718,6 +722,7 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             continue
         text = s.text()
         if "ENCAMP" in text:
+            sess.opening_scene = False
             return True
         if began and por.MOVE_SUBBAR in s.row(24):
             # The move sub-bar is the world: Escape does not leave it, one
@@ -817,15 +822,14 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
                 return False
         elif closing_screen(s) is not None:
             # The prologue hands the party its starting treasure. Nothing
-            # here wants the treasure -- the party only has to be somewhere
-            # -- so take the way out, with no KERNAL Return after it: that
+            # here wants it -- the party only has to be somewhere -- so it
+            # is left behind, with no KERNAL Return after the choice: that
             # one reached the treasure bar's VIEW and reopened the sheet
-            # (#801).
-            leave_closing_screen(sess, s, closing_screen(s))
-            since = time.time()
-        elif "EXIT" in state.split():
-            sess.select_bar("EXIT", timeout=10)
-            await_screen_change(sess, text)
+            # (#801). Any other treasure stops the load instead.
+            why = closing.leave(s, closing_screen(s))
+            if why is not None:
+                sess.log(f"  world: stopping: {why}")
+                return False
             since = time.time()
         elif any(w in state for w in ("CONTINUE", "MORE", "PRESS")) \
                 and not disk_prompt_up(text):
@@ -902,35 +906,85 @@ def snapshot(sess, addr: Addresses) -> dict:
 #: the sheet goes back to the treasure bar; EXIT there asks `GO BACK LEAVE
 #: TREASURE` with GO BACK highlighted, and LEAVE TREASURE runs the scene's
 #: last three pages. Every one of these takes the XTEST Return `select_bar`
-#: sends once its walk is done.
+#: sends once its walk is done. A won fight puts up the same two treasure
+#: bars, so row 24 alone does not say which treasure is on offer.
 TREASURE_WORDS = ("VIEW", "TAKE", "EXIT")
 LEAVE_TREASURE = "LEAVE TREASURE"
+GO_BACK = "GO BACK"
+
+#: What every character sheet draws above its bar, whichever bar that is:
+#: `ITEMS EXIT` in the opening scene, `EXIT` alone for a character with
+#: nothing readied, or `VIEW:ITEMS EXIT` and `VIEW:EXIT` (`session.py`'s
+#: `SHEET_BAR`).
+SHEET_WORDS = ("HIT POINTS", "ARMOR CLASS")
 
 
 def closing_screen(s) -> str | None:
-    """Which bar of the opening scene's close row 24 holds: `"treasure"`,
-    `"leave"` or `"sheet"`, or None for any other row."""
+    """Which treasure screen row 24 holds: `"treasure"`, `"leave"` or
+    `"sheet"`, or None for any other screen.
+
+    A sheet is a bar ending in EXIT over a screen carrying `SHEET_WORDS`.
+    """
     words = s.row(24).split()
     row = " ".join(words)
-    if "GO BACK" in row and LEAVE_TREASURE in row:
+    if GO_BACK in row and LEAVE_TREASURE in row:
         return "leave"
     if all(w in words for w in TREASURE_WORDS):
         return "treasure"
-    if words[:1] == ["ITEMS"] and words[-1:] == ["EXIT"]:
+    if words and (words[-1] == "EXIT" or words[-1].endswith(":EXIT")) \
+            and all(w in s.text() for w in SHEET_WORDS):
         return "sheet"
     return None
 
 
-#: The word each of those bars is left through. Leaving the treasure keeps
-#: the party's packs as the save had them, which is what a check of a
-#: converted party needs.
-CLOSING_WAY_OUT = {"treasure": "EXIT", "leave": LEAVE_TREASURE,
-                   "sheet": "EXIT"}
+def closing_way_out(kind: str, opening: bool) -> str | None:
+    """The word *kind* is left through, or None when it must not be left.
+
+    A sheet is always left through EXIT, which changes nothing. The treasure
+    is left behind only in the opening scene of a party that had not set out
+    when it was loaded (`opening_scene_due`): leaving it there keeps the
+    party's packs as the save had them, which is what a check of a converted
+    party needs. Any other treasure bar -- a won fight's -- is not left at
+    all, since leaving discards what the party has not taken; the question
+    before leaving gets GO BACK, which returns to that bar.
+    """
+    if kind == "sheet":
+        return "EXIT"
+    if kind == "treasure":
+        return "EXIT" if opening else None
+    return LEAVE_TREASURE if opening else GO_BACK
+
+
+def opening_scene_due(sess) -> bool:
+    """Whether the save in `sess.save_disk` holds a party that has not yet
+    set out, so that BEGIN ADVENTURING plays the opening scene.
+
+    Read through `world_state.has_not_set_out`, the test the conversions use.
+    A save that cannot be read answers False, which keeps every treasure.
+    """
+    from goldbox import world_state
+    from goldbox.d64 import D64, split_load_address
+
+    path = getattr(sess, "save_disk", None)
+    game = getattr(sess, "game", c64_port.SECRET_OF_THE_SILVER_BLADES)
+    if not path:
+        return False
+    try:
+        _, body = split_load_address(D64.open(path).read_file(game.save_file))
+        return world_state.has_not_set_out(world_state.from_c64(body, game))
+    except Exception:
+        return False
+
 
 #: How long a screen that has been answered is given to go before it is
 #: answered again. The prologue's pages and bars changed within seven
 #: seconds of their key on every one read live (#801).
 ANSWERED_GRACE = 8.0
+
+#: How many times one kind of treasure screen is left before the driver
+#: stops: the opening scene needs each of them once, or twice when a stray
+#: Return opens the sheet.
+MAX_CLOSING_TRIES = 4
 
 
 def await_screen_change(sess, was: str, timeout: float = ANSWERED_GRACE
@@ -962,33 +1016,60 @@ def drawn_and_still(sess, text: str, gap: float = 0.6) -> bool:
     return s is not None and s.text() == text
 
 
-def leave_closing_screen(sess, s, kind: str) -> bool:
-    """Choose the way out of a closing bar, and wait for the bar to go.
+class ClosingScreens:
+    """Leaves the treasure screens `closing_screen` recognises, and says why
+    when it will not.
 
-    `select_bar` walks the highlight and sends its own Return. No KERNAL
-    Return follows it: the bar after each of these has its highlight on a
-    word that leads back (VIEW, GO BACK), so a second Return undoes the
-    first.
+    `opening` is whether the opening scene's treasure is the one on offer;
+    it is spent once LEAVE TREASURE has been chosen. Each kind is left at
+    most `MAX_CLOSING_TRIES` times, a failed walk included.
     """
-    label = CLOSING_WAY_OUT[kind]
-    sess.log(f"  bar: leaving {kind} through {label}")
-    if not sess.select_bar(label, timeout=10):
-        return False
-    await_screen_change(sess, s.text())
-    return True
+
+    def __init__(self, sess):
+        self.sess = sess
+        self.opening = bool(getattr(sess, "opening_scene", False))
+        self.tries: dict[str, int] = {}
+
+    def leave(self, s, kind: str) -> str | None:
+        """Choose *kind*'s way out; None when it was chosen, else why not.
+
+        `select_bar` walks the highlight and sends its own Return. No KERNAL
+        Return follows it: the bar after each of these has its highlight on
+        a word that leads back (VIEW, GO BACK), so a second Return undoes
+        the first.
+        """
+        label = closing_way_out(kind, self.opening)
+        if label is None:
+            return ("a treasure bar outside the opening scene; leaving it "
+                    "would discard the treasure, so nothing was pressed")
+        n = self.tries.get(kind, 0)
+        if n >= MAX_CLOSING_TRIES:
+            return (f"{kind} came back after {n} tries to leave it through "
+                    f"{label}")
+        self.tries[kind] = n + 1
+        self.sess.log(f"  bar: leaving {kind} through {label}")
+        if not self.sess.select_bar(label, timeout=10):
+            self.sess.log(f"  bar: could not choose {label}")
+            return None
+        if label == LEAVE_TREASURE:
+            self.opening = self.sess.opening_scene = False
+        await_screen_change(self.sess, s.text())
+        return None
 
 
 def clear_messages(sess, timeout: float = 300.0) -> str:
     """Answer the arriving script's screens until the command bar is back.
 
-    A page gets one Return once it reads the same on two looks, and no other
-    until it has gone or `ANSWERED_GRACE` has passed. The opening scene's treasure bar, the sheet
-    a stray Return opens from it and the question leaving it asks are left
-    through `closing_screen`'s way out, and the move sub-bar the scene ends
-    on gets one Return. Nothing is pressed at any other screen.
+    A page gets one Return once it reads the same on two looks, and no
+    other until it has gone or `ANSWERED_GRACE` has passed. The treasure
+    screens are left as `closing_way_out` says, which leaves treasure behind
+    only in the opening scene; any other treasure bar ends the call with the
+    reason. The move sub-bar gets one Return. Nothing is pressed at any
+    other screen.
     """
     deadline = time.time() + timeout
     seen = ""
+    closing = ClosingScreens(sess)
     while time.time() < deadline:
         s = sess.screen()
         if s is None:
@@ -999,6 +1080,8 @@ def clear_messages(sess, timeout: float = 300.0) -> str:
             sess.log(f"  bar: {bar!r}")
             seen = bar
         if "ENCAMP" in bar:
+            # The opening's treasure always comes before the first world bar.
+            sess.opening_scene = False
             return bar
         if sess.handle_prompt(s):
             time.sleep(1.0)
@@ -1006,7 +1089,10 @@ def clear_messages(sess, timeout: float = 300.0) -> str:
         text = s.text()
         kind = closing_screen(s)
         if kind is not None:
-            leave_closing_screen(sess, s, kind)
+            why = closing.leave(s, kind)
+            if why is not None:
+                sess.log(f"  bar: stopping: {why}")
+                return f"(stopped at {bar!r}: {why})"
             continue
         if por.MOVE_SUBBAR in bar or (
                 any(w in bar for w in ("CONTINUE", "MORE", "PRESS"))
