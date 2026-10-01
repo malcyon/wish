@@ -35,6 +35,7 @@ import sys
 import time
 
 from automap import amiga, paths
+from goldbox import assets
 
 #: `AF_UNIX` paths are limited to 108 bytes including the terminator.
 SOCKET_PATH_LIMIT = 107
@@ -533,10 +534,13 @@ def start(port: int, runtime) -> subprocess.Popen:
     """Start a helper detached from this process and return without waiting."""
     files = Paths(port, runtime)
     PLATFORM.secure_dir(files.runtime)
-    root = str(pathlib.Path(amiga.__file__).resolve().parent.parent)
     env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join(
-        [root] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
+    if not assets.frozen():
+        # A source run is `python -m automap.fsuaehelper` and must import the
+        # same code as its parent; a frozen build re-runs its own binary.
+        env["PYTHONPATH"] = os.pathsep.join(
+            [str(assets.root())]
+            + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
     # Append, so a start that loses the race for the lock does not erase the
     # log of the helper that won it.
     with open(files.log, "ab") as log:

@@ -694,3 +694,34 @@ def test_a_failed_resume_leaves_no_half_published_helper(fork, runtime, monkeypa
     helper._cleanup()
     files = fsuaehelper.Paths(fork.port, runtime)
     assert not files.json.exists() and not files.json.with_suffix(".json.tmp").exists()
+
+
+def test_a_frozen_build_starts_its_own_binary_with_no_pythonpath(
+        runtime, monkeypatch):
+    seen = {}
+
+    class Recorder:
+        def __init__(self, argv, **kw):
+            seen["argv"], seen["env"] = argv, kw["env"]
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(runtime), raising=False)
+    monkeypatch.setenv("PYTHONPATH", "/somewhere")
+    monkeypatch.setattr(subprocess, "Popen", Recorder)
+    fsuaehelper.start(7, runtime)
+    assert seen["argv"][:2] == [sys.executable, fsuaehelper.HELPER_FLAG]
+    assert seen["env"]["PYTHONPATH"] == "/somewhere"
+
+
+def test_a_source_run_puts_the_checkout_first_on_pythonpath(runtime, monkeypatch):
+    seen = {}
+
+    class Recorder:
+        def __init__(self, argv, **kw):
+            seen["env"] = kw["env"]
+
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    monkeypatch.setattr(subprocess, "Popen", Recorder)
+    fsuaehelper.start(7, runtime)
+    assert seen["env"]["PYTHONPATH"].split(os.pathsep)[0] == str(
+        fsuaehelper.assets.root())
