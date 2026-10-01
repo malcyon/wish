@@ -247,7 +247,10 @@ def _weight_sum(rec: bytes, itm: bytes) -> int:
 #: * `por-790-scribe-complete-stale-count`, slot E of the run staged from a
 #:   copy of that party's slot B: its `provenance.toml` names no parent, so
 #:   `_not_rebuilt_with_descendants` cannot find it, and its rest and camp
-#:   save ran no rebuild on SIMON, PRINCESS FATIMA and MAD MAN.
+#:   save ran no rebuild on SIMON, PRINCESS FATIMA and MAD MAN;
+#: * `pool-736-effects-over-64-camp-cast-resave`, staged to level 6 from a
+#:   rebuilt creation save: its six characters were only loaded, camped, cast
+#:   and saved, so no rebuild ran and `thac0_current` kept its level-1 value.
 #:
 #: A specimen whose `provenance.toml` (`what` or `made_by`) names one of these,
 #: or one of its own descendants, as the copy it was staged from is excluded
@@ -264,6 +267,7 @@ _NOT_REBUILT = {
     "por-dos/WISH-SPEC-por-train-clamp",
     "por-dos/WISH-SPEC-issue641-dirten-seven-resave",
     "por-dos/WISH-SPEC-por-790-scribe-complete-stale-count",
+    "por-dos/WISH-SPEC-pool-736-effects-over-64-camp-cast-resave",
 }
 
 #: The one character in `_NOT_REBUILT` whose sheet the run drew with VIEW,
