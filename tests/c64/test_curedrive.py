@@ -266,3 +266,98 @@ def test_open_sheet_returns_none_when_the_first_read_never_shows_exit(monkeypatc
     monkeypatch.setattr(CD.time, "sleep", lambda s: None)
 
     assert run.open_sheet() is None
+
+
+class _TreasureSess:
+    """A Silver Blades session standing at a treasure bar, recording every
+    key; `opening_scene` is what `enter_world` read off the save."""
+
+    game = None
+
+    def __init__(self, bar: str, opening: bool):
+        self.bar, self.opening_scene = bar, opening
+        self.pressed: list = []
+        outer = self
+
+        class Kbd:
+            def key(self, name, *a):
+                outer.pressed.append(("key", name))
+
+            def screenshot(self, path):
+                return True
+
+        self.kbd = Kbd()
+
+    def screen(self):
+        bar = self.bar
+
+        class S:
+            def text(self):
+                return bar
+
+            def row(self, n):
+                return bar if n == 24 else ""
+        return S()
+
+    def handle_prompt(self, s=None):
+        return False
+
+    def select_bar(self, label, **kw):
+        self.pressed.append(("bar", label))
+        return False
+
+    press_bar = select_bar
+
+    def press_kernal(self, code):
+        self.pressed.append(("kernal", code))
+
+    def to_world_bar(self, **kw):
+        self.pressed.append(("to_world_bar",))
+        return False
+
+    def log(self, *a):
+        pass
+
+
+def _silver_run(monkeypatch, tmp_path, sess):
+    from tools.secret_of_the_silver_blades import ssbsession
+    monkeypatch.setattr(ssbsession, "load_party", lambda s, **kw: True)
+    monkeypatch.setattr(ssbsession, "Addresses", lambda game, disks: None)
+    monkeypatch.setattr(ssbsession, "enter_world", lambda s, a, **kw: True)
+    monkeypatch.setattr(CD.time, "sleep", lambda s: None)
+    run = _bare_run()
+    run.out = tmp_path
+    run.sess, run.disks = sess, "disks"
+    return run
+
+
+def test_a_fights_treasure_bar_on_arrival_is_not_left_behind(
+        monkeypatch, tmp_path):
+    """A won fight's `VIEW TAKE POOL SHARE EXIT` on arrival: leaving it would
+    discard the treasure, so no key is pressed and the arrival fails saying
+    why (#801)."""
+    sess = _TreasureSess("VIEW TAKE POOL SHARE EXIT", opening=False)
+    run = _silver_run(monkeypatch, tmp_path, sess)
+    assert run._enter_silver(wait=10.0) is False
+    assert sess.pressed == []
+    stuck = [e for e in _events(run)
+             if e["event"] == "never-reached-the-world-bar"]
+    assert stuck and "discard" in stuck[0]["why"]
+
+
+def test_a_leave_question_on_arrival_keeps_the_treasure(monkeypatch,
+                                                        tmp_path):
+    sess = _TreasureSess("GO BACK LEAVE TREASURE", opening=False)
+    run = _silver_run(monkeypatch, tmp_path, sess)
+    assert run._enter_silver(wait=10.0) is False
+    assert ("bar", "LEAVE TREASURE") not in sess.pressed
+
+
+def test_the_world_bar_after_clear_messages_is_arrival(monkeypatch, tmp_path):
+    from tools.secret_of_the_silver_blades import ssbsession
+    sess = _TreasureSess("MOVE VIEW CAST AREA ENCAMP SEARCH LOOK", False)
+    run = _silver_run(monkeypatch, tmp_path, sess)
+    monkeypatch.setattr(ssbsession, "clear_messages",
+                        lambda s, **kw: "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK")
+    assert run._enter_silver(wait=10.0) is True
+    assert sess.pressed == []

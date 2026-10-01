@@ -309,23 +309,19 @@ class Run:
             self.log(event="never-reached-the-world")
             self.shot("stuck")
             return False
-        self.log(event="world", bar=ssbsession.clear_messages(self.sess))
-        # A loaded Silver Blades party can arrive on the starting-treasure
-        # bar or a sheet it opens, `VIEW TAKE POOL SHARE EXIT` or `EXIT`, and
-        # leaving the treasure asks `GO BACK LEAVE TREASURE`; `to_world_bar`
-        # answers none of the three.
-        for _ in range(12):
-            row = self.row24()
-            if "ENCAMP" in row:
-                return True
-            if "LEAVE TREASURE" in row:
-                self.sess.press_bar("LEAVE TREASURE")
-            elif "EXIT" in row.split():
-                self.sess.press_bar("EXIT")
-            elif not self.sess.to_world_bar(timeout=20):
-                continue
-            time.sleep(1.5)
-        self.log(event="never-reached-the-world-bar", row24=self.row24())
+        # `clear_messages` answers the arrival's pages, the opening scene's
+        # treasure screens and the sheet a stray Return opens there. It
+        # leaves treasure behind only in the opening scene of a party that
+        # had not set out (`ssbsession.closing_way_out`); any other treasure
+        # bar, a won fight's, ends the arrival with the reason rather than
+        # discard what the party has not taken.
+        bar = ssbsession.clear_messages(self.sess)
+        self.log(event="world", bar=bar)
+        if "ENCAMP" in bar:
+            return True
+        self.log(event="never-reached-the-world-bar", why=bar,
+                 row24=self.row24())
+        self.shot("stuck")
         return False
 
     def _enter_curse(self, wait: float) -> bool:
