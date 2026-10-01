@@ -12546,25 +12546,25 @@ def test_an_item_name_with_a_refusals_words_is_not_a_refusal(tmp_path, monkeypat
 
 
 class _LeaveFake(_ItemRowsFake):
-    """The list with the cursor on its first row; Return on the bordered
-    `EXIT` row goes back to the sheet bar, as the game's own EXIT does."""
+    """The list with the cursor on its first row. Return on its bordered
+    `EXIT` row returns to the item bar (`docs/70-driving-the-game.md`), whose
+    own `EXIT` goes to the sheet, then out of the sheet and out of camp."""
 
     def __init__(self):
         super().__init__("readied", dict(TWO_ROWS))
         self.state = "cursor"
         self.screens.update({"sheet": _window({}, "VIEW:ITEMS SPELLS TRADE DROP EXIT"),
                              "world": _window({}, WORLD_BAR)})
-        self.moves.update({("sheet", ("bar", "EXIT")): "sheet-exit",
-                           ("sheet-exit", ("leave",)): "world",
+        self.moves.update({("items", ("bar", "EXIT")): "sheet",
+                           ("sheet", ("leave",)): "world",
                            ("world", ("bar", "EXIT")): "left"})
-        self.screens["sheet-exit"] = self.screens["sheet"]
         self.screens["left"] = self.screens["world"]
 
     def _go(self, what):
         if self.state == "cursor" and what == ("key", A.route_pool.SELECT["key"]):
             assert self.hot == 7, "Return pressed on a row that is not EXIT"
             self.sent.append(what)
-            self.state = "sheet"
+            self.state = "items"  # the item bar, no cursor on the list
             return True
         return super()._go(what)
 
