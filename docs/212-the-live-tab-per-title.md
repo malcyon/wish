@@ -23,7 +23,7 @@ the run, the method and the things that went wrong on the way.
 | C7 | the map is identified and drawn | `GEO00`, New Phlan | `GEO01` | `GEO10` |
 | C12 | the roster cards read the party | 6 cards, 18/18 fields | 6, 18/18 | 6, 18/18 |
 | C13 | a condition badge is drawn from a staged effect | `running-ninja` | `running-ninja` | none (no badge table existed when this ran; it has seven groups now, and the run has not been repeated) |
-| C7W | the marker follows a walk | 4/4 steps | 4/4 | 4/4 |
+| C7W | the marker moves with a walk | 4/4 steps | 4/4 | 4/4 |
 | C6 | the area is re-read across a boundary | `GEO00` to `GEO01` | `GEO01` to `GEO03` | `GEO10` to `GEO20` |
 | C16 | Heal party | MELCAR 1 to 6 | PALADIN | MORGAINE 1 to 35 |
 | C17 | Save and Restore spells | MELCAR, SLEEP | PALADIN | PAINE |
@@ -84,9 +84,9 @@ other: 18 of 18 fields on each title, 0 disagreements. A matching name from
 one reader is the reader agreeing with itself; from two independent ones it is
 evidence.
 
-**The save image's own area byte does not follow a fast travel; the resident
+**The save image's own area byte does not change on a fast travel; the resident
 map does.** Across all three crossings the block at `$0400` changed to the
-arriving area's map and `AutomapState.area` followed it, while
+arriving area's map and `AutomapState.area` changed with it, while
 `SaveGame0.area` in the resident save image still named the area the party
 left, twenty seconds after the arrival:
 
@@ -102,7 +102,7 @@ rather than live state, and it is why the automapper identifying an area from
 titles, one crossing each.
 
 **A badge was drawn, on a title that had never drawn one.** Nothing in the
-corpus would have produced one: no save this project holds, for any title, has
+saves we have would have produced one: no save this project holds, for any title, has
 a spell running, so a badge check over what is there reports "no badge drawn"
 -- which is also what a broken `badges()` reports. So one effect row is
 written into the four arrays the way the game writes one -- id at `+$000`,
@@ -144,7 +144,7 @@ and `ClearQuickfight` then puts it out, on all three titles.
 
 No save this project holds has a character on quickfight, an unidentified
 item, or (in the Curse party that carries items) a memorised spell. A check
-that reports "nothing to do" in those cases is measuring the corpus rather
+that reports "nothing to do" in those cases is measuring the specimens rather
 than the program, so four checks write an input first:
 
 | check | staged | why the write is not the result |
@@ -206,7 +206,7 @@ walk a Silver Blades party, because SSBSession never says which title it is)`.
 of Radiance run left the Slums, took four steps into a wandering encounter,
 and Heal party, Fast Travel and Level up all answered "refused during a
 fight". That is the gate working and it measured nothing, so the actions now
-run before the walk and Pool of Radiance's default save stands in New Phlan,
+run before the walk and the party in Pool of Radiance's default save stands in New Phlan,
 which has no wandering monsters.
 
 **A Flatpak emulator cannot be launched from a worktree under `/tmp`.**

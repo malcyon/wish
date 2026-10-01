@@ -189,7 +189,7 @@ QMainWindow "WishWindow"
 ```
 
 > [!NOTE]
-> **Commission rows** are the one element that stays partially dynamic. The `QuestLogPanel` creates `Group` and `Row` widgets within `questlog_column` at runtime because the number of commissions varies by game state (0–20+). The `.ui` provides the container (`questlog_column` layout) and the static elements (`questlog_heading`, `questlog_completed`, `questlog_scroll`). The rows themselves are lightweight label pairs and are not worth pre-creating at maximum because the maximum is the full commission table (20+ entries) and they would clutter Designer without adding design value — they are single-line text items in a scroll area, not layout elements you'd want to reposition.
+> **Commission rows** are the one element that stays partially dynamic. The `QuestLogPanel` creates `Group` and `Row` widgets within `questlog_column` at runtime because the number of commissions varies by game state (0–20+). The `.ui` provides the container (`questlog_column` layout) and the static elements (`questlog_heading`, `questlog_completed`, `questlog_scroll`). The rows themselves are lightweight label pairs and should not be pre-created at maximum because the maximum is the full commission table (20+ entries) and they would clutter Designer without adding design value — they are single-line text items in a scroll area, not layout elements you'd want to reposition.
 
 ---
 

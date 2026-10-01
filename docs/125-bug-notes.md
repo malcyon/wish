@@ -6,7 +6,7 @@ file holds the rest, because a finding that costs an afternoon should not be
 lost for being undramatic:
 
 * **latent defects** -- real errors in SSI's code that no shipped data reaches,
-  and that would only bite a modified game;
+  and that would only matter to a modified game;
 * **cosmetic and internal** -- a truncated glyph, a duplicated label, flags
   written and never read;
 * **unfinished work** rather than broken work, which is a different thing and
@@ -20,7 +20,7 @@ lost for being undramatic:
 Confidence labels mean what they mean in the front-door file. Entries are
 numbered `N1` upwards so they cannot be mistaken for it.
 
-One thing worth stating once, because it bounds every script finding in
+One thing, stated once, because it bounds every script finding in
 both files: **the ECL decode is exhaustive.** All thirty scripts, 178,035
 bytes, 16,233 instructions, zero derailments and zero bytes that neither
 decode nor are pointed at by an operand. The engine overlays are not --
@@ -142,7 +142,7 @@ header. Its payload is 2030 bytes — six past the end of glyph 252 — so the f
 PRG can carry, and a full 2048-byte set would need a ninth block.
 
 **What the player sees.** Nothing, and this is a build artefact rather than a
-design error. The highest shape code across thirteen sources is 243, ending 72
+design error. The highest glyph code across thirteen sources is 243, ending 72
 bytes clear of the truncation, and glyphs 244–252 are non-blank, so the file is
 not merely blank-padded. Glyph 253's surviving bytes are `00 00 00 00 3C F4`,
 and glyphs 81 and 251 are the only ones matching those six, so the lost tail was
@@ -193,16 +193,16 @@ refutation of the whole decode.
 
 ## N8. A dead read guards a site that was cut
 
-**What the game does.** Sites on the overland map are hidden by painting plain
+**What the game does.** Sites on the overland map are hidden by painting ordinary
 terrain over them until their flag is set. `ECL1B` paints three of them, each
 `SAVE x, [$00FB] / SAVE y, [$00FC] / SAVE tile, [$00B1] / CALL [$C018]`, gated
 on the bits of `$4AA0`: bit 0 the lizardman keep, bit 1 the kobold caves, and
 **bit 2 a square at (7,23) that has no entry in the site table**. Bit 2 is read
 there and written nowhere.
 
-**What the player sees.** A square of plain terrain, permanently. This is cut
-content rather than a malfunction, and it is on the list because the shape —
-a read with no matching write — is exactly the shape of bugs 2 and 5, and
+**What the player sees.** A square of ordinary terrain, permanently. This is cut
+content rather than a malfunction, and it is on the list because the pattern —
+a read with no matching write — is exactly the pattern of bugs 2 and 5, and
 telling the three apart took work.
 
 **Version.** Pool of Radiance, Commodore 64. **GUESS** that it is authoring
@@ -330,7 +330,7 @@ with wisdom 13, stores `2 0 0`, one bonus spell. That is AD&D 1st edition
 exactly, and it is one point later than `$10AD` at both scores. The DOS table
 is six bytes at `START.EXE 0x00F6B0`, `01 02 02 02 02 02`, immediately in
 front of the cleric's five experience thresholds: wisdom 13 to 18, where the
-C64's covers 12 to 25. Every other cleric in the DOS corpus — 42 of 44 caster
+C64's covers 12 to 25. Every other cleric among the DOS specimens — 42 of 44 caster
 records — agrees with both builds, because 14 and up is where they stop
 differing.
 
@@ -359,7 +359,7 @@ its other four carry `$08`, so that column improves twice by level 4 and once
 elsewhere. Fifteen is the table's own answer, deliberately, and ours was a
 transcription of the rulebook rather than of the game.
 
-`goldbox/derive.py` had the same shape of error next door: its fighter THAC0 row
+`goldbox/derive.py` had the same kind of error next door: its fighter THAC0 row
 was AD&D's grouped one, `20 20 18 18 16 16 14 14`, where the game's table at
 `$1F1F` runs `20 19 18 17 16 15 14 13`. Every even fighter level was one out,
 and no specimen was an even-level fighter with cached combat numbers to catch
@@ -396,7 +396,7 @@ Found while settling whether `$4ABB`'s threshold of 25 means encounters,
 
 **Thirteen squares in `GEO14` have id 21.** `(1,0) (2,0) (3,0) (0,1) (1,1)` in
 the north-west and `(8,5) (6,6) (7,6) (8,6) (6,7) (7,7) (8,7) (7,8)` in the
-middle — two building-shaped blocks. The counter reaches 21, matches, and the
+middle — two blocks that look like buildings. The counter reaches 21, matches, and the
 `ONGOTO` is handed an index one past its last entry.
 
 **What the player sees.** Two rooms that say nothing, where the map data says
@@ -540,7 +540,7 @@ holding their own correct sums, so the wrong number is the buyer's alone --
 purse arithmetic rather than a second bug: paying 1 gp out of 140 gold coins
 leaves 27 platinum and 4 gold, because the engine consolidates the change into
 the largest denomination it can, so the coin *count* falls by 109 while the
-value falls by 1. Encumbrance counts coins, not what they are worth. Curse's
+value falls by 1. Encumbrance counts coins, not what they are valued at. Curse's
 +3 is the same arithmetic at a scale where no denomination changes.
 
 **So the miss is the coin count before the payment less the count after it, and
@@ -683,7 +683,7 @@ for 56, so this is Pool of Radiance's C64 build alone.
 **Why no player sees it, except in one place.** Nothing in either game ever
 draws a thief skill: a search of all 2,116 files on the Pool of Radiance sides,
 all 1,120 on Curse's and all 1,142 on Silver Blades' finds no `POCKET`,
-`NOISE`, `CLIMB`, `SILENT`, `LOCKS` or `LANGUAGE` in plain, shifted or
+`NOISE`, `CLIMB`, `SILENT`, `LOCKS` or `LANGUAGE` in unshifted, shifted or
 screen-code PETSCII, where the same search finds `ENCAMP` in 16 Pool of
 Radiance files and `SEARCH` in 8. The percentages are never labelled and never
 printed.
@@ -711,7 +711,7 @@ machine reproduce as level row plus racial row. CONFIRMED from the table's
 bytes and the routine that adds them; `tools/records/thiefskillsweep.py`.
 
 **Where it would have cost something, and no longer does.** Converting a save
-between the two ports used to carry one port's stored percentages across to
+between the two ports used to copy one port's stored percentages to
 the other, wrong row and all. `#431 (A converted halfling thief keeps the
 other port's skill percentages, because the two ports ship different
 halfling rows)` closed it by computing a thief's eight percentages at the
@@ -786,7 +786,7 @@ it is `WISH-SPEC-curse-299-built-from-nothing` and
 `WISH-SPEC-curse-299-whole-engine-resave`: the same TRAVIS, one `LOAD SAVED
 GAME` and `SAVE CURRENT GAME` apart, going in at `60 67 60 52 42 20 82 25` and
 coming back at `67 74 67 59 49 27 89 32`. `WISH-SPEC-curse-234-converted-party`
-and `-engine-resave` are a second pair of the same shape. CONFIRMED.
+and `-engine-resave` are a second pair of the same kind. CONFIRMED.
 
 **Not the neighbouring engines, and not the C64.** Pool of Radiance's routine
 (`GAME.OVR 0x02ADB0`) has no such term at all; Silver Blades' (`0x03C911`)
@@ -848,7 +848,7 @@ way Pool of Radiance does, or drop the block.
 shown that.** A bag of holding that does not reduce what a Curse character is
 carrying, so the character is `Overloaded` at a weight Pool of Radiance would
 have let pass, with no message saying why, because
-`docs/173-carrying-limits.md` shows the refusal is one flag carrying two
+`docs/173-carrying-limits.md` shows the stop is one flag carrying two
 tests. **That sentence is the code read aloud rather than anything observed**:
 `tools/dos/dosencrecompute.py bags` finds no such item in 6497 items across 2965
 record files, and nobody has checked whether Curse's own treasure tables ever
@@ -942,8 +942,8 @@ record byte `0x099`, the size flag, keeps whatever `GEN $0958` set it to from
 the character's race.
 
 **The evidence.** The absent store, plus a specimen: HOGARTH, on the player's
-disks, has an icon that mixes a large body with a small head — a shape no single
-(weapon, head) pair can produce. 17 of the 18 distinct shapes on our disks come
+disks, has an icon that mixes a large body with a small head — a combination no single
+(weapon, head) pair can produce. 17 of the 18 distinct combinations on our disks come
 out of one pair exactly; HOGARTH's is the 18th.
 
 **What the player sees.** The SIZE menu appears to do something and does not
@@ -1040,7 +1040,7 @@ Pool of Radiance was built on the same table and simply stopped short of the
 last two entries.
 
 So this is scaffolding for work that came later, not a mistake, and it does not
-belong on the list above. It is worth recording because it **exonerates a
+belong on the list above. It is recorded because it **exonerates a
 third-party tool**: the 1989 BASIC editor was long blamed for listing class
 codes 3, 4 and 5 as `MAGIC-USER`. Its author was reading the game's own table.
 
@@ -1198,14 +1198,14 @@ Raw capture in `forums/p2772.txt` (scratch, deleted). Summarised in our own word
 | R2 | Animate Dead can be cast on a **dead NPC**, who then joins the party as a zombie | none, video cited | Needs a live session: get an NPC killed, cast it. `SPELLE*` is where the target filter would be. |
 | R3 | Animate Dead cast **in combat** may animate enemy combatants, who come back at full hit points and keep attacking you | none | Same session; read the target loop in the Animate Dead handler for a missing side check. |
 | R4 | Podol Plaza cannot be cleared by camping and having rests interrupted — it needs **ten random encounters** | none | Directly checkable. `ECL12` is Podol Plaza; we already read the identical mechanism in the Slums, where `$4ABB` counts to **25** and latches 254. Find Podol's counterpart flag and read its threshold. If it is 10, the claim is exact. |
-| R5 | The Buccaneer's Base captain can be fought — and looted — **twice**, "in some versions" | "some versions" | `ECL01`. Same shape as our bug 2: a cleared-flag that is written on one path and not another. |
-| R6 | After Tyranthraxus, resting in some New Phlan areas (the training hall named) can still be stopped by the city watch; **if you fight them the shops stop giving commissions** | none | Two halves. The watch check is in `ECL00`/`ECL0B`; the commission ledger is the one `docs/103` reads. The second half — a permanent loss of the commission clerk — would be a real player-visible bug and is worth the work. |
+| R5 | The Buccaneer's Base captain can be fought — and looted — **twice**, "in some versions" | "some versions" | `ECL01`. Same pattern as our bug 2: a cleared-flag that is written on one path and not another. |
+| R6 | After Tyranthraxus, resting in some New Phlan areas (the training hall named) can still be stopped by the city watch; **if you fight them the shops stop giving commissions** | none | Two halves. The watch check is in `ECL00`/`ECL0B`; the commission ledger is the one `docs/103` reads. The second half — a permanent loss of the commission clerk — would be a real player-visible bug and deserves the work. |
 | R7 | Tyranthraxus can be fought again if you return to his lair after killing him | none | `ECL07`. Our own note says `ECL07` writes ledger flag 20; check whether the encounter branch tests it. |
 | R8 | **C64 only:** an infinite loop in combat if an enemy casts an offensive spell while the party is using **dust of disappearance** | **C64**, stated | The only C64-specific report on the forum, and therefore the most valuable one here. Reproducible in VICE: acquire the dust, ready it, and fight something that casts. If it hangs, it is ours to log properly. |
 | R9 | **C64 only:** items get corrupted when using **gauntlets**, producing strange items | **C64**, stated | Same session. "Strange items" reads like an item-slot index running off the end of `ITEMNAMES` — the same failure mode as our own indices 62/63 gap. Testable from a save plus `goldbox/items.py` without the emulator if a corrupted specimen can be produced. |
 | R10 | Paladins and rangers (only reachable by editing) get **no sweep attack**; level drain followed by restoration cycles the gender byte and awards 10,000,000 experience | DOS, via Gold Box Companion, [topic 1913](https://forums.goldbox.games/index.php?topic=1913.0) | Consistent with what we already hold — `docs/20` records that those two classes are named in the table and instantiated nowhere. Confirming it on the C64 needs `wish` to write a paladin and a restoration scroll; the drain path is `SPELLE02`/`SPELLE04`, which we have read. |
 
-Kirben's framing is worth keeping: *"It would be worth mentioning which port(s)
+Kirben's framing is kept here: *"It would be worth mentioning which port(s)
 that bugs occur in, as some bugs were often specific to one port."* Every row
 above without a stated platform is most likely DOS or Apple II, because that is
 what the thread's regulars played.
@@ -1219,7 +1219,7 @@ what the thread's regulars played.
 | R13 | A THAC0 of −1 prints as **255** on the character sheet, while combat behaves correctly | none | Almost certainly true and almost certainly the same on the C64: our THAC0 is stored biased as `60 - value` and the sheet prints the unbiased byte unsigned. One `wish` edit to a THAC0 past 60 and one screenshot settles it. Cosmetic — this belongs here even if confirmed. |
 | R14 | SHARE hands out absurd jewelry totals inside the Shadowdale side dungeon, repeatably, surviving a restart, and not outside that dungeon | none, screenshots | Odd and specific. The poster's own guess is overflow from an over-encumbered character. Our `0x0C7` jewelry word is `u16le`; a signed/unsigned mix in the divide would do it. |
 | R15 | The Wand of Magic Missiles in Zhentil Keep costs **14,464 gp**, apparently a 16-bit truncation of 80,000 | none | 80000 − 65536 = 14464 exactly. Arithmetically certain, and checkable from the Curse item tables on disk with `goldbox/items.py` and no emulator at all. **The cheapest confirmable claim in this section.** |
-| R16 | Buying with more than 65,535 gp worth of platinum makes money evaporate | none | Same overflow, other side. Testable with an edited party. |
+| R16 | Buying with more than 65,535 gp of platinum makes money evaporate | none | Same overflow, other side. Testable with an edited party. |
 | R17 | Importing a character with exceptional strength from Pool of Radiance: the first time strength is magically modified in Curse, the **score itself becomes the exceptional number** | none | We have the import routine (`docs/116` §2.2) and both fields — `0x014` strength, `0x01A` exceptional. Readable from the bytecode. |
 | R18 | The Girdle of the Dwarves on an imported fighter with a Manual-raised constitution of 19 produced "weird ability numbers" instead of 20 | none | Vague. Log it, do not chase it. |
 | R19 | Re-entering the caves under Hap re-fights the salamanders | none | Same class as our bug 2. |
@@ -1273,7 +1273,7 @@ S. Lee's *Pool of Radiance: Exhaustive Game Information* v2.00, written for
 **PC v1.3**, and are set out with their evidence in
 [`128-guide-and-scripting.md`](128-guide-and-scripting.md).
 
-These are worth more than the forum rumours for one specific reason: **the ECL
+These are more reliable than the forum rumours for one specific reason: **the ECL
 bytecode is one artefact shared by every port**, so a defect the guide locates
 in a *script* or in the *VM* is almost certainly in our bytes too, and most of
 them are checkable statically against our own exhaustive decode with no
@@ -1285,16 +1285,16 @@ emulator at all.
 | R41 | `$22 PARTYSURPRISE` does nothing special for a ranger and mis-sets one of its two variables | engine | Same handler pass |
 | R42 | `$28 ROB` never restores the item-loss chance while walking one character's inventory, so putting heavy items first sharply reduces theft — and it steals **equipped** items | engine | Same. The exploit half is testable in play: order a character's inventory and get robbed |
 | R43 | `$34 ECLCLOCK` advances the clock by an uninitialised byte rather than by its operand; fixed in *Curse*. Used once in the whole game | engine | Read the handler; the one call site is in our decode. A watchpoint on the clock digits at `$49C6`-`$49CB` would settle it in a minute |
-| R44 | `$3B SPELL` never does anything; fixed in *Curse*. Used once | engine | Same shape as R43 |
+| R44 | `$3B SPELL` never does anything; fixed in *Curse*. Used once | engine | Same pattern as R43 |
 | R45 | Podol Plaza's buccaneer can be looted twice; the Cadorna family treasure can be opened twice; Valhingen Graveyard's treasures at locations 12 and 24 are transposed; Stojanow Gate's alarm starts nothing | script | All four are static checks against `ECL12`, `ECL02`, `ECL0A` and `ECL09`. The Cadorna one is R1 from the forums arriving by a second route, which raises it above the rest |
-| R46 | Going south from the Wealthy Area at (4,15) crashes; fleeing the bugbear patrol after the tower guards crashes | script | Two fasttravels and two steps. Worth trying on the C64 precisely because a crash is port-sensitive |
+| R46 | Going south from the Wealthy Area at (4,15) crashes; fleeing the bugbear patrol after the tower guards crashes | script | Two fasttravels and two steps. Try it on the C64 precisely because a crash is port-sensitive |
 | R47 | **Exploit.** A targeted damage spell can raise the dead: a dead character has 0 hit points, and a spell doing under 10 leaves them dying rather than dead. Still present in *Curse*, gone in *Silver Blades* | engine | Read the damage handler's death threshold. `$2E DAMAGE` is in our decode |
 | R48 | **Exploit.** Items can be duplicated by saving and reloading in the training hall | engine | Area 11, which a fasttravel cannot enter — so this one needs a walked session |
 | R49 | **Exploit.** Constitution 22, or 0, gives out-of-range hit points per level | engine | `wish` can write either score; one train and one look at the sheet |
 | R50 | The `bec de corbin` is flagged **slashing** in `ITEMS` (`+7` = 0) where AD&D makes it bashing or piercing; the `military fork`, `ranseur` and `trident` are flagged slashing too | data | **Half done.** We read the bytes ourselves: item types 4, 13, 29 and 39 all hold `+7` = 0, and the only values the whole table takes are 0, 1 and 128. What is third-party is the AD&D categorisation, and it is not only those four — `partisan` (25) and `spetum` (32) read 0 as well, and both are piercing weapons in the book. Somebody who knows the 1e weapon table should say how many of the 98 zero entries are actually wrong |
 | R51 | **DOS defect, and the C64 is the better of the two: the DOS dagger cannot be thrown.** | data | **Confirmed by measurement, both files.** DOS `ITEMS` and C64 `ITEMS` are **126 of 128 16-byte records byte-identical**, and the DOS file even carries the same `$7600` load address. The two that differ are exactly the thrown weapons: item type 8 (dagger) reads rate of fire 2, range 4 and the thrown flag on the C64 against 0, 1 and no thrown flag on DOS, and item type 9 (dart) is multi-fire ranged on the C64 and thrown-only on DOS. The guide's author noticed the DOS dagger independently. Nothing to reproduce; what is left is deciding whether a defect in a port we do not own belongs on the front-door list at all |
 
-**A clean negative, and it is worth as much as the positives.** The DOS build
+**A clean negative, which counts as much as the positives.** The DOS build
 has a cheat mode started with the command-line argument `STING` — Ctrl-C to
 quit, Alt-X to win a combat, `J` for free training, copy protection bypassed.
 **There is no C64 counterpart.** The literal `STING` appears on all eight `POOL`

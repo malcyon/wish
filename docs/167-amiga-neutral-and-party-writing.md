@@ -83,7 +83,7 @@ has taken this character out of the party". It reads 1 in 10 of 10 characters
 in the two saved games, which is the ordinary state and says nothing either
 way.
 
-**And a third byte gets a shape.** `field_10c_10f`'s byte 2 — Amiga Curse
+**And a third byte gets a meaning.** `field_10c_10f`'s byte 2 — Amiga Curse
 `0x19C`, Silver Blades `0x145` — is read **only while the game mode is 5
 (combat)** and used as an index: `/Curse` `0x1B794` into a byte array at
 `g3E2A`, `/Secret` `0x1ABD4` into a *word* array at `g5436`, where it
@@ -92,7 +92,7 @@ DOS's own records make it look like. `docs/141-dos-savegame.md`'s DOS `0x10E`
 at the same offset is now CONFIRMED as **the combat side**, 0 the party's and
 1 the enemy's, indexing a two-entry per-side count that a combatant's defeat
 decrements ([`docs/169-dos-combat-side.md`](169-dos-combat-side.md)) — the
-same shape as this Amiga index, and why it reads zero in every
+same pattern as this Amiga index, and why it reads zero in every
 engine-written player record: a fight the party lost is never saved.
 PROBABLE as "an index into a per-combatant array",
 CONFIRMED as "read only in combat".
@@ -267,7 +267,7 @@ fields disagree with its items is corrected rather than drawn wrong. That is
 smaller than it looked, and it is not permission: the party panel draws the
 recomputed value, so a player sees whichever the engine settles on.
 
-**Two things it did not reach**, and both are the same shape -- a party saved
+**Two things it did not reach**, and both are the same kind -- a party saved
 somewhere other than indoors, from camp or from the party menu:
 
 * a party on the travel grid or in combat, on either later title;

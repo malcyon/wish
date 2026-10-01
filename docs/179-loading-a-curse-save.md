@@ -10,7 +10,7 @@ taken for all three.
 **A Curse party can be got in.** `tools/curse_of_the_azure_bonds/curseload.py` does it, and did it four
 times on 2026-09-05 on pool slot 1 with two different specimens.
 
-## The refusal is the drive's own error number
+## The failed load is the drive's own error number
 
 `GEN $1F42` is the load, and `LIBRARY $3159` is what it calls:
 
@@ -23,7 +23,7 @@ $316C  LDA #$00 / JSR $FFD5                           LOAD
 $3177  JMP $401E        turn the result into a number
 ```
 
-It is a plain KERNAL `LOAD`. The name is not passed in: `GEN $1F38` stores
+It is an ordinary KERNAL `LOAD`. The name is not passed in: `GEN $1F38` stores
 `$66` at `$31A0` and `$1F` at `$31A2`, which are the **operands of the
 `LDX #$FF` and `LDY #$FF` inside `$319F`**, so the name pointer is written
 into the instruction and points at `GEN $1F66`, `SAVEAZURE`. `LIBRARY $427C`
@@ -42,7 +42,7 @@ it after `JSR $B700` — and 0 while it is not, which `GEN $0840` does after
 putting the KERNAL's `$0330` vector back. **On the party-formation menu no
 fastloader is installed**, measured 0 at every boot, so the number the engine
 tests at `GEN $1F4B` is the 1541's own error number, sitting in `$03F1` after
-the refusal.
+the failed load.
 
 That one byte separates three different faults. CONFIRMED: measured in five
 driven sessions.
@@ -76,7 +76,7 @@ it got: `$03B4` is set by having drawn the prompt, not by anything on the
 disk. The general file loader is different — `LIBRARY $42A2` calls the
 disk-swap routine at `$453B` on any failed load, and that one sends the drive
 an `I` (`$406C`) and retries. **The save loader has no such recovery**: on a
-refusal `GEN $1F52` jumps back to `$1F1E` and simply asks the question again.
+failed load `GEN $1F52` jumps back to `$1F1E` and simply asks the question again.
 
 `LIBRARY $2FF8` is the wait, and it takes **any key from the KERNAL buffer**
 (`$C6`, `$0277`, via `$2FD7`) or any movement of the joystick on port 2
@@ -130,7 +130,7 @@ emulated cycles at all and the drive never settled.
 
 The wait now happens after the monitor lets go — `Session.ATTACH_SETTLE`, 3.0
 seconds, overridable per call. CONFIRMED by the same command run twice with
-nothing else changed: `$03F1` = 74 and a refusal without it, `$03F1` = 0 and
+nothing else changed: `$03F1` = 74 and a failed load without it, `$03F1` = 0 and
 a party on the screen with it.
 
 This is the same fault as `#192 (Convert a Curse of the Azure Bonds DOS save
@@ -186,7 +186,7 @@ Radiance's counterpart to `tools/curse_of_the_azure_bonds/curseload.py`, driving
 title actually uses.
 
 **The sentence on the screen is different, and does not name the fault.**
-Pool of Radiance's `LOAD SAVED GAME` answers a refusal with
+Pool of Radiance's `LOAD SAVED GAME` answers a failed load with
 `SAVED GAME NOT FOUND!`, leaving `TRY AGAIN ABORT LOAD` on row 24, rather
 than Curse's `UNABLE TO LOAD SAVED GAME.` `SAVED GAME NOT FOUND!` reads as
 "there is no save on this disk", which sends a reader after the file name or
@@ -195,8 +195,8 @@ is what actually says which fault it was: 60, `WRITE FILE OPEN`, exactly as
 in Curse. `$7E9F` was 0 in both driven runs, so the number in `$03F1` is the
 drive's own error rather than the fastloader's `$3E` arm.
 
-Pool of Radiance also redraws its own front end on the refusal rather than
-leaving a working menu behind an error box: the refusal replaces the whole
+Pool of Radiance also redraws its own front end on a failed load rather than
+leaving a working menu behind an error box: the failed load replaces the whole
 party menu with the `SAVED GAME NOT FOUND!` box, and that same party menu
 carries `BEGIN ADVENTURING` **before** a load as well as after one — so a
 driver that answers `TRY AGAIN ABORT LOAD` and then waits for that label has
@@ -207,7 +207,7 @@ Driven both ways in pool slot 2 on 2026-09-08, one flag apart: unrepaired
 gives `SAVED GAME NOT FOUND!` and `$03F1` = 60; the repaired copy gives the
 party menu with BRUTUS, MAGNUS, LADY KATHERINE, ROLAND, TWIN and MALCYON, and
 `$03F1` = 0. As with the Curse disks above, the specimen itself is repaired
-now, so this refusal is what a *newly* copied image with the same fault would
+now, so this failed load is what a *newly* copied image with the same fault would
 show, not what booting this disk shows today.
 
 ## Getting a party in
@@ -221,7 +221,7 @@ sequence, for any other tool that needs one:
    drive settle, *then* press a key;
 4. wait for `BEGIN ADVENTURING` on the menu, which is the party being in.
 
-A refusal leaves **the question** up rather than the menu, because `GEN $1F52`
+A failed load leaves **the question** up rather than the menu, because `GEN $1F52`
 jumps to `$1F1E`. So a retry answers the bar that is already there; walking
 the menu for a label that is only the bar's own text presses nothing and looks
 exactly like a session that has stopped responding. Call `load_saved_game`
@@ -245,7 +245,7 @@ the front end does. The experiment is to break at `GEN $1FDC` during an
 
 **Why `#291 (A Curse save disk will not load through the game's own front end in a pooled session, so no C64 Curse party can be got in)`'s own sessions refused with the save disk attached.** Their logs
 survive at `cited/256-dual/c64/run.jsonl` and stop at `menu-miss` before
-any load, so the refusals they describe came from driving by hand over the
+any load, so the failed loads they describe came from driving by hand over the
 command port and no transcript of that survives. All three faults above were
 reachable from the state those sessions were in, and `$03F1` was never read at
 the time, so which one they hit cannot be recovered. It does not matter for

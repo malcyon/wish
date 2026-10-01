@@ -84,7 +84,7 @@ healthy run -- 76 of 164 samples of a working demo. Bits 3, 4 and 5 are zero, so
 the C64 is driving nothing at all; bits 6 and 7 are both set. CONFIRMED: the
 serial bus froze in a state the protocol passes through normally, rather than in
 an illegal one. Which side stopped first is **not** determined, and the polarity
-of bits 6 and 7 is not worth arguing from a single machine.
+of bits 6 and 7 cannot be argued from a single machine.
 
 ## What was not damaged
 
@@ -130,7 +130,7 @@ it is not a disk block landing in the wrong place.
 
 ## Reading a stopped machine
 
-Three things make a capture worth taking, and all three are in
+Three things make a capture useful, and all three are in
 `tools/c64/c64uplay.py`'s region list.
 
 **The loaded-files cache at `$6E13` says where the game was.**
@@ -170,7 +170,7 @@ firmware in page 1 of a game's memory costs the next reader twenty minutes.
 ## Finding the stable from the game's data
 
 Donald's recipe names a walkthrough pin on a map picture. The square can be had
-from the disks instead, and the chain is worth keeping because it generalises.
+from the disks instead, and the chain is kept because it generalises.
 
 1. **The treasure identifies the file.** The two items are a Short Bow +1 and
    Arrows +1. `ITEMFILE29` on `POOL2.D64` holds exactly two records: `ARROW(S)

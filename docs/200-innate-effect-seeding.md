@@ -25,7 +25,7 @@ feed it: one on the record's **race** byte and one on its **class** byte. The
 nine-byte `.SPC`/`.FX`/`.SFX` record the engine later writes is the id
 followed by those three values, so reading the switch reads the file.
 
-`tools/dos/innateids.py seed` finds all three by shape rather than by address —
+`tools/dos/innateids.py seed` finds all three by pattern rather than by address —
 `add_affect` is the far call a race switch reaches with four constant pushes,
 and a switch is a read of the race or class byte into `al` followed by
 `cmp al` — so one run works on any of the three titles.
@@ -120,7 +120,7 @@ where the two ports use different numbers for the same thing.
 So an id is per port as well as per title, and 45 and 8 are not two names for
 one thing. The paladin is the disagreement both titles share.
 
-## 2. The Curse corpus, character by character
+## 2. The Curse specimens, character by character
 
 `tools/dos/innateids.py sweep --title curse --by-id` over the specimen tree, the
 archives and the old scratch directory: 69 distinct 422-byte records, 42 with an effect file.

@@ -29,11 +29,11 @@ answers.
   a DOS save, neither of which exists on this machine", **has since been
   satisfied**: see §7.
 
-And one thing worth saying before any of it: **if "tests" meant `pytest`, none
+One thing before any of it: **if "tests" meant `pytest`, none
 of this applies.** `python3 -m pytest tests/ -q` is 1178 passing and 1 skipped in
 about 65 s and touches no emulator at all — `tests/automap/test_automap.py` is the only file that even
 imports `ViceTarget`, and it stubs it. Making that faster is
-`pip install pytest-xdist && pytest -n 12`, worth perhaps 40 seconds, and it is
+`pip install pytest-xdist && pytest -n 12`, which saves perhaps 40 seconds, and it is
 not what the rest of this document is about. What is serialised here is the
 **driven live sessions** — `tools/c64/session.py`, `tools/c64/walkrun.py`, the
 automapper against a running game.
@@ -237,7 +237,7 @@ paragraph above has the arithmetic: `BIN_BASE` reaches `TEXT_BASE` at twenty
 slots and overlaps it at twenty-four. So sixteen is the number that fits
 comfortably, nineteen is the last that fits at all, and **growing past that
 means re-spacing the ports as well as the displays.** The display headroom is
-still worth having — it means the next widening is one change rather than two.
+still useful — it means the next widening is one change rather than two.
 That is deliberately more room than the sixteen this issue asks for: the whole reason a band needed re-spacing at all
 is that eight-to-sixteen was not foreseen when the original :10/:30/:40
 layout was chosen, and a margin sized to exactly today's number would put the
@@ -381,7 +381,7 @@ from evidence that does not touch the slot:
 **Neither field is proof of idleness.** A session driven by nothing but
 monitor reads -- no screenshot, no save -- writes nothing into its slot
 directory and reads as idle while it may not be. `held_for` next to a large
-`idle_for` is the case worth a second look; either number alone is not.
+`idle_for` is the case that needs a second look; either number alone is not.
 
 Two things considered and rejected, both for touching what they were meant
 to only observe:
@@ -446,7 +446,7 @@ than eight**, and the real limit is agent attention, not the box.
 
 Headless (`Xvfb` instead of `Xephyr`) saves the 80 MB and, more usefully, keeps
 eight game windows off Donald's desktop. XTEST works the same on either. Not
-required for the first version; worth doing before the count goes past three.
+required for the first version; do it before the count goes past three.
 
 ### 4.2 The saving is across tasks, never within one
 
@@ -564,7 +564,7 @@ Neither is about the emulator, and no number of instances helps:
 ## 6. The Windows VM
 
 **Donald has ruled against it, and the reasoning is sound.** Finding a Windows
-ISO and standing the thing up costs more than the problem is worth when he has
+ISO and standing the thing up costs more than the problem saves when he has
 a Windows laptop on the desk: he will run `122-release-testing.md` on it
 himself. **Proxmox is retired for now** -- the fallback if running many VICE and
 DOSBox processes on one host turns out to be unworkable, not the plan of
@@ -583,7 +583,7 @@ thirteen unverified claims. Every one of them is unverified for the same
 reason — "nobody on the project has a Windows machine" — and they gate the
 walkthrough that gates the tag.
 
-**What CI already covers, and what it does not.** This is worth separating
+**What CI already covers, and what it does not.** Separate these
 before provisioning anything, because some of that list is cheaper than a VM:
 
 | claim | already covered? |
@@ -599,7 +599,7 @@ before provisioning anything, because some of that list is cheaper than a VM:
 | the frozen zip on a machine with no Python | **no** — a CI runner has Python |
 
 **So the VM's job is the interactive residue**, and it is a real job: roughly
-half that table cannot be automated at any price. Two rows are worth a CI
+half that table cannot be automated at any price. Two rows deserve a CI
 ticket instead of a VM (the zip's contents; a `cmd /c` invocation of
 `--version` alongside the piped one).
 
@@ -648,7 +648,7 @@ Another agent was working `amiga/` (scratch, deleted) right now — the two `[cr
 unpacked and `hunk10.asm`, `dax.py`, `ecl/` are today's files. `117` obstacle 1
 proposes exactly this: the Amiga port is DOS-lineage (`ecl.dax`, `geo.dax`,
 `DAxF` containers) so its scripts can be read to find the quest-flag base *by
-shape*.
+structure*.
 
 That is sound, and **it turned out better than this table expected.** Two rows
 below were written as hard "no" and both have been refuted; they are kept as
@@ -657,7 +657,7 @@ written because the correction is the point.
 | use of the Amiga rips | safe? | why |
 |---|---|---|
 | Which files exist, and the container scheme (`DAxF`, `POOLDATA`) | **yes** | shared lineage; this is what obstacle 1 wants |
-| The *shape* of a structure — a 26-entry ledger, ten increment sites, an eight-entry lock table | **yes** | shape is portable; that is the whole fingerprint argument |
+| The *structure* of a table — a 26-entry ledger, ten increment sites, an eight-entry lock table | **yes** | structure is portable; that is the whole fingerprint argument |
 | Script semantics: which event sets which flag | **yes, and better than PROBABLE** | not "the same designers' data, recompiled" — **the same artefact.** The Amiga `ecl.dax` unpacks to the C64's own scripts, `$1388` load address and all |
 | ~~**Any absolute address** — no~~ | **yes, inside the ECL bytecode** | **The ECL bytecode is one artefact shared by every port, absolute operands included.** 171 of the 172 referenced flag addresses appear unchanged in both ports, and DOS and C64 *Curse* differ only in a script's 2-byte header. The rule still holds for *engine* addresses — 68000 code, different loader, different bases — but a flag address named by a script is portable |
 | **Byte order of any multi-byte field** | **no** | the Amiga is **big-endian**. `117` says "both little-endian, so multi-byte fields need no swapping" — that is true of DOS and C64 and false of the Amiga. A word read off an ADF says nothing about the DOS word |
@@ -690,7 +690,7 @@ Taking it seriously, because it was asked seriously.
 If the pool ran somewhere that is not Donald's desktop, then `POR_MONITOR` taking
 a *host* as well as a port — which it already does, `Monitor(host=…)` has always
 been parameterised — makes the pool remote with no further code. That is the
-one design decision worth taking now: **keep the host in the override, not just
+one design decision to take now: **keep the host in the override, not just
 the port**, so a move to another box is configuration rather than a rewrite.
 
 Nothing here needs Proxmox installed on *this* machine, and this box has no

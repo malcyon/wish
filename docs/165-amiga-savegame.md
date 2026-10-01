@@ -106,7 +106,7 @@ entries 2-3 empty, **which is exactly what both titles' new-game
 initialisation writes** (`0x1d6e8` on Curse, `0x1d8c4` on Silver Blades).
 
 **Which byte is x is CONFIRMED twice over**, and it used not to be, because the
-only in-world specimen stood at `3,3`. The step routine at `0x118cc` reads the
+only in-world specimen had the party at `3,3`. The step routine at `0x118cc` reads the
 facing and jumps through a table at `0x11924`: north decrements `g57a1`, east
 increments `g57a0`, south increments `g57a1`, west decrements `g57a0`, each
 wrapping at 15. So `g57a0` is x, `g57a1` is y, and both wrap on a 16 x 16
@@ -321,7 +321,7 @@ multi-classed one, which carries half. The opening scene awards it; there was
 no fight (`cited/331run/shots/07-after.png` through `09-adventuring.png` are the
 scene) and the clock never left `00:00`. That is an independent corroboration
 of the field's offset -- it is the one thing the engine moved, by an amount a
-Gold Box award has the shape of. The other 42 bytes are `effect_chain` and
+Gold Box award looks like. The other 42 bytes are `effect_chain` and
 `heap_104` pointers.
 
 ## The container number
@@ -440,7 +440,7 @@ picker)`. A fourth per-title difference.
   `goldbox.amiga_savegame.new_por_savegame` on the strength of that sweep, and the
   sweep is only as wide as the places the party has stood:
 
-  | `$5012` | files | words non-zero | a corpus of this one alone would have missed |
+  | `$5012` | files | words non-zero | a set of specimens of this one alone would have missed |
   |---|---|---|---|
   | 2, The Slums | 6 | 29 | 79 |
   | 3, New Phlan | 9 | 95 | 13 |
@@ -455,7 +455,7 @@ picker)`. A fourth per-title difference.
   (area 7, Valjevo Castle, the Pool) and `WISH-SPEC-por-446-temple-of-bane`
   (area 24, Temple of Bane), each staged at the area's own documented
   arrival square, loaded, walked over a few of the area's own squares, and
-  written back with `ENCAMP > SAVE`. Re-swept, the corpus is **24 distinct
+  written back with `ENCAMP > SAVE`. Re-swept, the specimens come to **24 distinct
   saved games standing in five areas -- 0 (New Phlan), 7, 20 (The Slums), 24
   and 26 (a wilderness window) -- and 120 of the 2560 words are non-zero in
   at least one of the 24**, up from 108 across 19 across three areas.

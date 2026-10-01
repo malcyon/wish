@@ -41,7 +41,7 @@ to 0 later in the same session, the line went away again.
 
 **The area scripts write the same value.** `tools/areas/eclsweep.py
 curse-of-the-azure-bonds --sites 7EA8` finds six statements in the whole
-corpus, four of them `SAVE 127, =[$7EA8]` in `ECL01`, `ECL03`, `ECL50` and
+set of scripts, four of them `SAVE 127, =[$7EA8]` in `ECL01`, `ECL03`, `ECL50` and
 `ECL51`; `ECL01+$01EF` writes 0 and `ECL01+$0228` compares against 124. `GEN
 $2029` puts it back to 0 on the way out of the party menu and `INIT $08F8`
 zeroes it at start-up. Nothing else on the six sides names the address.
@@ -139,11 +139,11 @@ read out of the game. `$2192` compares the total against `$030D40` = 200,000
 copper = **1000 gp**; `$21A5` zeroes all ten money bytes and writes
 `(total - 200000) / 1000` back as **platinum** at `0x0C3`.
 
-Same shape as Pool of Radiance, same consequence: anything under 5 gp is lost
+Same pattern as Pool of Radiance, same consequence: anything under 5 gp is lost
 at every training. Watched five times over, 2000 platinum stepping down 200 a
 class. CONFIRMED.
 
-### 3. The refusal
+### 3. The trainer says no
 
 `UNABLE TO ADVANCE` -- `GEN` message 27, `$2056 LDY #$1B` -- where Pool of
 Radiance says `LOW EXPERIENCE OR WRONG CLASS`.
@@ -155,7 +155,7 @@ $2031` leaves out the `$3918`/`$45F8` write-back the success path takes at
 `$2073`/`$2076`, so the deduction `$21EA` made in the working record at `$7C00`
 never reaches the roster. CONFIRMED for what a player sees; **PROBABLE for the
 mechanism**, because the working record read 1800 immediately after one
-refusal and 2000 after the other, and which read raced a redraw was not pinned.
+refused training and 2000 after the other, and which read raced a redraw was not pinned.
 
 ### 4. The paladin's turning level, and the racial saving-throw bonus
 
@@ -229,7 +229,7 @@ its memorised spells and all its experience. That is the writer's side of what
 `#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the
 dual-class slot)` read out of `GEN $23C9` and `$18EB`.
 
-**What it does not settle**, and it is what `levelup.plan`'s dual-class refusal
+**What it does not settle**, and it is what `levelup.plan`'s dual-class stop
 is about: none of the four routines that behave differently *afterwards* has
 been seen running -- `$15E7` refusing the die until the new class passes the old
 level, `$124F` giving the old class its own hit-point term, `$1470` and `$1321`

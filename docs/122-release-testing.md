@@ -79,7 +79,7 @@ out, and `§7`'s Linux column is filled in. Nothing here asks you to
 
 **PyInstaller cannot cross-compile.** It bundles the interpreter it is running
 on, so a Windows executable has to be built on Windows. There is no flag, and
-Wine is not worth the trouble. That leaves two ways to get one:
+Wine costs more trouble than it saves. That leaves two ways to get one:
 
 **The easy way — let GitHub build it, no tag needed.** `release.yml` has a
 `workflow_dispatch` trigger, so:
@@ -436,7 +436,7 @@ Windows, so confirm it agrees here where you can check both.
 1. Pick a character. Change **gold** to `4321` — visible on the game's own
    character sheet, easy to spot, and nothing else depends on it.
 2. **File > Save As…**, and give it a *new* name: `~/wish-test/EDITED.D64`.
-   **Never plain Save on the first pass** — Save writes back to `TESTSAVE.D64`.
+   **Never Save (as opposed to Save As) on the first pass** — Save writes back to `TESTSAVE.D64`.
    The dialog opens with `TESTSAVE.D64` already in the File name box and
    selected, so a reflexive Return here overwrites the file the step is trying
    to protect. Type over it.
@@ -621,7 +621,7 @@ are these.
    `~/.var/app/net.sf.VICE/config/vice/vicerc`.
 4. Save, then start `x64sc.exe`.
 
-**The alternative, which avoids the file entirely** and is worth trying first if
+**The alternative, which avoids the file entirely** and is the one to try first if
 the ini fights you — a shortcut, or PowerShell:
 
 ```powershell
@@ -688,11 +688,11 @@ cd C:\wish\wish-<version>-windows-x86_64
 
 *Expect:* both print, in the window you typed them in. *Confirmed 2026-08-22*
 from a Command Prompt: the version printed, the help text printed, and the
-output was ordinary — no interleaving with the shell's next prompt worth
-noting. Nobody is expected to use the command line on Windows, and the version
+output was ordinary — no interleaving with the shell's next prompt that
+needs noting. Nobody is expected to use the command line on Windows, and the version
 is in **Help > About wish** too, but it is no longer an open question.
 
-*If you get a PyInstaller traceback box, that is a real regression* and worth a
+*If you get a PyInstaller traceback box, that is a real regression* and deserves a
 screenshot: this path used to die in `AttributeError: 'NoneType' object has no
 attribute 'write'`.
 
@@ -703,7 +703,7 @@ Same as L6, with `TESTSAVE.D64` copied onto this machine:
 1. **File > Open…**, pick `TESTSAVE.D64`.
 2. Change gold to `1234` — a different number from the Linux run, so you can
    tell the two disks apart later.
-3. **File > Save As…** > `EDITED-WIN.D64`. Not plain Save.
+3. **File > Save As…** > `EDITED-WIN.D64`. Not Save.
 4. Reopen `EDITED-WIN.D64` and confirm.
 5. In VICE, attach `EDITED-WIN.D64` and load the saved game. Gold reads 1234.
 
@@ -793,7 +793,7 @@ click **Keep**. Then press **R** to toggle fog of war and back.
 
 *Expect:* a small marker in the corner of the square, and its text on hover.
 `R` flips the status bar between `revealing` and `whole map`, and the **Fog of
-war** box at the right-hand end of the status bar follows it.
+war** box at the right-hand end of the status bar changes with it.
 
 **M5.** Close the window entirely. Reopen it and return to the map tab.
 
@@ -867,7 +867,7 @@ class and THAC0 already decoded through the family's `60 - value`.
 **LOAD SAVED GAME**.
 
 *Expect:* the game finds it and reaches **BEGIN ADVENTURING**. *If it does
-not*, stop: that is the `#109 (A save slot written onto an Amiga disk is not offered by the game's picker)`-shaped failure and nothing further is worth
+not*, stop: that is the `#109 (A save slot written onto an Amiga disk is not offered by the game's picker)`-style failure and nothing further needs
 checking.
 
 **D4.** Begin adventuring and read three things off the screen:
@@ -903,7 +903,7 @@ tools/c64/savecheck.py --disk $TMPDIR/NEWJ.D64 --slot N --view
 with `--view` taking no number, which reads every character the panel lists
 and says so if it read fewer.
 
-A negative armour class is right and is worth looking at twice — `AC -3` for a
+A negative armour class is right and needs a second look — `AC -3` for a
 fighter in plate mail with a shield and 18 dexterity. An armour class in the
 fifties is the fault that shipped once, where the stored byte reached the
 screen without the bias being taken off.
@@ -939,7 +939,7 @@ about -- a converted save whose loaded-files cache is wrong loads and walks
 perfectly well and only fails here.
 
 **D7.** Get into a fight -- walking the Slums usually manages it within two
-steps -- and look at the party on the combat floor.
+steps -- and look at the party on the combat arena.
 
 *Expect:* one small figure per character, all of them alike, holding nothing.
 They are alike because a converted party has no C64 art to carry, so every
@@ -1001,7 +1001,7 @@ version is the tag" step, which has also never run.
 
 ⁴ **Re-run on 2026-08-22 under the new spelling**, `wish export` / `wish import`
 rather than `wish-cli`, after [129-one-binary.md](129-one-binary.md) merged the
-two binaries: the same six `gold 2 -> 4321` lines, the same refusal on exit 2,
+two binaries: the same six `gold 2 -> 4321` lines, the same error message on exit 2,
 and `cmp` silent on the unedited round trip. Verified both in a wheel installed
 into a throwaway venv and in `dist/wish/wish` from a local `pyinstaller` run.
 The Windows column is no longer `n/a` for these — the subcommands ship there
@@ -1048,7 +1048,7 @@ reproduce is a failure you cannot fix.
 **1. The version.** `wish --version` — from a terminal on Windows too — or
 Help > About. Without it nobody knows which build you had. The debug log's first
 line carries it too, and should agree; if it says `wish unknown`, that is the
-rename bug of 2026-08-22 come back and it is worth reporting on its own.
+rename bug of 2026-08-22 come back and it should be reported on its own.
 
 **2. The debug log.** Off at every start, deliberately — it is not remembered
 between runs.
@@ -1095,7 +1095,7 @@ used to be here — that `wish.exe --version` reaches a terminal, that its outpu
 lands after the shell's prompt, whether a windowed build opens a stray console,
 and whether the frozen build starts at all on Windows. All four are now
 observed and their sections say so. Everything below is what is *still*
-expectation rather than observation, and worth correcting in this file once you
+expectation rather than observation, and to be corrected in this file once you
 know:
 
 | where | claim |

@@ -8,11 +8,11 @@ was made to load. `goldbox/dos_savegame.py` is the machine-readable form and
 the reasoning is in [`50-experiments.md`](50-experiments.md) "Mapping the DOS
 saved game" and "The DOS saved game outdoors".
 
-## The corpus, and how to re-take a count
+## The specimens, and how to re-take a count
 
 **Every count on this page is a count of engine-written saves, and
 `tools/dos/dossavsweep.py` re-takes it rather than quoting it.** That matters
-because the corpus keeps changing: eight of the twelve specimens the original
+because the specimens keep changing: eight of the twelve specimens the original
 pass counted lived in scratch and are gone, and later work has made ones
 it never had.
 
@@ -66,7 +66,7 @@ in different places and Pools of Darkness writes a `SAVGAM<slot>.PTY` instead.
 | 12803 | facing, the C64's value doubled: 0 N, 2 E, 4 S, 6 W — and **still live outdoors** (2/0/2 = E/N/E against the screen while x,y sat stale) | CONFIRMED — turn diff, 0→2 on one right turn; outdoors 3 of 3. The ten seeded overland saves do not add to that count: `tools/dos/dosoutdoorprobe.py` walks with the arrows, which move rather than turn, so the facing byte never had to change |
 | 12804 | **`$C04E`: the wall-art nibble in front of the party**, read out of the `GEO`'s plane 0 or 1 by the facing (`GAME.OVR:0x2ED72`) and stored beside the square by the step routine and again on a turn. The measured 0, 9 and 14 are wall codes. Every negative result this row used to carry -- no copy in the file, not a step counter, no indoor/outdoor partition -- follows from its being a function of the map. A conversion writes 0 and the first step or turn recomputes it. [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md) | CONFIRMED from the code |
 | 12805 | **the low byte of VM word `$5200`** — and of `$5082`, which equals `$5200` — in **21 of 21** engine-written specimens, including a pair that moved together 26→0 on one indoor step and 26→1 across the boat, and the engine's resave (26→0 in both places at once) | CONFIRMED as a copy; which direction, unknown |
-| 12806 | **1 in the 11 indoor specimens, 3 in the 10 outdoor ones** — but it is *perfectly* correlated with `$49E6`, so nothing in the corpus separates "view mode" from a second encoding of the indoors flag. A converter can write it from `$49E6`, which it already knows | PROBABLE as view mode; CONFIRMED as a function of `$49E6`, **21 of 21** |
+| 12806 | **1 in the 11 indoor specimens, 3 in the 10 outdoor ones** — but it is *perfectly* correlated with `$49E6`, so nothing in the specimens separates "view mode" from a second encoding of the indoors flag. A converter can write it from `$49E6`, which it already knows | PROBABLE as view mode; CONFIRMED as a function of `$49E6`, **21 of 21** |
 | 12807 | **2 in all 21 genuine specimens**, indoors and out, before and after the engine's resave (0 only in the stub) | CONFIRMED as a constant to write; its meaning UNKNOWN |
 | 12808 | **party size**, one byte; 6→1 when a six-member template carried a one-member party through the engine's own resave | CONFIRMED |
 
@@ -97,12 +97,12 @@ quest flags convert unconditionally.
 | `$5200` | equals file byte 12805 in all six specimens; written 1→0→1 by the boat-back transition (writer `30F6:0CF2`) | PROBABLE scratch; unnamed |
 | `$5227`+ | the encounter-message string buffer, one ASCII character per word — "YOU SPY A GROUP OF SEEDY-LOOKING GOBLINS." in J | PROBABLE |
 | `$49EB` | a script variable: 0 in New Phlan, 1 in the Slums, Sokol Keep and outdoors — **and the C64's byte at the same address reads the same way** (0 in ten New Phlan saves, 1 in both Slums saves). ECL00 writes 1 into it when the party boards a boat | CONFIRMED as the same field on both ports; what it gates, UNKNOWN |
-| `$49FD`, `$49FE` | **per-area constants the area's own ECL prologue writes.** `ECL00` (New Phlan) opens `SAVE [$6E7D],[$49FD] / SAVE 10,[$49FE]`; `ECL14` (the Slums) opens `SAVE [$6E7D],[$49FD] / SAVE 9,[$49FE]`. Every DOS specimen agrees (10 New Phlan, 9 Slums) and so does every C64 save. Sokol Keep's `ECL15` never writes `$49FE`, which is why slot B stands there still holding New Phlan's 10. The engine rewrote 10→9 by itself after loading a save retargeted into the Slums | CONFIRMED — the script text and 12 specimens on two ports |
+| `$49FD`, `$49FE` | **per-area constants the area's own ECL prologue writes.** `ECL00` (New Phlan) opens `SAVE [$6E7D],[$49FD] / SAVE 10,[$49FE]`; `ECL14` (the Slums) opens `SAVE [$6E7D],[$49FD] / SAVE 9,[$49FE]`. Every DOS specimen agrees (10 New Phlan, 9 Slums) and so does every C64 save. Sokol Keep's `ECL15` never writes `$49FE`, which is why slot B stands there still holding New Phlan's 10. The engine rewrote 10→9 by itself after loading a save whose party had been moved into the Slums | CONFIRMED — the script text and 12 specimens on two ports |
 | `$4A00`-`$4A1F` | the per-script scratch, the C64's `SCRIPT_SCRATCH` at the same addresses, zeroed on every area change. Six words are live here and they partition cleanly by area; `$4A00` is 255 in both ports' Slums saves and 0 in both ports' New Phlan saves | CONFIRMED as the same region; the individual words UNKNOWN |
 | `$49FC`, `$49FF` | ECL-visible, but the two ports **disagree**: DOS reads (6, 3) — 4 for `$49FC` in the Slums — where the C64 reads (2, 129/1). So they are not copyable across even though the address is shared. `$49FC` is not the party count: J holds 4 with six live characters | UNKNOWN, and refuted as party count |
 | `$4FD2`, `$4FD3` | **`$6DD2`/`$6DD3` under the VM's own numbering: how many five-minute rest passes between interruption checks, and the percentage chance of one.** Written by the area script's entry 2 on ENCAMP through the VM store, zeroed by the area-init routine on load, read by the rest loop at `GAME.OVR:0x24A66` and by nothing else. The four pairs the 21 containers partition into are the four scripts' own `SAVE` statements: New Phlan (1, 101), the Slums (24, 24), Sokol Keep (2, 1), the overland (96, 10). The file holds the pair because a save is taken inside ENCAMP; the live image reads 0 because the init routine zeroes it on load. This row used to say the meaning was UNKNOWN; [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md) has the code, the script text and the watched ENCAMP | CONFIRMED -- the code, the script text and a `BPM` on the write |
 | `$507A`, `$507B`, `$507C` | **`$6E7A`-`$6E7C`: the overland script's loop registers** while `ECL1A` entry 1 searches its fourteen-square table on every step -- the row's y, the row's count and the running index. The band table below is reproduced row for row by running that loop by hand, (29, 1, 14) included; nothing reads them after it. Rewritten on the first step, so a conversion writing 0 loses nothing. [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md) | CONFIRMED -- reproduced from the script and watched under a `BPM` |
-| `$5082` | **equals `$5200` in 21 of 21** engine-written specimens, which makes it a third name for the value file byte 12805 also carries. Not previously noted; found by searching the variable array for words whose value vector across the whole corpus is identical | CONFIRMED as a copy |
+| `$5082` | **equals `$5200` in 21 of 21** engine-written specimens, which makes it a third name for the value file byte 12805 also carries. Not previously noted; found by searching the variable array for words whose value vector across all the specimens is identical | CONFIRMED as a copy |
 | `$4B00`-`$52FF` | **Two VM heap blocks whose real addresses are `$6B00`-`$6EFF` (file words 1024-2047) and `$9700`-`$98FF` (words 2048-2559).** The contiguous names this page uses are file positions rather than the addresses the engine or the scripts use, and the claim this row used to make -- that no script references the range -- rested on that misnaming: 28 of the 30 scripts name `$6DD2` and all 30 name `$6E79`. [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md) has the classifier and the renaming table; `$4B00`-`$4CFF` is real and unreferenced. Live and still unnamed, under their VM names: `$6BB8`, `$6BC3`, `$6C0C`, `$6DA8`, `$6DC0`-`$6DC1`, `$6DC6`, `$6DC8`, `$6E7D`, `$6E7F`-`$6E80`, `$9802`-`$9807`, `$980A`-`$980F`. Constant in all twelve: `$6DE1` = 255, `$6E6D` = 16, `$6EF6` = 1 | the blocks CONFIRMED from the code; the words individually UNKNOWN |
 | engine-rebuilt | `$49F0`, `$49F1`, `$49FE`, `$4FD2`, `$4FD3`, `$5079`, `$5082`, `$5200`, `$5208` — the nine words the engine rewrote by itself when it loaded a hand-built save and the party moved (`p59/retarget-C.DAT` against `p59/run9/SAVGAMD.DAT` (scratch, deleted)). The load path was already bisected as not needing them | CONFIRMED engine-maintained |
 
@@ -250,7 +250,7 @@ most save directories twice and for three titles the copies are identical.
 | ECL variables, `u16le` from `$4900` | 2560 | 2560 | 2560 | — | CONFIRMED for the three; the word count is Pool of Radiance's and untested in the other two |
 | staged `ECL<n>.DAX` script | 7680 | 7680 | — | — | CONFIRMED for Pool of Radiance; PROBABLE for Curse, whose buffer is all zero in both shipped saves |
 | square and engine state | 7 | 7 | 7 | **11** | CONFIRMED from each writer — five bytes from one data-segment address, then two single bytes (#253 (A Curse or Silver Blades party's square is read twelve bytes past where the engine writes it, since #220 moved the offset the wrong way), and #175 (Decode the first 1024 bytes of the Pools of Darkness saved game) for Pools of Darkness) |
-| two interleaved `u16[1..3]` arrays, **inside** the square block | — | 12 | 12 | — | the *shape* CONFIRMED from the writer — three passes of two `u16` each, `DS:0x722A`/`DS:0x722C` in Curse and `DS:0x89D8`/`DS:0x89DA` in Silver Blades, stepping by 4; PROBABLE that they are `WALLSET` and `WALLMAP`, see below (#253 (A Curse or Silver Blades party's square is read twelve bytes past where the engine writes it, since #220 moved the offset the wrong way)). This table called them "unnamed, before the square block" until then, and reading the square through that put it twelve bytes late. **Pools of Darkness has none**: the four this table gave it were the last four bytes of its own square block (#175 (Decode the first 1024 bytes of the Pools of Darkness saved game)) |
+| two interleaved `u16[1..3]` arrays, **inside** the square block | — | 12 | 12 | — | the *structure* CONFIRMED from the writer — three passes of two `u16` each, `DS:0x722A`/`DS:0x722C` in Curse and `DS:0x89D8`/`DS:0x89DA` in Silver Blades, stepping by 4; PROBABLE that they are `WALLSET` and `WALLMAP`, see below (#253 (A Curse or Silver Blades party's square is read twelve bytes past where the engine writes it, since #220 moved the offset the wrong way)). This table called them "unnamed, before the square block" until then, and reading the square through that put it twelve bytes late. **Pools of Darkness has none**: the four this table gave it were the last four bytes of its own square block (#175 (Decode the first 1024 bytes of the Pools of Darkness saved game)) |
 | the party size, one byte | 1 | 1 | 1 | 1 | CONFIRMED — it reads 6 in all thirteen, and every writer emits it immediately before the `CHRDAT` slots |
 | 41-byte `CHRDAT` slots | 8 × 41 | 8 × 41 | 8 × 41 | 8 × 41 | CONFIRMED as 328 bytes in all thirteen; eight loader slots CONFIRMED for Pool of Radiance, Pools of Darkness and Silver Blades; PROBABLE for Curse |
 
@@ -261,7 +261,7 @@ to `[bp + 41*i − 0x171]` for `i` up to 8 and then writes `0x148` = 328 bytes i
 and the party fills six of them; the rest is the stack under the buffer, which
 is why it reads `Camp: ` and `Choose a FUNCTION`. Its *loader* reads the same
 328 bytes out of a **Silver Blades** container after seeking to 5140 — which
-is that shape's own count byte exactly — so the eight-slot reading is the
+is that layout's own count byte exactly — so the eight-slot reading is the
 engine's for that title too. **Settled for Pool of Radiance, Curse and Silver
 Blades as well** by the same `BlockWrite` sweep, below: each writes one
 `0x148` = 328-byte block, from a stack buffer, immediately after the party
@@ -293,7 +293,7 @@ Steam `SavesDir` holds Pool of Radiance's app id and no other — the same
 specimen `#113 (Play DOS Curse far enough to save a party with items)` is
 about. **Pools of Darkness is no longer in that list**: see the next section.
 
-**The size names the shape, not the game.** Treasures of the Savage Frontier
+**The size names the format, not the game.** Treasures of the Savage Frontier
 writes the same 1364-byte `SAVGAM<slot>.PTY` and empty 12-byte `VAULT<slot>.DAT`
 that Pools of Darkness does, with the same 336-byte tail, and its two
 containers read cleanly through the Pools of Darkness row. Only the directory
@@ -309,7 +309,7 @@ starts at offset 0 and each one after it starts where the last ended.
 `tools/dos/dossavewritemap.py --check` fails if a map and a `DosContainer`
 disagree.
 
-The chain is found by its shape rather than by an address. A save-side
+The chain is found by its form rather than by an address. A save-side
 `BlockWrite` passes its `var Result` argument as `NIL` and so compiles to
 `xor ax, ax; push ax; push ax; lcall`, where the *load* side passes a real
 `var` and pushes `ss:di`; the longest run of the former whose widths add up
@@ -393,7 +393,7 @@ variable, and variable *N* is at file offset *N*−1.** Not the 2560 `u16le`
 words the first three titles write, which is why nothing here could find
 `$5012` or `$503E` under any origin: the array is byte wide and based at 0
 rather than at an ECL address. `goldbox.dos_savegame.pod_var` reads it and
-`SAVE_POOLS_OF_DARKNESS` is the shape.
+`SAVE_POOLS_OF_DARKNESS` is the example.
 
 Read out of `GAME.OVR` rather than out of a save, so the played-save blocker
 this ticket carried from the day it was filed never had to be lifted.
@@ -522,7 +522,7 @@ this machine has a clock past nine minutes. Settling experiment: drive
 | 1033–1034 | `DS:0xA9FA`, `LoadMap`'s second argument | UNKNOWN — zero in all ten |
 | 1035 | the count of character files, which is the party size | CONFIRMED — the writer's own loop counter, and 6 in all ten |
 
-### The corpus, and what the shipped containers actually are
+### The specimens, and what the shipped containers actually are
 
 **`FillChar(block, 1024, 0)` and six assignments is the whole of a shipped
 container.** `GAME.OVR:0x1A4B5` zeroes the block and then writes
@@ -568,11 +568,11 @@ single-byte:
 * **The eight-slot name table is not a Pools of Darkness peculiarity.** Its
   own loader reads 328 bytes at 5140 out of a *Silver Blades* container,
   which is the party-import path from the previous game, and 5140 is that
-  shape's count byte exactly.
+  layout's count byte exactly.
 * **Treasures of the Savage Frontier's two containers differ from Pools of
   Darkness' in three bytes and nowhere else**: 82, 84 (2 and 3, zero in Pools
   of Darkness) and 1026, the facing. Both titles' A and B are byte-identical
-  to each other, so the four shipped containers are worth one specimen
+  to each other, so the four shipped containers amount to one specimen
   between them.
 * **A wilderness Pools of Darkness save has never been seen.** All ten
   containers hold variable 34 = 1, so everything this page says about the
@@ -619,7 +619,7 @@ nothing to carry out there either way.
 inside the training hall holds `$49C5` = 0 and `$49F2` = 11: area 11 has no
 map of its own and runs on New Phlan's `GEO00`, so `LOADFILES` — the only
 thing that writes `$49C5` — is never reached. Phlan City Hall, area 8, has
-the same shape. Reading the area out of `$49C5` names New Phlan for both, and
+the same structure. Reading the area out of `$49C5` names New Phlan for both, and
 `goldbox.dos_savegame.current_area` did so until #257 (A DOS save made in the
 training hall converts as though the party were in New Phlan).
 
@@ -718,7 +718,7 @@ Byte 12804 is in this group too, and the run **refuted** what this page used
 to say about it. It read "0 indoors and 14 outdoors are the measured values
 to write". The engine's own resave of a party standing **indoors** in the
 Slums, walked in from a from-nothing save, holds **14** -- so the value does
-not partition on indoors and out, and the doc's own corpus already had an
+not partition on indoors and out, and the doc's own specimens already had an
 indoor 14 in slot B. What is CONFIRMED is only that the engine maintains it:
 it replaced a written 0 with 14 in `p26/run2` (scratch, deleted) and with 9 in #59 (Map the DOS saved game, not just the character record)'s run 9. It is `$C04E`, the wall the party faces -- [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md).
 
@@ -792,10 +792,10 @@ control. So nothing here is recomputed on load, and a conversion that writes
 a fixed `00 01 00 00` replaces a player's value rather than filling a blank.
 
 **The other three titles carry the same four bytes**, at their own offsets in
-their own shapes — Curse `0x195`, Silver Blades `0x1A6`, Pools of Darkness
+their own layouts — Curse `0x195`, Silver Blades `0x1A6`, Pools of Darkness
 `0x1ED` — and every one of the 122 records held reads `00 01 00 00` there.
 Nothing has been driven in those three titles, so the *names* above are Pool
-of Radiance's; the value is what carries across.
+of Radiance's; the value is what converts.
 
 `tools/dos/dostailsweep.py` re-takes the counts, `tools/dos/dostailprobe.py` re-runs
 the load-side probe and `tools/dos/dosquickprobe.py` the quickfight pair.
@@ -812,7 +812,7 @@ carrying the constant, so nothing the player sees is driven by it.
 One limit, so nobody reads more into that than it holds: **no specimen on this
 machine is above level 4**, so a field that only fills later would not show.
 
-**It is a constant because of what the corpus is, and three of the five bytes
+**It is a constant because of what the specimens are, and three of the five bytes
 now have names** —
 [`195-three-dos-record-bytes-named-from-the-overlays.md`](195-three-dos-record-bytes-named-from-the-overlays.md),
 all read out of the shipped overlays rather than off a save. `0x084` is the
@@ -823,7 +823,7 @@ it is also what MODIFY CHARACTER writes a 1 into when the player keeps the
 change, which is why the archives read 1 and the characters this project
 rolled read 0. The third-party names `Morale` and `TreasureShare` were
 therefore right, and the reason every record here reads zero at `0x084` is that
-no companion has ever been in a corpus: 457 of 458 DOS records and 292 of 297
+no companion has ever been in a set of specimens: 457 of 458 DOS records and 292 of 297
 C64 ones are player characters.
 
 The **later titles' variation** is that same share byte. Their run is Pool of

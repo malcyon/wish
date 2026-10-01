@@ -87,7 +87,7 @@ would not do that; a buffer left where the save happens to reach does.
 `docs/116-second-game.md` calls the Curse table "in slot order" and
 `docs/175-silver-blades-save-conversion.md` asks whether Silver Blades keys it
 in marching order instead. **Neither is a rule of the title.** The stored
-order is the order the character files stood in the directory at the last
+order is the order the character files were listed in the directory at the last
 scan, and the ssb3 save above shows it need not have as many entries as the
 party has members.
 

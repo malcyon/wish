@@ -81,7 +81,7 @@ Full suite, this machine, Python 3.12.3, PyQt6 6.11.0 / Qt 6.11.1.
 | `gc.collect()` after each test (the state before this) | 10 | 3 |
 | one QApplication held for the session | 12 | **0** |
 
-Two negative results worth keeping:
+Two negative results to keep:
 
 | probe | result |
 |---|---|
@@ -96,4 +96,4 @@ Two negative results worth keeping:
 * **A newer PyQt6.** Already on 6.11.0, and it reproduced there.
 * **Stop `_child` using `findChild`.** `findChild` was the messenger. Caching
   the lookups would have hidden the fault rather than fixed it, and with 55
-  windows a run it is not hot enough to be worth doing on its own merits.
+  windows a run it is not hot enough to justify doing on its own merits.

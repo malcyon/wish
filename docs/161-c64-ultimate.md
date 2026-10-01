@@ -5,7 +5,7 @@ automapper's addresses, the character record offsets, the trainer tables, the
 ECL decoding: one emulator's account of the machine, never checked against the
 machine. The C64 Ultimate on Donald's desk is an FPGA recreation rather than an
 emulator, so a reading taken off it is genuinely independent — which is the
-whole reason it is worth the trouble.
+whole reason the trouble pays.
 
 `tools/c64/c64u.py` is the wrapper. `#240 (Drive Pool of Radiance on the C64
 Ultimate, so a VICE reading can be checked against hardware)` is the work.
@@ -126,7 +126,7 @@ open bus and answer with the VIC's last bus fetch, not a fixed value. Mask with
 | Target | Result | Why |
 |---|---|---|
 | `$D020` border colour | sticks | nothing else writes it |
-| `$0400` screen RAM | sticks | plain RAM |
+| `$0400` screen RAM | sticks | ordinary RAM |
 | `$DC00` CIA 1 port A | gone within a frame | the KERNAL keyboard scan rewrites it sixty times a second |
 
 "The write did nothing" almost always means something else owns that register.
@@ -215,7 +215,7 @@ Two things follow that decide whether it could ever replace a memory read.
 **It carries pixels, not screen codes**: `automap.target.party_fix` reads forty
 character codes off row 14 today, and from a frame it would have to cut the
 picture into 8x8 cells and match each against the character set -- a lookup
-rather than recognition, since the shapes are fixed, but the bulk of the work.
+rather than recognition, since the glyphs are fixed, but the bulk of the work.
 And 384x240 is the whole picture including the border, so the 320x200 text area
 has to be found inside it. **The bandwidth is about 25 Mbit/s**, continuously,
 whether or not a frame is wanted, which is very likely part of why the streams

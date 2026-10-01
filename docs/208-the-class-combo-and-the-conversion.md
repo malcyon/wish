@@ -20,7 +20,7 @@ are the same answer.
 ## The measurement
 
 PHILIPPE, on `WISH-SPEC-curse-dualclass-trained`, is the only character
-anywhere in this project's corpus who has passed the level she left her old
+anywhere in this project's specimens who has passed the level she left her old
 class at. She is a human magic-user 6 who took `HUMAN CHANGE CLASSES` to
 fighter and was then trained to fighter 8 at Curse's own hall, one press at a
 time, with nothing written between presses but her experience
@@ -36,9 +36,9 @@ The stored code is 6 in the last two, which the table calls a thief; neither
 part of Wish shows it, because Curse's trainer stores the wrong CPU register
 and leaves it stale (`#310 (A trained C64 Curse character arrives in DOS with the wrong class on his sheet)`, `docs/187-the-class-code-byte.md`).
 
-**Corpus, `tools/records/classcombocheck.py`, 0 disagreements everywhere:**
+**Specimens, `tools/records/classcombocheck.py`, 0 disagreements everywhere:**
 
-| corpus | records | dual-classed | combo against conversion |
+| specimens | records | dual-classed | combo against conversion |
 |---|---|---|---|
 | C64, specimen tree (three titles) | 132 | 3 | 0 disagree |
 | DOS, specimen tree, converted to C64 first (three titles) | 228 | 9 | 0 disagree |

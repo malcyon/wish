@@ -16,7 +16,7 @@ roll at every training; everything it feeds is arithmetic.
 `GEN`, resident at `$0800`, whatever its PRG header says. `POOL3.D64` carries
 the file.
 
-| what | where | shape |
+| what | where | form |
 |---|---|---|
 | the level-up sequence | `$1B8C` | fourteen `JSR`s, in the order below |
 | THAC0 | `$1F1F` | 4 rows x 9, index `class * 9 + level`, stored `60 - THAC0`. **The DOS build ships a different one** -- see below |
@@ -40,7 +40,7 @@ the file.
 ## The one table the DOS build does not share
 
 Every other table above is the same number in both ports. THAC0 is not, and it
-is worth being exact about where the difference is, because it looks at first
+needs exactness about where the difference is, because it looks at first
 like a bug in one of the two engines and is not.
 
 **The routines agree.** `GEN $1EF3` clears `thac0_base` to zero (`SPELLE04
@@ -54,7 +54,7 @@ mov`. So neither clamps the value and neither leaves it stale.
 **The tables do not agree.** `DS:0x3C7C` lives in the DOS `START.EXE`, which is
 EXEPACK-packed; expanded, it is 8 rows of 11 in the class-number order `cleric
 druid fighter paladin ranger magic-user thief monk`, indexed by level 1-10 with
-entry 0 unused -- the same one-based shape `$1F1F` has. Cleric and fighter are
+entry 0 unused -- the same one-based layout `$1F1F` has. Cleric and fighter are
 byte for byte the C64's. The other two are not:
 
 | class | level | C64 `$1F1F` | DOS `DS:0x3C7C` |
@@ -186,7 +186,7 @@ is the roster block's `+0x19`, one byte, capped at 255 — which is the byte
 
 **A character at 0 hit points is refused**, not levelled. Zero is dead or dying
 and the record does not say which, so healing one to full would produce a
-corpse in a state the game never writes. It is the same refusal `HealParty`
+corpse in a state the game never writes. It is the same stop `HealParty`
 makes and it names the reason.
 
 ## The experience clamp
@@ -375,7 +375,7 @@ lands in `$2BBB`, and nothing copies `$2BBB` back into the record — so there i
 no byte on any disk that could agree or disagree. It rests on the table read
 plus the independent fact that `0 0 1 1 2 3 4` is AD&D 1st edition's row, which
 is two sources and as strong as this one gets without watching the running game
-memorise a spell. A reader should not assume the evidentiary shape of the
+memorise a spell. A reader should not assume the evidentiary basis of the
 constitution bonus, which six characters' `hp_max` votes for directly.
 
 **What a driven training added to all of this**, and what it did not:
@@ -388,7 +388,7 @@ PROBABLE: every die was handed back to the module rather than predicted.
 
 **One caveat on the constitution bonus, which is otherwise fully earned.** No
 shipped character has a constitution below 14, so the *consequence* of the
-table having no floor — a character with constitution 6 or less losing a hit
+table having no lower limit — a character with constitution 6 or less losing a hit
 point a level — is read off the table's own signed bytes and has not been
 observed happening to anybody.
 
@@ -415,7 +415,7 @@ maximum of all **eight** class slots).
 
 ### Where each table is
 
-| what | where | shape |
+| what | where | form |
 |---|---|---|
 | the level-up sequence | `$2041` | eight `JSR`s, above |
 | eligible level per class | `$1308` | walks the class's own 13 thresholds upward |
@@ -451,11 +451,11 @@ seventeen rows, `hp_bonus_by_score` the signed row, `wisdom_bonus_level` the
 second die, `attack_forms_overwritten` the unconditional store, and
 `stores_spell_capacity` is False so nothing writes `0x0EE`.
 
-**The check that they are in the right *shape*, and not merely present:
+**The check that they are in the right *form*, and not merely present:
 74 derived fields across the six characters SSI shipped come back out of those
 two modules with no mismatches** — THAC0, five saving throws, the turning
 level, `attack_level`, `level`, `attack_forms` and `hp_max` for all six, and
-the eight thief skills for the one thief. Before the shapes were widened, the
+the eight thief skills for the one thief. Before the forms were widened, the
 same run got the paladin's hit points 5 low, the ranger's 8 low and the
 fighter/thief's 1 high, and could not name the paladin's class at all.
 
@@ -472,8 +472,8 @@ refuses a dual-classed character (`docs/192-curse-dual-class.md`).
 **The hit die is rolled twice and the better roll kept** (`$15FC`), for every
 class -- PROBABLE, and it is the one rule here that no stored byte can ever
 vote for, because `hp_rolled` is a running total and a roll leaves no trace of
-itself. Pool of Radiance rolls once and floors a *single-class fighter* at 4;
-Curse has no floor of any kind. A multi-class character's roll is then divided
+itself. Pool of Radiance rolls once and raises a *single-class fighter's* roll to at least 4;
+Curse has no lower limit of any kind. A multi-class character's roll is then divided
 by how many classes it has, and the division rounds up *probabilistically* —
 `$11AB` rolls again against the remainder — so two identical characters can
 gain different hit points from the same die.
@@ -486,7 +486,7 @@ row chosen by the fighter bit. On the six characters SSI shipped, Curse's
 formula reproduces all six and Pool of Radiance's reproduces three — it is 5
 low on the paladin, 8 low on the ranger and 1 high on the fighter/thief.
 
-**The constitution table has no floor and one row.** `$11D7` is indexed by the
+**The constitution table has no lower limit and one row.** `$11D7` is indexed by the
 raw score and is signed: -2 at 1-3, -1 at 4-6. The "not a fighter" cap is done
 by clamping the *score* to 16 for class slots 0-2 (`$126D`), which is why the
 two titles agree from 7 to 18 and only Curse takes hit points away.
@@ -523,7 +523,7 @@ there. `ECL65 $880D` rebuilds the whole thing in fifteen bytes of workspace at
 ranger borrow — every time the sheet is drawn. So a writer must leave that
 field alone on this title rather than fill it.
 
-The wisdom bonus is the same shape as Pool of Radiance's and a different table:
+The wisdom bonus has the same structure as Pool of Radiance's and is a different table:
 `ECL65 $88F6` loops once for **every point of wisdom from 13 up**, each point
 buying one spell at the level `$8906` names — `0 0 1 1 2 3 4` at wisdom 13 to
 19 — and only where the class row already gives a slot. Pool of Radiance's
@@ -543,14 +543,14 @@ are thirteen wide and every class has a real entry one past its ceiling —
 `clamp_thresholds` field is still needed to carry them, because `at_level`
 stops at the ceiling and nothing else in `goldbox/levels.py` reaches entry
 thirteen. (An earlier version of this page said Curse needed no such field;
-that confused the shape of the game's table with the shape of ours.)
+that confused the structure of the game's table with the structure of ours.)
 
 **The magic-user picks one spell from a menu in all three titles; the later
 Silver Blades reading established its menu at `$1896`.** `$2200` computes the
 castable level as `LSR A / ADC #$00`
 — `(level + 1) / 2` — copies the 32-byte spellbook mask aside, rotates it a bit
 at a time and lists every id the character does not know whose level is at or
-below that. Curse *does* have a magic-user grant loop of Silver Blades' shape
+below that. Curse *does* have a magic-user grant loop of Silver Blades' kind
 at `$167F`, and the trainer never calls it: it is the starting spellbook, and
 it is what the two shipped mages hold.
 
@@ -592,7 +592,7 @@ mismatches over the three titles as of 2026-09-08 -- `#89 (Silver Blades' traine
 
 **A step is a trainer step only when the title's own sequence calls it**, and
 that is the whole reason this tool exists. Curse's `GEN $167F` and Silver
-Blades' `$0F7C` are grant loops of exactly the trainer's shape, indexed by
+Blades' `$0F7C` are grant loops of exactly the trainer's kind, indexed by
 `0x0C9`, the magic-user's level. Neither is called by a trainer. Both are the
 **starting spellbook**, reached only from character creation — Silver Blades
 zeroes the whole sixteen-byte mask at `$09D8` and grants the row 34

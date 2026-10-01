@@ -6,9 +6,9 @@ phases 3-5 were one driven session; the account of it, `reports/p9-ssb-live.md`,
 is lost. `tests/secret_of_the_silver_blades/test_ssblive.py` carries what a machine with the disks
 can check again without an emulator.
 
-Three results from the run are worth reading first. **The Curse import changes
-three bytes** for a plain character, against fifteen for Pool of Radiance into
-Curse — because the Curse record is already in the successor engine's shape,
+Read three results from the run first. **The Curse import changes
+three bytes** for a character with no extras, against fifteen for Pool of Radiance into
+Curse — because the Curse record is already in the successor engine's format,
 and what is left is only what is per-*title*: the race code and the starting
 purse. **`spells_known` is sixteen bytes**, `0x078`-`0x087`, spell ids 0-127,
 read out of `GEN`'s own clear loop at `$09DC`. And **the live party position is
@@ -33,7 +33,7 @@ the per-title base addresses it established are asserted in
 
 **How the tests find them.** `tests/secret_of_the_silver_blades/test_silverblades.py` looks behind an
 `SSB_DISKS` environment variable and then at a candidate list, in the same
-shape as `COAB_DISKS` in `tests/gamedata.py` — but *in the test module*, not in
+form as `COAB_DISKS` in `tests/gamedata.py` — but *in the test module*, not in
 `gamedata.py`, because that module was another agent's while this was written.
 If a fourth title needs the same lookup it should move into `gamedata.py`
 rather than be copied a second time.
@@ -62,7 +62,7 @@ Silver Blades is the direct sequel, shares the most with Pool of Radiance and
 Curse, and **is the only remaining title that imports a Curse party** — the
 lever that produced the 15-bytes-of-580 result in `docs/116-second-game.md`.
 Gateway and the Krynn titles start fresh parties and cannot offer it. That
-argument is why it was worth waiting for the disks, and they are here.
+argument is why waiting for the disks paid off, and they are here.
 
 What remains, in order:
 
@@ -93,7 +93,7 @@ six.
 | roster block = record `0x100`–`0x11F`, last page of the payload | same | **held**, at `$6700` |
 | `60 - value` encoding for THAC0, AC, damage bonus | same | **held** — `armour_class_base` decodes to 10 for all six |
 | `GEO`: 1024 bytes, four 16×16 planes, `goldbox/geo.py` unmodified | same | **held** — 17 files, barrier reciprocity mean 0.982, worst `GEO40` 0.923; wall-art reciprocity **1.000 on every file** |
-| `ITEMS` 128 × 16; `ITEMNAMES` 256 low + 256 high + strings | same shape | **held** — `ITEMS` 2048 bytes |
+| `ITEMS` 128 × 16; `ITEMNAMES` 256 low + 256 high + strings | same structure | **held** — `ITEMS` 2048 bytes |
 | second ability array at `0x065`, fighting level at `0x098` | present, as in Curse | **held** |
 | spell ids 1–56 unchanged, more added above | as Curse did | **held**, and it is the strongest new result — see below |
 | save file **count and names** | assume neither game's | **name differs** (`SAVEDBASH`), count does not: one file, like every title after Pool of Radiance |
@@ -115,7 +115,7 @@ per-title constant with only three values across six games, and `goldbox/c64_por
 is where they live. Every *other* absolute number is still a Pool of Radiance
 constant that must be re-measured.
 
-**A new regularity, worth more than any single address.** Silver Blades' `GEO`
+**A new regularity, more useful than any single address.** Silver Blades' `GEO`
 ids are sparse — `$10` to `$62`, no `GEO00` — and **the high nibble is the disk
 side the file sits on**, without exception: `GEO2x` on side 2, `GEO3x` on side
 3. Champions and Death Knights do the same. That is a free area-to-side index,
@@ -125,7 +125,7 @@ and it is asserted in `tests/secret_of_the_silver_blades/test_silverblades.py`.
 
 | Difference | What came of it |
 |---|---|
-| **Party is imported from Curse, not rolled** | **Done, and it is the best result here.** Seven characters imported through `ADD CHARACTER TO PARTY → CURSE`: three bytes change for a plain character, twelve for a demi-human thief. §4.1 |
+| **Party is imported from Curse, not rolled** | **Done, and it is the best result here.** Seven characters imported through `ADD CHARACTER TO PARTY → CURSE`: three bytes change for a character with no extras, twelve for a demi-human thief. §4.1 |
 | **Higher level range** | The shipped party is level 8-9 with 100000-200000 experience. `goldbox/levels.py`'s caps are Pool of Radiance's and are still unmeasured for this title |
 | **Higher spell levels than Curse** | **The gift arrived twice.** The cold read showed DOMINIC setting `0x07F = 0x04` — spell id 58 — so the mask was at least eight bytes. The driven session settled it outright: `GEN` clears **sixteen** bytes at `$7C78` and a second loop reads sixteen, so `spells_known` is `0x078`-`0x087`, spell ids 0-127. Usage stops at `0x083` (MORGAINE, id 94). `docs/116`'s prediction of 13 was low, and `gap_07f` is the mask's tail plus sixteen unexplained bytes, not one field |
 | **Dual- and multi-classed characters common at this level** | Weakly held: one of six, MALACHITE, thief 8 / fighter 7 |
@@ -137,11 +137,11 @@ and it is asserted in `tests/secret_of_the_silver_blades/test_silverblades.py`.
 | # | Phase | Emulator | State |
 |---|---|---|---|
 | 0 | **Obtain and place the disks** | no | **done** — six sides, all readable, found behind `SSB_DISKS` |
-| 1 | **Cold read** — stem inventory, every `GEO` decoded, `ITEMS` shape | no | **done** — `tests/secret_of_the_silver_blades/test_silverblades.py` |
+| 1 | **Cold read** — stem inventory, every `GEO` decoded, `ITEMS` layout | no | **done** — `tests/secret_of_the_silver_blades/test_silverblades.py` |
 | 2 | **A character record** | no | **done** — the shipped `SAVEDBASH` party, six characters, decoded and byte-identical on round trip |
 | 3 | **Save geometry** | yes, for the header fields | **done.** Every header field at Pool of Radiance's payload offset: `0x0C0`-`0x0C2` x/y/facing, `0x0C5` the live area, `0x0C7`-`0x0C9` the clock, `0x0F0`/`0x0F1` the previous square, `0x2C2` the area in the save. Two saves one step apart differ in one byte, the clock |
 | 4 | **The import diff** | yes | **done.** `ADD FROM: SECRET CURSE EXIT` — Curse is the only foreign source, there is no `POOL`. §4.1 |
-| 5 | **Live addresses and the automapper run** | yes, exclusively | **done.** Live base `$4B00`, resident `GEO` at `$0400`, live party triple at `$C04B`. Nine steps and three refusals against `GEO10`, no contradictions. §5 |
+| 5 | **Live addresses and the automapper run** | yes, exclusively | **done.** Live base `$4B00`, resident `GEO` at `$0400`, live party triple at `$C04B`. Nine steps and three blocked steps against `GEO10`, no contradictions. §5 |
 | 6 | **Tests** | no | **done** — `tests/secret_of_the_silver_blades/test_silverblades.py` for the cold read and `tests/secret_of_the_silver_blades/test_ssblive.py` for the run, with Pool of Radiance as the control where there is one and a clean skip when the disks are absent |
 | 7 | **Constants become a table** | no | **done** — `goldbox/c64_port.py`, all six titles, threaded through `goldbox/savegame.py`, `goldbox/yaml_io.py` and `editor/` |
 
@@ -201,7 +201,7 @@ block at `0x100`–`0x11F` is identical too — armour class is not even
 recomputed, because there is nothing to recompute.
 
 **Why three where Pool → Curse was fifteen.** Twelve of those fifteen were
-Curse bringing a Pool of Radiance record up to the later engine's shape. A
+Curse bringing a Pool of Radiance record up to the later engine's format. A
 Curse record already has all of it. What is left is exactly what is per-*title*
 rather than per-engine — the race table and the starting money — plus what is
 race- or class-seeded. That is a stronger statement of "the record transfers"
@@ -348,7 +348,7 @@ turning table -- were unread or unattributed here, which is why the title was
 refused; a driven training has since reproduced every field, and
 `levels.TRAINER_MEASURED` now names it.
 
-Three of those are worth reading even if the rest is a lookup table.
+Read three of those even if the rest is a lookup table.
 
 **The experience rows are Curse's, carried on** — all 61 thresholds the two
 share are identical. That includes the Curse fighter's eleventh, 749937 where
@@ -411,7 +411,7 @@ CANARY here — so only a title's own `ITEM<nn>` lists say what its indices mean
 | left | blocked on |
 |---|---|
 | items and coins across the import | a driven DOS run (`tools/dos/ssbimport.py`) found MATHEW's four Curse items did not come across: Curse item_count 4, Silver Blades record after import item_count 0, no `.STF` written; neither SECRET/GAME.OVR nor START.EXE names `.swg` or `.fx`. PROBABLE, one character |
-| `0x0EC` | class-shaped after an import, `0xFB` in every native pregen. UNKNOWN |
+| `0x0EC` | holds a class-like value after an import, `0xFB` in every native pregen. UNKNOWN |
 | ~~Silver Blades' per-race trait table at `0x0AD`~~ **read** (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)) | `GEN $0C4B` seeds **two** slots from `$0C5B` and `$0C62`, which is why the shipped dwarf carries two entries where the import wrote one. Elf 95, half-elf 18, dwarf 26 and 47, gnome 48 and 7, halfling 92, human none; `GEN $0FF0` then writes 45 for a paladin and 105 for a ranger. §4.3 |
 | the area byte across a boundary | the run never left `GEO10`, so `Fingerprint`'s narrowing is untested here |
 | ~~whether the sixteen-byte spellbook is also Curse's~~ **it is not** (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)) | Curse reads thirteen bytes: `CAMP $2A25` walks spell ids to 100 and indexes the mask at byte 12. Gateway is still unread |
@@ -471,11 +471,11 @@ skill describes it: two full 64K snapshots either side of one step south, and
 **one** address in the whole machine held `03 03 02` before and `03 04 02`
 after. A turn then moved the third byte and nothing else.
 
-**The corpus.** Nine completed steps and three refusals in `GEO10`, which
+**The specimens.** Nine completed steps and three blocked steps in `GEO10`, which
 decodes at 480/480 barrier reciprocity. Every completed step crosses an edge
-the decoded map calls passable; every refusal meets one it calls impassable; no
-contradictions. It is `WALK` in `tests/secret_of_the_silver_blades/test_ssblive.py`. The three refusals are
-the valuable half — `GEO10` has 480 edges and few are shut, so one refusal
+the decoded map calls passable; every blocked step meets an edge it calls impassable; no
+contradictions. It is `WALK` in `tests/secret_of_the_silver_blades/test_ssblive.py`. The three blocked steps are
+the valuable half — `GEO10` has 480 edges and few are shut, so one blocked step
 identifies the map where a dozen successful steps would not.
 
 **Costs, measured.** A move is one minute, a turn is free, and **a refused move

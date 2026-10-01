@@ -21,7 +21,7 @@ still takes a long time to load."*
 `N` in 168.8 s — a 1.0 s margin against a within-cell spread of up to 1.1 s.
 The two answers are not distinguishable by waiting.
 
-**On a stock kernal the answer is worth 39 s, and `N` is the faster one.** So
+**On a stock kernal the answer saves 39 s, and `N` is the faster one.** So
 the advice is real but it is *kernal-dependent*, and exactly one document in
 the project already said so.
 
@@ -137,7 +137,7 @@ that repeats to a tenth of a second cannot be what a 39 s gap is made of.
 
 Three sessions ran in parallel on three pool slots. The serial control boot of
 cell A came out at 167.6 s against the parallel runs' 167.7–167.9 s, so
-contention on a 12-core host is worth 0.3 s.
+contention on a 12-core host costs 0.3 s.
 
 ---
 
@@ -145,7 +145,7 @@ contention on a 12-core host is worth 0.3 s.
 
 | # | hypothesis | verdict |
 |---|---|---|
-| **H1** | JiffyDOS is half-installed, so `Y` is plain serial | **dead.** `Drive8Type=1542` and the drive ROM at `$E780` is the JiffyDOS image |
+| **H1** | JiffyDOS is half-installed, so `Y` is ordinary serial | **dead.** `Drive8Type=1542` and the drive ROM at `$E780` is the JiffyDOS image |
 | **H2** | the answer never reaches the game | **dead.** Drive 8's RAM after the first load differs between `Y` and `N` in 976 of 1280 bytes |
 | **H3** | the game's loader is absent — a cracker removed it, leaving a vestigial prompt | **dead.** Under `N` a kilobyte of drive RAM matches no sector on the disk |
 | **H4** | JiffyDOS masks the difference; both paths are fast and comparable | **survives, and is the answer.** It predicted C ≫ A, which holds by 70.8 s. Its second clause, B ≈ D, fails by 30.8 s |
@@ -228,13 +228,13 @@ Medians of five runs; the per-run numbers and ranges were in the run sheet,
 was in `p69/`.
 Read M2→M3 and M3→M4 together, for the reason under "Milestones".
 
-**M3→M4 has a floor of about 121 s**, hit by both `N` cells and by neither `Y`
+**M3→M4 cannot go below about 121 s**, hit by both `N` cells and by neither `Y`
 cell. The title picture is displayed for a fixed time and the credits load
 happens behind it: when the load fits, the segment is the timer; when it does
-not, the segment is the load. Cell C is 39 s over the floor, and that is
+not, the segment is the load. Cell C is 39 s over that minimum, and that is
 precisely the 39 s by which it loses to cell D.
 
-So on a stock kernal the answer is worth 39 s of waiting, and on this one the
+So on a stock kernal the answer saves 39 s of waiting, and on this one the
 title sequence has already absorbed everything there was to absorb.
 
 ---

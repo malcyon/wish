@@ -4,7 +4,7 @@ Addresses observed in a running game via VICE's binary monitor. Remember the
 game is heavily overlaid: an address is only meaningful while the overlay that
 owns it is resident.
 
-**For a plain lookup — "what is at `$4BC2`" — see
+**For a simple lookup — "what is at `$4BC2`" — see
 [41-memory-regions.md](41-memory-regions.md)**, generated from `goldbox/memory.py`.
 This page keeps the reasoning and the game's own string tables.
 
@@ -59,7 +59,7 @@ regions are the *Programmer's Reference Guide*'s own summary of all 64K, p. 320
 | `$C000`-`$CFFF` | RAM, 4096 bytes | `GDRIVE*` at `$C000`, and the screen at `$CC00` |
 | `$D000`-`$DFFF` | I/O and colour RAM, or the character ROM, or RAM | the machine's registers; nothing of the game's |
 
-Two consequences worth having in front of you before reading a live address:
+Two consequences to have in front of you before reading a live address:
 
 * **An overlay in `$A700`-`$BFFF` is RAM behind BASIC ROM.** The 6510's on-chip
   port at `$0001` decides which of the two answers a read -- LORAM in bit 0 for
@@ -69,7 +69,7 @@ Two consequences worth having in front of you before reading a live address:
   it wants; VICE's `ram` bank is the one that gives the overlay. That the game
   runs with BASIC banked out is the obvious reading and is PROBABLE, not
   measured -- `$0001` has never been sampled here.
-* **`$C000`-`$CFFF` is the one 4K block that is plain RAM in every
+* **`$C000`-`$CFFF` is the one 4K block that is ordinary RAM in every
   configuration**, and the game keeps both its screen and its fast loader in
   it. CONFIRMED as a property of the machine; that the game chose it *for* that
   reason is PROBABLE.
@@ -197,5 +197,5 @@ same pool: `LDA $9E8C,X` is `$9E00 + 140`, so a race name is word-table entry
 is lost.
 
 Nothing in the tool depends on the resident copy — `goldbox/items.py` reads the disk
-file — but the identity is worth having, because it means one table explains every
+file — but the identity is useful, because it means one table explains every
 name the game prints for an item.

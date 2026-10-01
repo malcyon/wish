@@ -160,7 +160,7 @@ cannot leave a save in a state no real save has been seen in:
   the reconciliation, with a note in the change list. A record that arrives
   disagreeing leaves untouched.
 * **level** — the per-class array at `0x0C9`–`0x0CC` and the character level at
-  `0x0A0`. Edit `levels:` and `level:` follows automatically; edit `level:`
+  `0x0A0`. Edit `levels:` and `level:` is updated automatically; edit `level:`
   yourself and your value is kept. The per-class array is reconciled against the
   class bitmask **only when you edit the classes**, for the same reason: a
   record that already disagrees is not ours to correct. For a multi-class character the derived value

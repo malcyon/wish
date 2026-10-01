@@ -124,7 +124,7 @@ Keep every ten minutes at 1%, and New Phlan every five minutes at 101%,
 which a d100 never beats: **resting in the streets of New Phlan is
 interrupted on the first pass, every time.**
 
-Why the corpus partitioned perfectly and the live image read zero: a save is
+Why the specimens partitioned perfectly and the live image read zero: a save is
 taken from inside ENCAMP, so entry 2 has just run and the file carries the
 pair; the area-init routine zeroes it on load and nothing writes it until the
 next ENCAMP. That is `142-dosbox-x-debugger.md`'s "24 in the file, 0 live".
@@ -261,9 +261,9 @@ those areas, and see whether it changes before the first key.
 ## Provenance
 
 The engine code and the script blocks are the game's own bytes and no save
-editor touches them. The 21-container corpus is Donald's played lineage plus
+editor touches them. The 21 containers are Donald's played lineage plus
 agent-driven resaves of it, so under the 2026-09-04 ruling it is
 corroboration and not the claim: the four pairs and five triples above are
-predicted by the code and the script text, and the corpus agrees 21 of 21.
+predicted by the code and the script text, and the specimens agree 21 of 21.
 The watch run's save is one an agent had the engine write, and the watch does
 not depend on its contents beyond the square it stands on.

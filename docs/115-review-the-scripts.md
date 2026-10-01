@@ -86,7 +86,7 @@ four extras being the variable-length opcodes, whose length the skip routine
 cannot know at all. The lists overlap on two entries and are otherwise
 complementary. Logged in `docs/125-bug-notes.md`.
 
-Two other things worth knowing before reading a listing:
+Two other things to know before reading a listing:
 
 * **`$1F` is unimplemented.** Our table called it `ADDRESSOF`, a name inherited
   from the `coab` opcode table. No Pool of Radiance script references it — our

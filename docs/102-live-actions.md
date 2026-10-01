@@ -29,7 +29,7 @@ title lives.
 
 **The mode flag is the exception, and it is read out of each title's loader.**
 It is a byte of `LINKER`'s own resident page rather than of the save image, so
-it neither follows the load address nor transfers: `$6E11` in Pool of Radiance,
+it is neither set by the load address nor transferable: `$6E11` in Pool of Radiance,
 `$7F11` in Curse and Silver Blades, `+$1100` where the save image moved
 `+$200`. `LINKER`'s first instruction names it — `LDA $7F11` on both later
 titles' disks — and its overlay name table is the same table entry for entry,
@@ -136,7 +136,7 @@ game's economy and there is no in-game way to undo it.
 
 **The write may not stick.** `$5900`+ is a copy fed from a master elsewhere —
 poking an item's weight there was reverted by the game — so this is the one
-action whose effect is worth checking in the game's own item list. Not yet
+action whose effect should be checked in the game's own item list. Not yet
 tested live: the party on the test disk carried no unidentified item.
 
 ### 4. Quickfight off — `clear-quickfight`

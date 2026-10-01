@@ -25,7 +25,7 @@ prove it themselves.** A Pool of Radiance export imported into Curse through
 `ADD CHARACTER TO PARTY → POOL` and exported again comes back with 15 of its
 580 bytes changed; a Curse record imported into Silver Blades changes **three**,
 because twelve of that fifteen were Curse bringing an older record up to the
-later engine's shape. What is left is only what is per-title — the race code and
+later engine's format. What is left is only what is per-title — the race code and
 the starting purse. See [116-second-game.md](116-second-game.md) §2.2 and
 [121-silver-blades.md](121-silver-blades.md) §4.1 for both diffs, offset by
 offset.
@@ -141,12 +141,12 @@ anywhere, and it survives only as code.
   to find Pool of Radiance's failed first, and one of them failed because every
   save held was in the same area — see the next section.
   [30-savegame-layout.md](30-savegame-layout.md) §"Finding the area id".
-* **Outside specimens are worth having and worth distrusting.** A hacked save
-  found online had worthless values, but its *structure* bounded the roster at
+* **Outside specimens are useful and not to be trusted.** A hacked save
+  found online had unreliable values, but its *structure* bounded the roster at
   one page and settled character level, because it was the only specimen with
   eight slots filled. [90-specimens.md](90-specimens.md).
 * **Monsters use the character-record layout**, so the monster files are a free
-  corpus of a hundred-plus specimens carrying values a player character never
+  set of a hundred-plus specimens carrying values a player character never
   has. `0x0E1` reads 10 for every player character, which made it look like a
   constant; the monsters put their real armour class there and match the Monster
   Manual.
@@ -175,7 +175,7 @@ Four working rules the log paid for:
   slots" survived because every specimen then held at most two characters and
   the bytes between them were zero. One full party disproved it instantly
   ([30-savegame-layout.md](30-savegame-layout.md) §"Correction"). The roster's
-  `+0x03`-`+0x05` is the same shape and is still open.
+  `+0x03`-`+0x05` has the same structure and is still open.
 * **A negative needs a negative example.** "No byte in the header identifies the
   map" was reported from ten saves that were all in the same area. The byte was
   `$4BC2`, inside the range that had been scanned.
@@ -313,25 +313,25 @@ layers as working code in `automap/vice.py`, `tools/c64/session.py` and
 2. **Every square the party occupies is walkable** in the decoded map.
 3. **Every completed step crossed a passable edge.**
 4. **Every refused step corresponds to an impassable edge.** The strongest single
-   observation available: impassable edges are rare, so **one refusal identifies
+   observation available: impassable edges are rare, so **one blocked step identifies
    the map** where positive evidence alone needs 111 steps.
 5. **Area identification switches on exactly the boundary step**, to the file the
    independent map-matching named for that area.
 
 **The map fact is that the *square* did not change on a forward step, and that
 is the only thing to assert.** A refused move costs no time on Curse (four turns
-and one refusal at an unchanged clock) or Silver Blades (four bumps at `(3,3)`
+and one blocked step at an unchanged clock) or Silver Blades (four bumps at `(3,3)`
 left the clock at `0:05`), so "the clock changed" is evidence of neither
-movement nor refusal. `automap.state`'s `_refused` infers a one-minute cost and
+movement nor a blocked step. `automap.state`'s `_refused` infers a one-minute cost and
 says in its own docstring that it is inferred; on both later titles it never
-fires, and a driver that wants refusals must compare squares.
+fires, and a driver that wants blocked steps must compare squares.
 [120-curse-testing.md](120-curse-testing.md) §4,
 [121-silver-blades.md](121-silver-blades.md) §5.
 
 **Contradictions are counted, not obeyed.** An observation that eliminates every
 candidate map is not evidence about which map this is — it is evidence that the
 *observation* was wrong: a garbled status line, a step across a boundary, or a
-bash at a locked door read as a refusal. Keep the last non-empty candidate set
+bash at a locked door read as a blocked step. Keep the last non-empty candidate set
 and count the contradiction. `automap.area.Fingerprint._narrow` does this, and
 **a rising contradiction count is the signal that an address is wrong**.
 
@@ -359,7 +359,7 @@ artefact before moving on.
 | 15 | Find the save image in RAM by searching for a run from the save file | the live base, exactly |
 | 16 | Confirm the resident map block: search RAM for a copy of the `GEO` you are standing on | `$0400`, in all three titles measured |
 | 17 | Build the party fix: measure which copy is live, then `_plausible` on both | a `Fix` with a `source` tag |
-| 18 | Drive a scripted route and assert all five validations above | a walk corpus, a manifest, and a mapper you can believe |
+| 18 | Drive a scripted route and assert all five validations above | a set of recorded walks, a manifest, and a mapper you can believe |
 | 19 | Write every finding into [50-experiments.md](50-experiments.md) with its evidence **and its failures** | the reasoning, which is the actual product |
 | 20 | **Then stop.** Fill in the new column of [139-per-title-validation.md](139-per-title-validation.md) | an honest answer to "does the program work on this game" |
 
@@ -398,7 +398,7 @@ fixture, and nothing is added to the allowlist in
 
 ## Feeding the method back
 
-**Running this against a new title is worth more to the method than to the
+**Running this against a new title helps the method more than the
 title.** [121-silver-blades.md](121-silver-blades.md) §6 is the model: a
 prediction that held gets promoted and names the second corroboration; a
 prediction that failed becomes *check, do not assume* with the counterexample

@@ -38,7 +38,7 @@ the most. Then titles in the table and bare numbers in the prose around it:
 "#102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands) is solved", "#59 (Map the DOS saved game, not just the character record)'s inherit list", "#50 (Lift the wilderness refusal from the DOS save converter)'s proof now passes". A number used
 as the subject of a sentence is the worst place for it, because that is exactly
 where the reader most needs to know what is being talked about. "The resizable
-columns with #135 (The automapper's roster column does not scroll, so a full party puts a 944px floor under the window)" is the same shape. There is no "already introduced it above"
+columns with #135 (The automapper's roster column does not scroll, so a full party puts a 944px floor under the window)" is the same kind of failure. There is no "already introduced it above"
 exemption, because a reply is skimmed rather than read in order.
 
 Two exceptions were settled deliberately, and both are about where the reader
@@ -57,7 +57,7 @@ reaches Donald before anything checks it.
 
 A mid-turn `PreToolUse` guard was tried on 2026-09-02 to close that gap, and
 withdrawn the same hour. It refused the next tool call whenever the turn's
-prose so far carried a bare number. In the main window it worked. It also
+prose so far contained a bare number. In the main window it worked. It also
 disabled subagents completely: a subagent's `transcript_path` is the shared
 one, so an agent was refused for citations the main window had written, could
 not edit them, and had no way to clear the block -- `gh issue view`, the remedy
@@ -152,7 +152,7 @@ web.
 ## Conciseness and replies
 
 Conciseness carries no incident of its own; it is a standing preference, and
-the shape of it is that length is not thoroughness.
+what it comes to is that length is not thoroughness.
 
 Explaining a bug by its mechanism rather than by the situation does have one.
 Donald read an explanation of a rename bug -- something to the effect of
@@ -173,7 +173,7 @@ something down the list.
 
 Three separate corrections produced this list, and all three are about the same
 habit: reaching for a piece of jargon that sounds precise and carries less than
-the plain phrase it replaced.
+the simple phrase it replaced.
 
 **A file given a person's verb.** "All three saves walk" was written here and
 Donald could not read it: *"I don't know what a save walking means."* He is
@@ -207,7 +207,7 @@ can act on. `#77 (The window's minimum height follows the UI font, so a large
 font stops it fitting a 720-high screen)` still carries the phrase in its title,
 which is why the title is quoted rather than paraphrased.
 
-**"That's fair"** is the worst of the list, because it agrees with nothing in
+**"That's `fair`"** is the worst of the list, because it agrees with nothing in
 particular and ends a conversation that had somewhere to go.
 
 **`elide` has a code exception**, and it is narrow. Qt's own methods are
@@ -220,26 +220,26 @@ easier to read.
 Each of these was added after Donald objected to the word in a reply.
 
 **`shape`, 2026-09-11.** An earlier version of the row wrongly kept two phrases
-that the rules themselves used, *"the shape of the fix"* and *"the shape of the
-work"*; both were rewritten and the row now has no exemption. *"Just because
+that the rules themselves used, `the shape of the fix` and `the shape of the
+work`; both were rewritten and the row now has no exemption. *"Just because
 you read them in our docs somewhere doesn't mean I understand it. Every time you
 use that word, I don't understand what you mean."*
 
 **`worth`, 2026-09-06.** *"You've abused it past my point of tolerance. You are
-constantly telling me something is worth knowing, or worth saying, or worth this
+constantly telling me something is `worth` knowing, or `worth` saying, or `worth` this
 or that. I've had it."* The word rates a sentence instead of writing one.
 
 **A sentence that rates itself, 2026-09-09.** After a reply that said a finding
-"says so out loud": *"This is unnecessary filler. Shouldn't caveman lite prevent
+`says so out loud`: *"This is unnecessary filler. Shouldn't caveman lite prevent
 you from saying things like this?"* It should, so the whole family of ratings is
 banned and not only the examples.
 
 **`plain`, 2026-09-09.** *"Anytime you ever, ever ever think you should use the
-word plain, you should be using the word simple instead."*
+word `plain`, you should be using the word `simple` instead."*
 
 **`carried`, 2026-09-04.** *"The agents just give up and say 'oh well, we can't
-convert it'. But they call it carried instead, which confuses me."* The word
-makes a refusal to convert sound like a finding.
+convert it'. But they call it `carried` instead, which confuses me."* The word
+makes a conversion that stops sound like a finding.
 
 ### Embraced energy
 
@@ -248,7 +248,7 @@ game-icons.net. Let's refer to it as 'embraced' unless we are referring to the
 url."* Only the URL slug and the archive filename carry the typo; the icon's
 page on game-icons.net is titled *Embraced energy*.
 
-The licence credit was then got backwards, and the reasoning is worth recording
+The licence credit was then got backwards, and the reasoning is recorded
 because it was almost right. A credit should name a work as its author titled
 it -- that part is correct. The mistake was taking the *filename* as the
 author's spelling. Donald: *"It's called 'Embraced energy icon'. It says so on
@@ -348,7 +348,7 @@ committed. The policy is that this is a reverse-engineering project which
 documents a game it does not ship, and the boundary was drawn before it could
 be crossed.
 
-One ruling is worth recording because it went the permissive way. Quoting the
+One ruling is recorded because it went the permissive way. Quoting the
 code a finding rests on is exactly what `docs/50-experiments.md` is for, and
 Donald ruled that a short block is fine -- so nobody should agonise over the
 length of a citation that carries evidence. A dump of a routine is still not a
@@ -604,8 +604,8 @@ So the incident above is about **reversing a person's decision**, and it says
 nothing about labels an agent sets, corrects or updates as the world moves.
 Writing it down as *never touch these* made a second invisible error out of
 the first: an issue whose priority no longer matches what is known, left wrong
-because nobody dared. The section is rewritten, and the general shape is worth
-holding on to -- **a rule derived from a single incident tends to come out
+because nobody dared. The section is rewritten, and the general lesson is to
+hold on to -- **a rule derived from a single incident tends to come out
 wider than the incident**, and the width is what nobody notices afterwards.
 
 **And the rule cut the other way, which cost a night.** `#69 (No
@@ -619,7 +619,7 @@ were unable to explain convincingly how it would affect an end user."*
 A mislabelled issue is an invisible error. It fails no test, turns no CI red,
 and produces no symptom except work quietly going to the wrong place for as long
 as nobody looks. The question already asked of a bug -- what does the player see?
--- turns out to be worth asking of the label, and "nothing, we do not know yet"
+-- turns out to apply to the label, and "nothing, we do not know yet"
 means `question`.
 
 **`blocked` outlives the fact it recorded when nobody will touch it.**
@@ -633,7 +633,7 @@ it can be checked and it can be wrong.
 way it does now.** Written as "never undo a label", with the permissions added
 underneath as exceptions, it taught agents to leave every label alone: by
 2026-09-04 an audit of all 46 open issues reported four labels it believed
-wrong and changed none of them, including a `blocked`-shaped issue carrying no
+wrong and changed none of them, including an issue that looked blocked, carrying no
 `blocked` label. Donald: *"Now, it won't mark a ticket blocked, it won't remove
 the blocked label on a ticket it knows isn't blocked anymore... I just don't
 want it resetting labels back to what they were for no reason at all."* The
@@ -835,7 +835,7 @@ cheap where grinding at a disassembly it was not sent to read is not.
 body.** `#71 (Character draws on top of itself when the header is squeezed to
 its floor)` looked like ordinary work and took nine rounds and a `QTableView`
 subclass. `#73 (The DOSBox-X harness refuses to start without DOSBox 0.74, which
-it never runs)` named the two candidate shapes and said which was smaller, and
+it never runs)` named the two candidate approaches and said which was smaller, and
 that is what made it assignable.
 
 **A reviewer in a shared tree reviews everybody.** `code-reviewer` starts with
@@ -1048,7 +1048,7 @@ Windows; five clipped fields here and nine on another Linux box; a window width
 of `natural + 900` that was room to spare here and twenty pixels short on
 Windows.
 
-Each time the fix was the same shape -- compute from what the thing asks for
+Each time the fix was the same kind -- compute from what the thing asks for
 rather than from what you saw, so `natural + box.sizeHint().width() + 400`
 instead of a constant that happened to work. Where a constant genuinely is the
 answer, what it was measured on and what would move it belong beside it.
@@ -1057,8 +1057,8 @@ answer, what it was measured on and what would move it belong beside it.
 follows the UI font, so a large font stops it fitting a 720-high screen)` after
 the constant was already right.** A cap can be a perfectly good constant and the
 *assertion about it* still be a measurement of this machine. That issue capped
-three widgets so the automapper page's floor stops growing with the UI font, and
-asserted the floor was the same at every font. True here -- 580 at +0 through
+three widgets so the automapper page's minimum height stops growing with the UI font, and
+asserted the minimum was the same at every font. True here -- 580 at +0 through
 +10 -- and red on both CI platforms, because their base font is smaller: CI's
 Linux climbs 561, 578, 578, 578 and Windows 551, 569, 576, 576. The cap holds in
 all three. Only a machine whose base font already reaches the cap sees no climb
@@ -1072,8 +1072,8 @@ structural proxies for it did not.
 
 ### The font calibration
 
-`+6` measures here about like Windows' base font. That single fact is worth more
-than the fix it enabled, and it lived nowhere but a conversation until it was
+`+6` measures here about like Windows' base font. That single fact outlasts
+the fix it enabled, and it lived nowhere but a conversation until it was
 written onto `#71 (Character draws on top of itself when the header is squeezed
 to its floor)`.
 
@@ -1086,14 +1086,14 @@ running the test actually starts from. A height can be asserted across the range
 because a taller font makes every machine's rows taller by the same proportion,
 while how wide a button gets for the same text is the platform's business.
 
-**The largest font worth testing is +10**, and 9pt is the base here. Donald,
+**The largest font to test is +10**, and 9pt is the base here. Donald,
 2026-09-01, after a test was found asserting things at +12, +16 and +20 -- 21,
 25 and 29 point: *"I don't think we should ever have unit tests that force us to
 make a 25 point font work. I think that's an extremely contrived situation that
 wastes our time."* And: *"This whole 25 point font with a tiny resolution just
 feels extremely contrived and a waste of our time."*
 
-The measurements agree with him: at +10 the window's floor is 553px against a
+The measurements agree with him: at +10 the window's minimum height is 553px against a
 720-high screen. There is no layout problem at any font a person uses -- somebody
 who needs text that large uses display scaling, which enlarges the window too and
 never produces the squeeze. A test that only holds above +10 is proving an
@@ -1113,7 +1113,7 @@ the thread was not scheduled inside that window, so `settle_files` correctly saw
 nothing change and answered "quiet". The test was measuring the runner.
 
 A concurrency test whose failure mode is "the other thread did not get a turn"
-will find that out on somebody else's hardware. The fix has the same shape as
+will find that out on somebody else's hardware. The fix is of the same kind as
 for a measured constant -- drive the thing from what it actually does rather
 than racing it. `settle_files` sleeps between reads, so every sleep now stamps
 the file forward with `os.utime`: that is what a save in flight looks like from
@@ -1240,7 +1240,7 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 >   Curse shop bug in `docs/125-bug-notes.md` N19, one at +109 by the hand-axe
 >   purchase in `docs/213-the-dos-shopping-trip.md`, four at +200 by one Curse
 >   run's 200-coin payment, and twelve by a 999 this ticket staged itself.
->   **Nothing in the never-watched corpus misses at all**, 0 of 46. That leaves
+>   **Nothing in the never-watched `corpus` misses at all**, 0 of 46. That leaves
 >   **four records and two characters**: GILES at -20 and ASTRID at -65, each
 >   found twice, once in the edited directory and once in a copy. They are
 >   the only two nobody can name an operation for, and 90 + 3 + 1 + 4 + 12 + 4
@@ -1275,11 +1275,11 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > it is not evidence of an edited record)` has the counts and the two records
 > that miss the other way.
 
-##### A tolerance is not a reading (corpus reworded, nothing else) (testing.md lines 229-231 of the original)
+##### A tolerance is not a reading (`corpus` reworded, nothing else) (testing.md lines 229-231 of the original)
 
 > **A tolerance is not a reading.** `assert exact >= total - 2` says our sum may
 > be two-in-twenty-four wrong; it hides which two and why. Name the records, or
-> point the test at a corpus where the answer is exact.
+> point the test at a `corpus` where the answer is exact.
 
 ##### What is left is the rule (testing.md lines 239-242 of the original)
 
@@ -1345,7 +1345,7 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > `CHRDATA6.SAV` exists both in the archives, shipped, and in the edited play
 > directory. A path finder resolves to one of them and the test cannot tell.
 > **So say in the test where its specimen came from**, and when a finding is
-> written up, give the corpus size *and* what the records are.
+> written up, give the `corpus` size *and* what the records are.
 > 
 > The same trap caught a sweep that was sweeping an emulator instance's staged
 > tree, where the sweeping tool's own tampered probe records sat -- our bytes
@@ -1362,7 +1362,7 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > duration at record bytes 1-2 and nothing else, so duration zero is permanence,
 > which is what the project had believed before an edited record refuted it.
 > Watching the routine run confirmed it, and readying a magical item in the
-> running game produced the engine-written specimen the corpus had never had.
+> running game produced the engine-written specimen the `corpus` had never had.
 >
 
 ### What tests said before they dropped their history
@@ -1393,7 +1393,7 @@ The passages below stood in code comments, a hook's docstring and an agent defin
 # way through the neutral record, with no report)` for a day. `#246 (Nothing
 # tells an engine-written DOS record from one edited with Gold Box Companion,
 # and conclusions already rest on edited ones)` is the fix, and this is how a
-# test reaches the clean corpus.
+# test reaches the clean specimens.
 ```
 
 ## Testing a conversion
@@ -1650,10 +1650,10 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > numbers a reader could check against the game, it is the wrong side of the
 > line.
 
-##### Say converted, not carried (conversions.md lines 198-201 of the original)
+##### Say `converted`, not `carried` (conversions.md lines 198-201 of the original)
 
-> **Say "converted", not "carried".** Donald, 2026-09-04: *"When you say
-> 'carried', you must mean 'converted'. I don't think carried means what you
+> **Say `converted`, not `carried`.** Donald, 2026-09-04: *"When you say
+> '`carried`', you must mean 'converted'. I don't think `carried` means what you
 > think."* The word is in this file, in `field_disposition` prose and in drop
 > lines a player reads.
 
@@ -1943,7 +1943,7 @@ The two table readers find the menu by the structure of the run of numbers and b
 The addresses of the site and impassable-terrain tables in `ECL19`/`ECL1A`/`ECL1B` were once written up in a scratch report that no longer exists, so recovering them means reading the ECL scripts again.
 
 ###### editor/convert.py
-Problems reach the player by three routes. A real refusal (`CANNOT_CONVERT` or a `DosRecordError`'s own message, meaning a source the player chose and Wish cannot convert) reaches a modal `QMessageBox` (`_maybe_warn`). A name too long for DOS's fifteen-character field is no refusal and reaches no modal: pressing Convert opens the shorten-names window. `NO_DISKS`, `NO_DISK`, `NO_FOLDER` and `NO_GAME_FOLDER` name a row the player has not filled in yet and reach no modal (`_SILENT_BLOCKS`), because the disabled Convert button already says as much and a popup on the field after `From` told the player of a mistake they could not yet have made. A magic-user memorising more spells than the destination title has slots, and a spell id outside the destination's book, are bugs rather than platform limits and go to the debug log with the drop list. The dialog has no report pane and no `Convert Log` heading.
+Problems reach the player by three routes. A conversion that stops (`CANNOT_CONVERT` or a `DosRecordError`'s own message, meaning a source the player chose and Wish cannot convert) reaches a modal `QMessageBox` (`_maybe_warn`). A name too long for DOS's fifteen-character field does not stop the conversion and reaches no modal: pressing Convert opens the shorten-names window. `NO_DISKS`, `NO_DISK`, `NO_FOLDER` and `NO_GAME_FOLDER` name a row the player has not filled in yet and reach no modal (`_SILENT_BLOCKS`), because the disabled Convert button already says as much and a popup on the field after `From` told the player of a mistake they could not yet have made. A magic-user memorising more spells than the destination title has slots, and a spell id outside the destination's book, are bugs rather than platform limits and go to the debug log with the drop list. The dialog has no report pane and no `Convert Log` heading.
 
 ###### editor/dosimport.py
 The module was once its own window, `File > Import > DOS Save Folder...`; it is now only the helper `ConvertDialog` calls, and its two-modal presentation lives in `ConvertDialog`'s `_maybe_warn`. It kept its name because several tools and test files import from it.
@@ -2073,7 +2073,7 @@ There is no walk to the harbour master's pier: every route from the shipped slot
 
 ###### winuae.ps1 and winuae-lanecheck.ps1
 
-An Interactive task started with nobody logged on at the console runs nothing and says nothing, and a task started while its own last instance is still alive is ignored and hands the caller that instance's receipt, which is how a whole run reported success and produced empty dumps; so each call stops the task before starting it and matches a token of its own in the receipt. `clean` refuses while an emulator runs because unregistering the task would strand it where the only way out is killing by name. The VM is single-tenant: with one task and one process name a second agent gets the first's emulator, and before the claim existed a second driver's `stop` ended somebody else's session three times in one night. The claim is an atomic file create plus a read-back of the caller's own token, because six claims arriving together used to grant the lane to all six. A holder re-asserting a lane writes nothing, because deleting the file first left it reading free long enough for somebody else to take it. `send` reads `send.log` through a handle that shares the file with the injector, because an unshared `Get-Content` poll collided with the injector's `Add-Content` and killed it. Every refusal carries the `-Override` line because a lane whose holder has died is otherwise a lock nothing tells you how to open. `roms` points WinUAE's ROM database at `C:\Amiga\Kickstarts` so a person who opens the emulator is not told there are no Kickstarts. The lane check watched the earlier version fail: a second driver's `stop` ended the first's emulator 3 of 3 rounds, its `key` pressed into the first's game 3 of 3, its `start` was handed the first's emulator as its own success 7 of 9, and six simultaneous `claim`s granted all six callers the lane; none of those after the fix. The hijack round needs two calls to overlap inside the second WinUAE takes to become a process, so it reports whether it actually raced and fails when no round did. The `reclaim` round storms a holder re-asserting its own lane while three others claim, callers jittered so they do not fall into lock-step, because the fault is a two-millisecond window that 198 unjittered attempts never hit; it asserts both that nobody else gets in and that the holder can still re-assert, because asking only the first passed four times against a build whose every re-claim failed.
+An Interactive task started with nobody logged on at the console runs nothing and says nothing, and a task started while its own last instance is still alive is ignored and hands the caller that instance's receipt, which is how a whole run reported success and produced empty dumps; so each call stops the task before starting it and matches a token of its own in the receipt. `clean` refuses while an emulator runs because unregistering the task would strand it where the only way out is killing by name. The VM is single-tenant: with one task and one process name a second agent gets the first's emulator, and before the claim existed a second driver's `stop` ended somebody else's session three times in one night. The claim is an atomic file create plus a read-back of the caller's own token, because six claims arriving together used to grant the lane to all six. A holder re-asserting a lane writes nothing, because deleting the file first left it reading free long enough for somebody else to take it. `send` reads `send.log` through a handle that shares the file with the injector, because an unshared `Get-Content` poll collided with the injector's `Add-Content` and killed it. Every time the script declines to run it prints the `-Override` line because a lane whose holder has died is otherwise a lock nothing tells you how to open. `roms` points WinUAE's ROM database at `C:\Amiga\Kickstarts` so a person who opens the emulator is not told there are no Kickstarts. The lane check watched the earlier version fail: a second driver's `stop` ended the first's emulator 3 of 3 rounds, its `key` pressed into the first's game 3 of 3, its `start` was handed the first's emulator as its own success 7 of 9, and six simultaneous `claim`s granted all six callers the lane; none of those after the fix. The hijack round needs two calls to overlap inside the second WinUAE takes to become a process, so it reports whether it actually raced and fails when no round did. The `reclaim` round storms a holder re-asserting its own lane while three others claim, callers jittered so they do not fall into lock-step, because the fault is a two-millisecond window that 198 unjittered attempts never hit; it asserts both that nobody else gets in and that the holder can still re-assert, because asking only the first passed four times against a build whose every re-claim failed.
 
 ###### winuae-send.ps1 and winuae-sendcheck.ps1
 
@@ -2349,7 +2349,7 @@ The workhorse of the discovery phase: save, change exactly one thing in game, sa
 
 ###### dualclassagain.py
 
-`dos` installs one slot of a save tree whose character is already dual-classed, pokes the training hall's maximum level at `SAVGAM+0xD51` so the party menu carries HUMAN CHANGE CLASSES wherever the party stands, and either sweeps the roster highlight a character at a time (DOS Curse, where the item is enabled per selected character at `GAME.OVR 0x20243`: six characters, one save, the line missing for the one dual-classed human and the one elf) or presses the command itself (DOS Silver Blades, where the item is always drawn and the refusal is inside the routine at `0x3CDAF`). `--from-slot` is not cosmetic: Silver Blades will not load a save installed under a letter other than the one it was written as, twice out of two. `--burst` shoots as fast as `import` runs straight after a key, because a refusal that prints and times out is gone before a `settle` returns. `c64` boots Curse or Silver Blades on a pooled VICE slot and would do the same, but has never got a save loaded; its docstring lists what was tried and two settled facts about that front end: the party menu's highlight is the colour RAM at the label's own column rather than a row's dominant colour, and Return is read from the KERNAL buffer only. `--gate-off` writes `NOP NOP` over the branch that refuses (Curse `GEN $2396`, Silver Blades `GEN $1F8B`) so the refusal can be shown to be that instruction; it has not been run. Write-up: `docs/176-changing-class-twice.md`.
+`dos` installs one slot of a save tree whose character is already dual-classed, pokes the training hall's maximum level at `SAVGAM+0xD51` so the party menu carries HUMAN CHANGE CLASSES wherever the party stands, and either sweeps the roster highlight a character at a time (DOS Curse, where the item is enabled per selected character at `GAME.OVR 0x20243`: six characters, one save, the line missing for the one dual-classed human and the one elf) or presses the command itself (DOS Silver Blades, where the item is always drawn and the check that stops the change is inside the routine at `0x3CDAF`). `--from-slot` is not cosmetic: Silver Blades will not load a save installed under a letter other than the one it was written as, twice out of two. `--burst` shoots as fast as `import` runs straight after a key, because a message that prints and times out is gone before a `settle` returns. `c64` boots Curse or Silver Blades on a pooled VICE slot and would do the same, but has never got a save loaded; its docstring lists what was tried and two settled facts about that front end: the party menu's highlight is the colour RAM at the label's own column rather than a row's dominant colour, and Return is read from the KERNAL buffer only. `--gate-off` writes `NOP NOP` over the branch that refuses (Curse `GEN $2396`, Silver Blades `GEN $1F8B`) so the stop can be shown to be that instruction; it has not been run. Write-up: `docs/176-changing-class-twice.md`.
 
 ###### hallmenu.py
 
@@ -2471,7 +2471,7 @@ For strength through charisma the lower byte of a DOS ability pair is the perman
 
 ###### Duplicate-character test (dosaddchar.py)
 
-The engine's duplicate test on ADD CHARACTER TO PARTY compares the identity byte at `0x0AB` after the name: `--ident 0` is refused and `--ident 0x42` is let in, and `--writer` shows the fix works with our writer's value. In that menu the arrow keys do nothing; `Home` and `End` move the highlight, `N` and `P` turn the page and any other key picks. An entry is starred once its file has been read, so the star proves a refusal was a refusal and not a mis-driven menu.
+The engine's duplicate test on ADD CHARACTER TO PARTY compares the identity byte at `0x0AB` after the name: `--ident 0` is refused and `--ident 0x42` is let in, and `--writer` shows the fix works with our writer's value. In that menu the arrow keys do nothing; `Home` and `End` move the highlight, `N` and `P` turn the page and any other key picks. An entry is starred once its file has been read, so the star proves the record really was rejected and the menu was not mis-driven.
 
 ###### Array widths (dosarraywidth.py, dosrecordloops.py)
 
@@ -2519,7 +2519,7 @@ For `hands_used`, eight sites address `0x100` and exactly two write it, both ins
 
 ###### Item ceiling (dositemcap.py)
 
-The specimen is `WISH-SPEC-por-party-l1-intown`; item lists use copies of the game's `Sling` template from `ITEM1.DAX` block 53 with `item_count` and `encumbrance` written to match. A sling weighs two tenths of a pound because the refusal routine shares one flag between the item count and `encumbrance + weight x quantity` against carrying capacity plus 1500, so a heavy inventory would prove nothing about the count. The refusal message is on screen for about a tenth of a second, so `@key` shoots with no settle. `--counts 2,15,16` shows the boundary (the same item accepted at fifteen, refused at sixteen), 16 alone shows `HALVE` missing from the item bar until one item is dropped, and 20 shows the ceiling is on acquisition only. A character carrying nothing gets no `.ITM` file rather than an empty one (`goldbox.dos_codec.ITM_OMITTED_WHEN_EMPTY`), because a zero-length one reproduces the phantom-item half of the empty-inventory corruption on a record the engine wrote.
+The specimen is `WISH-SPEC-por-party-l1-intown`; item lists use copies of the game's `Sling` template from `ITEM1.DAX` block 53 with `item_count` and `encumbrance` written to match. A sling weighs two tenths of a pound because the routine that stops the acquisition shares one flag between the item count and `encumbrance + weight x quantity` against carrying capacity plus 1500, so a heavy inventory would prove nothing about the count. The message is on screen for about a tenth of a second, so `@key` shoots with no settle. `--counts 2,15,16` shows the boundary (the same item accepted at fifteen, refused at sixteen), 16 alone shows `HALVE` missing from the item bar until one item is dropped, and 20 shows the ceiling is on acquisition only. A character carrying nothing gets no `.ITM` file rather than an empty one (`goldbox.dos_codec.ITM_OMITTED_WHEN_EMPTY`), because a zero-length one reproduces the phantom-item half of the empty-inventory corruption on a record the engine wrote.
 
 ###### Training (dosladder.py, dostrain.py, dostrainprobe.py)
 
@@ -2607,7 +2607,7 @@ Each character is a level-1 record through `goldbox.c64_codec.write`, then `gold
 
 ###### Convert measurement (convertbytes.py, convertdrops.py, convertrun.py, convertshots.py, convertdialog*.py, hallconvert.py)
 
-`convertbytes.py` stands in for the emulator condition that every direction has been loaded and walked from a save the dialog's own code path wrote; that stays true only as long as the bytes it was taken on do, and nothing re-takes it when a writer changes. `--tree` puts a detached worktree's `goldbox/`, `editor/` and `tools/` in front on `sys.path`, so the measuring code is the same in both runs and the measured code is each tree's own. An Amiga destination is hashed by the files inside the built `POOLSAVE.ADF`, never by the image, because `AmigaDisk.write_file` stamps wall-clock timestamps and two builds of one input differ in about a dozen of 901,120 bytes. A colleague's uncommitted `goldbox/portraits.py` once made three of 118 conversions look nondeterministic in a working-tree run. `convertdrops.py`: a writer's `DROPPED` tuple is an upper bound, not a count; `goldbox.neutral.Writer.finish` composes a line only for a field the neutral record carries, so a declared entry no source can reach never fires. `WRITE_UNREPORTED_DROPS` used to silence `turn_power` and `infravision`, which a real C64 source reaches, so the count could look emptier than the conversion was; that list is deleted and those names, and `encumbrance`, go through `WRITE_NO_SUCH_FIELD` or `WRITE_DERIVED`. The default sweep includes the source title's own combat-icon tables and found the paladin's Protection from Evil on 5 of 10 C64 Curse specimens after a one-specimen run said the direction was clean. Later-title Amiga container specimens are wrapped in fresh temporary ADFs so their reader paths are measured, and each Amiga writer receives its own title's game-data disk. `convertrun.py`: `ConvertDialog.exec` is the one thing replaced, being the modal wait for a person to press Convert. A file copy has to clear the slot itself, because `goldbox.dos_codec.new_dos_save` deletes stale `CHRDAT<slot><n>.*` before it moves its own files in and a freshly staged archive tree carries the shipped party's records at slot A (thirteen of them, including `.ITM` files no conversion writes). It copies both slots' `CHRDAT<slot><n>` files beside the two containers, because the staged tree dies with the session and a `SAVGAM<slot>.DAT` without its party records is a saved game with no party. `convertshots.py`: six states (empty, the approved refusal, no C64 disks, no DOS game folder, only `From` filled in, an unreadable source) need only synthetic saves; the two "ready to write" states need a rehearsal to succeed; two more render the modal `QMessageBox` a refusal or a name-too-long-for-DOS warning shows in; a row still empty pops no modal at all. `hallconvert.py`: for an area that loads its own map the two words hold the same number and the disks are byte-identical; the training hall and Phlan City Hall load no map, so `$49C5` stays at New Phlan's 0 and the pair differ in `$49F2` and loaded-files cache slot 8. It reproduces the defect from the shipped code rather than a hand-edited file, which is what makes the booted comparison evidence.
+`convertbytes.py` stands in for the emulator condition that every direction has been loaded and walked from a save the dialog's own code path wrote; that stays true only as long as the bytes it was taken on do, and nothing re-takes it when a writer changes. `--tree` puts a detached worktree's `goldbox/`, `editor/` and `tools/` in front on `sys.path`, so the measuring code is the same in both runs and the measured code is each tree's own. An Amiga destination is hashed by the files inside the built `POOLSAVE.ADF`, never by the image, because `AmigaDisk.write_file` stamps wall-clock timestamps and two builds of one input differ in about a dozen of 901,120 bytes. A colleague's uncommitted `goldbox/portraits.py` once made three of 118 conversions look nondeterministic in a working-tree run. `convertdrops.py`: a writer's `DROPPED` tuple is an upper bound, not a count; `goldbox.neutral.Writer.finish` composes a line only for a field the neutral record carries, so a declared entry no source can reach never fires. `WRITE_UNREPORTED_DROPS` used to silence `turn_power` and `infravision`, which a real C64 source reaches, so the count could look emptier than the conversion was; that list is deleted and those names, and `encumbrance`, go through `WRITE_NO_SUCH_FIELD` or `WRITE_DERIVED`. The default sweep includes the source title's own combat-icon tables and found the paladin's Protection from Evil on 5 of 10 C64 Curse specimens after a one-specimen run said the direction was clean. Later-title Amiga container specimens are wrapped in fresh temporary ADFs so their reader paths are measured, and each Amiga writer receives its own title's game-data disk. `convertrun.py`: `ConvertDialog.exec` is the one thing replaced, being the modal wait for a person to press Convert. A file copy has to clear the slot itself, because `goldbox.dos_codec.new_dos_save` deletes stale `CHRDAT<slot><n>.*` before it moves its own files in and a freshly staged archive tree carries the shipped party's records at slot A (thirteen of them, including `.ITM` files no conversion writes). It copies both slots' `CHRDAT<slot><n>` files beside the two containers, because the staged tree dies with the session and a `SAVGAM<slot>.DAT` without its party records is a saved game with no party. `convertshots.py`: six states (empty, the approved error, no C64 disks, no DOS game folder, only `From` filled in, an unreadable source) need only synthetic saves; the two "ready to write" states need a rehearsal to succeed; two more render the modal `QMessageBox` that a stopped conversion or a name-too-long-for-DOS warning shows in; a row still empty pops no modal at all. `hallconvert.py`: for an area that loads its own map the two words hold the same number and the disks are byte-identical; the training hall and Phlan City Hall load no map, so `$49C5` stays at New Phlan's 0 and the pair differ in `$49F2` and loaded-files cache slot 8. It reproduces the defect from the shipped code rather than a hand-edited file, which is what makes the booted comparison evidence.
 
 #### `tools/gui`, `tools/icons`, `tools/pool_of_radiance`, `tools/curse_of_the_azure_bonds`, `tools/secret_of_the_silver_blades`
 
@@ -2695,7 +2695,7 @@ The stored `POOL_OF_RADIANCE_MENU` matches what was read from the C64 `GEN` and 
 
 Losing a fight prints `THE PARTY HAS LOST`, sets `$6DC7` to `$80`, leaves all six characters `DYING` and the save disk untouched, and 66 of 66 program-counter readings sit at `$0957`, which is `POST.COM`'s `JMP $0957`.
 
-###### Wilderness step refusals (pool_of_radiance, outdoorstep.py and outdoorwalk.py)
+###### Wilderness steps the game blocks (pool_of_radiance, outdoorstep.py and outdoorwalk.py)
 
 On the square an Amiga party sails to, selecting `MOVE` puts up `TAKE BOAT STAY` and a picture of the boat rather than `1-8, RETURN OR BUTTON`, so a driver that knows only those two prompts waits out its timeout in front of a game that is asking a question; `TAKE` sails the party back to New Phlan and destroys what a step measures, hence `--boat STAY` as the default. Outdoors the status line reads `OUTDOORS 22:02 7,28`, with the word where the facing letter goes, and it lags the step by about a second; an overland step is about twelve hours of game time, so the walker polls rather than sleeping. A title that reads keys from only one of XTEST and the KERNAL buffer looks exactly like a party hemmed in, so each digit is tried both ways.
 
@@ -2843,7 +2843,7 @@ answer would be a sentence in the interface -- so `wish/window.py` builds the
 Import submenu inside the `if` instead. And a preference checkbox would need a
 label, and a label saying "experimental" would need a sentence saying what that
 means for the user's save disk. That is Donald's wording to write, and it is not
-worth writing for something due to be deleted.
+written for something due to be deleted.
 
 The feature-flag test that only earned its place once forcing the flag on made
 it fail is recorded under Testing.
@@ -2913,7 +2913,7 @@ fresh session reading the issue would have got both right. Length is not
 context; it is also drift.
 
 **The calibrations are what get lost.** "+6pt here measures like Windows' base
-font" is worth more than the fix it enabled, and lived nowhere but a
+font" outlasts the fix it enabled, and lived nowhere but a
 conversation until it was written onto `#71 (Character draws on top of itself
 when the header is squeezed to its floor)`. A fact that exists only in a
 conversation is a fact somebody pays for twice, and conversations end -- on a

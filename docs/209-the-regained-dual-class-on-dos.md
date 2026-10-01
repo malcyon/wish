@@ -6,7 +6,7 @@ which array carries which level at that moment.
 
 **In one line: no array moves. `class_levels[old]` is zeroed at the change and
 stays zero for good, the former array keeps the level he left, and everything
-the regained class is worth is derived from those two plus one comparison —
+the regained class yields is derived from those two plus one comparison —
 which is where the C64 and DOS differ, and the only place they differ.**
 
 `docs/192-curse-dual-class.md` is the C64 half of this. There, `GEN $20A3`
@@ -131,7 +131,7 @@ Curse's trainer is `GAME.OVR:0x24CEE`.
   message. The experience test that follows reads `DS:0x4293 + slot * 0x63 +
   (level + 1) * 4` and passes at exactly the threshold (fighter row: 2001,
   4001, 8001, 18001, 35001, 70001, 125001, 250001). CONFIRMED from the code;
-  the one refusal it explains is MARK in the
+  the one refused training it explains is MARK in the
   `#649 (Converting a dual-classed DOS Curse of the Azure Bonds character to C64 loses his leftover paladin cure-disease use)`
   D3 run, holding 100 platinum (500 gp) with 70,001 experience at fighter 6.
 
@@ -150,7 +150,7 @@ Curse's trainer is `GAME.OVR:0x24CEE`.
 
 `goldbox.dos_codec.write` writes the old class's level into **both** arrays and a
 combined class code, because the neutral record it is handed carries the C64's
-shape faithfully and nothing transposes it.
+format faithfully and nothing transposes it.
 
 The engine's own record does not survive a round trip. Reading
 `WISH-SPEC-curse-408-regained-paladin` through `dos.to_neutral`,

@@ -1,7 +1,7 @@
 # The combat icon's second pose: READY and ACTION
 
 An icon is eighteen `CHARPIC00` screen codes and eighteen colours. Nine of each
-draw the figure that stands on the combat floor;
+draw the figure that stands on the combat arena;
 `docs/174-combat-figures-in-the-running-game.md` proved those in the running
 game and closed by saying the other nine had never been seen. This is where
 they go, what the game calls them, and where a player looks at them. Taken for
@@ -86,14 +86,14 @@ a partial block -- before the first bar and not since.
 
 So the ACTION pose is fetched while a character takes its turn and is gone by
 the time the game asks for the next command. That is why no reading taken at a
-command bar has ever caught it on the combat floor: 405 readings in `docs/174`
+command bar has ever caught it on the combat arena: 405 readings in `docs/174`
 and 252 more here, all the READY pose or its mirror.
 
 ## What is proven, and where
 
 | the nine | proven where | evidence |
 |---|---|---|
-| READY, codes 0-8 | the combat floor, mode byte 2 | 657 figure readings, 9 of 9 glyphs, exactly one of 32 candidates each |
+| READY, codes 0-8 | the combat arena, mode byte 2 | 657 figure readings, 9 of 9 glyphs, exactly one of 32 candidates each |
 | ACTION, codes 9-17 | the icon editor in camp, mode byte 9 | 4 blocks x 9 glyphs, exactly one of 24 candidates each, on two disks |
 | both | the engine's expanded table | 1620 of 1620 glyph comparisons, 90 of 90 colour blocks |
 
@@ -111,7 +111,7 @@ combat figures, not its own)`.
 
 ## What is not established
 
-**How long the ACTION pose is on the combat floor, and what puts it there.** The
+**How long the ACTION pose is on the combat arena, and what puts it there.** The
 72 bytes are fetched; the destination has not been read at the moment of the
 fetch. Catching it needs a capture raced from outside rather than a reading
 taken when the game stops to ask for a command. Nothing about a conversion waits

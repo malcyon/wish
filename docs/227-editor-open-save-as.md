@@ -6,7 +6,7 @@ foundation runs of `docs/235` have booted some converted saves in their
 destination games (Save As output among them) to prove the harness; the
 per-route runs of its Save As matrix, each with its identity control, are not
 recorded, so no route is proven. Still open: Windows validation; the
-verification matrix of conditional refusals is unrecorded; slot-picker and
+verification matrix of the cases where Save As stops is unrecorded; slot-picker and
 multi-save Amiga disk behaviour through Save As are unconfirmed; retiring
 Convert waits on a Pools of Darkness Save As route. The Character Editor opens
 C64, DOS and Amiga saves and saves to any supported platform through two split
@@ -167,7 +167,7 @@ the actual title's supported directions plus its native-copy operation.
 | Stage | Owner and files | Required result |
 |---|---|---|
 | 1. Capture current edits | Reverse-engineering agent: new `editor/saveplan.py`, native assembly in `editor/window.py::_write_back`, source/rehearsal interfaces in `editor/convert.py`, focused new `tests/editor/test_saveplan.py` | An isolated snapshot combines original native data with all pending edits, including inventory and supported traits/effects. Preparing it writes neither source files nor live editor baselines. C64, DOS and Amiga conversions consume it. |
-| 2. Prepare and publish | Reverse-engineering agent: `editor/saveplan.py`, `editor/convert.py`, `editor/files.py`, relevant conversion/editor tests | Extract asset resolution, rehearsal and output preparation from `ConvertDialog`. Add native copies, validation, loss refusal, explicit output paths, backups and publication with recovery on failure. Return a destination descriptor and a validated party for adoption. |
+| 2. Prepare and publish | Reverse-engineering agent: `editor/saveplan.py`, `editor/convert.py`, `editor/files.py`, relevant conversion/editor tests | Extract asset resolution, rehearsal and output preparation from `ConvertDialog`. Add native copies, validation, a stop on loss, explicit output paths, backups and publication with recovery on failure. Return a destination descriptor and a validated party for adoption. |
 | 3. Wire split Open and Save buttons | Qt UI specialist: `wish/window.ui`, generated `wish/ui_window.py`, `wish/window.py`, `editor/window.py`, editor/preferences/layout tests | Implement split buttons and the conditional destination section in Designer; connect toolbar, menus and shortcuts to one controller. Adopt the prepared destination only after successful publication. |
 | 4. Establish parity and retire Convert (done except for Pools of Darkness: File > Convert survives only behind `WISH_EXPERIMENTAL_POD_CONVERT`, its dialog refuses a reported loss, and it is removed with the flag) | Qt UI specialist after backend verification: obsolete conversion-dialog wiring/form, affected tests, `docs/97-editor.md`, `docs/117-save-conversion.md`, package inventory rows | Partly done: native copies and every direction except Pools of Darkness work from Save As. Remove File > Convert and its dialog code when a Pools of Darkness Save As route exists. Retain the direction registry, codecs and conversion tests. |
 
@@ -181,7 +181,7 @@ The stage-1 regression was concrete: `Source.detect(path, party)` used the open
 party for C64 but reread DOS and Amiga sources from disk, so a conversion could
 omit unsaved native edits. It now takes the party branch for every port and
 `editor.saveplan.prepare` assembles the port's own bytes. A snapshot must
-retain the native data outside the C64-shaped editing model, not rebuild the
+retain the native data outside the editing model, which uses the C64's format, not rebuild the
 whole save from the visible sheet alone. The native rewrite machinery in
 [The differential rewrite](223-the-differential-rewrite.md) is the starting point.
 
@@ -202,7 +202,7 @@ report an ordinary save failure; do not claim that nothing was written.
 
 ## Acceptance evidence
 
-* Opening each supported source shape selects the intended complete saved game;
+* Opening each supported source format selects the intended complete saved game;
   canceled source/slot selection changes nothing. Existing C64 roster disks and
   standalone-character behavior remain covered.
 * On C64, DOS and Amiga, edit a character and an item, then Save As without Save.

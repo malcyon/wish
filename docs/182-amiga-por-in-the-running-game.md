@@ -96,7 +96,7 @@ record carries matches it exactly.
 **A character who owns nothing gets a coherent sheet and no ITEMS entry.**
 MALCYON carries no items, and his sheet's menu row is `VIEW TRADE DROP RENAME
 EXIT` where an equipped character's reads `VIEW ITEMS TRADE DROP RENAME EXIT`.
-That is the Amiga's answer to the shape of
+That is the Amiga's answer to the form of
 `#62 (A converted character who owns nothing gets a corrupt sheet, and DOS then
 invents a garbage item)`: the entry is not offered rather than drawn wrong. It
 is one character on one run, so PROBABLE as a rule about the engine.
@@ -150,7 +150,7 @@ Three things follow.
   save holds all four, in the same order, with only the chain pointers moved.
   So the arrangement a converted Amiga dwarf ends in is the one `#191 (A
   converted dwarf loses his constitution bonus to saving throws)` established
-  is right on DOS: the plain class row in the record, the
+  is right on DOS: the unmodified class row in the record, the
   constitution bonus in the effect records beside it. CONFIRMED that the four
   records survive; PROBABLE that the bonus is therefore intact, because no
   dwarf the Amiga made itself exists to compare with and Pool of Radiance's
@@ -224,7 +224,7 @@ tools/amiga/amigadrive.py --holder por105 keys V I      # sheet, then ITEMS
 tools/amiga/amigadrive.py --holder por105 shot $TMPDIR/items.png
 ```
 
-Three things cost time on the way and are worth knowing.
+Three things cost time on the way.
 
 * **A key pressed while the disk is loading is swallowed with no sign.** Take a
   screenshot after every step rather than batching a sequence across a load.

@@ -100,7 +100,7 @@ hole". Two things on the sheet corrected it:
   Font Awesome's `floppy-disk` — since replaced by game-icons.net's `save`,
   below — kept both its shutter and its hub. The rule is about *feature size*,
   not hole count, and 64 units in the 640 box — Font Awesome's `location-dot`'s
-  counter, since replaced by `position-marker` — is about the floor.
+  counter, since replaced by `position-marker` — is about the lower limit.
 * **the failure that matters is separation, not mush.** `hat-wizard` reads as a
   fin because its brim is a *separate subpath* that stops touching the cone;
   `wand-sparkles`' stars come away as three loose dots for the same reason.
@@ -141,7 +141,7 @@ button is `noteeditor.ICON = 15`.
 ### The two Donald chose
 
 **`Treasure` → Font Awesome's `gem`, the REGULAR weight**, not the solid, and
-picked specifically: an outline says *thing on the floor* where a filled lozenge
+picked specifically: an outline says *thing lying on the ground* where a filled lozenge
 on graph paper reads as terrain, which is the objection the drawn chest existed
 to answer. It is the one icon in `ui/icons.py` lifted from `svgs-full/regular/`
 rather than `svgs-full/solid/`, and the module docstring says so.
@@ -156,7 +156,7 @@ Measured, at half-coverage, in the 640 box:
 | 56 | 704 px | **1** | 274, 56, 39, 39 |
 
 **It survives 13 px**: one connected silhouette, and the table — the big facet
-under the crown — is 16 px of paper, well clear of the 64-unit floor. The three
+under the crown — is 16 px of paper, well clear of the 64-unit minimum. The three
 crown facets are 2–3 px each and are the marginal part; they go grey rather than
 white and the icon still reads as a gem, which is the same verdict `hood` got
 and by the same measurement. The solid weight is denser (52 px of ink at 13
@@ -234,7 +234,7 @@ drawing costs something a replacement does not give back.
 **Two are now replaced** — `chest` and `swords`, above — and the three class
 icons are Donald's call.
 
-### P77 is worth reopening, and the reason is the size change
+### P77 should be reopened, and the reason is the size change
 
 Every "fails" in the table above is a 13 px verdict, and 13 px was the map. The
 map draws at **26** now. `hat-wizard`'s brim separating from its cone,
@@ -329,7 +329,7 @@ the four buttons at `TOOLBAR_ICON = 16`.
 
 ## Where else icons would earn their place
 
-| place | what | worth it? |
+| place | what | does it pay? |
 |---|---|---|
 | map | `stairs` | **done** — a `Stairs` note kind in `automap/notes.py` |
 | roster | class icons | **done** — beside the class text, never instead of it |

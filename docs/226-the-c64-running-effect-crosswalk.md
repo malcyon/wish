@@ -1515,7 +1515,7 @@ because every effect row is full, the permanent scores are written and the
 character arrives without the spell. `effects.NEVER_EXPIRING_C64_BITS` holds
 the bit 7 each C64 cast writes, apart from the DOS flag.
 
-| Refusal | Sweep evidence and limit |
+| Case | Sweep evidence and limit |
 |---|---|
 | Curse id 13 | **CONFIRMED combat path:** `COMBAT $1F40` sets id 13 and `$1F50` calls the row writer with a roll and bit 7. Cleanup does not strip 13. Survival of its target to save is unmeasured. |
 | Later 12, 14, 38 without bit 7; Mirror Image above 4 | **UNRESOLVED:** the combat handler pointers and their values remain to be followed. |

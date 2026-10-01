@@ -91,8 +91,8 @@ powers `0x80`-`0x8B` (see `docs/230-who-reads-a-dos-effect-node.md`), not a
 kind-of-grant selector as in `coab`'s `calc_items_effects`. CONFIRMED for the
 gate, the arguments, and that the power byte is the handler id.
 
-**The three Amiga item specimens match these shapes byte for byte.** Their
-ten-byte nodes (`p105/saves/` (scratch, deleted), a rebuilt corpus): CONJURER
+**The three Amiga item specimens match these layouts byte for byte.** Their
+ten-byte nodes (`p105/saves/` (scratch, deleted), a rebuilt set of saves): CONJURER
 `3D 00 0000 0C 00` and MAGICIAN `59 00 0000 0C 00` are the item path; ADDERLY
 `26 00 0000 5C 01` is the strength-item path, flag 1 and all, which makes
 "92 is the strength the girdle replaced" PROBABLE rather than SPECULATIVE.
@@ -116,14 +116,14 @@ counter-example that stopped the carrying half of `#232 (An item-granted
 effect is dropped on the way through the neutral record, with no report)`.
 Donald settled his provenance on 2026-09-04: every record in
 `~/dos_por_play/SAVE/` is to be treated as edited, and those two files are
-that set. The code agrees, independently: on this build the shape
+that set. The code agrees, independently: on this build the pattern
 `00 00 FF 00` (duration 0, data `FF`, flag 0) is written for exactly twelve
 ids -- the eight racial ones at creation and the four combat conditions 31,
 55, 58, 98 -- and by no spell path, because the spell table gives cleric
 Detect Magic a fixed 10 minutes and the magic-user Detect Magic (11) and
 Protection from Evil 10' Radius (52) `2 x caster level` with a scroll cast
 substituting level 6 (`START.EXE` `0xBA:0x26C2`, gated on `[0x6DBF]`). An id
-outside those twelve in that shape was not written by this engine.
+outside those twelve in that pattern was not written by this engine.
 CONFIRMED for the twelve; the rule is a property of one build.
 
 So SILAS proves nothing about permanence except the thing the running game

@@ -172,22 +172,22 @@ unread — 0 on 162 of the 163 items on the game disks and 251 on CURSED NECKLAC
 alone. See `goldbox/items.py`.
 
 **Combat icon: ✅ done** ([the combat-icon edits](50-experiments.md)). 36 bytes, split exactly in half — 18 screen
-codes for the **shape**, then 18 **colour** values. In a save they live in a
+codes for the **figure**, then 18 **colour** values. In a save they live in a
 shared table of 8 entries at `$4BE0`–`$4CFF`, one per slot, rather than in the
 character record. `wish` exposes both halves.
 
 Donald then changed every icon in the party, which gave a much better picture
 than the single differing character we had before:
 
-* **Shape and colour really are independent.** Three characters (MALCYON,
-  MAGNUS, BRUTUS) ended up sharing **one shape with three different colour
-  sets**. Others took distinct shapes. Four distinct shapes across six
+* **Figure and colour really are independent.** Three characters (MALCYON,
+  MAGNUS, BRUTUS) ended up sharing **one figure with three different colour
+  sets**. Others took distinct figures. Four distinct figures across six
   characters.
-* **Shape bytes** range `$02`–`$E9` — screen codes into the game's custom
+* **Figure bytes** range `$02`–`$E9` — screen codes into the game's custom
   character set, as expected.
 * **Colour bytes** are `0`–`15` throughout, valid C64 colour codes. The party
   used 0, 8, 9, 10, 11, 13, 14, 15.
-* Some cells appear fixed across every shape seen — bytes 16 and 17 are always
+* Some cells appear fixed across every figure seen — bytes 16 and 17 are always
   `$10 $11` — which hints at a grid where part of the frame is constant. Not
   yet worked out.
 
@@ -555,7 +555,7 @@ byte itself, the derived combat numbers that depend on it, and `0x0B8` bit 0.
 What matters is **everything else that moves** — any byte that changes and is
 not one of those is the answer to a question we have not asked yet.
 
-Worth capturing in the same pair: whether the exceptional-strength byte
+Capture in the same pair: whether the exceptional-strength byte
 (`0x074`) is touched for a fighter, and whether `0x0E2`, effective strength,
 moves independently of the score.
 
@@ -596,10 +596,10 @@ character's turn, so it has to happen during combat.
 * If it then reads `00`, the game writes the byte in both directions and only
   *reads* it at the start of a fight — a slightly different model from the one
   written up, and the experiment log needs correcting.
-* If it still reads `80` while the character is plainly back under the player's
+* If it still reads `80` while the character is clearly back under the player's
   control, then the space-bar escape does not touch this byte at all and there
   is a second mechanism nobody has found.
 
-Worth noting **when** during the fight it is turned off, if that is easy: a bit
+Note **when** during the fight it is turned off, if that is easy: a bit
 that clears at once means the game writes it live, one that clears only when the
 fight resolves means `COMBAT` writes its state back at the end.

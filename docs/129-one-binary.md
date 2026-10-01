@@ -60,7 +60,7 @@ subcommands they belong to.
 **Resolving `wish export` against a file called `export`.** The first argument
 is a subcommand if it exactly matches one of the subcommand names, and a save
 disk otherwise. That is five lines in `wish/__main__.py`, ahead of the parser,
-and it is the same shape as the `--debug` strip that already lives there. A
+and it is the same kind of change as the `--debug` strip that already lives there. A
 file genuinely named `export` is reachable as `./export`, and
 `tests/wish/test_packaging.py` opens one to prove it.
 

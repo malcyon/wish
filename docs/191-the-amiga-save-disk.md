@@ -123,7 +123,7 @@ blocks out of **our** bitmap, threaded ten new files and a `savgamC.dat` into
 
 `' BC       '` is the array `goldbox.amiga_savegame.slot_list_bytes` writes -- `B` in
 byte 1, `C` in byte 2, byte 0 still a space because no `A` was ever on this
-disk. That is the same shape `#109 (A save slot written onto an Amiga disk is
+disk. That is the same pattern `#109 (A save slot written onto an Amiga disk is
 not offered by the game's picker)` measured on a game disk, on a disk where
 the gap is at the front rather than in the middle.
 

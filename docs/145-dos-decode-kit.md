@@ -9,7 +9,7 @@ tables and what the comparison changed.
 **Licence: MIT** (tools and documents), with an explicit note that the games
 remain their rights holders'. So anything in it we ever wanted could be used
 with attribution — but nothing has been copied here and nothing needs to be:
-what is worth having is the *findings*, and the code we already have.
+what is useful is the *findings*, and the code we already have.
 
 **It ships no game data.** 139 files, all `.py`, `.md`, `.html`, `.js`; the
 `.gitignore` excludes `*.exe`, `*.DAX`, `*.SAV`, `*.ITM` and the generated
@@ -33,7 +33,7 @@ discipline as ours and makes it easier to read than most.
 
 The repository's ECL write-up quotes the header of its DOS `ECL1.DAX` block 18
 (Podol Plaza). Those twenty bytes are **byte-identical to the C64's `ECL12`**,
-which `docs/88-map-files.md` independently matched to Podol Plaza by map shape.
+which `docs/88-map-files.md` independently matched to Podol Plaza by map layout.
 That prompted a full diff of the C64 `ECL` files against the DOS
 `ECL<1-8>.DAX` blocks in the player's own copy of the DOS game.
 
@@ -51,7 +51,7 @@ in whichever `ECL<1-8>.DAX` happens to carry it.** Of the 29 pairs:
 a second direction: DOS has no script 30, and the C64 port put its attract-mode
 demo in the slot DOS left free.
 
-What this is worth: our 62-opcode VM table, taken
+What this buys: our 62-opcode VM table, taken
 from the C64 `DUNGEON` dispatch tables, **disassembles the DOS scripts directly**,
 and `analysis6/ecl6.py` (scratch, deleted) can be pointed at a decompressed `.DAX` block as-is
 — both the table (`reports/ecl-opcodes.md`) and the decoder are currently
@@ -77,7 +77,7 @@ code rather than bytecode, carry `00 10` there instead.
 
 The header is **five 4-byte records**, `[word][01 01]`, which is what the
 repository found on DOS and what the (now-lost) `reports/ecl-opcodes.md`
-called "the five-word entry header". On the C64 records 1–4 are plain absolute addresses in
+called "the five-word entry header". On the C64 records 1–4 are absolute addresses in
 the block's own `$9900` space — `ECL12` reads `$99B9 $9AB7 $9914 $9960`, and the
 repository lists exactly those four for its DOS block 18.
 
@@ -106,12 +106,12 @@ passability field:
 | 0 | base-ledge | 3010 | 17.0% | 9 |
 | 1 | window | 1924 | 23.6% | 2 |
 | 2 | gate / arch | 1673 | **62.3%** | 0 |
-| 3 | plain stone | 5178 | **2.8%** | 8 |
+| 3 | bare stone | 5178 | **2.8%** | 8 |
 | 4 | door | 1013 | **85.6%** | **123** |
 
 **Slice 4 is the door slice: 123 of the game's 142 locked and barred edges are
 on it, and 86% of them are crossable.** Slice 3 is the commonest and almost never
-crossable, which is "plain stone"; slice 2 is crossable and never locked, which is
+crossable, which is "bare stone"; slice 2 is crossable and never locked, which is
 an arch. CONFIRMED for 2, 3 and 4.
 
 Slices 0 and 1 are **UNKNOWN**: passability does not separate them. What would
@@ -159,7 +159,7 @@ release's disk 3, and 249 to 834 bytes away under the other trim.
 
 `tools/records/geoports.py` reads a DOS block by the engine's test — 1026 bytes, drop
 two — and its `blocks` command is the sweep. It used to require the `00 04`
-as well, which made Treasures invisible and Pools of Darkness a corpus of one
+as well, which made Treasures invisible and Pools of Darkness a single specimen
 (`#466 (The DOS map reader keeps only blocks with a C64 load address, so two
 titles' maps are invisible)`).
 
@@ -222,7 +222,7 @@ checked instruction-by-instruction against 16,233 decoded instructions, and the
 DOS guide's independent list (`docs/128` §"sixty-two for sixty-two") agrees with
 all 62 mnemonics. Their names appear to be slid by a few positions in two runs.
 Their **operand counts**, by contrast, agree with ours almost everywhere, which
-is what a handler-shape analysis would get right.
+is what an analysis of handler structure would get right.
 
 Also: they say the dispatch chain covers `$00`–`$3D` contiguously, which matches
 our 62 opcodes exactly, and then name only 40 of them. `$1F` unused is agreed by
@@ -275,7 +275,7 @@ Leads, at the confidence a third-party document earns.
 
 ## What agrees with us and adds nothing
 
-Worth recording so nobody looks twice.
+Recorded so nobody looks twice.
 
 * **The DAX container and its RLE codec.** Their `kit/dax.py` and our
   `goldbox/dos_savegame.dax_index` / `dax_unpack` are the same format, field for

@@ -77,7 +77,7 @@ name of the character in slot *n*. In the shipped `SAVEDBASH`, entry 0 is GUY
 DE VALOIS and slot 0 is MORGAINE. That looked like two titles keying the same
 table differently, and it is not: **the table is a buffer `GEN` refills from
 the save disk's directory before every read**, so the stored order is the
-order those character files stood in the directory at the last scan.
+order those character files were listed in the directory at the last scan.
 
 `#435 (A rename in Wish leaves the C64 name table holding the old name on
 Curse and Silver Blades, and nobody knows what reads it)` settled it on
@@ -300,7 +300,7 @@ unconfirmed.
 | | |
 |---|---|
 | the container row | `goldbox/c64_save.py`, `SECRET_OF_THE_SILVER_BLADES` |
-| the record shape | `goldbox/c64_codec.py`, `SILVER_BLADES_RECORD` |
+| the record layout | `goldbox/c64_codec.py`, `SILVER_BLADES_RECORD` |
 | the DOS record table | `goldbox/dos_port.py`, `SECRET_OF_THE_SILVER_BLADES` |
 | the areas | `goldbox/areas.py`, `AREAS_SILVER_BLADES`, twenty-two rows |
 | building a save disk | `tools/secret_of_the_silver_blades/ssbdisk.py` |

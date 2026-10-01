@@ -51,7 +51,7 @@ Two specific corrections they already earned and have not had:
 ## 2. The matrix
 
 **V** verified, with the citation beside it · **U** unverified · **X** known
-not to work · **R** refuses, correctly, and the refusal is tested · **—** not
+not to work · **R** refuses, correctly, and the refusing is tested · **—** not
 applicable.
 
 ### A. The file path — no emulator
@@ -76,7 +76,7 @@ applicable.
 | A16 | the four active-effect arrays are read | V | V | V | **This row said "active effects panel" and marked it V for Pool of Radiance; there is no such panel in the program for any title.** `docs/133-active-effects.md` opens "A plan, not a record of work", and the box that carried that title is now `Character Traits`, which is A15. What exists is `automap/live.py:active_effects`, feeding the combat view and the condition badges — and its four payload offsets `$000`, `$040`, `$080`, `$280` and its 64 slots are now measured on all three titles: `CAMP`'s owner-renumber loop is instruction for instruction the same in each with `LDX #$3F`, and `DUNGEON`'s duration tick likewise. `test_coldread.py::test_the_effect_arrays_sit_where_the_save_image_puts_them` and `…::test_camp_renumbers_sixty_four_effect_owners_in_every_title`. **What an id *means* on a later title is not settled** and A15 is a reason to doubt it — see C13 |
 | A17 | an unchanged save writes back byte-identically | V | V | V | `test_curse.py::test_the_editor_writes_a_curse_save_back_unchanged`; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** — `test_ssbeditorpath.py::test_the_editor_writes_a_silver_blades_save_back_unchanged`, on `WISH-SPEC-ssb-d-engine-resave`, the C64 engine's own `ENCAMP > SAVE` |
 | A18 | YAML export → import → byte-identical disk | V | V | V | `test_curse.py::test_a_curse_save_disk_survives_yaml_byte_for_byte`; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** — `test_ssbeditorpath.py::test_a_silver_blades_save_disk_survives_yaml_byte_for_byte`. The row's old reason, that SSB had no save disk in the tests, stopped being true on 2026-09-05 when `#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer refuses today)` left six engine-written Silver Blades disks in the specimen tree |
-| A19 | a save of one title refuses to import into another | V | V | V | `test_curse.py::test_a_curse_party_will_not_import_into_a_pool_of_radiance_disk` and its mirror; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** in both directions — `test_ssbeditorpath.py::test_a_silver_blades_party_will_not_import_into_a_pool_of_radiance_disk` and `…test_a_pool_of_radiance_party_will_not_import_into_a_silver_blades_disk`, each asserting the refusal names both titles |
+| A19 | a save of one title refuses to import into another | V | V | V | `test_curse.py::test_a_curse_party_will_not_import_into_a_pool_of_radiance_disk` and its mirror; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** in both directions — `test_ssbeditorpath.py::test_a_silver_blades_party_will_not_import_into_a_pool_of_radiance_disk` and `…test_a_pool_of_radiance_party_will_not_import_into_a_silver_blades_disk`, each asserting the error message names both titles |
 | A20 | an edited field appears in the running game | V | V | V | `docs/120` §5.2 — name, gold and current hit points, all three read off Curse's own screens. **SSB closed by #33 (One Silver Blades session, for the whole editor path)** on 2026-09-08, VICE pool slot 3: MORGAINE renamed to `BRIGHID`, gold 0 → 4321 and strength 17 → 12 through `EditorBinding`, and the game drew `BRIGHID` on the party-formation panel and in the `VIEW WHICH CHARACTER?` list, `STR 12` and `GOLD          4321` on the sheet. `tools/secret_of_the_silver_blades/ssbedit.py` is the run |
 
 ### B. The DOS converter
@@ -95,8 +95,8 @@ applicable.
 | C3 | party fix from the status line | V | V | V | `test_curselive.py::test_the_status_line_reads_through_the_unchanged_party_fix`; `docs/121` §5 — and it **lags** on SSB |
 | C4 | party fix from memory (the fallback) | V | V | V | `test_automap.py::test_the_memory_fallback_reads_the_engines_own_triple` — `C64Machine.live_position`, `$C04B` measured on all three (`docs/120` §4, `docs/121` §5). An unmeasured title refuses: `…::test_a_title_whose_live_triple_is_unmeasured_gets_no_fallback` |
 | C5 | `Fingerprint` narrows the map from a walk | V | V | V | `test_curselive.py::test_the_walked_route_fits_geo01_and_narrows_sixteen_maps_to_two`, `test_ssblive.py::test_every_step_the_party_completed_crossed_a_passable_edge` |
-| C6 | area identification across a boundary | V | V | V | **Measured on all three (`docs/212-the-live-tab-per-title.md`, 2026-09-08, `tools/gui/livecheck.py`)**: `automap.actions.FastTravel` carried the party across, the block at `$0400` changed to the arriving area's map and `AutomapState.area` followed it — `GEO00`→`GEO01`, `GEO01`→`GEO03`, `GEO10`→`GEO20`. The **save image's own area byte does not follow**, on any of the three, twenty seconds after the arrival: the resident image is a copy the engine rewrites when it saves, which is why the mapper identifies an area from `$0400` and not from the header |
-| C7 | map drawing, reveal, exploration | V | V | V | **Drawn from a running machine on all three (`docs/212-the-live-tab-per-title.md`, 2026-09-08, `tools/gui/livecheck.py`)**, which nothing had done for Curse or Silver Blades. `Automapper.poll()` identified the area by an exact byte match of `$0400` against the disks, `title_check` came back `ours`, and the marker followed a four-key walk — 4 of 4 steps agreeing with the game's own status line on the square and the facing, on each title. The drawn map goes out as SVG through `automap.render.to_svg`, whole and explored-only |
+| C6 | area identification across a boundary | V | V | V | **Measured on all three (`docs/212-the-live-tab-per-title.md`, 2026-09-08, `tools/gui/livecheck.py`)**: `automap.actions.FastTravel` carried the party across, the block at `$0400` changed to the arriving area's map and `AutomapState.area` changed with it — `GEO00`→`GEO01`, `GEO01`→`GEO03`, `GEO10`→`GEO20`. The **save image's own area byte does not change**, on any of the three, twenty seconds after the arrival: the resident image is a copy the engine rewrites when it saves, which is why the mapper identifies an area from `$0400` and not from the header |
+| C7 | map drawing, reveal, exploration | V | V | V | **Drawn from a running machine on all three (`docs/212-the-live-tab-per-title.md`, 2026-09-08, `tools/gui/livecheck.py`)**, which nothing had done for Curse or Silver Blades. `Automapper.poll()` identified the area by an exact byte match of `$0400` against the disks, `title_check` came back `ours`, and the marker moved with a four-key walk — 4 of 4 steps agreeing with the game's own status line on the square and the facing, on each title. The drawn map goes out as SVG through `automap.render.to_svg`, whole and explored-only |
 | C8 | area names on the map | V | — | — | `goldbox/areas.py:334` — `GEO_NAMES` is empty for Curse on purpose and absent for SSB; `area_name` degrades to `"area 15"`. Correct behaviour, no content |
 | C9 | map notes and exploration, persisted | V | V | V | `test_automap.py::test_a_note_on_one_titles_geo15_is_absent_from_anothers` — the path is `{data dir}/maps/{title}/{GEO id}.json` (#30 (Notes and explored squares leak between titles)), three distinct paths for one map id. Pre-split files migrate: `…::test_a_flat_notes_file_is_still_readable_after_the_split` |
 | C10 | combat view | V | **U**, and no longer for want of the addresses | **U**, same | `automap/combat.py` holds one row per measured title (`memory_for`), Pool of Radiance's being `$6E11`, `$0600`, `$A380`, and `read_battle` takes the title's own row. **The reason has changed and the old one is gone**: all six addresses are known now (`$7F11`, `$0600` unchanged, `$6F00`, `$CB00`, `$6700`, `$92E8`), derived from each title's own binary and read off a running Curse on 2026-09-08 — `docs/101-combat-view.md`, "The same fight in Curse and Silver Blades", `#334 (The session driver cannot fight in Curse or Silver Blades, and says the party is not in a fight while it is standing on the combat floor)`. `automap/combat.py` is the table, `tools/c64/session.py` and the live window read a fight through it, and Champions of Krynn and the two after it have no row. **What keeps it U**: the live window's combat view has never been opened on Curse or Silver Blades (`docs/212-the-live-tab-per-title.md` §5), the addresses were read off a running Curse only through `session.py`, no Silver Blades fight has been run under a monitor, and the per-title tests lay out a synthetic arena (`tests/automap/test_latercombat.py`). Curse ships no `SQRPACI`/`SQRDATA` at all (`docs/120` tier 1.1) and does not need to: its `COM.PREP` writes the parameter block as immediate constants |
@@ -205,8 +205,8 @@ backend, whose reads are confirmed on hardware and whose writes have not been ru
 **C22 was never what made the live actions safe.** It covers the case the
 window has the title *wrong* -- a machine running a game the disks folder does
 not name loses those buttons entirely. What made them safe on a machine
-correctly identified as Curse is C16-C19 above: the addresses follow the
-descriptor, and the missing gate is a refusal rather than a guess.
+correctly identified as Curse is C16-C19 above: the addresses come from the
+descriptor, and the missing gate is a stop rather than a guess.
 
 ### What the README is promising that is not backed
 
@@ -288,7 +288,7 @@ descriptor, so the slot area, the item area and the roster page all follow
 takes a game and the window hands it the one it resolved, alongside the Fast
 Travel row and the Level up button.
 
-**One address in that file does not follow the save image, and it used to stop
+**One address in that file does not change with the save image, and it used to stop
 the buttons.** The flag every action reads before it writes, because `2` is
 combat, is a byte of `LINKER`'s own resident page. It is now measured on three
 titles: `$6E11` in Pool of Radiance, **`$7F11` in Curse and Silver Blades**,
@@ -349,7 +349,7 @@ What was run, on that specimen:
 * **A17 and A18 with no emulator** — `EditorBinding.save` on an untouched save
   says `no changes` and moves no byte, and a YAML export re-imported comes back
   a byte-identical disk. `tests/secret_of_the_silver_blades/test_ssbeditorpath.py`.
-* **A19 in both directions**, each refusal naming both titles.
+* **A19 in both directions**, each error message naming both titles.
 * **A20 in VICE, pool slot 3.** Three fields of different kinds edited through
   the editor — name `MORGAINE` → `BRIGHID`, gold 0 → 4321, strength 17 → 12 —
   and all three read off the game's own screens. `docs/120` §5.2's third field
@@ -382,7 +382,7 @@ done to a real wounded party, which is C16 for that title.
 **Done, on 2026-09-08 (`docs/212-the-live-tab-per-title.md`).** One driven
 session per title through `tools/gui/livecheck.py`, which calls the tab's own code
 rather than reproducing it: ten checks each, thirty passes, no failures. The
-map drew and the marker followed a walk (C7); Fast Travel carried the party
+map drew and the marker moved with a walk (C7); Fast Travel carried the party
 across a boundary and the block at `$0400` and `AutomapState.area` both
 followed while the save image's own area byte did not (C6); a staged effect
 lit a badge on Pool of Radiance and Curse and lit none on Silver Blades, which
@@ -391,7 +391,7 @@ C19); and Heal party, Save/Restore spells and Identify each did their work and
 were read back (C16-C18).
 
 **What made three of those reachable was staging the situation**, because the
-corpus does not carry it: no save here has a character on quickfight, an
+saves we have do not carry it: no save here has a character on quickfight, an
 unidentified item, or a spell running. The staged byte is the input and the
 button's own code is what is measured -- the alternative is a run that reports
 "nothing to do" and calls it a pass.

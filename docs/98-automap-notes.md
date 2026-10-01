@@ -163,7 +163,7 @@ The existing per-area JSON, extended:
   its own name and draws the neutral marker instead of silently becoming a
   different type.
 * **The old format still loads.** `"6,2": "some text"` becomes one note of type
-  `note`, and is rewritten in the new shape without loss.
+  `note`, and is rewritten in the new format without loss.
 * Junk costs only the junk: an unparseable square or note is dropped, not
   raised, because the file is hand-editable by design.
 
@@ -227,7 +227,7 @@ was the command before the standalone entry point was dropped in commit
 
 ## Verification — in `tests/automap/test_automap.py`
 
-* Old-format notes load and are rewritten in the new shape without loss.
+* Old-format notes load and are rewritten in the new format without loss.
 * A square with three notes draws one icon and a count, and its tooltip lists
   all three.
 * Notes on a fogged square are still drawn.
@@ -249,6 +249,6 @@ was the command before the standalone entry point was dropped in commit
 * A boundary crossing puts no square of the new area into the old area's set or
   its file -- driven with a target whose `$0400` block changes partway through,
   which is the whole of what a crossing looks like from outside. All three
-  shapes: the party lands far away, it lands on a square this map seals, and it
+  forms: the party lands far away, it lands on a square this map seals, and it
   lands across an edge this map calls solid.
 * The sight radius is a setting and survives an area change.

@@ -110,7 +110,7 @@ Curse's `GAME.OVR:0x832F` stores `$FF` into it and three sites compare
 against `$FF` (`goldbox.dos_codec.LATER_BEGUN_WORD`), while what Pool of
 Radiance's 255, 16 and 8 mean is unread, so for that title the word is a
 sweep result rather than a reading of the engine. `goldbox.dos_codec.never_adventured`
-takes the buffer where the shape has one and the word where it does not, and
+takes the buffer where the format has one and the word where it does not, and
 `tools/dos/neveradventured.py --by rule` sweeps with exactly that.
 
 **The initialisers disagree about `$49E6`.** Pool of Radiance's seven
@@ -138,7 +138,7 @@ would write. Nine boots, identical every time.
 | C64 party menu | 0 | 0 | 1 | **2** | twenty-five `00` | 00:00 |
 | DOS slot J | 0 | 0 | 1 | **2** | -- | 00:00 |
 
-The disk hint of 2 is the useful part: side 2 is where `ECL01` and `GEO01`
+The disk hint of 2 is what helps: side 2 is where `ECL01` and `GEO01`
 live, and that is the first thing the game will want.
 
 **But a C64 save that *names* area 0 cannot be entered.**

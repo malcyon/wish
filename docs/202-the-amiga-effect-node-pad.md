@@ -135,7 +135,7 @@ Three things the sweep does not cover, chased by hand:
   (`/Secret 0x11E46`) reads offsets 0, 5 and 6 and nothing else.
 * **The per-effect expiry handlers.** `/Secret 0x120DC` dispatches through a
   table of 112 slots filled at start-up from `0x16BD6` to `0x16F52`, passing
-  the node itself to each — the shape of reference the earlier search could
+  the node itself to each — the kind of reference the earlier search could
   not see. **0 of the 97 distinct handlers contains a `$1(aN)` access.**
 * **Anything called while a node pointer was live**: 24 distinct callees
   across 51 call sites, **0 of 24** containing a `$1(aN)` access.
@@ -177,7 +177,7 @@ The pool base moves between sessions — `0xC875B8` in the shipped save,
 `0xC6E880` and `0xC6E858` in ours — and the values travel with the data
 regardless, because a load copies all ten bytes.
 
-**The corpus: 77 nodes across 13 saved games**, being the two shipped on the
+**The specimens: 77 nodes across 13 saved games**, being the two shipped on the
 game disks (read twice, from two copies of each disk) and nine
 engine-written saves in `$WISH_SPECIMENS`. 24 of the 77 are non-zero, which
 is the same three bytes in each of the eight saved games of a party the
@@ -251,5 +251,5 @@ tools/amiga/amiganodefields.py --adf <curse-1.adf> --exe /Curse \
 
 `tests/amiga/test_amiganodefields.py` runs all of it, plus the tool's own logic
 against a program built in the test so it can be shown to fail, plus the
-specimen shape in §5 and the control in §6. They skip rather
+specimen layout in §5 and the control in §6. They skip rather
 than fail on a machine with no Amiga disks.

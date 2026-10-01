@@ -5,7 +5,7 @@ Radiance under VICE, read this before writing any input code.
 
 ## What the automapper needs, versus what automation needs
 
-Worth separating, because they got conflated and made the map look harder to run
+Separate them, because they got conflated and made the map look harder to run
 than it is.
 
 **Reading** a running game needs one thing: VICE started with
@@ -74,7 +74,7 @@ send.
 | attempt | result |
 |---|---|
 | `xdotool key --window <id>` | VICE ignores synthetic `XSendEvent` |
-| `Alt+N` (fliplist next), plain or held | does not change the attached disk |
+| `Alt+N` (fliplist next), tapped or held | does not change the attached disk |
 | `F10` | does not open the menu bar |
 | synthetic mouse clicks on menus | do not register |
 | **capitals via `xdotool key W`** | arrives as Shift+w, PETSCII `$D7`; the name prompt rejects any byte ≥ `$5B` and silently re-prompts. Type lowercase |
@@ -157,7 +157,7 @@ outside is exactly a list ignoring the keyboard.
 Fixed in `select_row` for `#173 (The world menu driver takes the command next
 to the one it was asked for, and the character list it opens ignores it
 entirely)`: a caller that knows its list passes `column`, and one that does not
-gets the label's own column tried when the plain scan finds nothing. Driven on
+gets the label's own column tried when the ordinary scan finds nothing. Driven on
 slot 1 on 2026-09-01 the fallback said `No row is mostly white; reading the
 highlight in column 17, where ROLAND starts`, walked the highlight from BRUTUS
 to ROLAND and pressed Return -- read out of the colour RAM before and after.
@@ -508,7 +508,7 @@ a key that cannot work.
 **Nonzero terrain is impassable, confirmed in a driven fight.** LADY KATHERINE
 at (29,11) pressed `KP_9` into (30,10), terrain code 1: `MOVE LEFT` 5 and 5,
 nobody moved; every press into a code-0 square moved her. `docs/101-combat-view.md`
-said "0 is floor" from the renderer, and this is the same fact from the game.
+said "0 is open ground" from the renderer, and this is the same fact from the game.
 `Session.step_towards` does **not** consult it yet and will aim a character at a
 wall.
 
@@ -574,7 +574,7 @@ conclusion about whether a converted party ever fought.
 
 `FightResult.anybody_swung` keeps the old reading under an honest name — did
 *anybody* swing, either side — because whether a fight lasted a round is still
-worth knowing.
+unsettled.
 
 **The chosen mechanism has the bow-and-spell blind spot too, and it is not a
 theoretical one.** `melee_turn` is the only tactic in this project that ever

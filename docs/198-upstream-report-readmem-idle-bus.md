@@ -56,7 +56,7 @@ Substitute your device's address.
 
    This reads `desk top.cvt` -- the largest file on the disk, about 30 KB --
    a byte at a time for ever, and throws every byte away. Nothing is written
-   and nothing is loaded into memory; it only keeps the KERNAL's plainest
+   and nothing is loaded into memory; it only keeps the KERNAL's simplest
    serial read (`ACPTR`, `$EE13`) running.
 
 3. From another machine, read memory in a loop:

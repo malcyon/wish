@@ -140,7 +140,7 @@ CONFIRMED as bytes, on both copies of each disk set on this machine. **What a
 player sees is UNKNOWN**: entry 0 is the Amiga screen's background colour
 unless the combat screen's palette says otherwise, and DOS draws the same
 pixels magenta. The experiment: boot Amiga Curse, give a character head 6, and
-photograph his figure on the combat floor beside the DOS one. Nothing a
+photograph his figure on the combat arena beside the DOS one. Nothing a
 conversion writes changes it either way, because a conversion writes indices
 and never pixels.
 
@@ -173,7 +173,7 @@ same fields:
 | `icon_colours` | converted -- the same six pairs | `TRANSFORMED` |
 | `icon_dimension` | 1 for every player character, and the C64 has one size byte where DOS has two | `DROPPED`, with **no player text** -- Donald, 2026-09-06: *"All PCs are the same size, so it doesn't matter. Just leave that line out during conversions."* |
 
-`goldbox/iconparts.py`'s `amiga_combat_icon` is the shape of the first three, and
+`goldbox/iconparts.py`'s `amiga_combat_icon` is the pattern of the first three, and
 was written for Amiga Pool of Radiance on exactly this reasoning
 (`#354 (Convert an Amiga Pool of Radiance save to DOS, so a party standing in
 the Slums on the Amiga arrives there under DOSBox)`); this page is what says

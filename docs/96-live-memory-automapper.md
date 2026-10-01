@@ -1,7 +1,7 @@
 # Optional future feature: live memory and an automapper
 
 **Status: built.** The code is the `automap/` package; this note is kept because
-it records why the design is shaped the way it is.
+it records why the design is the way it is.
 
 It lives outside the character editor on purpose, and outside `goldbox/` too: the
 editor is a file tool with **zero emulator dependency** ([README.md](README.md)
@@ -11,13 +11,13 @@ editor is a file tool with **zero emulator dependency** ([README.md](README.md)
 | module | what it is |
 |---|---|
 | `automap/vice.py` | the binary-monitor client, moved here from `tools/c64/drive.py`, which re-exports it |
-| `automap/screen.py` | screen decoding over a plain `read` callable -- no VICE in it |
+| `automap/screen.py` | screen decoding over a bare `read` callable -- no VICE in it |
 | `automap/target.py` | the two-method `Target` protocol, `party_fix` over any backend's `read`, and `ViceTarget` holding one connection open |
 | `automap/area.py` | three strategies for "which `GEO` are we on" |
 | `automap/state.py` | position, exploration, notes |
 | `automap/render.py` | map geometry as drawing primitives, plus an SVG renderer — no Qt |
 | `automap/c64.py` | one row per C64 title: the engine's own party square, `LINKER`'s dispatch byte, and each save-image region as a live address. A title nobody has run under a monitor has no addresses and is refused |
-| `automap/live.py` | the running game's party, effects and clock, as plain data — no Qt |
+| `automap/live.py` | the running game's party, effects and clock, as simple data — no Qt |
 | `automap/panel.py` | the roster cards and the bottom strip |
 | `automap/window.py` | the PyQt6 window: roster left, map right, strip below |
 
@@ -89,7 +89,7 @@ is a fallback, not a priority.)*
 
 ## Backends differ in ways that change what you can build
 
-Worth declaring rather than assuming:
+Declare rather than assume:
 
 | | VICE | Ultimate |
 |---|---|---|
@@ -284,7 +284,7 @@ where the numbers are; nothing in `automap/live.py` holds an address (#29 (The l
 key presses. It does not need to: the status line carries the game clock, and
 **clock advanced by one minute + square unchanged + facing unchanged** is a
 step the game refused. Positive evidence needs 111 steps to identify New Phlan;
-one refusal settles it, because impassable edges are rare.
+one blocked step settles it, because impassable edges are rare.
 
 Guarded three ways -- both fixes must come from the status line (the fallback is
 only reached in camp, combat and menus, where an advancing clock is not a step),
@@ -439,7 +439,7 @@ step the map says is impassable and the game refused too, and held its fix
 while a shop menu was up. `automap/target.py`, `automap/live.py`,
 `automap/state.py`, `automap/render.py` and `goldbox/geo.py` were untouched by
 any of it. Amiga Pools of Darkness, on a patched FS-UAE: the tab named the area,
-the marker followed the party indoors (1,2 east, then 2,2 east on `GEO21`), and
+the marker moved with the party indoors (1,2 east, then 2,2 east on `GEO21`), and
 the tab went blank on the overland. Curse's row has been checked against its
 executable only, and no Curse machine has been located while running.
 

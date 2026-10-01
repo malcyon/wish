@@ -6,7 +6,7 @@ Bonds and Secret of the Silver Blades, on the C64 and on DOS -- refuse a
 second `HUMAN CHANGE CLASS`, and each refuses by reading the very field the
 first change wrote. So `neutral.former_levels`, which maps a class name to the
 level it was left at, is more general than any port needs, and the
-platform-limit rule of `.claude/rules/conversions.md` has nothing to bite on
+platform-limit rule of `.claude/rules/conversions.md` has nothing to apply to
 here: there is no case where a conversion has two former classes and one slot
 to put them in.
 
@@ -65,7 +65,7 @@ $20AD  LDX $7CB9 / STA $7CC9,X       class_levels[old] = the old level
 $20B3  LDA $0B82,X / ORA $7CEB / STA $7CEB
 ```
 
-So the refusal is permanent: a character who has changed class once is refused
+So the stop is permanent: a character who has changed class once is refused
 for the rest of the game, and there is no state in which the pair at `0x0B9`
 and `0x0BA` describes anything but the single class he left.
 
@@ -145,7 +145,7 @@ command itself, at the head of the routine at `0x3CD94`:
 ```
 
 The string at `cs:0xf09` is ` doesn't qualify.`, seventeen bytes, and the same
-string is used by the other refusal in the same routine -- the one taken when
+string is used by the other case that stops the change in the same routine -- the one taken when
 the eligible-class list comes out empty.
 
 ### Watched, one action apart
@@ -165,19 +165,19 @@ never dual-classed: selecting her in slot D gives
 `PICK NEW CLASS: MAGIC-USER, THIEF`. So the keys reach the command and the
 command works; it is PAINE it will not run for.
 
-**The refusal is silent in practice.** Twenty-five consecutive frames captured
+**The game stops the change silently in practice.** Twenty-five consecutive frames captured
 as fast as the harness can take them, starting about a tenth of a second after
 the key, are all the party menu; ` doesn't qualify.` never appeared in any of
 them. **PROBABLE** that the message is printed and overwritten faster than a
 capture; what would settle it is a breakpoint on `0x3CDDF` in a debugger, or
-counting the frames a *known* refusal draws for -- Guy de Valois, a paladin 8
+counting the frames a *known* refused change draws for -- Guy de Valois, a paladin 8
 with no eligible class, takes the same path and is equally silent here.
 
 ## No record anywhere holds two
 
 `tools/dos/dualclassdos.py sweep` over every DOS character record on this machine:
-98 distinct records, 62 of them in the three shapes that have a former array
-(Curse 24, Silver Blades 12, the 510-byte shape 26).
+98 distinct records, 62 of them in the three formats that have a former array
+(Curse 24, Silver Blades 12, the 510-byte format 26).
 
 | former classes in one record | records |
 |---|---|
@@ -208,12 +208,12 @@ run time and never on the specimen.
 
 **One former class, or none.** `goldbox/neutral.py`'s `former_levels` is a
 dict, so it can carry more, and the writers already refuse more than one; that
-refusal is a guard against a file we do not understand rather than a case the
+stop is a guard against a file we do not understand rather than a case the
 game produces. Nothing has to be built for `.claude/rules/conversions.md`'s
 "a destination that genuinely holds fewer things than the source" on account of
 former classes.
 
-**One shape a bad file could take, and the reader already warns about it.** DOS
+**One form a bad file could take, and the reader already warns about it.** DOS
 stores the level twice -- `former_level` and the array entry -- and the gate
 reads only the array. A file with `former_level` set and the array zeroed would
 pass the gate, and a change of class would then leave the two disagreeing.

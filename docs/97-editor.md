@@ -2,7 +2,7 @@
 
 **Status: built.** `wish [SAVE.D64]`, on the Character Editor tab of the one
 window (`python -m editor` still opens it alone). This document is the design;
-it is kept because it records why the editor is shaped the way it is.
+it is kept because it records why the editor is the way it is.
 
 A PyQt6 desktop editor over the same `goldbox/` library the CLI uses. It opens a
 `.D64` save or a `.chr` export, shows a character sheet, and writes the disk
@@ -52,7 +52,7 @@ for field in LAYOUT.fields:
         bind(widget, field)
 ```
 
-Consequences worth stating, because they are what make this work:
+Consequences, because they are what make this work:
 
 * A field with no widget is simply not shown. Adding one to the form is enough
   to expose it — no registration list to update.
@@ -61,7 +61,7 @@ Consequences worth stating, because they are what make this work:
 * Widget *type* decides the editor: `QSpinBox` for numbers, `QLineEdit` for the
   name, `QComboBox` for race/class/alignment (populated from the game's own
   tables in `docs/40-memory-map.md`), `QCheckBox` for bit flags.
-* **The dropdowns follow the open title.** Race and the class bitmask are
+* **The dropdowns change with the open title.** Race and the class bitmask are
   not the same list in every game -- Silver Blades' human is 6 where Pool of
   Radiance's is 7, and Krynn's races are a different list altogether -- so
   the boxes are refilled from `editor/enums.py::tables_for(game)` on every
@@ -86,7 +86,7 @@ Consequences worth stating, because they are what make this work:
   constant 36 px, which is what Fusion and Breeze spend on their arrows and not
   what Windows does. `_spin_chrome` and `_combo_chrome` ask the style
   (`subControlRect(CC_SpinBox, SC_SpinBoxEditField, …)`) how much of a box is
-  not the value, the old constants are floors under the answer, and the width
+  not the value, the old constants are lower limits on the answer, and the width
   is set as `setMinimumWidth` too so the layout cannot squeeze the value back
   out. `tests/wish/test_windowslayout.py` proves it against a proxy style whose
   arrows eat 60 px.
@@ -103,7 +103,7 @@ on the PATH, and `designer -v` opens the GUI rather than printing a version).
 `pyuic6` ships in the venv.
 
 **Placing the icon widget in Designer** is the one non-obvious step: drop a
-plain `QWidget` on the form, right-click it, choose *Promote to…*, and enter
+bare `QWidget` on the form, right-click it, choose *Promote to…*, and enter
 class name `IconEditor` with header file `editor.iconwidget`. It then behaves
 like any other widget and can be moved and resized freely. Verified working
 through both `pyuic6` and `loadUi`.
@@ -209,7 +209,7 @@ Editor should be resizable?"*
 
 It is a `QSplitter` now (`editor_split` in `wish/window.ui`, managed by
 `editor.window.RowSplitter`), and the divider is the answer rather than a
-guess about where the height should come from. That is the shape `#162 (Let the user resize the Quest Log and roster columns)` gave
+guess about where the height should come from. That is the design `#162 (Let the user resize the Quest Log and roster columns)` gave
 the automapper's three columns, and the two rulings behind it are the same:
 **a dragged position is remembered** -- `Settings.editor_rows`, two numbers in
 the JSON, written on a drag and never on a window resize -- and **a row may be
@@ -218,13 +218,13 @@ six pixels rather than the style's four and why the heights are restored with
 `setSizes`, so a window opened from a settings file holding a zero still has a
 divider in it on the first frame.
 
-The top row's own floor is two lines of the user's font, measured rather than
+The top row's own minimum is two lines of the user's font, measured rather than
 written down. Below that the page's minimum height is the sheet's tab bar and
-that floor, and not the sum of everything on the page: it was 378, 471, 570,
+that minimum, and not the sum of everything on the page: it was 378, 471, 570,
 630 and 705 at +0, +6, +12, +16 and +20 points of extra UI font, putting the
 whole window at 460, 585, 717, **796** and **897** against a 768-high laptop;
 it is 210, 251, 295, 322 and 355, and the window 449, 511, 577, 617 and 667.
-`tests/wish/test_mapscale.py` asserts the screen and the shape rather than any of
+`tests/wish/test_mapscale.py` asserts the screen and its proportions rather than any of
 those numbers.
 
 ## Opening and saving
@@ -240,7 +240,7 @@ converted.", as Save As does, except in that Pools of Darkness direction.
 
 **Open** (`button_open`, a `QToolButton`) opens the file picker directly for a
 C64 `.d64`, an Amiga `.adf` or a DOS `SAVGAM<slot>.DAT`/`.PTY`. Its arrow
-duplicates that action and adds **Open DOS folder…**, a plain folder picker.
+duplicates that action and adds **Open DOS folder…**, a standard folder picker.
 Either source shows the existing slot picker only when it contains more than
 one complete saved game. Opening another source with unsaved edits on screen,
 or picking another slot of the one already open, asks "Save your changes
@@ -289,7 +289,7 @@ is a batch tool where clobbering the input is nearly always a mistake; an editor
 with the file open in front of you is the opposite case. But the departure has
 to be paid for:
 
-**Saving must be atomic.** `D64.save` today is a plain truncate-and-write:
+**Saving must be atomic.** `D64.save` today is a simple truncate-and-write:
 
 ```python
 def save(self, path):
@@ -425,16 +425,16 @@ Nothing here is exempt from the Designer rule: the roster is a table called
 `roster` on the form, so it can be moved, resized, or put in a dock without
 touching code. Its model is built in `window.py` and attached by name.
 
-It is promoted rather than plain -- class `RosterView`, header
+It is promoted rather than a stock widget -- class `RosterView`, header
 `editor.rosterview` -- because it is the header's shock absorber. Everything
 else above the tabs is pinned to the widest value its bytes can hold, so a
 window narrower than the header wants has to be paid for out of the roster:
-above its floor it is exactly its five columns at their contents, below it
-`Name` absorbs the whole shortfall and elides, and only when `Name` has nothing
-left does the table scroll. The floor is a constant, because the header does not
-scroll and the roster's minimum is therefore a floor under the whole window --
-and a minimum measured from the names a party happens to carry is a window floor
-that follows the UI font, which is the bug in issue 41 and the last of it in
+above its minimum it is exactly its five columns at their contents, below it
+`Name` absorbs the whole shortfall and is cut off with an ellipsis, and only when `Name` has nothing
+left does the table scroll. The minimum is a constant, because the header does not
+scroll and the roster's minimum is therefore a lower limit on the whole window --
+and a minimum measured from the names a party happens to carry is a window minimum
+that changes with the UI font, which is the bug in issue 41 and the last of it in
 issue 71.
 
 ---
@@ -471,7 +471,7 @@ experiments that promote them.
 ## The combat icon
 
 Player characters show their combat art with the existing editing controls.
-NPCs show a plain white frame with **Change the icon**, **Part**, and **Color**
+NPCs show a blank white frame with **Change the icon**, **Part**, and **Color**
 disabled. Donald approved this on 2026-09-13 because controls should not offer
 edits to an icon the editor does not display
 (#533 (A joined NPC has no combat icon, and the editor draws the absence as a black rectangle)).
@@ -525,7 +525,7 @@ editor/
   roster.py         the party model behind the roster table
   binding.py        objectName -> layout field, and the read-only rules
   iconwidget.py     IconEditor, promoted in Designer
-  glyphpicker.py    the CHARPIC00 grid behind a cell's shape
+  glyphpicker.py    the CHARPIC00 grid behind a cell's figure
   inventory.py      the sixteen item slots, the table on the form, and the
                     traits of the selected item
   effects.py        the ten trait slots at 0x0AD -- racial seeds, monster
@@ -647,14 +647,14 @@ overlay at `$B0DA`/`$B0DE` rather than being hardcoded — and
 `editor/partspicker.py` is the dialog over it: two lists, every entry rendered
 as the icon it would produce, plus the SIZE control the game has.
 
-The reachable set is **15328 shapes**. Not 805: a weapon change preserves the
+The reachable set is **15328 figures**. Not 805: a weapon change preserves the
 head cells, and SIZE is never written back to `0x099`, so sizes can be mixed.
-Of the 11 distinct icons on our disks only 6 are a plain (weapon, head) pair
+Of the 11 distinct icons on our disks only 6 are a single (weapon, head) pair
 and all 11 are inside the closure — a product model would have rejected five
 real icons. Written up in `docs/50-experiments.md`.
 
 **Still free-form: colour.** The COLOR menu offers one colour per part class,
 and `colour[cell] = C[class] | (8 if bit 7)` reproduces 103 of our 104 icon
 slots. `IconParts.colours_for` implements it and the picker keeps colours legal
-as the shape changes, but the right-click menu still sets a single cell. That
+as the figure changes, but the right-click menu still sets a single cell. That
 is the remaining way to build something the game would not.

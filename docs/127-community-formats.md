@@ -37,7 +37,7 @@ miss is MAD MAN, a level-8 NPC in `npc_party.d64` whose stored saves are the
 level-1 fighter row — a hand-authored or stale record, not a rule.
 
 Provenance matters here, because `npc_party.d64` is the hacked save whose
-*values* `docs/90-specimens.md` calls worthless. Take it out and the rule still
+*values* `docs/90-specimens.md` calls untrustworthy. Take it out and the rule still
 stands on clean data: SSI's own shipped demo party in `POOL1`'s `SAVEDGAME0`,
 Donald's six-character party, and every save disk. What `npc_party.d64` adds is
 the only evidence above level 1 — and that seven of its eight records satisfy a
@@ -66,7 +66,7 @@ bands PROBABLE.
 
 The class table itself is the DOS one, which the spreadsheet's `EXE_Offset`
 sheet told us to look for: eight classes × nine levels × five saves. It is not
-at the offset the sheet gives (§6) but it is exactly the shape the sheet gives,
+at the offset the sheet gives (§6) but it is exactly the structure the sheet gives,
 and every row matches `goldbox/levels.py`'s transcription.
 
 ### 2. `spells_castable` promoted to CONFIRMED
@@ -141,11 +141,11 @@ armour class and which is current. **Neither.** The spreadsheet names them
 `AC_Current` and `AC_Back`, and rear armour class is worse than front in
 **66 of 66** DOS records. CONFIRMED, for DOS.
 
-**It does not transfer, and the attempt to make it transfer is worth recording
+**It does not transfer, and the attempt to make it transfer is recorded
 as a near miss.** The C64 roster's `+0x0F` / `+0x10` pair sits where DOS's
 `AC_Current` / `AC_Back` sits, and rear ≥ front holds in 20 of 20 roster
-blocks — but that inequality is worthless as evidence, because it is true of
-*any* second armour-class-shaped byte once the first includes dexterity and a
+blocks — but that inequality is no evidence at all, because it is true of
+*any* second byte that behaves like an armour class once the first includes dexterity and a
 shield. `docs/30-savegame-layout.md` already reads `+0x10` as **the armour's
 own contribution, `48 + bonus`**, and that reading was measured the right way,
 by putting armour on: none 48, leather 50, banded mail 54, which are exactly
@@ -326,7 +326,7 @@ the same offset. Nothing contradicts.**
 (none in this table — the correction is the item AC formula in §3), about 30
 added.**
 
-The thirteen equipment pointers are worth keeping for their *order*, which is
+The thirteen equipment pointers are kept for their *order*, which is
 the engine's equipment-slot enumeration and is not port-specific: weapon,
 shield, armour, gauntlet, helm, belt, robe, cloak, boot, ring 1, ring 2, arrow,
 bolt.
@@ -435,22 +435,22 @@ Recorded here as leads, at the confidence a third-party document earns.
 | **item `Property1`/`2`/`3` semantics** | `ITM_Properties` | a dispatch on `Property1`: 128 equipment with an effect id in `Property2`, scrolls with spell ids in all three, and about fifteen special cases keyed by value | PROBABLE |
 | **the spell record**, 16 bytes | `SPL` | class, level, range base and per-level modifier, duration base and modifier, combat area, camp target, save action, save type, effect id, camp/combat type, casting time, AI priority, target-enemy flag, AI minimum targets. **Pool of Radiance has 67 of them.** We have spell *names* and ids; we have none of this | PROBABLE |
 | **the effect record**, 9 bytes | `SFX_DAX` | effect id, `u16` rounds remaining (0 = permanent), modifier, is-item-effect flag, `u32` next-effect pointer. Our C64 effect list is inline in the record at `0x0AD`, so only the first five bytes can transfer | PROBABLE |
-| **the executable tables that exist** | `EXE_Offset` | 43 named tables per title — class ability minima, alignment restrictions, saves per level, hit dice, THAC0 per level, XP per level, spell slots per level, race ability limits, race/class permission, thief skills, turn-undead levels, the string tables | the *shapes* are CONFIRMED where checked; the offsets are not — see below |
+| **the executable tables that exist** | `EXE_Offset` | 43 named tables per title — class ability minima, alignment restrictions, saves per level, hit dice, THAC0 per level, XP per level, spell slots per level, race ability limits, race/class permission, thief skills, turn-undead levels, the string tables | the *structures* are CONFIRMED where checked; the offsets are not — see below |
 | **per-title spell counts** | `CHR_0n` | Pool of Radiance 56, Curse 100, Silver Blades 117, Champions 107, Pools of Darkness 126 | see below |
 | the `CharacterFlagArray` | `CHR_Flags` | a 16-bit creature-flag word present from Curse onwards and absent from Pool of Radiance: vulnerable to dispel, giant, dragon, reptile, immune to death magic / poison / decapitation / confusion, and the to-hit bonuses dwarves and gnomes get against particular monsters | PROBABLE |
 
 **`EXE_Offset` is a map, not an address book.** Its offsets are into the
 GOG/WizWorks builds; Donald's Steam archives carry different builds and none of
-the offsets land. But the *shape* it gives — name, record count, record length —
+the offsets land. But the *structure* it gives — name, record count, record length —
 is enough to find each table by content in one search, and two found that way
 checked out perfectly (§1, §6). Treat the sheet as "these tables exist, in this
-shape, in this file" and find them yourself. That is still the most valuable
+form, in this file" and find them yourself. That is still the most valuable
 thing in the workbook after `CHR_01`.
 
 **The spell counts answer the `spells_known` width question.** `goldbox/layout.py`
 declares seven bytes at `0x078` and notes that Silver Blades and Death Knights
 casters write past it. Seven bytes is 56 bits and Pool of Radiance has exactly
-56 spells — no C64 record in our corpus of 79 sets any of `0x07F`–`0x097`. If
+56 spells — no C64 record among our 79 specimens has any of `0x07F`–`0x097` set. If
 each title's C64 spell list matches its DOS one, the mask needs ⌈N/8⌉ bytes:
 **Curse 13, Champions 14, Silver Blades 15, Pools of Darkness 16**. That
 predicts the observed "at least eight" and says how much more. It is a
@@ -489,7 +489,7 @@ at 30. Two different fields; our name stands.
 
 ---
 
-## 6. What this cost and what it is worth
+## 6. What this cost and what it paid
 
 The workbook confirmed 22 DOS fields, corrected 4 of ours, was corrected by us
 in 3 places, and added roughly 30 DOS fields plus five whole record formats we
@@ -499,17 +499,17 @@ and `armour_class_base`, said what the eight bytes after `roster_tail[0]` are,
 and pointed at the two executable tables that closed the saving-throw question
 and half of the thief-skill one.
 
-It also produced one near miss worth remembering. The DOS record's `AC_Back`
+It also produced one near miss. The DOS record's `AC_Back`
 lines up with a C64 roster byte the project reads as an armour bonus, the
 alignment is exact, and the "rear is worse than front" prediction holds in
 every block — and it is still wrong, because the prediction is true of any
-second armour-shaped byte and the project's reading was measured by putting
+second byte that behaves like armour and the project's reading was measured by putting
 armour on. **An alignment is a hypothesis and a measurement is evidence**, and
 a document that agrees with an alignment has not turned it into one.
 
 The single most valuable thing in it is `EXE_Offset`: not the offsets, which
 are wrong for our builds, but the **list of tables the engine carries and the
-shape of each**. Every one of them is findable by content search in seconds
+structure of each**. Every one of them is findable by content search in seconds
 once you know what you are looking for, and two of them settled questions this
 project had left open for months.
 

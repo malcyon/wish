@@ -159,8 +159,8 @@ Three routes, and the choice matters more than the party does.
 
 ### Recommended: (c), and the reason is the circle
 
-Route (a) alone cannot work, and it is worth saying exactly why rather than
-gesturing at it. The generator would write `hp_max`, `thac0_base`, the saving
+Route (a) alone cannot work, and the exact reason follows rather than a
+gesture at it. The generator would write `hp_max`, `thac0_base`, the saving
 throws and the thief skills from `goldbox/levels.py`. A test would then read those
 same bytes back through `goldbox/layout.py` and assert they are what we wrote.
 **That test passes whether or not the game agrees**, and its passing would be
@@ -203,13 +203,13 @@ own routines out of `GEN` closed every blocker; `automap.actions.LevelUp` now
 writes what the training hall writes, and `goldbox/levelup.py` reproduces the
 records this section's diffs produced byte for byte. See
 [`135`](135-levelling.md). The rest of this section is the reasoning that got
-there and the confidence table it argued from, both of which are still worth
-reading; it is no longer the plan.
+there and the confidence table it argued from, both of which are still
+useful reading; it is no longer the plan.
 
 **Most of it already exists and deliberately refuses.** `automap/actions.py`
 carries a `LevelUp` action whose entire implementation is
 `level_up_blockers()` — a list, as data, of every field it cannot derive — and
-whose `run` writes nothing. That refusal is correct and **must stay**: the
+whose `run` writes nothing. That stop is correct and **must stay**: the
 shipped action becomes possible by promoting fields in `goldbox/layout.py`, not by
 editing the action.
 
@@ -242,7 +242,7 @@ operation.
 | `thac0_base` | `0x071` | the table row, stored `60 − THAC0` | PROBABLE — matches the AD&D table on all 12 of Donald's characters | value known |
 | `hp_max` | `0x076` | **+ a hit-die roll + CON bonus** | field CONFIRMED; the *roll* is not a formula | **no** — this is a die, not arithmetic |
 | `hp_rolled` | `0x0ED` | + the same die | PROBABLE; nothing derives one from the other | **no** |
-| `hp_current` | `0x119` | + the same delta | CONFIRMED, **export only** | follows `hp_max` |
+| `hp_current` | `0x119` | + the same delta | CONFIRMED, **export only** | changes with `hp_max` |
 | five saving throws | `0x09A`–`0x09E` | the table row **plus modifiers** | fields CONFIRMED; the modifiers **UNMEASURED** — two level-1 fighters store `14,15,16,17,17` and `11,12,13,14,14` | **no** |
 | `spells_castable` | `0x0EE` | new capacity, nibble-packed, cleric high / magic-user low | PROBABLE, checked only at level 1 | **no** |
 | `spells_known` | `0x078`–`0x07E` | a cleric gains every spell of the new level; a magic-user learns by roll | CONFIRMED, and `goldbox/spells.spellbook_bytes` writes it | **cleric yes, magic-user no** |
@@ -257,7 +257,7 @@ Three of those blockers are cheap to remove and one is not:
 * **The saving-throw modifiers** fall straight out of the trainer diff — level a
   fighter and read which five bytes move by how much.
 * **`spells_castable`** likewise: WARDEN at cleric 6 with WIS 18 makes the
-  wisdom bonus visible in one byte. (Note that `goldbox/spells.py`'s `capacity()`
+  wisdom bonus visible in one byte. (`goldbox/spells.py`'s `capacity()`
   docstring still says "no field holding it has been found"; `0x0EE` is that
   field, and the docstring is stale.)
 * **`hp_max` is a die roll and will never be a formula.** For a *test* party
@@ -467,7 +467,7 @@ Every field the trainer touched, and nothing else touched anything:
 | `0x0E8` | `experience` | **clamped** to one less than the next threshold |
 | `0x0ED` | `hp_rolled` | + the die roll |
 | `0x0EE`-`0x0F0` | `spells_castable` | class table **plus the WIS bonus**, cleric high nibble, magic-user low |
-| `0x10E` / `0x119` / `0x11B` | roster | THAC0 follows `0x071`; hp_current is **set to `hp_max`**; movement recomputed |
+| `0x10E` / `0x119` / `0x11B` | roster | THAC0 is recomputed from `0x071`; hp_current is **set to `hp_max`**; movement recomputed |
 
 Six of the blockers in §3's table are now answerable, and one is not:
 
@@ -498,7 +498,7 @@ Six of the blockers in §3's table are now answerable, and one is not:
 * **Training heals.** MAGNUS went in at 2 of 9 and came out at 13 of 13, so a
   wounded high-level character cannot be produced by the trainer.
 * **At the ceiling the trainer refuses**, printing `NO MORE ADVANCEMENT
-  POSSIBLE`. `GEN $1E21`'s clamp sits behind that refusal and has still never
+  POSSIBLE`. `GEN $1E21`'s clamp sits behind that stop and has still never
   been seen to fire.
 
 ### Built

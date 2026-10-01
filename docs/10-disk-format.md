@@ -59,7 +59,7 @@ and one row up. The correction is in the padding's favour: Appendix B, p. 53, pu
 to an "unformatted or improperly seated diskette", where error 20 wants "an illegal block number,
 or the header has been destroyed".
 
-**Only the plain 174848-byte image is writable**, enforced by `ReadOnlyImageError` on
+**Only the standard 174848-byte image is writable**, enforced by `ReadOnlyImageError` on
 `write_sector`, `write_file_inplace` and `save`. The other variants are rips of other
 people's disks rather than save disks, and their directories are not always the drive's own
 work — Death Knights of Krynn's carries PETSCII art in the entries and a zero block count

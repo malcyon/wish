@@ -22,7 +22,7 @@ The fill went from `#e7ecf2` to `#c3d0dd`. The old value was the tint a *roofed*
 square carries on the area map, which against `#fbfcfd` paper reads as more
 paper.
 
-## What the shape of it is
+## What it is made of
 
 * **`Hatch` is a `Rect`** (`automap/render.py`). A painter that has never heard
   of hatching still fills the square and loses only the strokes, so the window
@@ -34,9 +34,9 @@ paper.
   walks a pixel a scroll.
 * **The spacing divides the cell**, so neighbours join up and a mass of rock is
   one run of hatching rather than a grid of tiles.
-* **The floor is measured across the strokes**, not along the cell:
+* **The minimum is measured across the strokes**, not along the cell:
   `HATCH_MIN = 4.0` px. Below it `hatch_lines` returns `()` and the square is a
-  plain fill. A single hatch is `HATCH_STEPS = 3` per cell and so gives up below
+  solid fill. A single hatch is `HATCH_STEPS = 3` per cell and so gives up below
   a 17px cell; the cross is spaced wider at `CROSS_STEPS = 2`, because two sets
   at the single pattern's spacing stop reading as strokes and become a grey.
   The view's own range is `CELL_MIN` 12 to `CELL_MAX` 30.
@@ -61,7 +61,7 @@ and the fill moved:
   `ROCK_HATCH`).
 * **`Hatch` is tested before `Rect`**, because a `Hatch` *is* a `Rect` and the
   older branch would swallow it. It fills with no pen, then strokes `lines` at
-  1px. Empty `lines` — the small-cell fallback — is therefore a plain fill and
+  1px. Empty `lines` — the small-cell fallback — is therefore a solid fill and
   needs no separate branch.
 * **`Line`**, which this canvas ignored entirely: 2.5px in `INK` for
   `rock-edge`, 1px otherwise. Without it the inked outline round a mass of rock
@@ -88,7 +88,7 @@ the flat fill does: a flat fill has only its own lightness to work with.
 The same primitive would work there — `map_primitives` can yield `Hatch` where
 it yields `Rect(kind="roofed")`, and `to_svg` already draws one. **But the
 meaning is wrong.** Hatching means solid rock to anyone who reads dungeon maps,
-and `roofed` is floor you can stand on. If the area map is to carry hatching it
+and `roofed` is ground you can stand on. If the area map is to carry hatching it
 should carry it outside the walls, over what has never been explored, which is
 the part that actually is solid. Not done: not asked for, and it wants its own
 decision about fog.

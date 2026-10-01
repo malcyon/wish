@@ -199,7 +199,7 @@ reading the byte afterwards. If it still reads 8, the engine leaves it alone.
 
 ## The other reading the level array drives
 
-Two more routines are indexed by the same array and are worth knowing about when
+Two more routines are indexed by the same array and matter when
 reading an edited record:
 
 * `0x2AA87` recomputes the eight skill bytes when `class_levels[thief] > 0`, out

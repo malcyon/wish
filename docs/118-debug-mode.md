@@ -20,7 +20,7 @@ The exit is not a table of doorway squares in the map file and not a patched
 filename; it is bytecode reached through the square-attribute dispatch that
 `docs/50-experiments.md` already documented, and it ends in one opcode.
 
-The shape, in every one of the eleven scripts that leave a map:
+The pattern, in every one of the eleven scripts that leave a map:
 
 ```
 COMPARE [$6DD5], 0 / IF= / EXIT     ; gate of unknown meaning -- see below
@@ -93,7 +93,7 @@ cache slots `$6E15` and `$6E17`, mirrored in a save at `$4BC2` and `$4BC4`.
 
 | claim | confidence |
 |---|---|
-| An exit is a per-square script id dispatched by the area's `ECL`, ending in `NEWECL` | **CONFIRMED** — the `GEO00` (6,2) prediction in `docs/50-experiments.md`, and eleven scripts with the shape above |
+| An exit is a per-square script id dispatched by the area's `ECL`, ending in `NEWECL` | **CONFIRMED** — the `GEO00` (6,2) prediction in `docs/50-experiments.md`, and eleven scripts with the pattern above |
 | `NEWECL` sets `$49F2`, `$6E1B\|$80`, zeroes `$4A00`-`$4A1F`, restarts at `$0809` | **CONFIRMED** — read off `DUNGEON $2011`-`$203E` |
 | `$6E12` is the `POOL` disk the target area lives on | **CONFIRMED** — 32 of 33 static `SAVE n, [$6E12]` / `NEWECL t` pairs match the disk that carries `ECLt`; the one exception sets it in a `GOSUB` |
 | The arriving script loads its own `GEO`, not the departing one | **CONFIRMED** — every script's `LOADFILES` first operand is its own id (see the exceptions below) |
@@ -298,7 +298,7 @@ argument that put the actions there: it acts on what is drawn above it.
   trip. One button, and it turns a trip from a one-way journey into a probe.
 * **The warning is the Fast Travel button's own tooltip** — *"Fast travel to
   areas you haven't been to is dangerous and can break the game."*, Donald's
-  wording, shown while the button is usable and replaced by the refusal while
+  wording, shown while the button is usable and replaced by the reason it is disabled while
   it is not. There was a `circle-info` help button at the end of the row with
   `FastTravel.HELP` under it; Donald had it out in 2026-08 — *"Remove the info icon
   with the tooltip altogether"* — so the row is four widgets and a message
@@ -606,7 +606,7 @@ the sections above. Both entries below are answers rather than questions, and
    either. The old label is retired — a byte that is zero after an ordinary step
    is not "a step was taken".
 2. **Does a fasttravel to an area with no known arrival square land somewhere legal?
-   Answered: mostly, and the exceptions are worth fixing.** All fifteen were
+   Answered: mostly, and the exceptions should be fixed.** All fifteen were
    fasttraveled into with the square `FastTravel` itself picks —
    nothing landed off the map or inside a wall and nothing crashed. The table
    of all fifteen was in `reports/p20-arrivals.md`, which is lost. Three

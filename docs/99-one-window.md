@@ -71,7 +71,7 @@ the box when nothing in it applies, which the class bits already tell us.
 
 ---
 
-## The shape of the application
+## The structure of the application
 
 A new top-level package, `wish/`, that owns the window and the connection.
 `editor/` and `automap/` stay as they are and become libraries of widgets.
@@ -132,8 +132,8 @@ three things that leaked around it.
 Reading the party's position off the game's status line is not VICE-specific —
 any backend that can read memory can do it. Rewrite those four as free functions
 over `Target.read`, and `fix()` becomes backend-neutral. This is the single
-biggest unlock and is worth doing even if the Ultimate never happens, because it
-also makes `fix()` testable against a plain byte dictionary.
+biggest unlock and pays off even if the Ultimate never happens, because it
+also makes `fix()` testable against a simple byte dictionary.
 
 **2. Discovery is hard-coded to a TCP probe of `127.0.0.1:6502`.** Make it a
 property of the backend:

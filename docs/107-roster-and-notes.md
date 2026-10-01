@@ -74,11 +74,11 @@ Each card carries one line of what that character has **in hand**, decoded by
   classes and its Level up button once four condition badges are lit)`.) With
   every badge lit and a full hand the line draws about a word; with nothing
   running it draws the lot.
-* **The line never adds to the window's floor.** `panel.ReadiedLabel.SHORT` is
+* **The line never adds to the window's minimum height.** `panel.ReadiedLabel.SHORT` is
   0, which makes it the first row on a card to give way: eight cards in a
   column that does not scroll, each insisting on a line of height, is eight
   lines added to a page that still has to fit a 720-high screen (#97 (The character editor tab gets taller as the UI font grows, so a large font stops the window fitting a 720-high screen), #100 (The automapper's bottom strip loses the tops of its letters at the window's floor)).
-  Anywhere above that floor it is drawn in full. Its point size is set in
+  Anywhere above that minimum it is drawn in full. Its point size is set in
   `wish/window.ui` rather than inherited, so it does not get taller as the UI
   font grows either.
 * A character with nothing readied gets a **blank line, not the word "none"** —
@@ -113,10 +113,10 @@ for very long. It will be clicked as soon as it appears. So, cutting off the
 name for a little while is fine."* A name is also the one thing on the row
 still recognisable from its first few letters; `MU/C` for `MU/C/T  L8` is not.
 
-The floor is 0 rather than a number measured here on purpose. The classes label
+The minimum is 0 rather than a number measured here on purpose. The classes label
 and the button are both set in points in `wish/window.ui`, so how many pixels
-they take is the machine's business, and any floor generous enough on this desk
-is a floor that cuts the button where the font is wider. **There is no spacer
+they take is the machine's business, and any minimum generous enough on this desk
+is a minimum that cuts the button where the font is wider. **There is no spacer
 on the row either**: a `QSpacerItem` shrinks in proportion to its own size hint
 when the row is short, so it kept 40px of the width the name was giving up, and
 `BOB` beside a Level up button drew as `B...`.
@@ -200,7 +200,7 @@ fight icon should go where the active effects go."*
 
 **An `IconRow` is at most 13px tall and asks for none of it.** Height is a
 maximum with a `minimumSizeHint` of 0, not a fixed size: eight cards, each with
-two badge rows insisting on 13px, would hand back the floor
+two badge rows insisting on 13px, would hand back the minimum height
 `#135 (The automapper's roster column does not scroll, so a full party puts a
 944px floor under the window)` took off the window. Width is fixed, which is
 what makes the badges the half of the readied line that does not give way.
@@ -220,7 +220,7 @@ So the name is no longer the blocker. **The glyph is**, and this is the menu.
 Nothing below is implemented: Donald is choosing.
 
 **Restricted to what can be true of a player character.** Ids 64 and up are
-monster attack forms — poison bites, gazes, breath weapons — and belong on a
+monster attack forms — poison attacks, gazes, breath weapons — and belong on a
 monster's tooltip, not a roster card. The four exceptions are the passive item
 powers a character can carry, and 89 is one of them.
 
@@ -234,12 +234,12 @@ answer and there are six of them.
 |---|---|---|---|---|
 | 1 | Bless | CONFIRMED | `person-rays` | a figure with rays off it; 35px of ink, reads |
 | 5 | Detect Magic | CONFIRMED | `wand-magic` | one clean diagonal wand. `wand-magic-sparkles` is five pieces and mush |
-| 8 | Protection from Evil | CONFIRMED | `user-shield` | a figure carrying a shield; tells apart from plain `shield` at 13 |
+| 8 | Protection from Evil | CONFIRMED | `user-shield` | a figure carrying a shield; tells apart from the simple `shield` at 13 |
 | 10 | Resist Cold | CONFIRMED | `snowflake` | thin arms, 57px, unmistakable |
 | 12 | Enlarge | CONFIRMED | `maximize` | four arrows outward, one connected mass |
 | 17 | Shield | CONFIRMED | `shield` | 71px of solid ink — the most legible glyph tested |
 | 19 | Find Traps | CONFIRMED | `magnifying-glass` | clean ring and handle |
-| 20 | Resist Fire | CONFIRMED | `fire-flame-simple` | one flame. Plain `fire` has an inner counter that half-closes at 13 |
+| 20 | Resist Fire | CONFIRMED | `fire-flame-simple` | one flame. The simple `fire` has an inner counter that half-closes at 13 |
 | 25 | invisible | CONFIRMED | `ghost` | one silhouette. `eye-slash` is the literal reading and at 13 the eye is gone — what survives is the slash |
 | 28 | Mirror Image | CONFIRMED | `clone` | two offset frames |
 | 35 | under an allied Prayer | CONFIRMED | `person-praying` | one silhouette, 38px |
@@ -301,7 +301,7 @@ on a machine whose fonts are Windows'. Donald: *"This is a corner case. Leave
 it the way it is and let users resize it."* Widening the column brings the
 name back, and nothing about the default changed for everybody else.
 
-Three decisions are worth knowing before touching this.
+Know three decisions before touching this.
 
 **A dragged width is remembered**, in `Settings.automap_columns` -- three
 numbers in the same hand-editable JSON as everything else. Only a *drag*
@@ -323,11 +323,11 @@ handle draws at `x = -2`. `ColumnSplitter.HANDLE` is 6 for that one reason.
 across the map would leave the tab with no map on it, which is not a state
 anybody asked to be able to reach.
 
-A column with a floor -- the roster's is a card's width, the reading column's
-is `AutomapBinding.SIDE_SQUEEZED` -- is therefore either wider than its floor
+A column with a minimum width -- the roster's is a card's width, the reading column's
+is `AutomapBinding.SIDE_SQUEEZED` -- is therefore either wider than that minimum
 or shut, with nothing in between. That is Qt's own collapsing: dragging
-inwards past half the floor shuts the column, and dragging outwards opens it
-at the floor again.
+inwards past half the minimum shuts the column, and dragging outwards opens it
+at the minimum again.
 
 ## The licence, and its two traps
 
@@ -369,7 +369,7 @@ pixel count measured on one machine:
 * A three-letter name beside a Level up button is not shortened.
 * The badges are drawn whole and the readied line shortens, with the full list
   still in the card's tooltip.
-* The badge rows cost the card's floor no height -- the control is the same
+* The badge rows cost the card's minimum height nothing -- the control is the same
   card with them hidden.
 * `gamedata.synthetic_party` contains characters who **can** level, which is
   what stops `#168 (A character ready to level loses the Level up button, even
@@ -398,7 +398,7 @@ The three columns, and every assertion a bound rather than a pixel count:
   ceiling matters: `QSplitter.setSizes` raises on a number too large for a C++
   int, so an unchecked hand-edit stops the window opening.
 
-`tests/wish/test_mapscale.py` adds the screen: the window's floor stays inside a
+`tests/wish/test_mapscale.py` adds the screen: the window's minimum size stays inside a
 1366x768 laptop at +0, +3, +6 and +10 point of UI font with both columns shut
 and with both dragged as wide as they go.
 
@@ -406,11 +406,11 @@ and with both dragged as wide as they go.
 
 * A character with nothing readied shows a blank line, not a placeholder, and
   the card does not change height.
-* A long readied list is elided to the card's width and kept whole in the
+* A long readied list is cut off with an ellipsis at the card's width and kept whole in the
   tooltip.
 * The line asks for the same height at +0, +3, +6 and +10 point, and asks the
-  layout for nothing at all, so the window's floor with eight cards showing is
-  the floor without the feature.
+  layout for nothing at all, so the window's minimum size with eight cards showing is
+  the minimum without the feature.
 * `live.readied` returns the readied items and not the rest — checked against
   the player's own equipped party, and empty with no disk.
 * The attribution is in the README and the About box, and the licence file is in

@@ -42,7 +42,7 @@ $0C0A  STA $6BE7                ; record 0x0E7
 $0C0D  LDX #$01 / STX $6C00     ; roster_in_use
 ```
 
-No bound, no arithmetic: the same shape as the DOS write site, `call random;
+No bound, no arithmetic: the same pattern as the DOS write site, `call random;
 mov es:[di+0ABh], al`, one byte there and two here. On the fourteen save
 disks the pair is distinct for every one of the ten names and identical for a
 name on every disk it appears on (MALCYON `E6 C3` on all fourteen), which is
@@ -128,7 +128,7 @@ was the same drive mis-steered, and its counts agree):
 |---|---|---|---|---|
 | loaded | 0 | 0 | 0 | six in the party |
 | two removed | 12 | 12 | 12 | the export of each is written, which reads the whole record |
-| ADD list built | 12 | 12 | 12 | `*` on BRUTUS, MAGNUS, **MALCYON**, ROLAND; SILAS, LADY KATHERINE and TWIN plain |
+| ADD list built | 12 | 12 | 12 | `*` on BRUTUS, MAGNUS, **MALCYON**, ROLAND; SILAS, LADY KATHERINE and TWIN unstarred |
 | pick the starred `MALCYON` | 12 | 12 | 12 | list unchanged, and no read at all: a starred pick is refused before the file is opened |
 | pick `TWIN` | 14 | 14 | 14 | `*TWIN`: added; the copy into the slot reads each byte once |
 | pick `LADY KATHERINE` | 16 | 16 | 16 | `*LADY KATHERINE`: added |
@@ -177,7 +177,7 @@ attribute them to.
 
 ## What the conversion should do
 
-The specification `#258 (The C64 side of 0x0AB is unnamed, so the conversion drops it with no issue behind it)` asks for, in the shape a `junior-dev` can build:
+The specification `#258 (The C64 side of 0x0AB is unnamed, so the conversion drops it with no issue behind it)` asks for, in a form a `junior-dev` can build:
 
 * **DOS to C64:** write neutral `unnamed_0ab` into C64 `0x0E6`; `0x0E7` gets
   zero. Both values are measured harmless -- no reader -- and the field stops

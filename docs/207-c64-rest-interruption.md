@@ -101,7 +101,7 @@ loop reads it.
 rather than sweeping it, so a conditional pair is reported as the values each
 arm reaches rather than whichever came first in address order.
 
-| shape | scripts |
+| pattern | scripts |
 |---|---|
 | never checked — entry 2 leaves `$6DD2` at 0 on every path | `ECL07`, `ECL0F`, `ECL10`, `ECL13`, `ECL17`, `ECL1E` |
 | always checked — no path leaves it at 0 | `ECL0D` (1 or 96), `ECL18` (1 or 4) |
@@ -184,7 +184,7 @@ side: 64 bytes at `$9A0E`, identical, so the area is the Slums rather than
 something that looks like it.
 
 Each trial is a whole `ENCAMP > REST` of two hours, which is 24 five-minute
-passes and so exactly one check's worth when the pair is (24, 24). The
+passes and so exactly one check when the pair is (24, 24). The
 duration is written into `CAMP`'s own `$2898`-`$289A` and read back rather than
 driven with INCREASE, whose step grows while the key is held. Three
 non-stopping VICE checkpoints count `$1E0F` (a pass), `$1E1C` (a check about to

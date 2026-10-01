@@ -4,7 +4,7 @@
 21, and our table holds only the C64's)` was answered for Pool of Radiance and
 left open for the two later titles, because their records store 40 for a
 low-level magic-user where their own table appeared to say 39 and nobody could
-say why. Both halves are settled here, from the shipped bytes and the corpus,
+say why. Both halves are settled here, from the shipped bytes and the specimens,
 with no emulator. `docs/135-levelling.md` has the C64 side of all three
 titles; `docs/50-experiments.md`, "Two ports, two THAC0 tables", has Pool of
 Radiance's.
@@ -17,7 +17,7 @@ over is wrong, and `docs/224-the-dos-thac0-floor.md` replaces it.** A rebuild
 does run, on every load, and it writes the 40 itself: entry 0 of each row below
 is a real THAC0 rather than the `$00` the C64's rows start with, and the loop
 that runs on load reads it for every class the character has no level in. That
-puts a floor of THAC0 20 under every DOS record, which is where a magic-user's
+puts a lower limit of THAC0 20 on every DOS record, which is where a magic-user's
 40 comes from at levels 1-5. The rows below are unaffected -- they were read
 correctly; what was wrong was applying the C64's rule to them.
 
@@ -96,7 +96,7 @@ surprise.** Pool of Radiance is the odd title in its shipped rows: its DOS
 build's magic-user row reads 20 at levels 1-5 where its C64 gives 21, and both
 later DOS builds' rows read 21, agreeing with their own C64 side. What the
 later DOS engines **store** for such a magic-user is 20 all the same, because
-of the floor -- `docs/224-the-dos-thac0-floor.md`. So the three rows below are
+of that lower limit -- `docs/224-the-dos-thac0-floor.md`. So the three rows below are
 where the tables disagree, and the stored byte disagrees in one place more.
 
 **The level-2 fighter is one byte.** The whole row is `39 + level` -- which is
@@ -126,8 +126,8 @@ no sixth:
   lookup. Curse's guarded one is at `GAME.OVR:0x020FF5` and its unguarded one
   at `0x03B026`; Silver Blades' are `0x01E59B` and `0x03C1B1`; Pool of
   Radiance's are `0x01A659` and `0x02AA87`. The unguarded one is what runs
-  when a party loads, and reading entry 0 for every empty slot is what floors
-  the byte at 40 -- `docs/224-the-dos-thac0-floor.md`.
+  when a party loads, and reading entry 0 for every empty slot is what keeps
+  the byte at 40 or above -- `docs/224-the-dos-thac0-floor.md`.
 * **The regained class's row**, folded in without clearing -- Curse
   `0x03B274`, Silver Blades `0x03C444`. That loop walks
   `former_class_levels` (`0x111` in Curse, `0x118` in Silver Blades) rather
@@ -150,7 +150,7 @@ magic-user to 40" is refuted.
 So a record's stored byte is the last of these that ran, and for a character
 the party has loaded since, that is the unguarded rebuild.
 
-## What the corpus says
+## What the specimens say
 
 `tools/records/thac0sweep.py dos --title <key>` sweeps every DOS record in the
 specimen tree and the player's archives against the title's own table, by each
@@ -174,7 +174,7 @@ of `WISH-SPEC-curse-551-party-as-converted`, whose 39 our own writer put there.
 engine-written: `WISH-SPEC-curse-408-regained-paladin` staged him at magic-user
 5 and trained him once in DOS Curse's own party menu, and he came out
 magic-user 6 holding **41** -- the table's magic-user row at index 6, which
-beats the floor. CONFIRMED, and it settles that the row is indexed by the level
+beats the lower limit. CONFIRMED, and it settles that the row is indexed by the level
 itself rather than by `level - 1`.
 
 **MATHEW is the proof that a constant overwrites a good value**, and it is
@@ -191,7 +191,7 @@ the two wrote a given 40, because the next load writes 40 anyway.
 ## What a player sees
 
 A Curse or Silver Blades magic-user hits at THAC0 20 from level 1 to 5, where
-the same character on the C64 hits at 21: the DOS floor is 40 and the C64's is
+the same character on the C64 hits at 21: the DOS limit is 40 and the C64's is
 39. CONFIRMED for DOS from the running game --
 `docs/224-the-dos-thac0-floor.md`'s differential -- and from ten C64 records
 holding 39 on the other side.

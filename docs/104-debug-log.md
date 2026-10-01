@@ -105,7 +105,7 @@ The pruner globs `wish-*.log*`, not `wish-*.log`: a rotated part is
 
 ---
 
-## Shape
+## What it does
 
 * **A checkbox in File > Preferences**, remembered between runs, with
   `View > Debug log` still behind it as the model the checkbox is a view of.

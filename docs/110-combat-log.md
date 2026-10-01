@@ -2,7 +2,7 @@
 
 **Status: run against three live fights, and the checklist is closed.** 1428
 frames of a slums fight — six characters against orcs — settled the region, the
-timing and the shape of the messages, and found two defects that offline tests
+timing and the format of the messages, and found two defects that offline tests
 could not see, because both turn on bytes only a running game writes. Both are
 fixed; see `docs/50-experiments.md`, "The combat log's two defects, found in a
 slums fight", and the two rules below marked **live**. A third fight settled
@@ -101,7 +101,7 @@ was logged twice. So a frame-to-frame change is one of **four** things —
 roughly a third of a second each, three of them at the default setting of 2.
 Then `$29B7` clears the window. Nothing in that path reads the keyboard.
 
-That is the whole risk, and the whole reason the feature is worth having: a
+That is the whole risk, and the whole reason the feature exists: a
 message lives about **a second of emulated time**. At the default 200 ms poll
 that is five frames, which is plenty of margin — but it is the first number to
 check if messages start going missing.
@@ -488,7 +488,7 @@ second one.
 | # | what | result |
 |---|---|---|
 | 1 | the region | **CONFIRMED.** Messages in columns 23–38 of rows 10–22; `$03F2`-`$03F5` = `17 27 0A 17` for a fresh block, `17 27 0F 17` for a follow-up. Rows 1–9 are the *acting combatant's* panel, not the party's — this file was wrong |
-| 2 | the delay | **CONFIRMED.** `$49FC` = 2; 60–62 jiffies for a plain message, 72–74 with a follow-up, over 49 of them |
+| 2 | the delay | **CONFIRMED.** `$49FC` = 2; 60–62 jiffies for a message with no follow-up, 72–74 with a follow-up, over 49 of them |
 | 3 | the stall | **No stall — the opposite.** Polling at 0.178 s ran the machine at **1.121× real time** (17471 jiffies in 259.8 s), which is the 14.3 ms per resume of `docs/70` plus the connect. Not measured against a `COMBAT_LOG = False` run, because the cost is per resume and the combat view already spends two |
 | 4 | a whole fight | **CONFIRMED after two fixes.** 58 messages from 1428 frames, nothing garbled, nothing doubled, in order. Before the fixes: four garbage blocks and every killing blow twice |
 | 5 | two consecutive messages | **CONFIRMED.** `MALCYON ATTACKS ORC AND HITS FOR 1 POINTS OF DAMAGE` and `... FOR 3 ...`, one blank frame apart, both kept |
