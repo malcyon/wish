@@ -1560,6 +1560,31 @@ class FsuaeGdb:
         """
         self._write("vCont;c")
 
+    def drain_idle(self) -> bool:
+        """Read and throw away whatever the emulator sent unasked; False once it is gone.
+
+        For a caller that holds the connection between requests and must notice
+        the emulator closing it. Only valid with no request in flight: anything
+        read here is taken to be console output, which nobody is waiting for.
+        """
+        if self.lost or self.sock is None:
+            return False
+        self._buf = b""
+        try:
+            self.sock.settimeout(0.0)
+            while True:
+                if not self.sock.recv(1 << 16):
+                    self.lost = True
+                    break
+        except (BlockingIOError, socket.timeout):
+            pass                            # nothing more is waiting
+        except OSError:
+            self.lost = True
+        finally:
+            if self.sock is not None:
+                self.sock.settimeout(self.timeout)
+        return not self.lost
+
     # -- reading memory --------------------------------------------------
 
     def read_memory(self, addr: int, length: int,
