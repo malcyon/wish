@@ -173,7 +173,7 @@ def test_a_sweep_stops_at_its_deadline_and_goes_on_from_what_it_read():
         return inner(addr, length)
 
     locator = amigalocate.Locator(clock=lambda: now[0])
-    locator.SWEEP_DEADLINE = 0.15                   # two pieces a call
+    locator.SWEEP_DEADLINE = 0.65                   # two pieces a call
     paused = 0
     for _ in range(400):
         try:
@@ -297,24 +297,59 @@ def test_paused_ticks_never_close_the_pipe():
     assert paused > 3 and transport.closed == 0
 
 
-def test_one_tick_is_bounded_by_the_sweep_deadline_and_the_minimum_timeout():
+def test_every_piece_gets_the_full_timeout_and_a_tick_stays_inside_its_budget():
     now = [1000.0]
-    given = []
+    given, started_with = [], []
 
     class Costly(FakeTransport):
         def read_memory(self, addr, length, timeout=None):
             given.append(timeout)
+            started_with.append(deadline - now[0])
             now[0] += timeout                       # the worst WinUAE may take
             return super().read_memory(addr, length)
 
     transport = Costly(memory=loaded())
     locator = amigalocate.Locator(clock=lambda: now[0])
     started = now[0]
+    deadline = started + locator.SWEEP_DEADLINE
     with pytest.raises(locator.paused):
         locator.target(transport.read_memory, transport)
-    assert min(given) >= locator.MIN_PIECE_TIMEOUT
-    assert all(t <= locator.SWEEP_DEADLINE for t in given)
-    assert now[0] - started <= locator.SWEEP_DEADLINE + locator.MIN_PIECE_TIMEOUT
+    assert set(given) == {locator.PIECE_TIMEOUT}
+    # Only the first piece may start with less than a full timeout left.
+    assert all(left >= locator.PIECE_TIMEOUT for left in started_with)
+    assert now[0] - started <= locator.SWEEP_DEADLINE
+
+
+def test_a_tick_that_re_reads_the_anchor_and_sweeps_takes_about_two_seconds():
+    now = [1000.0]
+
+    class Costly(FakeTransport):
+        def read_memory(self, addr, length, timeout=None):
+            now[0] += timeout
+            return super().read_memory(addr, length)
+
+    transport = Costly(memory=loaded())
+    locator = amigalocate.Locator(clock=lambda: now[0])
+    locator.machine, locator.base = BLADES, BASE + 0x100   # anchor no longer there
+    started = now[0]
+    with pytest.raises(locator.paused):
+        locator.target(transport.read_memory, transport)
+    assert now[0] - started <= 2.0
+
+
+def test_a_timeout_or_broken_pipe_keeps_the_title_found():
+    transport = FakeTransport(memory=loaded())
+    now = [1000.0]
+    locator = amigalocate.Locator(clock=lambda: now[0])
+    locator.target(transport.read_memory, transport)
+    for error in (winuae_transport.PipeTimeout("Timed out."),
+                  amiga.PipeError("The pipe closed.")):
+        def failing(debugger, machine, anchor_base=None, error=error):
+            raise error
+
+        with pytest.raises(amiga.PipeError):
+            locator.target(transport.read_memory, transport, factory=failing)
+        assert locator.machine is BLADES and locator.base == BASE
 
 
 def test_pieces_older_than_the_age_limit_are_not_searched():

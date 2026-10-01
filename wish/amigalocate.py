@@ -11,8 +11,8 @@ in pieces. Once `SWEEP_DEADLINE` seconds are spent the call raises a
 `not-connected` error, the pieces already read are kept, and the next call goes
 on from there. After a piece times out, the next sweep uses
 `SWEEP_SMALL_CHUNK`, so a machine too slow for the big piece still gets
-through; a finished sweep goes back to the big one. One call takes about the
-deadline plus the 0.2 s that the last piece may still be given.
+through; a finished sweep goes back to the big one. A call takes about two
+seconds at most: the anchor re-read, then pieces within `SWEEP_DEADLINE`.
 """
 
 from __future__ import annotations
@@ -32,8 +32,14 @@ class Locator:
     SWEEP_CHUNK = 0x10000
     SWEEP_SMALL_CHUNK = 0x4000
 
-    #: How long one call may spend reading pieces (one piece is always read).
-    SWEEP_DEADLINE = 1.0
+    #: How long one call may spend reading pieces. A piece is started only when
+    #: a full `PIECE_TIMEOUT` is left before this, except the first of a call,
+    #: so a timeout always means the emulator was slow and never that the
+    #: tick's budget ran out. A call takes `SWEEP_DEADLINE` at most.
+    SWEEP_DEADLINE = 1.5
+
+    #: What every piece, and the anchor re-read, is given to answer.
+    PIECE_TIMEOUT = 0.5
 
     #: How long an unfinished sweep may go without gaining a piece before what
     #: it holds is thrown away. This catches only a gap in the ticks (the window
@@ -44,8 +50,6 @@ class Locator:
     #: adding pieces is not limited in total time.
     SWEEP_CACHE_AGE = 5.0
 
-    #: The least a piece is given to answer, however little of the tick is left.
-    MIN_PIECE_TIMEOUT = 0.2
 
     def __init__(self, clock=time.monotonic, error=amiga.GuestError):
         self._clock = clock
@@ -78,14 +82,14 @@ class Locator:
             for at in range(base, base + length, self._piece):
                 held = self._pieces.get(at)
                 if held is None:
-                    if fetched and self._clock() >= deadline:
+                    if fetched and (deadline - self._clock()
+                                    < self.PIECE_TIMEOUT):
                         raise self.paused(
                             "Still sweeping the Amiga's memory.")
                     try:
                         blob = read_memory(
                             at, min(self._piece, base + length - at),
-                            timeout=max(self.MIN_PIECE_TIMEOUT,
-                                        deadline - self._clock()))
+                            timeout=self.PIECE_TIMEOUT)
                     except Exception as exc:
                         if getattr(exc, "timed_out", False):
                             self._piece = self.SWEEP_SMALL_CHUNK
@@ -105,7 +109,7 @@ class Locator:
         if self.machine is not None:
             held = read_memory(self.base + self.machine.anchor_offset,
                                len(self.machine.anchor),
-                               timeout=self.SWEEP_DEADLINE)
+                               timeout=self.PIECE_TIMEOUT)
             if held != self.machine.anchor:
                 self.machine = self.base = None
         if self.machine is None:
@@ -144,8 +148,11 @@ class Locator:
             self.base = bases[0]
         try:
             return factory(transport, self.machine, anchor_base=self.base)
-        except amiga.GuestError:
+        except amiga.GuestError as exc:
             # An intact anchor with a data hunk that is not where it was: the
-            # target's own check fails on every call unless the sweep runs again.
-            self.machine = self.base = None
+            # target's own check fails on every call unless the sweep runs
+            # again. A `PipeError` is also a `GuestError` but says only that
+            # the pipe failed, so what was found stays.
+            if not isinstance(exc, amiga.PipeError):
+                self.machine = self.base = None
             raise
