@@ -271,13 +271,20 @@ def test_every_layout_names_a_width_the_reader_can_use(key):
 #: How each title's disk image is spelt, once the underscores are taken out --
 #: the same match `tests/amiga/test_amiganodefields.py` makes.
 DISK = {"secret-of-the-silver-blades": "silver",
-        "curse-of-the-azure-bonds": "curse"}
+        "curse-of-the-azure-bonds": "curse",
+        "pools-of-darkness": "darkness"}
 
 
-def _adf(key: str):
+def _image(key: str, tmp_path, accept):
+    """The first Amiga image of this title that `accept` takes, or None.
+
+    A loose `.adf` is used where it stands. Pools of Darkness ships inside zip
+    files, which a `rglob("*.adf")` never sees, so those are written under
+    `tmp_path` and the registered disks are never touched.
+    """
     from automap import gamedisks
+    from tools.amiga import amigasaves
     want = DISK[key]
-    exe = amiga.MACHINES[key].executable
     for root in gamedisks.candidates("amiga"):
         if not root.is_dir():
             continue
@@ -285,24 +292,43 @@ def _adf(key: str):
             if want not in image.name.lower().replace("_", ""):
                 continue
             try:
-                from goldbox.amiga_adf import AmigaDisk
-                AmigaDisk.open(image).read_file(exe)
+                if accept(image):
+                    return image
             except Exception:
                 continue
-            return image
-    pytest.skip(f"no Amiga disk carrying {exe}; set $AMIGA_DISKS")
+    for n, (label, data) in enumerate(amigasaves.images()):
+        if want not in label.lower().replace("_", ""):
+            continue
+        image = tmp_path / f"{n}.adf"
+        image.write_bytes(data)
+        try:
+            if accept(image):
+                return image
+        except Exception:
+            continue
+    return None
+
+
+def _adf(key: str, tmp_path):
+    from goldbox.amiga_adf import AmigaDisk
+    exe = amiga.MACHINES[key].executable
+    found = _image(key, tmp_path,
+                   lambda image: AmigaDisk.open(image).read_file(exe))
+    if found is None:
+        pytest.skip(f"no Amiga disk carrying {exe}; set $AMIGA_DISKS")
+    return found
 
 
 @pytest.mark.parametrize("key", sorted(amiga.MACHINES))
-def test_the_layout_still_describes_the_build_on_the_players_disk(key):
+def test_the_layout_still_describes_the_build_on_the_players_disk(key, tmp_path):
     """A different release with the anchor somewhere else is caught here,
     rather than as a plausible wrong square on a live machine."""
     from tools.amiga import amigatarget
-    assert amigatarget.verify(amiga.MACHINES[key], _adf(key)) == []
+    assert amigatarget.verify(amiga.MACHINES[key], _adf(key, tmp_path)) == []
 
 
 @pytest.mark.parametrize("key", sorted(amiga.MACHINES))
-def test_a_wrong_anchor_offset_is_what_verify_is_for(key):
+def test_a_wrong_anchor_offset_is_what_verify_is_for(key, tmp_path):
     """Proves the check above can fail: move the offset by one and it must."""
     from dataclasses import replace
 
@@ -310,7 +336,7 @@ def test_a_wrong_anchor_offset_is_what_verify_is_for(key):
     layout = amiga.MACHINES[key]
     bad = amigatarget.verify(replace(layout,
                                      anchor_offset=layout.anchor_offset + 1),
-                             _adf(key))
+                             _adf(key, tmp_path))
     assert bad and "not" in bad[0]
 
 
@@ -442,7 +468,7 @@ def test_nothing_is_recorded_while_no_area_is_loaded():
     assert not mapper.state.exploration.seen
 
 
-def test_a_stranger_s_map_is_not_drawn_as_ours():
+def test_a_stranger_s_map_is_not_drawn_as_ours(tmp_path):
     """The block is a Gold Box map and none of the ones we hold: the machine is
     running another title, and `#21`'s refusal has to reach this backend too.
 
@@ -452,7 +478,7 @@ def test_a_stranger_s_map_is_not_drawn_as_ours():
     from both, where the check wants 20."""
     from automap.area import NOT_OURS, looks_like_a_map
     ours, theirs = list(amiga.load_maps(
-        _map_disk("secret-of-the-silver-blades")).values())[:2]
+        _map_disk("secret-of-the-silver-blades", tmp_path)).values())[:2]
     assert looks_like_a_map(theirs) and ours.to_bytes() != theirs.to_bytes()
     t, _ = _resident(block=theirs.to_bytes(), extra=square(6, 9, 2))
     mapper = _mapper(t, block=ours.to_bytes())
@@ -464,51 +490,98 @@ def test_a_stranger_s_map_is_not_drawn_as_ours():
 # -- the maps, off the player's own Amiga disk --------------------------------
 
 
-def _map_disk(key: str):
+def _map_disk(key: str, tmp_path):
     """The first Amiga image of this title carrying `GEO.GLB`, or a skip."""
-    from automap import gamedisks
-    want = DISK[key]
-    for root in gamedisks.candidates("amiga"):
-        if not root.is_dir():
-            continue
-        for image in sorted(root.rglob("*.adf")):
-            if want not in image.name.lower().replace("_", ""):
-                continue
-            try:
-                if amiga.load_maps(image):
-                    return image
-            except Exception:
-                continue
-    pytest.skip(f"no Amiga disk here carries {key}'s GEO.GLB")
+    found = _image(key, tmp_path, amiga.load_maps)
+    if found is None:
+        pytest.skip(f"no Amiga disk here carries {key}'s GEO.GLB")
+    return found
 
 
 @pytest.mark.parametrize("key", sorted(amiga.MACHINES))
-def test_the_library_is_keyed_the_way_the_c64_names_the_same_areas(key):
+def test_the_library_is_keyed_the_way_the_c64_names_the_same_areas(key, tmp_path):
     """`GEO{id:02X}` -- the C64's own filename for the same area, so an Amiga
     party's map is drawn on the same sheet and reads the same notes. Silver
-    Blades ships 17 and Curse 16, which is what each port's disks hold."""
-    maps = amiga.load_maps(_map_disk(key))
+    Blades ships 17, Curse 16 and Pools of Darkness 32, which is what each port's disks hold."""
+    maps = amiga.load_maps(_map_disk(key, tmp_path))
     assert maps, "the library decoded to no maps at all"
     assert all(name.startswith("GEO") and len(name) == 5 for name in maps)
     assert len(maps) == {"secret-of-the-silver-blades": 17,
-                         "curse-of-the-azure-bonds": 16}[key]
+                         "curse-of-the-azure-bonds": 16,
+                         "pools-of-darkness": 32}[key]
 
 
 @pytest.mark.parametrize("key", sorted(amiga.MACHINES))
-def test_every_block_in_the_library_reads_as_a_map(key):
+def test_every_block_in_the_library_reads_as_a_map(key, tmp_path):
     """The check `ResidentGeo.verdict` puts a live block through, run over the
     disk copies it would be matched against. All of them, or the live reading
-    would be refused for a map the game itself is drawing."""
+    would be refused for a map the game itself is drawing -- except the one
+    block Pools of Darkness ships with no walls."""
     from automap.area import looks_like_a_map
-    maps = amiga.load_maps(_map_disk(key))
+    maps = amiga.load_maps(_map_disk(key, tmp_path))
     bad = [name for name, geo in maps.items() if not looks_like_a_map(geo)]
+    if key == "pools-of-darkness":
+        # GEO12 has no wall on any plane and attribute 128 on every square, so
+        # it reads as open ground. A live GEO12 is still named, because
+        # `verdict` matches exactly before it asks whether a block is a map.
+        # A second failure is a finding, not a reason to widen this list.
+        assert bad == ["GEO12"]
+        return
     assert bad == [], f"{len(bad)} of {len(maps)} blocks do not read as maps"
 
 
-def test_a_disk_with_no_library_on_it_is_not_an_error():
+def _geo_pointers_by_usage(exe_bytes: bytes) -> set[int]:
+    """Every data-hunk offset the code loads into `a0` and then offsets by both
+    `+$100` and `+$200` (`movea.l d16(a4),a0` then `adda.w #imm,a0`)."""
+    import re
+
+    from tools.amiga.amiga68k import SMALL_DATA_BIAS, Executable
+    exe = Executable.parse(exe_bytes)
+    code = next(h for h in exe.hunks if h.kind == "CODE")
+    blob = exe.data[code.file_offset:code.file_offset + code.size]
+    added: dict[int, set[int]] = {}
+    for m in re.finditer(rb"\x20\x6c(..)\xd0\xfc(..)", blob, re.S):
+        d16 = int.from_bytes(m.group(1), "big", signed=True)
+        added.setdefault(d16 + SMALL_DATA_BIAS, set()).add(
+            int.from_bytes(m.group(2), "big"))
+    return {g for g, adds in added.items() if {0x100, 0x200} <= adds}
+
+
+@pytest.mark.parametrize("key", sorted(amiga.MACHINES))
+def test_the_geo_pointer_is_the_global_the_code_offsets_by_the_planes(key, tmp_path):
+    """`verify` never checks what a pointer points at. The engine indexes the
+    resident block by adding `$100` and `$200` to one global, and exactly one
+    global is offset by both, so a row naming any other one reads garbage."""
+    from goldbox.amiga_adf import AmigaDisk
+    layout = amiga.MACHINES[key]
+    image = _adf(key, tmp_path)
+    exe = AmigaDisk.open(image).read_file(layout.executable)
+    assert _geo_pointers_by_usage(exe) == {layout.geo_pointer}
+
+
+@pytest.mark.parametrize("key", sorted(amiga.MACHINES))
+def test_the_anchor_is_in_its_own_executable_once(key, tmp_path):
+    from goldbox.amiga_adf import AmigaDisk
+    layout = amiga.MACHINES[key]
+    exe = AmigaDisk.open(_adf(key, tmp_path)).read_file(layout.executable)
+    assert exe.count(layout.anchor) == 1
+
+
+@pytest.mark.parametrize("other", ["secret-of-the-silver-blades",
+                                   "curse-of-the-azure-bonds"])
+def test_the_pools_of_darkness_anchor_is_in_no_other_title(other, tmp_path):
+    """`locate_machines` sweeps every row, so a machine running another title
+    must never match this one."""
+    from goldbox.amiga_adf import AmigaDisk
+    exe = AmigaDisk.open(_adf(other, tmp_path)).read_file(
+        amiga.MACHINES[other].executable)
+    assert amiga.MACHINES["pools-of-darkness"].anchor not in exe
+
+
+def test_a_disk_with_no_library_on_it_is_not_an_error(tmp_path):
     """Every title's disk A. The caller reads both sides and takes whichever
     answers, which is what `load_maps_in` does."""
-    image = _map_disk("secret-of-the-silver-blades")
+    image = _map_disk("secret-of-the-silver-blades", tmp_path)
     other = [p for p in sorted(image.parent.glob("*.adf")) if p != image]
     if not other:
         pytest.skip("only one image of this title here")
@@ -535,7 +608,7 @@ def test_the_automap_command_drives_the_shipped_mapper_and_draws_it(tmp_path,
     """
     from automap import state as mapstate
     from tools.amiga import amigatarget
-    image = _map_disk("secret-of-the-silver-blades")
+    image = _map_disk("secret-of-the-silver-blades", tmp_path)
     t, guest = _resident(block=amiga.load_maps(image)["GEO10"].to_bytes(),
                          extra=square(6, 9, 2))
     # `draw` rebinds this so a run never writes into the player's own notes.

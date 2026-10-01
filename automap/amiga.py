@@ -160,7 +160,8 @@ class AmigaMachine:
     notes: dict[str, int] = field(default_factory=dict)
 
 
-#: The titles whose offsets have been read out of their executables.
+#: The titles whose offsets have been read out of their executables: Silver
+#: Blades, Curse and Pools of Darkness.
 #:
 #: **Pool of Radiance is deliberately absent.** Its Amiga build is not a
 #: small-data one: `docs/165-amiga-savegame.md` puts its party struct at
@@ -205,6 +206,25 @@ MACHINES: dict[str, AmigaMachine] = {
         width=2,
         geo_pointer=0x5EB6,
         notes={"wall_ahead": 0x3F63, "square_attribute": 0x3F64},
+    ),
+    # The string is the spell-level name table, present once in this
+    # executable and in neither `/Secret` nor `/Curse`. The party's square is
+    # the six-byte struct `docs/124-amiga-port.md` §1.20 describes, and the map
+    # pointer is the one global the code offsets by `+$100`, `+$200` and
+    # `+$300` (`tests/amiga/test_amigatarget.py` pins it by that usage).
+    "pools-of-darkness": AmigaMachine(
+        title="Pools of Darkness",
+        executable="/Pools of Darkness",
+        anchor=b"Special" + bytes(34) + b"1st Level",
+        anchor_offset=0x2FE6,
+        party_x=0x5F20,
+        party_y=0x5F21,
+        party_facing=0x5F22,
+        width=1,
+        geo_pointer=0x7D7C,
+        notes={"wall_ahead": 0x5F23, "square_attribute": 0x5F24,
+               "mode": 0x5B12, "previous_mode": 0x743C,
+               "dungeon_map": 0x5F2C},
     ),
 }
 
