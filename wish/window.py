@@ -90,7 +90,9 @@ def load_maps_titled(disks: str | None = None, game=None) -> tuple[dict, object]
     """
     try:
         from automap.maps import load_maps_titled as _load
-        return _load(disks, game)
+
+        from .backends import amiga_fsuae_enabled
+        return _load(disks, game, amiga_only=amiga_fsuae_enabled())
     except Exception:
         debuglog.exception("could not read the maps under %s", disks)
         return {}, None

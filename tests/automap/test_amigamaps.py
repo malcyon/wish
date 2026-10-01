@@ -15,7 +15,7 @@ import pytest
 
 from automap import amiga, gamedisks, paths
 from automap.maps import _volume_title, load_maps_titled
-from goldbox import amiga_dax, c64_port
+from goldbox import amiga_dax, c64_port, titles
 from goldbox.amiga_adf import AmigaDisk
 from goldbox.geo import GEO_SIZE
 
@@ -151,7 +151,7 @@ def test_a_folder_of_several_titles_answers_the_first_in_games_order(tmp_path):
 
 def test_pools_of_darkness_is_no_title_the_automapper_has(tmp_path):
     """Its `POD 3` carries a `GEO.GLB` too, and must not be drawn as another
-    title's areas."""
+    title's areas -- unless the Amiga backend is asked for."""
     put(tmp_path, "pod3.adf", disk("POD 3", "DISK3", "GEO.GLB", glib(MAPS)))
     assert load_maps_titled(str(tmp_path)) == ({}, None)
     assert load_maps_titled(
@@ -181,10 +181,85 @@ def test_a_volume_names_its_title(volume, title):
     assert _volume_title(volume) is title
 
 
+@pytest.mark.parametrize("volume,title", [
+    ("POD 3", titles.POOLS_OF_DARKNESS),
+    ("POD 1", titles.POOLS_OF_DARKNESS),
+    ("Pools Of Darkness 1", titles.POOLS_OF_DARKNESS),
+    ("poolgame", c64_port.POOL_OF_RADIANCE),
+    ("POOLDATA", c64_port.POOL_OF_RADIANCE),
+])
+def test_a_volume_names_pools_of_darkness_when_asked(volume, title):
+    assert _volume_title(volume, amiga_only=True) is title
+
+
+def test_pools_of_darkness_maps_load_when_asked_for(tmp_path):
+    put(tmp_path, "pod3.adf", disk("POD 3", "DISK3", "GEO.GLB", glib(MAPS)))
+    maps, game = load_maps_titled(str(tmp_path), amiga_only=True)
+    assert len(maps) == 3 and game is titles.POOLS_OF_DARKNESS
+
+
+def test_a_silver_blades_disk_still_answers_first_beside_pools_of_darkness(tmp_path):
+    put(tmp_path, "a.adf", disk("Secret 2", "DISK2", "GEO.GLB", glib({1: block(9)})))
+    put(tmp_path, "pod3.adf", disk("POD 3", "DISK3", "GEO.GLB", glib(MAPS)))
+    assert load_maps_titled(str(tmp_path), amiga_only=True)[1] is (
+        c64_port.SECRET_OF_THE_SILVER_BLADES)
+    assert load_maps_titled(
+        str(tmp_path), c64_port.SECRET_OF_THE_SILVER_BLADES,
+        amiga_only=True)[0].keys() == {"GEO01"}
+
+
+def test_pools_of_darkness_disks_give_nothing_to_another_title(tmp_path):
+    put(tmp_path, "pod3.adf", disk("POD 3", "DISK3", "GEO.GLB", glib(MAPS)))
+    assert load_maps_titled(
+        str(tmp_path), c64_port.SECRET_OF_THE_SILVER_BLADES,
+        amiga_only=True)[0] == {}
+
+
+@pytest.fixture
+def pod_folder(tmp_path):
+    put(tmp_path, "pod3.adf", disk("POD 3", "DISK3", "GEO.GLB", glib(MAPS)))
+    return tmp_path
+
+
+def test_the_wish_loader_names_nothing_without_the_flag(pod_folder, monkeypatch):
+    from wish.window import load_maps_titled as wish_load
+    monkeypatch.delenv("WISH_EXPERIMENTAL_AMIGA_FSUAE", raising=False)
+    assert wish_load(str(pod_folder)) == ({}, None)
+
+
+@pytest.mark.parametrize("value", ["0", "off", ""])
+def test_a_forgotten_flag_value_does_not_name_pools_of_darkness(
+        pod_folder, monkeypatch, value):
+    from wish.window import load_maps_titled as wish_load
+    monkeypatch.setenv("WISH_EXPERIMENTAL_AMIGA_FSUAE", value)
+    assert wish_load(str(pod_folder)) == ({}, None)
+
+
+@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
+def test_the_flag_names_pools_of_darkness(pod_folder, monkeypatch, value):
+    from wish.window import load_maps_titled as wish_load
+    monkeypatch.setenv("WISH_EXPERIMENTAL_AMIGA_FSUAE", value)
+    maps, game = wish_load(str(pod_folder))
+    assert len(maps) == 3 and game is titles.POOLS_OF_DARKNESS
+
+
+def test_the_command_line_draws_a_pods_map_only_with_the_flag(
+        pod_folder, tmp_path_factory, monkeypatch, capsys):
+    from wish.__main__ import main
+    out = tmp_path_factory.mktemp("svg") / "out.svg"
+    name = sorted(load_maps_titled(str(pod_folder), amiga_only=True)[0])[0]
+    monkeypatch.delenv("WISH_EXPERIMENTAL_AMIGA_FSUAE", raising=False)
+    assert main(["--disks", str(pod_folder), "--svg", name, str(out)]) == 1
+    assert not out.exists()
+    monkeypatch.setenv("WISH_EXPERIMENTAL_AMIGA_FSUAE", "1")
+    assert main(["--disks", str(pod_folder), "--svg", name, str(out)]) == 0
+    assert out.exists()
+
+
 # -- the player's own disks ---------------------------------------------------
 
 
-def _folder_of(title, tmp_path):
+def _folder_of(title, tmp_path, amiga_only=False):
     """Copies of one title's disks from wherever the registry says Amiga disks
     are, whether loose or inside a `.zip`, one per distinct volume."""
     try:
@@ -209,7 +284,7 @@ def _folder_of(title, tmp_path):
                 volume = AmigaDisk(data).volume_name
             except Exception:
                 continue
-            if _volume_title(volume) is title and volume not in seen:
+            if _volume_title(volume, amiga_only) is title and volume not in seen:
                 seen.add(volume)
                 (tmp_path / f"{len(seen)}.adf").write_bytes(data)
     if not seen:
@@ -230,3 +305,12 @@ def test_the_loader_finds_a_title_off_the_players_own_amiga_disks(title, tmp_pat
         own, _image = amiga.load_maps_in(folder)
         assert {k: g.to_bytes() for k, g in maps.items()} == {
             k: g.to_bytes() for k, g in own.items()}
+
+
+def test_the_loader_finds_pools_of_darkness_off_the_players_own_amiga_disks(tmp_path):
+    from automap.area import looks_like_a_map
+    folder = _folder_of(titles.POOLS_OF_DARKNESS, tmp_path, amiga_only=True)
+    maps, game = load_maps_titled(str(folder), amiga_only=True)
+    assert game is titles.POOLS_OF_DARKNESS
+    assert len(maps) == 32
+    assert [k for k, g in maps.items() if not looks_like_a_map(g)] == ["GEO12"]

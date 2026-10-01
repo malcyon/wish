@@ -3,7 +3,7 @@ import os
 import pathlib
 import sys
 
-from goldbox import c64_port
+from goldbox import c64_port, titles
 from goldbox.c64_port import C64Container
 from goldbox.geo import GEO_SIZE, Geo, load_geo_files
 
@@ -17,7 +17,12 @@ def default_disks(game: C64Container | None = None) -> str:
 def load_maps(disks: str | None = None, game: C64Container | None = None) -> dict:
     return load_maps_titled(disks, game)[0]
 
-def load_maps_titled(disks: str | None = None, game: C64Container | None = None) -> tuple[dict, C64Container | None]:
+#: Titles that have Amiga disks and no C64 container.
+AMIGA_ONLY_TITLES = (titles.POOLS_OF_DARKNESS,)
+
+
+def load_maps_titled(disks: str | None = None, game: C64Container | None = None,
+                     amiga_only: bool = False) -> tuple[dict, C64Container | titles.Title | None]:
     if disks is None:
         where, _source = resolve_disks(game=game)
         if where is None:
@@ -28,7 +33,7 @@ def load_maps_titled(disks: str | None = None, game: C64Container | None = None)
         present = titles_in(where)
         game = present[0] if present else None
     if game is None:
-        return _amiga_maps_titled(where, None)
+        return _amiga_maps_titled(where, None, amiga_only)
     paths: dict[str, str] = {}
     for pattern in disk_globs(game):
         for path in glob.glob(os.path.join(str(where), pattern)):
@@ -38,7 +43,7 @@ def load_maps_titled(disks: str | None = None, game: C64Container | None = None)
         for name, geo in load_geo_files(path).items():
             found.setdefault(name, geo)
     if not found:
-        return _amiga_maps_titled(where, game)
+        return _amiga_maps_titled(where, game, amiga_only)
     return found, game
 
 def load_world(disks: str | None, game: C64Container | None):
@@ -73,7 +78,8 @@ def load_world(disks: str | None, game: C64Container | None):
         return None
 
 
-def _volume_title(volume: str) -> C64Container | None:
+def _volume_title(volume: str, amiga_only: bool = False
+                  ) -> C64Container | titles.Title | None:
     """Which title an Amiga disk belongs to, by its volume name.
 
     The disks say it nowhere else: the map library sits under `DISKB` or
@@ -81,6 +87,7 @@ def _volume_title(volume: str) -> C64Container | None:
     is the player's to change. A volume none of these matches is not a title
     the automapper has a sheet for -- Pools of Darkness' `POD 3` also carries a
     `GEO.GLB` -- and is skipped, never handed to whichever title was asked for.
+    Pools of Darkness is named only when `amiga_only` asks for it.
     """
     name = volume.lower()
     if name in ("poolgame", "pooldata"):
@@ -89,6 +96,8 @@ def _volume_title(volume: str) -> C64Container | None:
         return c64_port.CURSE_OF_THE_AZURE_BONDS
     if name.startswith("secret"):
         return c64_port.SECRET_OF_THE_SILVER_BLADES
+    if amiga_only and name.startswith(("pod ", "pools of darkness")):
+        return titles.POOLS_OF_DARKNESS
     return None
 
 
@@ -108,8 +117,9 @@ def _dax_maps(disk) -> dict[str, Geo]:
     return {}
 
 
-def _amiga_maps_titled(where, game: C64Container | None
-                       ) -> tuple[dict, C64Container | None]:
+def _amiga_maps_titled(where, game: C64Container | titles.Title | None,
+                       amiga_only: bool = False
+                       ) -> tuple[dict, C64Container | titles.Title | None]:
     """The maps off the Amiga disk images in a folder, and whose they are.
 
     Tried only once the C64 loader has found nothing, and `disk_globs` is not
@@ -133,15 +143,16 @@ def _amiga_maps_titled(where, game: C64Container | None
     for image in images:
         try:
             disk = AmigaDisk.open(image)
-            title = _volume_title(disk.volume_name)
-            if title is None or (game is not None and title is not game):
+            title = _volume_title(disk.volume_name, amiga_only)
+            if title is None or (game is not None and title.key != game.key):
                 continue
             maps = amiga.load_maps(image) or _dax_maps(disk)
         except Exception:                       # not a disk, or not readable
             continue
         for name, geo in maps.items():
             by_title.setdefault(title.key, {}).setdefault(name, geo)
-    for title in ([game] if game is not None else c64_port.GAMES):
+    for title in ([game] if game is not None else
+                  c64_port.GAMES + (AMIGA_ONLY_TITLES if amiga_only else ())):
         if by_title.get(title.key):
             return by_title[title.key], title
     return {}, game

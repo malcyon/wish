@@ -408,7 +408,7 @@ class NotAC64(MemoryTarget):
     c64_memory = False
 
 
-def window_on(target):
+def window_on(target, title=POOL):
     from PyQt6.QtWidgets import QApplication, QMainWindow
     QApplication.instance() or QApplication([])
 
@@ -417,7 +417,7 @@ def window_on(target):
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
     maps = {"GEO00": walled_geo()}
-    return AutomapBinding(root, Automapper(target, maps, title=POOL))
+    return AutomapBinding(root, Automapper(target, maps, title=title))
 
 
 def machine(cls):
@@ -477,6 +477,28 @@ def test_an_amiga_is_never_read_for_a_fight(notes_elsewhere, monkeypatch):
     window = window_on(machine(NotAC64))
     assert window.poll_battle() is False
     assert window.battle is None
+
+
+def test_a_title_with_no_c64_version_is_never_handed_c64_addresses(
+        notes_elsewhere, monkeypatch):
+    """Pools of Darkness has no C64 descriptor, and a C64-memory target would
+    otherwise get Pool of Radiance's addresses for the bars, roster and fights."""
+    from automap import combat
+
+    def forbidden(*_a, **_k):
+        raise AssertionError("Pool of Radiance's addresses were read")
+
+    monkeypatch.setattr(live, "read_blocks", forbidden)
+    monkeypatch.setattr(combat, "read_battle", forbidden)
+    window = ticked(window_on(machine(MemoryTarget), "Pools of Darkness"))
+
+    assert window.mapper.title_check is OURS
+    assert window.fasttravel_bar.target is None
+    assert window.actions_bar.target is None
+    assert not any(button.isEnabled()
+                   for button in window.actions_bar.buttons.values())
+    assert window.poll_battle() is False
+    assert window.roster.levelling is False
 
 
 # -- the row, behind WISH_EXPERIMENTAL_AMIGA_FSUAE ----------------------------

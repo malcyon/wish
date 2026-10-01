@@ -1027,6 +1027,10 @@ class AutomapBinding(QObject):
             return
         self.fog_box.setVisible(self._controls_shown and not world)
 
+    def _c64_title(self) -> bool:
+        """Does the window's title have a C64 version whose addresses are known?"""
+        return self.state.title is None or game_named(self.state.title) is not None
+
     def _apply_title(self) -> None:
         """Tell the per-title controls which game this is.
 
@@ -1041,7 +1045,8 @@ class AutomapBinding(QObject):
         self.mapper.game = game
         self.fasttravel_bar.set_title(self.state.title, game)
         self.actions_bar.set_game(game)
-        self.roster.set_levelling(not actions.level_up_blockers(game=game))
+        self.roster.set_levelling(
+            self._c64_title() and not actions.level_up_blockers(game=game))
 
     def _check_the_game(self) -> None:
         """The machine is not running the title the window is set up for.
@@ -1137,7 +1142,8 @@ class AutomapBinding(QObject):
         all during a fight: the party is not moving through the world, and its
         explored squares sit untouched until the fight ends.
         """
-        if not getattr(self.mapper.target, "c64_memory", True):
+        if (not getattr(self.mapper.target, "c64_memory", True)
+                or not self._c64_title()):
             # `$6E11` and the text screen are C64 addresses; on another
             # machine they are somebody else's bytes and a fight would be
             # drawn from coincidence.
@@ -1263,7 +1269,8 @@ class AutomapBinding(QObject):
         straight after a write that changes what a card shows."""
         target = self.mapper.target
         if (self.mapper.title_check is NOT_OURS
-                or not getattr(target, "c64_memory", True)):
+                or not getattr(target, "c64_memory", True)
+                or not self._c64_title()):
             # The machine is running a different game, or is not a C64 at
             # all, so every address below and in every button underneath it is
             # the wrong one (#21).
