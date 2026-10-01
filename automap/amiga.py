@@ -155,6 +155,12 @@ class AmigaMachine:
     #: A **pointer**, not the map: the 32-bit address of the resident 1024-byte
     #: `GEO` block, which the engine's own two indexing routines dereference.
     geo_pointer: int
+    #: Pools of Darkness only: the data-hunk offset of a pointer to the record
+    #: whose byte at `overland_flag` is 1 while the party is on the 38 x 15
+    #: overland, where `party_x`..`party_facing` are not written (the overland
+    #: step routine at `0x2C9BA` keeps its cell at +0x25/+0x26 instead).
+    overland_pointer: int | None = None
+    overland_flag: int = 0x24
     #: Anything else measured for this title, so a finding has somewhere to
     #: land that is not a new field nobody else uses.
     notes: dict[str, int] = field(default_factory=dict)
@@ -227,6 +233,7 @@ MACHINES: dict[str, AmigaMachine] = {
         party_facing=0x5F22,
         width=1,
         geo_pointer=0x7D7C,
+        overland_pointer=0x57AC,
         notes={"wall_ahead": 0x5F23, "square_attribute": 0x5F24,
                "mode": 0x5B12, "previous_mode": 0x743C,
                "dungeon_map": 0x5F2C},
@@ -2031,7 +2038,14 @@ class AmigaTarget:
         to come from the status line, which no fix from this backend ever
         does. `#37 (Automap the Amiga version, not just the C64)` has the
         measurement.
+
+        **A title with an `overland_pointer` costs two more reads a poll**
+        (the pointer, then the flag), about a frame each over `FsuaeGdb`. While
+        the flag is set the party is on the overland, where the square bytes
+        keep the last indoor square, so the answer is a world-map fix.
         """
+        if self._on_overland():
+            return Fix(0, 0, None, "memory", None, world_map=True)
         span = self.layout.width
         lo = min(self.layout.party_x, self.layout.party_y,
                  self.layout.party_facing)
@@ -2055,6 +2069,18 @@ class AmigaTarget:
             _log.debug("square %d,%d is off the 16x16 grid", x, y)
             return None
         return Fix(x, y, doubled // 2, "memory")
+
+    def _on_overland(self) -> bool:
+        """True when the title's overland flag is 1; a bad pointer is False."""
+        if self.layout.overland_pointer is None:
+            return False
+        addr = int.from_bytes(
+            self.read(self._at(self.layout.overland_pointer), 4), "big")
+        flag_at = addr + self.layout.overland_flag
+        if addr == 0 or not any(base <= flag_at < base + length
+                                for base, length in MEMORY):
+            return False
+        return self.read(flag_at, 1)[0] == 1
 
     def resident_geo_address(self) -> int | None:
         """Where the 1024-byte `GEO` block the game is drawing lives.
