@@ -82,6 +82,16 @@ relationship to the original issue.
 sentence with a lowercase quotation. Donald approves interface text, which
 carries no memory address or offset; read `gui-text.md` before proposing it.
 
+## Before you put a decision to Donald
+
+**Find out where a player meets it, then ask.** Trace the code path from the
+player's action to the thing being decided, and state: where in the app they
+are, what they were doing, what they see, and how a player gets into that
+state. If you cannot say how a player reaches it, find out before asking; "no
+player can reach this" is an answer, and a guess is not. Present one decision
+at a time, in conversation, with the options framed by what the player would
+see. A decision presented without this has not been presented.
+
 ## Caveman lite is the default, in every session
 
 Use **`/caveman lite`** from the start of each session until Donald says
