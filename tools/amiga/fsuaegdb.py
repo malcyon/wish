@@ -1641,6 +1641,20 @@ def alive(pid: int) -> bool:
     return state.split()[0] != "Z"
 
 
+def is_fsuae(pid: int) -> bool:
+    """Is `pid` the `fs-uae` binary this driver starts, by `/proc/<pid>/cmdline`?
+
+    False where that file cannot be read (Windows, macOS), so a pid that leads
+    no group is never signalled on a platform that cannot vouch for it.
+    """
+    try:
+        raw = pathlib.Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return False
+    argv0 = raw.split(b"\0")[0].decode("latin-1")
+    return os.path.basename(argv0).startswith("fs-uae")
+
+
 def stop(args) -> int:
     """Kill one process group, by pid, which is the only sanctioned way.
 
@@ -1658,9 +1672,16 @@ def stop(args) -> int:
         except ProcessLookupError:
             # A `launch --foreground` emulator lives in its caller's group and
             # leads none; ending the process itself is what ends the run.
+            if not alive(pid):
+                print(f"{pid} is not running")
+                continue
+            if not is_fsuae(pid):
+                print(f"{pid} leads no process group and its command line is "
+                      "not an FS-UAE launch (or cannot be read here), so "
+                      "nothing was signalled")
+                status = 1
+                continue
             try:
-                if not alive(pid):
-                    raise ProcessLookupError
                 os.kill(pid, signal.SIGTERM)
             except ProcessLookupError:
                 print(f"{pid} is not running")
