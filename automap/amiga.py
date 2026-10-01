@@ -175,9 +175,11 @@ class AmigaMachine:
     both off the player's own disk, so a different release with the string
     somewhere else is caught rather than silently misread.
 
-    `width` is 1 where the title stores x, y and facing as bytes and 2 where it
-    stores them as `u16be`. Curse does the second and Silver Blades the first,
-    which is why this is a field and not an assumption.
+    `width` is the size of x and y: 1 where the title stores them as bytes and
+    2 where it stores them as `u16be`. Curse does the second and Silver Blades
+    the first, which is why this is a field and not an assumption. The facing is
+    one byte on every title, and the byte after it is the wall type ahead
+    (`notes["wall_ahead"]`), so it is never read at `width`.
     """
 
     title: str
@@ -2221,16 +2223,19 @@ class AmigaTarget:
         span = self.layout.width
         lo = min(self.layout.party_x, self.layout.party_y,
                  self.layout.party_facing)
-        hi = max(self.layout.party_x, self.layout.party_y,
-                 self.layout.party_facing) + span
+        hi = max(self.layout.party_x + span, self.layout.party_y + span,
+                 self.layout.party_facing + 1)
         blob = self.read(self._at(lo), hi - lo)
 
-        def at(offset: int) -> int:
+        def at(offset: int, size: int) -> int:
             start = offset - lo
-            return int.from_bytes(blob[start:start + span], "big")
+            return int.from_bytes(blob[start:start + size], "big")
 
-        x, y, doubled = (at(self.layout.party_x), at(self.layout.party_y),
-                         at(self.layout.party_facing))
+        # The facing is a byte on every title, and the byte after it is the
+        # wall type ahead, so a word-wide read would fold that in.
+        x, y, doubled = (at(self.layout.party_x, span),
+                         at(self.layout.party_y, span),
+                         at(self.layout.party_facing, 1))
         # The engine stores the facing **doubled** -- 0 north, 2 east, 4 south,
         # 6 west -- because its own jump table indexes on it (`docs/165`). The
         # automapper's `Fix` is 0-3, the same order.

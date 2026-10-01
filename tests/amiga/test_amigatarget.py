@@ -163,14 +163,13 @@ def test_reading_before_the_base_is_measured_says_which_call_is_missing():
 # -- what the automapper asks for ---------------------------------------------
 
 
-def square(x, y, doubled, layout=SSB):
-    """The three bytes the engine holds, laid out as that title stores them."""
+def square(x, y, doubled, layout=SSB, wall=0):
+    """The bytes the engine holds: x and y at the title's width, the facing as
+    one byte, and the wall type ahead in the byte after it."""
     w = layout.width
-    out = {}
-    for offset, value in ((layout.party_x, x), (layout.party_y, y),
-                          (layout.party_facing, doubled)):
-        out[BASE + offset] = value.to_bytes(w, "big")
-    return out
+    return {BASE + layout.party_x: x.to_bytes(w, "big"),
+            BASE + layout.party_y: y.to_bytes(w, "big"),
+            BASE + layout.party_facing: bytes([doubled, wall])}
 
 
 @pytest.mark.parametrize("doubled,facing", [(0, 0), (2, 1), (4, 2), (6, 3)])
@@ -180,12 +179,16 @@ def test_the_facing_is_halved_because_the_engine_stores_it_doubled(doubled,
     assert t.fix() == Fix(5, 9, facing, "memory")
 
 
-def test_curse_reads_the_same_fields_as_two_byte_words():
-    """Curse stores x, y and facing as `u16be` and Silver Blades as bytes, so
-    a width read from the wrong title's table gives a plausible wrong square
-    rather than an error."""
-    t, _ = target(square(5, 9, 6, layout=CURSE), layout=CURSE)
-    assert t.fix() == Fix(5, 9, 3, "memory")
+@pytest.mark.parametrize("doubled,wall,facing", [
+    (2, 0, 1), (4, 0, 2), (6, 3, 3), (0, 12, 0), (0, 2, 0)])
+def test_curse_reads_its_facing_as_one_byte_before_the_wall_type(doubled, wall,
+                                                                 facing):
+    """Curse stores x and y as `u16be` but the facing as a byte, and the byte
+    after it is the wall type ahead. A word read there gives
+    `facing * 256 + wall`, which is no fix at all facing east, and the wrong
+    facing at an even wall type."""
+    t, _ = target(square(5, 9, doubled, layout=CURSE, wall=wall), layout=CURSE)
+    assert t.fix() == Fix(5, 9, facing, "memory")
 
 
 def test_a_square_off_the_grid_is_no_fix_at_all():
@@ -452,11 +455,11 @@ def test_no_map_is_resident_before_an_area_has_loaded():
 # -- the shipped automapper, over this backend --------------------------------
 
 
-def _mapper(t, name="GEO10", block=None):
+def _mapper(t, name="GEO10", block=None, title="Secret of the Silver Blades"):
     from automap.state import Automapper
     from goldbox.geo import Geo
     maps = {name: Geo(_map_block() if block is None else block)}
-    return Automapper(t, maps, title="Secret of the Silver Blades")
+    return Automapper(t, maps, title=title)
 
 
 def test_the_shipped_automapper_names_the_area_and_records_the_square():
@@ -471,6 +474,18 @@ def test_the_shipped_automapper_names_the_area_and_records_the_square():
     assert mapper.state.facing == 1 and mapper.state.source == "memory"
     assert mapper.title_check is OURS
     assert mapper.state.exploration.seen, "the party's own square is explored"
+
+
+def test_a_fresh_curse_mapper_names_the_area_facing_a_wall():
+    """A window opened with the party at a wall has no earlier fix to fall
+    back on: the wall byte after the facing must not hide the position."""
+    from automap.area import OURS
+    t, _ = _resident(layout=CURSE,
+                     extra=square(3, 11, 0, layout=CURSE, wall=12))
+    mapper = _mapper(t, title="Curse of the Azure Bonds")
+    assert mapper.poll() is True
+    assert mapper.title_check is OURS
+    assert (mapper.state.x, mapper.state.y, mapper.state.facing) == (3, 11, 0)
 
 
 def test_the_marker_follows_a_step_and_the_explored_set_grows():

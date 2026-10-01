@@ -1104,7 +1104,7 @@ load address is measured at run time because AmigaDOS relocates on every
 
 | | Silver Blades | Curse | width |
 |---|---|---|---|
-| x, y, facing | `g57a0`, `g57a1`, `g57a2` | `g3f5e`, `g3f60`, `g3f62` | 1 byte / `u16be` |
+| x, y, facing | `g57a0`, `g57a1`, `g57a2` | `g3f5e`, `g3f60`, `g3f62` | x, y: 1 byte / `u16be`; facing: 1 byte on both |
 | the wall type ahead, the square's attribute | `g57a3`, `g57a4` | `g3f63`, `g3f64` | |
 | **a pointer to the resident 1024-byte `GEO` block** | `g7bf8` | `g5eb6` | `u32` |
 
