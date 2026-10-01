@@ -310,9 +310,10 @@ def leave_items(sess: S.Session, log: Log) -> None:
         s = sess.screen()
         if s is None:
             break
-        rows = [r for r in ITEM_ROWS if s.row(r)[1:].strip()]
+        # Rows are drawn inside a `$` border, so compare the text between.
+        rows = [r for r in ITEM_ROWS if s.row(r)[1:39].strip()]
         at = item_highlight(s, rows)
-        exit_row = next((r for r in rows if s.row(r).strip() == "EXIT"), None)
+        exit_row = next((r for r in rows if s.row(r)[1:39].strip() == "EXIT"), None)
         if at is None or exit_row is None:
             break
         if at == exit_row:

@@ -12371,8 +12371,10 @@ class _ItemRowsFake(FakeSession):
 
 
 def _ready_row(tmp_path, monkeypatch, arg, answer="readied", rows=None,
-               colours=(1, 5), press=None):
+               colours=(1, 5), press=None, out=None):
     sess = _ItemRowsFake(answer, rows, *colours)
+    if out is not None:
+        out.append(sess)
     opened = []
     monkeypatch.setattr(A.route_pool, "open_items",
                         lambda s, log, name, label, tag: opened.append(
@@ -12525,9 +12527,11 @@ def test_ready_row_leaves_the_list_when_a_key_fails_after_ready(tmp_path, monkey
     def broken(sess):
         raise A.StepFailed("select failed")
 
+    made = []
     with pytest.raises(A.StepFailed, match="select failed"):
-        _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#3", press=broken)
-    # The fake's leave_items moves it to the world: the list is not left up.
+        _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#3", press=broken,
+                   out=made)
+    assert made[0].state == "world"  # leave_items ran: the list is not left up
 
 
 def test_ready_row_leaves_the_list_when_the_row_has_gone(tmp_path, monkeypatch):
@@ -12539,3 +12543,48 @@ def test_an_item_name_with_a_refusals_words_is_not_a_refusal(tmp_path, monkeypat
     rows = {**_ItemRowsFake.ROWS, 6: " NO  WRONG CLASS RING"}
     got, _, _ = _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#3", rows=rows)
     assert got["outcome"] == "readied" and got["message"] is None
+
+
+class _LeaveFake(_ItemRowsFake):
+    """The list with the cursor on its first row; Return on the bordered
+    `EXIT` row goes back to the sheet bar, as the game's own EXIT does."""
+
+    def __init__(self):
+        super().__init__("readied", dict(TWO_ROWS))
+        self.state = "cursor"
+        self.screens.update({"sheet": _window({}, "VIEW:ITEMS SPELLS TRADE DROP EXIT"),
+                             "world": _window({}, WORLD_BAR)})
+        self.moves.update({("sheet", ("bar", "EXIT")): "sheet-exit",
+                           ("sheet-exit", ("leave",)): "world",
+                           ("world", ("bar", "EXIT")): "left"})
+        self.screens["sheet-exit"] = self.screens["sheet"]
+        self.screens["left"] = self.screens["world"]
+
+    def _go(self, what):
+        if self.state == "cursor" and what == ("key", A.route_pool.SELECT["key"]):
+            assert self.hot == 7, "Return pressed on a row that is not EXIT"
+            self.sent.append(what)
+            self.state = "sheet"
+            return True
+        return super()._go(what)
+
+    def screen(self):
+        if self.state == "cursor":
+            return _RowColourScreen(_window(self.ROWS, "READY TRADE DROP EXIT"),
+                                    self.hot, *self.colour)
+        return super().screen()
+
+
+def test_leave_items_finds_the_bordered_exit_row_and_selects_it(tmp_path, monkeypatch):
+    """Real rows draw as `$ EXIT   $`; the cursor must be walked onto EXIT
+    and Return pressed there, not skipped because the border is in the text."""
+    sess = _LeaveFake()
+    monkeypatch.setattr(A.time, "sleep", lambda s: None)
+    log = A.Log(tmp_path)
+    try:
+        A.route_pool.leave_items(sess, log)
+    finally:
+        log.close()
+    assert sess.sent[:3] == [("key", "Down"), ("key", "Down"),
+                             ("key", A.route_pool.SELECT["key"])]
+    assert sess.state == "left"
