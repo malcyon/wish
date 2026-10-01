@@ -971,7 +971,7 @@ def test_the_menu_says_which_are_answering_and_which_are_unverified(
     monkeypatch.setattr(backends, "VICE",
                         dataclasses.replace(backends.VICE, probe=lambda: True))
     win.label_backends()
-    assert win.backend_actions["VICE"].text() == "VICE - answering"
+    assert win.backend_actions["VICE (C64)"].text() == "VICE (C64) - answering"
     for backend in backends.backends():
         if not backend.verified:
             assert "unverified" in win.backend_actions[backend.name].text()
@@ -983,13 +983,42 @@ def test_choosing_a_backend_is_remembered_and_acted_on(app, tmp_path,
                                                        monkeypatch):
     from automap.config import Settings
     win = wish_window(app, tmp_path, monkeypatch)
-    win._prefer_backend("Ultimate")
-    assert win.settings.backend == "Ultimate"
-    assert Settings.load().backend == "Ultimate"
-    assert win.session._preferred == "Ultimate"
+    win._prefer_backend("C64 Ultimate")
+    assert win.settings.backend == "C64 Ultimate"
+    assert Settings.load().backend == "C64 Ultimate"
+    assert win.session._preferred == "C64 Ultimate"
     win._prefer_backend("")
     assert Settings.load().backend == ""
     assert win.session._preferred is None
+
+
+@pytest.mark.parametrize("old, now", [("VICE", "VICE (C64)"),
+                                      ("Ultimate", "C64 Ultimate")])
+def test_a_backend_saved_under_its_old_name_is_still_the_chosen_one(
+        app, tmp_path, monkeypatch, old, now):
+    """Settings written before the rows were renamed hold the old name; the
+    radio for the new name must come up checked, the session must prefer it,
+    and the old spelling must not reach the file again."""
+    from automap.config import Settings
+    from wish import backends
+    from wish.session import Session
+    from wish.window import WishWindow
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    monkeypatch.setenv(backends.ULTIMATE_ENV, "1")
+    settings = Settings()
+    settings.backend = old
+    settings.save()
+    loaded = Settings.load()
+    assert loaded.backend == old
+    session = Session(preferred=loaded.backend, find=lambda pref=None: None)
+    assert session._preferred == now
+    win = WishWindow(maps={}, settings=loaded, session=session)
+    assert win.backend_actions[now].isChecked()
+    assert not win.backend_actions[""].isChecked()
+    assert win.settings.backend == now
+    win._prefer_backend(win.settings.backend)
+    assert Settings.load().backend == now
 
 
 def test_a_different_backend_drops_the_connection_so_the_next_poll_reattaches(
@@ -998,7 +1027,7 @@ def test_a_different_backend_drops_the_connection_so_the_next_poll_reattaches(
     win = wish_window(app, tmp_path, monkeypatch)
     win.session.target = object()
     win.session.backend = backends.VICE
-    win._prefer_backend("Ultimate")
+    win._prefer_backend("C64 Ultimate")
     assert win.session.target is None
 
 

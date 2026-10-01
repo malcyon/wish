@@ -22,51 +22,54 @@ def fresh():
     winuae.reset()
 
 
-@pytest.fixture
-def stand_in(monkeypatch):
-    """A row for the flag to offer: the real one waits for approved wording."""
-    row = bk.Backend(name="Test row", probe=winuae.present,
-                     connect=winuae.connect, setup_hint="test")
-    monkeypatch.setattr(winuae, "AMIGA_WINUAE", row, raising=False)
-    return row
-
-
 # -- the flag ------------------------------------------------------------------
 
-def test_the_winuae_row_is_absent_by_default(monkeypatch, stand_in):
+def test_the_winuae_row_is_absent_by_default(monkeypatch):
     monkeypatch.delenv(bk.AMIGA_WINUAE_ENV, raising=False)
     assert bk.amiga_winuae_enabled() is False
-    assert [b.name for b in bk.backends()] == ["VICE"]
+    assert [b.name for b in bk.backends()] == ["VICE (C64)"]
 
 
 @pytest.mark.parametrize("value", ["0", "off", "false", "no", "", "junk"])
 def test_a_forgotten_setting_does_not_turn_the_winuae_row_on(
-        monkeypatch, stand_in, value):
+        monkeypatch, value):
     monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, value)
     assert bk.amiga_winuae_enabled() is False
-    assert [b.name for b in bk.backends()] == ["VICE"]
+    assert [b.name for b in bk.backends()] == ["VICE (C64)"]
 
 
 @pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
 def test_the_winuae_row_appears_when_the_flag_is_set(
-        monkeypatch, stand_in, value):
+        monkeypatch, value):
     monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, value)
-    assert bk.backends()[-1] is stand_in
+    assert winuae.AMIGA_WINUAE in bk.backends()
 
 
-def test_the_flag_alone_offers_nothing_until_the_row_exists(monkeypatch):
-    monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, "1")
-    monkeypatch.delattr(winuae, "AMIGA_WINUAE", raising=False)
-    assert [b.name for b in bk.backends()] == ["VICE"]
+def test_the_winuae_row_is_the_approved_one():
+    row = winuae.AMIGA_WINUAE
+    assert row.name == "WinUAE (Amiga)"
+    assert row.setup_hint == "Run the game in WinUAE on this computer."
+    assert row.probe is winuae.present
+    assert row.connect is winuae.connect
+    assert row.default_interval_ms == 200
+    assert row.disturbs is False
 
 
-def test_the_two_amiga_flags_are_independent(monkeypatch, stand_in):
+def test_the_two_amiga_flags_are_independent(monkeypatch):
     monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
     monkeypatch.delenv(bk.AMIGA_WINUAE_ENV, raising=False)
-    assert stand_in not in bk.backends()
+    assert winuae.AMIGA_WINUAE not in bk.backends()
     monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, "1")
-    assert [b.name for b in bk.backends()] == ["VICE", "Amiga (FS-UAE)",
-                                               "Test row"]
+    assert [b.name for b in bk.backends()] == ["VICE (C64)", "WinUAE (Amiga)",
+                                               "FS-UAE (Amiga)"]
+
+
+def test_the_emulators_come_first_named_for_their_machine_then_the_hardware(
+        monkeypatch):
+    for env in (bk.AMIGA_FSUAE_ENV, bk.AMIGA_WINUAE_ENV, bk.ULTIMATE_ENV):
+        monkeypatch.setenv(env, "1")
+    assert [b.name for b in bk.backends()] == [
+        "VICE (C64)", "C64 Ultimate", "WinUAE (Amiga)", "FS-UAE (Amiga)"]
 
 
 def test_the_pools_of_darkness_folder_is_offered_with_only_the_winuae_flag(

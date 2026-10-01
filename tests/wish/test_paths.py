@@ -235,7 +235,7 @@ def a_session(backend):
 
 
 def test_prefer_drops_a_different_backend_so_the_next_poll_reattaches():
-    vice = FakeBackend("VICE")
+    vice = FakeBackend("VICE (C64)")
     s = a_session(vice)
     assert s.target is vice
     s.prefer("Ultimate 64")
@@ -244,14 +244,22 @@ def test_prefer_drops_a_different_backend_so_the_next_poll_reattaches():
 
 
 def test_prefer_keeps_the_backend_it_is_already_on():
-    vice = FakeBackend("VICE")
+    vice = FakeBackend("VICE (C64)")
     s = a_session(vice)
-    s.prefer("vice")                     # the menu's spelling, not the class's
+    s.prefer("vice (c64)")               # the menu's spelling, not the class's
+    assert s.target is vice and not vice.closed
+
+
+def test_prefer_keeps_the_backend_when_given_its_name_before_the_rename():
+    vice = FakeBackend("VICE (C64)")
+    s = a_session(vice)
+    s.prefer("VICE")
+    assert s._preferred == "VICE (C64)"
     assert s.target is vice and not vice.closed
 
 
 def test_preferring_nothing_in_particular_disturbs_nothing():
-    vice = FakeBackend("VICE")
+    vice = FakeBackend("VICE (C64)")
     s = a_session(vice)
     s.prefer("")
     assert s._preferred is None

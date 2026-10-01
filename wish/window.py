@@ -322,6 +322,9 @@ class WishWindow(QMainWindow):
         #: name -> (state, verified), filled by `label_backends`. The dialog
         #: draws the state as a badge, so it needs it apart from the label.
         self.backend_status: dict[str, tuple[str, bool]] = {}
+        # A name saved under an older label for a backend keeps choosing it.
+        # Rewritten in memory only; the next preference change saves it.
+        self.settings.backend = backends.current_name(self.settings.backend)
         rows = [(ANY_BACKEND, "&Whichever answers", "")]
         rows += [(b.name, b.name, b.setup_hint) for b in backends.backends()]
         for name, text, hint in rows:

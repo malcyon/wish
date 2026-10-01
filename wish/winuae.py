@@ -7,9 +7,8 @@ its handle only while a target is attached: the target it returns releases the
 pipe when the window detaches, and a failed connect releases it too. The cached
 title and sweep time survive that, because the next read opens the pipe again.
 
-The `Backend` row that offers this to a player is not defined here: its name and
-setup hint are interface text and wait for Donald's wording. `wish.backends`
-offers it once `AMIGA_WINUAE` exists, behind `WISH_EXPERIMENTAL_AMIGA_WINUAE`.
+`AMIGA_WINUAE` is the row `wish.backends` offers behind
+`WISH_EXPERIMENTAL_AMIGA_WINUAE`.
 """
 
 from __future__ import annotations
@@ -17,6 +16,7 @@ from __future__ import annotations
 from automap import amiga, winuae
 
 from .amigalocate import Locator
+from .backends import Backend
 
 _transport: winuae.WinuaeLocalPipe | None = None
 _locator = Locator()
@@ -72,3 +72,22 @@ def connect(pipes=winuae.winuae_pipes, factory=winuae.WinuaeLocalPipe,
     except Exception:
         _transport.close()
         raise
+
+
+#: The row `wish.backends._amiga_winuae()` offers behind its flag. The probe
+#: lists the pipe directory and never opens the pipe, and a read is one debugger
+#: command run between two emulated instructions (`WinuaeLocalPipe.halts_machine`
+#: is False), hence `disturbs` False and the same 200 ms as VICE and FS-UAE.
+#: `verified` is True because WinUAE's reads were confirmed on a live emulator
+#: (`#37 (Automap the Amiga version, not just the C64)`); the Python pipe client
+#: itself has still to be run against a real WinUAE, which is what the
+#: experimental flag is for.
+AMIGA_WINUAE = Backend(
+    name="WinUAE (Amiga)",
+    probe=present,
+    connect=connect,
+    setup_hint="Run the game in WinUAE on this computer.",
+    default_interval_ms=200,
+    disturbs=False,
+    verified=True,
+)

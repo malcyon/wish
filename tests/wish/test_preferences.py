@@ -903,11 +903,11 @@ def test_the_backend_radios_are_the_menu_s_actions_and_still_act(
     win = window(app)
     dialog = PreferencesDialog(win)
     assert set(dialog.radios) == set(win.backend_actions)
-    dialog.radios["Ultimate"].click()
-    assert win.settings.backend == "Ultimate"
-    assert Settings.load().backend == "Ultimate"
-    assert win.session._preferred == "Ultimate"
-    assert win.backend_actions["Ultimate"].isChecked()
+    dialog.radios["C64 Ultimate"].click()
+    assert win.settings.backend == "C64 Ultimate"
+    assert Settings.load().backend == "C64 Ultimate"
+    assert win.session._preferred == "C64 Ultimate"
+    assert win.backend_actions["C64 Ultimate"].isChecked()
 
 
 def test_an_unverified_backend_still_says_so_in_the_dialog(app, tmp_path,
@@ -929,10 +929,10 @@ def test_an_unverified_backend_still_says_so_in_the_dialog(app, tmp_path,
     dialog = PreferencesDialog(win)
     dialog.refresh()
     # In the badges beside the label now, not run into the label itself.
-    assert dialog.radios["Ultimate"].text() == "Ultimate"
-    assert dialog.badges["Ultimate"].text() == "not answering"
-    assert dialog.unverified["Ultimate"].isVisibleTo(dialog)
-    assert dialog.unverified["VICE"].isVisibleTo(dialog) is False
+    assert dialog.radios["C64 Ultimate"].text() == "C64 Ultimate"
+    assert dialog.badges["C64 Ultimate"].text() == "not answering"
+    assert dialog.unverified["C64 Ultimate"].isVisibleTo(dialog)
+    assert dialog.unverified["VICE (C64)"].isVisibleTo(dialog) is False
 
 
 def test_the_confirmed_ultimate_carries_no_unverified_badge(app, tmp_path,
@@ -948,7 +948,7 @@ def test_the_confirmed_ultimate_carries_no_unverified_badge(app, tmp_path,
     win = window(app)
     dialog = PreferencesDialog(win)
     dialog.refresh()
-    assert dialog.unverified["Ultimate"].isVisibleTo(dialog) is False
+    assert dialog.unverified["C64 Ultimate"].isVisibleTo(dialog) is False
 
 
 def test_the_view_menu_no_longer_carries_a_backend_submenu(app, tmp_path,

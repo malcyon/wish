@@ -46,7 +46,7 @@ class Session(QObject):
                  find: Callable[..., object] | None = None):
         super().__init__(parent)
         self._find = find or backends.find
-        self._preferred = preferred
+        self._preferred = backends.current_name(preferred) or None
         self._interval_override = interval_ms
         self.target: Target | None = None
         self.backend = None
@@ -133,7 +133,7 @@ class Session(QObject):
         the other one, and waiting for the emulator to go away first would look
         like the menu had done nothing.
         """
-        self._preferred = name or None
+        self._preferred = backends.current_name(name) or None
         if (self._preferred and self.target is not None
                 and self.backend is not None
                 and self.backend.name.lower() != self._preferred.lower()):
