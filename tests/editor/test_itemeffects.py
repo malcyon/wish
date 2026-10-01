@@ -3,6 +3,7 @@
 import pytest
 
 from goldbox import spells
+from goldbox.dos_codec import C64_SCROLL_TYPES
 from goldbox.items import Item, load_item_names, load_item_templates
 from goldbox.spells import describe, load_spell_names
 
@@ -192,3 +193,35 @@ def test_a_curse_scroll_spell_byte_57_keeps_its_text(app):
     row = _synthetic(CURSE, scroll, effect=57, types=types)["Spells"]
     assert row.startswith("effect 57 ")
     assert "Potion of Speed" not in row
+
+
+# --- a scroll's tooltip leaves off charges, effect and power -----------------
+
+def _scroll_tip(key, type_index):
+    from editor.inventory import InventoryModel
+    raw = bytearray(16)
+    raw[0] = type_index
+    raw[13], raw[14], raw[15] = 47, 33, 34
+    model = InventoryModel()
+    model.set_spells(spells.BY_KEY[key])
+    return model._tooltip(0, Item(bytes(raw)))
+
+
+@pytest.mark.parametrize("key", sorted(C64_SCROLL_TYPES))
+def test_a_scrolls_tooltip_has_no_charges_effect_or_power(app, key):
+    for type_index in C64_SCROLL_TYPES[key]:
+        tip = _scroll_tip(key, type_index)
+        assert "charges" not in tip
+        assert "effect" not in tip
+        assert "power" not in tip
+
+
+def test_a_wand_tooltip_keeps_its_charges_and_power(app):
+    from editor.inventory import InventoryModel
+    raw = bytearray(16)
+    raw[0] = 0x10
+    raw[13], raw[14], raw[15] = 5, 47, 0x22
+    model = InventoryModel()
+    model.set_spells(spells.BY_KEY[CURSE])
+    tip = model._tooltip(0, Item(bytes(raw)))
+    assert "5 charges" in tip and "power 0x22" in tip

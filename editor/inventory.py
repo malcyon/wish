@@ -348,6 +348,9 @@ class InventoryModel(QAbstractTableModel):
             lines.append("cursed: the game refuses to un-ready it")
         if item.saving_throw_bonus:
             lines.append(f"saving throws {item.saving_throw_bonus:+d}")
+        if item.type_index in C64_SCROLL_TYPES.get(self.spells.key, ()):
+            # +13-+15 are spell ids on a scroll, not charges, effect or power.
+            return "\n".join(lines)
         if item.charges:
             lines.append(f"{item.charges} charges")
         effect = item.effect_in(self.spells)
