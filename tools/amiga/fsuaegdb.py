@@ -196,15 +196,26 @@ def probe(args) -> int:
 # -- the shipped automapper ---------------------------------------------------
 
 
-def refuse_shift_letter(key: str) -> None:
-    """ValueError for a single upper-case letter.
+#: Characters xdotool types as Shift plus another key, on a US layout.
+SHIFTED_SYMBOLS = frozenset('!@#$%^&*()_+{}|:"<>?~')
 
-    xdotool sends it as Shift plus the letter, and the Amiga games ignore
-    modifiers and read Left Shift as the key `7`.
+
+def refuse_shift_letter(key: str) -> None:
+    """ValueError for a key that would send Shift; the driver must never send Shift.
+
+    xdotool sends an upper-case letter or a shifted symbol as Shift plus
+    another key, and the Amiga games ignore modifiers and read Left Shift as
+    the key `7`.  A compound keysym such as `alt+Q` is judged by its last part.
     """
-    if len(key) == 1 and key.isalpha() and key.isupper():
+    last = key.rsplit("+", 1)[-1] if len(key) > 1 else key
+    if len(last) != 1:
+        return
+    if last.isalpha() and last.isupper():
         raise ValueError(f"Key {key!r} would send Shift, which the game reads "
-                         f"as 7; use {key.lower()!r}.")
+                         f"as 7; use {key[:-1] + last.lower()!r}.")
+    if last in SHIFTED_SYMBOLS:
+        raise ValueError(f"Key {key!r} would send Shift, which the game reads "
+                         "as 7.")
 
 
 def press(display: str, key: str, settle: float) -> None:
@@ -427,6 +438,10 @@ def expand_sequence(text: str, index: int) -> list[str]:
     for token in text.replace("{index}", str(index)).split():
         key, star, count = token.partition("*")
         keys += [key] * (int(count) if star else 1)
+    for key in keys:
+        # All of them before the first is sent, so a bad key never leaves a
+        # floppy half inserted.
+        refuse_shift_letter(key)
     return keys
 
 
@@ -782,6 +797,17 @@ def session(args) -> int:
     return 0
 
 
+def check_automap_keys(args) -> None:
+    """Reject a `--boot` or `--walk` key that sends Shift, before connecting."""
+    walk = (getattr(args, "walk", "") or "").replace(",", " ").split()
+    try:
+        keys = [key for _, key in schedule(getattr(args, "boot", "") or "")]
+        for key in [*keys, *walk]:
+            refuse_shift_letter(key)
+    except ValueError as exc:
+        raise SystemExit(f"--boot/--walk: {exc}") from exc
+
+
 def check_arguments(args) -> list[tuple[str, int]]:
     """Everything `session` can reject, rejected before it connects.
 
@@ -851,6 +877,7 @@ def held_key(args, key: str) -> None:
     Shares `fsuaepor.keys`, the implementation the `amiga-pod` runs used.  A
     hold of 0 is the old unheld `xdotool key`.
     """
+    refuse_shift_letter(key)
     if not args.hold:
         press(args.display, key, args.settle)
         return
@@ -975,6 +1002,7 @@ def automap(args) -> int:
         # detect before the connection is open, and a wrong guess costs a boot.
         raise SystemExit("automap needs --title: "
                          f"{', '.join(sorted(amiga.MACHINES))}")
+    check_automap_keys(args)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     layout = amiga.MACHINES[args.title]
