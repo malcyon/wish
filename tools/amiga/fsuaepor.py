@@ -415,15 +415,25 @@ def grab(display: str):
     return Image.open(io.BytesIO(png)).convert("RGB")
 
 
+#: What the emulator's window is called.  The patched build renames it to the
+#: second once the game runs, so a search for one name loses the window mid-run;
+#: `xdotool search --name` takes a regular expression, so one search covers both.
+WINDOW_NAME = "FS-UAE|Amiga Emulator"
+
+
+def find_windows(display: str, timeout: float | None = None) -> list[str]:
+    """The emulator's X windows on `display`, whichever name it has now."""
+    return subprocess.run(["xdotool", "search", "--name", WINDOW_NAME],
+                          env=_xenv(display), capture_output=True, text=True,
+                          check=False, timeout=timeout).stdout.split()
+
+
 def window_up(display: str) -> bool:
-    """True when an FS-UAE window exists on the display (`keys` looks the same way)."""
+    """True when an emulator window exists on the display (`keys` looks the same way)."""
     try:
-        found = subprocess.run(["xdotool", "search", "--name", "FS-UAE"],
-                               env=_xenv(display), capture_output=True, text=True,
-                               check=False, timeout=GRAB_TIMEOUT).stdout.split()
+        return bool(find_windows(display, GRAB_TIMEOUT))
     except subprocess.TimeoutExpired:
         return False
-    return bool(found)
 
 
 def title_bar_up(image) -> bool:
@@ -715,12 +725,12 @@ def _xenv(display: str) -> dict[str, str]:
 
 
 def keys(args) -> int:
-    """Each key in turn to the FS-UAE window, focused first (SDL needs it)."""
+    """Each key in turn to the emulator's window, focused first (SDL needs it)."""
     env = _xenv(args.display)
-    found = subprocess.run(["xdotool", "search", "--name", "FS-UAE"], env=env,
-                           capture_output=True, text=True, check=False).stdout.split()
+    found = find_windows(args.display)
     if not found:
-        raise SystemExit(f"no FS-UAE window on {args.display}")
+        raise SystemExit(f"no emulator window (named {WINDOW_NAME!r}) on "
+                         f"{args.display}")
     for key in args.key:
         subprocess.run(["xdotool", "windowfocus", found[0]], env=env, check=False)
         subprocess.run(["xdotool", "keydown", key], env=env, check=True)

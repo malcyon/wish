@@ -23,6 +23,7 @@ Amiga game run on one machine?)`.
 from __future__ import annotations
 
 import pathlib
+import re
 import socket
 
 import pytest
@@ -720,6 +721,46 @@ def test_foreground_waits_stays_in_the_callers_group_and_takes_xvfb_down(
     assert emulator.done and xvfb.done and xvfb.signals    # nothing left behind
 
 
+def test_foreground_signals_both_when_the_emulator_wait_raises(tmp_path, procs,
+                                                               monkeypatch):
+    real_wait = FakeProc.wait
+
+    def interrupted(self, timeout=None):
+        if timeout is None:
+            raise KeyboardInterrupt
+        return real_wait(self, timeout)
+
+    monkeypatch.setattr(FakeProc, "wait", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        fsuaegdb.launch(launch_args(tmp_path, foreground=True))
+    xvfb, emulator = procs
+    assert xvfb.signals and emulator.signals
+
+
+def test_foreground_takes_xvfb_down_when_the_emulator_will_not_start(
+        tmp_path, procs, monkeypatch):
+    def popen(argv, **kw):
+        if argv[0] != "Xvfb":
+            raise OSError("cannot exec")
+        return FakeProc(argv, **kw)
+
+    monkeypatch.setattr(fsuaegdb.subprocess, "Popen", popen)
+    with pytest.raises(OSError):
+        fsuaegdb.launch(launch_args(tmp_path, foreground=True))
+    assert procs[0].signals
+
+
+def test_foreground_takes_xvfb_down_when_interrupted_while_it_settles(
+        tmp_path, procs, monkeypatch):
+    def interrupted(seconds):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(fsuaegdb.time, "sleep", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        fsuaegdb.launch(launch_args(tmp_path, foreground=True))
+    assert procs[0].signals
+
+
 def test_the_joystick_option_appears_only_under_foreground(tmp_path, procs):
     fsuaegdb.launch(launch_args(tmp_path))
     assert "--joystick_port_1=none" not in procs[1].argv
@@ -797,11 +838,47 @@ def test_session_peek_after_locate_returns_the_bytes(driven, tmp_path):
     assert events["peek"]["hex"] == "01220e"
 
 
-def test_session_swap_without_a_sequence_stops_loudly(driven, tmp_path):
-    args = session_args(tmp_path)
-    pathlib.Path(args.commands).write_text("swap 2\nquit\n")
-    with pytest.raises(NotImplementedError, match="#804"):
+@pytest.mark.parametrize("line, event", [
+    ("swap 2", "swap"), ("swap abc", "swap"), ("wait x", "wait"),
+    ("peek +0x10 zz", "peek")])
+def test_a_bad_or_unconfigured_command_is_an_error_row_and_the_session_goes_on(
+        driven, tmp_path, line, event):
+    _, rows = run_session(tmp_path, [line, "wait 0.5"])
+    assert [r["event"] for r in rows if r.get("error")] == [event]
+    assert {"event": "wait", "seconds": 0.5}.items() <= next(
+        r for r in reversed(rows) if r["event"] == "wait").items()
+
+
+def test_swap_without_a_sequence_names_the_missing_option(driven, tmp_path):
+    events, _ = run_session(tmp_path, ["swap 2"])
+    assert "--swap-sequence" in events["swap"]["error"]
+
+
+def test_the_cli_default_swap_sequence_is_the_measured_menu_walk():
+    assert fsuaegdb.expand_sequence(fsuaegdb.DEFAULT_SWAP_SEQUENCE, 2) == [
+        "F12", "Down", "Down", "Down", "Return", "Down", "Down", "Return", "F12"]
+
+
+def test_a_window_that_fails_to_open_still_restores_the_data_dir_and_closes(
+        driven, tmp_path, monkeypatch):
+    from automap import state as mapstate
+
+    was = mapstate._data_dir                            # noqa: SLF001
+    closed = []
+    real_close = fsuaegdb.amiga.FsuaeGdb.close
+    monkeypatch.setattr(fsuaegdb.amiga.FsuaeGdb, "close",
+                        lambda self: (closed.append(1), real_close(self)))
+
+    def refuse(*a, **k):
+        raise SystemExit("no maps")
+
+    monkeypatch.setattr(fsuaegdb, "open_window", refuse)
+    args = session_args(tmp_path, window=True)
+    pathlib.Path(args.commands).write_text("quit\n")
+    with pytest.raises(SystemExit):
         fsuaegdb.session(args)
+    assert mapstate._data_dir is was                    # noqa: SLF001
+    assert closed
 
 
 def test_session_swap_takes_a_screenshot_either_side_and_logs_the_index(
@@ -896,3 +973,40 @@ def test_the_window_loads_maps_the_way_a_players_does(monkeypatch, tmp_path):
     fsuaegdb.open_window("target", str(tmp_path), tmp_path)
     assert asked == [(("target", str(tmp_path), tmp_path),
                       {"amiga_only": True})]
+
+
+# window lookup
+
+
+def test_key_presses_find_the_window_under_either_of_its_names(monkeypatch):
+    from tools.amiga import fsuaepor
+
+    seen = []
+
+    def run(argv, **kw):
+        seen.append(argv)
+        return argparse.Namespace(stdout="42\n")
+
+    monkeypatch.setattr(fsuaepor.subprocess, "run", run)
+    monkeypatch.setattr(fsuaegdb.subprocess, "run", run)
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    monkeypatch.setattr(fsuaepor.time, "sleep", lambda s: None)
+    fsuaegdb.press(":77", "Return", 0)
+    fsuaepor.keys(argparse.Namespace(display=":77", key=["Return"], hold=0,
+                                     settle=0))
+    searches = [a[a.index("--name") + 1] for a in seen if "search" in a]
+    assert len(searches) == 2
+    for pattern in searches:
+        assert re.search(pattern, "Amiga Emulator")
+        assert re.search(pattern, "FS-UAE")
+    assert ["xdotool", "windowfocus", "42"] in seen
+
+
+def test_keys_with_no_emulator_window_say_which_names_were_tried(monkeypatch):
+    from tools.amiga import fsuaepor
+
+    monkeypatch.setattr(fsuaepor.subprocess, "run",
+                        lambda *a, **k: argparse.Namespace(stdout=""))
+    with pytest.raises(SystemExit, match="Amiga Emulator"):
+        fsuaepor.keys(argparse.Namespace(display=":77", key=["x"], hold=0,
+                                         settle=0))

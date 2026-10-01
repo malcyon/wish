@@ -153,10 +153,10 @@ def press(display: str, key: str, settle: float) -> None:
     makes SDL see it.  Proven on 2026-09-08, when `alt+q` sent this way shut
     FS-UAE down cleanly.
     """
+    from tools.amiga import fsuaepor
+
     env = {"DISPLAY": display, "PATH": "/usr/bin:/bin"}
-    found = subprocess.run(["xdotool", "search", "--name", "FS-UAE"],
-                           env=env, capture_output=True, text=True,
-                           check=False).stdout.split()
+    found = fsuaepor.find_windows(display)
     if found:
         subprocess.run(["xdotool", "windowfocus", found[0]], env=env,
                        check=False)
@@ -274,13 +274,21 @@ def expand_sequence(text: str, index: int) -> list[str]:
     return keys
 
 
+#: The F12 menu walk that inserted a swap list image in boot M's hand-driven
+#: run: open the menu, three Down and Return to reach the disk entries, Down to
+#: the media row and Return, then F12 to close it.  `Down*{index}` is right only
+#: while the media row's position equals the swap index; which row is the
+#: right one depends on which disks are already in the drives, so check the
+#: first swap by screenshot and pass `--swap-sequence` when the count differs.
+DEFAULT_SWAP_SEQUENCE = "F12 Down*3 Return Down*{index} Return F12"
+
+
 def insert_floppy(sequence: str | None, index: int, press_key, wait_still) -> list[str]:
     """Put swap list image `index` into the drive, the one place that does it.
 
     Everything else about a swap -- the screenshots either side, the log lines,
-    the command -- is built around this.  The key sequence is not known: the
-    fork binds no key to a disk change, and the F12 menu walk that does it is
-    still being measured.
+    the command -- is built around this.  The fork binds no key to a disk
+    change, so the keys are an F12 menu walk, `DEFAULT_SWAP_SEQUENCE`.
     """
     if not sequence:
         raise NotImplementedError(
@@ -400,6 +408,7 @@ def session(args) -> int:
     One command a line, appended to `--commands` while this runs:
 
         key <keysym>...     keystrokes into the emulator, each held `--hold` s
+                            (0.12 by default: the game misses a tap)
         shot <name>         a screenshot into the run directory
         still [label]       wait until the screen stops changing
         wait <seconds>      wait
@@ -409,7 +418,8 @@ def session(args) -> int:
                             offset, `*0x57AC+0x24` dereferences the pointer
                             there first.  Read-only; refused before `locate`
         swap <index>        put swap list image <index> in the drive, by the
-                            keys of `--swap-sequence`
+                            keys of `--swap-sequence` (default: the F12 menu
+                            walk, see DEFAULT_SWAP_SEQUENCE)
         observe <name>      one observation: the game's screenshot, a tick of
                             the automapper (the real tab with `--window`),
                             the `--peeks`, and the raw fix
@@ -418,8 +428,10 @@ def session(args) -> int:
         journal [adf]       answer Silver Blades' journal prompt
         quit
 
-    Anything unrecognised is logged and ignored, so a typo costs a line rather
-    than the run.
+    Anything unrecognised, and any command with a bad argument or no
+    configuration (`swap` with no key sequence, `wait x`), is logged as a row
+    with an `error` and the session carries on: a typo costs a line rather than
+    the run.
     """
     from automap import state as mapstate
     from tools.amiga.amigatarget import find_maps
@@ -444,17 +456,22 @@ def session(args) -> int:
         log.write(json.dumps(payload) + "\n")
         log.flush()
 
+    # Checked once, here, so each `swap` line does not rediscover it.
+    swap_error = None if args.swap_sequence else (
+        "swap has no key sequence: pass --swap-sequence (see #804)")
+    if swap_error:
+        print(f"           {swap_error}")
     was = mapstate._data_dir                            # noqa: SLF001
     mapstate._data_dir = lambda: out / "data"           # noqa: SLF001
-    _mapper, once = poller(tgt, maps, layout, out, note)
-    window = None
-    if args.window:
-        window = open_window(tgt, args.maps, out)
-    note(event="session", port=args.port, maps=len(maps), image=str(image),
-         window=bool(args.window))
     started = time.monotonic()
     read = 0
     try:
+        _mapper, once = poller(tgt, maps, layout, out, note)
+        window = None
+        if args.window:
+            window = open_window(tgt, args.maps, out)
+        note(event="session", port=args.port, maps=len(maps), image=str(image),
+             window=bool(args.window))
         while time.monotonic() - started < args.seconds:
             lines = commands.read_text().splitlines()
             while read < len(lines):
@@ -467,65 +484,74 @@ def session(args) -> int:
                 print(f"[{now:7.1f}s] {line}")
                 if word == "quit":
                     return 0
-                if word == "key":
-                    for key in rest.split():
-                        held_key(args, key)
-                    note(event="key", keys=rest, at=now)
-                elif word == "shot":
-                    shot(args.display, out / "shots" / f"{rest or now}.png")
-                elif word == "still":
-                    still(args, out, rest or str(now))
-                    note(event="still", label=rest, at=now)
-                elif word == "wait":
-                    time.sleep(float(rest))
-                    note(event="wait", seconds=float(rest), at=now)
-                elif word == "peek":
-                    spec, _, length = rest.rpartition(" ")
-                    row = peek_row(tgt, spec, int(length or 1, 0))
-                    print(f"           {row}")
-                    note(event="peek", at=now, **row)
-                elif word == "swap":
-                    note(event="swap", at=now,
-                         **do_swap(args, int(rest), out, swap_log))
-                elif word == "observe":
-                    note(event="observe", at=now,
-                         **observe(args, rest or str(now), tgt, maps, out,
-                                   once, window, peeks))
-                elif word == "locate":
-                    try:
-                        base = tgt.locate()
-                        print(f"           data hunk {base:#010x}   "
-                              f"a4 {base + A4_BIAS:#010x}")
-                        note(event="locate", base=base, at=now)
-                    except amiga.GuestError as exc:
-                        print(f"           {exc}")
-                        note(event="locate", base=None, why=str(exc), at=now)
-                elif word == "fix":
-                    got = None if tgt.data_base is None else tgt.fix()
-                    print(f"           {got}")
-                    note(event="fix", fix=None if got is None else
-                         [got.x, got.y, got.facing], at=now)
-                elif word == "poll":
-                    for _ in range(int(rest or 1)):
-                        once()
-                elif word == "time":
-                    for size in PROBE_SIZES:
-                        got = []
-                        for _ in range(int(rest or 10)):
-                            begun = time.perf_counter()
-                            gdb.read_memory(args.at, size)
-                            got.append(1000 * (time.perf_counter() - begun))
-                        got.sort()
-                        print(f"           {size:>7} bytes  n={len(got)}  "
-                              f"min {got[0]:.1f} ms  "
-                              f"median {got[len(got) // 2]:.1f} ms  "
-                              f"max {got[-1]:.1f} ms")
-                        note(event="time", size=size, ms=[round(v, 2)
-                                                          for v in got], at=now)
-                elif word == "journal":
-                    note(event="journal", answered=journal(args, rest), at=now)
-                else:
-                    note(event="unknown", line=line, at=now)
+                # A mistyped or unconfigured command costs its own line, not
+                # the run: the one connection cannot be taken up again.
+                try:
+                    if word == "key":
+                        for key in rest.split():
+                            held_key(args, key)
+                        note(event="key", keys=rest, at=now)
+                    elif word == "shot":
+                        shot(args.display, out / "shots" / f"{rest or now}.png")
+                    elif word == "still":
+                        still(args, out, rest or str(now))
+                        note(event="still", label=rest, at=now)
+                    elif word == "wait":
+                        time.sleep(float(rest))
+                        note(event="wait", seconds=float(rest), at=now)
+                    elif word == "peek":
+                        spec, _, length = rest.rpartition(" ")
+                        row = peek_row(tgt, spec, int(length or 1, 0))
+                        print(f"           {row}")
+                        note(event="peek", at=now, **row)
+                    elif word == "swap":
+                        if swap_error is not None:
+                            note(event="swap", at=now, error=swap_error)
+                        else:
+                            note(event="swap", at=now,
+                                 **do_swap(args, int(rest), out, swap_log))
+                    elif word == "observe":
+                        note(event="observe", at=now,
+                             **observe(args, rest or str(now), tgt, maps, out,
+                                       once, window, peeks))
+                    elif word == "locate":
+                        try:
+                            base = tgt.locate()
+                            print(f"           data hunk {base:#010x}   "
+                                  f"a4 {base + A4_BIAS:#010x}")
+                            note(event="locate", base=base, at=now)
+                        except amiga.GuestError as exc:
+                            print(f"           {exc}")
+                            note(event="locate", base=None, why=str(exc), at=now)
+                    elif word == "fix":
+                        got = None if tgt.data_base is None else tgt.fix()
+                        print(f"           {got}")
+                        note(event="fix", fix=None if got is None else
+                             [got.x, got.y, got.facing], at=now)
+                    elif word == "poll":
+                        for _ in range(int(rest or 1)):
+                            once()
+                    elif word == "time":
+                        for size in PROBE_SIZES:
+                            got = []
+                            for _ in range(int(rest or 10)):
+                                begun = time.perf_counter()
+                                gdb.read_memory(args.at, size)
+                                got.append(1000 * (time.perf_counter() - begun))
+                            got.sort()
+                            print(f"           {size:>7} bytes  n={len(got)}  "
+                                  f"min {got[0]:.1f} ms  "
+                                  f"median {got[len(got) // 2]:.1f} ms  "
+                                  f"max {got[-1]:.1f} ms")
+                            note(event="time", size=size, ms=[round(v, 2)
+                                                              for v in got], at=now)
+                    elif word == "journal":
+                        note(event="journal", answered=journal(args, rest), at=now)
+                    else:
+                        note(event="unknown", line=line, at=now)
+                except (ValueError, NotImplementedError) as exc:
+                    print(f"           {exc}")
+                    note(event=word, at=now, error=str(exc))
             # The heartbeat is also the proof: a read every second, from a
             # machine nobody has stopped.
             vh = gdb.read_memory(VHPOSR, 2)
@@ -535,6 +561,7 @@ def session(args) -> int:
     finally:
         mapstate._data_dir = was                        # noqa: SLF001
         log.close()
+        gdb.close()
     return 0
 
 
@@ -754,56 +781,63 @@ def launch(args) -> int:
     # Detached, `launch` returns and `stop` ends the group.  In the foreground
     # both stay in the caller's process group, so whatever holds the lease
     # (the pool slot's `claim --`) ends them by ending itself.
-    xvfb = subprocess.Popen(
-        ["Xvfb", args.display, "-screen", "0", "800x600x24", "-nolisten",
-         "tcp"],
-        stdout=(run / "xvfb.log").open("wb"), stderr=subprocess.STDOUT,
-        start_new_session=not foreground)
-    time.sleep(2)
+    xvfb = emulator = None
+    try:
+        xvfb = subprocess.Popen(
+            ["Xvfb", args.display, "-screen", "0", "800x600x24", "-nolisten",
+             "tcp"],
+            stdout=(run / "xvfb.log").open("wb"), stderr=subprocess.STDOUT,
+            start_new_session=not foreground)
+        time.sleep(2)
 
-    env = dict(os.environ)
-    for name in ("WAYLAND_DISPLAY", "XDG_SESSION_TYPE"):
-        env.pop(name, None)
-    env.update(DISPLAY=args.display, GDK_BACKEND="x11",
-               SDL_AUDIODRIVER="dummy", ALSOFT_DRIVERS="null")
-    argv = [str(binary), f"--base_dir={run / 'base'}", "--fullscreen=0",
-            f"--remote_debugger={args.wait}",
-            f"--remote_debugger_port={args.port}"]
-    if args.kickstart:
-        argv.append(f"--kickstart_file={pathlib.Path(args.kickstart).resolve()}")
-    floppies = [pathlib.Path(f).resolve() for f in args.floppy or []]
-    swaps = [pathlib.Path(f).resolve() for f in args.swap or []]
-    for i, floppy in enumerate(floppies):
-        argv.append(f"--floppy_drive_{i}={floppy}")
-    # The swap list holds the drives' images first, then the swaps, as
-    # `fsuaepor.fsuae_argv` writes it; none given leaves the command line as it was.
-    if swaps:
-        argv += [f"--floppy_image_{i}={image}"
-                 for i, image in enumerate([*floppies, *swaps])]
-    if foreground:
-        # A driven run sends keys only, so nothing may arrive from port 1.
-        argv.append("--joystick_port_1=none")
-    argv += list(args.extra or [])
-    emulator = subprocess.Popen(
-        argv, env=env, cwd=str(binary.parent),
-        stdout=(run / "fs-uae.log").open("wb"), stderr=subprocess.STDOUT,
-        start_new_session=not foreground)
+        env = dict(os.environ)
+        for name in ("WAYLAND_DISPLAY", "XDG_SESSION_TYPE"):
+            env.pop(name, None)
+        env.update(DISPLAY=args.display, GDK_BACKEND="x11",
+                   SDL_AUDIODRIVER="dummy", ALSOFT_DRIVERS="null")
+        argv = [str(binary), f"--base_dir={run / 'base'}", "--fullscreen=0",
+                f"--remote_debugger={args.wait}",
+                f"--remote_debugger_port={args.port}"]
+        if args.kickstart:
+            argv.append(f"--kickstart_file={pathlib.Path(args.kickstart).resolve()}")
+        floppies = [pathlib.Path(f).resolve() for f in args.floppy or []]
+        swaps = [pathlib.Path(f).resolve() for f in args.swap or []]
+        for i, floppy in enumerate(floppies):
+            argv.append(f"--floppy_drive_{i}={floppy}")
+        # The swap list holds the drives' images first, then the swaps, as
+        # `fsuaepor.fsuae_argv` writes it; none given leaves the command line as it was.
+        if swaps:
+            argv += [f"--floppy_image_{i}={image}"
+                     for i, image in enumerate([*floppies, *swaps])]
+        if foreground:
+            # A driven run sends keys only, so nothing may arrive from port 1.
+            argv.append("--joystick_port_1=none")
+        argv += list(args.extra or [])
+        emulator = subprocess.Popen(
+            argv, env=env, cwd=str(binary.parent),
+            stdout=(run / "fs-uae.log").open("wb"), stderr=subprocess.STDOUT,
+            start_new_session=not foreground)
 
-    print(f"display    {args.display}")
-    print(f"xvfb       {xvfb.pid}")
-    print(f"fs-uae     {emulator.pid}   (kill -- -{emulator.pid})")
-    print(f"port       {args.port}", flush=True)
-    if foreground:
-        return wait_foreground(emulator, xvfb)
-    for _ in range(args.wait * 2):
-        listening = subprocess.run(["ss", "-ltn"], capture_output=True,
-                                   text=True, check=False).stdout
-        if f":{args.port}" in listening:
-            print("listening  yes")
-            return 0
-        time.sleep(0.5)
-    print("listening  NO -- see " + str(run / "fs-uae.log"))
-    return 1
+        print(f"display    {args.display}")
+        print(f"xvfb       {xvfb.pid}")
+        print(f"fs-uae     {emulator.pid}   (kill -- -{emulator.pid})")
+        print(f"port       {args.port}", flush=True)
+        if foreground:
+            return wait_foreground(emulator, xvfb)
+        for _ in range(args.wait * 2):
+            listening = subprocess.run(["ss", "-ltn"], capture_output=True,
+                                       text=True, check=False).stdout
+            if f":{args.port}" in listening:
+                print("listening  yes")
+                return 0
+            time.sleep(0.5)
+        print("listening  NO -- see " + str(run / "fs-uae.log"))
+        return 1
+    finally:
+        # From the first Popen, so a failing emulator start or an interrupt
+        # during the Xvfb's settling sleep does not leave the Xvfb behind.
+        if foreground:
+            terminate(emulator, xvfb)
 
 
 def wait_foreground(emulator, xvfb) -> int:
@@ -811,13 +845,18 @@ def wait_foreground(emulator, xvfb) -> int:
     try:
         return emulator.wait()
     finally:
-        for proc in (emulator, xvfb):
-            if proc.poll() is None:
-                proc.send_signal(signal.SIGTERM)
-                try:
-                    proc.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
+        terminate(emulator, xvfb)
+
+
+def terminate(*procs) -> None:
+    """SIGTERM each process still running (kill after 10 s); None is skipped."""
+    for proc in procs:
+        if proc is not None and proc.poll() is None:
+            proc.send_signal(signal.SIGTERM)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
 
 
 def stop(args) -> int:
@@ -978,7 +1017,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--at", type=lambda s: int(s, 0), default=0xC00000,
                    help="where `time` reads from")
     s.add_argument("--hold", type=float, default=0.12,
-                   help="seconds a `key` is held down; 0 sends an unheld key")
+                   help="seconds a `key` is held down (default 0.12 holds "
+                        "every key, as the game needs); 0 sends an unheld "
+                        "key")
     s.add_argument("--window", action="store_true",
                    help="`observe` ticks the real map tab, loading its maps "
                         "from the --maps folder, and photographs it")
@@ -986,8 +1027,13 @@ def main(argv: list[str] | None = None) -> int:
                    help="memory `observe` records every time, e.g. "
                         "'+0x5B12 1' '*0x57AC+0x24 3'")
     s.add_argument("--swap-sequence",
-                   help="the xdotool keys `swap` sends, e.g. "
-                        "'F12 Down*{index} Return'")
+                   help="the xdotool keys `swap` sends "
+                        "(`KEY*N` repeats a key, `{index}` is the swap "
+                        "index); default: the measured F12 menu walk "
+                        f"'{DEFAULT_SWAP_SEQUENCE}', whose Down count "
+                        "assumes the media row's position equals the swap "
+                        "index, which depends on the disks in the drives",
+                   default=DEFAULT_SWAP_SEQUENCE)
     s.add_argument("--fs-uae-log",
                    help="the emulator's log, where `swap` looks for the disk "
                         "change it caused")
