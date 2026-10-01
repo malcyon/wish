@@ -76,6 +76,10 @@ def verify(layout: amiga.AmigaMachine, adf: pathlib.Path) -> list[str]:
     Empty means every claim in the row is true of this build.  This is the
     check that catches a different release, which is the failure mode a live
     reading cannot tell from a game that is merely between areas.
+
+    It covers only the fields that are offsets into a hunk. Fields reached
+    through a pointer at run time (a travel-grid block's x, y and indoors word,
+    `overland_flag`) are not in the file and are not checked here.
     """
     exe = Executable.parse(executable(adf, layout))
     if layout.segments is not None:

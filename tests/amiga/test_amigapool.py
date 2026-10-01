@@ -138,10 +138,20 @@ def test_a_heading_it_does_not_write_is_none_and_the_fix_stands():
 def test_an_indoor_poll_reads_twice_and_an_outdoor_one_five_times():
     mem = guest(view=1, facing=0)
     target(mem).fix()
-    assert len(mem.reads) == 2          # the view byte, then the party
+    assert len(mem.reads) == 5          # the four fixed reads, then the party
     mem = guest()
     target(mem).fix()
-    assert len(mem.reads) == 5
+    assert len(mem.reads) == 5          # the four fixed reads, then the block
+
+
+def test_the_four_fixed_offset_reads_go_in_one_batch():
+    mem = guest()
+    t = target(mem)
+    calls = []
+    real = t.read_blocks
+    t.read_blocks = lambda blocks: (calls.append(len(blocks)), real(blocks))[1]
+    t.fix()
+    assert calls[0] == 4
 
 
 # -- the shipped automapper over it -------------------------------------------
@@ -181,3 +191,65 @@ def test_a_seam_is_accepted_on_the_next_poll_and_reads_no_c64_address():
     assert (s.window, s.x, s.y) == (0, 14, 28)
     assert s.x + WINDOW_STEP * s.window == 14
     assert s.area is None and not s.exploration.seen
+
+
+def test_a_block_pointer_whose_span_runs_past_the_end_of_memory_gives_no_fix():
+    """The pointer is inside slow memory and the 0x48-byte span is not. The
+    fake raises on any read outside its blocks, so none is made."""
+    assert target(guest(pointer=0xC80000 - 0x20)).fix() is None
+
+
+def test_a_link_to_a_regions_first_byte_is_refused_before_it_is_read():
+    """The guard sits eight bytes before the hunk, outside memory here."""
+    mem = guest()
+    mem.put(H31 - 4, ((0xC00000 - 4) // 4).to_bytes(4, "big"))
+    with pytest.raises(amiga.GuestError, match="outside the Amiga's memory"):
+        amiga.AmigaTarget(mem, POOL, anchor_base=H31)
+
+
+def test_an_anchor_at_a_regions_first_byte_is_refused_before_it_is_read():
+    with pytest.raises(amiga.GuestError, match="outside the Amiga's memory"):
+        amiga.AmigaTarget(guest(), POOL, anchor_base=0xC00000)
+
+
+def test_indoors_to_the_grid_and_back_is_followed_both_ways():
+    from gamedata import synthetic_geo
+    block = synthetic_geo()
+    mem = guest(view=1, facing=0)
+    mem.put(GEO, block)
+    m = Automapper(target(mem), {"GEO01": Geo(block)},
+                   title="Pool of Radiance")
+    m.poll()
+    assert not m.state.outdoors and m.state.area == "GEO01"
+    assert (m.state.x, m.state.y) == (9, 13)
+    mem.put(H32 + GRID.view, bytes([3]))
+    mem.put(H32 + GRID.area, bytes([26]))
+    m.poll()
+    assert m.state.outdoors and (m.state.window, m.state.x) == (1, 7)
+    mem.put(H32 + GRID.view, bytes([1]))
+    mem.put(H32 + POOL.party_x, bytes([9, 14, 0]))
+    m.poll()
+    assert not m.state.outdoors and (m.state.x, m.state.y) == (9, 14)
+
+
+def test_the_grids_block_is_unknown_to_the_title_check_and_not_ours():
+    """`looks_like_a_map` is False for it, so `verdict` is UNKNOWN and the grid
+    can never latch a rejection of its own."""
+    from automap.area import UNKNOWN
+    m = mapper(guest())
+    assert m.resident.verdict(m._maps) == (UNKNOWN, None)
+    for _ in range(m.PROVEN_FOR + 5):
+        m.poll()
+    assert m.title_check is UNKNOWN and m.state.outdoors
+
+
+def test_a_rejection_latched_earlier_still_drops_grid_fixes():
+    """A title check that has already said NOT_OURS means the machine is
+    running another game, and its bytes are not recorded on the grid either;
+    only one of our maps turning up resident lifts it."""
+    from automap.area import NOT_OURS
+    m = mapper(guest())
+    m.poll()
+    m.title_check = NOT_OURS
+    m.state.outdoors = False
+    assert m.poll() is False and not m.state.outdoors

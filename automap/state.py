@@ -670,9 +670,11 @@ class Automapper:
         set or the fingerprint, and the periodic `_check_resident` is skipped
         outright: no `GEO` is resident on the travel grid
         (`docs/140-loaded-files-cache.md`), so it could only ever answer
-        `UNKNOWN` for the cost of a read. The window the game has resident
-        and the heading are read into `state.window` and `state.heading`, and
-        the wilderness page draws from them.
+        `UNKNOWN` for the cost of a read. `state.window` and `state.heading`,
+        which the wilderness page draws from, come from the fix when it carries
+        a window (the Amiga names its own, and `_read_window` and
+        `_read_heading` read C64 addresses); otherwise they are read from the
+        C64's memory.
 
         `state.facing`, `area`, `geo`, `exploration`, `notes`, `candidates`
         and the fingerprint are the party's last indoor ones and are left
