@@ -2699,6 +2699,23 @@ def test_an_adf_that_holds_no_saved_game_is_refused_and_not_guessed_at(
         convert.Source.detect(path)
 
 
+def test_an_adf_with_no_save_drawer_says_it_holds_no_saved_game(tmp_path):
+    """A disk with no `save` entry has no slots, so opening it says so in the
+    editor's own sentence and not with the drawer lookup's error."""
+    from goldbox import amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk
+
+    disk = AmigaDisk.blank("Secret 2")
+    assert amiga_savegame.por_slots_present(disk) == []
+
+    path = tmp_path / "secret2.adf"
+    path.write_bytes(disk.to_bytes())
+    with pytest.raises(convert.ConvertError) as raised:
+        convert.Source.detect(path)
+    assert "holds no Amiga saved game" in str(raised.value)
+    assert "has no" not in str(raised.value)
+
+
 def test_amiga_to_c64_direction_is_the_transfer_test(amiga_adf, tmp_path):
     """The bytes the dialog's Amiga row writes equal what
     `tools/amiga/fromamigapor.py` writes, calling `goldbox.amiga_savegame.read_por_slot`,

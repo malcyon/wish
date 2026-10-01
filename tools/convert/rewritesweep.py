@@ -318,9 +318,12 @@ def no_op() -> tuple[collections.Counter, list[str]]:
     for image in amiga_disks():
         try:
             disk = AmigaDisk(bytearray(image.read_bytes()))
-            drawer = amiga_savegame.por_save_drawer(disk)
             por_slots = amiga_savegame.por_slots_present(disk)
             later_slots = amiga_savegame.slots_present(disk)
+            # A disk with no `save` drawer has no Pool slots, and is still a
+            # disk the later-title check below may have a saved game on.
+            drawer = (amiga_savegame.por_save_drawer(disk)
+                      if por_slots else "")
         except Exception as e:
             bad.append(f"{image.parent.name}: {type(e).__name__}: {e}")
             continue
@@ -472,9 +475,12 @@ def _sample(limit: int, notes: list[str]):
     for image in amiga_disks():
         try:
             disk = AmigaDisk(bytearray(image.read_bytes()))
-            drawer = amiga_savegame.por_save_drawer(disk)
             por_slots = amiga_savegame.por_slots_present(disk)
             later_slots = amiga_savegame.slots_present(disk)
+            # A disk with no `save` drawer has no Pool slots, and is still a
+            # disk the later-title check below may have a saved game on.
+            drawer = (amiga_savegame.por_save_drawer(disk)
+                      if por_slots else "")
         except Exception as e:
             notes.append(f"{image.parent.name}: {type(e).__name__}: {e}")
             continue

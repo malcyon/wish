@@ -1021,3 +1021,32 @@ def test_mathews_cure_byte_survives_a_paladin_level_edit():
     at = dos_port.FIELDS_BY_NAME_FOR[char.deltas.key]["paladin_cures"].offset
     assert out.record[at] == 1
     assert "paladin_cures" not in out.moved
+
+
+def _only_a_disk_with_no_save_drawer(monkeypatch, tmp_path):
+    from tools.convert import rewritesweep
+
+    image = tmp_path / "WISH-SPEC-nosave" / "secret2.adf"
+    image.parent.mkdir()
+    image.write_bytes(AmigaDisk.blank("Secret 2").to_bytes())
+    monkeypatch.setattr(rewritesweep, "amiga_disks", lambda: [image])
+    monkeypatch.setattr(rewritesweep, "dos_folders", lambda: [])
+    monkeypatch.setattr(rewritesweep, "amiga_later_saves", lambda: [])
+    return rewritesweep
+
+
+def test_the_no_op_sweep_does_not_log_an_amiga_disk_with_no_save_drawer_as_bad(
+        monkeypatch, tmp_path):
+    """A disk holding no saved game is not a bad disk; the sweep goes on to the
+    later-title check, which finds nothing on it."""
+    sweep = _only_a_disk_with_no_save_drawer(monkeypatch, tmp_path)
+    _, bad = sweep.no_op()
+    assert bad == []
+
+
+def test_the_read_only_sample_does_not_note_an_amiga_disk_with_no_save_drawer(
+        monkeypatch, tmp_path):
+    sweep = _only_a_disk_with_no_save_drawer(monkeypatch, tmp_path)
+    notes: list[str] = []
+    assert list(sweep._sample(5, notes)) == []
+    assert notes == []

@@ -846,7 +846,17 @@ def slot_list_bytes(slots: Sequence[str]) -> bytes:
 
 
 def por_slots_present(disk: AmigaDisk, drawer: str | None = None) -> list[str]:
-    drawer = por_save_drawer(disk) if drawer is None else drawer
+    """The slot letters with a Pool saved game and a first character file.
+
+    A disk with no `save` entry holds no slots, so it is an empty list and
+    not the `AmigaSaveError` `por_save_drawer` raises: the callers ask
+    whether a disk holds a save, and "no" is their answer.
+    """
+    if drawer is None:
+        try:
+            drawer = por_save_drawer(disk)
+        except AmigaSaveError:
+            return []
     from . import amiga_por
     out = []
     for letter in POR_SLOT_LETTERS:
