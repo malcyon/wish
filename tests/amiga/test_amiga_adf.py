@@ -1305,3 +1305,34 @@ def test_a_save_on_an_ffs_disk_one_round_trips_like_on_ofs(dos_type):
             done += 1
     if not done:
         pytest.skip("no Curse or Silver Blades disk 1 among the Amiga disks")
+
+
+@pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
+def test_rebuilding_a_cache_keeps_a_record_that_already_agrees(dos_type):
+    """A record with the right name, type and size survives a rebuild byte for
+    byte, date included; only the record with the wrong size is replaced."""
+    disk = _dircache_disk(dos_type)
+    cache = struct.unpack_from(">I", disk.block(disk.root), BLOCK_SIZE - 8)[0]
+    one, two = disk.lookup("ONE").block, disk.lookup("TWO").block
+    raw = bytearray(disk.to_bytes())
+    at = cache * BLOCK_SIZE
+    # ONE's record sits at 24 and TWO's at 52; see `_stale_cache_disk`.
+    struct.pack_into(">HHH", raw, at + 24 + 16, 7000, 11, 22)
+    struct.pack_into(">I", raw, at + 52 + 4, 99)
+    _restale(raw, cache)
+    disk = AmigaDisk(raw)
+
+    def records() -> dict[int, bytes]:
+        return {struct.unpack_from(">I", r, 0)[0]: r
+                for r in disk._cache_records(cache)}
+
+    before = records()
+    assert before[one][16:22] != disk._cache_record(one)[16:22]
+    assert not disk._record_agrees(before[two], disk._cache_record(two))
+
+    disk.write_file("THREE", b"third", when=WHEN)
+
+    after = records()
+    assert after[one] == before[one]
+    assert after[two] == disk._cache_record(two)
+    assert disk.cache_warnings() == []
