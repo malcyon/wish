@@ -144,8 +144,6 @@ _helper_at: float | None = None
 
 #: The pieces of an unfinished sweep, `{address: (when it was read, bytes)}`.
 _sweep_cache: dict[int, tuple[float, bytes]] = {}
-#: True after the target could not be built at the cached base once.
-_guest_failed = False
 #: The size of piece the next sweep reads.
 _piece = SWEEP_CHUNK
 
@@ -200,13 +198,12 @@ def reset() -> None:
 
     Costs nothing: the helper keeps the emulator's connection.
     """
-    global _transport, _port, _machine, _base, _swept_at, _piece, _guest_failed
+    global _transport, _port, _machine, _base, _swept_at, _piece
     if _transport is not None:
         _transport.close()
     _transport = _port = _machine = _base = _swept_at = None
     _sweep_cache.clear()
     _piece = SWEEP_CHUNK
-    _guest_failed = False
 
 
 def forget_helper() -> None:
@@ -274,7 +271,7 @@ def connect(port: int | None = None, opener=None,
     would end the run's debugging, so an unloaded game is waited out and not
     reconnected to.
     """
-    global _transport, _port, _machine, _base, _swept_at, _piece, _guest_failed
+    global _transport, _port, _machine, _base, _swept_at, _piece
     wanted = amiga.FSUAE_PORT if port is None else port
     if _transport is not None and (_transport.lost or _transport.sock is None
                                    or _port != wanted):
@@ -325,15 +322,11 @@ def connect(port: int | None = None, opener=None,
     try:
         target = amiga.AmigaTarget(_transport, _machine, anchor_base=_base)
     except amiga.GuestError:
-        # The anchor is intact but the hunks do not check out. A guard that is
-        # fixed a moment later (the game still loading) succeeds on the next
-        # try at the same base; one that fails twice is a bad base, so the
-        # title is forgotten and the next sweep looks again.
-        if _guest_failed:
-            _machine = _base = None
-        _guest_failed = not _guest_failed
+        # The anchor is intact but the hunks do not check out: forget the
+        # title so the next sweep looks again. Only this error clears it,
+        # never a transport error, which says nothing about the base.
+        _machine = _base = None
         raise
-    _guest_failed = False
     return target
 
 

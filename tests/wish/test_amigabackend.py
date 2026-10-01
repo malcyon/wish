@@ -247,11 +247,12 @@ def test_a_game_started_again_at_new_addresses_detaches_and_reconnects():
 
 def test_a_bad_guard_waits_and_keeps_the_transport():
     sock = FakeSocket(_pool_memory(data_guard=0x1234))
-    opener = Opener(sock)
+    opener, clock = Opener(sock), Clock()
     with pytest.raises(amiga.GuestError, match="expected 0x2f8c"):
-        fsuae.connect(opener=opener, clock=Clock())
+        fsuae.connect(opener=opener, clock=clock)
     sock.memory = _pool_memory()
-    assert fsuae.connect(opener=opener, clock=Clock()).data_base == 0xC20000
+    clock.later()                          # the failure sent it back to sweep
+    assert fsuae.connect(opener=opener, clock=clock).data_base == 0xC20000
     assert opener.calls == 1
 
 
@@ -924,12 +925,11 @@ def test_a_finished_sweep_goes_back_to_the_big_pieces():
     assert fsuae._piece == fsuae.SWEEP_CHUNK
 
 
-def test_a_bad_guard_that_stays_bad_makes_the_next_sweep_look_again():
+def test_a_bad_guard_makes_the_next_sweep_look_again():
     sock, clock = FakeSocket(_pool_memory(data_guard=0x1234)), Clock()
     opener = Opener(sock)
-    for _ in range(2):                    # the anchor is intact both times
-        with pytest.raises(amiga.GuestError):
-            fsuae.connect(opener=opener, clock=clock)
+    with pytest.raises(amiga.GuestError):  # the anchor is intact
+        fsuae.connect(opener=opener, clock=clock)
     assert fsuae._machine is None and fsuae._base is None
     sock.memory = _pool_memory(h31=0xC30000, h32=0xC40000)
     clock.later()
