@@ -437,7 +437,7 @@ def has_content(screen: Screen | None) -> bool:
     failed -- a real race, since `xdotool search` lists a window that can close
     or be unmapped before `import` reaches it -- and `settle()` then ran
     `capture(check=True)` against it and raised `CalledProcessError` instead of
-    the named refusal this exists to give.
+    the named rejection this exists to give.
     """
     return screen is not None and uniform_colour(screen) is None
 
@@ -1183,7 +1183,7 @@ def run_walked(built: dict, resaved: dict) -> bool:
 # --------------------------------------------------------------------------
 
 # The container reader is `goldbox/dos_savegame.py`'s: one index, one
-# run-length decode, one set of refusals.
+# run-length decode, one set of rejections.
 
 
 # One item, in a `.ITM` file or an `ITEM<n>.DAX` block.  The file is
@@ -1663,7 +1663,7 @@ class PoolOfRadiance:
             # The caster's only spell: the game may go back to the Magic bar
             # rather than to an empty list.  Believing the Magic bar here is
             # safe only because the CAST-again check after the settle follows
-            # it: this alone would also take a refusal that went back there.
+            # it: this alone would also take a rejection that went back there.
             if b == self.MAGIC_BAR and len(before) == 1:
                 return "cast"
             return None

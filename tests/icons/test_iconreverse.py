@@ -251,7 +251,7 @@ def test_a_judgement_row_gives_the_nearest_figure_not_an_error(parts,
 
 
 def test_an_icon_with_no_weapon_is_refused(parts, reverse_tables):
-    """The same refusal `recognise` makes on its own, reached through the
+    """The same rejection `recognise` makes on its own, reached through the
     higher-level method rather than worked around."""
     with pytest.raises(ValueError):
         parts.dos_icon_from_c64(bytes(range(36)), reverse_tables)

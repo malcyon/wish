@@ -37,7 +37,7 @@ Tests for the C64 side: the driven-session code under `tools/c64/`, the memory m
 | `test_savecheck_log.py` | Checks that a failed `savecheck` run keeps its log and writes the traceback before the photograph. |
 | `test_savecheck_move_subbar.py` | Checks that `answer_bars` and `save_game` leave the dungeon's move sub-bar instead of reporting a walk as stuck. |
 | `test_savecheck_resave_order.py` | Checks that `tools/c64/savecheck.py` resaves after every walked move and not before them. |
-| `test_savecheck_shapes.py` | Checks that the `--icon` read of `tools/c64/savecheck.py` matches a figure's glyphs against `CHARPIC00` slot by slot. |
+| `test_savecheck_glyphs.py` | Checks that the `--icon` read of `tools/c64/savecheck.py` matches a figure's glyphs against `CHARPIC00` slot by slot. |
 | `test_savecheck_walk_routing.py` | Checks that a walked step in `tools/c64/savecheck.py` routes through whatever the game puts up next, with or without `--route`. |
 | `test_saveprompt.py` | Checks that the Silver Blades and Curse drivers recognise both of each title's save-disk prompts. |
 | `test_screenbank.py` | Checks that the screen reader in `automap/screen.py` finds the screen from the bank and `$D018` instead of assuming where it is. |

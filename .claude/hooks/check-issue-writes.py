@@ -25,7 +25,7 @@ with an environment variable or a path, wrapped in a subshell, chained after
 
   * `gh issue create`, `comment`, `close`, `reopen` and `edit`, each of which
     `tools/wishagent.py` has a verb for;
-  * `gh issue lock` and `unlock`, which is a different refusal: **nothing on
+  * `gh issue lock` and `unlock`, which is a different rejection: **nothing on
     this tracker is locked**, measured three ways on 2026-09-11 -- a GitHub App
     installation is refused a comment on a locked issue whatever permissions it
     holds, so locking would silence this project's own bot rather than the
@@ -123,7 +123,7 @@ def _api_writes_an_issue(scoped: list[str]) -> bool:
     return touches_issues and method in WRITING_METHODS
 
 
-def refusal(tokens: list[str], depth: int = 0) -> str | None:
+def rejection(tokens: list[str], depth: int = 0) -> str | None:
     """`"write"`, `"lock"`, or `None` -- the first banned call found."""
     for i, token in enumerate(tokens):
         cleaned = _clean(token)
@@ -135,7 +135,7 @@ def refusal(tokens: list[str], depth: int = 0) -> str | None:
                     if inner.startswith("-"):
                         continue
                     try:
-                        found = refusal(shlex.split(inner, comments=False), depth + 1)
+                        found = rejection(shlex.split(inner, comments=False), depth + 1)
                     except ValueError:
                         found = None
                     if found:
@@ -144,7 +144,7 @@ def refusal(tokens: list[str], depth: int = 0) -> str | None:
         if cleaned == "eval" and depth < 3:
             for inner in tokens[i + 1:]:
                 try:
-                    found = refusal(shlex.split(inner, comments=False), depth + 1)
+                    found = rejection(shlex.split(inner, comments=False), depth + 1)
                 except ValueError:
                     found = None
                 if found:
@@ -236,7 +236,7 @@ def main() -> int:
             return 2
         return 0
 
-    found = refusal(tokens)
+    found = rejection(tokens)
     if found == "lock":
         _refuse_lock()
         return 2

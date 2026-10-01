@@ -203,7 +203,7 @@ class Area:
     #: name because it is not a place: it is the attract-mode demo. A row's
     #: other facts are graded where they are stated, in the comment beside it,
     #: which is why area 30 reads UNKNOWN here while its `ECL`, its disk, its
-    #: `GEO` and its refusal to be fasttraveled are all CONFIRMED.
+    #: `GEO` and its being barred from fast travel are all CONFIRMED.
     #:
     #: Said here because `docs/118-debug-mode.md`'s own table carries the same
     #: column and had graded area 30 CONFIRMED, against this file's UNKNOWN,
@@ -700,7 +700,7 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
 #: before pressing `BEGIN ADVENTURING`, and 0 is the initialiser's value
 #: rather than a place: no `ECL00` is on any of the six sides and no `ECL`
 #: container holds a block 0, and the same goes for `GEO00`.  Adding a row
-#: would move `goldbox.dos_codec`'s refusal from `area_in` to `_resident_geo`
+#: would move `goldbox.dos_codec`'s rejection from `area_in` to `_resident_geo`
 #: rather than remove it, and a C64 save naming area 0 sends the loader
 #: after `GEO00` -- measured, `$B7`/`$BB` at the disk prompt -- which it can
 #: never find.  `#301 (A DOS Curse save standing in area 0 is refused by the
@@ -836,7 +836,7 @@ def start_of(title: str | None) -> Start | None:
     """Where a party of this title that has not set out begins.
 
     `None` for a title nobody has measured, which a caller must treat as a
-    refusal rather than as area 0 -- see `STARTS`.
+    rejection rather than as area 0 -- see `STARTS`.
     """
     return STARTS.get(title or "")
 

@@ -248,7 +248,7 @@ def test_the_reader_refuses_rather_than_answering_a_screen_it_cannot_locate():
     with pytest.raises(vice.ScreenUnreadable):
         vice.read_screen(mon)
     # ...and it is still readable when the CPU can see the chips, so the
-    # refusal is about the banking rather than about the missing command.
+    # rejection is about the banking rather than about the missing command.
     ok = FakeMonitor(port1=CHIPS_IN, banks={}, chips=registers(0x35, 0x90))
     assert vice.read_screen(ok).address == 0xCC00
 

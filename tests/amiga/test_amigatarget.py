@@ -485,10 +485,10 @@ def test_nothing_is_recorded_while_no_area_is_loaded():
 
 def test_a_stranger_s_map_is_not_drawn_as_ours(tmp_path):
     """The block is a Gold Box map and none of the ones we hold: the machine is
-    running another title, and `#21`'s refusal has to reach this backend too.
+    running another title, and `#21`'s rejection has to reach this backend too.
 
     Two of the player's own maps rather than the synthetic one, because the
-    refusal is only reached for a block that `looks_like_a_map`, and a map
+    rejection is only reached for a block that `looks_like_a_map`, and a map
     built from the format draws every wall from one side -- 0 edges walled
     from both, where the check wants 20."""
     from automap.area import NOT_OURS, looks_like_a_map

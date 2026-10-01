@@ -645,7 +645,7 @@ def test_a_class_pools_of_darkness_cannot_express_is_refused():
 
 
 def test_a_field_graded_below_the_floor_is_refused_rather_than_guessed():
-    """`neutral.Writer.use` is the whole of the refusal, and it is shared:
+    """`neutral.Writer.use` is the whole of the rejection, and it is shared:
     a value the reader will not stand behind is reported, not written."""
     from goldbox.layout import Confidence
 
@@ -1036,7 +1036,7 @@ def test_every_item_weighs_and_costs_what_the_game_says_it_does():
             name, weight, value = want
             assert it.get("weight") == weight, (path, name, it.get("weight"))
             assert it.get("value") == value, (path, name, it.get("value"))
-    assert seen, "no known item type in the corpus"
+    assert seen, "no known item type in the specimens"
 
 
 def test_the_readied_flag_is_the_one_the_display_line_agrees_with():
@@ -1052,7 +1052,7 @@ def test_the_readied_flag_is_the_one_the_display_line_agrees_with():
             elif line.startswith(" No"):
                 assert it.get("readied") == 0, (path, line)
                 seen += 1
-    assert seen, "no item in the corpus carries the ready column"
+    assert seen, "no item in the specimens carries the ready column"
 
 
 def test_an_item_of_the_wrong_length_is_refused_by_name():
@@ -1928,7 +1928,7 @@ def test_a_slot_with_no_saved_game_is_refused():
     assert disk.to_bytes() == before
 
 
-def test_a_saved_game_moved_to_another_slot_is_retargeted():
+def test_a_saved_game_moved_to_another_slot_is_rewritten():
     """The engine loads the party the character table names, not the slot.
 
     Measured the other way round: the game's own save to B rewrote all six
@@ -1946,9 +1946,9 @@ def test_a_saved_game_moved_to_another_slot_is_retargeted():
 
 def test_a_saved_game_that_is_not_one_is_refused_by_name():
     with pytest.raises(AmigaRecordError):
-        amiga_savegame.retarget_savegame(bytes(amiga_savegame.POR_SAVEGAME_SIZE), "B")
+        amiga_savegame.move_savegame_to_slot(bytes(amiga_savegame.POR_SAVEGAME_SIZE), "B")
     with pytest.raises(AmigaRecordError):
-        amiga_savegame.retarget_savegame(bytes(13137), "B")
+        amiga_savegame.move_savegame_to_slot(bytes(13137), "B")
 
 
 def test_a_shorter_party_does_not_leave_the_old_ones_files_behind():
@@ -2395,7 +2395,7 @@ def test_the_curse_shift_map_agrees_with_dos_on_every_shared_constant():
     A field that is the same in all twelve DOS records and all fifteen Amiga
     ones is a free check on the offset it was read at: `attack_forms`'
     `02 00 01 00 02 00 00 00` and `field_10c_10f`' `00 01 00 00` are eight
-    and four bytes of it each.  Nothing in the corpus disagrees.
+    and four bytes of it each.  Nothing in the specimens disagrees.
     """
     dos = _dos_records("CURSE", 422)
     if not dos:

@@ -112,7 +112,7 @@ def test_a_party_member_off_the_map_is_named_even_when_the_count_agrees():
     roll = roll_call(FakeSession(fight(*people, camera=(x0, y0))))
     assert roll["party_on_map"] == 5
     # The floor draws exactly what the table puts in the window, so the count
-    # is silent -- and the missing sixth still has to be said out loud.
+    # is silent -- and the missing sixth still has to be reported.
     said = undrawn(roll, blocks=5)
     assert said == ["Off the map altogether: #5"]
 

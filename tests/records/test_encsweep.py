@@ -16,7 +16,7 @@ number wrong:
   to `~/dos_por_play/SAVE`, every record in which has been through Gold Box
   Companion's editor, so grading the archive copy `found` launders it.
 
-The corpus test at the bottom is the finding itself -- every record the
+The specimens test at the bottom is the finding itself -- every record the
 player's own archives ship balances exactly -- and skips without the archives.
 """
 
@@ -141,7 +141,7 @@ def test_the_c64_record_has_no_encumbrance_to_check():
     assert "encumbrance" not in layout.FIELDS_BY_NAME
 
 
-# --- the corpus, off the player's own files ----------------------------------
+# --- the specimens, off the player's own files ----------------------------------
 
 def _archive_saves():
     root = dostailsweep.archives()

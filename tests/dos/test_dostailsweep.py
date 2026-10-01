@@ -8,7 +8,7 @@ record is 510, the same as Pools of Darkness'.  A finder keyed on size alone
 reads one title's characters through another's table.
 
 The synthetic tests below build the trap directly, on a machine with no game
-on it.  The corpus test at the bottom is the finding itself, off the player's
+on it.  The specimens test at the bottom is the finding itself, off the player's
 own archives, and skips without them.
 """
 

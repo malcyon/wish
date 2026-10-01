@@ -16,7 +16,7 @@ inside one routine -- are what turned "the engine rewrote it by the end of the
 fight" into "the engine discards it before it can be read".
 
 **What this is evidence of, and what it is not.**  Three limits, and the
-third is the one that bites hardest:
+third is the one that matters most:
 
 1. A displacement match does not prove the pointer is a character record: any
    structure reached the same way with a field at the same offset matches too.

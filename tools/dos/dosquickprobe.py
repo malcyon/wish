@@ -6,7 +6,7 @@ tail are dropped converting to C64, and nobody knows what they hold)`.
 `tools/dos/dostailsweep.py` found `0x10F` reading 1 in every character the engine
 resaved after a fight and 0 everywhere else, and the third-party DOS format
 workbooks call it `IsQuickFight`.  That correlation cannot separate "QUICK was
-pressed" from "a fight happened", because **every** fight in the corpus was
+pressed" from "a fight happened", because **every** fight in the specimens was
 driven with `q` -- `tools/dos/dosfightwatch.py` presses it at the combat bar by
 design.
 
@@ -57,7 +57,7 @@ FIELD = "field_10c_10f"
 
 #: Every rung the driver is allowed, and **`q` is deliberately not one of
 #: them**.  A run that pressed QUICK would be measuring the same thing the
-#: corpus already measured.  `c` answers the encounter menu, `Return` a
+#: specimens already measured.  `c` answers the encounter menu, `Return` a
 #: press-any-key prompt, `n` `CONTINUE BATTLE : YES NO`, `e` EXIT on a
 #: treasure bar, `Escape` backs out of a sub-bar.
 LADDER = ("c", "Return", "n", "e", "Escape")

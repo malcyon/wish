@@ -13,7 +13,7 @@ anybody happens to own:
   word against `0x0100` or more, and no title does;
 * what does our conversion do with a value that does not fit?  It writes the
   C64's largest experience, `0xFFFFFF`, and records a drop line saying what
-  the character held.  A refusal would leave the player no converted
+  the character held.  A rejection would leave the player no converted
   character at all, which is what the ruling on the issue chose against.
 
 The synthetic half runs anywhere.  The overlay scan skips without the

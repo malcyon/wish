@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Get a Curse party in through `LOAD SAVED GAME`, and measure any refusal.
+"""Get a Curse party in through `LOAD SAVED GAME`, and measure any rejection.
 
 `#291 (A Curse save disk will not load through the game's own front end in a
 pooled session, so no C64 Curse party can be got in)` is the ticket, and three
@@ -30,7 +30,7 @@ The caller writes the *name pointer into the instruction*: `GEN $1F38` stores
 `$7E9F` is 1 while the game's own fastloader is installed (`GEN $16F9`, after
 `JSR $B700`) and 0 while it is not (`GEN $0840`, which also puts the KERNAL's
 `$0330` vector back).  So on the party-formation menu, where no fastloader is
-installed, **the number the game prints its refusal on is the 1541's own error
+installed, **the number the game prints its rejection on is the 1541's own error
 number**, and reading `$03F1` after the failure says which one.
 
 That is what this tool does: it boots Curse in a pooled slot, attaches a save
@@ -373,7 +373,7 @@ def answer_prompt(sess, how: str = "attach", note=None) -> bool:
 def bar_up(sess, budget: float) -> bool:
     """Wait for `LOAD SAVED GAME ? YES NO` to be the thing on row 24.
 
-    A refusal prints `UNABLE TO LOAD SAVED GAME.` there first and puts the
+    A rejection prints `UNABLE TO LOAD SAVED GAME.` there first and puts the
     question back a moment later, so a retry that looks once looks at the
     message and decides the bar is not there.
     """
@@ -406,7 +406,7 @@ def load_saved_game(sess, *, note=None, shot=None, wait: float = 90.0,
     4. watch for `BEGIN ADVENTURING`, which is the party being in.
 
     Returns `loaded`, `failed`, `timeout`, `menu-miss` or `bar-miss`.  Call it
-    again with `retry=True` after a `failed`: the refusal leaves the question
+    again with `retry=True` after a `failed`: the rejection leaves the question
     up rather than the menu, and this answers whichever of the two is there.
     """
     def say(**kw):
@@ -417,7 +417,7 @@ def load_saved_game(sess, *, note=None, shot=None, wait: float = 90.0,
         if shot:
             shot(name)
 
-    # **A refusal leaves the question up, not the menu.**  `GEN $1F52` is
+    # **A rejection leaves the question up, not the menu.**  `GEN $1F52` is
     # `JMP $1F1E`, which redraws `LOAD SAVED GAME ? YES NO` -- so a retry
     # answers the bar that is already there, and walking the menu for a label
     # that is only the bar's own text never presses anything.

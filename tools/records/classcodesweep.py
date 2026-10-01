@@ -114,7 +114,7 @@ def dos_records(root: pathlib.Path):
     **The bitmask is the neutral one**, not the stored byte: DOS numbers the
     paladin's and the ranger's bits differently from the C64, which
     `goldbox.dos_codec.neutral_class_bits` folds back.  Reading the stored byte
-    against the C64's table made every DOS ranger in the corpus look like a
+    against the C64's table made every DOS ranger in the specimens look like a
     disagreement, which was this tool's fault and not the game's.
 
     A record under a `dostailsweep.FOREIGN_TITLES` directory is the same

@@ -332,7 +332,7 @@ def test_a_party_on_the_travel_grid_gets_the_bytes_the_engine_writes(ecl_dax):
     party standing on the travel grid, because no outdoor Amiga saved game
     has ever been read)` measured, and the container around them.
 
-    This used to be a refusal, because byte 12810 and byte 12803 of an
+    This used to be a rejection, because byte 12810 and byte 12803 of an
     outdoor Amiga saved game had never been seen.  On 2026-09-07 a party
     bought passage from New Phlan's harbour master, sailed to the west
     landing and saved there twice: **12810 reads 3 and 12803 reads 14**, both
@@ -459,7 +459,7 @@ def test_only_as_many_names_are_written_as_the_party_has(ecl_dax):
 
 def test_a_saved_game_naming_one_character_can_be_pointed_at_another_slot(
         ecl_dax):
-    """The regression `retarget_savegame` used to fail on.
+    """The regression `move_savegame_to_slot` used to fail on.
 
     It demanded a `CHRDAT` name in all six entries, so an engine-written
     one-character saved game -- and every one this writer builds for a party
@@ -468,7 +468,7 @@ def test_a_saved_game_naming_one_character_can_be_pointed_at_another_slot(
     """
     state = _c64_state("por-party-twin-pair")
     save, _report = amiga_savegame.new_por_savegame(state, "B", 1, ecl_dax)
-    moved = amiga_savegame.retarget_savegame(save, "F")
+    moved = amiga_savegame.move_savegame_to_slot(save, "F")
     at = amiga_savegame.POR_CHARACTER_TABLE
     assert moved[at:at + 8] == b"CHRDATF1"
     assert moved[at + amiga_savegame.POR_CHARACTER_TABLE_STRIDE:
@@ -477,7 +477,7 @@ def test_a_saved_game_naming_one_character_can_be_pointed_at_another_slot(
 
 def test_a_file_with_no_names_at_all_is_still_refused():
     with pytest.raises(AmigaRecordError):
-        amiga_savegame.retarget_savegame(bytes(amiga_savegame.POR_SAVEGAME_SIZE), "B")
+        amiga_savegame.move_savegame_to_slot(bytes(amiga_savegame.POR_SAVEGAME_SIZE), "B")
 
 
 # ---------------------------------------------------------------------------

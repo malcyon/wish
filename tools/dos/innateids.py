@@ -22,7 +22,7 @@ nine-byte `.SPC`/`.FX` record the engine then writes.
     tools/dos/innateids.py seed --game CURSE
     tools/dos/innateids.py seed --game-dir DIR  # a directory holding GAME.OVR
 
-**`sweep` enumerates the corpus**: every DOS Gold Box character record it can
+**`sweep` enumerates the specimens**: every DOS Gold Box character record it can
 find, its sibling effect file (`.SPC`/`.FX`/`.SFX`/`.EFX`, per title), and who
 carries what.
 
@@ -503,7 +503,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="command", required=True)
 
-    c = sub.add_parser("sweep", help="who carries which id, across the corpus")
+    c = sub.add_parser("sweep", help="who carries which id, across the specimens")
     c.add_argument("roots", nargs="*", type=pathlib.Path,
                    help="directories to sweep; default the specimen tree, "
                         "the archives and the played DOS game directory")

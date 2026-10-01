@@ -9,7 +9,7 @@ departed from. Both looked like measurements.
 
 So the test that matters here is `hand_built`. A file we assembled is not
 evidence about what the engine writes, and if a `SEED-` or a `built/`
-directory ever slips back into the corpus the counts quietly inflate and
+directory ever slips back into the specimens the counts quietly inflate and
 nothing goes red. The rest of the module -- `find_saves`, `describe`,
 `sweep`, `_label` -- is pure over bytes and paths and is covered alongside.
 
@@ -78,7 +78,7 @@ def test_an_engine_written_file_is_not_hand_built(tmp_path, name):
     """`RESAVE-` is the engine's own `ENCAMP > SAVE` and must be counted.
 
     The prefix names where the file came from in our runs, not who wrote it:
-    excluding it would throw away seven of the corpus's specimens.
+    excluding it would throw away seven of the specimens' specimens.
     """
     assert not sweep.hand_built(tmp_path / "run2" / name)
 
@@ -180,7 +180,7 @@ def test_find_saves_deduplicates_on_the_bytes(tmp_path):
     """The archives ship most save directories twice.
 
     Counting a file twice because it is in two places is the same defect as
-    counting a seed: the corpus size stops meaning what it says.
+    counting a seed: the specimens size stops meaning what it says.
     """
     same = _blank(a49E6=1, a49C6=3)
     a = _write(tmp_path / "one", "SAVGAMA.DAT", same)

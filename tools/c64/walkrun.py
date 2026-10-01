@@ -9,7 +9,7 @@ back keeping that facing where the edge carries no wall art, or held turned
 about where it does (#708).  Every step records the party position before and
 after, so a
 move that does not change the position is a **wall** -- which is the whole
-point of the corpus.  One save disk is written per step into
+point of the specimens.  One save disk is written per step into
 the `walks` directory under `tools.c64.session.HERE`, with a manifest naming the intended route.
 
 Everything is torn down at the end, checkpoints included, and a screenshot is

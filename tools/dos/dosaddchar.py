@@ -186,7 +186,7 @@ def run(ident: int | None, keep: bool = False) -> dict:
         # A candidate whose file was read is starred in the list before the
         # party is walked, whether it is then let in or turned away.  An
         # unchanged screen means the entry was never opened, and the run has
-        # measured nothing rather than measured a refusal.
+        # measured nothing rather than measured a rejection.
         result["beta_was_read"] = chosen.px != moved.px
 
         session.key("e")               # EXIT, back to the roster

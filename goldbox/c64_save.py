@@ -453,7 +453,7 @@ class C64Container:
     def indoors_flag_base(self) -> int | None:
         """`$49E6`: zero on the travel grid, non-zero in a `GEO` area.
 
-        None unless `travel_grid`, the same refusal
+        None unless `travel_grid`, the same rejection
         `automap.c64.C64Machine.live_position` makes for the same reason:
         reading this on a title with no travel grid would answer a byte of
         unrelated resident code as though it meant something.
@@ -778,7 +778,7 @@ GATEWAY_TO_THE_SAVAGE_FRONTIER = C64Container(
 #: The titles whose payload map has been measured, and **only** those three.
 #: Every caller that reads a header offset, a page address or a zeroing list
 #: comes through here or through :func:`container_for`, so a `.get()` that
-#: answers None is the refusal rather than an accident.  The whole six are
+#: answers None is the rejection rather than an accident.  The whole six are
 #: `goldbox.c64_port.GAMES`, in that order.
 CONTAINERS: dict[str, C64Container] = {
     c.key: c for c in (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,

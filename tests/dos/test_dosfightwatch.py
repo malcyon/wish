@@ -501,9 +501,9 @@ POOL_SIZE = dos_savegame.SAVE_POOL_OF_RADIANCE.size
 
 
 def _donor(*, outdoors=False) -> bytes:
-    """A zero Pool save `retarget`ed to the Slums, standing at 14,4 facing east."""
+    """A zero Pool save moved by `move_to_area` to the Slums, standing at 14,4 facing east."""
     save = bytearray(POOL_SIZE)
-    dos_savegame.retarget(save, area=20, dax=2, geo=20, wallset=(2, 4, 1),
+    dos_savegame.move_to_area(save, area=20, dax=2, geo=20, wallset=(2, 4, 1),
                           script=b"\0\0" + b"\x42" * 100)
     dos_savegame.put_position(save, 14, 4, 1)
     dos_savegame.put_word(save, dos_savegame.INDOORS, 0 if outdoors else 1)
@@ -515,7 +515,7 @@ def _stage(tmp_path):
     folder.mkdir()
     save.mkdir()
     hall = bytearray(POOL_SIZE)
-    dos_savegame.retarget(hall, area=11, dax=3, geo=0, wallset=(0, 0xFFFF, 0xFFFF),
+    dos_savegame.move_to_area(hall, area=11, dax=3, geo=0, wallset=(0, 0xFFFF, 0xFFFF),
                           script=b"\0\0" + b"\x99" * 300)
     (folder / "SAVGAME.DAT").write_bytes(bytes(hall))
     (folder / "CHRDATE7.SAV").write_bytes(b"\x07" * 285)

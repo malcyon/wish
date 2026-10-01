@@ -19,7 +19,7 @@ Wish genuinely cannot read still does. The two "ready to write" states need
 a rehearsal to actually succeed, which needs the player's own DOS save and
 C64/DOS game files; those two are skipped, with a line saying so, on a
 machine that has neither. `_modal_state` is not the dialog at all: the
-report pane it used to draw on is gone (2026-09-10), so a real refusal or a
+report pane it used to draw on is gone (2026-09-10), so a real rejection or a
 name DOS's own field could not hold whole now shows in a modal
 `QMessageBox` instead, and that box is what this one renders -- built
 directly rather than through `QMessageBox.warning`, which blocks on
@@ -166,9 +166,9 @@ def _ready_states(root: pathlib.Path):
 
 
 def _modal_state():
-    """The one place left that a refusal or a name warning is shown, now
+    """The one place left that a rejection or a name warning is shown, now
     that the report pane is gone: a modal `QMessageBox`. `.critical` fires
-    only for a real refusal since `#52`'s fix of 2026-09-10 -- `CANNOT_
+    only for a real rejection since `#52`'s fix of 2026-09-10 -- `CANNOT_
     CONVERT` here, a source the player chose that Wish cannot read --
     never for `NO_FOLDER`, `NO_GAME_FOLDER`, `NO_DISK` or `NO_DISKS`, which
     name a row still empty and are silent (`ConvertDialog._SILENT_BLOCKS`).
@@ -185,7 +185,7 @@ def _modal_state():
         QMessageBox.Icon.Critical, convert.DIALOG_TITLE, convert.CANNOT_CONVERT,
         QMessageBox.StandardButton.Ok)
     return [("09-name-warning-modal", warning),
-           ("10-refusal-modal", critical)]
+           ("10-rejection-modal", critical)]
 
 
 def _success_states():

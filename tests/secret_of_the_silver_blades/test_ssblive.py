@@ -8,9 +8,9 @@ machine with the player's disks can check again without an emulator.
 
 Three kinds of assertion, and they are different in nature:
 
-* **The walk corpus.** Twelve moves the driven party actually made in `GEO10`,
+* **The walk specimens.** Twelve moves the driven party actually made in `GEO10`,
   nine completed and three refused, recorded square by square. Against the
-  decoded map every completed move must cross a passable edge and every refusal
+  decoded map every completed move must cross a passable edge and every rejection
   must meet an impassable one. That is the automapper validation, frozen: if a
   later change to `goldbox/geo.py` starts reading the barrier planes differently,
   these twelve facts fail.
@@ -42,7 +42,7 @@ FIRST_MAP = "GEO10"
 
 #: Every move the driven party made, as `(x, y, direction, moved)`. Read off
 #: the status line and corroborated against `$C04B` at each step; the three
-#: refusals are the valuable half, because an impassable edge is rare.
+#: rejections are the valuable half, because an impassable edge is rare.
 WALK = [
     (3, 3, SOUTH, True),
     (3, 4, SOUTH, True),
@@ -74,7 +74,7 @@ def _first_map() -> Geo:
     pytest.skip(f"no Silver Blades side here carries {FIRST_MAP}")
 
 
-# --- phase 5: the automapper validation, as a corpus -------------------------
+# --- phase 5: the automapper validation, as a set of specimens -------------------------
 
 
 def test_the_map_the_party_starts_on_is_perfectly_reciprocal():
@@ -105,7 +105,7 @@ def test_every_step_the_party_completed_crossed_a_passable_edge():
 
 
 def test_every_step_the_game_refused_met_an_impassable_edge():
-    """The strongest single observation available: refusals are rare.
+    """The strongest single observation available: rejections are rare.
 
     Three of them, and each one identifies the map far more sharply than a
     successful step does -- `GEO10` has 480 edges and only a handful are shut.
@@ -122,7 +122,7 @@ def test_every_step_the_game_refused_met_an_impassable_edge():
 def test_the_walk_is_a_connected_route():
     """Each completed step lands on the square the next line starts from.
 
-    Cheap, and it is what catches a corpus edited by hand into nonsense.
+    Cheap, and it is what catches a set of specimens edited by hand into nonsense.
     """
     step = {NORTH: (0, -1), EAST: (1, 0), SOUTH: (0, 1), WEST: (-1, 0)}
     for (x, y, d, moved), (nx, ny, _, _) in zip(WALK, WALK[1:]):

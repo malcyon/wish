@@ -43,7 +43,7 @@ MEASURED = ("pool-of-radiance", "curse-of-the-azure-bonds",
             "secret-of-the-silver-blades")
 
 
-# --- the refusal ------------------------------------------------------------
+# --- the rejection ------------------------------------------------------------
 
 @pytest.mark.parametrize("key", UNMEASURED)
 def test_an_unrun_title_has_neither_live_address(key):
@@ -71,7 +71,7 @@ def test_a_measured_title_has_both(key):
 def test_every_action_refuses_on_a_title_with_no_mode_flag(key):
     """`actions.mode` answers None, and an action says so rather than writing.
 
-    This is the refusal the move had to keep. `mode()` reading an unmeasured
+    This is the rejection the move had to keep. `mode()` reading an unmeasured
     address would answer whatever byte happened to be there, and an action
     would take "not 2" for "not in combat" and write into a fight.
     """
@@ -81,7 +81,7 @@ def test_every_action_refuses_on_a_title_with_no_mode_flag(key):
     refused = actions.RestoreSpells(game=game).legality(target)
     assert not refused.ok
     assert refused.reason == actions.UNSUPPORTED.format(title=game.title)
-    # And the same target does let Pool of Radiance through, so the refusal
+    # And the same target does let Pool of Radiance through, so the rejection
     # above is the missing flag rather than an unreadable machine.
     assert actions.RestoreSpells().legality(target).ok
 
@@ -177,7 +177,7 @@ def test_machine_for_takes_what_container_for_takes():
 
 
 def test_a_key_nobody_knows_raises_rather_than_answering_pool_of_radiance():
-    """The refusal `#460` is about, one class over: no silent fallback."""
+    """The rejection `#460` is about, one class over: no silent fallback."""
     with pytest.raises(KeyError):
         c64.machine_for("pools-of-darkness")
 
@@ -196,7 +196,7 @@ def test_the_machine_agrees_with_combatmemory_on_the_four_fields_both_know(key):
     This does not argue for unifying the two tables: `CombatMemory` refuses
     on the three titles `C64Machine` still measures for
     (`memory_for` returns None for them), and folding them together would need
-    that refusal rebuilt for titles nobody has run a fight on, for no
+    that rejection rebuilt for titles nobody has run a fight on, for no
     behaviour a player would see.
     """
     machine = c64.MACHINES[key]

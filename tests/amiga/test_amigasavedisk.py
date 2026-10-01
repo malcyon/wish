@@ -140,9 +140,9 @@ def test_the_saved_game_on_a_save_disk_names_this_slots_own_files():
 
 
 def test_a_saved_game_of_the_wrong_size_is_refused_before_anything_is_written():
-    """A save disk is formatted here, so a refusal costs the caller nothing.
+    """A save disk is formatted here, so a rejection costs the caller nothing.
 
-    It still has to be a refusal rather than a disk with a 13,000-byte
+    It still has to be a rejection rather than a disk with a 13,000-byte
     container on it: the game reads a fixed length.
     """
     with pytest.raises(amiga_port.AmigaRecordError):

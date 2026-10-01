@@ -288,24 +288,24 @@ def test_a_call_quoted_as_a_script_for_bash_sh_or_eval_is_refused(command, monke
 def test_web_is_refused_for_the_browser_reason_not_the_trust_one(capsys, monkeypatch):
     """`gh issue view --web` opens a browser on Donald's own screen --
     `AGENTS.md`, "The machine" -- which is a different reason from the trust
-    one every other refusal here gives, and reads differently."""
+    one every other rejection here gives, and reads differently."""
     assert run("gh issue view --web 510", monkeypatch=monkeypatch) == 2
     err = capsys.readouterr().err
     assert "browser" in err
     assert "Donald" in err
 
 
-def test_the_refusal_names_the_filtered_reader(capsys, monkeypatch):
-    """A refusal nobody can act on is a refusal that gets worked around."""
+def test_the_rejection_names_the_filtered_reader(capsys, monkeypatch):
+    """A rejection nobody can act on is a rejection that gets worked around."""
     assert run("gh issue view 510 --comments", monkeypatch=monkeypatch) == 2
     err = capsys.readouterr().err
     assert "tools/github/issueread.py" in err
     assert "public" in err
 
 
-def test_the_refusal_names_the_citation_mode(capsys, monkeypatch):
+def test_the_rejection_names_the_citation_mode(capsys, monkeypatch):
     """#523: the refused command is often the one `AGENTS.md`'s "Name every
-    issue you cite" documents, so the refusal must point at the one-line
+    issue you cite" documents, so the rejection must point at the one-line
     replacement rather than only at the whole-issue reader -- a message that
     tells you to print the whole issue when you wanted one line is what gets
     a guard worked around."""

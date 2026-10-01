@@ -2,7 +2,7 @@
 
 The DOS engine's recompute reads entry 0 of every class row the character has
 no level in, so the byte it stores is never worse than THAC0 20 --
-`docs/224-the-dos-thac0-floor.md`.  `goldbox.levels.dos_engine_thac0` is that
+`docs/224-the-dos-thac0-lower-limit.md`.  `goldbox.levels.dos_engine_thac0` is that
 rule and `goldbox.dos_codec.write` stores it for a C64 source; the
 best-of-classes number `dos_base_thac0` gives is the C64 engine's, and differs
 from it by one point for a Curse or Silver Blades magic-user of level 1-5.
@@ -198,7 +198,7 @@ def test_the_551_party_converts_to_what_the_engine_wrote_for_it():
 
     The specimen's two magic-users hold 39 because the writer of the day used
     the C64's rule; DOS Curse rewrote both to 40 when the same party was loaded
-    and saved (`docs/224-the-dos-thac0-floor.md`).  The other four characters
+    and saved (`docs/224-the-dos-thac0-lower-limit.md`).  The other four characters
     hold what the engine left and are unchanged.
     """
     root = gamedata.specimen_root()

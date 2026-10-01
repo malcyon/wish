@@ -13,7 +13,7 @@ opcode does not define, a word that runs off the end of the buffer -- each one
 falls through to ``dc.w`` rather than being rounded to the nearest instruction
 that fits.
 
-**Two of those refusals are judgement, not the instruction set**, and the
+**Two of those rejections are judgement, not the instruction set**, and the
 distinction matters enough to say here: a 68020 index extension and a branch to
 an odd address are both encodings a 68000 will happily execute -- it ignores
 the reserved extension bits, and it takes the odd branch and address-errors

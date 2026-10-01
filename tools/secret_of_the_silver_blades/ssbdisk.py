@@ -15,7 +15,7 @@ the Silver Blades DOS save into a C64 one, which the importer refuses today)`).
         --out SSBD.D64 --report --sheet
 
 **`enable_ssb()` is a reach-around and says so.** `goldbox.dos_codec.CONVERTS` does
-not carry Silver Blades: the refusal in `goldbox/dos_codec.py` stands until a party
+not carry Silver Blades: the rejection in `goldbox/dos_codec.py` stands until a party
 this tool built has been loaded in the running game and read off the screen,
 which is `#193` step 3.  This tool puts the shape on `CONVERTS` **in its own
 process only**, the same way `tools/curse_of_the_azure_bonds/cursedisk.py` did while `#192` was open.

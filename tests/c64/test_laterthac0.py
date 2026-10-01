@@ -113,11 +113,11 @@ def test_every_record_reproduces_except_the_magic_users_the_dos_engine_stores_20
     gives a Curse or Silver Blades magic-user of level 1 to 5 THAC0 21, but
     the DOS engine's load recompute also reads entry 0 of every class the
     character lacks and stores 20 (`goldbox.levels.dos_engine_thac0`,
-    `docs/224-the-dos-thac0-floor.md`), and our DOS writer stores the same.
+    `docs/224-the-dos-thac0-lower-limit.md`), and our DOS writer stores the same.
     A miss must be that kind and hold what that rule gives, so any other
     disagreement fails, whoever wrote the record.  This excuses the engine's
     own value and cannot tell a record our DOS writer wrote from one the
-    engine wrote; `tests/convert/test_dosthac0floor.py` checks the writer.
+    engine wrote; `tests/convert/test_dosthac0lowerlimit.py` checks the writer.
     """
     _located(title)
     agree, total, lines = laterthac0.sweep(title)

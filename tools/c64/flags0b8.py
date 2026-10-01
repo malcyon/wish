@@ -182,7 +182,7 @@ def trainer_steps(key: str) -> list[tuple[str, int, str]]:
 
 
 def refuses_npcs(key: str) -> list[str]:
-    """The files carrying the ADD CHARACTER refusal text `CAN'T ADD NPCS`."""
+    """The files carrying the ADD CHARACTER rejection text `CAN'T ADD NPCS`."""
     return sorted({name for name, data in files(key) if b"CAN'T ADD NPCS" in data})
 
 

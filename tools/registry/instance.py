@@ -402,7 +402,7 @@ def reap(n: int, timeout: float = 8.0) -> str:
 
     Kills **the pgid recorded in that slot's lease file** and nothing else.  A
     slot whose flock is held is somebody's however dead it looks, and this
-    refuses it: that refusal is the rule that replaces `ss -tnp | grep 6502`.
+    refuses it: that rejection is the rule that replaces `ss -tnp | grep 6502`.
     """
     if fcntl is None:
         raise PoolUnavailable("the instance pool needs flock, so it is POSIX only")

@@ -338,7 +338,7 @@ Two differences that are not numbers:
 * **The 22-byte-per-class-slot table at `DS:6D18`**, which creation reduces over
   the class slots into `thac0_base` at `0xac`, and the per-slot class-bit table
   at `DS:6DB2` it sums into `class_bits` at `0x17b`. Both are named and neither
-  is decoded here; `docs/224-the-dos-thac0-floor.md` is the attack side.
+  is decoded here; `docs/224-the-dos-thac0-lower-limit.md` is the attack side.
 * **Whether the two score ceilings should reach `capacity_by_class`.** The
   function answers base rows plus the wisdom bonus, so for a cleric with wisdom
   under 17 or a magic-user with intelligence under 12 it reports slots the game

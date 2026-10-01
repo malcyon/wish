@@ -106,7 +106,7 @@ def test_the_later_titles_refuse_to_add_a_companion_from_the_roster(key):
     assert flags0b8.refuses_npcs(key)
 
 
-def test_pool_of_radiance_has_no_refusal():
+def test_pool_of_radiance_has_no_rejection():
     _sites(POOL)
     assert flags0b8.refuses_npcs(POOL) == []
 

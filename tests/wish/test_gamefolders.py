@@ -340,7 +340,7 @@ def test_the_switch_says_which_title_it_is_now_mapping(app, tmp_path,
         win.close()
 
 
-def test_a_title_with_no_row_still_gets_the_refusal(app, tmp_path, monkeypatch):
+def test_a_title_with_no_row_still_gets_the_rejection(app, tmp_path, monkeypatch):
     """The fail-closed guard the per-title design rests on: a machine
     running an unconfigured title still gets no candidate to switch to."""
     nowhere(tmp_path, monkeypatch)

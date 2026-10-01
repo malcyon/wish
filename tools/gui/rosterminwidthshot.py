@@ -10,7 +10,7 @@ works offscreen, so this never puts a window on his screen -- run it the way
 the rule says:
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \
-        GDK_BACKEND=x11 .venv/bin/python tools/gui/rosterfloorshot.py DIR
+        GDK_BACKEND=x11 .venv/bin/python tools/gui/rosterminwidthshot.py DIR
 
 **No source file is edited to take these pictures.** `EditorBinding._size_
 roster` is monkeypatched onto the class in memory, for the lifetime of one
@@ -179,7 +179,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        "out", nargs="?", default=scratch.scratch_dir("rosterfloorshot"),
+        "out", nargs="?", default=scratch.scratch_dir("rosterminwidthshot"),
         type=pathlib.Path,
         help="directory to write the pictures into (default: %(default)s)")
     raise SystemExit(main(parser.parse_args().out))

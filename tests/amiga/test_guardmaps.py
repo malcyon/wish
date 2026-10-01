@@ -168,7 +168,7 @@ def test_committed_maps_guard_every_interstitial_screen(title):
     assert _interstitial_screens(title) <= spec['guards'].keys()
 
 
-def test_add_refusals_leave_map_unchanged(tmp_path, capsys):
+def test_add_rejections_leave_map_unchanged(tmp_path, capsys):
     root, maps = tmp_path / 'root', tmp_path / 'maps'
     maps.mkdir()
     crop = _run(root, '1', 'pool-run', 'pool', 'title')

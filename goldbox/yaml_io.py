@@ -1091,7 +1091,7 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
         # cannot take back rather than writing it -- the game decides
         # whether a character may change class again by reading exactly
         # these two bytes, and gives no message a player would ever see if
-        # they disagree with what actually happened. Refusals fire only
+        # they disagree with what actually happened. Rejections fire only
         # when the value actually differs from what the record already
         # holds, so importing an unedited export never touches the pair.
         if "former_levels" in entry:

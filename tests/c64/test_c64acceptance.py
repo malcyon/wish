@@ -3008,7 +3008,7 @@ def test_pool_specimen_registry_failure_marks_run_lost_and_tears_down(
     assert summary["registered_specimen"] == str(tmp_path / "registered.D64")
 
 
-def test_pool_specimen_add_refusal_marks_run_lost_and_tears_down(tmp_path, monkeypatch):
+def test_pool_specimen_add_rejection_marks_run_lost_and_tears_down(tmp_path, monkeypatch):
     from tools.registry import specimens
 
     def refuse(*a, **k):
@@ -5943,7 +5943,7 @@ def test_a_curse_run_stops_when_the_party_square_never_settles(tmp_path, monkeyp
     assert any("lost-square" in p.name for p in tmp_path.iterdir())
 
 
-def test_a_refused_curse_step_reports_the_refusal_and_keeps_the_screen(
+def test_a_refused_curse_step_reports_the_rejection_and_keeps_the_screen(
         tmp_path, monkeypatch):
     # The walk's start and the move's `before` settle; the third read, the one
     # `took_nothing` asks for, does not, which is also when `walk_one` refuses.
@@ -8325,8 +8325,8 @@ def _real_walk_with(cls, tmp_path, monkeypatch, **kw):
     return sess, run, log
 
 
-class RefusalFreeAmbush(AmbushWalk):
-    """`walk_one` returns False with no refusal and no stop screen while an
+class RejectionFreeAmbush(AmbushWalk):
+    """`walk_one` returns False with no rejection and no stop screen while an
     ambush's `PRESS` bar is up and the party has not moved."""
 
     def walk_one(self, move, *a, **k):
@@ -8342,7 +8342,7 @@ class RefusalFreeAmbush(AmbushWalk):
 
 def test_walk_fight_answers_a_press_bar_walk_one_left_fights_and_resends_once(
         tmp_path, monkeypatch):
-    sess = RefusalFreeAmbush({})
+    sess = RejectionFreeAmbush({})
     run, log = _fight_walk_run(tmp_path, monkeypatch, sess)
     got = run.walk_fight("I")
     log.close()
@@ -8362,7 +8362,7 @@ class UnsentPressBar(AmbushWalk):
     `unsent_calls` says which `walk_one` calls send nothing."""
 
     TEXT = {17: "DARK, BENT CREATURES RUSH SWIFTLY AT", 18: "YOU."}
-    REFUSAL = ("the driver pressed nothing for I: taking MOVE never brought "
+    REJECTION = ("the driver pressed nothing for I: taking MOVE never brought "
                "up I,J,K,M; this is a driver error, not a wall")
 
     def __init__(self, script=None, fight=True, unsent_calls=(0,),
@@ -8392,7 +8392,7 @@ class UnsentPressBar(AmbushWalk):
             return False
         row = self.screen().row(24)
         if not row.strip():
-            self.walk_refused = self.REFUSAL
+            self.walk_refused = self.REJECTION
             return False
         return WalkSession.walk_one(self, move, *a, **k)
 
@@ -9834,7 +9834,7 @@ def test_temple_run_with_no_records_still_refuses_a_changed_hash(
 
 def _menu_after(session, reads):
     """Make the fake's result screen give way to the temple menu after READS
-    screen reads, as the live refusal did."""
+    screen reads, as the live rejection did."""
     original = session.screen
     shown = [0]
 
@@ -9846,7 +9846,7 @@ def _menu_after(session, reads):
     session.screen = screen
 
 
-def test_temple_probe_keeps_a_refusal_drawn_on_row_24_over_the_price_screen(
+def test_temple_probe_keeps_a_rejection_drawn_on_row_24_over_the_price_screen(
         tmp_path, monkeypatch):
     run, session, events = _temple_fake_run(tmp_path, monkeypatch)
     session.result_bar = "NOT ENOUGH MONEY !"
@@ -9859,10 +9859,10 @@ def test_temple_probe_keeps_a_refusal_drawn_on_row_24_over_the_price_screen(
 
     session.confirm_bar = confirm
     result = run.temple_probe("BRUTUS RAISE")
-    refusal = [f for f in result["result_frames"]
+    rejection = [f for f in result["result_frames"]
                if f["rows"][24] == "NOT ENOUGH MONEY !"]
-    assert len(refusal) == 1
-    assert refusal[0]["rows"][:24] == result["raise_price"]["rows"][:24]
+    assert len(rejection) == 1
+    assert rejection[0]["rows"][:24] == result["raise_price"]["rows"][:24]
     assert result["outcome"] == "no-money"
 
 
@@ -9887,7 +9887,7 @@ def test_temple_probe_still_drops_a_frame_that_is_the_price_screen_itself(
     ("CURED", "cured"), ("BRUTUS IS ALIVE", "alive"),
     ("CURED\nBRUTUS FAILED", "failed"),
     ("THAT SPELL CAN NOT HELP YOU", "cannot-help")])
-def test_temple_outcome_reads_the_cure_and_refusal_texts(text, outcome):
+def test_temple_outcome_reads_the_cure_and_rejection_texts(text, outcome):
     assert A.PoolRun._temple_outcome(text) == outcome
 
 
@@ -11553,7 +11553,7 @@ def test_the_registry_holds_the_curse_disks_the_driver_would_look_up():
     assert disks.is_dir()
 
 
-def test_the_no_disks_refusal_names_the_variable_of_the_title(
+def test_the_no_disks_rejection_names_the_variable_of_the_title(
         tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(A, "tool_disks", lambda: None)
     monkeypatch.setattr(A.gamedisks, "find", lambda name: None)
@@ -11641,7 +11641,7 @@ SCRIBED = {"picked", "listexit", "chosen", "confirm", "magic2", "camp2"}
 class _ColourScreen(FakeScreen):
     """A screen whose list highlight is white at column 3 of row HOT, the
     other cells green, and column 1 white on every row, as the pick prompt
-    after a refusal draws the `EXIT` row."""
+    after a rejection draws the `EXIT` row."""
 
     def __init__(self, rows, hot):
         super().__init__(rows)
@@ -11863,7 +11863,7 @@ def test_scribe_fails_when_no_key_raises_the_queue_count(tmp_path, monkeypatch):
     assert list(tmp_path.glob("*lost-scribe-pick.txt"))
 
 
-def test_scribe_fails_on_the_games_refusal_without_a_second_key(tmp_path):
+def test_scribe_fails_on_the_games_rejection_without_a_second_key(tmp_path):
     sess = _ScribeFake({("pick", ("key", "Return")): "refused"})
     run = _scribe_run(tmp_path, sess)
     with pytest.raises(A.StepFailed, match="CAN'T SCRIBE STONE TO FLESH"):
@@ -12041,14 +12041,14 @@ def test_rest_without_a_scribe_still_leaves_camp_first(tmp_path, monkeypatch):
     assert "stayed_in_camp" not in got
 
 
-def test_scribe_does_not_send_the_second_key_after_a_refusal_flash_between_polls(
+def test_scribe_does_not_send_the_second_key_after_a_rejection_flash_between_polls(
         tmp_path, monkeypatch):
     monkeypatch.setattr(A, "SCRIBE_PICK_SECONDS", 0.5)
 
     class Flash(_ScribeFake):
         def _go(self, what):
             if self.state == "pick" and what == ("key", "Return"):
-                self.hot = 10  # the refusal moved the highlight to EXIT
+                self.hot = 10  # the rejection moved the highlight to EXIT
             return super()._go(what)
 
     sess = Flash({("pick", ("key", "Return")): "pick"})
@@ -12635,7 +12635,7 @@ def test_ready_row_refused_before_any_key_when_the_list_is_another_members(
         _ready_row(tmp_path, monkeypatch, "BROTHER SEAN>#1")
 
 
-def test_ready_row_reports_the_refusal_text_the_game_printed(tmp_path, monkeypatch):
+def test_ready_row_reports_the_rejection_text_the_game_printed(tmp_path, monkeypatch):
     got, _, _ = _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#3", "refused")
     assert (got["outcome"], got["message"]) == ("refused", "WRONG CLASS")
     assert got["row_was"] == got["row_now"] == "NO"
@@ -12749,7 +12749,7 @@ def test_ready_row_leaves_the_list_when_the_row_has_gone(tmp_path, monkeypatch):
         _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#3", "vanished")
 
 
-def test_an_item_name_with_a_refusals_words_is_not_a_refusal(tmp_path, monkeypatch):
+def test_an_item_name_with_a_rejections_words_is_not_a_rejection(tmp_path, monkeypatch):
     rows = {**_ItemRowsFake.ROWS, 6: " NO  WRONG CLASS RING"}
     got, _, _ = _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#3", rows=rows)
     assert got["outcome"] == "readied" and got["message"] is None

@@ -639,7 +639,7 @@ def test_a_disk_prompt_bar_still_refuses(monkeypatch):
     _refuses(sess)
 
 
-def test_an_expired_walk_gives_the_time_ran_out_refusal(monkeypatch):
+def test_an_expired_walk_gives_the_time_ran_out_rejection(monkeypatch):
     sess = Ambush(monkeypatch)
     sess.walk_encounter = S.ENCOUNTER_FIGHT
     sess.walk_expired = lambda: True

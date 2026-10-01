@@ -439,7 +439,7 @@ class WishWindow(QMainWindow):
         nothing: `Automapper.identify_elsewhere` has nothing to try.
 
         Read off disk once per `(title, folder)` and cached on the window --
-        `_check_the_game` may call this every tick while the refusal would
+        `_check_the_game` may call this every tick while the rejection would
         otherwise fire, and re-reading a folder's `GEO` files on every one of
         those would be the periodic resident check's own cost repeated for
         nothing.

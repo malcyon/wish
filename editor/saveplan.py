@@ -1735,7 +1735,7 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
     **The destination is never the save it came from.** Writing a Save As
     over its own source destroys the thing it is reading, and for a copy of
     the same save to the same place there is already a Save; a caller that
-    reaches here with the open save's own path gets a refusal rather than
+    reaches here with the open save's own path gets a rejection rather than
     either.
 
     **The name decides whether the output can be opened again**, so it is
@@ -1866,7 +1866,7 @@ def validate(destination: Destination, files: dict[str, bytes],
     to, including one whose report was thrown away before it reached here.
 
     `accounted` is what that report did name, and it is raised together with
-    the comparison's own findings rather than ahead of them, so one refusal
+    the comparison's own findings rather than ahead of them, so one rejection
     names everything this route would cost the player instead of the first
     thing it happened to notice.
 

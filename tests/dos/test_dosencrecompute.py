@@ -13,7 +13,7 @@ tables can set it off.
 Everything here needs the player's copy of *Forgotten Realms: The Archives*
 and skips without it, the way `tests/gamedata.py` skips without the C64 disks.
 The two tests that need no game data at all are the ones that would go red on
-a reader mistake rather than on a missing corpus: the gate reader, and the
+a reader mistake rather than on a missing set of specimens: the gate reader, and the
 insistence that the money fields come from `goldbox/dos_port.py`.
 
 One thing these do **not** assert: a remembered address.  The tool finds the

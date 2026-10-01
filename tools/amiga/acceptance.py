@@ -2112,7 +2112,7 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
         try:
             _camp_title(name, title, list(camp), manifest["names_a"])
         except RouteError:
-            # The party is read only once the disks are copied, so a refusal takes the folder
+            # The party is read only once the disks are copied, so a rejection takes the folder
             # with it and a corrected retry can use the same run id.
             shutil.rmtree(run)
             raise

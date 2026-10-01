@@ -79,7 +79,7 @@ ROSTER_PAGE = ROSTER_COUNT * ROSTER_STRIDE
 class Contribution:
     """One roster slot's share of the sum, term by term.
 
-    The breakdown is the useful part: a total of 130 says nothing about what to
+    The breakdown is what a reader needs: a total of 130 says nothing about what to
     change, and "MALCYON 27" beside "BRUTUS 26" says the wizard is pulling as
     hard as the fighter.
     """

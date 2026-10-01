@@ -8,7 +8,7 @@ spends one byte per spell for the same ids and *does* have a slot for 56, at
 record `0x06A`.  So a DOS-to-C64 conversion has somewhere to lose it, and
 `#411 (Nobody knows whether a converted cleric loses Restoration, because the
 spellbook field is one bit short of the game's own spell list)` asks two
-questions this answers off the corpus, with no emulator:
+questions this answers off the specimens, with no emulator:
 
 1. does any **cleric** carry a spellbook at all, or is the field the
    magic-user's alone?
@@ -301,7 +301,7 @@ def dos_roots() -> list[pathlib.Path]:
     """The specimen tree, the archives and the played DOS game directory.
 
     `tools/dos/dostailsweep.py`'s own list, so every DOS sweep on this machine
-    covers the same corpus (#575).
+    covers the same specimens (#575).
     """
     return dostailsweep.dos_record_roots()
 

@@ -18,7 +18,7 @@ Written for `#31 (Cold-read Curse and Silver Blades for the fields the editor
 shows)`, whose whole point is that these answers are on disks this project
 already opens. The patterns are the reusable part: run any of them against
 Champions of Krynn, Death Knights of Krynn or Gateway to the Savage Frontier
-and they will either find that title's tables or say plainly that they did not.
+and they will either find that title's tables or say that they did not.
 
 **`GEN` runs at `$0800` and its PRG header lies** -- it claims `$1000` in Pool
 of Radiance, `$1220` in Curse and `$4000` in Silver Blades. `$0800` is where

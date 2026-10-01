@@ -64,7 +64,7 @@ class TargetNotEmpty(RuntimeError):
 
 
 def _no_backup_folder(name: str) -> NoBackupFolder:
-    """The one refusal for a write that would overwrite with nowhere to put
+    """The one rejection for a write that would overwrite with nowhere to put
     the copy."""
     return NoBackupFolder(
         f"No backup folder is set, so {name} was not written. "

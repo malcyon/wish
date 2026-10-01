@@ -425,7 +425,7 @@ class Automapper:
         **The verdict on the title goes back to "no idea".** It was reached
         against the old maps, and pointing the Game directory at another
         title's disks is exactly how a player fixes the mistake it is
-        complaining about; leaving the refusal latched would make that
+        complaining about; leaving the rejection latched would make that
         unfixable without a restart.
         """
         self._maps = dict(maps or {})
@@ -545,7 +545,7 @@ class Automapper:
             # under our title's name -- so nothing is recorded at all.
             #
             # The block is still read on the ordinary cadence, and only that
-            # can lift the refusal: a player who loads the right game into the
+            # can lift the rejection: a player who loads the right game into the
             # emulator they already had open has fixed it, and the next tick
             # picks the session up. It has to happen here rather than in
             # `_running`, which never reaches the block at all while the game
@@ -872,7 +872,7 @@ class Automapper:
         before refusing. `elsewhere` is every other configured title's own
         maps, title -> `{area: Geo}` -- built by the window from
         `Settings.game_folders`, never a search, so a title with no folder
-        set is never a candidate and the refusal still fires for it exactly
+        set is never a candidate and the rejection still fires for it exactly
         as before.
 
         **Exact match only, never `ResidentGeo.verdict`'s `NEAR_ENOUGH`
@@ -951,7 +951,7 @@ class Automapper:
         that took a control away would be a worse bug than the one this is
         for; `CONTRADICTIONS_BEFORE_REFUSING` is how many it takes.
 
-        The refusal then **stands until it is positively contradicted**. Two
+        The rejection then **stands until it is positively contradicted**. Two
         things lift it and neither is the absence of evidence: one of our own
         maps turning up at `$0400`, which is a player loading the right game
         into the emulator they already had open, and `use_maps`, which is a

@@ -25,9 +25,9 @@ The file, in five regions
                       *same ECL addresses the C64 uses*.
 ``5121``-``12800``    the ECL text buffer: the current area's script, its
                       ``ECL<n>.DAX`` block from byte 2 on.  **Live on load**
-                      -- a retarget that leaves the template's script here
+                      -- a move that leaves the template's script here
                       dies in ``Load3DMap`` whatever else it writes, so it is
-                      one of the retarget's writes and the one thing the
+                      one of the move's writes and the one thing the
                       recipe needs the game's own files for.
 ``12801``-``12808``   the party's square and size: x, y, facing (doubled),
                       then four bytes of unknowns, then the party size again
@@ -93,7 +93,7 @@ ECL_BUFFER = (5121, 12801)   # the loaded script text -- **live**, see below
 #: third byte on: every block opens `88 13` -- `u16le` 5000 -- and the save
 #: carries everything after it.  #59 measured the offset as 39/148/28 for
 #: areas 0/21/20 and recorded the buffer as dead weight the loader refills;
-#: both are wrong.  The offset is 2 for all three, and a retarget that leaves
+#: both are wrong.  The offset is 2 for all three, and a move that leaves
 #: the template's script in place dies in `Load3DMap` however many variables
 #: it writes -- `p60/run2` in scratch, deleted, variant X1.
 #:
@@ -604,7 +604,7 @@ DISK = 0x5012                # the DAX container number again, as a VM word;
 ENCOUNTER_TEXT = 0x5227      # string buffer, one ASCII character per word
 VM_SCRATCH = 0x5200          # byte 12805 is this word's low byte
 # The shared, cross-port ECL variable space ends here. No ECL script in the
-# thirty-script corpus references an address at or above $4AF9 (2544 distinct
+# thirty-script specimens references an address at or above $4AF9 (2544 distinct
 # bracketed addresses), and on the C64 $4D00 upwards is the twelve character
 # slots -- so nothing the DOS save holds above this can be sourced from a C64
 # save, however tempting the address looks (#59).
@@ -965,7 +965,7 @@ def encounter_text(save: bytes, limit: int = 96) -> str:
 #: it repeats the next byte `256 - n` times.
 #:
 #: **One copy, here** (#76).  `tools/dos/dosbox.py` carried a second and re-exports
-#: this one; a retarget needs one ECL block out of the player's own archive and
+#: this one; a move needs one ECL block out of the player's own archive and
 #: `goldbox/` may not import from `tools/`, so the shared copy has to be this side
 #: of the edge.
 #:
@@ -996,7 +996,7 @@ def dax_index(data: bytes, name: str = "dax") -> list[tuple[int, int, int, int]]
 def dax_unpack(block: bytes, raw_size: int, name: str = "block") -> bytes:
     """Decompress one `.DAX` block, or raise `DaxError` saying which.
 
-    All three refusals mean the same thing -- a length that is not this
+    All three rejections mean the same thing -- a length that is not this
     block's -- and all three used to be silent (#65).  A run whose operand is
     past the end of the block raised `IndexError` from the subscript, and a
     block that ran out before `raw_size` returned a plausible prefix and left
@@ -1032,7 +1032,7 @@ def dax_unpack(block: bytes, raw_size: int, name: str = "block") -> bytes:
 
 
 def _dax_chunk(data: bytes, base: int, off: int, comp: int, name: str) -> bytes:
-    """The stored bytes of one block, or a refusal naming what is short."""
+    """The stored bytes of one block, or a rejection naming what is short."""
     chunk = data[base + off:base + off + comp]
     if len(chunk) != comp:
         raise DaxError(
@@ -1063,7 +1063,7 @@ def dax_block(data: bytes, block_id: int, name: str = "dax") -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# Writing: the retarget, and the two fields a conversion carries
+# Writing: the move, and the two fields a conversion carries
 # ---------------------------------------------------------------------------
 def put_word(save: bytearray, address: int, value: int,
              container: "DosContainer | None" = None) -> None:
@@ -1249,7 +1249,7 @@ def wall_map(wallset) -> tuple[int, int, int]:
     return tuple(EMPTY if w == EMPTY else i + 1 for i, w in enumerate(wallset))
 
 
-def retarget(save: bytearray, *, area: int, dax: int, wallset,
+def move_to_area(save: bytearray, *, area: int, dax: int, wallset,
              script: "bytes | None", outdoors: bool = False,
              geo: "int | None" = None,
              container: "DosContainer | None" = None) -> None:
@@ -1263,7 +1263,7 @@ def retarget(save: bytearray, *, area: int, dax: int, wallset,
     Curse and Silver Blades (`put_wall_block`); and the script is staged
     only where the container has a buffer for it.
 
-    Every write `RETARGET_WRITES` lists except the square and the party
+    Every write `MOVE_WRITES` lists except the square and the party
     size, which a conversion sets separately because they change on their
     own.  Take any of these away and the game exits to DOS.
 
@@ -1272,7 +1272,7 @@ def retarget(save: bytearray, *, area: int, dax: int, wallset,
     resident map, and is **not the same number** for an area whose script
     loads no map of its own, such as the training hall.  `geo` defaults to
     `area`, which is right for the areas that load their own map -- most of
-    them -- and wrong for the six `retarget_reason` refuses before this runs,
+    them -- and wrong for the six `move_reason` refuses before this runs,
     so a caller that knows the save's own `$49C5` passes it here rather than
     letting the default stand in for it.
 
@@ -1319,7 +1319,7 @@ def retarget(save: bytearray, *, area: int, dax: int, wallset,
     save[start:start + len(body)] = body
 
 
-#: What a retarget must write.  Established by bisection -- `p59` runs
+#: What a move must write.  Established by bisection -- `p59` runs
 #: 2-9 for the variables, `p60/run2` for the script buffer (both scratch, deleted).  The naive
 #: recipe (header + $49C5 + $49F2 + square) dies with "Unable to load geo in
 #: Load3DMap."; so does the seven-write recipe that leaves the template's
@@ -1329,7 +1329,7 @@ def retarget(save: bytearray, *, area: int, dax: int, wallset,
 #: (`p60/run2` in scratch, deleted, X2 and X3), each loaded and walked.  The addresses are
 #: formatted from the constants above so the recipe cannot drift from the map
 #: it is a recipe for.
-RETARGET_WRITES = (
+MOVE_WRITES = (
     "byte 0 = the target area's DAX number",
     f"word ${AREA:04X} = the resident GEO (defaults to the target area id, "
     f"but a caller with the save's own $49C5 passes it), or 0 onto a travel "

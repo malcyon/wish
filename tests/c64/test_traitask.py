@@ -6,7 +6,7 @@ then try `select_bar("VIEW")` -- at most about 22 seconds before giving up.
 CAMP had actually loaded. On a slot with no JiffyDOS the `CAMP` overlay can
 take longer than that, and the driver tried `VIEW` on the still-showing world
 bar and failed with "VIEW could not be selected in camp" -- a false negative
-in the driver, not a game refusal (`~/.cache/wish/acceptance/621/
+in the driver, not a game rejection (`~/.cache/wish/acceptance/621/
 e5edca2eb2-gauntlets-live/`).
 
 Nothing here needs an emulator: `FakeSession` and `FakeLog` are fixed answers,

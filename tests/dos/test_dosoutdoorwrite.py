@@ -139,38 +139,38 @@ def _write(save0: bytes, tmp_path, game_dir) -> tuple[bytes, "dos_codec.SaveRepo
     return (tmp_path / "out" / "SAVGAMA.DAT").read_bytes(), report
 
 
-# --- the refusal that went ---------------------------------------------------
+# --- the rejection that went ---------------------------------------------------
 
-def test_the_travel_grid_is_no_longer_a_refusal():
+def test_the_travel_grid_is_no_longer_a_rejection():
     """It was refused because no move of a DOS saved game onto the travel grid
     had been driven; one has been now, so the reason is gone.  The other two
-    refusals stay."""
+    rejections stay."""
     for window in (25, 26, 27):
-        assert dos_codec.retarget_reason(window) is None, window
-    assert "not supported" in dos_codec.retarget_reason(3)      # dynamic_geo
-    assert "not supported" in dos_codec.retarget_reason(8)      # loads no map
-    assert "not an area" in dos_codec.retarget_reason(31)
+        assert dos_codec.move_reason(window) is None, window
+    assert "not supported" in dos_codec.move_reason(3)      # dynamic_geo
+    assert "not supported" in dos_codec.move_reason(8)      # loads no map
+    assert "not an area" in dos_codec.move_reason(31)
 
 
-def test_a_retarget_onto_a_travel_window_names_no_geo():
-    """`$49C5` is the one of the nine writes `sg.retarget` makes that changes outdoors.
+def test_a_move_onto_a_travel_window_names_no_geo():
+    """`$49C5` is the one of the nine writes `sg.move_to_area` makes that changes outdoors.
 
     Everything else is an area like any other: the DAX number in byte 0 and
     `$5012`, the id in `$49F2`, and the block in the script buffer.
     """
     script = b"\x88\x13" + bytes(64)
     indoor = bytearray(sg.SAVGAM_SIZE)
-    sg.retarget(indoor, area=20, dax=2, wallset=(2, 4, 1), script=script)
+    sg.move_to_area(indoor, area=20, dax=2, wallset=(2, 4, 1), script=script)
     assert sg.word(indoor, sg.AREA) == 20
 
     outdoor = bytearray(sg.SAVGAM_SIZE)
     sg.put_word(outdoor, sg.INDOORS, 1)
-    sg.retarget(outdoor, area=WINDOW, dax=7, wallset=sg.OUTDOOR_WALLSET,
+    sg.move_to_area(outdoor, area=WINDOW, dax=7, wallset=sg.OUTDOOR_WALLSET,
                 script=script, outdoors=True)
     assert sg.word(outdoor, sg.AREA) == 0
     assert sg.word(outdoor, sg.SCRIPT) == WINDOW
     assert sg.word(outdoor, sg.DISK) == 7 == outdoor[0]
-    # `$49E6` is the conversion's write, not `sg.retarget`'s: a move between
+    # `$49E6` is the conversion's write, not `sg.move_to_area`'s: a move between
     # two areas of the same world must not change which world it is.
     assert sg.word(outdoor, sg.INDOORS) == 1
 
@@ -257,7 +257,7 @@ def test_the_outdoor_facing_is_dropped_rather_than_taken_from_the_stale_byte(
 
 def test_every_byte_of_an_outdoor_conversion_has_a_source(tmp_path, game_dir):
     """`new_dos_save` refuses a byte it did not write, so reaching the end is
-    the assertion -- but say it out loud, because a save built for the travel
+    the assertion -- but say it, because a save built for the travel
     grid is a different set of writes from an indoor one."""
     savgam, report = _write(_c64_on_the_travel_grid(), tmp_path, game_dir)
     assert report.unwritten == []

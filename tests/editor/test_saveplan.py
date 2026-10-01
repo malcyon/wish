@@ -774,7 +774,7 @@ def test_a_dos_hireling_prepares_for_the_c64(tmp_path, share):
 
 def test_a_c64_share_with_bit_2_is_expected_rewritten_only_for_a_pool_companion():
     """A player character's byte and another title's companion keep the
-    writer's refusal, so the check expects them unchanged."""
+    writer's rejection, so the check expects them unchanged."""
     destination = _destination("dos", c64_port.POOL_OF_RADIANCE)
     player = _hireling(0xFF)
     player.set("flags_0b8", 0)

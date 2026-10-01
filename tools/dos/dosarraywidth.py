@@ -15,8 +15,7 @@ disassemble each, and look back for the `cmp byte [bp-n], imm` that guards it.
 
 **This holds for a 0-based loop, and this compiler also emits 1-based
 ones**, where the immediate is the width itself rather than `width - 1` --
-`#516 (Generate boundary characters and check every writer's field widths,
-since no real save reaches a limit and the corpus cannot find a wrong one)`'s
+`#516`'s
 slice 3 found the record-array fill loops (`spells_castable_cleric` among
 them) generated as `for i := 1 to N`, which puts `offset - 1` in the
 instruction's displacement and `N` in the guard immediate.  Scanning at the
@@ -34,7 +33,7 @@ front had been named `gap_017`, and since the array fills from its **end**, no
 specimen on the machine contradicted the narrow reading.
 
 **What this is evidence of, and what it is not.**  The same three limits
-`tools/dos/dosfieldrefs.py` states apply, and the third is the one that bites: a
+`tools/dos/dosfieldrefs.py` states apply, and the third is the one that matters most: a
 linear scan cannot tell an instruction from data, so a match may fall in a
 string table or across the tail of one instruction and the head of the next.
 Capstone decoding the four bytes filters most of that and does not prove it.
@@ -213,9 +212,7 @@ def width(data: bytes, displacement: int) -> int | None:
     """The width the engine's own loop implies for an array at
     `displacement`, or `None` when there is nothing to say.
 
-    Lifted out of :func:`report` for `#516 (Generate boundary characters and
-    check every writer's field widths, since no real save reaches a limit
-    and the corpus cannot find a wrong one)`'s `tests/records/test_boundary.py`,
+    Lifted out of :func:`report` for `#516`'s `tests/records/test_boundary.py`,
     which asserts against this rather than parsing what `report` prints.
     `report` calls this for its own top-line answer, through `_pick`, so the
     selection rule lives once.

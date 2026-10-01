@@ -18,7 +18,7 @@ this run does not. A byte-identity test is not a loaded game
 What it does, in order:
 
 1. opens the source and Save As it to `--to` under `--out`, in a dated
-   `wish-<date>` folder, with the game data the route needs; a refusal is
+   `wish-<date>` folder, with the game data the route needs; a rejection is
    reported as `refused` and the run stops without booting anything;
 2. boots what came out. A C64 destination goes to the reader that knows
    its title -- `tools/c64/savecheck.py` for Pool of Radiance,

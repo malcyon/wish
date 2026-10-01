@@ -42,7 +42,7 @@ OUTDOOR_ENGINE_SAVE = ("por-amiga", "WISH-SPEC-por-amiga-outdoor",
 
 
 # ---------------------------------------------------------------------------
-# The corpus
+# The specimens
 # ---------------------------------------------------------------------------
 
 def _saved_games() -> list[tuple[str, bytes]]:
@@ -75,7 +75,7 @@ def _saved_games() -> list[tuple[str, bytes]]:
 
 
 @pytest.fixture(scope="module")
-def corpus() -> list[tuple[str, bytes]]:
+def specimens() -> list[tuple[str, bytes]]:
     return _saved_games()
 
 
@@ -98,14 +98,14 @@ def ecl_dax() -> bytes:
 # The four boundaries, re-derived from the bytes
 # ---------------------------------------------------------------------------
 
-def test_every_saved_game_here_is_the_documented_length(corpus):
+def test_every_saved_game_here_is_the_documented_length(specimens):
     """13,141, which is DOS's 13,137 less a container byte and plus five."""
-    wrong = [name for name, data in corpus
+    wrong = [name for name, data in specimens
              if len(data) != amiga_savegame.POR_SAVEGAME_SIZE]
-    assert not wrong, f"{len(wrong)} of {len(corpus)}: {wrong}"
+    assert not wrong, f"{len(wrong)} of {len(specimens)}: {wrong}"
 
 
-def test_the_name_table_starts_where_the_map_says(corpus):
+def test_the_name_table_starts_where_the_map_says(specimens):
     """The tail is thirteen bytes because `CHRDAT` begins at 12813.
 
     Found by searching for the string rather than by reading
@@ -114,27 +114,27 @@ def test_the_name_table_starts_where_the_map_says(corpus):
     eight, and with the missing container byte it is the whole of the
     four-byte difference.
     """
-    misplaced = [(name, data.find(b"CHRDAT")) for name, data in corpus
+    misplaced = [(name, data.find(b"CHRDAT")) for name, data in specimens
                  if data.find(b"CHRDAT") != amiga_savegame.POR_CHARACTER_TABLE]
-    assert not misplaced, f"{len(misplaced)} of {len(corpus)}: {misplaced}"
+    assert not misplaced, f"{len(misplaced)} of {len(specimens)}: {misplaced}"
 
 
-def test_the_five_bytes_nothing_reads_are_zero(corpus):
+def test_the_five_bytes_nothing_reads_are_zero(specimens):
     """12805-12809: two the square struct pads to, three of wallset entry 0."""
     start, end = amiga_savegame.POR_SQUARE_PAD
-    dirty = [(name, data[start:end].hex()) for name, data in corpus
+    dirty = [(name, data[start:end].hex()) for name, data in specimens
              if set(data[start:end]) - {0}]
-    assert not dirty, f"{len(dirty)} of {len(corpus)}: {dirty}"
+    assert not dirty, f"{len(dirty)} of {len(specimens)}: {dirty}"
 
 
-def test_the_count_byte_and_the_arrays_own_word_agree(corpus):
+def test_the_count_byte_and_the_arrays_own_word_agree(specimens):
     """Byte 12812 against `$503E`, which is `por_word_offset` arithmetic."""
     offset = amiga_savegame.por_word_offset(0x503E)
     disagree = [(name, data[offset] << 8 | data[offset + 1],
-                 data[amiga_savegame.POR_PARTY_SIZE_BYTE]) for name, data in corpus
+                 data[amiga_savegame.POR_PARTY_SIZE_BYTE]) for name, data in specimens
                 if (data[offset] << 8 | data[offset + 1])
                 != data[amiga_savegame.POR_PARTY_SIZE_BYTE]]
-    assert not disagree, f"{len(disagree)} of {len(corpus)}: {disagree}"
+    assert not disagree, f"{len(disagree)} of {len(specimens)}: {disagree}"
 
 
 #: `$4FE1` is what a conversion writes (255) but not what the game leaves
@@ -154,7 +154,7 @@ def _wrong_constants(name: str, data: bytes) -> list[tuple]:
 
 
 def test_the_variable_arrays_documented_constants_are_where_they_should_be(
-        corpus):
+        specimens):
     """`$4FE1` in (255, 16, 8), `$506D` = 16, `$50F6` = 1 -- base and stride.
 
     Three constants at three widely separated addresses land right only if
@@ -163,7 +163,7 @@ def test_the_variable_arrays_documented_constants_are_where_they_should_be(
     accepted at any value the game writes and still fails at 0 or at a word
     read from the wrong place.
     """
-    wrong = [w for name, data in corpus for w in _wrong_constants(name, data)]
+    wrong = [w for name, data in specimens for w in _wrong_constants(name, data)]
     assert not wrong, f"{len(wrong)} readings wrong: {wrong}"
 
 
@@ -185,7 +185,7 @@ def test_the_constants_check_refuses_any_other_4fe1(value):
     assert len(_wrong_constants("x", _save_with(value))) == 1
 
 
-def test_the_script_buffer_holds_an_unpacked_ecl_dax_block(corpus, ecl_dax):
+def test_the_script_buffer_holds_an_unpacked_ecl_dax_block(specimens, ecl_dax):
     """The area's script **as the loader unpacks it**, minus its header word.
 
     This is the second half of `#316`'s open question -- as shipped, or as
@@ -200,7 +200,7 @@ def test_the_script_buffer_holds_an_unpacked_ecl_dax_block(corpus, ecl_dax):
     start, end = amiga_savegame.POR_ECL_BUFFER
     head = amiga_savegame.POR_ECL_HEADER
     unmatched, tails = [], []
-    for name, data in corpus:
+    for name, data in specimens:
         probe = data[start:start + 64]
         hit = [i for i, block in unpacked.items()
                if block[head:head + 64] == probe]
@@ -212,8 +212,8 @@ def test_the_script_buffer_holds_an_unpacked_ecl_dax_block(corpus, ecl_dax):
             unmatched.append(f"{name}: matched block {hit[0]} then diverged")
         elif set(data[start + len(body):end]) - {0}:
             tails.append(f"{name}: block {hit[0]}, then not zero")
-    assert not unmatched, f"{len(unmatched)} of {len(corpus)}: {unmatched}"
-    assert not tails, f"{len(tails)} of {len(corpus)}: {tails}"
+    assert not unmatched, f"{len(unmatched)} of {len(specimens)}: {unmatched}"
+    assert not tails, f"{len(tails)} of {len(specimens)}: {tails}"
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +253,7 @@ def test_the_amiga_does_not_keep_doss_three_way_copy_of_the_square_byte():
     assert word(0x5082) == 0                # and this one does not follow
 
 
-def test_neither_of_the_two_words_is_written_from_anything(corpus, ecl_dax):
+def test_neither_of_the_two_words_is_written_from_anything(specimens, ecl_dax):
     """Both are declared unsourced and written zero, which the engine took.
 
     The guard on the finding above: if a later change derived `$5082` or
@@ -265,7 +265,7 @@ def test_neither_of_the_two_words_is_written_from_anything(corpus, ecl_dax):
                 in amiga_savegame.POR_SAVGAM_UNSOURCED}
     assert {0x5082, 0x5200} <= declared
 
-    state = amiga_savegame.por_state_from_amiga(corpus[0][1], corpus[0][0])
+    state = amiga_savegame.por_state_from_amiga(specimens[0][1], specimens[0][0])
     built, _report = amiga_savegame.new_por_savegame(state, "B", 1, ecl_dax)
     for address in (0x5082, 0x5200):
         offset = amiga_savegame.por_word_offset(address)
@@ -273,7 +273,7 @@ def test_neither_of_the_two_words_is_written_from_anything(corpus, ecl_dax):
 
 
 def test_a_build_that_declines_a_word_says_so_rather_than_claiming_it_is_zero_everywhere(
-        corpus, ecl_dax):
+        specimens, ecl_dax):
     """`#441 (A converted Amiga save's provenance claims three words are
     zero in every saved game, and they are not)`.
 
@@ -281,14 +281,14 @@ def test_a_build_that_declines_a_word_says_so_rather_than_claiming_it_is_zero_ev
     no portrait crossed and on `$49C3`/`$49C4` when the party is indoors --
     both left zero correctly, and both told a reader the word "reads zero
     in every Amiga saved game on this machine", which is false: `$49FF`
-    reads 3 in most of the corpus here, including the one SSI shipped, and
+    reads 3 in most of the specimens here, including the one SSI shipped, and
     `$49C3`/`$49C4` are what the outdoor branch writes correctly on a party
     standing on the travel grid.  A word this build merely declines to
     write must say so, not claim to have measured it.
     """
     from goldbox import dos_savegame
 
-    state = amiga_savegame.por_state_from_amiga(corpus[0][1], corpus[0][0])
+    state = amiga_savegame.por_state_from_amiga(specimens[0][1], specimens[0][0])
     assert state.outdoors is False        # the indoor half of the gate
 
     built, report = amiga_savegame.new_por_savegame(state, "B", 1, ecl_dax,
@@ -373,26 +373,26 @@ def test_a_disk_with_no_saved_game_says_so_rather_than_blaming_the_reader(
     assert "POOLDATA" in str(raised.value)
 
 
-def test_the_sweep_says_how_wide_the_zero_argument_is(corpus):
-    """`--sweep` measures the corpus the writer's zeroes rest on.
+def test_the_sweep_says_how_wide_the_zero_argument_is(specimens):
+    """`--sweep` measures the specimens the writer's zeroes rest on.
 
     4,072 of the 13,141 bytes are written zero because no Amiga saved game
     here holds anything at that address, and that argument is only as wide as
     the places the parties have stood.  The table says how wide: how many
-    words are ever non-zero, and how many a corpus of one place alone would
+    words are ever non-zero, and how many a set of specimens of one place alone would
     have missed.
 
     Asserted as a shape rather than as the numbers, which move whenever a
     saved game is added -- except the one that must not move, that the whole
-    corpus sees at least what any one place in it sees.
+    set of specimens sees at least what any one place in it sees.
     """
     from goldbox import amiga_savegame
     from tools.amiga import amigasavecheck
 
     parsed = [(name, amiga_savegame.parse(data, source=name, validate=False))
-              for name, data in corpus]
+              for name, data in specimens]
     text = amigasavecheck.sweep(parsed)
-    assert f"{len(corpus)} saved games" in text
+    assert f"{len(specimens)} saved games" in text
 
     places = {save.word(0x5012) for _name, save in parsed}
     assert f"{len(places)} places" in text

@@ -268,7 +268,7 @@ def test_the_copied_container_is_still_reachable_and_says_so(tmp_path, capsys):
 
 
 # ---------------------------------------------------------------------------
-# Refusals, which need no game data at all
+# Rejections, which need no game data at all
 # ---------------------------------------------------------------------------
 
 def test_two_sources_at_once_are_refused(tmp_path):

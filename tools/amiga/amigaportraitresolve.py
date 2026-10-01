@@ -6,7 +6,7 @@
 does, rather than the art's own id the way the C64 does.  Until 2026-09-09 the
 only evidence for that was a range: every value in the shipped records falls
 inside 1-14 and 1-12, and a character the game generated looks the same either
-way, so no corpus of generated characters could tell the two readings apart
+way, so no specimens of generated characters could tell the two readings apart
 (`#480`).
 
 This tool settles it out of the engine.  It finds the creation menu's two

@@ -637,7 +637,7 @@ class CombatLog:
         addresses out of `automap.combat.BY_KEY` -- the same table the combat
         view reads -- and defaults to Pool of Radiance the way every caller
         that names none already means. A title nobody has measured combat
-        addresses for answers no messages at all, the same refusal
+        addresses for answers no messages at all, the same rejection
         `combat.read_battle` makes, rather than reading Pool of Radiance's
         bytes on a machine they mean something else on.
 

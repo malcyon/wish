@@ -4,7 +4,7 @@
 `#59 (Map the DOS saved game, not just the character record)` grades most of
 `docs/141-dos-savegame.md` on counts -- "2401 of 2560 words are zero in all
 twelve specimens", "byte 12807 is 2 in all twelve".  Those counts were taken
-against a corpus that has since changed: eight of the twelve files lived in
+against a set of specimens that has since changed: eight of the twelve files lived in
 scratch and are gone, and `tools/dos/dosoutdoor.py` and `#26`'s runs have made
 engine-written ones the original pass never had.  A count nobody can re-take
 is a count that rots, so this is the thing that re-takes it.
@@ -36,7 +36,7 @@ What it does, and it reads only -- it never writes a saved game:
    *partition* -- which specimens agree with which -- is what names a field,
    so it prints that rather than only the values.
 
-`--word $49C5` reports one address across the corpus; `--tail` reports bytes
+`--word $49C5` reports one address across the specimens; `--tail` reports bytes
 12801-12808; `--nonzero` lists every live word with its per-specimen values.
 
 Nothing here is a claim about what a variable *means*.  It reports what the
@@ -244,7 +244,7 @@ def words(save: bytes, shape: sg.DosContainer) -> list[int]:
 
 def sweep(specimens: list[dict], saves: list[bytes],
            shape: sg.DosContainer) -> dict:
-    """Per-word values across the corpus, and the zero-everywhere count.
+    """Per-word values across the specimens, and the zero-everywhere count.
 
     A title with no variable array needs no special case: `var_words` is 0,
     so `words` returns nothing and the loop does not run. There was an early

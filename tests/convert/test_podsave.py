@@ -247,7 +247,7 @@ def test_pod_vault_from_amiga_accepts_exactly_two_hundred_nodes():
 
 
 # ---------------------------------------------------------------------------
-# `pod_read_vault`: a missing file is empty, a corrupt one is a refusal (#651)
+# `pod_read_vault`: a missing file is empty, a corrupt one is a rejection (#651)
 # ---------------------------------------------------------------------------
 
 class _CorruptOnRead:

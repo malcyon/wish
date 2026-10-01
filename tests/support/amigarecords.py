@@ -106,7 +106,7 @@ def synthetic_savegame(slot: str = "A") -> bytes:
     """A 13141-byte Amiga Pool of Radiance saved game, built not copied.
 
     Only the character table is filled in, because that is the only region
-    `retarget_savegame` touches: six 41-byte entries at 12813 holding
+    `move_savegame_to_slot` touches: six 41-byte entries at 12813 holding
     `CHRDAT<slot><n>` as eight plain bytes. `docs/124-amiga-port.md` §1.9a has
     the region map the rest of the file would follow.
     """

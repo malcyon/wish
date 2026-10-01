@@ -112,7 +112,7 @@ def _clean_records(*groups):
     """Every 285-byte record in the named specimen groups, keyed
     `<specimen>/<filename>`.
 
-    Defaults to the corpus a layout claim may rest on: the `#249` party in its
+    Defaults to the specimens a layout claim may rest on: the `#249` party in its
     three states plus `#84`'s eight rolls -- 26 records over 14 distinct
     characters.
     """

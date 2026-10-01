@@ -437,7 +437,7 @@ def test_the_pad_is_non_zero_only_in_the_first_three_slots_of_the_pool():
     assert {value for _, _, value in non_zero} <= {0x2E, 0x6D, 0x64}, non_zero
 
 
-def test_the_curse_corpus_carries_no_such_byte_at_all():
+def test_the_curse_specimens_carry_no_such_byte_at_all():
     """Same code, same unwritten byte, and every Curse node reads zero.
 
     Which is the reason the pad went unnoticed until Silver Blades: it is
@@ -452,7 +452,7 @@ def test_the_curse_corpus_carries_no_such_byte_at_all():
     nodes = [e for _, data in saves
              for ch in amiga_savegame.parse(data).characters
              for e in ch.effects]
-    assert nodes, "no Curse effect nodes in the corpus"
+    assert nodes, "no Curse effect nodes in the specimens"
     assert all(node[PAD] == 0 for node in nodes), len(nodes)
 
 

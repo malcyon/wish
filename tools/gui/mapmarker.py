@@ -12,7 +12,7 @@ every step.
         GDK_BACKEND=x11 .venv/bin/python tools/gui/mapmarker.py \\
         --disk OUTC.D64 --slot 2 --walk 1357
 
-Three things make it a fair reproduction of what a player has rather than a
+Three things make it an accurate reproduction of what a player has rather than a
 model of it:
 
 * the widgets are `wish/window.ui`'s own, wired by `automap.window`
@@ -390,7 +390,7 @@ def come_home(args, sess, target, app, binding, out, log, step: int) -> int:
 
     The same experiment ends "so `$49E6` has to be right **before** `$2034`",
     which was never tried.  This tries it: write `1` into `$49E6`, then make
-    the ordinary `FastTravel`, whose own refusal then no longer fires because
+    the ordinary `FastTravel`, whose own rejection then no longer fires because
     it re-reads the byte.  Whether the loader is satisfied by that is the
     measurement, and either answer is worth writing down -- what this run
     needs it for is the only crossing the offscreen tests cannot make, a
@@ -826,7 +826,7 @@ def run(args, log: Log) -> int:
             # be on the grid is left where it is.
             try:
                 inside = sess.indoors()
-            except Exception as e:  # noqa: BLE001 -- a failed read is a refusal
+            except Exception as e:  # noqa: BLE001 -- a failed read is a rejection
                 inside, why = None, f"the indoors read failed: {e}"
             else:
                 why = "the party is indoors" if inside else "the indoors read gave no answer"
@@ -858,7 +858,7 @@ def run(args, log: Log) -> int:
             # The window's own Fast Travel, which is how a party can be put on
             # the travel grid without an afternoon of play.  It is the action
             # the button drives, not a reimplementation of it, and the guards
-            # are its own -- `$6E11`, the program counter, and the refusal to
+            # are its own -- `$6E11`, the program counter, and the bar on
             # travel *off* the grid into an area with a disk to load.
             from goldbox.areas import AREAS_BY_ID
             area = AREAS_BY_ID[args.travel]

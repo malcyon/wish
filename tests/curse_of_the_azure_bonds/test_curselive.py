@@ -204,7 +204,7 @@ REFUSED = ((7, 15), geo.NORTH)
 def test_the_walked_route_fits_geo01_and_narrows_sixteen_maps_to_two():
     """The fingerprint strategy on Curse, from the real route.
 
-    Four completed steps and one refusal take sixteen candidates to two, with
+    Four completed steps and one rejection take sixteen candidates to two, with
     `GEO01` -- the map `ResidentGeo` named independently -- among them, and no
     contradictions. A wrong decode of the maps could not produce that.
     """

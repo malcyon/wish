@@ -192,7 +192,7 @@ def read_named(sides, name: bytes) -> tuple[str, bytes] | tuple[None, None]:
     for side in sides:
         try:
             return side.name, D64(side.read_bytes()).read_file(name)
-        except Exception:  # noqa: BLE001 - any refusal means "not this side"
+        except Exception:  # noqa: BLE001 - any rejection means "not this side"
             continue
     return None, None
 

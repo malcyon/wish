@@ -424,13 +424,13 @@ def helper_callers(found: dict, helper: int) -> dict[int, dict]:
 
 
 # ---------------------------------------------------------------------------
-# The corpus half: who carries a bag of holding
+# The specimens half: who carries a bag of holding
 # ---------------------------------------------------------------------------
 def bag_rows() -> tuple[list[dict], dict[str, int]]:
     """Records holding an item named `HOLDING`, and the sample it came from.
 
     Walks the same roots `tools/records/encsweep.py` walks, with the same exclusions,
-    so "no record has one" is a statement about the corpus that sweep
+    so "no record has one" is a statement about the specimens that sweep
     reports on rather than about some other set of files.  **It does not
     deduplicate**: a nil result wants the widest sample, and a record found
     three times is three chances to have missed it.

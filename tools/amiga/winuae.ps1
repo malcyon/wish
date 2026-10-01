@@ -259,7 +259,7 @@ function Get-Claim {
   $null
 }
 
-# Every refusal says how to get unstuck, and that is not politeness either. An
+# Every rejection says how to get unstuck, and that is not politeness either. An
 # agent whose predecessor died without releasing reads only "claimed by
 # dead-agent since 09:14" and has a lock nothing tells it how to clear. The
 # second line is the way out; `fail` stays lowercase because it is the status
@@ -466,7 +466,7 @@ $fg = ([W]::GetForegroundWindow() -eq $h)
 # and `<<r>> <seq> <label> <ms> <base64>` for every raw reply: seq 0 is the read
 # before the setter (labels q0, q1 for `CFG floppy0` and `CFG floppy1`, dbg for
 # `DBG c`) and the setter's own reply (label set); seq 1 upwards are the polls.
-# `<<end>>` closes the block. A refusal or failure made before the pipe is open exits 1
+# `<<end>>` closes the block. A rejection or failure made before the pipe is open exits 1
 # with the reason. Once the pipe is open the exit code is 0 whatever the verdict,
 # so the raw replies of a failure reach the caller; the verdict line is the answer.
 # The caller judges the replies itself; the checks here only decide what may be sent.
@@ -726,7 +726,7 @@ function Invoke-Floppy([string]$Verb) {
   } finally {
     if ($pipe) { $pipe.Dispose() }
   }
-  # Nothing was sent and there are no replies to keep: a failure before the pipe is open is a refusal.
+  # Nothing was sent and there are no replies to keep: a failure before the pipe is open is a rejection.
   if (-not $open) { $verdict; exit 1 }
   $verdict
   $tags
@@ -1023,7 +1023,7 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # this depends on. Refuse the shape instead of needing the answer.
     # 'IgnoreCase' is not decoration: [regex]::Matches is the static .NET call
     # and is case-SENSITIVE, while the -match below is not. Without it,
-    # `-targetpid 6136 -TargetPid 8272` counts as one occurrence, the refusal
+    # `-targetpid 6136 -TargetPid 8272` counts as one occurrence, the rejection
     # never fires, -match reads the first, and both flags are forwarded exactly
     # as they were before any of this was written.
     if (@([regex]::Matches($sendargs, '-TargetPid', 'IgnoreCase')).Count -gt 1) {

@@ -377,7 +377,7 @@ def _two_moments():
 def test_capture_grabs_again_when_a_grab_was_torn_between_two_blits(monkeypatch, capsys):
     """A seam between two doubled frames is a property of one grab, not of the window.
 
-    The refusal is right for that grab -- halving it would mix two moments --
+    The rejection is right for that grab -- halving it would mix two moments --
     and wrong for the session, which has only to grab again.
     """
     from tools.dos import dosbox
@@ -442,7 +442,7 @@ def test_the_window_trap_is_one_mechanism_and_not_two():
     assert dosboxx.candidate_windows is dosbox.candidate_windows
     assert dosboxx.server_on is dosbox.server_on
     assert dosboxx.window_pid is dosbox.window_pid
-    # `XSession` inherits the capture and the refusal rather than repeating
+    # `XSession` inherits the capture and the rejection rather than repeating
     # them; only the title it searches for is its own.
     assert dosboxx.XSession.shot is dosbox.Session.shot
     assert dosboxx.XSession.grab is dosbox.Session.grab

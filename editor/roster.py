@@ -365,7 +365,7 @@ class Party:
 
         Pools of Darkness has none: it never shipped on the C64, so there is
         no sheet layout, race list or spell table to edit its characters
-        with. The refusal is `WrongTitleError`, which `editor/dosimport.py`
+        with. The rejection is `WrongTitleError`, which `editor/dosimport.py`
         raises for the same title and which carries the wording the dialog
         already shows.
         """

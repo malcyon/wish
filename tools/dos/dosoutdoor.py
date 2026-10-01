@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Make an engine-written DOS overland saved game, without playing there.
 
-`#50 (Lift the wilderness refusal from the DOS save converter)` and
+`#50` and
 `#59 (Map the DOS saved game, not just the character record)` both needed a
 DOS saved game made on the travel grid, and the three that were made for them
 in 2026-08 lived in `p59-outdoor/` (scratch, deleted) and are gone -- along with the run
@@ -14,7 +14,7 @@ nobody writes it a third time.
 means crossing New Phlan to the harbour master and taking a boat, which is a
 navigation nobody has automated.  What this does instead is seed and resave:
 
-1. `goldbox.dos_savegame.retarget` moves a *copy* of an indoor save onto a
+1. `goldbox.dos_savegame.move_to_area` moves a *copy* of an indoor save onto a
    travel window -- `ECL7.DAX` block 26 for the middle window -- and the four
    fields measured to differ outdoors are set on top of it: `$49C5` = 0 (the
    overland names no `GEO`), `$49E6` = 0 (travel mode), the travel square at
@@ -62,7 +62,7 @@ def ecl_block(game: pathlib.Path, dax: int, area: int) -> bytes:
 def seed(save: bytes, *, area: int, x: int, y: int, script: bytes) -> bytes:
     """An indoor saved game moved onto a travel window, ready to be loaded.
 
-    `retarget` writes the seven things a move needs; the four below are what
+    `move_to_area` writes the seven things a move needs; the four below are what
     `#59 (Map the DOS saved game, not just the character record)` measured to
     separate an outdoor save from an indoor one, three specimens each way.
 
@@ -80,7 +80,7 @@ def seed(save: bytes, *, area: int, x: int, y: int, script: bytes) -> bytes:
     # it and `outdoors=True` writes the area word (#59, #190).  This file had
     # its own copy of the constant and wrote `$49C5` by hand, which is two
     # places to update the day a measurement moves and one of them forgotten.
-    sg.retarget(out, area=area, dax=where.disk, outdoors=True,
+    sg.move_to_area(out, area=area, dax=where.disk, outdoors=True,
                 wallset=sg.OUTDOOR_WALLSET, script=script)
     sg.put_word(out, sg.INDOORS, 0)     # $49E6 = 0 is what boots travel mode
     sg.put_travel_square(out, x, y)

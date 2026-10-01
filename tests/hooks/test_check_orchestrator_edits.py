@@ -141,7 +141,7 @@ def test_the_stamp_makes_the_second_call_skip_re_reading(isolated_tmp, monkeypat
     os.remove(path)
     assert not os.path.exists(path)
     # The transcript is gone; a fresh read would treat that as "let through"
-    # (an unreadable transcript never refuses), so a refusal here proves the
+    # (an unreadable transcript never refuses), so a rejection here proves the
     # stamp answered instead of the file.
     assert run(monkeypatch, call(path, inside)) == 2
     assert "does not edit files" in capsys.readouterr().err

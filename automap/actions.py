@@ -151,7 +151,7 @@ class Verdict:
     """Whether an action may run now, and the reason when it may not.
 
     `reason` is written to be shown as-is: it goes in a disabled button's
-    tooltip and in the refusal the action returns if it is called anyway.
+    tooltip and in the rejection the action returns if it is called anyway.
     """
 
     ok: bool
@@ -713,7 +713,7 @@ LEVEL_UP_FIELDS: tuple[str, ...] = (
 
 
 def game_title(game=None) -> str:
-    """What to call a title in a refusal. Takes a `Game`, a key, or None."""
+    """What to call a title in a rejection. Takes a `Game`, a key, or None."""
     title = getattr(game, "title", None)
     if title:
         return title
@@ -737,7 +737,7 @@ def level_up_blockers(record: CharacterRecord | None = None,
     routines out of `GEN` and replaying twenty-nine measured trainings through
     `goldbox/levelup.py` -- see `docs/135-levelling.md`.
 
-    It takes a record because the remaining refusals are per character: a class
+    It takes a record because the remaining rejections are per character: a class
     at its ceiling, a race at its limit, or not enough experience.
 
     **And it takes a title, because the measurement was of one title.** Curse
@@ -783,7 +783,7 @@ class LevelUp(Action):
     **Healing is done, because the trainer does it.** Current hit points end at
     the *new* maximum, after the die is rolled and `hp_max` has risen. A
     character at 0 is refused rather than healed: zero is dead or dying and the
-    record does not say which, which is the same refusal `HealParty` makes.
+    record does not say which, which is the same rejection `HealParty` makes.
 
     **A magic-user has to choose.** `GEN $215A` puts every spell it does not
     know, of a level it can now cast, on a menu and does not finish the
@@ -911,7 +911,7 @@ class LevelUp(Action):
             return Outcome(False, f"no character in slot {slot}")
         record = member.record
         if member.hp == 0:
-            # The same refusal `HealParty` makes, and for the same reason: zero
+            # The same rejection `HealParty` makes, and for the same reason: zero
             # is dead or dying and the record does not say which. Levelling
             # ends in a heal to full, and a corpse at full hit points is a
             # character in a state the game never writes.
@@ -1642,7 +1642,7 @@ def reenter(target, addr: fasttravel.FastTravelAddresses, entry: int) -> bool:
     found the way `jump` finds a PC setter, an optional `target.reenter(pc,
     sp)` or the VICE monitor a `ViceTarget` holds, so a backend that offers
     neither is refused rather than made to pretend. Every one of those checks,
-    including the monitor's own refusal to take the new SP/PC, runs before
+    including the monitor's own rejection of the new SP/PC, runs before
     the stack page is written, so a `False` return always means nothing was
     pushed -- `#494 (reenter() can push return addresses to the stack page
     and still report failure)`. The monitor is resumed exactly once, whether
@@ -2265,7 +2265,7 @@ class FastTravel(Action):
     #: script sets `$49E6` itself. See `docs/50-experiments.md`.
     #:
     #: **Measured in Pool of Radiance and never tested elsewhere**, and the
-    #: refusal stands in every title on that precedent. It is not safe to
+    #: rejection stands in every title on that precedent. It is not safe to
     #: assume the answer is the same: Curse's key-wait loop has a block Pool of
     #: Radiance has nothing at, `$102E`-`$103A`, gated on the indoors flag and
     #: calling `GDRIVE00 $C003` (`#19`). The address is the title's own, so a
@@ -2279,7 +2279,7 @@ class FastTravel(Action):
     #: today -- Pool of Radiance is the only title with a square-engine
     #: overland and the only one whose area table has an `outdoors` row -- and
     #: it is here because `newecl_writes` would otherwise have no address to
-    #: write the square at and would raise where a refusal belongs.
+    #: write the square at and would raise where a rejection belongs.
     NO_TRAVEL_GRID = ("this area is on an overland map and {title} has no "
                       "travel grid, so there is nowhere to put the party")
 

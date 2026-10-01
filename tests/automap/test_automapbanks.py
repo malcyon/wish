@@ -272,7 +272,7 @@ def test_a_vice_that_cannot_be_asked_answers_no_fix_rather_than_a_wrong_one(
 
 def test_a_vice_that_cannot_be_asked_still_reads_a_screen_the_cpu_can_see(
         monkeypatch):
-    """The refusal is about the banking rather than about the missing
+    """The rejection is about the banking rather than about the missing
     command, so an old VICE with the chips banked in reads as it always did."""
     mon = a_machine(port1=CHIPS_IN, banks={})
     assert banked(mon) is not None

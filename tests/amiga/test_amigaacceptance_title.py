@@ -1002,7 +1002,7 @@ def test_a_world_screen_showing_another_party_stops_the_run_with_a_readable_erro
     _, result = _run(tmp_path, clock, identity=_WorldIdentity(fail={"world"}))
     assert result["success"] is False
     assert result["error"] == ("RouteError: world shows a party other than the prepared party")
-    assert result["lost"] is None  # a refusal, not a run that was lost to a KeyError
+    assert result["lost"] is None  # a rejection, not a run that was lost to a KeyError
 
 
 def test_the_named_identity_messages_are_unchanged(tmp_path, clock):
@@ -1391,7 +1391,7 @@ class _SpentCaptureGuest(TitleGuest):
         return shown
 
 
-def test_a_refusal_after_the_route_time_is_reported_as_itself(tmp_path, clock):
+def test_a_rejection_after_the_route_time_is_reported_as_itself(tmp_path, clock):
     _, result = _run(tmp_path, clock, guest=_SpentCaptureGuest(clock),
                      identity=_IdentityMap(fail={"loaded_menu"}), deadline_seconds=1800)
     assert "loaded_menu shows another party" in result["error"] and "route time of" not in result["error"]

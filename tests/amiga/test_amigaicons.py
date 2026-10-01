@@ -232,7 +232,7 @@ def test_every_specimen_names_art_that_is_on_the_disks():
     """
     _disks()
     lines: list[str] = []
-    # **A sweep with no specimens returns a refusal, not zero.** `_disks()`
+    # **A sweep with no specimens returns a rejection, not zero.** `_disks()`
     # covers the game's own disks; the 21 records come from the specimen tree,
     # which a CI runner has none of, so this asserted 1 == 0 there rather than
     # skipping. Found on the run that turned `main` red, 2026-09-07.

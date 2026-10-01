@@ -155,7 +155,7 @@ UNSAVED_CHANGES_TITLE = "Unsaved changes"
 UNSAVED_BEFORE_CLOSE = "Save your changes before closing?"
 UNSAVED_BEFORE_OPEN = "Save your changes before opening another saved game?"
 
-#: C3 - C12: every refusal and failure text the destination section can
+#: C3 - C12: every rejection and failure text the destination section can
 #: show, wired to the `saveplan`/`editor.files` exception it answers.
 CANNOT_SAVE_TITLE = "Cannot save"
 #: C3. Donald's ruling, comment 5770669768: exactly this sentence, no "This
@@ -262,7 +262,7 @@ def _size_combo(combo: QComboBox) -> None:
     """As wide as its longest name, and no wider.
 
     Re-applied whenever an item is added, because `_select` adds one for a code
-    the game's table does not name and an elided box would hide the number.
+    the game's table does not name and a truncated box would hide the number.
 
     The longest *item*, not the current one: this box exists because
     `magic-user/thief` came out as `magic-user`. It is also the most expensive
@@ -3019,7 +3019,7 @@ class EditorBinding(QObject):
         except (dos_codec.DosRecordError, amiga_port.AmigaRecordError,
                 amiga_pod.ConversionError) as exc:
             # A writer refusing this particular party. Uncaught, PyQt6 aborts
-            # the process from the button's slot; it is the same refusal
+            # the process from the button's slot; it is the same rejection
             # `DroppedFields` is, so it reads the same sentence.
             _log.debug("Save As to %s refused: %s", path, exc)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_REFUSED)
@@ -3131,7 +3131,7 @@ class EditorBinding(QObject):
         field can hold (a spin box's range, a combo box's own entries, a
         spell widget's fixed-width bytes), so this is expected to come back
         empty -- but a caller must not assume that and drop the return: a
-        refusal nobody is told about is what #145 was.
+        rejection nobody is told about is what #145 was.
         """
         row = self.current_row if row is None else row
         if self.party is None or not 0 <= row < len(self.party):

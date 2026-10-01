@@ -185,7 +185,7 @@ def test_a_silver_blades_party_will_not_import_into_a_pool_of_radiance_disk(
 
     The two titles number races and classes differently and lay their saves
     out differently, so a party crossing over would be written as somebody
-    else. The refusal names both titles, because a message naming neither is
+    else. The rejection names both titles, because a message naming neither is
     a message a player cannot act on.
     """
     data = export_save(_copy(_specimen_disk(), tmp_path))

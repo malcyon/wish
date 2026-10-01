@@ -705,7 +705,7 @@ def test_the_result_names_what_moved_and_what_has_no_span(port):
 def test_an_item_edit_alone_is_not_taken_for_an_edit_that_vanished(port,
                                                                    tmp_path):
     """An item's value is in the item file and not in the record, so a
-    record that moves nowhere is the right answer here -- the refusal above
+    record that moves nowhere is the right answer here -- the rejection above
     must not fire on it."""
     char, before = _make(port, 2)
     block = bytearray(_slot(before, 0))               # the port's item 1

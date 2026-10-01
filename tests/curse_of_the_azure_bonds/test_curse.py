@@ -537,7 +537,7 @@ def test_reading_the_barrier_directions_backwards_fails_too():
 
 
 def test_pool_of_radiance_maps_clear_the_same_barrier_floor():
-    """The control for the barrier floor, on the corpus it was derived from."""
+    """The control for the barrier floor, on the specimens it was derived from."""
     maps = _geo_payloads(_pool_disks())
     assert len(maps) >= 29
     scores = {n: _barrier_reciprocity(p) for n, p in maps.items()}
@@ -551,7 +551,7 @@ def test_pool_of_radiance_wall_art_is_less_reciprocal_than_curses():
     """Not a defect: Pool of Radiance draws genuinely one-sided walls.
 
     Its worst file scores 0.646 where Curse's worst is 0.919, which is why the
-    per-file art floor is asserted on Curse and only the corpus mean on Pool of
+    per-file art floor is asserted on Curse and only the specimens mean on Pool of
     Radiance. Stated as a test so the difference stays a measurement rather
     than folklore.
     """

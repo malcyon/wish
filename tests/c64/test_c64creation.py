@@ -553,7 +553,7 @@ def test_the_save_disk_is_reattached_before_each_copy(tmp_path):
 
 
 def test_a_class_the_race_is_never_offered_is_refused_before_any_key(tmp_path):
-    """No magic-user in a dwarf's class list: the refusal comes before the
+    """No magic-user in a dwarf's class list: the rejection comes before the
     first character is created, even when the dwarf is the second spec."""
     dwarf = spec("VICEMAG", "DWARF", "MALE", "MAGIC-USER", "LAWFUL GOOD")
     code, sess, game, out, summary = drive(tmp_path, [PAIR[0], dwarf])
@@ -1018,7 +1018,7 @@ def test_the_same_roll_twice_is_taken_as_it_is_and_rolled_on(tmp_path):
         ["ROLL AGAIN", "ROLL AGAIN", "KEEP"]
 
 
-def test_a_band_never_met_ends_with_a_refusal_naming_the_rolls(tmp_path):
+def test_a_band_never_met_ends_with_a_rejection_naming_the_rolls(tmp_path):
     code, _sess, game, out, summary = drive(
         tmp_path, [gnome([8, 10])], FakeGame(tmp_path, rolls=[con_roll(14)]),
         max_rolls=5)

@@ -11,7 +11,7 @@ module exists rather than the drawing being inlined into the window.
 
 **Every edge is drawn from both sides.** `Geo.to_text` draws only each square's
 north and west edges and lets reciprocity supply the rest, but wall art is only
-0.960 reciprocal across the corpus -- so one-way edges exist, and that approach
+0.960 reciprocal across the specimens -- so one-way edges exist, and that approach
 silently drops them. Here an edge is drawn if *either* side has art, and takes
 whichever side's barrier is easier to get through.
 """

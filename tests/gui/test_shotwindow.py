@@ -127,7 +127,7 @@ def test_an_unreadable_save_is_reported_rather_than_waited_on(app, tmp_path,
     `shoot`'s teardown already avoided for the unsaved-changes box, in a place
     nobody had looked.
 
-    Now every dialog is answered, said out loud, and counted: the picture is
+    Now every dialog is answered, reported, and counted: the picture is
     still written, because it is evidence of what the window did, and the exit
     code is 2, because the run is not a success.
     """

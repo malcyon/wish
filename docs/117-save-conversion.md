@@ -1545,7 +1545,7 @@ of slot 2, the travel square in `$49C3`/`$49C4`,
 side against three engine-written overland saves: the DOS travel square is
 the same `$49C3`/`$49C4` pair, window-local, `$49E6` = 0, and the area id in
 `$49F2` alone (`$49C5` reads 0 out there, so `convert_save` keys on
-`dos_savegame.current_area`). The converted outdoor save follows #47 (Decode the travel grid's cache entries, so the wilderness can be retargeted too)'s
+`dos_savegame.current_area`). The converted outdoor save follows #47 (Decode the travel grid's cache entries, so the wilderness can be moved too)'s
 live-proven cold-boot recipe exactly, but **the conversion itself has not
 been loaded on a C64 end to end** — that run is the remaining proof for the
 outdoor save. The indoor one has run three times, on all three of the
@@ -2376,7 +2376,7 @@ DOS save from nothing" below.
 | the party size (#67 (Write the clock and the party count into a converted DOS save)) | the word at `$503E` **and** byte 12808; they move together | CONFIRMED |
 | the party's filenames | six entries from 12809, named for the slot being written — the engine loads the party from these, not from the letter chosen at the LOAD menu | CONFIRMED — #59 (Map the DOS saved game, not just the character record) |
 | the square | 12801-12803, facing doubled | CONFIRMED |
-| **the area** (#60 (Put a converted party where it actually stood, not where the template stood)) | every write of `goldbox.dos_savegame.RETARGET_WRITES` | CONFIRMED — three area pairs, loaded and walked |
+| **the area** (#60 (Put a converted party where it actually stood, not where the template stood)) | every write of `goldbox.dos_savegame.MOVE_WRITES` | CONFIRMED — three area pairs, loaded and walked |
 
 **The party lands where it stood, not where the template stood.** #59 (Map the DOS saved game, not just the character record)'s
 seven-write recipe was not enough, and what it was missing is the one thing
@@ -2994,7 +2994,7 @@ holding 40 where the specimen holds 39. The best-of-classes number
 goes through `base_thac0`, the C64's own table. An Amiga source
 keeps its own byte and a C64 party converted to the Amiga is written with the
 old rule, because what the Amiga builds store for such a magic-user is UNKNOWN:
-`docs/224-the-dos-thac0-floor.md`, which has the measurement, and
+`docs/224-the-dos-thac0-lower-limit.md`, which has the measurement, and
 `#608 (Curse's DOS engine writes THAC0 20 for a magic-user at levels 1-5 where our table holds 21, so a converted magic-user arrives one point worse to hit)`.
 Changing that byte moves the identity byte at `0x126` of those two records as
 well, because `identity_byte` digests the rest of the record.

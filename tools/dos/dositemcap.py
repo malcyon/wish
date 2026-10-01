@@ -14,10 +14,10 @@ Three characters of an engine-written party are given item lists of 2, 15 and
 screen, the same item is offered by `TRADE` to a character holding 15 and to
 a character holding 16.  The engine's answer to the second is the word
 `Overloaded`, and after the 15-item character accepts one it refuses the next
--- so the only thing that changed between the acceptance and the refusal is
+-- so the only thing that changed between the acceptance and the rejection is
 that its own count reached sixteen.
 
-**Weight is kept out of it deliberately.**  The refusal routine sets one flag
+**Weight is kept out of it deliberately.**  The rejection routine sets one flag
 from two tests, the item count *and* `encumbrance + weight x quantity`
 against carrying capacity plus 1500, so a heavy inventory would prove
 nothing about the count.  Every item this installs is the game's own `Sling`
@@ -224,7 +224,7 @@ def do_step(session: dosbox.Session, step: str, tag: str,
                 shutil.copy(p, out / p.name)
         return "snapshot"
     if step.startswith("@"):
-        # Press and shoot with no settle: the refusal message is drawn and
+        # Press and shoot with no settle: the rejection message is drawn and
         # taken away again inside a second, so a `settle()` -- which waits for
         # two captures to agree -- is guaranteed to miss it.
         session.key(step[1:])

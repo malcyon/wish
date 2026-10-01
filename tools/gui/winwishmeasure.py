@@ -2,7 +2,7 @@
 """Measure the editor window's minimum width on Windows, at Windows' own font.
 
 Runs **inside the Windows 11 VM**, not here -- `tools/gui/winwish.py` puts it there
-and starts it. `tools/gui/rosterfloorshot.py` takes the same measurement on Linux
+and starts it. `tools/gui/rosterminwidthshot.py` takes the same measurement on Linux
 with the offscreen plugin; this one takes it on the real `windows` platform
 plugin and the real `windows11` style, which is the only way the number means
 anything about what a player meets.

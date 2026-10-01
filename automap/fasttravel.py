@@ -301,7 +301,7 @@ def addresses_for(game=None) -> FastTravelAddresses | None:
     None, which means Pool of Radiance the way it does everywhere else in the
     program.
 
-    **None is a refusal and never a default.** A caller that falls back to
+    **None is a rejection and never a default.** A caller that falls back to
     Pool of Radiance's row for a title that has no row writes Pool of
     Radiance's numbers into another game, which is the corruption `#14` fixed
     for the area list and the same one address by address.

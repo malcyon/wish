@@ -9,12 +9,12 @@ four thresholds, and every one of them is a claim about two corpora:
 * every **other** 1024-byte window of every other file on the same disks,
   which must all fail.
 
-A threshold set against a corpus nobody can re-take is a threshold that drifts.
+A threshold set against a set of specimens nobody can re-take is a threshold that drifts.
 `MAP_WALL_AGREEMENT = 0.5` was fitted to Pool of Radiance and Curse before
 Silver Blades or the Amiga were in the project, and by 2026-09-08 it was
 throwing out 31 of the 95 maps on this machine.
 
-    tools/records/geoplausible.py maps          one row per map, every corpus found
+    tools/records/geoplausible.py maps          one row per map, every set of specimens found
     tools/records/geoplausible.py sweep         every non-map window, and what reaches
                                         the gate
     tools/records/geoplausible.py thresholds    the worst map and the best non-map for
@@ -115,7 +115,7 @@ def amiga_images(gold_box_only: bool = True) -> list[pathlib.Path]:
 
     `$AMIGA_DISKS` and `~/Downloads/amiga` hold the same images on this
     machine, so a sweep that took both would count every window twice and
-    report a corpus half again as big as the one it measured. Keyed by
+    report a set of specimens half again as big as the one it measured. Keyed by
     filename.
 
     `gold_box_only` is the default because the thresholds in `automap/area.py`
@@ -344,7 +344,7 @@ def report_thresholds(out: io.TextIOBase, step: int,
 
     # Keep every block that misses at most one clause. Pre-filtering on
     # reciprocity here -- which `sweep` does, and which is right there -- would
-    # make the first two rows below circular: a corpus already cut at
+    # make the first two rows below circular: a set of specimens already cut at
     # `MAP_RECIPROCITY` can never name a block that reciprocity is what turns
     # away.
     others = []

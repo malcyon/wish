@@ -7,7 +7,7 @@ byte for and the C64 record has no bit for.  The sweep answers it over 840
 records; these are the parts of that answer a change to this repository could
 break, plus the reading of the engine that says the id is unreachable.
 
-The corpus counts themselves are on the issue rather than asserted here: they
+The specimens counts themselves are on the issue rather than asserted here: they
 move whenever somebody adds a save disk, and a test that pins them would fail
 for the wrong reason.  What is pinned is the geometry the question rests on and
 the three sites in the player's own `GEN` that decide it.

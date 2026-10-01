@@ -14,7 +14,7 @@ inverse, in the two forms that direction can have:
   absorbed;
 * **nothing unexplained** -- every byte of the block has a provenance line.
 
-The corpus is the 21 records on the game's own disks plus the parties inside
+The specimens are the 21 records on the game's own disks plus the parties inside
 the engine-written saved games in `$WISH_SPECIMENS`.  Nothing is committed:
 the disks are read at run time and the tests skip on a machine without them.
 
@@ -23,7 +23,7 @@ loaded a converted party on 2026-09-07, drew the party panel, the sheets and
 one character's twelve items, and wrote it back at the length it went in --
 `docs/203-a-converted-later-amiga-party-in-the-running-game.md`.  These tests
 are what keeps the bytes true now that it has, and the three engine-written
-saved games that run produced are in the corpus below.
+saved games that run produced are in the specimens below.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 
 # ---------------------------------------------------------------------------
-# The corpus
+# The specimens
 # ---------------------------------------------------------------------------
 #
 # `gamedata.specimen` cannot reach these: it resolves a name under
@@ -350,9 +350,9 @@ def _round_trip(label: str, char: amiga_later.AmigaCharacter) -> None:
 def test_every_record_on_the_disks_round_trips():
     """21 of 21: the eleven Curse `.guy` pregens, the four played Curse
     characters and the six shipped Silver Blades ones."""
-    corpus = disk_characters()
-    assert len(corpus) == 21, [c.name for _, c in corpus]
-    for label, char in corpus:
+    specimens = disk_characters()
+    assert len(specimens) == 21, [c.name for _, c in specimens]
+    for label, char in specimens:
         _round_trip(label, char)
 
 
@@ -363,11 +363,11 @@ def test_every_engine_written_specimen_round_trips():
     wrote them: `provenance.toml` says which run each came out of, and the
     three files **this project** wrote are excluded by name (`OURS`).
     """
-    corpus = engine_written_parties()
-    if not corpus:
+    specimens = engine_written_parties()
+    if not specimens:
         pytest.skip("no Amiga Curse or Silver Blades specimens; "
                     "see tools/registry/specimens.py and $WISH_SPECIMENS")
-    for label, char in corpus:
+    for label, char in specimens:
         _round_trip(label, char)
 
 
@@ -453,7 +453,7 @@ def test_a_converted_silver_blades_party_agrees_with_its_own_amiga_twins():
 
 
 def test_the_engine_agrees_with_the_encumbrance_this_writer_computes():
-    """The one disagreement in the whole corpus, and it is agreement.
+    """The one disagreement in all the specimens, and it is agreement.
 
     `WISH-SPEC-coab-amiga-resave/savgamD.dat` is ours -- IILANDA's item chain
     emptied by `tools/amiga/amigalaterslot.py --strip-items 2`, which left her

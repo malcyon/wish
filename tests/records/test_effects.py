@@ -1560,7 +1560,7 @@ def test_fire_shield_ids_are_a_later_title_rule(title):
 @pytest.mark.parametrize("title", _ALL[:2])
 def test_id_13_stays_refused_and_the_reason_says_no_dos_engine_writes_it(title):
     """DOS Reduce removes id 12 and writes no id-13 node, so no save a game
-    wrote reaches this refusal; Silver Blades converts it as Barkskin
+    wrote reaches this rejection; Silver Blades converts it as Barkskin
     (`docs/226`)."""
     got = effects.c64_row(title, effects.RunningEffect(13, 2, 1, 0))
     assert isinstance(got, effects.Unconverted)

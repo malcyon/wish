@@ -194,7 +194,7 @@ class WalkSession(PatrolSession):
         # In camp row 24 is camp's own bar, there is no status line, and
         # `walk_one` presses nothing and says so in `walk_refused`.
         self.camp, self.camp_exit_works = camp, camp_exit_works
-        self.camp_refusals, self.exits = [], 0
+        self.camp_rejections, self.exits = [], 0
 
     @property
     def area(self):
@@ -236,7 +236,7 @@ class WalkSession(PatrolSession):
 
     def walk_one(self, key, *a, **k):
         if self.camp:
-            self.camp_refusals.append(key)
+            self.camp_rejections.append(key)
             self.walk_refused = "the driver pressed nothing: camp's bar"
             return False
         self.walk_refused = None
@@ -416,7 +416,7 @@ def test_a_turn_the_driver_did_not_press_is_a_not_pressed_desync(monkeypatch):
     sess = WalkSession(monkeypatch, None, 20, (), (9, 13, 0), None, camp=True)
     got = T.walk_route(sess, RecordingLog(), [(9, 13), (9, 14)], 0, "new-phlan")
     assert got[2]["reason"] == "not_pressed" and got[2]["key"] == "k"
-    assert "camp" in got[2]["refused"] and sess.camp_refusals == ["K"]
+    assert "camp" in got[2]["refused"] and sess.camp_rejections == ["K"]
 
 
 def test_a_forward_key_the_driver_did_not_press_is_a_not_pressed_desync(
@@ -425,7 +425,7 @@ def test_a_forward_key_the_driver_did_not_press_is_a_not_pressed_desync(
     sess = WalkSession(monkeypatch, None, 20, (), (9, 13, 0), None, camp=True)
     got = T.walk_route(sess, RecordingLog(), [(9, 13), (9, 13 - 1)], 0,
                        "new-phlan")
-    assert sess.camp_refusals == ["I"]
+    assert sess.camp_rejections == ["I"]
     assert got[2]["reason"] == "not_pressed" and got[2]["key"] == "i"
 
 
@@ -532,7 +532,7 @@ def test_walk_to_fight_leaves_camp_before_its_first_key(monkeypatch):
     sess, log = _camp_walk(monkeypatch)
     got = T.walk_to_fight(sess, log, pathlib.Path("."), (12, 4), _geo(), _geo())
     assert sess.asked == ["EXIT"] and sess.exits == 1
-    assert sess.camp_refusals == [] and sess.keys
+    assert sess.camp_rejections == [] and sess.keys
     assert got["desynced"] is None
     rows = [w["row24"] for kind, w in log.events if kind == "to_world"]
     assert rows[0].startswith("ENCAMP:") and rows[-1].startswith("MOVE")
@@ -544,7 +544,7 @@ def test_walk_to_fight_raises_naming_row_24_when_camp_will_not_go(monkeypatch):
     sess, log = _camp_walk(monkeypatch, camp_exit_works=False)
     with pytest.raises(RuntimeError, match="ENCAMP:SAVE"):
         T.walk_to_fight(sess, log, pathlib.Path("."), (12, 4), _geo(), _geo())
-    assert sess.keys == [] and sess.camp_refusals == [] and sess.exits == 1
+    assert sess.keys == [] and sess.camp_rejections == [] and sess.exits == 1
 
 
 def test_to_world_presses_nothing_when_the_world_bar_is_already_up(monkeypatch):
@@ -571,7 +571,7 @@ def test_walk_to_fight_plans_from_the_status_line_not_the_memory_copy(
 def test_pick_a_fight_leaves_camp_before_wandering(monkeypatch):
     sess, log = _camp_walk(monkeypatch)
     T.pick_a_fight(sess, log, pathlib.Path("."), steps=1)
-    assert sess.asked == ["EXIT"] and sess.camp_refusals == []
+    assert sess.asked == ["EXIT"] and sess.camp_rejections == []
     assert sess.keys == ["I"]
 
 
@@ -1049,7 +1049,7 @@ def test_an_encounter_the_refused_key_met_is_waited_into_the_fight(
     assert got == (2, (5, 6), None)
 
 
-def test_a_refused_key_at_a_choice_keeps_its_refusal_and_names_the_choice(
+def test_a_refused_key_at_a_choice_keeps_its_rejection_and_names_the_choice(
         monkeypatch):
     sess, log, got, dumps, _ = _script_walk(
         monkeypatch, [WORLD, WORLD, "", "LEAVE TALK ATTACK"])

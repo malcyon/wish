@@ -384,7 +384,7 @@ def test_a_genuinely_short_party_is_still_refused_quickly():
 
     A "fix" that retried "index out of range" until the deadline would pass
     the regression test above -- the retries would eventually see a settled
-    six-row panel -- and would also make this refusal 25s slow.  Counting
+    six-row panel -- and would also make this rejection 25s slow.  Counting
     `screen()` calls is what tells the two apart.
     """
     game = FakeGame(names=NAMES[:3])

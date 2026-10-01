@@ -565,7 +565,7 @@ BY_KEY: dict[str, CombatMemory] = {
 def memory_for(game) -> CombatMemory | None:
     """This title's combat addresses, or None when nobody has measured them.
 
-    **None is refusal, not a default.** Champions of Krynn and the two after
+    **None is rejection, not a default.** Champions of Krynn and the two after
     it have never been run under a monitor, and reading Pool of Radiance's
     addresses on one of them yields a plausible battle rather than an error --
     which is the failure `#334` is about, with the titles swapped round.

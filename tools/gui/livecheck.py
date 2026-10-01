@@ -477,7 +477,7 @@ class Run:
             "source": state.source,
             # `LINKER`'s own dispatch byte -- 1 DUNGEON, 2 COMBAT. Every
             # action and Fast Travel gate on it, so a run that finds it at 2
-            # is a run whose refusals mean "in a fight" rather than
+            # is a run whose rejections mean "in a fight" rather than
             # "unsupported".
             "mode_flag": act.mode(self.target, self.game),
         }
@@ -788,11 +788,11 @@ class Run:
 
     def check_badges(self) -> dict:
         """C13: a badge, drawn from an effect staged into the party's own
-        arrays -- and the refusal, where the title has no table.
+        arrays -- and the rejection, where the title has no table.
 
         **Nothing else would draw one.** No save this project holds for any
         title has a spell running, so a badge check over what is there
-        measures the corpus: it reports "no badge drawn", which is also what a
+        measures the specimens: it reports "no badge drawn", which is also what a
         broken `badges()` reports. So one effect row is written into the four
         arrays the way the game writes one -- id at `+$000`, owner at `+$040`,
         duration at `+$080`, magnitude at `+$280`, the offsets
@@ -854,7 +854,7 @@ class Run:
         """C14 and C19 together: light the badge, then clear it with the button.
 
         The bit is staged because no save this project holds has one set, and
-        a check that reports "nobody was on quickfight" measures the corpus
+        a check that reports "nobody was on quickfight" measures the specimens
         rather than the program. Staging it is `#34`'s own step 4 made
         reachable: the byte is the situation, `Character.quickfight` is the
         badge reading it, and `ClearQuickfight` is the button.
@@ -953,7 +953,7 @@ class Run:
         # **A memorised list is staged where there is none**, the same way the
         # wound and the quickfight bit are: the Curse party that carries items
         # has nobody with a spell prepared, and a check that answers
-        # "unreached" there is measuring the corpus rather than the button.
+        # "unreached" there is measuring the specimens rather than the button.
         # Nothing about this action goes through the engine -- `StoreSpells`
         # reads the list and `RestoreSpells` writes it -- so an id put there
         # from outside is the same input a night's rest would have left.
@@ -1055,7 +1055,7 @@ class Run:
         reason.** A verdict of "legal" says nothing unless the title's trainer
         has actually been read -- `#16 (Level Up assumes Pool of Radiance, and
         silently corrupts a Curse character)` is what happens when it has not
-        -- and a refusal says nothing unless it is the *unsupported* refusal
+        -- and a rejection says nothing unless it is the *unsupported* rejection
         rather than "you are in a fight". So the pass is the agreement between
         `goldbox.levels.trainer_measured` and what the button says.
         """
@@ -1074,7 +1074,7 @@ class Run:
                     offers[m.name] = f"error: {exc}"
             blockers = list(act.level_up_blockers(
                 next(iter(party)).record, self.game))
-        # **The refusal is in `run`, not in `legality`, and that is where it
+        # **The rejection is in `run`, not in `legality`, and that is where it
         # has to be checked.** `Action.legality` only asks the loader's mode
         # flag, so it answers True on a title whose trainer nobody has
         # measured; what refuses is `level_up_blockers` inside `run`, and the

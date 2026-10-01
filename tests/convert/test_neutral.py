@@ -436,7 +436,7 @@ def test_more_granted_effects_than_free_slots_is_silent():
 def test_the_dos_reader_sets_nothing_the_c64_writer_leaves_behind():
     """The DOS->C64 path as reader + writer: everything the reader carries,
     the writer takes.  A field appearing here would be one to build the C64
-    side out for, or one to say out loud in `DROPPED`."""
+    side out for, or one to report in `DROPPED`."""
     for path in sorted(_save_dir().glob("*.SAV")):
         if path.stat().st_size != dos_port.RECORD_SIZE:
             continue
@@ -510,7 +510,7 @@ def test_the_minimum_grade_applies_to_a_derivation_as_much_as_to_a_copy():
     assert w.get("race", 0) == 0           # the writer will not stand behind it
 
 
-def test_a_refusal_carries_the_drops_that_rode_on_it():
+def test_a_rejection_carries_the_drops_that_rode_on_it():
     """`Value.dropped` is what the reader left behind to produce a value, and
     that is a fact about the source whether or not the value is written."""
     char = NeutralCharacter("test")
@@ -707,7 +707,7 @@ def test_the_summary_of_a_report_with_no_derived_lines_has_no_derived_line():
 
 
 def test_a_count_of_dropped_plus_losses_does_not_include_derived():
-    """The Save As refusal counts `dropped` and `losses` (`editor/saveplan.
+    """The Save As rejection counts `dropped` and `losses` (`editor/saveplan.
     losses`); a stand-in with the same two-list read is enough to show a
     derived row cannot add to it while a real narrowing still does."""
     def losses(report):

@@ -17,15 +17,14 @@ outdoor party too.  What is left here is the screenshot-per-press sweep, which
 is the thing to reach for when the question is *which* digit went where.
 
 It reads `$49C3`/`$49C4` -- the live travel square,
-`#47 (Decode the travel grid's cache entries, so the wilderness can be
-retargeted too)` and `#59 (Map the DOS saved game, not just the character
+`#47` and `#59 (Map the DOS saved game, not just the character
 record)` -- through the binary monitor, before and after every key.  A turn
 then shows as "the square did not move, and it was not meant to", and a step
 shows as the square moving, which is the thing worth proving:
 
     tools/pool_of_radiance/outdoorwalk.py --disk OUTC.D64 --slot 2 --moves 8484
 
-Written for `#50 (Lift the wilderness refusal from the DOS save converter)`,
+Written for `#50`,
 whose end-to-end proof is "convert a wilderness DOS save, load it, and walk".
 
 Nothing is written to the player's disks: `Session.attach` refuses a path
@@ -160,8 +159,7 @@ def main(argv=None) -> int:
     # Compass digits, not `I J K M`. The travel grid's bar is
     # `1-8, RETURN OR BUTTON`, and a driver pressing the dungeon's letters out
     # here moves the party not at all while looking exactly like a save that
-    # cannot walk -- which is what an hour of `#50 (Lift the wilderness refusal
-    # from the DOS save converter)` was spent on. This default was that hour
+    # cannot walk -- which is what an hour of `#50` was spent on. This default was that hour
     # written back into the tool meant to prevent it.
     #
     # The eight are the compass **clockwise from north**, not the numpad:

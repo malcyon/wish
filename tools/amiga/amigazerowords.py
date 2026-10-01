@@ -27,12 +27,12 @@ committed and none of them ours:
    under the file's contiguous name is what hid every one of those references
    the last time somebody looked, which is why the mapping is here and not
    assumed away.
-4. **The Amiga corpus**, every distinct `savgam*.dat` in the specimen tree.
-5. **The DOS corpus**, optionally: DOS runs the same scripts at the same VM
+4. **The Amiga specimens**, every distinct `savgam*.dat` in the specimen tree.
+5. **The DOS specimens**, optionally: DOS runs the same scripts at the same VM
    addresses, so a word a DOS save holds non-zero is a word some area fills,
    whichever port is asked.  It is corroboration and not proof -- the two
    engines already disagree about `$5082` (`docs/165-amiga-savegame.md`).
-6. **The C64 corpus**, every distinct `SAVEDGAME0` in the specimen tree: a
+6. **The C64 specimens**, every distinct `SAVEDGAME0` in the specimen tree: a
    third port, standing in three areas neither of the other two reaches, and
    a witness for block 1 alone.
 7. **`/program` off Amiga disk 1**, under `--engine`: every site that loads
@@ -81,9 +81,9 @@ CATCH_ALL = "zeroed: this word reads zero in every Amiga saved game swept"
 #: pointers.
 BLOCKS = ((0x4900, 1024), (0x6B00, 1024), (0x9700, 512))
 
-#: Areas the Amiga corpus stands in, filled from the corpus itself.  Named
+#: Areas the Amiga specimens stand in, filled from the specimens themselves.  Named
 #: here only so a reader can see there is no hard-coded list.
-CORPUS_AREAS: set = set()
+SPECIMEN_AREAS: set = set()
 
 
 def vm_word(address: int) -> "int | None":
@@ -133,7 +133,7 @@ def amiga_program() -> bytes:
     raise SystemExit("No /program on any Amiga disk; see automap/gamedisks.py")
 
 
-def amiga_corpus() -> "list[tuple[str, bytes]]":
+def amiga_specimens() -> "list[tuple[str, bytes]]":
     """Every distinct Amiga Pool of Radiance saved game in the specimen tree."""
     from tools.registry import specimens
 
@@ -155,7 +155,7 @@ def amiga_corpus() -> "list[tuple[str, bytes]]":
     return [found[key] for key in sorted(found, key=lambda k: found[k][0])]
 
 
-def c64_corpus() -> "list[tuple[str, bytes]]":
+def c64_specimens() -> "list[tuple[str, bytes]]":
     """Every distinct C64 `SAVEDGAME0` in the specimen tree.
 
     A third port, and it reaches areas the other two corpora do not -- but it
@@ -187,7 +187,7 @@ def c64_corpus() -> "list[tuple[str, bytes]]":
     return [found[key] for key in sorted(found, key=lambda k: found[k][0])]
 
 
-def dos_corpus(paths: "list[str]") -> "list[tuple[str, bytes]]":
+def dos_specimens(paths: "list[str]") -> "list[tuple[str, bytes]]":
     """Every distinct DOS Pool of Radiance container under the paths given."""
     from goldbox import dos_savegame
 
@@ -403,13 +403,13 @@ def main(argv=None) -> int:
     if args.engine or args.program:
         engine = EngineSweep(pathlib.Path(args.program).read_bytes()
                               if args.program else amiga_program())
-    saves = amiga_corpus()
+    saves = amiga_specimens()
     if not saves:
         raise SystemExit("No Amiga saved game in the specimen tree")
     for _label, data in saves:
-        CORPUS_AREAS.add(amiga_savegame.por_word(data, 0x49F2))
+        SPECIMEN_AREAS.add(amiga_savegame.por_word(data, 0x49F2))
     amiga_live = live_words(saves, at=amiga_savegame.POR_VAR_OFFSET, big=True)
-    dos = dos_corpus(args.dos)
+    dos = dos_specimens(args.dos)
     dos_live = live_words(dos, at=1, big=False)
     dos_areas = {int.from_bytes(d[1 + 2 * (0x49F2 - 0x4900):][:2], "little")
                  for _l, d in dos}
@@ -421,11 +421,11 @@ def main(argv=None) -> int:
           f"base ${sweep.base:04X}, walk reaches "
           f"{100 * sweep.coverage[0] / sweep.coverage[1]:.1f}% of "
           f"{sweep.coverage[1]} bytes")
-    print(f"the Amiga corpus: {len(saves)} saved games, areas "
-          f"{sorted(CORPUS_AREAS)}, {len(amiga_live)} of 2560 words non-zero "
+    print(f"the Amiga specimens: {len(saves)} saved games, areas "
+          f"{sorted(SPECIMEN_AREAS)}, {len(amiga_live)} of 2560 words non-zero "
           f"in at least one")
     if dos:
-        print(f"the DOS corpus: {len(dos)} containers, areas "
+        print(f"the DOS specimens: {len(dos)} containers, areas "
               f"{sorted(dos_areas)}, {len(dos_live)} words non-zero")
     print()
     print(f"a build from {label}: {sum(classes.values())} bytes accounted "
@@ -463,7 +463,7 @@ def main(argv=None) -> int:
         both = sorted(set(catch) & dos_live)
         extra = sorted(dos_live - amiga_live)
         print(f"the cross-port check: DOS stands in "
-              f"{sorted(dos_areas - CORPUS_AREAS)} as well, and holds "
+              f"{sorted(dos_areas - SPECIMEN_AREAS)} as well, and holds "
               f"{len(extra)} words non-zero that no Amiga saved game does.")
         print(f"  of those {len(extra)}, {len([w for w in extra if w in catch])} "
               f"are in the catch-all set and "
@@ -476,7 +476,7 @@ def main(argv=None) -> int:
                   f"${file_address(word):04X})")
         print()
 
-    c64 = c64_corpus()
+    c64 = c64_specimens()
     if c64:
         from goldbox import world_state
 
@@ -489,7 +489,7 @@ def main(argv=None) -> int:
                 if body[word]:
                     c64_live.add(word)
         block1 = [w for w in catch if w < 1024]
-        print(f"the C64 corpus: {len(c64)} SAVEDGAME0, areas "
+        print(f"the C64 specimens: {len(c64)} SAVEDGAME0, areas "
               f"{sorted(c64_areas)}. It witnesses block 1 alone -- "
               f"SAVEDGAME0 is $4900-$64FF and SAVEDGAME1 $8300-$8AFF, so the "
               f"VM's $6B00 and $9700 blocks are in neither.")
@@ -503,15 +503,15 @@ def main(argv=None) -> int:
             print(f"    ${page:04X}  {len(live)} of {len(here)}")
         print("  A C64 word live where the Amiga's is zero is the two ports "
               "using one address for different things, not an area the "
-              "Amiga corpus has missed (docs/163-dos-vm-address-map.md).")
+              "Amiga specimens have missed (docs/163-dos-vm-address-map.md).")
         print()
 
-    visited = set(CORPUS_AREAS)
+    visited = set(SPECIMEN_AREAS)
     at_risk = [w for w in written_all if not (sweep.writes[w] & visited)]
     print(f"{len(written_all)} of the {len(catch)} catch-all words are "
           f"written by some area's script.")
     print(f"  {len(written_all) - len(at_risk)} of those are written by a "
-          f"script of an area the corpus stands in, so the sweep has already "
+          f"script of an area the specimens stand in, so the sweep has already "
           f"watched the game run the write and leave the word zero.")
     print(f"  {len(at_risk)} are written only by scripts of areas no saved "
           f"game here comes from -- {2 * len(at_risk)} bytes.")
@@ -582,7 +582,7 @@ def main(argv=None) -> int:
                                   if engine else None),
             })
         pathlib.Path(args.json).write_text(json.dumps(
-            {"corpus_areas": sorted(CORPUS_AREAS),
+            {"specimen_areas": sorted(SPECIMEN_AREAS),
              "dos_areas": sorted(dos_areas),
              "catch_all": len(catch),
              "words": out}, indent=1))

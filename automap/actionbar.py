@@ -714,7 +714,7 @@ class FastTravelBar(QObject):
             else:
                 verdict = self.fasttravel.legality(once, area)
                 self.button.setEnabled(verdict.ok)
-                # `DANGER` when it is enabled, the refusal when it is not: the
+                # `DANGER` when it is enabled, the rejection when it is not: the
                 # warning is about making a trip, and a disabled button is not
                 # about to make one.
                 self.button.setToolTip(verdict.reason or DANGER)
@@ -800,9 +800,9 @@ class FastTravelBar(QObject):
         return None if self.target is None else _NotAskingThePC(self.target)
 
     def _ready(self, verdict: engine.Verdict) -> engine.Verdict:
-        """The durable refusals first, then the wait for a quiet machine.
+        """The durable rejections first, then the wait for a quiet machine.
 
-        In that order because a refusal that will not change -- a fight, an
+        In that order because a rejection that will not change -- a fight, an
         area the party is already in -- is not worth two seconds of waiting,
         and it is the same verdict the button was showing.
         """

@@ -63,7 +63,7 @@ CONTROL = {
 
 # The archives' `Default files/Saves` used to be found here and the sweep read
 # off it.  It is gone rather than left unused: a helper that resolves an
-# untrusted directory is one import away from being the corpus again.
+# untrusted directory is one import away from being the specimens again.
 
 
 # --- the step grammar --------------------------------------------------------

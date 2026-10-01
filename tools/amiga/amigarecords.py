@@ -23,7 +23,7 @@ size there, a record signature here.
 
 The disks are opened **read-only**; nothing is written anywhere but `--out`.
 `tests/amiga/test_amiga.py` calls :func:`extract` itself when the environment names
-no directory, so the corpus is never only in a scratch directory -- which is
+no directory, so the specimens are never only in a scratch directory -- which is
 what `#211 (103 tests skip on the machine that has the game files, and the
 game files are not why)` was about.
 

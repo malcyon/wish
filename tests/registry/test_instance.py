@@ -482,7 +482,7 @@ def _recorded_pgid(root: Path) -> int | None:
 
 
 def test_the_claim_wrapper_probes_no_port_the_pool_hands_out():
-    """The property #438 lost twice, said out loud.
+    """The property #438 lost twice, stated.
 
     The wrapper is a fresh interpreter, so the `ports` fixture cannot reach
     it and its probe is real.  While its bands were the pool's own, an agent

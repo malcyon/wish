@@ -127,9 +127,9 @@ def sweep(saves: Sequence[tuple[str, amiga_savegame.AmigaSavegame]]) -> str:
 
     The writers zero every word no source save answers for, on the argument
     that nothing here holds anything there -- and that argument is only as
-    wide as the places the parties in the corpus have stood.  This is what
+    wide as the places the parties in the specimens have stood.  This is what
     measures the width.  Grouping by `$5012`, the container number, is what
-    makes it readable: the interesting column is what a corpus of one place
+    makes it readable: the interesting column is what a set of specimens of one place
     alone would have missed, which is the size of the risk in adding a
     fourteenth area nobody has visited.
 

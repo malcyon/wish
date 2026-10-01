@@ -12,7 +12,7 @@ answer "what class is this character", and they ask the question differently:
   character is read off the level array instead of off the mask.
 
 For a character who trained out of one class into another those two can differ,
-and this walks a corpus asking whether they ever do.  It calls the shipped
+and this walks a set of specimens asking whether they ever do.  It calls the shipped
 functions -- `editor.window._char_class_shown` and `goldbox.c64_codec.read` --
 rather than re-deriving either rule, so a change to either side moves what this
 prints.

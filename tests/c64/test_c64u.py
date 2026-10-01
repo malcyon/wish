@@ -115,7 +115,7 @@ def test_the_commands_that_are_not_ours_are_stopped_before_the_wire(words):
 
 
 def test_an_ordinary_config_read_is_not_refused():
-    """The refusal is per command, not a ban on the whole `config` tree."""
+    """The rejection is per command, not a ban on the whole `config` tree."""
     dev, fake = device()
     dev.run("config", "export")
     assert len(fake.calls) == 1

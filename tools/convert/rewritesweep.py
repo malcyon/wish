@@ -408,7 +408,7 @@ def field_verdicts(before, do) -> dict[str, str]:
     Each field is fuzzed at its first byte and at its last, because a field
     whose padding was all that moved reads as read-only when it is not.  A
     fuzz the rewrite refuses with `RewriteError` *is* the read-only answer --
-    that is the refusal it raises when an edit lands nowhere -- and one that
+    that is the rejection it raises when an edit lands nowhere -- and one that
     raises anything else is an illegal value rather than a verdict.
     """
     baseline = do(before)

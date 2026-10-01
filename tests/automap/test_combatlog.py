@@ -864,7 +864,7 @@ def test_a_later_titles_fight_is_logged_at_its_own_addresses(game):
 def test_a_title_nobody_has_measured_combat_addresses_for_logs_nothing():
     """Champions of Krynn gets no messages at all, never Pool of Radiance's.
 
-    The same refusal `combat.read_battle` makes: an unmeasured address reads
+    The same rejection `combat.read_battle` makes: an unmeasured address reads
     as a plausible fight instead of an error, and that failure is the one
     `#39` is about with the log in place of the view.
     """

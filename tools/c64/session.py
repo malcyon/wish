@@ -514,7 +514,7 @@ class FightResult:
         to the orcs, and reported `acted=True` off `AND MISSES...` and `AND
         HITS FOR 7 POINTS OF DAMAGE` -- the orcs (`#163`).
 
-        **What it depends on, said out loud:** the tactic.  `melee_turn`
+        **What it depends on:** the tactic.  `melee_turn`
         answers `ATTACK` when the blow resolved and `fight` counts that, so a
         tactic that strikes without answering `ATTACK` gets `acted` False.
         That is under-reporting, which is the direction a check that gets
@@ -1125,7 +1125,7 @@ class Session:
         None is three different things and only one of them is silent: a
         bitmap, which is the title and the credits and is normal; a monitor
         that would not answer; and a screen that could not be *located*, which
-        is said out loud because it is the failure `#336` is about -- forty
+        is reported because it is the failure `#336` is about -- forty
         spaces read off the wrong memory look exactly like a game showing
         nothing, and every caller here treats them as that.
         """
@@ -1217,7 +1217,7 @@ class Session:
         # Only after the disk is in: an `attach` that raised must not hold off
         # the retry for the same disk.
         self._last_want = want
-        # **Said out loud, because this keypress goes somewhere.**  A space
+        # **Reported, because this keypress goes somewhere.**  A space
         # sent at a disk prompt is buffered by the KERNAL, and if the game
         # has moved on to a menu by the time it reads it, the space answers
         # *that* instead -- which is one of the two candidates in `#380`.

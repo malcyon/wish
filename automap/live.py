@@ -344,7 +344,7 @@ class Character:
         **The knight has no letter, deliberately.** `K` was shipped briefly on
         the reasoning that no player could reach a Krynn card, and the code
         review of #197 showed that reasoning was wrong: the gate is not a
-        refusal. `automap/window.py`'s `_refresh_roster` withholds the read
+        rejection. `automap/window.py`'s `_refresh_roster` withholds the read
         only when `title_check is NOT_OURS`, and `title_check` starts at
         `UNKNOWN` and never leaves it when `read_fix` returns None -- so
         `UNKNOWN` does not block. What actually keeps a Krynn card off screen

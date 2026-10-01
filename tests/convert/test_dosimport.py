@@ -16,7 +16,7 @@ The conversion itself is `tests/convert/test_dosconvert.py`'s. What is tested he
 `rehearse`, `pane_text` and `log_unshown_losses` -- the
 functions `editor/convert.py`'s `ConvertDialog` calls in for -- plus the two
 `#176 (A player importing a Curse of the Azure Bonds save is shown an issue
-number)` refusal tests that build no dialog at all. This module carried a
+number)` rejection tests that build no dialog at all. This module carried a
 window in its own right, `DosImportDialog`, from 2026-08-24 until it was
 deleted along with `File ▸ Import` on 2026-09-14 (`#52 (File ▸ Import and
 File ▸ Export for every direction the library supports)`); what tested that
@@ -347,7 +347,7 @@ def test_a_real_conversion_that_truncates_nothing_shows_no_loss_line():
     assert "emptied" not in text
 
 
-#: `DosImportDialog`'s own window tests and its refusal-when-disks-missing
+#: `DosImportDialog`'s own window tests and its rejection-when-disks-missing
 #: tests -- `test_the_rehearsal_is_complete_before_the_button_is_
 #: pressable`, `test_a_pool_of_radiance_import_with_no_creation_tables_
 #: converts_with_its_own_faces`, `test_the_save_points_at_the_area_the_
@@ -509,7 +509,7 @@ def test_closing_a_converted_party_and_naming_it_in_the_chooser_saves_and_closes
 #: suggested_name_changes_with_the_slot`, `test_a_path_the_user_typed_
 #: survives_a_change_of_slot`, `test_an_empty_destination_is_not_
 #: convertible`, `test_convert_writes_the_file_the_window_names`, `test_a_
-#: write_that_cannot_happen_pops_a_modal_naming_the_refusal`, `test_
+#: write_that_cannot_happen_pops_a_modal_naming_the_rejection`, `test_
 #: import_dos_save_is_cancellable_without_touching_anything`, `test_a_
 #: folder_with_no_dos_save_says_so` -- are deleted along with the dialog
 #: and `EditorBinding.import_dos_save` (`#52 (File ▸ Import and File ▸
@@ -534,7 +534,7 @@ def test_closing_a_converted_party_and_naming_it_in_the_chooser_saves_and_closes
 #: the_removed_variable`.
 
 
-# --- the refusal a player reads (#176) --------------------------------------
+# --- the rejection a player reads (#176) --------------------------------------
 
 def test_a_refused_title_tells_the_player_which_game_and_no_issue_number():
     """`#176 (A player importing a Curse of the Azure Bonds save is shown an
@@ -570,7 +570,7 @@ def test_a_refused_title_tells_the_player_which_game_and_no_issue_number():
 #: direction the library supports)`).
 
 
-def test_a_refusal_cannot_be_raised_without_naming_the_title():
+def test_a_rejection_cannot_be_raised_without_naming_the_title():
     """`title` is required, so a caller that forgets it fails at the raise
     site rather than putting `" imports not yet supported."` -- leading space,
     lower case, no game named -- in front of a player.
@@ -585,8 +585,8 @@ def test_a_refusal_cannot_be_raised_without_naming_the_title():
 
 
 #: `test_the_dialog_is_blocked_by_the_fallback_and_not_the_developers_
-#: sentence`, `test_the_dialog_is_blocked_by_the_fallback_for_a_refusal_
-#: dos_record_error_never_names` and `test_a_refusal_on_construction_is_
+#: sentence`, `test_the_dialog_is_blocked_by_the_fallback_for_a_rejection_
+#: dos_record_error_never_names` and `test_a_rejection_on_construction_is_
 #: shown_not_swallowed`, which drove `#195`'s guarantee against
 #: `DosImportDialog`, are ported to `tests/convert/test_convert.py` against
 #: `ConvertDialog`, deleted with the dialog on 2026-09-14 (`#52 (File ▸

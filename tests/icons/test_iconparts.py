@@ -53,7 +53,7 @@ def test_a_composed_icon_is_eighteen_cells(parts):
 
 
 def test_the_factory_default_is_large_weapon_zero_head_one(parts):
-    """The commonest shape in the corpus, and it reconstructs exactly."""
+    """The commonest shape in the specimens, and it reconstructs exactly."""
     assert parts.compose("large", 0, 1).hex() == (
         "20a02086878806070820a020898a8b061011")
 

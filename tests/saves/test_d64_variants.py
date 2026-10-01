@@ -7,7 +7,7 @@ that way. This module covers what was added around it: the 40- and 42-track
 geometries, the appended error map, and the rule that only the standard image may
 be written.
 
-The point that is easy to lose is the **refusal**. Widening the reader into
+The point that is easy to lose is the **rejection**. Widening the reader into
 "accept anything and hope" would make an unknown size decode as a directory of
 plausible nonsense, so half the assertions here are that sizes one byte either
 side of a variant are still errors.
@@ -107,7 +107,7 @@ def test_an_unrecognised_size_is_still_refused(size):
         D64.from_bytes(b"\x00" * size)
 
 
-def test_the_refusal_names_the_sizes_it_would_have_taken():
+def test_the_rejection_names_the_sizes_it_would_have_taken():
     with pytest.raises(InvalidImageError) as caught:
         D64.from_bytes(b"\x00" * 4242)
     message = str(caught.value)

@@ -3601,7 +3601,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 else:
                     if (strength_rows > 1 and spell_record is None
                             and row.id in effects.STRENGTH_IDS):
-                        # Same refusal as the duration != 0 strength row
+                        # Same rejection as the duration != 0 strength row
                         # below, logged here too so a second duration-0
                         # strength source (none exists yet) would not
                         # fall through silently.

@@ -111,7 +111,7 @@ def test_out_of_play_dirten_is_not_an_active_repair_candidate(status, seed):
 
 
 @pytest.mark.parametrize("status", (0x01, 0x05))
-def test_the_independent_low_status_bits_are_not_a_new_refusal_policy(status, seed):
+def test_the_independent_low_status_bits_are_not_a_new_rejection_policy(status, seed):
     disk = generated_disk()
     replace_payload(disk, "SAVEDGAME1", 7 * 32, bytes([status]))
     assert repair.plan_repair(disk.to_bytes(), seed).changed_bytes == 36
@@ -432,7 +432,7 @@ def test_a_missing_or_wrong_width_default_is_not_a_repair(bad_icon):
         repair.plan_repair(generated_disk().to_bytes(), bad_icon)
 
 
-def test_cli_refusal_writes_no_file_and_reports_no_traceback(source, seed, monkeypatch, capsys):
+def test_cli_rejection_writes_no_file_and_reports_no_traceback(source, seed, monkeypatch, capsys):
     monkeypatch.setattr(repair, "native_default", lambda: repair.NativeDefault(seed, ()))
     source.write_bytes(repair.plan_repair(source.read_bytes(), seed).output)
     original = source.read_bytes()

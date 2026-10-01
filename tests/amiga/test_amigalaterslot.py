@@ -153,7 +153,7 @@ def test_silver_blades_keeps_its_own_suffix(tmp_path):
         AmigaDisk.open(out).lookup("/SAVE/savgamB.dat")
 
 
-def test_a_slot_the_disk_does_not_have_is_named_in_the_refusal(curse_disk,
+def test_a_slot_the_disk_does_not_have_is_named_in_the_rejection(curse_disk,
                                                               tmp_path):
     with pytest.raises(SystemExit) as raised:
         run(str(curse_disk), "--from", "Z", "--to", "B",

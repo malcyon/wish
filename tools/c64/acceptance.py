@@ -64,9 +64,9 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
-| `scribe WHO>SPELL` | camp `MAGIC > SCRIBE` for WHO: the scroll list kept as text, SPELL's row highlighted and picked (Return, then a KERNAL Return while the count stands), the pick prompt's `EXIT` row, the list's `EXIT`, the `CHOSEN SPELLS` page kept, `OKAY` at the confirmation, and back to the camp bar. WHO's roster slice of the scribe queue (`+0x01` first entry, `+0x02` count: Pool `$6C01`, Curse and Silver Blades `$7D01`) is read before, after the pick and at the end, with its queue entries; a refusal (`CAN'T SCRIBE`), a spell not on the list, a list of more than one page, or a count of zero at the end fails the step. Measured on Silver Blades |
+| `scribe WHO>SPELL` | camp `MAGIC > SCRIBE` for WHO: the scroll list kept as text, SPELL's row highlighted and picked (Return, then a KERNAL Return while the count stands), the pick prompt's `EXIT` row, the list's `EXIT`, the `CHOSEN SPELLS` page kept, `OKAY` at the confirmation, and back to the camp bar. WHO's roster slice of the scribe queue (`+0x01` first entry, `+0x02` count: Pool `$6C01`, Curse and Silver Blades `$7D01`) is read before, after the pick and at the end, with its queue entries; a rejection (`CAN'T SCRIBE`), a spell not on the list, a list of more than one page, or a count of zero at the end fails the step. Measured on Silver Blades |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
-| `ready WHO>LABEL`, `ready WHO>#N` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `refused` or `unchanged`), the row before and after, and the refusal text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
+| `ready WHO>LABEL`, `ready WHO>#N` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `refused` or `unchanged`), the row before and after, and the rejection text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
 | `fight-flee [SECONDS]` | `fight`'s route into a fight, then `fleedrive.Flight` as the tactic with no wound patch, for at most SECONDS (120): the members who run stay alive and the game's own drop of a member left behind runs, which `walk-flee`'s menu FLEE never reaches. The result records `got_away` and `left_behind` (each member's slot, name and status before and after, a member left behind being one whose name the drop cleared); a fight that does not end on `THE PARTY RUNS AWAY` (won, lost, or still going at SECONDS) fails the step naming `fight-flee` |
 | `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows (a `GO BACK LEAVE TREASURE` bar that EXIT opens is answered LEAVE), on the encounter path as well as after a `PRESS` bar, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
@@ -186,7 +186,7 @@ READY_SPECIMEN_ISSUE = (
     "a preceding save's disk swaps leave stale)")
 POOL_SPECIMEN_ISSUE = (
     "#700 (Converting a Pool of Radiance C64 party holding a camp-cast "
-    "Animate Dead zombie needs more than fixing the refusal that blocks it)")
+    "Animate Dead zombie needs more than fixing the rejection that blocks it)")
 TEMPLE_BRUTUS_SHA256 = (
     "7834be122f8a30c03f029d96b8ba39d0961545b998837e089e965e06a20edbe9")
 #: The registered specimen of a DOS-raised WISHFTR converted by Wish and
@@ -774,7 +774,7 @@ def ready_row(label: str) -> int | None:
 ITEM_HEADING = "EQUIPPED ITEM"
 
 #: What the game prints when READY is refused (`LIBRARY $46A6`).
-REFUSALS = ("WRONG CLASS", "CURSED", "NOT HERE", "TOO MANY")
+REJECTIONS = ("WRONG CLASS", "CURSED", "NOT HERE", "TOO MANY")
 
 
 def item_screen_rows(rows: list[str]) -> list[int]:
@@ -843,7 +843,7 @@ def scribe_highlight(screen, rows: list[str]) -> int | None:
     """The list row drawn in the highlight colour at `SCRIBE_LIST_COLUMN`.
 
     `Screen.highlighted_rows` also asks that column 1 is not white, and on
-    the pick prompt after a refusal the `EXIT` row keeps a white cell there
+    the pick prompt after a rejection the `EXIT` row keeps a white cell there
     from the picture drawn before, so the list's own column is read alone."""
     hot = [r for r in range(3, 23)
            if r < len(rows) and rows[r][1:39].startswith("  ")
@@ -2045,7 +2045,7 @@ class PoolRun:
         """The save disk copied out once its files are closed.
 
         After a party-menu write VICE can hold the directory track back until
-        the image is attached again, so one refusal is followed by an attach of
+        the image is attached again, so one rejection is followed by an attach of
         the same image and a second, longer try.  A disk that still has an open
         file after that is kept as it stands, because an unclosed entry is
         what a failed write leaves.
@@ -2888,7 +2888,7 @@ class PoolRun:
         `temple_result_window`: `cut` is true when the input deadline ended
         it before `TEMPLE_RESULT_WINDOW`, so a short or empty list can be told
         from a window in which no result text appeared. A frame is the
-        price screen only when all 25 rows match: a refusal is drawn on row 24
+        price screen only when all 25 rows match: a rejection is drawn on row 24
         (`NOT ENOUGH MONEY !`) over an otherwise unchanged price screen."""
         self.temple_result_window = None
         frames: list[dict] = []
@@ -3579,8 +3579,8 @@ class PoolRun:
     def _scribe_pick(self, spell: str, before: dict) -> tuple[str, dict]:
         """Pick SPELL, judged by the roster count, since the list is not
         redrawn: the second key goes out only while the count stands, no
-        refusal was seen in any poll, and the highlight is still on SPELL's
-        row, because a refusal flash shorter than a poll moves the highlight
+        rejection was seen in any poll, and the highlight is still on SPELL's
+        row, because a rejection flash shorter than a poll moves the highlight
         to `EXIT`."""
         for key in ("xtest-return", "kernal-return"):
             if key == "kernal-return":
@@ -3973,7 +3973,7 @@ class PoolRun:
 
     def press_item_row(self, who: str, row: int) -> tuple[bool, dict]:
         """READY on the `row`th row of the list that is up, and what the game
-        did about it: the row's YES or NO before and after, and any refusal
+        did about it: the row's YES or NO before and after, and any rejection
         it printed, read as text. The cursor goes by the row's position, since
         an item with no name has none to find it by. A failure after READY is
         chosen leaves the list before it is raised."""
@@ -4010,8 +4010,8 @@ class PoolRun:
                 if len(seen) >= 2 and seen[-1] == seen[-2]:
                     break
         after = seen[-1] if seen else before
-        # Only lines the press put up outside the item rows can be a refusal:
-        # an item's own name can hold a refusal's words, and a later frame
+        # Only lines the press put up outside the item rows can be a rejection:
+        # an item's own name can hold a rejection's words, and a later frame
         # that has drawn over the message must not erase it.
         message = None
         for rows in seen:
@@ -4021,7 +4021,7 @@ class PoolRun:
                      {before[b][1:39].strip() for b in range(1, 24)}]
             if message is None:
                 message = next((t for t in fresh
-                                if any(w in t for w in REFUSALS)), None)
+                                if any(w in t for w in REJECTIONS)), None)
         if message is None:
             message = " / ".join(
                 after[r][1:39].strip() for r in range(1, 24)

@@ -54,7 +54,7 @@ def test_save_as_twice_into_one_folder_publishes_both_times(tmp_path):
 
 
 @needs_dos_saves
-def test_a_real_refusal_names_its_class_and_writes_nothing(tmp_path):
+def test_a_real_rejection_names_its_class_and_writes_nothing(tmp_path):
     report = saveasdrive.save_as(_NoGameFiles(), _save_dir() / "SAVGAMA.DAT",
                                  "c64", tmp_path)
 

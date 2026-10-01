@@ -955,7 +955,7 @@ def test_save_as_amiga_keeps_a_blessed_c64_character_blessed(
     assert [bytes(r)[:5] for r in running] == [
         bytes((1, 0x2F, 0x00, magnitude, 0x00))]
 
-    # Silver Blades converts id 13 as Barkskin, so its refusal uses id 65, one
+    # Silver Blades converts id 13 as Barkskin, so its rejection uses id 65, one
     # no DOS engine writes.
     refuse_id = 65 if title == "ssb" else 13
     refused = _amiga_bless_disk(tmp_path, title, magnitude, refuse=True,

@@ -251,7 +251,7 @@ def _sibling_bytes(path, suffix: str) -> bytes:
 #   * One pad in DOS `0x035`-`0x037`, which even-aligns the `u16` weight at
 #     Amiga `0x038`.  Zero in all 17, so which of the three is UNKNOWN.
 #   * One pad at Amiga `0x03B`, and this one **is** located to the byte:
-#     quantity is measured at `0x03A` (60, on the only stack in the corpus,
+#     quantity is measured at `0x03A` (60, on the only stack in the specimens,
 #     against a display line reading `60 Darts`) and value at `0x03C`.
 #
 # `readied` at `0x034` is the flag `#55 (Decode the Amiga Curse and Silver

@@ -105,7 +105,7 @@ PASSWORD_ENV = "POR_ULTIMATE_PASSWORD"
 #: them. Without it the last letter of the placeholder is a pixel short.
 #:
 #: 4 was exact for two placeholders and one pixel short for a third: the
-#: Saves box's own (`#66`) elided to "...starts" at `room_for`'s computed
+#: Saves box's own (`#66`) truncated to "...starts" at `room_for`'s computed
 #: width with `CARET` at 4, and still did at 5 -- `horizontalAdvance` is an
 #: approximation of what the text layout engine that actually elides it
 #: draws, and the gap is not the same for every string. 8, twice the

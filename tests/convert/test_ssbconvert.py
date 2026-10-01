@@ -66,7 +66,7 @@ PALADIN, RANGER = 3, 4
 def converts_ssb(monkeypatch):
     """Put Silver Blades on `CONVERTS` for one test.
 
-    `goldbox.dos_codec.CONVERTS` does not carry this title yet: the refusal stands
+    `goldbox.dos_codec.CONVERTS` does not carry this title yet: the rejection stands
     until a converted party has been read off the running game and the three
     wires `#193` step 4 names are in.  This fixture comes out with it.
     """

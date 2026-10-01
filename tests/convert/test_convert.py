@@ -205,7 +205,7 @@ def test_source_detect_ignores_a_party_at_a_different_path(tmp_path):
 
 def test_source_detect_refuses_a_matching_party_with_nothing_open(tmp_path):
     """A roster disk has characters and no saved game -- `exports.Source.
-    from_party`'s own refusal, carried over."""
+    from_party`'s own rejection, carried over."""
     path = tmp_path / "ROSTER.D64"
     path.write_bytes(b"\x00")
     party = _fake_party(path, c64_port.POOL_OF_RADIANCE, None)
@@ -767,7 +767,7 @@ def test_a_c64_source_with_no_disks_is_refused_for_a_dos_destination(
 
 def test_a_c64_source_with_no_disks_is_refused_for_an_amiga_destination(
         tmp_path):
-    """The same refusal, for the other silent direction `#482` named."""
+    """The same rejection, for the other silent direction `#482` named."""
     path = _por_c64_disk(tmp_path)
 
     dialog = convert.ConvertDialog(str(path), None, _no_disks,
@@ -1114,7 +1114,7 @@ def test_a_curse_or_silver_blades_savgam_file_lists_c64(tmp_path, shape):
 
 def test_a_pools_of_darkness_folder_lists_nothing(tmp_path):
     """A readable Pools of Darkness save has no C64 port, so it gets
-    Donald's approved unsupported-title refusal rather than the generic one
+    Donald's approved unsupported-title rejection rather than the generic one
     for an unreadable file."""
     folder = _synthetic_dos_folder(tmp_path, dos_port.POOLS_OF_DARKNESS,
                                    suffix="PTY")
@@ -1156,7 +1156,7 @@ def test_an_amiga_pod_disk_reads_unsupported_when_the_flag_is_off(
     """Detection of a Pools of Darkness slot is not behind
     `WISH_EXPERIMENTAL_POD_CONVERT`; only offering the destination is. So
     with the flag unset, empty, `0` or `off`, the dialog gives the
-    unsupported-title refusal and never the generic one."""
+    unsupported-title rejection and never the generic one."""
     if value is None:
         monkeypatch.delenv(convert.POD_CONVERT_ENV, raising=False)
     else:
@@ -1336,7 +1336,7 @@ def test_the_destination_line_names_the_folder_before_the_button_is_enabled(
     Real game files, not `_no_disks`: this row's own C64 -> DOS default
     direction refuses with no source disks (`#482`), and with a lookup that
     has no combat icon it reports a loss and is refused (#511); this test is
-    about the destination line rather than either refusal."""
+    about the destination line rather than either rejection."""
     path = _por_c64_disk(tmp_path)
     destination = tmp_path / "out"
     destination.mkdir()
@@ -1607,7 +1607,7 @@ def test_a_successful_c64_conversion_pops_the_confirmation_after_loading_it(
 def test_no_string_reachable_in_the_pane_contains_a_hex_offset(tmp_path):
     """`.claude/rules/gui-text.md`: no memory address or file offset in
     front of a player. Every state this module can reach with no real game
-    disks, checked at once -- the destination line, and the refusal
+    disks, checked at once -- the destination line, and the rejection
     `_blocked` would show in a modal (`_no_real_modals` keeps the modal
     itself from actually opening; the text is checked here instead)."""
     import re
@@ -1921,7 +1921,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     # two-hop's walking-out and giving-up lines, and the one-hop "Walking out
     # towards" line) were approved by the owner as worded, so every swept
     # module was 0. `automap.actions` went 0 -> 2 -> 0: the two-hop's
-    # wrong-door cancel and every-door-fights refusal were approved as worded.
+    # wrong-door cancel and every-door-fights rejection were approved as worded.
     WAITING = {"goldbox.c64_codec": 0, "goldbox.amiga_pod": 0,
                "goldbox.dos_codec": 0, "automap.actions": 0}
 
@@ -2026,7 +2026,7 @@ def test_the_file_menu_carries_no_convert_with_nothing_set(app, tmp_path,
     """The whole File menu, in order, with nothing set: Convert is on the
     menu only behind `WISH_EXPERIMENTAL_POD_CONVERT` (#511, stage 4), so a
     player's route in is Open and Save As.  The flag's own three tests are
-    in `tests/editor/test_convertrefusal.py`.
+    in `tests/editor/test_convertrejection.py`.
     """
     monkeypatch.delenv("WISH_EXPERIMENTAL_CONVERT", raising=False)
     monkeypatch.delenv(convert.POD_CONVERT_ENV, raising=False)
@@ -2099,18 +2099,18 @@ def test_a_writer_that_fails_partway_leaves_no_folder_behind(tmp_path,
         raise OSError(28, "No space left on device")
 
     #: Accept once so the write is attempted, then refuse, so the retry loop
-    #: `convert` runs on a refusal ends instead of spinning.
+    #: `convert` runs on a rejection ends instead of spinning.
     answers = iter([QDialog.DialogCode.Accepted, QDialog.DialogCode.Rejected])
     monkeypatch.setattr(convert.ConvertDialog, "exec",
                         lambda self: next(answers))
-    refusals = []
+    rejections = []
     real_refuse = convert.ConvertDialog.refuse
 
-    def note_refusal(self, text):
-        refusals.append(text)
+    def note_rejection(self, text):
+        rejections.append(text)
         return real_refuse(self, text)
 
-    monkeypatch.setattr(convert.ConvertDialog, "refuse", note_refusal)
+    monkeypatch.setattr(convert.ConvertDialog, "refuse", note_rejection)
     # `editor.convert`'s `C64ToDos` calls `dos_codec.new_dos_save_from`
     # directly (#619's Stage A), not `new_dos_save`, so the patch has to
     # land on the function the caller actually looks up.
@@ -2125,7 +2125,7 @@ def test_a_writer_that_fails_partway_leaves_no_folder_behind(tmp_path,
         window.close()
 
     assert outcome == "cancelled"
-    assert refusals == [convert.CANNOT_CONVERT]
+    assert rejections == [convert.CANNOT_CONVERT]
     assert list(destination.iterdir()) == [
         ], [p.name for p in destination.iterdir()]
 
@@ -2170,7 +2170,7 @@ def test_a_name_too_long_for_dos_is_refused_and_not_written(
     DOS's own fifteen-character field could not hold whole must not be
     written without a word.  The name-truncation consent modal stays retired
     (#619, `docs/227-editor-open-save-as.md`), so `warned` stays empty; the
-    refusal is the one `critical` line.
+    rejection is the one `critical` line.
 
     The dialog's own first `replan()`, inside `__init__`, is not
     `_interactive` (`ConvertDialog.__init__`'s own docstring note), so a
@@ -2178,7 +2178,7 @@ def test_a_name_too_long_for_dos_is_refused_and_not_written(
     changing the destination combo, say -- and is what is called here to
     reach the point `_maybe_warn` would have popped anything.
 
-    Fails without the refusal: `dialog.rehearsal` stays set and `critical`
+    Fails without the rejection: `dialog.rehearsal` stays set and `critical`
     stays empty.
     """
     folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
@@ -2335,7 +2335,7 @@ def test_no_disk_chosen_pops_no_modal(tmp_path):
 
 @needs_dos_saves
 def test_no_disks_in_preferences_pops_no_modal(tmp_path):
-    """The twin for `NO_DISKS` -- `#482`'s own refusal, with no game disks
+    """The twin for `NO_DISKS` -- `#482`'s own rejection, with no game disks
     for the destination title, popped a modal named `Game disks not found`
     on every field change before this fix."""
     path = _por_c64_disk(tmp_path)
@@ -2362,12 +2362,12 @@ def test_no_disks_in_preferences_pops_no_modal(tmp_path):
 
 def test_an_unreadable_source_still_pops_a_modal(tmp_path):
     """The one case that stays modal: the player chose a file and Wish
-    cannot read it, which is a real refusal of something they actually
+    cannot read it, which is a real rejection of something they actually
     asked for -- not a row they have simply not filled in yet.
 
     Fails before the fix existed at all -- this is the behaviour `_blocked`
     already had (`test_a_pools_of_darkness_folder_lists_nothing` pins the
-    same refusal without a modal spy); checked here so the modal-suppression
+    same rejection without a modal spy); checked here so the modal-suppression
     change above cannot be read as covering this case too."""
     unreadable = tmp_path / "not-a-save.d64"
     unreadable.write_bytes(b"\x00" * 4)
@@ -2392,7 +2392,7 @@ def test_an_unreadable_source_still_pops_a_modal(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# A DOS refusal reaches a player as the approved sentence, never the
+# A DOS rejection reaches a player as the approved sentence, never the
 # developer's own text (#176, #195). Ported from `tests/convert/test_dosimport.py`
 # against `DosImportDialog`, deleted along with `File ▸ Import` on
 # 2026-09-14 (`#52 (File ▸ Import and File ▸ Export for every direction
@@ -2456,7 +2456,7 @@ _OUTDOOR_DISAGREEMENT_MESSAGE = (
 def test_the_dialog_is_blocked_by_the_fallback_and_not_the_developers_sentence(
         message, tmp_path, monkeypatch):
     """`_rehearse_and_report` used to fall through to `str(exc)` for every
-    `DosRecordError` but `WrongTitleError`, so a real refusal -- the
+    `DosRecordError` but `WrongTitleError`, so a real rejection -- the
     unwritten-bytes one, or the outdoor-signals one -- filled `_blocked`
     with `SAVEDGAME0 $8300` or `goldbox/areas.py`. This forces each of those
     two confirmed developer sentences through the real dialog and checks
@@ -2492,9 +2492,9 @@ def test_the_dialog_is_blocked_by_the_fallback_and_not_the_developers_sentence(
         dialog.close()
 
 
-def test_the_dialog_is_blocked_by_the_fallback_for_a_refusal_dos_record_error_never_names(
+def test_the_dialog_is_blocked_by_the_fallback_for_a_rejection_dos_record_error_never_names(
         tmp_path, monkeypatch):
-    """Not every refusal is a `DosRecordError` -- `_rehearse_and_report`'s
+    """Not every rejection is a `DosRecordError` -- `_rehearse_and_report`'s
     bare `except Exception` is what stands between an unanticipated one and
     a raw traceback reaching a player. It must set `_blocked` to the same
     approved sentence, not `str(exc)`.
@@ -2516,7 +2516,7 @@ def test_the_dialog_is_blocked_by_the_fallback_for_a_refusal_dos_record_error_ne
         dialog.close()
 
 
-def test_a_refusal_on_construction_is_shown_not_swallowed(tmp_path,
+def test_a_rejection_on_construction_is_shown_not_swallowed(tmp_path,
                                                           monkeypatch):
     """A folder whose only slot fails rehearsal is what a player reaches by
     picking it through the source row's own `Choose…` button, and that is
@@ -2533,7 +2533,7 @@ def test_a_refusal_on_construction_is_shown_not_swallowed(tmp_path,
     modal of its own (`ConvertDialog`'s own docstring). That difference is
     the dialog's design, not something to port around, so this drives the
     player's actual first interactive action -- `_choose_source`, the
-    `Choose…` button -- which is where a real refusal first reaches
+    `Choose…` button -- which is where a real rejection first reaches
     `_maybe_warn` with `_interactive` already `True`. What is still
     checked is `#195`'s own guarantee: the modal actually fires (`shown`),
     not only that `_blocked` gets set, and Convert stays disabled.
@@ -3193,7 +3193,7 @@ def test_a_successful_dos_conversion_pops_the_confirmation_alongside_the_status_
 
 def test_a_refused_conversion_never_pops_the_success_confirmation(
         tmp_path, monkeypatch):
-    """A write that fails still shows only its own refusal
+    """A write that fails still shows only its own rejection
     (`CANNOT_CONVERT`, via `dialog.refuse`) -- never `CONVERT_SUCCESS`
     alongside it. CI-safe: a direction whose `write` always raises, the
     same retry shape `test_a_writer_that_fails_partway_leaves_no_folder_
@@ -3217,7 +3217,7 @@ def test_a_refused_conversion_never_pops_the_success_confirmation(
             self.rehearsal = object()
             self.slot = "A"
             self.folder = str(destination)
-            self.refusals = []
+            self.rejections = []
             self._answers = iter([QDialog.DialogCode.Accepted,
                                  QDialog.DialogCode.Rejected])
             dialogs.append(self)
@@ -3226,7 +3226,7 @@ def test_a_refused_conversion_never_pops_the_success_confirmation(
             return next(self._answers)
 
         def refuse(self, text):
-            self.refusals.append(text)
+            self.rejections.append(text)
 
         def close(self):
             pass
@@ -3243,7 +3243,7 @@ def test_a_refused_conversion_never_pops_the_success_confirmation(
         window.close()
 
     assert outcome == "cancelled"
-    assert dialogs[0].refusals == [convert.CANNOT_CONVERT]
+    assert dialogs[0].rejections == [convert.CANNOT_CONVERT]
     assert shown == []
 
 
@@ -4027,9 +4027,9 @@ def test_a_choice_the_writer_still_refuses_shows_the_existing_sentence(
         raise dos_codec.EffectsDoNotFit(effects)
 
     monkeypatch.setattr(dosimport, "rehearse", still_over)
-    refusals = []
+    rejections = []
     monkeypatch.setattr(convert.QMessageBox, "critical",
-                        lambda *a, **k: refusals.append(a))
+                        lambda *a, **k: rejections.append(a))
     window, _loaded = _window_for_pack_overflow(monkeypatch,
                                                 presses=[True, False])
     # A choice the writer still turns away: Convert refuses.
@@ -4042,8 +4042,8 @@ def test_a_choice_the_writer_still_refuses_shows_the_existing_sentence(
 
     assert outcome == "cancelled"
     assert list(out.iterdir()) == []
-    assert len(refusals) == 1
-    assert refusals[0][2] == convert.CANNOT_CONVERT
+    assert len(rejections) == 1
+    assert rejections[0][2] == convert.CANNOT_CONVERT
 
 
 # ---------------------------------------------------------------------------

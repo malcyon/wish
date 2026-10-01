@@ -209,7 +209,7 @@ def test_the_shipped_party_stores_the_saves_this_derivation_gives():
     None of the six is a sturdy race, so this corroborates the rows and the
     best-column rule and says nothing about the constitution bonus -- which is
     exactly why `$0F19` above is graded PROBABLE. The `assert` on `race` is
-    there to say so out loud rather than to pass quietly: if a Curse character
+    there to say so rather than to pass quietly: if a Curse character
     with a sturdy race ever reaches this test, it fails, and the person who
     made it fail is holding the specimen that settles `$0F19`.
     """

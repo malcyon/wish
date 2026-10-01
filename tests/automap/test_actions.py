@@ -406,7 +406,7 @@ def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
     Both genuinely level now."""
     from goldbox import c64_port
 
-    # A Krynn-shaped machine, so the refusal is the trainer's and not an
+    # A Krynn-shaped machine, so the rejection is the trainer's and not an
     # accident of reading its addresses on Pool of Radiance's memory. It has
     # a combat flag, so `Action.legality` lets this through and the gate that
     # stops it is `level_up_blockers`, which is the right one.
@@ -734,7 +734,7 @@ def test_quickfight_leaves_the_rest_of_the_byte_alone():
 
 
 def test_quickfight_refuses_when_the_flag_is_not_known(monkeypatch):
-    """The refusal path stays, because a retracted address must go back to
+    """The rejection path stays, because a retracted address must go back to
     refusing rather than to poking whatever `+0x0C` happens to be."""
     monkeypatch.setattr(actions, "QUICKFIGHT", None)
     action = actions.ClearQuickfight()
@@ -875,7 +875,7 @@ def test_a_title_with_no_measured_mode_flag_writes_nothing():
     and every action refuses rather than write blind.
 
     A wounded party is used deliberately: on Pool of Radiance's machine this
-    same call heals, so what is asserted is the refusal and not an empty one.
+    same call heals, so what is asserted is the rejection and not an empty one.
     """
     krynn = c64_port.CHAMPIONS_OF_KRYNN
     assert c64.machine_for(krynn).mode_flag is None
@@ -893,7 +893,7 @@ def test_a_title_with_no_measured_mode_flag_writes_nothing():
         assert outcome.message == actions.UNSUPPORTED.format(
             title=krynn.title), name
     # And the same machine on the title whose flag *was* measured does heal,
-    # so the refusal is about the title and not about these bytes.
+    # so the rejection is about the title and not about these bytes.
     healed = find("heal").apply(machine(hp=1))
     assert healed.ok and healed.writes
 
@@ -921,13 +921,13 @@ def test_curses_gate_is_read_at_its_own_linker_byte_and_not_pool_of_radiances():
     fighting.memory[0x6E11] = bytes([WORLD])      # PoR's byte says "no fight"
     verdict = next(a for a in actions.actions(game=CURSE)
                    if a.name == "identify").legality(fighting)
-    # **The refusal used to name the address** and this asserted on it.
+    # **The rejection used to name the address** and this asserted on it.
     # `#306 (The Fast Travel button's own disabled tooltip carries a memory
     # address)` took every address out of what a player reads, so the reason
     # is the situation now and the number went to the log.  What this test is
     # about is unchanged and is asserted above: Curse's own mode flag is the
     # one read, and Pool of Radiance's byte saying "no fight" does not stop
-    # the refusal.
+    # the rejection.
     assert not verdict
     assert verdict.reason == "Identify is refused during a fight"
     assert "$" not in verdict.reason
@@ -1309,7 +1309,7 @@ def test_the_six_areas_with_several_doors_each_choose_the_expected_door():
 
 
 def test_no_area_with_several_doors_has_every_door_fighting():
-    """So the refusal in `run` is reached from the data only by the one-door
+    """So the rejection in `run` is reached from the data only by the one-door
     areas in `ONE_DOOR_FIGHTS`."""
     for area_id in MULTI_DOOR_CHOICE:
         assert any(not r.combat for _, r in fasttravel.exits_from(area_id))

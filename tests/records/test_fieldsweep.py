@@ -48,8 +48,8 @@ def test_a_row_reads_its_fighter_level_out_of_the_class_map():
     assert fieldsweep.Row("d", "MON00", {}, 0).fighter == 0
 
 
-def test_the_report_names_its_corpus_and_tallies_every_value(capsys):
-    """A count with no corpus beside it is the mistake this tool exists after:
+def test_the_report_names_its_specimens_and_tallies_every_value(capsys):
+    """A count with no specimens beside it is the mistake this tool exists after:
     the sweep that concluded no engine writes 1 was C64-only."""
     rows = [fieldsweep.Row("a", "ONE", {"fighter": 3}, 3),
             fieldsweep.Row("b", "TWO", {"fighter": 3}, 3),

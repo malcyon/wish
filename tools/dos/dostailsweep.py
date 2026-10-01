@@ -7,8 +7,8 @@ entries in `goldbox/dos_codec.py`'s `DROPPED` table -- `field_83_87` and
 `field_10c_10f` -- rested on "the same bytes in all 24 specimens", and 24 is
 one played Pool of Radiance party.  `#224 (0x0B9 and 0x0BA are documented both
 as an NPC marker and as the dual-class slot)` is the standing warning: **a byte
-that is constant across a corpus is constant because of what the corpus is.**
-So this widens the corpus rather than re-reading the same 24 files.
+that is constant across a set of specimens is constant because of what the specimens are.**
+So this widens the specimens rather than re-reading the same 24 files.
 
 What it does, and it reads only:
 
@@ -134,7 +134,7 @@ def archives() -> pathlib.Path | None:
 def specimen_tree() -> pathlib.Path | None:
     """The specimen tree, `$WISH_SPECIMENS` or `~/wish-specimens`, or None.
 
-    Every record in there says who made it and how, which is the only corpus
+    Every record in there says who made it and how, which is the only specimens
     on this machine that does -- `.claude/rules/testing.md`.
     """
     from tools.registry import specimens  # noqa: PLC0415

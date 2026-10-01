@@ -1552,7 +1552,7 @@ def test_settle_reads_indoors_again_after_the_wait(tmp_path, fake_clock):
     assert FT.settle_world(sess, tmp_path, {}) == (True, "")
 
 
-def test_a_single_attempt_refusal_keeps_its_screens_on_the_step():
+def test_a_single_attempt_rejection_keeps_its_screens_on_the_step():
     sess, m = make()
     sess = WalkSession(m, indoors=True)
     sess.walk_screens = ["row a"]
@@ -2008,7 +2008,7 @@ def test_a_caves_step_after_which_the_game_never_settles_is_not_a_move(
 def test_a_fight_still_going_is_not_reported_as_the_game_never_settling(
         monkeypatch):
     """`world_ready` finds a fight again after two fights were fought, so the
-    refusal says a fight is still going."""
+    rejection says a fight is still going."""
     sess, m = make()
     sess = CavesSession(m)
     monkeypatch.setattr(FT, "world_ready",

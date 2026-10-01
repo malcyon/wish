@@ -29,7 +29,7 @@ def import_slot(dest: AmigaDisk, dest_letter: str, source: AmigaDisk,
         if re.fullmatch(
             rf"CHRDAT{re.escape(source_letter)}[1-{amiga_savegame.PARTY_MAX}]\.(sav|itm|spc)",
             name, re.IGNORECASE)}
-    target_game = amiga_savegame.retarget_savegame(savegame, dest_letter)
+    target_game = amiga_savegame.move_savegame_to_slot(savegame, dest_letter)
     snapshot = dest.to_bytes()
     try:
         for name in _pool_slot_files(dest, dest_letter):

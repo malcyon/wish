@@ -286,9 +286,9 @@ def test_no_pool_of_radiance_c64_save_is_refused_for_the_altered_flag(
     """The symptom of #620, against the player's own disks: a C64 party whose
     scores were altered in the modification screen refused a DOS destination
     with `flags_0b8: 1 arrived as 0` on twelve of the fifteen save disks
-    here, one character of six in each. No refusal may name that field now.
+    here, one character of six in each. No rejection may name that field now.
 
-    Other refusals are not this test's business and are counted rather than
+    Other rejections are not this test's business and are counted rather than
     asserted on, so a route that loses something else fails its own test and
     not this one. Skips where this machine's registry has no Pool of Radiance
     C64 disks or no DOS Pool of Radiance game folder.
@@ -615,7 +615,7 @@ def test_two_characters_the_sheet_holds_identical_still_match(tmp_path):
 
 
 @pytest.mark.parametrize("field", saveplan.KEPT_FIELDS)
-def test_every_kept_field_is_a_refusal_when_it_changes(field):
+def test_every_kept_field_is_a_rejection_when_it_changes(field):
     """Each of the kept fields, one at a time: change it in one of the two
     written records and the comparison names it.
 
@@ -1276,7 +1276,7 @@ def test_output_that_cannot_be_read_back_is_refused_before_publication(
 def test_an_image_destination_that_got_two_files_is_refused(
         tmp_path, monkeypatch):
     """An image destination is one file at one chosen path, so a conversion
-    that produced two is a refusal rather than a coin toss over which of them
+    that produced two is a rejection rather than a coin toss over which of them
     the player gets."""
     party, _folder, _quantity = edited_dos_party(tmp_path / "save")
     out = tmp_path / "chosen.adf"

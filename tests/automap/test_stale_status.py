@@ -136,7 +136,7 @@ def test_the_stale_line_is_refused_while_it_stays_on_screen(tmp_path, monkeypatc
     assert (14, 15) not in mapper.state.exploration
 
 
-def test_the_refusal_ends_when_the_game_redraws_the_line(tmp_path, monkeypatch):
+def test_the_rejection_ends_when_the_game_redraws_the_line(tmp_path, monkeypatch):
     target, mapper = sewers_entry_with_a_stale_line(tmp_path, monkeypatch)
     mapper.poll()
     target.memory.update(curse_target("S 8:38 1,0", (1, 0, 2), synthetic_map(2)).memory)

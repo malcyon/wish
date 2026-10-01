@@ -182,11 +182,11 @@ def test_every_shipped_record_round_trips_outside_the_declared_mask():
     * eight records differ in `field_83_87`'s treasure-share byte, which the
       writer writes as the documented constant `1`. The split is by save
       slot -- four of slot A's six hold 1 and none of slot B's -- which is
-      the same shape Pool of Radiance's own corpus has, where the byte
+      the same shape Pool of Radiance's own specimens have, where the byte
       records that somebody pressed KEEP in MODIFY CHARACTER and reads 0 in
       45 of the 54 records this project rolled itself (`FIELD_83_87`).
     * **PAINE differs in `spellbook`**, at the one byte in the whole DOS
-      corpus that is neither 0 nor 1: spell 118 holds 8, where all 4,016 set
+      specimens that is neither 0 nor 1: spell 118 holds 8, where all 4,016 set
       spellbook bytes in 476 records hold 1. PROBABLE cause
       (`docs/228-pools-of-darkness-spells-and-creation.md`): PAINE was
       imported from Silver Blades, whose importer copies that record's

@@ -13,7 +13,7 @@ Radiance's.
 clamps anything.
 
 **The reading that a stored 40 is a creation or import value no rebuild has run
-over is wrong, and `docs/224-the-dos-thac0-floor.md` replaces it.** A rebuild
+over is wrong, and `docs/224-the-dos-thac0-lower-limit.md` replaces it.** A rebuild
 does run, on every load, and it writes the 40 itself: entry 0 of each row below
 is a real THAC0 rather than the `$00` the C64's rows start with, and the loop
 that runs on load reads it for every class the character has no level in. That
@@ -96,7 +96,7 @@ surprise.** Pool of Radiance is the odd title in its shipped rows: its DOS
 build's magic-user row reads 20 at levels 1-5 where its C64 gives 21, and both
 later DOS builds' rows read 21, agreeing with their own C64 side. What the
 later DOS engines **store** for such a magic-user is 20 all the same, because
-of that lower limit -- `docs/224-the-dos-thac0-floor.md`. So the three rows below are
+of that lower limit -- `docs/224-the-dos-thac0-lower-limit.md`. So the three rows below are
 where the tables disagree, and the stored byte disagrees in one place more.
 
 **The level-2 fighter is one byte.** The whole row is `39 + level` -- which is
@@ -127,7 +127,7 @@ no sixth:
   at `0x03B026`; Silver Blades' are `0x01E59B` and `0x03C1B1`; Pool of
   Radiance's are `0x01A659` and `0x02AA87`. The unguarded one is what runs
   when a party loads, and reading entry 0 for every empty slot is what keeps
-  the byte at 40 or above -- `docs/224-the-dos-thac0-floor.md`.
+  the byte at 40 or above -- `docs/224-the-dos-thac0-lower-limit.md`.
 * **The regained class's row**, folded in without clearing -- Curse
   `0x03B274`, Silver Blades `0x03C444`. That loop walks
   `former_class_levels` (`0x111` in Curse, `0x118` in Silver Blades) rather
@@ -193,7 +193,7 @@ the two wrote a given 40, because the next load writes 40 anyway.
 A Curse or Silver Blades magic-user hits at THAC0 20 from level 1 to 5, where
 the same character on the C64 hits at 21: the DOS limit is 40 and the C64's is
 39. CONFIRMED for DOS from the running game --
-`docs/224-the-dos-thac0-floor.md`'s differential -- and from ten C64 records
+`docs/224-the-dos-thac0-lower-limit.md`'s differential -- and from ten C64 records
 holding 39 on the other side.
 
 And the three table disagreements above are real for a converted character: a

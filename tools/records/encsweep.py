@@ -15,7 +15,7 @@ the rule file rests on, and asks it of the whole machine:
   (Pool of Radiance at `0x056`, Curse at `0x18C`), and **the C64 record has
   no such field at all**, so a C64 save can never fail the identity and can
   never be judged by it.  That is printed rather than left implied.
-* **every corpus** -- the specimen tree, the archives, the played DOS
+* **every set of specimens** -- the specimen tree, the archives, the played DOS
   directory and the Amiga disk images -- each row graded by where it came
   from, because a record nobody watched being written is not evidence about
   what the engine does.  A record that exists only in a scratch directory is in none
@@ -151,7 +151,7 @@ def dos_roots() -> list[pathlib.Path]:
     """The specimen tree, the archives and the played DOS game directory.
 
     `tools/dos/dostailsweep.py`'s own list, so every DOS sweep on this machine
-    covers the same corpus (#575).  `tools/dos/dosencrecompute.py` calls this.
+    covers the same specimens (#575).  `tools/dos/dosencrecompute.py` calls this.
     """
     return dostailsweep.dos_record_roots()
 

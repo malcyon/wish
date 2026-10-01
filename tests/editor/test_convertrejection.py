@@ -198,7 +198,7 @@ def test_the_file_menu_has_convert_in_its_place_when_the_flag_is_on(
 def test_a_dos_folder_copied_without_its_item_files_is_refused_not_a_crash(
         tmp_path, monkeypatch):
     """A record that counts items with no `.ITM` beside it reaches the same
-    refusal as any other unreadable source."""
+    rejection as any other unreadable source."""
     shape = dos_port.POOL_OF_RADIANCE
     folder = tmp_path / "dos"
     folder.mkdir()
@@ -225,5 +225,5 @@ def test_a_dos_folder_copied_without_its_item_files_is_refused_not_a_crash(
         dialog.close()
     assert list(out.iterdir()) == []
     #: Any unreadable source gives the same sentence, so the log is what
-    #: shows the refusal came from the missing item file.
+    #: shows the rejection came from the missing item file.
     assert "its item file CHRDATA1.ITM is missing" in " ".join(logged)

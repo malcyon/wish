@@ -525,16 +525,16 @@ def test_the_c64_ranger_stops_one_short_of_the_dos_table_at_eleven():
         "the ranger-11 divergence has moved"
 
 
-# --- the corpus sweep -------------------------------------------------------
+# --- the specimens sweep -------------------------------------------------------
 # Modelled on `tests/c64/test_laterthac0.py`: locate the field, compare against
 # what `goldbox.spells.capacity_by_class` claims for that record's own class
 # levels and wisdom, and count.  This reads DOS records already on disk --
 # specimens this project's own writer produced before this fix, and records
 # neither this fix nor any future one rewrites -- so the miss count is a
-# property of the corpus, not of the code just changed.
+# property of the specimens, not of the code just changed.
 
 #: `(agree, miss)` per title, measured 2026-09-15 against the specimen tree
-#: and the DOS archives on this machine.  The corpus may only grow; a table
+#: and the DOS archives on this machine.  The specimens may only grow; a table
 #: change or a newly read record that stops reproducing raises the miss
 #: count, which is what this pins.
 COUNTS = {
@@ -606,7 +606,7 @@ def test_every_engine_written_record_reproduces_except_the_known_misses(
     """
     if not dosbox.ARCHIVES.is_dir():
         # The counts below were measured over the specimen tree and the
-        # archives together; the tree alone is a smaller corpus and would fail
+        # archives together; the tree alone is a smaller set of specimens and would fail
         # them for lack of the archive's records, not for a wrong table.
         pytest.skip("needs the DOS archives as well as the specimen tree; "
                     "set FR_ARCHIVES or add dos-archives to gamedisks.yaml")
@@ -643,12 +643,12 @@ def test_every_engine_written_record_reproduces_except_the_known_misses(
     assert total - agree == want_miss, "\n".join(lines)
     assert agree >= want_agree, (
         f"{agree} records reproduce, down from {want_agree} when this was "
-        f"measured -- the corpus does not shrink\n" + "\n".join(lines))
+        f"measured -- the specimens do not shrink\n" + "\n".join(lines))
 
 
 #: The level each class starts casting at, and the array a record holds it
 #: in.  Nothing on this machine reaches either: the highest Curse paladin
-#: anywhere in the corpus is 6 and the highest ranger 5, which is the whole
+#: anywhere in the specimens is 6 and the highest ranger 5, which is the whole
 #: reason `#548` had to be answered out of the engine rather than swept for.
 _CASTS_FROM = {"paladin": (9, "cleric"), "ranger": (8, "druid")}
 
@@ -657,7 +657,7 @@ _CASTS_FROM = {"paladin": (9, "cleric"), "ranger": (8, "druid")}
 def test_every_engine_written_paladin_and_ranger_reproduces(class_name):
     """The sweep that cannot run yet, written so it starts the day it can.
 
-    It **skips today**, and the skip message says why: the corpus tops out
+    It **skips today**, and the skip message says why: the specimens tops out
     below the level either class casts from.  The moment a Curse paladin of
     9 or a ranger of 8 is played or converted into this machine's specimen
     tree, this asserts `goldbox.spells`' rows against what the DOS engine's
@@ -675,7 +675,7 @@ def test_every_engine_written_paladin_and_ranger_reproduces(class_name):
     if not casters:
         pytest.skip(
             f"no DOS Curse {class_name} of {from_level} or above on this "
-            f"machine -- the highest anywhere in the corpus is {highest}, and "
+            f"machine -- the highest anywhere in the specimens is {highest}, and "
             f"a {class_name} below {from_level} holds an all-zero array that "
             f"says nothing about the table")
     field = f"spells_castable_{array.replace('-', '_')}"

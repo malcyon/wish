@@ -134,7 +134,7 @@ class NotHalted(RuntimeError):
     """The command went nowhere: the debugger reads input only while stopped."""
 
 
-#: The window trap and its refusal live in `tools/dos/dosbox.py` now: that harness
+#: The window trap and its rejection live in `tools/dos/dosbox.py` now: that harness
 #: has the same three faults (#88) and two copies of one fix would be #76's
 #: defect in a new place.  Re-exported, because `tests/dos/test_dosboxx.py` is
 #: where they were measured and `docs/142` "The window trap" names them here.
@@ -564,7 +564,7 @@ def halve(screen: dosbox.Screen) -> dosbox.Screen:
 def _ragged_block(width: int, y: int, top: bytes, bottom: bytes) -> str:
     """Describe the first 2x2 block in one row pair that is not one colour.
 
-    Only called on the refusal path, so a plain per-pixel loop here costs
+    Only called on the rejection path, so a plain per-pixel loop here costs
     nothing that matters -- the fast path above never runs it.
     """
     for x in range(0, width, 2):
@@ -769,7 +769,7 @@ class XSession(dosbox.Session):
         **A grab can land between two of the window's blits**, so the top of
         the frame is one moment and the bottom the next.  `halve()` refuses
         that (`NotLineDoubled`) and is left strict; the seam belongs to that one
-        grab, so this grabs again a few times before letting the refusal out.  A
+        grab, so this grabs again a few times before letting the rejection out.  A
         window that is not line-doubled at all fails every try and still raises.
         """
         for attempt in range(self.CAPTURE_TRIES):

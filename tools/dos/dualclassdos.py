@@ -100,7 +100,7 @@ def source_title(path: pathlib.Path) -> str:
     `"?"` where the path names no game tree, and two ordinary things do that:
     a Steam `SavesDir/<steamid>/<appid>/English/`, whose app id is the whole
     collection rather than one title, and anything copied under a scratch directory.  It
-    is a refusal rather than a guess, which is the point of the function.
+    is a rejection rather than a guess, which is the point of the function.
     """
     best = "?"
     for part in path.parts:
@@ -166,7 +166,7 @@ def old_level_byte(char) -> int | None:
 
     Unnamed in every shape -- `gap_0e6` in Curse, `gap_0ef` in Silver Blades,
     `gap_139` in Pools of Darkness -- and equal to the former class's level in
-    every dual-classed record this corpus holds, including the two written by
+    every dual-classed record these specimens hold, including the two written by
     a training hall under DOSBox for `#234`.
     """
     level = char.fields.get("level")

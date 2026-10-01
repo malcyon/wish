@@ -92,7 +92,7 @@ def recomputed_on_write(game: str, levels: dict[str, int] | None = None
     """Scalars `c64_codec.write` works out again instead of copying, with why.
 
     A value set on one of these never reaches its byte, so neither a round
-    trip nor a refusal at one past its width says anything about it.  The
+    trip nor a rejection at one past its width says anything about it.  The
     reasons are the writer's own, named where it states them.  The eight
     thief percentages are recomputed only for a character with a thief level,
     so `levels` is asked for them.

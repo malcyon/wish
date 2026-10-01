@@ -118,7 +118,7 @@ def test_a_games_object_names_the_title_as_well_as_its_key():
 
 
 def test_pools_of_darkness_is_written_now_that_it_has_a_second_port():
-    """This asserted a refusal until 2026-09-08, and the refusal's reason was
+    """This asserted a rejection until 2026-09-08, and the rejection's reason was
     that no C64 Pools of Darkness exists to convert from.
 
     That is still true and is no longer the whole question: the title's
@@ -407,7 +407,7 @@ def test_pools_of_darkness_writes_and_reads_the_level_drain_marks():
 
 def test_the_other_titles_report_the_level_drain_marks_as_absent():
     """Only Pools of Darkness keeps them, so a source that carries them loses
-    them out loud in the three titles whose record has no field."""
+    them, and says so, in the three titles whose record has no field."""
     for shape in (POOL, CURSE, SSB):
         _rec, _, _, rep = dos_codec.write(_neutral(
             shape.key, levels={"fighter": 3}, highest_levels={"fighter": 9},

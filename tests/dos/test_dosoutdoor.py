@@ -10,7 +10,7 @@ loads into the wrong world or does not load.
 Those four came from `#59 (Map the DOS saved game, not just the character
 record)`, three overland specimens against three indoor ones, and the seed
 built from them was loaded in DOSBox on 2026-09-02 for `#50 (Lift the
-wilderness refusal from the DOS save converter)`: the game drew the travel
+wilderness rejection from the DOS save converter)`: the game drew the travel
 window and the status line read `20,29 N 10:02`, which is window-local (7,29)
 plus window 26's offset of 13.
 
@@ -30,7 +30,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from goldbox import dos_savegame as sg  # noqa: E402
 from tools.dos import dosoutdoor  # noqa: E402
 
-#: A script of the right shape and none of the game's bytes: `retarget` copies
+#: A script of the right shape and none of the game's bytes: `move_to_area` copies
 #: it into the ECL buffer from byte 2 on, so what matters here is the header
 #: and the length, not what it says.
 FAKE_SCRIPT = b"\x00\x02" + bytes(range(256)) * 4
@@ -93,7 +93,7 @@ def test_the_seed_writes_the_outdoor_tail_state():
 
 @needs_dos_saves
 def test_the_script_reaches_the_ecl_buffer_from_byte_two():
-    """`retarget`'s rule, and the one write that is not a word or a byte."""
+    """`move_to_area`'s rule, and the one write that is not a word or a byte."""
     planted = dosoutdoor.seed(_indoor_savgam(), area=26, x=7, y=29,
                               script=FAKE_SCRIPT)
     start = sg.ECL_BUFFER[0]

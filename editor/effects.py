@@ -30,7 +30,7 @@ FADED = QColor("#808080")
 UNSURE = QColor("#7d6608")     # a GUESS, coloured the way an NPC name is
 #: A code the sheet will write and `docs/133-active-effects.md` has a reason to
 #: doubt -- a monster's attack form on a character, a code with no handler, a
-#: code nobody has named, the same code twice. Not a refusal: the editor writes
+#: code nobody has named, the same code twice. Not a rejection: the editor writes
 #: what is picked, the way the spellbook does, and says what it is not refusing.
 WARN = QColor("#8b3a1a")
 

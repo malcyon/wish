@@ -124,7 +124,7 @@ def _u16(data: bytes, at: int) -> int:
     return struct.unpack_from("<H", data, at)[0]
 
 
-# --- the clean corpus ---------------------------------------------------------
+# --- the clean specimens ---------------------------------------------------------
 # Records this project watched being written, from character creation onward.
 # `tools/registry/specimens.py list` describes them; `tests/gamedata.py`'s `specimen`
 # re-hashes one against its own manifest before a test reads it.
@@ -250,7 +250,7 @@ def test_per_class_levels_are_eight_wide_and_class_indexed():
     *bits* rather than the class number -- so the array does not transfer
     slot for slot even though both are eight bytes.
 
-    `CLEAN_TRAINED` is in the corpus because it holds the only records above
+    `CLEAN_TRAINED` is in the specimens because it holds the only records above
     level 1: the clerics' school of area 11 took WISHCLE to cleric 2 and
     WISHHEL to cleric 2 / fighter 1 / magic-user 1, so `0x073` equalling the
     maximum of the array is a claim about a record where the maximum is not
@@ -277,7 +277,7 @@ def test_thac0_base_and_saving_throws_carry_the_biased_encoding():
     level cleric and 42 from level 4 -- the stored number, not the printed
     one.
 
-    **The clean corpus holds 40 and nothing else**, because every record in it
+    **The clean specimens hold 40 and nothing else**, because every record in it
     is level 1 or 2 and 40 is what the table gives for both. 42 and 43 were
     measured on the archives' parties, whose provenance is unknown, so this no
     longer asserts them; a specimen carrying either needs a character trained
@@ -412,7 +412,7 @@ def test_effect_files_are_a_multiple_of_nine():
     """`.SPC` is a list of 9-byte effect records and is simply absent when
     the character has none.
 
-    Twenty-four files across the clean corpus, at 9, 18, 36 and 54 bytes -- and
+    Twenty-four files across the clean specimens, at 9, 18, 36 and 54 bytes -- and
     the absence half is measured too: the engine wrote the two humans of the
     `#249` party no `.SPC` at all, which is `#84`'s finding reproduced by a
     party rolled a fortnight later.
@@ -446,8 +446,8 @@ def test_item_names_are_spelled_out_in_the_item_record():
     question here: DOS stores no id at all.
 
     **This one still reads the archives, and could not be moved.** The clean
-    corpus holds two item records in total -- THRENDER GRONE's flail and
-    banded mail -- and `seen >= 10` is what stops this passing on a corpus too
+    specimens hold two item records in total -- THRENDER GRONE's flail and
+    banded mail -- and `seen >= 10` is what stops this passing on a set of specimens too
     small to have found anything. Dropping it to two to reach the specimen
     tree would leave the test green and saying nothing, which is worse than
     reading records whose provenance is unknown for a claim about the *shape*
@@ -621,7 +621,7 @@ def test_the_dos_record_is_little_endian():
 # --- the saved game -----------------------------------------------------------
 
 def _clean_savgams():
-    """Every `SAVGAM?.DAT` in the clean corpus, keyed `<specimen>/<filename>`.
+    """Every `SAVGAM?.DAT` in the clean specimens, keyed `<specimen>/<filename>`.
 
     Five saves the game wrote for us: slot C at the roster, slot E after the
     New Phlan tour, slot F twice out of the training hall, and slot D from
@@ -691,7 +691,7 @@ def test_the_slums_flags_are_set_together():
     A base address off by one would straddle the run, which is what fixes it
     at `$4900` rather than near it.
 
-    **This one still reads the archives, and it is the corpus that is wrong
+    **This one still reads the archives, and it is the specimens that is wrong
     with it.** The run is seven zeroes in every save the `#249` party has
     made, because that party has not been near the slums, and seven zeroes in
     a row prove nothing about where the run starts. The positive evidence --
@@ -722,7 +722,7 @@ def test_the_dos_record_grows_with_every_title():
     per title, and anything aimed at Pools of Darkness that assumes the
     285-byte record is wrong by 225 bytes.
 
-    **The corpus is the archives and stays there.** What is measured is a file
+    **The specimens are the archives and stay there.** What is measured is a file
     length, which is the one property a character editor cannot change without
     the game refusing the record, so an edited save is as good a witness as any
     for it. Pool of Radiance's 285 is corroborated directly by the specimen
@@ -791,7 +791,7 @@ def test_the_later_titles_store_each_ability_twice():
     length, a doubled ability is a *value*, and a character editor that wrote
     one half of a pair and not the other would show up here as a record that
     does not double -- which is what `doubled >= len(records) - 1` already
-    tolerates one of. The clean corpus cannot help: it is Pool of Radiance,
+    tolerates one of. The clean specimens cannot help: it is Pool of Radiance,
     which is the title that does *not* double. A Curse or Silver Blades party
     rolled the way `#249` rolled this one is what would settle it."""
     dirs = _game_dirs()

@@ -18,14 +18,14 @@ the fighter's level in 26 of 26 C64 records that have one, and the **constant
 fighter 8 through the game's own schools -- so the DOS-to-C64 copy of that
 byte writes a value carrying no information.  Curse and Silver Blades do
 maintain it, which is why the sweep has to be per title and could not be read
-off one corpus.
+off one set of specimens.
 
-**Say which corpus a count is over.**  The C64 and DOS sweeps see different
+**Say which specimens a count is over.**  The C64 and DOS sweeps see different
 records, and an earlier sweep of this same field was C64-only and concluded
-that no engine ever writes 1.  The header line names the corpus for that
+that no engine ever writes 1.  The header line names the specimens for that
 reason.
 
-`monsters` is the third corpus and nothing else reads it: Pool of Radiance's
+`monsters` is the third set of specimens and nothing else reads it: Pool of Radiance's
 116 `MON<hex>` files are PRGs whose body is a character record at offset 0, so
 a monster's `level` and `attack_level` are readable with the ordinary layout.
 That is how the 11 creatures of under one hit die -- the ones the C64 sweep
@@ -192,8 +192,8 @@ def monster_rows(field: str, title: str = "pool-of-radiance"):
                   {}, value)
 
 
-def report(rows: list[Row], field: str, corpus: str, verbose: bool) -> None:
-    print(f"{len(rows)} {corpus} records, {field}")
+def report(rows: list[Row], field: str, specimens: str, verbose: bool) -> None:
+    print(f"{len(rows)} {specimens} records, {field}")
     if verbose:
         print(f"  {'source':46} {'name':16} {'value':>6}  classes")
         for r in rows:
@@ -213,7 +213,7 @@ def report(rows: list[Row], field: str, corpus: str, verbose: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("corpus", choices=("c64", "dos", "monsters"))
+    parser.add_argument("specimens", choices=("c64", "dos", "monsters"))
     parser.add_argument("field", help="the field's name in the record layout")
     parser.add_argument("--title", default="pool-of-radiance")
     parser.add_argument("--all-titles", action="store_true",
@@ -222,10 +222,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="one line a record before the tallies")
     args = parser.parse_args(argv)
 
-    if args.corpus == "c64":
+    if args.specimens == "c64":
         rows = list(c64_rows(args.field, args.title))
         report(rows, args.field, f"C64 {args.title}", args.verbose)
-    elif args.corpus == "monsters":
+    elif args.specimens == "monsters":
         rows = list(monster_rows(args.field, args.title))
         report(rows, args.field, f"{args.title} MON* template", args.verbose)
     elif args.all_titles:

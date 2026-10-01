@@ -5,7 +5,7 @@ from __future__ import annotations
 Everything here reads the player's own files -- the EXEPACK-expanded
 `START.EXE` of each DOS title and every character record in the specimen tree
 and the archives -- and skips when they are not on this machine. The claim
-being pinned is `docs/224-the-dos-thac0-floor.md`: a DOS row's entry 0 is not
+being pinned is `docs/224-the-dos-thac0-lower-limit.md`: a DOS row's entry 0 is not
 a zero sentinel, the recompute that runs on load reads it for every class the
 character has no level in, and so no DOS record the engine writes holds a
 THAC0 worse than 20.

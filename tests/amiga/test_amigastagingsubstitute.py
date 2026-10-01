@@ -178,7 +178,7 @@ def test_pool_substitute_copies_slot_bytes_and_keeps_other_slots(tmp_path):
     assert set(amiga_savegame.read_slot_list(result, "")) == {"A", "B"}
     assert result.read_file("/CHRDATA1.sav") == source.read_file("/CHRDATE1.sav")
     assert amiga_savegame.read_por_slot(result, "A", drawer="")[1] == (
-        amiga_savegame.retarget_savegame(source.read_file("/savgamE.dat"), "A"))
+        amiga_savegame.move_savegame_to_slot(source.read_file("/savgamE.dat"), "A"))
     assert staging.sha256(specimen) == src.specimen_sha256
     assert staging.sha256(substitute) == manifest["substitute"]["sha256"]
 

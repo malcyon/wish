@@ -640,7 +640,7 @@ def test_find_game_says_so_when_the_archives_are_absent(tmp_path, monkeypatch):
 
 
 def _screen(width: int, height: int, pixels: bytes):
-    """A `Screen` built from nothing, so the refusal is testable with no X."""
+    """A `Screen` built from nothing, so the rejection is testable with no X."""
     return dosbox.Screen.from_ppm(f"P6\n{width} {height}\n255\n".encode() + pixels)
 
 
@@ -665,7 +665,7 @@ def test_a_window_whose_capture_failed_is_not_taken_for_a_good_one():
     failed.  `xdotool search` can list a window that closes before `import`
     reaches it, and `boot()` then settled on it and raised
     `CalledProcessError` out of `capture(check=True)` rather than the named
-    refusal.
+    rejection.
     """
     assert dosbox.has_content(None) is False
     assert dosbox.has_content(_screen(4, 2, b"\x00\x00\x00" * 8)) is False

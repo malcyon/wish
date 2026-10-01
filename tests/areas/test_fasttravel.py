@@ -183,7 +183,7 @@ def test_a_click_in_that_moment_waits_and_then_travels(app):
 def test_the_wait_gives_up_rather_than_hanging(app, monkeypatch):
     """A game that is genuinely busy -- loading, or running a script -- never
     comes back to the key prompt, and a button that waited for ever would be a
-    frozen window. The wait has a limit, and running out of it is a refusal in
+    frozen window. The wait has a limit, and running out of it is a rejection in
     the messages panel with nothing written.
 
     `WAIT_SECONDS` is shortened here so the suite does not sit for two seconds:
@@ -202,7 +202,7 @@ def test_the_wait_gives_up_rather_than_hanging(app, monkeypatch):
     assert outcome is not None and not outcome.ok
     assert outcome.message == actionbar.FastTravelBar.STILL_BUSY
     assert target.jumps == [] and outcome.writes == ()
-    assert said and said[-1][1] is True, "a refusal is an alarm in the panel"
+    assert said and said[-1][1] is True, "a rejection is an alarm in the panel"
     assert took < 5.0, f"the wait did not end: {took:.1f}s"
 
 

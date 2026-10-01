@@ -1025,7 +1025,7 @@ class AutomapBinding(QObject):
         #: rather than on every tick.
         self._trouble = ""
         #: Whether the Messages panel has already carried `WRONG_GAME`. The
-        #: refusal latches in the mapper, so without this the same line would
+        #: rejection latches in the mapper, so without this the same line would
         #: be said on every tick for the rest of the session.
         self._said_wrong_game = False
         self._live_ticks = 0
@@ -1180,7 +1180,7 @@ class AutomapBinding(QObject):
     def _check_the_game(self) -> None:
         """The machine is not running the title the window is set up for.
 
-        **Said out loud, never silently.** The two per-title safeguards -- the
+        **Reported, never silently.** The two per-title safeguards -- the
         Fast Travel list (#14) and the Level up button (#16) -- were built on a
         title that was only ever a preference, so believing the wrong one made
         both of them fail open and write Pool of Radiance's data into another
@@ -1196,18 +1196,18 @@ class AutomapBinding(QObject):
         emulator they already had open has fixed the problem, and only a
         positive identification lifts this. "Cannot tell" never does.
 
-        **The refusal is not the only way out any more.** `#357 (The
+        **The rejection is not the only way out any more.** `#357 (The
         automapper reads the shared Game disks folder, so setting a title's
         own folder does not make it map that title)` step 4: the moment this
         would otherwise refuse, and only then -- not on every tick the
-        refusal stands -- `self.other_maps` (set by the host) is asked which
+        rejection stands -- `self.other_maps` (set by the host) is asked which
         *other* configured title's maps the block at `$0400` actually
         matches. A hit is not said here at all: `titleObserved` is emitted
         and the host switches the window's own title and folder to it, which
         is what takes `title_check` back to `UNKNOWN` and lets the next
         resident check land `OURS`. A miss -- nothing configured matches, or
         `other_maps` was never set (a hosted binding with no window behind
-        it) -- falls through to the refusal exactly as before.
+        it) -- falls through to the rejection exactly as before.
         """
         wrong = self.mapper.title_check is NOT_OURS
         if wrong == self._said_wrong_game:
@@ -1509,7 +1509,7 @@ class AutomapBinding(QObject):
         seen = len(st.exploration)
         mode = "revealing" if st.reveal else "whole map"
         # The area, the square and the clock live in the strip under the map
-        # now. Repeating them here only crowded the line until it was elided.
+        # now. Repeating them here only crowded the line until it was truncated.
         self._say(f"{seen}/256 seen   {mode}"
                   + (f"   [{st.source}]" if st.source else "")
                   + (f"   {self.mapper.fingerprint.contradictions} contradiction(s)"
@@ -1601,7 +1601,7 @@ class AutomapBinding(QObject):
 
         Absent disks are not an error here any more than they are for the item
         names: the dialog falls back to numbering the offers, which is worse
-        but is not a refusal.
+        but is not a rejection.
         """
         if self._spell_names is None:
             # `find_disks` returns the *directory*, not a list of images -- the
@@ -1643,7 +1643,7 @@ class AutomapBinding(QObject):
         from PyQt6.QtWidgets import QInputDialog
         offers = actions.LevelUp.offers(record, game)
         if not offers:
-            return 0                        # nothing to learn is not a refusal
+            return 0                        # nothing to learn is not a rejection
         names = self._names_for_spells()
         labels = [f"{names.get(i) or f'spell {i}'}" for i in offers]
         pick, ok = QInputDialog.getItem(

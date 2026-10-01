@@ -225,7 +225,7 @@ reproduce from it. `tools/records/thac0sweep.py` is the sweep,
 carries the rows. That holds for Pool of Radiance, whose DOS table itself
 says 40. Curse and Silver Blades hold 39 in their tables and still store 40,
 because a second rebuild loop that does not test the level reads entry 0 of
-every absent class; `docs/224-the-dos-thac0-floor.md` has it, and the
+every absent class; `docs/224-the-dos-thac0-lower-limit.md` has it, and the
 "neither clamps" above describes the loop that tests the level.
 
 `#318 (DOS gives a low-level magic-user or thief THAC0 20 where the C64 gives

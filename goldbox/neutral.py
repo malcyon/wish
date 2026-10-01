@@ -455,7 +455,7 @@ class NeutralCharacter:
         self.source = source
         self.game = game
         self.fields: dict[str, Value] = {}
-        #: Source fields with no neutral home, said out loud by the reader.
+        #: Source fields with no neutral home, reported by the reader.
         self.dropped: list[str] = []
         #: Anything the read itself could not do faithfully.
         self.warnings: list[str] = []
@@ -539,7 +539,7 @@ class Report:
     total: int = 0
     #: Offset -> a one-line provenance.
     sources: dict[int, str] = dataclasses.field(default_factory=dict)
-    #: Fields with no home in the destination, said out loud rather than
+    #: Fields with no home in the destination, reported rather than
     #: dropped.
     dropped: list[str] = dataclasses.field(default_factory=list)
     #: Anything the conversion could not do faithfully.
@@ -600,7 +600,7 @@ class Writer:
     class exists to end.  A writer constructs one around the character and
     its own report and gets four things it would otherwise re-implement:
 
-    * :meth:`use` -- take a field at the floor, and turn a refusal into a
+    * :meth:`use` -- take a field at the floor, and turn a rejection into a
       report line rather than silence.  A refused value's own `dropped` list
       still reaches the report: what a reader had to leave behind to produce
       a value is a fact about the source whether or not the value is written.

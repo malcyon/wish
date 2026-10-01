@@ -18,7 +18,7 @@ shipped `GAME.OVR` or the shipped creature files rather than out of a save:
   CONFIRMED on the C64;
 * the **creature records** in `MON<n>CHA.DAX`, which read the published AD&D
   1st edition values at those offsets;
-* the **player records** of the corpus, where the award is zero, because it
+* the **player records** of the specimens, where the award is zero, because it
   is a monster's field.
 
 They read the player's own archives through `tools/dos/dosbox.find_game` and skip

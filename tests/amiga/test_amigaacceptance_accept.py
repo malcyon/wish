@@ -912,7 +912,7 @@ def test_a_draw_that_reaches_exit_game_with_no_question_fails_the_run(
     assert run.result["rulebook"][-1]["asked"] is False and run.result["success"] is False
 
 
-def test_a_refusal_by_the_helper_stops_before_s_and_its_type_is_logged(
+def test_a_rejection_by_the_helper_stops_before_s_and_its_type_is_logged(
         tmp_path, clock, readings, monkeypatch):
     run = _draws(tmp_path, clock, monkeypatch, 3, refuse_at=2)
     assert _keys(run.guest) == KEYS + ["S", "D", "N"]
@@ -1148,7 +1148,7 @@ def test_records_are_refused_before_the_claim_without_the_keep_variable(
     assert guest.calls == []
 
 
-def test_the_helpers_own_refusal_stops_the_draw_with_its_type_only(
+def test_the_helpers_own_rejection_stops_the_draw_with_its_type_only(
         tmp_path, clock, readings, monkeypatch):
     _, run = _seeded(tmp_path, clock, monkeypatch, [3], seed=FakeDrawSeed(refuse=True))
     assert run.result["error"].endswith("stage_draw failed: DrawSeedError")

@@ -60,7 +60,7 @@ is the same finding `tools/curse_of_the_azure_bonds/cursewarp.py` records for th
 
 `--gate-off` writes two `NOP`s over the branch that refuses -- Curse
 `GEN $2396`, Silver Blades `GEN $1F8B` -- so that the same drive can be run
-with the refusal removed.  That is the differential that would turn "the
+with the rejection removed.  That is the differential that would turn "the
 message appeared" into "this instruction is what produced it", and it has not
 been run.
 
@@ -84,7 +84,7 @@ from automap import gamedisks  # noqa: E402
 from tools.curse_of_the_azure_bonds.curseload import walk_menu  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
-#: Where each C64 title's refusal lives, read out of its own `GEN`.
+#: Where each C64 title's rejection lives, read out of its own `GEN`.
 #: `gate` is the `BNE` that jumps to the message when `dual_class_level` is
 #: non-zero; `original` is what has to be there before `--gate-off` writes over
 #: it, so a patch never lands on whatever else happens to be at the address.
@@ -319,7 +319,7 @@ def dos(args) -> int:
                  digest=session.capture().digest())
         for n, press in enumerate(args.press):
             session.key(press)
-            # A refusal here is a message printed and then timed out, so a
+            # A rejection here is a message printed and then timed out, so a
             # `settle` alone photographs the screen it went back to and not
             # the sentence.  Burst first, settle after.
             for b in range(args.burst):
@@ -351,7 +351,7 @@ def main(argv=None) -> int:
     c.add_argument("--pool", type=int, default=None)
     c.add_argument("--out", default=str(scratch.scratch_dir("dualclassagain", "c64")))
     c.add_argument("--gate-off", action="store_true",
-                   help="NOP the refusal branch, to prove it is the refusal")
+                   help="NOP the rejection branch, to prove it is the rejection")
     c.add_argument("--serve", action="store_true",
                    help="hand the session over on the command port when done")
     c.set_defaults(func=drive)

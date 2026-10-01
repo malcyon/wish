@@ -57,7 +57,7 @@ from goldbox.titles import Title
 #: * Curse of the Azure Bonds -- found by intersecting two 64K dumps taken
 #:   either side of a step, one candidate left (`docs/120` §4);
 #: * Secret of the Silver Blades -- the same triple, confirmed unchanged over
-#:   nine steps and three refusals (`docs/121` §5).
+#:   nine steps and three rejections (`docs/121` §5).
 #:
 #: `docs/138-multiple-games.md` records it as CONFIRMED for those three titles
 #: and for no others, which is why the Krynn titles and Gateway leave
@@ -209,7 +209,7 @@ class C64Machine:
     def indoors_flag_base(self) -> int | None:
         """`$49E6`: zero on the travel grid, non-zero in a `GEO` area.
 
-        None unless the title has a travel grid, the same refusal
+        None unless the title has a travel grid, the same rejection
         `live_position` makes for the same reason: reading this on a title
         with no square-engine overland would answer a byte of unrelated
         resident code as though it meant something.

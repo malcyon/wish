@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Which class combinations the character corpus actually holds, per title and port.
+"""Which class combinations the character specimens actually hold, per title and port.
 
 Kept from `#345 (Draw a letter in each combat-map square saying what is standing
 there, instead of the index the backend counts with)`, where a combat-map label

@@ -690,7 +690,7 @@ def test_the_castable_row_reaches_curses_fifth_spell_level():
 
 
 def test_levelling_a_title_with_an_unread_trainer_refuses():
-    """`_tables_for` names the title in its refusal.
+    """`_tables_for` names the title in its rejection.
 
     **This used to be asked of Silver Blades**, whose trainer inputs were
     unread when the test was written and which `#187` had given a
@@ -700,7 +700,7 @@ def test_levelling_a_title_with_an_unread_trainer_refuses():
     question moves to Champions of Krynn, which is in `c64_port.GAMES`, has
     no tables of its own.
 
-    There are two refusals and both are checked, because the one Silver
+    There are two rejections and both are checked, because the one Silver
     Blades used to hit is the second: a title with **no tables at all** is
     refused by key, and a title with a full set of tables that nobody has
     watched a trainer write is refused by `levels.trainer_measured`.

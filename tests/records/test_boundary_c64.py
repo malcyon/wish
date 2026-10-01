@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-"""Boundary characters through the C64 writer: `#516 (Generate boundary
-characters and check every writer's field widths, since no real save reaches a
-limit and the corpus cannot find a wrong one)`, steps 4 and 5.
+"""Boundary characters through the C64 writer: `#516`, steps 4 and 5.
 
 `tests/records/test_boundary.py` runs four Pool of Radiance extremes through
 `goldbox.dos_codec.write`.  This module does the same into
@@ -561,7 +559,7 @@ _DOS_WIDER = {("pool-of-radiance", "experience"),
 
 
 def test_g_only_experience_is_wider_in_dos_than_in_the_c64():
-    """The refusals in test D are only reachable from a source that can hold a
+    """The rejections in test D are only reachable from a source that can hold a
     value the C64 cannot.  Every neutral scalar both writers name has a DOS
     range inside the C64's, bar the exceptions named above (the Amiga's record
     is the DOS record re-cut, so it adds none) -- and this fails the day one

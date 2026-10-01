@@ -90,7 +90,7 @@ only in your report. It has these parts, in this order, and each is short:
    actions and control, expected preserved behavior, screenshots and
    game-written save checkpoints, and evidence preservation. Include load,
    walking the party and checking the sheet where relevant. Name missing
-   driver work before assigning an emulator run; do not treat refusal or
+   driver work before assigning an emulator run; do not treat rejection or
    byte-only tests as proof of a fix.
 5. **What not to touch.** Strings, labels, layouts, labels on the issue, and
    any file another ticket owns.

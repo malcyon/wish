@@ -28,7 +28,7 @@ def test_a_run_with_no_save_is_refused():
 
 def test_no_disks_stops_before_a_slot_is_claimed(tmp_path, monkeypatch):
     """A slot claimed by a run that then gives up is a slot nobody else can
-    have until the process dies, so the refusal comes first."""
+    have until the process dies, so the rejection comes first."""
     claimed = []
     monkeypatch.setattr(probe.gamedisks, "find", lambda _key: "")
     monkeypatch.setattr(probe.por, "claim_slot",

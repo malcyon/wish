@@ -161,7 +161,7 @@ def test_a_side_into_an_empty_slot_leaves_no_staging_directory(tmp_path, monkeyp
     assert not (out / "disks").exists()
 
 
-def test_a_refusal_leaves_an_earlier_runs_staging_directory_alone(tmp_path, monkeypatch):
+def test_a_rejection_leaves_an_earlier_runs_staging_directory_alone(tmp_path, monkeypatch):
     path = _disk(tmp_path)
     _, roster = _files(path)
     empty = next(i for i in range(savegame.ROSTER_COUNT)

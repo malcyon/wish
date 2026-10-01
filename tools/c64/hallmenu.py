@@ -54,7 +54,7 @@ AREA_AT = 0x6E1B
 
 
 def area(sess, log: "Log | None" = None) -> int | None:
-    """The resident area, or None with the reason said out loud.
+    """The resident area, or None with the reason stated.
 
     A monitor that breaks part way through a run would otherwise leave every
     later `area=` field reading None with nothing anywhere saying why, and

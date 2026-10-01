@@ -133,9 +133,9 @@ def test_the_clock_reads_its_six_digit_words_as_one_time():
     assert sg.clock(bytes(save)) == (10, 23, 21, 6)
 
 
-def test_the_retarget_recipe_names_the_addresses_the_map_names():
+def test_the_move_recipe_names_the_addresses_the_map_names():
     """The recipe is formatted from the constants, so it cannot drift."""
-    recipe = " ".join(sg.RETARGET_WRITES)
+    recipe = " ".join(sg.MOVE_WRITES)
     for address in (sg.AREA, sg.SCRIPT, sg.DISK, sg.WALLSET, sg.WALLMAP,
                     sg.PARTY_SIZE):
         assert f"${address:04X}" in recipe
@@ -308,10 +308,10 @@ def test_the_wall_map_marks_the_slots_the_triple_fills():
     assert sg.wall_map((0, sg.EMPTY, sg.EMPTY)) == (1, sg.EMPTY, sg.EMPTY)
 
 
-def test_a_retarget_writes_the_place_and_stages_the_script():
+def test_a_move_writes_the_place_and_stages_the_script():
     save = blank()
     script = bytes([0x88, 0x13]) + bytes(range(256)) * 4
-    sg.retarget(save, area=20, dax=2, wallset=(2, 4, 1), script=script)
+    sg.move_to_area(save, area=20, dax=2, wallset=(2, 4, 1), script=script)
     save = bytes(save)
     assert save[0] == 2
     assert sg.geo_block(save) == 20
@@ -328,41 +328,41 @@ def test_a_retarget_writes_the_place_and_stages_the_script():
 def test_a_script_too_long_for_the_buffer_is_refused():
     room = sg.ECL_BUFFER[1] - sg.ECL_BUFFER[0]
     with pytest.raises(sg.DosSaveError):
-        sg.retarget(blank(), area=20, dax=2, wallset=(2, 4, 1),
+        sg.move_to_area(blank(), area=20, dax=2, wallset=(2, 4, 1),
                     script=bytes(room + sg.ECL_HEADER + 1))
 
 
-def test_retarget_writes_the_resident_geo_from_its_own_argument():
+def test_move_to_area_writes_the_resident_geo_from_its_own_argument():
     """#276: `$49C5` and `$49F2` are two different words, and a caller with
     the save's own `$49C5` in hand passes it rather than letting `geo`
-    default to `area` -- which is what a retarget onto the training hall (an
+    default to `area` -- which is what a move onto the training hall (an
     area whose script loads no map) needs, since writing the area id into
     both there names `GEO0B`, a map no script loads."""
     save = blank()
     script = bytes([0x88, 0x13]) + bytes(range(256)) * 4
-    sg.retarget(save, area=11, dax=3, wallset=(sg.EMPTY,) * 3, script=script,
+    sg.move_to_area(save, area=11, dax=3, wallset=(sg.EMPTY,) * 3, script=script,
                 geo=0)
     save = bytes(save)
     assert sg.word(save, sg.SCRIPT) == 11
     assert sg.geo_block(save) == 0
 
 
-def test_retarget_defaults_the_resident_geo_to_the_area():
+def test_move_to_area_defaults_the_resident_geo_to_the_area():
     """A caller with no separate `$49C5` -- every one before #276 -- keeps
     the old behaviour, which is right wherever the area loads its own map."""
     save = blank()
     script = bytes([0x88, 0x13]) + bytes(range(256)) * 4
-    sg.retarget(save, area=20, dax=2, wallset=(2, 4, 1), script=script)
+    sg.move_to_area(save, area=20, dax=2, wallset=(2, 4, 1), script=script)
     assert sg.geo_block(bytes(save)) == 20
 
 
-def test_retarget_geo_is_ignored_outdoors():
+def test_move_to_area_geo_is_ignored_outdoors():
     """`outdoors` still forces `$49C5` to 0 regardless of `geo`, because the
     DOS travel grid names no `GEO` in 10 of 10 specimens."""
     save = blank()
     script = bytes([0x88, 0x13]) + bytes(range(256)) * 4
     sg.put_word(save, sg.INDOORS, 1)
-    sg.retarget(save, area=26, dax=7, wallset=sg.OUTDOOR_WALLSET,
+    sg.move_to_area(save, area=26, dax=7, wallset=sg.OUTDOOR_WALLSET,
                 script=script, outdoors=True, geo=26)
     assert sg.geo_block(bytes(save)) == 0
 
@@ -427,7 +427,7 @@ def _damaged_dax(body: bytes, block_id: int = 7, raw: int = 64) -> bytes:
 
 
 def test_a_block_ending_on_a_dangling_run_is_named_not_indexed():
-    """A truncated archive must reach `write_dos_save` as a refusal.
+    """A truncated archive must reach `write_dos_save` as a rejection.
 
     The run branch of the unpacker indexes `chunk[i + 1]`, where the copy
     branch beside it takes a slice and degrades to something the length check
@@ -740,7 +740,7 @@ def test_the_party_size_is_also_a_variable(key):
 def test_pools_of_darkness_has_no_word_variable_array_to_read():
     """It has the *other* array -- 1024 one-byte variables from file offset 0
     (#175) -- so a caller that reaches for `$5012` or `$503E` is reaching for
-    a word that does not exist here, and gets a refusal rather than two bytes
+    a word that does not exist here, and gets a rejection rather than two bytes
     out of the byte array."""
     shape = sg.container_for("pools-of-darkness")
     assert shape.var_offset is None
@@ -891,7 +891,7 @@ def _darkness_only():
 
 
 def test_the_two_titles_that_share_this_file_size_are_not_the_same_specimen():
-    """Filtering on size alone doubles the apparent corpus. The containers
+    """Filtering on size alone doubles the apparent specimens. The containers
     differ, so the filter is checkable rather than a matter of taste."""
     darkness = {data for _, data in _darkness_only()}
     others = {data for path, data in _of("pools-of-darkness")
@@ -933,7 +933,7 @@ def test_a_shipped_container_reads_as_a_party_of_six_in_a_dungeon():
 
 
 #: Containers Wish itself wrote rather than the engine, keyed by (specimen
-#: directory name, file name), excluded from `_played()` before the corpus is
+#: directory name, file name), excluded from `_played()` before the set of specimens is
 #: built.  `_played()`'s job is "only the containers the engine wrote", and a
 #: `*.PTY` glob cannot tell a staged save from a played one -- this is the one
 #: place that fact can be recorded, since the specimen tree itself cannot be
@@ -954,7 +954,7 @@ def _played():
     #175's five drives, and they hold only the containers the engine wrote: a
     snapshot byte-identical to a shipped one was left out when they were
     added, because counting it would put the new-game initialiser's own output
-    in a corpus of played saves. Eight distinct containers across the five.
+    in a set of specimens of played saves. Eight distinct containers across the five.
     A container Wish staged for an acceptance run, rather than one the game
     wrote, is excluded by name through `_WISH_WRITTEN`.
 

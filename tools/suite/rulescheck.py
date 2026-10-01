@@ -21,7 +21,7 @@ Run it from the repository root, naming the revision to compare against:
     python3 tools/suite/rulescheck.py --base 186d62a~1   # the commit before the split
 
 **`--base` is required on purpose.** It defaulted to `HEAD` once, which reads
-the *post-split* file and compares it against a corpus that contains it -- so
+the *post-split* file and compares it against a set of specimens that contains it -- so
 the tool answered "3 of 3 quotations carried over" and looked like a pass. A
 check that cannot fail is worse than no check.
 """
@@ -35,7 +35,7 @@ import subprocess
 import sys
 
 # Where the old file's content is allowed to have landed.
-CORPUS = ("AGENTS.md", "CLAUDE.md", ".claude/rules/*.md",
+RULE_FILES = ("AGENTS.md", "CLAUDE.md", ".claude/rules/*.md",
           "docs/160-why-these-rules.md")
 
 BOLD = re.compile(r"\*\*(.+?)\*\*", re.S)
@@ -71,9 +71,9 @@ def old_claude_md(base: str) -> str:
     return out.stdout
 
 
-def corpus_text(root: pathlib.Path) -> str:
+def rule_text(root: pathlib.Path) -> str:
     parts = []
-    for pattern in CORPUS:
+    for pattern in RULE_FILES:
         if "*" in pattern:
             parts.extend(sorted(root.glob(pattern)))
         else:
@@ -95,7 +95,7 @@ def main() -> int:
 
     root = pathlib.Path(__file__).resolve().parent.parent.parent
     old = old_claude_md(args.base)
-    new = corpus_text(root)
+    new = rule_text(root)
 
     bolds = {normalise(m) for m in BOLD.findall(old)}
     quotes = {normalise(m) for m in QUOTE.findall(old.replace("**", ""))}

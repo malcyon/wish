@@ -104,7 +104,7 @@ quest flags convert unconditionally.
 | `$507A`, `$507B`, `$507C` | **`$6E7A`-`$6E7C`: the overland script's loop registers** while `ECL1A` entry 1 searches its fourteen-square table on every step -- the row's y, the row's count and the running index. The band table below is reproduced row for row by running that loop by hand, (29, 1, 14) included; nothing reads them after it. Rewritten on the first step, so a conversion writing 0 loses nothing. [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md) | CONFIRMED -- reproduced from the script and watched under a `BPM` |
 | `$5082` | **equals `$5200` in 21 of 21** engine-written specimens, which makes it a third name for the value file byte 12805 also carries. Not previously noted; found by searching the variable array for words whose value vector across all the specimens is identical | CONFIRMED as a copy |
 | `$4B00`-`$52FF` | **Two VM heap blocks whose real addresses are `$6B00`-`$6EFF` (file words 1024-2047) and `$9700`-`$98FF` (words 2048-2559).** The contiguous names this page uses are file positions rather than the addresses the engine or the scripts use, and the claim this row used to make -- that no script references the range -- rested on that misnaming: 28 of the 30 scripts name `$6DD2` and all 30 name `$6E79`. [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md) has the classifier and the renaming table; `$4B00`-`$4CFF` is real and unreferenced. Live and still unnamed, under their VM names: `$6BB8`, `$6BC3`, `$6C0C`, `$6DA8`, `$6DC0`-`$6DC1`, `$6DC6`, `$6DC8`, `$6E7D`, `$6E7F`-`$6E80`, `$9802`-`$9807`, `$980A`-`$980F`. Constant in all twelve: `$6DE1` = 255, `$6E6D` = 16, `$6EF6` = 1 | the blocks CONFIRMED from the code; the words individually UNKNOWN |
-| engine-rebuilt | `$49F0`, `$49F1`, `$49FE`, `$4FD2`, `$4FD3`, `$5079`, `$5082`, `$5200`, `$5208` — the nine words the engine rewrote by itself when it loaded a hand-built save and the party moved (`p59/retarget-C.DAT` against `p59/run9/SAVGAMD.DAT` (scratch, deleted)). The load path was already bisected as not needing them | CONFIRMED engine-maintained |
+| engine-rebuilt | `$49F0`, `$49F1`, `$49FE`, `$4FD2`, `$4FD3`, `$5079`, `$5082`, `$5200`, `$5208` — the nine words the engine rewrote by itself when it loaded a hand-built save and the party moved (`p59/move-C.DAT` against `p59/run9/SAVGAMD.DAT` (scratch, deleted)). The load path was already bisected as not needing them | CONFIRMED engine-maintained |
 
 ### `$507A`-`$507C`: a rule that holds in a band, and a refutation
 
@@ -194,8 +194,8 @@ the place:
 8. 12801-12803 = x, y, facing×2;
 9. `$503E` and byte 12808 = the party size.
 
-The flags and everything else may stay the template's. `goldbox.dos_savegame.retarget`
-is the function that applies these writes, and `RETARGET_WRITES` holds the list
+The flags and everything else may stay the template's. `goldbox.dos_savegame.move_to_area`
+is the function that applies these writes, and `MOVE_WRITES` holds the list
 above in machine-readable form.
 
 **CONFIRMED for three area pairs**, each loaded and walked: 0 → 20 (#59 (Map the DOS saved game, not just the character record) run

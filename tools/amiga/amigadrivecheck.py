@@ -201,7 +201,7 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
     def refused(name: str, call: Callable[[], Any], error: type, needle: str) -> str:
         """Run a request that must be refused and pin the reason it gives.
 
-        A guest refusal is matched on the guest's own `fail` line, so a transport
+        A guest rejection is matched on the guest's own `fail` line, so a transport
         or PowerShell error can never stand in for one.
         """
         try:
@@ -214,7 +214,7 @@ def run_drivecheck(*, guest: Any, run_dir: pathlib.Path, holder: str,
             if needle not in text:
                 step(name, "fail", expected=needle, observed=text)
                 raise RouteError(f"{name}: refused, but not for the expected reason: {text}") from exc
-            step(name, "pass", refusal=text)
+            step(name, "pass", rejection=text)
             return text
         step(name, "fail", expected=needle, observed=said or "accepted")
         raise RouteError(f"{name}: the request was accepted: {said}")

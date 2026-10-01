@@ -163,7 +163,7 @@ NEAR_ENOUGH = 32
 #
 # **Two limits, stated here because this is the file the check lives in.**
 #
-# * **There is no DOS negative corpus.** The sweep is C64 and Amiga only, so
+# * **There is no DOS negative set of specimens.** The sweep is C64 and Amiga only, so
 #   nothing here has been measured against the bytes a DOS disk holds around
 #   its maps. The DOS *positives* exist and pass: `#443 (Three of Curse's
 #   sixteen maps differ between the C64 and the Amiga, and nobody has looked
@@ -183,7 +183,7 @@ NEAR_ENOUGH = 32
 # **sector-shifted fragments** of the maps on it, and a 64-byte run of a map is
 # mostly zeros and matches everywhere, so those cannot be filtered out by
 # content the way the `/SAVE/spindisk` copies above are. They are counted among
-# the 65383, which makes the negative corpus harder than it looks rather than
+# the 65383, which makes the negative set of specimens harder than it looks rather than
 # easier.
 
 #: How often the two sides of a shared edge hold the same raw barrier field.

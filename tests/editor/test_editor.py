@@ -256,7 +256,7 @@ def test_a_pool_of_radiance_character_disk_is_identified_by_its_own_prefix(
 def test_a_disk_with_no_character_files_is_still_pool_of_radiance(tmp_path):
     """No save file and no prefixed character file names no title at all, so
     the last resort stays Pool of Radiance -- there is nothing on such a disk
-    to misread, so no refusal is needed (#553)."""
+    to misread, so no rejection is needed (#553)."""
     from goldbox.c64_port import POOL_OF_RADIANCE
 
     disk = _disk_of(tmp_path)
@@ -3545,7 +3545,7 @@ def test_the_scroll_bar_does_not_eat_the_rosters_last_row(app, party, extra):
     state the bug needs and is the same state on every platform.
 
     The horizontal bar itself is not the bug and is asserted to still be up:
-    it is the last resort #71 approved, after `Name` has elided and given
+    it is the last resort #71 approved, after `Name` has truncated and given
     everything it has.
     """
     from PyQt6.QtGui import QFont
@@ -5631,7 +5631,7 @@ def test_a_path_is_taken_for_a_save_by_its_name_or_for_being_a_folder(tmp_path):
         assert not Source.looks_like_a_save(tmp_path / named), named
 
 
-def test_pools_of_darkness_cannot_be_opened_and_the_refusal_is_catchable(tmp_path):
+def test_pools_of_darkness_cannot_be_opened_and_the_rejection_is_catchable(tmp_path):
     """No C64 port, so no sheet layout to edit its characters through."""
     from goldbox import dos_codec, dos_port
     (tmp_path / "CHRDATA1.SAV").write_bytes(
@@ -5703,7 +5703,7 @@ def test_an_amiga_pool_party_opens_from_its_adf(tmp_path):
     pool = c64_port.by_key("pool-of-radiance")
     savgam = bytearray(amiga_savegame.POR_SAVEGAME_SIZE)
     at = amiga_savegame.POOL_OF_RADIANCE.party_at
-    savgam[at:at + 8] = b"CHRDATA1"       # the table `retarget_savegame` needs
+    savgam[at:at + 8] = b"CHRDATA1"       # the table `move_savegame_to_slot` needs
     disk = amiga_savegame.make_por_save_disk("A", [_filled(pool)],
                                              bytes(savgam))
     path = tmp_path / "pool.adf"

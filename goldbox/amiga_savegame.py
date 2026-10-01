@@ -935,7 +935,7 @@ def read_por_slot(disk: AmigaDisk, slot: str, drawer: str | None = None):
     return party, save
 
 
-def retarget_savegame(save: bytes, slot: str) -> bytes:
+def move_savegame_to_slot(save: bytes, slot: str) -> bytes:
     parsed = parse(save, POOL_OF_RADIANCE, validate=False)
     letter = _por_slot(slot)
     out = bytearray(parsed.data)
@@ -1013,7 +1013,7 @@ def write_por_slot(disk: AmigaDisk, slot: str, characters: Sequence[neutral.Neut
                 _remove_file(disk, stem + suffix)
         path = por_save_path(por_savegame_filename(letter), drawer)
         if savegame is not None:
-            disk.write_file(path, retarget_savegame(savegame, letter))
+            disk.write_file(path, move_savegame_to_slot(savegame, letter))
             written.append(path)
         else:
             try:
@@ -1046,7 +1046,7 @@ def make_por_save_disk(slot: str, characters: Sequence[neutral.NeutralCharacter]
 # struct pads to and the first three of wallset entry 0, which the game's
 # 10-byte write runs into -- and nothing reads any of them.  5 - 1 = 4.
 #
-# **The corpus cannot settle a field and this is why.**  There are ten distinct
+# **The specimens cannot settle a field and this is why.**  There are ten distinct
 # Amiga Pool of Radiance saved games on this machine, the shipped one and nine
 # the engine wrote, and every one of them is at (0,4) facing west at 05:48 in
 # New Phlan.  Diffing all ten gives 148 differing bytes, every one of them the
@@ -1197,7 +1197,7 @@ def por_state_from_amiga(savgam: bytes, source: str = "") -> world_state.WorldSt
 #: `(0, $FFFF, $FFFF)`, and the indoor square left stale in bytes 12800-12801
 #: while the facing at 12802 stays live.
 
-#: Why an area cannot be written, or `None`.  Two refusals, and both are about
+#: Why an area cannot be written, or `None`.  Two rejections, and both are about
 #: the script rather than about the party.
 #:
 #: `ecl.dax` on disk 2 holds blocks 0-11 and 13-29.  Area 30 (`ECL1E`) has no
@@ -1258,7 +1258,7 @@ POR_ENGINE_REBUILT = (
     "the same word is engine-rebuilt on DOS (#59, #26)")
 POR_ENGINE_ONLY = (
     "engine state with no counterpart in a C64 or DOS save -- above $4AF9, "
-    "which no ECL script in the thirty-script corpus references (#59)")
+    "which no ECL script in the thirty-script specimens references (#59)")
 POR_ENCOUNTER_STATE = (
     "the pending-encounter record: it changes together with the message "
     "buffer beside it, and a converted party has no encounter pending")

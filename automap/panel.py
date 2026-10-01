@@ -358,7 +358,7 @@ class ElidingLabel(QLabel):
     def minimumSizeHint(self) -> QSize:
         return _squeezed(super().minimumSizeHint(), self.SQUEEZED)
 
-    def elided_text(self) -> str:
+    def truncated_text(self) -> str:
         """What this label will actually draw in the room it has.
 
         Split out of `paintEvent` so a test can ask for it: `text()` is the
@@ -369,16 +369,16 @@ class ElidingLabel(QLabel):
             self.text(), Qt.TextElideMode.ElideRight, self.contentsRect().width())
 
     def paintEvent(self, event):
-        elided = self.elided_text()
-        if elided == self.text():
-            super().paintEvent(event)   # nothing to elide: paint it as always
+        truncated = self.truncated_text()
+        if truncated == self.text():
+            super().paintEvent(event)   # nothing to truncate: paint it as always
             return
         painter = QPainter(self)
         # `drawItemText` rather than `drawText`, because the style sheet's
         # colour is applied by the style and not by the palette.
         self.style().drawItemText(painter, self.contentsRect(),
                                   int(self.alignment()), self.palette(),
-                                  self.isEnabled(), elided,
+                                  self.isEnabled(), truncated,
                                   self.foregroundRole())
 
 
@@ -468,8 +468,8 @@ class ReadiedLabel(ElidingLabel):
 
 
 def _label(text="", *, bold=False, muted=False, size=0,
-           elide=False) -> QLabel:
-    lab = ElidingLabel(text) if elide else QLabel(text)
+           truncate=False) -> QLabel:
+    lab = ElidingLabel(text) if truncate else QLabel(text)
     font = lab.font()
     if bold:
         font.setBold(True)
@@ -494,7 +494,7 @@ class CharacterCard(QObject):
 
     **And it is hidden for a title whose trainer nobody has measured**, which
     is every title but Pool of Radiance -- `levelling`, set from the window.
-    The refusal is `automap.actions.level_up_blockers` and it is enforced at
+    The rejection is `automap.actions.level_up_blockers` and it is enforced at
     the write as well; hiding the button is so that the feature is not offered
     and then withdrawn (#16).
     """
@@ -685,7 +685,7 @@ class CharacterCard(QObject):
         """One line of what is in hand, shortened to the room the card has.
 
         The label holds the whole string and `ReadiedLabel` draws as much of
-        it as fits, so nothing here measures a font: the elide is the
+        it as fits, so nothing here measures a font: the truncation is the
         painter's and the card's floor is a constant. The full list stays
         readable because the label sets no tooltip of its own and so answers
         with the frame's, which already carries it.
@@ -767,7 +767,7 @@ class ColumnSplitter(QObject):
         if self.splitter is not None and self.splitter.count() != self.COLUMNS:
             # `child` reports a widget the form does not have; it cannot report
             # one that is there with the wrong number of columns, which is the
-            # only fault left to say out loud here.
+            # only fault left to report here.
             log.debug("automapper splitter has %d columns, not %d",
                       self.splitter.count(), self.COLUMNS)
             self.splitter = None
@@ -1001,7 +1001,7 @@ class BottomStrip(QObject):
         combat view is where a monster's effects will mean something.
 
         **A party effect no badge covers is drawn nowhere**, and that is worth
-        saying out loud rather than letting it look like a party with nothing
+        reporting rather than letting it look like a party with nothing
         running. `automap/live.py`'s badge set is graded from the spell table
         -- no save this project holds carries a party-wide effect at all -- so
         an id turning up here means the set is a glyph short, and it goes to

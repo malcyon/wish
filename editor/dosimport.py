@@ -25,7 +25,7 @@ lost its own on 2026-09-10. It drew `pane_text` -- `C64SaveReport.messages`,
 then every `C64SaveReport.losses` line, unfiltered -- from 2026-09-06 until
 then. What it showed instead, in its last form, was one modal and nothing
 else, ported from `editor/convert.py`'s own `_maybe_warn`: one of the
-refusals below. `C64SaveReport.messages` and every `C64SaveReport.losses`
+rejections below. `C64SaveReport.messages` and every `C64SaveReport.losses`
 line, name truncation included, went to the debug log instead
 (`log_unshown_losses`) -- a loss does not become acceptable by being shown
 to a player rather than fixed, and the name-truncation consent modal this
@@ -105,10 +105,10 @@ from . import saveplan
 #: `editor/window.py` already use, rather than importing `wish.debuglog`
 #: directly.
 _log = logging.getLogger("wish.editor.dosimport")
-# Every string below is Donald's -- approved 2026-08-24, and the refusal
+# Every string below is Donald's -- approved 2026-08-24, and the rejection
 # 2026-08-27. Changing one is his call, not a refactor.
 
-#: The refusal when the player's game disks cannot be found, which is the one
+#: The rejection when the player's game disks cannot be found, which is the one
 #: thing the conversion cannot do without: the combat icon comes out of
 #: `SPELLE64` and `$8400` out of `ANIMATE00`, and neither may be stored here.
 #: Donald's wording. The title is his of 2026-08-27; the line was replaced by
@@ -137,7 +137,7 @@ class GameFiles:
     """The two things off the player's game disks a conversion cannot do
     without.
 
-    Held together because the refusal is one question -- can this import read
+    Held together because the rejection is one question -- can this import read
     the player's disks? -- and answering it twice in two places is how the two
     halves drift apart.
 

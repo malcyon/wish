@@ -668,7 +668,7 @@ def test_a_malformed_reply_line_is_an_error():
         insert(LaneGuest(output))
 
 
-def test_a_guest_refusal_is_an_error_that_keeps_what_it_printed():
+def test_a_guest_rejection_is_an_error_that_keeps_what_it_printed():
     output = guest_output("fail DF0 was not seen holding it", swap_reads()[:2])
     with pytest.raises(amiga.FloppyError, match="was not seen holding it") as caught:
         insert(LaneGuest(output))
@@ -686,7 +686,7 @@ def test_a_status_that_is_neither_ok_nor_fail_is_an_error():
         insert(LaneGuest(guest_output("maybe", swap_reads())))
 
 
-def test_a_refusal_before_the_pipe_opens_arrives_as_the_guests_own_text():
+def test_a_rejection_before_the_pipe_opens_arrives_as_the_guests_own_text():
     error = amiga.GuestError("winvm ssh failed: fail the WinUAE lane is claimed by other "
                              "since 10:00, not by " + HOLDER)
     with pytest.raises(amiga.FloppyError, match="is claimed by other since 10:00"):
@@ -840,7 +840,7 @@ def test_a_verb_the_guest_refuses_after_the_pipe_is_open_still_raises_with_its_t
         amiga.WinuaePipe(runner=guest).refused_verb("insert", HOLDER, ["0", DISK_B, SHA_B])
 
 
-def test_a_verb_the_guest_accepts_returns_its_first_line_and_a_refusal_before_the_pipe_raises():
+def test_a_verb_the_guest_accepts_returns_its_first_line_and_a_rejection_before_the_pipe_raises():
     said = amiga.WinuaePipe(runner=LaneGuest("ok inserted drive=0\r\n<<end>>\r\n")).refused_verb(
         "insert", HOLDER, ["0", DISK_B, SHA_B])
     assert said == "ok inserted drive=0"
@@ -850,7 +850,7 @@ def test_a_verb_the_guest_accepts_returns_its_first_line_and_a_refusal_before_th
                 "insert", HOLDER, ["0", DISK_B, SHA_B])
 
 
-def test_a_fail_line_from_a_non_zero_exit_is_a_refusal_and_any_other_error_is_not():
+def test_a_fail_line_from_a_non_zero_exit_is_a_rejection_and_any_other_error_is_not():
     err = amiga.GuestError("winvm ssh failed: fail the WinUAE lane is claimed by other since t\nIf x has gone")
     with pytest.raises(amiga.GuestRefusal) as caught:
         amiga.WinuaePipe(runner=LaneGuest(error=err)).refused_verb("insert", HOLDER, ["0", DISK_B, SHA_B])

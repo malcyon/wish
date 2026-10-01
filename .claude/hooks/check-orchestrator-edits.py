@@ -145,7 +145,7 @@ def is_orchestrator(transcript_path: str) -> bool:
     return found
 
 
-def refusal(file_path: str) -> str:
+def rejection(file_path: str) -> str:
     return (
         f"Refused: the orchestrator does not edit files, and {file_path} is "
         "one. Send this change to a junior-dev brief instead -- back to the "
@@ -174,7 +174,7 @@ def main() -> int:
         return 0
     if not is_orchestrator(transcript_path):
         return 0
-    sys.stderr.write(refusal(file_path))
+    sys.stderr.write(rejection(file_path))
     return 2
 
 

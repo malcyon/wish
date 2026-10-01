@@ -1130,7 +1130,7 @@ def test_pool_cast_settles_although_the_camp_fire_moves_in_the_list_region(
 
 
 @pytest.mark.usefixtures("pool_map_measured")
-def test_pool_cast_a_refusal_back_at_the_magic_bar_fails_on_the_reopened_list(
+def test_pool_cast_a_rejection_back_at_the_magic_bar_fails_on_the_reopened_list(
         tmp_path, _cast_measured, monkeypatch):
     monkeypatch.setattr(CastPool, "EMPTY_TO_MAGIC", True)
     game, d = _cast_camp(tmp_path, rows=_cast_rows("BLESS"), failure="refused")
@@ -2376,7 +2376,7 @@ def test_a_run_asked_for_another_letter_is_refused_before_a_slot_is_claimed(
         raise AssertionError("an emulator slot was claimed")
 
     monkeypatch.setattr(da.dosbox, "claim", claimed)
-    # `main` turns the refusal into a usage error.
+    # `main` turns the rejection into a usage error.
     with pytest.raises(SystemExit):
         da.main(["--title", "curse", "--save", str(save), "--slot", "A",
                  "--steps", "load", "--out", str(tmp_path / "out")])
@@ -3343,7 +3343,7 @@ def test_encamp_is_never_pressed_at_the_party_menu(tmp_path):
     assert "e" not in game.keys
 
 
-# -- review findings: refusals before a slot is claimed, and the log handle -----------
+# -- review findings: rejections before a slot is claimed, and the log handle -----------
 
 
 def test_hall_is_refused_for_a_title_whose_hall_word_is_not_documented(capsys):
@@ -9230,7 +9230,7 @@ class FakeScribe(FakePool):
     another name on the list's title, and `marked` spells are drawn `*`
     already.  `flicker` changes one pixel outside the text on every capture,
     as the camp picture and Silver Blades' pointer can; `unseen` refuses
-    without drawing anything a capture can see; `late` draws a refusal's
+    without drawing anything a capture can see; `late` draws a rejection's
     message only on the second capture after the key; `lag` keeps the
     confirmation on screen for that many captures after `Y`; `after_yes`
     puts up an unknown `PRESS ANY KEY TO CONTINUE` screen instead of the
@@ -9445,7 +9445,7 @@ def test_a_swallowed_scribe_key_is_sent_once_more(tmp_path, scribe_measured):
     assert got["pick_presses"] == 2 and game.scribed == ["PROTECTION FROM GOOD"]
 
 
-def test_the_games_refusal_fails_the_step_after_one_key(tmp_path, scribe_measured):
+def test_the_games_rejection_fails_the_step_after_one_key(tmp_path, scribe_measured):
     game, d = _scribe_camp(tmp_path, start=4, refuse={"PROTECTION FROM GOOD"})
     with pytest.raises(da.StepFailed, match="YOU ALREADY KNOW THAT SPELL"):
         d.scribe(6, "PROTECTION FROM GOOD")
@@ -9510,23 +9510,23 @@ def test_a_step_that_may_leave_camp_forgets_the_scribe(tmp_path, scribe_measured
     assert d.rest(5)["scribe_pending"] is False
 
 
-def test_a_frame_that_changes_outside_the_text_is_not_a_refusal(tmp_path,
+def test_a_frame_that_changes_outside_the_text_is_not_a_rejection(tmp_path,
                                                                  scribe_measured):
     game, d = _scribe_camp(tmp_path, start=4, swallow_pick=True, flicker=True)
     got = d.scribe(6, "PROTECTION FROM GOOD")
     assert got["pick_presses"] == 2 and game.scribed == ["PROTECTION FROM GOOD"]
 
 
-def test_a_refusal_no_capture_saw_fails_saying_it_may_be_one(tmp_path, scribe_measured):
+def test_a_rejection_no_capture_saw_fails_saying_it_may_be_one(tmp_path, scribe_measured):
     game, d = _scribe_camp(tmp_path, start=4, refuse={"PROTECTION FROM GOOD"},
                            unseen=True)
     with pytest.raises(da.StepFailed, match="no mark and no change was seen, possibly "
-                       "a refusal"):
+                       "a rejection"):
         d.scribe(6, "PROTECTION FROM GOOD")
     assert game.keys[5:] == ["m", "s", "s", "s"] and game.scribed == []
 
 
-def test_a_refusal_drawn_after_the_wait_is_read_before_a_second_key(tmp_path,
+def test_a_rejection_drawn_after_the_wait_is_read_before_a_second_key(tmp_path,
                                                                      scribe_measured):
     game, d = _scribe_camp(tmp_path, start=4, refuse={"PROTECTION FROM GOOD"},
                            late=True)

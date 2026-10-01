@@ -198,7 +198,7 @@ def test_a_challenge_whose_path_cannot_be_read_is_not_answered_rather_than_absen
 def test_path_overrides_an_unread_path(tmp_path, capsys):
     """`--path` exists to rescue exactly this frame: tile ink present, no
     path band, so `read_path()` alone gives up. Before #537's `main()` fix
-    this override could never fire -- the ink/path refusal returned first."""
+    this override could never fire -- the ink/path rejection returned first."""
     rc = cursewheel.main(["--shot", str(_synthetic_frame(tmp_path, None)),
                           "--box", "3", "--path", "1"])
     out = capsys.readouterr().out

@@ -51,7 +51,7 @@ def _verified(where: pathlib.Path) -> None:
 def engine_written_parties():
     """`(label, character)` for every Amiga later character the engine wrote.
 
-    Empty rather than skipping, so a caller can add it to the disk corpus on
+    Empty rather than skipping, so a caller can add it to the disk specimens on
     a machine that has one and not the other.
     """
     root = specimen_root()

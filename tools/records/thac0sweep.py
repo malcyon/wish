@@ -32,7 +32,7 @@ slots keeping the best row; the C64 skips a class the character has no level
 in, because entry 0 of each of its rows is `$00`, and the DOS loop that runs
 when a party is loaded does not skip it, so an empty slot reads an entry 0 of
 39 or 40. That puts a floor of THAC0 20 under every DOS record -- see
-`dos_engine_thac0` and `docs/224-the-dos-thac0-floor.md`. No strength, no
+`dos_engine_thac0` and `docs/224-the-dos-thac0-lower-limit.md`. No strength, no
 weapon and no clamp enter either.
 
 Nothing here writes anything, and no table it prints is committed.
@@ -145,7 +145,7 @@ def dos_rows(title: str = "pool-of-radiance",
 
     **Entry 0 is in the list, because the engine reads it.**  A class the
     character has no level in indexes it, and every row in all three titles
-    holds 39 or 40 there rather than a zero -- `docs/224-the-dos-thac0-floor.md`.
+    holds 39 or 40 there rather than a zero -- `docs/224-the-dos-thac0-lower-limit.md`.
     """
     if title != "pool-of-radiance":
         from tools.c64 import laterthac0  # imports this module itself
@@ -215,7 +215,7 @@ def dos_engine_thac0(rows: dict[str, list[int]], class_levels) -> int | None:
     character the engine writes, and it is the only thing that separates a DOS
     magic-user of level 1-5 from the 21 his own table gives him.
 
-    `docs/224-the-dos-thac0-floor.md` has the listing and the counts.  The
+    `docs/224-the-dos-thac0-lower-limit.md` has the listing and the counts.  The
     other loop, the one a class change runs, does test the level first and
     writes the table's own number; nothing on this machine holds what it
     leaves.

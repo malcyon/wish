@@ -5168,7 +5168,7 @@ Build, runner, log and screenshots: `p46/` (scratch, deleted).
 
 ## The hidden-site paint does not survive a reload, and the player can see it
 
-**Hypothesis.** The #47 (Decode the travel grid's cache entries, so the wilderness can be retargeted too) loose end — walk-in `$8C00` at 647/648 against the disk,
+**Hypothesis.** The #47 (Decode the travel grid's cache entries, so the wilderness can be moved too) loose end — walk-in `$8C00` at 647/648 against the disk,
 load at 648/648, same flag bytes — is the hidden-site paint being lost on load,
 and it reaches the screen. The alternative was timing: the walk-in capture was
 taken at a different moment in the arrival.
@@ -5447,7 +5447,7 @@ all seven writes above, its own buffer left alone — which dies in
 against the seven and its first attempt to move a save onto a fresh template
 died exactly there. The recipe as it stands is in `docs/141-dos-savegame.md`
 "The recipe for moving a save to a different area (#60 (Put a converted party where it actually stood, not where the template stood))", formatted from
-`goldbox.dos_savegame.RETARGET_WRITES`.
+`goldbox.dos_savegame.MOVE_WRITES`.
 
 **Result 5. The variable array is sparse and the tail is mostly not state.**
 2407 of 2560 words are zero in all nine specimens. `$5227`+ is the
@@ -5473,7 +5473,7 @@ itself was always well-formed).
 ## The DOS saved game outdoors (#59 (Map the DOS saved game, not just the character record), the outdoor half)
 
 **Hypothesis.** A DOS save made on the overland travel map differs from an
-indoor one the way the C64's does (#47 (Decode the travel grid's cache entries, so the wilderness can be retargeted too)): `$49E6` = 0, the square in
+indoor one the way the C64's does (#47 (Decode the travel grid's cache entries, so the wilderness can be moved too)): `$49E6` = 0, the square in
 `$49C3`/`$49C4`, and some analogue of the SQRDATA substitution in whatever
 the DOS load path keys on.
 

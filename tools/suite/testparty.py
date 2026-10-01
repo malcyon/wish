@@ -467,7 +467,7 @@ def equip(one: Built, tables, game=None) -> None:
                          f"record has {slots} slots")
 
     # A loadout the game itself would refuse is a loadout that measures
-    # nothing, so both refusals it makes are checked here rather than found in
+    # nothing, so both rejections it makes are checked here rather than found in
     # the emulator: the class filter on every item, and one readied item per
     # place on the body.
     mine = {n for n in one.spec.levels}

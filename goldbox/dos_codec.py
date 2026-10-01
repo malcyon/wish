@@ -207,7 +207,7 @@ __all__ = [
 ]
 
 
-#: The fallback shown to a player for any refusal that is not a wrong title --
+#: The fallback shown to a player for any rejection that is not a wrong title --
 #: bytes with no source, the two outdoor signals disagreeing, an area with no
 #: row in `goldbox/areas.py`, and anything else `DosRecordError` is raised
 #: for.  Donald's wording, 2026-09-02 (#195), chosen over a longer version
@@ -228,7 +228,7 @@ class DosRecordError(ValueError):
     default is `CANNOT_CONVERT`; a subclass overrides it when it has
     something more specific and still player-safe to say, as `WrongTitleError`
     does below.  Generalised from `WrongTitleError` alone (#176) to cover
-    every refusal (#195), after `editor/dosimport.py` was found showing a
+    every rejection (#195), after `editor/dosimport.py` was found showing a
     memory address and a source file name for everything else.
     """
 
@@ -1282,7 +1282,7 @@ def c64_trait_nodes(deltas: "DosDeltas", race: int, ids: Iterable[int],
        warning line: DOS Silver Blades' 92 cancels only Fear (111), where the
        C64's also cancels 29 and 68 (Donald's decision on `#621`,
        2026-09-22 23:33, `docs/230-who-reads-a-dos-effect-node.md` (f)).  It
-       is debug-log accounting rather than a refusal;
+       is debug-log accounting rather than a rejection;
     4. otherwise, a drop line: the id is a permanent effect whose other four
        bytes on this title have not been read, so no record is written.
 
@@ -1737,8 +1737,8 @@ class DosCharacter(_Fielded):
         """Re-encode every field from its decoded value.
 
         The round trip a read-only decoder can actually make: decode the whole
-        table, encode it back, and compare with what was read.  It bites on a
-        wrong width and on a wrong kind -- a field declared one byte wide that
+        table, encode it back, and compare with what was read.  It detects a
+        wrong width and a wrong kind -- a field declared one byte wide that
         is really two comes back with the second byte zeroed -- which is the
         failure a reader that only hands the bytes back can never see.
         """
@@ -2055,7 +2055,7 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("armour_class", "armour_class"),
     ("movement_current", "roster_movement"),
     # A creature's own field, CONFIRMED from four agreeing routes (#254):
-    # zero in every player record the corpus holds (474 of 474, bar one
+    # zero in every player record the specimens hold (474 of 474, bar one
     # Treasures of the Savage Frontier record found twice at two paths), and
     # the C64's own copy at `gap_0f4` 0x0F7/0x0F9 is the same pair.  Copied
     # straight across rather than dropped, because both ports hold the same
@@ -3432,7 +3432,7 @@ WRITE_DIRECT: tuple[tuple[str, str], ...] = (
     ("thac0_current", "thac0_current"),
     ("armour_class", "armour_class"),
     ("movement_current", "movement_current"),
-    # A creature's own field, zero in every player record the corpus holds
+    # A creature's own field, zero in every player record the specimens hold
     # (#254). The reader's `DIRECT` and this table are mirrors, so it is
     # copied straight across here too rather than dropped.
     ("experience_award", "experience_award"),
@@ -3850,7 +3850,7 @@ WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
 #: played character's own value differs -- so a round trip has to mask these,
 #: and `tests/convert/test_doswriter.py` builds its mask from this table beside
 #: `WRITE_UNSOURCED`.  Each entry is a reported drop as well as a write: the
-#: player's own value is being replaced, and that is said out loud.
+#: player's own value is being replaced, and that is reported.
 WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
     ("icon_colours", b"\x91\xA2\xB3\xC4\xE6\xF7",
      "the set a freshly made DOS character has -- 42 of the 54 shipped "
@@ -4633,7 +4633,7 @@ WRITE_TRANSFORMED_LATER: tuple[tuple[str, str], ...] = (
 #: the pair.
 #:
 #: So the byte records "somebody kept this character out of the modify
-#: screen", and the corpus splits on exactly that:
+#: screen", and the specimens split on exactly that:
 #:
 #:   * 1 in 66 of 66 Pool of Radiance archive records, 44 of 48 Curse ones
 #:     (the four are Gateway's ERSWELL and GULAIL, twice each) and 22 of 24
@@ -4982,7 +4982,7 @@ def write_deltas(char: NeutralCharacter,
     already resolved the title.
 
     A title with no DOS record raises `DosDeltasError`; a DOS record nobody
-    has written raises `WrongTitleError`, which is the same refusal
+    has written raises `WrongTitleError`, which is the same rejection
     :func:`to_neutral` makes in the other direction.
     """
     if deltas is None:
@@ -5384,7 +5384,7 @@ def write(char: NeutralCharacter,
     # Pool of Radiance, 84 in Curse, 75 in Silver Blades, 141 in Pools of
     # Darkness.  Against the C64's own regions -- 81, 69 and 74 -- only Pool
     # of Radiance's is the narrower of the pair, and no character in any
-    # corpus on this machine holds more than five.  Truncating goes to the
+    # specimens on this machine holds more than five.  Truncating goes to the
     # debug log and to `losses`, which is accounting a caller reads; no
     # sentence is shown to the player: a route that loses something is a
     # route to fix, not one to apologise for.
@@ -5462,7 +5462,7 @@ def write(char: NeutralCharacter,
     # a THAC0 worse than 20.  A Curse or Silver Blades magic-user of level
     # 1-5 is therefore 40 here, where best-of-classes over the table
     # (`dos_base_thac0`, the C64 engine's rule) gives 39.
-    # `docs/224-the-dos-thac0-floor.md` has the counts.  Recomputing for a
+    # `docs/224-the-dos-thac0-lower-limit.md` has the counts.  Recomputing for a
     # source the table was never measured against would "correct" a byte
     # nobody has shown is wrong, so every port but C64 keeps its own byte --
     # and an Amiga source is not known to be wrong: what the Amiga builds
@@ -6198,7 +6198,7 @@ def write(char: NeutralCharacter,
     share = use("treasure_share")
     # Only a Pool of Radiance companion's byte is a share the C64 masks with
     # 3; a player character's byte there is a different flag, and the other
-    # titles' DOS and Amiga masks are not measured, so both keep the refusal.
+    # titles' DOS and Amiga masks are not measured, so both keep the rejection.
     rewrite_share = (share is not None and char.port == "C64"
                      and deltas is POOL_OF_RADIANCE and bool(w.get("npc"))
                      and int(share.value) & 0x04)
@@ -6688,7 +6688,7 @@ FLAGS_LAST = dos_savegame.FLAGS_LAST
 #: being converted, at its own address, rather than whichever stranger's save
 #: was used as the template.
 #:
-#: It is right on a retarget too, and that is the case that matters: the C64
+#: It is right on a move too, and that is the case that matters: the C64
 #: party's scratch belongs to the area the C64 party is standing in, which is
 #: exactly the area the DOS save is being moved to.
 SHARED_SCRATCH = (0x49EB,) + tuple(range(0x4A00, 0x4A20))
@@ -6915,7 +6915,7 @@ SCRIPT_SCRATCH = (0x4A00, 0x20)
 #: **Three slots are enough, and two are not.**  `$FF` everywhere else, slot
 #: 2 = the area's `GEO` number, slot 8 = the area id and slot 11 =
 #: `ANIMATE00`, and the arriving script's entry 4 refills the rest --
-#: CONFIRMED twice in the running game, once retargeting a New Phlan save into
+#: CONFIRMED twice in the running game, once moving a New Phlan save into
 #: Sokol Keep.  That is what lets a converted save stand somewhere the
 #: template never did.  Slot 11 was the one #102 found missing: it is not a
 #: lazy slot, because the save is *carrying* the file (`CACHE_ANIMATE`).
@@ -6927,7 +6927,7 @@ CACHE_GEO = 2
 CACHE_ECL = 8
 #: Outdoors, slot 4 (`SQRDATA`) does slot 2's job and slot 2 stays `$FF` --
 #: no `GEO` loads on the travel grid at all.  Proven live twice in #47,
-#: including an indoor Slums template retargeted onto the grid from a cold
+#: including an indoor Slums template moved onto the grid from a cold
 #: boot with exactly slot 4 + slot 8 written.
 CACHE_SQRDATA = 4
 #: And the three a *DOS* save needs: slots 15-17 are the `WALLSET` pieces, and
@@ -7174,24 +7174,24 @@ ANIMATE_AT = 0x8400
 ANIMATE_SIZE = 852
 
 
-#: The refusals, which reach the player through the import dialog's generic
+#: The rejections, which reach the player through the import dialog's generic
 #: handler. Donald's wording, approved 2026-08-24.  Each fires on where the
 #: *DOS* party stood, not on the C64 template -- and none of them fires at all
 #: when the template already stands in that same area, because then its own
 #: cache is real and is kept.
 #:
-#: The wilderness refusal came off `apply_file_cache` in #50, once #59's
+#: The wilderness rejection came off `apply_file_cache` in #50, once #59's
 #: outdoor saves settled where a DOS save keeps the travel square, and came
-#: off `retarget_reason` -- the other direction -- in #190, once an outdoor
-#: DOS retarget had actually been driven.  `WILDERNESS`, Donald's own wording
+#: off `move_reason` -- the other direction -- in #190, once an outdoor
+#: DOS move had actually been driven.  `WILDERNESS`, Donald's own wording
 #: for it, is gone with the last thing that raised it: neither direction
 #: refuses a party on the travel grid now.
 #:
 #: **`UNSUPPORTED_LOCATION` came off `apply_file_cache` in #257** and is now
-#: `retarget_reason`'s alone.  Converting a save, the resident map is a word
+#: `move_reason`'s alone.  Converting a save, the resident map is a word
 #: *in that save* -- `$49C5`, see `_resident_geo` -- so an area that loads no
 #: map or picks one at run time needs no row to name one, and the training
-#: hall stopped being refused.  Retargeting there is a different question
+#: hall stopped being refused.  Moving there is a different question
 #: with no save to read: the player names an area the party has never been
 #: in, and the table is the only source there is.
 NOT_AN_AREA = ("the DOS party is in area {area}, which is not an area of "
@@ -7207,7 +7207,7 @@ UNSUPPORTED_LOCATION = "Saves from this location are not supported."
 NOT_SET_OUT = ("Your party had not set out yet, so it starts at the "
                "beginning of the story.")
 
-#: The refusal for a never-adventured save of a title with no `STARTS` row.
+#: The rejection for a never-adventured save of a title with no `STARTS` row.
 #: Pool of Radiance, Curse and Silver Blades all have one, so none of them
 #: raises it; it stays for a title added without a measured start.  Donald's
 #: wording, 2026-09-06.  It names no title on purpose, so it reads the same
@@ -7313,7 +7313,7 @@ def _where_the_party_is(savgam: bytes, title: str,
 
     A party that has not set out is placed at `_start_of_the_story`; one that
     has is in the area its own `$49F2` names, and a save naming an area this
-    title has no row for is refused -- `NOT_AN_AREA`, the one refusal the
+    title has no row for is refused -- `NOT_AN_AREA`, the one rejection the
     save cannot answer for itself.
     """
     if never_adventured(savgam, container):
@@ -7360,7 +7360,7 @@ def _resident_geo(savgam: bytes, where: "areas.Area", title: str) -> int:
     on `GEO00`.  The two-map and dynamic cases are PROBABLE: the reasoning is
     the same and no save has been made in one.
 
-    Both refusals are contradictions rather than gaps, and neither has ever
+    Both rejections are contradictions rather than gaps, and neither has ever
     fired on a real save.
     """
     geo = dos_savegame.geo_block(savgam)
@@ -8269,7 +8269,7 @@ def save_disk(save0: bytes, save1: bytes, game=None):
 # ---------------------------------------------------------------------------
 # The whole save, the other way: a C64 save becomes DOS files (#26)
 # ---------------------------------------------------------------------------
-#: Where a retarget looks for `ECL<n>.DAX` when the caller names no game
+#: Where a move looks for `ECL<n>.DAX` when the caller names no game
 #: directory: the save directory itself, then its parent, which is where the
 #: archives keep it (`GAME/POOLRAD/SAVE` inside `GAME/POOLRAD`).
 ECL_DAX = "ECL{dax}.DAX"
@@ -8394,7 +8394,7 @@ OUTDOOR_FACING_WHY = (
 ENGINE_REBUILT = ("one of the nine words the engine rewrote by itself when it "
                   "loaded a hand-built save and the party moved (#59)")
 DOS_ONLY = ("DOS engine state with no C64 counterpart -- above $4AF9, which "
-            "no ECL script in the thirty-script corpus references (#59)")
+            "no ECL script in the thirty-script specimens references (#59)")
 ENCOUNTER_STATE = ("the pending-encounter record: it changes together with "
                    "the message buffer beside it, and a converted party has "
                    "no encounter pending")
@@ -8668,21 +8668,21 @@ def savgam_unsourced(container: "dos_savegame.DosContainer"
 LATER_HEADER_COPIED = (0xE7, 3)
 
 
-def retarget_reason(area: int) -> str | None:
-    """Why this area cannot be a retarget target, or `None` if it can.
+def move_reason(area: int) -> str | None:
+    """Why this area cannot be a move target, or `None` if it can.
 
     Two kinds, both of which the C64 converter refuses in the other
     direction: an area this project has no row for, and one whose script
     picks its map at run time or loads none at all.  Unapproved wording.
 
     **The travel grid was a third and is not any more** (#190).  It was
-    refused because no DOS retarget onto a travel window had ever been
+    refused because no DOS move onto a travel window had ever been
     driven; one has now, and an outdoor area needs no `GEO` for the same
     reason `where.geos` is not consulted for it -- the overland loads none.
-    `WILDERNESS`, the refusal Donald wrote for it, has gone with it.
+    `WILDERNESS`, the rejection Donald wrote for it, has gone with it.
 
     **An empty wallset triple is not a reason.**  New Phlan is the one area
-    the C64 loads no `WALLSET` for, and a save retargeted there with all
+    the C64 loads no `WALLSET` for, and a save moved there with all
     three words empty draws a view pixel-identical to one carrying DOS's own
     `(0, $FFFF, $FFFF)` -- `p60/run3` (scratch, deleted), Z0 against `run2`'s X3.
     """
@@ -8705,8 +8705,8 @@ def conversion_reason(area: int,
     Radiance's by default; a Curse or Silver Blades id is looked up in that
     title's own table (#299).
 
-    **A conversion is not a retarget, and the difference is where the map
-    comes from** (#276).  :func:`retarget_reason` refuses six areas because
+    **A conversion is not a move, and the difference is where the map
+    comes from** (#276).  :func:`move_reason` refuses six areas because
     the caller names an area the party has never been in, so `goldbox/areas.py`
     is the only source for which `GEO` has to be resident and four of those
     areas load no map of their own while two pick theirs at run time.
@@ -8718,7 +8718,7 @@ def conversion_reason(area: int,
     exactly the fault `#257 (A DOS save made in the training hall converts as
     though the party were in New Phlan)` fixed on the way in.
 
-    What is left is the one refusal the save cannot answer: an area with no
+    What is left is the one rejection the save cannot answer: an area with no
     row, which has no `ECL<n>.DAX` to lift the script out of and no disk
     number to write.
 
@@ -8784,16 +8784,16 @@ def _area_script(area: int, template: "pathlib.Path | None",
                  game: "str | pathlib.Path | None",
                  title: "str | None" = None, dax: "int | None" = None
                  ) -> bytes:
-    """The area's own `ECL<n>.DAX` block, or a refusal saying why not.
+    """The area's own `ECL<n>.DAX` block, or a rejection saying why not.
 
-    Three refusals, and all three used to be a warning with the party left
+    Three rejections, and all three used to be a warning with the party left
     standing on the template's square: an area with no legal answer, no game
     directory to read the script out of, and a container that does not hold
     the block.  Each of them ends with a save the party has never been in;
     the file loads, so nothing says so afterwards.
 
     **The first of the three is `conversion_reason` and not
-    `retarget_reason`** (#276): this is the conversion path, whose party
+    `move_reason`** (#276): this is the conversion path, whose party
     brings its own resident map with it.
     """
     if dax is None:
@@ -8888,9 +8888,9 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     `$49C5` is the resident map, and the two part company for an area whose
     script loads none of its own, such as the training hall -- writing the
     area id into both there names `GEO0B`, a map no script loads.  This used
-    to derive `$49C5` from `area`, which is `retarget`'s own default and is
+    to derive `$49C5` from `area`, which is `move_to_area`'s own default and is
     right for the areas that load their own map and wrong for the six
-    `retarget_reason` refuses before this can run.  **`indoors` is still the
+    `move_reason` refuses before this can run.  **`indoors` is still the
     area table's own answer and not `state.outdoors`**: this direction has
     always trusted `areas.area_in(area, game.title).outdoors` over the C64
     payload's own `$49E6` byte, and that is unchanged -- only where the
@@ -8933,7 +8933,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     # initialiser.
     wallset = (state.wallset if indoors and not fresh
                else dos_savegame.OUTDOOR_WALLSET)
-    dos_savegame.retarget(savgam, area=area, dax=dax,
+    dos_savegame.move_to_area(savgam, area=area, dax=dax,
                           wallset=wallset, script=script,
                           outdoors=not indoors and not fresh, geo=geo,
                           container=shape)
@@ -9409,7 +9409,7 @@ def _add_party_node(char: "NeutralCharacter",
 
 
 def _c64_game_of(state: "world_state.WorldState") -> "c64_save.C64Container":
-    """The title `state` belongs to, or a refusal.
+    """The title `state` belongs to, or a rejection.
 
     A title with no descriptor is not defaulted to Pool of Radiance: the
     container written would be that game's, with its layout, and nothing in
@@ -9644,7 +9644,7 @@ def write_dos_save_from(state: "world_state.WorldState",
                        f"reloads it from {ECL_DAX.format(dax=dax)}")
         place.append(
             f"the place: area {state.area}, {where.name or where.ecl}, "
-            f"{stood} -- every write dos_savegame.RETARGET_WRITES "
+            f"{stood} -- every write dos_savegame.MOVE_WRITES "
             f"names{script_line}")
     report.converted.extend((
         *place,
@@ -9733,7 +9733,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
       `$49C6`-`$49CB`, which are the C64's own six bytes at its own addresses;
     * **the party size** (#67), into both the word at `$503E` and byte 12808;
     * **the place** (#60), always and not only when it differs from the
-      template's: every write `dos_savegame.RETARGET_WRITES` lists, including
+      template's: every write `dos_savegame.MOVE_WRITES` lists, including
       the area's own script lifted out of `ECL<n>.DAX`.
 
     **An area it cannot write, it refuses.**  There is no fallback to the
@@ -9800,18 +9800,18 @@ def new_dos_save_from(state: "world_state.WorldState",
     the difference between those two is invisible in the file.
     """
     # **Built somewhere else first, and moved in only once it is known
-    # good.**  The refusal below used to fire *after* `write_dos_save` had
+    # good.**  The rejection below used to fire *after* `write_dos_save` had
     # already cleared the slot and written all seven files, so a caller who
     # hit it was left with exactly the save this function exists to refuse --
     # a stranger's bytes on disk, with nothing about the directory saying so.
-    # The sibling refusal in `_area_script` gets this right by firing before
+    # The sibling rejection in `_area_script` gets this right by firing before
     # anything is written; this one could not, because the count it refuses on
     # is only known at the end.  So the write goes to a staging directory on
     # the same filesystem and `out` is not touched at all unless the count is
     # zero.
 
     # The lookup runs first: a title with no container is refused here, before
-    # `out` is made, so a refusal leaves no empty directory behind.
+    # `out` is made, so a rejection leaves no empty directory behind.
     c64 = _c64_game_of(state)
     out = pathlib.Path(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -9851,7 +9851,7 @@ def new_dos_save(save0: bytes, save1: bytes | None,
                  icon_parts: "IconParts | None" = None) -> "SaveReport":
     """A whole DOS save from a C64 one, owing nothing to another save (#26).
 
-    The mirror of :func:`new_save`, and the same refusal: `game` is the DOS
+    The mirror of :func:`new_save`, and the same rejection: `game` is the DOS
     game directory the area's own `ECL<n>.DAX` is read out of, there is no
     default for it, and a conversion that cannot read it would have to invent
     an area rather than write the one the party is standing in.

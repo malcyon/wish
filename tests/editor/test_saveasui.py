@@ -1,5 +1,5 @@
 """The split Open and Save buttons, the conditional destination section, and
-every refusal or failure text `editor.window`'s Save As controller shows for
+every rejection or failure text `editor.window`'s Save As controller shows for
 a `saveplan`/`editor.files` exception (#511,
 docs/227-editor-open-save-as.md, the string inventory on that issue --
 comment 5769421923 -- and Donald's decisions on it, comment 5770669768).
@@ -7,7 +7,7 @@ comment 5769421923 -- and Donald's decisions on it, comment 5770669768).
 Everything here is built from the format, so it runs with no game data:
 `test_saveplan.py`'s own DOS folder builder and `tests/gamedata.py`'s
 synthetic C64 save. A native copy needs no game files at all, which is what
-lets the refusal-text tests drive `confirm_save_as` for real rather than
+lets the rejection-text tests drive `confirm_save_as` for real rather than
 only asserting the mapping in isolation.
 """
 from __future__ import annotations
@@ -202,7 +202,7 @@ def test_the_path_field_takes_focus_with_the_suggested_name_selected(
 
 
 # ---------------------------------------------------------------------------
-# Every refusal and failure text, wired to its exact trigger
+# Every rejection and failure text, wired to its exact trigger
 # ---------------------------------------------------------------------------
 
 def _confirm(binding, monkeypatch, target=None):

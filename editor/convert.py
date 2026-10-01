@@ -96,7 +96,7 @@ every registered direction rather than one dialog per port. The report pane
 this paragraph used to name is gone (2026-09-10): what it showed is now a
 modal `QMessageBox`, a silently disabled Convert button, or the debug log,
 `_rehearse_and_report`'s own docstring has which goes where. **A modal fires
-only for a real refusal** -- a source that cannot be read, a conversion that
+only for a real rejection** -- a source that cannot be read, a conversion that
 cannot run -- **never for a row the player has simply not filled in yet**;
 that used to pop on the very next field after `From`, before the player had
 done anything wrong, and `ConvertDialog._SILENT_BLOCKS` is what stops it
@@ -1665,7 +1665,7 @@ POOLS_OF_DARKNESS_UNSUPPORTED = "Pools of Darkness saves are not yet supported."
 NO_DISKS = dosimport.NO_DISKS
 NO_DISKS_TITLE = dosimport.NO_DISKS_TITLE
 
-#: Which of the refusals above each requirement of
+#: Which of the rejections above each requirement of
 #: `editor.saveplan.requirements` is, so the service names what is missing
 #: and this module keeps the wording a player reads.
 MISSING_ASSET_BLOCKS: dict[str, tuple[str, str]] = {
@@ -1808,7 +1808,7 @@ class ConvertDialog(QDialog):
     per port). Every row change calls `replan()`, which detects the source,
     lists its registered destinations, rehearses the chosen one in memory,
     and either names the destination or says why it cannot -- a modal
-    `QMessageBox` for a real refusal, and nothing at all for a row still
+    `QMessageBox` for a real rejection, and nothing at all for a row still
     empty, since the disabled Convert button already says that
     (`_maybe_warn`, `_SILENT_BLOCKS`) -- now that the pane this used to draw
     on is gone (2026-09-10) -- `editor/dosimport.py`'s rehearse-then-enable
@@ -1910,7 +1910,7 @@ class ConvertDialog(QDialog):
 
         #: What stops Convert right now, `(title, text)` or `None`. Four of
         #: the reasons below (`_SILENT_BLOCKS`) mean only "a row is still
-        #: empty" and never reach a modal; the rest are a real refusal --
+        #: empty" and never reach a modal; the rest are a real rejection --
         #: `CANNOT_CONVERT`, a `DosRecordError`'s own message -- and are
         #: shown verbatim as `QMessageBox.critical`, in place of a line in a
         #: pane that no longer exists (2026-09-10).
@@ -2049,7 +2049,7 @@ class ConvertDialog(QDialog):
     def replan(self) -> None:
         """Detect the source, rehearse the chosen destination, and either
         name where it would write or say why it cannot -- a modal for a real
-        refusal, nothing at all for a row still empty (`_maybe_warn` below,
+        rejection, nothing at all for a row still empty (`_maybe_warn` below,
         `_SILENT_BLOCKS`), in place of a line in a pane that no longer
         exists (2026-09-10). Failures are shown, not raised -- the same
         rule `editor/dosimport.py`'s `_rehearse` follows. Called on every
@@ -2100,10 +2100,10 @@ class ConvertDialog(QDialog):
         self._populate_destinations(options)
         self._populate_slots(self.source)
         if not options:
-            refusal = (POOLS_OF_DARKNESS_UNSUPPORTED
+            rejection = (POOLS_OF_DARKNESS_UNSUPPORTED
                        if self.source.key == dos_port.POOLS_OF_DARKNESS.key
                        else CANNOT_CONVERT)
-            self._blocked = (DIALOG_TITLE, refusal)
+            self._blocked = (DIALOG_TITLE, rejection)
             self._settle_files_row()
             self._settle_button()
             self._maybe_warn()
@@ -2137,7 +2137,7 @@ class ConvertDialog(QDialog):
         `docs/227-editor-open-save-as.md`); every loss goes to the debug
         log only (`dosimport.log_unshown_losses`).
 
-        **Only a real refusal pops a modal.** `self._blocked` also carries
+        **Only a real rejection pops a modal.** `self._blocked` also carries
         the four `_SILENT_BLOCKS` reasons -- a row the player has simply not
         filled in yet -- and those never reach `QMessageBox`: the Convert
         button is already disabled for exactly as long as one of them holds,
@@ -2146,7 +2146,7 @@ class ConvertDialog(QDialog):
         had done anything wrong (`#52`'s comment of 2026-09-10). `CANNOT_
         CONVERT` and a `DosRecordError`'s own message are not in that set --
         the player asked for a file that could not be read, or a conversion
-        that could not run, which is a real refusal of something they
+        that could not run, which is a real rejection of something they
         actually did.
 
         Gated on `self._interactive`, so a `ConvertDialog` built with a
@@ -2210,7 +2210,7 @@ class ConvertDialog(QDialog):
             self.rehearsal, self.slot = saveplan.rehearse(
                 direction, self.source, assets)
         except dos_codec.JoinedScrollsDoNotFit as exc:
-            # Not a refusal: the player chooses what to leave behind once
+            # Not a rejection: the player chooses what to leave behind once
             # Convert is pressed (`EditorBinding.convert`), so nothing is
             # shown now and Convert stays pressable.
             _log.info("The pack does not fit the %s destination: %s",
@@ -2219,7 +2219,7 @@ class ConvertDialog(QDialog):
             self._name_destination()
             return
         except dos_codec.EffectsDoNotFit as exc:
-            # Not a refusal either: the player chooses which effects to leave
+            # Not a rejection either: the player chooses which effects to leave
             # out once Convert is pressed. Before `DosRecordError`, which it
             # is a kind of.
             _log.info("The running effects do not fit the %s destination: %s",
@@ -2228,7 +2228,7 @@ class ConvertDialog(QDialog):
             self._name_destination()
             return
         except saveplan.NamesDoNotFit as exc:
-            # Not a refusal: the player shortens the names once Convert is
+            # Not a rejection: the player shortens the names once Convert is
             # pressed (`EditorBinding.convert`), so nothing is shown now and
             # Convert stays pressable.
             _log.info("names do not fit the %s destination: %s",

@@ -96,7 +96,7 @@ def sweep_roots() -> list[pathlib.Path]:
     """Every directory the project knows of that may hold DOS records.
 
     `tools/dos/dostailsweep.py`'s list, so this sweep and every other DOS sweep
-    on this machine cover the same corpus (#575): the specimen tree, the
+    on this machine cover the same specimens (#575): the specimen tree, the
     archives and the played DOS game directory.
     """
     from tools.dos import dostailsweep
@@ -109,7 +109,7 @@ def sweep(roots: list[pathlib.Path]) -> None:
     Deduplicated on the record bytes together with its items', because the
     archives ship most save directories twice and a driven run copies its
     whole directory forward at every step; counting those again would inflate
-    a corpus without adding a specimen.
+    a set of specimens without adding a specimen.
     """
     seen: set[bytes] = set()
     rows: list[tuple[int, str, str, int, int, int, int, pathlib.Path]] = []

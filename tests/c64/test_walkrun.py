@@ -116,7 +116,7 @@ def args(tmp_path, monkeypatch, disks):
     return base
 
 
-# -- the refusal ------------------------------------------------------------
+# -- the rejection ------------------------------------------------------------
 
 
 @posix

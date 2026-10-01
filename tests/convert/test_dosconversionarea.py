@@ -6,10 +6,10 @@ word)`.  The word at `$49C5` is the resident `GEO` and the word at `$49F2` is
 the area, and they part company in six of Pool of Radiance's areas -- the
 training hall among them, where an engine-written save holds `$49C5` = 0 with
 `$49F2` = 11.  `savgam_writes` reads both out of the C64 save now; what these
-tests hold is that the **refusal** in front of it lets the save through.
+tests hold is that the **rejection** in front of it lets the save through.
 
-`dos_codec.retarget_reason` and `dos_codec.conversion_reason` answer two different
-questions and this file pins the difference: a retarget names an area the
+`dos_codec.move_reason` and `dos_codec.conversion_reason` answer two different
+questions and this file pins the difference: a move names an area the
 party has never been in, so `goldbox/areas.py` is its only source for the map;
 a conversion reads the map out of the save it is converting.
 
@@ -68,7 +68,7 @@ def _c64_in_the_training_hall() -> bytes:
 
 
 def test_a_conversion_is_not_refused_an_area_whose_script_loads_no_map():
-    """The five areas `retarget_reason` refuses are all conversions can write.
+    """The five areas `move_reason` refuses are all conversions can write.
 
     Three of them load no map at all (8, 11, 19) and two pick theirs at run
     time (3, 5).  Every one of those is a statement about the *area table*,
@@ -79,30 +79,30 @@ def test_a_conversion_is_not_refused_an_area_whose_script_loads_no_map():
     turned out to have a map after all: `ECL1E` carries `LOADFILES 18, 2, 255`
     and file 18 is `GEO12`, read off the player's own POOL1
     (`#260 (Area 30 is recorded as having no map, and ECL1E loads GEO12)`).
-    `retarget_reason` stopped refusing it in the same change, which is right
+    `move_reason` stopped refusing it in the same change, which is right
     and is why this test moved rather than the code.
     """
     for area in (3, 5, 8, TRAINING_HALL, 19):
-        assert dos_codec.retarget_reason(area) is not None, area
+        assert dos_codec.move_reason(area) is not None, area
         assert dos_codec.conversion_reason(area) is None, area
     # The area that left the list, asserted rather than merely absent.
-    assert dos_codec.retarget_reason(30) is None
+    assert dos_codec.move_reason(30) is None
     assert dos_codec.conversion_reason(30) is None
 
 
 def test_a_conversion_still_refuses_an_area_with_no_row():
-    """The one refusal the save cannot answer: there is no `ECL<n>.DAX` to
+    """The one rejection the save cannot answer: there is no `ECL<n>.DAX` to
     lift a script out of and no disk number to write."""
     assert "not an area" in dos_codec.conversion_reason(31)
     assert dos_codec.conversion_reason(0) is None
 
 
-def test_the_retarget_rule_is_unchanged():
-    """A retarget names an area the party has never been in, so the area table
-    really is the only source there is and its six refusals stand."""
-    assert dos_codec.UNSUPPORTED_LOCATION in dos_codec.retarget_reason(TRAINING_HALL)
-    assert dos_codec.UNSUPPORTED_LOCATION in dos_codec.retarget_reason(3)
-    assert dos_codec.retarget_reason(20) is None
+def test_the_move_rule_is_unchanged():
+    """A move names an area the party has never been in, so the area table
+    really is the only source there is and its six rejections stand."""
+    assert dos_codec.UNSUPPORTED_LOCATION in dos_codec.move_reason(TRAINING_HALL)
+    assert dos_codec.UNSUPPORTED_LOCATION in dos_codec.move_reason(3)
+    assert dos_codec.move_reason(20) is None
 
 
 @needs_dos_game

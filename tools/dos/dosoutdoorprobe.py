@@ -77,7 +77,7 @@ def seed(save: bytes, *, area: int, x: int, y: int, script: bytes,
         raise ValueError(f"area {area} is not one of the travel windows")
     keep = sg.wall_triple(save)
     out = bytearray(save)
-    sg.retarget(out, area=area, dax=where.disk,
+    sg.move_to_area(out, area=area, dax=where.disk,
                 wallset=(keep if wallset is None else wallset), script=script)
     sg.put_word(out, sg.AREA, 0)        # $49C5: the overland names no GEO
     sg.put_word(out, sg.INDOORS, 0)     # $49E6 = 0 boots travel mode

@@ -167,7 +167,7 @@ class Plan:
 
 
 def _tables_for(game):
-    """The title's *own* level tables, or a refusal naming the title.
+    """The title's *own* level tables, or a rejection naming the title.
 
     `levels.for_game` falls back to Pool of Radiance for a title it has no
     tables for. That is right for reading a spell name and wrong for writing a
@@ -178,7 +178,7 @@ def _tables_for(game):
     Refusing is the visible half of the same rule `goldbox.spells.capacity`
     follows by returning nothing: an unread table shows as unread.
 
-    UNAPPROVED WORDING: the refusal below is a new string and Donald has not
+    UNAPPROVED WORDING: the rejection below is a new string and Donald has not
     seen it. It reaches a user as the level-up button's reason for saying no.
     """
     tables = levels.for_game(game)
@@ -1100,7 +1100,7 @@ def plan_all(record, game=None, *, rng=None, learn: int | None = None) \
     in turn as it walks rather than all of them before it starts.
 
     Nothing is raised, and this returns `[plan(record, ...)]` unchanged, when
-    no class is ready at all -- the same refusal a single `plan` call gives,
+    no class is ready at all -- the same rejection a single `plan` call gives,
     naming the title or the missing experience, rather than a silent empty
     list a caller could mistake for "trained, nothing changed".
     """

@@ -160,7 +160,7 @@ def test_a_position_and_an_id_are_inverses():
 
 @needs_disks
 def test_nothing_outside_the_menu_gets_an_answer():
-    """The refusal the conversion depends on: no nearest match, no default.
+    """The rejection the conversion depends on: no nearest match, no default.
 
     Zero is the DOS record's own "no position" and is not a menu entry; 15 is
     past the fourteenth head; and `$67` is a real C64 portrait id that the
@@ -229,7 +229,7 @@ def test_a_folder_with_no_game_sides_in_it_says_so(tmp_path):
 def test_a_folder_of_sides_that_carry_no_menu_says_which_it_tried(tmp_path):
     """A directory of real `POOL<n>.D64` that happen not to carry `GEN`.
 
-    Built by copying one side that has no `HEAD*` on it, so the refusal is
+    Built by copying one side that has no `HEAD*` on it, so the rejection is
     reached the way a wrong-but-plausible folder would reach it rather than
     by handing the function a broken image.
     """
@@ -257,7 +257,7 @@ def test_a_curse_folder_is_not_refused_for_lacking_pool_disks():
     rejected as if it were an empty one, because the glob only knew `POOL`.
 
     Curse's own sides are found -- proven by their names appearing in the
-    refusal -- rather than the folder being waved off as having none.
+    rejection -- rather than the folder being waved off as having none.
     """
     with pytest.raises(portraits.PortraitError) as caught:
         portraits.tables_from_disks(_curse_disks_dir())
@@ -367,7 +367,7 @@ def test_silver_blades_ships_no_head_or_body_file_at_all():
 
 @needs_ssb_disks
 def test_a_silver_blades_folder_reports_no_portrait_art_rather_than_a_table():
-    """The player-visible refusal for a title that never had a face to give:
+    """The player-visible rejection for a title that never had a face to give:
     it names the missing art, not a made-up table."""
     with pytest.raises(portraits.PortraitError) as caught:
         portraits.tables_from_disks(_ssb_disks_dir())

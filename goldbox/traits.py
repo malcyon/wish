@@ -715,7 +715,7 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
 # * **50** and **54** were offered "mummy rot, blocking healing" and a bronze
 #   dragon's repulsion; the handlers are a matched pair of fire/cold
 #   vulnerability and resistance.
-# * **56** was offered "wearing a Ring of Invisibility" and the refusal was
+# * **56** was offered "wearing a Ring of Invisibility" and the rejection was
 #   wrong: the handler applies invisibility at the start of combat and the
 #   ring's own template carries 56 at +14. The DREADLORD carries it too.
 # * **60** was offered "unused" and is the iron golem's +3 weapon immunity;

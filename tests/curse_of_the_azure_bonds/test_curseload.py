@@ -94,12 +94,12 @@ def test_the_wait_after_a_disk_goes_in_happens_while_the_machine_is_running(
     answers `74, DRIVE NOT READY` for about a second of its own clock after an
     image is attached -- that is how it says the disk changed -- and Curse
     reads that number straight off the command channel (`LIBRARY $402D`) and
-    turns it into the refusal.
+    turns it into the rejection.
 
     `attach` used to do all its waiting inside a monitor connection, and the
     machine is stopped for as long as one is open, so the wait passed no
     emulated cycles and the drive never settled. Measured on 2026-09-05: the
-    same tool, the same specimen, `$03F1` = 74 and a refusal without the wait,
+    same tool, the same specimen, `$03F1` = 74 and a rejection without the wait,
     `$03F1` = 0 and a party on the screen with it.
     """
     sess = AttachSession(tmp_path, monkeypatch)

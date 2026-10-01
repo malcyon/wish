@@ -272,7 +272,7 @@ def test_the_key_wait_window_is_the_running_titles_own():
     target = machine(CURSE, pc=0x10C2)
     verdict = actions.FastTravel(CURSE).legality(target, Row(3, disk=2))
     assert not verdict
-    # **The refusal used to carry both addresses** and this asserted on them.
+    # **The rejection used to carry both addresses** and this asserted on them.
     # `#306 (The Fast Travel button's own disabled tooltip carries a memory
     # address)` took every address out of what a player reads, so the reason
     # is now the one sentence Donald approved and the numbers went to the log.
@@ -291,7 +291,7 @@ def test_the_key_wait_window_is_the_running_titles_own():
 
 def test_a_title_nobody_has_read_is_refused_rather_than_written_to():
     """Champions of Krynn has a mode flag nobody has found and a `NEWECL`
-    nobody has located, so there is no tail to jump to. The refusal is the
+    nobody has located, so there is no tail to jump to. The rejection is the
     sentence every other action already gives for an unmeasured address."""
     krynn = c64_port.CHAMPIONS_OF_KRYNN
     assert fasttravel.addresses_for(krynn) is None
@@ -356,7 +356,7 @@ def test_a_jump_that_fails_tells_the_player_no_address(caplog):
     still reaches `_log.debug` for whoever is debugging.
 
     `jump` uses a backend's own `set_pc` when it has one and falls through to
-    the monitor otherwise, so a machine with neither is what a refusal looks
+    the monitor otherwise, so a machine with neither is what a rejection looks
     like from here.
     """
     import logging

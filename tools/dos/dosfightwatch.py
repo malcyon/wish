@@ -1080,7 +1080,7 @@ def require_pool(data: bytes, what: str) -> None:
 
 def rewritten_offsets() -> set[int]:
     """Every `SAVGAM` byte `place_like` writes: the script buffer, the header
-    byte, the words `retarget` and `place_like` set, and the square and tail."""
+    byte, the words `move_to_area` and `place_like` set, and the square and tail."""
     container = dos_savegame.SAVE_POOL_OF_RADIANCE
     start, end = dos_savegame.ECL_BUFFER
     out = set(range(start, end)) | {container.head}
@@ -1128,7 +1128,7 @@ def place_like(save: pathlib.Path, donor: bytes, script: bytes) -> dict:
     out[start:end] = bytes(end - start)
     area, dax = dos_savegame.current_area(donor), dos_savegame.dax_number(donor)
     geo, wallset = dos_savegame.geo_block(donor), dos_savegame.wall_triple(donor)
-    dos_savegame.retarget(out, area=area, dax=dax, wallset=wallset,
+    dos_savegame.move_to_area(out, area=area, dax=dax, wallset=wallset,
                           script=script, geo=geo)
     x, y, facing = dos_savegame.position(donor)
     dos_savegame.put_word(out, dos_savegame.INDOORS, 1)

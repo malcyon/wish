@@ -138,7 +138,7 @@ class WinGuest:
         """Put the staged disk at `remote` in DF0 or DF1 of the running game and prove it went in.
 
         The pipe's guest verb checks this holder's claim and emulator before it sends, and
-        `sha256` is the staged file's hash from the manifest. A refusal or an unproved
+        `sha256` is the staged file's hash from the manifest. A rejection or an unproved
         change raises `RouteError` carrying the raw replies as `.receipt`; the caller sends
         no key after one.
         """

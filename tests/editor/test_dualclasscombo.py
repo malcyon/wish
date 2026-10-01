@@ -152,7 +152,7 @@ def test_the_combo_and_a_conversion_agree_one_action_after_the_change():
 
     At fighter 1 the mask carries the new class alone and the old class's
     level slot is zero, so both answers are fighter.  This is the state every
-    other dual-classed record in the corpus is in, on both ports.
+    other dual-classed record in the specimens is in, on both ports.
     """
     from editor.window import _char_class_shown
 

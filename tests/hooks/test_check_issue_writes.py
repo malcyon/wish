@@ -44,7 +44,7 @@ def run(command, monkeypatch, tool_name="Bash"):
     return mod.main()
 
 
-#: Each has a `tools/wishagent.py` verb, so each refusal has somewhere to go.
+#: Each has a `tools/wishagent.py` verb, so each rejection has somewhere to go.
 REFUSED = [
     "gh issue comment 470 --body-file /tmp/b",
     "gh issue create --title x --body-file /tmp/b",
@@ -238,8 +238,8 @@ def test_an_apostrophe_in_a_shell_comment_does_not_hide_the_script_from_the_scan
     assert run(command, monkeypatch) == 0
 
 
-def test_the_refusal_names_the_tool_and_a_runnable_line(capsys, monkeypatch):
-    """A refusal nobody can act on is one that gets worked around."""
+def test_the_rejection_names_the_tool_and_a_runnable_line(capsys, monkeypatch):
+    """A rejection nobody can act on is one that gets worked around."""
     assert run("gh issue comment 470 --body-file /tmp/b", monkeypatch) == 2
     err = capsys.readouterr().err
     assert "tools/wishagent.py" in err
@@ -247,7 +247,7 @@ def test_the_refusal_names_the_tool_and_a_runnable_line(capsys, monkeypatch):
     assert "wish-agent[bot]" in err
 
 
-def test_the_refusal_names_the_edit_verb(capsys, monkeypatch):
+def test_the_rejection_names_the_edit_verb(capsys, monkeypatch):
     """`gh issue edit` is refused, and the message must point somewhere that
     can actually correct a title or a body -- `edit_issue()`'s own verb,
     not one of the other three."""
@@ -256,7 +256,7 @@ def test_the_refusal_names_the_edit_verb(capsys, monkeypatch):
     assert "wishagent.py edit" in err
 
 
-def test_the_refusal_names_the_reopen_verb(capsys, monkeypatch):
+def test_the_rejection_names_the_reopen_verb(capsys, monkeypatch):
     """`gh issue reopen` is refused, and the message must name the verb that
     reopens an issue as the bot."""
     assert run("gh issue reopen 470", monkeypatch) == 2
@@ -377,8 +377,8 @@ def test_the_hook_runs_under_the_system_interpreter():
 NOT_ISSUE_WRITES = {"whoami", "token", "push-token", "git-credential"}
 
 
-def test_the_refusal_names_every_verb_the_tool_has(monkeypatch, capsys):
-    """A verb added to the tool is unreachable from the refusal until it is named there."""
+def test_the_rejection_names_every_verb_the_tool_has(monkeypatch, capsys):
+    """A verb added to the tool is unreachable from the rejection until it is named there."""
     sys.path.insert(0, str(HOOK.parents[2]))
     try:
         import tools.wishagent as wishagent
@@ -392,4 +392,4 @@ def test_the_refusal_names_every_verb_the_tool_has(monkeypatch, capsys):
     assert run("gh issue comment 470 --body-file /tmp/b", monkeypatch) == 2
     err = capsys.readouterr().err
     missing = sorted(v for v in verbs if f"wishagent.py {v}" not in err)
-    assert not missing, f"the refusal does not name {missing}"
+    assert not missing, f"the rejection does not name {missing}"

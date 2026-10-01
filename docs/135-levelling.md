@@ -83,7 +83,7 @@ engines compares the field against a constant -- and it is not an untouched
 creation value either: the rebuild the engine runs when a party loads walks
 every class slot without testing the level, reads entry 0 of each class the
 character lacks (40), and keeps the best, so no character is ever worse than
-THAC0 20 (`docs/224-the-dos-thac0-floor.md`). This paragraph first said no rebuild had
+THAC0 20 (`docs/224-the-dos-thac0-lower-limit.md`). This paragraph first said no rebuild had
 run over the 40; the unguarded loop does.
 
 `#318 (DOS gives a low-level magic-user or thief THAC0 20 where the C64 gives

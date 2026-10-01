@@ -361,7 +361,7 @@ def _dos_roots() -> list[pathlib.Path]:
     """The specimen tree, the archives and the played DOS game directory.
 
     `tools/dos/dostailsweep.py`'s own list, so every DOS sweep on this machine
-    covers the same corpus (#575).
+    covers the same specimens (#575).
     """
     from tools.dos import dostailsweep
     return dostailsweep.dos_record_roots()

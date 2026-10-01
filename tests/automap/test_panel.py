@@ -186,7 +186,7 @@ def test_the_readied_line_gives_way_to_the_badges_and_not_the_other_way(
     try:
         card = win.map.roster.cards[0]
         assert _whole(card.conditions) and _whole(card.quickfight)
-        drawn = card.readied.elided_text()
+        drawn = card.readied.truncated_text()
         assert drawn == card.readied.text() or drawn.endswith("…"), drawn
         metrics = card.readied.fontMetrics()
         assert (metrics.horizontalAdvance(drawn)
@@ -288,7 +288,7 @@ def test_the_name_is_what_gives_way_to_the_button(app, tmp_path, monkeypatch):
         card = win.map.roster.cards[0]
         with_button = card.name.width()
         assert _whole(card.level_up) and _whole(card.klass)
-        drawn = card.name.elided_text()
+        drawn = card.name.truncated_text()
         assert drawn == card.name.text() or drawn.endswith("…") or drawn == "", (
             f"the name drew {drawn!r}, which is neither whole, shortened, nor "
             f"given up entirely")
@@ -334,7 +334,7 @@ def test_a_short_name_is_not_shortened_to_make_room(app, tmp_path,
             assert _whole(card.level_up), (
                 f"+{extra}pt: the Level up button is drawn "
                 f"{_drawn(card.level_up)} of {card.level_up.width()}px")
-            drawn = card.name.elided_text()
+            drawn = card.name.truncated_text()
             room = card.name.contentsRect().width()
             wants = card.name.fontMetrics().horizontalAdvance("BOB")
             assert drawn == "BOB" or room < wants, (
@@ -422,7 +422,7 @@ def test_the_classes_give_way_before_the_button_does(app, tmp_path,
         assert _whole(card.level_up), (
             f"the Level up button drawn {_drawn(card.level_up)} of "
             f"{card.level_up.width()}px -- the classes did not give way")
-        assert card.klass.elided_text().endswith("…"), (
+        assert card.klass.truncated_text().endswith("…"), (
             "the classes were not shortened, so nothing gave way and the "
             "button must have been cut instead")
     finally:

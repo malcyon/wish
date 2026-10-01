@@ -240,7 +240,7 @@ def test_fasttravel_warnings_carry_no_memory_address():
         assert not address.search(note), f"a memory address reaches a player: {note!r}"
 
 
-def test_fasttravel_legality_refusals_carry_no_developer_detail():
+def test_fasttravel_legality_rejections_carry_no_developer_detail():
     """`#306 (The Fast Travel button's own disabled tooltip carries a
     memory address)`: a different tooltip on the same button from #263 --
     `FastTravel.legality`'s `Verdict.reason`, shown as-is by
@@ -383,7 +383,7 @@ def test_a_fasttravel_is_refused_when_dungeon_is_not_resident():
     refused either way, so the assertion is on that rather than on which
     branch fired; `#306 (The Fast Travel button's own disabled tooltip
     carries a memory address)`'s own sweep,
-    `test_fasttravel_legality_refusals_carry_no_developer_detail`, drives
+    `test_fasttravel_legality_rejections_carry_no_developer_detail`, drives
     the DUNGEON-check branch directly."""
     verdict = actions.FastTravel().legality(machine(mode=COMBAT), area(20))
     assert not verdict and "$6E11" not in verdict.reason
@@ -704,10 +704,10 @@ def test_the_row_follows_the_title_when_the_disks_change(app):
                                           "The Slums"]
 
 
-def test_the_button_carries_its_refusal_in_its_tooltip(app):
+def test_the_button_carries_its_rejection_in_its_tooltip(app):
     """`#306`: `$6E11` used to be in this tooltip. It carries the plain
     reason now and the address moved to `_log.debug`, beside the check in
-    `Action.legality` -- `test_fasttravel_legality_refusals_carry_no_
+    `Action.legality` -- `test_fasttravel_legality_rejections_carry_no_
     developer_detail` is the sweep over every branch."""
     row = bar(app, machine(mode=COMBAT))
     assert not row.button.isEnabled()
@@ -1213,7 +1213,7 @@ def test_the_click_never_stops_to_ask_about_the_clamp(app):
     """No dialog in the common case -- Donald had that removed once already.
     The exception is `classes_disqualified`: the clamp takes a class below a
     threshold it had already passed, so a level the character earned goes, and
-    that is worth a question. The refusal must write nothing.
+    that is worth a question. The rejection must write nothing.
 
     `actions.LevelUp.confirmation` builds the question now, not `_level_up`
     itself (`#418 (The level-up confirmation dialog previews one step of a

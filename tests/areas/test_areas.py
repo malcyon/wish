@@ -920,7 +920,7 @@ def test_curse_has_no_area_zero_and_the_table_is_not_missing_it():
 
     No `ECL00` is on any of the six C64 sides and no `ECL` or `GEO` container
     holds a block 0, so a row here would be a place the game does not have.
-    Adding one would move `goldbox.dos_codec`'s refusal from `area_in` to
+    Adding one would move `goldbox.dos_codec`'s rejection from `area_in` to
     `_resident_geo` rather than remove it, and a C64 save naming area 0 sends
     the loader after `GEO00`, which is on none of the sides
     (`#301 (A DOS Curse save standing in area 0 is refused by the import,
@@ -928,7 +928,7 @@ def test_curse_has_no_area_zero_and_the_table_is_not_missing_it():
     `docs/185-a-party-that-has-not-set-out.md`).
 
     This guards against the row rather than a defect: it is here so that the
-    next reader of the refusal message reads the reason before writing one.
+    next reader of the rejection message reads the reason before writing one.
     """
     assert areas.area_in(0, CURSE_OF_THE_AZURE_BONDS) is None
     assert min(a.id for a in areas.AREAS_CURSE) == 0x01

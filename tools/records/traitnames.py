@@ -36,7 +36,7 @@ ungrouped rows rather than folding them away.
 `MON<hex>` template on the title's sides and reports which codes are carried
 and by what. A code landing on exactly the creature its name demands is the
 route most of `NAMES` was built on; a code landing on a creature the name
-cannot describe is a refusal, and a code no record carries is neither.
+cannot describe is a rejection, and a code no record carries is neither.
 
 Neither route names a code that no spell writes and no creature carries.
 `tools/c64/traitquery.py --handlers` is the one that does, by reading the routine
@@ -150,7 +150,7 @@ def monster_blocks(title: str, given: str | None = None):
     """`{file: (name, the ten trait bytes)}` for every `MON<hex>` template.
 
     A `MON*` file is a PRG whose body is a character record at offset 0
-    (`tools/records/fieldsweep.py`'s `monsters` corpus reads the same files), so the
+    (`tools/records/fieldsweep.py`'s `monsters` specimens reads the same files), so the
     trait block is at `TRAIT_SLOTS` in the body with the load address off.
     The first copy of a name wins, since the same template ships on several
     sides.

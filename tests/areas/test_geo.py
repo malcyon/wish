@@ -2,7 +2,7 @@
 
 GEO04 is read off the player's POOL5 at run time -- no game data lives in this
 repository. The live game disks are used only for the
-whole-corpus checks, which skip when they are not mounted.
+all-specimen checks, which skip when they are not mounted.
 """
 
 import pathlib

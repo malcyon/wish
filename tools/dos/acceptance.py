@@ -68,7 +68,7 @@ a source whose title does not match `--title`:
 | `sheet N` | Pool: member N's sheet from the map (`End` to the line, `v`, `Escape`); needs either measured map bar of `POOL_MAP_BARS` back |
 | `display` | Pool, Curse and Silver Blades, in camp: `MAGIC`, `DISPLAY`, every page of the list of spells in effect read as text with the title's own font (`load_font`), turning with `n` while the bar is ` NEXT EXIT`; `members` is each member's name and the effect names under it, and the list must name every member (Pool's page also six name rows); `Return` or `e` back to the Magic bar (`DISPLAY_LEAVE`) and `e` to camp |
 | `cast N SPELL [T]` | Pool, in camp: roster line N highlighted with `End`, `MAGIC`, `CAST`; the caster's spell list read as text with the title's font (`load_font`), its title checked against line N's name, every row required to read, and SPELL (any memorised spell, as the list spells it; a hyphen reads as a space) required on it; the highlight moved with `End` to SPELL's row, reading it after each press, and `CAST`.  A spell that asks `CAST SPELL ON WHOM` gets T picked with `End` and `Return`; one that asks with no T given stops with nothing more pressed, a target prompt on any other bar stops naming it, and a spell that goes off without asking when T was given fails the step after the cast.  The cast is believed only when the list comes back one SPELL row shorter, or, for the caster's only row, when the Magic bar comes back and `CAST` pressed there twice opens nothing, which is what it does with nothing memorised (a list that does open must not hold SPELL); `EXIT` twice to camp.  Any other screen stops the run with nothing more pressed, `LOSE IT` included |
-| `scribe N SPELL` | Pool, Curse and Silver Blades, in camp: roster line N highlighted (`End` in Pool and Curse, `Down` in Silver Blades), `MAGIC`, `SCRIBE`; the scroll list read as text with the title's font (`load_font`), its title checked against line N's name, and SPELL (several words; a hyphen reads as a space) required on it without the `*` of a spell being scribed; the highlight walked onto SPELL's row with `SCRIBE_LIST_DOWN`, reading it after each press, and `SCRIBE` believed only when that row redraws as `*SPELL`.  Each `SCRIBE` is sent only while the row is highlighted and unmarked, the second only when no text row changed after the first, while it was awaited or on a reading taken after; a changed text row without the mark is the game refusing, and the step fails with the words it drew, while a change outside the text (the camp picture, Silver Blades' pointer) is not one.  A refusal drawn and gone between two readings is not seen, so two presses with neither a mark nor a change fail saying it may have been one.  Then the list's `EXIT`, the chosen spells read (SPELL must be listed `*`), their `EXIT`, `YES` at `SCRIBE THESE SPELLS?` and the Magic bar's `EXIT`, each pressed only at the screen it belongs to.  The party stays camped, so a camp `save` keeps the scribe pending and a `rest` finishes it; that rest's `scribe_pending` says a scribe was pending when it began, which any step outside `SCRIBE_KEEPS` forgets.  Driven in Pool of Radiance; Silver Blades' screens and keys are the hand-driven run's, and Curse's are its strings only |
+| `scribe N SPELL` | Pool, Curse and Silver Blades, in camp: roster line N highlighted (`End` in Pool and Curse, `Down` in Silver Blades), `MAGIC`, `SCRIBE`; the scroll list read as text with the title's font (`load_font`), its title checked against line N's name, and SPELL (several words; a hyphen reads as a space) required on it without the `*` of a spell being scribed; the highlight walked onto SPELL's row with `SCRIBE_LIST_DOWN`, reading it after each press, and `SCRIBE` believed only when that row redraws as `*SPELL`.  Each `SCRIBE` is sent only while the row is highlighted and unmarked, the second only when no text row changed after the first, while it was awaited or on a reading taken after; a changed text row without the mark is the game refusing, and the step fails with the words it drew, while a change outside the text (the camp picture, Silver Blades' pointer) is not one.  A rejection drawn and gone between two readings is not seen, so two presses with neither a mark nor a change fail saying it may have been one.  Then the list's `EXIT`, the chosen spells read (SPELL must be listed `*`), their `EXIT`, `YES` at `SCRIBE THESE SPELLS?` and the Magic bar's `EXIT`, each pressed only at the screen it belongs to.  The party stays camped, so a camp `save` keeps the scribe pending and a `rest` finishes it; that rest's `scribe_pending` says a scribe was pending when it began, which any step outside `SCRIBE_KEEPS` forgets.  Driven in Pool of Radiance; Silver Blades' screens and keys are the hand-driven run's, and Curse's are its strings only |
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below); in Curse a message over the continue bar that ends the rest (Tilverton's Royal Guards) gets `Return`, the map bar is required, and the party camps again, logged as `ended_by_message` |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
@@ -1573,7 +1573,7 @@ def class_choices(record: bytes, ds: bytes) -> list[tuple[int, str]]:
 
 
 def status_column(title: str) -> int:
-    """The pixel column `title`'s status token starts at, or a refusal."""
+    """The pixel column `title`'s status token starts at, or a rejection."""
     try:
         return STATUS_COLUMNS[title]
     except KeyError:
@@ -2121,7 +2121,7 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
             if where != "map":
                 raise ValueError(f"fight needs the map: {step.text!r}")
         elif k == "prayer-watch":
-            why = prayer_watch_refusal(title, step.node)
+            why = prayer_watch_rejection(title, step.node)
             if why:
                 raise ValueError(why)
             if where != "map":
@@ -4107,7 +4107,7 @@ class Driver:
         the watch was armed or at the stop.  The emulator is left running
         mid-fight, so only `shot`, `press` and `read` may follow.
         """
-        why = prayer_watch_refusal(self.title.key, node)
+        why = prayer_watch_rejection(self.title.key, node)
         if why:
             raise StepFailed(why)
         if self.where != "map":
@@ -5742,10 +5742,10 @@ class Driver:
         after, since a changed text row without the mark is the game refusing
         (`You already know that spell`, `You can not scribe that spell`),
         whose words the failure carries.  A frame that changes only outside
-        the text (the camp picture, Silver Blades' pointer) is not a refusal.
-        A refusal drawn and gone between two readings is not seen: then the
+        the text (the camp picture, Silver Blades' pointer) is not a rejection.
+        A rejection drawn and gone between two readings is not seen: then the
         second key refuses again, and the failure says that neither a mark
-        nor a change was seen, which may be such a refusal.  Returns the keys
+        nor a change was seen, which may be such a rejection.  Returns the keys
         sent.
         """
         def entry(sc) -> dict | None:
@@ -5785,7 +5785,7 @@ class Driver:
                 raise self.fail(f"{label}-refused", "SCRIBE did not mark the spell and "
                                 f"the screen changed: {' / '.join(changed[0])}")
         raise self.fail(label, "two presses of SCRIBE brought no mark and no change "
-                        "was seen, possibly a refusal drawn and gone between readings")
+                        "was seen, possibly a rejection drawn and gone between readings")
 
     def scribe(self, line: int, spell: str) -> dict:
         """Roster line `line` picks `spell` from his scrolls in camp `MAGIC >
@@ -6519,7 +6519,7 @@ def place_changed(before: dict, after: dict) -> bool:
     return any(a.get(k) != b.get(k) for k in keys)
 
 
-def prayer_watch_refusal(title: str, node: int) -> str | None:
+def prayer_watch_rejection(title: str, node: int) -> str | None:
     """Why `prayer-watch node` cannot run in `title`, or None."""
     nodes = PRAYER_WATCH_NODES.get(title)
     if nodes is None:

@@ -89,7 +89,7 @@ SCREEN_CODES = (
 
 
 class DeviceError(RuntimeError):
-    """The device answered, and what it said was a refusal."""
+    """The device answered, and what it said was a rejection."""
 
 
 # -- where it is -------------------------------------------------------------

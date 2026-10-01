@@ -147,7 +147,7 @@ SAVING, WORLD, DISK, REFUSED = "saving", "world", "disk", "refused"
 
 #: Screens on which the game has stopped asking for what the driver has: a
 #: full disk, a failed write, and the format question whose YES wipes the disk.
-REFUSALS = ("12 CHARACTERS PER DISK MAX", "SAVE FAILED", "FORMAT?")
+REJECTIONS = ("12 CHARACTERS PER DISK MAX", "SAVE FAILED", "FORMAT?")
 
 #: Where each list's labels start.  The class list fills its row from column
 #: 1; the ADD list's names start in column 4 with a star in column 3.
@@ -302,7 +302,7 @@ def recognise(sess, s) -> str | None:
     if s is None:
         return None
     text = s.text()
-    if any(phrase in text for phrase in REFUSALS):
+    if any(phrase in text for phrase in REJECTIONS):
         return REFUSED
     if sess.wanted_disk(s) is not None:
         return DISK
@@ -445,7 +445,7 @@ class Driver:
                before=None, again=None, retry_after: float | None = None):
         """Wait for a screen of one of KINDS, answering a disk prompt on the way.
 
-        A refusal ends the run at once.  An unrecognised screen ends it once it
+        A rejection ends the run at once.  An unrecognised screen ends it once it
         has stood for `unrecognised_seconds`.  `again`, when given, is sent one
         more time if the screen still equals `before` after `retry_after`
         seconds: a key that provably did nothing, and only that.
@@ -463,7 +463,7 @@ class Driver:
             if kind == REFUSED:
                 raise self.lost("the game refused: "
                                 + " / ".join(r.strip() for r in s.rows()
-                                             if any(p in r for p in REFUSALS)),
+                                             if any(p in r for p in REJECTIONS)),
                                 "refused")
             if kind in kinds:
                 self.capture(tag or "-".join(kinds), s)

@@ -132,14 +132,14 @@ def test_the_party_size_and_names_land_at_the_containers_own_offsets(shape):
 
 
 @pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
-def test_a_later_titles_retarget_writes_the_block_and_not_the_flag_page(
+def test_a_later_titles_move_writes_the_block_and_not_the_flag_page(
         shape):
     """`$4AFD` is a quest flag in the later titles (255 in every played
-    Silver Blades container and on its C64 disk), so a retarget that wrote
+    Silver Blades container and on its C64 disk), so a move that wrote
     Pool of Radiance's wallmap there would overwrite one."""
     save = bytearray(shape.size)
     script = b"\x88\x13" + bytes(range(1, 40))
-    sg.retarget(save, area=0x10, dax=1, wallset=(21, sg.EMPTY, sg.EMPTY),
+    sg.move_to_area(save, area=0x10, dax=1, wallset=(21, sg.EMPTY, sg.EMPTY),
                 script=script if shape.script_bytes else None,
                 container=shape)
     assert sg.word(save, sg.WALLMAP) == 0
@@ -153,7 +153,7 @@ def test_a_later_titles_retarget_writes_the_block_and_not_the_flag_page(
         assert save[start:start + 39] == script[2:]
     else:
         with pytest.raises(sg.DosSaveError):
-            sg.retarget(save, area=0x10, dax=1, wallset=(21, 0, 0),
+            sg.move_to_area(save, area=0x10, dax=1, wallset=(21, 0, 0),
                         script=script, container=shape)
 
 
@@ -309,7 +309,7 @@ def test_the_written_container_reads_back_as_the_party_we_put_in(
 
 def test_a_curse_save_stages_its_areas_own_script(tmp_path):
     """The same assertion Pool of Radiance's
-    `test_a_retarget_writes_the_place_and_stages_the_script` makes: the
+    `test_a_move_writes_the_place_and_stages_the_script` makes: the
     buffer is `ECL<n>.DAX` block *area* from byte 2 on, then zero."""
     _game, save0, _report, savgam = _built(CURSE, tmp_path)
     area = sg.current_area(savgam)

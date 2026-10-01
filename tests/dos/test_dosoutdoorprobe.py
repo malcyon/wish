@@ -32,7 +32,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from goldbox import dos_savegame as sg  # noqa: E402
 from tools.dos import dosoutdoorprobe as probe  # noqa: E402
 
-#: A script of the right shape and none of the game's bytes: `retarget` copies
+#: A script of the right shape and none of the game's bytes: `move_to_area` copies
 #: it into the ECL buffer from byte 2 on, so what matters is the header and
 #: the length rather than what it says.
 FAKE_SCRIPT = b"\x00\x02" + bytes(range(256)) * 4

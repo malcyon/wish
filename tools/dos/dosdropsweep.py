@@ -17,7 +17,7 @@ Each column is a **question with an answer per record**, not a byte partition:
 spell ids are in the memorised list", "is the druid slot array non-zero". A
 partition of an 84-byte field says nothing a reader can act on;
 `tools/dos/dostailsweep.py --field` is the tool for that and this one calls its
-finder so the two sweeps are over the same corpus.
+finder so the two sweeps are over the same specimens.
 
 **Provenance caps every grade this produces.** `tools/dos/dostailsweep.py` marks
 what this project wrote and excludes it, which is necessary and not sufficient:

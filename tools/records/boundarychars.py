@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Deliberately extreme Pool of Radiance characters, for `tests/records/test_boundary.py`.
 
-`#516 (Generate boundary characters and check every writer's field widths,
-since no real save reaches a limit and the corpus cannot find a wrong one)`:
+`#516`:
 every conversion test in this project runs against records that exist, which
-is the right corpus for asking whether a conversion is faithful and the wrong
+is the right specimens for asking whether a conversion is faithful and the wrong
 one for asking whether it is *safe* -- a real party rarely sits near a limit,
 and `#508 (A converted magic-user loses memorised spells on the way to DOS,
 because our table says a title has fewer slots than the engine gives it)` is
@@ -211,7 +210,7 @@ def _base(game: str = GAME) -> NeutralCharacter:
 def caster() -> NeutralCharacter:
     """The half-elf cleric 5 / magic-user 6, memorising all 20 spells the
     title's own table gives him -- Pool of Radiance's one ceiling `#508`
-    walked straight into and the corpus never could, because the array
+    walked straight into and the specimens never could, because the array
     fills from its end and nothing on this machine's disks holds more than
     seventeen (WISHHEL, per the plan's own comment on `#516`).
 
@@ -243,7 +242,7 @@ def caster() -> NeutralCharacter:
              "round trip: a C64 source has this recomputed (#547)")
     char.set("spells_memorised", list(range(total, 0, -1)),
              f"{total} distinct ids, descending -- the sum of the capacity "
-             f"above; the corpus reaches 17 (WISHHEL)")
+             f"above; the specimens reach 17 (WISHHEL)")
     char.set("spells_known", list(range(1, 56)),
              "every id the C64 mask has a bit for, 1 to 55 (#509)")
     char.set("innate_effects", _innate_for_race(RACE_HALF_ELF),

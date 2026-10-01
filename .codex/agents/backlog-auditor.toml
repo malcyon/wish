@@ -33,14 +33,14 @@ If a Jira MCP server is ever configured, the same eight checks run unchanged aga
 
 ## Query before reading
 
-**Pull structured fields first and let them tell you where to look.** Do not read bodies until the structure has narrowed the corpus.
+**Pull structured fields first and let them tell you where to look.** Do not read bodies until the structure has narrowed the specimens.
 
 ```sh
 gh issue list --state all --limit 200 \
   --json number,state,labels,createdAt,updatedAt,assignees
 ```
 
-**Report the corpus size and the exact query you used.** A finding from an unstated corpus cannot be reproduced.
+**Report the specimens size and the exact query you used.** A finding from an unstated specimens cannot be reproduced.
 
 ## Eight checks, in yield order
 

@@ -298,8 +298,8 @@ def dos_blocks():
 def test_every_geo_block_in_the_archives_is_read_as_a_map():
     """165 of 165, where the reader used to take 95.
 
-    Treasures of the Savage Frontier was absent from the corpus altogether and
-    Pools of Darkness was a corpus of one, because the reader asked for the
+    Treasures of the Savage Frontier was absent from the specimens altogether and
+    Pools of Darkness was a set of specimens of one, because the reader asked for the
     C64's `00 04` in front and neither title has a C64 release.
     """
     dos_blocks()
@@ -312,7 +312,7 @@ def test_the_only_size_any_block_has_is_the_one_the_engine_checks():
     """`Load3DMap` refuses anything but `0x402` bytes, and nothing is refused.
 
     So the size test drops nothing here, which is the point: it is the
-    engine's own membership test rather than a filter fitted to the corpus.
+    engine's own membership test rather than a filter fitted to the specimens.
     """
     sizes = collections.Counter(len(block) for _t, _n, _i, block
                                 in dos_blocks())

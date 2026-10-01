@@ -1,6 +1,4 @@
-"""Boundary characters through the two Amiga re-cuts: `#516 (Generate boundary
-characters and check every writer's field widths, since no real save reaches a
-limit and the corpus cannot find a wrong one)`, stage 7.
+"""Boundary characters through the two Amiga re-cuts: `#516`, stage 7.
 
 `goldbox.amiga_por.write_por` and `goldbox.amiga_later.write_later` both call
 `goldbox.dos_codec.write` and re-cut what it returns, so this checks the

@@ -1457,7 +1457,7 @@ the savegame repointing.** Slot F was written from slot A's own party, so the
 two are the same six characters -- and a `savgam` that had never been pointed
 at `CHRDATF<n>` would have loaded `CHRDATA<n>` and shown exactly the same
 sheet. This run separates nothing on that half. The evidence for the
-repointing is `test_a_saved_game_moved_to_another_slot_is_retargeted` and the
+repointing is `test_a_saved_game_moved_to_another_slot_is_rewritten` and the
 measurement in 1.9b, where the game's own save to B rewrote all six entries;
 what would settle it in the running game is **two different parties on one
 disk**, which is `#28 (Decode an Amiga saved game, not just a character

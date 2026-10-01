@@ -1324,7 +1324,7 @@ def test_field_83_87s_third_byte_splits_on_who_wrote_the_record():
     share = dos_port.FIELDS_BY_NAME["field_83_87"].offset + 2
     ours = {k: v[share] for k, v in
             _clean_records(CLEAN_PARTY, CLEAN_ROLLS, CLEAN_TRAINED).items()}
-    assert len(ours) >= 26, "the clean corpus shrank; see tools/registry/specimens.py"
+    assert len(ours) >= 26, "the clean specimens shrank; see tools/registry/specimens.py"
     assert set(ours.values()) == {0}, \
         {k: v for k, v in ours.items() if v != 0}
 
@@ -2243,7 +2243,7 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
     assert sg.character_files(savgam) == [f"CHRDATB{n}" for n in range(1, 9)]
     assert sg.party_size(savgam) == 6
     # This C64 party stands in New Phlan and the template's slot B in Sokol
-    # Keep, so the save is retargeted -- with the empty wallset triple the
+    # Keep, so the save is moved -- with the empty wallset triple the
     # C64 carries for New Phlan, which draws it correctly.
     assert sg.geo_block(savgam) == save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] == 0
     assert sg.wall_triple(savgam) == (sg.EMPTY,) * 3
@@ -2470,7 +2470,7 @@ def test_a_conversion_that_cannot_read_its_template_clears_nothing(tmp_path):
     assert len(dos_codec.read_party(tmp_path, "B")) == 6
 
 
-# --- the retarget (#60) ------------------------------------------------------
+# --- the move (#60) ------------------------------------------------------
 
 def _c64_in_the_slums() -> bytes:
     """The six-character fixture, moved into the Slums.
@@ -2503,7 +2503,7 @@ def test_a_party_from_another_area_lands_in_its_own_area(tmp_path):
     """#60, the whole point: the party ends up where it stood.
 
     The template stands in New Phlan and this party in the Slums, and every
-    write of `dos_savegame.RETARGET_WRITES` has to land or the game exits to
+    write of `dos_savegame.MOVE_WRITES` has to land or the game exits to
     DOS with `Unable to load geo in Load3DMap.`
     """
     from goldbox import dos_savegame
@@ -2562,8 +2562,8 @@ def test_savgam_writes_reads_the_resident_geo_from_the_c64_saves_own_word():
     Area 11, the training hall, is where the two words part company: its
     script loads no map at all, so an engine-written save there holds
     `$49C5` = 0 with `$49F2` = 11.  `dos_codec.write_dos_save` cannot reach this --
-    `retarget_reason` refuses area 11 before `savgam_writes` is ever called,
-    which is the refusal the issue says hides the fault -- so this calls
+    `move_reason` refuses area 11 before `savgam_writes` is ever called,
+    which is the rejection the issue says hides the fault -- so this calls
     `savgam_writes` directly, the same way that caller does.
     """
     save0 = bytearray(dos_codec.SAVE0_SIZE)
@@ -2588,11 +2588,11 @@ def test_savgam_writes_reads_the_resident_geo_from_the_c64_saves_own_word():
 ])
 def test_an_area_with_no_legal_answer_is_named_rather_than_guessed(area,
                                                                    wanted):
-    assert wanted in dos_codec.retarget_reason(area)
+    assert wanted in dos_codec.move_reason(area)
 
 
 def test_the_areas_with_a_legal_answer_are_not_refused():
-    """New Phlan among them: the C64 loads no WALLSET there, and a retarget
+    """New Phlan among them: the C64 loads no WALLSET there, and a move
     carrying an empty triple draws it identically -- `p60/run3` (scratch, deleted) Z0.
 
     The three travel windows joined the list in #190, once a move of a DOS
@@ -2601,7 +2601,7 @@ def test_the_areas_with_a_legal_answer_are_not_refused():
     to what an engine-written overland save holds.
     """
     for area in (0, 20, 21, 25, 26, 27):
-        assert dos_codec.retarget_reason(area) is None
+        assert dos_codec.move_reason(area) is None
 
 
 # --- the character who carries nothing (#62) ---------------------------------
@@ -2813,18 +2813,18 @@ def test_new_dos_save_refuses_a_byte_it_did_not_write(tmp_path, monkeypatch):
 @needs_dos_saves
 def test_a_refused_conversion_leaves_the_directory_exactly_as_it_found_it(
         tmp_path, monkeypatch):
-    """A refusal that has already written the file it refuses is not a
-    refusal.
+    """A rejection that has already written the file it refuses is not a
+    rejection.
 
     `new_dos_save` can only know the count at the end, so it used to clear the
     slot, write all seven files, and raise afterwards -- leaving the caller
-    with precisely the save the refusal exists to prevent, and nothing about
+    with precisely the save the rejection exists to prevent, and nothing about
     the directory saying so. The previous party's files were gone too.
     """
     save0, save1 = _fixture_payloads()
     out = tmp_path / "out"
     out.mkdir()
-    # A previous conversion's slot, which a refusal must not disturb either.
+    # A previous conversion's slot, which a rejection must not disturb either.
     keep = out / "CHRDATA1.SAV"
     keep.write_bytes(b"the party that was already here")
     before = sorted(p.name for p in out.iterdir())
@@ -2840,9 +2840,9 @@ def test_a_refused_conversion_leaves_the_directory_exactly_as_it_found_it(
     assert not (out / "SAVGAMA.DAT").exists(), \
         "the saved game it refused was written anyway"
     assert sorted(p.name for p in out.iterdir()) == before, \
-        "the refusal changed the directory"
+        "the rejection changed the directory"
     assert keep.read_bytes() == b"the party that was already here", \
-        "the refusal cleared the slot it refused to replace"
+        "the rejection cleared the slot it refused to replace"
 
 
 @needs_dos_saves

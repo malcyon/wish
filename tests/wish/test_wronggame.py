@@ -264,7 +264,7 @@ def test_a_session_drawing_its_status_line_is_checked_too(ours, theirs,
     assert mapper.title_check is NOT_OURS
 
 
-def test_the_refusal_lifts_on_a_status_line_session_as_well(ours, theirs,
+def test_the_rejection_lifts_on_a_status_line_session_as_well(ours, theirs,
                                                             notes_elsewhere):
     target = playing(theirs)
     mapper = polled(Automapper(target, ours, title=POOL))
@@ -274,7 +274,7 @@ def test_the_refusal_lifts_on_a_status_line_session_as_well(ours, theirs,
     assert mapper.title_check is OURS
 
 
-def test_only_our_own_map_lifts_the_refusal(ours, theirs, notes_elsewhere):
+def test_only_our_own_map_lifts_the_rejection(ours, theirs, notes_elsewhere):
     """Loading the right game into the emulator that is already open fixes the
     problem, and a positive identification is the only thing that says so.
     "Cannot tell" -- a menu, a fight, the title screen -- never lifts it, which
@@ -335,7 +335,7 @@ def ticked(window, times: int = 24):
     return window
 
 
-def test_both_refusals_fire_when_the_game_is_the_wrong_one(app, ours, theirs,
+def test_both_rejections_fire_when_the_game_is_the_wrong_one(app, ours, theirs,
                                                            notes_elsewhere):
     """The acceptance test for #21: the setting says Pool of Radiance, the
     machine is running something else, and Level up and Fast Travel are the two
@@ -362,7 +362,7 @@ def test_every_write_button_goes_with_them(app, ours, theirs, notes_elsewhere):
                    for button in window.actions_bar.buttons.values())
 
 
-def test_the_refusal_is_said_out_loud_in_donalds_words(app, ours, theirs,
+def test_the_rejection_is_stated_in_donalds_words(app, ours, theirs,
                                                        notes_elsewhere):
     window = ticked(window_on(machine(theirs), ours, POOL))
     said = [line.split("  ", 1)[-1] for line in window.messages.lines()]
@@ -560,7 +560,7 @@ def test_every_curse_map_reads_as_a_map():
 @pytest.mark.skipif(silver_dir() is None, reason="needs the Silver Blades disks")
 def test_every_silver_blades_map_reads_as_a_map():
     """Silver Blades is the title that showed `MAP_RECIPROCITY = 0.93` was
-    fitted to a corpus that did not contain it: `GEO40` reciprocates 0.9229 and
+    fitted to a set of specimens that did not contain it: `GEO40` reciprocates 0.9229 and
     was turned away before the wall-art clause ever ran."""
     maps = _maps_on(silver_dir(), ("SILVER*.[dD]64",))
     assert len(maps) == 17, sorted(maps)

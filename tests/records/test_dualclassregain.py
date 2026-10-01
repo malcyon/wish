@@ -56,7 +56,7 @@ class _Stub:
 def test_the_old_class_is_not_back_while_the_new_one_is_below_it():
     """A magic-user 1 with a paladin 5 behind him is still just a magic-user.
 
-    This is every dual-classed DOS record in the corpus but one: the state one
+    This is every dual-classed DOS record in the specimens but one: the state one
     action after `HUMAN CHANGE CLASSES`.
     """
     char = _Stub(level=1, current=[0, 0, 0, 0, 0, 1, 0, 0],

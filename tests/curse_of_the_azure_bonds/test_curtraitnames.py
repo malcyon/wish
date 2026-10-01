@@ -3,9 +3,7 @@ with Pool of Radiance.
 
 `#561 (A Curse of the Azure Bonds character's traits are named from Pool of
 Radiance's table, which disagrees with Curse's own data about eight codes)`
-is where `goldbox/traits.py`'s `NAMES_CURSE` came from, and `#567 (Twelve of
-Curse of the Azure Bonds' own effect codes have no name at all, only a
-refusal of Pool of Radiance's wrong one)` is where the eighteen codes it
+is where `goldbox/traits.py`'s `NAMES_CURSE` came from, and `#567` is where the eighteen codes it
 could only refuse got names, by reading the routine each one dispatches.
 
 Two kinds of test here, and the second is the one that would catch a

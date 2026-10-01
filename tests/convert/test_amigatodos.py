@@ -216,7 +216,7 @@ def test_a_party_of_one_writes_one_record_and_no_others(one_character_adf,
     assert dos_savegame.party_size(savgam) == 1
     # All `PARTY_ENTRIES` names, and the party size is what says how many
     # are read. The two ports part company here:
-    # `goldbox.amiga_savegame.retarget_savegame` fills the Amiga table only
+    # `goldbox.amiga_savegame.move_savegame_to_slot` fills the Amiga table only
     # as far as the party goes, and `goldbox.dos_savegame.put_character_files`
     # writes every table entry regardless. So converting a party of one is
     # not converting a table of one.

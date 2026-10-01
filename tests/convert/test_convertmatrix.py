@@ -98,7 +98,7 @@ def _c64_game_files(game: "c64_save.C64Container") -> "dosimport.GameFiles | Non
     """The icon, `ANIMATE00` and the creation menu off `game`'s own C64
     disks, found through `automap/gamedisks.py` -- the project's own registry
     for a test or tool that needs the player's disks, never a path typed into
-    this file. `None` when this machine has neither -- the same refusal
+    this file. `None` when this machine has neither -- the same rejection
     `editor.window.EditorBinding.game_files_for` gives the running dialog,
     which is what makes the dialog's own pane say `NO_DISKS` rather than
     silently rehearsing with nothing.

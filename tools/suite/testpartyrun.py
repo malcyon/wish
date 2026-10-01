@@ -776,7 +776,7 @@ def walk_route(sess, log: Log, path, facing: int, leg: str, out=None,
                                           replan)
                     return want, None, got
                 if outcome != "ready":
-                    # The refusal stays the reason; the wait says what held.
+                    # The rejection stays the reason; the wait says what held.
                     stop = _stopped(sess, log, out, leg, key, here, there,
                                     outcome, row)
                     bad.update(after=outcome, row24=stop["row24"])

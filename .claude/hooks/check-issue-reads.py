@@ -137,7 +137,7 @@ def _api_targets_issue_text(scoped: list[str]) -> bool:
     return False
 
 
-def _refusal(tokens: list[str], depth: int = 0) -> tuple[str, str] | None:
+def _rejection(tokens: list[str], depth: int = 0) -> tuple[str, str] | None:
     """The `(what, reason)` naming the first banned call found, or `None`.
 
     `reason` is `"web"` for `gh issue view --web` and `"text"` for
@@ -217,7 +217,7 @@ def _refuse_in_script(script: str, depth: int) -> tuple[str, str] | None:
         inner_tokens = shlex.split(shellcommands.commands_only(script), comments=False)
     except ValueError:
         return None
-    return _refusal(inner_tokens, depth=depth + 1)
+    return _rejection(inner_tokens, depth=depth + 1)
 
 
 def _refuse_text(what: str) -> None:
@@ -301,7 +301,7 @@ def main() -> int:
             return 2
         return 0
 
-    found = _refusal(tokens)
+    found = _rejection(tokens)
     if found is None:
         return 0
     what, reason = found

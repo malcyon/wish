@@ -329,7 +329,7 @@ TABLES = {
 #: What the later DOS engines *store* for such a magic-user is 20 all the
 #: same, because every row's entry 0 holds a THAC0 rather than the C64's `$00`
 #: sentinel and the recompute that runs on load reads it for every class the
-#: character has no level in: `docs/224-the-dos-thac0-floor.md`, and `#608`.
+#: character has no level in: `docs/224-the-dos-thac0-lower-limit.md`, and `#608`.
 #: What disagrees in the rows themselves, in both later titles, CONFIRMED from
 #: the shipped bytes and the records below:
 #:
@@ -351,7 +351,7 @@ TABLES = {
 #: against 250, 92 and 84 by best-of-classes; the three Curse records left
 #: over are one regained dual-class record and the two magic-users our own
 #: writer produced. `tools/records/thac0sweep.py dos --title <key>` is the
-#: sweep and `docs/224-the-dos-thac0-floor.md` the reasoning.
+#: sweep and `docs/224-the-dos-thac0-lower-limit.md` the reasoning.
 _DOS_THAC0_POOL = (
     ("magic-user", (20, 20, 20, 20, 20, 19, 19, 19, 19, 19)),
     ("cleric",     (20, 20, 20, 18, 18, 18, 16, 16, 16, 14)),
@@ -366,10 +366,10 @@ _DOS_THAC0_POOL = (
 #: holding zero indexes the row's entry 0, and `dos_engine_thac0` keeps the best
 #: of all of them. Class-number order, the classes each title's table has:
 #: `tools/records/thac0sweep.py`'s `dos_rows` reads the same column out of the
-#: player's own `START.EXE`, and `tests/convert/test_dosthac0floor.py` compares.
+#: player's own `START.EXE`, and `tests/convert/test_dosthac0lowerlimit.py` compares.
 #: Every entry is 20 but the fighter's and the magic-user's in the later two
 #: titles, which is 21 -- so no character is ever worse than THAC0 20, and only
-#: a magic-user of level 1-5 (row value 21) is lifted by it. `docs/224-the-dos-thac0-floor.md`.
+#: a magic-user of level 1-5 (row value 21) is lifted by it. `docs/224-the-dos-thac0-lower-limit.md`.
 _DOS_THAC0_LEVEL0_POOL = (
     ("cleric", 20), ("druid", 20), ("fighter", 20), ("paladin", 20),
     ("ranger", 20), ("magic-user", 20), ("thief", 20), ("monk", 20),
@@ -1357,9 +1357,9 @@ class LevelTables:
 
         None where the title's DOS table is unread or the character has no
         class with a level, so a caller can keep the source's own byte.
-        `docs/224-the-dos-thac0-floor.md` has the listing;
+        `docs/224-the-dos-thac0-lower-limit.md` has the listing;
         `tools/records/thac0sweep.py`'s `dos_engine_thac0` is the rule written
-        out over the player's own tables and `tests/convert/test_dosthac0floor.py`
+        out over the player's own tables and `tests/convert/test_dosthac0lowerlimit.py`
         compares the two.
         """
         best = self.dos_base_thac0(class_levels)

@@ -593,7 +593,7 @@ _DECLARED: Sequence[Field] = (
        "C64 gap; the engines' own record importers copying the word as a "
        "word between titles; and the shipped creature files -- GOBLIN GUARD "
        "10, HOBGOBLIN 20, OGRE 90. A monster's field: zero in every player "
-       "record the corpus holds"),
+       "record the specimens hold"),
     _f(0x0BA, 1, _U8, "experience_per_hit_point", "Experience per hit point",
        _OK,
        "the multiplier `experience_award`'s note describes. GOBLIN GUARD 1, "
@@ -659,7 +659,7 @@ _DECLARED: Sequence[Field] = (
        "side effect. It stops agreeing the moment a character is dropped "
        "and another added, or the party is reordered, because the slot "
        "stays with the character and the file order does not. The largest "
-       "value in the corpus is 7, in the two eighth-slot records of "
+       "value in the specimens is 7, in the two eighth-slot records of "
        "Treasures of the Savage Frontier's shipped save.\n"
        "**So the engine derives it on load and what a conversion writes "
        "here cannot survive**; the writer still writes it, because a value "
@@ -1192,7 +1192,7 @@ POOL_OF_RADIANCE = DosDeltas(
 #: :data:`FIGHTING_CLASSES`: 82 of 82 engine-written records match
 #: `max(fighter, 1)`, and 53 of those are characters with no fighter level at
 #: all holding 1 -- MATHEW and DEMELTINA, paladins 5, and ARGORA and RWELLYN,
-#: rangers 5, among them.  The four records in the corpus that miss are this
+#: rangers 5, among them.  The four records in the specimens that miss are this
 #: project's own output (`WISH-SPEC-curse-234-converted-party` and
 #: `WISH-SPEC-curse-299-built-from-nothing`), which is the defect #527 fixed.
 CURSE_OF_THE_AZURE_BONDS = DosDeltas(

@@ -91,7 +91,7 @@ cost the time.
 **`row <NAME>` is the whole press.** Adding a Return after it starts a second
 training, which is what put a third thousand gold on LEDERA in the first
 session; the second call then says `UNABLE TO ADVANCE` and looks like a
-refusal of the first.
+rejection of the first call.
 
 **The party's records are in memory at `$4F00 + slot * $100`.** `SAVEAZURE`
 loads at `$4B00` and its eight character slots start `$400` in, so an

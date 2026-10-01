@@ -279,7 +279,7 @@ def test_a_dos_fighter_arrives_on_the_c64_with_his_own_fighting_level():
 
 
 def test_a_dos_caster_arrives_on_the_c64_with_no_fighting_level():
-    """The control on the test above, and the half of the corpus that says
+    """The control on the test above, and the half of the specimens that says
     the conversion is not simply copying a number that happens to match.
 
     A cleric, a magic-user or a thief has no fighting level, and the C64
@@ -1311,7 +1311,7 @@ def test_a_writer_narrowed_inventory_still_reaches_losses_through_the_party_save
 
 
 @needs_dos_saves
-def test_a_template_from_another_area_is_retargeted_not_refused():
+def test_a_template_from_another_area_is_moved_not_refused():
     """`$FF` in all twenty-five slots, then slot 2 = the `GEO`, slot 8 = the
     area id and slot 11 = `ANIMATE00`. The arriving script's entry 4 refills
     the rest, CONFIRMED twice in the running game
@@ -1342,7 +1342,7 @@ def test_a_template_from_another_area_is_retargeted_not_refused():
 
 
 @needs_dos_saves
-def test_a_template_already_in_the_area_is_retargeted_like_any_other():
+def test_a_template_already_in_the_area_is_moved_like_any_other():
     """A template standing where the DOS party stands used to keep its own
     cache, on the reasoning that the game wrote it and it names more files
     than a converted save needs. That was the one path in the conversion
@@ -1887,7 +1887,7 @@ def test_only_the_proven_titles_convert(shape):
 def test_the_class_bitmask_is_what_the_level_arrays_imply(shape):
     """`class_bits` against the classes the level arrays actually name.
 
-    The check that bites hardest on a wrong shape, because the two sit at
+    The check that catches best a wrong shape, because the two sit at
     opposite ends of the undecoded middle: move either and they disagree.
     54 of 54 shipped records across the four titles.
     """
@@ -2804,7 +2804,7 @@ def test_a_conversion_with_no_disks_at_all_gives_every_character_his_own_face(
     `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import
     working for all three C64 titles)` had this refuse for one night --
     `NoPortraitTablesError`, a sentence Donald never approved -- and the
-    refusal, the sentence and the exception are all gone.  Watched failing
+    rejection, the sentence and the exception are all gone.  Watched failing
     with the fallback in `to_neutral` taken out: the switch comes out
     `PORTRAIT_OFF` and every id reads zero.
     """

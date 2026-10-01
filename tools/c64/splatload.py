@@ -28,7 +28,7 @@ neither names the drive error.
 `--repair` closes the entry in the **staged copy inside the pool slot**, using
 `tools/curse_of_the_azure_bonds/curseload.py`'s `close_splat()`, and never touches the file it was
 copied from.  Run it both ways over the same disk and the pair is the
-differential: one refusal and one party, with nothing else changed.
+differential: one rejection and one party, with nothing else changed.
 
 The player's disks are read and never written -- `Session.attach` refuses a
 path outside the slot's own directory, and `stage_disks` copies the sides
@@ -83,7 +83,7 @@ def watch(sess, note, budget: float = 120.0) -> tuple[str, str]:
 
     Not `Session.load_save`'s own wait: that watches for `BEGIN ADVENTURING`,
     which on this title is a label the party menu carries **before** the load
-    as well as after it, so a refusal that redraws the menu looks exactly like
+    as well as after it, so a rejection that redraws the menu looks exactly like
     a success.  This one records what each screen said and lets the caller
     decide against `$03F1`.
     """

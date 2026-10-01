@@ -128,7 +128,7 @@ function Scenario-Args {
 }
 
 # The guards have to refuse the neighbour without refusing the holder, and a
-# check that only ever asserts a refusal cannot tell a working lane from a
+# check that only ever asserts a rejection cannot tell a working lane from a
 # bricked one.
 function Scenario-Own {
   "own: the holder can start, drive and stop its own emulator"

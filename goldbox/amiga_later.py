@@ -1700,7 +1700,7 @@ def _later_effect_nodes(
     `neutral.Writer.use`, which refuses a field held below the writer's
     confidence floor and reports one generic line with no id in it, where
     this function reads the field straight off `char` with no floor and can
-    still classify an id as its own refusal.  A refusal here must still
+    still classify an id as its own rejection.  A rejection here must still
     reach the log the way any other drop does (found by the review of
     `8b6888a7`, 2026-09-27, on `#621`).  `write_later` merges the two rather
     than trusting either alone.

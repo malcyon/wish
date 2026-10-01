@@ -121,7 +121,7 @@ def load_curse_save(sess, timeout: float = 240.0) -> bool:
     # **Put the save disk in the drive first.**  Curse reads `SAVEAZURE` off
     # whatever is in unit 8 and answers `UNABLE TO LOAD SAVED GAME.` when that
     # is a game side -- it does not prompt for the save disk here, so nothing
-    # in `handle_prompt` ever fires and the run loops on the refusal.  Six
+    # in `handle_prompt` ever fires and the run loops on the rejection.  Six
     # rounds of that is what the first probe recorded.
     sess.attach(sess.save_disk)
     if not sess.select_row("LOAD SAVED GAME"):

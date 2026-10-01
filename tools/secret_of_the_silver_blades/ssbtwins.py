@@ -22,7 +22,7 @@ than a fact about SSI's party.
 
 It reaches past `goldbox.dos_codec.CONVERTS` **in its own process only**, the same
 way `tests/convert/test_curseconvert.py` did while `#192` was open, so that the
-refusal in `goldbox/dos_codec.py` can stay where it is until a run in the game has
+rejection in `goldbox/dos_codec.py` can stay where it is until a run in the game has
 earned its removal.
 
 Nothing here prints a name, a spell or an item text of the game's: the
@@ -140,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         folder = pathlib.Path(archives) / SHIPPED_DOS
     disks = args.disks or gamedisks.find("secret-of-the-silver-blades")
 
-    # In this process only: the refusal in goldbox/dos_codec.py stands until a run
+    # In this process only: the rejection in goldbox/dos_codec.py stands until a run
     # in the running game has earned its removal (#193 step 3).
     if dos_port.SECRET_OF_THE_SILVER_BLADES not in dos_codec.CONVERTS:
         dos_codec.CONVERTS = dos_codec.CONVERTS + (dos_port.SECRET_OF_THE_SILVER_BLADES,)

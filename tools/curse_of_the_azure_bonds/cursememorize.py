@@ -28,7 +28,7 @@ there is no key that changes which character a camp screen acts on:
         --specimen $WISH_SPECIMENS/coab-dos/WISH-SPEC-curse-551-party-as-converted \
         --who 5                       # the PALADIN; 4 is the RANGER
 
-`--relocate AREA X Y FACING` retargets only the copied `SAVGAM<slot>.DAT`
+`--relocate AREA X Y FACING` moves only the copied `SAVGAM<slot>.DAT`
 before boot.  It accepts a registered indoor Curse area that uses the save's
 resident `GEO`, preserves that map's wallset, stages the target area's own ECL
 block from the game directory, and writes the square with facing 0=N, 1=E,
@@ -128,7 +128,7 @@ def relocate_staged_save(path: pathlib.Path, game: pathlib.Path, *, area: int,
     load the resident `GEO` already named by the save, so its wallset can stay
     the engine-written one.  The target area's own staged script still has to
     replace the old one: the DOS loader executes that buffer on load, and
-    `dos_savegame.retarget` documents the wrong-script load failure.
+    `dos_savegame.move_to_area` documents the wrong-script load failure.
 
     `path` is the copy under the claimed DOSBox slot.  The specimen is never
     opened for writing.
@@ -168,7 +168,7 @@ def relocate_staged_save(path: pathlib.Path, game: pathlib.Path, *, area: int,
     moved = bytearray(original)
     script_start, script_end = shape.script_buffer
     moved[script_start:script_end] = bytes(script_end - script_start)
-    dos_savegame.retarget(moved, area=area, dax=dax, geo=source_geo,
+    dos_savegame.move_to_area(moved, area=area, dax=dax, geo=source_geo,
                           wallset=wallset, script=script, container=shape)
     dos_savegame.put_word(moved, dos_savegame.INDOORS, 1, shape)
     dos_savegame.put_position(moved, x, y, facing, shape)
@@ -570,7 +570,7 @@ def main(argv: list[str] | None = None) -> int:
                          "5 is the PALADIN of the #551 party, 4 the RANGER")
     ap.add_argument("--relocate", nargs=4, type=lambda value: int(value, 0),
                     metavar=("AREA", "X", "Y", "FACING"),
-                    help="retarget only the copied slot save before boot; "
+                    help="move only the copied slot save before boot; "
                          "the registered indoor area must use its resident GEO")
     ap.add_argument("--begin", default="b",
                     help="keys from the loaded party menu to the map")

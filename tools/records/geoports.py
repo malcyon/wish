@@ -67,7 +67,7 @@ from tools.records.geoplausible import amiga_maps, c64_maps  # noqa: E402
 #: The three titles this project maps, and the directory name the DOS release
 #: installs each under. `--all-dos-titles` widens the DOS side to whatever else
 #: is in the archives -- Gateway, Treasures and Pools of Darkness ship
-#: `GEO*.DAX` too -- which is a bigger corpus for `closest` and nothing the
+#: `GEO*.DAX` too -- which is a bigger set of specimens for `closest` and nothing the
 #: automapper would ever hold.
 TITLES = (("Pool of Radiance", "POOLRAD"),
           ("Curse", "CURSE"),
@@ -353,7 +353,7 @@ def closest_within_sets(corpora: dict[str, dict[str, dict[str, bytes]]]
     A candidate set is one title on one port, because that is the only shape
     `ResidentGeo.verdict` is ever handed: the automapper's maps come from
     `automap.maps.load_maps`, which globs a single title's disks. Taking the
-    minimum over the whole corpus instead would mix in cross-title pairs the
+    minimum over all the specimens instead would mix in cross-title pairs the
     tolerance can never be asked to tell apart.
 
     A set with fewer than two maps contributes nothing rather than a zero.
@@ -384,7 +384,7 @@ def report_closest(out: io.TextIOBase, show: int = 10,
       title's disks. This is the bound the constant is set from, and the rule
       is **under half of it**, because two maps both within `NEAR_ENOUGH` of
       one block are within twice that of each other;
-    * **two different areas anywhere in the corpus**, including across titles
+    * **two different areas anywhere in the specimens**, including across titles
       -- looser, and what the constant's comment used to quote. It bounds the
       other half of `verdict`: a block that is somebody *else's* Gold Box map
       has to be further than the tolerance from every one of ours before
@@ -393,7 +393,7 @@ def report_closest(out: io.TextIOBase, show: int = 10,
     Non-zero when either bound is violated, so the re-derivation is a command
     rather than a reading (#447).
 
-    **`--all-dos-titles` widens the corpus past what the automapper can hold,
+    **`--all-dos-titles` widens the specimens past what the automapper can hold,
     and the exit code does not follow it there.** Gateway, Treasures and Pools
     of Darkness have no entry in `goldbox.c64_port`, so `load_maps` can never glob
     one of their disks and `verdict` can never be handed their maps as a
@@ -418,8 +418,8 @@ def report_closest(out: io.TextIOBase, show: int = 10,
           f"{len(distinct)} of them distinct", file=out)
 
     # Every pairing of two ports' copies of one area that they disagree about,
-    # over the whole corpus, and then every pairing of two *different places*
-    # over the distinct blocks only -- listing the second over the raw corpus
+    # over all the specimens, and then every pairing of two *different places*
+    # over the distinct blocks only -- listing the second over the raw specimens
     # instead prints the same underlying pair once per port that ships it.
     same_place = sorted((_distance(ra, rb), la, lb)
                         for (la, ta, na, ra), (lb, tb, nb, rb)

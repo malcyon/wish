@@ -1,4 +1,4 @@
-"""`goldbox/c64_save.py`'s merged `C64Container`, and the refusal it inherited.
+"""`goldbox/c64_save.py`'s merged `C64Container`, and the rejection it inherited.
 
 `#470 (Give the project a neutral title beside its neutral character record,
 with one port per platform a title shipped on)`'s stage 7 folded
@@ -10,10 +10,10 @@ three of them carry a payload map nobody has measured.
 payload map answering with Pool of Radiance's offsets instead of refusing,
 which is `#460 (goldbox/games.py has no Pools of Darkness entry, so every
 lookup answers with Pool of Radiance's tables for it)` one class over.  Before
-the merge the refusal was free, because Champions of Krynn simply was not a
+the merge the rejection was free, because Champions of Krynn simply was not a
 `Container` and `container_for` had nothing to hand back.  Now it is a
 `C64Container` with plausible defaults in every payload-map field, so the
-refusal is a line of code and this file is what holds it there.
+rejection is a line of code and this file is what holds it there.
 
 What the rest of the file pins is the duplication the merge did **not** end:
 the module constants and the field defaults still say `0x400` twice, and
@@ -98,7 +98,7 @@ def test_a_game_descriptor_is_still_hashable():
     assert len(set(c64_port.GAMES)) == len(c64_port.GAMES)
 
 
-# --- the refusal ------------------------------------------------------------
+# --- the rejection ------------------------------------------------------------
 
 @pytest.mark.parametrize("key", UNMEASURED)
 def test_an_unmeasured_title_is_refused_by_key_as_it_always_was(key):

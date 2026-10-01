@@ -147,7 +147,7 @@ def test_a_party_that_has_never_set_out_is_placed_at_the_start_of_the_story():
     """`set_out` is false and `area`/`x`/`y`/`facing` are already New Phlan's
     arrival square, `areas.STARTS`'s own answer -- not the initialiser's
     `15,1` the raw file happens to hold at the same offset by coincidence,
-    and not a refusal (`#301`, `#326`)."""
+    and not a rejection (`#301`, `#326`)."""
     state = world_state.from_dos(_fresh_savgam())
     assert state.set_out is False
     assert state.area == 0
@@ -279,7 +279,7 @@ def test_pod_from_dos_refuses_a_title_with_no_byte_array():
 
 
 def test_the_shared_world_state_still_refuses_a_pools_of_darkness_save():
-    """`WorldState` has no home for a byte-wide array, and the refusal is
+    """`WorldState` has no home for a byte-wide array, and the rejection is
     correct: widening it to take this title is the wrong repair, and
     `pod_from_dos` is the reader for these files."""
     with pytest.raises(dos_savegame.DosSaveError,

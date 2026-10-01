@@ -2405,7 +2405,7 @@ def test_a_long_readied_list_is_shortened_to_the_card_and_kept_whole(app):
     card.show_character(_character(readied=items))
     card.readied.resize(card.readied.sizeHint().width() // 3,
                         card.readied.sizeHint().height())
-    drawn = card.readied.elided_text()
+    drawn = card.readied.truncated_text()
     assert drawn.endswith("…")
     assert drawn != card.readied.text()
     metrics = card.readied.fontMetrics()
@@ -2894,7 +2894,7 @@ def test_a_fight_disables_what_a_fight_forbids(app):
     # **The tooltip said `$6E11 is 2` until 2026-09-07**, which is the address
     # the mode flag lives at and means nothing to a player hovering a greyed
     # button.  `#306 (The Fast Travel button's own disabled tooltip carries a
-    # memory address)` took it out of the shared refusal every action uses, so
+    # memory address)` took it out of the shared rejection every action uses, so
     # what a person now reads is the situation they are in.  The address went
     # to `_log.debug`, where whoever is debugging can still get it.
     assert not bar.buttons["heal"].isEnabled()

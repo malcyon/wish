@@ -27,7 +27,7 @@ You create reverse-engineering plans for other subagents to execute. You do not 
   bounded boot/stop budget, player actions and a control, expected preserved
   behavior, screenshots and game-written save checkpoints, and evidence
   preservation. Include load, walking the party and checking the sheet where
-  relevant. Identify driver work before assigning an emulator run; a refusal
+  relevant. Identify driver work before assigning an emulator run; a rejection
   or byte-only test does not prove the conversion fixed.
 
 ## Confidence and Delegation

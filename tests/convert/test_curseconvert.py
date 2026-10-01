@@ -145,7 +145,7 @@ def test_a_curse_caster_keeps_more_than_sixteen_memorised_spells():
     Pool of Radiance's width and nobody's field width.
 
     Twenty is not a number any Curse record on this machine reaches -- the
-    widest list anybody has is seven, because the corpus is capped at level 5
+    widest list anybody has is seven, because the specimens are capped at level 5
     -- so this is the synthetic case that would otherwise wait for a cleric 7
     with wisdom 18.
     """
@@ -248,7 +248,7 @@ def test_the_conversion_no_longer_refuses_curse():
     never have (`#194 (Import and export a Pools of Darkness save between
     DOS and the Amiga)`). So **every DOS shape this project reads now
     converts**, and what this asserts is that -- with a title the DOS reader
-    has no shape for at all standing in for the refusal."""
+    has no shape for at all standing in for the rejection."""
     assert CURSE in dos_codec.CONVERTS
     dos_codec.to_neutral(dos_codec.DosCharacter(curse_record()))     # does not raise
     assert [s.key for s in dos_codec.CONVERTS] == \
@@ -430,7 +430,7 @@ def test_a_curse_conversion_needs_no_creation_tables():
     """`#131`: `new_save` refuses a conversion without the creation menu's
     tables wherever the destination draws a sheet portrait, and Curse draws
     none (#300, `draws_sheet_portrait`), so `portraits=None` converts here
-    exactly as before -- the control for the Pool of Radiance refusal in
+    exactly as before -- the control for the Pool of Radiance rejection in
     `tests/convert/test_dosconvert.py`."""
     from editor.dosimport import GameFiles, rehearse
 

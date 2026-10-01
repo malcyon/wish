@@ -107,7 +107,7 @@ slot or VM lane nobody is using.
 3. Never end a turn while any task ID you started, or were handed, is still
    running.
 4. A bare `sleep N` with N of 30 or more is refused by the harness, and the
-   refusal suggests `Monitor` or `run_in_background: true` — neither is useful
+   rejection suggests `Monitor` or `run_in_background: true` — neither is useful
    here: subagents have no `Monitor` tool, and `run_in_background` followed by
    ending the turn is the failure itself, not an escape from it. Wait with an
    `until <condition>; do sleep 5; done` loop with `timeout: 600000`. A WinUAE

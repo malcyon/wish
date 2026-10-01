@@ -1,7 +1,7 @@
 """`tools/amiga/amigadrivecheck.py`, the floppy-change probe, against a fake guest and pipe.
 
 Nothing here starts an emulator: the guest and the pipe are stand-ins that keep two
-drives, so what is tested is the probe's own step order, its controls, its refusals
+drives, so what is tested is the probe's own step order, its controls, its rejections
 before the lane is touched, and its cleanup. What the real binary answers is what
 the probe measures when it is run.
 """
@@ -477,7 +477,7 @@ def test_winguest_insert_refuses_a_disk_it_did_not_stage_before_anything_is_sent
     assert ran == []
 
 
-class LateRefusal(FakePipe):
+class LateRejection(FakePipe):
     """The missing-file control is answered by the real verb reader with a canned output."""
 
     output = "fail C:\\x\\probeZ.adf does not exist\r\n<<end>>\r\n"
@@ -490,15 +490,15 @@ class LateRefusal(FakePipe):
         return super().refused_verb(verb, holder, args)
 
 
-def test_a_refusal_the_guest_makes_after_the_pipe_is_open_passes_the_control(tmp_path, clock, proof):
-    _, result = run(tmp_path, clock, proof, pipe=LateRefusal)
+def test_a_rejection_the_guest_makes_after_the_pipe_is_open_passes_the_control(tmp_path, clock, proof):
+    _, result = run(tmp_path, clock, proof, pipe=LateRejection)
     step = next(s for s in result["steps"] if s["step"] == "control: a file never staged, refused in the guest")
-    assert step["verdict"] == "pass" and "does not exist" in step["refusal"]
+    assert step["verdict"] == "pass" and "does not exist" in step["rejection"]
     assert result["passed"] is True
 
 
 def test_a_guest_that_answers_ok_to_a_control_fails_it_and_records_what_it_said(tmp_path, clock, proof):
-    class Accepting(LateRefusal):
+    class Accepting(LateRejection):
         output = "ok inserted drive=0 polls=1\r\n<<end>>\r\n"
 
     _, result = run(tmp_path, clock, proof, pipe=Accepting)
@@ -535,8 +535,8 @@ def test_the_wrong_holder_and_other_path_controls_pass_through_the_real_verb_rea
     _, result = run(tmp_path, clock, proof, pipe=RealVerbPipe)
     assert result["passed"] is True
     by = {s["step"]: s for s in result["steps"]}
-    assert by["control: another holder's claim"]["refusal"].startswith("fail the WinUAE lane is claimed by")
-    assert "is not staged for" in by["control: another holder's path, refused in the guest"]["refusal"]
+    assert by["control: another holder's claim"]["rejection"].startswith("fail the WinUAE lane is claimed by")
+    assert "is not staged for" in by["control: another holder's path, refused in the guest"]["rejection"]
 
 
 def test_a_transport_error_that_says_does_not_exist_does_not_pass_the_never_staged_control(tmp_path, clock, proof):
@@ -552,7 +552,7 @@ def test_a_transport_error_that_says_does_not_exist_does_not_pass_the_never_stag
     assert result["steps"][-2]["verdict"] == "fail"
 
 
-def test_a_powershell_error_after_a_failed_line_is_not_a_refusal_unless_the_fail_line_comes_first():
+def test_a_powershell_error_after_a_failed_line_is_not_a_rejection_unless_the_fail_line_comes_first():
     real = amiga.WinuaePipe(runner=lambda a, t: (_ for _ in ()).throw(
         amiga.GuestError("winvm ssh failed: Exception: fail x does not exist")))
     with pytest.raises(amiga.FloppyError) as caught:

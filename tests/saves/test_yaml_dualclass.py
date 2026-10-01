@@ -8,7 +8,7 @@ pair to decide whether a character may ever change class again, and gives no
 message a player would see if the pair disagrees with what actually happened
 in the game -- so `goldbox/yaml_io.py`'s importer refuses a value it cannot
 trust rather than writing it. This file is the regression test for the export
-and for each of the importer's refusals.
+and for each of the importer's rejections.
 
 Specimen-backed: `WISH-SPEC-curse-dual-classed` is PHILIPPE, a Curse of the
 Azure Bonds magic-user 6 who dual-classed into fighter at the game's own
