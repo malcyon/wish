@@ -340,6 +340,14 @@ def test_a_place_both_scripts_handle_is_refused():
 
 # -- the player's disks -------------------------------------------------------
 
+#: The fourteen places, in `$4C9B` order, as each owning script prints them.
+CURSE_PLACES = [
+    "TILVERTON", "SHADOWDALE", "ASHABENFORD", "DAGGER FALLS", "STANDING STONES",
+    "VOONLAR", "PHLAN", "TESHWAVE", "ESSEMBRA", "HAP", "YULASH", "HILLSFAR",
+    "ZHENTIL KEEP", "MYTH DRANNOR",
+]
+
+
 def _payload(name):
     return split_load_address(gamedata.curse_file(name))[1]
 
@@ -354,6 +362,7 @@ def curse_world():
 def test_curse_has_fourteen_places_and_twenty_roads(curse_world):
     assert len(curse_world.places) == 14
     assert len(curse_world.roads) == 20
+    assert [p.name for p in curse_world.places] == CURSE_PLACES
     assert {p.script for p in curse_world.places} == {0x50, 0x51}
     for place in curse_world.places:
         assert place.name and place.name.isupper()
@@ -384,6 +393,7 @@ def test_curse_tilverton_to_dagger_falls_is_the_one_road_listed_one_way(curse_wo
     rows = curse_world.places[3].rows
     assert len(rows) == len(targets) == 2
     assert rows == tuple(curse_world.places[t].name for t in targets)
+    assert rows == ("SHADOWDALE", "TESHWAVE")
 
 
 @gamedata.needs_curse_disks
