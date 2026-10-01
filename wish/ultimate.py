@@ -239,7 +239,7 @@ def present(timeout: float = 0.5) -> bool:
 
 
 ULTIMATE = Backend(
-    name="Ultimate",
+    name="C64 Ultimate",
     probe=present,
     connect=UltimateTarget,
     setup_hint=("set $POR_ULTIMATE to the device's host name (firmware 3.11+ "

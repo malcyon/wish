@@ -41,8 +41,7 @@ unset it is absent in the same way: no entry, no probe, no import of
 the fork needs.
 
 **The WinUAE backend is behind `WISH_EXPERIMENTAL_AMIGA_WINUAE`** and is absent
-the same way, and it also needs `wish.winuae.AMIGA_WINUAE`, the row whose name
-and setup hint are not written yet.
+the same way, with `wish.winuae.AMIGA_WINUAE` as its row.
 """
 
 from __future__ import annotations
@@ -127,7 +126,7 @@ class Backend:
 
 
 VICE = Backend(
-    name="VICE",
+    name="VICE (C64)",
     probe=monitor_listening,
     connect=ViceTarget,
     setup_hint=("start VICE with its binary monitor enabled -- "
@@ -198,10 +197,9 @@ def _amiga_fsuae() -> list[Backend]:
 
 def _amiga_winuae() -> list[Backend]:
     """WinUAE on this machine, if `WISH_EXPERIMENTAL_AMIGA_WINUAE` says so and
-    `wish.winuae` defines its row.
+    its module imports.
 
-    Built like `_amiga_fsuae()`. Until the row's name and setup hint are
-    approved, `AMIGA_WINUAE` does not exist and this offers nothing.
+    Built like `_amiga_fsuae()`.
     """
     if not amiga_winuae_enabled():
         return []
@@ -214,8 +212,9 @@ def _amiga_winuae() -> list[Backend]:
 
 
 def backends() -> list[Backend]:
-    """Every backend, in the order they are tried."""
-    return [VICE] + _ultimate() + _amiga_fsuae() + _amiga_winuae()
+    """Every backend, in the order they are tried: each platform's rows
+    together, the C64 ones first."""
+    return [VICE] + _ultimate() + _amiga_winuae() + _amiga_fsuae()
 
 
 def available() -> list[Backend]:
@@ -223,17 +222,38 @@ def available() -> list[Backend]:
     return [b for b in backends() if b.present()]
 
 
+#: Names a backend was saved under before it carried its machine, by lower-cased
+#: old name. The chosen backend is saved by name in `Settings.backend`, so a
+#: player's choice made under an old name has to keep naming the same backend.
+RENAMED = {
+    "vice": "VICE (C64)",
+    "ultimate": "C64 Ultimate",
+    "amiga (fs-uae)": "FS-UAE (Amiga)",
+}
+
+
+def current_name(saved: str | None) -> str:
+    """The name a backend is called now, for a name saved under an older one.
+
+    Any other name, including an empty one, comes back unchanged.
+    """
+    saved = saved or ""
+    return RENAMED.get(saved.strip().lower(), saved)
+
+
 def find(preferred: str | None = None) -> Backend | None:
     """The backend to attach to, or None if nothing answers.
 
     `preferred` settles a tie for somebody who has both a running emulator and
     a device on the desk; it is a name, matched case-insensitively, and it is
-    ignored if that backend is not answering.
+    ignored if that backend is not answering. A name saved before the
+    backends were renamed still finds its backend (`current_name`).
     """
     here = available()
     if not here:
         return None
     if preferred:
+        preferred = current_name(preferred)
         for b in here:
             if b.name.lower() == preferred.lower():
                 return b

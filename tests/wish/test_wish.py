@@ -198,9 +198,33 @@ def fake_backend(name="Fake", present=True, target=None, **kw):
 
 
 def test_vice_is_a_backend_and_carries_its_own_hint():
-    assert bk.VICE.name == "VICE"
+    assert bk.VICE.name == "VICE (C64)"
     assert "binary monitor" in bk.VICE.setup_hint
     assert bk.VICE.default_interval_ms == 200
+
+
+@pytest.mark.parametrize("saved, now", [
+    ("VICE", "VICE (C64)"),
+    ("vice", "VICE (C64)"),
+    ("Amiga (FS-UAE)", "FS-UAE (Amiga)"),
+    ("Ultimate", "C64 Ultimate"),
+    ("ultimate", "C64 Ultimate"),
+    ("C64 Ultimate", "C64 Ultimate"),
+    ("VICE (C64)", "VICE (C64)"),
+    ("", ""),
+    (None, ""),
+])
+def test_a_name_saved_before_the_rename_names_the_same_backend(saved, now):
+    assert bk.current_name(saved) == now
+
+
+def test_find_honours_a_preference_saved_under_the_old_name(monkeypatch):
+    both = [fake_backend("VICE (C64)"), fake_backend("FS-UAE (Amiga)")]
+    monkeypatch.setattr(bk, "backends", lambda: both)
+    assert bk.find("Amiga (FS-UAE)").name == "FS-UAE (Amiga)"
+    assert bk.find("VICE").name == "VICE (C64)"
+    both[1] = fake_backend("C64 Ultimate")
+    assert bk.find("Ultimate").name == "C64 Ultimate"
 
 
 # --- the Ultimate backend's flag, #375 ---------------------------------
@@ -211,7 +235,7 @@ def test_the_ultimate_is_absent_by_default(monkeypatch):
     unable to connect."""
     monkeypatch.delenv(bk.ULTIMATE_ENV, raising=False)
     names = [b.name for b in bk.backends()]
-    assert names == ["VICE"]
+    assert names == ["VICE (C64)"]
     assert bk.ultimate_enabled() is False
 
 
@@ -219,7 +243,7 @@ def test_the_ultimate_is_absent_by_default(monkeypatch):
 def test_a_forgotten_setting_does_not_turn_the_ultimate_on(monkeypatch, value):
     monkeypatch.setenv(bk.ULTIMATE_ENV, value)
     assert bk.ultimate_enabled() is False
-    assert [b.name for b in bk.backends()] == ["VICE"]
+    assert [b.name for b in bk.backends()] == ["VICE (C64)"]
 
 
 @pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
@@ -227,7 +251,7 @@ def test_the_ultimate_appears_when_the_flag_is_set(monkeypatch, value):
     monkeypatch.setenv(bk.ULTIMATE_ENV, value)
     assert bk.ultimate_enabled() is True
     names = [b.name for b in bk.backends()]
-    assert names == ["VICE", "Ultimate"]
+    assert names == ["VICE (C64)", "C64 Ultimate"]
 
 
 def test_a_backend_that_is_not_there_is_not_offered(monkeypatch):
@@ -246,11 +270,11 @@ def test_a_backend_whose_probe_throws_is_not_offered(monkeypatch):
 
 
 def test_the_preference_settles_a_tie(monkeypatch):
-    both = [fake_backend("VICE"), fake_backend("Ultimate")]
+    both = [fake_backend("VICE (C64)"), fake_backend("C64 Ultimate")]
     monkeypatch.setattr(bk, "backends", lambda: both)
-    assert bk.find().name == "VICE"                    # first by default
-    assert bk.find("ultimate").name == "Ultimate"      # named, case-insensitive
-    assert bk.find("nonesuch").name == "VICE"          # absent: ignored
+    assert bk.find().name == "VICE (C64)"                # first by default
+    assert bk.find("c64 ultimate").name == "C64 Ultimate"  # case-insensitive
+    assert bk.find("nonesuch").name == "VICE (C64)"      # absent: ignored
 
 
 # --- the session ------------------------------------------------------------

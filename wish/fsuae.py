@@ -337,7 +337,7 @@ def connect(port: int | None = None, opener=None,
 #: False and the same 200 ms as VICE. The port is the fork's default and stays
 #: out of the hint.
 AMIGA_FSUAE = Backend(
-    name="Amiga (FS-UAE)",
+    name="FS-UAE (Amiga)",
     probe=listening,
     connect=connect,
     setup_hint="Run the game in grahambates' fork of FS-UAE, not stock FS-UAE.",
