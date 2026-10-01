@@ -1,7 +1,14 @@
-"""A status line the game has already moved past is not believed."""
+"""A status line that disagrees with the engine at an area change is the old area's.
+
+Curse redraws its status line a step late, so on the poll where the new
+area is first named the line can still read the old area's square. The
+engine's square is taken instead, and that exact line is refused until the
+game redraws it. Nothing is held back after that poll: a later disagreement
+between the line and the engine is an ordinary jump.
+"""
 from support.stalestatus import curse_target, walk_into_the_sewers
 
-from automap.state import Automapper, Exploration
+from automap.state import Automapper, AutomapState
 from goldbox import c64_port
 from goldbox.geo import (
     ATTRIBUTES,
@@ -57,30 +64,80 @@ def go(target, mapper, triple, geo=None, polls=1):
         mapper.poll()
 
 
-def test_an_adjacent_first_step_confirms_the_arrival(tmp_path, monkeypatch):
+def stand_then_load_again(target, mapper, polls=4):
+    """The engine moves on to (9,9) while `$0400` still holds the same map."""
+    go(target, mapper, (9, 9, 2), polls=polls)
+
+
+def test_a_stationary_arrival_does_not_leak_the_next_load(tmp_path, monkeypatch):
     target, mapper, _ = arrive_in_the_sewers((0, 0), tmp_path, monkeypatch)
-    go(target, mapper, (0, 1, 2))
-    go(target, mapper, (7, 7, 2), polls=3)
-    assert (mapper.state.x, mapper.state.y) == (0, 1)
+    go(target, mapper, (0, 0, 2), polls=2)
+    stand_then_load_again(target, mapper)
+    state = mapper.state
+    assert (state.x, state.y) == (0, 0)
+    assert (9, 9) not in state.exploration
+    assert (0, 0) in state.exploration
+
+
+def test_a_revisit_keeps_what_was_explored_before(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    before = AutomapState(title=CURSE.title, area="GEO03")
+    before.exploration.seen = {(10, 3), (11, 3), (5, 12)}
+    before.save_notes()
+    target, mapper, _ = arrive_in_the_sewers((0, 0), tmp_path, monkeypatch)
+    go(target, mapper, (0, 0, 2), polls=2)
+    stand_then_load_again(target, mapper)
+    state = mapper.state
+    assert before.exploration.seen <= state.exploration.seen
+    assert (0, 0) in state.exploration
+
+
+def test_a_confirmed_status_jump_after_an_arrival_keeps_it_explored(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    town, sewers = synthetic_map(1), synthetic_map(2)
+    target = curse_target("S 8:37 14,15", (14, 15, 2), town)
+    mapper = Automapper(target, {"GEO01": town, "GEO03": sewers},
+                        area="GEO01", title=CURSE.title)
+    for _ in range(mapper.RESIDENT_EVERY - 1):
+        mapper.poll()
+    target.memory.update(curse_target("S 8:37 0,0", (0, 0, 2), sewers).memory)
+    mapper.poll()
+    assert mapper.state.area == "GEO03"
+    assert (mapper.state.x, mapper.state.y) == (0, 0)
+    target.memory.update(curse_target("S 8:38 9,9", (9, 9, 2), sewers).memory)
+    mapper.poll()
+    mapper.poll()
+    assert (mapper.state.x, mapper.state.y) == (9, 9)
     assert (0, 0) in mapper.state.exploration
 
 
-def test_an_overturned_arrival_leaves_no_trace(tmp_path, monkeypatch):
-    target, mapper, sewers = arrive_in_the_sewers((14, 15), tmp_path, monkeypatch)
-    assert (14, 15) in mapper.state.exploration
-    go(target, mapper, (0, 0, 2), polls=2)
-    state = mapper.state
-    assert (state.x, state.y) == (0, 0)
-    expected = Exploration()
-    expected.visit(0, 0, sewers)
-    assert state.exploration.seen == expected.seen
-    assert state.exploration.trail == [(0, 0)]
-
-
-def test_a_fresh_connection_is_not_provisional(tmp_path, monkeypatch):
-    target, mapper, sewers = arrive_in_the_sewers((0, 0), tmp_path, monkeypatch)
-    again = curse_target("S 8:37", (0, 0, 2), sewers)
-    mapper.target = again
+def sewers_entry_with_a_stale_line(tmp_path, monkeypatch):
+    """The area-change poll of `walk_into_the_sewers`, and no more."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    town, sewers = synthetic_map(1), synthetic_map(2)
+    target = curse_target("S 8:37 14,15", (14, 15, 2), town)
+    mapper = Automapper(target, {"GEO01": town, "GEO03": sewers},
+                        area="GEO01", title=CURSE.title)
+    for _ in range(mapper.RESIDENT_EVERY - 1):
+        mapper.poll()
+    target.memory.update(curse_target("S 8:37 14,15", (0, 0, 2), sewers).memory)
     mapper.poll()
-    go(again, mapper, (7, 7, 2), polls=3)
-    assert (mapper.state.x, mapper.state.y) == (0, 0)
+    return target, mapper
+
+
+def test_the_stale_line_is_refused_while_it_stays_on_screen(tmp_path, monkeypatch):
+    _, mapper = sewers_entry_with_a_stale_line(tmp_path, monkeypatch)
+    for _ in range(4):
+        assert (mapper.state.area, mapper.state.x, mapper.state.y,
+                mapper.state.facing) == ("GEO03", 0, 0, 2)
+        mapper.poll()
+    assert (14, 15) not in mapper.state.exploration
+
+
+def test_the_refusal_ends_when_the_game_redraws_the_line(tmp_path, monkeypatch):
+    target, mapper = sewers_entry_with_a_stale_line(tmp_path, monkeypatch)
+    mapper.poll()
+    target.memory.update(curse_target("S 8:38 1,0", (1, 0, 2), synthetic_map(2)).memory)
+    mapper.poll()
+    assert (mapper.state.x, mapper.state.y) == (1, 0)

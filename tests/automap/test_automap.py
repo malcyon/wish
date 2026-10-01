@@ -658,6 +658,9 @@ class CrossingTarget(ReplayTarget):
         geo = self.after if self._i > self.cross_at else self.before
         if (addr, length) == (RESIDENT_GEO, GEO_SIZE):
             return geo.to_bytes()
+        if addr == 0xC04B and self._i:
+            f = self._fixes[min(self._i, len(self._fixes)) - 1]
+            return bytes([f.x, f.y, f.facing])[:length]
         return bytes(length)
 
 
@@ -917,7 +920,7 @@ def test_returning_indoors_names_the_new_area_before_recording_the_fix(
     fixes = [Fix(14, 4, 3, "status"),
              Fix(7, 29, None, "status", outdoors=True),
              Fix(8, 14, 0, "status")]
-    target = ReplayTarget(fixes, memory={RESIDENT_GEO: geo15.to_bytes()})
+    target = ReplayTarget(fixes, memory={RESIDENT_GEO: geo15.to_bytes(), 0xC04B: bytes([8, 14, 0])})
     mapper = Automapper(target, {"GEO14": geo14, "GEO15": geo15}, area="GEO14")
     mapper.poll()                # indoors, GEO14
     mapper.poll()                # outdoors

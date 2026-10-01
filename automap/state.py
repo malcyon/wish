@@ -17,6 +17,7 @@ from goldbox import areas, c64_port
 from goldbox.areas import POOL_OF_RADIANCE
 from goldbox.geo import DIRECTIONS, GRID, STEP, Geo
 
+from . import c64
 from . import notes as notemod
 from .area import (
     NOT_OURS,
@@ -28,7 +29,7 @@ from .area import (
 )
 from .notes import Note
 from .paths import data_dir as _data_dir
-from .target import Fix, read_fix
+from .target import POSITION_BYTES, Fix, _plausible, read_fix
 
 #: Said on the strip and the area label while the party is on the travel
 #: grid, where none of the loaded maps reach -- `#205 (A party that walks out
@@ -391,13 +392,9 @@ class Automapper:
         self.resident = ResidentGeo(target) if maps else None
         self._ticks = 0
         self._pending: tuple[int, int] | None = None
-        #: The square the party arrived on in a new area is not yet believed:
-        #: Curse's status line names the old area's square for a while after
-        #: the map has changed. `_arrival` is that area and square, `_undo`
-        #: the explored set and trail length from before it was visited.
-        self._provisional = False
-        self._arrival: tuple[str | None, int, int] | None = None
-        self._undo: tuple[set, int] | None = None
+        #: The status line Curse left on screen after the map changed, which
+        #: disagreed with the engine at that moment; refused until it changes.
+        self._stale_line: tuple[int, int, int] | None = None
         self._started = False       # no "last position" to be adjacent to yet
         self._last: Fix | None = None       # the previous fix, for _refused
         #: The target the rest of this state belongs to. A strong reference on
@@ -502,13 +499,12 @@ class Automapper:
         until a second poll agrees with it -- a garbled read never survives
         that, and a genuine long move inside one area costs one extra tick.
 
-        **The square a party arrives on in a new area is provisional.**
-        Curse redraws its status line a step late, so the first square in the
-        sewers can be the town's. Until the party takes a step next door, a
-        jump inside that area is believed once two polls agree, memory or not,
-        and if it replaces the arrival square the squares the arrival revealed
-        are taken back out of the explored set. After a next-door step the
-        hold above applies as usual.
+        **A status line that disagrees with the engine at an area change is the
+        old area's.** Curse redraws its status line a step late. On the one
+        poll where the area has just been named, `$0400` already holds the
+        new map, so the engine's square (`_engine_square`) cannot belong to
+        the old one: it is taken instead, and that exact line is refused
+        until the game redraws it.
 
         **The area is named before the fix is recorded, never after.** That
         ordering is the whole of the fix for the bug above, and the check that
@@ -563,6 +559,10 @@ class Automapper:
         if fix.outdoors:
             return self._poll_outdoors(fix)
 
+        if self._stale_line is not None:
+            if fix.source == "status" and (fix.x, fix.y, fix.facing) == self._stale_line:
+                return False
+            self._stale_line = None
         returning = self.state.outdoors or self.state.world_map
         changed_area = False
         if returning:
@@ -585,9 +585,14 @@ class Automapper:
         if not changed_area and (jumped or self._ticks % self.RESIDENT_EVERY == 0
                 or self._area_may_have_changed(fix)):
             changed_area = self._check_resident()
+        if changed_area and fix.source == "status":
+            engine = self._engine_square()
+            if engine is not None and engine != (fix.x, fix.y, fix.facing):
+                self._stale_line = (fix.x, fix.y, fix.facing)
+                fix = Fix(*engine, "memory", fix.clock)
+                moved = (fix.x, fix.y) != (self.state.x, self.state.y)
         if jumped and not changed_area:
-            if ((fix.source == "memory" and not self._provisional)
-                    or self._pending != (fix.x, fix.y)):
+            if fix.source == "memory" or self._pending != (fix.x, fix.y):
                 self._pending = (fix.x, fix.y)
                 return False                # wait for a second opinion
             # confirmed twice: believe it after all
@@ -624,23 +629,18 @@ class Automapper:
         self.state.facing, self.state.source = fix.facing, fix.source
         self._started = True
         self._last = fix
-        ex = self.state.exploration
-        if (self._provisional and moved and self.state.area == self._arrival[0]
-                and abs(fix.x - self._arrival[1]) + abs(fix.y - self._arrival[2]) != 1):
-            # The arrival square was the old area's, read late: take back what
-            # it revealed.
-            seen, n = self._undo
-            ex.seen = seen
-            del ex.trail[n:]
-            self._provisional = False
-        elif changed_area:
-            self._provisional = True
-            self._arrival = (self.state.area, fix.x, fix.y)
-            self._undo = (set(ex.seen), len(ex.trail))
-        elif moved:
-            self._provisional = False
-        ex.visit(fix.x, fix.y, self.state.geo)
+        self.state.exploration.visit(fix.x, fix.y, self.state.geo)
         return changed
+
+    def _engine_square(self) -> tuple[int, int, int] | None:
+        """The engine's own square, read once, or None when it has none to give."""
+        if self.game is None:
+            return None
+        live = c64.machine_for(self.game).live_position
+        if live is None:
+            return None
+        x, y, f = self.target.read(live, POSITION_BYTES)[:POSITION_BYTES]
+        return (x, y, f) if _plausible(x, y, f) else None
 
     def _poll_world_map(self, fix: Fix) -> bool:
         """The party is on a world-map screen: say so and touch nothing else.
@@ -657,7 +657,7 @@ class Automapper:
         self.state.world_node = fix.world_node
         self.state.world_leg = fix.world_leg
         self._started = False
-        self._provisional = False
+        self._stale_line = None
         self._last = None
         self._pending = None
         return changed
@@ -723,7 +723,7 @@ class Automapper:
         self.state.x, self.state.y = fix.x, fix.y
         self.state.source = fix.source
         self._started = False
-        self._provisional = False
+        self._stale_line = None
         self._last = None
         self._pending = None
         return moved or changed_heading
@@ -762,7 +762,7 @@ class Automapper:
         self._block = None
         self._outdoor_pending = None
         self._started = False
-        self._provisional = False
+        self._stale_line = None
         self._pending = None
         self._last = None
         self.title_check = UNKNOWN
