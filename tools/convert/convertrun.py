@@ -86,6 +86,7 @@ def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
                       disks: pathlib.Path,
                       source_slot: str | None = None,
                       names: "dict[int, str] | None" = None,
+                      leave: "dict[int, set[int]] | None" = None,
                       leave_effects: "dict[int, set[int]] | None" = None
                       ) -> dict:
     """Save As the source to `to` and say what landed.
@@ -94,7 +95,9 @@ def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
     which saved game a multi-slot DOS folder or Amiga disk holds, the same
     letter `editor.convert.Source.detect` takes; `None` keeps its default,
     the alphabetically first slot. `names` is `{position: name}`, what a
-    player would choose in the Shorten window. `leave_effects` is
+    player would choose in the Shorten window. `leave` is `{member: {pack
+    position}}`, what a player would tick in the window that asks which items
+    to leave behind. `leave_effects` is
     `{member: {running-effect index}}`, what a player would tick in the
     window that asks which running effects to leave out. The report is `saveasdrive.save_as`'s:
     `written`, `slot`, `losses` and `dropped`, or `refused` and `error` when
@@ -115,7 +118,7 @@ def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
             window, source, to, folder,
             c64_folder=disks if to == "c64" else None,
             dos_folder=game if to == "dos" else None,
-            source_slot=source_slot, names=names,
+            source_slot=source_slot, names=names, leave=leave,
             leave_effects=leave_effects)
     finally:
         window.close()
@@ -356,6 +359,11 @@ def main(argv: list[str] | None = None) -> int:
                    help="the name to give the character at POSITION in the "
                         "party the conversion builds; repeat for each "
                         "character a destination cannot show whole")
+    p.add_argument("--leave", action="append", default=[],
+                   metavar="MEMBER:INDEX",
+                   help="an item to leave out of the C64 save: the party "
+                        "member's position and the item's position in his "
+                        "pack; repeat until the pack fits")
     p.add_argument("--leave-effect", action="append", default=[],
                    metavar="MEMBER:INDEX",
                    help="a running effect to leave out of the C64 save: the "
@@ -400,6 +408,15 @@ def main(argv: list[str] | None = None) -> int:
                 p.error(f"--name gives position {position} twice")
             names[position] = name
 
+    leave: dict[int, set[int]] = {}
+    for text in args.leave:
+        member, colon, index = text.partition(":")
+        if not (colon and member.isdigit() and index.isdigit()):
+            p.error(f"--leave takes MEMBER:INDEX, not {text!r}")
+        if int(index) in leave.setdefault(int(member), set()):
+            p.error(f"--leave gives {text} twice")
+        leave[int(member)].add(int(index))
+
     leave_effects: dict[int, set[int]] = {}
     for text in args.leave_effect:
         member, colon, index = text.partition(":")
@@ -410,6 +427,8 @@ def main(argv: list[str] | None = None) -> int:
         leave_effects[int(member)].add(int(index))
 
     report = {"direction": f"{args.source} -> {args.to}"}
+    if leave:
+        report["leave"] = {str(k): sorted(v) for k, v in leave.items()}
     if leave_effects:
         report["leave_effects"] = {str(k): sorted(v)
                                    for k, v in leave_effects.items()}
@@ -418,7 +437,8 @@ def main(argv: list[str] | None = None) -> int:
     report["write"] = write_via_save_as(
         pathlib.Path(args.source).expanduser(), args.to, out, game, disks,
         source_slot=args.source_slot.upper() if args.source_slot else None,
-        names=names or None, leave_effects=leave_effects or None)
+        names=names or None, leave=leave or None,
+        leave_effects=leave_effects or None)
     written = [pathlib.Path(p) for p in report["write"].get("written", [])]
     if not written:
         print(json.dumps(report, indent=2))

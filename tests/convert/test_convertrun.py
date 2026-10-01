@@ -96,3 +96,40 @@ def test_a_refused_save_as_writes_nothing_and_says_why(tmp_path, monkeypatch):
     assert report["refused"][0] == "DroppedFields"
     assert "written" not in report
     assert list(out.glob("wish-*")) == []
+
+
+def test_leave_chooses_the_item_an_over_limit_pack_leaves_behind(
+        tmp_path, monkeypatch):
+    """A pack needing 17 C64 slots is refused without `leave` and converts
+    with it, the chosen item recorded as left behind."""
+    from support.silverblades import ssb_dir
+    from test_leavechoice import NO_LEAVE_MESSAGE, _crowded_folder
+
+    disks = ssb_dir()
+    if disks is None:
+        pytest.skip("needs the Silver Blades disks")
+    prepared = []
+    real = saveplan.prepare_save_as
+
+    def spy(*args, **kwargs):
+        plan = real(*args, **kwargs)
+        prepared.append(plan)
+        return plan
+
+    monkeypatch.setattr(saveplan, "prepare_save_as", spy)
+    folder = _crowded_folder(tmp_path)
+    out = tmp_path / "out"
+    out.mkdir()
+
+    refused = convertrun.write_via_save_as(folder, "c64", out, None, disks,
+                                           source_slot="A")
+    assert refused["refused"][0] == "JoinedScrollsDoNotFit", refused
+    assert NO_LEAVE_MESSAGE in refused["refused"][1]
+    assert "written" not in refused
+
+    report = convertrun.write_via_save_as(folder, "c64", out, None, disks,
+                                          source_slot="A", leave={0: {3}})
+    assert "refused" not in report, report
+    assert report["written"]
+    (left,) = prepared[0].report.left_behind
+    assert "left behind" in left

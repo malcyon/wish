@@ -42,6 +42,7 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
             amiga_disk_one: "str | pathlib.Path | None" = None,
             source_slot: "str | None" = None,
             names: "Mapping[int, str] | None" = None,
+            leave: "Mapping[int, Collection[int]] | None" = None,
             leave_effects: "Mapping[int, Collection[int]] | None" = None
             ) -> dict:
     """Open `source`, Save As it to `port` under `folder`, and say what landed.
@@ -61,6 +62,10 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
     with no choice for it is refused as `NamesDoNotFit`, and the report then
     also carries `unfit` (`[position, name]` for each) and `width`, so a caller
     can see which names needed a choice and not only that Save As refused.
+
+    `leave` is the `{member: pack positions}` a player would tick in the
+    window that opens when a pack needs more than the C64's sixteen slots. A
+    party still over is refused as `JoinedScrollsDoNotFit`.
 
     `leave_effects` is the `{member: running-effect indices}` a player would
     tick in the window that opens when the party's running effects need more
@@ -88,6 +93,7 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
         plan = saveplan.prepare_save_as(
             party, port, path, assets,
             **({"names": names} if names is not None else {}),
+            **({"leave": leave} if leave else {}),
             **({"leave_effects": leave_effects} if leave_effects else {}))
         report["losses"] = saveplan.losses(plan.report) if plan.report else []
         report["dropped"] = list(getattr(plan.report, "dropped", []) or [])
