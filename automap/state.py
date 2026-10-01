@@ -426,8 +426,7 @@ class Automapper:
             self.state.geo = self._maps.get(self.state.area)
 
     def use_world(self, world) -> None:
-        """The wilderness windows to identify the resident block against.
-"""
+        """The wilderness windows to identify the resident block against."""
         self._world = world
         self._block = None
 

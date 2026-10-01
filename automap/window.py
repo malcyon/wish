@@ -1346,8 +1346,7 @@ class AutomapBinding(QObject):
         if self.world_canvas is not None:
             self.world_canvas.update()
         if st.outdoors:
-            # `window` is only ever set behind the wilderness flag, so this
-            # branch needs no second check of it.
+            # `window` is set only when a world identifies the block.
             if st.window is not None:
                 where = (f"{OUTDOORS_WHERE}  ({st.x}, {st.y})  "
                          f"{OUTDOORS_REGIONS[st.window]}")

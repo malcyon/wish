@@ -126,6 +126,14 @@ def test_a_target_that_is_not_a_c64_is_never_read(on):
     assert target.reads == []
 
 
+def test_with_no_world_nothing_is_read(on):
+    target = Target([out(8, 20, "memory")], _window(1))
+    mapper = Automapper(target)
+    mapper.use_world(None)
+    assert mapper.poll() is False           # no proof without a world
+    assert target.reads == []
+
+
 # -- the addresses and the loader --------------------------------------------
 
 def test_only_a_title_with_a_travel_grid_has_the_window_addresses():
