@@ -181,3 +181,33 @@ def test_a_move_two_squares_from_the_held_square_stays_held(tmp_path, monkeypatc
     go(target, mapper, (9, 2, 2), polls=2, status="S 8:50")
     assert (mapper.state.x, mapper.state.y) == (2, 15)
     assert (9, 0) not in mapper.state.exploration
+
+
+def test_a_step_straight_after_the_jump_is_held(tmp_path, monkeypatch):
+    target, mapper, sewers = arrive_in_the_sewers((2, 15), tmp_path, monkeypatch)
+    go(target, mapper, (2, 15, 2), polls=2, status="S 8:50")
+    go(target, mapper, (9, 0, 2), polls=1, status="S 8:50")
+    go(target, mapper, (9, 1, 2), polls=1, status="S 8:50")
+    assert (mapper.state.x, mapper.state.y) == (2, 15)
+    assert (9, 0) not in mapper.state.exploration
+
+
+def test_a_load_that_steps_before_its_block_changes_explores_nothing_old(
+        tmp_path, monkeypatch):
+    target, mapper, sewers = arrive_in_the_sewers((2, 15), tmp_path, monkeypatch)
+    go(target, mapper, (2, 15, 2), polls=2, status="S 8:50")
+    go(target, mapper, (9, 0, 2), polls=1, status="S 8:50")
+    go(target, mapper, (9, 1, 2), polls=1, status="S 8:50")
+    assert (9, 0) not in mapper.state.exploration
+    assert (9, 1) not in mapper.state.exploration
+    go(target, mapper, (9, 1, 2), synthetic_map(1), polls=2, status="S 8:50")
+    assert mapper.state.area == "GEO01"
+    assert (9, 0) not in mapper.state.exploration
+
+
+def test_a_held_status_jump_is_not_explored_by_a_memory_step(tmp_path, monkeypatch):
+    target, mapper, sewers = arrive_in_the_sewers((2, 15), tmp_path, monkeypatch)
+    go(target, mapper, (2, 15, 2), polls=2, status="S 8:50")
+    go(target, mapper, (9, 0, 2), polls=1, status="S 8:50 9,0")
+    go(target, mapper, (9, 1, 2), polls=3, status="S 8:50")
+    assert (9, 0) not in mapper.state.exploration

@@ -392,6 +392,8 @@ class Automapper:
         self.resident = ResidentGeo(target) if maps else None
         self._ticks = 0
         self._pending: tuple[int, int] | None = None
+        self._pending_source = ""
+        self._pending_polls = 0
         #: The status line Curse left on screen after the map changed, which
         #: disagreed with the engine at that moment; refused until it changes.
         self._stale_line: tuple[int, int, int] | None = None
@@ -594,12 +596,17 @@ class Automapper:
                 fix = Fix(*engine, "memory", fix.clock)
                 moved = (fix.x, fix.y) != (self.state.x, self.state.y)
         if jumped and not changed_area:
-            if fix.source == "memory" and self._stepped_from_pending(fix):
-                # The party walked on from the held square, so it was a move
-                # inside this area and not a load still in progress.
+            if self._stepped_from_pending(fix):
+                # The party walked on from a held memory jump that survived
+                # polls unchanged, so it was a move inside this area and not
+                # a load still in progress.
                 self.state.exploration.visit(*self._pending, self.state.geo)
             elif fix.source == "memory" or self._pending != (fix.x, fix.y):
+                same = (self._pending == (fix.x, fix.y)
+                        and self._pending_source == fix.source)
+                self._pending_polls = self._pending_polls + 1 if same else 1
                 self._pending = (fix.x, fix.y)
+                self._pending_source = fix.source
                 return False                # wait for a second opinion
             # confirmed twice: believe it after all
         self._pending = None
@@ -849,15 +856,21 @@ class Automapper:
     def _adjacent(self, x: int, y: int) -> bool:
         return abs(x - self.state.x) + abs(y - self.state.y) == 1
 
+    MIN_HELD_POLLS = 2
+
     def _stepped_from_pending(self, fix: Fix) -> bool:
-        """Is *fix* one passable step from the held jump on the resident map?
+        """Is *fix* one passable step from the held memory jump on the resident map?
 
         A load in progress has not been seen to take such a step before the
-        block changes, so a step from the held square means the jump was a
-        move inside this area.
+        block changes, so a step from a square the memory fix held for at
+        least two polls means the jump was a move inside this area. A held
+        status-line jump is never taken this way: a garbled line must not
+        mark its square explored.
         """
         geo = self.state.geo
-        if self._pending is None or geo is None:
+        if (self._pending is None or geo is None or fix.source != "memory"
+                or self._pending_source != "memory"
+                or self._pending_polls < self.MIN_HELD_POLLS):
             return False
         delta = (fix.x - self._pending[0], fix.y - self._pending[1])
         for direction, step in STEP.items():
