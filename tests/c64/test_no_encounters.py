@@ -34,7 +34,7 @@ class Fake(S.Session):
     game = G.CURSE_OF_THE_AZURE_BONDS
 
     def __init__(self, area, on=True):
-        self.mem = {S.AREA_BYTE[self.game.key]: area}
+        self.mem = {S.AREA_BYTE[self.game.key].addr: area}
         self.events = []
         self.lines = []
         self.no_encounters = on
@@ -76,7 +76,7 @@ def test_each_title_uses_its_own_area_byte_and_table(game, area, want):
         pass
     T.game = game
     s = T(area)
-    s.mem = {S.AREA_BYTE[game.key]: area}
+    s.mem = {S.AREA_BYTE[game.key].addr: area}
     s.suppress_encounters()
     assert pokes(s) == want
 
@@ -112,15 +112,100 @@ def test_rest_byte_is_zeroed(game, addr):
     assert s.mem[addr] == 0
 
 
-def test_save_is_refused_while_on_and_the_override_gets_past():
+def test_save_is_refused_once_pokes_were_written_even_after_turning_off():
     s = Fake(3)
-    with pytest.raises(RuntimeError, match="no_encounters"):
-        S.Session.save_game(s)
-    with pytest.raises(RuntimeError, match="no_encounters"):
-        curserun.CurseSession.save_game(s)
+    s._refuse_save()  # nothing written yet: allowed
+    s.suppress_encounters()
+    s.no_encounters = False
+    for save in (S.Session.save_game, curserun.CurseSession.save_game):
+        with pytest.raises(RuntimeError, match="pokes"):
+            save(s)
     s._restored_unattached = True
     with pytest.raises(RuntimeError, match="snapshot was restored"):
         S.Session.save_game(s, allow_suppressed=True)
+
+
+def test_a_flag_on_with_nothing_written_does_not_refuse():
+    s = Fake(0x50)  # world map: an entry with no pokes
+    s.suppress_encounters()
+    s._refuse_save()
+
+
+def test_allow_suppressed_is_keyword_only():
+    for save in (S.Session.save_game, curserun.CurseSession.save_game):
+        with pytest.raises(TypeError):
+            save(Fake(3), "x.d64", True)
+
+
+def test_ambush_skip_works_alone_and_makes_a_save_refuse():
+    s = Fake(0x50, on=False)
+    s.skip_world_map_ambushes = True
+    s.suppress_encounters()
+    assert (0x4C83, 1) in pokes(s)
+    with pytest.raises(RuntimeError, match="pokes"):
+        curserun.CurseSession.save_game(s)
+
+
+def test_a_snapshot_records_pokes_and_a_restore_puts_the_value_back(tmp_path):
+    from test_session_snapshot import Fake as SnapFake
+
+    s = SnapFake(tmp_path)
+    s.snapshot("clean")
+    s._pokes_written = True
+    s.snapshot("dirty")
+    s.restore("clean")
+    assert s._pokes_written is False
+    s.restore("dirty")
+    assert s._pokes_written is True
+    s.discard_snapshot("dirty")
+    import os
+    assert not os.path.exists(s._pokes_record("dirty"))
+
+
+def test_a_fresh_boot_clears_the_record(monkeypatch):
+    s = Fake(3)
+    s._pokes_written = True
+
+    class Stop(Exception):
+        pass
+
+    def launch():
+        raise Stop
+
+    s.launch = launch
+    with pytest.raises(Stop):
+        s.boot()
+    assert s._pokes_written is False
+
+
+def test_a_title_missing_from_a_table_says_which(monkeypatch):
+    class T(Fake):
+        pass
+    s = T(1)
+    s.game = type("G", (), {"key": "no-such-title"})()
+    with pytest.raises(KeyError, match="no-such-title"):
+        s.suppress_encounters()
+    with pytest.raises(KeyError, match="rest byte"):
+        s.suppress_rest_interruption(FakeMon({}, []))
+
+
+def test_outdoor_key_writes_pokes_before_the_digit():
+    order = []
+
+    class Screen:
+        def row(self, r):
+            return "1-8, RETURN OR BUTTON" if r == 24 else ""
+
+    class Kbd:
+        def key(self, *a):
+            order.append("key")
+
+    s = Fake(3)
+    s.suppress_encounters = lambda: order.append("poke")
+    s.kbd = Kbd()
+    s.screen = lambda: Screen()
+    assert s.outdoor_key("3")
+    assert order == ["poke", "key"]
 
 
 def test_curse_walk_writes_pokes_before_the_key(monkeypatch):
@@ -166,7 +251,7 @@ def test_base_walk_writes_pokes_before_the_key():
     assert order == ["poke", "key"]
 
 
-def test_curse_save_is_refused_after_a_restore_with_encounters_off():
+def test_curse_save_is_refused_after_a_restore():
     s = Fake(3, on=False)
     s._restored_unattached = True
     with pytest.raises(RuntimeError, match="snapshot was restored"):

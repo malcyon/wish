@@ -325,7 +325,7 @@ class CurseSession(por.Session):
         return self.select_bar(label, row=row, timeout=timeout,
                                answer_prompts=answer_prompts)
 
-    def save_game(self, to: str | None = None,
+    def save_game(self, to: str | None = None, *,
                   allow_suppressed: bool = False) -> bool:
         """`ENCAMP ▸ SAVE`, in Curse's own words.
 

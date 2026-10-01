@@ -169,11 +169,24 @@ class EncounterGate(NamedTuple):
     pokes: tuple[tuple[int, int], ...]
 
 
-#: The save-page byte naming the running area script, per title.
+class AreaByte(NamedTuple):
+    """The save-page byte naming the running area script, and how sure we are."""
+
+    addr: int
+    grade: str
+    source: str
+
+
+#: Per title.  Curse's was read live (`3` in the sewers, `$50` on the world
+#: map).  Pool's and Silver Blades' are PROBABLE: the byte is documented as
+#: "came-from" and was not read against a running area there.
 AREA_BYTE = {
-    G.POOL_OF_RADIANCE.key: 0x49F2,
-    G.CURSE_OF_THE_AZURE_BONDS.key: 0x4BF2,
-    G.SECRET_OF_THE_SILVER_BLADES.key: 0x4BF2,
+    G.POOL_OF_RADIANCE.key: AreaByte(
+        0x49F2, "PROBABLE", "documented as the came-from byte, not read live"),
+    G.CURSE_OF_THE_AZURE_BONDS.key: AreaByte(
+        0x4BF2, "CONFIRMED", "read live in the sewers and on the world map"),
+    G.SECRET_OF_THE_SILVER_BLADES.key: AreaByte(
+        0x4BF2, "PROBABLE", "documented as the came-from byte, not read live"),
 }
 
 #: Where each title's rest interruption is held (outside the saved page);
@@ -957,9 +970,14 @@ class Session:
     #: `allow_suppressed=True`.
     no_encounters = False
 
-    #: Opt-in on top of `no_encounters`: set Curse's world-map once-flags so
-    #: the fixed ambushes are skipped.  Changes story state.
+    #: Opt-in, works without `no_encounters`: set Curse's world-map once-flags
+    #: so the fixed ambushes are skipped.  Changes story state.
     skip_world_map_ambushes = False
+
+    #: True once any poke was written to the save page; sticky, so turning the
+    #: options off does not make a save safe.  Cleared by a fresh boot, and a
+    #: snapshot records it so a restore puts back the snapshot's value.
+    _pokes_written = False
 
     #: Areas already reported as unsuppressed, so each is logged once.
     _unsuppressed_logged: set | None = None
@@ -1262,6 +1280,10 @@ class Session:
                 f"{self.SNAPSHOT_PATH_MAX} bytes: {path}")
         return path
 
+    def _pokes_record(self, name: str) -> str:
+        """The sidecar that remembers whether pokes had been written."""
+        return self.snapshot_path(name) + ".pokes"
+
     def _attached_record(self, name: str) -> str:
         """The sidecar that remembers which disk was in the drive."""
         return self.snapshot_path(name) + ".attached"
@@ -1287,12 +1309,15 @@ class Session:
             m.command(CMD_DUMP, struct.pack("<BBB", 0, 1, len(wire)) + wire)
         with open(self._attached_record(name), "w") as f:
             f.write(str(self.attached))
+        with open(self._pokes_record(name), "w") as f:
+            f.write("1" if self._pokes_written else "0")
         self.log(f"  snapshot {name}")
         return path
 
     def discard_snapshot(self, name: str) -> None:
         """Delete a snapshot and its record of the attached disk."""
-        for path in (self.snapshot_path(name), self._attached_record(name)):
+        for path in (self.snapshot_path(name), self._attached_record(name),
+                     self._pokes_record(name)):
             with contextlib.suppress(FileNotFoundError):
                 os.remove(path)
 
@@ -1326,6 +1351,11 @@ class Session:
             self.log(f"  restored {name}, but which disk it had is unknown; "
                      f"the drive's host file may not match")
         self._restored_unattached = True
+        try:
+            with open(self._pokes_record(name)) as f:
+                self._pokes_written = f.read().strip() == "1"
+        except OSError:
+            self._pokes_written = False
         self.log(f"  restored {name}")
 
     def walk_with_retry(self, moves: str, retries: int = 3,
@@ -2147,6 +2177,7 @@ class Session:
 
     def boot(self) -> bool:
         self.boot_failure = None
+        self._pokes_written = False
         self.launch()
         with self.watching_dialogs():
             return self._boot()
@@ -2665,28 +2696,44 @@ class Session:
         """
         self.kbd.key(move.lower(), hold, gap)
 
+    def _title_entry(self, table: dict, what: str):
+        try:
+            return table[self.game.key]
+        except KeyError:
+            raise KeyError(
+                f"no {what} is known for {self.game.key!r}; add it to the "
+                f"table in tools/c64/session.py") from None
+
     def suppress_encounters(self) -> None:
-        """Write the running area's encounter pokes; a no-op unless
-        `no_encounters` is set.  Called just before each direction key.
+        """Write the running area's encounter pokes, and Curse's world-map
+        ambush skips when `skip_world_map_ambushes` is set; a no-op unless one
+        of the two options is on.  Called just before each direction key.
+
+        Anything written sets `_pokes_written`, which `_refuse_save` reads.
         """
-        if not self.no_encounters:
+        if not (self.no_encounters or self.skip_world_map_ambushes):
             return
         key = self.game.key
+        area_byte = self._title_entry(AREA_BYTE, "area byte")
+        gate = None
         try:
             with self.mon(5) as mon:
-                area = mon.read(AREA_BYTE[key], 1)[0]
-                gate = ENCOUNTER_GATES.get((key, area))
-                pokes = list(gate.pokes) if gate else []
+                area = mon.read(area_byte.addr, 1)[0]
+                pokes = []
+                if self.no_encounters:
+                    gate = ENCOUNTER_GATES.get((key, area))
+                    pokes += list(gate.pokes) if gate else []
                 if self.skip_world_map_ambushes and area == WORLD_MAP_AREA \
                         and key == G.CURSE_OF_THE_AZURE_BONDS.key:
                     pokes += WORLD_MAP_AMBUSH_SKIPS
                 for addr, value in pokes:
                     mon.write(addr, bytes((value,)))
+                    self._pokes_written = True
                 mon.resume()
         except (OSError, MonitorError) as e:
             self.log(f"  encounter pokes not written, monitor unreadable: {e}")
             return
-        if gate is None:
+        if self.no_encounters and gate is None:
             if self._unsuppressed_logged is None:
                 self._unsuppressed_logged = set()
             if (key, area) not in self._unsuppressed_logged:
@@ -2700,15 +2747,16 @@ class Session:
         ENCAMP, in the connection that stages the rest time.
         """
         if self.no_encounters:
-            mon.write(REST_INTERRUPT_BYTE[self.game.key], b"\x00")
+            mon.write(self._title_entry(REST_INTERRUPT_BYTE, "rest byte"),
+                      b"\x00")
 
     def _refuse_save(self, allow_suppressed: bool = False) -> None:
         """Every `save_game`, this class's and each override, calls this first.
 
         A save is refused after a snapshot restore until a disk is attached,
-        and while `no_encounters` is on unless `allow_suppressed`: its pokes
-        are save-page bytes and some are story counters, so the save would
-        carry them.  Never use a save made with the override as conversion
+        and once a poke has been written (`_pokes_written`) unless
+        `allow_suppressed`: the pokes are save-page bytes and some are story
+        counters, so the save would carry them.  Never use a save made with the override as conversion
         proof.
         """
         if self._restored_unattached:
@@ -2717,9 +2765,9 @@ class Session:
                 "the drive holds the snapshot's copy of its disk, so a save "
                 "now is not written to the slot's file.  Call attach() with "
                 "the disk to save to first")
-        if self.no_encounters and not allow_suppressed:
+        if self._pokes_written and not allow_suppressed:
             raise RuntimeError(
-                "no_encounters is on: its pokes are save-page bytes and some "
+                "no_encounters or skip_world_map_ambushes has written pokes: they are save-page bytes and some "
                 "are story counters, so a game save now would carry them.  "
                 "Pass allow_suppressed=True to save anyway")
 
@@ -3177,6 +3225,7 @@ class Session:
             s = self.screen()
             row = "" if s is None else s.row(24)
             if OUTDOOR_PROMPT in row:
+                self.suppress_encounters()
                 self.kbd.key(key, hold, gap)
                 return True
             if all(word in row for word in BOAT_BAR):
@@ -3313,7 +3362,7 @@ class Session:
             time.sleep(0.6)
         return False
 
-    def save_game(self, to: str | None = None,
+    def save_game(self, to: str | None = None, *,
                   allow_suppressed: bool = False) -> bool:
         """`ENCAMP` then `SAVE`; refused under `no_encounters` (automapper
         and driver testing only, never conversion proof) unless

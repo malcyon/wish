@@ -102,6 +102,9 @@ class RestingSession:
         #: Rows the stopping screen draws above `stop_bar`, by row number.
         self.stop_text: dict[int, str] = {}
 
+    def suppress_rest_interruption(self, mon):
+        """The real session's, with `no_encounters` off."""
+
     def _select(self, label: str, **_) -> bool:
         self.pressed.append(label)
         if label != "REST" or "REST" not in self.bar:
