@@ -66,7 +66,7 @@ class PrologueGame:
 
     def __init__(self, start="page", pages_before=3, pages_after=3, lag=2,
                  partial_share=0, opening=True, then="share",
-                 walk_fails=False):
+                 walk_fails=False, drop_on=None):
         self.pages_before, self.pages_after = pages_before, pages_after
         self.lag = lag
         #: How many reads of the share page catch it half drawn.
@@ -77,6 +77,8 @@ class PrologueGame:
         #: The screen the first run of pages leads to.
         self.then = then
         self.walk_fails = walk_fails
+        #: The screen whose first XTEST Return the game never sees.
+        self.drop_on = drop_on
         self.bars: list[str] = []
         self.where, self.page, self.hl = start, 0, None
         if start in BARS:
@@ -93,7 +95,9 @@ class PrologueGame:
         class Kbd:
             def key(self, name, *a):
                 game.xtest.append(name)
-                if name == "Return":
+                if name == "Return" and game.drop_on == game.where:
+                    game.drop_on = None
+                elif name == "Return":
                     game.choose()
 
         self.kbd = Kbd()
@@ -115,7 +119,8 @@ class PrologueGame:
             return Screen("SOMETHING", "NOBODY KNOWS THIS BAR")
         words, _ = BARS[w]
         body = SHEET_BODY if w in SHEETS else w
-        return Screen(f"{body} hl={self.hl}", " ".join(words))
+        # Text only, as `Screen.text()` reads it: the highlight is colour.
+        return Screen(body, " ".join(words))
 
     def screen(self):
         if self.stale is not None and self.shown_for < self.lag:
@@ -419,3 +424,36 @@ def test_the_resave_walk_arrives_through_the_opening_scene(clock,
             pass
 
     assert ssbresavewalk.arrive(game, object(), Log()) == "world"
+
+
+def test_a_dropped_return_on_leave_treasure_is_answered_again(clock):
+    """The question still up after LEAVE TREASURE is still the opening's:
+    it gets LEAVE TREASURE again, never GO BACK."""
+    game = PrologueGame(start="treasure", lag=1, drop_on="leave")
+    assert "ENCAMP" in SSB.clear_messages(game)
+    assert game.bars.count(SSB.LEAVE_TREASURE) == 2
+    assert SSB.GO_BACK not in game.bars
+
+
+def test_a_save_that_cannot_be_read_is_logged_with_its_path(tmp_path):
+    logged: list[str] = []
+    where = tmp_path / "missing.D64"
+    sess = type("S", (), {"save_disk": str(where),
+                          "log": lambda self, line: logged.append(line)})()
+    assert SSB.opening_scene_due(sess) is False
+    assert len(logged) == 1 and str(where) in logged[0]
+
+
+def test_walk_proof_walks_nothing_when_the_world_bar_never_came(monkeypatch):
+    from tools.secret_of_the_silver_blades import ssbwarp
+    stopped = ("(stopped at 'VIEW TAKE POOL SHARE EXIT': a treasure bar "
+               "outside the opening scene; leaving it would discard the "
+               "treasure, so nothing was pressed)")
+    monkeypatch.setattr(ssbwarp, "clear_messages", lambda sess: stopped)
+
+    class Sess:
+        def __getattr__(self, name):
+            raise AssertionError(f"walk_proof touched sess.{name}")
+
+    out = ssbwarp.walk_proof(Sess())
+    assert out["refused"] == stopped and out["moved"] is False

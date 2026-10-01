@@ -286,6 +286,10 @@ def walk_proof(sess, keys: str = "JIKI") -> dict:
     leaves MOVE mode after the first key.
     """
     out = {"bar": clear_messages(sess)}
+    if "ENCAMP" not in out["bar"]:
+        # No world bar, so nothing to walk from: `clear_messages` says why.
+        out.update(refused=out["bar"], moved=False, turned=False)
+        return out
 
     def triple():
         with sess.mon(8) as m:

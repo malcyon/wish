@@ -433,7 +433,15 @@ def ssb_world(slot, r: Run, save: str, where: str, game, wait: float):
         r.log("world", ok=False)
         r.capture(sess, "stuck")
         return sess, False
-    r.log("world", ok=True, bar=ssbsession.clear_messages(sess))
+    bar = ssbsession.clear_messages(sess)
+    if "ENCAMP" not in bar:
+        # `clear_messages` stopped short of the world bar and says why: a
+        # won fight's treasure it will not leave behind, or a screen it has
+        # no key for.
+        r.log("world", ok=False, bar=bar)
+        r.capture(sess, "stuck")
+        return sess, False
+    r.log("world", ok=True, bar=bar)
     return sess, True
 
 

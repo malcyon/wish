@@ -960,7 +960,8 @@ def opening_scene_due(sess) -> bool:
     set out, so that BEGIN ADVENTURING plays the opening scene.
 
     Read through `world_state.has_not_set_out`, the test the conversions use.
-    A save that cannot be read answers False, which keeps every treasure.
+    A save that cannot be read answers False, which keeps every treasure,
+    and the reason is logged.
     """
     from goldbox import world_state
     from goldbox.d64 import D64, split_load_address
@@ -972,7 +973,12 @@ def opening_scene_due(sess) -> bool:
     try:
         _, body = split_load_address(D64.open(path).read_file(game.save_file))
         return world_state.has_not_set_out(world_state.from_c64(body, game))
-    except Exception:
+    except Exception as exc:
+        log = getattr(sess, "log", None)
+        if log is not None:
+            log(f"  world: could not read the save at {path} ({exc!r}); "
+                f"treating the opening scene as not due, so no treasure is "
+                f"left behind")
         return False
 
 
@@ -1051,9 +1057,12 @@ class ClosingScreens:
         if not self.sess.select_bar(label, timeout=10):
             self.sess.log(f"  bar: could not choose {label}")
             return None
-        if label == LEAVE_TREASURE:
+        gone = await_screen_change(self.sess, s.text())
+        if label == LEAVE_TREASURE and gone:
+            # Spent only once the question has gone: a dropped Return leaves
+            # it up, and the next pass must choose LEAVE TREASURE again
+            # rather than read the scene as over and answer GO BACK.
             self.opening = self.sess.opening_scene = False
-        await_screen_change(self.sess, s.text())
         return None
 
 

@@ -277,3 +277,42 @@ def test_a_save_with_no_edit_leaves_the_item_area_byte_for_byte(
     out = str(tmp_path / "untouched.D64")
     inventorycheck.stage(base, out, who, delete=0, quantity=None, add=None)
     assert _payload(base) == _payload(out)
+
+
+def test_a_silver_blades_arrival_short_of_the_world_bar_fails(
+        monkeypatch, tmp_path):
+    """`clear_messages` stopping at a won fight's treasure bar is not the
+    world: the run fails with its reason instead of reading the panel."""
+    from tools.secret_of_the_silver_blades import ssbsession
+
+    stopped = ("(stopped at 'VIEW TAKE POOL SHARE EXIT': a treasure bar "
+               "outside the opening scene; leaving it would discard the "
+               "treasure, so nothing was pressed)")
+    slot = type("Slot", (), {"dir": str(tmp_path)})()
+    (tmp_path / "SIDE0.D64").write_bytes(b"")
+
+    class Sess:
+        def __init__(self, first, slot=None):
+            self.kbd = type("K", (), {"screenshot": lambda s, p: True})()
+
+        def boot(self):
+            return True
+
+        def screen(self):
+            return None
+
+    monkeypatch.setattr(ssbsession, "stage", lambda *a, **k: "SIDE1.D64")
+    monkeypatch.setattr(ssbsession, "SSBSession", Sess)
+    monkeypatch.setattr(ssbsession, "load_party", lambda s, **k: True)
+    monkeypatch.setattr(ssbsession, "Addresses", lambda *a: None)
+    monkeypatch.setattr(ssbsession, "enter_world", lambda *a, **k: True)
+    monkeypatch.setattr(ssbsession, "clear_messages", lambda s: stopped)
+    run = inventorycheck.Run(tmp_path / "out")
+    _, ok = inventorycheck.ssb_world(slot, run, "save.D64", "disks",
+                                     c64_port.SECRET_OF_THE_SILVER_BLADES,
+                                     10.0)
+    assert ok is False
+    import json
+    events = [json.loads(line) for line in run.log_path.read_text().splitlines()]
+    world = [e for e in events if e["event"] == "world"]
+    assert world == [{**world[0], "ok": False, "bar": stopped}]
