@@ -12307,3 +12307,150 @@ def test_silver_fight_flee_does_not_count_a_dead_or_dying_member_as_a_run(
     run.party_slots = lambda: next(reads)
     with pytest.raises(A.StepFailed, match="fight-flee"):
         run.fight("600", "I", 40, flee=True)
+
+
+class _RowColourScreen(FakeScreen):
+    """An item list with the cursor on entry row HOT: the name column is
+    white there and green elsewhere, so a nameless row still shows it."""
+
+    def __init__(self, rows, hot):
+        super().__init__(rows)
+        self.colours = bytearray([5] * 1000)
+        if hot is not None:
+            self.colours[hot * 40 + A.route_pool.ITEM_NAME_COLUMN] = 1
+
+
+class _ItemRowsFake(FakeSession):
+    """The ITEMS list as `LIBRARY $4424` draws it, with a nameless third row.
+    READY on the bar puts the cursor on row 5; Down and Up move it; the
+    select key on the third row answers as `answer` says."""
+
+    ROWS = {1: "THRENDER GRONE", 3: "EQUIPPED ITEM", 5: " YES FLAIL",
+            6: " NO  LONG BOW", 7: " NO", 8: " EXIT"}
+
+    def __init__(self, answer):
+        super().__init__({"items": _window(self.ROWS, "READY TRADE DROP EXIT")},
+                         {("items", ("bar", "READY")): "cursor"}, "items")
+        self.hot = 5
+        self.answer = answer
+
+    def screen(self):
+        if self.state == "cursor":
+            return _RowColourScreen(_window(self.ROWS, "READY TRADE DROP EXIT"),
+                                    self.hot)
+        if self.state == "answered":
+            rows = dict(self.ROWS)
+            if self.answer == "readied":
+                rows[7] = " YES"
+            elif self.answer == "refused":
+                rows[21] = "WRONG CLASS"
+            return FakeScreen(_window(rows, "READY TRADE DROP EXIT"))
+        return super().screen()
+
+    def _go(self, what):
+        if self.state == "cursor" and what in (("key", "Down"), ("key", "Up")):
+            self.sent.append(what)
+            self.hot += 1 if what[1] == "Down" else -1
+            return True
+        if self.state == "cursor" and what == ("key", A.route_pool.SELECT["key"]):
+            self.sent.append(what)
+            self.state = "answered"
+            return True
+        return super()._go(what)
+
+
+def _ready_row(tmp_path, monkeypatch, arg, answer="readied", who="THRENDER GRONE"):
+    sess = _ItemRowsFake(answer)
+    opened = []
+    monkeypatch.setattr(A.route_pool, "open_items",
+                        lambda s, log, name, label, tag: opened.append(
+                            (name, label)) or True)
+    monkeypatch.setattr(A.route_pool, "leave_items",
+                        lambda s, log: setattr(sess, "state", "world"))
+    sess.screens["world"] = _window({}, WORLD_BAR)
+    sess.moves[("world", ("bar", "ENCAMP"))] = "world"
+    monkeypatch.setattr(A.time, "sleep", lambda s: None)
+    script = {}
+    for slot in range(8):
+        script[(A.route_pool.SLOT_BASE + slot * A.route_pool.SLOT_STRIDE,
+                A.route_pool.SLOT_STRIDE)] = [bytes(A.route_pool.SLOT_STRIDE)] * 2
+        script[(ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE,
+                ITEM_BLOCK_STRIDE)] = [bytes(ITEM_BLOCK_STRIDE)] * 2
+    script[A.route_pool.EFFECTS] = [bytes(A.route_pool.EFFECTS[1])] * 2
+    sess.mon = lambda timeout: _ReadyMonitor(script)
+    run, log = _pool_run(tmp_path, sess)
+    run.to_world = lambda: True
+    try:
+        return run.ready(arg), sess, opened
+    finally:
+        log.close()
+
+
+def test_ready_row_parses_the_row_number_and_refuses_row_zero():
+    assert A.parse_ready("THRENDER GRONE>#3") == ("THRENDER GRONE", "#3")
+    assert A.ready_row("#3") == 3 and A.ready_row("FLAIL") is None
+    with pytest.raises(ValueError, match="#0 names no row"):
+        A.parse_ready("THRENDER GRONE>#0")
+
+
+def test_ready_row_readies_the_nameless_third_row(tmp_path, monkeypatch):
+    got, sess, opened = _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#3")
+    assert opened == [("THRENDER GRONE", A.ITEM_HEADING)]
+    assert sess.sent == [("bar", "READY"), ("key", "Down"), ("key", "Down"),
+                         ("key", A.route_pool.SELECT["key"])]
+    assert (got["row"], got["outcome"], got["message"]) == (3, "readied", None)
+    assert (got["row_was"], got["row_now"]) == ("NO", "YES")
+    assert got["screen_changed"] is True
+
+
+def test_ready_row_refused_before_any_key_when_the_list_is_another_members(
+        tmp_path, monkeypatch):
+    with pytest.raises(A.StepFailed, match="not BROTHER SEAN's"):
+        _ready_row(tmp_path, monkeypatch, "BROTHER SEAN>#1")
+
+
+def test_ready_row_reports_the_refusal_text_the_game_printed(tmp_path, monkeypatch):
+    got, _, _ = _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#3", "refused")
+    assert (got["outcome"], got["message"]) == ("refused", "WRONG CLASS")
+    assert got["row_was"] == got["row_now"] == "NO"
+
+
+def test_ready_row_past_the_end_is_refused_before_any_key(tmp_path, monkeypatch):
+    sess = _ItemRowsFake("readied")
+    monkeypatch.setattr(A.route_pool, "open_items", lambda *a: True)
+    monkeypatch.setattr(A.route_pool, "leave_items",
+                        lambda s, log: setattr(sess, "state", "world"))
+    sess.screens["world"] = _window({}, WORLD_BAR)
+    run, log = _pool_run(tmp_path, sess)
+    run.to_world = lambda: True
+    try:
+        with pytest.raises(A.StepFailed, match="has 3 rows, so #9 is not one"):
+            run.ready("THRENDER GRONE>#9")
+    finally:
+        log.close()
+    assert sess.sent == []
+
+
+def test_ready_by_name_still_opens_on_the_label_and_toggles_it(tmp_path, monkeypatch):
+    calls = []
+    sess = FakeSession({"world": _window({}, WORLD_BAR)}, {}, "world")
+    monkeypatch.setattr(A.route_pool, "open_items",
+                        lambda s, log, name, label, tag: calls.append(
+                            ("open", name, label)) or True)
+    monkeypatch.setattr(A.route_pool, "toggle_item",
+                        lambda s, log, label, tag: calls.append(
+                            ("toggle", label)) or True)
+    monkeypatch.setattr(A.route_pool, "leave_items", lambda *a: None)
+    script = {}
+    for slot in range(8):
+        script[(A.route_pool.SLOT_BASE + slot * A.route_pool.SLOT_STRIDE,
+                A.route_pool.SLOT_STRIDE)] = [bytes(A.route_pool.SLOT_STRIDE)] * 2
+        script[(ITEM_AREA_BASE + slot * ITEM_BLOCK_STRIDE,
+                ITEM_BLOCK_STRIDE)] = [bytes(ITEM_BLOCK_STRIDE)] * 2
+    script[A.route_pool.EFFECTS] = [bytes(A.route_pool.EFFECTS[1])] * 2
+    sess.mon = lambda timeout: _ReadyMonitor(script)
+    run, log = _pool_run(tmp_path, sess)
+    got = run.ready("THRENDER GRONE>FLAIL")
+    log.close()
+    assert calls == [("open", "THRENDER GRONE", "FLAIL"), ("toggle", "FLAIL")]
+    assert "outcome" not in got

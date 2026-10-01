@@ -66,7 +66,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
 | `scribe WHO>SPELL` | camp `MAGIC > SCRIBE` for WHO: the scroll list kept as text, SPELL's row highlighted and picked (Return, then a KERNAL Return while the count stands), the pick prompt's `EXIT` row, the list's `EXIT`, the `CHOSEN SPELLS` page kept, `OKAY` at the confirmation, and back to the camp bar. WHO's roster slice of the scribe queue (`+0x01` first entry, `+0x02` count: Pool `$6C01`, Curse and Silver Blades `$7D01`) is read before, after the pick and at the end, with its queue entries; a refusal (`CAN'T SCRIBE`), a spell not on the list, a list of more than one page, or a count of zero at the end fails the step. Measured on Silver Blades |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
-| `ready WHO>LABEL` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown |
+| `ready WHO>LABEL`, `ready WHO>#N` | Pool only: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `refused` or `unchanged`), the row before and after, and the refusal text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
 | `fight-flee [SECONDS]` | `fight`'s route into a fight, then `fleedrive.Flight` as the tactic with no wound patch, for at most SECONDS (120): the members who run stay alive and the game's own drop of a member left behind runs, which `walk-flee`'s menu FLEE never reaches. The result records `got_away` and `left_behind` (each member's slot, name and status before and after, a member left behind being one whose name the drop cleared); a fight that does not end on `THE PARTY RUNS AWAY` (won, lost, or still going at SECONDS) fails the step naming `fight-flee` |
 | `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows (a `GO BACK LEAVE TREASURE` bar that EXIT opens is answered LEAVE), on the encounter path as well as after a `PRESS` bar, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
@@ -722,11 +722,55 @@ def parse_cure(arg: str) -> tuple[str, str]:
 
 
 def parse_ready(arg: str) -> tuple[str, str]:
-    """`WHO>LABEL`, the same shape `cure` parses -- a name can hold a space."""
+    """`WHO>LABEL` or `WHO>#N`, the same form `cure` parses -- a name can hold
+    a space. `#N` is the Nth row of the item list counted from 1, for an item
+    that draws no name; `ready_row` reads it back."""
     m = re.fullmatch(r"([^:>]+)>([^:>]+)", arg.strip())
     if m is None:
-        raise ValueError(f"ready {arg!r}: say ready WHO>LABEL")
-    return m.group(1).strip(), m.group(2).strip()
+        raise ValueError(f"ready {arg!r}: say ready WHO>LABEL or ready WHO>#N")
+    who, label = m.group(1).strip(), m.group(2).strip()
+    if ready_row(label) == 0:
+        raise ValueError(f"ready {arg!r}: rows count from 1, so #0 names no row")
+    return who, label
+
+
+def ready_row(label: str) -> int | None:
+    """N for the label `#N`, else None: a label is an item's name."""
+    m = re.fullmatch(r"#(\d+)", label)
+    return None if m is None else int(m.group(1))
+
+
+#: The heading the item list draws on row 3, which every list has and a
+#: nameless item does not, so it is what `ready WHO>#N` waits for.
+ITEM_HEADING = "EQUIPPED ITEM"
+
+#: What the game prints when READY is refused (`LIBRARY $46A6`).
+REFUSALS = ("WRONG CLASS", "CURSED", "NOT HERE", "TOO MANY")
+
+
+def item_screen_rows(rows: list[str]) -> list[int]:
+    """The screen row of each entry `screens.item_list` reads, in order."""
+    out = []
+    for r in range(screens.ITEM_ROWS.start, screens.ITEM_ROWS.stop):
+        text = rows[r][screens.ITEM_COLUMN:screens.ITEM_BORDER].strip()
+        if not text:
+            continue
+        if text == "EXIT":
+            break
+        out.append(r)
+    return out
+
+
+def item_row_highlight(s, at_rows: list[int]) -> int | None:
+    """Which entry row the cursor is on: the one row whose cell colour at the
+    name column differs from the rest, read on the row and not on the name, so
+    an item with no name still has one."""
+    if s is None or len(at_rows) < 2:
+        return at_rows[0] if s is not None and at_rows else None
+    colours = [s.colours[r * 40 + route_pool.ITEM_NAME_COLUMN] for r in at_rows]
+    common = max(set(colours), key=colours.count)
+    odd = [r for r, c in zip(at_rows, colours) if c != common]
+    return odd[0] if len(odd) == 1 else None
 
 
 def parse_scribe(arg: str) -> tuple[str, str]:
@@ -1559,8 +1603,8 @@ def item_entries(rows: list[str]) -> list[dict]:
     Detect Magic marked it."""
     out = []
     for text in screens.item_list(rows):
-        m = re.match(r"(YES|NO)\s+(.*)", text)
-        rest = m.group(2) if m else text
+        m = re.match(r"(YES|NO)(?:\s+(.*)|$)", text)
+        rest = (m.group(2) or "") if m else text
         out.append({"row": text, "readied": bool(m and m.group(1) == "YES"),
                     "text": rest, "marked": DETECT_MARK in rest})
     return out
@@ -3713,10 +3757,15 @@ class PoolRun:
         Curse and Silver Blades.
         """
         who, label = parse_ready(arg)
+        row = ready_row(label)
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
-        if not route_pool.open_items(self.sess, self.log, who, label, "ready"):
+        if not route_pool.open_items(self.sess, self.log, who,
+                                     label if row is None else ITEM_HEADING,
+                                     "ready"):
             raise self.fail("items", "ITEMS never put up the item list")
+        if row is not None:
+            self.check_item_row(who, row)
         with self.sess.mon(8) as m:
             before_records = [bytes(route_pool.live_record(m, slot))
                               for slot in range(PARTY_SLOTS)]
@@ -3725,7 +3774,10 @@ class PoolRun:
                                          ITEM_BLOCK_STRIDE))
                             for slot in range(PARTY_SLOTS)]
             m.resume()
-        if self.capture_ready:
+        said = None
+        if row is not None:
+            screen_changed, said = self.press_item_row(who, row)
+        elif self.capture_ready:
             self.ready_captures = []
             self.ready_sample_errors = []
             screen_changed = route_pool.toggle_item(
@@ -3762,10 +3814,80 @@ class PoolRun:
                   "memory_changed": memory_changed,
                   "record_diff": record_diff, "effects_diff": effects_diff,
                   "item_diff": item_diff}
-        if self.capture_ready:
+        if said is not None:
+            result.update(said)
+        if self.capture_ready and row is None:
             result["ready_captures"] = self.ready_captures
             result["ready_sample_errors"] = self.ready_sample_errors
         return result
+
+    def check_item_row(self, who: str, row: int) -> None:
+        """Before any key: the list up is WHO's, and it has a row `row`.
+        A failure leaves the list first, so the next step starts at the world."""
+        rows = self.capture(f"items-{who}")
+        why = None
+        if ITEM_BAR not in rows[24] or S.SHEET_BAR in rows[24]:
+            why = f"the item list is not up: {rows[24].strip()!r}"
+        elif who not in rows[1]:
+            why = f"the list up is {rows[1][1:39].strip()!r}, not {who}'s"
+        elif not 1 <= row <= len(item_screen_rows(rows)):
+            why = (f"{who}'s list has {len(item_screen_rows(rows))} rows, "
+                   f"so #{row} is not one")
+        if why is not None:
+            route_pool.leave_items(self.sess, self.log)
+            self.to_world()
+            raise self.fail("ready", why)
+
+    def press_item_row(self, who: str, row: int) -> tuple[bool, dict]:
+        """READY on the `row`th row of the list that is up, and what the game
+        did about it: the row's YES or NO before and after, and any refusal
+        it printed, read as text. The cursor goes by the row's position, since
+        an item with no name has none to find it by."""
+        before = self.rows()
+        at_rows = item_screen_rows(before)
+        want = at_rows[row - 1]
+        if not self.choose_bar("READY", timeout=10):
+            raise self.fail("ready", "READY could not be selected on the items bar")
+        time.sleep(0.8)
+        for _ in range(len(at_rows) + 2):
+            at = item_row_highlight(self.sess.screen(), at_rows)
+            if at is None:
+                raise self.fail("ready", "no highlighted row on the item list")
+            if at == want:
+                break
+            self.sess.kbd.key("Down" if at < want else "Up", 0.15, 0.30)
+        else:
+            raise self.fail("ready", f"could not put the highlight on row #{row}")
+        route_pool.press_select(self.sess)
+        seen: list[list[str]] = []
+        for _ in range(30):
+            time.sleep(0.1)
+            now = self.rows()
+            if now != before:
+                seen.append(now)
+                if len(seen) >= 2 and seen[-1] == seen[-2]:
+                    break
+        after = seen[-1] if seen else before
+        message = None
+        for rows in seen:
+            for r in range(1, 24):
+                text = rows[r][1:39].strip()
+                if any(word in text for word in REFUSALS):
+                    message = text
+        if message is None:
+            message = " / ".join(
+                after[r][1:39].strip() for r in range(1, 24)
+                if r not in at_rows and after[r] != before[r]
+                and after[r][1:39].strip()) or None
+        was, now = (item_entries(r)[row - 1] for r in (before, after))
+        self.capture(f"items-{who}-ready-row-{row}", after)
+        if was["readied"] != now["readied"]:
+            outcome = "readied" if now["readied"] else "unreadied"
+        else:
+            outcome = "refused" if message is not None else "unchanged"
+        return after != before, {
+            "row": row, "row_was": was["row"], "row_now": now["row"],
+            "outcome": outcome, "message": message}
 
     def rest(self, arg: str) -> dict:
         minutes, hours = parse_rest(arg)
