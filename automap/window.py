@@ -46,14 +46,12 @@ from PyQt6.QtWidgets import (
 
 from goldbox import strength as strengthmod
 from goldbox.geo import GRID
-from goldbox.icons import C64_PALETTE
 from goldbox.world import (
     TILE_PIXELS,
     WINDOW_STEP,
     WORLD_ACROSS,
     WORLD_DOWN,
     WorldError,
-    world_indices,
 )
 from ui.iconpaint import draw_icon
 
@@ -655,14 +653,14 @@ class WorldCanvas(QWidget):
         self._image = None
         if world is not None:
             try:
-                self._pixels = world_indices(world)
+                self._pixels, colours = world.picture()
             except WorldError:
                 self._pixels = b""
             else:
                 image = QImage(self._pixels, WORLD_ACROSS * TILE_PIXELS,
                                WORLD_DOWN * TILE_PIXELS, WORLD_ACROSS * TILE_PIXELS,
                                QImage.Format.Format_Indexed8)
-                image.setColorTable([QColor(c).rgb() for c in C64_PALETTE])
+                image.setColorTable([QColor(c).rgb() for c in colours])
                 self._image = image
         self.update()
         return self._image is not None

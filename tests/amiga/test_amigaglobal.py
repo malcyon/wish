@@ -32,7 +32,8 @@ pytest.importorskip("capstone")
 
 from support.hunks import hunk_file, pad4, u32  # noqa: E402
 
-from tools.amiga import amiga68k, amigaglobal  # noqa: E402
+from goldbox import amiga_hunks  # noqa: E402
+from tools.amiga import amigaglobal  # noqa: E402
 from tools.amiga.amiga68k import Executable  # noqa: E402
 
 #: The Silver Blades party's x byte, so the numbers in the test are the ones
@@ -65,8 +66,8 @@ def small_data_program() -> bytes:
     data += b"\0" * (0x7FFE + 8 - len(data))
     data = pad4(bytes(data))
     return hunk_file([
-        (amiga68k.HUNK_CODE, code, []),
-        (amiga68k.HUNK_DATA, data, [(0, [2])]),
+        (amiga_hunks.HUNK_CODE, code, []),
+        (amiga_hunks.HUNK_DATA, data, [(0, [2])]),
     ])
 
 
@@ -74,8 +75,8 @@ def absolute_program() -> bytes:
     """Two hunks and no small-data base -- Pool of Radiance's layout."""
     code = b"\x48\x79" + u32(4) + b"\x4e\x75"
     return hunk_file([
-        (amiga68k.HUNK_CODE, code, [(1, [2])]),
-        (amiga68k.HUNK_DATA, pad4(b"\0\0\0\0hello\0"), []),
+        (amiga_hunks.HUNK_CODE, code, [(1, [2])]),
+        (amiga_hunks.HUNK_DATA, pad4(b"\0\0\0\0hello\0"), []),
     ])
 
 

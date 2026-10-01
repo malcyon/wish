@@ -181,3 +181,41 @@ def test_returning_to_the_old_square_drops_the_hold(on):
     assert mapper._outdoor_pending is None
     mapper.poll()
     assert (mapper.state.x, mapper.state.y) == (8, 20)
+
+
+def test_load_world_with_one_blank_amiga_disk_is_none(tmp_path):
+    from automap.maps import load_world
+    from goldbox import c64_port
+    from goldbox.amiga_adf import AmigaDisk
+    AmigaDisk.blank("pooldata").save(tmp_path / "blank.adf")
+    assert load_world(str(tmp_path), c64_port.POOL_OF_RADIANCE) is None
+
+
+def test_load_world_reads_the_amiga_disks_when_no_c64_disk_is_there(tmp_path):
+    from automap.maps import load_world
+    from goldbox import c64_port
+    from goldbox.amiga_world import AmigaWorld
+    from goldbox.world import World
+    sources = _players_amiga_disks()
+    for n, disk in enumerate(sources):
+        disk.save(tmp_path / f"disk{n}.adf")
+    assert isinstance(load_world(str(tmp_path), c64_port.POOL_OF_RADIANCE), AmigaWorld)
+    assert not isinstance(load_world(str(tmp_path), c64_port.POOL_OF_RADIANCE), World)
+
+
+def _players_amiga_disks():
+    import pytest
+
+    from goldbox.amiga_adf import AmigaDisk
+    from tools.amiga import amigasaves
+    found = {}
+    for _label, data in amigasaves.images():
+        try:
+            disk = AmigaDisk(data)
+        except ValueError:
+            continue
+        if disk.volume_name.lower() in ("poolgame", "pooldata"):
+            found.setdefault(disk.volume_name.lower(), disk)
+    if len(found) < 2:
+        pytest.skip("needs the Amiga Pool of Radiance disks")
+    return list(found.values())

@@ -4,6 +4,7 @@ Tests for areas, maps and travel: the area tables, the map geometry and world ma
 
 | file | purpose |
 |---|---|
+| `test_amigaworld.py` | Checks the Amiga wilderness picture on a program and tiles built here, and against the player's Amiga Pool of Radiance disks. |
 | `test_areas.py` | Checks the area table in `goldbox/areas.py` for its rows, maps, names and shared Curse maps. |
 | `test_areatable.py` | Checks the three shipped area tables against the player's disks by re-deriving them from the game's own `ECL` scripts. |
 | `test_eclexitkinds.py` | Checks the exit classifier of `tools/areas/eclexitkinds.py` on scripts built here, and its totals over the thirty area scripts. |

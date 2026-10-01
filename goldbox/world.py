@@ -69,6 +69,7 @@ import os
 from dataclasses import dataclass
 
 from .d64 import D64, load_payload
+from .icons import C64_PALETTE
 
 #: The grid is 18 columns wide and 36 rows tall, one byte a square, indexed
 #: `y * STRIDE + x`. This is `$0612 + 1`, read off `GDRIVE00 $C3AF` -- *not*
@@ -332,6 +333,10 @@ class World:
                     break
         return cls(tuple(windows),
                    tuple(charsets) if len(charsets) == 3 else None)
+
+    def picture(self) -> tuple[bytes, list[str]]:
+        """`(pixels, colours)` of the whole wilderness, as `world_indices` draws it."""
+        return world_indices(self), C64_PALETTE
 
     def identify(self, block: bytes) -> tuple[int, int] | None:
         """Which window a 648-byte grid block in memory is, and how many

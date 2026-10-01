@@ -22,6 +22,7 @@ pytest.importorskip("capstone")
 from support.hunks import hunk_file, pad4  # noqa: E402
 
 from automap import gamedisks  # noqa: E402
+from goldbox import amiga_hunks  # noqa: E402
 from tools.amiga import amiga68k, amigarecordrefs  # noqa: E402
 
 #: `move.b $85(a0), d0`, and the same two displacement bytes as plain data.
@@ -35,9 +36,9 @@ def three_hunks() -> bytes:
     first = pad4(RTS + READ_85 + RTS)
     data = pad4(b"\0\0" + READ_85)
     second = pad4(RTS + RTS + RTS + READ_85 + RTS)
-    return hunk_file([(amiga68k.HUNK_CODE, first, []),
-                      (amiga68k.HUNK_DATA, data, []),
-                      (amiga68k.HUNK_CODE, second, [])])
+    return hunk_file([(amiga_hunks.HUNK_CODE, first, []),
+                      (amiga_hunks.HUNK_DATA, data, []),
+                      (amiga_hunks.HUNK_CODE, second, [])])
 
 
 def test_every_code_hunk_is_a_range_and_the_data_hunk_is_not():

@@ -2199,6 +2199,10 @@ graph LR
   amiga_shared -.->|deferred| amiga_por
   amiga_shared --> amiga_port
   amiga_shared --> dos_port
+  amiga_world --> amiga_adf
+  amiga_world --> amiga_dax
+  amiga_world --> amiga_hunks
+  amiga_world --> world
   areas -.->|deferred| geo
   areas --> layout
   backstab --> titles
@@ -2293,6 +2297,7 @@ graph LR
   strength --> savegame
   titles --> dos_port
   world --> d64
+  world --> icons
   world_state -.->|deferred| amiga_savegame
   world_state --> areas
   world_state -.->|deferred| c64_port

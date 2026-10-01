@@ -477,10 +477,10 @@ def test_a_square_the_game_paints_over_keeps_its_disk_art(
 
 
 def test_the_picture_is_built_once_per_world(app, tmp_path, monkeypatch):
-    from automap import window as window_module
+    from goldbox import world as world_module
     built = []
-    real = window_module.world_indices
-    monkeypatch.setattr(window_module, "world_indices",
+    real = world_module.world_indices
+    monkeypatch.setattr(world_module, "world_indices",
                         lambda *a, **k: built.append(1) or real(*a, **k))
     win, target = _window_on(
         app, tmp_path, monkeypatch,
@@ -494,3 +494,16 @@ def test_the_picture_is_built_once_per_world(app, tmp_path, monkeypatch):
     _step(win)
     _step(win)
     assert built == [1]
+
+
+def test_the_page_draws_the_colours_the_worlds_picture_gives(app):
+    """A world that is not the C64's brings its own colour table."""
+    class Fake:
+        def picture(self):
+            width = WORLD_ACROSS * 24
+            return bytes([1]) * (width * WORLD_DOWN * 24), ["#000000", "#12AB34"]
+
+    canvas = _canvas(None)
+    assert canvas.show_world(Fake())
+    image = canvas.grab().toImage()
+    assert _pixel_at_square(canvas, image, 21, 27) == QColor("#12AB34").rgb()

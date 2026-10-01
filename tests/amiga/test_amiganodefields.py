@@ -40,7 +40,8 @@ pytest.importorskip("capstone")
 
 from support.hunks import hunk_file, pad4, u32  # noqa: E402
 
-from tools.amiga import amiga68k, amiganodefields  # noqa: E402
+from goldbox import amiga_hunks  # noqa: E402
+from tools.amiga import amiganodefields  # noqa: E402
 from tools.amiga.amiga68k import Executable  # noqa: E402
 
 #: The record's chain-head displacement in the program built below, and the
@@ -84,8 +85,8 @@ def chain_walk_program() -> bytes:
     data = bytearray(b"\x4e\xf9" + u32(0))
     data += b"\0" * (0x7FFE + 8 - len(data))
     return hunk_file([
-        (amiga68k.HUNK_CODE, code, []),
-        (amiga68k.HUNK_DATA, pad4(bytes(data)), [(0, [2])]),
+        (amiga_hunks.HUNK_CODE, code, []),
+        (amiga_hunks.HUNK_DATA, pad4(bytes(data)), [(0, [2])]),
     ])
 
 
@@ -101,8 +102,8 @@ def early_return_program() -> bytes:
     data = bytearray(b"\x4e\xf9" + u32(0))
     data += b"\0" * (0x7FFE + 8 - len(data))
     return hunk_file([
-        (amiga68k.HUNK_CODE, code, []),
-        (amiga68k.HUNK_DATA, pad4(bytes(data)), [(0, [2])]),
+        (amiga_hunks.HUNK_CODE, code, []),
+        (amiga_hunks.HUNK_DATA, pad4(bytes(data)), [(0, [2])]),
     ])
 
 
@@ -110,8 +111,8 @@ def _program(code: bytes) -> Executable:
     data = bytearray(b"\x4e\xf9" + u32(0))
     data += b"\0" * (0x7FFE + 8 - len(data))
     return Executable.parse(hunk_file([
-        (amiga68k.HUNK_CODE, pad4(code), []),
-        (amiga68k.HUNK_DATA, pad4(bytes(data)), [(0, [2])]),
+        (amiga_hunks.HUNK_CODE, pad4(code), []),
+        (amiga_hunks.HUNK_DATA, pad4(bytes(data)), [(0, [2])]),
     ]))
 
 
