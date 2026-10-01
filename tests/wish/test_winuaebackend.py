@@ -64,7 +64,7 @@ def test_the_two_amiga_flags_are_independent(monkeypatch):
                                                "FS-UAE (Amiga)"]
 
 
-def test_the_emulators_come_first_named_for_their_machine_then_the_hardware(
+def test_each_platforms_rows_are_grouped_with_the_c64_ones_first(
         monkeypatch):
     for env in (bk.AMIGA_FSUAE_ENV, bk.AMIGA_WINUAE_ENV, bk.ULTIMATE_ENV):
         monkeypatch.setenv(env, "1")

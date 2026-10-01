@@ -242,8 +242,8 @@ ULTIMATE = Backend(
     name="C64 Ultimate",
     probe=present,
     connect=UltimateTarget,
-    setup_hint=("set $POR_ULTIMATE to the device's host name (firmware 3.11+ "
-                "serves the REST API; 3.12+ may need $POR_ULTIMATE_PASSWORD)"),
+    setup_hint=("Enter the device's address in Ultimate host below. "
+                "It needs firmware 3.11 or later."),
     # A network round trip per read, so a slower poll costs freshness -- and
     # each read halts the 6510 for the length of the transfer, so it costs the
     # machine a little time as well.

@@ -762,8 +762,8 @@ working:
   bracketed word is where the position came from, and `[status]` means the
   game's status line, which is the ordinary case.
 
-*If it instead says `waiting for a game - VICE: start VICE with its binary
-monitor enabled …`:* the monitor is not listening. Linux: `ss -tln | grep 6502`.
+*If it instead says `waiting for a game - VICE (C64): Start VICE with its binary
+monitor turned on.`:* the monitor is not listening. Linux: `ss -tln | grep 6502`.
 Windows: `Test-NetConnection 127.0.0.1 -Port 6502` (*unverified spelling of the
 result on a closed port*, but a `TcpTestSucceeded : False` is unambiguous).
 
@@ -813,7 +813,7 @@ on Linux, `%LOCALAPPDATA%\wish\maps\` on Windows.
 **M6.** Close and reopen wish with the game *not* running.
 
 *Expect:* the window opens, the map tab draws an empty grid and says
-`waiting for a game - VICE: start VICE with its binary monitor enabled …`
+`waiting for a game - VICE (C64): Start VICE with its binary monitor turned on.`
 followed by the `$POR_ULTIMATE` hint, the action buttons grey out, nothing
 crashes, and the editor tab works normally. A tool that requires the emulator to
 start is a tool that is useless half the time.
