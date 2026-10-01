@@ -1658,17 +1658,43 @@ def test_stop_reports_a_process_that_outlives_the_wait(monkeypatch, capsys):
     assert "still running" in capsys.readouterr().out
 
 
-def test_stop_does_not_call_a_live_pid_without_a_group_not_running(
+def test_stop_signals_a_live_pid_that_leads_no_group_itself(
         monkeypatch, capsys):
+    """A `launch --foreground` emulator lives in its caller's group."""
+    live = {5: True}
+    sent = []
+
+    def no_group(pid, sig):
+        raise ProcessLookupError
+
+    def kill(pid, sig):
+        sent.append((pid, sig))
+        live[pid] = False
+
+    monkeypatch.setattr(fsuaegdb.os, "killpg", no_group, raising=False)
+    monkeypatch.setattr(fsuaegdb.os, "kill", kill)
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: live[pid])
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    assert fsuaegdb.stop(stop_args()) == 0
+    out = capsys.readouterr().out
+    assert sent == [(5, fsuaegdb.signal.SIGTERM)]
+    assert "5 leads no process group, so the process itself was signalled" in out
+    assert "5 stopped" in out
+
+
+def test_stop_reports_a_group_less_pid_that_outlives_the_wait(monkeypatch, capsys):
+    clock = iter(range(0, 100))
+
     def no_group(pid, sig):
         raise ProcessLookupError
 
     monkeypatch.setattr(fsuaegdb.os, "killpg", no_group, raising=False)
+    monkeypatch.setattr(fsuaegdb.os, "kill", lambda pid, sig: None)
     monkeypatch.setattr(fsuaegdb, "alive", lambda pid: True)
-    assert fsuaegdb.stop(stop_args()) == 1
-    assert capsys.readouterr().out == (
-        "5 is running but leads no process group, so nothing was signalled; a "
-        "--foreground launch ends with the process that holds its lease\n")
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    monkeypatch.setattr(fsuaegdb.time, "monotonic", lambda: next(clock))
+    assert fsuaegdb.stop(stop_args(wait=3)) == 1
+    assert "still running" in capsys.readouterr().out
 
 
 def test_stop_says_not_running_for_a_pid_that_is_gone(monkeypatch, capsys):
@@ -2334,3 +2360,27 @@ def test_a_real_window_opens_no_debugger_connection(tmp_path, monkeypatch):
         fsuae.reset()
     assert opened == []
     assert [a for a in dialled if a[1] == 6598] == []
+
+
+def test_stop_helper_waits_thirty_seconds_by_default(monkeypatch):
+    seen = []
+    monkeypatch.setattr(fsuaegdb, "stop", lambda args: seen.append(args) or 0)
+    fsuaegdb.main(["stop", "--helper", "5"])
+    assert seen[0].helper_wait == 30.0
+
+
+def test_wish_removes_the_c64_backends_environment_for_the_window_and_restores_it(
+        wished, tmp_path, monkeypatch):
+    values = {"POR_MONITOR": "127.0.0.1:6531",
+              "WISH_EXPERIMENTAL_C64_ULTIMATE": "1", "POR_ULTIMATE": "10.0.0.5",
+              "WISH_ULTIMATE": "10.0.0.6", "POR_ULTIMATE_PASSWORD": "x",
+              "WISH_ULTIMATE_PASSWORD": "y"}
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+    inside = []
+    monkeypatch.setattr(fsuaegdb, "open_wish", lambda out: (
+        inside.append({n: os.environ.get(n) for n in values})
+        or (FakeApp(), FakeWindow())))
+    run_wish(tmp_path, [])
+    assert inside == [{n: None for n in values}]
+    assert {n: os.environ.get(n) for n in values} == values
