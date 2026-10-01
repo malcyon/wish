@@ -428,3 +428,29 @@ def test_without_the_flag_the_pod_folder_is_not_taken(
         assert win.map.state.title != POD.title
     finally:
         win.close()
+
+
+def test_a_pool_of_radiance_folder_added_later_moves_the_window(
+        app, tmp_path, monkeypatch, amiga_on):
+    settings, pod = _only_pod(tmp_path, monkeypatch)
+    por = pool_folder(tmp_path, walled_geo(art=1))
+    win = window(app, maps=None, settings=settings)
+    try:
+        assert win.map.state.title == POD.title
+        settings.game_folders[POOL.key] = str(por)
+        win.reload_disks()
+        assert win.map.state.title == POOL.title
+        assert str(win.disks) == str(por)
+    finally:
+        win.close()
+
+
+def test_the_dialog_reports_the_folder_the_window_uses(
+        app, tmp_path, monkeypatch, amiga_on):
+    settings, pod = _only_pod(tmp_path, monkeypatch)
+    win = window(app, maps=None, settings=settings)
+    try:
+        rows = dict(preferences.report(settings))
+        assert rows["In use"] == str(win.disks) == str(pod)
+    finally:
+        win.close()

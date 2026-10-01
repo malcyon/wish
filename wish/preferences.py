@@ -341,7 +341,8 @@ def report(settings, flag=None, beside=None,
     map tab and the item column say the same thing where you are looking.
     """
     where, _source = paths.resolve_disks(flag=flag, beside=beside, game=game,
-                                         settings=settings)
+                                         settings=settings,
+                                         also=backends.amiga_only_titles())
     rows = [("In use", str(where) if where is not None else "nothing found")]
     wanted = ([game] if getattr(game, "disk_glob", None)
               else list(c64_port.GAMES)[:2])

@@ -160,10 +160,13 @@ class WishWindow(QMainWindow):
             maps, found = load_maps_titled(self.disks_text())
             # An Amiga-only title has no C64 container, so with no title given
             # nothing else would name it and the window would label its maps
-            # with the default title.
+            # with the default title. Not stored in `self._title`: that is
+            # what `disk_game()` treats as the player's choice, and this was
+            # only inferred from the one folder set, so a Pool of Radiance
+            # folder added later must still win in `reload_disks`.
             if (title is None and self.editor.party is None
                     and found in AMIGA_ONLY_TITLES):
-                title = self._title = found.title
+                title = found.title
         self.mapper = Automapper(
             None, maps, area=area, title=title or self._open_title())
         self.map = AutomapBinding(self, self.mapper, settings=self.settings, disks=self.disks_text())
