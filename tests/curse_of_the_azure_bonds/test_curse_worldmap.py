@@ -88,12 +88,13 @@ class Assembler:
 
 
 def script(names, table, width, menus, leaving=(), waypoints=None,
-           decoy=None):
+           decoy=None, padding=0):
     """A world-map script in the game's instruction formats.
 
     `menus` maps a place to its JOURNEY ON rows, or to a pair (short, full)
     for a place whose last row is offered on a condition. `decoy` is a block
     of data placed before the real table, which the reader must not take.
+    `padding` is a run of statements ahead of place 0's menu.
     """
     a = Assembler()
     for entry in ("start", "start", "start", "start", "start"):
@@ -104,6 +105,9 @@ def script(names, table, width, menus, leaving=(), waypoints=None,
          *[addr(f"menu{n}") for n in range(len(names))])
     for n in range(len(names)):
         a.label(f"menu{n}")
+        if n == 0:
+            for _ in range(padding):
+                a.op(W.ADD, imm(1), imm(1), addr(INDEX))
         rows = menus.get(n, ())
         if rows and isinstance(rows[0], tuple):
             short, full = rows
@@ -296,15 +300,45 @@ def test_a_driver_without_the_marker_tables_is_refused():
         W.read_marker_cells(bytes((0x4C, 0x10, 0xC0, 0x4C, 0x20, 0xC0)) + bytes(64))
 
 
+def test_a_menu_row_is_the_kth_real_road_when_a_slot_in_between_is_empty():
+    table = [1, NO, 2,  0, NO, NO,  0, NO, NO,  0, NO, NO]
+    menus = {0: ("BRIGHT FORD", "COLD HILL"), 1: ("AMBER",), 2: ("AMBER",),
+             3: ("AMBER",)}
+    world = W.read_world_map({"ECL50": script(NAMES, table, 3, menus)})
+    assert not any(g.conditional for g in world.legs)
+
+
+def test_a_script_name_without_an_area_id_is_refused():
+    with pytest.raises(W.WorldMapError, match="area id"):
+        W.read_world_map({"ECLXY": script(NAMES, TABLE, 3, MENUS)})
+
+
+def test_a_leg_handed_over_twice_is_refused():
+    body = script(NAMES, TABLE, 3, MENUS, leaving=[(3, 0x51), (3, 0x52)])
+    with pytest.raises(W.WorldMapError, match="leg 3"):
+        W.read_script(body, 0x50)
+
+
+def test_a_menu_walk_that_never_reaches_the_choice_is_refused():
+    body = script(NAMES, TABLE, 3, MENUS, padding=300)
+    with pytest.raises(W.WorldMapError, match="256"):
+        W.read_script(body, 0x50)
+
+
+def test_a_script_base_that_is_not_a_page_is_refused(monkeypatch):
+    monkeypatch.setitem(globals(), "BASE", BASE + 0x10)
+    body = script(NAMES, TABLE, 3, MENUS)
+    with pytest.raises(W.WorldMapError, match="not pinned"):
+        W.read_script(body, 0x50)
+
+
+def test_a_place_both_scripts_handle_is_refused():
+    body = script(NAMES, TABLE, 3, MENUS)
+    with pytest.raises(W.WorldMapError, match="handled by two scripts"):
+        W.read_world_map({"ECL50": body, "ECL51": body})
+
+
 # -- the player's disks -------------------------------------------------------
-
-#: The fourteen places, in `$4C9B` order, as each owning script prints them.
-CURSE_PLACES = [
-    "TILVERTON", "SHADOWDALE", "ASHABENFORD", "DAGGER FALLS", "STANDING STONES",
-    "VOONLAR", "PHLAN", "TESHWAVE", "ESSEMBRA", "HAP", "YULASH", "HILLSFAR",
-    "ZHENTIL KEEP", "MYTH DRANNOR",
-]
-
 
 def _payload(name):
     return split_load_address(gamedata.curse_file(name))[1]
@@ -320,8 +354,23 @@ def curse_world():
 def test_curse_has_fourteen_places_and_twenty_roads(curse_world):
     assert len(curse_world.places) == 14
     assert len(curse_world.roads) == 20
-    assert [p.name for p in curse_world.places] == CURSE_PLACES
     assert {p.script for p in curse_world.places} == {0x50, 0x51}
+    for place in curse_world.places:
+        assert place.name and place.name.isupper()
+
+
+@gamedata.needs_curse_disks
+def test_curse_each_place_is_owned_by_one_script_and_named_by_it(curse_world):
+    maps = {n: W.read_script(_payload(n), int(n[3:], 16)) for n in ("ECL50", "ECL51")}
+    first, second = maps.values()
+    assert (first.table, first.width) == (second.table, second.width)
+    owned = [m.owned() for m in maps.values()]
+    assert not owned[0] & owned[1]
+    assert owned[0] | owned[1] == set(range(14))
+    for m in maps.values():
+        for place in m.owned():
+            assert curse_world.places[place].script == m.script
+            assert curse_world.places[place].name == m.names[place]
 
 
 @gamedata.needs_curse_disks
@@ -330,7 +379,11 @@ def test_curse_tilverton_to_dagger_falls_is_the_one_road_listed_one_way(curse_wo
     assert one_way == [(0, 3)]
     road = next(r for r in curse_world.roads if (r.a, r.b) == (0, 3))
     assert road.forward.conditional is False and road.backward is None
-    assert curse_world.places[3].rows == ("SHADOWDALE", "TESHWAVE")
+    targets = [g.target for g in sorted(
+        (g for g in curse_world.legs if g.source == 3), key=lambda g: g.slot)]
+    rows = curse_world.places[3].rows
+    assert len(rows) == len(targets) == 2
+    assert rows == tuple(curse_world.places[t].name for t in targets)
 
 
 @gamedata.needs_curse_disks

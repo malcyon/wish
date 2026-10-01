@@ -281,8 +281,12 @@ def _menus(body: bytes, base: int, found: list[Statement], count: int,
             work, seen = [(arm.value - base, None)], set()
             while work:
                 at, pending = work.pop()
-                if (at, pending) in seen or len(seen) > 256:
+                if (at, pending) in seen:
                     continue
+                if len(seen) > 256:
+                    raise WorldMapError(
+                        f"place {place}'s menu walk passed 256 statements "
+                        f"without reaching the choice")
                 seen.add((at, pending))
                 if at == choice_at:
                     if pending is not None and pending not in got:
@@ -359,7 +363,10 @@ def read_script(body: bytes, script: int) -> ScriptMap:
             jump = decode(body, test.end) if test is not None else None
             if (test is not None and test.op == 0x16 and jump is not None
                     and jump.op == NEWECL and jump.operands[0].is_immediate()):
-                leaving[st.operands[1].value] = jump.operands[0].value
+                leg = st.operands[1].value
+                if leg in leaving:
+                    raise WorldMapError(f"leg {leg} hands over to a script twice")
+                leaving[leg] = jump.operands[0].value
 
     menus = _menus(body, base, found, count, choice, pick.at)
     return ScriptMap(script, base, width, tuple(names), table, waypoints,
@@ -451,7 +458,14 @@ def read_world_map(scripts: Mapping[str, bytes],
     """
     if not scripts:
         raise WorldMapError("no script given")
-    maps = [read_script(body, int(name[3:], 16)) for name, body in sorted(scripts.items())]
+    maps = []
+    for name, body in sorted(scripts.items()):
+        try:
+            area = int(name[3:], 16)
+        except ValueError:
+            raise WorldMapError(
+                f"script name {name!r} does not end in the area id in hex") from None
+        maps.append(read_script(body, area))
     first = maps[0]
     for other in maps[1:]:
         if (other.table, other.width) != (first.table, first.width):
@@ -479,16 +493,18 @@ def read_world_map(scripts: Mapping[str, bytes],
     for n in range(first.count):
         m = owner.get(n)
         menus = m.menus.get(n, ()) if m else ()
+        rank = 0    # menu rows list the real roads in slot order
         for slot, target in enumerate(first.row(n)):
             if target == NO_ROAD:
                 continue
+            rank += 1
             if target >= first.count:
                 raise WorldMapError(f"place {n} slot {slot} names place {target}")
             index = n * first.width + slot
             way = (m or first).waypoints
             legs.append(Leg(
                 index, n, slot, target,
-                (any(len(rows) <= slot for rows in menus) if menus else None),
+                (any(len(rows) < rank for rows in menus) if menus else None),
                 m.leaving.get(index) if m else None,
                 None if way is None or way[index] == NO_ROAD else way[index]))
         if menus and max(len(rows) for rows in menus) != sum(
