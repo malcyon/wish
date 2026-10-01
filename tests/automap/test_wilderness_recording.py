@@ -153,6 +153,14 @@ def test_load_world_is_none_without_disks(tmp_path):
     assert load_world(str(tmp_path), None) is None
 
 
+def test_load_world_skips_an_empty_image_instead_of_raising(tmp_path):
+    from automap.maps import load_world
+    from goldbox import c64_port
+    game = c64_port.POOL_OF_RADIANCE
+    (tmp_path / "POOL1.d64").write_bytes(b"")
+    assert load_world(str(tmp_path), game) is None
+
+
 def test_returning_to_the_old_square_drops_the_hold(on):
     mapper, _ = mapper_for(
         [out(8, 20), out(3, 20), out(8, 20), out(3, 20)], _window(1))

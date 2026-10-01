@@ -45,8 +45,11 @@ def load_world(disks: str | None, game: C64Container | None):
     """The three wilderness windows off a title's C64 disks, or None.
 
     None for a title without a travel grid, a folder with no C64 disks, and a
-    set of disks that does not carry all three windows.
+    set of disks that does not carry all three windows. An image that cannot
+    be opened is skipped, so one damaged file does not cost the windows the
+    good disks carry.
     """
+    from goldbox.d64 import D64, InvalidImageError
     from goldbox.world import World, WorldError
     if game is None or disks is None or not game.travel_grid:
         return None
@@ -54,10 +57,16 @@ def load_world(disks: str | None, game: C64Container | None):
     for pattern in disk_globs(game):
         for path in glob.glob(os.path.join(str(disks), pattern)):
             paths.setdefault(os.path.normcase(os.path.abspath(path)), path)
-    if not paths:
+    images = []
+    for path in sorted(paths.values()):
+        try:
+            images.append(D64.open(path))
+        except (InvalidImageError, OSError):
+            continue
+    if not images:
         return None
     try:
-        return World.from_disks(sorted(paths.values()))
+        return World.from_disks(images)
     except (WorldError, OSError):
         return None
 
