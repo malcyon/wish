@@ -101,7 +101,7 @@ world map. C64 drivers: `Session.snapshot(name)` saves the whole machine, the
 `walk_with_retry(moves, retries=3)` does the snapshot, walk, restore and retry
 for a leg and returns False, with the machine restored, when every attempt met
 an encounter. After a restore `save_game` raises until a disk is attached on
-purpose. Amiga: (equivalent not yet established.)
+purpose. Amiga: FS-UAE has no usable machine-state save in this build, because its savestate crashes; WinUAE's is being tested.
 
 **Suppress random encounters with `Session.no_encounters = True`, unless the
 run proves a conversion or must meet encounters.** C64 drivers: it writes the
@@ -111,7 +111,7 @@ for automapper and driver testing only, never for conversion acceptance or for
 a save that proves a conversion: the pokes are save-page bytes, so once any is
 written `save_game` raises unless `allow_suppressed=True` is passed. An area
 missing from the table is logged once as unsuppressed; add its gate to
-`ENCOUNTER_GATES` to cover it. Amiga: (equivalent not yet established.)
+`ENCOUNTER_GATES` to cover it. Amiga: in an FS-UAE `session`, `no_encounters on` for walks through encounter areas, and `no_encounters off` before any save. A save key is refused while it is on, but that net is incomplete, so `off` is the rule. It is never used for conversion proof, and the `wish` subcommand refuses it.
 
 **Every emulator run that walks a party through areas with random encounters,
 or travels a world map, uses snapshots, plus `no_encounters` unless it proves a
