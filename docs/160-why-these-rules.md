@@ -8,21 +8,22 @@ a few lines each without losing the reason anybody believes them. Nothing here
 tells you what to do; the rules files do that. Read this when you have been
 handed a rule and want the evidence.
 
-Quotations from Donald are copied character for character. They are the
-evidence, and most of the rules exist because he said something once and it
-was written down.
+Donald's rulings are paraphrased here rather than quoted, including inside the
+passages below that are otherwise copied from the files they were cut from.
+They are the evidence, and most of the rules exist because he said something
+once and it was written down.
 
 ## Citations
 
 The rule that a cited issue carries its title is the one most often broken here
 and the one that costs the most. The reason is that a bare number moves the
-work from the writer to the reader: *"when you only reference a number, it
-never means anything to me."*
+work from the writer to the reader, and Donald said that a bare reference to a
+number never means anything to him.
 
 `CLAUDE.md` used to explain this as a matter of whether a browser was open.
-Donald corrected that on 2026-09-02: *"It should not matter if I have a web
-browser open or not. You're forcing me to manually look up every number. That
-is fast for you, but slow for me."*
+Donald corrected that on 2026-09-02: whether he has a web browser open should
+not matter, because a bare number forces him to look up every number by hand,
+which is fast for the assistant and slow for him.
 
 The rule was stated twice in `CLAUDE.md` -- once in the Issues section and
 again in Replies, three hundred lines later -- and went on being broken anyway,
@@ -44,9 +45,9 @@ exemption, because a reply is skimmed rather than read in order.
 Two exceptions were settled deliberately, and both are about where the reader
 is. A commit message keeps the number bare in parentheses at the end of its one
 line, because a title there would break the sentence and GitHub hotlinks the
-number anyway. And an issue *body* is exempt -- Donald, 2026-09-01: *"Leave
-them alone. GitHub.com shows the ticket details on hover and makes it a
-hotlink, so it will be fine."* On the web the hover does the lookup for him; in
+number anyway. And an issue *body* is exempt -- Donald, 2026-09-01, ruled
+that they are to be left alone, because GitHub.com shows the ticket details on
+hover and makes the number a hotlink. On the web the hover does the lookup for him; in
 a terminal nothing does, which is why the rule binds hardest there.
 
 ### The guard that disabled every subagent
@@ -82,14 +83,14 @@ Original example (replaced by the placeholder `#123 (the issue's own title)`), l
 
 Cut quotation, lines 51-52 (end of the paragraph "A bare number makes him do the lookup"):
 
-> number in hand, slow for him. *"When you only reference a number, it never means
-> anything to me."* As the **subject** of a sentence it is worst of all.
+> number in hand, slow for him. Donald said that a bare reference to a number never
+> means anything to him. As the **subject** of a sentence it is worst of all.
 
 Cut provenance, lines 54-56 ("It does not govern code"):
 
-> **It does not govern code.** Donald, 2026-09-09: *"I don't care about bare issue
-> numbers in code or docstrings. I care about it when you are communicating with
-> me."* A docstring is read by somebody already in that file, and
+> **It does not govern code.** Donald, 2026-09-09: he does not care about bare issue
+> numbers in code or docstrings, and cares only when the assistant is communicating
+> with him. A docstring is read by somebody already in that file, and
 
 ### What tests and a hook said before they dropped their history
 
@@ -143,8 +144,8 @@ github issue hooks."` (2026-09-03) removed both from `.claude/settings.json`.
 ...
 
 **The description of an issue is exempt, and that is Donald's ruling**, not an
-oversight: *"Leave them alone. GitHub.com shows the ticket details on hover
-and makes it a hotlink, so it will be fine."* An issue body is read on the
+oversight: leave them alone, because GitHub.com shows the ticket details on
+hover and makes the number a hotlink. An issue body is read on the
 web.
 ```
 (Also in the file's `CHECKED` comment: "which Donald has ruled is read on the web" -- and the block-message string says "issues.md says the rule covers replies, issue comments, documents and tables alike", the same misquote, in a user-facing stderr string.)
@@ -156,9 +157,9 @@ what it comes to is that length is not thoroughness.
 
 Explaining a bug by its mechanism rather than by the situation does have one.
 Donald read an explanation of a rename bug -- something to the effect of
-"`_flush` swallows a `ValueError` from `encode_record_name`" -- and answered:
-*"I don't understand. In what situation would a user be in when they run into
-this?"* The situation was that you rename a character to `Bel'ana`, the
+"`_flush` swallows a `ValueError` from `encode_record_name`" -- and answered
+that he did not understand it and asked in what situation a user would run into
+it. The situation was that you rename a character to `Bel'ana`, the
 apostrophe is a curly one because you copied it off a web page, you click Save,
 it says "no changes", and the box still shows the name you typed. A reader who
 has not seen the code cannot tell from a description of the code whether the
@@ -176,7 +177,7 @@ habit: reaching for a piece of jargon that sounds precise and carries less than
 the simple phrase it replaced.
 
 **A file given a person's verb.** "All three saves walk" was written here and
-Donald could not read it: *"I don't know what a save walking means."* He is
+Donald could not read it: he did not know what a save walking means. He is
 right -- a save cannot walk, a party walks. The shorthand collapses the actor,
 and the actor is the whole content of the sentence. What was actually proven was
 that the party in each of the three converted saves could be made to move;
@@ -185,9 +186,9 @@ crash, or somebody took a step.
 
 The rule survived the sentence it was written about and was broken again on
 2026-08-27, in a reply announcing that the DOS import no longer needs a
-template: *"The template is gone, and it played."* Donald: *"I don't know what
-'it played' means. A template cannot play a video game. It is a template, it
-can't action anything on its own."* Two faults in five words -- a thing was
+template: "The template is gone, and it played." Donald said he did not know what
+"it played" meant: a template cannot play a video game, and being a template it
+cannot action anything on its own. Two faults in five words -- a thing was
 given a person's verb, and `it` pointed at the noun nearest to hand rather than
 the one meant. Announcing a result is exactly where this slips, because the
 result feels like the subject; it is not.
@@ -196,9 +197,8 @@ The sense that is fine is the one with no person in it: walking a range, a loop
 or a structure. `docs/118-debug-mode.md`'s "walks `$9800` from 10 to 18" is
 exactly right.
 
-**"X follows Y".** It went into two issue titles before Donald said so: *"I see
-this a lot, where you say 'X follows Y'. It doesn't make sense to me, and it
-results in me not understanding what's going on."* It is doing the work of at
+**"X follows Y".** It went into two issue titles before Donald said so: he saw it a lot, it
+made no sense to him, and it left him not understanding what was going on. It is doing the work of at
 least three different sentences -- grows with, is derived from, is recomputed
 after -- and the reader cannot tell which. "The window's minimum height follows
 the UI font" means "the window gets taller as the UI font grows, so a large font
@@ -221,38 +221,37 @@ Each of these was added after Donald objected to the word in a reply.
 
 **`shape`, 2026-09-11.** An earlier version of the row wrongly kept two phrases
 that the rules themselves used, `the shape of the fix` and `the shape of the
-work`; both were rewritten and the row now has no exemption. *"Just because
-you read them in our docs somewhere doesn't mean I understand it. Every time you
-use that word, I don't understand what you mean."*
+work`; both were rewritten and the row now has no exemption. Donald said that
+reading them in our docs somewhere does not mean he understands the word, and
+that every time an agent uses it he does not understand what is meant.
 
-**`worth`, 2026-09-06.** *"You've abused it past my point of tolerance. You are
-constantly telling me something is `worth` knowing, or `worth` saying, or `worth` this
-or that. I've had it."* The word rates a sentence instead of writing one.
+**`worth`, 2026-09-06.** Donald said the word had been overused past his
+tolerance, rating sentences as `worth` knowing or `worth` saying instead of
+writing them. The word rates a sentence instead of writing one.
 
 **A sentence that rates itself, 2026-09-09.** After a reply that said a finding
-`says so out loud`: *"This is unnecessary filler. Shouldn't caveman lite prevent
-you from saying things like this?"* It should, so the whole family of ratings is
+`says so out loud`, Donald called it unnecessary filler and asked whether
+caveman lite should prevent such phrasing. It should, so the whole family of ratings is
 banned and not only the examples.
 
-**`plain`, 2026-09-09.** *"Anytime you ever, ever ever think you should use the
-word `plain`, you should be using the word `simple` instead."*
+**`plain`, 2026-09-09.** Donald said that whenever an agent thinks of using the
+word `plain`, it should use the word `simple` instead.
 
-**`carried`, 2026-09-04.** *"The agents just give up and say 'oh well, we can't
-convert it'. But they call it `carried` instead, which confuses me."* The word
+**`carried`, 2026-09-04.** Donald said the agents give up and say they cannot
+convert something, but call it `carried` instead, which confuses him. The word
 makes a conversion that stops sound like a finding.
 
 ### Embraced energy
 
-Donald ruled on 2026-09-01: *"I think 'embrassed' is a typo from
-game-icons.net. Let's refer to it as 'embraced' unless we are referring to the
-url."* Only the URL slug and the archive filename carry the typo; the icon's
+Donald ruled on 2026-09-01 that 'embrassed' is a typo from game-icons.net and
+that the icon is to be called 'embraced' except when referring to the URL. Only the URL slug and the archive filename carry the typo; the icon's
 page on game-icons.net is titled *Embraced energy*.
 
 The licence credit was then got backwards, and the reasoning is recorded
 because it was almost right. A credit should name a work as its author titled
 it -- that part is correct. The mistake was taking the *filename* as the
-author's spelling. Donald: *"It's called 'Embraced energy icon'. It says so on
-the game-icons.net website."* `wish/licenses.py`'s `TITLES` is the one-entry
+author's spelling. Donald said the icon is called "Embraced energy icon", as the game-icons.net
+website says. `wish/licenses.py`'s `TITLES` is the one-entry
 override that fixes it.
 
 ## Help text in the GUI
@@ -268,16 +267,15 @@ program that apologises for itself. Every one of them was removed on request.
 shipped.** In 2026-08 an agent added one line to the export report and two to
 Preferences, each closely modelled on a sibling sentence in the same function,
 and that similarity is why nobody stopped to ask. Donald's verdict on all three
-was *"they won't be understood by humans"* -- `#96 (Three interface strings
+was that humans would not understand them -- `#96 (Three interface strings
 shipped tonight without being approved)`. The existing sentences read well to
 somebody who already knows the machinery, which is everybody who has ever
 reviewed them and nobody who is using the program.
 
-**Capitalisation.** Donald, 2026-08-31, first of the Messages panel -- *"I want
-us to start making sure we capitalize the phrases that are going into the
-Messages panel. It looks more professional."* -- and then of everything:
-*"There should be a rule that text we send to the user always has the first
-letter capitalized. This has been a recurring problem in all AI text."*
+**Capitalisation.** Donald, 2026-08-31, first of the Messages panel, asked that the phrases going
+into it be capitalised because it looks more professional, and then of
+everything, asked for a rule that text sent to the user always has its first
+letter capitalised, calling it a recurring problem in all AI text.
 
 He is right that it is a habit rather than an oversight. Assistant-written
 strings start lowercase far more often than human-written ones, because they are
@@ -291,13 +289,13 @@ tool, because it lower-cases the rest -- it would turn the combat log's
 
 The rule then got broken by somebody following it. Quoting a lowercase string is
 correct; starting a sentence with that quotation makes the sentence lowercase
-anyway. Donald caught it in the reply that cited the rule -- *"why isn't the
-sentence capitalized?"* -- where a table cell began `counts towards commissions
+anyway. Donald caught it in the reply that cited the rule, asking why the sentence was
+not capitalised, where a table cell began `counts towards commissions
 completed names a label the window no longer shows`.
 
 **Memory addresses in front of a player.** Donald, 2026-08-31, of a tooltip
 reading `$4AC1, bumped by the clerk for the ten commissions that count as
-major`: *"we shouldn't be presenting memory addresses to players."* It is an
+major`: memory addresses should not be presented to players. It is an
 easy fault to introduce here, because the address *is* the evidence and this
 whole project is written in addresses. In a docstring, a comment, a `docs/` page
 or an issue, the address is what makes a finding checkable; in a tooltip it is a
@@ -323,13 +321,13 @@ The rule files state the rule and carry no history. These are the passages they 
 
 > Donald's verdict on three strings shipped that way --
 > `#96 (Three interface strings shipped tonight without being approved)` -- was
-> *"they won't be understood by humans"*.
+> that humans would not understand them.
 
 #### .claude/rules/gui-text.md -- "Any decision about the interface comes with a screenshot"
 
-> 2026-09-05: *"For the theming stuff, you need to
-> show me a screenshot. You are just giving me straight numbers, and I am not a
-> computer. We need a rule that any UI decision requires a screenshot."*
+> 2026-09-05: Donald said that for the theming work he needed a screenshot,
+> because he was being given straight numbers and is not a computer, and asked
+> for a rule that any UI decision requires a screenshot.
 >
 > He said it after being handed hex colours, file paths and line numbers as the
 > evidence for a claim that Wish would be unreadable on a dark desktop -- a
@@ -493,8 +491,8 @@ Cut sentences, lines 214-215:
 
 #### .claude/rules/emulator.md -- speaker section
 
-> He caught an agent doing it on 2026-09-05: *"That is going to
-> blast the intro song, and I'll have no way to turn it down."*
+> He caught an agent doing it on 2026-09-05: it was going to blast the intro
+> song, and he would have no way to turn it down.
 
 #### .claude/rules/emulator.md -- "Every emulator an agent starts is silent"
 
@@ -507,8 +505,8 @@ nothing handles the others" and says a brief must say "silent" as well as
 > and the Amiga game run on one machine?)`, and two "Amiga Emulator" streams
 > turned up in PulseAudio while he was working. He asked what was making disk
 > noises, and it took a `pactl list sink-inputs` to say. He was mild about it --
-> *"I can turn the speakers down, so this is not a huge impact. But make sure to
-> silence it next time"* -- and mildness is not the point: a noise in his room is
+> he said he can turn the speakers down so the impact was not huge, but asked
+> that it be silenced next time -- and mildness is not the point: a noise in his room is
 > the same kind of mistake as a window on his screen, and the brief that sent
 > that agent said "offscreen" and forgot to say "silent".
 
@@ -529,8 +527,8 @@ The WinUAE deadlock citation:
 of every byte, lived in the old scratch directory, and is gone. Losing it cost more than losing
 any single report, and no rule about write-ups would have saved it -- which is
 why a tool goes in `tools/`, committed, with a row in `tools/README.md`. Donald,
-2026-09-01: *"If you develop tools, put them into tools/, not [the scratch directory]. That way,
-you don't have to rebuild them."* The test is not whether a script looks
+2026-09-01, said that tools should go into tools/ rather than the scratch
+directory, so that nobody has to rebuild them. The test is not whether a script looks
 finished; it is whether somebody would otherwise write it again.
 
 **A file in the scratch directory cannot be found either**, which is the cheaper half of
@@ -563,8 +561,8 @@ it then had was about two hours of history -- so a deletion nobody spotted for
 an evening would have rolled the good copies off the end while the hook
 faithfully snapshotted the empty directory. That is the exact failure the backup
 exists to survive. Donald asked how often the hook fired, which is what turned it
-up, and the same conversation produced the throttle: *"I don't think the backup
-should run every 10 minutes. Once an hour is enough."* Retention now keeps the
+up, and the same conversation produced the throttle: Donald said the backup should not
+run every 10 minutes and that once an hour is enough. Retention now keeps the
 last fourteen snapshots *and* the first snapshot of each of the last thirty
 days.
 
@@ -594,11 +592,11 @@ no comment, because that is what left no record anybody could read or reverse.
 incident `.claude/rules/issues.md` grew a section saying priorities were "the
 one place to hold back" and that an agent should recommend one and leave the
 label. That is not what happened and not what he asked for. Donald,
-2026-09-09: *"One time, I changed a priority label, and the AI immediately
-changed it back. I asked it not to do that. Ever since then, the AI is
-absolutely terrified to touch the priority label. That isn't the rule. It is
-fine to change priorities. Just have a reason and post it in the comments.
-Don't just flip it back because you think it was a mistake."*
+2026-09-09: he had changed a priority label once and the AI immediately changed
+it back, and he asked it not to; ever since, the AI has been afraid to touch the
+priority label. That is not the rule. It is fine to change priorities, provided
+there is a reason and it is posted in the comments, and an agent should not
+flip one back because it thinks it was a mistake.
 
 So the incident above is about **reversing a person's decision**, and it says
 nothing about labels an agent sets, corrects or updates as the world moves.
@@ -613,8 +611,8 @@ WRITE_UNSOURCED zero has been tested during combat)` carried `bug` for months
 while its own body said *"Nothing observed. This is a gap in the evidence
 rather than a seen fault."* On 2026-09-01 an assistant worked a whole bug queue
 around it, put it in every list it gave Donald, and never asked whether the
-label was right -- the label was doing its thinking. Donald caught it: *"You
-were unable to explain convincingly how it would affect an end user."*
+label was right -- the label was doing its thinking. Donald caught it, saying the assistant had been unable to explain convincingly
+how it would affect an end user.
 
 A mislabelled issue is an invisible error. It fails no test, turns no CI red,
 and produces no symptom except work quietly going to the wrong place for as long
@@ -634,9 +632,9 @@ way it does now.** Written as "never undo a label", with the permissions added
 underneath as exceptions, it taught agents to leave every label alone: by
 2026-09-04 an audit of all 46 open issues reported four labels it believed
 wrong and changed none of them, including an issue that looked blocked, carrying no
-`blocked` label. Donald: *"Now, it won't mark a ticket blocked, it won't remove
-the blocked label on a ticket it knows isn't blocked anymore... I just don't
-want it resetting labels back to what they were for no reason at all."* The
+`blocked` label. Donald said it no longer marked a ticket blocked and no longer removed the
+blocked label from a ticket it knew was not blocked any more, and that he only
+wanted it to stop resetting labels to what they were for no reason at all. The
 rule was rewritten to ban the two things that actually went wrong -- reversing
 a person's decision, and changing anything with no comment -- and to say that
 everything else is ordinary work. A prohibition stated first and in bold is
@@ -708,17 +706,17 @@ The example and the quotation in the opening paragraph (the rule now reads
 
 > **Name an issue when you cite it: `#59 (Map the DOS saved game, not just the
 > character record)`.** A bare number is a lookup Donald has to go and do:
-> *"when you only reference a number, it never means anything to me."*
+> a bare reference to a number never means anything to him.
 
 The attribution on the code exemption:
 
-> Donald, 2026-09-09: *"I don't care about bare issue numbers in code or
-> docstrings. I care about it when you are communicating with me."*
+> Donald, 2026-09-09: he does not care about bare issue numbers in code or
+> docstrings, and cares only when the assistant is communicating with him.
 
 The attribution on the issue-body exemption:
 
-> Donald, 2026-09-01: *"Leave them alone. GitHub.com shows the
-> ticket details on hover and makes it a hotlink, so it will be fine."*
+> Donald, 2026-09-01: leave them alone, because GitHub.com shows the ticket
+> details on hover and makes the number a hotlink.
 
 #### .claude/rules/issues.md -- "Labels"
 
@@ -728,15 +726,14 @@ The incident and the attribution under "Do not reverse a change a person made":
 > Donald set `question`, and the agent set it back -- treating his decision as
 > the defect.
 
-> Donald, 2026-09-04: *"I
-> just don't want it resetting labels back to what they were for no reason at
-> all."*
+> Donald, 2026-09-04: he only does not want it resetting labels to what they
+> were for no reason at all.
 
 The attribution under the priority rule:
 
-> Donald, 2026-09-09: *"It is fine to change
-> priorities. Just have a reason and post it in the comments. Don't just flip it
-> back because you think it was a mistake."*
+> Donald, 2026-09-09: it is fine to change priorities, provided there is a
+> reason and it is posted in the comments, and an agent should not flip one back
+> because it thinks it was a mistake.
 
 The account of the earlier version of the section (the rule now stands without
 it):
@@ -761,9 +758,9 @@ Dates and backfill history around the `AI` / `human` labels (the rule now says
 
 The attribution on the renaming ban:
 
-> Donald, 2026-09-07, saying it as a standing instruction: *"Do not simply open
-> new tickets for the same issue and close the original ticket. The issue must be
-> resolved in the proper way."*
+> Donald, 2026-09-07, saying it as a standing instruction: do not simply open
+> new tickets for the same issue and close the original ticket, because the
+> issue must be resolved in the proper way.
 
 The "A" in the count paragraph was a leftover from an earlier version's option
 list (A a comment on the ticket, B a separate issue); the rule now says what
@@ -782,11 +779,11 @@ This check exists because the words got into the backlog faster than into the do
 
 #### .claude/agents/backlog-auditor.md -- Check 8, first paragraph (the closing quotation)
 
-Original: A bare `#59 (Map the DOS saved game, not just the character record)` is an opaque number to anyone reading without a browser open, and Donald reads it that way: *"when you only reference a number, it never means anything to me."*
+Original: A bare `#59 (Map the DOS saved game, not just the character record)` is an opaque number to anyone reading without a browser open, and Donald reads it that way: a bare reference to a number never means anything to him.
 
 #### .claude/agents/backlog-auditor.md -- Check 8, second paragraph (the ruling)
 
-**Issue bodies are exempt and are not a finding.** Donald ruled on 2026-09-01: *"Leave them alone. GitHub.com shows the ticket details on hover and makes it a hotlink, so it will be fine."* An issue body is read on the web, where the number is its own title to anybody with a pointer.
+**Issue bodies are exempt and are not a finding.** Donald ruled on 2026-09-01 that they are to be left alone, because GitHub.com shows the ticket details on hover and makes the number a hotlink. An issue body is read on the web, where the number is its own title to anybody with a pointer.
 
 #### .claude/agents/backlog-auditor.md -- Two rules of this repository, first bullet (the date)
 
@@ -814,9 +811,9 @@ The file said it ran on Fable, that it had exhausted a monthly spend limit in
 one night on 2026-08-26, and that Donald had to be asked before it was launched.
 All of that was true when it was written and none of it was true by 2026-09-01,
 when `.claude/agents/reverse-engineering.md` was found carrying `model: opus`.
-Donald: *"I think the reverse engineering agent used to use fable as the model,
-but it has since been changed to Opus. Using the reverse-engineering agent is
-fine and no more expensive than a general purpose agent."*
+Donald said he thought the reverse engineering agent used to use Fable as its
+model but had since been changed to Opus, and that using the reverse-engineering
+agent is fine and no more expensive than a general purpose agent.
 
 The routing table carried a second stale row at the same time: `junior-dev` was
 called `quick-fix` there until 2026-09-01, because the agent was renamed and the
@@ -860,10 +857,10 @@ The cost paragraph's quotation and date:
 
 > Donald,
 > 2026-09-04, of Fable, Claude Code's name for the tier behind both (Codex runs
-> the same two agents on its own top tier, `gpt-6-astra`): *"consider
-> deep-research and architect as available options to use when necessary. I
-> don't want to waste tokens where another agent could do the job. But I don't
-> think using Fable will run us out of tokens anytime soon."*
+> the same two agents on its own top tier, `gpt-6-astra`): he said to consider
+> deep-research and architect as available options when necessary, that he did
+> not want to waste tokens where another agent could do the job, but that he did
+> not think using Fable would run the project out of tokens anytime soon.
 
 The incident that defined `deep-research`'s test (the rule now states the test
 without the case):
@@ -879,9 +876,9 @@ The widening of the `deep-research` rule (the rule now says the UNKNOWN clause
 without the date or quotation):
 
 > **Widened on 2026-09-05: an issue whose remaining obstacle is an UNKNOWN goes
-> here by default.** Donald: *"Honestly, just use the deep-research agent to
-> figure out the unknowns. That should help a lot. You can't use it for
-> everything, but you could use it for the hardest tickets."* So the broken
+> here by default.** Donald said to just use the deep-research agent to
+> figure out the unknowns, that it should help a lot, and that it cannot be
+> used for everything but could be used for the hardest tickets. So the broken
 > assumption above is a **sufficient** reason to route here rather than the only
 > one, and a ticket that has sat because nobody could say what some bytes hold is
 > this agent's work now.
@@ -1011,15 +1008,14 @@ dropped from the rule because it goes stale.)
 
 The `test-runner` quotation and its cost:
 
-> Donald, 2026-09-09: *"Every
-> time I want to ask you a question, I have to wait for you to finish running the
-> tests. Your job as orchestrator is to coordinate subagents and answer my
-> questions."* Four minutes of a blocked window, every push, was the cost.
+> Donald, 2026-09-09: every time he wanted to ask a question he had to wait for
+> the assistant to finish running the tests, and the orchestrator's job is to
+> coordinate subagents and answer his questions. Four minutes of a blocked window, every push, was the cost.
 
 The prose-only-commit quotation and the "habit" argument:
 
-> Donald, 2026-09-03: *"Waiting on a full test suite when
-> you've only changed a markdown file is a real bummer."* Six and a half minutes
+> Donald, 2026-09-03: waiting on a full test suite after changing only a
+> markdown file is a real bummer. Six and a half minutes
 > of suite to prove a sentence did not break a parser is not diligence, it is a
 > habit that costs a person their evening.
 
@@ -1088,10 +1084,10 @@ while how wide a button gets for the same text is the platform's business.
 
 **The largest font to test is +10**, and 9pt is the base here. Donald,
 2026-09-01, after a test was found asserting things at +12, +16 and +20 -- 21,
-25 and 29 point: *"I don't think we should ever have unit tests that force us to
-make a 25 point font work. I think that's an extremely contrived situation that
-wastes our time."* And: *"This whole 25 point font with a tiny resolution just
-feels extremely contrived and a waste of our time."*
+25 and 29 point: he said there should never be unit tests that force a 25 point
+font to work, which he called an extremely contrived situation that wastes our
+time. He added that the whole 25 point font with a tiny resolution feels
+extremely contrived and a waste of time.
 
 The measurements agree with him: at +10 the window's minimum height is 553px against a
 720-high screen. There is no layout problem at any font a person uses -- somebody
@@ -1179,12 +1175,11 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > **`/home/donald/dos_por_play/SAVE/` is Donald's own play directory and every
 > character record in it has been edited with Gold Box Companion's character
 > editor.** Assume all of them, not the ones that look wrong. Donald,
-> 2026-09-04: *"Assume all character records in /home/donald/dos_por_play/SAVE/
-> were edited. Base your evidence and reasoning off saves you created
-> yourself."*
+> 2026-09-04: assume all character records in `/home/donald/dos_por_play/SAVE/`
+> were edited, and base evidence and reasoning on saves the agent created itself.
 > 
-> **And it is not only that directory.** Donald, 2026-09-04: *"any saves you got
-> off of any of the game disks might also have been edited."* His save disks are
+> **And it is not only that directory.** Donald, 2026-09-04: any saves got
+> off any of the game disks might also have been edited. His save disks are
 > a player's disks, played and tinkered with over years. So the boundary is not
 > a path -- it is **whether we watched it being written**.
 > 
@@ -1195,16 +1190,16 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > `tools/dos/dosgnome.py` is the worked example: it rolls a character in the game's
 > own creation screens under DOSBox and reads back the bytes, and its five
 > same-boot racial controls are what make a single reading a measurement rather
-> than an anecdote. Donald, 2026-09-04: *"if we created our own characters and
-> level them up, then you can know it is safe."*
+> than an anecdote. Donald, 2026-09-04: if we create our own characters and level them up, then we
+> can know it is safe.
 
 ##### A save found on a disk is not evidence (testing.md lines 120-127 of the original)
 
 > **A save found on a disk is not evidence, however official the disk looks.**
-> Donald, 2026-09-04: *"You shouldn't assume that saves you find on a game disk
-> are 'saves shipped with the game by the manufacturer'. Some random person on
-> the internet might have created those and edited them with GBC. You have no way
-> of knowing."* The archives here are a download -- `~/Downloads/fr-archives`,
+> Donald, 2026-09-04: an agent should not assume that saves found on a game disk
+> were shipped with the game by the manufacturer, because some random person on
+> the internet might have created and edited them with GBC, and there is no way
+> of knowing. The archives here are a download -- `~/Downloads/fr-archives`,
 > "Forgotten Realms The Archives" -- so `Default files/Saves` has no chain of
 > custody either. It was listed as trustworthy in an earlier version of this
 > rule and that was wrong.
@@ -1294,9 +1289,9 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > evidence about the game, since they carry what we already believe. **Including
 > saves a person edited in Wish.** Donald, 2026-09-04, of the C64 party on
 > `P18PARTY.D64` (scratch, deleted) that `#10 (Finish the high-level test party)` drove
-> through the training hall: *"I edited the C64 characters you mentioned with
-> WISH. I gave them gold. I increased their ability scores. I changed the weight
-> of their items."* Driving a party through the game does not keep it clean
+> through the training hall: he had edited the C64 characters mentioned with
+> WISH: he gave them gold, increased their ability scores and changed the weight
+> of their items. Driving a party through the game does not keep it clean
 > afterwards.
 > 
 > **But there is a distinction to hold on to, because it rescues real
@@ -1325,9 +1320,9 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > add` copies a save in, records who made it and how, hashes every file and makes
 > it read-only; `check` re-hashes and reports anything that moved; `list` says
 > what is there. A file with no `provenance.toml` is not a specimen, and `check`
-> says so. Donald asked for it in those terms: *"We could have a process or naming
-> convention for saves that are JUST for your tests, so I'll know not to touch
-> them."*
+> says so. Donald asked for it: a process or naming
+> convention for saves that are just for the agents' tests, so he knows not to
+> touch them.
 
 ##### The cost of getting this wrong is silent (testing.md lines 295-301 of the original)
 
@@ -1398,9 +1393,9 @@ The passages below stood in code comments, a hook's docstring and an agent defin
 
 ## Testing a conversion
 
-**The template ruling, 2026-08-26.** Donald: *"We should not be using a template
-at all. We should block on not understanding everything and go back and
-understand what we need to. No more plugging in fake data to make it work."*
+**The template ruling, 2026-08-26.** Donald said there should be no template at all:
+the conversion should block on not understanding everything and go back to
+understand what it needs to, with no more plugging in fake data to make it work.
 
 Building a converted save on top of a save the engine wrote means every byte
 nobody has decoded silently keeps a value belonging to a different party in a
@@ -1447,12 +1442,12 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 ##### A conversion is between two ports of the same title (conversions.md lines 8-14 of the original)
 
 > **A conversion is between two ports of the same title, and never between
-> titles.** Donald, 2026-09-05: *"the user should not be able to convert a Curse
-> character into a Pool character. The conversion is meant to be for the same
-> title."* **The title is fixed and the port is what changes**: a DOS Curse save
+> titles.** Donald, 2026-09-05: the user should not be able to convert a Curse
+> character into a Pool character, because the conversion is meant to be for the
+> same title. **The title is fixed and the port is what changes**: a DOS Curse save
 > converts to a C64 Curse save or to an Amiga Curse save, and to nothing else.
-> Donald, 2026-09-05: *"A DOS Curse save would be able to be converted into a
-> C64 Curse save or an Amiga Curse save."*
+> Donald, 2026-09-05: a DOS Curse save would be able to be converted into a
+> C64 Curse save or an Amiga Curse save.
 
 ##### The six directions (conversions.md lines 16-19 of the original)
 
@@ -1464,13 +1459,13 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 ##### The player still gets from one title to the next (conversions.md lines 21-28 of the original)
 
 > **The player still gets from one title to the next, and the game does it.**
-> Donald, 2026-09-08, giving the path this rule exists to protect: *"A user plays
-> Secrets of the Silver Blades on the C64. They beat the game. They then load
-> their save into Wish and convert into an Amiga save. They now have an Amiga
+> Donald, 2026-09-08, giving the path this rule exists to protect: a user plays
+> Secrets of the Silver Blades on the C64 and beats the game, then loads their
+> save into Wish and converts it into an Amiga save, which is now an Amiga
 > Secrets of the Silver Blades save. They then load that save into Amiga Pools of
 > Darkness, and the game itself converts it into an Amiga Pools of Darkness save.
-> This keeps us from running into a whole class of bugs that would come with
-> converting saves from one game into another."*
+> This keeps the project out of a whole class of bugs that would come with
+> converting saves from one game into another.
 
 ##### editor/convert.py already builds it that way (conversions.md lines 37-44 of the original)
 
@@ -1487,9 +1482,9 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 
 > **The standard is a perfect conversion, and the player is never told about a
 > drop, because a route that drops something is not offered.** Donald,
-> 2026-09-08, deciding it: *"I want perfect conversions. We should not have to
-> tell the player that anything is dropped, because everything should just work.
-> We should keep things behind feature flags until they are perfect."*
+> 2026-09-08, deciding it: he wants perfect conversions, so the player should
+> never have to be told that anything is dropped, because everything should just
+> work, and things stay behind feature flags until they are perfect.
 
 ##### Never write a sentence to the player (conversions.md lines 52-61 of the original)
 
@@ -1497,10 +1492,10 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > describes.** Finding a condition the conversion cannot handle and reporting it
 > is how a defect turns into furniture: the sentence ships, the bug does not get
 > fixed, and the next agent reads the sentence as the design. Donald, 2026-09-10,
-> on being shown two such lines: *"Things like this are WHY we have to remove the
-> Convert dialog. Because the agents find a bug, and instead of fixing it, they
-> want to write an excuse to the player and then they never fix it. It's not
-> okay. We need it to be correct."* If a condition cannot be fixed in the session
+> on being shown two such lines, said that such lines are why the Convert
+> dialog has to be removed: agents find a bug and, instead of fixing it, write an
+> excuse to the player and then never fix it. That is not okay, and the
+> conversion needs to be correct. If a condition cannot be fixed in the session
 > that found it, **file it and send the line to the debug log** -- the evidence
 > stays, the excuse does not.
 
@@ -1568,11 +1563,11 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 
 > Reporting a dropped field internally is the
 > minimum; it is not permission to drop it, and "the destination has no such
-> field" is not an ending either. Donald, 2026-09-04: *"We should not be
-> dropping anything when converting a save. Anything less is a bug, and the
-> feature flag cannot be lifted until that is true."* Told separately that a
-> ring's effect could not reach the C64 and that the drop was therefore
-> legitimate: *"everything must work."* A converted character wearing a Ring of
+> field" is not an ending either. Donald, 2026-09-04: nothing should be
+> dropped when converting a save, anything less is a bug, and the feature flag
+> cannot be lifted until that is true. Told separately that a ring's effect
+> could not reach the C64 and that the drop was therefore legitimate, he said
+> everything must work. A converted character wearing a Ring of
 > Fire Resistance has to resist fire on the other side.
 
 ##### So the three reasons below (conversions.md lines 133-140 of the original)
@@ -1589,12 +1584,12 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 ##### The standard is every direction, not the import (conversions.md lines 142-155 of the original)
 
 > **The standard is every direction, not the import.** Donald, 2026-09-05:
-> *"We should not drop any fields for any conversion in any direction. Unless
-> the platform we are converting to doesn't support that field."* And, on why:
-> *"People will abandon it and call it bad and buggy when they notice things are
-> missing from their characters. It's not a functional solution unless it
-> converts everything. Why would someone want only half of their stats
-> converted? It makes no sense. No shortcuts."*
+> no fields should be dropped for any conversion in any direction, unless the
+> platform being converted to does not support that field. On why, he said
+> people will abandon the program and call it bad and buggy when they notice
+> things missing from their characters, that it is not a functional solution
+> unless it converts everything, that nobody would want only half of their stats
+> converted, and that there are to be no shortcuts.
 > 
 > This was asked because the two rulings above had only ever been made about the
 > DOS-to-C64 import, and the program keeps six more lists of the same kind --
@@ -1614,8 +1609,8 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > and nothing reads it, which looked like the carve-out, and the ruling was to
 > **write it anyway** because the bytes are there and a later conversion back to
 > DOS then returns the player's own number instead of inventing one. Donald,
-> 2026-09-05: *"Yes, write the identity byte. No, don't tell the user about
-> it."*
+> 2026-09-05: yes, write the identity byte, and no, do not tell the user about
+> it.
 
 ##### Two things that are not drops (conversions.md lines 169-175 of the original)
 
@@ -1639,9 +1634,9 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > 
 > Donald, 2026-09-06, on storing the fourteen head and twelve body art ids the
 > DOS-to-C64 portrait conversion needs, rather than reading them off the
-> player's disks every time: *"A table of 26 numbers doesn't break any rules.
-> It's not art, it's just two dozen numbers."* And on why to do it at
-> all: *"They are 40 years old and they are not going to change."*
+> player's disks every time: he said a table of 26 numbers does not break any
+> rules, because it is not art but just two dozen numbers. On why to do it at
+> all, he said the numbers are 40 years old and are not going to change.
 > 
 > **The line is drawn by what the thing is, not by its size.** Numbers and their
 > provenance are a measurement. A block of the game's own bytes is a copy
@@ -1652,9 +1647,9 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 
 ##### Say `converted`, not `carried` (conversions.md lines 198-201 of the original)
 
-> **Say `converted`, not `carried`.** Donald, 2026-09-04: *"When you say
-> '`carried`', you must mean 'converted'. I don't think `carried` means what you
-> think."* The word is in this file, in `field_disposition` prose and in drop
+> **Say `converted`, not `carried`.** Donald, 2026-09-04: when an agent says
+> `carried`, it must mean 'converted', and he does not think `carried` means
+> what the agent thinks. The word is in this file, in `field_disposition` prose and in drop
 > lines a player reads.
 
 ##### SUPERSEDED BLOCK, cut whole -- the drop pane and its rulings
@@ -1669,8 +1664,8 @@ The next eight sections (lines 203-273) are rulings dated 2026-09-04 to 2026-09-
 > * A field the destination **derives** on load needs no line, and that
 >   derivation has to be *demonstrated in the running game* first.
 > * A field a player **would not care about** needs no line either. Donald,
->   2026-09-04, of the quickfight setting: *"The player will not care if
->   Quickfight isn't converted. Don't bother alerting on that."*
+>   2026-09-04, of the quickfight setting: the player will not care if
+>   Quickfight is not converted, so there is no need to alert on it.
 > 
 > The second is his judgement rather than anybody's finding, so **it is not a
 > licence to silence anything else** -- propose and leave it in place. The same
@@ -1678,9 +1673,9 @@ The next eight sections (lines 203-273) are rulings dated 2026-09-04 to 2026-09-
 > arriving alive, which is what `#235 (Two unattributed DOS byte ranges in the combat tail are dropped converting to C64, and nobody knows what they hold)` turned out to be.
 > 
 > **Silent is about the pane, not about the work.** Asked whether quickfight
-> should therefore come off `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all three C64 titles)`'s list, Donald, 2026-09-04: *"I agree, we
-> should try to convert it. We just shouldn't tell the player about
-> quickfight."* So a field nobody would miss still gets converted; it just does
+> should therefore come off `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all three C64 titles)`'s list, Donald, 2026-09-04, agreed that it should
+> be converted and that the player just should not be told about
+> quickfight. So a field nobody would miss still gets converted; it just does
 > not get a line.
 > 
 > **And a silent drop is still a drop.** It stays in `field_disposition` and in
@@ -1690,12 +1685,12 @@ The next eight sections (lines 203-273) are rulings dated 2026-09-04 to 2026-09-
 ##### A player is shown a dropped field unless the destination derives it ... supersedes his ruling of 2026-09-05 ... UNREPORTED_DROPS (conversions.md lines 227-248 of the original)
 
 > **A player is shown a dropped field unless the destination derives it.**
-> Donald, 2026-09-06: *"do not show dropped fields if they are derived in the new
-> game. Show others for now. I will refine them as we go."*
+> Donald, 2026-09-06: do not show dropped fields if they are derived in the new
+> game, show the others for now, and he would refine them as the work went on.
 > 
-> **This supersedes his ruling of 2026-09-05**, which was *"I don't want the
-> player to EVER see a message saying any field was dropped. The conversion needs
-> to be perfect."* That sentence was made when the list held fourteen entries,
+> **This supersedes his ruling of 2026-09-05**, which was that he did not want the
+> player ever to see a message saying any field was dropped, because the
+> conversion needs to be perfect. That sentence was made when the list held fourteen entries,
 > nine of which turned out not to be losses at all. With those nine moved to
 > `goldbox.dos_codec.DERIVED` and `CONSTANTS`, what is left is short enough for him to
 > read and rule on one at a time -- and hiding it put an agent's judgement
@@ -1707,7 +1702,7 @@ The next eight sections (lines 203-273) are rulings dated 2026-09-04 to 2026-09-
 > call and is gone.
 > 
 > What has not changed: **a dropped field is still a bug**, and the pane is a
-> working state rather than a finished feature. *"I will refine them as we go"*
+> working state rather than a finished feature. His promise to refine them as the work went on
 > is a plan for the sentences, not permission for the entries -- an entry is
 > removed by converting the field, not by wording it better. An agent polishing a
 > drop line is usually an agent working on the wrong half of the problem.
@@ -1715,16 +1710,17 @@ The next eight sections (lines 203-273) are rulings dated 2026-09-04 to 2026-09-
 ##### The pane itself stays, and becomes a smaller one ... An earlier version said it was temporary (conversions.md lines 250-273 of the original)
 
 > **The pane itself stays, and becomes a smaller one that says what Wish did.**
-> Donald, 2026-09-05: *"you could reduce the size of the drop pane and make it a
-> messages pane. It could say things like, 'Fixing Ring of Fire Resistance
-> bug.' If we discover that it truly isn't needed, we can remove it then. But
-> let's not plan ahead so far. Let's wait and see what we might need it for."*
+> Donald, 2026-09-05: the drop pane could be reduced in size and made a
+> messages pane, saying things like 'Fixing Ring of Fire Resistance bug.' If it
+> turns out not to be needed, it can be removed then, but there is no need to
+> plan ahead so far, and the project should wait and see what it might be needed
+> for.
 > 
 > So it turns from a list of what did not convert into an account of what
 > happened. **And it is not there to be as small as possible -- a player wants
-> to know what the conversion did.** Donald, 2026-09-05: *"The user will want to
-> know details about the conversion. A messages pane with details about what
-> happened can have value."*
+> to know what the conversion did.** Donald, 2026-09-05: the user will want to
+> know details about the conversion, and a messages pane with details about what
+> happened can have value.
 > 
 > So the test of a line is whether it tells the player something true and useful
 > about their own save -- a repair Wish applied, a thing that did not fit and
@@ -1742,11 +1738,11 @@ The next eight sections (lines 203-273) are rulings dated 2026-09-04 to 2026-09-
 ##### The one exception -- destination holds fewer things (quote paragraph) (conversions.md lines 275-280 of the original)
 
 > **The one exception, and it covers every field alike: a destination that
-> genuinely holds fewer things than the source.** Donald, 2026-09-05: *"If a
-> limit is truly part of the platform's design, inform the user during the
-> convert about the limit. Offer them a choice on which to keep and which to
-> discard. It would be a limit of the platform, not something we just didn't
-> feel like fixing."*
+> genuinely holds fewer things than the source.** Donald, 2026-09-05: if a
+> limit is truly part of the platform's design, the user is to be informed of it
+> during the convert and offered a choice of which to keep and which to discard,
+> because it would be a limit of the platform and not something we just did not
+> feel like fixing.
 
 ##### Limits table row for trait slots (cited #84 (Roll a gnome in DOS and read the two innate effect ids nobody has seen)) and the #113 (Play DOS Curse far enough to save a party with items) sentence (conversions.md lines 306-310 of the original)
 
@@ -1760,10 +1756,10 @@ The next eight sections (lines 203-273) are rulings dated 2026-09-04 to 2026-09-
 
 > **"Nobody has measured it" is not "it cannot be done", and saying so is how an
 > agent gives up in a sentence that sounds like a finding.** Donald, 2026-09-05,
-> on the combat icon: *"We absolutely can figure out how to convert combat
-> icons. They are not that complex. What is the problem, exactly? Are there
-> differing amounts of colors? Are there differing amounts of pixels? We can
-> figure it out. Don't give up so easily."* So an UNKNOWN in a conversion is a
+> on the combat icon: the project can absolutely figure out how to convert combat
+> icons, which are not that complex. He asked what the problem was, exactly,
+> whether the two sides have differing numbers of colours or of pixels, said it
+> can be figured out and told the agents not to give up so easily. So an UNKNOWN in a conversion is a
 > measurement somebody has to go and take, named in numbers -- how many colours
 > each side stores, how many pixels, which file the art is in -- and never a
 > reason to stop.
@@ -1776,8 +1772,8 @@ The next eight sections (lines 203-273) are rulings dated 2026-09-04 to 2026-09-
 > C64's **encoding** of it -- 18 `CHARPIC00` screen codes plus 18 colours out of
 > the C64's own character set -- and the converter has no route between the two
 > yet, which is `#130 (A converted DOS party arrives with six identical combat
-> figures, not its own)`. Donald, 2026-09-05: *"DOS absolutely does have combat
-> art. What does that mean?"* Compressing "no equivalent encoding" into "none"
+> figures, not its own)`. Donald, 2026-09-05, replied that DOS absolutely does have combat
+> art and asked what the line meant. Compressing "no equivalent encoding" into "none"
 > reads as a claim about the game the player owns.
 
 ##### A template is not one of the three reasons (conversions.md lines 343-350 of the original)
@@ -1786,10 +1782,9 @@ The next eight sections (lines 203-273) are rulings dated 2026-09-04 to 2026-09-
 > not an answer.** Building a converted save on top of a save the engine wrote
 > means every byte nobody has decoded silently keeps a value belonging to a
 > different party in a different place -- wrong data that looks right, and
-> invisible because the file loads. Donald, 2026-08-26: *"We should not be using
-> a template at all. We should block on not understanding everything and go back
-> and understand what we need to. No more plugging in fake data to make it
-> work."*
+> invisible because the file loads. Donald, 2026-08-26: there should be no template at all; the conversion
+> should block on not understanding everything and go back to understand what
+> it needs to, with no more plugging in fake data to make it work.
 
 ##### Test the empty and the extreme case (conversions.md lines 367-372 of the original)
 
@@ -1833,9 +1828,9 @@ tracked file, and the directory no longer exists (since 2026-09-18).
 gap is invisible. `tools/gui/livestrip.py` landing on `main` without its row is the
 worked example, and it is recorded under Git in a shared tree.
 
-**A wrong document is corrected, not escalated.** Donald, 2026-09-01: *"If you
-find something wrong in a document, you can just update the document. You don't
-need to block on me. Use your best judgement."* The cost of not doing so is
+**A wrong document is corrected, not escalated.** Donald, 2026-09-01: an agent that finds
+something wrong in a document can just update it, without blocking on him, and
+should use its best judgement. The cost of not doing so is
 already known:
 `#75 (docs/50-experiments.md still says the DOS saved game's ECL buffer is dead
 on load)` was a paragraph and cost somebody a session. A correction that layers
@@ -2788,9 +2783,9 @@ The rule files state the rule and carry no history. These are the passages they 
 
 ## Art
 
-No incident sits behind this one. "No AI-generated art, anywhere, ever" is
-Donald's standing rule, stated rather than learned, and it is not negotiable by
-an agent that finds it inconvenient.
+No incident sits behind this one. Donald's standing rule is that no art is
+AI-generated, anywhere, ever; it is stated rather than learned, and it is not
+negotiable by an agent that finds it inconvenient.
 
 The extension of it -- do not modify somebody else's art either -- rests on the
 same reasoning: an icon lifted from Font Awesome is drawn the way Fonticons drew
@@ -2891,8 +2886,8 @@ citing it. The convention was first written into `docs/architecture.md`; on
 **2026-09-03 lost its small hours.** The last turn said it was "running the
 suite at `HEAD` before pushing" and never started it -- no agent running, no
 background command pending -- so four reviewed commits sat unpushed for hours
-while the session waited for an event that could not arrive. Donald:
-*"Apparently that didn't happen this time."*
+while the session waited for an event that could not arrive. Donald remarked
+that the turn had evidently not done what it said it would.
 
 This session works by being re-invoked: a subagent finishing, a background
 command exiting, a scheduled wake-up. An intention is not an event, and "I will
