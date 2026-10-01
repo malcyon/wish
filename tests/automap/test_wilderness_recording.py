@@ -161,6 +161,16 @@ def test_load_world_skips_an_empty_image_instead_of_raising(tmp_path):
     assert load_world(str(tmp_path), game) is None
 
 
+def test_load_world_skips_an_image_whose_directory_is_broken(tmp_path):
+    from automap.maps import load_world
+    from goldbox import c64_port
+    from goldbox.d64 import D64
+    image = bytearray(D64.blank().data)
+    image[91648] = 99                       # track 18 sector 1 links to 99
+    (tmp_path / "POOL1.d64").write_bytes(bytes(image))
+    assert load_world(str(tmp_path), c64_port.POOL_OF_RADIANCE) is None
+
+
 def test_returning_to_the_old_square_drops_the_hold(on):
     mapper, _ = mapper_for(
         [out(8, 20), out(3, 20), out(8, 20), out(3, 20)], _window(1))

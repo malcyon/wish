@@ -49,7 +49,7 @@ def load_world(disks: str | None, game: C64Container | None):
     be opened is skipped, so one damaged file does not cost the windows the
     good disks carry.
     """
-    from goldbox.d64 import D64, InvalidImageError
+    from goldbox.d64 import D64, D64Error
     from goldbox.world import World, WorldError
     if game is None or disks is None or not game.travel_grid:
         return None
@@ -60,14 +60,16 @@ def load_world(disks: str | None, game: C64Container | None):
     images = []
     for path in sorted(paths.values()):
         try:
-            images.append(D64.open(path))
-        except (InvalidImageError, OSError):
+            image = D64.open(path)
+            list(image.iter_directory())
+        except (D64Error, OSError):
             continue
+        images.append(image)
     if not images:
         return None
     try:
         return World.from_disks(images)
-    except (WorldError, OSError):
+    except (WorldError, D64Error, OSError):
         return None
 
 
