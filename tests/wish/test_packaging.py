@@ -295,5 +295,10 @@ def test_the_helper_flag_runs_the_connection_helper_before_any_window_code(tmp_p
     result = subprocess.run([sys.executable, "-c", probe], cwd=ROOT,
                             capture_output=True, text=True, timeout=60,
                             env={**os.environ, "PYTHONPATH": str(ROOT)})
-    assert "too long" in result.stderr, result.stderr
-    assert result.stdout.split() == ["exit", "2", "qt", "False"]
+    # Linux reaches the helper's own path check; elsewhere the helper declines
+    # before touching anything platform-specific. Either way it ran, and no
+    # window code did.
+    code, said = (("2", "too long") if sys.platform.startswith("linux")
+                  else ("9", "not supported"))
+    assert said in result.stderr, result.stderr
+    assert result.stdout.split() == ["exit", code, "qt", "False"]
