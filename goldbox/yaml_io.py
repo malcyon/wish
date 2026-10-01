@@ -608,7 +608,7 @@ def to_yaml(data: dict[str, Any]) -> str:
         "#     wish import <this file> -o NEW.D64",
         "#",
         "# The original disk is never modified. Unknown bytes and the party",
-        "# header are carried through untouched.",
+        "# header are copied unchanged.",
         "#",
         "# `combat:` is the one part of the party roster this file reaches. The",
         "# game caches those values rather than deriving them on load, so they",
