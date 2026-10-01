@@ -466,6 +466,7 @@ def rest(sess, log, minutes: int, hours: int, cp: dict) -> dict:
     with sess.mon(10) as m:
         before = sample(m)
         m.write(REST_TIME, bytes((minutes, hours, 0)))
+        getattr(sess, "suppress_rest_interruption", lambda _m: None)(m)
         staged = tuple(m.read(REST_TIME, 3))
         m.resume()
     if staged != (minutes, hours, 0):
@@ -556,6 +557,7 @@ def rest_later(sess, log, minutes: int, hours: int, cp: dict,
         before = sample(m, LATER_LOAD)
         interrupt = list(m.read(REST_INTERRUPT, 2))
         m.write(field, bytes(want))
+        getattr(sess, "suppress_rest_interruption", lambda _m: None)(m)
         staged = tuple(m.read(field, 3))
         m.resume()
     if staged != want:

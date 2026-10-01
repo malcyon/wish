@@ -325,3 +325,29 @@ def test_a_clean_leg_deletes_its_snapshot_and_a_failed_one_keeps_it(tmp_path):
 def test_a_new_session_starts_with_no_retries_and_no_restore_pending():
     s = S.Session("/slot/SIDE1.D64")
     assert s.walk_retries == 0 and s._restored_unattached is False
+
+
+def test_a_raised_error_still_discards_the_snapshot(tmp_path):
+    import os
+
+    class Boom(Fake):
+        def walk_one(self, move, *a, **kw):
+            raise OSError("monitor gone")
+
+    s = Boom(tmp_path)
+    with pytest.raises(OSError):
+        s.walk_with_retry("i")
+    assert not os.path.exists(s.snapshot_path("walk-retry"))
+
+
+def test_an_ordinary_yes_no_at_the_leg_end_is_not_an_encounter(tmp_path):
+    class Screen:
+        def row(self, r):
+            return "YES  NO" if r == 24 else ""
+
+    s = Fake(tmp_path)
+    s.menu = Screen()
+    s.walk_encounter = "FIGHT"
+    assert s._walk_leg("i", 0.1, 0.1) is None
+    s.menu = type("M", (), {"row": lambda self, r: "FIGHT  FLEE" if r == 24 else ""})()
+    assert "encounter menu" in s._walk_leg("i", 0.1, 0.1)

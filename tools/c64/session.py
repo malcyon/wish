@@ -156,6 +156,92 @@ OUTDOOR_PROMPT = "1-8"
 #: Both words, because `TAKE` alone is on other bars.
 BOAT_BAR = ("TAKE", "STAY")
 
+class EncounterGate(NamedTuple):
+    """One area's way to switch off wandering encounters.
+
+    `grade` is CONFIRMED (seen live against a control) or PROBABLE (read from
+    the area script's bytecode only); `source` says where the gate was read.
+    `pokes` are save-page bytes, so a game save written afterwards keeps them.
+    """
+
+    grade: str
+    source: str
+    pokes: tuple[tuple[int, int], ...]
+
+
+#: The save-page byte naming the running area script, per title.
+AREA_BYTE = {
+    G.POOL_OF_RADIANCE.key: 0x49F2,
+    G.CURSE_OF_THE_AZURE_BONDS.key: 0x4BF2,
+    G.SECRET_OF_THE_SILVER_BLADES.key: 0x4BF2,
+}
+
+#: Where each title's rest interruption is held (outside the saved page);
+#: written to 0 after ENCAMP so `CAMP` skips its roll on every pass.  CONFIRMED
+#: for Pool of Radiance (`docs/207`), PROBABLE for the others (same instructions).
+REST_INTERRUPT_BYTE = {
+    G.POOL_OF_RADIANCE.key: 0x6DD2,
+    G.CURSE_OF_THE_AZURE_BONDS.key: 0x7ED2,
+    G.SECRET_OF_THE_SILVER_BLADES.key: 0x7ED2,
+}
+
+#: Every wandering-encounter gate known, by title and area script id (the hex
+#: in the script's `ECLnn` name).  The engine has no roll of its own: each area
+#: script rolls in its step entry against save-page variables that other areas
+#: reuse, so the poke is applied before every move key while the area byte
+#: names that area.  Measured and read in the findings on `#804`.
+ENCOUNTER_GATES: dict[tuple[str, int], EncounterGate] = {
+    (G.CURSE_OF_THE_AZURE_BONDS.key, 0x03): EncounterGate(
+        "CONFIRMED",
+        "Tilverton sewers ECL03, with $4C2A = 1: step roll then $4C02 < 8 "
+        "at $9A4F; 80 steps, 0 SETUPMON against a control that fought at step 3",
+        ((0x4C02, 8), (0x4C2A, 1))),
+    (G.CURSE_OF_THE_AZURE_BONDS.key, 0x02): EncounterGate(
+        "PROBABLE", "ECL02: $4C2C <= 4 at $871E, then 10%; bytecode only",
+        ((0x4C2C, 5),)),
+    (G.CURSE_OF_THE_AZURE_BONDS.key, 0x01): EncounterGate(
+        "PROBABLE",
+        "Tilverton ECL01: outdoor squares 10% behind $4C0C; bytecode only, "
+        "the $4C02 = 3 / $4C05 = 1 fight path is not covered",
+        ((0x4C0C, 6),)),
+    (G.CURSE_OF_THE_AZURE_BONDS.key, 0x50): EncounterGate(
+        "CONFIRMED",
+        "world map ECL50/ECL51: no random encounter exists; the fixed "
+        "ambushes are `skip_world_map_ambushes`", ()),
+    (G.CURSE_OF_THE_AZURE_BONDS.key, 0x51): EncounterGate(
+        "CONFIRMED", "world map ECL51 has no RANDOM at all", ()),
+    (G.SECRET_OF_THE_SILVER_BLADES.key, 0x10): EncounterGate(
+        "PROBABLE",
+        "New Verdigris ECL10: the fight arm runs only while $4C2D = 1 "
+        "(at $85AC); bytecode only",
+        ((0x4C2D, 0),)),
+    (G.POOL_OF_RADIANCE.key, 0x14): EncounterGate(
+        "PROBABLE", "Slums ECL14: $4A80 < 15 at $9B32 then 1 in 14; "
+        "bytecode only", ((0x4A80, 15),)),
+    **{(G.POOL_OF_RADIANCE.key, area): EncounterGate(
+        "PROBABLE",
+        f"ECL{area:02X}: the alarm $4A64 >= 1 gates the step roll; bytecode, "
+        "plus a 150-move area-9 walk with 0 encounters at $4A64 = 0",
+        ((0x4A64, 0),)) for area in (0x04, 0x05, 0x06, 0x09)},
+}
+
+#: Curse's fixed world-map ambushes: each leg's arm skips its fight when its
+#: once-flag is set (table at `ECL50 $9CAA`).  Opt-in, because the flags are
+#: story state.  `$4C83` and `$4C8E` were seen live (no `SETUPMON` on the
+#: Tilverton to Ashabenford and Ashabenford to Standing Stones legs); the rest
+#: are read from the arms' guards, PROBABLE.
+WORLD_MAP_AMBUSH_SKIPS = (
+    (0x4C82, 1),  # arm 0, Shadow Gap -- PROBABLE
+    (0x4C83, 1),  # arm 1, Tilver's Gap -- CONFIRMED
+    (0x4CA2, 1),  # arm 2, ambush from the sky -- PROBABLE
+    (0x4C62, 1),  # arm 2, later fight -- PROBABLE
+    (0x4C85, 1),  # arm 4, rescue fight -- PROBABLE
+    (0x4C9A, 1),  # arms 5 and 6, lizardmen -- PROBABLE
+    (0x4C8E, 2),  # arm 11, fire knives -- CONFIRMED
+    (0x4C8F, 1),  # arm 12, centaurs -- PROBABLE
+)
+WORLD_MAP_AREA = 0x50
+
 #: How many times `outdoor_key` will answer the boat before giving up.  Each
 #: answer gives the method its whole timeout again, because the landing draws
 #: the boat off the disk and that took most of twenty seconds on pool slot 1
@@ -863,6 +949,21 @@ class Session:
     #: party across the world, which is not a step.
     outdoor_boat: str | None = None
 
+    #: For automapper and driver testing only, never conversion proof: before
+    #: every move key, write the running area's `ENCOUNTER_GATES` pokes so no
+    #: wandering encounter starts, and zero the rest interruption in the
+    #: camp's rest.  The pokes are save-page bytes and some are story counters,
+    #: so `save_game` raises while this is on unless it is passed
+    #: `allow_suppressed=True`.
+    no_encounters = False
+
+    #: Opt-in on top of `no_encounters`: set Curse's world-map once-flags so
+    #: the fixed ambushes are skipped.  Changes story state.
+    skip_world_map_ambushes = False
+
+    #: Areas already reported as unsuppressed, so each is logged once.
+    _unsuppressed_logged: set | None = None
+
     #: Seconds between the two reads `stable_party_rows` compares.  A class
     #: attribute so a fake can set it near zero and a real run does not wait
     #: any longer than the redraw it is waiting out -- measured at three rows
@@ -1253,17 +1354,22 @@ class Session:
                                  "no encounter-free state to snapshot")
             return False
         self.snapshot(name)
-        for attempt in range(retries + 1):
-            met = self._walk_leg(moves, hold, gap)
-            if met is None:
-                self.discard_snapshot(name)
-                return True
-            self.log(f"  walk_with_retry: {met} on attempt {attempt + 1} of "
-                     f"{retries + 1}; restoring")
-            self.restore(name)
-            self.walk_retries = attempt + 1
-            if attempt < retries:
-                time.sleep(self.RETRY_SETTLE * (attempt + 1))
+        try:
+            for attempt in range(retries + 1):
+                met = self._walk_leg(moves, hold, gap)
+                if met is None:
+                    self.discard_snapshot(name)
+                    return True
+                self.log(f"  walk_with_retry: {met} on attempt {attempt + 1} "
+                         f"of {retries + 1}; restoring")
+                self.restore(name)
+                self.walk_retries = attempt + 1
+                if attempt < retries:
+                    time.sleep(self.RETRY_SETTLE * (attempt + 1))
+        except BaseException:
+            # A raised error is not a failed leg: nothing is left to restore.
+            self.discard_snapshot(name)
+            raise
         self.walk_refused = (f"an encounter began on each of {retries + 1} "
                              f"attempts at the leg {moves!r}")
         return False
@@ -1299,8 +1405,12 @@ class Session:
         if self.in_combat():
             return "the game is in combat at the end of the leg"
         s = self.screen()
-        if s is not None and (ENCOUNTER_FIGHT in s.row(24)
-                              or self._encounter_menu(s)):
+        # An ordinary `YES NO` is a square's own question, not an encounter;
+        # only the menu's own word counts here.
+        if s is not None and (
+                ENCOUNTER_FIGHT in s.row(24)
+                or (self.walk_encounter
+                    and word_column(s.row(24), self.walk_encounter) >= 0)):
             return "an encounter menu is up at the end of the leg"
         return None
 
@@ -2555,6 +2665,64 @@ class Session:
         """
         self.kbd.key(move.lower(), hold, gap)
 
+    def suppress_encounters(self) -> None:
+        """Write the running area's encounter pokes; a no-op unless
+        `no_encounters` is set.  Called just before each direction key.
+        """
+        if not self.no_encounters:
+            return
+        key = self.game.key
+        try:
+            with self.mon(5) as mon:
+                area = mon.read(AREA_BYTE[key], 1)[0]
+                gate = ENCOUNTER_GATES.get((key, area))
+                pokes = list(gate.pokes) if gate else []
+                if self.skip_world_map_ambushes and area == WORLD_MAP_AREA \
+                        and key == G.CURSE_OF_THE_AZURE_BONDS.key:
+                    pokes += WORLD_MAP_AMBUSH_SKIPS
+                for addr, value in pokes:
+                    mon.write(addr, bytes((value,)))
+                mon.resume()
+        except (OSError, MonitorError) as e:
+            self.log(f"  encounter pokes not written, monitor unreadable: {e}")
+            return
+        if gate is None:
+            if self._unsuppressed_logged is None:
+                self._unsuppressed_logged = set()
+            if (key, area) not in self._unsuppressed_logged:
+                self._unsuppressed_logged.add((key, area))
+                self.log(f"  encounters are not suppressed in area ${area:02X}: "
+                         f"no gate is known for it")
+
+    def suppress_rest_interruption(self, mon) -> None:
+        """Zero the rest-interruption byte through an open monitor
+        connection; a no-op unless `no_encounters` is set.  Call it after
+        ENCAMP, in the connection that stages the rest time.
+        """
+        if self.no_encounters:
+            mon.write(REST_INTERRUPT_BYTE[self.game.key], b"\x00")
+
+    def _refuse_save(self, allow_suppressed: bool = False) -> None:
+        """Every `save_game`, this class's and each override, calls this first.
+
+        A save is refused after a snapshot restore until a disk is attached,
+        and while `no_encounters` is on unless `allow_suppressed`: its pokes
+        are save-page bytes and some are story counters, so the save would
+        carry them.  Never use a save made with the override as conversion
+        proof.
+        """
+        if self._restored_unattached:
+            raise RuntimeError(
+                "a snapshot was restored and no disk has been attached since; "
+                "the drive holds the snapshot's copy of its disk, so a save "
+                "now is not written to the slot's file.  Call attach() with "
+                "the disk to save to first")
+        if self.no_encounters and not allow_suppressed:
+            raise RuntimeError(
+                "no_encounters is on: its pokes are save-page bytes and some "
+                "are story counters, so a game save now would carry them.  "
+                "Pass allow_suppressed=True to save anyway")
+
     def walk_one(self, move: str, hold=0.15, gap=0.30, tries: int = 4,
                  answer_prompts: bool = True, encounters: bool = False) -> bool:
         """One move, verified -- by the status line indoors, by memory outdoors.
@@ -2657,6 +2825,7 @@ class Session:
             if MOVE_SUBBAR in row:
                 self.walk_screens = (self._rows(s), None)
                 live_before = (self._live_square(True) if encounters else None)
+                self.suppress_encounters()
                 self.move_key(move, hold, gap)
                 key_at = time.monotonic()
                 sent = True
@@ -2698,6 +2867,7 @@ class Session:
                     break
                 self.walk_screens = (self._rows(up), None)
                 live_before = (self._live_square(True) if encounters else None)
+                self.suppress_encounters()
                 self.move_key(move, hold, gap)
                 key_at = time.monotonic()
                 sent = True
@@ -3143,13 +3313,12 @@ class Session:
             time.sleep(0.6)
         return False
 
-    def save_game(self, to: str | None = None) -> bool:
-        if self._restored_unattached:
-            raise RuntimeError(
-                "a snapshot was restored and no disk has been attached since; "
-                "the drive holds the snapshot's copy of its disk, so a save "
-                "now is not written to the slot's file.  Call attach() with "
-                "the disk to save to first")
+    def save_game(self, to: str | None = None,
+                  allow_suppressed: bool = False) -> bool:
+        """`ENCAMP` then `SAVE`; refused under `no_encounters` (automapper
+        and driver testing only, never conversion proof) unless
+        `allow_suppressed`."""
+        self._refuse_save(allow_suppressed)
         if to:
             self.save_disk = os.path.abspath(to)
         s = self.screen()

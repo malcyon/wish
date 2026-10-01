@@ -280,6 +280,7 @@ class CurseSession(por.Session):
                 "That is a driver error and not a wall")
             self.log("  party square unsteady; nothing sent")
             return False
+        self.suppress_encounters()
         self.move_key(move, hold, gap)
         deadline = time.time() + patience
         after = before
@@ -324,7 +325,8 @@ class CurseSession(por.Session):
         return self.select_bar(label, row=row, timeout=timeout,
                                answer_prompts=answer_prompts)
 
-    def save_game(self, to: str | None = None) -> bool:
+    def save_game(self, to: str | None = None,
+                  allow_suppressed: bool = False) -> bool:
         """`ENCAMP ▸ SAVE`, in Curse's own words.
 
         Three of the four bars are not Pool of Radiance's.  Camp is
@@ -339,6 +341,7 @@ class CurseSession(por.Session):
         prompt that is gone in under a second, and a run that waits to be
         asked has already missed it.
         """
+        self._refuse_save(allow_suppressed)
         if to:
             self.save_disk = os.path.abspath(to)
         if not self.to_world_bar():
