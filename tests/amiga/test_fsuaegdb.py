@@ -55,6 +55,11 @@ class FakeAmiga:
         #: output arrives.
         self.chatter: list[str] = []
         self.closed = False
+        #: Made True to answer `M` the way a build with a write handler does;
+        #: the stock fork has none and answers it with an empty packet.
+        self.writable = False
+        #: Made True to answer `OK` to `M` and change nothing.
+        self.ignores_writes = False
         #: Made True to answer as a server that has dropped the connection.
         self.gone = False
         #: Made True to hold every reply back, as an emulator paused behind its
@@ -128,6 +133,17 @@ class FakeAmiga:
             if any(a in self.unreadable for a in range(at, at + size)):
                 return "E01"
             return self.peek(at, size).hex()
+        if body.startswith("M") and self.writable:
+            head, _, digits = body[1:].partition(":")
+            at = int(head.partition(",")[0], 16)
+            data = bytes.fromhex(digits)
+            if not self.ignores_writes:
+                for base, blob in list(self.memory.items()):
+                    if base <= at < base + len(blob):
+                        buf = bytearray(blob)
+                        buf[at - base:at - base + len(data)] = data
+                        self.memory[base] = bytes(buf)
+            return "OK"
         return ""                           # the server's "not supported"
 
 
@@ -617,6 +633,77 @@ def test_swap_sends_exactly_the_given_sequence_with_a_wait_between_keys():
                       ("key", "Return"), ("still", "swap2-3")]
 
 
+def _poke(driven, tmp_path, line, **flags):
+    guest, _ = driven
+    for name, value in flags.items():
+        setattr(guest, name, value)
+    events, rows = run_session(tmp_path, ["locate", line, "wait 0.5"])
+    return guest, events["poke"], rows
+
+
+def test_session_poke_writes_through_m_and_logs_old_and_new(driven, tmp_path):
+    guest, row, _ = _poke(driven, tmp_path, "poke *0x57AC+0x24 07 08",
+                          writable=True)
+    assert row["address"] == 0xC20024
+    assert (row["old"], row["new"]) == ("0122", "0708")
+    assert "error" not in row
+    assert "M" + "c20024,2:0708" in guest.received
+    assert guest.peek(0xC20024, 2) == bytes([7, 8])
+
+
+def test_session_poke_takes_a_data_hunk_offset_and_an_absolute_address(
+        driven, tmp_path):
+    guest, _ = driven
+    guest.writable = True
+    _, rows = run_session(tmp_path, ["locate", "poke +0x10 aa", "poke 0xC20025 bb"])
+    pokes = [r for r in rows if r["event"] == "poke"]
+    assert [r["address"] for r in pokes] == [BASE + 0x10, 0xC20025]
+    assert guest.peek(0xC20025, 1) == b"\xbb"
+
+
+@pytest.mark.parametrize("line", [
+    "poke 0x700000 aa",             # between chip and slow memory
+    "poke 0xC7FFFF aabb",           # runs off the end of slow memory
+    "poke 0xC20000 " + "aa" * 65,   # longer than 64 bytes
+    "poke 0xC20000 zz",             # not hex
+    "poke 0xC20000"])               # nothing to write
+def test_session_poke_refusals_send_nothing_and_the_session_goes_on(
+        driven, tmp_path, line):
+    guest, row, rows = _poke(driven, tmp_path, line, writable=True)
+    assert row["error"]
+    assert not any(b.startswith("M") for b in guest.received)
+    assert any(r["event"] == "wait" for r in rows)
+
+
+def test_session_poke_of_an_offset_before_locate_is_an_error_row(driven, tmp_path):
+    guest, _ = driven
+    guest.writable = True
+    events, _ = run_session(tmp_path, ["poke +0x10 aa"])
+    assert "locate" in events["poke"]["error"]
+    assert not any(b.startswith("M") for b in guest.received)
+
+
+def test_session_poke_to_a_server_without_m_is_an_error_row(driven, tmp_path):
+    guest, row, _ = _poke(driven, tmp_path, "poke 0xC20024 07")
+    assert "answered ''" in row["error"]
+    assert guest.peek(0xC20024, 1) == b"\x01"
+
+
+def test_session_poke_that_the_server_acknowledges_but_ignores_is_an_error(
+        driven, tmp_path):
+    _, row, _ = _poke(driven, tmp_path, "poke 0xC20024 07", writable=True,
+                      ignores_writes=True)
+    assert "read back" in row["error"]
+
+
+def test_poke_does_not_change_the_targets_refusal_to_write(driven):
+    guest, _ = driven
+    guest.writable = True
+    tgt = amiga.AmigaTarget(transport(guest), POD)
+    with pytest.raises(amiga.GuestError):
+        tgt.write(0xC20024, b"\x07")
+
+
 def test_swap_without_a_sequence_names_the_pending_measurement():
     pressed = []
     with pytest.raises(NotImplementedError, match="still being measured"):
@@ -836,6 +923,8 @@ def driven(monkeypatch, tmp_path):
     monkeypatch.setattr(fsuaegdb, "shot", lambda display, path: log["shots"]
                         .append(path.name))
     monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    monkeypatch.setattr(fsuaegdb, "key_known",
+                        lambda display, key: key != "ESC")
     return guest, log
 
 
@@ -852,6 +941,37 @@ def test_session_keys_are_held_through_fsuaepors_implementation(driven, tmp_path
     _, log = driven
     run_session(tmp_path, ["key KP_Up p"])
     assert log["keys"] == [(["KP_Up"], 0.12), (["p"], 0.12)]
+
+
+def test_session_key_aliases_are_spelled_the_way_xdotool_knows_them(
+        driven, tmp_path):
+    _, log = driven
+    run_session(tmp_path, ["key RET ESC"])
+    assert log["keys"][0] == (["Return"], 0.12)
+
+
+def test_session_key_with_an_unknown_name_is_an_error_row_and_sends_nothing(
+        driven, tmp_path, monkeypatch):
+    _, log = driven
+    monkeypatch.setattr(fsuaegdb, "KEY_ALIASES", {})
+    events, rows = run_session(tmp_path, ["key KP_Up ESC", "wait 0.5"])
+    assert "'ESC'" in events["key"]["error"]
+    assert log["keys"] == []
+    assert any(r["event"] == "wait" for r in rows)
+
+
+def test_session_still_that_gives_up_is_an_error_row_and_the_session_goes_on(
+        driven, tmp_path, monkeypatch):
+    from tools.amiga import fsuaepor
+
+    def gives_up(display, label, take):
+        raise SystemExit("the screen was still changing after 60 s")
+
+    monkeypatch.setattr(fsuaepor, "_wait_until_still", gives_up)
+    guest, _ = driven
+    _, rows = run_session(tmp_path, ["still wheel", "wait 0.5"])
+    assert "still changing" in next(r for r in rows if r.get("error"))["error"]
+    assert any(r["event"] == "wait" for r in rows)
 
 
 def test_session_still_and_wait_are_logged(driven, tmp_path):

@@ -266,27 +266,88 @@ def boot(gdb, args) -> None:
 PEEK_SPEC = re.compile(r"^(?:\+(?P<at>\w+)|\*(?P<ptr>\w+)\+(?P<off>\w+))$")
 
 
-def read_spec(tgt, spec: str, length: int) -> bytes | None:
-    """Memory named by a `peek` spec, or None when its pointer is null.
-
-    Read-only on purpose: the fork's server has no write packet, and a spec
-    that cannot say a write cannot be mistyped into one.
-    """
+def resolve_spec(tgt, spec: str) -> int | None:
+    """The address a `+OFFSET` or `*POINTER+OFFSET` spec names, None for a null pointer."""
     found = PEEK_SPEC.match(spec.strip())
     if found is None:
         raise ValueError(f"{spec!r} is neither +OFFSET nor *POINTER+OFFSET")
-    if length < 1:
-        raise ValueError("a peek of nothing is not a read")
-    if tgt.data_base is None:
-        raise amiga.GuestError("peek needs the data hunk's address; run "
-                               "`locate` first")
+    if tgt is None or tgt.data_base is None:
+        raise amiga.GuestError("a data-hunk offset needs the data hunk's "
+                               "address; run `locate` first")
     if found["at"] is not None:
-        return tgt.read(tgt.data_base + int(found["at"], 0), length)
+        return tgt.data_base + int(found["at"], 0)
     pointer = int.from_bytes(
         tgt.read(tgt.data_base + int(found["ptr"], 0), 4), "big")
     if pointer == 0:
         return None
-    return tgt.read(pointer + int(found["off"], 0), length)
+    return pointer + int(found["off"], 0)
+
+
+def read_spec(tgt, spec: str, length: int) -> bytes | None:
+    """Memory named by a `peek` spec, or None when its pointer is null.
+
+    Read-only on purpose: a spec that cannot say a write cannot be mistyped
+    into one.
+    """
+    if length < 1:
+        raise ValueError("a peek of nothing is not a read")
+    if PEEK_SPEC.match(spec.strip()) is None:
+        raise ValueError(f"{spec!r} is neither +OFFSET nor *POINTER+OFFSET")
+    if tgt.data_base is None:
+        raise amiga.GuestError("peek needs the data hunk's address; run "
+                               "`locate` first")
+    address = resolve_spec(tgt, spec)
+    return None if address is None else tgt.read(address, length)
+
+
+#: The most a `poke` writes: one `M` packet must fit the server's 512-byte
+#: receive buffer, and a test-harness edit of a few bytes needs no more.
+POKE_LIMIT = 64
+
+
+def poke_row(gdb, tgt, rest: str) -> dict:
+    """`poke SPEC HEX` as a log row: a write through the session's own GDB client.
+
+    `AmigaTarget.write` refuses a GDB transport because the stock server has
+    no `M` handler; this verb sends the packet itself, so it works only on a
+    build that has one. It never trusts the reply alone: the bytes are read
+    back, and a write the server ignored is an error row.
+    """
+    spec, _, digits = rest.strip().partition(" ")
+    row = {"spec": spec}
+    try:
+        data = bytes.fromhex(digits.replace(" ", ""))
+        if not data:
+            raise ValueError("poke wants SPEC HEXBYTES")
+        if len(data) > POKE_LIMIT:
+            raise ValueError(f"poke of {len(data)} bytes is over the "
+                             f"{POKE_LIMIT}-byte limit")
+        if re.fullmatch(r"(?:0[xX][0-9a-fA-F]+|\d+)", spec):
+            address = int(spec, 0)
+        else:
+            address = resolve_spec(tgt, spec)
+            if address is None:
+                return {**row, "error": "the pointer is null"}
+        row["address"] = address
+        if not any(base <= address and address + len(data) <= base + size
+                   for base, size in amiga.MEMORY):
+            raise ValueError(f"{address:#x}..{address + len(data):#x} is outside "
+                             "the machine's memory regions")
+        old = gdb.read_memory(address, len(data))
+        row["old"] = old.hex()
+        reply = gdb.ask(f"M{address:x},{len(data):x}:{data.hex()}")
+        if reply != "OK":
+            raise amiga.GuestError(
+                f"the server answered {reply!r} to the write; a build "
+                "without an `M` handler answers with nothing")
+        new = gdb.read_memory(address, len(data))
+        row["new"] = new.hex()
+        if new != data:
+            raise amiga.GuestError("the server said OK but the bytes read back "
+                                   "are not the ones written")
+    except (ValueError, amiga.GuestError, amiga.FsuaeError) as exc:
+        return {**row, "error": f"{type(exc).__name__}: {exc}"}
+    return row
 
 
 def dump_row(gdb, rest: str, out: pathlib.Path) -> dict:
@@ -498,6 +559,12 @@ def session(args) -> int:
         peek <spec> <n>     n bytes of memory: `+0x5B12` is a data-hunk
                             offset, `*0x57AC+0x24` dereferences the pointer
                             there first.  Read-only; refused before `locate`
+        poke <spec> <hex>   CHANGES THE RUNNING GAME: writes up to 64 bytes
+                            with an `M` packet and logs address, old and new
+                            bytes.  `<spec>` is a peek spec or an absolute
+                            address; a write outside chip and slow memory is
+                            an error row.  Needs a server with `M`; read back,
+                            so an ignored write is an error row too
         swap <index>        put swap list image <index> in the drive, by the
                             keys of `--swap-sequence` (default: the F12 menu
                             walk, see DEFAULT_SWAP_SEQUENCE)
@@ -596,7 +663,9 @@ def session(args) -> int:
                         print(f"           {error}")
                         note(event=word, at=now, error=error)
                     elif word == "key":
-                        for key in rest.split():
+                        names = [resolve_key(args.display, k)
+                                 for k in rest.split()]
+                        for key in names:
                             held_key(args, key)
                         note(event="key", keys=rest, at=now)
                     elif word == "shot":
@@ -616,6 +685,10 @@ def session(args) -> int:
                         row = peek_row(tgt, spec, int(length or 1, 0))
                         print(f"           {row}")
                         note(event="peek", at=now, **row)
+                    elif word == "poke":
+                        row = poke_row(gdb, tgt, rest)
+                        print(f"           {row}")
+                        note(event="poke", at=now, **row)
                     elif word == "swap":
                         if swap_error is not None:
                             note(event="swap", at=now, error=swap_error)
@@ -667,7 +740,10 @@ def session(args) -> int:
                         note(event="journal", answered=journal(args, rest), at=now)
                     else:
                         note(event="unknown", line=line, at=now)
-                except (ValueError, NotImplementedError) as exc:
+                except (ValueError, NotImplementedError, SystemExit) as exc:
+                    # `fsuaepor` ends a failed wait or a missing window with
+                    # SystemExit; here that would close the emulator's only
+                    # debugger connection for good.
                     print(f"           {exc}")
                     note(event=word, at=now,
                          error=f"{type(exc).__name__}: {exc}")
@@ -716,6 +792,30 @@ def check_arguments(args) -> list[tuple[str, int]]:
         return parse_peeks(args.peeks)
     except ValueError as exc:
         raise SystemExit(f"--peeks: {exc}") from exc
+
+
+#: Spellings people type that xdotool does not know.
+KEY_ALIASES = {"ESC": "Escape", "RET": "Return"}
+
+
+def resolve_key(display: str, key: str) -> str:
+    """The xdotool name for `key`, or ValueError when xdotool has no such key.
+
+    xdotool prints "No such key name" and still exits 0, so an unknown name
+    would otherwise be a keystroke that silently never happened.  The probe is
+    a `keyup`, which releases a key nobody holds.
+    """
+    key = KEY_ALIASES.get(key, key)
+    if not key_known(display, key):
+        raise ValueError(f"no such key name {key!r}")
+    return key
+
+
+def key_known(display: str, key: str) -> bool:
+    done = subprocess.run(["xdotool", "keyup", key], capture_output=True,
+                          text=True, check=False,
+                          env={"DISPLAY": display, "PATH": "/usr/bin:/bin"})
+    return "No such key name" not in done.stdout + done.stderr
 
 
 def held_key(args, key: str) -> None:
