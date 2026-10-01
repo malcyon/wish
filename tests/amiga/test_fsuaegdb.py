@@ -2117,3 +2117,206 @@ def test_stop_without_helper_flag_reads_no_helper_files(monkeypatch, capsys):
     monkeypatch.setattr(fsuaegdb.os, "killpg", lambda pid, sig: None, raising=False)
     monkeypatch.setattr(fsuaegdb, "alive", lambda pid: False)
     assert fsuaegdb.stop(stop_args()) == 0
+
+
+# review fixes: the helper's directory, a refused close, the environment, the parse
+
+
+from automap import fsuaehelper as _fsuaehelper  # noqa: E402
+
+REAL_RUNTIME_DIR = _fsuaehelper.runtime_dir
+
+
+def test_wish_pins_the_helpers_directory_when_xdg_runtime_dir_is_unset(
+        wished, tmp_path, monkeypatch):
+    from automap import fsuaehelper
+
+    monkeypatch.setattr(fsuaehelper, "runtime_dir", REAL_RUNTIME_DIR)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "player-data"))
+    seen = []
+    monkeypatch.setattr(fsuaegdb, "open_wish", lambda out: (
+        seen.append((os.environ.get("XDG_RUNTIME_DIR"),
+                     fsuaehelper.runtime_dir())) or (FakeApp(), FakeWindow())))
+    run_wish(tmp_path, [])
+    pinned = (tmp_path / "run" / "runtime").resolve()
+    assert seen == [(str(pinned), pinned / "wish")]
+    assert (tmp_path / "run" / fsuaegdb.RUNTIME_NOTE).read_text().strip() == str(
+        pinned / "wish")
+    assert "XDG_RUNTIME_DIR" not in os.environ
+
+
+def test_wish_keeps_a_runtime_directory_the_environment_already_names(
+        wished, tmp_path, monkeypatch):
+    from automap import fsuaehelper
+
+    monkeypatch.setattr(fsuaehelper, "runtime_dir", REAL_RUNTIME_DIR)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "given"))
+    run_wish(tmp_path, [])
+    assert (tmp_path / "run" / fsuaegdb.RUNTIME_NOTE).read_text().strip() == str(
+        tmp_path / "given" / "wish")
+    assert not (tmp_path / "run" / "runtime").exists()
+
+
+def noted_run(tmp_path):
+    """A run folder whose note points at a helper directory with a json in it."""
+    run = tmp_path / "run"
+    run.mkdir()
+    private = tmp_path / "private"
+    private.mkdir()
+    (run / fsuaegdb.RUNTIME_NOTE).write_text(f"{private}\n")
+    (private / "fsuae-6531.json").write_text(json.dumps({"pid": 99}))
+    return run, private
+
+
+def test_the_connecting_verbs_look_where_the_run_recorded_its_helper(
+        monkeypatch, tmp_path):
+    from automap import fsuaehelper
+
+    run, private = noted_run(tmp_path)
+    monkeypatch.setattr(fsuaehelper, "runtime_dir",
+                        lambda environ=None: tmp_path / "elsewhere")
+    asked = []
+    monkeypatch.setattr(fsuaehelper, "find", lambda port, rt, platform=None: (
+        asked.append(rt) or {"pid": 99}))
+    args = argparse.Namespace(host="h", port=6531, timeout=None, out=str(run))
+    with pytest.raises(SystemExit, match="pid 99"):
+        fsuaegdb.connect(args)
+    assert asked == [private]
+
+
+def test_stop_helper_looks_where_the_run_recorded_its_helper(
+        monkeypatch, capsys, tmp_path):
+    from automap import fsuaehelper
+
+    run, private = noted_run(tmp_path)
+    monkeypatch.setattr(fsuaehelper, "runtime_dir",
+                        lambda environ=None: tmp_path / "elsewhere")
+    monkeypatch.setattr(fsuaehelper, "find", lambda *a, **k: None)
+    live = {99: True}
+
+    def killpg(pid, sig):
+        live[99] = False
+        (private / "fsuae-6531.json").unlink()
+
+    monkeypatch.setattr(fsuaegdb.os, "killpg", killpg, raising=False)
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: live.get(pid, False))
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    assert fsuaegdb.stop(stop_args(helper=True, helper_wait=5.0, port=6531,
+                                   out=str(run))) == 0
+    assert "helper 99 stopped" in capsys.readouterr().out
+
+
+def test_stop_helper_exits_nonzero_when_no_helper_is_found(
+        monkeypatch, capsys, tmp_path):
+    from automap import fsuaehelper
+
+    monkeypatch.setattr(fsuaehelper, "runtime_dir", lambda environ=None: tmp_path)
+    monkeypatch.setattr(fsuaegdb.os, "killpg", lambda pid, sig: None, raising=False)
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: False)
+    assert fsuaegdb.stop(stop_args(helper=True, helper_wait=1.0, port=6531)) == 1
+    assert "no helper was recorded for port 6531" in capsys.readouterr().out
+
+
+def test_a_window_that_will_not_close_stays_the_runs_window(
+        wished, tmp_path, monkeypatch):
+    first = FakeWindow()
+    first.close = lambda: False
+    windows = [first]
+    monkeypatch.setattr(fsuaegdb, "open_wish", lambda out: (
+        FakeApp(), windows.pop(0) if windows else FakeWindow()))
+    rows = run_wish(tmp_path, ["close", "observe still-there"])
+    assert "did not close" in by_event(rows, "close")[0]["error"]
+    assert by_event(rows, "observe")[0]["window"] is True
+    assert wished["resets"] == 0
+
+
+def test_wish_puts_back_the_display_variables_the_offscreen_switch_changes(
+        wished, tmp_path, monkeypatch):
+    from tools.gui import mapmarker
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "wayland;xcb")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+    monkeypatch.delenv("WISH_SHOT_PLATFORM", raising=False)
+    monkeypatch.delenv("GDK_BACKEND", raising=False)
+
+    def open_wish(out):
+        mapmarker._offscreen()                          # noqa: SLF001
+        assert os.environ["QT_QPA_PLATFORM"] == "offscreen"
+        return FakeApp(), FakeWindow()
+
+    monkeypatch.setattr(fsuaegdb, "open_wish", open_wish)
+    run_wish(tmp_path, [])
+    assert os.environ["QT_QPA_PLATFORM"] == "wayland;xcb"
+    assert os.environ["WAYLAND_DISPLAY"] == "wayland-0"
+    assert os.environ["XDG_SESSION_TYPE"] == "wayland"
+    assert "GDK_BACKEND" not in os.environ
+
+
+@pytest.mark.parametrize("port_first", [True, False])
+def test_the_documented_wish_command_line_parses_either_way(
+        wished, tmp_path, port_first):
+    pathlib.Path(tmp_path / "cmds").write_text("observe x\nquit\n")
+    common = ["--out", str(tmp_path / "run"), "--commands", str(tmp_path / "cmds"),
+              "--observe-wait", "0", "--interval", "0"]
+    argv = (["--port", "6531", "wish", *common] if port_first
+            else ["wish", "--port", "6531", *common])
+    assert fsuaegdb.main(argv) == 0
+    assert wished["port"] == [6531]
+
+
+def test_a_port_given_before_the_subcommand_survives_one_left_out_after_it(
+        wished, tmp_path):
+    pathlib.Path(tmp_path / "cmds").write_text("quit\n")
+    fsuaegdb.main(["--port", "6544", "wish", "--out", str(tmp_path / "run"),
+                   "--commands", str(tmp_path / "cmds")])
+    assert wished["port"] == [6544]
+
+
+def test_the_documented_stop_helper_command_line_parses(
+        monkeypatch, capsys, tmp_path):
+    from automap import fsuaehelper
+
+    monkeypatch.setattr(fsuaehelper, "runtime_dir", lambda environ=None: tmp_path)
+    monkeypatch.setattr(fsuaegdb.os, "killpg", lambda pid, sig: None, raising=False)
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: False)
+    assert fsuaegdb.main(["stop", "--helper", "--port", "6531", "5"]) == 1
+    assert "port 6531" in capsys.readouterr().out
+
+
+def test_a_real_window_opens_no_debugger_connection(tmp_path, monkeypatch):
+    """The real `WishWindow` through `open_wish`, polled, with the sockets rigged."""
+    import socket
+
+    from tools.gui import mapmarker
+    from wish import fsuae
+
+    opened, dialled = [], []
+
+    def refuse(*a, **k):
+        opened.append(a)
+        raise AssertionError("a debugger connection was attempted")
+
+    def refuse_socket(address, *a, **k):
+        # The VICE row probes its own monitor port; only the debugger's matters.
+        dialled.append(address)
+        raise ConnectionRefusedError(address)
+
+    monkeypatch.setattr(fsuaegdb.amiga, "FsuaeGdb", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse_socket)
+    monkeypatch.setenv(fsuaegdb.WISH_FLAG, "1")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "rt"))
+    monkeypatch.setattr(fsuaegdb.amiga, "FSUAE_PORT", 6598)
+    mapmarker.private_settings(tmp_path)
+    app, window = fsuaegdb.open_wish(tmp_path)
+    try:
+        for _ in range(3):
+            window.session.poll()
+            app.processEvents()
+        assert window.session.target is None
+        assert window.session.note == "Waiting to connect..."
+    finally:
+        assert window.close() is not False
+        fsuae.reset()
+    assert opened == []
+    assert [a for a in dialled if a[1] == 6598] == []

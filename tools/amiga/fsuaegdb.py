@@ -86,6 +86,32 @@ TITLED_COMMANDS = ("locate", "fix", "peek", "observe", "poll")
 DUMP_LIMIT = 0x80000
 
 
+#: Where `wish` writes the helper's runtime directory in the run folder, so a
+#: later command given the same `--out` looks where the helper actually is.
+RUNTIME_NOTE = "helper-runtime.txt"
+
+
+def helper_runtime(args) -> pathlib.Path:
+    """The directory the connection helper for this run keeps its files in.
+
+    `--runtime` wins; then the path `wish` recorded in the `--out` folder;
+    then the player's own location.  A run whose `XDG_RUNTIME_DIR` was unset
+    keeps its helper somewhere private, which only the note can find.
+    """
+    explicit = getattr(args, "runtime", None)
+    if explicit:
+        return pathlib.Path(explicit)
+    out = getattr(args, "out", None)
+    if out:
+        try:
+            text = (pathlib.Path(out) / RUNTIME_NOTE).read_text().strip()
+        except OSError:
+            text = ""
+        if text:
+            return pathlib.Path(text)
+    return fsuaehelper.runtime_dir()
+
+
 def refuse_when_helper_holds(args) -> None:
     """Stop before opening a socket when a Wish connection helper has the door.
 
@@ -93,7 +119,7 @@ def refuse_when_helper_holds(args) -> None:
     the transport's whole timeout, and one that gives up from the backlog
     leaves a dead connection there.
     """
-    info = fsuaehelper.find(args.port, fsuaehelper.runtime_dir())
+    info = fsuaehelper.find(args.port, helper_runtime(args))
     if info is not None:
         raise SystemExit(
             f"a connection helper (pid {info.get('pid')}) already holds the "
@@ -855,7 +881,10 @@ def run_commands(args, commands: pathlib.Path, started: float, note, handle,
 
 #: What the `wish` command sets for the window and puts back afterwards.
 WISH_FLAG = "WISH_EXPERIMENTAL_AMIGA_FSUAE"
-WISH_ENV = (WISH_FLAG, "XDG_CONFIG_HOME", "XDG_DATA_HOME")
+WISH_ENV = (WISH_FLAG, "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR",
+            # Set by `mapmarker._offscreen`, which this process calls.
+            "QT_QPA_PLATFORM", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE",
+            "GDK_BACKEND")
 
 #: The session commands that read the emulator, which `wish` refuses: the
 #: window holds the only way to the game, and the point of the run is that
@@ -866,13 +895,13 @@ WISH_REFUSED = ("peek", "poke", "locate", "fix", "dump", "poll", "time", "geo")
 PUMP_STEP = 0.05
 
 
-def helper_row(port: int) -> dict:
+def helper_row(port: int, runtime=None) -> dict:
     """What the connection helper for `port` has published, and whether it lives.
 
     Reads files and `/proc` only; it opens no socket, so it can be asked as
     often as a run likes without touching the emulator.
     """
-    runtime = fsuaehelper.runtime_dir()
+    runtime = fsuaehelper.runtime_dir() if runtime is None else runtime
     files = fsuaehelper.Paths(port, runtime)
     try:
         info = json.loads(files.json.read_text())
@@ -952,13 +981,13 @@ class WishRun:
             raise ValueError("no window is open")
         from wish import fsuae
 
-        window, self.window = self.window, None
-        closed = window.close()
+        # The window stays ours until it has agreed to close.
+        if self.window.close() is False:
+            raise ValueError("the window did not close")
+        self.window = None
         self.pump(0)
         fsuae.reset()
         fsuae.forget_helper()
-        if closed is False:
-            raise ValueError("the window did not close")
 
     def pump(self, seconds: float) -> None:
         end = time.monotonic() + seconds
@@ -1101,6 +1130,15 @@ def wish(args) -> int:
         # `wish.fsuae.listening` and `connect` read this at call time, so the
         # window finds the slot's port without a change to the product.
         amiga.FSUAE_PORT = args.port
+        # Without `XDG_RUNTIME_DIR` the helper's files go under the data
+        # directory, which `private_settings` moves; pin them first and write
+        # down where, so `stop --helper` and the connecting verbs look there.
+        if not os.environ.get("XDG_RUNTIME_DIR"):
+            runtime_home = out / "runtime"
+            runtime_home.mkdir(mode=0o700, exist_ok=True)
+            os.environ["XDG_RUNTIME_DIR"] = str(runtime_home.resolve())
+        (out / RUNTIME_NOTE).write_text(f"{fsuaehelper.runtime_dir()}\n",
+                                        encoding="utf-8")
         mapmarker.private_settings(out)
         if folders:
             from automap.config import Settings
@@ -1149,6 +1187,8 @@ def wish(args) -> int:
         try:
             if run.window is not None:
                 run.close()
+        except ValueError as exc:
+            print(f"           {exc}")
         finally:
             for name, value in saved.items():
                 if value is None:
@@ -1581,7 +1621,8 @@ def stop(args) -> int:
     ended by ending the caller) -- which is not signalled.
     """
     status = 0
-    helper = helper_row(args.port) if getattr(args, "helper", False) else None
+    helper = (helper_row(args.port, helper_runtime(args))
+              if getattr(args, "helper", False) else None)
     for pid in args.pid:
         try:
             os.killpg(pid, signal.SIGTERM)
@@ -1615,16 +1656,17 @@ def wait_for_helper(args, before: dict) -> int:
     """
     pid = before.get("pid")
     if not isinstance(pid, int):
-        print(f"no helper was recorded for port {args.port}")
-        return 0
+        print(f"no helper was recorded for port {args.port} in "
+              f"{helper_runtime(args)}")
+        return 1
     deadline = time.monotonic() + args.helper_wait
     while time.monotonic() < deadline:
-        now = helper_row(args.port)
+        now = helper_row(args.port, helper_runtime(args))
         if not alive(pid) and not now["sock"] and now["json"] is None:
             print(f"helper {pid} stopped; its socket and json are removed")
             return 0
         time.sleep(0.1)
-    now = helper_row(args.port)
+    now = helper_row(args.port, helper_runtime(args))
     print(f"helper {pid} after {args.helper_wait:g} s: "
           f"{'still running' if alive(pid) else 'gone'}, "
           f"socket {'present' if now['sock'] else 'removed'}, "
@@ -1681,24 +1723,45 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--host", default="127.0.0.1",
-                        help="the server binds 127.0.0.1 and nothing else")
-    parser.add_argument("--port", type=int, default=amiga.FSUAE_PORT,
-                        help=f"remote_debugger_port (default "
-                             f"{amiga.FSUAE_PORT})")
-    parser.add_argument("--timeout", type=float, default=None,
-                        help="seconds to wait for one packet's reply")
-    parser.add_argument("--title", choices=[*sorted(amiga.MACHINES), NO_TITLE],
-                        help="which title is running; without it the running "
-                             "title is detected from the Amiga's memory "
-                             "(`automap` needs it, because it boots the game); "
-                             f"`{NO_TITLE}` starts a `session` with no layout "
-                             "for a title that has no row, where `dump` reads "
-                             "raw memory and the commands that need a layout "
-                             "log an error")
+    def connection_options(target, absent=None) -> None:
+        """These go before the subcommand or after it; `absent` is what a
+        subcommand leaves alone so the value given first is kept."""
+        def default(value):
+            return value if absent is None else absent
+
+        target.add_argument("--host", default=default("127.0.0.1"),
+                            help="the server binds 127.0.0.1 and nothing else")
+        target.add_argument("--port", type=int,
+                            default=default(amiga.FSUAE_PORT),
+                            help=f"remote_debugger_port (default "
+                                 f"{amiga.FSUAE_PORT})")
+        target.add_argument("--timeout", type=float, default=default(None),
+                            help="seconds to wait for one packet's reply")
+        target.add_argument(
+            "--title", choices=[*sorted(amiga.MACHINES), NO_TITLE],
+            default=default(None),
+            help="which title is running; without it the running "
+                 "title is detected from the Amiga's memory "
+                 "(`automap` needs it, because it boots the game); "
+                 f"`{NO_TITLE}` starts a `session` with no layout "
+                 "for a title that has no row, where `dump` reads "
+                 "raw memory and the commands that need a layout "
+                 "log an error")
+        target.add_argument(
+            "--runtime", default=default(None),
+            help="the directory holding the connection helper's files, when "
+                 "it is not the player's own; a `wish` run writes it to "
+                 f"`{RUNTIME_NOTE}` in its --out folder")
+
+    connection_options(parser)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("probe", help="connect, continue, and time reads")
+    def add_parser(*a, **k):
+        sp = sub.add_parser(*a, **k)
+        connection_options(sp, argparse.SUPPRESS)
+        return sp
+
+    p = add_parser("probe", help="connect, continue, and time reads")
     p.add_argument("--polls", type=int, default=8)
     p.add_argument("--interval", type=float, default=0.3)
     p.add_argument("--at", type=lambda s: int(s, 0), default=0xC00000,
@@ -1708,20 +1771,20 @@ def main(argv: list[str] | None = None) -> int:
                    help="skip the sizes above this")
     p.add_argument("--json", help="write the timings here as well")
 
-    sub.add_parser("locate", help="measure the data hunk's load address")
-    sub.add_parser("fix", help="where the party is standing")
+    add_parser("locate", help="measure the data hunk's load address")
+    add_parser("fix", help="where the party is standing")
 
-    g = sub.add_parser("geo", help="the resident 1024-byte map")
+    g = add_parser("geo", help="the resident 1024-byte map")
     g.add_argument("--out", help="write the block here")
 
-    d = sub.add_parser("dump", help="any range of the running machine")
+    d = add_parser("dump", help="any range of the running machine")
     d.add_argument("--at", required=True, type=lambda s: int(s, 0))
     d.add_argument("--relative", action="store_true",
                    help="--at is a data-hunk offset instead")
     d.add_argument("--length", required=True, type=lambda s: int(s, 0))
     d.add_argument("--out", required=True)
 
-    m = sub.add_parser("automap",
+    m = add_parser("automap",
                        help="run the shipped automapper and draw its map")
     m.add_argument("--out", required=True,
                    help="a directory for the SVGs, the log and the notes")
@@ -1744,7 +1807,7 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--locate-tries", type=int, default=1,
                    help="how many times to look for the title in memory")
 
-    launcher = sub.add_parser(
+    launcher = add_parser(
         "launch", help="start an Xvfb and a patched FS-UAE inside it; its "
                        "debugger port accepts one client per emulator run")
     launcher.add_argument("--fs-uae", required=True,
@@ -1769,7 +1832,7 @@ def main(argv: list[str] | None = None) -> int:
     launcher.add_argument("--extra", nargs=argparse.REMAINDER,
                           help="anything else, passed straight to FS-UAE")
 
-    s = sub.add_parser(
+    s = add_parser(
         "session", help="hold the one connection and take commands from a "
                         "file; the debugger port accepts one client per "
                         "emulator run, so a second session needs a new launch")
@@ -1809,7 +1872,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="the emulator's log, where `swap` looks for the disk "
                         "change it caused")
 
-    w = sub.add_parser(
+    w = add_parser(
         "wish", help="run the real Wish window against the emulator, as a "
                      "player would, and drive the game by keys; opens no "
                      "debugger connection of its own")
@@ -1841,10 +1904,12 @@ def main(argv: list[str] | None = None) -> int:
                    help="the emulator's log, where `swap` looks for the disk "
                         "change it caused")
 
-    killer = sub.add_parser("stop", help="kill a launch's process group")
+    killer = add_parser("stop", help="kill a launch's process group")
     killer.add_argument("pid", nargs="+", type=int)
     killer.add_argument("--wait", type=float, default=5.0,
                         help="seconds to wait for each group to end")
+    killer.add_argument("--out", help="a `wish` run's folder, where the "
+                                      "helper's directory was written down")
     killer.add_argument("--helper", action="store_true",
                         help="also wait for the connection helper of --port "
                              "to end and its socket and json to go, and "
