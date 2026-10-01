@@ -340,7 +340,7 @@ def _wire(monkeypatch, tmp_path, challenge, word):
     monkeypatch.setattr(journal, "_blades_modules", lambda: (screen, tables))
     monkeypatch.setattr(journal, "tables", lambda adf: [])
     monkeypatch.setattr(journal, "to_reader_scale",
-                        lambda shot, out, target_pitch=None:
+                        lambda shot, out, target_pitch=None, aspect=1.0:
                         None if challenge is None else (1.0, 2.0, 30.64))
 
     def _no_emulator(*args, **kwargs):
@@ -757,3 +757,104 @@ def test_a_stray_digit_like_file_name_does_not_break_numbering(monkeypatch, tmp_
     (keep / "challenge-\u00b2.png").write_bytes(b"stray")
     journal.answer("h", 0.0, tmp_path / "d.adf", capture=_grab, keep=keep)
     assert (keep / "challenge-01.png").is_file()
+
+
+# FS-UAE's window draws the game a few percent wider than tall, so the grid
+# fitted from the rows alone is too narrow.
+
+def test_the_sweep_starts_at_the_measured_ratio_and_spans_square_pixels():
+    sweep = journal.aspect_sweep()
+    assert sweep[0] == 1.03
+    assert 1.0 in sweep
+    assert len(set(sweep)) == len(sweep)
+    assert [abs(v - 1.03) for v in sweep] == sorted(abs(v - 1.03) for v in sweep)
+
+
+def test_the_origin_moves_left_by_the_wider_cells():
+    bands = [(100, 118, 500, 900), (132, 150, 500, 900),
+             (164, 182, 500, 900)]
+    square = journal.fit_grid(bands)
+    wide = journal.fit_grid(bands, aspect=1.25)
+    assert square[2] == wide[2] == 16
+    assert square[0] - wide[0] == journal.LEFT_MARGIN * 16 * 0.25
+
+
+def test_a_capture_with_wider_cells_is_sampled_at_the_wider_spacing(tmp_path):
+    # A stripe from column LEFT_MARGIN for `width` cells, drawn on cells 1.25
+    # times as wide as they are tall.  Sampled at the right ratio it covers
+    # exactly those cells of the rescaled image; at 1.0 it does not.
+    Image = pytest.importorskip("PIL.Image")
+    aspect, pitch, x0, y0, width = 1.25, 16, 58, 59, 16
+    image = Image.new("RGB", (1920, 1080), (0, 0, 0))
+    pixels = image.load()
+    for row in (2, 4, 6):
+        top = int(y0 + row * pitch)
+        for y in range(top, top + pitch - 2):
+            for x in range(round(x0 + journal.LEFT_MARGIN * pitch * aspect),
+                           round(x0 + (journal.LEFT_MARGIN + width) * pitch
+                                 * aspect)):
+                pixels[x, y] = journal.GREEN
+    source = tmp_path / "wide.png"
+    image.save(source)
+
+    def inked_columns(aspect_used):
+        out = tmp_path / f"out-{aspect_used}.png"
+        assert journal.to_reader_scale(source, out, target_pitch=30.64,
+                                       aspect=aspect_used)
+        mask = journal._ink_mask(Image.open(out))
+        left, _, right, _ = mask.getbbox()
+        return left // 32, right // 32
+
+    first = journal.MARGIN + journal.LEFT_MARGIN
+    assert inked_columns(aspect) == (first, first + width)
+    assert inked_columns(1.0) != (first, first + width)
+
+
+class _AspectScreen(_Screen):
+    """Reads the challenge only from a frame sampled at `good`."""
+
+    good = 1.03
+
+    def read_challenge(self, path):
+        if self.X0 != self.good:
+            raise ValueError("no challenge on this screen")
+        return self._challenge
+
+
+def _sweep_wire(monkeypatch, tmp_path):
+    screen = _AspectScreen({"kind": "journal"})
+    monkeypatch.setattr(journal, "_blades_modules",
+                        lambda: (screen, _Tables("TESTWORD")))
+    monkeypatch.setattr(journal, "tables", lambda adf: [])
+    tried: list[float] = []
+
+    def scale(shot, out, target_pitch=None, aspect=1.0):
+        tried.append(aspect)
+        return (aspect, 2.0, 30.64)
+
+    monkeypatch.setattr(journal, "to_reader_scale", scale)
+    return tried
+
+
+def test_the_sweep_stops_at_the_first_ratio_the_reader_can_use(
+        monkeypatch, tmp_path, capsys):
+    tried = _sweep_wire(monkeypatch, tmp_path)
+    pressed = []
+    assert journal.answer("h", 0.0, tmp_path / "d.adf",
+                          capture=lambda path: None, press=pressed.append,
+                          aspects=(1.0, 1.02, 1.03, 1.04)) is True
+    assert tried == [1.0, 1.02, 1.03]
+    assert pressed == list("TESTWORD") + ["RET"]
+    assert capsys.readouterr().out == "answered\n"
+
+
+def test_without_a_sweep_only_the_square_ratio_is_tried(
+        monkeypatch, tmp_path, capsys):
+    tried = _sweep_wire(monkeypatch, tmp_path)
+    pressed = []
+    assert journal.answer("h", 0.0, tmp_path / "d.adf",
+                          capture=lambda path: None,
+                          press=pressed.append) is False
+    assert tried == [1.0]
+    assert pressed == []
+    assert capsys.readouterr().out == "no challenge on screen\n"

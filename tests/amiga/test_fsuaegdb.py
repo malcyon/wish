@@ -2450,3 +2450,77 @@ def test_is_fsuae_reads_the_binary_name_from_proc(monkeypatch, tmp_path):
     assert fsuaegdb.is_fsuae(11) and fsuaegdb.is_fsuae(13)
     assert not fsuaegdb.is_fsuae(12)
     assert not fsuaegdb.is_fsuae(14)             # unreadable: not vouched for
+
+
+# the window and the first key
+
+@pytest.fixture
+def fresh_keys(monkeypatch):
+    monkeypatch.setattr(fsuaegdb, "_keyed", set())
+    slept = []
+    monkeypatch.setattr(fsuaegdb.time, "sleep", slept.append)
+    return slept
+
+
+def test_the_first_key_waits_until_the_emulator_is_old_enough(
+        monkeypatch, fresh_keys):
+    monkeypatch.setattr(fsuaegdb, "emulator_age", lambda display: 30.0)
+    assert fsuaegdb.wait_for_first_key(":77", 120.0) == 90.0
+    assert fresh_keys == [90.0]
+    # Once per run: the second key goes straight in.
+    assert fsuaegdb.wait_for_first_key(":77", 120.0) == 0.0
+    assert fresh_keys == [90.0]
+
+
+@pytest.mark.parametrize("age", [None, 120.0, 500.0])
+def test_no_wait_when_the_age_is_unknown_or_enough(monkeypatch, fresh_keys, age):
+    monkeypatch.setattr(fsuaegdb, "emulator_age", lambda display: age)
+    assert fsuaegdb.wait_for_first_key(":77", 120.0) == 0.0
+    assert fresh_keys == []
+
+
+def test_a_held_key_waits_for_the_first_key_with_the_option_given(monkeypatch):
+    waits = []
+    monkeypatch.setattr(fsuaegdb, "wait_for_first_key",
+                        lambda display, after: waits.append((display, after)))
+    monkeypatch.setattr(fsuaegdb, "press", lambda *a: None)
+    fsuaegdb.held_key(argparse.Namespace(display=":77", hold=0, settle=0,
+                                         first_key_after=7.0), "p")
+    assert waits == [(":77", 7.0)]
+
+
+def _xdotool(monkeypatch, sizes):
+    """Fake `find_windows`, `window_size` and the one `xdotool` call made."""
+    from tools.amiga import fsuaepor
+
+    calls = []
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    monkeypatch.setattr(fsuaepor, "find_windows",
+                        lambda display, timeout=None: list(sizes))
+    monkeypatch.setattr(fsuaegdb, "window_size",
+                        lambda display, window: sizes[window])
+    monkeypatch.setattr(fsuaegdb.subprocess, "run",
+                        lambda argv, **kw: calls.append(argv))
+    return calls
+
+
+def test_the_main_window_is_sized_and_moved_to_the_display(monkeypatch):
+    calls = _xdotool(monkeypatch, {"11": (10, 10), "22": (1280, 760)})
+    assert fsuaegdb.fit_window(":77", (800, 600), seconds=1) is True
+    assert calls == [["xdotool", "windowsize", "22", "800", "600",
+                      "windowmove", "22", "0", "0"]]
+
+
+def test_no_window_is_reported_not_waited_for_forever(monkeypatch):
+    calls = _xdotool(monkeypatch, {})
+    assert fsuaegdb.fit_window(":77", seconds=1) is False
+    assert calls == []
+
+
+def test_launch_fits_the_window_once_the_emulator_is_started(
+        tmp_path, procs, monkeypatch):
+    fitted = []
+    monkeypatch.setattr(fsuaegdb, "fit_window",
+                        lambda display: fitted.append(display) or True)
+    assert fsuaegdb.launch(launch_args(tmp_path)) == 0
+    assert fitted == [":77"]

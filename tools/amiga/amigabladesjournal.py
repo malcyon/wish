@@ -138,14 +138,33 @@ def _blades_modules():
     return screen, amiga_tables
 
 
-def fit_grid(bands: list[tuple[int, int, int, int]]):
+def aspect_sweep(centre: float = 1.03, spread: float = 0.06,
+                 step: float = 0.005) -> tuple[float, ...]:
+    """Horizontal-to-vertical pixel ratios to try, nearest `centre` first.
+
+    FS-UAE draws the game about 3 percent wider than tall in the window
+    `fsuaegdb.py` gives it, so the grid fitted from the rows alone is too
+    narrow.  The ratio of that window depends on its size, so a run tries
+    nearby ratios until the reading matches the disk's tables, which is a
+    check no wrong ratio passes.
+    """
+    count = round(spread / step)
+    values = sorted((round(centre + i * step, 4)
+                     for i in range(-count, count + 1)),
+                    key=lambda value: abs(value - centre))
+    return tuple(values)
+
+
+def fit_grid(bands: list[tuple[int, int, int, int]], aspect: float = 1.0):
     """`(x0, y0, pitch)` of the character grid, from inked row bands.
 
     Each band is `(top, bottom, left, right)` in captured pixels.  The pitch
     comes from the **closest** pair of band tops, because that pair is two
     character rows apart and every other pair is a multiple of it; the origin
     then follows from the first (topmost) band's top and its leftmost ink,
-    which is taken to be a glyph that fills its cell to the left edge.
+    which is taken to be a glyph that fills its cell to the left edge.  The
+    rows give the vertical pitch only; `aspect` is how many times wider a
+    cell is than it is tall, which moves that origin left of the first ink.
 
     `None` when there are too few bands to measure a pitch, which is every
     screen that is not the challenge.
@@ -157,7 +176,7 @@ def fit_grid(bands: list[tuple[int, int, int, int]]):
     if pitch <= 0:
         return None
     first = min(bands, key=lambda band: band[0])
-    x0 = first[2] - LEFT_MARGIN * pitch
+    x0 = first[2] - LEFT_MARGIN * pitch * aspect
     return x0, first[0] - ROWS_APART * pitch, pitch
 
 
@@ -238,7 +257,7 @@ def _client_of(image):
 
 
 def to_reader_scale(shot: pathlib.Path, out: pathlib.Path,
-                    target_pitch: float | None = None):
+                    target_pitch: float | None = None, aspect: float = 1.0):
     """Cut the game's screen out of the desktop, at a pitch the reader can use.
 
     Two steps, and `#371 (The Silver Blades journal reader misreads a 6 as an
@@ -270,18 +289,25 @@ def to_reader_scale(shot: pathlib.Path, out: pathlib.Path,
     could be fitted.  `target_pitch` defaults to the pitch the private reader
     declares, and is an argument so that the arithmetic can be exercised
     without it.
+
+    `aspect` is the width of an Amiga pixel in the capture over its height.
+    It is 1 for WinUAE and about 1.03 for FS-UAE's window; the samples are
+    taken at the wider horizontal spacing, so the reader still gets square
+    pixels.
     """
     from PIL import Image  # noqa: PLC0415
 
     if target_pitch is None:
         target_pitch = _blades_modules()[0].PITCH
     image = _client_of(Image.open(shot).convert("RGB"))
-    grid = fit_grid(text_bands(image))
+    grid = fit_grid(text_bands(image), aspect)
     if grid is None:
         return None
     x0, y0, pitch = grid
     amiga_px = pitch / 8.0
-    ox, oy = x0 - MARGIN * pitch, y0 - MARGIN * pitch
+    amiga_px_x = amiga_px * aspect
+    ox = x0 - MARGIN * pitch * aspect
+    oy = y0 - MARGIN * pitch
     columns = (COLUMNS + 2 * MARGIN) * 8
     rows = (LINES + 2 * MARGIN) * 8
     width, height = image.size
@@ -291,7 +317,7 @@ def to_reader_scale(shot: pathlib.Path, out: pathlib.Path,
     for ay in range(rows):
         sy = min(height - 1, max(0, round(oy + (ay + 0.5) * amiga_px)))
         for ax in range(columns):
-            sx = min(width - 1, max(0, round(ox + (ax + 0.5) * amiga_px)))
+            sx = min(width - 1, max(0, round(ox + (ax + 0.5) * amiga_px_x)))
             canonical_px[ax, ay] = source[sx, sy]
     out_pitch = reader_pitch(target_pitch)
     factor = int(out_pitch // 8)
@@ -436,8 +462,14 @@ def _reread(shot: pathlib.Path, screen, amiga_tables, table):
 
 def answer(holder: str, settle: float, adf: pathlib.Path,
            shot: pathlib.Path | None = None, capture=None, press=None,
-           keep: pathlib.Path | None = None) -> bool:
+           keep: pathlib.Path | None = None,
+           aspects: tuple[float, ...] = (1.0,)) -> bool:
     """Read the prompt on screen and type its answer.  True when it did.
+
+    `aspects` are the horizontal-to-vertical pixel ratios tried in order, each
+    on the same capture, until one reads a challenge the disk's tables hold.
+    WinUAE's capture is square, so the default is one try; `aspect_sweep()` is
+    for FS-UAE.
 
     `keep` is a directory: when a challenge was read, the raw grab is copied to
     `keep/challenge-NN.png` and one line naming it, its digest, its kind and the
@@ -487,26 +519,32 @@ def answer(holder: str, settle: float, adf: pathlib.Path,
         handle = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         handle.close()
         scaled = pathlib.Path(handle.name)
-        geometry = to_reader_scale(shot, scaled)
-        if geometry is None:
+        challenge = match = None
+        for aspect in aspects:
+            geometry = to_reader_scale(shot, scaled, aspect=aspect)
+            if geometry is None:
+                break
+            screen.X0, screen.Y0, screen.PITCH = geometry
+            try:
+                read = screen.read_challenge(scaled)
+            except ValueError:
+                continue
+            challenge = read
+            try:
+                match = amiga_tables.answer_for(challenge, table)
+            except ValueError:
+                continue
+            break
+        if challenge is None:
             print("no challenge on screen")
             return False
-        screen.X0, screen.Y0, screen.PITCH = geometry
-        try:
-            challenge = screen.read_challenge(scaled)
-        except ValueError:
-            print("no challenge on screen")
-            return False
-        try:
-            match = amiga_tables.answer_for(challenge, table)
-        except ValueError:
+        if match is None:
             if keep is not None:
                 _keep(keep, shot, challenge, None, None)
             # Deliberately not the exception's own message: it quotes the
             # challenge, and neither side of the exchange belongs here.
             raise SystemExit(
-                "the challenge on screen is not in this disk's tables") \
-                from None
+                "the challenge on screen is not in this disk's tables")
         if keep is not None:
             _keep(keep, shot, challenge, match, table)
         word = match.answer

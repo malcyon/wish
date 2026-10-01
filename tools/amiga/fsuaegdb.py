@@ -37,6 +37,17 @@ one wrong is expensive: a private `Xvfb` so no window reaches the desktop,
 `base_dir` of its own so `~/FS-UAE/` is never touched, and its own process
 group so the run can be torn down without killing anything by name.  It starts
 what it is pointed at and no more.
+
+**Keys depend on the title.**  Silver Blades moves with `KP_Left` and
+`KP_Right` (turn) and `KP_Up` (step); the digit keys `2` and `8` do nothing
+there.  **The first key of a run waits until the emulator is `FIRST_KEY_AFTER`
+seconds old**, because the game drops a key sent in its first couple of minutes
+after the `PLAY` bar is up (measured: lost at 1.5 minutes, taken at 3).
+
+**The window is fitted to the display.**  This FS-UAE build opens a 1280x760
+window at -240,-80 whatever `--window_width`, `--window_height` or `--zoom`
+say, which crops the game on the 800x600 `Xvfb`; `launch` sizes and moves it
+with `xdotool` once it exists (`fit_window`).
 """
 
 from __future__ import annotations
@@ -280,6 +291,56 @@ def press(display: str, key: str, settle: float) -> None:
         fsuaepor.focus(display, found[0])
     subprocess.run(["xdotool", "key", key], env=env, check=False)
     time.sleep(settle)
+
+
+#: Seconds of emulator age before the first key of a run is sent.  The game
+#: drops a key sent sooner, even once the title's `PLAY` bar is on screen.
+FIRST_KEY_AFTER = 120.0
+
+#: Displays whose first key has been sent, so the wait happens once per run.
+_keyed: set[str] = set()
+
+
+def emulator_age(display: str) -> float | None:
+    """Seconds since the emulator window's process started, or None if unknown."""
+    from tools.amiga import fsuaepor
+
+    env = {"DISPLAY": display, "PATH": "/usr/bin:/bin"}
+    try:
+        found = fsuaepor.find_windows(display, 5)
+        if not found:
+            return None
+        pid = subprocess.run(["xdotool", "getwindowpid", found[0]], env=env,
+                             capture_output=True, text=True, check=False,
+                             timeout=5).stdout.strip()
+        if not pid.isdigit():
+            return None
+        age = subprocess.run(["ps", "-o", "etimes=", "-p", pid],
+                             capture_output=True, text=True, check=False,
+                             timeout=5).stdout.strip()
+        return float(age) if age.isdigit() else None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def wait_for_first_key(display: str, after: float = FIRST_KEY_AFTER) -> float:
+    """Sleep until the emulator is `after` seconds old, once per display.
+
+    Returns the seconds waited.  An emulator whose age cannot be read is not
+    waited for, so a driver pointed at a window it does not own is not stalled.
+    """
+    if display in _keyed:
+        return 0.0
+    _keyed.add(display)
+    age = emulator_age(display)
+    if age is None or age >= after:
+        return 0.0
+    wait = after - age
+    print(f"           first key: emulator is {age:.0f}s old; waiting "
+          f"{wait:.0f}s, because the game drops keys sent sooner",
+          flush=True)
+    time.sleep(wait)
+    return wait
 
 
 def schedule(text: str) -> list[tuple[float, str]]:
@@ -605,6 +666,7 @@ def journal(args, adf: str = "") -> bool:
     return journal_tool.answer(
         holder="", settle=args.settle,
         adf=journal_tool.find_disk(adf or None),
+        aspects=journal_tool.aspect_sweep(),
         capture=lambda path: shot(args.display, pathlib.Path(path)),
         # The answer's case comes from the disk's tables; the game shows
         # upper case whatever is typed.
@@ -1291,6 +1353,8 @@ def held_key(args, key: str) -> None:
     hold of 0 is the old unheld `xdotool key`.
     """
     refuse_shift_letter(key)
+    wait_for_first_key(args.display,
+                       getattr(args, "first_key_after", FIRST_KEY_AFTER))
     if not args.hold:
         press(args.display, key, args.settle)
         return
@@ -1491,6 +1555,53 @@ def automap(args) -> int:
 # -- launching one, silently and offscreen ------------------------------------
 
 
+#: The `Xvfb` screen `launch` starts, as width, height.
+SCREEN = (800, 600)
+
+
+def window_size(display: str, window: str) -> tuple[int, int] | None:
+    """`(width, height)` of an X window, or None when it cannot be read."""
+    done = subprocess.run(["xdotool", "getwindowgeometry", "--shell", window],
+                          env={"DISPLAY": display, "PATH": "/usr/bin:/bin"},
+                          capture_output=True, text=True, check=False,
+                          timeout=5)
+    fields = dict(line.split("=", 1) for line in done.stdout.split()
+                  if "=" in line)
+    try:
+        return int(fields["WIDTH"]), int(fields["HEIGHT"])
+    except (KeyError, ValueError):
+        return None
+
+
+def fit_window(display: str, size: tuple[int, int] = SCREEN,
+               seconds: float = 60.0) -> bool:
+    """Size the emulator's main window to `size` at 0,0, once it exists.
+
+    The build ignores `--window_width`, `--window_height` and `--zoom`, so the
+    window comes up larger than the display and off its corner.  The main
+    window is the largest one: the emulator also keeps a 10x10 helper window.
+    Returns False when no window appeared in `seconds`.
+    """
+    from tools.amiga import fsuaepor
+
+    env = {"DISPLAY": display, "PATH": "/usr/bin:/bin"}
+    for _ in range(max(1, round(seconds * 2))):
+        try:
+            sized = [(w, window_size(display, w))
+                     for w in fsuaepor.find_windows(display, 5)]
+        except (OSError, subprocess.TimeoutExpired):
+            sized = []
+        sized = [(w, wh) for w, wh in sized if wh and min(wh) > 100]
+        if sized:
+            main = max(sized, key=lambda item: item[1][0] * item[1][1])[0]
+            subprocess.run(["xdotool", "windowsize", main, str(size[0]),
+                            str(size[1]), "windowmove", main, "0", "0"],
+                           env=env, check=False, timeout=5)
+            return True
+        time.sleep(0.5)
+    return False
+
+
 def launch(args) -> int:
     """Start an `Xvfb` and the emulator inside it, and wait for the port.
 
@@ -1526,7 +1637,8 @@ def launch(args) -> int:
     xvfb = emulator = None
     try:
         xvfb = subprocess.Popen(
-            ["Xvfb", args.display, "-screen", "0", "800x600x24", "-nolisten",
+            ["Xvfb", args.display, "-screen", "0", "{}x{}x24".format(*SCREEN),
+             "-nolisten",
              "tcp"],
             stdout=(run / "xvfb.log").open("wb"), stderr=subprocess.STDOUT,
             start_new_session=not foreground)
@@ -1564,6 +1676,9 @@ def launch(args) -> int:
         print(f"xvfb       {xvfb.pid}")
         print(f"fs-uae     {emulator.pid}   (kill -- -{emulator.pid})")
         print(f"port       {args.port}", flush=True)
+        print("window     " + ("fitted" if fit_window(args.display)
+                                else "NOT fitted -- no window appeared"),
+              flush=True)
         if foreground:
             return wait_foreground(emulator, xvfb)
         for _ in range(args.wait * 2):
@@ -1903,6 +2018,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="how long to stay up before giving the socket back")
     s.add_argument("--at", type=lambda s: int(s, 0), default=0xC00000,
                    help="where `time` reads from")
+    s.add_argument("--first-key-after", dest="first_key_after", type=float,
+                   default=FIRST_KEY_AFTER,
+                   help="seconds of emulator age before the first key is "
+                        "sent; the game drops keys sent sooner")
     s.add_argument("--hold", type=float, default=0.12,
                    help="seconds a `key` is held down (default 0.12 holds "
                         "every key, as the game needs); 0 sends an unheld "
@@ -1949,6 +2068,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="seconds the window runs before `observe` reads it")
     w.add_argument("--seconds", type=float, default=1800.0,
                    help="how long to stay up")
+    w.add_argument("--first-key-after", dest="first_key_after", type=float,
+                   default=FIRST_KEY_AFTER,
+                   help="seconds of emulator age before the first key is "
+                        "sent; the game drops keys sent sooner")
     w.add_argument("--hold", type=float, default=0.12,
                    help="seconds a `key` is held down; 0 sends an unheld key")
     w.add_argument("--swap-sequence", default=DEFAULT_SWAP_SEQUENCE,
