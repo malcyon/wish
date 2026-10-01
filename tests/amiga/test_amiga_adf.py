@@ -38,6 +38,7 @@ from goldbox.amiga_adf import (
     AmigaDiskTypeError,
     block_checksum,
     hash_name,
+    upper_name,
 )
 
 WHEN = datetime.datetime(1991, 6, 4, 12, 34, 56)
@@ -564,8 +565,9 @@ def test_verify_reports_a_directory_tree_that_loops_and_returns():
 # image below is laid out from the format description by code that shares
 # nothing with the module under test.
 
-FFS_TYPES = (1, 3)
-WRITABLE_TYPES = (0, 1, 2, 3)
+FFS_TYPES = (1, 3, 5)
+WRITABLE_TYPES = (0, 1, 2, 3, 4, 5)
+DIRCACHE_TYPES = (4, 5)
 
 
 def _spec_sum(block: bytes, at: int) -> int:
@@ -706,9 +708,11 @@ def test_a_blank_disk_of_each_writable_type_is_consistent(dos_type):
     assert disk.block(0)[:4] == b"DOS" + bytes([dos_type])
     assert disk.dos_type == dos_type
     assert disk.ffs is bool(dos_type & 1)
-    assert disk.international is bool(dos_type & 2)
+    assert disk.international is bool(dos_type & 6)
     assert disk.verify() == []
-    assert disk.free_count() == 1760 - 4
+    # Boot block pair, root, bitmap, and on a directory-cache disk the root's
+    # one empty cache block.
+    assert disk.free_count() == 1760 - 4 - bool(dos_type & 4)
 
 
 @pytest.mark.parametrize("dos_type", FFS_TYPES)
@@ -742,7 +746,7 @@ def test_an_ffs_data_block_is_the_file_bytes_and_nothing_else(dos_type):
     assert disk.block(table[2]) == payload[1024:].ljust(512, b"\0")
 
 
-@pytest.mark.parametrize("dos_type", FFS_TYPES)
+@pytest.mark.parametrize("dos_type", (1, 3))
 def test_a_spec_built_ffs_image_reads_back(dos_type):
     """The reader against an image it did not write."""
     files = {f"F{size}.bin": _ffs_payload(size, size) for size in FFS_SIZES}
@@ -789,6 +793,25 @@ def test_ffs_replace_and_remove_keep_the_hash_chains_and_the_bitmap(dos_type):
     assert disk.verify() == []
 
 
+@pytest.mark.parametrize("bad", ["boot", "zero", "root", "bitmap"])
+def test_an_ffs_data_pointer_at_a_filesystem_block_is_refused(bad):
+    """An FFS data block has no header to check, so the pointer itself is
+    checked: the bootblock, a zero, the root and the bitmap hold no file."""
+    disk = AmigaDisk.blank(dos_type=1)
+    disk.write_file("FILE", _ffs_payload(1000), when=WHEN)
+    header = disk.lookup("FILE").block
+    bitmap = struct.unpack_from(">I", disk.block(disk.root), BLOCK_SIZE - 196)[0]
+    pointer = {"boot": 1, "zero": 0, "root": disk.root, "bitmap": bitmap}[bad]
+    raw = bytearray(disk.to_bytes())
+    at = header * BLOCK_SIZE
+    struct.pack_into(">I", raw, at + BLOCK_SIZE - 204 - 4, pointer)
+    struct.pack_into(">I", raw, at + 20, 0)
+    struct.pack_into(">I", raw, at + 20, _spec_sum(raw[at:at + BLOCK_SIZE], 20))
+    with pytest.raises(AmigaDiskError, match=f"block {pointer}"):
+        AmigaDisk(raw).read_file("FILE")
+    assert AmigaDisk(disk.to_bytes()).read_file("FILE") == _ffs_payload(1000)
+
+
 def test_a_drawer_and_a_file_in_it_on_ffs():
     disk = AmigaDisk.blank("wishtest", dos_type=1)
     disk.make_dir("save", when=WHEN)
@@ -805,6 +828,13 @@ def test_the_international_hash_raises_accented_letters():
         35, 3, 16]
     assert [hash_name(n, international=True)
             for n in ("caf\xe9", "CAF\xc9", "\xe0\xf7\xfe")] == [3, 3, 0]
+    # `0xFF` and `0xDF` are outside the raised range in both modes: a rule
+    # that raised `0xE0`-`0xFF` would fold `\xff` onto `\xdf` and move it.
+    for international in (False, True):
+        assert [hash_name(n, international=international)
+                for n in ("\xff", "\xdf", "\xdf\xff", "\xff\xdf")] == [
+                    52, 20, 4, 28]
+        assert upper_name("\xff\xdf\xf7", international) == "\xff\xdf\xf7"
     for name in ("savgamA.dat", "GARWAN.cha", "CHRDATA1.sav"):
         assert hash_name(name) == hash_name(name, international=True)
 
@@ -815,7 +845,7 @@ def test_an_accented_name_is_filed_and_found_by_the_disks_own_rule(dos_type):
     other spelling is a different name there."""
     disk = AmigaDisk.blank(dos_type=dos_type)
     disk.write_file("caf\xe9", b"one", when=WHEN)
-    international = bool(dos_type & 2)
+    international = bool(dos_type & 6)
     slot = hash_name("caf\xe9", international=international)
     root = disk.block(disk.root)
     assert struct.unpack_from(">I", root, 24 + 4 * slot)[0] == (
@@ -847,8 +877,10 @@ def _dircache_disk(dos_type: int) -> AmigaDisk:
     for name in ("ONE", "TWO"):
         entry = disk.lookup(name)
         size = len(disk.read_file(name))
+        days, minutes, ticks = struct.unpack_from(
+            ">III", disk.block(entry.block), BLOCK_SIZE - 92)
         struct.pack_into(">IIIHHhhhb", raw, offset, entry.block, size, 0, 0, 0,
-                         4900, 754, 0, -3)
+                         days, minutes, ticks, -3)
         raw[offset + 23] = len(name)
         raw[offset + 24:offset + 24 + len(name)] = name.encode()
         raw[offset + 24 + len(name)] = 0
@@ -875,22 +907,187 @@ def test_a_directory_cache_disk_is_read_through_its_hash_tables(dos_type):
     assert disk.read_file("TWO") == _ffs_payload(2000)
 
 
-@pytest.mark.parametrize("dos_type", [4, 5])
-def test_a_directory_cache_disk_refuses_every_write_and_keeps_its_bytes(
-        dos_type):
+def _spec_cache(image: bytes, drawer: int) -> tuple[list[int], list[tuple]]:
+    """A drawer's cache blocks and their records, read by the format
+    description: the chain from the drawer's `extension` field, each block's
+    header and checksum, then `(entry, size, protect, date, type, name,
+    comment)` per record, each record padded to an even length."""
+    def u32(number: int, offset: int) -> int:
+        return struct.unpack_from(">I", image, number * BLOCK_SIZE + offset)[0]
+
+    blocks: list[int] = []
+    records: list[tuple] = []
+    number = u32(drawer, BLOCK_SIZE - 8)
+    while number:
+        assert number not in blocks
+        blocks.append(number)
+        block = image[number * BLOCK_SIZE:(number + 1) * BLOCK_SIZE]
+        assert (u32(number, 0), u32(number, 4), u32(number, 8)) == (
+            33, number, drawer)
+        assert u32(number, 20) == _spec_sum(block, 20)
+        offset = 24
+        for _ in range(u32(number, 12)):
+            name_length = block[offset + 23]
+            comment_length = block[offset + 24 + name_length]
+            records.append((
+                u32(number, offset), u32(number, offset + 4),
+                u32(number, offset + 8),
+                struct.unpack_from(">HHH", block, offset + 16),
+                block[offset + 22],
+                bytes(block[offset + 24:offset + 24 + name_length]),
+                bytes(block[offset + 25 + name_length:
+                            offset + 25 + name_length + comment_length])))
+            offset += (25 + name_length + comment_length + 1) & ~1
+        assert offset <= BLOCK_SIZE
+        number = u32(number, 16)
+    return blocks, records
+
+
+def _spec_listing(image: bytes, drawer: int) -> list[tuple]:
+    """What every record of `drawer` should say, read off the headers its
+    hash table reaches, in the same form as `_spec_cache`."""
+    def u32(number: int, offset: int) -> int:
+        return struct.unpack_from(">I", image, number * BLOCK_SIZE + offset)[0]
+
+    out = []
+    for slot in range(72):
+        number = u32(drawer, 24 + 4 * slot)
+        while number:
+            block = image[number * BLOCK_SIZE:(number + 1) * BLOCK_SIZE]
+            sec_type = struct.unpack_from(">i", block, BLOCK_SIZE - 4)[0]
+            days, minutes, ticks = struct.unpack_from(">III", block,
+                                                      BLOCK_SIZE - 92)
+            length = block[BLOCK_SIZE - 80]
+            out.append((number,
+                        u32(number, BLOCK_SIZE - 188) if sec_type == -3 else 0,
+                        u32(number, BLOCK_SIZE - 192),
+                        (days, minutes, ticks), sec_type & 0xFF,
+                        bytes(block[BLOCK_SIZE - 79:BLOCK_SIZE - 79 + length]),
+                        b""))
+            number = u32(number, BLOCK_SIZE - 16)
+    return out
+
+
+def _drawers(disk: AmigaDisk) -> list[int]:
+    return [disk.root] + [entry.block for _, entry in disk.walk_dirs()]
+
+
+def _assert_caches_match(disk: AmigaDisk) -> None:
+    """Every drawer's cache records exactly what its hash table holds, and
+    every cache block is allocated."""
+    image = disk.to_bytes()
+    for drawer in _drawers(disk):
+        blocks, records = _spec_cache(image, drawer)
+        assert blocks, f"drawer {drawer} has no cache block"
+        assert sorted(records) == sorted(_spec_listing(image, drawer)), drawer
+        assert not any(disk.is_free(number) for number in blocks)
+    assert disk.verify() == []
+
+
+@pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
+def test_a_blank_directory_cache_disk_has_one_empty_cache_block(dos_type):
+    disk = AmigaDisk.blank("dcache", dos_type=dos_type)
+    blocks, records = _spec_cache(disk.to_bytes(), disk.root)
+    assert len(blocks) == 1 and records == []
+    _assert_caches_match(disk)
+
+
+@pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
+def test_every_write_to_a_directory_cache_disk_keeps_its_records(dos_type):
+    """Add, replace and remove, each followed by the records read back by the
+    format description against the headers the hash tables reach."""
     disk = _dircache_disk(dos_type)
+    free = disk.free_count()
+    disk.write_file("THREE", b"third", when=WHEN)
+    _assert_caches_match(disk)
+    disk.write_file("one", _ffs_payload(5000), when=WHEN)
+    _assert_caches_match(disk)
+    assert disk.read_file("ONE") == _ffs_payload(5000)
+    disk.remove_file("TWO")
+    _assert_caches_match(disk)
+    disk.remove_file("ONE")
+    disk.remove_file("THREE")
+    _assert_caches_match(disk)
+    assert _spec_cache(disk.to_bytes(), disk.root)[1] == []
+    # Boot block pair, root, bitmap and the root's one cache block remain.
+    assert disk.free_count() == 1760 - 5 > free
+
+
+@pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
+def test_a_full_cache_block_chains_a_second_and_gives_it_back_when_empty(
+        dos_type):
+    """A 30-character name makes a 56-byte record, so eight fill a block."""
+    disk = AmigaDisk.blank(dos_type=dos_type)
+    free = disk.free_count()
+    names = [f"{n:02d}".ljust(30, "x") for n in range(20)]
+    for name in names:
+        disk.write_file(name, name.encode(), when=WHEN)
+    blocks, records = _spec_cache(disk.to_bytes(), disk.root)
+    assert len(blocks) == 3 and len(records) == 20
+    _assert_caches_match(disk)
+    for name in names[:8]:
+        disk.write_file(name, b"replaced", when=WHEN)
+    _assert_caches_match(disk)
+    for name in names:
+        disk.remove_file(name)
+        _assert_caches_match(disk)
+    blocks, records = _spec_cache(disk.to_bytes(), disk.root)
+    assert len(blocks) == 1 and records == []
+    assert disk.free_count() == free
+
+
+@pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
+def test_a_new_drawer_on_a_directory_cache_disk_gets_its_own_cache(dos_type):
+    disk = AmigaDisk.blank(dos_type=dos_type)
+    free = disk.free_count()
+    drawer = disk.make_dir("save", when=WHEN)
+    blocks, records = _spec_cache(disk.to_bytes(), drawer)
+    assert len(blocks) == 1 and records == []
+    assert free - disk.free_count() == 2
+    _assert_caches_match(disk)
+    later = datetime.datetime(1992, 2, 3, 4, 5, 6)
+    disk.write_file("save/CHRDATA1.sav", _ffs_payload(3000), when=later)
+    disk.make_dir("save/deeper", when=WHEN)
+    disk.write_file("save/deeper/X", b"x", when=WHEN)
+    _assert_caches_match(disk)
+    assert disk.read_file("SAVE/chrdata1.SAV") == _ffs_payload(3000)
+    disk.remove_file("save/CHRDATA1.sav")
+    _assert_caches_match(disk)
+
+
+@pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
+def test_a_directory_cache_write_that_cannot_fit_changes_nothing(dos_type):
+    """The file's two blocks fit and the cache block its record needs does
+    not: the write is refused and every byte is as it was."""
+    disk = AmigaDisk.blank(dos_type=dos_type)
+    for n in range(8):
+        disk.write_file(f"{n:02d}".ljust(30, "x"), b"", when=WHEN)
+    assert len(_spec_cache(disk.to_bytes(), disk.root)[0]) == 1
+    disk._allocate(disk.free_count() - 2)
+    disk._fix_bitmap()
     before = disk.to_bytes()
-    for write in (lambda: disk.write_file("THREE", b"x", when=WHEN),
-                  lambda: disk.write_file("ONE", b"x", when=WHEN),
-                  lambda: disk.make_dir("save", when=WHEN),
-                  lambda: disk.remove_file("ONE")):
-        with pytest.raises(AmigaDiskTypeError) as caught:
-            write()
-        assert caught.value.dos_type == dos_type
-        assert caught.value.writing is True
+    with pytest.raises(AmigaDiskError):
+        disk.write_file("NEWFILE".ljust(30, "z"), b"x", when=WHEN)
     assert disk.to_bytes() == before
-    with pytest.raises(AmigaDiskTypeError):
-        AmigaDisk.blank(dos_type=dos_type)
+    with pytest.raises(AmigaDiskError):
+        disk.make_dir("NEWDRAWER".ljust(30, "z"), when=WHEN)
+    assert disk.to_bytes() == before
+
+
+@pytest.mark.parametrize("dos_type", DIRCACHE_TYPES)
+def test_verify_reports_a_cache_that_disagrees_with_the_hash_table(dos_type):
+    disk = _dircache_disk(dos_type)
+    cache = struct.unpack_from(">I", disk.block(disk.root), BLOCK_SIZE - 8)[0]
+    raw = bytearray(disk.to_bytes())
+    at = cache * BLOCK_SIZE
+    struct.pack_into(">I", raw, at + 24 + 4, 99)       # ONE's size
+    struct.pack_into(">I", raw, at + 20, 0)
+    struct.pack_into(">I", raw, at + 20, _spec_sum(raw[at:at + BLOCK_SIZE], 20))
+    assert any("ONE" in p and "size" in p for p in AmigaDisk(raw).verify())
+    struct.pack_into(">I", raw, at + 12, 1)            # TWO's record dropped
+    struct.pack_into(">I", raw, at + 20, 0)
+    struct.pack_into(">I", raw, at + 20, _spec_sum(raw[at:at + BLOCK_SIZE], 20))
+    assert any("TWO" in p and "no record" in p for p in AmigaDisk(raw).verify())
 
 
 def test_verify_reports_a_directory_cache_block_marked_free():
@@ -914,26 +1111,31 @@ def _ffs_copy(disk: AmigaDisk, dos_type: int) -> AmigaDisk:
     return copy
 
 
-@pytest.mark.parametrize("dos_type", FFS_TYPES)
-def test_every_real_disk_copied_onto_ffs_reads_back_identically(dos_type):
-    """A game disk's files fit an FFS floppy and come back byte for byte. The
-    player's images are only read; every copy is in memory."""
+@pytest.mark.parametrize("dos_type", (1, 3, 4, 5))
+def test_every_real_disk_copied_onto_another_type_reads_back_identically(
+        dos_type):
+    """A game disk's files fit an FFS or a directory-cache floppy and come
+    back byte for byte. The player's images are only read; every copy is in
+    memory."""
     for path in real_disks():
         disk = AmigaDisk.open(path)
         files = {name: disk.read_file(name) for name, _ in disk.walk()}
         copy = AmigaDisk(_ffs_copy(disk, dos_type).to_bytes())
-        assert copy.ffs, path.name
+        assert copy.ffs is bool(dos_type & 1), path.name
         assert copy.verify() == [], (path.name, copy.verify()[:3])
+        if copy.dircache:
+            _assert_caches_match(copy)
         assert sorted(p for p, _ in copy.walk_dirs()) == sorted(
             p for p, _ in disk.walk_dirs()), path.name
         assert {name: copy.read_file(name)
                 for name, _ in copy.walk()} == files, path.name
 
 
-def test_a_save_on_an_ffs_disk_one_round_trips_like_on_ofs():
+@pytest.mark.parametrize("dos_type", (1, 5))
+def test_a_save_on_an_ffs_disk_one_round_trips_like_on_ofs(dos_type):
     """`slot_on_disk_one` writes the same slot onto the player's OFS disk 1
-    and onto an FFS copy of it, and the two read back the same: every file,
-    and the parsed save."""
+    and onto an FFS or FFS directory-cache copy of it, and the two read back
+    the same: every file, and the parsed save."""
     import support.amigasavegame as support
 
     from goldbox import amiga_savegame
@@ -953,9 +1155,11 @@ def test_a_save_on_an_ffs_disk_one_round_trips_like_on_ofs():
             saved = makers[container.key](("OMEGA",))
             ofs = amiga_savegame.slot_on_disk_one(disk, container, "B", saved)
             ffs = amiga_savegame.slot_on_disk_one(
-                _ffs_copy(disk, 1), container, "B", saved)
+                _ffs_copy(disk, dos_type), container, "B", saved)
             ffs = AmigaDisk(ffs.to_bytes())
-            assert ffs.ffs and ffs.verify() == []
+            assert ffs.dos_type == dos_type and ffs.verify() == []
+            if ffs.dircache:
+                _assert_caches_match(ffs)
             assert ({p: ffs.read_file(p) for p, _ in ffs.walk()}
                     == {p: ofs.read_file(p) for p, _ in ofs.walk()}), path.name
             assert (amiga_savegame.slots_present(ffs, container)
