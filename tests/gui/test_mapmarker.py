@@ -466,8 +466,69 @@ def test_a_flee_that_leaves_no_travel_prompt_stops_the_walk(monkeypatch):
     sess.select_bar = select_then_blank
     a, log = args(on_encounter="flee"), Log()
     M.walk_moves(a, sess, log, "777", 0, lambda n: None)
-    assert log.of("encounter_grid")[0]["outcome"] == "stuck"
-    assert "stuck" in a.stopped and sess.presses == ["7"]
+    assert [e["outcome"] for e in log.of("encounter_outcome")] == ["unsettled"]
+    assert log.of("encounter_flee")[0]["outcome"] == "unsettled"
+    assert "neither" in a.stopped and sess.presses == ["7"]
+    assert sess.fights == [] and not log.of("encounter_grid")
+
+
+class LateCaughtSess(FleeSess):
+    """A FLEE the monsters answer with combat, whose grid draws only at `appears` on the fake clock."""
+
+    def __init__(self, appears, **kw):
+        super().__init__(flee_works=False, **kw)
+        self.appears = appears
+
+    def select_bar(self, label, timeout=8):
+        super().select_bar(label, timeout)
+        self.row = ""                # the menu is gone, the grid not drawn yet
+        return True
+
+    def in_combat(self):
+        return self.combat and M.time.time() >= self.appears
+
+
+def test_a_caught_flee_whose_grid_draws_late_is_fought_with_flight_not_called_ran(monkeypatch):
+    fake_clock(monkeypatch)
+    sess, log = LateCaughtSess(appears=40, encounter_on={1}, fight_outcome=S.RAN), Log()
+    a = args(on_encounter="flee")
+    M.walk_moves(a, sess, log, "777", 0, lambda n: None)
+    assert log.of("encounter_flee")[0]["outcome"] == "combat"
+    assert len(sess.fights) == 1 and isinstance(sess.fights[0][1], M.Flight)
+    # Only the fight's own outcome, never a zero-turn "ran" before it.
+    assert [e.get("turns") for e in log.of("encounter_outcome")] == [3]
+    assert sess.presses == ["7", "7", "7"] and not a.stopped
+
+
+class PressThenGridSess(FleeSess):
+    """A FLEE that gets away shows a `PRESS` row before the travel prompt."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.keys = []
+        self.kbd = SimpleNamespace(key=self.keys.append)
+
+    def select_bar(self, label, timeout=8):
+        super().select_bar(label, timeout)
+        if label == "FLEE":
+            self.row = "PRESS BUTTON OR RETURN TO CONTINUE."
+        return True
+
+    def screen(self):
+        if self.row.startswith("PRESS") and self.keys:
+            self.row = GRID
+        return super().screen()
+
+
+def test_an_escape_is_ran_only_once_the_travel_prompt_is_up(monkeypatch):
+    fake_clock(monkeypatch)
+    sess, log = PressThenGridSess(encounter_on={1}), Log()
+    a = args(on_encounter="flee")
+    M.walk_moves(a, sess, log, "77", 0, lambda n: None)
+    assert sess.keys == ["Return"] and sess.fights == []
+    assert log.of("encounter_flee")[0] == {"step": 1, "outcome": "grid", "row": GRID}
+    assert log.of("encounter_outcome")[0]["outcome"] == S.RAN
+    assert sess.presses == ["7", "7"] and not a.stopped
 
 
 def test_a_flee_that_fails_fights_with_flight_in_budget_and_a_lost_one_stops(monkeypatch):

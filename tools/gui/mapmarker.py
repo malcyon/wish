@@ -422,6 +422,10 @@ MAX_ENCOUNTERS = 5
 #: given up, in seconds.
 FIGHT_GRID_WAIT = 60.0
 
+#: How long the encounter menu's `FLEE` waits for the travel prompt or the
+#: combat grid, in seconds; the same budget as a chosen `COMBAT`'s grid.
+FLEE_SETTLE_WAIT = FIGHT_GRID_WAIT
+
 #: The other words on an outdoor encounter's opening menu; one of them must be
 #: on row 24 beside `COMBAT` for it to be taken for that menu.
 ENCOUNTER_OTHERS = ("FLEE", "PARLAY")
@@ -520,10 +524,19 @@ def fight_encounter(args, sess, log: Log, bar: str, move: str,
         log.say("  FLEE selected")
         log.emit("encounter_choice", step=step, choice="flee")
         tactic = Flight(log)
-        if not _fight_began(sess):
+        settled, row = _after_menu_flee(sess, log)
+        log.say(f"  after FLEE: {settled} |{row}|")
+        log.emit("encounter_flee", step=step, outcome=settled, row=row)
+        if settled == "grid":
             # The bar's own FLEE got the party away without a fight.
             log.emit("encounter_outcome", step=step, outcome=S.RAN, turns=0)
             return _wait_for_grid(args, sess, log, step)
+        if settled != "combat":
+            log.emit("encounter_outcome", step=step, outcome="unsettled",
+                     row=row)
+            return (f"FLEE ended on neither the combat grid nor the travel "
+                    f"prompt in {FLEE_SETTLE_WAIT:.0f}s (row 24 |{row}|)")
+        # The monsters caught the party: the fight is run off the map.
     else:
         choice = "fight" if args.on_encounter == "fight" else "flee-unavailable"
         log.emit("encounter_choice", step=step, choice=choice)
@@ -550,6 +563,37 @@ def fight_encounter(args, sess, log: Log, bar: str, move: str,
     if result.outcome in (S.NOT_FIGHTING, S.LOST, S.BUDGET):
         return f"the fight ended {result.outcome}"
     return _wait_for_grid(args, sess, log, step)
+
+
+def _after_menu_flee(sess, log: Log,
+                     wait: float | None = None) -> tuple[str, str]:
+    """Where the encounter menu's FLEE left the game: `("grid" | "combat" | "unsettled", row 24)`.
+
+    A FLEE the party gets away with returns to the travel prompt; one the
+    monsters answer with combat goes to the combat grid, which outdoors can
+    take longer than 20 s to draw.  Only those two screens settle it, so a
+    slow grid is never taken for an escape.  On the way a disk prompt is
+    answered and a `PRESS` row gets Return; nothing else is pressed.
+    """
+    wait = FLEE_SETTLE_WAIT if wait is None else wait
+    deadline = time.time() + wait
+    row = ""
+    while time.time() < deadline:
+        if sess.in_combat():
+            return "combat", row
+        s = sess.screen()
+        if s is None:
+            time.sleep(1.0)
+            continue
+        if sess.handle_prompt(s):
+            continue
+        row = s.row(24).strip()
+        if S.OUTDOOR_PROMPT in row and _read_indoors(sess, log) is False:
+            return "grid", row
+        if "PRESS" in row:
+            sess.kbd.key("Return")
+        time.sleep(1.0)
+    return "unsettled", row
 
 
 def _fight_began(sess, wait: float = 20.0) -> bool:
