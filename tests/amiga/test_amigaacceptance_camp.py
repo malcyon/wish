@@ -92,22 +92,42 @@ def test_a_long_rest_is_allowed_when_a_sheet_follows_and_a_short_one_alone(steps
 def test_a_view_is_refused_past_the_party_s_last_line():
     with pytest.raises(RouteError, match="sheets for line 1 only"):
         route_camp.validate_steps(("view 2",), party_size=1)
-    with pytest.raises(RouteError, match="sheets for line 1 only"):
+    with pytest.raises(RouteError, match="sheets for lines 1 to 5 only"):
         route_camp.validate_steps(("view 6",), party_size=5, name="curse")
     with pytest.raises(RouteError, match="no line the camp route can lay on hands for"):
         route_camp.validate_steps(("heal 6",), party_size=5, name="curse")
 
 
 @pytest.mark.parametrize("text,why", [
-    ("view 2", "sheets for lines 1 and 6 only"),
-    ("view 7", "sheets for lines 1 and 6 only"),
+    ("view 7", "sheets for lines 1 to 6 only"),
+    ("view 0", "sheets for lines 1 to 6 only"),
     ("heal", "lay on hands for line 6 only"),
     ("heal 1", "lay on hands for line 6 only"),
     ("heal 6;heal 6", "second heal needs a rest"),
 ])
-def test_curse_camp_steps_name_only_the_lines_its_guard_map_identifies(text, why):
+def test_curse_camp_steps_name_only_the_lines_its_guard_map_recognises(text, why):
     with pytest.raises(RouteError, match=why):
         route_camp.parse_steps(text, "curse")
+
+
+def test_curse_views_every_line_of_a_party_of_six_the_shorter_way_round():
+    tokens = route_camp.parse_steps("view 1;view 2;view 3;view 4;view 5;view 6", "curse")
+    route_camp.validate_steps(tokens, 6, name="curse")
+    steps = route_camp.steps_for(tokens, "curse", 6)
+    sheets = [state for key, state, _ in steps if key == "V"]
+    assert sheets == ["camp_sheet", *(f"camp_sheet_{n}" for n in range(2, 7))]
+    # Each view starts and ends on line 1: forwards on NP1 up to line 4, backwards on NP7
+    # through the wrap for lines 5 and 6.
+    moves = {n: [key for key, _, _ in route_camp.steps_for((f"view {n}",), "curse", 6)]
+             for n in range(1, 7)}
+    assert moves == {
+        1: ["V", "E"],
+        2: ["NP1", "V", "E", "NP7"],
+        3: ["NP1", "NP1", "V", "E", "NP7", "NP7"],
+        4: ["NP1", "NP1", "NP1", "V", "E", "NP7", "NP7", "NP7"],
+        5: ["NP7", "NP7", "V", "E", "NP1", "NP1"],
+        6: ["NP7", "V", "E", "NP1"],
+    }
 
 
 def test_curse_camp_steps_reach_the_paladin_on_line_6():
@@ -281,10 +301,13 @@ def test_every_camp_sheet_rule_is_listed_by_the_party_menu_sheet_and_the_reverse
 
 
 @pytest.mark.parametrize("name", sorted(route_camp.SHEET_LINES))
-def test_every_line_a_view_may_name_has_an_identity_rule_and_every_camp_state_a_guard(name):
+def test_every_line_a_view_may_name_and_every_camp_state_has_a_guard(name):
+    # Whose sheet a line shows is checked by the identity map cut for the run's own party;
+    # a sheet that map has no rule for fails the run
+    # (`test_a_camp_sheet_with_no_identity_rule_fails_the_run`), so the committed map needs a
+    # guard for every line and an identity rule for none in particular.
     maps = _maps(name)
     for line in route_camp.SHEET_LINES[name]:
-        assert route_camp.sheet_state(line) in maps["identity"]
         assert route_camp.sheet_state(line) in maps["guards"]
     for state in (route_camp.SHEET_HEAL, route_camp.SHEET_SPENT):
         assert state in maps["identity"] and state in maps["guards"]
@@ -342,8 +365,10 @@ def test_the_manifest_s_camp_steps_rebuild_the_route_for_either_title_and_no_oth
     assert title.route == route_camp.camp_title(curse, CURSE_STEPS, 6, name="curse").route
     with pytest.raises(RouteError, match="Silver Blades, Curse and Pools of Darkness only"):
         foundation._camp_title("pool", base, list(STEPS), NAMES)
-    with pytest.raises(RouteError, match="lines 1 and 6 only"):
-        foundation._camp_title("curse", curse, ["view 2"], CURSE_NAMES)
+    with pytest.raises(RouteError, match="lines 1 to 6 only"):
+        foundation._camp_title("curse", curse, ["view 7"], CURSE_NAMES)
+    with pytest.raises(RouteError, match="lines 1 to 5 only"):
+        foundation._camp_title("curse", curse, ["view 6"], CURSE_NAMES[:5])
     with pytest.raises(RouteError, match="normal form"):
         foundation._camp_title("ssb", base, ["view", "rest 1h"], NAMES)
     with pytest.raises(RouteError, match="lines 1 to 2"):
@@ -602,6 +627,34 @@ def test_a_camp_sheet_with_no_identity_rule_fails_the_run(tmp_path, clock, monke
     assert any("no identity rule" in line for line in result["read"]["verdicts"])
 
 
+CURSE_VIEWS = tuple(f"view {n}" for n in range(1, 7))
+CURSE_SHEETS = ("camp_sheet", *(f"camp_sheet_{n}" for n in range(2, 7)))
+
+
+def test_a_curse_camp_run_views_every_line_of_a_party_of_six(tmp_path, clock, monkeypatch):
+    guest, result = _camp_run(tmp_path, clock, monkeypatch, name="curse", steps=CURSE_VIEWS,
+                              guard_states=(*CAMP_STATES, *CURSE_SHEETS))
+    assert result["error"] == ""
+    assert result["success"] is True
+    assert [e["state"] for e in result["camp_sheets"]] == list(CURSE_SHEETS)
+    assert all(e["identity_checked"] for e in result["camp_sheets"])
+    keys = _keys(guest)
+    camp = keys.index("NP8") + 2  # the second step's key, then the camp key
+    assert keys[camp + 1:keys.index("F") - 1] == [
+        key for key, _, _ in route_camp.steps_for(CURSE_VIEWS, "curse", 6)]
+
+
+def test_a_curse_line_the_run_s_identity_map_lacks_fails_the_run(tmp_path, clock, monkeypatch):
+    _, result = _camp_run(tmp_path, clock, monkeypatch, name="curse", steps=CURSE_VIEWS,
+                          guard_states=(*CAMP_STATES, *CURSE_SHEETS),
+                          identity=CampIdentity(missing=("camp_sheet_4",)))
+    assert [e["identity_checked"] for e in result["camp_sheets"]] == [
+        True, True, True, False, True, True]
+    assert result["success"] is False
+    unchecked = [line for line in result["read"]["verdicts"] if "no identity rule" in line]
+    assert len(unchecked) == 1 and unchecked[0].split(":")[0].endswith("-camp_sheet_4")
+
+
 def test_a_camp_screen_the_guard_map_lacks_is_settled_and_fails_the_run(
         tmp_path, clock, monkeypatch):
     guest, result = _camp_run(tmp_path, clock, monkeypatch, guard_states=(
@@ -734,7 +787,7 @@ def test_a_published_curse_prepare_keeps_its_camp_steps_and_the_accept_route_has
 
 def test_a_published_curse_prepare_refuses_a_line_the_party_does_not_have(tmp_path, monkeypatch):
     report = _published_report(tmp_path, monkeypatch, "curse", "dos", names=CURSE_NAMES[:5])
-    with pytest.raises(RouteError, match="sheets for line 1 only"):
+    with pytest.raises(RouteError, match="sheets for lines 1 to 5 only"):
         foundation.prepare_published("curse", "camp", report, "628", camp=("view 6",))
 
 

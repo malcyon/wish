@@ -48,6 +48,10 @@
     },
     "camp_sheet": {
       "also": [
+        "camp_sheet_2",
+        "camp_sheet_3",
+        "camp_sheet_4",
+        "camp_sheet_5",
         "camp_sheet_6",
         "camp_sheet_heal",
         "camp_sheet_spent",
@@ -62,9 +66,93 @@
       "example": "628/amiga-curse-camp/accept1/shots/12-camp_sheet.png",
       "sha256": "f46a0703486155b9bbdbef80f205e4388dbd2c6f3827d87f1dc56ae106b27b67"
     },
+    "camp_sheet_2": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_3",
+        "camp_sheet_4",
+        "camp_sheet_5",
+        "camp_sheet_6",
+        "camp_sheet_heal",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        74,
+        144,
+        124,
+        238
+      ],
+      "example": "667/amiga2/a2/shots/14-camp_sheet_2.png",
+      "sha256": "f46a0703486155b9bbdbef80f205e4388dbd2c6f3827d87f1dc56ae106b27b67"
+    },
+    "camp_sheet_3": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_2",
+        "camp_sheet_4",
+        "camp_sheet_5",
+        "camp_sheet_6",
+        "camp_sheet_heal",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        74,
+        144,
+        124,
+        238
+      ],
+      "example": "667/amiga2/a2/shots/19-camp_sheet_3.png",
+      "sha256": "f46a0703486155b9bbdbef80f205e4388dbd2c6f3827d87f1dc56ae106b27b67"
+    },
+    "camp_sheet_4": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_2",
+        "camp_sheet_3",
+        "camp_sheet_5",
+        "camp_sheet_6",
+        "camp_sheet_heal",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        74,
+        144,
+        124,
+        238
+      ],
+      "example": "667/amiga2/a2/shots/26-camp_sheet_4.png",
+      "sha256": "f46a0703486155b9bbdbef80f205e4388dbd2c6f3827d87f1dc56ae106b27b67"
+    },
+    "camp_sheet_5": {
+      "also": [
+        "camp_sheet",
+        "camp_sheet_2",
+        "camp_sheet_3",
+        "camp_sheet_4",
+        "camp_sheet_6",
+        "camp_sheet_heal",
+        "camp_sheet_spent",
+        "sheet"
+      ],
+      "box": [
+        74,
+        144,
+        124,
+        238
+      ],
+      "example": "667/amiga2/a2/shots/33-camp_sheet_5.png",
+      "sha256": "f46a0703486155b9bbdbef80f205e4388dbd2c6f3827d87f1dc56ae106b27b67"
+    },
     "camp_sheet_6": {
       "also": [
         "camp_sheet",
+        "camp_sheet_2",
+        "camp_sheet_3",
+        "camp_sheet_4",
+        "camp_sheet_5",
         "camp_sheet_heal",
         "camp_sheet_spent",
         "sheet"
@@ -221,6 +309,10 @@
     "sheet": {
       "also": [
         "camp_sheet",
+        "camp_sheet_2",
+        "camp_sheet_3",
+        "camp_sheet_4",
+        "camp_sheet_5",
         "camp_sheet_6",
         "camp_sheet_heal",
         "camp_sheet_spent"

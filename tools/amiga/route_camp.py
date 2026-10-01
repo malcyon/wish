@@ -130,9 +130,11 @@ REST_STEP = 5
 REST_DAYS_MAX = 29
 #: The most members a Gold Box party holds.
 PARTY_MAX = 8
-#: The party lines whose camp sheet has an identity rule in the title's guard map, so the
-#: lines `view N` can name.
-SHEET_LINES = {"ssb": (1, 2), "curse": (1, 6), "darkness": (1,)}
+#: The party lines whose camp sheet the title's guard map recognises, so the lines `view N`
+#: can name. Curse's sheet frame is the same for every member; whose sheet it is is checked
+#: by the identity map cut for the run's own party, and a sheet that map has no rule for
+#: fails the run.
+SHEET_LINES = {"ssb": (1, 2), "curse": (1, 2, 3, 4, 5, 6), "darkness": (1,)}
 #: The party line of the paladin whose HEAL sheets the title's guard map holds, so the line
 #: `heal N` can name: the identity rule of `camp_sheet_heal` and `camp_sheet_spent` is his.
 HEAL_LINES = {"ssb": (1,), "curse": (6,), "darkness": (1,)}
@@ -243,7 +245,7 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
     """Refuse a camp step list the route cannot drive for title `name`.
 
     `view` or `view N` shows the sheet of party line N (1 when left out; only
-    the lines in `SHEET_LINES` have an identity rule), `heal` or `heal N` has
+    the lines in `SHEET_LINES` have a guard rule), `heal` or `heal N` has
     the member on line N lay on hands on himself (1 when left out; only the
     line in `HEAL_LINES`, whose HEAL sheets have identity rules), and
     `rest DURATION` rests that long, and `display` shows the effects list (only
