@@ -1002,8 +1002,8 @@ class AutomapBinding(QObject):
         return self.world_canvas if self.world_page_shown() else self.canvas
 
     def show_controls(self, shown: bool) -> None:
-        """The host says whether this tab is the visible one. The status bar's
-        controls follow it, and the page."""
+        """The host says whether this tab is the visible one. The Fog of war
+        box in the status bar shows only while it is."""
         self._controls_shown = shown
         self._sync_controls()
 
