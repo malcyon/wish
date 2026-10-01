@@ -527,6 +527,7 @@ def test_the_real_opener_is_a_loopback_socket(monkeypatch):
 
 import argparse  # noqa: E402
 import json  # noqa: E402
+import os  # noqa: E402
 
 from goldbox.geo import Geo  # noqa: E402
 from tests.gamedata import synthetic_geo  # noqa: E402
@@ -932,7 +933,7 @@ def test_a_window_that_fails_to_open_still_restores_the_data_dir_and_closes(
         raise SystemExit("no maps")
 
     monkeypatch.setattr(fsuaegdb, "open_window", refuse)
-    args = session_args(tmp_path, window=True)
+    args = session_args(tmp_path, window=True, maps=str(tmp_path))
     pathlib.Path(args.commands).write_text("quit\n")
     with pytest.raises(SystemExit):
         fsuaegdb.session(args)
@@ -1011,7 +1012,7 @@ def test_observe_with_a_window_ticks_the_tab_and_saves_both_pictures(
     monkeypatch.setattr(mapmarker, "shot",
                         lambda app, widget, path: grabs.append(
                             (widget, path.name)))
-    events, _ = run_session(tmp_path, ["locate", "observe walk1"], window=True)
+    events, _ = run_session(tmp_path, ["locate", "observe walk1"], window=True, maps=str(tmp_path))
     assert len(ticks) == Binding.LIVE_EVERY + 1
     assert grabs == [("root", "walk1-window.png"), ("canvas", "walk1-map.png")]
     assert events["observe"]["tab"]["area"] == "GEO24"
@@ -1069,3 +1070,183 @@ def test_keys_with_no_emulator_window_say_which_names_were_tried(monkeypatch):
     with pytest.raises(SystemExit, match="Amiga Emulator"):
         fsuaepor.keys(argparse.Namespace(display=":77", key=["x"], hold=0,
                                          settle=0))
+
+
+# the title, argument checks before the connection, stop, focus
+
+
+def two_titles_memory():
+    memory = pod_memory(0x57AC, 0, {})
+    data = bytearray(memory[BASE])
+    data[0x100:0x100 + len(BLADES.anchor)] = BLADES.anchor
+    memory[BASE] = bytes(data)
+    return memory
+
+
+def test_the_title_is_not_defaulted_on_the_command_line():
+    parser_args = []
+    real = fsuaegdb.locate
+    try:
+        fsuaegdb.locate = lambda a: parser_args.append(a) or 0
+        assert fsuaegdb.main(["locate"]) == 0
+    finally:
+        fsuaegdb.locate = real
+    assert parser_args[0].title is None
+
+
+def test_a_session_without_a_title_detects_the_one_that_is_running(
+        driven, tmp_path, capsys):
+    events, _ = run_session(tmp_path, ["locate", "fix"], title=None)
+    assert "Pools of Darkness" in capsys.readouterr().out
+    assert events["locate"]["base"] == BASE
+
+
+def test_detection_names_every_title_when_none_matches():
+    guest = FakeAmiga({})
+    with pytest.raises(SystemExit, match="pools-of-darkness") as err:
+        fsuaegdb.detect_layout(transport(guest))
+    for key in amiga.MACHINES:
+        assert key in str(err.value)
+
+
+def test_detection_names_the_titles_when_several_match():
+    guest = FakeAmiga(two_titles_memory())
+    with pytest.raises(SystemExit, match="more than one") as err:
+        fsuaegdb.detect_layout(transport(guest))
+    assert "Pools of Darkness" in str(err.value)
+    assert "Secret of the Silver Blades" in str(err.value)
+
+
+def test_a_command_without_a_title_uses_the_detected_one(monkeypatch, capsys):
+    guest = FakeAmiga(pod_memory(0x57AC, 0, {}))
+    monkeypatch.setattr(fsuaegdb, "connect", lambda args: transport(guest))
+    args = argparse.Namespace(title=None, host="h", port=1, timeout=None)
+    assert fsuaegdb.target(args).layout is POD
+
+
+def test_automap_needs_a_title_before_it_connects(monkeypatch, tmp_path):
+    monkeypatch.setattr(fsuaegdb, "connect", lambda args: pytest.fail("connected"))
+    with pytest.raises(SystemExit, match="--title"):
+        fsuaegdb.automap(argparse.Namespace(title=None, out=str(tmp_path),
+                                            maps=None))
+
+
+def test_commands_already_in_the_file_when_the_session_starts_are_run(
+        driven, tmp_path):
+    _, log = driven
+    run_session(tmp_path, ["key KP_Up"])
+    assert log["keys"] == [(["KP_Up"], 0.12)]
+
+
+@pytest.fixture
+def refusing(monkeypatch):
+    seen = []
+    monkeypatch.setattr(fsuaegdb, "connect", lambda args: seen.append(1))
+    return seen
+
+
+@pytest.mark.parametrize("kw, text", [
+    (dict(maps="/nonexistent/disk3.adf"), "--maps"),
+    (dict(window=True), "--window"),
+    (dict(swap_sequence="F12 Down*x"), "--swap-sequence"),
+    (dict(peeks=["+0x10 zz"]), "--peeks"),
+    (dict(peeks=["nolength"]), "--peeks")])
+def test_session_refuses_a_bad_argument_before_connecting(
+        refusing, tmp_path, kw, text):
+    with pytest.raises(SystemExit, match=text):
+        fsuaegdb.session(session_args(tmp_path, **kw))
+    assert refusing == []
+
+
+def test_an_image_given_to_the_window_means_its_folder(monkeypatch, tmp_path):
+    from tools.gui import mapmarker
+
+    image = tmp_path / "disk3.adf"
+    image.write_bytes(b"")
+    asked = []
+    monkeypatch.setattr(mapmarker, "_offscreen", lambda: None)
+    monkeypatch.setattr(mapmarker, "build_window", lambda *a, **k: asked.append(a))
+    fsuaegdb.open_window("target", str(image), tmp_path)
+    assert asked == [("target", str(tmp_path), tmp_path)]
+
+
+def test_a_session_with_a_window_and_an_image_connects(driven, tmp_path,
+                                                        monkeypatch):
+    image = tmp_path / "disk3.adf"
+    image.write_bytes(b"")
+    monkeypatch.setattr(fsuaegdb, "open_window", lambda *a: None)
+    run_session(tmp_path, [], maps=str(image), window=True)
+
+
+def stop_args(**kw):
+    return argparse.Namespace(**{**dict(pid=[5], wait=1.0), **kw})
+
+
+def test_stop_waits_until_the_process_is_gone_and_says_so(monkeypatch, capsys):
+    states = iter([True, True, False, False])
+    monkeypatch.setattr(fsuaegdb.os, "killpg", lambda pid, sig: None)
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: next(states))
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    assert fsuaegdb.stop(stop_args()) == 0
+    assert "5 stopped" in capsys.readouterr().out
+
+
+def test_stop_reports_a_process_that_outlives_the_wait(monkeypatch, capsys):
+    clock = iter(range(0, 100))
+    monkeypatch.setattr(fsuaegdb.os, "killpg", lambda pid, sig: None)
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: True)
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    monkeypatch.setattr(fsuaegdb.time, "monotonic", lambda: next(clock))
+    assert fsuaegdb.stop(stop_args(wait=3)) == 1
+    assert "still running" in capsys.readouterr().out
+
+
+def test_stop_does_not_call_a_live_pid_without_a_group_not_running(
+        monkeypatch, capsys):
+    def no_group(pid, sig):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(fsuaegdb.os, "killpg", no_group)
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: True)
+    assert fsuaegdb.stop(stop_args()) == 1
+    out = capsys.readouterr().out
+    assert "not running" not in out and "no process group" in out.replace(
+        "leads no process group", "no process group")
+
+
+def test_stop_says_not_running_for_a_pid_that_is_gone(monkeypatch, capsys):
+    def no_group(pid, sig):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(fsuaegdb.os, "killpg", no_group)
+    monkeypatch.setattr(fsuaegdb, "alive", lambda pid: False)
+    assert fsuaegdb.stop(stop_args()) == 0
+    assert "5 is not running" in capsys.readouterr().out
+
+
+def test_alive_is_true_for_this_process():
+    assert fsuaegdb.alive(os.getpid())
+
+
+BAD_MATCH = ("X Error of failed request:  BadMatch (invalid parameter "
+             "attributes)\n  Major opcode of failed request:  42 "
+             "(X_SetInputFocus)\n")
+
+
+def test_the_known_focus_error_is_hidden_and_any_other_is_not(
+        monkeypatch, capsys):
+    from tools.amiga import fsuaepor
+
+    err = []
+    monkeypatch.setattr(fsuaepor.subprocess, "run",
+                        lambda *a, **k: argparse.Namespace(
+                            stdout="", stderr=err[0]))
+    err.append(BAD_MATCH)
+    fsuaepor.focus(":77", "42")
+    err[0] = "Can't open display :77\n"
+    fsuaepor.focus(":77", "42")
+    err[0] = "X Error of failed request:  BadWindow\n"
+    fsuaepor.focus(":77", "42")
+    shown = capsys.readouterr().err
+    assert "BadMatch" not in shown
+    assert "Can't open display" in shown and "BadWindow" in shown

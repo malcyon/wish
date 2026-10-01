@@ -57,6 +57,7 @@ from __future__ import annotations
 import argparse
 import os
 import pathlib
+import re
 import signal
 import subprocess
 import sys
@@ -724,6 +725,21 @@ def _xenv(display: str) -> dict[str, str]:
     return {"DISPLAY": display, "PATH": "/usr/bin:/bin"}
 
 
+#: What `xdotool windowfocus` prints on every call to the emulator's window:
+#: SDL refuses the focus request, the keys arrive anyway.
+FOCUS_BAD_MATCH = re.compile(r"BadMatch.*X_SetInputFocus", re.S)
+
+
+def focus(display: str, window: str) -> None:
+    """Focus `window`, hiding the one harmless `BadMatch` and nothing else."""
+    done = subprocess.run(["xdotool", "windowfocus", window],
+                          env=_xenv(display), capture_output=True, text=True,
+                          check=False)
+    err = getattr(done, "stderr", "") or ""
+    if err and not FOCUS_BAD_MATCH.search(err):
+        sys.stderr.write(err)
+
+
 def keys(args) -> int:
     """Each key in turn to the emulator's window, focused first (SDL needs it)."""
     env = _xenv(args.display)
@@ -732,7 +748,7 @@ def keys(args) -> int:
         raise SystemExit(f"no emulator window (named {WINDOW_NAME!r}) on "
                          f"{args.display}")
     for key in args.key:
-        subprocess.run(["xdotool", "windowfocus", found[0]], env=env, check=False)
+        focus(args.display, found[0])
         subprocess.run(["xdotool", "keydown", key], env=env, check=True)
         time.sleep(args.hold)
         subprocess.run(["xdotool", "keyup", key], env=env, check=True)

@@ -75,6 +75,30 @@ def connect(args, resume: bool = True) -> amiga.FsuaeGdb:
                           timeout=args.timeout, resume=resume)
 
 
+def detect_layout(gdb) -> amiga.AmigaMachine:
+    """The one title in this machine's memory, found by sweeping every row.
+
+    There is no default title: a wrong one reads as "the anchor is nowhere in
+    memory", which looks like a game that has not loaded.  None or several
+    matching stops with the names, since the choice is then the caller's.
+    """
+    machines = {m.title: m for m in amiga.MACHINES.values()}
+    found = amiga.locate_machines(gdb.read_memory, machines.values())
+    if len(found) == 1:
+        return machines[next(iter(found))]
+    tried = ", ".join(sorted(amiga.MACHINES))
+    if not found:
+        raise SystemExit("no known title is in this Amiga's memory (tried "
+                         f"{tried}); it may still be loading, or pass --title")
+    raise SystemExit("more than one title matches this Amiga's memory ("
+                     f"{', '.join(sorted(found))}); pass --title")
+
+
+def resolve_layout(args, gdb) -> amiga.AmigaMachine:
+    """`--title`'s row, or the title detected on the open connection."""
+    return amiga.MACHINES[args.title] if args.title else detect_layout(gdb)
+
+
 def target(args) -> amiga.AmigaTarget:
     """A located `AmigaTarget` over the socket, with the base measured.
 
@@ -82,8 +106,8 @@ def target(args) -> amiga.AmigaTarget:
     relocates the executable on every `LoadSeg`, so an address from yesterday
     is wrong today.
     """
-    layout = amiga.MACHINES[args.title]
     gdb = connect(args)
+    layout = resolve_layout(args, gdb)
     tgt = amiga.AmigaTarget(gdb, layout)
     started = time.monotonic()
     base = tgt.locate()
@@ -158,8 +182,7 @@ def press(display: str, key: str, settle: float) -> None:
     env = {"DISPLAY": display, "PATH": "/usr/bin:/bin"}
     found = fsuaepor.find_windows(display)
     if found:
-        subprocess.run(["xdotool", "windowfocus", found[0]], env=env,
-                       check=False)
+        fsuaepor.focus(display, found[0])
     subprocess.run(["xdotool", "key", key], env=env, check=False)
     time.sleep(settle)
 
@@ -437,17 +460,28 @@ def session(args) -> int:
     from tools.amiga.amigatarget import find_maps
 
     out = pathlib.Path(args.out)
+    # Every argument that can fail is checked before the connection, because
+    # the debugger port takes one client per emulator run.
+    peeks = check_arguments(args)
     (out / "shots").mkdir(parents=True, exist_ok=True)
     commands = pathlib.Path(args.commands)
     commands.touch()
-    layout = amiga.MACHINES[args.title]
-    maps, image = find_maps(layout, args.maps)
-    print(f"Maps       {len(maps)} from {image}")
-
-    peeks = parse_peeks(args.peeks)
+    layout = amiga.MACHINES[args.title] if args.title else None
+    maps = image = None
+    if layout is not None:
+        maps, image = find_maps(layout, args.maps)
     swap_log = pathlib.Path(args.fs_uae_log) if args.fs_uae_log else None
     gdb = connect(args)
     print(f"Server     {gdb.greeting}")
+    if layout is None:
+        try:
+            layout = detect_layout(gdb)
+            maps, image = find_maps(layout, args.maps)
+        except BaseException:
+            gdb.close()
+            raise
+        print(f"Title      {layout.title}")
+    print(f"Maps       {len(maps)} from {image}")
     tgt = amiga.AmigaTarget(gdb, layout)
     log = (out / "session.jsonl").open("a", encoding="utf-8")
 
@@ -572,6 +606,31 @@ def session(args) -> int:
     return 0
 
 
+def check_arguments(args) -> list[tuple[str, int]]:
+    """Everything `session` can reject, rejected before it connects.
+
+    The patched FS-UAE closes its debugger port for good when the first client
+    disconnects, so an argument error found after connecting costs a boot.
+    Returns the parsed `--peeks`.
+    """
+    if args.maps and not pathlib.Path(args.maps).exists():
+        raise SystemExit(f"--maps {args.maps} does not exist; it takes a disk "
+                         "image or the folder holding the game's disk images")
+    if args.window and not args.maps:
+        raise SystemExit("--window needs --maps to be the folder holding the "
+                         "game's disk images")
+    if args.swap_sequence:
+        try:
+            expand_sequence(args.swap_sequence, 0)
+        except ValueError as exc:
+            raise SystemExit(f"--swap-sequence {args.swap_sequence!r}: {exc}"
+                             ) from exc
+    try:
+        return parse_peeks(args.peeks)
+    except ValueError as exc:
+        raise SystemExit(f"--peeks: {exc}") from exc
+
+
 def held_key(args, key: str) -> None:
     """One keystroke held `--hold` seconds, which the game needs to see it.
 
@@ -616,6 +675,8 @@ def open_window(tgt, disks: str | None, out: pathlib.Path):
     The maps come from `load_maps_titled(..., amiga_only=True)`, the way a
     player's window loads them, so what is observed is what a player sees.
     """
+    if disks and pathlib.Path(disks).is_file():
+        disks = str(pathlib.Path(disks).parent)
     if not disks or not pathlib.Path(disks).is_dir():
         raise SystemExit("--window needs --maps to be the folder holding the "
                          "game's disk images")
@@ -694,6 +755,11 @@ def automap(args) -> int:
     from automap import state as mapstate
     from tools.amiga.amigatarget import find_maps
 
+    if not args.title:
+        # The game may not be loaded yet (`--boot`), so there is nothing to
+        # detect before the connection is open, and a wrong guess costs a boot.
+        raise SystemExit("automap needs --title: "
+                         f"{', '.join(sorted(amiga.MACHINES))}")
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     layout = amiga.MACHINES[args.title]
@@ -872,14 +938,51 @@ def terminate(*procs) -> None:
                 proc.kill()
 
 
+def alive(pid: int) -> bool:
+    """Whether `pid` is a live process; a zombie awaiting its parent is not."""
+    try:
+        state = pathlib.Path(f"/proc/{pid}/stat").read_text().rpartition(")")[2]
+    except OSError:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+    return state.split()[0] != "Z"
+
+
 def stop(args) -> int:
-    """Kill one process group, by pid, which is the only sanctioned way."""
+    """Kill one process group, by pid, which is the only sanctioned way.
+
+    Reports what happened: gone after the signal, still running after
+    `--wait` seconds, not running, or a live pid that leads no group (a
+    `launch --foreground` process, which lives in its caller's group and is
+    ended by ending the caller) -- which is not signalled.
+    """
+    status = 0
     for pid in args.pid:
         try:
             os.killpg(pid, signal.SIGTERM)
         except ProcessLookupError:
-            print(f"{pid} is not running")
-    return 0
+            if alive(pid):
+                print(f"{pid} is running but leads no process group, so "
+                      "nothing was signalled; a --foreground launch ends "
+                      "with the process that holds its lease")
+                status = 1
+            else:
+                print(f"{pid} is not running")
+            continue
+        deadline = time.monotonic() + args.wait
+        while alive(pid) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        if alive(pid):
+            print(f"{pid} is still running {args.wait:g} s after SIGTERM")
+            status = 1
+        else:
+            print(f"{pid} stopped")
+    return status
 
 
 # -- reading one range --------------------------------------------------------
@@ -938,9 +1041,10 @@ def main(argv: list[str] | None = None) -> int:
                              f"{amiga.FSUAE_PORT})")
     parser.add_argument("--timeout", type=float, default=None,
                         help="seconds to wait for one packet's reply")
-    parser.add_argument("--title", default="secret-of-the-silver-blades",
-                        choices=sorted(amiga.MACHINES),
-                        help="which title is running")
+    parser.add_argument("--title", choices=sorted(amiga.MACHINES),
+                        help="which title is running; without it the running "
+                             "title is detected from the Amiga's memory "
+                             "(`automap` needs it, because it boots the game)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("probe", help="connect, continue, and time reads")
@@ -990,7 +1094,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="how many times to look for the title in memory")
 
     launcher = sub.add_parser(
-        "launch", help="start an Xvfb and a patched FS-UAE inside it")
+        "launch", help="start an Xvfb and a patched FS-UAE inside it; its "
+                       "debugger port accepts one client per emulator run")
     launcher.add_argument("--fs-uae", required=True,
                           help="path to a patched FS-UAE already on this "
                                "machine; nothing is downloaded")
@@ -1014,7 +1119,9 @@ def main(argv: list[str] | None = None) -> int:
                           help="anything else, passed straight to FS-UAE")
 
     s = sub.add_parser(
-        "session", help="hold the one connection and take commands from a file")
+        "session", help="hold the one connection and take commands from a "
+                        "file; the debugger port accepts one client per "
+                        "emulator run, so a second session needs a new launch")
     s.add_argument("--out", required=True,
                    help="a directory for the SVGs, the log and the shots")
     s.add_argument("--commands", required=True,
@@ -1053,6 +1160,8 @@ def main(argv: list[str] | None = None) -> int:
 
     killer = sub.add_parser("stop", help="kill a launch's process group")
     killer.add_argument("pid", nargs="+", type=int)
+    killer.add_argument("--wait", type=float, default=5.0,
+                        help="seconds to wait for each group to end")
 
     args = parser.parse_args(argv)
     return {"probe": probe, "locate": locate, "fix": fix, "geo": geo,
