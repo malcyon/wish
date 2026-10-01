@@ -348,6 +348,8 @@ class Helper:
                 staged.write(json.dumps(info))
             os.replace(temp, self.paths.json)
         except (amiga.FsuaeError, OSError) as exc:
+            staged.close()
+            temp.unlink(missing_ok=True)
             return self._fail(EXIT_NOT_PUBLISHED,
                               f"could not publish the helper: {exc}")
         self._sel.register(self.listener, selectors.EVENT_READ, "listener")

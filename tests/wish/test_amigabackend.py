@@ -689,3 +689,55 @@ def test_a_helper_whose_socket_will_not_take_the_connection_is_a_not_connected(
     with pytest.raises(amiga.FsuaeError):
         fsuae.connect(port=2345, clock=Clock())
     assert fsuae._transport is None
+
+
+class Stepping:
+    """A deadline clock that is a second further on every time it is read."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        self.now += fsuae.SWEEP_DEADLINE
+        return self.now
+
+
+def test_a_slow_sweep_is_cut_into_ticks_and_finishes_without_a_second_socket():
+    sock = FakeSocket(loaded(BLADES))
+    opener = Opener(sock)
+    clock, stepping = Clock(), Stepping()
+    ticks = 0
+    while True:
+        ticks += 1
+        before = len(sock.received)
+        try:
+            target = fsuae.connect(opener=opener, clock=clock,
+                                   deadline_clock=stepping)
+            break
+        except amiga.FsuaeError as exc:
+            assert "still sweeping" in str(exc)
+        # One tick holds the window for a couple of pieces, not the megabyte.
+        reads = [m for m in sock.received[before:] if m.startswith("m")]
+        assert 1 <= len(reads) <= 2
+        assert ticks < 40
+    assert ticks > 4 and target.layout is BLADES
+    assert opener.calls == 1 and sock.sweeps() == 1
+    assert all(m.endswith(",10000") for m in sock.received if m.startswith("m"))
+
+
+def test_the_rate_limit_runs_from_the_end_of_a_sweep_not_its_start():
+    sock = FakeSocket()
+    opener = Opener(sock)
+    clock, stepping = Clock(), Stepping()
+    with pytest.raises(amiga.FsuaeError, match="still sweeping"):
+        fsuae.connect(opener=opener, clock=clock, deadline_clock=stepping)
+    clock.now += fsuae.SWEEP_EVERY * 10      # the sweep took a long time
+    while True:
+        try:
+            fsuae.connect(opener=opener, clock=clock, deadline_clock=stepping)
+        except amiga.FsuaeError as exc:
+            if "none of the titles" in str(exc):
+                break
+            assert "still sweeping" in str(exc)
+    with pytest.raises(amiga.FsuaeError, match="no more than one"):
+        fsuae.connect(opener=opener, clock=clock, deadline_clock=stepping)
