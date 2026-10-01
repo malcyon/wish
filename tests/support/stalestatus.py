@@ -35,14 +35,15 @@ def walk_into_the_sewers(town, sewers, tmp_path, monkeypatch) -> Automapper:
     still reads the town's square, then the line without coordinates."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     maps = {"GEO01": town, "GEO03": sewers}
-    mapper = Automapper(curse_target("S 8:37 14,15", (14, 15, 2), town), maps,
-                        area="GEO01", title=CURSE.title)
+    target = curse_target("S 8:37 14,15", (14, 15, 2), town)
+    mapper = Automapper(target, maps, area="GEO01", title=CURSE.title)
     for _ in range(mapper.RESIDENT_EVERY - 1):
         mapper.poll()
     # The periodic check is due on this poll; the game has moved on, the line
     # has not.
-    mapper.target = curse_target("S 8:37 14,15", (0, 0, 2), sewers)
+    target.memory.update(curse_target("S 8:37 14,15", (0, 0, 2), sewers).memory)
     mapper.poll()
-    mapper.target = curse_target("S 8:37", (0, 0, 2), sewers)
+    target.memory.update(curse_target("S 8:37", (0, 0, 2), sewers).memory)
+    mapper.poll()
     mapper.poll()
     return mapper

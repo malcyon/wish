@@ -391,6 +391,13 @@ class Automapper:
         self.resident = ResidentGeo(target) if maps else None
         self._ticks = 0
         self._pending: tuple[int, int] | None = None
+        #: The square the party arrived on in a new area is not yet believed:
+        #: Curse's status line names the old area's square for a while after
+        #: the map has changed. `_arrival` is that area and square, `_undo`
+        #: the explored set and trail length from before it was visited.
+        self._provisional = False
+        self._arrival: tuple[str | None, int, int] | None = None
+        self._undo: tuple[set, int] | None = None
         self._started = False       # no "last position" to be adjacent to yet
         self._last: Fix | None = None       # the previous fix, for _refused
         #: The target the rest of this state belongs to. A strong reference on
@@ -495,6 +502,14 @@ class Automapper:
         until a second poll agrees with it -- a garbled read never survives
         that, and a genuine long move inside one area costs one extra tick.
 
+        **The square a party arrives on in a new area is provisional.**
+        Curse redraws its status line a step late, so the first square in the
+        sewers can be the town's. Until the party takes a step next door, a
+        jump inside that area is believed once two polls agree, memory or not,
+        and if it replaces the arrival square the squares the arrival revealed
+        are taken back out of the explored set. After a next-door step the
+        hold above applies as usual.
+
         **The area is named before the fix is recorded, never after.** That
         ordering is the whole of the fix for the bug above, and the check that
         settles it has to actually run: it used to be rate-limited even on the
@@ -571,7 +586,8 @@ class Automapper:
                 or self._area_may_have_changed(fix)):
             changed_area = self._check_resident()
         if jumped and not changed_area:
-            if fix.source == "memory" or self._pending != (fix.x, fix.y):
+            if ((fix.source == "memory" and not self._provisional)
+                    or self._pending != (fix.x, fix.y)):
                 self._pending = (fix.x, fix.y)
                 return False                # wait for a second opinion
             # confirmed twice: believe it after all
@@ -608,7 +624,22 @@ class Automapper:
         self.state.facing, self.state.source = fix.facing, fix.source
         self._started = True
         self._last = fix
-        self.state.exploration.visit(fix.x, fix.y, self.state.geo)
+        ex = self.state.exploration
+        if (self._provisional and moved and self.state.area == self._arrival[0]
+                and abs(fix.x - self._arrival[1]) + abs(fix.y - self._arrival[2]) != 1):
+            # The arrival square was the old area's, read late: take back what
+            # it revealed.
+            seen, n = self._undo
+            ex.seen = seen
+            del ex.trail[n:]
+            self._provisional = False
+        elif changed_area:
+            self._provisional = True
+            self._arrival = (self.state.area, fix.x, fix.y)
+            self._undo = (set(ex.seen), len(ex.trail))
+        elif moved:
+            self._provisional = False
+        ex.visit(fix.x, fix.y, self.state.geo)
         return changed
 
     def _poll_world_map(self, fix: Fix) -> bool:
@@ -626,6 +657,7 @@ class Automapper:
         self.state.world_node = fix.world_node
         self.state.world_leg = fix.world_leg
         self._started = False
+        self._provisional = False
         self._last = None
         self._pending = None
         return changed
@@ -691,6 +723,7 @@ class Automapper:
         self.state.x, self.state.y = fix.x, fix.y
         self.state.source = fix.source
         self._started = False
+        self._provisional = False
         self._last = None
         self._pending = None
         return moved or changed_heading
@@ -729,6 +762,7 @@ class Automapper:
         self._block = None
         self._outdoor_pending = None
         self._started = False
+        self._provisional = False
         self._pending = None
         self._last = None
         self.title_check = UNKNOWN

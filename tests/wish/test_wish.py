@@ -62,7 +62,7 @@ def machine(status: str = "E 16:48  5,2", *, bitmap: bool = False,
 
 def test_the_status_line_is_read_through_plain_memory_reads():
     """The whole point of the refactor: no Monitor, no socket, no VICE."""
-    fix = party_fix(machine(memory_xy=(5, 2, 1)).read)
+    fix = party_fix(machine().read)
     assert fix == Fix(5, 2, 1, "status", 16 * 60 + 48)
 
 
@@ -84,23 +84,19 @@ def test_the_screen_is_found_where_the_vic_points():
     """$0400 at boot, $CC00 in the world. A fixed address reads the old screen."""
     boot = MemoryTarget({0xD011: bytes([0x1B]), 0xD018: bytes([0x14]),
                          0xDD00: bytes([0x03]),
-                         0xC04B: bytes([1, 1, 0]),
                          0x0400 + 14 * 40: screen_codes("N 09:00  1,1".ljust(40))})
     assert party_fix(boot.read) == Fix(1, 1, 0, "status", 9 * 60)
 
 
 def test_reading_a_fix_costs_four_round_trips():
-    """Latency is the budget on a network backend, so count them deliberately.
-
-    Four to find the line, and a fifth, the engine's `$C04B` triple, to check
-    the line has not been left behind by an area change."""
+    """Latency is the budget on a network backend, so count them deliberately."""
     m = machine()
     party_fix(m.read)
-    assert len(m.reads) == 5
+    assert len(m.reads) == 4
 
 
 def test_a_target_with_no_fix_method_is_read_the_neutral_way():
-    assert read_fix(machine(memory_xy=(5, 2, 1))) == Fix(5, 2, 1, "status", 16 * 60 + 48)
+    assert read_fix(machine()) == Fix(5, 2, 1, "status", 16 * 60 + 48)
 
 
 def test_a_target_that_answers_for_itself_is_believed():
@@ -634,14 +630,13 @@ def test_the_seen_count_keeps_updating_without_leaving_the_tab(app, tmp_path,
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     from wish.window import MAP_TAB, WishWindow
-    target = MemoryTarget(machine("E 16:48  5,2", memory_xy=(5, 2, 1)).memory)
+    target = MemoryTarget(machine("E 16:48  5,2").memory)
     w = WishWindow(maps={}, session=fake_session(target))
     w.tabs.setCurrentIndex(MAP_TAB)
     w.session.poll()
     assert "1/256 seen" in w.statusBar().currentMessage()
     row = screen_codes("E 16:49  5,3".ljust(40))
     target.memory[0xCC00 + 14 * 40] = row
-    target.memory[0xC04B] = bytes([5, 3, 1])
     w.session.poll()
     assert "2/256 seen" in w.statusBar().currentMessage()
 
@@ -855,7 +850,7 @@ def test_the_party_can_be_fixed_through_the_ultimate(monkeypatch,
     sensible for $D011 and $DD00 is exactly what needs the hardware."""
     host, port = ultimate_stub.server_address
     monkeypatch.setenv("POR_ULTIMATE", f"{host}:{port}")
-    ultimate_stub.memory = machine(memory_xy=(5, 2, 1)).memory
+    ultimate_stub.memory = machine().memory
     from wish.ultimate import UltimateTarget
     assert party_fix(UltimateTarget(timeout=2).read) == Fix(5, 2, 1, "status", 16 * 60 + 48)
 

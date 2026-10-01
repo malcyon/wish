@@ -14,8 +14,6 @@ def string_to_screen_codes(text):
     return out
 
 def test_a2_enumerate_wish_tick(tmp_path, monkeypatch):
-    """A tick is five reads, and thirteen on every fifth; the fifth read is the
-    stale-line check on the engine's `$C04B` triple."""
     app = QApplication.instance() or QApplication([])
     save0, save1 = captured()
     
@@ -43,6 +41,6 @@ def test_a2_enumerate_wish_tick(tmp_path, monkeypatch):
         
         # Verify read counts match the table for #286
         if i % 5 == 0:
-            assert len(reads) == 13, f"Expected 13 reads on tick {i}, got {len(reads)}"
+            assert len(reads) == 12, f"Expected 12 reads on tick {i}, got {len(reads)}"
         else:
-            assert len(reads) == 5, f"Expected 5 reads on tick {i}, got {len(reads)}"
+            assert len(reads) == 4, f"Expected 4 reads on tick {i}, got {len(reads)}"
