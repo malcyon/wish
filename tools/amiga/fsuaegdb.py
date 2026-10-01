@@ -323,23 +323,40 @@ def emulator_age(display: str) -> float | None:
         return None
 
 
-def wait_for_first_key(display: str, after: float = FIRST_KEY_AFTER) -> float:
-    """Sleep until the emulator is `after` seconds old, once per display.
+def wait_for_first_key(display: str, after: float = FIRST_KEY_AFTER,
+                       idle=time.sleep, budget: float | None = None,
+                       step: float = 1.0) -> float:
+    """Wait, in `step` pieces through `idle`, until the emulator is `after` s old.
 
-    Returns the seconds waited.  An emulator whose age cannot be read is not
-    waited for, so a driver pointed at a window it does not own is not stalled.
+    Returns the seconds waited.  Once per display, but only after an age was
+    read or the wait completed: a window that is not up yet is asked again.
+    An emulator whose age cannot be read is not waited for.  `idle` is the
+    driver's own way to wait, so its window and heartbeat keep running, and
+    `budget` is the seconds the run has left: a wait that would outlast it is
+    a ValueError, because the key would never be sent.
     """
     if display in _keyed:
         return 0.0
-    _keyed.add(display)
     age = emulator_age(display)
-    if age is None or age >= after:
+    if age is None:
+        return 0.0
+    if age >= after:
+        _keyed.add(display)
         return 0.0
     wait = after - age
+    if budget is not None and wait > budget:
+        raise ValueError(f"the emulator is {age:.0f}s old and the first key "
+                         f"needs {wait:.0f}s more, which the run does not "
+                         "have left")
     print(f"           first key: emulator is {age:.0f}s old; waiting "
           f"{wait:.0f}s, because the game drops keys sent sooner",
           flush=True)
-    time.sleep(wait)
+    left = wait
+    while left > 0:
+        piece = min(step, left)
+        idle(piece)
+        left -= piece
+    _keyed.add(display)
     return wait
 
 
@@ -792,8 +809,7 @@ def session(args) -> int:
                          f"session was started with --title {NO_TITLE}")
                 print(f"           {error}")
                 note(event=word, at=now, error=error)
-            elif common_command(args, out, note, time.sleep, swap, word, rest,
-                                now):
+            elif common_command(args, out, note, idle, swap, word, rest, now):
                 pass
             elif word == "dump":
                 row = dump_row(gdb, rest, out)
@@ -854,6 +870,16 @@ def session(args) -> int:
             note(event="beat", vhposr=vh.hex(),
                  at=round(time.monotonic() - started, 1))
 
+        def idle(seconds: float) -> None:
+            # Short sleeps with the heartbeat between them, so a long wait does
+            # not leave the debugger connection unread.
+            left = seconds
+            while left > 0:
+                piece = min(left, max(args.interval, 0.1))
+                time.sleep(piece)
+                beat()
+                left -= piece
+
         run_commands(args, commands, started, note, handle, beat, time.sleep)
     finally:
         mapstate._data_dir = was                        # noqa: SLF001
@@ -874,7 +900,7 @@ def common_command(args, out: pathlib.Path, note, idle, swap, word: str,
     if word == "key":
         names = [resolve_key(args.display, k) for k in rest.split()]
         for key in names:
-            held_key(args, key)
+            held_key(args, key, idle, args.seconds - now)
         note(event="key", keys=rest, at=now)
     elif word == "shot":
         shot(args.display, out / "shots" / f"{rest or now}.png")
@@ -888,7 +914,8 @@ def common_command(args, out: pathlib.Path, note, idle, swap, word: str,
         if swap_error is not None:
             note(event="swap", at=now, error=swap_error)
         else:
-            row = do_swap(args, int(rest), out, swap_log)
+            row = do_swap(args, int(rest), out, swap_log, idle,
+                          args.seconds - now)
             # The default Down count is measured for one disk set; with no
             # emulator log nothing says the right disk went in.
             if (args.swap_sequence == DEFAULT_SWAP_SEQUENCE
@@ -1346,7 +1373,8 @@ def key_known(display: str, key: str) -> bool:
     return "No such key name" not in done.stdout + done.stderr
 
 
-def held_key(args, key: str) -> None:
+def held_key(args, key: str, idle=time.sleep,
+             budget: float | None = None) -> None:
     """One keystroke held `--hold` seconds, which the game needs to see it.
 
     Shares `fsuaepor.keys`, the implementation the `amiga-pod` runs used.  A
@@ -1354,7 +1382,8 @@ def held_key(args, key: str) -> None:
     """
     refuse_shift_letter(key)
     wait_for_first_key(args.display,
-                       getattr(args, "first_key_after", FIRST_KEY_AFTER))
+                       getattr(args, "first_key_after", FIRST_KEY_AFTER),
+                       idle, budget)
     if not args.hold:
         press(args.display, key, args.settle)
         return
@@ -1374,13 +1403,14 @@ def still(args, out: pathlib.Path, label: str) -> None:
 
 
 def do_swap(args, index: int, out: pathlib.Path,
-            log_path: pathlib.Path | None) -> dict:
+            log_path: pathlib.Path | None, idle=time.sleep,
+            budget: float | None = None) -> dict:
     """`insert_floppy`, between two screenshots, with the log lines it caused."""
     since = (log_path.stat().st_size
              if log_path is not None and log_path.exists() else 0)
     shot(args.display, out / "shots" / f"swap{index}-before.png")
     keys = insert_floppy(args.swap_sequence, index,
-                         lambda key: held_key(args, key),
+                         lambda key: held_key(args, key, idle, budget),
                          lambda label: still(args, out, label))
     shot(args.display, out / "shots" / f"swap{index}-after.png")
     return {"index": index, "keys": keys,
@@ -1574,18 +1604,21 @@ def window_size(display: str, window: str) -> tuple[int, int] | None:
 
 
 def fit_window(display: str, size: tuple[int, int] = SCREEN,
-               seconds: float = 60.0) -> bool:
+               seconds: float = 60.0, alive=lambda: True) -> bool:
     """Size the emulator's main window to `size` at 0,0, once it exists.
 
     The build ignores `--window_width`, `--window_height` and `--zoom`, so the
     window comes up larger than the display and off its corner.  The main
     window is the largest one: the emulator also keeps a 10x10 helper window.
-    Returns False when no window appeared in `seconds`.
+    Returns False when no window appeared in `seconds` or `alive()` went false
+    (the emulator exited).
     """
     from tools.amiga import fsuaepor
 
     env = {"DISPLAY": display, "PATH": "/usr/bin:/bin"}
     for _ in range(max(1, round(seconds * 2))):
+        if not alive():
+            return False
         try:
             sized = [(w, window_size(display, w))
                      for w in fsuaepor.find_windows(display, 5)]
@@ -1676,9 +1709,15 @@ def launch(args) -> int:
         print(f"xvfb       {xvfb.pid}")
         print(f"fs-uae     {emulator.pid}   (kill -- -{emulator.pid})")
         print(f"port       {args.port}", flush=True)
-        print("window     " + ("fitted" if fit_window(args.display)
-                                else "NOT fitted -- no window appeared"),
-              flush=True)
+        # Only a display this run started: another run's window on the same
+        # display name must never be moved.
+        if xvfb.poll() is not None:
+            fitted = "NOT fitted -- the Xvfb exited"
+        elif fit_window(args.display, alive=lambda: emulator.poll() is None):
+            fitted = "fitted"
+        else:
+            fitted = "NOT fitted -- no window appeared"
+        print("window     " + fitted, flush=True)
         if foreground:
             return wait_foreground(emulator, xvfb)
         for _ in range(args.wait * 2):

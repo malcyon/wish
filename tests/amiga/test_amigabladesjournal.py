@@ -813,16 +813,17 @@ def test_a_capture_with_wider_cells_is_sampled_at_the_wider_spacing(tmp_path):
 class _AspectScreen(_Screen):
     """Reads the challenge only from a frame sampled at `good`."""
 
-    good = 1.03
+    good: set = set()
 
     def read_challenge(self, path):
-        if self.X0 != self.good:
+        if self.X0 not in self.good:
             raise ValueError("no challenge on this screen")
         return self._challenge
 
 
-def _sweep_wire(monkeypatch, tmp_path):
+def _sweep_wire(monkeypatch, tmp_path, good=(1.03,)):
     screen = _AspectScreen({"kind": "journal"})
+    screen.good = set(good)
     monkeypatch.setattr(journal, "_blades_modules",
                         lambda: (screen, _Tables("TESTWORD")))
     monkeypatch.setattr(journal, "tables", lambda adf: [])
@@ -836,9 +837,9 @@ def _sweep_wire(monkeypatch, tmp_path):
     return tried
 
 
-def test_the_sweep_stops_at_the_first_ratio_the_reader_can_use(
+def test_the_sweep_stops_when_two_neighbouring_ratios_agree(
         monkeypatch, tmp_path, capsys):
-    tried = _sweep_wire(monkeypatch, tmp_path)
+    tried = _sweep_wire(monkeypatch, tmp_path, {1.02, 1.03})
     pressed = []
     assert journal.answer("h", 0.0, tmp_path / "d.adf",
                           capture=lambda path: None, press=pressed.append,
@@ -846,6 +847,65 @@ def test_the_sweep_stops_at_the_first_ratio_the_reader_can_use(
     assert tried == [1.0, 1.02, 1.03]
     assert pressed == list("TESTWORD") + ["RET"]
     assert capsys.readouterr().out == "answered\n"
+
+
+class _TwoRecords:
+    """A reader whose challenge depends on the ratio it was handed."""
+
+    X0 = Y0 = 0.0
+    PITCH = 30.64
+
+    def __init__(self, by_ratio):
+        self.by_ratio = by_ratio
+
+    def read_challenge(self, path):
+        if self.X0 not in self.by_ratio:
+            raise ValueError("no challenge on this screen")
+        return self.by_ratio[self.X0]
+
+
+class _KnownTables:
+    def __init__(self, words):
+        self.words = words
+
+    def answer_for(self, challenge, table):
+        return types.SimpleNamespace(answer=self.words[challenge])
+
+
+def _two_record_wire(monkeypatch, by_ratio):
+    monkeypatch.setattr(journal, "_blades_modules", lambda: (
+        _TwoRecords(by_ratio), _KnownTables({"a": "WRONG", "b": "RIGHT"})))
+    monkeypatch.setattr(journal, "tables", lambda adf: [])
+    monkeypatch.setattr(journal, "to_reader_scale",
+                        lambda shot, out, target_pitch=None, aspect=1.0:
+                        (aspect, 2.0, 30.64))
+
+
+def test_a_wrong_ratio_that_reads_another_valid_record_is_not_typed(
+        monkeypatch, tmp_path):
+    # 1.0 reads a different record that is in the tables; only the ratios
+    # 1.02 and 1.03 agree on the real one.
+    _two_record_wire(monkeypatch, {1.0: "a", 1.02: "b", 1.03: "b"})
+    pressed = []
+    assert journal.answer("h", 0.0, tmp_path / "d.adf",
+                          capture=lambda path: None, press=pressed.append,
+                          aspects=(1.0, 1.02, 1.03)) is True
+    assert pressed == list("RIGHT") + ["RET"]
+
+
+def test_a_reading_no_neighbour_confirms_is_rejected_and_not_kept(
+        monkeypatch, tmp_path):
+    _two_record_wire(monkeypatch, {1.0: "a", 1.02: "b", 1.04: "a"})
+    pressed = []
+    keep = tmp_path / "keep"
+    with pytest.raises(SystemExit, match="disagree"):
+        journal.answer("h", 0.0, tmp_path / "d.adf",
+                       capture=lambda path: tmp_path.joinpath(
+                           "x.png").write_bytes(b""),
+                       press=pressed.append, keep=keep,
+                       aspects=(1.0, 1.02, 1.04))
+    assert pressed == []
+    assert not keep.exists()
 
 
 def test_without_a_sweep_only_the_square_ratio_is_tried(

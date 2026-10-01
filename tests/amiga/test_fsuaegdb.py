@@ -2462,14 +2462,35 @@ def fresh_keys(monkeypatch):
     return slept
 
 
-def test_the_first_key_waits_until_the_emulator_is_old_enough(
+def test_the_first_key_waits_in_short_pieces_through_idle(
         monkeypatch, fresh_keys):
     monkeypatch.setattr(fsuaegdb, "emulator_age", lambda display: 30.0)
-    assert fsuaegdb.wait_for_first_key(":77", 120.0) == 90.0
-    assert fresh_keys == [90.0]
+    pieces = []
+    assert fsuaegdb.wait_for_first_key(":77", 33.5, pieces.append) == 3.5
+    assert pieces == [1.0, 1.0, 1.0, 0.5]
+    assert fresh_keys == []                  # `time.sleep` is not used
     # Once per run: the second key goes straight in.
-    assert fsuaegdb.wait_for_first_key(":77", 120.0) == 0.0
-    assert fresh_keys == [90.0]
+    assert fsuaegdb.wait_for_first_key(":77", 33.5, pieces.append) == 0.0
+    assert len(pieces) == 4
+
+
+def test_a_wait_longer_than_the_run_has_left_is_an_error_not_a_stall(
+        monkeypatch, fresh_keys):
+    monkeypatch.setattr(fsuaegdb, "emulator_age", lambda display: 30.0)
+    pieces = []
+    with pytest.raises(ValueError, match="does not have left"):
+        fsuaegdb.wait_for_first_key(":77", 120.0, pieces.append, budget=50.0)
+    assert pieces == []
+    assert ":77" not in fsuaegdb._keyed
+
+
+def test_an_unreadable_age_now_is_asked_again_later(monkeypatch, fresh_keys):
+    ages = iter([None, 100.0])
+    monkeypatch.setattr(fsuaegdb, "emulator_age", lambda display: next(ages))
+    pieces = []
+    assert fsuaegdb.wait_for_first_key(":77", 102.0, pieces.append) == 0.0
+    assert fsuaegdb.wait_for_first_key(":77", 102.0, pieces.append) == 2.0
+    assert pieces == [1.0, 1.0]
 
 
 @pytest.mark.parametrize("age", [None, 120.0, 500.0])
@@ -2482,11 +2503,13 @@ def test_no_wait_when_the_age_is_unknown_or_enough(monkeypatch, fresh_keys, age)
 def test_a_held_key_waits_for_the_first_key_with_the_option_given(monkeypatch):
     waits = []
     monkeypatch.setattr(fsuaegdb, "wait_for_first_key",
-                        lambda display, after: waits.append((display, after)))
+                        lambda display, after, idle, budget: waits.append(
+                            (display, after, idle, budget)))
     monkeypatch.setattr(fsuaegdb, "press", lambda *a: None)
     fsuaegdb.held_key(argparse.Namespace(display=":77", hold=0, settle=0,
-                                         first_key_after=7.0), "p")
-    assert waits == [(":77", 7.0)]
+                                         first_key_after=7.0), "p",
+                       idle="the idle", budget=9.0)
+    assert waits == [(":77", 7.0, "the idle", 9.0)]
 
 
 def _xdotool(monkeypatch, sizes):
@@ -2521,6 +2544,84 @@ def test_launch_fits_the_window_once_the_emulator_is_started(
         tmp_path, procs, monkeypatch):
     fitted = []
     monkeypatch.setattr(fsuaegdb, "fit_window",
-                        lambda display: fitted.append(display) or True)
+                        lambda display, alive: fitted.append(display) or True)
     assert fsuaegdb.launch(launch_args(tmp_path)) == 0
     assert fitted == [":77"]
+
+
+def test_launch_does_not_fit_a_window_when_its_xvfb_has_exited(
+        tmp_path, procs, monkeypatch):
+    fitted = []
+    monkeypatch.setattr(fsuaegdb, "fit_window",
+                        lambda *a, **k: fitted.append(a) or True)
+    monkeypatch.setattr(FakeProc, "poll", lambda self: 1)
+    fsuaegdb.launch(launch_args(tmp_path))
+    assert fitted == []
+
+
+def test_fit_window_stops_when_the_emulator_has_exited(monkeypatch):
+    calls = _xdotool(monkeypatch, {"22": (1280, 760)})
+    assert fsuaegdb.fit_window(":77", seconds=1, alive=lambda: False) is False
+    assert calls == []
+
+
+def test_window_size_reads_the_shell_geometry(monkeypatch):
+    monkeypatch.setattr(
+        fsuaegdb.subprocess, "run",
+        lambda *a, **k: argparse.Namespace(
+            stdout="WINDOW=22\nX=-240\nY=-80\nWIDTH=1280\nHEIGHT=760\n"))
+    assert fsuaegdb.window_size(":77", "22") == (1280, 760)
+    monkeypatch.setattr(fsuaegdb.subprocess, "run",
+                        lambda *a, **k: argparse.Namespace(stdout="oops"))
+    assert fsuaegdb.window_size(":77", "22") is None
+
+
+def _age_commands(monkeypatch, windows, pid, etimes):
+    from tools.amiga import fsuaepor
+
+    monkeypatch.setattr(fsuaepor, "find_windows",
+                        lambda display, timeout=None: windows)
+
+    def run(argv, **kw):
+        out = pid if argv[0] == "xdotool" else etimes
+        return argparse.Namespace(stdout=out)
+
+    monkeypatch.setattr(fsuaegdb.subprocess, "run", run)
+
+
+def test_emulator_age_is_the_elapsed_time_of_the_windows_process(monkeypatch):
+    _age_commands(monkeypatch, ["22"], "4242\n", "  95\n")
+    assert fsuaegdb.emulator_age(":77") == 95.0
+
+
+@pytest.mark.parametrize("windows,pid,etimes", [
+    ([], "1", "5"), (["22"], "", "5"), (["22"], "1", "")])
+def test_emulator_age_is_none_when_any_step_is_unknown(
+        monkeypatch, windows, pid, etimes):
+    _age_commands(monkeypatch, windows, pid, etimes)
+    assert fsuaegdb.emulator_age(":77") is None
+
+
+def test_boot_does_not_wait_for_the_first_key(monkeypatch):
+    waited = []
+    monkeypatch.setattr(fsuaegdb, "wait_for_first_key",
+                        lambda *a, **k: waited.append(a))
+    pressed = []
+    monkeypatch.setattr(fsuaegdb, "press",
+                        lambda display, key, settle: pressed.append(key))
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    gdb = argparse.Namespace(read_memory=lambda *a: b"\0\0")
+    fsuaegdb.boot(gdb, argparse.Namespace(boot="0:Return", warmup=0,
+                                          display=":77"))
+    assert pressed == ["Return"]
+    assert waited == []
+
+
+def test_a_session_wait_for_the_first_key_beats_in_short_pieces(
+        driven, tmp_path, monkeypatch):
+    monkeypatch.setattr(fsuaegdb, "_keyed", set())
+    monkeypatch.setattr(fsuaegdb, "emulator_age", lambda display: 10.0)
+    events, rows = run_session(tmp_path, ["key KP_Up"], interval=2.0,
+                               first_key_after=15.0)
+    assert [r["event"] for r in rows].count("beat") >= 2
+    assert events["key"]["keys"] == "KP_Up"

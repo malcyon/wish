@@ -460,6 +460,46 @@ def _reread(shot: pathlib.Path, screen, amiga_tables, table):
         scaled.unlink(missing_ok=True)
 
 
+def _read_across(shot, scaled, screen, amiga_tables, table, aspects):
+    """`(challenge, match, disagreed)` from reading `shot` at each ratio.
+
+    With one ratio its reading is taken.  With several, a ratio is accepted
+    only when the next one up reads the same record: a misread at a wrong
+    ratio can land on another valid record, and typing that is a wrong
+    answer.  `challenge` is None when nothing could be read and `match` None
+    when no two neighbours agreed; `disagreed` says some ratio did match a
+    record and the neighbours differed.
+    """
+    challenge = previous = None
+    disagreed = False
+    for aspect in sorted(aspects):
+        geometry = to_reader_scale(shot, scaled, aspect=aspect)
+        if geometry is None:
+            return None, None, False
+        screen.X0, screen.Y0, screen.PITCH = geometry
+        try:
+            read = screen.read_challenge(scaled)
+        except ValueError:
+            previous = None
+            continue
+        challenge = read
+        try:
+            match = amiga_tables.answer_for(read, table)
+        except ValueError:
+            previous = None
+            continue
+        if len(aspects) == 1:
+            return read, match, False
+        record = _record_of(match, table)
+        key = record if record is not None else match.answer
+        if previous is not None:
+            if previous[0] == key:
+                return read, match, False
+            disagreed = True
+        previous = (key, match)
+    return challenge, None, disagreed
+
+
 def answer(holder: str, settle: float, adf: pathlib.Path,
            shot: pathlib.Path | None = None, capture=None, press=None,
            keep: pathlib.Path | None = None,
@@ -519,31 +559,21 @@ def answer(holder: str, settle: float, adf: pathlib.Path,
         handle = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         handle.close()
         scaled = pathlib.Path(handle.name)
-        challenge = match = None
-        for aspect in aspects:
-            geometry = to_reader_scale(shot, scaled, aspect=aspect)
-            if geometry is None:
-                break
-            screen.X0, screen.Y0, screen.PITCH = geometry
-            try:
-                read = screen.read_challenge(scaled)
-            except ValueError:
-                continue
-            challenge = read
-            try:
-                match = amiga_tables.answer_for(challenge, table)
-            except ValueError:
-                continue
-            break
+        challenge, match, misread = _read_across(
+            shot, scaled, screen, amiga_tables, table, aspects)
         if challenge is None:
             print("no challenge on screen")
             return False
         if match is None:
-            if keep is not None:
+            # A challenge read at a ratio nothing else confirmed may be a
+            # misreading, and a misreading is not worth keeping.
+            if keep is not None and len(aspects) == 1:
                 _keep(keep, shot, challenge, None, None)
             # Deliberately not the exception's own message: it quotes the
             # challenge, and neither side of the exchange belongs here.
             raise SystemExit(
+                "the readings at neighbouring pixel ratios disagree"
+                if misread else
                 "the challenge on screen is not in this disk's tables")
         if keep is not None:
             _keep(keep, shot, challenge, match, table)
