@@ -9,7 +9,7 @@ saved-game load, so a roll is recognised by a short hash of its statement at the
 address and changed again whenever a reload brings it back.
 
 The saved game carries the loaded script for Pool, Curse and Pools of Darkness,
-so the original bytes go back before any save.
+so `no_encounters off` comes before any save; it stays off until turned on again.
 
 The class does no I/O of its own: the driver hands it `resolve`, `read` and
 `write`, so it runs against a fake.
@@ -91,7 +91,7 @@ ROWS = (
           "ECL10 roll at $859D: IF> EXIT"),
     _gate("pools-of-darkness", "*0x6EA6+0x82EA", "e43dac29", PROBABLE,
           "GLB block 17 roll at $82EA: IF> EXIT"),
-    _rest("pool-of-radiance", "*0x9C+0x5A6", "0000", PROBABLE,
+    _rest("pool-of-radiance", "*0x9C+0x5A6", "0000", SPECULATIVE,
           "$6DD3 chance word, confirmed on DOS, not run on the Amiga"),
     _rest("curse-of-the-azure-bonds", "*0x3DBE+0xFDA6", "0000", SPECULATIVE,
           "$7ED3 chance word in the $7C00 block"),
@@ -111,31 +111,46 @@ class EncounterSwitch:
 
     `resolve(spec)` gives an address or None for a null pointer, `read(address,
     n)` bytes, and `write(address, data)` a dict with an `error` key when the
-    write did not stick.  `speculative` also holds the SPECULATIVE rest rows.
-    The original bytes are read from memory before the first change and kept
-    here, so nothing of the script is stored in the repository.
+    write did not stick.  `inside(address, n)` says whether a rest row's
+    resolved address may be written.  `speculative` holds the SPECULATIVE rest
+    rows too.  The original bytes are read from memory before the first change
+    and kept here, so nothing of the script is stored in the repository.
+
+    Every write is read back: bytes that are neither the change nor the
+    original are put back to the original and reported.
     """
 
     def __init__(self, title, resolve, read, write, speculative=False,
-                 allow_save=False):
+                 inside=lambda address, n: True):
         self.rows = [r for r in rows_for(title)
                      if speculative or r.grade != SPECULATIVE]
         if not self.rows:
             raise ValueError(f"no encounter rows for {title!r}")
         self.title = title
         self.resolve, self.read, self.write = resolve, read, write
-        self.allow_save = allow_save
+        self.inside = inside
         #: Gates this switch changed: address -> (original bytes, changed bytes).
         self.patched: dict[int, tuple[bytes, bytes]] = {}
         #: Rest values this switch overwrote: address -> what was there.
         self.held: dict[int, bytes] = {}
-        #: Gate addresses whose first byte was not a roll, already reported.
+        #: Gate addresses whose statement did not match, already reported.
         self.refused: set[int] = set()
         self.active = True
 
+    def _checked_write(self, address, original, ours) -> dict:
+        """Write `ours`, read it back, and put `original` back if it is neither."""
+        result = self.write(address, ours)
+        got = self.read(address, len(ours))
+        if got not in (ours, original[:len(ours)]):
+            self.write(address, original[:len(ours)])
+            return {**result, "error": f"read back {got.hex()}, neither the "
+                                       "change nor the original; original "
+                                       "put back"}
+        return result
+
     def apply(self) -> list[dict]:
         """Change every row that is currently loaded; return what was written
-        or refused (a refusal is reported once until the byte changes)."""
+        or refused (a refusal is reported once until the bytes match)."""
         done = []
         for row in self.rows:
             address = self.resolve(row.spec)
@@ -158,39 +173,58 @@ class EncounterSwitch:
                 for offset, value in row.changes:
                     changed[offset] = value
                 span = max(offset for offset, _ in row.changes) + 1
-                result = self.write(address, bytes(changed[:span]))
+                result = self._checked_write(address, now, bytes(changed[:span]))
                 if "error" not in result:
                     self.patched[address] = (now, bytes(changed))
             else:
+                if not self.inside(address, len(row.new)):
+                    if address not in self.refused:
+                        self.refused.add(address)
+                        done.append({"row": row.spec, "grade": row.grade,
+                                     "refused": f"{address:#x} is outside the "
+                                                "expected memory"})
+                    continue
                 now = self.read(address, len(row.new))
                 if now == row.new:
                     continue
-                self.held.setdefault(address, now)
-                result = self.write(address, row.new)
+                # Whatever the game last wrote is what to put back.
+                self.held[address] = now
+                result = self._checked_write(address, now, row.new)
             done.append({"row": row.spec, "grade": row.grade, **result})
         return done
 
     def release(self) -> list[dict]:
-        """Put every changed byte back, without turning the switch off."""
+        """Put every changed byte back, without turning the switch off.
+
+        A row that fails to read or write is reported and the rest still go
+        back.
+        """
         done = []
         for row in self.rows:
-            address = self.resolve(row.spec)
-            if address is None:
-                continue
-            if row.kind == GATE:
-                if address not in self.patched:
+            try:
+                address = self.resolve(row.spec)
+                if address is None:
                     continue
-                original, changed = self.patched[address]
-                if self.read(address, len(changed)) != changed:
-                    continue            # the script was reloaded already
-                span = max(offset for offset, _ in row.changes) + 1
-                result = self.write(address, original[:span])
-                del self.patched[address]
-            else:
-                if (address not in self.held
-                        or self.read(address, len(row.new)) != row.new):
-                    continue
-                result = self.write(address, self.held.pop(address))
+                if row.kind == GATE:
+                    if address not in self.patched:
+                        continue
+                    original, changed = self.patched[address]
+                    if self.read(address, len(changed)) != changed:
+                        del self.patched[address]
+                        continue        # the script was reloaded already
+                    span = max(offset for offset, _ in row.changes) + 1
+                    result = self.write(address, original[:span])
+                    if "error" not in result:
+                        del self.patched[address]
+                else:
+                    if (address not in self.held
+                            or self.read(address, len(row.new)) != row.new):
+                        continue
+                    result = self.write(address, self.held[address])
+                    if "error" not in result:
+                        del self.held[address]
+            except Exception as exc:
+                result = {"error": f"{type(exc).__name__}: {exc}"}
             done.append({"row": row.spec, "grade": row.grade, **result})
         return done
 
@@ -201,8 +235,10 @@ class EncounterSwitch:
 
 
 #: A key line is a save key when it presses the letter that opens the Save
-#: picker in the camp and party menus.  A cruder test than the C64 driver's
-#: `save_game`, because a line of keysyms does not say which menu is up.
+#: picker in the camp and party menus.  **This net is not complete**: a save
+#: can start from keys that contain no `s`, and a line of keysyms does not say
+#: which menu is up.  The rule is `no_encounters off` before any save, because
+#: the saved game carries the loaded script.
 SAVE_KEYS = frozenset("sS")
 
 

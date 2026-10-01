@@ -2776,13 +2776,145 @@ def test_a_save_key_is_refused_while_it_is_on(scripted, tmp_path, monkeypatch):
     assert "save" in events["key"]["error"]
 
 
-def test_a_save_key_with_allow_save_sees_the_original_and_it_is_restored_after(
+def test_off_before_a_save_leaves_the_script_original_until_on_again(
         scripted, tmp_path, monkeypatch):
     guest, log = scripted
     seen = on_each_key(monkeypatch, guest, log)
-    run_session(tmp_path, ["locate", "no_encounters on allow-save",
-                           "key s", "key a"])
-    assert seen == [POD_GATE, POD_PATCHED]
+    after_wait = []
+    real_wait = fsuaegdb.common_command
+
+    def watching(args, out, note, idle, swap, word, rest, now):
+        ran = real_wait(args, out, note, idle, swap, word, rest, now)
+        if word == "wait":
+            after_wait.append(gate_bytes(guest))
+        return ran
+    monkeypatch.setattr(fsuaegdb, "common_command", watching)
+    run_session(tmp_path, ["locate", "no_encounters on", "no_encounters off",
+                           "key s", "wait 0.5", "key a"])
+    assert seen == [POD_GATE, POD_GATE]
+    assert after_wait == [POD_GATE]
+    assert gate_bytes(guest) == POD_GATE
+
+
+def test_a_second_on_starts_from_the_games_own_bytes(scripted, tmp_path):
+    guest, _ = scripted
+    run_session(tmp_path, ["locate", "no_encounters on", "no_encounters on",
+                           "no_encounters off"])
+    assert [b for b in guest.received if b.startswith("M")] == [
+        f"M{GATE_AT:x},1:09", f"M{GATE_AT:x},1:08",
+        f"M{GATE_AT:x},1:09", f"M{GATE_AT:x},1:08"]
+    assert gate_bytes(guest) == POD_GATE
+
+
+class Memory:
+    """Bytes a switch can be driven against without a session."""
+
+    def __init__(self, blobs):
+        self.blobs = dict(blobs)
+        self.writes = []
+        self.fail_writes_at = set()
+        self.corrupt = False
+
+    def read(self, address, n):
+        return self.blobs[address][:n]
+
+    def write(self, address, data):
+        if address in self.fail_writes_at:
+            raise TimeoutError("no reply")
+        self.writes.append((address, data))
+        if self.corrupt:
+            data = bytes(b ^ 0xFF for b in data)
+        self.blobs[address] = data + self.blobs[address][len(data):]
+        return {}
+
+
+def switch_over(memory, specs, title="pools-of-darkness", **kw):
+    from tools.amiga import noencounters
+    return noencounters.EncounterSwitch(
+        title, lambda spec: specs.get(spec), memory.read, memory.write, **kw)
+
+
+REST = "*0x57AC+0x2C"
+
+
+def test_pool_rest_row_is_not_held_without_speculative():
+    from tools.amiga import noencounters
+    assert all(r.kind == noencounters.GATE for r in
+               switch_over(Memory({}), {}, "pool-of-radiance").rows)
+    assert any(r.kind == noencounters.REST for r in
+               switch_over(Memory({}), {}, "pool-of-radiance",
+                           speculative=True).rows)
+
+
+def test_a_rest_row_outside_the_expected_memory_is_not_written():
+    memory = Memory({0x500000: bytes([7])})
+    switch = switch_over(memory, {REST: 0x500000}, speculative=True,
+                         inside=lambda address, n: False)
+    rows = switch.apply()
+    assert memory.writes == [] and "refused" in rows[0]
+
+
+def test_a_rest_value_the_game_wrote_since_is_what_is_put_back():
+    memory = Memory({0x2000: bytes([7])})
+    switch = switch_over(memory, {REST: 0x2000}, speculative=True)
+    switch.apply()
+    memory.blobs[0x2000] = bytes([42])              # the game writes a new chance
+    switch.apply()
+    switch.off()
+    assert memory.blobs[0x2000] == bytes([42])
+
+
+def test_bytes_that_are_neither_ours_nor_the_original_are_put_back_and_reported():
+    from tools.amiga import noencounters
+    original = bytes([0x08, 1, 2, 3, 4, 5])
+    memory = Memory({0x3000: original})
+    memory.corrupt = True
+    switch = _with_digest(noencounters, original, memory)
+    rows = switch.apply()
+    assert any("neither" in r.get("error", "") for r in rows)
+    assert memory.writes[-1][1] == original[:1]
+    assert switch.patched == {}
+
+
+def _with_digest(noencounters, statement, memory, addresses=(0x3000,)):
+    import pytest as _pytest
+    rows = tuple(dataclasses.replace(r, digest=noencounters.digest(statement))
+                 if r.kind == noencounters.GATE else r
+                 for r in noencounters.ROWS)
+    mp = _pytest.MonkeyPatch()
+    mp.setattr(noencounters, "ROWS", rows)
+    try:
+        specs = {r.spec: a for r, a in zip(
+            [r for r in rows if r.title == "pools-of-darkness"
+             and r.kind == noencounters.GATE], addresses)}
+        return switch_over(memory, specs)
+    finally:
+        mp.undo()
+
+
+def test_off_restores_every_row_even_when_one_restore_fails():
+    from tools.amiga import noencounters
+    statement = bytes([0x08, 1, 2, 3, 4, 5])
+    pool = [r for r in noencounters.ROWS if r.title == "pool-of-radiance"
+            and r.kind == noencounters.GATE][:2]
+    memory = Memory({0x3000: statement, 0x4000: statement})
+    import pytest as _pytest
+    with _pytest.MonkeyPatch.context() as mp:
+        mp.setattr(noencounters, "ROWS", tuple(
+            dataclasses.replace(r, digest=noencounters.digest(statement))
+            if r.spec in {p.spec for p in pool} else r
+            for r in noencounters.ROWS))
+        switch = switch_over(memory, {pool[0].spec: 0x3000,
+                                      pool[1].spec: 0x4000},
+                             title="pool-of-radiance")
+        switch.rows = [r for r in switch.rows
+                       if r.spec in {p.spec for p in pool}]
+        switch.apply()
+        assert memory.blobs[0x4000][0] == 0x09
+        memory.fail_writes_at = {0x3000}
+        rows = switch.off()
+    assert memory.blobs[0x4000] == statement
+    assert any("TimeoutError" in r.get("error", "") for r in rows)
 
 
 def test_the_session_ends_with_the_script_as_the_game_loaded_it(scripted, tmp_path):
@@ -2807,4 +2939,9 @@ def test_speculative_rest_rows_are_held_only_when_asked(scripted, tmp_path):
 
 def test_no_encounters_with_a_bad_argument_is_an_error_row(scripted, tmp_path):
     events, _ = run_session(tmp_path, ["locate", "no_encounters maybe"])
+    assert "no_encounters wants" in events["no_encounters"]["error"]
+
+
+def test_allow_save_is_no_longer_an_argument(scripted, tmp_path):
+    events, _ = run_session(tmp_path, ["locate", "no_encounters on allow-save"])
     assert "no_encounters wants" in events["no_encounters"]["error"]

@@ -726,17 +726,19 @@ def session(args) -> int:
                             address; a write outside chip and slow memory is
                             an error row.  Needs a server with `M`; read back,
                             so an ignored write is an error row too
-        no_encounters on [speculative] [allow-save] | off
+        no_encounters on [speculative] | off
                             CHANGES THE RUNNING GAME: turns the loaded area
                             script's random-encounter roll into a constant
                             (tools/amiga/noencounters.py has the rows and
                             their grades), holds the rest-interruption chance
                             at 0, and applies both again on every heartbeat and
                             before every `key`.  `speculative` also holds the
-                            ungraded rest rows.  A `key` line with `s` or `S`
-                            is refused while it is on, unless `allow-save`
-                            was given, which puts the original bytes back
-                            first because a save carries the loaded script
+                            rest rows (the Pool one too, until run live).  A
+                            save carries the loaded script, so `off` comes
+                            first and restores every original; it stays off
+                            until `on` again.  A `key` line with `s` or `S`
+                            is refused while it is on as a safety net, which
+                            is not complete: a save can start without an `s`
         swap <index>        put swap list image <index> in the drive, by the
                             keys of `--swap-sequence` (default: the F12 menu
                             walk, see DEFAULT_SWAP_SEQUENCE)
@@ -805,8 +807,8 @@ def session(args) -> int:
     was = mapstate._data_dir                            # noqa: SLF001
     mapstate._data_dir = lambda: out / "data"           # noqa: SLF001
     started = time.monotonic()
-    #: The no_encounters switch, and whether a save key is being held.
-    enc = {"switch": None, "saving": False}
+    #: The no_encounters switch.
+    enc = {"switch": None}
     try:
         once = None if untitled else poller(tgt, maps, layout, out, note)[1]
         window = None
@@ -819,11 +821,12 @@ def session(args) -> int:
 
         def reapply(now: float) -> None:
             switch = enc["switch"]
-            if switch is None or not switch.active or enc["saving"]:
+            if switch is None or not switch.active:
                 return
             try:
                 done = switch.apply()
-            except (ValueError, amiga.GuestError, amiga.FsuaeError) as exc:
+            except (ValueError, OSError, TimeoutError, amiga.GuestError,
+                    amiga.FsuaeError) as exc:
                 note(event="no_encounters", at=now,
                      error=f"{type(exc).__name__}: {exc}")
                 return
@@ -841,9 +844,15 @@ def session(args) -> int:
                     return
                 extra = set(words[1:])
                 if (not words or words[0] != "on"
-                        or not extra <= {"speculative", "allow-save"}):
-                    raise ValueError("no_encounters wants `on [speculative] "
-                                     "[allow-save]` or `off`")
+                        or not extra <= {"speculative"}):
+                    raise ValueError("no_encounters wants `on [speculative]` "
+                                     "or `off`")
+                if enc["switch"] is not None:
+                    # A second `on` starts from the game's own bytes, so the
+                    # originals it keeps are never ones this switch wrote.
+                    done = enc["switch"].off()
+                    enc["switch"] = None
+                    note(event="no_encounters", action="off", at=now, rows=done)
                 key = next(k for k, v in amiga.MACHINES.items() if v is layout)
                 enc["switch"] = noencounters.EncounterSwitch(
                     key, lambda spec: resolve_spec(tgt, spec),
@@ -851,12 +860,14 @@ def session(args) -> int:
                     lambda address, data: poke_row(
                         gdb, tgt, f"{address:#x} {data.hex()}"),
                     speculative="speculative" in extra,
-                    allow_save="allow-save" in extra)
+                    inside=lambda address, n: any(
+                        base <= address and address + n <= base + size
+                        for base, size in amiga.MEMORY))
                 done = enc["switch"].apply()
                 note(event="no_encounters", action="on", at=now,
                      rows=done, held=[r.spec for r in enc["switch"].rows])
-            except (ValueError, StopIteration, amiga.GuestError,
-                    amiga.FsuaeError) as exc:
+            except (ValueError, StopIteration, OSError, TimeoutError,
+                    amiga.GuestError, amiga.FsuaeError) as exc:
                 enc["switch"] = None
                 print(f"           {exc}")
                 note(event="no_encounters", at=now,
@@ -866,22 +877,13 @@ def session(args) -> int:
             switch = enc["switch"]
             if word == "key" and switch is not None and switch.active:
                 if noencounters.is_save_key(rest):
-                    if not switch.allow_save:
-                        error = ("no_encounters is on and a save carries the "
-                                 "changed script: turn it off, or turn it on "
-                                 "with allow-save")
-                        print(f"           {error}")
-                        note(event="key", keys=rest, at=now, error=error)
-                        return True
-                    note(event="no_encounters", action="release", at=now,
-                         rows=switch.release())
-                    enc["saving"] = True
-                else:
-                    reapply(now)
-            try:
-                return dispatch(word, rest, line, now)
-            finally:
-                enc["saving"] = False
+                    error = ("no_encounters is on and a save carries the "
+                             "changed script: turn it off first")
+                    print(f"           {error}")
+                    note(event="key", keys=rest, at=now, error=error)
+                    return True
+                reapply(now)
+            return dispatch(word, rest, line, now)
 
         def dispatch(word: str, rest: str, line: str, now: float) -> bool:
             if untitled and word in TITLED_COMMANDS:
@@ -970,7 +972,8 @@ def session(args) -> int:
             # the disk has it.
             try:
                 enc["switch"].off()
-            except (ValueError, amiga.GuestError, amiga.FsuaeError):
+            except (ValueError, OSError, TimeoutError, amiga.GuestError,
+                    amiga.FsuaeError):
                 pass
         mapstate._data_dir = was                        # noqa: SLF001
         log.close()
