@@ -1311,11 +1311,11 @@ class FsuaeGdb:
     frame and stops nothing. `halts_machine` is False and `AmigaTarget` picks
     that up on its own.
 
-    **Read-only, and that is the build rather than a policy.** This server has
-    no `M` and no `X` handler -- `barto_gdbserver.cpp`'s dispatch runs `g`, `p`
-    and `m` and nothing that writes memory. `AmigaTarget.write` says so rather
-    than sending something the emulator would ignore. (`grahambates/fs-uae`
-    PR #6 adds writes and is unmerged.)
+    **Read-only, and that is Wish's choice rather than a limit of the
+    emulator.** The installed build accepts an `M` memory write, but the
+    product path only reads, so `AmigaTarget.write` refuses over this transport
+    instead of sending one. The developer harness's `poke` verb sends `M`
+    itself and reads the bytes back.
 
     **Four limits a caller has to design around**, all of them the fork's:
 
@@ -1866,17 +1866,17 @@ class AmigaTarget:
         the eight-byte proof. Split into lines of sixteen so a long write does
         not become a console line nothing can type.
 
-        **A GDB-remote transport cannot do this at all**, and it is refused
-        here rather than sent and ignored: the patched FS-UAE's server has no
-        `M` and no `X` in its dispatch, so a write would go out and the machine
-        would be unchanged. That is the one thing worse than not writing.
+        **A GDB-remote transport is refused here on purpose.** The patched
+        FS-UAE's server accepts an `M` packet, but Wish's product path only
+        reads a running Amiga, so this method never sends one.
         """
         self._require_open()
         if getattr(self.debugger, "batch", None) is None:
             raise GuestError(
-                f"{type(self.debugger).__name__} reads a running Amiga and "
-                "cannot write to one: the patched FS-UAE's GDB server has no "
-                "memory-write packet in the build this project targets")
+                f"{type(self.debugger).__name__} only reads a running "
+                "Amiga: Wish's product path sends no "
+                "memory-write packet over it, by choice and not because the "
+                "emulator lacks one")
         lines = []
         for i in range(0, len(data), 16):
             chunk = data[i:i + 16]

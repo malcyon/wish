@@ -308,10 +308,11 @@ POKE_LIMIT = 64
 def poke_row(gdb, tgt, rest: str) -> dict:
     """`poke SPEC HEX` as a log row: a write through the session's own GDB client.
 
-    `AmigaTarget.write` refuses a GDB transport because the stock server has
-    no `M` handler; this verb sends the packet itself, so it works only on a
-    build that has one. It never trusts the reply alone: the bytes are read
-    back, and a write the server ignored is an error row.
+    `AmigaTarget.write` refuses a GDB transport because Wish's product path
+    only reads, not because the emulator cannot write; this verb sends the `M`
+    packet itself, which the installed build handles. It never trusts the
+    reply alone: the bytes are read back, and a write the server ignored is an
+    error row.
     """
     spec, _, digits = rest.strip().partition(" ")
     row = {"spec": spec}

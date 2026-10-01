@@ -426,9 +426,10 @@ and the transport decides how a read reaches it:
 | `FsuaeGdb` | a patched FS-UAE on the same machine | a GDB-remote `m` packet over a loopback socket, answered from the emulator's frame handler | no |
 
 `FsuaeGdb` is the one a player on Linux can use: no console, no keypress, no
-`ssh`. The fork's server has **no memory-write packet**, so `AmigaTarget.write`
-refuses over it, and it closes its *listening* socket when a client goes, so
-one connection is all a run of the emulator ever gets.
+`ssh`. The fork's server accepts a memory-write (`M`) packet, but Wish's
+product path only reads, so `AmigaTarget.write` refuses over it by choice. The
+server closes its *listening* socket when a client goes, so one connection is
+all a run of the emulator ever gets.
 
 **What was measured on a running machine.** Amiga Silver Blades (2026-09-08):
 the shipped `Automapper.poll()` named the area from the block the game itself
