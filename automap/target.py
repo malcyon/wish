@@ -256,10 +256,12 @@ def party_fix(read, game: c64_port.C64Container | None = None, banks=None) -> Fi
         # Fall through to the ordinary indoor read below:
         # `machine.live_position` is the same $C04B either way.
     if machine.world_map_flag_base is not None:
-        # The flag and the script id are one read; the script id alone is
-        # also set in the camp and fights of the area it belongs to.
+        # The script id alone names the world map. The indoors flag goes to 1
+        # when SEARCH AREA's return starts, tens of seconds before the script
+        # id changes, and `$C04B` holds a transient square for all of it; a
+        # status line, read first above, still wins wherever one is drawn.
         span = read(machine.world_map_flag_base, WORLD_MAP_SCRIPT_SPAN)
-        if (len(span) == WORLD_MAP_SCRIPT_SPAN and span[0] == 0
+        if (len(span) == WORLD_MAP_SCRIPT_SPAN
                 and span[-1] in machine.title.world_map_areas):
             node = read(machine.world_node_base, 2)
             return Fix(0, 0, None, "memory", None, world_map=True,

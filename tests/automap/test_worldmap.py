@@ -42,8 +42,8 @@ def test_the_same_bytes_on_other_titles_are_not_a_world_map(game):
     assert fix is None or not fix.world_map
 
 
-@pytest.mark.parametrize("script,indoors", [(3, 0), (0x50, 1)])
-def test_curse_needs_the_flag_clear_and_a_world_map_script(script, indoors):
+@pytest.mark.parametrize("script,indoors", [(3, 0), (3, 1)])
+def test_curse_needs_a_world_map_script(script, indoors):
     fix = party_fix(world_target(script=script, indoors=indoors).read, CURSE)
     assert fix is None or not fix.world_map
 
@@ -179,3 +179,38 @@ def test_a_return_to_another_area_names_it_and_clears_the_town(
     assert not state.world_map
     assert state.area == "GEO04"
     assert (state.world_node, state.world_leg) == (None, None)
+
+
+def test_the_world_map_lasts_until_the_script_id_leaves_it(tmp_path, monkeypatch):
+    """SEARCH AREA's return raises `$4BE6` and shows a transient 8,8 while `$4BF2`
+    still names the world map; neither is the sewers."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    sewers = synthetic_map(2)
+    target = world_target()
+    target.memory.update(curse_target("", (0, 0, 2), sewers).memory)
+    base = CURSE.save_load_address
+
+    def set_bytes(indoors, script, triple):
+        target.memory[base + 0xE6] = bytes([indoors])
+        target.memory[base + 0xF2] = bytes([script])
+        target.memory[0xC04B] = bytes(triple)
+
+    set_bytes(1, 3, (0, 0, 2))
+    mapper = Automapper(target, {"GEO03": sewers}, area="GEO03", title=CURSE.title)
+    state = mapper.state
+    mapper.poll()
+    set_bytes(0, 0x50, (33, 208, 202))
+    mapper.poll()
+    assert state.world_map
+    set_bytes(1, 0x50, (8, 8, 2))
+    for _ in range(mapper.RESIDENT_EVERY * 2):
+        mapper.poll()
+    assert state.world_map
+    set_bytes(1, 0x50, (33, 208, 202))
+    mapper.poll()
+    set_bytes(1, 3, (0, 0, 2))
+    for _ in range(mapper.RESIDENT_EVERY * 2):
+        mapper.poll()
+    assert not state.world_map
+    assert (state.area, state.x, state.y, state.facing) == ("GEO03", 0, 0, 2)
+    assert (8, 8) not in state.exploration
