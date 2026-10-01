@@ -326,12 +326,14 @@ each, and not in the tool or a test: Amiga Pool of Radiance (`0xC906`) loads a
 byte from record `0x114` and subtracts 2 with a byte `subq`, while Curse (`0x7F0C`, record
 `0x1A0`), Silver Blades (`0x8DAC`, `0x149`) and Pools of Darkness (`0x905E`,
 `0x188`) load a byte and subtract 4 with a word `subq`. So the Amiga split is by title and
-matches DOS, where Curse and Pools of Darkness subtract 4; the six C64
+matches DOS, where Curse and Pools of Darkness subtract 4 and Pool of Radiance 2; the six C64
 titles all subtract 2. What is **UNKNOWN** is whether the Amiga and DOS
-records hold the same quantity at the offsets read, and whether DOS Pool of
-Radiance subtracts 2 or 4; neither was chased, because
-`#607 (Show a thief's backstab bonus in the Character Editor)` needs the
-damage multiplier.
+records hold the same quantity at the offsets read. DOS Pool of Radiance
+subtracts 2: its to-hit caller at `GAME.OVR:0x13DAF` loads the defender's byte
+at `0x112` and does `dec ax` twice (`docs/221-thief-abilities-in-dos-pool-of-radiance.md`).
+CONFIRMED from the instructions. This page first left DOS Pool of Radiance's
+value as 2 or 4 because `#607 (Show a thief's backstab bonus in the Character
+Editor)` needs only the damage multiplier.
 
 Nothing on the Amiga was driven; these are instruction reads.
 
@@ -348,7 +350,7 @@ instruction reads, and none was made on any port. DOS Pool of Radiance is in
 `docs/221-thief-abilities-in-dos-pool-of-radiance.md` rather than here.
 
 Two things are read and not settled. The to-hit adjustment is 2 in the C64
-titles and Amiga Pool of Radiance and 4 in the later DOS and Amiga titles,
+titles and in Pool of Radiance on DOS and the Amiga, and 4 in the later DOS and Amiga titles,
 and this page does not say whether the quantity subtracted from is the same. And the C64 titles' thief
 ceilings come from `GEN`'s training table, which bounds what a player can
 train to rather than what a record can hold.

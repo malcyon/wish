@@ -97,7 +97,7 @@ Five differences matter, and all five are new information:
 | **`GEO15` exists in both games and means different places.** | `goldbox/areas.py:GEO_NAMES` is now keyed by game title first and `area_name` degrades an unknown title to `"area 15"`, so the collision no longer mislabels | CONFIRMED, and cleared |
 | **No `SQRPACI*`, `SQRDATA*` or `WALLS*` on any Curse side.** Curse has `WALLDEF00`–`WALLDEF0F` and `WALLSET00`–`WALLSET0F` only | the combat square renderer, which `docs/50-experiments.md` places at `$0400` from `SQRPACI01`, has no counterpart of that name | CONFIRMED |
 | **No `LOAD/SAVE` file.** Pool of Radiance carries one | save/load is not the same overlay, so nothing about its addresses transfers | CONFIRMED |
-| **`SPELLN64` exists on `CURSE_A.D64` (8 blocks); `SPELLN00` does not.** Pool of Radiance carries both | `docs/116` §5 says "Curse has no `SPELLN` file". That is too strong and should be corrected to "no `SPELLN00`" | CONFIRMED |
+| **`SPELLN64` exists on `CURSE_A.D64` (8 blocks); `SPELLN00` does not.** Pool of Radiance carries both | `docs/116` §5 says "no `SPELLN00`", not "no `SPELLN` file"; it first said the stronger thing, which was too strong | CONFIRMED |
 
 Curse-only stems worth a line each, unexplained: `FSDEF`, `STOP`, `FASTL.O`
 (against Pool of Radiance's `FAST1.O`).

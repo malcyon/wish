@@ -22,19 +22,23 @@ the run, the method and the things that went wrong on the way.
 |---|---|---|---|---|
 | C7 | the map is identified and drawn | `GEO00`, New Phlan | `GEO01` | `GEO10` |
 | C12 | the roster cards read the party | 6 cards, 18/18 fields | 6, 18/18 | 6, 18/18 |
-| C13 | a condition badge is drawn from a staged effect | `running-ninja` | `running-ninja` | **none, by design** |
+| C13 | a condition badge is drawn from a staged effect | `running-ninja` | `running-ninja` | none (no badge table existed when this ran; it has seven groups now, and the run has not been repeated) |
 | C7W | the marker follows a walk | 4/4 steps | 4/4 | 4/4 |
 | C6 | the area is re-read across a boundary | `GEO00` to `GEO01` | `GEO01` to `GEO03` | `GEO10` to `GEO20` |
 | C16 | Heal party | MELCAR 1 to 6 | PALADIN | MORGAINE 1 to 35 |
 | C17 | Save and Restore spells | MELCAR, SLEEP | PALADIN | PAINE |
 | C18 | Identify | 1 item | 1 item | 1 item |
 | C14, C19 | the quickfight badge, lit and cleared | slot 5, `$83AC` | yes | yes |
-| C20 | Level up | offered | offered | **refused, writing nothing** |
+| C20 | Level up | offered | offered | refused, writing nothing (its trainer was not yet in `levels.TRAINER_MEASURED`; it is now) |
 
-The two bold cells are refusals, and both are the shipped behaviour being
-right rather than a gap: Silver Blades has no badge table (`#196 (The automapper's condition badges name a Silver Blades trait with Pool of Radiance's meaning)`) and its
-trainer has never been measured (`#16 (Level Up assumes Pool of Radiance, and silently corrupts a Curse character)`, `goldbox.levels.trainer_measured`).
-Each was measured as a refusal rather than assumed -- §2 and §3.
+The two Silver Blades cells that read "none" and "refused" were the shipped
+behaviour being right on 2026-09-08 rather than a gap: Silver Blades had no
+badge table (`#196 (The automapper's condition badges name a Silver Blades trait with Pool of Radiance's meaning)`) and its
+trainer had not been measured (`#16 (Level Up assumes Pool of Radiance, and silently corrupts a Curse character)`, `goldbox.levels.trainer_measured`).
+Each was measured by running the check rather than assumed -- §2 and §3. Both have
+changed since: `automap/live.py:BADGE_TABLES` now gives Silver Blades seven
+badge groups, and `levels.TRAINER_MEASURED` names it, so a rerun of
+`tools/gui/livecheck.py` should draw a badge and offer Level up there.
 
 ## 1. The run is the shipped code, called
 
@@ -111,22 +115,24 @@ only have come from that row.
 * Pool of Radiance, `$4900`/`$4940`/`$4980`/`$4B80`: `running-ninja` on
   GARWAN's card.
 * Curse, `$4B00`/`$4B40`/`$4B80`/`$4D80`: `running-ninja` on MALE ELF MAGE's.
-* Silver Blades, the same four addresses: **the card carries the effect and
-  draws no glyph**, and the id turns up in `Character.unbadged_effects`
-  instead. That is `#196 (The automapper's condition badges name a Silver Blades trait with Pool of Radiance's meaning)`'s deliberate refusal measured rather than assumed --
-  sixteen of the seventeen badged ids are unnamed in
-  `traits.NAMES_SILVER_BLADES`, so a glyph there would assert a meaning
-  nobody has read.
+* Silver Blades, the same four addresses: **the card carried the effect and
+  drew no glyph**, and the id turned up in `Character.unbadged_effects`
+  instead. At that run the title had no badge table, so a glyph would have
+  asserted a Pool of Radiance meaning (`#196 (The automapper's condition badges name a Silver Blades trait with Pool of Radiance's meaning)`). The title has
+  its own seven groups now, minus ids 35 and 38, with sixteen of the seventeen
+  badged ids named in `traits.NAMES_SILVER_BLADES`; the draw has not been
+  re-run on a live machine (`docs/139` C13).
 
-**Level up refuses on Silver Blades in `run`, not in `legality`.** The action
-answers *legal* there, because `Action.legality` only asks the loader's mode
-flag; what refuses is `level_up_blockers` inside `run`, and the window
-additionally never builds the button (`roster.levelling` is False). So the
-check runs the action and measures that it wrote nothing:
+**Level up refused on Silver Blades in `run`, not in `legality`.** The action
+answered *legal* there, because `Action.legality` only asks the loader's mode
+flag; what refused was `level_up_blockers` inside `run`, and the window
+additionally never built the button (`roster.levelling` was False). So the
+check ran the action and measured that it wrote nothing:
 `levelling MORGAINE would write fields we cannot derive, so it writes
 nothing`, 0 writes. On Pool of Radiance and Curse there are no blockers and
 the action is offered -- which is `#18 (Measure Curse's trainer so Level Up works there)` having measured Curse's trainer, and
-is a row `docs/139` still carried as a refusal.
+is a row `docs/139` still marked `R`. Silver Blades has since been
+measured too (`levels.TRAINER_MEASURED`), so it has no blockers either.
 
 **The quickfight bit had never been seen set on any title.** `docs/139`'s C14
 said so: the flag resolved to `$670C` on both later machines under `#29 (The live reader uses Pool of Radiance's addresses on every title)` and
@@ -232,12 +238,10 @@ agree on the square and the facing.
   `Automapper.poll` -- `_area_may_have_changed` and the jump guard -- and it
   is untested on the later two titles.
 * **Whether an identified item survives an area load.** §3.
-* **The badge *names* on Silver Blades.** `live.BADGE_TABLES` gives that title
-  no groups, so it draws none; that is the deliberate refusal `#196 (The automapper's condition badges name a Silver Blades trait with Pool of Radiance's meaning)` built and
-  what this run confirms is that it refuses rather than that the refusal is
-  right. Naming its effect codes is still unread work. The groups
-  `live.BADGE_TABLES` carries for that title today are in
-  `docs/136-condition-badges.md`.
+* **The badge *names* on Silver Blades.** `live.BADGE_TABLES` gave that title
+  no groups when this ran, so it drew none (`#196 (The automapper's condition badges name a Silver Blades trait with Pool of Radiance's meaning)`).
+  It has seven groups now, in `docs/136-condition-badges.md`, and no live
+  machine has drawn them.
 * **Anything on the three Krynn-era titles.** They have no `mode_flag` and no
   `live_position`, so every action refuses and the memory fallback answers
   None. Nothing here changes that.

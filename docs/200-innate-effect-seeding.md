@@ -106,7 +106,8 @@ disagrees:
 * **the Silver Blades halfling**, C64 92 against DOS 97 — a different id, not
   a missing one;
 * **the Silver Blades dwarf and gnome**, each given 97 by DOS and not by the
-  C64;
+  C64 (and DOS Silver Blades gives the 97 node to its halfling too, though no
+  saving throw there asks for it: `docs/230-who-reads-a-dos-effect-node.md`);
 * **the Curse halfling**, given 97 by DOS and nothing at all by the C64;
 * **the Curse gnome**, given 47 by DOS and not by the C64.
 

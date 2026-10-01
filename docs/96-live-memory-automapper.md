@@ -62,12 +62,13 @@ Everything else builds on those two. Breakpoints, stepping and similar are
 VICE-only luxuries; keeping them out of the contract stops every other backend
 having to pretend it has them.
 
-## Two backends, and only two
+## Two Commodore 64 backends, and only two
 
 * **VICE**, over its binary monitor (`POR_DEBUG=1` already enables it).
 * **Commodore 64 Ultimate**, over its network interface -- written, in
-  `wish/ultimate.py`, and **unverified**: nobody on this project has the
-  hardware. It speaks the documented REST API (`/v1/machine:readmem`,
+  `wish/ultimate.py`. Connecting and reading are CONFIRMED on Donald's own
+  Ultimate with Pool of Radiance; writing (`UltimateTarget.write`) has not been
+  exercised on the hardware. It speaks the documented REST API (`/v1/machine:readmem`,
   `/v1/machine:writemem`) and is offered only when a device answers at the
   **Ultimate host** named in `File > Preferences…`.
 
@@ -76,7 +77,8 @@ have no usable interface, and a real C64 would need a resident stub or a DMA
 cartridge — a lot of fragility for very few users.
 
 **There is a third now, for a different machine**: an Amiga under WinUAE or a
-patched FS-UAE, in `automap/amiga.py`. It is not offered by the window — see
+patched FS-UAE, in `automap/amiga.py`. The window offers it only behind
+`WISH_EXPERIMENTAL_AMIGA_FSUAE` — see
 "[A third machine: the Amiga](#a-third-machine-the-amiga)" below for what it
 does, what it cost to make the shared code take it, and what is left.
 
@@ -202,9 +204,9 @@ track exploration itself.
 3. Draw the map from `Target`, so it never knows which backend it has.
 4. Add the Ultimate backend, and see whether the interface survives contact with
    a second, slower transport. If it does not, better to learn that at two
-   backends than at five. **Done as far as it can be without hardware**: the
-   interface survived on paper -- `party_fix` needed `read` and nothing else --
-   and the last word belongs to a real device.
+   backends than at five. **Done**: the interface survived on paper --
+   `party_fix` needed `read` and nothing else -- and reads were then confirmed
+   on a real Ultimate (`docs/161-c64-ultimate.md`).
 
 
 ## What was open, and is now built
@@ -390,17 +392,29 @@ the resident check unconditionally on the first indoor fix after it, since
 notice.
 
 Everything else on the tab was unaffected either way -- the roster, the clock
-and the Quest Log keep up, because `poll_live` reads its own blocks. Drawing
-the world itself -- terrain, the world coordinate, which window the party is
-on -- is [113-world-map.md](113-world-map.md), researched and unbuilt, and
-stays `#11 (Draw the wilderness on the automapper)`'s.
+and the Quest Log keep up, because `poll_live` reads its own blocks. The world
+itself -- terrain, the world coordinate, which window the party is on -- is
+drawn on Pool of Radiance's travel grid:
+[113-world-map.md](113-world-map.md) is the research and
+[217-drawing-the-wilderness.md](217-drawing-the-wilderness.md) the build.
 
 ## A third machine: the Amiga
 
-The same six Gold Box titles shipped on the Amiga, and the automapper draws
-one of them now: `automap/amiga.py` is a `Target` over an Amiga emulator's own
-debugger. `docs/143-winuae-debugger.md` is the WinUAE transport, and the ticket is
+The Gold Box titles shipped on the Amiga too, and the automapper has a layout
+row for three of them -- Silver Blades, Curse and Pools of Darkness:
+`automap/amiga.py` is a `Target` over an Amiga emulator's own debugger.
+`docs/143-winuae-debugger.md` is the WinUAE transport, and the ticket is
 `#37 (Automap the Amiga version, not just the C64)`.
+
+**`MACHINES` has one row per title, found by an anchor string.** Each row names
+the executable, a string that occurs in that title's executable and in no
+other, the data-hunk offsets of the party's x, y and facing, and the pointer to
+the resident `GEO` block. Silver Blades stores them as bytes and Curse as
+words. Pools of Darkness' row also carries an overland pointer and flag: while
+the flag is 1 the party is on its 38-by-15 overland, where the square bytes
+keep the last indoor square, so `AmigaTarget.fix` answers a world-map fix and
+the tab is blank rather than showing that stale square. Pool of Radiance has no
+row (below).
 
 **Three transports, one `AmigaTarget`.** The target owns the Amiga's memory map
 and the transport decides how a read reaches it:
@@ -416,13 +430,16 @@ and the transport decides how a read reaches it:
 refuses over it, and it closes its *listening* socket when a client goes, so
 one connection is all a run of the emulator ever gets.
 
-**What was measured on a running machine**, Amiga Silver Blades, 2026-09-08:
+**What was measured on a running machine.** Amiga Silver Blades (2026-09-08):
 the shipped `Automapper.poll()` named the area from the block the game itself
 had loaded, followed a party through a turn and a step, refused to move on a
 step the map says is impassable and the game refused too, and held its fix
 while a shop menu was up. `automap/target.py`, `automap/live.py`,
 `automap/state.py`, `automap/render.py` and `goldbox/geo.py` were untouched by
-any of it.
+any of it. Amiga Pools of Darkness, on a patched FS-UAE: the tab named the area,
+the marker followed the party indoors (1,2 east, then 2,2 east on `GEO21`), and
+the tab went blank on the overland. Curse's row has been checked against its
+executable only, and no Curse machine has been located while running.
 
 ### What the shared code had to learn, and it is one method
 
@@ -448,7 +465,7 @@ is exactly when the pointer may move.
 | `RESIDENT_EVERY`, `PROVEN_FOR`, the 200 ms timer | `automap/state.py`, `automap/window.py` | tuned to a poll costing 14 ms of emulated time |
 | the live party tab | `automap/live.py`, `automap/actions.py` | the C64 save image at `Game.save_load_address`, and writes to C64 addresses |
 | combat, the combat log, the roll reader | `combat.py`, `combatlog.py`, `rolls.py`, `screen.py` | all read the C64 text screen |
-| the map loader | `automap/maps.py` | walks a D64 directory for `GEO*` files |
+| the map loader | `automap/maps.py` | walks a D64 directory for `GEO*` files first, and reads Amiga disk images only when it finds none |
 
 Everything else transferred unchanged: `Fingerprint`, `render`, `notes`,
 `Exploration`, `AutomapState`, `goldbox.geo`, and `ResidentGeo` itself.
@@ -544,6 +561,15 @@ The row is not `disturbs` (a poll measured about 20 ms, served from the running
 machine's frame handler) and polls every 200 ms, like VICE. Its removal
 condition is written beside the flag's name in `wish/backends.py`.
 
+**The same flag decides whether Wish names Pools of Darkness from its Amiga
+disks and offers its folder row.** Pools of Darkness never shipped on the
+Commodore 64, so no C64 container describes it. With the flag on,
+`automap.maps.AMIGA_ONLY_TITLES` (Pools of Darkness) joins the titles
+Preferences has a disk-folder row for, and the map loader names a disk whose
+volume says `POD 3` or `Pools of Darkness` as that title. With the flag off
+neither happens, and a folder holding only Pools of Darkness disks gives no
+maps.
+
 **What the fork needs.** The player runs the game in `grahambates/fs-uae`,
 branch `remote_debugger_barto`, and not in stock FS-UAE, which has no such
 server. The server is started by the fork's `remote_debugger=<seconds>` option, and it
@@ -553,12 +579,16 @@ listening socket when a client disconnects, so restarting Wish means restarting
 the emulator. The setup hint says only "the fork, not stock FS-UAE"; the branch
 name and the options live here.
 
-**The maps come from the C64 disks a player already has, or not at all.**
-`automap/maps.py` does not know about `automap.amiga.load_maps_in`, so a folder
-holding only Amiga disk images gives no maps. The area is named all the same
-where the C64 disks are configured: every Silver Blades map is byte-identical
-across the two ports, and the three Curse maps that differ do so in two bytes,
-inside the 32 that `ResidentGeo` tolerates.
+**The maps come from the C64 disks when there are any, and otherwise from
+loose Amiga disk images.** `automap.maps.load_maps_titled` reads the C64 disks
+first. If it finds none it reads every `.adf` in the folder
+(`_amiga_maps_titled`), naming each disk by its volume name, because an image's
+file name is the player's to change: `GEO.GLB` for Curse, Silver Blades and
+Pools of Darkness, `geo.dax` for Pool of Radiance. A volume that matches no
+title is skipped. An `.adf` inside a `.zip` is not read. Where C64 disks are
+configured, the area is named from them: every Silver Blades map is
+byte-identical across the two ports, and the three Curse maps that differ do so
+in two bytes, inside the 32 that `ResidentGeo` tolerates.
 
 **Pool of Radiance's Amiga build has no row in `MACHINES`.** It is not a
 small-data binary, so the anchor search finds the wrong hunk; what it needs is

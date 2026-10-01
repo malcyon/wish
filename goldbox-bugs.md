@@ -14,10 +14,11 @@ no player would notice, and findings not yet confirmed, are both kept out: they
 are in [`docs/125-bug-notes.md`](docs/125-bug-notes.md), with the longer list of
 things that looked like bugs and turned out to be our own misreadings.
 
-**The ECL bytecode is one artefact shared by every port** -- the Amiga's
-`ecl.dax` unpacks to the Commodore 64's own scripts, load address and all -- so
-a script bug found on the C64 is almost always in the other ports too, and where
-a port fixed one, that is said.
+**The ECL bytecode is nearly one artefact across the ports** -- the Amiga's
+`ecl.dax` unpacks to the DOS scripts (28 of 29 areas byte for byte) and the
+Commodore 64's differ from them in a few bytes each, load address and all -- so
+a script bug found on the C64 is usually in the other ports too, and where a
+port fixed one, that is said.
 
 ---
 
@@ -43,6 +44,7 @@ a port fixed one, that is said.
 | 16 | A DOS magic-user of level 1 to 5 hits one point more easily than the game's own table gives him | Curse of the Azure Bonds, Secret of the Silver Blades | engine | CONFIRMED, in game |
 | 17 | DOS Curse's Mirror Image loses an image only once every sixteen absorbed attacks | Curse of the Azure Bonds | engine | CONFIRMED, from the code |
 | 18 | A human who regains paladin in DOS Curse loses his cure-disease through Silver Blades' import | Curse of the Azure Bonds, Secret of the Silver Blades | engine | CONFIRMED, in game |
+| 19 | A DOS Curse character's saving throws never take a class he has regained | Curse of the Azure Bonds | engine | CONFIRMED, from the code and the engine's own resave |
 
 ---
 
@@ -597,9 +599,9 @@ these two.
 differs in exactly ten bytes over 7677, and two of them are here: `$9A2A` is
 `IF=` rather than `IF<>`, and the jump after it goes to `$9A3C` rather than
 `$9A2F`. With those two the third test becomes live -- an ordinary square is
-checked, a scripted one is not -- and the second becomes an endgame guard. The
-first test still stands in front of both, so on DOS the murder makes camping
-dangerous *everywhere in the slums* rather than making it dangerous at all.
+checked, a scripted one is not -- and the second becomes an endgame guard. On DOS an ordinary slums square is
+therefore checked every two hours, at 24%, whether or not the fortune teller is
+dead, so this is a Commodore 64 bug.
 
 **The evidence.** Both halves. The bytecode is on the player's own disks and
 the two arms are the same statement by inspection. In the running game, under
@@ -610,10 +612,12 @@ clock read either side of every rest as a second witness. With the same party
 in the same square and the flag at 255, the die was rolled on every rest, 13 of
 13 in the tighter of the two runs, and the rest was interrupted in both runs.
 
-**Version.** Pool of Radiance, Commodore 64. The Amiga's `ecl.dax` unpacks to
-the same scripts as the C64's, so it is very likely there too and nobody has
-looked. `docs/207-c64-rest-interruption.md` has the addresses, the sweep of
-which of the thirty areas can interrupt a rest at all, and the measurement.
+**Version.** Pool of Radiance, Commodore 64. The Amiga's `ECL14` is DOS's
+script byte for byte, including the two bytes that make the third test live, so
+an Amiga rest in the slums should be checked as DOS's is; nobody has rested
+there on an Amiga. `docs/207-c64-rest-interruption.md` has the addresses, the
+sweep of which of the thirty areas can interrupt a rest at all, and the
+measurement.
 
 ---
 

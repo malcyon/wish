@@ -257,8 +257,9 @@ A second session the same day closed the first two --
   divides.
 * **The experience clamp lowering a number** was watched six times over,
   4,000 to 125,000, each `levels.clamp_threshold("fighter", n) - 1` exactly.
-* **`TRAINER_MEASURED` still has one entry**, and `docs/192-curse-dual-class.md`
-  lists the three changes still in front of it.
+* **`TRAINER_MEASURED` named only Pool of Radiance when this was written**;
+  Curse and then Silver Blades have since joined it, so it now has three
+  entries (`docs/192-curse-dual-class.md` listed the changes Curse needed).
 
 Also closed there: the four routines that make a dual-classed character
 different, all watched, so `goldbox/levelup.py` no longer refuses one. The

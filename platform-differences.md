@@ -21,7 +21,7 @@ Where a claim could mislead a player it carries a grade: **CONFIRMED** (reproduc
 - **Pool of Radiance.** A magic-user of level 1 to 5 and a thief of level 1 to 4 have THAC0 20 on DOS and the Amiga and THAC0 21 on the Commodore 64, so they hit one point more easily on the first two. Clerics and fighters are the same on all three ([`docs/135-levelling.md`](docs/135-levelling.md), [`docs/182-amiga-por-in-the-running-game.md`](docs/182-amiga-por-in-the-running-game.md)).
 - **Curse and Silver Blades.** The tables differ again. A thief of level 1 to 4 has 20 on DOS and 21 on the Commodore 64. A fighter, paladin or ranger of level 2 has 20 on DOS and 19 on the Commodore 64 (PROBABLE as something a player sees, because the difference is in the tables and no level 2 DOS fighter has been examined). A high-level magic-user has 17 on DOS and 16 on the Commodore 64 (Curse levels 11 and 12, Silver Blades levels 11 to 15).
 - **DOS never lets a character's THAC0 be better than 20.** The game rebuilds it when a character loads and reads a row for every class the character lacks, so a pure magic-user of level 1 to 5 in DOS Curse or DOS Silver Blades has 20 where the game's own table says 21. This is listed as bug 16 in [`goldbox-bugs.md`](goldbox-bugs.md) ([`docs/210-the-later-titles-dos-thac0.md`](docs/210-the-later-titles-dos-thac0.md), [`docs/224`](docs/224-the-dos-thac0-floor.md)).
-- **The Amiga rebuilds THAC0 as well.** Amiga Pool of Radiance and Amiga Curse recompute it when a character loads. Amiga Silver Blades and Pools of Darkness are UNKNOWN ([`docs/182-amiga-por-in-the-running-game.md`](docs/182-amiga-por-in-the-running-game.md), [`docs/210-the-later-titles-dos-thac0.md`](docs/210-the-later-titles-dos-thac0.md)).
+- **The Amiga rebuilds THAC0 as well.** Amiga Pool of Radiance rebuilds the base value when a character loads (a low-level magic-user's 39 became 40). Amiga Curse recomputes the current THAC0 from the readied weapon on load, but a stored base of 39 survived a load and save there; its program's import and training loops write 40. Amiga Silver Blades has the same loops (PROBABLE, read and not watched), and Pools of Darkness is UNKNOWN ([`docs/182-amiga-por-in-the-running-game.md`](docs/182-amiga-por-in-the-running-game.md), [`docs/224-the-dos-thac0-floor.md`](docs/224-the-dos-thac0-floor.md)).
 - **The Commodore 64 recomputes THAC0 at the start of every fight** from the base value, strength and, in Pool of Radiance, the weapon in hand. Until the first fight the sheet may show an older number ([`docs/205-the-c64-thac0-rebuild.md`](docs/205-the-c64-thac0-rebuild.md)).
 - **Strength above 18 is scored on a separate scale on the Commodore 64.** The game indexes strength 19 and over as the score plus 5, up to 30, so strength 21 gives +4 to hit and +9 damage there. The three Commodore 64 games share the routine, and Silver Blades' to-hit table has not been read.
 
@@ -36,7 +36,7 @@ The multiplier is not shown on any sheet. It is worked out from the thief's leve
 | Pools of Darkness, DOS and Amiga | The higher of the current and former thief level, with the multiplier capped at 5 |
 | Every Commodore 64 game | One level less than the thief level, divided by 4, plus 2. Silver Blades caps the level at 14 first |
 
-- **The penalty to hit on a backstab is 2 on the Commodore 64 and on Amiga Pool of Radiance, and 4 in the later DOS and Amiga games.** For DOS Pool of Radiance it is UNKNOWN, because two project documents grade it differently.
+- **The penalty to hit on a backstab is 2 on the Commodore 64 and in Pool of Radiance on DOS and the Amiga, and 4 in the later DOS and Amiga games** (CONFIRMED from the program code, not watched in play).
 - **Nobody has measured backstab damage in play on any version.**
 - **In DOS Pool of Radiance a thief's abilities depend on the thief level and not on the class.** A character with a thief level and a fighter-only class plays as a thief, and the game has no Find Traps command ([`docs/221-thief-abilities-in-dos-pool-of-radiance.md`](docs/221-thief-abilities-in-dos-pool-of-radiance.md)).
 
@@ -118,15 +118,15 @@ The percentages are never drawn on a sheet. A player meets them as locks that op
 
 ## Party, companions and treasure
 
-- **A party is six player characters plus companions,** up to eight members in Pool of Radiance on the Commodore 64, DOS and the Amiga. The later games' limits above six are PROBABLE.
+- **A party is six player characters plus companions,** up to eight members in Pool of Radiance on the Commodore 64, DOS and the Amiga (seven members have been loaded, walked and saved on the Amiga; an eighth there is PROBABLE). The later games' limits above six are PROBABLE.
 - **The Commodore 64 builds its party list from the other end than DOS and the Amiga,** so the same party reads in the opposite order.
 - **A companion's share of the treasure is worked out differently.** DOS, Amiga Pool of Radiance and DOS Curse and Silver Blades give a companion a fraction of each pile. The Commodore 64 rolls once for each monster killed, with a chance that grows with the party's size. The Amiga's later games are unread ([`docs/232`](docs/232-the-c64-control-byte-per-title.md)).
 - **A companion's morale is capped at 100 in the five later Commodore 64 games and not in Pool of Radiance.** Only Pool of Radiance flags a character as having an altered ability.
-- **Names.** Amiga Pool of Radiance deletes every space from a character's name the first time it saves (9 of 9 names with spaces lost them, none of 26 without). A name can be 15 characters on DOS and the Amiga. The Commodore 64 draws lower-case letters in a name as punctuation: "Guy de Valois" shows as garbage. On the Amiga the full stop, asterisk, comma, question mark, slash, colon and semicolon are also deleted from Pool of Radiance names ([`docs/206-three-amiga-questions.md`](docs/206-three-amiga-questions.md), #308 (Does Amiga Pool of Radiance drop the space out of a character's name when it saves?)).
+- **Names.** Amiga Pool of Radiance deletes an ordinary space from a character's name each time it saves, so a name typed into RENAME loses its spaces within a save or two (9 of 9 names with spaces lost them, none of 26 without). A name made with CREATE NEW CHARACTER keeps its spaces, because the game stores a space there as a different byte it never strips. A name can be 15 characters on DOS and the Amiga. The Commodore 64 draws lower-case letters in a name as punctuation: "Guy de Valois" shows as garbage. On the Amiga the full stop, asterisk, comma, question mark, slash, colon and semicolon are also deleted from Pool of Radiance names ([`docs/206-three-amiga-questions.md`](docs/206-three-amiga-questions.md), #308 (Does Amiga Pool of Radiance drop the space out of a character's name when it saves?)).
 
 ## Resting, encounters and fleeing
 
-- **Camping in the Slums.** In Commodore 64 Pool of Radiance a rest in the Slums is never interrupted unless you have murdered the fortune teller (37 two-hour rests rolled no check). On DOS a rest is checked every two hours at a 24% chance, with no murder needed. The Amiga is unchecked ([`docs/207-c64-rest-interruption.md`](docs/207-c64-rest-interruption.md), bug 12 in [`goldbox-bugs.md`](goldbox-bugs.md)).
+- **Camping in the Slums.** In Commodore 64 Pool of Radiance a rest in the Slums is never interrupted unless you have murdered the fortune teller (37 two-hour rests rolled no check). On DOS a rest is checked every two hours at a 24% chance, with no murder needed. The Amiga's Slums script is DOS's byte for byte, so it should behave like DOS, but nobody has rested there on an Amiga (PROBABLE) ([`docs/207-c64-rest-interruption.md`](docs/207-c64-rest-interruption.md), bug 12 in [`goldbox-bugs.md`](goldbox-bugs.md)).
 - **In New Phlan every street rest is interrupted** on the versions checked, and the City Watch asks whether to GO or STAY. Choosing STAY starts a fight.
 - **A scripted event can turn a rest into a fight in Silver Blades,** for example the Black Circle's attack on the town during an eight-hour rest, seen on the Commodore 64.
 - **Fleeing.** All three Commodore 64 games print THE PARTY RUNS AWAY through the same code, and Silver Blades' encounter menu says YOU FLEE where the others say THE PARTY FLEES. Characters left behind are dropped from the party. DOS Curse has the same three cases with the messages "Got Away" and "Escape is blocked". Only Pool of Radiance's has been seen on a screen (#445 (The game's third fight outcome, THE PARTY RUNS AWAY, has never been seen on a screen)).
@@ -156,7 +156,7 @@ The maps are the same grid on every version: 16 squares by 16. A few differ in a
 | Pool of Radiance | A map of squares, moved in eight directions, with a time cost for each step. The world is about 40 by 32 squares. Each version draws it differently (below) |
 | Curse | A full-screen picture of the Dalelands and a menu: ENTER CITY, JOURNEY ON, CAMP and later SEARCH AREA. JOURNEY ON lists the neighbouring places. The mode bar reads TRAIL, WILDERNESS or BY BOAT, and a leg costs days (trail 2, wilderness 4, boat 1). There is no square, facing or compass, and the seventh leg asks the code wheel. CONFIRMED on the Commodore 64, PROBABLE on DOS from the program code, UNKNOWN on the Amiga |
 | Silver Blades | No overland screen was found. Leaving New Verdigris asks YOU ARE LEAVING THE TOWN. DO YOU CONTINUE? and then INSERT SIDE B, and the party appears in an ordinary map (one route, on the Commodore 64) |
-| Pools of Darkness | An overland grid 38 squares wide and 15 high. The party moves one square at a time in any of eight directions with the keypad, with no turning (PROBABLE: read from the Amiga program code, not yet played) |
+| Pools of Darkness | A walkable overland grid 38 squares wide and 15 high. The keypad's 1 to 9 move the party one square at a time in any of eight directions, with no turning, and stepping onto a place such as Mulmaster asks DO YOU ENTER? CONFIRMED on the Amiga, with the grid size read from the program code; the DOS version has not been examined |
 
 Evidence: [`docs/113-world-map.md`](docs/113-world-map.md), [`docs/217-drawing-the-wilderness.md`](docs/217-drawing-the-wilderness.md), [`docs/141`](docs/141-dos-savegame.md).
 
@@ -207,7 +207,7 @@ Pool of Radiance's overland on each version:
 | Bug | Where |
 |---|---|
 | The code wheel cannot answer 1.6% of its questions | Commodore 64 Curse only |
-| Camping in the Slums is safe until the fortune teller is murdered | Commodore 64 Pool of Radiance. DOS behaves differently, and the Amiga is unchecked |
+| Camping in the Slums is safe until the fortune teller is murdered | Commodore 64 Pool of Radiance. DOS behaves differently, and the Amiga's script is DOS's (not watched) |
 | QUICK is never cleared after a fight, the hedge maze's safer squares are as dangerous as the rest, training in the wrong order loses a level, reloading on the road shows undiscovered places | Commodore 64 Pool of Radiance |
 | Every weapon in Tilverton's shop costs three platinum | DOS Curse. The Commodore 64 cannot say |
 | Every thief gets another race's skill adjustments | Commodore 64 Silver Blades |
@@ -226,7 +226,7 @@ Pool of Radiance's overland on each version:
 ## Not yet known
 
 - How DOS and the Amiga draw the Pool of Radiance overland, and what the Amiga uses for terrain.
-- Any overland travel in Pools of Darkness, and any Silver Blades route other than the New Verdigris exit.
+- Pools of Darkness' overland on DOS, and any Silver Blades route other than the New Verdigris exit.
 - The Amiga's rules for Mirror Image, thief skills, the wisdom table, resting in the Slums and the Pools of Darkness THAC0.
 - Whether Amiga Curse, Silver Blades and Pools of Darkness delete spaces from names.
 - What a character created with a portrait looks like on the Amiga Pool of Radiance sheet.

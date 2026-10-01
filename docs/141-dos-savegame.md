@@ -605,9 +605,15 @@ live watches in `run2.log`):
 | `$507A`, `$507B`, `$507C` | 0 in all 11 indoor specimens | nonzero in all 10 outdoor ones — see the variable table |
 
 One overland step costs 12 hours on the clock. The DOS overland has no
-`SQRDATA` files at all — the three windows are ordinary `GEO` blocks 25-27
-in `GEO6`-`GEO8.DAX` plus `SQRPACI.DAX`/`WILDCOM.DAX`, which is presumably
-why `$49C5` has nothing to carry out there.
+`SQRDATA` files at all, and where its three windows are stored is UNKNOWN. They
+are not the `GEO` blocks 25-27 in `GEO6`-`GEO8.DAX` (the C64's `GEO19`, `GEO1A`
+and `GEO1B`): those are 1,024-byte dungeon maps, the wilderness *caves* an
+encounter offers (`docs/113-world-map.md`, `goldbox/areas.py` areas 25-27 name
+both a `GEO` and a `SQRDATA`), and a C64 window is a 648-byte grid and its tile
+glyphs. This section first read the three blocks as the windows, which their
+size and the area table both contradict. The DOS tile files (`BACPAC.DAX`, with
+`SQRPACI.DAX` and `WILDCOM.DAX` beside it) are the candidates; `$49C5` has
+nothing to carry out there either way.
 
 **Outdoors is not the only place the two words part.** A saved game made
 inside the training hall holds `$49C5` = 0 and `$49F2` = 11: area 11 has no

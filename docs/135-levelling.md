@@ -78,10 +78,13 @@ Their DOS mage rows read 21 at levels 1-5, agreeing with their own C64 side,
 so the disagreement above is Pool of Radiance's alone. What they disagree
 about is the thief at 1-4 (DOS 20, C64 21), the fighter group at level 2 (DOS
 20, C64 19) and the mage's third band (DOS 17, C64 16). A low-level mage
-storing 40 in either title is the flat 40 that character creation, a class
-change or the previous title's importer wrote, which no rebuild has run over
--- not a clamp; nothing in any of the three engines compares the field against
-a constant.
+storing 40 in either title is not a clamp -- nothing in any of the three
+engines compares the field against a constant -- and it is not an untouched
+creation value either: the rebuild the engine runs when a party loads walks
+every class slot without testing the level, reads entry 0 of each class the
+character lacks (40), and keeps the best, so no character is ever worse than
+THAC0 20 (`docs/224-the-dos-thac0-floor.md`). This paragraph first said no rebuild had
+run over the 40; the unguarded loop does.
 
 `#318 (DOS gives a low-level magic-user or thief THAC0 20 where the C64 gives
 21, and our table holds only the C64's)` is the question and `#366 (A converted
@@ -286,16 +289,21 @@ confirm — the clamp is what the trainer always does.
 
 ## One title, and it says so
 
-**Levelling is refused for every title but Pool of Radiance**, with the reason
-in the outcome's notes, and the button does not appear on the card at all
-(#16 (Level Up assumes Pool of Radiance, and silently corrupts a Curse character)). `automap.actions.level_up_blockers` takes the title as well as the
+**Levelling is refused for a title whose trainer has not been read**, with the
+reason in the outcome's notes, and the button does not appear on the card at
+all (#16 (Level Up assumes Pool of Radiance, and silently corrupts a Curse character)). `automap.actions.level_up_blockers` takes the title as well as the
 record, and `goldbox.levels.TRAINER_MEASURED` is the list of titles whose trainer
-has been read — one entry.
+has been read: Pool of Radiance, Curse and Silver Blades. A title with no entry
+(DOS Pools of Darkness) is still refused. This section first said "one entry"
+and that every title but Pool of Radiance was refused; Curse joined when its
+trainer was read in its own `GEN` (`docs/172-curse-trainer.md`,
+`docs/192-curse-dual-class.md`) and Silver Blades when a driven training
+reproduced every field, saving throw and spellbook byte
+(`tests/secret_of_the_silver_blades/test_ssbtrainer.py`).
 
-Curse of the Azure Bonds is the case that made this necessary, because it is
-the only one that would have failed *quietly*. Its level tables are in
-`goldbox/levels.py`, so selecting them looks like enough; the other four titles have
-no tables, match no row and produce no button by luck. Selecting Curse's tables
+Curse of the Azure Bonds is the case that made the list necessary, because it
+would have failed *quietly*. Its level tables are in
+`goldbox/levels.py`, so selecting them looks like enough. Selecting Curse's tables
 would still have left every derivation around them running on Pool of
 Radiance's numbers — the hit-die roll at `$2037`, the saving-throw masks at
 `$1F44`, the constitution tables at `$247B`/`$2486`, the spell capacity at
@@ -307,15 +315,10 @@ off `POOL3`, Curse's 9455 off `CURSE_A` — and 8925 of the 9083 common bytes
 differ. Every address in the table at the top of this file holds something else
 in Curse's build. Searching Curse's whole `GEN` for Pool of Radiance's tables
 found two and only two: the hit die 2697 bytes earlier at `$161E`, and the
-thief-skill rows 42 bytes earlier at `$1004`. `goldbox/levels.py`'s own per-title
-table agrees, and the rows it still leaves at `--` for Curse — racial save
-bonus, constitution hit-point bonus, wisdom bonus spells, turning level — are
-precisely the ones a level-up needs.
-
-So what would unblock Curse is not a decision but the same work again in
-Curse's `GEN`: find those four, and the roll and capacity routines, and replay
-measured Curse trainings through them. Until then `TRAINER_MEASURED` has one
-entry and the refusal says which title it is refusing.
+thief-skill rows 42 bytes earlier at `$1004`. What unblocked Curse was the same
+work again in Curse's `GEN`: find the racial save bonus, constitution
+hit-point bonus, wisdom bonus spells and turning level, and the roll and
+capacity routines, and replay measured Curse trainings through them.
 
 ## Curse of the Azure Bonds, table by table
 
@@ -438,7 +441,7 @@ maximum of all **eight** class slots).
 | spell capacity | `ECL65` `$880D` | built in RAM at `$2BB6`, **never stored** |
 | wisdom bonus spells | `ECL65` `$88F6`, table `$8906` | one spell a point, from 13 |
 
-### Where these tables live now, and why Curse is still refused
+### Where these tables live now
 
 **Every table above is in `goldbox/levels.py` and every rule in
 `goldbox/levelup.py`**, as per-title data rather than as a branch: `class_order`
@@ -456,18 +459,13 @@ the eight thief skills for the one thief. Before the shapes were widened, the
 same run got the paladin's hit points 5 low, the ranger's 8 low and the
 fighter/thief's 1 high, and could not name the paladin's class at all.
 
-**`levels.TRAINER_MEASURED` still has one entry, and that is the finding rather
-than an omission.** Everything here was read off a file or reproduced on a
-character; **no Curse training has been driven and watched**. Two of the
-trainer's own steps cannot be settled any other way: `$11AB` divides both the
-hit-die roll and the constitution total by the class count and rounds up *at
-random* against the remainder, so a multi-class Curse level-up has no single
-right answer to compare against. That is this issue's step 3.
-
-`goldbox/levelup.plan` also **refuses a dual-classed character** on any title.
-Four Curse routines change behaviour for a non-zero `0x0BA` and all four have
-been read; not one has been seen happening, because no dual-classed character
-exists on these disks.
+**The tables above were first read off a file and reproduced on characters
+without a driven training**, and a Curse training was then driven and watched:
+`$11AB` divides both the hit-die roll and the constitution total by the class
+count and rounds up *at random* against the remainder, so a multi-class
+level-up has no single right answer to compare against (`docs/172-curse-trainer.md`). `levels.TRAINER_MEASURED` now names
+Pool of Radiance, Curse and Silver Blades, and `goldbox/levelup.plan` no longer
+refuses a dual-classed character (`docs/192-curse-dual-class.md`).
 
 ### The seven rules that are not Pool of Radiance's
 

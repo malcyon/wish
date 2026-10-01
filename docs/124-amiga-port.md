@@ -22,7 +22,12 @@ it is accepted, and its error message belongs to the graphics library, not the
 inventory. Everything else below is still a costing. It exists because the
 four-game run ends on a title the C64 never got: Pool of Radiance, Curse and
 Silver Blades on the C64, then **Pools of Darkness on the Amiga**, which is
-where 1992 actually was. One direction only, C64 → Amiga.
+where 1992 actually was. The plan covered one direction, a C64 party into
+Amiga Pools of Darkness. The editor now converts a party in all six directions
+between C64, DOS and Amiga for Pool of Radiance, Curse and Silver Blades, and
+an Amiga Pools of Darkness party to DOS behind `WISH_EXPERIMENTAL_POD_CONVERT`
+(`editor/convert.py`); Pools of Darkness has no C64 port, so no other
+direction reaches or leaves it.
 
 Everything marked *(read today)* was checked in this tree on 2026-08-21 from
 the disks and the archives on this machine. Everything else carries a
@@ -168,8 +173,8 @@ saves)*:
 | title | DOS character record | items | effects | world save |
 |---|---|---|---|---|
 | Pool of Radiance | `.SAV` **285** | `.ITM`, 63/item | `.SPC`, 9 | `SAVGAM?.DAT` 13137 |
-| Curse of the Azure Bonds | `.SAV` **422** | none — inside the record | `.FX`, 9 | `SAVGAM?.DAT` 13149 |
-| Secret of the Silver Blades | `.SAV` **439** | none — inside the record | `.SFX`, 9 | `SAVGAM?.DAT` 5469 |
+| Curse of the Azure Bonds | `.SAV` **422** | `.SWG`, 63/item | `.FX`, 9 | `SAVGAM?.DAT` 13149 |
+| Secret of the Silver Blades | `.SAV` **439** | `.STF`, 67/item | `.SFX`, 9 | `SAVGAM?.DAT` 5469 |
 | Pools of Darkness | `.SAV` **510** | `.THG`, 63/item | `.EFX`, 9 | `SAVGAM?.PTY` 1364, `VAULT?.DAT` 12 |
 
 So "the Amiga character record" is a per-title object. The 288-byte Amiga
@@ -2305,12 +2310,16 @@ not of the engine.
 
 #### What a player still loses
 
-**A chosen combat icon does not survive a conversion.** No neutral field holds
-one, so an Amiga character who picked his own head comes back with the default
-for his race and class; 13 of the 19 characters on the disks differ from the engine's default in at least one of head, body and colours (4 in the head, 8 in the body, 9 in the colours).
-It was a loss before this as well — to zero — and it is now a loss to a value
-the engine itself would have written. Giving it a neutral home is vocabulary
-work.
+**A chosen combat icon survives a conversion.** The neutral record holds
+`icon_head`, `icon_body` and `icon_colours`, and the Pools of Darkness writer
+passes them through; with no icon in the source the writer takes the engine's
+own default for the character's race and class. 13 of the 19 characters on the
+disks differ from that default in at least one of head, body and colours (4 in
+the head, 8 in the body, 9 in the colours), so the default alone would have lost
+a chosen icon. This section first said no neutral field held one and that the
+icon was lost to the default; the neutral fields were added afterwards, and 0 of 19
+Amiga characters change icon converting to DOS, 0 of 12 DOS characters
+converting to the Amiga.
 
 ### 1.19b The last two zeros, and the routine that fills them both (#475 (The Amiga Pools of Darkness writer leaves 27 decoded fields zero, and one of them may mark a converted character as out of the party))
 

@@ -141,6 +141,13 @@ serious bug with `Priority: High`; it is not a supported conversion outcome.**
   an attempted save, stop before publication and leave the source, destination
   and editor state unchanged. Use the ordinary save-failure path with technical
   details in the debug log; never silently succeed or offer consent to lose data.
+* **One ruled exception: the experience clamp.** A DOS or Amiga character with
+  more than 16,777,215 experience converts to the C64 with 16,777,215 and no
+  notice to the player, only a warning in the debug log; Donald ruled that this
+  is a conversion and not a loss, and `goldbox/c64_codec.py` records it on
+  `report.warnings`, not `losses`, so Save As does not refuse it
+  ([`docs/117-save-conversion.md`](117-save-conversion.md)). The rule above
+  said any known drop blocks the write; this is the case it does not cover.
 * Do not add a discard chooser or relabel an unexplained loss as a platform
   limitation. Investigate it. Proven format constants and values reconstructed
   by the engine remain distinct from lost state, with evidence for that claim.

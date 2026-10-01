@@ -10,7 +10,7 @@ actually backed by — and what it would take to back the rest.
 |---|---|---|
 | Does a test plan for this exist? | **No.** `docs/120` and `docs/121` are *decoding* plans for a second and third title; `docs/122` is packaging. Nothing enumerates the shipped features against a title | CONFIRMED, read |
 | Is `docs/144-decoding-a-new-title.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
-| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 40, Silver Blades 38.** §2 | CONFIRMED, cited per row |
+| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 42, Silver Blades 41.** §2 | CONFIRMED, cited per row |
 | Where is the promise thinnest? | **One cell anybody here can reach is unverified: C13 on Silver Blades, until `livecheck.py` is run against a live Silver Blades machine now that it has badge groups.** Otherwise the four cells left on each later title are C10 and C11, ruled out by G7; D4, which needs hardware nobody here has; and D1, which needs a live machine. The six purses beyond gold, A8, were the answer until 2026-09-08, when `tools/c64/pursecheck.py` drew all seven on both later titles' own sheets; an inventory edit was the answer earlier the same day, the editor's write-back path on Silver Blades the day before, and the live tab the day before that (`docs/212-the-live-tab-per-title.md`) | CONFIRMED, cited per row |
 
 The honest one-line version: **the file path works on three titles, and so
@@ -83,8 +83,8 @@ applicable.
 
 | # | feature | PoR | COAB | SSB | evidence |
 |---|---|---|---|---|---|
-| B1 | read a DOS save | V | — | — | `test_dossave.py`, `test_dosconvert.py`; `docs/117` narrowed the goal to DOS Pool of Radiance, one direction |
-| B2 | convert a DOS save into a C64 one | V | — | — | issue #6 (Convert a DOS save into a C64 save), closed: the converted disk loads and the party walks |
+| B1 | read a DOS save | V | V | V | `test_dossave.py`, `test_dosconvert.py`. `editor/convert.py`'s `DIRECTIONS` registers all three titles in each of the six directions between C64, DOS and Amiga (Pools of Darkness, Amiga to DOS only, sits behind `WISH_EXPERIMENTAL_POD_CONVERT`) |
+| B2 | convert a DOS save into a C64 one | V | V | V | #6 (Convert a DOS save into a C64 save), #192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer refuses today) and #193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer refuses today), closed: each converted disk loads in VICE and the party walks |
 
 ### C. The automapper — needs a live machine
 
@@ -109,7 +109,7 @@ applicable.
 | C17 | store / restore spells | V | V | V | rides C16. **Done on all three (`docs/212-the-live-tab-per-title.md`, 2026-09-08, `tools/gui/livecheck.py`)**: `StoreSpells` saved the list, the span was zeroed first so a matching read-back could not be the store's own copy coming home, and `RestoreSpells` put it back byte for byte. Curse's party carries no memorised spell at all, so one id was staged into the span — neither action goes through the engine, so an id put there from outside is the input a night's rest leaves |
 | C18 | identify items | V | V | V | rides C16; the payload offset comes off `Game.save_load_address` and the gate is measured (#29 (The live reader uses Pool of Radiance's addresses on every title)). **Done on all three (`docs/212-the-live-tab-per-title.md`, 2026-09-08, `tools/gui/livecheck.py`)**, an item's hidden-name bits staged and then cleared by the action, and the byte read again four seconds of emulated time later through `live.read_blocks` — the write stuck on every title, which the action's own docstring said was not certain |
 | C19 | clear quickfight, and the watcher | V | V | V | rides C16 and C14; `actions.quickfight_flag(game)` builds the address from `C64Machine.roster_base` and read `$670C` on both live machines -- `test_actions.py::test_the_quickfight_flag_follows_the_roster_page`. **A staged bit was cleared by the button on all three (`docs/212-the-live-tab-per-title.md`, 2026-09-08, `tools/gui/livecheck.py`)**. The *watcher* -- `QuickfightWatcher.poll` firing on the edge -- is still untried on any title |
-| C20 | **Level Up** | V | V | **R** | **This row said `R` for Curse and that stopped being true when #18 (Measure Curse's trainer so Level Up works there) closed**: `goldbox.levels.trainer_measured` answers True for Curse now and `test_debugmode.py` asserts `curse.roster.levelling`, so the button is built and offered there. Silver Blades still refuses, and the refusal was **measured rather than assumed** (`docs/212-the-live-tab-per-title.md`, 2026-09-08, `tools/gui/livecheck.py`): the action answers *legal*, because `Action.legality` only asks the loader's mode flag, and what refuses is `level_up_blockers` inside `run` -- so the check ran it and read back `levelling MORGAINE would write fields we cannot derive, so it writes nothing`, 0 writes. `test_levels.py::test_only_pool_of_radiances_trainer_has_been_measured` is stale in its name rather than its content. Closed for Curse by #16 (Level Up assumes Pool of Radiance, and silently corrupts a Curse character) and #18 (Measure Curse's trainer so Level Up works there) |
+| C20 | **Level Up** | V | V | V | **This row said `R` for Curse and then for Silver Blades; both stopped being true.** `goldbox.levels.trainer_measured` answers True for all three titles (`levels.TRAINER_MEASURED`), so the button is built and offered. Curse joined when #18 (Measure Curse's trainer so Level Up works there) closed and `test_debugmode.py` asserts `curse.roster.levelling`; Silver Blades joined when #89 (Silver Blades' trainer grants spells from a table, and goldbox/levelup.py offers them from a menu) reproduced a driven training field for field (`tests/secret_of_the_silver_blades/test_ssbtrainer.py::test_silver_blades_is_now_in_trainer_measured`). The 2026-09-08 live check (`docs/212-the-live-tab-per-title.md`) saw Silver Blades refuse, which was right then (`level_up_blockers` returned the trainer-not-measured reason and wrote nothing) and has not been re-taken since it was added. Closed for Curse by #16 (Level Up assumes Pool of Radiance, and silently corrupts a Curse character) and #18 (Measure Curse's trainer so Level Up works there) |
 | C21 | **Fast Travel** and Travel Back | V | V | V | **This row said `R` for both later titles and no longer holds.** `fasttravel_bar.has_areas` is true for all three now -- #19 (Can Curse be fast-travelled at all, or is the mechanism Pool of Radiance's alone?) and #20 (Build an area table for Silver Blades) built the tables, and `test_debugmode.py:1145` asserts it for Curse. **Watched on all three (`docs/212-the-live-tab-per-title.md`, 2026-09-08, `tools/gui/livecheck.py`)**: `FastTravel.apply` carried a party across a boundary in each, and C6 is the reading either side. Travel Back itself is still untried on any title. Closed by #14 (Fast Travel offers Pool of Radiance's areas in a Curse session) |
 | C22 | the *running* title is **checked against** the machine | V | V | V | issue #21 (The running game is guessed from a preference, so both title safeguards can fail open), closed. `ResidentGeo.verdict` asks whether the block at `$0400` is one of the believed title's own maps; a Gold Box map that is none of them takes Level up, Fast Travel and every live-action button off and says so. `tests/wish/test_wronggame.py` — the thresholds are re-measured off the player's own disks, and C2 is what makes the ingredient V on all three |
 
@@ -120,7 +120,7 @@ applicable.
 | D1 | Preferences: disks folder, and the report of what was found | V | **U** | **U** | `#22 (A disk folder setting per game, not one shared by all six)`: Curse and Silver Blades each have their own folder row now, on the Game disks tab, and the report reuses the shared box's own wording -- built and tested in `tests/wish/test_preferences.py`, not yet exercised against a live machine on either title, which is what keeps this U. The shared box itself is gone: `#357 (The automapper reads the shared Game disks folder, so setting a title's own folder does not make it map that title)` removed it, since it could still answer for the wrong title with no save open |
 | D2 | Preferences: the Fast Travel tick table | V | — | — | built straight off `goldbox/areas.py:AREAS`, which is PoR's alone |
 | D3 | backend selection, VICE | V | V | V | title-independent; exercised by every live test |
-| D4 | backend, Commodore 64 Ultimate | **U** | **U** | **U** | `wish/ultimate.py` — "UNVERIFIED. Nobody on this project has the hardware", and `Backend.verified` is False |
+| D4 | backend, Commodore 64 Ultimate | **U** | **U** | **U** | `wish/ultimate.py`: connecting and reading are CONFIRMED on Donald's own Ultimate with Pool of Radiance (`Backend.verified` is True, `docs/161-c64-ultimate.md`); `UltimateTarget.write` (Heal Party, fast travel) and the `X-Password` header have not been exercised, and nobody has run Curse or Silver Blades on it, so the cell stays `U` |
 | D5 | debug log and debug mode | V | V | V | title-independent — `test_debuglog.py`, `test_debugmode.py` |
 
 ### Headline
@@ -128,8 +128,8 @@ applicable.
 | | features | V | R | U | X | — |
 |---|---|---|---|---|---|---|
 | Pool of Radiance | 49 | **48** | 0 | 1 | 0 | 0 |
-| Curse of the Azure Bonds | 49 | **40** | 0 | 4 | 0 | 5 |
-| Secret of the Silver Blades | 49 | **38** | 1 | 5 | 0 | 5 |
+| Curse of the Azure Bonds | 49 | **42** | 0 | 4 | 0 | 3 |
+| Secret of the Silver Blades | 49 | **41** | 0 | 5 | 0 | 3 |
 
 **These numbers are counted from the rows above and the previous ones were
 not.** Counting the two `U, expected broken` cells under C10 and C11 as `U`,
@@ -149,7 +149,7 @@ C21 for both, with nobody returning to these rows.
 
 **What is left is four cells for Curse and five for Silver Blades.** Both
 have C10 and C11 (the combat view and log, ruled out by G7), D1 (Preferences
-against a live machine) and D4 (the Ultimate backend, which nobody can test),
+against a live machine) and D4 (the Ultimate backend, whose writes and later titles have not been run on the hardware),
 none reachable from this machine. Silver Blades' fifth is C13, the badge cell,
 which waits on a `livecheck.py` run against a live Silver Blades machine.
 
@@ -200,7 +200,7 @@ of Radiance's, so the character sheet named four of its six races' abilities
 wrongly all along and nobody had looked. #186 (The character sheet gives a Silver Blades elf a Pool of Radiance ability) closed it with a table per title,
 and the three codes nobody has read show their number rather than another
 title's sentence. Curse has none. Pool of Radiance's one `U` is the Ultimate
-backend, which nobody can test.
+backend, whose reads are confirmed on hardware and whose writes have not been run.
 
 **C22 was never what made the live actions safe.** It covers the case the
 window has the title *wrong* -- a machine running a game the disks folder does
@@ -269,10 +269,10 @@ was read and written into the matrix rows above during #31 (Cold-read Curse and 
 saving-throw rule reproduces all six shipped characters; what was missing was
 a `LevelTables` for the title in `goldbox/levels.py`, which #187 (Silver Blades characters are shown Pool of Radiance's level progression) built --
 `SECRET_OF_THE_SILVER_BLADES`, checked row by row against `GEN` in
-`tests/c64/test_coldread.py` and `tests/secret_of_the_silver_blades/test_ssblevels.py`. Its trainer stays
-unread (thief-skill racial adjustment, constitution hit-point bonus, wisdom
-bonus spells, turning table), so `levels.trainer_measured` and
-`goldbox/levelup.py:plan` still refuse it.
+`tests/c64/test_coldread.py` and `tests/secret_of_the_silver_blades/test_ssblevels.py`. Its trainer was
+unread when this was written (thief-skill racial adjustment, constitution hit-point bonus, wisdom
+bonus spells, turning table) and `levels.trainer_measured` refused it; a driven
+training has since reproduced every field, so it is in `levels.TRAINER_MEASURED`.
 
 ### G2 — thread the save geometry into the live reader · code, no emulator
 
@@ -420,7 +420,7 @@ show nothing rather than garbage on the others, the way Fast Travel now does.
 | C21 for SSB, an area table | #20 (Build an area table for Silver Blades) |
 | C21 for Curse, whether the mechanism exists at all | #19 (Can Curse be fast-travelled at all, or is the mechanism Pool of Radiance's alone?) |
 | D1, a disks folder per title | #22 (A disk folder setting per game, not one shared by all six) |
-| D4, the Ultimate backend | needs hardware nobody here has |
+| D4, the Ultimate backend | needs a run of its writes (`UltimateTarget.write`) and of Curse and Silver Blades on Donald's Ultimate |
 
 ## 4. What this document is not
 

@@ -96,7 +96,7 @@ predicted table had to be corrected.
 
 | field | DOS | C64 | |
 |---|---|---|---|
-| name | `0x000` length byte, then 15 | `0x000`, 20 bytes, NUL-padded | CONFIRMED |
+| name | `0x000` length byte, then 15 | `0x000`, 18 bytes, NUL-padded (`0x012` and `0x013` are a paladin's cure and lay-on-hands counts) | CONFIRMED |
 | strength | `0x010` | `0x014` | CONFIRMED |
 | intelligence | `0x011` | `0x015` | CONFIRMED |
 | exceptional strength | `0x016` | `0x01A` | CONFIRMED |
@@ -119,8 +119,8 @@ predicted table had to be corrected.
 | alignment | `0x0A0` | `0x0D8` | PROBABLE — the C64's nine-entry table, fixed by the runs either side |
 | the whole combat tail | `0x110`-`0x11C` | `0x10E`-`0x11B` | PROBABLE — THAC0, armour class, the armour bonus and the eight running attack-form bytes, **one for one at −2**, hit points widening by a byte at the end |
 
-The early fields differ by **exactly four**, which is exactly how much wider the
-C64's name field is — the abilities are otherwise in the same order. Past that
+The early fields differ by **exactly four**, which is exactly how much more the
+C64 puts before the abilities (an 18-byte name and the paladin's two use counts, 20 bytes to DOS's 16) — the abilities are otherwise in the same order. (The name was first read as 20 bytes; a rename then wiped the two paladin counts in its last two bytes, so the layout now gives the name 18.) Past that
 the layouts diverge properly; from THAC0 base onwards the gap is `0x44`.
 
 **Three places where they diverge in kind, not merely in offset.** These are
@@ -283,7 +283,7 @@ at three displacements:
 
 | zone | DOS Curse → C64 | why it shifts |
 |---|---|---|
-| name and abilities | +4 on the early fields | the C64 name field is 20 bytes to DOS's 16 |
+| name and abilities | +4 on the early fields | the C64 has 20 bytes before the abilities (an 18-byte name, then the paladin's two use counts) to DOS's 16 |
 | THAC0 `0x73` → `0x071`, race `0x74` → `0x072`, class `0x75` → `0x073`, age `0x76` → `0x074`, hit points `0x78` → `0x076` | **−0x02** | |
 | attack level `0xDD` → `0x098`, saving throws `0xDF` → `0x09A`, movement `0xE4` → `0x09F`, thief skills `0xEA` → `0x0A5` | **−0x45** | **the spellbook**: DOS spends one byte per spell (56 in Pool, 100 in Curse), the C64 one *bit* — 7 bytes at `0x078` |
 | money `0xFB` → `0x0BB`, per-class levels `0x109` → `0x0C9`, class flags `0x12B` → `0x0EB` | **−0x40** | the C64 gains five bytes: DOS spends 9 bytes on a 4-byte far pointer to the affect list plus five flag bytes (`0xF2`–`0xFA`), the C64 spends 14 (`0x0AD`–`0x0BA`) holding the item effects **inline** |
@@ -328,7 +328,7 @@ Steam redirects that directory to `SavesDir/<steamid>/<appid>/English/`.
 |---|---|
 | `CHRDAT<slot><1..6>.SAV` | one character of the saved party. **285 bytes** |
 | `<NAME>.CHA` | one *exported* character. **The same 285 bytes, same layout** — the export is the slot copied out, not a reduced form. The only systematic difference is that the item count at `0x0C7` is zeroed |
-| `<stem>.ITM` | that character's items, **63 bytes each**, no header. **The suffix is per title and so is the stride** (#113 (Play DOS Curse far enough to save a party with items)): Curse writes `.SWG` and Silver Blades `.STF` at **67** bytes, measured on a played game — 804 bytes for 12 items, which 63 does not divide. Until that was found, `read_character` returned an item *count* with an **empty item list** and no error for both titles |
+| `<stem>.ITM` | that character's items, **63 bytes each**, no header. **The suffix is per title and so is the stride** (#113 (Play DOS Curse far enough to save a party with items)): Curse writes `.SWG` at 63 bytes each and Silver Blades `.STF` at **67** (`DosDeltas.item_size`), measured on played games — Silver Blades 804 bytes for 12 items, which 63 does not divide. Until the suffixes were found, `read_character` returned an item *count* with an **empty item list** and no error for both titles |
 | `<stem>.SPC` | that character's active effects, **9 bytes each**; absent when there are none. One effect id, four payload bytes and a four-byte far pointer to the next record, which the loader rebuilds -- see "The `.SPC` effects file" |
 | `CHARLIST.TXT` | the names the "add character" menu offers. Plain text, CRLF |
 | `SAVGAM<slot>.DAT` | the saved game. **13137 bytes** — one header byte, then the engine's variable space as `u16le`; see obstacle 1. The header byte is the `GEO`/`ECL` `.DAX` file number of the current area, 1–8; see obstacle 2 |
@@ -716,7 +716,7 @@ Silver Blades four at `0x12C` and Pools of Darkness four at `0x172`. It is the o
 side than on the C64 one, so it is the only one where a legal source value
 can have nowhere to go. **`goldbox.c64_codec.write` clamps it**: a total above
 16,777,215 is written as 16,777,215, the largest value three bytes hold, and
-`report.dropped` gets one line saying the experience was clamped and from
+`report.warnings` (not `dropped` or `losses`) gets one line saying the experience was clamped and from
 what (`experience: DOS holds 16777216, which does not fit the C64's 3 bytes;
 written as 16777215, the most they hold`). The character converts rather than
 being refused, which is Donald's decision: a refusal leaves the player with no
@@ -726,10 +726,11 @@ boundary is exact, `0xFFFFFF` kept and `0x1000000` and `0x7FFFFFFF` clamped to
 it, on an engine-written Curse record and an engine-written Silver Blades one
 and on blank records of both titles (`tests/records/test_xpceiling.py`).
 
-The line goes to the debug log and nowhere a player reads: `editor/convert.py`
-merges each character's `dropped` list and `editor/dosimport.pane_text` logs
-it and discards it. Whether the player is told anything is not settled here.
-The clamp lives in the one shared writer, so an Amiga source reaches it the
+The line goes to the debug log and nowhere a player reads (`editor/saveplan.py`
+and `editor/dosimport.py` log `report.warnings`). Donald ruled that the player
+is told nothing. It is a warning and not a loss because a loss makes Save As
+refuse the whole party, which he ruled against; the first version put the line
+on `dropped`, and Save As then refused a clamped character. The clamp lives in the one shared writer, so an Amiga source reaches it the
 same way; the Amiga destinations keep experience in four bytes and need none.
 
 **The engines accumulate experience 32 bits wide. CONFIRMED** from each
