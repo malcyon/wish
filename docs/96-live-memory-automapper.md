@@ -612,9 +612,17 @@ configured, the area is named from them: every Silver Blades map is
 byte-identical across the two ports, and the three Curse maps that differ do so
 in two bytes, inside the 32 that `ResidentGeo` tolerates.
 
-**Pool of Radiance's Amiga build has no row in `MACHINES`.** It is not a
-small-data binary, so the anchor search finds the wrong hunk; what it needs is
-hunk 32's own load address (`docs/165-amiga-savegame.md`).
+**Pool of Radiance's Amiga build has a row with `segments`.** It is not a
+small-data binary: the anchor (the weapon-name table) is in hunk 31 and the
+party's globals are in hunk 32, a BSS hunk. `data_base_for` reads the anchor's
+allocation length (`size + 8` at `base - 8`) and the BPTR at `base - 4`, hops
+to hunk 32 and checks that hunk's length the same way; a disagreement is a
+`GuestError`. On the travel grid the view byte (`h32+0xC1`, 2 to 4) names the
+window and must agree with the area byte (`h32+0x2F73`, 25 to 27); the block's
+own area word lags a crossing by one and is never read. The square is the
+window-local x and y in the block `[h32+0x98]`, valid only while that block's
+indoors word is 0, and the heading is the facing byte, already 0 to 7.
+`docs/165-amiga-savegame.md` has the hunk layout.
 
 **No area transition has been watched.** The party stayed in one area, so
 nothing here says whether the `GEO` pointer moves on an area change or the

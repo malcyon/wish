@@ -92,7 +92,7 @@ from dataclasses import dataclass, field
 
 from goldbox.geo import GEO_SIZE, Geo
 
-from .target import Fix, NotConnected
+from .target import WINDOW_H, WINDOW_W, Fix, NotConnected
 
 #: A child of the `wish` logger, like every other module here.
 _log = logging.getLogger("wish.automap.amiga")
@@ -122,6 +122,43 @@ MEMORY = (SLOW, CHIP)
 #: file either has the bytes or it does not. This is what a *failed* command
 #: looks like, and it is worth telling apart from a silent one.
 RE_UNKNOWN = re.compile(r"Unknown command", re.I)
+
+
+@dataclass(frozen=True)
+class Segments:
+    """A title whose anchor and data are in different hunks of a many-hunk
+    executable, so there is no single base to find.
+
+    `LoadSeg` stores each hunk's allocation length at `base - 8` and the BPTR
+    of the next hunk at `base - 4`; both are measured to be the declared size
+    plus 8, which is what `data_base_for` checks before it trusts a hop.
+    """
+
+    anchor_hunk: int
+    data_hunk: int
+    anchor_size: int
+    data_size: int
+
+
+@dataclass(frozen=True)
+class TravelGrid:
+    """Where a title keeps the state of its outdoor travel grid, as offsets
+    into the data hunk (`block_pointer` is a pointer to a block, and `x`, `y`
+    and `indoors` are `u16be` offsets into that block).
+
+    `views[i]` is the view byte of window `i` (0 west, 1 middle, 2 east) and
+    `areas[i]` the area byte for it. The block's own area word lags a crossing
+    by one, so nothing reads it.
+    """
+
+    view: int
+    views: tuple[int, ...]
+    area: int
+    areas: tuple[int, ...]
+    block_pointer: int
+    x: int
+    y: int
+    indoors: int
 
 
 @dataclass(frozen=True)
@@ -161,21 +198,21 @@ class AmigaMachine:
     #: step routine at `0x2C9BA` keeps its cell at +0x25/+0x26 instead).
     overland_pointer: int | None = None
     overland_flag: int = 0x24
+    #: Pool of Radiance only: the anchor is in one hunk and the data in another.
+    segments: Segments | None = None
+    #: Pool of Radiance only: the square-engine travel grid.
+    travel_grid: TravelGrid | None = None
     #: Anything else measured for this title, so a finding has somewhere to
     #: land that is not a new field nobody else uses.
     notes: dict[str, int] = field(default_factory=dict)
 
 
-#: The titles whose offsets have been read out of their executables: Silver
-#: Blades, Curse and Pools of Darkness.
+#: The titles whose offsets have been read out of their executables.
 #:
-#: **Pool of Radiance is deliberately absent.** Its Amiga build is not a
-#: small-data one: `docs/165-amiga-savegame.md` puts its party struct at
-#: `h32+0x176f`, an offset into hunk 32 of a many-hunk executable with absolute
-#: relocations, so there is no single base to find and the anchor trick above
-#: locates the wrong hunk. Adding it needs the hunk's own load address, which
-#: is a different measurement -- see `#37 (Automap the Amiga version, not
-#: just the C64)`.
+#: Pool of Radiance is not a small-data build: its party struct is at
+#: `h32+0x176f`, an offset into hunk 32 of a many-hunk executable, while its
+#: anchor is in hunk 31. Its row says so with `segments`, and `data_base_for`
+#: hops from the anchor's hunk to the data hunk.
 MACHINES: dict[str, AmigaMachine] = {
     # `blades.cfg` is the string `docs/143` §5.2 already used to find `a4` in
     # this title, so the anchor is the one with a run behind it.
@@ -237,6 +274,27 @@ MACHINES: dict[str, AmigaMachine] = {
         notes={"wall_ahead": 0x5F23, "square_attribute": 0x5F24,
                "mode": 0x5B12, "previous_mode": 0x743C,
                "dungeon_map": 0x5F2C},
+    ),
+    # The weapon-name table in hunk 31. The block's own area word at `+0x1E4`
+    # lags one crossing behind the area byte and must not be read. The facing
+    # is already even on the grid and travel is four-way, so the heading is
+    # the byte itself.
+    "pool-of-radiance": AmigaMachine(
+        title="Pool of Radiance",
+        executable="/program",
+        anchor=b"Bec De Corbin" + bytes(8) + b"Bill-Guisarme",
+        anchor_offset=0x3D7,
+        party_x=0x176F,
+        party_y=0x1770,
+        party_facing=0x1771,
+        width=1,
+        geo_pointer=0x171E,
+        segments=Segments(anchor_hunk=31, data_hunk=32,
+                          anchor_size=0x351C, data_size=0x2F84),
+        travel_grid=TravelGrid(view=0xC1, views=(2, 3, 4), area=0x2F73,
+                               areas=(25, 26, 27), block_pointer=0x98,
+                               x=0x186, y=0x188, indoors=0x1CC),
+        notes={"wall_ahead": 0x1772, "square_attribute": 0x1773},
     ),
 }
 
@@ -1707,6 +1765,50 @@ def locate_machines(read, machines, memory=MEMORY,
     return {title: sorted(set(bases)) for title, bases in found.items()}
 
 
+def _long(read, addr: int) -> int:
+    return int.from_bytes(read(addr, 4), "big")
+
+
+def _in_memory(addr: int, length: int = 1) -> bool:
+    return any(base <= addr and addr + length <= base + size
+               for base, size in MEMORY)
+
+
+def data_base_for(read, machine: AmigaMachine, anchor_base: int) -> int:
+    """The load address of the hunk the offsets are into.
+
+    `anchor_base` unchanged, with no read, for a title without `segments`.
+    Otherwise walk the BPTR links `LoadSeg` stores before each hunk from the
+    anchor's hunk to the data hunk, checking at both ends that the allocation
+    length stored before the hunk is the declared size plus 8. A zero link, a
+    link outside memory or a disagreeing guard raises `GuestError` naming what
+    was expected and found, because a wrong hop would read another hunk's bytes
+    as the party.
+    """
+    seg = machine.segments
+    if seg is None:
+        return anchor_base
+    _check_guard(read, anchor_base, seg.anchor_size, machine)
+    base = anchor_base
+    for _ in range(seg.data_hunk - seg.anchor_hunk):
+        link = _long(read, base - 4)
+        if link == 0 or not _in_memory(4 * link + 4):
+            raise GuestError(
+                f"the link before {base:#x} holds {link:#x}, which is not "
+                f"the next hunk of {machine.title}")
+        base = 4 * link + 4
+    _check_guard(read, base, seg.data_size, machine)
+    return base
+
+
+def _check_guard(read, base: int, size: int, machine: AmigaMachine) -> None:
+    found = _long(read, base - 8)
+    if found != size + 8:
+        raise GuestError(
+            f"the allocation length before {base:#x} is {found:#x}, expected "
+            f"{size + 8:#x} for {machine.title}")
+
+
 # -- the maps, off the player's own disk --------------------------------------
 #
 # The C64 keeps one `GEO<id>` file per area in the disk's own directory, so
@@ -1873,15 +1975,21 @@ class AmigaTarget:
     c64_memory = False
 
     def __init__(self, debugger, layout: AmigaMachine,
-                 data_base: int | None = None):
+                 data_base: int | None = None,
+                 anchor_base: int | None = None):
         self.debugger = debugger
         self.layout = layout
         self.data_base = data_base
+        #: Where the anchor was found. For a title without `segments` this is
+        #: also the data hunk.
+        self.anchor_base = anchor_base
         self._open = True
         # `getattr` rather than the attribute, because a test's fake transport
         # predates it and "assume it halts" is the answer that costs nothing
         # but time.
         self.halts_on_read = getattr(debugger, "halts_machine", True)
+        if anchor_base is not None:
+            self.data_base = data_base_for(self.read, layout, anchor_base)
 
     # -- Target ----------------------------------------------------------
 
@@ -2037,7 +2145,9 @@ class AmigaTarget:
                 + ", ".join(f"{b:#x}" for b in bases)
                 + " -- pick the base with a second known constant rather than "
                   "taking the first")
-        self.data_base = bases[0]
+        self.anchor_base = bases[0]
+        self.data_base = data_base_for(self.read, self.layout,
+                                       self.anchor_base)
         _log.info("%s: data hunk at %#x, a4 = %#x", self.layout.title,
                   self.data_base, self.data_base + 0x7FFE)
         return self.data_base
@@ -2081,6 +2191,11 @@ class AmigaTarget:
         """
         if self._on_overland():
             return Fix(0, 0, None, "memory", None, world_map=True)
+        grid = self.layout.travel_grid
+        if grid is not None:
+            view = self.read(self._at(grid.view), 1)[0]
+            if view in grid.views:
+                return self._travel_fix(grid, view)
         span = self.layout.width
         lo = min(self.layout.party_x, self.layout.party_y,
                  self.layout.party_facing)
@@ -2104,6 +2219,36 @@ class AmigaTarget:
             _log.debug("square %d,%d is off the 16x16 grid", x, y)
             return None
         return Fix(x, y, doubled // 2, "memory")
+
+    def _travel_fix(self, grid: TravelGrid, view: int) -> Fix | None:
+        """The fix on the travel grid, or None while the engine's bytes
+        disagree.
+
+        None while the indoors word is set (the stale indoor square would be
+        recorded on whatever map is loaded) and while the area byte is not the
+        one the view byte implies (the interval between the script's area
+        change and the area-entry routine). The block's own area word is never
+        read: it lags a crossing.
+        """
+        window = grid.views.index(view)
+        pointer = int.from_bytes(
+            self.read(self._at(grid.block_pointer), 4), "big")
+        span = grid.indoors + 2 - grid.x
+        if pointer == 0 or not _in_memory(pointer + grid.x, span):
+            return None
+        blob = self.read(pointer + grid.x, span)
+        if int.from_bytes(blob[grid.indoors - grid.x:], "big") != 0:
+            return None
+        area = self.read(self._at(grid.area), 1)[0]
+        if area not in grid.areas or grid.areas.index(area) != window:
+            return None
+        x = int.from_bytes(blob[:2], "big")
+        y = int.from_bytes(blob[grid.y - grid.x:grid.y - grid.x + 2], "big")
+        if not (0 <= x < WINDOW_W and 0 <= y < WINDOW_H):
+            return None
+        facing = self.read(self._at(self.layout.party_facing), 1)[0]
+        return Fix(x, y, None, "memory", None, outdoors=True, window=window,
+                   heading=facing if facing < 8 else None)
 
     def _on_overland(self) -> bool:
         """True when the title's overland flag is 1; a bad pointer is False."""

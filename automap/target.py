@@ -148,6 +148,12 @@ class Fix:
     #: later route diagram to highlight.
     world_node: int | None = None
     world_leg: int | None = None
+    #: Only with `outdoors`: the resident wilderness window (0 west, 1 middle,
+    #: 2 east) and the travel heading (0-7), for a backend that reads them
+    #: itself and so needs neither C64 read in `Automapper`. The C64 never
+    #: sets them.
+    window: int | None = None
+    heading: int | None = None
 
     @property
     def square(self) -> tuple[int, int]:

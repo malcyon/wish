@@ -245,14 +245,6 @@ def test_a_geo_pointer_outside_this_machines_memory_is_refused():
 # -- the table ----------------------------------------------------------------
 
 
-def test_pool_of_radiance_has_no_row_and_that_is_deliberate():
-    """Its Amiga build is not a small-data one, so the anchor trick locates
-    the wrong hunk. A title with no row is refused, never given another
-    title's numbers -- the rule `automap.c64.C64Machine.live_position`
-    follows."""
-    assert "pool-of-radiance" not in amiga.MACHINES
-
-
 @pytest.mark.parametrize("key", sorted(amiga.MACHINES))
 def test_every_layout_names_a_width_the_reader_can_use(key):
     layout = amiga.MACHINES[key]
@@ -273,7 +265,8 @@ def test_every_layout_names_a_width_the_reader_can_use(key):
 #: the same match `tests/amiga/test_amiganodefields.py` makes.
 DISK = {"secret-of-the-silver-blades": "silver",
         "curse-of-the-azure-bonds": "curse",
-        "pools-of-darkness": "darkness"}
+        "pools-of-darkness": "darkness",
+        "pool-of-radiance": "radiance"}
 
 
 def _named(key: str, label: str) -> bool:
@@ -353,6 +346,27 @@ def test_a_wrong_anchor_offset_is_what_verify_is_for(key, tmp_path):
                                      anchor_offset=layout.anchor_offset + 1),
                              _adf(key, tmp_path))
     assert bad and "not" in bad[0]
+
+
+def test_a_many_hunk_row_is_checked_against_each_of_its_claims(tmp_path):
+    """Each claim of the Pool of Radiance row fails on its own, with its own
+    message, so the check above is not passing for an unrelated reason."""
+    from dataclasses import replace
+
+    from tools.amiga import amigatarget
+    layout = amiga.MACHINES["pool-of-radiance"]
+    image = _adf("pool-of-radiance", tmp_path)
+    assert amigatarget.verify(layout, image) == []
+    wrong = {
+        "allocates": replace(layout, segments=replace(
+            layout.segments, data_size=layout.segments.data_size + 4)),
+        "in the file, not": replace(layout, anchor_offset=0x3D8),
+        "relocates": replace(layout, geo_pointer=layout.geo_pointer + 2),
+        "outside": replace(layout, party_x=0x3000),
+    }
+    for needle, row in wrong.items():
+        bad = amigatarget.verify(row, image)
+        assert any(needle in line for line in bad), (needle, bad)
 
 
 # -- the map the running game is drawing --------------------------------------
@@ -562,6 +576,31 @@ def _geo_pointers_by_usage(exe_bytes: bytes) -> set[int]:
     return {g for g, adds in added.items() if {0x100, 0x200} <= adds}
 
 
+def _absolute_geo_pointers_by_usage(exe_bytes: bytes, data_hunk: int) -> set[int]:
+    """The many-hunk variant: `movea.l $X.l,aN` whose operand is relocated into
+    the data hunk, with `#$100` and `#$200` added to a register within the next
+    ten instructions."""
+    import re
+
+    from tools.amiga.amiga68k import Executable, disassemble
+    pytest.importorskip("capstone")
+    exe = Executable.parse(exe_bytes)
+    added: dict[int, set[int]] = {}
+    for (number, at), into in exe.relocs.items():
+        hunk = exe.by_number(number)
+        if into != data_hunk or hunk.kind != "CODE":
+            continue
+        field = hunk.file_offset + at
+        if exe.data[field - 2:field] not in {
+                bytes([0x20 | n << 1, 0x79]) for n in range(7)}:
+            continue
+        value = int.from_bytes(exe.data[field:field + 4], "big")
+        for line in disassemble(exe, field - 2, field + 40):
+            for m in re.finditer(r"#\$(100|200)\b", line):
+                added.setdefault(value, set()).add(int(m.group(1), 16))
+    return {g for g, adds in added.items() if {0x100, 0x200} <= adds}
+
+
 @pytest.mark.parametrize("key", sorted(amiga.MACHINES))
 def test_the_geo_pointer_is_the_global_the_code_offsets_by_the_planes(key, tmp_path):
     """`verify` never checks what a pointer points at. The engine indexes the
@@ -571,7 +610,11 @@ def test_the_geo_pointer_is_the_global_the_code_offsets_by_the_planes(key, tmp_p
     layout = amiga.MACHINES[key]
     image = _adf(key, tmp_path)
     exe = AmigaDisk.open(image).read_file(layout.executable)
-    assert _geo_pointers_by_usage(exe) == {layout.geo_pointer}
+    if layout.segments is None:
+        assert _geo_pointers_by_usage(exe) == {layout.geo_pointer}
+    else:
+        assert _absolute_geo_pointers_by_usage(
+            exe, layout.segments.data_hunk) == {layout.geo_pointer}
 
 
 @pytest.mark.parametrize("key", sorted(amiga.MACHINES))
