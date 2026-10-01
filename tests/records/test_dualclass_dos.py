@@ -142,7 +142,7 @@ def test_former_level_has_a_disposition_in_the_amiga_reader():
         assert "former_class_levels" in amiga_later.later_field_disposition(shape)
 
 
-# --- the Amiga reader: carried, not dropped ---------------------------------
+# --- the Amiga reader: converted, not dropped ---------------------------------
 def test_amiga_reads_former_levels_with_no_drop_line():
     """`to_neutral_later` used to drop `former_class_levels` outright, saying
     there was nowhere to put it -- stale since `former_levels` landed. A fake

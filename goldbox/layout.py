@@ -19,7 +19,7 @@ Confidence levels
 -----------------
 ``CONFIRMED``  Verified against a real specimen (``tests/fixtures/brutus.chr``).
 ``PROBABLE``   Strong evidence, not yet verified end to end.
-``GUESS``      Hypothesis worth testing; treat as unknown for any real purpose.
+``GUESS``      Hypothesis to test; treat as unknown for any real purpose.
 ``UNKNOWN``    Explicitly not understood.  Bytes are preserved verbatim.
 
 No offset in this table comes from a published Gold Box hex-editing guide.
@@ -131,7 +131,7 @@ class Field:
         confidence: :class:`Confidence` level.
         note: Free-form evidence / observation text.
         candidate: True for an explicitly declared unknown region that shows
-            structure in a specimen and is worth investigating, as opposed to
+            structure in a specimen and deserves investigation, as opposed to
             an auto-generated filler gap.
     """
 
@@ -327,8 +327,8 @@ _DECLARED: Sequence[Field] = (
            "spell 55), #87 (Levelling a Curse or Silver Blades caster "
            "offers only Pool of Radiance's spells)), "
            "filling only as far as that title reaches.\n"
-           "Per title, each measured in that game's own code and not carried "
-           "across from another: **Pool of Radiance 7 (CONFIRMED)** -- 56 bits "
+           "Per title, each measured in that game's own code and not copied "
+           "from another: **Pool of Radiance 7 (CONFIRMED)** -- 56 bits "
            "for a 56-spell list, of which id 56 RESTORATION has no bit, and "
            "the QUANTUM LEAPER trainer writes exactly seven. **Curse of the "
            "Azure Bonds 13 (CONFIRMED)** -- CAMP $2A25 builds the memorise "
@@ -608,8 +608,8 @@ _DECLARED: Sequence[Field] = (
            "$3840/$385F are byte-identical to Pool of Radiance's over all "
            "26 rows. CONFIRMED: every "
            "engine-made player character on the C64 disks of all three "
-           "titles reads 1 here, and the running game settled what it is "
-           "worth -- two converted records identical but for this byte, "
+           "titles reads 1 here, and the running game settled what it "
+           "contributes -- two converted records identical but for this byte, "
            "both 18/75 fighters, came out of the first ambush's roster "
            "recompute at THAC0 20 with no damage bonus and at THAC0 18 "
            "with +3. Nothing recomputes at load, at BEGIN ADVENTURING or "
@@ -981,7 +981,7 @@ _DECLARED: Sequence[Field] = (
            "records, which is what a game that stops at third-level spells "
            "should look like"),
     _field(0x0F7, 2, _U16, "experience_award", "Experience award", _OK,
-           "what killing this creature is worth. **CONFIRMED from the "
+           "what killing this creature awards. **CONFIRMED from the "
            "script property dispatcher in four DOS engines** (#254 (Two DOS "
            "gaps the Amiga port gives a shape to: a 16-bit field in "
            "gap_13c, and a pointer at the end of the Silver Blades item)): "
@@ -1102,7 +1102,7 @@ _DECLARED: Sequence[Field] = (
            "dropped converting to C64, and nobody knows what they hold))"),
     _field(0x0EC, 1, _I8, "missile_attack_adjustment",
            "Missile attack adjustment", _OK,
-           "what dexterity is worth to hit with a ranged weapon, signed: $FF "
+           "what dexterity gives to hit with a ranged weapon, signed: $FF "
            "is -1. **CONFIRMED from both sides of the byte.** COM.PREP $1633 "
            "writes it -- `LDX $6B17` (dexterity) / `LDA $1682,X` / `STA "
            "$6BEC` -- out of a sixteen-entry table that is the AD&D 1st "
@@ -1167,8 +1167,8 @@ _DECLARED: Sequence[Field] = (
            "0x10F. Matches the AD&D table on all eleven exports we hold. Like "
            "0x10F it exists only in an export, and it agrees with the "
            "SAVEDGAME1 roster's +0x0E for the same character -- so an exported "
-           ".chr does carry both combat numbers after all, which is worth "
-           "knowing given the 1989 editor's author reported he could never "
+           ".chr does carry both combat numbers after all, which matters "
+           "given the 1989 editor's author reported he could never "
            "find either"),
     _field(0x110, 9, _RAW, "roster_tail", "Roster +0x10..+0x18", _MAYBE,
            "roster +0x10 the armour bonus, then +0x11 to +0x18 the **current "
@@ -1332,7 +1332,7 @@ def unknown_fields() -> tuple[Field, ...]:
 
 
 def candidate_regions() -> tuple[Field, ...]:
-    """Unknown regions explicitly flagged as worth investigating."""
+    """Unknown regions explicitly flagged for investigation."""
     return tuple(f for f in LAYOUT if f.candidate)
 
 

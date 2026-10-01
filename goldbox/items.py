@@ -44,7 +44,7 @@ READIED = 0x80
 # The low three bits of +6 hide name words until the item is identified: bit 0
 # the noun at +3, bit 1 the qualifier at +2, bit 2 the suffix at +1. Confirmed
 # on all 163 items the game disks carry -- BANDED MAIL +1 shows as BANDED MAIL,
-# POTION OF HEALING as POTION, and CURSED NECKLACE as plain NECKLACE.
+# POTION OF HEALING as POTION, and CURSED NECKLACE as bare NECKLACE.
 HIDDEN_NAME_MASK = 0x07
 
 # ITEMNAMES opens with 256 pointers to the name strings, stored as two parallel

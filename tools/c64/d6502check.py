@@ -5,7 +5,7 @@
 decode of those bytes** -- 151 opcodes decoded, the other 105 printed as
 `.byte`. That claim is one hand-typed table away from being false, and a wrong
 mnemonic in a listing is exactly the kind of error that gets believed and
-written into a document. This is what settles it, and it is worth keeping
+written into a document. This is what settles it, and it is kept
 because the answer has to be got again every time that table is touched.
 
 Two sweeps, and they fail differently:

@@ -236,7 +236,7 @@ _DECLARED: Sequence[Field] = (
        "THRENDER GRONE) and 0x00F is zero in every one, so the field is a "
        "count byte and fifteen of text rather than sixteen of text"),
     _f(0x001, 15, _RAW, "name_text", "Name", _OK,
-       "plain ASCII, no PETSCII anywhere in the DOS record. The bytes past "
+       "ASCII, no PETSCII anywhere in the DOS record. The bytes past "
        "the count are zero in all 24. Converting to the C64 is a re-padding, "
        "not a transliteration: 20 NUL-padded bytes there against 1+15 here, "
        "and that four-byte difference is the whole displacement between the "

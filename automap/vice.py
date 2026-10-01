@@ -14,7 +14,7 @@ work, close it. For a long-running poller that would stutter the game, so use
 `resume()` instead and keep one connection for the session; see
 `automap/target.py`.
 
-Screen reading lives in `screen.py` now, over a plain `read` callable, because
+Screen reading lives in `screen.py` now, over a simple `read` callable, because
 none of it is VICE-specific. The wrappers at the foot of this file keep the
 Monitor-shaped spelling `tools/` uses.
 """
@@ -111,7 +111,7 @@ class Monitor:
         except Exception as exc:
             # The close below resumes the emulator too, so a failed EXIT is
             # survivable -- but it is also the shape of a monitor that has
-            # already gone, which is worth seeing in a report.
+            # already gone, which a report should show.
             _log.debug("the monitor would not take EXIT: %s", exc)
         finally:
             if self.sock is not None:
@@ -427,10 +427,10 @@ def banked(mon: Monitor, read=None) -> Banks | None:
         # and refuse to answer when it cannot see the chips at all.
         if read(0x01, 1)[0] & 0x07 not in IO_IN:
             return None
-        def plain(addr: int, length: int) -> bytes:
+        def direct(addr: int, length: int) -> bytes:
             return read(addr, length)
 
-        return Banks(plain, plain)
+        return Banks(direct, direct)
 
     def io_read(addr: int, length: int) -> bytes:
         return read(addr, length, io)

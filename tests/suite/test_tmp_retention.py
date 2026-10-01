@@ -2,7 +2,7 @@
 
 The Amiga acceptance tests write about 12 MB of floppy images each, and a
 retained directory per test fills a shared tmpfs; only a failed test's
-directory is worth keeping. The child run reads the policy from the repo's own
+directory is kept. The child run reads the policy from the repo's own
 ``pyproject.toml`` rather than naming it on its command line.
 """
 

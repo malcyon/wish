@@ -1721,7 +1721,7 @@ def test_the_size_the_compositor_forces_does_not_become_the_memory(
     own -- a bare `QMainWindow` asking for 1875x1030 comes up 1280x662 -- and
     Qt takes it. So what closing wrote back was the compositor's idea and the
     size he had chosen was gone, every time. The compositor is played here by a
-    plain `resize`, because the offscreen platform never sends one, and the
+    bare `resize`, because the offscreen platform never sends one, and the
     window is laid out without going on anybody's screen.
     """
     from PyQt6.QtCore import QRect, Qt

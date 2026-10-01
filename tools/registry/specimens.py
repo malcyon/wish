@@ -674,7 +674,7 @@ def correct_what(name: str, *, what: str, reason: str,
     `edited_afterwards` stays as it was.  The old text, the date and `reason`
     are appended to `issue_note`, so the correction is itself on record.  A
     specimen whose files no longer match the manifest is refused, since the
-    manifest is what is being carried over unchanged.
+    manifest is what is being copied over unchanged.
     """
     root = root or tree_root()
     if not what.strip():

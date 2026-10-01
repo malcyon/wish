@@ -431,13 +431,13 @@ def _sweep(rows, tables, label: str, quiet: bool, with_dex: bool,
     counts = {"level+race": 0, "level+race+dex": 0,
               "level+race+dex, clamped": 0, "neither": 0}
     for source, name, race, level, dexterity, stored in rows:
-        plain = expected(tables, level, race, dexterity, False)
+        undexed = expected(tables, level, race, dexterity, False)
         dexed = expected(tables, level, race, dexterity, True)
         clamped = expected(tables, level, race, dexterity, True, clamp=True)
-        if plain is None:
+        if undexed is None:
             continue
         total += 1
-        want = (clamped if clamp else dexed) if with_dex else plain
+        want = (clamped if clamp else dexed) if with_dex else undexed
         if stored == want:
             agree += 1
         elif not quiet:
@@ -446,7 +446,7 @@ def _sweep(rows, tables, label: str, quiet: bool, with_dex: bool,
             print(f"    stored {stored}")
             print(f"    table  {want}")
         if rule:
-            which = ("level+race" if stored == plain else
+            which = ("level+race" if stored == undexed else
                      "level+race+dex" if stored == dexed else
                      "level+race+dex, clamped" if stored == clamped
                      else "neither")

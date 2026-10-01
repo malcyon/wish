@@ -225,8 +225,8 @@ def test_engine_written_zombie_fields_read_and_convert_with_node32():
         return {char.get("name"): char for char in chars}, raw
 
     animated, animated_raw = party("por-700-animate-dead-c64")
-    plain, plain_raw = party("por-700-animate-control-c64")
-    zombie, control = animated["BRUTUS"], plain["BRUTUS"]
+    ordinary, plain_raw = party("por-700-animate-control-c64")
+    zombie, control = animated["BRUTUS"], ordinary["BRUTUS"]
     assert (animated_raw["BRUTUS"][0x0D7], animated_raw["BRUTUS"][0x0A3]) \
         == (4, 2)
     assert (plain_raw["BRUTUS"][0x0D7], plain_raw["BRUTUS"][0x0A3]) \

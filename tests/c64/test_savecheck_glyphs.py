@@ -144,9 +144,9 @@ def test_a_figure_is_matched_to_the_slot_whose_codes_it_was_drawn_from():
     assert found["distinct_figures"] == 2
     first, second = found["figures"]
     assert (first["who"], first["best"], first["exact"]) \
-        == ("ONE", 9, [(0, 0, "plain")])
+        == ("ONE", 9, [(0, 0, "unmirrored")])
     assert (second["who"], second["best"], second["exact"]) \
-        == ("TWO", 9, [(1, 1, "plain")])
+        == ("TWO", 9, [(1, 1, "unmirrored")])
 
 
 def test_a_figure_drawn_from_the_wrong_bitmaps_matches_nothing():

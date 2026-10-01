@@ -189,10 +189,10 @@ def test_pane_text_is_the_messages_and_never_the_drops():
     assert pane_text(report) == f"{NOT_SET_OUT}\nSecond line."
     report.dropped.extend(["A drop line", "Another"])
     assert pane_text(report) == f"{NOT_SET_OUT}\nSecond line."
-    plain = Report()
-    assert pane_text(plain) == ""
-    plain.dropped.append("Only a drop")
-    assert pane_text(plain) == ""
+    ordinary = Report()
+    assert pane_text(ordinary) == ""
+    ordinary.dropped.append("Only a drop")
+    assert pane_text(ordinary) == ""
 
 
 def test_pane_text_puts_a_loss_after_the_messages_and_never_a_drop():
@@ -216,9 +216,9 @@ def test_pane_text_puts_a_loss_after_the_messages_and_never_a_drop():
         f"{NOT_SET_OUT}\n\n"
         "WISHFTR: 20 items and the C64 has sixteen slots; "
         "4 dropped from the end")
-    plain = Report()
-    plain.dropped.append("Only a drop")
-    assert pane_text(plain) == ""
+    ordinary = Report()
+    ordinary.dropped.append("Only a drop")
+    assert pane_text(ordinary) == ""
 
 
 def test_pane_text_sends_the_drops_to_the_debug_log_instead_of_the_pane():

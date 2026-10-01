@@ -150,7 +150,7 @@ class Log(runlog.Log):
     """`runlog.Log` -- `tools/c64/runlog.py`'s.
 
     A run that is killed on its budget never reaches its own summary, so
-    anything worth reporting is written at the moment it is measured -- and
+    anything to report is written at the moment it is measured -- and
     `runlog.Log` is what keeps a second run's log rather than truncating it, and
     a `say` a dead console cannot take down with it (`#442`).
     """

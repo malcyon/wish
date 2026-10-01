@@ -103,7 +103,7 @@ def test_an_already_neutral_amiga_character_writes_a_c64_record():
 def _plain_row_character(race: int, constitution: int = 13,
                          game: str = "pool-of-radiance"
                          ) -> neutral.NeutralCharacter:
-    """A DOS-read neutral fighter 1, holding the plain class row DOS stores.
+    """A DOS-read neutral fighter 1, holding the base class row DOS stores.
 
     `(14, 15, 16, 17, 17)` is the level-1 fighter row `test_levels.py`'s own
     `test_the_modifier_that_made_two_level_one_fighters_differ` measures --
@@ -127,12 +127,12 @@ def test_a_dwarf_gnome_or_halfling_gets_the_c64s_own_saves_not_the_dos_row():
     constitution bonus to saving throws, because the C64 keeps it inside the
     five stored bytes)`.
 
-    DOS keeps the plain class row and applies the bonus on the roll; the C64
+    DOS keeps the base class row and applies the bonus on the roll; the C64
     subtracts it into the five bytes on the way in.  A converted dwarf's
     record should hold what `goldbox.levels.saving_throws` computes, not the
-    plain row `DIRECT` copied in.
+    base row `DIRECT` copied in.
     """
-    plain = (14, 15, 16, 17, 17)
+    base_row = (14, 15, 16, 17, 17)
     bonus = levels.constitution_save_bonus(13)
     assert bonus == 3
     for race in (1, 3, 5):                        # dwarf, gnome, halfling
@@ -140,7 +140,7 @@ def test_a_dwarf_gnome_or_halfling_gets_the_c64s_own_saves_not_the_dos_row():
         got = tuple(rec.get(n) for n in
                     ("save_paralysis", "save_petrification", "save_wands",
                      "save_breath", "save_spell"))
-        assert got == tuple(v - bonus for v in plain), race
+        assert got == tuple(v - bonus for v in base_row), race
 
 
 def test_a_human_still_gets_the_plain_row():
@@ -1000,7 +1000,7 @@ def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
         sorted(dos_codec.DROPPED_PLAYER_TEXT.values()), conversion.report.dropped
 
 
-def test_no_player_text_says_something_was_not_carried():
+def test_no_player_text_uses_the_banned_conversion_word():
     """#270 (A conversion's drop text still tells the player a field was
     "not carried", the word AGENTS.md banned tonight): every sentence already
     named the loss in the clause after the comma -- "not carried, so the
@@ -1022,7 +1022,7 @@ def test_no_player_text_says_something_was_not_carried():
             assert "carried separately" not in text, text
 
 
-def test_a_status_drop_line_does_not_say_not_carried():
+def test_a_status_drop_line_avoids_the_banned_conversion_word():
     """The inline-composed sentence, not just the tables: a status the C64
     has no value for is built with an f-string in `goldbox/c64_codec.py`, so
     the table guard above cannot see it."""
@@ -1154,7 +1154,7 @@ def test_the_flags_and_the_square_land_where_a_c64_save_keeps_them():
 
 @needs_dos_saves
 def test_a_dos_party_exports_as_the_same_yaml_a_c64_party_does():
-    """Step 2, and the reason it is worth having on its own: one shape, one
+    """Step 2, and the reason it has its own test: one shape, one
     set of field names, one renderer."""
     from goldbox.yaml_io import to_yaml
 
@@ -2657,7 +2657,7 @@ def test_a_measured_title_recomputes_the_saves_and_an_unmeasured_one_keeps_its_r
     test against race 3, not Curse's odd-race test.
 
     So what is pinned is the rule and not the membership.  The second half
-    is the one worth keeping: it is what stops a future title being
+    is the one to keep: it is what stops a future title being
     recomputed from a formula nobody has watched.  The predicate is
     deliberately not `trainer_measured`, which asks a broader question.
     """
@@ -2665,7 +2665,7 @@ def test_a_measured_title_recomputes_the_saves_and_an_unmeasured_one_keeps_its_r
 
     columns = ("save_paralysis", "save_petrification", "save_wands",
                "save_breath", "save_spell")
-    plain = (14, 15, 16, 17, 17)
+    base_row = (14, 15, 16, 17, 17)
     #: The dwarf, in each title's own race numbering: 1 in Pool of Radiance
     #: and Curse, 3 in Silver Blades (`goldbox/levels.py`'s table).
     dwarf = {"pool-of-radiance": 1, "curse-of-the-azure-bonds": 1,
@@ -2678,7 +2678,7 @@ def test_a_measured_title_recomputes_the_saves_and_an_unmeasured_one_keeps_its_r
     for game, race in dwarf.items():
         assert levels.racial_save_bonus_measured(game), game
         want = tuple(levels.saving_throws({"fighter": 1}, race, 13, game))
-        assert want != plain, f"{game}: a dwarf's row must move"
+        assert want != base_row, f"{game}: a dwarf's row must move"
         assert written(game) == want, game
 
     # The same dwarf under a title the set does not hold keeps DOS's row.
@@ -2686,7 +2686,7 @@ def test_a_measured_title_recomputes_the_saves_and_an_unmeasured_one_keeps_its_r
     monkeypatch.setattr(levels, "RACIAL_SAVE_BONUS_MEASURED",
                         levels.RACIAL_SAVE_BONUS_MEASURED - {last})
     assert not levels.racial_save_bonus_measured(last)
-    assert written(last) == plain
+    assert written(last) == base_row
 
 
 # --- #301, #326: a party that has not set out --------------------------------

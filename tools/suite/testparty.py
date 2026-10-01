@@ -59,7 +59,7 @@ Every level-1 constant below is what those six hold:
 | `attack_forms` | `02 00 01 00 02 00 00 00` | the same eight bytes |
 | `attack_level` | **1 for every class**, magic-user included | 1 |
 | `hp_max` | `hp_rolled + constitution bonus` | `levels`, via the same rule |
-| `hp_rolled` | a plain roll of the class's die for a single-class character; **more than the trainer's rule allows** for a multi-class one | see `_seed_hit_points`, where the multi-class rule is a guess |
+| `hp_rolled` | an ordinary roll of the class's die for a single-class character; **more than the trainer's rule allows** for a multi-class one | see `_seed_hit_points`, where the multi-class rule is a guess |
 
 `tests/suite/test_testparty.py` re-derives each of those from the specimen rather
 than trusting this table, and skips where the specimen tree is absent.
@@ -549,7 +549,7 @@ def _seed_hit_points(spec: Spec, game, rng) -> int:
 
     **A single-class character's is the trainer's rule and a multi-class
     character's is not.**  All four single-class records among the six the
-    engine rolled hold a plain roll of the class's own die -- cleric 6 of a
+    engine rolled hold an ordinary roll of the class's own die -- cleric 6 of a
     d8, fighter 6 of a d10, magic-user 4 of a d4, thief 4 of a d6 -- which is
     what `goldbox.levelup.roll_hit_points` gives.  The two multi-class ones
     hold **more than that rule allows**: the dwarf fighter/thief stores 6,
@@ -687,7 +687,7 @@ def level_one(spec: Spec, game, rng) -> tuple[CharacterRecord, object]:
         put(coin, 0, "the party specification")
     put("gold", spec.gold, "the party specification")
     # Encumbrance is deliberately not set: the C64 record has no field for it
-    # and rebuilds the number when a screen draws it. It is worth knowing for
+    # and rebuilds the number when a screen draws it. It matters for
     # a DOS generator, though -- a coin weighs one unit, and `encumbrance`
     # equals the gold exactly in all six engine-rolled DOS records, at 70, 90,
     # 100, 100, 110 and 140 against gold of the same six numbers.

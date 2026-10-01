@@ -58,7 +58,7 @@ OVERLAY_BASE = 0x0800
 #: disagreement is printed rather than swallowed.
 #:
 #: Pool of Radiance is `$01` and has no `+$C00` table at all -- it builds the
-#: same list from the same directory with no buffer worth saving
+#: same list from the same directory with no buffer to save
 #: (`tools/c64/c64addchar.py`, `docs/170-c64-identity-pair.md`).
 PREFIX = {
     "pool-of-radiance": 0x01,

@@ -3,7 +3,7 @@ and says nothing about the challenge or the answer (#108's ruling).
 
 Nothing here reads a real code-wheel prompt off a real screenshot -- that
 would be a specimen of the very thing `#108` keeps out of this repository.
-The frames below are built from plain shapes, enough ink in each rune tile
+The frames below are built from simple shapes, enough ink in each rune tile
 and a path band drawn at the exact per-cell geometry measured off three live
 DOS Curse prompts on 2026-09-14 (`#537 (tools/curse_of_the_azure_bonds/cursewheel.py never recognises
 a real DOS Curse code-wheel screenshot, so its own command line refuses every

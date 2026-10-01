@@ -161,7 +161,7 @@ ITEM_PLAIN_COLOUR = 5
 
 def item_baseline(s, rows: list[int]) -> int:
     """The colour an unhighlighted cell has on this list: a blank row below
-    the entries, which the cursor never visits, else the known plain colour.
+    the entries, which the cursor never visits, else the known ordinary colour.
     Counting colours instead picks the wrong row on a two-row list, where
     each colour occurs once."""
     below = max(rows, default=ITEM_ROWS.start) + 1

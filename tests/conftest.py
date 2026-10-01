@@ -98,7 +98,7 @@ def load_tools_module(name: str):
     """Import ``tools/<name>.py`` by file path, without leaving ``tools/`` on
     ``sys.path`` for whatever pytest collects next.
 
-    ``tools/wish.py`` is a plain module that happens to share the real
+    ``tools/wish.py`` is a simple module that happens to share the real
     ``wish`` *package*'s name. Six test files used to put ``tools/`` on
     ``sys.path`` permanently with a bare ``sys.path.insert(0, ...)``, which
     let ``tools/wish.py`` shadow the package for every later ``from wish
@@ -369,7 +369,7 @@ def own_registry(tmp_path_factory, monkeypatch, isolated_example):
 # repository root is deleted for good and nothing may recreate it. The tracked
 # files are scanned for its name by `tests/suite/test_repository_contents.py`; what
 # nothing tracked can show is a *run* creating it, and that is what this end of
-# the session catches. A plain test in the same file fails as soon as it exists;
+# the session catches. A simple test in the same file fails as soon as it exists;
 # this hook covers the one it cannot -- a test that makes the directory after
 # that test has already run.
 #

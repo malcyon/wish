@@ -78,8 +78,8 @@ def test_each_badge_appears_for_its_own_effects_and_for_nothing_else():
 
 
 def test_a_grouped_badge_is_drawn_once_and_says_which_spell():
-    """*Warded* covers eight ids on one glyph, which is what makes it worth
-    having -- but a player looking at it has to be able to find out which
+    """*Warded* covers eight ids on one glyph, which is what makes it
+    useful -- but a player looking at it has to be able to find out which
     defence is up, and two of them must not draw two shields.
 
     The 10' radius pair, 45 and 46, joined the group on `#142 (The party

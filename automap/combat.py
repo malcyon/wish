@@ -629,7 +629,7 @@ def read_battle(target, game=None, previous: Battle | None = None) -> Battle | N
 
 def extent(battle: Battle, pad: int = PAD,
            least: int = LEAST) -> tuple[int, int, int, int]:
-    """The part of the map worth drawing, as (x, y, width, height).
+    """The part of the map that needs drawing, as (x, y, width, height).
 
     Both maps seen are 56 x 26 with the fight in a corner, so drawing all 1456
     squares would spend the whole window on empty ground. The box covers every

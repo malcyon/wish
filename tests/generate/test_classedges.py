@@ -57,7 +57,7 @@ def test_a_union_is_an_edge_and_says_so(tmp_path):
              if classedges._mentions(e[3], "Title")]
     assert len(found) == 1
     assert found[0][3] == "Title | None"
-    assert found[0][4] is False          # not a plain name: the weaker claim
+    assert found[0][4] is False          # not a simple name: the weaker claim
 
 
 def test_a_class_whose_name_merely_starts_the_same_is_not_a_hit(tmp_path):

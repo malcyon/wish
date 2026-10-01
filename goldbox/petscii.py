@@ -4,7 +4,7 @@ Two *distinct* string conventions appear in this project and they must not be
 confused:
 
 1. **Character-record names** -- a fixed 20-byte field inside the 580-byte
-   character record, plain ASCII, padded with NUL (``0x00``).  Use
+   character record, ASCII, padded with NUL (``0x00``).  Use
    :func:`decode_record_name` / :func:`encode_record_name`.
 
 2. **1541 directory names** -- a fixed 16-byte field in a CBM DOS directory

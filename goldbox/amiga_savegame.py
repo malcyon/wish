@@ -559,7 +559,7 @@ def new_savegame(state: world_state.WorldState,
     for position, (char, icon) in enumerate(zip(party, icons)):
         # The game's party loader overwrites this byte with the member's
         # position in file order and writes it that way on every save, so
-        # the C64 roster slot the source holds (5..0) is not carried over.
+        # the C64 roster slot the source holds (5..0) is not converted.
         char = _at_figure_slot(char, position)
         block, char_report = amiga_later.write_later(char, container.deltas,
                                                       icon=icon)
@@ -973,7 +973,7 @@ def _remove_file(disk: AmigaDisk, path: str) -> None:
 class WrittenFiles(list):
     """The paths `write_por_slot` wrote, carrying each character's own report.
 
-    Behaves as the plain `list[str]` this returned before, so every existing
+    Behaves as the bare `list[str]` this returned before, so every existing
     caller that only iterates or indexes it is unaffected; `.reports` is the
     new part, one `amiga_por.write_por` report per character, in party order.
     """

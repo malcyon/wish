@@ -184,7 +184,7 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
     (`#268 (A character with more than sixteen memorised spells loses the
     rest, because the layout gives the list sixteen bytes and the game gives
     it eighty-one)`), so how many spells each caster is holding is a number
-    worth carrying to the memorise screen.
+    to carry to the memorise screen.
     """
     from goldbox import dos_savegame
     from goldbox.titles import classes_to_names

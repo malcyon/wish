@@ -175,7 +175,7 @@ def test_silver_blades_is_the_one_title_with_a_sixth_write(newecl):
     as a warning rather than as a number. It is `$4BFB`, the flag that
     suppresses the party's coordinates on the status line, and the handler
     writes it once -- the wipe's back edge is the indexed store below it, not
-    the plain one -- so a trip that skipped it would leave a party's
+    the ordinary one -- so a trip that skipped it would leave a party's
     coordinates hidden in the four Silver Blades areas whose own script never
     touches the byte.
     """

@@ -138,7 +138,7 @@ small:
                         # 2 is the one small head wearing something,
                         # 21 is a large hood on a small body
     3: {c64: 6}        # hair with a plume curling up and back; 6 has
-                        # the curl, 3 is plain hair. Judgement
+                        # the curl, 3 is ordinary hair. Judgement
     4: {c64: 4}        # hair with a tail out the back, no cap at this
                         # size; 4 has a tail, 2 is a purple cap.
                         # Judgement between 4 and 10

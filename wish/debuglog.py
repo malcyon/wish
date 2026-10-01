@@ -295,7 +295,7 @@ def install_excepthook() -> None:
     """Route every uncaught exception through `crash`. Idempotent.
 
     Called by each entry point before the window is built, and not gated on the
-    log being on: keeping the application alive is worth doing either way, and
+    log being on: keeping the application alive is right either way, and
     a crash is recorded either way -- in the session log when it is on, in the
     crash file when it is not.
     """
@@ -342,7 +342,7 @@ def timed(what: str, slow_ms: int = SLOW_MS):
                  what, ms, slow_ms)
 
 
-# -- the things worth saying -------------------------------------------------
+# -- the things to say -------------------------------------------------
 
 def versions() -> str:
     """Us, Python, Qt, and the platform. No environment, no hostname."""

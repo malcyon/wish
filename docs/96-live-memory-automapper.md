@@ -651,7 +651,7 @@ directory and opens nothing, because WinUAE serves one client at a time.
   holds is waited for up to half a second (`WaitNamedPipe`), then the window
   asks again on its next tick.
 * **Every read and write is overlapped with a deadline.** WinUAE does not
-  service the pipe while its debugger waits at the F11 prompt, and a plain read
+  service the pipe while its debugger waits at the F11 prompt, and a simple read
   would hang the window. A request waits two seconds, then is cancelled and the
   handle dropped (a late reply would answer the next request), and nothing is
   tried again for five seconds. A reply is read on only while WinUAE says more

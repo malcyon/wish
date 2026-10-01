@@ -140,7 +140,7 @@ def container_fields(save: bytes) -> dict:
     """Where a 13,141-byte Amiga saved game says the party is standing.
 
     Read at fixed offsets, deliberately: the variable array is big-endian
-    words at `2 * (address - ECL_BASE)` and the square is three plain bytes at
+    words at `2 * (address - ECL_BASE)` and the square is three raw bytes at
     the tail.  Nothing here calls `goldbox.amiga_savegame.por_word`.
     """
     if len(save) != CONTAINER_SIZE:

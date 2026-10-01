@@ -47,7 +47,7 @@ _SAVES = ("save_paralysis", "save_petrification", "save_wands", "save_breath",
     ({"fighter": 7, "thief": 8}, {}, 3, 17, False, (10, 7, 5, 9, 6)),
     # A thief alone reads the same cell.
     ({"thief": 1}, {}, 6, 10, False, (10, 7, 5, 9, 6)),
-    # No thief level, no trailing comparison: the plain fighter 7 row.
+    # No thief level, no trailing comparison: the base fighter 7 row.
     ({"fighter": 7}, {}, 6, 16, False, (10, 11, 12, 12, 13)),
     # A dwarf (race 3 in this title) takes no constitution step at all.
     ({"fighter": 7}, {}, 3, 17, False, (10, 11, 12, 12, 13)),

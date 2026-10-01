@@ -341,9 +341,9 @@ def test_identifying_clears_the_hidden_bits_and_keeps_readied():
 
 
 def test_identifying_skips_an_item_that_is_already_identified():
-    plain = bytearray(unidentified())
-    plain[6] &= ~por_items.HIDDEN_NAME_MASK
-    outcome = find("identify").apply(machine(item=bytes(plain)))
+    ordinary = bytearray(unidentified())
+    ordinary[6] &= ~por_items.HIDDEN_NAME_MASK
+    outcome = find("identify").apply(machine(item=bytes(ordinary)))
     assert outcome.ok and outcome.writes == ()
 
 

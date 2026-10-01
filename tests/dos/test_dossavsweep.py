@@ -1,7 +1,7 @@
 """The sweep `tools/dos/dossavsweep.py` takes of the DOS saved games present.
 
 Every grade in `docs/141-dos-savegame.md` is a **count**, and a count is only
-worth its exclusions: `#59 (Map the DOS saved game, not just the character
+as good as its exclusions: `#59 (Map the DOS saved game, not just the character
 record)` reached two wrong conclusions by counting files nobody should have
 counted -- a bisection whose twelve variants all carried the same ECL buffer,
 and an outdoor field whose value matched the template every specimen had

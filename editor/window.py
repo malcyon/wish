@@ -520,7 +520,7 @@ MAX_ROSTER_ROWS = 8
 #: own width -- Qt's `QWidgetItem::minimumSize()` prefers an explicit
 #: `minimumSize` over `minimumSizeHint()` once one is set at all.
 ACTIVE_EFFECTS_MIN_WIDTH = 260
-#: Fields whose widest possible value is not worth the width it costs. `name`
+#: Fields whose widest possible value does not earn the width it costs. `name`
 #: is twenty bytes and so twenty capital Ws -- 318px at three points of extra
 #: UI font, and it sits in the header, which does not scroll and is therefore a
 #: floor under the whole window. Donald asked for 30% off. A twenty-character
@@ -2569,7 +2569,7 @@ class EditorBinding(QObject):
             self.save()
 
     def _choose_save_path(self) -> bool:
-        """Open a plain C64 file chooser and adopt what it picks.
+        """Open a simple C64 file chooser and adopt what it picks.
 
         The one caller left is `save()`, for a converted-but-unnamed party
         (#515) that needs somewhere to go before it can write -- every other

@@ -56,7 +56,7 @@ def _disks():
 
 @functools.lru_cache(maxsize=1)
 def _art():
-    """One disk's worth of `CHEAD.TLB`/`CBODY.TLB` per title.
+    """One disk's set of `CHEAD.TLB`/`CBODY.TLB` per title.
 
     Two copies of each Amiga set are on this machine and their art drawers
     are byte-identical, so which copy answers does not matter; taking the

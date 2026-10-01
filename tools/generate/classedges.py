@@ -45,7 +45,7 @@ import ast
 import pathlib
 
 #: One hit: the module, the class it is a field of, the field, the annotation
-#: exactly as it is written, and whether the annotation is a plain name.
+#: exactly as it is written, and whether the annotation is a simple name.
 Edge = tuple[str, str, str, str, bool]
 
 
@@ -109,8 +109,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("give a class name, or --all")
         found = [e for e in found if _mentions(e[3], args.name)]
 
-    for module, owner, field, written, plain in sorted(found):
-        mark = "" if plain else "   (union or subscript)"
+    for module, owner, field, written, simple in sorted(found):
+        mark = "" if simple else "   (union or subscript)"
         print(f"{module}.{owner}.{field}: {written}{mark}")
     what = args.name if not args.all else "annotated attribute"
     where = ", ".join(str(p) for p in args.packages)

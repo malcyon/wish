@@ -96,7 +96,7 @@ def install_if_asked(app) -> bool:
     """Attach the filter when `WISH_NATIVE_LOG` is set. True if it is watching.
 
     Off by default and reached only through the environment, because what it
-    records is worth having about twice a year and is noise the rest of the
+    records is useful about twice a year and is noise the rest of the
     time. It found the one bug it was written for -- a `QPushButton` given no
     parent was briefly a top-level window of its own, stealing activation from
     the main window and taking the note popover down with it, visible in the
@@ -116,7 +116,7 @@ def install_if_asked(app) -> bool:
 def install(app) -> bool:
     """Attach the filter to this application. True if it is now attached.
 
-    Windows only, and only worth doing with the debug log on -- there is
+    Windows only, and only useful with the debug log on -- there is
     nowhere else for what it records to go.
     """
     global _installed

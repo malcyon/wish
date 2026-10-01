@@ -20,7 +20,7 @@ every seventeen steps: repeatable, and a state the game itself sets
     tools/secret_of_the_silver_blades/ssbstage.py ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave-walked.D64 \
         STAGED.D64
 
-The output is a plain copy with that one byte changed; nothing else in the
+The output is a simple copy with that one byte changed; nothing else in the
 save is touched, and the input is opened read only.
 """
 from __future__ import annotations

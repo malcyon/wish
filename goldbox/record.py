@@ -1,6 +1,6 @@
 """Decode / encode a Pool of Radiance (C64) 580-byte character record.
 
-:class:`CharacterRecord` operates on a plain ``bytes`` object and knows nothing
+:class:`CharacterRecord` operates on a bare ``bytes`` object and knows nothing
 about where those bytes came from -- a .d64 image, a save file, emulator RAM,
 a hex editor.  Bytes in, bytes out.
 

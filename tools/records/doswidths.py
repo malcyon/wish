@@ -189,12 +189,12 @@ def structured_targets(game: str) -> dict[str, str]:
     """The numeric DOS targets `scalars` leaves out, by DOS name, with the
     neutral field each is taken from."""
     table = dos_port.FIELDS_BY_NAME_FOR[game]
-    plain = {s.dos for s in scalars(game)}
+    ordinary = {s.dos for s in scalars(game)}
     out = {}
     for dos_name, why in dos_codec.write_targets(game).items():
         m = _FROM_NEUTRAL.match(why)
         f = table.get(dos_name)
-        if (m and f is not None and dos_name not in plain
+        if (m and f is not None and dos_name not in ordinary
                 and boundarywidths.value_range(f.kind, f.size) is not None):
             out[dos_name] = m.group(1)
     return out

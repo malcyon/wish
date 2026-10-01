@@ -54,7 +54,7 @@ from goldbox.amiga_por import AMIGA_POR_RECORD_SIZE, POR_SAVE_DRAWER  # noqa: E4
 #: record without them tests only a third of the reader.
 SIBLINGS = (".itm", ".spc")
 
-#: Which archives are worth opening. `$AMIGA_DISKS` points at a whole Amiga
+#: Which archives to open. `$AMIGA_DISKS` points at a whole Amiga
 #: ROM library here -- 1176 zips, of which 41 match this -- so an unfiltered
 #: sweep would decompress Bubble Bobble a dozen times to find nothing. Loose
 #: `.adf` files are opened whatever they are called; there are eight.
@@ -63,7 +63,7 @@ GOLD_BOX = re.compile(r"pool|radiance|curse|azure|silver|blade|darkness",
 
 
 def images(roots: list[pathlib.Path] | None = None):
-    """Every Amiga disk image worth looking in, as `(label, bytes)`.
+    """Every Amiga disk image to look in, as `(label, bytes)`.
 
     `label` is where it came from, for a report that has to be checkable: a
     path for a loose `.adf`, `archive.zip!member.adf` for one inside a zip.

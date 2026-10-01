@@ -89,7 +89,7 @@ def find_saves(extra: list[pathlib.Path] | None = None,
     they are. Curse and Silver Blades put the variable array at Pool of
     Radiance's offset with the same ECL addresses (`docs/141-dos-savegame.md`),
     so the whole sweep is meaningful for them; Pools of Darkness has no
-    variable array at all and only the specimen table is worth reading.
+    variable array at all and only the specimen table is of use.
     """
     shape = shape or sg.SAVE_POOL_OF_RADIANCE
     seen: dict[str, pathlib.Path] = {}

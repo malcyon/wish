@@ -533,7 +533,7 @@ def test_the_library_base_is_fitted_not_read(which, expected):
 
 
 def test_silver_blades_library_has_no_label_table_to_fit():
-    """The fold has a consequence worth asserting: there is nothing in Silver
+    """The fold has a consequence to assert: there is nothing in Silver
     Blades' `LIBRARY` for the label-pointer fit to score, because the labels
     are not there. Only the two reads of `ITEMNAMES` remain."""
     payload = _library_of("silver")

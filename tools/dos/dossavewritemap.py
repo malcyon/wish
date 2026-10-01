@@ -171,7 +171,7 @@ def square_region(regions: list[Region]) -> "Region | None":
 
     Named by its place in the chain rather than by an index, because Silver
     Blades has one region fewer than the others: it is the first one written
-    from a plain data-segment address after the last of the heap blocks the
+    from a simple data-segment address after the last of the heap blocks the
     variable array and the staged script live in.
     """
     heap = [n for n, r in enumerate(regions) if r.source.endswith("]^")]

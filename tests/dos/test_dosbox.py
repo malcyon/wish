@@ -823,7 +823,7 @@ def test_session_env_is_public_and_returns_what_env_builds():
     `tools/curse_of_the_azure_bonds/doscurse.py` used to write `session._env()` for the same
     dictionary it now gets from `session.env()`.  `_env()` is not renamed
     away, only wrapped: `tools/dos/dosboxx.py`'s `XSession` overrides `_env`, not
-    `env`, to swap in its own `debug_env()`, and a plain rename of the name
+    `env`, to swap in its own `debug_env()`, and a simple rename of the name
     every internal call dispatches through would have silently stopped that
     override from firing.
     """

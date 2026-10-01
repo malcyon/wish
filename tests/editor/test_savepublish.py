@@ -1597,7 +1597,7 @@ def test_a_restore_writes_a_sibling_and_syncs_it_before_the_rename(
     the old bytes and the new at once, so it goes through a temporary
     sibling like every other write here: a failure while it is being written
     leaves the file it is repairing exactly as it was, and leaves no
-    temporary behind. A plain `shutil.copy2` passes neither half."""
+    temporary behind. A bare `shutil.copy2` passes neither half."""
     target = tmp_path / "target.adf"
     target.write_bytes(b"what publication left")
     backup = tmp_path / "backup"
@@ -2894,9 +2894,9 @@ def test_saving_to_a_d64_the_editor_will_not_write_says_only_that_it_cannot(
         app, tmp_path, monkeypatch, tracks_size):
     """A 35-track image with error bytes (and the 40- and 42-track images) is
     refused, and the box shows Donald's sentence rather than the image's size."""
-    plain = synthetic_save(tmp_path, "plain.d64").read_bytes()
+    ordinary = synthetic_save(tmp_path, "ordinary.d64").read_bytes()
     path = tmp_path / "ripped.d64"
-    path.write_bytes(plain + bytes([1]) * (tracks_size - len(plain)))
+    path.write_bytes(ordinary + bytes([1]) * (tracks_size - len(ordinary)))
     editor = EditorBinding(make_root(), str(path))
     editor.backups = tmp_path / "backups"
     editor.roster.selectRow(0)

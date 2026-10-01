@@ -1,7 +1,7 @@
 """The DOS training ladder: its routing, and the records the trainer wrote.
 
 `tools/dos/dosladder.py` walks DOS Pool of Radiance's training hall and presses
-`TRAIN CHARACTER`.  Two halves are worth testing and they fail for different
+`TRAIN CHARACTER`.  Two halves need testing and they fail for different
 reasons.
 
 **The routing** is arithmetic over the player's own `GEO00`, and it can be

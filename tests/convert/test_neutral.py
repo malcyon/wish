@@ -121,7 +121,7 @@ def test_a_value_graded_unknown_is_not_written():
     not understand rather than writing a plausible-looking guess."""
     char = NeutralCharacter("test")
     char.set("wisdom", 9, "somewhere", Confidence.UNKNOWN)
-    assert char.get("wisdom") == 9          # it is carried
+    assert char.get("wisdom") == 9          # it is kept
     assert char.take("wisdom") is None      # and it is not written
 
     rec, rep = c64_codec.write(char)
@@ -250,7 +250,7 @@ def test_every_value_a_writer_takes_comes_back_out_of_the_record():
     for value, (field, c64) in zip(expected_saves, c64_codec._SAVE_COLUMNS):
         assert rec.get(c64) == value, field
         # Not a round trip: the class row less the constitution bonus, not
-        # the plain value this test put in.
+        # the simple value this test put in.
         assert value != char.get(field), field
     assert level_tables.thief_skill_race_differs_by_port(char.game)
     expected_skills = level_tables.thief_skills(
@@ -260,7 +260,7 @@ def test_every_value_a_writer_takes_comes_back_out_of_the_record():
                                    c64_codec._THIEF_SKILL_COLUMNS):
         assert rec.get(c64) == value, field
         # Not a round trip: the C64's own row for an elf thief of level 3,
-        # not the plain value this test put in.
+        # not the simple value this test put in.
         assert value != char.get(field), field
     assert spells.spells_known(rec.to_bytes()) == [1, 5, 55]
     assert [b for b in rec.get_raw("spells_memorised") if b] == [44, 21, 3]

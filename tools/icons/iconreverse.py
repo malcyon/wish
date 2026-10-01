@@ -87,7 +87,7 @@ SLOTS = 8
 DOC_SCALE = 12
 
 #: How wide each figure is *drawn* in the document, in screen pixels. A
-#: markdown table shrinks a plain `![](...)` to whatever its column allows, so
+#: markdown table shrinks a bare `![](...)` to whatever its column allows, so
 #: a larger file alone changes nothing on screen -- Donald, 2026-09-07, on the
 #: first attempt: "I can't tell any difference is the size of the icons."
 #: Stating the width on an `<img>` tag is what actually makes them bigger, and

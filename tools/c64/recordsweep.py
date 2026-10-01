@@ -229,7 +229,7 @@ def main(argv=None) -> int:
                         for line in lines(payload, base, base + start, 12):
                             print("      " + line)
     # The sample size is part of the claim: "nothing references it" means
-    # nothing in *these* files, and a negative is worth only as many files as
+    # nothing in *these* files, and a negative covers only as many files as
     # were actually opened.
     kind = "indirect reference(s)" if args.indirect else "reference(s)"
     print(f"\n{total} {kind} in {len(seen)} distinct files")

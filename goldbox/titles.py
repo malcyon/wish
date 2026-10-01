@@ -266,7 +266,7 @@ def by_key(key: str) -> Title:
 def by_title(title: str | None) -> Title | None:
     """The title a person named, or None. Never falls back to a default.
 
-    The windows carry the game as a plain string -- see `AutomapState.title` --
+    The windows carry the game as a simple string -- see `AutomapState.title` --
     and this is the one place that turns it back into a descriptor. None for an
     unrecognised name on purpose: a caller that needs an address has to notice
     it does not have one.

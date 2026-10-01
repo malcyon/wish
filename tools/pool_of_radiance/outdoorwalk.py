@@ -21,7 +21,7 @@ It reads `$49C3`/`$49C4` -- the live travel square,
 retargeted too)` and `#59 (Map the DOS saved game, not just the character
 record)` -- through the binary monitor, before and after every key.  A turn
 then shows as "the square did not move, and it was not meant to", and a step
-shows as the square moving, which is the thing worth proving:
+shows as the square moving, which is the thing to prove:
 
     tools/pool_of_radiance/outdoorwalk.py --disk OUTC.D64 --slot 2 --moves 8484
 

@@ -62,9 +62,9 @@ def test_a_white_bottom_row_does_not_pull_the_crop_up_into_the_picture():
 
 def test_a_desktop_with_no_emulator_on_it_is_refused():
     """Rather than cropped to a guess, which would look like a screenshot."""
-    plain = Image.new("RGB", DESKTOP, (31, 98, 176))
+    ordinary = Image.new("RGB", DESKTOP, (31, 98, 176))
     with pytest.raises(LookupError):
-        amigashots.find_client(plain)
+        amigashots.find_client(ordinary)
 
 
 def test_the_crop_is_the_emulator_screen_and_nothing_else(tmp_path):

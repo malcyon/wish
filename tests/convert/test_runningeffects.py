@@ -694,13 +694,13 @@ def test_a_row_owned_by_an_empty_party_slot_converts_to_nothing_and_is_no_loss()
     Provenance: the row is staged here into the committed fixture, whose
     party is BRUTUS alone in slot 0."""
     payload, save1 = _fixture_payload()
-    plain, _ = dos_codec.c64_party(bytes(payload), save1,
+    ordinary, _ = dos_codec.c64_party(bytes(payload), save1,
                                    game=POOL_OF_RADIANCE)
     effects.write_effect(payload, 63, 38, 3, 0x41, 0x12)
     party, _ = dos_codec.c64_party(bytes(payload), save1,
                                    game=POOL_OF_RADIANCE)
     assert not [d for c in party for d in c.dropped if "effect 38" in d]
-    assert _party_facts(party) == _party_facts(plain)
+    assert _party_facts(party) == _party_facts(ordinary)
     record, _itm, _spc, _rep = amiga_por.write_por(_brutus(party))
     assert record
 
@@ -715,7 +715,7 @@ def test_every_title_converts_a_row_owned_by_an_empty_slot_to_nothing(
     """Two members in slots 0 and 1; rows owned by the empty slots 2 and 5
     and, as the control, one owned by slot 1, which still converts."""
     bare = _synthetic_c64_party_payload(game, 2)
-    plain, _ = dos_codec.c64_party(bytes(bare), None, game=game)
+    ordinary, _ = dos_codec.c64_party(bytes(bare), None, game=game)
     # The later titles need bit 7 on an Enlarge magnitude (#667's open limit).
     magnitude = 0x03 if game is POOL_OF_RADIANCE else 0x83
     payload = _synthetic_c64_party_payload(
@@ -727,7 +727,7 @@ def test_every_title_converts_a_row_owned_by_an_empty_slot_to_nothing(
                 if d.startswith("running_effects:")]
     # `c64_party` hands the party back reversed, so slot 1 is first.
     assert len(party[0].get("running_effects") or ()) == 1
-    assert _party_facts(party[1:]) == _party_facts(plain[1:])
+    assert _party_facts(party[1:]) == _party_facts(ordinary[1:])
 
 
 def _roster_status(payload: bytearray, game, slot: int, value: int) -> None:
@@ -2035,9 +2035,9 @@ def test_a_feebleminded_c64_character_reaches_dos_and_the_amiga_at_int_and_wis_3
     # Without the row nothing is lowered. With it, an in-force INT of 5 is
     # still put to 3, because the destination's recompute sets the score to 3
     # whatever it was, higher or lower.
-    plain, _i, _s, _r = dos_codec.write(_c64_feebleminded(game, row=False))
-    assert _dos_pair(plain, game, "intelligence") == (14, 14)
-    assert _dos_pair(plain, game, "wisdom") == (12, 12)
+    ordinary, _i, _s, _r = dos_codec.write(_c64_feebleminded(game, row=False))
+    assert _dos_pair(ordinary, game, "intelligence") == (14, 14)
+    assert _dos_pair(ordinary, game, "wisdom") == (12, 12)
     low, _i, _s, _r = dos_codec.write(_c64_feebleminded(game, intelligence=5))
     assert _dos_pair(low, game, "intelligence") == (5, 3)
 
@@ -2078,9 +2078,9 @@ def test_a_feebleminded_c64_cleric_gets_no_wisdom_bonus_spells_on_dos_or_the_ami
         slots(3), depth)
 
     # Control: with no row nothing lowered his WIS, so his bonus stays.
-    plain, _itm, _spc, _rep = dos_codec.write(
+    ordinary, _itm, _spc, _rep = dos_codec.write(
         _c64_feeble_cleric(game, row=False))
-    assert dos_slots(plain) == fit(slots(17), depth)
+    assert dos_slots(ordinary) == fit(slots(17), depth)
     assert slots(17) != slots(3)
 
 

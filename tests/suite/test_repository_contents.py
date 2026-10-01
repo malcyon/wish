@@ -397,7 +397,7 @@ def test_every_shared_rule_link_resolves(files):
     breaks, which is the half nobody is looking at.
 
     **Skipped where the checkout has no symlinks.** `git` on Windows writes a
-    symlink as a plain file holding its target's path unless `core.symlinks` is
+    symlink as an ordinary file holding its target's path unless `core.symlinks` is
     on, so on those runners there is nothing to resolve and nothing to check.
     """
     links = [

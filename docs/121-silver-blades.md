@@ -350,7 +350,7 @@ refused; a driven training has since reproduced every field, and
 
 Read three of those even if the rest is a lookup table.
 
-**The experience rows are Curse's, carried on** — all 61 thresholds the two
+**The experience rows are Curse's, reused** — all 61 thresholds the two
 share are identical. That includes the Curse fighter's eleventh, 749937 where
 750001 is expected, which `goldbox/levels.py` recorded as possibly bit rot in
 the one Curse rip that carries `GEN`. A second rip, of a different game, cracked

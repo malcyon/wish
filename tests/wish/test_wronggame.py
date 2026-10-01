@@ -168,7 +168,7 @@ def polled(mapper, times: int = 24):
     return mapper
 
 
-# --- what a block at $0400 is worth ------------------------------------------
+# --- what a block at $0400 means ------------------------------------------
 
 def test_our_own_map_is_ours(ours):
     target = machine(ours["GEO01"])

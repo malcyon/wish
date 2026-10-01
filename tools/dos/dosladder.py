@@ -759,7 +759,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--gold", type=lambda s: int(s, 0), default=20000)
     ap.add_argument("--xp-mode", choices=("flat", "threshold"), default="flat",
                     help="flat writes --xp into every record; threshold writes "
-                         "one level's worth plus --margin into each "
+                         "the amount for one level plus --margin into each "
                          "single-class record, which is what tells the "
                          "trainer's clamp apart from a price")
     ap.add_argument("--margin", type=int, default=7,

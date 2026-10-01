@@ -43,7 +43,7 @@ from tools.registry import scratch  # noqa: E402
 def banks(mon) -> dict[str, int]:
     """`{name: id}` for every bank this VICE offers, from the machine itself.
 
-    The ids are not guessable and are not the same on two machines' worth of
+    The ids are not guessable and are not the same on two machines'
     VICE builds, so they are read rather than assumed.
     """
     resp = mon.command(CMD_BANKS_AVAILABLE)

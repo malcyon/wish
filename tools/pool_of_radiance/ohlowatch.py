@@ -359,8 +359,8 @@ def answer(sess, body, out, label, menu_at, option, expect,
             # the log, never the words themselves.
             result["screens"].append({"len": len(row.strip()),
                                       "words": len(row.split())})
-        # A keypress the game swallowed leaves the same row up and is worth
-        # re-sending, so this does not refuse a repeat -- it caps them, and
+        # A keypress the game swallowed leaves the same row up and should be
+        # re-sent, so this does not refuse a repeat -- it caps them, and
         # waits for the row to move before trying again. Without the cap a
         # script that ends on a bar carrying the same word would be answered
         # for ever.

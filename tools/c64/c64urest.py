@@ -9,7 +9,7 @@ standard library, and the module deliberately imports nothing from
 `tools/c64/c64u.py`.
 
 **REST for the machine, FTP for the file.** Four of the tab's five buttons are
-plain HTTP on port 80; the fifth is not reachable that way at all, because the
+unencrypted HTTP on port 80; the fifth is not reachable that way at all, because the
 firmware has no route that returns a file's bytes.  `grab` here is an
 anonymous FTP `RETR` on port 21, which is what `c64u fs download` does too.
 Anything a person reads should say FTP where it means FTP.

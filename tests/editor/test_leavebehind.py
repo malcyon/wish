@@ -40,7 +40,7 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
-_plain, _scroll, _member, _party = (packs.plain, packs.scroll, packs.member,
+_ordinary, _scroll, _member, _party = (packs.ordinary, packs.scroll, packs.member,
                                     packs.party)
 
 
@@ -212,14 +212,14 @@ def test_a_pool_trident_gets_no_spells_line_and_a_pool_scroll_still_does(app):
 def test_an_item_row_reads_as_it_does_on_the_items_tab(app):
     """Name, quantity and readied come out of `InventoryModel` itself, for an
     item with a quantity and readied and for one with neither."""
-    with_both = bytearray(_plain(0))
+    with_both = bytearray(_ordinary(0))
     with_both[10] = 7                          # quantity
     with_both[6] = items.READIED               # readied
     party = [_member("ALPHA", 15, _scroll(5), _scroll(6))]
     party[0].get("inventory")[0] = bytes(with_both)
     dialog = _dialog(party)
 
-    blocks = [bytes(with_both), _plain(1)] + [bytes(16)] * 14
+    blocks = [bytes(with_both), _ordinary(1)] + [bytes(16)] * 14
     model = InventoryModel(Inventory.from_blocks(blocks, ITEM_NAMES))
     for slot in (0, 1):
         row = _picks(dialog)[(0, slot)]

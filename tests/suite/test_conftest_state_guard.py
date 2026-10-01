@@ -11,7 +11,7 @@ than three investigations later.
 
 This drives a real, separate `pytest` process against a throwaway file
 written *inside* `tests/suite/` and removed again -- the fixture under test lives
-in `tests/conftest.py` itself, and calling it as a plain function would only
+in `tests/conftest.py` itself, and calling it as a simple function would only
 prove the function runs, not that the real collection-time mechanism (an
 import poisoning a worker before its first test) is caught.
 """

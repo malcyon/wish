@@ -676,7 +676,7 @@ class FastTravelBar(QObject):
         player out of picking a different area precisely because the one
         showing is bad. Combat is the one reason a bad pick cannot fix.
 
-        `target` is the one poll's worth of reads `refresh` is holding, so the
+        `target` is the reads of one poll that `refresh` is holding, so the
         mode flag is read once for the whole row rather than once for each
         thing that asks. None is the real target, for a caller that has none.
         """
@@ -684,7 +684,7 @@ class FastTravelBar(QObject):
                                       self.target if target is None else target)
 
     def refresh(self) -> None:
-        # One poll's worth of reads for the whole row -- `$6E11` was being read
+        # The reads of one poll, shared by the whole row -- `$6E11` was being read
         # three times a refresh, once for the dropdown, once for `Action`'s own
         # gate and once for `FastTravel`'s, and each read hands the emulation
         # ~14.3 ms of extra emulated time (#152). The proxy also answers the
@@ -803,7 +803,7 @@ class FastTravelBar(QObject):
         """The durable rejections first, then the wait for a quiet machine.
 
         In that order because a rejection that will not change -- a fight, an
-        area the party is already in -- is not worth two seconds of waiting,
+        area the party is already in -- does not deserve two seconds of waiting,
         and it is the same verdict the button was showing.
         """
         if not verdict:

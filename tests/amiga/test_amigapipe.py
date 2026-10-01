@@ -168,7 +168,7 @@ def test_a_command_that_could_open_a_console_is_refused(command):
     """`activate_debugger()` calls `open_console()`, and that console is a
     window in front of whoever is playing.
 
-    **Tokenised the way `debug.cpp` tokenises.** The first six are the plain
+    **Tokenised the way `debug.cpp` tokenises.** The first six are the ordinary
     forms; the rest are the two ways past a guard that read the first word of
     the whole string, found in review on 2026-09-08 and both reachable through
     the public `send()` and through `tools/amiga/winuaepipe.py send`.

@@ -120,7 +120,7 @@ def test_the_pool_never_allocates_the_human_s_ports():
     """6502 and 6510 are Donald's, and 6600 is `tools/c64/porcmd`'s.
 
     This is the property that makes "anything on 6502 is a human's game" true,
-    and it is worth an assertion because it is one careless base away from
+    and it needs an assertion because it is one careless base away from
     being false again.
     """
     for n in range(instance.SLOTS):
@@ -721,7 +721,7 @@ def test_two_slots_held_by_one_process_are_flagged_shared(pool):
 def test_a_slot_held_by_a_different_process_is_not_flagged_shared(pool):
     """A subprocess started with its own session (`start_new_session=True`,
     the same flag `launch.sh` runs under) gets its own process group --
-    without it, a plain child shares the parent's, which would make every
+    without it, an ordinary child shares the parent's, which would make every
     such fork look shared and defeat the point of the check."""
     a = instance.claim()
     try:
@@ -792,7 +792,7 @@ def test_the_cli_prints_held_and_idle_columns_and_a_shared_pgid_warning(pool):
 
 # `_lock_holder` and `display_rows` never take a lock to answer -- taking one
 # is not a test of it, and the lock lives on the inode rather than the path
-# (see `tools/registry/instance.py`'s own section docstring). These tests use plain
+# (see `tools/registry/instance.py`'s own section docstring). These tests use ordinary
 # `tmp_path` files rather than the real `/tmp/.wish-x11-<n>.lock` naming
 # except where a test needs the CLI's real path, in which case it picks
 # numbers -- 1080 upward -- past every other band this suite uses.

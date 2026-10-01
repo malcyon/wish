@@ -106,7 +106,7 @@ def attacks(record) -> tuple[Attack, ...]:
 
 
 def experience_award(record, hp_max: int | None = None) -> int:
-    """What killing this creature is worth.
+    """What killing this creature awards.
 
     `POST.COM $09BB`: a 16-bit base plus a per-hit-point rate times the
     creature's maximum hit points, which is how AD&D expresses an award.

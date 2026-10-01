@@ -39,7 +39,7 @@ discovered late:
   no error.
 * **Latency is a network round trip**, not a loopback socket, hence a slower
   default interval and hence batching -- one read of `$4900`-`$64FF` beats
-  sixty small ones. The four reads a fix costs are the budget worth watching.
+  sixty small ones. The four reads a fix costs are the budget to watch.
 * **It stops the machine, and this was measured wrong for a day.** The
   paragraph here used to say DMA does not stop the CPU. It does: the cartridge
   bus halts the 6510 for the length of the transfer, about 42 microseconds of

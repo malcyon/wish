@@ -74,7 +74,7 @@ def every_file(root: str) -> dict[str, tuple[int, bytes]]:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         description="Score every game file against a captured memory block.")
-    ap.add_argument("blob", help="the captured block, as a plain .bin")
+    ap.add_argument("blob", help="the captured block, as a raw .bin")
     ap.add_argument("base", type=lambda s: int(s, 0),
                     help="the address the block was read from")
     ap.add_argument("--top", type=int, default=8, metavar="N",

@@ -38,7 +38,7 @@ things with non-stopping VICE checkpoints while the party rests: passes
 (`$1E0F`), checks made (`$1E1C`) and interruptions taken (`$1E27`), with the
 game's own clock at `$49C6`-`$49CB` read either side of every rest as a second
 witness to the pass count. It rests in two-hour blocks, which is exactly one
-check's worth when the pair is (24, 24), so the count of checks is the count of
+check when the pair is (24, 24), so the count of checks is the count of
 rests. Three camp sessions, `--phases`: the flag clear, the flag set with the
 chance held at zero so the checks can be counted without the first
 interruption ending the session, and the flag set with the chance the script

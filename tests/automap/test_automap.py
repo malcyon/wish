@@ -421,7 +421,7 @@ def test_a_memory_fix_never_counts_as_refused(tmp_path, monkeypatch):
 @game_disks
 def test_one_refused_step_beats_a_hundred_successful_ones(new_phlan):
     """Positive evidence needs 111 steps to settle New Phlan. Count what one
-    bump is worth against what standing on a square is worth."""
+    bump adds against what standing on a square adds."""
     maps = load_geo_files(f"{DISKS}/POOL3.D64")
     for disk in ("POOL1", "POOL2", "POOL4", "POOL5"):
         for name, g in load_geo_files(f"{DISKS}/{disk}.D64").items():
@@ -559,7 +559,7 @@ def test_the_ticks_are_kept_per_title_and_one_title_does_not_disturb_another(
 
 
 def test_unreadable_settings_are_not_fatal(tmp_path, monkeypatch):
-    """Losing a preference is not worth refusing to start."""
+    """Losing a preference does not justify refusing to start."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("APPDATA", str(tmp_path))
     from automap.config import FILE, Settings
@@ -851,7 +851,7 @@ def test_a_map_the_player_holds_is_proof_enough_without_a_status_line(
 
 
 def test_the_sight_radius_survives_a_crossing(tmp_path, monkeypatch):
-    """It is a setting, not a property of the area. Building a plain
+    """It is a setting, not a property of the area. Building a bare
     `Exploration` on every area change quietly put it back to `SIGHT`."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     mapper = Automapper(ReplayTarget([]), {"GEO00": Geo(bytes(GEO_SIZE))},
@@ -1126,7 +1126,7 @@ def test_a_curse_machine_is_read_at_4b00_and_not_4900():
 
 
 def test_the_same_machine_read_at_pool_of_radiances_addresses_lies():
-    """And what it cost before the fix, which is the part worth pinning:
+    """And what it cost before the fix, which is the part to pin:
     reading `$4900` on a Curse machine does **not** refuse. `$4900`-`$64FF`
     overlaps `$4B00`'s payload two pages in, so the whole tab decodes -- a
     party, a square, an area name -- and every one of them is wrong."""
@@ -2734,7 +2734,7 @@ def test_nothing_is_made_visible_before_it_has_a_parent(app, tmp_path,
         # `isWindow()` is no use as a filter: a parentless button answers
         # True, which *is* the fault. What separates an accident from a
         # deliberate top-level is the window type -- a popover asks for
-        # `Popup`, a stray button gets plain `Window` by default.
+        # `Popup`, a stray button gets bare `Window` by default.
         accidental = (visible and widget.parent() is None
                       and widget.windowType() == _Qt.WindowType.Window)
         if accidental:
@@ -3253,10 +3253,10 @@ def test_the_quickfight_bit_reaches_the_snapshot_from_the_roster_page(app):
     from automap import actions
     save0, save1 = captured()
     roster = bytearray(save1)
-    plain = live.snapshot_from_bytes(save0, bytes(roster))
-    assert plain is not None and not any(c.quickfight for c in plain.characters)
+    ordinary = live.snapshot_from_bytes(save0, bytes(roster))
+    assert ordinary is not None and not any(c.quickfight for c in ordinary.characters)
 
-    slot = plain.characters[0].slot
+    slot = ordinary.characters[0].slot
     roster[slot * live.ROSTER_STRIDE
            + live.ROSTER_QUICKFIGHT] |= live.QUICKFIGHT_BIT
     snap = live.snapshot_from_bytes(save0, bytes(roster))
@@ -3491,7 +3491,7 @@ def test_a_connection_it_has_given_up_on_is_actually_closed(monkeypatch):
 
 
 def test_a_protocol_failure_is_a_lost_connection_and_not_mere_trouble(monkeypatch):
-    """A short read is not an `OSError`, and used to escape as a plain
+    """A short read is not an `OSError`, and used to escape as a bare
     exception with the connection kept.
 
     `Monitor._recv_exactly` throws away the part of a message it had collected

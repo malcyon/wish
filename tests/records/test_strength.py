@@ -146,7 +146,7 @@ def test_hit_points_are_the_maximum_and_wounds_do_not_shrink_them():
 
 def test_armour_class_counts_only_from_zero_and_better():
     """`$1C16 SBC #$3C / BCC`: the field is `60 - AC`, so the term is silent
-    until AC reaches 0 and is worth five a point after that."""
+    until AC reaches 0 and counts five a point after that."""
     save0, roster = captured()
     for field, term in ((51, 0), (59, 0), (60, 0), (62, 10)):
         roster_byte(roster, 0, 0x0F, field)

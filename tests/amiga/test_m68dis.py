@@ -139,7 +139,7 @@ def test_bit_eight_is_not_a_unary_operation():
     # bug was in this file's first draft and a cross-check caught it.  This
     # assertion is the proof of it: remove the bit-8 guard and it goes red.
     assert text([0x4552]) == "dc.w $4552"
-    # 0x4329 is the letters "C)".  A second rejection worth pinning, but not a
+    # 0x4329 is the letters "C)".  A second rejection to pin, but not a
     # second proof of the same bug -- the size-3 guard catches it either way.
     assert text([0x4329]) == "dc.w $4329"
 

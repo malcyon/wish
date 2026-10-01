@@ -750,7 +750,7 @@ def thac0_current_byte(base_byte: int, hit_bonus: int, bonus_flag: bool) -> int:
     return (base_byte + hit_bonus) & 0xFF
 
 
-#: `COM.PREP $1682`, indexed by dexterity 3-21: what dexterity is worth to hit
+#: `COM.PREP $1682`, indexed by dexterity 3-21: what dexterity gives to hit
 #: at range, which `COM.PREP $1633` caches at record `0x0EC` and the roster
 #: rebuild adds for a ranged weapon.  CONFIRMED for 3-21 in Pool of Radiance;
 #: the table beyond 21 is unread, so 22 and over, and anything under 3, take
@@ -1336,7 +1336,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         rec.set("treasure_share", int(share.value) & 0xFF)
         emit(share, "treasure_share", 0x0FA, 1)
 
-    # -- thief skills: overwrite DIRECT's plain-row copy for a title whose
+    # -- thief skills: overwrite DIRECT's base-row copy for a title whose
     # C64 table is confirmed to differ from the source's, or whose DOS
     # engine is confirmed to store a number no table produces -------------
     # `DIRECT` copies the neutral record's eight stored percentages, which
@@ -1981,9 +1981,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                          f"{'has' if regained else 'has not'} passed the "
                          f"{level} {name_} was left at (GEN $20A3, PROBABLE)")
 
-    # -- saving throws: overwrite `DIRECT`'s plain-row copy for a sturdy race
+    # -- saving throws: overwrite `DIRECT`'s base-row copy for a sturdy race
     # -----------------------------------------------------------------------
-    # DOS and Amiga store the plain class row and apply the constitution
+    # DOS and Amiga store the base class row and apply the constitution
     # bonus at the moment a save is rolled; the C64 subtracts the bonus into
     # the five stored bytes instead (`GEN $2359`,
     # `goldbox.levels.constitution_save_bonus`).  Left as `DIRECT` copied it,
@@ -2019,7 +2019,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             rep.note(dst.offset, dst.size,
                      f"{c64_name}: the class row less the constitution "
                      f"bonus on the columns it reaches, the way the C64's "
-                     f"own trainer stores it -- {port} keeps the plain row "
+                     f"own trainer stores it -- {port} keeps the base row "
                      f"and applies the bonus when the die is rolled")
 
     # -- size ----------------------------------------------------------------
@@ -2130,7 +2130,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # creation; item-granted ids fill from slot 9 down, the way
     # `SPELLE04 $ADD4` itself scans for a free slot when an item is readied.
     #
-    # The value an effect is worth and the flag DOS reads on removal have no
+    # The value an effect gives and the flag DOS reads on removal have no
     # C64 counterpart to write, and need none: the C64's own un-ready
     # (`SPELLE04 $AE13`) finds the id in the ten slots and clears it, nothing
     # else, and for every item power that uses a trait slot the id is the
@@ -2416,7 +2416,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         missile = pool_missile_adjustment(rec.get("dexterity"))
         rec.set("missile_attack_adjustment", missile)
         rep.note(dex_dst.offset, dex_dst.size,
-                 "missile_attack_adjustment: what dexterity is worth at "
+                 "missile_attack_adjustment: what dexterity gives at "
                  "range, from the table COM.PREP writes at the start of "
                  "every fight")
     if pool_item_table and current is not None:
@@ -3228,7 +3228,7 @@ READ_DERIVED: tuple[tuple[str, str, str], ...] = (
      "confirms the DOS record has no counterpart of the C64's 0x0E2 to "
      "read one back from"),
     ("missile_attack_adjustment",
-     "a cache of what dexterity is worth to hit at range. COM.PREP $1633 "
+     "a cache of what dexterity gives to hit at range. COM.PREP $1633 "
      "rebuilds it from the record's own dexterity, which is converted, at "
      "the start of every fight and before anything reads it",
      "the routine read end to end -- #202 (Name record offset 0x0EC, which "

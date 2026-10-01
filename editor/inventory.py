@@ -221,7 +221,7 @@ FADED = QColor("#808080")
 
 # The widest of the 163 item names on the eight game disks, from
 # docs/87-item-templates.md. The window prefers the real names when a game disk
-# is open; this is what the column is worth when there is none, and it is a
+# is open; this is what the column shows when there is none, and it is a
 # known number rather than a guess.
 LONGEST_ITEM_NAME = "TWO-HANDED SWORD +1 +3 VS UNDEAD"
 

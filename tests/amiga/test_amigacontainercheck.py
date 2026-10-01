@@ -57,7 +57,7 @@ def a_container(x=14, y=4, facing=6, travel=(7, 28), geo=20,
     """13,141 bytes with the same eight fields, the Amiga's way.
 
     The variable array is big-endian words two bytes apart, so `$49C0` is
-    offset `0x180`, and the square is three plain bytes in the tail at 12800.
+    offset `0x180`, and the square is three raw bytes in the tail at 12800.
     """
     out = bytearray(check.CONTAINER_SIZE)
 

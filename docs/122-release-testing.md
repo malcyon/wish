@@ -538,8 +538,8 @@ Try it; a release where that guard is gone is a release that eats saves.
 must come back byte for byte:
 
 ```sh
-wish export TESTSAVE.D64 -o plain.yaml
-wish import plain.yaml -o ROUNDTRIP.D64
+wish export TESTSAVE.D64 -o export.yaml
+wish import export.yaml -o ROUNDTRIP.D64
 cmp TESTSAVE.D64 ROUNDTRIP.D64      # expect: no output
 ```
 

@@ -45,7 +45,7 @@ class NoteType:
 #: five, each row one idea. Reading across -- marks, what the square holds, a
 #: fight, a person, a place you come back to. The picker shows no words, so
 #: the grouping is the only thing helping somebody find a picture, and a row
-#: that means something is worth more than an alphabet.
+#: that means something is better than an alphabet.
 #:
 #: The names and the descriptions are Donald's, settled on `#166`, and
 #: `note-icons.md` (scratch, deleted) rendered every one at the two sizes he judged them at.

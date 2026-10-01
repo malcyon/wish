@@ -210,7 +210,7 @@ MAP_WALLED_EDGES = 20
 #: block that is not a map is `COMSPR.TLB+5824` on both Amiga disk As, at
 #: 0.535. The threshold sits between them with 5.3% of headroom above the map
 #: and 6.5% of margin below the block, and that margin is the whole of what
-#: this constant is worth -- moving it and `MAP_WALL_PAIR_REUSE` down together
+#: this constant buys -- moving it and `MAP_WALL_PAIR_REUSE` down together
 #: by 11% lets `COMSPR.TLB` in.
 MAP_WALL_ART_AGREEMENT = 0.57
 
@@ -460,7 +460,7 @@ class ResidentGeo:
         for name, known in maps.items():
             if known.to_bytes() == raw:
                 return OURS, name
-        # Only now is the expensive question worth asking, and asking it in
+        # Only now does the expensive question need asking, and asking it in
         # this order matters twice over: the exact match is a C-speed compare
         # and the common case, and `NEAR_ENOUGH` must never be reached by a
         # page that is not a map at all. A booted machine reads 1024 zeroes at

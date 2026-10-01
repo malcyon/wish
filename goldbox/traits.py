@@ -359,7 +359,7 @@ EMPTY = "—"
 # might like to see.
 #
 # ---------------------------------------------------------------------------
-# The routes that filled the table below, and what each one is worth
+# The routes that filled the table below, and what each one yields
 # ---------------------------------------------------------------------------
 # Donald ruled on 2026-09-15 that the picker should offer this title's ids
 # named properly, rather than staying at six or borrowing another title's

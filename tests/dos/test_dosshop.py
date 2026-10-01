@@ -224,7 +224,7 @@ def test_the_five_who_bought_nothing_came_out_of_the_shop_correct():
 
 
 def test_an_ordinary_in_town_save_preserves_stored_encumbrance():
-    """`#429` corrected this: a plain save does not rewrite the field.
+    """`#429` corrected this: an ordinary save does not rewrite the field.
 
     `CONTROL`'s own "all six come back correct" was staged the same way
     `#429` found broken -- the 999 landed on disk after `open_loaded` had

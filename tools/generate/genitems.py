@@ -150,7 +150,7 @@ def main() -> int:
     w("")
     w("**Weapon flags** (`+14`) are a bitfield, not a missile type: bit 0")
     w("needs arrows, bit 1 ranged, bit 2 adds the strength bonus, bit 3")
-    w("multi-shot, bit 4 throwable, bit 7 needs bolts. `4` is a plain melee")
+    w("multi-shot, bit 4 throwable, bit 7 needs bolts. `4` is a simple melee")
     w("weapon, `20` a thrown one, `11` a bow, `15` a composite bow, `138` a")
     w("crossbow, `26` a sling.")
     w("")

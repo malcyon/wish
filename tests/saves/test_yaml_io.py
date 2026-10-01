@@ -3,7 +3,7 @@
 The property that matters is **losslessness**: exporting a save and importing it
 unchanged must reproduce the file byte for byte. Everything else the editor does
 rests on that, because ~88% of each record is still unidentified and must be
-carried through untouched.
+kept untouched.
 """
 
 import pathlib

@@ -1682,7 +1682,7 @@ CAPTURES = (pathlib.Path.home() / ".cache" / "wish" / "acceptance" / "722")
 
 def capture_screen(path):
     """A `Screen` from a `shots/*.txt` a boot wrote: numbered rows over a row of
-    colour digits, or the plain rows the driver's own `capture` writes. A file
+    colour digits, or the ordinary rows the driver's own `capture` writes. A file
     cut short or not text raises `ValueError`."""
     import re
     lines = path.read_text(encoding="utf-8").split("\n")
@@ -1792,22 +1792,22 @@ def test_a_sturdy_races_saves_are_checked_against_its_constitution(tmp_path):
     """A gnome with constitution 9 takes 9 * 2 // 7 = 2 off all five saves."""
     sp = gnome([8, 10])
     roll = con_roll(9)
-    plain = record(sp, roll)
+    ordinary = record(sp, roll)
     tables = creation.levels.saving_throws(sp.classes, creation.RACES["GNOME"],
                                            9, "pool-of-radiance")
     without = creation.levels.saving_throws(sp.classes, 0, 9,
                                             "pool-of-radiance")
     assert [b - a for a, b in zip(tables, without)] == [2] * 5
-    assert [plain.get(f) for f in creation.SAVE_FIELDS] == list(tables)
-    disk([plain], names=[sp.name]).save(str(tmp_path / "rolled.D64"))
-    disk([plain], party=True, exports=False).save(str(tmp_path / "party.D64"))
+    assert [ordinary.get(f) for f in creation.SAVE_FIELDS] == list(tables)
+    disk([ordinary], names=[sp.name]).save(str(tmp_path / "rolled.D64"))
+    disk([ordinary], party=True, exports=False).save(str(tmp_path / "party.D64"))
     args = (tmp_path / "rolled.D64", tmp_path / "party.D64", [sp])
     assert creation.check_records(*args, {sp.name: roll})[-1] == \
         "all records match the spec"
     # The same record with the two points not taken off: only the saves differ.
     for f, v in zip(creation.SAVE_FIELDS, without):
-        plain.set(f, v)
-    disk([plain], names=[sp.name]).save(str(tmp_path / "rolled.D64"))
+        ordinary.set(f, v)
+    disk([ordinary], names=[sp.name]).save(str(tmp_path / "rolled.D64"))
     lines = creation.check_records(*args, {sp.name: roll})
     assert lines[-1] == "SPEC MISMATCH"
     bad = [ln.split("MISMATCH: ")[1] for ln in lines if "export:" in ln]

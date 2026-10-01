@@ -4750,7 +4750,7 @@ class PoolRun:
                     [r.strip() for r in key_rows[17:23]])
             m_outcome = None
             if move == "M" and before[2] is not None:
-                # Recorded so a door case can be told from a plain step back
+                # Recorded so a door case can be told from a simple step back
                 # in the evidence files; `_walk` judges it below.
                 if after[:2] == before[:2]:
                     m_outcome = "turned"
@@ -5524,7 +5524,7 @@ class CurseRun(PoolRun):
     """Read Curse's effects with the shared reader and drive its measured fight route."""
 
     walk_encounters = False
-    #: Set by `main`: log every command bar of a plain `fight`, and press
+    #: Set by `main`: log every command bar of a simple `fight`, and press
     #: `first_bar_key` (a PETSCII code) once at the first.
     log_bars = False
     first_bar_key = None

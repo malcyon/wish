@@ -89,7 +89,7 @@ SHEET = [
         ("plain-padlock", "Delapouite", "locked"),
         ("stairs", "Delapouite", "stairs -- the level changes here"),
         ("hazard-sign", "Lorc", "danger"),
-        ("position-marker", "Delapouite", "a plain note, and the "
+        ("position-marker", "Delapouite", "a simple note, and the "
                                           "unknown-kind fallback"),
         ("check-mark", "Delapouite", "done"),
     ]),

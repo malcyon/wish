@@ -23,7 +23,7 @@ game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/PORSAVE11.D64").exist
                                 reason="needs the save disks")
 
 
-# --- the status line, read from plain memory --------------------------------
+# --- the status line, read from ordinary memory --------------------------------
 
 def screen_codes(text: str) -> bytes:
     """Text as the C64 stores it: A-Z are 1-26, punctuation is its own code."""
@@ -166,7 +166,7 @@ def test_the_memory_fallback_reads_the_indoors_flag_before_choosing_the_pair():
 def test_the_memory_fallback_is_off_for_a_title_with_no_travel_grid():
     """Pins `travel_grid=False`: Curse of the Azure Bonds has no square-engine
     overland at all (`docs/121-silver-blades.md`), so `$49E6` is never read
-    and the plain indoor fallback is what answers -- None here, because
+    and the simple indoor fallback is what answers -- None here, because
     `$C04B`'s bytes are not a plausible indoor square for it either."""
     m = machine("PRESS ANY KEY", memory_xy=(0x4C, 0x2F, 0xC5), indoors=False)
     m.memory[0x49C3] = bytes([7, 29])
@@ -607,7 +607,7 @@ def _test_the_map_tab_draws_what_the_session_reads(app, tmp_path, monkeypatch):
 
 def test_a_hidden_map_tab_reads_nothing(app, tmp_path, monkeypatch):
     """Only the visible tab polls. The party panel added two reads a poll, so
-    this is worth pinning: a tab nobody is looking at must cost the running
+    this needs pinning: a tab nobody is looking at must cost the running
     machine nothing at all."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))

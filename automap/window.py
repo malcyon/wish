@@ -538,7 +538,7 @@ class CombatCanvas(QWidget):
 
     def _draw(self, p: QPainter, prim) -> None:
         # Hatch first: it is a Rect, and the Rect branch would swallow it. When
-        # the cell is too small `lines` is empty and this is a plain fill --
+        # the cell is too small `lines` is empty and this is a flat fill --
         # the heavy rock-edge below still carries the shape.
         if isinstance(prim, Hatch):
             p.setPen(Qt.PenStyle.NoPen)
@@ -1265,7 +1265,7 @@ class AutomapBinding(QObject):
         **Gated on `$6E11`, never on the screen.** Checked once a second while
         the party is in the world -- one more round trip on the tick that reads
         the party anyway -- and on every tick once a fight has started, because
-        that is when the map is worth looking at. The area map is not polled at
+        that is when the map matters. The area map is not polled at
         all during a fight: the party is not moving through the world, and its
         explored squares sit untouched until the fight ends.
         """
@@ -1734,7 +1734,7 @@ class AutomapBinding(QObject):
 
         Geometry and the connection are the host's: `wish/window.py`'s own
         `closeEvent` remembers its own geometry (this widget is a page in a
-        tab, not a window, and has none worth keeping), and calls
+        tab, not a window, and has none to keep), and calls
         `Session.close()` -- which closes `mapper.target` -- before it calls
         here.
         """

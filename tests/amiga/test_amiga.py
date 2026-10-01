@@ -1081,7 +1081,7 @@ def test_an_effect_node_of_the_wrong_length_is_refused():
         amiga_por.amiga_por_effect_to_dos(bytes(dos_port.EFFECT_SIZE))
 
 
-#: The fields `to_dos_record` deliberately does not carry across, each with
+#: The fields `to_dos_record` deliberately does not convert, each with
 #: the reason it is on this list.  A field that stopped round-tripping and is
 #: not named here is a bug, which is what the test below catches.
 NOT_TRANSPOSED = {
@@ -2851,7 +2851,7 @@ def test_a_later_amiga_read_sets_the_class_mask_at_all():
     from goldbox import dos_codec
     assert "class_bits" not in [n for n, _ in dos_codec.DIRECT]
     for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
-        char = _later_record(shape, 0x08, slot=5)     # a plain fighter
+        char = _later_record(shape, 0x08, slot=5)     # a simple fighter
         out = amiga_later.to_neutral_later(char)
         assert "class_bits" in out.fields, shape.key
         assert out.get("class_bits") == 0x08, shape.key
@@ -3134,7 +3134,7 @@ def test_no_drop_line_of_a_later_read_carries_developer_detail():
     assert seen == 21, seen
 
 
-def test_no_drop_line_of_a_later_read_says_a_field_was_carried():
+def test_no_drop_line_of_a_later_read_uses_the_banned_conversion_word():
     """`CLAUDE.md`'s "Banned Words" table bans "carried", however phrased,
     for anything a conversion does not convert -- #319 (The Amiga export's
     drop line still says a conversion "does not carry" a combat icon) and

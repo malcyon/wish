@@ -100,7 +100,7 @@ class Addresses:
         self.slot = int(lines[0][2][5:], 16)
         self.came_from = int(lines[2][2][5:], 16)
         # Two stores, not one, and this is the difference `#19` warned about.
-        # `STA $4C00,X` is the 32-byte scratch wipe; the plain `STA $4BFB`
+        # `STA $4C00,X` is the 32-byte scratch wipe; the simple `STA $4BFB`
         # beside it is Silver Blades' own and has no counterpart in Pool of
         # Radiance or Curse. Both are taken from the handler rather than
         # assumed, so a title that makes five writes reports `extra` as None.
@@ -809,7 +809,7 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
         elif began and not entered:
             # Past the formation menu and not a disk prompt. Once the mode
             # byte has left GEN the party is in the world and a script is
-            # running it; only then is an idle PC worth anything, because
+            # running it; only then does an idle PC achieve anything, because
             # before it the same fetcher is what the front end's menus wait
             # in. Until then nothing is pressed: GEN, a failed read, or the
             # GEN-to-DUNGEON load still under way.

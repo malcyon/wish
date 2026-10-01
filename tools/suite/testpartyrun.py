@@ -255,7 +255,7 @@ def item_toggle_pair(sess, log: Log, out: pathlib.Path, name: str,
     # entirely, and after one character's item list that bar reads
     # `ENCAMP:SAVE VIEW MAGIC REST ALTER EXIT` -- **camp's own command bar**,
     # a compound word exactly like the sheet's own `VIEW:ITEMS`, not the
-    # plain world bar `MOVE VIEW CAST AREA ENCAMP SEARCH LOOK`.  Pool of
+    # ordinary world bar `MOVE VIEW CAST AREA ENCAMP SEARCH LOOK`.  Pool of
     # Radiance was measured on 2026-09-16 to leave the game sitting there
     # rather than back on the world, so the next `open_items` call reads
     # `ENCAMP` in that compound word, presses it, and opens the wrong menu.

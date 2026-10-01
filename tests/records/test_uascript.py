@@ -75,7 +75,7 @@ def _named(records, wanted):
     pytest.skip(f"no monster record named {wanted}")
 
 
-# --- record 0x0F7: the experience a creature is worth -----------------------
+# --- record 0x0F7: the experience a creature awards -----------------------
 # The guide puts the award at GBVM $6BF7 and the per-hit-point bonus at $6BF9,
 # and the record answers to a fixed $6B00, so those are offsets 0x0F7 and
 # 0x0F9. Both fell inside `gap_0f4`.

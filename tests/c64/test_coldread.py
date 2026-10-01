@@ -247,7 +247,7 @@ ADND_ARMOUR = {"LEATHER ARMOR": 8, "PADDED ARMOR": 8, "STUDDED LEATHER": 7,
 #: stripped one, because the difference is not a property of the weapon.
 #:
 #: Silver Blades gives `HAMMER +4` 1d4+1 against large opponents where the
-#: Players Handbook gives 1d4. Its plain `HAMMER`, `HAMMER +1` and `HAMMER +2`
+#: Players Handbook gives 1d4. Its ordinary `HAMMER`, `HAMMER +1` and `HAMMER +2`
 #: all read 1d4+1 against small and medium and 1d4 against large, as do every
 #: hammer in the two earlier titles -- so keying this on the stripped name, as
 #: it was until 2026-09-02, would stop checking four items to excuse one.

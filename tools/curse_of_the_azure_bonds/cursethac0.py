@@ -22,7 +22,7 @@ Two characters carry the spoiled byte, differing in one thing:
 `strength_bonus_flag` at `0x0E3`, which `LIBRARY $394B` indexes the strength
 tables through.  With it zero the rebuild adds nothing; with it one it adds
 `$3840[strength_index]`.  So the pair separates "the engine rebuilt this" from
-"the engine rebuilt it and the gate decided what it was worth", in one fight.
+"the engine rebuilt it and the gate decided its value", in one fight.
 
     tools/curse_of_the_azure_bonds/cursethac0.py stage --base WISH-SPEC-curse-trained-party.D64 \
         --out spoiled.D64 --spoil MATHEW --spoil MARK:gate=1

@@ -14,7 +14,7 @@ already hold the damage.
 
 **And the folder is named, never guessed.** `save_disk` is told where the copy
 goes and refuses to write when nothing was named -- there is no hidden
-directory to fall back to, because the guarantee above is worth more than the
+directory to fall back to, because the guarantee above matters more than the
 save that would have gone through without it.
 """
 

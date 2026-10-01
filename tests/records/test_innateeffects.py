@@ -708,7 +708,7 @@ def test_the_pool_of_radiance_rings_own_power_byte_reaches_the_spc_file():
 
 def test_the_same_item_unreadied_now_converts_by_its_own_permanent_id():
     """The C64 honours a slot whether or not the ring is worn, so 61
-    unreadied is no longer the item-grant case at all: it is a plain trait
+    unreadied is no longer the item-grant case at all: it is a simple trait
     slot, and 61 is in Pool of Radiance's `C64_TRAIT_PERMANENT_IDS` (#621's
     Stage 3), so it converts in the permanent form rather than the item
     form."""

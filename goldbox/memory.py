@@ -79,7 +79,7 @@ MAP: tuple[Region, ...] = (
            note="six digits, not three: limits 0A 0A 06 18 1E 0C at $A83C. "
                 "$49C7 minutes, $49C8 tens of minutes, $49C9 the HOUR -- "
                 "DUNGEON $09F7 prints those three -- then $49CA and $49CB "
-                "carry the day and the month. Read as plain 'minutes' for a "
+                "carry the day and the month. Read as bare 'minutes' for a "
                 "while, which made PORSAVE11 come out at 27:27"),
     Region(0x49E7, 3, "wall slot pinned", MAYBE, saved_in="SAVEDGAME0",
            note="one flag per wall slot: do not relocate its screen codes"),
@@ -256,7 +256,7 @@ BY_NAME = {r.name: r for r in MAP}
 
 def at(address: int) -> list[Region]:
     """Every region covering `address`. More than one is normal -- `$4BC2` sits
-    inside the loaded-files cache, and both entries are worth seeing."""
+    inside the loaded-files cache, and both entries matter."""
     return [r for r in MAP if r.start <= address < r.end or
             (r.size == 0 and r.start == address)]
 

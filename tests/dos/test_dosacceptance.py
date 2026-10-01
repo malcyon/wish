@@ -94,15 +94,15 @@ def pod_journal(monkeypatch):
 def test_the_bar_signature_ignores_which_word_is_highlighted():
     # Fewer lit pixels than paper in every cell, as a letter is.
     words = bytes((0x18, 0x24, 0, 0x81, 0x07, 0, 0x03))
-    plain = _screen(words, b"")
+    ordinary = _screen(words, b"")
     for block in ((0, 2), (3, 5), (6, 7)):
         lit = _screen(words, b"", block)
         # The whole-bar digest `glyphs` is fooled by the block, and the
         # signature is not.
-        assert lit.glyphs(dosbox.BAR) != plain.glyphs(dosbox.BAR)
-        assert screens.bar_signature(lit) == screens.bar_signature(plain)
+        assert lit.glyphs(dosbox.BAR) != ordinary.glyphs(dosbox.BAR)
+        assert screens.bar_signature(lit) == screens.bar_signature(ordinary)
     assert screens.bar_signature(_screen(bytes((0x18, 0x24, 0, 0x81, 0x05)), b"")) \
-        != screens.bar_signature(plain)
+        != screens.bar_signature(ordinary)
 
 
 # -- a fake DOS Pool of Radiance camp ------------------------------------------
@@ -6487,9 +6487,9 @@ def _words_bar(text: str) -> bytes:
 
 def test_the_bar_is_split_into_words_blind_to_the_highlight():
     bar = _words_bar("TRADE DROP HEAL CURE EXIT")
-    plain = da.bar_words(_screen(bar, b""))
+    ordinary = da.bar_words(_screen(bar, b""))
     lit = da.bar_words(_screen(bar, b"", block=(0, 6)))
-    assert [len(w) for w in plain] == [5, 4, 4, 4, 4] and lit == plain
+    assert [len(w) for w in ordinary] == [5, 4, 4, 4, 4] and lit == ordinary
 
 
 @pytest.mark.parametrize("title,text,heal,cure", [
@@ -8268,7 +8268,7 @@ def test_read_reports_each_staged_word_as_the_saved_slot_holds_it(tmp_path, monk
 
 def test_the_dos_new_verdigris_script_is_the_c64_one():
     """Area 16's DOS script is `ECL10` on the C64, so the gate `$4C2D` its
-    wandering roll reads is a DOS fact and not a C64 one carried across."""
+    wandering roll reads is a DOS fact and not a C64 one reused here."""
     from automap import paths
     from goldbox import c64_port, dos_savegame
     from tools.c64 import coldread

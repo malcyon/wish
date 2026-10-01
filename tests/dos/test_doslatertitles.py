@@ -11,7 +11,7 @@ Blades character handed to `goldbox.dos_codec.write` came back as 285 bytes of P
 of Radiance, silently, and no Curse or Silver Blades game could ever have
 loaded it.
 
-Three kinds of test here, in order of how much they are worth.
+Three kinds of test here, in order of how much they matter.
 
 * **The round trip**, over every record on the machine -- a DOS record read
   into the neutral middle and written out again, byte for byte outside the

@@ -13,7 +13,7 @@ def make_root():
 
 Nothing here needs an emulator and nothing here opens a dialog. A fasttravel is
 exercised against `MemoryTarget` with a program counter bolted on, which is
-what makes the assertions worth making: the addresses written, and their
+what makes the assertions meaningful: the addresses written, and their
 order, are the part that has to be right.
 
 **What these tests cannot show.** That entering `NEWECL`'s handler at `$2034`
@@ -72,7 +72,7 @@ def test_the_flag_is_an_alias_and_is_taken_off_the_command_line(monkeypatch):
 def test_the_debug_log_is_the_switch_a_user_gets(monkeypatch, tmp_path):
     """Retired: `test_debug_mode_is_not_a_setting`, which asserted the mode was
     unreachable from `Settings`. It is reachable now, through the log, and the
-    one thing worth pinning is that the two move together --
+    one thing to pin is that the two move together --
     `docs/118-debug-mode.md` §1."""
     monkeypatch.delenv(debugmode.ENV, raising=False)
     for var in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"):
@@ -118,8 +118,8 @@ def test_the_outgoing_id_loses_the_reload_bit():
 def test_a_square_is_only_written_when_there_is_one():
     """Six areas are placed by the arriving script's own entry 4, and area 7
     has a square but no facing."""
-    plain = dict(actions.newecl_writes(0, 1))
-    assert actions.FASTTRAVEL_X not in plain
+    ordinary = dict(actions.newecl_writes(0, 1))
+    assert actions.FASTTRAVEL_X not in ordinary
     partial = dict(actions.newecl_writes(0, 7, arrival=(5, 7)))
     assert partial[actions.FASTTRAVEL_X] == bytes([5, 7])
 
@@ -413,8 +413,8 @@ def test_a_fasttravel_to_the_area_we_are_in_is_refused():
 
 
 def test_a_backend_with_no_cpu_cannot_fasttravel():
-    plain = MemoryTarget({c64.MODE_FLAG_POOL: bytes([WORLD])})
-    verdict = actions.FastTravel().legality(plain, area(20))
+    ordinary = MemoryTarget({c64.MODE_FLAG_POOL: bytes([WORLD])})
+    verdict = actions.FastTravel().legality(ordinary, area(20))
     assert not verdict and "program counter" in verdict.reason
 
 
@@ -705,7 +705,7 @@ def test_the_row_follows_the_title_when_the_disks_change(app):
 
 
 def test_the_button_carries_its_rejection_in_its_tooltip(app):
-    """`#306`: `$6E11` used to be in this tooltip. It carries the plain
+    """`#306`: `$6E11` used to be in this tooltip. It carries the simple
     reason now and the address moved to `_log.debug`, beside the check in
     `Action.legality` -- `test_fasttravel_legality_rejections_carry_no_
     developer_detail` is the sweep over every branch."""
@@ -1213,7 +1213,7 @@ def test_the_click_never_stops_to_ask_about_the_clamp(app):
     """No dialog in the common case -- Donald had that removed once already.
     The exception is `classes_disqualified`: the clamp takes a class below a
     threshold it had already passed, so a level the character earned goes, and
-    that is worth a question. The rejection must write nothing.
+    that raises a question. The rejection must write nothing.
 
     `actions.LevelUp.confirmation` builds the question now, not `_level_up`
     itself (`#418 (The level-up confirmation dialog previews one step of a

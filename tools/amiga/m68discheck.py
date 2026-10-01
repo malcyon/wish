@@ -23,7 +23,7 @@ than counted.
 The binary is not in this repository and never will be: point this at a copy
 of the game's own executable wherever it is kept. `--offset`/`--length`
 default to the code hunk of the *Pools of Darkness* binary -- `m68dis` reads a
-plain binary at file offsets and does not parse AmigaDOS hunks, so a window
+raw binary at file offsets and does not parse AmigaDOS hunks, so a window
 outside the code decodes hunk headers as instructions and the comparison says
 nothing.
 """
@@ -128,7 +128,7 @@ def run(cs_mode, label: str, data: bytes, start: int, end: int) -> int:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         description="Compare tools/amiga/m68dis.py with capstone over a binary.")
-    ap.add_argument("binary", help="a plain 68000 binary, read at file "
+    ap.add_argument("binary", help="a raw 68000 binary, read at file "
                                    "offsets; not in this repository")
     ap.add_argument("--offset", type=lambda s: int(s, 0),
                     default=DEFAULT_OFFSET, metavar="N",

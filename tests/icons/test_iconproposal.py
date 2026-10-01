@@ -37,7 +37,7 @@ from tools.icons import iconproposal as ip  # noqa: E402
 #: first edit into a red build. It did -- he moved DOS weapon 2 from C64 5 to
 #: 10 and CI went red on the migration oracle (#130).
 #:
-#: What is worth pinning is the shape: every DOS figure has a row, every row
+#: What to pin is the structure: every DOS figure has a row, every row
 #: names a C64 option that exists, and the colour table covers all sixteen EGA
 #: entries. Those stay true however he rearranges the matches.
 DOS_WEAPONS = 32

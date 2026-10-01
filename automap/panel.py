@@ -389,7 +389,7 @@ class CardClassLabel(ElidingLabel):
     machine whose fonts are this one's. It was not enough on Windows: CI
     reported the Level up button drawn 99 of 102px inside a 220px column with
     the name already down to `LAD...`, because **the classes and the button
-    alone are wider than the column there**. A plain `QLabel` cannot give way,
+    alone are wider than the column there**. A bare `QLabel` cannot give way,
     so the button was the thing that got cut -- which is the whole of `#168`,
     reappearing on a platform the fix was not measured on.
 
@@ -1000,8 +1000,8 @@ class BottomStrip(QObject):
         draws no icons and a row no icons wide cannot be hovered at all. The
         combat view is where a monster's effects will mean something.
 
-        **A party effect no badge covers is drawn nowhere**, and that is worth
-        reporting rather than letting it look like a party with nothing
+        **A party effect no badge covers is drawn nowhere**, and that should be
+        reported rather than letting it look like a party with nothing
         running. `automap/live.py`'s badge set is graded from the spell table
         -- no save this project holds carries a party-wide effect at all -- so
         an id turning up here means the set is a glyph short, and it goes to
@@ -1101,7 +1101,7 @@ class MessagesPanel(QObject):
     mechanism in the status bar.
     """
 
-    #: Kept lines. Long enough for a session's worth of actions, short enough
+    #: Kept lines. Long enough for the actions of a whole session, short enough
     #: that the panel never becomes the reason the window is slow.
     LIMIT = 200
 

@@ -258,7 +258,7 @@ class Status(NamedTuple):
 
     **`facing` is None on the travel grid**, and that is a reading rather than
     a failure -- the game prints no facing out there.  A NamedTuple so the
-    four values still index and compare as the plain tuple this used to
+    four values still index and compare as the simple tuple this used to
     return, which is what `walk_one` and `tools/c64/savecheck.py` do with it; the
     change a caller has to cope with is `facing` being absent, not the shape.
     """
@@ -398,7 +398,7 @@ WON_TEXT = "THE PARTY HAS WON"
 LOST_TEXT = "THE PARTY HAS LOST"
 RAN_TEXT = "THE PARTY RUNS AWAY"
 
-# Lines worth keeping out of a fight: they are the evidence that a turn did
+# Lines to keep out of a fight: they are the evidence that a turn did
 # something.  A driver that only records the command bar cannot tell an attack
 # from a character standing still.
 #
@@ -540,7 +540,7 @@ class FightResult:
     def anybody_swung(self) -> bool:
         """Did **anybody** swing, either side?  What `acted` used to mean.
 
-        Kept, and named for what it is, because it is worth knowing that a
+        Kept, and named for what it is, because it matters that a
         fight lasted a round at all -- and because deleting it would leave the
         trap undocumented for whoever next writes a pattern over `lines`.
         """
@@ -1427,7 +1427,7 @@ class Session:
         it worked out here: when the dominant-colour scan finds nothing, the
         label's own column is tried, since the highlighted row is another
         entry in the same list and so starts where the label starts.  That
-        runs **only** when the plain scan came up empty, so no screen this
+        runs **only** when the simple scan came up empty, so no screen this
         already drove is driven differently.
 
         **`exact`** matches only a row whose whole text, stripped of
@@ -2377,7 +2377,7 @@ class Session:
         after a room description -- and the first burst after a screen change
         is swallowed.  So the move is re-sent until the status line moves, and
         a move that never moves it is reported as blocked, which for a forward
-        step is exactly the map fact worth having.
+        step is exactly the map fact that matters.
 
         **Row 24 can already be `MOVE_SUBBAR`** -- a square with a script on
         it answers the previous step with a room description, a load or a
@@ -2559,7 +2559,7 @@ class Session:
             # A square's own text (an ambush) is up where the move bar
             # should be.  A caller that fights encounters answers a `PRESS`
             # bar itself and fights what opens behind it, so this is neither
-            # a driver error nor a stop; a plain walk still reports it.  The
+            # a driver error nor a stop; a simple walk still reports it.  The
             # bar is read again because `last` predates the 8 s `MOVE` wait.
             _log_line(self, "  A PRESS bar is up instead of the move bar: "
                             "leaving it for the caller to answer")
@@ -3155,7 +3155,7 @@ class Session:
         highlight comes from the same screen snapshot as the text rather than
         from a second monitor read, so a bar redrawn between the two cannot
         send the walk the wrong way.  And the label is matched as a whole word
-        -- which on every bar measured so far gives the same answer as a plain
+        -- which on every bar measured so far gives the same answer as a simple
         `find`, so treat that one as a guard against a vocabulary we have not
         seen rather than as a fix for anything.
 

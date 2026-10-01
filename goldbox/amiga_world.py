@@ -13,7 +13,7 @@ of 24 lines, and a line is 6 bytes: tile `t` is in tile-row `t // 2`, column
 128-255 `sqrpaci.dax` block 2 at index `t & 0x7F`.
 
 **The picture draws the grid unchanged.** The nine site records in hunk 26 cover
-a site with plain terrain while the game hides it, and the map hides nothing,
+a site with ordinary terrain while the game hides it, and the map hides nothing,
 so none of them is read.
 """
 

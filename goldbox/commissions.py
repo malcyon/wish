@@ -149,7 +149,7 @@ MARKERS: dict[int, dict[int, str]] = {
     },
 }
 
-# Index 21 is a plain count rather than a set of states: `ECL14 $B6A4 ADD 1,
+# Index 21 is a simple count rather than a set of states: `ECL14 $B6A4 ADD 1,
 # [$4ABB], [$4ABB]`, then `$B6AD COMPARE [$4ABB], 25 / IF< / RETURN` and
 # `SAVE 254`, so 25 clears the area and the byte never holds 25 itself.
 #
@@ -182,7 +182,7 @@ SLUM_ENCOUNTERS = 25
 SLUM_WANDERING = 15         # $4A80's cap, ECL14 $9B32 / $ADD6
 SLUM_SET = SLUM_ENCOUNTERS - SLUM_WANDERING
 
-# What each marker is worth, one line, for a panel that has to say something
+# What each marker means, one line, for a panel that has to say something
 # better than the number.
 def marker_text(index: int, value: int) -> str | None:
     """What a ledger byte between 1 and 253 means, or None if it means nothing.

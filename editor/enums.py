@@ -18,7 +18,7 @@ reconciled.** They say the same thing two ways -- `0x073` a single code,
 record is allowed to disagree with itself here, so each box edits its own byte
 and nothing else.
 
-Race 0 is worth knowing about: it is the commonest race in the game, carried by
+Race 0 needs explaining: it is the commonest race in the game, carried by
 75 of 135 monster records, and it is not evidence of tampering. The game prints
 it as MONSTER, which is why PRINCESS FATIMA reads oddly.
 """

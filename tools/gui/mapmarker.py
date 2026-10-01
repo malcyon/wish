@@ -57,7 +57,7 @@ from tools.registry import scratch  # noqa: E402
 #: copied into the slot and the game only ever sees the copies.
 DISKS: pathlib.Path | None = tool_disks()
 
-#: The bytes worth writing down beside every screenshot, and why each one is
+#: The bytes to write down beside every screenshot, and why each one is
 #: here.  `$49E6` says which of the two worlds the party is in; `$49C0` is the
 #: dungeon triple, which freezes outdoors at the square the party left the grid
 #: on; `$49C3` is the live travel square; `$C04B` is the machine's own
@@ -392,7 +392,7 @@ def come_home(args, sess, target, app, binding, out, log, step: int) -> int:
     which was never tried.  This tries it: write `1` into `$49E6`, then make
     the ordinary `FastTravel`, whose own rejection then no longer fires because
     it re-reads the byte.  Whether the loader is satisfied by that is the
-    measurement, and either answer is worth writing down -- what this run
+    measurement, and either answer should be written down -- what this run
     needs it for is the only crossing the offscreen tests cannot make, a
     party walking back into the area it left.
 

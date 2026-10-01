@@ -2115,7 +2115,7 @@ class EffectTableEntry:
     than the never-expires of a slot's zero**: a
     spell whose whole duration scales with the caster sets only `per_level`.
     ENLARGE is exactly this: `duration` 0, `per_level` `$0A`, and a level-1
-    cast measured live wrote effect duration `$0A` -- one level's worth,
+    cast measured live wrote effect duration `$0A` -- the amount for one level,
     `docs/50-experiments.md` confirms the live write and this table gives the
     per-level rate it came from.
     """

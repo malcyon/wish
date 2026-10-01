@@ -229,8 +229,8 @@ def test_c64_to_dos_writes_the_scrolls_as_items_of_their_own(tmp_path):
     assert record[count] == 4
 
 
-def _crowded(plain: int, scrolls: int) -> bytes:
-    return (b"".join(bytes(_item(10 + n, weight=10)) for n in range(plain))
+def _crowded(ordinary: int, scrolls: int) -> bytes:
+    return (b"".join(bytes(_item(10 + n, weight=10)) for n in range(ordinary))
             + _joined(*[SCROLL_A] * scrolls))
 
 
@@ -504,15 +504,15 @@ def _plain(n: int) -> bytes:
     return dos_codec.item_to_c64(bytes(_item(10 + n, weight=10)))
 
 
-def _party_file(plain: int, *scrolls: bytearray) -> bytes:
-    return (b"".join(bytes(_item(10 + n, weight=10)) for n in range(plain))
+def _party_file(ordinary: int, *scrolls: bytearray) -> bytes:
+    return (b"".join(bytes(_item(10 + n, weight=10)) for n in range(ordinary))
             + _joined(*scrolls))
 
 
-def _named(tmp_path, name: str, plain: int, *scrolls: bytearray):
-    """A neutral character holding `plain` items and one joined scroll."""
+def _named(tmp_path, name: str, ordinary: int, *scrolls: bytearray):
+    """A neutral character holding `ordinary` items and one joined scroll."""
     char = dos_codec.to_neutral(
-        _read(tmp_path, _party_file(plain, *scrolls), plain + 1))
+        _read(tmp_path, _party_file(ordinary, *scrolls), ordinary + 1))
     char.set("name", name, "made up")
     return char
 
@@ -571,12 +571,12 @@ def test_pack_overflow_takes_only_the_c64_now(tmp_path):
 
 
 def test_leave_behind_dissolves_a_joined_scroll_that_loses_a_scroll():
-    a, b, c, plain = (bytes([n]) * 16 for n in (0x27, 0x28, 0x27, 9))
+    a, b, c, ordinary = (bytes([n]) * 16 for n in (0x27, 0x28, 0x27, 9))
     head = bytes((0x49,)) + bytes(15)
-    inventory = [plain, a, b, c, plain, a, b]
+    inventory = [ordinary, a, b, c, ordinary, a, b]
     bundles = (ScrollBundle(1, 3, head), ScrollBundle(5, 2, head))
     left, kept = dos_codec.leave_behind(inventory, bundles, {2})
-    assert left == [plain, a, c, plain, a, b]
+    assert left == [ordinary, a, c, ordinary, a, b]
     assert kept == (ScrollBundle(4, 2, head),)
     left, kept = dos_codec.leave_behind(inventory, bundles, {0})
     assert kept == (ScrollBundle(0, 3, head), ScrollBundle(4, 2, head))

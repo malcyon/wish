@@ -161,7 +161,7 @@ FONT_AWESOME: dict[str, str] = {}
 #: Donald chose every one of these by name and by artist; nothing here was
 #: picked, redrawn or nudged to fit. `ARTISTS` below records who drew what,
 #: because attribution is the whole of what CC BY asks for and a licence file
-#: is worth more generated from the table that ships than retyped beside it.
+#: is better generated from the table that ships than retyped beside it.
 GAME_ICONS = {
     "death-skull":
         "M255.997 16.004c-120 0-239.997 60-239.997 149.998C16 226.002 61 "

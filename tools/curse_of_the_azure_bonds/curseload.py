@@ -88,7 +88,7 @@ from tools.secret_of_the_silver_blades.ssbsession import (  # noqa: E402
     load_started,
 )
 
-#: Every byte worth reading when the load has just failed, and why.
+#: Every byte to read when the load has just failed, and why.
 PROBES = {
     "03F1_error": (0x03F1, "what $401E returned: 0 is success, $3E is the "
                            "fastloader's failure, anything else is the "
@@ -112,7 +112,7 @@ DRIVE_ERROR_BUFFER = (0x02D5, 40)
 
 CMD_MEM_GET = 0x01
 
-#: The four instructions worth counting, all in `GEN` at `$0800`.  Counting
+#: The four instructions to count, all in `GEN` at `$0800`.  Counting
 #: them settles what a screen poll is too slow to see: whether the save-disk
 #: prompt was drawn at all, and how many times the load was actually taken.
 COUNTERS = {
@@ -126,8 +126,8 @@ COUNTERS = {
 def drive_read(m, start: int, length: int, memspace: int = 1) -> bytes:
     """Read the drive's memory.
 
-    `Monitor.read` hardcodes memspace 0 (the C64), and the one thing worth
-    reading here lives in the 1541.  The body is the same as the monitor's own
+    `Monitor.read` hardcodes memspace 0 (the C64), and the one thing to
+    read here lives in the 1541.  The body is the same as the monitor's own
     `MEM_GET`, with the memspace byte filled in.
     """
     body = struct.pack("<BHHBH", 0, start, start + length - 1, memspace, 0)

@@ -1924,7 +1924,7 @@ def test_curse_plain_fight_keeps_plain_route_and_tactic(monkeypatch, tmp_path):
 
         def __init__(self, out, quiet):
             self.file = SimpleNamespace(close=lambda: None)
-            calls.append("plain-route")
+            calls.append("simple-route-route")
 
         def goto(self, target, steps, geo):
             return True
@@ -1958,7 +1958,7 @@ def test_curse_plain_fight_keeps_plain_route_and_tactic(monkeypatch, tmp_path):
     run.observe_curse = lambda *a, **k: pytest.fail("diagnostic observation")
     got = run.fight("10", "I", 5)
     assert got["walked"] == 3
-    assert calls[0] == "plain-route"
+    assert calls[0] == "simple-route-route"
     assert calls[-3] == "optional-command-wait"
     assert calls[-2] == ("fight", A.S.Session.melee_turn)
 
@@ -10085,8 +10085,8 @@ def test_temple_probe_pool_keeps_the_pool_coins_before_yes_and_after(
     assert result["pool_before"]["words"] == [0, 0, 0, 6000, 0]
     assert result["pool_after"]["words"] == [0, 0, 0, 500, 0]
     (tmp_path / "b").mkdir()
-    plain = _temple_fake_run(tmp_path / "b", monkeypatch)
-    assert "pool_before" not in plain[0].temple_probe("BRUTUS RAISE")
+    ordinary = _temple_fake_run(tmp_path / "b", monkeypatch)
+    assert "pool_before" not in ordinary[0].temple_probe("BRUTUS RAISE")
 
 
 def test_temple_probe_pool_records_an_unreadable_pool_and_still_finishes(
@@ -10890,17 +10890,17 @@ def test_temple_probe_leave_share_timeout_names_the_bound_that_expired(
 
 def test_a_staged_variable_lands_at_its_address_in_savedgame0(tmp_path):
     src = _fixture_disk(tmp_path)
-    plain = A.stage(src, tmp_path / "plain.d64", "pool-of-radiance")
+    ordinary = A.stage(src, tmp_path / "ordinary.d64", "pool-of-radiance")
     took = A.stage(src, tmp_path / "var.d64", "pool-of-radiance",
                    variables=[(0x4A07, 1)])
-    was = _payload(tmp_path / "plain.d64")[0x107]
+    was = _payload(tmp_path / "ordinary.d64")[0x107]
     assert took["variables"] == [{"address": 0x4A07, "offset": 0x107,
                                   "was": was, "now": 1}]
-    assert plain["variables"] == []
-    expect = bytearray(_payload(tmp_path / "plain.d64"))
+    assert ordinary["variables"] == []
+    expect = bytearray(_payload(tmp_path / "ordinary.d64"))
     expect[0x107] = 1
     assert _payload(tmp_path / "var.d64") == bytes(expect)
-    assert _roster(tmp_path / "var.d64") == _roster(tmp_path / "plain.d64")
+    assert _roster(tmp_path / "var.d64") == _roster(tmp_path / "ordinary.d64")
 
 
 @pytest.mark.parametrize("address", [0x6DD2, 0x6500, 0x48FF])
@@ -11175,8 +11175,8 @@ def test_a_load_followed_by_remove_stops_on_the_party_menu_until_another_step(
     summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
     assert summary["results"][-1]["entered_world"] == {"position": [1, 2, 3]}
     calls.clear()
-    (tmp_path / "plain").mkdir()
-    _drive(tmp_path / "plain", monkeypatch, ["load", "view 1"], pool=Menu)
+    (tmp_path / "ordinary").mkdir()
+    _drive(tmp_path / "ordinary", monkeypatch, ["load", "view 1"], pool=Menu)
     assert calls == ["load", "view 1"]
 
 
@@ -12523,9 +12523,9 @@ class _RowColourScreen(FakeScreen):
     """An item list with the cursor on entry row HOT: the name column is
     white there and green elsewhere, so a nameless row still shows it."""
 
-    def __init__(self, rows, hot, hot_colour=1, plain=5):
+    def __init__(self, rows, hot, hot_colour=1, ordinary=5):
         super().__init__(rows)
-        self.colours = bytearray([plain] * 1000)
+        self.colours = bytearray([ordinary] * 1000)
         if hot is not None:
             self.colours[hot * 40 + A.route_pool.ITEM_NAME_COLUMN] = hot_colour
 
@@ -12541,21 +12541,21 @@ class _ItemRowsFake(FakeSession):
     ROWS = {1: "THRENDER GRONE", 3: "EQUIPPED ITEM", 5: " YES FLAIL",
             6: " NO  LONG BOW", 7: " NO", 8: " EXIT"}
 
-    def __init__(self, answer, rows=None, hot_colour=1, plain=5):
+    def __init__(self, answer, rows=None, hot_colour=1, ordinary=5):
         self.ROWS = rows or dict(self.ROWS)
-        self.colour = (hot_colour, plain)
+        self.colour = (hot_colour, ordinary)
         super().__init__({"items": _window(self.ROWS, "READY TRADE DROP EXIT")},
                          {("items", ("bar", "READY")): "cursor"}, "items")
         self.hot = 5
         self.answer = answer
 
     def screen(self):
-        hot_colour, plain = self.colour
+        hot_colour, ordinary = self.colour
         bar = "READY TRADE DROP EXIT"
         if self.state in ("items", "cursor"):
             return _RowColourScreen(
                 _window(self.ROWS, bar), self.hot if self.state == "cursor" else None,
-                hot_colour, plain)
+                hot_colour, ordinary)
         if self.state == "answered":
             rows = dict(self.ROWS)
             last = max(r for r in rows if rows[r].strip() not in ("EXIT", ""))
@@ -12565,7 +12565,7 @@ class _ItemRowsFake(FakeSession):
                 rows[21] = "WRONG CLASS"
             elif self.answer == "vanished":
                 del rows[last]
-            return _RowColourScreen(_window(rows, bar), None, hot_colour, plain)
+            return _RowColourScreen(_window(rows, bar), None, hot_colour, ordinary)
         return super().screen()
 
     def _go(self, what):
@@ -12690,10 +12690,10 @@ TWO_ROWS = {1: "THRENDER GRONE", 3: "EQUIPPED ITEM", 5: " YES FLAIL",
 def test_a_two_row_list_names_the_cursor_row_whichever_colour_is_lower(colours):
     """With two rows each colour occurs once, so counting colours picks by
     which value is smaller; the blank row below the list is the reference."""
-    hot, plain = colours
+    hot, ordinary = colours
     for at in (5, 6):
         s = _RowColourScreen(_window(TWO_ROWS, "READY TRADE DROP EXIT"), at,
-                             hot, plain)
+                             hot, ordinary)
         assert A.route_pool.item_highlight(s, [5, 6]) == at
         assert A.item_row_highlight(s, [5, 6]) == at
         assert A.route_pool.item_highlight(s, A.route_pool.item_rows(s)) == at

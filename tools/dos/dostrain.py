@@ -44,8 +44,8 @@ trains whoever is highlighted and `y` accepts.
         Up '~10' Right '~2' Up '~3' Up '~3' Left '~2' Up '~5' y '~6' \\
         '@End' t '~5' y '~7' s '~2' f '~7'
 
-Output goes under the temp directory, never into the repository.  **Copy anything worth
-keeping into `$WISH_SPECIMENS` with `tools/registry/specimens.py add` before the slot
+Output goes under the temp directory, never into the repository.  **Copy anything to
+keep into `$WISH_SPECIMENS` with `tools/registry/specimens.py add` before the slot
 goes down.**
 """
 

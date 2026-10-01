@@ -227,7 +227,7 @@ def locate_records(image: bytes, recs: dict[int, bytes]) -> dict[int, dict]:
     cannot arm a watchpoint on it by checking `base is not None` -- which is
     the only check both callers here ever made.  The vote count and the
     address are still reported, under `weak_base`, because a rejected match is
-    worth reading.
+    still informative.
     """
     found: dict[int, dict] = {}
     for n, data in recs.items():

@@ -20,7 +20,7 @@ Three things about the shape of it:
   re-runs a directory search as you type. The live backend rows are the one
   part still built in code, because their count is not fixed the way the
   three titles' rows are.
-* **`report()` is a plain function over a folder.** It takes settings and a
+* **`report()` is a simple function over a folder.** It takes settings and a
   path, not a window, so what the dialog claims can be tested without opening
   one.
 * **Three tabs, and every width in it is measured.** General holds the form;
@@ -128,7 +128,7 @@ UNVERIFIED = _BADGE.format(edge="#d8c48a", ground="#fbf4e2", ink="#6b5510")
 #: beside the backends would be a second visual language for one idea.
 WARNING_BOX = UNVERIFIED + " padding: 6px 8px;"
 
-#: The fewest rows of the area table worth drawing. It has no maximum -- it is
+#: The fewest rows of the area table to draw. It has no maximum -- it is
 #: the one thing on its own tab that stretches, so it takes whatever height the
 #: dialog has, which is the point of the tab (`docs/130-preferences.md` §14).
 #: Six is enough to read as a list on a display that gives it nothing.
@@ -281,7 +281,7 @@ def _scan(where: str, amiga: bool = False) -> dict:
 
     It used to count the maps and open every image looking for item names and
     an icon charset as well. Donald had those three lines out of the dialog in
-    2026-08 -- "Game disks is too chatty" -- and an unprinted line is not worth
+    2026-08 -- "Game disks is too chatty" -- and an unprinted line does not justify
     reading eight disk images for.
     """
     root = pathlib.Path(where)
@@ -1041,7 +1041,7 @@ class PreferencesDialog(QDialog):
 
     def _wire_log(self) -> None:
         # No paragraph under it. A debug log does not need explaining, and the
-        # two things that were worth saying are said where they matter: the
+        # two things that needed saying are said where they matter: the
         # title bar and the status bar show [logging] while it is on, and the
         # status bar names the file the moment it opens.
         self.logging = self.ui.logging

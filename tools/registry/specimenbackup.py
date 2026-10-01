@@ -111,7 +111,7 @@ def recorded_hashes(root: pathlib.Path | None = None) -> dict[str, list[tuple[st
 
 
 def _stream_tar(path: pathlib.Path):
-    """A `tarfile` stream over a plain, gzipped or zstd-compressed archive.
+    """A `tarfile` stream over an uncompressed, gzipped or zstd-compressed archive.
 
     Returns `(tar, closer)`; the caller closes both.  zstd goes through the
     `zstd` binary because the `zstandard` module is not installed here, and a
@@ -220,7 +220,7 @@ def archive(dest: pathlib.Path, root: pathlib.Path | None = None) -> dict:
     if dest.suffix in ZSTD_SUFFIXES:
         raise ValueError(
             f"{dest} asks for zstd, which this writes nothing in: the tar "
-            "would be plain and the name would say otherwise, so `verify` "
+            "would be uncompressed and the name would say otherwise, so `verify` "
             "would fail on an archive that looked right. Name it .tar.gz "
             "-- the whole tree is under two megabytes gzipped. Reading a "
             "zstd archive still works, since the hourly snapshot is one")

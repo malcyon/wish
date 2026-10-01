@@ -12,7 +12,7 @@ tool safe to use on a real save, and it is asserted by the tests.
 
 Only fields we actually understand are editable. Everything else — the ~82% of
 each record still unidentified, the party header, and everything in
-`SAVEDGAME1` past its first page — is carried through untouched, because an edit
+`SAVEDGAME1` past its first page — is kept untouched, because an edit
 must never destroy bytes whose meaning we do not know.
 
 Pool of Radiance's save is two files, and both are written. `SAVEDGAME0` holds
@@ -375,7 +375,7 @@ def _spell_level(spell_id: int, game: C64Container | None = None) -> int | None:
 
 def export_save(path: str, game_disk: str | None = None,
                 game: C64Container | None = None) -> dict[str, Any]:
-    """Read a save disk and return the whole party as plain data.
+    """Read a save disk and return the whole party as simple data.
 
     The title is identified from the disk unless one is named.
     """
@@ -425,7 +425,7 @@ def export_save(path: str, game_disk: str | None = None,
 def entry_for(char, slot_index: int, items, icon, game: C64Container | None = None,
               names=None, types=None, spell_names=None,
               block=None) -> dict[str, Any]:
-    """One :class:`goldbox.neutral.NeutralCharacter` as plain data.
+    """One :class:`goldbox.neutral.NeutralCharacter` as simple data.
 
     The YAML writer: a codec beside the C64, DOS and Amiga ones rather than
     the thing they convert through.  It reads neutral field names and never a

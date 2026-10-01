@@ -1427,7 +1427,7 @@ class PodWriter:
     ready_to_train: bool | None = None
     #: `field_83_87`'s third and fourth bytes in the shared DOS order --
     #: the class a dual-classed human left (0x05B) and the byte after it
-    #: (0x095) -- neither read by this title's own engine, carried across a
+    #: (0x095) -- neither read by this title's own engine, converted by a
     #: route that has the window on both sides rather than dropped (#614).
     field_83_87_third: int | None = None
     field_83_87_fourth: int | None = None

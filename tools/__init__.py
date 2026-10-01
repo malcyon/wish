@@ -1,7 +1,7 @@
 """Developer scripts, as a package -- and the one import that has to happen
 before any of them runs.
 
-`tools/wish.py` is a plain module that happens to share the `wish` *package*'s
+`tools/wish.py` is a simple module that happens to share the `wish` *package*'s
 name, and thirty-four scripts in here put `tools/` at the **front** of
 `sys.path` at import time and never take it off, so that a sibling can be
 reached as `import dosbox`. Put those two facts in one process and the first

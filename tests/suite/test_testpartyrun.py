@@ -1341,7 +1341,7 @@ def test_the_drawn_party_figures_are_scored_against_the_creation_default(
         given.update(icon=icon_, slots=slots, charset=charset, roll=roll)
         return {"figures": [
             {"who": "BULWARK", "row": 7, "col": 7, "best": 9,
-             "exact": [(0, 0, "plain")], "exact_colours": [(0, 0, "plain")]},
+             "exact": [(0, 0, "unmirrored")], "exact_colours": [(0, 0, "unmirrored")]},
             {"who": None, "row": 1, "col": 1, "best": 3, "exact": [],
              "exact_colours": []}]}
 

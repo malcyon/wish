@@ -127,7 +127,7 @@ under the general rule and -3 under the nibble one.
 
 **Weapon flags** (`+14`) are a bitfield, not a missile type: bit 0
 needs arrows, bit 1 ranged, bit 2 adds the strength bonus, bit 3
-multi-shot, bit 4 throwable, bit 7 needs bolts. `4` is a plain melee
+multi-shot, bit 4 throwable, bit 7 needs bolts. `4` is a simple melee
 weapon, `20` a thrown one, `11` a bow, `15` a composite bow, `138` a
 crossbow, `26` a sling.
 

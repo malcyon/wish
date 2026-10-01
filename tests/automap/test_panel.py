@@ -312,7 +312,7 @@ def test_a_short_name_is_not_shortened_to_make_room(app, tmp_path,
     Level up button is drawn as it was typed.
 
     If this fails, the top row has no room even for that, and the card needs
-    more than a shortening -- which is worth seeing rather than asserting
+    more than a shortening -- which is better seen than asserted
     around.
 
     **A short name survives where a long one would not, and that is all this
@@ -401,7 +401,7 @@ def test_the_classes_give_way_before_the_button_does(app, tmp_path,
 
     The name yielding everything is enough here and was not enough there,
     because **the classes and the button alone are wider than the column** on
-    a machine whose base font is wider. A plain `QLabel` cannot give way, so
+    a machine whose base font is wider. A bare `QLabel` cannot give way, so
     the button was what got cut -- which is `#168` again, on a platform the
     fix was never run on.
 

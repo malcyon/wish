@@ -376,7 +376,7 @@ class PartyPosition:
         arithmetic looked sound, because 637 through 649 across PORSAVE4 to
         PORSAVE9 is a believable count either way. PORSAVE11 gave it away: 1647
         "minutes" is 27:27, an impossible time, where the real reading is a
-        plain 16:47. PORSAVE12 and 13 are 16:58 and 16:59 -- one minute apart
+        simple 16:47. PORSAVE12 and 13 are 16:58 and 16:59 -- one minute apart
         across one step, which is exactly right.
         """
         return (self._get(PARTY_CLOCK + 2),
@@ -804,7 +804,7 @@ class SaveGame1:
     The first page is the party roster -- eight 32-byte blocks holding the
     combat numbers the character record does not: armour class, THAC0, current
     hit points, movement and the damage bonus. Everything from $8400 on is
-    still opaque, and is carried through a load/save cycle untouched.
+    still opaque, and survives a load/save cycle untouched.
     """
 
     def __init__(self, payload: bytes, game: C64Container = _c64_port.DEFAULT):

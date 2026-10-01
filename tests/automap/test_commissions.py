@@ -10,7 +10,7 @@ def make_root():
 """The City Council's books: the decoder, and the panel that draws it.
 
 Most of this runs on flag blocks built here, byte by byte, because the states
-worth testing -- a reward waiting, a summons outstanding -- are three bytes of
+to test -- a reward waiting, a summons outstanding -- are three bytes of
 our own making. The shipped unplayed disk is the end-to-end check: it must
 produce exactly the three commissions the real game opens with.
 """

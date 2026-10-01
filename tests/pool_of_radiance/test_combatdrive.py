@@ -144,9 +144,9 @@ def test_no_screen_is_not_a_blank_bar():
 # -- finding a command on the bar -------------------------------------------
 
 def test_a_command_is_found_where_it_is_a_word_and_nowhere_else():
-    """`word_column` is a guard, and it is worth saying what it is not.
+    """`word_column` is a guard, and it helps to say what it is not.
 
-    On every bar this project has measured, a plain `str.find` gives the same
+    On every bar this project has measured, a bare `str.find` gives the same
     answer -- MOVE, VIEW, AIM, USE, CAST, QUICK, DONE, YES, NO and EXIT are
     none of them inside one another.  So this is protection against a command
     vocabulary we have not seen yet, not the fix for a bug we hit; `ON` inside
@@ -156,7 +156,7 @@ def test_a_command_is_found_where_it_is_a_word_and_nowhere_else():
     assert word_column("MOVE VIEW AIM USE QUICK DONE", "DONE") == 24
     assert word_column("MOVE VIEW AIM USE QUICK DONE", "ON") == -1
     # `QUICK` is on the command bar and `QUIT` is not, and `end_turn` asks for
-    # QUIT at every bar `fight` calls it at.  A plain `find` gets this one
+    # QUIT at every bar `fight` calls it at.  A bare `find` gets this one
     # wrong the other way -- it answers -1 correctly here, but the guard is
     # what stops `QUIT` ever being read out of `QUICK`.
     assert word_column("MOVE VIEW AIM USE QUICK DONE", "QUIT") == -1
@@ -1355,7 +1355,7 @@ def test_a_list_whose_highlight_cannot_be_found_says_so(capsys):
     assert sess.kbd.sent == []
     said = capsys.readouterr().out
     assert "ROLAND" in said and "no highlighted row" in said
-    # `.strip()`, and the reason is worth the line: `select_row` indents its
+    # `.strip()`, and the reason deserves the line: `select_row` indents its
     # log two spaces, so `said[:1]` is a space -- and `" " == " ".upper()` is
     # true whatever follows it. The assertion read like a capitalisation guard
     # and could not fail. `.claude/rules/gui-text.md` covers what the CLI

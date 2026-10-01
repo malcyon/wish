@@ -96,7 +96,7 @@ this document's** — flagged, not edited.
 `goldbox/geo.py` decomposes a wall nibble as `wallset = (v−1)//5`, `slice = (v−1)%5`
 and gives the five slices no meaning. The repository derives the same
 decomposition independently on DOS and adds an order: **`[base, window, gate,
-plain, door]`**.
+ordinary, door]`**.
 
 Measured across all 29 of our `GEO` files, every wall edge against its own
 passability field:

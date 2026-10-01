@@ -233,7 +233,7 @@ def test_the_camp_steps_go_between_the_camp_key_and_the_camp_save(letter):
     assert title.route == (*base.route[:at], *added, *base.route[at:])
     assert title.route[at - 1] == ("E", "camp", "key")
     assert [key for key, _, kind in title.route if kind == "write"] == ["C", "F"]
-    # A slot-D source keeps slot A, so the rest menu's Add key is a plain key there only.
+    # A slot-D source keeps slot A, so the rest menu's Add key is a simple key there only.
     assert title.plain_keys == ((("A", "rest_menu"),) if letter == "D" else ())
     assert title.wait_limits["camp"] == route_camp.REST_LIMIT
     assert title.strict == base.strict
@@ -258,7 +258,7 @@ def test_the_curse_camp_steps_go_between_the_camp_key_and_the_camp_save():
                            *base.route[at:])
     assert title.route[at - 1] == ("E", "camp", "key")
     assert [key for key, _, kind in title.route if kind == "write"] == ["C", "F"]
-    # A slot-D source keeps slot A, so the rest menu's Add key is a plain key there only.
+    # A slot-D source keeps slot A, so the rest menu's Add key is a simple key there only.
     assert title.plain_keys == (("A", "rest_menu"),)
     assert title.wait_limits["camp"] == route_camp.REST_LIMIT
 
@@ -768,8 +768,8 @@ def test_a_published_prepare_keeps_its_camp_steps_and_the_accept_route_has_them(
     manifest, title = foundation._published_manifest(path, "ssb")
     assert manifest["camp"] == ["view 1", "heal", "rest 60m"]
     assert ("H", "heal_whom", "key") in title.route
-    plain = foundation.prepare_published("ssb", "plain", report, "628")
-    manifest, title = foundation._published_manifest(plain, "ssb")
+    ordinary = foundation.prepare_published("ssb", "ordinary", report, "628")
+    manifest, title = foundation._published_manifest(ordinary, "ssb")
     assert "camp" not in manifest
     assert all(state != "heal_whom" for _, state, _ in title.route)
 
@@ -802,7 +802,7 @@ def test_darkness_camp_steps_go_between_its_camp_key_and_its_camp_save():
                            *base.route[at:])
     assert title.route[at - 1] == ("E", "camp", "key")
     assert [key for key, _, kind in title.route if kind == "write"] == ["F", "G"]
-    # A, D and E are kept slots on disk 3, so the rest menu's Add and Days keys are plain there.
+    # A, D and E are kept slots on disk 3, so the rest menu's Add and Days keys are simple there.
     assert title.plain_keys == (*base.plain_keys, ("D", "rest_menu"), ("A", "rest_menu"))
     assert title.wait_limits["camp"] == route_camp.REST_LIMIT
     assert title.strict == base.strict

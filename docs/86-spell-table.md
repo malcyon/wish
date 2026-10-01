@@ -103,7 +103,7 @@ caster's class predicts.
 
 `56` is **RESTORATION**, a
 cleric spell of far higher level than Pool of Radiance grants a player,
-so it is presumably the temple's. Its level is not worth guessing.
+so it is presumably the temple's. Its level is left unguessed.
 
 From `57` the same table continues with **combat message
 fragments** rather than spells — they share the mechanism and not the

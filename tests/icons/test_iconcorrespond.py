@@ -142,7 +142,7 @@ def test_the_same_index_is_not_the_same_figure(game, parts, charset, size,
 
 
 def test_no_pair_of_figures_is_the_same_art(game, parts, charset):
-    """The plain unarmed figure is obviously the same design in both ports.
+    """The simple unarmed figure is obviously the same design in both ports.
 
     It is still only a 0.78 overlap, and it is the highest of all 1120
     pairings, so the C64 art is a redrawing rather than the DOS bitmaps at a

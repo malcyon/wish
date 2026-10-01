@@ -83,7 +83,7 @@ def body(source: str) -> str:
 
     The header carries the absolute path of the `.ui` and the PyQt6 version, so
     a byte comparison fails on any machine but the one that last generated the
-    file. CI is exactly that machine, and the drift worth catching is in the
+    file. CI is exactly that machine, and the drift to catch is in the
     widgets, not in the banner.
     """
     lines = source.splitlines(keepends=True)

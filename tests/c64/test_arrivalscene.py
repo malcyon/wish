@@ -18,7 +18,7 @@ import importlib.util
 import pathlib
 import sys
 
-# Before anything below touches `tools/`.  `tools/wish.py` is a plain module
+# Before anything below touches `tools/`.  `tools/wish.py` is a simple module
 # that happens to share the real `wish` *package*'s name, and once a bare
 # `import wish` has resolved correctly it stays resolved: Python caches it in
 # `sys.modules` and every later `import wish` anywhere in the process reuses
@@ -65,7 +65,7 @@ def _load_tools_module(name: str):
             spec.loader.exec_module(module)
         except BaseException:
             # A module that failed half way through must not stay cached, or
-            # the next plain `import session` anywhere in this process gets
+            # the next ordinary `import session` anywhere in this process gets
             # the broken object instead of a fresh ImportError. Raised in the
             # code review of #182.
             sys.modules.pop(name, None)

@@ -441,9 +441,9 @@ def test_a_dos_source_supplies_npc_rather_than_dropping_it_in_silence():
     """Before #303, `field_83_87` sat on `dos_codec.CONSTANTS`, silent, and
     `to_neutral` never set neutral `npc` at all -- a DOS companion imported
     with nothing said about it anywhere, on either side of the pane."""
-    plain = dos_codec.to_neutral(_dos_record(constant=b"\x00\x00\x01\x00\x00"))
+    ordinary = dos_codec.to_neutral(_dos_record(constant=b"\x00\x00\x01\x00\x00"))
     companion = dos_codec.to_neutral(_dos_record(constant=b"\x00\xB2\x01\x00\x00"))
-    assert plain.get("npc") is False
+    assert ordinary.get("npc") is False
     assert companion.get("npc") is True
 
 

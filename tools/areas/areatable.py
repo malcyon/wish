@@ -6,7 +6,7 @@
 side carries it, which `GEO` it puts on the screen, and where the game puts a
 party that arrives in it.
 
-Every number is read off the disks rather than carried over from Pool of
+Every number is read off the disks rather than copied from Pool of
 Radiance, because the one thing six Gold Box titles have taught this project is
 that structure transfers and addresses do not:
 

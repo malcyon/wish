@@ -209,7 +209,7 @@ def drawing(name: str, data: bytes) -> dict[str, tuple[int, int, bytes]]:
 #: than `MOST` of the pixels touched at all. Both bounds are measured rather
 #: than chosen. The rounding noise above is 1 of 255 on at most 1.65 % of a
 #: square, so each has about six times the room it needs; and every edit small
-#: enough to be worth arguing about breaks one of them at one size or another
+#: enough to argue about breaks one of them at one size or another
 #: -- moving the inset by a part in a thousand goes 4 of 255 out at 24, moving
 #: one path point by 1/640 goes 35 out at 256, and changing a colour by a
 #: single unit moves 70 % of the pixels at every size.

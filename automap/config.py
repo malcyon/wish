@@ -2,7 +2,7 @@
 
 Small and hand-editable on purpose: a JSON file you can look at and fix. An
 unreadable or half-written file is treated as "no settings yet" rather than as
-an error -- losing a preference is not worth refusing to start over.
+an error -- losing a preference does not justify refusing to start over.
 """
 
 from __future__ import annotations
@@ -104,7 +104,7 @@ def whole_sizes(raw, count: int) -> list[int] | None:
     mended row is part somebody's and part ours, and a window laid out from
     that is harder to explain than one that opened at its defaults.
 
-    Zero passes, because zero is what a pane dragged shut is worth.
+    Zero passes, because zero is the width of a pane dragged shut.
     """
     if not isinstance(raw, (list, tuple)) or len(raw) != count:
         return None
@@ -292,7 +292,7 @@ class Settings:
         two are ours, and a window laid out from that is harder to explain
         than one that opened at its defaults.
 
-        Zero passes, because zero is what a column dragged shut is worth.
+        Zero passes, because zero is the width of a column dragged shut.
         """
         return whole_sizes(self.automap_columns, count)
 
@@ -304,7 +304,7 @@ class Settings:
         hand-edited number that is not a whole size between zero and
         `WIDTH_CEILING`, or a row of the wrong length after the layout
         changed, refuses the whole row rather than mending part of it. Zero
-        passes, because zero is what a row dragged shut is worth.
+        passes, because zero is the height of a row dragged shut.
         """
         return whole_sizes(self.editor_rows, count)
 
@@ -421,7 +421,7 @@ def hold_geometry(window, space=None):
 
     A Wayland compositor answers the first `show()` with a size of its own and
     Qt takes it: on cosmic-comp, Donald's desktop, a bare `QMainWindow` that
-    asks for 1875x1030 is 1280x662 one frame later -- measured with a plain
+    asks for 1875x1030 is 1280x662 one frame later -- measured with a bare
     window and no code of ours in it, so it is the platform. Everything set
     before `show()` is thrown away that way, which is what "the window doesn't
     remember its size on Linux" was: the compositor's size was then what

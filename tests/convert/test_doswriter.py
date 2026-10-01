@@ -284,7 +284,7 @@ def test_item_to_c64_inverts_item_from_c64():
 # record, with no report): a `.SPC` node outside `INNATE_EFFECTS` and at
 # duration zero is a ring, a girdle or a cloak the character is still
 # wearing, and `granted_effects` carries the whole nine bytes of it, because
-# the id alone cannot say what the ring is worth.  The engine's own test for
+# the id alone cannot say what the ring gives.  The engine's own test for
 # "has this run out" is the duration word and nothing else
 # (`docs/162-spc-permanence.md`), so a node with rounds left is a spell
 # counting down and needs no report at all -- Donald, 2026-08-27.
@@ -309,7 +309,7 @@ def test_a_permanent_item_granted_effect_is_converted_whole():
     meaning-bearing bytes, and comes back out of the writer as the same
     record.
 
-    The id alone would not do it: 12 is what the ring is worth, and a writer
+    The id alone would not do it: 12 is what the ring gives, and a writer
     that put `INNATE_PAYLOAD` there instead would write `0xFF`.
     """
     node = _effect(61, duration=0, value=12)
@@ -1934,7 +1934,7 @@ def test_a_record_round_trips_through_the_neutral_middle():
 #: throws, because the C64 keeps it inside the five stored bytes)`) -- and the
 #: DOS leg recomputes them through DOS Pool of Radiance's own load-time
 #: rebuild (`goldbox.levels.LevelTables.dos_engine_saving_throws`,
-#: `GAME.OVR:0x2ACDC`), which stores the plain table row and discards
+#: `GAME.OVR:0x2ACDC`), which stores the base table row and discards
 #: whatever a save held.  So they come back byte for byte and are not masked
 #: (#634).
 _SAVE_THROW_NAMES = ("save_paralysis", "save_petrification", "save_wands",

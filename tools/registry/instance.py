@@ -533,7 +533,7 @@ def idle_seconds(n: int) -> float | None:
     schedule (claim, launch, teardown), which is bookkeeping about the lease
     and not evidence that anything happened *in* the slot.
 
-    A plain `stat()` on files already on disk: no monitor connection, no
+    A bare `stat()` on files already on disk: no monitor connection, no
     lock attempt, nothing written.  It is the one thing safe to read on a
     slot somebody else holds.
 

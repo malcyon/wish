@@ -55,7 +55,7 @@ from tools.dos import dosbox  # noqa: E402
 #: where this begins, in all four titles.
 ANCHOR = b"\x0bLawful Good"
 
-#: The strides worth trying.  Pool of Radiance and Curse pad to 10, the two
+#: The strides to try.  Pool of Radiance and Curse pad to 10, the two
 #: later titles to 9; the search reports whichever gives the longest run so a
 #: fifth title would not need this list changed.
 STRIDES = range(4, 25)

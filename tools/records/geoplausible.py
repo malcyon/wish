@@ -73,7 +73,7 @@ C64_TITLES = (("Pool of Radiance C64", "pool-of-radiance", "POOL*.[dD]64"),
 AMIGA_TITLES = (("Curse Amiga", "curse", "/DISKB/GEO.GLB"),
                 ("Silver Blades Amiga", "silver", "/DISK2/GEO.GLB"))
 
-#: Below this, a window is not worth measuring further. Lower than
+#: Below this, a window needs no further measuring. Lower than
 #: `MAP_RECIPROCITY` on purpose: the point of the sweep is to show what gets
 #: *close* to the gate, not only what clears it.
 SWEEP_FLOOR = 0.90

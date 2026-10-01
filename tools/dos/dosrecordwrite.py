@@ -13,7 +13,7 @@ different question about the same writer:
 | `from-c64` | does a C64 save convert into that title's DOS records and siblings at all? |
 | `loop` | does a party that went **through the C64 engine** come back as the DOS record it started as? |
 
-`loop` is the one worth having.  `~/wish-specimens/por-c64` holds C64 saves the
+`loop` is the one that matters.  `~/wish-specimens/por-c64` holds C64 saves the
 C64 engine itself wrote after loading a party this project converted from DOS,
 so pointing `loop` at one of those and at the DOS folder it came from puts the
 game in the middle of the measurement:

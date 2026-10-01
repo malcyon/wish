@@ -543,7 +543,7 @@ CURSE_RANGER = _progression(
 # GEN $162D / $17D0 / $17E0 / $106F-$108F / $1045 / $13EF-$13F7 / $1845-$1855 /
 # $1148-$115C / $11C0 / $11D8, all at base $0800, read by tests/c64/test_coldread.py.
 #
-# The experience rows are Curse's, carried on: all 61 thresholds the two
+# The experience rows are Curse's, reused: all 61 thresholds the two
 # titles share are identical, including the fighter's anomalous 749937 at
 # level 11 (see `_XP_FIGHTER` above). The saving-throw *encoding* is not
 # Curse's -- Curse keeps only level-1 rows and this file transcribes the

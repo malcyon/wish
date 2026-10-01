@@ -323,8 +323,8 @@ def test_the_about_face_walk():
     ahead = acceptance.walk_verdict(START, control, at(9, 14, geo.NORTH), 1, turn="about")
     assert not ahead["d_ok"] and "expected 9,14" in ahead["verdicts"][1]
     # Without the turn the same save is a wrong facing, as it always was.
-    plain = acceptance.walk_verdict(START, control, at(9, 14, geo.SOUTH), 1)
-    assert not plain["d_ok"]
+    ordinary = acceptance.walk_verdict(START, control, at(9, 14, geo.SOUTH), 1)
+    assert not ordinary["d_ok"]
 
 
 def test_the_verdict_lines_name_the_titles_letters():
@@ -865,7 +865,7 @@ def test_a_terminated_title_run_still_stops_fetches_and_releases(tmp_path, clock
 
 
 # A kept letter is never written, so the game's own key may be one when the description says where.
-PLAIN = (("E", "camp"),)
+SIMPLE = (("E", "camp"),)
 
 
 def test_a_kept_letter_key_step_without_a_plain_keys_entry_is_refused():
@@ -874,8 +874,8 @@ def test_a_kept_letter_key_step_without_a_plain_keys_entry_is_refused():
 
 
 def test_a_kept_letter_key_step_with_its_plain_keys_entry_is_accepted():
-    title = make_title(kept_letters=("B", "E"), plain_keys=PLAIN)
-    assert title.plain_keys == PLAIN
+    title = make_title(kept_letters=("B", "E"), plain_keys=SIMPLE)
+    assert title.plain_keys == SIMPLE
 
 
 def test_a_plain_keys_entry_for_another_state_does_not_let_the_step_through():
@@ -887,11 +887,11 @@ def test_a_plain_keys_entry_for_another_state_does_not_let_the_step_through():
 def test_the_control_and_after_letters_are_refused_even_when_listed(letter, state):
     with pytest.raises(winuaesession.RouteError, match="not a kept letter"):
         make_title(plain_keys=((letter, state),))
-    # A step pressing one of them as a plain key stays refused with the entry present.
+    # A step pressing one of them as a simple key stays refused with the entry present.
     route = _swap(ROUTE, 7, (letter, "camp", "key"))
     with pytest.raises(winuaesession.RouteError, match="presses a save or kept slot letter"):
         make_title(route=route, measure_route=route, kept_letters=("B", "E"),
-                   plain_keys=PLAIN)
+                   plain_keys=SIMPLE)
 
 
 def test_a_plain_keys_entry_whose_key_is_not_a_kept_letter_is_refused():
@@ -901,16 +901,16 @@ def test_a_plain_keys_entry_whose_key_is_not_a_kept_letter_is_refused():
 
 def test_a_plain_keys_entry_no_step_uses_is_refused():
     with pytest.raises(winuaesession.RouteError, match="pressed by no step in that state"):
-        make_title(kept_letters=("B", "E"), plain_keys=(*PLAIN, ("E", "world")))
+        make_title(kept_letters=("B", "E"), plain_keys=(*SIMPLE, ("E", "world")))
 
 
 def test_a_repeated_plain_keys_entry_is_refused():
     with pytest.raises(winuaesession.RouteError, match="repeat an entry"):
-        make_title(kept_letters=("B", "E"), plain_keys=(*PLAIN, *PLAIN))
+        make_title(kept_letters=("B", "E"), plain_keys=(*SIMPLE, *SIMPLE))
 
 
 def test_a_run_with_a_plain_kept_e_still_fails_when_slot_e_changed(tmp_path, clock):
-    title = make_title(kept_letters=("B", "E"), plain_keys=PLAIN)
+    title = make_title(kept_letters=("B", "E"), plain_keys=SIMPLE)
     manifest = manifest_for(tmp_path, extra_slot=("E", b"the exit slot"))
     guest, good = _run(tmp_path, clock, title=title, manifest=manifest)
     assert good["success"] is True and "E" in _keys(guest)
@@ -935,7 +935,7 @@ def _with_kept_e(route, **over):
 
 def test_a_kept_letter_pressed_on_a_save_picker_is_refused_even_as_a_plain_key():
     route = ROUTE[:-1] + (("B", "camp", "key"),) + ROUTE[-1:]  # B right after camp_picker
-    with pytest.raises(winuaesession.RouteError, match="kept letter B as a plain key on 'camp_picker'"):
+    with pytest.raises(winuaesession.RouteError, match="kept letter B as a simple key on 'camp_picker'"):
         _with_kept_e(route, plain_keys=(("E", "camp"), ("B", "camp")))
 
 
@@ -950,13 +950,13 @@ def test_a_plain_key_on_the_screen_a_write_step_presses_on_is_refused():
     route = _swap(ROUTE, INSERT_AT, ((1, "disk3", "SPACE"), "world", "insert"))
     with pytest.raises(winuaesession.RouteError, match="on 'world', where a route step presses a save"):
         make_title(route=route, measure_route=route, kept_letters=("B", "E"),
-                   strict=frozenset({*make_title().strict, "world"}), plain_keys=PLAIN)
+                   strict=frozenset({*make_title().strict, "world"}), plain_keys=SIMPLE)
 
 
 def test_the_same_plain_key_on_an_ordinary_screen_is_accepted_in_either_case():
-    assert _with_kept_e(ROUTE, plain_keys=PLAIN).plain_keys == PLAIN
+    assert _with_kept_e(ROUTE, plain_keys=SIMPLE).plain_keys == SIMPLE
     route = _swap(ROUTE, 7, ("e", "camp", "key"))
-    assert _with_kept_e(route, plain_keys=PLAIN).plain_keys == PLAIN
+    assert _with_kept_e(route, plain_keys=SIMPLE).plain_keys == SIMPLE
 
 
 @pytest.mark.parametrize("entry", [("E",), ("E", 1), "E camp", ["E", "camp"]])
@@ -971,17 +971,17 @@ def test_a_first_step_plain_key_is_judged_on_the_title_screen():
     first = (("E", "camp", "key"), ("N", "world", "key"))
     with pytest.raises(winuaesession.RouteError, match="on 'title', where a route step presses a save"):
         make_title(route=writes_on_title, measure_route=first, kept_letters=("B", "E"),
-                   plain_keys=PLAIN)
+                   plain_keys=SIMPLE)
     # Nothing writes on the title screen, and the last step's picker state is not where E goes out.
     picker_last = (("E", "camp", "key"), ("S", "camp_picker", "key"))
     assert make_title(route=ROUTE, measure_route=picker_last, kept_letters=("B", "E"),
-                      plain_keys=PLAIN).plain_keys == PLAIN
+                      plain_keys=SIMPLE).plain_keys == SIMPLE
 
 
 def test_a_picker_screen_is_recognised_whatever_its_capitals():
     route = (("P", "party_menu", "key"), ("S", "Camp_Picker", "key"), ("E", "camp", "key"))
     with pytest.raises(winuaesession.RouteError, match="on 'Camp_Picker', where a picker screen"):
-        make_title(route=route, measure_route=route, kept_letters=("B", "E"), plain_keys=PLAIN)
+        make_title(route=route, measure_route=route, kept_letters=("B", "E"), plain_keys=SIMPLE)
 
 
 class _WorldIdentity:
@@ -1210,7 +1210,7 @@ def specimen_tree(tmp_path, monkeypatch):
     root = tmp_path / "specimens"
     monkeypatch.setattr(specimens, "tree_root", lambda: root)
     yield root
-    # The specimen tool leaves the tree read-only, which a plain rmtree cannot remove.
+    # The specimen tool leaves the tree read-only, which a simple rmtree cannot remove.
     if root.is_dir():
         _unlock(root)
 

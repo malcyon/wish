@@ -21,7 +21,7 @@ def _home() -> pathlib.Path:
 
 
 def config_dir() -> pathlib.Path:
-    """Settings: small, hand-editable, worth backing up."""
+    """Settings: small, hand-editable, and to be backed up."""
     if sys.platform == "win32":
         root = os.environ.get("APPDATA") or _home() / "AppData/Roaming"
     elif sys.platform == "darwin":

@@ -42,7 +42,7 @@ def test_the_dos_array_can_say_something_the_c64_mask_cannot():
 def test_the_mask_reader_agrees_with_the_module_the_rest_of_the_code_uses():
     """`_ids_from_mask` must index bits the way `spells.spells_known` does.
 
-    A sweep that read the mask its own way could report a whole port's worth
+    A sweep that read the mask its own way could report a whole port
     of spells at the wrong ids and look entirely plausible doing it.
     """
     record = bytearray(0x100)

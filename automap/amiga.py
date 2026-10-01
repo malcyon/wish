@@ -120,7 +120,7 @@ MEMORY = (SLOW, CHIP)
 #: The debugger prints an `S` receipt like
 #: `Wrote 00040000 - 0004000F (16 bytes) to '...'.` -- not parsed, because the
 #: file either has the bytes or it does not. This is what a *failed* command
-#: looks like, and it is worth telling apart from a silent one.
+#: looks like, and it needs telling apart from a silent one.
 RE_UNKNOWN = re.compile(r"Unknown command", re.I)
 
 
@@ -481,7 +481,7 @@ UNSAFE_COMMANDS = frozenset("g t f b w z q x".split())
 class PipeError(GuestError):
     """The pipe would not open, or the guest could not be reached.
 
-    Separate from a plain `GuestError` because the caller may want to fall back
+    Separate from a bare `GuestError` because the caller may want to fall back
     to the console route -- `WinuaeDebugger` -- when the pipe is not reachable,
     and that is a different decision from a debugger command failing.
     """
@@ -1120,7 +1120,7 @@ Write-Output '<<end>>'
         guest exited 1 before opening the pipe or 0 after it, exactly as
         `insert_floppy` reads a verdict. Any other first line is returned so the
         caller can record what the guest said instead. A transport or PowerShell
-        failure stays a plain `FloppyError`, never a `GuestRejection`.
+        failure stays a bare `FloppyError`, never a `GuestRejection`.
         """
         out, _seconds = self.lane_verb(verb, holder, None, args)
         lines = [line.strip() for line in out.splitlines() if line.strip()]

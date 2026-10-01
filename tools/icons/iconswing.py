@@ -142,7 +142,7 @@ def editor_reading(sess, rows: list[bytes], hues: bytes,
 
     The same comparison a fight gets, on a different screen: the nine glyph
     bitmaps the block is drawn from, against `CHARPIC00[code * 8]` for the
-    nine codes each save slot holds, both poses, plain and mirrored.  The
+    nine codes each save slot holds, both poses, unmirrored and mirrored.  The
     character set is read through the `ram` bank for the same reason
     `tools/c64/savecheck.py` reads the combat one that way -- it lands under the
     VIC's registers and the default bank answers those instead
@@ -173,7 +173,7 @@ def editor_reading(sess, rows: list[bytes], hues: bytes,
             for pose in (0, 1):
                 want = [V.glyph_of(charset, x)
                         for x in shape[pose * 9:pose * 9 + 9]]
-                for kind, cells in (("plain", drawn),
+                for kind, cells in (("unmirrored", drawn),
                                     ("mirrored", V.mirrored(drawn, colours))):
                     same = sum(1 for a, b in zip(cells, want) if a == b)
                     scored.append({"slot": entry["slot"], "pose": pose,
@@ -186,7 +186,7 @@ def editor_reading(sess, rows: list[bytes], hues: bytes,
             "exact": [(x["slot"], x["pose"], x["kind"]) for x in scored
                       if x["glyphs"] == 9],
             "colour_match": [(x["slot"], x["pose"]) for x in scored
-                             if x["colours"] and x["kind"] == "plain"],
+                             if x["colours"] and x["kind"] == "unmirrored"],
         })
     return out
 
@@ -334,7 +334,7 @@ def poll(sess, watch: list[dict]) -> list[dict]:
                                   "now": now})
                     w["hits"] = now
             m.resume()
-    except Exception as exc:                     # a count is not worth the run
+    except Exception as exc:                     # a count does not justify the run
         moved.append({"error": repr(exc)})
     return moved
 

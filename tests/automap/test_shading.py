@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """How solid rock is shaded on the combat map.
 
-Three options, chosen by `combat.SHADING`: a plain darker fill, one set of
+Three options, chosen by `combat.SHADING`: a flat darker fill, one set of
 45-degree strokes, or two. The plan is `docs/111-map-shading.md`; what is
 tested here is everything the plan said to watch -- that the pattern is
 anchored to the square rather than the canvas, that it survives the cell
@@ -120,7 +120,7 @@ def test_the_heavy_line_runs_where_rock_meets_ground_only():
     cell = combat.cell_for(box[2])
     edges = [p for p in combat.battlefield(b, box, cell, shading=combat.HATCH)
              if isinstance(p, Line) and p.kind == "rock-edge"]
-    # A 3 x 5 block: six squares' worth of edge along the sides, three along
+    # A 3 x 5 block: six squares of edge along the sides, three along
     # the top and three along the bottom, and nothing inside.
     assert len(edges) == 2 * 5 + 2 * 3
     lengths = {round(max(abs(p.x2 - p.x1), abs(p.y2 - p.y1))) for p in edges}
@@ -156,13 +156,13 @@ def test_a_crowded_fight_still_puts_every_combatant_over_the_hatching():
 
 def test_the_smallest_cell_the_view_uses_degrades_rather_than_going_solid():
     """`cell_for` bottoms out at CELL_MIN; at that size a single hatch is a
-    plain fill and the cross is still just distinguishable."""
+    flat fill and the cross is still just distinguishable."""
     b = battle()
     box = combat.extent(b)
-    plain = [p for p in combat.battlefield(b, box, combat.CELL_MIN,
+    flat = [p for p in combat.battlefield(b, box, combat.CELL_MIN,
                                            shading=combat.HATCH)
              if isinstance(p, Hatch)]
-    assert plain and all(p.lines == () for p in plain)
+    assert flat and all(p.lines == () for p in flat)
     big = [p for p in combat.battlefield(b, box, combat.CELL_MAX,
                                          shading=combat.HATCH)
            if isinstance(p, Hatch)]

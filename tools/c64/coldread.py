@@ -68,7 +68,7 @@ EFFECT_ARRAYS = (("id", 0x000), ("owner", 0x040),
                  ("duration", 0x080), ("magnitude", 0x280))
 EFFECT_SLOTS = 0x40
 
-#: Absolute-addressing opcodes worth naming when one lands on an array.
+#: Absolute-addressing opcodes to name when one lands on an array.
 OPCODES = {0xAD: "LDA", 0x8D: "STA", 0xBD: "LDA ,X", 0x9D: "STA ,X",
            0xB9: "LDA ,Y", 0x99: "STA ,Y", 0xDD: "CMP ,X", 0xD9: "CMP ,Y",
            0xBE: "LDX ,Y", 0xBC: "LDY ,X", 0x1D: "ORA ,X",

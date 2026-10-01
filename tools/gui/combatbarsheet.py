@@ -396,7 +396,7 @@ class BarCanvas(CombatCanvas):
     It keys off `Bar` because that is what `combat.battlefield()` yields
     now. It keyed off `Label` until the bar replaced the hit-point number,
     and `battlefield()` stopped yielding `Label` at all -- so every square
-    fell through to the parent's plain painter and this tool quietly drew
+    fell through to the parent's ordinary painter and this tool quietly drew
     the shipped look while claiming to draw the comparison."""
 
     def __init__(self, look: str, labels: dict[int, str], parent=None):

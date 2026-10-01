@@ -12,7 +12,7 @@ status line says and what the combat floor draws are all questions only a
 running C64 answers, and `docs/122-release-testing.md` §9 is where the recipe
 for asking them lives.  What a file *can* prove is that every number a person
 would read off the character sheet is the DOS party's own -- and that is
-worth pinning, because three of the faults this project has shipped were a
+to be pinned, because three of the faults this project has shipped were a
 sheet reading wrong over bytes that checked out: an AC of 9 displayed as 51,
 a dropped combat tail, and a garbage weapon line.
 

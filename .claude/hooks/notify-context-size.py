@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tell Donald once when a session's context passes a size worth knowing about.
+"""Tell Donald once when a session's context passes a size he should know about.
 
 Claude Code never shows the orchestrator its own context size, but the
 number is in the transcript: every assistant turn Claude Code writes to the

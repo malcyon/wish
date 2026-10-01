@@ -383,7 +383,7 @@ class WishWindow(QMainWindow):
         dialog.exec()
 
     def disks_text(self) -> str | None:
-        """The resolved Game directory as a plain path, for the two tabs."""
+        """The resolved Game directory as a simple path, for the two tabs."""
         return str(self.disks) if self.disks is not None else None
 
     def game(self):
@@ -593,14 +593,14 @@ class WishWindow(QMainWindow):
 
         Remembered between sessions since 2026-08, at Donald's request. The
         reason it was not has not gone away -- a log you forget is on grows for
-        months and is worth nothing when you finally read it -- so `_flag_log`
+        months and is useless when you finally read it -- so `_flag_log`
         says it is on wherever you are looking.
 
         **Turning it on puts no box on the screen.** It used to explain what
         the log records and where; a debug log needs no explanation, and a
         modal note for a checkbox is a poor trade. The path goes to the status
         bar instead, and View > Show log opens it. `announce` survives for the
-        one thing worth interrupting for -- a log file that would not open --
+        one thing that merits interrupting -- a log file that would not open --
         and is False at startup, where a box before the window is even up is
         worse than the setting it reports.
         """

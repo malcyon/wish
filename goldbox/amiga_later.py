@@ -513,7 +513,7 @@ class AmigaCharacter:
 def party_block_bytes(characters: Sequence[AmigaCharacter]) -> bytes:
     """A saved game's whole character region, in marching order.
 
-    The party is a plain concatenation of :meth:`AmigaCharacter.block_bytes`
+    The party is a simple concatenation of :meth:`AmigaCharacter.block_bytes`
     with no separator and no index: the loader reads the party-count word and
     then reads one block after another off the same file descriptor, so the
     blocks' own lengths are what tell it where each begins.
@@ -657,7 +657,7 @@ def party_in_savegame(data: bytes, deltas: AmigaDeltas) -> list[AmigaCharacter]:
 # **It does not go through `goldbox.dos_codec.to_neutral` the way the Amiga Pool of
 # Radiance reader does, and that is not a choice.**  That reader re-cuts its
 # record into the 285-byte DOS one and hands it over, so every grade and every
-# provenance line the DOS side earned carries across.  `goldbox.dos_codec.to_neutral`
+# provenance line the DOS side earned applies unchanged.  `goldbox.dos_codec.to_neutral`
 # raises `WrongTitleError` for anything but Pool of Radiance -- no other pair
 # of ports has been measured against each other yet (#53) -- so there is
 # nothing here to hand a Curse record to.  What this reader shares with it
@@ -843,7 +843,7 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = tuple(
     (name, _LATER_ACCOUNT[name]) for name in (
         "icon_dimension", "turn_class"))
 
-#: The plain-English half of `LATER_DROPPED`, and the only one that reaches
+#: The everyday-English half of `LATER_DROPPED`, and the only one that reaches
 #: the report.  It is read in the debug log and in a `--report` printout
 #: rather than in a pane: Donald ruled on 2026-09-08 that a drop list is this
 #: project's own accounting and goes to `wish/debuglog.py`

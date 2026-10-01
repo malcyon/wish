@@ -489,7 +489,7 @@ def specimen_root(tmp_path, monkeypatch):
     root = tmp_path / "specimens"
     monkeypatch.setattr(specimens, "tree_root", lambda: root)
     yield root
-    # The specimen tool leaves the tree read-only, which a plain rmtree cannot remove.
+    # The specimen tool leaves the tree read-only, which a simple rmtree cannot remove.
     if root.is_dir():
         _unlock(root)
 
@@ -2791,9 +2791,9 @@ def test_the_opening_scene_route_replaces_only_the_answer_wait_and_adds_no_turn(
     assert title.wait_limits == {"treasure_bar": 300.0}
     assert blades.PUBLISHED_CONTINUE_LIMIT >= 9
     # Every other route keeps the answer wait for `world`, its two moves and no per-state limit.
-    plain = blades.published_title("A", items_screen=False)
-    assert (None, "world", "answer") in plain.route and plain.wait_limits == {}
-    assert "world" not in plain.strict
+    ordinary = blades.published_title("A", items_screen=False)
+    assert (None, "world", "answer") in ordinary.route and ordinary.wait_limits == {}
+    assert "world" not in ordinary.strict
     assert not any(kind == "turn" for _, _, kind in
                    blades.published_title("D", opening_scene=True).route)
 

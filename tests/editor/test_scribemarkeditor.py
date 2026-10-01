@@ -64,7 +64,7 @@ def test_a_scroll_row_names_every_marked_spell():
 
 def test_an_item_that_is_not_a_scroll_reads_its_high_byte_as_before():
     model = _model(TITLES["Silver Blades"])
-    raw = bytearray(packs.plain(0))
+    raw = bytearray(packs.ordinary(0))
     raw[13:16] = bytes((200, 129, 0))
     rows = model._power_rows(Item(bytes(raw), NAMES),
                              _Kind(LOCATION_USABLE_MAGIC))

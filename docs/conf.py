@@ -132,7 +132,7 @@ napoleon_use_ivar = True
 default_role = "literal"
 
 # The knowledge base links to files that are not documents (LICENSE, source
-# under goldbox/, GitHub URLs); myst resolves what it can and the rest are plain
+# under goldbox/, GitHub URLs); myst resolves what it can and the rest are ordinary
 # links.
 myst_heading_anchors = 3
 suppress_warnings = ["myst.header", "myst.xref_missing", "autosummary"]
@@ -188,7 +188,7 @@ def _convert_tables(lines: list[str]) -> list[str]:
             if not _TABLE_RULE.match(lines[n].strip()):
                 rows.append(row)
             n += 1
-        # Two rows and a rule is the smallest thing worth calling a table.
+        # Two rows and a rule is the smallest thing to call a table.
         if len(rows) >= 2 and n - start > len(rows):
             indent = lines[start][: len(lines[start]) - len(lines[start].lstrip())]
             out.extend(_as_list_table(rows, indent))

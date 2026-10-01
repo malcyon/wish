@@ -66,7 +66,7 @@ def main() -> int:
     w("")
     w(f"`{SPELL_RESTORATION}` is **{names.get(SPELL_RESTORATION, '?')}**, a")
     w("cleric spell of far higher level than Pool of Radiance grants a player,")
-    w("so it is presumably the temple's. Its level is not worth guessing.")
+    w("so it is presumably the temple's. Its level is left unguessed.")
     w("")
     w(f"From `{LAST_SPELL + 1}` the same table continues with **combat message")
     w("fragments** rather than spells — they share the mechanism and not the")

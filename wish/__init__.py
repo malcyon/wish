@@ -13,7 +13,7 @@ def _find_version() -> str:
     """The version, from the build, the installed metadata, or neither.
 
     `_version.py` is written by hatch-vcs at build time and is what a frozen
-    build reads; a plain `pip install` has only the metadata; a source checkout
+    build reads; a bare `pip install` has only the metadata; a source checkout
     that was never built has neither and says so rather than inventing a
     number.
     """

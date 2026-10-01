@@ -1,7 +1,7 @@
 """The Quest Log: the City Council's books, drawn beside the map.
 
 A quest log the game itself only shows one City Hall visit at a time: what has
-been asked for, what is finished, and -- the line worth having -- what is
+been asked for, what is finished, and -- the line that matters -- what is
 finished and still owed money.
 
 Read-only, and deliberately. Every byte behind this panel is a plot flag, and
@@ -13,7 +13,7 @@ against saves. This module is presentation: `update_from()` takes the same
 bytes that module does -- the 224 flags at `$4A20`, a `SaveGame0`, or a whole
 `SAVEDGAME0` image -- so it works from a live read and from a save file alike.
 
-**One row per commission, in plot order, with a plain state word.** The board
+**One row per commission, in plot order, with a simple state word.** The board
 and the ledger are usually the same byte -- `ECL08` gates "clear the slums" on
 `$4AA6+21`, and that byte is also the ledger entry the clerk pays for -- so a
 panel with an offers group and a ledger group showed that one byte twice. It
@@ -376,7 +376,7 @@ def commission_rows(flags) -> list[tuple]:
 # one -- accepted, potion not yet collected, Wish not attached when it
 # happened -- and the next session in the Slums closes even that, because
 # `$4A04` is still 250 while the party has not left.  So the row is wrong only
-# inside a window that shuts by itself, which is not worth a sentence in front
+# inside a window that shuts by itself, which does not merit a sentence in front
 # of a player.
 #
 # **There is no separate group on screen.**  Donald, 2026-09-04: *"I don't

@@ -165,7 +165,7 @@ of this simply is not there.
 ## Structure
 
 ```
-automap/live.py    two reads -> plain dataclasses, no Qt
+automap/live.py    two reads -> simple dataclasses, no Qt
 automap/panel.py   the cards and the bottom strip
 ```
 

@@ -37,7 +37,7 @@ from tools.suite import testparty
 GAME = c64_port.by_key("pool-of-radiance")
 
 #: One party, generated once. Every check below reads it rather than paying
-#: for six characters' worth of level-ups per test.
+#: for the level-ups of six characters per test.
 @pytest.fixture(scope="module")
 def built():
     return testparty.party(rolls="max")
@@ -269,7 +269,7 @@ def test_a_generated_level_one_matches_the_six_the_engine_rolled():
       compared.
     * the five saving throws of a dwarf, gnome or halfling. The C64 subtracts
       the constitution bonus into the stored bytes and DOS applies it when the
-      die is rolled (`goldbox/c64_codec.py`, `#311`), so the plain class row is
+      die is rolled (`goldbox/c64_codec.py`, `#311`), so the base class row is
       what DOS holds and the comparison uses that.
     * the eight thief skills. DOS's own level-1 row is five, ten and five
       higher in three columns than the C64's, over two engine-rolled thieves,
@@ -310,9 +310,9 @@ def test_a_generated_level_one_matches_the_six_the_engine_rolled():
         if not {"magic-user", "thief"} & set(spec.levels):
             assert record.get("thac0_base") == engine.get("thac0_base"), where
 
-        plain = tables.saving_throws(spec.levels, race=7, constitution=0)
+        base_row = tables.saving_throws(spec.levels, race=7, constitution=0)
         for column, field in enumerate(testparty.SAVE_FIELDS):
-            assert plain[column] == engine.get(field), f"{where} {field}"
+            assert base_row[column] == engine.get(field), f"{where} {field}"
         compared += 1
     assert compared == 6
 
@@ -491,8 +491,8 @@ def test_a_wrong_length_icon_is_refused_before_anything_is_written(tmp_path):
 def armed():
     """The same party with its loadouts on, read off the player's own sides.
 
-    Module-scoped for the same reason `built` is: six characters' worth of
-    level-ups and three item tables per test is a minute nobody needs to
+    Module-scoped for the same reason `built` is: the level-ups of six characters
+    and three item tables per test is a minute nobody needs to
     spend.
     """
     if gamedata.disk_dir() is None:

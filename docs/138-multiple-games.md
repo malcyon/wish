@@ -222,7 +222,7 @@ needed, and the claim it needed is now measured directly across *titles*.
 `DUNGEON $21BA` and Silver Blades' is `$20E6`, against Pool of Radiance's
 `$2011`; disassembled, Curse's is instruction for instruction identical bar
 three relocations, and Silver Blades' differs by one added store. Nothing was
-found by name or by an offset carried over — `tools/areas/newecl.py` locates the
+found by name or by an offset reused from another title — `tools/areas/newecl.py` locates the
 script VM by its **self-modifying dispatch**, a `JSR` whose own operand bytes
 two `STA`s elsewhere write, and takes entry `$20` of the tables it builds.
 Every one of Pool of Radiance's documented addresses comes back out of that
@@ -262,8 +262,8 @@ Two differences that are not relocations, and neither can be assumed away:
 * **Curse's key-wait loop has a block Pool of Radiance has nothing at**,
   `$102E`–`$103A`, gated on the indoors flag and calling `GDRIVE00 $C003`. So
   the claim that warping out of the travel grid wedges the loader — Pool of
-  Radiance's, and unrecoverable — must be tested in Curse rather than carried
-  across. `tools/curse_of_the_azure_bonds/cursewarp.py` refuses it without `--force`.
+  Radiance's, and unrecoverable — must be tested in Curse rather than assumed
+  to hold there. `tools/curse_of_the_azure_bonds/cursewarp.py` refuses it without `--force`.
 
 The disk column of a Curse area table is still a separate measurement, but a
 smaller one than this section used to say: the number is the side that carries

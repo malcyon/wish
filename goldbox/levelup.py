@@ -264,7 +264,7 @@ def ready_classes(record, game=None) -> list[str]:
     first row it is not below (`SBC` then `BCS`), and the rows themselves hold
     2501 for magic-user 2 where AD&D prints 2500 -- so 2500 exactly is refused
     and 2501 is offered. `goldbox/levels.py` stores the game's numbers, which is
-    why the comparison here is a plain `>=`.
+    why the comparison here is a bare `>=`.
     """
     experience = record.get("experience") or 0
     left_behind, _ = dual_class_old(record, game)
@@ -278,7 +278,7 @@ def ready_classes(record, game=None) -> list[str]:
     return out
 
 
-#: Class-bit order, as a plain list, for the tie-break in `best_next_class`.
+#: Class-bit order, as a simple list, for the tie-break in `best_next_class`.
 #: Pool of Radiance's four; a title with more of them overrides it from its own
 #: `LevelTables.class_order`, which is the same list with the gaps in.
 _CLASS_ORDER = [name for _, name in CLASS_BITS_CLASSIC]

@@ -142,7 +142,7 @@ def test_templates_come_from_every_disk():
 def test_the_hidden_name_mask_produces_the_unidentified_name(names):
     """Each of the low three bits of +6 conceals one name word. CURSED NECKLACE
     is the decisive case: it hides the noun and the suffix, so a cursed item
-    presents as a plain NECKLACE."""
+    presents as a bare NECKLACE."""
     from goldbox.items import Item, load_item_templates
     tpl = load_item_templates(D64.open(POOL1), names)
     cases = {"BANDED MAIL +1": "BANDED MAIL",

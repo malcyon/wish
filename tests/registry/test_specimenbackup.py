@@ -246,7 +246,7 @@ def test_audit_command_reports_the_counts(tmp_path, tree, capsys):
 
 
 def test_archive_refuses_a_zstd_name_it_cannot_write(tmp_path, tree):
-    """A `.tar.zst` that is a plain tar is worse than no archive at all.
+    """A `.tar.zst` that is a bare tar is worse than no archive at all.
 
     Nothing here writes zstd -- `_stream_tar` only reads it -- so a
     destination ending `.zst` used to fall through to an uncompressed tar,

@@ -25,7 +25,7 @@ def _load_geniconset():
     """`packaging/geniconset.py`, loaded by path.
 
     `packaging/` carries no `__init__.py` -- PyInstaller reads
-    `packaging/wish_main.py` as a plain script path, never as a package -- so
+    `packaging/wish_main.py` as a simple script path, never as a package -- so
     `import packaging.geniconset` resolves to the unrelated PyPI package of
     the same name instead. `tests/wish/test_packaging.py` loads `wish_main.py` the
     same way for the same reason.

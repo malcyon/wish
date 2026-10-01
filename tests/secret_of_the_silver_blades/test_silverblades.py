@@ -286,7 +286,7 @@ def test_silver_blades_keeps_its_spell_names_in_combat2_like_curse():
     The geometry is fitted by asking which entry count makes every pointer land
     inside the text -- and the same fit run against Curse recovers Curse's
     already-known 170, `$07DB`, `$0885`, which is what makes the answer here
-    worth believing.
+    believable.
     """
     from goldbox import spells
 

@@ -1,6 +1,6 @@
 """PyInstaller's entry script for the `wish` window.
 
-A frozen build needs a plain script to start from, not a `-m` module, and the
+A frozen build needs a simple script to start from, not a `-m` module, and the
 relative imports in `wish/__main__.py` only work when it is imported as part of
 its package. This is that one line of indirection, the stream repair below, and
 the door a frozen build uses to run the FS-UAE connection helper.

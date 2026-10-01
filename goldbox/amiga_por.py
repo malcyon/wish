@@ -388,7 +388,7 @@ def amiga_por_effect_to_dos(node: bytes) -> bytes:
 # codec.  `to_dos_record` re-cuts the 288 bytes into the 285 `goldbox/dos_codec.py`
 # already knows how to read, and `goldbox.dos_codec.to_neutral` does the rest -- so
 # every grade, every drop and every provenance line the DOS side earned on 24
-# specimens carries over, and there is no second neutral bridge to drift.
+# specimens applies unchanged, and there is no second neutral bridge to drift.
 #
 # What the re-cut has to do, and nothing else:
 #
@@ -995,7 +995,7 @@ def write_por(char: NeutralCharacter,
 # until somebody boots the game.
 #
 # The saved game names its own party.  Six 41-byte entries at 12813 hold
-# `CHRDATA1`...`CHRDATA6` as eight plain bytes with no count byte, and the
+# `CHRDATA1`...`CHRDATA6` as eight bare bytes with no count byte, and the
 # engine loads from *those* names rather than from the slot letter -- which is
 # why saving to slot B rewrote all six to `CHRDATB<n>` (#28, §1.9b).  So a
 # saved game moved to another slot has to be pointed at the files it will

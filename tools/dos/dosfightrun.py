@@ -188,7 +188,7 @@ class Recorder:
 
     Every entry carries what was pressed at it, so the offline read of the
     PNGs can say which key moved which bar to which -- which is the whole of
-    what a driver needs and the only thing that makes step 1 worth a run.
+    what a driver needs and the only thing that makes step 1 a run.
     """
 
     def __init__(self, por: PoolOfRadiance, out: Path):

@@ -68,7 +68,7 @@ def _is_placeholder(field: Field) -> bool:
 
 
 def editable_fields() -> list[Field]:
-    """Every field worth putting on a form, in record order."""
+    """Every field that belongs on a form, in record order."""
     return [f for f in LAYOUT if not _is_placeholder(f)]
 
 
@@ -176,7 +176,7 @@ def field_name(widget_name: str) -> str | None:
 NOT_ON_THE_SHEET = (
     "portrait_head", "portrait_body",
     "attack_forms",       # a monster's two attack forms; not a player field
-    # What a creature is worth to kill: a 16-bit base and a per-hit-point
+    # The experience a creature gives when killed: a 16-bit base and a per-hit-point
     # byte, which the end-of-combat routine sums as `base + hp_rolled x
     # per_hp`. A creature's field, not a player's -- 2 of 474 player-record
     # paths on this machine are non-zero and both are the same record.

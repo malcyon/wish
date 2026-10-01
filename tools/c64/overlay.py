@@ -18,7 +18,7 @@ the header cannot be believed; `--base` defaults to `$0800`, which is where
 `LINKER` puts every overlay it calls, and `--base header` uses whatever the
 file claims for the ones that are not called that way.
 
-`refs` is the one worth having a name for: it finds every place inside the
+`refs` is the one that needs a name: it finds every place inside the
 overlay that mentions an address, with the byte in front of it, so a `JSR`
 into a routine is one command rather than a read of the whole file. That is
 how the wall-art handlers were found for `#156 (Warping from the Slums to New

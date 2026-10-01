@@ -11,7 +11,7 @@ so a mistake costs nothing.
 
 Only fields we understand are written back. Everything else — the party header,
 everything in SAVEDGAME1 past its first page, and the majority of each character
-record that is still unidentified — is carried through untouched.
+record that is still unidentified — is kept untouched.
 
 This module is no longer a program of its own. `wish/__main__.py` dispatches on
 the first argument and calls `subcommand()`; see docs/129-one-binary.md.
@@ -142,7 +142,7 @@ def _do_import(args, data, original) -> int:
     return 0
 
 
-#: `--game-disk` is worth the same sentence in both subcommands, and it drifted
+#: `--game-disk` needs the same sentence in both subcommands, and it drifted
 #: between them once already.
 _GAME_DISK = (f"a game disk, for item names. Otherwise ${GAME_DISK_ENV} or one "
               "of the title's own disks beside the save")

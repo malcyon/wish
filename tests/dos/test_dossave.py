@@ -907,7 +907,7 @@ def _synthetic_silver_blades_character(items: int) -> bytearray:
 
 
 def _synthetic_silver_blades_items() -> bytearray:
-    """Two 67-byte records: a 6 lb sword worth 2000, then 30 arrows worth 50.
+    """Two 67-byte records: a 6 lb sword priced 2000, then 30 arrows priced 50.
 
     The second one is what pins the stride. Sliced at 63 its fields land four
     bytes into the wrong place and the quantity reads 0 instead of 30.

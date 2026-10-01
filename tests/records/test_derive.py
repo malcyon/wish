@@ -96,7 +96,7 @@ def test_a_heavy_crossbow_takes_both_because_it_carries_both_bits():
 
 def test_a_negative_missile_adjustment_makes_the_thac0_worse():
     """Dexterity 5 is -1 in the game's table, stored as $FF, and the field is
-    signed -- read unsigned it would be worth 255 points of THAC0."""
+    signed -- read unsigned it would count as 255 points of THAC0."""
     rec = a_character(strength=10, missile=-1)
     assert rec.to_bytes()[0x0EC] == 0xFF
     base = derive.base_thac0(FIGHTER, LEVEL_1)
@@ -174,13 +174,13 @@ THAC0_EXPLAINED = {
 #: The same, for the damage bonus. All five are on the two disks GARRETT's
 #: party lives on, and all five are the check doing its job: GRIMNIR and BRUTUS
 #: cache 3 with an 18/00 strength, which is the number for a percentile of 1 to
-#: 50, and ROLAND on `NEWSAVE2` caches 2 while holding a mace worth 3 -- caches
+#: 50, and ROLAND on `NEWSAVE2` caches 2 while holding a mace that adds 3 -- caches
 #: left behind by an edit, which is what `derive.check` exists to report.
 DAMAGE_EXPLAINED = {
-    ("NEWSAVE1.D64", "GRIMNIR"): "cached 3 for an 18/00 strength worth 2",
-    ("NEWSAVE1.D64", "BRUTUS"): "cached 3 for an 18/00 strength worth 2",
-    ("NEWSAVE2.D64", "GRIMNIR"): "cached 3 for an 18/00 strength worth 2",
-    ("NEWSAVE2.D64", "BRUTUS"): "cached 3 for an 18/00 strength worth 2",
+    ("NEWSAVE1.D64", "GRIMNIR"): "cached 3 for an 18/00 strength that adds 2",
+    ("NEWSAVE1.D64", "BRUTUS"): "cached 3 for an 18/00 strength that adds 2",
+    ("NEWSAVE2.D64", "GRIMNIR"): "cached 3 for an 18/00 strength that adds 2",
+    ("NEWSAVE2.D64", "BRUTUS"): "cached 3 for an 18/00 strength that adds 2",
     ("NEWSAVE2.D64", "ROLAND"): "cached 2 with a mace readied, which is 3",
 }
 

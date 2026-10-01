@@ -442,7 +442,7 @@ class ViceTarget:
         The socket's own timeout is what expires -- `Monitor.__enter__` only
         connects, so without this the first *read* would be where a busy
         monitor showed up, minutes later and as a bad read rather than as the
-        plain fact that another client holds it.
+        simple fact that another client holds it.
         """
         sock = self._mon.sock
         was = sock.gettimeout()
@@ -602,7 +602,7 @@ class ViceTarget:
 
         **`MonitorError` counts as gone away, and it is not an `OSError`.** A
         short read, a bad magic byte or a monitor error code used to escape
-        this handler as a plain exception, leaving `_open` True: the session
+        this handler as a bare exception, leaving `_open` True: the session
         swallowed it, kept the connection and said "trouble reading the
         machine" once. That state never recovers -- `Monitor._recv_exactly`
         throws away the half of a message it had when a read times out, so

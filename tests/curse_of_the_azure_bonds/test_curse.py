@@ -17,7 +17,7 @@ re-import it, and assert the two D64 images are byte-identical.** That
 exercises D64, PRG, save geometry, slots, roster, items, icons and YAML in one
 shot while asserting nothing about the *meaning* of any field, so it passes
 while half of Curse's record is still unidentified. `docs/120-curse-testing.md`
-calls it tier 5.1 and names it the check worth having.
+calls it tier 5.1 and names it the check that matters.
 
 Pool of Radiance runs the same round trip as the regression control: it is the
 one title in the family whose save is two files, and an invariant that only
@@ -481,7 +481,7 @@ def test_pool_of_radiance_characters_satisfy_the_same_invariants():
 # field catches a wrong plane order or a wrong direction order; it is blind to
 # the two art planes, which is exactly the transposition `docs/120` tier 2
 # flagged as PROBABLE and untested. Wall art catches that, and the mangled
-# controls below are what make either floor worth asserting.
+# controls below are what make either floor mean something.
 
 MANGLED_BARRIER_CEILING = 0.90
 

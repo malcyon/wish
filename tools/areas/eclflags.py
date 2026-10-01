@@ -167,7 +167,7 @@ class Reference:
 def _immediate(statement, operand, write):
     """What a write puts there, when the source operand is a constant.
 
-    `None` means the source is a variable or the opcode is not a plain store,
+    `None` means the source is a variable or the opcode is not a simple store,
     so the value is not knowable from the bytecode alone. `ADD` with a
     constant first operand is reported as an increment, because that is what
     every one of them in these scripts is.

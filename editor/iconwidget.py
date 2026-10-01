@@ -1,6 +1,6 @@
 """The combat-icon editor: real pixel art, and a sixteen-colour picker.
 
-Promote a plain `QWidget` to this class in Qt Designer -- class `IconEditor`,
+Promote a bare `QWidget` to this class in Qt Designer -- class `IconEditor`,
 header `editor.iconwidget` -- and it can then be moved and resized on the form
 like any other widget.
 

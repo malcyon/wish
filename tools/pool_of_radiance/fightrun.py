@@ -254,7 +254,7 @@ def main(argv=None) -> int:
         rc = 1
     finally:
         # Each step guarded separately. Teardown failing is exactly when the
-        # log is worth having, and an unguarded raise here would take the
+        # log is needed, and an unguarded raise here would take the
         # release and the log's own close down with it.
         for what, step in (("session close", lambda: sess and sess.close()),
                            ("slot teardown", slot.teardown),

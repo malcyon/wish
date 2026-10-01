@@ -88,7 +88,7 @@ ROCK_HATCH = "#68809a"    # the hatching pen: ink thinned, never the wall ink
 
 #: Hatch lines per cell, and the closest they may come in pixels measured
 #: **across** the lines. Below the floor the pattern fills in and the square is
-#: drawn as a plain fill instead, which is honest about what it has become.
+#: drawn as a flat fill instead, which is honest about what it has become.
 #: Cross-hatching lays down two sets and so is spaced wider: at the single
 #: pattern's spacing it stops reading as strokes and becomes a grey.
 HATCH_STEPS = 3
@@ -416,7 +416,7 @@ def hatch_lines(x: float, y: float, w: float, h: float,
     join up into one run of hatching across a mass of rock.
 
     Returns `()` when the strokes would come closer than `least` pixels: at that
-    point they merge, and a plain fill says the same thing without pretending.
+    point they merge, and a flat fill says the same thing without pretending.
     """
     step = min(w, h) / (steps or (CROSS_STEPS if cross else HATCH_STEPS))
     if step / math.sqrt(2) < least:

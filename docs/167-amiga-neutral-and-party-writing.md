@@ -113,7 +113,7 @@ of the title's DOS table, and `tests/amiga/test_amiga.py` fails if one is named
 nowhere. All 21 specimens on this machine read without an exception: the
 fifteen Curse records and the six Silver Blades ones.
 
-Carried by a rule rather than a copy:
+Converted by a rule rather than a copy:
 
 | neutral field | how |
 |---|---|

@@ -316,7 +316,7 @@ def read_party(target, game: c64_port.C64Container | None = None) -> Party | Non
 
 
 class Action:
-    """One button's worth of behaviour.
+    """The behaviour of one button.
 
     Subclasses set `name`, `label` and `combat_legal`, and implement `run`.
     `apply` is what a caller uses: it re-checks legality, so an action is safe
@@ -462,7 +462,7 @@ class SpellStore:
     disks and the point of the store is to survive a session. The file is JSON
     under the config directory for the same reason `automap.json` is: small,
     hand-editable, and a corrupt one is treated as empty rather than as an
-    error -- losing a stored spell list is not worth refusing to start over.
+    error -- losing a stored spell list does not justify refusing to start over.
     """
 
     def __init__(self, path=None):
@@ -661,7 +661,7 @@ class IdentifyItems(Action):
 
     **The write may not stick.** The item area is a copy fed from a master
     elsewhere -- poking an item's weight there was reverted by the game -- so
-    this is the one action whose effect is worth checking in the game's own
+    this is the one action whose effect should be checked in the game's own
     item list before believing it.
     """
 
@@ -892,7 +892,7 @@ class LevelUp(Action):
                 game=None) -> levelup.Plan | None:
         """The plan without writing it, or None if it cannot be made.
 
-        Only `experience_lost` and `classes_disqualified` are worth reading off
+        `experience_lost` and `classes_disqualified` are the only ones to read off
         it: the hit die is rolled again by `run`, so every number that depends
         on the roll differs.
         """
@@ -1119,7 +1119,7 @@ class ClearQuickfight(Action):
 class QuickfightWatcher:
     """Clear the flag on the tick that combat ends, if the caller wants that.
 
-    Deliberately a plain object with one method: the window already polls the
+    Deliberately a simple object with one method: the window already polls the
     mode flag for the combat canvas, so this needs no timer of its own. Feed it
     the mode on every poll and it fires exactly on the 2-to-not-2 edge -- not
     on every tick afterwards, which would fight the player who turned

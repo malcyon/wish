@@ -564,7 +564,7 @@ def halve(screen: dosbox.Screen) -> dosbox.Screen:
 def _ragged_block(width: int, y: int, top: bytes, bottom: bytes) -> str:
     """Describe the first 2x2 block in one row pair that is not one colour.
 
-    Only called on the rejection path, so a plain per-pixel loop here costs
+    Only called on the rejection path, so a simple per-pixel loop here costs
     nothing that matters -- the fast path above never runs it.
     """
     for x in range(0, width, 2):
@@ -582,7 +582,7 @@ class XSession(dosbox.Session):
     Everything `tools/dos/dosbox.py`'s `Session` does still works -- `capture()`,
     `settle()`, the staged game tree, the save files -- and `PoolOfRadiance`
     drives this class unchanged, which is what gets a run to a loaded save
-    before the debugger has anything worth looking at.
+    before the debugger has anything to look at.
 
     Use it as a context manager.  `close()` kills the two process groups this
     instance started and nothing else.

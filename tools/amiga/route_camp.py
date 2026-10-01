@@ -379,7 +379,7 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     marks the run as measuring, so one boot can capture them all, and the camp
     save's own strict picker still stops the run before any write. A kept slot
     letter the rest menu uses as a key (`A`, for a source loaded from slot D)
-    becomes a plain key on the rest menu only.
+    becomes a simple key on the rest menu only.
     """
     validate_steps(tokens, party_size, name=name)
     route = list(title.route)
@@ -391,12 +391,12 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
         raise RouteError("the route's camp save does not follow the camp bar")
     added = steps_for(tokens, name, party_size)
     route[at:at] = added
-    plain = tuple(dict.fromkeys(
+    simple = tuple(dict.fromkeys(
         (*title.plain_keys,
          *((key, state) for key, state, _ in added if key in title.kept_letters))))
     limits = dict(title.wait_limits)
     if rest_minutes(tokens):
         limits[CAMP] = max(limits.get(CAMP, 0.0), REST_LIMIT)
     return dataclasses.replace(
-        title, route=tuple(route), plain_keys=plain,
+        title, route=tuple(route), plain_keys=simple,
         min_waits={**title.min_waits, **MIN_WAITS}, wait_limits=limits)

@@ -458,7 +458,7 @@ def test_a_short_fight_logs_no_progress_line(monkeypatch):
 
 def test_a_menu_that_draws_fourteen_seconds_after_the_key_is_still_answered(
         monkeypatch):
-    # Reads are 0.3 s apart, so 14 s is read 47; the plain wait ends at 27.
+    # Reads are 0.3 s apart, so 14 s is read 47; the simple wait ends at 27.
     sess = LateMenu(monkeypatch, draws_at=47)
     sess.walk_encounter = S.ENCOUNTER_FIGHT
     assert sess.walk_one("I", tries=1, encounters=True) is False

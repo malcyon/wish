@@ -1,4 +1,4 @@
-"""What the running game holds right now, as plain data. No Qt in here.
+"""What the running game holds right now, as simple data. No Qt in here.
 
 Two reads cover the whole tab, because the cost of reading a live machine is the
 round trip and not the bytes -- 14.3 ms either way under VICE. In Pool of
@@ -107,7 +107,7 @@ GRID = 16
 # one covers. **The groupings are `docs/136-condition-badges.md`'s and the
 # glyphs are Donald's** -- neither is this file's to change.
 #
-# One glyph for eight ids is what makes *warded* worth having: the badge says a
+# One glyph for eight ids is what makes *warded* useful: the badge says a
 # defence is up and the tooltip says which. Read from the save's effect arrays
 # and not from the trait slots at `0x0AD` -- a cast spell never reaches those,
 # so a trait-sourced badge would be blank on a party with every spell running
@@ -147,7 +147,7 @@ PROBABLE_BADGED = (21, 42, 45, 46, 49)
 #: Which groups a title draws, where they are not Pool of Radiance's.
 #:
 #: **The ids above are Pool of Radiance's, and so is the decision that they
-#: are worth a glyph.** Curse of the Azure Bonds shares them -- it seeds every
+#: deserve a glyph.** Curse of the Azure Bonds shares them -- it seeds every
 #: racial trait code Pool of Radiance does, on the race each name demands
 #: (`goldbox/traits.py`, #186) -- and a title nobody has read gets them too,
 #: which is the behaviour it has always had and matches `traits.for_game`.
@@ -238,7 +238,7 @@ class ClassProgress:
 
 @dataclass(frozen=True)
 class Character:
-    """One card's worth: the record, the roster, and this character's effects.
+    """One card: the record, the roster, and this character's effects.
 
     **AC, THAC0 and current hit points come from the roster, not the record.**
     A save slot stores only the first 256 bytes of a 580-byte record, and those

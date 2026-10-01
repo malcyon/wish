@@ -227,7 +227,7 @@ class Run:
         return False
 
     def answer_screen(self, k: str) -> bool:
-        """Deal with whatever is not a plain world bar.  True if it acted."""
+        """Deal with whatever is not a simple world bar.  True if it acted."""
         if k == "press":
             self.send("kernal", "0D")
             return True

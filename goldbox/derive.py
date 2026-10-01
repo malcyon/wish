@@ -45,7 +45,7 @@ from .items import (
 )
 
 # The third byte of a damage expression is its flat bonus: a mace is 1d6+1, so
-# its type record carries 1 here and readying it is worth a point of damage.
+# its type record carries 1 here and readying it adds a point of damage.
 _TYPE_DAMAGE_BONUS = TYPE_DAMAGE_MEDIUM + 2
 
 # THAC0 by class and level, read off the game's own table at `GEN $1F1F` --
@@ -165,7 +165,7 @@ def dos_strength_hit_bonus(strength: int, percentile: int = 0) -> int:
 
 
 def dexterity_ac_bonus(dexterity: int) -> int:
-    """How many points of armour class dexterity is worth. Positive is better."""
+    """How many points of armour class dexterity gives. Positive is better."""
     if dexterity >= 18:
         return 4
     return _DEX_AC.get(dexterity, 0)

@@ -184,20 +184,20 @@ def test_the_high_nibble_moves_the_leg_and_the_shield_and_nothing_else(
     leg and the shield it is the high one (#130).
     """
     low = bytes(v & 0x0F for v in DEFAULT_COLOURS)
-    plain = parts.dos_icon(0, 1, "large", low, tables)
+    ordinary = parts.dos_icon(0, 1, "large", low, tables)
 
     # The four parts that take the low nibble: their high nibble is ignored.
     others = bytearray(low)
     for i, part in enumerate(DOS_PAIR_CLASSES):
         if part not in DOS_HIGH_NIBBLE_PARTS:
             others[i] |= 0x50
-    assert parts.dos_icon(0, 1, "large", bytes(others), tables) == plain
+    assert parts.dos_icon(0, 1, "large", bytes(others), tables) == ordinary
 
     # The two that take the high nibble: theirs is what a player sees.
     for part in DOS_HIGH_NIBBLE_PARTS:
         moved = bytearray(low)
         moved[DOS_PAIR_CLASSES.index(part)] |= 0x50
-        assert parts.dos_icon(0, 1, "large", bytes(moved), tables) != plain, part
+        assert parts.dos_icon(0, 1, "large", bytes(moved), tables) != ordinary, part
 
 
 def test_a_figure_the_table_does_not_name_is_refused(parts, tables):
@@ -216,7 +216,7 @@ def test_a_size_no_player_record_holds_is_refused():
 
 
 def test_the_shipped_table_answers_differently_by_size_and_by_title():
-    """The property that makes the wiring worth having.
+    """The property that justifies the wiring.
 
     If every title and size resolved to the same table, passing them
     through would change nothing and the test below would pass against

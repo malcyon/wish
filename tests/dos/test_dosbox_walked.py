@@ -3,7 +3,7 @@ from a driver that pressed nothing (#341 (A DOS run reports a party that
 walked into another area as never having walked)).
 
 Every case here is decided from recorded readings -- digests, areas and
-squares handed in as plain values -- so none of it starts an emulator.
+squares handed in as simple values -- so none of it starts an emulator.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ def test_the_driver_pressing_nothing_is_a_driver_error_not_a_wall():
     # never sent a key for is never a wall -- #360 (The session driver will
     # not walk a Curse or Silver Blades party in a dungeon, because it reads
     # Pool of Radiance's indoors flag)'s `Session.walk_refused` distinction,
-    # carried into this harness's own vocabulary.
+    # ported into this harness's own vocabulary.
     kind, reason = dosbox.judge_step(False, True, area_before=0, area_after=20)
     assert kind == "refused"
     assert reason == "the driver pressed nothing"

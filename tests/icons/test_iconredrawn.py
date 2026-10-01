@@ -2,7 +2,7 @@
 
 `#335 (Two combat-figure rows describe Pool of Radiance's art, and Silver
 Blades draws those two options differently)` is a judgement about two
-pictures, so the tool that draws them has one job worth pinning: never to
+pictures, so the tool that draws them has one job to pin: never to
 show something that is no longer true.  Two ways it could:
 
 * by **hard-coding which options diverge**, and going on describing a

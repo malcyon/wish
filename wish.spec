@@ -49,7 +49,7 @@ DATAS = [
     ("assets/logo/mark.svg", "assets/logo"),
     #: The PNG is what Help > About draws -- Qt drops four of the five
     #: node gradients in the vector (`wish/about.py`). The SVG stays
-    #: carried: it is the source, and a renderer that implements
+    #: bundled: it is the source, and a renderer that implements
     #: `xlink:href` on a gradient would draw it correctly.
     ("assets/logo/combo-mark-color-500.png", "assets/logo"),
     ("assets/logo/combo-mark-color.svg", "assets/logo"),

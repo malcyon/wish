@@ -1,7 +1,7 @@
 """`tools/generate/genimports.py`, and the document it keeps honest.
 
 The tool exists to catch one edge -- a codec reaching into another format's
-record table -- so the two things worth testing are that it sees an import
+record table -- so the two things to test are that it sees an import
 however it is spelled, and that the block in `docs/117-save-conversion.md` is
 still the block it prints. A generated document nothing regenerates is a
 document that is only mostly true.

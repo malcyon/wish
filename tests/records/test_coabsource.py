@@ -7,7 +7,7 @@ a command-line cheat argument -- `start.exe STING` for Pool of Radiance,
 `start.exe STING Wooden` for Curse -- and the question was whether the check
 survived the port with nothing reaching it. It did not: every occurrence of the
 literal on the C64 disks is inside `CASTING`, `PLAYTESTING` or ordinary game
-prose. That is a negative worth nailing down, because a negative nobody wrote
+prose. That is a negative to nail down, because a negative nobody wrote
 down gets re-investigated.
 
 **The `coab` constants** (`docs/117`). `simeonpilgrim/coab` is a decompilation

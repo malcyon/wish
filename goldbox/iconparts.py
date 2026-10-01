@@ -8,7 +8,7 @@ offers two lists.
 
 **Where this comes from.** `SPELLN64` (disk 3, loads at `$AF00`, entry `$AF24`)
 is the icon editor, reached by ENCAMP > ALTER > ICON and during character
-creation. Its data file is `SPELLE64` at `$A700`. The menus are plain text in
+creation. Its data file is `SPELLE64` at `$A700`. The menus are ordinary text in
 the overlay: `ICON: PARTS COLOR SIZE EXIT`, then `PARTS: WEAPON HEAD EXIT`.
 
 Four option tables, chosen in pairs by size:

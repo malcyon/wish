@@ -4,7 +4,7 @@ turns on.
 
 The classifier is `marker()`, which is deliberately thin: it re-uses
 `eclexitkinds.py`'s own opcode sets so the two tools cannot drift into
-disagreeing about what a player would notice. So the tests worth having are
+disagreeing about what a player would notice. So the tests that matter are
 that each set is actually consulted, that a `SAVE` is read for its
 *destination* rather than its value, and -- disk-backed -- that the two
 routes the issue's argument rests on still come out with the markers the

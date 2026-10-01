@@ -97,7 +97,7 @@ $WantTokenGiven = $false
 $Extended = $false
 # @($null) is an array of one $null, not an empty one, so a command with no
 # remaining arguments at all -- `stop`, `status` -- has Count 1 and indexes into
-# nothing. Measured: "Cannot index into a null array" on plain `stop`.
+# nothing. Measured: "Cannot index into a null array" on bare `stop`.
 $given    = if ($Rest) { @($Rest) } else { @() }
 $passthru = New-Object System.Collections.ArrayList
 for ($i = 0; $i -lt $given.Count; $i++) {

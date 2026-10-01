@@ -13,7 +13,7 @@ first time and 129 the second.
 So this grabs `winvm shot` every couple of seconds until two consecutive grabs
 show the same emulator screen, saves that one, and prints how long it took.  A
 run that never settles inside `--limit` keeps the last grab and says so rather
-than pretending: a screen that is still animating is worth photographing even
+than pretending: a screen that is still animating can still be photographed even
 when it cannot be waited out.
 
 Nothing here opens a window on the host -- `winvm shot` takes the guest's

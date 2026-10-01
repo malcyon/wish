@@ -195,7 +195,7 @@ def ceilings(game: str) -> Ceilings:
 
 
 #: What the boundary is for every neutral field the C64 writer takes that is
-#: not a plain scalar, one sentence each.  `tests/records/test_boundary_c64.py`
+#: not a simple scalar, one sentence each.  `tests/records/test_boundary_c64.py`
 #: fails on a field `c64_codec.field_disposition()` names that is in neither
 #: this table nor `scalars()`, so a field added to the writer has to say what
 #: its extreme is.

@@ -66,7 +66,7 @@ def _curse_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, bytes
 
 # The save picker offers ten letters, so F is free beside the specimen's A, B and C. The
 # after slot is F because E is the game's own exit key on the sheet and at camp, and a
-# save letter equal to a plain key cannot be told from it by the description.
+# save letter equal to a simple key cannot be told from it by the description.
 CURSE = AmigaTitle(
     issue=ISSUE,
     mounted=("save", "diskb"),

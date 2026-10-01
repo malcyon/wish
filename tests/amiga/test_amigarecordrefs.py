@@ -25,7 +25,7 @@ from automap import gamedisks  # noqa: E402
 from goldbox import amiga_hunks  # noqa: E402
 from tools.amiga import amiga68k, amigarecordrefs  # noqa: E402
 
-#: `move.b $85(a0), d0`, and the same two displacement bytes as plain data.
+#: `move.b $85(a0), d0`, and the same two displacement bytes as raw data.
 READ_85 = b"\x10\x28\x00\x85"
 RTS = b"\x4e\x75"
 

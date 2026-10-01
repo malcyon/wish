@@ -621,7 +621,7 @@ def figure_reading(row: int, col: int, block: bytes, drawn: list[bytes],
             hues = colour[pose * 9:pose * 9 + 9]
             want = [glyph_of(charset, code) for code in codes]
             for kind, cells, want_hues in (
-                    ("plain", want, hues),
+                    ("unmirrored", want, hues),
                     ("mirrored", mirrored(want, hues), mirrored_colours(hues))):
                 same = sum(1 for a, b in zip(drawn, cells) if a == b)
                 scored.append({"slot": entry["slot"], "pose": pose,
@@ -719,7 +719,7 @@ def watch_turns(seen: list, evidence=None) -> object:
                 # can only be read while that pose is the one drawn (#184).
                 try:
                     roll["icons"] = evidence(sess)
-                except Exception as exc:      # a read is not worth the run
+                except Exception as exc:      # a read does not justify the run
                     roll["icons"] = {"error": repr(exc)}
             seen.append(roll)
         return sess.combat_turn()

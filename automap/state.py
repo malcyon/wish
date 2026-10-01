@@ -202,7 +202,7 @@ class AutomapState:
 
     geo: Geo | None = None
     area: str | None = None
-    #: Which game's map names to use. A plain string, deliberately: the
+    #: Which game's map names to use. A simple string, deliberately: the
     #: per-game descriptor lives in `goldbox/c64_port.py` and this module only needs
     #: its title. An unrecognised one is not an error -- `area_label` falls
     #: back to "area 21" rather than naming a Pool of Radiance place.
@@ -343,7 +343,7 @@ class Automapper:
     poll. The mapper cannot see key presses, but the status line carries the
     game clock, and the clock only moves when the party acts. So *clock advanced
     by one minute + square unchanged + facing unchanged* is a step the game
-    refused -- and one refused step is worth about a hundred successful ones,
+    refused -- and one refused step counts for about a hundred successful ones,
     because positive evidence needs 111 steps to get New Phlan down to one
     candidate and impassable edges are rare. See `_refused`.
     """
@@ -477,7 +477,7 @@ class Automapper:
         self.state.area = name
         self.state.geo = self._maps.get(name)
         # The sight radius is a setting, not a property of the area: building a
-        # plain `Exploration()` here quietly put it back to `SIGHT` the first
+        # bare `Exploration()` here quietly put it back to `SIGHT` the first
         # time the party crossed a boundary.
         self.state.exploration = Exploration(sight=self.state.exploration.sight)
         self.state.notes = {}

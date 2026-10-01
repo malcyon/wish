@@ -408,7 +408,7 @@ ITEM_TAIL = (0x3F, 4)
 #: overlays (`tests/dos/test_dosscrollbundle.py`).
 SCROLL_BUNDLE_TYPE = 0x49
 
-#: The two plain scroll types, mage and cleric: what every `ITEM<n>.DAX`
+#: The two ordinary scroll types, mage and cleric: what every `ITEM<n>.DAX`
 #: `Mage Scroll` and `Cler Scroll` template carries, and the only types JOIN
 #: accepts beside a joined scroll itself (`0x293A6`-`0x293BA`).
 SCROLL_TYPES = (0x27, 0x28)
@@ -1390,7 +1390,7 @@ def c64_trait_nodes(deltas: "DosDeltas", race: int, ids: Iterable[int],
 #: dwarf with constitution 17, stores `9 8 10 12 11` where the class row is
 #: `13 12 14 16 15` (`goldbox/levels.py`, "the saving-throw rule is the game's
 #: own"), and THRENDER GRONE, a DOS fighter 1 with constitution 16, stores the
-#: plain row `14 15 16 17 17` and keeps his bonus in these two records.
+#: base row `14 15 16 17 17` and keeps his bonus in these two records.
 #:
 #: **26 and 47 are situational and no stored number can hold them** -- a THAC0
 #: bonus against orcs, half-orcs, goblins and hobgoblins, and an armour-class
@@ -1551,7 +1551,7 @@ CLASS_LEVEL_SLOTS: tuple[tuple[int, str, str | None], ...] = (
 
 #: Class number -> the level-array slots that class fills, derived from the
 #: 18-entry combined-class table by name.  A single-class character fills one
-#: slot; `fighter/mage/thief` fills three.  What makes this worth a table is
+#: slot; `fighter/mage/thief` fills three.  What justifies a table here is
 #: that it is a **check**: a spellbook or a memorised region one byte out
 #: moves the array, and then the slots that are set stop matching the class
 #: byte -- which is `tests/convert/test_dosconvert.py`'s test of every title's shape.
@@ -2905,7 +2905,7 @@ def to_neutral(dos: DosCharacter,
 
     # -- the .SPC records this title's own set turns away, converted whole ---
     # A ring, a girdle or a cloak grants an effect the same way a race does,
-    # and the id alone cannot say what the ring is worth: the record's own
+    # and the id alone cannot say what the ring gives: the record's own
     # value byte and the flag the engine reads when the item comes off are
     # what make the effect what it is, so the whole record crosses rather
     # than a number out of it (#232, An item-granted effect is dropped on the
@@ -2937,7 +2937,7 @@ def to_neutral(dos: DosCharacter,
     if granted:
         out.set("granted_effects", granted,
                 "the .SPC records that are not innate and never expire -- an "
-                "item's grant, whole, since what it is worth is in the "
+                "item's grant, whole, since what it gives is in the "
                 "record rather than in the id",
                 Confidence.CONFIRMED)
     # The paladin's lay-on-hands timer is one more `.SPC` node by the same
@@ -3316,7 +3316,7 @@ class SaveReport(neutral.Report):
         """`$4A20` for a variable, `byte 12804` for the tail.
 
         The file is a word array indexed by ECL address and then a run of
-        plain bytes, so an offset means two different things depending on
+        raw bytes, so an offset means two different things depending on
         where it falls, and a report that said `0x1234` for both would be
         unreadable in exactly the region a reader is checking.
         """
@@ -5981,7 +5981,7 @@ def write(char: NeutralCharacter,
     # recognises this title's own innate set throws the rest away
     # (#621, A C64 character carrying an effect in a trait slot cannot be
     # saved as a DOS or Amiga save).  `c64_trait_nodes` is the C64-source
-    # classification; a source that is not C64 keeps the plain filter, which
+    # classification; a source that is not C64 keeps the unchanged filter, which
     # is what #388 measured against a DOS-written `.SPC` file.
     if port == "C64":
         trait_records, trait_dropped = c64_trait_nodes(
@@ -6248,7 +6248,7 @@ def write(char: NeutralCharacter,
     # -- the class a dual-classed C64 human left, into the window's own -----
     # fourth byte -------------------------------------------------------
     # A DOS or Amiga source already has this byte in its own window and it
-    # was carried unchanged above (`window is not None`).  A C64 source has
+    # was converted unchanged above (`window is not None`).  A C64 source has
     # no window at all, so without this the byte stays whatever
     # `write_constants` put there.  `former`, computed above for the
     # `former_class_levels` array, is the same value: one class name and the
@@ -6415,7 +6415,7 @@ def write(char: NeutralCharacter,
     # `goldbox.amiga_por.write_por`, which build an Amiga record out of this
     # function and pass `into="Amiga"`, keep the source's own bytes -- nobody
     # has measured what the Amiga engine stores. Every other source, and every
-    # other title, falls back to the plain copy `WRITE_DIRECT` would have
+    # other title, falls back to the direct copy `WRITE_DIRECT` would have
     # made.
     rebuild = char.port in _DOS_LOAD_REBUILD_FROM_PORTS and into == "DOS"
     computed_saves = None
@@ -6587,11 +6587,11 @@ def write_field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
 
 
 # ---------------------------------------------------------------------------
-# The conversion, previewed as the plain data `goldbox/yaml_io.py` writes
+# The conversion, previewed as the simple data `goldbox/yaml_io.py` writes
 # ---------------------------------------------------------------------------
 def export_party(folder: str | pathlib.Path, slot: str,
                  game_disk: str | None = None) -> dict[str, Any]:
-    """A DOS save slot as the same plain data a C64 export produces.
+    """A DOS save slot as the same simple data a C64 export produces.
 
     A **preview of the conversion**, not a raw view of the DOS files: the
     record is converted to the C64 first and the entry built off that, so what
@@ -6879,7 +6879,7 @@ SLOT_COUNT = 8
 #: decrement**: no byte of `$4900`-`$4CFF` holds one, in 190 saves.
 #:
 #: So a conversion empties a slot the same way rather than zeroing it: a state
-#: the engine is known to produce is worth more than a tidier one nobody has
+#: the engine is known to produce beats a tidier one nobody has
 #: seen it write.
 EMPTY_RECORD_BYTE = 0x000    # the first byte of the name
 EMPTY_ROSTER_BYTE = 0x000    # `roster_in_use`, `goldbox/layout.py` 0x100

@@ -135,7 +135,7 @@ class ScrollBundle(NamedTuple):
 #: the neutral one: a port whose own encoding differs converts on the way in.
 FIELDS: dict[str, str] = {
     # -- who they are -------------------------------------------------------
-    "name": "the character's name, plain text",
+    "name": "the character's name, as text",
     "sex": "0 male, 1 female",
     "race": "race index, in the shared Gold Box order",
     "char_class": "the single class code, in the shared 18-entry order",
@@ -396,10 +396,10 @@ FIELDS: dict[str, str] = {
     # -- a creature's own bookkeeping, held rather than dropped --------------
     # Both ports declare this pair and both hold zero in every player record
     # anybody has read (#254): `base + hp_rolled * experience_per_hit_point`
-    # is what killing a creature is worth, not anything a player character
+    # is what killing a creature awards, not anything a player character
     # has ever set.  Converted because there is a home for it on both sides,
     # not because a player has ever noticed it.
-    "experience_award": "the base experience a creature is worth; zero for "
+    "experience_award": "the base experience a creature awards; zero for "
                         "every player character measured (#254)",
     "experience_per_hit_point": "the creature's per-rolled-hit-point "
                                 "experience rate, added to experience_award "
@@ -605,7 +605,7 @@ class Writer:
       still reaches the report: what a reader had to leave behind to produce
       a value is a fact about the source whether or not the value is written.
     * :meth:`emit` -- the provenance note for the bytes a value became.
-    * :meth:`get` -- a plain value for a *derivation*, at the same floor.
+    * :meth:`get` -- a bare value for a *derivation*, at the same floor.
       `NeutralCharacter.get` does not apply one, and a writer that computes
       a byte from a field it would have refused to copy is standing behind
       the value twice as hard, not half as hard.

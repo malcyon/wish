@@ -1246,7 +1246,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         # Measuring never writes, whatever the caller listed as write keys.
         write_keys = tuple(dict.fromkeys(write_keys + ("B",)))
     if not HOLDER.fullmatch(holder) or not HOLDER.fullmatch(attempt):
-        raise RouteError("holder and attempt must use plain lane-safe names")
+        raise RouteError("holder and attempt must use simple lane-safe names")
     if deadline_seconds <= 0:
         raise RouteError("reconnaissance deadline must be positive")
     audio_proof = pathlib.Path(audio_proof)

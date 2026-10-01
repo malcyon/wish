@@ -50,7 +50,7 @@ What this does not do
   name already in the directory; :meth:`D64.write_file_inplace` is what
   rewrites one, and only at the same block count. Nothing here scratches a
   file, so no block is ever freed.
-* **Only 35-track plain images are built.** :meth:`D64.blank` makes the one
+* **Only 35-track standard images are built.** :meth:`D64.blank` makes the one
   variant that is writable at all.
 
 Geometry (35 tracks, 683 sectors, 174848 bytes)::
@@ -76,7 +76,7 @@ and guessing at one is how a reader starts returning plausible nonsense.
 ===========  ======  ===========  ==============================================
 Size         Tracks  Error bytes  Where it comes from
 ===========  ======  ===========  ==============================================
-174848       35      no           the plain image; every save disk this project
+174848       35      no           the standard image; every save disk this project
                                   writes
 175531       35      yes          a copier that recorded the read status of each
                                   of the 683 sectors (Curse side 4 is one)
@@ -96,7 +96,7 @@ on that disk leaves track 35.
 Refusing an image because it reports errors would refuse a perfectly readable
 disk; hiding the codes would lose the evidence that says the padding is padding.
 
-**Only the plain 174848-byte image is writable.** Every other variant is
+**Only the standard 174848-byte image is writable.** Every other variant is
 read-only, enforced rather than documented: :meth:`D64.write_sector`,
 :meth:`D64.write_file_inplace` and :meth:`D64.save` raise
 :class:`ReadOnlyImageError`. The reason is that the variants are *rips of other
@@ -275,7 +275,7 @@ def sector_offset(track: int, sector: int, track_count: int = TRACK_COUNT) -> in
 class Variant:
     """One recognised ``.D64`` shape, keyed by file size.
 
-    ``writable`` is the plain 35-track image and nothing else; see the module
+    ``writable`` is the standard 35-track image and nothing else; see the module
     docstring for why, and :class:`ReadOnlyImageError` for what enforces it.
     """
 
@@ -493,12 +493,12 @@ class D64:
 
     @property
     def writable(self) -> bool:
-        """False for every variant but the plain 174848-byte image."""
+        """False for every variant but the standard 174848-byte image."""
         return self._variant.writable
 
     def _require_writable(self) -> None:
         if not self._variant.writable:
-            _log.debug("refusing a write to a %d-byte D64 (%s); only plain "
+            _log.debug("refusing a write to a %d-byte D64 (%s); only standard "
                        "%d-byte 35-track images may be written",
                        self._variant.size, self._variant.description, IMAGE_SIZE)
             raise ReadOnlyImageError(self._variant.size, self._variant.description)
@@ -584,7 +584,7 @@ class D64:
         """Write the image, atomically.
 
         A save disk is often the only copy of hours of play, and the editor
-        writes back over the file it opened. A plain truncate-and-write loses
+        writes back over the file it opened. A simple truncate-and-write loses
         the lot if the process dies or the filesystem fills half way through, so
         write a temporary beside the target, flush it to the platter, and rename
         over. `os.replace` is atomic on POSIX: after it, the file is either

@@ -5,7 +5,7 @@
 gap_13c, and a pointer at the end of the Silver Blades item)`.  Every DOS Gold
 Box record has an undecoded run just before `portrait_head` -- Pool of
 Radiance's `gap_0b8`, Curse's and Gateway's `gap_13c`, Silver Blades' `gap_14e`
--- and it is the **experience a creature is worth**: a `u16le` base and, in the
+-- and it is the **experience a creature awards**: a `u16le` base and, in the
 four earlier engines, a `u8` awarded per hit point.  Pools of Darkness and
 Treasures of the Savage Frontier keep the base alone.
 
@@ -127,7 +127,7 @@ def award_offsets(size: int) -> tuple[int, int | None]:
 
 
 def award(record: bytes, size: int | None = None, hp: int | None = None) -> int:
-    """What killing this creature is worth, by the engine's own arithmetic.
+    """What killing this creature awards, by the engine's own arithmetic.
 
     `base + hp_rolled * per_hit_point`, which is how AD&D 1st edition writes
     an experience value and what the end-of-combat routine computes.

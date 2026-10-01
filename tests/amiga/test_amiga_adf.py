@@ -1436,7 +1436,7 @@ def _spec_lnfs_image(dos_type: int,
         put(header, BLOCK_SIZE - 188, ">I", len(data))
         size = 512 if ffs else 488
         count = max(-(-len(data) // size), 0 if ffs else 1)
-        assert count <= 72, "one header's worth is all this builder lays out"
+        assert count <= 72, "one header is all this builder lays out"
         chain = take(count)
         put(header, 8, ">I", count)
         if chain:

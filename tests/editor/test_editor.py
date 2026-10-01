@@ -2470,7 +2470,7 @@ def _test_the_header_s_spare_width_goes_to_the_roster_then_to_a_spacer(app, save
     every item that has anything to give, in proportion, so while the roster
     hinted its contents Character was squeezed alongside it and drew one form
     column over the other. The roster hints its floor and grows from there, and
-    the row is in the layout's *expanding* case at every width worth having.
+    the row is in the layout's *expanding* case at every width that matters.
 
     Giving the spacer the stretch as well was measured and is worse: at 1366
     with the base font the two split the slack and the roster came out 147px
@@ -2866,8 +2866,8 @@ def _test_no_two_widgets_in_character_overlap_at_its_floor(app, save):
 #:
 #: The 446 is history since #71 -- the roster's floor is a constant 440 at
 #: every font now, so the budget could be derived exactly and would come to
-#: 814. It is left at 808 because six pixels of a budget nothing is near is not
-#: worth a number changing under a reader who goes looking for where 446 came
+#: 814. It is left at 808 because six pixels of a budget nothing is near does not
+#: justify a number changing under a reader who goes looking for where 446 came
 #: from.
 IDENTITY_BUDGET = SMALL_LAPTOP[0] - 446 - 26
 
@@ -5120,7 +5120,7 @@ def test_opening_the_destination_section_for_a_dos_party_writes_nothing(
         app, tmp_path, monkeypatch):
     """Building the Save arrow's menu and opening the destination section
     for a native party touches no file -- the platform-blind Save As this
-    used to pin (`save_as()`, a plain C64 file dialog whatever the open
+    used to pin (`save_as()`, an ordinary C64 file dialog whatever the open
     party's own port was) is gone; every destination is now explicit and
     `editor.saveplan` does the actual writing (`#511`,
     `tests/editor/test_saveasui.py` covers the write itself)."""

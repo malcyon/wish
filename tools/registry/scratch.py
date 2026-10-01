@@ -9,7 +9,7 @@
 Scratch is under `tempfile.gettempdir()`, in one directory per tool named for
 the tool, never for a ticket. It may vanish at any time -- a reboot, a tmp
 cleaner, somebody's `rm -rf` -- and a tool must work again from nothing when it
-does. Anything worth keeping is committed, or is game data and lives where
+does. Anything to keep is committed, or is game data and lives where
 `gamedisks.yaml` says.
 
 The cache is for the few things that have to survive a reboot: the record an
@@ -35,7 +35,7 @@ ROOT_NAME = "wish"
 def _plain(name: str) -> str:
     """A single path segment, so a caller cannot climb out of its own directory."""
     if not name or name in (".", "..") or "/" in name or "\\" in name:
-        raise ValueError(f"not a plain directory name: {name!r}")
+        raise ValueError(f"not a simple directory name: {name!r}")
     return name
 
 

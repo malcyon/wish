@@ -72,7 +72,7 @@ class AmigaTitle:
     `write` steps may press only `control_letter` or `after_letter`, and no other step may press
     those. A title that only loads has neither letter and no `write` step. A kept letter is never
     written, so a non-write step may press one only where `plain_keys` names its `(key, state)`:
-    the game's own key that happens to be a slot's letter. A plain key is refused on a screen
+    the game's own key that happens to be a slot's letter. A simple key is refused on a screen
     where some step writes and on a state whose name contains `picker`; the run's compare of
     every kept slot after the fetch is what proves none changed.
     Every entry must be a kept letter that some non-write step presses in that state. An `insert`
@@ -148,16 +148,16 @@ class AmigaTitle:
             refuse("the title limit and the boot span must be positive")
         if any(w < 0 for w in self.min_waits.values()):
             refuse("a minimum wait is negative")
-        plain = self.plain_keys
-        if not (isinstance(plain, tuple) and all(
+        simple = self.plain_keys
+        if not (isinstance(simple, tuple) and all(
                 isinstance(e, tuple) and len(e) == 2 and all(isinstance(x, str) for x in e)
-                for e in plain)):
-            refuse(f"plain keys {plain!r} must be (key, state) pairs")
-        if len(set(plain)) != len(plain):
-            refuse(f"plain keys {plain!r} repeat an entry")
-        for entry in plain:
+                for e in simple)):
+            refuse(f"simple keys {simple!r} must be (key, state) pairs")
+        if len(set(simple)) != len(simple):
+            refuse(f"simple keys {simple!r} repeat an entry")
+        for entry in simple:
             if entry[0] not in self.kept_letters:
-                refuse(f"plain key {entry!r} is not a kept letter, so it cannot be pressed as a plain key")
+                refuse(f"simple key {entry!r} is not a kept letter, so it cannot be pressed as a simple key")
         used: set[tuple[str, str]] = set()
         # A kept letter pressed where a save letter goes out, or on a picker, could write a slot.
         save_screens = {"title" if at == 0 else route[at - 1][1]
@@ -177,7 +177,7 @@ class AmigaTitle:
                         why = ("a route step presses a save letter there" if on in save_screens
                                else "a picker screen takes a slot letter as a save")
                         refuse(f"{name} step {step!r} presses kept letter {allowed[0]} as a "
-                               f"plain key on {on!r}, where {why}")
+                               f"simple key on {on!r}, where {why}")
                 if step[2] in ("write", "insert"):
                     # The key goes out on the screen the step before it reached, so that
                     # screen's guard must stop the run when it does not match.
@@ -185,9 +185,9 @@ class AmigaTitle:
                     if before != "title" and before not in self.strict:
                         refuse(f"{name} {step[2]} step {step!r} follows {before!r}, which is "
                                f"not a strict state")
-        for entry in plain:
+        for entry in simple:
             if entry not in used:
-                refuse(f"plain key {entry!r} is pressed by no step in that state")
+                refuse(f"simple key {entry!r} is pressed by no step in that state")
         for row in self.interstitials:
             self._check_row(row, keys, refuse)
 

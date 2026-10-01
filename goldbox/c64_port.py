@@ -53,7 +53,7 @@ BY_ROSTER_PREFIX = {g.roster_prefix: g for g in GAMES if g.roster_prefix is not 
 def by_title(title: str | None) -> C64Container | None:
     """The title a person named, or None. Never falls back to a default.
 
-    The windows carry the game as a plain string -- see `AutomapState.title` --
+    The windows carry the game as a simple string -- see `AutomapState.title` --
     and this is the one place that turns it back into a descriptor. None for an
     unrecognised name on purpose: a caller that needs an address has to notice
     it does not have one.
@@ -75,7 +75,7 @@ def detect_from_names(names) -> C64Container | None:
 
     The save file's name is the discriminator: no two titles share one, and no
     disk carries two. Deliberately name-only -- a truncated or absent payload is
-    a *loading* error with a message worth reading, not a reason to guess a
+    a *loading* error with a message the player can act on, not a reason to guess a
     different game.
     """
     wanted = {bytes(n) for n in names}

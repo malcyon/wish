@@ -270,7 +270,7 @@ def run(args: argparse.Namespace) -> int:
     finally:
         # The snapshot and the shots are taken here rather than at the end of
         # the try, because a run that falls over between the training and the
-        # save still wrote records worth reading -- and the slot's directory
+        # save still wrote records to read -- and the slot's directory
         # goes with the next run's `stage(fresh=True)`.  One boot was lost
         # that way.
         try:

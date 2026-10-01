@@ -11,7 +11,7 @@ Curse's or Silver Blades':
   level * 5` for every class slot whose level byte at `0x096` is above zero;
 * **there is no constitution step at all**, for any race. A C64 dwarf's
   saves carry his constitution bonus inside the five bytes; DOS keeps the
-  plain row and the bonus in `.SPC` effects 90 and 97 instead;
+  base row and the bonus in `.SPC` effects 90 and 97 instead;
 * the table is the C64's rows except fighter 4, which holds the fighter 3
   row -- breath 16 where the C64 has 15 -- and the cleric and magic-user
   cells at levels 7 and 8, which the C64's rows do not reach.
@@ -42,7 +42,7 @@ _SAVES = ("save_paralysis", "save_petrification", "save_wands", "save_breath",
     # Fighter 4 is the fighter 3 row in the DOS table: breath 16, not 15.
     ({"fighter": 4}, 7, 10, (13, 14, 15, 16, 16)),
     # A dwarf (race 1) with constitution 13 takes nothing for either: the
-    # plain fighter 1 row, where the C64 stores it three lower.
+    # base fighter 1 row, where the C64 stores it three lower.
     ({"fighter": 1}, 1, 13, (14, 15, 16, 17, 17)),
     # Nor does constitution 19, which Curse's high step would count.
     ({"fighter": 1}, 7, 19, (14, 15, 16, 17, 17)),
@@ -228,7 +228,7 @@ def _engine_record(rel: str):
 def test_a_c64_dwarf_converts_to_the_saves_dos_pool_stores_for_a_dwarf():
     """MAGNUS, a dwarf fighter 1 with constitution 13, stores
     `11 12 13 14 14` on the C64 -- the fighter 1 row less his constitution
-    bonus of 3. The DOS engine stores the plain row for a dwarf fighter 1:
+    bonus of 3. The DOS engine stores the base row for a dwarf fighter 1:
     MAGNUS himself in the engine's resave of an Amiga-sourced conversion
     (`por-amiga-slums-dos-resave`, slot D) and THRENDER GRONE, a dwarf the
     DOS game made (`por-item-granted`). No C64-to-DOS resave on this machine

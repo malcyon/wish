@@ -375,7 +375,7 @@ class Ultimate:
         """Send a key and report whether anything drained the KERNAL buffer.
 
         The experiment for "can this program be driven at all".  `$00C6` is the
-        buffer count and is plain RAM, so DMA reads it whatever the banking.
+        buffer count and is ordinary RAM, so DMA reads it whatever the banking.
         Send a key, wait, read the count back:
 
         * back to `0` -- something called the KERNAL's `GETIN`, so the program

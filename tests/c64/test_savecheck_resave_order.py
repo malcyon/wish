@@ -17,7 +17,7 @@ from conftest import load_tools_module
 savecheck = load_tools_module("savecheck")
 
 #: The real `tools.c64.session.Status`, captured before any test monkeypatches
-#: `savecheck.S` to a fake.  It is a plain `NamedTuple` and `run()` calls
+#: `savecheck.S` to a fake.  It is a bare `NamedTuple` and `run()` calls
 #: `.where()` and `.outdoors` on whatever `sess.status()` hands back.
 Status = savecheck.S.Status
 

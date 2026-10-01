@@ -56,7 +56,7 @@ from goldbox.d64 import load_payload  # noqa: E402
 #: seventeen of this title's scripts write `+$E7`/`+$E8` at their heads and
 #: none of the twenty-two ever reads one, so an arriving script refilling
 #: them is expected and a difference there is not a fault in itself, but it
-#: is a difference worth being told about.  `+$EA` is the engine's here and
+#: is a difference to report.  `+$EA` is the engine's here and
 #: `ours` in Curse: it is Pool of Radiance's disk hint, and in this title
 #: `DUNGEON $0B0E` uses it as its own scratch.
 REGIONS: tuple[tuple[int, int, str, str], ...] = (

@@ -202,7 +202,7 @@ def propose(monsters: dict[str, Monster], path: pathlib.Path = TABLE_PATH
 
 def report(monsters: dict[str, Monster], labels: dict[str, str],
            missing: list[str]) -> list[str]:
-    """The plain-text report: per title, then what is wrong."""
+    """The text report: per title, then what is wrong."""
     out = []
     for _, short in TITLES:
         here = {n: m for n, m in monsters.items() if short in m.titles}

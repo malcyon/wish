@@ -78,7 +78,7 @@ def _dos_pod_record(armour_class_base: int,
 
 
 def _dos_pod_readied_item() -> dos_codec.DosItem:
-    """One readied item, plain armour, for the equipped half of the
+    """One readied item, ordinary armour, for the equipped half of the
     conversion proof below."""
     itemf = dos_port.ITEM_FIELDS_BY_NAME
     data = bytearray(dos_port.ITEM_SIZE)

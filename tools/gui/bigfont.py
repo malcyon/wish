@@ -6,7 +6,7 @@
 
 The number is points added to the font the desktop gives Qt.
 `docs/160-why-these-rules.md` records that **+6 here measures about like
-Windows' base font**, and that +10 is the largest worth caring about -- 9pt
+Windows' base font**, and that +10 is the largest that matters -- 9pt
 base here, so the range a person uses is 9pt to 19pt.
 
 **Why a window and not a screenshot.** `tools/gui/shotwindow.py` photographs the

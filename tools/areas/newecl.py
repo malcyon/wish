@@ -388,7 +388,7 @@ def derive(game: c64_port.C64Container, root: str, base: int = LINKER_BASE) -> d
 
     # Anything else zeroed in the same breath: Silver Blades stores to `$4BFB`
     # between the `LDA #$00` and the wipe, and the loop's back edge is the
-    # indexed store, so it happens once. Taken as the plain `STA abs` between
+    # indexed store, so it happens once. Taken as the simple `STA abs` between
     # the immediate zero and the tail, which is where such a write can be.
     zero_at = next(i for i, t in enumerate(text) if t == "LDA #$00")
     tail_at = next(i for i, (a, _, _) in enumerate(lines) if a == tail)

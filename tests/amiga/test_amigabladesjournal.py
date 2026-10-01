@@ -3,8 +3,8 @@ prompt and says nothing about it.
 
 Nothing here touches the separate repository the tables live in, and nothing
 here knows a challenge or an answer -- that is the point of the tool and it is
-the point of these tests.  The frames below are plain coloured stripes on a
-plain background: enough to fit a character grid on, and corresponding to no
+the point of these tests.  The frames below are simple coloured stripes on a
+simple background: enough to fit a character grid on, and corresponding to no
 real challenge screen.
 
 What can be asserted without the private repository is the part that had to be
@@ -388,7 +388,7 @@ def test_a_challenge_the_tables_do_not_hold_is_reported_without_quoting_it(
 # `#371 (The Silver Blades journal reader misreads a 6 as an 8, so a boot is
 # spent on a question the disk can answer)`.  The game's own font is the
 # game's own art and stays out of this repository; the ten shapes below are
-# invented for these tests alone, plain enough to be read at a glance and
+# invented for these tests alone, simple enough to be read at a glance and
 # distinct enough from each other that a resample which blurs one stroke
 # into the next would be caught, without needing the actual glyph that
 # prompted the issue.

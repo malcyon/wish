@@ -303,7 +303,7 @@ _NOT_A_SPELL_SILVER_BLADES = (57, 59, 60, 61, 62, 63, 64, 65, 95, 97, 99,
 _NOT_GRANTED_SILVER_BLADES = (100, 109)
 
 #: How wide the spellbook bitmask at record `0x078` is, per title. **Measured
-#: in each game's own code, not carried across from another one.**
+#: in each game's own code, not copied from another one.**
 #:
 #: Every address in this block was written at the overlay's PRG header base
 #: until 2026-09-02 and named the wrong bytes -- **five of the seven fell
@@ -530,8 +530,8 @@ def for_game(game=None) -> SpellTable:
 # Callers that do not pass a title mean Pool of Radiance and read these.
 SPELL_GROUPS = _GROUPS_POOL
 #: RESTORATION. A cleric spell far above anything Pool of Radiance grants a
-#: player, so it is presumably the temple's, and its level is not worth
-#: guessing.
+#: player, so it is presumably the temple's, and its level is left
+#: unguessed.
 SPELL_RESTORATION = 56
 LAST_SPELL = POOL_OF_RADIANCE.last_spell
 

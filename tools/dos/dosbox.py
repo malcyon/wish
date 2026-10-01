@@ -13,7 +13,7 @@ session gives you:
 2. **Output** is a 320x200 window capture.  `output=surface` with `scaler=none`
    makes the DOSBox window exactly the emulated framebuffer, so a capture is
    the VGA image pixel for pixel with no scaling to undo.
-3. **Ground truth is the save file.**  DOS writes plain files into the game's
+3. **Ground truth is the save file.**  DOS writes ordinary files into the game's
    `SAVE` directory, so "did that keystroke do anything" is answered by reading
    `SAVGAM<slot>.DAT` back off the host filesystem.  Nothing here has to read
    the screen to know what happened, and that is deliberate: an OCR that is
@@ -1255,7 +1255,7 @@ def settle_files(folder: Path, quiet: float = 0.5, timeout: float = 30.0) -> boo
 class PoolOfRadiance:
     """The keystroke protocol of DOS Pool of Radiance, verified by effect.
 
-    Three things about the menus that are worth writing down:
+    Three things about the menus to write down:
 
     * **Saving is a camp command.** `ENCAMP` (`e`) from the map, `SAVE` (`s`)
       in camp, then the slot letter at `SAVE WHICH GAME: A B C ... J`.

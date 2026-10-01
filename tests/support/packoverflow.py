@@ -18,7 +18,7 @@ GAME = c64_port.SECRET_OF_THE_SILVER_BLADES
 SCROLL = dos_codec.SCROLL_TYPES[0]
 
 
-def plain(n: int) -> bytes:
+def ordinary(n: int) -> bytes:
     """A 16-byte item that is not a scroll; `n` picks its type."""
     return bytes([10 + n, 0, 0, 1, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0])
 
@@ -41,8 +41,8 @@ def member(name: str, plain_items: int, *scrolls: bytes,
     `loose` more items, as the neutral record holds them."""
     char = NeutralCharacter("test", source="made up", game=GAME)
     char.set("name", name, "made up")
-    inventory = ([plain(n) for n in range(plain_items)] + list(scrolls)
-                 + [plain(50 + n) for n in range(loose)])
+    inventory = ([ordinary(n) for n in range(plain_items)] + list(scrolls)
+                 + [ordinary(50 + n) for n in range(loose)])
     char.set("inventory", inventory, "made up")
     bundles = ((ScrollBundle(plain_items, len(scrolls), head(len(scrolls))),)
                if scrolls else ())

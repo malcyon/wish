@@ -296,8 +296,8 @@ def test_a_dos_source_reads_a_snapshot_through_a_folder_of_its_own(tmp_path):
         inside = pathlib.Path(scratch)
     assert not inside.exists()
 
-    plain = convert.Source.detect(folder)
-    with plain.folder() as unchanged:
+    ordinary = convert.Source.detect(folder)
+    with ordinary.folder() as unchanged:
         assert unchanged == folder
 
 

@@ -51,7 +51,7 @@ attempt starts further on:
   branches to the message when it comes back non-zero.  Nobody has read
   `$3159`, and what it wants is the open question.
 
-Two things about that front end are settled and are worth keeping either way.
+Two things about that front end are settled and stay true either way.
 **The menu's highlight is the colour RAM at the label's own column, not the
 row's dominant colour**: `Session.select_row` reads the dominant colour, every
 border row of this screen answers white as well, and the walk never starts.

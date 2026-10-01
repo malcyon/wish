@@ -205,7 +205,7 @@ def test_source_detect_ignores_a_party_at_a_different_path(tmp_path):
 
 def test_source_detect_refuses_a_matching_party_with_nothing_open(tmp_path):
     """A roster disk has characters and no saved game -- `exports.Source.
-    from_party`'s own rejection, carried over."""
+    from_party`'s own rejection, passed along."""
     path = tmp_path / "ROSTER.D64"
     path.write_bytes(b"\x00")
     party = _fake_party(path, c64_port.POOL_OF_RADIANCE, None)
@@ -1945,7 +1945,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
 def test_the_approved_strings_are_the_ones_donald_worded():
     """A spot check that stripping the markers did not also strip a word.
 
-    `SOURCE_FILTER` is the one worth pinning: it is a Qt file-dialog filter
+    `SOURCE_FILTER` is the one to pin: it is a Qt file-dialog filter
     rather than a sentence, the marker sat mid-string because Qt would read
     a trailing one as the glob itself, and removing it there is the edit
     most likely to have taken a bracket with it.
@@ -2579,7 +2579,7 @@ def test_a_conversion_with_messages_a_drop_and_a_platform_loss_is_refused_and_sh
     section the plan otherwise kept whole.
     `ConvertDialog._rehearse_and_report` calls the same `pane_text`/
     `log_unshown_losses` pair `DosImportDialog._attempt` did, so the
-    guarantee carries over unchanged.
+    guarantee holds unchanged.
     """
     from types import SimpleNamespace
 

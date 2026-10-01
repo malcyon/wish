@@ -8,7 +8,7 @@ old class, since our conversion writes his old level into both arrays)` asked
 which array carries which level at that moment.  The answer is that **no array
 moves at all**: `class_levels[old]` is zeroed at the change and stays zero for
 good, `former_class_levels[old]` keeps the level he left, and everything the
-regained class is worth is *derived* from those two plus one comparison.
+regained class grants is *derived* from those two plus one comparison.
 
 The routine is Curse's `GAME.OVR:0x3B119`, inside the record recompute the
 trainer calls when it has finished:

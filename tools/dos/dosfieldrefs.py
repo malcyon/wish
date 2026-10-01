@@ -33,8 +33,8 @@ third is the one that matters most:
    real one.  A sound answer would need a disassembler walking from known
    entry points, and this is not that.
 
-So a count from this tool is an **upper bound**.  A single site is only worth
-believing when something else corroborates it -- a `BPM` hit landing at the
+So a count from this tool is an **upper bound**.  A single site is only credible
+when something else corroborates it -- a `BPM` hit landing at the
 `CS:IP` after it, or a disassembly of the routine around it that makes sense.
 
 **One image is one set of overlays.**  Pool of Radiance overlays its code, so

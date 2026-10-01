@@ -69,7 +69,7 @@ says the roll and no more. The count goes to the debug log instead, which is
 where this project already puts a number that is about the reverse engineering
 rather than about the game -- the same call that moved the loaded-files readout
 off the bottom strip. It is kept rather than deleted because it is the only
-measure of how much the poll rate loses, and that is worth knowing when the
+measure of how much the poll rate loses, and that matters when the
 feature is doubted.
 """
 

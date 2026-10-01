@@ -6804,7 +6804,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--deadline", type=float, default=DEADLINE_SECONDS,
                     help=f"seconds the whole run may take, {CLEANUP_SECONDS:.0f} "
                          "of them kept for the cleanup; wrap the command in "
-                         f"`timeout -k 30` (a plain `timeout` sends SIGTERM only) "
+                         f"`timeout -k 30` (a bare `timeout` sends SIGTERM only) "
                          f"set at least {WRAPPER_MARGIN:.0f} s longer")
     args = ap.parse_args(argv)
     try:

@@ -397,7 +397,7 @@ def test_every_icon_on_the_players_disks_reads_back_into_menu_choices(parts):
 
     222 icons over the three C64 disk sets on this machine, 35 distinct
     shapes, and every one of them names a weapon and a head. Seven of the 35
-    are not a plain (weapon, head) composition -- they carry a cell an
+    are not a simple (weapon, head) composition -- they carry a cell an
     earlier menu choice left behind, which the game draws exactly as stored
     -- and the recogniser has to name those too, because a conversion that
     refused them would drop a real character's figure.

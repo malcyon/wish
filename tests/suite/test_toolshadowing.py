@@ -3,7 +3,7 @@
 `#203 (Six test files shadow the wish package with tools/wish.py, which stops
 the suite collecting)`: six test files under `tests/` used to put `tools/` on
 `sys.path` forever with a bare `sys.path.insert(0, ...)`, so `tools/wish.py`
--- a plain module that happens to share the real `wish` *package*'s name --
+-- a simple module that happens to share the real `wish` *package*'s name --
 won whichever import came first. Once that happened, every later `from wish
 import X` in the same process failed with `cannot import name 'X' from
 'wish'`, and the suite only worked by the luck of collection order: whichever

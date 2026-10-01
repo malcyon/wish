@@ -107,7 +107,7 @@ def synthetic_savegame(slot: str = "A") -> bytes:
 
     Only the character table is filled in, because that is the only region
     `move_savegame_to_slot` touches: six 41-byte entries at 12813 holding
-    `CHRDAT<slot><n>` as eight plain bytes. `docs/124-amiga-port.md` §1.9a has
+    `CHRDAT<slot><n>` as eight raw bytes. `docs/124-amiga-port.md` §1.9a has
     the region map the rest of the file would follow.
     """
     save = bytearray(amiga_savegame.POR_SAVEGAME_SIZE)

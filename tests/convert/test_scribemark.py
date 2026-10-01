@@ -64,10 +64,10 @@ def _neutral(tmp_path, *items: bytes, title="silver-blades"):
 def test_a_marked_scroll_reaches_the_c64_with_bit_7_clear_and_nothing_else_changed(
         tmp_path, title, kind):
     marked = _neutral(tmp_path, _item(kind, MARKED), title=title)
-    plain = _neutral(tmp_path, _item(kind, tuple(b & 0x7F for b in MARKED)),
+    ordinary = _neutral(tmp_path, _item(kind, tuple(b & 0x7F for b in MARKED)),
                      title=title)
     rec, _ = dos_codec.neutral_to_c64_record(marked)
-    ref, _ = dos_codec.neutral_to_c64_record(plain)
+    ref, _ = dos_codec.neutral_to_c64_record(ordinary)
     slot = rec.get_raw("inventory")[:16]
     assert tuple(slot[13:16]) == (1, 2, 117)
     assert rec.to_bytes() == ref.to_bytes()

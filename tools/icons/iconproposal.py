@@ -339,7 +339,7 @@ def title_c64_disk(title: str, given: str | None) -> pathlib.Path | None:
 
     None, rather than an exception, when the title's disks are not here: a
     document that says "no C64 figure, these disks are not on this machine"
-    is worth writing, and one that quietly shows another game's art is not.
+    is acceptable, and one that quietly shows another game's art is not.
     """
     if given:
         return pathlib.Path(given).expanduser()

@@ -651,7 +651,7 @@ def test_the_cleric_grant_is_curses_own_table_at_every_level_it_reaches():
     The derivation is "every cleric spell of a level the title's slot table
     says it can cast, minus the ids that table never grants". This asserts it
     equals what the game's own grant routine would OR into the mask, which is
-    the only check worth having: two independent readings of one fact.
+    the only check that matters: two independent readings of one fact.
     """
     grants = _cleric_grant_table(_curse_gen())
     for level in sorted(grants):

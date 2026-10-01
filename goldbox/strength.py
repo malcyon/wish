@@ -151,7 +151,7 @@ class PartyStrength:
         """Monsters in a slums random encounter: `ECL14`'s `(s / 3) * 2`.
 
         The one scaled count that has been watched end to end, and the reason
-        the number is worth showing at all.
+        the number is shown at all.
         """
         return (self.value // 3) * 2
 

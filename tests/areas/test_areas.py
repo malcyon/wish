@@ -376,7 +376,7 @@ def test_the_label_still_falls_back_to_candidates_with_no_area():
 
 
 def test_the_title_strings_match_the_per_game_descriptor():
-    """`goldbox/areas.py` takes a title as a plain string on purpose, so that it
+    """`goldbox/areas.py` takes a title as a simple string on purpose, so that it
     does not have to import the descriptor. This is the one place the two have
     to agree: `areas.GEO_NAMES[game.title]` is how a caller with a `Game` looks
     a name up."""

@@ -36,7 +36,7 @@ def field_at(offset: int) -> str:
 
     The shift map is the only translation, so a name here is the same name the
     writer's provenance lines and `goldbox.dos_codec`'s declared tables use -- which
-    is the point: a difference is worth reading only if it can be looked up.
+    is the point: a difference matters only if it can be looked up.
     """
     for f in dos_port.LAYOUT:
         at = amiga_por.amiga_por_offset(f.offset)

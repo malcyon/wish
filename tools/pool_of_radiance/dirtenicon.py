@@ -108,7 +108,7 @@ def native_default() -> NativeDefault:
 def _validated_save(image: bytes):
     disk = D64(image)
     if not disk.writable:
-        raise RepairError("Only a plain 35-track D64 save is supported")
+        raise RepairError("Only a standard 35-track D64 save is supported")
     bam = disk.read_sector(18, 0)
     if (bam[:2] != bytes((18, 1)) or bam[2] != DOS_VERSION
             or bam[BAM_DOS_TYPE:BAM_DOS_TYPE + 2] != DOS_TYPE):

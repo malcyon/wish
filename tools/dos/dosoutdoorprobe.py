@@ -21,7 +21,7 @@ array that are nonzero in an engine-written overland save and zero in all
 eleven engine-written indoor ones (`tools/dos/dossavsweep.py`), so they are
 overland state -- but one specimen cannot say which of them tracks the square.
 `--route` walks a scripted path and saves at every waypoint, so a run produces
-three or four squares' worth of the same words.
+the same words for three or four squares.
 
 The route is arrow keys: `U` north, `D` south, `L` west, `R` east -- outdoors
 the arrows move the party directly instead of turning it -- and a `S<letter>`

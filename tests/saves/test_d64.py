@@ -26,7 +26,7 @@ disk image to freeze it would be committing the game's data, which
 that used to need `PORSAVE.D64` now needs nothing but the fixtures
 already committed, and runs on a bare checkout with no game files at all.
 
-That rebuild has a cost worth naming: it can only prove `write_file()` agrees
+That rebuild has a cost to name: it can only prove `write_file()` agrees
 with `directory()`/`to_bytes()`, not that either agrees with a real 1541 and
 KERNAL, since nothing here reads one any more. `tests/saves/test_d64_blank.py`
 carries the checks that put that grounding back -- the lock bit, a name's

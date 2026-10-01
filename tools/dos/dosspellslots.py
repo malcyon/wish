@@ -34,7 +34,7 @@ is, and what zeroes it are all in the code, and this reads them:
   checks `goldbox.spells`' committed rows against them.
 * `refs` -- every `es:[reg + disp]` instruction over the block's range,
   through `tools/dos/dosfieldrefs.py`, with the same three caveats that tool
-  carries: a count is an upper bound and a site is worth believing only
+  carries: a count is an upper bound and a site is credible only
   when a disassembly corroborates it.
 
 Block offsets come from `goldbox.dos_port` (`spells_castable_cleric`).

@@ -22,7 +22,7 @@ Run it from the repository root, naming the revision to compare against:
 
 **`--base` is required on purpose.** It defaulted to `HEAD` once, which reads
 the *post-split* file and compares it against a set of specimens that contains it -- so
-the tool answered "3 of 3 quotations carried over" and looked like a pass. A
+the tool answered "3 of 3 quotations kept" and looked like a pass. A
 check that cannot fail is worse than no check.
 """
 
@@ -104,8 +104,8 @@ def main() -> int:
     lost_bolds = sorted(b for b in bolds if b not in new)
 
     print(f"Comparing against CLAUDE.md at {args.base}.")
-    print(f"Quotations: {len(quotes) - len(lost_quotes)} of {len(quotes)} carried over.")
-    print(f"Imperatives: {len(bolds) - len(lost_bolds)} of {len(bolds)} carried over.")
+    print(f"Quotations: {len(quotes) - len(lost_quotes)} of {len(quotes)} kept.")
+    print(f"Imperatives: {len(bolds) - len(lost_bolds)} of {len(bolds)} kept.")
 
     if lost_quotes:
         print("\nQuotations that no longer appear anywhere. These are evidence:")

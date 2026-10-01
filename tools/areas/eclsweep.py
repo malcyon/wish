@@ -508,8 +508,8 @@ def cmd(argv=None) -> int:
         print(f"  ${page:04X} {counts[page]:>6} {reads:>6} {writes:>6}")
 
     if dos_bodies:
-        plain = {f"ECL{k}": v[1] for k, v in dos_bodies.items()}
-        dhits, dreach = sweep(machine, plain, base)
+        ordinary = {f"ECL{k}": v[1] for k, v in dos_bodies.items()}
+        dhits, dreach = sweep(machine, ordinary, base)
         dgot = sum(r for r, _ in dreach.values())
         dtotal = sum(t for _, t in dreach.values())
         print(f"\n  DOS: {len(dhits)} address operands over "

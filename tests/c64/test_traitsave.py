@@ -25,8 +25,8 @@ from gamedata import synthetic_save
 from goldbox import layout
 from tools.c64 import traitsave
 
-#: `gamedata.synthetic_party` names every character a record's worth of
-#: capital Ws, so the name is the layout's and not a literal here.
+#: `gamedata.synthetic_party` names every character with as many
+#: capital Ws as a record holds, so the name is the layout's and not a literal here.
 EVERYBODY = "W" * layout.NAME_SIZE
 
 #: Resist Fire, the id `#417` names, and the one `docs/171-c64-trait-slots.md`
