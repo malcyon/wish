@@ -397,10 +397,11 @@ platform, so conversion tickets reuse it).
 | 19 | Pools of Darkness, Amiga to DOS | `PodAmigaToDos` behind `WISH_EXPERIMENTAL_POD_CONVERT`: File > Convert, or `acceptance.py --amiga-slot` | DOS Pools of Darkness | `SavGamB.pty` on the registry's `(SSI)(Disk 3 of 3)[a].adf`, a played save found on a disk image, so an input and not a measurement |
 | 20 | Pools of Darkness, DOS to Amiga | None: the `.pc` writer (`amiga_pod.write_pod`) exists, and the saved-game writer, its detection and the direction do not | Amiga Pools of Darkness, foundation proven (section 5) | `WISH-SPEC-p175-diff1` once a route exists |
 
-Routes 8, 10, 14 and 16 (Curse and Silver Blades to the Amiga) wait behind
+Routes 8, 10, 14 and 16 (Curse and Silver Blades to the Amiga) needed
 #677 (Save As to the Amiga puts a Curse or Silver Blades party on a separate
-save disk that the game never reads while its own disk A is in DF0); section 8
-says on what.
+save disk that the game never reads while its own disk A is in DF0): Save As
+now writes a copy of the player's disk 1 with the slot in its `SAVE` drawer, and
+all four routes have been proven live on that output.
 
 ## 5. Order: the foundation runs, then the conversion runs
 
@@ -616,12 +617,11 @@ escape hatch, and it is where a new step gets its screen read.
 
 ## 8. For Donald
 
-One decision waits on him: the label and picker title of Save As's new
-disk 1 row (#677 (Save As to the Amiga puts a Curse or Silver Blades party on a
-separate save disk that the game never reads while its own disk A is in DF0)).
-The Amiga Curse and Silver Blades runs on Wish's own output wait behind it. The
-embedded-slot staging in the historical `amigasecretsave.py prepare` run proves the
-slot bytes meanwhile, not the published container.
+No decision waits on him. The label and picker title of Save As's disk 1 row
+(#677 (Save As to the Amiga puts a Curse or Silver Blades party on a separate
+save disk that the game never reads while its own disk A is in DF0)) were
+approved and built, and the Amiga Curse and Silver Blades runs on Wish's own
+output have passed.
 
 Three things he will be told once the runs have been made, each in player
 terms and none a choice:

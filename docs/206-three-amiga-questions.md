@@ -9,7 +9,7 @@ wrote. `tools/amiga/amigashots.py` drove it and photographed every keystroke;
 `docs/182-amiga-por-in-the-running-game.md` §7 is the route from a cold VM to a
 loaded slot.
 
-## 1. The character sheet draws no portrait, and no box for one
+## 1. A character with no portrait pair gets no face and no box
 
 `#322 (Nobody has looked at an Amiga Pool of Radiance character sheet to see
 whether it draws a portrait at all)`.
@@ -49,17 +49,15 @@ right-hand third of the same screen -- this port puts `GOLD`, `ENCUMBRANCE` and
 of `#354 (Wish has never opened a converted character's sheet in the Amiga game
 it wrote it for)`, and not one drew a face.
 
-So the second half of the question does not arise: **there is no portrait for
-`$49FF` to gate**, and building the disk twice more with the word forced to 0
-and to 3 would compare two identical pictures. The word's entry in
-`goldbox.amiga_por.POR_SAVGAM_MEASURED` opens by calling it "the word that gates
-the sheet portrait", which this run makes untrue on this port; 3 is still the
-right value to write, because every engine-written Amiga saved game holds it,
-so the entry belongs beside the unsourced ones with that as its reason.
-
-**What this does not say** is that Amiga Pool of Radiance has no portrait art
-anywhere. The character sheet is what was opened; the game's own
-character-creation screens were not.
+**This run could not have shown a portrait.** All seven characters came out of
+a Wish conversion, and the Amiga writer wrote `0`/`0` into every one's portrait
+pair; the sheet routine draws nothing for a zero pair, so the photographs show
+exactly that and say nothing about a character who has a portrait. The sheet
+routine does ask for one (`docs/188-the-sheet-portrait-per-title.md`, "The
+Amiga sheet asks for the face"). This section first concluded that the port
+draws no portrait and that `$49FF` gates nothing; the zero pair undid both.
+What Amiga Pool of Radiance draws for a character created in the game is
+UNKNOWN until a `VIEW` is photographed on an engine-written save.
 
 ## 2. The engine strips a name's spaces at save, except one it stored as `$FF`
 
@@ -118,12 +116,14 @@ space -- is drawn as a blank cell and never stripped.** The same run measured
 it, by pixel width, through four saves and a cold reload: `$FF` draws as one
 blank cell, the same width as a space, on the party panel, the character sheet
 and the roster picker, and the byte survives every save unchanged. So the
-writer has a way to keep a converted name's space intact: write `$FF` where a
-DOS or C64 name holds a space, rather than a real `$20`. That needs the reader
-to change in the same commit, because `goldbox` today decodes an Amiga `$FF`
-as U+FFFD -- filed as `#631 (A Pool of Radiance character created in the Amiga
-game with a space in his name converts as MARY?SUE, because the reader decodes
-the game's $FF as a replacement character)`.
+writer has a way to keep a converted name's space intact, and
+`goldbox.amiga_por._por_name_bytes` uses it: it writes `$FF` where a DOS or C64
+name holds a space, rather than a real `$20`, and the reader decodes an Amiga
+`$FF` back to a space. This section first said the writer emitted `$20` and
+that the reader decoded `$FF` as U+FFFD (`#631 (A Pool of Radiance character
+created in the Amiga game with a space in his name converts as MARY?SUE,
+because the reader decodes the game's $FF as a replacement character)`); both
+were changed afterwards.
 
 The disk the engine wrote all four of those slots onto is
 `~/wish-specimens/por-amiga/WISH-SPEC-por-amiga-name-spaces`, copied out of the

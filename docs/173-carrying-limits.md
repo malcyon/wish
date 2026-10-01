@@ -205,12 +205,18 @@ untrusted for exactly this class of reason.
 
 ## What it settles for a conversion
 
-**A DOS or Amiga save a player made cannot overflow the C64's sixteen slots**,
-so decision 13 of `#52 (File ▸ Import and File ▸ Export for every direction
-the library supports)` has nothing to decide about items: the case is
-unreachable from a saved game the game itself wrote. What remains is our own
-input validation -- a `.ITM` an editor lengthened past sixteen is the only way
-a seventeenth item reaches the converter, and
+**A DOS or Amiga save a player made cannot overflow the C64's sixteen slots
+with ordinary items, except in Silver Blades**: a DOS Silver Blades character
+can hold sixteen head items, and each joined scroll is one head item that
+carries up to ten scrolls, which the C64 stores one to a slot with no join.
+Fifteen items and a joined pair need 17 C64 slots, a pack the game lets a
+player build. `goldbox.dos_codec.write_c64_save` raises
+`JoinedScrollsDoNotFit` for it unless the caller passes `leave`, the items the
+player chose to leave behind (`pack_overflow` names who does not fit).
+Apart from that case decision 13 of `#52 (File ▸ Import and File ▸ Export for
+every direction the library supports)` has nothing to decide about items. What
+remains is our own input validation -- a `.ITM` an editor lengthened past
+sixteen is the only way a seventeenth ordinary item reaches the converter, and
 `goldbox/c64_codec.py` already reports the overflow rather than writing past
 the sixteenth slot.
 

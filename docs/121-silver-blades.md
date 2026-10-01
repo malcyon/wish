@@ -99,7 +99,7 @@ six.
 | save file **count and names** | assume neither game's | **name differs** (`SAVEDBASH`), count does not: one file, like every title after Pool of Radiance |
 | save load address and header base | a third value expected | **contradicted, in our favour.** `$4B00`, slots `$4F00`, items `$5B00`, roster `$6700` — byte for byte Curse's |
 | file stems (`GEO`, `ECL`, `ITEMS`, …) | may be renamed wholesale | **contradicted, in our favour.** 30 of 34 stems are Pool of Radiance's; the one real rename is `ITEMFILE` → `ITEM` |
-| fewer `GEO` files, no wilderness | fewer expected | 17, against Curse's 16 and Pool of Radiance's 29. No `SQRDATA`/`SQRPACI`/`WALLS` on any side |
+| fewer `GEO` files, no walkable wilderness grid | fewer expected | 17, against Curse's 16 and Pool of Radiance's 29. No `SQRDATA`/`SQRPACI`/`WALLS` on any side. That rules out Pool of Radiance's square grid only: Curse travels between places by a menu-driven map (`goldbox/curse_worldmap.py`), and Silver Blades' route out of town is unread |
 | export load address and marker byte | a third pair expected | **half held.** Load address `$7C00`, Curse's exactly; marker byte **`\x05`**, where Pool of Radiance uses `\x01` and Curse `\x02`. So it is an identifier out of some list, not a sequence number |
 | `ITEMNAMES` resident base | a third | **not settled** |
 | `LIBRARY` `GEO` stem table address | a third | **not settled** |
@@ -344,8 +344,9 @@ is in `docs/139-per-title-validation.md`'s A6 and A7 rows, both now `V`;
 from it (`#187 (Silver Blades characters are shown Pool of Radiance's level
 progression)`). The trainer's own inputs -- the thief-skill racial
 adjustment, the constitution hit-point bonus, the wisdom bonus spells, the
-turning table -- stay unread or unattributed, so `levels.trainer_measured`
-and `goldbox/levelup.py` still refuse the title.
+turning table -- were unread or unattributed here, which is why the title was
+refused; a driven training has since reproduced every field, and
+`levels.TRAINER_MEASURED` now names it.
 
 Three of those are worth reading even if the rest is a lookup table.
 
@@ -415,7 +416,7 @@ CANARY here — so only a title's own `ITEM<nn>` lists say what its indices mean
 | the area byte across a boundary | the run never left `GEO10`, so `Fingerprint`'s narrowing is untested here |
 | ~~whether the sixteen-byte spellbook is also Curse's~~ **it is not** (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)) | Curse reads thirteen bytes: `CAMP $2A25` walks spell ids to 100 and indexes the mask at byte 12. Gateway is still unread |
 | `ITEMNAMES` and `LIBRARY` resident bases | fittable statically, not done here |
-| ~~`goldbox/levels.py`'s caps for this title~~ **built** (#31 (Cold-read Curse and Silver Blades for the fields the editor shows), #187 (Silver Blades characters are shown Pool of Radiance's level progression)) | every table is read off `GEO`'s neighbour `GEN` and written into `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES`; the character sheet shows it through `automap/live.py:_classes`. The trainer's own inputs stay unread, so `goldbox/levelup.py` still refuses to level the title |
+| ~~`goldbox/levels.py`'s caps for this title~~ **built** (#31 (Cold-read Curse and Silver Blades for the fields the editor shows), #187 (Silver Blades characters are shown Pool of Radiance's level progression)) | every table is read off `GEO`'s neighbour `GEN` and written into `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES`; the character sheet shows it through `automap/live.py:_classes`. The trainer was read afterwards and the title is in `levels.TRAINER_MEASURED`, so `goldbox/levelup.py` levels it |
 
 **The loader's mode flag is `$7F11` (#29 (The live reader uses Pool of Radiance's addresses on every title)).** `LINKER` is 149 bytes on
 `SILVER-1.D64`, is resident at `$2D00` byte-identical to the disk copy, and

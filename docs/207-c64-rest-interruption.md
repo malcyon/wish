@@ -171,7 +171,7 @@ which is what
 `#218 (Three live regions of the DOS saved game are named but not understood)`
 measured over 21 containers. The change to the second test is not one of the
 ten: it reads the same in both builds and is inert on the C64 only because the
-byte at `$9A2D` sends the arm below it to the same place. `goldbox-bugs.md` 13
+byte at `$9A2D` sends the arm below it to the same place. `goldbox-bugs.md` 12
 is the entry for what a player sees.
 
 ## Driven
@@ -238,13 +238,14 @@ writes the same byte — `docs/50-experiments.md`'s murder run watched
 
 ## What was not established
 
-* **The Amiga.** `ecl.dax` is on side 2 of the Amiga disks and the file name is
-  in the directory, but its container index is not the DOS one
-  `tools/dos/daxls.py` reads — every block it reports comes out with a nonsense
-  offset — and the scripts inside are packed, so a byte search for the Slums
-  camping block finds nothing. Reading the Amiga's `ECL14` wants an unpacker
-  this project does not have yet. The bugs entry says "very likely" for that
-  reason.
+* **The Amiga's behaviour.** `goldbox/amiga_dax.py` unpacks the Amiga's
+  `ecl.dax`, whose index and packing are not the DOS ones `tools/dos/daxls.py`
+  reads. Its `ECL14` is the DOS block 20 byte for byte (7,677 bytes after the
+  length word; 28 of the 29 blocks match DOS), so it carries the two bytes that
+  make the third test live and the Slums should be checked at (24, 24) on an
+  ordinary square. The Amiga rest loop and a rest in the Slums on an Amiga
+  have not been read or watched. This section first said the scripts could not
+  be unpacked.
 * **What follows an interruption.** `ECL14` entry 3 is `SAVE 200, [$4A1F] /
   SAVE 0, [$6DCB] / OP$1D [$9808] / GOTO $9B68`, which looks like the
   wandering-monster setup, but the screen ten seconds after the interruption

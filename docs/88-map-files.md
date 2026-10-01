@@ -81,7 +81,8 @@ edges the two adjacent squares agree about — a parse error shows up here first
 file at 256/256 is entirely under a roof and one at 0/256 entirely open, and it
 is tempting to read that as dungeon against city block — but the two most
 roofed, doorless files here, `GEO19` and `GEO1B`, are the **wilderness
-windows**, areas 25 and 27, each drawn over its own `SQRDATA`; and the two least
+caves** of areas 25 and 27, whose open world is a separate `SQRDATA` file
+(`docs/113-world-map.md`; this paragraph first called them the windows); and the two least
 roofed, `GEO10` and `GEO11`, are the **Lizardman Keep** and the **Nomad Camp**,
 which are outdoor but not wilderness. Both pairs were guessed the other way
 round from these columns alone. What a file *is* comes from the script that

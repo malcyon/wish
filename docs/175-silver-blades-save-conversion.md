@@ -63,11 +63,12 @@ window the conversion wrote zero at `+$1FD` and the C64 engine's own
 `ENCAMP > SAVE` put `$FF` back there; all three driven DOS Silver Blades
 containers hold 255 at that word and the shipped one holds 0.
 
-**Curse of the Azure Bonds has the same gap and it is not fixed here.** Its
-own sweep names `$4CFE` (16 reads, 8 writes) and `$4CFF` (4 writes), so a
-converted Curse party loses those two bytes. Filed separately rather than
-changed under this ticket, because Curse's conversion was proven in the game
-with the narrow window and re-proving it is that ticket's work.
+**Curse of the Azure Bonds had the same gap, and its window now runs to the
+end of the page too** (`+$120`-`+$1FF`, 224 bytes, in `goldbox/c64_save.py`).
+Its own sweep names `$4CFE` (16 reads, 8 writes) and `$4CFF` (4 writes), which
+a converted Curse party lost while the window stopped short. It was widened
+separately from this ticket, because Curse's conversion had been proven in the
+game with the narrow window.
 
 ## The name table is not keyed by anything
 

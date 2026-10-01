@@ -191,12 +191,12 @@ Blades' watched engine-written MORGAINE is level 9 and holds her row's 41;
 there is no watched low-level Silver Blades magic-user, so the 40 at levels
 1--5 rests on the executable proof.
 
-`goldbox/amiga_later.py` currently passes `thac0_floor=False`, making a C64
-magic-user at levels 1--5 arrive on the Amiga with 39. That choice is
-**incorrect** for the Amiga import/rebuild rule: it must use the same
-level-zero floor and write 40. The current byte can survive a load and save,
-as the watched Curse specimen shows, so the engine does not repair it on the
-player's behalf. No writer changed as part of this measurement.
+`goldbox/amiga_later.py` writes the same level-zero rebuild result for a later-title
+magic-user at levels 1--5, so a C64 magic-user arrives on the Amiga with 40
+rather than 39. The byte matters because it can survive a load and save, as
+the watched Curse specimen shows: the engine does not repair a 39 on the
+player's behalf. The first version of the writer passed `thac0_floor=False`,
+which wrote 39; the Amiga rebuild rule above showed that was wrong.
 
 ## DOS and C64 really do disagree
 

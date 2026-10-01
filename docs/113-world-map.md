@@ -1,8 +1,10 @@
 # The overland travel map — plan
 
-**Status: researched, nothing built. No save has ever reached it**, so every
-line below rests on disk files, disassembly and one foreign save. This
-document is that research; what follows is what to do with it.
+**Status: researched, and built.** The automapper draws the overland
+(`docs/137-wilderness-automap.md`, `docs/217-drawing-the-wilderness.md`). This
+document is the research behind it, written when no save had reached the
+travel grid, so some lines below rest on disk files and disassembly alone; each
+carries its own grade.
 
 The headline: **the overland map is not a `GEO`.** It is the combat square
 engine — `SQRPACI` descriptor, one byte a square at `$8C00` — pointed at
@@ -79,9 +81,12 @@ nothing is broken; for the overland map `$0607` is 20 against a true stride of
    **Settled, CONFIRMED**: it reads `00` on the travel grid against `01` in
    all fourteen indoor saves (`docs/90-specimens.md` "The wilderness set"),
    the cheap state test `docs/137-wilderness-automap.md` §2 uses.
-5. **What a travel step costs in game time.** `ECL19 $AEA3` writes
-   `$6DD2`/`$6DD3` differently depending on `$49E6`; GUESS that this is the
-   step cost.
+5. ~~**What a travel step costs in game time.**~~ **Settled, CONFIRMED**: a
+   step costs 12 hours and 1 minute (`docs/90-specimens.md`). `$6DD2`/`$6DD3`,
+   which `ECL19 $AEA3` writes differently depending on `$49E6`, are not the
+   step cost: they are the rest-interruption interval and chance, read only by
+   the rest loop (`docs/163-dos-vm-address-map.md`). This item first guessed
+   that they were.
 6. **`SECSET0n`'s bitmaps** and the glyph attribute nibbles — needed only to
    draw the game's own art, not to draw the map.
 

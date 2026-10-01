@@ -222,7 +222,11 @@ refreshes could not do. `DS:0x3C7C` is in `START.EXE` and its magic-user and
 thief rows simply hold 40 where `$1F1F` holds 39. 190 of 190 DOS records
 reproduce from it. `tools/records/thac0sweep.py` is the sweep,
 `docs/135-levelling.md` has the table and `goldbox/levels.py`'s `dos_thac0`
-carries the rows.
+carries the rows. That holds for Pool of Radiance, whose DOS table itself
+says 40. Curse and Silver Blades hold 39 in their tables and still store 40,
+because a second rebuild loop that does not test the level reads entry 0 of
+every absent class; `docs/224-the-dos-thac0-floor.md` has it, and the
+"neither clamps" above describes the loop that tests the level.
 
 `#318 (DOS gives a low-level magic-user or thief THAC0 20 where the C64 gives
 21, and our table holds only the C64's)` has the measurement, and

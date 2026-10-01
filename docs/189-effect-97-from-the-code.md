@@ -115,9 +115,12 @@ checks all seventeen values against the function.
   and computes the bonus from the constitution it finds.
 * **`goldbox/traits.py`'s 90 and 97 can become CONFIRMED**, worded by
   column: 90 the paralysis/poison/death column, 97 wands and spell.
-* **DOS gives the bonus on three of five columns** -- poison, rods/staves/
-  wands, spells, the AD&D rule -- where `goldbox/levels.py` has the C64
-  baking it into all five (`constitution_save_columns=(0, 1, 2, 3, 4)`). A
+* **DOS Pool of Radiance gives the bonus on three of five columns** -- poison,
+  rods/staves/wands, spells, the AD&D rule. (Curse folds the poison column into
+  97's handler, and Silver Blades' creation writes 97 for a dwarf, gnome or
+  halfling while no Silver Blades saving throw asks for it:
+  `docs/230-who-reads-a-dos-effect-node.md`, `docs/200-innate-effect-seeding.md`.)
+  Against that, `goldbox/levels.py` has the C64 baking it into all five (`constitution_save_columns=(0, 1, 2, 3, 4)`). A
   port difference; the C64 half rests on `GEN $2359` and HOGARTH's stored
   bytes and is not re-derived here.
 * **Curse's 0x5A is not 90.** `coab` names it `breath_acid`, and Curse's

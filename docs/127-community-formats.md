@@ -342,7 +342,7 @@ offset map, and the DOS names then say what the C64's unnamed bytes are.
 
 | C64 | DOS | delta | what it tells us |
 |---|---|---|---|
-| `0x014` abilities | `0x010` | +4 | the C64 name field is 20 bytes, DOS's 16 |
+| `0x014` abilities | `0x010` | +4 | the C64 has 20 bytes before the abilities (an 18-byte name, then the paladin's two use counts), DOS's 16 |
 | `0x071` THAC0 base … `0x078` spellbook | `0x02D` … `0x033` | +`0x44` | |
 | `0x098` `attack_level` | `0x06B` `LVL_Sweep` | +`0x2D` | our name is right; theirs says what it is *for* |
 | `0x099` `size_small` | `0x06C` `ICO_Dimension` | +`0x2D` | position matches `ICO_Dimension`, meaning matches `ICO_Size` — see below |

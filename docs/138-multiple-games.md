@@ -11,13 +11,13 @@ They are. But the dialog is the last problem, not the first.
 | question | answer | grade |
 |---|---|---|
 | Is the area table per-title? | **No.** `goldbox/areas.py:AREAS` is thirty Pool of Radiance `ECL` scripts with `POOL`-disk numbers in them. What P10/P24 made per-title was `GEO_NAMES` — map file → name — and nothing else | CONFIRMED, read |
-| What do we have for Curse and Silver Blades? | **Silver Blades has a table**: twenty-two areas, seventeen maps, the disk side for every one, twelve arrival squares, no names -- `goldbox.areas.AREAS_SILVER_BLADES`, built by `tools/areas/areatable.py` off its own six sides for `#20 (Build an area table for Silver Blades)`. **Curse has one too**: twenty-five areas on six sides, sixteen maps, no names and no arrival squares, `goldbox.areas.AREAS_CURSE`, built by the same tool for `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer refuses today)`. Both re-derive off the disks today -- 25 of 25 and 22 of 22 on id, side and maps, `tools/areas/areatable.py <title> --check`, 2026-09-08 | CONFIRMED that the rows are what the scripts say; for Silver Blades CONFIRMED that the game does what they say, since fifteen driven arrivals matched the map at `$0400` byte for byte, and PROBABLE for Curse, where four warps landed but no individual row was checked |
+| What do we have for Curse and Silver Blades? | **Silver Blades has a table**: twenty-two areas, seventeen maps, the disk side for every one, twelve arrival squares, twenty of the twenty-two named -- `goldbox.areas.AREAS_SILVER_BLADES`, built by `tools/areas/areatable.py` off its own six sides for `#20 (Build an area table for Silver Blades)`. **Curse has one too**: twenty-five areas on six sides, sixteen maps, twenty-four of the twenty-five named and fourteen with a derived arrival square (PROBABLE), `goldbox.areas.AREAS_CURSE`, built by the same tool for `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer refuses today)`. Both re-derive off the disks today -- 25 of 25 and 22 of 22 on id, side and maps, `tools/areas/areatable.py <title> --check`, 2026-09-08 | CONFIRMED that the rows are what the scripts say; for Silver Blades CONFIRMED that the game does what they say, since fifteen driven arrivals matched the map at `$0400` byte for byte, and PROBABLE for Curse, where four warps landed but no individual row was checked |
 | What do we have for Pools of Darkness? | **The C64 never got it.** `docs/124` §1: the four-game run ends on the Amiga precisely because of this, and `goldbox/c64_port.py` has six titles and PoD is not one of them | CONFIRMED |
 | Does the fasttravel mechanism transfer? | **Yes.** `NEWECL` is the same routine in Curse and in Silver Blades, and four driven warps landed a Curse party in four different areas. §6 | CONFIRMED for Curse, PROBABLE for Silver Blades |
 
-So the honest shape of the feature today is **one title with a list and two
-with an empty one**, and the work that matters is building the tables, not
-building the tab bar.
+When this plan was written the feature had **one title with a list and two
+with an empty one**, and the work that mattered was building the tables, not
+building the tab bar. All three have a table now (§2).
 
 ## 1. What is already per-title, exactly
 
@@ -32,9 +32,9 @@ address and disk glob. Nothing in it touches areas.
   `GEO`s, an arrival square and a confidence. Pool of Radiance only, and not
   parameterised. `automap/actions.area_rows()` returns it whole and
   `wish/preferences.py` builds the tick table straight off it.
-* **`GEO_NAMES`** — `{title: {geo: name}}`, with `CURSE_OF_THE_AZURE_BONDS`
-  present and **empty** on purpose, because `GEO15` is Sokol Keep in one game
-  and somewhere else in the other. `area_name` degrades to `"area 21"` for an
+* **`GEO_NAMES`** — `{title: {geo: name}}`, keyed by title first because
+  `GEO15` is Sokol Keep in one game and somewhere else in the other (Curse's
+  entry now holds fourteen maps). `area_name` degrades to `"area 21"` for an
   unknown title rather than lying.
 
 The title reaches that table already: `AutomapState.title` is set from the open
@@ -56,24 +56,20 @@ areas are per-title" is the trap. What it delivered was the names table.
 | C64 release | yes | yes | yes | **none** |
 | `GEO` files decoded | 29 | 16, reciprocity ≥ 0.935 | 17, wall-art reciprocity 1.000 | — |
 | map ids | dense `GEO00`–`GEO1F` | sparse, chapter-grouped `01 03 04 / 10 11 15 / …` | sparse `$10`–`$62`; **high nibble is the disk side** | — |
-| area names | 29 of 30 | **none** | **none** | — |
-| `ECL` ids and area→map relation | fully decoded | ids read, 23 scripts | **fully decoded**, 22 scripts, `tools/areas/areatable.py` | — |
-| which disk carries which script | yes, `Area.disk` | read, not tabled | yes, `Area.disk`, corroborated 29 of 29 against the scripts' own disk writes | — |
-| arrival squares | 16 harvested, `landing_square` for the rest | 12 read, not tabled | 12 read, all from the arriving script's entry 4 | — |
+| area names | 29 of 30 | 24 of 25 | 20 of 22 | — |
+| `ECL` ids and area→map relation | fully decoded | tabled, 25 areas in `AREAS_CURSE` | **fully decoded**, 22 scripts, `tools/areas/areatable.py` | — |
+| which disk carries which script | yes, `Area.disk` | yes, `Area.disk` | yes, `Area.disk`, corroborated 29 of 29 against the scripts' own disk writes | — |
+| arrival squares | 16 harvested, `landing_square` for the rest | 14 derived, PROBABLE | 12 read, all from the arriving script's entry 4 | — |
 | live automapper run | shipping | done, `docs/120` tier 4 | done, `docs/121` phase 5 | — |
 
 Sources: `docs/120-curse-testing.md` §§2, 4; `docs/121-silver-blades.md` §§1,
 5; `docs/124-amiga-port.md` §1.
 
-**There is no table to tick for Curse or Silver Blades.** Naming Curse's
-sixteen maps needs somebody who has played it; relating maps to `ECL` ids and
-finding arrival squares needs the `ECL` decode, which `docs/120` prices at
-weeks and which nothing else in the project depends on.
-
-**Silver Blades' table is built** -- `#20 (Build an area table for Silver
+**Both later tables are built.** Silver Blades' is `#20 (Build an area table for Silver
 Blades)`, and §8 below has what it says and the four Pool of Radiance rules it
-breaks. The name column is still blank. Curse's twenty-three scripts read the
-same way with the same tool and nobody has tabled them.
+breaks. Curse's `AREAS_CURSE` was built the same way with the same tool.
+Their name columns were blank when this plan was written; Donald approved
+names afterwards, so Silver Blades names 20 of 22 areas and Curse 24 of 25.
 
 ## 3. Where the title comes from, and what happens with no game running
 
