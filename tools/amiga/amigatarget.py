@@ -78,6 +78,8 @@ def verify(layout: amiga.AmigaMachine, adf: pathlib.Path) -> list[str]:
     reading cannot tell from a game that is merely between areas.
     """
     exe = Executable.parse(executable(adf, layout))
+    if layout.segments is not None:
+        return _verify_segments(layout, exe)
     data = [h for h in exe.hunks if h.kind == "DATA"]
     bad: list[str] = []
     if len(data) != 1:
@@ -102,6 +104,63 @@ def verify(layout: amiga.AmigaMachine, adf: pathlib.Path) -> list[str]:
     return bad
 
 
+def _verify_segments(layout: amiga.AmigaMachine, exe: Executable) -> list[str]:
+    """`verify` for a many-hunk build: the anchor in one hunk, the data in
+    another, and the code reaching the data through absolute relocations."""
+    seg = layout.segments
+    bad: list[str] = []
+    try:
+        anchor_hunk = exe.by_number(seg.anchor_hunk)
+        data_hunk = exe.by_number(seg.data_hunk)
+    except KeyError as exc:
+        return [f"the executable has no hunk {exc.args[0]}"]
+    if seg.data_hunk <= seg.anchor_hunk:
+        bad.append(f"hunk {seg.data_hunk} does not come after hunk "
+                   f"{seg.anchor_hunk}")
+    for hunk, size in ((anchor_hunk, seg.anchor_size),
+                       (data_hunk, seg.data_size)):
+        if hunk.allocated != size:
+            bad.append(f"hunk {hunk.number} allocates {hunk.allocated:#x} "
+                       f"bytes, not {size:#x}")
+    if anchor_hunk.file_offset is None:
+        bad.append(f"hunk {seg.anchor_hunk} has no bytes to hold the anchor")
+    else:
+        found = [i for i in range(len(exe.data))
+                 if exe.data.startswith(layout.anchor, i)]
+        want = anchor_hunk.file_offset + layout.anchor_offset
+        if found != [want]:
+            bad.append(f"{layout.anchor!r} is at "
+                       + (", ".join(f"{h:#x}" for h in found) or "no offset")
+                       + f" in the file, not {want:#x} (hunk {seg.anchor_hunk}"
+                       f" + {layout.anchor_offset:#x})")
+    # A BSS hunk has no initialised bytes: every global in it is zero-filled.
+    initialised = 0 if data_hunk.kind == "BSS" else data_hunk.size
+    offsets = {name: getattr(layout, name) for name in
+               ("party_x", "party_y", "party_facing", "geo_pointer")}
+    grid = layout.travel_grid
+    if grid is not None:
+        offsets.update(view=grid.view, area=grid.area,
+                       block_pointer=grid.block_pointer)
+    for name, offset in offsets.items():
+        if not 0 <= offset < data_hunk.allocated:
+            bad.append(f"{name} {offset:#x} is outside the "
+                       f"{data_hunk.allocated:#x} bytes the loader allocates "
+                       f"for hunk {seg.data_hunk}")
+        elif offset < initialised:
+            bad.append(f"{name} {offset:#x} is in the hunk's *initialised* "
+                       f"bytes (below {initialised:#x}); these globals are BSS")
+    pointed = [(number, at) for (number, at), target in exe.relocs.items()
+               if target == seg.data_hunk
+               and exe.by_number(number).kind == "CODE"
+               and int.from_bytes(exe.data[exe.by_number(number).file_offset
+                                           + at:][:4], "big")
+               == layout.geo_pointer]
+    if not pointed:
+        bad.append(f"no code hunk relocates a longword to hunk "
+                   f"{seg.data_hunk} + {layout.geo_pointer:#x}")
+    return bad
+
+
 def connect(holder: str, layout: amiga.AmigaMachine,
             timeout: float | None) -> amiga.AmigaTarget:
     debugger = amiga.WinuaeDebugger(holder, timeout=timeout)
@@ -123,6 +182,12 @@ def geo_library(path: pathlib.Path) -> dict[int, bytes]:
     return amiga.geo_library(path.read_bytes())
 
 
+def _titled_maps(folder: pathlib.Path) -> dict:
+    """Maps kept in `geo.dax` rather than `GEO.GLB`, as Pool of Radiance does."""
+    from automap import maps as automap_maps
+    return automap_maps.load_maps_titled(str(folder))[0]
+
+
 def find_maps(layout: amiga.AmigaMachine,
               where: str | None = None) -> tuple[dict, pathlib.Path | None]:
     """The title's maps, off a disk image the player already has.
@@ -136,7 +201,8 @@ def find_maps(layout: amiga.AmigaMachine,
     if where:
         path = pathlib.Path(where)
         if path.is_dir():
-            return amiga.load_maps_in(path)
+            maps, image = amiga.load_maps_in(path)
+            return (maps, image) if maps else (_titled_maps(path), None)
         return amiga.load_maps(path), path
     from automap import gamedisks
     want = layout.title.split()[-1].lower()          # "blades", "bonds"

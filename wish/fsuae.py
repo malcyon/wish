@@ -319,7 +319,7 @@ def connect(port: int | None = None, opener=None,
         _machine = next(m for m in amiga.MACHINES.values()
                         if m.title == title)
         _base = bases[0]
-    return amiga.AmigaTarget(_transport, _machine, data_base=_base)
+    return amiga.AmigaTarget(_transport, _machine, anchor_base=_base)
 
 
 #: The row `wish.backends._amiga_fsuae()` offers behind its flag. The probe reads

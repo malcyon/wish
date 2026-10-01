@@ -686,6 +686,23 @@ class Automapper:
         """
         moved = not self.state.outdoors or (fix.x, fix.y) != (self.state.x, self.state.y)
         changed_heading = False
+        if fix.window is not None:
+            # The backend read its own window and heading, and `_read_window`
+            # and `_read_heading` read C64 addresses. No jump hold: at a seam
+            # the local x jumps by 13 while the window changes.
+            changed = (moved or fix.window != self.state.window
+                       or fix.heading != self.state.heading)
+            self._outdoor_pending = None
+            self.state.window = fix.window
+            self.state.heading = fix.heading
+            self.state.outdoors = True
+            self.state.x, self.state.y = fix.x, fix.y
+            self.state.source = fix.source
+            self._started = False
+            self._stale_line = None
+            self._last = None
+            self._pending = None
+            return changed
         if not moved:
             # Back on the square the hold was waiting to leave: a later jump
             # to the held coordinates is a new jump and is held again.
@@ -801,6 +818,10 @@ class Automapper:
         # The flag and the script id read together are proof by themselves,
         # as the travel grid's window is for Pool of Radiance.
         if fix.world_map:
+            return True
+        # The Amiga travel grid names its own window, and its `GEO` pointer
+        # is not a map there, so `_check_resident` could never prove it.
+        if fix.outdoors and fix.window is not None:
             return True
         standing = self._proved is not None
         if standing and self._ticks - self._proved < self.PROVEN_FOR:

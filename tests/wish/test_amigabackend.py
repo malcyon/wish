@@ -204,6 +204,39 @@ def test_a_running_title_gives_a_target_at_its_own_base():
     assert target.halts_on_read is False
 
 
+def _pool_memory(data_guard: int | None = None) -> dict[int, bytes]:
+    row = amiga.MACHINES["pool-of-radiance"]
+    seg = row.segments
+    h31, h32 = 0xC10000, 0xC20000
+    first = bytearray(0x4000)
+    first[8 + row.anchor_offset:8 + row.anchor_offset + len(row.anchor)] = \
+        row.anchor
+    first[0:4] = (seg.anchor_size + 8).to_bytes(4, "big")
+    first[4:8] = ((h32 - 4) // 4).to_bytes(4, "big")
+    second = bytearray(8)
+    second[0:4] = (data_guard or seg.data_size + 8).to_bytes(4, "big")
+    return {h31 - 8: bytes(first), h32 - 8: bytes(second)}
+
+
+def test_a_title_with_its_data_in_another_hunk_gives_that_hunks_base():
+    opener = Opener(FakeSocket(_pool_memory()))
+    target = fsuae.connect(opener=opener, clock=Clock())
+    assert target.layout is amiga.MACHINES["pool-of-radiance"]
+    assert target.anchor_base == 0xC10000 and target.data_base == 0xC20000
+    # The cached anchor check hops again and gives the same base.
+    assert fsuae.connect(opener=opener, clock=Clock()).data_base == 0xC20000
+
+
+def test_a_bad_guard_waits_and_keeps_the_transport():
+    sock = FakeSocket(_pool_memory(data_guard=0x1234))
+    opener = Opener(sock)
+    with pytest.raises(amiga.GuestError, match="expected 0x2f8c"):
+        fsuae.connect(opener=opener, clock=Clock())
+    sock.memory = _pool_memory()
+    assert fsuae.connect(opener=opener, clock=Clock()).data_base == 0xC20000
+    assert opener.calls == 1
+
+
 def test_the_machine_is_told_to_run_before_anything_is_read():
     sock = FakeSocket(loaded(BLADES))
     fsuae.connect(opener=Opener(sock), clock=Clock())
