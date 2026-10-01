@@ -50,7 +50,6 @@ import os
 from dataclasses import dataclass
 from typing import Callable
 
-from automap.paths import vice_settings_hint
 from automap.target import Target, ViceTarget, monitor_listening
 
 from . import debuglog
@@ -129,9 +128,7 @@ VICE = Backend(
     name="VICE (C64)",
     probe=monitor_listening,
     connect=ViceTarget,
-    setup_hint=("start VICE with its binary monitor enabled -- "
-                f"see {vice_settings_hint()}, or launch with "
-                "-binarymonitor -binarymonitoraddress 127.0.0.1:6502"),
+    setup_hint="Start VICE with its binary monitor turned on.",
     default_interval_ms=200,
 )
 

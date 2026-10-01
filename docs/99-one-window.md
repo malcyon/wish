@@ -141,7 +141,7 @@ property of the backend:
 ```python
 @dataclass
 class Backend:
-    name: str                     # "VICE", "Ultimate"
+    name: str                     # "VICE (C64)", "C64 Ultimate"
     probe: Callable[[], bool]      # is one there right now?
     connect: Callable[[], Target]
     setup_hint: str                # what to tell the user if not

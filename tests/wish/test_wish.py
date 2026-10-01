@@ -199,7 +199,8 @@ def fake_backend(name="Fake", present=True, target=None, **kw):
 
 def test_vice_is_a_backend_and_carries_its_own_hint():
     assert bk.VICE.name == "VICE (C64)"
-    assert "binary monitor" in bk.VICE.setup_hint
+    assert bk.VICE.setup_hint == (
+        "Start VICE with its binary monitor turned on.")
     assert bk.VICE.default_interval_ms == 200
 
 
@@ -225,6 +226,13 @@ def test_find_honours_a_preference_saved_under_the_old_name(monkeypatch):
     assert bk.find("VICE").name == "VICE (C64)"
     both[1] = fake_backend("C64 Ultimate")
     assert bk.find("Ultimate").name == "C64 Ultimate"
+
+
+def test_the_ultimate_names_the_host_row_in_its_hint():
+    from wish import ultimate
+    assert ultimate.ULTIMATE.setup_hint == (
+        "Enter the device's address in Ultimate host below. "
+        "It needs firmware 3.11 or later.")
 
 
 # --- the Ultimate backend's flag, #375 ---------------------------------

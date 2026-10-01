@@ -993,7 +993,8 @@ def test_choosing_a_backend_is_remembered_and_acted_on(app, tmp_path,
 
 
 @pytest.mark.parametrize("old, now", [("VICE", "VICE (C64)"),
-                                      ("Ultimate", "C64 Ultimate")])
+                                      ("Ultimate", "C64 Ultimate"),
+                                      ("Amiga (FS-UAE)", "FS-UAE (Amiga)")])
 def test_a_backend_saved_under_its_old_name_is_still_the_chosen_one(
         app, tmp_path, monkeypatch, old, now):
     """Settings written before the rows were renamed hold the old name; the
@@ -1006,6 +1007,7 @@ def test_a_backend_saved_under_its_old_name_is_still_the_chosen_one(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     monkeypatch.setenv(backends.ULTIMATE_ENV, "1")
+    monkeypatch.setenv(backends.AMIGA_FSUAE_ENV, "1")
     settings = Settings()
     settings.backend = old
     settings.save()

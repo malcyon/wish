@@ -576,7 +576,7 @@ different port gets a new transport.
 
 **The window offers it only behind `WISH_EXPERIMENTAL_AMIGA_FSUAE`.** With the
 variable set to `1`, `true`, `yes` or `on`, `wish/backends.py` lists a row named
-"Amiga (FS-UAE)" whose probe is `wish.fsuae.listening` and whose opener is the
+"FS-UAE (Amiga)" whose probe is `wish.fsuae.listening` and whose opener is the
 cached `wish.fsuae.connect`; anything else, including `0`, `off` and an empty
 string, leaves the list as it was, with no probe and no import of `wish.fsuae`.
 The row is not `disturbs` (a poll measured about 20 ms, served from the running
