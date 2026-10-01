@@ -1241,11 +1241,14 @@ def test_observe_with_a_window_ticks_the_tab_and_saves_both_pictures(
 
     class Binding:
         LIVE_EVERY = 5
-        root, canvas = "root", "canvas"
-        state = argparse.Namespace(geo=None)
+        root, canvas, world_canvas = "root", "canvas", "world"
+        state = argparse.Namespace(geo=None, outdoors=True, window=1, heading=2)
 
         def tick(self):
             ticks.append(1)
+
+        def world_page_shown(self):
+            return True
 
     app = argparse.Namespace(processEvents=lambda: None)
     monkeypatch.setattr(fsuaegdb, "open_window",
@@ -1257,8 +1260,43 @@ def test_observe_with_a_window_ticks_the_tab_and_saves_both_pictures(
                             (widget, path.name)))
     events, _ = run_session(tmp_path, ["locate", "observe walk1"], window=True, maps=str(tmp_path))
     assert len(ticks) == Binding.LIVE_EVERY + 1
-    assert grabs == [("root", "walk1-window.png"), ("canvas", "walk1-map.png")]
-    assert events["observe"]["tab"]["area"] == "GEO24"
+    assert grabs == [("root", "walk1-window.png"), ("canvas", "walk1-map.png"),
+                     ("world", "walk1-world.png")]
+    tab = events["observe"]["tab"]
+    assert tab["area"] == "GEO24"
+    assert (tab["outdoors"], tab["window"], tab["heading"],
+            tab["world_page"]) == (True, 1, 2, True)
+
+
+def test_observe_without_a_world_canvas_skips_that_grab_and_is_not_an_error(
+        driven, tmp_path, monkeypatch):
+    from tools.gui import mapmarker
+
+    grabs = []
+
+    class Binding:
+        LIVE_EVERY = 1
+        root, canvas, world_canvas = "root", "canvas", None
+        state = argparse.Namespace(geo=None, outdoors=False, window=None,
+                                   heading=None)
+
+        def tick(self):
+            pass
+
+        def world_page_shown(self):
+            raise AssertionError("asked about a page that does not exist")
+
+    app = argparse.Namespace(processEvents=lambda: None)
+    monkeypatch.setattr(fsuaegdb, "open_window",
+                        lambda tgt, disks, out: (app, None, Binding(), {}))
+    monkeypatch.setattr(mapmarker, "reading", lambda binding, tag: {"tag": tag})
+    monkeypatch.setattr(mapmarker, "shot",
+                        lambda app, widget, path: grabs.append(path.name))
+    events, _ = run_session(tmp_path, ["locate", "observe a"], window=True,
+                            maps=str(tmp_path))
+    assert grabs == ["a-window.png", "a-map.png"]
+    assert events["observe"]["error"] is None
+    assert events["observe"]["tab"]["world_page"] is False
 
 
 def test_window_mode_needs_the_folder_of_disks():

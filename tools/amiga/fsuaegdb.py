@@ -957,8 +957,17 @@ def observe(args, name: str, tgt, maps: dict, out: pathlib.Path, once,
                 app.processEvents()
             st = binding.state
             row["tab"] = mapmarker.reading(binding, name)
+            # The indoor canvas is grabbed whatever page is up, so only these
+            # fields and the world grab say whether the wilderness page shows.
+            row["tab"].update(outdoors=st.outdoors, window=st.window,
+                              heading=st.heading,
+                              world_page=(binding.world_canvas is not None
+                                          and binding.world_page_shown()))
             mapmarker.shot(app, binding.root, out / f"{name}-window.png")
             mapmarker.shot(app, binding.canvas, out / f"{name}-map.png")
+            if binding.world_canvas is not None:
+                mapmarker.shot(app, binding.world_canvas,
+                               out / f"{name}-world.png")
     except Exception as exc:                    # noqa: BLE001 -- the row is the evidence
         row["error"] = f"{type(exc).__name__}: {exc}"
     if st is not None and st.geo is not None:
