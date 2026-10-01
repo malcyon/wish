@@ -21,7 +21,7 @@ Tests for the live automapper in `automap/`: its map model and geometry, the par
 | `test_issue286a2.py` | Checks that a live tick makes four reads, and twelve on every fifth tick, from a machine standing in New Phlan. |
 | `test_latercombat.py` | Checks that a fight in Curse or Silver Blades is read at those titles' own addresses and that the reader as it stood finds none. |
 | `test_marching_order.py` | Checks that the automapper and the editor list the party from the highest occupied slot down, including across a gap in the slots. |
-| `test_messages_panel.py` | Checks that the Messages panel follows the newest line only while the reader is at the bottom. |
+| `test_messages_panel.py` | Checks that the Messages panel scrolls to the newest line only while the reader is at the bottom. |
 | `test_panel.py` | Checks that a roster card keeps its classes, level and Level up button in the width its column gives it, however many badges are lit or how large the font. |
 | `test_pertitle_live.py` | Checks that the roster card's badges, class and experience bar come from the open title's tables rather than Pool of Radiance's. |
 | `test_routediagram.py` | Checks that Curse's world map draws as a diagram with each place at its marker cell and the party's place filled in, that the strip names that place, and that a failed read, another title or missing disks leave the canvas blank. |

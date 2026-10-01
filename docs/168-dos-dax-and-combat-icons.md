@@ -272,8 +272,8 @@ are pixel for pixel what Pool of Radiance draws, and Curse of the Azure Bonds
 redraws none of the 100.
 
 The measurement is `tools/icons/iconproposal.py --compare-c64`, and it compares
-**rendered pixels** rather than composed shapes -- which is what the earlier
-grade got wrong, because the shapes agree and the pictures do not. Sample:
+**rendered pixels** rather than composed parts -- which is what the earlier
+grade got wrong, because the parts agree and the pictures do not. Sample:
 each of the 100 options composed alone on an empty figure, both poses, at both
 sizes where the option exists, off each title's own disk; and separately all
 1610 `(size, weapon, head)` combinations per title, where Curse differs in 0
@@ -308,7 +308,7 @@ already gets Silver Blades' weapon 13. What changes is only what a *document*
 must show, and that is `tools/icons/iconproposal.py --title`, which now draws both
 sides off the named title's own art.
 
-**Negative result worth keeping.** Curse of the Azure Bonds' C64 icon art is
+**A negative result to keep.** Curse of the Azure Bonds' C64 icon art is
 Pool of Radiance's in every respect measured: `SPELLE64` byte-identical,
 `CHARPIC00` byte-identical, 0 of 100 options redrawn, 0 of 1610 composed
 figures differing. Only the load address moves, `$A700` to `$8E00`, which

@@ -60,7 +60,7 @@ one read outside the rebuild is the character sheet.
 
 **`JSR $3918` is called 51 times across the title** -- `POST.COM` x10, `GEN`
 x6, `CAMP` x5, `SPELLE20` x5, `DUNGEON` x4, `ECL64` x4, `COMBAT` x3, `ECL65`
-x3. Pool of Radiance's `$3729` has 44 callers in the same shape.
+x3. Pool of Radiance's `$3729` has 44 callers in the same form.
 
 ## What the running game did
 
@@ -81,7 +81,7 @@ stopping the machine.
 | after two `VIEW` sheets | 10 | 10 | 0 | 0 |
 | in the world | 10 | 10 | 0 | 0 |
 | after twelve steps through Tilverton | 10 | 10 | 0 | 0 |
-| on the combat floor | **46** | **45** | **16** | **16** |
+| on the combat arena | **46** | **45** | **16** | **16** |
 | after two quickfight turns | 46 | 45 | 29 | 29 |
 
 46 is MARK's `thac0_base` of 44 plus `$3840[20]` = 2, his 18(51-75); 45 is
@@ -92,7 +92,7 @@ give for that character's own `thac0_base` and gate.
 
 **Two things a run has to say and this one can.** The rebuild had run zero
 times before the fight and sixteen times by the first reading on the combat
-floor, which puts it inside the fight's own setup rather than anywhere
+arena, which puts it inside the fight's own setup rather than anywhere
 earlier; and the two spoiled characters landed on *different* numbers, so the
 reading is the engine's arithmetic rather than a constant.
 

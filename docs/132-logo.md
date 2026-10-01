@@ -164,7 +164,7 @@ same reason -- §6.
 | reads at 16 | does not |
 |---|---|
 | one bold silhouette with a strong outline — a cone, a key, an arrow | two or more separate parts (FA's `wand-sparkles` becomes three loose dots) |
-| a filled tile with the shape knocked out of it | a shape on transparency, which is grey pixels on an unknown ground |
+| a filled tile with the outline knocked out of it | an outline on transparency, which is grey pixels on an unknown ground |
 | at most one or two interior holes, each ≥10 % of the box | fine interior detail, hatching, texture |
 | two colours and the background | gradients, shadows, bevels — all of which eat the one pixel of edge |
 | a single letterform, if it is heavy | any word, any number of two digits |
@@ -175,8 +175,8 @@ a light taskbar**, so the silhouette cannot depend on being dark; and it has to
 be recognisable **in monochrome**, because Windows renders it that way in some
 places and screen readers describe it in none.
 
-**"Knocked out" turned out to want one amendment.** Cutting the shape out of
-the tile leaves the taskbar showing through the shape, so on a dark desktop a
+**"Knocked out" turned out to want one amendment.** Cutting the outline out of
+the tile leaves the taskbar showing through the outline, so on a dark desktop a
 dark tile carries a dark hole and there is nothing to see. What ships fills the
 hat with paper instead: the same silhouette, with a ground guaranteed on both
 sides of every edge, and it still reads greyscale.
@@ -209,7 +209,7 @@ Two costs, accepted rather than avoided:
 1. **CC BY grants no exclusivity.** Anyone may ship the identical mark under the
    identical terms. A logo is the one asset where that is the point.
 2. **The obligation follows the artefact forever.** A `.ico` embedded as a
-   Windows resource has nowhere to carry a credit, so the credit lives in a
+   Windows resource has nowhere to hold a credit, so the credit lives in a
    dialog the user must open — defensible, but it has to be defended again at
    every new place the mark appears: a store listing, a `.desktop` file, a
    favicon, a screenshot in someone else's article.
@@ -245,7 +245,7 @@ Everything already available, judged as a logo:
 | `sword` | ours | says combat; the program does not do combat |
 | `swords` | ours | reads as a starburst at small sizes, and already means "encounter" on the map |
 | `chest`, `hood` | ours | fine glyphs, poor identities — a chest is a file manager, a hood is a VPN |
-| `location-dot` | Font Awesome | the other FA pick: it says *map*, and its counter is the 64-unit floor the whole rule was set from |
+| `location-dot` | Font Awesome | the other FA pick: it says *map*, and its counter is the 64-unit minimum the whole rule was set from |
 
 **When the artist is hired**, the brief is §1 plus §2, and the one thing to buy
 that a cheap job will skip: **hand-tuned 16, 24 and 32**, not exports of the
@@ -263,7 +263,7 @@ that a cheap job will skip: **hand-tuned 16, 24 and 32**, not exports of the
 | the panel icon on Linux | `app.setDesktopFileName("wish")` — GNOME and KDE match a window to its `.desktop` by app id, and a Wayland window gets a generic icon without it. There is still no `.desktop` file and the Linux artefact is a tarball, so the hicolor PNGs sit under `assets/` waiting for a package | `wish/window.py::dress` |
 | Help > About | a hand-built `QMessageBox` with `setIconPixmap` of the colour combo mark at 256, rendered from `assets/logo/combo-mark-color.svg`; `QMessageBox.about` paints the platform's information icon and takes no picture | `wish/about.py` |
 | the README | an `<img>` at the top — **Donald's file; ask** | `README.md` |
-| the icon files themselves | a generator, offscreen, in the shape of `tools/icons/iconsheet.py` | `tools/generate/genicons.py` |
+| the icon files themselves | a generator, offscreen, in the style of `tools/icons/iconsheet.py` | `tools/generate/genicons.py` |
 
 ---
 
@@ -281,7 +281,7 @@ SVG with `QSvgRenderer` only above 500 -- since 2026-09-06, for the reason
 in §7. The mark is not modified -- resizing a delivered file into an icon's
 sizes is placement, not art, the same rule §6 holds `pointy-hat` to.
 
-**The generator** is `tools/generate/genicons.py`, unchanged in shape from the
+**The generator** is `tools/generate/genicons.py`, unchanged in design from the
 stand-in days: it still makes every size on its own through
 `ui.appicon.image`, never a downscale of another size of ours, and still
 writes:
@@ -424,7 +424,7 @@ pixels — 1.2 px at 16, 1.7 at 22, 2.5 at 32 and rising. At 16 and 20 it was
 tight enough that the rows either side of it were part-covered, so the gap
 read as a smudge rather than as a line.
 
-One finding from those experiments is worth keeping regardless of the glyph:
+One finding from those experiments holds regardless of the glyph:
 filling a sparkle or a fold line in, for a cleaner small silhouette, is
 **actively worse** -- a notch or a crease is not decoration, and without it a
 glyph loses exactly the feature that keeps it from reading as a blob or a

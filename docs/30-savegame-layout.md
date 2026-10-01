@@ -32,7 +32,7 @@ whatever the template had there)`.
 **A caution about the obvious reading.** "`SAVEDGAME0` is the characters and
 `SAVEDGAME1` is the world" is wrong, and it was assumed here for a while: the
 automapper note had map coordinates down as `SAVEDGAME1`'s business on exactly
-that reasoning. Walking six saves' worth leaves `SAVEDGAME1` **byte-identical**.
+that reasoning. Walking six saves leaves `SAVEDGAME1` **byte-identical**.
 The world is in `SAVEDGAME0`'s header; `SAVEDGAME1` is about the party's
 characters and nothing else.
 
@@ -44,7 +44,7 @@ carries a **slot index** at `+0x0D` pointing back at the `SAVEDGAME0` slot it
 describes -- indirection that would be pointless if the two were simply parallel
 arrays, which in every save we hold they are.
 
-Two things stop this being the whole story, and are worth stating so nobody
+Two things stop this being the whole story, and are stated so nobody
 assumes more than the evidence gives:
 
 * Both files hold **eight** entries, so `SAVEDGAME0` is not an unbounded
@@ -54,7 +54,7 @@ assumes more than the evidence gives:
   so the indirection has never been seen in use.
 
 **Why it matters when editing.** Change a character's dexterity in `SAVEDGAME0`
-and their armour class in `SAVEDGAME1` does not follow: the game recomputes the
+and their armour class in `SAVEDGAME1` does not change with it: the game recomputes the
 cache when *equipment* changes and at no other time. An editor that writes only
 `SAVEDGAME0` -- as the 1989 BASIC editor did, and as `wish` did until recently --
 cannot touch armour class, THAC0, current hit points or the damage bonus at all,
@@ -69,7 +69,7 @@ most useful thing to hold on to:
 | movement | `0x09F` (12, unencumbered) | roster `+0x1B` (9 in banded mail) |
 | hit points | `0x076` maximum | roster `+0x19` current |
 
-The base value is what the character is worth stripped of circumstance; the
+The base value is what the character has, stripped of circumstance; the
 current value includes their readied weapon, their armour and their wounds. A
 character sheet shows the **current** one. That is why `0x071` was written off
 early as "not THAC0" -- MALCYON's sheet reads `THACO 20` while the byte holds
@@ -156,7 +156,7 @@ offsets — and with the party in a non-slot order the corresponding permutation
 is absent from the whole 64K of a running machine as well. The order is carried
 by *where a record sits*, and by nothing else.
 
-Two consequences worth holding:
+Two consequences:
 
 * **`ORDER` packs the party down to slot 0.** With four characters in slots 1–4
   and both ends empty, one reorder put them in slots 0–3. That is why 29 of the
@@ -198,7 +198,7 @@ game enforces at six player characters and eight total.
 
 ### Correction: this was previously recorded as 6 slots of `$400`
 
-That was wrong, and worth understanding because the error was invisible for a
+That was wrong, and the error matters because it was invisible for a
 long time. It came from a save holding only **two** characters: the bytes
 between them were zero, and a mostly-zero exported record agreed with them, so a
 580-byte contiguous record at `$4D00` appeared to fit. The sample save on
@@ -485,7 +485,7 @@ save then to hand held a six-character party; `npc_party.d64` fills all eight an
 its index bytes run 0..7.
 
 **The block is record bytes `0x100`-`0x11F`.** Roster `+N` is record `0x100 + N`
-throughout, which is worth holding because it makes every offset below
+throughout, which makes every offset below
 self-checking against `docs/20-character-record.md`.
 
 | Offset | Field | Confidence | Notes |
@@ -587,7 +587,7 @@ it, because the next fight recomputes all nine.
 | `0x078`-`0x07E` | a bitmask of the spells the character **knows** |
 
 How many a character *may* memorise is not stored anywhere we have found; it
-follows from class, level and Wisdom, and `goldbox/spells.py` computes it from the
+is determined by class, level and Wisdom, and `goldbox/spells.py` computes it from the
 AD&D 1st edition tables.
 
 ### THAC0 sits next to armour class, in the same encoding
@@ -675,12 +675,12 @@ Everything else in the 32 is zero in every specimen. Ruled out along the way:
   what one 1d2 unarmed attack should read.
 * `+0x0A` and `+0x0B` were zero in every specimen until `PORSAVE11`, where they
   read 21 and 8 on ROLAND — the one character whose `+0x03` moved at the same
-  time. Unexplained. Worth noting only that the DOS record's status byte aligns
+  time. Unexplained. Only the DOS record's status byte aligns
   to `+0x0A`, and 21 and 8 are not a status enum.
 * `+0x1C` and `+0x1E` are zero in all of Donald's saves and non-zero only on the
   editor-hacked `npc_party.d64`, so nothing can be concluded from them.
 
-### `+0x0C` is the quickfight bit, and the near-miss is worth recording
+### `+0x0C` is the quickfight bit, and the near miss is recorded
 
 **Bit 7, set by choosing QUICK from the combat bar.** A live diff of 13,568
 bytes moved exactly that bit for exactly the character quickfought, and

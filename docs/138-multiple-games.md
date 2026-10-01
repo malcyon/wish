@@ -90,7 +90,7 @@ automapper is not driving a game most of the time it is open — it draws maps
 off the disks folder with nothing attached — so "no game running" is the normal
 case, not an edge one, and it already has an answer.
 
-Two consequences worth writing down:
+Two consequences:
 
 * The running game is **checked against memory** now, and a machine that
   disagrees takes the per-title controls off -- `#21 (The running game is
@@ -114,7 +114,7 @@ Two consequences worth writing down:
   identifying question after all, and it still fails closed.** The difference is the candidate list: it is never "every
   title", only the titles that have a folder set in Preferences today. A
   title with no folder has no maps to match, so a stranger's game still lands
-  `NOT_OURS` and the ordinary refusal still fires -- the objection above is
+  `NOT_OURS` and the ordinary error still appears -- the objection above is
   about a title whose disks are nowhere, and a title with no folder set is
   exactly that title. Only among titles the player has actually configured
   does the machine get to correct the guess, and only with no save open to
@@ -157,7 +157,7 @@ correct: one table, the running title's areas. The selector is an addition, not
 a rewrite, and it should land in the same change as the second area table so
 that it never ships with one entry in it.
 
-## 5. The storage shape, and the migration
+## 5. The storage format, and the migration
 
 `Settings.fast_travel_targets` is `list[int] | None` — area ids, and an id
 means nothing without a title. It has to become:
@@ -185,14 +185,14 @@ should say so — it belongs beside the per-title table it defaults, keyed the
 same way.
 
 **The migration is not `RENAMED`.** `RENAMED` maps an old *key* to a new one;
-this is a change of *value shape* under the same key, and `Settings.load` needs
+this is a change of *value format* under the same key, and `Settings.load` needs
 one extra step:
 
 * a `list` under `fast_travel_targets` is Pool of Radiance's, because Pool of
   Radiance is the only title that ever had one → `{"pool-of-radiance": [...]}`;
 * `fasttravel_areas` still feeds in through `RENAMED` first, so a config from before
   2026-08 migrates twice in one read and comes out right;
-* the file is written in the new shape only, so the migration finishes rather
+* the file is written in the new format only, so the migration finishes rather
   than living in the file forever — the same rule `RENAMED`'s comment sets.
 
 Donald's own config has ticks in it and takes this path. GRADE: CONFIRMED that
@@ -275,7 +275,7 @@ and seeing which map loaded.
 | # | task | unblocked by |
 |---|---|---|
 | 1 | **Done.** **Say the dropdown is Pool of Radiance's.** When `AutomapState.title` is not Pool of Radiance, the Fast Travel row offers nothing and says why — *"No areas are known for Curse of the Azure Bonds."* — with the button disabled, the way `NOTHING_TICKED` already does. It must never fall back to Pool of Radiance's ids | nothing. This is the only change that is a **correctness** fix rather than a feature: today a Curse session gets Pool of Radiance's areas, and fasttraveling on them writes Pool of Radiance disk numbers and `ECL` ids into a Curse machine |
-| 2 | **Done.** **Key the setting by game.** `fast_travel_targets` becomes `{game key: [ids]}`, with the list-to-dict migration in `Settings.load` and the per-title default table. No visible change | nothing. Do it before any second table exists, so no config is ever written in a shape that has to be migrated twice |
+| 2 | **Done.** **Key the setting by game.** `fast_travel_targets` becomes `{game key: [ids]}`, with the list-to-dict migration in `Settings.load` and the per-title default table. No visible change | nothing. Do it before any second table exists, so no config is ever written in a format that has to be migrated twice |
 | 3 | **Label the tick table with the title**, and build its rows from a per-title area table looked up by key — a table that has one entry today. Still one table, still no selector | task 2 |
 | 4 | **Done.** **Measure whether Curse can fasttravel at all.** Answered yes, both ways: `NEWECL` read off Curse's own `DUNGEON`, and four driven warps. §6 | — |
 | 5 | **Done, bar the measurement.** **Build Silver Blades' area table.** `goldbox.areas.AREAS_SILVER_BLADES`, twenty-two rows, every one PROBABLE. §8. What is left is a driven warp to make a row CONFIRMED, and the names | task 3 for somewhere to put it. Task 4 no longer gates it: §6 has Silver Blades' handler and tail as well |
@@ -308,7 +308,7 @@ across ≥ 4.0 of the both-walled edges. Measured on 2026-09-08 against 65383
 blocks at 64-byte steps — every 1024-byte window of every non-`GEO` file on the
 Pool of Radiance, Curse and Silver Blades C64 disks and the Curse and Silver
 Blades Amiga disks — it admits **none**, and it admits **95 of the 95 real
-maps**. `tools/records/geoplausible.py` re-takes both corpora and
+maps**. `tools/records/geoplausible.py` re-takes both sets of specimens and
 `tests/wish/test_wronggame.py` pins both directions off the player's own disks.
 
 It used to be three clauses, the third asking that half the walled edges agree
@@ -318,7 +318,7 @@ of the 95 maps, `GEO20` at 0.212 among them, and the two Silver Blades maps
 below 0.93 reciprocity went with them. Those maps read as `UNKNOWN`, which
 refuses nothing, so no player could reach it;
 `#436 (The map plausibility check throws out five of Pool of Radiance's own maps)`
-has the corpus and the margins.
+has the specimens and the margins.
 
 **And a map may drift from its disk copy by up to `NEAR_ENOUGH` = 32 bytes**
 and still be that map, because an exact test would read a player running one
@@ -327,7 +327,7 @@ the controls in front of them. The rule the number comes from is **under half
 the gap between the two closest maps in one candidate set**: two maps both
 within the tolerance of one block are within twice it of each other, so at half
 the gap no block can ever be eligible for two maps at once. Measured on the
-player's own disks over eight corpora, the closest two are Silver Blades'
+player's own disks over eight sets of specimens, the closest two are Silver Blades'
 `GEO50` and `GEO52` at 80 bytes, and the widest the tolerance has to *reach* is
 6 — Pool of Radiance `GEO1A` between the C64 and DOS.
 
@@ -343,7 +343,7 @@ across three driven Pool of Radiance boots caught the loader writing the page
 1024 times per area load and nothing else writing into it at all.
 
 **Tasks 1 and 2 are done** -- `#14 (Fast Travel offers Pool of Radiance's
-areas in a Curse session)`. `goldbox.areas.areas_for_title` is the refusal:
+areas in a Curse session)`. `goldbox.areas.areas_for_title` is what stops it:
 it hands back `AREAS` for Pool of Radiance and `()` for every other title, and
 `FastTravelBar`, `automap.actions.area_rows` and the Preferences table all go through
 it. `Settings.fast_travel_targets` is `{game key: [ids]}`, with the bare-list
@@ -398,7 +398,7 @@ Four things do not carry over, and each would put wrong data in the table:
 | where an arrival square comes from | mostly the **departing** script, before its `NEWECL` | all twelve from the **arriving** script's own entry 4; exactly one `NEWECL` in the title writes a square, and it contradicts the arriving script |
 | whether a square is a constant | it is | often computed: `ECL21` fetches it through `GETTABLE`, `ECL34` and `ECL51` branch on the came-from area `$4BF2`, `ECL34` adds 3 to whatever `$C04B` holds |
 
-And one that is not a rule but a shape nothing else in the project has:
+And one that is not a rule but a structure nothing else in the project has:
 **`ECL30` is a twelve-option menu serving four areas**, and it records which
 option was chosen in `[$4C69]`, which `ECL31`'s entry 4 reads back. A fast
 travel into `$31` or `$32` that does not set `[$4C69]` arrives on a level
@@ -452,7 +452,7 @@ the eight scripts' own `SAVE` statements, and consistent with the two screens
 `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
 Radiance's alone?)` measured. Not yet reproduced by walking a party into area
 `$02` from both directions, which is the experiment that would settle it in the
-running game, and it is worth an entry in `goldbox-bugs.md` when somebody has.
+running game, and it deserves an entry in `goldbox-bugs.md` when somebody has.
 
 **The Pool of Radiance column is a lower bound rather than a proof.** Nine of
 its scripts write `$49FB` outside entry 4 -- `ECL02`, `ECL0A`, `ECL12`,

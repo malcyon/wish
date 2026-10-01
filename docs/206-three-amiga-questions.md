@@ -93,7 +93,7 @@ Two things the issue was unsure about:
 * **The game's own name entry takes a space happily**, so this is not a name
   the Amiga would never make and refusing or folding it in our writer would
   take away a name the game itself offers a player. The box was `RENAME` rather
-  than `CREATE NEW CHARACTER`; it is the same prompt shape and a run that uses
+  than `CREATE NEW CHARACTER`; it is the same kind of prompt and a run that uses
   creation as well is cheap now.
 * **It happens to a converted name on every save, not only the first.**
   `LADY KATHERINE` went in as `4c 41 44 59 20 4b 41 54 48 45 52 49 4e 45 00 00`
@@ -108,7 +108,7 @@ double space takes two saves to disappear (`A  B` gives `A B`, then `AB`),
 CONFIRMED in the running game under `fs-uae` (`tools/amiga/fsuaepor.py`), in
 `#619 (A name cut to the destination's width and a value clamped into a narrower field reach report.warnings only, so no caller can see the loss)`'s
 comment of 2026-09-22T22:18:52Z. `MARY SUE FOX`'s two-space loss above was two
-spaces gone in one save because the field held two engine saves' worth already
+spaces gone in one save because the field held the loss of two engine saves already
 by the time it was read back.
 
 **A space stored as `$FF` -- what Create New Character writes for a typed

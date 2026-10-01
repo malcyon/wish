@@ -122,7 +122,7 @@ habit, not a debug mode. And even where the jumper exists it is a **save-file
 edit**, not a runtime hook — on the C64 that would be a save-disk write, which
 the automapper does not do and should not start doing.
 
-**Worth carrying to a later title**: if we take Pools of Darkness or Dark Queen,
+**For a later title**: if we take Pools of Darkness or Dark Queen,
 the first cheap probe is an area id with an `ECL` record and no `NEWECL`
 pointing at it, and the smallest `ECL` records in the file — Ishad Nha reports
 the playtester scripts are among the smallest, 1–2 KB. `analysis6/` (scratch, deleted)
@@ -151,7 +151,7 @@ Simeon notes the two Buck Rogers games are built on the Pool of Radiance code
 base **with the cheat removed**, and that Dark Queen and FRUA answer Alt+X with
 "That doesn't work".
 
-**It is in our two titles, so it was worth an hour.** The C64 has no argument
+**It is in our two titles, so an hour went into it.** The C64 has no argument
 vector, but the family habit is to ship the same code and reach it differently,
 so the literals might have survived with nothing reaching them.
 
@@ -428,7 +428,7 @@ otherwise field 3 = 0 means "activated by USE", field 2 the effect number and
 field 1 the charges; field 3 ≥ 128 means "activated by readying", field 2
 carrying the detail. The first 56 effect numbers are the spell ids.
 
-**This is the same shape as ours, minus the string.** The C64 packs an item into
+**This is the same layout as ours, minus the string.** The C64 packs an item into
 16 bytes and keeps the name in `ITEMNAMES` as three component indices — the plus
 at `+4` and the quantity at `+10` in `goldbox/items.py` line up with his `0x31` and
 `0x38`. Two things transferred: **"save bonus" is signed** — done, item byte
@@ -462,7 +462,7 @@ records for the *real* Gold Box games rather than FRUA, as an annotated column
 diagram: the item record is 63 bytes with `0x2E`–`0x3E` carrying base type,
 three name components, bonus, save bonus, readied, cursed, weight, value,
 amount, special properties, hands and slot; the properties record is 16 bytes
-and the same shape as Knott's. Gateway to the Savage Frontier is the exception,
+and the same layout as Knott's. Gateway to the Savage Frontier is the exception,
 with 24-byte property records.
 
 Three things transfer:
@@ -547,7 +547,7 @@ before an encounter reduces the size of the enemy party.**
   ([1913](https://forums.goldbox.games/index.php?topic=1913.0)). marainein asked
   in 2015 for an `ECL` opcode that would halt the VM so a debugger could inspect
   it; it was never built. Our VICE watchpoints make that whole line of work
-  unnecessary, which is worth knowing when comparing the two tools.
+  unnecessary, which matters when comparing the two tools.
 * **Amiga Pool of Radiance is still unsolved.**
   [4053](https://forums.goldbox.games/index.php?topic=4053.0), 2022: the Amiga
   build uses unified `.dax` files that neither Gold Box Companion nor Gold Box
@@ -573,7 +573,7 @@ extracted list with citing threads is `forums/board8_external_urls.txt` (scratch
 a per-thread index with authors and post counts is
 `forums/board8_triage.txt` (scratch, deleted).
 
-### Live, and worth having
+### Live, and useful
 
 | resource | what it holds |
 |---|---|
@@ -615,7 +615,7 @@ own search needs a POST and a session and was not attempted — the board index 
 ## 10. Method, for whoever sweeps a board next
 
 * Fetching was **sequential, one connection, ~4 s between requests**, from a
-  single process. The board sits behind a proof-of-work bot challenge that plain
+  single process. The board sits behind a proof-of-work bot challenge that bare
   `curl` and `WebFetch` cannot pass; pages were loaded through a real browser
   session and the printer-friendly rendering requested from inside it. 296
   threads, **zero failures**, no sign of throttling. An earlier attempt failed
@@ -627,8 +627,8 @@ own search needs a POST and a session and was not attempted — the board index 
   holding 16); `board=8.300` redirects back to `.280`, which is why an earlier
   count said 16 pages.
 * Nothing on any page addressed a reader as an agent, claimed authority, or
-  asked for an action. Nothing was executed. Every external fetch was a plain
+  asked for an action. Nothing was executed. Every external fetch was a simple
   read; the only archives opened were `hackdocs.zip` and two recovered `.txt`
   files.
-* The threads worth re-reading in full are **2532, 1255, 3002, 1082, 726, 727**
+* The threads to re-read in full are **2532, 1255, 3002, 1082, 726, 727**
   and the `coab` source.

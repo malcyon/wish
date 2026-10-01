@@ -34,7 +34,7 @@ one card.
 
 `mute` is the second-solidest glyph in the set — one piece and 85 ink at 13 px,
 behind only `death-skull` — but what survives is the silhouette and not the
-subject: magnified, it reads as a shape rather than legibly as a silenced
+subject: magnified, it reads as a blob rather than legibly as a silenced
 face. `snail`'s shell is unmistakable at 13 px. The numbers come from
 `tools/icons/inkcount.py` and the pictures from `tools/icons/iconsheet.py`.
 
@@ -45,15 +45,15 @@ on the card it was a pale smudge beside seven solid glyphs, not a badge.
 Donald chose `eyelashes` (Delapouite) in its place — *"how about this one for
 invisibility?"* — and it reads as a closed eye. `oppression`,
 `embrassed-energy`, `running-ninja` and `sparkling-sabre` all come apart into
-two to six pieces at 13 px and are legible only as a general shape. The sheet
+two to six pieces at 13 px and are legible only as a general outline. The sheet
 is `tools/icons/iconsheet.py`, which carries all ten, and a magnified render is
 `eyelashes-13px-x6.png` (lost — `#136 (Thirty-two cited
 write-ups are gone, because the knowledge base pointed into gitignored
 scratch)`; re-render it with
 `tools/icons/iconsheet.py`).
 
-**`eyelashes` is a genuine improvement, and it is worth saying by how much
-depending on how you count.** Counting any pixel the antialiased fill touches
+**`eyelashes` is a genuine improvement, and how much depends
+on how you count.** Counting any pixel the antialiased fill touches
 at all, it is 81 ink pixels in one connected piece — comparable to
 `running-ninja`'s 67 and nowhere near `invisible`'s 55 by the same loose
 count. Counting the way the rest of this table does — a pixel at least half
@@ -62,7 +62,7 @@ because eyelashes is itself drawn in thin strokes and much of a lash's length
 does not reach half coverage at this size. That is the same failure mode
 that killed `invisible`, to a lesser degree: a fine line is exactly what a
 50%-coverage threshold is worst at counting, even where a human eye reads the
-antialiased blur as one continuous stroke. The picture is the fairer judge
+antialiased blur as one continuous stroke. The picture is the better judge
 here than either count — see it before choosing another glyph.
 
 **The measurement is the same rig the rest of this file uses** — ink is a pixel
@@ -126,7 +126,7 @@ The roster card badges two conditions today — dead or dying, and levels draine
 `docs/109-icon-choices.md` recorded a third row as **blocked**: "roster —
 poisoned, paralysed — the effect codes are not decoded". That is out of date.
 The codes are decoded, 66 of the 129 names in `goldbox/traits.py` are CONFIRMED, and
-the question is no longer *what can we show* but *what is worth showing*.
+the question is no longer *what can we show* but *what should be shown*.
 
 ## Three findings, and they narrow the choosing
 
@@ -224,7 +224,7 @@ Others measured and rejected outright: `expand` (4 pieces), `binoculars` (5),
 
 ## The sheet Donald decided from
 
-All nineteen player-facing spell effects, whether or not they are worth badging.
+All nineteen player-facing spell effects, whether or not they deserve a badge.
 `13 px` is pieces then ink for the recommendation, which was Font Awesome
 throughout. **None of these recommendations was taken**: Donald replaced the
 set with game-icons.net, and the last column says which badge each effect
@@ -272,7 +272,7 @@ sees invisible, blinking — is real, is nameable, and is not badged. They are
 situational or they are the state of a spell the player just cast deliberately
 and has not forgotten about.
 
-Grouping is what makes *warded* worth having: six ids, one glyph, and the
+Grouping is what makes *warded* useful: six ids, one glyph, and the
 tooltip names which of them is up. It also disposes of the Mirror Image /
 displaced collision without choosing between them.
 
@@ -302,7 +302,7 @@ displaced collision without choosing between them.
   the window's own minimum stayed 477. That matters because
   `#135 (The automapper's roster column does not scroll, so a full party puts a
   944px floor under the window)` is open, and eight cards each gaining a row is
-  exactly the shape that would have made it worse.
+  exactly the kind of change that would have made it worse.
 
 ## What this does not do
 
@@ -310,7 +310,7 @@ displaced collision without choosing between them.
   (minute, ten minutes, hour, day), so what is left is a design decision that
   is Donald's: whether a badge shows a duration at all.
 * **No badge for a trait-slot effect.** Nothing a player character carries at
-  `0x0AD` in any save we hold is worth a badge: the seeds are racial (107, 124)
+  `0x0AD` in any save we hold deserves a badge: the seeds are racial (107, 124)
   and the passive item powers are already visible on the item.
 * **No `THIRD_PARTY_LICENSES.md`.** `ui.icons.ARTISTS` is the truth it should
   be generated from; writing it is `#4 (Condition badges on the roster card)`'s
@@ -374,4 +374,4 @@ open, and a new glyph is art.
 **Why it changed**: this section used to say Silver Blades drew no badges
 because sixteen of the seventeen ids were unnamed. The trait table grew to
 94 names from the title's own spell table, which named sixteen of them, so the
-refusal no longer had its reason.
+check no longer had its reason.

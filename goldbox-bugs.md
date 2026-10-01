@@ -79,7 +79,7 @@ no other cause and no exceptions. The C64 arithmetic was read out of the binary
 and then verified against the running game.
 
 **And it is the port that is wrong, not the printed wheel.** This is settled by
-the shape of the physical object rather than by consulting one. A code wheel is
+the form of the physical object rather than by consulting one. A code wheel is
 two discs on a pin: what shows through a window is always
 `ring[(offset + rotation) mod N]`. **A rotation is cyclic by construction and
 cannot compute an absolute value.** The wheel therefore necessarily gives the
@@ -220,7 +220,7 @@ script list published since names area 5 *Valjevo Castle Hedge Maze*. See
 
 **Version.** Pool of Radiance, Commodore 64. The absence is CONFIRMED; that the
 map layer is authoring residue rather than a repurposed bit is PROBABLE, resting
-on the pattern matching its four working siblings in density, shape and
+on the pattern matching its four working siblings in density, layout and
 correlation with script id 0.
 
 ---
@@ -238,7 +238,7 @@ carrying 7**. The per-class level array at `0x0C9` reads 7 as well, so the
 record is internally consistent and it is the *label* that is wrong.
 
 **What the player sees.** A thief the game calls 6th level fighting, saving and
-being worth experience as a 7th.
+being awarded experience as a 7th.
 
 **Version.** Pool of Radiance, Commodore 64. CONFIRMED — the disagreement is
 between the designer's label and his data, not between two of our readings.
@@ -338,7 +338,7 @@ experience: `GEN $23D4` walks all four slots of the per-class level array,
 reads each class's *next* threshold, keeps the largest, and stores one less
 than it — if that is lower than what the character had. For a single class
 that is the design of the whole system: you may never bank more than one
-level's worth. For a multi-class character the largest threshold need not
+level's experience. For a multi-class character the largest threshold need not
 belong to the class that was just trained, so the clamp can drop the total
 below what the **other** class had already qualified for. The level it had
 earned goes with the points.
@@ -451,7 +451,7 @@ screen.**
 **What the game does.** The overland map keeps its secret locations — the nomad
 camp, the lizardman keep, the kobold caves — hidden until the party finds them.
 When the party rides into one of the three wilderness windows, the game loads
-that window's map and then paints plain terrain over each location the party
+that window's map and then paints ordinary terrain over each location the party
 has not discovered yet, so the map shows grass where the camp really is.
 
 Loading a saved game skips the painting. The map comes back from disk with
@@ -465,13 +465,13 @@ everything it needs and simply does not do it.
 **The evidence.** Driven on a Commodore 64 under emulation from `W7.D64`, a
 save made on the middle wilderness window two squares from the undiscovered
 nomad camp at `(12,11)`, whose map byte is `$37` — the camp — on disk and
-`$39` — plain terrain — once the entry paint has run.
+`$39` — ordinary terrain — once the entry paint has run.
 
 | step | camp's map byte | the screen |
 |---|---|---|
 | load the save | `$37` | — |
 | ride east across the window seam and back — a fresh entry | **`$39`** | — |
-| ride to `(13,10)`, beside the camp | `$39` | **plain grass** where the camp is |
+| ride to `(13,10)`, beside the camp | `$39` | **bare grass** where the camp is |
 | save the game there, reload it | **`$37`** | **the camp's ring of tents**, same square, one game-minute later |
 
 The two screenshots differ in exactly one thing: the camp, drawn after the
@@ -547,7 +547,7 @@ the item's. What the coins do say is how much: spending from a purse that is
 all platinum takes `cost/5 + 1` platinum and hands back the change from the
 top, and the only cost that takes three platinum and leaves **no gold** behind
 -- which is what every one of these records shows -- is **fifteen gold**,
-exactly what three platinum is worth.
+exactly the value of three platinum.
 
 ---
 
@@ -672,7 +672,7 @@ dexterity, because the penalty is then applied twice. **Nothing draws the
 number**, so there is no wrap-around for a player to see: a search of all 1,142
 files on the Silver Blades sides -- and of Pool of Radiance's 2,116 and Curse's
 1,120 -- finds no `POCKET`, `NOISE`, `CLIMB`, `SILENT`, `LOCKS` or `LANGUAGE`
-in plain, shifted or screen-code PETSCII, where the same search finds `ENCAMP`
+in unshifted, shifted or screen-code PETSCII, where the same search finds `ENCAMP`
 and `SEARCH` in every title. The percentages are rolled against and never
 printed, which is why this bug shows only as a halfling who never once sneaks
 past anything.
@@ -720,8 +720,8 @@ and on a different one. Converted through Wish's own C64-to-DOS conversion and
 read the same way under DOSBox: `RANGER CAN MEMORIZE: ... MAGIC-USER SPELLS:
 2`, and a second spell is accepted where the C64 refused it.
 
-**What the player sees.** A ranger who has earned two spells' worth of arcane
-training on paper is only ever handed one at the table, on the Commodore 64
+**What the player sees.** A ranger who has earned enough arcane
+training for two spells on paper is only ever handed one at the table, on the Commodore 64
 alone.
 
 **Version.** Curse of the Azure Bonds, Commodore 64. DOS is unaffected.
@@ -934,7 +934,7 @@ improve the same way its THAC0 already does.
 **The evidence.** `WISH-SPEC-curse-408-regained-paladin`'s MATHEW (human,
 `class_levels {fighter: 7}`, `former_class_levels {paladin: 6}`) and MARK
 (`class_levels {cleric: 6}`, `former_class_levels {paladin: 5}`) both stored
-the plain fighter 7 and cleric 6 rows in DOS Curse's own `ENCAMP > SAVE`
+the unmodified fighter 7 and cleric 6 rows in DOS Curse's own `ENCAMP > SAVE`
 resave of a converted copy of this party (`coab-dos/WISH-SPEC-curse-632-
 wish-converted-resave`, slot B) -- `10 11 12 12 13` and `9 12 13 15 14` -- not
 a row improved by the paladin he had regained.

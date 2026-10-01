@@ -30,7 +30,7 @@ through an `ES`-prefixed displacement. It does not say what value they write,
 and that is the question that names a field. `tools/dos/dosbyteimm.py` adds the
 immediate.
 
-**The shape of the set of constants is the finding, not the count.** A byte the
+**The pattern in the set of constants is the finding, not the count.** A byte the
 engine sets to `0Ah`, `0Ch` and `0FFh` and compares against 8 is not a marching
 position in a six-character party, whatever six records on a disk happen to
 hold. A byte it sets to `0B2h` and `0B3h` and compares against `80h` and `7Fh`
@@ -179,7 +179,7 @@ reads `Keep Exit` over `Modify:`, and which refuses outright unless the
 character's experience is 0 (Pool of Radiance, on DOS and on the Amiga) or 0,
 8333, 12500 or 25000 (Curse; Silver Blades has its own four values). Pool of
 Radiance's gate is a 32-bit compare of experience with 0 at `GAME.OVR`
-`0x01BA29`-`0x01BA39`, whose refusal jumps to the byte after the store; the
+`0x01BA29`-`0x01BA39`, whose failing branch jumps to the byte after the store; the
 Amiga build does `move.l $ae(a0),d0 / tst.l / ble` on the same field. The four
 values were first read as Pool of Radiance's too, and that was Curse's gate
 misapplied. Pools of Darkness has no site for the byte at all.
@@ -197,7 +197,7 @@ Between the last two saves PROBEA's record is byte-identical and PROBEB's
 differs at **one offset of 285**, `0x085`. `WISH-SPEC-por-304-modify-exited`
 and `WISH-SPEC-por-304-modify-kept` are the pair.
 
-That is why the corpus splits on provenance rather than on anything about the
+That is why the specimens split on provenance rather than on anything about the
 characters: 66 of 66 Pool of Radiance archive records read 1, and 38 of 38
 records this project rolled and never modified read 0. Silver Blades' MALACHITE
 reads 0 for the same reason, and not because he is a companion -- his control
@@ -205,7 +205,7 @@ byte is 0.
 
 ## The low seven bits are a morale percentage, and the C64 keeps the same byte
 
-This section settled the UNKNOWN the rest of the page left -- what a plain
+This section settled the UNKNOWN the rest of the page left -- what an ordinary
 companion's control byte holds -- and it needed no companion and no emulator.
 The C64 port answers it, because **C64 `0x0B8` is the same field as DOS
 `0x084`, with the same encoding**, and the two engines can be read against each
@@ -240,7 +240,7 @@ the *name* morale is PROBABLE: it is what coab calls the byte, it is a
 percentage, and it is checked against the character's wounds, but no
 disassembly here reaches the consequence of failing the check.
 
-**There is therefore no single "plain companion" constant to find**, which is
+**There is therefore no single "ordinary companion" constant to find**, which is
 why no immediate anywhere is a bare `80h`. A companion's byte is `0x80 | (his
 own morale / 2)`, supplied per companion by the area script, and every value
 from `0x80` to `0xFF` is legitimate.

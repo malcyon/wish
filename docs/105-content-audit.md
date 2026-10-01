@@ -19,7 +19,7 @@ the start. The findings are all in `tests/fixtures/`, plus one in the docs.
 
 1878 bytes lifted verbatim from disk 3. It is 6502 machine code: the first
 instructions at `+$24` are `LDA $6B99 / AND #$01 / STA $B5F1`. This is the
-plainest violation of the rule and should go first.
+clearest violation of the rule and should go first.
 
 Used by `tests/icons/test_iconparts.py`.
 
@@ -90,8 +90,8 @@ Measured, both ways:
 | with the disks present | **505 pass** (up 5: the generated map added coverage) |
 | with no disks at all | **478 pass, 27 skip**, none fail |
 
-The 27 that skip are the ones that need real game files. That is the fair cost
-of not shipping them, and it is smaller than it looks: losslessness, the record
+The 27 that skip are the ones that need real game files. That is the cost
+of not shipping them, and the part it hides is small: losslessness, the record
 and save decoding, the automapper geometry and the whole combat view keep
 running, because those use the player's own saves.
 

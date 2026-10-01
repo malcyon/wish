@@ -4,7 +4,7 @@ Two runs of bytes `goldbox/dos_port.py` called gaps, named from the six
 shipped DOS engines rather than from a saved game.
 `#254 (Two DOS gaps the Amiga port gives a shape to: a 16-bit field in
 gap_13c, and a pointer at the end of the Silver Blades item)` asked for both;
-the Amiga port gave each a shape and the DOS code settles them.
+the Amiga port gave each a layout and the DOS code settles them.
 `tools/dos/dosxpaward.py` and `tools/dos/dosscrollbundle.py` are the instruments, and
 `tests/dos/test_dosxpaward.py` and `tests/dos/test_dosscrollbundle.py` pin what they
 found.
@@ -14,7 +14,7 @@ Neither needed the Curse shopping trip the issue named as its dependency:
 and a finding taken from the engine's own instructions cannot be poisoned by
 an edited save.
 
-## 1. The run before the portrait is what killing a creature is worth
+## 1. The run before the portrait is what killing a creature awards
 
 | title | record | base award, `u16le` | per hit point, `u8` | called |
 |---|---|---|---|---|
@@ -82,11 +82,11 @@ reads BLACK DRAGON 4250 and 16, STORM GIANT 5850 and 20, PURPLE WORM 4900 and
 ### Zero in every player, which is why nobody could place it
 
 `tools/dos/dosxpaward.py sweep` swept **474 DOS character records** — 238 Pool of
-Radiance, 110 of the Curse and Gateway shape, 74 Silver Blades, 52 of the
-Pools of Darkness and Treasures shape — across the specimen tree and the
+Radiance, 110 of the Curse and Gateway format, 74 Silver Blades, 52 of the
+Pools of Darkness and Treasures format — across the specimen tree and the
 player's archives. **Two paths carry a non-zero award and they are one
 record**: OUGO in Treasures of the Savage Frontier's `Default files/Saves`,
-base 20000, found under two paths. Nothing else is non-zero, and no shape
+base 20000, found under two paths. Nothing else is non-zero, and no format
 carries a non-zero per-hit-point byte.
 
 **What a player loses today: nothing.** Both bytes belong to a creature, they
@@ -112,11 +112,11 @@ and `0x03F`-`0x042` is a **far pointer to another 67-byte item node**.
   exactly **one** store of that type into an item in the whole family:
   `SECRET 0x2951B`, the JOIN routine, which sets `quantity` to 1, zeroes the
   head's own three spell bytes and hangs the joined scroll off `0x03F`.
-* **A plain scroll is a different type.** The engine tests `0x27`, `0x28` and
+* **An ordinary scroll is a different type.** The engine tests `0x27`, `0x28` and
   `0x49` together four times over, and the shipped `ITEM<n>.DAX` templates
   carry 39 (`0x27`) on every `Mage Scroll` and 40 (`0x28`) on every
   `Cler Scroll` — 210 templates, and **not one is a bundle**, because a bundle
-  is made in the game. A plain scroll keeps its ids in its own `charges`,
+  is made in the game. An ordinary scroll keeps its ids in its own `charges`,
   `effect` and `power` at `0x03C`-`0x03E`.
 * **The chain is `quantity` long**, and each node carries three more spell ids
   in its own `0x03C`-`0x03E`, the top bit being a flag of the engine's own
@@ -166,7 +166,7 @@ the same loop and `slice_naively()` is the other one.
 specimen tree and the archives: **0 scroll bundles**, 0 files whose record
 count disagrees with `item_count`, and 18 with an `item_count` of zero, which
 is an export beside a stale item file and is what `goldbox.dos_codec` documents. The
-defect is reachable in the game and unexercised by the corpus, which is why
+defect is reachable in the game and unexercised by the specimens, which is why
 `#432 (A joined scroll in a DOS Silver Blades save shifts everything after it out of the character's pack)` carries a recipe rather than a specimen.
 
 **The reader ignores every stored pointer, CONFIRMED.** `0x258D5` reads a
@@ -285,7 +285,7 @@ it:** load the converted `SavGamA` in DOS, count CLERIC's 21 scrolls on
 ## 4. What JOIN makes, and what each port holds
 
 **Every scroll in a joined scroll is a whole scroll item, CONFIRMED** from the
-JOIN routine at `SECRET GAME.OVR` `0x29391`. Joining a plain scroll copies it
+JOIN routine at `SECRET GAME.OVR` `0x29391`. Joining an ordinary scroll copies it
 whole into a new node (`Move(T^, N^, 0x43)` at `0x294C6`) and turns the
 original into the head: type `0x49`, names `0x27`, 1, `0x4D`, readied and
 hidden zero, spell bytes zero, `quantity` 1. Each further scroll is copied
@@ -334,7 +334,7 @@ whole Amiga saved game.
   **To settle it:** load an Amiga Silver Blades save whose party holds 121
   scrolls in joined scrolls and count them on `ITEMS`.
 
-**Refusals that remain.** DOS allows sixteen heads of up to ten scrolls; the
+**Conversions that still stop.** DOS allows sixteen heads of up to ten scrolls; the
 C64 has sixteen slots and the Amiga a probable 120-scroll limit.
 `JoinedScrollsDoNotFit` is a stop, not a completed conversion, until a
 chooser exists, and it carries no text a player reads yet.
@@ -353,7 +353,7 @@ DOSBox, WinUAE or VICE.
 ## What a following agent needs
 
 * **Name the fields in `goldbox/dos_port.py`**: `experience_award` (`u16le`)
-  and `experience_per_hit_point` (`u8`) in the four earlier shapes,
+  and `experience_per_hit_point` (`u8`) in the four earlier formats,
   `experience_award` alone in the two later ones. `tools/dos/dosxpaward.py` looks
   those names up first and falls back to the gap, so it moves with the rename;
   `tests/dos/test_dosxpaward.py` asserts the offsets either way. The C64 side is

@@ -50,7 +50,7 @@ padding — and the DOS half turned out not to be a translation problem at all:
 the ECL bytecode is one artefact shared by every port, so 178 of the 179 named
 flags sit at the *same address* on DOS. See obstacle 1.
 
-That narrowing was worth more than it looked, and it was right at the time:
+That narrowing saved more work than it seemed to, and it was right at the time:
 **no DOS encoder** meant the DOS format only had to be decoded far enough to
 source what the C64 needs. #26 (Write a DOS save, not just read one) reversed it deliberately — the encoder now
 exists, and with it the round trip the narrowing had retired: a DOS record
@@ -151,7 +151,7 @@ little-endian on DOS: experience read big-endian puts a level-3 fighter past
 ten million; both elves come out aged 46080; and the encumbrance identity
 below — arithmetic entirely inside the file — only balances one way round.
 
-**The identity worth knowing**, because it checks four things at once:
+**The identity to know**, because it checks four things at once:
 
 ```
 encumbrance (0x102) = cp + sp + ep + gp + pp + gems + jewelry
@@ -164,7 +164,7 @@ offset and the byte order together.
 
 The DOS layout was originally taken from the community format notes in
 `coab-research/formats/` (scratch, deleted). **They were right about every field they
-predicted.** That is a fact about those notes worth carrying to the next
+predicted.** Carry that fact about those notes to the next
 title.
 
 ---
@@ -225,7 +225,7 @@ class level or to 1 when there is none. A **cleric's entire spellbook is
 regenerated** by level from the spell-casting table — and that loop excludes
 `animate_dead` too, so the spell is erased twice over.
 
-Two side observations worth keeping. `reclac_player_values` computes
+Two side observations to keep. `reclac_player_values` computes
 encumbrance as `Σ (item weight × count) + Σ all seven money counts`, which is
 **the identity above, confirmed from code** — and it means the field is derived,
 not stored, so a converter never has to source it. And `docs/116`'s open
@@ -321,7 +321,7 @@ records do not line up here. `turn_class` at C64 `0x0A3` is CONFIRMED in
 
 ## What a DOS save actually is, as files
 
-No container and no checksum: DOS writes plain files into its save directory.
+No container and no checksum: DOS writes ordinary files into its save directory.
 Steam redirects that directory to `SavesDir/<steamid>/<appid>/English/`.
 
 | file | what it is |
@@ -330,7 +330,7 @@ Steam redirects that directory to `SavesDir/<steamid>/<appid>/English/`.
 | `<NAME>.CHA` | one *exported* character. **The same 285 bytes, same layout** — the export is the slot copied out, not a reduced form. The only systematic difference is that the item count at `0x0C7` is zeroed |
 | `<stem>.ITM` | that character's items, **63 bytes each**, no header. **The suffix is per title and so is the stride** (#113 (Play DOS Curse far enough to save a party with items)): Curse writes `.SWG` at 63 bytes each and Silver Blades `.STF` at **67** (`DosDeltas.item_size`), measured on played games — Silver Blades 804 bytes for 12 items, which 63 does not divide. Until the suffixes were found, `read_character` returned an item *count* with an **empty item list** and no error for both titles |
 | `<stem>.SPC` | that character's active effects, **9 bytes each**; absent when there are none. One effect id, four payload bytes and a four-byte far pointer to the next record, which the loader rebuilds -- see "The `.SPC` effects file" |
-| `CHARLIST.TXT` | the names the "add character" menu offers. Plain text, CRLF |
+| `CHARLIST.TXT` | the names the "add character" menu offers. Text only, CRLF |
 | `SAVGAM<slot>.DAT` | the saved game. **13137 bytes** — one header byte, then the engine's variable space as `u16le`; see obstacle 1. The header byte is the `GEO`/`ECL` `.DAX` file number of the current area, 1–8; see obstacle 2 |
 
 Slots are letters, not numbers; the engine's own format strings (visible in
@@ -340,7 +340,7 @@ Gold Box Companion's `Game.dat`) are `CHRDAT%s%d.SAV` and `SAVGAM%s.DAT`.
 
 The **character file** is what the games themselves move: Pool of Radiance
 exports characters and Curse of the Azure Bonds imports a party. Getting that
-working is step one and is worth having on its own — and because a DOS export
+working is step one and is useful on its own — and because a DOS export
 and a DOS save slot are byte-for-byte the same structure, one reader serves
 both.
 
@@ -409,7 +409,7 @@ Pools of Darkness — this table's other three columns exactly.
 
 **`#508 (A converted magic-user loses memorised spells on the way to DOS,
 because our table says a title has fewer slots than the engine gives it)` sat
-unnoticed because the corpus could not find it, and the harness
+unnoticed because the specimens could not reveal it, and the harness
 `#516 (Generate boundary characters and check every writer's field widths,
 since no real save reaches a limit and the corpus cannot find a wrong one)`
 built is what would have caught it on the first run.** `tools/records/boundarychars.py` builds
@@ -548,7 +548,7 @@ neither `$5012` nor `$503E` is at any offset under Pool of Radiance's origin.
 Five nonzero bytes in the whole region, because the shipped container is a
 party that has never been played.
 
-**The size names the shape, not the game.** Treasures of the Savage Frontier
+**The size names the format, not the game.** Treasures of the Savage Frontier
 writes the same 1364-byte `SAVGAM<slot>.PTY` and empty 12-byte `VAULT<slot>.DAT`
 that Pools of Darkness does (12 + 63 bytes per stored item once it holds
 items), with the same 336-byte tail; only the directory says which game a
@@ -564,7 +564,7 @@ Darkness never shipped on the C64 at all, so its only counterpart is the Amiga
 
 ---
 
-## The shape of it
+## The design
 
 One neutral record in the middle and a codec per format around it. A **reader**
 decodes one port's bytes into named neutral values; a **writer** encodes those
@@ -601,11 +601,11 @@ map of its own, such as the training hall), the wallset the current view is
 drawn from, and which of the game's own quest flags are set. Convert a save
 standing in the Slums at half past nine at night with half the quests done,
 and the result has to stand in the Slums at half past nine at night with half
-the quests done — that is what this shape exists to hold.
+the quests done — that is what this structure exists to hold.
 
 Donald named it on 2026-09-07, reading what the class actually held: *"what
 you are describing sounds like 'World State'... I think world_state is a good
-description."* `goldbox/world_state.py`'s `WorldState` is that shape, and it
+description."* `goldbox/world_state.py`'s `WorldState` is that structure, and it
 fills the same role for the party's situation that `goldbox/neutral.py`'s
 `NeutralCharacter` fills for a character.
 
@@ -618,10 +618,10 @@ payload directly (`container.position`, `.travel_position`, `.clock`,
 `SHARED_SCRATCH`, `LATER_HEADER_COPIED`). That was tenable with two ports.
 Adding the Amiga would have meant writing the C64 and DOS container writers a
 second time, this time reading an Amiga source, or parametrising each on
-where its values come from — which is a shared shape under another name.
+where its values come from — which is a shared structure under another name.
 `#352 (Handle world state for Amiga saves)` lifted the Pool of Radiance Amiga writer's own state class
-— which had already proved the shape for a Pool of Radiance party standing
-indoors — into `WorldState`: one shape, filled by a reader per port, taken by
+— which had already proved the structure for a Pool of Radiance party standing
+indoors — into `WorldState`: one structure, filled by a reader per port, taken by
 all three container writers.
 
 **Three readers, three writers.**
@@ -638,7 +638,7 @@ above that keep the Amiga's own spelling for its callers —
 `tools/amiga/toamigapor.py` and `tools/amiga/fromamigapor.py` among them — and
 each returns a `WorldState`.
 
-**What the shape holds, and what it deliberately does not.** `title`, `area`,
+**What the structure holds, and what it deliberately does not.** `title`, `area`,
 `geo`, `x`, `y`, `facing`, the six-digit `clock`, the `wallset` triple, the
 `flags` tuple (217 addresses for Pool of Radiance, 224 for Curse of the Azure
 Bonds and Secret of the Silver Blades), the per-script `scratch`, whether the
@@ -660,7 +660,7 @@ container byte, mode pair, name table and wall block; the Amiga's pad bytes
 and name-table stride. Every one of those is sourced from the area table, a
 measured constant, the slot letter or a declared zero — never from the source
 save (`#352 (Handle world state for Amiga saves)`'s own "What is known"). That
-is what makes the shape provably lossless: nothing it leaves out was ever the
+is what makes the structure provably lossless: nothing it leaves out was ever the
 source save's own to begin with, so converting through it loses nothing a
 player would notice.
 
@@ -719,7 +719,7 @@ can have nowhere to go. **`goldbox.c64_codec.write` clamps it**: a total above
 `report.warnings` (not `dropped` or `losses`) gets one line saying the experience was clamped and from
 what (`experience: DOS holds 16777216, which does not fit the C64's 3 bytes;
 written as 16777215, the most they hold`). The character converts rather than
-being refused, which is Donald's decision: a refusal leaves the player with no
+being refused, which is Donald's decision: refusing leaves the player with no
 converted character at all, and a clamped one is the most the C64 can hold. A
 negative value is still refused, since no field holds it. **CONFIRMED**: the
 boundary is exact, `0xFFFFFF` kept and `0x1000000` and `0x7FFFFFFF` clamped to
@@ -882,7 +882,7 @@ neither of the C64's two bytes exists as such:
 ### CONFIRMED in both titles, by two records we watched being written
 
 Two training halls, two records, one action apart from their own before-state,
-each read at the offsets its own shape names. Every value was predicted before
+each read at the offsets its own layout names. Every value was predicted before
 the key was pressed.
 
 **What makes these evidence where the older specimens are not** is that the
@@ -964,12 +964,12 @@ moment.
 nothing when you change class. Anything driving either game unattended stops
 dead at Curse's TRAIN CHARACTER and does not stop at HUMAN CHANGE CLASSES.
 
-### What the older specimens are worth now
+### What the older specimens still show
 
 Three 510-byte records were the whole of the evidence before this: ABAGAIL
 (Pools of Darkness, magic-user 12, `former_class_levels[cleric]` 11), PAINE
 (Pools of Darkness, magic-user 13, ranger 9) and OUGO (**Treasures of the
-Savage Frontier**, not Pools of Darkness — it is read against that shape
+Savage Frontier**, not Pools of Darkness — it is read against that format
 because it is 510 bytes). **All three came out of a downloaded archive's
 `Default files/Saves`**, so under `.claude/rules/testing.md`'s "a specimen is
 only evidence if we know who wrote it" none of them is evidence any more. The
@@ -1053,7 +1053,7 @@ different form:
   overturned on 2026-09-06** -- Donald: *"do not show dropped fields if they
   are derived in the new game. Show others for now. I will refine them as we
   go."* `UNREPORTED_DROPS`, `ICON_DROPS` and `COMBAT_ICON_DROP` are all gone
-  with it: an agent deciding an entry was not worth a player's attention was
+  with it: an agent deciding an entry did not deserve a player's attention was
   the judgement he took back. `DERIVED` and `CONSTANTS` are silent because
   the destination works the field out for itself, which is a measurement
   rather than an opinion; everything else reaches the pane. Keeping a line
@@ -1112,7 +1112,7 @@ that established this, `reports/quest-flags.md`, is lost.
   eight-entry lock table at `$4AEA` are all present unchanged. One flag,
   `$4AD1` in the lizardman keep, is gone on the Amiga along with the encounter
   that set it. (The Amiga is a proxy for the *scripts* only. Its character
-  record follows the DOS field order but stores multi-byte fields big-endian —
+  record uses the DOS field order but stores multi-byte fields big-endian —
   don't read the DOS layout off it.)
 * **DOS, through Curse of the Azure Bonds**, where we hold both ports.
   Decoding DOS `coab/Data/ECL*.DAX` and diffing against C64 `CURSE*.D64`
@@ -1145,7 +1145,7 @@ the engine loads the party from, and UI scratch. **The script buffer is live
 on load** — this said it was "reloaded from the DAX on load, dead data for a
 converter", and #60 (Put a converted party where it actually stood, not where the template stood) refuted it: a save carrying the wrong area's script dies
 in `Load3DMap` however many variables it writes, so writing the target's own
-script is one of the retarget's writes. The mechanism is in the Curse reimplementation:
+script is one of the writes that move the party to where it was. The mechanism is in the Curse reimplementation:
 `vm_SetMemoryValue` in `coab/engine/ovr008.cs` (scratch, deleted) ends in
 `area_ptr.field_6A00_Set(0x6A00 + (location * 2), value)` — the operand
 address doubled — and `ovr021.cs` annotates the same array `// as WORD[]`.
@@ -1349,11 +1349,11 @@ conversion work, not validation risk.
 
 ## What is not an obstacle
 
-Worth stating, so effort does not go here: **byte order** (both little-endian,
+So that effort does not go here: **byte order** (both little-endian,
 now verified on a real DOS file rather than assumed), **text encoding** (the
 record is ASCII on both, no PETSCII), **the D64 container** (`goldbox/d64.py`
 writes valid images with correct block counts today), **the DOS container**
-(there isn't one — plain files, no checksum), **the save-versus-export
+(there isn't one — ordinary files, no checksum), **the save-versus-export
 question** (DOS's export is the slot copied out, so one reader serves both),
 **party size** (six on both), and **the item tables** (the `ITEMS` type table
 and the `ITEMNAMES` indices are shared between the ports; see obstacle 3).
@@ -1528,7 +1528,7 @@ and not to the template's `GEO14`; `$6E13` refilled to `GDRIVE01`, `GEO00`,
 `SECSET00`, `ECL00`; and it walked — north twice, then west into a temple,
 whose script printed `WELCOME TO THE TEMPLE`.
 
-Three bytes outside the cache go with it, and `$49EA` is the one that bites:
+Three bytes outside the cache go with it, and `$49EA` is the one that breaks the load:
 `GEN $08BD` is `LDA $49EA / STA $6E12`, the `POOL` side the loader asks for by
 number, so a save naming an area on another disk while carrying the template's
 hint sits on `INSERT SIDE # N` hunting a file that is not on the side it asked
@@ -1538,17 +1538,17 @@ for. `$49C5` is the map `LOADFILES` reloads and `$49F2` the script id;
 **So the template no longer has to stand in the DOS party's area.** What
 `convert_save` still refuses is six areas of the thirty, where the answer
 would be a guess: the four that load no map and the two whose script picks its
-map at run time. The travel-grid refusal came off in #50 (Lift the wilderness refusal from the DOS save converter): the C64 side of the
+map at run time. The travel-grid block came off in #50 (Lift the wilderness refusal from the DOS save converter): the C64 side of the
 outdoor recipe was already CONFIRMED — slot 4 = the `SQRDATA` number in place
 of slot 2, the travel square in `$49C3`/`$49C4`,
 `docs/140-loaded-files-cache.md` — and #59 (Map the DOS saved game, not just the character record)'s outdoor pass measured the DOS
 side against three engine-written overland saves: the DOS travel square is
 the same `$49C3`/`$49C4` pair, window-local, `$49E6` = 0, and the area id in
 `$49F2` alone (`$49C5` reads 0 out there, so `convert_save` keys on
-`dos_savegame.current_area`). The converted outdoor shape follows #47 (Decode the travel grid's cache entries, so the wilderness can be retargeted too)'s
+`dos_savegame.current_area`). The converted outdoor save follows #47 (Decode the travel grid's cache entries, so the wilderness can be retargeted too)'s
 live-proven cold-boot recipe exactly, but **the conversion itself has not
 been loaded on a C64 end to end** — that run is the remaining proof for the
-outdoor shape. The indoor one has run three times, on all three of the
+outdoor save. The indoor one has run three times, on all three of the
 player's DOS saves: `tools/dos/dosdisk.py` builds the disk and `tools/c64/savecheck.py`
 boots it, and the party loads, reads right on the sheet, walks and changes area
 — §"Three from-nothing disks played". (This cited `p119/`, which was the
@@ -1594,7 +1594,7 @@ The 216 bytes of the six party icons were the last region on #118 (Write a C64 s
 only a file-level measurement behind them: composed from part numbers, checked
 against the two NPC slots on all fourteen of the player's save disks, and never
 watched. A converted Slums party built onto a `D64.blank()` was booted, walked
-into an ambush, and the combat floor read out of the running machine —
+into an ambush, and the combat arena read out of the running machine —
 `tools/c64/savecheck.py --icon`.
 
 **Six identical blue figures, and no black hooks.** Six identical is what the
@@ -1605,7 +1605,7 @@ icon; and a figure rather than a hook is what says the icon is not zero.
 colour RAM cell for cell and nothing renumbers them, so the 3x3 colour block
 under each figure compares directly with what the conversion wrote:
 
-| block on the floor | colour RAM, 3x3 | the composed icon's pose |
+| block in the arena | colour RAM, 3x3 | the composed icon's pose |
 |---|---|---|
 | the six party figures | `0E 0F 0E 0E 0E 0E 0E 0E 0E`, all six | matches |
 | the seven monster blocks | `0B 0A 0B 0B 0E 0B 0B 0B 0B` | does not |
@@ -1614,10 +1614,10 @@ Six of six and none of seven.
 
 **A second fight, and it is four of six.** The same check was run on the Sokol
 Keep party (DOS slot B), whose panel lists all six of BRUTUS, MAGNUS, ROLAND,
-GILES, ASTRID and SILAS. Fourteen figures were on the floor: ten monster
+GILES, ASTRID and SILAS. Fourteen figures were in the arena: ten monster
 blocks, none matching, and **four** party blocks, all four matching
 `0E 0F 0E 0E 0E 0E 0E 0E 0E`. Two party members were never drawn as a figure
-at all -- not scanned and missed, but absent from the floor, which
+at all -- not scanned and missed, but absent from the arena, which
 `cited/p119b/NEWB3-combat.png` shows directly.
 
 So the honest sample across both fights is **10 of 10 party blocks that
@@ -1632,7 +1632,7 @@ The battlefield is **56 x 26** and the game draws a **7 x 7** window of it
 (`automap.combat.VIEW`, `COM.PREP $08C6 LDA #$07`), so a party member seven
 squares from the camera's corner is off the drawn portion and there is nothing
 wrong with them. `tools/c64/savecheck.py` now reads the engine's own position table
-beside the floor, which says where every combatant is and where the window is
+beside the arena, which says where every combatant is and where the window is
 (`$037E`).
 
 The control settles it. The party was converted, loaded, and then written back
@@ -1648,18 +1648,18 @@ lets the original run be read back: its four blocks were `$5E` SILAS, `$70`
 GILES, `$79` ROLAND and `$82` MAGNUS, and the gaps at `$67` and `$8B` are
 ASTRID and BRUTUS. The engine had numbered all six.
 
-**An icon's own screen codes never appear on the combat floor**, and a first
+**An icon's own screen codes never appear on the combat arena**, and a first
 pass that searched for them found nothing and read like a failure. The six
 party figures were drawn from codes `$5E`-`$93` — six runs of nine consecutive
 codes — and the seven monster blocks from one run of nine reused, while every
 icon in the save is the same 18 codes `20 A0 20 86 87 88 06 07 08`. So the
 engine copies each icon's glyph *bitmaps* into a combat character set and hands
 out sequential codes; the icon's codes index `CHARPIC00` and are not what sits
-in screen memory during a fight. Anything looking for a figure on the floor
+in screen memory during a fight. Anything looking for a figure in the arena
 looks for a 3x3 block of nine consecutive codes.
 
 **The glyph half is still unread.** The combat character set's base computes to
-`$D000`, which in VIC bank 3 is RAM under the I/O area, and a plain monitor read
+`$D000`, which in VIC bank 3 is RAM under the I/O area, and a monitor read
 there returns the registers rather than the font. Reading it needs the monitor's
 `ram` bank rather than its default and nobody has done it, so what carries this
 finding is the colours and the picture.
@@ -1669,7 +1669,7 @@ finding is the colours and the picture.
 All three of the DOS saves in the player's archives were built onto a
 `D64.blank()` by `tools/dos/dosdisk.py` and driven by `tools/c64/savecheck.py`. **The
 game's own `LOAD SAVED GAME` accepted all three**, which is the check bytes
-cannot make and the shape `#109 (A save slot written onto an Amiga disk is not
+cannot make and the kind of failure `#109 (A save slot written onto an Amiga disk is not
 offered by the game's picker)` was.
 
 | DOS slot | where | the status line | the panel | the sheet |
@@ -1679,8 +1679,8 @@ offered by the game's picker)` was.
 | B | Sokol Keep, 21 | `N 1:22 8,14` | six rows, no seventh | BRUTUS, every field |
 
 Every armour class and every current hit point in all three panels is the DOS
-save's own — eighteen of eighteen. **The negative armour classes are the ones
-worth reading twice**: `AC -3` for a fighter in plate mail with a shield and 18
+save's own — eighteen of eighteen. **Read the negative armour classes
+twice**: `AC -3` for a fighter in plate mail with a shield and 18
 dexterity is right, and an armour class in the fifties is the fault this
 project shipped once. Slots A and B are the same party at two points in the
 game, and everything that differs between them differs the right way — SILAS is
@@ -1728,7 +1728,7 @@ answers are at the end of the section. Where a drawing disagrees with the
 design, the drawing is what is here.
 
 The drawings were first made against a design in which `goldbox/amiga_codec.py` and
-`goldbox/yaml_io.py` had a middle of their own, C64-shaped; they said so, and the
+`goldbox/yaml_io.py` had a middle of their own, in the C64's format; they said so, and the
 answer was to give every codec the same middle. What is drawn below is the
 arrangement after that: one `NeutralCharacter`, four codecs around it, and the
 take-refuse-report protocol in `goldbox/neutral.py` where every writer inherits it
@@ -1736,10 +1736,10 @@ rather than copying it.
 
 ### One conversion end to end
 
-A DOS save in, a C64 record and a `Report` out. The two things worth following
-are **where the confidence floor is applied** — `neutral.Writer`, and nowhere
-else, for a derived byte as much as for a copied one — and **where a refusal
-becomes a reported drop rather than a written guess** (the `else` branch:
+A DOS save in, a C64 record and a `Report` out. The two things to follow
+are **where the minimum confidence is applied** — `neutral.Writer`, and nowhere
+else, for a derived byte as much as for a copied one — and **where a field the writer will not
+write becomes a reported drop rather than a written guess** (the `else` branch:
 nothing reaches the record, a line reaches the report, and the byte is later
 accounted for as having no source).
 
@@ -1763,7 +1763,7 @@ sequenceDiagram
     Note over Char: a name outside FIELDS raises NeutralError here.<br/>The vocabulary refuses a typo at the reader,<br/>not at the writer that would never see the field
   end
   Reader->>Char: drop("DOS icon_colours @0x0c1: the combat icon colours") x 12
-  Note over Reader,Char: the reader says only where a value came from,<br/>and what it could not carry at all
+  Note over Reader,Char: the reader says only where a value came from,<br/>and what it could not convert at all
   Reader-->>Caller: char
 
   Caller->>Writer: write(char, icon)
@@ -1772,7 +1772,7 @@ sequenceDiagram
   loop each C64 field this writer knows
     Writer->>W: use(name)
     W->>Char: take(name, floor = GUESS)
-    alt graded at or above the floor
+    alt graded at or above the minimum
       Char-->>W: Value
       W-->>Writer: Value
       Writer->>Rec: set(c64_field, value.value)
@@ -1780,7 +1780,7 @@ sequenceDiagram
       W->>Rep: note(offset, size, value.line(destination, extra))
       Note right of Rep: the writer's half of the line is the rule it applied:<br/>"packed to one bit", "repacked cleric-high/magic-user-low"
       W->>Rep: dropped += value.dropped
-    else graded below the floor, or never set
+    else graded below the minimum, or never set
       Char-->>W: None
       W->>Rep: dropped += "DOS name: read at UNKNOWN,<br/>which is not a grade this conversion will write"
       W->>Rep: dropped += the refused Value's own dropped
@@ -1789,7 +1789,7 @@ sequenceDiagram
   end
 
   Writer->>W: get("race") for infravision, get("strength") for strength_index
-  Note over W: a derivation asks at the same floor as a copy.<br/>A refused race yields infravision 0, not 0x0D5 from a grade<br/>this conversion would not have written
+  Note over W: a derivation asks at the same minimum as a copy.<br/>A refused race yields infravision 0, not 0x0D5 from a grade<br/>this conversion would not have written
   Writer->>Rep: note(...) for every computed byte and documented constant
   Writer->>W: finish()
   W->>Char: unwritten(taken)
@@ -1799,11 +1799,11 @@ sequenceDiagram
   Writer-->>Caller: (rec, rep) with rep.unaccounted empty
 ```
 
-The floor is applied in one place and at one grade, and it is applied to a
+The minimum is applied in one place and at one grade, and it is applied to a
 derivation as well as to a copy: `neutral.Writer.get` exists because
 `NeutralCharacter.get` does not apply one, and a writer that computes a byte
 from a field it would have refused to copy is standing behind the value twice
-as hard, not half as hard. A refusal also carries the refused value's own
+as hard, not half as hard. A dropped field also carries the refused value's own
 `dropped` list into the report — what a reader had to leave behind to produce
 a value is a fact about the source whether or not the value is written. The
 running `.SPC` effects used to ride on `innate_effects.dropped` exactly that
@@ -1836,7 +1836,7 @@ classDiagram
     CONFIRMED
   }
   class Provenance {
-    <<enum, the shape of the report line>>
+    <<enum, the form of the report line>>
     COPIED
     COMPUTED
     RESHAPED
@@ -1972,7 +1972,7 @@ classDiagram
   Report <|-- C64Report
   Report <|-- AmigaReport
 
-  note for Writer "Hoisted out of goldbox/c64_codec.write, where use and emit were closures. A second writer inherits the floor, the refusal line, the taken list and the closing sweep instead of copying about forty lines of it."
+  note for Writer "Hoisted out of goldbox/c64_codec.write, where use and emit were closures. A second writer inherits the minimum, the line reporting a dropped value, the taken list and the closing sweep instead of copying about forty lines of it."
 ```
 
 **A reader** is `to_neutral()` plus a field table with a confidence on every
@@ -2036,12 +2036,12 @@ graph LR
 
   itm["dos_codec.item_to_c64<br/>63 DOS bytes onto the C64's 16"]:::around
   dos -->|"A"| itm
-  itm -->|"A the value set on inventory is<br/>already C64-shaped"| neutral
+  itm -->|"A the value set on inventory is<br/>already in the C64's form"| neutral
 ```
 
 **A** is the known exception and it is declared, not hidden: `FIELDS` says
-`inventory` is "the shared sixteen-byte item shape `goldbox/items.py` reads", so
-the neutral vocabulary itself admits that one field is a port's shape. The
+`inventory` is "the shared sixteen-byte item format `goldbox/items.py` reads", so
+the neutral vocabulary itself admits that one field is a port's format. The
 value `to_neutral` sets has already been through `dos_codec.item_to_c64`. It carries
 the 157-of-163 evidence, so it stays;
 what the drawing adds is that the exception is one field wide and stated in
@@ -2056,7 +2056,7 @@ than in `FIELDS`, and since `entry_for` was built from a C64
 `CharacterRecord`, **the Amiga writer's source format was the C64 record**.
 `amiga.export_party` read a C64 save disk through `yaml_io.export_save` to get
 one, and `dos.export_party` ran the same edge the other way. Two middles, the
-older one C64-shaped, and DOS to Amiga would have gone through a port neither
+older one in the C64's format, and DOS to Amiga would have gone through a port neither
 end asked for.
 
 Now `goldbox/c64_codec.read` is the C64 reader, `goldbox/amiga_pod.write_pod`
@@ -2085,9 +2085,9 @@ with one port per platform a title shipped on)`'s stage 3 renamed it) is
 imported by `dos_codec` directly, and `c64_codec` never reaches for it. The
 four Amiga modules below -- `amiga_later`, `amiga_pod`, `amiga_por` and
 `amiga_shared` -- are the graph's declared exception to the invariant rather
-than a breach of it: an Amiga record is DOS-shaped underneath, so each of them
+than a breach of it: an Amiga record is DOS-formatted underneath, so each of them
 reads the DOS field table directly, the same exception "Who talks to whom"
-above draws for the C64's own item shape.
+above draws for the C64's own item format.
 
 **The two codecs were named for their platform at the same ticket's stage
 8**: `goldbox/dos.py` became `goldbox/dos_codec.py` and `goldbox/amiga.py`
@@ -2317,7 +2317,7 @@ A dotted edge is an import inside a function or a class body: real, but
 deferred, and usually there to break a cycle.
 
 The review that drew these diagrams found the graph one edge short, and the
-gap was the shape of the thing it guards: `tools/generate/genimports.py` matched
+gap was in the kind of thing it guards: `tools/generate/genimports.py` matched
 `from .layout import …` and `import goldbox.layout` but not `from goldbox.layout
 import …`, an absolute import of a sibling. `goldbox/areas.py` writes exactly
 that, so `areas --> layout` was missing — and a codec written the same way
@@ -2332,10 +2332,10 @@ the block above ever drifts from what the tool prints.
    imports another's table: what crosses is a `NeutralCharacter`.
    `dos_codec.item_to_c64` is the one declared exception, it is one field wide, and
    `FIELDS` itself states that `inventory` carries the shared sixteen-byte
-   item shape — the vocabulary admits it rather than hiding it.
+   item format — the vocabulary admits it rather than hiding it.
 2. **Is the reader/writer split in the right place at every field?** Yes. The
-   floor is applied in `neutral.Writer` and nowhere else, at one grade, to a
-   derivation as much as to a copy; a refusal is reported rather than guessed
+   minimum is applied in `neutral.Writer` and nowhere else, at one grade, to a
+   derivation as much as to a copy; a dropped field is reported rather than guessed
    and carries its own `Value.dropped` with it; and no line has the reader
    claiming the writer's rule. What keeps it that way is
    `field_disposition()` over `FIELDS`: every writer states what it does with
@@ -2345,7 +2345,7 @@ the block above ever drifts from what the tool prints.
    take-refuse-report protocol — `use`, `emit`, `get` and the closing sweep —
    are inherited from `goldbox/neutral.py`. `goldbox/amiga_pod.py` is the demonstration:
    rewritten onto the neutral record it lost its own copy of that bookkeeping
-   and its own C64-shaped middle, and every `.pc` byte it writes is what it
+   and its own middle in the C64's format, and every `.pc` byte it writes is what it
    was before. The DOS writer of #26 (Write a DOS save, not just read one) is the second demonstration, with a
    caveat the first could not show: the writer itself cost one writer, but
    its arrival exposed two latent defects in `c64_codec.read` that only a
@@ -2425,7 +2425,7 @@ we will not do."*
 The writer inherits `neutral.Writer` whole — no protocol code was copied —
 and accounts for every byte of both outputs in a `WriteReport`. Its three
 tables over the neutral vocabulary (`WRITE_DIRECT`, 49 copies;
-`WRITE_TRANSFORMED`, 9 rules; `WRITE_DROPPED`, 6 refusals) are checked
+`WRITE_TRANSFORMED`, 9 rules; `WRITE_DROPPED`, 6 dropped fields) are checked
 complete against `FIELDS`, and a fourth, `WRITE_TARGETS`, accounts over the
 DOS layout's own names so a field added to `goldbox/dos_port.py` and forgotten
 here fails a test. Four kinds of byte have no neutral source:
@@ -2463,7 +2463,7 @@ here fails a test. Four kinds of byte have no neutral source:
   to mask these, which is why they are their own table rather than entries in
   `WRITE_CONSTANTS`. `icon_colours` was in the unsourced list until #112 (A converted DOS character's combat icon has no colours)
   measured what zero draws: all six parts EGA 8, dark grey, which is the
-  combat floor's own colour, so the figure reads as not being there at all.
+  combat arena's own colour, so the figure reads as not being there at all.
   Each entry carries a fourth string saying what the source held that is not
   converted — here the C64's own icon colours, which have seven parts to DOS's
   six and one 3-bit colour per part against DOS's two 4-bit ones.
@@ -2515,7 +2515,7 @@ The last of those was then run forwards: a `.SPC` holding one hand-written
 record, `6b 00 00 ff 00 00 00 00 00` — exactly what the writer emits — loads
 as the elf's sleep resistance with the chain terminated properly.
 
-**What a C64 record can actually hand over is less than it looks.** The ten
+**A C64 record can hand over less than it seems to.** The ten
 trait slots at `0x0AD` hold 107 for an elf and 124 for a half-elf and nothing
 for anybody else: no dwarf on any of Donald's disks, nor in the game's own
 starting party on `POOL1.D64`, carries a trait id. The two ports split the
@@ -2523,7 +2523,7 @@ dwarf's four bonuses down the middle:
 
 | effect | C64 | DOS | what the writer does |
 |---|---|---|---|
-| 90, 97 — the constitution bonus to saves | **baked into the five stored saving throws.** HOGARTH, a dwarf with constitution 17, stores `9 8 10 12 11` where the class row is `13 12 14 16 15` | not baked: THRENDER GRONE, a fighter 1 with constitution 16, stores the plain class row `14 15 16 17 17` and keeps the bonus in these two records | **derives them from race**, because the five copied bytes never reach the player: the engine recomputes them on load out of class, level and the `.SPC` records — `#191 (A converted dwarf loses his constitution bonus to saving throws)` |
+| 90, 97 — the constitution bonus to saves | **baked into the five stored saving throws.** HOGARTH, a dwarf with constitution 17, stores `9 8 10 12 11` where the class row is `13 12 14 16 15` | not baked: THRENDER GRONE, a fighter 1 with constitution 16, stores the unmodified class row `14 15 16 17 17` and keeps the bonus in these two records | **derives them from race**, because the five copied bytes never reach the player: the engine recomputes them on load out of class, level and the `.SPC` records — `#191 (A converted dwarf loses his constitution bonus to saving throws)` |
 | 26, 47 — THAC0 against orcs, armour class against giants | nowhere. Situational, so no stored number can hold them; the C64 derives them from the race byte when the blow lands | the two records | **derives them from race** (`RACE_COMBAT_EFFECTS`), because otherwise a converted dwarf loses them outright |
 | 107, 124 — elf and half-elf sleep and charm resistance | in the trait slots | the record | **copies** |
 
@@ -2723,7 +2723,7 @@ did **not** hold for free on the reader beside it: the first real consumer of
   through the neutral record, with no report)`'s fix landed for both ports,
   and a DOS or Amiga round trip keeps the effect working. **The C64 record
   still has nowhere to put it**: ten trait slots hold one number each, with
-  no room for what the effect is worth, so a party converted onto the C64
+  no room for the effect's value, so a party converted onto the C64
   still arrives without it, named in the report rather than dropped in
   silence. Whether one of those ten slots could hold the id anyway, the way
   the C64's own READY routine sometimes does, is `#252 (Does a C64 trait
@@ -2935,7 +2935,7 @@ another party in another place. That is what the count below removed.
 The account is `SaveReport.sources`, one line per byte, and `unwritten` is
 what has no source. `new_dos_save` **raises** on a non-empty `unwritten`
 rather than handing back a file whose zeroes nobody stands behind -- the same
-refusal `new_save` makes in the other direction (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64)). Where each byte comes
+stop `new_save` makes in the other direction (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64)). Where each byte comes
 from is ["What a conversion inherits: nothing"](141-dos-savegame.md) in
 `141-dos-savegame.md`; what follows is the run that made the zeroes evidence
 rather than a sweep.
@@ -2972,7 +2972,7 @@ before anybody can read them**:
 
 | field | who | ours → the engine's |
 |---|---|---|
-| the five `save_*` bytes | MAGNUS, a dwarf | 14/14/13/11/12 → 17/17/16/14/15, the plain fighter-1 row |
+| the five `save_*` bytes | MAGNUS, a dwarf | 14/14/13/11/12 → 17/17/16/14/15, the unmodified fighter-1 row |
 | `thac0_base` | LADY KATHERINE, MALCYON | 39 → 40 |
 | the five `thief_*` skills | LADY KATHERINE | all five replaced |
 | `armour_class` | BRUTUS | 58 → 57, which is AC 2 → AC 3 |
@@ -3016,16 +3016,16 @@ engine's own records could be read back — `cited/p26/issue191`):
 | the engine's resave holds | 17 | 17 | 16 | 14 | 15 | 90, 97, 26, 47 |
 | THRENDER GRONE, the engine's own dwarf | 17 | 17 | 16 | 14 | 15 | 90, 97, 26, 47 |
 
-The five bytes are still overwritten with the plain fighter-1 row, and that is
+The five bytes are still overwritten with the unmodified fighter-1 row, and that is
 now the *right* answer rather than the loss: a converted MAGNUS and a dwarf
-the game made itself are the same shape, the plain row in the record and the
+the game made itself are the same kind, the unmodified row in the record and the
 bonus in the records beside it. **The engine kept all four records and relinked
 them**, which is what says they were read rather than copied: the file goes in
 with four NULL next pointers and comes back with three live far pointers and a
 NULL, so each record was a node in the character's own effect list. Before the
 fix (`p26/run6` (scratch, deleted)) the same dwarf's file held 26 and 47 and nothing else.
 
-The rest are derived values a conversion need not carry at all, which is a
+The rest are derived values a conversion need not convert at all, which is a
 finding in the useful direction: they cannot be got wrong.
 
 ### What is not settled
@@ -3035,10 +3035,10 @@ finding in the useful direction: they cannot be got wrong.
   survivable across all five runs and nothing says what would put a value
   there.
 * **Settled, both of them (#190 (A C64 party standing on the travel grid cannot be written into a DOS save)).** An outdoor C64 party is no longer
-  refused: the overland retarget has been driven twice, on two squares, and
+  refused: moving the party to its overland square has been driven twice, on two squares, and
   each result loaded, drew the overland, walked, and was resaved by the game's
   own `ENCAMP > SAVE`. The blocker had never been the converter -- none of the
-  player's twenty C64 save disks stands outdoors, every one reading `$49E6` =
+  player's twenty C64 save disks has the party outdoors, every one reading `$49E6` =
   1, so `tools/c64/c64outdoor.py` had to make the specimen the branch could be
   driven against.
 * **And the sweep is re-taken rather than PROBABLE.** `tools/dos/dossavsweep.py`

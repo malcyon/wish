@@ -13,7 +13,7 @@ Tests for the application in `wish/`: the window, preferences, game folders, the
 | `test_gamefolders.py` | Checks that the shared disks folder folds into each title's own folder setting and that a title with no folder is not answered with another's. |
 | `test_installdesktop.py` | Checks that `wish/installdesktop.py` writes the desktop entry and icon theme entries under a redirected data directory when it finds none, and never stops the window. |
 | `test_licenses.py` | Checks that every glyph that ships is credited to the artist the program names in `THIRD_PARTY_LICENSES.md`, and that the Licenses dialog opens. |
-| `test_mapscale.py` | Checks that the area map scales to the room it is given, that clicks and popovers follow the scale, and that the window can be made small. |
+| `test_mapscale.py` | Checks that the area map scales to the room it is given, that clicks and popovers scale with it, and that the window can be made small. |
 | `test_nativewatch.py` | Checks that the native message watch is off unless asked for, installs only on Windows and records nothing until asked. |
 | `test_packaging.py` | Checks the frozen build's spec, that it makes one executable with the right entry script, and how the subcommands and console streams behave. |
 | `test_paths.py` | Checks how a directory search settles on a title's disks and that the title reaches the automapper and its backend rather than being re-defaulted. |

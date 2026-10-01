@@ -49,9 +49,9 @@ type**: eight `GOBLIN GUARD`s in a slums encounter all named record slot 8,
 which is what makes twelve slots enough.
 
 **Bit 7 of a square means a combatant stands there**; mask `& $7F` for the
-terrain, where 0 is floor. The view checks the two against each other.
+terrain, where 0 is open ground. The view checks the two against each other.
 
-**The shape is read at runtime, never hard-coded.** `SQRPACI01` carries a stride
+**The grid dimensions are read at runtime, never hard-coded.** `SQRPACI01` carries a stride
 of 56 and bounds 55 x 25; `SQRPACI00` a stride of 20 and bounds 17 x 35. The
 write-up behind those numbers, `reports/combat-terrain.md`, is lost.
 
@@ -106,7 +106,7 @@ ship no such file — `docs/120-curse-testing.md` records that — and their
 `COM.PREP` writes the whole block as immediate constants instead, Curse at
 `$1436`-`$147E` and Silver Blades at `$14AC`-`$14F4`, identical value for
 value. A running Curse read `b0 74 00 6f 00 cb 40 80 80 80 01 80 c0 c0 c0 c0
-31 13 37 19` at `$0600` on the combat floor, which is those constants exactly.
+31 13 37 19` at `$0600` on the combat arena, which is those constants exactly.
 Nothing about the *reading* changes, because the block is read at run time in
 both cases.
 
@@ -211,7 +211,7 @@ and its explored squares sit untouched until the fight ends.
 Against `tests/fixtures/combat-arena.bin`, a real training-hall duel trimmed to
 the seven ranges the view reads:
 
-* the shape, the camera, both combatants, their records and their initiative
+* the grid dimensions, the camera, both combatants, their records and their initiative
   bytes decode, and **bit 7 of the map agrees exactly with `$8B00`**;
 * with the mode byte anything but 2, **no combat memory is read at all** —
   three addresses, and none of them `$8B00`;

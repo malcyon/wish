@@ -30,7 +30,7 @@ matters: two blocks reach it, and only one of them clears the wall-slot pins.
 `tools/areas/eclwalk.py` prints one level of those inbound blocks under
 `-- and, arriving from $xxxx:`.
 
-## The corpus
+## The specimens
 
 | | |
 |---|---|
@@ -38,7 +38,7 @@ matters: two blocks reach it, and only one of them clears the wall-slot pins.
 | bytes | 178035 |
 | statements the walk reaches | 98.0% of those bytes; the rest is the data tables opcode `$2A` indexes |
 | `NEWECL` statements | **79** |
-| exits with at least one statement before them | **78** -- counting the inbound block a jump arrives through. 68 have a statement in their own block; the one exit with nothing on either count is `ECL0D $9A20`, the Kobold Caves' plain exit |
+| exits with at least one statement before them | **78** -- counting the inbound block a jump arrives through. 68 have a statement in their own block; the one exit with nothing on either count is `ECL0D $9A20`, the Kobold Caves' ordinary exit |
 
 A raw scan for the bytes `20 00 nn` finds 77, of which three are inside another
 statement and one is inside a data table, and it misses the two `NEWECL`s whose
@@ -281,7 +281,7 @@ The hard part is not this exit. **An area pair does not name a handler**:
 `ECL0D` has two `NEWECL 27` statements, `$9A20` with nothing in front of it and
 `$9A9D` with the drop, and which one runs depends on the party's contents and
 on the player's answer to a `YES`/`NO` question. Twelve more script/target
-pairs in the corpus are reached by more than one exit, and six exits read their
+pairs in the specimens are reached by more than one exit, and six exits read their
 target out of a table so the walk cannot say where they go at all.
 
 ## Settled: `SAVE 255, [$6DC9]` costs nothing

@@ -2,7 +2,7 @@
 
 Editing a DOS character today means converting the save to the C64, editing it,
 and converting it back -- two conversions, and every field either of them
-cannot carry perfectly is a field the player loses on the way there and back.
+cannot convert perfectly is a field the player loses on the way there and back.
 `#511 (Open a DOS save folder and an Amiga save disk in the Character Editor,
 so editing a DOS character does not mean two conversions)` removes them, and
 this page is the measurement its first stage rests on.
@@ -354,7 +354,7 @@ sheet asks for.
 
 **Nothing in this measurement was refused for an illegal value**: 0 of 72
 characters had a field where every fuzz raised something other than the
-rewrite's own refusal. The fuzz is +1 on one byte, so it is a lower bound on
+rewrite's own error. The fuzz is +1 on one byte, so it is a lower bound on
 what a player can reach -- a field it could not move is read-only for that
 value, and a field it moved is writable for certain.
 

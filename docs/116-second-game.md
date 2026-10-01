@@ -32,8 +32,8 @@ because it is the game's own arithmetic rather than a diff of two specimens.
 | `60 - value` encoding for THAC0, AC, damage | yes | yes | CONFIRMED |
 | disk container | D64 | D64 | CONFIRMED |
 | map files | `GEO`, 1024 bytes, four 16×16 planes | identical | CONFIRMED |
-| item word table | `ITEMNAMES`, 256 low + 256 high + strings | identical shape | CONFIRMED |
-| item type table | `ITEMS`, 128 × 16 | identical shape | CONFIRMED |
+| item word table | `ITEMNAMES`, 256 low + 256 high + strings | identical structure | CONFIRMED |
+| item type table | `ITEMS`, 128 × 16 | identical structure | CONFIRMED |
 | spell ids 1–56 | as `goldbox/spells.py` has them | identical | CONFIRMED (research) |
 
 `goldbox/geo.py` decodes all sixteen Curse `GEO` files with no change at all.
@@ -104,7 +104,7 @@ pre-generated characters and all three imported ones. The import explicitly
 zeroes it. `class_bits` is the field to read, which is what
 `docs/40-memory-map.md` already says for Pool of Radiance.
 
-### 2.4 Two more bytes worth naming
+### 2.4 Two more bytes to name
 
 | Offset | Observation | Confidence |
 |---|---|---|
@@ -271,10 +271,10 @@ now settled, some against its guesses.
 
 One practical note that is not in the plan, **and it has since been fixed.**
 `CURSE4.D64` in the `with_docs` set is 175531 bytes — 35 tracks plus error bytes
-— and `goldbox/d64.py` refused it, because the reader took plain 174848-byte images
+— and `goldbox/d64.py` refused it, because the reader took standard 174848-byte images
 only. It now reads **six** variants, that one included; the error bytes are
 exposed through `D64.error_code` and acted on by nothing, and every variant but
-the plain image is read-only. See [`10-disk-format.md`](10-disk-format.md).
+the standard image is read-only. See [`10-disk-format.md`](10-disk-format.md).
 
 ## 8. The test that pins it
 
@@ -318,7 +318,7 @@ in `0x0EB` and the slot in the per-class level array at `0x0C9`.
 | Pool of Radiance, `$1E5C` | 6 | 6 | 9 | 8 | 0 | 0 | 0 | 0 |
 | Curse, `$15A1` | 11 | 10 | 12 | 12 | 0 | 0 | 11 | 11 |
 
-CONFIRMED, and the confirmation is the instruction rather than the shape of the
+CONFIRMED, and the confirmation is the instruction rather than the pattern of the
 numbers: Curse's training routine reads `LDA $7CC9,X / CMP $15A1,X` — the
 character record's own per-class level array against this table — and Pool of
 Radiance's does the same at `$1E5C`. That promotes what

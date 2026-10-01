@@ -128,7 +128,7 @@ recorded and did not interpret.
   step moved the clock 21:16 → 21:17 and took one off unit `00`; the second
   left every clock byte and every count where the first had put them. Whether
   the party was refused that move or a step only sometimes ticks the clock is
-  UNMEASURED — walk ten steps of open floor and log the clock after each.
+  UNMEASURED — walk ten steps of open ground and log the clock after each.
 * **The rest's expiry checkpoint fired three times for two expiring slots.**
   Three hits on `CAMP $131F` against the two slots, units `00` and `01`, that
   came back with their ids cleared. UNMEASURED which slot the third hit was:

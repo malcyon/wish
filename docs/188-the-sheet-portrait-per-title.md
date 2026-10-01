@@ -142,7 +142,7 @@ the world -- go through it.
 | files calling `ANIMATE +$6` (body at `$CC44`) | 2: `LIBRARY`, `POOLRB` | **0** | **0** |
 | files calling `ANIMATE +$9` (head at `$CC44`) | 2: `LIBRARY`, `POOLRB` | **0** | **0** |
 | files calling `ANIMATE +$0`/`+$3`/`+$C` (the view window) | 4 / 6 / 2 | 5 / 4 / 3 | 3 / 3 / 2 |
-| the sheet routine | `LIBRARY $4435`, menu `VIEW: ITEMS SPELLS TRADE DROP EXIT` | `LIBRARY $4600`, menu `ITEMS SPELLS TRADE DROP CURE HEAL EXIT` | present, same shape; measured bar `EXIT` alone for a character with nothing to list (GUY DE VALOIS, `cited/52/walk-dostoc64-ssb/ssbcheck.jsonl`, `cited/52/walk-amigatoc64-ssb/ssbcheck2/ssbcheck2.jsonl`) |
+| the sheet routine | `LIBRARY $4435`, menu `VIEW: ITEMS SPELLS TRADE DROP EXIT` | `LIBRARY $4600`, menu `ITEMS SPELLS TRADE DROP CURE HEAL EXIT` | present, same layout; measured bar `EXIT` alone for a character with nothing to list (GUY DE VALOIS, `cited/52/walk-dostoc64-ssb/ssbcheck.jsonl`, `cited/52/walk-amigatoc64-ssb/ssbcheck2/ssbcheck2.jsonl`) |
 | `LIBRARY` naming the save's `+$0FF` | yes, the `BPL` above | no | no |
 
 `tools/icons/portraitdraw.py` prints that table off the player's own disks. It
@@ -230,7 +230,7 @@ record keeps the creation menu's one-based **position** at `0x0BD` and
 `0x0BE`, the way DOS does, rather than the art's own id the way the C64 does.
 The evidence was a range and nothing more: every value in the twelve shipped
 records falls inside 1-14 and 1-12, and a character the game generated looks
-the same under either reading, so no corpus of generated characters could
+the same under either reading, so no set of generated characters could
 tell them apart. `#480 (An Amiga character whose body is the menu's eighth
 arrives on the C64 or DOS wearing a different body, because the Amiga reader
 uses the C64 and DOS menu)` asked for it to be settled.
@@ -242,7 +242,7 @@ machine. All addresses below are file offsets into it, and
 player's own disk in about a second.
 
 **The route.** The two tables sit at `0x6D68F` (fourteen heads) and `0x6D69D`
-(twelve bodies), found by the shape of the run and checked against the art
+(twelve bodies), found by the pattern of the run and checked against the art
 beside them, exactly as `tools/amiga/amigaportraitmenu.py` finds them. The
 executable's own `RELOC32` entries then say who refers to them, so nothing
 here rests on a search for a number: **four references, all in hunk 19, and
@@ -304,7 +304,7 @@ bytes rather than from a claim:
 | 24 (`0x18`) | body art `0x03` | reads 24 bytes past the base, landing in a later table |
 | 33 (`0x21`) | body art `0x18` | the same, landing by coincidence on a byte equal to 24 |
 
-The third row is the trap, and it is a smaller prize than it looks. **Writing
+The third row is the trap, and it is a smaller prize than it seems. **Writing
 33 fetches the Amiga's own block `0x18`, which is a different drawing from
 DOS's block `0x18`** — an id on both disks is not a picture on both disks. On
 DOS, `0D` and `18` are one drawing (a bare chest under a red cloak with green
@@ -337,10 +337,10 @@ uses the first sixteen. CONFIRMED from the code, and `tools/amiga/
 amigaportraitmenu.py --palette` re-derives the offset rather than storing it.
 
 Three of the executable's `DATA` hunks open with a run of thirty-two words
-all below `0x1000`, so the shape of the run does not identify the palette on
+all below `0x1000`, so the pattern of the run does not identify the palette on
 its own. The discriminator is the fetch: the other two are indexed a **byte**
 at a time (`0x0208A0`, `0x02099E`, `0x034984`), and only `0x002D1A` reads a
-word. `amiga_palette()` requires that shape and raises rather than guessing.
+word. `amiga_palette()` requires that pattern and raises rather than guessing.
 
 Before this, the montage drew the Amiga's four bitplanes through the EGA
 palette and said in its own docstring that the colours were wrong. They were:

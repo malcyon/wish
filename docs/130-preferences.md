@@ -112,7 +112,7 @@ is stronger on all three counts:
    different, which is the confusion being fixed.
 
 The case a single folder loses is *"use this exact image for item names"*.
-`--game-disk` keeps it, as a flag, which is the right shape for a one-off.
+`--game-disk` keeps it, as a flag, which is the right form for a one-off.
 
 The fallback keeps working and is now *visible*: with the folder empty, the
 editor still finds a disk sitting beside the open save, and the dialog reports
@@ -169,7 +169,7 @@ overridden; the mockup below still showed it until now. Then
 `#357 (The automapper reads the shared Game disks folder, so setting a
 title's own folder does not make it map that title)` removed the shared
 `Folder` box the mockup drew, one row per title being the only folder
-control left on the tab. The shape below is current as of this fix:
+control left on the tab. The layout below is current as of this fix:
 
 ```
 Preferences                                                   [x]
@@ -204,7 +204,7 @@ Failure states are stated as failures, in the same slots: *Titles — none; no
 `POOL*.D64` or `CURSE*.D64` here*. The empty answer is more informative than a
 missing row.
 
-`report(settings, flag, beside, game)` is a **plain function returning
+`report(settings, flag, beside, game)` is a **simple function returning
 `(label, value)` pairs**, so what the dialog claims is tested without opening
 one. Each title's own row below it reports separately, in its own words --
 `title_folder_report` -- and applies at once on `editingFinished`; there is
@@ -243,7 +243,7 @@ carry it, so the setting is a pair: `Settings.backup_folder` and
 | state | `backup_folder` | `chosen` | behaviour |
 |---|---|---|---|
 | blank | `""` | false | a fresh config. No backups, and **no saving** — see below |
-| automatic | `<the open save's folder>/backups` | false | follows every save opened, moving with it |
+| automatic | `<the open save's folder>/backups` | false | is the backups folder of every save opened, moving with it |
 | chosen | whatever was typed or picked | true | used for every save, and **nothing automatic changes it again** |
 
 Donald's specification, in his words: *"blank by default … once the user loads
@@ -265,7 +265,7 @@ implies it does change before, which is the automatic state.
   touched. **There is no fallback directory any more** — the user data
   directory was the confusing half of the old arrangement and it is gone.
 * **In practice blank and an open save cannot coexist**, because opening one
-  fills the field in. The refusal is the guarantee holding when they somehow
+  fills the field in. The error message is the guarantee holding when they somehow
   do, not the ordinary path.
 * **A save that changes nothing still needs no folder.** It writes nothing, so
   there is nothing to copy, and closing a window nobody edited in never turns
@@ -285,7 +285,7 @@ implies it does change before, which is the automatic state.
   managing this, and the copy goes beside the save, which is the rule the
   preference itself starts on.
 * **It creates nothing to answer.** `preferences.backup_folder(settings, save)`
-  is a plain function over the setting and a path, so what the dialog claims is
+  is a simple function over the setting and a path, so what the dialog claims is
   tested without opening one, and no dialog ever writes to the folder somebody
   keeps their disks in. `back_up` makes the folder at the moment it has a copy
   to put in it.
@@ -392,7 +392,7 @@ environment of this process* — one lookup path, and the §4 precedence holds
 (the setting first, the user's own value put back when the box is emptied). It
 does nothing at all when there is no preference and none was ever applied.
 **The tidier fix is four lines in `configured()`**: read `Settings.ultimate_host`
-before the env vars, and delete `apply_ultimate_host`. Worth doing next time
+before the env vars, and delete `apply_ultimate_host`. Do it next time
 that file is open.
 
 ### The password — not in the settings file, and not in the dialog
@@ -435,7 +435,7 @@ So `Settings` stays in `automap/`, and the editor gets the folder the way it
 already gets a game disk — **handed in by its caller**:
 
 ```
-EditorWindow(save, game_disk, disks=None)      # a plain str path
+EditorWindow(save, game_disk, disks=None)      # a str path
 ```
 
 `wish/window.py` resolves once with `paths.resolve_disks`, passes the directory
@@ -573,7 +573,7 @@ And in the Ultimate section, replacing step 1's `export POR_ULTIMATE=…`:
 >
 > **2. Firmware 3.12 and later may require a password.** This one stays an
 > environment variable — `$POR_ULTIMATE_PASSWORD` — because wish's settings
-> file is plain JSON you are meant to be able to read, and a password does not
+> file is JSON you are meant to be able to read, and a password does not
 > belong in it. The Preferences dialog shows whether it is set.
 
 The "If both are answering" paragraph telling people to edit `"backend"` in the
@@ -617,8 +617,8 @@ Two implementation notes:
   saying where the file was and what it recorded; Donald had both that and the
   paragraph under the checkbox out after the first Windows build — *"debug logs
   don't need an explanation"*. The path goes to the status bar, `[logging]`
-  goes to the title, and `announce` survives for the one thing worth
-  interrupting for: a log file that would not open. `_debug_log(on,
+  goes to the title, and `announce` survives for the one thing that deserves
+  interrupting: a log file that would not open. `_debug_log(on,
   announce=False)` is still the startup path, where even that is wrong.
 * **The field is `diagnostics`, not `debug_log`.** `tests/wish/test_debuglog.py`
   asserts `not [f for f in fields(settings) if "log" in f.name]` — it still
@@ -849,7 +849,7 @@ squeezed, which is exactly the line edits, the spin box and the table.
 measured before `#357 (The automapper reads the shared Game disks folder, so
 setting a title's own folder does not make it map that title)` removed the
 shared `Folder` row.** The Game disks tab is one row shorter now and nobody
-has re-measured it; the *shape* of the argument (a squeezed tab takes the
+has re-measured it; the *structure* of the argument (a squeezed tab takes the
 shortfall out of what can be squeezed, and the width is measured off a
 placeholder rather than chosen) is still how it works.
 

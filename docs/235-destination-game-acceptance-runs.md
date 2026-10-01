@@ -338,7 +338,7 @@ at the pushed SHA the closing comment will name. The C64 fixture party is
 | to the C64 | Save As C64 from that specimen; D2 Silver Blades: `load`, `items N`, `save`. Accepts: ITEMS lists both scrolls separately with their spells, and the resaved record holds two scroll slots |
 | to the Amiga | Save As Amiga; D3 Silver Blades: `load`, `items N`, `save D`, `fetch`, `read`. Accepts: the ITEMS capture shows the joined scroll once, and `amiga_later` reads the resave back with the bundle and its two sub-nodes, the pack after it intact |
 | back to DOS | the Amiga resave converted back; D1 `load`, `items N`, `save`, `read` gives the same bundle |
-| the 121-scroll limit | a Silver Blades Amiga save with 121 joined scrolls across the party, D3 `items` per member. Optional: it turns a PROBABLE refusal into a measured limit, and the chooser it would need is interface work outside these runs |
+| the 121-scroll limit | a Silver Blades Amiga save with 121 joined scrolls across the party, D3 `items` per member. Optional: it turns a PROBABLE stop into a measured limit, and the chooser it would need is interface work outside these runs |
 
 ### The opening-scene runs
 
@@ -352,7 +352,7 @@ at the pushed SHA the closing comment will name. The C64 fixture party is
 
 | | |
 |---|---|
-| the first check | no emulator: a copy of a Pool C64 save with one character wearing readied gauntlets (power `$83`, `+14` = 38) and 38 in a trait slot, through `prepare_save_as` to DOS and to Amiga; the report's refusal or not is logged |
+| the first check | no emulator: a copy of a Pool C64 save with one character wearing readied gauntlets (power `$83`, `+14` = 38) and 38 in a trait slot, through `prepare_save_as` to DOS and to Amiga; the report's stopping or not is logged |
 | reachability | D2 Pool: the same character with the gauntlets in his pack un-readied and no 38 in a slot, `ready N gauntlets`, then the ten slots read from `$6BAD`. Accepts the branch as reachable: 38 appears in a slot. Refutes: it does not (the strength handler writes elsewhere), and the branch is then classified from that reading |
 | conversion | if reachable, Save As DOS of the readied state; D1 Pool: `load`, `sheet N`, `read`. Accepts: the sheet's strength equals the C64 sheet's, and the resaved `.SPC` holds the strength node `26 00 00 vv 01` with `vv` the strength before the item (`docs/230` (c)); un-readying in a second step restores it |
 

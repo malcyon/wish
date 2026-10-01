@@ -85,7 +85,7 @@ Locally, with disks, the same suite runs them.
 
 `tools/generate/genui.py --check` compares the generated code *without* pyuic6's header,
 which carries the absolute path of the `.ui` and the PyQt6 version and so
-differs on every machine. The drift worth catching is in the widgets.
+differs on every machine. The drift to catch is in the widgets.
 
 **`lint.yml`** — ruff only, config in `pyproject.toml`.
 

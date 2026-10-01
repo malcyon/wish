@@ -28,7 +28,7 @@ $0DD9  JSR $28C3        ; the delay, then the clear
 ```
 
 Reached from `$11DF`, `$1214` and `$1242` — the attack resolution — and from
-nowhere else. So the block a monster prints is the shape a character's is:
+nowhere else. So the block a monster prints has the form a character's has:
 
 ```
 row 10   ORC

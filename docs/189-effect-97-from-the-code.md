@@ -25,7 +25,7 @@ all", so they are where a later reader who doubts any of this should start.
 
 | | in the record | on the roll |
 |---|---|---|
-| DOS | the plain class row at `0x6D`-`0x71`, and `.SPC` records 90 and 97 | 90 adds the band on the paralysis/poison/death column, 97 on wands and spell; `constitution * 2 // 7`, so +0 below 4 |
+| DOS | the unmodified class row at `0x6D`-`0x71`, and `.SPC` records 90 and 97 | 90 adds the band on the paralysis/poison/death column, 97 on wands and spell; `constitution * 2 // 7`, so +0 below 4 |
 | C64 | the class row **less the band** on all five bytes (`GEN $2359`, `goldbox/levels.py`) | the stored bytes |
 
 So a converted character with 97 in his `.SPC` and constitution 3 gets what
@@ -135,7 +135,7 @@ checks all seventeen values against the function.
 ## What it opens
 
 **The other direction has the bug `#191 (A converted dwarf loses his constitution bonus to saving throws)` fixed.** A DOS dwarf's five
-stored bytes are the plain row; `goldbox/c64_codec.py` copies them to the
+stored bytes are the unmodified row; `goldbox/c64_codec.py` copies them to the
 C64 unchanged, and the 90 and 97 it also writes into trait slots are on no
 C64 check list (`docs/171-c64-trait-slots.md`, list 12), so a converted DOS
 dwarf saves three or four worse on the C64 than one born there. Filed as
@@ -155,7 +155,7 @@ target number read.
   between `0x5B` and `0x64` neighbours -- and none is an effect-id test.
 * **135 reads of the race byte** in the overlay; only one is followed by a
   compare and `add_affect` calls, and `tools/dos/dosracialseed.py` finds the
-  switch by that shape rather than by address.
+  switch by that pattern rather than by address.
 
 ## What would refute it
 

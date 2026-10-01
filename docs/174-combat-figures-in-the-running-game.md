@@ -54,7 +54,7 @@ glyphs. That makes the enemies a free negative control, and they scored at best
 
 One fight, 80 turns, a party of six deliberately different icons written by
 `tools/icons/iconpoke.py`. Every party figure was scored against 32 candidates --
-both poses of all eight save slots, plain and mirrored -- and **every one of
+both poses of all eight save slots, unmirrored and mirrored -- and **every one of
 the 405 named exactly one**.
 
 | what was drawn | readings | matched, 9 of 9 |
@@ -83,7 +83,7 @@ own)`.
 
 ## What is not established here
 
-**An icon's second nine codes are not on the combat floor when the game stops
+**An icon's second nine codes are not on the combat arena when the game stops
 to ask for a command.** Each combatant's run in the combat character set is
 nine codes long, so the charset holds one pose at a time, and the pose byte
 selected handedness rather than the second pose in all 405 readings.
@@ -108,6 +108,6 @@ POR_HEADLESS=1 tools/c64/savecheck.py --disk $TMPDIR/SIX.D64 --fight --icon
 ```
 
 `--icon` reads the disk's own eight icon entries and `CHARPIC00` off the
-player's disks, scores every figure on the floor before the first blow and
+player's disks, scores every figure in the arena before the first blow and
 again on every command bar, and writes the drawn bitmaps into its `.jsonl` --
 so a comparison can be re-run offline without spending another emulator slot.

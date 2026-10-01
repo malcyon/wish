@@ -100,11 +100,11 @@ disagreement -- a code that is stale and a level array that names a class the
 code does not. One thing it had to get right first, and it was this project's
 mistake before it was a finding: **DOS numbers the paladin's and the ranger's
 bits differently from the C64**, so reading a stored DOS `class_bits` against
-the C64's table makes every DOS ranger in the corpus look like a
+the C64's table makes every DOS ranger in the specimens look like a
 disagreement. `goldbox.dos_codec.neutral_class_bits` folds it, and the sweep calls
 it.
 
-| corpus | records | disagree |
+| specimens | records | disagree |
 |---|---|---|
 | C64 Curse of the Azure Bonds, specimen tree | 30 | **8** |
 | C64 Pool of Radiance | 24 | 0 |
@@ -222,9 +222,9 @@ looked like an edit and rewrote every trained character's `char_class` back
 on the disk. `editor/roster.py` draws the class from `class_bits` and was
 never affected either way.
 
-`tests/convert/test_c64classcode.py` is the reader's regression test, the same shape
+`tests/convert/test_c64classcode.py` is the reader's regression test, built the same way
 as `tests/convert/test_dosclasscode.py`: a trained record reads with the repaired
-code and `Provenance.COMPUTED`; SILAS's shape reads unchanged and
+code and `Provenance.COMPUTED`; SILAS's record format reads unchanged and
 `Provenance.COPIED`; a dual-classed record takes the level array; the
 specimen tree's Pool of Radiance and Silver Blades C64 disks read through the
 neutral record with the same zero disagreements the raw sweep finds; and an

@@ -11,7 +11,7 @@ copied off the player's own disk 1.
 converted party arrives where it was standing)`. The companion pages are
 [`191-the-amiga-save-disk.md`](191-the-amiga-save-disk.md), which is the disk
 the file goes on, [`165-amiga-savegame.md`](165-amiga-savegame.md), which is
-the file's shape read out of the save routine, and
+the file's layout read out of the save routine, and
 [`141-dos-savegame.md`](141-dos-savegame.md), which is the field map -- because
 the Amiga's map **is** the DOS one.
 
@@ -37,7 +37,7 @@ struct pads to and the first three of wallset entry 0, which the game's own
 ten-byte write runs into (`docs/165` §"Pool of Radiance, 13 bytes at 12800");
 they are zero in all ten saved games here.
 
-**The name table's entries are eight plain bytes** where DOS spends a count
+**The name table's entries are eight bytes** where DOS spends a count
 byte and eight, and **only as many are filled as the party has characters**.
 CONFIRMED from `savgamE.dat` in `issue105` (scratch, deleted), which Amiga Pool of Radiance
 itself wrote for a one-character party: `CHRDATE1` in entry 0 and Amiga heap

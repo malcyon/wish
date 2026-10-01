@@ -85,7 +85,7 @@ The region summary on p. 320 is the one page to know, because every overlay
 load address in [40-memory-map.md](40-memory-map.md) lands in one of its rows:
 screen memory `$0400`–`$07FF` with the video matrix at `$0400`–`$07E7`, normal
 BASIC program space `$0800`–`$9FFF`, BASIC ROM `$A000`–`$BFFF` "(or 8K RAM)",
-plain RAM `$C000`–`$CFFF`, I/O and colour RAM `$D000`–`$DFFF`, KERNAL ROM
+ordinary RAM `$C000`–`$CFFF`, I/O and colour RAM `$D000`–`$DFFF`, KERNAL ROM
 `$E000`–`$FFFF` "(or 8K RAM)".
 
 **1541 User's Guide** — no *new* format knowledge, and read Appendix D anyway.

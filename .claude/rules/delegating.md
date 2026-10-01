@@ -120,7 +120,7 @@ and checking the sheet where relevant. Name how evidence and the original
 specimen are preserved. If the driver is missing, identify that before sending
 an `emulator-runner`; route unknown bytes to `reverse-engineering` or
 `deep-research` and hard multi-agent staging to `architect`. The live run is
-still required to prove the conversion; a refusal or a byte-only test is not
+still required to prove the conversion; a conversion that stops or a byte-only test is not
 acceptance.
 
 **And do not edit a file you have assigned to an agent.** If you must touch

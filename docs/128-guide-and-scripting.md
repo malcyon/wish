@@ -258,7 +258,7 @@ readied") and `+0x17` `DAMAGE_BONUS`. Against the monster records those are:
 front), `+0x11`/`+0x12` = attacks remaining ×2, `+0x13`-`+0x18` = current dice,
 sides and damage bonus for the two attack forms. `+0x15` is *primary attack die
 sides*, which is exactly why it rises with what is readied, and `+0x17` really
-is the damage bonus. PROBABLE, and worth a pass by whoever owns that file.
+is the damage bonus. PROBABLE, and whoever owns that file should check it.
 
 ---
 
@@ -284,7 +284,7 @@ had not derived:
 | `$38 PROGRAM` | 0 training hall (class mask in `$6DA8`), 8 win game, 9 camp; anything else a no-op |
 | `$3B SPELL` | **never does anything.** Fixed in *Curse*. Used once |
 
-Two structural facts worth carrying:
+Two structural facts to carry:
 
 * **Every script begins with five entry addresses**, and the guide names them:
   `vm_run_1` (a step), `search_location` (a step or `L`ook), `pre_camp_check`,
@@ -351,7 +351,7 @@ Guide §12.3.1 lists every script by number. Against `goldbox/areas.py`:
 | 5 | Valjevo Castle, a floor | **Valjevo Castle Hedge Maze** | name it |
 | 6 | Valjevo Castle, a floor | Valjevo Castle (Southwest) | name it |
 | 7 | Valjevo Castle, the pool | Valjevo Castle (Inner Tower) | both fine |
-| 11 | the arena | **Civilized Area (Training Hall)** | ours was wrong, and is fixed (P61). `ECL0B` prints "the room is filled with duelling pairs" — that is the training hall's practice floor, not Podol Plaza's arena |
+| 11 | the arena | **Civilized Area (Training Hall)** | ours was wrong, and is fixed (P61). `ECL0B` prints "the room is filled with duelling pairs" — that is the training hall's practice area, not Podol Plaza's arena |
 | 19 | Cave of Diogenes | Silver Dragon Lair | same place; Diogenes is the dragon |
 | 24 | Temple of Bane | **Wealthy Area** (with the Temple of Bane as its second map) | ours names the wrong one of its two maps |
 | 30 (`ECL1E`) | unnamed; we found it is the attract-mode demo | **script 30 does not exist on DOS** | see below |
@@ -528,8 +528,8 @@ we derived ours from bytecode.
 **Lead on ledger 22**, the one entry `goldbox/commissions.py` has as `(None, None)`.
 The guide lists a "clear Podal Plaza" reward that is distinct from commission 4
 (discover the auction item = our ledger 10) and pays the same 200 platinum and
-250 gold as the other clearance rewards. That is the shape of a ledger entry
-nothing offers. Worth one `TREASURE` cross-reference in `ECL12` to settle.
+250 gold as the other clearance rewards. That is the pattern of a ledger entry
+nothing offers. One `TREASURE` cross-reference in `ECL12` would settle it.
 
 The guide also gives every commission's exact reward in coins, gems, jewelry and
 experience. Those are `TREASURE` operands in our decoded scripts, so the whole
@@ -570,7 +570,7 @@ reproduced on the C64 unless noted, and **none may be promoted into
     treasures at locations 12 and 24, Stojanow Gate's alarm that starts nothing.
     All script-level, all checkable statically against our own decode.
 11. Going south from Wealthy Area (4,15) crashes; fleeing the bugbear patrol
-    after the tower guards crashes. Worth trying on the C64.
+    after the tower guards crashes. Try it on the C64.
 
 **Exploits:**
 
@@ -580,7 +580,7 @@ reproduced on the C64 unless noted, and **none may be promoted into
 13. The item-duplication loop through save-and-reload in the training hall.
 14. Constitution 22 or 0 gives out-of-range hit points per level.
 
-**A negative worth recording:** the DOS cheat mode, started with the argument
+**A recorded negative:** the DOS cheat mode, started with the argument
 `STING` (Ctrl-C quit, Alt-X win combat, `J` free training, protection bypassed),
 **has no C64 counterpart.** The literal `STING` appears on all eight `POOL`
 disks and every occurrence is inside the word `CASTING`. Checked.
@@ -604,7 +604,7 @@ treats UA's `GEO###.DAT` as an entirely separate 12962-byte format). UA's 38
 event types are a level *above* our opcodes: `Combat` is `LOADMON` + `SETUPMON`
 + `COMBAT`, `Question_List` is `VERTMENU`, `Chain` is `GOSUB`.
 
-Three things do transfer, and they are worth having:
+Three things do transfer, and they are useful:
 
 * **The biased encoding is named and generic.** The editor's `SetACTHAC0`
   control "converts AC/THAC0 value saved to/displayed from Gold Box's standard
@@ -654,7 +654,7 @@ source connects it to a wizard lock. The name is ours and should probably go.
 
 * **The guide's §12.6** — 5,500 lines of DOS executable and overlay code
   analysis, address by address. Read past for structure only. Nothing in it is a
-  C64 address and translating it is not worth the time; it is a place to look
+  C64 address and translating it wastes time; it is a place to look
   something up, not to mine.
 * **§10.2, the bestiary** — 1,900 lines of per-monster statistics. Our `MON*`
   records carry the same numbers and we can read them, so the guide's value here

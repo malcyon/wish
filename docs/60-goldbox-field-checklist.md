@@ -41,7 +41,7 @@ win; `docs/80-fields-wanted.md` is the current field list and
   temple remark really was the clue it looked like.
 * Saving throws, movement base, HP rolled and the money layout all landed exactly
   where it said.
-* The `base`/`current` twin pattern it warned about is real, and it did bite:
+* The `base`/`current` twin pattern it warned about is real, and it caused a bug here:
   armour class is a **cached** value that goes stale after an ability edit.
 
 **Where it was wrong or incomplete.**
@@ -224,7 +224,7 @@ an artefact of reading 580 contiguous bytes out of a `$100` slot and running off
 
 | Field | Meaning / encoding | Width | Cheapest isolating action | Confidence |
 |---|---|---|---|---|
-| Number of items | Count of carried items. | 1 B | Buy a torch. | `INFERENCE` (our specimen holds `01`, and the specimen carries exactly one item's worth of data) |
+| Number of items | Count of carried items. | 1 B | Buy a torch. | `INFERENCE` (our specimen holds `01`, and the specimen carries exactly one item of data) |
 | Item entries | On DOS these are *pointers* into a separately allocated item chain (63-byte item records). On C64 the item data is **inline in the exported character file** — the C64 editor treats the item area as fixed-size 16-byte slots. | ~15–16 slots | **Buy one distinctive item** (a Long Sword — name token 36 — is ideal because the token value is predictable) and diff. | `TOOL-CLAIM-C64` |
 | Item name | **Three vocabulary token bytes** indexing a shared 255-entry name-component table ("Battle Axe", "Hand Axe", …, "Mail", "Padded", …, "+1".."+5", "of", …). DOS reads them high-address→low; the C64 editor does the same. This is the same vocabulary on both platforms — the C64 editor's `DATA` list and marainein's DOS list are the same 255 strings in the same order. | 3 B | As above. | `CORROBORATED-C64` (vocabularies match) |
 | Item bonus ("+N") | The `+3` of a Long Sword +3. Wands are stored as +10 for reasons nobody has explained. | 1 B | Buy a +1 weapon, or use the editor's own "+5" trick as a cross-check. | `DOS-DOC` + `TOOL-CLAIM-C64` |
@@ -238,7 +238,7 @@ an artefact of reading 580 contiguous bytes out of a `$100` slot and running off
 
 | Field | Meaning / encoding | Width | Cheapest isolating action | Confidence |
 |---|---|---|---|---|
-| Combat icon: shape, size, dimensions | DOS keeps `icon head`, `icon body`, `icon size`, `icon dimensions` as small enums. | ~4 B | Use `ALTER` in camp. | `DOS-DOC` |
+| Combat icon: figure, size, dimensions | DOS keeps `icon head`, `icon body`, `icon size`, `icon dimensions` as small enums. | ~4 B | Use `ALTER` in camp. | `DOS-DOC` |
 | Icon colours (body, arm, leg, hair/face, shield, weapon) | DOS packs two colour nibbles per byte, 6 bytes. On the **C64 this is raw screen+colour data**: the 36 bytes at the end of our exported specimen are C64 screen codes ($20 space, $A0 reversed space, $86–$8B) and colour-RAM values ($06 blue, $07 yellow, $08 orange, $0E light blue, $0F grey) — and the *identical* pattern appears in the `SAVEDGAME0` party header at `$4BE0`, followed by six 28-byte repeats of a default icon at `$4C04`, `$4C20`, `$4C3C`, … one per party slot. | ~36 B on C64 | Use `ALTER` in camp to change one icon colour. Should move one or two bytes in that block. | `INFERENCE` (strong — the byte values are unmistakably C64 screen/colour codes) |
 | Portrait head / body | Only PoR-DOS has these two. | 2 B | — | `DOS-DOC` |
 | Order number | Not a stored field: `#305 (Two DOS record bytes have one name from Pool of Radiance and another from the Curse decompilation)` reads `ENCAMP > ALTER > ORDER` in the shipped overlays and finds it moves list nodes and writes no record byte. No byte of the DOS, Curse, Silver Blades or C64 record holds the marching order. | — | — | superseded, see `docs/195-three-dos-record-bytes-named-from-the-overlays.md` |
@@ -321,7 +321,7 @@ they are listed because they are C64 evidence, not DOS evidence.
 | `0xA0` | **Character level** | editor | 1 | **CONFIRMED-C64.** The doubt was misplaced: on `npc_party.d64` it reads 4, 6, 7 and 8 and equals the per-class level for all eight characters. Every specimen available during this pass was level 1, which is why it looked like a constant |
 | `0xBB`,`0xBD`,`0xBF`,`0xC1`,`0xC3` | Copper, silver, electrum, gold, platinum — 16-bit LE each | editor | 0,0,0,**120**,0 | `CORROBORATED-C64` |
 | `0xC5`,`0xC7` | Gems, jewelry — 16-bit LE counts | editor | 0,0 | `TOOL-CLAIM-C64` |
-| `0xC9`–`0xCC` | Per-class level array — magic-user, cleric, thief, fighter, in `class_bits` order | inference, then confirmed | lone `01` at `0xCC` (fighter) | **CONFIRMED-C64.** Four entries, not eight, and the order follows the bitmask at `0x0EB` rather than the DOS class enum |
+| `0xC9`–`0xCC` | Per-class level array — magic-user, cleric, thief, fighter, in `class_bits` order | inference, then confirmed | lone `01` at `0xCC` (fighter) | **CONFIRMED-C64.** Four entries, not eight, and the order is set by the bitmask at `0x0EB` rather than the DOS class enum |
 | `0xE8`–`0xEA` | Experience, 24-bit LE (editor's "set max" writes `FF FF FF` here) | editor | 0 | `TOOL-CLAIM-C64` |
 | `0xED` | HP rolled | inference | 9, and 9 + CON-16 bonus (2) = 11 = HP max ✓ | `INFERENCE` (strong), and the DOS record's `HP_Base` sits at the aligned offset |
 | `0xFE`–`0xFF` | ~~Icon colours?~~ **Portrait head and body** — indices into the `HEAD*` and `BODY*` files | later work | `0x2D`, `0x07` | **CONFIRMED-C64.** The colour reading was a coincidence: 8 and 7 are also C64 colour codes |
@@ -369,7 +369,7 @@ experiment on the list.
    recomputation on load, and the character sheet prints it. This was the first edit to prove,
    and it was the right one. Verification is visual and total.
 2. **HP current, via one point of damage.** One byte, one action, and it distinguishes current from
-   max — which is the pattern (`base`/`current` twins) that will bite us everywhere else if we get
+   max — which is the pattern (`base`/`current` twins) that will cost us everywhere else if we get
    it wrong. Do this before touching anything derived.
 3. **Memorized spells, via memorising exactly one spell in camp.** A byte goes 0 → *spell ID*, and
    repeating with different spells reads out the whole ID table for free. Cheap, isolated, and it
@@ -391,7 +391,7 @@ experiment on the list.
 9. **Ability scores.** Already located; deliberately *not* first, because the interesting question
    is not where STR is but whether the game caches STR-derived hit/damage bonuses elsewhere. Answer
    that with a Potion of Giant Strength diff before writing to STR.
-10. **Checksum probe.** Worth doing before trusting any write. Corrupt one
+10. **Checksum probe.** Do it before trusting any write. Corrupt one
     byte inside the 36-byte icon block at `0x220` — it is demonstrably per-character, demonstrably
     cosmetic, and if the game loads and renders a wrong-coloured icon we have both "no checksum"
     and a confirmed field in one experiment.
@@ -488,7 +488,7 @@ experiment on the list.
 - [Gold Box Games Forums — "Hacking UA" board](https://forums.goldbox.games/index.php?board=8.0)
   (formerly `ua.reonis.com`) — where the item-format work quoted inside `formats.zip` originated
   (marainein's PoR `.ITM` breakdown, David Knott's `item.dat` format). Primary community source;
-  individual posts vary in reliability, and the useful parts are already distilled into
+  individual posts vary in reliability, and what is useful in them is already distilled into
   `formats.zip`.
 - [Lemon64 — Pool of Radiance Cheat Help](https://www.lemon64.com/forum/viewtopic.php?t=86685) and
   [Pool of Radiance Char Editor](https://www.lemon64.com/forum/viewtopic.php?t=35270) — pointed us

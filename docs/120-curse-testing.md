@@ -10,7 +10,7 @@ rotting.
 
 **The one-line answer: it works.** A Curse save round-trips byte-identically,
 an edited field appears on the game's own character sheet, and the automapper
-names the right map and follows the party — with exactly one address to
+names the right map and tracks the party — with exactly one address to
 re-derive, the party position, which in Curse is not in the save image at all.
 
 `docs/116-second-game.md` already established the important half — Curse uses
@@ -56,7 +56,7 @@ Everything below is what that suite does **not** touch.
 | 4 automapper | position, facing, area id | **yes** | **done** — works, with one address to re-derive |
 | 5 editor round trip | the whole read/write path is lossless on Curse | 5.1 no, 5.2 yes | **done** — three edited fields appear in game |
 
-Tiers 1, 2 and 5.1 are the ones worth having whatever else happens. They are
+Tiers 1, 2 and 5.1 are the ones to have whatever else happens. They are
 cheap, they are automatable, and they fail loudly. All three now run on every
 `pytest` and skip when the player has no Curse disk. What tiers 3, 4 and 5.2
 left behind that can run without an emulator — the constants, the code paths
@@ -99,10 +99,10 @@ Five differences matter, and all five are new information:
 | **No `LOAD/SAVE` file.** Pool of Radiance carries one | save/load is not the same overlay, so nothing about its addresses transfers | CONFIRMED |
 | **`SPELLN64` exists on `CURSE_A.D64` (8 blocks); `SPELLN00` does not.** Pool of Radiance carries both | `docs/116` §5 says "no `SPELLN00`", not "no `SPELLN` file"; it first said the stronger thing, which was too strong | CONFIRMED |
 
-Curse-only stems worth a line each, unexplained: `FSDEF`, `STOP`, `FASTL.O`
+Curse-only stems that each deserve a line, unexplained: `FSDEF`, `STOP`, `FASTL.O`
 (against Pool of Radiance's `FAST1.O`).
 
-### 1.2 Save-disk shape
+### 1.2 Save-disk layout
 
 **Asserted by** `test_the_curse_save_is_one_file_where_pool_of_radiance_writes_two`:
 `SAVEAZURE` is one 7426-byte PRG loading at `$4B00`, against Pool of Radiance's
@@ -175,16 +175,16 @@ sixteen files wrong and it collapses:
 | high and low nibble exchanged in both art planes | 0.984 (blind) | **0.429** |
 | barrier directions read `W S E N` | **0.797** | 0.994 |
 
-Both mangles are asserted, so the floors are evidence rather than decoration:
+Both mangles are asserted, so the thresholds are evidence rather than decoration:
 a wrong parse has to fall through them. Presence and not *value* is the right
 comparison — the art index differs across a one-way wall, and Curse indexes a
 different `WALLDEF`/`WALLSET` pair than Pool of Radiance's `WALLS*` anyway. Art
 *indices* differing is expected and harmless; art *planes* differing is not.
 
-**The per-file art floor is Curse's alone.** Pool of Radiance scores 0.960 mean
+**The per-file art threshold is Curse's alone.** Pool of Radiance scores 0.960 mean
 and 0.646 on `GEO1E`, because it draws genuinely one-sided walls; Curse's worst
 is 0.919 and Silver Blades has no one-sided edge at all. So Pool of Radiance is
-asserted on the corpus mean only, and that difference is itself a test rather
+asserted on the mean over the specimens only, and that difference is itself a test rather
 than folklore.
 
 **Deliberately not tested:** what the art indices draw. That needs the charsets
@@ -229,7 +229,7 @@ instruction that writes it.
 
 **The clock advances one minute per *completed* forward step**, and by nothing
 at all on a turn or on a step the game refused. Measured over four turns and one
-refusal at an unchanged clock. Consequence in tier 4.
+blocked step at an unchanged clock. Consequence in tier 4.
 
 **The area byte stays PROBABLE**: `$4DC2` read `$81` — area 1 with the `$80`
 bit, and `GEO01` was what was resident — but **no boundary crossing was
@@ -258,7 +258,7 @@ repeating patterns (`55 55 75 55`, `aa aa aa aa`, a run of `0e 0c 09` at
 That is an explored-squares bitmap and its colour row, not item records.
 
 The strongest evidence is what the engine itself rewrote. A save disk carrying
-items was loaded, the party took one step's worth of time, and the game saved
+items was loaded, the party took the time one step takes, and the game saved
 again: **24 bytes differ, in 18 runs, and every one of them is either the clock
 at `+$00C7` or inside `$1A87`-`$1BF7`.** The item area came back byte for byte.
 So `$1000`-`$17FF` is what the party owns and `$1800`-`$1BFF` is where it has
@@ -340,15 +340,14 @@ can be checked without an emulator.
 | `ResidentGeo` at `$0400` | **transfers unchanged** | `identify()` returned `GEO01` — an exact 1024-byte match against the disk copy. The `$0400` in `automap/area.py` is not a Pool of Radiance fact after all |
 | `party_fix`, status-line path | **transfers unchanged** | Curse draws `S 0:03  5,13` on the same row 14 of the same `$CC00` screen and `RE_STATUS` matches it as written |
 | `party_fix`, memory fallback | **does not transfer** | `$49C0` in a running Curse is engine code. Curse's live triple is `$C04B`, which is *outside* the save image, so a per-title base cannot simply be a payload offset |
-| `Fingerprint` | transfers unchanged | 16 candidates → **2** on four completed steps and one refusal, **0 contradictions**, `GEO01` among the survivors and equal to what `ResidentGeo` said independently |
-| `automap/state.py`'s `_refused` | **never fires on Curse** | it infers a refusal from clock+1 with the square unchanged, and Curse's clock does not advance on a refused step. Its docstring already allows this; a driver that wants refusals must compare squares |
-| one step costs one minute | **CONFIRMED for a completed forward step**, and zero for a turn or a refusal | the clock ran `0:01 → 0:03 → 0:07` over six steps and stood still through four turns and one refusal |
+| `Fingerprint` | transfers unchanged | 16 candidates → **2** on four completed steps and one blocked step, **0 contradictions**, `GEO01` among the survivors and equal to what `ResidentGeo` said independently |
+| `automap/state.py`'s `_refused` | **never fires on Curse** | it infers a blocked step from clock+1 with the square unchanged, and Curse's clock does not advance on a refused step. Its docstring already allows this; a driver that wants blocked steps must compare squares |
+| one step costs one minute | **CONFIRMED for a completed forward step**, and zero for a turn or a blocked step | the clock ran `0:01 → 0:03 → 0:07` over six steps and stood still through four turns and one blocked step |
 | area names | structure done, content not | `goldbox/areas.py:GEO_NAMES` is keyed by title and Curse's table is empty, so `area_label` degrades rather than lying. Naming Curse's sixteen maps still needs somebody who has played it |
 | `FilenameDigits` | **moot** | there is no filename strategy in `automap/area.py`, and `$2714` is code in a running Curse anyway |
 
 **What is left to make this work in the product**, as against in the experiment:
-a per-title party base for the memory fallback. It is a `goldbox.c64_port`-shaped
-change — `automap/target.py` and `automap/area.py` both hold their addresses as
+a per-title party base for the memory fallback. It is a change in the style of `goldbox.c64_port` — `automap/target.py` and `automap/area.py` both hold their addresses as
 module constants — and the value for Curse is `$C04B`.
 
 **What a failure would have told us**, kept because it is the reasoning: if
@@ -459,7 +458,7 @@ None of the following is planned, and each is left out for a reason.
 | **Every Curse field's meaning.** `docs/116` §6 lists eight open questions — the item area, the memorised-spell width, the spellbook width, dual-class, azure-bond state, the spell-name table, the combat slots | Answering them is research, not testing. The round trip in 5.1 passes without any of them, which is exactly the property that makes it the right check |
 | **Curse's ECL bytecode.** Pool of Radiance's is fully decoded; Curse's is not | Weeks. Nothing in tiers 1–5 depends on it |
 | ~~**Combat.** `$6E11`, the arena, the position table, the initiative order~~ **done, 2026-09-08** | It was a project and it has been done: `$7F11`, map `$6F00`, positions `$CB00`, roster `$6700`, initiative `$92E8`, result `$7EC7`, and the parameter block at `$0600` unrelocated. Derived from Curse's own binaries and then read off a running fight — a driven party punched Tilverton's barkeep and struck 32 blows in 36 turns. `docs/101-combat-view.md`, "The same fight in Curse and Silver Blades"; `#334 (The session driver cannot fight in Curse or Silver Blades, and says the party is not in a fight while it is standing on the combat floor)`. Curse still ships no `SQRPACI`/`SQRDATA`, and does not need to: `COM.PREP $1436`-`$147E` writes the block as immediate constants |
-| **Item and spell semantics.** That Curse item id *n* means the same object as Pool of Radiance's | The tables were shown to have the same *shape*; agreeing on *meaning* is a separate claim and nothing here needs it |
+| **Item and spell semantics.** That Curse item id *n* means the same object as Pool of Radiance's | The tables were shown to have the same *structure*; agreeing on *meaning* is a separate claim and nothing here needs it |
 | **The DOS build.** `docs/117-save-conversion.md` is that plan | Different question, different blockers |
 | **Portraits, icons and art beyond round-tripping the 36 bytes** | The bytes must survive; what they draw is not this project's promise |
 | **Long play.** Finishing a chapter, testing quest flags | The persistent-flag region is UNKNOWN even in Pool of Radiance (`docs/117`, obstacle 1). Testing Curse's would be measuring an unknown against an unknown |

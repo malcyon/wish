@@ -219,13 +219,13 @@ of the removal condition were met, and `WISH_EXPERIMENTAL_QUESTS` came off on
 
 `goldbox/commissions.py`: the 26 ledger names and the script that finishes each, the
 three states, `$4AC1`, the `ECL08 $A84D` offer loop, and the eight appointment
-flags. `read(source)` returns the lot; `summary_lines(source)` is a plain-text
+flags. `read(source)` returns the lot; `summary_lines(source)` is a text-only
 rendering for the CLI, which still groups by state. `source` is the 224 flags,
 the `$4A00` page, a whole `SAVEDGAME0` payload or a `SaveGame0` — the lengths
 are distinct, so no flag is needed. No Qt.
 
 **`summary_lines()` gained the side-quest section `#158 (Track the quests the game itself forgets, starting with Ohlo's potion)` step E deferred.** It
-follows the same decision as the panel — a durable-only reading, one line per
+applies the same decision as the panel — a durable-only reading, one line per
 side quest whose `durable_state` is not `QUEST_UNSEEN`, reusing
 `goldbox.commissions.IN_PROGRESS` and the panel's `"Finished"` — but a
 terminal listing is a rendering Donald has never looked at, so every line it
@@ -251,7 +251,7 @@ log that blanked every time somebody opened one would be a flicker.
 ## Verification — done, in `tests/automap/test_commissions.py`
 
 * **The slums is one row whatever its byte reads** — 0, a marker, 254, 255 —
-  which is the regression this shape exists to prevent.
+  which is the regression this structure exists to prevent.
 * No unfinished row is labelled with the clerk's completion speech, and both
   finished states are.
 * The six books are one row, with the count when some are in and no count when
@@ -276,7 +276,7 @@ games' scripts off the player's own C64 disks — **2683 from Curse's 26 scripts
 and 1856 from Silver Blades'** — and looking for the vocabulary a job register
 needs.
 
-A plain `strings` over a Gold Box script finds nothing, which is why nobody had
+A bare `strings` over a Gold Box script finds nothing, which is why nobody had
 looked: the text is **6-bit packed**, three characters to four bytes.
 the `unpack` in `analysis/ecl.py` (scratch, deleted) already had the decoder from the Pool of
 Radiance work and it applies unchanged. `p40/curse_strings.py` is the scan.
@@ -292,7 +292,7 @@ Radiance work and it applies unchanged. `p40/curse_strings.py` is the scan.
 | REWARD | 5 | 1 — all one-off narrative lines |
 | TASK | 1 | 1 — assassins engrossed in theirs |
 
-**The shape is different, not merely the words.** Pool of Radiance's City Hall
+**The structure is different, not merely the words.** Pool of Radiance's City Hall
 keeps a 26-entry reward ledger, a counter of major commissions and a sixteen-
 candidate offer board, and the clerk reads entries out of it. The nearest thing
 in Curse is one line from the man at the standing stones:
@@ -304,6 +304,6 @@ That is **one number** — the five bonds — on a linear plot, and Silver Blade
 has not even that. There is no board to offer from and no ledger to read back,
 so a per-title panel would have a single integer to draw and no rows.
 
-**So the refusal is permanent rather than provisional**, and #35 (Combat and commissions features should say they are Pool of Radiance's)'s decision to
+**So the panel's refusing to draw is permanent rather than provisional**, and #35 (Combat and commissions features should say they are Pool of Radiance's)'s decision to
 make the panel refuse instead of making it per-title is the right one for a
 reason rather than for want of information.

@@ -64,7 +64,7 @@ colours, differing amounts of pixels.
 | colours a cell | — | 4: three shared, one the cell's own |
 | colours the character chooses | 6 parts x 2 (main, highlight) out of EGA's 16 | 7 parts x 1 out of the VIC-II's low three bits, so 8 |
 | the parts | body, arm, leg, hair-and-face, shield, weapon | WEAPON BODY CAP HAIR SHIELD ARM LEG |
-| fixed by the game | outline, and the hat or plume (pixel values 5 and 13, which the recolour lookup never touches, so a DOS hat is always magenta) | face light red, outline black, floor dark grey, all set by `COM.PREP` |
+| fixed by the game | outline, and the hat or plume (pixel values 5 and 13, which the recolour lookup never touches, so a DOS hat is always magenta) | face light red, outline black, ground dark grey, all set by `COM.PREP` |
 | options | 14 heads and 32 bodies, at each of two sizes | 28 small weapons, 14 small heads, 35 large weapons, 23 large heads |
 
 ## The mapping is a look, not a table anybody can derive
@@ -73,7 +73,7 @@ Rendering every option of both ports to a 24x24 ink mask and scoring every
 pairing with a Jaccard overlap over ±2 rows and ±1 column, the same index is
 the best match 1 of 32 times for small bodies and 2 of 32 for large ones —
 chance, and two of those are ties the sort decides. The highest overlap of all
-1120 large body-to-weapon pairings is **0.782**, between the two ports' plain
+1120 large body-to-weapon pairings is **0.782**, between the two ports'
 unarmed figures, where the same art rendered twice would be above 0.95. So the
 C64's figures are a redrawing rather than the DOS bitmaps at another
 resolution, and best-matching is not a bijection: 21 of the 35 C64 large
@@ -97,9 +97,9 @@ them — including the rule at `$B209` that stops a cap or hair glyph painting
 over a head cell the weapon already filled, and the rule at `$B26F`/`$B29B`
 that preserves cells 0, 1, 9 and 10 when the weapon changes.
 
-**All 896 combinations — 32 bodies x 14 heads x two sizes — compose a shape the
+**All 896 combinations — 32 bodies x 14 heads x two sizes — compose a figure the
 menu can reach.** Checked against `IconParts.legal_screen_codes()`, which is every
-shape any sequence of menu choices produces, in `tests/icons/test_dosicon.py`.
+figure any sequence of menu choices produces, in `tests/icons/test_dosicon.py`.
 
 ### A small character sometimes wears a large option
 
@@ -235,7 +235,7 @@ tool composes the same six a second time and compares against the finished
 payload, 6 of 6 agreeing byte for byte.
 
 The party walked nine steps out of camp and was ambushed. `tools/c64/savecheck.py
---icon` read the floor at the first command bar and scored every 3x3 block
+--icon` read the arena at the first command bar and scored every 3x3 block
 against both poses of all eight save slots:
 
 | drawn at | who the combatant table names | matched | glyphs | colours |
@@ -248,8 +248,8 @@ against both poses of all eight save slots:
 | 13,19 | THRENDER GRONE | exactly slot 5, pose 0 | 9 of 9 | matched |
 
 **Six of six, each naming one of sixteen candidates, and the slot it names is
-the one `marching_slot` put that character in.** Thirteen figures were on the
-floor and seven were distinct: six party figures and one monster design, seven
+the one `marching_slot` put that character in.** Thirteen figures were in the
+arena and seven were distinct: six party figures and one monster design, seven
 kobolds drawn alike.
 
 The fight then ran 80 more command bars with a reading at each. **411
@@ -336,7 +336,7 @@ game and its shapes are not)` could not make on a converted disk, because until
 now every slot held the same icon and a match against one slot was a match
 against all six.
 
-### On the combat floor
+### On the combat arena
 
 The party above cannot be fought: it stands in New Phlan, which has no
 wandering monsters, and `tools/icons/iconswing.py` walked it 60 steps for **no

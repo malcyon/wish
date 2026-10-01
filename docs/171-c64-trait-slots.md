@@ -104,7 +104,7 @@ in his slots -- `[107, 0, 0, 0, 0, 0, 0, 0, 0, 0]` read off `$4DAD` after
 
 `tools/c64/traitquery.py` finds the eleven call sites that reach `$4027` with a
 literal id and reported 61 asked about nowhere. That was wrong, and the
-reason is worth keeping: **the combat engine asks from tables.**
+reason is kept here: **the combat engine asks from tables.**
 
 `SQRPACI01` is code and loads at `$0400`. Its `$072E` takes a list number
 in X and a combatant in A, skips X zero-terminated lists at `$DB7A` -- RAM
@@ -157,7 +157,7 @@ array, not a slot), 5, 12, 16, 53. An id in a slot is honoured **where a list
 names it, or where an instruction names it**, and nowhere else.
 
 **Three ids reach it by an instruction and by no list: 24, 32 and 55.** The
-first of the three was missed until 2026-09-10, and the reason is a shape
+first of the three was missed until 2026-09-10, and the reason is a pattern
 this page had not looked for: `SPELLE01 +0x09ec` is `LDA #$18 / JSR $28A4`
 and `+0x0e13` is `LDA #$62 / JSR $28A4`, so they ask about 24 and 98 through
 the wrapper rather than reaching `$4027` directly, and a sweep of calls to
@@ -220,7 +220,7 @@ half is not, which is what the racial seeds said too: Silver Blades gives an
 elf 95 where Pool of Radiance gives 107. PROBABLE, on one measurement of
 positional agreement and no reading of a Silver Blades handler.
 
-## Naming Silver Blades' ids: five routes, and what each one is worth
+## Naming Silver Blades' ids: five routes, and what each one yields
 
 Donald ruled on 2026-09-15 that the picker should offer this title's ids named
 properly rather than staying at six or borrowing Pool of Radiance's names
@@ -234,7 +234,7 @@ in `cited/497`.
 | the spell that writes it | this title's own per-spell record, `COMBAT2 +2937` | **40** of the 90 (and four more the engine ignores in a slot) | CONFIRMED |
 | the same numbered check list as Curse | `--compare`, both titles' lists | 7 more | PROBABLE, and 6 of the 7 since CONFIRMED by their handlers |
 | the same routine asking in both titles | the literal call sites | 1 (96), **withdrawn** -- the call site names no id | -- |
-| the creature carrying it | the 71 `MON*` records on the six sides | 3 more, and **four refusals** | PROBABLE, all 3 since CONFIRMED |
+| the creature carrying it | the 71 `MON*` records on the six sides | 3 more, and **four rejected candidates** | PROBABLE, all 3 since CONFIRMED |
 | `GEN`'s racial seed | already in `goldbox/traits.py` | 2 more | PROBABLE, both since CONFIRMED |
 | **the handler it dispatches** | `--handlers`, `COMBAT` at `$0800` | **35 more**, and 93 and 96 renamed | CONFIRMED |
 
@@ -757,7 +757,7 @@ reason that is now wrong on both clauses:
    not a slot -- a separate case for the writer.
 4. **The reverse trip** (C64 to DOS) can rebuild `id 00 00 0C 00` from a slot
    id that is not racial, since the DOS record for an item grant is that
-   shape for every item.
+   form for every item.
 
 ## Negative results
 

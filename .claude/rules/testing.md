@@ -263,7 +263,7 @@ edits one by mistake.
 evidence is *"the table's bytes and the three compares"* -- `GEN $10AD`, read
 out of the code -- with ROLAND at wisdom 16 as corroboration. The code half is
 untouchable and the finding stands on it. Had it rested on ROLAND alone it
-would now be worthless.
+would now say nothing.
 
 **The cost of getting this wrong is silent.** A single edited record can refute
 a correct belief -- a *human* carrying two `.SPC` effect records where the

@@ -70,11 +70,11 @@ piece 0 starts. The four 1536-byte files fill `$6500`-`$6AFF`, which is
 `SECSET` **and all three wall pieces**.
 
 **Rendering them settles it.** Every one is 8×8 multicolour tiles: brick,
-arches, diagonal edges, floor dither. `p48/render.py` (scratch, deleted) draws the contact
+arches, diagonal edges, ground dither. `p48/render.py` (scratch, deleted) draws the contact
 sheets.
 
 **And the scripts prove the overlap is real rather than arithmetic.** Every
-`PROTECTION` opcode in the thirty-script corpus -- twelve of them, in four
+`PROTECTION` opcode in the thirty scripts -- twelve of them, in four
 scripts -- sits inside the same bracket:
 
 ```
@@ -339,7 +339,7 @@ save to stand on travel window `1A` instead, from a cold boot. Both came up
 at the square the save carried, and walked the grid; `$8C00` matched the
 window's `SQRDATA` file in 648 of 648 bytes.
 
-The same shape with **slot 4 (`SQRDATA`) in slot 2's role**, and the `SQRDATA`
+The same structure with **slot 4 (`SQRDATA`) in slot 2's role**, and the `SQRDATA`
 number `S` (`04`/`05`/`06`) standing in for `G` everywhere `G` appears:
 
 | address | value |

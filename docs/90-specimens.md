@@ -57,7 +57,7 @@ the cleanest evidence in the project for that field. See
 
 ## Later states of the same party
 
-Donald's party was captured at three points, and each one paid for itself:
+Donald's party was captured at three points, and each one gave something:
 
 | fixture | state | what it gave |
 |---|---|---|
@@ -99,7 +99,7 @@ value — 75 of the 135 distinct monster records carry it — and FATIMA is
 character rolls.~~ **Withdrawn.** Donald points out that the game's own trainer
 lets you alter ability scores, so a score outside the rolled range is not
 evidence of anything. Whether the trainer will go above 18 is not known, but the
-inference was weak enough that it is not worth leaning on either way. Four
+inference was weak enough that it cannot be leaned on either way. Four
 separate characters carrying a RING OF PROTECTION +3 remains mildly odd and
 proves nothing on its own.
 
@@ -136,7 +136,7 @@ GENHEERIS is `MON58`, MAD MAN `MON19`, PRINCESS FATIMA `MON68`, DIRTEN `MON6B`
 and SKULLCRUSHER `MON1B`, each matching in 230 to 252 of 256 bytes, ability
 scores included. Four of the five have experience that has risen plausibly from
 its shipped value. So the disk is better described as **genuine play with one
-edited field** than as "hacked, values worthless", and its NPC records are worth
+edited field** than as "hacked, values unreliable", and its NPC records count for
 more than that phrase allowed.
 
 It also carries three exported `.chr` files. Those are the *pre-hack* originals,
@@ -194,7 +194,7 @@ Three things the same run settled and one it did not:
   magic-user PROTECTION FROM EVIL (spell 16) both write effect **8**.
 * **A party-wide spell is not always owner `$FF`.** DETECT MAGIC and PRAYER take
   one slot with owner `$FF`; BLESS and INVISIBILITY 10' RADIUS take **six**, one
-  per character. A reader must handle both shapes.
+  per character. A reader must handle both forms.
 * **PRAYER writes 35, not 49.** So 49 "Prayer" is something else — most likely
   the enemy-cast side — and nothing here promotes it.
 * **Five spells were consumed and wrote nothing**: CURSE, SILENCE 15' RADIUS,
@@ -612,7 +612,7 @@ then written by spells and readied items alike.
 
 The latest state of Donald's party, and undocumented until a sweep found it. It
 is the only save of ours whose roster page differs from the one written on the
-shopping trip, which is what makes it worth its own entry:
+shopping trip, which is what earns it its own entry:
 
 * **three characters are wounded** — ROLAND 5 of 7, SILAS 6 of 9, BRUTUS 6 of 11;
 * the party has **looted heavily**: SILAS, MAGNUS and BRUTUS carry a full

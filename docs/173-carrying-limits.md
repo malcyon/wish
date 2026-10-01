@@ -22,10 +22,10 @@ ran, has one exemption and is the last section here.
 Every grade above is CONFIRMED except the last, and the difference is what
 the displacement is known to be rather than what the code does. Amiga Pools
 of Darkness's `0x0C7` is the offset the one-`0x0F`-plus-four-`0x10`
-signature lands on, and no shape in `goldbox/amiga_por.py` or
+signature lands on, and no layout in `goldbox/amiga_por.py` or
 `goldbox/amiga_later.py` covers that title's
 record, so calling it `item_count` is an inference from the signature and
-from the routine's shape. The other seven compares sit at exactly the
+from the routine's structure. The other seven compares sit at exactly the
 `item_count` offset `goldbox/dos_port.py` or `goldbox/amiga_por.py` /
 `goldbox/amiga_later.py` already gives that title.
 
@@ -57,7 +57,7 @@ differ. Pool of Radiance's DOS copy:
 02380a  mov al, [bp-2]; retf 8
 ```
 
-and Curse's Amiga copy, which differs only in the shape of the machine:
+and Curse's Amiga copy, which differs only in the machine's design:
 
 ```
 023774  movem.l d2-d6/a2-a3/a6, -(a7)
@@ -105,7 +105,7 @@ Three things about it:
   Darkness's `0x0C7` is the exception graded above.
 * **One flag, two tests.** The same boolean carries "sixteen already" and
   "`encumbrance + weight x quantity` above carrying capacity plus 1500", so
-  the game's refusal does not say which stopped it.
+  the game's message does not say which stopped it.
 
 ## Pools of Darkness relaxes it, and only Pools of Darkness
 

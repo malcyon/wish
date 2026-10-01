@@ -182,7 +182,7 @@ PROBABLE to CONFIRMED. Coverage 27 -> 37 of 580 bytes CONFIRMED.
 Pinned as regression tests in `tests/saves/test_savegame.py::TestSlotStrideE003`,
 with `tests/fixtures/pool1_savedgame0.bin` as the specimen.
 
-**Method note — worth remembering.** Considerable time went into driving the
+**Method note.** Considerable time went into driving the
 game to create characters, and into trying to make it load a constructed save,
 before simply *reading the disks we already had* answered the question outright.
 Two dead ends came out of that effort and are recorded below because they still
@@ -203,7 +203,7 @@ a hung CPU. Cause unknown.
 `xdotool key alt+n` nor a properly held chord (Alt down, separate n press, real
 gaps) changes the attached image — ten swap-and-retry cycles all returned
 `SAVED GAME NOT FOUND!`. `F10` does not open the menu bar and synthetic mouse
-clicks do not hit the menus either, while plain keypresses reach the emulated
+clicks do not hit the menus either, while ordinary keypresses reach the emulated
 machine normally. So VICE's GTK input layer is not seeing synthetic modifiers or
 clicks, only the emulation canvas is receiving keys.
 
@@ -302,7 +302,7 @@ opaque. The bitmask decodes them directly, and all twelve specimens now read out
 correctly, including three multi-class characters from the sample save
 (magic-user/fighter, thief/fighter, magic-user/cleric).
 
-**The lesson worth carrying.** This took minutes and needed no emulator, no
+**The lesson to carry.** This took minutes and needed no emulator, no
 disk swapping and no copy-protection work. Every earlier attempt to find fields
 by driving the game was slower and less productive than *arranging for varied
 data and then comparing it*. Prefer that route whenever a field plausibly
@@ -365,20 +365,20 @@ save moved except one byte in a character slot. The table is confirmed as
 Each entry splits cleanly in half:
 
 ```
-+0  .. +17    18 screen codes  -- shape / pose
++0  .. +17    18 screen codes  -- figure / pose
 +18 .. +35    18 colour values -- one per cell, C64 colours 0-15
 ```
 
 **What proved the split:** MAGNUS changed **only** bytes 18-35, every one of
 them in the range `$00`-`$0F`. A colour-only change, and valid colour codes.
-ROLAND and LADY KATHERINE changed both halves. So shape and colour are
+ROLAND and LADY KATHERINE changed both halves. So figure and colour are
 independently editable — which is exactly what the Gold Box Companion exposes.
 
 The same 36 bytes appear at record offset `0x220` in an exported `.chr`, which
 is why an export carries its icon while a save slot does not.
 
 Not yet found: the **large/small** flag GBC also offers. It is not in these 36
-bytes, so it lives elsewhere or is implied by the shape.
+bytes, so it lives elsewhere or is implied by the figure.
 
 ---
 
@@ -402,7 +402,7 @@ adjustment, rebuilt from dexterity whenever a fight starts ([the byte that
 moves a THAC0 when darts are readied](#the-byte-that-moves-a-thac0-when-darts-are-readied-202)).
 
 **What this suggests.** The game may simply not persist current hit points, and
-restore characters to full on load. That is easy to check and worth doing before
+restore characters to full on load. That is easy to check, so do it before
 any more searching:
 
 > Reload the save and look at LADY KATHERINE. If she is back to 5, current hp is
@@ -524,7 +524,7 @@ level 1; removing one clears its level.
 demi-humans-only. The save format does not appear to distinguish them — both are
 just several class bits with several levels — so the game presumably enforces
 the rule at character creation rather than in the data. Whether it *re-checks*
-on load is untested, and worth knowing before anyone dual-classes an elf.
+on load is untested, and should be known before anyone dual-classes an elf.
 
 ---
 
@@ -616,7 +616,7 @@ Garcia, from CSDb release 68820. A listable C64 BASIC program plus a SEQ
 documentation file. It edits an **exported** character at `$6B00`, which is our
 `.chr` format exactly.
 
-**Why it is worth more than a normal specimen.** It is a second, independent
+**Why it counts for more than a normal specimen.** It is a second, independent
 reading of the same bytes by someone who had the game and not our tools. Where it
 agrees, that is corroboration; where its author gave up, that is a landmark.
 
@@ -641,7 +641,7 @@ agrees, that is corroboration; where its author gave up, that is a landmark.
   parsed from the disk and is the one to trust, but the indices line up, which
   independently validates our parser and our index base.
 * **It carries 162 complete 16-byte item records**, including magic items we have
-  never seen in play. Its plain `BANDED MAIL` record is byte-for-byte identical to
+  never seen in play. Its unenchanted `BANDED MAIL` record is byte-for-byte identical to
   the one in our own `PORSAVE2.D64` except for the readied bit, so these are
   genuine specimens of the real format.
 
@@ -674,7 +674,7 @@ and Strength, and compare against `60 -` each unread roster byte. No emulator.
 **Result. CONFIRMED as far as reading goes: `+0x0E`, stored as `60 - THAC0`.**
 
 On Donald's six-character party before anything was readied, all six match
-exactly -- 21 for the magic-user and the magic-user/thief, 20 for the plain
+exactly -- 21 for the magic-user and the magic-user/thief, 20 for the ordinary
 fighter, 18 for the three fighters with exceptional Strength. Getting the two
 21s right matters: a wrong hypothesis that assumed "20 at level 1" would have
 missed both.
@@ -686,11 +686,11 @@ the **current** THAC0, adjustments included, not a base value.
 
 **One thing it does not explain.** MALCYON's byte improves from 21 to 20 over
 the shopping trip, and all he bought was darts. At DEX 16 a readied dart should
-be worth nothing. Either the game gives darts a bonus, or something else moved
+add nothing. Either the game gives darts a bonus, or something else moved
 at the same time.
 
 **Consequence.** Both numbers on the sheet's combat line are now readable, and
-the `60 - x` encoding is a pattern rather than a one-off -- worth trying against
+the `60 - x` encoding is a pattern rather than a one-off -- try it against
 any remaining roster byte that ought to hold a small number. Damage is still not
 found. Neither byte has been written back and confirmed in game, so both stay
 PROBABLE for the purpose that matters.
@@ -701,8 +701,8 @@ PROBABLE for the purpose that matters.
 **Source.** `github.com/bsimser/Gold-Box-Explorer`, a C# viewer for the DOS Gold
 Box file formats. Its plugins are all **FRUA** — Forgotten Realms Unlimited
 Adventures, a later DOS product — so none of its offsets apply to us and its
-name table is a *different* table in a different order. It was still worth
-reading, for one structural idea.
+name table is a *different* table in a different order. It still
+repaid reading, for one structural idea.
 
 **The idea.** `FruaItemFile.cs` reads items from **two** files. `ITEM.DAT` holds
 the per-item record; each one carries a `Pointer`, and that pointer indexes
@@ -710,7 +710,7 @@ the per-item record; each one carries a `Pointer`, and that pointer indexes
 rate of fire, protection, weapon class, damage vs medium, range, class usage and
 missile type.
 
-That is exactly the shape of the thing we could not explain. Our 16-byte item
+That is exactly the kind of thing we could not explain. Our 16-byte item
 record has an unread byte `+0` which is not a name index, and `POOL1.D64` ships a
 file called `ITEMS` that is **2048 bytes — 128 records of 16 bytes**.
 
@@ -752,7 +752,7 @@ against a single specimen:
 **What it did not give us.** Its `NameParts` table is FRUA's own vocabulary and
 disagrees with Pool of Radiance's in both content and order -- it drops the
 obscure polearms entirely. Do not use it as an item list. It does independently
-confirm the *shape*, though: `FruaItem` is constructed from three name codes
+confirm the *structure*, though: `FruaItem` is constructed from three name codes
 concatenated in order, which is the three-word naming we had already worked out.
 
 ---
@@ -967,7 +967,7 @@ that has repeatedly beaten before/after diffing on this project.
 | human | ten characters | 0 |
 
 Elves and half-elves are exactly the races AD&D gives resistance to sleep and
-charm and secret-door detection, so the shape is right.
+charm and secret-door detection, so the result is right.
 
 **The class confound is ruled out**, which matters, because this project has
 already been caught once by a byte that tracked class while looking like it
@@ -1082,7 +1082,7 @@ this project keeps relearning: *a hypothesis that sparse data agrees with has no
 been tested.* Four is sparse.
 
 **How many spells a character may memorise** is not stored anywhere found. It
-follows from class, level and Wisdom, and matches on every caster: MALCYON and
+is determined by class, level and Wisdom, and matches on every caster: MALCYON and
 LADY KATHERINE one apiece as level-1 magic-users, ROLAND three as a level-1
 cleric with Wisdom 16. `goldbox/spells.py` computes it.
 
@@ -1221,7 +1221,7 @@ save contains. Walking does not touch it. **Position lives in the `SAVEDGAME0`
 header.**
 
 **Candidates, none confirmed.** `$49C0` rose by one and `$49F0` fell by one,
-which is the shape a coordinate pair makes. Both sit as the first byte of a
+which is the pattern a coordinate pair makes. Both sit as the first byte of a
 `xx 0E` pair — `02 0E` and `03 0E` before, exchanged after — and 14 recurring
 beside both is suggestive of a map dimension, or of two 16-bit values around
 3586 moving in opposite directions. `$4BC6` setting bit 7 looks like a flag
@@ -1230,7 +1230,7 @@ first quest flag.
 
 **Why this is not yet an answer.** Walking out of a building is a *transition*,
 not a step: it can change position, facing, area and time all at once, and six
-bytes is more than one action's worth of information. Nothing here distinguishes
+bytes is more than one action can carry. Nothing here distinguishes
 a coordinate from a facing from a step counter.
 
 **What settles it** is three saves and two short walks: save standing still,
@@ -1327,7 +1327,7 @@ records. That is consistent with Donald's report and extends it: whatever state
 paladin and ranger were left in, no character in the shipped game uses those
 codes, and druid and monk look the same.
 
-**The pattern is worth stating on its own.** The game's tables enumerate more
+**The pattern stands on its own.** The game's tables enumerate more
 than the game implements, and they do it twice over:
 
 * the **race** table at `$3243` lists eight races; the creation menu offers six,
@@ -1400,8 +1400,8 @@ is **at most six player characters and at most eight in total**, which fits
 
 **A note for later.** Curse of the Azure Bonds does offer paladins and rangers,
 so class codes 3 and 4 are likely to be real there even though nothing in Pool
-of Radiance uses them. Gold Box Companion converts a fighter into one. Worth
-knowing if `wish` ever grows beyond this game; not worth doing now.
+of Radiance uses them. Gold Box Companion converts a fighter into one. This
+matters if `wish` ever grows beyond this game; it need not be done now.
 
 ---
 
@@ -1440,7 +1440,7 @@ level attained* still needs a drained character.
 current armour class at `0x10F`. Matches the AD&D table on all eleven exports.
 Both exist only in an export, and both agree with the `SAVEDGAME1` roster for the
 same character -- so an exported `.chr` carries both combat numbers after all.
-That is worth recording, because the 1989 editor's author reported he could never
+That is recorded because the 1989 editor's author reported he could never
 find either, and this is where they were.
 
 **The item area in an export is at `0x120`, not `0x110`.** Sixteen records of
@@ -1463,7 +1463,7 @@ number "lands".
 
 ---
 
-## Monsters, `0x0B8`, and the noise floor in SAVEDGAME1
+## Monsters, `0x0B8`, and the noise level in SAVEDGAME1
 
 **Monster experience value: not in the record.** Scanning all 480 bytes of eight
 monsters whose AD&D experience values are known -- kobold 7, orc 10, hobgoblin
@@ -1517,7 +1517,7 @@ in four of the game's own NPC records: if the game ships records like that, an
 editor that forces them into agreement cannot represent them.
 
 It was worse than a limitation. Constructing a record with a fighter's bits and
-a cleric's code -- the shape `DWARVEN FIGHTER` actually has -- and putting it
+a cleric's code -- the combination `DWARVEN FIGHTER` actually has -- and putting it
 through **an export and import that changed nothing**:
 
     slot 2 ROLAND: char_class 0 -> 2 (kept in step with classes)
@@ -1537,13 +1537,13 @@ otherwise" -- and was simply not applied here.
 
 **The fix.** Reconcile only when the classes actually changed. A record that
 arrives disagreeing survives untouched. `class_code` is now its own field, so an
-NPC-shaped record can be written deliberately, and doing so reports that it does
+record with an NPC's class code can be written deliberately, and doing so reports that it does
 not match the classes rather than silently allowing it.
 
 **What it says about the test suite.** The losslessness tests exercised real
 saves, and every real save we hold has these fields in agreement, so the bug was
 invisible to them. The test that catches it now *constructs* the state rather
-than looking for it. Worth remembering for the other pairs: a round-trip test
+than looking for it. Remember it for the other pairs: a round-trip test
 over specimens can only prove losslessness for states the specimens contain.
 
 ---
@@ -1572,12 +1572,12 @@ exports rather than three; four of the eleven came from Donald's roster disk.
 ## The map data: found, not yet decoded
 
 **Method.** Inventory every file on the eight disks by name stem, size and load
-address, then look for the shape a set of maps would have.
+address, then look for the pattern a set of maps would make.
 
 **`GEO*` is the map data.** Twenty-nine files, **every one exactly 1024 bytes**,
 all loading at `$0400`. Uniform size across twenty-nine files is what a set of
 fixed-size maps looks like, and Pool of Radiance has roughly that many areas.
-Nothing else on the disks has that shape: `SQRDATA` has three files of two
+Nothing else on the disks has that pattern: `SQRDATA` has three files of two
 sizes, `WALLDEF` nineteen of nineteen sizes, `SECSET` eight of five, `SQRPACI`
 three of three.
 
@@ -1594,7 +1594,7 @@ peaks at its true width. `GEO04` and `GEO10` peak hard at 16 (0.47 against a
 appear: horizontal runs of high-nibble `3` terminated at both ends, and vertical
 columns of low-nibble `3` running down beside them. `GEO04` has two such
 enclosures, spanning rows 4-15 and rows 19-31, with interior values drawn from a
-small set (7, 8, 9) that is plainly not noise. Both nibbles carry data.
+small set (7, 8, 9) that is clearly not noise. Both nibbles carry data.
 
 **What I could not establish**, and where a guess went wrong. The obvious reading
 of 1024 bytes was four 16x16 maps, and the rendering seemed to break at rows 16,
@@ -1616,7 +1616,7 @@ pattern-matching; with it, it is arithmetic.
 ## The GEO files resist three more attacks
 
 **Donald's suggestion** was that the walls might be the *blank* space -- that zero
-means wall and non-zero means floor, the opposite of how it was first rendered --
+means wall and non-zero means open ground, the opposite of how it was first rendered --
 and that comparing against the fan-made maps on GameFAQs might shake something
 loose.
 
@@ -1661,18 +1661,18 @@ settling: `WALLDEF` has nineteen files of nineteen different sizes, which is wha
 **Blind analysis has run out.** No amount of statistics on 1024 bytes will name a
 square. The anchor experiment is the only way forward: stand somewhere
 identifiable, save, walk a known route along a wall, and match the coordinates --
-or read a fan map by eye and compare shapes.
+or read a fan map by eye and compare outlines.
 
 ---
 
 ## WALLDEF is graphics, and entropy puts GEO back in the frame
 
 **`WALLDEF` is not the maps.** Nineteen files of nineteen different sizes looked
-like variable-sized maps, which is why it was worth checking. It is wall
+like variable-sized maps, which is why it was checked. It is wall
 *graphics*, exactly as its name says: **80% of its bytes are C64 screen codes**
 (`$40`-`$BF`), and it is built of short repeating blocks -- `63 63 63`,
 `4C 4C 4C`, `76 75 74 71 72 73` -- which is a tile drawn as a run of characters,
-not a floor plan. `WALLSET` beside it is the character shapes.
+not a floor plan. `WALLSET` beside it is the character glyphs.
 
 **`SQRDATA` and `SQRPACI` are not either.** Their names are the most map-like on
 the disks, which is why they were checked next. 231 to 247 distinct byte values
@@ -1701,7 +1701,7 @@ instead. That was an over-correction. `WALLDEF` is graphics; `GEO` is the most
 structured undecoded data on the eight disks, uncompressed, uniform, and 2D. The
 failures were failures of *reading*, not evidence against the file.
 
-**Four readings are now ruled out**, which is worth having written down so nobody
+**Four readings are now ruled out**, which is written down so nobody
 repeats them: walls as set bits in either polarity; a screen picture of tiles
 (horizontal runs are 1.3-1.9, far too short); four bytes per square as N/E/S/W
 (no assignment makes neighbouring squares agree about the wall between them --
@@ -1862,16 +1862,16 @@ Two consequences:
 THAC0 improved from 21 to 20 across the shopping trip, where all he acquired was
 darts, and no reading accounted for it. Here it improves again, 20 to 18, and
 his readied weapon is still a dart. A **readied missile weapon picks up a
-dexterity to-hit bonus** -- DEX 16 was worth 1 at the shopping trip, DEX 18 is
-worth more now. Two points do not pin the table down, and the project has
+dexterity to-hit bonus** -- DEX 16 gave 1 at the shopping trip, DEX 18 gives
+more now. Two points do not pin the table down, and the project has
 already found that Pool of Radiance's dexterity tables are not the book's, so
-the shape is left open. `goldbox/derive.py` does not model it and now reports
+the form of the table is left open. `goldbox/derive.py` does not model it and now reports
 MALCYON's THAC0 as stale when it is correct.
 
-**Strength 18 with a percentile of 0 is plain 18, not 18/00.** The recomputed
+**Strength 18 with a percentile of 0 is a bare 18, not 18/00.** The recomputed
 `strength_index` reads **18** beside 21, 21 and 22 for the three fighters with
 real exceptional rolls. The AD&D top band would have given 21 or 22. His damage
-bonus stayed 0 throughout, where plain Strength 18 should be worth 2 -- either
+bonus stayed 0 throughout, where bare Strength 18 should give 2 -- either
 the game gives no Strength damage to a thrown dart, or `+0x17` was not part of
 the refresh.
 
@@ -1884,7 +1884,7 @@ the refresh.
   from 18.7 lb to 122.2 lb of loot and her `+0x1B` falls 12 to 6; SILAS goes to
   230.5 lb and falls 9 to 6, with no change of armour in either case. The
   earlier finding stands as far as it went -- no byte in the block holds the
-  carried *weight* -- but the movement byte plainly reacts to it.
+  carried *weight* -- but the movement byte visibly reacts to it.
 * **`+0x0A` and `+0x0B` are non-zero for the first time**, 21 and 8, on ROLAND,
   the one character whose spell count moved. They sit in the run the roster
   section calls "zero in every specimen". Unexplained, and the obvious thing to
@@ -1986,14 +1986,14 @@ value. The save the engine wrote at the end of that fight carries `1 1 3`.
 `tools/c64/rosterspellcount.py` compares stored against recomputed for every
 occupied roster block it can find.
 
-| corpus | blocks | nothing memorised | agree | all-zero | partly behind | **higher than the list** |
+| specimens | blocks | nothing memorised | agree | all-zero | partly behind | **higher than the list** |
 |---|---|---|---|---|---|---|
 | 24 of the player's save disks | 144 | 89 | 10 | 40 | 5 | **0** |
 | `~/wish-specimens/por-c64` | 30 | 27 | 3 | 0 | 0 | **0** |
 
 **0 of 55** stored counters anywhere exceed what the memorised list says. A
 cache rebuilt at a fight and only decremented afterwards can be behind the list
-and cannot be ahead of it, and that is the shape the whole corpus has. The
+and cannot be ahead of it, and that is the pattern all the specimens have. The
 player's disks are untrusted, which is why the claim rests on the code and the
 driven fight; the sweep is corroboration, and a single counter above its list
 would have refuted the reading outright.
@@ -2024,7 +2024,7 @@ base as editor-hacked on two pieces of evidence, and the first of them is that
 creation offers".
 
 **Method.** Read the race byte from every distinct monster record on the eight
-disks, then match each of `npc_party.d64`'s eight characters against that corpus
+disks, then match each of `npc_party.d64`'s eight characters against those records
 byte for byte. No emulator.
 
 **Result 1. Race 0 is the game's own most common value.** Across the 135
@@ -2041,7 +2041,7 @@ distinct records in the 116 `MON*` files:
 
 So race 0 is not an impossible value. It is what three quarters of the game's
 own character-layout records carry, and reads as "not applicable" rather than
-"monster" — `ACOLYTE` and `1ST LVL CLERIC` are plainly people.
+"monster" — `ACOLYTE` and `1ST LVL CLERIC` are clearly people.
 
 **Result 2. This corrects "monsters are characters with race 8".** That was an
 inference from the race table ending `HUMAN=7 MONSTER=8`, and it was never
@@ -2107,8 +2107,8 @@ it is stronger than before:
 
 **What this costs.** Two claims have to go: that FATIMA's race is impossible,
 and that monsters are race 8. What it buys is better: the disk's NPC records are
-*genuine shipped data that has been played with*, so their structure is worth
-more than "hacked, values worthless" allowed. The one hacked field we can point
+*genuine shipped data that has been played with*, so their structure counts for
+more than "hacked, values unreliable" allowed. The one hacked field we can point
 at is MAD MAN's experience.
 
 **Still unknown.** Whether the game ever *tests* an NPC marker byte, and
@@ -2216,14 +2216,14 @@ header.
 
 Status: the manual's time claim is **almost certainly false** — three independent
 sources say encounter size tracks party strength, not elapsed time. The
-fortune-teller experiment is still worth running, because it is a controlled
+fortune-teller experiment should still be run, because it is a controlled
 single action and a diff showing nothing is also informative, but expect nothing.
 
 
 ## GEO is solved: four planes, and a wall is not a barrier
 
 **Five readings of `GEO` had failed.** All five made the same mistake, and it is
-worth naming because it is a general one: they assumed **one field per edge**,
+named here because it is a general one: they assumed **one field per edge**,
 so that "there is a wall here" and "you cannot walk through here" were the same
 bit. They are two independent fields, stored in different planes.
 
@@ -2280,7 +2280,7 @@ walls and doors.
 reads this plane as location `0x04`, which makes a per-square trigger or zone id
 the obvious candidate. PROBABLE, not confirmed.
 
-**A negative worth recording.** Nobody has written the 1988 `GEO` format down in
+**A recorded negative.** Nobody has written the 1988 `GEO` format down in
 prose anywhere. It survives only as code, in `coab`. The FRUA "Hacking UA" board
 at `ua.reonis.com` is dead — 404, including its indexed topic "GEO#.DAX format
 (and all GB/FRUA formats)" — with no Wayback capture found. Gold Box Explorer
@@ -2359,7 +2359,7 @@ by two routes that share no evidence.
   `$49C8`, `$49C7`. It advances a minute per step and per turn in place.
 
   **Three readings of these three bytes were wrong before this one**, which is
-  worth recording because each looked fine at the time:
+  recorded because each looked fine at the time:
 
   | reading | `PORSAVE4` | why it survived, and what killed it |
   |---|---|---|
@@ -2535,7 +2535,7 @@ investigation. Second, the disassembly technique above.
 the AD&D 1st edition ring exactly — +1 to armour class and +1 on saves, from two
 bytes. `CURSED NECKLACE` carries -5 in both.
 
-The negatives are worth as much. The only masks applied to `+6` or `+7` anywhere
+The negatives count as much. The only masks applied to `+6` or `+7` anywhere
 in the game are `$80`, `$7F`, `$07` and `$F8` — and `$F8` is *identify*. So the
 four spare bits of `+6` are not charges, which had been the standing guess, and
 the low seven bits of `+7` hold nothing.
@@ -2579,7 +2579,7 @@ the readied bit are zero in all of them. A clean negative — but two mechanics
 fell out anyway:
 
 * **Loot is copied byte for byte out of the dead monster's own `MON*` item
-  slot.** That is why the looted shield is worth 0 gp and the looted scale mail
+  slot.** That is why the looted shield is priced at 0 gp and the looted scale mail
   15 rather than the shop's 45.
 * The game **clears `+6` bit 7 in the copy** and merges quantities: three orcs'
   20 arrows each became one stack of 60.
@@ -2634,7 +2634,7 @@ validator threw the whole field away. Type lowercase and the character is
 created: `\x01WYVERN`, 582 bytes, load address `$6B00`, written to disk under
 script. The dead end recorded across two earlier sessions was a shift key.
 
-### A walk corpus, and what it confirms
+### A set of recorded walks, and what it confirms
 
 `drive/walks/` (scratch, deleted) held 20 saves the game itself wrote, one step apart, each
 position verified against the disk and against the game's own status line.
@@ -2712,7 +2712,7 @@ differ between it and ours. No signal survives that much noise.
 save again. Two disks differing by one deliberate act, and the diff is the answer.
 
 This is now runnable without Donald, because `tools/c64/walkrun.py` drives the game
-end to end and `drive/walks/` (scratch, deleted) already held a corpus generated that way. The
+end to end and `drive/walks/` (scratch, deleted) already held a set of specimens generated that way. The
 route out of New Phlan into the slums is longer than anything driven so far, and
 the training-hall trigger at (6,2) has to be avoided, but neither is a blocker.
 
@@ -2769,7 +2769,7 @@ correlations, and it has been the more productive of the two routes every time.
 
 ### Keep derivation open
 
-Donald's own caution: it may not be a stored byte at all. Candidates worth
+Donald's own caution: it may not be a stored byte at all. Candidates to
 holding in mind, roughly in order of how much they would explain:
 
 * **A stored area index** somewhere not yet scanned. The scan covered
@@ -2778,9 +2778,9 @@ holding in mind, roughly in order of how much they would explain:
   slot area `$4D00`–`$64FF` outside the eight character records — including the
   `$5500` staging page and `$5600`–`$58FF`, which is zero in every save we hold.
 * **The active ECL script.** Each area has its own encounter/event script. If the
-  save records which `ECL` is live, the map follows from it and there is no
-  separate map id at all. This would also explain why a plain byte scan finds
-  nothing shaped like a small area index.
+  save records which `ECL` is live, the map is determined by it and there is no
+  separate map id at all. This would also explain why a byte scan finds
+  nothing that looks like a small area index.
 * **A coarse world coordinate.** Phlan's blocks tile a city. If the save holds a
   block coordinate as well as the 0-15 square coordinates, the `GEO` file is a
   lookup, not a stored id.
@@ -2805,7 +2805,7 @@ MALCYON at 3x6, 6x3, 2x9 and 9x2, only 3x6 produced a figure -- and it produced
 attacking one.
 
 **The glyphs are `CHARPIC00`.** 2030 bytes loading at `$8000`, about 253 glyphs.
-It has to be this file: icon shape codes reach 233, and the only other charset on
+It has to be this file: icon figure codes reach 233, and the only other charset on
 the disks, `CHARSET`, holds 64.
 
 **It is multicolour, and `COM.PREP` supplies the shared colours.** Every colour
@@ -2893,7 +2893,7 @@ Every step of that was wrong in an instructive way.
    **number-to-decimal buffer for printing on screen**: its entry `$2F29` has 122
    call sites and is handed things like `LDA $6BA0`, the character's level.
 
-The answer was never in the filename. It was a plain byte in the header, in the
+The answer was never in the filename. It was a single byte in the header, in the
 `$2E0` bytes that were already the only place left, and the thing that found it
 was scanning for what *reads and writes* the header rather than reasoning
 forwards from the filename.
@@ -2994,7 +2994,7 @@ carry; a full 2048-byte charset would need a ninth block. Glyph 253's present
 bytes are `00 00 00 00 3C F4`, and glyphs 81 and 251 are the only ones matching
 those six — so the lost tail is `D4 D4`.
 
-**Nothing touches it.** The highest shape code across thirteen sources is **243**
+**Nothing touches it.** The highest figure code across thirteen sources is **243**
 (the earlier note said 233, which was one specimen short), ending 72 bytes clear
 of the truncation, and glyphs 244-252 are non-blank so the file is not
 blank-padded. The clamp in `goldbox/icons.py` never fires. One `CHARPIC` exists,
@@ -3106,7 +3106,7 @@ for a reason opposite to the one given.
 advances per move, and the 715 ms that would buy a 2% error makes the marker lag
 behind the party.
 
-Negative result worth having: **VICE never serves a second binary-monitor
+A negative result: **VICE never serves a second binary-monitor
 connection while the first is open.** It accepts the TCP connection and then
 ignores it. So `automap` and `tools/c64/session.py` cannot both be live.
 
@@ -3370,7 +3370,7 @@ finds the map; see "The combat map is at `$8C00`" below.
 
 The map reaches x=29 and y=14, so it is at least 30 wide.
 
-One number worth a second look: the walkthrough for the slums gives `GOBLIN
+One number needs a second look: the walkthrough for the slums gives `GOBLIN
 GUARD` as AC 7, and the roster says 6. **Resolved: the shield.** `MON02`'s own
 record says AC 7 (`0x0E1` = `0x10F` = 53) and its item block holds a readied
 `STUDDED LEATHER ARMOR` (protection `$B5`, AC 12-5 = 7) *and* a readied `SHIELD`
@@ -3379,9 +3379,9 @@ character — and the roster's `+0x0F` is recomputed from readied equipment when
 the record is loaded into a combat slot. The C64 does not differ from the PC.
 
 
-## The combat map is at `$8C00`, and the shape is in `SQRPACI`
+## The combat map is at `$8C00`, and its dimensions are in `SQRPACI`
 
-**Question.** Where is the combat terrain, and what shape is it? The last
+**Question.** Where is the combat terrain, and what are its dimensions? The last
 unknown blocking `docs/101-combat-view.md`.
 
 **Answer.** `map[x, y] = peek($8C00 + y * 56 + x)`, 56 x 26, bit 7 meaning "a
@@ -3452,8 +3452,8 @@ So mask `& $7F` for terrain, and `& $80` is a free cross-check on `$8B00`.
 ### Two maps, and what is still open
 
 The training-hall arena and a slums random encounter differ in 246 of the 1456
-bytes and read as plainly different floor plans, both with the same parameter
-block. Terrain values run 0-7, 0 being floor: glyph 48 is nine spaces.
+bytes and read as clearly different floor plans, both with the same parameter
+block. Terrain values run 0-7, 0 being open ground: glyph 48 is nine spaces.
 
 **Where the bytes come from is not established.** `$8C00` is LIBRARY's file
 staging buffer, so the map is most likely loaded and decompressed into it at
@@ -3633,7 +3633,7 @@ what the automapper watched. That is a real limitation and the reason the filter
 is a checkbox that disables itself when there is no record, rather than a rule.
 See [`118-debug-mode.md`](118-debug-mode.md) §2.1.
 
-**Worth knowing for Curse.** The same question will come up, and the same method
+**For Curse:** the same question will come up, and the same method
 answers it: the ECL bytecode is one artefact shared by every port, absolute
 address operands included (write-up lost, `reports/quest-flags.md` §7), so a Curse script
 can be walked from its entry 4 exactly as these were. Whether Curse's scripts
@@ -3763,7 +3763,7 @@ came out of this and both matter beyond it.
 * **Script id 21 is unreachable.** `$99B4 COMPARE [$9800], 20 / IF> / EXIT`
   caps the walk at 20, so the thirteen `GEO14` squares whose attribute is 21 —
   `(1,0) (2,0) (3,0) (0,1) (1,1)` and `(8,5) (6,6) (7,6) (8,6) (6,7) (7,7)
-  (8,7) (7,8)`, two building-shaped blocks — match nothing and fall through the
+  (8,7) (7,8)`, two blocks that look like buildings — match nothing and fall through the
   `ONGOTO` into whatever follows it. PROBABLE; nobody stood on one.
 
 **The zero fill, read out of the running machine.** `$2011` onward is
@@ -3801,7 +3801,7 @@ Two harness decisions, both of which touch what was being measured:
 
 **`$4ABB` never moved** — 3 throughout, across two murders. So the City Hall
 commission is not farmable and `$4ABB` and `$4A80` can be **out of step**, which
-is worth knowing because `docs/134` observes that every specimen we hold has
+matters because `docs/134` observes that every specimen we hold has
 them equal. They are equal in specimens because nothing in ordinary play
 separates them; the murder does, and so does a lost wandering fight.
 
@@ -3879,7 +3879,7 @@ roster blocks, `$8400` `ANIMATE00`.
 
 `MON04` sits at `$5500` in all three dumps, 467 of its 480 bytes matching — a
 monster record with its run-time fields moved. Its header says `$6400`.
-PROBABLE, and worth saying because the `goldbox` skill records `MON*` at
+PROBABLE, and stated because the `goldbox` skill records `MON*` at
 `$6B00`; `$6B00` is where a record is *worked on*, not where the file lands.
 
 ### Fitted rather than measured
@@ -3978,10 +3978,10 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
     `SAVEDGAME1` past `$8400` is no longer a candidate — it is code.
   * **Does it actually make encounters harder?** Much more expensive — random
     encounters need a lot of samples before a difficulty change is
-    distinguishable from luck, and "harder" is not defined. Not worth attempting
+    distinguishable from luck, and "harder" is not defined. Do not attempt it
     unless the first half finds something, and even then it is a claim about
     behaviour rather than about the file.
-  Note the first half is worth running **whatever the guide got right**: it is a
+  Run the first half **whatever the guide got right**: it is a
   controlled single action, and a diff that shows nothing at all is also
   informative.
 - ~~**The trainer's ability-score change.**~~ **Answered without running it.**
@@ -4016,7 +4016,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   for the other — with counts at `$B0DA` and pointers at `$B0DE`, both read
   rather than assumed by `goldbox/iconparts.py`.
 
-  The reachable set is **15328 shapes**, not the 805 + 392 that "one weapon
+  The reachable set is **15328 figures**, not the 805 + 392 that "one weapon
   times one head" predicts, because a weapon change *preserves* cells 0, 1, 9
   and 10 (`$B26F`/`$B29B`) and because SIZE is never written back to `0x099`,
   so the two table pairs can be mixed in one session. Both matter: of the 11
@@ -4110,7 +4110,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   tables read with `GETTABLE`. `ECL00` scales the monster *type* rather than the
   count, shifting an index at two strength thresholds.
 
-  Negatives worth keeping: no party-strength byte is stored anywhere, which
+  Negatives to keep: no party-strength byte is stored anywhere, which
   closes that open question; nothing in the encounter path reads experience, an
   ability score, the clock or the commissions completed. Party size counts only
   as the number of terms in the sum.
@@ -4129,7 +4129,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   `$49C0`/`$49C1`, which is why walking into a site and out again puts you back
   on the square you left. Travel is eight-way.
 
-  **Sites are hidden by painting plain terrain over them**, so the travel map is
+  **Sites are hidden by painting ordinary terrain over them**, so the travel map is
   never saved: it is rebuilt from the file plus a handful of flag bytes. And
   clearing the Stojanow pollution swaps `ECL1A`'s impassable-terrain table,
   dropping the twelve river tiles — the river opens to travel.
@@ -4215,7 +4215,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   encoding is **count-then-value**. The earlier `WALLDEF` colour decode had it
   the other way round: 548 of 780 bytes wrong.
 
-  **The boot images unpack, and that is worth more than this task.**
+  **The boot images unpack, and that matters more than this task.**
   `POOLRB`/`POOLRC` are sparse memory images: a table of 5-byte records
   `(word A, fill byte, word B)` naming runs that are *not* stored, with literal
   data following in address order. It closes exactly for both — 20395 + 10325
@@ -4389,18 +4389,18 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   **But `$49F2` does not survive.** Write 3 put the departing area (20) there;
   after the fasttravel it read **0**, the *target*. Whatever sets it runs after
   `$2034` — `$2011`-`$2016` is skipped by construction, so it is something on
-  the `$0809` restart path. The consequence is worth having: entry 4's
+  the `$0809` restart path. The consequence: entry 4's
   `COMPARE [$49F2], <own id> / IF= / EXIT` will always compare **equal**, so
   the arriving script takes its "re-entry from itself" branch and never writes
   its own arrival square. Case 1 of "Where the party lands" — *the arriving
   script sets it, write nothing* — therefore does not apply to a fasttravel:
   **the fasttravel must always supply the square.** PROBABLE, on one observation
-  and the script shape.
+  and the script's structure.
 
 - **P17: the loader prompts. CONFIRMED**, where `docs/118` had it PROBABLE.
   With POOL2 in drive 8 and `$6E12` = 3, the fasttravel printed **`INSERT SIDE # 3,
   AND PRESS ANY KEY.`** on row 24 and waited there indefinitely. So a fasttravel
-  harness needs a disk step, and it can be a plain text-monitor `attach` — but
+  harness needs a disk step, and it can be a text-monitor `attach` — but
   see the re-attach rule above.
 
 - **P20: `ECL1E` is the demo.** Area 30, POOL1, no map, no name, and no static
@@ -4414,7 +4414,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   same area machinery as the game. CONFIRMED.
 
 - **P43: `$49F2` *does* survive the overlay restart. REFUTED, and the reason
-  the first reading said otherwise is worth more than the answer.**
+  the first reading said otherwise matters more than the answer.**
 
   The claim was that the fasttravel writes the departing area to `$49F2` and the
   arriving script reads back the *target*, so entry 4's
@@ -4481,7 +4481,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   | fasttraveled out to the Slums and back in, stepped onto (6,13) | `THE SKELETON OF A LONG-DEAD ELF LIES HIDDEN BY ROCKS AND REEDS…` again | `00` |
 
   So the quest-flag split is exactly as `docs/41` has it, and SSI put this
-  guard on the wrong side of it. Note that SEARCH — taking the scroll — writes
+  guard on the wrong side of it. SEARCH — taking the scroll — writes
   no flag at all, so it never suppresses the encounter even within one visit.
   This is a clean end-to-end confirmation of the scratch-versus-persistent
   work: the flag that survives is the one in `$4A20`-`$4AF8`, and `$4A25` is in
@@ -4521,7 +4521,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   calls: `LDA $DC00 / AND #$1F / STA $03F0` for the CIA row, then `LDA $C6` and
   the KERNAL buffer at `$0277` into `$03CB`, `RTS`; `$2E65` is the no-key path
   writing `$FF`. Half the idle samples are in it, so refusing it made FastTravel To
-  fail about half the times it was pressed — measured, five refusals across
+  fail about half the times it was pressed — measured, five failures in
   seven attempts in this session. It is called *from* the loop, so `$203A`'s
   `LDX $03BF / TXS` discards exactly the same nothing, and P15 had already
   fasttraveled successfully from `$2E4E`. `KEY_FETCH = (0x2E4E, 0x2E6B)` is now
@@ -4630,7 +4630,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   leaves `$C04B` alone here as it does elsewhere. This closes the sentence
   above rather than contradicting it: the byte has to be right before `$2034`,
   and making it right is all it takes. **It stays out of `FastTravel`**, whose
-  refusal is about a player, not a probe: arriving in an area the party never
+  stop is about a player, not a probe: arriving in an area the party never
   walked to is what `HELP` is already about, and nothing has been measured
   about what the Slums' script makes of a party that arrives from the
   wilderness with `$49F2` = 26.
@@ -4738,7 +4738,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   `NEWECL 11`; stepping off and back on opens
   `'WE TRAIN ONLY THIEVES HERE. DO YOU WANT TO TRAIN?'`.
 
-  `LOW EXPERIENCE OR WRONG CLASS` is the *class* refusal — the boosted
+  `LOW EXPERIENCE OR WRONG CLASS` is the *class* stop — the boosted
   "thieves" in this party carry `class_bits` 8, which is **fighter**. The one
   who qualifies is LADY KATHERINE, `class_bits` 5 = magic-user + thief. Then
   `YOU NEED 1000 GP TO TRAIN`; gold was poked to 5000 at `$4EC1` (slot 1 of the
@@ -4769,9 +4769,9 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   | `0x119` | hp_current (roster) | 5 | 6 |
   | `0x11B` | movement (roster) | 6 | 3 |
 
-  Five things worth carrying away.
+  Five things to carry away.
 
-  * **`0x0A0` follows the class being trained, not a total.** She is
+  * **`0x0A0` is set from the class being trained, not from a total.** She is
     magic-user 1 / thief 1 and both `0x0A0` and `0x0CB` went to 2 while
     `0x0C9` stayed at 1.
   * **The per-class array is in class-bit order.** `0x0C9` magic-user,
@@ -4804,7 +4804,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   immediately. Everything after the fifth step was driven through the KERNAL
   buffer: `$49`/`$4A`/`$4B`/`$4D` for I/J/K/M, `$11` for cursor-down in a
   vertical menu, `$0D` to select, `$20` for a `press any key`. That is a
-  complete driving vocabulary that does not need XTEST at all, and it is worth
+  complete driving vocabulary that does not need XTEST at all, and it is to be
   preferring — it is the only thing that works while a monitor client is held
   open, and here it was the only thing that worked at all.
 
@@ -4862,7 +4862,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   the record. And `gap_07f`, the unallocated 25 bytes at `0x07F`-`0x097`, is
   **exactly the rest of the region the enumerator sweeps**, which makes it very
   likely to be spellbook storage held in reserve for a larger id space rather
-  than a gap. PROBABLE, and worth checking first on Curse and Silver Blades,
+  than a gap. PROBABLE, and to be checked first on Curse and Silver Blades,
   whose id spaces do run past 56.
 
 ---
@@ -4875,7 +4875,7 @@ written before a single byte of the record was confirmed. All five landed, the
 scope grew well past it, and the file was deleted once everything still true in
 it had moved to the document that owns the subject. Recorded here is what it got
 wrong, because the plan kept its own errors on purpose and they are the part
-worth carrying.
+to carry.
 
 **Two decisions survived unchanged** and are now in [README.md](README.md): the
 editor is a file tool with zero emulator dependency, and live memory is a
@@ -4913,7 +4913,7 @@ cost nothing and survived a feature nobody had planned.
    `0x0AD` was "a racial trait mask" and is ten trait slots carrying effect codes,
    seeded per race by `GEN $0BF3`.
 
-**What it got right, and would be worth repeating on a new title:** staging the
+**What it got right, and should be repeated on a new title:** staging the
 work so nothing was built on an unproven layout; making `goldbox/layout.py` a
 declarative table with a confidence level per field and generating the
 documentation from it; splitting the packages along the packaging boundary
@@ -5089,7 +5089,7 @@ test D with (5,2) came up at (5,2). Two different values, both honoured — on a
 load the arriving script does not re-place an outdoor party, and a converter's
 square survives.
 
-**A loose end worth recording: the hidden-site paint did not happen on either
+**A recorded loose end: the hidden-site paint did not happen on either
 load.** The write-up, `reports/p3-saves.md`, is lost; it measured the walk-in case at 647/648, the
 one difference being the nomad camp square (12,11) painted `$39` over the
 disk's `$37` while its flag is clear. Both p47 loads read **648/648 — no square
@@ -5101,7 +5101,7 @@ candidate. The experiment: load the unmodified `W1.D64`, read `$8C00`; if it
 too is 648/648 the cache edit is exonerated, and walking the party within sight
 of (12,11) says whether the player is actually shown the camp.
 
-**What this leaves for the converter.** The C64 side is closed: the refusal in
+**What this leaves for the converter.** The C64 side is closed: the stop in
 `goldbox.dos_codec.apply_file_cache` for areas 25–27 can be replaced by the recipe above
 (slot 4 = the `SQRDATA` number, slot 8 = the id, `$49C5` = the `SQRDATA`
 number, `$49E6` = 0, disk from `goldbox/areas.py`, position into `$49C3`/`$49C4`).
@@ -5189,7 +5189,7 @@ random encounter and the run took none. One session, pool slot 1, `p49/` (scratc
 |---|---|
 | after loading `W7.D64` | `$37` — disk value, unpainted |
 | after the seam bounce, a fresh walk-in | **`$39` — painted** |
-| at `(13,10)`, camp on screen, before saving | `$39`; screenshot `PRE.png` shows **plain grass** |
+| at `(13,10)`, camp on screen, before saving | `$39`; screenshot `PRE.png` shows **bare grass** |
 | after saving there and cold-reloading | **`$37`**; screenshot `POST.png` shows **the camp's ring of tents**, same square |
 
 `PRE.png` and `POST.png` differ in exactly the camp tile — status line
@@ -5330,7 +5330,7 @@ identical 285 bytes that read `WEAPON 254 PASSS`, `DAMAGE 0D8-128`,
 **What the engine is doing** is SPECULATIVE and does not need settling to fix
 this: a zero-length file opens successfully where a missing one does not, and
 the loader ends up with a chain of one record it never read — the 63 bytes it
-then saves are font-shaped heap, `quantity` `0xFE`, which is the `254` on the
+then saves are heap that looks like font data, `quantity` `0xFE`, which is the `254` on the
 sheet. Settling it would need the overlay disassembled, and nothing turns on
 it.
 
@@ -5402,7 +5402,7 @@ ground truth):
 The clock is the C64's, at the C64's addresses: digit words `$49C6`-`$49CB`,
 sub-minute / units / tens / hour / day / month. A=10:02 day 16, B=1:22,
 J=10:56, all as loaded. Saving costs no time on DOS (it costs a minute on
-the C64). **#58 (Decode the DOS clock, so converted saves keep the time of day)'s decode is done**: carry the six words like the flags.
+the C64). **#58 (Decode the DOS clock, so converted saves keep the time of day)'s decode is done**: convert the six words like the flags.
 
 **Result 3. Party size is `$503E` and byte 12808, twice each.** The one word
 the engine changed when a six-member template carried a one-member party was
@@ -5649,7 +5649,7 @@ read somebody else's byte and call whatever it finds "not combat".
 Donald's ruling — no template, block on not understanding — turns every
 undecoded byte of `SAVGAM?.DAT` into a blocker, so the question stopped being
 "what is this byte for" and became "may a converter write it, and on what
-evidence". A file-level pass over the whole corpus answered most of it.
+evidence". A file-level pass over all the specimens answered most of it.
 
 **Two specimens nobody had counted.** The archives ship a second copy of the
 save directory at `games/POOLRAD/Default files/Saves/`, and its `SAVGAMA.DAT`
@@ -5663,10 +5663,10 @@ buffer all zeros and nine live words, and is excluded from every count.
 pair moved together (26→0 on one indoor step; 26→1 across the boat) and the
 engine's own resave. Byte 12807 is 2 in all twelve genuine files. Byte 12806
 is 1 indoors and 3 outdoors, but it is *perfectly* correlated with `$49E6`,
-so the corpus cannot separate "view mode" from a second encoding of the
+so the specimens cannot separate "view mode" from a second encoding of the
 indoors flag; either way a converter writes it from a value it already has.
 
-**Byte 12804 resisted, and the negative result is the useful part.** An
+**Byte 12804 resisted, and the negative result is what counts.** An
 exhaustive search — 13 files × 13137 byte offsets and all 2560 VM words —
 found no field carrying its value vector and none even sharing its
 *partition*. Refuted: `$49F0`, `$49F1`, `$49FE`, `$4AC4`, and any step
@@ -5691,8 +5691,8 @@ writing `$49FD` and `$49FE`: `ECL00` does `SAVE 10,[$49FE]`, `ECL14` does
 `SAVE 9,[$49FE]`, and Sokol Keep's `ECL15` writes neither — which is exactly
 why slot B stands in Sokol Keep still holding New Phlan's 10. Both ports
 agree save for save. The engine rewrote 10→9 by itself after loading a save
-retargeted into the Slums, so the prologue runs on load and these are
-rebuilt, not carried. `$49EB` and `$4A00` read the same way on both ports too
+whose party had been moved into the Slums, so the prologue runs on load and these are
+rebuilt, not converted. `$49EB` and `$4A00` read the same way on both ports too
 (`$4A00` = 255 in both Slums saves, 0 in both New Phlan ones).
 
 The inherit list this leaves — three groups with an experiment against each,
@@ -5807,7 +5807,7 @@ A magic-user cast Sleep on the slums orc ambush, in a fight driven out of
 owner bytes are combat combatant indices, so 8, 10, 11 and 13 are four of the
 eight orcs — and **3 is SILAS, one of the party's own**. Sleep is an area
 effect and it caught a party member; that is the game working, not a fault, and
-it is worth knowing before anything badges the party side.
+know it before anything badges the party side.
 
 Slots 59, 60 and 63 held owner bytes with a **zero id**, which is the expiry
 behaviour `docs/133-active-effects.md` records: expiry clears only the id, so
@@ -5875,7 +5875,7 @@ Darkness* executable, advancing by our own instruction lengths.
 comparison in `CS_MODE_M68K_020` and capstone decodes 616 more words —
 42 `chk.l`, 205 `fbf.l`, `frestore`, `fsave` and the rest of the 68881 — none
 of which exists on the CPU this binary runs on. The agreement numbers below
-are identical in both modes; what changes is the refusal count, and only the
+are identical in both modes; what changes is the count of rejected decodings, and only the
 68000 mode accounts for it exactly.
 
 | | |
@@ -5887,7 +5887,7 @@ are identical in both modes; what changes is the refusal count, and only the
 | we refused, capstone decoded | 2 288 — 1 943 branches to an odd address, 248 68020 scaled or memory-indirect index extensions, 97 index extensions with the 68020 format bit set. That is the whole 2 288 with nothing left over |
 | capstone refused, we decoded | 0 |
 
-Every one of the 2 288 is inside string data, and in each the refusal is the
+Every one of the 2 288 is inside string data, and in each the rejection is the
 stricter reading. **Two of the three are legal encodings that no assembler
 would emit**, which is a narrower claim than "a 68000 cannot do this" and a
 more useful one: real silicon ignores the reserved extension bits, and an odd
@@ -5897,7 +5897,7 @@ in a binary with both scattered through one hunk, and the comments in
 `tools/amiga/m68dis.py` say so in those words. The 24 remaining textual differences
 are capstone writing `lea.l` and `pea.l` where we write `lea` and `pea`.
 
-**The cross-check earned its keep immediately.** The first draft read
+**The cross-check caught an error immediately.** The first draft read
 NEGX/CLR/NEG/NOT/TST out of bits 11-9 of a line-4 opcode. They live in bits
 11-8; bit 8 set is CHK, LEA, or nothing at all. So `$4552` — the letters `ER`
 in the middle of `PICK A GENDER` — came out as `neg.w (a2)`, and 199 words of
@@ -6033,8 +6033,8 @@ way out, twice:
 | `ECL00` `$9955`, `$9BDC` | `LOADFILES 255, 255, 127` | leave the `GEO`, leave `SECSET`, **set `WALLS` empty** |
 | `ECL00` `$9B0A`, `$9B11` | `LOADFILES 0, 0, 0` / `LOADPIECES 127, 127, 127` | New Phlan's own arrival |
 | `ECL14` `$9A8B`, `$9A92` | `LOADFILES 20, 2, 255` / `LOADPIECES 2, 4, 1` | the Slums: **leave `WALLS` alone** |
-| `ECL12` `$9971`, `$9978` | `LOADFILES 18, 2, 255` / `LOADPIECES 1, 3, 5` | Podol Plaza, the same shape |
-| `ECL15` `$9A7C`, `$9A83` | `LOADFILES 21, 2, 255` / `LOADPIECES 1, 5, 9` | Sokol Keep, the same shape |
+| `ECL12` `$9971`, `$9978` | `LOADFILES 18, 2, 255` / `LOADPIECES 1, 3, 5` | Podol Plaza, the same pattern |
+| `ECL15` `$9A7C`, `$9A83` | `LOADFILES 21, 2, 255` / `LOADPIECES 1, 5, 9` | Sokol Keep, the same pattern |
 
 `127` is the loader's "mark this slot empty without loading", `255` is "leave
 it alone". `ECL19`, `ECL1A` and `ECL1B` carry a `LOADFILES 127, 127, 127` for
@@ -6097,7 +6097,7 @@ The `SAVE` was written here as `$9950`; it starts at `$994F`, because the
 `tools/areas/eclwalk.py` walked the script statement by statement and the two
 statements above it came out as well -- `docs/150-departing-prologues.md`.
 
-The second release, `$9BDC`, sits in the same shape three statements before
+The second release, `$9BDC`, sits in the same position three statements before
 `NEWECL 21`, Sokol Keep, with `SAVE 4, [$6E12]` between them. So both are exit
 statements and neither is in the arrival entry.
 
@@ -6137,7 +6137,7 @@ is why the collision never shows in ordinary play.
   and a warped arrival, 0 bytes of 1536. The lesson is the general one — a
   capture that is not idle is a measurement of the harness.
 * **That `$49FD`/`$49FE`, the wall colours, are involved.** They are not: they
-  read 8 and 9 in both the walked and the warped arrival at New Phlan. Worth a
+  read 8 and 9 in both the walked and the warped arrival at New Phlan. That deserves a
   separate note that `$49FE` stays at the Slums' 9 after walking into New Phlan
   and only becomes New Phlan's 10 after a step — so `ECL00` writes it somewhere
   other than entry 4. Nothing here depends on it.
@@ -6188,7 +6188,7 @@ negative modifiers the same way: `LIBRARY $3651` and `$3670` are the strength
 hit and damage tables and hold `$FD` for the −3 AD&D 1st edition gives strength
 3.
 
-### Refuted, and worth not re-reading
+### Refuted, and not to be re-read
 
 * **The marker reading.** Six sites across `COMBAT` and `LIBRARY` touch
   `$6D90`, `$6D97` or the roster copy `$6C17`; every one is arithmetic or a
@@ -6207,7 +6207,7 @@ bonus field takes five values in all: 0, 1, 2, 8 and 255. Four records hold
 water, and Silver Blades types 54, the canary, and 85. Six hold 8: types 87
 (`1d8+8`) and 88 (`1d12+8`) in each title, and no item record on any disk names
 either, so they are unreachable rather than wrong. Type 127 in Pool of Radiance
-and Silver Blades is `2d20` at range 60 with AC 6 and no name — the same shape
+and Silver Blades is `2d20` at range 60 with AC 6 and no name — the same kind
 of unreachable record.
 
 ---
@@ -6294,7 +6294,7 @@ two independent blocks: `AND #$02` adds `$6BEC`, `AND #$04` adds the strength
 hit bonus at `$6DE8`. They read like alternatives and are not. Of the 58
 `POOL1` type records carrying damage dice, 54 hold one bit or the other; the
 HEAVY CROSSBOW holds **both**, and so do the DECK, DRUMS and DUST, three magic
-items built on the weapon shape. Four hold neither: BILL-GUISARME,
+items built on the weapon layout. Four hold neither: BILL-GUISARME,
 GUISARME-VOULGE, BAG and the unnamed record 0. The five melee weapons that can
 also be thrown — dagger, hand axe, club, hammer, spear — carry bit 2 and bit 4
 and a range, and never bit 1, so throwing a dagger is a strength attack and
@@ -6417,13 +6417,13 @@ listing regenerates from the player's disks and is not transcribed.
 
 ### Why "run the exit's own handler" is not a one-line change
 
-`ECL0D` has **two** `NEWECL 27` statements: `$9A20`, which is the plain exit and
-is the one exit in the whole corpus with nothing at all in front of it, and
+`ECL0D` has **two** `NEWECL 27` statements: `$9A20`, which is the ordinary exit and
+is the one exit in all the specimens with nothing at all in front of it, and
 `$9A9D`, which is the four statements above. Which one the game runs depends on
 walking the eight slots and finding a record whose `0x0B8` has bit 7 set and
 whose roster status has bit 7 clear, *and* on the player answering `YES`. So an
 area pair does not name a handler: 13 → 27 has two, and 12 more script/target
-pairs in the corpus are reached by more than one exit —
+pairs in the specimens are reached by more than one exit —
 
 | script | target area | exits | statements in each block |
 |---|---|---|---|
@@ -6445,7 +6445,7 @@ That is 13 pairs of the 73 exits whose target is an immediate; the remaining
 six read their target out of a table with opcode `$2A` and the walk cannot say
 where they go at all.
 
-**The two shapes an implementation could take** were, at the time this was
+**The two designs an implementation could take** were, at the time this was
 written, neither built:
 
 * **Let the game's own VM run it.** Point the interpreter at the prologue's
@@ -6462,9 +6462,9 @@ written, neither built:
 
 **Donald's decision, 2026-09-03: Fast Travel out of the area should run the
 exit's own handler before warping.** That was a design ruling and not a
-finding; the two shapes above are what it left to choose between.
+finding; the two designs above are what it left to choose between.
 
-**Corrected 2026-09-08: the first shape was chosen, and it is CONFIRMED to
+**Corrected 2026-09-08: the first design was chosen, and it is CONFIRMED to
 work.** The question the ruling left open — can the game's own interpreter
 resume cleanly from a program counter set from outside? — was never a design
 choice, only a thing nobody had measured, so it belongs here rather than
@@ -6553,7 +6553,7 @@ absolute-mode table above reports for the same title through the same
 counted them differently, and the two hits are the same two either way.
 
 So the engine reaches the record absolutely and Pool of Radiance's zero is not
-hiding behind a pointer **of this shape**. The scan matches an immediate
+hiding behind a pointer **of this kind**. The scan matches an immediate
 `LDY #$ll`/`LDX #$ll` near the opcode; an index computed at run time or folded
 into the pointer's own low byte would leave no trace in it. That is the limit
 of what the zero rules out.
@@ -6591,7 +6591,7 @@ intersected with what a player character happens to hold zero at. **Nothing in
 it is a flag**; bit 7 of `0x0B8` is the byte the engine tests.
 
 Curse's own 70 `MON*` files carry the same fill — `0x0BA` is `$FF` in 70 of 70
-and `0x0B9` in 69 of 70 — so a Curse monster record arrives looking dual-classed
+and `0x0B9` in 69 of 70 — so a Curse monster record reads as dual-classed
 at old level 255, and is kept harmless only by the `CMP #$07` race gate in front
 of every read.
 
@@ -6647,8 +6647,8 @@ prefix and not case-folded.
 
 Three details the read added:
 
-* **The refusal is silent.** `duplicate` frees the 285 bytes with a sized free
-  and returns to the menu, landing at the same place the party-full refusal
+* **The duplicate is stopped silently.** `duplicate` frees the 285 bytes with a sized free
+  and returns to the menu, landing at the same place the party-full stop
   does. Nothing is drawn.
 * **The candidate is starred before the party is walked.** The routine builds
   `"* "` + the entry name, 40 characters wide, and copies it back over the
@@ -6678,10 +6678,10 @@ Ground truth is the file count, not the screen: after the two adds the run
 uses the game's own `SAVE CURRENT GAME` into slot C, which the archives do not
 use, and counts what the engine wrote. **CONFIRMED.**
 
-The control that makes it worth believing is the star: both runs show
+The control that makes it believable is the star: both runs show
 `* ALPHA` *and* `* BETA` after the second pick, so the refused record really
 was opened and really did reach the comparison. A run that mis-drove the menu
-would otherwise look exactly like a refusal — and one did, because
+would otherwise look exactly like a stop — and one did, because
 **the arrow keys do nothing in that menu**. `Home` and `End` move the
 highlight within the page, `N`/`P` and `PgDn`/`PgUp` turn the page, `E` and
 `Escape` leave, and any other key picks whatever is highlighted. Pressing
@@ -6719,7 +6719,7 @@ both put a high-entropy per-character value at C64 `0x0E6`-`0x0E7`,
 immediately before experience, opposite DOS `0x0AB` in the same place — the
 region `#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the
 dual-class slot)` took two other bytes out of. If they are the same field the
-conversion should carry the C64 value rather than invent one, and it would be
+conversion should convert the C64 value rather than invent one, and it would be
 stable as well as distinct. SPECULATIVE. What would settle it: read `0x0E6`-`0x0E7` from a C64
 character, export that character to a DOS `.CHA` through the game's own
 `ADD CHARACTER TO PARTY` on both ports, and see whether the DOS `0x0AB` is one
@@ -6972,7 +6972,7 @@ an earlier build of the driver.
   there is `S 8:07` with no coordinates, so `parse_status` finds nothing and
   every step reads as blocked. The driver verifies by `$C04B` instead.
 
-### One harness failure worth writing down
+### One harness failure
 
 `Session.begin_adventuring` failed on two of five boots, and it is the screen
 reader rather than the prompt handler. The game asks for side 2 on the way
@@ -7000,7 +7000,7 @@ holds only the C64's)`.
 **Question.** `tests/records/test_levels.py::test_stored_thac0_matches_the_table_for_every_character`
 and the two population tests in `tests/records/test_derive.py` were red at `HEAD`, on
 records off the player's own disks. A `junior-dev` agent sent to swap the
-corpus stopped and said the corpus was not the problem: specimens this project
+saves stopped and said the specimens were not the problem: specimens this project
 watched being written show the same disagreement. A level-1 DOS magic-user
 stores THAC0 20 where `goldbox/levels.py` says 21.
 
@@ -7038,7 +7038,7 @@ $1F17  CMP $6B71 / BCC $1F1F / STA $6B71
 0, which is what makes the index one-based. `SPELLE04 $0CFF` writes the `LDA
 #$00 / STA $6B71` the loop starts from.
 
-DOS, `GAME.OVR:0x1A659`, the same shape with the compiler's own idioms:
+DOS, `GAME.OVR:0x1A659`, the same pattern with the compiler's own idioms:
 
 ```
 mov byte es:[di+0x2D], 0            ; clear it
@@ -7206,7 +7206,7 @@ value for value. `Session.fight(melee_turn)` then drove 36 turns and counted
 Each of them fails silently, which is why none had been found.
 
 * **`Session.mode()` read `$6E11` on every title.** In a running Curse that
-  byte belongs to something else and reads `1`, so a party on the combat floor
+  byte belongs to something else and reads `1`, so a party on the combat arena
   was reported as not fighting -- and a driver told there is no fight looks
   exactly like a save that failed to enter one.
 * **`RE_MOVE_LEFT` wanted `=`.** Pool of Radiance draws `MOVE LEFT = 9` and
@@ -7225,13 +7225,13 @@ Each of them fails silently, which is why none had been found.
   covered 75 squares in 598 steps -- and still met nothing. So the area is the
   variable, not the step count: `docs/121-silver-blades.md`'s encounter came
   228 steps *out of* New Verdigris, and this party never left `GEO10`.
-* **`Session.acting` names nobody on the frame a combat floor finishes
+* **`Session.acting` names nobody on the frame a combat arena finishes
   drawing**, because the round has not begun and the panel carries no name. A
   probe that asks who is acting at that moment presses nothing and logs
   nothing.
 * **Row 24 is the wrong thing to detect a fight with on these two titles.** It
   read blank on all seven readings across the half-minute between
-  `PUNCH BARKEEP` and the combat floor, and `screen()` was answering a bitmap
+  `PUNCH BARKEEP` and the combat arena, and `screen()` was answering a bitmap
   for most of them. The mode byte is `2` the moment `LINKER` dispatches.
 
 ---
@@ -7345,7 +7345,7 @@ any cleric gets, and a half-elf's wisdom maximum is 18 (`START.EXE 0x00F3E0`,
 sixteen bytes a race: half-elf STR 3/18, INT 4/18, WIS 3/18, DEX 6/18, CON
 6/18, CHA 3/18).
 
-**The corpus agrees as far as it reaches.** Over 44 distinct DOS Pool of
+**The specimens agree as far as it reaches.** Over 44 distinct DOS Pool of
 Radiance caster records on this machine, the deepest capacity is WISHHEL's 17
 — a half-elf cleric 5 / fighter 4 / magic-user 4 with wisdom 18, storing
 `5 5 2` and `3 2 0`. Training his magic-user half from 4 to its ceiling of 6
@@ -7361,13 +7361,13 @@ stride from 1 to 40, in both directions. It does not change the answer: if DOS
 enforces no racial cleric limit, a half-elf cleric 6 / magic-user 6 reaches 21,
 which is the array exactly.
 
-**And one port difference fell out of the corpus check.** Our
+**And one port difference fell out of the check against the specimens.** Our
 `levels.wisdom_bonus_spells` is the C64's table, which starts a point low, and
 the DOS build's does not — `docs/125-bug-notes.md` N13 has both, and the two
 engine-written records that measured it.
 
 ## The spellbook ceiling nobody could reach
-**Hypothesis.** A conversion can carry a spell id the destination title's book
+**Hypothesis.** A conversion can write a spell id the destination title's book
 has no byte for, which is why the DOS writer warns about one. (`#509 (A
 converted spellbook drops ids the destination title is said not to have, though
 both platforms are the same game)`.)
@@ -7404,7 +7404,7 @@ in both tickets — `MIALEE: 8 spells memorised and Curse of the Azure Bonds has
 6 slots` and `Spell id 71 is outside the Pool of Radiance book's ids 1-64` —
 are neither reproducible nor observations. Curse's DOS record allots 84 slots
 and never 6, and Pool of Radiance's book is 56 ids and never 64. They are
-illustrative strings, written to show the shape of the two lines; the tickets
+illustrative strings, written to show the form of the two lines; the tickets
 are about the conditions, and the conditions are above.
 
 ## Dirten inherits a legacy import's zero combat icon
@@ -7436,7 +7436,7 @@ these related saves, including the one containing DIRTEN; recruitment itself
 was not observed. They do not by themselves say which save was mounted for a
 later screenshot.
 
-**The photographed shape is CONFIRMED.** Screenshot
+**The photographed form is CONFIRMED.** Screenshot
 `Screenshot_2026-09-13_15-11-51.png`, SHA-256
 `925c9dde712b8dc469e05a96fd783cd169c8084ae7a4abca45f6d24a0fcd5004`,
 shows the eight rows of `CHARPIC00` glyph 0 repeated across a 3x3 pose. At the
@@ -7472,7 +7472,7 @@ or icon-table state.
 
 **The original screenshot's exact live bytes remain PROBABLE.** Donald
 identified DIRTEN and confirmed that `TEST_DOS_IMPORT6.D64` was mounted, and an
-unchanged copy of that exact image now reproduces the same shape from the same
+unchanged copy of that exact image now reproduces the same result from the same
 persisted entry after reload. The bytes in Donald's emulator at the original
 screenshot instant were not read.
 
@@ -7699,7 +7699,7 @@ not an assertion that no external process could have changed the source.
 byte accepted `$80` and `$81`, although `c64_codec.OUT_OF_PLAY = $80` is
 independent of the low status bits. `layout.py` records the engine's measured
 `$81`/`$05` controls and `LIBRARY`'s separate mask/display branches. Generated
-`$80` and `$81` refusal tests both failed before the guard was added. Both
+`$80` and `$81` tests of the stop both failed before the guard was added. Both
 now refuse; `$01` and `$05` still pass. No further low-status restriction was
 inferred from the review.
 
@@ -7725,7 +7725,7 @@ of the source. Prior detected drift still refuses before output creation; a
 generated late-edit case preserves both the correct snapshot output and the
 external writer's new source bytes.
 
-**No additional BAM refusal is justified by this repair — CONFIRMED for the
+**No additional BAM check that stops the write is justified by this repair — CONFIRMED for the
 two reported cases.** Flipping the per-track free count at BAM `+$04`, or
 marking directory sector 18/1 free at BAM `+$49` bit 1, leaves the allowed
 36-byte patch unchanged. Both generated output images preserve the original
@@ -7774,7 +7774,7 @@ Pool of Radiance `NeutralCharacter`s at the game's own reachable extremes, and
 
 **The cases**, every ceiling computed rather than typed in: a half-elf cleric
 5 / magic-user 6 at wisdom 18 memorising all 20 spells `goldbox.spells.
-capacity_by_class` gives him (the corpus's own deepest caster, WISHHEL, reaches
+capacity_by_class` gives him (the deepest caster among the specimens, WISHHEL, reaches
 17); a dwarf fighter 8 at every ability's racial maximum, hit points at the
 dice-plus-constitution ceiling (112), the DOS name field's full fifteen
 characters, all sixteen C64 item slots, and every coin purse at the format's

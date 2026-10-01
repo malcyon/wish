@@ -12,7 +12,7 @@ and `GEN $11AB`'s round-up is not the rule this project has been implementing.**
 
 A Curse player who used `HUMAN CHANGE CLASS` -- the party menu's tenth item,
 which needs no training hall -- could not use Level Up at all, on any title.
-Now the rules are known, and what they cost him is worth saying in his own
+Now the rules are known, and what they cost him is said in his own
 terms: **he gains no hit points at all for as many levels as his old class
 had**, he pays 1000 gp for each of them, and the class he left never trains
 again however much experience he piles up. That is the game's design and not a
@@ -63,7 +63,7 @@ out of the class count. Constitution 16 reads `02` at `GEN $11D7`, and
 **`GEN $1321` -- the old class is never eligible. CONFIRMED.** Press 8 was
 refused with `UNABLE TO ADVANCE` while she held 150,000 experience and a
 restored magic-user 6, which is 15,000 more than the magic-user's ninth level
-asks for. The refusal cost nothing: platinum read 400 before and after.
+asks for. The refused training cost nothing: platinum read 400 before and after.
 
 **`GEN $1470` -- and it is out of the experience clamp. CONFIRMED, from a
 staged input.** With the levels poked to magic-user 10 / fighter 1,
@@ -139,7 +139,7 @@ not probabilistic at all in the commonest case**.
 `GEN $1235` puts the **constitution total** through the same `$11AB` as the hit
 die, and unlike the die that total is fixed by the record -- so
 `hp_max - hp_rolled` after a training is one clean sample. Constitution was set
-to 15, whose row entry at `GEN $11D7` is `01`, making the total the plain sum of
+to 15, whose row entry at `GEN $11D7` is `01`, making the total the simple sum of
 the class levels so its remainder could be chosen.
 
 | classes | total | remainder | Curse's rule | our `divide_between_classes` | observed |
@@ -163,7 +163,7 @@ every row, and does not affect `$18E4`'s count of non-zero levels.
 
 | file | what |
 |---|---|
-| `goldbox/levelup.py` | `dual_class_old`; the four rules; the refusal gone; `divide_between_classes`' docstring corrected with what it still needs |
+| `goldbox/levelup.py` | `dual_class_old`; the four rules; the dual-class stop gone; `divide_between_classes`' docstring corrected with what it still needs |
 | `tests/curse_of_the_azure_bonds/test_cursedualtrain.py` | 8 tests replaying the eight presses against the specimen pair |
 | `tools/curse_of_the_azure_bonds/cursetrain.py` | `stage` and eight more `--give` fields; the driven recipe, including the roster address |
 | `docs/192-curse-dual-class.md` | this page |
@@ -171,7 +171,7 @@ every row, and does not affect `$18E4`'s count of non-zero levels.
 **Each of the four rules was mutated on its own and the matching test went
 red**: dropping the `$15E7` suppression, restoring on `<=` instead of `<`,
 dropping the eligibility skip, dropping the clamp skip. Reverting the whole
-file turns five of the eight red on the refusal alone.
+file turns five of the eight red on the removed stop alone.
 
 ## The specimens
 
@@ -216,7 +216,7 @@ Read off `SILVER*.D64`'s `GEN` with no emulator, and recorded in full on
 `#89 (Silver Blades' trainer grants spells from a table, and goldbox/levelup.py
 offers them from a menu)`: the one-press-raises-every-class loop (`$156F`), the
 hall gate `$7EA8` with the same `AND #$F7` and the same `$7F`/`$A1` menu masks
-(`$0991`), refusal message 27, the two-dice hit die (`$1808`) and the divide
+(`$0991`), message 27 (the stop), the two-dice hit die (`$1808`) and the divide
 (`$0D96`) -- the last two instruction for instruction with Curse's, so Silver
 Blades has the same `<` and, like Curse, guarantees no minimum result. It never stores
 spell capacity either: 0 code references to `$7CEE`-`$7CF3` across 347 files.

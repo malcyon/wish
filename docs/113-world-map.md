@@ -9,7 +9,7 @@ carries its own grade.
 The headline: **the overland map is not a `GEO`.** It is the combat square
 engine — `SQRPACI` descriptor, one byte a square at `$8C00` — pointed at
 `SQRDATA0n` instead of a combat arena. `automap/combat.py` already reads that
-shape, which makes this much cheaper than it looks.
+format, so this is cheap.
 
 ---
 
@@ -29,7 +29,7 @@ shape, which makes this much cheaper than it looks.
 | `$49E6` is `inDungeon` — 0 selects the overhead view, non-zero the 3D one | CONFIRMED against the Azure Bonds reimplementation |
 | Each script carries its **site list** as four tables (y, count, x, event) and its **impassable-terrain list** as one more | CONFIRMED — 46 sites read off, all three maps |
 | `ECL1A` swaps its terrain table when `$4AB3 >= 254`: clearing the Stojanow pollution **opens the river to travel** | CONFIRMED |
-| Sites are hidden by **painting plain terrain over them** until their flag is set, so the map is rebuilt from file + flags and is never saved | CONFIRMED |
+| Sites are hidden by **painting ordinary terrain over them** until their flag is set, so the map is rebuilt from file + flags and is never saved | CONFIRMED |
 | The row stride is `$0612 + 1` = 18, **not** `$0607` = 20 | CONFIRMED from `GDRIVE00 $C3AF` |
 | `SECSET0n` is the character set the glyphs are drawn from | PROBABLE |
 | The 18-byte glyph entry is nine screen codes then nine attributes | PROBABLE |
@@ -153,11 +153,11 @@ by a city gate. The first travel square is on map `1A`, near world (24-26,
 | **W7** | **Beside the kobold caves at map `1B` (6,15)** — before entering, after the "TWO CAVES" message | `$4AA0` bit 1 flips here. Pairs with `npc_party.d64` on the same square, which is the only prior specimen |
 | **W8** | **Inside a random "small dark cave"** (`$4A9E` = 255) | the only way to see the switched state: `$49E6` = 1, `$49FB` = 255, `$4BC2` = `19`/`1A`/`1B`, and `$49C3`/`$49C4` preserved underneath |
 | **W9** | Back on the grid immediately after leaving that cave | proves the travel position survives an excursion, which is the whole reason for the second coordinate pair |
-| **W10** | **Before and after clearing the Stojanow pollution** (`$4AB3` reaching 254), both taken on the travel grid near world (19,16) | the terrain-table swap, the only known case of the world changing shape |
+| **W10** | **Before and after clearing the Stojanow pollution** (`$4AB3` reaching 254), both taken on the travel grid near world (19,16) | the terrain-table swap, the only known case of the world changing form |
 | **W11** | Outside **Buccaneer Base** before and after taking the Bivant commission (`$4A8C`) | the hide/reveal stamp — checks that the map really is rebuilt from flags |
 | **W12** | Anywhere outdoors, **during a wilderness random encounter** | if the game can be saved there at all; hands the encounter work its own specimen |
 
-**Two live captures are worth more than any of these** and cost one session:
+**Two live captures tell more than any of these** and cost one session:
 
 * **`$8C00`-`$8E87`, 648 bytes, while standing on the travel grid.** Compare
   byte for byte with `SQRDATA0n`. This is unknown 1 and it is the keystone.
@@ -235,7 +235,7 @@ answers unknown 2 on its own.
    table.
 8. **The river.** Re-read `passable()` when `$4AB3` crosses 254 and redraw.
    This is the one place the map changes under the player, and getting it right
-   is what makes the panel worth more than a scan of the cluebook.
+   is what makes the panel more useful than a scan of the cluebook.
 
 ## What not to do
 

@@ -39,7 +39,7 @@ $3194  JSR $31B0 / LDA #$FD / JSR $FFD8               SAVE to X/Y = $6800
 Everything from the header to the roster goes out in one block, and
 `$6300`-`$66FF` is simply what lies between the item pages and the roster.
 The loader puts no file there: `LIBRARY`'s load-address table (file
-`+$15B6` low bytes, `+$15CF` high bytes, the same shape as Pool of
+`+$15B6` low bytes, `+$15CF` high bytes, the same layout as Pool of
 Radiance's at `$41BE`/`$41D7`) reads
 
 | slot | kind | Curse loads it at | Pool of Radiance |
@@ -120,7 +120,7 @@ a zeroed buffer is the picture; XOR onto the picture is the next frame.
 44 of 49 `PIC` files on the Curse sides decode this way, every one of them
 11 x 11 with the streams ending on the file's last byte and the decoded
 frame count equal to the table's; 40 of 49 on the Silver Blades sides. The
-refusals -- `PIC64` and `PIC78`-`PIC7B` on Curse, `PIC5A`, `PIC64` and
+files that fail that check -- `PIC64` and `PIC78`-`PIC7B` on Curse, `PIC5A`, `PIC64` and
 `PIC70`-`PIC77` on Silver Blades, 736 or 2679 bytes -- carry no such header
 and are drawn by something else.
 

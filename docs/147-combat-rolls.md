@@ -109,7 +109,7 @@ Recorded because each is cheap to try again and expensive to re-disprove.
 
 **A natural 1 leaves `$2B10` holding the previous attack's roll.**
 `$127F CMP #$01 / BEQ $12AF` returns before the store. PROBABLE rather than
-CONFIRMED: it is plain in the code and no natural 1 came up in either fight.
+CONFIRMED: it is visible in the code and no natural 1 came up in either fight.
 
 **Polling cannot count rolls it did not see — and so far it never has had to.**
 Two attacks resolved between two polls would collapse to the last one, because

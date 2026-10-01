@@ -189,7 +189,7 @@ even after the create was made atomic.
 **A holder re-asserting a lane it already holds touches nothing at all**, and
 that is the third thing this had to be taught. Re-claiming used to delete the
 file and write it again, and for the couple of milliseconds in between the lane
-read plainly *free* — not held, not unreadable — so another holder's `CreateNew`
+read as *free* — not held, not unreadable — so another holder's `CreateNew`
 landing in there won it **without `-Override`**, and its success line did not
 even say it had taken anything, because what it read was an empty lane. A
 holder retrying a claim whose ssh reply was lost is an ordinary thing to do.
@@ -214,9 +214,9 @@ direction: a backwards step makes the age negative, the file reads as a write in
 flight, and the caller is refused rather than let in. A write lasts
 milliseconds, so ten seconds is margin rather than a measurement.
 
-**Every refusal says how to get unstuck.** An agent whose predecessor died
+**Every time the script declines to run it says how to get unstuck.** An agent whose predecessor died
 without releasing would otherwise read only "claimed by dead-agent since 09:14"
-and have a lock nothing tells it how to clear, so each refusal carries the
+and have a lock nothing tells it how to clear, so each message carries the
 `-Override` line that clears it.
 
 Two checks sit under the claim, because a claim only binds a caller who passes
@@ -245,7 +245,7 @@ behind by an agent that died is taken with `-Override`, deliberately, by
 somebody who has looked.
 
 **`-Holder` and `-Override` are read out of the remaining arguments rather than
-declared as parameters**, and that is worth knowing before editing the script.
+declared as parameters**, and that matters before editing the script.
 PowerShell fills a positional parameter *before* a
 `ValueFromRemainingArguments` one, wherever each is declared and whatever
 `Position` each is given: measured, with `-Holder` at `Position=99` and `$Rest`
@@ -288,7 +288,7 @@ Windows Update is disabled in the guest. It is never going to be patched, and
 left on it wrote a 16 GB overlay in 25 minutes of uptime — update payloads and a
 6 GB pagefile — all of which then has to be merged on `winvm promote`.
 
-## 2. The VM resets in one second, and that shapes how you use it
+## 2. The VM resets in one second, and that decides how you use it
 
 The VM's disk is two files, and knowing which is which is the difference
 between losing an afternoon's work and not caring that you did.
@@ -385,7 +385,7 @@ scp build/wish-snapshot.exe donald@10.77.0.11:'C:/Users/donald/Desktop/'
 winvm revert          # gone, and so is anything it changed
 ```
 
-Two things worth knowing:
+Two things to know:
 
 * `scp` works even though the guest's SSH default shell is PowerShell. Modern
   `scp` transfers over the SFTP subsystem, which does not invoke a shell.
@@ -538,7 +538,7 @@ checked first.
 the run receipt (`Resolve-MyEmulator`) and the executable path of the one
 `winuae64` before opening `\\.\pipe\WinUAE`, then compare the pipe's server
 process (`GetNamedPipeServerProcessId`) with the lane's process, read the claim
-again, and once more immediately before the setter. A refusal made before the pipe
+again, and once more immediately before the setter. A decline made before the pipe
 is open exits 1 with the reason; after it, the exit code is 0 and the first line
 of output is `ok ...` or `fail ...`, so the raw replies of a failure still reach
 the caller. The deployed `C:\Amiga\winuae.ps1` must be this repository's copy.
@@ -670,7 +670,7 @@ input.1.keyboard.0.button.87.0=SPC_ENTERDEBUGGER
 `keybd_event` after `SetForegroundWindow`, from session 1; `PostMessage` does
 not reach DirectInput. `winuae.ps1 key 7A` does both.
 
-`activate_debugger()` carries one more guard worth knowing before designing
+`activate_debugger()` carries one more guard to know before designing
 anything headless:
 
 ```c
@@ -1136,7 +1136,7 @@ address instead.
   VM, and neither of them can tell)` one and no longer matches `tools/` — see
   the 2026-09-01 block below
 * **`front`, `key` and `send` refuse two emulators, and `roms` refuses one.**
-  Watched to bite against a second `winuae64` started on purpose and stopped by
+  Watched to fail against a second `winuae64` started on purpose and stopped by
   its own pid: all three reported `fail 2 winuae64 processes: 1244,3652; stop
   all but one` with rc 1, and `roms` reported `fail winuae64 running pid=...;
   roms starts its own, stop this one first` for each — §1
@@ -1277,7 +1277,7 @@ trap 7:
 made to walk, because the WinUAE driver sends only keystrokes)` -- §5.1 and
 §5.2:
 
-* **Amiga Pool of Radiance walks on the plain top-row digits**, and needs
+* **Amiga Pool of Radiance walks on the ordinary top-row digits**, and needs
   none of the keypad work below: `8` stepped a party forward eleven times and
   `6` turned it right, every one read off the status line, each sent as an
   ordinary ASCII virtual key with no `-Extended`. That build has no

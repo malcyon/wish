@@ -83,7 +83,7 @@ CONFIRMED.
 outdoors against `01` in all fourteen indoor saves, which is the cheap state
 test.
 
-**The fix for (a) and (b) is small and worth doing first**, independent of any
+**The fix for (a) and (b) is small and should be done first**, independent of any
 drawing: a second status pattern for `OUTDOORS`, and a memory fallback that
 reads `$49C3`/`$49C4` when `$49E6` is 0. Until then the mapper is not merely
 silent outdoors, it is holding a wrong square.
@@ -94,7 +94,7 @@ and `AutomapState.outdoors` stops (a) and (b) from ever reaching the explored
 set or the fingerprint. (c) -- naming the wilderness area itself, and drawing
 it -- is what the rest of this document is for.
 
-## 3. The terrain, and the constraint that shapes everything
+## 3. The terrain, and the constraint that governs everything
 
 Donald: *"We will need to figure out what to use for each terrain's graphic. We
 cannot reuse the graphics from the game. Something simple would be ideal, like

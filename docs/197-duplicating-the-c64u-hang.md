@@ -75,7 +75,7 @@ about 30 KB — read it a byte at a time, throw every byte away, close it and
 start again. **Nothing is written, nothing is loaded into memory, nothing can be
 overwritten.** It only keeps the drive working.
 
-This is also the KERNAL's plainest serial read, which is exactly the routine
+This is also the KERNAL's simplest serial read, which is exactly the routine
 both real hangs were sitting in (§4).
 
 ### Read memory in a loop
@@ -241,7 +241,7 @@ has to be inferred.
 
 They differ in one way, and it answers a question that had been open for days.
 September's went through the game's own fastloader; the instrumented one went
-through the KERNAL's plain loader, because the fastloader had been disabled.
+through the KERNAL's ordinary loader, because the fastloader had been disabled.
 **Disabling it changes which loop hangs, not whether a load can hang** — which
 is why answering `Y` to `DISABLE FASTLOADER (Y/N)?` never helped.
 
@@ -319,7 +319,7 @@ showed size does not order the hazard, and built 2026-09-07:
 
 ## 6. What it is not
 
-**Not the game.** It reproduces with plain BASIC and a generated disk, no Gold
+**Not the game.** It reproduces with BASIC and a generated disk, no Gold
 Box code anywhere.
 
 **Not the game's fastloader.** Refuted twice: by Donald playing with it

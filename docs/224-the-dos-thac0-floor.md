@@ -1,4 +1,4 @@
-# The floor under a DOS THAC0, and why a magic-user comes out 20
+# The lower limit on a DOS THAC0, and why a magic-user comes out 20
 
 `#608 (Curse's DOS engine writes THAC0 20 for a magic-user at levels 1-5 where
 our table holds 21, so a converted magic-user arrives one point worse to hit)`
@@ -15,9 +15,9 @@ since every row but the fighter's and the magic-user's holds 40 there, the
 best-of is never worse than 40: THAC0 20, for everybody, in all three DOS
 titles. The magic-user's
 own row is the only place in Curse or Silver Blades that ever asks for worse
-than that, which is why he is the only character the floor shows on.
+than that, which is why he is the only character the lower limit shows on.
 
-The C64 has no such floor because its rows start `$00`, and `docs/210-the-later-titles-dos-thac0.md`
+The C64 has no such lower limit because its rows start `$00`, and `docs/210-the-later-titles-dos-thac0.md`
 read the DOS rows correctly and then applied the C64's rule to them. Its
 section "The experiment the issue asked for, and its answer" concluded a
 rebuild writes 39 for a magic-user 1-5; that is wrong, and this page is why.
@@ -77,8 +77,8 @@ EXEPACK-expanded `START.EXE`:
 The C64's own three tables are `GEN $0E2C` (magic-user), `$0E39` (cleric) and
 `$0E46` (thief), and each of them starts `$00`; the fighter group is not a
 table at all but `LDA attack_level / CLC / ADC #$27`, which is 39 at a fighting
-level of zero. So the C64's floor is 39 -- THAC0 21 -- and its magic-user row
-holds 39 at levels 1-5 anyway, so the floor never shows there.
+level of zero. So the C64's lower limit is 39 -- THAC0 21 -- and its magic-user row
+holds 39 at levels 1-5 anyway, so the limit never shows there.
 
 A character can hold at most three classes, so at least one row whose entry 0
 is 40 is always read, and `max(40, best of the classes)` is what the DOS
@@ -102,7 +102,7 @@ prints both counts, because the two rules are two different claims:
 | Secret of the Silver Blades | 86 | **86** | 84 |
 
 Pool of Radiance cannot tell the two rules apart: no entry in its table is
-above 20 at any level, so the floor never binds. The twelve Curse records and
+above 20 at any level, so the lower limit never binds. The twelve Curse records and
 two Silver Blades records that the table alone misses are every low-level
 magic-user on this machine.
 
@@ -141,7 +141,7 @@ field agrees. CONFIRMED.
 The corroborating measurement from the other direction was already on record
 and is not contradicted: PHILIPPE, staged at magic-user 5 and trained once in
 DOS Curse's own party menu, came out magic-user 6 holding 41 -- the row's own
-value at level 6, which beats the floor.
+value at level 6, which beats the lower limit.
 
 ## The Amiga builds have the same two loops
 

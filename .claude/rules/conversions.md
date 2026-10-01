@@ -56,7 +56,7 @@ A verified destination capacity limit requires a way to complete the
 conversion. Let the player resolve what fits. One name needing shortening must
 not condemn the entire party.
 
-Do not replace refusal with silent loss. During development, checks may prevent
+Do not replace a conversion that stops with one that silently loses data. During development, checks may prevent
 writing output known to be wrong, and incomplete routes remain behind their
 feature flags. Those protections do not discharge the obligation to finish the
 conversion.
@@ -214,7 +214,7 @@ length -- including as a test fixture. If a table cannot be written as
 numbers a reader could check against the game, it is the wrong side of the
 line.
 
-**Say "converted", not "carried".** The word is in this file, in
+**Say `converted`, not `carried`.** The word is in this file, in
 `field_disposition` prose and in drop lines a player reads.
 
 **The one exception, and it covers every field alike: a destination that
@@ -286,7 +286,7 @@ Two are open work, never legitimate reasons:
   be read, with a settling experiment. While it is open, a development-time
   check stops Wish writing output known or suspected to be wrong, and the
   investigation continues and has an owner. That check is not the fix, and
-  never a reason to stop working the conversion or to accept the refusal.
+  never a reason to stop working the conversion or to accept that it stops.
 
 Both are bugs that have not been filed yet. Treat them that way.
 

@@ -91,7 +91,7 @@ was two lines below the previous trainee, and every one of those was refused
 because it was the wrong class for that school -- which looks exactly like the
 game refusing a legitimate request.
 
-**A `t` that leaves the screen exactly as it was is a refusal.** There is no
+**A `t` that leaves the screen exactly as it was is a stop.** There is no
 message left on a settled screen. A `t` that changes it is
 `<NAME> WILL BECOME: A LEVEL n <CLASS>` over `DO YOU WISH TO TRAIN? YES NO`,
 and `y` accepts.
@@ -265,10 +265,10 @@ above describes.
 
 Each rung writes `before/` and `after/` snapshots of the whole `SAVE`
 directory, a `run.jsonl` with one line per step, prompt, training and save,
-and a screenshot of every frame it acted on. `--xp-mode threshold` stages one
-level's worth plus a margin instead of a flat number, which is what tells the
+and a screenshot of every frame it acted on. `--xp-mode threshold` stages the
+experience for one level plus a margin instead of a flat number, which is what tells the
 clamp apart from a price.
 
 **A specimen dies with the emulator slot that made it.** Scratch is gitignored
-and the old directory was lost twice; copy a rung worth keeping into `$WISH_SPECIMENS` with
+and the old directory was lost twice; copy a rung you want to keep into `$WISH_SPECIMENS` with
 `tools/registry/specimens.py add` before the slot goes down.

@@ -37,7 +37,7 @@ table at `$1344`, whose count byte is 8 and whose words are
 | word | MOVE | VIEW | AIM | USE | CAST | **TURN** | QUICK | DONE |
 
 `$DF` is `%11011111`, so the bit it clears is 5, and bit 5 is `TURN`.
-**CONFIRMED**, from the bytes and from the running game below. The same shape
+**CONFIRMED**, from the bytes and from the running game below. The same pattern
 is in both later titles, in `ECL64` rather than `COMBAT`: Curse at payload
 `+0x1048` (`LDA $7CA4 / BEQ`, then `LDA #$DF`) with its own eight-word table
 at `+0x18A6`, and Silver Blades at `+0x1040` with the words in `COMBAT2`,

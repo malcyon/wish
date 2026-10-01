@@ -91,7 +91,7 @@ the whole party, and bits 6–7 of the duration byte selecting the time unit.
 Expiry clears only the id, so **filter on a non-zero id** or you will show
 effects that ended.
 
-**The engine writes a spell on the party in two different shapes, and both
+**The engine writes a spell on the party in two different forms, and both
 are CONFIRMED.** Two casts on one party in the running game, on `#142 (The
 party effects line is computed every poll and shown nowhere)`:
 
@@ -184,7 +184,7 @@ imports `automap/` rather than the other way round.
 Three things decide whether this gets looked at twice:
 
 * **Wounded reads at a glance.** Colour, and a bar, not just `5 / 7`.
-* **Effects count down visibly.** A duration that ticks is worth watching; a
+* **Effects count down visibly.** A duration that ticks is something to watch; a
   number that changes only when you look is not.
 * **It says when it is stale.** A snapshot from four seconds ago during a
   disk load should say so, not pretend.
@@ -229,7 +229,7 @@ number is only interesting while editing, it belongs on the editor tab.
    `strip_effects`, removed from `wish/window.ui` in the UI redesign
    (`72ee9a9`), so `findChild` returned `None` and the `if self.effects is not
    None:` guard discarded the line in silence, five times a second. Donald
-   settled the shape it came back in on `#142 (The party effects line is
+   settled the form it came back in on `#142 (The party effects line is
    computed every poll and shown nowhere)`: one row of icons rather than eight
    cards each holding a mostly-blank line. `automap/panel.py`'s `child()` now
    names any widget the form does not have, in the debug log, so the same thing

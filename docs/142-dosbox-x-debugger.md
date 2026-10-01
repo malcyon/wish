@@ -5,7 +5,7 @@ watchpoints, breakpoints, registers and single-stepping on a running game.
 **It can be driven unattended.** The debugger is an ncurses program with no
 socket and no command file, but its input is the process's own terminal and its
 output goes to a host log file, so a pty on one end and a log tail on the other
-make it scriptable — the same shape as `tools/dos/dosbox.py`'s keystrokes-in,
+make it scriptable — the same design as `tools/dos/dosbox.py`'s keystrokes-in,
 files-out, and nothing here is read off the screen.
 
 `tools/dos/dosbox.py`'s three primitives still stand for driving the *game*. This
@@ -26,7 +26,7 @@ cd dosbox-x-dosbox-x-v2026.08.02
 sudo make install
 ```
 
-`--enable-debug=heavy` is the flag a watchpoint depends on: plain
+`--enable-debug=heavy` is the flag a watchpoint depends on: the bare
 `--enable-debug` compiles the debugger but `#if C_HEAVY_DEBUG` guards `BPM`,
 and a watchpoint is the whole point.
 
@@ -98,7 +98,7 @@ black frames a finished screen, every `wait_for` on it times out, and
 Three things follow. They live in `tools/dos/dosbox.py`, which had the same three
 faults (#88 (tools/dos/dosbox.py can capture the wrong window, and then every screenshot is black)) and now shares one copy of the fix with this harness — and note
 that the pid filter is inert there: DOSBox 0.74 is SDL 1.2, which does not set
-`_NET_WM_PID`, so on that side the display refusal is what does the work.
+`_NET_WM_PID`, so on that side the check that the display is free is what does the work.
 
 * **Choose the window by `_NET_WM_PID`**, which SDL2 sets and which is the only
   thing that told the two apart. Choosing by content is *wrong* here — the
@@ -115,7 +115,7 @@ that the pid filter is inert there: DOSBox 0.74 is SDL 1.2, which does not set
 The condition that starts it is a leaked process: `Xvfb` and `dosbox-x` are
 started with `start_new_session=True`, so a run whose Python is killed outright
 leaves both alive, holding the display against the next session to claim that
-slot. The same is true of plain DOSBox on `:50`-`:65`.
+slot. The same is true of stock DOSBox on `:50`-`:65`.
 
 ## Reaching the debugger
 
@@ -287,8 +287,8 @@ measures the picture panel where it means to measure the command bar)`:**
 game's 320x200 mode into a 640x400 window, so every rectangle
 `tools/dos/dosbox.py` measures -- `BAR`, `STATUS` -- would land on the wrong
 pixels without `XSession.capture()` halving each frame back to 320x200 first,
-which is what actually gets a run to a loaded save with rectangles worth
-looking at. Displays :90-:105, so the two pools and VICE's :10-:25 never
+which is what actually gets a run to a loaded save with rectangles that
+show something. Displays :90-:105, so the two pools and VICE's :10-:25 never
 collide (`#233 (The test suite takes the emulator displays agents need, and
 eight slots is no longer enough)` moved this from :40-:47 when every pool
 widened to sixteen slots).

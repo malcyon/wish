@@ -9,7 +9,7 @@ was holding open for specimens nobody has.
 Every offset here is a file offset into `/Curse` on Curse of the Azure Bonds
 disk 1 or `/Secret` on Secret of the Silver Blades disk 1, read with
 `tools/amiga/amiga68k.py`. `tools/amiga/amigaunpack.py` prints each map, and
-`tests/amiga/test_amiga.py` runs it against `goldbox/amiga_later.py`'s shapes, so the two
+`tests/amiga/test_amiga.py` runs it against `goldbox/amiga_later.py`'s layouts, so the two
 cannot drift.
 
 ## What changed, and what it corrects
@@ -193,7 +193,7 @@ into the node. Nine identical values from one uninitialised stack frame.
 This refutes the reading `#55 (Decode the Amiga Curse and Silver Blades records)` carried from 2026-08-26 to 2026-09-05, that
 `0x3E` was `charges` and 47 was a Chain Mail's charge count. **A constant
 across nine specimens is not a constant; it is nine specimens** — the third
-time this corpus has taught that lesson, after `readied` and
+time these specimens have taught that lesson, after `readied` and
 `movement_current`.
 
 ### Silver Blades' `0x42`: a scroll's extra spells
@@ -208,7 +208,7 @@ item.
 **`0x49` is the bundle the JOIN command makes, not a scroll**, which this
 section said until the DOS side was read for
 `#254 (Two DOS gaps the Amiga port gives a shape to: a 16-bit field in
-gap_13c, and a pointer at the end of the Silver Blades item)`. A plain scroll
+gap_13c, and a pointer at the end of the Silver Blades item)`. An ordinary scroll
 is type `0x27` (mage) or `0x28` (cleric) and keeps its three ids in its own
 `charges`, `effect` and `power`; DOS Silver Blades stores type `0x49` in
 exactly one place, its JOIN routine, which zeroes the head's own three bytes
@@ -241,7 +241,7 @@ after it out of the character's pack)`.
   experience and encumbrance, and they swap nothing that is not a `u16` or
   `u32`.
 
-  **Taken, and the field is named: it is the experience a creature is worth**,
+  **Taken, and the field is named: it is the experience a creature awards**,
   a `u16le` base with a `u8` per hit point in the third byte of the gap. Four
   routes in the DOS engines agree and the shipped creature files read the
   published AD&D values —

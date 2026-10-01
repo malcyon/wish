@@ -15,7 +15,7 @@ be converted to DOS for the later titles)`.
 Take a Curse or Silver Blades character off a C64 or Amiga save and convert it
 to DOS. Not badly -- at all.
 
-The failure was worse than a refusal. `goldbox.dos_codec.write` built 285 bytes
+The failure was worse than a conversion that stops. `goldbox.dos_codec.write` built 285 bytes
 whatever it was handed, so a C64 Curse party came back as six **Pool of
 Radiance** records:
 
@@ -30,7 +30,7 @@ Silver Blades game could ever have loaded it. `editor/convert.py` does not
 offer the direction, so no user could reach it; `goldbox/amiga_por.py`'s
 `write_por` calls `goldbox.dos_codec.write` directly and could.
 
-## The shape decides, and the character decides the shape
+## The format decides, and the character decides the format
 
 `goldbox.dos_codec.write_deltas` takes the title off the neutral character --
 `NeutralCharacter.game`, which a reader sets and which is a
@@ -59,9 +59,9 @@ bytes Silver Blades has and the others do not; they are zero in 48 of 48 item
 records driven out of the game, so the longer record is the shorter one with
 four measured zeroes after it.
 
-Pools of Darkness is refused rather than written. Its shape reads, there is no
+Pools of Darkness is refused rather than written. Its format reads, there is no
 C64 port to convert from, and nobody has written one of its 510-byte records;
-`goldbox.dos_codec.WRITES` is the list and `WrongTitleError` is the refusal, the same
+`goldbox.dos_codec.WRITES` is the list and `WrongTitleError` is the error raised, the same
 one `to_neutral` makes in the other direction.
 
 ## What round-trips
@@ -77,7 +77,7 @@ the class he trained out of)` and
 `#256 (The neutral record has nowhere to put a dual-classed character's former
 levels)`.
 
-| corpus | records | identical outside the mask |
+| specimens | records | identical outside the mask |
 |---|---|---|
 | Curse, engine-written for the dual-class work | 8 | **8** |
 | Curse, shipped in the archives | 24 | **24** |
@@ -88,7 +88,7 @@ levels)`.
 fighter 8 / thief 7 of the shipped party, differs at one byte -- the third of
 `field_83_87` -- where he reads 0 and every other record of the title reads 1.
 Three of the five are saves this project drove the game into writing and two
-are shipped, so it is his value rather than a corpus artefact.
+are shipped, so it is his value rather than an artefact of the specimens.
 
 **Why he differs is now known, and it is not that he is a companion**
 (`#304 (field_83_87 is written as a constant that the characters we rolled
@@ -241,21 +241,21 @@ from Pool of Radiance and another from the Curse decompilation)`).
 `0x191` `paladinCuresLeft`: character creation writes 1 (`ovr018`), CURE
 DISEASE is offered only while it is above zero and decrements it (`ovr020`),
 and a refresh sets `((paladinLevel - 1) / 5) + 1` (`ovr013`). The measurement
-agrees across four record shapes and six titles:
+agrees across four record formats and six titles:
 
-| shape | where | paladins holding 1 | everybody else |
+| format | where | paladins holding 1 | everybody else |
 |---|---|---|---|
 | 422 (Curse, Gateway) | `0x191` | MATHEW, MARK, DEMELTINA, JERRICUS | 0 in 20 |
 | 439 (Silver Blades) | `char_class + 1` | Guy de Valois, DEMELTINA | 0 in 18 |
 | 510 (Pools of Darkness, Treasures) | `char_class + 1` | Guy de Valois, DEMELTINA, MAXWELL, JERRICUS | 0 in 22 |
 
 CONFIRMED that the byte is 1 for a paladin and 0 for everybody else, in all
-four shapes. It stays 1 after HUMAN CHANGE CLASSES -- DEMELTINA is a cleric 1
+four formats. It stays 1 after HUMAN CHANGE CLASSES -- DEMELTINA is a cleric 1
 with former paladin 5 and still reads 1 -- so the writer derives it from the
 class the character holds **or** the class a dual-classed one left.
 
 **Silver Blades does not use it the way Curse's code says, and that is a
-negative result worth having.** Staged on Guy de Valois in the running game:
+negative result to have.** Staged on Guy de Valois in the running game:
 
 | staged | what the sheet offered | after one CURE |
 |---|---|---|
@@ -311,7 +311,7 @@ Everything below is a Curse or Silver Blades character coming *from* the C64.
 | the combat figure | the game's own default | `#130 (A converted DOS party arrives with six identical combat figures, not its own)` |
 | lower case and trailing blanks in a name | folded to capitals, blanks cut | the C64 draws no lower case, and SSI's own C64 copy of the same party is in capitals -- a limit of the destination on the way out, and it does not come back |
 | spell slots free today | written zero | **and the DOS engine fills them in on load**, measured above, so nothing is lost |
-| `paladin_cures` | derived from the class | the C64 has no such byte; what it is worth in Silver Blades is UNMEASURED |
+| `paladin_cures` | derived from the class | the C64 has no such byte; what it does in Silver Blades is UNMEASURED |
 | `npc` | not written | `#303 (The DOS record may hold the NPC flag that the conversion reports as having nowhere to go)` may give it a home |
 
 ## The container, written and loaded (#299 (goldbox.dos.write builds only Pool of Radiance's record, so nothing can be converted to DOS for the later titles))
@@ -321,7 +321,7 @@ character filenames, the quest flags, the clock, the party's place and, in
 Curse, the area's own script. `goldbox.dos_codec.write_dos_save` built only Pool of
 Radiance's 13137 bytes until `#299 (goldbox.dos.write builds only Pool of
 Radiance's record, so nothing can be converted to DOS for the later titles)`
-made it shape-driven on both ends: it reads the C64 party through
+made it format-driven on both ends: it reads the C64 party through
 `c64_save.container_for(title)` and builds the DOS file to
 `dos_savegame.container_for(title)`, so a Curse party comes out a 13149-byte
 `SAVGAMD.DAT` with its `ECL2.DAX` script staged and a Silver Blades one 5469
@@ -367,7 +367,7 @@ change:**
 * **`$49FC` and `$49FF` are not zero in the later titles.** Each engine's save
   routine mirrors two interface globals into the array just before writing it
   (Curse `GAME.OVR:0x1F8D4`, Silver Blades `0x26AE0`), and the loader unpacks
-  them again -- so a converted save must carry the initialiser's 4 and 3,
+  them again -- so a converted save must hold the initialiser's 4 and 3,
   which every Curse and Silver Blades container holds, rather than the zero
   Pool of Radiance writes and the portrait gate Pool of Radiance keeps at
   `$49FF`. The later titles draw no sheet portrait, so `$49FF` is the two
@@ -401,6 +401,6 @@ a whole Wish-built Curse save with her magic-user 6 on the sheet.
 
 `tests/dos/test_doslatertitles.py`, 42 of them, none skipped on this machine. They
 divide into the tables (every field of every title has a target and a
-disposition), the shapes (each width comes off the title's table, tested
+disposition), the formats (each width comes off the title's table, tested
 without any save), and the round trips above. With the one line that picks the
 title reverted to Pool of Radiance, 28 of the 42 fail.

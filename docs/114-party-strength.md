@@ -58,9 +58,9 @@ that reads `SAVEDGAME0` alone cannot compute this.
   so armour does reach it — plate and a shield and a dexterity bonus — but a
   starting party is nowhere near. **In every one of Donald's save disks the term
   is zero for every character**: the best armour class anybody reaches is 2, a
-  field of 58 against a floor of 60.
+  field of 58 against a minimum of 60.
 * **Levels in cleric or magic-user**, at 4 and 8. Fighter and thief levels are
-  worth nothing. The routine reads the single `level` byte at `0x0A0` for both
+  scored as nothing. The routine reads the single `level` byte at `0x0A0` for both
   terms, so a cleric/magic-user scores `12 × level` rather than a per-class
   split — the one place where PoR and CoAB's version of this routine differ in
   kind rather than in constants.
@@ -111,7 +111,7 @@ level or a point of experience anywhere in this sequence:
 | `PORSAVE11` — after MALCYON's scores were edited to 18s | 130 | 13 | **8 monsters** |
 
 **A shopping trip made every later random slums encounter half again as big.**
-That is the point, and it is worth knowing before spending the party's gold.
+That is the point: know it before spending the party's gold.
 
 **The mechanism is the weapons, not the armour.** The trip bought banded mail
 and shields and took ROLAND from AC 10 to 4, SILAS 10 to 3, MAGNUS and BRUTUS 9
@@ -146,7 +146,7 @@ death. So a party that has lost somebody meets *smaller* random encounters
 until it raises them, which is the opposite of what difficulty scaling usually
 does.
 
-**The THAC0 subtraction has no underflow guard.** `$1C01` is a plain `SBC #$27`
+**The THAC0 subtraction has no underflow guard.** `$1C01` is a bare `SBC #$27`
 where the armour-class subtraction at `$1C16` carries a `BCC`. A current THAC0
 worse than 21 therefore wraps to a byte near 255 and, times five, adds well over
 a thousand to the sum — enough on its own to saturate `LOADMON`. A cursed
@@ -167,8 +167,8 @@ strength.read_live(target)                       # anything with .read(addr, n)
 
 `PartyStrength.value` is the number, `.total` the sum before the divide,
 `.slums_count` the `(s / 3) * 2` that `ECL14` places, and `.detail` the
-per-character breakdown — which is the useful part, because a total of 130 says
-nothing about what to change.
+per-character breakdown — which tells you what to change, because a total of 130 says
+nothing about it.
 
 The Automapper computes it in `AutomapWindow.show_strength` from the two blocks
 `poll_live` already reads, so it is **live data and never the save file**, and
