@@ -1,11 +1,15 @@
 """A world-map screen is a state of its own: no map, no marker, the last area kept."""
 import pytest
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QMouseEvent
 from support.automapwindow import make_window
 from support.stalestatus import curse_target
 from test_stale_status import synthetic_map
 
 from automap import c64
 from automap.area import RESIDENT_GEO
+from automap.notes import Note
+from automap.render import CELL, MARGIN
 from automap.state import Automapper, AutomapState
 from automap.target import Fix, ReplayTarget, party_fix
 from goldbox import c64_port
@@ -114,4 +118,64 @@ def test_the_window_draws_no_map_and_says_nothing_on_the_world_map(
         win.canvas.state = reference
     assert win.canvas.grab().toImage() == blank
     win.note_here()
-    assert not win.state.notes
+    assert win._popover is None
+
+
+def window_on_the_world_map(app, tmp_path, monkeypatch):
+    sewers = synthetic_map(2)
+    fixes = [Fix(5, 5, 2, "status", 500), WORLD_MAP]
+    win = make_window(app, tmp_path, monkeypatch,
+                      ReplayTarget(fixes, {RESIDENT_GEO: sewers.to_bytes()}),
+                      maps={"GEO03": sewers}, area="GEO03")
+    win.state.add_note(5, 5, Note("dueling pairs", "encounter"))
+    win.mapper.poll()
+    win.mapper.poll()
+    win._refresh()
+    win.canvas.resize(win.canvas.sizeHint())
+    assert win.state.world_map
+    return win
+
+
+def test_the_canvas_offers_no_tooltip_on_the_world_map(app, tmp_path, monkeypatch):
+    win = window_on_the_world_map(app, tmp_path, monkeypatch)
+    px = MARGIN + 5 * CELL + 2
+    assert win.canvas.tooltip_at(px, px) is None
+
+
+def test_a_click_on_the_world_map_canvas_opens_no_popover(app, tmp_path, monkeypatch):
+    win = window_on_the_world_map(app, tmp_path, monkeypatch)
+    at = QPointF(MARGIN + 5 * CELL + 2, MARGIN + 5 * CELL + 2)
+    for kind in (QMouseEvent.Type.MouseButtonPress,
+                 QMouseEvent.Type.MouseButtonRelease):
+        event = QMouseEvent(kind, at, at, Qt.MouseButton.LeftButton,
+                            Qt.MouseButton.LeftButton,
+                            Qt.KeyboardModifier.NoModifier)
+        if kind == QMouseEvent.Type.MouseButtonPress:
+            win.canvas.mousePressEvent(event)
+        else:
+            win.canvas.mouseReleaseEvent(event)
+    app.processEvents()
+    assert win._popover is None
+
+
+def test_a_return_to_another_area_names_it_and_clears_the_town(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    sewers, cellar = synthetic_map(2), synthetic_map(3)
+    target = ReplayTarget(
+        [Fix(14, 15, 2, "status", 500),
+         Fix(0, 0, None, "memory", None, world_map=True, world_node=3,
+             world_leg=7),
+         Fix(1, 1, 2, "memory", 501)],
+        {RESIDENT_GEO: sewers.to_bytes()})
+    mapper = Automapper(target, {"GEO03": sewers, "GEO04": cellar},
+                        area="GEO03", title=CURSE.title)
+    state = mapper.state
+    mapper.poll()
+    mapper.poll()
+    assert state.world_node == 3
+    target._memory[RESIDENT_GEO] = cellar.to_bytes()
+    mapper.poll()
+    assert not state.world_map
+    assert state.area == "GEO04"
+    assert (state.world_node, state.world_leg) == (None, None)

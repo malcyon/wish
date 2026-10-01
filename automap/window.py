@@ -266,7 +266,7 @@ class MapCanvas(QWidget):
         the combat canvas does the same, and for the same reason.
         """
         square = self.square_at(px, py)
-        if square is None:
+        if square is None or self.state.outdoors or self.state.world_map:
             return None
         items = self.state.notes_at(*square)
         return notemod.summary(items) if items else None
