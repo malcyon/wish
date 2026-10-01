@@ -10,6 +10,14 @@ every session is the name-to-virtual-key table and the waiting.
     tools/amiga/amigadrive.py --holder wish109-por keys RET L S A V E SLASH RET
     tools/amiga/amigadrive.py --holder wish109-por keys NP8 NP4 NP8   # walk, turn, walk
     tools/amiga/amigadrive.py --holder wish109-por shot picker.png
+    tools/amiga/amigadrive.py --holder wish109-por snapshot before-walk
+    tools/amiga/amigadrive.py --holder wish109-por restore before-walk
+    tools/amiga/amigadrive.py --holder wish109-por discard_snapshot before-walk
+
+`snapshot`, `restore` and `discard_snapshot` save and put back the whole
+running machine through WinUAE's own pipe (`automap.amiga.WinuaePipe`), with
+no window, key or dialog; the state files stay on the guest under
+`C:\\Amiga\\States\\<holder>`.
 
 `--holder` is the lane claim `winuae.ps1` enforces, and it is required: every
 call this makes is refused without it.  Take the claim yourself before the
@@ -28,6 +36,11 @@ import os
 import subprocess
 import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
+
+from automap.amiga import SnapshotError, WinuaePipe  # noqa: E402
 
 #: The virtual-key codes a Gold Box title needs, by a name that can be typed
 #: on a command line.  Letters and digits are their ASCII codes on every
@@ -114,6 +127,10 @@ def main(argv: list[str] | None = None) -> int:
     keys.add_argument("names", nargs="+")
     shot = sub.add_parser("shot", help="save the guest's screen")
     shot.add_argument("path")
+    for verb, text in (("snapshot", "save the whole machine under a name"),
+                       ("restore", "put the machine back as a snapshot left it"),
+                       ("discard_snapshot", "delete a snapshot")):
+        sub.add_parser(verb, help=text).add_argument("name")
     args = parser.parse_args(argv)
 
     if args.command == "keys":
@@ -121,6 +138,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{name}: {press(args.holder, name, args.settle)}")
     elif args.command == "shot":
         print(_winvm("shot", args.path))
+    else:
+        pipe = WinuaePipe()
+        try:
+            receipt = getattr(pipe, args.command)(args.name, args.holder)
+        except (SnapshotError, ValueError) as exc:
+            raise SystemExit(str(exc)) from exc
+        print(str(receipt))
     return 0
 
 

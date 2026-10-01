@@ -861,6 +861,143 @@ def _judge_insert(receipt: FloppyReceipt) -> None:
              f"{FLOPPY_POLL_SECONDS:.0f} s")
 
 
+# -- whole-machine snapshots, through the lane script --------------------------
+
+#: Where `winuae.ps1` keeps each holder's machine snapshots on the guest.
+STATE_ROOT = GUEST_ROOT + r"\States"
+
+#: A snapshot name becomes a directory and a file name, so it is a word.
+SNAPSHOT_NAME = re.compile(r"[A-Za-z0-9_-]{1,32}")
+
+#: How long the guest waits for WinUAE to write a state file; one took 1.3 s.
+STATE_WAIT_SECONDS = 15.0
+
+#: The first four bytes of every WinUAE state file.
+STATE_HEADER = b"ASF "
+
+
+class SnapshotError(GuestError):
+    """A snapshot, restore or discard was refused or not proved.
+
+    `receipt` holds whatever the guest returned, so its raw replies survive.
+    """
+
+    def __init__(self, message: str, receipt: dict | None = None):
+        super().__init__(message)
+        self.receipt = receipt or {}
+
+
+def snapshot_place(holder: str, name: str) -> tuple[str, str]:
+    """The guest directory a snapshot lives in, and the state file inside it.
+
+    WinUAE names the file it writes after the last component of
+    `statefile_path`, so each snapshot has a directory of its own named like it.
+    """
+    holder = _floppy_holder(holder)
+    if ".." in holder:
+        raise ValueError(f"Holder {holder!r} is refused: it holds ..")
+    if not isinstance(name, str) or not SNAPSHOT_NAME.fullmatch(name):
+        raise ValueError(f"Snapshot name {name!r} is refused: it is not 1-32 "
+                         "letters, digits, - and _")
+    folder = f"{STATE_ROOT}\\{holder}\\{name}"
+    return folder, f"{folder}\\{name}"
+
+
+@dataclass
+class StateReceipt:
+    """What one `snapshot`, `restore` or `discard-snapshot` verb did, raw replies kept."""
+
+    verb: str
+    holder: str
+    name: str
+    file: str
+    status: str = ""
+    output: str = ""
+    seconds: float = 0.0
+    #: Every `<<tag>> value` line but the replies and messages.
+    tags: dict = field(default_factory=dict)
+    #: `(seq, label)` -> `(guest milliseconds, raw reply bytes)`.
+    replies: dict = field(default_factory=dict)
+    #: `(seq, label)` -> the message text the guest sent.
+    messages: dict = field(default_factory=dict)
+
+    def as_dict(self) -> dict:
+        """A form a run log can hold: raw replies as base64."""
+        return {
+            "verb": self.verb, "holder": self.holder, "name": self.name,
+            "file": self.file, "status": self.status,
+            "seconds": round(self.seconds, 3), "tags": dict(self.tags),
+            "messages": [{"seq": s, "label": label, "text": text}
+                         for (s, label), text in sorted(self.messages.items())],
+            "replies": [{"seq": s, "label": label, "ms": ms,
+                         "raw": base64.b64encode(raw).decode("ascii")}
+                        for (s, label), (ms, raw) in sorted(self.replies.items())],
+        }
+
+    def __str__(self) -> str:
+        return self.status
+
+
+def _read_state(out: str, receipt: StateReceipt) -> StateReceipt:
+    """Fill `receipt` from the guest's lines; a `fail` verdict raises `SnapshotError`."""
+    receipt.output = out
+    lines = [line.strip() for line in out.splitlines() if line.strip()]
+    receipt.status = lines[0] if lines else ""
+    ended = False
+    for line in lines[1:]:
+        if line == "<<end>>":
+            ended = True
+            continue
+        try:
+            if line.startswith(("<<r>> ", "<<m>> ")):
+                bits = line.split(" ", 4)
+                if len(bits) == 4:
+                    bits.append("")
+                tag, seq, label, ms, payload = bits
+                raw = base64.b64decode(payload, validate=True)
+                if tag == "<<r>>":
+                    receipt.replies[(int(seq), label)] = (float(ms), raw)
+                else:
+                    receipt.messages[(int(seq), label)] = raw.decode("ascii")
+                continue
+        except (ValueError, base64.binascii.Error, UnicodeDecodeError) as exc:
+            raise SnapshotError(f"The guest printed a malformed line: {line[:120]}",
+                                receipt.as_dict()) from exc
+        m = re.match(r"<<([a-z_]+)>> (.*)\Z", line)
+        if m:
+            receipt.tags[m.group(1)] = m.group(2)
+    status = receipt.status
+    if status.startswith("fail "):
+        raise SnapshotError(f"The guest refused the {receipt.verb}: {status[5:]}",
+                            receipt.as_dict())
+    if not status.startswith("ok"):
+        raise SnapshotError(f"The guest answered {status!r}, which is neither ok "
+                            "nor fail", receipt.as_dict())
+    if not ended:
+        raise SnapshotError("The guest script did not finish; its output ended: "
+                            f"{out.strip()[-400:]}", receipt.as_dict())
+    return receipt
+
+
+def _judge_messages(receipt: StateReceipt, wanted: list[tuple[str, str]]) -> None:
+    """The guest sent exactly `wanted`, in order, and WinUAE answered each `404`.
+
+    A `CFG` setter answers `404` whether it worked or not, so the reply proves
+    only that the message arrived; the file or the settle proves the rest.
+    """
+    sent = [(label, text) for (_seq, label), text in sorted(receipt.messages.items())]
+    if sent != wanted:
+        raise SnapshotError(f"The guest sent {sent}, not {wanted}", receipt.as_dict())
+    for seq, (label, text) in enumerate(wanted):
+        reply = receipt.replies.get((seq, label))
+        if reply is None:
+            raise SnapshotError(f"The guest reported no reply to {text!r}",
+                                receipt.as_dict())
+        if reply[1] != b"404\0":
+            raise SnapshotError(f"WinUAE answered {text!r} with {reply[1]!r}; a "
+                                "setter answers 404", receipt.as_dict())
+
+
 class WinuaePipe:
     """The transport that does not touch the console: WinUAE's own named pipe.
 
@@ -1130,6 +1267,80 @@ Write-Output '<<end>>'
         if status.startswith("fail "):
             raise GuestRejection(status, {"output": out})
         return status
+
+    # -- whole-machine snapshots -----------------------------------------
+
+    def _state_verb(self, verb: str, holder: str, name: str,
+                    token: str | None) -> StateReceipt:
+        """Run one snapshot verb and read its receipt; nothing is judged but the verdict."""
+        _folder, file = snapshot_place(holder, name)
+        receipt = StateReceipt(verb, holder, name, file)
+        try:
+            out, receipt.seconds = self.lane_verb(verb, holder, token, [name])
+        except GuestRejection as exc:
+            raise SnapshotError(f"The guest refused the {verb}: {exc.line[5:]}",
+                                exc.receipt) from exc
+        except FloppyError as exc:
+            raise SnapshotError(str(exc), exc.receipt) from exc
+        return _read_state(out, receipt)
+
+    def snapshot(self, name: str, holder: str,
+                 token: str | None = None) -> StateReceipt:
+        """Save the whole running machine under `name`, and prove the file was written.
+
+        The guest checks the lane claim and the pipe's server process, then
+        sends `CFG statefile_save x` and `CFG statefile_path <folder>`: the
+        first leaves a save pending, the second points it at
+        `<folder>\\<name>` and the save completes. `CFG statefile_save <name>`
+        alone writes nothing. The guest waits up to `STATE_WAIT_SECONDS` for a
+        file that starts `ASF ` and has stopped growing. A snapshot of the same
+        name is replaced. The machine runs on.
+
+        The state holds each drive's image path and mechanics, not the disk's
+        contents, and `statefile_path` stays at this folder for the life of the
+        emulator process.
+        """
+        receipt = self._state_verb("snapshot", holder, name, token)
+        folder, file = snapshot_place(holder, name)
+        _judge_messages(receipt, [("save", "CFG statefile_save x"),
+                                  ("path", f"CFG statefile_path {folder}")])
+        tags = receipt.tags
+        if "appeared_ms" not in tags:
+            raise SnapshotError(f"The state file {file} did not appear within "
+                                f"{STATE_WAIT_SECONDS:.0f} s", receipt.as_dict())
+        if tags.get("file") != file:
+            raise SnapshotError(f"The guest watched {tags.get('file')!r}, not {file}",
+                                receipt.as_dict())
+        if tags.get("header", "").lower() != STATE_HEADER.hex():
+            raise SnapshotError(f"The state file {file} does not start with ASF",
+                                receipt.as_dict())
+        if not tags.get("bytes", "").isdigit() or int(tags["bytes"]) <= 0:
+            raise SnapshotError(f"The state file {file} is empty", receipt.as_dict())
+        return receipt
+
+    def restore(self, name: str, holder: str,
+                token: str | None = None) -> StateReceipt:
+        """Put the machine back as `snapshot(name)` left it.
+
+        The guest refuses a name with no `ASF ` file, sends
+        `CFG statefile <file>`, and waits `RestoreSettleMs` before it answers,
+        so a key pressed after this reaches the restored machine. Each drive
+        gets the image path the state recorded put back in it; an image written
+        since the snapshot keeps that write.
+        """
+        _folder, file = snapshot_place(holder, name)
+        receipt = self._state_verb("restore", holder, name, token)
+        _judge_messages(receipt, [("restore", f"CFG statefile {file}")])
+        return receipt
+
+    def discard_snapshot(self, name: str, holder: str,
+                         token: str | None = None) -> StateReceipt:
+        """Delete the snapshot `name` and its folder; a name never saved is not an error."""
+        receipt = self._state_verb("discard-snapshot", holder, name, token)
+        if receipt.messages or receipt.replies:
+            raise SnapshotError("The guest sent a message to WinUAE for a discard",
+                                receipt.as_dict())
+        return receipt
 
     def batch(self, lines: list[str],
               fetch: list[tuple[str, str]] | None = None

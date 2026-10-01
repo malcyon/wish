@@ -91,3 +91,32 @@ def test_the_machine_requests_the_named_directdraw_renderer():
     settings = [line for line in CONFIG.read_text().splitlines()
                 if line.startswith("gfx_api=")]
     assert settings == ["gfx_api=directdraw"]
+
+
+@pytest.mark.parametrize("verb", ["snapshot", "restore", "discard_snapshot"])
+def test_the_snapshot_commands_call_the_pipe_with_the_name_and_holder(monkeypatch, capsys, verb):
+    calls = []
+
+    class Pipe:
+        def __getattr__(self, attr):
+            def call(name, holder):
+                calls.append((attr, name, holder))
+                return "ok done"
+            return call
+
+    monkeypatch.setattr(amigadrive, "WinuaePipe", Pipe)
+    assert amigadrive.main(["--holder", "h1", verb, "before-walk"]) == 0
+    assert calls == [(verb, "before-walk", "h1")]
+    assert capsys.readouterr().out.strip() == "ok done"
+
+
+def test_a_snapshot_failure_is_one_line_and_a_nonzero_exit(monkeypatch):
+    from automap.amiga import SnapshotError
+
+    class Pipe:
+        def snapshot(self, name, holder):
+            raise SnapshotError("The state file x did not appear within 15 s")
+
+    monkeypatch.setattr(amigadrive, "WinuaePipe", Pipe)
+    with pytest.raises(SystemExit, match="did not appear within 15 s"):
+        amigadrive.main(["--holder", "h1", "snapshot", "before-walk"])

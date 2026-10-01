@@ -749,6 +749,25 @@ boot because it left the 1541 and its disk out; the wrapper saves the drive too
 Use them before any walk through an area with random encounters or a journey
 across a world map, and roll back instead of fighting.
 
+On the Amiga under WinUAE, `automap.amiga.WinuaePipe` has the same three calls,
+`snapshot(name, holder)`, `restore(name, holder)` and
+`discard_snapshot(name, holder)`, and `tools/amiga/amigadrive.py` has them as
+the commands `snapshot`, `restore` and `discard_snapshot`. Each runs a
+`winuae.ps1` verb that checks the lane claim and the pipe's server process
+first. A snapshot sends `CFG statefile_save x` and then
+`CFG statefile_path C:\Amiga\States\<holder>\<name>`, which writes the state
+to `<name>` inside that folder; `CFG statefile_save <name>` alone writes
+nothing. The verb waits up to 15 s for a file that starts `ASF ` and has
+stopped growing (about 0.5 MB, written in about 1 s). A restore sends
+`CFG statefile <file>` and waits 1.5 s, so the next key reaches the restored
+machine. No window, key or dialog is involved and the machine runs on.
+
+The state holds each drive's image path, not the disk's contents, so a restore
+puts the recorded image back in each drive and an image written since the
+snapshot keeps that write. A game save after a restore therefore reaches the
+image file, and nothing refuses it. FS-UAE has no usable machine-state save in
+this build, because its savestate crashes.
+
 ## Suppressing encounters
 
 `Session.no_encounters = True` writes the running area's entry in

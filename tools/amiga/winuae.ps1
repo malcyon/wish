@@ -23,6 +23,9 @@
 #   winvm ssh "$ps front -Holder por-run"
 #   winvm ssh "$ps drives -Holder por-run"      # what DF0 and DF1 hold, read over WinUAE's pipe
 #   winvm ssh "$ps insert -Holder por-run 0 C:\Amiga\Disks\wish679-por-run-disk2.adf <sha256>"
+#   winvm ssh "$ps snapshot -Holder por-run before-walk"   # the whole machine, to C:\Amiga\States
+#   winvm ssh "$ps restore -Holder por-run before-walk"
+#   winvm ssh "$ps discard-snapshot -Holder por-run before-walk"
 #   winvm ssh "$ps status"
 #   winvm ssh "$ps stop -Holder por-run"        # before clean, always
 #   winvm ssh "$ps release -Holder por-run"     # let the next lane in
@@ -66,7 +69,7 @@
 
 param(
   [Parameter(Mandatory=$true)]
-  [ValidateSet('start','stop','front','status','send','key','roms','clean','claim','release','drives','insert','diagnose','config-hash','config-remove')][string]$Cmd,
+  [ValidateSet('start','stop','front','status','send','key','roms','clean','claim','release','drives','insert','diagnose','config-hash','config-remove','snapshot','restore','discard-snapshot')][string]$Cmd,
   [Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest
 )
 
@@ -452,6 +455,135 @@ $RaiseAndCheck = @'
 Start-Sleep -Milliseconds 300
 $fg = ([W]::GetForegroundWindow() -eq $h)
 '@
+
+# -- `snapshot`, `restore` and `discard-snapshot`: the whole machine, over the pipe --
+#
+# snapshot <name>: `CFG statefile_save x` leaves a save pending, and
+# `CFG statefile_path <folder>` points it at `<folder>\<last component>`, where
+# WinUAE writes it within a couple of seconds. `CFG statefile_save <name>` alone
+# writes nothing: WinUAE joins the state folder and a full path into one bad
+# name. Each snapshot is `$StateRoot\<holder>\<name>\<name>`, replaced if it
+# exists, and is waited on until it starts `ASF ` and stops growing.
+# restore <name>: `CFG statefile <file>`, then a settle so the next key reaches
+# the restored machine. discard-snapshot <name>: removes the folder.
+#
+# Output is the same as the floppy verbs': the verdict, the ownership tags,
+# `<<m>> <seq> <label> <ms> <base64>` for each message sent and `<<r>>` for its
+# reply, then `<<file>>`, `<<bytes>>`, `<<header>>` and `<<appeared_ms>>` for a
+# snapshot, and `<<end>>`.
+$StateRoot        = "$Root\States"
+$StateNamePattern = '^[A-Za-z0-9_-]{1,32}\z'
+$StateBoundMs     = 15000
+$StatePollMs      = 250
+$RestoreSettleMs  = 1500
+
+# Length and first four bytes of a state file, read without locking WinUAE out; $null while it cannot be read.
+function Read-StateHead([string]$Path) {
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+  try {
+    $fs = [IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite')
+    try {
+      $b = New-Object byte[] 4
+      $n = $fs.Read($b, 0, 4)
+      @{ len = $fs.Length; head = if ($n -gt 0) { ([BitConverter]::ToString($b, 0, $n) -replace '-', '') } else { '' } }
+    } finally { $fs.Dispose() }
+  } catch { $null }
+}
+
+function Send-Logged($Pipe, $Sw, $Tags, [int]$Seq, [string]$Label, [string]$Text) {
+  $Tags.Add("<<m>> $Seq $Label $($Sw.ElapsedMilliseconds) $([Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($Text)))") | Out-Null
+  $bytes = Send-Pipe $Pipe $Text
+  $Tags.Add("<<r>> $Seq $Label $($Sw.ElapsedMilliseconds) $([Convert]::ToBase64String($bytes))") | Out-Null
+}
+
+function Invoke-State([string]$Verb) {
+  $deny = Get-LaneDenial
+  if ($deny) { $deny; exit 1 }
+  if ($Holder.Contains('..') -or $Holder -cnotmatch '^[A-Za-z0-9._-]{1,64}\z') { 'fail -Holder is not a lane-safe name'; exit 1 }
+  if ($Rest.Count -ne 1 -or $Rest[0] -cnotmatch $StateNamePattern) { "fail $Verb needs one snapshot name of 1-32 letters, digits, - and _"; exit 1 }
+  $name = $Rest[0]
+  $dir = "$StateRoot\$Holder\$name"
+  $file = "$dir\$name"
+  if ($Verb -eq 'discard-snapshot') {
+    if (-not (Test-Path -LiteralPath $dir)) { "ok nothing to discard for $name"; '<<end>>'; exit 0 }
+    Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $dir) { "fail $dir survived removal"; exit 1 }
+    "ok discarded $name"
+    '<<end>>'
+    exit 0
+  }
+  if ($Verb -eq 'restore') {
+    $h = Read-StateHead $file
+    if (-not $h -or $h.head -cne '41534620') { "fail there is no snapshot $name for $Holder"; exit 1 }
+  }
+  $lane = Get-LaneEmulator
+  if ($lane.err) { $lane.err; exit 1 }
+  if ($Verb -eq 'snapshot') {
+    if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path -LiteralPath $dir) { "fail the old snapshot at $dir could not be removed"; exit 1 }
+    New-Item -ItemType Directory -Force -Path $dir -ErrorAction Stop | Out-Null
+  }
+  $tags = New-Object System.Collections.ArrayList
+  $pipe = $null; $open = $false; $verdict = $null
+  try {
+    Add-Type -Namespace Wish -Name PipeInfo -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetNamedPipeServerProcessId(IntPtr Pipe, out uint ServerProcessId);'
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $pipe = New-Object IO.Pipes.NamedPipeClientStream '.', 'WinUAE', 'InOut'
+    $pipe.Connect(5000)
+    $pipe.ReadMode = [IO.Pipes.PipeTransmissionMode]::Message
+    $open = $true
+    $tags.Add("<<connect_ms>> $($sw.ElapsedMilliseconds)") | Out-Null
+    $tags.Add("<<pid>> $($lane.proc.Id)") | Out-Null
+    $tags.Add("<<started>> $($lane.proc.StartTime.ToString('o'))") | Out-Null
+    $tags.Add("<<exe>> $($lane.exe)") | Out-Null
+    [uint32]$server = 0
+    if (-not [Wish.PipeInfo]::GetNamedPipeServerProcessId($pipe.SafePipeHandle.DangerousGetHandle(), [ref]$server)) {
+      throw "GetNamedPipeServerProcessId failed, error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+    }
+    $tags.Add("<<server_pid>> $server") | Out-Null
+    if ($server -ne $lane.proc.Id) {
+      $verdict = "fail \\.\pipe\WinUAE is served by pid=$server, not by this lane's winuae64 pid=$($lane.proc.Id)"
+    }
+    if (-not $verdict) {
+      $again = Get-LaneEmulator
+      if ($again.err) { $verdict = $again.err }
+      elseif ($again.proc.Id -ne $lane.proc.Id) { $verdict = "fail winuae64 pid=$($again.proc.Id) is not the pid=$($lane.proc.Id) this lane started" }
+    }
+    if (-not $verdict -and $Verb -eq 'restore') {
+      Send-Logged $pipe $sw $tags 0 'restore' "CFG statefile $file"
+      Start-Sleep -Milliseconds $RestoreSettleMs
+      $verdict = "ok restored $name pid=$($lane.proc.Id)"
+    }
+    if (-not $verdict -and $Verb -eq 'snapshot') {
+      Send-Logged $pipe $sw $tags 0 'save' 'CFG statefile_save x'
+      Send-Logged $pipe $sw $tags 1 'path' "CFG statefile_path $dir"
+      $tags.Add("<<file>> $file") | Out-Null
+      $until = $sw.ElapsedMilliseconds + $StateBoundMs
+      $last = $null
+      while ($sw.ElapsedMilliseconds -lt $until) {
+        Start-Sleep -Milliseconds $StatePollMs
+        $h = Read-StateHead $file
+        if ($h -and $h.len -gt 0 -and $h.head -ceq '41534620' -and $last -and $last.len -eq $h.len) {
+          $tags.Add("<<bytes>> $($h.len)") | Out-Null
+          $tags.Add("<<header>> $($h.head)") | Out-Null
+          $tags.Add("<<appeared_ms>> $($sw.ElapsedMilliseconds)") | Out-Null
+          $verdict = "ok snapshot $name bytes=$($h.len) pid=$($lane.proc.Id)"
+          break
+        }
+        $last = $h
+      }
+      if (-not $verdict) { $verdict = "fail the state file $file did not appear within $($StateBoundMs / 1000) s" }
+    }
+  } catch {
+    $verdict = "fail $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+  } finally {
+    if ($pipe) { $pipe.Dispose() }
+  }
+  if (-not $open) { $verdict; exit 1 }
+  $verdict
+  $tags
+  '<<end>>'
+}
 
 # -- `drives` and `insert`: WinUAE's own pipe, from one process ----------------
 #
@@ -1198,6 +1330,7 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
       Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue
     }
     Remove-Item $Receipt, $SendLog, $RunFile, $ClaimFile, "$Root\console.txt" -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $StateRoot -Recurse -Force -ErrorAction SilentlyContinue
     'ok cleaned'
   }
 
@@ -1210,6 +1343,9 @@ Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
   'diagnose' { Invoke-Diagnose }
   'config-hash' { Invoke-PrivateConfig 'config-hash' }
   'config-remove' { Invoke-PrivateConfig 'config-remove' }
+  'snapshot' { Invoke-State 'snapshot' }
+  'restore' { Invoke-State 'restore' }
+  'discard-snapshot' { Invoke-State 'discard-snapshot' }
 
   'insert' {
     # insert <drive 0|1> <path> <sha256>: the one mutation this script makes over

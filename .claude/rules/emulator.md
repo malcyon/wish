@@ -101,7 +101,7 @@ world map. C64 drivers: `Session.snapshot(name)` saves the whole machine, the
 `walk_with_retry(moves, retries=3)` does the snapshot, walk, restore and retry
 for a leg and returns False, with the machine restored, when every attempt met
 an encounter. After a restore `save_game` raises until a disk is attached on
-purpose. Amiga: FS-UAE has no usable machine-state save in this build, because its savestate crashes; WinUAE's is being tested.
+purpose. Amiga: under WinUAE, `WinuaePipe.snapshot(name, holder)`, `restore(name, holder)` and `discard_snapshot(name, holder)`, or `tools/amiga/amigadrive.py --holder H snapshot|restore|discard_snapshot NAME`, save and put back the whole machine through the pipe, under `C:\Amiga\States\<holder>` on the guest; the state records each drive's image path, not its contents, so a save after a restore reaches the image and is allowed. FS-UAE has no usable machine-state save in this build, because its savestate crashes.
 
 **Suppress random encounters with `Session.no_encounters = True`, unless the
 run proves a conversion or must meet encounters.** C64 drivers: it writes the

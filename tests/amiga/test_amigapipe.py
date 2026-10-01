@@ -15,6 +15,7 @@ on a live emulator and no fake can stand in for one; they are on
 from __future__ import annotations
 
 import base64
+import pathlib
 import re
 import subprocess
 
@@ -889,3 +890,187 @@ def test_a_directory_the_guest_could_not_make_raises(monkeypatch):
     p = amiga.WinuaePipe()
     with pytest.raises(amiga.GuestError, match="Access denied"):
         p.batch(["S x 0 1"], [("b0", "x")])
+
+
+# -- a whole-machine snapshot, through the lane script's guest verbs ----------
+
+SNAP_DIR = f"C:\\Amiga\\States\\{HOLDER}\\before-walk"
+SNAP_FILE = f"{SNAP_DIR}\\before-walk"
+SAVE_MSG = "CFG statefile_save x"
+PATH_MSG = f"CFG statefile_path {SNAP_DIR}"
+
+
+def b64(blob: bytes) -> str:
+    return base64.b64encode(blob).decode("ascii")
+
+
+def state_output(status, messages, extra=(), tags=True):
+    """The guest's lines for one state verb: each message, then WinUAE's reply."""
+    lines = [status]
+    if tags:
+        lines += ["<<connect_ms>> 60", "<<pid>> 4242", "<<server_pid>> 4242"]
+    for seq, label, text, reply in messages:
+        lines.append(f"<<m>> {seq} {label} {100 + seq} {b64(text.encode('ascii'))}")
+        lines.append(f"<<r>> {seq} {label} {110 + seq} {b64(reply)}")
+    lines += list(extra)
+    lines.append("<<end>>")
+    return "\r\n".join(lines) + "\r\n"
+
+
+WRITTEN = (f"<<file>> {SNAP_FILE}", "<<bytes>> 511820", "<<header>> 41534620",
+           "<<appeared_ms>> 1400")
+
+
+def saved(messages=None, extra=WRITTEN, status="ok snapshot before-walk bytes=511820"):
+    if messages is None:
+        messages = [(0, "save", SAVE_MSG, b"404\0"), (1, "path", PATH_MSG, b"404\0")]
+    return state_output(status, messages, extra)
+
+
+def snap(guest, name="before-walk", holder=HOLDER):
+    return amiga.WinuaePipe(runner=guest).snapshot(name, holder)
+
+
+def test_a_snapshot_runs_the_lane_verb_with_the_holder_and_name():
+    guest = LaneGuest(saved())
+    receipt = snap(guest)
+    assert guest.calls == [["winvm", "ssh",
+                            "powershell -NoProfile -ExecutionPolicy Bypass -File "
+                            f"C:\\Amiga\\winuae.ps1 snapshot -Holder {HOLDER} before-walk"]]
+    assert receipt.file == SNAP_FILE
+    assert receipt.tags["bytes"] == "511820"
+
+
+def test_a_snapshot_is_the_pending_save_then_the_folder_in_that_order():
+    """`statefile_save` alone writes nothing; the folder message is what completes it."""
+    swapped = [(0, "path", PATH_MSG, b"404\0"), (1, "save", SAVE_MSG, b"404\0")]
+    with pytest.raises(amiga.SnapshotError, match="The guest sent"):
+        snap(LaneGuest(saved(swapped)))
+
+
+def test_a_snapshot_whose_folder_message_names_another_folder_is_an_error():
+    other = [(0, "save", SAVE_MSG, b"404\0"),
+             (1, "path", "CFG statefile_path C:\\Amiga\\States\\x\\y", b"404\0")]
+    with pytest.raises(amiga.SnapshotError, match="The guest sent"):
+        snap(LaneGuest(saved(other)))
+
+
+def test_a_snapshot_with_only_the_save_message_is_an_error():
+    with pytest.raises(amiga.SnapshotError, match="The guest sent"):
+        snap(LaneGuest(saved([(0, "save", SAVE_MSG, b"404\0")])))
+
+
+def test_a_setter_reply_other_than_404_fails_the_snapshot():
+    bad = [(0, "save", SAVE_MSG, b"404\0"), (1, "path", PATH_MSG, b"200 \n\0")]
+    with pytest.raises(amiga.SnapshotError, match="a setter answers 404"):
+        snap(LaneGuest(saved(bad)))
+
+
+def test_a_state_file_that_never_appeared_is_the_guests_one_sentence():
+    out = saved(extra=(f"<<file>> {SNAP_FILE}",),
+                status=f"fail the state file {SNAP_FILE} did not appear within 15 s")
+    with pytest.raises(amiga.SnapshotError) as err:
+        snap(LaneGuest(out))
+    assert str(err.value) == (f"The guest refused the snapshot: the state file "
+                              f"{SNAP_FILE} did not appear within 15 s")
+    assert err.value.receipt["messages"][1]["text"] == PATH_MSG
+
+
+def test_an_ok_snapshot_with_no_file_seen_is_still_a_timeout():
+    with pytest.raises(amiga.SnapshotError, match="did not appear within 15 s"):
+        snap(LaneGuest(saved(extra=(f"<<file>> {SNAP_FILE}",))))
+
+
+def test_a_state_file_that_does_not_start_asf_is_an_error():
+    extra = (f"<<file>> {SNAP_FILE}", "<<bytes>> 10", "<<header>> 00000000",
+             "<<appeared_ms>> 1400")
+    with pytest.raises(amiga.SnapshotError, match="does not start with ASF"):
+        snap(LaneGuest(saved(extra=extra)))
+
+
+def test_a_snapshot_that_never_reached_its_end_marker_is_an_error():
+    out = saved().replace("<<end>>", "")
+    with pytest.raises(amiga.SnapshotError, match="did not finish"):
+        snap(LaneGuest(out))
+
+
+def test_a_rejection_before_the_pipe_opens_is_a_snapshot_error_with_the_guests_text():
+    error = amiga.GuestError("winvm ssh failed: fail the WinUAE lane is claimed by "
+                             "someone-else since 10:00, not by " + HOLDER)
+    with pytest.raises(amiga.SnapshotError, match="claimed by someone-else"):
+        snap(LaneGuest(error=error))
+
+
+@pytest.mark.parametrize("name", ["", "a b", "..", "a\\b", "x" * 33, "a;b", None])
+def test_a_snapshot_name_that_is_not_a_word_is_refused_before_anything_is_sent(name):
+    guest = LaneGuest(saved())
+    with pytest.raises(ValueError, match="Snapshot name"):
+        snap(guest, name=name)
+    assert guest.calls == []
+
+
+def test_a_holder_that_climbs_is_refused_before_anything_is_sent():
+    guest = LaneGuest(saved())
+    with pytest.raises(ValueError, match="holds .."):
+        snap(guest, holder="a..b")
+    assert guest.calls == []
+
+
+def test_a_restore_sends_one_statefile_message_for_the_snapshots_file():
+    guest = LaneGuest(state_output("ok restored before-walk pid=4242", [
+        (0, "restore", f"CFG statefile {SNAP_FILE}", b"404\0")]))
+    receipt = amiga.WinuaePipe(runner=guest).restore("before-walk", HOLDER)
+    assert guest.calls[0][2].endswith(f"winuae.ps1 restore -Holder {HOLDER} before-walk")
+    assert receipt.messages == {(0, "restore"): f"CFG statefile {SNAP_FILE}"}
+
+
+def test_a_restore_of_another_file_is_an_error():
+    guest = LaneGuest(state_output("ok restored before-walk pid=4242", [
+        (0, "restore", "CFG statefile C:\\elsewhere", b"404\0")]))
+    with pytest.raises(amiga.SnapshotError, match="The guest sent"):
+        amiga.WinuaePipe(runner=guest).restore("before-walk", HOLDER)
+
+
+def test_a_restore_of_a_name_never_saved_is_the_guests_refusal():
+    error = amiga.GuestError(
+        f"winvm ssh failed: fail there is no snapshot before-walk for {HOLDER}")
+    with pytest.raises(amiga.SnapshotError, match="there is no snapshot before-walk"):
+        amiga.WinuaePipe(runner=LaneGuest(error=error)).restore("before-walk", HOLDER)
+
+
+def test_a_discard_runs_its_verb_and_sends_nothing_to_winuae():
+    guest = LaneGuest("ok discarded before-walk\r\n<<end>>\r\n")
+    receipt = amiga.WinuaePipe(runner=guest).discard_snapshot("before-walk", HOLDER)
+    assert guest.calls[0][2].endswith(
+        f"winuae.ps1 discard-snapshot -Holder {HOLDER} before-walk")
+    assert receipt.status == "ok discarded before-walk"
+
+
+def test_a_discard_of_a_name_never_saved_is_not_an_error():
+    guest = LaneGuest("ok nothing to discard for before-walk\r\n<<end>>\r\n")
+    amiga.WinuaePipe(runner=guest).discard_snapshot("before-walk", HOLDER)
+
+
+def test_a_discard_that_messaged_winuae_is_an_error():
+    out = state_output("ok discarded before-walk",
+                       [(0, "save", SAVE_MSG, b"404\0")], tags=False)
+    with pytest.raises(amiga.SnapshotError, match="sent a message"):
+        amiga.WinuaePipe(runner=LaneGuest(out)).discard_snapshot("before-walk", HOLDER)
+
+
+def test_a_discard_the_guest_could_not_finish_is_an_error():
+    error = amiga.GuestError(
+        f"winvm ssh failed: fail {SNAP_DIR} survived removal")
+    with pytest.raises(amiga.SnapshotError, match="survived removal"):
+        amiga.WinuaePipe(runner=LaneGuest(error=error)).discard_snapshot(
+            "before-walk", HOLDER)
+
+
+def test_the_lane_script_sends_the_pending_save_before_the_folder():
+    """The order is the guest's, so it is read from the script that is deployed."""
+    script = (pathlib.Path(__file__).resolve().parents[2]
+              / "tools" / "amiga" / "winuae.ps1").read_text()
+    save = script.index("Send-Logged $pipe $sw $tags 0 'save' 'CFG statefile_save x'")
+    path = script.index("Send-Logged $pipe $sw $tags 1 'path' \"CFG statefile_path $dir\"")
+    poll = script.index("$h = Read-StateHead $file", path)
+    assert save < path < poll
