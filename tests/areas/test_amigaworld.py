@@ -8,7 +8,7 @@ from __future__ import annotations
 import struct
 
 import pytest
-from support.hunks import hunk_file
+from support.hunks import hunk_file, u32
 
 from goldbox import amiga_hunks
 from goldbox.amiga_adf import AmigaDisk
@@ -154,6 +154,31 @@ def test_a_file_that_is_not_an_executable_is_a_world_error():
         AmigaWorld(b"\0" * 64, {}, {})
 
 
+def test_a_truncated_program_is_a_world_error():
+    whole = program(grid_of(), WORDS)
+    hunks, _ = amiga_hunks.parse(whole)
+    for cut in (hunks[31].file_offset + GRID_AT + 100, hunks[23].file_offset + PALETTE_AT + 10):
+        with pytest.raises(WorldError):
+            AmigaWorld(whole[:cut], {1: tiles(64), 2: tiles(64)}, {1: tiles(21)})
+
+
+def test_a_file_with_more_hunks_than_its_table_lists_is_a_value_error():
+    extra = program(grid_of(), WORDS) + u32(amiga_hunks.HUNK_DATA) + u32(0) + u32(amiga_hunks.HUNK_END)
+    with pytest.raises(ValueError):
+        amiga_hunks.parse(extra)
+    with pytest.raises(WorldError):
+        AmigaWorld(extra, {1: tiles(64), 2: tiles(64)}, {1: tiles(21)})
+
+
+def test_both_tile_archives_must_come_from_one_disk():
+    one, two = AmigaDisk.blank("pooldata"), AmigaDisk.blank("poolgame")
+    one.write_file("sqrpaci.dax", b"x")
+    two.write_file("bacpac.dax", b"x")
+    two.write_file("program", program(grid_of(), WORDS))
+    with pytest.raises(WorldError, match="one disk"):
+        AmigaWorld.from_disks([one, two])
+
+
 def test_identify_is_none():
     assert world().identify(bytes(GRID_SIZE)) is None
 
@@ -200,6 +225,8 @@ def test_the_palette_copy_at_0x20_equals_the_one_at_0x60():
             program_bytes = disk.read_file("/program")
         except ValueError:
             continue
+    if program_bytes is None:
+        pytest.skip("no disk carries /program")
     hunks, _ = amiga_hunks.parse(program_bytes)
     at = hunks[23].file_offset
     assert program_bytes[at + 0x20:at + 0x40] == program_bytes[at + 0x60:at + 0x80]

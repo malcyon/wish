@@ -53,6 +53,9 @@ def parse(data: bytes) -> tuple[list[Hunk], dict[tuple[int, int], int]]:
     number = 0
     while off < len(data):
         kind = u32(off) & 0x3FFFFFFF
+        if kind in (HUNK_CODE, HUNK_DATA, HUNK_BSS) and number >= table:
+            raise ValueError(f"hunk {number} at {off:#x} is past the {table} "
+                             f"the header lists")
         if kind in (HUNK_CODE, HUNK_DATA):
             n = u32(off + 4)
             hunks.append(Hunk(number, KINDS[kind], off + 8, 4 * n,

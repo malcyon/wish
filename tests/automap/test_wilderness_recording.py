@@ -184,10 +184,12 @@ def test_returning_to_the_old_square_drops_the_hold(on):
 
 
 def test_load_world_with_one_blank_amiga_disk_is_none(tmp_path):
-    from automap.maps import load_world
+    from automap.maps import amiga_images, load_world
     from goldbox import c64_port
     from goldbox.amiga_adf import AmigaDisk
     AmigaDisk.blank("pooldata").save(tmp_path / "blank.adf")
+    # The blank disk is the title's own, so the loader opens it and finds no program.
+    assert len(amiga_images(str(tmp_path), c64_port.POOL_OF_RADIANCE)) == 1
     assert load_world(str(tmp_path), c64_port.POOL_OF_RADIANCE) is None
 
 

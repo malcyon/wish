@@ -99,7 +99,7 @@ class AmigaWorld:
                  bacpac: dict[int, bytes]) -> None:
         try:
             hunks, _relocs = amiga_hunks.parse(program)
-        except (ValueError, struct.error) as error:
+        except (ValueError, IndexError, struct.error) as error:
             raise WorldError(f"/program is not a Hunk executable: {error}") from None
         by_number = {h.number: h for h in hunks}
         palette = by_number.get(PALETTE_HUNK)
@@ -109,12 +109,13 @@ class AmigaWorld:
         if grid is None or grid.file_offset is None:
             raise WorldError(f"/program has no initialised hunk {GRID_HUNK}")
         at = palette.file_offset + PALETTE_AT
-        if PALETTE_AT + 2 * PALETTE_SIZE > palette.size:
+        if (PALETTE_AT + 2 * PALETTE_SIZE > palette.size
+                or at + 2 * PALETTE_SIZE > len(program)):
             raise WorldError(f"hunk {PALETTE_HUNK} is too short to hold the colours")
         self.colours = [colour(w) for w in
                         struct.unpack(">16H", program[at:at + 2 * PALETTE_SIZE])]
         at = grid.file_offset + GRID_AT
-        if GRID_AT + GRID_SIZE > grid.size:
+        if GRID_AT + GRID_SIZE > grid.size or at + GRID_SIZE > len(program):
             raise WorldError(f"hunk {GRID_HUNK} is too short to hold the grid")
         self.grid = bytes(program[at:at + GRID_SIZE])
         try:
@@ -127,19 +128,22 @@ class AmigaWorld:
     @classmethod
     def from_disks(cls, disks: Sequence[AmigaDisk]) -> "AmigaWorld":
         """The world off the game's two disks, found by file name."""
-        wanted = {"program": None, "sqrpaci.dax": None, "bacpac.dax": None}
+        program = None
+        archives = None
         for disk in disks:
-            for path, _entry in disk.walk():
-                name = path.rsplit("/", 1)[-1].lower()
-                if name in wanted and wanted[name] is None:
-                    wanted[name] = disk.read_file(path)
-        for name, data in wanted.items():
-            if data is None:
-                raise WorldError(f"no disk here carries {name}")
+            files = {path.rsplit("/", 1)[-1].lower(): path for path, _e in disk.walk()}
+            if program is None and "program" in files:
+                program = disk.read_file(files["program"])
+            if archives is None and {"sqrpaci.dax", "bacpac.dax"} <= files.keys():
+                archives = (disk.read_file(files["sqrpaci.dax"]),
+                            disk.read_file(files["bacpac.dax"]))
+        if program is None:
+            raise WorldError("no disk here carries program")
+        if archives is None:
+            raise WorldError("no one disk here carries both sqrpaci.dax and bacpac.dax")
         try:
-            return cls(wanted["program"],
-                       dict(amiga_dax.blocks(wanted["sqrpaci.dax"], "sqrpaci.dax")),
-                       dict(amiga_dax.blocks(wanted["bacpac.dax"], "bacpac.dax")))
+            return cls(program, dict(amiga_dax.blocks(archives[0], "sqrpaci.dax")),
+                       dict(amiga_dax.blocks(archives[1], "bacpac.dax")))
         except (amiga_dax.AmigaDaxError, AmigaDiskError) as error:
             raise WorldError(str(error)) from None
 
