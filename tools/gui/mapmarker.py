@@ -198,7 +198,13 @@ def private_settings(out: pathlib.Path) -> None:
     came up".  Nothing after the emulator is up looks at `$XDG_DATA_HOME`
     except the automapper.
     """
-    for var, name in (("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data")):
+    # `automap.paths` reads the XDG pair on Linux and APPDATA/LOCALAPPDATA on
+    # Windows; macOS derives both from the home directory, so there is nothing
+    # to set and the run would use the player's own folder.
+    if sys.platform == "darwin":
+        raise RuntimeError("Private settings are not supported on macOS.")
+    for var, name in (("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"),
+                      ("APPDATA", "config"), ("LOCALAPPDATA", "data")):
         os.environ[var] = str((out / name).resolve())
 
 
