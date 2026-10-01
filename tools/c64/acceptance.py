@@ -762,15 +762,10 @@ def item_screen_rows(rows: list[str]) -> list[int]:
 
 
 def item_row_highlight(s, at_rows: list[int]) -> int | None:
-    """Which entry row the cursor is on: the one row whose cell colour at the
-    name column differs from the rest, read on the row and not on the name, so
-    an item with no name still has one."""
-    if s is None or len(at_rows) < 2:
-        return at_rows[0] if s is not None and at_rows else None
-    colours = [s.colours[r * 40 + route_pool.ITEM_NAME_COLUMN] for r in at_rows]
-    common = max(set(colours), key=colours.count)
-    odd = [r for r, c in zip(at_rows, colours) if c != common]
-    return odd[0] if len(odd) == 1 else None
+    """Which entry row the cursor is on, read on the row and not on the name,
+    so an item with no name still has one. `route_pool.item_highlight` holds
+    the colour rule."""
+    return None if s is None else route_pool.item_highlight(s, at_rows)
 
 
 def parse_scribe(arg: str) -> tuple[str, str]:
@@ -3828,7 +3823,7 @@ class PoolRun:
         why = None
         if ITEM_BAR not in rows[24] or S.SHEET_BAR in rows[24]:
             why = f"the item list is not up: {rows[24].strip()!r}"
-        elif who not in rows[1]:
+        elif rows[1][1:39].strip() != screens.as_drawn(who):
             why = f"the list up is {rows[1][1:39].strip()!r}, not {who}'s"
         elif not 1 <= row <= len(item_screen_rows(rows)):
             why = (f"{who}'s list has {len(item_screen_rows(rows))} rows, "
@@ -3842,7 +3837,16 @@ class PoolRun:
         """READY on the `row`th row of the list that is up, and what the game
         did about it: the row's YES or NO before and after, and any refusal
         it printed, read as text. The cursor goes by the row's position, since
-        an item with no name has none to find it by."""
+        an item with no name has none to find it by. A failure after READY is
+        chosen leaves the list before it is raised."""
+        try:
+            return self._press_item_row(who, row)
+        except Exception:
+            route_pool.leave_items(self.sess, self.log)
+            self.to_world()
+            raise
+
+    def _press_item_row(self, who: str, row: int) -> tuple[bool, dict]:
         before = self.rows()
         at_rows = item_screen_rows(before)
         want = at_rows[row - 1]
@@ -3868,18 +3872,28 @@ class PoolRun:
                 if len(seen) >= 2 and seen[-1] == seen[-2]:
                     break
         after = seen[-1] if seen else before
+        # Only lines the press put up outside the item rows can be a refusal:
+        # an item's own name can hold a refusal's words, and a later frame
+        # that has drawn over the message must not erase it.
         message = None
         for rows in seen:
-            for r in range(1, 24):
-                text = rows[r][1:39].strip()
-                if any(word in text for word in REFUSALS):
-                    message = text
+            fresh = [rows[r][1:39].strip() for r in range(1, 24)
+                     if r not in at_rows
+                     and rows[r][1:39].strip() not in
+                     {before[b][1:39].strip() for b in range(1, 24)}]
+            if message is None:
+                message = next((t for t in fresh
+                                if any(w in t for w in REFUSALS)), None)
         if message is None:
             message = " / ".join(
                 after[r][1:39].strip() for r in range(1, 24)
                 if r not in at_rows and after[r] != before[r]
                 and after[r][1:39].strip()) or None
-        was, now = (item_entries(r)[row - 1] for r in (before, after))
+        entries = item_entries(after)
+        if len(entries) < row:
+            raise self.fail("ready", f"the list after READY has {len(entries)} "
+                                     f"rows, so #{row} is gone")
+        was, now = item_entries(before)[row - 1], entries[row - 1]
         self.capture(f"items-{who}-ready-row-{row}", after)
         if was["readied"] != now["readied"]:
             outcome = "readied" if now["readied"] else "unreadied"

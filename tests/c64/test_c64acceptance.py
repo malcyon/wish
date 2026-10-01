@@ -12313,11 +12313,14 @@ class _RowColourScreen(FakeScreen):
     """An item list with the cursor on entry row HOT: the name column is
     white there and green elsewhere, so a nameless row still shows it."""
 
-    def __init__(self, rows, hot):
+    def __init__(self, rows, hot, hot_colour=1, plain=5):
         super().__init__(rows)
-        self.colours = bytearray([5] * 1000)
+        self.colours = bytearray([plain] * 1000)
         if hot is not None:
-            self.colours[hot * 40 + A.route_pool.ITEM_NAME_COLUMN] = 1
+            self.colours[hot * 40 + A.route_pool.ITEM_NAME_COLUMN] = hot_colour
+
+    def rows(self):
+        return list(self._rows)
 
 
 class _ItemRowsFake(FakeSession):
@@ -12328,23 +12331,31 @@ class _ItemRowsFake(FakeSession):
     ROWS = {1: "THRENDER GRONE", 3: "EQUIPPED ITEM", 5: " YES FLAIL",
             6: " NO  LONG BOW", 7: " NO", 8: " EXIT"}
 
-    def __init__(self, answer):
+    def __init__(self, answer, rows=None, hot_colour=1, plain=5):
+        self.ROWS = rows or dict(self.ROWS)
+        self.colour = (hot_colour, plain)
         super().__init__({"items": _window(self.ROWS, "READY TRADE DROP EXIT")},
                          {("items", ("bar", "READY")): "cursor"}, "items")
         self.hot = 5
         self.answer = answer
 
     def screen(self):
-        if self.state == "cursor":
-            return _RowColourScreen(_window(self.ROWS, "READY TRADE DROP EXIT"),
-                                    self.hot)
+        hot_colour, plain = self.colour
+        bar = "READY TRADE DROP EXIT"
+        if self.state in ("items", "cursor"):
+            return _RowColourScreen(
+                _window(self.ROWS, bar), self.hot if self.state == "cursor" else None,
+                hot_colour, plain)
         if self.state == "answered":
             rows = dict(self.ROWS)
+            last = max(r for r in rows if rows[r].strip() not in ("EXIT", ""))
             if self.answer == "readied":
-                rows[7] = " YES"
+                rows[last] = rows[last].replace(" NO", " YES", 1)
             elif self.answer == "refused":
                 rows[21] = "WRONG CLASS"
-            return FakeScreen(_window(rows, "READY TRADE DROP EXIT"))
+            elif self.answer == "vanished":
+                del rows[last]
+            return _RowColourScreen(_window(rows, bar), None, hot_colour, plain)
         return super().screen()
 
     def _go(self, what):
@@ -12359,8 +12370,9 @@ class _ItemRowsFake(FakeSession):
         return super()._go(what)
 
 
-def _ready_row(tmp_path, monkeypatch, arg, answer="readied", who="THRENDER GRONE"):
-    sess = _ItemRowsFake(answer)
+def _ready_row(tmp_path, monkeypatch, arg, answer="readied", rows=None,
+               colours=(1, 5), press=None):
+    sess = _ItemRowsFake(answer, rows, *colours)
     opened = []
     monkeypatch.setattr(A.route_pool, "open_items",
                         lambda s, log, name, label, tag: opened.append(
@@ -12378,6 +12390,8 @@ def _ready_row(tmp_path, monkeypatch, arg, answer="readied", who="THRENDER GRONE
                 ITEM_BLOCK_STRIDE)] = [bytes(ITEM_BLOCK_STRIDE)] * 2
     script[A.route_pool.EFFECTS] = [bytes(A.route_pool.EFFECTS[1])] * 2
     sess.mon = lambda timeout: _ReadyMonitor(script)
+    if press is not None:
+        monkeypatch.setattr(A.route_pool, "press_select", press)
     run, log = _pool_run(tmp_path, sess)
     run.to_world = lambda: True
     try:
@@ -12454,3 +12468,74 @@ def test_ready_by_name_still_opens_on_the_label_and_toggles_it(tmp_path, monkeyp
     log.close()
     assert calls == [("open", "THRENDER GRONE", "FLAIL"), ("toggle", "FLAIL")]
     assert "outcome" not in got
+
+
+TWO_ROWS = {1: "THRENDER GRONE", 3: "EQUIPPED ITEM", 5: " YES FLAIL",
+            6: " NO  LONG BOW", 7: " EXIT"}
+
+
+@pytest.mark.parametrize("colours", [(1, 5), (5, 1)])
+def test_a_two_row_list_names_the_cursor_row_whichever_colour_is_lower(colours):
+    """With two rows each colour occurs once, so counting colours picks by
+    which value is smaller; the blank row below the list is the reference."""
+    hot, plain = colours
+    for at in (5, 6):
+        s = _RowColourScreen(_window(TWO_ROWS, "READY TRADE DROP EXIT"), at,
+                             hot, plain)
+        assert A.route_pool.item_highlight(s, [5, 6]) == at
+        assert A.item_row_highlight(s, [5, 6]) == at
+        assert A.route_pool.item_highlight(s, A.route_pool.item_rows(s)) == at
+
+
+@pytest.mark.parametrize("colours", [(1, 5), (5, 1)])
+def test_ready_row_reaches_row_two_of_a_two_row_list(tmp_path, monkeypatch, colours):
+    got, sess, _ = _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#2",
+                              rows=dict(TWO_ROWS), colours=colours)
+    assert sess.sent == [("bar", "READY"), ("key", "Down"),
+                         ("key", A.route_pool.SELECT["key"])]
+    assert (got["row"], got["outcome"]) == (2, "readied")
+
+
+@pytest.mark.parametrize("colours", [(1, 5), (5, 1)])
+def test_ready_by_name_reaches_the_second_of_two_rows(tmp_path, monkeypatch, colours):
+    sess = _ItemRowsFake("readied", dict(TWO_ROWS), *colours)
+    monkeypatch.setattr(A.time, "sleep", lambda s: None)
+    log = A.Log(tmp_path)
+    try:
+        A.route_pool.toggle_item(sess, log, "LONG BOW", "ready")
+    finally:
+        log.close()
+    assert sess.sent == [("bar", "READY"), ("key", "Down"),
+                         ("key", A.route_pool.SELECT["key"])]
+
+
+def test_ready_row_names_the_member_exactly_not_by_prefix(tmp_path, monkeypatch):
+    with pytest.raises(A.StepFailed, match="not THRENDER's"):
+        _ready_row(tmp_path, monkeypatch, "THRENDER>#1")
+
+
+def test_ready_row_compares_a_lower_case_name_as_the_screen_draws_it(
+        tmp_path, monkeypatch):
+    rows = {**_ItemRowsFake.ROWS, 1: A.screens.as_drawn("Guy de Valois")}
+    got, _, _ = _ready_row(tmp_path, monkeypatch, "Guy de Valois>#3", rows=rows)
+    assert got["outcome"] == "readied"
+
+
+def test_ready_row_leaves_the_list_when_a_key_fails_after_ready(tmp_path, monkeypatch):
+    def broken(sess):
+        raise A.StepFailed("select failed")
+
+    with pytest.raises(A.StepFailed, match="select failed"):
+        _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#3", press=broken)
+    # The fake's leave_items moves it to the world: the list is not left up.
+
+
+def test_ready_row_leaves_the_list_when_the_row_has_gone(tmp_path, monkeypatch):
+    with pytest.raises(A.StepFailed, match="#3 is gone"):
+        _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#3", "vanished")
+
+
+def test_an_item_name_with_a_refusals_words_is_not_a_refusal(tmp_path, monkeypatch):
+    rows = {**_ItemRowsFake.ROWS, 6: " NO  WRONG CLASS RING"}
+    got, _, _ = _ready_row(tmp_path, monkeypatch, "THRENDER GRONE>#3", rows=rows)
+    assert got["outcome"] == "readied" and got["message"] is None

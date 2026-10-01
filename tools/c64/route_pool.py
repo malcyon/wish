@@ -144,25 +144,39 @@ def open_items(sess: S.Session, log: Log, name: str, label: str,
     return True
 
 #: The item list: `EQUIPPED ITEM` heading on row 3, items from row 5, the
-#: name starting in column 6 after the `YES`/`NO` column.
+#: name starting in column 6 after the `YES`/`NO` column. `screens.ITEM_ROWS`
+#: (4 to 22) is the wider window a capture is read through, so a list is never
+#: clipped when read as text; the cursor never leaves these rows.
 ITEM_ROWS = range(5, 22)
 
 ITEM_NAME_COLUMN = 6
 
 def item_rows(s) -> list[int]:
-    return [r for r in ITEM_ROWS if s.row(r)[ITEM_NAME_COLUMN:].strip()]
+    # Column 39 is the window border, drawn on blank rows too.
+    return [r for r in ITEM_ROWS if s.row(r)[ITEM_NAME_COLUMN:39].strip()]
+
+#: The colour of an item-list cell the cursor is not on: green on every row
+#: of a Pool capture, with the cursor row white.
+ITEM_PLAIN_COLOUR = 5
+
+def item_baseline(s, rows: list[int]) -> int:
+    """The colour an unhighlighted cell has on this list: a blank row below
+    the entries, which the cursor never visits, else the known plain colour.
+    Counting colours instead picks the wrong row on a two-row list, where
+    each colour occurs once."""
+    below = max(rows, default=ITEM_ROWS.start) + 1
+    for r in range(below, ITEM_ROWS.stop):
+        if not s.row(r)[1:39].strip():
+            return s.colours[r * 40 + ITEM_NAME_COLUMN]
+    return ITEM_PLAIN_COLOUR
 
 def item_highlight(s, rows: list[int]) -> int | None:
-    """Which item row is highlighted: the one whose name colour is the odd
-    one out. `select_row` wants white, and the list's highlight was not read
-    as white at the name column in run 4, so this asks a weaker question."""
+    """Which item row the cursor is on: the one whose name colour differs from
+    `item_baseline`, or None when no row or more than one does."""
     if not rows:
         return None
-    colours = [s.colours[r * 40 + ITEM_NAME_COLUMN] for r in rows]
-    if len(set(colours)) == 1:
-        return None
-    common = max(set(colours), key=colours.count)
-    odd = [r for r, c in zip(rows, colours) if c != common]
+    base = item_baseline(s, rows)
+    odd = [r for r in rows if s.colours[r * 40 + ITEM_NAME_COLUMN] != base]
     return odd[0] if len(odd) == 1 else None
 
 def toggle_item(sess: S.Session, log: Log, label: str, tag: str,
