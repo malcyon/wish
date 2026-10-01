@@ -952,20 +952,24 @@ def observe(args, name: str, tgt, maps: dict, out: pathlib.Path, once,
             from tools.gui import mapmarker
 
             app, _root, binding, _maps = window
+            # Set first so a row that fails partway still has every key.
+            row["tab"] = {"outdoors": None, "travel_window": None,
+                          "heading": None, "world_page": None}
             for _ in range(binding.LIVE_EVERY + 1):
                 binding.tick()
                 app.processEvents()
             st = binding.state
-            row["tab"] = mapmarker.reading(binding, name)
+            row["tab"].update(mapmarker.reading(binding, name))
             # The indoor canvas is grabbed whatever page is up, so only these
             # fields and the world grab say whether the wilderness page shows.
-            row["tab"].update(outdoors=st.outdoors, window=st.window,
-                              heading=st.heading,
-                              world_page=(binding.world_canvas is not None
-                                          and binding.world_page_shown()))
+            world_page = (binding.world_canvas is not None
+                          and binding.world_page_shown())
+            row["tab"].update(outdoors=st.outdoors, travel_window=st.window,
+                              heading=st.heading, world_page=world_page)
             mapmarker.shot(app, binding.root, out / f"{name}-window.png")
             mapmarker.shot(app, binding.canvas, out / f"{name}-map.png")
-            if binding.world_canvas is not None:
+            # A hidden or blank page would look like wilderness evidence.
+            if world_page:
                 mapmarker.shot(app, binding.world_canvas,
                                out / f"{name}-world.png")
     except Exception as exc:                    # noqa: BLE001 -- the row is the evidence
