@@ -1,9 +1,10 @@
 """The Amiga floppy filesystem, read and written (#36).
 
 Enough of OFS -- the *Old File System*, which is what every Gold Box Amiga
-release ships on -- to **add a file to a real game disk**: allocate blocks from
-the bitmap, write them, build a file header, thread it into the parent
-directory's hash chain, and fix every checksum the filesystem keeps.
+release ships on -- and of FFS, the *Fast File System* a player can format a
+save disk with, to **add a file to a real disk**: allocate blocks from the
+bitmap, write them, build a file header, thread it into the parent directory's
+hash chain, and fix every checksum the filesystem keeps.
 
 Until this existed a converted character reached an Amiga disk only by
 overwriting an existing file's bytes, so a player could not be handed a disk
@@ -30,10 +31,25 @@ silently:
   & 0x7FF; h %= 72`, and it puts **76 of 76** real directory entries in the
   chain the disk actually files them under.
 
+The disk types
+--------------
+The fourth byte of the bootblock is the DOS type, three flag bits: 1 is FFS,
+2 international mode, 4 directory cache (which implies international mode).
+The two file systems share every block but one: an FFS data block is 512
+bytes of file with no header, so it has no checksum and no chain, and the
+header's data-block table is the only way to it. International mode changes
+only how a name is upper-cased for the hash and for comparing names.
+
+* `DOS\\0` OFS and `DOS\\1` FFS, and `DOS\\2` and `DOS\\3`, the same two in
+  international mode, are read and written.
+* `DOS\\4` and `DOS\\5`, directory-cache OFS and FFS, are read through the hash
+  tables, which the cache does not replace, and not written: every change
+  would also have to rewrite the parent drawer's cache blocks.
+* `DOS\\6` and `DOS\\7`, long file names, are neither: their header blocks are
+  laid out differently.
+
 What this does not do
 ---------------------
-* **FFS is refused by name.** The bit is read and reported; no Gold Box Amiga
-  release uses it.
 * **Directories are read, not created.** Every path a conversion needs -- the
   `SAVE` drawer -- already exists on the disks.
 * Comments, protection bits and the `.info` files Workbench keeps are not
@@ -51,7 +67,9 @@ from typing import Iterator
 
 __all__ = [
     "AmigaDiskError",
+    "AmigaDiskTypeError",
     "BLOCK_SIZE",
+    "FFS_DATA_SIZE",
     "HASH_TABLE_SIZE",
     "OFS_DATA_SIZE",
     "AmigaDisk",
@@ -65,12 +83,15 @@ BLOCK_SIZE = 512
 HASH_TABLE_SIZE = 72
 #: Payload of one OFS data block: 512 less its 24-byte header.
 OFS_DATA_SIZE = BLOCK_SIZE - 24
+#: Payload of one FFS data block: the whole block, with no header.
+FFS_DATA_SIZE = BLOCK_SIZE
 #: Data-block pointers a header or extension block can carry.
 MAX_DATA_POINTERS = HASH_TABLE_SIZE
 
 T_HEADER = 2
 T_DATA = 8
 T_LIST = 16
+T_DIRCACHE = 33
 ST_ROOT = 1
 ST_USERDIR = 2
 ST_FILE = -3
@@ -112,9 +133,40 @@ _DAT_PAYLOAD = 0x018
 #: The longest name AmigaDOS stores in a header block.
 MAX_NAME = 30
 
+#: Flag bits of the DOS type, the bootblock's fourth byte.
+DOSTYPE_FFS = 1
+DOSTYPE_INTL = 2
+DOSTYPE_DIRCACHE = 4
+#: The DOS types this module reads, and the ones it also writes.
+READ_DOS_TYPES = frozenset(range(6))
+WRITE_DOS_TYPES = frozenset(range(4))
+#: What each DOS type is, for an error naming it.
+DOS_TYPE_NAMES = {
+    0: "OFS", 1: "FFS",
+    2: "OFS, international", 3: "FFS, international",
+    4: "OFS, directory cache", 5: "FFS, directory cache",
+    6: "OFS, long file names", 7: "FFS, long file names",
+}
+
 
 class AmigaDiskError(ValueError):
     """A disk image this module will not read, or a write it will not make."""
+
+
+class AmigaDiskTypeError(AmigaDiskError):
+    """A disk whose DOS type this module does not read, or does not write.
+
+    `dos_type` is the bootblock's fourth byte; `writing` says whether it was
+    the write that was refused, the disk itself having been read.
+    """
+
+    def __init__(self, dos_type: int, writing: bool) -> None:
+        self.dos_type = dos_type
+        self.writing = writing
+        kind = DOS_TYPE_NAMES.get(dos_type)
+        label = f"DOS\\{dos_type}" + (f" ({kind})" if kind else "")
+        verb = "written" if writing else "read"
+        super().__init__(f"disk type {label} cannot be {verb}")
 
 
 def block_checksum(block: bytes, at: int) -> int:
@@ -132,19 +184,36 @@ def block_checksum(block: bytes, at: int) -> int:
     return (-total) & 0xFFFFFFFF
 
 
-def hash_name(name: str, size: int = HASH_TABLE_SIZE) -> int:
+def _upper_code(code: int, international: bool) -> int:
+    """AmigaDOS's `toupper` for one Latin-1 code.
+
+    Without international mode only `a`-`z` change. International mode also
+    raises `0xE0`-`0xFE`, except `0xF7` (the division sign).
+    """
+    if 0x61 <= code <= 0x7A or (international and 0xE0 <= code <= 0xFE
+                                and code != 0xF7):
+        return code - 0x20
+    return code
+
+
+def upper_name(name: str, international: bool = False) -> str:
+    """`name` upper-cased the way the filesystem compares names."""
+    return "".join(chr(_upper_code(ord(char), international)) for char in name)
+
+
+def hash_name(name: str, size: int = HASH_TABLE_SIZE,
+              international: bool = False) -> int:
     """Which hash-table slot a directory entry belongs in.
 
-    The standard (non-international) OFS hash. Measured: it reproduces the
-    slot the disk actually files the entry under for **76 of 76** entries on
-    Pool of Radiance disk 1, across four directories.
-
-    The international variant differs only for `0xE0`-`0xFE`, and no Gold Box
-    file name leaves ASCII.
+    The standard hash is measured: it reproduces the slot the disk actually
+    files the entry under for **76 of 76** entries on Pool of Radiance disk 1,
+    across four directories. `international` is the `DOS\\2`-`DOS\\5` variant,
+    which differs only in upper-casing `0xE0`-`0xFE`; no Gold Box file name
+    leaves ASCII, where the two agree.
     """
     value = len(name)
-    for char in name.upper():
-        value = ((value * 13) + ord(char)) & 0x7FF
+    for char in name:
+        value = ((value * 13) + _upper_code(ord(char), international)) & 0x7FF
     return value % size
 
 
@@ -190,11 +259,8 @@ class AmigaDisk:
                 f"no `DOS` bootblock signature; got {bytes(self._data[:4])!r}. "
                 f"This reads AmigaDOS floppies, not the `.dax` archives inside "
                 f"them")
-        if self.ffs:
-            raise AmigaDiskError(
-                "this image is FFS and only OFS is implemented; every Gold Box "
-                "Amiga release ships OFS, so an FFS disk here is a surprise "
-                "worth looking at rather than working around")
+        if self.dos_type not in READ_DOS_TYPES:
+            raise AmigaDiskTypeError(self.dos_type, writing=False)
         self.root = self._find_root()
 
     # -- construction -------------------------------------------------------
@@ -203,16 +269,20 @@ class AmigaDisk:
         return cls(pathlib.Path(path).read_bytes())
 
     @classmethod
-    def blank(cls, name: str = "Empty", blocks: int = 1760) -> "AmigaDisk":
-        """A freshly formatted OFS disk, for a test that wants no game data.
+    def blank(cls, name: str = "Empty", blocks: int = 1760,
+              dos_type: int = 0) -> "AmigaDisk":
+        """A freshly formatted disk, for a test that wants no game data.
 
         `blocks` is 1760 for a standard 880K floppy. The root goes in the
         middle block, which is where AmigaDOS puts it, and the bitmap in the
-        block after.
+        block after. `dos_type` is 0 for OFS and 1 for FFS, or either plus 2
+        for international mode.
         """
         cls._check_name(name)
+        if dos_type not in WRITE_DOS_TYPES:
+            raise AmigaDiskTypeError(dos_type, writing=True)
         data = bytearray(blocks * BLOCK_SIZE)
-        data[0:4] = b"DOS\x00"
+        data[0:4] = b"DOS" + bytes([dos_type])
         root = blocks // 2
         bitmap = root + 1
         struct.pack_into(">I", data, root * BLOCK_SIZE + _HDR_TYPE, T_HEADER)
@@ -284,9 +354,39 @@ class AmigaDisk:
         return len(self._data) // BLOCK_SIZE
 
     @property
+    def dos_type(self) -> int:
+        """The bootblock's fourth byte: `DOS\\0` is 0, `DOS\\1` is 1."""
+        return self._data[3]
+
+    @property
     def ffs(self) -> bool:
         """The Fast File System bit of the bootblock's flags byte."""
-        return bool(self._data[3] & 1)
+        return bool(self.dos_type & DOSTYPE_FFS)
+
+    @property
+    def international(self) -> bool:
+        """International mode, which the directory cache also implies."""
+        return bool(self.dos_type & (DOSTYPE_INTL | DOSTYPE_DIRCACHE))
+
+    @property
+    def dircache(self) -> bool:
+        return bool(self.dos_type & DOSTYPE_DIRCACHE)
+
+    @property
+    def data_block_size(self) -> int:
+        """File bytes one data block holds: 488 on OFS, 512 on FFS."""
+        return FFS_DATA_SIZE if self.ffs else OFS_DATA_SIZE
+
+    def _hash(self, name: str) -> int:
+        return hash_name(name, international=self.international)
+
+    def _same_name(self, one: str, other: str) -> bool:
+        return (upper_name(one, self.international)
+                == upper_name(other, self.international))
+
+    def _check_writable(self) -> None:
+        if self.dos_type not in WRITE_DOS_TYPES:
+            raise AmigaDiskTypeError(self.dos_type, writing=True)
 
     @property
     def volume_name(self) -> str:
@@ -398,7 +498,7 @@ class AmigaDisk:
         header = self.root
         for index, part in enumerate(parts):
             for entry in self.entries(header):
-                if entry.name.upper() == part.upper():
+                if self._same_name(entry.name, part):
                     break
             else:
                 where = "/".join(parts[:index]) or "the root"
@@ -427,6 +527,9 @@ class AmigaDisk:
             for index in range(count):
                 data = self.block(
                     self._u32(current, _HDR_DATA_TABLE - 4 * index))
+                if self.ffs:
+                    out += data
+                    continue
                 used = self._u32(data, _DAT_SIZE)
                 if used > OFS_DATA_SIZE:
                     raise AmigaDiskError(
@@ -555,6 +658,7 @@ class AmigaDisk:
         reserved before anything is linked, and an existing file of the same
         name is only unlinked once the new one is written.
         """
+        self._check_writable()
         parts = [p for p in path.replace("\\", "/").split("/") if p]
         if not parts:
             raise AmigaDiskError("an empty path names nothing")
@@ -569,7 +673,7 @@ class AmigaDisk:
 
         existing = None
         for entry in self.entries(parent):
-            if entry.name.upper() == name.upper():
+            if self._same_name(entry.name, name):
                 if entry.is_dir:
                     raise AmigaDiskError(
                         f"{name!r} is already a drawer on this disk")
@@ -577,7 +681,11 @@ class AmigaDisk:
                 break
 
         when = when or datetime.datetime.now()
-        blocks_needed = max(1, -(-len(data) // OFS_DATA_SIZE))
+        # An empty FFS file is a header alone, as the format describes; the
+        # OFS writer gives an empty file one empty data block.
+        blocks_needed = -(-len(data) // self.data_block_size)
+        if not self.ffs:
+            blocks_needed = max(1, blocks_needed)
         headers_needed = max(1, -(-blocks_needed // MAX_DATA_POINTERS))
         # Allocate the replacement before touching the old file, so a
         # failure leaves the disk exactly as it was: an existing file of the
@@ -625,6 +733,7 @@ class AmigaDisk:
         module formatted, with no game data anywhere -- which is the property
         `tests/amiga/test_amiga_adf.py` is built on.
         """
+        self._check_writable()
         parts = [p for p in path.replace("\\", "/").split("/") if p]
         if not parts:
             raise AmigaDiskError("an empty path names nothing")
@@ -638,7 +747,7 @@ class AmigaDisk:
                     f"{parts[-2]!r} is a file, not a drawer")
             parent = entry.block
         for entry in self.entries(parent):
-            if entry.name.upper() == name.upper():
+            if self._same_name(entry.name, name):
                 raise AmigaDiskError(
                     f"{name!r} is already on this disk at block {entry.block}")
 
@@ -669,6 +778,7 @@ class AmigaDisk:
 
     def remove_file(self, path: str) -> None:
         """Unlink a file and give its blocks back to the bitmap."""
+        self._check_writable()
         parts = [p for p in path.replace("\\", "/").split("/") if p]
         entry = self.lookup(path)
         if entry.is_dir:
@@ -685,6 +795,12 @@ class AmigaDisk:
 
     def _write_data_chain(self, header: int, data: bytes,
                           blocks: list[int]) -> None:
+        if self.ffs:
+            for index, number in enumerate(blocks):
+                chunk = data[index * FFS_DATA_SIZE:(index + 1) * FFS_DATA_SIZE]
+                at = number * BLOCK_SIZE
+                self._data[at:at + BLOCK_SIZE] = chunk.ljust(BLOCK_SIZE, b"\0")
+            return
         for index, number in enumerate(blocks):
             chunk = data[index * OFS_DATA_SIZE:(index + 1) * OFS_DATA_SIZE]
             at = number * BLOCK_SIZE
@@ -744,7 +860,7 @@ class AmigaDisk:
         New entries go at the **head** of the chain, which is what AmigaDOS
         itself does and is why a directory listing is not in creation order.
         """
-        slot = hash_name(name)
+        slot = self._hash(name)
         at = parent * BLOCK_SIZE + _HDR_HASH_TABLE + 4 * slot
         first = struct.unpack_from(">I", self._data, at)[0]
         struct.pack_into(">I", self._data,
@@ -753,7 +869,7 @@ class AmigaDisk:
         self._fix(header, _HDR_CHECKSUM)
 
     def _unlink(self, parent: int, entry: DirEntry) -> None:
-        slot = hash_name(entry.name)
+        slot = self._hash(entry.name)
         at = parent * BLOCK_SIZE + _HDR_HASH_TABLE + 4 * slot
         number = struct.unpack_from(">I", self._data, at)[0]
         following = self._u32(self.block(entry.block), _HDR_NEXT_HASH)
@@ -920,6 +1036,11 @@ class AmigaDisk:
                     f"block {entry.block} holds the drawer {where!r} and is "
                     f"marked free in the bitmap")
 
+        if self.dircache:
+            for where, number in [("/", self.root)] + [
+                    (where, entry.block) for where, entry in drawers]:
+                problems.extend(self._verify_cache_chain(where, number, check))
+
         for _, entry in files:
             current = entry.block
             head = True
@@ -946,7 +1067,9 @@ class AmigaDisk:
                             f"data block and {table} in the table")
                 for index in range(count):
                     number = self._u32(block, _HDR_DATA_TABLE - 4 * index)
-                    check(number, _DAT_CHECKSUM, "data block")
+                    # An FFS data block is all file: nothing to sum.
+                    if not self.ffs:
+                        check(number, _DAT_CHECKSUM, "data block")
                     if self.is_free(number):
                         problems.append(
                             f"data block {number} is in use and marked free")
@@ -955,6 +1078,41 @@ class AmigaDisk:
                         f"block {current} is in use and marked free")
                 current = self._u32(block, _HDR_EXTENSION)
                 head = False
+        return problems
+
+    def _verify_cache_chain(self, where: str, drawer: int,
+                            check) -> list[str]:
+        """The directory-cache blocks of one drawer: summed, typed, in use.
+
+        The records in them are not compared with the hash table; nothing here
+        reads them.
+        """
+        problems: list[str] = []
+        number = self._u32(self.block(drawer), _HDR_EXTENSION)
+        seen: set[int] = set()
+        while number:
+            if number in seen:
+                problems.append(
+                    f"the directory cache of {where!r} loops back to block "
+                    f"{number}")
+                break
+            seen.add(number)
+            try:
+                block = self.block(number)
+            except AmigaDiskError as exc:
+                problems.append(str(exc))
+                break
+            if self._u32(block, _HDR_TYPE) != T_DIRCACHE:
+                problems.append(
+                    f"block {number} in the directory cache of {where!r} is "
+                    f"not a cache block")
+                break
+            check(number, _HDR_CHECKSUM, "directory cache block")
+            if self.is_free(number):
+                problems.append(
+                    f"directory cache block {number} is in use and marked "
+                    f"free")
+            number = self._u32(block, _HDR_FIRST_DATA)
         return problems
 
     def _recompute(self, block: int, at: int) -> int:
