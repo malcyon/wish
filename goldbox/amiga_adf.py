@@ -33,8 +33,9 @@ silently:
 
 The disk types
 --------------
-The fourth byte of the bootblock is the DOS type, three flag bits: 1 is FFS,
-2 international mode, 4 directory cache (which implies international mode).
+The fourth byte of the bootblock is the DOS type. Its low bit is FFS; the
+rest says how names are kept: 0 standard, 2 international mode, 4 directory
+cache and 6 long file names, both of which imply international mode.
 The two file systems share every block but one: an FFS data block is 512
 bytes of file with no header, so it has no checksum and no chain, and the
 header's data-block table is the only way to it. International mode changes
@@ -48,8 +49,17 @@ only how a name is upper-cased for the hash and for comparing names.
   gets one empty cache block of its own. A cache that already disagrees with
   its hash table is reported by `cache_warnings()`, not by `verify()`, and a
   write into that drawer rebuilds its records from the hash table.
-* `DOS\\6` and `DOS\\7`, long file names, are neither: their header blocks are
-  laid out differently.
+* `DOS\\6` and `DOS\\7`, long file names, are read and written. Every entry
+  header keeps its name and comment as two length-prefixed strings in one
+  112-byte field at 0x148, a comment that does not fit there in a type-64
+  block named at 0x1B8, and its date at 0x1C4. The root keeps the standard
+  layout and its 30-character name, and adds the DOS type at 0x1F0 and the
+  count of blocks the bitmap marks used at 0x1D4, which every write
+  recomputes. Wish writes names of up to 106 characters, and replacing or
+  removing a file gives back its comment block. The layout is from the
+  `amiga-ffs` crate's `layout` module and amitools' `EntryBlock`, `RootBlock`
+  and `CommentBlock`, which agree; no disk AmigaOS itself wrote has been
+  read.
 
 What this does not do
 ---------------------
@@ -98,6 +108,7 @@ T_HEADER = 2
 T_DATA = 8
 T_LIST = 16
 T_DIRCACHE = 33
+T_COMMENT = 64
 ST_ROOT = 1
 ST_USERDIR = 2
 ST_FILE = -3
@@ -153,16 +164,38 @@ _REC_TYPE = 22
 _REC_NAME = 23
 _REC_FIXED = 25
 
+#: Where a long-name disk keeps an entry header's name and comment, two
+#: length-prefixed strings laid end to end; the block a comment that does not
+#: fit there goes in; and the date, moved down to make room.
+_LN_NAC = BLOCK_SIZE - 184
+_LN_NAC_SIZE = 112
+_LN_COMMENT_BLOCK = BLOCK_SIZE - 72
+_LN_DAYS = BLOCK_SIZE - 60
+#: A long-name root: the blocks its bitmap marks used, and its own DOS type.
+_LN_ROOT_USED = BLOCK_SIZE - 44
+_LN_ROOT_FS_TYPE = BLOCK_SIZE - 16
+#: A comment block: the header it belongs to, and the comment.
+_CB_HEADER = 0x008
+_CB_CHECKSUM = 0x014
+
 #: The longest name AmigaDOS stores in a header block.
 MAX_NAME = 30
+#: The longest entry name this module writes on a long-name disk. The
+#: `amiga-ffs` crate and the AmigaOS wiki say 107 and Hyperion's AmigaOS
+#: 3.1.4 FAQ says 106, so the lower. A longer name AmigaOS wrote still reads,
+#: up to what the 112-byte field holds beside a comment's length byte.
+MAX_LONG_NAME = 106
 
 #: Flag bits of the DOS type, the bootblock's fourth byte.
 DOSTYPE_FFS = 1
 DOSTYPE_INTL = 2
 DOSTYPE_DIRCACHE = 4
+#: The DOS types with a directory cache, and with long file names.
+DIRCACHE_DOS_TYPES = frozenset((4, 5))
+LONG_NAME_DOS_TYPES = frozenset((6, 7))
 #: The DOS types this module reads, and the ones it also writes.
-READ_DOS_TYPES = frozenset(range(6))
-WRITE_DOS_TYPES = frozenset(range(6))
+READ_DOS_TYPES = frozenset(range(8))
+WRITE_DOS_TYPES = frozenset(range(8))
 #: What each DOS type is, for an error naming it.
 DOS_TYPE_NAMES = {
     0: "OFS", 1: "FFS",
@@ -317,10 +350,11 @@ class AmigaDisk:
         `blocks` is 1760 for a standard 880K floppy. The root goes in the
         middle block, which is where AmigaDOS puts it, and the bitmap in the
         block after. `dos_type` is 0 for OFS and 1 for FFS, or either plus 2
-        for international mode or plus 4 for the directory cache, which gives
-        the root one empty cache block.
+        for international mode, plus 4 for the directory cache, which gives
+        the root one empty cache block, or plus 6 for long file names, which
+        puts the DOS type in the root as well.
         """
-        cls._check_name(name)
+        cls._check_name(name, MAX_NAME)
         if dos_type not in WRITE_DOS_TYPES:
             raise AmigaDiskTypeError(dos_type, writing=True)
         data = bytearray(blocks * BLOCK_SIZE)
@@ -333,6 +367,9 @@ class AmigaDisk:
         struct.pack_into(">i", data, root * BLOCK_SIZE + _HDR_BM_FLAG, -1)
         struct.pack_into(">I", data, root * BLOCK_SIZE + _HDR_BM_PAGES, bitmap)
         struct.pack_into(">i", data, root * BLOCK_SIZE + _HDR_SEC_TYPE, ST_ROOT)
+        if dos_type in LONG_NAME_DOS_TYPES:
+            data[root * BLOCK_SIZE + _LN_ROOT_FS_TYPE:
+                 root * BLOCK_SIZE + _LN_ROOT_FS_TYPE + 4] = data[0:4]
         encoded = name.encode("latin1")
         data[root * BLOCK_SIZE + _HDR_NAME] = len(encoded)
         data[root * BLOCK_SIZE + _HDR_NAME + 1:
@@ -414,7 +451,19 @@ class AmigaDisk:
 
     @property
     def dircache(self) -> bool:
-        return bool(self.dos_type & DOSTYPE_DIRCACHE)
+        """`DOS\\4` and `DOS\\5`. `DOS\\6` and `DOS\\7` have the same bit in
+        their number and no cache."""
+        return self.dos_type in DIRCACHE_DOS_TYPES
+
+    @property
+    def long_names(self) -> bool:
+        """`DOS\\6` and `DOS\\7`, whose entry headers keep long names."""
+        return self.dos_type in LONG_NAME_DOS_TYPES
+
+    @property
+    def max_name(self) -> int:
+        """The longest file or drawer name this module writes on the disk."""
+        return MAX_LONG_NAME if self.long_names else MAX_NAME
 
     @property
     def data_block_size(self) -> int:
@@ -685,13 +734,13 @@ class AmigaDisk:
 
     # -- writing ------------------------------------------------------------
     @staticmethod
-    def _check_name(name: str) -> None:
+    def _check_name(name: str, limit: int) -> None:
         if not name:
             raise AmigaDiskError("an empty name")
-        if len(name) > MAX_NAME:
+        if len(name) > limit:
             raise AmigaDiskError(
-                f"{name!r} is {len(name)} characters; AmigaDOS stores at most "
-                f"{MAX_NAME}")
+                f"{name!r} is {len(name)} characters; this disk stores at most "
+                f"{limit}")
         try:
             encoded = name.encode("latin1")
         except UnicodeEncodeError as exc:
@@ -719,7 +768,7 @@ class AmigaDisk:
         if not parts:
             raise AmigaDiskError("an empty path names nothing")
         name = parts[-1]
-        self._check_name(name)
+        self._check_name(name, self.max_name)
         parent = self.root
         for part in parts[:-1]:
             entry = self.lookup("/".join(parts[:parts.index(part) + 1]))
@@ -801,7 +850,7 @@ class AmigaDisk:
         if not parts:
             raise AmigaDiskError("an empty path names nothing")
         name = parts[-1]
-        self._check_name(name)
+        self._check_name(name, self.max_name)
         parent = self.root
         if len(parts) > 1:
             entry = self.lookup("/".join(parts[:-1]))
@@ -820,13 +869,8 @@ class AmigaDisk:
         self._data[at:at + BLOCK_SIZE] = bytes(BLOCK_SIZE)
         struct.pack_into(">I", self._data, at + _HDR_TYPE, T_HEADER)
         struct.pack_into(">I", self._data, at + _HDR_KEY, header)
-        days, minutes, ticks = _amiga_date(when or datetime.datetime.now())
-        struct.pack_into(">III", self._data, at + _HDR_DAYS,
-                         days, minutes, ticks)
-        encoded = name.encode("latin1")
-        self._data[at + _HDR_NAME] = len(encoded)
-        self._data[at + _HDR_NAME + 1:
-                   at + _HDR_NAME + 1 + len(encoded)] = encoded
+        self._put_entry_name(header, name)
+        self._touch(header, when)
         struct.pack_into(">I", self._data, at + _HDR_PARENT, parent)
         struct.pack_into(">i", self._data, at + _HDR_SEC_TYPE, ST_USERDIR)
         self._fix(header, _HDR_CHECKSUM)
@@ -920,13 +964,8 @@ class AmigaDisk:
             if first:
                 struct.pack_into(">I", self._data, at + _HDR_BYTE_SIZE,
                                  len(data))
-                days, minutes, ticks = _amiga_date(when)
-                struct.pack_into(">III", self._data, at + _HDR_DAYS,
-                                 days, minutes, ticks)
-                encoded = name.encode("latin1")
-                self._data[at + _HDR_NAME] = len(encoded)
-                self._data[at + _HDR_NAME + 1:
-                           at + _HDR_NAME + 1 + len(encoded)] = encoded
+                self._touch(number, when)
+                self._put_entry_name(number, name)
                 struct.pack_into(">I", self._data, at + _HDR_PARENT, parent)
             else:
                 struct.pack_into(">I", self._data, at + _HDR_PARENT, header)
@@ -976,8 +1015,9 @@ class AmigaDisk:
             self._set_free(number, True)
 
     def _file_blocks(self, header: int) -> list[int]:
-        """Every block a file holds, refusing a looping extension chain."""
-        blocks: list[int] = []
+        """Every block a file holds, its comment block included, refusing a
+        looping extension chain."""
+        blocks: list[int] = self._comment_blocks(header)
         seen: set[int] = set()
         current = header
         while current:
@@ -992,6 +1032,51 @@ class AmigaDisk:
             blocks.append(current)
             current = self._u32(block, _HDR_EXTENSION)
         return blocks
+
+    # -- long file names ----------------------------------------------------
+    def _comment_blocks(self, header: int) -> list[int]:
+        """The comment block a long-name entry owns, as a list of none or one.
+
+        Refuses a pointer at anything but a comment block naming `header`,
+        because freeing it would free a block something else holds.
+        """
+        if not self.long_names:
+            return []
+        number = self._u32(self.block(header), _LN_COMMENT_BLOCK)
+        if not number:
+            return []
+        fault = self._comment_block_fault(header, number)
+        if fault:
+            raise AmigaDiskError(fault + "; nothing was changed")
+        return [number]
+
+    def _comment_block_fault(self, header: int, number: int) -> str:
+        """Why `number` is not `header`'s comment block, or empty."""
+        if not FIRST_DATA_BLOCK <= number < self.block_count or number in (
+                self.root, self._bitmap_block()):
+            return f"block {header} names block {number} as its comment block"
+        block = self.block(number)
+        if (self._u32(block, _HDR_TYPE) != T_COMMENT
+                or self._u32(block, _HDR_KEY) != number
+                or self._u32(block, _CB_HEADER) != header):
+            return (f"block {number}, named as the comment block of block "
+                    f"{header}, is not that header's comment block")
+        return ""
+
+    def _put_entry_name(self, header: int, name: str) -> None:
+        """Write `name` into an entry header with no comment, in the layout
+        the disk's type uses."""
+        encoded = name.encode("latin1")
+        at = header * BLOCK_SIZE + (_LN_NAC if self.long_names else _HDR_NAME)
+        self._data[at] = len(encoded)
+        self._data[at + 1:at + 1 + len(encoded)] = encoded
+
+    def _date_offset(self, header: int) -> int:
+        """Where `header` keeps its date: moved on a long-name disk, except
+        in the root."""
+        if self.long_names and header != self.root:
+            return _LN_DAYS
+        return _HDR_DAYS
 
     # -- the directory cache ------------------------------------------------
     def _cache_chain(self, drawer: int) -> list[int]:
@@ -1223,7 +1308,8 @@ class AmigaDisk:
     def _touch(self, header: int,
                when: datetime.datetime | None = None) -> None:
         days, minutes, ticks = _amiga_date(when or datetime.datetime.now())
-        struct.pack_into(">III", self._data, header * BLOCK_SIZE + _HDR_DAYS,
+        struct.pack_into(">III", self._data,
+                         header * BLOCK_SIZE + self._date_offset(header),
                          days, minutes, ticks)
 
     def _fix(self, block: int, at: int) -> None:
@@ -1234,7 +1320,19 @@ class AmigaDisk:
                                         at))
 
     def _fix_bitmap(self) -> None:
+        """Checksum the bitmap and, on a long-name disk, recount the root's
+        used blocks, which every write that reaches here may have changed."""
         self._fix(self._bitmap_block(), 0)
+        if self.long_names:
+            struct.pack_into(">I", self._data,
+                             self.root * BLOCK_SIZE + _LN_ROOT_USED,
+                             self.used_count())
+            self._fix(self.root, _HDR_CHECKSUM)
+
+    def used_count(self) -> int:
+        """Blocks the bitmap marks used, over the blocks it covers: the two
+        boot blocks have no bit and are not counted."""
+        return self.block_count - FIRST_DATA_BLOCK - self.free_count()
 
     @staticmethod
     def _u32(block: bytes, offset: int) -> int:
@@ -1246,11 +1344,15 @@ class AmigaDisk:
 
     def _name_of(self, header: int) -> str:
         block = self.block(header)
-        length = block[_HDR_NAME]
-        if length > MAX_NAME:
+        at, limit = _HDR_NAME, MAX_NAME
+        if self.long_names and header != self.root:
+            # The name and the comment's length byte share the field.
+            at, limit = _LN_NAC, _LN_NAC_SIZE - 2
+        length = block[at]
+        if length > limit:
             raise AmigaDiskError(
                 f"block {header} claims a {length}-character name")
-        return block[_HDR_NAME + 1:_HDR_NAME + 1 + length].decode("latin1")
+        return block[at + 1:at + 1 + length].decode("latin1")
 
     def block_sum(self, number: int) -> int:
         """The 128 big-endian longwords of a block, added as `u32`.
@@ -1325,6 +1427,8 @@ class AmigaDisk:
             if self.is_free(known):
                 problems.append(
                     f"block {known} is in use and marked free in the bitmap")
+        if self.long_names:
+            problems.extend(self._verify_long_name_root())
 
         try:
             drawers = list(self.walk_dirs())
@@ -1339,6 +1443,10 @@ class AmigaDisk:
                 problems.append(
                     f"block {entry.block} holds the drawer {where!r} and is "
                     f"marked free in the bitmap")
+
+        if self.long_names:
+            for _, entry in drawers + files:
+                problems.extend(self._verify_comment(entry.block, check))
 
         if self.dircache:
             for where, number in [("/", self.root)] + [
@@ -1388,6 +1496,46 @@ class AmigaDisk:
                         f"block {current} is in use and marked free")
                 current = self._u32(block, _HDR_EXTENSION)
                 head = False
+        return problems
+
+    def _verify_long_name_root(self) -> list[str]:
+        """A long-name root repeats the DOS type and counts used blocks."""
+        problems: list[str] = []
+        root = self.block(self.root)
+        stored = bytes(root[_LN_ROOT_FS_TYPE:_LN_ROOT_FS_TYPE + 4])
+        if stored != bytes(self._data[0:4]):
+            problems.append(
+                f"the root block gives the DOS type as {stored!r}, and the "
+                f"bootblock as {bytes(self._data[0:4])!r}")
+        used = self._u32(root, _LN_ROOT_USED)
+        if used != self.used_count():
+            problems.append(
+                f"the root block counts {used} used blocks and the bitmap "
+                f"marks {self.used_count()}")
+        return problems
+
+    def _verify_comment(self, header: int, check) -> list[str]:
+        """A long-name entry's comment: within its field, and any comment
+        block summed, its own, and in use."""
+        problems: list[str] = []
+        block = self.block(header)
+        name_length = block[_LN_NAC]
+        comment_length = block[_LN_NAC + 1 + name_length]
+        if name_length + comment_length + 2 > _LN_NAC_SIZE:
+            problems.append(
+                f"block {header} gives a name and comment longer than their "
+                f"{_LN_NAC_SIZE}-byte field")
+        number = self._u32(block, _LN_COMMENT_BLOCK)
+        if not number:
+            return problems
+        fault = self._comment_block_fault(header, number)
+        if fault:
+            problems.append(fault)
+            return problems
+        check(number, _CB_CHECKSUM, "comment block")
+        if self.is_free(number):
+            problems.append(
+                f"comment block {number} is in use and marked free")
         return problems
 
     def _verify_cache_chain(self, where: str, drawer: int,
