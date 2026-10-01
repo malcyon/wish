@@ -531,12 +531,17 @@ reads.
   had connected goes; whether a bare connect-and-close does the same has not
   been tried, and the probe does not depend on the answer. Where there is no
   `/proc` the answer is no.
-* **`connect()` opens the socket once per emulator run** and caches the
+* **`connect()` never connects to the fork; it reads through the helper.**
+  The fork serves one client per run and closes its door when that client
+  leaves, so `automap.fsuaehelper` holds the connection and outlives Wish. When
+  no helper is alive and the fork is listening, `connect()` starts one detached
+  (not more often than `HELPER_RETRY`) and raises `FsuaeError` at once, so the
+  window shows its waiting line and asks again a second later; it never waits
+  for the helper. `listening(port)` also says yes while a helper is alive.
+  `connect()` opens the helper's socket once per emulator run and caches the
   transport, the title found on it and the data hunk's base together. The window
   detaches on any `NotConnected` and attaches again on its next tick, and
-  closing an `AmigaTarget` leaves the transport open on purpose, so a
-  `connect()` that built a new `FsuaeGdb` each time would find nothing
-  listening and the player would have to restart the game. A title that has not
+  closing an `AmigaTarget` leaves the transport open on purpose. A title that has not
   loaded yet raises `FsuaeError` (a `NotConnected`) with the transport still
   cached, and the memory sweep is not repeated more often than `SWEEP_EVERY`,
   because each 512K read makes the emulated machine miss a frame. A transport
@@ -577,8 +582,8 @@ branch `remote_debugger_prb28`, and not in stock FS-UAE, which has no such
 server. The server is started by the fork's `remote_debugger=<seconds>` option, and it
 listens on 2345 unless `remote_debugger_port=<port>` says otherwise; 2345 is the
 port the row looks for, so a different port is not found. The fork closes its
-listening socket when a client disconnects, so restarting Wish means restarting
-the emulator. The setup hint says only "the fork, not stock FS-UAE"; the branch
+listening socket when a client disconnects, which the helper is there to keep
+from happening when Wish closes. The setup hint says only "the fork, not stock FS-UAE"; the branch
 name and the options live here.
 
 **The maps come from the C64 disks when there are any, and otherwise from

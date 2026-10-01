@@ -29,6 +29,7 @@ import select
 import selectors
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -47,12 +48,15 @@ EXIT_LOCKED = 3
 EXIT_FORK_BUSY = 4
 EXIT_NOT_THE_FORK = 5
 EXIT_FORK_UNREACHABLE = 6
+EXIT_RUNTIME_DIR = 7
+EXIT_NOT_PUBLISHED = 8
 
 #: `/proc/net/tcp` state column.
 _ESTABLISHED = "01"
 _LISTEN = "0A"
 
-_READ = re.compile(r"^m([0-9a-fA-F]+),([0-9a-fA-F]+)$")
+#: An Amiga address is 32 bits; a longer one is not a read of its memory.
+_READ = re.compile(r"^m([0-9a-fA-F]{1,8}),([0-9a-fA-F]+)$")
 
 #: The first argument a frozen build is started with to become the helper; a
 #: frozen binary has no `-m`, so its entry point hands everything after this
@@ -112,9 +116,26 @@ class Posix:
         return pathlib.Path(base) / "wish" if base else paths.data_dir() / "run"
 
     def secure_dir(self, runtime: pathlib.Path) -> None:
-        """Create the runtime directory readable by this user alone."""
-        runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
-        runtime.chmod(0o700)
+        """Create the runtime directory readable by this user alone.
+
+        Raises `OSError` for a directory that already exists and is not this
+        user's, is a symlink, or lets others write to it. Only a directory
+        created here has its mode set: another program's is not ours to change.
+        """
+        try:
+            runtime.mkdir(mode=0o700, parents=True)
+            created = True
+        except FileExistsError:
+            created = False
+        found = os.lstat(runtime)
+        if not stat.S_ISDIR(found.st_mode):
+            raise OSError(f"{runtime} is not a directory")
+        if found.st_uid != os.getuid():
+            raise OSError(f"{runtime} belongs to another user")
+        if created:
+            runtime.chmod(0o700)
+        elif found.st_mode & 0o022:
+            raise OSError(f"{runtime} is writable by other users")
 
     def endpoint_error(self, files: "Paths") -> str | None:
         """Why `files.sock` cannot be bound, or None."""
@@ -144,6 +165,7 @@ class Posix:
         files.sock.unlink(missing_ok=True)
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         listener.bind(str(files.sock))
+        os.chmod(files.sock, 0o600)
         listener.listen(16)
         listener.setblocking(False)
         return listener
@@ -253,7 +275,11 @@ class Helper:
         error = self.platform.endpoint_error(self.paths)
         if error:
             return self._fail(EXIT_PATH_TOO_LONG, error)
-        self.platform.secure_dir(self.paths.runtime)
+        try:
+            self.platform.secure_dir(self.paths.runtime)
+        except OSError as exc:
+            return self._fail(EXIT_RUNTIME_DIR,
+                              f"the runtime directory is unusable: {exc}")
         self._lock_fd = self.platform.take_lock(self.paths.lock)
         if self._lock_fd is None:
             return self._fail(EXIT_LOCKED,
@@ -265,29 +291,49 @@ class Helper:
         if held:
             return self._fail(EXIT_FORK_BUSY,
                               f"another client already holds port {self.port}")
+        # Everything that can fail for a reason of ours is done before the
+        # fork's one connection is taken: closing it again would end the
+        # player's debugging for the life of the run. Holding the lock means
+        # any file left here belongs to a dead helper.
+        temp = self.paths.json.with_suffix(".json.tmp")
         try:
+            self.listener = self.platform.listen(self.paths)
+            staged = open(temp, "w")
+        except OSError as exc:
+            return self._fail(EXIT_NOT_PUBLISHED,
+                              f"could not set up the client socket: {exc}")
+        try:
+            # Not resumed yet: a server that is not the fork must not be
+            # told to run.
             self.gdb = amiga.FsuaeGdb(port=self.port,
-                                      timeout=self.upstream_timeout)
+                                      timeout=self.upstream_timeout,
+                                      resume=False)
         except amiga.FsuaeError as exc:
+            staged.close()
+            temp.unlink(missing_ok=True)
             return self._fail(EXIT_FORK_UNREACHABLE,
                               f"could not connect to the emulator: {exc}")
         for needed in ("PacketSize=", "vContSupported+"):
             if needed not in self.gdb.greeting:
+                staged.close()
+                temp.unlink(missing_ok=True)
                 self.gdb.close()
                 return self._fail(
                     EXIT_NOT_THE_FORK,
                     f"port {self.port} does not look like the patched FS-UAE: "
                     f"its greeting was {self.gdb.greeting!r}")
-        upstream_port = self.gdb.sock.getsockname()[1]
-        # Holding the lock means any file left here belongs to a dead helper.
-        self.listener = self.platform.listen(self.paths)
-        info = {"version": 1, "pid": os.getpid(), "port": self.port,
-                "socket": self.platform.endpoint(self.paths),
-                "upstream_local_port": upstream_port,
-                "started": time.time()}
-        temp = self.paths.json.with_suffix(".json.tmp")
-        temp.write_text(json.dumps(info))
-        os.replace(temp, self.paths.json)
+        try:
+            self.gdb.resume()
+            info = {"version": 1, "pid": os.getpid(), "port": self.port,
+                    "socket": self.platform.endpoint(self.paths),
+                    "upstream_local_port": self.gdb.sock.getsockname()[1],
+                    "started": time.time()}
+            with staged:
+                staged.write(json.dumps(info))
+            os.replace(temp, self.paths.json)
+        except (amiga.FsuaeError, OSError) as exc:
+            return self._fail(EXIT_NOT_PUBLISHED,
+                              f"could not publish the helper: {exc}")
         self._sel.register(self.listener, selectors.EVENT_READ, "listener")
         self._sel.register(self.gdb.sock, selectors.EVENT_READ, "upstream")
         return 0
@@ -468,7 +514,9 @@ def start(port: int, runtime) -> subprocess.Popen:
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join(
         [root] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
-    with open(files.log, "wb") as log:
+    # Append, so a start that loses the race for the lock does not erase the
+    # log of the helper that won it.
+    with open(files.log, "ab") as log:
         return subprocess.Popen(
             command(port, files.runtime),
             stdin=subprocess.DEVNULL, stdout=log, stderr=log, env=env,

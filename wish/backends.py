@@ -66,8 +66,9 @@ TRUE = ("1", "true", "yes", "on")
 #: Same truthiness rule as `TRUE` above.
 #:
 #: **Comes off when closing Wish no longer costs the player their game -- the
-#: fork shuts its listening socket when a client disconnects, so restarting Wish
-#: today means restarting the emulator and with it the title -- and when a party
+#: fork shuts its listening socket when a client disconnects, so a background
+#: helper (`automap.fsuaehelper`) holds the connection and Wish reads through it
+#: -- and when a party
 #: has been walked under the window on each title that has a row in
 #: `automap.amiga.MACHINES`, which is the check `#34 (Validate the live
 #: automapper tab per title)` asks for.** `#37 (Automap the Amiga version, not

@@ -554,3 +554,107 @@ def test_the_two_flags_are_independent(monkeypatch):
     monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
     assert [b.name for b in bk.backends()] == ["VICE", "Ultimate",
                                                "Amiga (FS-UAE)"]
+
+
+# -- the connection helper ------------------------------------------------------
+
+class FakeProcess:
+    def __init__(self, code=None):
+        self.code = code
+
+    def poll(self):
+        return self.code
+
+
+@pytest.fixture
+def helperless(tmp_path, monkeypatch):
+    """No helper alive, the runtime directory private to the test, the fork listening."""
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setattr(fsuae, "listening", lambda port=None, proc=None: True)
+    fsuae.forget_helper()
+    yield
+    fsuae.forget_helper()
+
+
+def test_no_helper_and_the_fork_listening_starts_one_and_does_not_wait(helperless):
+    started = []
+
+    def starter(port, runtime):
+        started.append((port, runtime))
+        return FakeProcess()
+
+    with pytest.raises(amiga.FsuaeError, match="starting the connection helper"):
+        fsuae.connect(port=2345, clock=Clock(), starter=starter)
+    assert [p for p, _ in started] == [2345]
+
+
+def test_a_helper_still_running_is_not_started_twice(helperless):
+    started = []
+    clock = Clock()
+
+    def starter(port, runtime):
+        started.append(port)
+        return FakeProcess()
+
+    for _ in range(3):
+        clock.now += 30
+        with pytest.raises(amiga.FsuaeError):
+            fsuae.connect(port=2345, clock=clock, starter=starter)
+    assert started == [2345]
+
+
+def test_a_helper_that_exited_is_not_restarted_inside_the_retry_interval(helperless):
+    started = []
+    clock = Clock()
+
+    def starter(port, runtime):
+        started.append(clock())
+        return FakeProcess(code=4)
+
+    for step in (0, 1, fsuae.HELPER_RETRY - 1, fsuae.HELPER_RETRY + 1):
+        clock.now = step
+        with pytest.raises(amiga.FsuaeError):
+            fsuae.connect(port=2345, clock=clock, starter=starter)
+    assert started == [0, fsuae.HELPER_RETRY + 1]
+
+
+def test_a_helper_that_cannot_be_started_is_waited_out_not_raised(helperless):
+    def starter(port, runtime):
+        raise OSError("no such file")
+
+    with pytest.raises(amiga.FsuaeError, match="starting the connection helper"):
+        fsuae.connect(port=2345, clock=Clock(), starter=starter)
+
+
+def test_nothing_listening_and_no_helper_starts_nothing(helperless, monkeypatch):
+    monkeypatch.setattr(fsuae, "listening", lambda port=None, proc=None: False)
+
+    def starter(port, runtime):
+        raise AssertionError("a helper was started with no emulator")
+
+    with pytest.raises(amiga.FsuaeError, match="nothing is listening"):
+        fsuae.connect(port=2345, clock=Clock(), starter=starter)
+
+
+def test_a_live_helper_is_read_through_and_no_second_one_starts(helperless, monkeypatch):
+    from automap import fsuaehelper
+
+    sock = FakeSocket(loaded(BLADES))
+    monkeypatch.setattr(fsuaehelper, "find", lambda port, runtime, platform=None: {"socket": "x"})
+    monkeypatch.setattr(fsuaehelper.PLATFORM, "connect", lambda info: sock)
+
+    def starter(port, runtime):
+        raise AssertionError("a helper was started with one running")
+
+    target = fsuae.connect(port=2345, clock=Clock(), starter=starter)
+    assert target.layout is BLADES
+
+
+def test_a_live_helper_counts_as_something_to_connect_to(tmp_path, monkeypatch):
+    from automap import fsuaehelper
+
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setattr(fsuaehelper, "find",
+                        lambda port, runtime, platform=None: {"socket": "x"})
+    assert fsuae.listening(2345, proc=str(tmp_path / "nothing")) is True
+
