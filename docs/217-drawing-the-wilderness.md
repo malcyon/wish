@@ -165,7 +165,7 @@ reading on another window is taken.
 ## 4. The order of work
 
 Each piece is one reviewable commit with a test that goes red without it.
-Piece 7 waits on Donald's decision 3.
+Piece 7 is not planned: the script read stays closed (decision 3).
 
 **1. `tools/pool_of_radiance/worldtiles.py`, measurement A.** `sheet` writes the three
 sheets; `view WINDOW X Y` writes the game's own pane around a square; `sample
@@ -245,7 +245,7 @@ player's own disk; nothing is committed. *Tests:* `tests/areas/test_world.py`
 -- the world picture's size and each window's colour at the seams, and, on the
 player's disks only, that one square's pixels equal `tile_pixels` of its tile.
 
-**7. Sites, the river and the disk line.** Waits on decision 3. If reopened:
+**7. Sites, the river and the disk line.** Not planned; sites show by their own art alone. If the script read reopens:
 `tools/areas/eclwalk.py` already decodes 98% of every script by walking from the
 five entry points and reports the data tables it stops at -- the site tables
 and the impassable list are those tables, so the offsets are a matter of
