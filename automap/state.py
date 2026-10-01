@@ -595,8 +595,10 @@ class Automapper:
             changed_area = self._check_resident()
         if (self._verdict is not None and self._verdict is not OURS
                 and (jumped or self._pending is not None)):
-            # A load, not a move: `$0400` went unknown while the jump was held.
+            # Perhaps a load, perhaps a fight: either way the dwell starts again,
+            # and the step is not believed while the block is in doubt.
             self._hold_unsafe = True
+            self._pending_polls = 0
         if changed_area and fix.source == "status":
             engine = self._engine_square()
             if engine is not None and engine != (fix.x, fix.y, fix.facing):
@@ -613,6 +615,10 @@ class Automapper:
                 same = (self._pending == (fix.x, fix.y)
                         and self._pending_source == fix.source)
                 self._pending_polls = self._pending_polls + 1 if same else 1
+                # A new square starts clean, so a blip does not freeze the
+                # marker for good; a real load still ends in another area.
+                self._hold_unsafe = (self._hold_unsafe if same else False) or (
+                    self._verdict is not None and self._verdict is not OURS)
                 self._pending = (fix.x, fix.y)
                 self._pending_source = fix.source
                 return False                # wait for a second opinion

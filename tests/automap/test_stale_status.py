@@ -237,5 +237,20 @@ def test_the_block_is_read_on_every_poll_only_while_a_jump_is_held(
     assert len(reads) == 3
     go(target, mapper, (9, 1, 2), polls=1, status="S 8:50")
     reads.clear()
+    first = mapper._ticks + 1
     go(target, mapper, (9, 2, 2), polls=3, status="S 8:50")
-    assert len(reads) < 3
+    periodic = [t for t in range(first, first + 3) if t % mapper.RESIDENT_EVERY == 0]
+    assert len(reads) == len(periodic)
+
+
+def test_the_marker_follows_the_walk_after_a_blank_block_blip(tmp_path, monkeypatch):
+    target, mapper, sewers = arrive_in_the_sewers((2, 15), tmp_path, monkeypatch)
+    go(target, mapper, (2, 15, 2), polls=2, status="S 8:50")
+    go(target, mapper, (9, 0, 2), polls=1, status="S 8:50")
+    target.memory[RESIDENT_GEO] = bytes(GEO_SIZE)
+    go(target, mapper, (9, 0, 2), polls=1, status="S 8:50")
+    target.memory[RESIDENT_GEO] = sewers.to_bytes()
+    for y in (1, 2, 3, 4):
+        go(target, mapper, (9, y, 2), polls=3, status="S 8:50")
+    assert (mapper.state.x, mapper.state.y) == (9, 4)
+    assert (9, 3) in mapper.state.exploration
