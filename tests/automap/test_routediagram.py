@@ -5,6 +5,9 @@ is what a player sees: the places at the game's marker cells, the party's
 place filled in, the strip naming it, and the ordinary blank canvas wherever
 nothing could be read. The synthetic world uses made-up names and cells.
 """
+from dataclasses import replace
+from types import SimpleNamespace
+
 import gamedata
 import pytest
 from PyQt6.QtGui import QColor, QFont
@@ -16,7 +19,7 @@ from automap.area import RESIDENT_GEO
 from automap.render import MARGIN
 from automap.state import Automapper
 from automap.target import Fix, ReplayTarget
-from automap.window import PAPER, PARTY, AutomapBinding
+from automap.window import INK, PAPER, PARTY, AutomapBinding
 from goldbox import c64_port
 from goldbox.curse_worldmap import Leg, Place, Road, WorldMap, WorldMapError
 
@@ -208,13 +211,14 @@ def test_a_destination_changes_nothing_on_the_diagram(app, tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize("extra", [0, 6, 10])
-def test_no_name_runs_off_the_widget_at_any_font(app, extra):
+@pytest.mark.parametrize("size", ["sizeHint", "minimumSize"])
+def test_no_name_runs_off_the_widget_at_any_font(app, extra, size):
     from automap.window import RouteCanvas
     canvas = RouteCanvas(None)
     font = QFont(canvas.font())
     font.setPointSizeF(font.pointSizeF() + extra)
     canvas.setFont(font)
-    canvas.resize(canvas.sizeHint())
+    canvas.resize(getattr(canvas, size)())
     canvas.show_map(synthetic_world())
     metrics = canvas.fontMetrics()
     names = {p.index: routes.display_name(p.name) for p in canvas.route.places}
@@ -226,6 +230,128 @@ def test_no_name_runs_off_the_widget_at_any_font(app, extra):
     assert all(0 <= left and left + w <= canvas.width()
                and 0 <= top and top + h <= canvas.height()
                for left, top, w, h in boxes.values())
+
+
+# -- the roads -----------------------------------------------------------------
+
+def line_world():
+    """Five places in one row with a road between each pair: a one-way road
+    running right, an ordinary two-way road, a conditional one, a one-way road
+    running left, and a conditional one-way road running right."""
+    cells = tuple((c, 5) for c in (0, 20, 40, 60, 80, 100))
+    places = tuple(Place(i, f"P{i}", 0x50, (), cells[i]) for i in range(6))
+    roads = (
+        Road(0, 1, leg(0, 1), None),
+        Road(1, 2, leg(1, 2), leg(2, 1)),
+        Road(2, 3, replace(leg(2, 3), conditional=True), leg(3, 2)),
+        Road(3, 4, None, leg(4, 3)),
+        Road(4, 5, replace(leg(4, 5), conditional=True), None),
+    )
+    return WorldMap(places, (), roads, cells)
+
+
+@pytest.fixture
+def row(app):
+    """A canvas drawing `line_world`, laid out by one grab, and its points."""
+    from automap.window import RouteCanvas
+    canvas = RouteCanvas(SimpleNamespace(world_node=None))
+    canvas.resize(900, 160)
+    canvas.show_map(line_world())
+    canvas.grab()
+    return canvas, canvas.points
+
+
+def road_columns(canvas, points, a, b):
+    """The image and the x positions along the road between two places that
+    lie clear of both circles."""
+    image = canvas.grab().toImage()
+    reach = canvas.NODE_RADIUS + 3
+    return image, range(round(points[a][0]) + reach, round(points[b][0]) - reach)
+
+
+def inked(image, x, y) -> bool:
+    """Is there ink in this column within a pixel of the road's row?"""
+    return any(dark(image.pixelColor(x, row)) for row in (y - 1, y, y + 1))
+
+
+def thickness(image, x, y) -> int:
+    """How many pixels of the column through x are ink, within 12 of the row."""
+    return sum(dark(image.pixelColor(x, row)) for row in range(y - 12, y + 13))
+
+
+def middle_widths(canvas, points, a, b):
+    """The ink across the road a little before its middle and a little after,
+    along the x axis."""
+    image, xs = road_columns(canvas, points, a, b)
+    mid, y = (xs.start + xs.stop) // 2, round(points[a][1])
+    return thickness(image, mid - 5, y), thickness(image, mid + 5, y)
+
+
+def test_a_one_way_road_has_an_arrowhead_pointing_the_way_it_runs(row):
+    canvas, points = row
+    behind, ahead = middle_widths(canvas, points, 0, 1)
+    assert behind >= 12 and ahead <= 8          # wide base, then the point
+    behind, ahead = middle_widths(canvas, points, 3, 4)
+    assert ahead >= 12 and behind <= 8          # the other road runs left
+
+
+def test_a_two_way_road_has_no_arrowhead(row):
+    canvas, points = row
+    for pair in ((1, 2), (2, 3)):
+        assert max(middle_widths(canvas, points, *pair)) <= 4, pair
+
+
+def test_an_arrowhead_is_centred_on_the_middle_of_its_road():
+    from automap.routes import arrowhead
+    tip, left, right = arrowhead((10, 40), (110, 40), length=20, half_width=6)
+    assert tip == (70, 40)
+    assert left[0] == right[0] == 50 and {left[1], right[1]} == {34, 46}
+    assert arrowhead((5, 5), (5, 5)) == ()
+
+
+def test_which_way_a_road_runs_comes_from_the_legs_it_has():
+    from automap.routes import travel_direction
+    assert travel_direction(Road(3, 7, leg(3, 7), None)) == (3, 7)
+    assert travel_direction(Road(3, 7, None, leg(7, 3))) == (7, 3)
+    assert travel_direction(Road(3, 7, leg(3, 7), leg(7, 3))) is None
+    assert travel_direction(Road(3, 7, None, None)) is None
+
+
+def test_a_conditional_leg_in_either_direction_makes_the_road_conditional():
+    from automap.routes import is_conditional
+    sometimes = replace(leg(1, 2), conditional=True)
+    assert is_conditional(Road(1, 2, sometimes, leg(2, 1)))
+    assert is_conditional(Road(1, 2, leg(1, 2), replace(leg(2, 1), conditional=True)))
+    assert is_conditional(Road(1, 2, None, sometimes))
+    assert not is_conditional(Road(1, 2, leg(1, 2), leg(2, 1)))
+    assert not is_conditional(Road(1, 2, replace(leg(1, 2), conditional=None), None))
+
+
+def ink_runs(canvas, points, a, b) -> int:
+    """How many separate stretches of ink the road between two places makes,
+    clear of both circles."""
+    image, xs = road_columns(canvas, points, a, b)
+    y = round(points[a][1])
+    flags = [inked(image, x, y) for x in xs]
+    return sum(1 for was, now in zip([False] + flags, flags) if now and not was)
+
+
+def test_a_conditional_road_is_dashed_and_an_ordinary_one_is_not(row):
+    canvas, points = row
+    assert ink_runs(canvas, points, 2, 3) >= 4
+    assert ink_runs(canvas, points, 1, 2) == 1
+    # The dashes are the road's own colour, not a lighter one.
+    image, xs = road_columns(canvas, points, 2, 3)
+    y = round(points[2][1])
+    assert min(image.pixelColor(x, row).lightness()
+               for x in xs for row in (y - 1, y)) <= INK.lightness() + 10
+
+
+def test_a_road_that_is_one_way_and_conditional_has_both_marks(row):
+    canvas, points = row
+    assert ink_runs(canvas, points, 4, 5) >= 4
+    behind, ahead = middle_widths(canvas, points, 4, 5)
+    assert behind >= 12 and ahead <= 8
 
 
 # -- the window ----------------------------------------------------------------

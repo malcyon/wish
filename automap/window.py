@@ -89,7 +89,15 @@ from .render import (
     party_marker,
     travel_marker,
 )
-from .routes import display_name, load_route_map, place_labels, place_points
+from .routes import (
+    arrowhead,
+    display_name,
+    is_conditional,
+    load_route_map,
+    place_labels,
+    place_points,
+    travel_direction,
+)
 from .state import OUTDOORS_REGIONS, OUTDOORS_WHERE
 
 PAPER = QColor("#fbfcfd")
@@ -731,8 +739,9 @@ class WorldCanvas(QWidget):
 
 class RouteCanvas(QWidget):
     """Paints Curse's world map as a route diagram: the places at the cells the
-    game's own picture marks them at, the roads between them as lines, and the
-    place the party stands at filled in the party's colour.
+    game's own picture marks them at, the roads between them as lines (a road
+    that runs one way carries an arrowhead, one offered only sometimes is
+    dashed), and the place the party stands at filled in the party's colour.
 
     The places and roads are read off the player's disks when the window opens
     (`automap.routes.load_route_map`) and are never stored. Where nothing was
@@ -743,6 +752,8 @@ class RouteCanvas(QWidget):
     NODE_RADIUS = 7
     #: Between a circle and its name.
     LABEL_GAP = 4
+    #: A road offered only sometimes: dash and gap lengths, in pen widths.
+    DASHES = [2.0, 1.6]
 
     def __init__(self, state, parent=None):
         super().__init__(parent)
@@ -794,12 +805,23 @@ class RouteCanvas(QWidget):
         if self.route is None:
             return
         points = self.points
-        pen = QPen(INK, 2)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        p.setPen(pen)
+        solid = QPen(INK, 2)
+        solid.setCapStyle(Qt.PenCapStyle.RoundCap)
+        dashed = QPen(INK, 2)
+        dashed.setDashPattern(self.DASHES)
         for road in self.route.roads:
             if road.a in points and road.b in points:
+                p.setPen(dashed if is_conditional(road) else solid)
                 p.drawLine(QPointF(*points[road.a]), QPointF(*points[road.b]))
+        # A one-way road gets a head at its middle, pointing the way it runs.
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(INK)
+        for road in self.route.roads:
+            way = travel_direction(road)
+            if way is not None and road.a in points and road.b in points:
+                head = arrowhead(points[way[0]], points[way[1]])
+                if head:
+                    p.drawPolygon(QPolygonF([QPointF(*c) for c in head]))
         names = {place.index: display_name(place.name)
                  for place in self.route.places}
         metrics = p.fontMetrics()

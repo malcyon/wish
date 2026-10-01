@@ -12,7 +12,7 @@ import glob
 import logging
 import os
 
-from goldbox.curse_worldmap import WorldMap, read_world_map
+from goldbox.curse_worldmap import Road, WorldMap, read_world_map
 from goldbox.d64 import D64, split_load_address
 
 from .c64 import machine_for
@@ -89,6 +89,47 @@ def display_name(name: str | None) -> str:
     """A place as the tab writes it: the game prints capitals, the tab
     capitalises each word. Empty for a place no script names."""
     return name.title() if name else ""
+
+
+def travel_direction(road: Road) -> tuple[int, int] | None:
+    """The place a one-way road leaves and the place it reaches, or None where
+    the road runs both ways or has no leg at all."""
+    if road.forward is not None and road.backward is None:
+        return road.a, road.b
+    if road.backward is not None and road.forward is None:
+        return road.b, road.a
+    return None
+
+
+def is_conditional(road: Road) -> bool:
+    """Is the road offered only in some of the menus that list it, in either
+    direction?"""
+    return any(leg is not None and leg.conditional
+               for leg in (road.forward, road.backward))
+
+
+#: An arrowhead's length along its road and half its width across, in pixels.
+ARROW_LENGTH = 17.0
+ARROW_HALF_WIDTH = 7.5
+
+Point = tuple[float, float]
+
+
+def arrowhead(src: Point, dst: Point, length: float = ARROW_LENGTH,
+              half_width: float = ARROW_HALF_WIDTH) -> tuple[Point, ...]:
+    """The corners of a head pointing from `src` towards `dst`, centred on the
+    midpoint of the two: the tip first, then the two corners of its base. Empty
+    for two places at the same point."""
+    dx, dy = dst[0] - src[0], dst[1] - src[1]
+    run = (dx * dx + dy * dy) ** 0.5
+    if run == 0:
+        return ()
+    ux, uy = dx / run, dy / run
+    mx, my = (src[0] + dst[0]) / 2, (src[1] + dst[1]) / 2
+    bx, by = mx - ux * length / 2, my - uy * length / 2
+    return ((mx + ux * length / 2, my + uy * length / 2),
+            (bx - uy * half_width, by + ux * half_width),
+            (bx + uy * half_width, by - ux * half_width))
 
 
 def place_points(world: WorldMap, left: float, top: float,
