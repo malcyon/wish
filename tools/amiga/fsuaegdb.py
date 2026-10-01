@@ -879,9 +879,17 @@ def run_commands(args, commands: pathlib.Path, started: float, note, handle,
 
 # -- Wish as the player runs it ------------------------------------------------
 
+#: What the C64 backends read.  Under `instance.py claim`, `POR_MONITOR` points
+#: at the slot's VICE port, which is the FS-UAE port here, and Wish's VICE row
+#: would speak its protocol to the fork; the Ultimate's address and password
+#: would make it probe a device.  Removed for the run, put back afterwards.
+WISH_UNSET = ("POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE", "POR_ULTIMATE",
+              "WISH_ULTIMATE", "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE_PASSWORD")
+
 #: What the `wish` command sets for the window and puts back afterwards.
 WISH_FLAG = "WISH_EXPERIMENTAL_AMIGA_FSUAE"
-WISH_ENV = (WISH_FLAG, "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR",
+WISH_ENV = (*WISH_UNSET, WISH_FLAG, "XDG_CONFIG_HOME", "XDG_DATA_HOME",
+            "XDG_RUNTIME_DIR",
             # Set by `mapmarker._offscreen`, which this process calls.
             "QT_QPA_PLATFORM", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE",
             "GDK_BACKEND")
@@ -1126,6 +1134,8 @@ def wish(args) -> int:
     run = WishRun(args, out)
     started = time.monotonic()
     try:
+        for name in WISH_UNSET:
+            os.environ.pop(name, None)
         os.environ[WISH_FLAG] = "1"
         # `wish.fsuae.listening` and `connect` read this at call time, so the
         # window finds the slot's port without a change to the product.
@@ -1635,9 +1645,9 @@ def stop(args) -> int:
     """Kill one process group, by pid, which is the only sanctioned way.
 
     Reports what happened: gone after the signal, still running after
-    `--wait` seconds, not running, or a live pid that leads no group (a
-    `launch --foreground` process, which lives in its caller's group and is
-    ended by ending the caller) -- which is not signalled.
+    `--wait` seconds, or not running.  A live pid that leads no group (a
+    `launch --foreground` emulator, which lives in its caller's group) is
+    signalled itself, not its group.
     """
     status = 0
     helper = (helper_row(args.port, helper_runtime(args))
@@ -1646,14 +1656,17 @@ def stop(args) -> int:
         try:
             os.killpg(pid, signal.SIGTERM)
         except ProcessLookupError:
-            if alive(pid):
-                print(f"{pid} is running but leads no process group, so "
-                      "nothing was signalled; a --foreground launch ends "
-                      "with the process that holds its lease")
-                status = 1
-            else:
+            # A `launch --foreground` emulator lives in its caller's group and
+            # leads none; ending the process itself is what ends the run.
+            try:
+                if not alive(pid):
+                    raise ProcessLookupError
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
                 print(f"{pid} is not running")
-            continue
+                continue
+            print(f"{pid} leads no process group, so the process itself was "
+                  "signalled")
         deadline = time.monotonic() + args.wait
         while alive(pid) and time.monotonic() < deadline:
             time.sleep(0.1)
@@ -1933,7 +1946,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="also wait for the connection helper of --port "
                              "to end and its socket and json to go, and "
                              "report it")
-    killer.add_argument("--helper-wait", type=float, default=10.0,
+    killer.add_argument("--helper-wait", type=float, default=30.0,
                         help="seconds to allow for that")
 
     args = parser.parse_args(argv)
