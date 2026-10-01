@@ -253,3 +253,64 @@ def test_a_rejection_latched_earlier_still_drops_grid_fixes():
     m.title_check = NOT_OURS
     m.state.outdoors = False
     assert m.poll() is False and not m.state.outdoors
+
+
+# -- the title moving under a held target ------------------------------------
+
+
+class Clock:
+    now = 100.0
+
+    def __call__(self):
+        return self.now
+
+
+def timed(mem: Memory, clock: Clock) -> amiga.AmigaTarget:
+    t = amiga.AmigaTarget(mem, POOL, anchor_base=H31, clock=clock)
+    mem.reads.clear()
+    return t
+
+
+def test_an_unchanged_anchor_costs_no_extra_read_between_checks():
+    mem, clock = guest(), Clock()
+    t = timed(mem, clock)
+    t.fix()
+    per_poll = len(mem.reads)
+    for _ in range(3):
+        clock.now += 1.0
+        mem.reads.clear()
+        t.fix()
+        assert len(mem.reads) == per_poll
+    clock.now += t.REVALIDATE_EVERY
+    mem.reads.clear()
+    assert t.fix() is not None
+    assert len(mem.reads) == per_poll + 3         # anchor and the two guards
+    mem.reads.clear()
+    t.fix()
+    assert len(mem.reads) == per_poll
+
+
+@pytest.mark.parametrize("what", ["anchor", "anchor guard", "data guard",
+                                  "link"])
+def test_a_title_that_has_moved_or_changed_raises_the_detach_error(what):
+    mem, clock = guest(), Clock()
+    t = timed(mem, clock)
+    if what == "anchor":
+        mem.put(H31 + POOL.anchor_offset, bytes(len(POOL.anchor)))
+    elif what == "anchor guard":
+        mem.put(H31 - 8, bytes(4))
+    elif what == "data guard":
+        mem.put(H32 - 8, bytes(4))
+    else:
+        mem.put(H31 - 4, ((H32 + 0x100) // 4).to_bytes(4, "big"))
+    clock.now += t.REVALIDATE_EVERY
+    with pytest.raises(amiga.NotConnected):
+        t.fix()
+
+
+def test_a_target_without_a_measured_anchor_is_never_rechecked():
+    mem, clock = guest(), Clock()
+    t = amiga.AmigaTarget(mem, POOL, data_base=H32, clock=clock)
+    mem.reads.clear()
+    clock.now += 1000
+    assert t.fix() is not None

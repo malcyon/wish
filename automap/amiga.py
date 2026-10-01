@@ -1978,9 +1978,18 @@ class AmigaTarget:
     #: unrelated bytes. A target that says False is never handed to them.
     c64_memory = False
 
+    #: How often `fix` re-reads the anchor (and a `segments` row's hunk guards).
+    #: AmigaDOS relocates the game on every `LoadSeg`, so a player who quits
+    #: and starts it again in the same emulator leaves this target reading the
+    #: old addresses, with nothing else to say so. Between checks a poll reads
+    #: no more than it did before.
+    REVALIDATE_EVERY = 5.0
+
     def __init__(self, debugger, layout: AmigaMachine,
                  data_base: int | None = None,
-                 anchor_base: int | None = None):
+                 anchor_base: int | None = None, clock=time.monotonic):
+        self._clock = clock
+        self._checked_at = clock()
         self.debugger = debugger
         self.layout = layout
         self.data_base = data_base
@@ -2136,6 +2145,7 @@ class AmigaTarget:
         Raises rather than guessing when the anchor is missing or ambiguous.
         """
         self._require_open()
+        self._checked_at = self._clock()
         bases = locate_machines(self.read, [self.layout], memory).get(
             self.layout.title, [])
         if not bases:
@@ -2193,6 +2203,7 @@ class AmigaTarget:
         the flag is set the party is on the overland, where the square bytes
         keep the last indoor square, so the answer is a world-map fix.
         """
+        self._revalidate()
         if self._on_overland():
             return Fix(0, 0, None, "memory", None, world_map=True)
         grid = self.layout.travel_grid
@@ -2230,6 +2241,37 @@ class AmigaTarget:
             _log.debug("square %d,%d is off the 16x16 grid", x, y)
             return None
         return Fix(x, y, doubled // 2, "memory")
+
+    def _revalidate(self) -> None:
+        """Raise `GuestError` once the title is no longer where it was measured.
+
+        Only a target whose anchor base was measured is checked, and only every
+        `REVALIDATE_EVERY` seconds: one batch reading the anchor and, for a
+        `segments` row, the two allocation lengths and the link between the
+        hunks. The error is a `NotConnected`, so the session detaches and
+        reconnects through the locator, which sweeps again.
+        """
+        if self.anchor_base is None:
+            return
+        now = self._clock()
+        if now - self._checked_at < self.REVALIDATE_EVERY:
+            return
+        self._checked_at = now
+        layout, base = self.layout, self.anchor_base
+        blocks = [(base + layout.anchor_offset, len(layout.anchor))]
+        seg = layout.segments
+        if seg is not None:
+            blocks += [(base - 8, 8), (self.data_base - 8, 4)]
+        got = self.read_blocks(blocks)
+        moved = got[0] != layout.anchor
+        if seg is not None and not moved:
+            moved = (int.from_bytes(got[1][:4], "big") != seg.anchor_size + 8
+                     or int.from_bytes(got[2], "big") != seg.data_size + 8
+                     or 4 * int.from_bytes(got[1][4:], "big") + 4
+                     != self.data_base)
+        if moved:
+            raise GuestError(f"{layout.title} is no longer at {base:#x}; it "
+                             "was started again, or another title was")
 
     def _travel_fix(self, grid: TravelGrid, view: int, pointer: int,
                     area: int, facing: int) -> Fix | None:
