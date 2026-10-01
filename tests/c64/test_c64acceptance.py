@@ -11575,26 +11575,49 @@ def test_the_no_disks_refusal_names_the_variable_of_the_title(
 # The Silver Blades screens `MAGIC > SCRIBE` put up, as captured in the
 # measuring boot (`~/.cache/wish/745-c64scribe/measure1`, 09- to 14-).
 SSB_CAMP = "SAVE VIEW MAGIC REST ALTER FIX EXIT"
-_SCROLL = {2: "MORGAINE'S SCROLL SPELLS", 4: "1ST LEVEL",
-           5: "  PROTECTION FROM GOOD", 7: "6TH LEVEL", 8: "  DISINTEGRATE",
-           9: "  STONE TO FLESH"}
-SCRIBE_SCREENS = {
-    "camp": _window({}, SSB_CAMP), "magic": _window({}, MAGIC),
-    "list": _window(_SCROLL, "SCRIBE EXIT"),
-    "pick": _window({**_SCROLL, 10: "  EXIT"}, A.PICK_SCRIBE),
-    "picked": _window({**_SCROLL, 10: "  EXIT"}, A.PICK_SCRIBE),
-    "refused": _window({**_SCROLL, 10: "  EXIT", 18: "MORGAINE CAN'T SCRIBE",
-                        19: "STONE TO FLESH"}, A.PICK_SCRIBE),
-    "listexit": _window({**_SCROLL, 10: "  EXIT"}, "SCRIBE EXIT"),
-    "chosen": _window({2: "MORGAINE'S CHOSEN SPELLS", 7: "6TH LEVEL",
-                       8: "  DISINTEGRATE"}, "EXIT"),
-    "confirm": _window({2: "MORGAINE'S CHOSEN SPELLS", 7: "6TH LEVEL",
-                        8: "  DISINTEGRATE", 18: "ARE YOU SURE ABOUT",
-                        19: "YOUR CHOICE OF SPELLS?"}, "CONFIRM: OKAY  CANCEL"),
-    "magic2": _window({}, MAGIC), "camp2": _window({}, SSB_CAMP),
+def _scribe_screens(name: str = "MORGAINE") -> dict:
+    scroll = {2: f"{name}'S SCROLL SPELLS", 4: "1ST LEVEL",
+              5: "  PROTECTION FROM GOOD", 7: "6TH LEVEL", 8: "  DISINTEGRATE",
+              9: "  STONE TO FLESH"}
+    chosen = {2: f"{name}'S CHOSEN SPELLS", 7: "6TH LEVEL", 8: "  DISINTEGRATE"}
+    return {
+        "camp": _window({}, SSB_CAMP), "magic": _window({}, MAGIC),
+        "list": _window(scroll, "SCRIBE EXIT"),
+        "pick": _window({**scroll, 10: "  EXIT"}, A.PICK_SCRIBE),
+        "picked": _window({**scroll, 10: "  EXIT"}, A.PICK_SCRIBE),
+        "refused": _window({**scroll, 10: "  EXIT", 18: f"{name} CAN'T SCRIBE",
+                            19: "STONE TO FLESH"}, A.PICK_SCRIBE),
+        "listexit": _window({**scroll, 10: "  EXIT"}, "SCRIBE EXIT"),
+        "chosen": _window(chosen, "EXIT"),
+        "confirm": _window({**chosen, 18: "ARE YOU SURE ABOUT",
+                            19: "YOUR CHOICE OF SPELLS?"}, "CONFIRM: OKAY  CANCEL"),
+        "magic2": _window({}, MAGIC), "camp2": _window({}, SSB_CAMP),
+    }
+
+
+SCRIBE_SCREENS = _scribe_screens()
+#: The measured Silver Blades party in panel order. The panel is drawn from
+#: roster slot 7 down, so panel row 0 is the highest occupied slot, and the
+#: last member drawn is the one the resident record holds at a camp bar.
+SCRIBE_PARTY = ["GUY DE VALOIS", "PAINE", "EPONA", "MALACHITE", "DOMINIC",
+                "MORGAINE"]
+#: Each title's resident record, resident roster block, queue, highlighted
+#: panel row, panel row-to-slot map and `CAMP` selected slot, written out
+#: here rather than taken from the driver, so the fake does not share its
+#: addresses with the code under test.
+_Mem = dataclasses.make_dataclass(
+    "_Mem", ["record", "roster", "queue", "highlight", "panel_slots", "selected"])
+SCRIBE_MEMORY = {
+    "pool-of-radiance": _Mem(0x6B00, 0x6C00, 0x2939, 0x6D7B, 0x6E36, 0x6EFC),
+    "curse-of-the-azure-bonds": _Mem(0x7C00, 0x7D00, 0xA945, 0x7E7B, 0x7F36, 0x7FFC),
+    "secret-of-the-silver-blades": _Mem(0x7C00, 0x7D00, 0xA945,
+                                        0x7E7B, 0x7F36, 0x7FFC),
 }
+#: The screens on which the game has loaded the selected member's record.
+SCRIBE_LOADED = {"list", "pick", "picked", "refused", "listexit", "chosen",
+                 "confirm"}
 SCRIBE_MOVES = {
-    ("camp", ("party", 5)): "camp", ("camp", ("bar", "MAGIC")): "magic",
+    ("camp", ("bar", "MAGIC")): "magic",
     ("magic", ("bar", "SCRIBE")): "list", ("list", ("bar", "SCRIBE")): "pick",
     ("pick", ("key", "Return")): "picked",
     ("picked", ("key", "Return")): "listexit",
@@ -11639,19 +11662,41 @@ class _ScribeMon:
 class _ScribeFake(_CurseFake):
     """The scribe screens moved by keys; Down and Up move the highlight over
     the list's entry rows on the pick prompt, and a Return there is asserted
-    to land on the row the move table expects."""
+    to land on the row the move table expects.
 
-    def __init__(self, moves=None, start="camp", scribed=SCRIBED, name=b"MORGAINE"):
-        super().__init__(SCRIBE_SCREENS, {**SCRIBE_MOVES, **(moves or {})}, start)
+    Memory is the game's: a panel move sets the highlighted row, and `CAMP`
+    copies its slot into the selection LAG reads later (never, if STUCK). The
+    resident record is the last member the panel drew until the scribe
+    screens load the selected one, and the queue count lives in the selected
+    slot's block in the roster array."""
+
+    def __init__(self, moves=None, start="camp", scribed=SCRIBED, who="MORGAINE",
+                 lag=0, stuck=False, owner=None,
+                 key="secret-of-the-silver-blades", message_reads=0):
+        super().__init__(_scribe_screens(owner or who),
+                         {**SCRIBE_MOVES, **(moves or {})}, start)
         self.hot = 5
         self.scribed = scribed
-        self.name = name
         self.picked_on = None
+        self.slots = [len(SCRIBE_PARTY) - 1 - i for i in range(len(SCRIBE_PARTY))]
+        self.highlight, self.selected = 0, self.slots[0]
+        self.lag, self.stuck, self.pending = lag, stuck, None
+        self.key = key
+        self.message_reads = message_reads
+        self.message = _window({11: f"{owner or who} WILL SCRIBE",
+                                12: "PROTECTION FROM GOOD"}, A.PICK_SCRIBE)
 
     def _entries(self):
         rows = self.screens[self.state]
         return [r for r in range(3, 23)
                 if rows[r][1:39].startswith("  ") and rows[r][1:39].strip()]
+
+    def select_party(self, index, timeout=0):
+        assert self.state == "camp", "the panel was moved off the camp bar"
+        self.sent.append(("party", index))
+        self.highlight = index
+        self.pending = [self.lag, self.slots[index]]
+        return True
 
     def _go(self, what):
         if self.state in ("pick", "picked") and what in (("key", "Down"), ("key", "Up")):
@@ -11668,6 +11713,12 @@ class _ScribeFake(_CurseFake):
 
     def screen(self):
         hot = self.hot if self.state in ("pick", "picked", "refused") else None
+        if self.state == "picked" and self.message_reads > 0:
+            # The message window over the list's foot and its EXIT row, as
+            # Pool draws it.
+            self.message_reads -= 1
+            return _ColourScreen(self.screens["picked"][:9] + ["@" + "[" * 38 + "@"]
+                                 + self.message[10:], None)
         return _ColourScreen(self.screens[self.state], hot)
 
     def mon(self, timeout=0):
@@ -11677,10 +11728,31 @@ class _ScribeFake(_CurseFake):
         return (3, 4, 2)
 
     def memory(self, addr, n):
-        mem = {0x7C00: self.name.ljust(15, b"\0"),
-               0x7D00: bytes([1, 0, 1 if self.state in self.scribed else 0]),
-               0xA945: bytes([0x10])}
-        return mem[addr][:n]
+        if self.pending is not None and not self.stuck:
+            if self.pending[0] <= 0:
+                self.selected, self.pending = self.pending[1], None
+            else:
+                self.pending[0] -= 1
+        box, at = c64_save.CONTAINERS[self.key], SCRIBE_MEMORY[self.key]
+        mem = bytearray(0x10000)
+        mem[at.highlight] = self.highlight
+        mem[at.panel_slots:at.panel_slots + len(self.slots)] = bytes(self.slots)
+        mem[at.selected] = self.selected
+        for pos, name in enumerate(SCRIBE_PARTY):
+            slot = self.slots[pos]
+            page = box.slot_area_base + slot * 0x100
+            mem[page:page + len(name)] = name.encode()
+            count = 1 if self.state in self.scribed and slot == self.selected else 0
+            block = box.roster_base + slot * box.roster_stride
+            mem[block:block + 3] = bytes([1, 0, count])
+            mem[block + 0x0D] = slot
+        shown = (self.selected if self.state in SCRIBE_LOADED else self.slots[-1])
+        name = SCRIBE_PARTY[self.slots.index(shown)].encode()
+        mem[at.record:at.record + len(name)] = name
+        mem[at.roster:at.roster + 3] = mem[box.roster_base + shown * 0x20:
+                                           box.roster_base + shown * 0x20 + 3]
+        mem[at.queue] = 0x10
+        return bytes(mem[addr:addr + n])
 
 
 def _scribe_run(tmp_path, sess):
@@ -11688,8 +11760,9 @@ def _scribe_run(tmp_path, sess):
 
     run = A.SilverRun.__new__(A.SilverRun)
     run.sess, run.out, run.log, run.shots = sess, tmp_path, A.Log(tmp_path), 0
-    run.game = c64_port.by_key("secret-of-the-silver-blades")
-    run.panel_index = lambda who: {"MORGAINE": 5}[who]
+    run.game = c64_port.by_key(getattr(sess, "key", "secret-of-the-silver-blades"))
+    run.box = c64_save.CONTAINERS[run.game.key]
+    run.panel_index = SCRIBE_PARTY.index
     return run
 
 
@@ -11797,13 +11870,85 @@ def test_scribe_refuses_a_spell_that_is_not_on_the_scroll(tmp_path):
     assert sess.state == "list"
 
 
-def test_scribe_refuses_when_the_working_record_is_someone_else(tmp_path):
-    sess = _ScribeFake(name=b"DOMINIC")
+@pytest.mark.parametrize("key", ["pool-of-radiance", "curse-of-the-azure-bonds",
+                                 "secret-of-the-silver-blades"])
+def test_scribe_works_on_a_member_neither_first_nor_last_on_the_panel(
+        tmp_path, key):
+    # The resident record at the MAGIC bar is MORGAINE, the last member the
+    # panel drew; EPONA is the game's selection and the one who scribes.
+    sess = _ScribeFake(who="EPONA", key=key)
     run = _scribe_run(tmp_path, sess)
-    with pytest.raises(A.StepFailed, match="'DOMINIC', not MORGAINE"):
-        run.scribe("MORGAINE>PROTECTION FROM GOOD")
+    try:
+        got = run.scribe("EPONA>DISINTEGRATE")
+    finally:
+        run.log.close()
+    assert sess.sent[:3] == [("party", 2), ("bar", "MAGIC"), ("bar", "SCRIBE")]
+    assert sess.picked_on == 8 and sess.state == "camp2"
+    assert (got["record_name"], got["slot"], got["panel_row"]) == ("EPONA", 3, 3)
+    assert got["resident_at_magic"] == "MORGAINE"
+    assert got["resident_at_list"] == "EPONA"
+    assert (got["queue_before"], got["queue_after_pick"], got["queue_after"]) == (
+        [0, 0], [0, 1], [0, 1])
+
+
+def test_scribe_waits_out_the_message_over_the_exit_row_after_a_pick(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(A.time, "sleep", lambda s: None)
+    sess = _ScribeFake(who="EPONA", key="pool-of-radiance", message_reads=3)
+    run = _scribe_run(tmp_path, sess)
+    try:
+        got = run.scribe("EPONA>PROTECTION FROM GOOD")
+    finally:
+        run.log.close()
+    assert sess.message_reads == 0 and sess.state == "camp2"
+    assert got["queue_after"] == [0, 1]
+
+
+def test_scribe_fails_when_the_exit_row_never_comes_back(tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "SCRIBE_REDRAW_SECONDS", 0.5)
+    sess = _ScribeFake(who="EPONA", key="pool-of-radiance", message_reads=10**6)
+    run = _scribe_run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="EXIT is not a row of the list"):
+        run.scribe("EPONA>PROTECTION FROM GOOD")
     run.log.close()
-    assert sess.state == "magic"
+    assert sess.sent[-1] == ("key", "Return") and ("key", 0x0D) not in sess.sent
+
+
+def test_scribe_waits_for_a_slow_selection_before_magic(tmp_path):
+    sess = _ScribeFake(who="EPONA", lag=4)
+    run = _scribe_run(tmp_path, sess)
+    try:
+        got = run.scribe("EPONA>PROTECTION FROM GOOD")
+    finally:
+        run.log.close()
+    assert got["record_name"] == "EPONA" and sess.state == "camp2"
+
+
+def test_scribe_stops_with_nothing_pressed_when_the_selection_never_follows(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "SCRIBE_SELECT_SECONDS", 0.5)
+    sess = _ScribeFake(who="EPONA", stuck=True)
+    run = _scribe_run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="'GUY DE VALOIS', not EPONA"):
+        run.scribe("EPONA>PROTECTION FROM GOOD")
+    run.log.close()
+    assert sess.sent == [("party", 2)] and sess.state == "camp"
+    assert not run.scribing
+
+
+def test_scribe_picks_nothing_from_another_members_list(tmp_path):
+    sess = _ScribeFake(who="EPONA", owner="DOMINIC")
+    run = _scribe_run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="'DOMINIC'.s, not EPONA's"):
+        run.scribe("EPONA>PROTECTION FROM GOOD")
+    run.log.close()
+    assert sess.state == "list" and ("key", "Return") not in sess.sent
+
+
+def test_scroll_owner_reads_the_list_title():
+    assert A.scroll_owner(_scribe_screens("PRINCESS FATIMA")["list"]) == (
+        "PRINCESS FATIMA")
+    assert A.scroll_owner(SCRIBE_SCREENS["camp"]) == ""
 
 
 def _camp_rest(tmp_path, monkeypatch, scribing):
@@ -11905,23 +12050,35 @@ def test_scribe_asks_again_when_the_monitor_did_not_answer(tmp_path, monkeypatch
     assert ("key", 0x0D) in sess.sent
 
 
-def test_scribe_refuses_a_list_with_next_or_prev(tmp_path):
-    screens = {**SCRIBE_SCREENS, "list": _window(_SCROLL, "SCRIBE NEXT EXIT")}
-    sess = _ScribeFake()
-    sess.screens = screens
+def _paged(sess):
+    sess.screens = {**sess.screens, "list": sess.screens["list"][:24]
+                    + ["SCRIBE NEXT EXIT".ljust(40)]}
+    return sess
+
+
+def test_scribe_picks_from_the_first_page_of_a_paged_list(tmp_path):
+    sess = _paged(_ScribeFake(who="EPONA"))
     run = _scribe_run(tmp_path, sess)
-    with pytest.raises(A.StepFailed, match="more than one page"):
-        run.scribe("MORGAINE>PROTECTION FROM GOOD")
+    try:
+        got = run.scribe("EPONA>PROTECTION FROM GOOD")
+    finally:
+        run.log.close()
+    assert got["paged"] is True and sess.picked_on == 5 and sess.state == "camp2"
+
+
+def test_scribe_refuses_a_paged_list_without_the_spell_on_its_first_page(tmp_path):
+    sess = _paged(_ScribeFake())
+    run = _scribe_run(tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="FIREBALL is not on the scroll list's "
+                       "first page"):
+        run.scribe("MORGAINE>FIREBALL")
     run.log.close()
-    assert ("bar", "SCRIBE") in sess.sent and ("key", "Return") not in sess.sent
+    assert sess.state == "list" and ("key", "Return") not in sess.sent
 
 
 def test_scribe_addresses_of_each_title():
-    got = {k: (v.record, v.roster, v.queue) for k, v in A.SCRIBE_ADDRESSES.items()}
-    assert got == {
-        "pool-of-radiance": (0x6B00, 0x6C00, 0x2939),
-        "curse-of-the-azure-bonds": (0x7C00, 0x7D00, 0xA945),
-        "secret-of-the-silver-blades": (0x7C00, 0x7D00, 0xA945)}
+    assert {k: dataclasses.astuple(v) for k, v in A.SCRIBE_ADDRESSES.items()} == {
+        k: dataclasses.astuple(v) for k, v in SCRIBE_MEMORY.items()}
 
 
 def test_a_scribe_pending_is_dropped_by_any_step_but_rest(tmp_path, monkeypatch):

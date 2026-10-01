@@ -159,6 +159,7 @@ from goldbox.savegame import (  # noqa: E402
     ROSTER_HP_CURRENT,
     ROSTER_SCRIBE_QUEUE_AT,
     ROSTER_SCRIBE_QUEUE_COUNT,
+    ROSTER_SLOT_INDEX,
 )
 from tools.c64 import (  # noqa: E402
     route_pool,
@@ -303,19 +304,40 @@ SCRIBE_PICK_SECONDS = 6.0
 
 @dataclasses.dataclass(frozen=True)
 class ScribeAddresses:
-    """Where `CAMP` keeps a scribe in progress: the
-    selected member's working record, its roster block, whose `+0x01`/`+0x02`
-    are his slice of the queue, and the queue itself, one byte an entry."""
+    """Where `CAMP` keeps a scribe in progress, and how it knows whose.
+
+    `record` and `roster` are the resident record and roster block. They are
+    not the selected member at a camp bar: the panel draw loads every
+    occupied slot in turn (Pool `LIBRARY $3E53`, Silver Blades `$3796`), so
+    after a redraw they hold the last member drawn. The selection is
+    `highlight`, the panel position drawn white (Pool `LIBRARY $3E3F`), the
+    position-to-slot map the draw fills (`$3EA7 STA $6E36,X`), and `selected`,
+    `CAMP`'s copy of the highlighted slot (Pool `CAMP $0F1D`, Curse `$0E61`,
+    Silver Blades `$0E1E`: `LDX highlight / LDA map,X / STA selected`). A pick
+    writes the roster block back to the roster array straight after raising
+    the count (Pool `CAMP $15C7`, Curse `$1828`, Silver Blades `$162C`), so
+    the array is where his queue slice is read. `queue` is the queue itself,
+    one byte an entry."""
     record: int
     roster: int
     queue: int
+    highlight: int
+    panel_slots: int
+    selected: int
 
 
 SCRIBE_ADDRESSES = {
-    "pool-of-radiance": ScribeAddresses(0x6B00, 0x6C00, 0x2939),
-    "curse-of-the-azure-bonds": ScribeAddresses(0x7C00, 0x7D00, 0xA945),
-    "secret-of-the-silver-blades": ScribeAddresses(0x7C00, 0x7D00, 0xA945),
+    "pool-of-radiance": ScribeAddresses(0x6B00, 0x6C00, 0x2939,
+                                        0x6D7B, 0x6E36, 0x6EFC),
+    "curse-of-the-azure-bonds": ScribeAddresses(0x7C00, 0x7D00, 0xA945,
+                                                0x7E7B, 0x7F36, 0x7FFC),
+    "secret-of-the-silver-blades": ScribeAddresses(0x7C00, 0x7D00, 0xA945,
+                                                   0x7E7B, 0x7F36, 0x7FFC),
 }
+#: How long the game is given to make the highlighted member its selection.
+SCRIBE_SELECT_SECONDS = 5.0
+#: How long a list row hidden under the message after a pick is waited on.
+SCRIBE_REDRAW_SECONDS = 15.0
 
 #: The paladin's cure timer that a `cure` starts, as the effect id of its row.
 CURE_TIMER_ID = 141
@@ -790,6 +812,15 @@ def scribe_list(rows: list[str]) -> list[dict]:
         elif body.startswith("  ") and text != "EXIT":
             out.append({"level": level, "spell": text})
     return out
+
+
+def scroll_owner(rows: list[str]) -> str:
+    """Whose scroll list it is, from its title `<NAME>'S SCROLL SPELLS`."""
+    for row in rows[1:3]:
+        text = row[1:39].strip()
+        if text.endswith(SCROLL_SPELLS):
+            return text[:-len(SCROLL_SPELLS)].upper()
+    return ""
 
 
 def scribe_row(rows: list[str], label: str) -> int | None:
@@ -3453,33 +3484,89 @@ class PoolRun:
     scribe_square: list | None = None
 
     def scribe_bytes(self, count: int = 0) -> dict:
-        """The selected member's name from the working record, his roster
-        block's queue slice (`+0x01` first entry, `+0x02` count), and, when
-        COUNT is given, that many queue entries from the slice's start."""
+        """The member the camp panel has selected, read where the game keeps
+        the selection (`ScribeAddresses`): the highlighted panel position,
+        the slot the panel draw mapped it to, `CAMP`'s selected slot, the
+        name on that slot's record page, and his queue slice from the roster
+        array (`+0x01` first entry, `+0x02` count); with COUNT, that many
+        queue entries from the slice's start. `resident_name` is the resident
+        record's, kept as evidence: it is whoever the panel drew last."""
         where = SCRIBE_ADDRESSES[self.game.key]
+        box = self.box
         with self.sess.mon(10) as m:
-            name = bytes(m.read(where.record, 15))
-            block = bytes(m.read(where.roster, 3))
+            highlight = m.read(where.highlight, 1)[0]
+            mapped = (m.read(where.panel_slots + highlight, 1)[0]
+                      if highlight < PARTY_SLOTS else None)
+            slot = m.read(where.selected, 1)[0]
+            resident = bytes(m.read(where.record, 15))
+            block, name = bytes(ROSTER_SLOT_INDEX + 1), b""
+            if slot < PARTY_SLOTS:
+                block = bytes(m.read(box.roster_base + slot * box.roster_stride,
+                                     ROSTER_SLOT_INDEX + 1))
+                if block[ROSTER_SLOT_INDEX] < PARTY_SLOTS:
+                    name = bytes(m.read(box.slot_area_base
+                                        + block[ROSTER_SLOT_INDEX] * 0x100, 15))
             at = block[ROSTER_SCRIBE_QUEUE_AT]
             entries = list(m.read(where.queue + at, count)) if count else []
             m.resume()
-        got = {"record_name": name.split(b"\0")[0].decode("ascii", "replace"),
+
+        def text(raw: bytes) -> str:
+            return raw.split(b"\0")[0].decode("ascii", "replace")
+
+        got = {"highlight": highlight, "mapped": mapped, "slot": slot,
+               "record_name": text(name), "resident_name": text(resident),
                "at": at, "count": block[ROSTER_SCRIBE_QUEUE_COUNT]}
         if count:
             got["entries"] = entries
         return got
 
+    @staticmethod
+    def _scribe_is(got: dict, who: str, index: int) -> bool:
+        """Is the game's selection panel row INDEX, and, for a name, WHO?"""
+        return (got["highlight"] == index and got["mapped"] == got["slot"]
+                and (who.isdigit()
+                     or got["record_name"].upper() == who.upper()))
+
+    def _scribe_selected(self, who: str, index: int) -> dict:
+        """Wait until the game has made panel row INDEX, WHO, its selection;
+        fail with nothing more pressed if it never does."""
+        limit = self.clock() + self.budget(SCRIBE_SELECT_SECONDS, "the selection")
+        while True:
+            got = self.scribe_bytes()
+            if self._scribe_is(got, who, index):
+                return got
+            if self.clock() >= limit:
+                break
+            time.sleep(0.3)
+        self.log.emit("scribe-selection", reading=got, want=[who, index])
+        raise self.fail("scribe-member", f"the selected record is "
+                        f"{got['record_name']!r}, not {who} (panel row "
+                        f"{got['highlight'] + 1} of slot {got['mapped']}, "
+                        f"selected slot {got['slot']}, resident "
+                        f"{got['resident_name']!r})")
+
+    def _scribe_screen_with(self, label: str) -> tuple:
+        """The screen, its rows and LABEL's row, once LABEL is a row of the
+        list. After a pick the game draws `<NAME> WILL SCRIBE` over the
+        list's foot, pauses for the game speed and redraws the list (Pool
+        `CAMP $15CF`-`$15DE`, the pause `$0F96`), so a row not shown is waited
+        on for `SCRIBE_REDRAW_SECONDS` before the step fails."""
+        limit = self.clock() + self.budget(SCRIBE_REDRAW_SECONDS, f"the {label} row")
+        while True:
+            screen = self.sess.screen()
+            if screen is not None:
+                rows = [screen.row(r) for r in range(25)]
+                target = scribe_row(rows, label)
+                if target is not None:
+                    return screen, rows, target
+            if self.clock() >= limit:
+                raise self.fail("scribe-row", f"{label} is not a row of the list")
+            time.sleep(0.5)
+
     def _scribe_walk(self, label: str, limit: int = 12) -> None:
         """Move the scroll list's highlight onto LABEL's row with Down and Up."""
         for _ in range(limit):
-            screen = self.sess.screen()
-            if screen is None:
-                self.sess.settle(0.5)
-                continue
-            rows = [screen.row(r) for r in range(25)]
-            target = scribe_row(rows, label)
-            if target is None:
-                raise self.fail("scribe-row", f"{label} is not a row of the list")
+            screen, rows, target = self._scribe_screen_with(label)
             cur = scribe_highlight(screen, rows)
             if cur == target:
                 return
@@ -3549,23 +3636,26 @@ class PoolRun:
         """`scribe WHO>SPELL`: camp `MAGIC > SCRIBE`, the scroll list read,
         SPELL picked, the chosen list confirmed `OKAY`, back to the camp bar.
 
-        WHO's roster slice of the scribe queue is read before, after the
-        pick and at the end; a count that is zero at the end fails the step.
+        Nothing past the panel move is pressed until the game's own selection
+        is WHO, and nothing is picked unless the list is his. WHO's roster
+        slice of the scribe queue is read before, after the pick and at the
+        end; a count that is zero at the end fails the step.
         The party stays in camp so a `rest` next can finish the scribe."""
         who, spell = parse_scribe(arg)
         # Read before camp: the camp screen's square is unmeasured on Pool.
         self.scribe_square = self.position()
         if not self.to_camp():
             raise self.fail("camp", "ENCAMP never put up the camp bar")
-        if not self.sess.select_party(self.panel_index(who)):
+        index = self.panel_index(who)
+        if not self.sess.select_party(index):
             raise self.fail("panel", f"the panel highlight would not go onto {who}")
+        # The highlight is drawn before `CAMP` copies it into its selection,
+        # so the selection is waited on, not assumed, before MAGIC.
+        self._scribe_selected(who, index)
         if not self.choose_bar("MAGIC", timeout=20) or self.wait_rows(
                 lambda r: MAGIC_BAR in r[24], 30) is None:
             raise self.fail("magic", "MAGIC never put up its bar")
-        before = self.scribe_bytes()
-        if not who.isdigit() and before["record_name"].upper() != who.upper():
-            raise self.fail("scribe-member", f"the working record is "
-                            f"{before['record_name']!r}, not {who}")
+        before = self._scribe_selected(who, index)
         if not self.choose_bar("SCRIBE", timeout=20):
             raise self.fail("scribe", "SCRIBE could not be chosen")
         rows = self.wait_rows(
@@ -3573,13 +3663,23 @@ class PoolRun:
             and "CAST" not in r[24], 60, "the scroll list")
         if rows is None:
             raise self.fail("scribe-list", "the scroll spell list never came up")
-        if {"NEXT", "PREV"} & set(rows[24].split()):
-            raise self.fail("scribe-pages", "the scroll list has more than one "
-                            "page, and paging it is not measured")
+        owner = scroll_owner(rows)
+        at_list = self.scribe_bytes()
+        names = {before["record_name"].upper(),
+                 screens.as_drawn(before["record_name"]).upper()}
+        if owner not in names or at_list["slot"] != before["slot"]:
+            raise self.fail("scribe-list-member", f"the scroll list is "
+                            f"{owner!r}'s, not {before['record_name']}'s")
+        # A list of more than one page is taken only when SPELL is on the
+        # page shown: paging it is not measured.
+        paged = bool({"NEXT", "PREV"} & set(rows[24].split()))
         self.sess.settle(1)
         listed = self.capture("scribe-list")
         spells = scribe_list(listed)
         if spell not in [s["spell"] for s in spells]:
+            if paged:
+                raise self.fail("scribe-pages", f"{spell} is not on the scroll "
+                                "list's first page, and paging it is not measured")
             raise self.fail("scribe-spell", f"{spell} is not on the scroll list: "
                             f"{[s['spell'] for s in spells]}")
         if not self.choose_bar("SCRIBE", timeout=20) or self.wait_rows(
@@ -3612,8 +3712,12 @@ class PoolRun:
         if after["count"] == 0:
             raise self.fail("scribe-queue", "the queue count was zero at the end")
         self.scribing = True
-        return {"who": who, "spell": spell, "list": spells, "chosen": chosen,
+        return {"who": who, "spell": spell, "list": spells, "paged": paged,
+                "chosen": chosen,
                 "key": key, "record_name": before["record_name"],
+                "slot": before["slot"], "panel_row": index + 1,
+                "resident_at_magic": before["resident_name"],
+                "resident_at_list": at_list["resident_name"],
                 "queue_before": [before["at"], before["count"]],
                 "queue_after_pick": [picked["at"], picked["count"]],
                 "queue_after": [after["at"], after["count"]],
