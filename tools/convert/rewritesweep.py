@@ -282,6 +282,11 @@ def no_op() -> tuple[collections.Counter, list[str]]:
     def nodes(char) -> bytes:
         return b"".join(rewrite.node_bytes(i) for i in char.items)
 
+    def dos_item_file(char) -> bytes:
+        """The DOS item file as read: a Silver Blades joined scroll's head,
+        then the scrolls chained off it, which `node_bytes` leaves out."""
+        return b"".join(i.file_bytes() for i in char.items)
+
     for folder in dos_folders():
         try:
             slots = dos_codec.slots_available(folder)
@@ -305,7 +310,7 @@ def no_op() -> tuple[collections.Counter, list[str]]:
                     continue
                 check(label, "DOS", char.deltas.title,
                       out.record == char.to_bytes(),
-                      out.items == nodes(char),
+                      out.items == dos_item_file(char),
                       out.effects == b"".join(bytes(e)
                                               for e in char.effects))
 

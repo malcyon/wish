@@ -37,6 +37,7 @@ from goldbox import (
 from goldbox.amiga_adf import AmigaDisk
 from goldbox.amiga_port import CURSE_DELTAS, SILVER_BLADES_DELTAS
 from goldbox.iconparts import amiga_combat_icon
+from goldbox.neutral import ScrollBundle
 
 DOS_TITLES = (dos_port.POOL_OF_RADIANCE,
               dos_port.CURSE_OF_THE_AZURE_BONDS,
@@ -122,6 +123,12 @@ def _synthetic_amiga_later(deltas, items: int = 1, neutral_fn=_neutral):
     rec, _ = dos_codec.neutral_to_c64_record(
         amiga_later.to_neutral_later(char))
     return char, rec
+
+
+def _item_file(char) -> bytes:
+    """A DOS character's item file as it was read: each head item, and after
+    a Silver Blades joined scroll's head the scrolls chained off it."""
+    return b"".join(item.file_bytes() for item in char.items)
 
 
 def _edited(rec, **fields):
@@ -280,8 +287,36 @@ def test_a_synthetic_dos_no_op_rewrite_returns_the_original_bytes(deltas):
     char, rec = _synthetic_dos(deltas)
     out = rewrite.rewrite_dos(char, rec, rec, _game(deltas))
     assert out.record == char.to_bytes()
-    assert out.items == b"".join(rewrite.node_bytes(i) for i in char.items)
+    assert out.items == _item_file(char)
     assert out.effects == b"".join(bytes(e) for e in char.effects)
+
+
+def test_a_no_op_rewrite_gives_back_a_joined_scroll_and_its_scrolls():
+    """A Silver Blades joined scroll is one head item whose scrolls follow it
+    in the item file, so a save with nothing edited comes back as the whole
+    file -- head and scrolls -- and not as the heads alone."""
+    deltas = dos_port.SECRET_OF_THE_SILVER_BLADES
+    neutral = _neutral(_game(deltas), 3)
+    inventory = [bytearray(b) for b in neutral.get("inventory")]
+    for block in inventory[1:]:
+        block[0] = dos_codec.SCROLL_TYPES[0]
+    head = bytearray(c64_codec.ITEM_SIZE)
+    head[0] = dos_codec.SCROLL_BUNDLE_TYPE
+    head[1:4] = bytes((0x27, 2, 0x4D))
+    head[8:10] = (2).to_bytes(2, "little")
+    head[10] = 2
+    neutral.set("inventory", [bytes(b) for b in inventory], "made up")
+    neutral.set("scroll_bundles", (ScrollBundle(1, 2, bytes(head)),),
+                "made up")
+    record, itm, spc, _rep = dos_codec.write(neutral, deltas=deltas)
+    items = dos_codec.item_nodes(itm, deltas.item_size)
+    assert [len(item.subnodes) for item in items] == [0, 2]
+    char = dos_codec.DosCharacter(record, items=items, deltas=deltas)
+    rec, _ = dos_codec.to_c64_record(char)
+    out = rewrite.rewrite_dos(char, rec, rec, _game(deltas))
+    assert _item_file(char) == itm
+    assert out.items == itm
+    assert out.record == record
 
 
 def test_a_synthetic_amiga_pool_no_op_rewrite_returns_the_original_bytes():
@@ -770,7 +805,7 @@ def test_every_dos_specimen_rewrites_to_the_bytes_it_came_from():
             rec, _ = dos_codec.to_c64_record(char)
             out = rewrite.rewrite_dos(char, rec, rec, game)
             assert out.record == char.to_bytes(), f"{label} {char.name}"
-            assert out.items == b"".join(rewrite.node_bytes(i) for i in char.items)
+            assert out.items == _item_file(char), f"{label} {char.name}"
             assert out.effects == b"".join(bytes(e) for e in char.effects)
             seen += 1
     assert seen >= 6, f"only {seen} DOS specimen characters were read"
