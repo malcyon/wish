@@ -1239,6 +1239,41 @@
                 </property>
                </widget>
               </item>
+              <item row="0" column="4">
+               <widget class="QWidget" name="view_bar">
+                <layout class="QHBoxLayout" name="view_layout">
+                 <property name="spacing">
+                  <number>12</number>
+                 </property>
+                 <property name="leftMargin">
+                  <number>8</number>
+                 </property>
+                 <property name="topMargin">
+                  <number>0</number>
+                 </property>
+                 <property name="rightMargin">
+                  <number>0</number>
+                 </property>
+                 <property name="bottomMargin">
+                  <number>0</number>
+                 </property>
+                 <item>
+                  <widget class="QRadioButton" name="view_full">
+                   <property name="text">
+                    <string>Full View</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QRadioButton" name="view_area">
+                   <property name="text">
+                    <string>Area View</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
 
               </layout>
             </widget>

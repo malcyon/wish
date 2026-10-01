@@ -172,22 +172,37 @@ def test_the_page_and_two_radios_exist(
     assert win.stack.count() == 3
 
 
-# -- the status bar's controls -------------------------------------------------
+# -- the radios' place and visibility ------------------------------------------
 
-def test_the_radios_show_outdoors_and_fog_of_war_indoors(
+def test_the_radios_sit_at_the_end_of_the_first_action_row(
         app, tmp_path, monkeypatch):
-    from PyQt6.QtWidgets import QStatusBar
+    from PyQt6.QtWidgets import QWidget
+    win, _ = _window_on(app, tmp_path, monkeypatch, [out(8, 27)])
+    actions = win.root.findChild(QWidget, "actions_bar")
+    grid = actions.layout()
+    bar = win.view_bar
+    assert actions.isAncestorOf(bar)
+    assert all(bar.isAncestorOf(b) for b in win.view_buttons)
+    row = [grid.itemAtPosition(0, c).widget() for c in range(grid.columnCount())]
+    names = [w.objectName() for w in row]
+    assert names == ["action_heal", "action_store", "action_restore",
+                     "action_identify", "view_bar"]
+    layout = bar.layout()
+    assert [layout.itemAt(i).widget() for i in range(layout.count())] \
+        == list(win.view_buttons)
+
+
+def test_the_radios_show_outdoors_and_not_indoors(
+        app, tmp_path, monkeypatch):
     win, _ = _window_on(app, tmp_path, monkeypatch,
                         [indoors(), out(8, 27), indoors()])
-    bar = QStatusBar()
-    for widget in (*win.view_buttons, win.fog_box):
-        bar.addPermanentWidget(widget)
     win.fog_box.setChecked(True)
     win.show_controls(True)
 
     def shown():
-        return (win.fog_box.isVisibleTo(bar),
-                tuple(b.isVisibleTo(bar) for b in win.view_buttons))
+        return (win.fog_box.isVisibleTo(win.root),
+                tuple(b.isVisibleTo(win.root) for b in win.view_buttons))
+    assert shown()[1] == (False, False)          # before any fix
     _step(win)
     assert shown() == (True, (False, False))
     _step(win)
@@ -195,30 +210,30 @@ def test_the_radios_show_outdoors_and_fog_of_war_indoors(
     _step(win)
     assert shown() == (True, (False, False))
     assert win.fog_box.isChecked() and win.state.reveal
-    win.show_controls(False)
-    assert shown() == (False, (False, False))
+
+
+def test_the_radios_need_no_word_from_the_host(app, tmp_path, monkeypatch):
+    win, _ = _window_on(app, tmp_path, monkeypatch, [out(8, 27)])
+    _step(win)
+    assert all(b.isVisibleTo(win.root) for b in win.view_buttons)
 
 
 def test_the_radios_are_hidden_during_a_fight_on_the_grid(
         app, tmp_path, monkeypatch):
     from gamedata import synthetic_arena
-    from PyQt6.QtWidgets import QStatusBar
 
     from automap import combat
     from automap.target import MemoryTarget
     win, _ = _window_on(app, tmp_path, monkeypatch, [out(8, 27)])
-    bar = QStatusBar()
-    for widget in (*win.view_buttons, win.fog_box):
-        bar.addPermanentWidget(widget)
     win.show_controls(True)
     _step(win)
-    assert all(b.isVisibleTo(bar) for b in win.view_buttons)
+    assert all(b.isVisibleTo(win.root) for b in win.view_buttons)
     win.battle = combat.read_battle(MemoryTarget(synthetic_arena()))
     win._sync_controls()
-    assert not any(b.isVisibleTo(bar) for b in win.view_buttons)
+    assert not any(b.isVisibleTo(win.root) for b in win.view_buttons)
     win.battle = None
     win._sync_controls()
-    assert all(b.isVisibleTo(bar) for b in win.view_buttons)
+    assert all(b.isVisibleTo(win.root) for b in win.view_buttons)
 
 
 # -- the choice of view --------------------------------------------------------

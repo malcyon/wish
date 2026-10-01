@@ -194,7 +194,7 @@ so `map_primitives` and `combat.py`'s generator are not involved.
 | `map_primitives` stays as it is | it loops `range(GRID)` twice and merges wall edges from both sides; none of that means anything outdoors |
 | the picture | `goldbox.world.world_indices` builds one picture of the whole 44 × 36 wilderness from the disks' glyphs and tile entries; `WorldCanvas` in `automap/window.py` scales it by nearest neighbour |
 | the party marker | `render.travel_marker` turns the `party_marker` triangle to one of eight headings (`$033D`), drawn yellow with a black outline |
-| the canvas | Full View, 44 × 36, or Area View, 16 × 16 centred on the party, chosen by two radios beside **Fog of war** |
+| the canvas | Full View, 44 × 36, or Area View, 16 × 16 centred on the party, chosen by two radios at the right end of the first row of action buttons, after **Identify** |
 | a third page in the `QStackedWidget` | `AutomapBinding._page` shows it when the party is outdoors with a window identified, and only one of area / combat / world is ever true |
 
 `goldbox/world.py` is the reading half and is specified in

@@ -796,6 +796,7 @@ class AutomapBinding(QObject):
         self.battle_canvas = CombatCanvas(parent=self.root, host=self)
         self.world_canvas: WorldCanvas | None = None
         self.view_buttons: tuple[QRadioButton, ...] = ()
+        self.view_bar: QWidget | None = None
         #: None until the host says, because the controls are not in a window
         #: before it does and showing one would open it on its own.
         self._controls_shown: bool | None = None
@@ -885,8 +886,7 @@ class AutomapBinding(QObject):
         self.fog_box.setChecked(self.settings.reveal)
         self.fog_box.toggled.connect(reveal.setChecked)
         self.fog_box.toggled.connect(self._toggle_reveal)
-        if self.world_canvas is not None:
-            self._build_view_buttons()
+        self._build_view_buttons()
 
         # Read once: the item names come off a game disk, and a card without
         # one shows nothing rather than word indices. `disks` is the resolved
@@ -969,9 +969,12 @@ class AutomapBinding(QObject):
             self.world_canvas.show_world(world)
 
     def _build_view_buttons(self) -> None:
-        """The two radios that choose the outdoor picture, beside `fog_box`."""
-        full = QRadioButton("Full View")
-        area = QRadioButton("Area View")
+        """The two radios that choose the outdoor picture, at the right end of
+        the first action row (`view_bar` in `wish/window.ui`)."""
+        full = self.root.findChild(QRadioButton, "view_full")
+        area = self.root.findChild(QRadioButton, "view_area")
+        self.view_bar = self.root.findChild(QWidget, "view_bar")
+        self.view_bar.setVisible(False)
         group = QButtonGroup(self)
         group.addButton(full)
         group.addButton(area)
@@ -1008,15 +1011,15 @@ class AutomapBinding(QObject):
         """Fog of war indoors, the two view radios on the wilderness page.
 
         The radios go while a fight is on: the fight's own canvas is showing,
-        and they would change a view nobody can see.
+        and they would change a view nobody can see. They sit in the tab, so
+        they need no word from the host; the fog box is in the status bar and
+        waits for it.
         """
+        world = self.world_page_shown()
+        self.view_bar.setVisible(world and self.battle is None)
         if self._controls_shown is None:
             return
-        world = self.world_page_shown()
         self.fog_box.setVisible(self._controls_shown and not world)
-        for button in self.view_buttons:
-            button.setVisible(self._controls_shown and world
-                              and self.battle is None)
 
     def _apply_title(self) -> None:
         """Tell the per-title controls which game this is.

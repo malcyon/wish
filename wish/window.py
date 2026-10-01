@@ -171,8 +171,6 @@ class WishWindow(QMainWindow):
         # whole windows and are still usable alone -- but a status bar inside a
         # tab inside a window reads as clutter, so theirs are hidden here and
         # their lines forwarded to this one.
-        for button in self.map.view_buttons:
-            self.statusBar().addPermanentWidget(button)
         self.statusBar().addPermanentWidget(self.map.fog_box)
         # A log that survives a restart is one you forget is on, so while it is
         # on the window says so without being asked -- here, and in the title.
