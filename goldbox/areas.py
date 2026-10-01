@@ -64,10 +64,10 @@ opening scene and the opening vision, name no place, and are unnamed.
 Bonds DOS save into a C64 one, which the importer refuses today)` step 0b by
 the same tool. Fourteen of its twenty-five rows carry a derived arrival
 square (`#15 (Fast Travel for more than one Gold Box title)`), PROBABLE and
-never better -- see the table's own comment. Twenty-one of the twenty-five
+never better -- see the table's own comment. Twenty-four of the twenty-five
 carry a name too, approved by Donald off a forum table and graded CONFIRMED
-or PROBABLE by a driven validation pass, also on `#15`; the other four stay
-unnamed and `confidence` UNKNOWN, three of them pending his decision.
+or PROBABLE by a driven validation pass, also on `#15`; the other one stays
+unnamed.
 
 Enumerating maps by count or assuming a `GEO00` is wrong for every Gold Box
 title after this one: Curse's ids are sparse and chapter-grouped, and Silver

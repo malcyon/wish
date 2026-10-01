@@ -431,15 +431,13 @@ def amiga_combat_icon(char: Any) -> DosIcon:
     so the figure a player drew on the Amiga is already the number DOS
     stores, in all three titles: nothing is recognised, composed or looked
     up. `char` is duck-typed to either -- and to `goldbox.dos_codec.DosCharacter`,
-    which shares the same `.get()`.  What it is **not** is a neutral field:
-    `goldbox.dos_codec.to_neutral` and `goldbox.amiga_later.to_neutral_later` both have
-    nowhere to put it, since the C64 stores drawn cells rather than an
-    index, so a party read into neutral records and written back out would
-    arrive with six identical default figures.  That is `#130 (A converted
-    DOS party arrives with six identical combat figures, not its own)` in
-    this direction, and this is what stops it: `goldbox.dos_codec.write`'s own
-    `icon` argument, which bypasses the neutral vocabulary for exactly this
-    reason, and which `goldbox.amiga_later.write_later` now takes as well.
+    which shares the same `.get()`.  The neutral records carry the figure too
+    (`icon_head`, `icon_body`, `icon_colours`, read by
+    `goldbox.dos_codec.to_neutral` and `goldbox.amiga_later.to_neutral_later`),
+    but the C64 stores drawn cells rather than an index, so a C64 target
+    cannot use them. This builder is for the DOS and Amiga writers:
+    `goldbox.dos_codec.write`'s `icon` argument, which takes precedence over
+    the neutral fields, and `goldbox.amiga_later.write_later`'s.
 
     **`figure_source` and `colours_source` say so**, rather than the sentence
     `goldbox.dos_codec.write` used to build unconditionally around any `DosIcon`,
