@@ -39,6 +39,11 @@ from automap import amiga, paths
 #: `AF_UNIX` paths are limited to 108 bytes including the terminator.
 SOCKET_PATH_LIMIT = 107
 
+#: The biggest piece a window sweeps memory in. A request up to this size is
+#: a poll or a piece of a sweep, so the helper waits `POLL_TIMEOUT` for it: a
+#: client that gave up on one should not hold everybody else for twenty seconds.
+SWEEP_CHUNK = 0x10000
+
 #: The most one `m` request may ask for; `locate_machines` reads half a megabyte.
 MAX_READ = 0x80000
 
@@ -465,7 +470,7 @@ class Helper:
         client.pending = None
         gdb = self.gdb
         timeout = (min(gdb.POLL_TIMEOUT, gdb.timeout)
-                   if length <= gdb.POLL_READ_LIMIT else gdb.timeout)
+                   if length <= SWEEP_CHUNK else gdb.timeout)
         try:
             reply = gdb.ask(f"m{addr:x},{length:x}", timeout)
         except amiga.FsuaeError:

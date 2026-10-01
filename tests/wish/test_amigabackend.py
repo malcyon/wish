@@ -741,3 +741,93 @@ def test_the_rate_limit_runs_from_the_end_of_a_sweep_not_its_start():
             assert "still sweeping" in str(exc)
     with pytest.raises(amiga.FsuaeError, match="no more than one"):
         fsuae.connect(opener=opener, clock=clock, deadline_clock=stepping)
+
+
+def _pause_a_sweep(opener, clock, stepping, **kw):
+    with pytest.raises(amiga.FsuaeError, match="still sweeping"):
+        fsuae.connect(opener=opener, clock=clock, deadline_clock=stepping, **kw)
+    assert fsuae._sweep_cache
+
+
+def test_a_reset_forgets_the_pieces_of_a_paused_sweep():
+    sock = FakeSocket(loaded(BLADES))
+    opener, clock, stepping = Opener(sock), Clock(), Stepping()
+    _pause_a_sweep(opener, clock, stepping)
+    fsuae.reset()
+    assert not fsuae._sweep_cache
+    before = len(sock.received)
+    with pytest.raises(amiga.FsuaeError):
+        fsuae.connect(opener=opener, clock=clock, deadline_clock=stepping)
+    assert any(m.startswith("mc00000,") for m in sock.received[before:])
+
+
+def test_a_port_change_forgets_the_pieces_of_a_paused_sweep():
+    first = FakeSocket(loaded(BLADES))
+    clock, stepping = Clock(), Stepping()
+    _pause_a_sweep(Opener(first), clock, stepping, port=2345)
+    other = FakeSocket(loaded(BLADES))
+    with pytest.raises(amiga.FsuaeError):
+        fsuae.connect(port=6525, opener=Opener(other), clock=clock,
+                      deadline_clock=stepping)
+    assert any(m.startswith("mc00000,") for m in other.received)
+
+
+def test_a_piece_that_times_out_empties_the_cache_and_starts_the_rate_limit():
+    sock = FakeSocket(loaded(BLADES))
+    opener, clock, stepping = Opener(sock), Clock(), Stepping()
+    _pause_a_sweep(opener, clock, stepping)
+    sock.mute = True                              # the next piece never comes
+    with pytest.raises(amiga.FsuaeError, match="no reply|timed out"):
+        fsuae.connect(opener=opener, clock=clock, deadline_clock=stepping)
+    assert not fsuae._sweep_cache
+    assert fsuae._swept_at == clock()
+
+
+def test_after_a_failed_piece_the_next_sweep_reads_smaller_pieces():
+    sock = FakeSocket(loaded(BLADES))
+    opener, clock, stepping = Opener(sock), Clock(), Stepping()
+    _pause_a_sweep(opener, clock, stepping)
+    sock.mute = True
+    with pytest.raises(amiga.FsuaeError):
+        fsuae.connect(opener=opener, clock=clock, deadline_clock=stepping)
+    sock.mute = False
+    clock.later()
+    before = len(sock.received)
+    with pytest.raises(amiga.FsuaeError):
+        fsuae.connect(opener=opener, clock=clock, deadline_clock=stepping)
+    sizes = {int(m.partition(",")[2], 16) for m in sock.received[before:]
+             if m.startswith("m")}
+    assert sizes == {fsuae.SWEEP_SMALL_CHUNK}
+
+
+def test_pieces_older_than_the_age_limit_are_read_again():
+    sock = FakeSocket(loaded(BLADES))
+    opener, clock = Opener(sock), Clock()
+    ticks = Stepping()
+    _pause_a_sweep(opener, clock, ticks)
+    kept = dict(fsuae._sweep_cache)
+    ticks.now += fsuae.SWEEP_CACHE_AGE + 1       # a reboot could fit in this
+    before = len(sock.received)
+    with pytest.raises(amiga.FsuaeError):
+        fsuae.connect(opener=opener, clock=clock, deadline_clock=ticks)
+    again = [m for m in sock.received[before:] if m.startswith("mc00000,")]
+    assert again, "the old pieces were reused"
+    assert all(when > max(w for w, _ in kept.values())
+               for when, _ in fsuae._sweep_cache.values())
+
+
+def test_a_sweep_longer_in_total_than_the_age_limit_still_finishes_if_ticks_keep_adding_pieces():
+    sock = FakeSocket(loaded(BLADES))
+    opener, clock, stepping = Opener(sock), Clock(), Stepping()
+    started = None
+    for _ in range(60):
+        try:
+            fsuae.connect(opener=opener, clock=clock, deadline_clock=stepping)
+            break
+        except amiga.FsuaeError as exc:
+            assert "still sweeping" in str(exc)
+            started = started if started is not None else stepping.now
+    else:
+        raise AssertionError("the sweep never finished")
+    assert stepping.now - started > fsuae.SWEEP_CACHE_AGE
+    assert sock.sweeps() == 1

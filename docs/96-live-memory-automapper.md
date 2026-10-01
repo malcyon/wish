@@ -539,8 +539,8 @@ reads.
   window shows its waiting line and asks again a second later; it never waits
   for the helper. The helper's socket is connected, and greeted, with
   `FsuaeGdb.POLL_TIMEOUT` (one second each), so a busy helper holds the window
-  for two seconds at most and the next tick tries again. **A helper that dies after taking the fork's connection cannot be
-  replaced:** the fork never listens again, so the player has to restart
+  for two seconds at most and the next tick tries again. **A helper that dies
+  after taking the fork's connection cannot be replaced:** the fork never listens again, so the player has to restart
   FS-UAE. `listening(port)` also says yes while a helper is alive.
   `connect()` opens the helper's socket once per emulator run and caches the
   transport, the title found on it and the data hunk's base together. The window
@@ -550,8 +550,12 @@ reads.
   cached, and the memory sweep is not repeated more often than `SWEEP_EVERY`
   after one ends, because each 512K read makes the emulated machine miss a frame.
   A sweep reads 64 KB at a time and stops for the tick after `SWEEP_DEADLINE`
-  (one second), keeping what it has read and going on at the next tick, so one
-  `connect()` holds the window for about two seconds at most. A transport
+  (one second), keeping what it has read until `SWEEP_CACHE_AGE` (five seconds)
+  passes with no new piece, which is what a reboot between ticks looks like, so
+  old pieces are never joined to new ones
+  and going on at the next tick, so one `connect()` holds the window for about
+  two seconds at most. If a piece fails, the next sweep reads 16 KB pieces. How
+  long a piece takes on a real machine has not been measured. A transport
   whose connection has failed (`FsuaeGdb.lost`) is dropped and replaced; a read
   timeout is not that, and keeps it. Because GDB-remote has no request ids, a
 transport that timed out drops whatever its socket holds before the next request,
