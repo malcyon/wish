@@ -47,9 +47,12 @@ def disk_globs(game: c64_port.C64Container | None = None) -> tuple[str, ...]:
 
     `Game.disk_glob` already covers `POOL1.D64` and `POOL1.d64`; the lowered
     copy is for a directory unpacked from an archive that lower-cased the whole
-    name. No game means Pool of Radiance, as everywhere else.
+    name. No game means Pool of Radiance, as everywhere else. A title with no
+    Commodore 64 container has no pattern, so it matches nothing here.
     """
-    glob = (game or c64_port.DEFAULT).disk_glob
+    glob = getattr(game or c64_port.DEFAULT, "disk_glob", None)
+    if glob is None:
+        return ()
     return (glob, glob.lower()) if glob.lower() != glob else (glob,)
 
 

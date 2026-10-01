@@ -71,11 +71,11 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from automap import paths
+from automap import maps, paths
 from automap.actionbar import DANGER
 from automap.config import clamp_to_screen
 from goldbox import areas as area_table
-from goldbox import c64_port
+from goldbox import c64_port, titles
 
 from . import backends
 from .ui_preferences import Ui_PreferencesDialog
@@ -174,17 +174,23 @@ def _pretty(glob: str) -> str:
 #: Donald's own ruling on #22 (2026-09-04): a row here is a promise that the
 #: title works, and this project does not support those yet.
 #:
-#: **Pools of Darkness is left off for a different reason.** It has no entry
-#: in `goldbox.c64_port.GAMES` at all, and it never shipped on the Commodore 64
-#: this whole module searches for -- DOS and the Amiga are its only two ports
-#: (`#194`). There is no `disk_glob` a folder for it could search against, and
-#: inventing one would be exactly the fabricated data `.claude/rules/
-#: conversions.md` refuses. Left as a finding on #22 rather than built here.
+#: **Pools of Darkness is not here.** It never shipped on the Commodore 64, so
+#: it has no `disk_glob`; its row is `game_folder_titles()`'s, and exists only
+#: while the experimental Amiga backend is on.
 GAME_FOLDER_TITLES: tuple[c64_port.C64Container, ...] = (
     c64_port.POOL_OF_RADIANCE,
     c64_port.CURSE_OF_THE_AZURE_BONDS,
     c64_port.SECRET_OF_THE_SILVER_BLADES,
 )
+
+
+def game_folder_titles() -> tuple[c64_port.C64Container | titles.Title, ...]:
+    """The titles that have a folder row in this run: the three above, then
+    the titles with Amiga disks and no C64 container while the experimental
+    Amiga backend is on (`backends.amiga_fsuae_enabled`)."""
+    if backends.amiga_fsuae_enabled():
+        return GAME_FOLDER_TITLES + maps.AMIGA_ONLY_TITLES
+    return GAME_FOLDER_TITLES
 
 #: The titles the Fast travel tab has a page for, in `c64_port.GAMES` order --
 #: the titles `goldbox.areas.TABLES` has a table for, and no others. A title
@@ -198,7 +204,8 @@ TRAVEL_TITLES: tuple[c64_port.C64Container, ...] = (
 )
 
 
-def title_folder_report(folder: str, game: c64_port.C64Container) -> str:
+def title_folder_report(folder: str,
+                        game: c64_port.C64Container | titles.Title) -> str:
     """What one title's own folder box has found.
 
     Not `report()`: that walks the whole precedence, and a per-title row is
@@ -224,6 +231,8 @@ def title_folder_report(folder: str, game: c64_port.C64Container) -> str:
     where = pathlib.Path(folder)
     n = len(_images(where, game)) if where.is_dir() else 0
     if not n:
+        if isinstance(game, titles.Title):
+            return "none; no .adf disk images here"
         return f"none; no {_pretty(game.disk_glob)} here"
     return f"{n} disk{'' if n == 1 else 's'}"
 
@@ -233,12 +242,25 @@ def game_named(title: str | None) -> c64_port.C64Container | None:
     return next((g for g in c64_port.GAMES if g.title == title), None)
 
 
-def _images(where: pathlib.Path, game: c64_port.C64Container | None) -> list[pathlib.Path]:
+def folder_title_named(title: str | None
+                       ) -> c64_port.C64Container | titles.Title | None:
+    """The title a folder row can be set for that `title` names, or None:
+    `game_named`'s, or one of the Amiga-only titles."""
+    return game_named(title) or next(
+        (t for t in maps.AMIGA_ONLY_TITLES if t.title == title), None)
+
+
+def _images(where: pathlib.Path,
+            game: c64_port.C64Container | titles.Title | None
+            ) -> list[pathlib.Path]:
     """Every disk image of a title in this folder, each of them once.
 
     Both patterns match the same file on a case-insensitive filesystem, so a
-    naive loop over `disk_globs` reads every disk twice.
+    naive loop over `disk_globs` reads every disk twice. A title with no C64
+    container is counted by its Amiga volume names (`maps.amiga_images`).
     """
+    if isinstance(game, titles.Title):
+        return maps.amiga_images(where, game)
     seen: dict[str, pathlib.Path] = {}
     for pattern in paths.disk_globs(game):
         try:
@@ -250,11 +272,12 @@ def _images(where: pathlib.Path, game: c64_port.C64Container | None) -> list[pat
 
 
 @functools.lru_cache(maxsize=8)
-def _scan(where: str) -> dict:
+def _scan(where: str, amiga: bool = False) -> dict:
     """Which titles are in this folder, and how many disks of each.
 
     Cached because the dialog re-reports as you type and this opens D64s. The
-    key is the folder, which is everything the answer depends on.
+    key is the folder and whether the Amiga-only titles are looked for, which
+    is everything the answer depends on.
 
     It used to count the maps and open every image looking for item names and
     an icon charset as well. Donald had those three lines out of the dialog in
@@ -266,6 +289,9 @@ def _scan(where: str) -> dict:
     if not root.is_dir():
         return found
     found["titles"] = [(g, len(_images(root, g))) for g in paths.titles_in(root)]
+    if amiga:
+        found["titles"] += [(t, n) for t in maps.AMIGA_ONLY_TITLES
+                            if (n := len(_images(root, t)))]
     return found
 
 
@@ -317,16 +343,17 @@ def report(settings, flag=None, beside=None,
     where, _source = paths.resolve_disks(flag=flag, beside=beside, game=game,
                                          settings=settings)
     rows = [("In use", str(where) if where is not None else "nothing found")]
-    wanted = [game] if game else list(c64_port.GAMES)[:2]
+    wanted = ([game] if getattr(game, "disk_glob", None)
+              else list(c64_port.GAMES)[:2])
     patterns = " or ".join(_pretty(g.disk_glob) for g in wanted)
     if where is None:
         return rows + [("Titles",
                         f"none; nowhere with {patterns} in it was found")]
 
-    titles = _scan(str(where))["titles"]
-    if titles:
+    present = _scan(str(where), backends.amiga_fsuae_enabled())["titles"]
+    if present:
         titles_line = " · ".join(f"{g.title} ({n} disk{'' if n == 1 else 's'})"
-                                      for g, n in titles)
+                                      for g, n in present)
     else:
         titles_line = f"none; no {patterns} here"
     return rows + [("Titles", titles_line)]
@@ -528,7 +555,8 @@ class PreferencesDialog(QDialog):
         self.game_folder_edits: dict[str, QLineEdit] = {}
         self.game_folder_reports: dict[str, QLabel] = {}
         stored = dict(getattr(self.win.settings, "game_folders", None) or {})
-        for game in GAME_FOLDER_TITLES:
+        self._build_amiga_rows()
+        for game in game_folder_titles():
             suffix = _row_suffix(game)
             edit = getattr(self.ui, f"game_folder_edit_{suffix}")
             edit.setText(stored.get(game.key, ""))
@@ -547,6 +575,23 @@ class PreferencesDialog(QDialog):
                 Qt.TextInteractionFlag.TextSelectableByMouse)
             self.game_folder_edits[game.key] = edit
             self.game_folder_reports[game.key] = note
+
+    def _build_amiga_rows(self) -> None:
+        """Keep the row of each Amiga-only title while the experimental Amiga
+        backend is on, and take it out of the form otherwise.
+
+        `preferences.ui` holds the row so that it can be rearranged in
+        Designer; a run without the flag never shows it, and nothing in the
+        dialog refers to it.
+        """
+        if backends.amiga_fsuae_enabled():
+            return
+        for game in maps.AMIGA_ONLY_TITLES:
+            group = getattr(self.ui,
+                            f"game_folder_group_{_row_suffix(game)}")
+            self.ui.disks_group_layout.removeWidget(group)
+            group.setParent(None)
+            group.deleteLater()
 
     def game_folder_text(self, game: c64_port.C64Container) -> str:
         return self.game_folder_edits[game.key].text().strip()
@@ -591,7 +636,7 @@ class PreferencesDialog(QDialog):
         same thing in the same place for the same reason -- only the first
         letter, never `str.capitalize()`, which would lower-case a title.
         """
-        for game in GAME_FOLDER_TITLES:
+        for game in game_folder_titles():
             text = title_folder_report(self.game_folder_text(game), game)
             note = self.game_folder_reports[game.key]
             note.setText(text[:1].upper() + text[1:])
@@ -898,9 +943,8 @@ class PreferencesDialog(QDialog):
 
         self.travel_game = self.win.map_game()
         keys = [g.key for g in TRAVEL_TITLES]
-        self.travel_tabs.setCurrentIndex(
-            keys.index(self.travel_game.key)
-            if self.travel_game.key in keys else 0)
+        here = getattr(self.travel_game, "key", None)
+        self.travel_tabs.setCurrentIndex(keys.index(here) if here in keys else 0)
 
     def _wire_travel_page(self, game: c64_port.C64Container) -> None:
         """One title's table: its rows, its ticks and its count."""
@@ -1053,7 +1097,7 @@ class PreferencesDialog(QDialog):
         for name, value in report(self.win.settings,
                                   flag=self.win.disks_flag,
                                   beside=self.win.editor.path,
-                                  game=self.win.game()):
+                                  game=self.win.disk_game()):
             self.report_rows[name].setText(value)
         self._say_game_folders()
         self._say_backups()

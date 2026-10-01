@@ -101,6 +101,31 @@ def _volume_title(volume: str, amiga_only: bool = False
     return None
 
 
+def amiga_images(where, title: titles.Title) -> list[pathlib.Path]:
+    """The loose `.adf` images in a folder whose volume name says they are
+    `title`'s, which can only be an `AMIGA_ONLY_TITLES` one.
+
+    The same recognition `_amiga_maps_titled` uses, so a folder cannot count a
+    disk the loader would skip.
+    """
+    from goldbox.amiga_adf import AmigaDisk
+    try:
+        images = sorted(p for p in pathlib.Path(where).iterdir()
+                        if p.suffix.lower() == ".adf")
+    except OSError:
+        return []
+    found = []
+    for image in images:
+        try:
+            named = _volume_title(AmigaDisk.open(image).volume_name,
+                                  amiga_only=True)
+        except Exception:                       # not a disk, or not readable
+            continue
+        if named is not None and named.key == title.key:
+            found.append(image)
+    return found
+
+
 def _dax_maps(disk) -> dict[str, Geo]:
     """The maps of a disk that keeps them in `geo.dax`, keyed `GEO{id:02X}`.
 

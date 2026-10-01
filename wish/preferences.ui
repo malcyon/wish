@@ -283,6 +283,44 @@
             <property name="visible"><bool>false</bool></property>
            </widget>
           </item>
+          <item>
+           <widget class="QWidget" name="game_folder_group_pools_of_darkness">
+            <layout class="QVBoxLayout" name="game_folder_group_layout_pools_of_darkness">
+             <property name="leftMargin"><number>0</number></property>
+             <property name="topMargin"><number>0</number></property>
+             <property name="rightMargin"><number>0</number></property>
+             <property name="bottomMargin"><number>0</number></property>
+             <item>
+              <layout class="QHBoxLayout" name="game_folder_row_pools_of_darkness" stretch="0,1,0,0">
+               <item>
+                <widget class="QLabel" name="game_folder_label_pools_of_darkness">
+                 <property name="text"><string>Pools of Darkness</string></property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLineEdit" name="game_folder_edit_pools_of_darkness"/>
+               </item>
+               <item>
+                <widget class="QPushButton" name="game_folder_browse_pools_of_darkness">
+                 <property name="text"><string>Browse…</string></property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="game_folder_clear_pools_of_darkness">
+                 <property name="text"><string>Clear</string></property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QLabel" name="game_folder_note_pools_of_darkness">
+               <property name="wordWrap"><bool>true</bool></property>
+               <property name="visible"><bool>false</bool></property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>

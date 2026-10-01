@@ -38,6 +38,7 @@ from automap.config import (
     remember_geometry,
     restore_geometry,
 )
+from automap.maps import AMIGA_ONLY_TITLES
 from automap.state import Automapper
 from automap.window import AutomapBinding
 from editor.window import EditorBinding, RowSplitter
@@ -52,6 +53,7 @@ from .preferences import (
     apply_ultimate_host,
     backup_folder,
     chosen_backup_folder,
+    folder_title_named,
     game_named,
 )
 from .session import BUSY, CONNECTED, Session
@@ -124,7 +126,7 @@ class WishWindow(QMainWindow):
         self.disks_flag = disks
         self._title = title
         self.disks, self.disks_source = paths.resolve_disks(
-            flag=disks, beside=save, game=game_named(title),
+            flag=disks, beside=save, game=folder_title_named(title),
             settings=self.settings)
         # Behind the flag, like everything else the Ultimate touches. A stored
         # host in a settings file predating the flag -- or hand-edited -- used
@@ -379,6 +381,11 @@ class WishWindow(QMainWindow):
         return (getattr(getattr(self.editor, "party", None), "game", None)
                 or game_named(self._title))
 
+    def disk_game(self):
+        """Which title's own folder the disks come from: `game()`, else the
+        Amiga-only title the window was switched to."""
+        return self.game() or folder_title_named(self._title)
+
     def map_game(self):
         """Which title the *automapper* is labelling with, as a `Game`.
 
@@ -394,13 +401,13 @@ class WishWindow(QMainWindow):
     def reload_disks(self) -> None:
         """Re-resolve where the disks are and hand the answer to both tabs."""
         self.disks, self.disks_source = paths.resolve_disks(
-            flag=self.disks_flag, beside=self.editor.path, game=self.game(),
-            settings=self.settings)
+            flag=self.disks_flag, beside=self.editor.path,
+            game=self.disk_game(), settings=self.settings)
         where = self.disks_text()
         debuglog.note("game disks: %s (%s)", where or "nothing found",
                       self.disks_source)
         self.editor.set_disks(where)
-        maps, game = load_maps_titled(where, self.game())
+        maps, game = load_maps_titled(where, self.disk_game())
         self.map.set_maps(maps, title=game.title if game else None,
                           disks=where)
         self.statusBar().showMessage(
@@ -431,7 +438,8 @@ class WishWindow(QMainWindow):
         folders = getattr(self.settings, "game_folders", None) or {}
         current = self.map.state.title
         out: dict[str, dict] = {}
-        for g in c64_port.GAMES:
+        for g in c64_port.GAMES + (AMIGA_ONLY_TITLES
+                                   if backends.amiga_fsuae_enabled() else ()):
             if g.title == current:
                 continue
             folder = (folders.get(g.key, "") or "").strip()
