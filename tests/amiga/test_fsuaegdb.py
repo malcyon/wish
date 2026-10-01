@@ -22,6 +22,7 @@ Amiga game run on one machine?)`.
 
 from __future__ import annotations
 
+import pathlib
 import socket
 
 import pytest
@@ -519,3 +520,379 @@ def test_the_real_opener_is_a_loopback_socket(monkeypatch):
     monkeypatch.setattr(socket, "create_connection", fake_create_connection)
     amiga.FsuaeGdb(port=6525)
     assert asked == [(("127.0.0.1", 6525), amiga.FsuaeGdb.CONNECT_TIMEOUT)]
+
+
+# -- the command line ---------------------------------------------------------
+
+import argparse  # noqa: E402
+import json  # noqa: E402
+
+from goldbox.geo import Geo  # noqa: E402
+from tests.gamedata import synthetic_geo  # noqa: E402
+from tools.amiga import fsuaegdb  # noqa: E402
+
+POD = amiga.MACHINES["pools-of-darkness"]
+
+
+def pod_memory(pointer_at: int, target: int, payload: dict[int, bytes]
+               ) -> dict[int, bytes]:
+    """A machine with a 32-bit pointer at data-hunk offset `pointer_at`."""
+    data = bytearray(0x8000)
+    data[POD.anchor_offset:POD.anchor_offset + len(POD.anchor)] = POD.anchor
+    data[pointer_at:pointer_at + 4] = target.to_bytes(4, "big")
+    memory = {BASE: bytes(data)}
+    memory.update(payload)
+    return memory
+
+
+def located(memory: dict[int, bytes]):
+    guest = FakeAmiga(memory)
+    return guest, amiga.AmigaTarget(transport(guest), POD, data_base=BASE)
+
+
+# peek
+
+
+def test_peek_at_a_data_hunk_offset():
+    memory = pod_memory(0x57AC, 0, {})
+    memory[BASE] = memory[BASE][:0x5B12] + b"\x04" + memory[BASE][0x5B13:]
+    guest, tgt = located(memory)
+    assert fsuaegdb.read_spec(tgt, "+0x5B12", 1) == b"\x04"
+    assert guest.received[-1] == f"m{BASE + 0x5B12:x},1"
+
+
+def test_peek_dereferences_a_pointer_first():
+    guest, tgt = located(pod_memory(
+        0x57AC, 0xC20000, {0xC20024: bytes([1, 34, 14])}))
+    assert fsuaegdb.read_spec(tgt, "*0x57AC+0x24", 3) == bytes([1, 34, 14])
+    assert guest.received[-2:] == [f"m{BASE + 0x57AC:x},4", "mc20024,3"]
+
+
+def test_peek_through_a_null_pointer_reports_it_without_raising():
+    guest, tgt = located(pod_memory(0x57AC, 0, {}))
+    assert fsuaegdb.read_spec(tgt, "*0x57AC+0x24", 3) is None
+    assert fsuaegdb.peek_row(tgt, "*0x57AC+0x24", 3)["null_pointer"] is True
+    # Only the pointer was read, once per call; nothing was read through it.
+    assert guest.received[2:] == [f"m{BASE + 0x57AC:x},4"] * 2
+
+
+def test_peek_is_refused_before_locate():
+    guest = FakeAmiga()
+    tgt = amiga.AmigaTarget(transport(guest), POD)
+    before = list(guest.received)
+    with pytest.raises(amiga.GuestError, match="locate"):
+        fsuaegdb.read_spec(tgt, "+0x10", 1)
+    row = fsuaegdb.peek_row(tgt, "+0x10", 1)
+    assert row["hex"] is None and "locate" in row["error"]
+    assert guest.received == before
+
+
+@pytest.mark.parametrize("spec", ["0x10", "-0x10", "*0x10", "+0x10 +1", "w+0x10"])
+def test_peek_has_no_form_but_the_two(spec):
+    _, tgt = located(pod_memory(0x57AC, 0, {}))
+    with pytest.raises(ValueError, match="neither"):
+        fsuaegdb.read_spec(tgt, spec, 1)
+
+
+def test_peeks_option_splits_a_spec_from_its_length():
+    assert fsuaegdb.parse_peeks(["+0x5B12 1", "*0x57AC+0x24 3"]) == [
+        ("+0x5B12", 1), ("*0x57AC+0x24", 3)]
+
+
+# swap
+
+
+def test_swap_sends_exactly_the_given_sequence_with_a_wait_between_keys():
+    events = []
+    keys = fsuaegdb.insert_floppy(
+        "F12 Down*{index} Return", 2, lambda k: events.append(("key", k)),
+        lambda label: events.append(("still", label)))
+    assert keys == ["F12", "Down", "Down", "Return"]
+    assert events == [("key", "F12"), ("still", "swap2-0"),
+                      ("key", "Down"), ("still", "swap2-1"),
+                      ("key", "Down"), ("still", "swap2-2"),
+                      ("key", "Return"), ("still", "swap2-3")]
+
+
+def test_swap_without_a_sequence_names_the_pending_measurement():
+    pressed = []
+    with pytest.raises(NotImplementedError, match="still being measured"):
+        fsuaegdb.insert_floppy(None, 0, pressed.append, pressed.append)
+    assert pressed == []
+
+
+def test_swap_logs_only_the_disk_change_lines_written_during_it(tmp_path):
+    log = tmp_path / "fs-uae.log"
+    log.write_text("boot\ngui_disk_image_change early\n")
+    since = log.stat().st_size
+    with log.open("a") as out:
+        out.write("noise\nperform disk_swap 1\nmore noise\n"
+                  "gui_disk_image_change 2\n")
+    assert fsuaegdb.swap_log_lines(log, since) == [
+        "perform disk_swap 1", "gui_disk_image_change 2"]
+    assert fsuaegdb.swap_log_lines(tmp_path / "missing.log", 0) == []
+    assert fsuaegdb.swap_log_lines(None, 0) == []
+
+
+# launch
+
+
+class FakeProc:
+    started: list = []
+
+    def __init__(self, argv, **kw):
+        self.argv, self.kw, self.signals = argv, kw, []
+        self.done = False
+        FakeProc.started.append(self)
+
+    pid = 1
+
+    def poll(self):
+        return 0 if self.done else None
+
+    def wait(self, timeout=None):
+        self.done = True
+        return 0
+
+    def send_signal(self, sig):
+        self.signals.append(sig)
+        self.done = True
+
+    def kill(self):
+        self.done = True
+
+
+def launch_args(tmp_path, **kw):
+    binary = tmp_path / "fs-uae"
+    binary.write_text("")
+    base = dict(fs_uae=str(binary), out=str(tmp_path / "run"), display=":77",
+                kickstart=None, floppy=None, swap=None, foreground=False,
+                wait=1, port=6525, extra=None)
+    return argparse.Namespace(**{**base, **kw})
+
+
+@pytest.fixture
+def procs(monkeypatch):
+    FakeProc.started = []
+    monkeypatch.setattr(fsuaegdb.subprocess, "Popen", FakeProc)
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    monkeypatch.setattr(
+        fsuaegdb.subprocess, "run",
+        lambda *a, **k: argparse.Namespace(stdout=":6525 LISTEN"))
+    return FakeProc.started
+
+
+def test_launch_without_the_new_options_builds_the_command_it_always_did(
+        tmp_path, procs):
+    args = launch_args(tmp_path, floppy=["a.adf", "b.adf"])
+    assert fsuaegdb.launch(args) == 0
+    xvfb, emulator = procs
+    run = (tmp_path / "run").resolve()
+    assert emulator.argv == [
+        str((tmp_path / "fs-uae").resolve()), f"--base_dir={run / 'base'}",
+        "--fullscreen=0", "--remote_debugger=1", "--remote_debugger_port=6525",
+        f"--floppy_drive_0={pathlib.Path('a.adf').resolve()}",
+        f"--floppy_drive_1={pathlib.Path('b.adf').resolve()}"]
+    assert emulator.kw["start_new_session"] is True
+    assert xvfb.kw["start_new_session"] is True
+
+
+def test_swap_images_follow_the_drives_in_the_swap_list(tmp_path, procs):
+    args = launch_args(tmp_path, floppy=["a.adf", "b.adf"], swap=["c.adf"])
+    fsuaegdb.launch(args)
+    argv = procs[1].argv
+    names = [pathlib.Path(a.split("=", 1)[1]).name for a in argv
+             if a.startswith("--floppy_image_")]
+    assert [a.split("=")[0] for a in argv if "floppy_image_" in a] == [
+        "--floppy_image_0", "--floppy_image_1", "--floppy_image_2"]
+    assert names == ["a.adf", "b.adf", "c.adf"]
+    assert "--joystick_port_1=none" not in argv
+
+
+def test_foreground_waits_stays_in_the_callers_group_and_takes_xvfb_down(
+        tmp_path, procs):
+    args = launch_args(tmp_path, foreground=True)
+    assert fsuaegdb.launch(args) == 0
+    xvfb, emulator = procs
+    assert "--joystick_port_1=none" in emulator.argv
+    assert emulator.kw["start_new_session"] is False
+    assert xvfb.kw["start_new_session"] is False
+    assert emulator.done and xvfb.done and xvfb.signals    # nothing left behind
+
+
+def test_the_joystick_option_appears_only_under_foreground(tmp_path, procs):
+    fsuaegdb.launch(launch_args(tmp_path))
+    assert "--joystick_port_1=none" not in procs[1].argv
+
+
+# session
+
+
+def session_args(tmp_path, **kw):
+    base = dict(out=str(tmp_path / "run"), commands=str(tmp_path / "cmds"),
+                maps=None, display=":77", settle=0.0, interval=0.0,
+                seconds=30.0, at=0xC00000, hold=0.12, window=False,
+                peeks=None, swap_sequence=None, fs_uae_log=None,
+                title="pools-of-darkness", host="127.0.0.1", port=6525,
+                timeout=None)
+    return argparse.Namespace(**{**base, **kw})
+
+
+@pytest.fixture
+def driven(monkeypatch, tmp_path):
+    """`session` over a fake machine, with keys, screenshots and waits recorded."""
+    block = synthetic_geo()
+    memory = pod_memory(0x57AC, 0xC20000, {0xC20024: bytes([1, 34, 14])})
+    data = bytearray(memory[BASE])
+    data[POD.geo_pointer:POD.geo_pointer + 4] = (0xC07000).to_bytes(4, "big")
+    memory[BASE] = bytes(data)
+    memory[0xC07000] = block
+    guest = FakeAmiga(memory)
+    log = {"keys": [], "shots": [], "still": []}
+    from tools.amiga import amigatarget, fsuaepor
+    monkeypatch.setattr(fsuaegdb, "connect", lambda args: transport(guest))
+    monkeypatch.setattr(amigatarget, "find_maps", lambda layout, where: (
+        {"GEO24": Geo(block), "GEO25": Geo(bytes(len(block)))},
+        tmp_path / "pod3.adf"))
+    monkeypatch.setattr(fsuaepor, "keys", lambda a: log["keys"].append(
+        (a.key, a.hold)))
+    monkeypatch.setattr(fsuaepor, "_wait_until_still",
+                        lambda display, label, take: log["still"].append(label))
+    monkeypatch.setattr(fsuaegdb, "shot", lambda display, path: log["shots"]
+                        .append(path.name))
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    return guest, log
+
+
+def run_session(tmp_path, lines, **kw):
+    args = session_args(tmp_path, **kw)
+    pathlib.Path(args.commands).write_text("\n".join([*lines, "quit"]) + "\n")
+    assert fsuaegdb.session(args) == 0
+    rows = [json.loads(line) for line in
+            (tmp_path / "run" / "session.jsonl").read_text().splitlines()]
+    return {r["event"]: r for r in rows}, rows
+
+
+def test_session_keys_are_held_through_fsuaepors_implementation(driven, tmp_path):
+    _, log = driven
+    run_session(tmp_path, ["key KP_Up p"])
+    assert log["keys"] == [(["KP_Up"], 0.12), (["p"], 0.12)]
+
+
+def test_session_still_and_wait_are_logged(driven, tmp_path):
+    _, log = driven
+    events, _ = run_session(tmp_path, ["still title", "wait 0.5"])
+    assert log["still"] == ["title"]
+    assert events["still"]["label"] == "title"
+    assert events["wait"]["seconds"] == 0.5
+
+
+def test_session_peek_before_locate_is_logged_as_a_refusal(driven, tmp_path):
+    events, _ = run_session(tmp_path, ["peek +0x10 1"])
+    assert events["peek"]["hex"] is None and "locate" in events["peek"]["error"]
+
+
+def test_session_peek_after_locate_returns_the_bytes(driven, tmp_path):
+    events, _ = run_session(tmp_path, ["locate", "peek *0x57AC+0x24 3"])
+    assert events["peek"]["hex"] == "01220e"
+
+
+def test_session_swap_without_a_sequence_stops_loudly(driven, tmp_path):
+    args = session_args(tmp_path)
+    pathlib.Path(args.commands).write_text("swap 2\nquit\n")
+    with pytest.raises(NotImplementedError, match="#804"):
+        fsuaegdb.session(args)
+
+
+def test_session_swap_takes_a_screenshot_either_side_and_logs_the_index(
+        driven, tmp_path):
+    _, log = driven
+    fs_log = tmp_path / "fs-uae.log"
+    fs_log.write_text("old gui_disk_image_change\n")
+    real_still = fsuaegdb.still
+
+    def writing_still(args, out, label):
+        with fs_log.open("a") as f:
+            f.write("perform disk_swap 2\n")
+        real_still(args, out, label)
+
+    fsuaegdb.still = writing_still
+    try:
+        events, _ = run_session(tmp_path, ["swap 2"], swap_sequence="F12 Return",
+                                fs_uae_log=str(fs_log))
+    finally:
+        fsuaegdb.still = real_still
+    assert events["swap"]["index"] == 2
+    assert events["swap"]["keys"] == ["F12", "Return"]
+    assert events["swap"]["log"] == ["perform disk_swap 2"] * 2
+    assert log["keys"] == [(["F12"], 0.12), (["Return"], 0.12)]
+    assert log["shots"] == ["swap2-before.png", "swap2-after.png"]
+
+
+def test_observe_records_the_peeks_the_raw_fix_and_which_block_is_resident(
+        driven, tmp_path):
+    _, log = driven
+    events, _ = run_session(
+        tmp_path, ["locate", "observe first"],
+        peeks=["+0x57AC 4", "*0x57AC+0x24 3"])
+    row = events["observe"]
+    assert row["name"] == "first" and row["error"] is None
+    assert [p["hex"] for p in row["peeks"]] == ["00c20000", "01220e"]
+    assert row["block"]["resident"] == ["GEO24"]
+    assert row["geo_pointer"] == 0xC07000
+    assert "first.png" in log["shots"]
+
+
+def test_observe_records_a_tick_that_raises_instead_of_ending_the_run(
+        driven, tmp_path, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("tick failed")
+
+    monkeypatch.setattr(fsuaegdb.amiga.AmigaTarget, "fix", boom)
+    events, _ = run_session(tmp_path, ["locate", "observe x"])
+    assert "tick failed" in events["observe"]["error"]
+
+
+def test_observe_with_a_window_ticks_the_tab_and_saves_both_pictures(
+        driven, tmp_path, monkeypatch):
+    from tools.gui import mapmarker
+
+    ticks, grabs = [], []
+
+    class Binding:
+        LIVE_EVERY = 5
+        root, canvas = "root", "canvas"
+        state = argparse.Namespace(geo=None)
+
+        def tick(self):
+            ticks.append(1)
+
+    app = argparse.Namespace(processEvents=lambda: None)
+    monkeypatch.setattr(fsuaegdb, "open_window",
+                        lambda tgt, disks, out: (app, None, Binding(), {}))
+    monkeypatch.setattr(mapmarker, "reading",
+                        lambda binding, tag: {"tag": tag, "area": "GEO24"})
+    monkeypatch.setattr(mapmarker, "shot",
+                        lambda app, widget, path: grabs.append(
+                            (widget, path.name)))
+    events, _ = run_session(tmp_path, ["locate", "observe walk1"], window=True)
+    assert len(ticks) == Binding.LIVE_EVERY + 1
+    assert grabs == [("root", "walk1-window.png"), ("canvas", "walk1-map.png")]
+    assert events["observe"]["tab"]["area"] == "GEO24"
+
+
+def test_window_mode_needs_the_folder_of_disks():
+    with pytest.raises(SystemExit, match="folder"):
+        fsuaegdb.open_window(None, None, pathlib.Path("."))
+
+
+def test_the_window_loads_maps_the_way_a_players_does(monkeypatch, tmp_path):
+    from tools.gui import mapmarker
+
+    asked = []
+    monkeypatch.setattr(mapmarker, "_offscreen", lambda: None)
+    monkeypatch.setattr(mapmarker, "build_window", lambda *a, **k: asked.append(
+        (a, k)))
+    fsuaegdb.open_window("target", str(tmp_path), tmp_path)
+    assert asked == [(("target", str(tmp_path), tmp_path),
+                      {"amiga_only": True})]

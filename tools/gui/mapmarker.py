@@ -202,8 +202,13 @@ def private_settings(out: pathlib.Path) -> None:
         os.environ[var] = str((out / name).resolve())
 
 
-def build_window(target, disks: str, out: pathlib.Path):
-    """The real map tab, offscreen, with its own settings and notes."""
+def build_window(target, disks: str, out: pathlib.Path,
+                 amiga_only: bool = False):
+    """The real map tab, offscreen, with its own settings and notes.
+
+    `amiga_only` loads the maps the way a player's window does for a title that
+    exists only on the Amiga, which `load_maps_titled` names only when asked.
+    """
     private_settings(out)
     from PyQt6.QtWidgets import QApplication, QMainWindow
 
@@ -213,7 +218,7 @@ def build_window(target, disks: str, out: pathlib.Path):
     from wish.ui_window import Ui_WishWindow
 
     app = QApplication.instance() or QApplication([])
-    maps, game = load_maps_titled(disks)
+    maps, game = load_maps_titled(disks, amiga_only=amiga_only)
     root = QMainWindow()
     ui = Ui_WishWindow()
     ui.setupUi(root)
@@ -249,17 +254,11 @@ def resident_paint(binding) -> list[list[int]]:
             for i in range(GRID_SIZE) if block[i] != disk[i]]
 
 
-def look(app, binding, tag: str, out: pathlib.Path, log: Log, sess) -> dict:
-    """Tick the map, photograph it, and write down what it says."""
-    for _ in range(binding.LIVE_EVERY + 1):
-        try:
-            binding.tick()
-        except Exception as exc:
-            log.say(f"  the poll raised: {type(exc).__name__}: {exc}")
-            log.emit("poll_raised", tag=tag, error=f"{type(exc).__name__}: {exc}")
-        app.processEvents()
+def reading(binding, tag: str) -> dict:
+    """What the map tab says about the party now: the half of `look` that
+    touches no emulator, so an Amiga run records the same fields."""
     st = binding.state
-    seen = {
+    return {
         "tag": tag,
         "x": st.x, "y": st.y, "facing": st.facing, "source": st.source,
         "area": st.area, "area_label": st.area_label,
@@ -291,8 +290,21 @@ def look(app, binding, tag: str, out: pathlib.Path, log: Log, sess) -> dict:
         "seen_squares": len(st.exploration),
         "geo_loaded": st.geo is not None,
         "messages": binding.messages.lines()[-6:],
-        "row14": status_row(sess),
     }
+
+
+def look(app, binding, tag: str, out: pathlib.Path, log: Log, sess) -> dict:
+    """Tick the map, photograph it, and write down what it says."""
+    for _ in range(binding.LIVE_EVERY + 1):
+        try:
+            binding.tick()
+        except Exception as exc:
+            log.say(f"  the poll raised: {type(exc).__name__}: {exc}")
+            log.emit("poll_raised", tag=tag, error=f"{type(exc).__name__}: {exc}")
+        app.processEvents()
+    st = binding.state
+    seen = reading(binding, tag)
+    seen["row14"] = status_row(sess)
     # What the mapper concluded from those bytes, beside the bytes: a heading
     # or window that disagrees with `$033D` and `$49C3` is the mapper's
     # reading, not the game's.

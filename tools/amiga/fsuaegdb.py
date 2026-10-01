@@ -13,6 +13,9 @@ an address, a position or a map.
         --out DIR/block.bin
     tools/amiga/fsuaegdb.py automap --port 6525 --out DIR/run \\
         --polls 8 --walk 'KP_Up KP_Left KP_Up' --display :77
+    tools/amiga/fsuaegdb.py session --port 6525 --out DIR/run \\
+        --commands DIR/cmds.txt --window --maps DIR/adfs \\
+        --peeks '+0x5B12 1' '*0x57AC+0x24 3'
 
 **`probe` is the one to run first.**  It connects, prints what the server
 advertises, continues the machine and times a read at four sizes -- and it
@@ -37,9 +40,11 @@ what it is pointed at and no more.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import pathlib
+import re
 import signal
 import subprocess
 import sys
@@ -205,6 +210,114 @@ def boot(gdb, args) -> None:
         time.sleep(1.0)
 
 
+#: A `peek` spec.  `+OFFSET` is a data-hunk offset; `*POINTER+OFFSET` reads the
+#: 32-bit big-endian pointer at the data-hunk offset POINTER and then reads at
+#: what it holds plus OFFSET, which is how the engine's own records are reached.
+PEEK_SPEC = re.compile(r"^(?:\+(?P<at>\w+)|\*(?P<ptr>\w+)\+(?P<off>\w+))$")
+
+
+def read_spec(tgt, spec: str, length: int) -> bytes | None:
+    """Memory named by a `peek` spec, or None when its pointer is null.
+
+    Read-only on purpose: the fork's server has no write packet, and a spec
+    that cannot say a write cannot be mistyped into one.
+    """
+    found = PEEK_SPEC.match(spec.strip())
+    if found is None:
+        raise ValueError(f"{spec!r} is neither +OFFSET nor *POINTER+OFFSET")
+    if length < 1:
+        raise ValueError("a peek of nothing is not a read")
+    if tgt.data_base is None:
+        raise amiga.GuestError("peek needs the data hunk's address; run "
+                               "`locate` first")
+    if found["at"] is not None:
+        return tgt.read(tgt.data_base + int(found["at"], 0), length)
+    pointer = int.from_bytes(
+        tgt.read(tgt.data_base + int(found["ptr"], 0), 4), "big")
+    if pointer == 0:
+        return None
+    return tgt.read(pointer + int(found["off"], 0), length)
+
+
+def peek_row(tgt, spec: str, length: int) -> dict:
+    """One `read_spec` as a log row; a refusal or a failed read is a row too."""
+    row = {"spec": spec, "length": length}
+    try:
+        got = read_spec(tgt, spec, length)
+    except (ValueError, amiga.GuestError, amiga.FsuaeError) as exc:
+        return {**row, "hex": None, "error": str(exc)}
+    return {**row, "hex": None if got is None else got.hex(),
+            "null_pointer": got is None}
+
+
+def parse_peeks(items: list[str] | None) -> list[tuple[str, int]]:
+    """`['+0x5B12 1', '*0x57AC+0x24 3']` as `[(spec, length)]`."""
+    out = []
+    for item in items or []:
+        spec, _, length = item.rpartition(" ")
+        if not spec:
+            raise SystemExit(f"--peeks wants 'SPEC LENGTH', got {item!r}")
+        out.append((spec, int(length, 0)))
+    return out
+
+
+def expand_sequence(text: str, index: int) -> list[str]:
+    """`'F12 Down*{index} Return'` as the keys to press for swap list `index`.
+
+    `{index}` is replaced as text first, and `KEY*N` repeats a key, so a menu
+    that is walked by counting entries can be written down.
+    """
+    keys = []
+    for token in text.replace("{index}", str(index)).split():
+        key, star, count = token.partition("*")
+        keys += [key] * (int(count) if star else 1)
+    return keys
+
+
+def insert_floppy(sequence: str | None, index: int, press_key, wait_still) -> list[str]:
+    """Put swap list image `index` into the drive, the one place that does it.
+
+    Everything else about a swap -- the screenshots either side, the log lines,
+    the command -- is built around this.  The key sequence is not known: the
+    fork binds no key to a disk change, and the F12 menu walk that does it is
+    still being measured.
+    """
+    if not sequence:
+        raise NotImplementedError(
+            "swap has no key sequence: how the F12 menu inserts a swap list "
+            "image with xdotool is still being measured on #804; pass the "
+            "measured sequence as --swap-sequence")
+    keys = expand_sequence(sequence, index)
+    for n, key in enumerate(keys):
+        press_key(key)
+        wait_still(f"swap{index}-{n}")
+    return keys
+
+
+#: What the emulator writes to `fs-uae.log` when a disk change reaches the core.
+SWAP_LOG = re.compile(r"gui_disk_image_change|perform disk_swap")
+
+
+def swap_log_lines(log_path: pathlib.Path | None, since: int) -> list[str]:
+    """The disk-change lines written to the emulator log after byte `since`."""
+    if log_path is None or not log_path.exists():
+        return []
+    text = log_path.read_bytes()[since:].decode("utf-8", "replace")
+    return [line for line in text.splitlines() if SWAP_LOG.search(line)]
+
+
+def block_match(tgt, maps: dict) -> dict:
+    """Whether the resident block is byte-identical to one of `maps`, and which."""
+    try:
+        block = tgt.geo()
+    except (amiga.GuestError, amiga.FsuaeError) as exc:
+        return {"resident": None, "error": str(exc)}
+    if block is None:
+        return {"resident": None}
+    return {"resident": [name for name, geo in sorted(maps.items())
+                         if geo.to_bytes() == block]}
+
+
 def poller(tgt, maps, layout, out: pathlib.Path, note):
     """An `Automapper` over this target, and a function that polls it once.
 
@@ -286,10 +399,20 @@ def session(args) -> int:
 
     One command a line, appended to `--commands` while this runs:
 
-        key <keysym>        one keystroke into the emulator
+        key <keysym>...     keystrokes into the emulator, each held `--hold` s
         shot <name>         a screenshot into the run directory
+        still [label]       wait until the screen stops changing
+        wait <seconds>      wait
         locate              measure the data hunk's load address
         fix                 where the party is, from the engine's globals
+        peek <spec> <n>     n bytes of memory: `+0x5B12` is a data-hunk
+                            offset, `*0x57AC+0x24` dereferences the pointer
+                            there first.  Read-only; refused before `locate`
+        swap <index>        put swap list image <index> in the drive, by the
+                            keys of `--swap-sequence`
+        observe <name>      one observation: the game's screenshot, a tick of
+                            the automapper (the real tab with `--window`),
+                            the `--peeks`, and the raw fix
         poll [n]            n shipped-automapper polls, drawing each map
         time [n]            n timed reads at each of `PROBE_SIZES`
         journal [adf]       answer Silver Blades' journal prompt
@@ -309,6 +432,8 @@ def session(args) -> int:
     maps, image = find_maps(layout, args.maps)
     print(f"Maps       {len(maps)} from {image}")
 
+    peeks = parse_peeks(args.peeks)
+    swap_log = pathlib.Path(args.fs_uae_log) if args.fs_uae_log else None
     gdb = connect(args)
     print(f"Server     {gdb.greeting}")
     tgt = amiga.AmigaTarget(gdb, layout)
@@ -322,7 +447,11 @@ def session(args) -> int:
     was = mapstate._data_dir                            # noqa: SLF001
     mapstate._data_dir = lambda: out / "data"           # noqa: SLF001
     _mapper, once = poller(tgt, maps, layout, out, note)
-    note(event="session", port=args.port, maps=len(maps), image=str(image))
+    window = None
+    if args.window:
+        window = open_window(tgt, args.maps, out)
+    note(event="session", port=args.port, maps=len(maps), image=str(image),
+         window=bool(args.window))
     started = time.monotonic()
     read = 0
     try:
@@ -340,10 +469,28 @@ def session(args) -> int:
                     return 0
                 if word == "key":
                     for key in rest.split():
-                        press(args.display, key, args.settle)
+                        held_key(args, key)
                     note(event="key", keys=rest, at=now)
                 elif word == "shot":
                     shot(args.display, out / "shots" / f"{rest or now}.png")
+                elif word == "still":
+                    still(args, out, rest or str(now))
+                    note(event="still", label=rest, at=now)
+                elif word == "wait":
+                    time.sleep(float(rest))
+                    note(event="wait", seconds=float(rest), at=now)
+                elif word == "peek":
+                    spec, _, length = rest.rpartition(" ")
+                    row = peek_row(tgt, spec, int(length or 1, 0))
+                    print(f"           {row}")
+                    note(event="peek", at=now, **row)
+                elif word == "swap":
+                    note(event="swap", at=now,
+                         **do_swap(args, int(rest), out, swap_log))
+                elif word == "observe":
+                    note(event="observe", at=now,
+                         **observe(args, rest or str(now), tgt, maps, out,
+                                   once, window, peeks))
                 elif word == "locate":
                     try:
                         base = tgt.locate()
@@ -389,6 +536,112 @@ def session(args) -> int:
         mapstate._data_dir = was                        # noqa: SLF001
         log.close()
     return 0
+
+
+def held_key(args, key: str) -> None:
+    """One keystroke held `--hold` seconds, which the game needs to see it.
+
+    Shares `fsuaepor.keys`, the implementation the `amiga-pod` runs used.  A
+    hold of 0 is the old unheld `xdotool key`.
+    """
+    if not args.hold:
+        press(args.display, key, args.settle)
+        return
+    from tools.amiga import fsuaepor
+
+    fsuaepor.keys(argparse.Namespace(display=args.display, key=[key],
+                                     hold=args.hold, settle=args.settle))
+
+
+def still(args, out: pathlib.Path, label: str) -> None:
+    """Wait for the emulator's screen to stop changing (`fsuaepor`'s own wait)."""
+    from tools.amiga import fsuaepor
+
+    fsuaepor._wait_until_still(                         # noqa: SLF001
+        args.display, label,
+        lambda name: shot(args.display, out / "shots" / f"{name}.png"))
+
+
+def do_swap(args, index: int, out: pathlib.Path,
+            log_path: pathlib.Path | None) -> dict:
+    """`insert_floppy`, between two screenshots, with the log lines it caused."""
+    since = (log_path.stat().st_size
+             if log_path is not None and log_path.exists() else 0)
+    shot(args.display, out / "shots" / f"swap{index}-before.png")
+    keys = insert_floppy(args.swap_sequence, index,
+                         lambda key: held_key(args, key),
+                         lambda label: still(args, out, label))
+    shot(args.display, out / "shots" / f"swap{index}-after.png")
+    return {"index": index, "keys": keys,
+            "log": swap_log_lines(log_path, since)}
+
+
+def open_window(tgt, disks: str | None, out: pathlib.Path):
+    """The real map tab over `tgt`, offscreen, loading its maps from `disks`.
+
+    The maps come from `load_maps_titled(..., amiga_only=True)`, the way a
+    player's window loads them, so what is observed is what a player sees.
+    """
+    if not disks or not pathlib.Path(disks).is_dir():
+        raise SystemExit("--window needs --maps to be the folder holding the "
+                         "game's disk images")
+    from tools.gui import mapmarker
+
+    mapmarker._offscreen()                              # noqa: SLF001
+    return mapmarker.build_window(tgt, disks, out, amiga_only=True)
+
+
+def observe(args, name: str, tgt, maps: dict, out: pathlib.Path, once,
+            window, peeks: list[tuple[str, int]]) -> dict:
+    """One observation, written as a single row.
+
+    Without a window it ticks the shipped automapper once; with one it ticks
+    the real tab `LIVE_EVERY + 1` times, as the tab's own timer would, and
+    photographs it.  A tick that raises is recorded rather than ending the run,
+    because the row is the evidence.
+    """
+    from automap import render
+
+    shot(args.display, out / "shots" / f"{name}.png")
+    row: dict = {"name": name, "error": None}
+    st = None
+    try:
+        if window is None:
+            st = once()
+            row["tab"] = {"x": st.x, "y": st.y, "facing": st.facing,
+                          "area": st.area, "source": st.source,
+                          "candidates": str(st.candidates) if st.candidates
+                          else None, "seen_squares": len(st.exploration.seen)}
+        else:
+            from tools.gui import mapmarker
+
+            app, _root, binding, _maps = window
+            for _ in range(binding.LIVE_EVERY + 1):
+                binding.tick()
+                app.processEvents()
+            st = binding.state
+            row["tab"] = mapmarker.reading(binding, name)
+            mapmarker.shot(app, binding.root, out / f"{name}-window.png")
+            mapmarker.shot(app, binding.canvas, out / f"{name}-map.png")
+    except Exception as exc:                    # noqa: BLE001 -- the row is the evidence
+        row["error"] = f"{type(exc).__name__}: {exc}"
+    if st is not None and st.geo is not None:
+        seen = set(st.exploration.seen)
+        (out / f"{name}.svg").write_text(render.to_svg(
+            st.geo, visible=(lambda x, y: (x, y) in seen) if seen else None,
+            party=(st.x, st.y, st.facing or 0), notes=st.notes or None),
+            encoding="utf-8")
+    try:
+        got = tgt.fix()
+        row["fix"] = None if got is None else dataclasses.asdict(got)
+        row["geo_pointer"] = (None if tgt.data_base is None
+                              else tgt.resident_geo_address())
+    except Exception as exc:                    # noqa: BLE001 -- recorded, not fatal
+        row["fix"] = None
+        row["fix_error"] = f"{type(exc).__name__}: {exc}"
+    row["peeks"] = [peek_row(tgt, spec, length) for spec, length in peeks]
+    row["block"] = block_match(tgt, maps)
+    return row
 
 
 def automap(args) -> int:
@@ -497,11 +750,15 @@ def launch(args) -> int:
         raise SystemExit(f"{binary} is not on this machine; --fs-uae takes a "
                          "path to a patched FS-UAE that is already here")
 
+    foreground = bool(args.foreground)
+    # Detached, `launch` returns and `stop` ends the group.  In the foreground
+    # both stay in the caller's process group, so whatever holds the lease
+    # (the pool slot's `claim --`) ends them by ending itself.
     xvfb = subprocess.Popen(
         ["Xvfb", args.display, "-screen", "0", "800x600x24", "-nolisten",
          "tcp"],
         stdout=(run / "xvfb.log").open("wb"), stderr=subprocess.STDOUT,
-        start_new_session=True)
+        start_new_session=not foreground)
     time.sleep(2)
 
     env = dict(os.environ)
@@ -514,18 +771,30 @@ def launch(args) -> int:
             f"--remote_debugger_port={args.port}"]
     if args.kickstart:
         argv.append(f"--kickstart_file={pathlib.Path(args.kickstart).resolve()}")
-    for i, floppy in enumerate(args.floppy or []):
-        argv.append(f"--floppy_drive_{i}={pathlib.Path(floppy).resolve()}")
+    floppies = [pathlib.Path(f).resolve() for f in args.floppy or []]
+    swaps = [pathlib.Path(f).resolve() for f in args.swap or []]
+    for i, floppy in enumerate(floppies):
+        argv.append(f"--floppy_drive_{i}={floppy}")
+    # The swap list holds the drives' images first, then the swaps, as
+    # `fsuaepor.fsuae_argv` writes it; none given leaves the command line as it was.
+    if swaps:
+        argv += [f"--floppy_image_{i}={image}"
+                 for i, image in enumerate([*floppies, *swaps])]
+    if foreground:
+        # A driven run sends keys only, so nothing may arrive from port 1.
+        argv.append("--joystick_port_1=none")
     argv += list(args.extra or [])
     emulator = subprocess.Popen(
         argv, env=env, cwd=str(binary.parent),
         stdout=(run / "fs-uae.log").open("wb"), stderr=subprocess.STDOUT,
-        start_new_session=True)
+        start_new_session=not foreground)
 
     print(f"display    {args.display}")
     print(f"xvfb       {xvfb.pid}")
     print(f"fs-uae     {emulator.pid}   (kill -- -{emulator.pid})")
-    print(f"port       {args.port}")
+    print(f"port       {args.port}", flush=True)
+    if foreground:
+        return wait_foreground(emulator, xvfb)
     for _ in range(args.wait * 2):
         listening = subprocess.run(["ss", "-ltn"], capture_output=True,
                                    text=True, check=False).stdout
@@ -535,6 +804,20 @@ def launch(args) -> int:
         time.sleep(0.5)
     print("listening  NO -- see " + str(run / "fs-uae.log"))
     return 1
+
+
+def wait_foreground(emulator, xvfb) -> int:
+    """Wait for the emulator to exit, then take the `Xvfb` down after it."""
+    try:
+        return emulator.wait()
+    finally:
+        for proc in (emulator, xvfb):
+            if proc.poll() is None:
+                proc.send_signal(signal.SIGTERM)
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
 
 
 def stop(args) -> int:
@@ -665,6 +948,14 @@ def main(argv: list[str] | None = None) -> int:
     launcher.add_argument("--kickstart")
     launcher.add_argument("--floppy", action="append",
                           help="repeatable: DF0, then DF1, and so on")
+    launcher.add_argument("--swap", action="append",
+                          help="repeatable: an image only the swap list "
+                               "holds, after the --floppy ones")
+    launcher.add_argument("--foreground", action="store_true",
+                          help="stay in this process group and wait for the "
+                               "emulator to exit, so a pool slot's lease "
+                               "covers the run; also turns joystick port 1 "
+                               "off")
     launcher.add_argument("--wait", type=int, default=60,
                           help="seconds the server waits for a client")
     launcher.add_argument("--extra", nargs=argparse.REMAINDER,
@@ -686,6 +977,20 @@ def main(argv: list[str] | None = None) -> int:
                    help="how long to stay up before giving the socket back")
     s.add_argument("--at", type=lambda s: int(s, 0), default=0xC00000,
                    help="where `time` reads from")
+    s.add_argument("--hold", type=float, default=0.12,
+                   help="seconds a `key` is held down; 0 sends an unheld key")
+    s.add_argument("--window", action="store_true",
+                   help="`observe` ticks the real map tab, loading its maps "
+                        "from the --maps folder, and photographs it")
+    s.add_argument("--peeks", nargs="+", metavar="'SPEC LENGTH'",
+                   help="memory `observe` records every time, e.g. "
+                        "'+0x5B12 1' '*0x57AC+0x24 3'")
+    s.add_argument("--swap-sequence",
+                   help="the xdotool keys `swap` sends, e.g. "
+                        "'F12 Down*{index} Return'")
+    s.add_argument("--fs-uae-log",
+                   help="the emulator's log, where `swap` looks for the disk "
+                        "change it caused")
 
     killer = sub.add_parser("stop", help="kill a launch's process group")
     killer.add_argument("pid", nargs="+", type=int)
