@@ -1017,6 +1017,34 @@ def test_a_published_prepare_for_666_keeps_its_display_and_refuses_another_sourc
         foundation.prepare_published("curse", "other", report, "666")
 
 
+#: The game-written C64 Curse strength-ladder save, reloaded and resaved, that the #667 Amiga run starts from.
+LADDER_667 = ("coab-c64/WISH-SPEC-curse-667-strength-ladder-c64-resave.D64",
+              "ff3228edf42aa56a0fbf5159e8354358a38673115216a1b6c7f3439cae2686f2")
+
+
+def test_667_pins_only_the_curse_ladder_save_and_names_its_issue():
+    assert foundation.PUBLISHED_SOURCES_BY_ISSUE["667"] == {
+        ("curse", "c64"): frozenset({LADDER_667[1]})}
+    assert foundation.PUBLISHED_ISSUE_TEXT["667"].startswith("#667 (A DOS party under Prayer")
+
+
+def test_the_pinned_667_source_is_the_specimen_on_disk():
+    root = gamedata.specimen_root()
+    if root is None or not (root / LADDER_667[0]).is_file():
+        pytest.skip(f"needs the specimen {LADDER_667[0]}")
+    assert staging.sha256(root / LADDER_667[0]) == LADDER_667[1]
+
+
+def test_a_published_prepare_for_667_refuses_another_source(tmp_path, monkeypatch):
+    report = _published_report(tmp_path, monkeypatch, "curse", "c64", pinned=LADDER_667[1])
+    assert foundation.prepare_published("curse", "ladder", report, "667").is_file()
+    data = json.loads(report.read_text())
+    data["specimen_sha256"] = "0" * 64
+    report.write_text(json.dumps(data))
+    with pytest.raises(RouteError, match="differs from the pinned specimen"):
+        foundation.prepare_published("curse", "other", report, "667")
+
+
 def test_curse_s_party_menu_guard_matches_a_full_party_and_one_with_room_to_add():
     # ADD CHARACTER is lit only while the party has room, so a party of two needs its own picture
     # of the same button box beside the six-member one.

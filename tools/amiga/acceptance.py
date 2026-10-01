@@ -140,6 +140,10 @@ PUBLISHED_SOURCES_BY_ISSUE = {
     "666": {
         ("curse", "c64"): frozenset({"9facc90c1f7cefdb909368b6db5b8135960631244ac259d21fab65d681352041"}),
     },
+    # The game-written C64 Curse save of the strength-spell ladder, reloaded and resaved.
+    "667": {
+        ("curse", "c64"): frozenset({"ff3228edf42aa56a0fbf5159e8354358a38673115216a1b6c7f3439cae2686f2"}),
+    },
 }
 
 
@@ -159,6 +163,9 @@ PUBLISHED_ISSUE_TEXT = {
             "so a converted paladin loses them)"),
     "666": ("#666 (A C64 party under a camp Prayer loses it on the way to DOS or the Amiga, "
             "because nothing converts the save's party-wide effect rows)"),
+    "667": ("#667 (A DOS party under Prayer, the strength and charisma spells, Mirror Image or "
+            "an effect with no C64 spell row is still refused when saved as a C64 save, because "
+            "only the ordinary caster-level spells convert)"),
 }
 PUBLISHED_DISKS = {
     "ssb": ("2f9ae86494561231dd1d70b350ae07b959c9f62642b64e9d4b57ffd23686ace4",
