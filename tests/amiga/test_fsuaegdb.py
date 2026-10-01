@@ -1464,6 +1464,11 @@ def test_stop_says_not_running_for_a_pid_that_is_gone(monkeypatch, capsys):
     assert "5 is not running" in capsys.readouterr().out
 
 
+# Without /proc, `alive` falls back to `os.kill(pid, 0)`, and on Windows signal 0
+# is CTRL_C_EVENT: it interrupts this very console, and pytest dies with
+# KeyboardInterrupt. The tool drives Xvfb and killpg, so it is POSIX-only.
+@pytest.mark.skipif(os.name == "nt",
+                    reason="os.kill(pid, 0) sends Ctrl+C on Windows")
 def test_alive_is_true_for_this_process():
     assert fsuaegdb.alive(os.getpid())
 
